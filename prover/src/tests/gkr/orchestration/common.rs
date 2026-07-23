@@ -4,6 +4,7 @@ use crate::gkr::witness_gen::trace_structs::RamShuffleMemStateRecord;
 use ::field::baby_bear::{base::BabyBearField, ext4::BabyBearExt4};
 use cs::definitions::{INITIAL_TIMESTAMP, NUM_PERMUTATION_ARGUMENT_KEY_PARTS};
 use fft::materialize_powers_serial_starting_with_elem;
+use field::{Field, FieldExtension, PrimeField};
 use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
 use riscv_transpiler::ir::simple_instruction_set::{preprocess_bytecode, Instruction};
 use riscv_transpiler::ir::FullUnsignedMachineDecoderConfig;
@@ -305,6 +306,16 @@ pub fn ensure_memory_trace_consistency<F: field::PrimeField>(
     }
 }
 
+pub fn dummy_external_challenges<F: PrimeField, E: FieldExtension<F> + Field>(
+) -> GKRExternalChallenges<F, E> {
+    GKRExternalChallenges::<F, E> {
+        permutation_argument_linearization_challenges: [E::ZERO;
+            NUM_PERMUTATION_ARGUMENT_KEY_PARTS - 1],
+        permutation_argument_additive_part: E::ZERO,
+        _marker: core::marker::PhantomData,
+    }
+}
+
 pub fn hardcoded_external_challenges() -> GKRExternalChallenges<BabyBearField, BabyBearExt4> {
     let memory_argument_alpha = BabyBearExt4::from_array_of_base([
         BabyBearField::new(2),
@@ -358,4 +369,17 @@ pub fn parse_prove_empty() -> bool {
 /// filter is empty (= all applicable) OR the filter contains this name.
 pub fn circuit_in_filter(filter: &Option<std::collections::HashSet<String>>, name: &str) -> bool {
     filter.as_ref().map(|s| s.contains(name)).unwrap_or(true)
+}
+
+pub fn log_prove_decision(name: &str, should_prove: bool, compute_only: bool) {
+    if should_prove {
+        println!("Proving {name}");
+    } else if compute_only {
+        println!("Skipping {name} prove (compute-only pass; witness still replayed)");
+    } else {
+        println!(
+            "Skipping {name} prove (filtered out by GKR_CIRCUITS, or 0 calls without \
+             GKR_PROVE_EMPTY); witness still replayed"
+        );
+    }
 }

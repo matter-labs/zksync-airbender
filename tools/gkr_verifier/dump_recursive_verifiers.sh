@@ -4,9 +4,12 @@
 # can select at runtime, writing each to a blake-suffixed filename so the
 # variants don't overwrite one another:
 #
-#   fsv_unrolled_base_layer_sec_80      : blake2_with_compression, blake2_g_function
-#   fsv_unrolled_recursion_layer_sec_80 : blake2_with_compression, blake2_g_function
-#   fsv_unified_recursion_layer_sec_80  : blake2_with_compression, blake2_g_function, special_opcodes_extension
+#   fsv_unrolled_base_layer_sec_{80,100}      : blake2_with_compression, blake2_g_function
+#   fsv_unrolled_recursion_layer_sec_{80,100} : blake2_with_compression, blake2_g_function
+#   fsv_unified_recursion_layer_sec_{80,100}  : blake2_with_compression, blake2_g_function, special_opcodes_extension
+#
+# Use `--sec 80|100|both` (default `both`) to pick the security level; both the unrolled and
+# unified full-statement paths are split by security level.
 #
 # `special_opcodes_extension` does blake inline with the reduced machine's
 # tri-add / xor-rotate opcodes — the correct mop-style path for the reduced ISA
@@ -28,13 +31,22 @@ set -eu
 cd "$(dirname "$0")"
 
 VARIANT="caches"
+SEC="both"
 while [ $# -gt 0 ]; do
     case "$1" in
         --variant) VARIANT="$2"; shift 2 ;;
-        -h|--help) echo "Usage: $0 [--variant caches|no_caches]"; exit 0 ;;
+        --sec) SEC="$2"; shift 2 ;;
+        -h|--help) echo "Usage: $0 [--variant caches|no_caches] [--sec 80|100|both]"; exit 0 ;;
         *) echo "unknown argument: $1" >&2; exit 1 ;;
     esac
 done
+
+case "$SEC" in
+    80)   SEC_LEVELS="80" ;;
+    100)  SEC_LEVELS="100" ;;
+    both) SEC_LEVELS="80 100" ;;
+    *) echo "ERROR: --sec must be 80, 100, or both (got '$SEC')" >&2; exit 1 ;;
+esac
 
 build_variant() {
     circuit="$1"
@@ -48,14 +60,21 @@ build_variant() {
 }
 
 # Unrolled-machine recursive verifiers: blake round function or blake g function.
-for mode in blake2_with_compression blake2_g_function; do
-    build_variant fsv_unrolled_base_layer_sec_80 "${mode}"
-    build_variant fsv_unrolled_recursion_layer_sec_80 "${mode}"
+# Built at each selected security level (both 80- and 100-bit paths exist).
+for sec in $SEC_LEVELS; do
+    # for mode in blake2_with_compression blake2_g_function; do
+    for mode in blake2_with_compression; do
+        build_variant "fsv_unrolled_base_layer_sec_${sec}" "${mode}"
+        build_variant "fsv_unrolled_recursion_layer_sec_${sec}" "${mode}"
+    done
 done
 
 # Unified-machine recursion verifier: round, g function, or inline special opcodes.
-for mode in blake2_with_compression blake2_g_function special_opcodes_extension; do
-    build_variant fsv_unified_recursion_layer_sec_80 "${mode}"
+# Built at each selected security level (both 80- and 100-bit paths exist).
+for sec in $SEC_LEVELS; do
+    for mode in blake2_with_compression blake2_g_function special_opcodes_extension; do
+        build_variant "fsv_unified_recursion_layer_sec_${sec}" "${mode}"
+    done
 done
 
-echo "==> all recursive verifier variants built"
+echo "==> all recursive verifier variants built (sec: ${SEC})"

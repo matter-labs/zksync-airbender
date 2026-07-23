@@ -1,4 +1,5 @@
 use super::*;
+use worker::Worker;
 
 pub fn multivariate_coeffs_into_hypercube_evals<F: Field>(input: &mut [F], size_log2: u32) {
     assert_eq!(input.len(), 1 << size_log2);
@@ -78,6 +79,70 @@ pub fn multivariate_hypercube_evals_into_coeffs<F: Field>(input: &mut [F], size_
     }
 }
 
+/// Multicore version of [`multivariate_hypercube_evals_into_coeffs`], structured
+/// like the parallel NTT in the `fft` crate: the transform is a butterfly network
+/// of `size_log2` stages (one per variable, stride `n/2` down to `1`), and every
+/// stage is a `worker.scope` over the `n/2` independent butterflies.
+///
+/// In a stage of stride `S` each butterfly does `input[j + S] -= input[j]` for the
+/// `j` whose bit `log2(S)` is zero. Reads come only from the bit-0 positions and
+/// writes go only to the disjoint bit-1 positions, so all `n/2` butterflies of a
+/// stage touch disjoint pairs — threads can share the buffer (the same
+/// `base_addr as usize` trick the parallel NTT uses).
+pub fn parallel_multivariate_hypercube_evals_into_coeffs<F: Field>(
+    input: &mut [F],
+    size_log2: u32,
+    worker: &Worker,
+) {
+    assert_eq!(input.len(), 1 << size_log2);
+    let n = input.len();
+    if n <= 1 {
+        return;
+    }
+
+    // Small transforms: per-stage scope overhead dominates, so stay serial.
+    const PAR_THRESHOLD: usize = 1 << 12;
+    let elem_ratio = (core::mem::size_of::<F>() / core::mem::size_of::<u32>()).max(1);
+    let eff_threshold = PAR_THRESHOLD / elem_ratio;
+    if n < eff_threshold {
+        multivariate_hypercube_evals_into_coeffs(input, size_log2);
+        return;
+    }
+
+    // Each butterfly writes a disjoint element, so threads can share the buffer.
+    // Pass the base address as a `usize` (Send) and reconstruct the pointer per
+    // thread — the same pattern as `parallel_ct_ntt_bitreversed_to_natural`.
+    let base_addr = input.as_mut_ptr() as usize;
+    let half = n / 2;
+
+    // stride goes n/2, n/4, ..., 1 (most-significant variable first, matching the
+    // serial routine; the per-variable stages commute so the order is not required
+    // for correctness, only for parity with the serial version).
+    for round in 0..size_log2 {
+        let s = half >> round;
+        let s_log = s.trailing_zeros();
+        worker.scope(half, |scope, geometry| {
+            for thread_idx in 0..geometry.len() {
+                let start = geometry.get_chunk_start_pos(thread_idx);
+                let size = geometry.get_chunk_size(thread_idx);
+                Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| {
+                    let base = base_addr as *mut F;
+                    for b in start..(start + size) {
+                        // flat butterfly index -> (group k, in-group offset jj) -> j
+                        let k = b >> s_log;
+                        let jj = b & (s - 1);
+                        let j = k * (s << 1) + jj;
+                        unsafe {
+                            let lhs = *base.add(j);
+                            (*base.add(j + s)).sub_assign(&lhs);
+                        }
+                    }
+                });
+            }
+        });
+    }
+}
+
 #[cfg(test)]
 mod test {
     use field::baby_bear::base::BabyBearField;
@@ -141,5 +206,24 @@ mod test {
         multivariate_coeffs_into_hypercube_evals(&mut coeffs, size.trailing_zeros());
         multivariate_hypercube_evals_into_coeffs(&mut coeffs, size.trailing_zeros());
         assert_eq!(coeffs, reference);
+    }
+
+    #[test]
+    fn test_parallel_matches_serial() {
+        let worker = Worker::new_with_num_threads(4);
+        for size_log2 in [1u32, 4, 10, 16, 18] {
+            let size = 1usize << size_log2;
+            let evals: Vec<F> = (0..size)
+                .map(|el| F::from_u32_with_reduction((el as u32).wrapping_mul(2654435761)))
+                .collect();
+
+            let mut serial = evals.clone();
+            multivariate_hypercube_evals_into_coeffs(&mut serial, size_log2);
+
+            let mut parallel = evals.clone();
+            parallel_multivariate_hypercube_evals_into_coeffs(&mut parallel, size_log2, &worker);
+
+            assert_eq!(serial, parallel, "mismatch at size_log2 = {size_log2}");
+        }
     }
 }

@@ -36,7 +36,7 @@ impl GrandProductAccumulationStep {
     }
 }
 
-impl GKRGate for GrandProductAccumulationStep {
+impl<F: PrimeField> GKRGate<F> for GrandProductAccumulationStep {
     type Output = GKRAddress;
 
     fn short_name(&self) -> String {
@@ -69,9 +69,9 @@ impl GKRGate for GrandProductAccumulationStep {
     #[track_caller]
     fn add_at_layer(
         &self,
-        graph: &mut impl GraphHolder,
+        graph: &mut impl GraphHolder<F>,
         output_layer: usize,
-    ) -> (Self::Output, NoFieldGKRRelation) {
+    ) -> (Self::Output, NoFieldGKRRelation<F>) {
         let output = graph.add_intermediate_variable_at_layer(output_layer);
         // create caches
         match self {
@@ -143,7 +143,7 @@ pub struct GrandProductAccumulationMaskingNode {
     pub is_write: bool,
 }
 
-impl GKRGate for GrandProductAccumulationMaskingNode {
+impl<F: PrimeField> GKRGate<F> for GrandProductAccumulationMaskingNode {
     type Output = GKRAddress;
 
     fn short_name(&self) -> String {
@@ -156,9 +156,9 @@ impl GKRGate for GrandProductAccumulationMaskingNode {
 
     fn add_at_layer(
         &self,
-        graph: &mut impl GraphHolder,
+        graph: &mut impl GraphHolder<F>,
         output_layer: usize,
-    ) -> (Self::Output, NoFieldGKRRelation) {
+    ) -> (Self::Output, NoFieldGKRRelation<F>) {
         let output = graph.add_intermediate_variable_at_layer(output_layer);
         let relation = NoFieldGKRRelation::MaskIntoIdentityProduct {
             input: self.lhs,
@@ -191,8 +191,8 @@ fn reg_boolean_into_address_space_raw(is_register: Boolean) -> AddressSpaceIsReg
     }
 }
 
-pub(crate) fn layout_initial_grand_product_accumulation(
-    graph: &mut impl GraphHolder,
+pub(crate) fn layout_initial_grand_product_accumulation<F: PrimeField>(
+    graph: &mut impl GraphHolder<F>,
     predicate: Variable,
     ram_augmented_sets: &[(MemoryAccess, ShuffleRamTimestampComparisonPartialData)],
     pc_permutation: Option<(
@@ -570,14 +570,14 @@ pub(crate) fn layout_initial_grand_product_accumulation(
     )
 }
 
-pub(crate) fn accumulate_memory_like_grand_product(
-    graph: &mut impl GraphHolder,
+pub(crate) fn accumulate_memory_like_grand_product<F: PrimeField>(
+    graph: &mut impl GraphHolder<F>,
     mut copied_predicate_for_grand_product_masking: GKRAddress,
     grand_product_read_accumulation_nodes: Vec<GKRAddress>,
     grand_product_write_accumulation_nodes: Vec<GKRAddress>,
 ) -> (
-    (GKRAddress, NoFieldGKRRelation),
-    (GKRAddress, NoFieldGKRRelation),
+    (GKRAddress, NoFieldGKRRelation<F>),
+    (GKRAddress, NoFieldGKRRelation<F>),
 ) {
     let mut output_layer = 2;
 

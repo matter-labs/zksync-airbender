@@ -1,4 +1,5 @@
 use proc_macro2::TokenStream;
+use prover::field::PrimeField;
 use quote::quote;
 use std::collections::BTreeMap;
 
@@ -105,7 +106,7 @@ pub fn generate_gkr_common<MW: FieldWrapper>() -> TokenStream {
     let common_fns = quote! {
         #[inline(always)]
         pub fn verify_sumcheck_rounds<
-            I: NonDeterminismSource,
+            I: NonDeterminismSource<#field_struct>,
             E: ErrorCreator,
             const NUM_ROUNDS: usize,
             const COMMIT_BUF: usize,
@@ -129,7 +130,7 @@ pub fn generate_gkr_common<MW: FieldWrapper>() -> TokenStream {
                 {
                     let mut i = 0;
                     while i < coeff_data_words {
-                        commit_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
+                        commit_buf.data_write(i, read_reduced_field_el::<I>(nd_source).as_u32_raw_repr());
                         i += 1;
                     }
                 }
@@ -503,8 +504,8 @@ fn emit_inits_and_teardowns_eval_check<MW: FieldWrapper>(
     (helper, call)
 }
 
-fn generate_cache_relation_checks<MW: FieldWrapper>(
-    layer: &GKRLayerDescription,
+fn generate_cache_relation_checks<MW: FieldWrapper, F: PrimeField>(
+    layer: &GKRLayerDescription<F>,
     target_addrs: &[GKRAddress],
     layer_idx: usize,
 ) -> TokenStream {
@@ -551,11 +552,14 @@ fn generate_cache_relation_checks<MW: FieldWrapper>(
             } => {
                 let term_start = single_terms.len();
                 for &(coeff, ref addr) in rel.input.linear_terms.iter() {
-                    single_terms.push((MW::coeff_to_internal_repr(coeff), find_idx(addr)));
+                    single_terms.push((
+                        MW::coeff_to_internal_repr(coeff.as_u32_reduced()),
+                        find_idx(addr),
+                    ));
                 }
                 single_descs.push((
                     cached_idx,
-                    MW::coeff_to_internal_repr(rel.input.constant),
+                    MW::coeff_to_internal_repr(rel.input.constant.as_u32_reduced()),
                     term_start,
                     rel.input.linear_terms.len(),
                 ));
@@ -565,10 +569,13 @@ fn generate_cache_relation_checks<MW: FieldWrapper>(
                 for column in rel.columns.iter() {
                     let t_start = vector_terms.len();
                     for &(coeff, ref addr) in column.linear_terms.iter() {
-                        vector_terms.push((MW::coeff_to_internal_repr(coeff), find_idx(addr)));
+                        vector_terms.push((
+                            MW::coeff_to_internal_repr(coeff.as_u32_reduced()),
+                            find_idx(addr),
+                        ));
                     }
                     vector_cols.push((
-                        MW::coeff_to_internal_repr(column.constant),
+                        MW::coeff_to_internal_repr(column.constant.as_u32_reduced()),
                         t_start,
                         column.linear_terms.len(),
                     ));
@@ -1222,16 +1229,18 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
     let mut layer_functions = TokenStream::new();
 
     for layer_idx in 0..num_standard_layers {
-        layer_functions.extend(standard_layer::generate_layer_compute_claim::<MW>(
+        layer_functions.extend(standard_layer::generate_layer_compute_claim::<MW, _>(
             &compiled_circuit.layers[layer_idx],
             layer_idx,
             get_output_sorted_addrs(layer_idx),
         ));
-        layer_functions.extend(standard_layer::generate_layer_final_step_accumulator::<MW>(
-            &compiled_circuit.layers[layer_idx],
-            layer_idx,
-            &standard_sorted_addrs[layer_idx],
-        ));
+        layer_functions.extend(
+            standard_layer::generate_layer_final_step_accumulator::<MW, _>(
+                &compiled_circuit.layers[layer_idx],
+                layer_idx,
+                &standard_sorted_addrs[layer_idx],
+            ),
+        );
     }
 
     if num_standard_layers <= initial_layer_for_sumcheck {
@@ -1310,7 +1319,7 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
         {
             let mut i = 0;
             while i < evals_data_words {
-                evals_commit_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
+                evals_commit_buf.data_write(i, read_reduced_field_el::<I>(nd_source).as_u32_raw_repr());
                 i += 1;
             }
         }
@@ -1379,7 +1388,7 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
                 {
                     let mut i = 0;
                     while i < data_words {
-                        eval_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
+                        eval_buf.data_write(i, read_reduced_field_el::<I>(nd_source).as_u32_raw_repr());
                         i += 1;
                     }
                 }
@@ -1573,146 +1582,176 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
             addrs.into_iter().collect()
         };
 
-        let (fold_and_extras_code, cache_check_code, virtual_setup_calls_emit) = if is_layer_0 {
-            let n_total = layer_0_layout.len();
-            let n_extra = layer_0_n_extra;
-            let layout_kind: Vec<usize> = layer_0_src_kind.clone();
-            let layout_pos: Vec<usize> = layer_0_src_pos.clone();
+        // Soundness (matches the prover committing new_claims ++ extra_evals in ONE shot before
+        // drawing the batching challenge): the extra cached-relation evals must be absorbed into
+        // the transcript BEFORE `draw_single_field_el`. So the per-layer code is split into a
+        // `pre_draw` piece (read + commit the extra evals) emitted before the draw and a
+        // `post_draw` piece (fold the claims for the next layer) emitted after it.
+        let (pre_draw_extra_code, post_draw_fold_code, cache_check_code, virtual_setup_calls_emit) =
+            if is_layer_0 {
+                let n_total = layer_0_layout.len();
+                let n_extra = layer_0_n_extra;
+                let layout_kind: Vec<usize> = layer_0_src_kind.clone();
+                let layout_pos: Vec<usize> = layer_0_src_pos.clone();
 
-            let read_extras = if n_extra > 0 {
-                quote! {
-                    const EXTRA_COMMIT_BUF: usize = {
-                        let total = BLAKE2S_DIGEST_SIZE_U32_WORDS + #n_extra * EXT_DEGREE;
-                        total.div_ceil(BLAKE2S_BLOCK_SIZE_U32_WORDS) * BLAKE2S_BLOCK_SIZE_U32_WORDS
-                    };
-                    let mut extra_buf = CommitBuf::<EXTRA_COMMIT_BUF>::new();
-                    let extra_data_words = #n_extra * EXT_DEGREE;
-                    {
-                        let mut i = 0;
-                        while i < extra_data_words {
-                            extra_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
-                            i += 1;
+                let read_extras = if n_extra > 0 {
+                    quote! {
+                        // Number of extra cached-relation evals for this layer. They are appended into
+                        // `eval_buf` right after the `NUM_AT_POINT_EVALS` at-point evals, so a SINGLE
+                        // commit below covers `new_claims ++ extra` (the prover commits them together
+                        // before drawing the batching challenge).
+                        const NUM_EXTRA_EVALS: usize = #n_extra;
+                        {
+                            let mut i = 0;
+                            while i < NUM_EXTRA_EVALS * EXT_DEGREE {
+                                eval_buf.data_write(data_words + i, read_reduced_field_el::<I>(nd_source).as_u32_raw_repr());
+                                i += 1;
+                            }
                         }
-                    }
-                    let mut extra_evals = LazyVec::<#quartic_struct, #n_extra>::new();
-                    {
-                        let slice: &[#quartic_struct] = unsafe { extra_buf.data_as(#n_extra) };
-                        for el in slice {
-                            extra_evals.push(*el);
+                        let mut extra_evals = LazyVec::<#quartic_struct, NUM_EXTRA_EVALS>::new();
+                        {
+                            let slice: &[#quartic_struct] =
+                                unsafe { eval_buf.data_as(NUM_AT_POINT_EVALS + NUM_EXTRA_EVALS) };
+                            let mut k = NUM_AT_POINT_EVALS;
+                            while k < NUM_AT_POINT_EVALS + NUM_EXTRA_EVALS {
+                                extra_evals.push(unsafe { *slice.get_unchecked(k) });
+                                k += 1;
+                            }
                         }
+                        // one commit of new_claims ++ extra, then (in main body) the draw.
+                        ts.commit(&mut eval_buf, data_words + NUM_EXTRA_EVALS * EXT_DEGREE);
                     }
-                    ts.commit(&mut extra_buf, extra_data_words);
-                }
-            } else {
-                quote! {
-                    let extra_evals = LazyVec::<#quartic_struct, 0usize>::new();
-                }
-            };
+                } else {
+                    quote! {
+                        let extra_evals = LazyVec::<#quartic_struct, 0usize>::new();
+                        // no extras: commit just the at-point evals, then draw.
+                        ts.commit(&mut eval_buf, data_words);
+                    }
+                };
 
-            let fold = quote! {
-                #read_extras
-                let final_step_evals: &[[#quartic_struct; 1]] = unsafe { eval_buf.data_as(#num_dedup_addrs) };
-                state.prev_claims.clear();
-                {
-                    const LAYOUT_KIND: [usize; #n_total] = [#( #layout_kind ),*];
-                    const LAYOUT_POS:  [usize; #n_total] = [#( #layout_pos  ),*];
-                    let mut i = 0usize;
-                    while i < #n_total {
-                        let kind = unsafe { *LAYOUT_KIND.get_unchecked(i) };
-                        let pos = unsafe { *LAYOUT_POS.get_unchecked(i)  };
-                        let claim: #quartic_struct = if kind == 0usize {
-                            // At-point evaluation sent directly by the prover.
-                            unsafe { final_step_evals.get_unchecked(pos)[0] }
-                        } else {
-                            *extra_evals.get(pos)
-                        };
-                        state.prev_claims.push(claim);
-                        i += 1;
-                    }
-                }
-            };
-
-            let cache_check = generate_cache_relation_checks::<MW>(
-                &compiled_circuit.layers[0],
-                &layer_0_layout,
-                0,
-            );
-
-            (fold, cache_check, virtual_setup_calls.clone())
-        } else {
-            let fold = if num_extra > 0 {
-                let mut extra_positions: Vec<(usize, usize)> = Vec::new();
-                let mut extra_idx = 0usize;
-                for (merged_idx, addr) in target_addrs.iter().enumerate() {
-                    if !regular_set.contains(addr) {
-                        extra_positions.push((merged_idx, extra_idx));
-                        extra_idx += 1;
-                    }
-                }
-                let num_merged = target_addrs.len();
-                let num_extra_pos = extra_positions.len();
-                let ep_merged: Vec<usize> = extra_positions.iter().map(|p| p.0).collect();
-                let ep_extra: Vec<usize> = extra_positions.iter().map(|p| p.1).collect();
-
-                quote! {
-                    const EXTRA_COMMIT_BUF: usize = {
-                        let total = BLAKE2S_DIGEST_SIZE_U32_WORDS + #num_extra * EXT_DEGREE;
-                        total.div_ceil(BLAKE2S_BLOCK_SIZE_U32_WORDS) * BLAKE2S_BLOCK_SIZE_U32_WORDS
-                    };
-                    let mut extra_buf = CommitBuf::<EXTRA_COMMIT_BUF>::new();
-                    let extra_data_words = #num_extra * EXT_DEGREE;
-                    {
-                        let mut i = 0;
-                        while i < extra_data_words {
-                            extra_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
-                            i += 1;
-                        }
-                    }
-                    let mut extra_evals = LazyVec::<#quartic_struct, #num_extra>::new();
-                    {
-                        let slice: &[#quartic_struct] = unsafe { extra_buf.data_as(#num_extra) };
-                        for el in slice {
-                            extra_evals.push(*el);
-                        }
-                    }
-                    ts.commit(&mut extra_buf, extra_data_words);
-                    let final_step_evals: &[[#quartic_struct; 1]] = unsafe { eval_buf.data_as(#num_dedup_addrs) };
+                // `read_extras` (read the extra evals + commit them) runs BEFORE the draw; it also
+                // declares `extra_evals`, which the post-draw fold consumes (same enclosing block).
+                let post_draw_fold = quote! {
+                    let final_step_evals: &[[#quartic_struct; 1]] = unsafe { eval_buf.data_as(NUM_AT_POINT_EVALS) };
                     state.prev_claims.clear();
                     {
-                        const EXTRA_POS: [(usize, usize); #num_extra_pos] = [
-                            #( (#ep_merged, #ep_extra), )*
-                        ];
-                        let mut regular_idx: usize = 0;
-                        let mut ep_idx: usize = 0;
-                        let mut merged_idx: usize = 0;
-                        while merged_idx < #num_merged {
-                            if ep_idx < #num_extra_pos && EXTRA_POS[ep_idx].0 == merged_idx {
-                                state.prev_claims.push(*extra_evals.get(EXTRA_POS[ep_idx].1));
-                                ep_idx += 1;
-                            } else {
+                        const LAYOUT_KIND: [usize; #n_total] = [#( #layout_kind ),*];
+                        const LAYOUT_POS:  [usize; #n_total] = [#( #layout_pos  ),*];
+                        let mut i = 0usize;
+                        while i < #n_total {
+                            let kind = unsafe { *LAYOUT_KIND.get_unchecked(i) };
+                            let pos = unsafe { *LAYOUT_POS.get_unchecked(i)  };
+                            let claim: #quartic_struct = if kind == 0usize {
                                 // At-point evaluation sent directly by the prover.
-                                state.prev_claims.push(final_step_evals.get_unchecked(regular_idx)[0]);
-                                regular_idx += 1;
-                            }
-                            merged_idx += 1;
+                                unsafe { final_step_evals.get_unchecked(pos)[0] }
+                            } else {
+                                *extra_evals.get(pos)
+                            };
+                            state.prev_claims.push(claim);
+                            i += 1;
                         }
                     }
-                }
+                };
+
+                let cache_check = generate_cache_relation_checks::<MW, _>(
+                    &compiled_circuit.layers[0],
+                    &layer_0_layout,
+                    0,
+                );
+
+                (
+                    read_extras,
+                    post_draw_fold,
+                    cache_check,
+                    virtual_setup_calls.clone(),
+                )
             } else {
-                quote! {
-                    fold_standard_claims::<#num_dedup_addrs, GKR_ADDRS, GKR_EVAL_BUF>(
-                        &eval_buf, &mut state.prev_claims);
-                }
+                let (pre_draw, post_draw) = if num_extra > 0 {
+                    let mut extra_positions: Vec<(usize, usize)> = Vec::new();
+                    let mut extra_idx = 0usize;
+                    for (merged_idx, addr) in target_addrs.iter().enumerate() {
+                        if !regular_set.contains(addr) {
+                            extra_positions.push((merged_idx, extra_idx));
+                            extra_idx += 1;
+                        }
+                    }
+                    let num_merged = target_addrs.len();
+                    let num_extra_pos = extra_positions.len();
+                    let ep_merged: Vec<usize> = extra_positions.iter().map(|p| p.0).collect();
+                    let ep_extra: Vec<usize> = extra_positions.iter().map(|p| p.1).collect();
+
+                    // pre-draw: append the extra evals into `eval_buf` (right after the num_dedup
+                    // at-point evals) and commit `new_claims ++ extra` in ONE shot (matching the
+                    // prover). Declares `extra_evals`, consumed by the post-draw fold in the same block.
+                    let pre_draw = quote! {
+                        // Number of extra cached-relation evals; appended after the at-point evals in
+                        // `eval_buf` so the single commit below covers `new_claims ++ extra`.
+                        const NUM_EXTRA_EVALS: usize = #num_extra;
+                        {
+                            let mut i = 0;
+                            while i < NUM_EXTRA_EVALS * EXT_DEGREE {
+                                eval_buf.data_write(data_words + i, read_reduced_field_el::<I>(nd_source).as_u32_raw_repr());
+                                i += 1;
+                            }
+                        }
+                        let mut extra_evals = LazyVec::<#quartic_struct, NUM_EXTRA_EVALS>::new();
+                        {
+                            let slice: &[#quartic_struct] =
+                                unsafe { eval_buf.data_as(NUM_AT_POINT_EVALS + NUM_EXTRA_EVALS) };
+                            let mut k = NUM_AT_POINT_EVALS;
+                            while k < NUM_AT_POINT_EVALS + NUM_EXTRA_EVALS {
+                                extra_evals.push(unsafe { *slice.get_unchecked(k) });
+                                k += 1;
+                            }
+                        }
+                        ts.commit(&mut eval_buf, data_words + NUM_EXTRA_EVALS * EXT_DEGREE);
+                    };
+                    // post-draw: fold the claims for the next layer (no transcript interaction).
+                    let post_draw = quote! {
+                        let final_step_evals: &[[#quartic_struct; 1]] = unsafe { eval_buf.data_as(NUM_AT_POINT_EVALS) };
+                        state.prev_claims.clear();
+                        {
+                            const EXTRA_POS: [(usize, usize); #num_extra_pos] = [
+                                #( (#ep_merged, #ep_extra), )*
+                            ];
+                            let mut regular_idx: usize = 0;
+                            let mut ep_idx: usize = 0;
+                            let mut merged_idx: usize = 0;
+                            while merged_idx < #num_merged {
+                                if ep_idx < #num_extra_pos && EXTRA_POS[ep_idx].0 == merged_idx {
+                                    state.prev_claims.push(*extra_evals.get(EXTRA_POS[ep_idx].1));
+                                    ep_idx += 1;
+                                } else {
+                                    // At-point evaluation sent directly by the prover.
+                                    state.prev_claims.push(final_step_evals.get_unchecked(regular_idx)[0]);
+                                    regular_idx += 1;
+                                }
+                                merged_idx += 1;
+                            }
+                        }
+                    };
+                    (pre_draw, post_draw)
+                } else {
+                    // No extras: commit just the at-point evals before the draw, fold after it.
+                    (
+                        quote! {
+                            ts.commit(&mut eval_buf, data_words);
+                        },
+                        quote! {
+                            fold_standard_claims::<#num_dedup_addrs, GKR_ADDRS, GKR_EVAL_BUF>(
+                                &eval_buf, &mut state.prev_claims);
+                        },
+                    )
+                };
+
+                let cache_check = generate_cache_relation_checks::<MW, _>(
+                    &compiled_circuit.layers[config_idx],
+                    &target_addrs,
+                    config_idx,
+                );
+
+                (pre_draw, post_draw, cache_check, TokenStream::new())
             };
-
-            let cache_check = generate_cache_relation_checks::<MW>(
-                &compiled_circuit.layers[config_idx],
-                &target_addrs,
-                config_idx,
-            );
-
-            (fold, cache_check, TokenStream::new())
-        };
 
         let label = &format!("GKR MAIN LAYER {config_idx}");
         main_body.extend(quote! {
@@ -1725,17 +1764,21 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
                     verify_sumcheck_rounds::<I, E, #num_regular_rounds, GKR_COMMIT_BUF>(
                         ts, initial_claim, &mut state.prev_point, #config_idx, nd_source)?;
                 let fc_len = #num_regular_rounds;
+                // Number of at-point evaluations the prover sends for this layer (one per output
+                // poly). Named for readability; the extra cached-relation evals (if any) are
+                // appended right after these `NUM_AT_POINT_EVALS` in `eval_buf`.
+                const NUM_AT_POINT_EVALS: usize = #num_dedup_addrs;
                 // Half the data: one at-point evaluation per input poly (was two endpoints).
-                let data_words = #num_dedup_addrs * EXT_DEGREE;
+                let data_words = NUM_AT_POINT_EVALS * EXT_DEGREE;
                 {
                     let mut i = 0;
                     while i < data_words {
-                        eval_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
+                        eval_buf.data_write(i, read_reduced_field_el::<I>(nd_source).as_u32_raw_repr());
                         i += 1;
                     }
                 }
                 {
-                    let evals: &[[#quartic_struct; 1]] = eval_buf.data_as(#num_dedup_addrs);
+                    let evals: &[[#quartic_struct; 1]] = eval_buf.data_as(NUM_AT_POINT_EVALS);
                     // Half the work: evaluate the GKR kernels at a single set of inputs.
                     let f = #final_step_fn(evals, state.batching_challenge,
                         lookup_additive_challenge, lookup_alpha,
@@ -1746,9 +1789,15 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
                     verify_final_step_check::<E>(f[0],
                         final_eq_prefactor, final_claim, #config_idx)?;
                 }
-                ts.commit(&mut eval_buf, data_words);
+                // Commit the at-point evals TOGETHER with the extra cached-relation evals in a
+                // SINGLE transcript commit, BEFORE drawing the batching challenge — mirroring the
+                // prover (`commit_field_els(new_claims ++ extra_evals)` then draw). `CommitBuf`
+                // hashes `seed || data` per call, so two separate commits would diverge from the
+                // prover's one; instead the extra evals are appended into `eval_buf` and the single
+                // commit below (inside `pre_draw_extra_code`) covers `data_words + extra`.
+                #pre_draw_extra_code
                 let next_batching = draw_single_field_el(ts);
-                #fold_and_extras_code
+                #post_draw_fold_code
                 #cache_check_code
                 #virtual_setup_calls_emit
                 state.batching_challenge = next_batching;
@@ -2111,7 +2160,7 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
         #layer_functions
 
         #[allow(unused_variables, unused_mut, unused_unsafe)]
-        pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
+        pub(crate) fn verify_gkr<I: NonDeterminismSource<#field_struct>, E: ErrorCreator>(
             external_challenges: &GKRExternalChallenges<#field_struct, #quartic_struct>,
             initial_transcript: &ConcreteInitialTranscript,
             ts: &mut ::verifier_common::structs::TranscriptState,
@@ -2136,7 +2185,7 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
             GKR_ADDRS,
         > for VerifierImplementation {
             #[inline(always)]
-            fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
+            fn verify_gkr<I: NonDeterminismSource<#field_struct>, E: ErrorCreator>(
                 external_challenges: &GKRExternalChallenges<#field_struct, #quartic_struct>,
                 initial_transcript: &ConcreteInitialTranscript,
                 transcript_state: &mut ::verifier_common::structs::TranscriptState,
@@ -2150,7 +2199,7 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
                 )
             }
             #[inline(always)]
-            fn verify_whir<I: NonDeterminismSource, E: ErrorCreator>(
+            fn verify_whir<I: NonDeterminismSource<#field_struct>, E: ErrorCreator>(
                 initial_transcript: &ConcreteInitialTranscript,
                 transcript_state: &mut ::verifier_common::structs::TranscriptState,
                 whir_batching_challenge: #quartic_struct,

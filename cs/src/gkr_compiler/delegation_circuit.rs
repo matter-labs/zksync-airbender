@@ -1,6 +1,5 @@
 use super::*;
 
-use crate::constraint::Term;
 use crate::cs::circuit::LookupQuery;
 use crate::cs::circuit_output::CircuitOutput;
 use crate::cs::circuit_trait::MemoryAccess;
@@ -22,7 +21,6 @@ impl<F: PrimeField> GKRCompiler<F> {
         let CircuitOutput {
             table_driver,
             num_of_variables,
-            constraints,
             structured_statements,
             lookups,
             memory_queries,
@@ -58,7 +56,7 @@ impl<F: PrimeField> GKRCompiler<F> {
             total_tables_size.div_ceil(lookup_table_encoding_capacity);
         assert!(num_required_tuples_for_lookup_setup <= 1);
 
-        let mut constraints = constraints;
+        let mut structured_statements = structured_statements;
         let mut variables_from_constraints = variables_from_constraints;
         let mut layers_mapping = layers_mapping;
 
@@ -76,7 +74,7 @@ impl<F: PrimeField> GKRCompiler<F> {
             );
         let total_lookups_for_range_checks_16 =
             (range_check_16_expressions.len() as u64) * trace_len as u64;
-        assert!(total_lookups_for_range_checks_16 < F::CHARACTERISTICS as u64, "total number of range-check-16 lookups in circuit is {} that is larger that field characteristics {}", total_lookups_for_range_checks_16, F::CHARACTERISTICS);
+        assert!(total_lookups_for_range_checks_16 < F::CHARACTERISTICS_U32 as u64, "total number of range-check-16 lookups in circuit is {} that is larger that field characteristics {}", total_lookups_for_range_checks_16, F::CHARACTERISTICS_U32);
 
         let mut expect_table_id_for_generic_lookup = false;
 
@@ -93,7 +91,7 @@ impl<F: PrimeField> GKRCompiler<F> {
             let total_generic_lookups = (generic_lookups.len() as u64
                 + decoder_lookup_pair.is_some() as u64)
                 * trace_len as u64;
-            assert!(total_generic_lookups < F::CHARACTERISTICS as u64, "total number of generic lookups in circuit is {} that is larger that field characteristics {}", total_generic_lookups, F::CHARACTERISTICS);
+            assert!(total_generic_lookups < F::CHARACTERISTICS_U32 as u64, "total number of generic lookups in circuit is {} that is larger that field characteristics {}", total_generic_lookups, F::CHARACTERISTICS_U32);
 
             let max_practical_lookup_width_without_decoder = generic_lookups
                 .iter()
@@ -212,20 +210,12 @@ impl<F: PrimeField> GKRCompiler<F> {
 
         let total_timestamp_range_check_lookups =
             timestamp_range_check_expressions_to_compile.len() as u64 * trace_len as u64;
-        assert!(total_timestamp_range_check_lookups < F::CHARACTERISTICS as u64, "total number of timestamp range check lookups in circuit is {} that is larger that field characteristics {}", total_timestamp_range_check_lookups, F::CHARACTERISTICS);
+        assert!(total_timestamp_range_check_lookups < F::CHARACTERISTICS_U32 as u64, "total number of timestamp range check lookups in circuit is {} that is larger that field characteristics {}", total_timestamp_range_check_lookups, F::CHARACTERISTICS_U32);
 
         // for all boolean vars we add booleanity constraint here
 
-        for boolean in boolean_vars.iter() {
-            let t = Term::<F>::from(*boolean);
-            let c = t.clone() * t.clone() - t;
-            constraints.push((c, false));
-        }
-
-        // normalize constraint for next steps
-        for c in constraints.iter_mut() {
-            c.0.normalize();
-        }
+        use crate::gkr_compiler::family_circuit::add_boolean_constraints;
+        add_boolean_constraints(&mut structured_statements, boolean_vars);
 
         // and now we can finally layout all the variables. We do want to push all of them into intermediate layers
 
@@ -236,124 +226,14 @@ impl<F: PrimeField> GKRCompiler<F> {
 
         // And we can transform them into (potentially intersecting) sub-GKRs
 
-        // filter constraints that define variables
-        let len_before = constraints.len();
-        for (_, c) in variables_from_constraints.iter_mut() {
-            c.normalize();
-            let mut to_remove = None;
-            for (idx, (cc, _)) in constraints.iter().enumerate() {
-                if cc == &*c {
-                    assert!(to_remove.is_none());
-                    to_remove = Some(idx);
-                }
-            }
-            if let Some(to_remove) = to_remove {
-                constraints.remove(to_remove);
-            }
-        }
-        let len_after = constraints.len();
-        // println!(
-        //     "{} constraints removed as they define variables, will be used separately",
-        //     len_before - len_after
-        // );
-
-        // Above we only placed in the graph variables that have strict constraint on being at the base (input) layer of the proof.
-        // Now we should try to move from the base layer and place the rest.
-        // As we explicitly track variables that can be made "virtual" (by pushing them into intermediate GKR layers),
-        // it should be relatively easy task.
-
-        // println!(
-        //     "In total of {} variables are defined via constraints",
-        //     variables_from_constraints.len()
-        // );
-        // for (var, _c) in variables_from_constraints.iter() {
-        //     if let Some(name) = variable_names.get(var) {
-        //         println!("Variable {:?}: `{}` is defined via constraint", var, name);
-        //     }
-        // }
-
-        // first define if any of the constraints depends on the variables defined via other constraints
-        let mut variables_via_constraints_are_disjoint = true;
-        let mut all_variables_in_constraints = HashSet::new();
-        for (c, _) in constraints.iter() {
-            for (var, _) in variables_from_constraints.iter() {
-                if c.contains_var(var) {
-                    variables_via_constraints_are_disjoint = false;
-                }
-            }
-            c.dump_variables(&mut all_variables_in_constraints);
-        }
-
-        // println!(
-        //     "Variables defined via constraints are disjoint = {}",
-        //     variables_via_constraints_are_disjoint
-        // );
-
-        if variables_from_constraints.len() > 0 {
-            assert!(all_variables_to_place.len() > 0);
-
-            // put all variables into base layer that are not defined via constraints
-            for var in all_variables_to_place.clone().iter() {
-                if variables_from_constraints.contains_key(var) {
-                    continue;
-                }
-                let _ = graph.layout_witness_subtree_multiple_variables(
-                    [*var],
-                    &mut all_variables_to_place,
-                    &layers_mapping,
-                );
-            }
-            assert_eq!(
-                all_variables_to_place.len(),
-                variables_from_constraints.len()
-            );
-
-            // now we should walk over constraints that define variables
-            let mut intermediate_layer = 1;
-            loop {
-                let initial_len = variables_from_constraints.len();
-                for (var, constraint) in variables_from_constraints.clone().into_iter() {
-                    let all_vars = constraint.stable_variable_set();
-                    let expected_layer = *layers_mapping.get(&var).expect("must be known");
-                    let inputs_layer = get_input_layer_ensure_same(&all_vars, &layers_mapping);
-                    assert_eq!(expected_layer, inputs_layer + 1);
-                    if intermediate_layer != inputs_layer + 1 {
-                        continue;
-                    }
-                    let _ = graph.place_intermediate_variable_from_constraint_at_layer(
-                        intermediate_layer,
-                        var,
-                        &mut all_variables_to_place,
-                        &layers_mapping,
-                        constraint,
-                    );
-                    variables_from_constraints.remove(&var);
-                }
-
-                assert_ne!(
-                    initial_len,
-                    variables_from_constraints.len(),
-                    "intermediate layers places is stuck"
-                );
-                intermediate_layer += 1;
-
-                if variables_from_constraints.is_empty() {
-                    break;
-                }
-            }
-
-            assert!(all_variables_to_place.is_empty());
-        } else {
-            // put all variables into base layer
-            for var in all_variables_to_place.clone().iter() {
-                let _ = graph.layout_witness_subtree_multiple_variables(
-                    [*var],
-                    &mut all_variables_to_place,
-                    &layers_mapping,
-                );
-            }
-            assert!(all_variables_to_place.is_empty());
-        }
+        use crate::gkr_compiler::family_circuit::place_variables_from_constraints;
+        place_variables_from_constraints(
+            &structured_statements,
+            &mut variables_from_constraints,
+            &layers_mapping,
+            &mut graph,
+            &mut all_variables_to_place,
+        );
 
         // Accumulate grand product - pairwise as much as we can
         use crate::gkr_compiler::memory_like_grand_product::accumulate_memory_like_grand_product;
@@ -441,8 +321,11 @@ impl<F: PrimeField> GKRCompiler<F> {
         }
 
         // Place a gate for constraints batch eval
-        let (degree_2_constraints, degree_1_constraints) =
-            layout_constraints_at_layers::<F, false>(&mut graph, constraints, &layers_mapping);
+        let (degree_2_constraints, degree_1_constraints) = layout_constraints_at_layers::<F, false>(
+            &mut graph,
+            &structured_statements,
+            &layers_mapping,
+        );
 
         // work out the outputs
         let lookup_outputs = BTreeMap::from_iter(
@@ -555,16 +438,16 @@ impl<F: PrimeField> GKRCompiler<F> {
 
         for rel in range_check_16_lookups_compiled
             .iter_mut()
-            .map(|el: &mut NoFieldSingleColumnLookupRelation| &mut el.input)
+            .map(|el: &mut NoFieldSingleColumnLookupRelation<F>| &mut el.input)
             .chain(
                 timestamp_range_check_lookups_compiled
                     .iter_mut()
-                    .map(|el: &mut NoFieldSingleColumnLookupRelation| &mut el.input),
+                    .map(|el: &mut NoFieldSingleColumnLookupRelation<F>| &mut el.input),
             )
             .chain(
                 generic_lookups_compiled
                     .iter_mut()
-                    .map(|el: &mut NoFieldVectorLookupRelation| el.columns.iter_mut())
+                    .map(|el: &mut NoFieldVectorLookupRelation<F>| el.columns.iter_mut())
                     .flatten(),
             )
         {

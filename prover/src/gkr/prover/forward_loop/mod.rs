@@ -29,7 +29,7 @@ pub(crate) mod vector_lookup;
 fn evaluate_cache_relation<F: PrimeField, E: FieldExtension<F> + Field>(
     layer_idx: usize,
     address: GKRAddress,
-    relation: &NoFieldGKRCacheRelation,
+    relation: &NoFieldGKRCacheRelation<F>,
     gkr_storage: &mut GKRStorage<F, E>,
     external_challenges: &GKRExternalChallenges<F, E>,
     witness_trace: &mut GKRFullWitnessTrace<F, Global, Global>,
@@ -116,7 +116,7 @@ fn evaluate_cache_relation<F: PrimeField, E: FieldExtension<F> + Field>(
 
 pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
     layer_idx: usize,
-    layer: &GKRLayerDescription,
+    layer: &GKRLayerDescription<F>,
     gkr_storage: &mut GKRStorage<F, E>,
     compiled_circuit: &GKRCircuitArtifact<F>,
     external_challenges: &GKRExternalChallenges<F, E>,
@@ -237,7 +237,7 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
                     worker,
                 );
             }
-            NoFieldGKRRelation::MaxQuadratic { input, output } => {
+            NoFieldGKRRelation::MaxQuadratic { input, output, .. } => {
                 if compiled_circuit.scratch_space_mapping.contains_key(output) {
                     // a value of it will be filled from scratch space in the next round
                 } else {
@@ -404,7 +404,7 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
                 unimplemented!("no longer supported");
                 // we do nothing as it should result in all zeroes in case if constraints are satisfied
             }
-            NoFieldGKRRelation::EnforceSingleMaxQuadraticConstraint { input: _input } => {
+            NoFieldGKRRelation::EnforceSingleMaxQuadraticConstraint { input: _input, .. } => {
                 #[cfg(feature = "gkr_self_checks")]
                 {
                     max_quadratic::self_check_max_quadratic_constraint(

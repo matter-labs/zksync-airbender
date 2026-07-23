@@ -2930,7 +2930,7 @@ fn check_virtual_setup_range_check_timestamp<E: ErrorCreator>(
     Ok(())
 }
 #[allow(unused_variables, unused_mut, unused_unsafe)]
-pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
+pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator>(
     external_challenges: &GKRExternalChallenges<BabyBearField, BabyBearExt4>,
     initial_transcript: &ConcreteInitialTranscript,
     ts: &mut ::verifier_common::structs::TranscriptState,
@@ -2951,7 +2951,8 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
         {
             let mut i = 0;
             while i < evals_data_words {
-                evals_commit_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
+                evals_commit_buf
+                    .data_write(i, read_reduced_field_el::<I>(nd_source).as_u32_raw_repr());
                 i += 1;
             }
         }
@@ -3123,7 +3124,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
             {
                 let mut i = 0;
                 while i < data_words {
-                    eval_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
+                    eval_buf.data_write(i, read_reduced_field_el::<I>(nd_source).as_u32_raw_repr());
                     i += 1;
                 }
             }
@@ -3181,7 +3182,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
             {
                 let mut i = 0;
                 while i < data_words {
-                    eval_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
+                    eval_buf.data_write(i, read_reduced_field_el::<I>(nd_source).as_u32_raw_repr());
                     i += 1;
                 }
             }
@@ -3239,7 +3240,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
             {
                 let mut i = 0;
                 while i < data_words {
-                    eval_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
+                    eval_buf.data_write(i, read_reduced_field_el::<I>(nd_source).as_u32_raw_repr());
                     i += 1;
                 }
             }
@@ -3297,7 +3298,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
             {
                 let mut i = 0;
                 while i < data_words {
-                    eval_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
+                    eval_buf.data_write(i, read_reduced_field_el::<I>(nd_source).as_u32_raw_repr());
                     i += 1;
                 }
             }
@@ -3355,7 +3356,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
             {
                 let mut i = 0;
                 while i < data_words {
-                    eval_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
+                    eval_buf.data_write(i, read_reduced_field_el::<I>(nd_source).as_u32_raw_repr());
                     i += 1;
                 }
             }
@@ -3413,7 +3414,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
             {
                 let mut i = 0;
                 while i < data_words {
-                    eval_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
+                    eval_buf.data_write(i, read_reduced_field_el::<I>(nd_source).as_u32_raw_repr());
                     i += 1;
                 }
             }
@@ -3471,7 +3472,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
             {
                 let mut i = 0;
                 while i < data_words {
-                    eval_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
+                    eval_buf.data_write(i, read_reduced_field_el::<I>(nd_source).as_u32_raw_repr());
                     i += 1;
                 }
             }
@@ -3529,7 +3530,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
             {
                 let mut i = 0;
                 while i < data_words {
-                    eval_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
+                    eval_buf.data_write(i, read_reduced_field_el::<I>(nd_source).as_u32_raw_repr());
                     i += 1;
                 }
             }
@@ -3587,7 +3588,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
             {
                 let mut i = 0;
                 while i < data_words {
-                    eval_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
+                    eval_buf.data_write(i, read_reduced_field_el::<I>(nd_source).as_u32_raw_repr());
                     i += 1;
                 }
             }
@@ -3645,7 +3646,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
             {
                 let mut i = 0;
                 while i < data_words {
-                    eval_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
+                    eval_buf.data_write(i, read_reduced_field_el::<I>(nd_source).as_u32_raw_repr());
                     i += 1;
                 }
             }
@@ -3703,7 +3704,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
             {
                 let mut i = 0;
                 while i < data_words {
-                    eval_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
+                    eval_buf.data_write(i, read_reduced_field_el::<I>(nd_source).as_u32_raw_repr());
                     i += 1;
                 }
             }
@@ -3761,7 +3762,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
             {
                 let mut i = 0;
                 while i < data_words {
-                    eval_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
+                    eval_buf.data_write(i, read_reduced_field_el::<I>(nd_source).as_u32_raw_repr());
                     i += 1;
                 }
             }
@@ -3819,7 +3820,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
             {
                 let mut i = 0;
                 while i < data_words {
-                    eval_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
+                    eval_buf.data_write(i, read_reduced_field_el::<I>(nd_source).as_u32_raw_repr());
                     i += 1;
                 }
             }
@@ -3877,7 +3878,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
             {
                 let mut i = 0;
                 while i < data_words {
-                    eval_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
+                    eval_buf.data_write(i, read_reduced_field_el::<I>(nd_source).as_u32_raw_repr());
                     i += 1;
                 }
             }
@@ -3935,7 +3936,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
             {
                 let mut i = 0;
                 while i < data_words {
-                    eval_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
+                    eval_buf.data_write(i, read_reduced_field_el::<I>(nd_source).as_u32_raw_repr());
                     i += 1;
                 }
             }
@@ -3993,7 +3994,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
             {
                 let mut i = 0;
                 while i < data_words {
-                    eval_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
+                    eval_buf.data_write(i, read_reduced_field_el::<I>(nd_source).as_u32_raw_repr());
                     i += 1;
                 }
             }
@@ -4051,7 +4052,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
             {
                 let mut i = 0;
                 while i < data_words {
-                    eval_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
+                    eval_buf.data_write(i, read_reduced_field_el::<I>(nd_source).as_u32_raw_repr());
                     i += 1;
                 }
             }
@@ -4109,7 +4110,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
             {
                 let mut i = 0;
                 while i < data_words {
-                    eval_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
+                    eval_buf.data_write(i, read_reduced_field_el::<I>(nd_source).as_u32_raw_repr());
                     i += 1;
                 }
             }
@@ -4167,7 +4168,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
             {
                 let mut i = 0;
                 while i < data_words {
-                    eval_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
+                    eval_buf.data_write(i, read_reduced_field_el::<I>(nd_source).as_u32_raw_repr());
                     i += 1;
                 }
             }
@@ -4225,7 +4226,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
             {
                 let mut i = 0;
                 while i < data_words {
-                    eval_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
+                    eval_buf.data_write(i, read_reduced_field_el::<I>(nd_source).as_u32_raw_repr());
                     i += 1;
                 }
             }
@@ -4279,16 +4280,17 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
                     nd_source,
                 )?;
             let fc_len = 24usize;
-            let data_words = 10usize * EXT_DEGREE;
+            const NUM_AT_POINT_EVALS: usize = 10usize;
+            let data_words = NUM_AT_POINT_EVALS * EXT_DEGREE;
             {
                 let mut i = 0;
                 while i < data_words {
-                    eval_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
+                    eval_buf.data_write(i, read_reduced_field_el::<I>(nd_source).as_u32_raw_repr());
                     i += 1;
                 }
             }
             {
-                let evals: &[[BabyBearExt4; 1]] = eval_buf.data_as(10usize);
+                let evals: &[[BabyBearExt4; 1]] = eval_buf.data_as(NUM_AT_POINT_EVALS);
                 let f = layer_3_final_step_accumulator(
                     evals,
                     state.batching_challenge,
@@ -4326,16 +4328,17 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
                     nd_source,
                 )?;
             let fc_len = 24usize;
-            let data_words = 16usize * EXT_DEGREE;
+            const NUM_AT_POINT_EVALS: usize = 16usize;
+            let data_words = NUM_AT_POINT_EVALS * EXT_DEGREE;
             {
                 let mut i = 0;
                 while i < data_words {
-                    eval_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
+                    eval_buf.data_write(i, read_reduced_field_el::<I>(nd_source).as_u32_raw_repr());
                     i += 1;
                 }
             }
             {
-                let evals: &[[BabyBearExt4; 1]] = eval_buf.data_as(16usize);
+                let evals: &[[BabyBearExt4; 1]] = eval_buf.data_as(NUM_AT_POINT_EVALS);
                 let f = layer_2_final_step_accumulator(
                     evals,
                     state.batching_challenge,
@@ -4348,30 +4351,31 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
                 );
                 verify_final_step_check::<E>(f[0], final_eq_prefactor, final_claim, 2usize)?;
             }
-            ts.commit(&mut eval_buf, data_words);
-            let next_batching = draw_single_field_el(ts);
-            const EXTRA_COMMIT_BUF: usize = {
-                let total = BLAKE2S_DIGEST_SIZE_U32_WORDS + 4usize * EXT_DEGREE;
-                total.div_ceil(BLAKE2S_BLOCK_SIZE_U32_WORDS) * BLAKE2S_BLOCK_SIZE_U32_WORDS
-            };
-            let mut extra_buf = CommitBuf::<EXTRA_COMMIT_BUF>::new();
-            let extra_data_words = 4usize * EXT_DEGREE;
+            const NUM_EXTRA_EVALS: usize = 4usize;
             {
                 let mut i = 0;
-                while i < extra_data_words {
-                    extra_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
+                while i < NUM_EXTRA_EVALS * EXT_DEGREE {
+                    eval_buf.data_write(
+                        data_words + i,
+                        read_reduced_field_el::<I>(nd_source).as_u32_raw_repr(),
+                    );
                     i += 1;
                 }
             }
-            let mut extra_evals = LazyVec::<BabyBearExt4, 4usize>::new();
+            let mut extra_evals = LazyVec::<BabyBearExt4, NUM_EXTRA_EVALS>::new();
             {
-                let slice: &[BabyBearExt4] = unsafe { extra_buf.data_as(4usize) };
-                for el in slice {
-                    extra_evals.push(*el);
+                let slice: &[BabyBearExt4] =
+                    unsafe { eval_buf.data_as(NUM_AT_POINT_EVALS + NUM_EXTRA_EVALS) };
+                let mut k = NUM_AT_POINT_EVALS;
+                while k < NUM_AT_POINT_EVALS + NUM_EXTRA_EVALS {
+                    extra_evals.push(unsafe { *slice.get_unchecked(k) });
+                    k += 1;
                 }
             }
-            ts.commit(&mut extra_buf, extra_data_words);
-            let final_step_evals: &[[BabyBearExt4; 1]] = unsafe { eval_buf.data_as(16usize) };
+            ts.commit(&mut eval_buf, data_words + NUM_EXTRA_EVALS * EXT_DEGREE);
+            let next_batching = draw_single_field_el(ts);
+            let final_step_evals: &[[BabyBearExt4; 1]] =
+                unsafe { eval_buf.data_as(NUM_AT_POINT_EVALS) };
             state.prev_claims.clear();
             {
                 const EXTRA_POS: [(usize, usize); 4usize] = [
@@ -4471,16 +4475,17 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
                     nd_source,
                 )?;
             let fc_len = 24usize;
-            let data_words = 37usize * EXT_DEGREE;
+            const NUM_AT_POINT_EVALS: usize = 37usize;
+            let data_words = NUM_AT_POINT_EVALS * EXT_DEGREE;
             {
                 let mut i = 0;
                 while i < data_words {
-                    eval_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
+                    eval_buf.data_write(i, read_reduced_field_el::<I>(nd_source).as_u32_raw_repr());
                     i += 1;
                 }
             }
             {
-                let evals: &[[BabyBearExt4; 1]] = eval_buf.data_as(37usize);
+                let evals: &[[BabyBearExt4; 1]] = eval_buf.data_as(NUM_AT_POINT_EVALS);
                 let f = layer_1_final_step_accumulator(
                     evals,
                     state.batching_challenge,
@@ -4493,30 +4498,31 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
                 );
                 verify_final_step_check::<E>(f[0], final_eq_prefactor, final_claim, 1usize)?;
             }
-            ts.commit(&mut eval_buf, data_words);
-            let next_batching = draw_single_field_el(ts);
-            const EXTRA_COMMIT_BUF: usize = {
-                let total = BLAKE2S_DIGEST_SIZE_U32_WORDS + 2usize * EXT_DEGREE;
-                total.div_ceil(BLAKE2S_BLOCK_SIZE_U32_WORDS) * BLAKE2S_BLOCK_SIZE_U32_WORDS
-            };
-            let mut extra_buf = CommitBuf::<EXTRA_COMMIT_BUF>::new();
-            let extra_data_words = 2usize * EXT_DEGREE;
+            const NUM_EXTRA_EVALS: usize = 2usize;
             {
                 let mut i = 0;
-                while i < extra_data_words {
-                    extra_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
+                while i < NUM_EXTRA_EVALS * EXT_DEGREE {
+                    eval_buf.data_write(
+                        data_words + i,
+                        read_reduced_field_el::<I>(nd_source).as_u32_raw_repr(),
+                    );
                     i += 1;
                 }
             }
-            let mut extra_evals = LazyVec::<BabyBearExt4, 2usize>::new();
+            let mut extra_evals = LazyVec::<BabyBearExt4, NUM_EXTRA_EVALS>::new();
             {
-                let slice: &[BabyBearExt4] = unsafe { extra_buf.data_as(2usize) };
-                for el in slice {
-                    extra_evals.push(*el);
+                let slice: &[BabyBearExt4] =
+                    unsafe { eval_buf.data_as(NUM_AT_POINT_EVALS + NUM_EXTRA_EVALS) };
+                let mut k = NUM_AT_POINT_EVALS;
+                while k < NUM_AT_POINT_EVALS + NUM_EXTRA_EVALS {
+                    extra_evals.push(unsafe { *slice.get_unchecked(k) });
+                    k += 1;
                 }
             }
-            ts.commit(&mut extra_buf, extra_data_words);
-            let final_step_evals: &[[BabyBearExt4; 1]] = unsafe { eval_buf.data_as(37usize) };
+            ts.commit(&mut eval_buf, data_words + NUM_EXTRA_EVALS * EXT_DEGREE);
+            let next_batching = draw_single_field_el(ts);
+            let final_step_evals: &[[BabyBearExt4; 1]] =
+                unsafe { eval_buf.data_as(NUM_AT_POINT_EVALS) };
             state.prev_claims.clear();
             {
                 const EXTRA_POS: [(usize, usize); 2usize] = [(9usize, 0usize), (10usize, 1usize)];
@@ -4607,16 +4613,17 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
                     nd_source,
                 )?;
             let fc_len = 24usize;
-            let data_words = 57usize * EXT_DEGREE;
+            const NUM_AT_POINT_EVALS: usize = 57usize;
+            let data_words = NUM_AT_POINT_EVALS * EXT_DEGREE;
             {
                 let mut i = 0;
                 while i < data_words {
-                    eval_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
+                    eval_buf.data_write(i, read_reduced_field_el::<I>(nd_source).as_u32_raw_repr());
                     i += 1;
                 }
             }
             {
-                let evals: &[[BabyBearExt4; 1]] = eval_buf.data_as(57usize);
+                let evals: &[[BabyBearExt4; 1]] = eval_buf.data_as(NUM_AT_POINT_EVALS);
                 let f = layer_0_final_step_accumulator(
                     evals,
                     state.batching_challenge,
@@ -4629,30 +4636,31 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
                 );
                 verify_final_step_check::<E>(f[0], final_eq_prefactor, final_claim, 0usize)?;
             }
-            ts.commit(&mut eval_buf, data_words);
-            let next_batching = draw_single_field_el(ts);
-            const EXTRA_COMMIT_BUF: usize = {
-                let total = BLAKE2S_DIGEST_SIZE_U32_WORDS + 16usize * EXT_DEGREE;
-                total.div_ceil(BLAKE2S_BLOCK_SIZE_U32_WORDS) * BLAKE2S_BLOCK_SIZE_U32_WORDS
-            };
-            let mut extra_buf = CommitBuf::<EXTRA_COMMIT_BUF>::new();
-            let extra_data_words = 16usize * EXT_DEGREE;
+            const NUM_EXTRA_EVALS: usize = 16usize;
             {
                 let mut i = 0;
-                while i < extra_data_words {
-                    extra_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
+                while i < NUM_EXTRA_EVALS * EXT_DEGREE {
+                    eval_buf.data_write(
+                        data_words + i,
+                        read_reduced_field_el::<I>(nd_source).as_u32_raw_repr(),
+                    );
                     i += 1;
                 }
             }
-            let mut extra_evals = LazyVec::<BabyBearExt4, 16usize>::new();
+            let mut extra_evals = LazyVec::<BabyBearExt4, NUM_EXTRA_EVALS>::new();
             {
-                let slice: &[BabyBearExt4] = unsafe { extra_buf.data_as(16usize) };
-                for el in slice {
-                    extra_evals.push(*el);
+                let slice: &[BabyBearExt4] =
+                    unsafe { eval_buf.data_as(NUM_AT_POINT_EVALS + NUM_EXTRA_EVALS) };
+                let mut k = NUM_AT_POINT_EVALS;
+                while k < NUM_AT_POINT_EVALS + NUM_EXTRA_EVALS {
+                    extra_evals.push(unsafe { *slice.get_unchecked(k) });
+                    k += 1;
                 }
             }
-            ts.commit(&mut extra_buf, extra_data_words);
-            let final_step_evals: &[[BabyBearExt4; 1]] = unsafe { eval_buf.data_as(57usize) };
+            ts.commit(&mut eval_buf, data_words + NUM_EXTRA_EVALS * EXT_DEGREE);
+            let next_batching = draw_single_field_el(ts);
+            let final_step_evals: &[[BabyBearExt4; 1]] =
+                unsafe { eval_buf.data_as(NUM_AT_POINT_EVALS) };
             state.prev_claims.clear();
             {
                 const LAYOUT_KIND: [usize; 73usize] = [
@@ -5355,7 +5363,7 @@ impl
     > for VerifierImplementation
 {
     #[inline(always)]
-    fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
+    fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator>(
         external_challenges: &GKRExternalChallenges<BabyBearField, BabyBearExt4>,
         initial_transcript: &ConcreteInitialTranscript,
         transcript_state: &mut ::verifier_common::structs::TranscriptState,
@@ -5369,7 +5377,7 @@ impl
         )
     }
     #[inline(always)]
-    fn verify_whir<I: NonDeterminismSource, E: ErrorCreator>(
+    fn verify_whir<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator>(
         initial_transcript: &ConcreteInitialTranscript,
         transcript_state: &mut ::verifier_common::structs::TranscriptState,
         whir_batching_challenge: BabyBearExt4,

@@ -3,13 +3,13 @@ use crate::gkr::prover::forward_loop::utils::single_column_lookup_as_flattened_r
 use cs::definitions::{gkr::NoFieldSingleColumnLookupRelation, GKRAddress};
 
 #[derive(Debug)]
-pub struct MaterializeSingleLookupInputGKRRelation {
-    pub input: NoFieldSingleColumnLookupRelation,
+pub struct MaterializeSingleLookupInputGKRRelation<F: PrimeField> {
+    pub input: NoFieldSingleColumnLookupRelation<F>,
     pub output: GKRAddress,
 }
 
 impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E>
-    for MaterializeSingleLookupInputGKRRelation
+    for MaterializeSingleLookupInputGKRRelation<F>
 {
     fn num_challenges(&self) -> usize {
         1

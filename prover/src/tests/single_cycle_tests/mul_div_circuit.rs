@@ -179,12 +179,8 @@ mod test {
 
     #[test]
     fn test_on_external_witness() {
+        use crate::tests::gkr::bincode_deserialize_from_file;
         use std::path::Path;
-
-        fn bincode_deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &str) -> T {
-            let src = std::fs::File::open(filename).unwrap();
-            bincode::deserialize_from(src).unwrap()
-        }
 
         fn read_binary(path: &Path) -> (Vec<u8>, Vec<u32>) {
             use std::io::Read;

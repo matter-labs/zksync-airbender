@@ -9,7 +9,7 @@ use field::{Field, FieldExtension, PrimeField};
 use std::alloc::Global;
 
 pub(crate) fn materialize_vector_lookup_input<F: PrimeField, E: FieldExtension<F> + Field>(
-    rel: &NoFieldVectorLookupRelation,
+    rel: &NoFieldVectorLookupRelation<F>,
     gkr_storage: &GKRStorage<F, E>,
     witness_trace: &mut GKRFullWitnessTrace<F, Global, Global>,
     trace_len: usize,
@@ -216,16 +216,16 @@ pub(crate) fn materialize_memory_tuple<F: PrimeField, E: FieldExtension<F> + Fie
 }
 
 pub(crate) fn evaluate_linear_relation_at_row<F: PrimeField, E: FieldExtension<F> + Field>(
-    rel: &NoFieldLinearRelation,
+    rel: &NoFieldLinearRelation<F>,
     gkr_storage: &GKRStorage<F, E>,
     row: usize,
 ) -> F {
-    let mut result = F::from_u32_unchecked(rel.constant);
+    let mut result = rel.constant;
     for (c, address) in rel.linear_terms.iter() {
         let mut t = gkr_storage
             .try_get_base_poly(*address)
             .expect(&format!("base layer poly at address {:?}", address))[row];
-        t.mul_assign(&F::from_u32_unchecked(*c));
+        t.mul_assign(&*c);
         result.add_assign(&t);
     }
 
@@ -584,7 +584,7 @@ pub(crate) fn single_column_lookup_as_flattened_relation<
     E: FieldExtension<F> + Field,
     const WITH_ADDITIVE_PART: bool,
 >(
-    rel: &NoFieldSingleColumnLookupRelation,
+    rel: &NoFieldSingleColumnLookupRelation<F>,
     lookup_challenges_additive_part: E,
 ) -> (BTreeMap<GKRAddress, E>, E) {
     let mut result = BTreeMap::new();
@@ -594,11 +594,9 @@ pub(crate) fn single_column_lookup_as_flattened_relation<
     }
 
     for (coeff, a) in rel.input.linear_terms.iter() {
-        assert!(result
-            .insert(*a, E::from_base(F::from_u32_unchecked(*coeff)))
-            .is_none());
+        assert!(result.insert(*a, E::from_base(*coeff)).is_none());
     }
-    constant_term.add_assign_base(&F::from_u32_unchecked(rel.input.constant));
+    constant_term.add_assign_base(&rel.input.constant);
 
     (result, constant_term)
 }
@@ -608,7 +606,7 @@ pub(crate) fn vector_lookup_as_flattened_relation<
     E: FieldExtension<F> + Field,
     const WITH_ADDITIVE_PART: bool,
 >(
-    rel: &NoFieldVectorLookupRelation,
+    rel: &NoFieldVectorLookupRelation<F>,
     lookup_challenges_multiplicative_part: E,
     lookup_challenges_additive_part: E,
 ) -> (BTreeMap<GKRAddress, E>, E) {
@@ -622,12 +620,12 @@ pub(crate) fn vector_lookup_as_flattened_relation<
     for column in rel.columns.iter() {
         for (coeff, a) in column.linear_terms.iter() {
             let mut t = challenge;
-            t.mul_assign_by_base(&F::from_u32_unchecked(*coeff));
+            t.mul_assign_by_base(&*coeff);
 
             assert!(result.insert(*a, t).is_none());
         }
         let mut t = challenge;
-        t.mul_assign_by_base(&F::from_u32_unchecked(column.constant));
+        t.mul_assign_by_base(&column.constant);
         constant_term.add_assign(&t);
 
         challenge.mul_assign(&lookup_challenges_multiplicative_part);

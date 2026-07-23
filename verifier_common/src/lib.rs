@@ -6,18 +6,18 @@
 macro_rules! gkr_circuits {
     ($callback:ident) => {
         $callback! {
-            add_sub_lui_auipc_mop; 24 ; "_layout",
-            jump_branch_slt; 24 ; "_layout",
-            shift_binop; 24 ; "_layout",
-            unsigned_mul_div; 24 ; "_layout",
-            mem_word_only; 24 ; "_layout",
-            mem_subword_only; 24 ; "_layout",
-            bigint_with_extended_control; 22 ; "_layout",
-            blake2_with_extended_control; 20 ; "_layout",
-            keccak_special5; 22 ; "_layout",
-            blake2_g_function; 22 ; "_layout",
-            inits_and_teardowns; 24 ; "_layout",
-            unified_reduced_machine; 24 ; "_layout",
+            add_sub_lui_auipc_mop; "_layout",
+            jump_branch_slt; "_layout",
+            shift_binop; "_layout",
+            unsigned_mul_div; "_layout",
+            mem_word_only; "_layout",
+            mem_subword_only; "_layout",
+            bigint_with_extended_control; "_layout",
+            blake2_with_extended_control; "_layout",
+            keccak_special5; "_layout",
+            blake2_g_function; "_layout",
+            inits_and_teardowns; "_layout",
+            unified_reduced_machine; "_layout",
         }
     };
 }
@@ -193,15 +193,6 @@ pub mod field_ops {
     pub use crate::no_inline_ops::*;
 }
 
-#[cfg(all(not(target_arch = "riscv32"), feature = "replace_csr"))]
-pub type DefaultNonDeterminismSource = ::prover::nd_source_std::ThreadLocalBasedSource;
-
-#[cfg(all(not(target_arch = "riscv32"), not(feature = "replace_csr")))]
-pub type DefaultNonDeterminismSource = ();
-
-#[cfg(target_arch = "riscv32")]
-pub type DefaultNonDeterminismSource = non_determinism_source::CSRBasedSource;
-
 #[cfg(not(all(
     target_arch = "riscv32",
     any(feature = "blake2_with_compression", feature = "blake2_g_function")
@@ -279,7 +270,7 @@ pub trait ConcreteVerifierImpl<
     const ADDRS: usize,
 >: 'static
 {
-    fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
+    fn verify_gkr<I: NonDeterminismSource<F>, E: ErrorCreator>(
         external_challenges: &::prover::definitions::GKRExternalChallenges<F, EE>,
         initial_transcript: &InitialGKRTranscript<
             EE,
@@ -294,7 +285,7 @@ pub trait ConcreteVerifierImpl<
         transcript_state: &mut ::transcript::TranscriptState,
         nd_source: &mut I,
     ) -> Result<GKRVerifierOutput<EE, ROUNDS, ADDRS>, E::Error>;
-    fn verify_whir<I: NonDeterminismSource, E: ErrorCreator>(
+    fn verify_whir<I: NonDeterminismSource<F>, E: ErrorCreator>(
         initial_transcript: &InitialGKRTranscript<
             EE,
             INIT_AND_TEARDOWN_SETS,
@@ -314,7 +305,7 @@ pub trait ConcreteVerifierImpl<
 }
 
 pub fn verify_impl<
-    I: NonDeterminismSource,
+    I: NonDeterminismSource<F>,
     E: ErrorCreator,
     F: PrimeField,
     EE: FieldExtension<F> + Field,
@@ -397,7 +388,7 @@ pub fn verify_impl<
 pub fn read_external_challenges<
     F: PrimeField,
     E: FieldExtension<F> + Field,
-    I: NonDeterminismSource,
+    I: NonDeterminismSource<F>,
 >(
     nd_source: &mut I,
 ) -> prover::definitions::GKRExternalChallenges<F, E> {

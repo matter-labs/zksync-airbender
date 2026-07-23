@@ -21,7 +21,7 @@ impl LeafInclusionVerifier for Blake2sForEverythingVerifierWithAlternativeCompre
     #[allow(invalid_value)]
     #[unroll::unroll_for_loops]
     unsafe fn verify_leaf_inclusion<
-        I: NonDeterminismSource,
+        I: U32WordNonDeterminismSource,
         const CAP_SIZE: usize,
         const NUM_COSETS: usize,
     >(

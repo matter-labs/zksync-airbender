@@ -43,7 +43,11 @@ impl<F: PrimeField + TwoAdicField> GKRSetup<F> {
         if total_tables_size % table_encoding_capacity_per_tuple != 0 {
             num_table_subsets += 1;
         }
-        assert!(num_table_subsets <= 1);
+        assert!(
+            num_table_subsets <= 1,
+            "lookup tables must be packed into single multiple of trace len, instead got {}",
+            num_table_subsets
+        );
 
         // dump tables
         let all_generic_tables = if compiled_circuit.total_tables_size == 0 {
@@ -353,7 +357,7 @@ impl<F: PrimeField + TwoAdicField> GKRSetup<F> {
         [(); F::DEGREE]: Sized,
     {
         let inputs: Vec<_> = self.hypercube_evals.iter().map(|el| &el[..]).collect();
-        use crate::gkr::prover::stage1::commit_trace_part;
+        use crate::gkr::prover::commitment_utils::commit_trace_part;
 
         commit_trace_part(
             &inputs,
@@ -362,6 +366,43 @@ impl<F: PrimeField + TwoAdicField> GKRSetup<F> {
             whir_first_fold_step_log2,
             tree_cap_size,
             trace_len_log2,
+            worker,
+        )
+    }
+
+    /// Logical equivalent of [`Self::commit`], but commits the setup polynomials
+    /// using the packing approach: groups of `2^pack_log2` setup columns are merged
+    /// into a single `(trace_len_log2 + pack_log2)`-variate multilinear (via
+    /// `pack_polys_parallel_from_hypercubes_to_monomials`) before the coset LDE.
+    ///
+    /// `trace_len_log2` is the number of variables of each setup column (same as in
+    /// [`Self::commit`]); the resulting packed polynomials have `trace_len_log2 +
+    /// pack_log2` variables, so `twiddles` must be sized for the enlarged
+    /// `2^(trace_len_log2 + pack_log2)` domain.
+    pub fn commit_packed<T: ColumnMajorMerkleTreeConstructor<F>>(
+        &self,
+        twiddles: &Twiddles<F, Global>,
+        lde_factor: usize,
+        whir_first_fold_step_log2: usize,
+        tree_cap_size: usize,
+        trace_len_log2: usize,
+        pack_log2: usize,
+        worker: &Worker,
+    ) -> ColumnMajorBaseOracleForLDE<F, T>
+    where
+        [(); F::DEGREE]: Sized,
+    {
+        let inputs: Vec<_> = self.hypercube_evals.iter().map(|el| &el[..]).collect();
+        use crate::gkr::prover::commitment_utils::commit_trace_part_packed;
+
+        commit_trace_part_packed(
+            &inputs,
+            twiddles,
+            lde_factor,
+            whir_first_fold_step_log2,
+            tree_cap_size,
+            trace_len_log2 + pack_log2,
+            pack_log2,
             worker,
         )
     }

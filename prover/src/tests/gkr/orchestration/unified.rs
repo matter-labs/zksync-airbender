@@ -12,7 +12,8 @@ use crate::definitions::{
 };
 use crate::gkr::prover::prove_configured_with_gkr;
 use crate::gkr::prover::setup::GKRSetup;
-use crate::gkr::prover::stages::stage1::commit_trace_part;
+use crate::gkr::prover::stages::commitment_utils::commit_trace_part;
+use crate::gkr::prover::CommitmentMode;
 use crate::gkr::prover::{GKRExternalChallenges, GKRProof};
 use crate::gkr::prover_config::example_configs;
 use crate::gkr::witness_gen::family_circuits::{
@@ -44,7 +45,7 @@ use riscv_transpiler::witness::data_structs::UnifiedOpcodeTracingDataWithTimesta
 use riscv_transpiler::witness::UnifiedDestinationHolder;
 use std::alloc::Global;
 use transcript::blake2s_u32::BLAKE2S_BLOCK_SIZE_U32_WORDS;
-use transcript::{Blake2sBufferingTranscript, Seed};
+use transcript::{Blake2sBufferingTranscript, Blake2sTranscript, Seed};
 use worker::Worker;
 
 /// Unified-mode prove output. `unified_proof` is `None` only when the
@@ -573,7 +574,7 @@ where
     // MEMORY_DELEGATION_POW_BITS = 0 in the FSV ⇒ no proof-of-work, `pow_challenge` is unused
     // in the derivation. If the FSV's pow-bits ever becomes non-zero, this (and the fixture's
     // `pow_challenge`) must be updated in lockstep.
-    GKRExternalChallenges::draw_from_transcript_seed(seed, 0, 0)
+    GKRExternalChallenges::draw_from_blake_transcript_seed(seed, 0, 0)
 }
 
 /// Memory-transcript seed for the unified circuit. Must match
@@ -821,7 +822,12 @@ pub fn prove_built_unified_trace(
 
     println!("Trying to prove (unified)");
     let now = std::time::Instant::now();
-    let proof = prove_configured_with_gkr::<BabyBearField, BabyBearExt4, DefaultTreeConstructor>(
+    let proof = prove_configured_with_gkr::<
+        BabyBearField,
+        BabyBearExt4,
+        DefaultTreeConstructor,
+        Blake2sTranscript,
+    >(
         unified_circuit,
         external_challenges,
         unified_full_trace,
@@ -829,6 +835,7 @@ pub fn prove_built_unified_trace(
         &unified_setup_commitment,
         &unified_twiddles,
         &prover_config,
+        CommitmentMode::SeparateMemoryAndWitness,
         unified_top_bits,
         trace_len,
         worker,

@@ -5,7 +5,7 @@ use crate::gkr::sumcheck::evaluation_kernels::{
 use cs::gkr_compiler::NoFieldMaxQuadraticGKRRelation;
 
 pub fn self_check_max_quadratic_constraint<F: PrimeField, E: FieldExtension<F> + Field>(
-    input: &NoFieldMaxQuadraticGKRRelation,
+    input: &NoFieldMaxQuadraticGKRRelation<F>,
     gkr_storage: &mut GKRStorage<F, E>,
     expected_output_layer: usize,
     trace_len: usize,

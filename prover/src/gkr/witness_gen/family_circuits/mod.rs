@@ -87,10 +87,10 @@ pub(crate) fn chunk_vec_vec_capacity_for_geometry<
 }
 
 pub(crate) fn evaluate_linear_relation<'a, F: PrimeField, O: Oracle<F> + 'a>(
-    relation: &NoFieldLinearRelation,
+    relation: &NoFieldLinearRelation<F>,
     proxy: &ColumnMajorWitnessProxy<'a, O, F>,
 ) -> F {
-    let mut result = F::from_u32_unchecked(relation.constant);
+    let mut result = relation.constant;
     for (c, addr) in relation.linear_terms.iter() {
         let el = match *addr {
             GKRAddress::BaseLayerMemory(offset) => proxy.get_memory_place(offset),
@@ -100,7 +100,7 @@ pub(crate) fn evaluate_linear_relation<'a, F: PrimeField, O: Oracle<F> + 'a>(
                 unreachable!()
             }
         };
-        let mut t = F::from_u32_unchecked(*c);
+        let mut t = *c;
         t.mul_assign(&el);
         result.add_assign(&t);
     }

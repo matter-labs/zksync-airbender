@@ -47,6 +47,14 @@
     524545,
     524545,
     524545,
+    524545,
+    524545,
+    524545,
+    524545,
+    524545,
+    524545,
+    524545,
+    524545,
     524545
   ],
   "total_tables_size": 1573121,
@@ -326,19 +334,19 @@
                 "input": {
                   "linear_terms": [
                     [
-                      2013265920,
+                      1744830467,
                       {
                         "BaseLayerMemory": 24
                       }
                     ],
                     [
-                      1,
+                      268435454,
                       {
                         "BaseLayerMemory": 0
                       }
                     ],
                     [
-                      524288,
+                      133099247,
                       {
                         "BaseLayerWitness": 22
                       }
@@ -365,25 +373,25 @@
                 "input": {
                   "linear_terms": [
                     [
-                      2013265920,
+                      1744830467,
                       {
                         "BaseLayerMemory": 25
                       }
                     ],
                     [
-                      1,
+                      268435454,
                       {
                         "BaseLayerMemory": 1
                       }
                     ],
                     [
-                      2013265920,
+                      1744830467,
                       {
                         "BaseLayerWitness": 22
                       }
                     ]
                   ],
-                  "constant": 524288
+                  "constant": 133099247
                 },
                 "lookup_set_index": 3
               },
@@ -404,25 +412,25 @@
                 "input": {
                   "linear_terms": [
                     [
-                      2013265920,
+                      1744830467,
                       {
                         "BaseLayerMemory": 24
                       }
                     ],
                     [
-                      1,
+                      268435454,
                       {
                         "BaseLayerMemory": 7
                       }
                     ],
                     [
-                      524288,
+                      133099247,
                       {
                         "BaseLayerWitness": 23
                       }
                     ]
                   ],
-                  "constant": 2013265920
+                  "constant": 1744830467
                 },
                 "lookup_set_index": 4
               },
@@ -443,25 +451,25 @@
                 "input": {
                   "linear_terms": [
                     [
-                      2013265920,
+                      1744830467,
                       {
                         "BaseLayerMemory": 25
                       }
                     ],
                     [
-                      1,
+                      268435454,
                       {
                         "BaseLayerMemory": 8
                       }
                     ],
                     [
-                      2013265920,
+                      1744830467,
                       {
                         "BaseLayerWitness": 23
                       }
                     ]
                   ],
-                  "constant": 524288
+                  "constant": 133099247
                 },
                 "lookup_set_index": 5
               },
@@ -482,25 +490,25 @@
                 "input": {
                   "linear_terms": [
                     [
-                      2013265920,
+                      1744830467,
                       {
                         "BaseLayerMemory": 24
                       }
                     ],
                     [
-                      1,
+                      268435454,
                       {
                         "BaseLayerMemory": 14
                       }
                     ],
                     [
-                      524288,
+                      133099247,
                       {
                         "BaseLayerWitness": 24
                       }
                     ]
                   ],
-                  "constant": 2013265919
+                  "constant": 1476395013
                 },
                 "lookup_set_index": 6
               },
@@ -521,25 +529,25 @@
                 "input": {
                   "linear_terms": [
                     [
-                      2013265920,
+                      1744830467,
                       {
                         "BaseLayerMemory": 25
                       }
                     ],
                     [
-                      1,
+                      268435454,
                       {
                         "BaseLayerMemory": 15
                       }
                     ],
                     [
-                      2013265920,
+                      1744830467,
                       {
                         "BaseLayerWitness": 24
                       }
                     ]
                   ],
-                  "constant": 524288
+                  "constant": 133099247
                 },
                 "lookup_set_index": 7
               },
@@ -560,7 +568,7 @@
                 {
                   "linear_terms": [
                     [
-                      1,
+                      268435454,
                       {
                         "BaseLayerMemory": 22
                       }
@@ -571,7 +579,7 @@
                 {
                   "linear_terms": [
                     [
-                      1,
+                      268435454,
                       {
                         "BaseLayerMemory": 23
                       }
@@ -582,7 +590,7 @@
                 {
                   "linear_terms": [
                     [
-                      1,
+                      268435454,
                       {
                         "BaseLayerMemory": 6
                       }
@@ -593,7 +601,7 @@
                 {
                   "linear_terms": [
                     [
-                      1,
+                      268435454,
                       {
                         "BaseLayerMemory": 13
                       }
@@ -604,7 +612,7 @@
                 {
                   "linear_terms": [
                     [
-                      1,
+                      268435454,
                       {
                         "BaseLayerMemory": 18
                       }
@@ -615,7 +623,7 @@
                 {
                   "linear_terms": [
                     [
-                      1,
+                      268435454,
                       {
                         "BaseLayerWitness": 0
                       }
@@ -626,7 +634,7 @@
                 {
                   "linear_terms": [
                     [
-                      1,
+                      268435454,
                       {
                         "BaseLayerWitness": 1
                       }
@@ -637,7 +645,7 @@
                 {
                   "linear_terms": [
                     [
-                      1,
+                      268435454,
                       {
                         "BaseLayerWitness": 2
                       }
@@ -648,13 +656,13 @@
                 {
                   "linear_terms": [
                     [
-                      1,
+                      268435454,
                       {
                         "BaseLayerWitness": 3
                       }
                     ],
                     [
-                      2,
+                      536870908,
                       {
                         "BaseLayerWitness": 4
                       }
@@ -664,7 +672,7 @@
                 },
                 {
                   "linear_terms": [],
-                  "constant": 46
+                  "constant": 268435358
                 }
               ],
               "lookup_set_index": 18446744073709551615
@@ -851,7 +859,7 @@
                     },
                     [
                       [
-                        1,
+                        268435454,
                         {
                           "BaseLayerWitness": 4
                         }
@@ -864,7 +872,7 @@
                     },
                     [
                       [
-                        1,
+                        268435454,
                         {
                           "BaseLayerMemory": 9
                         }
@@ -874,6 +882,38 @@
                 ],
                 "linear_terms": [],
                 "constant": 0
+              },
+              "expression": {
+                "Sum": [
+                  {
+                    "Product": [
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 3
+                        }
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerMemory": 9
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "Product": [
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 1
+                        }
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 4
+                        }
+                      }
+                    ]
+                  }
+                ]
               },
               "output": {
                 "InnerLayer": {
@@ -896,7 +936,7 @@
                     },
                     [
                       [
-                        1,
+                        268435454,
                         {
                           "BaseLayerMemory": 10
                         }
@@ -909,7 +949,7 @@
                     },
                     [
                       [
-                        1,
+                        268435454,
                         {
                           "BaseLayerWitness": 5
                         }
@@ -919,6 +959,38 @@
                 ],
                 "linear_terms": [],
                 "constant": 0
+              },
+              "expression": {
+                "Sum": [
+                  {
+                    "Product": [
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 3
+                        }
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerMemory": 10
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "Product": [
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 4
+                        }
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 5
+                        }
+                      }
+                    ]
+                  }
+                ]
               },
               "output": {
                 "InnerLayer": {
@@ -941,7 +1013,7 @@
                     },
                     [
                       [
-                        1,
+                        268435454,
                         {
                           "BaseLayerWitness": 5
                         }
@@ -951,6 +1023,20 @@
                 ],
                 "linear_terms": [],
                 "constant": 0
+              },
+              "expression": {
+                "Product": [
+                  {
+                    "Place": {
+                      "BaseLayerWitness": 3
+                    }
+                  },
+                  {
+                    "Place": {
+                      "BaseLayerWitness": 5
+                    }
+                  }
+                ]
               },
               "output": {
                 "InnerLayer": {
@@ -969,19 +1055,47 @@
                 "quadratic_terms": [],
                 "linear_terms": [
                   [
-                    8,
+                    134217711,
                     {
                       "BaseLayerWitness": 3
                     }
                   ],
                   [
-                    3,
+                    805306362,
                     {
                       "BaseLayerWitness": 4
                     }
                   ]
                 ],
                 "constant": 0
+              },
+              "expression": {
+                "Sum": [
+                  {
+                    "Product": [
+                      {
+                        "Constant": 805306362
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 4
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "Product": [
+                      {
+                        "Constant": 134217711
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 3
+                        }
+                      }
+                    ]
+                  }
+                ]
               },
               "output": {
                 "InnerLayer": {
@@ -1004,7 +1118,7 @@
                     },
                     [
                       [
-                        1,
+                        268435454,
                         {
                           "BaseLayerMemory": 2
                         }
@@ -1014,6 +1128,20 @@
                 ],
                 "linear_terms": [],
                 "constant": 0
+              },
+              "expression": {
+                "Product": [
+                  {
+                    "Place": {
+                      "BaseLayerWitness": 4
+                    }
+                  },
+                  {
+                    "Place": {
+                      "BaseLayerMemory": 2
+                    }
+                  }
+                ]
               },
               "output": {
                 "InnerLayer": {
@@ -1036,7 +1164,7 @@
                     },
                     [
                       [
-                        1,
+                        268435454,
                         {
                           "BaseLayerWitness": 4
                         }
@@ -1049,7 +1177,7 @@
                     },
                     [
                       [
-                        1,
+                        268435454,
                         {
                           "BaseLayerMemory": 2
                         }
@@ -1062,7 +1190,7 @@
                     },
                     [
                       [
-                        1,
+                        268435454,
                         {
                           "BaseLayerMemory": 9
                         }
@@ -1072,6 +1200,47 @@
                 ],
                 "linear_terms": [],
                 "constant": 0
+              },
+              "expression": {
+                "Sum": [
+                  {
+                    "Product": [
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 3
+                        }
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerMemory": 2
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "Product": [
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 4
+                        }
+                      },
+                      {
+                        "Sum": [
+                          {
+                            "Place": {
+                              "BaseLayerWitness": 0
+                            }
+                          },
+                          {
+                            "Place": {
+                              "BaseLayerMemory": 9
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
               },
               "output": {
                 "InnerLayer": {
@@ -1094,7 +1263,7 @@
                     },
                     [
                       [
-                        1,
+                        268435454,
                         {
                           "BaseLayerWitness": 3
                         }
@@ -1107,7 +1276,7 @@
                     },
                     [
                       [
-                        1,
+                        268435454,
                         {
                           "BaseLayerWitness": 5
                         }
@@ -1120,7 +1289,7 @@
                     },
                     [
                       [
-                        1,
+                        268435454,
                         {
                           "BaseLayerWitness": 6
                         }
@@ -1130,6 +1299,47 @@
                 ],
                 "linear_terms": [],
                 "constant": 0
+              },
+              "expression": {
+                "Sum": [
+                  {
+                    "Product": [
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 3
+                        }
+                      },
+                      {
+                        "Sum": [
+                          {
+                            "Place": {
+                              "BaseLayerWitness": 0
+                            }
+                          },
+                          {
+                            "Place": {
+                              "BaseLayerWitness": 5
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "Product": [
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 4
+                        }
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 6
+                        }
+                      }
+                    ]
+                  }
+                ]
               },
               "output": {
                 "InnerLayer": {
@@ -1152,7 +1362,7 @@
                     },
                     [
                       [
-                        1,
+                        268435454,
                         {
                           "BaseLayerWitness": 3
                         }
@@ -1162,6 +1372,20 @@
                 ],
                 "linear_terms": [],
                 "constant": 0
+              },
+              "expression": {
+                "Product": [
+                  {
+                    "Place": {
+                      "BaseLayerWitness": 2
+                    }
+                  },
+                  {
+                    "Place": {
+                      "BaseLayerWitness": 3
+                    }
+                  }
+                ]
               },
               "output": {
                 "InnerLayer": {
@@ -1184,7 +1408,7 @@
                     },
                     [
                       [
-                        1,
+                        268435454,
                         {
                           "BaseLayerWitness": 6
                         }
@@ -1194,6 +1418,20 @@
                 ],
                 "linear_terms": [],
                 "constant": 0
+              },
+              "expression": {
+                "Product": [
+                  {
+                    "Place": {
+                      "BaseLayerWitness": 3
+                    }
+                  },
+                  {
+                    "Place": {
+                      "BaseLayerWitness": 6
+                    }
+                  }
+                ]
               },
               "output": {
                 "InnerLayer": {
@@ -1216,7 +1454,7 @@
                     },
                     [
                       [
-                        1,
+                        268435454,
                         {
                           "BaseLayerWitness": 7
                         }
@@ -1226,6 +1464,20 @@
                 ],
                 "linear_terms": [],
                 "constant": 0
+              },
+              "expression": {
+                "Product": [
+                  {
+                    "Place": {
+                      "BaseLayerWitness": 3
+                    }
+                  },
+                  {
+                    "Place": {
+                      "BaseLayerWitness": 7
+                    }
+                  }
+                ]
               },
               "output": {
                 "InnerLayer": {
@@ -1248,7 +1500,7 @@
                     },
                     [
                       [
-                        1,
+                        268435454,
                         {
                           "BaseLayerWitness": 8
                         }
@@ -1258,6 +1510,20 @@
                 ],
                 "linear_terms": [],
                 "constant": 0
+              },
+              "expression": {
+                "Product": [
+                  {
+                    "Place": {
+                      "BaseLayerWitness": 3
+                    }
+                  },
+                  {
+                    "Place": {
+                      "BaseLayerWitness": 8
+                    }
+                  }
+                ]
               },
               "output": {
                 "InnerLayer": {
@@ -1280,7 +1546,7 @@
                     },
                     [
                       [
-                        1,
+                        268435454,
                         {
                           "BaseLayerWitness": 9
                         }
@@ -1290,6 +1556,20 @@
                 ],
                 "linear_terms": [],
                 "constant": 0
+              },
+              "expression": {
+                "Product": [
+                  {
+                    "Place": {
+                      "BaseLayerWitness": 3
+                    }
+                  },
+                  {
+                    "Place": {
+                      "BaseLayerWitness": 9
+                    }
+                  }
+                ]
               },
               "output": {
                 "InnerLayer": {
@@ -1312,7 +1592,7 @@
                     },
                     [
                       [
-                        1,
+                        268435454,
                         {
                           "BaseLayerWitness": 4
                         }
@@ -1322,13 +1602,43 @@
                 ],
                 "linear_terms": [
                   [
-                    9,
+                    402653165,
                     {
                       "BaseLayerWitness": 3
                     }
                   ]
                 ],
                 "constant": 0
+              },
+              "expression": {
+                "Sum": [
+                  {
+                    "Product": [
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 2
+                        }
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 4
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "Product": [
+                      {
+                        "Constant": 402653165
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 3
+                        }
+                      }
+                    ]
+                  }
+                ]
               },
               "output": {
                 "InnerLayer": {
@@ -1351,7 +1661,7 @@
                     },
                     [
                       [
-                        1,
+                        268435454,
                         {
                           "BaseLayerMemory": 3
                         }
@@ -1361,13 +1671,36 @@
                 ],
                 "linear_terms": [
                   [
-                    1,
+                    268435454,
                     {
                       "BaseLayerWitness": 3
                     }
                   ]
                 ],
                 "constant": 0
+              },
+              "expression": {
+                "Sum": [
+                  {
+                    "Place": {
+                      "BaseLayerWitness": 3
+                    }
+                  },
+                  {
+                    "Product": [
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 4
+                        }
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerMemory": 3
+                        }
+                      }
+                    ]
+                  }
+                ]
               },
               "output": {
                 "InnerLayer": {
@@ -1390,7 +1723,7 @@
                     },
                     [
                       [
-                        1,
+                        268435454,
                         {
                           "BaseLayerWitness": 4
                         }
@@ -1403,7 +1736,7 @@
                     },
                     [
                       [
-                        1,
+                        268435454,
                         {
                           "BaseLayerMemory": 3
                         }
@@ -1416,7 +1749,7 @@
                     },
                     [
                       [
-                        1,
+                        268435454,
                         {
                           "BaseLayerMemory": 10
                         }
@@ -1426,6 +1759,47 @@
                 ],
                 "linear_terms": [],
                 "constant": 0
+              },
+              "expression": {
+                "Sum": [
+                  {
+                    "Product": [
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 3
+                        }
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerMemory": 3
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "Product": [
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 4
+                        }
+                      },
+                      {
+                        "Sum": [
+                          {
+                            "Place": {
+                              "BaseLayerWitness": 1
+                            }
+                          },
+                          {
+                            "Place": {
+                              "BaseLayerMemory": 10
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
               },
               "output": {
                 "InnerLayer": {
@@ -1448,7 +1822,7 @@
                     },
                     [
                       [
-                        1,
+                        268435454,
                         {
                           "BaseLayerWitness": 3
                         }
@@ -1461,7 +1835,7 @@
                     },
                     [
                       [
-                        1,
+                        268435454,
                         {
                           "BaseLayerWitness": 5
                         }
@@ -1474,7 +1848,7 @@
                     },
                     [
                       [
-                        1,
+                        268435454,
                         {
                           "BaseLayerWitness": 7
                         }
@@ -1484,6 +1858,47 @@
                 ],
                 "linear_terms": [],
                 "constant": 0
+              },
+              "expression": {
+                "Sum": [
+                  {
+                    "Product": [
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 3
+                        }
+                      },
+                      {
+                        "Sum": [
+                          {
+                            "Place": {
+                              "BaseLayerWitness": 0
+                            }
+                          },
+                          {
+                            "Place": {
+                              "BaseLayerWitness": 5
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "Product": [
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 4
+                        }
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 7
+                        }
+                      }
+                    ]
+                  }
+                ]
               },
               "output": {
                 "InnerLayer": {
@@ -1506,7 +1921,7 @@
                     },
                     [
                       [
-                        1,
+                        268435454,
                         {
                           "BaseLayerWitness": 3
                         }
@@ -1516,6 +1931,20 @@
                 ],
                 "linear_terms": [],
                 "constant": 0
+              },
+              "expression": {
+                "Product": [
+                  {
+                    "Place": {
+                      "BaseLayerWitness": 2
+                    }
+                  },
+                  {
+                    "Place": {
+                      "BaseLayerWitness": 3
+                    }
+                  }
+                ]
               },
               "output": {
                 "InnerLayer": {
@@ -1538,7 +1967,7 @@
                     },
                     [
                       [
-                        1,
+                        268435454,
                         {
                           "BaseLayerWitness": 10
                         }
@@ -1548,6 +1977,20 @@
                 ],
                 "linear_terms": [],
                 "constant": 0
+              },
+              "expression": {
+                "Product": [
+                  {
+                    "Place": {
+                      "BaseLayerWitness": 3
+                    }
+                  },
+                  {
+                    "Place": {
+                      "BaseLayerWitness": 10
+                    }
+                  }
+                ]
               },
               "output": {
                 "InnerLayer": {
@@ -1570,7 +2013,7 @@
                     },
                     [
                       [
-                        1,
+                        268435454,
                         {
                           "BaseLayerWitness": 11
                         }
@@ -1580,6 +2023,20 @@
                 ],
                 "linear_terms": [],
                 "constant": 0
+              },
+              "expression": {
+                "Product": [
+                  {
+                    "Place": {
+                      "BaseLayerWitness": 3
+                    }
+                  },
+                  {
+                    "Place": {
+                      "BaseLayerWitness": 11
+                    }
+                  }
+                ]
               },
               "output": {
                 "InnerLayer": {
@@ -1602,7 +2059,7 @@
                     },
                     [
                       [
-                        1,
+                        268435454,
                         {
                           "BaseLayerWitness": 12
                         }
@@ -1612,6 +2069,20 @@
                 ],
                 "linear_terms": [],
                 "constant": 0
+              },
+              "expression": {
+                "Product": [
+                  {
+                    "Place": {
+                      "BaseLayerWitness": 3
+                    }
+                  },
+                  {
+                    "Place": {
+                      "BaseLayerWitness": 12
+                    }
+                  }
+                ]
               },
               "output": {
                 "InnerLayer": {
@@ -1634,7 +2105,7 @@
                     },
                     [
                       [
-                        1,
+                        268435454,
                         {
                           "BaseLayerWitness": 13
                         }
@@ -1644,6 +2115,20 @@
                 ],
                 "linear_terms": [],
                 "constant": 0
+              },
+              "expression": {
+                "Product": [
+                  {
+                    "Place": {
+                      "BaseLayerWitness": 3
+                    }
+                  },
+                  {
+                    "Place": {
+                      "BaseLayerWitness": 13
+                    }
+                  }
+                ]
               },
               "output": {
                 "InnerLayer": {
@@ -1666,7 +2151,7 @@
                     },
                     [
                       [
-                        1,
+                        268435454,
                         {
                           "BaseLayerWitness": 4
                         }
@@ -1676,13 +2161,43 @@
                 ],
                 "linear_terms": [
                   [
-                    9,
+                    402653165,
                     {
                       "BaseLayerWitness": 3
                     }
                   ]
                 ],
                 "constant": 0
+              },
+              "expression": {
+                "Sum": [
+                  {
+                    "Product": [
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 2
+                        }
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 4
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "Product": [
+                      {
+                        "Constant": 402653165
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 3
+                        }
+                      }
+                    ]
+                  }
+                ]
               },
               "output": {
                 "InnerLayer": {
@@ -1705,7 +2220,7 @@
                     },
                     [
                       [
-                        1,
+                        268435454,
                         {
                           "BaseLayerMemory": 4
                         }
@@ -1715,13 +2230,43 @@
                 ],
                 "linear_terms": [
                   [
-                    2,
+                    536870908,
                     {
                       "BaseLayerWitness": 3
                     }
                   ]
                 ],
                 "constant": 0
+              },
+              "expression": {
+                "Sum": [
+                  {
+                    "Product": [
+                      {
+                        "Constant": 536870908
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 3
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "Product": [
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 4
+                        }
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerMemory": 4
+                        }
+                      }
+                    ]
+                  }
+                ]
               },
               "output": {
                 "InnerLayer": {
@@ -1744,7 +2289,7 @@
                     },
                     [
                       [
-                        1,
+                        268435454,
                         {
                           "BaseLayerMemory": 4
                         }
@@ -1757,13 +2302,13 @@
                     },
                     [
                       [
-                        1,
+                        268435454,
                         {
                           "BaseLayerWitness": 5
                         }
                       ],
                       [
-                        1,
+                        268435454,
                         {
                           "BaseLayerMemory": 11
                         }
@@ -1773,6 +2318,47 @@
                 ],
                 "linear_terms": [],
                 "constant": 0
+              },
+              "expression": {
+                "Sum": [
+                  {
+                    "Product": [
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 3
+                        }
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerMemory": 4
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "Product": [
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 4
+                        }
+                      },
+                      {
+                        "Sum": [
+                          {
+                            "Place": {
+                              "BaseLayerWitness": 5
+                            }
+                          },
+                          {
+                            "Place": {
+                              "BaseLayerMemory": 11
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
               },
               "output": {
                 "InnerLayer": {
@@ -1795,7 +2381,7 @@
                     },
                     [
                       [
-                        1,
+                        268435454,
                         {
                           "BaseLayerWitness": 3
                         }
@@ -1808,7 +2394,7 @@
                     },
                     [
                       [
-                        1,
+                        268435454,
                         {
                           "BaseLayerWitness": 5
                         }
@@ -1821,7 +2407,7 @@
                     },
                     [
                       [
-                        1,
+                        268435454,
                         {
                           "BaseLayerWitness": 8
                         }
@@ -1831,6 +2417,47 @@
                 ],
                 "linear_terms": [],
                 "constant": 0
+              },
+              "expression": {
+                "Sum": [
+                  {
+                    "Product": [
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 3
+                        }
+                      },
+                      {
+                        "Sum": [
+                          {
+                            "Place": {
+                              "BaseLayerWitness": 0
+                            }
+                          },
+                          {
+                            "Place": {
+                              "BaseLayerWitness": 5
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "Product": [
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 4
+                        }
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 8
+                        }
+                      }
+                    ]
+                  }
+                ]
               },
               "output": {
                 "InnerLayer": {
@@ -1853,7 +2480,7 @@
                     },
                     [
                       [
-                        1,
+                        268435454,
                         {
                           "BaseLayerWitness": 3
                         }
@@ -1863,6 +2490,20 @@
                 ],
                 "linear_terms": [],
                 "constant": 0
+              },
+              "expression": {
+                "Product": [
+                  {
+                    "Place": {
+                      "BaseLayerWitness": 2
+                    }
+                  },
+                  {
+                    "Place": {
+                      "BaseLayerWitness": 3
+                    }
+                  }
+                ]
               },
               "output": {
                 "InnerLayer": {
@@ -1885,7 +2526,7 @@
                     },
                     [
                       [
-                        1,
+                        268435454,
                         {
                           "BaseLayerWitness": 14
                         }
@@ -1895,6 +2536,20 @@
                 ],
                 "linear_terms": [],
                 "constant": 0
+              },
+              "expression": {
+                "Product": [
+                  {
+                    "Place": {
+                      "BaseLayerWitness": 3
+                    }
+                  },
+                  {
+                    "Place": {
+                      "BaseLayerWitness": 14
+                    }
+                  }
+                ]
               },
               "output": {
                 "InnerLayer": {
@@ -1917,7 +2572,7 @@
                     },
                     [
                       [
-                        1,
+                        268435454,
                         {
                           "BaseLayerWitness": 15
                         }
@@ -1927,6 +2582,20 @@
                 ],
                 "linear_terms": [],
                 "constant": 0
+              },
+              "expression": {
+                "Product": [
+                  {
+                    "Place": {
+                      "BaseLayerWitness": 3
+                    }
+                  },
+                  {
+                    "Place": {
+                      "BaseLayerWitness": 15
+                    }
+                  }
+                ]
               },
               "output": {
                 "InnerLayer": {
@@ -1949,7 +2618,7 @@
                     },
                     [
                       [
-                        1,
+                        268435454,
                         {
                           "BaseLayerWitness": 16
                         }
@@ -1959,6 +2628,20 @@
                 ],
                 "linear_terms": [],
                 "constant": 0
+              },
+              "expression": {
+                "Product": [
+                  {
+                    "Place": {
+                      "BaseLayerWitness": 3
+                    }
+                  },
+                  {
+                    "Place": {
+                      "BaseLayerWitness": 16
+                    }
+                  }
+                ]
               },
               "output": {
                 "InnerLayer": {
@@ -1981,7 +2664,7 @@
                     },
                     [
                       [
-                        1,
+                        268435454,
                         {
                           "BaseLayerWitness": 17
                         }
@@ -1991,6 +2674,20 @@
                 ],
                 "linear_terms": [],
                 "constant": 0
+              },
+              "expression": {
+                "Product": [
+                  {
+                    "Place": {
+                      "BaseLayerWitness": 3
+                    }
+                  },
+                  {
+                    "Place": {
+                      "BaseLayerWitness": 17
+                    }
+                  }
+                ]
               },
               "output": {
                 "InnerLayer": {
@@ -2013,7 +2710,7 @@
                     },
                     [
                       [
-                        1,
+                        268435454,
                         {
                           "BaseLayerWitness": 4
                         }
@@ -2023,13 +2720,43 @@
                 ],
                 "linear_terms": [
                   [
-                    9,
+                    402653165,
                     {
                       "BaseLayerWitness": 3
                     }
                   ]
                 ],
                 "constant": 0
+              },
+              "expression": {
+                "Sum": [
+                  {
+                    "Product": [
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 2
+                        }
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 4
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "Product": [
+                      {
+                        "Constant": 402653165
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 3
+                        }
+                      }
+                    ]
+                  }
+                ]
               },
               "output": {
                 "InnerLayer": {
@@ -2052,7 +2779,7 @@
                     },
                     [
                       [
-                        1,
+                        268435454,
                         {
                           "BaseLayerMemory": 5
                         }
@@ -2062,13 +2789,43 @@
                 ],
                 "linear_terms": [
                   [
-                    3,
+                    805306362,
                     {
                       "BaseLayerWitness": 3
                     }
                   ]
                 ],
                 "constant": 0
+              },
+              "expression": {
+                "Sum": [
+                  {
+                    "Product": [
+                      {
+                        "Constant": 805306362
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 3
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "Product": [
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 4
+                        }
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerMemory": 5
+                        }
+                      }
+                    ]
+                  }
+                ]
               },
               "output": {
                 "InnerLayer": {
@@ -2091,7 +2848,7 @@
                     },
                     [
                       [
-                        1,
+                        268435454,
                         {
                           "BaseLayerMemory": 5
                         }
@@ -2104,13 +2861,13 @@
                     },
                     [
                       [
-                        1,
+                        268435454,
                         {
                           "BaseLayerWitness": 5
                         }
                       ],
                       [
-                        1,
+                        268435454,
                         {
                           "BaseLayerMemory": 12
                         }
@@ -2120,6 +2877,47 @@
                 ],
                 "linear_terms": [],
                 "constant": 0
+              },
+              "expression": {
+                "Sum": [
+                  {
+                    "Product": [
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 3
+                        }
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerMemory": 5
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "Product": [
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 4
+                        }
+                      },
+                      {
+                        "Sum": [
+                          {
+                            "Place": {
+                              "BaseLayerWitness": 5
+                            }
+                          },
+                          {
+                            "Place": {
+                              "BaseLayerMemory": 12
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
               },
               "output": {
                 "InnerLayer": {
@@ -2142,7 +2940,7 @@
                     },
                     [
                       [
-                        1,
+                        268435454,
                         {
                           "BaseLayerWitness": 3
                         }
@@ -2155,7 +2953,7 @@
                     },
                     [
                       [
-                        1,
+                        268435454,
                         {
                           "BaseLayerWitness": 5
                         }
@@ -2168,7 +2966,7 @@
                     },
                     [
                       [
-                        1,
+                        268435454,
                         {
                           "BaseLayerWitness": 9
                         }
@@ -2178,6 +2976,47 @@
                 ],
                 "linear_terms": [],
                 "constant": 0
+              },
+              "expression": {
+                "Sum": [
+                  {
+                    "Product": [
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 3
+                        }
+                      },
+                      {
+                        "Sum": [
+                          {
+                            "Place": {
+                              "BaseLayerWitness": 0
+                            }
+                          },
+                          {
+                            "Place": {
+                              "BaseLayerWitness": 5
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "Product": [
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 4
+                        }
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 9
+                        }
+                      }
+                    ]
+                  }
+                ]
               },
               "output": {
                 "InnerLayer": {
@@ -2200,7 +3039,7 @@
                     },
                     [
                       [
-                        1,
+                        268435454,
                         {
                           "BaseLayerWitness": 3
                         }
@@ -2210,6 +3049,20 @@
                 ],
                 "linear_terms": [],
                 "constant": 0
+              },
+              "expression": {
+                "Product": [
+                  {
+                    "Place": {
+                      "BaseLayerWitness": 2
+                    }
+                  },
+                  {
+                    "Place": {
+                      "BaseLayerWitness": 3
+                    }
+                  }
+                ]
               },
               "output": {
                 "InnerLayer": {
@@ -2232,7 +3085,7 @@
                     },
                     [
                       [
-                        1,
+                        268435454,
                         {
                           "BaseLayerWitness": 18
                         }
@@ -2242,6 +3095,20 @@
                 ],
                 "linear_terms": [],
                 "constant": 0
+              },
+              "expression": {
+                "Product": [
+                  {
+                    "Place": {
+                      "BaseLayerWitness": 3
+                    }
+                  },
+                  {
+                    "Place": {
+                      "BaseLayerWitness": 18
+                    }
+                  }
+                ]
               },
               "output": {
                 "InnerLayer": {
@@ -2264,7 +3131,7 @@
                     },
                     [
                       [
-                        1,
+                        268435454,
                         {
                           "BaseLayerWitness": 19
                         }
@@ -2274,6 +3141,20 @@
                 ],
                 "linear_terms": [],
                 "constant": 0
+              },
+              "expression": {
+                "Product": [
+                  {
+                    "Place": {
+                      "BaseLayerWitness": 3
+                    }
+                  },
+                  {
+                    "Place": {
+                      "BaseLayerWitness": 19
+                    }
+                  }
+                ]
               },
               "output": {
                 "InnerLayer": {
@@ -2296,7 +3177,7 @@
                     },
                     [
                       [
-                        1,
+                        268435454,
                         {
                           "BaseLayerWitness": 20
                         }
@@ -2306,6 +3187,20 @@
                 ],
                 "linear_terms": [],
                 "constant": 0
+              },
+              "expression": {
+                "Product": [
+                  {
+                    "Place": {
+                      "BaseLayerWitness": 3
+                    }
+                  },
+                  {
+                    "Place": {
+                      "BaseLayerWitness": 20
+                    }
+                  }
+                ]
               },
               "output": {
                 "InnerLayer": {
@@ -2328,7 +3223,7 @@
                     },
                     [
                       [
-                        1,
+                        268435454,
                         {
                           "BaseLayerWitness": 21
                         }
@@ -2338,6 +3233,20 @@
                 ],
                 "linear_terms": [],
                 "constant": 0
+              },
+              "expression": {
+                "Product": [
+                  {
+                    "Place": {
+                      "BaseLayerWitness": 3
+                    }
+                  },
+                  {
+                    "Place": {
+                      "BaseLayerWitness": 21
+                    }
+                  }
+                ]
               },
               "output": {
                 "InnerLayer": {
@@ -2360,7 +3269,7 @@
                     },
                     [
                       [
-                        1,
+                        268435454,
                         {
                           "BaseLayerWitness": 4
                         }
@@ -2370,13 +3279,43 @@
                 ],
                 "linear_terms": [
                   [
-                    9,
+                    402653165,
                     {
                       "BaseLayerWitness": 3
                     }
                   ]
                 ],
                 "constant": 0
+              },
+              "expression": {
+                "Sum": [
+                  {
+                    "Product": [
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 2
+                        }
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 4
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "Product": [
+                      {
+                        "Constant": 402653165
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 3
+                        }
+                      }
+                    ]
+                  }
+                ]
               },
               "output": {
                 "InnerLayer": {
@@ -2643,7 +3582,7 @@
                     },
                     [
                       [
-                        1,
+                        268435454,
                         {
                           "BaseLayerMemory": 21
                         }
@@ -2653,13 +3592,34 @@
                 ],
                 "linear_terms": [
                   [
-                    2013265920,
+                    1744830467,
                     {
                       "BaseLayerMemory": 21
                     }
                   ]
                 ],
                 "constant": 0
+              },
+              "expression": {
+                "Product": [
+                  {
+                    "Place": {
+                      "BaseLayerMemory": 21
+                    }
+                  },
+                  {
+                    "Sum": [
+                      {
+                        "Constant": 1744830467
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerMemory": 21
+                        }
+                      }
+                    ]
+                  }
+                ]
               }
             }
           }
@@ -2676,49 +3636,49 @@
                     },
                     [
                       [
-                        1,
+                        268435454,
                         {
                           "BaseLayerWitness": 6
                         }
                       ],
                       [
-                        256,
+                        268434910,
                         {
                           "BaseLayerWitness": 7
                         }
                       ],
                       [
-                        1,
+                        268435454,
                         {
                           "BaseLayerWitness": 10
                         }
                       ],
                       [
-                        256,
+                        268434910,
                         {
                           "BaseLayerWitness": 11
                         }
                       ],
                       [
-                        1,
+                        268435454,
                         {
                           "BaseLayerWitness": 14
                         }
                       ],
                       [
-                        256,
+                        268434910,
                         {
                           "BaseLayerWitness": 15
                         }
                       ],
                       [
-                        1,
+                        268435454,
                         {
                           "BaseLayerWitness": 18
                         }
                       ],
                       [
-                        256,
+                        268434910,
                         {
                           "BaseLayerWitness": 19
                         }
@@ -2731,13 +3691,13 @@
                     },
                     [
                       [
-                        1,
+                        268435454,
                         {
                           "BaseLayerWitness": 6
                         }
                       ],
                       [
-                        256,
+                        268434910,
                         {
                           "BaseLayerWitness": 7
                         }
@@ -2747,13 +3707,140 @@
                 ],
                 "linear_terms": [
                   [
-                    2013265920,
+                    1744830467,
                     {
                       "BaseLayerMemory": 19
                     }
                   ]
                 ],
                 "constant": 0
+              },
+              "expression": {
+                "Sum": [
+                  {
+                    "Product": [
+                      {
+                        "Constant": 1744830467
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerMemory": 19
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "Product": [
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 3
+                        }
+                      },
+                      {
+                        "Sum": [
+                          {
+                            "Place": {
+                              "BaseLayerWitness": 6
+                            }
+                          },
+                          {
+                            "Place": {
+                              "BaseLayerWitness": 10
+                            }
+                          },
+                          {
+                            "Place": {
+                              "BaseLayerWitness": 14
+                            }
+                          },
+                          {
+                            "Place": {
+                              "BaseLayerWitness": 18
+                            }
+                          },
+                          {
+                            "Product": [
+                              {
+                                "Constant": 268434910
+                              },
+                              {
+                                "Place": {
+                                  "BaseLayerWitness": 19
+                                }
+                              }
+                            ]
+                          },
+                          {
+                            "Product": [
+                              {
+                                "Constant": 268434910
+                              },
+                              {
+                                "Place": {
+                                  "BaseLayerWitness": 15
+                                }
+                              }
+                            ]
+                          },
+                          {
+                            "Product": [
+                              {
+                                "Constant": 268434910
+                              },
+                              {
+                                "Place": {
+                                  "BaseLayerWitness": 11
+                                }
+                              }
+                            ]
+                          },
+                          {
+                            "Product": [
+                              {
+                                "Constant": 268434910
+                              },
+                              {
+                                "Place": {
+                                  "BaseLayerWitness": 7
+                                }
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "Product": [
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 4
+                        }
+                      },
+                      {
+                        "Sum": [
+                          {
+                            "Place": {
+                              "BaseLayerWitness": 6
+                            }
+                          },
+                          {
+                            "Product": [
+                              {
+                                "Constant": 268434910
+                              },
+                              {
+                                "Place": {
+                                  "BaseLayerWitness": 7
+                                }
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
               }
             }
           }
@@ -2770,49 +3857,49 @@
                     },
                     [
                       [
-                        1,
+                        268435454,
                         {
                           "BaseLayerWitness": 8
                         }
                       ],
                       [
-                        256,
+                        268434910,
                         {
                           "BaseLayerWitness": 9
                         }
                       ],
                       [
-                        1,
+                        268435454,
                         {
                           "BaseLayerWitness": 12
                         }
                       ],
                       [
-                        256,
+                        268434910,
                         {
                           "BaseLayerWitness": 13
                         }
                       ],
                       [
-                        1,
+                        268435454,
                         {
                           "BaseLayerWitness": 16
                         }
                       ],
                       [
-                        256,
+                        268434910,
                         {
                           "BaseLayerWitness": 17
                         }
                       ],
                       [
-                        1,
+                        268435454,
                         {
                           "BaseLayerWitness": 20
                         }
                       ],
                       [
-                        256,
+                        268434910,
                         {
                           "BaseLayerWitness": 21
                         }
@@ -2825,13 +3912,13 @@
                     },
                     [
                       [
-                        1,
+                        268435454,
                         {
                           "BaseLayerWitness": 8
                         }
                       ],
                       [
-                        256,
+                        268434910,
                         {
                           "BaseLayerWitness": 9
                         }
@@ -2841,13 +3928,140 @@
                 ],
                 "linear_terms": [
                   [
-                    2013265920,
+                    1744830467,
                     {
                       "BaseLayerMemory": 20
                     }
                   ]
                 ],
                 "constant": 0
+              },
+              "expression": {
+                "Sum": [
+                  {
+                    "Product": [
+                      {
+                        "Constant": 1744830467
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerMemory": 20
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "Product": [
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 3
+                        }
+                      },
+                      {
+                        "Sum": [
+                          {
+                            "Place": {
+                              "BaseLayerWitness": 8
+                            }
+                          },
+                          {
+                            "Place": {
+                              "BaseLayerWitness": 12
+                            }
+                          },
+                          {
+                            "Place": {
+                              "BaseLayerWitness": 16
+                            }
+                          },
+                          {
+                            "Place": {
+                              "BaseLayerWitness": 20
+                            }
+                          },
+                          {
+                            "Product": [
+                              {
+                                "Constant": 268434910
+                              },
+                              {
+                                "Place": {
+                                  "BaseLayerWitness": 21
+                                }
+                              }
+                            ]
+                          },
+                          {
+                            "Product": [
+                              {
+                                "Constant": 268434910
+                              },
+                              {
+                                "Place": {
+                                  "BaseLayerWitness": 17
+                                }
+                              }
+                            ]
+                          },
+                          {
+                            "Product": [
+                              {
+                                "Constant": 268434910
+                              },
+                              {
+                                "Place": {
+                                  "BaseLayerWitness": 13
+                                }
+                              }
+                            ]
+                          },
+                          {
+                            "Product": [
+                              {
+                                "Constant": 268434910
+                              },
+                              {
+                                "Place": {
+                                  "BaseLayerWitness": 9
+                                }
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "Product": [
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 4
+                        }
+                      },
+                      {
+                        "Sum": [
+                          {
+                            "Place": {
+                              "BaseLayerWitness": 8
+                            }
+                          },
+                          {
+                            "Product": [
+                              {
+                                "Constant": 268434910
+                              },
+                              {
+                                "Place": {
+                                  "BaseLayerWitness": 9
+                                }
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
               }
             }
           }
@@ -2864,13 +4078,13 @@
                     },
                     [
                       [
-                        943718400,
+                        1,
                         {
                           "BaseLayerMemory": 22
                         }
                       ],
                       [
-                        125829121,
+                        2013265919,
                         {
                           "BaseLayerMemory": 26
                         }
@@ -2883,7 +4097,7 @@
                     },
                     [
                       [
-                        943718400,
+                        1,
                         {
                           "BaseLayerMemory": 26
                         }
@@ -2893,19 +4107,88 @@
                 ],
                 "linear_terms": [
                   [
-                    1509980157,
+                    2013200393,
                     {
                       "BaseLayerMemory": 22
                     }
                   ],
                   [
-                    503285764,
+                    65528,
                     {
                       "BaseLayerMemory": 26
                     }
                   ]
                 ],
-                "constant": 1006755833
+                "constant": 2013003793
+              },
+              "expression": {
+                "Product": [
+                  {
+                    "Constant": 65536
+                  },
+                  {
+                    "Sum": [
+                      {
+                        "Constant": 1073741816
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerMemory": 22
+                        }
+                      },
+                      {
+                        "Product": [
+                          {
+                            "Constant": 1744830467
+                          },
+                          {
+                            "Place": {
+                              "BaseLayerMemory": 26
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "Sum": [
+                      {
+                        "Constant": 1744830467
+                      },
+                      {
+                        "Product": [
+                          {
+                            "Constant": 65536
+                          },
+                          {
+                            "Sum": [
+                              {
+                                "Constant": 1073741816
+                              },
+                              {
+                                "Place": {
+                                  "BaseLayerMemory": 22
+                                }
+                              },
+                              {
+                                "Product": [
+                                  {
+                                    "Constant": 1744830467
+                                  },
+                                  {
+                                    "Place": {
+                                      "BaseLayerMemory": 26
+                                    }
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
               }
             }
           }
@@ -2918,31 +4201,83 @@
                 "quadratic_terms": [],
                 "linear_terms": [
                   [
-                    2013235201,
+                    65536,
                     {
                       "BaseLayerMemory": 22
                     }
                   ],
                   [
-                    1,
+                    268435454,
                     {
                       "BaseLayerMemory": 23
                     }
                   ],
                   [
-                    30720,
+                    2013200385,
                     {
                       "BaseLayerMemory": 26
                     }
                   ],
                   [
-                    2013265920,
+                    1744830467,
                     {
                       "BaseLayerMemory": 27
                     }
                   ]
                 ],
-                "constant": 2013143041
+                "constant": 262144
+              },
+              "expression": {
+                "Sum": [
+                  {
+                    "Place": {
+                      "BaseLayerMemory": 23
+                    }
+                  },
+                  {
+                    "Product": [
+                      {
+                        "Constant": 1744830467
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerMemory": 27
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "Product": [
+                      {
+                        "Constant": 65536
+                      },
+                      {
+                        "Sum": [
+                          {
+                            "Constant": 1073741816
+                          },
+                          {
+                            "Place": {
+                              "BaseLayerMemory": 22
+                            }
+                          },
+                          {
+                            "Product": [
+                              {
+                                "Constant": 1744830467
+                              },
+                              {
+                                "Place": {
+                                  "BaseLayerMemory": 26
+                                }
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
               }
             }
           }
@@ -2959,13 +4294,13 @@
                     },
                     [
                       [
-                        14745600,
+                        1981808641,
                         {
                           "BaseLayerMemory": 24
                         }
                       ],
                       [
-                        1983774721,
+                        62914560,
                         {
                           "BaseLayerMemory": 28
                         }
@@ -2978,7 +4313,7 @@
                     },
                     [
                       [
-                        14745600,
+                        1981808641,
                         {
                           "BaseLayerMemory": 28
                         }
@@ -2988,19 +4323,109 @@
                 ],
                 "linear_terms": [
                   [
-                    117968640,
+                    1761599489,
                     {
                       "BaseLayerMemory": 24
                     }
                   ],
                   [
-                    1895297281,
+                    251666432,
                     {
                       "BaseLayerMemory": 28
                     }
                   ]
                 ],
-                "constant": 235944960
+                "constant": 1509916673
+              },
+              "expression": {
+                "Sum": [
+                  {
+                    "Product": [
+                      {
+                        "Constant": 2013257729
+                      },
+                      {
+                        "Sum": [
+                          {
+                            "Constant": 1073741816
+                          },
+                          {
+                            "Place": {
+                              "BaseLayerMemory": 24
+                            }
+                          },
+                          {
+                            "Product": [
+                              {
+                                "Constant": 1744830467
+                              },
+                              {
+                                "Place": {
+                                  "BaseLayerMemory": 28
+                                }
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "Product": [
+                      {
+                        "Constant": 1981808641
+                      },
+                      {
+                        "Sum": [
+                          {
+                            "Constant": 1073741816
+                          },
+                          {
+                            "Place": {
+                              "BaseLayerMemory": 24
+                            }
+                          },
+                          {
+                            "Product": [
+                              {
+                                "Constant": 1744830467
+                              },
+                              {
+                                "Place": {
+                                  "BaseLayerMemory": 28
+                                }
+                              }
+                            ]
+                          }
+                        ]
+                      },
+                      {
+                        "Sum": [
+                          {
+                            "Constant": 1073741816
+                          },
+                          {
+                            "Place": {
+                              "BaseLayerMemory": 24
+                            }
+                          },
+                          {
+                            "Product": [
+                              {
+                                "Constant": 1744830467
+                              },
+                              {
+                                "Place": {
+                                  "BaseLayerMemory": 28
+                                }
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
               }
             }
           }
@@ -3013,31 +4438,83 @@
                 "quadratic_terms": [],
                 "linear_terms": [
                   [
-                    3840,
+                    2013257729,
                     {
                       "BaseLayerMemory": 24
                     }
                   ],
                   [
-                    2013265920,
+                    1744830467,
                     {
                       "BaseLayerMemory": 25
                     }
                   ],
                   [
-                    2013262081,
+                    8192,
                     {
                       "BaseLayerMemory": 28
                     }
                   ],
                   [
-                    1,
+                    268435454,
                     {
                       "BaseLayerMemory": 29
                     }
                   ]
                 ],
-                "constant": 15360
+                "constant": 2013233153
+              },
+              "expression": {
+                "Sum": [
+                  {
+                    "Place": {
+                      "BaseLayerMemory": 29
+                    }
+                  },
+                  {
+                    "Product": [
+                      {
+                        "Constant": 2013257729
+                      },
+                      {
+                        "Sum": [
+                          {
+                            "Constant": 1073741816
+                          },
+                          {
+                            "Place": {
+                              "BaseLayerMemory": 24
+                            }
+                          },
+                          {
+                            "Product": [
+                              {
+                                "Constant": 1744830467
+                              },
+                              {
+                                "Place": {
+                                  "BaseLayerMemory": 28
+                                }
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "Product": [
+                      {
+                        "Constant": 1744830467
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerMemory": 25
+                        }
+                      }
+                    ]
+                  }
+                ]
               }
             }
           }
@@ -3054,7 +4531,7 @@
                     },
                     [
                       [
-                        1,
+                        268435454,
                         {
                           "BaseLayerWitness": 3
                         }
@@ -3064,13 +4541,34 @@
                 ],
                 "linear_terms": [
                   [
-                    2013265920,
+                    1744830467,
                     {
                       "BaseLayerWitness": 3
                     }
                   ]
                 ],
                 "constant": 0
+              },
+              "expression": {
+                "Product": [
+                  {
+                    "Place": {
+                      "BaseLayerWitness": 3
+                    }
+                  },
+                  {
+                    "Sum": [
+                      {
+                        "Constant": 1744830467
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 3
+                        }
+                      }
+                    ]
+                  }
+                ]
               }
             }
           }
@@ -3087,7 +4585,7 @@
                     },
                     [
                       [
-                        1,
+                        268435454,
                         {
                           "BaseLayerWitness": 4
                         }
@@ -3097,13 +4595,34 @@
                 ],
                 "linear_terms": [
                   [
-                    2013265920,
+                    1744830467,
                     {
                       "BaseLayerWitness": 4
                     }
                   ]
                 ],
                 "constant": 0
+              },
+              "expression": {
+                "Product": [
+                  {
+                    "Place": {
+                      "BaseLayerWitness": 4
+                    }
+                  },
+                  {
+                    "Sum": [
+                      {
+                        "Constant": 1744830467
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 4
+                        }
+                      }
+                    ]
+                  }
+                ]
               }
             }
           }
@@ -3120,7 +4639,7 @@
                     },
                     [
                       [
-                        1,
+                        268435454,
                         {
                           "BaseLayerWitness": 22
                         }
@@ -3130,13 +4649,34 @@
                 ],
                 "linear_terms": [
                   [
-                    2013265920,
+                    1744830467,
                     {
                       "BaseLayerWitness": 22
                     }
                   ]
                 ],
                 "constant": 0
+              },
+              "expression": {
+                "Product": [
+                  {
+                    "Place": {
+                      "BaseLayerWitness": 22
+                    }
+                  },
+                  {
+                    "Sum": [
+                      {
+                        "Constant": 1744830467
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 22
+                        }
+                      }
+                    ]
+                  }
+                ]
               }
             }
           }
@@ -3153,7 +4693,7 @@
                     },
                     [
                       [
-                        1,
+                        268435454,
                         {
                           "BaseLayerWitness": 23
                         }
@@ -3163,13 +4703,34 @@
                 ],
                 "linear_terms": [
                   [
-                    2013265920,
+                    1744830467,
                     {
                       "BaseLayerWitness": 23
                     }
                   ]
                 ],
                 "constant": 0
+              },
+              "expression": {
+                "Product": [
+                  {
+                    "Place": {
+                      "BaseLayerWitness": 23
+                    }
+                  },
+                  {
+                    "Sum": [
+                      {
+                        "Constant": 1744830467
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 23
+                        }
+                      }
+                    ]
+                  }
+                ]
               }
             }
           }
@@ -3186,7 +4747,7 @@
                     },
                     [
                       [
-                        1,
+                        268435454,
                         {
                           "BaseLayerWitness": 24
                         }
@@ -3196,13 +4757,34 @@
                 ],
                 "linear_terms": [
                   [
-                    2013265920,
+                    1744830467,
                     {
                       "BaseLayerWitness": 24
                     }
                   ]
                 ],
                 "constant": 0
+              },
+              "expression": {
+                "Product": [
+                  {
+                    "Place": {
+                      "BaseLayerWitness": 24
+                    }
+                  },
+                  {
+                    "Sum": [
+                      {
+                        "Constant": 1744830467
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerWitness": 24
+                        }
+                      }
+                    ]
+                  }
+                ]
               }
             }
           }
@@ -3227,7 +4809,7 @@
                 {
                   "linear_terms": [
                     [
-                      1,
+                      268435454,
                       {
                         "InnerLayer": {
                           "layer": 1,
@@ -3241,7 +4823,7 @@
                 {
                   "linear_terms": [
                     [
-                      1,
+                      268435454,
                       {
                         "InnerLayer": {
                           "layer": 1,
@@ -3255,7 +4837,7 @@
                 {
                   "linear_terms": [
                     [
-                      1,
+                      268435454,
                       {
                         "InnerLayer": {
                           "layer": 1,
@@ -3293,7 +4875,7 @@
                 {
                   "linear_terms": [
                     [
-                      1,
+                      268435454,
                       {
                         "InnerLayer": {
                           "layer": 1,
@@ -3322,7 +4904,7 @@
                 {
                   "linear_terms": [
                     [
-                      1,
+                      268435454,
                       {
                         "InnerLayer": {
                           "layer": 1,
@@ -3336,7 +4918,7 @@
                 {
                   "linear_terms": [
                     [
-                      1,
+                      268435454,
                       {
                         "InnerLayer": {
                           "layer": 1,
@@ -3350,7 +4932,7 @@
                 {
                   "linear_terms": [
                     [
-                      1,
+                      268435454,
                       {
                         "InnerLayer": {
                           "layer": 1,
@@ -3364,7 +4946,7 @@
                 {
                   "linear_terms": [
                     [
-                      1,
+                      268435454,
                       {
                         "InnerLayer": {
                           "layer": 1,
@@ -3378,7 +4960,7 @@
                 {
                   "linear_terms": [
                     [
-                      1,
+                      268435454,
                       {
                         "InnerLayer": {
                           "layer": 1,
@@ -3392,7 +4974,7 @@
                 {
                   "linear_terms": [
                     [
-                      1,
+                      268435454,
                       {
                         "InnerLayer": {
                           "layer": 1,
@@ -3406,7 +4988,7 @@
                 {
                   "linear_terms": [
                     [
-                      1,
+                      268435454,
                       {
                         "InnerLayer": {
                           "layer": 1,
@@ -3420,7 +5002,7 @@
                 {
                   "linear_terms": [
                     [
-                      1,
+                      268435454,
                       {
                         "InnerLayer": {
                           "layer": 1,
@@ -3438,7 +5020,7 @@
                 {
                   "linear_terms": [
                     [
-                      1,
+                      268435454,
                       {
                         "InnerLayer": {
                           "layer": 1,
@@ -3467,7 +5049,7 @@
                 {
                   "linear_terms": [
                     [
-                      1,
+                      268435454,
                       {
                         "InnerLayer": {
                           "layer": 1,
@@ -3481,7 +5063,7 @@
                 {
                   "linear_terms": [
                     [
-                      1,
+                      268435454,
                       {
                         "InnerLayer": {
                           "layer": 1,
@@ -3495,7 +5077,7 @@
                 {
                   "linear_terms": [
                     [
-                      1,
+                      268435454,
                       {
                         "InnerLayer": {
                           "layer": 1,
@@ -3509,7 +5091,7 @@
                 {
                   "linear_terms": [
                     [
-                      1,
+                      268435454,
                       {
                         "InnerLayer": {
                           "layer": 1,
@@ -3523,7 +5105,7 @@
                 {
                   "linear_terms": [
                     [
-                      1,
+                      268435454,
                       {
                         "InnerLayer": {
                           "layer": 1,
@@ -3537,7 +5119,7 @@
                 {
                   "linear_terms": [
                     [
-                      1,
+                      268435454,
                       {
                         "InnerLayer": {
                           "layer": 1,
@@ -3551,7 +5133,7 @@
                 {
                   "linear_terms": [
                     [
-                      1,
+                      268435454,
                       {
                         "InnerLayer": {
                           "layer": 1,
@@ -3565,7 +5147,7 @@
                 {
                   "linear_terms": [
                     [
-                      1,
+                      268435454,
                       {
                         "InnerLayer": {
                           "layer": 1,
@@ -3583,7 +5165,7 @@
                 {
                   "linear_terms": [
                     [
-                      1,
+                      268435454,
                       {
                         "InnerLayer": {
                           "layer": 1,
@@ -3612,7 +5194,7 @@
                 {
                   "linear_terms": [
                     [
-                      1,
+                      268435454,
                       {
                         "InnerLayer": {
                           "layer": 1,
@@ -3626,7 +5208,7 @@
                 {
                   "linear_terms": [
                     [
-                      1,
+                      268435454,
                       {
                         "InnerLayer": {
                           "layer": 1,
@@ -3640,7 +5222,7 @@
                 {
                   "linear_terms": [
                     [
-                      1,
+                      268435454,
                       {
                         "InnerLayer": {
                           "layer": 1,
@@ -3654,7 +5236,7 @@
                 {
                   "linear_terms": [
                     [
-                      1,
+                      268435454,
                       {
                         "InnerLayer": {
                           "layer": 1,
@@ -3668,7 +5250,7 @@
                 {
                   "linear_terms": [
                     [
-                      1,
+                      268435454,
                       {
                         "InnerLayer": {
                           "layer": 1,
@@ -3682,7 +5264,7 @@
                 {
                   "linear_terms": [
                     [
-                      1,
+                      268435454,
                       {
                         "InnerLayer": {
                           "layer": 1,
@@ -3696,7 +5278,7 @@
                 {
                   "linear_terms": [
                     [
-                      1,
+                      268435454,
                       {
                         "InnerLayer": {
                           "layer": 1,
@@ -3710,7 +5292,7 @@
                 {
                   "linear_terms": [
                     [
-                      1,
+                      268435454,
                       {
                         "InnerLayer": {
                           "layer": 1,
@@ -3728,7 +5310,7 @@
                 {
                   "linear_terms": [
                     [
-                      1,
+                      268435454,
                       {
                         "InnerLayer": {
                           "layer": 1,
@@ -3757,7 +5339,7 @@
                 {
                   "linear_terms": [
                     [
-                      1,
+                      268435454,
                       {
                         "InnerLayer": {
                           "layer": 1,
@@ -3771,7 +5353,7 @@
                 {
                   "linear_terms": [
                     [
-                      1,
+                      268435454,
                       {
                         "InnerLayer": {
                           "layer": 1,
@@ -3785,7 +5367,7 @@
                 {
                   "linear_terms": [
                     [
-                      1,
+                      268435454,
                       {
                         "InnerLayer": {
                           "layer": 1,
@@ -3799,7 +5381,7 @@
                 {
                   "linear_terms": [
                     [
-                      1,
+                      268435454,
                       {
                         "InnerLayer": {
                           "layer": 1,
@@ -3813,7 +5395,7 @@
                 {
                   "linear_terms": [
                     [
-                      1,
+                      268435454,
                       {
                         "InnerLayer": {
                           "layer": 1,
@@ -3827,7 +5409,7 @@
                 {
                   "linear_terms": [
                     [
-                      1,
+                      268435454,
                       {
                         "InnerLayer": {
                           "layer": 1,
@@ -3841,7 +5423,7 @@
                 {
                   "linear_terms": [
                     [
-                      1,
+                      268435454,
                       {
                         "InnerLayer": {
                           "layer": 1,
@@ -3855,7 +5437,7 @@
                 {
                   "linear_terms": [
                     [
-                      1,
+                      268435454,
                       {
                         "InnerLayer": {
                           "layer": 1,
@@ -3873,7 +5455,7 @@
                 {
                   "linear_terms": [
                     [
-                      1,
+                      268435454,
                       {
                         "InnerLayer": {
                           "layer": 1,
@@ -5665,8 +7247,86 @@
   ],
   "structured_statements": [
     {
+      "AssertZero": {
+        "expr": {
+          "Product": [
+            {
+              "Sum": [
+                {
+                  "Var": 4
+                },
+                {
+                  "Constant": 1744830467
+                }
+              ]
+            },
+            {
+              "Var": 4
+            }
+          ]
+        },
+        "compiled_constraint": {
+          "terms": [
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  4,
+                  4,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 1744830467,
+                "inner": [
+                  4,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            }
+          ]
+        },
+        "prevent_optimizations": false
+      }
+    },
+    {
       "Define": {
         "dst": 52,
+        "compiled_constraint": {
+          "terms": [
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  9,
+                  12,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  11,
+                  25,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            }
+          ]
+        },
         "expr": {
           "Sum": [
             {
@@ -5690,12 +7350,41 @@
               ]
             }
           ]
-        }
+        },
+        "output_layer": 1
       }
     },
     {
       "Define": {
         "dst": 53,
+        "compiled_constraint": {
+          "terms": [
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  11,
+                  26,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  12,
+                  35,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            }
+          ]
+        },
         "expr": {
           "Sum": [
             {
@@ -5719,12 +7408,29 @@
               ]
             }
           ]
-        }
+        },
+        "output_layer": 1
       }
     },
     {
       "Define": {
         "dst": 54,
+        "compiled_constraint": {
+          "terms": [
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  11,
+                  35,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            }
+          ]
+        },
         "expr": {
           "Product": [
             {
@@ -5734,12 +7440,41 @@
               "Var": 11
             }
           ]
-        }
+        },
+        "output_layer": 1
       }
     },
     {
       "Define": {
         "dst": 55,
+        "compiled_constraint": {
+          "terms": [
+            {
+              "Expression": {
+                "coeff": 134217711,
+                "inner": [
+                  11,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 805306362,
+                "inner": [
+                  12,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            }
+          ]
+        },
         "expr": {
           "Sum": [
             {
@@ -5763,12 +7498,29 @@
               ]
             }
           ]
-        }
+        },
+        "output_layer": 1
       }
     },
     {
       "Define": {
         "dst": 56,
+        "compiled_constraint": {
+          "terms": [
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  12,
+                  19,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            }
+          ]
+        },
         "expr": {
           "Product": [
             {
@@ -5778,12 +7530,53 @@
               "Var": 12
             }
           ]
-        }
+        },
+        "output_layer": 1
       }
     },
     {
       "Define": {
         "dst": 57,
+        "compiled_constraint": {
+          "terms": [
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  8,
+                  12,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  11,
+                  19,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  12,
+                  25,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            }
+          ]
+        },
         "expr": {
           "Sum": [
             {
@@ -5814,12 +7607,53 @@
               ]
             }
           ]
-        }
+        },
+        "output_layer": 1
       }
     },
     {
       "Define": {
         "dst": 58,
+        "compiled_constraint": {
+          "terms": [
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  8,
+                  11,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  11,
+                  35,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  12,
+                  36,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            }
+          ]
+        },
         "expr": {
           "Sum": [
             {
@@ -5850,12 +7684,29 @@
               ]
             }
           ]
-        }
+        },
+        "output_layer": 1
       }
     },
     {
       "Define": {
         "dst": 59,
+        "compiled_constraint": {
+          "terms": [
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  10,
+                  11,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            }
+          ]
+        },
         "expr": {
           "Product": [
             {
@@ -5865,12 +7716,29 @@
               "Var": 11
             }
           ]
-        }
+        },
+        "output_layer": 1
       }
     },
     {
       "Define": {
         "dst": 60,
+        "compiled_constraint": {
+          "terms": [
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  11,
+                  36,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            }
+          ]
+        },
         "expr": {
           "Product": [
             {
@@ -5880,12 +7748,29 @@
               "Var": 11
             }
           ]
-        }
+        },
+        "output_layer": 1
       }
     },
     {
       "Define": {
         "dst": 61,
+        "compiled_constraint": {
+          "terms": [
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  11,
+                  37,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            }
+          ]
+        },
         "expr": {
           "Product": [
             {
@@ -5895,12 +7780,29 @@
               "Var": 11
             }
           ]
-        }
+        },
+        "output_layer": 1
       }
     },
     {
       "Define": {
         "dst": 62,
+        "compiled_constraint": {
+          "terms": [
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  11,
+                  38,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            }
+          ]
+        },
         "expr": {
           "Product": [
             {
@@ -5910,12 +7812,29 @@
               "Var": 11
             }
           ]
-        }
+        },
+        "output_layer": 1
       }
     },
     {
       "Define": {
         "dst": 63,
+        "compiled_constraint": {
+          "terms": [
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  11,
+                  39,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            }
+          ]
+        },
         "expr": {
           "Product": [
             {
@@ -5925,12 +7844,41 @@
               "Var": 11
             }
           ]
-        }
+        },
+        "output_layer": 1
       }
     },
     {
       "Define": {
         "dst": 64,
+        "compiled_constraint": {
+          "terms": [
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  10,
+                  12,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 402653165,
+                "inner": [
+                  11,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            }
+          ]
+        },
         "expr": {
           "Sum": [
             {
@@ -5954,12 +7902,41 @@
               ]
             }
           ]
-        }
+        },
+        "output_layer": 1
       }
     },
     {
       "Define": {
         "dst": 65,
+        "compiled_constraint": {
+          "terms": [
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  12,
+                  20,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  11,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            }
+          ]
+        },
         "expr": {
           "Sum": [
             {
@@ -5976,12 +7953,53 @@
               "Var": 11
             }
           ]
-        }
+        },
+        "output_layer": 1
       }
     },
     {
       "Define": {
         "dst": 66,
+        "compiled_constraint": {
+          "terms": [
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  9,
+                  12,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  11,
+                  20,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  12,
+                  26,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            }
+          ]
+        },
         "expr": {
           "Sum": [
             {
@@ -6012,12 +8030,53 @@
               ]
             }
           ]
-        }
+        },
+        "output_layer": 1
       }
     },
     {
       "Define": {
         "dst": 67,
+        "compiled_constraint": {
+          "terms": [
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  8,
+                  11,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  11,
+                  35,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  12,
+                  37,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            }
+          ]
+        },
         "expr": {
           "Sum": [
             {
@@ -6048,12 +8107,29 @@
               ]
             }
           ]
-        }
+        },
+        "output_layer": 1
       }
     },
     {
       "Define": {
         "dst": 68,
+        "compiled_constraint": {
+          "terms": [
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  10,
+                  11,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            }
+          ]
+        },
         "expr": {
           "Product": [
             {
@@ -6063,12 +8139,29 @@
               "Var": 11
             }
           ]
-        }
+        },
+        "output_layer": 1
       }
     },
     {
       "Define": {
         "dst": 69,
+        "compiled_constraint": {
+          "terms": [
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  11,
+                  40,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            }
+          ]
+        },
         "expr": {
           "Product": [
             {
@@ -6078,12 +8171,29 @@
               "Var": 11
             }
           ]
-        }
+        },
+        "output_layer": 1
       }
     },
     {
       "Define": {
         "dst": 70,
+        "compiled_constraint": {
+          "terms": [
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  11,
+                  41,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            }
+          ]
+        },
         "expr": {
           "Product": [
             {
@@ -6093,12 +8203,29 @@
               "Var": 11
             }
           ]
-        }
+        },
+        "output_layer": 1
       }
     },
     {
       "Define": {
         "dst": 71,
+        "compiled_constraint": {
+          "terms": [
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  11,
+                  42,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            }
+          ]
+        },
         "expr": {
           "Product": [
             {
@@ -6108,12 +8235,29 @@
               "Var": 11
             }
           ]
-        }
+        },
+        "output_layer": 1
       }
     },
     {
       "Define": {
         "dst": 72,
+        "compiled_constraint": {
+          "terms": [
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  11,
+                  43,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            }
+          ]
+        },
         "expr": {
           "Product": [
             {
@@ -6123,12 +8267,41 @@
               "Var": 11
             }
           ]
-        }
+        },
+        "output_layer": 1
       }
     },
     {
       "Define": {
         "dst": 73,
+        "compiled_constraint": {
+          "terms": [
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  10,
+                  12,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 402653165,
+                "inner": [
+                  11,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            }
+          ]
+        },
         "expr": {
           "Sum": [
             {
@@ -6152,12 +8325,41 @@
               ]
             }
           ]
-        }
+        },
+        "output_layer": 1
       }
     },
     {
       "Define": {
         "dst": 74,
+        "compiled_constraint": {
+          "terms": [
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  12,
+                  21,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 536870908,
+                "inner": [
+                  11,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            }
+          ]
+        },
         "expr": {
           "Sum": [
             {
@@ -6181,12 +8383,53 @@
               ]
             }
           ]
-        }
+        },
+        "output_layer": 1
       }
     },
     {
       "Define": {
         "dst": 75,
+        "compiled_constraint": {
+          "terms": [
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  11,
+                  21,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  12,
+                  27,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  12,
+                  35,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            }
+          ]
+        },
         "expr": {
           "Sum": [
             {
@@ -6217,12 +8460,53 @@
               ]
             }
           ]
-        }
+        },
+        "output_layer": 1
       }
     },
     {
       "Define": {
         "dst": 76,
+        "compiled_constraint": {
+          "terms": [
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  8,
+                  11,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  11,
+                  35,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  12,
+                  38,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            }
+          ]
+        },
         "expr": {
           "Sum": [
             {
@@ -6253,12 +8537,29 @@
               ]
             }
           ]
-        }
+        },
+        "output_layer": 1
       }
     },
     {
       "Define": {
         "dst": 77,
+        "compiled_constraint": {
+          "terms": [
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  10,
+                  11,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            }
+          ]
+        },
         "expr": {
           "Product": [
             {
@@ -6268,12 +8569,29 @@
               "Var": 11
             }
           ]
-        }
+        },
+        "output_layer": 1
       }
     },
     {
       "Define": {
         "dst": 78,
+        "compiled_constraint": {
+          "terms": [
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  11,
+                  44,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            }
+          ]
+        },
         "expr": {
           "Product": [
             {
@@ -6283,12 +8601,29 @@
               "Var": 11
             }
           ]
-        }
+        },
+        "output_layer": 1
       }
     },
     {
       "Define": {
         "dst": 79,
+        "compiled_constraint": {
+          "terms": [
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  11,
+                  45,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            }
+          ]
+        },
         "expr": {
           "Product": [
             {
@@ -6298,12 +8633,29 @@
               "Var": 11
             }
           ]
-        }
+        },
+        "output_layer": 1
       }
     },
     {
       "Define": {
         "dst": 80,
+        "compiled_constraint": {
+          "terms": [
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  11,
+                  46,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            }
+          ]
+        },
         "expr": {
           "Product": [
             {
@@ -6313,12 +8665,29 @@
               "Var": 11
             }
           ]
-        }
+        },
+        "output_layer": 1
       }
     },
     {
       "Define": {
         "dst": 81,
+        "compiled_constraint": {
+          "terms": [
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  11,
+                  47,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            }
+          ]
+        },
         "expr": {
           "Product": [
             {
@@ -6328,12 +8697,41 @@
               "Var": 11
             }
           ]
-        }
+        },
+        "output_layer": 1
       }
     },
     {
       "Define": {
         "dst": 82,
+        "compiled_constraint": {
+          "terms": [
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  10,
+                  12,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 402653165,
+                "inner": [
+                  11,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            }
+          ]
+        },
         "expr": {
           "Sum": [
             {
@@ -6357,12 +8755,41 @@
               ]
             }
           ]
-        }
+        },
+        "output_layer": 1
       }
     },
     {
       "Define": {
         "dst": 83,
+        "compiled_constraint": {
+          "terms": [
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  12,
+                  22,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 805306362,
+                "inner": [
+                  11,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            }
+          ]
+        },
         "expr": {
           "Sum": [
             {
@@ -6386,12 +8813,53 @@
               ]
             }
           ]
-        }
+        },
+        "output_layer": 1
       }
     },
     {
       "Define": {
         "dst": 84,
+        "compiled_constraint": {
+          "terms": [
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  11,
+                  22,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  12,
+                  28,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  12,
+                  35,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            }
+          ]
+        },
         "expr": {
           "Sum": [
             {
@@ -6422,12 +8890,53 @@
               ]
             }
           ]
-        }
+        },
+        "output_layer": 1
       }
     },
     {
       "Define": {
         "dst": 85,
+        "compiled_constraint": {
+          "terms": [
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  8,
+                  11,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  11,
+                  35,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  12,
+                  39,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            }
+          ]
+        },
         "expr": {
           "Sum": [
             {
@@ -6458,12 +8967,29 @@
               ]
             }
           ]
-        }
+        },
+        "output_layer": 1
       }
     },
     {
       "Define": {
         "dst": 86,
+        "compiled_constraint": {
+          "terms": [
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  10,
+                  11,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            }
+          ]
+        },
         "expr": {
           "Product": [
             {
@@ -6473,12 +8999,29 @@
               "Var": 11
             }
           ]
-        }
+        },
+        "output_layer": 1
       }
     },
     {
       "Define": {
         "dst": 87,
+        "compiled_constraint": {
+          "terms": [
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  11,
+                  48,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            }
+          ]
+        },
         "expr": {
           "Product": [
             {
@@ -6488,12 +9031,29 @@
               "Var": 11
             }
           ]
-        }
+        },
+        "output_layer": 1
       }
     },
     {
       "Define": {
         "dst": 88,
+        "compiled_constraint": {
+          "terms": [
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  11,
+                  49,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            }
+          ]
+        },
         "expr": {
           "Product": [
             {
@@ -6503,12 +9063,29 @@
               "Var": 11
             }
           ]
-        }
+        },
+        "output_layer": 1
       }
     },
     {
       "Define": {
         "dst": 89,
+        "compiled_constraint": {
+          "terms": [
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  11,
+                  50,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            }
+          ]
+        },
         "expr": {
           "Product": [
             {
@@ -6518,12 +9095,29 @@
               "Var": 11
             }
           ]
-        }
+        },
+        "output_layer": 1
       }
     },
     {
       "Define": {
         "dst": 90,
+        "compiled_constraint": {
+          "terms": [
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  11,
+                  51,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            }
+          ]
+        },
         "expr": {
           "Product": [
             {
@@ -6533,12 +9127,41 @@
               "Var": 11
             }
           ]
-        }
+        },
+        "output_layer": 1
       }
     },
     {
       "Define": {
         "dst": 91,
+        "compiled_constraint": {
+          "terms": [
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  10,
+                  12,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 402653165,
+                "inner": [
+                  11,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            }
+          ]
+        },
         "expr": {
           "Sum": [
             {
@@ -6562,7 +9185,8 @@
               ]
             }
           ]
-        }
+        },
+        "output_layer": 1
       }
     },
     {
@@ -6665,6 +9289,142 @@
                   "Var": 31
                 }
               ]
+            }
+          ]
+        },
+        "compiled_constraint": {
+          "terms": [
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  11,
+                  36,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 268434910,
+                "inner": [
+                  11,
+                  37,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  11,
+                  40,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 268434910,
+                "inner": [
+                  11,
+                  41,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  11,
+                  44,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 268434910,
+                "inner": [
+                  11,
+                  45,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  11,
+                  48,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 268434910,
+                "inner": [
+                  11,
+                  49,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  12,
+                  36,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 268434910,
+                "inner": [
+                  12,
+                  37,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 1744830467,
+                "inner": [
+                  31,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
             }
           ]
         },
@@ -6774,6 +9534,142 @@
             }
           ]
         },
+        "compiled_constraint": {
+          "terms": [
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  11,
+                  38,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 268434910,
+                "inner": [
+                  11,
+                  39,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  11,
+                  42,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 268434910,
+                "inner": [
+                  11,
+                  43,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  11,
+                  46,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 268434910,
+                "inner": [
+                  11,
+                  47,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  11,
+                  50,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 268434910,
+                "inner": [
+                  11,
+                  51,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  12,
+                  38,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 268434910,
+                "inner": [
+                  12,
+                  39,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 1744830467,
+                "inner": [
+                  32,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            }
+          ]
+        },
         "prevent_optimizations": false
       }
     },
@@ -6840,6 +9736,73 @@
             }
           ]
         },
+        "compiled_constraint": {
+          "terms": [
+            {
+              "Expression": {
+                "coeff": 1,
+                "inner": [
+                  0,
+                  0,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 2013265919,
+                "inner": [
+                  0,
+                  13,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 1,
+                "inner": [
+                  13,
+                  13,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 2013200393,
+                "inner": [
+                  0,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 65528,
+                "inner": [
+                  13,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            },
+            {
+              "Constant": 2013003793
+            }
+          ]
+        },
         "prevent_optimizations": false
       }
     },
@@ -6889,6 +9852,565 @@
             }
           ]
         },
+        "compiled_constraint": {
+          "terms": [
+            {
+              "Expression": {
+                "coeff": 65536,
+                "inner": [
+                  0,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  1,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 2013200385,
+                "inner": [
+                  13,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 1744830467,
+                "inner": [
+                  14,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            },
+            {
+              "Constant": 262144
+            }
+          ]
+        },
+        "prevent_optimizations": true
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Sum": [
+            {
+              "Product": [
+                {
+                  "Constant": 1981808641
+                },
+                {
+                  "Sum": [
+                    {
+                      "Var": 2
+                    },
+                    {
+                      "Constant": 1073741816
+                    },
+                    {
+                      "Product": [
+                        {
+                          "Constant": 1744830467
+                        },
+                        {
+                          "Var": 15
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "Sum": [
+                    {
+                      "Var": 2
+                    },
+                    {
+                      "Constant": 1073741816
+                    },
+                    {
+                      "Product": [
+                        {
+                          "Constant": 1744830467
+                        },
+                        {
+                          "Var": 15
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 2013257729
+                },
+                {
+                  "Sum": [
+                    {
+                      "Var": 2
+                    },
+                    {
+                      "Constant": 1073741816
+                    },
+                    {
+                      "Product": [
+                        {
+                          "Constant": 1744830467
+                        },
+                        {
+                          "Var": 15
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "compiled_constraint": {
+          "terms": [
+            {
+              "Expression": {
+                "coeff": 1981808641,
+                "inner": [
+                  2,
+                  2,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 62914560,
+                "inner": [
+                  2,
+                  15,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 1981808641,
+                "inner": [
+                  15,
+                  15,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 1761599489,
+                "inner": [
+                  2,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 251666432,
+                "inner": [
+                  15,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            },
+            {
+              "Constant": 1509916673
+            }
+          ]
+        },
+        "prevent_optimizations": true
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Sum": [
+            {
+              "Var": 16
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 1744830467
+                },
+                {
+                  "Var": 3
+                }
+              ]
+            },
+            {
+              "Product": [
+                {
+                  "Constant": 2013257729
+                },
+                {
+                  "Sum": [
+                    {
+                      "Var": 2
+                    },
+                    {
+                      "Constant": 1073741816
+                    },
+                    {
+                      "Product": [
+                        {
+                          "Constant": 1744830467
+                        },
+                        {
+                          "Var": 15
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "compiled_constraint": {
+          "terms": [
+            {
+              "Expression": {
+                "coeff": 2013257729,
+                "inner": [
+                  2,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 1744830467,
+                "inner": [
+                  3,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 8192,
+                "inner": [
+                  15,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  16,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            },
+            {
+              "Constant": 2013233153
+            }
+          ]
+        },
+        "prevent_optimizations": true
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Product": [
+            {
+              "Var": 11
+            },
+            {
+              "Sum": [
+                {
+                  "Var": 11
+                },
+                {
+                  "Constant": 1744830467
+                }
+              ]
+            }
+          ]
+        },
+        "compiled_constraint": {
+          "terms": [
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  11,
+                  11,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 1744830467,
+                "inner": [
+                  11,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            }
+          ]
+        },
+        "prevent_optimizations": true
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Product": [
+            {
+              "Var": 12
+            },
+            {
+              "Sum": [
+                {
+                  "Var": 12
+                },
+                {
+                  "Constant": 1744830467
+                }
+              ]
+            }
+          ]
+        },
+        "compiled_constraint": {
+          "terms": [
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  12,
+                  12,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 1744830467,
+                "inner": [
+                  12,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            }
+          ]
+        },
+        "prevent_optimizations": true
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Product": [
+            {
+              "Var": 92
+            },
+            {
+              "Sum": [
+                {
+                  "Var": 92
+                },
+                {
+                  "Constant": 1744830467
+                }
+              ]
+            }
+          ]
+        },
+        "compiled_constraint": {
+          "terms": [
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  92,
+                  92,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 1744830467,
+                "inner": [
+                  92,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            }
+          ]
+        },
+        "prevent_optimizations": true
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Product": [
+            {
+              "Var": 93
+            },
+            {
+              "Sum": [
+                {
+                  "Var": 93
+                },
+                {
+                  "Constant": 1744830467
+                }
+              ]
+            }
+          ]
+        },
+        "compiled_constraint": {
+          "terms": [
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  93,
+                  93,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 1744830467,
+                "inner": [
+                  93,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            }
+          ]
+        },
+        "prevent_optimizations": true
+      }
+    },
+    {
+      "AssertZero": {
+        "expr": {
+          "Product": [
+            {
+              "Var": 94
+            },
+            {
+              "Sum": [
+                {
+                  "Var": 94
+                },
+                {
+                  "Constant": 1744830467
+                }
+              ]
+            }
+          ]
+        },
+        "compiled_constraint": {
+          "terms": [
+            {
+              "Expression": {
+                "coeff": 268435454,
+                "inner": [
+                  94,
+                  94,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 2
+              }
+            },
+            {
+              "Expression": {
+                "coeff": 1744830467,
+                "inner": [
+                  94,
+                  18446744073709551615,
+                  18446744073709551615,
+                  18446744073709551615
+                ],
+                "degree": 1
+              }
+            }
+          ]
+        },
         "prevent_optimizations": true
       }
     }
@@ -6899,7 +10421,7 @@
         {
           "linear_terms": [
             [
-              1,
+              268435454,
               {
                 "ScratchSpace": 0
               }
@@ -6910,7 +10432,7 @@
         {
           "linear_terms": [
             [
-              1,
+              268435454,
               {
                 "ScratchSpace": 1
               }
@@ -6921,7 +10443,7 @@
         {
           "linear_terms": [
             [
-              1,
+              268435454,
               {
                 "ScratchSpace": 2
               }
@@ -6956,7 +10478,7 @@
         {
           "linear_terms": [
             [
-              1,
+              268435454,
               {
                 "ScratchSpace": 3
               }
@@ -6972,7 +10494,7 @@
         {
           "linear_terms": [
             [
-              1,
+              268435454,
               {
                 "ScratchSpace": 4
               }
@@ -6983,7 +10505,7 @@
         {
           "linear_terms": [
             [
-              1,
+              268435454,
               {
                 "ScratchSpace": 5
               }
@@ -6994,7 +10516,7 @@
         {
           "linear_terms": [
             [
-              1,
+              268435454,
               {
                 "ScratchSpace": 6
               }
@@ -7005,7 +10527,7 @@
         {
           "linear_terms": [
             [
-              1,
+              268435454,
               {
                 "ScratchSpace": 7
               }
@@ -7016,7 +10538,7 @@
         {
           "linear_terms": [
             [
-              1,
+              268435454,
               {
                 "ScratchSpace": 8
               }
@@ -7027,7 +10549,7 @@
         {
           "linear_terms": [
             [
-              1,
+              268435454,
               {
                 "ScratchSpace": 9
               }
@@ -7038,7 +10560,7 @@
         {
           "linear_terms": [
             [
-              1,
+              268435454,
               {
                 "ScratchSpace": 10
               }
@@ -7049,7 +10571,7 @@
         {
           "linear_terms": [
             [
-              1,
+              268435454,
               {
                 "ScratchSpace": 11
               }
@@ -7064,7 +10586,7 @@
         {
           "linear_terms": [
             [
-              1,
+              268435454,
               {
                 "ScratchSpace": 12
               }
@@ -7080,7 +10602,7 @@
         {
           "linear_terms": [
             [
-              1,
+              268435454,
               {
                 "ScratchSpace": 13
               }
@@ -7091,7 +10613,7 @@
         {
           "linear_terms": [
             [
-              1,
+              268435454,
               {
                 "ScratchSpace": 14
               }
@@ -7102,7 +10624,7 @@
         {
           "linear_terms": [
             [
-              1,
+              268435454,
               {
                 "ScratchSpace": 15
               }
@@ -7113,7 +10635,7 @@
         {
           "linear_terms": [
             [
-              1,
+              268435454,
               {
                 "ScratchSpace": 16
               }
@@ -7124,7 +10646,7 @@
         {
           "linear_terms": [
             [
-              1,
+              268435454,
               {
                 "ScratchSpace": 17
               }
@@ -7135,7 +10657,7 @@
         {
           "linear_terms": [
             [
-              1,
+              268435454,
               {
                 "ScratchSpace": 18
               }
@@ -7146,7 +10668,7 @@
         {
           "linear_terms": [
             [
-              1,
+              268435454,
               {
                 "ScratchSpace": 19
               }
@@ -7157,7 +10679,7 @@
         {
           "linear_terms": [
             [
-              1,
+              268435454,
               {
                 "ScratchSpace": 20
               }
@@ -7172,7 +10694,7 @@
         {
           "linear_terms": [
             [
-              1,
+              268435454,
               {
                 "ScratchSpace": 21
               }
@@ -7188,7 +10710,7 @@
         {
           "linear_terms": [
             [
-              1,
+              268435454,
               {
                 "ScratchSpace": 22
               }
@@ -7199,7 +10721,7 @@
         {
           "linear_terms": [
             [
-              1,
+              268435454,
               {
                 "ScratchSpace": 23
               }
@@ -7210,7 +10732,7 @@
         {
           "linear_terms": [
             [
-              1,
+              268435454,
               {
                 "ScratchSpace": 24
               }
@@ -7221,7 +10743,7 @@
         {
           "linear_terms": [
             [
-              1,
+              268435454,
               {
                 "ScratchSpace": 25
               }
@@ -7232,7 +10754,7 @@
         {
           "linear_terms": [
             [
-              1,
+              268435454,
               {
                 "ScratchSpace": 26
               }
@@ -7243,7 +10765,7 @@
         {
           "linear_terms": [
             [
-              1,
+              268435454,
               {
                 "ScratchSpace": 27
               }
@@ -7254,7 +10776,7 @@
         {
           "linear_terms": [
             [
-              1,
+              268435454,
               {
                 "ScratchSpace": 28
               }
@@ -7265,7 +10787,7 @@
         {
           "linear_terms": [
             [
-              1,
+              268435454,
               {
                 "ScratchSpace": 29
               }
@@ -7280,7 +10802,7 @@
         {
           "linear_terms": [
             [
-              1,
+              268435454,
               {
                 "ScratchSpace": 30
               }
@@ -7296,7 +10818,7 @@
         {
           "linear_terms": [
             [
-              1,
+              268435454,
               {
                 "ScratchSpace": 31
               }
@@ -7307,7 +10829,7 @@
         {
           "linear_terms": [
             [
-              1,
+              268435454,
               {
                 "ScratchSpace": 32
               }
@@ -7318,7 +10840,7 @@
         {
           "linear_terms": [
             [
-              1,
+              268435454,
               {
                 "ScratchSpace": 33
               }
@@ -7329,7 +10851,7 @@
         {
           "linear_terms": [
             [
-              1,
+              268435454,
               {
                 "ScratchSpace": 34
               }
@@ -7340,7 +10862,7 @@
         {
           "linear_terms": [
             [
-              1,
+              268435454,
               {
                 "ScratchSpace": 35
               }
@@ -7351,7 +10873,7 @@
         {
           "linear_terms": [
             [
-              1,
+              268435454,
               {
                 "ScratchSpace": 36
               }
@@ -7362,7 +10884,7 @@
         {
           "linear_terms": [
             [
-              1,
+              268435454,
               {
                 "ScratchSpace": 37
               }
@@ -7373,7 +10895,7 @@
         {
           "linear_terms": [
             [
-              1,
+              268435454,
               {
                 "ScratchSpace": 38
               }
@@ -7388,7 +10910,7 @@
         {
           "linear_terms": [
             [
-              1,
+              268435454,
               {
                 "ScratchSpace": 39
               }
@@ -7405,7 +10927,7 @@
       "input": {
         "linear_terms": [
           [
-            1,
+            268435454,
             {
               "BaseLayerMemory": 26
             }
@@ -7419,7 +10941,7 @@
       "input": {
         "linear_terms": [
           [
-            1,
+            268435454,
             {
               "BaseLayerMemory": 27
             }
@@ -7435,7 +10957,7 @@
       "input": {
         "linear_terms": [
           [
-            1,
+            268435454,
             {
               "BaseLayerMemory": 28
             }
@@ -7449,7 +10971,7 @@
       "input": {
         "linear_terms": [
           [
-            1,
+            268435454,
             {
               "BaseLayerMemory": 29
             }
@@ -7463,19 +10985,19 @@
       "input": {
         "linear_terms": [
           [
-            2013265920,
+            1744830467,
             {
               "BaseLayerMemory": 24
             }
           ],
           [
-            1,
+            268435454,
             {
               "BaseLayerMemory": 0
             }
           ],
           [
-            524288,
+            133099247,
             {
               "BaseLayerWitness": 22
             }
@@ -7489,25 +11011,25 @@
       "input": {
         "linear_terms": [
           [
-            2013265920,
+            1744830467,
             {
               "BaseLayerMemory": 25
             }
           ],
           [
-            1,
+            268435454,
             {
               "BaseLayerMemory": 1
             }
           ],
           [
-            2013265920,
+            1744830467,
             {
               "BaseLayerWitness": 22
             }
           ]
         ],
-        "constant": 524288
+        "constant": 133099247
       },
       "lookup_set_index": 3
     },
@@ -7515,25 +11037,25 @@
       "input": {
         "linear_terms": [
           [
-            2013265920,
+            1744830467,
             {
               "BaseLayerMemory": 24
             }
           ],
           [
-            1,
+            268435454,
             {
               "BaseLayerMemory": 7
             }
           ],
           [
-            524288,
+            133099247,
             {
               "BaseLayerWitness": 23
             }
           ]
         ],
-        "constant": 2013265920
+        "constant": 1744830467
       },
       "lookup_set_index": 4
     },
@@ -7541,25 +11063,25 @@
       "input": {
         "linear_terms": [
           [
-            2013265920,
+            1744830467,
             {
               "BaseLayerMemory": 25
             }
           ],
           [
-            1,
+            268435454,
             {
               "BaseLayerMemory": 8
             }
           ],
           [
-            2013265920,
+            1744830467,
             {
               "BaseLayerWitness": 23
             }
           ]
         ],
-        "constant": 524288
+        "constant": 133099247
       },
       "lookup_set_index": 5
     },
@@ -7567,25 +11089,25 @@
       "input": {
         "linear_terms": [
           [
-            2013265920,
+            1744830467,
             {
               "BaseLayerMemory": 24
             }
           ],
           [
-            1,
+            268435454,
             {
               "BaseLayerMemory": 14
             }
           ],
           [
-            524288,
+            133099247,
             {
               "BaseLayerWitness": 24
             }
           ]
         ],
-        "constant": 2013265919
+        "constant": 1476395013
       },
       "lookup_set_index": 6
     },
@@ -7593,25 +11115,25 @@
       "input": {
         "linear_terms": [
           [
-            2013265920,
+            1744830467,
             {
               "BaseLayerMemory": 25
             }
           ],
           [
-            1,
+            268435454,
             {
               "BaseLayerMemory": 15
             }
           ],
           [
-            2013265920,
+            1744830467,
             {
               "BaseLayerWitness": 24
             }
           ]
         ],
-        "constant": 524288
+        "constant": 133099247
       },
       "lookup_set_index": 7
     }

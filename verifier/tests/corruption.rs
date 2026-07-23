@@ -430,7 +430,7 @@ fn rejects_corrupted_it_evals_unified_reduced_machine_sec_80() {
 }
 
 macro_rules! generate_corruption_tests {
-    ($($name:ident; $trace_len_log_2:expr; $layout_suffix:expr),* $(,)?) => {
+    ($($name:ident; $layout_suffix:expr),* $(,)?) => {
         $(
             paste::paste! {
                 #[test]
@@ -521,7 +521,7 @@ verifier_common::gkr_circuits!(generate_corruption_tests);
 // exercise Sec100. At Sec100 (non-zero PoW bits) these hit `verify_pow`'s threshold-rejection
 // branch directly; at Sec80 (0 bits) they verify the nonce is transcript-bound (downstream reject).
 macro_rules! generate_pow_nonce_corruption_tests {
-    ($($name:ident; $trace_len_log_2:expr; $layout_suffix:expr),* $(,)?) => {
+    ($($name:ident; $layout_suffix:expr),* $(,)?) => {
         $(
             paste::paste! {
                 #[cfg(feature = "security_80")]

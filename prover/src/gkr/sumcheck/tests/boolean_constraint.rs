@@ -25,7 +25,7 @@ fn test_boolean_constraints() {
     let worker = Worker::new_with_num_threads(1);
 
     let a: Vec<F> = (0..POLY_SIZE)
-        .map(|el| F::from_u64_with_reduction(((el % 2) == 1) as u64))
+        .map(|el| F::from_u32_with_reduction(((el % 2) == 1) as u32))
         .collect();
 
     let a: Vec<F> = (0..POLY_SIZE)
@@ -51,21 +51,21 @@ fn test_boolean_constraints() {
                 GKRAddress::BaseLayerMemory(0),
                 GKRAddress::BaseLayerMemory(0),
             ),
-            vec![(F::ONE.to_reduced_u32(), 0)].into_boxed_slice(),
+            vec![(F::ONE, 0)].into_boxed_slice(),
         )]
         .into_boxed_slice(),
         linear_terms: vec![(
             GKRAddress::BaseLayerMemory(0),
-            vec![(F::MINUS_ONE.to_reduced_u32(), 0)].into_boxed_slice(),
+            vec![(F::MINUS_ONE, 0)].into_boxed_slice(),
         )]
         .into_boxed_slice(),
-        constants: vec![(F::ZERO.to_reduced_u32(), 0)].into_boxed_slice(),
+        constants: vec![(F::ZERO, 0)].into_boxed_slice(),
     };
 
     let kernel = BatchConstraintEvalGKRRelation::new(&constraint, E::ONE);
 
     let previous_round_challenges: Vec<E> = (0..FOLDING_STEPS)
-        .map(|el| E::from_base(F::from_u64_with_reduction(1u64 << (el + 1))))
+        .map(|el| E::from_base(F::from_u32_with_reduction(1u32 << (el + 1))))
         .collect();
     // dbg!(&previous_round_challenges);
 
@@ -141,7 +141,7 @@ fn test_boolean_constraints() {
                 assert_eq!(v, claim);
             }
 
-            let folding_challenge = E::from_base(F::from_u64_with_reduction(2 * (step as u64) + 1));
+            let folding_challenge = E::from_base(F::from_u32_with_reduction(2 * (step as u32) + 1));
             folding_challenges.push(folding_challenge);
             let next_claim = evaluate_small_univariate_poly::<F, E, 4>(&coeffs, &folding_challenge);
 
@@ -200,7 +200,7 @@ fn test_boolean_constraints() {
             let mut claim_inner = t0;
             claim_inner.add_assign(&t1);
 
-            let folding_challenge = E::from_base(F::from_u64_with_reduction(2 * (step as u64) + 1));
+            let folding_challenge = E::from_base(F::from_u32_with_reduction(2 * (step as u32) + 1));
             folding_challenges.push(folding_challenge);
             // derive new claims
 

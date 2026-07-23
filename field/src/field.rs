@@ -97,19 +97,35 @@ pub trait PrimeField: Field {
     const MONT_K: u32;
 
     const CHAR_BITS: usize;
-    const CHARACTERISTICS: u32;
+    const CHARACTERISTICS_U32: u32;
+    const CHARACTERISTICS_U128: u128;
 
     // Potentially unnormalized, but "natural" representation
     fn as_u32(self) -> u32;
     // < CHAR, but "natural" representation
     fn as_u32_reduced(self) -> u32;
+    // any representation, without reduction guarantees. To be used for roundtrips
+    // over newly constructed elements
+    fn as_u32_raw_repr(self) -> u32;
     // any representation, that can be used with the corresponding constructor
     fn as_u32_raw_repr_reduced(self) -> u32;
 
+    fn as_u128_reduced(self) -> u128 {
+        if Self::CHAR_BITS < 32 {
+            self.as_u32_reduced() as u128
+        } else {
+            unimplemented!("implement manually")
+        }
+    }
+
     fn from_u32_unchecked(value: u32) -> Self;
     fn from_u32_with_reduction(value: u32) -> Self;
-    fn from_u64_with_reduction(value: u64) -> Self {
-        Self::from_u32_unchecked((value % (Self::CHARACTERISTICS as u64)) as u32)
+    fn from_u128_with_reduction(value: u128) -> Self {
+        if Self::CHAR_BITS < 32 {
+            Self::from_u32_unchecked((value % Self::CHARACTERISTICS_U128) as u32)
+        } else {
+            unimplemented!("implement manually")
+        }
     }
     fn from_u32(value: u32) -> Option<Self>;
     fn from_reduced_raw_repr(value: u32) -> Self;
@@ -117,6 +133,7 @@ pub trait PrimeField: Field {
 
     fn as_boolean(&self) -> bool;
 
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn from_boolean(flag: bool) -> Self {
         if flag {
             Self::ONE
@@ -124,14 +141,13 @@ pub trait PrimeField: Field {
             Self::ZERO
         }
     }
-
-    fn increment_unchecked(&'_ mut self);
 }
 
 // this field can be used as base field for quadratic extension
 pub trait BaseField<const N: usize>: Field {
     const NON_RESIDUE: Self;
 
+    #[inline(always)]
     fn mul_by_non_residue(elem: &mut Self) {
         elem.mul_assign(&Self::NON_RESIDUE);
     }
@@ -302,9 +318,6 @@ pub trait TwoAdicField: Field {
     #[must_use]
     fn two_adic_generator() -> Self;
 
-    #[must_use]
-    fn two_adic_group_order() -> usize;
-
     const TWO_ADICITY_GENERATORS: &[Self];
 
     const TWO_ADICITY_GENERATORS_INVERSED: &[Self];
@@ -312,6 +325,6 @@ pub trait TwoAdicField: Field {
 
 impl<F: PrimeField> Rand for F {
     fn random_element<R: Rng + ?Sized>(rng: &mut R) -> F {
-        F::from_u32_unchecked(rng.random_range(0..F::CHARACTERISTICS))
+        F::from_u32_unchecked(rng.random_range(0..F::CHARACTERISTICS_U32))
     }
 }

@@ -6,13 +6,13 @@ use cs::definitions::{gkr::NoFieldVectorLookupRelation, GKRAddress};
 pub struct MaterializeVectorLookupInputGKRRelation<F: PrimeField, E: FieldExtension<F> + Field> {
     pub kernel: MaterializeVectorLookupInputGKRRelationKernel<F, E>,
     pub inputs: Vec<GKRAddress>,
-    pub relation: NoFieldVectorLookupRelation,
+    pub relation: NoFieldVectorLookupRelation<F>,
     pub output: GKRAddress,
 }
 
 impl<F: PrimeField, E: FieldExtension<F> + Field> MaterializeVectorLookupInputGKRRelation<F, E> {
     pub fn new(
-        input: &NoFieldVectorLookupRelation,
+        input: &NoFieldVectorLookupRelation<F>,
         output: GKRAddress,
         lookup_multiplicative_challenge: E,
     ) -> Self {
@@ -33,7 +33,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> MaterializeVectorLookupInputGK
                     assert_eq!(a_offset, kernel.linear_parts.len());
                     inputs.push(*a);
                     let mut t = challenge_power;
-                    t.mul_assign_by_base(&F::from_u32_with_reduction(*c as u32));
+                    t.mul_assign_by_base(&*c);
 
                     kernel.linear_parts.push(t);
                 } else {
@@ -43,7 +43,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> MaterializeVectorLookupInputGK
             }
             // constant part
             let mut t = challenge_power;
-            t.mul_assign_by_base(&F::from_u32_with_reduction(column.constant));
+            t.mul_assign_by_base(&column.constant);
             kernel.constant_offset.add_assign(&t);
 
             challenge_power.mul_assign(&lookup_multiplicative_challenge);

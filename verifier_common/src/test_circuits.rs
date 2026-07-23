@@ -13,11 +13,10 @@ use crate::gkr::flatten::flatten_gkr_proof_for_nds;
 const REPO_ROOT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/..");
 
 macro_rules! make_circuits {
-    ($($name:ident; $trace_len_log_2:expr; $layout_suffix:expr),* $(,)?) => {
+    ($($name:ident; $layout_suffix:expr),* $(,)?) => {
         vec![$(CircuitData {
             name: stringify!($name),
             layout_suffix: $layout_suffix,
-            trace_len_log_2: $trace_len_log_2,
             security_levels: [SecurityLevel::Sec80, SecurityLevel::Sec100],
             prover_configs_cache: [OnceLock::new(), OnceLock::new()],
             nds_cache: [OnceLock::new(), OnceLock::new()],
@@ -34,7 +33,6 @@ const NUM_SECURITY_LEVELS: usize = 2;
 pub struct CircuitData {
     pub name: &'static str,
     pub layout_suffix: &'static str,
-    pub trace_len_log_2: usize,
     security_levels: [SecurityLevel; NUM_SECURITY_LEVELS],
     prover_configs_cache: [OnceLock<ProverConfig>; NUM_SECURITY_LEVELS],
     nds_cache: [OnceLock<(Vec<u32>, GKRExternalChallenges<BabyBearField, BabyBearExt4>)>;
@@ -44,12 +42,12 @@ pub struct CircuitData {
 impl CircuitData {
     pub fn prover_config_for(&self, level: SecurityLevel) -> &ProverConfig {
         let idx = level as usize;
-        self.prover_configs_cache[idx].get_or_init(|| prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(self.trace_len_log_2, level))
+        self.prover_configs_cache[idx].get_or_init(|| prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(self.compiled_circuit().trace_len.trailing_zeros() as usize, level))
     }
 
     pub fn whir_schedule_for(&self, level: SecurityLevel) -> &WhirSchedule {
         let idx = level as usize;
-        &self.prover_configs_cache[idx].get_or_init(|| prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(self.trace_len_log_2, level)).whir_schedule
+        &self.prover_configs_cache[idx].get_or_init(|| prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(self.compiled_circuit().trace_len.trailing_zeros() as usize, level)).whir_schedule
     }
 
     pub fn proof_path_for(&self, level: SecurityLevel) -> String {

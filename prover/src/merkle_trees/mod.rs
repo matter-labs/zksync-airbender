@@ -7,6 +7,8 @@ use worker::Worker;
 
 pub mod blake2s_for_everything_tree;
 pub mod blake2s_hash_leafs;
+pub mod keccak256_for_everything_tree;
+pub mod keccak256_hash_leafs;
 
 pub type DefaultTreeConstructor =
     crate::merkle_trees::blake2s_for_everything_tree::Blake2sU32MerkleTreeWithCap<
@@ -43,17 +45,6 @@ pub trait ColumnMajorMerkleTreeConstructor<F: PrimeField>:
 
     fn dummy() -> Self;
 
-    // fn construct_for_column_major_coset<E: FieldExtension<F>, A: GoodAllocator>(
-    //     trace: &[&[E]],
-    //     combine_by: usize,
-    //     cap_size: usize,
-    //     bitreverse_input: bool,
-    //     bitreverse_output: bool,
-    //     worker: &Worker,
-    // ) -> Self
-    // where
-    //     [(); E::DEGREE]: Sized;
-
     fn construct_from_cosets<E: FieldExtension<F>, A: GoodAllocator>(
         trace: &[&[&[E]]], // slice of cosets, each coset - is a slice of column evaluations
         combine_by: usize,
@@ -68,15 +59,6 @@ pub trait ColumnMajorMerkleTreeConstructor<F: PrimeField>:
 
     fn get_cap(&self) -> MerkleTreeCapVarLength;
 
-    // fn dump_caps(caps: &[Self]) -> Vec<MerkleTreeCapVarLength> {
-    //     let mut result = Vec::with_capacity(caps.len());
-    //     for el in caps.iter() {
-    //         result.push(el.get_cap());
-    //     }
-
-    //     result
-    // }
-
     fn get_proof<C: GoodAllocator>(
         &self,
         idx: usize,
@@ -84,4 +66,13 @@ pub trait ColumnMajorMerkleTreeConstructor<F: PrimeField>:
         [u32; DIGEST_SIZE_U32_WORDS],
         Vec<[u32; DIGEST_SIZE_U32_WORDS], C>,
     );
+
+    /// Build a tree whose leaves ARE the given digests (e.g. per-coset subtree
+    /// roots), up to `cap_size` top nodes. Lets the coset-by-coset commitment
+    /// assemble the top tree over per-coset roots without re-hashing field data.
+    fn build_over_leaf_hashes(
+        leaf_hashes: Vec<[u32; DIGEST_SIZE_U32_WORDS]>,
+        cap_size: usize,
+        worker: &Worker,
+    ) -> Self;
 }

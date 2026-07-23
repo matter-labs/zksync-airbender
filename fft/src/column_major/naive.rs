@@ -1,6 +1,7 @@
 use crate::field_utils::*;
 use crate::utils::*;
 use ::field::*;
+use worker::Worker;
 
 // usually used to get bitreversed evaluation form from the monomial one
 pub fn fft_natural_to_bitreversed<F: Field, E: Field + FieldExtension<F>>(
@@ -239,6 +240,106 @@ pub fn serial_ct_ntt_bitreversed_to_natural<F: Field, E: Field + FieldExtension<
     }
 }
 
+/// Worker-parallel counterpart of [`serial_ct_ntt_bitreversed_to_natural`].
+///
+/// Within one NTT stage the `n/2` butterflies touch pairwise-disjoint index pairs
+/// `(j, j + distance)`, so each stage is distributed across the worker; stages run
+/// sequentially (stage `s+1` reads stage `s`). The per-butterfly arithmetic is
+/// identical to the serial routine, so the result is bit-for-bit the same.
+pub fn parallel_ct_ntt_bitreversed_to_natural<F: Field, E: Field + FieldExtension<F>>(
+    a: &mut [E],
+    log_n: u32,
+    omegas_bit_reversed: &[F],
+    worker: &Worker,
+) {
+    let n = a.len();
+    if n <= 1 {
+        return;
+    }
+    debug_assert!(n == (1 << log_n) as usize);
+    if n > 16 {
+        debug_assert_eq!(n, omegas_bit_reversed.len() * 2);
+    }
+
+    // Small transforms: the per-stage scope overhead dominates, so stay serial.
+    const PAR_THRESHOLD: usize = 1 << 12;
+    let eff_threshold = PAR_THRESHOLD / (core::mem::size_of::<E>() / core::mem::size_of::<u32>());
+    if n < eff_threshold {
+        serial_ct_ntt_bitreversed_to_natural(a, log_n, omegas_bit_reversed);
+        return;
+    }
+
+    // Each butterfly writes a disjoint pair, so threads can share the buffer. Pass
+    // the base address as a `usize` (Send) and reconstruct the pointer per thread —
+    // the same pattern the column-major LDE uses.
+    let base_addr = a.as_mut_ptr() as usize;
+    let half = n / 2;
+
+    let mut pairs_per_group = 1usize;
+    let mut num_groups = n / 2;
+
+    // Stages with a per-group twiddle (num_groups > 1).
+    while num_groups > 1 {
+        let ppg = pairs_per_group;
+        let ppg_log = ppg.trailing_zeros();
+        let omegas = omegas_bit_reversed;
+        worker.scope(half, |scope, geometry| {
+            for thread_idx in 0..geometry.len() {
+                let start = geometry.get_chunk_start_pos(thread_idx);
+                let size = geometry.get_chunk_size(thread_idx);
+                Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| {
+                    let base = base_addr as *mut E;
+                    for b in start..(start + size) {
+                        // flat butterfly index -> (group k, in-group offset jj)
+                        let k = b >> ppg_log;
+                        let jj = b & (ppg - 1);
+                        let j = k * (ppg << 1) + jj;
+                        let s = omegas[k];
+                        unsafe {
+                            let u = *base.add(j);
+                            let v = *base.add(j + ppg);
+                            let mut tmp = u;
+                            tmp.sub_assign(&v);
+                            tmp.mul_assign_by_base(&s);
+                            *base.add(j + ppg) = tmp;
+                            let mut uu = u;
+                            uu.add_assign(&v);
+                            *base.add(j) = uu;
+                        }
+                    }
+                });
+            }
+        });
+        pairs_per_group *= 2;
+        num_groups /= 2;
+    }
+
+    // Final stage (num_groups == 1, omega == 1): butterflies a[j], a[j + half].
+    debug_assert_eq!(num_groups, 1);
+    debug_assert_eq!(pairs_per_group, half);
+    worker.scope(half, |scope, geometry| {
+        for thread_idx in 0..geometry.len() {
+            let start = geometry.get_chunk_start_pos(thread_idx);
+            let size = geometry.get_chunk_size(thread_idx);
+            Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| {
+                let base = base_addr as *mut E;
+                for j in start..(start + size) {
+                    unsafe {
+                        let u = *base.add(j);
+                        let v = *base.add(j + half);
+                        let mut tmp = u;
+                        tmp.sub_assign(&v);
+                        *base.add(j + half) = tmp;
+                        let mut uu = u;
+                        uu.add_assign(&v);
+                        *base.add(j) = uu;
+                    }
+                }
+            });
+        }
+    });
+}
+
 pub fn cache_friendly_ntt_natural_to_bitreversed<F: Field, E: Field + FieldExtension<F>>(
     a: &mut [E],
     log_n: u32,
@@ -351,5 +452,54 @@ pub fn cache_friendly_ntt_natural_to_bitreversed<F: Field, E: Field + FieldExten
             round += 1;
         }
         cache_bunch += 1;
+    }
+}
+
+#[cfg(test)]
+mod parallel_ntt_tests {
+    use super::*;
+    use crate::twiddles::precompute_forward_twiddles_for_fft;
+    use ::field::baby_bear::{base::BabyBearField, ext4::BabyBearExt4};
+    use rand::{rngs::ThreadRng, RngCore};
+    use std::alloc::Global;
+    use worker::Worker;
+
+    type F = BabyBearField;
+    type E = BabyBearExt4;
+
+    fn random_in_ext(rng: &mut ThreadRng) -> E {
+        let coefs = [(); <E as FieldExtension<F>>::DEGREE]
+            .map(|_| F::from_u32_with_reduction(rng.next_u32()));
+        <E as FieldExtension<F>>::from_coeffs(coefs)
+    }
+
+    // Above PAR_THRESHOLD the parallel NTT must be bit-identical to the serial one.
+    fn check(log_n: u32) {
+        let worker = Worker::new_with_num_threads(4);
+        let n = 1usize << log_n;
+        let omegas = precompute_forward_twiddles_for_fft::<F, Global>(n, &worker);
+        assert_eq!(omegas.len(), n / 2);
+
+        let mut rng = rand::rng();
+        let input: Vec<E> = (0..n).map(|_| random_in_ext(&mut rng)).collect();
+
+        let mut serial = input.clone();
+        serial_ct_ntt_bitreversed_to_natural(&mut serial, log_n, &omegas);
+
+        let mut parallel = input.clone();
+        parallel_ct_ntt_bitreversed_to_natural(&mut parallel, log_n, &omegas, &worker);
+
+        assert_eq!(
+            serial, parallel,
+            "parallel NTT differs from serial at log_n={log_n}"
+        );
+    }
+
+    #[test]
+    fn parallel_matches_serial() {
+        // 12 = exactly PAR_THRESHOLD (serial fallback); 13..18 exercise the parallel path.
+        for log_n in [12u32, 13, 14, 16, 18] {
+            check(log_n);
+        }
     }
 }

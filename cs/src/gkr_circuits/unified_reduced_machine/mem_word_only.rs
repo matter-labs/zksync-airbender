@@ -1,6 +1,6 @@
 use super::*;
-use crate::constraint::{Constraint, Term};
 use crate::cs::circuit_trait::*;
+use crate::structured_expr::Expr;
 use crate::types::*;
 use field::PrimeField;
 
@@ -35,8 +35,8 @@ pub fn apply_unified_mem_word_only_inner<F: PrimeField, CS: Circuit<F>>(
     is_lw: Boolean,
     is_sw: Boolean,
     rs1_limbs: [Variable; REGISTER_SIZE],
-    memread_access: RegisterOrRamAccess,
-    memwrite_access: RegisterOrRamAccess,
+    rs2_or_lw_memread_access: RegisterOrRamAccess, // rs2 or LW RAM read merged access
+    rd_or_sw_memwrite_access: RegisterOrRamAccess, // rd or SW RAM write merged access
     of_slots: [Boolean; F4_SCRATCH_BOOLS],
     scratch_vars: [Variable; F4_SCRATCH_VARS],
     // Shared RC-16 slot (limb 0 of the F1/F2/F4 Register) for the SW-align `top_14`.
@@ -46,14 +46,18 @@ pub fn apply_unified_mem_word_only_inner<F: PrimeField, CS: Circuit<F>>(
     // SW: mem[addr] || trap rom[addr] <- rs2                     with +0 offset accepted
     // NOTE: by preprocessing (decoder lookup) we have rd == 0 for loads not possible
 
-    let WordRepresentation::U16Limbs(memread_u8) = memread_access.read_value else {
+    let WordRepresentation::U16Limbs(rs2_read_or_lw_mem_value_u16) =
+        rs2_or_lw_memread_access.read_value
+    else {
         unreachable!("memread access must be allocated as U16Limbs")
     };
-    let WordRepresentation::U16Limbs(memwrite_u16) = memwrite_access.write_value else {
+    let WordRepresentation::U16Limbs(rd_write_or_sw_mem_value_u16) =
+        rd_or_sw_memwrite_access.write_value
+    else {
         unreachable!("memwrite access must be allocated with U16 write limbs")
     };
-    let memread_addr = memread_access.address;
-    let memwrite_addr = memwrite_access.address;
+    let memread_addr = rs2_or_lw_memread_access.address;
+    let memwrite_addr = rd_or_sw_memwrite_access.address;
 
     // memread_addr / memwrite_addr are U16 limbs of RAM addresses. The
     // RAM-permutation argument bounds them transitively, but pinning the RC
@@ -64,22 +68,22 @@ pub fn apply_unified_mem_word_only_inner<F: PrimeField, CS: Circuit<F>>(
     cs.require_invariant(memwrite_addr[0], Invariant::RangeChecked { width: 16 });
     cs.require_invariant(memwrite_addr[1], Invariant::RangeChecked { width: 16 });
 
-    let [readaddr_lo, readaddr_hi] = memread_addr.map(Term::from);
-    let [writeaddr_lo, writeaddr_hi] = memwrite_addr.map(Term::from);
+    let [readaddr_lo, readaddr_hi] = memread_addr.map(Expr::<F>::var);
+    let [writeaddr_lo, writeaddr_hi] = memwrite_addr.map(Expr::<F>::var);
 
     // memread_addr is a register slot for Families 1-3 (rs2) and Family 4 SW.
-    let memread_is_reg: Constraint<F> = Constraint::from(is_lw.toggle());
-    cs.add_constraint(
-        memread_is_reg.clone() * (readaddr_lo - Term::from(inputs.decoder_data.rs2_index)),
+    let memread_is_reg: Expr<F> = Expr::from(is_lw.toggle());
+    cs.add_constraint_expr(
+        memread_is_reg.clone() * (readaddr_lo - Expr::var(inputs.decoder_data.rs2_index)),
     );
-    cs.add_constraint(memread_is_reg * readaddr_hi);
+    cs.add_constraint_expr(memread_is_reg * readaddr_hi);
 
     // memwrite_addr is a register slot for Families 1-3 (rd) and Family 4 LW.
-    let memwrite_is_reg: Constraint<F> = Constraint::from(is_sw.toggle());
-    cs.add_constraint(
-        memwrite_is_reg.clone() * (writeaddr_lo - Term::from(inputs.decoder_data.rd_index)),
+    let memwrite_is_reg: Expr<F> = Expr::from(is_sw.toggle());
+    cs.add_constraint_expr(
+        memwrite_is_reg.clone() * (writeaddr_lo - Expr::var(inputs.decoder_data.rd_index)),
     );
-    cs.add_constraint(memwrite_is_reg * writeaddr_hi);
+    cs.add_constraint_expr(memwrite_is_reg * writeaddr_hi);
 
     apply_unified_mem_word_only_lw_sw_data_path(
         cs,
@@ -87,8 +91,8 @@ pub fn apply_unified_mem_word_only_inner<F: PrimeField, CS: Circuit<F>>(
         is_lw,
         is_sw,
         rs1_limbs,
-        memread_u8,
-        memwrite_u16,
+        rs2_read_or_lw_mem_value_u16,
+        rd_write_or_sw_mem_value_u16,
         memread_addr,
         memwrite_addr,
         of_slots,

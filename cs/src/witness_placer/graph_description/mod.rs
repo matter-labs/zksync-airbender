@@ -1084,6 +1084,16 @@ impl<F: PrimeField> WitnessPlacer<F> for WitnessGraphCreator<F> {
 
         expr
     }
+    fn get_oracle_timestamp_columns(
+        &mut self,
+        placeholder: Placeholder,
+    ) -> [Self::Field; NUM_TIMESTAMP_COLUMNS_FOR_RAM] {
+        panic!(
+            "timestamp oracle query for {:?} is not supported in witness-graph codegen; \
+             it is only reachable from ASSUME_MEMORY_VALUES_ASSIGNED == false resolvers",
+            placeholder
+        );
+    }
     fn get_oracle_u16(&mut self, placeholder: Placeholder) -> Self::U16 {
         let expr = FixedWidthIntegerNodeExpression::U16OracleValue { placeholder };
 
