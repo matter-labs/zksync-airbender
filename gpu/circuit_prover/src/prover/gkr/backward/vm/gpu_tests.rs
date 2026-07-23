@@ -1176,6 +1176,12 @@ fn assert_virtual_setup_is_procedural(
 }
 
 const ORACLE_MAX_ROWS_PER_CHUNK: usize = 1 << 20;
+const PREFLIGHT_ROWS: usize = 1 << 12;
+const INDEPENDENT_ORACLE_MAX_DEPTH: u8 = 3;
+
+fn independent_oracle_rows(round: u8, logical_rows: usize) -> Option<usize> {
+    (round <= INDEPENDENT_ORACLE_MAX_DEPTH).then(|| logical_rows.min(PREFLIGHT_ROWS))
+}
 
 fn oracle_chunk_ranges(rows: usize, target_workers: usize) -> Vec<Range<usize>> {
     if rows == 0 {
@@ -1228,6 +1234,15 @@ fn bwd_vm_oracle_chunk_plan_keeps_non_divisible_worker_ranges_in_bounds() {
     assert_eq!(ranges.last().map(|range| range.end), Some(32));
     assert!(ranges.iter().all(|range| !range.is_empty()));
     assert!(ranges.windows(2).all(|pair| pair[0].end == pair[1].start));
+}
+
+#[test]
+fn bwd_vm_independent_oracle_policy_caps_depth_without_dropping_timing_rounds() {
+    assert_eq!(independent_oracle_rows(3, 1 << 20), Some(PREFLIGHT_ROWS));
+    assert_eq!(independent_oracle_rows(4, 1 << 20), None);
+    assert_eq!(independent_oracle_rows(23, 1), None);
+
+    assert!((1..=23).all(|round| SweepSelection::All.includes("Ext", 2, round)));
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -3175,7 +3190,7 @@ fn time_vm_setup(
     budget_cells: usize,
     contribution_ptr: *mut E4,
     rows: usize,
-    expected_prefix: &[E4],
+    expected_prefix: Option<&[E4]>,
     context: &ProverContext,
     mut poison_extra_outputs: impl FnMut(usize) -> era_cudart::result::CudaResult<()>,
 ) -> TimingSummary {
@@ -3204,22 +3219,28 @@ fn time_vm_setup(
 /// Exact bounded-domain parity for the real lowered descriptor. This is not a
 /// sparse output probe: both complete contribution halves for the first
 /// `expected_prefix.len() / 2` rows are compared against the independent CPU
-/// interpreter before timing. The full-domain Task 7 gate remains the separate
-/// exhaustive proof; bounding this preflight keeps every timing coordinate
-/// practical on the 2^24-row fixture.
+/// interpreter through fold depth 3. Later rounds validate and release the
+/// actual artifact-resolved path twice, comparing the complete bounded halves
+/// bit-for-bit without recomputing original cones on the CPU. The full-domain
+/// Task 7 gate remains the separate exhaustive proof.
 fn assert_vm_setup_parity(
     setup: &super::lower::BwdVmSetup,
     budget_cells: usize,
     contribution_ptr: *mut E4,
-    expected_prefix: &[E4],
+    expected_prefix: Option<&[E4]>,
     context: &ProverContext,
     poison_extra_outputs: &mut impl FnMut(usize) -> era_cudart::result::CudaResult<()>,
 ) {
-    assert!(
-        expected_prefix.len().is_multiple_of(2),
-        "preflight needs two complete contribution halves"
+    let preflight_rows = expected_prefix.map_or_else(
+        || (setup.desc.logical_rows as usize).min(PREFLIGHT_ROWS),
+        |expected| {
+            assert!(
+                expected.len().is_multiple_of(2),
+                "preflight needs two complete contribution halves"
+            );
+            expected.len() / 2
+        },
     );
-    let preflight_rows = expected_prefix.len() / 2;
     assert!(preflight_rows > 0 && preflight_rows <= setup.desc.logical_rows as usize);
     let mut preflight_desc = setup.desc;
     preflight_desc.logical_rows = preflight_rows as u32;
@@ -3245,11 +3266,17 @@ fn assert_vm_setup_parity(
         "c{budget_cells} VM timing setup validation"
     );
     let validate_output = download_e4_ptr(contribution_ptr, 2 * preflight_rows, context);
-    assert_e4_bits(
-        &format!("c{budget_cells} bounded CPU-oracle validation preflight"),
-        &validate_output,
-        expected_prefix,
-    );
+    match expected_prefix {
+        Some(expected) => assert_e4_bits(
+            &format!("c{budget_cells} bounded CPU-oracle validation preflight"),
+            &validate_output,
+            expected,
+        ),
+        None => assert!(
+            validate_output.iter().any(|value| *value != poison),
+            "c{budget_cells} actual-path validation left all preflight outputs poisoned"
+        ),
+    }
 
     poison_e4_ptr(contribution_ptr, 2 * preflight_rows, poison, context)
         .expect("poison VM correctness contributions");
@@ -3261,11 +3288,24 @@ fn assert_vm_setup_parity(
         .synchronize()
         .expect("VM correctness synchronization");
     let release_output = download_e4_ptr(contribution_ptr, 2 * preflight_rows, context);
-    assert_e4_bits(
-        &format!("c{budget_cells} bounded CPU-oracle release preflight"),
-        &release_output,
-        expected_prefix,
-    );
+    match expected_prefix {
+        Some(expected) => assert_e4_bits(
+            &format!("c{budget_cells} bounded CPU-oracle release preflight"),
+            &release_output,
+            expected,
+        ),
+        None => {
+            assert_e4_bits(
+                &format!("c{budget_cells} actual-path validate/release preflight"),
+                &release_output,
+                &validate_output,
+            );
+            assert!(
+                release_output.iter().any(|value| *value != poison),
+                "c{budget_cells} actual-path release left all preflight outputs poisoned"
+            );
+        }
+    }
     assert!(
         release_output.iter().any(|value| *value != poison),
         "c{budget_cells} correctness launch left all preflight outputs poisoned"
@@ -3290,7 +3330,6 @@ fn bwd_vm_add_sub_l0_budget_sweep_report() {
     use era_cudart_sys::CudaDeviceAttr;
     use std::path::Path;
 
-    const PREFLIGHT_ROWS: usize = 1 << 12;
     let selection = SweepSelection::from_env();
     let incumbent = time_incumbent_add_sub_rounds(selection);
 
@@ -3387,7 +3426,7 @@ fn bwd_vm_add_sub_l0_budget_sweep_report() {
             case.budget_cells,
             contribution_ptr,
             r0_rows,
-            &r0_expected_prefix,
+            Some(&r0_expected_prefix),
             context,
             |_| Ok(()),
         );
@@ -3527,7 +3566,7 @@ fn bwd_vm_add_sub_l0_budget_sweep_report() {
         &prep_setup,
         prep_case.budget_cells,
         contribution_ptr,
-        &prep_expected_prefix,
+        Some(&prep_expected_prefix),
         context,
         &mut |live| {
             publication_matrices[0].poison_columns(prep_columns.iter().copied(), live, context)
@@ -3569,19 +3608,27 @@ fn bwd_vm_add_sub_l0_budget_sweep_report() {
             context,
         )
         .expect("build Ext sweep factored eq");
-        let (cpu_high, cpu_low) = cpu_factored_eq(&claim_point[round as usize + 1..]);
-        let expected_prefix = all_round_expected_contributions(
-            &ext_cases[0],
-            &oracle,
-            round,
-            rows.min(PREFLIGHT_ROWS),
-            &round_challenges,
-            &cpu_high,
-            &cpu_low,
-            &eq_sizes,
-            &pool,
-            last_round,
-        );
+        let expected_prefix = independent_oracle_rows(round, rows).map(|preflight_rows| {
+            let (cpu_high, cpu_low) = cpu_factored_eq(&claim_point[round as usize + 1..]);
+            all_round_expected_contributions(
+                &ext_cases[0],
+                &oracle,
+                round,
+                preflight_rows,
+                &round_challenges,
+                &cpu_high,
+                &cpu_low,
+                &eq_sizes,
+                &pool,
+                last_round,
+            )
+        });
+        if expected_prefix.is_none() {
+            eprintln!(
+                "[bwd-vm-parity] preflight round {round}/{last_round} actual-path rows={} independent_oracle=skipped",
+                rows.min(PREFLIGHT_ROWS)
+            );
+        }
         let current_matrix = round as usize & 1;
         let mut stored_reference = None;
         for case in &ext_cases {
@@ -3633,7 +3680,7 @@ fn bwd_vm_add_sub_l0_budget_sweep_report() {
                 case.budget_cells,
                 contribution_ptr,
                 rows,
-                &expected_prefix,
+                expected_prefix.as_deref(),
                 context,
                 |live| {
                     publication_matrices[current_matrix].poison_columns(
