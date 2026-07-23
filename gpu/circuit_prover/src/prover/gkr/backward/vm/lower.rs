@@ -284,6 +284,7 @@ pub(crate) enum BwdVmLowerError {
         other_window: u8,
         other_column: u8,
     },
+    UnsafeCrossClassSourceAlias,
     InvalidFoldDescriptor {
         window: u8,
         column: u8,
@@ -333,6 +334,7 @@ pub(crate) fn lower_bwd_vm(
         &input,
         source_geometry.windows.len() as u8,
     )?;
+    validate_cross_class_source_aliases(runtime.sources, runtime.virtual_sources)?;
     if let Some(window) = virtual_geometry.window {
         source_geometry.windows.push(window);
     }
@@ -1007,6 +1009,69 @@ fn byte_ranges_overlap(a: *const u8, a_len: u32, b: *const u8, b_len: u32) -> bo
     a_start < b_end && b_start < a_end
 }
 
+fn validate_cross_class_source_aliases(
+    ordinary: &[ResolvedBwdSourceWindow],
+    virtuals: &[ResolvedBwdVirtualSource],
+) -> Result<(), BwdVmLowerError> {
+    for virtual_publish in virtuals
+        .iter()
+        .filter_map(|binding| binding.publish.as_ref())
+    {
+        if ordinary.iter().any(|binding| {
+            byte_ranges_overlap(
+                virtual_publish.ptr,
+                virtual_publish.stride_bytes,
+                binding.read.ptr,
+                binding.read.stride_bytes,
+            )
+        }) {
+            return Err(BwdVmLowerError::UnsafeCrossClassSourceAlias);
+        }
+    }
+
+    for ordinary_publish in ordinary
+        .iter()
+        .filter_map(|binding| binding.publish.as_ref())
+    {
+        if virtuals
+            .iter()
+            .filter_map(|binding| binding.read.as_ref())
+            .any(|virtual_read| {
+                byte_ranges_overlap(
+                    ordinary_publish.ptr,
+                    ordinary_publish.stride_bytes,
+                    virtual_read.ptr,
+                    virtual_read.stride_bytes,
+                )
+            })
+        {
+            return Err(BwdVmLowerError::UnsafeCrossClassSourceAlias);
+        }
+    }
+
+    for virtual_publish in virtuals
+        .iter()
+        .filter_map(|binding| binding.publish.as_ref())
+    {
+        if ordinary
+            .iter()
+            .filter_map(|binding| binding.publish.as_ref())
+            .any(|ordinary_publish| {
+                byte_ranges_overlap(
+                    virtual_publish.ptr,
+                    virtual_publish.stride_bytes,
+                    ordinary_publish.ptr,
+                    ordinary_publish.stride_bytes,
+                )
+            })
+        {
+            return Err(BwdVmLowerError::UnsafeCrossClassSourceAlias);
+        }
+    }
+
+    Ok(())
+}
+
 struct SpecialGeometry {
     specials: Vec<BwdVmSpecial>,
     coefficients: Vec<E4>,
@@ -1462,6 +1527,31 @@ mod tests {
                 }
             })
             .collect()
+    }
+
+    fn rebase_virtual_publish_to_alias(
+        virtual_sources: &mut [ResolvedBwdVirtualSource],
+        alias: ResolvedColumn,
+    ) {
+        let first = virtual_sources[0]
+            .publish
+            .expect("materialized virtual fixture has a publish column");
+        let first_column =
+            (first.ptr as usize - first.matrix_base as usize) / first.stride_bytes as usize;
+        let matrix_base = alias.ptr as usize - first_column * alias.stride_bytes as usize;
+        for source in virtual_sources {
+            let publish = source
+                .publish
+                .expect("materialized virtual fixture has a publish column");
+            let column = (publish.ptr as usize - publish.matrix_base as usize)
+                / publish.stride_bytes as usize;
+            source.publish = Some(ResolvedColumn {
+                is_e4: true,
+                ptr: (matrix_base + column * alias.stride_bytes as usize) as *const u8,
+                matrix_base: matrix_base as *mut u8,
+                stride_bytes: alias.stride_bytes,
+            });
+        }
     }
 
     fn runtime_with_virtual<'a>(
@@ -2161,6 +2251,72 @@ mod tests {
         assert!(matches!(
             lower_case_at(&case, 2, &publish_alias, &challenges),
             Err(BwdVmLowerError::UnsafePublishAlias { .. })
+        ));
+    }
+
+    #[test]
+    fn lowering_rejects_cross_class_source_aliases() {
+        let case = load_add_sub_l0_case(BwdRegime::Ext, 2);
+        let challenges = [e4(7), e4(11), e4(13), e4(17)];
+        let canonical_sources = fake_sources(&case, 3, 4, true);
+        let canonical_virtuals = fake_virtual_sources(&case, 3, 4, true);
+        let expected = expected_sources(&case, &canonical_sources);
+        let resolve_source = |address| expected.get(&address).copied();
+
+        let mut virtual_publish_vs_ordinary_read = canonical_virtuals.clone();
+        rebase_virtual_publish_to_alias(
+            &mut virtual_publish_vs_ordinary_read,
+            canonical_sources[0].read,
+        );
+        assert!(matches!(
+            lower_case(
+                &case,
+                &runtime(
+                    4,
+                    &canonical_sources,
+                    &virtual_publish_vs_ordinary_read,
+                    &challenges,
+                    &resolve_source,
+                ),
+            ),
+            Err(BwdVmLowerError::UnsafeCrossClassSourceAlias)
+        ));
+
+        let mut ordinary_publish_vs_virtual_read = canonical_sources.clone();
+        ordinary_publish_vs_virtual_read[0].publish = canonical_virtuals[0].read;
+        assert!(matches!(
+            lower_case(
+                &case,
+                &runtime(
+                    4,
+                    &ordinary_publish_vs_virtual_read,
+                    &canonical_virtuals,
+                    &challenges,
+                    &resolve_source,
+                ),
+            ),
+            Err(BwdVmLowerError::UnsafeCrossClassSourceAlias)
+        ));
+
+        let mut virtual_publish_vs_ordinary_publish = canonical_virtuals.clone();
+        rebase_virtual_publish_to_alias(
+            &mut virtual_publish_vs_ordinary_publish,
+            canonical_sources[0]
+                .publish
+                .expect("materialized ordinary fixture has a publish column"),
+        );
+        assert!(matches!(
+            lower_case(
+                &case,
+                &runtime(
+                    4,
+                    &canonical_sources,
+                    &virtual_publish_vs_ordinary_publish,
+                    &challenges,
+                    &resolve_source,
+                ),
+            ),
+            Err(BwdVmLowerError::UnsafeCrossClassSourceAlias)
         ));
     }
 
