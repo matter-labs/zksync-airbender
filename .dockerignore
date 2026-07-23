@@ -1,29 +1,26 @@
-*
-!tools/
-tools/verifier/target
-!docker/
-!Cargo.toml
+# Denylist context for the reproducible verifier build (tools/reproduce).
+#
+# The fsv_* build pulls `full_statement_verifier` & friends, which inherit
+# dependencies from the ROOT workspace ({ workspace = true }). Loading that
+# workspace validates EVERY member manifest, so the whole source tree must be
+# present — a hand-maintained allowlist goes stale the moment a crate is added
+# (which is exactly what happened to the previous version of this file). Ship
+# all source, and only carve out build output and large binary artifacts.
 
-!blake2s_u32
-!common_constants
-!circuit_defs
-!cs
-!examples
-!execution_utils
-!fft
-!field
-!full_statement_verifier
-!gpu_prover
-!gpu_witness_eval_generator
-!non_determinism_source
-!prover
-!reduced_keccak
-!risc_v_simulator
-!riscv_common
-!trace_holder
-!transcript
-!verifier
-!verifier_common
-!verifier_generator
-!witness_eval_generator
-!worker
+# Version control.
+.git
+
+# All Cargo build outputs (target/ alone is tens of GB).
+target
+**/target
+
+# Regenerated verifier artifacts — the reproducible build rebuilds these from
+# source inside the image, so they must not enter the context.
+tools/gkr_verifier/*.bin
+tools/gkr_verifier/*.elf
+tools/gkr_verifier/*.text
+
+# Non-source data not needed to compile the workspace (examples/ is not a
+# workspace member and is not in the fsv build's dependency tree).
+examples
+*.pdf

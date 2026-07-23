@@ -1,6 +1,15 @@
 #!/bin/sh
 set -euo pipefail
 
+# These verifier binaries build on STABLE Rust (pinned to 1.97.1 by the local
+# rust-toolchain.toml), but still need a few unstable build options:
+#   -Z build-std=core,alloc, -Z panic-immediate-abort (cargo flags below), and
+#   the [unstable] section in .cargo/config.toml.
+# RUSTC_BOOTSTRAP=1 makes both cargo and rustc treat the stable toolchain as
+# nightly for the purpose of gating these options (cargo's release channel
+# reads as "nightly" when this is set), so no nightly toolchain is required.
+export RUSTC_BOOTSTRAP=1
+
 usage() {
     echo "Usage: $0 [options] [circuits...]"
     echo ""
