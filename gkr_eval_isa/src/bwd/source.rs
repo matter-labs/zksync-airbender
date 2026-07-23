@@ -18,6 +18,9 @@ pub enum FoldState {
     LazyFromOriginals { depth: u8 },
 }
 
+/// First fold depth whose first physical virtual-source access publishes E4.
+pub const VIRTUAL_SETUP_MATERIALIZE_DEPTH: u8 = 3;
+
 /// The pre-distillation identity of a fold origin.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OriginLeaf {
@@ -107,6 +110,11 @@ pub enum MaterializationPolicy {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn virtual_setup_materialization_depth_is_three() {
+        assert_eq!(VIRTUAL_SETUP_MATERIALIZE_DEPTH, 3);
+    }
 
     fn read_origin(column: usize) -> OriginLeaf {
         OriginLeaf::Read(ReadPlace::BaseLayerMemory { column })
