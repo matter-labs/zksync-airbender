@@ -1,7 +1,7 @@
 use super::{ExecutionKind, ExecutionProver, ExecutionProverConfiguration, ProveResult};
 use crate::upstream::{read_binary, SecurityLevel};
-use gpu_circuit_prover::witness::circuit_type::{DelegationCircuitType, UnrolledCircuitType};
 use gpu_core::primitives::machine_type::MachineType;
+use gpu_trace::witness::circuit_type::{DelegationCircuitType, UnrolledCircuitType};
 use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
 
 fn test_artifact(relative_path: &str) -> std::path::PathBuf {

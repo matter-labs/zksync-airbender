@@ -1,14 +1,29 @@
 # AGENTS.md
 
-`circuit_prover` is the CUDA-backed prover crate. It uses `build/main.rs` and depends on `era_cudart` and `era_cudart_sys`.
+`circuit_prover` (crate `gpu_circuit_prover`) is the **apex** of the GPU
+prover-cluster DAG: proof orchestration (`proof/`), prover configuration
+policy (`config.rs`), and the e2e/parity test suite. It has **no native CUDA
+of its own** — the split-out kernel crates below it (`gpu_trace`, `gpu_gkr`,
+`gpu_whir`) own all the CUDA; this crate's `build.rs` only emits the
+`no_cuda` cfg (`gpu_native_build::emit_no_cuda_cfg()`) that its
+`#[cfg(not(no_cuda))]` test sites key off of.
+
+## Layer position
+
+`gpu_core < { gpu_ntt, gpu_ops, gpu_hash, gpu_cub } < gpu_prover_context <
+gpu_trace < gpu_gkr < gpu_whir < gpu_circuit_prover < gpu_execution_prover <
+gpu_program_prover` — see [`../AGENTS.md`](../AGENTS.md) for the full cluster
+DAG. This crate depends on `gpu_core`, `gpu_hash`, `gpu_prover_context`,
+`gpu_trace`, `gpu_gkr`, `gpu_whir`, and `gpu_gkr_model`, plus the upstream
+crates below; `gpu_execution_prover` depends on it, never the reverse.
 
 ## GPU Scheduling Contract
 
-Before editing any file under `src/prover/`, or any other code that launches
-kernels, schedules host callbacks, or manages streams, you MUST read
-[`docs/gpu_scheduling_contract.md`](docs/gpu_scheduling_contract.md) in full.
-It governs the async stream-ordered model used by GKR, WHIR, and related
-proving workflows.
+Before editing anything under `src/proof/orchestration/`, or any other code
+that launches kernels, schedules host callbacks, or manages streams, you MUST
+read [`../docs/gpu_scheduling_contract.md`](../docs/gpu_scheduling_contract.md)
+in full. It governs the async stream-ordered model used by GKR, WHIR, trace
+commit, and related proving workflows across every crate in the cluster.
 
 The cheatsheet below summarizes the rules most often violated. It is a
 summary — the contract document is the source of truth.
@@ -30,9 +45,9 @@ summary — the contract document is the source of truth.
   operation thereafter only reads.
 - **MUST** consume D2H readback buffers via a scheduled host callback, never
   from the scheduling thread.
-- **MUST** fork/join any op on an auxiliary stream (`h2d_stream` or `d2h_stream`)
-  against `exec_stream` with explicit CUDA events. The driver gives independent
-  streams no implicit ordering.
+- **MUST** fork/join any op on an auxiliary stream (`h2d_stream`,
+  `d2h_stream`, or `side_stream`) against `exec_stream` with explicit CUDA
+  events. The driver gives independent streams no implicit ordering.
 - **MUST** allocate and drop pool-backed handles on `exec_stream`. If a
   secondary stream touched the allocation, the `exec_stream` join wait must be
   scheduled before the Rust drop — otherwise it is a use-after-free.
@@ -52,106 +67,75 @@ summary — the contract document is the source of truth.
   `d2h_stream` only when meaningful copy/compute overlap justifies the
   fork/join machinery.
 
-## Constraints
-
-- The CUDA build is centralized in the shared `gpu_native_build` helper
-  (`gpu/native_build/`); `build/main.rs` is a thin wrapper that names the
-  archive and enables `deterministic_pow`. The CMake side is likewise
-  centralized: `native/CMakeLists.txt` is a thin `add_library` +
-  `ab_cuda_configure_target(...)` call over the shared
-  `gpu/native_build/cmake/ab_cuda_target.cmake`. Behavioral build changes are
-  fine when the task calls for them: change the shared helper (or shared
-  CMake module) for cross-crate build behavior, `build/main.rs` /
-  `native/CMakeLists.txt` only for circuit_prover-specific wiring.
-- Alignment of CUDA compile flags (arch, `CUDA_STANDARD`,
-  `--expt-relaxed-constexpr`, …) with the other kernel crates is now
-  structural: the common flags/properties live once in the shared
-  `ab_cuda_configure_target` function, so a deliberate divergence means
-  changing the shared function (or adding a parameter to it), not editing
-  this crate's `CMakeLists.txt` inline.
-
 ## Key Files and Structure
 
-- `build/main.rs`: thin build script delegating to the shared `gpu_native_build` helper.
-- `native/`: native CUDA/C++ sources and build artifacts managed by the build script.
-- `src/`: crate modules.
+- `build.rs`: no native archive — a thin wrapper over
+  `gpu_native_build::emit_no_cuda_cfg()` only, since the CUDA moved to
+  `gpu_trace`/`gpu_gkr`/`gpu_whir`.
+- `src/lib.rs`: crate root; declares `config`, `proof`, `upstream` (+
+  `#[cfg(test)]` `test_utils`/`tests`).
+- `src/config.rs`: prover configuration policy — maps a `CircuitType` +
+  `SecurityLevel` to the canonical upstream `ProverConfig`, and owns
+  `GPU_SUPPORTED_SECURITY_LEVELS` / `UnsupportedGpuSecurityLevel`.
+- `src/proof/`:
+  - `inputs.rs`: the consolidated H2D transfer bundle
+    (`GpuGKRProofTransfer`) — one shared `Transfer` (from `gpu_prover_context`)
+    for every pre-prove H2D piece.
+  - `layout/` (`pub(crate)`): `build_proof_layout_inputs` — the
+    gkr-**dependent** BUILDER that derives the proof-image layout inputs from
+    a compiled circuit + WHIR schedule + base-layer geometries. The layout
+    TYPES themselves (slab byte ranges + typed accessors) live one layer down
+    in `gpu_gkr::proof_layout`; this builder calls into `gpu_gkr::transform`
+    and `gpu_gkr::backward`, so it must sit above `gpu_gkr` and cannot live in
+    that crate's cycle-free `proof_layout` leaf.
+  - `orchestration/` (private, selectively re-exported): `backward.rs`,
+    `stage1_forward.rs`, `terminal.rs`, `whir.rs` — the phases of the
+    `prove()` pipeline. `proof::prove()` (in `proof/mod.rs`) is the sole
+    production entry point; it dispatches on `CircuitType` +
+    `GpuGKRProofTransfer` shape (no per-family whitelist) and returns a
+    `GpuGKRProofJob`.
 - `src/upstream.rs`: single-file manifest re-exporting every item the crate
-  consumes from `cs`, `prover`, `field`, `setups`, and `trace_and_split`. See
-  the "Upstream imports" section below.
+  consumes from `cs`, `prover`, and `field`. See "Upstream imports" below.
+- `src/test_utils.rs`, `src/tests/`: the e2e/parity test suite
+  (`#[cfg(test)]`), driving full proof workflows through this crate's
+  `prove()` while reaching into `gpu_trace`/`gpu_gkr`/`gpu_whir`/
+  `gpu_prover_context`/`gpu_ops` test-reference seams
+  (`#[doc(hidden)] pub` items in those crates) across crate boundaries.
+- No `native/` tree, no `src/prover/`, no `src/witness/` — those moved to
+  `gpu_gkr`/`gpu_whir` and `gpu_trace` respectively (Tasks 7–11 of the split).
 
 ## Upstream imports
 
-Production code imports from the upstream crates (`cs`, `prover`, `field`,
-`setups`, `trace_and_split`) **exclusively through `crate::upstream`**.
-Direct `use cs::…;` / `use prover::…;` in non-test code is forbidden.
-`#[cfg(test)]` modules and files under `tests/` are exempt.
+Production code (`proof/**`, `config.rs`) imports from the upstream crates
+(`cs`, `prover`, `field`) **exclusively through `crate::upstream`**. Direct
+`use cs::…;` / `use prover::…;` in non-test code is forbidden. `#[cfg(test)]`
+modules are exempt — the e2e test suite imports a much larger upstream
+surface (including `common_constants`) via `use crate::upstream::*` from a
+clearly-marked `#[cfg(test)]` section of the same manifest file.
 
-- Adding a dependency: `pub(crate) use …;` in
+- Adding a production dependency: `pub(crate) use …;` in
   [`src/upstream.rs`](src/upstream.rs), then `use crate::upstream::Item;`
   from the consumer.
-- Two aliases avoid collisions with crate-local types:
+- Two aliases avoid collisions with crate-local types, both test-only today:
   `CSExecutorFamilyDecoderData` and `CpuGKRSetup`. Use the aliased names.
 
-## Upstream constant drift guards
+## Layer contract
 
-When `native/**` hard-codes a value owned by an upstream crate (`cs`,
-`common_constants`, …), add a compile-time assert in
-[`src/witness/mod.rs`](src/witness/mod.rs) comparing the upstream value
-against the native literal. Failures surface at `cargo check`.
-
-- Scalars: `const _: () = assert!(crate::upstream::FOO == N);`.
-- Grouped values (e.g. delegation `AbiDescription`): use the `DelegationAbi`
-  struct + `.assert_matches(...)` pattern already in the file.
-- Internal Rust↔CUDA duplicates are not asserted (the assert needs one side
-  to be external); fix structurally or rely on tests.
-
-## Layer contract (post-reorg)
-
-The crate is organized as a strict dependency DAG. `use crate::…` imports may
-only point DOWN this order; never up. Enforcement is doc-only (no mechanical
-check) — keep it true by review.
-
-Top level: `allocator < primitives < ops < witness < prover < execution`.
+This crate's own module DAG is now small: `config` and `proof::inputs` are
+leaves (upstream + the split crates' public APIs only); `proof::layout`
+depends on `gpu_gkr` to build layout inputs; `proof::orchestration` is the
+top — it depends on `config`, `proof::inputs`, `proof::layout`, and drives
+`gpu_trace`/`gpu_gkr`/`gpu_whir` directly. `proof::prove()` is the only
+production entry point exposed upward (to `gpu_execution_prover`).
 
 The crate stack itself — which modules became `gpu_core` / `gpu_ntt` /
-`gpu_ops` / `gpu_hash` / `gpu_cub` / `execution_prover`, the build +
+`gpu_ops` / `gpu_hash` / `gpu_cub` / `gpu_prover_context` / `gpu_trace` /
+`gpu_gkr` / `gpu_whir` / `gpu_execution_prover`, the build +
 `_native`-naming + C++-namespace + bench conventions, and the native-code
 (clang-format / Rust↔CUDA interface-stability) rules — is documented once for
-the whole cluster in [`../AGENTS.md`](../AGENTS.md). The rest of this section
-covers only `circuit_prover`'s own internal module layering.
-
-Within `prover`: `{proof_layout, config} < {gkr, whir, trace} < proof` (with
-`proof/orchestration` at the top of `proof`).
-- `proof_layout`, `config`, and `context` are leaves: they depend only on
-  `primitives`/`allocator` + `upstream` (no `gkr`/`whir`/`trace`/`proof`).
-  `proof_layout` holds the layout TYPES + accessors; `config` owns the
-  GPU-supported security-level / PoW policy; **`context` owns `ProverContext`
-  (the streams/allocator/scheduling orchestration) + the H2D/D2H `transfer`
-  machinery** — relocated here from `primitives`, since `ProverContext` is a
-  prover concern. The GPU scheduling-contract surface lives with `context`.
-- `gkr`, `whir`, `trace` may depend on `proof_layout`/`config` and on
-  `primitives`/`ops`/`witness`, but MUST NOT depend on `proof`.
-- The GPU-free CPU model of the GKR layout (address audit, storage layout,
-  circuit transform) lives in the standalone `gpu_gkr_model` crate
-  (deps: `cs` + `field`; no CUDA). `gkr` consumes it via the
-  `gkr::{gkr_address_audit, storage_layout, transform}` facade re-exports.
-- `proof` (incl. `proof/orchestration`) is the top of `prover`: it depends down
-  on all of the above. The gkr-dependent layout builder
-  (`build_proof_layout_inputs`) lives here, not in `proof_layout`.
-
-No-upward-imports rule:
-- `primitives` and `ops` MUST NOT `use crate::{witness, prover, execution}`
-  (`primitives` is CUDA-substrate-only — it holds device handles/accessors,
-  `DeviceProperties`, allocations, NTT twiddles; **no `ProverContext`**, which
-  is a `prover::context` concern).
-- `witness` MUST NOT `use crate::{prover, execution}`.
-- `prover` MUST NOT `use crate::execution`.
-
-This reflects the Phase 0–3 reorg: the two upward edges out of `primitives`
-were cut, the `prover`-internal cycles (`proof↔gkr`, `proof↔trace`) were broken
-via the `proof_layout`/`config` leaves and the `trace`-owned commit-transfer,
-and `ops` is generic-math-bisectable (generic hashing in `ops/blake2s`,
-protocol kernels in its `gkr_ops`/`transcript`/`gather` submodules).
+the whole cluster in [`../AGENTS.md`](../AGENTS.md). This crate carries no
+native code of its own, so the clang-format / native-build rules there do not
+apply here directly.
 
 ## Build and Test
 
@@ -175,25 +159,25 @@ protocol kernels in its `gkr_ops`/`transcript`/`gather` submodules).
 
 ## Formatting
 
-- Rust: `cargo fmt`.
-- Native CUDA/C++ under `native/`: `clang-format` against the cluster-wide [`../.clang-format`](../.clang-format) (see [`../AGENTS.md`](../AGENTS.md)). `cargo fmt` does not cover this; CI does not enforce it.
-- A change that touches both languages needs both.
-
-## Build Script
-
-- `build/main.rs` is a thin wrapper over `gpu_native_build::CudaArchive`. The
-  shared CUDA build logic lives in `gpu/native_build/` — the `CudaArchive`
-  helper (CMake config, link directives, `DEP_*_INCLUDE` forwarding, `no_cuda`
-  handling) plus `cmake/ab_cuda_target.cmake`, the `ab_cuda_configure_target`
-  function that `native/CMakeLists.txt` calls for the common target
-  configuration (properties, flags, and the gated `ENABLE_LINEINFO` /
-  `ENABLE_BUILD_DIAG` diagnostics); edit it there when a change should apply
-  to all kernel crates.
+- Rust: `cargo fmt -p gpu_circuit_prover` only — never crate/workspace-wide
+  `cargo fmt`.
+- No native CUDA/C++ in this crate — `clang-format` does not apply here (see
+  [`../trace/AGENTS.md`](../trace/AGENTS.md), [`../gkr/AGENTS.md`](../gkr/AGENTS.md),
+  [`../whir/AGENTS.md`](../whir/AGENTS.md) for the crates that do own native code).
 
 ## Design Documents
 
-- `docs/gpu_scheduling_contract.md`: Async scheduling contract for GPU stream-ordered prover work (GKR, WHIR) — see the "GPU Scheduling Contract" section above for the summary; this is the full source of truth.
-- `docs/profiling.md`: prover-specific profiling parameters + the profiling test / NVTX range / test-binary build. The generic per-kernel `ncu`/`nsys` methodology is cluster-level in [`../docs/`](../docs/) (`gpu/docs/profiling{,_ncu,_nsys}.md`).
+- `docs/gpu_scheduling_contract.md` moved to
+  [`../docs/gpu_scheduling_contract.md`](../docs/gpu_scheduling_contract.md) —
+  see the "GPU Scheduling Contract" section above for the summary; that file
+  is the full source of truth.
+- `docs/profiling.md`: prover-specific profiling parameters + the profiling
+  test / NVTX range / test-binary build. The generic per-kernel `ncu`/`nsys`
+  methodology is cluster-level in [`../docs/`](../docs/)
+  (`gpu/docs/profiling{,_ncu,_nsys}.md`).
+- The backward-pass immediate-factor encoding design note moved with its
+  implementation to
+  [`../gkr/docs/backward_immediate_factor_encoding.md`](../gkr/docs/backward_immediate_factor_encoding.md).
 
 ## Code Notes
 

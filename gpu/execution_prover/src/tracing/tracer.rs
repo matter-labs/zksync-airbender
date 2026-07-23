@@ -1,5 +1,5 @@
 use super::{DataTraceRanges, PtrRange, SplitDataTraceRanges, UnifiedDataTraceRanges};
-use gpu_circuit_prover::witness::circuit_type::{
+use gpu_trace::witness::circuit_type::{
     CircuitType, DelegationCircuitType, UnrolledCircuitType, UnrolledMemoryCircuitType,
     UnrolledNonMemoryCircuitType,
 };

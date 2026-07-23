@@ -2,11 +2,11 @@ use super::PtrRange;
 use crate::messages::{TracingData, WorkerResult};
 use crate::A;
 use crossbeam_channel::{Receiver, Sender};
-use gpu_circuit_prover::prover::trace::tracing_data::{
+use gpu_trace::trace::tracing_data::{
     DelegationTracingDataHostSource, TracingDataHost, UnrolledTracingDataHost,
 };
-use gpu_circuit_prover::witness::circuit_type::CircuitType;
-use gpu_circuit_prover::witness::trace::ChunkedTraceHolder;
+use gpu_trace::witness::circuit_type::CircuitType;
+use gpu_trace::witness::trace::ChunkedTraceHolder;
 use itertools::Itertools;
 use riscv_transpiler::witness::delegation::bigint::BigintDelegationWitness;
 use riscv_transpiler::witness::delegation::blake2_g_function::Blake2sGFunctionDelegationWitness;

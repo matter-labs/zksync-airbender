@@ -1,5 +1,5 @@
 use super::*;
-use gpu_circuit_prover::prover::proof::canonical_inits_and_teardowns_top_bits;
+use gpu_circuit_prover::proof::canonical_inits_and_teardowns_top_bits;
 
 /// `(pow_challenge, external_challenges, proof_caps)`, as derived from a
 /// completed memory commitment and consumed by `prove_inner`.
@@ -283,7 +283,7 @@ fn fs_transform_for_permutation_argument(
 /// contributes one `(inits-and-teardowns top bits, memory cap)` pair. The GPU
 /// memory commitment repacks the single unified memory-tree cap into
 /// natural-coset-order `MerkleTreeCapVarLength` chunks
-/// (`gpu_circuit_prover::prover::trace::memory`); concatenating them in order
+/// (`gpu_trace::trace::memory`); concatenating them in order
 /// reconstructs the single cap the CPU reference absorbs.
 fn fs_transform_unified(
     final_register_values: &[FinalRegisterValue; 32],

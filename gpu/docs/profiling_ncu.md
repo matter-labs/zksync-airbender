@@ -11,8 +11,10 @@ only if that test is marked `#[ignore]`).
 > Concrete example (the prover): see
 > [`../circuit_prover/docs/profiling.md`](../circuit_prover/docs/profiling.md) —
 > `$NVTX_RANGE = test.gpu.prove.profiled_call@gpu_circuit_prover.tests`,
-> `$SOURCE_FOLDERS = gpu/circuit_prover/native`, lineinfo env
-> `GPU_PROVER_ENABLE_LINEINFO`.
+> `$SOURCE_FOLDERS = gpu/trace/native gpu/gkr/native gpu/whir/native`
+> (the apex has no native tree of its own), lineinfo env
+> `GPU_TRACE_ENABLE_LINEINFO` / `GPU_GKR_ENABLE_LINEINFO` /
+> `GPU_WHIR_ENABLE_LINEINFO`.
 
 ## Quick Kernel Mode
 

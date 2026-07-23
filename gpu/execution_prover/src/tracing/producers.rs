@@ -2,11 +2,11 @@ use super::{DataTraceRanges, SplitDataTraceRanges, TracingDataProducer, UnifiedD
 use crate::messages::WorkerResult;
 use crate::A;
 use crossbeam_channel::{Receiver, Sender};
-use gpu_circuit_prover::witness::circuit_type::{
+use gpu_core::primitives::machine_type::MachineType;
+use gpu_trace::witness::circuit_type::{
     CircuitType, DelegationCircuitType, UnrolledCircuitType, UnrolledMemoryCircuitType,
     UnrolledNonMemoryCircuitType,
 };
-use gpu_core::primitives::machine_type::MachineType;
 use riscv_transpiler::jit::{CounterType, MAX_NUM_COUNTERS};
 use riscv_transpiler::witness::delegation::bigint::BigintDelegationWitness;
 use riscv_transpiler::witness::delegation::blake2_g_function::Blake2sGFunctionDelegationWitness;

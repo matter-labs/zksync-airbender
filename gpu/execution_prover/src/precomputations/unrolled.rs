@@ -1,11 +1,11 @@
 use super::{build_unified_setup_direct, config_logs_for_circuit, CircuitPrecomputations};
-use gpu_circuit_prover::witness::circuit_type::CircuitType;
-use gpu_circuit_prover::witness::circuit_type::{
+use gpu_core::primitives::field::BF;
+use gpu_core::primitives::machine_type::MachineType;
+use gpu_trace::witness::circuit_type::CircuitType;
+use gpu_trace::witness::circuit_type::{
     DelegationCircuitType, UnrolledCircuitType, UnrolledMemoryCircuitType,
     UnrolledNonMemoryCircuitType,
 };
-use gpu_core::primitives::field::BF;
-use gpu_core::primitives::machine_type::MachineType;
 
 use crate::upstream::{
     opcodes_for_full_machine_with_unsigned_mul_div_only_with_mem_word_access_specialization,
