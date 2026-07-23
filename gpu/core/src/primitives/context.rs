@@ -51,7 +51,7 @@ impl DeviceProperties {
 ///
 /// Only the holder's lifetime is enforced — at call sites the pointee must
 /// still outlive every dereference. See
-/// [`gpu/circuit_prover/docs/gpu_scheduling_contract.md`](../../../circuit_prover/docs/gpu_scheduling_contract.md)
+/// [`gpu/docs/gpu_scheduling_contract.md`](../../../docs/gpu_scheduling_contract.md)
 /// for the lifetime and access rules.
 #[repr(transparent)]
 pub struct UnsafeAccessor<T: ?Sized>(*const T);
@@ -75,7 +75,7 @@ impl<T: ?Sized> UnsafeAccessor<T> {
 
 impl<T: ?Sized> Clone for UnsafeAccessor<T> {
     fn clone(&self) -> Self {
-        UnsafeAccessor(self.0)
+        *self
     }
 }
 
@@ -83,7 +83,7 @@ impl<T: ?Sized> Copy for UnsafeAccessor<T> {}
 
 // SAFETY: `UnsafeAccessor<T>` is a raw pointer wrapper used to thread a
 // borrow into a stream-scheduled callback running on a different thread.
-// The scheduling contract (see `docs/gpu_scheduling_contract.md`) makes the
+// The scheduling contract (see `gpu/docs/gpu_scheduling_contract.md`) makes the
 // caller responsible for ordering reads/writes; the type itself adds no new
 // thread-safety obligations beyond `Sync`/`Send` of `*const T`.
 unsafe impl<T: ?Sized> Send for UnsafeAccessor<T> {}
@@ -92,7 +92,7 @@ unsafe impl<T: ?Sized> Sync for UnsafeAccessor<T> {}
 /// Raw `*mut T` wrapper with the same intent as [`UnsafeAccessor`] but for
 /// mutable borrows.
 ///
-/// See [`gpu/circuit_prover/docs/gpu_scheduling_contract.md`](../../../circuit_prover/docs/gpu_scheduling_contract.md)
+/// See [`gpu/docs/gpu_scheduling_contract.md`](../../../docs/gpu_scheduling_contract.md)
 /// for the write-exclusivity and lifetime rules.
 #[repr(transparent)]
 pub struct UnsafeMutAccessor<T: ?Sized>(*mut T);
@@ -116,7 +116,7 @@ impl<T: ?Sized> UnsafeMutAccessor<T> {
     /// Only valid inside a stream-scheduled host callback. Write-exclusivity
     /// is enforced by scheduling order, not by the type: at most one stream
     /// op (callback or kernel) may write the referent at a time, per the
-    /// fork/join window rules in `docs/gpu_scheduling_contract.md`.
+    /// fork/join window rules in `gpu/docs/gpu_scheduling_contract.md`.
     pub unsafe fn get_mut(&self) -> &mut T {
         &mut *(self.0)
     }
@@ -124,7 +124,7 @@ impl<T: ?Sized> UnsafeMutAccessor<T> {
 
 impl<T: ?Sized> Clone for UnsafeMutAccessor<T> {
     fn clone(&self) -> Self {
-        UnsafeMutAccessor(self.0)
+        *self
     }
 }
 
@@ -148,6 +148,9 @@ impl<T: ?Sized> HostAllocation<T> {
 }
 
 impl<T> HostAllocation<[T]> {
+    /// # Safety
+    /// The returned slice's `len` elements are uninitialized; the caller must
+    /// initialize each element before reading it.
     pub unsafe fn new_uninit_slice_in(len: usize, allocator: HostAllocator) -> Self {
         Self(Box::new_uninit_slice_in(len, allocator).assume_init())
     }

@@ -108,9 +108,9 @@ DEVICE_FORCEINLINE void monomials_to_evals_subwarp_impl(bf_matrix_getter<ld_modi
 //   LOG_N=3: THREADS_PER_INSTANCE=8,  IPB=32  -> 256 threads
 //   LOG_N=4: THREADS_PER_INSTANCE=16, IPB=16  -> 256 threads
 //   LOG_N=5: THREADS_PER_INSTANCE=32, IPB=8   -> 256 threads
-// Below LOG_N=4 the sub-warp variant replaces the per-stage fallback's
-// (`bitreversed_coeffs_to_natural_coset` in `mod.rs`) `log_n + 1` separate
-// kernel launches per NTT with a single launch.
+// Below LOG_N=4 the sub-warp variant runs the entire size-2^LOG_N radix-2 NTT in
+// a single launch (one register-resident element per thread). Parity at these
+// sizes is anchored by the `host_oracle`-backed `subwarp_vs_host` parity tests.
 DEFINE_SUBWARP_KERNEL(1, 7)
 DEFINE_SUBWARP_KERNEL(2, 6)
 DEFINE_SUBWARP_KERNEL(3, 5)

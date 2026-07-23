@@ -25,9 +25,7 @@ EXTERN __launch_bounds__(512, 2) __global__
   const unsigned log_blocks_x = static_cast<unsigned>(start_stage - 5);
   const unsigned log_blocks_y = static_cast<unsigned>(log_n - start_stage - 8);
   const FlatBlockIndex fi = decompose_flat_2d(log_blocks_x, log_blocks_y, static_cast<unsigned>(log_cosets_in_tile));
-  const int col_offset = static_cast<int>(fi.coset) * num_cols_per_coset + static_cast<int>(fi.col);
-  gmem_in.add_col(col_offset);
-  gmem_out.add_col(col_offset);
+  apply_flat_col_offset(fi, num_cols_per_coset, gmem_in, gmem_out);
   const unsigned blocks_per_exchg_region = 1u << log_blocks_x;
   const unsigned num_exchg_regions = 1u << log_blocks_y;
 
@@ -163,26 +161,14 @@ DEVICE_FORCEINLINE void monomials_to_evals_initial_up_to_8_stages(bf_matrix_gett
   } else {
     // transpose coalesced loads into registers
     if (warp_id & 4) {
-#pragma unroll
-      for (int y = 0; y < VALS_PER_THREAD; y++)
-        smem_warp[xy_to_swizzled(lane_id, y)] = vals[y];
-      __syncwarp();
-#pragma unroll
-      for (int x = 0; x < VALS_PER_THREAD; x++)
-        vals[x] = smem_warp[xy_to_swizzled(x, lane_id)];
+      warp_transpose_swizzled<VALS_PER_THREAD>(smem_warp, vals, lane_id);
     }
 
     __pipeline_wait_prior(0); // might as well also use this sync to ensure twiddles are ready
     __syncthreads();
 
     if (!(warp_id & 4)) {
-#pragma unroll
-      for (int y = 0; y < VALS_PER_THREAD; y++)
-        smem_warp[xy_to_swizzled(lane_id, y)] = vals[y];
-      __syncwarp();
-#pragma unroll
-      for (int x = 0; x < VALS_PER_THREAD; x++)
-        vals[x] = smem_warp[xy_to_swizzled(x, lane_id)];
+      warp_transpose_swizzled<VALS_PER_THREAD>(smem_warp, vals, lane_id);
     }
   }
 
@@ -201,13 +187,7 @@ DEVICE_FORCEINLINE void monomials_to_evals_initial_up_to_8_stages(bf_matrix_gett
   __syncthreads();
 
   smem_warp = smem_block + warp_id * VALS_PER_WARP;
-#pragma unroll
-  for (int y = 0; y < VALS_PER_THREAD; y++)
-    smem_warp[xy_to_swizzled(lane_id, y)] = vals[y];
-  __syncwarp();
-#pragma unroll
-  for (int x = 0; x < VALS_PER_THREAD; x++)
-    vals[x] = smem_warp[xy_to_swizzled(x, lane_id)];
+  warp_transpose_swizzled<VALS_PER_THREAD>(smem_warp, vals, lane_id);
 
   // Use pure cmem for warp-uniform twiddles
   if (STAGES >= 5) {

@@ -14,9 +14,7 @@ EXTERN __launch_bounds__(512, 1) __global__
   // 1 << (log_n - 14)) blocks per NTT, then cosets in tile, then columns.
   const unsigned log_blocks_per_ntt = static_cast<unsigned>(log_n) - 14u;
   const FlatBlockIndex fi = decompose_flat_1d(log_blocks_per_ntt, static_cast<unsigned>(log_cosets_in_tile));
-  const int col_offset = static_cast<int>(fi.coset) * num_cols_per_coset + static_cast<int>(fi.col);
-  gmem_in.add_col(col_offset);
-  gmem_out.add_col(col_offset);
+  apply_flat_col_offset(fi, num_cols_per_coset, gmem_in, gmem_out);
 
   const int lane_in_tile = threadIdx.x & 15;
   const int tile_id = threadIdx.x >> LOG_DATA_TILE_SIZE;
@@ -30,41 +28,23 @@ EXTERN __launch_bounds__(512, 1) __global__
 
   // "ct" = consecutive tile layout
   // "il" = interleaved tile layout
-  const int thread_il_gmem_start = lane_in_tile + tile_id * TILE_GMEM_STRIDE;
-  const int thread_ct_gmem_start = lane_in_tile + tile_id * IL_GMEM_STRIDE;
-  const int thread_il_smem_start = lane_in_tile + tile_id * TILE_SIZE;
-  const int thread_ct_smem_start = lane_in_tile + tile_id * TILE_SIZE * THREAD_TILES_PER_BLOCK;
+  const ThreadTileStarts starts = thread_tile_starts(lane_in_tile, tile_id, TILE_GMEM_STRIDE, IL_GMEM_STRIDE, TILE_SIZE, THREAD_TILES_PER_BLOCK);
 
-  const bf twiddle = ab_inv_cmem_twiddles_coarse[1];
-  prefetch_pipeline_group<0, IL_GMEM_STRIDE, PL_GROUP_SIZE, PL_STRIDE>(vals, gmem_in, thread_il_gmem_start);
-  exchg_pipeline_group<0>(vals, twiddle);
-  prefetch_pipeline_group<1, IL_GMEM_STRIDE, PL_GROUP_SIZE, PL_STRIDE>(vals, gmem_in, thread_il_gmem_start);
-  exchg_pipeline_group<1>(vals, twiddle);
-  prefetch_pipeline_group<2, IL_GMEM_STRIDE, PL_GROUP_SIZE, PL_STRIDE>(vals, gmem_in, thread_il_gmem_start);
-  exchg_pipeline_group<2>(vals, twiddle);
-  prefetch_pipeline_group<3, IL_GMEM_STRIDE, PL_GROUP_SIZE, PL_STRIDE>(vals, gmem_in, thread_il_gmem_start);
-  exchg_pipeline_group<3>(vals, twiddle);
-  prefetch_pipeline_group<4, IL_GMEM_STRIDE, PL_GROUP_SIZE, PL_STRIDE>(vals, gmem_in, thread_il_gmem_start);
-  exchg_pipeline_group<4>(vals, twiddle);
-  prefetch_pipeline_group<5, IL_GMEM_STRIDE, PL_GROUP_SIZE, PL_STRIDE>(vals, gmem_in, thread_il_gmem_start);
-  exchg_pipeline_group<5>(vals, twiddle);
-  prefetch_pipeline_group<6, IL_GMEM_STRIDE, PL_GROUP_SIZE, PL_STRIDE>(vals, gmem_in, thread_il_gmem_start);
-  exchg_pipeline_group<6>(vals, twiddle);
-  prefetch_pipeline_group<7, IL_GMEM_STRIDE, PL_GROUP_SIZE, PL_STRIDE>(vals, gmem_in, thread_il_gmem_start);
-  exchg_pipeline_group<7>(vals, twiddle);
+  prefetch_exchg_pipeline_8<IL_GMEM_STRIDE, PL_GROUP_SIZE, PL_STRIDE>(vals, gmem_in, starts.il_gmem_start,
+                                                                      pipeline_exchg_forward{ab_inv_cmem_twiddles_coarse[1]});
 
   reg_exchg_inv<4, 8, 4>(vals, 0);
   reg_exchg_inv<2, 4, 8>(vals, 0);
   reg_exchg_inv<1, 2, 16>(vals, 0);
 
 #pragma unroll
-  for (int i{0}, addr{thread_il_smem_start}; i < 32; i++, addr += TILE_SIZE * THREAD_TILES_PER_BLOCK)
+  for (int i{0}, addr{starts.il_smem_start}; i < 32; i++, addr += TILE_SIZE * THREAD_TILES_PER_BLOCK)
     smem_block[addr] = vals[i]; // write interleaved smem tiles
 
   __syncthreads();
 
 #pragma unroll
-  for (int i{0}, addr{thread_ct_smem_start}; i < 32; i++, addr += TILE_SIZE)
+  for (int i{0}, addr{starts.ct_smem_start}; i < 32; i++, addr += TILE_SIZE)
     vals[i] = smem_block[addr]; // read consecutive smem tiles
 
   int tile_exchg_region_offset = tile_id;
@@ -79,7 +59,7 @@ EXTERN __launch_bounds__(512, 1) __global__
   reg_exchg_inv<1, 2, 16>(vals, tile_exchg_region_offset);
 
 #pragma unroll
-  for (int i{0}, row{thread_ct_gmem_start}; i < 32; i++, row += TILE_GMEM_STRIDE)
+  for (int i{0}, row{starts.ct_gmem_start}; i < 32; i++, row += TILE_GMEM_STRIDE)
     gmem_out.set_at_row(row, vals[i]); // write consecutive gmem tiles
 }
 
@@ -94,9 +74,7 @@ EXTERN __launch_bounds__(512, 1) __global__
   // 1 << (log_n - 14)) blocks per NTT, then cosets in tile, then columns.
   const unsigned log_blocks_per_ntt = static_cast<unsigned>(log_n) - 14u;
   const FlatBlockIndex fi = decompose_flat_1d(log_blocks_per_ntt, static_cast<unsigned>(log_cosets_in_tile));
-  const int col_offset = static_cast<int>(fi.coset) * num_cols_per_coset + static_cast<int>(fi.col);
-  gmem_in.add_col(col_offset);
-  gmem_out.add_col(col_offset);
+  apply_flat_col_offset(fi, num_cols_per_coset, gmem_in, gmem_out);
 
   const int lane_in_tile = threadIdx.x & 31;
   const int tile_id = threadIdx.x >> LOG_DATA_TILE_SIZE;
@@ -115,23 +93,8 @@ EXTERN __launch_bounds__(512, 1) __global__
   const int thread_il_smem_start = lane_in_tile + tile_id * TILE_SIZE;
   const int thread_ct_smem_start = lane_in_tile + tile_id * TILE_SIZE * 2 * THREAD_TILES_PER_BLOCK;
 
-  const bf twiddle = ab_inv_cmem_twiddles_coarse[1];
-  prefetch_pipeline_group<0, IL_GMEM_STRIDE, PL_GROUP_SIZE, PL_STRIDE>(vals, gmem_in, thread_il_gmem_start);
-  exchg_pipeline_group<0>(vals, twiddle);
-  prefetch_pipeline_group<1, IL_GMEM_STRIDE, PL_GROUP_SIZE, PL_STRIDE>(vals, gmem_in, thread_il_gmem_start);
-  exchg_pipeline_group<1>(vals, twiddle);
-  prefetch_pipeline_group<2, IL_GMEM_STRIDE, PL_GROUP_SIZE, PL_STRIDE>(vals, gmem_in, thread_il_gmem_start);
-  exchg_pipeline_group<2>(vals, twiddle);
-  prefetch_pipeline_group<3, IL_GMEM_STRIDE, PL_GROUP_SIZE, PL_STRIDE>(vals, gmem_in, thread_il_gmem_start);
-  exchg_pipeline_group<3>(vals, twiddle);
-  prefetch_pipeline_group<4, IL_GMEM_STRIDE, PL_GROUP_SIZE, PL_STRIDE>(vals, gmem_in, thread_il_gmem_start);
-  exchg_pipeline_group<4>(vals, twiddle);
-  prefetch_pipeline_group<5, IL_GMEM_STRIDE, PL_GROUP_SIZE, PL_STRIDE>(vals, gmem_in, thread_il_gmem_start);
-  exchg_pipeline_group<5>(vals, twiddle);
-  prefetch_pipeline_group<6, IL_GMEM_STRIDE, PL_GROUP_SIZE, PL_STRIDE>(vals, gmem_in, thread_il_gmem_start);
-  exchg_pipeline_group<6>(vals, twiddle);
-  prefetch_pipeline_group<7, IL_GMEM_STRIDE, PL_GROUP_SIZE, PL_STRIDE>(vals, gmem_in, thread_il_gmem_start);
-  exchg_pipeline_group<7>(vals, twiddle);
+  prefetch_exchg_pipeline_8<IL_GMEM_STRIDE, PL_GROUP_SIZE, PL_STRIDE>(vals, gmem_in, thread_il_gmem_start,
+                                                                      pipeline_exchg_forward{ab_inv_cmem_twiddles_coarse[1]});
 
   reg_exchg_inv<4, 8, 4>(vals, 0);
   reg_exchg_inv<2, 4, 8>(vals, 0);
@@ -172,9 +135,7 @@ EXTERN __launch_bounds__(512, 1) __global__
   // `log_cosets_in_tile = 0` collapses to the original single-coset layout.
   const unsigned log_blocks_per_ntt = static_cast<unsigned>(log_n) - 14u;
   const FlatBlockIndex fi = decompose_flat_1d(log_blocks_per_ntt, static_cast<unsigned>(log_cosets_in_tile));
-  const int col_offset = static_cast<int>(fi.coset) * num_cols_per_coset + static_cast<int>(fi.col);
-  gmem_in.add_col(col_offset);
-  gmem_out.add_col(col_offset);
+  apply_flat_col_offset(fi, num_cols_per_coset, gmem_in, gmem_out);
 
   const int lane_id = threadIdx.x & 31;
   const int warp_id = threadIdx.x >> 5;
@@ -243,13 +204,7 @@ EXTERN __launch_bounds__(512, 1) __global__
   warp_exchg_region_offset <<= 1;
 
   __syncwarp();
-#pragma unroll
-  for (int y = 0; y < 32; y++)
-    smem_warp[xy_to_swizzled(lane_id, y)] = vals[y];
-  __syncwarp();
-#pragma unroll
-  for (int x = 0; x < 32; x++)
-    vals[x] = smem_warp[xy_to_swizzled(x, lane_id)];
+  warp_transpose_swizzled<VALS_PER_THREAD>(smem_warp, vals, lane_id);
 
   int thread_exchg_region_offset = warp_exchg_region_offset + lane_id;
   reg_exchg_cmem_smem_twiddles_inv<TenStages, 16, 32, 1, cmem_twiddles>(vals, thread_exchg_region_offset, smem_twiddles);
@@ -274,13 +229,7 @@ EXTERN __launch_bounds__(512, 1) __global__
   } else {
     // un-swizzling + coalesced stores performs better on 5090
     __syncwarp();
-#pragma unroll
-    for (int y = 0; y < 32; y++)
-      smem_warp[xy_to_swizzled(lane_id, y)] = vals[y];
-    __syncwarp();
-#pragma unroll
-    for (int x = 0; x < 32; x++)
-      vals[x] = smem_warp[xy_to_swizzled(x, lane_id)];
+    warp_transpose_swizzled<VALS_PER_THREAD>(smem_warp, vals, lane_id);
 #pragma unroll
     for (int i{0}, row{lane_id}; i < VALS_PER_THREAD; i++, row += WARP_SIZE)
       gmem_out.set_at_row(row, vals[i]);

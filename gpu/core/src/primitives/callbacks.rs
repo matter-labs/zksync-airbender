@@ -8,7 +8,7 @@
 //! the per-stream keepalive bundle and dropped together once the proof or
 //! workflow that produced it finishes.
 //!
-//! See `gpu/circuit_prover/docs/gpu_scheduling_contract.md` §Lifetime rules for
+//! See `gpu/docs/gpu_scheduling_contract.md` §Lifetime rules for
 //! the broader "scheduled vs. completed" distinction.
 
 use era_cudart::execution::{launch_host_fn, HostFn};
@@ -16,6 +16,12 @@ use era_cudart::result::CudaResult;
 use era_cudart::stream::CudaStream;
 
 pub struct Callbacks<'a>(Vec<HostFn<'a>>);
+
+impl Default for Callbacks<'_> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl<'a> Callbacks<'a> {
     pub fn new() -> Self {

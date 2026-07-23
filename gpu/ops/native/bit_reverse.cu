@@ -18,7 +18,7 @@ DEVICE_FORCEINLINE void bit_reverse_naive(const matrix_getter<T, ld_modifier::cs
     return;
   const unsigned col = blockIdx.y;
   const unsigned l_index = row;
-  const unsigned r_index = __brev(l_index) >> (32 - log_count);
+  const unsigned r_index = bitreverse_low_bits(l_index, log_count);
   if (l_index > r_index)
     return;
   const T l_value = src.get(l_index, col);
@@ -57,7 +57,6 @@ DEVICE_FORCEINLINE void bit_reverse(const matrix_getter<T, ld_modifier::cs> src,
   const unsigned tid_y = threadIdx.y;
   const unsigned col = blockIdx.z;
   const unsigned half_log_count = log_count >> 1;
-  const unsigned shift = 32 - half_log_count;
   const unsigned stride = gridDim.y << (half_log_count + LOG_CHUNK_SIZE);
   const unsigned x_offset = (blockIdx.y << (half_log_count + LOG_CHUNK_SIZE)) + tid_x;
   const unsigned m = 1u << (half_log_count - LOG_TILE_DIM);
@@ -77,7 +76,7 @@ DEVICE_FORCEINLINE void bit_reverse(const matrix_getter<T, ld_modifier::cs> src,
 #pragma unroll
   for (int i = 0; i < TILE_DIM; i += BLOCK_ROWS) {
     const unsigned idx = tid_y + i;
-    const unsigned ry = __brev(y_src + i) >> shift;
+    const unsigned ry = bitreverse_low_bits(y_src + i, half_log_count);
     const T value = src.get(ry * stride + x_src, col);
     tile[is_reverse][idx][tid_x] = value;
   }
@@ -85,7 +84,7 @@ DEVICE_FORCEINLINE void bit_reverse(const matrix_getter<T, ld_modifier::cs> src,
 #pragma unroll
   for (int i = 0; i < TILE_DIM; i += BLOCK_ROWS) {
     const unsigned idx = tid_y + i;
-    const unsigned ry = __brev(y_dst + i) >> shift;
+    const unsigned ry = bitreverse_low_bits(y_dst + i, half_log_count);
     T value = tile[is_reverse][tid_x >> LOG_CHUNK_SIZE][idx << LOG_CHUNK_SIZE | (tid_x & (CHUNK_SIZE - 1))];
     dst.set(ry * stride + x_dst, col, value);
   }

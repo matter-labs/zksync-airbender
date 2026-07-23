@@ -2,11 +2,11 @@
 
 use era_cudart::cuda_kernel;
 use era_cudart::execution::{CudaLaunchConfig, Dim3, KernelFunction};
-use era_cudart::result::{CudaResult, CudaResultWrap};
+use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
 use era_cudart::stream::CudaStream;
-use era_cudart_sys::{cudaFuncSetAttribute, CudaFuncAttribute};
 
+use super::shared;
 use super::{hypercube_evals_natural_to_bitreversed_coeffs, MIN_LOG_N_FOR_MULTISTAGE_KERNELS};
 
 use gpu_core::primitives::context::DeviceProperties;
@@ -55,7 +55,7 @@ hypercube_evals_to_monomials_final!(ab_hypercube_evals_to_monomials_final_6_stag
 hypercube_evals_to_monomials_final!(ab_hypercube_evals_to_monomials_final_7_stages_kernel);
 hypercube_evals_to_monomials_final!(ab_hypercube_evals_to_monomials_final_8_stages_kernel);
 
-pub fn hypercube_evals_to_monomials_3_pass(
+pub(crate) fn hypercube_evals_to_monomials_3_pass(
     inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
     outputs_matrix: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),
     log_n: usize,
@@ -65,13 +65,7 @@ pub fn hypercube_evals_to_monomials_3_pass(
     let n = 1 << log_n;
     assert_eq!(inputs_matrix.rows(), n);
     assert_eq!(outputs_matrix.rows(), n);
-    // __pipeline_memcpy_asyncs in the kernel require 16 byte alignment
-    assert_eq!(inputs_matrix.slice().as_ptr() as usize % 16, 0);
-    assert_eq!(outputs_matrix.slice().as_ptr() as usize % 16, 0);
-    assert_eq!((inputs_matrix.stride() * size_of::<BF>()) % 16, 0);
-    assert_eq!((outputs_matrix.stride() * size_of::<BF>()) % 16, 0);
-    assert_eq!((inputs_matrix.offset() * size_of::<BF>()) % 16, 0);
-    assert_eq!((outputs_matrix.offset() * size_of::<BF>()) % 16, 0);
+    shared::assert_ntt_16b_aligned(inputs_matrix, outputs_matrix);
     let num_ntts = outputs_matrix.cols();
     let inputs_slice = inputs_matrix.slice();
     let stride = outputs_matrix.stride();
@@ -118,7 +112,7 @@ pub fn hypercube_evals_to_monomials_3_pass(
                 input,
                 output_matrix_mut,
                 log_n as i32,
-                start_stage as i32,
+                start_stage,
             );
             StridedTilesStagesFunction(ab_hypercube_evals_to_monomials_nonfinal_8_stages_kernel)
                 .launch(&config, &args)?;
@@ -157,7 +151,7 @@ pub fn hypercube_evals_to_monomials_3_pass(
     Ok(())
 }
 
-pub fn hypercube_evals_to_monomials_2_pass(
+pub(crate) fn hypercube_evals_to_monomials_2_pass(
     inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
     outputs_matrix: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),
     log_n: usize,
@@ -167,13 +161,7 @@ pub fn hypercube_evals_to_monomials_2_pass(
     let n = 1 << log_n;
     assert_eq!(inputs_matrix.rows(), n);
     assert_eq!(outputs_matrix.rows(), n);
-    // __pipeline_memcpy_asyncs in the kernel require 16 byte alignment
-    assert_eq!(inputs_matrix.slice().as_ptr() as usize % 16, 0);
-    assert_eq!(outputs_matrix.slice().as_ptr() as usize % 16, 0);
-    assert_eq!((inputs_matrix.stride() * size_of::<BF>()) % 16, 0);
-    assert_eq!((outputs_matrix.stride() * size_of::<BF>()) % 16, 0);
-    assert_eq!((inputs_matrix.offset() * size_of::<BF>()) % 16, 0);
-    assert_eq!((outputs_matrix.offset() * size_of::<BF>()) % 16, 0);
+    shared::assert_ntt_16b_aligned(inputs_matrix, outputs_matrix);
     let num_ntts = outputs_matrix.cols();
     let inputs_slice = inputs_matrix.slice();
     let stride = outputs_matrix.stride();
@@ -214,15 +202,7 @@ pub fn hypercube_evals_to_monomials_2_pass(
             }
             _ => unreachable!("hypercube 2-pass kernels are only generated for log_n in 23..=24"),
         };
-        let func_ptr = function.as_ptr();
-        unsafe {
-            cudaFuncSetAttribute(
-                func_ptr,
-                CudaFuncAttribute::MaxDynamicSharedMemorySize,
-                smem_bytes as i32,
-            )
-            .wrap()?;
-        }
+        shared::set_max_dynamic_smem(&function, smem_bytes)?;
         function.launch(&config, &args)?;
         let bf_vals_per_block = 1 << 14; // 16384
         let smem_bytes = bf_vals_per_block * size_of::<BF>();
@@ -238,21 +218,12 @@ pub fn hypercube_evals_to_monomials_2_pass(
         );
         let function =
             EvalsToMonomialsFinalFunction(ab_hypercube_evals_to_monomials_last_14_stages_kernel);
-        let func_ptr = function.as_ptr();
-        unsafe {
-            cudaFuncSetAttribute(
-                func_ptr,
-                CudaFuncAttribute::MaxDynamicSharedMemorySize,
-                smem_bytes as i32,
-            )
-            .wrap()?;
-        }
+        shared::set_max_dynamic_smem(&function, smem_bytes)?;
         function.launch(&config, &args)?;
     }
     Ok(())
 }
 
-#[allow(dead_code)]
 pub fn hypercube_x1_msb_evals_to_x1_msb_monomials(
     inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
     outputs_matrix: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),

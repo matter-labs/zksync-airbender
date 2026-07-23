@@ -4,76 +4,46 @@ impl Generator {
     pub(crate) fn add_field_expr(&mut self, expr: &FieldNodeExpression<F>) {
         match expr {
             FieldNodeExpression::Place(variable) => {
-                let new_ident = self.create_var();
-                let address = self.get_column_address(variable);
-                match address {
-                    ColumnAddress::WitnessSubtree(idx) => {
-                        self.push(&format!("GET_WITNESS_PLACE(f, {new_ident}, {idx})\n"));
-                    }
-                    ColumnAddress::MemorySubtree(idx) => {
-                        self.push(&format!("GET_MEMORY_PLACE(f, {new_ident}, {idx})\n"));
-                    }
-                    ColumnAddress::SetupSubtree(_idx) => {
-                        todo!();
-                    }
-                    ColumnAddress::OptimizedOut(idx) => {
-                        assert!(self.scratch_size > idx);
-                        self.push(&format!("GET_SCRATCH_PLACE(f, {new_ident}, {idx})\n"));
-                    }
-                }
+                self.emit_place_read("f", variable);
             }
             FieldNodeExpression::SubExpression(_usize) => {
                 unreachable!("not supported at the upper level");
             }
             FieldNodeExpression::Constant(constant) => {
-                let new_ident = self.create_var();
-                let literal = *constant;
-                self.push(&format!("CONSTANT(f, {new_ident}, {literal})\n"));
+                self.emit_constant("f", *constant);
             }
             FieldNodeExpression::FromInteger(expr) => {
                 let var_ident = self.integer_expr_into_var(expr);
-                let new_ident = self.create_var();
-                self.push(&format!("FROM(f, {new_ident}, {var_ident})\n"));
+                self.emit("FROM", Some("f"), &[var_ident]);
             }
             FieldNodeExpression::FromRawReprWithReduction(expr) => {
                 let var_ident = self.integer_expr_into_var(expr);
-                let new_ident = self.create_var();
-                self.push(&format!(
-                    "FROM_RAW_REPR_WITH_REDUCTION(f, {new_ident}, {var_ident})\n"
-                ));
+                self.emit("FROM_RAW_REPR_WITH_REDUCTION", Some("f"), &[var_ident]);
             }
             FieldNodeExpression::FromMask(expr) => {
                 let var_ident = self.boolean_expr_into_var(expr);
-                let new_ident = self.create_var();
-                self.push(&format!("FROM(f, {new_ident}, {var_ident})\n"));
+                self.emit("FROM", Some("f"), &[var_ident]);
             }
             FieldNodeExpression::OracleValue {
                 placeholder,
                 subindex: _,
             } => {
-                let new_ident = self.create_var();
-                let placeholder_ident = Self::get_placeholder_ident(placeholder);
-                self.push(&format!(
-                    "GET_ORACLE_VALUE(f, {new_ident}, {placeholder_ident})\n"
-                ));
+                self.emit_oracle_value("f", placeholder);
             }
             FieldNodeExpression::Add { lhs, rhs } => {
                 let lhs = self.field_expr_into_var(lhs);
                 let rhs = self.field_expr_into_var(rhs);
-                let new_ident = self.create_var();
-                self.push(&format!("ADD(f, {new_ident}, {lhs}, {rhs})\n"));
+                self.emit("ADD", Some("f"), &[lhs, rhs]);
             }
             FieldNodeExpression::Sub { lhs, rhs } => {
                 let lhs = self.field_expr_into_var(lhs);
                 let rhs = self.field_expr_into_var(rhs);
-                let new_ident = self.create_var();
-                self.push(&format!("SUB(f, {new_ident}, {lhs}, {rhs})\n"));
+                self.emit("SUB", Some("f"), &[lhs, rhs]);
             }
             FieldNodeExpression::Mul { lhs, rhs } => {
                 let lhs = self.field_expr_into_var(lhs);
                 let rhs = self.field_expr_into_var(rhs);
-                let new_ident = self.create_var();
-                self.push(&format!("MUL(f, {new_ident}, {lhs}, {rhs})\n"));
+                self.emit("MUL", Some("f"), &[lhs, rhs]);
             }
             FieldNodeExpression::AddProduct {
                 additive_term,
@@ -83,10 +53,7 @@ impl Generator {
                 let additive_term = self.field_expr_into_var(additive_term);
                 let mul_0 = self.field_expr_into_var(mul_0);
                 let mul_1 = self.field_expr_into_var(mul_1);
-                let new_ident = self.create_var();
-                self.push(&format!(
-                    "MUL_ADD(f, {new_ident}, {mul_0}, {mul_1}, {additive_term})\n"
-                ));
+                self.emit("MUL_ADD", Some("f"), &[mul_0, mul_1, additive_term]);
             }
             FieldNodeExpression::Select {
                 selector,
@@ -96,20 +63,15 @@ impl Generator {
                 let selector = self.boolean_expr_into_var(selector);
                 let if_true = self.field_expr_into_var(if_true);
                 let if_false = self.field_expr_into_var(if_false);
-                let new_ident = self.create_var();
-                self.push(&format!(
-                    "SELECT(f, {new_ident}, {selector}, {if_true}, {if_false})\n"
-                ));
+                self.emit("SELECT", Some("f"), &[selector, if_true, if_false]);
             }
             FieldNodeExpression::InverseUnchecked(expr) => {
                 let var_ident = self.field_expr_into_var(expr);
-                let new_ident = self.create_var();
-                self.push(&format!("INV(f, {new_ident}, {var_ident})\n"));
+                self.emit("INV", Some("f"), &[var_ident]);
             }
             FieldNodeExpression::InverseOrZero(expr) => {
                 let var_ident = self.field_expr_into_var(expr);
-                let new_ident = self.create_var();
-                self.push(&format!("INV(f, {new_ident}, {var_ident})\n"));
+                self.emit("INV", Some("f"), &[var_ident]);
             }
             FieldNodeExpression::LookupOutput { .. } => {
                 unreachable!("not supported at the upper level");

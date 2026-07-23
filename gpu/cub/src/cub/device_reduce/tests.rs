@@ -3,7 +3,6 @@ use era_cudart::stream::CudaStream;
 
 use itertools::Itertools;
 use rand::rng;
-use serial_test::serial;
 
 use crate::cub::device_reduce::{Reduce, ReduceOperation};
 use crate::upstream::Field;
@@ -97,25 +96,21 @@ fn test_sum<F: Field>(test_function: TestFunction<F>) {
 }
 
 #[test]
-#[serial]
 fn sum_bf() {
     test_sum(reduce::<super::BF>)
 }
 
 #[test]
-#[serial]
 fn batch_sum_bf() {
     test_sum(batch_reduce::<super::BF>)
 }
 
 #[test]
-#[serial]
 fn sum_e4() {
     test_sum(reduce::<super::E4>)
 }
 
 #[test]
-#[serial]
 fn batch_sum_e4() {
     test_sum(batch_reduce::<super::E4>)
 }

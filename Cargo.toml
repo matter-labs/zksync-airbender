@@ -32,6 +32,10 @@ members = [
     "gpu/hash",
     "gpu/ntt",
     "gpu/ops",
+    "gpu/prover_context",
+    "gpu/trace",
+    "gpu/gkr",
+    "gpu/whir",
     "gpu/circuit_prover",
     "gpu/execution_prover",
     "gpu/program_prover",
@@ -165,6 +169,10 @@ gpu_cub = { path = "./gpu/cub" }
 gpu_hash = { path = "./gpu/hash" }
 gpu_ntt = { path = "./gpu/ntt" }
 gpu_ops = { path = "./gpu/ops" }
+gpu_prover_context = { path = "./gpu/prover_context" }
+gpu_trace = { path = "./gpu/trace" }
+gpu_gkr = { path = "./gpu/gkr" }
+gpu_whir = { path = "./gpu/whir" }
 gpu_circuit_prover = { path = "./gpu/circuit_prover", default-features = false }
 gpu_execution_prover = { path = "./gpu/execution_prover", default-features = false }
 gpu_program_prover = { path = "./gpu/program_prover", default-features = false }

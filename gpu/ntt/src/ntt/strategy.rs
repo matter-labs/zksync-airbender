@@ -2,15 +2,15 @@
 //!
 //! `select_ntt_strategy` returns an `NttStrategy` describing how a given
 //! `(log_n, num_columns, num_cosets)` NTT should be executed on the active
-//! device. It routes the existing `bitreversed_monomials_to_natural_evals`
-//! through this selector, and compact kernels extend the supported `log_n`
-//! range.
+//! device. It routes the multi-coset entry
+//! `bitreversed_monomials_to_natural_evals_multi_coset` through this
+//! selector, and compact kernels extend the supported `log_n` range.
 
 use gpu_core::primitives::context::DeviceProperties;
 use gpu_core::primitives::field::BF;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct NttPass {
+pub(crate) struct NttPass {
     pub start_stage: usize,
     pub stage_count: usize,
     pub kernel: NttKernelKind,
@@ -19,13 +19,13 @@ pub struct NttPass {
 /// Direction the NTT plan runs in. Forward = bitreversed monomials → natural
 /// evals; Inverse = natural evals → bitreversed monomials.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum NttDirection {
+pub(crate) enum NttDirection {
     Forward,
     Inverse,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum NttKernelKind {
+pub(crate) enum NttKernelKind {
     MonomialsToEvalsInitial {
         stages: usize,
     },
@@ -88,14 +88,14 @@ pub enum NttKernelKind {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct NttStrategy {
+pub(crate) struct NttStrategy {
     pub passes: Vec<NttPass>,
     pub columns_per_launch: usize,
     pub cosets_per_launch: usize,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum NttStrategyError {
+pub(crate) enum NttStrategyError {
     LogNBelowSupported { log_n: usize, min_supported: usize },
 }
 
@@ -108,18 +108,22 @@ pub enum NttStrategyError {
 /// `[TWO_PASS_COMPACT_MIN_LOG_N, TWO_PASS_COMPACT_MAX_LOG_N]`, and the existing
 /// 2-/3-pass kernels cover `[MULTIPASS_MIN_LOG_N, ..]`. Selector returns
 /// `Err(LogNBelowSupported)` for `log_n = 0` only (identity NTT = host memcpy).
-pub const MIN_SUPPORTED_LOG_N: usize = 1;
-pub const COMPACT_MIN_LOG_N: usize = 1;
+// Documentation-only: the actual floor check in `select_forward_strategy`
+// matches against `COMPACT_MIN_LOG_N` (same value) directly, so this named
+// constant has no live reference; kept because the module doc above cites it.
+#[allow(dead_code)]
+pub(crate) const MIN_SUPPORTED_LOG_N: usize = 1;
+pub(crate) const COMPACT_MIN_LOG_N: usize = 1;
 // log_n in [13, 14] move to the 2-pass-compact-initial path: compact-1-pass
 // uses a single block per NTT and starves SMs once the per-block working set
 // approaches its smem cap; per-stage launch overhead is a smaller cost than
 // the SM-occupancy loss in that range.
-pub const COMPACT_MAX_LOG_N: usize = 12;
-pub const TWO_PASS_COMPACT_MIN_LOG_N: usize = 13;
-pub const TWO_PASS_COMPACT_MAX_LOG_N: usize = 20;
-pub const MULTIPASS_MIN_LOG_N: usize = 21;
+pub(crate) const COMPACT_MAX_LOG_N: usize = 12;
+pub(crate) const TWO_PASS_COMPACT_MIN_LOG_N: usize = 13;
+pub(crate) const TWO_PASS_COMPACT_MAX_LOG_N: usize = 20;
+pub(crate) const MULTIPASS_MIN_LOG_N: usize = 21;
 
-pub fn select_ntt_strategy(
+pub(crate) fn select_ntt_strategy(
     direction: NttDirection,
     log_n: usize,
     num_columns: usize,
@@ -263,7 +267,7 @@ fn dit_is_applicable(
             let log_vpt = c.log_vpt();
             // cosets_per_block = 1024 / LANES, LANES = 1 << (log_n - log_vpt).
             let cosets_per_block = 1usize << (10 - (log_n - log_vpt));
-            if num_cosets >= cosets_per_block && num_cosets % cosets_per_block == 0 {
+            if num_cosets >= cosets_per_block && num_cosets.is_multiple_of(cosets_per_block) {
                 Some(c)
             } else {
                 None
@@ -397,7 +401,8 @@ fn pick_cols_and_cosets_per_launch(
             // Larger `cols` only makes the half-L2 cap worse; further iterations are pointless.
             break;
         }
-        // K such that (K + 1) * cols * col_bytes <= L2  <=>  K * monomial_bytes <= l2 - monomial_bytes.
+        // K such that (K + 1) * cols * col_bytes <= L2
+        // <=> K * monomial_bytes <= l2 - monomial_bytes.
         let k_raw = (l2 / monomial_bytes).saturating_sub(1);
         let k_capped = k_raw.min(num_cosets);
         if k_capped == 0 {
@@ -435,11 +440,9 @@ fn l2_clamped_columns_per_launch(
 ) -> usize {
     let column_bytes = (1usize << log_n) * size_of::<BF>();
     let half_l2 = device_props.l2_cache_size_bytes / 2;
-    let columns_per_launch_l2 = if column_bytes == 0 {
-        num_columns
-    } else {
-        (half_l2 / column_bytes).max(1)
-    };
+    let columns_per_launch_l2 = half_l2
+        .checked_div(column_bytes)
+        .map_or(num_columns, |cols| cols.max(1));
     num_columns.min(columns_per_launch_l2)
 }
 
@@ -678,7 +681,7 @@ fn select_inverse_strategy(
 }
 
 #[cfg(test)]
-mod tests {
+mod cpu_tests {
     use super::*;
 
     fn l4_like() -> DeviceProperties {
@@ -828,10 +831,10 @@ mod tests {
             // (V4TwoPass takes any num_cosets >= 1 and the v4 two-pass smem
             // fits L4's 99 KiB opt-in cap), routed with log_vpt=2.
             let expected_kind = match log_n {
-                1 | 2 | 3 => format!(
+                1..=3 => format!(
                     "MonomialsToEvalsSubwarp {{ stages: {log_n}, log_instances_per_block: 0 }}"
                 ),
-                8 | 9 | 10 | 11 | 12 => {
+                8..=12 => {
                     format!("MonomialsToEvalsDit {{ stages: {log_n}, log_vpt: 2 }}")
                 }
                 _ => format!("MonomialsToEvalsInitial {{ stages: {log_n} }}"),

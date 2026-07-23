@@ -12,7 +12,12 @@ categories.workspace = true
 [dependencies]
 # The proving substrate this orchestrator drives. `default-features = false`
 # so the security level is selected by gpu_execution_prover's own features below.
+# The apex owns `config`/`proof` + the security/PoW feature forwards (below);
+# the split prover crates it sits atop are imported directly for their own paths.
 gpu_circuit_prover = { workspace = true, default-features = false }
+gpu_prover_context = { workspace = true }
+gpu_trace = { workspace = true }
+gpu_gkr = { workspace = true }
 gpu_core = { workspace = true }
 
 # Upstream crates, reached exclusively through the local `upstream` shim
@@ -50,7 +55,6 @@ eval_leaves = ["gpu_circuit_prover/eval_leaves"]
 
 [dev-dependencies]
 env_logger = "0.11"
-serial_test = "3"
 
 [lints.rust]
 # `no_cuda` is set by gpu_circuit_prover's build script; gpu_execution_prover has no

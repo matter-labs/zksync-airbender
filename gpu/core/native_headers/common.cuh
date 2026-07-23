@@ -1,5 +1,9 @@
 #pragma once
 
+// gpu_core native_headers = a complete-surface primitives LIBRARY: the field
+// ops, PTX cache-operator + carry-chain sets, and accessor matrix are
+// intentionally complete — do NOT prune on in-project usage (see gpu/AGENTS.md).
+
 #include <cstdint>
 #include <cstdio>
 #include <cuda_runtime.h>
@@ -33,3 +37,12 @@ using u32 = uint32_t;
 using u64 = uint64_t;
 using i32 = int32_t;
 using i64 = int64_t;
+
+// Bit-reverse of the low `num_bits` bits of `value` (the high `32 - num_bits`
+// bits are dropped). Single source of truth for the NTT/hash/WHIR bit-reversal
+// helpers. Guarded: `num_bits == 0` returns 0, avoiding the undefined `>> 32`
+// on a 32-bit value; for `num_bits >= 1` it is bit-identical to the historic
+// `__brev(value) >> (32 - num_bits)` per-crate copies.
+DEVICE_FORCEINLINE unsigned bitreverse_low_bits(const unsigned value, const unsigned num_bits) {
+  return num_bits == 0 ? 0 : (__brev(value) >> (32 - num_bits));
+}

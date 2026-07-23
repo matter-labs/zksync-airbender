@@ -1,59 +1,13 @@
-use blake2s_u32::Blake2sState;
 use itertools::Itertools;
 use rand::Rng;
 
 use super::*;
+use crate::upstream::{Blake2sState, USE_REDUCED_BLAKE2_ROUNDS};
 
+use gpu_core::primitives::field::BF;
 use gpu_core::primitives::utils::GetChunksCount;
 
-pub(crate) const BLOCK_SIZE: usize = 16;
-pub(super) const USE_REDUCED_BLAKE2_ROUNDS: bool = true;
-
-pub(crate) fn gather_rows(
-    indexes: &DeviceSlice<u32>,
-    bit_reverse_indexes: bool,
-    log_rows_per_index: u32,
-    values: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
-    result: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),
-    stream: &CudaStream,
-) -> CudaResult<()> {
-    let indexes_len = indexes.len();
-    let values_cols = values.cols();
-    let values_rows = values.rows();
-    assert!(values_rows.is_power_of_two());
-    let log_rows_count = values_rows.trailing_zeros();
-    let result_rows = result.rows();
-    let result_cols = result.cols();
-    let rows_per_index = 1 << log_rows_per_index;
-    assert_eq!(result_cols, values_cols);
-    assert_eq!(result_rows, indexes_len << log_rows_per_index);
-    assert!(indexes_len <= u32::MAX as usize);
-    let indexes_count = indexes_len as u32;
-    let (mut grid_dim, block_dim) = if log_rows_per_index < LOG_WARP_SIZE {
-        get_grid_block_dims_for_threads_count(
-            1 << (LOG_WARP_SIZE - log_rows_per_index),
-            indexes_count,
-        )
-    } else {
-        (indexes_count.into(), 1.into())
-    };
-    let block_dim = (rows_per_index, block_dim.x);
-    assert!(result_cols <= u32::MAX as usize);
-    grid_dim.y = result_cols as u32;
-    let indexes = indexes.as_ptr();
-    let values = values.as_ptr_and_stride();
-    let result = result.as_mut_ptr_and_stride();
-    let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
-    let args = GatherRowsArguments::new(
-        indexes,
-        indexes_count,
-        bit_reverse_indexes,
-        log_rows_count,
-        values,
-        result,
-    );
-    GatherRowsFunction::default().launch(&config, &args)
-}
+const BLOCK_SIZE: usize = 16;
 
 fn bitreverse_index(index: usize, num_bits: u32) -> usize {
     if num_bits == 0 {
@@ -79,7 +33,7 @@ fn verify_leaves(values: &[BF], results: &[Digest], log_rows_per_hash: u32) {
     let cols_count = values_len / (leaves_count << log_rows_per_hash);
     let rows_count = 1 << log_rows_per_hash;
     let domain_size = leaves_count << log_rows_per_hash;
-    for leaf_index in 0..leaves_count {
+    for (leaf_index, &actual) in results.iter().enumerate() {
         let mut input = vec![];
         for col in 0..cols_count {
             for row_slot in 0..rows_count {
@@ -111,7 +65,6 @@ fn verify_leaves(values: &[BF], results: &[Digest], log_rows_per_hash: u32) {
                 state.absorb::<USE_REDUCED_BLAKE2_ROUNDS>(&block);
             }
         }
-        let actual = results[leaf_index];
         assert_eq!(expected, actual);
     }
 }

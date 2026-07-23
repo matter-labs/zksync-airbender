@@ -7,7 +7,7 @@ use cs::witness_placer::graph_description::{
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs::File;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 mod boolean;
 mod field;
@@ -87,15 +87,13 @@ impl Generator {
                     condition_subexpr_idx,
                     ..
                 } = expr
-                {
-                    if let ColumnAddress::WitnessSubtree(idx) =
+                    && let ColumnAddress::WitnessSubtree(idx) =
                         self.get_column_address(into_variable)
-                    {
-                        if condition_subexpr_idx.is_some() {
-                            conditional.insert(idx);
-                        } else {
-                            unconditional.insert(idx);
-                        }
+                {
+                    if condition_subexpr_idx.is_some() {
+                        conditional.insert(idx);
+                    } else {
+                        unconditional.insert(idx);
                     }
                 }
             }
@@ -146,7 +144,7 @@ impl Generator {
             FixedWidthIntegerNodeExpression::U8SubExpression(idx)
             | FixedWidthIntegerNodeExpression::U16SubExpression(idx)
             | FixedWidthIntegerNodeExpression::U32SubExpression(idx) => *idx,
-            a @ _ => {
+            a => {
                 panic!("Trying to make variable from expression {:?}", a);
             }
         }
@@ -164,6 +162,70 @@ impl Generator {
 
     fn push(&mut self, string: &str) {
         self.output.push_str(string);
+    }
+
+    /// Emit a generator-macro call `MACRO([type_tag, ]new_ident, operands...)\n`,
+    /// allocating and returning the fresh output variable `new_ident`. This is
+    /// the shape shared by nearly every field/integer/boolean node: a handful
+    /// of macros (e.g. `AND`, `NEGATE`) take no width tag, hence `Option`.
+    fn emit(&mut self, macro_name: &str, type_tag: Option<&str>, operands: &[usize]) -> usize {
+        let new_ident = self.create_var();
+        match type_tag {
+            Some(tag) => self.push(&format!("{macro_name}({tag}, {new_ident}")),
+            None => self.push(&format!("{macro_name}({new_ident}")),
+        }
+        for operand in operands {
+            self.push(&format!(", {operand}"));
+        }
+        self.push(")\n");
+        new_ident
+    }
+
+    /// Emit the `GET_{WITNESS,MEMORY,SCRATCH}_PLACE` read dispatch shared by
+    /// every `*Place` node kind (field/boolean/u8/u16), keyed by `type_tag`.
+    /// `SetupSubtree` reads are intentionally unimplemented (out of scope).
+    fn emit_place_read(&mut self, type_tag: &str, variable: &Variable) -> usize {
+        let new_ident = self.create_var();
+        let address = self.get_column_address(variable);
+        match address {
+            ColumnAddress::WitnessSubtree(idx) => {
+                self.push(&format!(
+                    "GET_WITNESS_PLACE({type_tag}, {new_ident}, {idx})\n"
+                ));
+            }
+            ColumnAddress::MemorySubtree(idx) => {
+                self.push(&format!(
+                    "GET_MEMORY_PLACE({type_tag}, {new_ident}, {idx})\n"
+                ));
+            }
+            ColumnAddress::SetupSubtree(_idx) => {
+                todo!();
+            }
+            ColumnAddress::OptimizedOut(idx) => {
+                assert!(self.scratch_size > idx);
+                self.push(&format!(
+                    "GET_SCRATCH_PLACE({type_tag}, {new_ident}, {idx})\n"
+                ));
+            }
+        }
+        new_ident
+    }
+
+    /// Emit `CONSTANT(type_tag, new_ident, literal)\n`.
+    fn emit_constant(&mut self, type_tag: &str, literal: impl std::fmt::Display) -> usize {
+        let new_ident = self.create_var();
+        self.push(&format!("CONSTANT({type_tag}, {new_ident}, {literal})\n"));
+        new_ident
+    }
+
+    /// Emit `GET_ORACLE_VALUE(type_tag, new_ident, placeholder_ident)\n`.
+    fn emit_oracle_value(&mut self, type_tag: &str, placeholder: &Placeholder) -> usize {
+        let new_ident = self.create_var();
+        let placeholder_ident = Self::get_placeholder_ident(placeholder);
+        self.push(&format!(
+            "GET_ORACLE_VALUE({type_tag}, {new_ident}, {placeholder_ident})\n"
+        ));
+        new_ident
     }
 
     fn add_expression(&mut self, expr: &RawExpression<F>) {
@@ -201,7 +263,7 @@ impl Generator {
                         "LOOKUP_ENFORCE({num_inputs}, {table_id}, {lookup_mapping_idx}"
                     ));
                 }
-                for input in input_subexpr_idxes.iter().copied() {
+                for input in input_subexpr_idxes {
                     self.push(&format!(", VAR({input})"));
                 }
                 self.push(")\n");
@@ -220,7 +282,7 @@ impl Generator {
                 self.push(&format!(
                     "MAYBE_LOOKUP({new_ident}, {num_inputs}, {num_outputs}, {table_id}, {mask_id}"
                 ));
-                for input in input_subexpr_idxes.iter().copied() {
+                for input in input_subexpr_idxes {
                     self.push(&format!(", VAR({input})"));
                 }
                 self.push(")\n");
@@ -328,7 +390,7 @@ impl Generator {
         expressions: &[RawExpression<F>],
     ) {
         // quickly check that if all outputs are into memory, then we can skip such cases
-        if self.write_into_memory == false {
+        if !self.write_into_memory {
             let mut can_skip = true;
             for expr in expressions.iter() {
                 if let RawExpression::WriteVariable { into_variable, .. } = expr {
@@ -442,44 +504,212 @@ pub fn generate_from_files(
     ))
 }
 
-#[cfg(test)]
-mod tests {
-    use test_utils::skip_if_ci;
+/// A circuit whose witness-generation CUDA body is generated from committed
+/// SSA/layout inputs and checked in under `circuit_defs/`.
+///
+/// The generator is a pure function of `(layout, ssa)`, so each committed
+/// artifact must stay byte-identical to a fresh regeneration. The
+/// `committed_witness_cuh_is_current` test enforces that; the
+/// `regenerate_committed` binary refreshes the artifacts after an intentional
+/// codegen change.
+pub struct GeneratedCircuit {
+    /// Base name of the `cs/compiled_circuits/{id}_{layout,ssa}_gkr.json` inputs.
+    pub id: &'static str,
+    /// Repo-relative path of the checked-in `witness_generation_fn.cuh`.
+    pub committed_cuh: &'static str,
+}
 
-    use crate::generate_from_files;
-    use std::fs::File;
-    use std::io::Write;
-
-    fn generate(id: &str) {
-        let layout_path = format!("../../cs/compiled_circuits/{id}_layout_gkr.json");
-        let ssa_path = format!("../../cs/compiled_circuits/{id}_ssa_gkr.json");
-        let generated_cu_path = format!("{id}.cuh");
-        println!("{generated_cu_path}");
-        let code = generate_from_files(&layout_path, &ssa_path, false).unwrap();
-        File::create(&generated_cu_path)
-            .unwrap()
-            .write_all(&code.as_bytes())
-            .unwrap();
+impl GeneratedCircuit {
+    /// Regenerate this circuit's witness-generation CUDA from its committed
+    /// inputs, exactly as the checked-in artifact was produced
+    /// (`perform_assignments_to_memory = false`).
+    pub fn regenerate(&self, repo_root: &Path) -> Result<String, Box<dyn std::error::Error>> {
+        let layout = repo_root.join(format!("cs/compiled_circuits/{}_layout_gkr.json", self.id));
+        let ssa = repo_root.join(format!("cs/compiled_circuits/{}_ssa_gkr.json", self.id));
+        generate_from_files(layout, ssa, false)
     }
 
-    #[test]
-    fn generate_all() {
-        skip_if_ci!();
-        const IDS: &[&str] = &[
-            "add_sub_lui_auipc_mop",
-            "bigint_with_extended_control",
-            "blake2_g_function",
-            "blake2_with_extended_control",
-            "jump_branch_slt",
-            "keccak_special5",
-            "mem_subword_only",
-            "mem_word_only",
-            "shift_binop",
-            "unified_reduced_machine",
-            "unsigned_mul_div",
-        ];
-        for id in IDS {
-            generate(id);
+    /// Absolute path of the checked-in artifact under `repo_root`.
+    pub fn committed_path(&self, repo_root: &Path) -> PathBuf {
+        repo_root.join(self.committed_cuh)
+    }
+}
+
+/// Every circuit with a committed `witness_generation_fn.cuh` artifact, paired
+/// with its generator input id. Single source of truth shared by the
+/// `regenerate_committed` binary and the drift-guard test, so the two halves
+/// cannot fall out of sync. Note the id and the committed directory name differ
+/// for several circuits (e.g. `blake2_with_extended_control` →
+/// `blake2_with_compression`), which is exactly why this mapping is explicit.
+pub const CIRCUITS: &[GeneratedCircuit] = &[
+    GeneratedCircuit {
+        id: "add_sub_lui_auipc_mop",
+        committed_cuh: "circuit_defs/unrolled_circuits/add_sub_lui_auipc_mop/generated/witness_generation_fn.cuh",
+    },
+    GeneratedCircuit {
+        id: "bigint_with_extended_control",
+        committed_cuh: "circuit_defs/bigint_with_control/generated/witness_generation_fn.cuh",
+    },
+    GeneratedCircuit {
+        id: "blake2_g_function",
+        committed_cuh: "circuit_defs/blake2_g_function/generated/witness_generation_fn.cuh",
+    },
+    GeneratedCircuit {
+        id: "blake2_with_extended_control",
+        committed_cuh: "circuit_defs/blake2_with_compression/generated/witness_generation_fn.cuh",
+    },
+    GeneratedCircuit {
+        id: "jump_branch_slt",
+        committed_cuh: "circuit_defs/unrolled_circuits/jump_branch_slt/generated/witness_generation_fn.cuh",
+    },
+    GeneratedCircuit {
+        id: "keccak_special5",
+        committed_cuh: "circuit_defs/keccak_special5/generated/witness_generation_fn.cuh",
+    },
+    GeneratedCircuit {
+        id: "mem_subword_only",
+        committed_cuh: "circuit_defs/unrolled_circuits/load_store_subword_only/generated/witness_generation_fn.cuh",
+    },
+    GeneratedCircuit {
+        id: "mem_word_only",
+        committed_cuh: "circuit_defs/unrolled_circuits/load_store_word_only/generated/witness_generation_fn.cuh",
+    },
+    GeneratedCircuit {
+        id: "shift_binop",
+        committed_cuh: "circuit_defs/unrolled_circuits/shift_binary/generated/witness_generation_fn.cuh",
+    },
+    GeneratedCircuit {
+        id: "unified_reduced_machine",
+        committed_cuh: "circuit_defs/unrolled_circuits/unified_reduced_machine/generated/witness_generation_fn.cuh",
+    },
+    GeneratedCircuit {
+        id: "unsigned_mul_div",
+        committed_cuh: "circuit_defs/unrolled_circuits/mul_div_unsigned/generated/witness_generation_fn.cuh",
+    },
+];
+
+/// Absolute path to the repository root. This crate lives at
+/// `<root>/gpu/witness_eval_generator`, so the root is two levels up from
+/// `CARGO_MANIFEST_DIR` (stable regardless of the process working directory).
+pub fn repo_root() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .canonicalize()
+        .expect("resolve repository root from CARGO_MANIFEST_DIR")
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{CIRCUITS, repo_root};
+    use std::collections::HashSet;
+    use std::path::Path;
+
+    /// A readable description of the first byte where `generated` and
+    /// `committed` differ. Byte-level (matching the pass/fail comparison), so it
+    /// never misattributes a whitespace/line-ending/trailing difference — it
+    /// reports the exact offset, the containing line, and both sides' text.
+    fn first_diff(generated: &str, committed: &str) -> String {
+        let (gb, cb) = (generated.as_bytes(), committed.as_bytes());
+        match gb.iter().zip(cb).position(|(a, b)| a != b) {
+            Some(offset) => {
+                let line = gb[..offset].iter().filter(|&&b| b == b'\n').count() + 1;
+                let g = generated.lines().nth(line - 1).unwrap_or("");
+                let c = committed.lines().nth(line - 1).unwrap_or("");
+                format!(
+                    "first differs at byte {offset} (line {line}): generated {g:?} vs committed {c:?}"
+                )
+            }
+            None => format!(
+                "one is a prefix of the other: generated {} bytes vs committed {} bytes",
+                gb.len(),
+                cb.len()
+            ),
         }
+    }
+
+    /// Every committed `witness_generation_fn.cuh` under `circuit_defs/`,
+    /// repo-relative with `/` separators (matching `CIRCUITS.committed_cuh`).
+    fn collect_committed_cuh(dir: &Path, root: &Path, out: &mut Vec<String>) {
+        for entry in std::fs::read_dir(dir).expect("read circuit_defs") {
+            let path = entry.expect("dir entry").path();
+            if path.is_dir() {
+                collect_committed_cuh(&path, root, out);
+            } else if path.file_name().and_then(|n| n.to_str()) == Some("witness_generation_fn.cuh")
+            {
+                let rel = path.strip_prefix(root).expect("under repo root");
+                out.push(rel.to_str().expect("utf-8 path").to_owned());
+            }
+        }
+    }
+
+    /// Drift guard: every committed `witness_generation_fn.cuh` must match a
+    /// fresh regeneration from its committed SSA/layout inputs. Runs in CI (no
+    /// `skip_if_ci`) — the generator is pure and its inputs are checked in, so
+    /// this is a cheap, deterministic, GPU-free check.
+    #[test]
+    fn committed_witness_cuh_is_current() {
+        let root = repo_root();
+        let mut stale = Vec::new();
+        for circuit in CIRCUITS {
+            let generated = circuit
+                .regenerate(&root)
+                .unwrap_or_else(|e| panic!("generator failed for {}: {e}", circuit.id));
+            let committed_path = circuit.committed_path(&root);
+            let committed = std::fs::read_to_string(&committed_path).unwrap_or_else(|e| {
+                panic!(
+                    "cannot read committed artifact {}: {e}",
+                    committed_path.display()
+                )
+            });
+            if generated != committed {
+                stale.push(format!(
+                    "  {} -> {}\n      {}",
+                    circuit.id,
+                    circuit.committed_cuh,
+                    first_diff(&generated, &committed)
+                ));
+            }
+        }
+        assert!(
+            stale.is_empty(),
+            "Committed witness-generation CUDA is stale vs current codegen:\n{}\n\n\
+             Regenerate and commit with:\n    \
+             cargo run -p gpu_witness_eval_generator --bin regenerate_committed",
+            stale.join("\n")
+        );
+    }
+
+    /// Completeness guard: every committed `witness_generation_fn.cuh` under
+    /// `circuit_defs/` must be listed in `CIRCUITS`. Without this, a future
+    /// artifact added without a table entry would be silently unguarded by
+    /// `committed_witness_cuh_is_current`.
+    #[test]
+    fn every_committed_cuh_is_listed() {
+        let root = repo_root();
+        let listed: HashSet<&str> = CIRCUITS.iter().map(|c| c.committed_cuh).collect();
+        let mut found = Vec::new();
+        collect_committed_cuh(&root.join("circuit_defs"), &root, &mut found);
+        let missing: Vec<&String> = found
+            .iter()
+            .filter(|p| !listed.contains(p.as_str()))
+            .collect();
+        assert!(
+            missing.is_empty(),
+            "committed witness CUDA not covered by CIRCUITS (add each to the table):\n{}",
+            missing
+                .iter()
+                .map(|p| format!("  {p}"))
+                .collect::<Vec<_>>()
+                .join("\n")
+        );
+        // Guard against a mis-resolved root vacuously passing: we must have
+        // found exactly as many artifacts as the table lists.
+        assert_eq!(
+            found.len(),
+            CIRCUITS.len(),
+            "found {} committed .cuh under circuit_defs but CIRCUITS lists {}",
+            found.len(),
+            CIRCUITS.len()
+        );
     }
 }

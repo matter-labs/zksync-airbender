@@ -10,7 +10,7 @@ use gpu_core::primitives::device_structures::{
     DeviceMatrixChunkImpl, DeviceMatrixChunkMutImpl, MutPtrAndStrideWrappingMatrix,
     PtrAndStrideWrappingMatrix,
 };
-use gpu_core::primitives::field::{BF, E2, E4, E6};
+use gpu_core::primitives::field::{BF, E4};
 use gpu_core::primitives::utils::{get_grid_block_dims_for_threads_count, WARP_SIZE};
 
 pub fn set_to_zero<T>(result: &mut DeviceSlice<T>, stream: &CudaStream) -> CudaResult<()> {
@@ -47,6 +47,7 @@ macro_rules! set_by_val_kernel {
     };
 }
 
+#[doc(hidden)]
 pub trait SetByVal: Sized {
     const KERNEL_FUNCTION: SetByValSignature<Self>;
 }
@@ -77,9 +78,7 @@ macro_rules! set_by_val_impl {
 set_by_val_impl!(u32);
 set_by_val_impl!(u64);
 set_by_val_impl!(BF);
-set_by_val_impl!(E2);
 set_by_val_impl!(E4);
-set_by_val_impl!(E6);
 
 // SET_BY_REF_KERNEL
 cuda_kernel_signature_arguments_and_function!(
@@ -101,6 +100,7 @@ macro_rules! set_by_ref_kernel {
     };
 }
 
+#[doc(hidden)]
 pub trait SetByRef: Sized {
     const KERNEL_FUNCTION: SetByRefSignature<Self>;
 }
@@ -135,9 +135,7 @@ macro_rules! set_by_ref_impl {
 set_by_ref_impl!(u32);
 set_by_ref_impl!(u64);
 set_by_ref_impl!(BF);
-set_by_ref_impl!(E2);
 set_by_ref_impl!(E4);
-set_by_ref_impl!(E6);
 
 // PARAMETRIZED_KERNEL
 cuda_kernel_signature_arguments_and_function!(
@@ -161,6 +159,7 @@ macro_rules! parametrized_op_kernel {
     };
 }
 
+#[doc(hidden)]
 pub trait ParametrizedOp<T> {
     const KERNEL_FUNCTION: ParametrizedOpSignature<T>;
 
@@ -191,25 +190,12 @@ pub trait ParametrizedOp<T> {
             stream,
         )
     }
-
-    #[allow(dead_code)]
-    fn launch_in_place(
-        values: &mut (impl DeviceMatrixChunkMutImpl<T> + ?Sized),
-        param: u32,
-        stream: &CudaStream,
-    ) -> CudaResult<()> {
-        Self::launch_op(
-            PtrAndStrideWrappingMatrix::new(values),
-            param,
-            MutPtrAndStrideWrappingMatrix::new(values),
-            stream,
-        )
-    }
 }
 
 macro_rules! parametrized_op_def {
     ($op:ty) => {
         paste! {
+            #[doc(hidden)]
             pub struct $op;
             #[allow(dead_code)]
             pub fn [<$op:lower>]<T>(
@@ -219,14 +205,6 @@ macro_rules! parametrized_op_def {
                 stream: &CudaStream,
             ) -> CudaResult<()>  where $op: ParametrizedOp<T> {
                 $op::launch(values, param, result, stream)
-            }
-            #[allow(dead_code)]
-            pub fn [<$op:lower _in_place>]<T>(
-                values: &mut (impl DeviceMatrixChunkMutImpl<T> + ?Sized),
-                param: u32,
-                stream: &CudaStream,
-            ) -> CudaResult<()>  where $op: ParametrizedOp<T> {
-                $op::launch_in_place(values, param, stream)
             }
         }
     };
@@ -252,9 +230,7 @@ macro_rules! parametrized_ops_impl {
 }
 
 parametrized_ops_impl!(BF);
-parametrized_ops_impl!(E2);
 parametrized_ops_impl!(E4);
-parametrized_ops_impl!(E6);
 
 // BINARY_KERNEL
 cuda_kernel_signature_arguments_and_function!(
@@ -278,6 +254,7 @@ macro_rules! binary_op_kernel {
     };
 }
 
+#[doc(hidden)]
 pub trait BinaryOp<T0, T1, TR> {
     const KERNEL_FUNCTION: BinaryOpSignature<T0, T1, TR>;
 
@@ -345,8 +322,11 @@ pub trait BinaryOp<T0, T1, TR> {
 }
 
 macro_rules! binary_op_def {
-    ($op:ty) => {
+    // into_x/into_y visibility is pub only for the variants circuit_prover consumes;
+    // the unused ones are pub(crate) (in-crate test launchers only).
+    ($op:ty, $into_x_vis:vis, $into_y_vis:vis) => {
         paste! {
+            #[doc(hidden)]
             pub struct $op;
             #[allow(dead_code)]
             pub fn [<$op:lower>]<T0, T1, TR>(
@@ -358,7 +338,7 @@ macro_rules! binary_op_def {
                 $op::launch(x, y, result, stream)
             }
             #[allow(dead_code)]
-            pub fn [<$op:lower _into_x>]<T0, T1>(
+            $into_x_vis fn [<$op:lower _into_x>]<T0, T1>(
                 x: &mut (impl DeviceMatrixChunkMutImpl<T0> + ?Sized),
                 y: &(impl DeviceMatrixChunkImpl<T1> + ?Sized),
                 stream: &CudaStream,
@@ -366,7 +346,7 @@ macro_rules! binary_op_def {
                 $op::launch_into_x(x, y, stream)
             }
             #[allow(dead_code)]
-            pub fn [<$op:lower _into_y>]<T0, T1>(
+            $into_y_vis fn [<$op:lower _into_y>]<T0, T1>(
                 x: &(impl DeviceMatrixChunkImpl<T0> + ?Sized),
                 y: &mut (impl DeviceMatrixChunkMutImpl<T1> + ?Sized),
                 stream: &CudaStream,
@@ -377,9 +357,9 @@ macro_rules! binary_op_def {
     };
 }
 
-binary_op_def!(Add);
-binary_op_def!(Mul);
-binary_op_def!(Sub);
+binary_op_def!(Add, pub(crate), pub); // add_into_x internal, add_into_y public
+binary_op_def!(Mul, pub, pub); // both public
+binary_op_def!(Sub, pub(crate), pub(crate)); // both internal
 
 macro_rules! binary_op_impl {
     ($op:ty, $t0:ty, $t1:ty, $tr:ty) => {
@@ -402,10 +382,8 @@ macro_rules! binary_ops_impl {
 
 binary_ops_impl!(BF, BF, BF);
 binary_ops_impl!(BF, E4, E4);
-binary_ops_impl!(E2, E2, E2);
 binary_ops_impl!(E4, BF, E4);
 binary_ops_impl!(E4, E4, E4);
-binary_ops_impl!(E6, E6, E6);
 
 #[cfg(test)]
 mod tests;

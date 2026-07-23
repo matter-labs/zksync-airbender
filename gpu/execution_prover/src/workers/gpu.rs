@@ -7,24 +7,16 @@ use crate::A;
 use crossbeam_channel::{Receiver, Sender};
 use era_cudart::device::{get_device_properties, set_device};
 use era_cudart::result::CudaResult;
-use gpu_circuit_prover::prover::gkr::setup::GpuGKRSetupTransfer;
-use gpu_circuit_prover::prover::proof::{
-    canonical_inits_and_teardowns_top_bits, prove, GpuGKRProofJob,
-};
-use gpu_circuit_prover::prover::trace::decoder::DecoderTableTransfer;
-use gpu_circuit_prover::prover::trace::memory::{
-    commit_memory_from_transfers, MemoryCommitmentJob,
-};
-use gpu_circuit_prover::prover::trace::memory_transfer::{
-    GpuGKRMemoryTransfer, GpuGKRMemoryTransferHost,
-};
-use gpu_circuit_prover::prover::trace::tracing_data::{
-    InitsAndTeardownsTransfer, TracingDataTransfer,
-};
-use gpu_circuit_prover::prover::{ProverContext, ProverContextConfig};
-use gpu_circuit_prover::witness::circuit_type::CircuitType;
-use gpu_circuit_prover::witness::trace_unrolled::InitsAndTeardownsTraceHost;
+use gpu_circuit_prover::proof::{canonical_inits_and_teardowns_top_bits, prove, GpuGKRProofJob};
 use gpu_core::primitives::field::{BF, E4};
+use gpu_gkr::setup::GpuGKRSetupTransfer;
+use gpu_prover_context::{ProverContext, ProverContextConfig};
+use gpu_trace::trace::decoder::DecoderTableTransfer;
+use gpu_trace::trace::memory::{commit_memory_from_transfers, MemoryCommitmentJob};
+use gpu_trace::trace::memory_transfer::{GpuGKRMemoryTransfer, GpuGKRMemoryTransferHost};
+use gpu_trace::trace::tracing_data::{InitsAndTeardownsTransfer, TracingDataTransfer};
+use gpu_trace::witness::circuit_type::CircuitType;
+use gpu_trace::witness::trace_unrolled::InitsAndTeardownsTraceHost;
 use log::{debug, error, info, trace};
 
 use crate::upstream::{GKRExternalChallenges, MerkleTreeCapVarLength, SecurityLevel};
@@ -73,8 +65,7 @@ struct RequestState {
     /// Original host witnesses returned to the orchestrator after the GPU work
     /// completes so their allocators return to the pool.
     inits_and_teardowns_result: Option<InitsAndTeardownsTraceHost>,
-    tracing_data_result:
-        Option<gpu_circuit_prover::prover::trace::tracing_data::TracingDataHost<A>>,
+    tracing_data_result: Option<gpu_trace::trace::tracing_data::TracingDataHost<A>>,
     security_level: SecurityLevel,
 }
 
@@ -92,11 +83,14 @@ struct PhaseOne<'a> {
 
 /// Per-phase-1 bundle, scheduled on h2d_stream against a single shared
 /// `Transfer`. Variant matches the eventual phase-2 job type.
+// Short-lived per-request state moved through the worker's hot dispatch
+// loop (one instance per in-flight request, swapped every iteration), not a
+// long-lived collection; boxing `Proof` would add a heap alloc per request
+// for no steady-state benefit.
+#[allow(clippy::large_enum_variant)]
 enum PhaseOneInputs<'a> {
-    Proof(gpu_circuit_prover::prover::proof::inputs::GpuGKRProofTransfer<'a, A>),
-    MemoryCommitment(
-        gpu_circuit_prover::prover::trace::memory_transfer::GpuGKRCommitMemoryTransfer<'a, A>,
-    ),
+    Proof(gpu_circuit_prover::proof::inputs::GpuGKRProofTransfer<'a, A>),
+    MemoryCommitment(gpu_trace::trace::memory_transfer::GpuGKRCommitMemoryTransfer<'a, A>),
 }
 
 /// Phase-2 state: GPU job enqueued, awaiting `finish()`.
@@ -105,6 +99,11 @@ struct PhaseTwo<'a> {
     job: JobType<'a>,
 }
 
+// Same rationale as `PhaseOneInputs` above: one instance per in-flight
+// request, swapped through the worker's hot dispatch loop, so boxing `Proof`
+// would add a per-request heap alloc rather than shrink a steady-state
+// collection.
+#[allow(clippy::large_enum_variant)]
 enum JobType<'a> {
     MemoryCommitment(MemoryCommitmentJob<'a, A>),
     Proof(GpuGKRProofJob<'a, A>),
@@ -132,7 +131,7 @@ fn gpu_worker(
     // in gkr::backward::flat). Must run before the first backward flat-kernel
     // launch; the prover layer owns it, so we trigger it here rather than from
     // the primitives substrate.
-    gpu_circuit_prover::prover::configure_kernel_attributes();
+    gpu_gkr::configure_kernel_attributes();
     info!(
         "GPU_WORKER[{device_id}] initialized the GPU memory allocator with {:.3} GB of usable memory",
         context.get_mem_size() as f64 / 1024.0 / 1024.0 / 1024.0
@@ -249,9 +248,7 @@ fn schedule_phase_one<'a>(
     // consumed below — it selects the all-zero top bits for the proof path.
     let is_trivial_unified_inits_and_teardowns = matches!(
         circuit_type,
-        CircuitType::Unrolled(
-            gpu_circuit_prover::witness::circuit_type::UnrolledCircuitType::Unified
-        )
+        CircuitType::Unrolled(gpu_trace::witness::circuit_type::UnrolledCircuitType::Unified)
     ) && inits_and_teardowns_host.is_none();
 
     let inits_and_teardowns_transfer = if let Some(host) = inits_and_teardowns_host {
@@ -282,10 +279,9 @@ fn schedule_phase_one<'a>(
         // `prover_config` the commit phase actually used, so use the
         // prover_config geometry directly here.
         let prover_config =
-            gpu_circuit_prover::prover::config::prover_config(circuit_type, state.security_level)
-                .expect(
-                    "ExecutionProverConfiguration validated GPU security level before GPU work",
-                );
+            gpu_circuit_prover::config::prover_config(circuit_type, state.security_level).expect(
+                "ExecutionProverConfiguration validated GPU security level before GPU work",
+            );
         let log_lde_factor = prover_config.lde_factor.trailing_zeros();
         let log_tree_cap_size = prover_config.cap_size.trailing_zeros();
         let memory_caps = state
@@ -300,7 +296,6 @@ fn schedule_phase_one<'a>(
         let memory_transfer = GpuGKRMemoryTransfer::new(Arc::new(memory_host), context)?;
         let external_challenges_value = state
             .external_challenges
-            .clone()
             .expect("Proof requires external_challenges");
         let compiled_circuit = state.precomputations.compiled_circuit.as_ref();
         // ACTUAL top bits for this circuit: canonical (== the real top bits in
@@ -312,17 +307,16 @@ fn schedule_phase_one<'a>(
         } else {
             canonical_inits_and_teardowns_top_bits(compiled_circuit)
         };
-        let mut bundle =
-            gpu_circuit_prover::prover::proof::inputs::GpuGKRProofTransfer::<'_, A>::new(
-                setup_transfer,
-                decoder_transfer,
-                inits_and_teardowns_transfer,
-                tracing_data_transfer,
-                memory_transfer,
-                &top_bits,
-                external_challenges_value,
-                context,
-            )?;
+        let mut bundle = gpu_circuit_prover::proof::inputs::GpuGKRProofTransfer::<'_, A>::new(
+            setup_transfer,
+            decoder_transfer,
+            inits_and_teardowns_transfer,
+            tracing_data_transfer,
+            memory_transfer,
+            &top_bits,
+            external_challenges_value,
+            context,
+        )?;
         trace!(
             "BATCH[{batch_id}] GPU_WORKER[{device_id}] scheduling proof H2D bundle for circuit {circuit_type:?}[{sequence_id}]"
         );
@@ -330,7 +324,7 @@ fn schedule_phase_one<'a>(
         PhaseOneInputs::Proof(bundle)
     } else {
         let mut bundle =
-            gpu_circuit_prover::prover::trace::memory_transfer::GpuGKRCommitMemoryTransfer::<'_, A>::new(
+            gpu_trace::trace::memory_transfer::GpuGKRCommitMemoryTransfer::<'_, A>::new(
                 decoder_transfer,
                 inits_and_teardowns_transfer,
                 tracing_data_transfer,
@@ -356,9 +350,9 @@ fn enqueue_phase_two<'a>(
     let circuit_type = state.circuit_type;
     let sequence_id = state.sequence_id;
     let prover_config =
-        gpu_circuit_prover::prover::config::prover_config(circuit_type, state.security_level)
+        gpu_circuit_prover::config::prover_config(circuit_type, state.security_level)
             .expect("ExecutionProverConfiguration validated GPU security level before GPU work");
-    let final_trace_size_log_2 = 4usize;
+    let final_trace_size_log_2 = 4u32;
     let compiled_circuit_arc = state.precomputations.compiled_circuit.clone();
 
     let job = match inputs {

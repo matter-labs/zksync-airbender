@@ -7,10 +7,10 @@ use crate::workers::simulation_runner::{
 use crate::A;
 use common_constants::{TimestampScalar, INITIAL_TIMESTAMP, TIMESTAMP_STEP};
 use crossbeam_channel::{Receiver, Sender};
-use gpu_circuit_prover::witness::circuit_type::{CircuitType, UnrolledCircuitType};
-use gpu_circuit_prover::witness::trace::ChunkedTraceHolder;
-use gpu_circuit_prover::witness::trace_unrolled::{InitsAndTeardownsTraceHost, PAGE_SIZE_LOG2};
 use gpu_core::primitives::machine_type::MachineType;
+use gpu_trace::witness::circuit_type::{CircuitType, UnrolledCircuitType};
+use gpu_trace::witness::trace::ChunkedTraceHolder;
+use gpu_trace::witness::trace_unrolled::{InitsAndTeardownsTraceHost, PAGE_SIZE_LOG2};
 use itertools::Itertools;
 use log::{debug, trace};
 use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
@@ -102,6 +102,14 @@ pub(crate) fn run_simulator<
             .get_domain_size()
             .trailing_zeros() as usize;
         let num_sets = crate::upstream::inits_and_teardowns::NUM_INIT_AND_TEARDOWN_SETS;
+        // The inits-and-teardowns circuit's trace (2^24 rows, see
+        // `inits_and_teardowns::TRACE_LEN_LOG2`) is always page-granular:
+        // it is a fixed upstream constant far above the page size
+        // (2^`PAGE_SIZE_LOG2` = 2^10 rows), so this never underflows.
+        assert!(
+            trace_len_log2 >= PAGE_SIZE_LOG2 as usize,
+            "inits-and-teardowns trace_len_log2 {trace_len_log2} below page size log2 {PAGE_SIZE_LOG2}"
+        );
         let pages_per_set_log2 = trace_len_log2 - PAGE_SIZE_LOG2 as usize;
         let pages_per_partition: usize = num_sets << pages_per_set_log2;
         let (circuit_type, sequence_id_offset) = if T::IS_SPLIT {
@@ -119,7 +127,16 @@ pub(crate) fn run_simulator<
             let timestamp_diff = state.timestamp - INITIAL_TIMESTAMP;
             assert!(timestamp_diff.is_multiple_of(TIMESTAMP_STEP));
             let total_cycles = (timestamp_diff / TIMESTAMP_STEP) as usize;
-            let empty_cycles = total_cycles - count;
+            // `count` (distinct RAM words dirtied) is not guaranteed to be
+            // <= `total_cycles`: a delegation dirties many fresh words per
+            // cycle (a Blake2s-with-compression call touches ~40 words while
+            // advancing only `num_rounds` timestamp cycles), so a
+            // delegation-heavy run over disjoint, never-reused buffers can
+            // invert the two. Saturate to avoid a release-mode underflow into an
+            // unbounded empty-circuit marker loop; when no spare cycles remain
+            // this yields zero padding circuits (the real I&T chunks below still
+            // emit). Behavior-identical whenever count <= total_cycles.
+            let empty_cycles = total_cycles.saturating_sub(count);
             let empty_circuits = empty_cycles / per_circuit_count;
             for sequence_id in 0..empty_circuits {
                 let data = InitsAndTeardownsData {
@@ -162,7 +179,7 @@ pub(crate) fn run_simulator<
         let final_register_values = state
             .materialized_registers()
             .into_iter()
-            .zip(register_timestamps.into_iter())
+            .zip(register_timestamps)
             .map(|(value, last_access_timestamp)| FinalRegisterValue {
                 value,
                 last_access_timestamp,
@@ -291,6 +308,17 @@ fn collect_inits_and_teardowns(
                         let value_ptr = values_ptr.add(idx);
                         let mut teardown_value = *value_ptr;
                         *value_ptr = 0;
+                        // Documents the 32-bit RAM-word bound: `holder.memory`
+                        // is sized to `NUM_RAM_WORDS = RAM_SIZE / 4` words
+                        // with `RAM_SIZE == 1 << 30` bytes, so word indices
+                        // stay well under `1 << 30` and `<< 2` cannot
+                        // overflow into the address's u32 range today; this
+                        // just guards/documents that architectural bound.
+                        debug_assert!(
+                            chunk_start + idx < (1usize << 30),
+                            "RAM word index {} exceeds 32-bit word-address bound",
+                            chunk_start + idx
+                        );
                         let address = (chunk_start + idx) << 2;
                         if address < common_constants::rom::ROM_BYTE_SIZE {
                             teardown_value = 0;
@@ -408,6 +436,16 @@ fn chunk_into_pinned<T: Copy + 'static>(
             .recv()
             .expect("CPU worker allocator channel closed while building tracing data");
         let elem_capacity = allocator.capacity() / size_of::<T>();
+        // The pool allocator backs a fixed-size pinned buffer (currently
+        // 64 MiB, see `host_allocator_backing_allocation_size`); the
+        // `.max()` below assumes `elem_capacity` already covers one
+        // alignment unit. If it didn't, `.max()` would silently force the
+        // chunk length ABOVE the allocator's real capacity, over-allocating
+        // against a fixed pool.
+        assert!(
+            elem_capacity >= alignment_in_items,
+            "pool allocator elem capacity {elem_capacity} < alignment unit {alignment_in_items}"
+        );
         // Round down to alignment so chunk lengths stay page-aligned.
         let aligned_capacity = (elem_capacity / alignment_in_items) * alignment_in_items;
         let aligned_capacity = aligned_capacity.max(alignment_in_items);

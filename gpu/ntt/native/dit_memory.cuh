@@ -191,7 +191,8 @@ struct bf_matrix_setter {
   DEVICE_FORCEINLINE void set_at_row(unsigned r, bf v) const { st_cg(ptr + r, v); }
 };
 
-DEVICE_FORCEINLINE unsigned bitrev_u32(unsigned x, unsigned log_n) { return __brev(x) >> (32 - log_n); }
+// In-crate name kept to avoid call-site churn; delegates to gpu_core's guarded helper (common.cuh).
+DEVICE_FORCEINLINE unsigned bitrev_u32(unsigned x, unsigned log_n) { return ::bitreverse_low_bits(x, log_n); }
 
 // =========================================================================
 // Vec_VPT gmem load/store helpers (relocated from warp_ntt.cuh so the NTT
