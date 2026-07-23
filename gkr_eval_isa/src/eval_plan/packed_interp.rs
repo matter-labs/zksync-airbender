@@ -29,6 +29,7 @@ pub fn interpret_packed_plan(
         acc: None,
         batch_acc: Ext::ZERO,
         batch_sinks: 0,
+        return_batch_seen: false,
         temps: HashMap::new(),
         residents: HashMap::new(),
         roots: Vec::new(),
@@ -69,6 +70,7 @@ pub fn interpret_backward_packed_plan(
         acc: None,
         batch_acc,
         batch_sinks: 0,
+        return_batch_seen: false,
         temps: HashMap::new(),
         residents: HashMap::new(),
         roots: Vec::new(),
@@ -77,6 +79,7 @@ pub fn interpret_backward_packed_plan(
     for op in &plan.ops {
         machine.execute(op)?;
     }
+    machine.finish_backward()?;
     if !machine.temps.is_empty() {
         let mut live: Vec<TempId> = machine.temps.keys().copied().collect();
         live.sort_by_key(|temp| temp.0);
@@ -97,6 +100,7 @@ struct PackedMachine<'a> {
     acc: Option<Ext>,
     batch_acc: Ext,
     batch_sinks: usize,
+    return_batch_seen: bool,
     temps: HashMap<TempId, Ext>,
     residents: HashMap<ValueFingerprint, Ext>,
     roots: Vec<RootObservation>,
@@ -105,6 +109,13 @@ struct PackedMachine<'a> {
 
 impl PackedMachine<'_> {
     fn execute(&mut self, op: &PackedEvalOp) -> Result<(), PlanInterpError> {
+        if self.return_batch_seen {
+            return Err(if matches!(op, PackedEvalOp::ReturnBatch { .. }) {
+                PlanInterpError::DuplicateReturnBatch
+            } else {
+                PlanInterpError::OperationAfterReturnBatch
+            });
+        }
         match op {
             PackedEvalOp::AccInit(operand) => {
                 self.acc = Some(self.operand(*operand)?);
@@ -208,12 +219,26 @@ impl PackedMachine<'_> {
                 if self.batch_sinks == 0 {
                     return Err(PlanInterpError::SinkFreeBatch);
                 }
+                self.return_batch_seen = true;
                 self.observe(None, root, None, self.batch_acc);
             }
             PackedEvalOp::ReturnAcc { root } => {
+                if self.backward.is_some() {
+                    return Err(PlanInterpError::ReturnAccRequiresForwardMode);
+                }
                 let value = self.acc.ok_or(PlanInterpError::MissingAccumulator)?;
                 self.observe(None, root, None, value);
             }
+        }
+        Ok(())
+    }
+
+    fn finish_backward(&self) -> Result<(), PlanInterpError> {
+        if !self.return_batch_seen {
+            return Err(PlanInterpError::MissingReturnBatch);
+        }
+        if self.batch_sinks == 0 {
+            return Err(PlanInterpError::SinkFreeBatch);
         }
         Ok(())
     }

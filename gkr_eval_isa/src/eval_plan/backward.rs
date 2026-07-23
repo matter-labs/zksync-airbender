@@ -765,8 +765,8 @@ mod tests {
     };
     use crate::eval_plan::{
         bind_packed_plan, interpret_backward_packed_plan, interpret_backward_plan,
-        ConcreteBindError, EvalOp, Operand, PackedEvalOp, PlacementTelemetry, PlanError, TempId,
-        ValueRef,
+        ConcreteBindError, EvalOp, EvalPlan, Operand, PackedEvalOp, PackedEvalPlan,
+        PlacementTelemetry, PlanError, PlanInterpError, TempId, ValueRef,
     };
 
     #[test]
@@ -1698,6 +1698,160 @@ mod tests {
             scalar.roots[0].value,
             eval_layer_root(&d.layer, d.root, 3, &resolvers)
         );
+    }
+
+    #[test]
+    fn backward_symbolic_interpreter_rejects_every_malformed_terminal_shape() {
+        let d = backward_fixture();
+        let out = elaborate_backward_fragments_uncached(&d, None, 4, false).unwrap();
+        let root = match out.plan.ops.last().unwrap() {
+            EvalOp::ReturnBatch { root } => root.clone(),
+            other => panic!("fixture must end in ReturnBatch, got {other:?}"),
+        };
+        let valid_prefix = vec![
+            EvalOp::AccInit(Operand::Unit { negative: false }),
+            EvalOp::BatchAccumulate {
+                coefficient_desc: None,
+                field: FieldKind::Base,
+            },
+        ];
+        let malformed = [
+            ("empty", vec![], PlanInterpError::MissingReturnBatch),
+            (
+                "ReturnAcc-only",
+                vec![
+                    EvalOp::AccInit(Operand::Unit { negative: false }),
+                    EvalOp::ReturnAcc { root: root.clone() },
+                ],
+                PlanInterpError::ReturnAccRequiresForwardMode,
+            ),
+            (
+                "terminal-less",
+                valid_prefix.clone(),
+                PlanInterpError::MissingReturnBatch,
+            ),
+            (
+                "duplicate terminal",
+                [
+                    valid_prefix.clone(),
+                    vec![
+                        EvalOp::ReturnBatch { root: root.clone() },
+                        EvalOp::ReturnBatch { root: root.clone() },
+                    ],
+                ]
+                .concat(),
+                PlanInterpError::DuplicateReturnBatch,
+            ),
+            (
+                "operation after terminal",
+                [
+                    valid_prefix,
+                    vec![
+                        EvalOp::ReturnBatch { root: root.clone() },
+                        EvalOp::AccInit(Operand::Unit { negative: false }),
+                    ],
+                ]
+                .concat(),
+                PlanInterpError::OperationAfterReturnBatch,
+            ),
+        ];
+        let resolvers = backward_test_resolvers();
+        for (case, ops, expected) in malformed {
+            let plan = EvalPlan {
+                ops,
+                ..out.plan.clone()
+            };
+            assert_eq!(
+                interpret_backward_plan(
+                    &plan,
+                    &d,
+                    &out.specials,
+                    out.acc_init_desc,
+                    3,
+                    &resolvers,
+                )
+                .unwrap_err(),
+                expected,
+                "wrong symbolic error for malformed {case} plan"
+            );
+        }
+    }
+
+    #[test]
+    fn backward_packed_interpreter_rejects_every_malformed_terminal_shape() {
+        let d = backward_fixture();
+        let out = elaborate_backward_fragments_uncached(&d, None, 4, false).unwrap();
+        let root = match out.packed.ops.last().unwrap() {
+            PackedEvalOp::ReturnBatch { root } => root.clone(),
+            other => panic!("fixture must end in ReturnBatch, got {other:?}"),
+        };
+        let valid_prefix = vec![
+            PackedEvalOp::AccInit(Operand::Unit { negative: false }),
+            PackedEvalOp::BatchAccumulate {
+                coefficient_desc: None,
+                field: FieldKind::Base,
+            },
+        ];
+        let malformed = [
+            ("empty", vec![], PlanInterpError::MissingReturnBatch),
+            (
+                "ReturnAcc-only",
+                vec![
+                    PackedEvalOp::AccInit(Operand::Unit { negative: false }),
+                    PackedEvalOp::ReturnAcc { root: root.clone() },
+                ],
+                PlanInterpError::ReturnAccRequiresForwardMode,
+            ),
+            (
+                "terminal-less",
+                valid_prefix.clone(),
+                PlanInterpError::MissingReturnBatch,
+            ),
+            (
+                "duplicate terminal",
+                [
+                    valid_prefix.clone(),
+                    vec![
+                        PackedEvalOp::ReturnBatch { root: root.clone() },
+                        PackedEvalOp::ReturnBatch { root: root.clone() },
+                    ],
+                ]
+                .concat(),
+                PlanInterpError::DuplicateReturnBatch,
+            ),
+            (
+                "operation after terminal",
+                [
+                    valid_prefix,
+                    vec![
+                        PackedEvalOp::ReturnBatch { root: root.clone() },
+                        PackedEvalOp::AccInit(Operand::Unit { negative: false }),
+                    ],
+                ]
+                .concat(),
+                PlanInterpError::OperationAfterReturnBatch,
+            ),
+        ];
+        let resolvers = backward_test_resolvers();
+        for (case, ops, expected) in malformed {
+            let plan = PackedEvalPlan {
+                ops,
+                ..out.packed.clone()
+            };
+            assert_eq!(
+                interpret_backward_packed_plan(
+                    &plan,
+                    &d,
+                    &out.specials,
+                    out.acc_init_desc,
+                    3,
+                    &resolvers,
+                )
+                .unwrap_err(),
+                expected,
+                "wrong packed error for malformed {case} plan"
+            );
+        }
     }
 
     #[test]

@@ -536,7 +536,12 @@ fn bind_packed_plan_with_source_mode(
                 return Err(ConcreteBindError::RootIdentityMismatch { root: root_id });
             }
             match pending_terminal {
-                PendingTerminal::ReturnAcc(root) => ConcreteTerminal::ReturnAcc { root },
+                PendingTerminal::ReturnAcc(root) => {
+                    if matches!(source_mode, ConcreteSourceMode::Backward { .. }) {
+                        return Err(ConcreteBindError::MissingReturnBatch);
+                    }
+                    ConcreteTerminal::ReturnAcc { root }
+                }
                 PendingTerminal::ReturnBatch(root) => {
                     if emitter.batch_sinks == 0 {
                         return Err(ConcreteBindError::SinkFreeBatch);
@@ -1717,6 +1722,9 @@ impl Emitter<'_> {
                 }
             }
             PackedEvalOp::ReturnAcc { root } => {
+                if matches!(self.source_mode, ConcreteSourceMode::Backward { .. }) {
+                    return Err(ConcreteBindError::MissingReturnBatch);
+                }
                 if self
                     .terminal
                     .replace(PendingTerminal::ReturnAcc(root.clone()))
@@ -2341,6 +2349,59 @@ mod tests {
             bind_packed_plan(&packed, &layer, &[RootId(0)], 0, 4),
             Err(ConcreteBindError::BatchAccumulateRequiresBackwardMode)
                 | Err(ConcreteBindError::ReturnBatchRequiresBackwardMode)
+        ));
+    }
+
+    #[test]
+    fn backward_mode_does_not_accept_return_acc_as_return_batch() {
+        let layer = return_acc_layer(false);
+        let packed = return_acc_packed(&layer, &[RootId(0)]);
+
+        assert!(matches!(
+            bind_backward_packed_plan(
+                &packed,
+                &layer,
+                RootId(0),
+                4,
+                &BTreeMap::new(),
+                &BwdSpecialTable::default(),
+            ),
+            Err(ConcreteBindError::MissingReturnBatch)
+        ));
+    }
+
+    #[test]
+    fn backward_mode_requires_exactly_one_return_batch() {
+        let layer = return_acc_layer(false);
+        let mut missing = batch_packed(&layer, None, FieldKind::Base);
+        assert!(matches!(
+            missing.ops.pop(),
+            Some(PackedEvalOp::ReturnBatch { .. })
+        ));
+        assert!(matches!(
+            bind_backward_packed_plan(
+                &missing,
+                &layer,
+                RootId(0),
+                4,
+                &BTreeMap::new(),
+                &BwdSpecialTable::default(),
+            ),
+            Err(ConcreteBindError::MissingReturnBatch)
+        ));
+
+        let mut duplicate = batch_packed(&layer, None, FieldKind::Base);
+        duplicate.ops.push(duplicate.ops.last().unwrap().clone());
+        assert!(matches!(
+            bind_backward_packed_plan(
+                &duplicate,
+                &layer,
+                RootId(0),
+                4,
+                &BTreeMap::new(),
+                &BwdSpecialTable::default(),
+            ),
+            Err(ConcreteBindError::DuplicateReturnBatch)
         ));
     }
 

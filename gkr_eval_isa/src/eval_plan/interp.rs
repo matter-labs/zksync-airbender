@@ -42,6 +42,10 @@ pub enum PlanInterpError {
     BackwardSpecialRequiresBindings { desc: u16 },
     UnknownBackwardSpecial { desc: u16 },
     InvalidCoefficientFragment { fragment: usize },
+    MissingReturnBatch,
+    ReturnAccRequiresForwardMode,
+    DuplicateReturnBatch,
+    OperationAfterReturnBatch,
     SinkFreeBatch,
 }
 
@@ -62,6 +66,7 @@ pub fn interpret_plan(
         acc: None,
         batch_acc: Ext::ZERO,
         batch_sinks: 0,
+        return_batch_seen: false,
         temps: HashMap::new(),
         residents: HashMap::new(),
         roots: Vec::new(),
@@ -105,6 +110,7 @@ pub fn interpret_backward_plan(
         acc: None,
         batch_acc,
         batch_sinks: 0,
+        return_batch_seen: false,
         temps: HashMap::new(),
         residents: HashMap::new(),
         roots: Vec::new(),
@@ -113,6 +119,7 @@ pub fn interpret_backward_plan(
     for op in &plan.ops {
         machine.execute(op)?;
     }
+    machine.finish_backward()?;
     if !machine.temps.is_empty() {
         let mut live: Vec<TempId> = machine.temps.keys().copied().collect();
         live.sort_by_key(|temp| temp.0);
@@ -168,6 +175,7 @@ struct Machine<'a> {
     acc: Option<Ext>,
     batch_acc: Ext,
     batch_sinks: usize,
+    return_batch_seen: bool,
     temps: HashMap<TempId, Ext>,
     residents: HashMap<ValueFingerprint, Ext>,
     roots: Vec<RootObservation>,
@@ -176,6 +184,13 @@ struct Machine<'a> {
 
 impl Machine<'_> {
     fn execute(&mut self, op: &EvalOp) -> Result<(), PlanInterpError> {
+        if self.return_batch_seen {
+            return Err(if matches!(op, EvalOp::ReturnBatch { .. }) {
+                PlanInterpError::DuplicateReturnBatch
+            } else {
+                PlanInterpError::OperationAfterReturnBatch
+            });
+        }
         match op {
             EvalOp::AccInit(operand) => {
                 self.acc = Some(self.operand(*operand)?);
@@ -281,6 +296,7 @@ impl Machine<'_> {
                 if self.batch_sinks == 0 {
                     return Err(PlanInterpError::SinkFreeBatch);
                 }
+                self.return_batch_seen = true;
                 self.roots.push(RootObservation {
                     root_id: None,
                     root: root.clone(),
@@ -289,6 +305,9 @@ impl Machine<'_> {
                 });
             }
             EvalOp::ReturnAcc { root } => {
+                if self.backward.is_some() {
+                    return Err(PlanInterpError::ReturnAccRequiresForwardMode);
+                }
                 let value = self.acc.ok_or(PlanInterpError::MissingAccumulator)?;
                 self.roots.push(RootObservation {
                     root_id: None,
@@ -297,6 +316,16 @@ impl Machine<'_> {
                     value,
                 });
             }
+        }
+        Ok(())
+    }
+
+    fn finish_backward(&self) -> Result<(), PlanInterpError> {
+        if !self.return_batch_seen {
+            return Err(PlanInterpError::MissingReturnBatch);
+        }
+        if self.batch_sinks == 0 {
+            return Err(PlanInterpError::SinkFreeBatch);
         }
         Ok(())
     }

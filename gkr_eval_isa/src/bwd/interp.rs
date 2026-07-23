@@ -509,6 +509,7 @@ mod tests {
     use cs::gkr_compiler::dag_ir::{
         BwdRegime, ChallengeResolver, LookupResolver, Root, VirtualSetupResolver,
     };
+    use field::FieldExtension;
     use std::collections::{BTreeMap, HashMap};
 
     // ── Resolvers ─────────────────────────────────────────────────────────────
@@ -850,7 +851,12 @@ mod tests {
                     kind: SourceKind::Constant { value: 5 },
                 },
                 SourceInfo {
-                    kind: SourceKind::Constant { value: 3 },
+                    kind: SourceKind::Challenge {
+                        reference: ChallengeRef {
+                            key: ChallengeKey::ClaimBatching,
+                            power: ChallengePower::One,
+                        },
+                    },
                 },
             ],
             vec![Expr::Source(SourceId(0)), Expr::Source(SourceId(1))],
@@ -918,22 +924,34 @@ mod tests {
             ],
         };
         let read = WitnessRead;
-        let ch = BetaChallenge(Ext::ZERO);
+        let genuine_ext = <Ext as FieldExtension<Bf>>::from_coeffs([
+            Bf::from_u32_with_reduction(2),
+            Bf::from_u32_with_reduction(3),
+            Bf::ZERO,
+            Bf::ZERO,
+        ]);
+        let ch = BetaChallenge(genuine_ext);
         let r = resolvers(&read, &ch);
         let b = bind(&d, MaterializationPolicy::AlwaysMaterialize, 0);
 
-        // 5 + 1 + 3*1 + 3 + 3*3 = 21.
-        let expected = lift(Bf::from_u32_with_reduction(21));
+        // 5 + 1 + g*1 + g + g*g, with g outside the base subfield.
+        let mut expected = lift(Bf::from_u32_with_reduction(6));
+        expected.add_assign(&genuine_ext);
+        expected.add_assign(&genuine_ext);
+        let mut square = genuine_ext;
+        square.mul_assign(&genuine_ext);
+        expected.add_assign(&square);
         assert_eq!(
             interpret_bwd_row(&c, &d, &b, &r, Role::T0, 0, &[]).unwrap(),
             expected
         );
 
         c.acc_init_desc = None;
-        // Without c_init the four sinks contribute 16.
+        // Without c_init the same four sinks contribute 1 + 2g + g².
+        expected.sub_assign(&lift(Bf::from_u32_with_reduction(5)));
         assert_eq!(
             interpret_bwd_row(&c, &d, &b, &r, Role::T0, 0, &[]).unwrap(),
-            lift(Bf::from_u32_with_reduction(16))
+            expected
         );
     }
 

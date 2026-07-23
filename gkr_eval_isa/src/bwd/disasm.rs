@@ -60,6 +60,18 @@ fn fmt_bwd_instr(
     fmt_instr_with_specials(instr, ctx, fmt_special)
 }
 
+fn is_batch_sink(instr: &Instr) -> bool {
+    matches!(
+        instr,
+        Instr::Mov {
+            dir: MovDir::DstFromAcc,
+            dst: Some(dst),
+            src: None,
+            ..
+        } if unpack_batch_dst(dst).is_some()
+    )
+}
+
 /// Render a compiled backward layer with the same instruction syntax used by
 /// the forward VM disassembler.
 pub fn disassemble_bwd_layer(title: &str, compiled: &BwdCompiledLayer) -> String {
@@ -71,6 +83,7 @@ pub fn disassemble_bwd_layer(title: &str, compiled: &BwdCompiledLayer) -> String
         ..DagForwardContext::default()
     };
     let fmt_special = |desc| fmt_bwd_special(compiled, desc);
+    let has_batch_sink = compiled.program.instrs.iter().any(is_batch_sink);
 
     let mut out = String::new();
     let _ = writeln!(out, "===== {title} =====");
@@ -81,12 +94,14 @@ pub fn disassemble_bwd_layer(title: &str, compiled: &BwdCompiledLayer) -> String
         compiled.budget,
         compiled.program.instrs.len()
     );
-    match compiled.acc_init_desc {
-        Some(desc) => {
-            let _ = writeln!(out, "batch_init = coeff[{desc}]");
-        }
-        None => {
-            let _ = writeln!(out, "batch_init = 0");
+    if has_batch_sink {
+        match compiled.acc_init_desc {
+            Some(desc) => {
+                let _ = writeln!(out, "batch_init = coeff[{desc}]");
+            }
+            None => {
+                let _ = writeln!(out, "batch_init = 0");
+            }
         }
     }
     let _ = writeln!(
@@ -139,12 +154,16 @@ pub fn disassemble_bwd_layer(title: &str, compiled: &BwdCompiledLayer) -> String
         compiled.stats_ext.fold_uses,
         compiled.stats_ext.fold_traffic,
     );
-    let _ = writeln!(
-        out,
-        "batch_fma: bf={} e4={}",
-        compiled.stats_ext.batch_fma_base, compiled.stats_ext.batch_fma_ext
-    );
-    let _ = writeln!(out, "terminal = ReturnBatch");
+    if has_batch_sink {
+        let _ = writeln!(
+            out,
+            "batch_fma: bf={} e4={}",
+            compiled.stats_ext.batch_fma_base, compiled.stats_ext.batch_fma_ext
+        );
+        let _ = writeln!(out, "terminal = ReturnBatch");
+    } else {
+        let _ = writeln!(out, "terminal = ReturnAcc");
+    }
     out
 }
 
@@ -152,7 +171,7 @@ pub fn disassemble_bwd_layer(title: &str, compiled: &BwdCompiledLayer) -> String
 mod tests {
     use super::*;
     use crate::bwd::batch::{pack_batch_dst, BATCH_COEFFICIENT_ONE};
-    use crate::fwd::isa::{Instr, MovDir, OperandField};
+    use crate::fwd::isa::{Instr, LdcSub, MovDir, OperandField, OperandLine, Program, Special};
 
     #[test]
     fn batch_sinks_have_backward_specific_readable_syntax() {
@@ -179,5 +198,37 @@ mod tests {
             fmt_bwd_instr(&ext, &DagForwardContext::default(), &|_| { unreachable!() }),
             "batch += acc.e4"
         );
+    }
+
+    #[test]
+    fn result_in_acc_layer_keeps_return_acc_rendering() {
+        let compiled = BwdCompiledLayer {
+            program: Program {
+                instrs: vec![Instr::Mov {
+                    dir: MovDir::AccFromSrc,
+                    field: OperandField::Base,
+                    dst: None,
+                    src: Some(OperandLine::Ldc {
+                        sub: LdcSub::Special,
+                        idx: Special::One as u16,
+                    }),
+                }],
+            },
+            acc_init_desc: None,
+            specials: Default::default(),
+            backings: Default::default(),
+            source_windows: Default::default(),
+            consts: Default::default(),
+            derived_e4: Default::default(),
+            budget: 4,
+            stats: Default::default(),
+            stats_ext: Default::default(),
+        };
+
+        let rendered = disassemble_bwd_layer("legacy", &compiled);
+        assert!(rendered.contains("terminal = ReturnAcc"));
+        assert!(!rendered.contains("terminal = ReturnBatch"));
+        assert!(!rendered.contains("batch_init"));
+        assert!(!rendered.contains("batch_fma"));
     }
 }
