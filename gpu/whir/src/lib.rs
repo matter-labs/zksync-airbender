@@ -424,14 +424,17 @@ fn bitreverse_index(index: usize, num_bits: u32) -> usize {
 }
 
 // ---------------------------------------------------------------------
-// Oracle parity/query test-support surface (permanently compiled).
+// Oracle parity/query test-support surface (behind the non-default
+// `test-utils` feature — `#[cfg(any(test, feature = "test-utils"))]`).
 //
-// Relocated out of the `#[cfg(test)] mod tests` block (Task 10) so the apex
-// e2e/parity suite (`prover/tests/whir_oracle_parity.rs`, driven from
+// Relocated out of the `#[cfg(test)] mod tests` block (Task 10) and gated
+// behind `test-utils` (Task 18) so the apex e2e/parity suite
+// (`gpu/circuit_prover/src/tests/whir_oracle_parity.rs`, driven from
 // `stagewise.rs`) can reach `from_monomial_coeffs` / `get_tree_cap` /
-// `query_for_folded_index` across the crate boundary — a dependency`s
-// `#[cfg(test)]` items are invisible to consumers. The three apex-reached
-// methods are `#[doc(hidden)] pub`; the rest is crate-internal support.
+// `query_for_folded_index` across the crate boundary — a dependency's
+// `#[cfg(test)]` items are invisible to consumers, so `#[cfg(test)]` alone
+// would not do. The three apex-reached methods are `#[doc(hidden)] pub`; the
+// rest is crate-internal support. Not compiled into a production build.
 // ---------------------------------------------------------------------
 // #[doc(hidden)] pub: returned by `query_for_folded_index` and compared/read by
 // the apex parity test suite across the crate boundary. Test-support only
