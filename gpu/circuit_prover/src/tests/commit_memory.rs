@@ -45,14 +45,14 @@ fn test_shift_binop_commit_memory_matches_cpu() {
         &|cs| shift_binop_table_addition_fn(cs),
         &|cs| shift_binop_circuit_with_preprocessed_bytecode_for_gkr(cs),
         1 << 20,
-        UnrolledNonMemoryCircuitType::ShiftBinaryCsr.get_domain_size_log2() as usize,
+        UnrolledNonMemoryCircuitType::ShiftBinary.get_domain_size_log2() as usize,
     );
     assert_non_memory_commit_memory_matches_cpu_for_test::<SHIFT_BINARY_CIRCUIT_FAMILY_IDX>(
         "examples/hashed_fibonacci/app.bin",
         "examples/hashed_fibonacci/app.text",
         &[15, 1],
         common_constants::PC_STEP as u32, // default_pc_value_in_padding
-        UnrolledNonMemoryCircuitType::ShiftBinaryCsr,
+        UnrolledNonMemoryCircuitType::ShiftBinary,
         &compiled_circuit,
     );
 }

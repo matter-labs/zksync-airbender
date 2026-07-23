@@ -23,7 +23,7 @@ const JUMP_BRANCH_FAMILY_IDX: u8 = CircuitType::Unrolled(UnrolledCircuitType::No
 ))
 .get_family_idx();
 const SHIFT_BINARY_FAMILY_IDX: u8 = CircuitType::Unrolled(UnrolledCircuitType::NonMemory(
-    UnrolledNonMemoryCircuitType::ShiftBinaryCsr,
+    UnrolledNonMemoryCircuitType::ShiftBinary,
 ))
 .get_family_idx();
 const MUL_DIV_FAMILY_IDX: u8 = CircuitType::Unrolled(UnrolledCircuitType::NonMemory(

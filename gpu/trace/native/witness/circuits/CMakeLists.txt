@@ -8,7 +8,7 @@ target_sources(gpu_trace_native PRIVATE
         load_store_subword_only.cu
         load_store_word_only.cu
         mul_div_unsigned.cu
-        shift_binary_csr.cu
+        shift_binary.cu
         unified_reduced_machine.cu
         template_delegation.cuh
         template_unrolled.cuh

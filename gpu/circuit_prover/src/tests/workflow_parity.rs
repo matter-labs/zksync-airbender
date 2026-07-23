@@ -639,7 +639,7 @@ fn cached_main_layer_backward_plan_keeps_cache_inputs_layer_locality_test() {
 fn run_shift_binop_cached_lookup_parity_test() {
     type CountersT = DelegationsAndFamiliesCounters;
 
-    const TRACE_LEN_LOG2: u32 = UnrolledNonMemoryCircuitType::ShiftBinaryCsr.get_domain_size_log2();
+    const TRACE_LEN_LOG2: u32 = UnrolledNonMemoryCircuitType::ShiftBinary.get_domain_size_log2();
     const NUM_CYCLES_PER_CHUNK: usize = 1 << TRACE_LEN_LOG2;
     const FINAL_TRACE_SIZE_LOG_2: u32 = 4;
 
@@ -781,7 +781,7 @@ fn run_shift_binop_cached_lookup_parity_test() {
     ensure_memory_trace_consistency(&memory_trace, &full_trace);
 
     let shift_binop_circuit_type = CircuitType::Unrolled(UnrolledCircuitType::NonMemory(
-        UnrolledNonMemoryCircuitType::ShiftBinaryCsr,
+        UnrolledNonMemoryCircuitType::ShiftBinary,
     ));
     let prover_config =
         crate::config::prover_config(shift_binop_circuit_type, SecurityLevel::Sec80).unwrap();
@@ -826,7 +826,7 @@ fn run_shift_binop_cached_lookup_parity_test() {
     ));
     let mut stage1_output = generate_stage1_output_for_test(
         CircuitType::Unrolled(UnrolledCircuitType::NonMemory(
-            UnrolledNonMemoryCircuitType::ShiftBinaryCsr,
+            UnrolledNonMemoryCircuitType::ShiftBinary,
         )),
         &shift_binop_circuit,
         &gpu_setup_transfer,
