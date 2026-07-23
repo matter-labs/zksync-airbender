@@ -126,6 +126,10 @@ DEVICE_FORCEINLINE e4 fold_endpoint(const bwd_vm_desc &desc, Loader load_value, 
   return folded;
 }
 
+DEVICE_FORCEINLINE gkr_base_source_kind virtual_kind(const u32 payload) {
+  return static_cast<gkr_base_source_kind>(GKR_BASE_SOURCE_VIRTUAL_RANGE_CHECK_16_BITS + payload);
+}
+
 template <bool BASE, bool VALIDATE>
 DEVICE_FORCEINLINE e4 resolve_source_endpoint(const bwd_vm_desc &desc, const u32 window_index, const u32 column, const bool first_access, const size_t endpoint,
                                               u32 &error) {
@@ -136,20 +140,67 @@ DEVICE_FORCEINLINE e4 resolve_source_endpoint(const bwd_vm_desc &desc, const u32
     }
   }
   const bwd_vm_source_window &window = desc.source_windows[window_index];
-  const u8 expected_field = BASE ? BWD_VM_ORIGIN_FIELD_BASE : BWD_VM_ORIGIN_FIELD_EXT;
   if constexpr (VALIDATE) {
-    if (window.origin_field != expected_field) {
-      error |= EVAL_VM_ERR_FIELD_MISMATCH;
+    if (window.materialize > 1 || (window.materialize != 0 && (window.publish_base == nullptr || window.publish_stride_bytes == 0))) {
+      error |= window.materialize != 0 && window.publish_base == nullptr ? BWD_VM_ERR_NULL_POINTER : BWD_VM_ERR_DESC_BOUNDS;
       return e4::ZERO();
     }
-    if (window.read_base == nullptr || window.read_stride_bytes == 0 || window.materialize > 1 ||
-        (window.materialize != 0 && (window.publish_base == nullptr || window.publish_stride_bytes == 0))) {
-      error |= window.read_base == nullptr || (window.materialize != 0 && window.publish_base == nullptr) ? BWD_VM_ERR_NULL_POINTER : BWD_VM_ERR_DESC_BOUNDS;
-      return e4::ZERO();
+    if (window.source_kind == BWD_VM_SOURCE_VIRTUAL) {
+      const bool procedural = window.backing_depth == 0;
+      if constexpr (BASE) {
+        error |= EVAL_VM_ERR_FIELD_MISMATCH;
+        return e4::ZERO();
+      }
+      if (column > BWD_VM_VIRTUAL_INITS_AND_TEARDOWNS_HIGH) {
+        error |= BWD_VM_ERR_BAD_SPECIAL;
+        return e4::ZERO();
+      }
+      if (window.target_depth != desc.n_round_challenges || (procedural && window.target_depth > BWD_VM_VIRTUAL_MATERIALIZE_DEPTH) ||
+          (!procedural && (window.backing_depth < BWD_VM_VIRTUAL_MATERIALIZE_DEPTH || static_cast<u32>(window.backing_depth) + 1 != window.target_depth))) {
+        error |= BWD_VM_ERR_DESC_BOUNDS;
+        return e4::ZERO();
+      }
+      const bool expected_materialize = window.target_depth >= BWD_VM_VIRTUAL_MATERIALIZE_DEPTH;
+      if ((window.materialize != 0) != expected_materialize) {
+        error |= BWD_VM_ERR_DESC_BOUNDS;
+        return e4::ZERO();
+      }
+      if ((procedural && (window.read_base != nullptr || window.read_stride_bytes != 0)) ||
+          (!procedural && (window.read_base == nullptr || window.read_stride_bytes == 0)) ||
+          (window.materialize == 0 && (window.publish_base != nullptr || window.publish_stride_bytes != 0))) {
+        error |= (!procedural && window.read_base == nullptr) ? BWD_VM_ERR_NULL_POINTER : BWD_VM_ERR_DESC_BOUNDS;
+        return e4::ZERO();
+      }
+    } else {
+      const u8 expected_source_kind = BASE ? BWD_VM_SOURCE_READ_BASE : BWD_VM_SOURCE_READ_EXT;
+      if (window.source_kind != expected_source_kind) {
+        error |= EVAL_VM_ERR_FIELD_MISMATCH;
+        return e4::ZERO();
+      }
+      if (window.read_base == nullptr || window.read_stride_bytes == 0) {
+        error |= window.read_base == nullptr ? BWD_VM_ERR_NULL_POINTER : BWD_VM_ERR_DESC_BOUNDS;
+        return e4::ZERO();
+      }
     }
   }
   if (window.materialize != 0 && !first_access)
     return load_source_value<BASE>(publish_column(window, column), endpoint);
+
+  if (window.source_kind == BWD_VM_SOURCE_VIRTUAL) {
+    const gkr_base_source_kind kind = virtual_kind(column);
+    e4 value;
+    if (window.backing_depth == 0) {
+      value = fold_endpoint<true, VALIDATE>(
+          desc, [kind](const size_t index) { return e4::from_scalar(gkr_virtual_base_value(kind, index)); }, endpoint, 0, window.target_depth, error);
+    } else {
+      const char *read = source_column(window, column);
+      value = fold_endpoint<false, VALIDATE>(
+          desc, [read](const size_t index) { return load_source_value<false>(read, index); }, endpoint, window.backing_depth, window.target_depth, error);
+    }
+    if (window.materialize != 0)
+      store_source_value<false>(publish_column(window, column), endpoint, value);
+    return value;
+  }
 
   const char *read = source_column(window, column);
   const e4 value = fold_endpoint<BASE, VALIDATE>(
@@ -169,12 +220,8 @@ DEVICE_FORCEINLINE e4 read_source(const bwd_vm_desc &desc, const u16 lane, const
   return role_combine(value, active_mask);
 }
 
-DEVICE_FORCEINLINE gkr_base_source_kind virtual_kind(const u32 payload) {
-  return static_cast<gkr_base_source_kind>(GKR_BASE_SOURCE_VIRTUAL_RANGE_CHECK_16_BITS + payload);
-}
-
 template <bool VALIDATE>
-DEVICE_FORCEINLINE e4 read_virtual(const bwd_vm_desc &desc, const u32 payload, const u32 active_mask, const size_t endpoint, const bool folded, u32 &error) {
+DEVICE_FORCEINLINE e4 read_virtual(const bwd_vm_desc &desc, const u32 payload, const u32 active_mask, const size_t endpoint, u32 &error) {
   if constexpr (VALIDATE) {
     if (payload > BWD_VM_VIRTUAL_INITS_AND_TEARDOWNS_HIGH) {
       error |= BWD_VM_ERR_BAD_SPECIAL;
@@ -182,10 +229,7 @@ DEVICE_FORCEINLINE e4 read_virtual(const bwd_vm_desc &desc, const u32 payload, c
     }
   }
   const gkr_base_source_kind kind = virtual_kind(payload);
-  const e4 value = folded ? fold_endpoint<true, VALIDATE>(
-                                desc, [kind](const size_t index) { return e4::from_scalar(gkr_virtual_base_value(kind, index)); }, endpoint, 0,
-                                desc.n_round_challenges, error)
-                          : e4::from_scalar(gkr_virtual_base_value(kind, endpoint));
+  const e4 value = e4::from_scalar(gkr_virtual_base_value(kind, endpoint));
   return role_combine(value, active_mask);
 }
 
@@ -291,7 +335,7 @@ template <bool VALIDATE> struct BwdVmAdapter {
           error |= EVAL_VM_ERR_FIELD_MISMATCH;
         return bf::ZERO();
       }
-      return read_virtual<VALIDATE>(desc, payload, active_mask, endpoint, false, error)[0][0];
+      return read_virtual<VALIDATE>(desc, payload, active_mask, endpoint, error)[0][0];
     }
     }
   }
@@ -368,8 +412,6 @@ template <bool VALIDATE> struct BwdVmAdapter {
         }
         return ::ab_gkr_flat_coefficients[payload];
       }
-      if (kind == BWD_VM_SPECIAL_KIND_VIRTUAL_SETUP)
-        return read_virtual<VALIDATE>(desc, payload, active_mask, endpoint, true, error);
       if constexpr (VALIDATE)
         error |= BWD_VM_ERR_BAD_SPECIAL;
       return e4::ZERO();

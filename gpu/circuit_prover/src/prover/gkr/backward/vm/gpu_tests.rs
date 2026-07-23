@@ -17,8 +17,8 @@ use rayon::prelude::*;
 
 use super::compile::{load_add_sub_l0_case, AddSubBwdVmCase};
 use super::desc::{
-    BwdVmDesc, BwdVmSourceWindow, BWD_VM_ORIGIN_FIELD_BASE, BWD_VM_ORIGIN_FIELD_EXT,
-    BWD_VM_PROGRAM_CAP,
+    BwdVmDesc, BwdVmSourceWindow, BWD_VM_PROGRAM_CAP, BWD_VM_SOURCE_READ_BASE,
+    BWD_VM_SOURCE_READ_EXT, BWD_VM_SOURCE_VIRTUAL,
 };
 use super::lower::{
     artifact_static_materialization, lower_bwd_vm, BwdVmRoundBinding, ResolvedBwdSourceWindow,
@@ -250,7 +250,7 @@ fn run_ext_case(
         publish_stride_bytes: (endpoint_count * size_of::<E4>()) as u32,
         backing_depth: 0,
         target_depth: depth,
-        origin_field: BWD_VM_ORIGIN_FIELD_EXT,
+        source_kind: BWD_VM_SOURCE_READ_EXT,
         materialize: u8::from(materialize),
     };
 
@@ -307,7 +307,7 @@ fn run_base_plain(context: &ProverContext, rows: usize) {
         publish_stride_bytes: 0,
         backing_depth: 0,
         target_depth: 0,
-        origin_field: BWD_VM_ORIGIN_FIELD_BASE,
+        source_kind: BWD_VM_SOURCE_READ_BASE,
         materialize: 0,
     };
     launch_bwd_vm_validate(
@@ -340,7 +340,7 @@ fn malformed_program_bounds_fail_before_source_access(context: &ProverContext) {
         publish_stride_bytes: (2 * size_of::<E4>()) as u32,
         backing_depth: 0,
         target_depth: 0,
-        origin_field: BWD_VM_ORIGIN_FIELD_EXT,
+        source_kind: BWD_VM_SOURCE_READ_EXT,
         materialize: 1,
     };
 
@@ -382,7 +382,7 @@ fn truncated_multilane_instruction_fails_without_lane_oob(context: &ProverContex
         publish_stride_bytes: 0,
         backing_depth: 0,
         target_depth: 0,
-        origin_field: BWD_VM_ORIGIN_FIELD_EXT,
+        source_kind: BWD_VM_SOURCE_READ_EXT,
         materialize: 0,
     };
 
@@ -444,7 +444,7 @@ fn truncated_second_operand_preflights_before_publication(context: &ProverContex
         publish_stride_bytes: (2 * size_of::<E4>()) as u32,
         backing_depth: 0,
         target_depth: 0,
-        origin_field: BWD_VM_ORIGIN_FIELD_EXT,
+        source_kind: BWD_VM_SOURCE_READ_EXT,
         materialize: 1,
     };
 
@@ -537,7 +537,7 @@ fn release_publication_feeds_a_later_physical_use(context: &ProverContext) {
         publish_stride_bytes: (endpoint_count * size_of::<E4>()) as u32,
         backing_depth: 0,
         target_depth: depth,
-        origin_field: BWD_VM_ORIGIN_FIELD_EXT,
+        source_kind: BWD_VM_SOURCE_READ_EXT,
         materialize: 1,
     };
 
@@ -1805,6 +1805,7 @@ fn run_all_budget_coordinate(
             rows: rows as u32,
             round_challenges,
             sources: &sources,
+            virtual_sources: &[],
             resolve_source: &resolve_source,
             eq_low: eq_low_device.as_ptr(),
             eq_sizes,
@@ -2213,6 +2214,7 @@ fn run_add_sub_r0_budget(
         rows: rows as u32,
         round_challenges,
         sources: &sources,
+        virtual_sources: &[],
         resolve_source: &resolve_source,
         eq_low: eq_low_device.as_ptr(),
         eq_sizes,
@@ -3145,10 +3147,12 @@ fn predicted_source_bytes(desc: &BwdVmDesc) -> u128 {
             return;
         };
         let source = desc.source_windows[*window as usize];
-        let origin_bytes = match source.origin_field {
-            BWD_VM_ORIGIN_FIELD_BASE => size_of::<BF>(),
-            BWD_VM_ORIGIN_FIELD_EXT => size_of::<E4>(),
-            field => panic!("invalid timing source field {field}"),
+        let origin_bytes = match (source.source_kind, source.backing_depth) {
+            (BWD_VM_SOURCE_READ_BASE, _) => size_of::<BF>(),
+            (BWD_VM_SOURCE_READ_EXT, _) => size_of::<E4>(),
+            (BWD_VM_SOURCE_VIRTUAL, 0) => 0,
+            (BWD_VM_SOURCE_VIRTUAL, _) => size_of::<E4>(),
+            (kind, _) => panic!("invalid timing source kind {kind}"),
         };
         assert!((*column as usize) < 64, "encoded source column bound");
         let delta = source
@@ -3408,6 +3412,7 @@ fn bwd_vm_add_sub_l0_budget_sweep_report() {
             rows: r0_rows as u32,
             round_challenges: &round_challenges,
             sources: &sources,
+            virtual_sources: &[],
             resolve_source: &resolve_source,
             eq_low: r0_eq_low.as_ptr(),
             eq_sizes: r0_eq_sizes,
@@ -3532,6 +3537,7 @@ fn bwd_vm_add_sub_l0_budget_sweep_report() {
         rows: prep_rows as u32,
         round_challenges: &round_challenges,
         sources: &prep_sources,
+        virtual_sources: &[],
         resolve_source: &prep_resolver,
         eq_low: prep_eq_low.as_ptr(),
         eq_sizes: make_eq_sizes(folding_steps - 1),
@@ -3656,6 +3662,7 @@ fn bwd_vm_add_sub_l0_budget_sweep_report() {
                 rows: rows as u32,
                 round_challenges: &round_challenges,
                 sources: &sources,
+                virtual_sources: &[],
                 resolve_source: &resolver,
                 eq_low: eq_low.as_ptr(),
                 eq_sizes,

@@ -2,7 +2,7 @@ use std::cell::Cell;
 use std::collections::{BTreeMap, BTreeSet};
 
 use gkr_eval_isa::bwd::compile::BwdCompiledLayer;
-use gkr_eval_isa::bwd::source::{BwdSpecial, OriginLeaf};
+use gkr_eval_isa::bwd::source::{BwdSpecial, OriginLeaf, VIRTUAL_SETUP_MATERIALIZE_DEPTH};
 use gkr_eval_isa::fwd::encode::decode;
 use gkr_eval_isa::fwd::isa::{DstLine, Instr, LdcSub, OperandField, OperandLine, Program};
 use gkr_eval_isa::fwd::source::virtual_setup_kind_code;
@@ -15,7 +15,12 @@ use crate::prover::gkr::forward::vm::desc::{
 };
 
 pub(crate) const BWD_VM_PROGRAM_CAP: usize = 1_744;
-pub(crate) const BWD_VM_SOURCE_WINDOW_CAP: usize = 4;
+pub(crate) const BWD_VM_SOURCE_READ_BASE: u8 = 0;
+pub(crate) const BWD_VM_SOURCE_READ_EXT: u8 = 1;
+pub(crate) const BWD_VM_SOURCE_VIRTUAL: u8 = 2;
+pub(crate) const BWD_VM_SOURCE_WINDOW_CAP: usize = 5;
+// Mirrored by BWD_VM_VIRTUAL_MATERIALIZE_DEPTH in bwd_vm.cuh.
+pub(crate) const BWD_VM_VIRTUAL_MATERIALIZE_DEPTH: u8 = 3;
 pub(crate) const BWD_VM_SPECIAL_CAP: usize = 147;
 pub(crate) const BWD_VM_COEFFICIENT_CAP: usize = 145;
 pub(crate) const BWD_VM_CELL_CAP: usize = 18;
@@ -35,9 +40,6 @@ pub(crate) const BWD_VM_SPECIAL_KIND_BITS: u32 = 2;
 pub(crate) const BWD_VM_SPECIAL_KIND_MASK: u32 = (1 << BWD_VM_SPECIAL_KIND_BITS) - 1;
 pub(crate) const BWD_VM_SPECIAL_PAYLOAD_SHIFT: u32 = BWD_VM_SPECIAL_KIND_BITS;
 pub(crate) const BWD_VM_SPECIAL_PAYLOAD_MASK: u32 = u32::MAX >> BWD_VM_SPECIAL_KIND_BITS;
-
-pub(crate) const BWD_VM_ORIGIN_FIELD_BASE: u8 = OperandField::Base as u8;
-pub(crate) const BWD_VM_ORIGIN_FIELD_EXT: u8 = OperandField::Ext as u8;
 
 pub(crate) const BWD_VM_VIRTUAL_RANGE_CHECK_16_BITS: u32 = 0;
 pub(crate) const BWD_VM_VIRTUAL_RANGE_CHECK_TIMESTAMP: u32 = 1;
@@ -69,6 +71,7 @@ const _: () = {
 const _: () = {
     assert!(OperandField::Base as u8 == 0);
     assert!(OperandField::Ext as u8 == 1);
+    assert!(BWD_VM_VIRTUAL_MATERIALIZE_DEPTH == VIRTUAL_SETUP_MATERIALIZE_DEPTH);
 };
 
 #[repr(C)]
@@ -80,7 +83,7 @@ pub(crate) struct BwdVmSourceWindow {
     pub publish_stride_bytes: u32,
     pub backing_depth: u8,
     pub target_depth: u8,
-    pub origin_field: u8,
+    pub source_kind: u8,
     pub materialize: u8,
 }
 
@@ -265,13 +268,25 @@ pub(crate) fn descriptor_counts(
         }
     }
 
+    let virtual_source_descs = special_descs
+        .keys()
+        .filter(|&&desc| {
+            matches!(
+                compiled.specials.get(desc),
+                Some(BwdSpecial::FoldSource {
+                    origin: OriginLeaf::VirtualSetup { .. },
+                })
+            )
+        })
+        .count();
     let counts = DescriptorCounts {
         program_lanes: encoded.len(),
-        source_windows: compiled.source_windows.len(),
-        // Final source binding leaves Read-origin FoldSource entries in the
-        // host table, but no encoded Special operand references them. The
-        // device map contains only the still-referenced descriptor namespace.
-        specials: special_descs.len(),
+        source_windows: compiled.source_windows.len() + usize::from(virtual_source_descs != 0),
+        // Final source binding leaves FoldSource entries in the host table,
+        // but virtual-origin folds become one source window and Read-origin
+        // folds have already become ordinary source lanes. The device special
+        // map contains only the still-referenced descriptor namespace.
+        specials: special_descs.len() - virtual_source_descs,
         coefficient_slots: coefficient_descs.len(),
         bf_constants: compiled.consts.values().len(),
         arg_derived_e4,
@@ -411,7 +426,7 @@ const _: () = {
     assert!(core::mem::align_of::<BwdVmSourceWindow>() == 8);
     assert!(core::mem::size_of::<BwdVmSpecial>() == 4);
     assert!(core::mem::align_of::<BwdVmSpecial>() == 4);
-    assert!(core::mem::size_of::<BwdVmDesc>() == 4640);
+    assert!(core::mem::size_of::<BwdVmDesc>() == 4672);
     assert!(core::mem::align_of::<BwdVmDesc>() == 16);
     assert!(core::mem::size_of::<BwdVmDesc>() <= 32764);
 };
@@ -426,12 +441,12 @@ mod tests {
     use super::{
         descriptor_counts, BwdVmDesc, BwdVmSourceWindow, BwdVmSpecial, BWD_VM_ARG_DERIVED_E4_CAP,
         BWD_VM_BF_CONSTANT_CAP, BWD_VM_CELL_CAP, BWD_VM_COEFFICIENT_CAP,
-        BWD_VM_CONST_DERIVED_E4_CAP, BWD_VM_ORIGIN_FIELD_BASE, BWD_VM_ORIGIN_FIELD_EXT,
-        BWD_VM_PROGRAM_CAP, BWD_VM_SOURCE_WINDOW_CAP, BWD_VM_SPECIAL_CAP,
-        BWD_VM_SPECIAL_KIND_ACC_INIT, BWD_VM_SPECIAL_KIND_COEFFICIENT,
+        BWD_VM_CONST_DERIVED_E4_CAP, BWD_VM_PROGRAM_CAP, BWD_VM_SOURCE_READ_BASE,
+        BWD_VM_SOURCE_READ_EXT, BWD_VM_SOURCE_VIRTUAL, BWD_VM_SOURCE_WINDOW_CAP,
+        BWD_VM_SPECIAL_CAP, BWD_VM_SPECIAL_KIND_ACC_INIT, BWD_VM_SPECIAL_KIND_COEFFICIENT,
         BWD_VM_SPECIAL_KIND_VIRTUAL_SETUP, BWD_VM_VIRTUAL_INITS_AND_TEARDOWNS_HIGH,
-        BWD_VM_VIRTUAL_INITS_AND_TEARDOWNS_LOW, BWD_VM_VIRTUAL_RANGE_CHECK_16_BITS,
-        BWD_VM_VIRTUAL_RANGE_CHECK_TIMESTAMP,
+        BWD_VM_VIRTUAL_INITS_AND_TEARDOWNS_LOW, BWD_VM_VIRTUAL_MATERIALIZE_DEPTH,
+        BWD_VM_VIRTUAL_RANGE_CHECK_16_BITS, BWD_VM_VIRTUAL_RANGE_CHECK_TIMESTAMP,
     };
     use crate::prover::gkr::backward::vm::compile::load_add_sub_l0_case;
     use crate::prover::gkr::forward::vm::desc::PROGRAM_CAP;
@@ -490,7 +505,8 @@ mod tests {
         }
 
         assert_eq!(maxima.program_lanes, BWD_VM_PROGRAM_CAP);
-        assert_eq!(maxima.source_windows, BWD_VM_SOURCE_WINDOW_CAP);
+        assert_eq!(maxima.source_windows, 4);
+        assert!(maxima.source_windows <= BWD_VM_SOURCE_WINDOW_CAP);
         assert_eq!(maxima.specials, BWD_VM_SPECIAL_CAP);
         assert_eq!(maxima.coefficient_slots, BWD_VM_COEFFICIENT_CAP);
         assert_eq!(maxima.bf_constants, 0);
@@ -514,7 +530,7 @@ mod tests {
         assert_eq!(offset_of!(BwdVmSourceWindow, publish_stride_bytes), 20);
         assert_eq!(offset_of!(BwdVmSourceWindow, backing_depth), 24);
         assert_eq!(offset_of!(BwdVmSourceWindow, target_depth), 25);
-        assert_eq!(offset_of!(BwdVmSourceWindow, origin_field), 26);
+        assert_eq!(offset_of!(BwdVmSourceWindow, source_kind), 26);
         assert_eq!(offset_of!(BwdVmSourceWindow, materialize), 27);
     }
 
@@ -523,8 +539,14 @@ mod tests {
         use core::mem::{align_of, offset_of, size_of};
 
         assert_eq!(KIND_ORDER.len(), 4);
-        assert_eq!(BWD_VM_ORIGIN_FIELD_BASE, 0);
-        assert_eq!(BWD_VM_ORIGIN_FIELD_EXT, 1);
+        assert_eq!(BWD_VM_SOURCE_READ_BASE, 0);
+        assert_eq!(BWD_VM_SOURCE_READ_EXT, 1);
+        assert_eq!(BWD_VM_SOURCE_VIRTUAL, 2);
+        assert_eq!(BWD_VM_VIRTUAL_MATERIALIZE_DEPTH, 3);
+        assert_eq!(
+            BWD_VM_VIRTUAL_MATERIALIZE_DEPTH,
+            gkr_eval_isa::bwd::source::VIRTUAL_SETUP_MATERIALIZE_DEPTH
+        );
         assert_eq!(size_of::<BwdVmSpecial>(), 4);
         assert_eq!(align_of::<BwdVmSpecial>(), 4);
         assert_eq!(offset_of!(BwdVmSpecial, packed), 0);
@@ -621,22 +643,22 @@ mod tests {
         assert_eq!(offset_of!(BwdVmDesc, eq_low), 200);
         assert_eq!(offset_of!(BwdVmDesc, contributions), 208);
         assert_eq!(offset_of!(BwdVmDesc, source_windows), 216);
-        assert_eq!(offset_of!(BwdVmDesc, eq_sizes), 344);
-        assert_eq!(offset_of!(BwdVmDesc, bf_constants), 356);
-        assert_eq!(offset_of!(BwdVmDesc, specials), 516);
-        assert_eq!(offset_of!(BwdVmDesc, n_instr), 1104);
-        assert_eq!(offset_of!(BwdVmDesc, program_lanes), 1108);
-        assert_eq!(offset_of!(BwdVmDesc, n_source_windows), 1112);
-        assert_eq!(offset_of!(BwdVmDesc, n_specials), 1116);
-        assert_eq!(offset_of!(BwdVmDesc, n_coefficients), 1120);
-        assert_eq!(offset_of!(BwdVmDesc, n_bf_constants), 1124);
-        assert_eq!(offset_of!(BwdVmDesc, n_arg_derived_e4), 1128);
-        assert_eq!(offset_of!(BwdVmDesc, n_const_derived_e4), 1132);
-        assert_eq!(offset_of!(BwdVmDesc, n_round_challenges), 1136);
-        assert_eq!(offset_of!(BwdVmDesc, logical_rows), 1140);
-        assert_eq!(offset_of!(BwdVmDesc, cell_count), 1144);
-        assert_eq!(offset_of!(BwdVmDesc, program), 1148);
-        assert_eq!(size_of::<BwdVmDesc>(), 4640);
+        assert_eq!(offset_of!(BwdVmDesc, eq_sizes), 376);
+        assert_eq!(offset_of!(BwdVmDesc, bf_constants), 388);
+        assert_eq!(offset_of!(BwdVmDesc, specials), 548);
+        assert_eq!(offset_of!(BwdVmDesc, n_instr), 1136);
+        assert_eq!(offset_of!(BwdVmDesc, program_lanes), 1140);
+        assert_eq!(offset_of!(BwdVmDesc, n_source_windows), 1144);
+        assert_eq!(offset_of!(BwdVmDesc, n_specials), 1148);
+        assert_eq!(offset_of!(BwdVmDesc, n_coefficients), 1152);
+        assert_eq!(offset_of!(BwdVmDesc, n_bf_constants), 1156);
+        assert_eq!(offset_of!(BwdVmDesc, n_arg_derived_e4), 1160);
+        assert_eq!(offset_of!(BwdVmDesc, n_const_derived_e4), 1164);
+        assert_eq!(offset_of!(BwdVmDesc, n_round_challenges), 1168);
+        assert_eq!(offset_of!(BwdVmDesc, logical_rows), 1172);
+        assert_eq!(offset_of!(BwdVmDesc, cell_count), 1176);
+        assert_eq!(offset_of!(BwdVmDesc, program), 1180);
+        assert_eq!(size_of::<BwdVmDesc>(), 4672);
         assert_eq!(align_of::<BwdVmDesc>(), 16);
         assert!(size_of::<BwdVmDesc>() <= 32764);
     }
