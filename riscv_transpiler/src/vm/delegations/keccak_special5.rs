@@ -466,6 +466,12 @@ const RC: [u64; 24] = [
     0x8000000080008008,
 ];
 
+// `seq!(x in 0..N { ... if x == K ... })` unrolls `x` to compile-time constants, so
+// guards like `if x == 0` expand to `if 0 == 0`; clippy's eq_op fires on the
+// constant-folded comparisons throughout this heavily-unrolled Keccak routine. The
+// code is correct (per-iteration guards on the unrolled index), so the lint is a
+// macro-expansion false positive here.
+#[allow(clippy::eq_op)]
 pub(crate) fn keccak_f1600_impl_ext(state: &mut [u64; 31]) {
     // Even using small precompile we have regular structure like
     // seq!(round in 0..24 {

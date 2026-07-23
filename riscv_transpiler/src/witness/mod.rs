@@ -141,7 +141,7 @@ impl<
         if DELEGATION_TYPE == DELEGATION_TYPE_T {
             debug_assert_eq!(REG_ACCESSES, REG_ACCESSES_T);
             debug_assert_eq!(INDIRECT_READS, INDIRECT_READS_T);
-            debug_assert_eq!(INDIRECT_WRITES, INDIRECT_WRITES);
+            debug_assert_eq!(INDIRECT_WRITES, INDIRECT_WRITES_T);
             debug_assert_eq!(VARIABLE_OFFSETS, VARIABLE_OFFSETS_T);
 
             unsafe {
@@ -271,7 +271,7 @@ impl<
         if DELEGATION_TYPE == DELEGATION_TYPE_T {
             debug_assert_eq!(REG_ACCESSES, REG_ACCESSES_T);
             debug_assert_eq!(INDIRECT_READS, INDIRECT_READS_T);
-            debug_assert_eq!(INDIRECT_WRITES, INDIRECT_WRITES);
+            debug_assert_eq!(INDIRECT_WRITES, INDIRECT_WRITES_T);
             debug_assert_eq!(VARIABLE_OFFSETS, VARIABLE_OFFSETS_T);
 
             unsafe {

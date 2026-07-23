@@ -1,6 +1,7 @@
 use crate::vm::*;
 use common_constants::*;
 use std::alloc::Allocator;
+#[cfg(all(target_arch = "x86_64", feature = "jit"))]
 use std::collections::HashSet;
 use std::mem::offset_of;
 use std::ptr::NonNull;

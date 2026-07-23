@@ -38,6 +38,7 @@ modular_ops = ["verifier_common/modular_ops"]
 verifier_program = ["modular_ops"]
 replace_csr = ["verifier_common/replace_csr"]
 proof_utils = ["verifier_common/proof_utils"]
+verifier_stats = ["verifier_common/verifier_stats"]
 # Host-side recursion-driver helpers (setup-map streams, native verification,
 # fsv binary loading). Implies `proof_utils` (std build + `ProgramProof`); the
 # native_verify_* wrappers additionally need `verifiers` + a security level.

@@ -47,7 +47,11 @@ impl TraceChunk {
         self.len = 0;
     }
 
+    // These byte offsets are read only by the x86_64 `jit` backend (`impls.rs`),
+    // cfg-stripped on other targets; gate to match so they aren't flagged dead.
+    #[cfg(all(target_arch = "x86_64", feature = "jit"))]
     pub(crate) const TIMESTAMPS_OFFSET: usize = offset_of!(Self, timestamps);
+    #[cfg(all(target_arch = "x86_64", feature = "jit"))]
     pub(crate) const LEN_OFFSET: usize = offset_of!(Self, len);
 }
 
@@ -65,6 +69,7 @@ impl MemoryHolder {
         }
     }
 
+    #[cfg(all(target_arch = "x86_64", feature = "jit"))]
     pub(crate) const TIMESTAMPS_OFFSET: usize = offset_of!(Self, timestamps);
 
     pub fn reset<A: Allocator>(this: &mut Box<Self, A>) {
