@@ -406,12 +406,12 @@ pub fn verify_unified_circuit_base_layer<
     const REDUCED_ROUNDS: bool,
 >(
     nd_source: &mut I,
-    security_level: prover::definitions::SecurityLevel
+    security_level: prover::definitions::SecurityLevel,
 ) -> Result<[u32; 16], E::Error> {
     match security_level {
         prover::definitions::SecurityLevel::Sec80 => {
             verify_unified_circuit_base_layer_sec_80::<I, E, REDUCED_ROUNDS>(nd_source)
-        },
+        }
         prover::definitions::SecurityLevel::Sec100 => {
             verify_unified_circuit_base_layer_sec_100::<I, E, REDUCED_ROUNDS>(nd_source)
         }
@@ -464,12 +464,12 @@ pub fn verify_unified_circuit_recursion_layer<
     const REDUCED_ROUNDS: bool,
 >(
     nd_source: &mut I,
-    security_level: prover::definitions::SecurityLevel
+    security_level: prover::definitions::SecurityLevel,
 ) -> Result<[u32; 16], E::Error> {
     match security_level {
         prover::definitions::SecurityLevel::Sec80 => {
             verify_unified_circuit_recursion_layer_sec_80::<I, E, REDUCED_ROUNDS>(nd_source)
-        },
+        }
         prover::definitions::SecurityLevel::Sec100 => {
             verify_unified_circuit_recursion_layer_sec_100::<I, E, REDUCED_ROUNDS>(nd_source)
         }

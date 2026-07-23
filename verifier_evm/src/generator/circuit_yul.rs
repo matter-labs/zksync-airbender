@@ -2342,13 +2342,15 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
             // ([0,n) = final_step gate inputs ++ extras) that the claims_batch absorbs below, so a
             // `< P` check here makes the absorbed transcript bytes canonical (bind to the reduced
             // value, not the prover's 16-byte encoding) while reusing the read it already performs.
-            format!("
+            format!(
+                "
             // WRITEBACK claims for next layer ({previous_input_count} evals) + canonicity guard
             \tfor {{ let wk := 0 }} lt(wk, {previous_input_count}) {{ wk := add(wk, 1) }} {{
             \t    let cv := shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, wk))))
             \t    if iszero(lt(cv, P)) {{ revert(0, 0) }}
             \t    mstore(add(GKR_CIRCUIT_CLAIMS_PTR(), mul(32, wk)), cv)
-            \t}}")
+            \t}}"
+            )
         } else {
             // Base layer has no writeback, but the same guard is needed over the n0 at-point
             // evals (mem++wit++setup) the base-layer claims_batch absorbs from calldata.

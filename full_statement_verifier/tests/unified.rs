@@ -112,7 +112,9 @@ fn run_unified_base_layer(responses: Vec<u32>) -> Result<[u32; 16], ()> {
         .stack_size(1 << 27)
         .spawn(move || {
             let mut src = responses.into_iter();
-            verify_unified_circuit_base_layer_sec_80::<_, DebugErrorCreator, REDUCED_ROUNDS>(&mut src)
+            verify_unified_circuit_base_layer_sec_80::<_, DebugErrorCreator, REDUCED_ROUNDS>(
+                &mut src,
+            )
         })
         .expect("spawn verifier thread")
         .join()

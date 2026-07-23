@@ -1587,165 +1587,171 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
         // the transcript BEFORE `draw_single_field_el`. So the per-layer code is split into a
         // `pre_draw` piece (read + commit the extra evals) emitted before the draw and a
         // `post_draw` piece (fold the claims for the next layer) emitted after it.
-        let (pre_draw_extra_code, post_draw_fold_code, cache_check_code, virtual_setup_calls_emit) = if is_layer_0 {
-            let n_total = layer_0_layout.len();
-            let n_extra = layer_0_n_extra;
-            let layout_kind: Vec<usize> = layer_0_src_kind.clone();
-            let layout_pos: Vec<usize> = layer_0_src_pos.clone();
+        let (pre_draw_extra_code, post_draw_fold_code, cache_check_code, virtual_setup_calls_emit) =
+            if is_layer_0 {
+                let n_total = layer_0_layout.len();
+                let n_extra = layer_0_n_extra;
+                let layout_kind: Vec<usize> = layer_0_src_kind.clone();
+                let layout_pos: Vec<usize> = layer_0_src_pos.clone();
 
-            let read_extras = if n_extra > 0 {
-                quote! {
-                    // Number of extra cached-relation evals for this layer. They are appended into
-                    // `eval_buf` right after the `NUM_AT_POINT_EVALS` at-point evals, so a SINGLE
-                    // commit below covers `new_claims ++ extra` (the prover commits them together
-                    // before drawing the batching challenge).
-                    const NUM_EXTRA_EVALS: usize = #n_extra;
-                    {
-                        let mut i = 0;
-                        while i < NUM_EXTRA_EVALS * EXT_DEGREE {
-                            eval_buf.data_write(data_words + i, read_reduced_field_el::<I>(nd_source).as_u32_raw_repr());
-                            i += 1;
+                let read_extras = if n_extra > 0 {
+                    quote! {
+                        // Number of extra cached-relation evals for this layer. They are appended into
+                        // `eval_buf` right after the `NUM_AT_POINT_EVALS` at-point evals, so a SINGLE
+                        // commit below covers `new_claims ++ extra` (the prover commits them together
+                        // before drawing the batching challenge).
+                        const NUM_EXTRA_EVALS: usize = #n_extra;
+                        {
+                            let mut i = 0;
+                            while i < NUM_EXTRA_EVALS * EXT_DEGREE {
+                                eval_buf.data_write(data_words + i, read_reduced_field_el::<I>(nd_source).as_u32_raw_repr());
+                                i += 1;
+                            }
                         }
-                    }
-                    let mut extra_evals = LazyVec::<#quartic_struct, NUM_EXTRA_EVALS>::new();
-                    {
-                        let slice: &[#quartic_struct] =
-                            unsafe { eval_buf.data_as(NUM_AT_POINT_EVALS + NUM_EXTRA_EVALS) };
-                        let mut k = NUM_AT_POINT_EVALS;
-                        while k < NUM_AT_POINT_EVALS + NUM_EXTRA_EVALS {
-                            extra_evals.push(unsafe { *slice.get_unchecked(k) });
-                            k += 1;
+                        let mut extra_evals = LazyVec::<#quartic_struct, NUM_EXTRA_EVALS>::new();
+                        {
+                            let slice: &[#quartic_struct] =
+                                unsafe { eval_buf.data_as(NUM_AT_POINT_EVALS + NUM_EXTRA_EVALS) };
+                            let mut k = NUM_AT_POINT_EVALS;
+                            while k < NUM_AT_POINT_EVALS + NUM_EXTRA_EVALS {
+                                extra_evals.push(unsafe { *slice.get_unchecked(k) });
+                                k += 1;
+                            }
                         }
+                        // one commit of new_claims ++ extra, then (in main body) the draw.
+                        ts.commit(&mut eval_buf, data_words + NUM_EXTRA_EVALS * EXT_DEGREE);
                     }
-                    // one commit of new_claims ++ extra, then (in main body) the draw.
-                    ts.commit(&mut eval_buf, data_words + NUM_EXTRA_EVALS * EXT_DEGREE);
-                }
-            } else {
-                quote! {
-                    let extra_evals = LazyVec::<#quartic_struct, 0usize>::new();
-                    // no extras: commit just the at-point evals, then draw.
-                    ts.commit(&mut eval_buf, data_words);
-                }
-            };
-
-            // `read_extras` (read the extra evals + commit them) runs BEFORE the draw; it also
-            // declares `extra_evals`, which the post-draw fold consumes (same enclosing block).
-            let post_draw_fold = quote! {
-                let final_step_evals: &[[#quartic_struct; 1]] = unsafe { eval_buf.data_as(NUM_AT_POINT_EVALS) };
-                state.prev_claims.clear();
-                {
-                    const LAYOUT_KIND: [usize; #n_total] = [#( #layout_kind ),*];
-                    const LAYOUT_POS:  [usize; #n_total] = [#( #layout_pos  ),*];
-                    let mut i = 0usize;
-                    while i < #n_total {
-                        let kind = unsafe { *LAYOUT_KIND.get_unchecked(i) };
-                        let pos = unsafe { *LAYOUT_POS.get_unchecked(i)  };
-                        let claim: #quartic_struct = if kind == 0usize {
-                            // At-point evaluation sent directly by the prover.
-                            unsafe { final_step_evals.get_unchecked(pos)[0] }
-                        } else {
-                            *extra_evals.get(pos)
-                        };
-                        state.prev_claims.push(claim);
-                        i += 1;
+                } else {
+                    quote! {
+                        let extra_evals = LazyVec::<#quartic_struct, 0usize>::new();
+                        // no extras: commit just the at-point evals, then draw.
+                        ts.commit(&mut eval_buf, data_words);
                     }
-                }
-            };
-
-            let cache_check = generate_cache_relation_checks::<MW, _>(
-                &compiled_circuit.layers[0],
-                &layer_0_layout,
-                0,
-            );
-
-            (read_extras, post_draw_fold, cache_check, virtual_setup_calls.clone())
-        } else {
-            let (pre_draw, post_draw) = if num_extra > 0 {
-                let mut extra_positions: Vec<(usize, usize)> = Vec::new();
-                let mut extra_idx = 0usize;
-                for (merged_idx, addr) in target_addrs.iter().enumerate() {
-                    if !regular_set.contains(addr) {
-                        extra_positions.push((merged_idx, extra_idx));
-                        extra_idx += 1;
-                    }
-                }
-                let num_merged = target_addrs.len();
-                let num_extra_pos = extra_positions.len();
-                let ep_merged: Vec<usize> = extra_positions.iter().map(|p| p.0).collect();
-                let ep_extra: Vec<usize> = extra_positions.iter().map(|p| p.1).collect();
-
-                // pre-draw: append the extra evals into `eval_buf` (right after the num_dedup
-                // at-point evals) and commit `new_claims ++ extra` in ONE shot (matching the
-                // prover). Declares `extra_evals`, consumed by the post-draw fold in the same block.
-                let pre_draw = quote! {
-                    // Number of extra cached-relation evals; appended after the at-point evals in
-                    // `eval_buf` so the single commit below covers `new_claims ++ extra`.
-                    const NUM_EXTRA_EVALS: usize = #num_extra;
-                    {
-                        let mut i = 0;
-                        while i < NUM_EXTRA_EVALS * EXT_DEGREE {
-                            eval_buf.data_write(data_words + i, read_reduced_field_el::<I>(nd_source).as_u32_raw_repr());
-                            i += 1;
-                        }
-                    }
-                    let mut extra_evals = LazyVec::<#quartic_struct, NUM_EXTRA_EVALS>::new();
-                    {
-                        let slice: &[#quartic_struct] =
-                            unsafe { eval_buf.data_as(NUM_AT_POINT_EVALS + NUM_EXTRA_EVALS) };
-                        let mut k = NUM_AT_POINT_EVALS;
-                        while k < NUM_AT_POINT_EVALS + NUM_EXTRA_EVALS {
-                            extra_evals.push(unsafe { *slice.get_unchecked(k) });
-                            k += 1;
-                        }
-                    }
-                    ts.commit(&mut eval_buf, data_words + NUM_EXTRA_EVALS * EXT_DEGREE);
                 };
-                // post-draw: fold the claims for the next layer (no transcript interaction).
-                let post_draw = quote! {
+
+                // `read_extras` (read the extra evals + commit them) runs BEFORE the draw; it also
+                // declares `extra_evals`, which the post-draw fold consumes (same enclosing block).
+                let post_draw_fold = quote! {
                     let final_step_evals: &[[#quartic_struct; 1]] = unsafe { eval_buf.data_as(NUM_AT_POINT_EVALS) };
                     state.prev_claims.clear();
                     {
-                        const EXTRA_POS: [(usize, usize); #num_extra_pos] = [
-                            #( (#ep_merged, #ep_extra), )*
-                        ];
-                        let mut regular_idx: usize = 0;
-                        let mut ep_idx: usize = 0;
-                        let mut merged_idx: usize = 0;
-                        while merged_idx < #num_merged {
-                            if ep_idx < #num_extra_pos && EXTRA_POS[ep_idx].0 == merged_idx {
-                                state.prev_claims.push(*extra_evals.get(EXTRA_POS[ep_idx].1));
-                                ep_idx += 1;
-                            } else {
+                        const LAYOUT_KIND: [usize; #n_total] = [#( #layout_kind ),*];
+                        const LAYOUT_POS:  [usize; #n_total] = [#( #layout_pos  ),*];
+                        let mut i = 0usize;
+                        while i < #n_total {
+                            let kind = unsafe { *LAYOUT_KIND.get_unchecked(i) };
+                            let pos = unsafe { *LAYOUT_POS.get_unchecked(i)  };
+                            let claim: #quartic_struct = if kind == 0usize {
                                 // At-point evaluation sent directly by the prover.
-                                state.prev_claims.push(final_step_evals.get_unchecked(regular_idx)[0]);
-                                regular_idx += 1;
-                            }
-                            merged_idx += 1;
+                                unsafe { final_step_evals.get_unchecked(pos)[0] }
+                            } else {
+                                *extra_evals.get(pos)
+                            };
+                            state.prev_claims.push(claim);
+                            i += 1;
                         }
                     }
                 };
-                (pre_draw, post_draw)
-            } else {
-                // No extras: commit just the at-point evals before the draw, fold after it.
+
+                let cache_check = generate_cache_relation_checks::<MW, _>(
+                    &compiled_circuit.layers[0],
+                    &layer_0_layout,
+                    0,
+                );
+
                 (
-                    quote! {
-                        ts.commit(&mut eval_buf, data_words);
-                    },
-                    quote! {
-                        fold_standard_claims::<#num_dedup_addrs, GKR_ADDRS, GKR_EVAL_BUF>(
-                            &eval_buf, &mut state.prev_claims);
-                    },
+                    read_extras,
+                    post_draw_fold,
+                    cache_check,
+                    virtual_setup_calls.clone(),
                 )
+            } else {
+                let (pre_draw, post_draw) = if num_extra > 0 {
+                    let mut extra_positions: Vec<(usize, usize)> = Vec::new();
+                    let mut extra_idx = 0usize;
+                    for (merged_idx, addr) in target_addrs.iter().enumerate() {
+                        if !regular_set.contains(addr) {
+                            extra_positions.push((merged_idx, extra_idx));
+                            extra_idx += 1;
+                        }
+                    }
+                    let num_merged = target_addrs.len();
+                    let num_extra_pos = extra_positions.len();
+                    let ep_merged: Vec<usize> = extra_positions.iter().map(|p| p.0).collect();
+                    let ep_extra: Vec<usize> = extra_positions.iter().map(|p| p.1).collect();
+
+                    // pre-draw: append the extra evals into `eval_buf` (right after the num_dedup
+                    // at-point evals) and commit `new_claims ++ extra` in ONE shot (matching the
+                    // prover). Declares `extra_evals`, consumed by the post-draw fold in the same block.
+                    let pre_draw = quote! {
+                        // Number of extra cached-relation evals; appended after the at-point evals in
+                        // `eval_buf` so the single commit below covers `new_claims ++ extra`.
+                        const NUM_EXTRA_EVALS: usize = #num_extra;
+                        {
+                            let mut i = 0;
+                            while i < NUM_EXTRA_EVALS * EXT_DEGREE {
+                                eval_buf.data_write(data_words + i, read_reduced_field_el::<I>(nd_source).as_u32_raw_repr());
+                                i += 1;
+                            }
+                        }
+                        let mut extra_evals = LazyVec::<#quartic_struct, NUM_EXTRA_EVALS>::new();
+                        {
+                            let slice: &[#quartic_struct] =
+                                unsafe { eval_buf.data_as(NUM_AT_POINT_EVALS + NUM_EXTRA_EVALS) };
+                            let mut k = NUM_AT_POINT_EVALS;
+                            while k < NUM_AT_POINT_EVALS + NUM_EXTRA_EVALS {
+                                extra_evals.push(unsafe { *slice.get_unchecked(k) });
+                                k += 1;
+                            }
+                        }
+                        ts.commit(&mut eval_buf, data_words + NUM_EXTRA_EVALS * EXT_DEGREE);
+                    };
+                    // post-draw: fold the claims for the next layer (no transcript interaction).
+                    let post_draw = quote! {
+                        let final_step_evals: &[[#quartic_struct; 1]] = unsafe { eval_buf.data_as(NUM_AT_POINT_EVALS) };
+                        state.prev_claims.clear();
+                        {
+                            const EXTRA_POS: [(usize, usize); #num_extra_pos] = [
+                                #( (#ep_merged, #ep_extra), )*
+                            ];
+                            let mut regular_idx: usize = 0;
+                            let mut ep_idx: usize = 0;
+                            let mut merged_idx: usize = 0;
+                            while merged_idx < #num_merged {
+                                if ep_idx < #num_extra_pos && EXTRA_POS[ep_idx].0 == merged_idx {
+                                    state.prev_claims.push(*extra_evals.get(EXTRA_POS[ep_idx].1));
+                                    ep_idx += 1;
+                                } else {
+                                    // At-point evaluation sent directly by the prover.
+                                    state.prev_claims.push(final_step_evals.get_unchecked(regular_idx)[0]);
+                                    regular_idx += 1;
+                                }
+                                merged_idx += 1;
+                            }
+                        }
+                    };
+                    (pre_draw, post_draw)
+                } else {
+                    // No extras: commit just the at-point evals before the draw, fold after it.
+                    (
+                        quote! {
+                            ts.commit(&mut eval_buf, data_words);
+                        },
+                        quote! {
+                            fold_standard_claims::<#num_dedup_addrs, GKR_ADDRS, GKR_EVAL_BUF>(
+                                &eval_buf, &mut state.prev_claims);
+                        },
+                    )
+                };
+
+                let cache_check = generate_cache_relation_checks::<MW, _>(
+                    &compiled_circuit.layers[config_idx],
+                    &target_addrs,
+                    config_idx,
+                );
+
+                (pre_draw, post_draw, cache_check, TokenStream::new())
             };
-
-            let cache_check = generate_cache_relation_checks::<MW, _>(
-                &compiled_circuit.layers[config_idx],
-                &target_addrs,
-                config_idx,
-            );
-
-            (pre_draw, post_draw, cache_check, TokenStream::new())
-        };
 
         let label = &format!("GKR MAIN LAYER {config_idx}");
         main_body.extend(quote! {

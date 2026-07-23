@@ -303,7 +303,7 @@ impl<F: PrimeField> Ord for NoFieldStructuredExpression<F> {
                     // recursive
                     a.cmp(b)
                 }
-            },
+            }
             (Self::Product(..), _) => std::cmp::Ordering::Less,
             (_, Self::Product(..)) => std::cmp::Ordering::Greater,
             (Self::Sum(a), Self::Sum(b)) => {
@@ -315,7 +315,7 @@ impl<F: PrimeField> Ord for NoFieldStructuredExpression<F> {
                     // recursive
                     a.cmp(b)
                 }
-            },
+            }
             (Self::Sum(..), _) => std::cmp::Ordering::Greater,
             (_, Self::Sum(..)) => std::cmp::Ordering::Less,
         }

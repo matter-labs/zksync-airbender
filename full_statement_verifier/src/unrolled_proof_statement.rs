@@ -381,8 +381,10 @@ pub fn verify_unrolled_base_layer_sec_100<
         let circuits_setups_refs = circuits_setups.each_ref();
         verify_full_statement_for_unrolled_circuits::<I, E, true, REDUCED_ROUNDS>(
             &circuits_setups_refs,
-            &crate::unrolled_circuit_params::unrolled_circuit_verifiers_for_base_layer_sec_100::<I, E>(
-            ),
+            &crate::unrolled_circuit_params::unrolled_circuit_verifiers_for_base_layer_sec_100::<
+                I,
+                E,
+            >(),
             crate::unrolled_circuit_params::inits_and_teardowns_verifier_sec_100::<I, E>(),
             &crate::constants::DELEGATION_CIRCUITS_SETUP_PARAMS,
             &crate::delegation_params::all_delegation_circuit_verifiers_sec_100::<I, E>(),
