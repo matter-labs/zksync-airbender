@@ -1462,6 +1462,10 @@ fn independent_oracle_rows(round: u8, logical_rows: usize) -> Option<usize> {
     (round <= INDEPENDENT_ORACLE_MAX_DEPTH).then(|| logical_rows.min(PREFLIGHT_ROWS))
 }
 
+fn sample_direct_publication_identity(round: u8) -> bool {
+    round <= VIRTUAL_SETUP_MATERIALIZE_DEPTH
+}
+
 fn oracle_chunk_ranges(rows: usize, target_workers: usize) -> Vec<Range<usize>> {
     if rows == 0 {
         return Vec::new();
@@ -1520,6 +1524,8 @@ fn bwd_vm_independent_oracle_policy_caps_depth_without_dropping_timing_rounds() 
     assert_eq!(independent_oracle_rows(3, 1 << 20), Some(PREFLIGHT_ROWS));
     assert_eq!(independent_oracle_rows(4, 1 << 20), None);
     assert_eq!(independent_oracle_rows(23, 1), None);
+    assert!((0..=VIRTUAL_SETUP_MATERIALIZE_DEPTH).all(sample_direct_publication_identity));
+    assert!(!(VIRTUAL_SETUP_MATERIALIZE_DEPTH + 1..=23).any(sample_direct_publication_identity));
 
     assert!((1..=23).all(|round| SweepSelection::All.includes("Ext", 2, round)));
 }
@@ -1926,7 +1932,7 @@ fn build_publication_oracle(
         // exponential reference remains bounded. Later rounds are derived by
         // the identical one-step recurrence from the previously proved full
         // publication array.
-        if round <= 8 {
+        if sample_direct_publication_identity(round) {
             for index in [0, elements / 2, elements - 1] {
                 let direct = sumcheck_fold_point(
                     &|source| oracle.read(place, source),
