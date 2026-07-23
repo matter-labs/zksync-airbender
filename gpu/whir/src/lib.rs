@@ -62,8 +62,9 @@ const EXT4_DEGREE: usize = <E4 as FieldExtension<BF>>::DEGREE;
 ///   `unified_device_cap` stays `None`. Downstream readers must source the
 ///   cap from the slab.
 enum CapTarget<'a> {
-    /// Constructed only by the cfg(test) helper `schedule_from_device_monomial_coeffs`
-    /// (legacy own-cap path). Production code always uses [`Self::Slab`].
+    /// Constructed only by the `test-utils`-gated helpers (`from_device_monomial_coeffs`
+    /// / `schedule_from_device_monomial_coeffs` — legacy own-cap path). Production code
+    /// always uses [`Self::Slab`].
     #[allow(dead_code)]
     OwnAllocation,
     Slab(&'a mut era_cudart::slice::DeviceSlice<u32>),

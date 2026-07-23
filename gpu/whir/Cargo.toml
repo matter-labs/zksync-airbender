@@ -26,12 +26,11 @@ era_cudart_sys = "=0.156.0"
 
 field = { workspace = true }
 fft = { workspace = true }
-# prover is a production dependency: the WHIR-oracle parity + query test-support
-# surface (`#[doc(hidden)] pub`, reached by the apex e2e suite) is permanently
-# compiled and references prover types (`MerkleTreeCapVarLength`,
-# `extension_field_from_base_coeffs`, the transcript/commitment helpers). This is
-# the gpu_gkr precedent. Because prover is a normal dep, gpu_whir owns the
-# `prover/deterministic_pow` forward leg (see [features]).
+# prover is a normal (not dev-only) dependency solely so this crate can own the
+# `prover/deterministic_pow` forward leg (see [features]) — a feature can only
+# reference a real dependency's features. The prover-typed test-support surface
+# (WHIR-oracle parity + query helpers) is NOT compiled into the normal library:
+# it sits behind the non-default `test-utils` feature.
 prover = { workspace = true, features = ["prover"] }
 
 itertools = "0.14"
