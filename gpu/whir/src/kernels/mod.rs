@@ -11,7 +11,8 @@ use gpu_core::primitives::device_structures::{
 };
 use gpu_core::primitives::field::{BF, E4};
 use gpu_ops::simple::pow;
-// Permanently compiled (Task 10): used by the promoted `debug.rs` builders.
+// Production: the (de)serialize / accumulate launchers here read `EXT4_DEGREE`
+// via `<E4 as FieldExtension<BF>>::DEGREE`.
 use crate::upstream::FieldExtension;
 // Only used by the #[cfg(test)] `pack_rows_for_whir_leaves_multi_coset` below.
 #[cfg(test)]
@@ -40,6 +41,11 @@ cuda_kernel_declaration!(
     )
 );
 
+// Test-support only: consumed exclusively by the `fold::debug` builders (their
+// standalone serialize pass). Production uses the fused
+// `accumulate_whir_base_columns_with_serialized_bf`. Gated behind `test-utils`
+// (the `.cu` kernel stays in the archive — only the Rust launcher is gated).
+#[cfg(any(test, feature = "test-utils"))]
 pub(crate) fn serialize_whir_e4_columns(
     src: &DeviceSlice<E4>,
     dst: &mut DeviceSlice<BF>,
@@ -117,6 +123,11 @@ cuda_kernel_declaration!(
     )
 );
 
+// Test-support only: consumed exclusively by the `fold::debug` builders (their
+// legacy E4-only accumulate). Production uses the fused
+// `accumulate_whir_base_columns_with_serialized_bf`. Gated behind `test-utils`
+// (the `.cu` kernel stays in the archive — only the Rust launcher is gated).
+#[cfg(any(test, feature = "test-utils"))]
 pub(crate) fn accumulate_whir_base_columns(
     memory_values: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
     witness_values: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
@@ -299,6 +310,11 @@ cuda_kernel_declaration!(
     )
 );
 
+// Test-support only: the scalar E4 in-place fold, consumed exclusively by the
+// `fold::debug` builders. Production folds via
+// `whir_fold_split_half_in_place_vectorized` / `_pair`. Gated behind
+// `test-utils` (the `.cu` kernel stays in the archive — only the launcher).
+#[cfg(any(test, feature = "test-utils"))]
 pub(crate) fn whir_fold_split_half_in_place(
     values: &mut DeviceSlice<E4>,
     challenge: &DeviceVariable<E4>,

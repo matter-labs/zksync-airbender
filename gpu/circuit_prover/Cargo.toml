@@ -56,6 +56,12 @@ gpu_native_build = { workspace = true }
 # The e2e suite (tests/) needs more upstream surface than production: it drives
 # fixtures through cs/prover/riscv_transpiler and hashes via gpu_ops.
 prover = { workspace = true, features = ["test-utils"] }
+# Enables gpu_whir's WHIR-oracle parity/query + fold::debug test-support surface
+# (gated `#[cfg(any(test, feature = "test-utils"))]`) for this crate's e2e/parity
+# suite. gpu_whir stays a normal [dependencies] entry WITHOUT the feature, so the
+# production library never compiles that surface; Cargo unions the two only when
+# building this crate's own tests. Mirrors the `prover` test-utils precedent.
+gpu_whir = { workspace = true, features = ["test-utils"] }
 common_constants = { workspace = true }
 riscv_transpiler = { workspace = true, features = ["jit"] }
 worker = { workspace = true }

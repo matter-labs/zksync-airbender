@@ -4,8 +4,14 @@ use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
 use fft::domain_generator_for_size;
+// Only consumed by the (now `test-utils`-gated) `debug.rs` builders and the
+// crate's own tests, both via `use super::*`.
+#[cfg(any(test, feature = "test-utils"))]
 use fft::materialize_powers_serial_starting_with_one;
 
+// Only consumed by the `test-utils`-gated `debug.rs` fold helpers (via `use super::*`);
+// production folds with the `_vectorized` / `_pair` launchers below.
+#[cfg(any(test, feature = "test-utils"))]
 use crate::kernels::whir_fold_split_half_in_place;
 use crate::kernels::{
     accumulate_whir_base_columns_with_serialized_bf, batched_eq_factor_scratch_lens,
@@ -34,12 +40,16 @@ use gpu_ntt::ntt::{
     hypercube_coeffs_bitrev_to_bitrev_evals, hypercube_x1_msb_evals_to_x1_msb_monomials,
     natural_evals_to_bitreversed_monomials,
 };
+// Only consumed by the `test-utils`-gated `debug.rs` `special_three_point_eval_device`
+// (via `use super::*`); production uses the fused three-point / eq kernels.
+#[cfg(any(test, feature = "test-utils"))]
 use gpu_ops::simple::{add, mul, mul_into_x};
 use gpu_ops::transpose::transpose;
 use gpu_prover_context::ProverContext;
-// Permanently imported (not #[cfg(test)]): the now-permanent `debug.rs` builders
-// consume most of these via `use super::*` (`debug.rs` imports `BaseFieldQuery`/
-// `DefaultTreeConstructor` itself now, so those two aren't re-exported here).
+// Consumed only by the `test-utils`-gated `debug.rs` builders via `use super::*`
+// (`debug.rs` imports `BaseFieldQuery`/`DefaultTreeConstructor` itself now, so
+// those two aren't re-exported here). Gated to match `debug.rs`.
+#[cfg(any(test, feature = "test-utils"))]
 use crate::upstream::{
     add_whir_commitment_to_transcript, commit_field_els, draw_random_field_els, Field,
     MerkleTreeCapVarLength, Seed, WhirCommitment,
@@ -62,10 +72,11 @@ pub(super) struct GpuWhirState {
     eq_group_tables: DeviceAllocation<E4>,
     scratch0: DeviceAllocation<E4>,
     scratch1: DeviceAllocation<E4>,
-    // Permanently allocated (not #[cfg(test)]): the debug/checkpoint builders in
-    // `debug.rs` — now permanently compiled so the apex parity suite can reach
-    // them — write per-round scalars here. Unused on the production fold path.
-    #[allow(dead_code)]
+    // Test-support only (behind `test-utils`): the `debug.rs` checkpoint builders
+    // stage per-round scalars here (16-byte device reservation). Unused on the
+    // production fold path, so it — and its ctor init below — are gated out of
+    // normal builds.
+    #[cfg(any(test, feature = "test-utils"))]
     scalar: DeviceAllocation<E4>,
     reduce_temp: DeviceAllocation<u8>,
     reduce_out: DeviceAllocation<E4>,
@@ -165,6 +176,7 @@ impl GpuWhirState {
             )?,
             scratch0: context.alloc(half_len, AllocationPlacement::BestFit)?,
             scratch1: context.alloc(half_len, AllocationPlacement::BestFit)?,
+            #[cfg(any(test, feature = "test-utils"))]
             scalar: context.alloc(1, AllocationPlacement::BestFit)?,
             reduce_temp: context
                 .alloc_with_extra_alignment::<u8, CUB_TEMP_STORAGE_EXTRA_ALIGNMENT_LOG2>(
@@ -495,14 +507,19 @@ pub(super) fn schedule_accumulate_eq_samples_batched(
     }
 }
 
-// debug.rs holds the WHIR-fold debug/checkpoint builders. It is permanently
-// compiled (NOT #[cfg(test)]) so the apex e2e/parity suite can reach the
+// debug.rs holds the WHIR-fold debug/checkpoint builders. It is a test-support
+// surface (behind the non-default `test-utils` feature — plus `test` for the
+// crate's own tests) so the apex e2e/parity suite can reach the
 // `debug_*_for_test` entry points across the crate boundary — a dependency's
-// #[cfg(test)] items are invisible to consumers. The five entry points are
-// re-exported here as #[doc(hidden)] pub for `gpu_whir::fold::debug_*`.
+// #[cfg(test)] items are invisible to consumers, so `#[cfg(test)]` alone would
+// not do. The five entry points are re-exported here as #[doc(hidden)] pub for
+// `gpu_whir::fold::debug_*`. Gating the whole module means its contents need no
+// per-item cfg.
+#[cfg(any(test, feature = "test-utils"))]
 #[doc(hidden)]
 pub mod debug;
 
+#[cfg(any(test, feature = "test-utils"))]
 #[doc(hidden)]
 pub use debug::{
     debug_apply_initial_fold_challenge_for_test, debug_build_initial_fold_state_for_test,

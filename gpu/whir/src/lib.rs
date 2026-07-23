@@ -22,23 +22,33 @@ mod test_utils;
 #[cfg(test)]
 gpu_core::force_serial_libtest!();
 
-use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
-use fft::bitreverse_enumeration_inplace;
 
-use crate::upstream::{
-    extension_field_from_base_coeffs, Field, FieldExtension, MerkleTreeCapVarLength,
-};
-use gpu_core::allocator::tracker::AllocationPlacement;
-use gpu_core::primitives::callbacks::Callbacks;
-use gpu_core::primitives::context::HostAllocation;
-use gpu_core::primitives::device_structures::DeviceMatrix;
+use crate::upstream::FieldExtension;
 use gpu_core::primitives::device_structures::{DeviceMatrixChunk, DeviceMatrixImpl};
 use gpu_core::primitives::field::{BF, E4};
-use gpu_core::primitives::static_host::alloc_static_pinned_box_from_slice;
-use gpu_hash::blake2s::Digest;
 use gpu_prover_context::ProverContext;
 use gpu_trace::trace::holder::{TraceHolder, TreesCacheMode, PARTIAL_TREE_REDUCTION_LAYERS};
+
+// Imports used exclusively by the WHIR-oracle parity/query test-support surface
+// below (the `#[cfg(any(test, feature = "test-utils"))]` items). The production
+// oracle path (`from_device_monomial_coeffs_impl`, `schedule_*_into_slab`,
+// `into_host_keepalive`, `lde_factor`) references none of these.
+#[cfg(any(test, feature = "test-utils"))]
+use crate::upstream::{extension_field_from_base_coeffs, Field, MerkleTreeCapVarLength};
+#[cfg(any(test, feature = "test-utils"))]
+use era_cudart::memory::memory_copy_async;
+#[cfg(any(test, feature = "test-utils"))]
+use fft::bitreverse_enumeration_inplace;
+#[cfg(any(test, feature = "test-utils"))]
+use gpu_core::allocator::tracker::AllocationPlacement;
+#[cfg(any(test, feature = "test-utils"))]
+use gpu_core::primitives::{
+    callbacks::Callbacks, context::HostAllocation, device_structures::DeviceMatrix,
+    static_host::alloc_static_pinned_box_from_slice,
+};
+#[cfg(any(test, feature = "test-utils"))]
+use gpu_hash::blake2s::Digest;
 
 const EXT4_DEGREE: usize = <E4 as FieldExtension<BF>>::DEGREE;
 
@@ -80,8 +90,11 @@ pub(crate) struct GpuWhirExtensionOracleKeepalive {
     _trace_holder: TraceHolder<BF>,
 }
 
-// Permanently compiled: it is the return type of the (now permanent) oracle
-// query helpers reached by the apex parity test suite. Not test-gated.
+// Test-support only (behind `test-utils`): the return type of the oracle query
+// helpers reached by the apex parity test suite. No production caller — the
+// production query path (`schedule_query_for_folded_indexes_to_slab`) writes the
+// proof slab directly and returns `()`.
+#[cfg(any(test, feature = "test-utils"))]
 pub(crate) struct GpuWhirScheduledExtensionQuery {
     pub(crate) index: usize,
     pub(crate) coset_index: usize,
@@ -397,6 +410,11 @@ impl GpuWhirExtensionOracle {
     }
 }
 
+// Test-support only (behind `test-utils`): consumed by the oracle query helpers
+// (`schedule_query_for_folded_index[_from_host]`) and the crate's own tests. The
+// production query path resolves tree indices on-device via
+// `gpu_hash::blake2s::query_index_to_tree_index`.
+#[cfg(any(test, feature = "test-utils"))]
 fn bitreverse_index(index: usize, num_bits: u32) -> usize {
     if num_bits == 0 {
         0
@@ -416,7 +434,9 @@ fn bitreverse_index(index: usize, num_bits: u32) -> usize {
 // methods are `#[doc(hidden)] pub`; the rest is crate-internal support.
 // ---------------------------------------------------------------------
 // #[doc(hidden)] pub: returned by `query_for_folded_index` and compared/read by
-// the apex parity test suite across the crate boundary.
+// the apex parity test suite across the crate boundary. Test-support only
+// (behind `test-utils`); no production caller.
+#[cfg(any(test, feature = "test-utils"))]
 #[doc(hidden)]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct GpuWhirExtensionQuery {
@@ -425,6 +445,7 @@ pub struct GpuWhirExtensionQuery {
     pub path: Vec<Digest>,
 }
 
+#[cfg(any(test, feature = "test-utils"))]
 impl GpuWhirScheduledExtensionQuery {
     pub(crate) fn decode(&self) -> (Vec<E4>, GpuWhirExtensionQuery) {
         self.decode_with_index(self.index)
@@ -446,6 +467,9 @@ impl GpuWhirScheduledExtensionQuery {
     }
 }
 
+// Test-support only (behind `test-utils`): consumed by `from_monomial_coeffs`
+// and the crate's own fold/oracle parity tests. No production caller.
+#[cfg(any(test, feature = "test-utils"))]
 pub(crate) fn e4_coeffs_to_vectorized(coeffs: &[E4]) -> Vec<BF> {
     let trace_len = coeffs.len();
     let mut vectorized_coeffs = vec![BF::default(); 4 * trace_len];
@@ -461,6 +485,8 @@ pub(crate) fn e4_coeffs_to_vectorized(coeffs: &[E4]) -> Vec<BF> {
 
 impl GpuWhirExtensionOracle {
     // #[doc(hidden)] pub: apex parity test builds a GPU oracle from CPU monomials.
+    // Test-support only (behind `test-utils`).
+    #[cfg(any(test, feature = "test-utils"))]
     #[doc(hidden)]
     pub fn from_monomial_coeffs(
         monomial_coeffs: &[E4],
@@ -493,6 +519,11 @@ impl GpuWhirExtensionOracle {
         )
     }
 
+    // Test-support only (behind `test-utils`): the host-synchronizing wrapper
+    // reached by `from_monomial_coeffs` and the `fold::debug` checkpoint
+    // builder. Production schedules oracles via
+    // `schedule_from_device_monomial_coeffs_into_slab` (no sync).
+    #[cfg(any(test, feature = "test-utils"))]
     pub(crate) fn from_device_monomial_coeffs(
         monomial_coeffs: &impl DeviceMatrixImpl<BF>,
         trace_len: usize,
@@ -516,6 +547,10 @@ impl GpuWhirExtensionOracle {
         Ok(oracle)
     }
 
+    // Test-support only (behind `test-utils`): single-index query helper reached
+    // by `query_for_folded_index`. Production batch-gathers all round queries
+    // straight into the proof slab via `schedule_query_for_folded_indexes_to_slab`.
+    #[cfg(any(test, feature = "test-utils"))]
     pub(crate) fn schedule_query_for_folded_index(
         &mut self,
         index: usize,
@@ -596,12 +631,16 @@ impl GpuWhirExtensionOracle {
     /// paths should consume the cap as `unified_device_cap()` and avoid
     /// host blocking.
     // #[doc(hidden)] pub: apex parity test reads the recursive-oracle cap.
+    // Test-support only (behind `test-utils`).
+    #[cfg(any(test, feature = "test-utils"))]
     #[doc(hidden)]
     pub fn get_tree_cap(&self, context: &ProverContext) -> CudaResult<MerkleTreeCapVarLength> {
         self.trace_holder.read_full_cap_synchronously(context)
     }
 
     // #[doc(hidden)] pub: apex parity test queries a folded index for value+path.
+    // Test-support only (behind `test-utils`).
+    #[cfg(any(test, feature = "test-utils"))]
     #[doc(hidden)]
     pub fn query_for_folded_index(
         &mut self,
@@ -640,6 +679,9 @@ impl GpuWhirExtensionOracle {
     }
 }
 
+// Test-support only (behind `test-utils`): consumed by
+// `GpuWhirScheduledExtensionQuery::decode_with_index`.
+#[cfg(any(test, feature = "test-utils"))]
 fn decode_leaf_values(leafs: &[BF], values_per_leaf: usize) -> Vec<E4> {
     assert_eq!(leafs.len(), values_per_leaf * EXT4_DEGREE);
     let mut result = Vec::with_capacity(values_per_leaf);

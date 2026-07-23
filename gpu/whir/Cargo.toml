@@ -48,6 +48,13 @@ eval_leaves = []
 # since gpu_whir depends on prover as a normal dependency, it forwards both legs
 # so the apex only needs `gpu_whir/deterministic_pow`.
 deterministic_pow = ["prover/deterministic_pow", "gpu_hash/deterministic_pow"]
+# Exposes the WHIR-oracle parity + query/debug test-support surface (the
+# recursive-oracle `from_monomial_coeffs`/`get_tree_cap`/`query_for_folded_index`
+# helpers and the `fold::debug` checkpoint builders) to downstream crates' tests;
+# not compiled into the normal library. Gated `#[cfg(any(test, feature =
+# "test-utils"))]` so the crate's own tests need no feature; enabled from
+# `gpu_circuit_prover`'s [dev-dependencies]. Same precedent as the `prover` crate.
+test-utils = []
 
 [build-dependencies]
 gpu_native_build = { workspace = true }
