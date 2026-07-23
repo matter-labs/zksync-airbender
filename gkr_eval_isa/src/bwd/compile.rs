@@ -1,12 +1,13 @@
 //! Bwd compile driver (Task 5, spec §3): compile a [`DistilledLayer`] to a
-//! backward-VM program with the RESULT-IN-ACC terminal convention.
+//! backward-VM program.
 //!
-//! The program ends with the distilled root's value in the accumulator: a
-//! source-only root degenerates to a single `Mov AccFromSrc`, and
-//! `DstLine::GlobalMaterialize` is never emitted (structurally unemittable —
-//! the bwd lowering runs with empty materialize maps). Bindings are NOT a
-//! compile input: the program is round- and policy-invariant, `bind()` only
-//! produces per-run [`super::distill::BwdBindings`].
+//! Legacy whole-root compilation ends with the distilled root's value in the
+//! accumulator. Fragment compilation instead computes each fragment independently
+//! and ends it with a semantic batch-accumulation sink. Neither mode emits
+//! `DstLine::GlobalMaterialize` (the bwd lowering runs with empty materialize
+//! maps). Bindings are NOT a compile input: the program is round- and
+//! policy-invariant, `bind()` only produces per-run
+//! [`super::distill::BwdBindings`].
 //!
 //! Spine accumulation: `ArenaBuilder::add` flattens + sorts, so the distilled
 //! alpha spine is one WIDE `Add`. Lowering it through the shared reduction
@@ -27,11 +28,12 @@ use std::collections::BTreeMap;
 
 use cs::gkr_compiler::dag_ir::{Expr, ExprId};
 
-use crate::fwd::binding::{BackingTable, SourceMarkerMode, SourceWindowTable, bind_final_sources};
+use crate::bwd::batch::unpack_batch_dst;
+use crate::fwd::binding::{bind_final_sources, BackingTable, SourceMarkerMode, SourceWindowTable};
 use crate::fwd::compile::decisions::OccurrenceStreams;
 use crate::fwd::compile::{
-    PlanInput, SiteDecisions, compile_bwd_fragments_program, compile_bwd_program,
-    compile_bwd_program_peak,
+    compile_bwd_fragments_program, compile_bwd_program, compile_bwd_program_peak, PlanInput,
+    SiteDecisions,
 };
 use crate::fwd::context::DagForwardContext;
 use crate::fwd::error::CompileError;
@@ -39,12 +41,12 @@ use crate::fwd::isa::{DstLine, Instr, LdcSub, OperandField, OperandLine, Program
 use crate::fwd::source::{ConstBank, DerivedE4Banks};
 use crate::fwd::stats::{CompileStats, OP_ADD, OP_FMA, OP_MOV, OP_MUL};
 
-use super::distill::{DistilledLayer, distilled_site_domain};
-use super::plan::{BwdOccurrencePlan, plan_entries_fnv};
+use super::distill::{distilled_site_domain, DistilledLayer};
+use super::plan::{plan_entries_fnv, BwdOccurrencePlan};
 use super::source::{BwdSpecial, BwdSpecialTable};
 use super::trace::{
-    BwdCompileTrace, DirectTopCorrection, FrozenDemand, freeze_demand_with, live_profile,
-    plan_epoch, plan_epoch_fragment,
+    freeze_demand_with, live_profile, plan_epoch, plan_epoch_fragment, BwdCompileTrace,
+    DirectTopCorrection, FrozenDemand,
 };
 
 // ── BwdTrafficStats ───────────────────────────────────────────────────────────
@@ -71,6 +73,10 @@ pub struct BwdTrafficStats {
     /// Role-neutral fold operand traffic: `4 * (fold_uses - vs_fold_uses)`
     /// (Ext width per READ-origin use only — VS-origin uses add no traffic).
     pub fold_traffic: usize,
+    /// Base-field fragment products accumulated into the E4 batch.
+    pub batch_fma_base: usize,
+    /// Extension-field fragment products accumulated into the E4 batch.
+    pub batch_fma_ext: usize,
 }
 
 // ── BwdCompiledLayer ──────────────────────────────────────────────────────────
@@ -80,6 +86,8 @@ pub struct BwdTrafficStats {
 #[derive(Clone, Debug)]
 pub struct BwdCompiledLayer {
     pub program: Program,
+    /// Logical `c_init` descriptor for the independent fragment batch.
+    pub acc_init_desc: Option<u16>,
     /// The BWD descriptor namespace `Special` operands index (never fwd's).
     pub specials: BwdSpecialTable,
     /// Backing slots for R0-regime `Global` reads.
@@ -250,6 +258,7 @@ fn compile_distilled_at(
 
     Ok(BwdCompiledLayer {
         program,
+        acc_init_desc: None,
         specials: d.specials.clone(),
         backings: ctx.backings,
         source_windows: ctx.source_windows,
@@ -387,6 +396,7 @@ fn compile_distilled_at_traced(
     Ok((
         BwdCompiledLayer {
             program,
+            acc_init_desc: None,
             specials: d.specials.clone(),
             backings: ctx.backings,
             source_windows: ctx.source_windows,
@@ -551,6 +561,7 @@ pub fn compile_distilled_at_planned_lb(
     Ok((
         BwdCompiledLayer {
             program,
+            acc_init_desc: None,
             specials: d.specials.clone(),
             backings: ctx.backings,
             source_windows: ctx.source_windows,
@@ -570,9 +581,10 @@ pub fn compile_distilled_at_planned_lb(
 /// ownership): clone `d.specials`, then intern an `AccInit` descriptor iff `c_init` is
 /// non-empty and a `Coefficient{fragment}` descriptor for each fragment whose recipe is
 /// NON-TRIVIAL. Returns `(specials, coeff_descs, acc_init_desc)`, where `coeff_descs[i]`
-/// is `Some(desc)` iff fragment `i`'s recipe is non-trivial (so the lowering emits it).
-/// ONLY descriptors that are actually emitted are interned — a `Coefficient` for a trivial
-/// recipe, or an `AccInit` for an empty `c_init`, would be an orphan the value gate rejects.
+/// is `Some(desc)` iff fragment `i`'s recipe is non-trivial (so the lowering encodes it
+/// in that fragment's sink). ONLY descriptors referenced by a sink or by logical
+/// `acc_init_desc` metadata are interned — a `Coefficient` for a trivial recipe, or an
+/// `AccInit` for an empty `c_init`, would be an orphan the value gate rejects.
 /// The interned descs land BEYOND `d.specials.len()` (the distilled table never holds a
 /// `Coefficient`/`AccInit`), so `bind`'s per-run `states` stay dense over `d.specials`.
 pub(crate) fn fragment_descs(
@@ -601,13 +613,14 @@ pub(crate) fn fragment_descs(
 }
 
 /// Fragment-mode sibling of [`compile_distilled`] (Task 5, spec §3): compile the
-/// FULL-DECOMPOSITION view of `d` — `acc = c_init + Σ_i recipe_i · value(fragment_i)` —
-/// instead of the spine-accumulation term loop. `order` permutes the schedule positions
-/// (`order[pos] = frag_idx`, identity when `None`); fragment accumulation is a field sum,
-/// so any order yields a bit-identical accumulator. There is no `decisions` parameter: the
-/// gene channel is TERM-ONLY in M5a, so this path is uncached (here) or plan-driven
-/// ([`compile_distilled_fragments_planned`]). Same legacy-first-then-streamed feasibility
-/// fallback as `compile_distilled`.
+/// FULL-DECOMPOSITION view of `d` — each fragment is computed independently and its sink
+/// contributes `recipe_i · value(fragment_i)` to an E4 batch initialized from logical
+/// `c_init` metadata — instead of the spine-accumulation term loop. `order` permutes the
+/// schedule positions (`order[pos] = frag_idx`, identity when `None`); the batch reduction
+/// is a field sum, so any order yields a bit-identical result. There is no `decisions`
+/// parameter: the gene channel is TERM-ONLY in M5a, so this path is uncached (here) or
+/// plan-driven ([`compile_distilled_fragments_planned`]). Same
+/// legacy-first-then-streamed feasibility fallback as `compile_distilled`.
 pub fn compile_distilled_fragments(
     d: &DistilledLayer,
     budget: usize,
@@ -673,7 +686,6 @@ fn compile_distilled_fragments_at(
         &d.fragments,
         order,
         &coeff_descs,
-        acc_init_desc,
         &mut ctx,
         &d.leaf_descs,
         &d.field_overrides,
@@ -697,6 +709,7 @@ fn compile_distilled_fragments_at(
 
     Ok(BwdCompiledLayer {
         program,
+        acc_init_desc,
         specials,
         backings: ctx.backings,
         source_windows: ctx.source_windows,
@@ -784,7 +797,6 @@ fn compile_distilled_fragments_at_traced(
         &d.fragments,
         order,
         &coeff_descs,
-        acc_init_desc,
         &mut ctx,
         &d.leaf_descs,
         &d.field_overrides,
@@ -813,6 +825,7 @@ fn compile_distilled_fragments_at_traced(
     Ok((
         BwdCompiledLayer {
             program,
+            acc_init_desc,
             specials,
             backings: ctx.backings,
             source_windows: ctx.source_windows,
@@ -922,7 +935,6 @@ fn compile_distilled_fragments_at_planned_lb(
         &d.fragments,
         order,
         &coeff_descs,
-        acc_init_desc,
         &mut ctx,
         &d.leaf_descs,
         &d.field_overrides,
@@ -951,6 +963,7 @@ fn compile_distilled_fragments_at_planned_lb(
     Ok((
         BwdCompiledLayer {
             program,
+            acc_init_desc,
             specials,
             backings: ctx.backings,
             source_windows: ctx.source_windows,
@@ -1183,6 +1196,7 @@ fn compile_distilled_at_peak(
     Ok((
         BwdCompiledLayer {
             program,
+            acc_init_desc: None,
             specials: d.specials.clone(),
             backings: ctx.backings,
             source_windows: ctx.source_windows,
@@ -1269,12 +1283,11 @@ pub(crate) fn tally_bwd_program(
                         ext.fold_traffic += 4;
                     }
                 }
-                // CS-M5a Task 3: Coefficient/AccInit are scalar-pure recipe
-                // values the interp evaluates locally from consts/derived_e4 — no
-                // DRAM, no fold buffer. They read like an Ldc-class constant load:
-                // counted in `ldc_reads`, with ZERO dram_traffic / fold_uses /
-                // fold_traffic (and never a fold-side gather, so excluded from
-                // `special_gathers` below).
+                // Legacy source-form Coefficient/AccInit descriptors are scalar-pure
+                // recipe values the interp evaluates locally from consts/derived_e4 —
+                // no DRAM, no fold buffer. New fragment programs reference them through
+                // logical batch metadata and encoded sinks instead, so they do not enter
+                // this operand tally.
                 Some(BwdSpecial::Coefficient { .. }) | Some(BwdSpecial::AccInit) => {
                     stats.ldc_reads += 1;
                 }
@@ -1303,6 +1316,16 @@ pub(crate) fn tally_bwd_program(
                 ) && matches!(dst, Some(DstLine::Smem { .. }))
                 {
                     stats.cell_stores += 1;
+                }
+                if *dir == crate::fwd::isa::MovDir::DstFromAcc
+                    && dst
+                        .as_ref()
+                        .is_some_and(|dst| unpack_batch_dst(dst).is_some())
+                {
+                    match field {
+                        OperandField::Base => ext.batch_fma_base += 1,
+                        OperandField::Ext => ext.batch_fma_ext += 1,
+                    }
                 }
             }
             Instr::Add {
@@ -1364,6 +1387,7 @@ fn tally_fold_source(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::bwd::batch::{unpack_batch_dst, BATCH_COEFFICIENT_ONE};
     use crate::bwd::distill::{bind, distill};
     use crate::bwd::source::MaterializationPolicy;
     use crate::fwd::encode::encode;
@@ -1480,6 +1504,52 @@ mod tests {
             }
         });
         n
+    }
+
+    #[test]
+    fn fragment_compiler_emits_one_independent_sink_per_fragment() {
+        let l = layer(
+            vec![read_src(0), read_src(1)],
+            vec![Expr::Source(SourceId(0)), Expr::Source(SourceId(1))],
+            vec![claim_only_root(ExprId(0), 0), claim_only_root(ExprId(1), 1)],
+        );
+        let d = distill(&l, BwdRegime::R0, &HashMap::new(), None);
+        assert_eq!(d.fragments.fragments.len(), 2);
+        let (_, coefficient_descs, acc_init_desc) = fragment_descs(&d);
+        let c = compile_distilled_fragments(&d, 16, None).unwrap();
+
+        assert_eq!(c.acc_init_desc, acc_init_desc);
+        let sinks = c
+            .program
+            .instrs
+            .iter()
+            .filter_map(|instr| match instr {
+                Instr::Mov {
+                    dir: MovDir::DstFromAcc,
+                    field,
+                    dst: Some(dst),
+                    src: None,
+                } => unpack_batch_dst(dst).map(|desc| (*field, desc)),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            sinks,
+            coefficient_descs
+                .iter()
+                .map(|desc| (OperandField::Base, desc.unwrap_or(BATCH_COEFFICIENT_ONE)))
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(c.stats_ext.batch_fma_base, 2);
+        assert_eq!(c.stats_ext.batch_fma_ext, 0);
+        for_each_operand(&c.program, |operand| {
+            assert!(!matches!(
+                operand,
+                OperandLine::Special { desc }
+                    if coefficient_descs.contains(&Some(*desc))
+                        || Some(*desc) == acc_init_desc
+            ));
+        });
     }
 
     // ── Coefficient / AccInit tally (Task 3) ──────────────────────────────────
@@ -1600,7 +1670,9 @@ mod tests {
             BwdTrafficStats {
                 global: 0,
                 fold_uses: 1,
-                fold_traffic: 4
+                fold_traffic: 4,
+                batch_fma_base: 0,
+                batch_fma_ext: 0,
             }
         );
     }
@@ -1792,12 +1864,11 @@ mod tests {
         let l = lookup_fold_layer();
         let d = distill(&l, BwdRegime::Ext, &HashMap::new(), None);
         // The LookupValue leaf must be gone (rewritten to its query).
-        assert!(
-            !d.layer
-                .sources
-                .iter()
-                .any(|s| matches!(s.kind, SourceKind::LookupValue { .. }))
-        );
+        assert!(!d
+            .layer
+            .sources
+            .iter()
+            .any(|s| matches!(s.kind, SourceKind::LookupValue { .. })));
         let (w0, w1, w2, q) = find_distilled_ids(&d);
         let root_expr = d.layer.roots[d.root.0 as usize].expr;
         let terms = spine_terms(&d);

@@ -1,23 +1,23 @@
 //! Closed symbolic adapter for normalized backward fragments.
 
 use cs::gkr_compiler::dag_ir::{
-    BwdRegime, Expr, ExprId, FieldKind, ReadPlace, RootId, SourceId, SourceKind, join, source_field,
+    join, source_field, BwdRegime, Expr, ExprId, FieldKind, ReadPlace, RootId, SourceId, SourceKind,
 };
 
-use crate::bwd::compile::{BwdCompiledLayer, fragment_descs, tally_bwd_program};
-use crate::bwd::distill::{DistilledLayer, distilled_site_domain};
-use crate::bwd::plan::{BwdOccurrencePlan, PlanReplayError, PlanRun, plan_entries_fnv};
+use crate::bwd::compile::{fragment_descs, tally_bwd_program, BwdCompiledLayer};
+use crate::bwd::distill::{distilled_site_domain, DistilledLayer};
+use crate::bwd::plan::{plan_entries_fnv, BwdOccurrencePlan, PlanReplayError, PlanRun};
 use crate::bwd::source::BwdSpecialTable;
 use crate::bwd::trace::{
-    BwdCompileTrace, BwdEvent, certify, live_profile, physical_traffic_events, plan_epoch_fragment,
-    retain_physical_traffic_events,
+    certify, live_profile, physical_traffic_events, plan_epoch_fragment,
+    retain_physical_traffic_events, BwdCompileTrace, BwdEvent,
 };
 
 use super::{
+    budget_lanes_from_cells, concrete::bind_backward_packed_plan,
+    elaborate_backward_fragments_driver, elaborate_backward_fragments_replayed_driver, pack_plan,
     BackwardReplay, ConcreteBindError, ConcreteEvalProgram, ConcreteTerminal, EvalPlan, PackConfig,
-    PackError, PackedEvalPlan, PlanError, budget_lanes_from_cells,
-    concrete::bind_backward_packed_plan, elaborate_backward_fragments_driver,
-    elaborate_backward_fragments_replayed_driver, pack_plan,
+    PackError, PackedEvalPlan, PlanError,
 };
 
 /// Symbolic backward evaluation before descriptor binding. The special table is
@@ -28,6 +28,7 @@ pub struct BackwardSymbolicEvaluation {
     pub plan: EvalPlan,
     pub packed: PackedEvalPlan,
     pub specials: BwdSpecialTable,
+    pub acc_init_desc: Option<u16>,
     pub(crate) demand_events: Vec<BwdEvent>,
 }
 
@@ -193,7 +194,6 @@ pub fn elaborate_backward_fragments_uncached(
         fragments,
         &scheduled_fragments,
         &coefficient_descs,
-        acc_init_desc,
         budget_lanes,
         stream_reductions,
     )?;
@@ -202,6 +202,7 @@ pub fn elaborate_backward_fragments_uncached(
         plan,
         packed,
         specials,
+        acc_init_desc,
         demand_events,
     })
 }
@@ -250,7 +251,6 @@ fn elaborate_backward_fragments_replayed(
         fragments,
         &scheduled_fragments,
         &coefficient_descs,
-        acc_init_desc,
         budget_lanes,
         plan.stream_reductions,
         &mut replay,
@@ -261,6 +261,7 @@ fn elaborate_backward_fragments_replayed(
         plan: eval_plan,
         packed,
         specials,
+        acc_init_desc,
         demand_events,
     })
 }
@@ -311,7 +312,7 @@ fn compile_backward_symbolic(
         stats: binding_stats,
         terminal,
     } = bound;
-    if !matches!(terminal, ConcreteTerminal::ReturnAcc { .. }) {
+    if !matches!(terminal, ConcreteTerminal::ReturnBatch { .. }) {
         return Err(BackwardEvaluationError::UnexpectedTerminal);
     }
     if forward.ctx.specials.len() != 0 {
@@ -327,6 +328,7 @@ fn compile_backward_symbolic(
     stats.max_live_cells = max_live_lanes;
     let compiled = BwdCompiledLayer {
         program,
+        acc_init_desc: symbolic.acc_init_desc,
         specials,
         backings: forward.ctx.backings,
         source_windows: forward.ctx.source_windows,
@@ -740,29 +742,31 @@ mod tests {
     use std::collections::{BTreeMap, HashMap};
 
     use cs::gkr_compiler::dag_ir::{
-        BatchingOrder, Bf, BwdRegime, ChallengeKey, ChallengePower, ChallengeRef,
-        ChallengeResolver, ClaimInfo, DagLayer, Expr, ExprId, Ext, FieldKind, LookupResolver,
-        LookupValueKind, ReadPlace, ReadResolver, Resolvers, Root, RootGroup, RootOrigin, RootSlot,
-        SourceId, SourceInfo, SourceKind, VirtualSetupKind, VirtualSetupResolver, eval_layer_expr,
-        eval_layer_root,
+        eval_layer_expr, eval_layer_root, BatchingOrder, Bf, BwdRegime, ChallengeKey,
+        ChallengePower, ChallengeRef, ChallengeResolver, ClaimInfo, DagLayer, Expr, ExprId, Ext,
+        FieldKind, LookupResolver, LookupValueKind, ReadPlace, ReadResolver, Resolvers, Root,
+        RootGroup, RootOrigin, RootSlot, SourceId, SourceInfo, SourceKind, VirtualSetupKind,
+        VirtualSetupResolver,
     };
     use field::{Field, FieldExtension, PrimeField};
 
-    use crate::bwd::distill::{DistilledLayer, distill, distilled_site_domain};
+    use crate::bwd::batch::unpack_batch_dst;
+    use crate::bwd::distill::{distill, distilled_site_domain, DistilledLayer};
     use crate::bwd::fragment::{FragmentSpec, FragmentTable, MergedRecipe, ProductRecipe};
-    use crate::bwd::plan::{BwdOccurrencePlan, PlanAction, PlanEntry, plan_entries_fnv};
+    use crate::bwd::plan::{plan_entries_fnv, BwdOccurrencePlan, PlanAction, PlanEntry};
     use crate::bwd::source::BwdSpecial;
     use crate::bwd::trace::{BwdEvent, BwdServeKind};
-    use crate::fwd::isa::{MAX_CELL, Sign};
+    use crate::fwd::isa::{Sign, MAX_CELL};
 
     use super::{
-        BackwardEvaluationError, compile_backward_fragments_replayed,
-        compile_backward_fragments_uncached, elaborate_backward_fragments_driver,
-        elaborate_backward_fragments_uncached, map_compile_concrete_error, map_replay_plan_error,
+        compile_backward_fragments_replayed, compile_backward_fragments_uncached,
+        elaborate_backward_fragments_driver, elaborate_backward_fragments_uncached,
+        map_compile_concrete_error, map_replay_plan_error, BackwardEvaluationError,
     };
     use crate::eval_plan::{
-        ConcreteBindError, EvalOp, Operand, PlacementTelemetry, PlanError, TempId, ValueRef,
-        bind_packed_plan,
+        bind_packed_plan, interpret_backward_packed_plan, interpret_backward_plan,
+        ConcreteBindError, EvalOp, Operand, PackedEvalOp, PlacementTelemetry, PlanError, TempId,
+        ValueRef,
     };
 
     #[test]
@@ -870,6 +874,18 @@ mod tests {
         let resolvers = backward_test_resolvers();
         let mut acc = None;
         let mut temps = HashMap::new();
+        let mut batch_acc = out
+            .acc_init_desc
+            .map(|desc| {
+                backward_operand(
+                    Operand::BackwardSpecial { desc },
+                    out,
+                    d,
+                    &resolvers,
+                    &mut temps,
+                )
+            })
+            .unwrap_or(Ext::ZERO);
         let mut returned = None;
 
         for op in &out.plan.ops {
@@ -912,6 +928,24 @@ mod tests {
                             .is_none(),
                         "temporary must be unique"
                     );
+                }
+                EvalOp::BatchAccumulate {
+                    coefficient_desc, ..
+                } => {
+                    let mut contribution = acc.expect("batch sink must have an accumulator");
+                    if let Some(desc) = coefficient_desc {
+                        contribution.mul_assign(&backward_operand(
+                            Operand::BackwardSpecial { desc: *desc },
+                            out,
+                            d,
+                            &resolvers,
+                            &mut temps,
+                        ));
+                    }
+                    batch_acc.add_assign(&contribution);
+                }
+                EvalOp::ReturnBatch { .. } => {
+                    returned = Some(batch_acc);
                 }
                 EvalOp::ReturnAcc { .. } => {
                     returned = Some(acc.expect("terminal must have an accumulator"));
@@ -1010,6 +1044,22 @@ mod tests {
             resolutions: BTreeMap::new(),
         };
         distill(&layer, BwdRegime::Ext, &HashMap::new(), None)
+    }
+
+    fn backward_two_bf_fragments_fixture() -> DistilledLayer {
+        let roots = vec![claim_only_root(ExprId(0), 0), claim_only_root(ExprId(1), 1)];
+        let layer = DagLayer {
+            sources: vec![read_src(0), read_src(1)],
+            exprs: vec![Expr::Source(SourceId(0)), Expr::Source(SourceId(1))],
+            batching: BatchingOrder {
+                roots: (0..roots.len())
+                    .map(|i| cs::gkr_compiler::dag_ir::RootId(i as u32))
+                    .collect(),
+            },
+            roots,
+            resolutions: BTreeMap::new(),
+        };
+        distill(&layer, BwdRegime::R0, &HashMap::new(), None)
     }
 
     fn backward_two_domain_values_fixture() -> DistilledLayer {
@@ -1556,7 +1606,7 @@ mod tests {
     fn assert_single_uncached_terminal(out: &super::BackwardSymbolicEvaluation) {
         assert!(matches!(
             out.plan.ops.last(),
-            Some(EvalOp::ReturnAcc { .. })
+            Some(EvalOp::ReturnBatch { .. })
         ));
         assert_eq!(out.plan.stats.cache_stores, 0);
         assert_eq!(out.plan.stats.cache_hits, 0);
@@ -1565,9 +1615,88 @@ mod tests {
             out.plan
                 .ops
                 .iter()
-                .filter(|op| matches!(op, EvalOp::ReturnAcc { .. }))
+                .filter(|op| matches!(op, EvalOp::ReturnBatch { .. }))
                 .count(),
             1
+        );
+    }
+
+    #[test]
+    fn backward_fragments_are_independent_semantic_batch_sinks() {
+        let d = backward_two_bf_fragments_fixture();
+        assert_eq!(d.fragments.fragments.len(), 2);
+
+        let out = elaborate_backward_fragments_uncached(&d, None, 4, false).unwrap();
+        let sink_count = out
+            .plan
+            .ops
+            .iter()
+            .filter(|op| matches!(op, EvalOp::BatchAccumulate { .. }))
+            .count();
+        assert_eq!(sink_count, d.fragments.fragments.len());
+        assert!(!out.plan.ops.iter().any(|op| matches!(
+            op,
+            EvalOp::SaveAcc(_)
+                | EvalOp::AccMul(Operand::BackwardSpecial { .. })
+                | EvalOp::AccAdd {
+                    operand: Operand::Temp(_),
+                    ..
+                }
+        )));
+        assert!(matches!(
+            out.plan.ops.last(),
+            Some(EvalOp::ReturnBatch { .. })
+        ));
+        assert!(!out.plan.ops.iter().any(|op| matches!(
+            op,
+            EvalOp::AccInit(Operand::BackwardSpecial { desc })
+                if matches!(out.specials.get(*desc), Some(BwdSpecial::AccInit))
+        )));
+
+        assert_eq!(out.plan.stats.arithmetic_ops, 2);
+        assert_eq!(
+            out.packed
+                .ops
+                .iter()
+                .filter(|op| matches!(op, PackedEvalOp::BatchAccumulate { .. }))
+                .count(),
+            2
+        );
+        assert_eq!(out.packed.stats.unpacked_instructions, 4);
+        assert_eq!(out.packed.stats.packed_instructions, 4);
+        assert_eq!(out.packed.stats.arithmetic_instructions, 2);
+        assert_eq!(out.packed.stats.scalar_arithmetic_ops, 2);
+        assert_eq!(out.packed.stats.encoded_lanes, 8);
+    }
+
+    #[test]
+    fn backward_symbolic_interpreters_observe_batch_metadata() {
+        let d = backward_fixture();
+        let out = elaborate_backward_fragments_uncached(&d, None, 4, false).unwrap();
+        let resolvers = backward_test_resolvers();
+        let scalar = interpret_backward_plan(
+            &out.plan,
+            &d,
+            &out.specials,
+            out.acc_init_desc,
+            3,
+            &resolvers,
+        )
+        .unwrap();
+        let packed = interpret_backward_packed_plan(
+            &out.packed,
+            &d,
+            &out.specials,
+            out.acc_init_desc,
+            3,
+            &resolvers,
+        )
+        .unwrap();
+
+        assert_eq!(scalar, packed);
+        assert_eq!(
+            scalar.roots[0].value,
+            eval_layer_root(&d.layer, d.root, 3, &resolvers)
         );
     }
 
@@ -1601,53 +1730,36 @@ mod tests {
     fn backward_uncached_coeff_and_c_init() {
         let d = backward_fixture();
         assert!(!d.fragments.c_init.terms.is_empty());
-        assert!(
-            d.fragments
-                .fragments
-                .iter()
-                .any(|fragment| !fragment.recipe.is_trivial())
-        );
+        assert!(d
+            .fragments
+            .fragments
+            .iter()
+            .any(|fragment| !fragment.recipe.is_trivial()));
 
         let out = elaborate_backward_fragments_uncached(&d, None, 4, false).unwrap();
-        assert!(
-            !matches!(
-                out.plan.ops.first(),
-                Some(EvalOp::AccInit(Operand::BackwardSpecial { desc }))
-                    if matches!(out.specials.get(*desc), Some(BwdSpecial::AccInit))
-            ),
-            "non-empty fragments must seed the accumulator before adding c_init"
-        );
+        assert!(matches!(
+            out.acc_init_desc.and_then(|desc| out.specials.get(desc)),
+            Some(BwdSpecial::AccInit)
+        ));
         assert_eq!(
             out.plan
                 .ops
                 .iter()
                 .filter(|op| matches!(
                     op,
-                    EvalOp::AccAdd {
-                        sign: Sign::Plus,
-                        operand: Operand::BackwardSpecial { desc },
-                    } if matches!(out.specials.get(*desc), Some(BwdSpecial::AccInit))
-                ))
-                .count(),
-            1,
-            "non-empty c_init must be added once after a fragment contribution"
-        );
-        assert_eq!(
-            out.plan
-                .ops
-                .iter()
-                .filter(|op| matches!(
-                    op,
-                    EvalOp::AccMul(Operand::BackwardSpecial { desc })
+                    EvalOp::BatchAccumulate {
+                        coefficient_desc: Some(desc),
+                        ..
+                    }
                         if matches!(out.specials.get(*desc), Some(BwdSpecial::Coefficient { .. }))
                 ))
                 .count(),
             1,
-            "the non-trivial fragment recipe must use one coefficient operand"
+            "the non-trivial fragment recipe must use one coefficient sink descriptor"
         );
         assert!(matches!(
             bind_packed_plan(&out.packed, &d.layer, &[d.root], 0, 16),
-            Err(ConcreteBindError::BackwardSpecialRequiresBindings { .. })
+            Err(ConcreteBindError::BatchAccumulateRequiresBackwardMode)
         ));
     }
 
@@ -1683,7 +1795,11 @@ mod tests {
                     field: FieldKind::Base,
                     ..
                 })),
-                EvalOp::ReturnAcc { .. },
+                EvalOp::BatchAccumulate {
+                    coefficient_desc: None,
+                    field: FieldKind::Base,
+                },
+                EvalOp::ReturnBatch { .. },
             ]
         ));
         assert_eq!(
@@ -1693,49 +1809,34 @@ mod tests {
     }
 
     #[test]
-    fn backward_uncached_binds_coefficient_specials() {
+    fn backward_uncached_binds_coefficient_sink_metadata() {
         let d = backward_fixture();
 
         let out = compile_backward_fragments_uncached(&d, None, 4, false).unwrap();
 
-        assert!(
+        assert_eq!(out.compiled.acc_init_desc, out.symbolic.acc_init_desc);
+        assert!(matches!(
             out.compiled
-                .program
-                .instrs
-                .iter()
-                .any(|instruction| match instruction {
-                    crate::fwd::isa::Instr::Add { operands, .. } =>
-                        operands.iter().any(|operand| matches!(
-                            operand,
-                            crate::fwd::isa::OperandLine::Special { desc }
-                                if matches!(
-                                    out.compiled.specials.get(*desc),
-                                    Some(BwdSpecial::AccInit)
-                                )
-                        ),),
-                    _ => false,
-                })
-        );
-        assert!(
-            out.compiled
-                .program
-                .instrs
-                .iter()
-                .any(|instruction| match instruction {
-                    crate::fwd::isa::Instr::Mul { operands, .. } =>
-                        operands.iter().any(|operand| {
-                            matches!(
-                                operand,
-                                crate::fwd::isa::OperandLine::Special { desc }
-                                    if matches!(
-                                        out.compiled.specials.get(*desc),
-                                        Some(BwdSpecial::Coefficient { .. })
-                                    )
-                            )
-                        }),
-                    _ => false,
-                })
-        );
+                .acc_init_desc
+                .and_then(|desc| out.compiled.specials.get(desc)),
+            Some(BwdSpecial::AccInit)
+        ));
+        assert!(out.compiled.program.instrs.iter().any(|instruction| {
+            let crate::fwd::isa::Instr::Mov {
+                dir: crate::fwd::isa::MovDir::DstFromAcc,
+                dst: Some(dst),
+                ..
+            } = instruction
+            else {
+                return false;
+            };
+            unpack_batch_dst(dst).is_some_and(|desc| {
+                matches!(
+                    out.compiled.specials.get(desc),
+                    Some(BwdSpecial::Coefficient { .. })
+                )
+            })
+        }));
     }
 
     #[test]
@@ -1920,7 +2021,6 @@ mod tests {
             &fragments,
             &[0],
             &[None],
-            Some(0),
             16,
             false,
         );

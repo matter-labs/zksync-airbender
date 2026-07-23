@@ -14,19 +14,19 @@ use crate::fwd::binding::{BackingKey, SourceWindowTable};
 use crate::fwd::isa::OperandField;
 use crate::fwd::source::virtual_setup_kind_code;
 
-use super::artifact::{DomainCertificate, EvaluationArtifactError, certificate_from_serializable};
+use super::artifact::{certificate_from_serializable, DomainCertificate, EvaluationArtifactError};
 use super::backward_search::pager::PagingAction;
 use super::backward_search::problem::{
-    BackwardSearchProblem, build_backward_search_problem, decode_order_indices,
-    rebuild_problem_for_stable_order,
+    build_backward_search_problem, decode_order_indices, rebuild_problem_for_stable_order,
+    BackwardSearchProblem,
 };
 use super::backward_search::production::{
-    ProductionBackwardPlan, ProductionSearchIdentity, ProductionSearchProgress,
-    select_production_backward_seeds_with_progress,
+    select_production_backward_seeds_with_progress, ProductionBackwardPlan,
+    ProductionSearchIdentity, ProductionSearchProgress,
 };
 use super::backward_search::{
-    BackwardScore, BackwardSearchError, CertifiedBackwardCandidate, PagingCertificate, SourceCost,
-    SourceOriginKind, compile_and_certify_paging, reconstruct_paging_plan,
+    compile_and_certify_paging, reconstruct_paging_plan, BackwardScore, BackwardSearchError,
+    CertifiedBackwardCandidate, PagingCertificate, SourceCost, SourceOriginKind,
 };
 
 const MIN_BUDGET_CELLS: usize = 2;
@@ -879,24 +879,35 @@ fn backward_output_digests(
     compiled: &CompiledBackwardEvaluation,
 ) -> Result<([u64; 4], [u64; 4]), BackwardArtifactError> {
     let encoded_bytes = encoded_lane_bytes(&compiled.encoded);
+    Ok((
+        backward_instruction_digest(&compiled.compiled, &compiled.encoded)?,
+        four_lane_digest(&encoded_bytes)?,
+    ))
+}
+
+fn backward_instruction_digest(
+    compiled: &crate::bwd::compile::BwdCompiledLayer,
+    encoded: &[u16],
+) -> Result<[u64; 4], BackwardArtifactError> {
+    let encoded_bytes = encoded_lane_bytes(encoded);
     let mut instruction_bytes = encoded_bytes.clone();
-    push_u64(
-        &mut instruction_bytes,
-        compiled.compiled.specials.len() as u64,
-    );
-    for index in 0..compiled.compiled.specials.len() {
+    match compiled.acc_init_desc {
+        Some(desc) => {
+            instruction_bytes.push(1);
+            instruction_bytes.extend_from_slice(&desc.to_le_bytes());
+        }
+        None => instruction_bytes.push(0),
+    }
+    push_u64(&mut instruction_bytes, compiled.specials.len() as u64);
+    for index in 0..compiled.specials.len() {
         let special = compiled
-            .compiled
             .specials
             .get(index as u16)
             .expect("descriptor index below table length must resolve");
         serialize_bwd_special(&mut instruction_bytes, special);
     }
-    serialize_source_windows(&mut instruction_bytes, &compiled.compiled.source_windows);
-    Ok((
-        four_lane_digest(&instruction_bytes)?,
-        four_lane_digest(&encoded_bytes)?,
-    ))
+    serialize_source_windows(&mut instruction_bytes, &compiled.source_windows);
+    four_lane_digest(&instruction_bytes)
 }
 
 fn serialize_source_windows(bytes: &mut Vec<u8>, table: &SourceWindowTable) {
@@ -1358,6 +1369,27 @@ mod generation_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::bwd::compile::{BwdCompiledLayer, BwdTrafficStats};
+    use crate::bwd::source::BwdSpecialTable;
+    use crate::fwd::binding::{BackingTable, SourceWindowTable};
+    use crate::fwd::isa::Program;
+    use crate::fwd::source::{ConstBank, DerivedE4Banks};
+    use crate::fwd::stats::CompileStats;
+
+    fn empty_compiled(acc_init_desc: Option<u16>) -> BwdCompiledLayer {
+        BwdCompiledLayer {
+            program: Program::default(),
+            acc_init_desc,
+            specials: BwdSpecialTable::default(),
+            backings: BackingTable::default(),
+            source_windows: SourceWindowTable::default(),
+            consts: ConstBank::default(),
+            derived_e4: DerivedE4Banks::default(),
+            budget: 4,
+            stats: CompileStats::default(),
+            stats_ext: BwdTrafficStats::default(),
+        }
+    }
 
     #[test]
     fn canonical_u128_preserves_u128_maximum() {
@@ -1374,5 +1406,14 @@ mod tests {
         for spelling in ["-1", "+1", "01", "", " 1"] {
             assert!(serde_json::from_str::<CanonicalU128>(&format!("\"{spelling}\"")).is_err());
         }
+    }
+
+    #[test]
+    fn logical_acc_init_descriptor_changes_instruction_digest_only() {
+        let encoded = Vec::new();
+        let absent = backward_instruction_digest(&empty_compiled(None), &encoded).unwrap();
+        let present = backward_instruction_digest(&empty_compiled(Some(7)), &encoded).unwrap();
+
+        assert_ne!(absent, present);
     }
 }

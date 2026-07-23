@@ -4,8 +4,11 @@ use cs::gkr_compiler::dag_ir::{
     DagLayer, Expr, ExprId, FieldKind, ReadPlace, RootId, SinkInfo, SinkKind, SourceKind,
 };
 
+use crate::bwd::batch::{
+    pack_batch_dst, unpack_batch_dst, BATCH_COEFFICIENT_MAX, BATCH_COEFFICIENT_ONE,
+};
 use crate::bwd::source::{BwdSpecial, BwdSpecialTable, OriginLeaf};
-use crate::fwd::binding::{BackingKey, SourceMarkerMode, bind_final_sources};
+use crate::fwd::binding::{bind_final_sources, BackingKey, SourceMarkerMode};
 use crate::fwd::compile::{copy_src_read_place, read_place_operand_field};
 use crate::fwd::context::{
     CompileTrace, CompiledLayer, DagForwardContext, ForwardAction, OutputCell, RootOutput,
@@ -13,16 +16,17 @@ use crate::fwd::context::{
 use crate::fwd::encode::{decode, encode, encoded_lane_count};
 use crate::fwd::error::{BindError, DecodeError, EncodeError};
 use crate::fwd::isa::{
-    DstLine, Instr, LdcSub, MAX_CELL, MAX_DESC, MovDir, OperandField, OperandLine, Program, Sign,
-    Special,
+    DstLine, Instr, LdcSub, MovDir, OperandField, OperandLine, Program, Sign, Special, MAX_CELL,
+    MAX_DESC,
 };
-use crate::fwd::source::{SpecialDescriptor, SpecialStrategy, lower_resolution};
+use crate::fwd::source::{lower_resolution, SpecialDescriptor, SpecialStrategy};
 use crate::fwd::stats::{CompileStats, OP_ADD, OP_FMA, OP_MOV, OP_MUL};
 use crate::fwd::{disasm::disassemble_layer, error::CompileError, validate::validate_compiled};
 
 use super::{
-    CacheStoreFrom, IdentityError, MaterializeFrom, Operand, PackedEvalOp, PackedEvalPlan, RootKey,
-    TempId, ValueFingerprint, ValueRef, field_lanes, structural_fingerprints, unit_sign_expr,
+    field_lanes, structural_fingerprints, unit_sign_expr, CacheStoreFrom, IdentityError,
+    MaterializeFrom, Operand, PackedEvalOp, PackedEvalPlan, RootKey, TempId, ValueFingerprint,
+    ValueRef,
 };
 
 const BABYBEAR_NEG_ONE: u32 = 0x7800_0001 - 1;
@@ -70,6 +74,7 @@ pub enum ConcreteBindError {
         root: RootId,
     },
     DuplicateReturnAcc,
+    DuplicateReturnBatch,
     MixedForwardAndReturnTerminal,
     Validation(CompileError),
     InstructionCountMismatch {
@@ -88,6 +93,13 @@ pub enum ConcreteBindError {
     BackwardSpecialRequiresBindings {
         desc: u16,
     },
+    BatchAccumulateRequiresBackwardMode,
+    ReturnBatchRequiresBackwardMode,
+    InvalidBatchCoefficientDescriptor {
+        desc: u16,
+    },
+    MissingReturnBatch,
+    SinkFreeBatch,
     UnboundBackwardSource(ExprId),
     BackwardCommit,
 }
@@ -174,6 +186,7 @@ pub struct ConcreteEvalProgram {
 pub enum ConcreteTerminal {
     Forward,
     ReturnAcc { root: RootKey },
+    ReturnBatch { root: RootKey },
 }
 
 /// Independently validate the forward instruction stream and its concrete
@@ -212,7 +225,7 @@ pub fn validate_concrete_eval_program(
                 return Err(ConcreteBindError::RootCountMismatch { expected, actual });
             }
         }
-        ConcreteTerminal::ReturnAcc { root } => {
+        ConcreteTerminal::ReturnAcc { root } | ConcreteTerminal::ReturnBatch { root } => {
             if !concrete.compiled.ctx.actions.is_empty()
                 || !concrete.compiled.ctx.cache_loc.is_empty()
                 || !concrete.compiled.root_outputs.is_empty()
@@ -251,6 +264,7 @@ pub fn disassemble_concrete_eval_program(
     disassembly.push_str(match concrete.terminal {
         ConcreteTerminal::Forward => "terminal = Forward\n",
         ConcreteTerminal::ReturnAcc { .. } => "terminal = ReturnAcc\n",
+        ConcreteTerminal::ReturnBatch { .. } => "terminal = ReturnBatch\n",
     });
     disassembly
 }
@@ -298,7 +312,7 @@ pub fn bind_packed_plan_with_actions(
     concrete.compiled.ctx.cross_layer_fields = cross_layer_fields.clone();
 
     let mut ordered_actions = actions.iter().collect::<Vec<_>>();
-    ordered_actions.sort_by_key(|entry| entry.0.0);
+    ordered_actions.sort_by_key(|entry| entry.0 .0);
     for (&root, action) in ordered_actions {
         match action {
             ForwardAction::Compute => {}
@@ -484,6 +498,7 @@ fn bind_packed_plan_with_source_mode(
         pending_roots,
         root_outputs: Vec::new(),
         terminal: None,
+        batch_sinks: 0,
         desc_by_expr: HashMap::new(),
         source_mode,
     };
@@ -496,7 +511,8 @@ fn bind_packed_plan_with_source_mode(
         return Err(ConcreteBindError::LiveTempsAtEnd(live));
     }
     let terminal = match emitter.terminal.take() {
-        Some(root) => {
+        Some(pending_terminal) => {
+            let root = pending_terminal.root();
             if !emitter.root_outputs.is_empty()
                 || emitter
                     .pending_roots
@@ -516,12 +532,23 @@ fn bind_packed_plan_with_source_mode(
                 .iter()
                 .next()
                 .expect("one pending root was checked above");
-            if root_key(layer, &emitter.fingerprints, root_id) != root {
+            if root_key(layer, &emitter.fingerprints, root_id) != *root {
                 return Err(ConcreteBindError::RootIdentityMismatch { root: root_id });
             }
-            ConcreteTerminal::ReturnAcc { root }
+            match pending_terminal {
+                PendingTerminal::ReturnAcc(root) => ConcreteTerminal::ReturnAcc { root },
+                PendingTerminal::ReturnBatch(root) => {
+                    if emitter.batch_sinks == 0 {
+                        return Err(ConcreteBindError::SinkFreeBatch);
+                    }
+                    ConcreteTerminal::ReturnBatch { root }
+                }
+            }
         }
         None => {
+            if matches!(source_mode, ConcreteSourceMode::Backward { .. }) {
+                return Err(ConcreteBindError::MissingReturnBatch);
+            }
             if !emitter.pending_roots.is_empty() {
                 return Err(ConcreteBindError::RootCountMismatch {
                     expected: root_order.len(),
@@ -552,7 +579,10 @@ fn bind_packed_plan_with_source_mode(
     }
 
     let mut program = emitted_program;
-    fold_direct_source_stores(&mut program);
+    fold_direct_source_stores_with_mode(
+        &mut program,
+        matches!(source_mode, ConcreteSourceMode::Backward { .. }),
+    );
     fold_load_mul_add(&mut program);
     elide_accumulator_cell_roundtrips(&mut program);
     let marker_mode = match source_mode {
@@ -606,6 +636,10 @@ fn bind_packed_plan_with_source_mode(
 /// `dst <- source` move. The final load proves that the accumulator value from
 /// the first load is dead after the store.
 fn fold_direct_source_stores(program: &mut Program) {
+    fold_direct_source_stores_with_mode(program, false);
+}
+
+fn fold_direct_source_stores_with_mode(program: &mut Program, preserve_batch_sinks: bool) {
     let original = std::mem::take(&mut program.instrs);
     let mut rewritten = Vec::with_capacity(original.len());
     let mut index = 0;
@@ -634,6 +668,9 @@ fn fold_direct_source_stores(program: &mut Program) {
             else {
                 return None;
             };
+            if preserve_batch_sinks && unpack_batch_dst(destination).is_some() {
+                return None;
+            }
             (load_field == store_field).then_some(Instr::Mov {
                 dir: MovDir::DstFromSrc,
                 field: *load_field,
@@ -973,6 +1010,8 @@ fn packed_operands(op: &PackedEvalOp) -> Vec<Operand> {
         | PackedEvalOp::CacheStore { .. }
         | PackedEvalOp::CacheDrop(_)
         | PackedEvalOp::Commit { .. }
+        | PackedEvalOp::BatchAccumulate { .. }
+        | PackedEvalOp::ReturnBatch { .. }
         | PackedEvalOp::ReturnAcc { .. } => Vec::new(),
     }
 }
@@ -1031,11 +1070,11 @@ fn place_intervals(
         .filter(|interval| interval.field == FieldKind::Base)
         .collect();
     bases.sort_by_key(|interval| (interval.start, interval.id.0));
-    if greedy_ext_ok
-        && let Some(base_locations) = pack_base_intervals_greedy(&bases, &ext_by_quad, budget)
-    {
-        locations.extend(base_locations);
-        return Ok((locations, PlacementTelemetry::default()));
+    if greedy_ext_ok {
+        if let Some(base_locations) = pack_base_intervals_greedy(&bases, &ext_by_quad, budget) {
+            locations.extend(base_locations);
+            return Ok((locations, PlacementTelemetry::default()));
+        }
     }
     if matches!(mode, PlacementMode::GreedyOnly) {
         return Err(PlacementTelemetry::default());
@@ -1480,15 +1519,41 @@ struct Emitter<'a> {
     temps: HashMap<TempId, StorageId>,
     pending_roots: HashSet<RootId>,
     root_outputs: Vec<(RootId, RootOutput)>,
-    terminal: Option<RootKey>,
+    terminal: Option<PendingTerminal>,
+    batch_sinks: usize,
     desc_by_expr: HashMap<cs::gkr_compiler::dag_ir::ExprId, u16>,
     source_mode: ConcreteSourceMode<'a>,
 }
 
+enum PendingTerminal {
+    ReturnAcc(RootKey),
+    ReturnBatch(RootKey),
+}
+
+impl PendingTerminal {
+    fn root(&self) -> &RootKey {
+        match self {
+            Self::ReturnAcc(root) | Self::ReturnBatch(root) => root,
+        }
+    }
+}
+
 impl Emitter<'_> {
     fn emit(&mut self, op_index: usize, op: &PackedEvalOp) -> Result<(), ConcreteBindError> {
-        if self.terminal.is_some() && !matches!(op, PackedEvalOp::ReturnAcc { .. }) {
-            return Err(ConcreteBindError::MixedForwardAndReturnTerminal);
+        if let Some(terminal) = &self.terminal {
+            let repeats_same_terminal = matches!(
+                (terminal, op),
+                (
+                    PendingTerminal::ReturnAcc(_),
+                    PackedEvalOp::ReturnAcc { .. }
+                ) | (
+                    PendingTerminal::ReturnBatch(_),
+                    PackedEvalOp::ReturnBatch { .. }
+                )
+            );
+            if !repeats_same_terminal {
+                return Err(ConcreteBindError::MixedForwardAndReturnTerminal);
+            }
         }
         self.emit_relocations(op_index)?;
         match op {
@@ -1613,8 +1678,50 @@ impl Emitter<'_> {
                 }
                 self.emit_commit(*root_id, root, sink, *from)?;
             }
+            PackedEvalOp::BatchAccumulate {
+                coefficient_desc,
+                field,
+            } => {
+                if matches!(self.source_mode, ConcreteSourceMode::Forward) {
+                    return Err(ConcreteBindError::BatchAccumulateRequiresBackwardMode);
+                }
+                let coefficient = match coefficient_desc {
+                    Some(desc) if *desc <= BATCH_COEFFICIENT_MAX => *desc,
+                    Some(desc) => {
+                        return Err(ConcreteBindError::InvalidBatchCoefficientDescriptor {
+                            desc: *desc,
+                        });
+                    }
+                    None => BATCH_COEFFICIENT_ONE,
+                };
+                self.instrs.push(Instr::Mov {
+                    dir: MovDir::DstFromAcc,
+                    field: to_operand_field(*field),
+                    dst: Some(pack_batch_dst(coefficient).map_err(|_| {
+                        ConcreteBindError::InvalidBatchCoefficientDescriptor { desc: coefficient }
+                    })?),
+                    src: None,
+                });
+                self.batch_sinks += 1;
+            }
+            PackedEvalOp::ReturnBatch { root } => {
+                if matches!(self.source_mode, ConcreteSourceMode::Forward) {
+                    return Err(ConcreteBindError::ReturnBatchRequiresBackwardMode);
+                }
+                if self
+                    .terminal
+                    .replace(PendingTerminal::ReturnBatch(root.clone()))
+                    .is_some()
+                {
+                    return Err(ConcreteBindError::DuplicateReturnBatch);
+                }
+            }
             PackedEvalOp::ReturnAcc { root } => {
-                if self.terminal.replace(root.clone()).is_some() {
+                if self
+                    .terminal
+                    .replace(PendingTerminal::ReturnAcc(root.clone()))
+                    .is_some()
+                {
                     return Err(ConcreteBindError::DuplicateReturnAcc);
                 }
             }
@@ -1723,12 +1830,19 @@ impl Emitter<'_> {
     }
 
     fn bind_source(&mut self, value: ValueRef) -> Result<OperandLine, ConcreteBindError> {
-        if let ConcreteSourceMode::Backward {
+        let backward_source = if let ConcreteSourceMode::Backward {
             leaf_descs,
             specials,
         } = self.source_mode
-            && let Some(&desc) = leaf_descs.get(&value.expr)
         {
+            leaf_descs
+                .get(&value.expr)
+                .copied()
+                .map(|desc| (desc, specials))
+        } else {
+            None
+        };
+        if let Some((desc, specials)) = backward_source {
             if let Some(BwdSpecial::FoldSource {
                 origin: OriginLeaf::Read(place),
             }) = specials.get(desc)
@@ -1741,12 +1855,12 @@ impl Emitter<'_> {
             }
             return Ok(OperandLine::Special { desc });
         }
-        if matches!(self.source_mode, ConcreteSourceMode::Forward)
-            && let Some(strategy) = self.layer.resolutions.get(&value.expr)
-        {
-            let desc =
-                self.intern_descriptor(value.expr, lower_resolution(strategy, value.expr))?;
-            return Ok(OperandLine::Special { desc });
+        if matches!(self.source_mode, ConcreteSourceMode::Forward) {
+            if let Some(strategy) = self.layer.resolutions.get(&value.expr) {
+                let desc =
+                    self.intern_descriptor(value.expr, lower_resolution(strategy, value.expr))?;
+                return Ok(OperandLine::Special { desc });
+            }
         }
         let Expr::Source(source) = &self.layer.exprs[value.expr.0 as usize] else {
             return Err(ConcreteBindError::ExpectedSource(value));
@@ -2027,13 +2141,20 @@ fn tally_operand(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::eval_plan::{PackConfig, PackedStats, elaborate_uncached, pack_plan};
+    use crate::bwd::batch::{
+        pack_batch_dst, unpack_batch_dst, BATCH_COEFFICIENT_MAX, BATCH_COEFFICIENT_ONE,
+    };
+    use crate::bwd::source::BwdSpecialTable;
+    use crate::eval_plan::{
+        elaborate_uncached, pack_plan, structural_fingerprints, CacheStoreFrom, EvalOp, PackConfig,
+        PackedStats, ValueRef,
+    };
     use crate::fwd::interp::interpret_program_row_acc;
     use cs::definitions::GKRAddress;
     use cs::gkr_compiler::dag_ir::{
-        BatchingOrder, Bf, ChallengeRef, ChallengeResolver, DagLayer, Expr, ExprId, FieldKind,
-        LookupResolver, LookupValueKind, ReadPlace, ReadResolver, Resolvers, Root, RootId,
-        SourceId, SourceInfo, SourceKind, VirtualSetupKind, VirtualSetupResolver, eval_layer_expr,
+        eval_layer_expr, BatchingOrder, Bf, ChallengeRef, ChallengeResolver, DagLayer, Expr,
+        ExprId, FieldKind, LookupResolver, LookupValueKind, ReadPlace, ReadResolver, Resolvers,
+        Root, RootId, SourceId, SourceInfo, SourceKind, VirtualSetupKind, VirtualSetupResolver,
     };
     use field::Field;
 
@@ -2106,6 +2227,225 @@ mod tests {
         let fields = vec![FieldKind::Base];
         let plan = elaborate_uncached(layer, &fields, roots).unwrap();
         pack_plan(&plan, layer, PackConfig::default()).unwrap()
+    }
+
+    fn batch_packed(
+        layer: &DagLayer,
+        coefficient_desc: Option<u16>,
+        field: FieldKind,
+    ) -> PackedEvalPlan {
+        let fields = vec![FieldKind::Base];
+        let mut plan = elaborate_uncached(layer, &fields, &[RootId(0)]).unwrap();
+        let EvalOp::ReturnAcc { root } = plan.ops.pop().unwrap() else {
+            panic!("fixture must end in ReturnAcc");
+        };
+        plan.ops.push(EvalOp::BatchAccumulate {
+            coefficient_desc,
+            field,
+        });
+        plan.ops.push(EvalOp::ReturnBatch { root });
+        plan.stats.arithmetic_ops += 1;
+        pack_plan(&plan, layer, PackConfig::default()).unwrap()
+    }
+
+    #[test]
+    fn backward_batch_sink_emits_exact_carrier_and_recovers_descriptor() {
+        let layer = return_acc_layer(false);
+        let packed = batch_packed(&layer, Some(17), FieldKind::Base);
+        let concrete = bind_backward_packed_plan(
+            &packed,
+            &layer,
+            RootId(0),
+            4,
+            &BTreeMap::new(),
+            &BwdSpecialTable::default(),
+        )
+        .unwrap();
+
+        assert!(matches!(
+            concrete.terminal,
+            ConcreteTerminal::ReturnBatch { .. }
+        ));
+        let sink = concrete.compiled.program.instrs.last().unwrap();
+        let Instr::Mov {
+            dir: MovDir::DstFromAcc,
+            field: OperandField::Base,
+            dst: Some(dst),
+            src: None,
+        } = sink
+        else {
+            panic!("expected exact Base DstFromAcc batch carrier, got {sink:?}");
+        };
+        assert_eq!(unpack_batch_dst(dst), Some(17));
+        assert_eq!(
+            encode(&Program {
+                instrs: vec![sink.clone()],
+            })
+            .unwrap()
+            .len(),
+            2
+        );
+    }
+
+    #[test]
+    fn backward_batch_sink_uses_literal_one_sentinel_and_exact_ext_field() {
+        let layer = return_acc_layer(false);
+        let packed = batch_packed(&layer, None, FieldKind::Ext);
+        let concrete = bind_backward_packed_plan(
+            &packed,
+            &layer,
+            RootId(0),
+            4,
+            &BTreeMap::new(),
+            &BwdSpecialTable::default(),
+        )
+        .unwrap();
+
+        assert!(matches!(
+            concrete.compiled.program.instrs.last(),
+            Some(Instr::Mov {
+                dir: MovDir::DstFromAcc,
+                field: OperandField::Ext,
+                dst: Some(dst),
+                src: None,
+            }) if unpack_batch_dst(dst) == Some(BATCH_COEFFICIENT_ONE)
+        ));
+    }
+
+    #[test]
+    fn backward_batch_sink_rejects_reserved_and_out_of_range_descriptors() {
+        let layer = return_acc_layer(false);
+        for desc in [BATCH_COEFFICIENT_ONE, 0x4000] {
+            let packed = batch_packed(&layer, Some(desc), FieldKind::Base);
+            assert!(matches!(
+                bind_backward_packed_plan(
+                    &packed,
+                    &layer,
+                    RootId(0),
+                    4,
+                    &BTreeMap::new(),
+                    &BwdSpecialTable::default(),
+                ),
+                Err(ConcreteBindError::InvalidBatchCoefficientDescriptor { desc: actual })
+                    if actual == desc
+            ));
+        }
+        assert_eq!(BATCH_COEFFICIENT_MAX, 0x3ffe);
+    }
+
+    #[test]
+    fn forward_mode_rejects_batch_sinks_and_terminal() {
+        let layer = return_acc_layer(false);
+        let packed = batch_packed(&layer, None, FieldKind::Base);
+        assert!(matches!(
+            bind_packed_plan(&packed, &layer, &[RootId(0)], 0, 4),
+            Err(ConcreteBindError::BatchAccumulateRequiresBackwardMode)
+                | Err(ConcreteBindError::ReturnBatchRequiresBackwardMode)
+        ));
+    }
+
+    #[test]
+    fn cache_cell_remains_live_and_unchanged_across_batch_sink() {
+        let layer = return_acc_layer(false);
+        let fingerprint = structural_fingerprints(&layer).unwrap()[0];
+        let value = ValueRef {
+            fingerprint,
+            expr: ExprId(0),
+            field: FieldKind::Base,
+        };
+        let root = match return_acc_packed(&layer, &[RootId(0)]).ops.last().unwrap() {
+            PackedEvalOp::ReturnAcc { root } => root.clone(),
+            other => panic!("fixture must end in ReturnAcc, got {other:?}"),
+        };
+        let packed = PackedEvalPlan {
+            ops: vec![
+                PackedEvalOp::AccInit(Operand::Source(value)),
+                PackedEvalOp::CacheStore {
+                    value,
+                    from: CacheStoreFrom::Acc,
+                },
+                PackedEvalOp::BatchAccumulate {
+                    coefficient_desc: None,
+                    field: FieldKind::Base,
+                },
+                PackedEvalOp::AccInit(Operand::Resident(value)),
+                PackedEvalOp::BatchAccumulate {
+                    coefficient_desc: None,
+                    field: FieldKind::Base,
+                },
+                PackedEvalOp::ReturnBatch { root },
+            ],
+            stats: PackedStats {
+                unpacked_instructions: 5,
+                packed_instructions: 5,
+                arithmetic_instructions: 2,
+                scalar_arithmetic_ops: 2,
+                encoded_lanes: 10,
+                ..PackedStats::default()
+            },
+        };
+        let concrete = bind_backward_packed_plan(
+            &packed,
+            &layer,
+            RootId(0),
+            4,
+            &BTreeMap::new(),
+            &BwdSpecialTable::default(),
+        )
+        .unwrap();
+        let instrs = &concrete.compiled.program.instrs;
+        let stored_cell = match &instrs[1] {
+            Instr::Mov {
+                dir: MovDir::DstFromAcc,
+                dst: Some(DstLine::Smem { cell }),
+                ..
+            } => *cell,
+            other => panic!("expected cache store, got {other:?}"),
+        };
+        assert!(matches!(
+            &instrs[3],
+            Instr::Mov {
+                dir: MovDir::AccFromSrc,
+                src: Some(OperandLine::Smem { cell }),
+                ..
+            } if *cell == stored_cell
+        ));
+    }
+
+    #[test]
+    fn direct_source_store_optimizer_does_not_rewrite_batch_sink() {
+        let sink = pack_batch_dst(BATCH_COEFFICIENT_ONE).unwrap();
+        let mut program = Program {
+            instrs: vec![
+                Instr::Mov {
+                    dir: MovDir::AccFromSrc,
+                    field: OperandField::Base,
+                    dst: None,
+                    src: Some(OperandLine::Ldc {
+                        sub: LdcSub::Special,
+                        idx: Special::One as u16,
+                    }),
+                },
+                Instr::Mov {
+                    dir: MovDir::DstFromAcc,
+                    field: OperandField::Base,
+                    dst: Some(sink),
+                    src: None,
+                },
+                Instr::Mov {
+                    dir: MovDir::AccFromSrc,
+                    field: OperandField::Base,
+                    dst: None,
+                    src: Some(OperandLine::Ldc {
+                        sub: LdcSub::Special,
+                        idx: Special::NegOne as u16,
+                    }),
+                },
+            ],
+        };
+        let expected = program.clone();
+        fold_direct_source_stores_with_mode(&mut program, true);
+        assert_eq!(program, expected);
     }
 
     #[test]
@@ -2699,13 +3039,11 @@ mod tests {
         for (index, &interval) in bases.iter().enumerate() {
             let lane = locations[&interval.id] as usize;
             assert!(lane < budget);
-            assert!(
-                ext_by_quad
-                    .get(lane / 4)
-                    .into_iter()
-                    .flatten()
-                    .all(|other| !overlap(interval, *other))
-            );
+            assert!(ext_by_quad
+                .get(lane / 4)
+                .into_iter()
+                .flatten()
+                .all(|other| !overlap(interval, *other)));
             for &other in &bases[index + 1..] {
                 if locations[&other.id] as usize == lane {
                     assert!(!overlap(interval, other));

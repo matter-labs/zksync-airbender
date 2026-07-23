@@ -1,10 +1,10 @@
-use cs::gkr_compiler::dag_ir::{DagLayer, Expr, FieldKind, SourceKind, join};
+use cs::gkr_compiler::dag_ir::{join, DagLayer, Expr, FieldKind, SourceKind};
 
-use crate::fwd::isa::{MAX_ARITY, Sign};
+use crate::fwd::isa::{Sign, MAX_ARITY};
 
 use super::{
-    CacheStoreFrom, EvalOp, EvalPlan, MaterializeFrom, Operand, RootKey, SinkInfo, TempId, TempRef,
-    ValueFingerprint, ValueRef, field_lanes, unit_sign_expr,
+    field_lanes, unit_sign_expr, CacheStoreFrom, EvalOp, EvalPlan, MaterializeFrom, Operand,
+    RootKey, SinkInfo, TempId, TempRef, ValueFingerprint, ValueRef,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -67,6 +67,13 @@ pub enum PackedEvalOp {
         root: RootKey,
         sink: SinkInfo,
         from: MaterializeFrom,
+    },
+    BatchAccumulate {
+        coefficient_desc: Option<u16>,
+        field: FieldKind,
+    },
+    ReturnBatch {
+        root: RootKey,
     },
     ReturnAcc {
         root: RootKey,
@@ -307,6 +314,16 @@ fn pack_plan_variant(
                 sink: sink.clone(),
                 from: *from,
             }),
+            EvalOp::BatchAccumulate {
+                coefficient_desc,
+                field,
+            } => ops.push(PackedEvalOp::BatchAccumulate {
+                coefficient_desc: *coefficient_desc,
+                field: *field,
+            }),
+            EvalOp::ReturnBatch { root } => {
+                ops.push(PackedEvalOp::ReturnBatch { root: root.clone() })
+            }
             EvalOp::ReturnAcc { root } => ops.push(PackedEvalOp::ReturnAcc { root: root.clone() }),
         }
     }
@@ -1208,7 +1225,12 @@ fn packed_stats(
         unpacked_instructions: plan
             .ops
             .iter()
-            .filter(|op| !matches!(op, EvalOp::CacheDrop(_) | EvalOp::ReturnAcc { .. }))
+            .filter(|op| {
+                !matches!(
+                    op,
+                    EvalOp::CacheDrop(_) | EvalOp::ReturnBatch { .. } | EvalOp::ReturnAcc { .. }
+                )
+            })
             .count(),
         ..PackedStats::default()
     };
@@ -1271,7 +1293,15 @@ fn packed_stats(
                     }
                 }
             }
-            PackedEvalOp::CacheDrop(_) | PackedEvalOp::ReturnAcc { .. } => {}
+            PackedEvalOp::BatchAccumulate { .. } => {
+                stats.packed_instructions += 1;
+                stats.arithmetic_instructions += 1;
+                stats.scalar_arithmetic_ops += 1;
+                stats.encoded_lanes += 2;
+            }
+            PackedEvalOp::CacheDrop(_)
+            | PackedEvalOp::ReturnBatch { .. }
+            | PackedEvalOp::ReturnAcc { .. } => {}
         }
     }
     if stats.dram_read_lanes != plan.stats.dram_read_lanes {
@@ -1776,11 +1806,9 @@ mod tests {
                 operand: Operand::Temp(candidate),
             }) if *candidate == temp
         ));
-        assert!(
-            !rewritten
-                .iter()
-                .any(|op| matches!(op, EvalOp::AccMul(_) | EvalOp::AccNeg))
-        );
+        assert!(!rewritten
+            .iter()
+            .any(|op| matches!(op, EvalOp::AccMul(_) | EvalOp::AccNeg)));
     }
 
     #[test]

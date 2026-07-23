@@ -2,8 +2,11 @@
 
 use std::collections::HashMap;
 
-use cs::gkr_compiler::dag_ir::{DagLayer, Ext, Resolvers, RootId, SinkInfo, eval_layer_expr};
+use cs::gkr_compiler::dag_ir::{eval_layer_expr, DagLayer, Ext, Resolvers, RootId, SinkInfo};
 use field::Field;
+
+use crate::bwd::distill::DistilledLayer;
+use crate::bwd::source::{BwdSpecial, BwdSpecialTable};
 
 use super::{
     CacheStoreFrom, EvalOp, EvalPlan, MaterializeFrom, Operand, RootKey, TempId, ValueFingerprint,
@@ -37,6 +40,9 @@ pub enum PlanInterpError {
     CacheStoreValueMismatch(ValueFingerprint),
     LiveTempsAtEnd(Vec<TempId>),
     BackwardSpecialRequiresBindings { desc: u16 },
+    UnknownBackwardSpecial { desc: u16 },
+    InvalidCoefficientFragment { fragment: usize },
+    SinkFreeBatch,
 }
 
 /// Execute a symbolic plan for one row. Source values are resolved through the
@@ -52,7 +58,10 @@ pub fn interpret_plan(
         layer,
         row,
         resolvers,
+        backward: None,
         acc: None,
+        batch_acc: Ext::ZERO,
+        batch_sinks: 0,
         temps: HashMap::new(),
         residents: HashMap::new(),
         roots: Vec::new(),
@@ -73,11 +82,92 @@ pub fn interpret_plan(
     })
 }
 
+pub fn interpret_backward_plan(
+    plan: &EvalPlan,
+    distilled: &DistilledLayer,
+    specials: &BwdSpecialTable,
+    acc_init_desc: Option<u16>,
+    row: usize,
+    resolvers: &Resolvers<'_>,
+) -> Result<PlanExecution, PlanInterpError> {
+    let batch_acc = acc_init_desc
+        .map(|desc| resolve_backward_special(desc, distilled, specials, resolvers))
+        .transpose()?
+        .unwrap_or(Ext::ZERO);
+    let mut machine = Machine {
+        layer: &distilled.layer,
+        row,
+        resolvers,
+        backward: Some(BackwardInterpContext {
+            distilled,
+            specials,
+        }),
+        acc: None,
+        batch_acc,
+        batch_sinks: 0,
+        temps: HashMap::new(),
+        residents: HashMap::new(),
+        roots: Vec::new(),
+        stored_values: Vec::new(),
+    };
+    for op in &plan.ops {
+        machine.execute(op)?;
+    }
+    if !machine.temps.is_empty() {
+        let mut live: Vec<TempId> = machine.temps.keys().copied().collect();
+        live.sort_by_key(|temp| temp.0);
+        return Err(PlanInterpError::LiveTempsAtEnd(live));
+    }
+    Ok(PlanExecution {
+        roots: machine.roots,
+        residents: machine.residents,
+        stored_values: machine.stored_values,
+    })
+}
+
+pub(super) fn resolve_backward_special(
+    desc: u16,
+    distilled: &DistilledLayer,
+    specials: &BwdSpecialTable,
+    resolvers: &Resolvers<'_>,
+) -> Result<Ext, PlanInterpError> {
+    match specials
+        .get(desc)
+        .ok_or(PlanInterpError::UnknownBackwardSpecial { desc })?
+    {
+        BwdSpecial::AccInit => Ok(distilled
+            .fragments
+            .c_init
+            .evaluate(&distilled.layer, resolvers)),
+        BwdSpecial::Coefficient { fragment } => {
+            let fragment = *fragment as usize;
+            let recipe = distilled
+                .fragments
+                .fragments
+                .get(fragment)
+                .ok_or(PlanInterpError::InvalidCoefficientFragment { fragment })?;
+            Ok(recipe.recipe.evaluate(&distilled.layer, resolvers))
+        }
+        BwdSpecial::FoldSource { .. } | BwdSpecial::VirtualSetup { .. } => {
+            Err(PlanInterpError::BackwardSpecialRequiresBindings { desc })
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+struct BackwardInterpContext<'a> {
+    distilled: &'a DistilledLayer,
+    specials: &'a BwdSpecialTable,
+}
+
 struct Machine<'a> {
     layer: &'a DagLayer,
     row: usize,
     resolvers: &'a Resolvers<'a>,
+    backward: Option<BackwardInterpContext<'a>>,
     acc: Option<Ext>,
+    batch_acc: Ext,
+    batch_sinks: usize,
     temps: HashMap<TempId, Ext>,
     residents: HashMap<ValueFingerprint, Ext>,
     roots: Vec<RootObservation>,
@@ -169,6 +259,35 @@ impl Machine<'_> {
                     value,
                 });
             }
+            EvalOp::BatchAccumulate {
+                coefficient_desc, ..
+            } => {
+                let mut contribution = self.acc.ok_or(PlanInterpError::MissingAccumulator)?;
+                if let Some(desc) = coefficient_desc {
+                    let context = self
+                        .backward
+                        .ok_or(PlanInterpError::BackwardSpecialRequiresBindings { desc: *desc })?;
+                    contribution.mul_assign(&resolve_backward_special(
+                        *desc,
+                        context.distilled,
+                        context.specials,
+                        self.resolvers,
+                    )?);
+                }
+                self.batch_acc.add_assign(&contribution);
+                self.batch_sinks += 1;
+            }
+            EvalOp::ReturnBatch { root } => {
+                if self.batch_sinks == 0 {
+                    return Err(PlanInterpError::SinkFreeBatch);
+                }
+                self.roots.push(RootObservation {
+                    root_id: None,
+                    root: root.clone(),
+                    sink: None,
+                    value: self.batch_acc,
+                });
+            }
             EvalOp::ReturnAcc { root } => {
                 let value = self.acc.ok_or(PlanInterpError::MissingAccumulator)?;
                 self.roots.push(RootObservation {
@@ -202,7 +321,10 @@ impl Machine<'_> {
                 Ok(value)
             }
             Operand::BackwardSpecial { desc } => {
-                Err(PlanInterpError::BackwardSpecialRequiresBindings { desc })
+                let context = self
+                    .backward
+                    .ok_or(PlanInterpError::BackwardSpecialRequiresBindings { desc })?;
+                resolve_backward_special(desc, context.distilled, context.specials, self.resolvers)
             }
         }
     }

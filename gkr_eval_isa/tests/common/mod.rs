@@ -25,6 +25,7 @@ use cs::gkr_compiler::dag_ir::{
     bwd_roots, BatchingOrder, BwdRegime, ChallengeKey, ChallengePower, ClaimInfo, FieldKind, Root,
     RootGroup, RootId, RootOrigin, RootSlot, SiteKey, SourceId, SourceInfo,
 };
+use gkr_eval_isa::bwd::batch::{unpack_batch_dst, BATCH_COEFFICIENT_ONE};
 use gkr_eval_isa::bwd::compile::{compile_distilled_legacy_only, BwdCompiledLayer};
 use gkr_eval_isa::bwd::distill::{bind, distill, distilled_site_domain, DistilledLayer};
 use gkr_eval_isa::bwd::interp::{interpret_bwd_row, role_combine, sumcheck_fold_point, Role};
@@ -32,7 +33,7 @@ use gkr_eval_isa::bwd::source::{BwdSpecial, FoldState, MaterializationPolicy, Or
 use gkr_eval_isa::fwd::compile::{build_cross_layer_field_map, SiteDecisions};
 use gkr_eval_isa::fwd::encode::{decode, encode as encode_result};
 use gkr_eval_isa::fwd::error::CompileError;
-use gkr_eval_isa::fwd::isa::{Instr, OperandLine, Program};
+use gkr_eval_isa::fwd::isa::{Instr, MovDir, OperandLine, Program};
 
 /// The cross-layer field map threaded into `distill` / `compile` (the width oracle
 /// for cross-layer reads). Same shape as `build_cross_layer_field_map`'s output.
@@ -201,7 +202,11 @@ impl<'a> CacheConsistentResolvers<'a> {
         for (expr, fence) in bwd_cache_fences(layer) {
             fences_by_place.entry(fence.place).or_insert(expr);
         }
-        Self { layer, fences_by_place, inner: SyntheticResolvers }
+        Self {
+            layer,
+            fences_by_place,
+            inner: SyntheticResolvers,
+        }
     }
 
     /// Number of distinct fenced cache columns exercised by this layer.
@@ -244,10 +249,13 @@ impl ChallengeResolver for CacheConsistentResolvers<'_> {
 }
 
 /// Bundle a `CacheConsistentResolvers` into a `Resolvers` (all four sides).
-pub fn cache_consistent_resolvers<'a>(
-    c: &'a CacheConsistentResolvers<'a>,
-) -> Resolvers<'a> {
-    Resolvers { read: c, lookup: c, virtual_setup: c, challenge: c }
+pub fn cache_consistent_resolvers<'a>(c: &'a CacheConsistentResolvers<'a>) -> Resolvers<'a> {
+    Resolvers {
+        read: c,
+        lookup: c,
+        virtual_setup: c,
+        challenge: c,
+    }
 }
 
 // ── Fixture / schedule loading ────────────────────────────────────────────────
@@ -293,7 +301,11 @@ pub fn schedule_stem(name: &str) -> &str {
 /// and return `(dag, schedule, artifact)`.
 pub fn load_dag_sched(
     name: &str,
-) -> (DagCircuit, CircuitSchedule, GKRCircuitArtifact<BabyBearField>) {
+) -> (
+    DagCircuit,
+    CircuitSchedule,
+    GKRCircuitArtifact<BabyBearField>,
+) {
     let artifact = load_fixture(name);
     let dag = lower_dag(&artifact).unwrap_or_else(|e| panic!("[{name}] lower_dag: {e}"));
     validate(&dag).unwrap_or_else(|e| panic!("[{name}] validate(dag): {e}"));
@@ -333,8 +345,15 @@ pub fn sample_rows(n: usize) -> Vec<usize> {
 /// `beta^i` as the distilled spine resolves it (i >= 1): power `One` at i == 1,
 /// `Static(i)` beyond — mirrors `distill`'s alpha-spine construction.
 fn beta_i(r: &Resolvers<'_>, i: usize) -> Ext {
-    let power = if i == 1 { ChallengePower::One } else { ChallengePower::Static(i as u32) };
-    r.challenge.challenge(&ChallengeRef { key: ChallengeKey::ClaimBatching, power })
+    let power = if i == 1 {
+        ChallengePower::One
+    } else {
+        ChallengePower::Static(i as u32)
+    };
+    r.challenge.challenge(&ChallengeRef {
+        key: ChallengeKey::ClaimBatching,
+        power,
+    })
 }
 
 // A resolver whose reads ARE the depth-`round` fold of the ORIGINALS (`orig`),
@@ -361,7 +380,13 @@ impl VirtualSetupResolver for BufferAt<'_> {
     }
 }
 impl LookupResolver for BufferAt<'_> {
-    fn lookup(&self, kind: &LookupValueKind, set_index: usize, evaluated_query: Ext, row: usize) -> Bf {
+    fn lookup(
+        &self,
+        kind: &LookupValueKind,
+        set_index: usize,
+        evaluated_query: Ext,
+        row: usize,
+    ) -> Bf {
         self.orig.lookup(kind, set_index, evaluated_query, row)
     }
 }
@@ -371,7 +396,12 @@ impl ChallengeResolver for BufferAt<'_> {
     }
 }
 fn buffer_resolvers<'a>(b: &'a BufferAt<'a>) -> Resolvers<'a> {
-    Resolvers { read: b, lookup: b, virtual_setup: b, challenge: b }
+    Resolvers {
+        read: b,
+        lookup: b,
+        virtual_setup: b,
+        challenge: b,
+    }
 }
 
 /// Evaluate canonical expr `e` at (`regime`, `role`, `row`, `round`), applying the
@@ -395,9 +425,9 @@ fn eval_oracle(
     }
     let v = match &layer.exprs[e.0 as usize] {
         Expr::Source(sid) => match &layer.sources[sid.0 as usize].kind {
-            SourceKind::LookupValue { query, .. } => {
-                eval_oracle(layer, *query, regime, role, row, round, ch, orig, plain, memo)
-            }
+            SourceKind::LookupValue { query, .. } => eval_oracle(
+                layer, *query, regime, role, row, round, ch, orig, plain, memo,
+            ),
             SourceKind::Read { place } => {
                 let depth = if regime == BwdRegime::Ext { round } else { 0 };
                 let base = |z: usize| orig.read(place, z);
@@ -419,7 +449,9 @@ fn eval_oracle(
             let ch_ids = children.clone();
             let mut acc = Ext::ZERO;
             for c in ch_ids {
-                acc.add_assign(&eval_oracle(layer, c, regime, role, row, round, ch, orig, plain, memo));
+                acc.add_assign(&eval_oracle(
+                    layer, c, regime, role, row, round, ch, orig, plain, memo,
+                ));
             }
             acc
         }
@@ -427,7 +459,9 @@ fn eval_oracle(
             let ch_ids = children.clone();
             let mut acc = Ext::ONE;
             for c in ch_ids {
-                acc.mul_assign(&eval_oracle(layer, c, regime, role, row, round, ch, orig, plain, memo));
+                acc.mul_assign(&eval_oracle(
+                    layer, c, regime, role, row, round, ch, orig, plain, memo,
+                ));
             }
             acc
         }
@@ -453,7 +487,9 @@ fn oracle_root(
     let mut acc = Ext::ZERO;
     for (i, &rid) in bwd_roots(layer).iter().enumerate() {
         let expr = layer.roots[rid.0 as usize].expr;
-        let mut t = eval_oracle(layer, expr, regime, role, row, round, ch, orig, plain, &mut memo);
+        let mut t = eval_oracle(
+            layer, expr, regime, role, row, round, ch, orig, plain, &mut memo,
+        );
         if i >= 1 {
             t.mul_assign(&beta_i(plain, i));
         }
@@ -487,7 +523,6 @@ fn count_desc_uses(p: &Program, desc: u16) -> usize {
     });
     n
 }
-
 
 /// Load fixture `name` → lower/validate the DAG → return layer `li` and the circuit's
 /// cross-layer field map (for `distill`). The reusable per-fixture entry for later SP1
@@ -525,8 +560,10 @@ pub fn assert_bwd_value_parity(c: &BwdCompiledLayer, d: &DistilledLayer, oracle_
         MaterializationPolicy::LazyUpTo(1),
         MaterializationPolicy::LazyUpTo(2),
     ];
-    let round_challenges: Vec<Ext> =
-        [3u32, 5, 7].into_iter().map(|k| lift(Bf::from_u32_with_reduction(k))).collect();
+    let round_challenges: Vec<Ext> = [3u32, 5, 7]
+        .into_iter()
+        .map(|k| lift(Bf::from_u32_with_reduction(k)))
+        .collect();
     let syn = SyntheticResolvers;
     let plain = resolvers(&syn);
     let cc = CacheConsistentResolvers::new(oracle_layer);
@@ -542,7 +579,10 @@ pub fn assert_bwd_value_parity(c: &BwdCompiledLayer, d: &DistilledLayer, oracle_
     let mut used: BTreeSet<u16> = BTreeSet::new();
     for_each_operand(&c.program, |op| {
         if let OperandLine::Special { desc } = op {
-            assert!((*desc as usize) < n_specials, "Special desc {desc} >= specials.len() {n_specials}");
+            assert!(
+                (*desc as usize) < n_specials,
+                "Special desc {desc} >= specials.len() {n_specials}"
+            );
             used.insert(*desc);
         }
     });
@@ -555,28 +595,72 @@ pub fn assert_bwd_value_parity(c: &BwdCompiledLayer, d: &DistilledLayer, oracle_
             used.insert(desc);
         }
     }
+    if let Some(desc) = c.acc_init_desc {
+        assert!(
+            (desc as usize) < n_specials,
+            "AccInit desc {desc} >= specials.len() {n_specials}"
+        );
+        used.insert(desc);
+    }
+    for instr in &c.program.instrs {
+        let coefficient_desc = if let Instr::Mov {
+            dir: MovDir::DstFromAcc,
+            dst: Some(dst),
+            ..
+        } = instr
+        {
+            unpack_batch_dst(dst).filter(|&desc| desc != BATCH_COEFFICIENT_ONE)
+        } else {
+            None
+        };
+        if let Some(desc) = coefficient_desc {
+            assert!(
+                (desc as usize) < n_specials,
+                "batch coefficient desc {desc} >= specials.len() {n_specials}"
+            );
+            used.insert(desc);
+        }
+    }
     for i in 0..n_specials as u16 {
-        assert!(used.contains(&i), "orphan descriptor {i} of {n_specials} is never referenced");
+        assert!(
+            used.contains(&i),
+            "orphan descriptor {i} of {n_specials} is never referenced"
+        );
     }
 
     // (iii) value parity: interp == oracle for every round/role/row, all policies identical.
     for &round in ROUNDS {
         for &role in ROLES {
             for &row in ROWS {
-                let expected =
-                    oracle_root(oracle_layer, d.regime, role, row, round, &round_challenges, &syn, &plain);
+                let expected = oracle_root(
+                    oracle_layer,
+                    d.regime,
+                    role,
+                    row,
+                    round,
+                    &round_challenges,
+                    &syn,
+                    &plain,
+                );
                 let mut first: Option<Ext> = None;
                 for &policy in POLICIES {
                     let bindings = bind(d, policy, round);
-                    let materialized =
-                        bindings.states.iter().any(|s| matches!(s, FoldState::Materialized));
-                    let buf = BufferAt { orig: &cc, round, ch: &round_challenges };
+                    let materialized = bindings
+                        .states
+                        .iter()
+                        .any(|s| matches!(s, FoldState::Materialized));
+                    let buf = BufferAt {
+                        orig: &cc,
+                        round,
+                        ch: &round_challenges,
+                    };
                     let buf_r = buffer_resolvers(&buf);
                     let run_r = if materialized { &buf_r } else { &cc_r };
-                    let got = interpret_bwd_row(c, d, &bindings, run_r, role, row, &round_challenges)
-                        .unwrap_or_else(|e| {
-                            panic!("interp round {round} {role:?} row {row} {policy:?}: {e:?}")
-                        });
+                    let got =
+                        interpret_bwd_row(c, d, &bindings, run_r, role, row, &round_challenges)
+                            .unwrap_or_else(|e| {
+                                panic!("interp round {round} {role:?} row {row} {policy:?}: {e:?}")
+                            });
                     assert_eq!(
                         got, expected,
                         "value mismatch: round {round} {role:?} row {row} {policy:?} interp != oracle"
@@ -597,11 +681,17 @@ pub fn assert_bwd_value_parity(c: &BwdCompiledLayer, d: &DistilledLayer, oracle_
 // ── synthetic DistilledLayer builders ─────────────────────────────────────────
 
 fn read_src(column: usize) -> SourceInfo {
-    SourceInfo { kind: SourceKind::Read { place: ReadPlace::BaseLayerWitness { column } } }
+    SourceInfo {
+        kind: SourceKind::Read {
+            place: ReadPlace::BaseLayerWitness { column },
+        },
+    }
 }
 
 fn const_src(value: u32) -> SourceInfo {
-    SourceInfo { kind: SourceKind::Constant { value } }
+    SourceInfo {
+        kind: SourceKind::Constant { value },
+    }
 }
 
 /// Append a fresh `Read` leaf (its own unique column == its source index) and return
@@ -651,7 +741,13 @@ fn raw_layer(sources: Vec<SourceInfo>, exprs: Vec<Expr>, roots: Vec<Root>) -> Da
             .map(|(i, _)| RootId(i as u32))
             .collect(),
     };
-    DagLayer { sources, exprs, roots, batching, resolutions: BTreeMap::new() }
+    DagLayer {
+        sources,
+        exprs,
+        roots,
+        batching,
+        resolutions: BTreeMap::new(),
+    }
 }
 
 /// A wide pure-ADD reduction of `n` compound children (each `Add(read, read)`), nested
@@ -674,7 +770,12 @@ pub fn synthetic_wide_add_layer(n: usize) -> DistilledLayer {
     // so the wide `Add` above survives as a single nested spine TERM.
     let root1 = add_read(&mut sources, &mut exprs);
     let roots = vec![claim_only_root(root0, 0), claim_only_root(root1, 1)];
-    distill(&raw_layer(sources, exprs, roots), BwdRegime::Ext, &CrossFields::new(), None)
+    distill(
+        &raw_layer(sources, exprs, roots),
+        BwdRegime::Ext,
+        &CrossFields::new(),
+        None,
+    )
 }
 
 /// The MUL sibling of [`synthetic_wide_add_layer`]: a wide product of `n` compound
@@ -692,7 +793,12 @@ pub fn synthetic_wide_mul_layer(n: usize) -> DistilledLayer {
         gis.push(add_expr(&mut exprs, Expr::Add(vec![a, b])));
     }
     let root = add_expr(&mut exprs, Expr::Mul(gis));
-    distill(&raw_layer(sources, exprs, vec![claim_only_root(root, 0)]), BwdRegime::Ext, &CrossFields::new(), None)
+    distill(
+        &raw_layer(sources, exprs, vec![claim_only_root(root, 0)]),
+        BwdRegime::Ext,
+        &CrossFields::new(),
+        None,
+    )
 }
 
 /// A small mixed-field reduction reaching `compile_reduction_virtual` (nested under a
@@ -729,7 +835,12 @@ pub fn synthetic_mixed_field_micro_layer(ext_seed: bool) -> DistilledLayer {
     let root0 = add_expr(&mut exprs, Expr::Add(root0_children));
     let root1 = add_read(&mut sources, &mut exprs);
     let roots = vec![claim_only_root(root0, 0), claim_only_root(root1, 1)];
-    distill(&raw_layer(sources, exprs, roots), BwdRegime::Ext, &CrossFields::new(), None)
+    distill(
+        &raw_layer(sources, exprs, roots),
+        BwdRegime::Ext,
+        &CrossFields::new(),
+        None,
+    )
 }
 
 /// A wide-Add reduction whose DIRECT children include a shared fold leaf `S`
@@ -755,7 +866,12 @@ pub fn synthetic_wide_add_layer_with_shared_leaf() -> DistilledLayer {
     let root0 = add_expr(&mut exprs, Expr::Add(children));
     // root1 == S gives S fan-out 2 (so it enters the genome-scored site domain).
     let roots = vec![claim_only_root(root0, 0), claim_only_root(s, 1)];
-    distill(&raw_layer(sources, exprs, roots), BwdRegime::Ext, &CrossFields::new(), None)
+    distill(
+        &raw_layer(sources, exprs, roots),
+        BwdRegime::Ext,
+        &CrossFields::new(),
+        None,
+    )
 }
 
 /// `n_shared` Ext fold leaves `S_0..S_{n-1}`, each used in BOTH sibling reduction terms
@@ -773,10 +889,15 @@ pub fn synthetic_wide_add_layer_with_shared_leaf() -> DistilledLayer {
 /// the capacity refusal keccak's roomy b16 cannot produce (CS-M4 Task 1 finding). Reused
 /// by Task 5's terminal-normalize stranded-retain test.
 pub fn synthetic_refusable_whole_origin_layer(n_shared: usize) -> DistilledLayer {
-    assert!(n_shared >= 2, "need >=2 shared leaves so one can realize while another refuses");
+    assert!(
+        n_shared >= 2,
+        "need >=2 shared leaves so one can realize while another refuses"
+    );
     let mut sources = Vec::new();
     let mut exprs = Vec::new();
-    let shared: Vec<ExprId> = (0..n_shared).map(|_| add_read(&mut sources, &mut exprs)).collect();
+    let shared: Vec<ExprId> = (0..n_shared)
+        .map(|_| add_read(&mut sources, &mut exprs))
+        .collect();
     let seed_p = add_const(&mut sources, &mut exprs, 7); // Base-Plus preferred seed for P
     let seed_q = add_const(&mut sources, &mut exprs, 11); // distinct seed keeps Q != P
     let mut p_children = vec![seed_p];
@@ -804,7 +925,10 @@ pub fn synthetic_refusable_whole_origin_layer(n_shared: usize) -> DistilledLayer
 /// (`2·n_cxc` Ext cells, floor ≫ 16); streaming holds only one product's operands + the
 /// running partial (`acc + P + lhs_cell + rhs_cell = 16` lanes at the cxc peak). Ext regime.
 pub fn synthetic_fma_compound_products_layer(n_cxc: usize, n_leaf: usize) -> DistilledLayer {
-    assert!(n_leaf >= 2, "need >=2 leaf products so a non-seed leaf product stays FMA-fused");
+    assert!(
+        n_leaf >= 2,
+        "need >=2 leaf products so a non-seed leaf product stays FMA-fused"
+    );
     let mut sources = Vec::new();
     let mut exprs = Vec::new();
     let mut children: Vec<ExprId> = Vec::new();
@@ -828,7 +952,12 @@ pub fn synthetic_fma_compound_products_layer(n_cxc: usize, n_leaf: usize) -> Dis
     // A small second claim root forces `distill` to wrap the roots in a spine `Add`.
     let root1 = add_read(&mut sources, &mut exprs);
     let roots = vec![claim_only_root(root0, 0), claim_only_root(root1, 1)];
-    distill(&raw_layer(sources, exprs, roots), BwdRegime::Ext, &CrossFields::new(), None)
+    distill(
+        &raw_layer(sources, exprs, roots),
+        BwdRegime::Ext,
+        &CrossFields::new(),
+        None,
+    )
 }
 
 /// A shared-compound cone with genuine fan-out-2 nesting, for Task-8 removal-set
@@ -874,8 +1003,10 @@ pub fn synthetic_shared_compound_layer() -> DistilledLayer {
 /// the site-domain `Add`; `W` is the site-domain `Mul` whose children include `U`;
 /// `V` is the site-domain `Mul` whose children include `W`.
 pub fn find_shared_compounds(d: &DistilledLayer) -> (ExprId, ExprId, ExprId) {
-    let domain: BTreeSet<ExprId> =
-        distilled_site_domain(d).into_iter().map(|s| s.value).collect();
+    let domain: BTreeSet<ExprId> = distilled_site_domain(d)
+        .into_iter()
+        .map(|s| s.value)
+        .collect();
     let is_mul_with = |parent: ExprId, child: ExprId| -> bool {
         matches!(&d.layer.exprs[parent.0 as usize], Expr::Mul(ch) if ch.contains(&child))
     };
@@ -903,9 +1034,9 @@ pub fn find_shared_compounds(d: &DistilledLayer) -> (ExprId, ExprId, ExprId) {
 fn find_read_leaf(layer: &DagLayer, column: usize) -> Option<ExprId> {
     layer.exprs.iter().enumerate().find_map(|(i, e)| match e {
         Expr::Source(sid) => match &layer.sources[sid.0 as usize].kind {
-            SourceKind::Read { place: ReadPlace::BaseLayerWitness { column: c } } if *c == column => {
-                Some(ExprId(i as u32))
-            }
+            SourceKind::Read {
+                place: ReadPlace::BaseLayerWitness { column: c },
+            } if *c == column => Some(ExprId(i as u32)),
             _ => None,
         },
         _ => None,
@@ -916,7 +1047,8 @@ fn find_read_leaf(layer: &DagLayer, column: usize) -> Option<ExprId> {
 /// pinned to a dominating priority so `try_admit` keeps it resident mid-reduction (the
 /// searched-path admission the Global Constraint requires to be value-safe in Task 1).
 pub fn decisions_admitting_a_shared_leaf(d: &DistilledLayer) -> SiteDecisions {
-    let shared = find_read_leaf(&d.layer, SHARED_COL).expect("shared leaf present in distilled layer");
+    let shared =
+        find_read_leaf(&d.layer, SHARED_COL).expect("shared leaf present in distilled layer");
     SiteDecisions::new(distilled_site_domain(d).into_iter().map(|k| {
         let p = if k.value == shared { 1_000.0 } else { 1.0 };
         (k, p)
@@ -959,7 +1091,10 @@ pub fn program_admits_shared_leaf(c: &BwdCompiledLayer) -> bool {
 /// read of ITS cell), so the strict drop IS the shared-leaf-scoped resident-read count — no
 /// whole-program Smem tally needed. The drop is specific to the shared leaf (its priority
 /// alone is pinned), so it directly witnesses its admission.
-pub fn program_admits_shared_leaf_vs_baseline(c: &BwdCompiledLayer, c_none: &BwdCompiledLayer) -> bool {
+pub fn program_admits_shared_leaf_vs_baseline(
+    c: &BwdCompiledLayer,
+    c_none: &BwdCompiledLayer,
+) -> bool {
     shared_leaf_fold_uses(c) < shared_leaf_fold_uses(c_none)
 }
 

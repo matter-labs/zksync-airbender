@@ -1,8 +1,12 @@
 use std::collections::HashMap;
 
-use cs::gkr_compiler::dag_ir::{DagLayer, Ext, Resolvers, RootId, SinkInfo, eval_layer_expr};
+use cs::gkr_compiler::dag_ir::{eval_layer_expr, DagLayer, Ext, Resolvers, RootId, SinkInfo};
 use field::Field;
 
+use crate::bwd::distill::DistilledLayer;
+use crate::bwd::source::BwdSpecialTable;
+
+use super::interp::resolve_backward_special;
 use super::{
     CacheStoreFrom, MaterializeFrom, Operand, PackedEvalOp, PackedEvalPlan, PlanExecution,
     PlanInterpError, RootKey, RootObservation, TempId, ValueFingerprint, ValueRef,
@@ -21,7 +25,50 @@ pub fn interpret_packed_plan(
         layer,
         row,
         resolvers,
+        backward: None,
         acc: None,
+        batch_acc: Ext::ZERO,
+        batch_sinks: 0,
+        temps: HashMap::new(),
+        residents: HashMap::new(),
+        roots: Vec::new(),
+        stored_values: Vec::new(),
+    };
+    for op in &plan.ops {
+        machine.execute(op)?;
+    }
+    if !machine.temps.is_empty() {
+        let mut live: Vec<TempId> = machine.temps.keys().copied().collect();
+        live.sort_by_key(|temp| temp.0);
+        return Err(PlanInterpError::LiveTempsAtEnd(live));
+    }
+    Ok(PlanExecution {
+        roots: machine.roots,
+        residents: machine.residents,
+        stored_values: machine.stored_values,
+    })
+}
+
+pub fn interpret_backward_packed_plan(
+    plan: &PackedEvalPlan,
+    distilled: &DistilledLayer,
+    specials: &BwdSpecialTable,
+    acc_init_desc: Option<u16>,
+    row: usize,
+    resolvers: &Resolvers<'_>,
+) -> Result<PlanExecution, PlanInterpError> {
+    let batch_acc = acc_init_desc
+        .map(|desc| resolve_backward_special(desc, distilled, specials, resolvers))
+        .transpose()?
+        .unwrap_or(Ext::ZERO);
+    let mut machine = PackedMachine {
+        layer: &distilled.layer,
+        row,
+        resolvers,
+        backward: Some((distilled, specials)),
+        acc: None,
+        batch_acc,
+        batch_sinks: 0,
         temps: HashMap::new(),
         residents: HashMap::new(),
         roots: Vec::new(),
@@ -46,7 +93,10 @@ struct PackedMachine<'a> {
     layer: &'a DagLayer,
     row: usize,
     resolvers: &'a Resolvers<'a>,
+    backward: Option<(&'a DistilledLayer, &'a BwdSpecialTable)>,
     acc: Option<Ext>,
+    batch_acc: Ext,
+    batch_sinks: usize,
     temps: HashMap<TempId, Ext>,
     residents: HashMap<ValueFingerprint, Ext>,
     roots: Vec<RootObservation>,
@@ -135,6 +185,31 @@ impl PackedMachine<'_> {
                 };
                 self.observe(Some(*root_id), root, Some(sink.clone()), value);
             }
+            PackedEvalOp::BatchAccumulate {
+                coefficient_desc, ..
+            } => {
+                let contribution = self.acc.ok_or(PlanInterpError::MissingAccumulator)?;
+                let mut contribution = contribution;
+                if let Some(desc) = coefficient_desc {
+                    let (distilled, specials) = self
+                        .backward
+                        .ok_or(PlanInterpError::BackwardSpecialRequiresBindings { desc: *desc })?;
+                    contribution.mul_assign(&resolve_backward_special(
+                        *desc,
+                        distilled,
+                        specials,
+                        self.resolvers,
+                    )?);
+                }
+                self.batch_acc.add_assign(&contribution);
+                self.batch_sinks += 1;
+            }
+            PackedEvalOp::ReturnBatch { root } => {
+                if self.batch_sinks == 0 {
+                    return Err(PlanInterpError::SinkFreeBatch);
+                }
+                self.observe(None, root, None, self.batch_acc);
+            }
             PackedEvalOp::ReturnAcc { root } => {
                 let value = self.acc.ok_or(PlanInterpError::MissingAccumulator)?;
                 self.observe(None, root, None, value);
@@ -178,7 +253,10 @@ impl PackedMachine<'_> {
                 Ok(value)
             }
             Operand::BackwardSpecial { desc } => {
-                Err(PlanInterpError::BackwardSpecialRequiresBindings { desc })
+                let (distilled, specials) = self
+                    .backward
+                    .ok_or(PlanInterpError::BackwardSpecialRequiresBindings { desc })?;
+                resolve_backward_special(desc, distilled, specials, self.resolvers)
             }
         }
     }

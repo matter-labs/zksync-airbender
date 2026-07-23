@@ -27,17 +27,17 @@ mod common;
 
 use std::collections::BTreeMap;
 
-use common::{FIXTURES, assert_bwd_value_parity, layers_with_bwd_roots};
+use common::{assert_bwd_value_parity, layers_with_bwd_roots, FIXTURES};
 use cs::gkr_compiler::dag_ir::{BwdRegime, Expr, ExprId};
 use gkr_eval_isa::bwd::compile::{
-    BwdCompiledLayer, FragmentBackend, compile_distilled_fragments_planned,
+    compile_distilled_fragments_planned, BwdCompiledLayer, FragmentBackend,
 };
 use gkr_eval_isa::bwd::construct::construct_fragment_order;
-use gkr_eval_isa::bwd::distill::{DistilledLayer, distill, stable_distilled_site_domain};
+use gkr_eval_isa::bwd::distill::{distill, stable_distilled_site_domain, DistilledLayer};
 use gkr_eval_isa::bwd::fif::coordinate_correct_frozen_with_backend;
-use gkr_eval_isa::bwd::plan::{BwdOccurrencePlan, PlanAction, PlanEntry, plan_entries_fnv};
-use gkr_eval_isa::bwd::trace::{BwdCompileTrace, BwdEvent, BwdServedFrom, FrozenDemand, certify};
-use gkr_eval_isa::eval_plan::{CompiledBackwardEvaluation, compile_backward_fragments_replayed};
+use gkr_eval_isa::bwd::plan::{plan_entries_fnv, BwdOccurrencePlan, PlanAction, PlanEntry};
+use gkr_eval_isa::bwd::trace::{certify, BwdCompileTrace, BwdEvent, BwdServedFrom, FrozenDemand};
+use gkr_eval_isa::eval_plan::{compile_backward_fragments_replayed, CompiledBackwardEvaluation};
 use gkr_eval_isa::fwd::encode::{decode, encode};
 use gkr_eval_isa::fwd::error::CompileError;
 
@@ -659,11 +659,11 @@ fn fragment_planned_replay_and_retention_gate() {
             leaf_candidates: 347,
             compound_candidates: 65,
             compound_suppressed: 15,
-            leaf_incumbent_accepted: 282,
+            leaf_incumbent_accepted: 347,
             compound_incumbent_accepted: 65,
-            leaf_shared_realized: 282,
+            leaf_shared_realized: 347,
             compound_shared_realized: 65,
-            incumbent_compile_r0: 65,
+            incumbent_compile_r0: 0,
             incumbent_diverged: 0,
             incumbent_refused_or_infeasible: 0,
         },
@@ -700,7 +700,7 @@ fn fragment_planned_replay_and_retention_gate() {
     );
     assert_eq!(
         r0_corpus.incumbent_accepted() + ext_corpus.incumbent_accepted(),
-        881,
+        946,
         "the incumbent-accepted schedule corpus silently changed"
     );
 

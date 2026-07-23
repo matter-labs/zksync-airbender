@@ -10,23 +10,24 @@ pub mod schedule;
 
 pub use self::arith::build_cross_layer_field_map;
 pub use self::decisions::SiteDecisions;
+use self::lower::lower_layer_virtual;
 /// Task 4 (CS-M0): the plan-driven bwd lowering input, threaded by `bwd::compile`.
 pub(crate) use self::lower::PlanInput;
-use self::lower::lower_layer_virtual;
 use self::lower::{VDst, VInstr, VirtualRootOutput};
 pub use self::place::MoveCtx;
 use self::place::{
-    PlacementInput, RelocStep, ResidencyStep, VInstrKind, ValueId, VirtualOp, plan_placement,
-    plan_placement_with_peak,
+    plan_placement, plan_placement_with_peak, PlacementInput, RelocStep, ResidencyStep, VInstrKind,
+    ValueId, VirtualOp,
 };
-use super::binding::{BackingKey, SourceMarkerMode, bind_final_sources};
+use super::binding::{bind_final_sources, BackingKey, SourceMarkerMode};
 use super::context::{
-    CompileTrace, CompiledLayer, DagForwardContext, ForwardAction, OutputCell, RootOutput,
-    build_forward_actions,
+    build_forward_actions, CompileTrace, CompiledLayer, DagForwardContext, ForwardAction,
+    OutputCell, RootOutput,
 };
 use super::error::CompileError;
 use super::isa::{DstLine, Instr, LdcSub, MovDir, OperandField, OperandLine, Program};
 use super::stats::{CompileStats, OP_ADD, OP_FMA, OP_MOV, OP_MUL};
+use crate::bwd::batch::{pack_batch_dst, BATCH_COEFFICIENT_MAX, BATCH_COEFFICIENT_ONE};
 use crate::bwd::trace::BwdCompileTrace;
 use cs::definitions::GKRAddress;
 use cs::gkr_compiler::dag_ir::{
@@ -83,8 +84,8 @@ fn tally_operand(
     match classify_operand(op) {
         OperandClass::Dram => {
             stats.dram_reads += 1; // per-operand diagnostic, unchanged
-            // Every `Global` operand is now a real DRAM read: VirtualSetup no longer has a
-            // Global backing (it lowers to a computed `Special`), so no exemption is needed.
+                                   // Every `Global` operand is now a real DRAM read: VirtualSetup no longer has a
+                                   // Global backing (it lowers to a computed `Special`), so no exemption is needed.
             stats.dram_traffic += if field == OperandField::Ext { 4 } else { 1 };
         }
         OperandClass::Ldc => stats.ldc_reads += 1,
@@ -690,8 +691,8 @@ pub(crate) fn compile_bwd_program(
 /// instead of the spine-accumulation term loop, and one placement step is minted per
 /// SCHEDULE POSITION (`n_steps = table.fragments.len().max(1)`). The gene channel is
 /// term-only in M5a, so there is deliberately no `streams` parameter (fragment lowering is
-/// uncached or plan-driven, never gene-driven). `coeff_descs` / `acc_init_desc` are the
-/// caller-owned (compile-local CLONED table) fragment→descriptor map, passed immutably.
+/// uncached or plan-driven, never gene-driven). `coeff_descs` is the caller-owned
+/// fragment→descriptor map, passed immutably.
 /// Scaffolding is duplicated rather than shared with `compile_bwd_program` so that function
 /// stays byte-for-byte untouched (the fwd seams are additive-only).
 #[allow(clippy::too_many_arguments)]
@@ -700,7 +701,6 @@ pub(crate) fn compile_bwd_fragments_program(
     table: &crate::bwd::fragment::FragmentTable,
     order: Option<&[usize]>,
     coeff_descs: &[Option<u16>],
-    acc_init_desc: Option<u16>,
     ctx: &mut DagForwardContext,
     leaf_descs: &BTreeMap<ExprId, u16>,
     field_overrides: &BTreeMap<ExprId, FieldKind>,
@@ -710,13 +710,13 @@ pub(crate) fn compile_bwd_fragments_program(
     trace: Option<BwdCompileTrace>,
     plan: Option<self::lower::PlanInput>,
 ) -> Result<(Program, usize, Option<BwdCompileTrace>), CompileError> {
-    // Phase 1 — the bwd fragment-decomposition driver (result-in-acc terminal convention).
+    // Phase 1 — the bwd fragment-decomposition driver. Every fragment is computed
+    // independently, then emitted through a semantic batch-accumulation sink.
     let (vinstrs, step_of, trace) = self::lower::lower_bwd_fragments_virtual(
         layer,
         table,
         order,
         coeff_descs,
-        acc_init_desc,
         ctx,
         leaf_descs,
         field_overrides,
@@ -1020,6 +1020,23 @@ fn materialize_vinstr(
                     slot: *slot,
                     col: *col,
                 }),
+                Some(VDst::BatchAccumulate { coefficient_desc }) => {
+                    let coefficient_desc = match coefficient_desc {
+                        Some(desc) if *desc <= BATCH_COEFFICIENT_MAX => *desc,
+                        Some(desc) => {
+                            return Err(CompileError::FieldMismatch(format!(
+                                "backward batch coefficient descriptor {desc:#06x} exceeds \
+                                 maximum {BATCH_COEFFICIENT_MAX:#06x}"
+                            )));
+                        }
+                        None => BATCH_COEFFICIENT_ONE,
+                    };
+                    Some(pack_batch_dst(coefficient_desc).map_err(|error| {
+                        CompileError::FieldMismatch(format!(
+                            "invalid backward batch coefficient descriptor: {error:?}"
+                        ))
+                    })?)
+                }
             };
             let src = match src {
                 None => None,
@@ -1120,8 +1137,29 @@ pub fn compile_circuit(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::bwd::batch::BATCH_COEFFICIENT_MAX;
     use cs::gkr_compiler::dag_ir::{BatchingOrder, Expr, Root, SourceId};
     use std::collections::BTreeMap;
+
+    #[test]
+    fn materialize_rejects_reserved_batch_coefficient_descriptor() {
+        let vi = VInstr::Mov {
+            dir: MovDir::DstFromAcc,
+            field: OperandField::Base,
+            dst: Some(VDst::BatchAccumulate {
+                coefficient_desc: Some(BATCH_COEFFICIENT_MAX + 1),
+            }),
+            src: None,
+            defines: None,
+            is_dram_read: false,
+        };
+
+        assert!(matches!(
+            materialize_vinstr(&vi, 0, &HashMap::new()),
+            Err(CompileError::FieldMismatch(message))
+                if message.contains("exceeds maximum")
+        ));
+    }
 
     /// Review finding (Task 6): a layer with a materialize-only root (a `Cache`
     /// root with no `claim`) and no atom roots has an empty `relation_units` —

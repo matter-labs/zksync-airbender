@@ -42,6 +42,7 @@
 use super::compile::BwdCompiledLayer;
 use super::distill::{BwdBindings, DistilledLayer};
 use super::source::{BwdSpecial, FoldState, OriginLeaf};
+use crate::bwd::batch::{unpack_batch_dst, BATCH_COEFFICIENT_ONE};
 use crate::fwd::error::InterpError;
 use crate::fwd::interp::smem_lane;
 use crate::fwd::isa::*;
@@ -271,13 +272,18 @@ fn resolve(
             match spec {
                 BwdSpecial::Coefficient { fragment } => {
                     let f = *fragment as usize;
-                    let recipe = d.fragments.fragments.get(f).map(|s| &s.recipe).ok_or_else(|| {
-                        InterpError::MalformedInstr(format!(
+                    let recipe =
+                        d.fragments
+                            .fragments
+                            .get(f)
+                            .map(|s| &s.recipe)
+                            .ok_or_else(|| {
+                                InterpError::MalformedInstr(format!(
                             "Coefficient desc {desc} names fragment {f}, but the distilled layer \
                              has {} fragment(s)",
                             d.fragments.fragments.len()
                         ))
-                    })?;
+                            })?;
                     return Ok(recipe.evaluate(&d.layer, r));
                 }
                 BwdSpecial::AccInit => return Ok(d.fragments.c_init.evaluate(&d.layer, r)),
@@ -303,7 +309,12 @@ fn resolve(
     }
 }
 
-fn write_dst(dst: &DstLine, field: OperandField, v: Ext, cells: &mut Vec<Ext>) {
+fn write_smem_dst(
+    dst: &DstLine,
+    field: OperandField,
+    v: Ext,
+    cells: &mut Vec<Ext>,
+) -> Result<(), InterpError> {
     match *dst {
         DstLine::Smem { cell } => {
             let lane = smem_lane(cell, field);
@@ -311,15 +322,16 @@ fn write_dst(dst: &DstLine, field: OperandField, v: Ext, cells: &mut Vec<Ext>) {
                 cells.resize(lane + 4, Ext::ZERO);
             }
             cells[lane] = v;
+            Ok(())
         }
-        // Bwd programs never emit GlobalMaterialize (result-in-acc convention);
-        // if one appears the program is malformed for the backward VM.
-        DstLine::GlobalMaterialize { .. } => {}
+        DstLine::GlobalMaterialize { .. } => Err(InterpError::MalformedInstr(
+            "DstFromSrc cannot target a backward batch sink".into(),
+        )),
     }
 }
 
 /// Interpret one backward row of `c` at evaluation point `role`, returning the
-/// distilled root's accumulated value (result-in-acc terminal convention).
+/// independently accumulated fragment batch.
 ///
 /// `bindings` supplies the per-descriptor [`FoldState`] for this round/policy
 /// (a signature extension over the Task-6 draft — REV2 moved `FoldState` out of
@@ -343,6 +355,23 @@ pub fn interpret_bwd_row(
     );
     let mut acc = Ext::ZERO;
     let mut cells: Vec<Ext> = vec![Ext::ZERO; c.budget.max(4)];
+    let mut batch_acc = if let Some(desc) = c.acc_init_desc {
+        resolve(
+            &OperandLine::Special { desc },
+            OperandField::Ext,
+            &cells,
+            c,
+            d,
+            bindings,
+            r,
+            role,
+            row,
+            round_challenges,
+        )?
+    } else {
+        Ext::ZERO
+    };
+    let mut batch_sinks = 0usize;
 
     macro_rules! res {
         ($op:expr, $field:expr) => {
@@ -373,11 +402,29 @@ pub fn interpret_bwd_row(
                     acc = res!(&src.unwrap(), *field);
                 }
                 MovDir::DstFromAcc => {
-                    write_dst(&dst.unwrap(), *field, acc, &mut cells);
+                    let dst = dst.as_ref().ok_or_else(|| {
+                        InterpError::MalformedInstr("DstFromAcc without destination".into())
+                    })?;
+                    if let Some(coefficient_desc) = unpack_batch_dst(dst) {
+                        let mut contribution = acc;
+                        if coefficient_desc != BATCH_COEFFICIENT_ONE {
+                            let coefficient = res!(
+                                &OperandLine::Special {
+                                    desc: coefficient_desc,
+                                },
+                                OperandField::Ext
+                            );
+                            contribution.mul_assign(&coefficient);
+                        }
+                        batch_acc.add_assign(&contribution);
+                        batch_sinks += 1;
+                    } else {
+                        write_smem_dst(dst, *field, acc, &mut cells)?;
+                    }
                 }
                 MovDir::DstFromSrc => {
                     let v = res!(&src.unwrap(), *field);
-                    write_dst(&dst.unwrap(), *field, v, &mut cells);
+                    write_smem_dst(&dst.unwrap(), *field, v, &mut cells)?;
                 }
             },
             Instr::Add {
@@ -435,7 +482,12 @@ pub fn interpret_bwd_row(
             }
         }
     }
-    Ok(acc)
+    if batch_sinks == 0 {
+        return Err(InterpError::MalformedInstr(
+            "backward program contains no batch sink".into(),
+        ));
+    }
+    Ok(batch_acc)
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -443,15 +495,16 @@ pub fn interpret_bwd_row(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::bwd::compile::compile_distilled;
+    use crate::bwd::batch::{pack_batch_dst, BATCH_COEFFICIENT_ONE};
+    use crate::bwd::compile::{compile_distilled, compile_distilled_fragments};
     use crate::bwd::distill::{bind, distill};
     use crate::bwd::fragment::{FragmentSpec, FragmentTable, MergedRecipe, ProductRecipe};
     use crate::bwd::source::MaterializationPolicy;
     use cs::gkr_compiler::dag_ir::{
-        BatchingOrder, ChallengeKey, ChallengePower, ChallengeRef, ClaimInfo, DagLayer, Expr,
-        ExprId, FieldKind, LookupValueKind, ReadPlace, ReadResolver, RootGroup, RootId, RootOrigin,
-        RootSlot, SinkInfo, SinkKind, SourceId, SourceInfo, SourceKind, VirtualSetupKind,
-        eval_layer_root,
+        eval_layer_root, BatchingOrder, ChallengeKey, ChallengePower, ChallengeRef, ClaimInfo,
+        DagLayer, Expr, ExprId, FieldKind, LookupValueKind, ReadPlace, ReadResolver, RootGroup,
+        RootId, RootOrigin, RootSlot, SinkInfo, SinkKind, SourceId, SourceInfo, SourceKind,
+        VirtualSetupKind,
     };
     use cs::gkr_compiler::dag_ir::{
         BwdRegime, ChallengeResolver, LookupResolver, Root, VirtualSetupResolver,
@@ -638,13 +691,13 @@ mod tests {
 
         // R0: leaf stays a Global backing.
         let d = distill(&l, BwdRegime::R0, &HashMap::new(), None);
-        let c = compile_distilled(&d, 16, None).expect("R0 compile");
+        let c = compile_distilled_fragments(&d, 16, None).expect("R0 compile");
         let b = bind(&d, MaterializationPolicy::AlwaysMaterialize, 0);
 
         // Ext: leaf becomes a FoldSource; round 0 binds LazyFromOriginals{0} =
         // one read per element = identical role math.
         let de = distill(&l, BwdRegime::Ext, &HashMap::new(), None);
-        let ce = compile_distilled(&de, 16, None).expect("Ext compile");
+        let ce = compile_distilled_fragments(&de, 16, None).expect("Ext compile");
         let be = bind(&de, MaterializationPolicy::AlwaysMaterialize, 0);
 
         for x in 0..5 {
@@ -733,19 +786,23 @@ mod tests {
         );
         assert!(coeff_desc as usize >= n_before);
 
+        c.acc_init_desc = Some(acc_desc);
         c.program = Program {
             instrs: vec![
                 Instr::Mov {
                     dir: MovDir::AccFromSrc,
-                    field: OperandField::Ext,
+                    field: OperandField::Base,
                     dst: None,
-                    src: Some(OperandLine::Special { desc: acc_desc }),
+                    src: Some(OperandLine::Ldc {
+                        sub: LdcSub::Special,
+                        idx: Special::One as u16,
+                    }),
                 },
-                Instr::Mul {
-                    field: OperandField::Ext,
-                    promote: false,
-                    negate_acc: false,
-                    operands: vec![OperandLine::Special { desc: coeff_desc }],
+                Instr::Mov {
+                    dir: MovDir::DstFromAcc,
+                    field: OperandField::Base,
+                    dst: Some(pack_batch_dst(coeff_desc).unwrap()),
+                    src: None,
                 },
             ],
         };
@@ -763,21 +820,138 @@ mod tests {
         let c_init_value = d.fragments.c_init.evaluate(&d.layer, &r);
         let coeff_value = d.fragments.fragments[0].recipe.evaluate(&d.layer, &r);
         let mut expected = c_init_value;
-        expected.mul_assign(&coeff_value);
+        expected.add_assign(&coeff_value);
 
-        // Concrete check: 5 * 3 = 15.
-        let mut fifteen = lift(Bf::from_u32_with_reduction(5));
-        fifteen.mul_assign(&lift(Bf::from_u32_with_reduction(3)));
-        assert_eq!(expected, fifteen, "recipe values must be 5 and 3");
+        // Concrete check: 5 + 3 = 8.
+        assert_eq!(
+            expected,
+            lift(Bf::from_u32_with_reduction(8)),
+            "recipe values must be 5 and 3"
+        );
 
         // Coefficients are role-invariant: both finite points give the product.
         for role in [Role::T0, Role::T2] {
             let got = interpret_bwd_row(&c, &d, &b, &r, role, 0, &[]).unwrap();
             assert_eq!(
                 got, expected,
-                "row must equal c_init * coeff at role {role:?}"
+                "row must equal c_init + coeff*one at role {role:?}"
             );
         }
+    }
+
+    #[test]
+    fn independent_base_and_ext_sinks_accumulate_with_and_without_coefficients() {
+        let l = bare_read_layer();
+        let mut d = distill(&l, BwdRegime::R0, &HashMap::new(), None);
+        let mut c = compile_distilled(&d, 16, None).expect("R0 compile");
+        d.layer = layer(
+            vec![
+                SourceInfo {
+                    kind: SourceKind::Constant { value: 5 },
+                },
+                SourceInfo {
+                    kind: SourceKind::Constant { value: 3 },
+                },
+            ],
+            vec![Expr::Source(SourceId(0)), Expr::Source(SourceId(1))],
+            vec![],
+        );
+        d.fragments = FragmentTable {
+            fragments: vec![FragmentSpec {
+                atoms: vec![ExprId(1)],
+                recipe: MergedRecipe {
+                    terms: vec![ProductRecipe {
+                        factors: vec![ExprId(1)],
+                    }],
+                },
+            }],
+            c_init: MergedRecipe {
+                terms: vec![ProductRecipe {
+                    factors: vec![ExprId(0)],
+                }],
+            },
+        };
+        let acc_desc = c.specials.intern(BwdSpecial::AccInit);
+        let coeff_desc = c.specials.intern(BwdSpecial::Coefficient { fragment: 0 });
+        c.acc_init_desc = Some(acc_desc);
+        c.program = Program {
+            instrs: vec![
+                Instr::Mov {
+                    dir: MovDir::AccFromSrc,
+                    field: OperandField::Base,
+                    dst: None,
+                    src: Some(OperandLine::Ldc {
+                        sub: LdcSub::Special,
+                        idx: Special::One as u16,
+                    }),
+                },
+                Instr::Mov {
+                    dir: MovDir::DstFromAcc,
+                    field: OperandField::Base,
+                    dst: Some(pack_batch_dst(BATCH_COEFFICIENT_ONE).unwrap()),
+                    src: None,
+                },
+                Instr::Mov {
+                    dir: MovDir::DstFromAcc,
+                    field: OperandField::Base,
+                    dst: Some(pack_batch_dst(coeff_desc).unwrap()),
+                    src: None,
+                },
+                Instr::Mov {
+                    dir: MovDir::AccFromSrc,
+                    field: OperandField::Ext,
+                    dst: None,
+                    src: Some(OperandLine::Special { desc: coeff_desc }),
+                },
+                Instr::Mov {
+                    dir: MovDir::DstFromAcc,
+                    field: OperandField::Ext,
+                    dst: Some(pack_batch_dst(BATCH_COEFFICIENT_ONE).unwrap()),
+                    src: None,
+                },
+                Instr::Mov {
+                    dir: MovDir::DstFromAcc,
+                    field: OperandField::Ext,
+                    dst: Some(pack_batch_dst(coeff_desc).unwrap()),
+                    src: None,
+                },
+            ],
+        };
+        let read = WitnessRead;
+        let ch = BetaChallenge(Ext::ZERO);
+        let r = resolvers(&read, &ch);
+        let b = bind(&d, MaterializationPolicy::AlwaysMaterialize, 0);
+
+        // 5 + 1 + 3*1 + 3 + 3*3 = 21.
+        let expected = lift(Bf::from_u32_with_reduction(21));
+        assert_eq!(
+            interpret_bwd_row(&c, &d, &b, &r, Role::T0, 0, &[]).unwrap(),
+            expected
+        );
+
+        c.acc_init_desc = None;
+        // Without c_init the four sinks contribute 16.
+        assert_eq!(
+            interpret_bwd_row(&c, &d, &b, &r, Role::T0, 0, &[]).unwrap(),
+            lift(Bf::from_u32_with_reduction(16))
+        );
+    }
+
+    #[test]
+    fn sink_free_backward_program_is_rejected() {
+        let l = bare_read_layer();
+        let d = distill(&l, BwdRegime::R0, &HashMap::new(), None);
+        let c = compile_distilled(&d, 16, None).expect("legacy compile");
+        let read = WitnessRead;
+        let ch = BetaChallenge(Ext::ZERO);
+        let r = resolvers(&read, &ch);
+        let b = bind(&d, MaterializationPolicy::AlwaysMaterialize, 0);
+
+        assert!(matches!(
+            interpret_bwd_row(&c, &d, &b, &r, Role::T0, 0, &[]),
+            Err(InterpError::MalformedInstr(message))
+                if message.contains("batch sink")
+        ));
     }
 
     // (b) ── lazy-from-originals == materialized-buffer ─────────────────────────
@@ -786,7 +960,7 @@ mod tests {
     fn lazy_from_originals_equals_materialized_buffer() {
         let l = bare_read_layer();
         let d = distill(&l, BwdRegime::Ext, &HashMap::new(), None);
-        let c = compile_distilled(&d, 16, None).expect("Ext compile");
+        let c = compile_distilled_fragments(&d, 16, None).expect("Ext compile");
 
         let r0 = lift(Bf::from_u32_with_reduction(13));
 
@@ -795,12 +969,10 @@ mod tests {
         let chl = BetaChallenge(Ext::ZERO);
         let r_orig = resolvers(&orig, &chl);
         let lazy_b = bind(&d, MaterializationPolicy::LazyUpTo(1), 1);
-        assert!(
-            lazy_b
-                .states
-                .iter()
-                .all(|s| *s == FoldState::LazyFromOriginals { depth: 1 })
-        );
+        assert!(lazy_b
+            .states
+            .iter()
+            .all(|s| *s == FoldState::LazyFromOriginals { depth: 1 }));
 
         // Materialized run: resolver serves the depth-1 BUFFER, state = Materialized.
         let buf = BufferRead { r0 };
@@ -827,7 +999,7 @@ mod tests {
     fn depth2_fold_matches_recurrence() {
         let l = bare_read_layer();
         let d = distill(&l, BwdRegime::Ext, &HashMap::new(), None);
-        let c = compile_distilled(&d, 16, None).expect("Ext compile");
+        let c = compile_distilled_fragments(&d, 16, None).expect("Ext compile");
         let read = WitnessRead;
         let ch = BetaChallenge(Ext::ZERO);
         let r = resolvers(&read, &ch);
@@ -856,11 +1028,10 @@ mod tests {
         };
 
         let b2 = bind(&d, MaterializationPolicy::LazyUpTo(2), 2);
-        assert!(
-            b2.states
-                .iter()
-                .all(|s| *s == FoldState::LazyFromOriginals { depth: 2 })
-        );
+        assert!(b2
+            .states
+            .iter()
+            .all(|s| *s == FoldState::LazyFromOriginals { depth: 2 }));
         for x in 0..4 {
             let got = interpret_bwd_row(&c, &d, &b2, &r, Role::T0, x, &[r0, r1]).unwrap();
             assert_eq!(got, f2(2 * x), "depth-2 T0 fold mismatch at row {x}");
@@ -904,7 +1075,7 @@ mod tests {
     fn alpha_spine_end_to_end_matches_role_wrapped_eval() {
         let canonical = three_root_layer();
         let d = distill(&canonical, BwdRegime::R0, &HashMap::new(), None);
-        let c = compile_distilled(&d, 16, None).expect("compile");
+        let c = compile_distilled_fragments(&d, 16, None).expect("compile");
         let b = bind(&d, MaterializationPolicy::AlwaysMaterialize, 0);
 
         let beta = lift(Bf::from_u32_with_reduction(11));
@@ -979,7 +1150,7 @@ mod tests {
     fn lazy_vs_fold_routes_through_resolver_override() {
         let l = vs_leaf_layer();
         let d = distill(&l, BwdRegime::Ext, &HashMap::new(), None);
-        let c = compile_distilled(&d, 16, None).expect("Ext compile");
+        let c = compile_distilled_fragments(&d, 16, None).expect("Ext compile");
 
         let kind = VirtualSetupKind::RangeCheck16Bits;
         let wrong = lift(Bf::from_u32_with_reduction(123_456));
@@ -1000,11 +1171,10 @@ mod tests {
         // Round 0: depth-0 fold (empty ch) → plain virtual_setup lifted. VS is
         // row-constant, so the role combine collapses to that single value.
         let b0 = bind(&d, MaterializationPolicy::LazyUpTo(2), 0);
-        assert!(
-            b0.states
-                .iter()
-                .all(|s| *s == FoldState::LazyFromOriginals { depth: 0 })
-        );
+        assert!(b0
+            .states
+            .iter()
+            .all(|s| *s == FoldState::LazyFromOriginals { depth: 0 }));
         let plain = lift(vs.virtual_setup(&kind, 0));
         for x in 0..4 {
             let t0 = interpret_bwd_row(&c, &d, &b0, &r, Role::T0, x, &[]).unwrap();
@@ -1021,11 +1191,10 @@ mod tests {
             lift(Bf::from_u32_with_reduction(5)),
         ];
         let b2 = bind(&d, MaterializationPolicy::LazyUpTo(2), 2);
-        assert!(
-            b2.states
-                .iter()
-                .all(|s| *s == FoldState::LazyFromOriginals { depth: 2 })
-        );
+        assert!(b2
+            .states
+            .iter()
+            .all(|s| *s == FoldState::LazyFromOriginals { depth: 2 }));
         for role in [Role::T0, Role::T2] {
             for x in 0..4 {
                 let got = interpret_bwd_row(&c, &d, &b2, &r, role, x, &rr).unwrap();
@@ -1041,7 +1210,7 @@ mod tests {
     fn short_round_challenges_is_malformed() {
         let l = bare_read_layer();
         let d = distill(&l, BwdRegime::Ext, &HashMap::new(), None);
-        let c = compile_distilled(&d, 16, None).expect("Ext compile");
+        let c = compile_distilled_fragments(&d, 16, None).expect("Ext compile");
         let read = WitnessRead;
         let ch = BetaChallenge(Ext::ZERO);
         let r = resolvers(&read, &ch);

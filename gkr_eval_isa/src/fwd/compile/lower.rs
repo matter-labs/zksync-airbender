@@ -37,11 +37,11 @@ use cs::gkr_compiler::dag_ir::{
 };
 
 use super::super::context::{DagForwardContext, ForwardAction};
-use super::super::isa::{LdcSub, MAX_ARITY, MovDir, OperandField, OperandLine, Sign, Special};
+use super::super::isa::{LdcSub, MovDir, OperandField, OperandLine, Sign, Special, MAX_ARITY};
 use super::analyze::{analyze_layer, materialize_descriptors};
 use super::arith::{
-    AdditiveChild, child_operand_field, child_operand_field_overridden, classify_additive_child,
-    field_from_u8, is_constant_one, is_neg_one_factor, is_zero_expr, sign_from_u8,
+    child_operand_field, child_operand_field_overridden, classify_additive_child, field_from_u8,
+    is_constant_one, is_neg_one_factor, is_zero_expr, sign_from_u8, AdditiveChild,
 };
 use super::decisions::{OccurrenceStreams, SiteDecisions};
 use super::place::{VInstrKind, ValueId, VirtualInstr, VirtualOp};
@@ -213,6 +213,7 @@ const INTERNAL_BASE: u32 = 1 << 30;
 pub(crate) enum VDst {
     Cell(ValueId),
     GlobalMaterialize { slot: u8, col: u16 },
+    BatchAccumulate { coefficient_desc: Option<u16> },
 }
 
 /// A rich virtual instruction. Operands are `VirtualOp` (Task 1) — symbolic `Value`s
@@ -1334,7 +1335,7 @@ impl<'a> VirtualLower<'a> {
         layer: &DagLayer,
         atom: ExprId,
         expected: OperandField,
-    ) -> Result<(), CompileError> {
+    ) -> Result<OperandField, CompileError> {
         // Demand site (mirrors `lower_operand_virtual`): one occurrence off the stream
         // (no-op under `decisions: None`), consumed before the hit/miss branch.
         self.serve_occurrence(atom, BwdServeKind::Operand);
@@ -1349,7 +1350,7 @@ impl<'a> VirtualLower<'a> {
             self.plan_release_if_pending(atom);
             let field = self.operand_field(layer, atom, expected);
             self.emit_init_field(op, field);
-            return Ok(());
+            return Ok(field);
         }
         // 2. Source / resolution leaf → one operand line; may be admitted to residency
         //    (`decisions`/`plan`). On admit, the eager cache write + evict-to-cell leaves
@@ -1369,12 +1370,12 @@ impl<'a> VirtualLower<'a> {
                     self.widths.insert(gen_id, field);
                     self.emit_evict_to_cell(gen_id, field);
                     self.defined.insert(atom);
-                    return Ok(());
+                    return Ok(field);
                 }
             }
             self.materialize_cache_root_from_src(atom, &op); // F3: eager cache write from source
             self.emit_init_field(op, field);
-            return Ok(());
+            return Ok(field);
         }
         // 3. Compound → recompute the cone into the acc, then finalize/admit EXACTLY as the
         //    operand path's compound arm — but WITHOUT its mandatory temp+reload when no
@@ -1388,46 +1389,37 @@ impl<'a> VirtualLower<'a> {
             self.emit_evict_to_cell(gen_id, field);
             self.defined.insert(atom); // idempotent under Decisions/plan (admit already did this)
         }
-        Ok(())
+        Ok(field)
     }
 
-    /// Lower ONE fragment's contribution into the acc: the product of its atoms (each
-    /// served via [`Self::lower_bwd_top_atom`]) times its coefficient recipe. On return
-    /// the acc holds `recipe · Π(atoms)`. Field semantics (normative): the running product
-    /// is CONSERVATIVELY spilled as Ext and mul-folded with `Mul{field: Ext}` — the operand
-    /// is typed Ext, the acc is promoted only when it must be, so a Base acc stays
-    /// value-preserving (the same conservative form the root driver uses for Ext partials).
-    /// A non-trivial recipe folds in the fragment's `Coefficient` special (Ext operand).
-    /// `atoms` is non-empty by construction (a fragment always keys on ≥1 non-scalar atom).
+    /// Lower one fragment's atom product into the ordinary accumulator, returning
+    /// the product's actual field. The batching coefficient is deliberately not
+    /// applied here; the fragment driver emits it as sink metadata.
     fn lower_bwd_fragment(
         &mut self,
         layer: &DagLayer,
         atoms: &[ExprId],
-        coeff: Option<u16>,
-    ) -> Result<(), CompileError> {
+    ) -> Result<FieldKind, CompileError> {
         // First atom seeds the acc (value-in-acc).
-        self.lower_bwd_top_atom(layer, atoms[0], OperandField::Ext)?;
-        // Further atoms: spill the running product (Ext), serve the atom into acc, mul-fold.
+        let mut acc_field = self.lower_bwd_top_atom(layer, atoms[0], OperandField::Ext)?;
+        // Further atoms: spill the running product, serve the atom into acc, and mul-fold.
         for &atom in &atoms[1..] {
-            let p = self.alloc_temp_evicting(OperandField::Ext)?;
-            self.lower_bwd_top_atom(layer, atom, OperandField::Ext)?;
+            let p = self.alloc_temp_evicting(acc_field)?;
+            let atom_field = self.lower_bwd_top_atom(layer, atom, OperandField::Ext)?;
             self.push_fold(
-                OperandField::Ext,
+                acc_field,
                 vec![VirtualOp::Value(p)],
                 /* is_add */ false,
                 Sign::Plus,
             );
+            if atom_field == OperandField::Ext {
+                acc_field = OperandField::Ext;
+            }
         }
-        // Non-trivial recipe → mul-fold the fragment's Coefficient special (Ext operand).
-        if let Some(desc) = coeff {
-            self.push_fold(
-                OperandField::Ext,
-                vec![VirtualOp::Special { desc }],
-                /* is_add */ false,
-                Sign::Plus,
-            );
-        }
-        Ok(())
+        Ok(match acc_field {
+            OperandField::Base => FieldKind::Base,
+            OperandField::Ext => FieldKind::Ext,
+        })
     }
 
     // ── expression lowering into the accumulator (mirrors arith::compile_expr) ────
@@ -1904,7 +1896,7 @@ impl<'a> VirtualLower<'a> {
         let lhs_op = self.lower_operand_virtual(layer, lhs, expected)?;
         let rhs_op = self.lower_operand_virtual(layer, rhs, expected)?;
         self.produce_product_into_acc(sign, lf, &lhs_op, rf, &rhs_op); // acc = ±(lhs*rhs)
-        // acc = ±(lhs*rhs) ⊕ P  (ADD commutes; `stash` is `P` at `acc_field`).
+                                                                       // acc = ±(lhs*rhs) ⊕ P  (ADD commutes; `stash` is `P` at `acc_field`).
         self.push_fold(acc_field, vec![VirtualOp::Value(stash)], true, Sign::Plus);
         Ok(())
     }
@@ -2928,22 +2920,17 @@ pub(crate) fn lower_bwd_root_virtual(
 }
 
 /// CS-M5a Task 5: the FRAGMENT-MODE bwd one-root driver — the full-decomposition
-/// sibling of [`lower_bwd_root_virtual`]. Accumulates the fragment table
-/// `acc = c_init + Σ_i recipe_i · value(fragment_i)` (a field sum — visitation
-/// order-neutral), reshaped from the term loop: each SCHEDULE POSITION `pos`
-/// (`frag_idx = order[pos]`, identity when `order` is `None`) is one placement
-/// step (`cur_step = pos`, so fingerprints are schedule-positional), and every
-/// fragment top atom flows through [`VirtualLower::lower_bwd_top_atom`] so it is a
-/// servable / cacheable reuse target.
+/// sibling of [`lower_bwd_root_virtual`]. Each SCHEDULE POSITION `pos`
+/// (`frag_idx = order[pos]`, identity when `order` is `None`) independently
+/// computes one fragment and emits a semantic batch-accumulation sink. This makes
+/// each position one placement step (`cur_step = pos`, so fingerprints are
+/// schedule-positional), and every fragment top atom flows through
+/// [`VirtualLower::lower_bwd_top_atom`] so it is a servable / cacheable reuse
+/// target.
 ///
-/// Seeding: a non-empty `c_init` seeds the acc first via `Mov AccFromSrc <-
-/// Special{AccInit}` (`acc_init_desc`), after which EVERY fragment is an
-/// add-folded contribution; otherwise the first VISITED fragment seeds the acc
-/// directly (still applying its coefficient). Descriptors are TABLE-indexed:
-/// `coeff_descs[frag_idx]` is `Some(desc)` iff that fragment's recipe is
-/// non-trivial (and `acc_init_desc` is `Some` iff `c_init` is non-empty), interned
-/// by the caller into a compile-local CLONED `BwdSpecialTable` BEYOND
-/// `d.specials.len()` and passed immutably.
+/// Descriptors are TABLE-indexed: `coeff_descs[frag_idx]` is `Some(desc)` iff
+/// that fragment's recipe is non-trivial. The caller records `c_init` separately
+/// as logical batch metadata; no source instruction for it is emitted here.
 ///
 /// The gene channel is TERM-ONLY in M5a: `streams` is always `None` here
 /// (`decisions: None` by construction), so the fragment path is uncached
@@ -2954,7 +2941,6 @@ pub(crate) fn lower_bwd_fragments_virtual(
     table: &crate::bwd::fragment::FragmentTable,
     order: Option<&[usize]>,
     coeff_descs: &[Option<u16>],
-    acc_init_desc: Option<u16>,
     ctx: &mut DagForwardContext,
     leaf_descs: &BTreeMap<ExprId, u16>,
     field_overrides: &BTreeMap<ExprId, FieldKind>,
@@ -3033,38 +3019,25 @@ pub(crate) fn lower_bwd_fragments_virtual(
     };
 
     let n = table.fragments.len();
-    let mut seeded = false;
-
-    // Seed: c_init present → AccInit (the acc's initial value); else the first
-    // VISITED fragment seeds the acc directly.
-    if let Some(desc) = acc_init_desc {
-        st.cur_step = 0;
-        st.emit_init_field(VirtualOp::Special { desc }, OperandField::Ext);
-        seeded = true;
-    }
-
     for pos in 0..n {
         let frag_idx = order.map(|o| o[pos]).unwrap_or(pos);
         st.cur_step = pos;
         let atoms = &table.fragments[frag_idx].atoms;
-        let coeff = coeff_descs[frag_idx];
-        if !seeded {
-            // First visited fragment seeds the acc (no cross-position fold).
-            st.lower_bwd_fragment(layer, atoms, coeff)?;
-            seeded = true;
-        } else {
-            // Spill the running total (conservatively Ext — value-preserving for a Base
-            // acc, promoting when an Ext addend folds in), compute this fragment's
-            // contribution, then add-fold the running total back (mirrors the term loop).
-            let t = st.alloc_temp_evicting(OperandField::Ext)?;
-            st.lower_bwd_fragment(layer, atoms, coeff)?;
-            st.push_fold(
-                OperandField::Ext,
-                vec![VirtualOp::Value(t)],
-                /* is_add */ true,
-                Sign::Plus,
-            );
-        }
+        let field = st.lower_bwd_fragment(layer, atoms)?;
+        st.out.push(VInstr::Mov {
+            dir: MovDir::DstFromAcc,
+            field: match field {
+                FieldKind::Base => OperandField::Base,
+                FieldKind::Ext => OperandField::Ext,
+            },
+            dst: Some(VDst::BatchAccumulate {
+                coefficient_desc: coeff_descs[frag_idx],
+            }),
+            src: None,
+            defines: None,
+            is_dram_read: false,
+        });
+        st.step_of_instr.push(st.cur_step);
     }
 
     // Task 4: EOF divergence check + residency reclaim, before the trace is sealed.
@@ -3088,8 +3061,8 @@ mod tests {
     use crate::fwd::compile::compile_circuit;
     use crate::fwd::isa::{Instr, OperandLine};
     use crate::fwd::source::SpecialStrategy;
+    use cs::gkr_compiler::dag_ir::{lower_dag, validate, CircuitSchedule};
     use cs::gkr_compiler::GKRCircuitArtifact;
-    use cs::gkr_compiler::dag_ir::{CircuitSchedule, lower_dag, validate};
     use field::baby_bear::base::BabyBearField;
     use std::path::PathBuf;
 

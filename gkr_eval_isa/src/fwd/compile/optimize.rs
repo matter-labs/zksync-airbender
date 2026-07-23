@@ -136,6 +136,7 @@ fn fuse_leaf_loads(vinstrs: &mut Vec<VInstr>, step_of: &mut Vec<usize>) -> bool 
             &vinstrs[i + 1],
             VInstr::Mov {
                 dir: MovDir::DstFromAcc,
+                dst: Some(VDst::Cell(_) | VDst::GlobalMaterialize { .. }),
                 ..
             }
         );
@@ -446,9 +447,9 @@ fn commute_keep_in_acc(vinstrs: &mut Vec<VInstr>, step_of: &mut Vec<usize>) -> b
             i += 1;
             continue;
         } // that's F4's job
-        // Defensive (codex answer #5): only commute into a consumer that produces no
-        // named value (all current Add/Mul folds have `defines: None`; guards against a
-        // future arith-defining VInstr whose def identity we'd have to preserve).
+          // Defensive (codex answer #5): only commute into a consumer that produces no
+          // named value (all current Add/Mul folds have `defines: None`; guards against a
+          // future arith-defining VInstr whose def identity we'd have to preserve).
         if vinstrs[i + 1].defines().is_some()
             || !op_commutes_with_seed(&vinstrs[i + 1])
             || !reads_value(&vinstrs[i + 1], v)
@@ -480,7 +481,9 @@ fn commute_keep_in_acc(vinstrs: &mut Vec<VInstr>, step_of: &mut Vec<usize>) -> b
 fn retarget_value_to_op(vi: &mut VInstr, from: ValueId, to: &VirtualOp) -> bool {
     let is_from = |op: &VirtualOp| matches!(op, VirtualOp::Value(x) if *x == from);
     match vi {
-        VInstr::Mov { src, is_dram_read, .. } => {
+        VInstr::Mov {
+            src, is_dram_read, ..
+        } => {
             if src.as_ref().is_some_and(is_from) {
                 *src = Some(to.clone());
                 *is_dram_read = matches!(to, VirtualOp::Global { .. });
@@ -663,7 +666,10 @@ mod tests {
             VInstr::Add {
                 field: OperandField::Ext,
                 sign: Sign::Plus,
-                reads: vec![VirtualOp::Ldc { sub: LdcSub::ConstDerivedE4, idx: 0 }],
+                reads: vec![VirtualOp::Ldc {
+                    sub: LdcSub::ConstDerivedE4,
+                    idx: 0,
+                }],
                 defines: Some(ExprId(100)),
                 is_dram_read: false,
             },
@@ -673,17 +679,42 @@ mod tests {
         assert_eq!(step_of.len(), 3);
         // acc is seeded from the peek first, then the cache is materialized FROM ACC.
         assert!(
-            matches!(&out[0], VInstr::Mov { dir: MovDir::AccFromSrc, src: Some(VirtualOp::Special { desc: 7 }), .. }),
-            "acc load hoisted ahead: {:?}", out[0]
+            matches!(
+                &out[0],
+                VInstr::Mov {
+                    dir: MovDir::AccFromSrc,
+                    src: Some(VirtualOp::Special { desc: 7 }),
+                    ..
+                }
+            ),
+            "acc load hoisted ahead: {:?}",
+            out[0]
         );
         assert!(
-            matches!(&out[1], VInstr::Mov { dir: MovDir::DstFromAcc, dst: Some(VDst::GlobalMaterialize { slot: 0, col: 5 }), src: None, .. }),
-            "materialize now sources acc: {:?}", out[1]
+            matches!(
+                &out[1],
+                VInstr::Mov {
+                    dir: MovDir::DstFromAcc,
+                    dst: Some(VDst::GlobalMaterialize { slot: 0, col: 5 }),
+                    src: None,
+                    ..
+                }
+            ),
+            "materialize now sources acc: {:?}",
+            out[1]
         );
         // The resolution is gathered exactly ONCE (was twice).
         let peek_reads = out
             .iter()
-            .filter(|vi| matches!(vi, VInstr::Mov { src: Some(VirtualOp::Special { .. }), .. }))
+            .filter(|vi| {
+                matches!(
+                    vi,
+                    VInstr::Mov {
+                        src: Some(VirtualOp::Special { .. }),
+                        ..
+                    }
+                )
+            })
             .count();
         assert_eq!(peek_reads, 1, "resolution array read once, not twice");
     }
@@ -1068,7 +1099,10 @@ mod tests {
         ];
         let mut step_of = vec![0, 0];
         let changed = propagate_single_use_leaf_copies(&mut vinstrs, &mut step_of);
-        assert!(!changed, "cell-to-cell copy source is not an immutable leaf");
+        assert!(
+            !changed,
+            "cell-to-cell copy source is not an immutable leaf"
+        );
     }
 
     #[test]

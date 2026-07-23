@@ -95,7 +95,7 @@ fn fmt_operand(
     op: &OperandLine,
     field: OperandField,
     ctx: &DagForwardContext,
-    layer: Option<&DagLayer>,
+    fmt_special: &dyn Fn(u16) -> String,
 ) -> String {
     match op {
         OperandLine::LogicalGlobal { slot, col } => fmt_global(*slot, *col, ctx),
@@ -132,22 +132,7 @@ fn fmt_operand(
             },
             LdcSub::Special => fmt_special_lit(*idx),
         },
-        OperandLine::Special { desc } => match ctx.specials.get(*desc) {
-            // `VirtualSetup` is a computed, slotless Special (no backing slot, no DRAM
-            // gather — see `SpecialStrategy::VirtualSetup`), unlike the peek strategies
-            // below, so it gets an honest label rather than the "PEEK" wording, matching
-            // the source-dump rendering of `SourceKind::VirtualSetup` (disasm.rs :206).
-            Some(d) => match &d.strategy {
-                SpecialStrategy::VirtualSetup { kind } => format!("VirtualSetup {kind:?}"),
-                strategy => {
-                    let via = describe_peek_origin(layer, d.origin_expr)
-                        .map(|s| format!(" via {s}"))
-                        .unwrap_or_default();
-                    format!("PEEK[{desc}]={strategy:?}@e{}{via}", d.origin_expr.0)
-                }
-            },
-            None => format!("PEEK?{desc}"),
-        },
+        OperandLine::Special { desc } => fmt_special(*desc),
     }
 }
 
@@ -204,7 +189,11 @@ fn fmt_lanes(head: &str, lanes: &[String], cont_op: char) -> String {
 /// Render one instruction. Reductions with more than one input lane span
 /// multiple rows (see [`fmt_lanes`]); everything else is a single line. Never
 /// includes the leading `[nnnn]` index.
-pub fn fmt_instr(instr: &Instr, ctx: &DagForwardContext, layer: Option<&DagLayer>) -> String {
+pub(crate) fn fmt_instr_with_specials(
+    instr: &Instr,
+    ctx: &DagForwardContext,
+    fmt_special: &dyn Fn(u16) -> String,
+) -> String {
     // v2 wire bits (spec §1.2): `+promote` marks the base→ext acc lift on this
     // instruction; `.neg` on MUL is negate-acc-first (zero-arity = pure negation).
     let promote_tag = |p: bool| if p { "+promote" } else { "" };
@@ -222,7 +211,7 @@ pub fn fmt_instr(instr: &Instr, ctx: &DagForwardContext, layer: Option<&DagLayer
             };
             let lanes: Vec<String> = operands
                 .iter()
-                .map(|o| fmt_operand(o, *field, ctx, layer))
+                .map(|o| fmt_operand(o, *field, ctx, fmt_special))
                 .collect();
             fmt_lanes(
                 &format!(
@@ -251,7 +240,7 @@ pub fn fmt_instr(instr: &Instr, ctx: &DagForwardContext, layer: Option<&DagLayer
             } else {
                 let lanes: Vec<String> = operands
                     .iter()
-                    .map(|o| fmt_operand(o, *field, ctx, layer))
+                    .map(|o| fmt_operand(o, *field, ctx, fmt_special))
                     .collect();
                 fmt_lanes(
                     &format!(
@@ -281,8 +270,8 @@ pub fn fmt_instr(instr: &Instr, ctx: &DagForwardContext, layer: Option<&DagLayer
                 .map(|(l, r)| {
                     format!(
                         "{}*{}",
-                        fmt_operand(l, *field_lhs, ctx, layer),
-                        fmt_operand(r, *field_rhs, ctx, layer)
+                        fmt_operand(l, *field_lhs, ctx, fmt_special),
+                        fmt_operand(r, *field_rhs, ctx, fmt_special)
                     )
                 })
                 .collect();
@@ -309,7 +298,7 @@ pub fn fmt_instr(instr: &Instr, ctx: &DagForwardContext, layer: Option<&DagLayer
                 .unwrap_or_else(|| "-".into());
             let sc = src
                 .as_ref()
-                .map(|s| fmt_operand(s, *field, ctx, layer))
+                .map(|s| fmt_operand(s, *field, ctx, fmt_special))
                 .unwrap_or_else(|| "-".into());
             match dir {
                 MovDir::AccFromSrc => format!("MOV.{} acc <- {sc}", field_tag(field)),
@@ -323,6 +312,27 @@ pub fn fmt_instr(instr: &Instr, ctx: &DagForwardContext, layer: Option<&DagLayer
             }
         }
     }
+}
+
+/// Render one forward instruction with forward-special descriptor names.
+pub fn fmt_instr(instr: &Instr, ctx: &DagForwardContext, layer: Option<&DagLayer>) -> String {
+    let fmt_special = |desc| match ctx.specials.get(desc) {
+        // `VirtualSetup` is a computed, slotless Special (no backing slot, no DRAM
+        // gather — see `SpecialStrategy::VirtualSetup`), unlike the peek strategies
+        // below, so it gets an honest label rather than the "PEEK" wording, matching
+        // the source-dump rendering of `SourceKind::VirtualSetup` (disasm.rs :206).
+        Some(d) => match &d.strategy {
+            SpecialStrategy::VirtualSetup { kind } => format!("VirtualSetup {kind:?}"),
+            strategy => {
+                let via = describe_peek_origin(layer, d.origin_expr)
+                    .map(|s| format!(" via {s}"))
+                    .unwrap_or_default();
+                format!("PEEK[{desc}]={strategy:?}@e{}{via}", d.origin_expr.0)
+            }
+        },
+        None => format!("PEEK?{desc}"),
+    };
+    fmt_instr_with_specials(instr, ctx, &fmt_special)
 }
 
 /// Disassemble a compiled layer to annotated text. Pass `layer` (the `DagLayer`
