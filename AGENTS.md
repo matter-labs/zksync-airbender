@@ -9,9 +9,9 @@
 ## Nested Instructions
 
 - `gpu/` has the GPU-cluster contract: the crate-stack DAG, cross-crate build / `_native`-naming / C++-namespace / bench conventions, and the cluster-wide native rules (`clang-format` via `gpu/.clang-format`, Rust↔CUDA interface stability). Read it before touching any `gpu/` crate; the kernel crates (`core`/`ntt`/`ops`/`hash`/`cub`), `gpu_gkr_model`, and `gpu_native_build` have no own `AGENTS.md`.
-- `gpu/circuit_prover/` has crate-specific rules for CUDA build behavior, upstream-import policy, validation, the GPU scheduling contract, and its internal `prover` module layering.
-- `gpu/circuit_prover/native/` has the `circuit_prover`-specific upstream-constant drift guards (the cluster-wide `clang-format` + Rust↔CUDA interface-stability rules are in `gpu/AGENTS.md`).
-- `gpu/circuit_prover/src/prover/` is a pointer scope that exists specifically to force a read of the full GPU scheduling contract before editing prover scheduling code.
+- `gpu/prover_context/`, `gpu/trace/`, `gpu/gkr/`, and `gpu/whir/` each have their own `AGENTS.md` with crate-specific build/test/upstream-import rules; `gpu/trace/` also carries the cluster's upstream-constant drift guards.
+- `gpu/circuit_prover/` has its own `AGENTS.md` for the apex crate: proof orchestration + config, the GPU scheduling contract, and its internal e2e-suite layering — it has no native code of its own.
+- The GPU scheduling contract itself lives at `gpu/docs/gpu_scheduling_contract.md`; each crate `AGENTS.md` above points into it before scheduling-affecting edits.
 - `gpu/witness_eval_generator/` has its own `AGENTS.md`; read it when touching that crate.
 
 ## Agent Artifact Locations

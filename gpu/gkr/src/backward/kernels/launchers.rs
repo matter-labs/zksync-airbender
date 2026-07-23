@@ -25,11 +25,11 @@ pub(crate) const GKR_EQ_GROUP_SIZE: usize = 8;
 pub const GKR_EQ_GROUP_TABLE_LEN: usize = 1 << GKR_EQ_GROUP_SIZE;
 // Number of warp-uniform high slabs in the strict 3-slot eq layout.
 // Mirrors `GKR_EQ_HIGH_SLOTS` in
-// `gpu/circuit_prover/native/prover/gkr/support/descriptors.cuh`.
+// `gpu/gkr/native/gkr/support/descriptors.cuh`.
 pub const GKR_EQ_HIGH_SLOTS: usize = 2;
 
 /// Rust-side mirror of the CUDA `gkr_eq_sizes` struct in
-/// `gpu/circuit_prover/native/prover/gkr/support/descriptors.cuh`. Holds per-slot bit
+/// `gpu/gkr/native/gkr/support/descriptors.cuh`. Holds per-slot bit
 /// widths for the strict 3-slot eq layout `[high[0], high[1], low]`. Field
 /// types and layout MUST match the CUDA side (`unsigned high[2]; unsigned low`).
 #[repr(C)]

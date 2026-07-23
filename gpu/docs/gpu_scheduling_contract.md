@@ -209,7 +209,7 @@ immediately by a subsequent exec-stream operation, or when copy/compute overlap
 is not needed. No additional fencing is required.
 
 **On h2d_stream (for copy/compute overlap)**: use the `Transfer` struct
-(`gpu/circuit_prover/src/prover/transfer.rs`) or follow the same two-fence pattern
+(`gpu/prover_context/src/transfer.rs`) or follow the same two-fence pattern
 it implements. This is only worthwhile when meaningful exec-stream compute can
 be overlapped with the transfer.
 

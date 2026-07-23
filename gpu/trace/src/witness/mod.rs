@@ -6,7 +6,7 @@ use crate::upstream::GKRAddress;
 // the Rust value, the corresponding assertion fails at compile time and the
 // native definition must be updated in lockstep.
 
-// Scalar mirrors in `gpu/circuit_prover/native/witness/{common,trace}.cuh`.
+// Scalar mirrors in `gpu/trace/native/witness/{common,trace}.cuh`.
 const _: () = assert!(crate::upstream::NON_DETERMINISM_CSR == 0x7c0);
 // `native/witness/tables.cuh` mirrors the upstream `TableType` enum by ordinal.
 // Guard the tail (last pre-existing entry + every entry after it) so an
@@ -29,7 +29,7 @@ const _: () = assert!(crate::upstream::TIMESTAMP_COLUMNS_NUM_BITS == 19);
 const _: () = assert!(crate::upstream::NUM_EMPTY_BITS_FOR_RAM_TIMESTAMP == 2);
 
 // Delegation-circuit ABI mirrors. Each `AbiDescription` in
-// `gpu/circuit_prover/native/witness/trace_delegation.cuh` hard-codes the six fields of
+// `gpu/trace/native/witness/trace_delegation.cuh` hard-codes the six fields of
 // `DelegationAbi`; the upstream values (in `common_constants::delegation_types::*`)
 // must match. `csr_offset` is taken relative to `NON_DETERMINISM_CSR` to keep the
 // per-circuit literal small.

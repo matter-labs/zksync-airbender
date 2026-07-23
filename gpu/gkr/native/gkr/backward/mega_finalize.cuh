@@ -25,7 +25,7 @@
 // it next to its entry point, keeping the round-update + fold-eq algebra
 // in exactly one place. The shared algebra used inside
 // `run_round_update_single_thread` is defined in
-// `gpu/circuit_prover/native/ops/gkr_ops_helpers.cuh`.
+// `gpu/gkr/native/ops/gkr_ops_helpers.cuh`.
 
 #include "../../ops/gkr_ops_helpers.cuh"
 #include "../support/descriptors.cuh"

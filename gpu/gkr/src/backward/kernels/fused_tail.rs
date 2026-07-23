@@ -1,6 +1,6 @@
 //! Rust-side launchers for the backward-sumcheck fused-tail kernels and
 //! the warp-partial round kernels that feed them, both defined in
-//! `gpu/circuit_prover/native/prover/gkr/backward/`. E4-only for now (matches the
+//! `gpu/gkr/native/gkr/backward/`. E4-only for now (matches the
 //! upstream pattern in `ops/blake2s/gkr_ops.rs`); generic-on-E plumbing
 //! through `GpuKernels` can come later if a second extension field ships.
 //!
@@ -28,7 +28,7 @@ use gpu_core::primitives::field::E4;
 use gpu_prover_context::ProverContext;
 
 /// Matches `MEGA_FINALIZE_BLOCK_THREADS` in
-/// `gpu/circuit_prover/native/prover/gkr/backward/mega_finalize.cuh`. Read on the
+/// `gpu/gkr/native/gkr/backward/mega_finalize.cuh`. Read on the
 /// Rust side to pick the stage-1-vs-combined-launch path in
 /// `dispatch_fused_tail`, and to size `round_scratch.partials`.
 pub(crate) const MEGA_FINALIZE_BLOCK_THREADS: u32 = 256;

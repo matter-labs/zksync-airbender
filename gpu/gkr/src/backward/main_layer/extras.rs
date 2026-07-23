@@ -215,8 +215,9 @@ where
 
 /// Structural variant of [`schedule_dimension_reduction_forward`]'s
 /// `dimension_reduction_description` output: replicates the address-only
-/// portion of the per-round lowering at
-/// `gpu/circuit_prover/src/prover/gkr/forward.rs:1965-2074` without scheduling any GPU work.
+/// portion of the per-round lowering in
+/// `gpu/gkr/src/forward/dimension_reducing.rs`'s
+/// `lower_dimension_reducing_forward_round` without scheduling any GPU work.
 ///
 /// Address-assignment rules (matched exactly):
 /// - Each round walks `layer_inputs.iter()` (BTreeMap → ordered by `OutputType`).

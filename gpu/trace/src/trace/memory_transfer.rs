@@ -9,7 +9,7 @@
 // the device cap into the proof slab's `whir.memory.cap` range.
 //
 // `MemoryCommitmentJob` itself is intentionally not threaded into `prove()`
-// — it stays a standalone caps-producer (see `gpu/circuit_prover/src/prover/memory.rs`).
+// — it stays a standalone caps-producer (see `gpu/trace/src/trace/memory.rs`).
 // Callers obtain `Vec<MerkleTreeCapVarLength>` from `MemoryCommitmentJob::finish()`
 // and hand it here.
 
