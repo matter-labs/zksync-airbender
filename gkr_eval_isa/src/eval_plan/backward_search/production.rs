@@ -1381,9 +1381,8 @@ mod tests {
         assert_eq!(selected.telemetry.exact_solver_calls, 1);
         assert_eq!(
             selected.telemetry.solver_kinds,
-            vec![ProductionPagingSolver::UniformIntervals]
+            vec![ProductionPagingSolver::RetainAll]
         );
-        assert!(selected.telemetry.peak_dp_states > 0);
         assert_eq!(
             selected.telemetry.peak_dp_states,
             selected.candidate.paging.telemetry.peak_live_states

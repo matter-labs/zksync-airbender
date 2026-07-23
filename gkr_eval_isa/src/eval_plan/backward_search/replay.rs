@@ -11,9 +11,10 @@ use crate::bwd::trace::{
 use crate::eval_plan::backward::{
     BackwardEvaluationError, CompiledBackwardEvaluation, compile_backward_fragments_replayed,
 };
+use crate::eval_plan::{ValueFingerprint, structural_fingerprints};
 use crate::fwd::stats::{OP_ADD, OP_FMA, OP_MUL};
 
-use super::pager::{ExactPagingPlan, PagingAction};
+use super::pager::{ExactPagingPlan, PagingAction, PhysicalPagingState};
 use super::problem::{BackwardDemand, BackwardSearchProblem};
 use super::{BackwardScore, BackwardSearchError, SourceCost, miss_cost, native_read_cost};
 
@@ -136,7 +137,11 @@ pub fn compile_and_certify_paging(
 
     let (diverged, refused_retains) = validate_replay_trace(&compiled)?;
 
-    let (realized_profile, peak_live_lanes) = realized_occupancy_profile(problem, &compiled)?;
+    let physical_values = structural_fingerprints(&d.layer).map_err(|error| {
+        BackwardSearchError::BackwardEvaluation(BackwardEvaluationError::Plan(error.into()))
+    })?;
+    let (realized_profile, peak_live_lanes) =
+        realized_occupancy_profile(problem, &compiled, &physical_values)?;
     if realized_profile.len() != paging.live_lanes_after.len() {
         return Err(BackwardSearchError::PagingCertificateMismatch {
             observable: "occupancy profile length",
@@ -178,27 +183,31 @@ pub fn compile_and_certify_paging(
     let sources = controlled_sources(&problem.demands)?;
     let realized_misses = certify_demand_misses(problem, &predicted, &compiled)?;
     let predicted_width_lanes = demand_width_lanes(problem, &predicted.misses)?;
-    let realized_reads = physical
+    let mut realized_reads = physical
         .iter()
         .filter_map(|positioned| match positioned.event {
-            BwdEvent::TrafficRead { value, cells } if sources.contains_key(&value) => {
-                Some((value, cells))
-            }
+            BwdEvent::TrafficRead { value, cells } => physical_values
+                .get(value.0 as usize)
+                .copied()
+                .filter(|physical| sources.contains_key(physical))
+                .map(|physical| (physical, cells)),
             _ => None,
         })
         .collect::<Vec<_>>();
+    realized_reads.sort_unstable();
     let realized_width_lanes = realized_reads.iter().try_fold(0u64, |total, (_, width)| {
         total
             .checked_add(u64::from(*width))
             .ok_or(BackwardSearchError::CostOverflow)
     })?;
-    let anchored_reads = realized_misses
+    let mut anchored_reads = realized_misses
         .iter()
         .map(|&index| {
             let demand = &problem.demands[index];
-            (demand.expr, u32::from(demand.width_lanes))
+            (demand.physical, u32::from(demand.width_lanes))
         })
         .collect::<Vec<_>>();
+    anchored_reads.sort_unstable();
     if realized_reads != anchored_reads {
         return Err(BackwardSearchError::PagingSourceAccessMismatch {
             predicted_reads: predicted.reads,
@@ -391,18 +400,20 @@ fn predict_paging(
             observable: "pager occupancy length",
         });
     }
-    let mut residents = BTreeMap::<ExprId, u8>::new();
+    let mut residents = PhysicalPagingState::default();
     let mut reads = 0u64;
     let mut misses = Vec::new();
     let mut cost = SourceCost::default();
     let mut admissions = 0u32;
     let mut evictions = 0u32;
     for (position, (demand, action)) in problem.demands.iter().zip(&paging.actions).enumerate() {
-        if residents.remove(&demand.expr).is_some() {
+        let served = residents.serve(demand)?;
+        if served.closed_owner {
             evictions = evictions
                 .checked_add(1)
                 .ok_or(BackwardSearchError::CostOverflow)?;
-        } else {
+        }
+        if !served.hit {
             reads = reads
                 .checked_add(1)
                 .ok_or(BackwardSearchError::CostOverflow)?;
@@ -415,16 +426,12 @@ fn predict_paging(
                     observable: "terminal retain",
                 });
             }
-            residents.insert(demand.expr, demand.width_lanes);
+            residents.retain(demand)?;
             admissions = admissions
                 .checked_add(1)
                 .ok_or(BackwardSearchError::CostOverflow)?;
         }
-        let live = residents.values().try_fold(0u8, |total, width| {
-            total
-                .checked_add(*width)
-                .ok_or(BackwardSearchError::CostOverflow)
-        })?;
+        let live = residents.live_lanes()?;
         if paging.live_lanes_after[position] != live {
             return Err(BackwardSearchError::PagingCertificateMismatch {
                 observable: "pager occupancy",
@@ -452,10 +459,10 @@ fn predict_paging(
 
 fn controlled_sources(
     demands: &[BackwardDemand],
-) -> Result<BTreeMap<ExprId, (u8, Option<u16>)>, BackwardSearchError> {
+) -> Result<BTreeMap<ValueFingerprint, (u8, Option<u16>)>, BackwardSearchError> {
     let mut sources = BTreeMap::new();
     for demand in demands {
-        match sources.insert(demand.expr, (demand.width_lanes, demand.source_desc)) {
+        match sources.insert(demand.physical, (demand.width_lanes, demand.source_desc)) {
             Some(previous) if previous != (demand.width_lanes, demand.source_desc) => {
                 return Err(BackwardSearchError::PagingCertificateMismatch {
                     observable: "source cost binding",
@@ -555,6 +562,7 @@ fn realized_demand_misses(
             observable: "eligible serve count",
         });
     }
+    misses.sort_unstable();
     Ok(misses)
 }
 
@@ -592,70 +600,103 @@ fn certify_demand_misses(
 fn realized_occupancy_profile(
     problem: &BackwardSearchProblem,
     compiled: &CompiledBackwardEvaluation,
+    physical_values: &[ValueFingerprint],
 ) -> Result<(Vec<usize>, usize), BackwardSearchError> {
     let mut eligible = ordered_demand_queues(problem);
-    let mut resident = BTreeMap::<ExprId, usize>::new();
-    let mut live = 0usize;
-    let mut peak = 0usize;
-    let mut profile = vec![None; problem.demands.len()];
+    let mut resident = BTreeMap::<ValueFingerprint, (usize, usize)>::new();
+    let mut intervals = Vec::new();
     let mut active_demand = None;
     for event in &compiled.trace.events {
         match event {
             BwdEvent::Serve { fp, .. } => {
                 let key = (*fp).into();
                 if let Some(index) = eligible.get_mut(&key).and_then(VecDeque::pop_front) {
-                    if let Some(previous) = active_demand.replace(index) {
-                        profile[previous] = Some(live);
-                    }
+                    active_demand = Some(index);
                 }
             }
             BwdEvent::Admit { value, width } => {
-                let demand = active_demand
-                    .and_then(|index| problem.demands.get(index))
-                    .ok_or(BackwardSearchError::PagingCertificateMismatch {
+                let demand_position =
+                    active_demand.ok_or(BackwardSearchError::PagingCertificateMismatch {
                         observable: "admission without eligible demand",
                     })?;
-                if demand.expr != *value || demand.width_lanes != *width {
+                let demand = problem.demands.get(demand_position).ok_or(
+                    BackwardSearchError::PagingCertificateMismatch {
+                        observable: "admission without eligible demand",
+                    },
+                )?;
+                let physical = physical_values.get(value.0 as usize).copied().ok_or(
+                    BackwardSearchError::PagingCertificateMismatch {
+                        observable: "admission physical identity",
+                    },
+                )?;
+                if demand.physical != physical || demand.width_lanes != *width {
                     return Err(BackwardSearchError::PagingCertificateMismatch {
                         observable: "admission demand identity",
                     });
                 }
-                if resident.insert(*value, usize::from(*width)).is_some() {
+                if resident
+                    .insert(physical, (usize::from(*width), demand_position))
+                    .is_some()
+                {
                     return Err(BackwardSearchError::PagingCertificateMismatch {
                         observable: "duplicate admission",
                     });
                 }
-                live = live
-                    .checked_add(usize::from(*width))
-                    .ok_or(BackwardSearchError::CostOverflow)?;
-                peak = peak.max(live);
             }
             BwdEvent::Evict { value, .. } => {
-                let width = resident.remove(value).ok_or(
+                let demand_position =
+                    active_demand.ok_or(BackwardSearchError::PagingCertificateMismatch {
+                        observable: "eviction without eligible demand",
+                    })?;
+                let physical = physical_values.get(value.0 as usize).copied().ok_or(
+                    BackwardSearchError::PagingCertificateMismatch {
+                        observable: "eviction physical identity",
+                    },
+                )?;
+                let (width, admitted_at) = resident.remove(&physical).ok_or(
                     BackwardSearchError::PagingCertificateMismatch {
                         observable: "eviction without admission",
                     },
                 )?;
-                live = live
-                    .checked_sub(width)
-                    .ok_or(BackwardSearchError::CostOverflow)?;
+                if demand_position < admitted_at {
+                    return Err(BackwardSearchError::PagingCertificateMismatch {
+                        observable: "reversed physical retention interval",
+                    });
+                }
+                intervals.push((admitted_at, demand_position, width));
             }
             BwdEvent::TrafficRead { .. } | BwdEvent::Refuse { .. } | BwdEvent::Diverge { .. } => {}
         }
-    }
-    if let Some(previous) = active_demand {
-        profile[previous] = Some(live);
     }
     if eligible.values().any(|remaining| !remaining.is_empty()) {
         return Err(BackwardSearchError::PagingCertificateMismatch {
             observable: "eligible serve count",
         });
     }
-    let profile = profile.into_iter().collect::<Option<Vec<_>>>().ok_or(
-        BackwardSearchError::PagingCertificateMismatch {
-            observable: "eligible demand occupancy boundary",
-        },
-    )?;
+    intervals.extend(
+        resident
+            .into_values()
+            .map(|(width, admitted_at)| (admitted_at, problem.demands.len(), width)),
+    );
+    let mut deltas = vec![0isize; problem.demands.len() + 1];
+    for (start, end, width) in intervals {
+        let width = isize::try_from(width).map_err(|_| BackwardSearchError::CostOverflow)?;
+        deltas[start] = deltas[start]
+            .checked_add(width)
+            .ok_or(BackwardSearchError::CostOverflow)?;
+        deltas[end] = deltas[end]
+            .checked_sub(width)
+            .ok_or(BackwardSearchError::CostOverflow)?;
+    }
+    let mut live = 0isize;
+    let mut profile = Vec::with_capacity(problem.demands.len());
+    for delta in deltas.into_iter().take(problem.demands.len()) {
+        live = live
+            .checked_add(delta)
+            .ok_or(BackwardSearchError::CostOverflow)?;
+        profile.push(usize::try_from(live).map_err(|_| BackwardSearchError::CostOverflow)?);
+    }
+    let peak = profile.iter().copied().max().unwrap_or(0);
     Ok((profile, peak))
 }
 
@@ -697,9 +738,10 @@ mod tests {
         BackwardSearchProblem, build_backward_search_problem,
     };
     use crate::eval_plan::backward_search::{BackwardSearchError, MAX_PAGER_STATES};
+    use crate::eval_plan::structural_fingerprints;
 
     use super::{
-        certify_demand_misses, compile_and_certify_paging, map_replay_error,
+        certify_demand_misses, compile_and_certify_paging, controlled_sources, map_replay_error,
         occurrence_plan_from_paging, predict_paging, realized_occupancy_profile,
     };
 
@@ -757,6 +799,37 @@ mod tests {
             candidate.score.whole_pass_dram_bytes > controlled_bytes,
             "whole-pass score must include non-paged physical reads"
         );
+    }
+
+    #[test]
+    fn controlled_sources_collapse_matching_physical_aliases() {
+        let fixture = synthetic_shared_read_fixture();
+        let mut demands = fixture.problem.demands;
+        assert_eq!(demands.len(), 2);
+        demands[1].expr = ExprId(demands[0].expr.0 + 100);
+        demands[1].physical = demands[0].physical;
+
+        let sources = controlled_sources(&demands).unwrap();
+
+        assert_eq!(sources.len(), 1);
+    }
+
+    #[test]
+    fn controlled_sources_reject_alias_binding_disagreement() {
+        let fixture = synthetic_shared_read_fixture();
+        let mut demands = fixture.problem.demands;
+        demands[1].expr = ExprId(demands[0].expr.0 + 100);
+        demands[1].physical = demands[0].physical;
+        demands[1].source_desc = demands[0]
+            .source_desc
+            .map_or(Some(0), |desc| Some(desc + 1));
+
+        assert!(matches!(
+            controlled_sources(&demands),
+            Err(BackwardSearchError::PagingCertificateMismatch {
+                observable: "source cost binding"
+            })
+        ));
     }
 
     #[test]
@@ -870,7 +943,7 @@ mod tests {
     }
 
     #[test]
-    fn certificate_rejects_reordered_same_fingerprint_demand_identities() {
+    fn certificate_accepts_reordered_equivalent_all_miss_identities() {
         let fixture = synthetic_shared_read_fixture();
         let mut problem = fixture.problem;
         let mut paging = fixture.exact;
@@ -921,14 +994,14 @@ mod tests {
         ) = first;
 
         let predicted = predict_paging(&problem, &paging).unwrap();
-        assert!(matches!(
-            certify_demand_misses(&problem, &predicted, &candidate.compiled),
-            Err(BackwardSearchError::PagingSourceAccessMismatch { .. })
-        ));
+        assert_eq!(
+            certify_demand_misses(&problem, &predicted, &candidate.compiled).unwrap(),
+            predicted.misses
+        );
     }
 
     #[test]
-    fn occupancy_is_aligned_by_authoritative_demand_position() {
+    fn occupancy_rejects_reversed_authoritative_demand_interval() {
         let fixture = synthetic_shared_read_fixture();
         let mut candidate =
             compile_and_certify_paging(&fixture.distilled, &fixture.problem, &fixture.exact, 0)
@@ -960,16 +1033,13 @@ mod tests {
             problem.demands[1].physical_ordinal,
         ) = first;
 
-        let (realized, _) = realized_occupancy_profile(&problem, &candidate.compiled).unwrap();
-        assert_ne!(
-            realized,
-            fixture
-                .exact
-                .live_lanes_after
-                .iter()
-                .map(|&lanes| usize::from(lanes))
-                .collect::<Vec<_>>()
-        );
+        let physical_values = structural_fingerprints(&fixture.distilled.layer).unwrap();
+        assert!(matches!(
+            realized_occupancy_profile(&problem, &candidate.compiled, &physical_values),
+            Err(BackwardSearchError::PagingCertificateMismatch {
+                observable: "reversed physical retention interval"
+            })
+        ));
     }
 
     #[test]

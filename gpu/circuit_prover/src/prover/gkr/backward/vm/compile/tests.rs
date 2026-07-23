@@ -10,10 +10,10 @@ use crate::prover::gkr::forward::vm::desc::PROGRAM_CAP;
 #[test]
 fn add_sub_l0_c2_c16_program_census_matches_published_artifacts() {
     let expected_r0 = [
-        1744, 1740, 1726, 1716, 1716, 1716, 1716, 1716, 1716, 1716, 1716, 1716, 1716, 1716, 1716,
+        1448, 1419, 1396, 1388, 1388, 1388, 1388, 1388, 1388, 1388, 1388, 1388, 1388, 1388, 1388,
     ];
     let expected_ext = [
-        1537, 1457, 1466, 1476, 1555, 1553, 1561, 1564, 1564, 1565, 1565, 1565, 1565, 1565, 1565,
+        1350, 1323, 1324, 1327, 1322, 1320, 1314, 1308, 1296, 1294, 1294, 1294, 1294, 1294, 1294,
     ];
     for (regime, expected) in [(BwdRegime::R0, expected_r0), (BwdRegime::Ext, expected_ext)] {
         let got = (2..=16)

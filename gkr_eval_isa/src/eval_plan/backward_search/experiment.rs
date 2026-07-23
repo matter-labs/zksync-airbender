@@ -3020,7 +3020,7 @@ mod tests {
     fn search_is_thread_deterministic() {
         let result = run_synthetic_instance().unwrap();
         let digest = result.deterministic_digest();
-        assert_eq!(digest, 0x2817_d47e_35f4_c806);
+        assert_eq!(digest, 0x7d05_087f_9738_f71b);
         println!("PLAN3-SEARCH-DIGEST {digest:016x}");
     }
 

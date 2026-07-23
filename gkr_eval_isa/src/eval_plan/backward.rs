@@ -753,7 +753,7 @@ mod tests {
     use crate::bwd::plan::{BwdOccurrencePlan, PlanAction, PlanEntry, plan_entries_fnv};
     use crate::bwd::source::BwdSpecial;
     use crate::bwd::trace::{BwdEvent, BwdServeKind};
-    use crate::fwd::isa::MAX_CELL;
+    use crate::fwd::isa::{MAX_CELL, Sign};
 
     use super::{
         BackwardEvaluationError, compile_backward_fragments_replayed,
@@ -761,7 +761,8 @@ mod tests {
         elaborate_backward_fragments_uncached, map_compile_concrete_error, map_replay_plan_error,
     };
     use crate::eval_plan::{
-        ConcreteBindError, EvalOp, Operand, PlacementTelemetry, PlanError, TempId, bind_packed_plan,
+        ConcreteBindError, EvalOp, Operand, PlacementTelemetry, PlanError, TempId, ValueRef,
+        bind_packed_plan,
     };
 
     #[test]
@@ -1608,10 +1609,29 @@ mod tests {
         );
 
         let out = elaborate_backward_fragments_uncached(&d, None, 4, false).unwrap();
-        let EvalOp::AccInit(Operand::BackwardSpecial { desc }) = out.plan.ops[0] else {
-            panic!("non-empty c_init must initialize the accumulator through its descriptor")
-        };
-        assert_eq!(out.specials.get(desc), Some(&BwdSpecial::AccInit));
+        assert!(
+            !matches!(
+                out.plan.ops.first(),
+                Some(EvalOp::AccInit(Operand::BackwardSpecial { desc }))
+                    if matches!(out.specials.get(*desc), Some(BwdSpecial::AccInit))
+            ),
+            "non-empty fragments must seed the accumulator before adding c_init"
+        );
+        assert_eq!(
+            out.plan
+                .ops
+                .iter()
+                .filter(|op| matches!(
+                    op,
+                    EvalOp::AccAdd {
+                        sign: Sign::Plus,
+                        operand: Operand::BackwardSpecial { desc },
+                    } if matches!(out.specials.get(*desc), Some(BwdSpecial::AccInit))
+                ))
+                .count(),
+            1,
+            "non-empty c_init must be added once after a fragment contribution"
+        );
         assert_eq!(
             out.plan
                 .ops
@@ -1632,6 +1652,47 @@ mod tests {
     }
 
     #[test]
+    fn backward_fragment_direct_bf_atoms_do_not_widen_or_stash() {
+        let layer = DagLayer {
+            sources: vec![read_src(0), read_src(1)],
+            exprs: vec![
+                Expr::Source(SourceId(0)),
+                Expr::Source(SourceId(1)),
+                Expr::Mul(vec![ExprId(0), ExprId(1)]),
+            ],
+            batching: BatchingOrder {
+                roots: vec![cs::gkr_compiler::dag_ir::RootId(0)],
+            },
+            roots: vec![claim_only_root(ExprId(2), 0)],
+            resolutions: BTreeMap::new(),
+        };
+        let d = distill(&layer, BwdRegime::R0, &HashMap::new(), None);
+        assert_eq!(d.fragments.fragments.len(), 1);
+        assert_eq!(d.fragments.fragments[0].atoms.len(), 2);
+
+        let out = elaborate_backward_fragments_uncached(&d, None, 4, false).unwrap();
+
+        assert!(matches!(
+            out.plan.ops.as_slice(),
+            [
+                EvalOp::AccInit(Operand::Source(ValueRef {
+                    field: FieldKind::Base,
+                    ..
+                })),
+                EvalOp::AccMul(Operand::Source(ValueRef {
+                    field: FieldKind::Base,
+                    ..
+                })),
+                EvalOp::ReturnAcc { .. },
+            ]
+        ));
+        assert_eq!(
+            backward_plan_acc(&out, &d),
+            eval_layer_root(&d.layer, d.root, 3, &backward_test_resolvers())
+        );
+    }
+
+    #[test]
     fn backward_uncached_binds_coefficient_specials() {
         let d = backward_fixture();
 
@@ -1643,10 +1704,15 @@ mod tests {
                 .instrs
                 .iter()
                 .any(|instruction| match instruction {
-                    crate::fwd::isa::Instr::Mov {
-                        src: Some(crate::fwd::isa::OperandLine::Special { desc }),
-                        ..
-                    } => matches!(out.compiled.specials.get(*desc), Some(BwdSpecial::AccInit)),
+                    crate::fwd::isa::Instr::Add { operands, .. } =>
+                        operands.iter().any(|operand| matches!(
+                            operand,
+                            crate::fwd::isa::OperandLine::Special { desc }
+                                if matches!(
+                                    out.compiled.specials.get(*desc),
+                                    Some(BwdSpecial::AccInit)
+                                )
+                        ),),
                     _ => false,
                 })
         );

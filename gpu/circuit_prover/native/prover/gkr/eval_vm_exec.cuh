@@ -89,8 +89,6 @@ template <bool VALIDATE, typename Adapter> DEVICE_FORCEINLINE eval_vm_result eva
         break;
       }
     }
-    acc_ext |= ((h >> FWD_VM_HDR_PROMOTE_SHIFT) & 1) != 0;
-
     if (op == FWD_VM_OP_ADD) {
       if (f0) {
         for (u32 t = 0; t < arity; t++) {
@@ -103,6 +101,7 @@ template <bool VALIDATE, typename Adapter> DEVICE_FORCEINLINE eval_vm_result eva
           acc = minus ? e4::sub(acc, value) : e4::add(acc, value);
         }
       }
+      acc_ext |= f0;
     } else if (op == FWD_VM_OP_MUL) {
       if (minus) {
         if (acc_ext)
@@ -111,7 +110,14 @@ template <bool VALIDATE, typename Adapter> DEVICE_FORCEINLINE eval_vm_result eva
           acc[0][0] = bf::neg(acc[0][0]);
       }
       if (f0) {
-        for (u32 t = 0; t < arity; t++)
+        u32 t = 0;
+        // The first E4 factor promotes a BF accumulator through the cheaper mixed product.
+        if (!acc_ext && arity != 0) {
+          acc = e4::mul(EVAL_VM_READ_E4(), acc[0][0]);
+          acc_ext = true;
+          t = 1;
+        }
+        for (; t < arity; t++)
           acc = e4::mul(acc, EVAL_VM_READ_E4());
       } else if (acc_ext) {
         for (u32 t = 0; t < arity; t++)
@@ -141,6 +147,7 @@ template <bool VALIDATE, typename Adapter> DEVICE_FORCEINLINE eval_vm_result eva
           acc = minus ? e4::sub(acc, e4::mul(lhs, rhs)) : e4::fma(lhs, rhs, acc);
         }
       }
+      acc_ext |= f0 || f1;
     }
   }
 

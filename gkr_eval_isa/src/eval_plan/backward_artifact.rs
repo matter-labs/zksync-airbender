@@ -1124,6 +1124,7 @@ struct StableDemandProjection {
 #[derive(Serialize)]
 struct DemandProjection {
     key: StableDemandProjection,
+    physical: [u64; 2],
     source_desc: Option<u16>,
     width_lanes: u8,
     gap_capacity_lanes: u8,
@@ -1224,6 +1225,7 @@ pub fn backward_problem_certificate(
                     site: demand.key.site.into(),
                     occurrence_in_fragment: demand.key.occurrence_in_fragment,
                 },
+                physical: demand.physical.0,
                 source_desc: demand.source_desc,
                 width_lanes: demand.width_lanes,
                 gap_capacity_lanes: demand.gap_capacity_lanes,

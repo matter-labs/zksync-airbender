@@ -751,7 +751,69 @@ fn elide_accumulator_cell_roundtrips(program: &mut Program) {
             rewritten.push(instruction);
         }
     }
-    program.instrs = rewritten;
+
+    let mut without_dead_stores = Vec::with_capacity(rewritten.len());
+    let mut index = 0;
+    while index < rewritten.len() {
+        let dead_store = rewritten.get(index..index + 3).is_some_and(|window| {
+            let (
+                Instr::Mov {
+                    dir: MovDir::DstFromAcc,
+                    field: first_field,
+                    dst: Some(DstLine::Smem { cell: first_cell }),
+                    src: None,
+                },
+                Instr::Fma {
+                    field_lhs,
+                    field_rhs,
+                    pairs,
+                    ..
+                },
+                Instr::Mov {
+                    dir: MovDir::DstFromAcc,
+                    field: last_field,
+                    dst: Some(DstLine::Smem { cell: last_cell }),
+                    src: None,
+                },
+            ) = (&window[0], &window[1], &window[2])
+            else {
+                return false;
+            };
+            first_field == last_field
+                && first_cell == last_cell
+                && !pairs.iter().any(|(lhs, rhs)| {
+                    smem_operand_overlaps(*lhs, *field_lhs, *first_cell, *first_field)
+                        || smem_operand_overlaps(*rhs, *field_rhs, *first_cell, *first_field)
+                })
+        });
+        if dead_store {
+            without_dead_stores.push(rewritten[index + 1].clone());
+            without_dead_stores.push(rewritten[index + 2].clone());
+            index += 3;
+        } else {
+            without_dead_stores.push(rewritten[index].clone());
+            index += 1;
+        }
+    }
+    program.instrs = without_dead_stores;
+}
+
+fn smem_operand_overlaps(
+    operand: OperandLine,
+    operand_field: OperandField,
+    stored_cell: u16,
+    stored_field: OperandField,
+) -> bool {
+    let OperandLine::Smem { cell: operand_cell } = operand else {
+        return false;
+    };
+    let width = |field| match field {
+        OperandField::Base => 1,
+        OperandField::Ext => 4,
+    };
+    let operand_end = operand_cell + width(operand_field);
+    let stored_end = stored_cell + width(stored_field);
+    operand_cell < stored_end && stored_cell < operand_end
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -2460,6 +2522,88 @@ mod tests {
         fold_load_mul_add(&mut program);
 
         assert_eq!(program, original);
+    }
+
+    #[test]
+    fn fma_fold_removes_now_dead_partial_store() {
+        let total = DstLine::Smem { cell: 0 };
+        let source = OperandLine::Smem { cell: 8 };
+        let coefficient = OperandLine::Special { desc: 3 };
+        let final_store = Instr::Mov {
+            dir: MovDir::DstFromAcc,
+            field: OperandField::Ext,
+            dst: Some(total),
+            src: None,
+        };
+        let mut program = Program {
+            instrs: vec![
+                final_store.clone(),
+                Instr::Mov {
+                    dir: MovDir::AccFromSrc,
+                    field: OperandField::Base,
+                    dst: None,
+                    src: Some(source),
+                },
+                Instr::Mul {
+                    field: OperandField::Ext,
+                    promote: true,
+                    negate_acc: false,
+                    operands: vec![coefficient],
+                },
+                Instr::Add {
+                    field: OperandField::Ext,
+                    sign: Sign::Plus,
+                    promote: false,
+                    operands: vec![OperandLine::Smem { cell: 0 }],
+                },
+                final_store.clone(),
+            ],
+        };
+
+        fold_load_mul_add(&mut program);
+        elide_accumulator_cell_roundtrips(&mut program);
+
+        assert_eq!(
+            program.instrs,
+            vec![
+                Instr::Fma {
+                    field_lhs: OperandField::Base,
+                    field_rhs: OperandField::Ext,
+                    sign: Sign::Plus,
+                    promote: false,
+                    pairs: vec![(source, coefficient)],
+                },
+                final_store,
+            ]
+        );
+    }
+
+    #[test]
+    fn fma_fold_keeps_partial_store_read_through_overlapping_base_cell() {
+        let total = DstLine::Smem { cell: 0 };
+        let store = Instr::Mov {
+            dir: MovDir::DstFromAcc,
+            field: OperandField::Ext,
+            dst: Some(total),
+            src: None,
+        };
+        let fma = Instr::Fma {
+            field_lhs: OperandField::Base,
+            field_rhs: OperandField::Ext,
+            sign: Sign::Plus,
+            promote: false,
+            pairs: vec![(
+                OperandLine::Smem { cell: 1 },
+                OperandLine::Special { desc: 3 },
+            )],
+        };
+        let mut program = Program {
+            instrs: vec![store.clone(), fma.clone(), store.clone()],
+        };
+
+        elide_accumulator_cell_roundtrips(&mut program);
+
+        assert_eq!(program.instrs, vec![store.clone(), fma, store]);
     }
 
     #[test]

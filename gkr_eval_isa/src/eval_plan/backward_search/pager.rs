@@ -1,6 +1,8 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use cs::gkr_compiler::dag_ir::ExprId;
+
+use crate::eval_plan::ValueFingerprint;
 
 use super::BackwardSearchError;
 use super::problem::BackwardDemand;
@@ -105,6 +107,83 @@ fn canonical_plan_key(plan: &ExactPagingPlan) -> (PagingObjective, &[PagingActio
     (plan.objective, &plan.actions)
 }
 
+#[derive(Clone, Copy)]
+pub(crate) struct PhysicalServe {
+    pub(crate) hit: bool,
+    pub(crate) closed_owner: bool,
+}
+
+#[derive(Default)]
+pub(crate) struct PhysicalPagingState {
+    owners: BTreeMap<ExprId, ValueFingerprint>,
+    widths: BTreeMap<ValueFingerprint, u8>,
+}
+
+impl PhysicalPagingState {
+    pub(crate) fn serve(
+        &mut self,
+        demand: &BackwardDemand,
+    ) -> Result<PhysicalServe, BackwardSearchError> {
+        self.bind_width(demand)?;
+        let hit = self
+            .owners
+            .values()
+            .any(|physical| *physical == demand.physical);
+        let closed_owner = self.owners.remove(&demand.expr).is_some();
+        Ok(PhysicalServe { hit, closed_owner })
+    }
+
+    pub(crate) fn retain(&mut self, demand: &BackwardDemand) -> Result<(), BackwardSearchError> {
+        self.bind_width(demand)?;
+        if self.owners.insert(demand.expr, demand.physical).is_some() {
+            return Err(BackwardSearchError::PagingCertificateMismatch {
+                observable: "duplicate logical retention owner",
+            });
+        }
+        Ok(())
+    }
+
+    pub(crate) fn live_lanes(&self) -> Result<u8, BackwardSearchError> {
+        self.owners
+            .values()
+            .copied()
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .try_fold(0u8, |total, physical| {
+                total
+                    .checked_add(self.widths[&physical])
+                    .ok_or(BackwardSearchError::CostOverflow)
+            })
+    }
+
+    fn retained_live_lanes(&mut self, demand: &BackwardDemand) -> Result<u8, BackwardSearchError> {
+        self.bind_width(demand)?;
+        let live_lanes = self.live_lanes()?;
+        if self
+            .owners
+            .values()
+            .any(|physical| *physical == demand.physical)
+        {
+            Ok(live_lanes)
+        } else {
+            live_lanes
+                .checked_add(demand.width_lanes)
+                .ok_or(BackwardSearchError::CostOverflow)
+        }
+    }
+
+    fn bind_width(&mut self, demand: &BackwardDemand) -> Result<(), BackwardSearchError> {
+        match self.widths.insert(demand.physical, demand.width_lanes) {
+            Some(width) if width != demand.width_lanes => {
+                Err(BackwardSearchError::PagingCertificateMismatch {
+                    observable: "physical alias width",
+                })
+            }
+            _ => Ok(()),
+        }
+    }
+}
+
 pub fn reconstruct_paging_plan(
     demands: &[BackwardDemand],
     actions: &[PagingAction],
@@ -115,8 +194,7 @@ pub fn reconstruct_paging_plan(
             actual: actions.len(),
         });
     }
-    let mut residents = BTreeMap::<ExprId, u8>::new();
-    let mut live_lanes = 0u8;
+    let mut residents = PhysicalPagingState::default();
     let mut objective = PagingObjective::default();
     let mut predicted_misses = 0u32;
     let mut refused_retains = 0u32;
@@ -124,12 +202,11 @@ pub fn reconstruct_paging_plan(
     let mut peak_live_lanes = 0u8;
 
     for (position, (demand, action)) in demands.iter().zip(actions).enumerate() {
-        if residents.remove(&demand.expr).is_some() {
-            live_lanes = live_lanes
-                .checked_sub(demand.width_lanes)
-                .ok_or(BackwardSearchError::CostOverflow)?;
+        let served = residents.serve(demand)?;
+        if served.closed_owner {
             objective.evictions = checked_increment(objective.evictions)?;
-        } else {
+        }
+        if !served.hit {
             objective.dram_bytes = objective
                 .dram_bytes
                 .checked_add(demand.miss_cost.dram_bytes()?)
@@ -143,24 +220,19 @@ pub fn reconstruct_paging_plan(
 
         match action {
             PagingAction::Retain => {
-                let next = live_lanes
-                    .checked_add(demand.width_lanes)
-                    .ok_or(BackwardSearchError::CostOverflow)?;
-                if !demand.has_next || next > demand.gap_capacity_lanes {
+                let retained_lanes = residents.retained_live_lanes(demand)?;
+                if !demand.has_next || retained_lanes > demand.gap_capacity_lanes {
                     return Err(BackwardSearchError::IllegalPagingRetain {
                         demand_position: position,
                     });
                 }
-                residents.insert(demand.expr, demand.width_lanes);
-                live_lanes = next;
+                residents.retain(demand)?;
                 objective.admissions = checked_increment(objective.admissions)?;
             }
             PagingAction::Bypass => {
+                let live_lanes = residents.live_lanes()?;
                 let retain_fits = demand.has_next
-                    && live_lanes
-                        .checked_add(demand.width_lanes)
-                        .ok_or(BackwardSearchError::CostOverflow)?
-                        <= demand.gap_capacity_lanes;
+                    && residents.retained_live_lanes(demand)? <= demand.gap_capacity_lanes;
                 if demand.has_next && !retain_fits {
                     refused_retains = checked_increment(refused_retains)?;
                 }
@@ -170,6 +242,12 @@ pub fn reconstruct_paging_plan(
                     });
                 }
             }
+        }
+        let live_lanes = residents.live_lanes()?;
+        if live_lanes > demand.gap_capacity_lanes {
+            return Err(BackwardSearchError::PagingLiveSetOverCapacity {
+                demand_position: position,
+            });
         }
         peak_live_lanes = peak_live_lanes.max(live_lanes);
         live_lanes_after.push(live_lanes);
@@ -240,48 +318,53 @@ pub(crate) fn solve_production_paging_observed(
             plan,
         });
     }
-    let uniform_width = demands
-        .first()
-        .map(|first| first.width_lanes)
-        .filter(|&width| width != 0 && demands.iter().all(|demand| demand.width_lanes == width));
-    if let Some(width) = uniform_width {
-        observe(ProductionPagingProgress {
-            solver: ProductionPagingSolver::UniformIntervals,
-            current_states: 0,
-            peak_states: 0,
-        });
-        let mut observe_uniform = |current_states, peak_states| {
+    if !has_physical_aliases(demands) {
+        let uniform_width = demands
+            .first()
+            .map(|first| first.width_lanes)
+            .filter(|&width| {
+                width != 0 && demands.iter().all(|demand| demand.width_lanes == width)
+            });
+        if let Some(width) = uniform_width {
             observe(ProductionPagingProgress {
                 solver: ProductionPagingSolver::UniformIntervals,
-                current_states,
-                peak_states,
+                current_states: 0,
+                peak_states: 0,
             });
-        };
-        let normalized;
-        let uniform_demands = if width == 1 {
-            demands
-        } else {
-            normalized = demands
-                .iter()
-                .cloned()
-                .map(|mut demand| {
-                    demand.width_lanes = 1;
-                    demand.gap_capacity_lanes /= width;
-                    demand
-                })
-                .collect::<Vec<_>>();
-            &normalized
-        };
-        let uniform = solve_uniform_exact_paging_observed(uniform_demands, &mut observe_uniform)?;
-        let plan = if width == 1 {
-            uniform
-        } else {
-            reconstruct_paging_plan(demands, &uniform.actions)?
-        };
-        return Ok(ProductionPagingResult {
-            solver: ProductionPagingSolver::UniformIntervals,
-            plan,
-        });
+            let mut observe_uniform = |current_states, peak_states| {
+                observe(ProductionPagingProgress {
+                    solver: ProductionPagingSolver::UniformIntervals,
+                    current_states,
+                    peak_states,
+                });
+            };
+            let normalized;
+            let uniform_demands = if width == 1 {
+                demands
+            } else {
+                normalized = demands
+                    .iter()
+                    .cloned()
+                    .map(|mut demand| {
+                        demand.width_lanes = 1;
+                        demand.gap_capacity_lanes /= width;
+                        demand
+                    })
+                    .collect::<Vec<_>>();
+                &normalized
+            };
+            let uniform =
+                solve_uniform_exact_paging_observed(uniform_demands, &mut observe_uniform)?;
+            let plan = if width == 1 {
+                uniform
+            } else {
+                reconstruct_paging_plan(demands, &uniform.actions)?
+            };
+            return Ok(ProductionPagingResult {
+                solver: ProductionPagingSolver::UniformIntervals,
+                plan,
+            });
+        }
     }
     const CAPS: &[usize] = &[250_000, 500_000, 1_000_000, 2_000_000, 4_000_000];
     for &cap in CAPS {
@@ -324,7 +407,7 @@ fn solve_exact_paging_observed(
     state_cap: usize,
     observe: &mut impl FnMut(usize, usize),
 ) -> Result<PagerOutcome, BackwardSearchError> {
-    let (demand_leaves, leaf_widths) = dense_leaf_domain(demands)?;
+    let dense = dense_leaf_domain(demands)?;
     let miss_costs = demands
         .iter()
         .map(|demand| {
@@ -357,18 +440,25 @@ fn solve_exact_paging_observed(
     observe(current.len(), current.len());
 
     for (position, demand) in demands.iter().enumerate() {
-        let demanded_leaf = demand_leaves[position];
-        let leaf_width = leaf_widths[usize::from(demanded_leaf)];
+        let demanded_owner = dense.demand_owners[position];
+        let demanded_physical = dense.owner_physical[usize::from(demanded_owner)];
+        let physical_width = dense.physical_widths[usize::from(demanded_physical)];
         let mut next = BTreeMap::<Vec<u16>, Node>::new();
         let mut processed_states = 0usize;
 
         for (residents, parent) in &current {
             processed_states += 1;
-            let (base_residents, hit) = remove_demanded(residents, demanded_leaf);
-            let live_without_demand = if hit {
+            let physical_hit = residents
+                .iter()
+                .any(|&owner| dense.owner_physical[usize::from(owner)] == demanded_physical);
+            let (base_residents, closed_owner) = remove_demanded(residents, demanded_owner);
+            let physical_remains = base_residents
+                .iter()
+                .any(|&owner| dense.owner_physical[usize::from(owner)] == demanded_physical);
+            let live_without_demand = if physical_hit && !physical_remains {
                 parent
                     .live_lanes
-                    .checked_sub(leaf_width)
+                    .checked_sub(physical_width)
                     .ok_or(BackwardSearchError::CostOverflow)?
             } else {
                 parent.live_lanes
@@ -377,9 +467,10 @@ fn solve_exact_paging_observed(
             base.parent_lex_rank = parent.lex_rank;
             base.predecessor = parent.arena_index;
             base.live_lanes = live_without_demand;
-            if hit {
+            if closed_owner {
                 base.objective.evictions = checked_increment(base.objective.evictions)?;
-            } else {
+            }
+            if !physical_hit {
                 base.objective.dram_bytes = base
                     .objective
                     .dram_bytes
@@ -393,9 +484,13 @@ fn solve_exact_paging_observed(
                 base.predicted_misses = checked_increment(base.predicted_misses)?;
             }
 
-            let retained_lanes = live_without_demand
-                .checked_add(leaf_width)
-                .ok_or(BackwardSearchError::CostOverflow)?;
+            let retained_lanes = if physical_remains {
+                live_without_demand
+            } else {
+                live_without_demand
+                    .checked_add(physical_width)
+                    .ok_or(BackwardSearchError::CostOverflow)?
+            };
             let retain_fits = demand.has_next && retained_lanes <= demand.gap_capacity_lanes;
 
             let mut bypass = base.clone();
@@ -410,9 +505,9 @@ fn solve_exact_paging_observed(
             if retain_fits {
                 let mut retained = base_residents;
                 let insertion = retained
-                    .binary_search(&demanded_leaf)
+                    .binary_search(&demanded_owner)
                     .expect_err("the demanded leaf was removed before reopening its interval");
-                retained.insert(insertion, demanded_leaf);
+                retained.insert(insertion, demanded_owner);
                 let mut retain = base;
                 retain.action = PagingAction::Retain;
                 retain.live_lanes = retained_lanes;
@@ -483,25 +578,65 @@ fn solve_exact_paging_observed(
     Ok(PagerOutcome::Solved(plan))
 }
 
-fn dense_leaf_domain(
-    demands: &[BackwardDemand],
-) -> Result<(Vec<u16>, Vec<u8>), BackwardSearchError> {
-    let mut domain = BTreeMap::<ExprId, u8>::new();
+struct DenseLeafDomain {
+    demand_owners: Vec<u16>,
+    owner_physical: Vec<u16>,
+    physical_widths: Vec<u8>,
+}
+
+fn dense_leaf_domain(demands: &[BackwardDemand]) -> Result<DenseLeafDomain, BackwardSearchError> {
+    let mut owner_domain = BTreeMap::<ExprId, ValueFingerprint>::new();
+    let mut physical_domain = BTreeMap::<ValueFingerprint, u8>::new();
     for demand in demands {
-        domain.entry(demand.expr).or_insert(demand.width_lanes);
+        match owner_domain.insert(demand.expr, demand.physical) {
+            Some(physical) if physical != demand.physical => {
+                return Err(BackwardSearchError::PagingCertificateMismatch {
+                    observable: "logical owner physical identity",
+                });
+            }
+            _ => {}
+        }
+        match physical_domain.insert(demand.physical, demand.width_lanes) {
+            Some(width) if width != demand.width_lanes => {
+                return Err(BackwardSearchError::PagingCertificateMismatch {
+                    observable: "physical alias width",
+                });
+            }
+            _ => {}
+        }
     }
-    u16::try_from(domain.len()).map_err(|_| BackwardSearchError::CostOverflow)?;
-    let mut indices = BTreeMap::<ExprId, u16>::new();
-    let mut widths = Vec::with_capacity(domain.len());
-    for (index, (expr, width)) in domain.into_iter().enumerate() {
-        indices.insert(
+    u16::try_from(owner_domain.len()).map_err(|_| BackwardSearchError::CostOverflow)?;
+    u16::try_from(physical_domain.len()).map_err(|_| BackwardSearchError::CostOverflow)?;
+    let physical_indices = physical_domain
+        .keys()
+        .copied()
+        .enumerate()
+        .map(|(index, physical)| {
+            Ok((
+                physical,
+                u16::try_from(index).map_err(|_| BackwardSearchError::CostOverflow)?,
+            ))
+        })
+        .collect::<Result<BTreeMap<_, _>, BackwardSearchError>>()?;
+    let physical_widths = physical_domain.values().copied().collect();
+    let mut owner_indices = BTreeMap::<ExprId, u16>::new();
+    let mut owner_physical = Vec::with_capacity(owner_domain.len());
+    for (index, (expr, physical)) in owner_domain.into_iter().enumerate() {
+        owner_indices.insert(
             expr,
             u16::try_from(index).map_err(|_| BackwardSearchError::CostOverflow)?,
         );
-        widths.push(width);
+        owner_physical.push(physical_indices[&physical]);
     }
-    let demand_leaves = demands.iter().map(|demand| indices[&demand.expr]).collect();
-    Ok((demand_leaves, widths))
+    let demand_owners = demands
+        .iter()
+        .map(|demand| owner_indices[&demand.expr])
+        .collect();
+    Ok(DenseLeafDomain {
+        demand_owners,
+        owner_physical,
+        physical_widths,
+    })
 }
 
 fn remove_demanded(residents: &[u16], demanded: u16) -> (Vec<u16>, bool) {
@@ -513,6 +648,15 @@ fn remove_demanded(residents: &[u16], demanded: u16) -> (Vec<u16>, bool) {
         }
         Err(_) => (remaining, false),
     }
+}
+
+fn has_physical_aliases(demands: &[BackwardDemand]) -> bool {
+    let mut owners = BTreeMap::<ValueFingerprint, ExprId>::new();
+    demands.iter().any(|demand| {
+        owners
+            .insert(demand.physical, demand.expr)
+            .is_some_and(|owner| owner != demand.expr)
+    })
 }
 
 fn merge_candidate(
@@ -574,6 +718,7 @@ mod tests {
 
     use crate::bwd::distill::{StableBwdConsumer, StableBwdExprKey, StableBwdSiteKey};
     use crate::bwd::trace::{BwdFingerprint, BwdServeKind};
+    use crate::eval_plan::ValueFingerprint;
     use crate::eval_plan::backward_search::problem::{
         BackwardDemand, StableFragmentKey, StableLeafDemandKey,
     };
@@ -844,6 +989,77 @@ mod tests {
         }
     }
 
+    #[test]
+    fn aliases_share_physical_occupancy_and_hits() {
+        let demands = alias_stream();
+        let actions = [
+            PagingAction::Retain,
+            PagingAction::Retain,
+            PagingAction::Bypass,
+            PagingAction::Bypass,
+        ];
+
+        let plan = reconstruct_paging_plan(&demands, &actions).unwrap();
+
+        assert_eq!(plan.live_lanes_after, vec![4, 4, 4, 0]);
+        assert_eq!(plan.predicted_misses, 1);
+        assert_eq!(plan.telemetry.peak_live_lanes, 4);
+    }
+
+    #[test]
+    fn distinct_values_still_consume_distinct_widths() {
+        let demands = stream(&[
+            (10, 4, 8, 80, 12),
+            (11, 4, 8, 80, 12),
+            (10, 4, 4, 80, 12),
+            (11, 4, 0, 80, 12),
+        ]);
+        let actions = [
+            PagingAction::Retain,
+            PagingAction::Retain,
+            PagingAction::Bypass,
+            PagingAction::Bypass,
+        ];
+
+        let plan = reconstruct_paging_plan(&demands, &actions).unwrap();
+
+        assert_eq!(plan.live_lanes_after, vec![4, 8, 4, 0]);
+        assert_eq!(plan.predicted_misses, 2);
+        assert_eq!(plan.telemetry.peak_live_lanes, 8);
+    }
+
+    #[test]
+    fn exact_solver_matches_reconstruction_with_overlapping_alias_owners() {
+        let demands = alias_stream();
+        let solved = solved(
+            &demands,
+            solve_exact_paging(&demands, MAX_PAGER_STATES).unwrap(),
+        );
+        let reconstructed = reconstruct_paging_plan(&demands, &solved.actions).unwrap();
+
+        assert_eq!(solved.live_lanes_after, reconstructed.live_lanes_after);
+        assert_eq!(solved.objective, reconstructed.objective);
+        assert_eq!(solved.predicted_misses, reconstructed.predicted_misses);
+        assert_eq!(solved.telemetry.peak_live_lanes, 4);
+    }
+
+    #[test]
+    fn bypass_does_not_refuse_zero_width_alias_retention() {
+        let mut demands = alias_stream();
+        demands[1].gap_capacity_lanes = 4;
+        let actions = [
+            PagingAction::Retain,
+            PagingAction::Bypass,
+            PagingAction::Bypass,
+            PagingAction::Bypass,
+        ];
+
+        let plan = reconstruct_paging_plan(&demands, &actions).unwrap();
+
+        assert_eq!(plan.live_lanes_after, vec![4, 4, 0, 0]);
+        assert_eq!(plan.refused_retains, 0);
+    }
+
     fn solved(demands: &[BackwardDemand], outcome: PagerOutcome) -> ExactPagingPlan {
         let plan = match outcome {
             PagerOutcome::Solved(plan) => plan,
@@ -958,6 +1174,20 @@ mod tests {
             (0, 1, 1, 20, 3),
             (1, 1, 0, 11, 2),
         ])
+    }
+
+    fn alias_stream() -> Vec<BackwardDemand> {
+        let shared = ValueFingerprint([7, 9]);
+        let mut demands = stream(&[
+            (10, 4, 8, 80, 12),
+            (11, 4, 8, 80, 12),
+            (10, 4, 4, 80, 12),
+            (11, 4, 0, 80, 12),
+        ]);
+        for demand in &mut demands {
+            demand.physical = shared;
+        }
+        demands
     }
 
     fn ext_stream() -> Vec<BackwardDemand> {
@@ -1082,6 +1312,7 @@ mod tests {
                 consumer: None,
             },
             expr,
+            physical: ValueFingerprint([u64::from(expr.0), 0]),
             source_desc: Some(expr.0 as u16),
             instruction: position,
             physical_ordinal: position,

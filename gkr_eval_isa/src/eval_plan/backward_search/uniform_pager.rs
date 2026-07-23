@@ -524,6 +524,7 @@ mod tests {
 
     use crate::bwd::distill::{StableBwdConsumer, StableBwdExprKey, StableBwdSiteKey};
     use crate::bwd::trace::{BwdFingerprint, BwdServeKind};
+    use crate::eval_plan::ValueFingerprint;
     use crate::eval_plan::backward_search::problem::{
         BackwardDemand, StableFragmentKey, StableLeafDemandKey,
     };
@@ -719,6 +720,7 @@ mod tests {
                 consumer: None,
             },
             expr,
+            physical: ValueFingerprint([u64::from(expr.0), 0]),
             source_desc: Some(expr.0 as u16),
             instruction: position,
             physical_ordinal: position,

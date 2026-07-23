@@ -17,7 +17,7 @@ use crate::eval_plan::backward::{
     BackwardEvaluationError, CompiledBackwardEvaluation, compile_backward_fragments_replayed,
     compile_backward_fragments_uncached, validate_and_resolve_backward,
 };
-use crate::eval_plan::budget_lanes_from_cells;
+use crate::eval_plan::{ValueFingerprint, budget_lanes_from_cells, structural_fingerprints};
 
 use super::{
     BackwardScore, BackwardSearchError, RoundProfile, SourceCost, SourceOriginKind, SourceRoundUse,
@@ -42,6 +42,7 @@ pub struct BackwardDemand {
     pub key: StableLeafDemandKey,
     pub fp: BwdFingerprint,
     pub expr: ExprId,
+    pub physical: ValueFingerprint,
     pub source_desc: Option<u16>,
     pub instruction: usize,
     pub physical_ordinal: usize,
@@ -282,6 +283,9 @@ fn build_problem_from_compiled(
     })?;
     let fields =
         validate_and_resolve_backward(d).map_err(BackwardSearchError::BackwardEvaluation)?;
+    let physical_values = structural_fingerprints(&d.layer).map_err(|error| {
+        BackwardSearchError::BackwardEvaluation(BackwardEvaluationError::Plan(error.into()))
+    })?;
     let stable_sites = stable_distilled_site_domain(d);
     let mut accesses: BTreeMap<ExprId, VecDeque<(usize, usize)>> = frozen
         .leaf_accesses
@@ -335,6 +339,7 @@ fn build_problem_from_compiled(
                 key,
                 fp: *fp,
                 expr: fp.value,
+                physical: physical_values[fp.value.0 as usize],
                 source_desc,
                 instruction,
                 physical_ordinal,

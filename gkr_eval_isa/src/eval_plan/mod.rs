@@ -1039,10 +1039,7 @@ impl Elaborator<'_, '_> {
         coefficient_descs: &[Option<u16>],
         acc_init_desc: Option<u16>,
     ) -> Result<(), PlanError> {
-        if let Some(desc) = acc_init_desc {
-            self.emit(EvalOp::AccInit(Operand::BackwardSpecial { desc }))?;
-        }
-        let mut seeded = acc_init_desc.is_some();
+        let mut seeded = false;
         for (schedule_pos, &fragment_index) in scheduled_fragments.iter().enumerate() {
             if let Some(state) = &mut self.backward_demand {
                 state.schedule_pos = schedule_pos as u32;
@@ -1054,11 +1051,17 @@ impl Elaborator<'_, '_> {
             } else {
                 None
             };
-            self.eval_expr(fragment.atoms[0], root, &[], &PreferenceMap::new())?;
+            let mut acc_field =
+                self.eval_expr(fragment.atoms[0], root, &[], &PreferenceMap::new())?;
             for &atom in &fragment.atoms[1..] {
-                let product = self.save_acc(FieldKind::Ext)?;
-                self.eval_expr(atom, root, &[], &PreferenceMap::new())?;
-                self.emit(EvalOp::AccMul(Operand::Temp(product)))?;
+                if self.is_direct(atom) {
+                    self.fold_direct(atom, ReductionOp::Mul, root, &[], &PreferenceMap::new())?;
+                } else {
+                    let product = self.save_acc(acc_field)?;
+                    self.eval_expr(atom, root, &[], &PreferenceMap::new())?;
+                    self.emit(EvalOp::AccMul(Operand::Temp(product)))?;
+                }
+                acc_field = join(acc_field, self.field(atom));
             }
             if let Some(desc) = coefficient_descs[fragment_index] {
                 self.emit(EvalOp::AccMul(Operand::BackwardSpecial { desc }))?;
@@ -1070,6 +1073,16 @@ impl Elaborator<'_, '_> {
                 })?;
             }
             seeded = true;
+        }
+        if let Some(desc) = acc_init_desc {
+            if seeded {
+                self.emit(EvalOp::AccAdd {
+                    sign: Sign::Plus,
+                    operand: Operand::BackwardSpecial { desc },
+                })?;
+            } else {
+                self.emit(EvalOp::AccInit(Operand::BackwardSpecial { desc }))?;
+            }
         }
         self.emit(EvalOp::ReturnAcc { root: root.clone() })
     }
