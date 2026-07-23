@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::mem::size_of;
-use std::ops::DerefMut;
+use std::ops::{DerefMut, Range};
 use std::ptr;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Instant;
@@ -1175,6 +1175,47 @@ fn assert_virtual_setup_is_procedural(
     }
 }
 
+const ORACLE_MAX_ROWS_PER_CHUNK: usize = 1 << 20;
+
+fn oracle_chunk_ranges(rows: usize, target_workers: usize) -> Vec<Range<usize>> {
+    if rows == 0 {
+        return Vec::new();
+    }
+    let chunk_count =
+        (rows.div_ceil(ORACLE_MAX_ROWS_PER_CHUNK)).max(rows.min(target_workers.max(1)));
+    let rows_per_chunk = rows.div_ceil(chunk_count);
+    (0..chunk_count)
+        .map(|chunk| {
+            let start = chunk * rows_per_chunk;
+            start..(start + rows_per_chunk).min(rows)
+        })
+        .collect()
+}
+
+#[test]
+fn bwd_vm_oracle_chunk_plan_targets_workers_and_preserves_domain() {
+    let ranges = oracle_chunk_ranges(4096, 4);
+
+    assert_eq!(ranges.len(), 4, "one task per requested worker");
+    assert!(ranges.len() > 1, "bounded oracle work must be splittable");
+    assert_eq!(ranges.first().map(|range| range.start), Some(0));
+    assert_eq!(ranges.last().map(|range| range.end), Some(4096));
+    assert!(ranges.iter().all(|range| !range.is_empty()));
+    assert!(ranges.windows(2).all(|pair| pair[0].end == pair[1].start));
+}
+
+#[test]
+fn bwd_vm_oracle_chunk_plan_handles_short_and_empty_domains() {
+    assert_eq!(oracle_chunk_ranges(3, 4), vec![0..1, 1..2, 2..3]);
+    assert!(oracle_chunk_ranges(0, 4).is_empty());
+
+    let large = oracle_chunk_ranges(ORACLE_MAX_ROWS_PER_CHUNK + 1, 1);
+    assert_eq!(large.len(), 2);
+    assert!(large
+        .iter()
+        .all(|range| range.len() <= ORACLE_MAX_ROWS_PER_CHUNK));
+}
+
 #[allow(clippy::too_many_arguments)]
 fn all_round_expected_contributions(
     case: &AddSubBwdVmCase,
@@ -1188,21 +1229,20 @@ fn all_round_expected_contributions(
     pool: &rayon::ThreadPool,
     total_rounds: usize,
 ) -> Vec<E4> {
-    const ROWS_PER_CHUNK: usize = 1 << 20;
     let bindings = bind(
         &case.distilled,
         MaterializationPolicy::LazyUpTo(u8::MAX),
         round,
     );
-    let chunk_count = rows.div_ceil(ROWS_PER_CHUNK);
-    let completed = AtomicUsize::new(0);
+    let ranges = oracle_chunk_ranges(rows, pool.current_num_threads());
+    let chunk_count = ranges.len();
     let started = Instant::now();
     let chunks = pool.install(|| {
-        (0..chunk_count)
+        ranges
             .into_par_iter()
-            .map(|chunk| {
-                let start = chunk * ROWS_PER_CHUNK;
-                let end = (start + ROWS_PER_CHUNK).min(rows);
+            .map(|range| {
+                let start = range.start;
+                let end = range.end;
                 let resolvers = Resolvers {
                     read: oracle,
                     lookup: oracle,
@@ -1238,18 +1278,14 @@ fn all_round_expected_contributions(
                     q0.push(t0);
                     q2.push(t2);
                 }
-                let done = completed.fetch_add(end - start, Ordering::Relaxed) + end - start;
-                if chunk_count > 1 {
-                    eprintln!(
-                        "[bwd-vm-parity] oracle round {round}/{total_rounds} chunk {}/{chunk_count} rows {done}/{rows} elapsed={:.2}s",
-                        chunk + 1,
-                        started.elapsed().as_secs_f64()
-                    );
-                }
                 (q0, q2)
             })
             .collect::<Vec<_>>()
     });
+    eprintln!(
+        "[bwd-vm-parity] oracle round {round}/{total_rounds} complete rows={rows} tasks={chunk_count} elapsed={:.2}s",
+        started.elapsed().as_secs_f64()
+    );
     let mut expected = Vec::with_capacity(2 * rows);
     expected.extend(chunks.iter().flat_map(|(q0, _)| q0.iter().copied()));
     expected.extend(chunks.iter().flat_map(|(_, q2)| q2.iter().copied()));
