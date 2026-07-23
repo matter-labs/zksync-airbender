@@ -243,6 +243,16 @@ template <bool VALIDATE> DEVICE_FORCEINLINE u16 bwd_vm_lane(const bwd_vm_desc &d
   return desc.program[index];
 }
 
+DEVICE_FORCEINLINE u32 batch_coefficient_id(const u16 dst) { return dst >> FWD_VM_DST_CELL_SHIFT; }
+
+DEVICE_FORCEINLINE void validate_batch_destination(const bwd_vm_desc &desc, const u16 dst, u32 &error) {
+  if ((dst & FWD_VM_DST_TAG_MASK) == FWD_VM_DST_SMEM)
+    return;
+  const u32 coefficient = batch_coefficient_id(dst);
+  if (coefficient != BWD_VM_BATCH_COEFFICIENT_ONE && (coefficient >= desc.n_coefficients || coefficient >= BWD_VM_COEFFICIENT_CAP))
+    error |= BWD_VM_ERR_BAD_SPECIAL;
+}
+
 // VALIDATE-only structural pass through the exact shared decoder. Typed
 // operand/destination hooks are deliberately side-effect-free: this pass
 // proves every encoded lane can be consumed before the real adapter is allowed
@@ -254,8 +264,8 @@ struct BwdVmPreflightAdapter {
   DEVICE_FORCEINLINE u16 lane(const u32 index) const { return bwd_vm_lane<true>(desc, index, lane_error); }
   DEVICE_FORCEINLINE bf read_bf(const u16, u32 &) { return bf::ZERO(); }
   DEVICE_FORCEINLINE e4 read_e4(const u16, u32 &) { return e4::ZERO(); }
-  DEVICE_FORCEINLINE void write_bf(const u16, const bf, u32 &) {}
-  DEVICE_FORCEINLINE void write_e4(const u16, const e4, u32 &) {}
+  DEVICE_FORCEINLINE void write_bf(const u16 dst, const bf, u32 &error) { validate_batch_destination(desc, dst, error); }
+  DEVICE_FORCEINLINE void write_e4(const u16 dst, const e4, u32 &error) { validate_batch_destination(desc, dst, error); }
 };
 
 DEVICE_FORCEINLINE u32 preflight_error(const bwd_vm_desc &desc) {
@@ -272,6 +282,7 @@ template <bool VALIDATE> struct BwdVmAdapter {
   u32 budget_cells;
   u32 active_mask;
   size_t endpoint;
+  e4 batch_acc;
   mutable u32 lane_error;
 
   DEVICE_FORCEINLINE u16 lane(const u32 index) const { return bwd_vm_lane<VALIDATE>(desc, index, lane_error); }
@@ -400,18 +411,6 @@ template <bool VALIDATE> struct BwdVmAdapter {
           return e4::ZERO();
         }
       }
-      const bwd_vm_special special = desc.specials[index];
-      const u32 kind = special.packed & BWD_VM_SPECIAL_KIND_MASK;
-      const u32 payload = special.packed >> BWD_VM_SPECIAL_PAYLOAD_SHIFT;
-      if (kind == BWD_VM_SPECIAL_KIND_COEFFICIENT || kind == BWD_VM_SPECIAL_KIND_ACC_INIT) {
-        if constexpr (VALIDATE) {
-          if (payload >= desc.n_coefficients || payload >= BWD_VM_COEFFICIENT_CAP) {
-            error |= BWD_VM_ERR_BAD_SPECIAL;
-            return e4::ZERO();
-          }
-        }
-        return ::ab_gkr_flat_coefficients[payload];
-      }
       if constexpr (VALIDATE)
         error |= BWD_VM_ERR_BAD_SPECIAL;
       return e4::ZERO();
@@ -425,8 +424,16 @@ template <bool VALIDATE> struct BwdVmAdapter {
         return;
     }
     if ((dst & FWD_VM_DST_TAG_MASK) != FWD_VM_DST_SMEM) {
+      const u32 coefficient = batch_coefficient_id(dst);
       if constexpr (VALIDATE)
-        error |= BWD_VM_ERR_BAD_DST;
+        if (coefficient != BWD_VM_BATCH_COEFFICIENT_ONE && (coefficient >= desc.n_coefficients || coefficient >= BWD_VM_COEFFICIENT_CAP)) {
+          error |= BWD_VM_ERR_BAD_SPECIAL;
+          return;
+        }
+      if (coefficient == BWD_VM_BATCH_COEFFICIENT_ONE)
+        batch_acc = e4::add(batch_acc, value);
+      else
+        batch_acc = e4::fma(::ab_gkr_flat_coefficients[coefficient], value, batch_acc);
       return;
     }
     const u32 cell = dst >> FWD_VM_DST_CELL_SHIFT;
@@ -445,8 +452,16 @@ template <bool VALIDATE> struct BwdVmAdapter {
         return;
     }
     if ((dst & FWD_VM_DST_TAG_MASK) != FWD_VM_DST_SMEM) {
+      const u32 coefficient = batch_coefficient_id(dst);
       if constexpr (VALIDATE)
-        error |= BWD_VM_ERR_BAD_DST;
+        if (coefficient != BWD_VM_BATCH_COEFFICIENT_ONE && (coefficient >= desc.n_coefficients || coefficient >= BWD_VM_COEFFICIENT_CAP)) {
+          error |= BWD_VM_ERR_BAD_SPECIAL;
+          return;
+        }
+      if (coefficient == BWD_VM_BATCH_COEFFICIENT_ONE)
+        batch_acc = e4::add(batch_acc, value);
+      else
+        batch_acc = e4::fma(::ab_gkr_flat_coefficients[coefficient], value, batch_acc);
       return;
     }
     const u32 cell = dst >> FWD_VM_DST_CELL_SHIFT;
@@ -473,6 +488,8 @@ template <bool VALIDATE> DEVICE_FORCEINLINE u32 descriptor_error(const bwd_vm_de
       desc.n_arg_derived_e4 > BWD_VM_ARG_DERIVED_E4_CAP || desc.n_const_derived_e4 > BWD_VM_CONST_DERIVED_E4_CAP ||
       desc.cell_count > budget_cells * BWD_VM_BF_PER_BUCKET)
     error |= BWD_VM_ERR_DESC_BOUNDS;
+  if (desc.batch_acc_init != BWD_VM_BATCH_ACC_INIT_NONE && (desc.batch_acc_init >= desc.n_coefficients || desc.batch_acc_init >= BWD_VM_COEFFICIENT_CAP))
+    error |= BWD_VM_ERR_BAD_SPECIAL;
   if (desc.contributions != nullptr && desc.eq_low == nullptr)
     error |= BWD_VM_ERR_NULL_POINTER;
   return error;
@@ -518,7 +535,8 @@ template <bool VALIDATE> DEVICE_FORCEINLINE void bwd_vm_body(const bwd_vm_desc &
   }
 
   const size_t endpoint = 2 * logical_row + (lane >= BWD_VM_HALF_WARP_LANES ? 1 : 0);
-  BwdVmAdapter<VALIDATE> adapter{desc, cells, budget_cells, active_mask, endpoint, 0};
+  const e4 batch_acc_init = desc.batch_acc_init == BWD_VM_BATCH_ACC_INIT_NONE ? e4::ZERO() : ::ab_gkr_flat_coefficients[desc.batch_acc_init];
+  BwdVmAdapter<VALIDATE> adapter{desc, cells, budget_cells, active_mask, endpoint, batch_acc_init, 0};
   const eval_vm_result result = eval_vm_execute<VALIDATE, BwdVmAdapter<VALIDATE>>(adapter, desc.n_instr, desc.program_lanes);
   u32 executor_error = result.error;
   if constexpr (VALIDATE) {
@@ -531,14 +549,14 @@ template <bool VALIDATE> DEVICE_FORCEINLINE void bwd_vm_body(const bwd_vm_desc &
   error |= executor_error;
   if (desc.contributions != nullptr && error == 0) {
     const e4 eq = gkr_compute_eq_inline<e4>(desc.eq_low, desc.eq_sizes, static_cast<u32>(logical_row));
-    const e4 contribution = e4::mul(result.acc, eq);
+    const e4 contribution = e4::mul(adapter.batch_acc, eq);
     const size_t role_offset = lane >= BWD_VM_HALF_WARP_LANES ? desc.logical_rows : 0;
     store<e4, st_modifier::cs>(desc.contributions + role_offset, contribution, logical_row);
   }
   if constexpr (VALIDATE) {
     if (diagnostic_t0_t2 != nullptr && error == 0) {
       const size_t role_offset = lane >= BWD_VM_HALF_WARP_LANES ? desc.logical_rows : 0;
-      store<e4, st_modifier::cs>(diagnostic_t0_t2 + role_offset, result.acc, logical_row);
+      store<e4, st_modifier::cs>(diagnostic_t0_t2 + role_offset, adapter.batch_acc, logical_row);
     }
     if (error != 0)
       atomicOr(error_flag, error);

@@ -2,8 +2,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::ptr;
 
 use era_cudart::result::CudaResult;
+use gkr_eval_isa::bwd::batch::{pack_batch_dst, unpack_batch_dst, BATCH_COEFFICIENT_ONE};
 use gkr_eval_isa::bwd::distill::DistilledLayer;
-use gkr_eval_isa::bwd::fragment::MergedRecipe;
+use gkr_eval_isa::bwd::fragment::{FragmentTable, MergedRecipe};
 use gkr_eval_isa::bwd::source::{BwdSpecial, OriginLeaf};
 #[cfg(all(test, feature = "bench"))]
 use gkr_eval_isa::eval_plan::backward_search::{
@@ -13,7 +14,7 @@ use gkr_eval_isa::eval_plan::CompiledBackwardEvaluation;
 use gkr_eval_isa::fwd::encode::{decode, encode};
 use gkr_eval_isa::fwd::error::EncodeError;
 use gkr_eval_isa::fwd::isa::{
-    DstLine, Instr, LdcSub, OperandField, OperandLine, Program, MAX_SOURCE_WINDOWS,
+    DstLine, Instr, LdcSub, MovDir, OperandField, OperandLine, Program, MAX_SOURCE_WINDOWS,
     SOURCE_WINDOW_COLUMNS,
 };
 use gkr_eval_isa::fwd::source::virtual_setup_kind_code;
@@ -29,9 +30,10 @@ use cs::gkr_compiler::dag_ir::DagLayer;
 
 use super::desc::{
     BwdVmDesc, BwdVmSourceWindow, BwdVmSpecial, SpecialLoweringError, BWD_VM_ARG_DERIVED_E4_CAP,
-    BWD_VM_BF_CONSTANT_CAP, BWD_VM_CELL_CAP, BWD_VM_COEFFICIENT_CAP, BWD_VM_CONST_DERIVED_E4_CAP,
-    BWD_VM_PROGRAM_CAP, BWD_VM_SOURCE_READ_BASE, BWD_VM_SOURCE_READ_EXT, BWD_VM_SOURCE_VIRTUAL,
-    BWD_VM_SOURCE_WINDOW_CAP, BWD_VM_SPECIAL_CAP, BWD_VM_VIRTUAL_MATERIALIZE_DEPTH,
+    BWD_VM_BATCH_ACC_INIT_NONE, BWD_VM_BF_CONSTANT_CAP, BWD_VM_CELL_CAP, BWD_VM_COEFFICIENT_CAP,
+    BWD_VM_CONST_DERIVED_E4_CAP, BWD_VM_PROGRAM_CAP, BWD_VM_SOURCE_READ_BASE,
+    BWD_VM_SOURCE_READ_EXT, BWD_VM_SOURCE_VIRTUAL, BWD_VM_SOURCE_WINDOW_CAP, BWD_VM_SPECIAL_CAP,
+    BWD_VM_VIRTUAL_MATERIALIZE_DEPTH,
 };
 
 pub(crate) struct BwdVmRoundBinding<'a> {
@@ -300,6 +302,15 @@ pub(crate) enum BwdVmLowerError {
         desc: u16,
         fragment: u32,
     },
+    UnexpectedOperandSpecial {
+        desc: u16,
+    },
+    InvalidBatchCoefficient {
+        desc: u16,
+    },
+    InvalidAccInit {
+        desc: u16,
+    },
     Special(SpecialLoweringError),
     Capacity {
         field: &'static str,
@@ -345,7 +356,7 @@ pub(crate) fn lower_bwd_vm(
     )?;
     let special_geometry = lower_specials(
         compiled,
-        distilled,
+        &distilled.fragments,
         &input,
         &virtual_geometry.remap,
         evaluate_recipe,
@@ -355,6 +366,7 @@ pub(crate) fn lower_bwd_vm(
         &source_geometry.remap,
         &virtual_geometry.remap,
         &special_geometry.remap,
+        &special_geometry.batch_remap,
     )?;
     let encoded = encode(&rewritten).map_err(BwdVmLowerError::Encode)?;
     if decode(&encoded).ok().as_ref() != Some(&rewritten) {
@@ -430,6 +442,7 @@ pub(crate) fn lower_bwd_vm(
     desc.n_round_challenges = runtime.round.into();
     desc.logical_rows = runtime.rows;
     desc.cell_count = cell_count as u32;
+    desc.batch_acc_init = special_geometry.batch_acc_init;
 
     Ok(BwdVmSetup {
         desc,
@@ -1076,11 +1089,13 @@ struct SpecialGeometry {
     specials: Vec<BwdVmSpecial>,
     coefficients: Vec<E4>,
     remap: BTreeMap<u16, u16>,
+    batch_remap: BTreeMap<u16, u16>,
+    batch_acc_init: u16,
 }
 
 fn lower_specials(
     compiled: &CompiledBackwardEvaluation,
-    distilled: &DistilledLayer,
+    fragments: &FragmentTable,
     program: &Program,
     virtual_remap: &BTreeMap<u16, (u8, u8)>,
     evaluate_recipe: &impl Fn(&MergedRecipe) -> E4,
@@ -1095,9 +1110,6 @@ fn lower_specials(
     });
     check_cap("specials", referenced.len(), BWD_VM_SPECIAL_CAP)?;
 
-    // Validate the whole dense referenced namespace before evaluating any
-    // recipe, so a structural error cannot leave observable partial work in a
-    // stateful host evaluator.
     for &old in referenced.keys() {
         match compiled
             .compiled
@@ -1105,62 +1117,115 @@ fn lower_specials(
             .get(old)
             .ok_or(BwdVmLowerError::MissingSpecial { desc: old })?
         {
-            BwdSpecial::Coefficient { fragment }
-                if distilled
-                    .fragments
-                    .fragments
-                    .get(*fragment as usize)
-                    .is_none() =>
-            {
-                return Err(BwdVmLowerError::InvalidCoefficientFragment {
-                    desc: old,
-                    fragment: *fragment,
-                });
-            }
             BwdSpecial::FoldSource {
                 origin: OriginLeaf::Read(_),
             } => return Err(BwdVmLowerError::ReadFoldSpecial { desc: old }),
             BwdSpecial::FoldSource {
                 origin: OriginLeaf::VirtualSetup { .. },
             } => return Err(BwdVmLowerError::UnmappedVirtualSource { desc: old }),
-            BwdSpecial::Coefficient { .. }
-            | BwdSpecial::AccInit
-            | BwdSpecial::VirtualSetup { .. } => {}
+            BwdSpecial::Coefficient { .. } | BwdSpecial::AccInit => {
+                return Err(BwdVmLowerError::UnexpectedOperandSpecial { desc: old })
+            }
+            BwdSpecial::VirtualSetup { .. } => {}
         }
     }
 
-    // Coefficients retain original descriptor order. AccInit is deliberately
-    // appended after every fragment coefficient even though the compiler
-    // interns its descriptor first (fragment_descs); the upload ABI reserves
-    // the terminal coefficient slot for the accumulator initializer.
-    let mut coefficients = Vec::new();
-    let mut coefficient_slots = BTreeMap::<u16, u32>::new();
-    for &old in referenced.keys() {
-        if let Some(BwdSpecial::Coefficient { fragment }) = compiled.compiled.specials.get(old) {
-            check_cap(
-                "coefficients",
-                coefficients.len() + 1,
-                BWD_VM_COEFFICIENT_CAP,
-            )?;
-            let recipe = &distilled.fragments.fragments[*fragment as usize].recipe;
-            coefficient_slots.insert(old, coefficients.len() as u32);
-            coefficients.push(evaluate_recipe(recipe));
+    let mut batch_descs = BTreeSet::new();
+    for instruction in &program.instrs {
+        let Instr::Mov {
+            dir: gkr_eval_isa::fwd::isa::MovDir::DstFromAcc,
+            dst: Some(dst),
+            ..
+        } = instruction
+        else {
+            continue;
+        };
+        if let Some(desc) = unpack_batch_dst(dst) {
+            if desc != BATCH_COEFFICIENT_ONE {
+                batch_descs.insert(desc);
+            }
         }
     }
-    for &old in referenced.keys() {
-        if matches!(
-            compiled.compiled.specials.get(old),
-            Some(BwdSpecial::AccInit)
-        ) {
-            check_cap(
-                "coefficients",
-                coefficients.len() + 1,
-                BWD_VM_COEFFICIENT_CAP,
-            )?;
-            coefficient_slots.insert(old, coefficients.len() as u32);
-            coefficients.push(evaluate_recipe(&distilled.fragments.c_init));
+
+    // Validate the full logical namespace before evaluating any recipe. A
+    // malformed carrier must not leave partial observable work in a stateful
+    // host evaluator.
+    for &desc in &batch_descs {
+        match compiled
+            .compiled
+            .specials
+            .get(desc)
+            .ok_or(BwdVmLowerError::MissingSpecial { desc })?
+        {
+            BwdSpecial::Coefficient { fragment } => {
+                if fragments.fragments.get(*fragment as usize).is_none() {
+                    return Err(BwdVmLowerError::InvalidCoefficientFragment {
+                        desc,
+                        fragment: *fragment,
+                    });
+                }
+            }
+            _ => return Err(BwdVmLowerError::InvalidBatchCoefficient { desc }),
         }
     }
+    if let Some(desc) = compiled.compiled.acc_init_desc {
+        match compiled
+            .compiled
+            .specials
+            .get(desc)
+            .ok_or(BwdVmLowerError::MissingSpecial { desc })?
+        {
+            BwdSpecial::AccInit => {}
+            _ => return Err(BwdVmLowerError::InvalidAccInit { desc }),
+        }
+    }
+
+    // Descriptor order is deterministic, while recipe equality collapses
+    // logically identical coefficients to one compact constant-memory slot.
+    // AccInit is considered last and may reuse a fragment slot.
+    let mut unique_recipes = Vec::<&MergedRecipe>::new();
+    let mut batch_remap = BTreeMap::new();
+    for &desc in &batch_descs {
+        let BwdSpecial::Coefficient { fragment } = compiled
+            .compiled
+            .specials
+            .get(desc)
+            .expect("batch descriptors were validated above")
+        else {
+            unreachable!("batch descriptors were validated as coefficients");
+        };
+        let recipe = &fragments.fragments[*fragment as usize].recipe;
+        let slot = if let Some(slot) = unique_recipes
+            .iter()
+            .position(|&candidate| candidate == recipe)
+        {
+            slot
+        } else {
+            unique_recipes.push(recipe);
+            unique_recipes.len() - 1
+        };
+        batch_remap.insert(desc, slot as u16);
+    }
+    let batch_acc_init = if compiled.compiled.acc_init_desc.is_some() {
+        let recipe = &fragments.c_init;
+        let slot = if let Some(slot) = unique_recipes
+            .iter()
+            .position(|&candidate| candidate == recipe)
+        {
+            slot
+        } else {
+            unique_recipes.push(recipe);
+            unique_recipes.len() - 1
+        };
+        slot as u16
+    } else {
+        BWD_VM_BATCH_ACC_INIT_NONE
+    };
+    check_cap("coefficients", unique_recipes.len(), BWD_VM_COEFFICIENT_CAP)?;
+    let coefficients = unique_recipes
+        .into_iter()
+        .map(evaluate_recipe)
+        .collect::<Vec<_>>();
 
     let mut specials = Vec::with_capacity(referenced.len());
     let mut remap = BTreeMap::new();
@@ -1170,20 +1235,10 @@ fn lower_specials(
             .specials
             .get(old)
             .ok_or(BwdVmLowerError::MissingSpecial { desc: old })?;
-        let coefficient_slot = match special {
-            BwdSpecial::Coefficient { .. } | BwdSpecial::AccInit => Some(coefficient_slots[&old]),
-            BwdSpecial::FoldSource {
-                origin: OriginLeaf::Read(_),
-            } => return Err(BwdVmLowerError::ReadFoldSpecial { desc: old }),
-            BwdSpecial::FoldSource {
-                origin: OriginLeaf::VirtualSetup { .. },
-            } => return Err(BwdVmLowerError::UnmappedVirtualSource { desc: old }),
-            BwdSpecial::VirtualSetup { .. } => None,
-        };
         let mut packed = None;
         for &field in fields {
-            let candidate = BwdVmSpecial::from_special(special, field, coefficient_slot)
-                .map_err(BwdVmLowerError::Special)?;
+            let candidate =
+                BwdVmSpecial::from_special(special, field).map_err(BwdVmLowerError::Special)?;
             if let Some(previous) = packed {
                 debug_assert_eq!(previous, candidate);
             } else {
@@ -1198,6 +1253,8 @@ fn lower_specials(
         specials,
         coefficients,
         remap,
+        batch_remap,
+        batch_acc_init,
     })
 }
 
@@ -1206,6 +1263,7 @@ fn rewrite_program(
     source_remap: &BTreeMap<(u8, u8), (u8, u8)>,
     virtual_remap: &BTreeMap<u16, (u8, u8)>,
     special_remap: &BTreeMap<u16, u16>,
+    batch_remap: &BTreeMap<u16, u16>,
 ) -> Result<Program, BwdVmLowerError> {
     let mut seen_virtual = BTreeSet::new();
     let mut remap_operand = |operand: OperandLine| -> Result<OperandLine, BwdVmLowerError> {
@@ -1300,7 +1358,26 @@ fn rewrite_program(
             } => Instr::Mov {
                 dir: *dir,
                 field: *field,
-                dst: *dst,
+                dst: match (*dir, *dst) {
+                    (MovDir::DstFromAcc, Some(dst)) => {
+                        if let Some(logical) = unpack_batch_dst(&dst) {
+                            if logical == BATCH_COEFFICIENT_ONE {
+                                Some(dst)
+                            } else {
+                                let compact = *batch_remap
+                                    .get(&logical)
+                                    .ok_or(BwdVmLowerError::MissingSpecial { desc: logical })?;
+                                Some(
+                                    pack_batch_dst(compact)
+                                        .expect("compact coefficient ID fits the batch carrier"),
+                                )
+                            }
+                        } else {
+                            Some(dst)
+                        }
+                    }
+                    (_, dst) => dst,
+                },
                 src: src.map(&mut remap_operand).transpose()?,
             },
         });
@@ -1368,6 +1445,322 @@ fn program_cell_count(program: &Program) -> usize {
     usize::from(any) + max_cell
 }
 
+#[cfg(test)]
+mod binding_tests {
+    use std::collections::{BTreeMap, HashMap};
+
+    use cs::gkr_compiler::dag_ir::{
+        BatchingOrder, BwdRegime, ClaimInfo, DagLayer, Expr, ExprId, Root, RootGroup, RootId,
+        RootOrigin, RootSlot, SourceId, SourceInfo, SourceKind, VirtualSetupKind,
+    };
+    use gkr_eval_isa::bwd::batch::{pack_batch_dst, unpack_batch_dst, BATCH_COEFFICIENT_ONE};
+    use gkr_eval_isa::bwd::distill::{distill, DistilledLayer};
+    use gkr_eval_isa::bwd::fragment::{FragmentSpec, MergedRecipe, ProductRecipe};
+    use gkr_eval_isa::bwd::source::{BwdSpecial, BwdSpecialTable};
+    use gkr_eval_isa::eval_plan::{
+        compile_backward_fragments_uncached, CompiledBackwardEvaluation,
+    };
+    use gkr_eval_isa::fwd::encode::{decode, encode};
+    use gkr_eval_isa::fwd::isa::{Instr, MovDir, OperandField, OperandLine, Program};
+
+    use super::*;
+    use crate::upstream::FieldExtension;
+
+    fn read_source(column: usize) -> SourceInfo {
+        SourceInfo {
+            kind: SourceKind::Read {
+                place: cs::gkr_compiler::dag_ir::ReadPlace::BaseLayerWitness { column },
+            },
+        }
+    }
+
+    fn claim_root(expr: ExprId, relation_index: usize) -> Root {
+        Root {
+            expr,
+            materialize: None,
+            claim: Some(ClaimInfo {
+                origin: RootOrigin {
+                    group: RootGroup::Gates,
+                    relation_index,
+                    slot: RootSlot::Constraint(0),
+                },
+            }),
+        }
+    }
+
+    fn synthetic_case() -> (DistilledLayer, CompiledBackwardEvaluation) {
+        let roots = vec![claim_root(ExprId(0), 0), claim_root(ExprId(1), 1)];
+        let layer = DagLayer {
+            sources: vec![read_source(0), read_source(1)],
+            exprs: vec![Expr::Source(SourceId(0)), Expr::Source(SourceId(1))],
+            batching: BatchingOrder {
+                roots: (0..roots.len()).map(|index| RootId(index as u32)).collect(),
+            },
+            roots,
+            resolutions: BTreeMap::new(),
+        };
+        let distilled = distill(&layer, BwdRegime::R0, &HashMap::new(), None);
+        let compiled = compile_backward_fragments_uncached(&distilled, None, 2, false)
+            .expect("synthetic backward layer must compile");
+        (distilled, compiled)
+    }
+
+    fn recipe(seed: u32) -> MergedRecipe {
+        MergedRecipe {
+            terms: vec![ProductRecipe {
+                factors: vec![ExprId(seed)],
+            }],
+        }
+    }
+
+    fn recipe_value(recipe: &MergedRecipe) -> E4 {
+        let seed = recipe
+            .terms
+            .first()
+            .and_then(|term| term.factors.first())
+            .map_or(0, |factor| factor.0 + 1);
+        <E4 as FieldExtension<BF>>::from_base(BF::from_u32_with_reduction(seed))
+    }
+
+    fn sink(field: OperandField, coefficient: u16) -> Instr {
+        Instr::Mov {
+            dir: MovDir::DstFromAcc,
+            field,
+            dst: Some(pack_batch_dst(coefficient).expect("synthetic coefficient must encode")),
+            src: None,
+        }
+    }
+
+    fn configure(
+        compiled: &mut CompiledBackwardEvaluation,
+        program: Program,
+        specials: BwdSpecialTable,
+        acc_init_desc: Option<u16>,
+    ) {
+        compiled.encoded = encode(&program).expect("synthetic program must encode");
+        compiled.compiled.program = program;
+        compiled.compiled.specials = specials;
+        compiled.compiled.acc_init_desc = acc_init_desc;
+    }
+
+    fn lower_synthetic(
+        compiled: &CompiledBackwardEvaluation,
+        distilled: &DistilledLayer,
+    ) -> Result<BwdVmSetup, BwdVmLowerError> {
+        let resolve_none = |_| None;
+        lower_bwd_vm(
+            compiled,
+            distilled,
+            &BwdVmRoundBinding {
+                round: 0,
+                rows: 1,
+                round_challenges: &[],
+                sources: &[],
+                virtual_sources: &[],
+                resolve_source: &resolve_none,
+                eq_low: ptr::null(),
+                eq_sizes: GkrEqSizes::zeroed(),
+                contributions: ptr::null_mut(),
+            },
+            &|_| E4::ZERO,
+            &recipe_value,
+        )
+    }
+
+    #[test]
+    fn batch_destinations_bind_independently_and_deduplicate_recipes() {
+        let (mut distilled, mut compiled) = synthetic_case();
+        let shared_recipe = recipe(7);
+        distilled.fragments.fragments[0].recipe = shared_recipe.clone();
+        distilled.fragments.fragments[1].recipe = shared_recipe;
+        distilled.fragments.c_init = recipe(11);
+
+        let mut specials = BwdSpecialTable::default();
+        let virtual_desc = specials.intern(BwdSpecial::VirtualSetup {
+            kind: VirtualSetupKind::RangeCheck16Bits,
+        });
+        let coefficient_a = specials.intern(BwdSpecial::Coefficient { fragment: 0 });
+        let coefficient_b = specials.intern(BwdSpecial::Coefficient { fragment: 1 });
+        let acc_init = specials.intern(BwdSpecial::AccInit);
+        let program = Program {
+            instrs: vec![
+                Instr::Mov {
+                    dir: MovDir::AccFromSrc,
+                    field: OperandField::Base,
+                    dst: None,
+                    src: Some(OperandLine::Special { desc: virtual_desc }),
+                },
+                sink(OperandField::Base, coefficient_a),
+                sink(OperandField::Base, BATCH_COEFFICIENT_ONE),
+                sink(OperandField::Ext, coefficient_b),
+            ],
+        };
+        let logical_lanes = encode(&program).unwrap().len();
+        configure(&mut compiled, program, specials, Some(acc_init));
+
+        let setup = lower_synthetic(&compiled, &distilled).unwrap();
+
+        assert_eq!(
+            setup.coefficients,
+            vec![recipe_value(&recipe(7)), recipe_value(&recipe(11))]
+        );
+        assert_eq!(setup.desc.n_coefficients, 2);
+        assert_eq!(setup.desc.batch_acc_init, 1);
+        assert_eq!(setup.desc.n_specials, 1);
+        assert_eq!(
+            setup.desc.specials[0].kind(),
+            super::super::desc::BWD_VM_SPECIAL_KIND_VIRTUAL_SETUP
+        );
+        assert_eq!(setup.desc.program_lanes as usize, logical_lanes);
+
+        let rewritten = decode(&setup.desc.program[..setup.desc.program_lanes as usize]).unwrap();
+        let sinks = rewritten
+            .instrs
+            .iter()
+            .filter_map(|instruction| match instruction {
+                Instr::Mov {
+                    dir: MovDir::DstFromAcc,
+                    field,
+                    dst: Some(dst),
+                    src: None,
+                } => Some((*field, unpack_batch_dst(dst).unwrap())),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            sinks,
+            vec![
+                (OperandField::Base, 0),
+                (OperandField::Base, BATCH_COEFFICIENT_ONE),
+                (OperandField::Ext, 0),
+            ]
+        );
+    }
+
+    #[test]
+    fn batch_destination_rejects_a_non_coefficient_special() {
+        let (distilled, mut compiled) = synthetic_case();
+        let mut specials = BwdSpecialTable::default();
+        let virtual_desc = specials.intern(BwdSpecial::VirtualSetup {
+            kind: VirtualSetupKind::RangeCheckTimestamp,
+        });
+        configure(
+            &mut compiled,
+            Program {
+                instrs: vec![sink(OperandField::Base, virtual_desc)],
+            },
+            specials,
+            None,
+        );
+
+        assert!(matches!(
+            lower_synthetic(&compiled, &distilled),
+            Err(BwdVmLowerError::InvalidBatchCoefficient { desc })
+                if desc == virtual_desc
+        ));
+    }
+
+    #[test]
+    fn acc_init_rejects_a_non_acc_init_special() {
+        let (distilled, mut compiled) = synthetic_case();
+        let mut specials = BwdSpecialTable::default();
+        let coefficient = specials.intern(BwdSpecial::Coefficient { fragment: 0 });
+        configure(
+            &mut compiled,
+            Program {
+                instrs: vec![sink(OperandField::Base, BATCH_COEFFICIENT_ONE)],
+            },
+            specials,
+            Some(coefficient),
+        );
+
+        assert!(matches!(
+            lower_synthetic(&compiled, &distilled),
+            Err(BwdVmLowerError::InvalidAccInit { desc }) if desc == coefficient
+        ));
+    }
+
+    #[test]
+    fn coefficient_special_is_rejected_as_an_ordinary_operand() {
+        let (distilled, mut compiled) = synthetic_case();
+        let mut specials = BwdSpecialTable::default();
+        let coefficient = specials.intern(BwdSpecial::Coefficient { fragment: 0 });
+        configure(
+            &mut compiled,
+            Program {
+                instrs: vec![
+                    Instr::Mov {
+                        dir: MovDir::AccFromSrc,
+                        field: OperandField::Ext,
+                        dst: None,
+                        src: Some(OperandLine::Special { desc: coefficient }),
+                    },
+                    sink(OperandField::Ext, coefficient),
+                ],
+            },
+            specials,
+            None,
+        );
+
+        assert!(matches!(
+            lower_synthetic(&compiled, &distilled),
+            Err(BwdVmLowerError::UnexpectedOperandSpecial { desc })
+                if desc == coefficient
+        ));
+    }
+
+    #[test]
+    fn absent_acc_init_uses_the_dedicated_none_marker() {
+        let (distilled, mut compiled) = synthetic_case();
+        configure(
+            &mut compiled,
+            Program {
+                instrs: vec![sink(OperandField::Ext, BATCH_COEFFICIENT_ONE)],
+            },
+            BwdSpecialTable::default(),
+            None,
+        );
+
+        let setup = lower_synthetic(&compiled, &distilled).unwrap();
+        assert_eq!(setup.desc.batch_acc_init, BWD_VM_BATCH_ACC_INIT_NONE);
+        assert!(setup.coefficients.is_empty());
+    }
+
+    #[test]
+    fn unique_compact_coefficient_overflow_is_rejected() {
+        let (mut distilled, mut compiled) = synthetic_case();
+        let template = distilled.fragments.fragments[0].clone();
+        distilled.fragments.fragments = (0..=BWD_VM_COEFFICIENT_CAP)
+            .map(|index| FragmentSpec {
+                atoms: template.atoms.clone(),
+                recipe: recipe(index as u32 + 1),
+            })
+            .collect();
+
+        let mut specials = BwdSpecialTable::default();
+        let program = Program {
+            instrs: (0..=BWD_VM_COEFFICIENT_CAP)
+                .map(|fragment| {
+                    let desc = specials.intern(BwdSpecial::Coefficient {
+                        fragment: fragment as u32,
+                    });
+                    sink(OperandField::Ext, desc)
+                })
+                .collect(),
+        };
+        configure(&mut compiled, program, specials, None);
+
+        assert!(matches!(
+            lower_synthetic(&compiled, &distilled),
+            Err(BwdVmLowerError::Capacity {
+                field: "coefficients",
+                actual,
+                cap: BWD_VM_COEFFICIENT_CAP,
+            }) if actual == BWD_VM_COEFFICIENT_CAP + 1
+        ));
+    }
+}
+
 #[cfg(all(test, feature = "bench"))]
 mod tests {
     use std::cell::Cell;
@@ -1384,8 +1777,7 @@ mod tests {
     use crate::primitives::field::{BF, E4};
     use crate::prover::gkr::backward::vm::compile::{load_add_sub_l0_case, AddSubBwdVmCase};
     use crate::prover::gkr::backward::vm::desc::{
-        BWD_VM_SOURCE_WINDOW_CAP, BWD_VM_SPECIAL_KIND_ACC_INIT, BWD_VM_SPECIAL_KIND_COEFFICIENT,
-        BWD_VM_SPECIAL_KIND_VIRTUAL_SETUP,
+        BWD_VM_SOURCE_WINDOW_CAP, BWD_VM_SPECIAL_KIND_VIRTUAL_SETUP,
     };
     use crate::prover::gkr::backward::GkrEqSizes;
     use crate::prover::gkr::forward::bench_interp::fixture::deterministic_backward_challenge_value;
@@ -2040,7 +2432,7 @@ mod tests {
     }
 
     #[test]
-    fn referenced_specials_are_dense_and_map_to_host_evaluated_slots() {
+    fn virtual_specials_and_batch_coefficients_use_disjoint_dense_namespaces() {
         let case = load_add_sub_l0_case(BwdRegime::Ext, 2);
         let sources = fake_sources(&case, 0, 2, false);
         let challenges = [e4(7), e4(11)];
@@ -2076,43 +2468,9 @@ mod tests {
         });
         assert_eq!(setup.desc.n_specials as usize, old_fields.len());
 
-        let mut expected_slots = BTreeMap::new();
-        let mut coefficient_slot = 0u32;
-        for &old in old_fields.keys() {
-            if matches!(
-                case.compiled.compiled.specials.get(old),
-                Some(BwdSpecial::Coefficient { .. })
-            ) {
-                expected_slots.insert(old, coefficient_slot);
-                coefficient_slot += 1;
-            }
-        }
-        for &old in old_fields.keys() {
-            if matches!(
-                case.compiled.compiled.specials.get(old),
-                Some(BwdSpecial::AccInit)
-            ) {
-                expected_slots.insert(old, coefficient_slot);
-                coefficient_slot += 1;
-            }
-        }
-        let mut acc_init_slot = None;
         for (dense, old) in old_fields.keys().copied().enumerate() {
             let lowered = setup.desc.specials[dense];
             match case.compiled.compiled.specials.get(old).unwrap() {
-                BwdSpecial::Coefficient { .. } => {
-                    let slot = expected_slots[&old];
-                    assert_eq!(lowered.kind(), BWD_VM_SPECIAL_KIND_COEFFICIENT);
-                    assert_eq!(lowered.payload(), slot);
-                    assert_eq!(setup.coefficients[slot as usize], e4(0x1000 + slot));
-                }
-                BwdSpecial::AccInit => {
-                    let slot = expected_slots[&old];
-                    assert_eq!(lowered.kind(), BWD_VM_SPECIAL_KIND_ACC_INIT);
-                    assert_eq!(lowered.payload(), slot);
-                    assert_eq!(setup.coefficients[slot as usize], e4(0x1000 + slot));
-                    acc_init_slot = Some(slot);
-                }
                 BwdSpecial::VirtualSetup { .. }
                 | BwdSpecial::FoldSource {
                     origin: gkr_eval_isa::bwd::source::OriginLeaf::VirtualSetup { .. },
@@ -2120,12 +2478,19 @@ mod tests {
                 BwdSpecial::FoldSource {
                     origin: gkr_eval_isa::bwd::source::OriginLeaf::Read(_),
                 } => panic!("read-origin FoldSource survived final binding"),
+                BwdSpecial::Coefficient { .. } | BwdSpecial::AccInit => {
+                    panic!("batch-only descriptor survived in the operand namespace")
+                }
             }
         }
-        assert_eq!(setup.coefficients.len(), expected_slots.len());
-        assert_eq!(next_value.get(), expected_slots.len() as u32);
-        if let Some(acc_init_slot) = acc_init_slot {
-            assert_eq!(acc_init_slot as usize + 1, setup.coefficients.len());
+        assert_eq!(next_value.get(), setup.coefficients.len() as u32);
+        for (slot, &coefficient) in setup.coefficients.iter().enumerate() {
+            assert_eq!(coefficient, e4(0x1000 + slot as u32));
+        }
+        if case.compiled.compiled.acc_init_desc.is_some() {
+            assert!((setup.desc.batch_acc_init as u32) < setup.desc.n_coefficients);
+        } else {
+            assert_eq!(setup.desc.batch_acc_init, BWD_VM_BATCH_ACC_INIT_NONE);
         }
 
         let decoded = decode(&setup.desc.program[..setup.desc.program_lanes as usize]).unwrap();
@@ -2134,6 +2499,22 @@ mod tests {
                 assert!((desc as u32) < setup.desc.n_specials);
             }
         });
+        for instruction in &decoded.instrs {
+            let Instr::Mov {
+                dir: MovDir::DstFromAcc,
+                dst: Some(dst),
+                ..
+            } = instruction
+            else {
+                continue;
+            };
+            if let Some(coefficient) = unpack_batch_dst(dst) {
+                assert!(
+                    coefficient == BATCH_COEFFICIENT_ONE
+                        || (coefficient as u32) < setup.desc.n_coefficients
+                );
+            }
+        }
     }
 
     #[test]

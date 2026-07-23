@@ -1,11 +1,25 @@
 use std::collections::BTreeMap;
 
 use cs::gkr_compiler::dag_ir::{BwdRegime, ReadPlace};
+use gkr_eval_isa::bwd::disasm::disassemble_bwd_layer;
 use gkr_eval_isa::fwd::encode::decode;
 use gkr_eval_isa::fwd::isa::{Instr, OperandLine, Program};
 
 use super::{load_add_sub_l0_case, AddSubBwdVmCase};
 use crate::prover::gkr::forward::vm::desc::PROGRAM_CAP;
+
+#[test]
+#[ignore = "inspection tool: prints the add/sub L0 R0 c2 backward VM decompile"]
+fn dump_add_sub_l0_r0_c2_backward_vm() {
+    let case = load_add_sub_l0_case(BwdRegime::R0, 2);
+    let text = disassemble_bwd_layer("add_sub layer-0 R0 c2 backward VM", &case.compiled.compiled);
+
+    println!("\n{text}");
+    assert!(text.contains("budget = c2 (8 BF lanes)"));
+    assert!(text.contains("--- PROGRAM (single-accumulator VM; `acc` is implicit) ---"));
+    assert!(text.contains("terminal = ReturnAcc"));
+    assert!(!text.contains("Mov {"));
+}
 
 #[test]
 fn add_sub_l0_c2_c16_program_census_matches_published_artifacts() {

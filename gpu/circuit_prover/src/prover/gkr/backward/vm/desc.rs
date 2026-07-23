@@ -1,10 +1,12 @@
 use std::cell::Cell;
 use std::collections::{BTreeMap, BTreeSet};
 
+use gkr_eval_isa::bwd::batch::{unpack_batch_dst, BATCH_COEFFICIENT_ONE};
 use gkr_eval_isa::bwd::compile::BwdCompiledLayer;
+use gkr_eval_isa::bwd::fragment::{FragmentTable, MergedRecipe};
 use gkr_eval_isa::bwd::source::{BwdSpecial, OriginLeaf, VIRTUAL_SETUP_MATERIALIZE_DEPTH};
 use gkr_eval_isa::fwd::encode::decode;
-use gkr_eval_isa::fwd::isa::{DstLine, Instr, LdcSub, OperandField, OperandLine, Program};
+use gkr_eval_isa::fwd::isa::{DstLine, Instr, LdcSub, MovDir, OperandField, OperandLine, Program};
 use gkr_eval_isa::fwd::source::virtual_setup_kind_code;
 
 use crate::primitives::field::{BF, E4};
@@ -24,6 +26,7 @@ pub(crate) const BWD_VM_VIRTUAL_MATERIALIZE_DEPTH: u8 = 3;
 pub(crate) const BWD_VM_SPECIAL_CAP: usize = 147;
 pub(crate) const BWD_VM_COEFFICIENT_CAP: usize = 145;
 pub(crate) const BWD_VM_CELL_CAP: usize = 18;
+pub(crate) const BWD_VM_BATCH_ACC_INIT_NONE: u16 = 0xffff;
 
 // The add/sub census uses no plain BF or ArgDerivedE4 entries, but those two
 // ISA channels remain part of the shared evaluator contract. Reuse the exact
@@ -33,8 +36,6 @@ pub(crate) const BWD_VM_ARG_DERIVED_E4_CAP: usize = FWD_VM_ARG_DERIVED_E4_CAP;
 // ConstDerivedE4 values use the already-defined forward constant-memory bank.
 pub(crate) const BWD_VM_CONST_DERIVED_E4_CAP: usize = FWD_VM_CONST_DERIVED_E4_CAP;
 
-pub(crate) const BWD_VM_SPECIAL_KIND_COEFFICIENT: u32 = 0;
-pub(crate) const BWD_VM_SPECIAL_KIND_ACC_INIT: u32 = 1;
 pub(crate) const BWD_VM_SPECIAL_KIND_VIRTUAL_SETUP: u32 = 2;
 pub(crate) const BWD_VM_SPECIAL_KIND_BITS: u32 = 2;
 pub(crate) const BWD_VM_SPECIAL_KIND_MASK: u32 = (1 << BWD_VM_SPECIAL_KIND_BITS) - 1;
@@ -72,6 +73,8 @@ const _: () = {
     assert!(OperandField::Base as u8 == 0);
     assert!(OperandField::Ext as u8 == 1);
     assert!(BWD_VM_VIRTUAL_MATERIALIZE_DEPTH == VIRTUAL_SETUP_MATERIALIZE_DEPTH);
+    assert!(BATCH_COEFFICIENT_ONE == 0x3fff);
+    assert!(BWD_VM_BATCH_ACC_INIT_NONE == u16::MAX);
 };
 
 #[repr(C)]
@@ -95,52 +98,31 @@ pub(crate) struct BwdVmSpecial {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum SpecialLoweringError {
-    MissingCoefficientSlot,
-    UnexpectedCoefficientSlot,
-    CoefficientSlotOutOfRange(u32),
+    NonVirtualSpecial,
     WrongVirtualSetupField {
         expected: OperandField,
         actual: OperandField,
     },
-    ReadFoldSource,
+    FoldSource,
 }
 
 impl BwdVmSpecial {
     pub(crate) fn from_special(
         special: &BwdSpecial,
         field: OperandField,
-        coefficient_slot: Option<u32>,
     ) -> Result<Self, SpecialLoweringError> {
         let (kind, payload) = match special {
-            BwdSpecial::Coefficient { .. } => (
-                BWD_VM_SPECIAL_KIND_COEFFICIENT,
-                checked_coefficient_slot(coefficient_slot)?,
-            ),
-            BwdSpecial::AccInit => (
-                BWD_VM_SPECIAL_KIND_ACC_INIT,
-                checked_coefficient_slot(coefficient_slot)?,
-            ),
             BwdSpecial::VirtualSetup { kind } => {
-                check_no_coefficient_slot(coefficient_slot)?;
                 check_virtual_setup_field(OperandField::Base, field)?;
                 (
                     BWD_VM_SPECIAL_KIND_VIRTUAL_SETUP,
                     virtual_setup_kind_code(kind),
                 )
             }
-            BwdSpecial::FoldSource {
-                origin: OriginLeaf::VirtualSetup { kind },
-            } => {
-                check_no_coefficient_slot(coefficient_slot)?;
-                check_virtual_setup_field(OperandField::Ext, field)?;
-                (
-                    BWD_VM_SPECIAL_KIND_VIRTUAL_SETUP,
-                    virtual_setup_kind_code(kind),
-                )
+            BwdSpecial::FoldSource { .. } => return Err(SpecialLoweringError::FoldSource),
+            BwdSpecial::Coefficient { .. } | BwdSpecial::AccInit => {
+                return Err(SpecialLoweringError::NonVirtualSpecial)
             }
-            BwdSpecial::FoldSource {
-                origin: OriginLeaf::Read(_),
-            } => return Err(SpecialLoweringError::ReadFoldSource),
         };
         debug_assert!(kind <= BWD_VM_SPECIAL_KIND_MASK);
         debug_assert!(payload <= BWD_VM_SPECIAL_PAYLOAD_MASK);
@@ -156,21 +138,6 @@ impl BwdVmSpecial {
     pub(crate) const fn payload(self) -> u32 {
         self.packed >> BWD_VM_SPECIAL_PAYLOAD_SHIFT
     }
-}
-
-fn checked_coefficient_slot(slot: Option<u32>) -> Result<u32, SpecialLoweringError> {
-    let slot = slot.ok_or(SpecialLoweringError::MissingCoefficientSlot)?;
-    if slot as usize >= BWD_VM_COEFFICIENT_CAP || slot as usize >= FLAT_CONST_MAX {
-        return Err(SpecialLoweringError::CoefficientSlotOutOfRange(slot));
-    }
-    Ok(slot)
-}
-
-fn check_no_coefficient_slot(slot: Option<u32>) -> Result<(), SpecialLoweringError> {
-    if slot.is_some() {
-        return Err(SpecialLoweringError::UnexpectedCoefficientSlot);
-    }
-    Ok(())
 }
 
 fn check_virtual_setup_field(
@@ -189,6 +156,7 @@ pub(crate) struct DescriptorCounts {
     pub(crate) source_windows: usize,
     pub(crate) specials: usize,
     pub(crate) coefficient_slots: usize,
+    pub(crate) batch_acc_init: bool,
     pub(crate) bf_constants: usize,
     pub(crate) arg_derived_e4: usize,
     pub(crate) const_derived_e4: usize,
@@ -205,6 +173,13 @@ pub(crate) enum DescriptorCountError {
     },
     MissingSpecial(u16),
     ReadFoldSpecial(u16),
+    UnexpectedOperandSpecial(u16),
+    BatchSpecialNotCoefficient(u16),
+    AccInitSpecialNotAccInit(u16),
+    InvalidCoefficientFragment {
+        desc: u16,
+        fragment: u32,
+    },
     WrongVirtualSetupField {
         desc: u16,
         expected: OperandField,
@@ -214,6 +189,7 @@ pub(crate) enum DescriptorCountError {
 
 pub(crate) fn descriptor_counts(
     compiled: &BwdCompiledLayer,
+    fragments: &FragmentTable,
     encoded: &[u16],
 ) -> Result<DescriptorCounts, DescriptorCountError> {
     let program = decode(encoded).map_err(|_| DescriptorCountError::InvalidEncoding)?;
@@ -250,11 +226,65 @@ pub(crate) fn descriptor_counts(
         },
     );
 
-    for (&desc, fields) in &special_descs {
+    for instruction in &program.instrs {
+        let Instr::Mov {
+            dir: MovDir::DstFromAcc,
+            dst: Some(dst),
+            ..
+        } = instruction
+        else {
+            continue;
+        };
+        let Some(desc) = unpack_batch_dst(dst) else {
+            continue;
+        };
+        if desc == BATCH_COEFFICIENT_ONE {
+            continue;
+        }
         match compiled.specials.get(desc) {
-            Some(BwdSpecial::Coefficient { .. } | BwdSpecial::AccInit) => {
+            Some(BwdSpecial::Coefficient { fragment })
+                if fragments.fragments.get(*fragment as usize).is_some() =>
+            {
                 coefficient_descs.insert(desc);
             }
+            Some(BwdSpecial::Coefficient { fragment }) => {
+                return Err(DescriptorCountError::InvalidCoefficientFragment {
+                    desc,
+                    fragment: *fragment,
+                })
+            }
+            Some(_) => return Err(DescriptorCountError::BatchSpecialNotCoefficient(desc)),
+            None => return Err(DescriptorCountError::MissingSpecial(desc)),
+        }
+    }
+    if let Some(desc) = compiled.acc_init_desc {
+        match compiled.specials.get(desc) {
+            Some(BwdSpecial::AccInit) => {}
+            Some(_) => return Err(DescriptorCountError::AccInitSpecialNotAccInit(desc)),
+            None => return Err(DescriptorCountError::MissingSpecial(desc)),
+        }
+    }
+
+    let mut unique_recipes = Vec::<&MergedRecipe>::new();
+    for &desc in &coefficient_descs {
+        let BwdSpecial::Coefficient { fragment } = compiled
+            .specials
+            .get(desc)
+            .expect("coefficient descriptors were validated above")
+        else {
+            unreachable!("batch coefficient set contains only fragment coefficients");
+        };
+        let recipe = &fragments.fragments[*fragment as usize].recipe;
+        if !unique_recipes.contains(&recipe) {
+            unique_recipes.push(recipe);
+        }
+    }
+    if compiled.acc_init_desc.is_some() && !unique_recipes.contains(&&fragments.c_init) {
+        unique_recipes.push(&fragments.c_init);
+    }
+
+    for (&desc, fields) in &special_descs {
+        match compiled.specials.get(desc) {
             Some(BwdSpecial::FoldSource {
                 origin: OriginLeaf::VirtualSetup { .. },
             }) => validate_special_fields(desc, fields, OperandField::Ext)?,
@@ -263,6 +293,9 @@ pub(crate) fn descriptor_counts(
             }) => return Err(DescriptorCountError::ReadFoldSpecial(desc)),
             Some(BwdSpecial::VirtualSetup { .. }) => {
                 validate_special_fields(desc, fields, OperandField::Base)?
+            }
+            Some(BwdSpecial::Coefficient { .. } | BwdSpecial::AccInit) => {
+                return Err(DescriptorCountError::UnexpectedOperandSpecial(desc))
             }
             None => return Err(DescriptorCountError::MissingSpecial(desc)),
         }
@@ -287,7 +320,8 @@ pub(crate) fn descriptor_counts(
         // folds have already become ordinary source lanes. The device special
         // map contains only the still-referenced descriptor namespace.
         specials: special_descs.len() - virtual_source_descs,
-        coefficient_slots: coefficient_descs.len(),
+        coefficient_slots: unique_recipes.len(),
+        batch_acc_init: compiled.acc_init_desc.is_some(),
         bf_constants: compiled.consts.values().len(),
         arg_derived_e4,
         const_derived_e4,
@@ -418,6 +452,7 @@ pub(crate) struct BwdVmDesc {
     pub logical_rows: u32,
     pub cell_count: u32,
     pub program: [u16; BWD_VM_PROGRAM_CAP],
+    pub batch_acc_init: u16,
 }
 
 const _: () = {
@@ -431,6 +466,20 @@ const _: () = {
     assert!(core::mem::size_of::<BwdVmDesc>() <= 32764);
 };
 
+#[cfg(test)]
+mod abi_tests {
+    use core::mem::{align_of, offset_of, size_of};
+
+    use super::BwdVmDesc;
+
+    #[test]
+    fn batch_acc_init_uses_existing_descriptor_tail_padding() {
+        assert_eq!(offset_of!(BwdVmDesc, batch_acc_init), 4668);
+        assert_eq!(size_of::<BwdVmDesc>(), 4672);
+        assert_eq!(align_of::<BwdVmDesc>(), 16);
+    }
+}
+
 #[cfg(all(test, feature = "bench"))]
 mod tests {
     use cs::gkr_compiler::dag_ir::BwdRegime;
@@ -443,10 +492,10 @@ mod tests {
         BWD_VM_BF_CONSTANT_CAP, BWD_VM_CELL_CAP, BWD_VM_COEFFICIENT_CAP,
         BWD_VM_CONST_DERIVED_E4_CAP, BWD_VM_PROGRAM_CAP, BWD_VM_SOURCE_READ_BASE,
         BWD_VM_SOURCE_READ_EXT, BWD_VM_SOURCE_VIRTUAL, BWD_VM_SOURCE_WINDOW_CAP,
-        BWD_VM_SPECIAL_CAP, BWD_VM_SPECIAL_KIND_ACC_INIT, BWD_VM_SPECIAL_KIND_COEFFICIENT,
-        BWD_VM_SPECIAL_KIND_VIRTUAL_SETUP, BWD_VM_VIRTUAL_INITS_AND_TEARDOWNS_HIGH,
-        BWD_VM_VIRTUAL_INITS_AND_TEARDOWNS_LOW, BWD_VM_VIRTUAL_MATERIALIZE_DEPTH,
-        BWD_VM_VIRTUAL_RANGE_CHECK_16_BITS, BWD_VM_VIRTUAL_RANGE_CHECK_TIMESTAMP,
+        BWD_VM_SPECIAL_CAP, BWD_VM_SPECIAL_KIND_VIRTUAL_SETUP,
+        BWD_VM_VIRTUAL_INITS_AND_TEARDOWNS_HIGH, BWD_VM_VIRTUAL_INITS_AND_TEARDOWNS_LOW,
+        BWD_VM_VIRTUAL_MATERIALIZE_DEPTH, BWD_VM_VIRTUAL_RANGE_CHECK_16_BITS,
+        BWD_VM_VIRTUAL_RANGE_CHECK_TIMESTAMP,
     };
     use crate::prover::gkr::backward::vm::compile::load_add_sub_l0_case;
     use crate::prover::gkr::forward::vm::desc::PROGRAM_CAP;
@@ -456,20 +505,25 @@ mod tests {
     fn add_sub_l0_descriptor_census_fits_the_exact_program_cap() {
         let mut max_program_lanes = 0;
 
-        eprintln!("regime budget lanes windows specials coeffs bf arg_e4 const_e4 max_cell");
+        eprintln!("regime budget lanes windows specials coeffs init bf arg_e4 const_e4 max_cell");
         for regime in [BwdRegime::R0, BwdRegime::Ext] {
             for budget_cells in 2..=16 {
                 let case = load_add_sub_l0_case(regime, budget_cells);
-                let counts = descriptor_counts(&case.compiled.compiled, &case.compiled.encoded)
-                    .expect("add/sub descriptor census must lower");
+                let counts = descriptor_counts(
+                    &case.compiled.compiled,
+                    &case.distilled.fragments,
+                    &case.compiled.encoded,
+                )
+                .expect("add/sub descriptor census must lower");
                 eprintln!(
-                    "{:?} {:>2} {:>4} {:>3} {:>3} {:>3} {:>2} {:>2} {:>2} {:>3}",
+                    "{:?} {:>2} {:>4} {:>3} {:>3} {:>3} {:>4} {:>2} {:>2} {:>2} {:>3}",
                     regime,
                     budget_cells,
                     counts.program_lanes,
                     counts.source_windows,
                     counts.specials,
                     counts.coefficient_slots,
+                    if counts.batch_acc_init { "yes" } else { "no" },
                     counts.bf_constants,
                     counts.arg_derived_e4,
                     counts.const_derived_e4,
@@ -491,12 +545,17 @@ mod tests {
         for regime in [BwdRegime::R0, BwdRegime::Ext] {
             for budget_cells in 2..=16 {
                 let case = load_add_sub_l0_case(regime, budget_cells);
-                let counts = descriptor_counts(&case.compiled.compiled, &case.compiled.encoded)
-                    .expect("add/sub descriptor census must lower");
+                let counts = descriptor_counts(
+                    &case.compiled.compiled,
+                    &case.distilled.fragments,
+                    &case.compiled.encoded,
+                )
+                .expect("add/sub descriptor census must lower");
                 maxima.program_lanes = maxima.program_lanes.max(counts.program_lanes);
                 maxima.source_windows = maxima.source_windows.max(counts.source_windows);
                 maxima.specials = maxima.specials.max(counts.specials);
                 maxima.coefficient_slots = maxima.coefficient_slots.max(counts.coefficient_slots);
+                maxima.batch_acc_init |= counts.batch_acc_init;
                 maxima.bf_constants = maxima.bf_constants.max(counts.bf_constants);
                 maxima.arg_derived_e4 = maxima.arg_derived_e4.max(counts.arg_derived_e4);
                 maxima.const_derived_e4 = maxima.const_derived_e4.max(counts.const_derived_e4);
@@ -535,7 +594,7 @@ mod tests {
     }
 
     #[test]
-    fn special_record_maps_only_the_three_required_kinds() {
+    fn special_record_maps_only_virtual_setup_recipes() {
         use core::mem::{align_of, offset_of, size_of};
 
         assert_eq!(KIND_ORDER.len(), 4);
@@ -551,19 +610,13 @@ mod tests {
         assert_eq!(align_of::<BwdVmSpecial>(), 4);
         assert_eq!(offset_of!(BwdVmSpecial, packed), 0);
 
-        let coefficient = BwdVmSpecial::from_special(
+        assert!(BwdVmSpecial::from_special(
             &BwdSpecial::Coefficient { fragment: 17 },
             OperandField::Ext,
-            Some(23),
         )
-        .unwrap();
-        assert_eq!(coefficient.kind(), BWD_VM_SPECIAL_KIND_COEFFICIENT);
-        assert_eq!(coefficient.payload(), 23);
+        .is_err());
 
-        let acc_init =
-            BwdVmSpecial::from_special(&BwdSpecial::AccInit, OperandField::Ext, Some(19)).unwrap();
-        assert_eq!(acc_init.kind(), BWD_VM_SPECIAL_KIND_ACC_INIT);
-        assert_eq!(acc_init.payload(), 19);
+        assert!(BwdVmSpecial::from_special(&BwdSpecial::AccInit, OperandField::Ext).is_err());
 
         for (kind, payload) in [
             (
@@ -583,22 +636,11 @@ mod tests {
                 BWD_VM_VIRTUAL_INITS_AND_TEARDOWNS_HIGH,
             ),
         ] {
-            for (special, field) in [
-                (
-                    BwdSpecial::VirtualSetup { kind: kind.clone() },
-                    OperandField::Base,
-                ),
-                (
-                    BwdSpecial::FoldSource {
-                        origin: OriginLeaf::VirtualSetup { kind },
-                    },
-                    OperandField::Ext,
-                ),
-            ] {
-                let packed = BwdVmSpecial::from_special(&special, field, None).unwrap();
-                assert_eq!(packed.kind(), BWD_VM_SPECIAL_KIND_VIRTUAL_SETUP);
-                assert_eq!(packed.payload(), payload);
-            }
+            let packed =
+                BwdVmSpecial::from_special(&BwdSpecial::VirtualSetup { kind }, OperandField::Base)
+                    .unwrap();
+            assert_eq!(packed.kind(), BWD_VM_SPECIAL_KIND_VIRTUAL_SETUP);
+            assert_eq!(packed.payload(), payload);
         }
     }
 
@@ -611,7 +653,6 @@ mod tests {
                 kind: VirtualSetupKind::RangeCheckTimestamp,
             },
             OperandField::Ext,
-            None,
         )
         .is_err());
         assert!(BwdVmSpecial::from_special(
@@ -621,7 +662,6 @@ mod tests {
                 },
             },
             OperandField::Base,
-            None,
         )
         .is_err());
         assert!(BwdVmSpecial::from_special(
@@ -629,7 +669,6 @@ mod tests {
                 origin: OriginLeaf::Read(ReadPlace::BaseLayerMemory { column: 0 }),
             },
             OperandField::Base,
-            None,
         )
         .is_err());
     }
@@ -658,6 +697,7 @@ mod tests {
         assert_eq!(offset_of!(BwdVmDesc, logical_rows), 1172);
         assert_eq!(offset_of!(BwdVmDesc, cell_count), 1176);
         assert_eq!(offset_of!(BwdVmDesc, program), 1180);
+        assert_eq!(offset_of!(BwdVmDesc, batch_acc_init), 4668);
         assert_eq!(size_of::<BwdVmDesc>(), 4672);
         assert_eq!(align_of::<BwdVmDesc>(), 16);
         assert!(size_of::<BwdVmDesc>() <= 32764);

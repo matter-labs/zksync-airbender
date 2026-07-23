@@ -7,6 +7,7 @@ use std::time::Instant;
 
 use era_cudart::memory::memory_copy_async;
 use era_cudart::slice::DeviceSlice;
+use gkr_eval_isa::bwd::batch::{pack_batch_dst, BATCH_COEFFICIENT_ONE};
 use gkr_eval_isa::bwd::distill::{bind, BwdBindings};
 use gkr_eval_isa::bwd::interp::{interpret_bwd_row, role_combine, sumcheck_fold_point, Role};
 use gkr_eval_isa::bwd::source::{
@@ -14,14 +15,14 @@ use gkr_eval_isa::bwd::source::{
 };
 use gkr_eval_isa::eval_plan::backward_search::{SourceRoundBinding, StaticMaterialization};
 use gkr_eval_isa::fwd::encode::{decode, encode};
-use gkr_eval_isa::fwd::isa::{Instr, MovDir, OperandField, OperandLine, Program, Sign};
+use gkr_eval_isa::fwd::isa::{Instr, LdcSub, MovDir, OperandField, OperandLine, Program, Sign};
 use gkr_eval_isa::fwd::source::virtual_setup_kind_code;
 use rayon::prelude::*;
 
 use super::compile::{load_add_sub_l0_case, AddSubBwdVmCase};
 use super::desc::{
-    BwdVmDesc, BwdVmSourceWindow, BWD_VM_PROGRAM_CAP, BWD_VM_SOURCE_READ_BASE,
-    BWD_VM_SOURCE_READ_EXT, BWD_VM_SOURCE_VIRTUAL,
+    BwdVmDesc, BwdVmSourceWindow, BWD_VM_BATCH_ACC_INIT_NONE, BWD_VM_PROGRAM_CAP,
+    BWD_VM_SOURCE_READ_BASE, BWD_VM_SOURCE_READ_EXT, BWD_VM_SOURCE_VIRTUAL,
 };
 use super::lower::{
     artifact_static_materialization, lower_bwd_vm, BwdVmRoundBinding, ResolvedBwdSourceWindow,
@@ -66,6 +67,7 @@ use cs::gkr_compiler::dag_ir::{
 
 const BWD_VM_ERR_DESC_BOUNDS: u32 = 8192;
 const BWD_VM_ERR_PROGRAM_OOB: u32 = 16384;
+const BWD_VM_ERR_BAD_SPECIAL: u32 = 32;
 
 fn bf(seed: u32) -> BF {
     BF::from_u32_with_reduction(seed)
@@ -135,6 +137,22 @@ fn source_program(field: OperandField, repeated: bool) -> Vec<u16> {
     encode(&Program { instrs }).expect("synthetic source program must encode")
 }
 
+fn source_batch_program(field: OperandField, repeated: bool) -> Vec<u16> {
+    let mut program = decode(&source_program(field, repeated)).unwrap();
+    program
+        .instrs
+        .push(batch_sink(field, BATCH_COEFFICIENT_ONE));
+    encode(&program).expect("synthetic source batch program must encode")
+}
+
+fn source_batch_program_with_first_access(field: OperandField, first_access: bool) -> Vec<u16> {
+    let mut program = decode(&source_program_with_first_access(field, first_access)).unwrap();
+    program
+        .instrs
+        .push(batch_sink(field, BATCH_COEFFICIENT_ONE));
+    encode(&program).expect("synthetic source batch program must encode")
+}
+
 fn blank_desc(program: &[u16], n_instr: u32, logical_rows: usize) -> BwdVmDesc {
     // SAFETY: BwdVmDesc is a plain repr(C) CUDA ABI record. All-zero is valid
     // for every field, and every nonzero count/pointer used by the test is set
@@ -144,6 +162,7 @@ fn blank_desc(program: &[u16], n_instr: u32, logical_rows: usize) -> BwdVmDesc {
     desc.program_lanes = program.len() as u32;
     desc.n_instr = n_instr;
     desc.logical_rows = logical_rows as u32;
+    desc.batch_acc_init = BWD_VM_BATCH_ACC_INIT_NONE;
     desc
 }
 
@@ -240,8 +259,8 @@ fn run_ext_case(
     let mut diagnostic_device = upload(&vec![poison; 2 * rows], context);
     let mut error_device = upload(&[0u32], context);
 
-    let program = source_program(OperandField::Ext, repeated);
-    let mut desc = blank_desc(&program, if repeated { 2 } else { 1 }, rows);
+    let program = source_batch_program(OperandField::Ext, repeated);
+    let mut desc = blank_desc(&program, if repeated { 3 } else { 2 }, rows);
     desc.round_challenges = challenge_device.as_ptr();
     desc.n_round_challenges = depth as u32;
     desc.n_source_windows = u32::from(!malformed_source_bound);
@@ -301,8 +320,8 @@ fn run_base_plain(context: &ProverContext, rows: usize) {
     let input_device = upload(&input, context);
     let mut diagnostic_device = upload(&vec![Field::ZERO; 2 * rows], context);
     let mut error_device = upload(&[0u32], context);
-    let program = source_program(OperandField::Base, false);
-    let mut desc = blank_desc(&program, 1, rows);
+    let program = source_batch_program(OperandField::Base, false);
+    let mut desc = blank_desc(&program, 2, rows);
     desc.n_source_windows = 1;
     desc.source_windows[0] = BwdVmSourceWindow {
         read_base: input_device.as_ptr().cast(),
@@ -324,6 +343,230 @@ fn run_base_plain(context: &ProverContext, rows: usize) {
     .expect("BF validate launch");
     let diagnostic = download_e4(&diagnostic_device, context);
     assert_e4_bits("BF plain T0/T2", &diagnostic, &expected);
+}
+
+fn batch_sink(field: OperandField, coefficient: u16) -> Instr {
+    Instr::Mov {
+        dir: MovDir::DstFromAcc,
+        field,
+        dst: Some(pack_batch_dst(coefficient).expect("compact batch coefficient must encode")),
+        src: None,
+    }
+}
+
+fn mixed_batch_program() -> (Vec<u16>, u32) {
+    let program = Program {
+        instrs: vec![
+            Instr::Mov {
+                dir: MovDir::AccFromSrc,
+                field: OperandField::Base,
+                dst: None,
+                src: Some(OperandLine::Ldc {
+                    sub: LdcSub::Special,
+                    idx: 1,
+                }),
+            },
+            batch_sink(OperandField::Base, BATCH_COEFFICIENT_ONE),
+            Instr::Mov {
+                dir: MovDir::AccFromSrc,
+                field: OperandField::Base,
+                dst: None,
+                src: Some(OperandLine::Ldc {
+                    sub: LdcSub::Const,
+                    idx: 0,
+                }),
+            },
+            batch_sink(OperandField::Base, 0),
+            Instr::Mov {
+                dir: MovDir::AccFromSrc,
+                field: OperandField::Ext,
+                dst: None,
+                src: Some(OperandLine::Ldc {
+                    sub: LdcSub::ArgDerivedE4,
+                    idx: 0,
+                }),
+            },
+            batch_sink(OperandField::Ext, BATCH_COEFFICIENT_ONE),
+            Instr::Mov {
+                dir: MovDir::AccFromSrc,
+                field: OperandField::Ext,
+                dst: None,
+                src: Some(OperandLine::Ldc {
+                    sub: LdcSub::ArgDerivedE4,
+                    idx: 1,
+                }),
+            },
+            batch_sink(OperandField::Ext, 1),
+        ],
+    };
+    let n_instr = program.instrs.len() as u32;
+    (
+        encode(&program).expect("mixed BF/E4 batch program must encode"),
+        n_instr,
+    )
+}
+
+fn expected_mixed_batch(
+    coefficients: &[E4; 3],
+    base: BF,
+    ext_literal: E4,
+    ext_weighted: E4,
+    with_init: bool,
+) -> E4 {
+    let mut expected = if with_init { coefficients[2] } else { E4::ZERO };
+    expected.add_assign(&<E4 as FieldExtension<BF>>::from_base(BF::ONE));
+    let mut base_term = coefficients[0];
+    base_term.mul_assign_by_base(&base);
+    expected.add_assign(&base_term);
+    expected.add_assign(&ext_literal);
+    let mut ext_term = coefficients[1];
+    ext_term.mul_assign(&ext_weighted);
+    expected.add_assign(&ext_term);
+    expected
+}
+
+#[test]
+#[ignore] // GPU; compile unlocked, run the built executable under with_gpu_lock.sh.
+#[cfg(not(no_cuda))]
+#[serial_test::serial]
+fn bwd_vm_batch_accumulator_sink_parity_and_validation() {
+    let context = make_test_context(16, 16);
+    let rows = 5usize;
+    let base = bf(37);
+    let ext_literal = e4(41);
+    let ext_weighted = e4(43);
+    let coefficients = [e4(101), e4(103), e4(107)];
+    let (program, n_instr) = mixed_batch_program();
+    let eq_point = [e4(131), e4(137), e4(139)];
+    let eq_sizes = make_eq_sizes(eq_point.len());
+    let (eq_high, eq_low) = cpu_factored_eq(&eq_point);
+    let eq_point_device = upload(&eq_point, &context);
+    let mut eq_low_device = upload(&vec![E4::ZERO; GKR_EQ_GROUP_TABLE_LEN], &context);
+
+    upload_incumbent_coefficients(&coefficients, &context)
+        .expect("upload synthetic batch coefficients");
+    launch_build_eq_high_and_low_groups_from_point::<E4>(
+        eq_point_device.as_ptr(),
+        0,
+        eq_point.len(),
+        get_eq_high_constant_device_ptr(),
+        eq_low_device.as_mut_ptr(),
+        &context,
+    )
+    .expect("build synthetic batch eq");
+    for with_init in [false, true] {
+        let poison = e4(9_999);
+        let mut diagnostic_device = upload(&vec![poison; 2 * rows], &context);
+        let mut contributions_device = upload(&vec![poison; 2 * rows], &context);
+        let mut error_device = upload(&[0u32], &context);
+        let mut desc = blank_desc(&program, n_instr, rows);
+        desc.bf_constants[0] = base;
+        desc.n_bf_constants = 1;
+        desc.arg_derived_e4[0] = ext_literal;
+        desc.arg_derived_e4[1] = ext_weighted;
+        desc.n_arg_derived_e4 = 2;
+        desc.n_coefficients = coefficients.len() as u32;
+        desc.batch_acc_init = if with_init {
+            2
+        } else {
+            BWD_VM_BATCH_ACC_INIT_NONE
+        };
+        desc.eq_low = eq_low_device.as_ptr();
+        desc.eq_sizes = eq_sizes;
+        desc.contributions = contributions_device.as_mut_ptr();
+
+        launch_bwd_vm_validate(
+            &desc,
+            2,
+            error_device.as_mut_ptr(),
+            diagnostic_device.as_mut_ptr(),
+            &context,
+        )
+        .expect("mixed batch validate launch");
+        assert_eq!(
+            download_u32(&error_device, &context),
+            [0],
+            "mixed batch validation with_init={with_init}"
+        );
+        let expected =
+            expected_mixed_batch(&coefficients, base, ext_literal, ext_weighted, with_init);
+        let expected_contributions = (0..2)
+            .flat_map(|_| {
+                (0..rows).map(|row| {
+                    let mut value = expected;
+                    value.mul_assign(&factored_eq_at(row, &eq_high, &eq_low, &eq_sizes));
+                    value
+                })
+            })
+            .collect::<Vec<_>>();
+        assert_e4_bits(
+            &format!("mixed batch T0/T2 with_init={with_init}"),
+            &download_e4(&diagnostic_device, &context),
+            &vec![expected; 2 * rows],
+        );
+        assert_e4_bits(
+            &format!("mixed batch validate contributions with_init={with_init}"),
+            &download_e4(&contributions_device, &context),
+            &expected_contributions,
+        );
+
+        memory_copy_async(
+            &mut contributions_device[..],
+            &vec![poison; 2 * rows],
+            context.get_exec_stream(),
+        )
+        .expect("re-poison mixed batch contributions");
+        launch_bwd_vm_release(&desc, 2, &context).expect("mixed batch release launch");
+        assert_e4_bits(
+            &format!("mixed batch release contributions with_init={with_init}"),
+            &download_e4(&contributions_device, &context),
+            &expected_contributions,
+        );
+    }
+
+    for (label, mut desc) in [
+        {
+            let invalid_coefficient = encode(&Program {
+                instrs: vec![batch_sink(OperandField::Ext, 1)],
+            })
+            .unwrap();
+            let mut desc = blank_desc(&invalid_coefficient, 1, 1);
+            desc.n_coefficients = 1;
+            ("invalid compact coefficient", desc)
+        },
+        {
+            let literal = encode(&Program {
+                instrs: vec![batch_sink(OperandField::Ext, BATCH_COEFFICIENT_ONE)],
+            })
+            .unwrap();
+            let mut desc = blank_desc(&literal, 1, 1);
+            desc.n_coefficients = 1;
+            desc.batch_acc_init = 1;
+            ("invalid batch init", desc)
+        },
+    ] {
+        let poison = e4(8_888);
+        let mut diagnostic_device = upload(&[poison; 2], &context);
+        let mut error_device = upload(&[0u32], &context);
+        launch_bwd_vm_validate(
+            &desc,
+            2,
+            error_device.as_mut_ptr(),
+            diagnostic_device.as_mut_ptr(),
+            &context,
+        )
+        .unwrap_or_else(|error| panic!("{label} validate launch: {error}"));
+        assert_eq!(
+            download_u32(&error_device, &context),
+            [BWD_VM_ERR_BAD_SPECIAL],
+            "{label} error"
+        );
+        assert_e4_bits(
+            &format!("{label} leaves diagnostics untouched"),
+            &download_e4(&diagnostic_device, &context),
+            &[poison; 2],
+        );
+    }
 }
 
 fn malformed_program_bounds_fail_before_source_access(context: &ProverContext) {
@@ -573,11 +816,11 @@ fn release_publication_feeds_a_later_physical_use(context: &ProverContext) {
     .expect("diagnostic poison H2D");
     memory_copy_async(&mut error_device[..], &[0u32], context.get_exec_stream())
         .expect("error reset H2D");
-    let later_program = source_program_with_first_access(OperandField::Ext, false);
+    let later_program = source_batch_program_with_first_access(OperandField::Ext, false);
     desc.program.fill(0);
     desc.program[..later_program.len()].copy_from_slice(&later_program);
     desc.program_lanes = later_program.len() as u32;
-    desc.n_instr = 1;
+    desc.n_instr = 2;
     launch_bwd_vm_validate(
         &desc,
         6,
@@ -696,19 +939,22 @@ fn bwd_vm_virtual_setup_materialization_parity() {
     let mut challenge_device = upload(&round_challenges, &context);
     let program = |first_access| {
         encode(&Program {
-            instrs: vec![Instr::Add {
-                field: OperandField::Ext,
-                sign: Sign::Plus,
-                promote: true,
-                operands: kind_codes
-                    .iter()
-                    .map(|&column| OperandLine::Source {
-                        window: 0,
-                        column: column as u8,
-                        first_access,
-                    })
-                    .collect(),
-            }],
+            instrs: vec![
+                Instr::Add {
+                    field: OperandField::Ext,
+                    sign: Sign::Plus,
+                    promote: true,
+                    operands: kind_codes
+                        .iter()
+                        .map(|&column| OperandLine::Source {
+                            window: 0,
+                            column: column as u8,
+                            first_access,
+                        })
+                        .collect(),
+                },
+                batch_sink(OperandField::Ext, BATCH_COEFFICIENT_ONE),
+            ],
         })
         .expect("four-kind virtual source program must encode")
     };
@@ -751,7 +997,7 @@ fn bwd_vm_virtual_setup_materialization_parity() {
     let mut diagnostic_device = upload(&vec![poison; 2 * depth_three_rows], &context);
     let mut error_device = upload(&[0u32], &context);
     let first_access_program = program(true);
-    let mut desc = blank_desc(&first_access_program, 1, depth_three_rows);
+    let mut desc = blank_desc(&first_access_program, 2, depth_three_rows);
     desc.round_challenges = challenge_device.as_ptr();
     desc.n_round_challenges = VIRTUAL_SETUP_MATERIALIZE_DEPTH as u32;
     desc.n_source_windows = 1;

@@ -18,6 +18,8 @@ constexpr u8 BWD_VM_VIRTUAL_MATERIALIZE_DEPTH = 3;
 constexpr u32 BWD_VM_SPECIAL_CAP = 147;
 constexpr u32 BWD_VM_COEFFICIENT_CAP = 145;
 constexpr u32 BWD_VM_CELL_CAP = 18;
+constexpr u16 BWD_VM_BATCH_ACC_INIT_NONE = 0xffffu;
+constexpr u16 BWD_VM_BATCH_COEFFICIENT_ONE = 0x3fffu;
 constexpr u32 BWD_VM_THREADS_PER_BLOCK = 128;
 constexpr u32 BWD_VM_MIN_BUDGET_CELLS = 2;
 constexpr u32 BWD_VM_MAX_BUDGET_CELLS = 16;
@@ -40,8 +42,6 @@ constexpr u32 BWD_VM_BF_CONSTANT_CAP = 40;
 constexpr u32 BWD_VM_ARG_DERIVED_E4_CAP = 12;
 constexpr u32 BWD_VM_CONST_DERIVED_E4_CAP = 8;
 
-constexpr u32 BWD_VM_SPECIAL_KIND_COEFFICIENT = 0;
-constexpr u32 BWD_VM_SPECIAL_KIND_ACC_INIT = 1;
 constexpr u32 BWD_VM_SPECIAL_KIND_VIRTUAL_SETUP = 2;
 constexpr u32 BWD_VM_SPECIAL_KIND_BITS = 2;
 constexpr u32 BWD_VM_SPECIAL_KIND_MASK = (1u << BWD_VM_SPECIAL_KIND_BITS) - 1;
@@ -91,6 +91,7 @@ struct bwd_vm_desc {
   u32 logical_rows;
   u32 cell_count;
   u16 program[BWD_VM_PROGRAM_CAP];
+  u16 batch_acc_init;
 };
 
 static_assert(BWD_VM_COEFFICIENT_CAP <= FLAT_CONST_MAX, "coefficient census exceeds shared constant bank");
@@ -133,6 +134,7 @@ static_assert(__builtin_offsetof(bwd_vm_desc, n_round_challenges) == 1168, "n_ro
 static_assert(__builtin_offsetof(bwd_vm_desc, logical_rows) == 1172, "logical_rows ABI offset drift");
 static_assert(__builtin_offsetof(bwd_vm_desc, cell_count) == 1176, "cell_count ABI offset drift");
 static_assert(__builtin_offsetof(bwd_vm_desc, program) == 1180, "program ABI offset drift");
+static_assert(__builtin_offsetof(bwd_vm_desc, batch_acc_init) == 4668, "batch_acc_init ABI offset drift");
 
 } // namespace airbender::prover::gkr
 
