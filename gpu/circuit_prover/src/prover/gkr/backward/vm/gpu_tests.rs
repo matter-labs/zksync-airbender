@@ -9,10 +9,13 @@ use era_cudart::memory::memory_copy_async;
 use era_cudart::slice::DeviceSlice;
 use gkr_eval_isa::bwd::distill::{bind, BwdBindings};
 use gkr_eval_isa::bwd::interp::{interpret_bwd_row, role_combine, sumcheck_fold_point, Role};
-use gkr_eval_isa::bwd::source::{BwdSpecial, FoldState, MaterializationPolicy, OriginLeaf};
-use gkr_eval_isa::eval_plan::backward_search::StaticMaterialization;
+use gkr_eval_isa::bwd::source::{
+    BwdSpecial, FoldState, MaterializationPolicy, OriginLeaf, VIRTUAL_SETUP_MATERIALIZE_DEPTH,
+};
+use gkr_eval_isa::eval_plan::backward_search::{SourceRoundBinding, StaticMaterialization};
 use gkr_eval_isa::fwd::encode::{decode, encode};
 use gkr_eval_isa::fwd::isa::{Instr, MovDir, OperandField, OperandLine, Program, Sign};
+use gkr_eval_isa::fwd::source::virtual_setup_kind_code;
 use rayon::prelude::*;
 
 use super::compile::{load_add_sub_l0_case, AddSubBwdVmCase};
@@ -22,6 +25,7 @@ use super::desc::{
 };
 use super::lower::{
     artifact_static_materialization, lower_bwd_vm, BwdVmRoundBinding, ResolvedBwdSourceWindow,
+    ResolvedBwdVirtualSource,
 };
 use super::report::{
     publish_report, time_cuda_launches, upload_incumbent_coefficients, SweepRow, SweepSelection,
@@ -663,6 +667,238 @@ fn bwd_vm_synthetic_source_parity() {
     );
 }
 
+#[test]
+#[cfg(not(no_cuda))]
+#[serial_test::serial]
+fn bwd_vm_virtual_setup_materialization_parity() {
+    let context = make_test_context(16, 16);
+    let depth_four_rows = 7usize;
+    let depth_three_rows = 2 * depth_four_rows;
+    let depth_three_endpoints = 2 * depth_three_rows;
+    let depth_four_endpoints = 2 * depth_four_rows;
+    let kinds = [
+        VirtualSetupKind::RangeCheck16Bits,
+        VirtualSetupKind::RangeCheckTimestamp,
+        VirtualSetupKind::InitsAndTeardownsLow,
+        VirtualSetupKind::InitsAndTeardownsHigh,
+    ];
+    let kind_codes = kinds
+        .iter()
+        .map(virtual_setup_kind_code)
+        .collect::<Vec<_>>();
+    assert_eq!(kind_codes, [0, 1, 2, 3]);
+    let oracle = R0OracleResolvers {
+        columns: HashMap::new(),
+        challenges: HashMap::new(),
+        trace_log2: 24,
+    };
+    let round_challenges = [e4(0x181), e4(0x183), e4(0x185), e4(0x187)];
+    let mut challenge_device = upload(&round_challenges, &context);
+    let program = |first_access| {
+        encode(&Program {
+            instrs: vec![Instr::Add {
+                field: OperandField::Ext,
+                sign: Sign::Plus,
+                promote: true,
+                operands: kind_codes
+                    .iter()
+                    .map(|&column| OperandLine::Source {
+                        window: 0,
+                        column: column as u8,
+                        first_access,
+                    })
+                    .collect(),
+            }],
+        })
+        .expect("four-kind virtual source program must encode")
+    };
+    let expected_contributions = |columns: &[Vec<E4>], rows: usize| {
+        let mut expected = vec![E4::ZERO; 2 * rows];
+        for values in columns {
+            for row in 0..rows {
+                let a = values[2 * row];
+                let b = values[2 * row + 1];
+                expected[row].add_assign(&role_combine(Role::T0, a, b));
+                expected[rows + row].add_assign(&role_combine(Role::T2, a, b));
+            }
+        }
+        expected
+    };
+    let poison = e4(0x7a00);
+    let mut publications = [
+        GuardedPublicationMatrix::new(4, depth_three_endpoints, poison, &context),
+        GuardedPublicationMatrix::new(4, depth_three_endpoints, poison, &context),
+    ];
+    publications[0].poison(&context);
+    let depth_three = kinds
+        .iter()
+        .map(|kind| {
+            (0..depth_three_endpoints)
+                .map(|endpoint| {
+                    sumcheck_fold_point(
+                        &|row| {
+                            <E4 as FieldExtension<BF>>::from_base(oracle.virtual_setup(kind, row))
+                        },
+                        endpoint,
+                        VIRTUAL_SETUP_MATERIALIZE_DEPTH,
+                        &round_challenges[..VIRTUAL_SETUP_MATERIALIZE_DEPTH as usize],
+                    )
+                    .expect("depth-three virtual publication oracle")
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
+    let mut diagnostic_device = upload(&vec![poison; 2 * depth_three_rows], &context);
+    let mut error_device = upload(&[0u32], &context);
+    let first_access_program = program(true);
+    let mut desc = blank_desc(&first_access_program, 1, depth_three_rows);
+    desc.round_challenges = challenge_device.as_ptr();
+    desc.n_round_challenges = VIRTUAL_SETUP_MATERIALIZE_DEPTH as u32;
+    desc.n_source_windows = 1;
+    let depth_three_publish = publications[0].resolved_column(0);
+    desc.source_windows[0] = BwdVmSourceWindow {
+        read_base: ptr::null(),
+        publish_base: depth_three_publish.matrix_base.cast(),
+        read_stride_bytes: 0,
+        publish_stride_bytes: depth_three_publish.stride_bytes,
+        backing_depth: 0,
+        target_depth: VIRTUAL_SETUP_MATERIALIZE_DEPTH,
+        source_kind: BWD_VM_SOURCE_VIRTUAL,
+        materialize: 1,
+    };
+    eprintln!("[bwd-vm-virtual] round 3/4 first-access rows={depth_three_rows}");
+    launch_bwd_vm_validate(
+        &desc,
+        6,
+        error_device.as_mut_ptr(),
+        diagnostic_device.as_mut_ptr(),
+        &context,
+    )
+    .expect("depth-three virtual first-access launch");
+    assert_eq!(download_u32(&error_device, &context), [0]);
+    assert_e4_bits(
+        "depth-three virtual contributions",
+        &download_e4(&diagnostic_device, &context),
+        &expected_contributions(&depth_three, depth_three_rows),
+    );
+    for (&kind_code, expected) in kind_codes.iter().zip(&depth_three) {
+        let column = kind_code as usize;
+        assert_e4_bits(
+            &format!("depth-three virtual publication kind={kind_code}"),
+            &publications[0].download_column(column, depth_three_endpoints, &context),
+            expected,
+        );
+        publications[0].assert_column_guards(column, depth_three_endpoints, &context);
+    }
+
+    let replacement_challenges = [e4(0x381), e4(0x383), e4(0x385), e4(0x387)];
+    memory_copy_async(
+        &mut challenge_device[..],
+        &replacement_challenges,
+        context.get_exec_stream(),
+    )
+    .expect("replace virtual challenges");
+    memory_copy_async(
+        &mut diagnostic_device[..],
+        &vec![poison; 2 * depth_three_rows],
+        context.get_exec_stream(),
+    )
+    .expect("re-poison virtual diagnostics");
+    memory_copy_async(&mut error_device[..], &[0u32], context.get_exec_stream())
+        .expect("reset virtual error");
+    let cached_program = program(false);
+    desc.program.fill(0);
+    desc.program[..cached_program.len()].copy_from_slice(&cached_program);
+    desc.program_lanes = cached_program.len() as u32;
+    launch_bwd_vm_validate(
+        &desc,
+        6,
+        error_device.as_mut_ptr(),
+        diagnostic_device.as_mut_ptr(),
+        &context,
+    )
+    .expect("depth-three cached virtual launch");
+    assert_eq!(download_u32(&error_device, &context), [0]);
+    assert_e4_bits(
+        "depth-three cached virtual contributions ignore changed challenges",
+        &download_e4(&diagnostic_device, &context),
+        &expected_contributions(&depth_three, depth_three_rows),
+    );
+
+    memory_copy_async(
+        &mut challenge_device[..],
+        &round_challenges,
+        context.get_exec_stream(),
+    )
+    .expect("restore virtual challenges");
+    memory_copy_async(
+        &mut diagnostic_device[..],
+        &vec![poison; 2 * depth_three_rows],
+        context.get_exec_stream(),
+    )
+    .expect("re-poison depth-four diagnostics");
+    memory_copy_async(&mut error_device[..], &[0u32], context.get_exec_stream())
+        .expect("reset depth-four virtual error");
+    publications[1].poison(&context);
+    let depth_four = depth_three
+        .iter()
+        .map(|prior| {
+            (0..depth_four_endpoints)
+                .map(|endpoint| {
+                    let mut a = prior[2 * endpoint];
+                    let mut delta = prior[2 * endpoint + 1];
+                    delta.sub_assign(&a);
+                    delta.mul_assign(&round_challenges[3]);
+                    a.add_assign(&delta);
+                    a
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
+    let depth_four_program = program(true);
+    desc.program.fill(0);
+    desc.program[..depth_four_program.len()].copy_from_slice(&depth_four_program);
+    desc.program_lanes = depth_four_program.len() as u32;
+    desc.logical_rows = depth_four_rows as u32;
+    desc.n_round_challenges = 4;
+    let depth_three_read = publications[0].resolved_column(0);
+    let depth_four_publish = publications[1].resolved_column(0);
+    desc.source_windows[0] = BwdVmSourceWindow {
+        read_base: depth_three_read.matrix_base.cast(),
+        publish_base: depth_four_publish.matrix_base.cast(),
+        read_stride_bytes: depth_three_read.stride_bytes,
+        publish_stride_bytes: depth_four_publish.stride_bytes,
+        backing_depth: VIRTUAL_SETUP_MATERIALIZE_DEPTH,
+        target_depth: VIRTUAL_SETUP_MATERIALIZE_DEPTH + 1,
+        source_kind: BWD_VM_SOURCE_VIRTUAL,
+        materialize: 1,
+    };
+    eprintln!("[bwd-vm-virtual] round 4/4 materialized rows={depth_four_rows}");
+    launch_bwd_vm_validate(
+        &desc,
+        6,
+        error_device.as_mut_ptr(),
+        diagnostic_device.as_mut_ptr(),
+        &context,
+    )
+    .expect("depth-four materialized virtual launch");
+    assert_eq!(download_u32(&error_device, &context), [0]);
+    assert_e4_bits(
+        "depth-four virtual contributions",
+        &download_e4_ptr(diagnostic_device.as_ptr(), 2 * depth_four_rows, &context),
+        &expected_contributions(&depth_four, depth_four_rows),
+    );
+    for (&kind_code, expected) in kind_codes.iter().zip(&depth_four) {
+        let column = kind_code as usize;
+        assert_e4_bits(
+            &format!("depth-four virtual publication kind={kind_code}"),
+            &publications[1].download_column(column, depth_four_endpoints, &context),
+            expected,
+        );
+        publications[1].assert_column_guards(column, depth_four_endpoints, &context);
+    }
+}
+
 enum R0HostColumn {
     Base(Vec<BF>),
     Ext(Vec<E4>),
@@ -776,7 +1012,7 @@ fn bwd_vm_virtual_setup_closed_form_matches_direct_index_fold() {
         VirtualSetupKind::InitsAndTeardownsLow,
         VirtualSetupKind::InitsAndTeardownsHigh,
     ];
-    for depth in 0..=6 {
+    for depth in 0..=VIRTUAL_SETUP_MATERIALIZE_DEPTH {
         let rows = 1usize << (24 - depth);
         for kind in &kinds {
             let mut sampled_rows = vec![0, 1, 3, rows - 1];
@@ -1147,32 +1383,75 @@ fn ext_read_descriptors(case: &AddSubBwdVmCase) -> Vec<(u16, ReadPlace)> {
         .collect()
 }
 
-fn assert_virtual_setup_is_procedural(
-    r0_case: &AddSubBwdVmCase,
-    ext_case: &AddSubBwdVmCase,
-    materialization: &StaticMaterialization,
-) {
-    assert!((0..r0_case.distilled.specials.len()).any(|desc| matches!(
-        r0_case.distilled.specials.get(desc as u16),
-        Some(BwdSpecial::VirtualSetup { .. })
-    )));
-    for desc in 0..ext_case.distilled.specials.len() {
-        let desc = desc as u16;
-        if matches!(
-            ext_case.distilled.specials.get(desc),
-            Some(BwdSpecial::FoldSource {
-                origin: OriginLeaf::VirtualSetup { .. }
-            })
-        ) {
-            assert!(
-                !materialization
-                    .bindings
-                    .keys()
-                    .any(|(bound_desc, _)| *bound_desc == desc),
-                "Ext VirtualSetup desc {desc} must remain procedural and never publish"
-            );
-        }
+fn ext_virtual_descriptors(case: &AddSubBwdVmCase) -> Vec<(u16, u8)> {
+    let mut descriptors = (0..case.distilled.specials.len())
+        .filter_map(|desc| {
+            let desc = desc as u16;
+            match case.distilled.specials.get(desc) {
+                Some(BwdSpecial::FoldSource {
+                    origin: OriginLeaf::VirtualSetup { kind },
+                }) => Some((desc, virtual_setup_kind_code(kind) as u8)),
+                _ => None,
+            }
+        })
+        .collect::<Vec<_>>();
+    descriptors.sort_unstable_by_key(|&(_, kind_code)| kind_code);
+    let kind_codes = descriptors
+        .iter()
+        .map(|&(_, kind_code)| kind_code)
+        .collect::<Vec<_>>();
+    assert_eq!(
+        kind_codes.iter().copied().collect::<HashSet<_>>().len(),
+        kind_codes.len(),
+        "Ext virtual descriptors must have unique stable kind codes"
+    );
+    assert!(
+        kind_codes.iter().all(|&kind_code| kind_code < 4),
+        "Ext virtual descriptor kind codes must index the fixed four-column matrix"
+    );
+    // The add/sub artifacts reference the two range-check setup kinds. The
+    // focused raw-ABI parity test above separately covers all four stable kind
+    // codes, while runtime storage remains one fixed four-column matrix pair.
+    assert_eq!(kind_codes, [0, 1], "add/sub virtual descriptor identity");
+    descriptors
+}
+
+fn virtual_round_binding(round: u8) -> SourceRoundBinding {
+    SourceRoundBinding {
+        state: if round > VIRTUAL_SETUP_MATERIALIZE_DEPTH {
+            FoldState::Materialized
+        } else {
+            FoldState::LazyFromOriginals { depth: round }
+        },
+        store_for_next_round: round >= VIRTUAL_SETUP_MATERIALIZE_DEPTH,
     }
+}
+
+#[test]
+fn bwd_vm_virtual_round_binding_materializes_at_exact_boundary() {
+    for round in 0..=2 {
+        assert_eq!(
+            virtual_round_binding(round),
+            SourceRoundBinding {
+                state: FoldState::LazyFromOriginals { depth: round },
+                store_for_next_round: false,
+            }
+        );
+    }
+    assert_eq!(
+        virtual_round_binding(3),
+        SourceRoundBinding {
+            state: FoldState::LazyFromOriginals { depth: 3 },
+            store_for_next_round: true,
+        }
+    );
+    assert_eq!(
+        virtual_round_binding(4),
+        SourceRoundBinding {
+            state: FoldState::Materialized,
+            store_for_next_round: true,
+        }
+    );
 }
 
 const ORACLE_MAX_ROWS_PER_CHUNK: usize = 1 << 20;
@@ -1245,6 +1524,65 @@ fn bwd_vm_independent_oracle_policy_caps_depth_without_dropping_timing_rounds() 
     assert!((1..=23).all(|round| SweepSelection::All.includes("Ext", 2, round)));
 }
 
+struct RoundVirtualResolver<'a> {
+    oracle: &'a R0OracleResolvers,
+    descriptors: &'a [(u16, u8)],
+    publications: &'a HashMap<u16, PublishedHostColumn>,
+}
+
+impl VirtualSetupResolver for RoundVirtualResolver<'_> {
+    fn virtual_setup(&self, kind: &VirtualSetupKind, row: usize) -> BF {
+        self.oracle.virtual_setup(kind, row)
+    }
+
+    fn virtual_setup_fold(&self, kind: &VirtualSetupKind, row: usize, ch: &[E4]) -> E4 {
+        if ch.len() <= VIRTUAL_SETUP_MATERIALIZE_DEPTH as usize {
+            return self.oracle.virtual_setup_fold(kind, row, ch);
+        }
+        let kind_code = virtual_setup_kind_code(kind) as u8;
+        let desc = self
+            .descriptors
+            .iter()
+            .find_map(|&(desc, code)| (code == kind_code).then_some(desc))
+            .unwrap_or_else(|| panic!("missing virtual descriptor for kind code {kind_code}"));
+        let publication = self.publications.get(&desc).unwrap_or_else(|| {
+            panic!(
+                "missing materialized virtual publication desc {desc} depth {}",
+                ch.len()
+            )
+        });
+        assert_eq!(
+            publication.depth as usize,
+            ch.len(),
+            "virtual contribution oracle must consume the current publication"
+        );
+        publication.values[row]
+    }
+}
+
+struct RoundReadResolver<'a> {
+    oracle: &'a R0OracleResolvers,
+    descriptors: &'a [(u16, ReadPlace)],
+    publications: &'a HashMap<u16, PublishedHostColumn>,
+}
+
+impl ReadResolver for RoundReadResolver<'_> {
+    fn read(&self, place: &ReadPlace, row: usize) -> E4 {
+        if self.publications.is_empty() {
+            return self.oracle.read(place, row);
+        }
+        let desc = self
+            .descriptors
+            .iter()
+            .find_map(|(desc, candidate)| (candidate == place).then_some(*desc))
+            .unwrap_or_else(|| panic!("materialized read oracle missing descriptor for {place:?}"));
+        self.publications
+            .get(&desc)
+            .unwrap_or_else(|| panic!("materialized read oracle missing publication desc {desc}"))
+            .values[row]
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn all_round_expected_contributions(
     case: &AddSubBwdVmCase,
@@ -1257,10 +1595,14 @@ fn all_round_expected_contributions(
     eq_sizes: &crate::prover::gkr::backward::GkrEqSizes,
     pool: &rayon::ThreadPool,
     total_rounds: usize,
+    read_descriptors: &[(u16, ReadPlace)],
+    read_publications: &HashMap<u16, PublishedHostColumn>,
+    virtual_descriptors: &[(u16, u8)],
+    virtual_publications: &HashMap<u16, PublishedHostColumn>,
 ) -> Vec<E4> {
     let bindings = bind(
         &case.distilled,
-        MaterializationPolicy::LazyUpTo(u8::MAX),
+        MaterializationPolicy::LazyUpTo(VIRTUAL_SETUP_MATERIALIZE_DEPTH),
         round,
     );
     let ranges = oracle_chunk_ranges(rows, pool.current_num_threads());
@@ -1272,10 +1614,20 @@ fn all_round_expected_contributions(
             .map(|range| {
                 let start = range.start;
                 let end = range.end;
+                let virtual_resolver = RoundVirtualResolver {
+                    oracle,
+                    descriptors: virtual_descriptors,
+                    publications: virtual_publications,
+                };
+                let read_resolver = RoundReadResolver {
+                    oracle,
+                    descriptors: read_descriptors,
+                    publications: read_publications,
+                };
                 let resolvers = Resolvers {
-                    read: oracle,
+                    read: &read_resolver,
                     lookup: oracle,
-                    virtual_setup: oracle,
+                    virtual_setup: &virtual_resolver,
                     challenge: oracle,
                 };
                 let mut q0 = Vec::with_capacity(end - start);
@@ -1603,6 +1955,110 @@ fn build_publication_oracle(
     current
 }
 
+fn build_virtual_publication_oracle(
+    virtual_descriptors: &[(u16, u8)],
+    round: u8,
+    rows: usize,
+    oracle: &R0OracleResolvers,
+    round_challenges: &[E4],
+    previous: &HashMap<u16, PublishedHostColumn>,
+    pool: &rayon::ThreadPool,
+    total_rounds: usize,
+) -> HashMap<u16, PublishedHostColumn> {
+    let binding = virtual_round_binding(round);
+    if !binding.store_for_next_round {
+        return HashMap::new();
+    }
+    const ELEMENTS_PER_CHUNK: usize = 1 << 20;
+    let elements = 2 * rows;
+    virtual_descriptors
+        .iter()
+        .map(|&(desc, kind_code)| {
+            let kind = match kind_code {
+                0 => VirtualSetupKind::RangeCheck16Bits,
+                1 => VirtualSetupKind::RangeCheckTimestamp,
+                2 => VirtualSetupKind::InitsAndTeardownsLow,
+                3 => VirtualSetupKind::InitsAndTeardownsHigh,
+                _ => unreachable!("stable virtual kind code"),
+            };
+            let chunk_count = elements.div_ceil(ELEMENTS_PER_CHUNK);
+            let started = Instant::now();
+            let chunks = pool.install(|| {
+                (0..chunk_count)
+                    .into_par_iter()
+                    .map(|chunk| {
+                        let start = chunk * ELEMENTS_PER_CHUNK;
+                        let end = (start + ELEMENTS_PER_CHUNK).min(elements);
+                        let values = match binding.state {
+                            FoldState::LazyFromOriginals { depth } => {
+                                assert_eq!(depth, VIRTUAL_SETUP_MATERIALIZE_DEPTH);
+                                (start..end)
+                                    .map(|endpoint| {
+                                        sumcheck_fold_point(
+                                            &|row| {
+                                                <E4 as FieldExtension<BF>>::from_base(
+                                                    oracle.virtual_setup(&kind, row),
+                                                )
+                                            },
+                                            endpoint,
+                                            VIRTUAL_SETUP_MATERIALIZE_DEPTH,
+                                            &round_challenges
+                                                [..VIRTUAL_SETUP_MATERIALIZE_DEPTH as usize],
+                                        )
+                                        .expect("depth-three virtual publication oracle")
+                                    })
+                                    .collect::<Vec<_>>()
+                            }
+                            FoldState::Materialized => {
+                                let prior = previous.get(&desc).unwrap_or_else(|| {
+                                    panic!(
+                                        "materialized virtual desc {desc} round {round} lacks prior publication"
+                                    )
+                                });
+                                assert_eq!(
+                                    prior.depth.checked_add(1),
+                                    Some(round),
+                                    "virtual materialization advances exactly one round"
+                                );
+                                assert_eq!(
+                                    prior.values.len(),
+                                    2 * elements,
+                                    "prior virtual publication is the exact two-endpoint backing"
+                                );
+                                (start..end)
+                                    .map(|endpoint| {
+                                        let mut a = prior.values[2 * endpoint];
+                                        let mut delta = prior.values[2 * endpoint + 1];
+                                        delta.sub_assign(&a);
+                                        delta.mul_assign(&round_challenges[round as usize - 1]);
+                                        a.add_assign(&delta);
+                                        a
+                                    })
+                                    .collect::<Vec<_>>()
+                            }
+                        };
+                        eprintln!(
+                            "[bwd-vm-parity] virtual publication round {round}/{total_rounds} desc={desc} kind={kind_code} chunk={}/{chunk_count} elapsed={:.2}s",
+                            chunk + 1,
+                            started.elapsed().as_secs_f64()
+                        );
+                        values
+                    })
+                    .collect::<Vec<_>>()
+            });
+            let values = chunks.into_iter().flatten().collect::<Vec<_>>();
+            assert_eq!(values.len(), elements);
+            (
+                desc,
+                PublishedHostColumn {
+                    depth: round,
+                    values,
+                },
+            )
+        })
+        .collect()
+}
+
 #[derive(Clone, Copy)]
 struct PublishedDeviceColumn {
     matrix: usize,
@@ -1708,6 +2164,56 @@ fn resolved_ext_round_sources(
     )
 }
 
+fn resolved_ext_virtual_sources(
+    virtual_descriptors: &[(u16, u8)],
+    round: u8,
+    virtual_publications: &[GuardedPublicationMatrix; 2],
+    current_matrix: usize,
+    previous_virtual: &HashMap<u16, PublishedDeviceColumn>,
+) -> Vec<ResolvedBwdVirtualSource> {
+    virtual_descriptors
+        .iter()
+        .map(|&(desc, kind_code)| {
+            let binding = virtual_round_binding(round);
+            match binding.state {
+                FoldState::LazyFromOriginals { depth } => {
+                    assert!(depth <= VIRTUAL_SETUP_MATERIALIZE_DEPTH);
+                    ResolvedBwdVirtualSource {
+                        desc,
+                        read: None,
+                        publish: binding.store_for_next_round.then(|| {
+                            virtual_publications[current_matrix].resolved_column(kind_code as usize)
+                        }),
+                        backing_depth: 0,
+                        target_depth: round,
+                        materialize: binding.store_for_next_round,
+                    }
+                }
+                FoldState::Materialized => {
+                    let prior = previous_virtual[&desc];
+                    assert_ne!(
+                        prior.matrix, current_matrix,
+                        "virtual ping-pong write matrix must not alias prior backing"
+                    );
+                    ResolvedBwdVirtualSource {
+                        desc,
+                        read: Some(
+                            virtual_publications[prior.matrix].resolved_column(kind_code as usize),
+                        ),
+                        publish: Some(
+                            virtual_publications[current_matrix]
+                                .resolved_column(kind_code as usize),
+                        ),
+                        backing_depth: prior.depth,
+                        target_depth: round,
+                        materialize: true,
+                    }
+                }
+            }
+        })
+        .collect()
+}
+
 #[allow(clippy::too_many_arguments)]
 fn run_all_budget_coordinate(
     fixture: &CircuitFixture,
@@ -1725,6 +2231,10 @@ fn run_all_budget_coordinate(
     publication_matrices: Option<&mut [GuardedPublicationMatrix; 2]>,
     previous_device: &HashMap<u16, PublishedDeviceColumn>,
     current_host: &HashMap<u16, PublishedHostColumn>,
+    virtual_descriptors: &[(u16, u8)],
+    virtual_publications: Option<&mut [GuardedPublicationMatrix; 2]>,
+    previous_virtual: &HashMap<u16, PublishedDeviceColumn>,
+    current_virtual: &HashMap<u16, PublishedHostColumn>,
 ) {
     let context = fixture.context();
     let rows = expected.len() / 2;
@@ -1756,6 +2266,7 @@ fn run_all_budget_coordinate(
     let current_matrix = (round as usize) & 1;
     let is_ext = materialization.is_some();
     let mut publication_matrices = publication_matrices;
+    let mut virtual_publications = virtual_publications;
 
     for case in cases {
         let (sources, resolved_by_address, stored, mode) =
@@ -1788,6 +2299,17 @@ fn run_all_budget_coordinate(
                     .collect();
                 (sources, resolved, Vec::new(), "lazy")
             };
+        let virtual_sources = virtual_publications
+            .as_deref()
+            .map_or_else(Vec::new, |matrices| {
+                resolved_ext_virtual_sources(
+                    virtual_descriptors,
+                    round,
+                    matrices,
+                    current_matrix,
+                    previous_virtual,
+                )
+            });
         let mut expected_stored = current_host.keys().copied().collect::<Vec<_>>();
         expected_stored.sort_unstable();
         assert_eq!(
@@ -1805,7 +2327,7 @@ fn run_all_budget_coordinate(
             rows: rows as u32,
             round_challenges,
             sources: &sources,
-            virtual_sources: &[],
+            virtual_sources: &virtual_sources,
             resolve_source: &resolve_source,
             eq_low: eq_low_device.as_ptr(),
             eq_sizes,
@@ -1851,6 +2373,12 @@ fn run_all_budget_coordinate(
                     .as_deref_mut()
                     .expect("Ext publication matrices")[current_matrix]
                     .poison(context);
+                if virtual_round_binding(round).store_for_next_round {
+                    virtual_publications
+                        .as_deref_mut()
+                        .expect("Ext virtual publication matrices")[current_matrix]
+                        .poison(context);
+                }
             }
             memory_copy_async(&mut error_device[..], &[0u32], context.get_exec_stream())
                 .expect("reset all-round validation error");
@@ -1924,6 +2452,31 @@ fn run_all_budget_coordinate(
                     matrix.assert_column_guards(
                         desc_columns[&desc],
                         expected_publication.len(),
+                        context,
+                    );
+                }
+            }
+            if let Some(matrices) = virtual_publications.as_deref() {
+                for &(desc, kind_code) in virtual_descriptors {
+                    let Some(expected_publication) = current_virtual.get(&desc) else {
+                        continue;
+                    };
+                    let matrix = &matrices[current_matrix];
+                    assert_e4_bits(
+                        &format!(
+                            "c{} round {round} phase {phase} virtual publication desc {desc}",
+                            case.budget_cells
+                        ),
+                        &matrix.download_column(
+                            kind_code as usize,
+                            expected_publication.values.len(),
+                            context,
+                        ),
+                        &expected_publication.values,
+                    );
+                    matrix.assert_column_guards(
+                        kind_code as usize,
+                        expected_publication.values.len(),
                         context,
                     );
                 }
@@ -2435,9 +2988,14 @@ fn bwd_vm_add_sub_l0_ext_round_zero_single_block_parity() {
         &eq_sizes,
         &pool,
         23,
+        &[],
+        &HashMap::new(),
+        &[],
+        &HashMap::new(),
     );
 
     let read_descriptors = ext_read_descriptors(&ext_case);
+    let virtual_descriptors = ext_virtual_descriptors(&ext_case);
     let desc_columns = read_descriptors
         .iter()
         .enumerate()
@@ -2466,6 +3024,10 @@ fn bwd_vm_add_sub_l0_ext_round_zero_single_block_parity() {
             fixture.context(),
         ),
     ];
+    let mut virtual_publications = [
+        GuardedPublicationMatrix::new(4, SOURCE_ELEMENTS, sentinel, fixture.context()),
+        GuardedPublicationMatrix::new(4, SOURCE_ELEMENTS, sentinel, fixture.context()),
+    ];
     let current_host = build_publication_oracle(
         &read_descriptors,
         &materialization,
@@ -2493,11 +3055,14 @@ fn bwd_vm_add_sub_l0_ext_round_zero_single_block_parity() {
         Some(&mut publication_matrices),
         &HashMap::new(),
         &current_host,
+        &virtual_descriptors,
+        Some(&mut virtual_publications),
+        &HashMap::new(),
+        &HashMap::new(),
     );
 }
 
 #[test]
-#[ignore] // GPU; compile unlocked, run the exact built executable under with_gpu_lock.sh.
 #[cfg(not(no_cuda))]
 #[serial_test::serial]
 fn bwd_vm_add_sub_l0_all_budgets_all_rounds_parity() {
@@ -2544,7 +3109,12 @@ fn bwd_vm_add_sub_l0_all_budgets_all_rounds_parity() {
         );
     }
     let materialization = &materializations[0];
-    assert_virtual_setup_is_procedural(&r0_cases[0], &ext_cases[0], materialization);
+    assert!(
+        (0..r0_cases[0].distilled.specials.len()).any(|desc| matches!(
+            r0_cases[0].distilled.specials.get(desc as u16),
+            Some(BwdSpecial::VirtualSetup { .. })
+        ))
+    );
 
     let fixture = CircuitFixture::build("add_sub_lui_auipc_mop");
     assert_eq!(fixture.trace_len, trace_len);
@@ -2612,6 +3182,10 @@ fn bwd_vm_add_sub_l0_all_budgets_all_rounds_parity() {
         &r0_eq_sizes,
         &pool,
         last_round,
+        &[],
+        &HashMap::new(),
+        &[],
+        &HashMap::new(),
     );
     run_all_budget_coordinate(
         &fixture,
@@ -2629,6 +3203,10 @@ fn bwd_vm_add_sub_l0_all_budgets_all_rounds_parity() {
         None,
         &HashMap::new(),
         &HashMap::new(),
+        &[],
+        None,
+        &HashMap::new(),
+        &HashMap::new(),
     );
     drop(r0_expected);
     drop(r0_eq_low_device);
@@ -2637,6 +3215,7 @@ fn bwd_vm_add_sub_l0_all_budgets_all_rounds_parity() {
     // base column. Lift every distinct original once, then keep exactly two
     // maximum-sized publication matrices for the literal static schedule.
     let read_descriptors = ext_read_descriptors(&ext_cases[0]);
+    let virtual_descriptors = ext_virtual_descriptors(&ext_cases[0]);
     let desc_columns = read_descriptors
         .iter()
         .enumerate()
@@ -2666,6 +3245,26 @@ fn bwd_vm_add_sub_l0_all_budgets_all_rounds_parity() {
             fixture.context(),
         ),
     ];
+    let virtual_max_elements = trace_len >> VIRTUAL_SETUP_MATERIALIZE_DEPTH;
+    assert_eq!(
+        virtual_max_elements,
+        2 * (trace_len >> (VIRTUAL_SETUP_MATERIALIZE_DEPTH as usize + 1)),
+        "depth-three publication is the maximum virtual endpoint domain"
+    );
+    let mut virtual_publications = [
+        GuardedPublicationMatrix::new(
+            4,
+            virtual_max_elements,
+            publication_sentinel,
+            fixture.context(),
+        ),
+        GuardedPublicationMatrix::new(
+            4,
+            virtual_max_elements,
+            publication_sentinel,
+            fixture.context(),
+        ),
+    ];
     let matrix_bytes = original_matrix.device.len() * size_of::<E4>();
     eprintln!(
         "[bwd-vm-parity] ext_columns={} matrix_bytes={} lifted_plus_pingpong_bytes={} elapsed={:.2}s",
@@ -2681,6 +3280,8 @@ fn bwd_vm_add_sub_l0_all_budgets_all_rounds_parity() {
         .expect("Ext artifact cases");
     let mut previous_host = HashMap::<u16, PublishedHostColumn>::new();
     let mut previous_device = HashMap::<u16, PublishedDeviceColumn>::new();
+    let mut previous_virtual_host = HashMap::<u16, PublishedHostColumn>::new();
+    let mut previous_virtual_device = HashMap::<u16, PublishedDeviceColumn>::new();
     for round in 0..=last_round as u8 {
         for &(desc, _) in &read_descriptors {
             assert!(
@@ -2705,15 +3306,13 @@ fn bwd_vm_add_sub_l0_all_budgets_all_rounds_parity() {
             fixture.context(),
         )
         .expect("build Ext factored eq");
-        let expected = all_round_expected_contributions(
-            ext_reference,
-            &oracle,
+        let current_virtual = build_virtual_publication_oracle(
+            &virtual_descriptors,
             round,
             rows,
+            &oracle,
             &round_challenges,
-            &cpu_high,
-            &cpu_low,
-            &eq_sizes,
+            &previous_virtual_host,
             &pool,
             last_round,
         );
@@ -2727,6 +3326,35 @@ fn bwd_vm_add_sub_l0_all_budgets_all_rounds_parity() {
             &previous_host,
             &pool,
             last_round,
+        );
+        if round > VIRTUAL_SETUP_MATERIALIZE_DEPTH {
+            assert_eq!(
+                current_host.len(),
+                read_descriptors.len(),
+                "later contribution oracles require every current Read publication"
+            );
+        }
+        let no_read_publications = HashMap::new();
+        let oracle_read_publications = if round > VIRTUAL_SETUP_MATERIALIZE_DEPTH {
+            &current_host
+        } else {
+            &no_read_publications
+        };
+        let expected = all_round_expected_contributions(
+            ext_reference,
+            &oracle,
+            round,
+            rows,
+            &round_challenges,
+            &cpu_high,
+            &cpu_low,
+            &eq_sizes,
+            &pool,
+            last_round,
+            &read_descriptors,
+            oracle_read_publications,
+            &virtual_descriptors,
+            &current_virtual,
         );
         run_all_budget_coordinate(
             &fixture,
@@ -2744,6 +3372,10 @@ fn bwd_vm_add_sub_l0_all_budgets_all_rounds_parity() {
             Some(&mut publication_matrices),
             &previous_device,
             &current_host,
+            &virtual_descriptors,
+            Some(&mut virtual_publications),
+            &previous_virtual_device,
+            &current_virtual,
         );
 
         // Static `store_for_next_round` is the sole retention authority.
@@ -2775,6 +3407,29 @@ fn bwd_vm_add_sub_l0_all_budgets_all_rounds_parity() {
                 })
                 .collect();
             previous_host = current_host;
+        }
+        if round as usize == last_round {
+            previous_virtual_host.clear();
+            previous_virtual_device.clear();
+        } else if virtual_round_binding(round).store_for_next_round {
+            assert_eq!(
+                current_virtual.len(),
+                virtual_descriptors.len(),
+                "all virtual descriptors publish together"
+            );
+            previous_virtual_device = current_virtual
+                .keys()
+                .map(|&desc| {
+                    (
+                        desc,
+                        PublishedDeviceColumn {
+                            matrix: (round as usize) & 1,
+                            depth: round,
+                        },
+                    )
+                })
+                .collect();
+            previous_virtual_host = current_virtual;
         }
         drop(expected);
         drop(eq_low_device);
@@ -3400,7 +4055,12 @@ fn bwd_vm_add_sub_l0_budget_sweep_report() {
         &r0_eq_sizes,
         &pool,
         last_round,
+        &[],
+        &HashMap::new(),
+        &[],
+        &HashMap::new(),
     );
+    eprintln!("[bwd-vm-sweep] R0 round 0/{last_round} rows={r0_rows}");
     for case in &r0_cases {
         if !selection.includes("R0", case.budget_cells, 0) {
             continue;
@@ -3477,6 +4137,7 @@ fn bwd_vm_add_sub_l0_budget_sweep_report() {
         .all(|materialization| materialization == &materializations[0]));
     let materialization = &materializations[0];
     let read_descriptors = ext_read_descriptors(&ext_cases[0]);
+    let virtual_descriptors = ext_virtual_descriptors(&ext_cases[0]);
     let desc_columns = read_descriptors
         .iter()
         .enumerate()
@@ -3505,6 +4166,16 @@ fn bwd_vm_add_sub_l0_budget_sweep_report() {
             context,
         ),
     ];
+    let virtual_max_elements = trace_len >> VIRTUAL_SETUP_MATERIALIZE_DEPTH;
+    assert_eq!(
+        virtual_max_elements,
+        2 * (trace_len >> (VIRTUAL_SETUP_MATERIALIZE_DEPTH as usize + 1)),
+        "depth-three publication is the maximum virtual endpoint domain"
+    );
+    let mut virtual_publications = [
+        GuardedPublicationMatrix::new(4, virtual_max_elements, publication_sentinel, context),
+        GuardedPublicationMatrix::new(4, virtual_max_elements, publication_sentinel, context),
+    ];
 
     // Ext round 0 is the setup predecessor for the first actual Ext timing
     // coordinate (round 1). Run it once, untimed, solely to populate any
@@ -3531,13 +4202,20 @@ fn bwd_vm_add_sub_l0_budget_sweep_report() {
         0,
         &HashMap::new(),
     );
+    let prep_virtual_sources = resolved_ext_virtual_sources(
+        &virtual_descriptors,
+        0,
+        &virtual_publications,
+        0,
+        &HashMap::new(),
+    );
     let prep_resolver = |address| prep_resolve.get(&address).copied();
     let prep_runtime = BwdVmRoundBinding {
         round: 0,
         rows: prep_rows as u32,
         round_challenges: &round_challenges,
         sources: &prep_sources,
-        virtual_sources: &[],
+        virtual_sources: &prep_virtual_sources,
         resolve_source: &prep_resolver,
         eq_low: prep_eq_low.as_ptr(),
         eq_sizes: make_eq_sizes(folding_steps - 1),
@@ -3563,6 +4241,10 @@ fn bwd_vm_add_sub_l0_budget_sweep_report() {
         &prep_runtime.eq_sizes,
         &pool,
         last_round,
+        &read_descriptors,
+        &HashMap::new(),
+        &virtual_descriptors,
+        &HashMap::new(),
     );
     let prep_columns = prep_stored
         .iter()
@@ -3599,9 +4281,11 @@ fn bwd_vm_add_sub_l0_budget_sweep_report() {
             )
         })
         .collect::<HashMap<_, _>>();
+    let mut previous_virtual_device = HashMap::<u16, PublishedDeviceColumn>::new();
 
     for round in 1..=last_round as u8 {
         let rows = trace_len >> (round as usize + 1);
+        eprintln!("[bwd-vm-sweep] Ext round {round}/{last_round} rows={rows}");
         let remaining = folding_steps - round as usize - 1;
         let eq_sizes = make_eq_sizes(remaining);
         let mut eq_low = upload(&vec![E4::ZERO; GKR_EQ_GROUP_TABLE_LEN], context);
@@ -3627,6 +4311,10 @@ fn bwd_vm_add_sub_l0_budget_sweep_report() {
                 &eq_sizes,
                 &pool,
                 last_round,
+                &read_descriptors,
+                &HashMap::new(),
+                &virtual_descriptors,
+                &HashMap::new(),
             )
         });
         if expected_prefix.is_none() {
@@ -3636,6 +4324,13 @@ fn bwd_vm_add_sub_l0_budget_sweep_report() {
             );
         }
         let current_matrix = round as usize & 1;
+        let virtual_sources = resolved_ext_virtual_sources(
+            &virtual_descriptors,
+            round,
+            &virtual_publications,
+            current_matrix,
+            &previous_virtual_device,
+        );
         let mut stored_reference = None;
         for case in &ext_cases {
             if !selection.includes("Ext", case.budget_cells, round) {
@@ -3662,7 +4357,7 @@ fn bwd_vm_add_sub_l0_budget_sweep_report() {
                 rows: rows as u32,
                 round_challenges: &round_challenges,
                 sources: &sources,
-                virtual_sources: &[],
+                virtual_sources: &virtual_sources,
                 resolve_source: &resolver,
                 eq_low: eq_low.as_ptr(),
                 eq_sizes,
@@ -3694,7 +4389,15 @@ fn bwd_vm_add_sub_l0_budget_sweep_report() {
                         columns.iter().copied(),
                         live,
                         context,
-                    )
+                    )?;
+                    if virtual_round_binding(round).store_for_next_round {
+                        virtual_publications[current_matrix].poison_columns(
+                            0..virtual_descriptors.len(),
+                            live,
+                            context,
+                        )?;
+                    }
+                    Ok(())
                 },
             );
             let (dynamic_smem_bytes, active_blocks_per_sm, theoretical_occupancy) =
@@ -3728,6 +4431,20 @@ fn bwd_vm_add_sub_l0_budget_sweep_report() {
                 )
             })
             .collect();
+        if virtual_round_binding(round).store_for_next_round {
+            previous_virtual_device = virtual_descriptors
+                .iter()
+                .map(|&(desc, _)| {
+                    (
+                        desc,
+                        PublishedDeviceColumn {
+                            matrix: current_matrix,
+                            depth: round,
+                        },
+                    )
+                })
+                .collect();
+        }
         if selection.stops_after_ext_round(round) {
             break;
         }
