@@ -1183,11 +1183,13 @@ fn oracle_chunk_ranges(rows: usize, target_workers: usize) -> Vec<Range<usize>> 
     }
     let chunk_count =
         (rows.div_ceil(ORACLE_MAX_ROWS_PER_CHUNK)).max(rows.min(target_workers.max(1)));
-    let rows_per_chunk = rows.div_ceil(chunk_count);
+    let rows_per_chunk = rows / chunk_count;
+    let larger_chunk_count = rows % chunk_count;
     (0..chunk_count)
         .map(|chunk| {
-            let start = chunk * rows_per_chunk;
-            start..(start + rows_per_chunk).min(rows)
+            let start = chunk * rows_per_chunk + chunk.min(larger_chunk_count);
+            let len = rows_per_chunk + usize::from(chunk < larger_chunk_count);
+            start..start + len
         })
         .collect()
 }
@@ -1214,6 +1216,18 @@ fn bwd_vm_oracle_chunk_plan_handles_short_and_empty_domains() {
     assert!(large
         .iter()
         .all(|range| range.len() <= ORACLE_MAX_ROWS_PER_CHUNK));
+}
+
+#[test]
+fn bwd_vm_oracle_chunk_plan_keeps_non_divisible_worker_ranges_in_bounds() {
+    let ranges = oracle_chunk_ranges(32, 24);
+
+    assert_eq!(ranges.len(), 24, "target the available workers");
+    assert!(ranges.len() <= 24);
+    assert_eq!(ranges.first().map(|range| range.start), Some(0));
+    assert_eq!(ranges.last().map(|range| range.end), Some(32));
+    assert!(ranges.iter().all(|range| !range.is_empty()));
+    assert!(ranges.windows(2).all(|pair| pair[0].end == pair[1].start));
 }
 
 #[allow(clippy::too_many_arguments)]
