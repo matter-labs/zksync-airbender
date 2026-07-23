@@ -81,8 +81,6 @@ impl<F: PrimeField> LongRegister<F> {
     pub fn get_value_unsigned<C: Circuit<F>>(self, cs: &C) -> Option<u64> {
         let low = self.low32.get_value_unsigned(cs)?;
         let high = self.high32.get_value_unsigned(cs)?;
-        assert!(low <= u32::MAX);
-        assert!(high <= u32::MAX);
         Some(low as u64 | (high as u64) << 32)
     }
     fn chunks(self) -> [Num<F>; 4] {
