@@ -20,8 +20,10 @@ pub(crate) mod flat;
 // backward-workflow types via `gpu_gkr::backward::kernels::…`. Pinned public API.
 pub mod kernels;
 mod lookup_builders;
-// `pub` re-exports (row 36): apex `expected_specs` builds CPU-expected
-// inputs+metadata via these. Relocated here from `backward/tests`.
+// Relocated here from `backward/tests`: apex `expected_specs` builds
+// CPU-expected inputs+metadata via these. `#[doc(hidden)] pub` per the
+// test-reference policy.
+#[doc(hidden)]
 pub use lookup_builders::{
     build_lookup_from_vector_input_with_setup_inputs_and_metadata,
     build_lookup_pair_from_base_inputs_inputs_and_metadata,
@@ -66,8 +68,10 @@ use crate::upstream::{
 // path-consumed `pub use *`, and the consumed set varies by cfg, so allow it.
 #[allow(unused_imports)]
 pub(crate) use builders::*;
-// `pub` (not `pub(crate)`): apex `expected_specs` compares CPU-expected
-// inputs+metadata built by these production helpers. (row 35)
+// apex `expected_specs` compares CPU-expected inputs+metadata built by
+// these production helpers. `#[doc(hidden)] pub` per the test-reference
+// policy.
+#[doc(hidden)]
 pub use builders::{
     build_initial_grand_product_without_caches_inputs_and_metadata,
     build_inits_and_teardowns_initial_pair_inputs_and_metadata,
