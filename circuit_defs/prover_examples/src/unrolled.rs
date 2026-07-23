@@ -1901,7 +1901,7 @@ pub(crate) mod test {
                 // prover::nd_source_std::set_iterator(it);
 
                 let verification_result =
-                    full_statement_verifier::unrolled_proof_statement::verify_unrolled_base_layer::<
+                    full_statement_verifier::unrolled_proof_statement::verify_unrolled_base_layer_sec_80::<
                         _,
                         DebugErrorCreator,
                         true,
@@ -1942,7 +1942,7 @@ pub(crate) mod test {
                 // prover::nd_source_std::set_iterator(it);
 
                 let (family, verifier_fn) =
-                    full_statement_verifier::unrolled_circuit_params::unrolled_circuit_verifiers_for_base_layer::<
+                    full_statement_verifier::unrolled_circuit_params::unrolled_circuit_verifiers_for_base_layer_sec_80::<
                         _,
                         DebugErrorCreator,
                     >()[verifier_idx];

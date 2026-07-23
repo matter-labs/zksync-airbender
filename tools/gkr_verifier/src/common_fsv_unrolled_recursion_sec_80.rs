@@ -1,5 +1,5 @@
 use non_determinism_source::CSRBasedSource;
-use riscv_common::zksync_os_finish_success;
+use riscv_common::zksync_os_finish_success_extended;
 use verifier_common::errors::PanicErrorCreator;
 
 #[no_mangle]
@@ -12,12 +12,12 @@ unsafe extern "C" fn start_rust() -> ! {
 }
 
 unsafe fn workload() -> ! {
-    let Ok(..) = full_statement_verifier::unified_circuit_statement::verify_unified_circuit_base_layer::<
+    let Ok(regs) = full_statement_verifier::unrolled_proof_statement::verify_unrolled_recursion_layer_sec_80::<
         CSRBasedSource,
         PanicErrorCreator,
         { full_statement_verifier::verifier_common::USE_REDUCED_BLAKE2_ROUNDS },
     >(&mut CSRBasedSource);
-    zksync_os_finish_success(&[1, 0, 0, 0, 0, 0, 0, 0]);
+    zksync_os_finish_success_extended(&regs);
 }
 
 #[inline(never)]

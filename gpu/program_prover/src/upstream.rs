@@ -9,11 +9,13 @@
 pub use full_statement_verifier::program_proof::ProgramProof;
 #[cfg(feature = "verifiers")]
 pub use full_statement_verifier::unified_circuit_statement::{
-    verify_unified_circuit_base_layer, verify_unified_circuit_recursion_layer,
+    verify_unified_circuit_base_layer_sec_80, verify_unified_circuit_base_layer_sec_100,
+    verify_unified_circuit_recursion_layer_sec_80, verify_unified_circuit_recursion_layer_sec_100,
 };
 #[cfg(feature = "verifiers")]
 pub use full_statement_verifier::unrolled_proof_statement::{
-    verify_unrolled_base_layer, verify_unrolled_recursion_layer,
+    verify_unrolled_base_layer_sec_80, verify_unrolled_base_layer_sec_100,
+    verify_unrolled_recursion_layer_sec_80, verify_unrolled_recursion_layer_sec_100,
 };
 
 // `prover` — CPU-side setup commitment machinery for the per-family setup
