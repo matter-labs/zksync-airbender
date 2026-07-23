@@ -24,8 +24,8 @@ use super::lower::{
     artifact_static_materialization, lower_bwd_vm, BwdVmRoundBinding, ResolvedBwdSourceWindow,
 };
 use super::report::{
-    publish_report, time_cuda_launches, upload_incumbent_coefficients, SweepRow, TimingSummary,
-    SWEEP_LOG_PATH, TIMING_ITERS, WARMUP_ITERS,
+    publish_report, time_cuda_launches, upload_incumbent_coefficients, SweepRow, SweepSelection,
+    TimingSummary, SWEEP_LOG_PATH, TIMING_ITERS, WARMUP_ITERS,
 };
 use super::{
     bwd_vm_release_blocks_per_sm, launch_bwd_vm_release, launch_bwd_vm_validate,
@@ -1239,11 +1239,13 @@ fn all_round_expected_contributions(
                     q2.push(t2);
                 }
                 let done = completed.fetch_add(end - start, Ordering::Relaxed) + end - start;
-                eprintln!(
-                    "[bwd-vm-parity] oracle round {round}/{total_rounds} chunk {}/{chunk_count} rows {done}/{rows} elapsed={:.2}s",
-                    chunk + 1,
-                    started.elapsed().as_secs_f64()
-                );
+                if chunk_count > 1 {
+                    eprintln!(
+                        "[bwd-vm-parity] oracle round {round}/{total_rounds} chunk {}/{chunk_count} rows {done}/{rows} elapsed={:.2}s",
+                        chunk + 1,
+                        started.elapsed().as_secs_f64()
+                    );
+                }
                 (q0, q2)
             })
             .collect::<Vec<_>>()
@@ -2846,7 +2848,7 @@ fn upload_main_layer_challenges(values: &[E4], context: &ProverContext) {
         .expect("upload incumbent folding challenges");
 }
 
-fn time_incumbent_add_sub_rounds() -> HashMap<u8, TimingSummary> {
+fn time_incumbent_add_sub_rounds(selection: SweepSelection) -> HashMap<u8, TimingSummary> {
     let BasicUnrolledAsyncBackwardFixture {
         context,
         compiled_circuit,
@@ -2937,6 +2939,9 @@ fn time_incumbent_add_sub_rounds() -> HashMap<u8, TimingSummary> {
     let mut timings = HashMap::new();
 
     for round in 0..=last_round {
+        if !selection.needs_incumbent_round(round as u8) {
+            continue;
+        }
         let rows = plan.trace_len >> (round + 1);
         let remaining = folding_steps - round - 1;
         let eq_sizes = make_eq_sizes(remaining);
@@ -3040,14 +3045,6 @@ fn time_incumbent_add_sub_rounds() -> HashMap<u8, TimingSummary> {
         };
 
         let preflight_poison = e4(0xa100 + round as u32);
-        let sequence = if round == 2 {
-            "round2_challenges_prelude+launch_main_round2_unified"
-        } else {
-            "compact evaluator launcher"
-        };
-        eprintln!(
-            "[bwd-vm-sweep] incumbent round {round}/{last_round} rows={rows} sequence={sequence} preflight"
-        );
         poison_e4_ptr(output_ptr, 2 * rows, preflight_poison, &context)
             .expect("poison incumbent preflight output");
         launch().expect("incumbent correctness launch");
@@ -3069,10 +3066,6 @@ fn time_incumbent_add_sub_rounds() -> HashMap<u8, TimingSummary> {
             launch,
         )
         .expect("time incumbent launch sequence");
-        eprintln!(
-            "[bwd-vm-sweep] incumbent round {round}/{last_round} median={:.3}us min={:.3}us",
-            timing.median_us, timing.min_us
-        );
         assert!(timings.insert(round as u8, timing).is_none());
     }
     timings
@@ -3119,24 +3112,77 @@ fn predicted_source_bytes(desc: &BwdVmDesc) -> u128 {
     bytes_per_row * u128::from(desc.logical_rows)
 }
 
+fn incumbent_sequence(round: u8) -> &'static str {
+    if round == 2 {
+        "round2_challenges_prelude+launch_main_round2_unified"
+    } else {
+        "compact evaluator launcher"
+    }
+}
+
 fn time_vm_setup(
     setup: &super::lower::BwdVmSetup,
     budget_cells: usize,
     contribution_ptr: *mut E4,
     rows: usize,
+    expected_prefix: &[E4],
     context: &ProverContext,
-    mut poison_extra_outputs: impl FnMut() -> era_cudart::result::CudaResult<()>,
+    mut poison_extra_outputs: impl FnMut(usize) -> era_cudart::result::CudaResult<()>,
 ) -> TimingSummary {
+    assert_vm_setup_parity(
+        setup,
+        budget_cells,
+        contribution_ptr,
+        expected_prefix,
+        context,
+        &mut poison_extra_outputs,
+    );
+    let poison = e4(0xb000 + budget_cells as u32 + setup.desc.logical_rows.trailing_zeros());
+    time_cuda_launches(
+        context.get_exec_stream(),
+        WARMUP_ITERS,
+        TIMING_ITERS,
+        || {
+            poison_e4_ptr(contribution_ptr, 2 * rows, poison, context)?;
+            poison_extra_outputs(rows)
+        },
+        || launch_bwd_vm_release(&setup.desc, budget_cells as u32, context),
+    )
+    .expect("time VM release launch")
+}
+
+/// Exact bounded-domain parity for the real lowered descriptor. This is not a
+/// sparse output probe: both complete contribution halves for the first
+/// `expected_prefix.len() / 2` rows are compared against the independent CPU
+/// interpreter before timing. The full-domain Task 7 gate remains the separate
+/// exhaustive proof; bounding this preflight keeps every timing coordinate
+/// practical on the 2^24-row fixture.
+fn assert_vm_setup_parity(
+    setup: &super::lower::BwdVmSetup,
+    budget_cells: usize,
+    contribution_ptr: *mut E4,
+    expected_prefix: &[E4],
+    context: &ProverContext,
+    poison_extra_outputs: &mut impl FnMut(usize) -> era_cudart::result::CudaResult<()>,
+) {
+    assert!(
+        expected_prefix.len().is_multiple_of(2),
+        "preflight needs two complete contribution halves"
+    );
+    let preflight_rows = expected_prefix.len() / 2;
+    assert!(preflight_rows > 0 && preflight_rows <= setup.desc.logical_rows as usize);
+    let mut preflight_desc = setup.desc;
+    preflight_desc.logical_rows = preflight_rows as u32;
     let mut error = upload(&[0u32], context);
     let poison = e4(0xb000 + budget_cells as u32 + setup.desc.logical_rows.trailing_zeros());
-    poison_e4_ptr(contribution_ptr, 2 * rows, poison, context)
+    poison_e4_ptr(contribution_ptr, 2 * preflight_rows, poison, context)
         .expect("poison VM preflight contributions");
-    poison_extra_outputs().expect("poison VM preflight publications");
+    poison_extra_outputs(preflight_rows).expect("poison VM preflight publications");
     setup
         .upload_constant_banks(context)
         .expect("upload VM timing constant banks");
     launch_bwd_vm_validate(
-        &setup.desc,
+        &preflight_desc,
         budget_cells as u32,
         error.as_mut_ptr(),
         ptr::null_mut(),
@@ -3148,52 +3194,32 @@ fn time_vm_setup(
         [0],
         "c{budget_cells} VM timing setup validation"
     );
-    let sample_count = rows.min(4);
-    let mut validate_sample = download_e4_ptr(contribution_ptr, sample_count, context);
-    // SAFETY: contribution output is exactly two contiguous `rows` halves.
-    validate_sample.extend(download_e4_ptr(
-        unsafe { contribution_ptr.add(rows) },
-        sample_count,
-        context,
-    ));
+    let validate_output = download_e4_ptr(contribution_ptr, 2 * preflight_rows, context);
+    assert_e4_bits(
+        &format!("c{budget_cells} bounded CPU-oracle validation preflight"),
+        &validate_output,
+        expected_prefix,
+    );
 
-    poison_e4_ptr(contribution_ptr, 2 * rows, poison, context)
+    poison_e4_ptr(contribution_ptr, 2 * preflight_rows, poison, context)
         .expect("poison VM correctness contributions");
-    poison_extra_outputs().expect("poison VM correctness publications");
-    launch_bwd_vm_release(&setup.desc, budget_cells as u32, context)
+    poison_extra_outputs(preflight_rows).expect("poison VM correctness publications");
+    launch_bwd_vm_release(&preflight_desc, budget_cells as u32, context)
         .expect("VM untimed correctness launch");
     context
         .get_exec_stream()
         .synchronize()
         .expect("VM correctness synchronization");
-    let mut release_sample = download_e4_ptr(contribution_ptr, sample_count, context);
-    // SAFETY: contribution output is exactly two contiguous `rows` halves.
-    release_sample.extend(download_e4_ptr(
-        unsafe { contribution_ptr.add(rows) },
-        sample_count,
-        context,
-    ));
+    let release_output = download_e4_ptr(contribution_ptr, 2 * preflight_rows, context);
     assert_e4_bits(
-        &format!("c{budget_cells} validate/release timing preflight"),
-        &release_sample,
-        &validate_sample,
+        &format!("c{budget_cells} bounded CPU-oracle release preflight"),
+        &release_output,
+        expected_prefix,
     );
     assert!(
-        release_sample.iter().any(|value| *value != poison),
-        "c{budget_cells} correctness launch left sampled outputs poisoned"
+        release_output.iter().any(|value| *value != poison),
+        "c{budget_cells} correctness launch left all preflight outputs poisoned"
     );
-
-    time_cuda_launches(
-        context.get_exec_stream(),
-        WARMUP_ITERS,
-        TIMING_ITERS,
-        || {
-            poison_e4_ptr(contribution_ptr, 2 * rows, poison, context)?;
-            poison_extra_outputs()
-        },
-        || launch_bwd_vm_release(&setup.desc, budget_cells as u32, context),
-    )
-    .expect("time VM release launch")
 }
 
 fn vm_occupancy_metadata(budget_cells: usize, max_threads_per_sm: i32) -> (usize, i32, f32) {
@@ -3214,11 +3240,9 @@ fn bwd_vm_add_sub_l0_budget_sweep_report() {
     use era_cudart_sys::CudaDeviceAttr;
     use std::path::Path;
 
-    eprintln!(
-        "[bwd-vm-sweep] per-coordinate validate + untimed correctness preflight enabled; incumbent timing begin"
-    );
-    let incumbent = time_incumbent_add_sub_rounds();
-    eprintln!("[bwd-vm-sweep] incumbent timing complete; VM timing begin");
+    const PREFLIGHT_ROWS: usize = 1 << 12;
+    let selection = SweepSelection::from_env();
+    let incumbent = time_incumbent_add_sub_rounds(selection);
 
     let max_threads_per_sm = device_get_attribute(
         CudaDeviceAttr::MaxThreadsPerMultiProcessor,
@@ -3247,6 +3271,11 @@ fn bwd_vm_add_sub_l0_budget_sweep_report() {
     let claim_point_device = upload(&claim_point, context);
     let columns = snapshot_r0_columns(&fixture, &r0_cases, trace_len);
     let oracle = r0_oracle_resolvers(&fixture, &r0_cases, columns);
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(available_physical_cores())
+        .thread_name(|index| format!("bwd-vm-timing-oracle-{index}"))
+        .build()
+        .expect("bounded timing oracle pool");
     let max_rows = trace_len / 2;
     let mut contributions = context
         .alloc::<E4>(2 * max_rows, AllocationPlacement::Top)
@@ -3266,11 +3295,23 @@ fn bwd_vm_add_sub_l0_budget_sweep_report() {
         context,
     )
     .expect("build R0 sweep factored eq");
+    let (r0_high, r0_low) = cpu_factored_eq(&claim_point[1..]);
+    let r0_expected_prefix = all_round_expected_contributions(
+        &r0_cases[0],
+        &oracle,
+        0,
+        r0_rows.min(PREFLIGHT_ROWS),
+        &round_challenges,
+        &r0_high,
+        &r0_low,
+        &r0_eq_sizes,
+        &pool,
+        last_round,
+    );
     for case in &r0_cases {
-        eprintln!(
-            "[bwd-vm-sweep] VM R0 c{} rows={r0_rows} setup",
-            case.budget_cells
-        );
+        if !selection.includes("R0", case.budget_cells, 0) {
+            continue;
+        }
         let sources = resolved_r0_sources(&fixture, case);
         let resolve_source = |address| fixture.resolved_storage_column(address);
         let runtime = BwdVmRoundBinding {
@@ -3296,8 +3337,9 @@ fn bwd_vm_add_sub_l0_budget_sweep_report() {
             case.budget_cells,
             contribution_ptr,
             r0_rows,
+            &r0_expected_prefix,
             context,
-            || Ok(()),
+            |_| Ok(()),
         );
         let (dynamic_smem_bytes, active_blocks_per_sm, theoretical_occupancy) =
             vm_occupancy_metadata(case.budget_cells, max_threads_per_sm);
@@ -3312,13 +3354,16 @@ fn bwd_vm_add_sub_l0_budget_sweep_report() {
             program_instructions: setup.desc.n_instr as usize,
             program_lanes: setup.desc.program_lanes as usize,
             predicted_source_bytes: predicted_source_bytes(&setup.desc),
+            incumbent_sequence: incumbent_sequence(0),
             vm: timing,
             incumbent: incumbent[&0],
         });
-        eprintln!(
-            "[bwd-vm-sweep] VM R0 c{} complete median={:.3}us",
-            case.budget_cells, timing.median_us
-        );
+    }
+
+    if !selection.needs_ext_setup() {
+        selection.assert_report_rows(&report_rows);
+        publish_report(&report_rows, Path::new(SWEEP_LOG_PATH));
+        return;
     }
 
     let materializations = ext_cases
@@ -3411,15 +3456,42 @@ fn bwd_vm_add_sub_l0_budget_sweep_report() {
         &|recipe| fixture.evaluate_backward_recipe(&prep_case.distilled.layer, recipe),
     )
     .expect("lower Ext predecessor");
+    let (prep_high, prep_low) = cpu_factored_eq(&claim_point[1..]);
+    let prep_expected_prefix = all_round_expected_contributions(
+        prep_case,
+        &oracle,
+        0,
+        prep_rows.min(PREFLIGHT_ROWS),
+        &round_challenges,
+        &prep_high,
+        &prep_low,
+        &prep_runtime.eq_sizes,
+        &pool,
+        last_round,
+    );
+    let prep_columns = prep_stored
+        .iter()
+        .map(|desc| desc_columns[desc])
+        .collect::<Vec<_>>();
+    assert_vm_setup_parity(
+        &prep_setup,
+        prep_case.budget_cells,
+        contribution_ptr,
+        &prep_expected_prefix,
+        context,
+        &mut |live| {
+            publication_matrices[0].poison_columns(prep_columns.iter().copied(), live, context)
+        },
+    );
     prep_setup
         .upload_constant_banks(context)
-        .expect("upload Ext predecessor banks");
+        .expect("upload Ext predecessor timing banks");
     launch_bwd_vm_release(&prep_setup.desc, prep_case.budget_cells as u32, context)
-        .expect("launch Ext predecessor");
+        .expect("launch full Ext predecessor publication");
     context
         .get_exec_stream()
         .synchronize()
-        .expect("Ext predecessor synchronization");
+        .expect("full Ext predecessor synchronization");
     let mut previous_device = prep_stored
         .into_iter()
         .map(|desc| {
@@ -3447,13 +3519,25 @@ fn bwd_vm_add_sub_l0_budget_sweep_report() {
             context,
         )
         .expect("build Ext sweep factored eq");
+        let (cpu_high, cpu_low) = cpu_factored_eq(&claim_point[round as usize + 1..]);
+        let expected_prefix = all_round_expected_contributions(
+            &ext_cases[0],
+            &oracle,
+            round,
+            rows.min(PREFLIGHT_ROWS),
+            &round_challenges,
+            &cpu_high,
+            &cpu_low,
+            &eq_sizes,
+            &pool,
+            last_round,
+        );
         let current_matrix = round as usize & 1;
         let mut stored_reference = None;
         for case in &ext_cases {
-            eprintln!(
-                "[bwd-vm-sweep] VM Ext round {round}/{last_round} c{} rows={rows} setup",
-                case.budget_cells
-            );
+            if !selection.includes("Ext", case.budget_cells, round) {
+                continue;
+            }
             let (sources, resolved, stored, _) = resolved_ext_round_sources(
                 case,
                 materialization,
@@ -3499,11 +3583,12 @@ fn bwd_vm_add_sub_l0_budget_sweep_report() {
                 case.budget_cells,
                 contribution_ptr,
                 rows,
+                &expected_prefix,
                 context,
-                || {
+                |live| {
                     publication_matrices[current_matrix].poison_columns(
                         columns.iter().copied(),
-                        rows,
+                        live,
                         context,
                     )
                 },
@@ -3521,16 +3606,13 @@ fn bwd_vm_add_sub_l0_budget_sweep_report() {
                 program_instructions: setup.desc.n_instr as usize,
                 program_lanes: setup.desc.program_lanes as usize,
                 predicted_source_bytes: predicted_source_bytes(&setup.desc),
+                incumbent_sequence: incumbent_sequence(round),
                 vm: timing,
                 incumbent: incumbent[&round],
             });
-            eprintln!(
-                "[bwd-vm-sweep] VM Ext round {round}/{last_round} c{} complete median={:.3}us",
-                case.budget_cells, timing.median_us
-            );
         }
         previous_device = stored_reference
-            .expect("at least one Ext budget")
+            .unwrap_or_else(|| panic!("selected Ext coordinate missing at round {round}"))
             .into_iter()
             .map(|desc| {
                 (
@@ -3542,7 +3624,11 @@ fn bwd_vm_add_sub_l0_budget_sweep_report() {
                 )
             })
             .collect();
+        if selection.stops_after_ext_round(round) {
+            break;
+        }
     }
 
+    selection.assert_report_rows(&report_rows);
     publish_report(&report_rows, Path::new(SWEEP_LOG_PATH));
 }

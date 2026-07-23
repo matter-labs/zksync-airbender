@@ -14,6 +14,93 @@ use crate::upstream::Field;
 pub(super) const WARMUP_ITERS: usize = 10;
 pub(super) const TIMING_ITERS: usize = 30;
 pub(super) const SWEEP_LOG_PATH: &str = "/tmp/plan5-bwd-vm-sweep.log";
+pub(super) const NCU_SELECTOR_ENV: &str = "PLAN5_BWD_VM_NCU_COORD";
+
+/// The profiler only needs the representative R0 coordinate or the first
+/// actual Ext round. Keeping that surface exact prevents a typo from profiling
+/// every budget or an ambiguous continuation round.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum SweepSelection {
+    All,
+    R0 { budget_cells: usize },
+    ExtRound1 { budget_cells: usize },
+}
+
+impl SweepSelection {
+    pub(super) fn from_env() -> Self {
+        match std::env::var(NCU_SELECTOR_ENV) {
+            Ok(value) => parse_ncu_selector(&value)
+                .unwrap_or_else(|error| panic!("invalid {NCU_SELECTOR_ENV}={value:?}: {error}"))
+                .expect("non-empty environment selector"),
+            Err(std::env::VarError::NotPresent) => Self::All,
+            Err(error) => panic!("read {NCU_SELECTOR_ENV}: {error}"),
+        }
+    }
+
+    pub(super) fn includes(self, regime: &str, budget_cells: usize, round: u8) -> bool {
+        match self {
+            Self::All => true,
+            Self::R0 {
+                budget_cells: selected,
+            } => regime == "R0" && budget_cells == selected && round == 0,
+            Self::ExtRound1 {
+                budget_cells: selected,
+            } => regime == "Ext" && budget_cells == selected && round == 1,
+        }
+    }
+
+    pub(super) fn needs_ext_setup(self) -> bool {
+        !matches!(self, Self::R0 { .. })
+    }
+
+    pub(super) fn needs_incumbent_round(self, round: u8) -> bool {
+        match self {
+            Self::All => true,
+            Self::R0 { .. } => round == 0,
+            Self::ExtRound1 { .. } => round == 1,
+        }
+    }
+
+    pub(super) fn stops_after_ext_round(self, round: u8) -> bool {
+        matches!(self, Self::ExtRound1 { .. }) && round == 1
+    }
+
+    pub(super) fn assert_report_rows(self, rows: &[SweepRow]) {
+        if !matches!(self, Self::All) {
+            assert_eq!(rows.len(), 1, "NCU selector must time one coordinate");
+            let row = &rows[0];
+            assert!(
+                self.includes(row.regime, row.budget_cells, row.round),
+                "NCU selector result must match its requested coordinate"
+            );
+        }
+    }
+}
+
+pub(super) fn parse_ncu_selector(value: &str) -> Result<Option<SweepSelection>, String> {
+    if value.is_empty() {
+        return Ok(None);
+    }
+    let mut parts = value.split(':');
+    let regime = parts.next().expect("split always yields first part");
+    let budget = parts.next().ok_or("expected <r0|ext>:c<2..16>")?;
+    if parts.next().is_some() {
+        return Err("expected exactly <r0|ext>:c<2..16>".to_owned());
+    }
+    let budget_cells = budget
+        .strip_prefix('c')
+        .ok_or("budget must use c<2..16>")?
+        .parse::<usize>()
+        .map_err(|_| "budget must use c<2..16>".to_owned())?;
+    if !(2..=16).contains(&budget_cells) {
+        return Err("budget must be c2 through c16".to_owned());
+    }
+    match regime {
+        "r0" => Ok(Some(SweepSelection::R0 { budget_cells })),
+        "ext" => Ok(Some(SweepSelection::ExtRound1 { budget_cells })),
+        _ => Err("regime must be r0 or ext".to_owned()),
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) struct TimingSummary {
@@ -50,6 +137,7 @@ pub(super) struct SweepRow {
     pub(super) program_instructions: usize,
     pub(super) program_lanes: usize,
     pub(super) predicted_source_bytes: u128,
+    pub(super) incumbent_sequence: &'static str,
     pub(super) vm: TimingSummary,
     pub(super) incumbent: TimingSummary,
 }
@@ -115,13 +203,13 @@ pub(super) fn upload_incumbent_coefficients(
 
 pub(super) fn render_full_report(rows: &[SweepRow]) -> String {
     let mut output = String::from(
-        "budget,regime,round,rows,dynamic_smem_bytes,active_blocks_per_sm,theoretical_occupancy_percent,program_instructions,program_lanes,predicted_source_bytes,vm_median_us,vm_min_us,incumbent_median_us,incumbent_min_us,vm_over_incumbent\n",
+        "budget,regime,round,rows,dynamic_smem_bytes,active_blocks_per_sm,theoretical_occupancy_percent,program_instructions,program_lanes,predicted_source_bytes,incumbent_sequence,vm_median_us,vm_min_us,incumbent_median_us,incumbent_min_us,vm_over_incumbent\n",
     );
     let mut aggregates = BTreeMap::<usize, (f32, f32, f32, f32)>::new();
     for row in rows {
         writeln!(
             output,
-            "c{},{},{},{},{},{},{:.2},{},{},{},{:.3},{:.3},{:.3},{:.3},{:.6}",
+            "c{},{},{},{},{},{},{:.2},{},{},{},{},{:.3},{:.3},{:.3},{:.3},{:.6}",
             row.budget_cells,
             row.regime,
             row.round,
@@ -132,6 +220,7 @@ pub(super) fn render_full_report(rows: &[SweepRow]) -> String {
             row.program_instructions,
             row.program_lanes,
             row.predicted_source_bytes,
+            row.incumbent_sequence,
             row.vm.median_us,
             row.vm.min_us,
             row.incumbent.median_us,
@@ -159,11 +248,7 @@ pub(super) fn render_full_report(rows: &[SweepRow]) -> String {
     output
 }
 
-pub(super) fn publish_report(rows: &[SweepRow], path: &Path) {
-    let report = render_full_report(rows);
-    std::fs::write(path, report)
-        .unwrap_or_else(|error| panic!("write {}: {error}", path.display()));
-
+pub(super) fn ranked_budgets(rows: &[SweepRow]) -> Vec<(f32, usize, f32, f32)> {
     let mut aggregates = BTreeMap::<usize, (f32, f32)>::new();
     for row in rows {
         let aggregate = aggregates.entry(row.budget_cells).or_default();
@@ -175,6 +260,22 @@ pub(super) fn publish_report(rows: &[SweepRow], path: &Path) {
         .map(|(budget, (vm, incumbent))| (vm / incumbent, budget, vm, incumbent))
         .collect::<Vec<_>>();
     ranked.sort_by(|lhs, rhs| lhs.0.partial_cmp(&rhs.0).expect("finite aggregate ratio"));
+    ranked
+}
+
+pub(super) fn publish_report(rows: &[SweepRow], path: &Path) {
+    let report = render_full_report(rows);
+    let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("sweep");
+    let temporary = path.with_file_name(format!(".{file_name}.{}.tmp", std::process::id()));
+    std::fs::write(&temporary, report)
+        .unwrap_or_else(|error| panic!("write {}: {error}", temporary.display()));
+    std::fs::rename(&temporary, path)
+        .unwrap_or_else(|error| panic!("publish {}: {error}", path.display()));
+
+    let ranked = ranked_budgets(rows);
     eprintln!(
         "[bwd-vm-sweep] complete coordinates={} full_log={}",
         rows.len(),
@@ -218,6 +319,7 @@ mod tests {
             program_instructions: 100,
             program_lanes: 150,
             predicted_source_bytes: 3_072,
+            incumbent_sequence: "compact evaluator launcher",
             vm: TimingSummary {
                 median_us: 12.0,
                 min_us: 10.0,
@@ -232,5 +334,96 @@ mod tests {
         assert!(rendered.contains("c4,Ext,2,16,8192,3,75.00"));
         assert!(rendered.contains("whole-layer,c4"));
         assert!(rendered.contains(",2.000000"));
+    }
+
+    #[test]
+    fn ncu_selector_accepts_only_unambiguous_representative_coordinates() {
+        assert_eq!(
+            parse_ncu_selector("r0:c5"),
+            Ok(Some(SweepSelection::R0 { budget_cells: 5 }))
+        );
+        assert_eq!(
+            parse_ncu_selector("ext:c12"),
+            Ok(Some(SweepSelection::ExtRound1 { budget_cells: 12 }))
+        );
+        assert!(parse_ncu_selector("ext:c12:r2").is_err());
+        assert!(parse_ncu_selector("r0:c5:r0").is_err());
+        assert!(parse_ncu_selector("ext:c1").is_err());
+    }
+
+    #[test]
+    fn ranking_and_aggregation_cover_multiple_rounds_and_budgets() {
+        let rows = vec![
+            test_row(2, "R0", 0, 30.0, 10.0),
+            test_row(4, "Ext", 1, 12.0, 10.0),
+            test_row(4, "Ext", 2, 8.0, 10.0),
+        ];
+        let rendered = render_full_report(&rows);
+        assert!(rendered.contains("whole-layer,c4,20.000,20.000,20.000,20.000,1.000000"));
+        assert_eq!(ranked_budgets(&rows)[0].1, 4);
+        assert_eq!(ranked_budgets(&rows)[1].1, 2);
+        assert!(rendered.contains("program_instructions,program_lanes,predicted_source_bytes"));
+        assert!(rendered.contains("incumbent_sequence"));
+    }
+
+    #[test]
+    fn report_preserves_the_full_budget_range_and_distinct_round_coordinates() {
+        let mut rows = (2..=16)
+            .map(|budget| test_row(budget, "R0", 0, budget as f32, 1.0))
+            .collect::<Vec<_>>();
+        rows.push(test_row(2, "Ext", 1, 2.0, 1.0));
+        rows.push(test_row(2, "Ext", 2, 3.0, 1.0));
+
+        let rendered = render_full_report(&rows);
+        assert_eq!(rendered.matches("\nwhole-layer,c").count(), 15);
+        assert!(rendered.contains("c2,Ext,1,"));
+        assert!(rendered.contains("c2,Ext,2,"));
+        assert!(rendered.contains("c16,R0,0,"));
+    }
+
+    #[test]
+    fn publication_writes_the_complete_table_to_its_own_path() {
+        let path = std::env::temp_dir().join(format!(
+            "bwd-vm-sweep-report-{}-{}.csv",
+            std::process::id(),
+            std::thread::current().name().unwrap_or("report-test")
+        ));
+        let rows = vec![test_row(2, "R0", 0, 20.0, 10.0)];
+        publish_report(&rows, &path);
+        assert_eq!(
+            std::fs::read_to_string(&path).expect("published report"),
+            render_full_report(&rows)
+        );
+        std::fs::remove_file(path).expect("remove published report");
+    }
+
+    fn test_row(
+        budget_cells: usize,
+        regime: &'static str,
+        round: u8,
+        vm_median_us: f32,
+        incumbent_median_us: f32,
+    ) -> SweepRow {
+        SweepRow {
+            budget_cells,
+            regime,
+            round,
+            rows: 16,
+            dynamic_smem_bytes: 8_192,
+            active_blocks_per_sm: 3,
+            theoretical_occupancy: 0.75,
+            program_instructions: 100,
+            program_lanes: 150,
+            predicted_source_bytes: 3_072,
+            incumbent_sequence: "compact evaluator launcher",
+            vm: TimingSummary {
+                median_us: vm_median_us,
+                min_us: vm_median_us,
+            },
+            incumbent: TimingSummary {
+                median_us: incumbent_median_us,
+                min_us: incumbent_median_us,
+            },
+        }
     }
 }
