@@ -294,8 +294,28 @@ impl<F: PrimeField> Ord for NoFieldStructuredExpression<F> {
             (Self::Place(a), Self::Place(b)) => a.cmp(b),
             (Self::Place(..), _) => std::cmp::Ordering::Less,
             (_, Self::Place(..)) => std::cmp::Ordering::Greater,
+            (Self::Product(a), Self::Product(b)) => {
+                if a.len() < b.len() {
+                    std::cmp::Ordering::Less
+                } else if a.len() > b.len() {
+                    std::cmp::Ordering::Greater
+                } else {
+                    // recursive
+                    a.cmp(b)
+                }
+            },
             (Self::Product(..), _) => std::cmp::Ordering::Less,
             (_, Self::Product(..)) => std::cmp::Ordering::Greater,
+            (Self::Sum(a), Self::Sum(b)) => {
+                if a.len() < b.len() {
+                    std::cmp::Ordering::Less
+                } else if a.len() > b.len() {
+                    std::cmp::Ordering::Greater
+                } else {
+                    // recursive
+                    a.cmp(b)
+                }
+            },
             (Self::Sum(..), _) => std::cmp::Ordering::Greater,
             (_, Self::Sum(..)) => std::cmp::Ordering::Less,
         }
