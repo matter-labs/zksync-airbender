@@ -32,15 +32,27 @@ Production code imports items from the upstream crates (`field`, `prover`)
 exempt.
 
 `prover` is a **normal** (not dev-only) dependency here — unlike most kernel
-crates: the WHIR-oracle parity + query test-support surface
-(`#[doc(hidden)] pub`, reached by the apex e2e/parity suite,
-`prover/tests/whir_oracle_parity.rs` via `stagewise.rs`) is permanently
-compiled and references `prover` types
-(`MerkleTreeCapVarLength`, `extension_field_from_base_coeffs`, the
-transcript/commitment helpers) — the same precedent as `gpu_gkr`. Because
-`prover` is a normal dependency, this crate owns the `prover/deterministic_pow`
-forward leg (see Cargo.toml `[features]`); `gpu_circuit_prover` only needs to
-enable `gpu_whir/deterministic_pow`.
+crates — because the `deterministic_pow` feature forwards
+`prover/deterministic_pow` (its host-side PoW determinism leg). This crate
+therefore owns that forward leg (see Cargo.toml `[features]`);
+`gpu_circuit_prover` only needs to enable `gpu_whir/deterministic_pow`.
+
+The WHIR-oracle parity + query test-support surface (`#[doc(hidden)] pub`,
+reached by the apex e2e/parity suite, `gpu_circuit_prover`'s
+`src/tests/whir_oracle_parity.rs` via `stagewise.rs`) references `prover`
+types (`MerkleTreeCapVarLength`, `extension_field_from_base_coeffs`, the
+transcript/commitment helpers) — but that surface is **not** compiled into the
+normal library. It lives behind the non-default **`test-utils`** feature, gated
+`#[cfg(any(test, feature = "test-utils"))]` (the `any(test, …)` half so the
+crate's own tests need no feature) — the same precedent as the `prover` crate's
+`test-utils`. `gpu_circuit_prover` enables it from its `[dev-dependencies]`
+(`gpu_whir = { … , features = ["test-utils"] }`); the normal `[dependencies]`
+entry never enables it, so a production build compiles neither the oracle
+parity/query helpers, the `fold::debug` checkpoint builders, nor the
+`GpuWhirState.scalar` reservation. Every `prover`-sourced re-export in
+`crate::upstream` is part of this test-support surface and is gated the same way
+(or `#[cfg(test)]` for items only whir's own tests use); `field::FieldExtension`
+is the one production upstream item (the kernels' `EXT4_DEGREE`).
 
 ## Upstream constant drift guards
 
@@ -82,11 +94,19 @@ rather than letting the duplicate drift by convention.
 
 ## Widening convention
 
-- `#[doc(hidden)] pub struct GpuWhirExtensionOracle` and its
-  `from_monomial_coeffs` / `get_tree_cap` / `query_for_folded_index` methods
-  — reached by the apex e2e/parity test suite across the crate boundary;
-  structurally can't move down (their consumer is a full-pipeline apex
-  test). Not part of the production API.
+- `#[doc(hidden)] pub struct GpuWhirExtensionOracle` is production API (the
+  return type of the production `schedule_from_device_monomial_coeffs_into_slab`
+  / `schedule_query_for_folded_indexes_to_slab` fold path), but its
+  `from_monomial_coeffs` / `from_device_monomial_coeffs` / `get_tree_cap` /
+  `query_for_folded_index` / `schedule_query_for_folded_index` parity+query
+  methods are **test-support only**, gated `#[cfg(any(test, feature =
+  "test-utils"))]`. They are reached by the apex e2e/parity suite across the
+  crate boundary and structurally can't move down (their consumer is a
+  full-pipeline apex test), but they are not compiled into a production build —
+  see "Upstream imports" for the `test-utils` feature. The same gate covers the
+  `fold::debug` checkpoint builders (the ~976-line `fold/debug.rs` module,
+  behind `#[doc(hidden)] pub mod debug`) and the `GpuWhirState.scalar`
+  device reservation.
 - `GpuWhirExtensionOracleKeepalive` stays `pub(crate)` — internal keepalive
   wiring, not reached across the crate boundary.
 - Plain `pub` (e.g. `pow` module entry points, `fold` scheduling functions

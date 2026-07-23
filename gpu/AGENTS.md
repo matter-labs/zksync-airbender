@@ -136,8 +136,11 @@ helper, a build-dependency only).
   `gpu_gkr`'s exported headers (`accumulate_eq.cu`) and `gpu_hash`'s
   `hash.cuh` (`leaves.cu`). Features `deterministic_pow =
   ["prover/deterministic_pow","gpu_hash/deterministic_pow"]` (owns both
-  determinism legs since `prover` is a normal, not dev-only, dependency here
-  — same precedent as `gpu_gkr`) + `eval_leaves`. See
+  determinism legs; `prover` is a normal, not dev-only, dependency here only
+  for that forward), `eval_leaves`, and `test-utils` (non-default; gates the
+  WHIR-oracle parity/query + `fold::debug` test-support surface out of
+  production, `#[cfg(any(test, feature = "test-utils"))]`, enabled by
+  `gpu_circuit_prover`'s dev-deps — prover-crate precedent). See
   [`whir/AGENTS.md`](whir/AGENTS.md).
 
 `circuit_prover` now consumes `gpu_prover_context`/`gpu_trace`/`gpu_gkr`/
