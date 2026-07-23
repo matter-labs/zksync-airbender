@@ -126,3 +126,10 @@ drift by convention.
   [`../.clang-format`](../.clang-format) (see [`../AGENTS.md`](../AGENTS.md)).
   `cargo fmt` does not cover this; CI does not enforce it. A change that
   touches both languages needs both formatters.
+
+## Design Documents
+
+- [`docs/backward_immediate_factor_encoding.md`](docs/backward_immediate_factor_encoding.md):
+  design note on the backward-pass immediate-factor encoding implemented in
+  `src/backward/flat/` (relocated here from `circuit_prover/docs/` when that
+  code moved in the split).

@@ -25,7 +25,7 @@ generic GPU workflow from [`../../../.agents/gpu_work.md`](../../../.agents/gpu_
 - Exact libtest name: `prover::tests::proof_matrix::run_add_sub_profile_test`
 - The profile tests (e.g. `run_add_sub_profile_test`) are `#[ignore]`d; you MUST pass `--ignored` to run them. (The binary self-serializes via the pre-main `gpu_core::force_serial_libtest!()` guard — no `#[serial]` annotations exist anymore — and profiling runs a single test via `--exact` anyway.)
 - When using `--exact`, do not pass a suffix such as `run_add_sub_profile_test` or `tests::run_add_sub_profile_test`. Use the full libtest name above.
-- The current registered NVTX capture range in [`../src/prover/tests/proof_matrix.rs`](../src/prover/tests/proof_matrix.rs) (`run_profile`) uses:
+- The current registered NVTX capture range in [`../src/tests/proof_matrix.rs`](../src/tests/proof_matrix.rs) (`run_profile`) uses:
   - domain `gpu_circuit_prover.tests`
   - message `test.gpu.prove.profiled_call`
 - That range is intended to capture only the profiled `prove()` call after warmup.

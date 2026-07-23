@@ -2,7 +2,7 @@
 
 This note captures a deferred optimization opportunity for the
 `CoefficientRecipe::immediate_factor` field in
-[`src/prover/gkr/backward/flat/types.rs`](../src/prover/gkr/backward/flat/types.rs).
+[`src/backward/flat/types.rs`](../src/backward/flat/types.rs).
 
 ## Current shape
 
@@ -26,7 +26,7 @@ negated if `negate` is true.
 For many gates `immediate_factor` is in fact a cs-side `u32` coefficient
 promoted to `E` via `E::from_base(BF::from_u32_with_reduction(coeff))` (see
 `build_single_max_quadratic_constraint_inputs_and_metadata` and the other
-`*_inputs_and_metadata` helpers in `src/prover/gkr/backward/builders.rs`). Storing the value as `E`
+`*_inputs_and_metadata` helpers in `src/backward/builders.rs`). Storing the value as `E`
 forces every `c1_bf_bf` evaluation in round 0 (and the continuation
 equivalents) to evaluate `E * BF * BF` — ~4 base multiplications on `Ext4`
 per row — when the structurally correct shape is `BF * BF * BF` (~1 base

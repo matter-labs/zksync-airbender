@@ -175,9 +175,9 @@ apply here directly.
   test / NVTX range / test-binary build. The generic per-kernel `ncu`/`nsys`
   methodology is cluster-level in [`../docs/`](../docs/)
   (`gpu/docs/profiling{,_ncu,_nsys}.md`).
-- `docs/backward_immediate_factor_encoding.md`: design note on the GKR
-  backward-pass immediate-factor encoding (the implementation it describes
-  now lives in `gpu_gkr`'s `backward/flat` module).
+- The backward-pass immediate-factor encoding design note moved with its
+  implementation to
+  [`../gkr/docs/backward_immediate_factor_encoding.md`](../gkr/docs/backward_immediate_factor_encoding.md).
 
 ## Code Notes
 
