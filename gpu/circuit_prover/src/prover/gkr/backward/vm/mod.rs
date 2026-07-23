@@ -3,6 +3,8 @@ pub(crate) mod desc;
 #[cfg(all(test, feature = "bench"))]
 mod gpu_tests;
 pub(crate) mod lower;
+#[cfg(all(test, feature = "bench"))]
+mod report;
 
 use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
 use era_cudart::result::CudaResult;
@@ -79,6 +81,19 @@ pub(crate) fn launch_bwd_vm_release(
     let config = launch_config(desc, budget_cells, context);
     let args = GkrBwdVmReleaseArguments::new(*desc);
     GkrBwdVmReleaseFunction(ab_gkr_bwd_vm_release_kernel).launch(&config, &args)
+}
+
+#[allow(dead_code)]
+pub(crate) fn bwd_vm_release_blocks_per_sm(budget_cells: u32) -> CudaResult<i32> {
+    assert!(
+        (BWD_VM_MIN_BUDGET_CELLS..=BWD_VM_MAX_BUDGET_CELLS).contains(&budget_cells),
+        "backward VM occupancy budget outside supported range"
+    );
+    era_cudart::occupancy::max_active_blocks_per_multiprocessor(
+        &GkrBwdVmReleaseFunction(ab_gkr_bwd_vm_release_kernel),
+        BWD_VM_THREADS_PER_BLOCK as i32,
+        budget_cells as usize * core::mem::size_of::<E4>() * BWD_VM_THREADS_PER_BLOCK as usize,
+    )
 }
 
 #[allow(dead_code)]

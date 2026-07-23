@@ -11,7 +11,7 @@ use gkr_eval_isa::bwd::distill::{bind, BwdBindings};
 use gkr_eval_isa::bwd::interp::{interpret_bwd_row, role_combine, sumcheck_fold_point, Role};
 use gkr_eval_isa::bwd::source::{BwdSpecial, FoldState, MaterializationPolicy, OriginLeaf};
 use gkr_eval_isa::eval_plan::backward_search::StaticMaterialization;
-use gkr_eval_isa::fwd::encode::encode;
+use gkr_eval_isa::fwd::encode::{decode, encode};
 use gkr_eval_isa::fwd::isa::{Instr, MovDir, OperandField, OperandLine, Program, Sign};
 use rayon::prelude::*;
 
@@ -23,20 +23,32 @@ use super::desc::{
 use super::lower::{
     artifact_static_materialization, lower_bwd_vm, BwdVmRoundBinding, ResolvedBwdSourceWindow,
 };
-use super::{launch_bwd_vm_release, launch_bwd_vm_validate, BWD_VM_ERR_SOURCE_OOB};
+use super::report::{
+    publish_report, time_cuda_launches, upload_incumbent_coefficients, SweepRow, TimingSummary,
+    SWEEP_LOG_PATH, TIMING_ITERS, WARMUP_ITERS,
+};
+use super::{
+    bwd_vm_release_blocks_per_sm, launch_bwd_vm_release, launch_bwd_vm_validate,
+    BWD_VM_ERR_SOURCE_OOB, BWD_VM_THREADS_PER_BLOCK,
+};
 use crate::allocator::tracker::AllocationPlacement;
 use crate::ops::cub::device_reduce::{get_reduce_temp_storage_bytes, reduce, ReduceOperation};
 use crate::ops::simple::set_by_val;
 use crate::primitives::context::DeviceAllocation;
 use crate::primitives::device_structures::{DeviceVectorChunk, DeviceVectorChunkMut};
 use crate::primitives::field::{BF, E4};
+use crate::prover::gkr::backward::flat::CoefficientRecipe;
+use crate::prover::gkr::backward::GpuGKRMainLayerDeferredChallengeSource;
 use crate::prover::gkr::backward::{
-    get_eq_high_constant_device_ptr, launch_build_eq_high_and_low_groups_from_point, make_eq_sizes,
-    GKR_EQ_GROUP_SIZE, GKR_EQ_GROUP_TABLE_LEN,
+    compact, get_eq_high_constant_device_ptr, launch_build_eq_high_and_low_groups_from_point,
+    make_eq_sizes, GpuGKRMainLayerSumcheckLayerPlan, GKR_EQ_GROUP_SIZE, GKR_EQ_GROUP_TABLE_LEN,
 };
 use crate::prover::gkr::forward::bench_interp::fixture::CircuitFixture;
 use crate::prover::gkr::forward::vm::lower::{read_place_to_gkr_address, ResolvedColumn};
 use crate::prover::test_utils::make_test_context;
+use crate::prover::tests::{
+    prepare_basic_unrolled_async_backward_fixture, BasicUnrolledAsyncBackwardFixture,
+};
 use crate::prover::ProverContext;
 use crate::upstream::{
     evaluate_virtual_inits_and_teardowns_base_address_setup_polys,
@@ -1289,6 +1301,25 @@ impl GuardedPublicationMatrix {
             context.get_exec_stream(),
         )
         .expect("poison Ext publication matrix");
+    }
+
+    fn poison_columns(
+        &mut self,
+        columns: impl IntoIterator<Item = usize>,
+        live: usize,
+        context: &ProverContext,
+    ) -> era_cudart::result::CudaResult<()> {
+        assert!(live <= self.max_column_elements);
+        for column in columns {
+            assert!(column < self.columns);
+            // SAFETY: each requested column's live prefix is inside its
+            // guarded stride; callers pass unique descriptor columns.
+            let dst = unsafe {
+                DeviceSlice::from_raw_parts_mut(self.column_ptr(column).cast_mut(), live)
+            };
+            set_by_val(self.sentinel, dst, context.get_exec_stream())?;
+        }
+        Ok(())
     }
 
     fn column_ptr(&self, column: usize) -> *const E4 {
@@ -2689,4 +2720,829 @@ fn bwd_vm_add_sub_l0_all_budgets_all_rounds_parity() {
         last_round + 1,
         started.elapsed().as_secs_f64()
     );
+}
+
+fn evaluate_incumbent_recipes(
+    recipes: &[CoefficientRecipe<E4>],
+    batch_base: E4,
+    lookup_multiplicative: E4,
+    lookup_additive: E4,
+    external_challenges: &[E4],
+) -> Vec<E4> {
+    recipes
+        .iter()
+        .map(|recipe| {
+            let immediate = if recipe.negate {
+                recipe.immediate_recipe.negated()
+            } else {
+                recipe.immediate_recipe.clone()
+            };
+            let mut coefficient = batch_base.pow(recipe.batch_power);
+            coefficient.mul_assign(&immediate.evaluate(external_challenges));
+            for group in &recipe.prefactors {
+                let mut group_sum = E4::ZERO;
+                for term in group {
+                    let challenge = match term.source {
+                        GpuGKRMainLayerDeferredChallengeSource::LookupMultiplicative => {
+                            lookup_multiplicative
+                        }
+                        GpuGKRMainLayerDeferredChallengeSource::LookupAdditive => lookup_additive,
+                    };
+                    let mut value = challenge.pow(term.power);
+                    value.mul_assign_by_base(&term.coeff);
+                    group_sum.add_assign(&value);
+                }
+                coefficient.mul_assign(&group_sum);
+            }
+            coefficient
+        })
+        .collect()
+}
+
+fn incumbent_launch_sizes(
+    plan: &GpuGKRMainLayerSumcheckLayerPlan<E4>,
+    step: usize,
+    acc_size: usize,
+) -> (u32, u32) {
+    let continuation = plan
+        .flat_continuation_plan
+        .as_ref()
+        .expect("add/sub incumbent continuation plan");
+    let mut sizes = None;
+    for assignment in &continuation.source_assignments {
+        if step < 3 && !assignment.is_ext {
+            continue;
+        }
+        let source = match step {
+            1 => plan.kernel_plans[assignment.gate_idx]
+                .round1_prepared
+                .extension_field_inputs
+                .get(assignment.input_idx),
+            2 => plan.kernel_plans[assignment.gate_idx]
+                .round2_prepared
+                .extension_field_inputs
+                .get(assignment.input_idx),
+            step => {
+                let prepared = plan.kernel_plans[assignment.gate_idx]
+                    .round3_and_beyond_prepared
+                    .iter()
+                    .find(|prepared| prepared.step == step)
+                    .unwrap_or_else(|| panic!("missing incumbent prepared round {step}"));
+                if assignment.is_ext {
+                    prepared
+                        .prepared
+                        .extension_field_inputs
+                        .get(assignment.input_idx)
+                } else {
+                    prepared
+                        .prepared
+                        .base_field_inputs
+                        .get(assignment.input_idx)
+                }
+            }
+        };
+        let Some(source) = source else {
+            panic!("incumbent source assignment out of bounds at round {step}")
+        };
+        if source.this_layer_size == 0 || source.next_layer_size == 0 {
+            continue;
+        }
+        let candidate = (source.this_layer_size as u32, source.next_layer_size as u32);
+        if let Some(previous) = sizes {
+            assert_eq!(
+                candidate, previous,
+                "mixed incumbent source geometry at round {step}"
+            );
+        } else {
+            sizes = Some(candidate);
+        }
+    }
+    sizes.unwrap_or((acc_size as u32, acc_size as u32))
+}
+
+fn poison_e4_ptr(
+    ptr: *mut E4,
+    len: usize,
+    value: E4,
+    context: &ProverContext,
+) -> era_cudart::result::CudaResult<()> {
+    // SAFETY: every caller supplies a live device allocation/symbol span of
+    // exactly `len` E4 values and serializes access on `exec_stream`.
+    let slice = unsafe { DeviceSlice::from_raw_parts_mut(ptr, len) };
+    set_by_val(value, slice, context.get_exec_stream())
+}
+
+fn upload_main_layer_challenges(values: &[E4], context: &ProverContext) {
+    // SAFETY: the add/sub trace has fewer entries than the statically guarded
+    // main-layer claim-point symbol capacity; the production plan asserted the
+    // same bound while it was prepared.
+    let dst = unsafe {
+        DeviceSlice::from_raw_parts_mut(
+            compact::get_main_layer_claim_point_device_ptr(),
+            values.len(),
+        )
+    };
+    memory_copy_async(dst, values, context.get_exec_stream())
+        .expect("upload incumbent folding challenges");
+}
+
+fn time_incumbent_add_sub_rounds() -> HashMap<u8, TimingSummary> {
+    let BasicUnrolledAsyncBackwardFixture {
+        context,
+        compiled_circuit,
+        external_challenges,
+        mut gpu_backward_state,
+        batching_challenge,
+        lookup_multiplicative_part,
+        lookup_additive_part,
+        ..
+    } = prepare_basic_unrolled_async_backward_fixture(8);
+
+    while let Some(plan) = gpu_backward_state
+        .prepare_next_layer_static(&context)
+        .expect("prepare incumbent dimension-reducing layer")
+    {
+        drop(plan);
+    }
+    let mut main_state = gpu_backward_state.into_main_layer_backward_state(
+        compiled_circuit,
+        external_challenges.clone(),
+        lookup_multiplicative_part,
+        lookup_additive_part,
+        false,
+    );
+    let mut plan = loop {
+        let Some(plan) = main_state
+            .prepare_next_layer(batching_challenge, &context)
+            .expect("prepare incumbent main layer")
+        else {
+            panic!("missing incumbent add/sub layer 0")
+        };
+        if plan.layer_idx == 0 {
+            break plan;
+        }
+        drop(plan);
+    };
+
+    assert!(
+        plan.flat_use_constant,
+        "add/sub R0 must use constant coefficients"
+    );
+    assert!(
+        plan.flat_cont_use_constant,
+        "add/sub continuation must use constant coefficients"
+    );
+    assert!(plan.flat_coeff_device_buf.is_none());
+    assert!(plan.flat_cont_coeff_device_buf.is_none());
+    assert!(plan.flat_round1_terms_device.is_none());
+    assert!(plan.flat_round2_terms_device.is_none());
+    assert!(plan.flat_continuation_terms_device.is_empty());
+
+    let mut external_values = external_challenges
+        .permutation_argument_linearization_challenges
+        .to_vec();
+    external_values.push(external_challenges.permutation_argument_additive_part);
+    let round0_coefficients = evaluate_incumbent_recipes(
+        &plan
+            .flat_round0_template_compact
+            .as_ref()
+            .expect("incumbent round0 descriptor")
+            .recipes,
+        batching_challenge,
+        lookup_multiplicative_part,
+        lookup_additive_part,
+        &external_values,
+    );
+    let continuation_coefficients = evaluate_incumbent_recipes(
+        &plan
+            .flat_continuation_plan
+            .as_ref()
+            .expect("incumbent continuation descriptor")
+            .recipes,
+        batching_challenge,
+        lookup_multiplicative_part,
+        lookup_additive_part,
+        &external_values,
+    );
+
+    let folding_steps = plan.folding_steps;
+    let last_round = folding_steps - 1;
+    let point = (0..folding_steps)
+        .map(|index| e4(0x4100 + index as u32))
+        .collect::<Vec<_>>();
+    upload_main_layer_challenges(&point, &context);
+    let point_device = upload(&point, &context);
+    let claim_point_symbol = compact::get_main_layer_claim_point_device_ptr() as *const E4;
+    let output_ptr = plan.round_scratch.accumulator.as_mut_ptr();
+    let mut timings = HashMap::new();
+
+    for round in 0..=last_round {
+        let rows = plan.trace_len >> (round + 1);
+        let remaining = folding_steps - round - 1;
+        let eq_sizes = make_eq_sizes(remaining);
+        let mut eq_low = upload(&vec![E4::ZERO; GKR_EQ_GROUP_TABLE_LEN], &context);
+        launch_build_eq_high_and_low_groups_from_point::<E4>(
+            point_device.as_ptr(),
+            round + 1,
+            remaining,
+            get_eq_high_constant_device_ptr(),
+            eq_low.as_mut_ptr(),
+            &context,
+        )
+        .expect("build incumbent factored eq");
+        let coefficients = if round == 0 {
+            &round0_coefficients
+        } else {
+            &continuation_coefficients
+        };
+        upload_incumbent_coefficients(coefficients, &context)
+            .expect("upload incumbent host-evaluated coefficients");
+        let (fold_stride, next_layer_size) = if round == 0 {
+            (rows as u32, rows as u32)
+        } else {
+            incumbent_launch_sizes(&plan, round, rows)
+        };
+        let launch = || match round {
+            0 => compact::launch_main_round0_constant::<E4>(
+                &plan
+                    .flat_round0_template_compact
+                    .as_ref()
+                    .expect("incumbent round0 descriptor")
+                    .static_desc,
+                eq_low.as_ptr(),
+                &eq_sizes,
+                output_ptr,
+                rows as u32,
+                &context,
+            ),
+            1 => compact::launch_main_round1_unified::<E4>(
+                plan.flat_round1_unified_desc_compact
+                    .as_ref()
+                    .expect("incumbent round1 descriptor"),
+                ptr::null(),
+                fold_stride,
+                next_layer_size,
+                eq_low.as_ptr(),
+                &eq_sizes,
+                output_ptr,
+                rows as u32,
+                &context,
+            ),
+            2 => compact::launch_main_round2_unified::<E4>(
+                plan.flat_round2_unified_desc_compact
+                    .as_ref()
+                    .expect("incumbent round2 descriptor"),
+                // The direct compact launcher includes
+                // `launch_round2_challenges_prelude` on the same stream. Keep
+                // that cost in this incumbent sequence, rather than timing
+                // only the dependent evaluator kernel.
+                claim_point_symbol,
+                fold_stride,
+                next_layer_size,
+                eq_low.as_ptr(),
+                &eq_sizes,
+                output_ptr,
+                rows as u32,
+                &context,
+            ),
+            step => {
+                // The prepared incumbent invokes every add/sub continuation
+                // round in monomial form; only a prepared final explicit round
+                // could set this flag. Keep this pin adjacent to the direct
+                // compact launcher so a production-plan change fails setup.
+                const PREPARED_FINAL_EXPLICIT_FORM: bool = false;
+                let final_round = step == last_round;
+                let explicit_form = final_round && PREPARED_FINAL_EXPLICIT_FORM;
+                assert!(
+                    !explicit_form || final_round,
+                    "only the prepared final round may use the explicit compact variant"
+                );
+                let desc = &plan
+                    .flat_continuation_unified_descs_compact
+                    .iter()
+                    .find(|(candidate, _)| *candidate == step)
+                    .unwrap_or_else(|| panic!("missing incumbent round {step} descriptor"))
+                    .1;
+                compact::launch_main_round3_unified::<E4>(
+                    desc,
+                    ptr::null(),
+                    fold_stride,
+                    next_layer_size,
+                    (step - 1) as u32,
+                    eq_low.as_ptr(),
+                    &eq_sizes,
+                    output_ptr,
+                    rows as u32,
+                    explicit_form,
+                    &context,
+                )
+            }
+        };
+
+        let preflight_poison = e4(0xa100 + round as u32);
+        let sequence = if round == 2 {
+            "round2_challenges_prelude+launch_main_round2_unified"
+        } else {
+            "compact evaluator launcher"
+        };
+        eprintln!(
+            "[bwd-vm-sweep] incumbent round {round}/{last_round} rows={rows} sequence={sequence} preflight"
+        );
+        poison_e4_ptr(output_ptr, 2 * rows, preflight_poison, &context)
+            .expect("poison incumbent preflight output");
+        launch().expect("incumbent correctness launch");
+        context
+            .get_exec_stream()
+            .synchronize()
+            .expect("incumbent correctness synchronization");
+        assert!(
+            download_e4_ptr(output_ptr, 2 * rows, &context)
+                .iter()
+                .any(|value| *value != preflight_poison),
+            "incumbent round {round} correctness launch left all outputs poisoned"
+        );
+        let timing = time_cuda_launches(
+            context.get_exec_stream(),
+            WARMUP_ITERS,
+            TIMING_ITERS,
+            || poison_e4_ptr(output_ptr, 2 * rows, e4(0xa200 + round as u32), &context),
+            launch,
+        )
+        .expect("time incumbent launch sequence");
+        eprintln!(
+            "[bwd-vm-sweep] incumbent round {round}/{last_round} median={:.3}us min={:.3}us",
+            timing.median_us, timing.min_us
+        );
+        assert!(timings.insert(round as u8, timing).is_none());
+    }
+    timings
+}
+
+fn predicted_source_bytes(desc: &BwdVmDesc) -> u128 {
+    let program = decode(&desc.program[..desc.program_lanes as usize])
+        .expect("lowered timing program must decode");
+    let mut bytes_per_row = 0u128;
+    let mut visit = |operand: &OperandLine| {
+        let OperandLine::Source { window, column, .. } = operand else {
+            return;
+        };
+        let source = desc.source_windows[*window as usize];
+        let origin_bytes = match source.origin_field {
+            BWD_VM_ORIGIN_FIELD_BASE => size_of::<BF>(),
+            BWD_VM_ORIGIN_FIELD_EXT => size_of::<E4>(),
+            field => panic!("invalid timing source field {field}"),
+        };
+        assert!((*column as usize) < 64, "encoded source column bound");
+        let delta = source
+            .target_depth
+            .checked_sub(source.backing_depth)
+            .expect("fold target cannot precede backing");
+        bytes_per_row += 3u128 * (1u128 << delta) * origin_bytes as u128;
+    };
+    for instr in &program.instrs {
+        match instr {
+            Instr::Mov { src: Some(src), .. } => visit(src),
+            Instr::Mov { src: None, .. } => {}
+            Instr::Add { operands, .. } | Instr::Mul { operands, .. } => {
+                for operand in operands {
+                    visit(operand);
+                }
+            }
+            Instr::Fma { pairs, .. } => {
+                for (lhs, rhs) in pairs {
+                    visit(lhs);
+                    visit(rhs);
+                }
+            }
+        }
+    }
+    bytes_per_row * u128::from(desc.logical_rows)
+}
+
+fn time_vm_setup(
+    setup: &super::lower::BwdVmSetup,
+    budget_cells: usize,
+    contribution_ptr: *mut E4,
+    rows: usize,
+    context: &ProverContext,
+    mut poison_extra_outputs: impl FnMut() -> era_cudart::result::CudaResult<()>,
+) -> TimingSummary {
+    let mut error = upload(&[0u32], context);
+    let poison = e4(0xb000 + budget_cells as u32 + setup.desc.logical_rows.trailing_zeros());
+    poison_e4_ptr(contribution_ptr, 2 * rows, poison, context)
+        .expect("poison VM preflight contributions");
+    poison_extra_outputs().expect("poison VM preflight publications");
+    setup
+        .upload_constant_banks(context)
+        .expect("upload VM timing constant banks");
+    launch_bwd_vm_validate(
+        &setup.desc,
+        budget_cells as u32,
+        error.as_mut_ptr(),
+        ptr::null_mut(),
+        context,
+    )
+    .expect("VM timing validation launch");
+    assert_eq!(
+        download_u32(&error, context),
+        [0],
+        "c{budget_cells} VM timing setup validation"
+    );
+    let sample_count = rows.min(4);
+    let mut validate_sample = download_e4_ptr(contribution_ptr, sample_count, context);
+    // SAFETY: contribution output is exactly two contiguous `rows` halves.
+    validate_sample.extend(download_e4_ptr(
+        unsafe { contribution_ptr.add(rows) },
+        sample_count,
+        context,
+    ));
+
+    poison_e4_ptr(contribution_ptr, 2 * rows, poison, context)
+        .expect("poison VM correctness contributions");
+    poison_extra_outputs().expect("poison VM correctness publications");
+    launch_bwd_vm_release(&setup.desc, budget_cells as u32, context)
+        .expect("VM untimed correctness launch");
+    context
+        .get_exec_stream()
+        .synchronize()
+        .expect("VM correctness synchronization");
+    let mut release_sample = download_e4_ptr(contribution_ptr, sample_count, context);
+    // SAFETY: contribution output is exactly two contiguous `rows` halves.
+    release_sample.extend(download_e4_ptr(
+        unsafe { contribution_ptr.add(rows) },
+        sample_count,
+        context,
+    ));
+    assert_e4_bits(
+        &format!("c{budget_cells} validate/release timing preflight"),
+        &release_sample,
+        &validate_sample,
+    );
+    assert!(
+        release_sample.iter().any(|value| *value != poison),
+        "c{budget_cells} correctness launch left sampled outputs poisoned"
+    );
+
+    time_cuda_launches(
+        context.get_exec_stream(),
+        WARMUP_ITERS,
+        TIMING_ITERS,
+        || {
+            poison_e4_ptr(contribution_ptr, 2 * rows, poison, context)?;
+            poison_extra_outputs()
+        },
+        || launch_bwd_vm_release(&setup.desc, budget_cells as u32, context),
+    )
+    .expect("time VM release launch")
+}
+
+fn vm_occupancy_metadata(budget_cells: usize, max_threads_per_sm: i32) -> (usize, i32, f32) {
+    let dynamic_smem_bytes = budget_cells * size_of::<E4>() * BWD_VM_THREADS_PER_BLOCK as usize;
+    let active_blocks =
+        bwd_vm_release_blocks_per_sm(budget_cells as u32).expect("query backward VM occupancy");
+    let occupancy =
+        active_blocks as f32 * BWD_VM_THREADS_PER_BLOCK as f32 / max_threads_per_sm as f32;
+    (dynamic_smem_bytes, active_blocks, occupancy)
+}
+
+#[test]
+#[ignore] // GPU timing; compile unlocked and run the exact executable under with_gpu_lock.sh.
+#[cfg(not(no_cuda))]
+#[serial_test::serial]
+fn bwd_vm_add_sub_l0_budget_sweep_report() {
+    use era_cudart::device::{device_get_attribute, get_device};
+    use era_cudart_sys::CudaDeviceAttr;
+    use std::path::Path;
+
+    eprintln!(
+        "[bwd-vm-sweep] per-coordinate validate + untimed correctness preflight enabled; incumbent timing begin"
+    );
+    let incumbent = time_incumbent_add_sub_rounds();
+    eprintln!("[bwd-vm-sweep] incumbent timing complete; VM timing begin");
+
+    let max_threads_per_sm = device_get_attribute(
+        CudaDeviceAttr::MaxThreadsPerMultiProcessor,
+        get_device().expect("active CUDA device"),
+    )
+    .expect("query max threads per SM");
+    let r0_cases = (2usize..=16)
+        .map(|budget| load_add_sub_l0_case(BwdRegime::R0, budget))
+        .collect::<Vec<_>>();
+    let ext_cases = (2usize..=16)
+        .map(|budget| load_add_sub_l0_case(BwdRegime::Ext, budget))
+        .collect::<Vec<_>>();
+    assert_semantic_identity(&r0_cases[0], &r0_cases);
+    assert_semantic_identity(&ext_cases[0], &ext_cases);
+    let trace_len = r0_cases[0].trace_len;
+    let folding_steps = trace_len.trailing_zeros() as usize;
+    let last_round = folding_steps - 1;
+    let claim_point = (0..folding_steps)
+        .map(|index| e4(0x4100 + index as u32))
+        .collect::<Vec<_>>();
+    let round_challenges = (0..folding_steps)
+        .map(|round| e4(0x4300 + round as u32))
+        .collect::<Vec<_>>();
+    let fixture = CircuitFixture::build("add_sub_lui_auipc_mop");
+    let context = fixture.context();
+    let claim_point_device = upload(&claim_point, context);
+    let columns = snapshot_r0_columns(&fixture, &r0_cases, trace_len);
+    let oracle = r0_oracle_resolvers(&fixture, &r0_cases, columns);
+    let max_rows = trace_len / 2;
+    let mut contributions = context
+        .alloc::<E4>(2 * max_rows, AllocationPlacement::Top)
+        .expect("sweep contribution halves");
+    let contribution_ptr = contributions.as_mut_ptr();
+    let mut report_rows = Vec::with_capacity(15 * folding_steps);
+
+    let r0_rows = trace_len / 2;
+    let r0_eq_sizes = make_eq_sizes(folding_steps - 1);
+    let mut r0_eq_low = upload(&vec![E4::ZERO; GKR_EQ_GROUP_TABLE_LEN], context);
+    launch_build_eq_high_and_low_groups_from_point::<E4>(
+        claim_point_device.as_ptr(),
+        1,
+        folding_steps - 1,
+        get_eq_high_constant_device_ptr(),
+        r0_eq_low.as_mut_ptr(),
+        context,
+    )
+    .expect("build R0 sweep factored eq");
+    for case in &r0_cases {
+        eprintln!(
+            "[bwd-vm-sweep] VM R0 c{} rows={r0_rows} setup",
+            case.budget_cells
+        );
+        let sources = resolved_r0_sources(&fixture, case);
+        let resolve_source = |address| fixture.resolved_storage_column(address);
+        let runtime = BwdVmRoundBinding {
+            round: 0,
+            rows: r0_rows as u32,
+            round_challenges: &round_challenges,
+            sources: &sources,
+            resolve_source: &resolve_source,
+            eq_low: r0_eq_low.as_ptr(),
+            eq_sizes: r0_eq_sizes,
+            contributions: contribution_ptr,
+        };
+        let setup = lower_bwd_vm(
+            &case.compiled,
+            &case.distilled,
+            &runtime,
+            &|reference| fixture.backward_challenge_value(reference),
+            &|recipe| fixture.evaluate_backward_recipe(&case.distilled.layer, recipe),
+        )
+        .unwrap_or_else(|error| panic!("lower R0 c{} sweep: {error:?}", case.budget_cells));
+        let timing = time_vm_setup(
+            &setup,
+            case.budget_cells,
+            contribution_ptr,
+            r0_rows,
+            context,
+            || Ok(()),
+        );
+        let (dynamic_smem_bytes, active_blocks_per_sm, theoretical_occupancy) =
+            vm_occupancy_metadata(case.budget_cells, max_threads_per_sm);
+        report_rows.push(SweepRow {
+            budget_cells: case.budget_cells,
+            regime: "R0",
+            round: 0,
+            rows: r0_rows,
+            dynamic_smem_bytes,
+            active_blocks_per_sm,
+            theoretical_occupancy,
+            program_instructions: setup.desc.n_instr as usize,
+            program_lanes: setup.desc.program_lanes as usize,
+            predicted_source_bytes: predicted_source_bytes(&setup.desc),
+            vm: timing,
+            incumbent: incumbent[&0],
+        });
+        eprintln!(
+            "[bwd-vm-sweep] VM R0 c{} complete median={:.3}us",
+            case.budget_cells, timing.median_us
+        );
+    }
+
+    let materializations = ext_cases
+        .iter()
+        .map(|case| {
+            artifact_static_materialization(
+                &case.canonical,
+                &case.distilled,
+                case.trace_len,
+                case.budget_cells,
+            )
+            .expect("artifact-certified sweep materialization")
+        })
+        .collect::<Vec<_>>();
+    assert!(materializations
+        .iter()
+        .all(|materialization| materialization == &materializations[0]));
+    let materialization = &materializations[0];
+    let read_descriptors = ext_read_descriptors(&ext_cases[0]);
+    let desc_columns = read_descriptors
+        .iter()
+        .enumerate()
+        .map(|(column, (desc, _))| (*desc, column))
+        .collect::<HashMap<_, _>>();
+    let publication_sentinel = e4(0x7d80);
+    let original_matrix = upload_ext_original_matrix(
+        &read_descriptors,
+        &desc_columns,
+        &oracle,
+        trace_len,
+        publication_sentinel,
+        context,
+    );
+    let mut publication_matrices = [
+        GuardedPublicationMatrix::new(
+            read_descriptors.len(),
+            trace_len,
+            publication_sentinel,
+            context,
+        ),
+        GuardedPublicationMatrix::new(
+            read_descriptors.len(),
+            trace_len,
+            publication_sentinel,
+            context,
+        ),
+    ];
+
+    // Ext round 0 is the setup predecessor for the first actual Ext timing
+    // coordinate (round 1). Run it once, untimed, solely to populate any
+    // static `Materialized` bindings named by round 1.
+    let prep_case = &ext_cases[0];
+    let prep_rows = trace_len / 2;
+    let mut prep_eq_low = upload(&vec![E4::ZERO; GKR_EQ_GROUP_TABLE_LEN], context);
+    launch_build_eq_high_and_low_groups_from_point::<E4>(
+        claim_point_device.as_ptr(),
+        1,
+        folding_steps - 1,
+        get_eq_high_constant_device_ptr(),
+        prep_eq_low.as_mut_ptr(),
+        context,
+    )
+    .expect("build Ext predecessor factored eq");
+    let (prep_sources, prep_resolve, prep_stored, _) = resolved_ext_round_sources(
+        prep_case,
+        materialization,
+        0,
+        &desc_columns,
+        &original_matrix,
+        &publication_matrices,
+        0,
+        &HashMap::new(),
+    );
+    let prep_resolver = |address| prep_resolve.get(&address).copied();
+    let prep_runtime = BwdVmRoundBinding {
+        round: 0,
+        rows: prep_rows as u32,
+        round_challenges: &round_challenges,
+        sources: &prep_sources,
+        resolve_source: &prep_resolver,
+        eq_low: prep_eq_low.as_ptr(),
+        eq_sizes: make_eq_sizes(folding_steps - 1),
+        contributions: contribution_ptr,
+    };
+    let prep_setup = lower_bwd_vm(
+        &prep_case.compiled,
+        &prep_case.distilled,
+        &prep_runtime,
+        &|reference| fixture.backward_challenge_value(reference),
+        &|recipe| fixture.evaluate_backward_recipe(&prep_case.distilled.layer, recipe),
+    )
+    .expect("lower Ext predecessor");
+    prep_setup
+        .upload_constant_banks(context)
+        .expect("upload Ext predecessor banks");
+    launch_bwd_vm_release(&prep_setup.desc, prep_case.budget_cells as u32, context)
+        .expect("launch Ext predecessor");
+    context
+        .get_exec_stream()
+        .synchronize()
+        .expect("Ext predecessor synchronization");
+    let mut previous_device = prep_stored
+        .into_iter()
+        .map(|desc| {
+            (
+                desc,
+                PublishedDeviceColumn {
+                    matrix: 0,
+                    depth: 0,
+                },
+            )
+        })
+        .collect::<HashMap<_, _>>();
+
+    for round in 1..=last_round as u8 {
+        let rows = trace_len >> (round as usize + 1);
+        let remaining = folding_steps - round as usize - 1;
+        let eq_sizes = make_eq_sizes(remaining);
+        let mut eq_low = upload(&vec![E4::ZERO; GKR_EQ_GROUP_TABLE_LEN], context);
+        launch_build_eq_high_and_low_groups_from_point::<E4>(
+            claim_point_device.as_ptr(),
+            round as usize + 1,
+            remaining,
+            get_eq_high_constant_device_ptr(),
+            eq_low.as_mut_ptr(),
+            context,
+        )
+        .expect("build Ext sweep factored eq");
+        let current_matrix = round as usize & 1;
+        let mut stored_reference = None;
+        for case in &ext_cases {
+            eprintln!(
+                "[bwd-vm-sweep] VM Ext round {round}/{last_round} c{} rows={rows} setup",
+                case.budget_cells
+            );
+            let (sources, resolved, stored, _) = resolved_ext_round_sources(
+                case,
+                materialization,
+                round,
+                &desc_columns,
+                &original_matrix,
+                &publication_matrices,
+                current_matrix,
+                &previous_device,
+            );
+            if let Some(reference) = &stored_reference {
+                assert_eq!(&stored, reference, "cross-budget publication identity");
+            } else {
+                stored_reference = Some(stored.clone());
+            }
+            let resolver = |address| resolved.get(&address).copied();
+            let runtime = BwdVmRoundBinding {
+                round,
+                rows: rows as u32,
+                round_challenges: &round_challenges,
+                sources: &sources,
+                resolve_source: &resolver,
+                eq_low: eq_low.as_ptr(),
+                eq_sizes,
+                contributions: contribution_ptr,
+            };
+            let setup = lower_bwd_vm(
+                &case.compiled,
+                &case.distilled,
+                &runtime,
+                &|reference| fixture.backward_challenge_value(reference),
+                &|recipe| fixture.evaluate_backward_recipe(&case.distilled.layer, recipe),
+            )
+            .unwrap_or_else(|error| {
+                panic!("lower Ext c{} round {round}: {error:?}", case.budget_cells)
+            });
+            let columns = stored
+                .iter()
+                .map(|desc| desc_columns[desc])
+                .collect::<Vec<_>>();
+            let timing = time_vm_setup(
+                &setup,
+                case.budget_cells,
+                contribution_ptr,
+                rows,
+                context,
+                || {
+                    publication_matrices[current_matrix].poison_columns(
+                        columns.iter().copied(),
+                        rows,
+                        context,
+                    )
+                },
+            );
+            let (dynamic_smem_bytes, active_blocks_per_sm, theoretical_occupancy) =
+                vm_occupancy_metadata(case.budget_cells, max_threads_per_sm);
+            report_rows.push(SweepRow {
+                budget_cells: case.budget_cells,
+                regime: "Ext",
+                round,
+                rows,
+                dynamic_smem_bytes,
+                active_blocks_per_sm,
+                theoretical_occupancy,
+                program_instructions: setup.desc.n_instr as usize,
+                program_lanes: setup.desc.program_lanes as usize,
+                predicted_source_bytes: predicted_source_bytes(&setup.desc),
+                vm: timing,
+                incumbent: incumbent[&round],
+            });
+            eprintln!(
+                "[bwd-vm-sweep] VM Ext round {round}/{last_round} c{} complete median={:.3}us",
+                case.budget_cells, timing.median_us
+            );
+        }
+        previous_device = stored_reference
+            .expect("at least one Ext budget")
+            .into_iter()
+            .map(|desc| {
+                (
+                    desc,
+                    PublishedDeviceColumn {
+                        matrix: current_matrix,
+                        depth: round,
+                    },
+                )
+            })
+            .collect();
+    }
+
+    publish_report(&report_rows, Path::new(SWEEP_LOG_PATH));
 }
