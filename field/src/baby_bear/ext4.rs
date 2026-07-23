@@ -7,7 +7,7 @@ use crate::field::{Field, FieldExtension, PrimeField};
 use rand::Rng;
 
 #[cfg(not(target_arch = "riscv32"))]
-#[derive(Clone, Copy, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, serde::Serialize, serde::Deserialize)]
 #[repr(C, align(16))]
 pub struct BabyBearExt4 {
     pub c0: BabyBearExt2,
@@ -15,7 +15,7 @@ pub struct BabyBearExt4 {
 }
 
 #[cfg(target_arch = "riscv32")]
-#[derive(Clone, Copy, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, serde::Serialize, serde::Deserialize)]
 #[repr(C)]
 pub struct BabyBearExt4 {
     pub c0: BabyBearExt2,
@@ -390,6 +390,14 @@ impl core::cmp::PartialEq for BabyBearExt4 {
 }
 
 impl core::cmp::Eq for BabyBearExt4 {}
+
+impl core::hash::Hash for BabyBearExt4 {
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
+    fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+        self.c0.hash(state);
+        self.c1.hash(state);
+    }
+}
 
 impl core::default::Default for BabyBearExt4 {
     #[cfg_attr(not(feature = "no_inline"), inline(always))]

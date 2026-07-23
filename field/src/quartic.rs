@@ -2,7 +2,7 @@ use super::*;
 use rand::Rng;
 
 #[cfg(not(target_arch = "riscv32"))]
-#[derive(Clone, Copy, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, serde::Serialize, serde::Deserialize)]
 #[repr(C, align(16))]
 pub struct Mersenne31Quartic {
     pub c0: Mersenne31Complex,
@@ -10,7 +10,7 @@ pub struct Mersenne31Quartic {
 }
 
 #[cfg(target_arch = "riscv32")]
-#[derive(Clone, Copy, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, serde::Serialize, serde::Deserialize)]
 #[repr(C)]
 pub struct Mersenne31Quartic {
     pub c0: Mersenne31Complex,
@@ -87,6 +87,14 @@ impl core::cmp::PartialEq for Mersenne31Quartic {
 }
 
 impl core::cmp::Eq for Mersenne31Quartic {}
+
+impl core::hash::Hash for Mersenne31Quartic {
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
+    fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+        self.c0.hash(state);
+        self.c1.hash(state);
+    }
+}
 
 impl core::default::Default for Mersenne31Quartic {
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
