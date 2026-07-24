@@ -47,7 +47,11 @@ pub fn unified_reduced_machine_circuit_setup<A: GoodAllocator + 'static>(
         .remove(&REDUCED_MACHINE_CIRCUIT_FAMILY_IDX)
         .expect("UnifiedReducedMachineDecoder must produce a family-128 entry");
 
-    let trace_len = 1 << <::unified_reduced_machine::UnifiedReducedMachineCircuit as RiscVCycleCircuit<BabyBearField, true>>::DOMAIN_SIZE_LOG2;
+    let trace_len = 1
+        << <::unified_reduced_machine::UnifiedReducedMachineCircuit as RiscVCycleCircuit<
+            BabyBearField,
+            true,
+        >>::DOMAIN_SIZE_LOG2;
     let setup = GKRSetup::construct(&table_driver, &decoder_table, trace_len, &compiled_circuit);
 
     #[cfg(not(feature = "witness_eval_fn"))]
