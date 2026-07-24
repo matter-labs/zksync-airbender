@@ -1,4 +1,4 @@
-#![cfg_attr(not(any(test, feature = "replace_csr")), no_std)]
+#![cfg_attr(not(any(test, feature = "proof_utils")), no_std)]
 #![cfg_attr(any(test, feature = "proof_utils"), allow(incomplete_features))]
 #![cfg_attr(any(test, feature = "proof_utils"), feature(generic_const_exprs))]
 
@@ -147,7 +147,7 @@ pub const unsafe fn slice_from_ptr_range<'a, T>(range: core::ops::Range<*const T
     unsafe { core::slice::from_raw_parts(range.start, range.end.offset_from(range.start) as usize) }
 }
 
-#[cfg(any(test, feature = "replace_csr", feature = "proof_utils"))]
+#[cfg(any(test, feature = "proof_utils"))]
 extern crate alloc;
 
 use crate::errors::ErrorCreator;

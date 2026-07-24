@@ -1,4 +1,4 @@
-#![cfg_attr(not(any(test, feature = "replace_csr")), no_std)]
+#![cfg_attr(not(any(test, feature = "proof_utils")), no_std)]
 #![cfg_attr(any(test, feature = "proof_utils"), allow(incomplete_features))]
 #![cfg_attr(any(test, feature = "proof_utils"), feature(generic_const_exprs))]
 
