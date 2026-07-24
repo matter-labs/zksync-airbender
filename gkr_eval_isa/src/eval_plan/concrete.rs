@@ -978,6 +978,29 @@ enum RawSourceHoistSite {
 /// A raw source fragment may be emitted after a destructive use of the same
 /// source. Since batching addition is commutative and the sink preserves
 /// `acc`, move that sink to an earlier load/use and remove the repeated read.
+fn accumulator_is_dead_before_next_use(instrs: &[Instr]) -> bool {
+    for instr in instrs {
+        match instr {
+            Instr::Mov {
+                dir: MovDir::AccFromSrc,
+                ..
+            } => return true,
+            Instr::Mov {
+                dir: MovDir::DstFromSrc,
+                ..
+            } => {}
+            Instr::Add { .. }
+            | Instr::Mul { .. }
+            | Instr::Fma { .. }
+            | Instr::Mov {
+                dir: MovDir::DstFromAcc,
+                ..
+            } => return false,
+        }
+    }
+    true
+}
+
 fn hoist_raw_source_batch_sinks(program: &mut Program) {
     loop {
         let Some((reload, source, sink)) =
@@ -1006,6 +1029,7 @@ fn hoist_raw_source_batch_sinks(program: &mut Program) {
                     source,
                     OperandLine::LogicalGlobal { .. } | OperandLine::LogicalFold { .. }
                 ) || unpack_batch_dst(destination).is_none()
+                    || !accumulator_is_dead_before_next_use(&program.instrs[instruction + 2..])
                 {
                     return None;
                 }
@@ -2808,6 +2832,66 @@ mod tests {
         assert_eq!(
             program.instrs,
             vec![source_load, raw_sink, destructive_add, ext_sink,]
+        );
+    }
+
+    #[test]
+    fn raw_source_batch_sink_hoist_does_not_reconsider_inserted_sink() {
+        let source = OperandLine::LogicalGlobal { slot: 1, col: 2 };
+        let challenge = OperandLine::Ldc {
+            sub: LdcSub::ConstDerivedE4,
+            idx: 0,
+        };
+        let source_load = Instr::Mov {
+            dir: MovDir::AccFromSrc,
+            field: OperandField::Base,
+            dst: None,
+            src: Some(source),
+        };
+        let raw_sink = Instr::Mov {
+            dir: MovDir::DstFromAcc,
+            field: OperandField::Base,
+            dst: Some(pack_batch_dst(BATCH_COEFFICIENT_ONE).unwrap()),
+            src: None,
+        };
+        let destructive_add = Instr::Add {
+            field: OperandField::Ext,
+            sign: Sign::Plus,
+            promote: true,
+            operands: vec![challenge],
+        };
+        let ext_sink = Instr::Mov {
+            dir: MovDir::DstFromAcc,
+            field: OperandField::Ext,
+            dst: Some(pack_batch_dst(7).unwrap()),
+            src: None,
+        };
+        let mut program = Program {
+            instrs: vec![
+                source_load.clone(),
+                destructive_add.clone(),
+                ext_sink.clone(),
+                source_load.clone(),
+                destructive_add.clone(),
+                ext_sink.clone(),
+                source_load.clone(),
+                raw_sink.clone(),
+            ],
+        };
+
+        hoist_raw_source_batch_sinks(&mut program);
+
+        assert_eq!(
+            program.instrs,
+            vec![
+                source_load.clone(),
+                destructive_add.clone(),
+                ext_sink.clone(),
+                source_load,
+                raw_sink,
+                destructive_add,
+                ext_sink,
+            ]
         );
     }
 
