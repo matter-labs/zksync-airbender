@@ -21,6 +21,7 @@ constexpr u32 BWD_VM_CELL_CAP = 18;
 constexpr u16 BWD_VM_BATCH_ACC_INIT_NONE = 0xffffu;
 constexpr u16 BWD_VM_BATCH_COEFFICIENT_ONE = 0x3fffu;
 constexpr u32 BWD_VM_THREADS_PER_BLOCK = 128;
+constexpr u32 BWD_VM_FOLD_FACTOR_CAP = 10;
 constexpr u32 BWD_VM_MIN_BUDGET_CELLS = 2;
 constexpr u32 BWD_VM_MAX_BUDGET_CELLS = 16;
 
@@ -141,7 +142,9 @@ static_assert(__builtin_offsetof(bwd_vm_desc, batch_acc_init) == 4668, "batch_ac
 // Existing stream-ordered constant-memory symbols. The coefficient symbol is
 // declared by flat.cuh; ConstDerivedE4 reuses the forward VM's 8-slot bank.
 EXTERN __device__ __constant__ e4 ab_gkr_fwd_vm_const_derived_e4[airbender::prover::gkr::BWD_VM_CONST_DERIVED_E4_CAP];
+EXTERN __device__ __constant__ e4 ab_gkr_bwd_vm_fold_factors[airbender::prover::gkr::BWD_VM_FOLD_FACTOR_CAP];
 
+EXTERN __global__ void ab_gkr_bwd_vm_build_fold_factors_kernel(const e4 *round_challenges, u32 target_depth, u32 fold_depth, e4 *fold_factors);
 EXTERN __global__ void ab_gkr_bwd_vm_release_d0_kernel(const __grid_constant__ airbender::prover::gkr::bwd_vm_desc desc);
 EXTERN __global__ void ab_gkr_bwd_vm_release_d1_kernel(const __grid_constant__ airbender::prover::gkr::bwd_vm_desc desc);
 EXTERN __global__ void ab_gkr_bwd_vm_release_d2_kernel(const __grid_constant__ airbender::prover::gkr::bwd_vm_desc desc);

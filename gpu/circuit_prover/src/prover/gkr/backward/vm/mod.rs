@@ -6,10 +6,14 @@ pub(crate) mod lower;
 #[cfg(all(test, feature = "bench"))]
 mod report;
 
+use std::ffi::c_void;
+use std::ptr::null_mut;
+use std::sync::OnceLock;
+
 use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
-use era_cudart::result::CudaResult;
+use era_cudart::result::{CudaResult, CudaResultWrap};
 use era_cudart::{cuda_kernel_declaration, cuda_kernel_signature_arguments_and_function};
-use era_cudart_sys::cuda_struct_and_stub;
+use era_cudart_sys::{cuda_struct_and_stub, cudaGetSymbolAddress};
 
 use self::desc::{BwdVmDesc, BWD_VM_CONST_DERIVED_E4_CAP};
 use crate::primitives::field::E4;
@@ -17,6 +21,7 @@ use crate::prover::gkr::backward::flat::FLAT_CONST_MAX;
 use crate::prover::ProverContext;
 
 pub(crate) const BWD_VM_THREADS_PER_BLOCK: u32 = 128;
+pub(crate) const BWD_VM_FOLD_FACTOR_CAP: usize = 10;
 pub(crate) const BWD_VM_MIN_BUDGET_CELLS: u32 = 2;
 pub(crate) const BWD_VM_MAX_BUDGET_CELLS: u32 = 16;
 pub(crate) const BWD_VM_ERR_SOURCE_OOB: u32 = 128;
@@ -27,6 +32,25 @@ cuda_struct_and_stub! {
 cuda_struct_and_stub! {
     static ab_gkr_fwd_vm_const_derived_e4: [E4; BWD_VM_CONST_DERIVED_E4_CAP];
 }
+cuda_struct_and_stub! {
+    static ab_gkr_bwd_vm_fold_factors: [E4; BWD_VM_FOLD_FACTOR_CAP];
+}
+
+cuda_kernel_signature_arguments_and_function!(
+    GkrBwdVmBuildFoldFactors,
+    round_challenges: *const E4,
+    target_depth: u32,
+    fold_depth: u32,
+    fold_factors: *mut E4,
+);
+cuda_kernel_declaration!(
+    ab_gkr_bwd_vm_build_fold_factors_kernel(
+        round_challenges: *const E4,
+        target_depth: u32,
+        fold_depth: u32,
+        fold_factors: *mut E4
+    )
+);
 
 macro_rules! declare_bwd_vm_release_kernel {
     ($signature:ident, $symbol:ident) => {
@@ -83,6 +107,45 @@ fn bwd_vm_kernel_depth(round: u32) -> BwdVmKernelDepth {
     }
 }
 
+fn fold_factor_device_ptr() -> *mut E4 {
+    static PTR: OnceLock<usize> = OnceLock::new();
+    let ptr = *PTR.get_or_init(|| {
+        let mut ptr: *mut c_void = null_mut();
+        // SAFETY: the Rust static is the stub for the exact CUDA
+        // `__constant__` E4 factor bank.
+        unsafe {
+            cudaGetSymbolAddress(
+                &mut ptr,
+                &ab_gkr_bwd_vm_fold_factors as *const _ as *const c_void,
+            )
+        }
+        .wrap()
+        .expect("cudaGetSymbolAddress failed for ab_gkr_bwd_vm_fold_factors");
+        ptr as usize
+    });
+    ptr as *mut E4
+}
+
+fn launch_fold_factor_prelude(desc: &BwdVmDesc, context: &ProverContext) -> CudaResult<()> {
+    if desc.n_round_challenges == 0 || desc.round_challenges.is_null() {
+        return Ok(());
+    }
+    let fold_depth = match bwd_vm_kernel_depth(desc.n_round_challenges) {
+        BwdVmKernelDepth::D0 => return Ok(()),
+        BwdVmKernelDepth::D1 => 1,
+        BwdVmKernelDepth::D2 => 2,
+        BwdVmKernelDepth::D3 => 3,
+    };
+    let config = CudaLaunchConfig::basic(1, 32, context.get_exec_stream());
+    let args = GkrBwdVmBuildFoldFactorsArguments::new(
+        desc.round_challenges,
+        desc.n_round_challenges,
+        fold_depth,
+        fold_factor_device_ptr(),
+    );
+    GkrBwdVmBuildFoldFactorsFunction(ab_gkr_bwd_vm_build_fold_factors_kernel).launch(&config, &args)
+}
+
 fn launch_config<'a>(
     desc: &BwdVmDesc,
     budget_cells: u32,
@@ -109,6 +172,7 @@ pub(crate) fn launch_bwd_vm_release(
     budget_cells: u32,
     context: &ProverContext,
 ) -> CudaResult<()> {
+    launch_fold_factor_prelude(desc, context)?;
     let config = launch_config(desc, budget_cells, context);
     match bwd_vm_kernel_depth(desc.n_round_challenges) {
         BwdVmKernelDepth::D0 => GkrBwdVmReleaseD0Function(ab_gkr_bwd_vm_release_d0_kernel)
@@ -162,6 +226,7 @@ pub(crate) fn launch_bwd_vm_validate(
     diagnostic_t0_t2: *mut E4,
     context: &ProverContext,
 ) -> CudaResult<()> {
+    launch_fold_factor_prelude(desc, context)?;
     let config = launch_config(desc, budget_cells, context);
     match bwd_vm_kernel_depth(desc.n_round_challenges) {
         BwdVmKernelDepth::D0 => GkrBwdVmValidateD0Function(ab_gkr_bwd_vm_validate_d0_kernel)

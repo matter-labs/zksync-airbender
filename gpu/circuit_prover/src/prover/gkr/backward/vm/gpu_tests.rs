@@ -33,8 +33,9 @@ use super::report::{
     TimingSummary, SWEEP_LOG_PATH, TIMING_ITERS, WARMUP_ITERS,
 };
 use super::{
-    bwd_vm_release_blocks_per_sm, launch_bwd_vm_release, launch_bwd_vm_validate,
-    BWD_VM_ERR_SOURCE_OOB, BWD_VM_THREADS_PER_BLOCK,
+    bwd_vm_release_blocks_per_sm, fold_factor_device_ptr, launch_bwd_vm_release,
+    launch_bwd_vm_validate, launch_fold_factor_prelude, BWD_VM_ERR_SOURCE_OOB,
+    BWD_VM_THREADS_PER_BLOCK,
 };
 use crate::allocator::tracker::AllocationPlacement;
 use crate::ops::cub::device_reduce::{get_reduce_temp_storage_bytes, reduce, ReduceOperation};
@@ -362,6 +363,49 @@ fn run_ext_validation_error(
     )
     .expect("specialized fold validation launch");
     download_u32(&error_device, context)[0]
+}
+
+fn expected_low_bit_fold_weights(challenges: &[E4]) -> Vec<E4> {
+    (0..1usize << challenges.len())
+        .map(|leaf| {
+            let mut weight = E4::ONE;
+            for (round, &challenge) in challenges.iter().enumerate() {
+                let factor = if ((leaf >> round) & 1) != 0 {
+                    challenge
+                } else {
+                    let mut one_minus = E4::ONE;
+                    one_minus.sub_assign(&challenge);
+                    one_minus
+                };
+                weight.mul_assign(&factor);
+            }
+            weight
+        })
+        .collect()
+}
+
+fn fold_factor_prelude_matches_low_bit_reference(context: &ProverContext) {
+    for target_depth in 1u32..=3 {
+        let challenges = (0..target_depth)
+            .map(|round| e4(0x701 + 17 * round))
+            .collect::<Vec<_>>();
+        let challenge_device = upload(&challenges, context);
+        let mut desc = blank_desc(&[], 0, 1);
+        desc.round_challenges = challenge_device.as_ptr();
+        desc.n_round_challenges = target_depth;
+        launch_fold_factor_prelude(&desc, context).expect("fold-factor prelude");
+
+        let mut expected = expected_low_bit_fold_weights(&challenges[target_depth as usize - 1..]);
+        if target_depth > 1 {
+            expected.extend(expected_low_bit_fold_weights(&challenges));
+        }
+        let actual = download_e4_ptr(fold_factor_device_ptr(), expected.len(), context);
+        assert_e4_bits(
+            &format!("D{target_depth} low-bit-first fold-factor bank"),
+            &actual,
+            &expected,
+        );
+    }
 }
 
 fn run_base_plain(context: &ProverContext, rows: usize) {
@@ -1013,6 +1057,7 @@ fn bwd_vm_synthetic_source_parity() {
 #[serial_test::serial]
 fn bwd_vm_specialized_fold_parity_and_validation() {
     let context = make_test_context(16, 16);
+    fold_factor_prelude_matches_low_bit_reference(&context);
     for (backing_depth, target_depth) in [(0, 0), (0, 1), (1, 2), (0, 2), (2, 3), (0, 3)] {
         let (run, expected, _) = run_ext_case(
             &context,
@@ -1035,11 +1080,16 @@ fn bwd_vm_specialized_fold_parity_and_validation() {
         );
     }
 
-    for (kernel_round, backing_depth, target_depth) in
-        [(0, 0, 1), (1, 0, 2), (2, 0, 3), (3, 1, 3), (3, 0, 4)]
-    {
-        let error =
-            run_ext_validation_error(&context, kernel_round, backing_depth, target_depth);
+    for (kernel_round, backing_depth, target_depth) in [
+        (0, 0, 1),
+        (1, 0, 2),
+        (2, 0, 3),
+        (3, 1, 2),
+        (3, 2, 2),
+        (3, 1, 3),
+        (3, 0, 4),
+    ] {
+        let error = run_ext_validation_error(&context, kernel_round, backing_depth, target_depth);
         assert_ne!(
             error & BWD_VM_ERR_DESC_BOUNDS,
             0,
