@@ -22,6 +22,8 @@ pub mod execution;
 pub mod field;
 pub mod field_bench;
 pub mod machine_type;
+#[cfg(feature = "memory_sweep")]
+pub mod memory_sweep;
 pub mod ntt;
 pub mod ops_complex;
 pub mod ops_cub;

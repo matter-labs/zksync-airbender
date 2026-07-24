@@ -113,17 +113,20 @@ impl<'a, A: GoodAllocator + 'a> TracingDataTransfer<'a, A> {
             TracingDataHost::Delegation(delegation) => {
                 let data = match delegation {
                     DelegationTracingDataHost::BigIntWithControl(data) => {
-                        let tracing_data = context.alloc(data.len(), AllocationPlacement::Top)?;
+                        let tracing_data =
+                            context.alloc(data.len(), AllocationPlacement::Bottom)?;
                         let trace = DelegationTraceDevice { tracing_data };
                         DelegationTracingDataDevice::BigIntWithControl(trace)
                     }
                     DelegationTracingDataHost::Blake2WithCompression(data) => {
-                        let tracing_data = context.alloc(data.len(), AllocationPlacement::Top)?;
+                        let tracing_data =
+                            context.alloc(data.len(), AllocationPlacement::Bottom)?;
                         let trace = DelegationTraceDevice { tracing_data };
                         DelegationTracingDataDevice::Blake2WithCompression(trace)
                     }
                     DelegationTracingDataHost::KeccakSpecial5(data) => {
-                        let tracing_data = context.alloc(data.len(), AllocationPlacement::Top)?;
+                        let tracing_data =
+                            context.alloc(data.len(), AllocationPlacement::Bottom)?;
                         let trace = DelegationTraceDevice { tracing_data };
                         DelegationTracingDataDevice::KeccakSpecial5(trace)
                     }
@@ -132,17 +135,17 @@ impl<'a, A: GoodAllocator + 'a> TracingDataTransfer<'a, A> {
             }
             TracingDataHost::Unrolled(unrolled) => match unrolled {
                 UnrolledTracingDataHost::Memory(trace) => {
-                    let tracing_data = context.alloc(trace.len(), AllocationPlacement::Top)?;
+                    let tracing_data = context.alloc(trace.len(), AllocationPlacement::Bottom)?;
                     let data = UnrolledMemoryTraceDevice { tracing_data };
                     TracingDataDevice::Unrolled(UnrolledTracingDataDevice::Memory(data))
                 }
                 UnrolledTracingDataHost::NonMemory(trace) => {
-                    let tracing_data = context.alloc(trace.len(), AllocationPlacement::Top)?;
+                    let tracing_data = context.alloc(trace.len(), AllocationPlacement::Bottom)?;
                     let data = UnrolledNonMemoryTraceDevice { tracing_data };
                     TracingDataDevice::Unrolled(UnrolledTracingDataDevice::NonMemory(data))
                 }
                 UnrolledTracingDataHost::Unified(trace) => {
-                    let tracing_data = context.alloc(trace.len(), AllocationPlacement::Top)?;
+                    let tracing_data = context.alloc(trace.len(), AllocationPlacement::Bottom)?;
                     let trace = UnrolledUnifiedTraceDevice { tracing_data };
                     TracingDataDevice::Unrolled(UnrolledTracingDataDevice::Unified(trace))
                 }
@@ -240,7 +243,8 @@ impl<'a, A: GoodAllocator + 'a> InitsAndTeardownsTransfer<'a, A> {
         context: &ProverContext,
     ) -> CudaResult<Self> {
         let data_device = {
-            let inits_and_teardowns = context.alloc(data_host.len(), AllocationPlacement::Top)?;
+            let inits_and_teardowns =
+                context.alloc(data_host.len(), AllocationPlacement::Bottom)?;
             ShuffleRamInitsAndTeardownsDevice {
                 inits_and_teardowns,
             }

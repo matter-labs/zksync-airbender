@@ -1,5 +1,6 @@
 use super::callbacks::Callbacks;
 use super::context::{HostAllocation, ProverContext, UnsafeMutAccessor};
+use super::memory_policy::MemoryPolicy;
 use super::pow::search_pow_challenge;
 use super::queries::QueriesOutput;
 use super::setup::SetupPrecomputations;
@@ -83,8 +84,7 @@ pub(crate) fn prove<'a, A: GoodAllocator>(
     lde_factor: usize,
     security_config: &ProofSecurityConfig,
     external_pow_challenges: Option<ProofPowChallenges>,
-    recompute_cosets: bool,
-    trees_cache_mode: TreesCacheMode,
+    policy: &MemoryPolicy,
     context: &ProverContext,
 ) -> CudaResult<ProofJob<'a>> {
     #[cfg(feature = "log_gpu_mem_usage")]
@@ -122,17 +122,16 @@ pub(crate) fn prove<'a, A: GoodAllocator>(
     // setup
     let setup_range = device_tracing::Range::new("setup")?;
     setup_range.start(stream)?;
-    setup.ensure_is_extended(context)?;
+    setup.ensure_input_is_ready(context)?;
     setup_range.end(stream)?;
     #[cfg(feature = "log_gpu_mem_usage")]
-    context.log_gpu_mem_usage("after setup.ensure_is_extended");
+    context.log_gpu_mem_usage("after setup.ensure_input_is_ready");
 
     let mut stage_1_output = StageOneOutput::allocate_trace_holders(
         &circuit,
         log_lde_factor,
         log_tree_cap_size,
-        recompute_cosets,
-        trees_cache_mode,
+        policy,
         context,
     )?;
     #[cfg(feature = "log_gpu_mem_usage")]
@@ -142,8 +141,7 @@ pub(crate) fn prove<'a, A: GoodAllocator>(
         &circuit,
         log_lde_factor,
         log_tree_cap_size,
-        recompute_cosets,
-        trees_cache_mode,
+        policy,
         context,
     )?;
     #[cfg(feature = "log_gpu_mem_usage")]
@@ -206,6 +204,7 @@ pub(crate) fn prove<'a, A: GoodAllocator>(
     context.log_gpu_mem_usage("after stage_2");
 
     // stage 3
+    setup.ensure_is_extended(context)?;
     let stage_3_range = device_tracing::Range::new("stage_3")?;
     stage_3_range.start(stream)?;
     let mut stage_3_output = StageThreeOutput::new(
@@ -222,7 +221,7 @@ pub(crate) fn prove<'a, A: GoodAllocator>(
         &mut stage_2_output,
         log_lde_factor,
         log_tree_cap_size,
-        trees_cache_mode,
+        TreesCacheMode::CachePatrial,
         &mut callbacks,
         context,
     )?;

@@ -39,6 +39,13 @@ pub enum TreesCacheMode {
     CacheFull,
 }
 
+#[cfg_attr(feature = "memory_sweep", derive(serde::Deserialize, serde::Serialize))]
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub enum CosetsCacheMode {
+    CacheSingle,
+    CacheFull,
+}
+
 pub(crate) struct SingleCosetHolder<T> {
     pub current_coset_index: usize,
     pub evaluations: DeviceAllocation<T>,
@@ -155,12 +162,40 @@ impl TraceHolder<BF> {
         Ok(())
     }
 
-    pub(crate) fn make_evaluations_sum_to_zero_and_extend(
+    pub(crate) fn materialize_coset(
         &mut self,
+        coset_index: usize,
         context: &ProverContext,
     ) -> CudaResult<()> {
-        self.make_evaluations_sum_to_zero(context)?;
-        self.extend(0, context)
+        assert_eq!(coset_index, 1);
+        if matches!(&self.cosets, CosetsHolder::Single(_)) {
+            drop(self.get_coset_evaluations(coset_index, context)?);
+            return Ok(());
+        }
+        let CosetsHolder::Full(evaluations) = &mut self.cosets else {
+            unreachable!();
+        };
+        if evaluations.len() > coset_index {
+            return Ok(());
+        }
+        assert_eq!(evaluations.len(), 1);
+        let mut destination = allocate_coset(
+            self.log_domain_size,
+            self.columns_count,
+            self.padded_to_even,
+            context,
+        )?;
+        compute_coset_evaluations(
+            &evaluations[0],
+            &mut destination,
+            0,
+            self.log_domain_size,
+            self.log_lde_factor,
+            self.compressed_coset,
+            context,
+        )?;
+        evaluations.push(destination);
+        Ok(())
     }
 
     fn commit_and_transfer_tree_caps(
@@ -369,6 +404,14 @@ impl TraceHolderImpl for TraceHolder<BF> {
 }
 
 impl<T> TraceHolder<T> {
+    pub(crate) fn partial_trees_mut(&mut self) -> Option<&mut [DeviceAllocation<Digest>]> {
+        match &mut self.trees {
+            TreesHolder::Partial(trees) => Some(trees.as_mut_slice()),
+            TreesHolder::Full(_) | TreesHolder::None => None,
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         log_domain_size: u32,
         log_lde_factor: u32,
@@ -377,24 +420,18 @@ impl<T> TraceHolder<T> {
         columns_count: usize,
         pad_to_even: bool,
         compressed_coset: bool,
-        recompute_cosets: bool,
+        cosets_cache_mode: CosetsCacheMode,
         trees_cache_mode: TreesCacheMode,
         context: &ProverContext,
     ) -> CudaResult<Self> {
         assert_eq!(log_lde_factor, 1);
-        let padded_to_even = pad_to_even && columns_count.next_multiple_of(2) != columns_count;
         let instances_count = 1 << log_lde_factor;
-        let cosets = match recompute_cosets {
-            true => {
-                let evaluations =
-                    allocate_coset(log_domain_size, columns_count, pad_to_even, context)?;
-                let holder = SingleCosetHolder {
-                    current_coset_index: 0,
-                    evaluations,
-                };
-                CosetsHolder::Single(RefCell::new(holder))
-            }
-            false => CosetsHolder::Full(allocate_cosets(
+        let cosets = match cosets_cache_mode {
+            CosetsCacheMode::CacheSingle => CosetsHolder::Single(RefCell::new(SingleCosetHolder {
+                current_coset_index: 0,
+                evaluations: allocate_coset(log_domain_size, columns_count, pad_to_even, context)?,
+            })),
+            CosetsCacheMode::CacheFull => CosetsHolder::Full(allocate_cosets(
                 instances_count,
                 log_domain_size,
                 columns_count,
@@ -402,6 +439,72 @@ impl<T> TraceHolder<T> {
                 context,
             )?),
         };
+        Self::new_with_cosets(
+            log_domain_size,
+            log_lde_factor,
+            log_rows_per_leaf,
+            log_tree_cap_size,
+            columns_count,
+            pad_to_even,
+            compressed_coset,
+            cosets,
+            trees_cache_mode,
+            context,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn new_deferred_cosets(
+        log_domain_size: u32,
+        log_lde_factor: u32,
+        log_rows_per_leaf: u32,
+        log_tree_cap_size: u32,
+        columns_count: usize,
+        pad_to_even: bool,
+        compressed_coset: bool,
+        cosets_cache_mode: CosetsCacheMode,
+        trees_cache_mode: TreesCacheMode,
+        context: &ProverContext,
+    ) -> CudaResult<Self> {
+        assert_eq!(log_lde_factor, 1);
+        let evaluation = allocate_coset(log_domain_size, columns_count, pad_to_even, context)?;
+        let cosets = match cosets_cache_mode {
+            CosetsCacheMode::CacheSingle => CosetsHolder::Single(RefCell::new(SingleCosetHolder {
+                current_coset_index: 0,
+                evaluations: evaluation,
+            })),
+            CosetsCacheMode::CacheFull => CosetsHolder::Full(vec![evaluation]),
+        };
+        Self::new_with_cosets(
+            log_domain_size,
+            log_lde_factor,
+            log_rows_per_leaf,
+            log_tree_cap_size,
+            columns_count,
+            pad_to_even,
+            compressed_coset,
+            cosets,
+            trees_cache_mode,
+            context,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn new_with_cosets(
+        log_domain_size: u32,
+        log_lde_factor: u32,
+        log_rows_per_leaf: u32,
+        log_tree_cap_size: u32,
+        columns_count: usize,
+        pad_to_even: bool,
+        compressed_coset: bool,
+        cosets: CosetsHolder<T>,
+        trees_cache_mode: TreesCacheMode,
+        context: &ProverContext,
+    ) -> CudaResult<Self> {
+        assert_eq!(log_lde_factor, 1);
+        let padded_to_even = pad_to_even && columns_count.next_multiple_of(2) != columns_count;
+        let instances_count = 1 << log_lde_factor;
         let trees = match trees_cache_mode {
             TreesCacheMode::CacheNone => TreesHolder::None,
             TreesCacheMode::CachePatrial => {
@@ -442,21 +545,21 @@ impl<T> TraceHolder<T> {
         columns_count: usize,
         pad_to_even: bool,
         compressed_coset: bool,
-        recompute_cosets: bool,
+        cosets_cache_mode: CosetsCacheMode,
         trees_cache_mode: TreesCacheMode,
         context: &ProverContext,
     ) -> CudaResult<Self> {
         let padded_to_even = pad_to_even && columns_count.next_multiple_of(2) != columns_count;
         let evaluations = allocate_coset(log_domain_size, columns_count, pad_to_even, context)?;
-        let cosets = match recompute_cosets {
-            true => {
+        let cosets = match cosets_cache_mode {
+            CosetsCacheMode::CacheSingle => {
                 let holder = SingleCosetHolder {
                     current_coset_index: 0,
                     evaluations,
                 };
                 CosetsHolder::Single(RefCell::new(holder))
             }
-            false => CosetsHolder::Full(vec![evaluations]),
+            CosetsCacheMode::CacheFull => CosetsHolder::Full(vec![evaluations]),
         };
         let trees = match trees_cache_mode {
             TreesCacheMode::CacheNone => TreesHolder::None,

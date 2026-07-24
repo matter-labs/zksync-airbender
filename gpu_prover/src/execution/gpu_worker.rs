@@ -8,11 +8,11 @@ use crate::execution::messages::{
 };
 use crate::prover::context::{ProverContext, ProverContextConfig};
 use crate::prover::decoder::DecoderTableTransfer;
+use crate::prover::gpu_memory::{GpuMemoryPreset, ProductionMemoryPreset, NORMAL_ARENA_BYTES};
 use crate::prover::memory::{commit_memory, MemoryCommitmentJob};
 use crate::prover::precomputations::Precomputations;
 use crate::prover::proof::{prove, ProofJob};
 use crate::prover::setup::SetupPrecomputations;
-use crate::prover::trace_holder::TreesCacheMode;
 use crate::prover::tracing_data::{InitsAndTeardownsTransfer, TracingDataTransfer};
 use crate::witness::trace_unrolled::get_aux_arguments_boundary_values;
 use crossbeam_channel::{Receiver, Sender};
@@ -20,9 +20,9 @@ use era_cudart::device::get_device_properties;
 use log::{debug, error, info, trace, warn};
 use prover::definitions::AuxArgumentsBoundaryValues;
 use std::ffi::CStr;
+use std::mem;
 use std::ops::Deref;
 use std::process::exit;
-use std::{env, mem};
 use verifier_common::SecurityMarker;
 
 pub fn get_gpu_worker_func<S: SecurityMarker>(
@@ -60,13 +60,6 @@ fn gpu_worker<S: SecurityMarker>(
     results: Sender<Option<GpuWorkResult<A>>>,
 ) -> CudaResult<()> {
     trace!("GPU_WORKER[{device_id}] started");
-    // Recompute cosets in low VRAM mode to reduce memory requirement.
-    let recompute_cosets = env::var("ZKSYNC_AIRBENDER_LOW_VRAM_MODE")
-        .map(|s| s == "1" || s.to_lowercase() == "true")
-        .unwrap_or_default();
-    if recompute_cosets {
-        warn!("GPU_WORKER[{device_id}] running in low VRAM mode, this will have negative performance impact");
-    }
     Precomputations::ensure_initialized();
     set_device(device_id)?;
     let props = get_device_properties(device_id)?;
@@ -77,7 +70,20 @@ fn gpu_worker<S: SecurityMarker>(
         props.multiProcessorCount,
         props.totalGlobalMem as f64 / 1024.0 / 1024.0 / 1024.0
     );
+    let requested_preset = prover_context_config.gpu_memory_preset;
     let mut context = ProverContext::new(&prover_context_config)?;
+    let preset = context.get_memory_preset();
+    if preset == ProductionMemoryPreset::Low {
+        match requested_preset {
+            GpuMemoryPreset::Auto => warn!(
+                "GPU_WORKER[{device_id}] Normal arena of {NORMAL_ARENA_BYTES} bytes did not fit; using Low"
+            ),
+            GpuMemoryPreset::Low => {
+                warn!("GPU_WORKER[{device_id}] explicitly using the Low GPU memory preset")
+            }
+            GpuMemoryPreset::Normal => unreachable!(),
+        }
+    }
     info!(
         "GPU_WORKER[{device_id}] initialized the GPU memory allocator with {:.3} GB of usable memory",
         context.get_mem_size() as f64 / 1024.0 / 1024.0 / 1024.0
@@ -93,6 +99,7 @@ fn gpu_worker<S: SecurityMarker>(
             let batch_id = request.batch_id();
             let circuit_type = request.circuit_type();
             let sequence_id = request.sequence_id();
+            let memory_policy = preset.policy_for(circuit_type);
             let precomputations = &request.precomputations();
             let setup = match &request {
                 GpuWorkRequest::MemoryCommitment(_) => None,
@@ -122,7 +129,7 @@ fn gpu_worker<S: SecurityMarker>(
                         circuit,
                         log_lde_factor,
                         log_tree_cap_size,
-                        false,
+                        memory_policy.setup,
                         setup_trees_and_caps,
                         &context,
                     )?;
@@ -162,6 +169,7 @@ fn gpu_worker<S: SecurityMarker>(
             };
             Some((
                 request,
+                memory_policy,
                 setup,
                 decoder_table_transfer,
                 inits_and_teardowns_transfer,
@@ -174,6 +182,7 @@ fn gpu_worker<S: SecurityMarker>(
         context.set_reversed_allocation_placement(even_odd_index == 0);
         let mut phase_two = if let Some((
             request,
+            memory_policy,
             setup,
             decoder_table_transfer,
             inits_and_teardowns_transfer,
@@ -255,8 +264,7 @@ fn gpu_worker<S: SecurityMarker>(
                         precomputations.lde_precomputations.lde_factor,
                         &security_config,
                         None,
-                        recompute_cosets,
-                        TreesCacheMode::CachePatrial,
+                        &memory_policy,
                         &context,
                     )?;
                     JobType::Proof(job)

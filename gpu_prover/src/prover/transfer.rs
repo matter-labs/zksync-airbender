@@ -95,7 +95,10 @@ mod tests {
 
     #[test]
     fn test_transfer() -> CudaResult<()> {
-        let context = ProverContext::new(&ProverContextConfig::default())?;
+        let context = ProverContext::new(&ProverContextConfig {
+            gpu_memory_preset: crate::prover::gpu_memory::GpuMemoryPreset::Normal,
+            ..Default::default()
+        })?;
         let src = Arc::new(vec![0; 1024]);
         let mut transfer = Transfer::new()?;
         let mut dst = context.alloc(1024, AllocationPlacement::BestFit)?;

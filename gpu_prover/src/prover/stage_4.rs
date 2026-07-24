@@ -10,7 +10,7 @@ use super::stage_4_kernels::{
 };
 use super::trace_holder::{
     allocate_tree_caps, compute_coset_evaluations, split_evaluations_pair, transfer_tree_cap,
-    CosetsHolder, TraceHolder, TreesCacheMode, TreesHolder,
+    CosetsCacheMode, CosetsHolder, TraceHolder, TreesCacheMode, TreesHolder,
 };
 use super::{BF, E2, E4};
 use crate::allocator::tracker::AllocationPlacement;
@@ -74,7 +74,7 @@ impl StageFourOutput {
             1,
             false,
             true,
-            false,
+            CosetsCacheMode::CacheFull,
             TreesCacheMode::CacheFull,
             context,
         )?;
