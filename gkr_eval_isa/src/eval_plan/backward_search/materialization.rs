@@ -290,6 +290,11 @@ fn read_cost(
         .checked_mul(rows)
         .ok_or(BackwardSearchError::CostOverflow)?;
     let mut cost = SourceCost::default();
+    let runtime_field = match state {
+        FoldState::Materialized => FieldKind::Ext,
+        FoldState::LazyFromOriginals { depth: 0 } => field,
+        FoldState::LazyFromOriginals { .. } => FieldKind::Ext,
+    };
 
     match state {
         FoldState::Materialized => {
@@ -298,16 +303,15 @@ fn read_cost(
                 .ok_or(BackwardSearchError::CostOverflow)?;
         }
         FoldState::LazyFromOriginals { depth } => {
-            let origin_width_cells = match field {
-                FieldKind::Base => 1u128,
-                FieldKind::Ext => (EXT_BYTES / CELL_BYTES) as u128,
+            let leaf_bytes = match (field, depth) {
+                (FieldKind::Base, 0) => CELL_BYTES as u128,
+                _ => EXT_BYTES as u128,
             };
             let leaves = 1u128
                 .checked_shl(depth as u32)
                 .ok_or(BackwardSearchError::CostOverflow)?;
             let read_bytes = role_elements
-                .checked_mul(origin_width_cells)
-                .and_then(|bytes| bytes.checked_mul(CELL_BYTES as u128))
+                .checked_mul(leaf_bytes)
                 .and_then(|bytes| bytes.checked_mul(leaves))
                 .ok_or(BackwardSearchError::CostOverflow)?;
             if depth == 0 {
@@ -315,18 +319,28 @@ fn read_cost(
             } else {
                 cost.lazy_read_bytes = read_bytes;
             }
-            cost.ops = fold_element_ops(field, depth)?.checked_scale(role_elements)?;
+            cost.ops = fold_element_ops(runtime_field, depth)?.checked_scale(role_elements)?;
         }
     }
-    cost.ops.ext_add = cost
-        .ops
-        .ext_add
-        .checked_add(
-            t2_occurrences
-                .checked_mul(2)
-                .ok_or(BackwardSearchError::CostOverflow)?,
-        )
+    let role_combine_adds = t2_occurrences
+        .checked_mul(2)
         .ok_or(BackwardSearchError::CostOverflow)?;
+    match runtime_field {
+        FieldKind::Base => {
+            cost.ops.bf_add = cost
+                .ops
+                .bf_add
+                .checked_add(role_combine_adds)
+                .ok_or(BackwardSearchError::CostOverflow)?;
+        }
+        FieldKind::Ext => {
+            cost.ops.ext_add = cost
+                .ops
+                .ext_add
+                .checked_add(role_combine_adds)
+                .ok_or(BackwardSearchError::CostOverflow)?;
+        }
+    }
     Ok(cost)
 }
 
@@ -442,10 +456,10 @@ mod tests {
             .expect("valid materialization census");
         assert!(policy.binding(0, 2).unwrap().store_for_next_round);
 
-        let tied = synthetic_base_uses(&[(1, 1), (2, 1)]);
-        let policy = build_static_materialization(&tied, &[round(1, 4), round(2, 1)])
+        let lifted = synthetic_base_uses(&[(1, 1), (2, 1)]);
+        let policy = build_static_materialization(&lifted, &[round(1, 4), round(2, 1)])
             .expect("valid materialization census");
-        assert!(!policy.binding(0, 1).unwrap().store_for_next_round);
+        assert!(policy.binding(0, 1).unwrap().store_for_next_round);
     }
 
     #[test]
@@ -480,13 +494,13 @@ mod tests {
     }
 
     #[test]
-    fn fold_cost_counts_base_mixed_ext_and_role_combine_operations() {
+    fn fold_cost_counts_lifted_base_leaves_and_runtime_operations() {
         let cost = lazy_fold_cost(1, 1, 10).expect("cost fits");
-        assert_eq!(cost.ops.bf_add, 30);
-        assert_eq!(cost.ops.mixed_mul, 30);
-        assert_eq!(cost.ops.ext_add, 50);
-        assert_eq!(cost.ops.ext_mul, 0);
-        assert_eq!(cost.lazy_read_bytes, 240);
+        assert_eq!(cost.ops.bf_add, 0);
+        assert_eq!(cost.ops.mixed_mul, 0);
+        assert_eq!(cost.ops.ext_add, 80);
+        assert_eq!(cost.ops.ext_mul, 30);
+        assert_eq!(cost.lazy_read_bytes, 960);
     }
 
     #[test]
@@ -497,7 +511,7 @@ mod tests {
             SourceCost {
                 plain_read_bytes: 120,
                 ops: SourceOpCost {
-                    ext_add: 20,
+                    bf_add: 20,
                     ..SourceOpCost::default()
                 },
                 ..SourceCost::default()

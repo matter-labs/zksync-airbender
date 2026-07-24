@@ -181,10 +181,10 @@
             ],
             "expected_score": {
               "infeasible": false,
-              "whole_pass_dram_bytes": "39057357684",
-              "primitive_source_ops": "6509559614",
-              "instructions": 264,
-              "encoded_lanes": 544,
+              "whole_pass_dram_bytes": "37044091824",
+              "primitive_source_ops": "6174015304",
+              "instructions": 259,
+              "encoded_lanes": 534,
               "arithmetic_ops": 63
             },
             "expected_paging": {
@@ -233,16 +233,16 @@
               "placement_relocations": 0
             },
             "instruction_digest": [
-              10205640115028094947,
-              14754204541185906450,
-              6732132660200509415,
-              13899714814842316533
+              8130900945950884611,
+              14608208180284231648,
+              13233794719597080995,
+              9528034126459220299
             ],
             "encoded_digest": [
-              2193010447723326433,
-              8786740281931516966,
-              16326972485734807205,
-              2272821998124294799
+              15605415695909407105,
+              9529536837743119788,
+              8112678774828102041,
+              3394604017663883521
             ]
           },
           {
@@ -420,10 +420,10 @@
             ],
             "expected_score": {
               "infeasible": false,
-              "whole_pass_dram_bytes": "39057357684",
-              "primitive_source_ops": "6509559614",
-              "instructions": 264,
-              "encoded_lanes": 544,
+              "whole_pass_dram_bytes": "37044091824",
+              "primitive_source_ops": "6174015304",
+              "instructions": 259,
+              "encoded_lanes": 534,
               "arithmetic_ops": 63
             },
             "expected_paging": {
@@ -472,16 +472,16 @@
               "placement_relocations": 0
             },
             "instruction_digest": [
-              10205640115028094947,
-              14754204541185906450,
-              6732132660200509415,
-              13899714814842316533
+              8130900945950884611,
+              14608208180284231648,
+              13233794719597080995,
+              9528034126459220299
             ],
             "encoded_digest": [
-              2193010447723326433,
-              8786740281931516966,
-              16326972485734807205,
-              2272821998124294799
+              15605415695909407105,
+              9529536837743119788,
+              8112678774828102041,
+              3394604017663883521
             ]
           },
           {
@@ -659,10 +659,10 @@
             ],
             "expected_score": {
               "infeasible": false,
-              "whole_pass_dram_bytes": "39057357684",
-              "primitive_source_ops": "6509559614",
-              "instructions": 264,
-              "encoded_lanes": 544,
+              "whole_pass_dram_bytes": "37044091824",
+              "primitive_source_ops": "6174015304",
+              "instructions": 259,
+              "encoded_lanes": 534,
               "arithmetic_ops": 63
             },
             "expected_paging": {
@@ -711,16 +711,16 @@
               "placement_relocations": 0
             },
             "instruction_digest": [
-              10205640115028094947,
-              14754204541185906450,
-              6732132660200509415,
-              13899714814842316533
+              8130900945950884611,
+              14608208180284231648,
+              13233794719597080995,
+              9528034126459220299
             ],
             "encoded_digest": [
-              2193010447723326433,
-              8786740281931516966,
-              16326972485734807205,
-              2272821998124294799
+              15605415695909407105,
+              9529536837743119788,
+              8112678774828102041,
+              3394604017663883521
             ]
           },
           {
@@ -898,10 +898,10 @@
             ],
             "expected_score": {
               "infeasible": false,
-              "whole_pass_dram_bytes": "39057357684",
-              "primitive_source_ops": "6509559614",
-              "instructions": 264,
-              "encoded_lanes": 544,
+              "whole_pass_dram_bytes": "37044091824",
+              "primitive_source_ops": "6174015304",
+              "instructions": 259,
+              "encoded_lanes": 534,
               "arithmetic_ops": 63
             },
             "expected_paging": {
@@ -950,16 +950,16 @@
               "placement_relocations": 0
             },
             "instruction_digest": [
-              10205640115028094947,
-              14754204541185906450,
-              6732132660200509415,
-              13899714814842316533
+              8130900945950884611,
+              14608208180284231648,
+              13233794719597080995,
+              9528034126459220299
             ],
             "encoded_digest": [
-              2193010447723326433,
-              8786740281931516966,
-              16326972485734807205,
-              2272821998124294799
+              15605415695909407105,
+              9529536837743119788,
+              8112678774828102041,
+              3394604017663883521
             ]
           },
           {
@@ -1137,10 +1137,10 @@
             ],
             "expected_score": {
               "infeasible": false,
-              "whole_pass_dram_bytes": "39057357684",
-              "primitive_source_ops": "6509559614",
-              "instructions": 264,
-              "encoded_lanes": 544,
+              "whole_pass_dram_bytes": "37044091824",
+              "primitive_source_ops": "6174015304",
+              "instructions": 259,
+              "encoded_lanes": 534,
               "arithmetic_ops": 63
             },
             "expected_paging": {
@@ -1189,16 +1189,16 @@
               "placement_relocations": 0
             },
             "instruction_digest": [
-              10205640115028094947,
-              14754204541185906450,
-              6732132660200509415,
-              13899714814842316533
+              8130900945950884611,
+              14608208180284231648,
+              13233794719597080995,
+              9528034126459220299
             ],
             "encoded_digest": [
-              2193010447723326433,
-              8786740281931516966,
-              16326972485734807205,
-              2272821998124294799
+              15605415695909407105,
+              9529536837743119788,
+              8112678774828102041,
+              3394604017663883521
             ]
           },
           {
@@ -1376,10 +1376,10 @@
             ],
             "expected_score": {
               "infeasible": false,
-              "whole_pass_dram_bytes": "39057357684",
-              "primitive_source_ops": "6509559614",
-              "instructions": 264,
-              "encoded_lanes": 544,
+              "whole_pass_dram_bytes": "37044091824",
+              "primitive_source_ops": "6174015304",
+              "instructions": 259,
+              "encoded_lanes": 534,
               "arithmetic_ops": 63
             },
             "expected_paging": {
@@ -1428,16 +1428,16 @@
               "placement_relocations": 0
             },
             "instruction_digest": [
-              10205640115028094947,
-              14754204541185906450,
-              6732132660200509415,
-              13899714814842316533
+              8130900945950884611,
+              14608208180284231648,
+              13233794719597080995,
+              9528034126459220299
             ],
             "encoded_digest": [
-              2193010447723326433,
-              8786740281931516966,
-              16326972485734807205,
-              2272821998124294799
+              15605415695909407105,
+              9529536837743119788,
+              8112678774828102041,
+              3394604017663883521
             ]
           },
           {
@@ -1615,10 +1615,10 @@
             ],
             "expected_score": {
               "infeasible": false,
-              "whole_pass_dram_bytes": "39057357684",
-              "primitive_source_ops": "6509559614",
-              "instructions": 264,
-              "encoded_lanes": 544,
+              "whole_pass_dram_bytes": "37044091824",
+              "primitive_source_ops": "6174015304",
+              "instructions": 259,
+              "encoded_lanes": 534,
               "arithmetic_ops": 63
             },
             "expected_paging": {
@@ -1667,16 +1667,16 @@
               "placement_relocations": 0
             },
             "instruction_digest": [
-              10205640115028094947,
-              14754204541185906450,
-              6732132660200509415,
-              13899714814842316533
+              8130900945950884611,
+              14608208180284231648,
+              13233794719597080995,
+              9528034126459220299
             ],
             "encoded_digest": [
-              2193010447723326433,
-              8786740281931516966,
-              16326972485734807205,
-              2272821998124294799
+              15605415695909407105,
+              9529536837743119788,
+              8112678774828102041,
+              3394604017663883521
             ]
           },
           {
@@ -1854,10 +1854,10 @@
             ],
             "expected_score": {
               "infeasible": false,
-              "whole_pass_dram_bytes": "39057357684",
-              "primitive_source_ops": "6509559614",
-              "instructions": 264,
-              "encoded_lanes": 544,
+              "whole_pass_dram_bytes": "37044091824",
+              "primitive_source_ops": "6174015304",
+              "instructions": 259,
+              "encoded_lanes": 534,
               "arithmetic_ops": 63
             },
             "expected_paging": {
@@ -1906,16 +1906,16 @@
               "placement_relocations": 0
             },
             "instruction_digest": [
-              10205640115028094947,
-              14754204541185906450,
-              6732132660200509415,
-              13899714814842316533
+              8130900945950884611,
+              14608208180284231648,
+              13233794719597080995,
+              9528034126459220299
             ],
             "encoded_digest": [
-              2193010447723326433,
-              8786740281931516966,
-              16326972485734807205,
-              2272821998124294799
+              15605415695909407105,
+              9529536837743119788,
+              8112678774828102041,
+              3394604017663883521
             ]
           },
           {
@@ -2093,10 +2093,10 @@
             ],
             "expected_score": {
               "infeasible": false,
-              "whole_pass_dram_bytes": "39057357684",
-              "primitive_source_ops": "6509559614",
-              "instructions": 264,
-              "encoded_lanes": 544,
+              "whole_pass_dram_bytes": "37044091824",
+              "primitive_source_ops": "6174015304",
+              "instructions": 259,
+              "encoded_lanes": 534,
               "arithmetic_ops": 63
             },
             "expected_paging": {
@@ -2145,16 +2145,16 @@
               "placement_relocations": 0
             },
             "instruction_digest": [
-              10205640115028094947,
-              14754204541185906450,
-              6732132660200509415,
-              13899714814842316533
+              8130900945950884611,
+              14608208180284231648,
+              13233794719597080995,
+              9528034126459220299
             ],
             "encoded_digest": [
-              2193010447723326433,
-              8786740281931516966,
-              16326972485734807205,
-              2272821998124294799
+              15605415695909407105,
+              9529536837743119788,
+              8112678774828102041,
+              3394604017663883521
             ]
           },
           {
@@ -2332,10 +2332,10 @@
             ],
             "expected_score": {
               "infeasible": false,
-              "whole_pass_dram_bytes": "39057357684",
-              "primitive_source_ops": "6509559614",
-              "instructions": 264,
-              "encoded_lanes": 544,
+              "whole_pass_dram_bytes": "37044091824",
+              "primitive_source_ops": "6174015304",
+              "instructions": 259,
+              "encoded_lanes": 534,
               "arithmetic_ops": 63
             },
             "expected_paging": {
@@ -2384,16 +2384,16 @@
               "placement_relocations": 0
             },
             "instruction_digest": [
-              10205640115028094947,
-              14754204541185906450,
-              6732132660200509415,
-              13899714814842316533
+              8130900945950884611,
+              14608208180284231648,
+              13233794719597080995,
+              9528034126459220299
             ],
             "encoded_digest": [
-              2193010447723326433,
-              8786740281931516966,
-              16326972485734807205,
-              2272821998124294799
+              15605415695909407105,
+              9529536837743119788,
+              8112678774828102041,
+              3394604017663883521
             ]
           },
           {
@@ -2571,10 +2571,10 @@
             ],
             "expected_score": {
               "infeasible": false,
-              "whole_pass_dram_bytes": "39057357684",
-              "primitive_source_ops": "6509559614",
-              "instructions": 264,
-              "encoded_lanes": 544,
+              "whole_pass_dram_bytes": "37044091824",
+              "primitive_source_ops": "6174015304",
+              "instructions": 259,
+              "encoded_lanes": 534,
               "arithmetic_ops": 63
             },
             "expected_paging": {
@@ -2623,16 +2623,16 @@
               "placement_relocations": 0
             },
             "instruction_digest": [
-              10205640115028094947,
-              14754204541185906450,
-              6732132660200509415,
-              13899714814842316533
+              8130900945950884611,
+              14608208180284231648,
+              13233794719597080995,
+              9528034126459220299
             ],
             "encoded_digest": [
-              2193010447723326433,
-              8786740281931516966,
-              16326972485734807205,
-              2272821998124294799
+              15605415695909407105,
+              9529536837743119788,
+              8112678774828102041,
+              3394604017663883521
             ]
           },
           {
@@ -2810,10 +2810,10 @@
             ],
             "expected_score": {
               "infeasible": false,
-              "whole_pass_dram_bytes": "39057357684",
-              "primitive_source_ops": "6509559614",
-              "instructions": 264,
-              "encoded_lanes": 544,
+              "whole_pass_dram_bytes": "37044091824",
+              "primitive_source_ops": "6174015304",
+              "instructions": 259,
+              "encoded_lanes": 534,
               "arithmetic_ops": 63
             },
             "expected_paging": {
@@ -2862,16 +2862,16 @@
               "placement_relocations": 0
             },
             "instruction_digest": [
-              10205640115028094947,
-              14754204541185906450,
-              6732132660200509415,
-              13899714814842316533
+              8130900945950884611,
+              14608208180284231648,
+              13233794719597080995,
+              9528034126459220299
             ],
             "encoded_digest": [
-              2193010447723326433,
-              8786740281931516966,
-              16326972485734807205,
-              2272821998124294799
+              15605415695909407105,
+              9529536837743119788,
+              8112678774828102041,
+              3394604017663883521
             ]
           },
           {
@@ -3049,10 +3049,10 @@
             ],
             "expected_score": {
               "infeasible": false,
-              "whole_pass_dram_bytes": "39057357684",
-              "primitive_source_ops": "6509559614",
-              "instructions": 264,
-              "encoded_lanes": 544,
+              "whole_pass_dram_bytes": "37044091824",
+              "primitive_source_ops": "6174015304",
+              "instructions": 259,
+              "encoded_lanes": 534,
               "arithmetic_ops": 63
             },
             "expected_paging": {
@@ -3101,16 +3101,16 @@
               "placement_relocations": 0
             },
             "instruction_digest": [
-              10205640115028094947,
-              14754204541185906450,
-              6732132660200509415,
-              13899714814842316533
+              8130900945950884611,
+              14608208180284231648,
+              13233794719597080995,
+              9528034126459220299
             ],
             "encoded_digest": [
-              2193010447723326433,
-              8786740281931516966,
-              16326972485734807205,
-              2272821998124294799
+              15605415695909407105,
+              9529536837743119788,
+              8112678774828102041,
+              3394604017663883521
             ]
           },
           {
@@ -3288,10 +3288,10 @@
             ],
             "expected_score": {
               "infeasible": false,
-              "whole_pass_dram_bytes": "39057357684",
-              "primitive_source_ops": "6509559614",
-              "instructions": 264,
-              "encoded_lanes": 544,
+              "whole_pass_dram_bytes": "37044091824",
+              "primitive_source_ops": "6174015304",
+              "instructions": 259,
+              "encoded_lanes": 534,
               "arithmetic_ops": 63
             },
             "expected_paging": {
@@ -3340,16 +3340,16 @@
               "placement_relocations": 0
             },
             "instruction_digest": [
-              10205640115028094947,
-              14754204541185906450,
-              6732132660200509415,
-              13899714814842316533
+              8130900945950884611,
+              14608208180284231648,
+              13233794719597080995,
+              9528034126459220299
             ],
             "encoded_digest": [
-              2193010447723326433,
-              8786740281931516966,
-              16326972485734807205,
-              2272821998124294799
+              15605415695909407105,
+              9529536837743119788,
+              8112678774828102041,
+              3394604017663883521
             ]
           },
           {
@@ -3527,10 +3527,10 @@
             ],
             "expected_score": {
               "infeasible": false,
-              "whole_pass_dram_bytes": "39057357684",
-              "primitive_source_ops": "6509559614",
-              "instructions": 264,
-              "encoded_lanes": 544,
+              "whole_pass_dram_bytes": "37044091824",
+              "primitive_source_ops": "6174015304",
+              "instructions": 259,
+              "encoded_lanes": 534,
               "arithmetic_ops": 63
             },
             "expected_paging": {
@@ -3579,16 +3579,16 @@
               "placement_relocations": 0
             },
             "instruction_digest": [
-              10205640115028094947,
-              14754204541185906450,
-              6732132660200509415,
-              13899714814842316533
+              8130900945950884611,
+              14608208180284231648,
+              13233794719597080995,
+              9528034126459220299
             ],
             "encoded_digest": [
-              2193010447723326433,
-              8786740281931516966,
-              16326972485734807205,
-              2272821998124294799
+              15605415695909407105,
+              9529536837743119788,
+              8112678774828102041,
+              3394604017663883521
             ]
           }
         ]
@@ -3600,10 +3600,10 @@
             "problem": {
               "count": 88,
               "digest": [
-                8563851773913460085,
-                106629105066615086,
-                13212963464068456629,
-                2269407406767265229
+                10759825182971012596,
+                4191700038008266283,
+                13743097146132871352,
+                767605377636352170
               ]
             },
             "fragment_order": [
@@ -3769,10 +3769,10 @@
             ],
             "expected_score": {
               "infeasible": false,
-              "whole_pass_dram_bytes": "146565750816",
-              "primitive_source_ops": "136633645888",
-              "instructions": 265,
-              "encoded_lanes": 547,
+              "whole_pass_dram_bytes": "187636375776",
+              "primitive_source_ops": "26440891232",
+              "instructions": 263,
+              "encoded_lanes": 543,
               "arithmetic_ops": 63
             },
             "expected_paging": {
@@ -3783,33 +3783,33 @@
               "realized_source_reads": 30,
               "predicted_read_cost": {
                 "plain_read_bytes": "21340618752",
-                "lazy_read_bytes": "42681237504",
-                "materialized_read_bytes": "21340613664",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "85362469920",
                 "materialization_write_bytes": "0",
-                "bf_add": "5335154688",
+                "bf_add": "3556769792",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "5335154688",
-                "ext_add": "15116271404",
-                "ext_mul": "1333788672"
+                "mixed_mul": "0",
+                "ext_add": "3556769580",
+                "ext_mul": "0"
               },
               "realized_read_cost": {
                 "plain_read_bytes": "21340618752",
-                "lazy_read_bytes": "42681237504",
-                "materialized_read_bytes": "21340613664",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "85362469920",
                 "materialization_write_bytes": "0",
-                "bf_add": "5335154688",
+                "bf_add": "3556769792",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "5335154688",
-                "ext_add": "15116271404",
-                "ext_mul": "1333788672"
+                "mixed_mul": "0",
+                "ext_add": "3556769580",
+                "ext_mul": "0"
               },
               "fixed_write_cost": {
                 "plain_read_bytes": "0",
                 "lazy_read_bytes": "0",
                 "materialized_read_bytes": "0",
-                "materialization_write_bytes": "11274288288",
+                "materialization_write_bytes": "28991028384",
                 "bf_add": "0",
                 "bf_mul": "0",
                 "mixed_add": "0",
@@ -3821,16 +3821,16 @@
               "placement_relocations": 0
             },
             "instruction_digest": [
-              10072671755677968098,
-              10909403743047352473,
-              7465043408286158194,
-              17262085887826685498
+              6318702865663510733,
+              2885767924861225510,
+              14383654882607331985,
+              1438514116955069563
             ],
             "encoded_digest": [
-              2889383569192739735,
-              9226095266248561668,
-              6917893294545982207,
-              9085526784011356839
+              8259139931074711968,
+              11616808051858662203,
+              8165853239161587276,
+              1772772990744287318
             ]
           },
           {
@@ -3838,10 +3838,10 @@
             "problem": {
               "count": 88,
               "digest": [
-                8654447016982531677,
-                12128235445724706298,
-                6395393309166879729,
-                12785131635017133495
+                1948583680606423574,
+                5240216747536002165,
+                8931319514721067978,
+                5566790277232199256
               ]
             },
             "fragment_order": [
@@ -4008,10 +4008,10 @@
             ],
             "expected_score": {
               "infeasible": false,
-              "whole_pass_dram_bytes": "140928606576",
-              "primitive_source_ops": "129822096248",
-              "instructions": 264,
-              "encoded_lanes": 544,
+              "whole_pass_dram_bytes": "180589945392",
+              "primitive_source_ops": "25266486168",
+              "instructions": 262,
+              "encoded_lanes": 540,
               "arithmetic_ops": 63
             },
             "expected_paging": {
@@ -4022,33 +4022,33 @@
               "realized_source_reads": 29,
               "predicted_read_cost": {
                 "plain_read_bytes": "19931332608",
-                "lazy_read_bytes": "39862665216",
-                "materialized_read_bytes": "19931327856",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "79725325680",
                 "materialization_write_bytes": "0",
-                "bf_add": "4982833152",
+                "bf_add": "3321888768",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "4982833152",
-                "ext_add": "14118027066",
-                "ext_mul": "1245708288"
+                "mixed_mul": "0",
+                "ext_add": "3321888570",
+                "ext_mul": "0"
               },
               "realized_read_cost": {
                 "plain_read_bytes": "19931332608",
-                "lazy_read_bytes": "39862665216",
-                "materialized_read_bytes": "19931327856",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "79725325680",
                 "materialization_write_bytes": "0",
-                "bf_add": "4982833152",
+                "bf_add": "3321888768",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "4982833152",
-                "ext_add": "14118027066",
-                "ext_mul": "1245708288"
+                "mixed_mul": "0",
+                "ext_add": "3321888570",
+                "ext_mul": "0"
               },
               "fixed_write_cost": {
                 "plain_read_bytes": "0",
                 "lazy_read_bytes": "0",
                 "materialized_read_bytes": "0",
-                "materialization_write_bytes": "11274288288",
+                "materialization_write_bytes": "28991028384",
                 "bf_add": "0",
                 "bf_mul": "0",
                 "mixed_add": "0",
@@ -4060,16 +4060,16 @@
               "placement_relocations": 0
             },
             "instruction_digest": [
-              17925713129278327559,
-              1707308559386174614,
-              5534251997772266827,
-              3384911303855299929
+              8381820129558217048,
+              2727043340480715261,
+              2677115262611849208,
+              6715821840655087416
             ],
             "encoded_digest": [
-              2920094507928291258,
-              15544889136026181611,
-              8932634268448627974,
-              6456892298773023348
+              8364980524204579181,
+              15460994173502080000,
+              9591938642431629349,
+              13831942939504933093
             ]
           },
           {
@@ -4077,10 +4077,10 @@
             "problem": {
               "count": 88,
               "digest": [
-                8610370050872459982,
-                17018000929114790315,
-                2409975846590681546,
-                8228200650311304136
+                5660357151674566523,
+                7832837392663907206,
+                312520654310099059,
+                13184229315310651391
               ]
             },
             "fragment_order": [
@@ -4247,10 +4247,10 @@
             ],
             "expected_score": {
               "infeasible": false,
-              "whole_pass_dram_bytes": "140928606576",
-              "primitive_source_ops": "129822096248",
-              "instructions": 264,
-              "encoded_lanes": 544,
+              "whole_pass_dram_bytes": "180589945392",
+              "primitive_source_ops": "25266486168",
+              "instructions": 262,
+              "encoded_lanes": 540,
               "arithmetic_ops": 63
             },
             "expected_paging": {
@@ -4261,33 +4261,33 @@
               "realized_source_reads": 29,
               "predicted_read_cost": {
                 "plain_read_bytes": "19931332608",
-                "lazy_read_bytes": "39862665216",
-                "materialized_read_bytes": "19931327856",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "79725325680",
                 "materialization_write_bytes": "0",
-                "bf_add": "4982833152",
+                "bf_add": "3321888768",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "4982833152",
-                "ext_add": "14118027066",
-                "ext_mul": "1245708288"
+                "mixed_mul": "0",
+                "ext_add": "3321888570",
+                "ext_mul": "0"
               },
               "realized_read_cost": {
                 "plain_read_bytes": "19931332608",
-                "lazy_read_bytes": "39862665216",
-                "materialized_read_bytes": "19931327856",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "79725325680",
                 "materialization_write_bytes": "0",
-                "bf_add": "4982833152",
+                "bf_add": "3321888768",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "4982833152",
-                "ext_add": "14118027066",
-                "ext_mul": "1245708288"
+                "mixed_mul": "0",
+                "ext_add": "3321888570",
+                "ext_mul": "0"
               },
               "fixed_write_cost": {
                 "plain_read_bytes": "0",
                 "lazy_read_bytes": "0",
                 "materialized_read_bytes": "0",
-                "materialization_write_bytes": "11274288288",
+                "materialization_write_bytes": "28991028384",
                 "bf_add": "0",
                 "bf_mul": "0",
                 "mixed_add": "0",
@@ -4299,16 +4299,16 @@
               "placement_relocations": 0
             },
             "instruction_digest": [
-              17925713129278327559,
-              1707308559386174614,
-              5534251997772266827,
-              3384911303855299929
+              8381820129558217048,
+              2727043340480715261,
+              2677115262611849208,
+              6715821840655087416
             ],
             "encoded_digest": [
-              2920094507928291258,
-              15544889136026181611,
-              8932634268448627974,
-              6456892298773023348
+              8364980524204579181,
+              15460994173502080000,
+              9591938642431629349,
+              13831942939504933093
             ]
           },
           {
@@ -4316,10 +4316,10 @@
             "problem": {
               "count": 88,
               "digest": [
-                9617468203780783393,
-                10812262111568808206,
-                1034928811240986217,
-                11650250513161893369
+                2593837753557421216,
+                14990461362492453199,
+                8274215292911400092,
+                16730312057594097342
               ]
             },
             "fragment_order": [
@@ -4486,10 +4486,10 @@
             ],
             "expected_score": {
               "infeasible": false,
-              "whole_pass_dram_bytes": "140928606576",
-              "primitive_source_ops": "129822096248",
-              "instructions": 264,
-              "encoded_lanes": 544,
+              "whole_pass_dram_bytes": "180589945392",
+              "primitive_source_ops": "25266486168",
+              "instructions": 262,
+              "encoded_lanes": 540,
               "arithmetic_ops": 63
             },
             "expected_paging": {
@@ -4500,33 +4500,33 @@
               "realized_source_reads": 29,
               "predicted_read_cost": {
                 "plain_read_bytes": "19931332608",
-                "lazy_read_bytes": "39862665216",
-                "materialized_read_bytes": "19931327856",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "79725325680",
                 "materialization_write_bytes": "0",
-                "bf_add": "4982833152",
+                "bf_add": "3321888768",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "4982833152",
-                "ext_add": "14118027066",
-                "ext_mul": "1245708288"
+                "mixed_mul": "0",
+                "ext_add": "3321888570",
+                "ext_mul": "0"
               },
               "realized_read_cost": {
                 "plain_read_bytes": "19931332608",
-                "lazy_read_bytes": "39862665216",
-                "materialized_read_bytes": "19931327856",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "79725325680",
                 "materialization_write_bytes": "0",
-                "bf_add": "4982833152",
+                "bf_add": "3321888768",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "4982833152",
-                "ext_add": "14118027066",
-                "ext_mul": "1245708288"
+                "mixed_mul": "0",
+                "ext_add": "3321888570",
+                "ext_mul": "0"
               },
               "fixed_write_cost": {
                 "plain_read_bytes": "0",
                 "lazy_read_bytes": "0",
                 "materialized_read_bytes": "0",
-                "materialization_write_bytes": "11274288288",
+                "materialization_write_bytes": "28991028384",
                 "bf_add": "0",
                 "bf_mul": "0",
                 "mixed_add": "0",
@@ -4538,16 +4538,16 @@
               "placement_relocations": 0
             },
             "instruction_digest": [
-              17925713129278327559,
-              1707308559386174614,
-              5534251997772266827,
-              3384911303855299929
+              8381820129558217048,
+              2727043340480715261,
+              2677115262611849208,
+              6715821840655087416
             ],
             "encoded_digest": [
-              2920094507928291258,
-              15544889136026181611,
-              8932634268448627974,
-              6456892298773023348
+              8364980524204579181,
+              15460994173502080000,
+              9591938642431629349,
+              13831942939504933093
             ]
           },
           {
@@ -4555,10 +4555,10 @@
             "problem": {
               "count": 88,
               "digest": [
-                6193533699040489502,
-                15319250376137245291,
-                7720595743502797838,
-                7355962671216661726
+                8015568062018873847,
+                5552412479487230594,
+                1091061672810393787,
+                15921665439441641737
               ]
             },
             "fragment_order": [
@@ -4725,10 +4725,10 @@
             ],
             "expected_score": {
               "infeasible": false,
-              "whole_pass_dram_bytes": "140928606576",
-              "primitive_source_ops": "129822096248",
-              "instructions": 264,
-              "encoded_lanes": 544,
+              "whole_pass_dram_bytes": "180589945392",
+              "primitive_source_ops": "25266486168",
+              "instructions": 262,
+              "encoded_lanes": 540,
               "arithmetic_ops": 63
             },
             "expected_paging": {
@@ -4739,33 +4739,33 @@
               "realized_source_reads": 29,
               "predicted_read_cost": {
                 "plain_read_bytes": "19931332608",
-                "lazy_read_bytes": "39862665216",
-                "materialized_read_bytes": "19931327856",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "79725325680",
                 "materialization_write_bytes": "0",
-                "bf_add": "4982833152",
+                "bf_add": "3321888768",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "4982833152",
-                "ext_add": "14118027066",
-                "ext_mul": "1245708288"
+                "mixed_mul": "0",
+                "ext_add": "3321888570",
+                "ext_mul": "0"
               },
               "realized_read_cost": {
                 "plain_read_bytes": "19931332608",
-                "lazy_read_bytes": "39862665216",
-                "materialized_read_bytes": "19931327856",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "79725325680",
                 "materialization_write_bytes": "0",
-                "bf_add": "4982833152",
+                "bf_add": "3321888768",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "4982833152",
-                "ext_add": "14118027066",
-                "ext_mul": "1245708288"
+                "mixed_mul": "0",
+                "ext_add": "3321888570",
+                "ext_mul": "0"
               },
               "fixed_write_cost": {
                 "plain_read_bytes": "0",
                 "lazy_read_bytes": "0",
                 "materialized_read_bytes": "0",
-                "materialization_write_bytes": "11274288288",
+                "materialization_write_bytes": "28991028384",
                 "bf_add": "0",
                 "bf_mul": "0",
                 "mixed_add": "0",
@@ -4777,16 +4777,16 @@
               "placement_relocations": 0
             },
             "instruction_digest": [
-              17925713129278327559,
-              1707308559386174614,
-              5534251997772266827,
-              3384911303855299929
+              8381820129558217048,
+              2727043340480715261,
+              2677115262611849208,
+              6715821840655087416
             ],
             "encoded_digest": [
-              2920094507928291258,
-              15544889136026181611,
-              8932634268448627974,
-              6456892298773023348
+              8364980524204579181,
+              15460994173502080000,
+              9591938642431629349,
+              13831942939504933093
             ]
           },
           {
@@ -4794,10 +4794,10 @@
             "problem": {
               "count": 88,
               "digest": [
-                16895660412667138456,
-                1077262332565381303,
-                17975830502263500120,
-                17621297169815991448
+                11325153703987821503,
+                17002471273400000220,
+                7944556091059088391,
+                8838629010759575895
               ]
             },
             "fragment_order": [
@@ -4964,10 +4964,10 @@
             ],
             "expected_score": {
               "infeasible": false,
-              "whole_pass_dram_bytes": "140928606576",
-              "primitive_source_ops": "129822096248",
-              "instructions": 264,
-              "encoded_lanes": 544,
+              "whole_pass_dram_bytes": "180589945392",
+              "primitive_source_ops": "25266486168",
+              "instructions": 262,
+              "encoded_lanes": 540,
               "arithmetic_ops": 63
             },
             "expected_paging": {
@@ -4978,33 +4978,33 @@
               "realized_source_reads": 29,
               "predicted_read_cost": {
                 "plain_read_bytes": "19931332608",
-                "lazy_read_bytes": "39862665216",
-                "materialized_read_bytes": "19931327856",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "79725325680",
                 "materialization_write_bytes": "0",
-                "bf_add": "4982833152",
+                "bf_add": "3321888768",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "4982833152",
-                "ext_add": "14118027066",
-                "ext_mul": "1245708288"
+                "mixed_mul": "0",
+                "ext_add": "3321888570",
+                "ext_mul": "0"
               },
               "realized_read_cost": {
                 "plain_read_bytes": "19931332608",
-                "lazy_read_bytes": "39862665216",
-                "materialized_read_bytes": "19931327856",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "79725325680",
                 "materialization_write_bytes": "0",
-                "bf_add": "4982833152",
+                "bf_add": "3321888768",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "4982833152",
-                "ext_add": "14118027066",
-                "ext_mul": "1245708288"
+                "mixed_mul": "0",
+                "ext_add": "3321888570",
+                "ext_mul": "0"
               },
               "fixed_write_cost": {
                 "plain_read_bytes": "0",
                 "lazy_read_bytes": "0",
                 "materialized_read_bytes": "0",
-                "materialization_write_bytes": "11274288288",
+                "materialization_write_bytes": "28991028384",
                 "bf_add": "0",
                 "bf_mul": "0",
                 "mixed_add": "0",
@@ -5016,16 +5016,16 @@
               "placement_relocations": 0
             },
             "instruction_digest": [
-              17925713129278327559,
-              1707308559386174614,
-              5534251997772266827,
-              3384911303855299929
+              8381820129558217048,
+              2727043340480715261,
+              2677115262611849208,
+              6715821840655087416
             ],
             "encoded_digest": [
-              2920094507928291258,
-              15544889136026181611,
-              8932634268448627974,
-              6456892298773023348
+              8364980524204579181,
+              15460994173502080000,
+              9591938642431629349,
+              13831942939504933093
             ]
           },
           {
@@ -5033,10 +5033,10 @@
             "problem": {
               "count": 88,
               "digest": [
-                7358413398395402641,
-                968628959496773446,
-                12352812464013365013,
-                6407504007612438767
+                10476105923256841444,
+                8674668935763663743,
+                17621710423296191380,
+                1183368765961780152
               ]
             },
             "fragment_order": [
@@ -5203,10 +5203,10 @@
             ],
             "expected_score": {
               "infeasible": false,
-              "whole_pass_dram_bytes": "140928606576",
-              "primitive_source_ops": "129822096248",
-              "instructions": 264,
-              "encoded_lanes": 544,
+              "whole_pass_dram_bytes": "180589945392",
+              "primitive_source_ops": "25266486168",
+              "instructions": 262,
+              "encoded_lanes": 540,
               "arithmetic_ops": 63
             },
             "expected_paging": {
@@ -5217,33 +5217,33 @@
               "realized_source_reads": 29,
               "predicted_read_cost": {
                 "plain_read_bytes": "19931332608",
-                "lazy_read_bytes": "39862665216",
-                "materialized_read_bytes": "19931327856",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "79725325680",
                 "materialization_write_bytes": "0",
-                "bf_add": "4982833152",
+                "bf_add": "3321888768",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "4982833152",
-                "ext_add": "14118027066",
-                "ext_mul": "1245708288"
+                "mixed_mul": "0",
+                "ext_add": "3321888570",
+                "ext_mul": "0"
               },
               "realized_read_cost": {
                 "plain_read_bytes": "19931332608",
-                "lazy_read_bytes": "39862665216",
-                "materialized_read_bytes": "19931327856",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "79725325680",
                 "materialization_write_bytes": "0",
-                "bf_add": "4982833152",
+                "bf_add": "3321888768",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "4982833152",
-                "ext_add": "14118027066",
-                "ext_mul": "1245708288"
+                "mixed_mul": "0",
+                "ext_add": "3321888570",
+                "ext_mul": "0"
               },
               "fixed_write_cost": {
                 "plain_read_bytes": "0",
                 "lazy_read_bytes": "0",
                 "materialized_read_bytes": "0",
-                "materialization_write_bytes": "11274288288",
+                "materialization_write_bytes": "28991028384",
                 "bf_add": "0",
                 "bf_mul": "0",
                 "mixed_add": "0",
@@ -5255,16 +5255,16 @@
               "placement_relocations": 0
             },
             "instruction_digest": [
-              17925713129278327559,
-              1707308559386174614,
-              5534251997772266827,
-              3384911303855299929
+              8381820129558217048,
+              2727043340480715261,
+              2677115262611849208,
+              6715821840655087416
             ],
             "encoded_digest": [
-              2920094507928291258,
-              15544889136026181611,
-              8932634268448627974,
-              6456892298773023348
+              8364980524204579181,
+              15460994173502080000,
+              9591938642431629349,
+              13831942939504933093
             ]
           },
           {
@@ -5272,10 +5272,10 @@
             "problem": {
               "count": 88,
               "digest": [
-                11437971983664087787,
-                9960426484613899384,
-                11137635890838595703,
-                13328057125860188225
+                16115271082190666724,
+                14064863977057634395,
+                13375227315210095608,
+                8460265471029285166
               ]
             },
             "fragment_order": [
@@ -5442,10 +5442,10 @@
             ],
             "expected_score": {
               "infeasible": false,
-              "whole_pass_dram_bytes": "140928606576",
-              "primitive_source_ops": "129822096248",
-              "instructions": 264,
-              "encoded_lanes": 544,
+              "whole_pass_dram_bytes": "180589945392",
+              "primitive_source_ops": "25266486168",
+              "instructions": 262,
+              "encoded_lanes": 540,
               "arithmetic_ops": 63
             },
             "expected_paging": {
@@ -5456,33 +5456,33 @@
               "realized_source_reads": 29,
               "predicted_read_cost": {
                 "plain_read_bytes": "19931332608",
-                "lazy_read_bytes": "39862665216",
-                "materialized_read_bytes": "19931327856",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "79725325680",
                 "materialization_write_bytes": "0",
-                "bf_add": "4982833152",
+                "bf_add": "3321888768",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "4982833152",
-                "ext_add": "14118027066",
-                "ext_mul": "1245708288"
+                "mixed_mul": "0",
+                "ext_add": "3321888570",
+                "ext_mul": "0"
               },
               "realized_read_cost": {
                 "plain_read_bytes": "19931332608",
-                "lazy_read_bytes": "39862665216",
-                "materialized_read_bytes": "19931327856",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "79725325680",
                 "materialization_write_bytes": "0",
-                "bf_add": "4982833152",
+                "bf_add": "3321888768",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "4982833152",
-                "ext_add": "14118027066",
-                "ext_mul": "1245708288"
+                "mixed_mul": "0",
+                "ext_add": "3321888570",
+                "ext_mul": "0"
               },
               "fixed_write_cost": {
                 "plain_read_bytes": "0",
                 "lazy_read_bytes": "0",
                 "materialized_read_bytes": "0",
-                "materialization_write_bytes": "11274288288",
+                "materialization_write_bytes": "28991028384",
                 "bf_add": "0",
                 "bf_mul": "0",
                 "mixed_add": "0",
@@ -5494,16 +5494,16 @@
               "placement_relocations": 0
             },
             "instruction_digest": [
-              17925713129278327559,
-              1707308559386174614,
-              5534251997772266827,
-              3384911303855299929
+              8381820129558217048,
+              2727043340480715261,
+              2677115262611849208,
+              6715821840655087416
             ],
             "encoded_digest": [
-              2920094507928291258,
-              15544889136026181611,
-              8932634268448627974,
-              6456892298773023348
+              8364980524204579181,
+              15460994173502080000,
+              9591938642431629349,
+              13831942939504933093
             ]
           },
           {
@@ -5511,10 +5511,10 @@
             "problem": {
               "count": 88,
               "digest": [
-                4489906716412393251,
-                14728688710977380440,
-                3847682774128602503,
-                5469524452351375265
+                9530753235589903470,
+                17484981213876663917,
+                12303872894490453902,
+                4480518677834373350
               ]
             },
             "fragment_order": [
@@ -5681,10 +5681,10 @@
             ],
             "expected_score": {
               "infeasible": false,
-              "whole_pass_dram_bytes": "140928606576",
-              "primitive_source_ops": "129822096248",
-              "instructions": 264,
-              "encoded_lanes": 544,
+              "whole_pass_dram_bytes": "180589945392",
+              "primitive_source_ops": "25266486168",
+              "instructions": 262,
+              "encoded_lanes": 540,
               "arithmetic_ops": 63
             },
             "expected_paging": {
@@ -5695,33 +5695,33 @@
               "realized_source_reads": 29,
               "predicted_read_cost": {
                 "plain_read_bytes": "19931332608",
-                "lazy_read_bytes": "39862665216",
-                "materialized_read_bytes": "19931327856",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "79725325680",
                 "materialization_write_bytes": "0",
-                "bf_add": "4982833152",
+                "bf_add": "3321888768",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "4982833152",
-                "ext_add": "14118027066",
-                "ext_mul": "1245708288"
+                "mixed_mul": "0",
+                "ext_add": "3321888570",
+                "ext_mul": "0"
               },
               "realized_read_cost": {
                 "plain_read_bytes": "19931332608",
-                "lazy_read_bytes": "39862665216",
-                "materialized_read_bytes": "19931327856",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "79725325680",
                 "materialization_write_bytes": "0",
-                "bf_add": "4982833152",
+                "bf_add": "3321888768",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "4982833152",
-                "ext_add": "14118027066",
-                "ext_mul": "1245708288"
+                "mixed_mul": "0",
+                "ext_add": "3321888570",
+                "ext_mul": "0"
               },
               "fixed_write_cost": {
                 "plain_read_bytes": "0",
                 "lazy_read_bytes": "0",
                 "materialized_read_bytes": "0",
-                "materialization_write_bytes": "11274288288",
+                "materialization_write_bytes": "28991028384",
                 "bf_add": "0",
                 "bf_mul": "0",
                 "mixed_add": "0",
@@ -5733,16 +5733,16 @@
               "placement_relocations": 0
             },
             "instruction_digest": [
-              17925713129278327559,
-              1707308559386174614,
-              5534251997772266827,
-              3384911303855299929
+              8381820129558217048,
+              2727043340480715261,
+              2677115262611849208,
+              6715821840655087416
             ],
             "encoded_digest": [
-              2920094507928291258,
-              15544889136026181611,
-              8932634268448627974,
-              6456892298773023348
+              8364980524204579181,
+              15460994173502080000,
+              9591938642431629349,
+              13831942939504933093
             ]
           },
           {
@@ -5750,10 +5750,10 @@
             "problem": {
               "count": 88,
               "digest": [
-                3129342470201997625,
-                11928290274394423348,
-                5617846823311304377,
-                8437299032625349741
+                16820282266558551528,
+                9615687871684388261,
+                3997817574900114620,
+                13200243927603794986
               ]
             },
             "fragment_order": [
@@ -5920,10 +5920,10 @@
             ],
             "expected_score": {
               "infeasible": false,
-              "whole_pass_dram_bytes": "140928606576",
-              "primitive_source_ops": "129822096248",
-              "instructions": 264,
-              "encoded_lanes": 544,
+              "whole_pass_dram_bytes": "180589945392",
+              "primitive_source_ops": "25266486168",
+              "instructions": 262,
+              "encoded_lanes": 540,
               "arithmetic_ops": 63
             },
             "expected_paging": {
@@ -5934,33 +5934,33 @@
               "realized_source_reads": 29,
               "predicted_read_cost": {
                 "plain_read_bytes": "19931332608",
-                "lazy_read_bytes": "39862665216",
-                "materialized_read_bytes": "19931327856",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "79725325680",
                 "materialization_write_bytes": "0",
-                "bf_add": "4982833152",
+                "bf_add": "3321888768",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "4982833152",
-                "ext_add": "14118027066",
-                "ext_mul": "1245708288"
+                "mixed_mul": "0",
+                "ext_add": "3321888570",
+                "ext_mul": "0"
               },
               "realized_read_cost": {
                 "plain_read_bytes": "19931332608",
-                "lazy_read_bytes": "39862665216",
-                "materialized_read_bytes": "19931327856",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "79725325680",
                 "materialization_write_bytes": "0",
-                "bf_add": "4982833152",
+                "bf_add": "3321888768",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "4982833152",
-                "ext_add": "14118027066",
-                "ext_mul": "1245708288"
+                "mixed_mul": "0",
+                "ext_add": "3321888570",
+                "ext_mul": "0"
               },
               "fixed_write_cost": {
                 "plain_read_bytes": "0",
                 "lazy_read_bytes": "0",
                 "materialized_read_bytes": "0",
-                "materialization_write_bytes": "11274288288",
+                "materialization_write_bytes": "28991028384",
                 "bf_add": "0",
                 "bf_mul": "0",
                 "mixed_add": "0",
@@ -5972,16 +5972,16 @@
               "placement_relocations": 0
             },
             "instruction_digest": [
-              17925713129278327559,
-              1707308559386174614,
-              5534251997772266827,
-              3384911303855299929
+              8381820129558217048,
+              2727043340480715261,
+              2677115262611849208,
+              6715821840655087416
             ],
             "encoded_digest": [
-              2920094507928291258,
-              15544889136026181611,
-              8932634268448627974,
-              6456892298773023348
+              8364980524204579181,
+              15460994173502080000,
+              9591938642431629349,
+              13831942939504933093
             ]
           },
           {
@@ -5989,10 +5989,10 @@
             "problem": {
               "count": 88,
               "digest": [
-                8793874844722117035,
-                16433081955163724108,
-                848356090765416875,
-                4876600329186033763
+                3312708189888083588,
+                9959978410876761311,
+                3802047777168033484,
+                2140922984330227452
               ]
             },
             "fragment_order": [
@@ -6159,10 +6159,10 @@
             ],
             "expected_score": {
               "infeasible": false,
-              "whole_pass_dram_bytes": "140928606576",
-              "primitive_source_ops": "129822096248",
-              "instructions": 264,
-              "encoded_lanes": 544,
+              "whole_pass_dram_bytes": "180589945392",
+              "primitive_source_ops": "25266486168",
+              "instructions": 262,
+              "encoded_lanes": 540,
               "arithmetic_ops": 63
             },
             "expected_paging": {
@@ -6173,33 +6173,33 @@
               "realized_source_reads": 29,
               "predicted_read_cost": {
                 "plain_read_bytes": "19931332608",
-                "lazy_read_bytes": "39862665216",
-                "materialized_read_bytes": "19931327856",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "79725325680",
                 "materialization_write_bytes": "0",
-                "bf_add": "4982833152",
+                "bf_add": "3321888768",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "4982833152",
-                "ext_add": "14118027066",
-                "ext_mul": "1245708288"
+                "mixed_mul": "0",
+                "ext_add": "3321888570",
+                "ext_mul": "0"
               },
               "realized_read_cost": {
                 "plain_read_bytes": "19931332608",
-                "lazy_read_bytes": "39862665216",
-                "materialized_read_bytes": "19931327856",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "79725325680",
                 "materialization_write_bytes": "0",
-                "bf_add": "4982833152",
+                "bf_add": "3321888768",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "4982833152",
-                "ext_add": "14118027066",
-                "ext_mul": "1245708288"
+                "mixed_mul": "0",
+                "ext_add": "3321888570",
+                "ext_mul": "0"
               },
               "fixed_write_cost": {
                 "plain_read_bytes": "0",
                 "lazy_read_bytes": "0",
                 "materialized_read_bytes": "0",
-                "materialization_write_bytes": "11274288288",
+                "materialization_write_bytes": "28991028384",
                 "bf_add": "0",
                 "bf_mul": "0",
                 "mixed_add": "0",
@@ -6211,16 +6211,16 @@
               "placement_relocations": 0
             },
             "instruction_digest": [
-              17925713129278327559,
-              1707308559386174614,
-              5534251997772266827,
-              3384911303855299929
+              8381820129558217048,
+              2727043340480715261,
+              2677115262611849208,
+              6715821840655087416
             ],
             "encoded_digest": [
-              2920094507928291258,
-              15544889136026181611,
-              8932634268448627974,
-              6456892298773023348
+              8364980524204579181,
+              15460994173502080000,
+              9591938642431629349,
+              13831942939504933093
             ]
           },
           {
@@ -6228,10 +6228,10 @@
             "problem": {
               "count": 88,
               "digest": [
-                18328370949946516840,
-                15927474393824326039,
-                3488631295467427912,
-                4336518131431863664
+                10910121560592191805,
+                8350021747832155886,
+                10948773818918555129,
+                5835524118286810039
               ]
             },
             "fragment_order": [
@@ -6398,10 +6398,10 @@
             ],
             "expected_score": {
               "infeasible": false,
-              "whole_pass_dram_bytes": "140928606576",
-              "primitive_source_ops": "129822096248",
-              "instructions": 264,
-              "encoded_lanes": 544,
+              "whole_pass_dram_bytes": "180589945392",
+              "primitive_source_ops": "25266486168",
+              "instructions": 262,
+              "encoded_lanes": 540,
               "arithmetic_ops": 63
             },
             "expected_paging": {
@@ -6412,33 +6412,33 @@
               "realized_source_reads": 29,
               "predicted_read_cost": {
                 "plain_read_bytes": "19931332608",
-                "lazy_read_bytes": "39862665216",
-                "materialized_read_bytes": "19931327856",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "79725325680",
                 "materialization_write_bytes": "0",
-                "bf_add": "4982833152",
+                "bf_add": "3321888768",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "4982833152",
-                "ext_add": "14118027066",
-                "ext_mul": "1245708288"
+                "mixed_mul": "0",
+                "ext_add": "3321888570",
+                "ext_mul": "0"
               },
               "realized_read_cost": {
                 "plain_read_bytes": "19931332608",
-                "lazy_read_bytes": "39862665216",
-                "materialized_read_bytes": "19931327856",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "79725325680",
                 "materialization_write_bytes": "0",
-                "bf_add": "4982833152",
+                "bf_add": "3321888768",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "4982833152",
-                "ext_add": "14118027066",
-                "ext_mul": "1245708288"
+                "mixed_mul": "0",
+                "ext_add": "3321888570",
+                "ext_mul": "0"
               },
               "fixed_write_cost": {
                 "plain_read_bytes": "0",
                 "lazy_read_bytes": "0",
                 "materialized_read_bytes": "0",
-                "materialization_write_bytes": "11274288288",
+                "materialization_write_bytes": "28991028384",
                 "bf_add": "0",
                 "bf_mul": "0",
                 "mixed_add": "0",
@@ -6450,16 +6450,16 @@
               "placement_relocations": 0
             },
             "instruction_digest": [
-              17925713129278327559,
-              1707308559386174614,
-              5534251997772266827,
-              3384911303855299929
+              8381820129558217048,
+              2727043340480715261,
+              2677115262611849208,
+              6715821840655087416
             ],
             "encoded_digest": [
-              2920094507928291258,
-              15544889136026181611,
-              8932634268448627974,
-              6456892298773023348
+              8364980524204579181,
+              15460994173502080000,
+              9591938642431629349,
+              13831942939504933093
             ]
           },
           {
@@ -6467,10 +6467,10 @@
             "problem": {
               "count": 88,
               "digest": [
-                12692606986572280927,
-                5191413096255108180,
-                4052269550312081947,
-                1844161628332432557
+                9966142392986476072,
+                4710183919760107535,
+                2194711005240473628,
+                11235555237871218370
               ]
             },
             "fragment_order": [
@@ -6637,10 +6637,10 @@
             ],
             "expected_score": {
               "infeasible": false,
-              "whole_pass_dram_bytes": "140928606576",
-              "primitive_source_ops": "129822096248",
-              "instructions": 264,
-              "encoded_lanes": 544,
+              "whole_pass_dram_bytes": "180589945392",
+              "primitive_source_ops": "25266486168",
+              "instructions": 262,
+              "encoded_lanes": 540,
               "arithmetic_ops": 63
             },
             "expected_paging": {
@@ -6651,33 +6651,33 @@
               "realized_source_reads": 29,
               "predicted_read_cost": {
                 "plain_read_bytes": "19931332608",
-                "lazy_read_bytes": "39862665216",
-                "materialized_read_bytes": "19931327856",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "79725325680",
                 "materialization_write_bytes": "0",
-                "bf_add": "4982833152",
+                "bf_add": "3321888768",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "4982833152",
-                "ext_add": "14118027066",
-                "ext_mul": "1245708288"
+                "mixed_mul": "0",
+                "ext_add": "3321888570",
+                "ext_mul": "0"
               },
               "realized_read_cost": {
                 "plain_read_bytes": "19931332608",
-                "lazy_read_bytes": "39862665216",
-                "materialized_read_bytes": "19931327856",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "79725325680",
                 "materialization_write_bytes": "0",
-                "bf_add": "4982833152",
+                "bf_add": "3321888768",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "4982833152",
-                "ext_add": "14118027066",
-                "ext_mul": "1245708288"
+                "mixed_mul": "0",
+                "ext_add": "3321888570",
+                "ext_mul": "0"
               },
               "fixed_write_cost": {
                 "plain_read_bytes": "0",
                 "lazy_read_bytes": "0",
                 "materialized_read_bytes": "0",
-                "materialization_write_bytes": "11274288288",
+                "materialization_write_bytes": "28991028384",
                 "bf_add": "0",
                 "bf_mul": "0",
                 "mixed_add": "0",
@@ -6689,16 +6689,16 @@
               "placement_relocations": 0
             },
             "instruction_digest": [
-              17925713129278327559,
-              1707308559386174614,
-              5534251997772266827,
-              3384911303855299929
+              8381820129558217048,
+              2727043340480715261,
+              2677115262611849208,
+              6715821840655087416
             ],
             "encoded_digest": [
-              2920094507928291258,
-              15544889136026181611,
-              8932634268448627974,
-              6456892298773023348
+              8364980524204579181,
+              15460994173502080000,
+              9591938642431629349,
+              13831942939504933093
             ]
           },
           {
@@ -6706,10 +6706,10 @@
             "problem": {
               "count": 88,
               "digest": [
-                1012061438055273175,
-                17038055158692109662,
-                9062970127240466547,
-                14451786461022239781
+                9204168371936855244,
+                13153491042608555357,
+                17226381972208786928,
+                13874601289162353370
               ]
             },
             "fragment_order": [
@@ -6876,10 +6876,10 @@
             ],
             "expected_score": {
               "infeasible": false,
-              "whole_pass_dram_bytes": "140928606576",
-              "primitive_source_ops": "129822096248",
-              "instructions": 264,
-              "encoded_lanes": 544,
+              "whole_pass_dram_bytes": "180589945392",
+              "primitive_source_ops": "25266486168",
+              "instructions": 262,
+              "encoded_lanes": 540,
               "arithmetic_ops": 63
             },
             "expected_paging": {
@@ -6890,33 +6890,33 @@
               "realized_source_reads": 29,
               "predicted_read_cost": {
                 "plain_read_bytes": "19931332608",
-                "lazy_read_bytes": "39862665216",
-                "materialized_read_bytes": "19931327856",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "79725325680",
                 "materialization_write_bytes": "0",
-                "bf_add": "4982833152",
+                "bf_add": "3321888768",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "4982833152",
-                "ext_add": "14118027066",
-                "ext_mul": "1245708288"
+                "mixed_mul": "0",
+                "ext_add": "3321888570",
+                "ext_mul": "0"
               },
               "realized_read_cost": {
                 "plain_read_bytes": "19931332608",
-                "lazy_read_bytes": "39862665216",
-                "materialized_read_bytes": "19931327856",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "79725325680",
                 "materialization_write_bytes": "0",
-                "bf_add": "4982833152",
+                "bf_add": "3321888768",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "4982833152",
-                "ext_add": "14118027066",
-                "ext_mul": "1245708288"
+                "mixed_mul": "0",
+                "ext_add": "3321888570",
+                "ext_mul": "0"
               },
               "fixed_write_cost": {
                 "plain_read_bytes": "0",
                 "lazy_read_bytes": "0",
                 "materialized_read_bytes": "0",
-                "materialization_write_bytes": "11274288288",
+                "materialization_write_bytes": "28991028384",
                 "bf_add": "0",
                 "bf_mul": "0",
                 "mixed_add": "0",
@@ -6928,16 +6928,16 @@
               "placement_relocations": 0
             },
             "instruction_digest": [
-              17925713129278327559,
-              1707308559386174614,
-              5534251997772266827,
-              3384911303855299929
+              8381820129558217048,
+              2727043340480715261,
+              2677115262611849208,
+              6715821840655087416
             ],
             "encoded_digest": [
-              2920094507928291258,
-              15544889136026181611,
-              8932634268448627974,
-              6456892298773023348
+              8364980524204579181,
+              15460994173502080000,
+              9591938642431629349,
+              13831942939504933093
             ]
           },
           {
@@ -6945,10 +6945,10 @@
             "problem": {
               "count": 88,
               "digest": [
-                2415145845296323211,
-                17937542253281931066,
-                1979587823124156827,
-                8716637365186710431
+                6505552471345840198,
+                8890659812961555711,
+                447600442510717666,
+                17626978957372027416
               ]
             },
             "fragment_order": [
@@ -7115,10 +7115,10 @@
             ],
             "expected_score": {
               "infeasible": false,
-              "whole_pass_dram_bytes": "140928606576",
-              "primitive_source_ops": "129822096248",
-              "instructions": 264,
-              "encoded_lanes": 544,
+              "whole_pass_dram_bytes": "180589945392",
+              "primitive_source_ops": "25266486168",
+              "instructions": 262,
+              "encoded_lanes": 540,
               "arithmetic_ops": 63
             },
             "expected_paging": {
@@ -7129,33 +7129,33 @@
               "realized_source_reads": 29,
               "predicted_read_cost": {
                 "plain_read_bytes": "19931332608",
-                "lazy_read_bytes": "39862665216",
-                "materialized_read_bytes": "19931327856",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "79725325680",
                 "materialization_write_bytes": "0",
-                "bf_add": "4982833152",
+                "bf_add": "3321888768",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "4982833152",
-                "ext_add": "14118027066",
-                "ext_mul": "1245708288"
+                "mixed_mul": "0",
+                "ext_add": "3321888570",
+                "ext_mul": "0"
               },
               "realized_read_cost": {
                 "plain_read_bytes": "19931332608",
-                "lazy_read_bytes": "39862665216",
-                "materialized_read_bytes": "19931327856",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "79725325680",
                 "materialization_write_bytes": "0",
-                "bf_add": "4982833152",
+                "bf_add": "3321888768",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "4982833152",
-                "ext_add": "14118027066",
-                "ext_mul": "1245708288"
+                "mixed_mul": "0",
+                "ext_add": "3321888570",
+                "ext_mul": "0"
               },
               "fixed_write_cost": {
                 "plain_read_bytes": "0",
                 "lazy_read_bytes": "0",
                 "materialized_read_bytes": "0",
-                "materialization_write_bytes": "11274288288",
+                "materialization_write_bytes": "28991028384",
                 "bf_add": "0",
                 "bf_mul": "0",
                 "mixed_add": "0",
@@ -7167,16 +7167,16 @@
               "placement_relocations": 0
             },
             "instruction_digest": [
-              17925713129278327559,
-              1707308559386174614,
-              5534251997772266827,
-              3384911303855299929
+              8381820129558217048,
+              2727043340480715261,
+              2677115262611849208,
+              6715821840655087416
             ],
             "encoded_digest": [
-              2920094507928291258,
-              15544889136026181611,
-              8932634268448627974,
-              6456892298773023348
+              8364980524204579181,
+              15460994173502080000,
+              9591938642431629349,
+              13831942939504933093
             ]
           }
         ]
@@ -9145,10 +9145,10 @@
             "problem": {
               "count": 32,
               "digest": [
-                2996594028369393040,
-                7399768093697817269,
-                17228445420438315900,
-                6340334500401852974
+                13851509378778578079,
+                15790636859964117208,
+                16801278653674460167,
+                8639238990140646887
               ]
             },
             "fragment_order": [
@@ -9205,8 +9205,8 @@
             ],
             "expected_score": {
               "infeasible": false,
-              "whole_pass_dram_bytes": "82409681408",
-              "primitive_source_ops": "43687869960",
+              "whole_pass_dram_bytes": "97307849216",
+              "primitive_source_ops": "13086227976",
               "instructions": 105,
               "encoded_lanes": 216,
               "arithmetic_ops": 29
@@ -9219,33 +9219,33 @@
               "realized_source_reads": 13,
               "predicted_read_cost": {
                 "plain_read_bytes": "12280922112",
-                "lazy_read_bytes": "8455716864",
-                "materialized_read_bytes": "12280920624",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "24964495920",
                 "materialization_write_bytes": "0",
-                "bf_add": "1056964608",
+                "bf_add": "704643072",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "1056964608",
-                "ext_add": "3665821634",
-                "ext_mul": "264241152"
+                "mixed_mul": "0",
+                "ext_add": "1375731650",
+                "ext_mul": "0"
               },
               "realized_read_cost": {
                 "plain_read_bytes": "12280922112",
-                "lazy_read_bytes": "8455716864",
-                "materialized_read_bytes": "12280920624",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "24964495920",
                 "materialization_write_bytes": "0",
-                "bf_add": "1056964608",
+                "bf_add": "704643072",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "1056964608",
-                "ext_add": "3665821634",
-                "ext_mul": "264241152"
+                "mixed_mul": "0",
+                "ext_add": "1375731650",
+                "ext_mul": "0"
               },
               "fixed_write_cost": {
                 "plain_read_bytes": "0",
                 "lazy_read_bytes": "0",
                 "materialized_read_bytes": "0",
-                "materialization_write_bytes": "11542724048",
+                "materialization_write_bytes": "18790481360",
                 "bf_add": "0",
                 "bf_mul": "0",
                 "mixed_add": "0",
@@ -9274,10 +9274,10 @@
             "problem": {
               "count": 32,
               "digest": [
-                301932123552316798,
-                7259514642976199197,
-                17565608718504582150,
-                13508447505984549558
+                16153368425633459115,
+                17377699792737983082,
+                1639032889215176227,
+                149154246115640983
               ]
             },
             "fragment_order": [
@@ -9335,8 +9335,8 @@
             ],
             "expected_score": {
               "infeasible": false,
-              "whole_pass_dram_bytes": "80799068768",
-              "primitive_source_ops": "41741712920",
+              "whole_pass_dram_bytes": "95294583392",
+              "primitive_source_ops": "12750683672",
               "instructions": 106,
               "encoded_lanes": 219,
               "arithmetic_ops": 29
@@ -9349,33 +9349,33 @@
               "realized_source_reads": 12,
               "predicted_read_cost": {
                 "plain_read_bytes": "11878268928",
-                "lazy_read_bytes": "7650410496",
-                "materialized_read_bytes": "11878267536",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "23353883280",
                 "materialization_write_bytes": "0",
-                "bf_add": "956301312",
+                "bf_add": "637534208",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "956301312",
-                "ext_add": "3380608966",
-                "ext_mul": "239075328"
+                "mixed_mul": "0",
+                "ext_add": "1308622790",
+                "ext_mul": "0"
               },
               "realized_read_cost": {
                 "plain_read_bytes": "11878268928",
-                "lazy_read_bytes": "7650410496",
-                "materialized_read_bytes": "11878267536",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "23353883280",
                 "materialization_write_bytes": "0",
-                "bf_add": "956301312",
+                "bf_add": "637534208",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "956301312",
-                "ext_add": "3380608966",
-                "ext_mul": "239075328"
+                "mixed_mul": "0",
+                "ext_add": "1308622790",
+                "ext_mul": "0"
               },
               "fixed_write_cost": {
                 "plain_read_bytes": "0",
                 "lazy_read_bytes": "0",
                 "materialized_read_bytes": "0",
-                "materialization_write_bytes": "11542724048",
+                "materialization_write_bytes": "18790481360",
                 "bf_add": "0",
                 "bf_mul": "0",
                 "mixed_add": "0",
@@ -9404,10 +9404,10 @@
             "problem": {
               "count": 32,
               "digest": [
-                18037423391927530628,
-                1215953073848022179,
-                16034393185622903628,
-                5605672386753181092
+                14256026777163706177,
+                2871484651301682856,
+                16726268535421688249,
+                14712546842219426485
               ]
             },
             "fragment_order": [
@@ -9465,8 +9465,8 @@
             ],
             "expected_score": {
               "infeasible": false,
-              "whole_pass_dram_bytes": "80799068768",
-              "primitive_source_ops": "41741712920",
+              "whole_pass_dram_bytes": "95294583392",
+              "primitive_source_ops": "12750683672",
               "instructions": 106,
               "encoded_lanes": 219,
               "arithmetic_ops": 29
@@ -9479,33 +9479,33 @@
               "realized_source_reads": 12,
               "predicted_read_cost": {
                 "plain_read_bytes": "11878268928",
-                "lazy_read_bytes": "7650410496",
-                "materialized_read_bytes": "11878267536",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "23353883280",
                 "materialization_write_bytes": "0",
-                "bf_add": "956301312",
+                "bf_add": "637534208",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "956301312",
-                "ext_add": "3380608966",
-                "ext_mul": "239075328"
+                "mixed_mul": "0",
+                "ext_add": "1308622790",
+                "ext_mul": "0"
               },
               "realized_read_cost": {
                 "plain_read_bytes": "11878268928",
-                "lazy_read_bytes": "7650410496",
-                "materialized_read_bytes": "11878267536",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "23353883280",
                 "materialization_write_bytes": "0",
-                "bf_add": "956301312",
+                "bf_add": "637534208",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "956301312",
-                "ext_add": "3380608966",
-                "ext_mul": "239075328"
+                "mixed_mul": "0",
+                "ext_add": "1308622790",
+                "ext_mul": "0"
               },
               "fixed_write_cost": {
                 "plain_read_bytes": "0",
                 "lazy_read_bytes": "0",
                 "materialized_read_bytes": "0",
-                "materialization_write_bytes": "11542724048",
+                "materialization_write_bytes": "18790481360",
                 "bf_add": "0",
                 "bf_mul": "0",
                 "mixed_add": "0",
@@ -9534,10 +9534,10 @@
             "problem": {
               "count": 32,
               "digest": [
-                1958674186188344699,
-                9992679769584861048,
-                1893006645332049211,
-                16024882228366917335
+                4111174800030925306,
+                12741906069036459671,
+                5803662150614406306,
+                9207154073732311238
               ]
             },
             "fragment_order": [
@@ -9595,8 +9595,8 @@
             ],
             "expected_score": {
               "infeasible": false,
-              "whole_pass_dram_bytes": "80799068768",
-              "primitive_source_ops": "41741712920",
+              "whole_pass_dram_bytes": "95294583392",
+              "primitive_source_ops": "12750683672",
               "instructions": 106,
               "encoded_lanes": 219,
               "arithmetic_ops": 29
@@ -9609,33 +9609,33 @@
               "realized_source_reads": 12,
               "predicted_read_cost": {
                 "plain_read_bytes": "11878268928",
-                "lazy_read_bytes": "7650410496",
-                "materialized_read_bytes": "11878267536",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "23353883280",
                 "materialization_write_bytes": "0",
-                "bf_add": "956301312",
+                "bf_add": "637534208",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "956301312",
-                "ext_add": "3380608966",
-                "ext_mul": "239075328"
+                "mixed_mul": "0",
+                "ext_add": "1308622790",
+                "ext_mul": "0"
               },
               "realized_read_cost": {
                 "plain_read_bytes": "11878268928",
-                "lazy_read_bytes": "7650410496",
-                "materialized_read_bytes": "11878267536",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "23353883280",
                 "materialization_write_bytes": "0",
-                "bf_add": "956301312",
+                "bf_add": "637534208",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "956301312",
-                "ext_add": "3380608966",
-                "ext_mul": "239075328"
+                "mixed_mul": "0",
+                "ext_add": "1308622790",
+                "ext_mul": "0"
               },
               "fixed_write_cost": {
                 "plain_read_bytes": "0",
                 "lazy_read_bytes": "0",
                 "materialized_read_bytes": "0",
-                "materialization_write_bytes": "11542724048",
+                "materialization_write_bytes": "18790481360",
                 "bf_add": "0",
                 "bf_mul": "0",
                 "mixed_add": "0",
@@ -9664,10 +9664,10 @@
             "problem": {
               "count": 32,
               "digest": [
-                7528205777828565817,
-                7497251887684067032,
-                18076776911166167921,
-                8411358014018821713
+                3409517214854997158,
+                8143395269223726045,
+                265838181942257578,
+                12864440783686872200
               ]
             },
             "fragment_order": [
@@ -9725,8 +9725,8 @@
             ],
             "expected_score": {
               "infeasible": false,
-              "whole_pass_dram_bytes": "80799068768",
-              "primitive_source_ops": "41741712920",
+              "whole_pass_dram_bytes": "95294583392",
+              "primitive_source_ops": "12750683672",
               "instructions": 106,
               "encoded_lanes": 219,
               "arithmetic_ops": 29
@@ -9739,33 +9739,33 @@
               "realized_source_reads": 12,
               "predicted_read_cost": {
                 "plain_read_bytes": "11878268928",
-                "lazy_read_bytes": "7650410496",
-                "materialized_read_bytes": "11878267536",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "23353883280",
                 "materialization_write_bytes": "0",
-                "bf_add": "956301312",
+                "bf_add": "637534208",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "956301312",
-                "ext_add": "3380608966",
-                "ext_mul": "239075328"
+                "mixed_mul": "0",
+                "ext_add": "1308622790",
+                "ext_mul": "0"
               },
               "realized_read_cost": {
                 "plain_read_bytes": "11878268928",
-                "lazy_read_bytes": "7650410496",
-                "materialized_read_bytes": "11878267536",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "23353883280",
                 "materialization_write_bytes": "0",
-                "bf_add": "956301312",
+                "bf_add": "637534208",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "956301312",
-                "ext_add": "3380608966",
-                "ext_mul": "239075328"
+                "mixed_mul": "0",
+                "ext_add": "1308622790",
+                "ext_mul": "0"
               },
               "fixed_write_cost": {
                 "plain_read_bytes": "0",
                 "lazy_read_bytes": "0",
                 "materialized_read_bytes": "0",
-                "materialization_write_bytes": "11542724048",
+                "materialization_write_bytes": "18790481360",
                 "bf_add": "0",
                 "bf_mul": "0",
                 "mixed_add": "0",
@@ -9794,10 +9794,10 @@
             "problem": {
               "count": 32,
               "digest": [
-                130741216287822613,
-                1026774552898140692,
-                9817152215382421937,
-                6147282623179234939
+                13414859081362731490,
+                4651714307493696573,
+                2256774852409988738,
+                7070372881177160450
               ]
             },
             "fragment_order": [
@@ -9855,8 +9855,8 @@
             ],
             "expected_score": {
               "infeasible": false,
-              "whole_pass_dram_bytes": "80799068768",
-              "primitive_source_ops": "41741712920",
+              "whole_pass_dram_bytes": "95294583392",
+              "primitive_source_ops": "12750683672",
               "instructions": 106,
               "encoded_lanes": 219,
               "arithmetic_ops": 29
@@ -9869,33 +9869,33 @@
               "realized_source_reads": 12,
               "predicted_read_cost": {
                 "plain_read_bytes": "11878268928",
-                "lazy_read_bytes": "7650410496",
-                "materialized_read_bytes": "11878267536",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "23353883280",
                 "materialization_write_bytes": "0",
-                "bf_add": "956301312",
+                "bf_add": "637534208",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "956301312",
-                "ext_add": "3380608966",
-                "ext_mul": "239075328"
+                "mixed_mul": "0",
+                "ext_add": "1308622790",
+                "ext_mul": "0"
               },
               "realized_read_cost": {
                 "plain_read_bytes": "11878268928",
-                "lazy_read_bytes": "7650410496",
-                "materialized_read_bytes": "11878267536",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "23353883280",
                 "materialization_write_bytes": "0",
-                "bf_add": "956301312",
+                "bf_add": "637534208",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "956301312",
-                "ext_add": "3380608966",
-                "ext_mul": "239075328"
+                "mixed_mul": "0",
+                "ext_add": "1308622790",
+                "ext_mul": "0"
               },
               "fixed_write_cost": {
                 "plain_read_bytes": "0",
                 "lazy_read_bytes": "0",
                 "materialized_read_bytes": "0",
-                "materialization_write_bytes": "11542724048",
+                "materialization_write_bytes": "18790481360",
                 "bf_add": "0",
                 "bf_mul": "0",
                 "mixed_add": "0",
@@ -9924,10 +9924,10 @@
             "problem": {
               "count": 32,
               "digest": [
-                18175588634843539523,
-                1128576392522437400,
-                8823934063854960835,
-                12276773860579056511
+                11918762298658567190,
+                5772554966882682827,
+                3568396341036171606,
+                18303586963492722302
               ]
             },
             "fragment_order": [
@@ -9985,8 +9985,8 @@
             ],
             "expected_score": {
               "infeasible": false,
-              "whole_pass_dram_bytes": "80799068768",
-              "primitive_source_ops": "41741712920",
+              "whole_pass_dram_bytes": "95294583392",
+              "primitive_source_ops": "12750683672",
               "instructions": 106,
               "encoded_lanes": 219,
               "arithmetic_ops": 29
@@ -9999,33 +9999,33 @@
               "realized_source_reads": 12,
               "predicted_read_cost": {
                 "plain_read_bytes": "11878268928",
-                "lazy_read_bytes": "7650410496",
-                "materialized_read_bytes": "11878267536",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "23353883280",
                 "materialization_write_bytes": "0",
-                "bf_add": "956301312",
+                "bf_add": "637534208",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "956301312",
-                "ext_add": "3380608966",
-                "ext_mul": "239075328"
+                "mixed_mul": "0",
+                "ext_add": "1308622790",
+                "ext_mul": "0"
               },
               "realized_read_cost": {
                 "plain_read_bytes": "11878268928",
-                "lazy_read_bytes": "7650410496",
-                "materialized_read_bytes": "11878267536",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "23353883280",
                 "materialization_write_bytes": "0",
-                "bf_add": "956301312",
+                "bf_add": "637534208",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "956301312",
-                "ext_add": "3380608966",
-                "ext_mul": "239075328"
+                "mixed_mul": "0",
+                "ext_add": "1308622790",
+                "ext_mul": "0"
               },
               "fixed_write_cost": {
                 "plain_read_bytes": "0",
                 "lazy_read_bytes": "0",
                 "materialized_read_bytes": "0",
-                "materialization_write_bytes": "11542724048",
+                "materialization_write_bytes": "18790481360",
                 "bf_add": "0",
                 "bf_mul": "0",
                 "mixed_add": "0",
@@ -10054,10 +10054,10 @@
             "problem": {
               "count": 32,
               "digest": [
-                9129860567552767585,
-                1820055075424089506,
-                8371195123636353585,
-                18163969969021981185
+                11908428914483382764,
+                9473624867843354121,
+                14819103459745657556,
+                17559644236403500272
               ]
             },
             "fragment_order": [
@@ -10115,8 +10115,8 @@
             ],
             "expected_score": {
               "infeasible": false,
-              "whole_pass_dram_bytes": "80799068768",
-              "primitive_source_ops": "41741712920",
+              "whole_pass_dram_bytes": "95294583392",
+              "primitive_source_ops": "12750683672",
               "instructions": 106,
               "encoded_lanes": 219,
               "arithmetic_ops": 29
@@ -10129,33 +10129,33 @@
               "realized_source_reads": 12,
               "predicted_read_cost": {
                 "plain_read_bytes": "11878268928",
-                "lazy_read_bytes": "7650410496",
-                "materialized_read_bytes": "11878267536",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "23353883280",
                 "materialization_write_bytes": "0",
-                "bf_add": "956301312",
+                "bf_add": "637534208",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "956301312",
-                "ext_add": "3380608966",
-                "ext_mul": "239075328"
+                "mixed_mul": "0",
+                "ext_add": "1308622790",
+                "ext_mul": "0"
               },
               "realized_read_cost": {
                 "plain_read_bytes": "11878268928",
-                "lazy_read_bytes": "7650410496",
-                "materialized_read_bytes": "11878267536",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "23353883280",
                 "materialization_write_bytes": "0",
-                "bf_add": "956301312",
+                "bf_add": "637534208",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "956301312",
-                "ext_add": "3380608966",
-                "ext_mul": "239075328"
+                "mixed_mul": "0",
+                "ext_add": "1308622790",
+                "ext_mul": "0"
               },
               "fixed_write_cost": {
                 "plain_read_bytes": "0",
                 "lazy_read_bytes": "0",
                 "materialized_read_bytes": "0",
-                "materialization_write_bytes": "11542724048",
+                "materialization_write_bytes": "18790481360",
                 "bf_add": "0",
                 "bf_mul": "0",
                 "mixed_add": "0",
@@ -10184,10 +10184,10 @@
             "problem": {
               "count": 32,
               "digest": [
-                8463683562636913393,
-                9718980042103538414,
-                6024234354665610693,
-                2423164442167558507
+                12098683013065267368,
+                371446437273480837,
+                15296145250882355316,
+                10417911714739522522
               ]
             },
             "fragment_order": [
@@ -10245,8 +10245,8 @@
             ],
             "expected_score": {
               "infeasible": false,
-              "whole_pass_dram_bytes": "80799068768",
-              "primitive_source_ops": "41741712920",
+              "whole_pass_dram_bytes": "95294583392",
+              "primitive_source_ops": "12750683672",
               "instructions": 106,
               "encoded_lanes": 219,
               "arithmetic_ops": 29
@@ -10259,33 +10259,33 @@
               "realized_source_reads": 12,
               "predicted_read_cost": {
                 "plain_read_bytes": "11878268928",
-                "lazy_read_bytes": "7650410496",
-                "materialized_read_bytes": "11878267536",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "23353883280",
                 "materialization_write_bytes": "0",
-                "bf_add": "956301312",
+                "bf_add": "637534208",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "956301312",
-                "ext_add": "3380608966",
-                "ext_mul": "239075328"
+                "mixed_mul": "0",
+                "ext_add": "1308622790",
+                "ext_mul": "0"
               },
               "realized_read_cost": {
                 "plain_read_bytes": "11878268928",
-                "lazy_read_bytes": "7650410496",
-                "materialized_read_bytes": "11878267536",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "23353883280",
                 "materialization_write_bytes": "0",
-                "bf_add": "956301312",
+                "bf_add": "637534208",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "956301312",
-                "ext_add": "3380608966",
-                "ext_mul": "239075328"
+                "mixed_mul": "0",
+                "ext_add": "1308622790",
+                "ext_mul": "0"
               },
               "fixed_write_cost": {
                 "plain_read_bytes": "0",
                 "lazy_read_bytes": "0",
                 "materialized_read_bytes": "0",
-                "materialization_write_bytes": "11542724048",
+                "materialization_write_bytes": "18790481360",
                 "bf_add": "0",
                 "bf_mul": "0",
                 "mixed_add": "0",
@@ -10314,10 +10314,10 @@
             "problem": {
               "count": 32,
               "digest": [
-                1865324545962173628,
-                17892424916793753755,
-                10905587674492586376,
-                15218452062200831950
+                12850091943793695133,
+                1314762725753941208,
+                14521051869216465049,
+                264261386730631023
               ]
             },
             "fragment_order": [
@@ -10375,8 +10375,8 @@
             ],
             "expected_score": {
               "infeasible": false,
-              "whole_pass_dram_bytes": "80799068768",
-              "primitive_source_ops": "41741712920",
+              "whole_pass_dram_bytes": "95294583392",
+              "primitive_source_ops": "12750683672",
               "instructions": 106,
               "encoded_lanes": 219,
               "arithmetic_ops": 29
@@ -10389,33 +10389,33 @@
               "realized_source_reads": 12,
               "predicted_read_cost": {
                 "plain_read_bytes": "11878268928",
-                "lazy_read_bytes": "7650410496",
-                "materialized_read_bytes": "11878267536",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "23353883280",
                 "materialization_write_bytes": "0",
-                "bf_add": "956301312",
+                "bf_add": "637534208",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "956301312",
-                "ext_add": "3380608966",
-                "ext_mul": "239075328"
+                "mixed_mul": "0",
+                "ext_add": "1308622790",
+                "ext_mul": "0"
               },
               "realized_read_cost": {
                 "plain_read_bytes": "11878268928",
-                "lazy_read_bytes": "7650410496",
-                "materialized_read_bytes": "11878267536",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "23353883280",
                 "materialization_write_bytes": "0",
-                "bf_add": "956301312",
+                "bf_add": "637534208",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "956301312",
-                "ext_add": "3380608966",
-                "ext_mul": "239075328"
+                "mixed_mul": "0",
+                "ext_add": "1308622790",
+                "ext_mul": "0"
               },
               "fixed_write_cost": {
                 "plain_read_bytes": "0",
                 "lazy_read_bytes": "0",
                 "materialized_read_bytes": "0",
-                "materialization_write_bytes": "11542724048",
+                "materialization_write_bytes": "18790481360",
                 "bf_add": "0",
                 "bf_mul": "0",
                 "mixed_add": "0",
@@ -10444,10 +10444,10 @@
             "problem": {
               "count": 32,
               "digest": [
-                4741479670208564306,
-                1249322751329431445,
-                8587560058024823866,
-                8415259900417071822
+                3053045552929770179,
+                6327393001725977346,
+                18118962546666157331,
+                9319352074295973839
               ]
             },
             "fragment_order": [
@@ -10505,8 +10505,8 @@
             ],
             "expected_score": {
               "infeasible": false,
-              "whole_pass_dram_bytes": "80799068768",
-              "primitive_source_ops": "41741712920",
+              "whole_pass_dram_bytes": "95294583392",
+              "primitive_source_ops": "12750683672",
               "instructions": 106,
               "encoded_lanes": 219,
               "arithmetic_ops": 29
@@ -10519,33 +10519,33 @@
               "realized_source_reads": 12,
               "predicted_read_cost": {
                 "plain_read_bytes": "11878268928",
-                "lazy_read_bytes": "7650410496",
-                "materialized_read_bytes": "11878267536",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "23353883280",
                 "materialization_write_bytes": "0",
-                "bf_add": "956301312",
+                "bf_add": "637534208",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "956301312",
-                "ext_add": "3380608966",
-                "ext_mul": "239075328"
+                "mixed_mul": "0",
+                "ext_add": "1308622790",
+                "ext_mul": "0"
               },
               "realized_read_cost": {
                 "plain_read_bytes": "11878268928",
-                "lazy_read_bytes": "7650410496",
-                "materialized_read_bytes": "11878267536",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "23353883280",
                 "materialization_write_bytes": "0",
-                "bf_add": "956301312",
+                "bf_add": "637534208",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "956301312",
-                "ext_add": "3380608966",
-                "ext_mul": "239075328"
+                "mixed_mul": "0",
+                "ext_add": "1308622790",
+                "ext_mul": "0"
               },
               "fixed_write_cost": {
                 "plain_read_bytes": "0",
                 "lazy_read_bytes": "0",
                 "materialized_read_bytes": "0",
-                "materialization_write_bytes": "11542724048",
+                "materialization_write_bytes": "18790481360",
                 "bf_add": "0",
                 "bf_mul": "0",
                 "mixed_add": "0",
@@ -10574,10 +10574,10 @@
             "problem": {
               "count": 32,
               "digest": [
-                14692637260735000411,
-                11600880218794168290,
-                4774192129374699255,
-                16163618334057788289
+                4697887188324407132,
+                14200733991806813499,
+                5784151438045419612,
+                7045941113424286648
               ]
             },
             "fragment_order": [
@@ -10635,8 +10635,8 @@
             ],
             "expected_score": {
               "infeasible": false,
-              "whole_pass_dram_bytes": "80799068768",
-              "primitive_source_ops": "41741712920",
+              "whole_pass_dram_bytes": "95294583392",
+              "primitive_source_ops": "12750683672",
               "instructions": 106,
               "encoded_lanes": 219,
               "arithmetic_ops": 29
@@ -10649,33 +10649,33 @@
               "realized_source_reads": 12,
               "predicted_read_cost": {
                 "plain_read_bytes": "11878268928",
-                "lazy_read_bytes": "7650410496",
-                "materialized_read_bytes": "11878267536",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "23353883280",
                 "materialization_write_bytes": "0",
-                "bf_add": "956301312",
+                "bf_add": "637534208",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "956301312",
-                "ext_add": "3380608966",
-                "ext_mul": "239075328"
+                "mixed_mul": "0",
+                "ext_add": "1308622790",
+                "ext_mul": "0"
               },
               "realized_read_cost": {
                 "plain_read_bytes": "11878268928",
-                "lazy_read_bytes": "7650410496",
-                "materialized_read_bytes": "11878267536",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "23353883280",
                 "materialization_write_bytes": "0",
-                "bf_add": "956301312",
+                "bf_add": "637534208",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "956301312",
-                "ext_add": "3380608966",
-                "ext_mul": "239075328"
+                "mixed_mul": "0",
+                "ext_add": "1308622790",
+                "ext_mul": "0"
               },
               "fixed_write_cost": {
                 "plain_read_bytes": "0",
                 "lazy_read_bytes": "0",
                 "materialized_read_bytes": "0",
-                "materialization_write_bytes": "11542724048",
+                "materialization_write_bytes": "18790481360",
                 "bf_add": "0",
                 "bf_mul": "0",
                 "mixed_add": "0",
@@ -10704,10 +10704,10 @@
             "problem": {
               "count": 32,
               "digest": [
-                8758050999803088949,
-                9163408459843579098,
-                8633456623218686877,
-                9287591110972623729
+                11752155398352343040,
+                2456491174820990441,
+                1017073293270029656,
+                534998688331582512
               ]
             },
             "fragment_order": [
@@ -10765,8 +10765,8 @@
             ],
             "expected_score": {
               "infeasible": false,
-              "whole_pass_dram_bytes": "80799068768",
-              "primitive_source_ops": "41741712920",
+              "whole_pass_dram_bytes": "95294583392",
+              "primitive_source_ops": "12750683672",
               "instructions": 106,
               "encoded_lanes": 219,
               "arithmetic_ops": 29
@@ -10779,33 +10779,33 @@
               "realized_source_reads": 12,
               "predicted_read_cost": {
                 "plain_read_bytes": "11878268928",
-                "lazy_read_bytes": "7650410496",
-                "materialized_read_bytes": "11878267536",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "23353883280",
                 "materialization_write_bytes": "0",
-                "bf_add": "956301312",
+                "bf_add": "637534208",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "956301312",
-                "ext_add": "3380608966",
-                "ext_mul": "239075328"
+                "mixed_mul": "0",
+                "ext_add": "1308622790",
+                "ext_mul": "0"
               },
               "realized_read_cost": {
                 "plain_read_bytes": "11878268928",
-                "lazy_read_bytes": "7650410496",
-                "materialized_read_bytes": "11878267536",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "23353883280",
                 "materialization_write_bytes": "0",
-                "bf_add": "956301312",
+                "bf_add": "637534208",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "956301312",
-                "ext_add": "3380608966",
-                "ext_mul": "239075328"
+                "mixed_mul": "0",
+                "ext_add": "1308622790",
+                "ext_mul": "0"
               },
               "fixed_write_cost": {
                 "plain_read_bytes": "0",
                 "lazy_read_bytes": "0",
                 "materialized_read_bytes": "0",
-                "materialization_write_bytes": "11542724048",
+                "materialization_write_bytes": "18790481360",
                 "bf_add": "0",
                 "bf_mul": "0",
                 "mixed_add": "0",
@@ -10834,10 +10834,10 @@
             "problem": {
               "count": 32,
               "digest": [
-                13692982339352826580,
-                17423756210992175067,
-                2012327204985910604,
-                5809846256921621856
+                7439499580170436665,
+                13200618017816751024,
+                2833723864524886689,
+                6776797934658239345
               ]
             },
             "fragment_order": [
@@ -10895,8 +10895,8 @@
             ],
             "expected_score": {
               "infeasible": false,
-              "whole_pass_dram_bytes": "80799068768",
-              "primitive_source_ops": "41741712920",
+              "whole_pass_dram_bytes": "95294583392",
+              "primitive_source_ops": "12750683672",
               "instructions": 106,
               "encoded_lanes": 219,
               "arithmetic_ops": 29
@@ -10909,33 +10909,33 @@
               "realized_source_reads": 12,
               "predicted_read_cost": {
                 "plain_read_bytes": "11878268928",
-                "lazy_read_bytes": "7650410496",
-                "materialized_read_bytes": "11878267536",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "23353883280",
                 "materialization_write_bytes": "0",
-                "bf_add": "956301312",
+                "bf_add": "637534208",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "956301312",
-                "ext_add": "3380608966",
-                "ext_mul": "239075328"
+                "mixed_mul": "0",
+                "ext_add": "1308622790",
+                "ext_mul": "0"
               },
               "realized_read_cost": {
                 "plain_read_bytes": "11878268928",
-                "lazy_read_bytes": "7650410496",
-                "materialized_read_bytes": "11878267536",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "23353883280",
                 "materialization_write_bytes": "0",
-                "bf_add": "956301312",
+                "bf_add": "637534208",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "956301312",
-                "ext_add": "3380608966",
-                "ext_mul": "239075328"
+                "mixed_mul": "0",
+                "ext_add": "1308622790",
+                "ext_mul": "0"
               },
               "fixed_write_cost": {
                 "plain_read_bytes": "0",
                 "lazy_read_bytes": "0",
                 "materialized_read_bytes": "0",
-                "materialization_write_bytes": "11542724048",
+                "materialization_write_bytes": "18790481360",
                 "bf_add": "0",
                 "bf_mul": "0",
                 "mixed_add": "0",
@@ -10964,10 +10964,10 @@
             "problem": {
               "count": 32,
               "digest": [
-                14596567309569970855,
-                5903680977379637660,
-                13804065356576503007,
-                5380748132871946491
+                17681420132088854758,
+                6856577472232227811,
+                11296010773702157142,
+                17134701039876792938
               ]
             },
             "fragment_order": [
@@ -11025,8 +11025,8 @@
             ],
             "expected_score": {
               "infeasible": false,
-              "whole_pass_dram_bytes": "80799068768",
-              "primitive_source_ops": "41741712920",
+              "whole_pass_dram_bytes": "95294583392",
+              "primitive_source_ops": "12750683672",
               "instructions": 106,
               "encoded_lanes": 219,
               "arithmetic_ops": 29
@@ -11039,33 +11039,33 @@
               "realized_source_reads": 12,
               "predicted_read_cost": {
                 "plain_read_bytes": "11878268928",
-                "lazy_read_bytes": "7650410496",
-                "materialized_read_bytes": "11878267536",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "23353883280",
                 "materialization_write_bytes": "0",
-                "bf_add": "956301312",
+                "bf_add": "637534208",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "956301312",
-                "ext_add": "3380608966",
-                "ext_mul": "239075328"
+                "mixed_mul": "0",
+                "ext_add": "1308622790",
+                "ext_mul": "0"
               },
               "realized_read_cost": {
                 "plain_read_bytes": "11878268928",
-                "lazy_read_bytes": "7650410496",
-                "materialized_read_bytes": "11878267536",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "23353883280",
                 "materialization_write_bytes": "0",
-                "bf_add": "956301312",
+                "bf_add": "637534208",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "956301312",
-                "ext_add": "3380608966",
-                "ext_mul": "239075328"
+                "mixed_mul": "0",
+                "ext_add": "1308622790",
+                "ext_mul": "0"
               },
               "fixed_write_cost": {
                 "plain_read_bytes": "0",
                 "lazy_read_bytes": "0",
                 "materialized_read_bytes": "0",
-                "materialization_write_bytes": "11542724048",
+                "materialization_write_bytes": "18790481360",
                 "bf_add": "0",
                 "bf_mul": "0",
                 "mixed_add": "0",
@@ -12590,10 +12590,10 @@
             "problem": {
               "count": 13,
               "digest": [
-                3165024504197043921,
-                14223303853045662502,
-                6964263852154913533,
-                17728217081609151307
+                9911992080706750525,
+                6795179352442890214,
+                577502359549844733,
+                164096947325713537
               ]
             },
             "fragment_order": [
@@ -12620,8 +12620,8 @@
             ],
             "expected_score": {
               "infeasible": false,
-              "whole_pass_dram_bytes": "44291848752",
-              "primitive_source_ops": "11207180080",
+              "whole_pass_dram_bytes": "46305114672",
+              "primitive_source_ops": "6375341872",
               "instructions": 48,
               "encoded_lanes": 101,
               "arithmetic_ops": 15
@@ -12634,33 +12634,33 @@
               "realized_source_reads": 5,
               "predicted_read_cost": {
                 "plain_read_bytes": "6845104128",
-                "lazy_read_bytes": "805306368",
-                "materialized_read_bytes": "6845103648",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "8053063200",
                 "materialization_write_bytes": "0",
-                "bf_add": "100663296",
+                "bf_add": "67108864",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "100663296",
-                "ext_add": "822083564",
-                "ext_mul": "25165824"
+                "mixed_mul": "0",
+                "ext_add": "603979756",
+                "ext_mul": "0"
               },
               "realized_read_cost": {
                 "plain_read_bytes": "6845104128",
-                "lazy_read_bytes": "805306368",
-                "materialized_read_bytes": "6845103648",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "8053063200",
                 "materialization_write_bytes": "0",
-                "bf_add": "100663296",
+                "bf_add": "67108864",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "100663296",
-                "ext_add": "822083564",
-                "ext_mul": "25165824"
+                "mixed_mul": "0",
+                "ext_add": "603979756",
+                "ext_mul": "0"
               },
               "fixed_write_cost": {
                 "plain_read_bytes": "0",
                 "lazy_read_bytes": "0",
                 "materialized_read_bytes": "0",
-                "materialization_write_bytes": "7247757072",
+                "materialization_write_bytes": "8053063440",
                 "bf_add": "0",
                 "bf_mul": "0",
                 "mixed_add": "0",
@@ -12689,10 +12689,10 @@
             "problem": {
               "count": 13,
               "digest": [
-                11646468868020776362,
-                8086947104611367015,
-                12950547941594022430,
-                7683797742059815768
+                14778610287803992386,
+                9732455464319405195,
+                2775206484955817018,
+                11358030058915694898
               ]
             },
             "fragment_order": [
@@ -12719,8 +12719,8 @@
             ],
             "expected_score": {
               "infeasible": false,
-              "whole_pass_dram_bytes": "44291848752",
-              "primitive_source_ops": "11207180080",
+              "whole_pass_dram_bytes": "46305114672",
+              "primitive_source_ops": "6375341872",
               "instructions": 48,
               "encoded_lanes": 101,
               "arithmetic_ops": 15
@@ -12733,33 +12733,33 @@
               "realized_source_reads": 5,
               "predicted_read_cost": {
                 "plain_read_bytes": "6845104128",
-                "lazy_read_bytes": "805306368",
-                "materialized_read_bytes": "6845103648",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "8053063200",
                 "materialization_write_bytes": "0",
-                "bf_add": "100663296",
+                "bf_add": "67108864",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "100663296",
-                "ext_add": "822083564",
-                "ext_mul": "25165824"
+                "mixed_mul": "0",
+                "ext_add": "603979756",
+                "ext_mul": "0"
               },
               "realized_read_cost": {
                 "plain_read_bytes": "6845104128",
-                "lazy_read_bytes": "805306368",
-                "materialized_read_bytes": "6845103648",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "8053063200",
                 "materialization_write_bytes": "0",
-                "bf_add": "100663296",
+                "bf_add": "67108864",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "100663296",
-                "ext_add": "822083564",
-                "ext_mul": "25165824"
+                "mixed_mul": "0",
+                "ext_add": "603979756",
+                "ext_mul": "0"
               },
               "fixed_write_cost": {
                 "plain_read_bytes": "0",
                 "lazy_read_bytes": "0",
                 "materialized_read_bytes": "0",
-                "materialization_write_bytes": "7247757072",
+                "materialization_write_bytes": "8053063440",
                 "bf_add": "0",
                 "bf_mul": "0",
                 "mixed_add": "0",
@@ -12788,10 +12788,10 @@
             "problem": {
               "count": 13,
               "digest": [
-                9012898704118785410,
-                2094721398075012155,
-                632167616375204454,
-                2722998489443282220
+                803271302802134788,
+                10084206258562787557,
+                10374573337757002912,
+                10573933915553172782
               ]
             },
             "fragment_order": [
@@ -12818,8 +12818,8 @@
             ],
             "expected_score": {
               "infeasible": false,
-              "whole_pass_dram_bytes": "44291848752",
-              "primitive_source_ops": "11207180080",
+              "whole_pass_dram_bytes": "46305114672",
+              "primitive_source_ops": "6375341872",
               "instructions": 48,
               "encoded_lanes": 101,
               "arithmetic_ops": 15
@@ -12832,33 +12832,33 @@
               "realized_source_reads": 5,
               "predicted_read_cost": {
                 "plain_read_bytes": "6845104128",
-                "lazy_read_bytes": "805306368",
-                "materialized_read_bytes": "6845103648",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "8053063200",
                 "materialization_write_bytes": "0",
-                "bf_add": "100663296",
+                "bf_add": "67108864",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "100663296",
-                "ext_add": "822083564",
-                "ext_mul": "25165824"
+                "mixed_mul": "0",
+                "ext_add": "603979756",
+                "ext_mul": "0"
               },
               "realized_read_cost": {
                 "plain_read_bytes": "6845104128",
-                "lazy_read_bytes": "805306368",
-                "materialized_read_bytes": "6845103648",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "8053063200",
                 "materialization_write_bytes": "0",
-                "bf_add": "100663296",
+                "bf_add": "67108864",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "100663296",
-                "ext_add": "822083564",
-                "ext_mul": "25165824"
+                "mixed_mul": "0",
+                "ext_add": "603979756",
+                "ext_mul": "0"
               },
               "fixed_write_cost": {
                 "plain_read_bytes": "0",
                 "lazy_read_bytes": "0",
                 "materialized_read_bytes": "0",
-                "materialization_write_bytes": "7247757072",
+                "materialization_write_bytes": "8053063440",
                 "bf_add": "0",
                 "bf_mul": "0",
                 "mixed_add": "0",
@@ -12887,10 +12887,10 @@
             "problem": {
               "count": 13,
               "digest": [
-                17907076160139815507,
-                6477464196638731744,
-                1748976049220083227,
-                11209298497978756319
+                6017061118321837945,
+                14524148411574286806,
+                9990299814750413713,
+                5628268261174981325
               ]
             },
             "fragment_order": [
@@ -12917,8 +12917,8 @@
             ],
             "expected_score": {
               "infeasible": false,
-              "whole_pass_dram_bytes": "44291848752",
-              "primitive_source_ops": "11207180080",
+              "whole_pass_dram_bytes": "46305114672",
+              "primitive_source_ops": "6375341872",
               "instructions": 48,
               "encoded_lanes": 101,
               "arithmetic_ops": 15
@@ -12931,33 +12931,33 @@
               "realized_source_reads": 5,
               "predicted_read_cost": {
                 "plain_read_bytes": "6845104128",
-                "lazy_read_bytes": "805306368",
-                "materialized_read_bytes": "6845103648",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "8053063200",
                 "materialization_write_bytes": "0",
-                "bf_add": "100663296",
+                "bf_add": "67108864",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "100663296",
-                "ext_add": "822083564",
-                "ext_mul": "25165824"
+                "mixed_mul": "0",
+                "ext_add": "603979756",
+                "ext_mul": "0"
               },
               "realized_read_cost": {
                 "plain_read_bytes": "6845104128",
-                "lazy_read_bytes": "805306368",
-                "materialized_read_bytes": "6845103648",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "8053063200",
                 "materialization_write_bytes": "0",
-                "bf_add": "100663296",
+                "bf_add": "67108864",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "100663296",
-                "ext_add": "822083564",
-                "ext_mul": "25165824"
+                "mixed_mul": "0",
+                "ext_add": "603979756",
+                "ext_mul": "0"
               },
               "fixed_write_cost": {
                 "plain_read_bytes": "0",
                 "lazy_read_bytes": "0",
                 "materialized_read_bytes": "0",
-                "materialization_write_bytes": "7247757072",
+                "materialization_write_bytes": "8053063440",
                 "bf_add": "0",
                 "bf_mul": "0",
                 "mixed_add": "0",
@@ -12986,10 +12986,10 @@
             "problem": {
               "count": 13,
               "digest": [
-                658673991875103731,
-                9735152398737807154,
-                5650124440618282207,
-                4320083085637919605
+                16609873071135339493,
+                4724842288833318684,
+                17992934516104490625,
+                10143343733752976295
               ]
             },
             "fragment_order": [
@@ -13016,8 +13016,8 @@
             ],
             "expected_score": {
               "infeasible": false,
-              "whole_pass_dram_bytes": "44291848752",
-              "primitive_source_ops": "11207180080",
+              "whole_pass_dram_bytes": "46305114672",
+              "primitive_source_ops": "6375341872",
               "instructions": 48,
               "encoded_lanes": 101,
               "arithmetic_ops": 15
@@ -13030,33 +13030,33 @@
               "realized_source_reads": 5,
               "predicted_read_cost": {
                 "plain_read_bytes": "6845104128",
-                "lazy_read_bytes": "805306368",
-                "materialized_read_bytes": "6845103648",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "8053063200",
                 "materialization_write_bytes": "0",
-                "bf_add": "100663296",
+                "bf_add": "67108864",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "100663296",
-                "ext_add": "822083564",
-                "ext_mul": "25165824"
+                "mixed_mul": "0",
+                "ext_add": "603979756",
+                "ext_mul": "0"
               },
               "realized_read_cost": {
                 "plain_read_bytes": "6845104128",
-                "lazy_read_bytes": "805306368",
-                "materialized_read_bytes": "6845103648",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "8053063200",
                 "materialization_write_bytes": "0",
-                "bf_add": "100663296",
+                "bf_add": "67108864",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "100663296",
-                "ext_add": "822083564",
-                "ext_mul": "25165824"
+                "mixed_mul": "0",
+                "ext_add": "603979756",
+                "ext_mul": "0"
               },
               "fixed_write_cost": {
                 "plain_read_bytes": "0",
                 "lazy_read_bytes": "0",
                 "materialized_read_bytes": "0",
-                "materialization_write_bytes": "7247757072",
+                "materialization_write_bytes": "8053063440",
                 "bf_add": "0",
                 "bf_mul": "0",
                 "mixed_add": "0",
@@ -13085,10 +13085,10 @@
             "problem": {
               "count": 13,
               "digest": [
-                8211862083310393021,
-                4517950617039202930,
-                18200440723603639333,
-                122181775172692397
+                14496850897389188707,
+                14804450050096928712,
+                16415433224904972787,
+                17695677829796968335
               ]
             },
             "fragment_order": [
@@ -13115,8 +13115,8 @@
             ],
             "expected_score": {
               "infeasible": false,
-              "whole_pass_dram_bytes": "44291848752",
-              "primitive_source_ops": "11207180080",
+              "whole_pass_dram_bytes": "46305114672",
+              "primitive_source_ops": "6375341872",
               "instructions": 48,
               "encoded_lanes": 101,
               "arithmetic_ops": 15
@@ -13129,33 +13129,33 @@
               "realized_source_reads": 5,
               "predicted_read_cost": {
                 "plain_read_bytes": "6845104128",
-                "lazy_read_bytes": "805306368",
-                "materialized_read_bytes": "6845103648",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "8053063200",
                 "materialization_write_bytes": "0",
-                "bf_add": "100663296",
+                "bf_add": "67108864",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "100663296",
-                "ext_add": "822083564",
-                "ext_mul": "25165824"
+                "mixed_mul": "0",
+                "ext_add": "603979756",
+                "ext_mul": "0"
               },
               "realized_read_cost": {
                 "plain_read_bytes": "6845104128",
-                "lazy_read_bytes": "805306368",
-                "materialized_read_bytes": "6845103648",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "8053063200",
                 "materialization_write_bytes": "0",
-                "bf_add": "100663296",
+                "bf_add": "67108864",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "100663296",
-                "ext_add": "822083564",
-                "ext_mul": "25165824"
+                "mixed_mul": "0",
+                "ext_add": "603979756",
+                "ext_mul": "0"
               },
               "fixed_write_cost": {
                 "plain_read_bytes": "0",
                 "lazy_read_bytes": "0",
                 "materialized_read_bytes": "0",
-                "materialization_write_bytes": "7247757072",
+                "materialization_write_bytes": "8053063440",
                 "bf_add": "0",
                 "bf_mul": "0",
                 "mixed_add": "0",
@@ -13184,10 +13184,10 @@
             "problem": {
               "count": 13,
               "digest": [
-                9255555823097010527,
-                4664355334783698254,
-                15300958860981415531,
-                3782174914789603217
+                17206437281699022317,
+                8414522026621935444,
+                15678742333771383817,
+                2786961700468708003
               ]
             },
             "fragment_order": [
@@ -13214,8 +13214,8 @@
             ],
             "expected_score": {
               "infeasible": false,
-              "whole_pass_dram_bytes": "44291848752",
-              "primitive_source_ops": "11207180080",
+              "whole_pass_dram_bytes": "46305114672",
+              "primitive_source_ops": "6375341872",
               "instructions": 48,
               "encoded_lanes": 101,
               "arithmetic_ops": 15
@@ -13228,33 +13228,33 @@
               "realized_source_reads": 5,
               "predicted_read_cost": {
                 "plain_read_bytes": "6845104128",
-                "lazy_read_bytes": "805306368",
-                "materialized_read_bytes": "6845103648",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "8053063200",
                 "materialization_write_bytes": "0",
-                "bf_add": "100663296",
+                "bf_add": "67108864",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "100663296",
-                "ext_add": "822083564",
-                "ext_mul": "25165824"
+                "mixed_mul": "0",
+                "ext_add": "603979756",
+                "ext_mul": "0"
               },
               "realized_read_cost": {
                 "plain_read_bytes": "6845104128",
-                "lazy_read_bytes": "805306368",
-                "materialized_read_bytes": "6845103648",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "8053063200",
                 "materialization_write_bytes": "0",
-                "bf_add": "100663296",
+                "bf_add": "67108864",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "100663296",
-                "ext_add": "822083564",
-                "ext_mul": "25165824"
+                "mixed_mul": "0",
+                "ext_add": "603979756",
+                "ext_mul": "0"
               },
               "fixed_write_cost": {
                 "plain_read_bytes": "0",
                 "lazy_read_bytes": "0",
                 "materialized_read_bytes": "0",
-                "materialization_write_bytes": "7247757072",
+                "materialization_write_bytes": "8053063440",
                 "bf_add": "0",
                 "bf_mul": "0",
                 "mixed_add": "0",
@@ -13283,10 +13283,10 @@
             "problem": {
               "count": 13,
               "digest": [
-                18255062202083547872,
-                11141568676305461533,
-                7480939184658389512,
-                10848603485030623836
+                3580592315269753950,
+                5972905364905798931,
+                15722634208449919598,
+                2933947478115003582
               ]
             },
             "fragment_order": [
@@ -13313,8 +13313,8 @@
             ],
             "expected_score": {
               "infeasible": false,
-              "whole_pass_dram_bytes": "44291848752",
-              "primitive_source_ops": "11207180080",
+              "whole_pass_dram_bytes": "46305114672",
+              "primitive_source_ops": "6375341872",
               "instructions": 48,
               "encoded_lanes": 101,
               "arithmetic_ops": 15
@@ -13327,33 +13327,33 @@
               "realized_source_reads": 5,
               "predicted_read_cost": {
                 "plain_read_bytes": "6845104128",
-                "lazy_read_bytes": "805306368",
-                "materialized_read_bytes": "6845103648",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "8053063200",
                 "materialization_write_bytes": "0",
-                "bf_add": "100663296",
+                "bf_add": "67108864",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "100663296",
-                "ext_add": "822083564",
-                "ext_mul": "25165824"
+                "mixed_mul": "0",
+                "ext_add": "603979756",
+                "ext_mul": "0"
               },
               "realized_read_cost": {
                 "plain_read_bytes": "6845104128",
-                "lazy_read_bytes": "805306368",
-                "materialized_read_bytes": "6845103648",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "8053063200",
                 "materialization_write_bytes": "0",
-                "bf_add": "100663296",
+                "bf_add": "67108864",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "100663296",
-                "ext_add": "822083564",
-                "ext_mul": "25165824"
+                "mixed_mul": "0",
+                "ext_add": "603979756",
+                "ext_mul": "0"
               },
               "fixed_write_cost": {
                 "plain_read_bytes": "0",
                 "lazy_read_bytes": "0",
                 "materialized_read_bytes": "0",
-                "materialization_write_bytes": "7247757072",
+                "materialization_write_bytes": "8053063440",
                 "bf_add": "0",
                 "bf_mul": "0",
                 "mixed_add": "0",
@@ -13382,10 +13382,10 @@
             "problem": {
               "count": 13,
               "digest": [
-                15614773989390825002,
-                11609964495628100607,
-                6822694502985354222,
-                14095540852994772444
+                16706495493413902580,
+                11185642533171408129,
+                7426070624289584880,
+                12689970860761061950
               ]
             },
             "fragment_order": [
@@ -13412,8 +13412,8 @@
             ],
             "expected_score": {
               "infeasible": false,
-              "whole_pass_dram_bytes": "44291848752",
-              "primitive_source_ops": "11207180080",
+              "whole_pass_dram_bytes": "46305114672",
+              "primitive_source_ops": "6375341872",
               "instructions": 48,
               "encoded_lanes": 101,
               "arithmetic_ops": 15
@@ -13426,33 +13426,33 @@
               "realized_source_reads": 5,
               "predicted_read_cost": {
                 "plain_read_bytes": "6845104128",
-                "lazy_read_bytes": "805306368",
-                "materialized_read_bytes": "6845103648",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "8053063200",
                 "materialization_write_bytes": "0",
-                "bf_add": "100663296",
+                "bf_add": "67108864",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "100663296",
-                "ext_add": "822083564",
-                "ext_mul": "25165824"
+                "mixed_mul": "0",
+                "ext_add": "603979756",
+                "ext_mul": "0"
               },
               "realized_read_cost": {
                 "plain_read_bytes": "6845104128",
-                "lazy_read_bytes": "805306368",
-                "materialized_read_bytes": "6845103648",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "8053063200",
                 "materialization_write_bytes": "0",
-                "bf_add": "100663296",
+                "bf_add": "67108864",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "100663296",
-                "ext_add": "822083564",
-                "ext_mul": "25165824"
+                "mixed_mul": "0",
+                "ext_add": "603979756",
+                "ext_mul": "0"
               },
               "fixed_write_cost": {
                 "plain_read_bytes": "0",
                 "lazy_read_bytes": "0",
                 "materialized_read_bytes": "0",
-                "materialization_write_bytes": "7247757072",
+                "materialization_write_bytes": "8053063440",
                 "bf_add": "0",
                 "bf_mul": "0",
                 "mixed_add": "0",
@@ -13481,10 +13481,10 @@
             "problem": {
               "count": 13,
               "digest": [
-                5638068608220564809,
-                7608491831021302878,
-                8864960811301987209,
-                11229808271080580953
+                12169958965599193355,
+                6630671312522579408,
+                8687510148327338827,
+                500636251389055611
               ]
             },
             "fragment_order": [
@@ -13511,8 +13511,8 @@
             ],
             "expected_score": {
               "infeasible": false,
-              "whole_pass_dram_bytes": "44291848752",
-              "primitive_source_ops": "11207180080",
+              "whole_pass_dram_bytes": "46305114672",
+              "primitive_source_ops": "6375341872",
               "instructions": 48,
               "encoded_lanes": 101,
               "arithmetic_ops": 15
@@ -13525,33 +13525,33 @@
               "realized_source_reads": 5,
               "predicted_read_cost": {
                 "plain_read_bytes": "6845104128",
-                "lazy_read_bytes": "805306368",
-                "materialized_read_bytes": "6845103648",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "8053063200",
                 "materialization_write_bytes": "0",
-                "bf_add": "100663296",
+                "bf_add": "67108864",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "100663296",
-                "ext_add": "822083564",
-                "ext_mul": "25165824"
+                "mixed_mul": "0",
+                "ext_add": "603979756",
+                "ext_mul": "0"
               },
               "realized_read_cost": {
                 "plain_read_bytes": "6845104128",
-                "lazy_read_bytes": "805306368",
-                "materialized_read_bytes": "6845103648",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "8053063200",
                 "materialization_write_bytes": "0",
-                "bf_add": "100663296",
+                "bf_add": "67108864",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "100663296",
-                "ext_add": "822083564",
-                "ext_mul": "25165824"
+                "mixed_mul": "0",
+                "ext_add": "603979756",
+                "ext_mul": "0"
               },
               "fixed_write_cost": {
                 "plain_read_bytes": "0",
                 "lazy_read_bytes": "0",
                 "materialized_read_bytes": "0",
-                "materialization_write_bytes": "7247757072",
+                "materialization_write_bytes": "8053063440",
                 "bf_add": "0",
                 "bf_mul": "0",
                 "mixed_add": "0",
@@ -13580,10 +13580,10 @@
             "problem": {
               "count": 13,
               "digest": [
-                5673585280840836885,
-                10804223872947245674,
-                13213835247091474901,
-                4173426509336174069
+                1002149362016170911,
+                4045590692190987492,
+                9069754748995770703,
+                4592892204223857527
               ]
             },
             "fragment_order": [
@@ -13610,8 +13610,8 @@
             ],
             "expected_score": {
               "infeasible": false,
-              "whole_pass_dram_bytes": "44291848752",
-              "primitive_source_ops": "11207180080",
+              "whole_pass_dram_bytes": "46305114672",
+              "primitive_source_ops": "6375341872",
               "instructions": 48,
               "encoded_lanes": 101,
               "arithmetic_ops": 15
@@ -13624,33 +13624,33 @@
               "realized_source_reads": 5,
               "predicted_read_cost": {
                 "plain_read_bytes": "6845104128",
-                "lazy_read_bytes": "805306368",
-                "materialized_read_bytes": "6845103648",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "8053063200",
                 "materialization_write_bytes": "0",
-                "bf_add": "100663296",
+                "bf_add": "67108864",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "100663296",
-                "ext_add": "822083564",
-                "ext_mul": "25165824"
+                "mixed_mul": "0",
+                "ext_add": "603979756",
+                "ext_mul": "0"
               },
               "realized_read_cost": {
                 "plain_read_bytes": "6845104128",
-                "lazy_read_bytes": "805306368",
-                "materialized_read_bytes": "6845103648",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "8053063200",
                 "materialization_write_bytes": "0",
-                "bf_add": "100663296",
+                "bf_add": "67108864",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "100663296",
-                "ext_add": "822083564",
-                "ext_mul": "25165824"
+                "mixed_mul": "0",
+                "ext_add": "603979756",
+                "ext_mul": "0"
               },
               "fixed_write_cost": {
                 "plain_read_bytes": "0",
                 "lazy_read_bytes": "0",
                 "materialized_read_bytes": "0",
-                "materialization_write_bytes": "7247757072",
+                "materialization_write_bytes": "8053063440",
                 "bf_add": "0",
                 "bf_mul": "0",
                 "mixed_add": "0",
@@ -13679,10 +13679,10 @@
             "problem": {
               "count": 13,
               "digest": [
-                11339668825976304985,
-                1341910854219946190,
-                15189741456445330041,
-                1482057935389467357
+                27046306556501303,
+                14188912062462454020,
+                5303553125697046631,
+                10838999579018198431
               ]
             },
             "fragment_order": [
@@ -13709,8 +13709,8 @@
             ],
             "expected_score": {
               "infeasible": false,
-              "whole_pass_dram_bytes": "44291848752",
-              "primitive_source_ops": "11207180080",
+              "whole_pass_dram_bytes": "46305114672",
+              "primitive_source_ops": "6375341872",
               "instructions": 48,
               "encoded_lanes": 101,
               "arithmetic_ops": 15
@@ -13723,33 +13723,33 @@
               "realized_source_reads": 5,
               "predicted_read_cost": {
                 "plain_read_bytes": "6845104128",
-                "lazy_read_bytes": "805306368",
-                "materialized_read_bytes": "6845103648",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "8053063200",
                 "materialization_write_bytes": "0",
-                "bf_add": "100663296",
+                "bf_add": "67108864",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "100663296",
-                "ext_add": "822083564",
-                "ext_mul": "25165824"
+                "mixed_mul": "0",
+                "ext_add": "603979756",
+                "ext_mul": "0"
               },
               "realized_read_cost": {
                 "plain_read_bytes": "6845104128",
-                "lazy_read_bytes": "805306368",
-                "materialized_read_bytes": "6845103648",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "8053063200",
                 "materialization_write_bytes": "0",
-                "bf_add": "100663296",
+                "bf_add": "67108864",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "100663296",
-                "ext_add": "822083564",
-                "ext_mul": "25165824"
+                "mixed_mul": "0",
+                "ext_add": "603979756",
+                "ext_mul": "0"
               },
               "fixed_write_cost": {
                 "plain_read_bytes": "0",
                 "lazy_read_bytes": "0",
                 "materialized_read_bytes": "0",
-                "materialization_write_bytes": "7247757072",
+                "materialization_write_bytes": "8053063440",
                 "bf_add": "0",
                 "bf_mul": "0",
                 "mixed_add": "0",
@@ -13778,10 +13778,10 @@
             "problem": {
               "count": 13,
               "digest": [
-                3998861184820158880,
-                7814408725287779701,
-                12988810947388126076,
-                10842048433121531198
+                15398126115424893942,
+                7579861525030270203,
+                12072927181556850850,
+                15717061022261842556
               ]
             },
             "fragment_order": [
@@ -13808,8 +13808,8 @@
             ],
             "expected_score": {
               "infeasible": false,
-              "whole_pass_dram_bytes": "44291848752",
-              "primitive_source_ops": "11207180080",
+              "whole_pass_dram_bytes": "46305114672",
+              "primitive_source_ops": "6375341872",
               "instructions": 48,
               "encoded_lanes": 101,
               "arithmetic_ops": 15
@@ -13822,33 +13822,33 @@
               "realized_source_reads": 5,
               "predicted_read_cost": {
                 "plain_read_bytes": "6845104128",
-                "lazy_read_bytes": "805306368",
-                "materialized_read_bytes": "6845103648",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "8053063200",
                 "materialization_write_bytes": "0",
-                "bf_add": "100663296",
+                "bf_add": "67108864",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "100663296",
-                "ext_add": "822083564",
-                "ext_mul": "25165824"
+                "mixed_mul": "0",
+                "ext_add": "603979756",
+                "ext_mul": "0"
               },
               "realized_read_cost": {
                 "plain_read_bytes": "6845104128",
-                "lazy_read_bytes": "805306368",
-                "materialized_read_bytes": "6845103648",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "8053063200",
                 "materialization_write_bytes": "0",
-                "bf_add": "100663296",
+                "bf_add": "67108864",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "100663296",
-                "ext_add": "822083564",
-                "ext_mul": "25165824"
+                "mixed_mul": "0",
+                "ext_add": "603979756",
+                "ext_mul": "0"
               },
               "fixed_write_cost": {
                 "plain_read_bytes": "0",
                 "lazy_read_bytes": "0",
                 "materialized_read_bytes": "0",
-                "materialization_write_bytes": "7247757072",
+                "materialization_write_bytes": "8053063440",
                 "bf_add": "0",
                 "bf_mul": "0",
                 "mixed_add": "0",
@@ -13877,10 +13877,10 @@
             "problem": {
               "count": 13,
               "digest": [
-                12263363714550236876,
-                6697365875822477727,
-                9312730644906510792,
-                3276805947405690902
+                12931905509259559906,
+                8662494697210432941,
+                7571395504470014694,
+                4378240245900163908
               ]
             },
             "fragment_order": [
@@ -13907,8 +13907,8 @@
             ],
             "expected_score": {
               "infeasible": false,
-              "whole_pass_dram_bytes": "44291848752",
-              "primitive_source_ops": "11207180080",
+              "whole_pass_dram_bytes": "46305114672",
+              "primitive_source_ops": "6375341872",
               "instructions": 48,
               "encoded_lanes": 101,
               "arithmetic_ops": 15
@@ -13921,33 +13921,33 @@
               "realized_source_reads": 5,
               "predicted_read_cost": {
                 "plain_read_bytes": "6845104128",
-                "lazy_read_bytes": "805306368",
-                "materialized_read_bytes": "6845103648",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "8053063200",
                 "materialization_write_bytes": "0",
-                "bf_add": "100663296",
+                "bf_add": "67108864",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "100663296",
-                "ext_add": "822083564",
-                "ext_mul": "25165824"
+                "mixed_mul": "0",
+                "ext_add": "603979756",
+                "ext_mul": "0"
               },
               "realized_read_cost": {
                 "plain_read_bytes": "6845104128",
-                "lazy_read_bytes": "805306368",
-                "materialized_read_bytes": "6845103648",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "8053063200",
                 "materialization_write_bytes": "0",
-                "bf_add": "100663296",
+                "bf_add": "67108864",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "100663296",
-                "ext_add": "822083564",
-                "ext_mul": "25165824"
+                "mixed_mul": "0",
+                "ext_add": "603979756",
+                "ext_mul": "0"
               },
               "fixed_write_cost": {
                 "plain_read_bytes": "0",
                 "lazy_read_bytes": "0",
                 "materialized_read_bytes": "0",
-                "materialization_write_bytes": "7247757072",
+                "materialization_write_bytes": "8053063440",
                 "bf_add": "0",
                 "bf_mul": "0",
                 "mixed_add": "0",
@@ -13976,10 +13976,10 @@
             "problem": {
               "count": 13,
               "digest": [
-                14803218941047583300,
-                3472385808702471201,
-                6455110112232296492,
-                6721443999142823236
+                16063074273575922342,
+                13615509821154479611,
+                5201228357359969654,
+                11560306634692650422
               ]
             },
             "fragment_order": [
@@ -14006,8 +14006,8 @@
             ],
             "expected_score": {
               "infeasible": false,
-              "whole_pass_dram_bytes": "44291848752",
-              "primitive_source_ops": "11207180080",
+              "whole_pass_dram_bytes": "46305114672",
+              "primitive_source_ops": "6375341872",
               "instructions": 48,
               "encoded_lanes": 101,
               "arithmetic_ops": 15
@@ -14020,33 +14020,33 @@
               "realized_source_reads": 5,
               "predicted_read_cost": {
                 "plain_read_bytes": "6845104128",
-                "lazy_read_bytes": "805306368",
-                "materialized_read_bytes": "6845103648",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "8053063200",
                 "materialization_write_bytes": "0",
-                "bf_add": "100663296",
+                "bf_add": "67108864",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "100663296",
-                "ext_add": "822083564",
-                "ext_mul": "25165824"
+                "mixed_mul": "0",
+                "ext_add": "603979756",
+                "ext_mul": "0"
               },
               "realized_read_cost": {
                 "plain_read_bytes": "6845104128",
-                "lazy_read_bytes": "805306368",
-                "materialized_read_bytes": "6845103648",
+                "lazy_read_bytes": "0",
+                "materialized_read_bytes": "8053063200",
                 "materialization_write_bytes": "0",
-                "bf_add": "100663296",
+                "bf_add": "67108864",
                 "bf_mul": "0",
                 "mixed_add": "0",
-                "mixed_mul": "100663296",
-                "ext_add": "822083564",
-                "ext_mul": "25165824"
+                "mixed_mul": "0",
+                "ext_add": "603979756",
+                "ext_mul": "0"
               },
               "fixed_write_cost": {
                 "plain_read_bytes": "0",
                 "lazy_read_bytes": "0",
                 "materialized_read_bytes": "0",
-                "materialization_write_bytes": "7247757072",
+                "materialization_write_bytes": "8053063440",
                 "bf_add": "0",
                 "bf_mul": "0",
                 "mixed_add": "0",

@@ -14,19 +14,19 @@ use crate::fwd::binding::{BackingKey, SourceWindowTable};
 use crate::fwd::isa::OperandField;
 use crate::fwd::source::virtual_setup_kind_code;
 
-use super::artifact::{certificate_from_serializable, DomainCertificate, EvaluationArtifactError};
+use super::artifact::{DomainCertificate, EvaluationArtifactError, certificate_from_serializable};
 use super::backward_search::pager::PagingAction;
 use super::backward_search::problem::{
-    build_backward_search_problem, decode_order_indices, rebuild_problem_for_stable_order,
-    BackwardSearchProblem,
+    BackwardSearchProblem, build_backward_search_problem, decode_order_indices,
+    rebuild_problem_for_stable_order,
 };
 use super::backward_search::production::{
-    select_production_backward_seeds_with_progress, ProductionBackwardPlan,
-    ProductionSearchIdentity, ProductionSearchProgress,
+    ProductionBackwardPlan, ProductionSearchIdentity, ProductionSearchProgress,
+    select_production_backward_seeds_with_progress,
 };
 use super::backward_search::{
-    compile_and_certify_paging, reconstruct_paging_plan, BackwardScore, BackwardSearchError,
-    CertifiedBackwardCandidate, PagingCertificate, SourceCost, SourceOriginKind,
+    BackwardScore, BackwardSearchError, CertifiedBackwardCandidate, PagingCertificate, SourceCost,
+    SourceOriginKind, compile_and_certify_paging, reconstruct_paging_plan,
 };
 
 const MIN_BUDGET_CELLS: usize = 2;
@@ -752,14 +752,14 @@ pub fn capture_backward_plan_artifact(
     })
 }
 
-pub fn compile_backward_plan_artifact(
+fn replay_backward_plan_artifact(
     circuit: &str,
     layer_index: usize,
     canonical: &DagLayer,
     distilled: &DistilledLayer,
     trace_len: usize,
     artifact: &BackwardPlanArtifact,
-) -> Result<CertifiedBackwardCandidate, BackwardArtifactError> {
+) -> Result<(BackwardSearchProblem, CertifiedBackwardCandidate), BackwardArtifactError> {
     let regime = distilled.regime;
     let budget_cells = artifact.budget_cells;
     if !(MIN_BUDGET_CELLS..=MAX_BUDGET_CELLS).contains(&budget_cells) {
@@ -826,14 +826,6 @@ pub fn compile_backward_plan_artifact(
             source,
         },
     })?;
-    if backward_problem_certificate(&problem)? != artifact.problem {
-        return Err(BackwardArtifactError::ProblemCertificateMismatch {
-            circuit: circuit.to_owned(),
-            layer: layer_index,
-            regime,
-            budget_cells,
-        });
-    }
 
     let mut actions = vec![PagingAction::Bypass; problem.demands.len()];
     let mut previous = None;
@@ -875,6 +867,35 @@ pub fn compile_backward_plan_artifact(
                 source,
             }
         })?;
+    Ok((problem, candidate))
+}
+
+pub fn compile_backward_plan_artifact(
+    circuit: &str,
+    layer_index: usize,
+    canonical: &DagLayer,
+    distilled: &DistilledLayer,
+    trace_len: usize,
+    artifact: &BackwardPlanArtifact,
+) -> Result<CertifiedBackwardCandidate, BackwardArtifactError> {
+    let regime = distilled.regime;
+    let budget_cells = artifact.budget_cells;
+    let (problem, candidate) = replay_backward_plan_artifact(
+        circuit,
+        layer_index,
+        canonical,
+        distilled,
+        trace_len,
+        artifact,
+    )?;
+    if backward_problem_certificate(&problem)? != artifact.problem {
+        return Err(BackwardArtifactError::ProblemCertificateMismatch {
+            circuit: circuit.to_owned(),
+            layer: layer_index,
+            regime,
+            budget_cells,
+        });
+    }
     let exact_score = artifact.expected_score.matches_score(&candidate.score);
     if !artifact
         .expected_score

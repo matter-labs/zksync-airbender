@@ -10,20 +10,20 @@ use std::sync::{Arc, Condvar, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use cs::gkr_compiler::dag_ir::{BwdRegime, DagLayer, ReadPlace, VirtualSetupKind};
-use gkr_eval_isa::bwd::distill::{distill, DistilledLayer};
+use gkr_eval_isa::bwd::distill::{DistilledLayer, distill};
 use gkr_eval_isa::bwd::source::{BwdSpecial, BwdSpecialTable, OriginLeaf};
 use gkr_eval_isa::eval_plan::backward_search::problem::build_backward_search_problem;
 use gkr_eval_isa::eval_plan::backward_search::{
-    compulsory_read_floor, construct_production_backward_bypass, search_production_backward,
-    solve_production_paging, ProductionPagingSolver, ProductionSearchIdentity,
+    ProductionPagingSolver, ProductionSearchIdentity, compulsory_read_floor,
+    construct_production_backward_bypass, search_production_backward, solve_production_paging,
 };
 use gkr_eval_isa::eval_plan::{
-    capture_backward_plan_artifact, compile_backward_plan_artifact,
+    BackwardArtifactCoordinate, BackwardArtifactError, BackwardEvaluationCircuitArtifact,
+    BackwardLayerArtifact, BackwardPlanArtifact, BackwardRegimeArtifact,
+    BackwardRegimeChainProgress, BackwardScoreArtifact, CanonicalU128, DomainCertificate,
+    SourceCostArtifact, capture_backward_plan_artifact, compile_backward_plan_artifact,
     load_backward_evaluation_artifact, produce_backward_regime_chain_with_progress,
-    publish_backward_evaluation_artifact, select_backward_plan, BackwardArtifactCoordinate,
-    BackwardArtifactError, BackwardEvaluationCircuitArtifact, BackwardLayerArtifact,
-    BackwardPlanArtifact, BackwardRegimeArtifact, BackwardRegimeChainProgress,
-    BackwardScoreArtifact, CanonicalU128, DomainCertificate, SourceCostArtifact,
+    publish_backward_evaluation_artifact, select_backward_plan,
 };
 use gkr_eval_isa::fwd::binding::{BackingKey, SourceWindowTable};
 use gkr_eval_isa::fwd::encode::encode;
@@ -1089,10 +1089,12 @@ fn generation_eta_uses_observed_parallel_throughput_without_width_division() {
 fn generation_chain_queue_is_canonical_and_complete() {
     let inputs = build_plan4_chain_inputs(common::FIXTURES);
     assert_eq!(inputs.len(), 114);
-    assert!(inputs
-        .iter()
-        .enumerate()
-        .all(|(ordinal, input)| input.ordinal == ordinal));
+    assert!(
+        inputs
+            .iter()
+            .enumerate()
+            .all(|(ordinal, input)| input.ordinal == ordinal)
+    );
     for pair in inputs.chunks_exact(2) {
         assert_eq!(pair[0].fixture, pair[1].fixture);
         assert_eq!(pair[0].layer_index, pair[1].layer_index);
@@ -1137,9 +1139,11 @@ fn generation_progress_snapshot_releases_state_before_formatting() {
     let mut rendered = Vec::new();
     Plan4Progress::write_snapshot(&snapshot, &mut rendered).unwrap();
     drop(state);
-    assert!(String::from_utf8(rendered)
-        .unwrap()
-        .contains("PLAN4 progress"));
+    assert!(
+        String::from_utf8(rendered)
+            .unwrap()
+            .contains("PLAN4 progress")
+    );
 }
 
 fn checkpoint_test_root(label: &str) -> PathBuf {
@@ -1481,6 +1485,29 @@ fn census_score_excludes_fixed_writes_from_realized_read_bytes() {
 }
 
 #[test]
+fn read_floor_uses_minimum_nondomain_component_across_budgets() {
+    let scores = vec![
+        Plan4CensusScore {
+            read_bytes: 190,
+            nondomain_read_bytes: 90,
+            source_ops: 0,
+            instructions: 0,
+            encoded_lanes: 0,
+            arithmetic_ops: 0,
+        },
+        Plan4CensusScore {
+            read_bytes: 180,
+            nondomain_read_bytes: 80,
+            source_ops: 0,
+            instructions: 0,
+            encoded_lanes: 0,
+            arithmetic_ops: 0,
+        },
+    ];
+    assert_eq!(plan4_read_floor_bytes(100, &scores), 180);
+}
+
+#[test]
 fn artifact_consumer_is_reconstruction_only() {
     assert_plan4_artifact_consumer_is_reconstruction_only();
 }
@@ -1802,9 +1829,11 @@ fn plan4_backward_artifact_corpus_gate() {
                 })
                 .collect::<Vec<_>>();
             let read_floor_bytes = plan4_read_floor_bytes(domain_read_floor_bytes, &scores);
-            assert!(scores
-                .iter()
-                .all(|score| score.read_bytes >= read_floor_bytes));
+            assert!(
+                scores
+                    .iter()
+                    .all(|score| score.read_bytes >= read_floor_bytes)
+            );
             for (budget_cells, score) in (2..=16).zip(&scores) {
                 totals.record(budget_cells, read_floor_bytes, &score);
                 totals.entries += 1;
@@ -2065,15 +2094,10 @@ impl Plan4CorpusTotals {
 
 fn plan4_read_floor_bytes(domain_read_floor_bytes: u128, scores: &[Plan4CensusScore]) -> u128 {
     let nondomain_read_bytes = scores
-        .first()
-        .expect("census has at least one budget")
-        .nondomain_read_bytes;
-    assert!(
-        scores
-            .iter()
-            .all(|score| score.nondomain_read_bytes == nondomain_read_bytes),
-        "non-domain read traffic must be budget-independent",
-    );
+        .iter()
+        .map(|score| score.nondomain_read_bytes)
+        .min()
+        .expect("census has at least one budget");
     domain_read_floor_bytes
         .checked_add(nondomain_read_bytes)
         .expect("read floor fits u128")
@@ -2211,9 +2235,14 @@ fn assert_plan4_artifact_consumer_is_reconstruction_only() {
         include_str!("../src/eval_plan/backward_artifact.rs"),
         "pub fn compile_backward_plan_artifact(",
     );
-    assert!(artifact_consumer.contains("reconstruct_paging_plan"));
+    let artifact_replay = source_function_body(
+        include_str!("../src/eval_plan/backward_artifact.rs"),
+        "fn replay_backward_plan_artifact(",
+    );
+    assert!(artifact_replay.contains("reconstruct_paging_plan"));
     for (name, body) in [
         ("artifact consumer", artifact_consumer),
+        ("artifact replay", artifact_replay),
         (
             "paging certification",
             source_function_body(
