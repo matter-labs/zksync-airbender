@@ -18,6 +18,7 @@ impl<F: PrimeField> circuit_common::RiscVCycleCircuit<F, false> for AddSubLuiAui
     const CIRCUIT_FAMILY: u8 =
         common_constants::circuit_families::ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX;
     const DOMAIN_SIZE_LOG2: u32 = 24;
+    const NUM_INIT_AND_TEARDOWN_PAIRS: usize = 0;
 
     fn circuit_fn<CS: cs::cs::circuit_trait::Circuit<F>>(cs: &mut CS, _bytecode: &[u32]) {
         add_sub_lui_auipc_mop_circuit_with_preprocessed_bytecode_for_gkr(cs);

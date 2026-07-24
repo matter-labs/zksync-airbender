@@ -4440,20 +4440,20 @@ fn check_virtual_setup_range_check_16bits<E: ErrorCreator>(
     state: &LayerState<BabyBearExt4, GKR_ROUNDS, GKR_ADDRS>,
 ) -> Result<(), E::Error> {
     unsafe {
-        let pt = state.prev_point.get_unchecked(..24usize);
+        let pt = state.prev_point.get_unchecked(..23usize);
         let mut result: BabyBearExt4 = BabyBearExt4::ZERO;
         let mut prefactor: BabyBearField = BabyBearField::ONE;
         let mut k: usize = 0;
         while k < 16usize {
-            let mut t = *pt.get_unchecked(24usize - 1 - k);
+            let mut t = *pt.get_unchecked(23usize - 1 - k);
             field_ops::mul_assign_by_base(&mut t, &prefactor);
             field_ops::add_assign(&mut result, &t);
             field_ops::double(&mut prefactor);
             k += 1;
         }
-        while k < 24usize {
+        while k < 23usize {
             let mut t: BabyBearExt4 = BabyBearExt4::ONE;
-            let p = pt.get_unchecked(24usize - 1 - k);
+            let p = pt.get_unchecked(23usize - 1 - k);
             field_ops::sub_assign(&mut t, &*p);
             field_ops::mul_assign(&mut result, &t);
             k += 1;
@@ -4473,20 +4473,20 @@ fn check_virtual_setup_range_check_timestamp<E: ErrorCreator>(
     state: &LayerState<BabyBearExt4, GKR_ROUNDS, GKR_ADDRS>,
 ) -> Result<(), E::Error> {
     unsafe {
-        let pt = state.prev_point.get_unchecked(..24usize);
+        let pt = state.prev_point.get_unchecked(..23usize);
         let mut result: BabyBearExt4 = BabyBearExt4::ZERO;
         let mut prefactor: BabyBearField = BabyBearField::ONE;
         let mut k: usize = 0;
         while k < 19usize {
-            let mut t = *pt.get_unchecked(24usize - 1 - k);
+            let mut t = *pt.get_unchecked(23usize - 1 - k);
             field_ops::mul_assign_by_base(&mut t, &prefactor);
             field_ops::add_assign(&mut result, &t);
             field_ops::double(&mut prefactor);
             k += 1;
         }
-        while k < 24usize {
+        while k < 23usize {
             let mut t: BabyBearExt4 = BabyBearExt4::ONE;
-            let p = pt.get_unchecked(24usize - 1 - k);
+            let p = pt.get_unchecked(23usize - 1 - k);
             field_ops::sub_assign(&mut t, &*p);
             field_ops::mul_assign(&mut result, &t);
             k += 1;
@@ -4498,7 +4498,7 @@ fn check_virtual_setup_range_check_timestamp<E: ErrorCreator>(
     Ok(())
 }
 #[doc = " Closed-form eval of VirtualSetup(InitsAndTeardownsLow/High) at `state.prev_point`."]
-#[doc = " Low half = bits [2..16) of the address (top 2 bits zeroed); high half = the high 10 address bits."]
+#[doc = " Low half = bits [2..16) of the address (top 2 bits zeroed); high half = the high 9 address bits."]
 #[doc = " Source: prover/src/gkr/virtual_polys/init_and_teardown_base.rs."]
 #[doc = " The `prev_claims` indices are positions assigned by the canonical layer-0 layout"]
 #[doc = " (memory cols → witness cols → setup cols → virtual setups → others)`."]
@@ -4507,7 +4507,7 @@ fn check_virtual_setup_inits_and_teardowns<E: ErrorCreator>(
     state: &LayerState<BabyBearExt4, GKR_ROUNDS, GKR_ADDRS>,
 ) -> Result<(), E::Error> {
     unsafe {
-        let pt = state.prev_point.get_unchecked(..24usize);
+        let pt = state.prev_point.get_unchecked(..23usize);
         let mut low_eval: BabyBearExt4 = BabyBearExt4::ZERO;
         {
             let mut prefactor: BabyBearField = BabyBearField::ONE;
@@ -4518,7 +4518,7 @@ fn check_virtual_setup_inits_and_teardowns<E: ErrorCreator>(
             }
             let mut k: usize = 0;
             while k < 14usize {
-                let mut t = *pt.get_unchecked(24usize - 1 - k);
+                let mut t = *pt.get_unchecked(23usize - 1 - k);
                 field_ops::mul_assign_by_base(&mut t, &prefactor);
                 field_ops::add_assign(&mut low_eval, &t);
                 field_ops::double(&mut prefactor);
@@ -4529,8 +4529,8 @@ fn check_virtual_setup_inits_and_teardowns<E: ErrorCreator>(
         {
             let mut prefactor: BabyBearField = BabyBearField::ONE;
             let mut k: usize = 0;
-            while k < 24usize - 14usize {
-                let mut t = *pt.get_unchecked(24usize - 1 - 14usize - k);
+            while k < 23usize - 14usize {
+                let mut t = *pt.get_unchecked(23usize - 1 - 14usize - k);
                 field_ops::mul_assign_by_base(&mut t, &prefactor);
                 field_ops::add_assign(&mut high_eval, &t);
                 field_ops::double(&mut prefactor);
@@ -4562,7 +4562,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
         draw_field_els_into_after_pow::<DRAW_BUF_CAPACITY>(ts, init_challenges.as_mut_slice());
         let lookup_alpha = *init_challenges.get(0);
         let lookup_additive_challenge = *init_challenges.get(1);
-        let address_high_bits_shift: u32 = 10u32;
+        let address_high_bits_shift: u32 = 9u32;
         let mut evals_commit_buf = CommitBuf::<GKR_EVALS_COMMIT_BUF>::new();
         let evals_data_words = 160usize * EXT_DEGREE;
         {
@@ -4734,9 +4734,6 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
         const DIM_REDUCE_INDICES_22: [usize; 10usize] = [
             0usize, 1usize, 2usize, 3usize, 4usize, 5usize, 6usize, 7usize, 8usize, 9usize,
         ];
-        const DIM_REDUCE_INDICES_23: [usize; 10usize] = [
-            0usize, 1usize, 2usize, 3usize, 4usize, 5usize, 6usize, 7usize, 8usize, 9usize,
-        ];
         #[cfg(feature = "verifier_stats")]
         verifier_common::stats::log("GKR COMPRESSION INIT");
         {
@@ -4749,68 +4746,10 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     ts,
                     initial_claim,
                     &mut state.prev_point,
-                    23usize,
-                    nd_source,
-                )?;
-            let mut fc_len = 4usize;
-            let data_words = 10usize * 2 * EXT_DEGREE;
-            {
-                let mut i = 0;
-                while i < data_words {
-                    eval_buf.data_write(i, read_reduced_field_el::<I>(nd_source).as_u32_raw_repr());
-                    i += 1;
-                }
-            }
-            {
-                let evals: &[[BabyBearExt4; 2]] = eval_buf.data_as(10usize);
-                let f = dim_reducing_final_step_accumulator(
-                    evals,
-                    state.batching_challenge,
-                    &DIM_REDUCE_INDICES_23,
-                );
-                verify_final_step_check::<E>(f, final_eq_prefactor, final_claim, 23usize)?;
-            }
-            ts.commit(&mut eval_buf, data_words);
-            let mut draw_buf = LazyVec::<BabyBearExt4, 2>::new();
-            unsafe {
-                draw_buf.set_len(2);
-            }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
-            let r_last = *draw_buf.get(0);
-            let next_batching = *draw_buf.get(1);
-            *state.prev_point.get_unchecked_mut(fc_len) = r_last;
-            fc_len += 1;
-            const DIM_REDUCING_EXTRA_CHALLENGES: usize = 1;
-            const DIM_REDUCING_EQ_SIZE: usize = 1 << DIM_REDUCING_EXTRA_CHALLENGES;
-            let mut eq2 = LazyVec::<BabyBearExt4, DIM_REDUCING_EQ_SIZE>::new();
-            make_eq_poly(&[r_last], &mut eq2);
-            let evals: &[[BabyBearExt4; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(10usize);
-            let eq2_arr: &[BabyBearExt4; DIM_REDUCING_EQ_SIZE] =
-                eq2.as_slice().try_into().unwrap_unchecked();
-            state.prev_claims.clear();
-            for i in 0..10usize {
-                let e = evals.get_unchecked(i);
-                state.prev_claims.push(dot_eq(e, eq2_arr));
-            }
-            state.batching_challenge = next_batching;
-            state.prev_point_len = fc_len;
-            #[cfg(feature = "verifier_stats")]
-            verifier_common::stats::log("GKR COMPRESSION LAYER 23");
-        }
-        {
-            let initial_claim = dim_reducing_compute_claim(
-                state.prev_claims.as_array::<10usize>(),
-                state.batching_challenge,
-            );
-            let (final_claim, final_eq_prefactor) =
-                verify_sumcheck_rounds::<I, E, 5usize, GKR_COMMIT_BUF>(
-                    ts,
-                    initial_claim,
-                    &mut state.prev_point,
                     22usize,
                     nd_source,
                 )?;
-            let mut fc_len = 5usize;
+            let mut fc_len = 4usize;
             let data_words = 10usize * 2 * EXT_DEGREE;
             {
                 let mut i = 0;
@@ -4861,14 +4800,14 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 state.batching_challenge,
             );
             let (final_claim, final_eq_prefactor) =
-                verify_sumcheck_rounds::<I, E, 6usize, GKR_COMMIT_BUF>(
+                verify_sumcheck_rounds::<I, E, 5usize, GKR_COMMIT_BUF>(
                     ts,
                     initial_claim,
                     &mut state.prev_point,
                     21usize,
                     nd_source,
                 )?;
-            let mut fc_len = 6usize;
+            let mut fc_len = 5usize;
             let data_words = 10usize * 2 * EXT_DEGREE;
             {
                 let mut i = 0;
@@ -4919,14 +4858,14 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 state.batching_challenge,
             );
             let (final_claim, final_eq_prefactor) =
-                verify_sumcheck_rounds::<I, E, 7usize, GKR_COMMIT_BUF>(
+                verify_sumcheck_rounds::<I, E, 6usize, GKR_COMMIT_BUF>(
                     ts,
                     initial_claim,
                     &mut state.prev_point,
                     20usize,
                     nd_source,
                 )?;
-            let mut fc_len = 7usize;
+            let mut fc_len = 6usize;
             let data_words = 10usize * 2 * EXT_DEGREE;
             {
                 let mut i = 0;
@@ -4977,14 +4916,14 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 state.batching_challenge,
             );
             let (final_claim, final_eq_prefactor) =
-                verify_sumcheck_rounds::<I, E, 8usize, GKR_COMMIT_BUF>(
+                verify_sumcheck_rounds::<I, E, 7usize, GKR_COMMIT_BUF>(
                     ts,
                     initial_claim,
                     &mut state.prev_point,
                     19usize,
                     nd_source,
                 )?;
-            let mut fc_len = 8usize;
+            let mut fc_len = 7usize;
             let data_words = 10usize * 2 * EXT_DEGREE;
             {
                 let mut i = 0;
@@ -5035,14 +4974,14 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 state.batching_challenge,
             );
             let (final_claim, final_eq_prefactor) =
-                verify_sumcheck_rounds::<I, E, 9usize, GKR_COMMIT_BUF>(
+                verify_sumcheck_rounds::<I, E, 8usize, GKR_COMMIT_BUF>(
                     ts,
                     initial_claim,
                     &mut state.prev_point,
                     18usize,
                     nd_source,
                 )?;
-            let mut fc_len = 9usize;
+            let mut fc_len = 8usize;
             let data_words = 10usize * 2 * EXT_DEGREE;
             {
                 let mut i = 0;
@@ -5093,14 +5032,14 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 state.batching_challenge,
             );
             let (final_claim, final_eq_prefactor) =
-                verify_sumcheck_rounds::<I, E, 10usize, GKR_COMMIT_BUF>(
+                verify_sumcheck_rounds::<I, E, 9usize, GKR_COMMIT_BUF>(
                     ts,
                     initial_claim,
                     &mut state.prev_point,
                     17usize,
                     nd_source,
                 )?;
-            let mut fc_len = 10usize;
+            let mut fc_len = 9usize;
             let data_words = 10usize * 2 * EXT_DEGREE;
             {
                 let mut i = 0;
@@ -5151,14 +5090,14 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 state.batching_challenge,
             );
             let (final_claim, final_eq_prefactor) =
-                verify_sumcheck_rounds::<I, E, 11usize, GKR_COMMIT_BUF>(
+                verify_sumcheck_rounds::<I, E, 10usize, GKR_COMMIT_BUF>(
                     ts,
                     initial_claim,
                     &mut state.prev_point,
                     16usize,
                     nd_source,
                 )?;
-            let mut fc_len = 11usize;
+            let mut fc_len = 10usize;
             let data_words = 10usize * 2 * EXT_DEGREE;
             {
                 let mut i = 0;
@@ -5209,14 +5148,14 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 state.batching_challenge,
             );
             let (final_claim, final_eq_prefactor) =
-                verify_sumcheck_rounds::<I, E, 12usize, GKR_COMMIT_BUF>(
+                verify_sumcheck_rounds::<I, E, 11usize, GKR_COMMIT_BUF>(
                     ts,
                     initial_claim,
                     &mut state.prev_point,
                     15usize,
                     nd_source,
                 )?;
-            let mut fc_len = 12usize;
+            let mut fc_len = 11usize;
             let data_words = 10usize * 2 * EXT_DEGREE;
             {
                 let mut i = 0;
@@ -5267,14 +5206,14 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 state.batching_challenge,
             );
             let (final_claim, final_eq_prefactor) =
-                verify_sumcheck_rounds::<I, E, 13usize, GKR_COMMIT_BUF>(
+                verify_sumcheck_rounds::<I, E, 12usize, GKR_COMMIT_BUF>(
                     ts,
                     initial_claim,
                     &mut state.prev_point,
                     14usize,
                     nd_source,
                 )?;
-            let mut fc_len = 13usize;
+            let mut fc_len = 12usize;
             let data_words = 10usize * 2 * EXT_DEGREE;
             {
                 let mut i = 0;
@@ -5325,14 +5264,14 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 state.batching_challenge,
             );
             let (final_claim, final_eq_prefactor) =
-                verify_sumcheck_rounds::<I, E, 14usize, GKR_COMMIT_BUF>(
+                verify_sumcheck_rounds::<I, E, 13usize, GKR_COMMIT_BUF>(
                     ts,
                     initial_claim,
                     &mut state.prev_point,
                     13usize,
                     nd_source,
                 )?;
-            let mut fc_len = 14usize;
+            let mut fc_len = 13usize;
             let data_words = 10usize * 2 * EXT_DEGREE;
             {
                 let mut i = 0;
@@ -5383,14 +5322,14 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 state.batching_challenge,
             );
             let (final_claim, final_eq_prefactor) =
-                verify_sumcheck_rounds::<I, E, 15usize, GKR_COMMIT_BUF>(
+                verify_sumcheck_rounds::<I, E, 14usize, GKR_COMMIT_BUF>(
                     ts,
                     initial_claim,
                     &mut state.prev_point,
                     12usize,
                     nd_source,
                 )?;
-            let mut fc_len = 15usize;
+            let mut fc_len = 14usize;
             let data_words = 10usize * 2 * EXT_DEGREE;
             {
                 let mut i = 0;
@@ -5441,14 +5380,14 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 state.batching_challenge,
             );
             let (final_claim, final_eq_prefactor) =
-                verify_sumcheck_rounds::<I, E, 16usize, GKR_COMMIT_BUF>(
+                verify_sumcheck_rounds::<I, E, 15usize, GKR_COMMIT_BUF>(
                     ts,
                     initial_claim,
                     &mut state.prev_point,
                     11usize,
                     nd_source,
                 )?;
-            let mut fc_len = 16usize;
+            let mut fc_len = 15usize;
             let data_words = 10usize * 2 * EXT_DEGREE;
             {
                 let mut i = 0;
@@ -5499,14 +5438,14 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 state.batching_challenge,
             );
             let (final_claim, final_eq_prefactor) =
-                verify_sumcheck_rounds::<I, E, 17usize, GKR_COMMIT_BUF>(
+                verify_sumcheck_rounds::<I, E, 16usize, GKR_COMMIT_BUF>(
                     ts,
                     initial_claim,
                     &mut state.prev_point,
                     10usize,
                     nd_source,
                 )?;
-            let mut fc_len = 17usize;
+            let mut fc_len = 16usize;
             let data_words = 10usize * 2 * EXT_DEGREE;
             {
                 let mut i = 0;
@@ -5557,14 +5496,14 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 state.batching_challenge,
             );
             let (final_claim, final_eq_prefactor) =
-                verify_sumcheck_rounds::<I, E, 18usize, GKR_COMMIT_BUF>(
+                verify_sumcheck_rounds::<I, E, 17usize, GKR_COMMIT_BUF>(
                     ts,
                     initial_claim,
                     &mut state.prev_point,
                     9usize,
                     nd_source,
                 )?;
-            let mut fc_len = 18usize;
+            let mut fc_len = 17usize;
             let data_words = 10usize * 2 * EXT_DEGREE;
             {
                 let mut i = 0;
@@ -5615,14 +5554,14 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 state.batching_challenge,
             );
             let (final_claim, final_eq_prefactor) =
-                verify_sumcheck_rounds::<I, E, 19usize, GKR_COMMIT_BUF>(
+                verify_sumcheck_rounds::<I, E, 18usize, GKR_COMMIT_BUF>(
                     ts,
                     initial_claim,
                     &mut state.prev_point,
                     8usize,
                     nd_source,
                 )?;
-            let mut fc_len = 19usize;
+            let mut fc_len = 18usize;
             let data_words = 10usize * 2 * EXT_DEGREE;
             {
                 let mut i = 0;
@@ -5673,14 +5612,14 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 state.batching_challenge,
             );
             let (final_claim, final_eq_prefactor) =
-                verify_sumcheck_rounds::<I, E, 20usize, GKR_COMMIT_BUF>(
+                verify_sumcheck_rounds::<I, E, 19usize, GKR_COMMIT_BUF>(
                     ts,
                     initial_claim,
                     &mut state.prev_point,
                     7usize,
                     nd_source,
                 )?;
-            let mut fc_len = 20usize;
+            let mut fc_len = 19usize;
             let data_words = 10usize * 2 * EXT_DEGREE;
             {
                 let mut i = 0;
@@ -5731,14 +5670,14 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 state.batching_challenge,
             );
             let (final_claim, final_eq_prefactor) =
-                verify_sumcheck_rounds::<I, E, 21usize, GKR_COMMIT_BUF>(
+                verify_sumcheck_rounds::<I, E, 20usize, GKR_COMMIT_BUF>(
                     ts,
                     initial_claim,
                     &mut state.prev_point,
                     6usize,
                     nd_source,
                 )?;
-            let mut fc_len = 21usize;
+            let mut fc_len = 20usize;
             let data_words = 10usize * 2 * EXT_DEGREE;
             {
                 let mut i = 0;
@@ -5789,14 +5728,14 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 state.batching_challenge,
             );
             let (final_claim, final_eq_prefactor) =
-                verify_sumcheck_rounds::<I, E, 22usize, GKR_COMMIT_BUF>(
+                verify_sumcheck_rounds::<I, E, 21usize, GKR_COMMIT_BUF>(
                     ts,
                     initial_claim,
                     &mut state.prev_point,
                     5usize,
                     nd_source,
                 )?;
-            let mut fc_len = 22usize;
+            let mut fc_len = 21usize;
             let data_words = 10usize * 2 * EXT_DEGREE;
             {
                 let mut i = 0;
@@ -5847,14 +5786,14 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 state.batching_challenge,
             );
             let (final_claim, final_eq_prefactor) =
-                verify_sumcheck_rounds::<I, E, 23usize, GKR_COMMIT_BUF>(
+                verify_sumcheck_rounds::<I, E, 22usize, GKR_COMMIT_BUF>(
                     ts,
                     initial_claim,
                     &mut state.prev_point,
                     4usize,
                     nd_source,
                 )?;
-            let mut fc_len = 23usize;
+            let mut fc_len = 22usize;
             let data_words = 10usize * 2 * EXT_DEGREE;
             {
                 let mut i = 0;
@@ -5905,14 +5844,14 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 state.batching_challenge,
             );
             let (final_claim, final_eq_prefactor) =
-                verify_sumcheck_rounds::<I, E, 24usize, GKR_COMMIT_BUF>(
+                verify_sumcheck_rounds::<I, E, 23usize, GKR_COMMIT_BUF>(
                     ts,
                     initial_claim,
                     &mut state.prev_point,
                     3usize,
                     nd_source,
                 )?;
-            let fc_len = 24usize;
+            let fc_len = 23usize;
             const NUM_AT_POINT_EVALS: usize = 16usize;
             let data_words = NUM_AT_POINT_EVALS * EXT_DEGREE;
             {
@@ -5953,14 +5892,14 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 state.batching_challenge,
             );
             let (final_claim, final_eq_prefactor) =
-                verify_sumcheck_rounds::<I, E, 24usize, GKR_COMMIT_BUF>(
+                verify_sumcheck_rounds::<I, E, 23usize, GKR_COMMIT_BUF>(
                     ts,
                     initial_claim,
                     &mut state.prev_point,
                     2usize,
                     nd_source,
                 )?;
-            let fc_len = 24usize;
+            let fc_len = 23usize;
             const NUM_AT_POINT_EVALS: usize = 25usize;
             let data_words = NUM_AT_POINT_EVALS * EXT_DEGREE;
             {
@@ -6001,14 +5940,14 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 state.batching_challenge,
             );
             let (final_claim, final_eq_prefactor) =
-                verify_sumcheck_rounds::<I, E, 24usize, GKR_COMMIT_BUF>(
+                verify_sumcheck_rounds::<I, E, 23usize, GKR_COMMIT_BUF>(
                     ts,
                     initial_claim,
                     &mut state.prev_point,
                     1usize,
                     nd_source,
                 )?;
-            let fc_len = 24usize;
+            let fc_len = 23usize;
             const NUM_AT_POINT_EVALS: usize = 37usize;
             let data_words = NUM_AT_POINT_EVALS * EXT_DEGREE;
             {
@@ -6267,14 +6206,14 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 state.batching_challenge,
             );
             let (final_claim, final_eq_prefactor) =
-                verify_sumcheck_rounds::<I, E, 24usize, GKR_COMMIT_BUF>(
+                verify_sumcheck_rounds::<I, E, 23usize, GKR_COMMIT_BUF>(
                     ts,
                     initial_claim,
                     &mut state.prev_point,
                     0usize,
                     nd_source,
                 )?;
-            let fc_len = 24usize;
+            let fc_len = 23usize;
             const NUM_AT_POINT_EVALS: usize = 119usize;
             let data_words = NUM_AT_POINT_EVALS * EXT_DEGREE;
             {

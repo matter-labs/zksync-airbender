@@ -19,14 +19,14 @@ use verifier_common::structs::{CommitBuf, TranscriptState};
 use verifier_common::whir::{
     draw_query_indices, read_and_verify_pow, read_commit_return_merkle_cap,
 };
-const INITIAL_QUERY_INDEX_BITS: usize = 24usize;
+const INITIAL_QUERY_INDEX_BITS: usize = 23usize;
 const INITIAL_NUM_QUERIES: usize = 87usize;
 const INITIAL_POW_BITS: u32 = 28u32;
-const INITIAL_DRAW_WORDS: usize = 72usize;
-const INITIAL_RS_DOMAIN_LOG2: usize = 25usize;
+const INITIAL_DRAW_WORDS: usize = 64usize;
+const INITIAL_RS_DOMAIN_LOG2: usize = 24usize;
 const NUM_COSETS: usize = 2usize;
 const NUM_COSETS_LOG2: usize = 1usize;
-const COSET_TREE_SIZE: usize = 8388608usize;
+const COSET_TREE_SIZE: usize = 4194304usize;
 pub fn verify_initial_whir_round<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator>(
     initial_transcript: &ConcreteInitialTranscript,
     ts: &mut TranscriptState,
@@ -117,7 +117,7 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource<BabyBearField>, E: Erro
                 hash_buf,
                 38usize,
                 tree_index,
-                20usize,
+                19usize,
                 initial_transcript.memory_caps_slice(),
                 &gamma_powers[..],
                 0usize,
@@ -131,7 +131,7 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource<BabyBearField>, E: Erro
                 hash_buf,
                 66usize,
                 tree_index,
-                20usize,
+                19usize,
                 initial_transcript.witness_caps_slice(),
                 &gamma_powers[..],
                 38usize,
@@ -145,7 +145,7 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource<BabyBearField>, E: Erro
                 hash_buf,
                 10usize,
                 tree_index,
-                20usize,
+                19usize,
                 initial_transcript.setup_caps_slice(),
                 &gamma_powers[..],
                 104usize,
@@ -185,13 +185,13 @@ use super::common::{ext_from_raw_word_slice, EXT_DEGREE};
 use verifier_common::whir::{hash_leaf_data_into_state, verify_merkle_path};
 pub const NUM_INTERNAL_ROUNDS: usize = 4usize;
 const INTERNAL_QUERY_INDEX_BITS: [usize; NUM_INTERNAL_ROUNDS] =
-    [22usize, 22usize, 22usize, 23usize];
+    [21usize, 21usize, 21usize, 22usize];
 const INTERNAL_NUM_COSETS: [usize; NUM_INTERNAL_ROUNDS] =
     [16usize, 512usize, 16384usize, 524288usize];
 const INTERNAL_NUM_COSETS_LOG2: [usize; NUM_INTERNAL_ROUNDS] = [4usize, 9usize, 14usize, 19usize];
 const INTERNAL_COSET_TREE_SIZE: [usize; NUM_INTERNAL_ROUNDS] =
-    [262144usize, 8192usize, 256usize, 16usize];
-const INTERNAL_RS_DOMAIN_LOG2: [usize; NUM_INTERNAL_ROUNDS] = [27usize, 27usize, 27usize, 27usize];
+    [131072usize, 4096usize, 128usize, 8usize];
+const INTERNAL_RS_DOMAIN_LOG2: [usize; NUM_INTERNAL_ROUNDS] = [26usize, 26usize, 26usize, 26usize];
 const MAX_INTERNAL_FOLD_STEPS: usize = 5usize;
 const MAX_INTERNAL_VALUES_PER_LEAF: usize = 32usize;
 const MAX_INTERNAL_LEAF_EXT_WORDS: usize = MAX_INTERNAL_VALUES_PER_LEAF * EXT_DEGREE;
@@ -329,14 +329,14 @@ pub fn verify_internal_whir_round<I: NonDeterminismSource<BabyBearField>, E: Err
         Ok((claim, intermediate_cap))
     }
 }
-const FINAL_FOLD_STEPS: usize = 3usize;
+const FINAL_FOLD_STEPS: usize = 2usize;
 const FINAL_NUM_QUERIES: usize = 5usize;
-const FINAL_VALUES_PER_LEAF: usize = 8usize;
+const FINAL_VALUES_PER_LEAF: usize = 4usize;
 const FINAL_LEAF_EXT_WORDS: usize = FINAL_VALUES_PER_LEAF * EXT_DEGREE;
 const FINAL_HASH_BUF_SIZE: usize =
     FINAL_LEAF_EXT_WORDS.div_ceil(BLAKE2S_BLOCK_SIZE_U32_WORDS) * BLAKE2S_BLOCK_SIZE_U32_WORDS;
 const FINAL_QUERY_INDEX_BITS: usize = 20usize;
-const FINAL_RS_DOMAIN_LOG2: usize = 23usize;
+const FINAL_RS_DOMAIN_LOG2: usize = 22usize;
 const FINAL_NUM_COSETS: usize = 524288usize;
 const FINAL_NUM_COSETS_LOG2: usize = 19usize;
 const FINAL_COSET_TREE_SIZE: usize = 2usize;
