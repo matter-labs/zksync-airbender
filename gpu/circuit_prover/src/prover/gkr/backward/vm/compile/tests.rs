@@ -6,7 +6,7 @@ use gkr_eval_isa::bwd::compile::BwdCompiledLayer;
 use gkr_eval_isa::bwd::disasm::disassemble_bwd_layer;
 use gkr_eval_isa::bwd::source::BwdSpecial;
 use gkr_eval_isa::fwd::encode::decode;
-use gkr_eval_isa::fwd::isa::{Instr, MovDir, OperandLine, Program};
+use gkr_eval_isa::fwd::isa::{DstLine, Instr, MovDir, OperandLine, Program};
 
 use super::{load_add_sub_l0_case, AddSubBwdVmCase};
 use crate::prover::gkr::forward::vm::desc::PROGRAM_CAP;
@@ -78,7 +78,6 @@ fn validate_raw_batch_sink_program(
                 });
             }
             batch_sinks += 1;
-            acc_state = FragmentAccState::NeedsInit;
             continue;
         }
 
@@ -194,10 +193,10 @@ fn raw_batch_sink_gate_rejects_coefficient_source_operand() {
 }
 
 #[test]
-fn raw_batch_sink_gate_rejects_accumulator_use_without_reset() {
+fn raw_batch_sink_gate_rejects_accumulator_use_without_initialization() {
     let case = load_add_sub_l0_case(BwdRegime::R0, 2);
     let mut compiled = case.compiled.compiled.clone();
-    let sink = compiled
+    let instruction = compiled
         .program
         .instrs
         .iter()
@@ -205,26 +204,13 @@ fn raw_batch_sink_gate_rejects_accumulator_use_without_reset() {
             matches!(
                 instruction,
                 Instr::Mov {
-                    dir: MovDir::DstFromAcc,
-                    dst: Some(dst),
-                    src: None,
-                    ..
-                } if unpack_batch_dst(dst).is_some()
-            )
-        })
-        .expect("add/sub batching program must contain a batch sink");
-    let instruction = (sink + 1..compiled.program.instrs.len())
-        .find(|instruction| {
-            matches!(
-                &compiled.program.instrs[*instruction],
-                Instr::Mov {
                     dir: MovDir::AccFromSrc,
                     src: Some(_),
                     ..
                 }
             )
         })
-        .expect("the next add/sub fragment must reset acc");
+        .expect("add/sub batching program must initialize acc");
     let Instr::Mov { field, .. } = &compiled.program.instrs[instruction] else {
         unreachable!("located instruction is Mov");
     };
@@ -239,6 +225,57 @@ fn raw_batch_sink_gate_rejects_accumulator_use_without_reset() {
         validate_raw_batch_sink_program(&compiled, case.fragment_order_len),
         Err(BatchProgramInvariantError::AccumulatorUseBeforeInit { instruction })
     );
+}
+
+#[test]
+fn batching_sink_does_not_force_reloading_the_preserved_accumulator() {
+    let case = load_add_sub_l0_case(BwdRegime::R0, 2);
+    let instructions = &case.compiled.compiled.program.instrs;
+
+    for (instruction, window) in instructions.windows(3).enumerate() {
+        let sink = batch_sink_desc(&window[1]).is_some();
+        let reloads_same_source = matches!(
+            (&window[0], &window[2]),
+            (
+                Instr::Mov {
+                    dir: MovDir::AccFromSrc,
+                    field: before_field,
+                    src: Some(before_src),
+                    ..
+                },
+                Instr::Mov {
+                    dir: MovDir::AccFromSrc,
+                    field: after_field,
+                    src: Some(after_src),
+                    ..
+                },
+            ) if before_field == after_field && before_src == after_src
+        );
+        let reloads_just_stored_acc = matches!(
+            (&window[0], &window[2]),
+            (
+                Instr::Mov {
+                    dir: MovDir::DstFromAcc,
+                    field: before_field,
+                    dst: Some(DstLine::Smem { cell: before_cell }),
+                    ..
+                },
+                Instr::Mov {
+                    dir: MovDir::AccFromSrc,
+                    field: after_field,
+                    src: Some(OperandLine::Smem { cell: after_cell }),
+                    ..
+                },
+            ) if before_field == after_field && before_cell == after_cell
+        );
+
+        assert!(
+            !(sink && (reloads_same_source || reloads_just_stored_acc)),
+            "instruction {} redundantly reloads the accumulator preserved by batching sink {}",
+            instruction + 2,
+            instruction + 1,
+        );
+    }
 }
 
 #[test]
@@ -277,10 +314,10 @@ fn dump_add_sub_l0_r0_c2_backward_vm() {
 #[test]
 fn add_sub_l0_c2_c16_program_census_matches_published_artifacts() {
     let expected_r0 = [
-        977, 957, 951, 957, 957, 957, 957, 957, 957, 957, 957, 957, 957, 957, 957,
+        929, 913, 907, 909, 909, 909, 909, 909, 909, 909, 909, 909, 909, 909, 909,
     ];
     let expected_ext = [
-        992, 954, 957, 950, 968, 964, 962, 959, 957, 957, 957, 957, 957, 957, 957,
+        950, 910, 913, 906, 926, 922, 920, 917, 915, 915, 915, 915, 915, 915, 915,
     ];
     for (regime, expected) in [(BwdRegime::R0, expected_r0), (BwdRegime::Ext, expected_ext)] {
         let got = (2..=16)

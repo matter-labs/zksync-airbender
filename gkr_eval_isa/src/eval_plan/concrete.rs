@@ -584,12 +584,17 @@ fn bind_packed_plan_with_source_mode(
     }
 
     let mut program = emitted_program;
-    fold_direct_source_stores_with_mode(
-        &mut program,
-        matches!(source_mode, ConcreteSourceMode::Backward { .. }),
-    );
+    let backward_specials = match source_mode {
+        ConcreteSourceMode::Forward => None,
+        ConcreteSourceMode::Backward { specials, .. } => Some(specials),
+    };
+    let backward_mode = backward_specials.is_some();
+    fold_direct_source_stores_with_mode(&mut program, backward_mode);
     fold_load_mul_add(&mut program);
     elide_accumulator_cell_roundtrips(&mut program);
+    if let Some(specials) = backward_specials {
+        elide_reloads_of_acc_preserved_by_batch_sink(&mut program, specials);
+    }
     let marker_mode = match source_mode {
         ConcreteSourceMode::Forward => SourceMarkerMode::Forward,
         ConcreteSourceMode::Backward { .. } => SourceMarkerMode::Backward,
@@ -838,6 +843,78 @@ fn elide_accumulator_cell_roundtrips(program: &mut Program) {
         }
     }
     program.instrs = without_dead_stores;
+}
+
+/// `BatchAccumulate` updates the separate batch accumulator and leaves the VM
+/// accumulator untouched. Remove an immediately following reload when the
+/// instruction before the sink proves that the same value remains in `acc`.
+fn elide_reloads_of_acc_preserved_by_batch_sink(program: &mut Program, specials: &BwdSpecialTable) {
+    let mut delete = vec![false; program.instrs.len()];
+    for (instruction, window) in program.instrs.windows(3).enumerate() {
+        let sink = matches!(
+            &window[1],
+            Instr::Mov {
+                dir: MovDir::DstFromAcc,
+                dst: Some(dst),
+                src: None,
+                ..
+            } if unpack_batch_dst(dst).is_some()
+        );
+        let reloads_same_source = matches!(
+            (&window[0], &window[2]),
+            (
+                Instr::Mov {
+                    dir: MovDir::AccFromSrc,
+                    field: before_field,
+                    src: Some(before_src),
+                    ..
+                },
+                Instr::Mov {
+                    dir: MovDir::AccFromSrc,
+                    field: after_field,
+                    src: Some(after_src),
+                    ..
+                },
+            ) if before_field == after_field
+                && before_src == after_src
+                && match before_src {
+                    OperandLine::Smem { .. } | OperandLine::Ldc { .. } => true,
+                    OperandLine::Special { desc } => {
+                        matches!(specials.get(*desc), Some(BwdSpecial::VirtualSetup { .. }))
+                    }
+                    OperandLine::LogicalGlobal { .. }
+                    | OperandLine::LogicalFold { .. }
+                    | OperandLine::Source { .. } => false,
+                }
+        );
+        let reloads_just_stored_acc = matches!(
+            (&window[0], &window[2]),
+            (
+                Instr::Mov {
+                    dir: MovDir::DstFromAcc,
+                    field: before_field,
+                    dst: Some(DstLine::Smem { cell: before_cell }),
+                    ..
+                },
+                Instr::Mov {
+                    dir: MovDir::AccFromSrc,
+                    field: after_field,
+                    src: Some(OperandLine::Smem { cell: after_cell }),
+                    ..
+                },
+            ) if before_field == after_field && before_cell == after_cell
+        );
+        if sink && (reloads_same_source || reloads_just_stored_acc) {
+            delete[instruction + 2] = true;
+        }
+    }
+
+    let mut instruction = 0;
+    program.instrs.retain(|_| {
+        let keep = !delete[instruction];
+        instruction += 1;
+        keep
+    });
 }
 
 fn smem_operand_overlaps(
@@ -2406,7 +2483,7 @@ mod tests {
     }
 
     #[test]
-    fn cache_cell_remains_live_and_unchanged_across_batch_sink() {
+    fn batch_sink_preserves_acc_and_elides_resident_reload() {
         let layer = return_acc_layer(false);
         let fingerprint = structural_fingerprints(&layer).unwrap()[0];
         let value = ValueRef {
@@ -2455,22 +2532,26 @@ mod tests {
         )
         .unwrap();
         let instrs = &concrete.compiled.program.instrs;
-        let stored_cell = match &instrs[1] {
+        assert_eq!(instrs.len(), 4);
+        assert!(matches!(
+            &instrs[1],
             Instr::Mov {
                 dir: MovDir::DstFromAcc,
-                dst: Some(DstLine::Smem { cell }),
+                dst: Some(DstLine::Smem { .. }),
                 ..
-            } => *cell,
-            other => panic!("expected cache store, got {other:?}"),
-        };
-        assert!(matches!(
-            &instrs[3],
-            Instr::Mov {
-                dir: MovDir::AccFromSrc,
-                src: Some(OperandLine::Smem { cell }),
-                ..
-            } if *cell == stored_cell
+            }
         ));
+        assert!(instrs[2..].iter().all(|instruction| {
+            matches!(
+                instruction,
+                Instr::Mov {
+                    dir: MovDir::DstFromAcc,
+                    dst: Some(dst),
+                    src: None,
+                    ..
+                } if unpack_batch_dst(dst).is_some()
+            )
+        }));
     }
 
     #[test]
