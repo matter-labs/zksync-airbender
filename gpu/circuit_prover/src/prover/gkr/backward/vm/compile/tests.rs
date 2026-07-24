@@ -1,12 +1,245 @@
 use std::collections::BTreeMap;
 
 use cs::gkr_compiler::dag_ir::{BwdRegime, ReadPlace};
+use gkr_eval_isa::bwd::batch::{unpack_batch_dst, BATCH_COEFFICIENT_ONE};
+use gkr_eval_isa::bwd::compile::BwdCompiledLayer;
 use gkr_eval_isa::bwd::disasm::disassemble_bwd_layer;
+use gkr_eval_isa::bwd::source::BwdSpecial;
 use gkr_eval_isa::fwd::encode::decode;
-use gkr_eval_isa::fwd::isa::{Instr, OperandLine, Program};
+use gkr_eval_isa::fwd::isa::{Instr, MovDir, OperandLine, Program};
 
 use super::{load_add_sub_l0_case, AddSubBwdVmCase};
 use crate::prover::gkr::forward::vm::desc::PROGRAM_CAP;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct BatchProgramSummary {
+    batch_sinks: usize,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum FragmentAccState {
+    NeedsInit,
+    Active,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum BatchProgramInvariantError {
+    BatchingSpecialOperand { instruction: usize, desc: u16 },
+    InvalidBatchSinkDescriptor { instruction: usize, desc: u16 },
+    BatchSinkBeforeInit { instruction: usize },
+    AccumulatorUseBeforeInit { instruction: usize },
+    AccumulatorInitWithoutSource { instruction: usize },
+    FinalInstructionNotBatchSink,
+    BatchSinkCount { expected: usize, actual: usize },
+}
+
+fn validate_raw_batch_sink_program(
+    compiled: &BwdCompiledLayer,
+    expected_fragments: usize,
+) -> Result<BatchProgramSummary, BatchProgramInvariantError> {
+    let mut acc_state = FragmentAccState::NeedsInit;
+    let mut batch_sinks = 0;
+
+    for (instruction_index, instruction) in compiled.program.instrs.iter().enumerate() {
+        let mut batching_special = None;
+        visit_instruction_operands(instruction, |operand| {
+            let OperandLine::Special { desc } = operand else {
+                return;
+            };
+            if matches!(
+                compiled.specials.get(*desc),
+                Some(BwdSpecial::Coefficient { .. } | BwdSpecial::AccInit)
+            ) {
+                batching_special.get_or_insert(*desc);
+            }
+        });
+        if let Some(desc) = batching_special {
+            return Err(BatchProgramInvariantError::BatchingSpecialOperand {
+                instruction: instruction_index,
+                desc,
+            });
+        }
+
+        if let Some(desc) = batch_sink_desc(instruction) {
+            if acc_state == FragmentAccState::NeedsInit {
+                return Err(BatchProgramInvariantError::BatchSinkBeforeInit {
+                    instruction: instruction_index,
+                });
+            }
+            if desc != BATCH_COEFFICIENT_ONE
+                && !matches!(
+                    compiled.specials.get(desc),
+                    Some(BwdSpecial::Coefficient { .. })
+                )
+            {
+                return Err(BatchProgramInvariantError::InvalidBatchSinkDescriptor {
+                    instruction: instruction_index,
+                    desc,
+                });
+            }
+            batch_sinks += 1;
+            acc_state = FragmentAccState::NeedsInit;
+            continue;
+        }
+
+        match instruction {
+            Instr::Mov {
+                dir: MovDir::AccFromSrc,
+                src: Some(_),
+                ..
+            } => acc_state = FragmentAccState::Active,
+            Instr::Mov {
+                dir: MovDir::AccFromSrc,
+                src: None,
+                ..
+            } => {
+                return Err(BatchProgramInvariantError::AccumulatorInitWithoutSource {
+                    instruction: instruction_index,
+                });
+            }
+            Instr::Add { .. }
+            | Instr::Mul { .. }
+            | Instr::Fma { .. }
+            | Instr::Mov {
+                dir: MovDir::DstFromAcc,
+                ..
+            } if acc_state == FragmentAccState::NeedsInit => {
+                return Err(BatchProgramInvariantError::AccumulatorUseBeforeInit {
+                    instruction: instruction_index,
+                });
+            }
+            Instr::Add { .. }
+            | Instr::Mul { .. }
+            | Instr::Fma { .. }
+            | Instr::Mov {
+                dir: MovDir::DstFromAcc,
+                ..
+            }
+            | Instr::Mov {
+                dir: MovDir::DstFromSrc,
+                ..
+            } => {}
+        }
+    }
+
+    if compiled
+        .program
+        .instrs
+        .last()
+        .and_then(batch_sink_desc)
+        .is_none()
+    {
+        return Err(BatchProgramInvariantError::FinalInstructionNotBatchSink);
+    }
+    if batch_sinks != expected_fragments {
+        return Err(BatchProgramInvariantError::BatchSinkCount {
+            expected: expected_fragments,
+            actual: batch_sinks,
+        });
+    }
+
+    Ok(BatchProgramSummary { batch_sinks })
+}
+
+fn batch_sink_desc(instruction: &Instr) -> Option<u16> {
+    let Instr::Mov {
+        dir: MovDir::DstFromAcc,
+        dst: Some(dst),
+        src: None,
+        ..
+    } = instruction
+    else {
+        return None;
+    };
+    unpack_batch_dst(dst)
+}
+
+#[test]
+fn raw_batch_sink_gate_rejects_coefficient_source_operand() {
+    let case = load_add_sub_l0_case(BwdRegime::R0, 2);
+    let mut compiled = case.compiled.compiled.clone();
+    let desc = (0..compiled.specials.len())
+        .map(|desc| u16::try_from(desc).expect("backward descriptor fits u16"))
+        .find(|desc| {
+            matches!(
+                compiled.specials.get(*desc),
+                Some(BwdSpecial::Coefficient { .. })
+            )
+        })
+        .expect("add/sub batching program must carry a coefficient descriptor");
+    let instruction = compiled
+        .program
+        .instrs
+        .iter()
+        .position(|instruction| {
+            matches!(
+                instruction,
+                Instr::Mov {
+                    dir: MovDir::AccFromSrc,
+                    src: Some(_),
+                    ..
+                }
+            )
+        })
+        .expect("add/sub batching program must initialize a fragment accumulator");
+    let Instr::Mov { src, .. } = &mut compiled.program.instrs[instruction] else {
+        unreachable!("located instruction is Mov");
+    };
+    *src = Some(OperandLine::Special { desc });
+
+    assert_eq!(
+        validate_raw_batch_sink_program(&compiled, case.fragment_order_len),
+        Err(BatchProgramInvariantError::BatchingSpecialOperand { instruction, desc })
+    );
+}
+
+#[test]
+fn raw_batch_sink_gate_rejects_accumulator_use_without_reset() {
+    let case = load_add_sub_l0_case(BwdRegime::R0, 2);
+    let mut compiled = case.compiled.compiled.clone();
+    let sink = compiled
+        .program
+        .instrs
+        .iter()
+        .position(|instruction| {
+            matches!(
+                instruction,
+                Instr::Mov {
+                    dir: MovDir::DstFromAcc,
+                    dst: Some(dst),
+                    src: None,
+                    ..
+                } if unpack_batch_dst(dst).is_some()
+            )
+        })
+        .expect("add/sub batching program must contain a batch sink");
+    let instruction = (sink + 1..compiled.program.instrs.len())
+        .find(|instruction| {
+            matches!(
+                &compiled.program.instrs[*instruction],
+                Instr::Mov {
+                    dir: MovDir::AccFromSrc,
+                    src: Some(_),
+                    ..
+                }
+            )
+        })
+        .expect("the next add/sub fragment must reset acc");
+    let Instr::Mov { field, .. } = &compiled.program.instrs[instruction] else {
+        unreachable!("located instruction is Mov");
+    };
+    compiled.program.instrs[instruction] = Instr::Mul {
+        field: *field,
+        promote: false,
+        negate_acc: true,
+        operands: vec![],
+    };
+
+    assert_eq!(
+        validate_raw_batch_sink_program(&compiled, case.fragment_order_len),
+        Err(BatchProgramInvariantError::AccumulatorUseBeforeInit { instruction })
+    );
+}
 
 #[test]
 #[ignore = "inspection tool: prints the add/sub L0 R0 c2 backward VM decompile"]
@@ -24,17 +257,20 @@ fn dump_add_sub_l0_r0_c2_backward_vm() {
         .lines()
         .filter(|line| line.contains("] batch +="))
         .count();
+    let raw_summary =
+        validate_raw_batch_sink_program(&case.compiled.compiled, case.fragment_order_len)
+            .expect("raw add/sub program must have independent batching-sink fragments");
 
     println!("\n{text}");
     assert!(text.contains("budget = c2 (8 BF lanes)"));
     assert!(text.contains("batch_init = coeff[2]"));
-    assert_eq!(batch_sinks, case.distilled.fragments.fragments.len());
-    assert_eq!(batch_sinks, 144);
-    assert!(!program.contains("AccInit"));
-    assert!(program
-        .lines()
-        .filter(|line| line.contains("coeff["))
-        .all(|line| line.contains("] batch +=")));
+    assert_eq!(
+        case.fragment_order_len,
+        case.distilled.fragments.fragments.len()
+    );
+    assert_eq!(raw_summary.batch_sinks, case.fragment_order_len);
+    assert_eq!(raw_summary.batch_sinks, 144);
+    assert_eq!(batch_sinks, raw_summary.batch_sinks);
     assert!(text.contains("terminal = ReturnBatch"));
 }
 
@@ -132,22 +368,26 @@ fn assert_source_windows_are_bound(case: &AddSubBwdVmCase) {
 
 fn visit_operands(program: &Program, mut visit: impl FnMut(&OperandLine)) {
     for instruction in &program.instrs {
-        match instruction {
-            Instr::Add { operands, .. } | Instr::Mul { operands, .. } => {
-                for operand in operands {
-                    visit(operand);
-                }
+        visit_instruction_operands(instruction, &mut visit);
+    }
+}
+
+fn visit_instruction_operands(instruction: &Instr, mut visit: impl FnMut(&OperandLine)) {
+    match instruction {
+        Instr::Add { operands, .. } | Instr::Mul { operands, .. } => {
+            for operand in operands {
+                visit(operand);
             }
-            Instr::Fma { pairs, .. } => {
-                for (lhs, rhs) in pairs {
-                    visit(lhs);
-                    visit(rhs);
-                }
+        }
+        Instr::Fma { pairs, .. } => {
+            for (lhs, rhs) in pairs {
+                visit(lhs);
+                visit(rhs);
             }
-            Instr::Mov { src, .. } => {
-                if let Some(source) = src {
-                    visit(source);
-                }
+        }
+        Instr::Mov { src, .. } => {
+            if let Some(source) = src {
+                visit(source);
             }
         }
     }

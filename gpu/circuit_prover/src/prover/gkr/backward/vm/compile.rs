@@ -27,6 +27,7 @@ pub(crate) struct AddSubBwdVmCase {
     pub(crate) trace_len: usize,
     pub(crate) regime: BwdRegime,
     pub(crate) budget_cells: usize,
+    pub(crate) fragment_order_len: usize,
 }
 
 #[cfg(all(test, feature = "bench"))]
@@ -66,6 +67,7 @@ pub(crate) fn load_add_sub_l0_case(regime: BwdRegime, budget_cells: usize) -> Ad
         .unwrap_or_else(|error| panic!("load {}: {error:?}", plan_path.display()));
     let plan = select_backward_plan(&plans, 0, regime, budget_cells)
         .unwrap_or_else(|error| panic!("select add/sub L0 {regime:?} c{budget_cells}: {error:?}"));
+    let fragment_order_len = plan.fragment_order.len();
     let compiled =
         compile_backward_plan_artifact(&plans.circuit, 0, &canonical, &distilled, trace_len, plan)
             .unwrap_or_else(|error| {
@@ -81,6 +83,7 @@ pub(crate) fn load_add_sub_l0_case(regime: BwdRegime, budget_cells: usize) -> Ad
         trace_len,
         regime,
         budget_cells,
+        fragment_order_len,
     }
 }
 
