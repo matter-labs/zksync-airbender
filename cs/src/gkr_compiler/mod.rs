@@ -286,8 +286,9 @@ impl<F: PrimeField> PartialOrd for NoFieldStructuredExpression<F> {
 impl<F: PrimeField> Ord for NoFieldStructuredExpression<F> {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         match (self, other) {
-            (Self::Constant(..), Self::Constant(..)) => {
-                unreachable!("unnormalized")
+            (Self::Constant(a), Self::Constant(b)) => {
+                // can happen in recursive comparisons below
+                a.as_u128_reduced().cmp(&b.as_u128_reduced())
             }
             (Self::Constant(..), _) => std::cmp::Ordering::Less,
             (_, Self::Constant(..)) => std::cmp::Ordering::Greater,
