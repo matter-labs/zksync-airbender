@@ -653,16 +653,19 @@ fn unified_register_all_tables<F: ::field::PrimeField, CS: Circuit<F>>(cs: &mut 
 pub fn build_unified_artifact<F: ::field::PrimeField>(
     use_caches: bool,
     trace_len_log2: usize,
+    num_init_and_teardown_pairs: usize,
 ) -> crate::gkr_compiler::GKRCircuitArtifact<F> {
     build_unified_artifact_core::<F, ::field::baby_bear::base::BabyBearField>(
         use_caches,
         trace_len_log2,
+        num_init_and_teardown_pairs,
     )
 }
 
 pub fn build_unified_artifact_core<F: ::field::PrimeField, MopF: ::field::PrimeField>(
     use_caches: bool,
     trace_len_log2: usize,
+    num_init_and_teardown_pairs: usize,
 ) -> crate::gkr_compiler::GKRCircuitArtifact<F> {
     use crate::cs::circuit_impl::BasicAssembly;
     use crate::gkr_compiler::GKRCompiler;
@@ -676,7 +679,7 @@ pub fn build_unified_artifact_core<F: ::field::PrimeField, MopF: ::field::PrimeF
     compiler.compile_family_circuit_with_inline_inits_and_teardowns(
         cs_output,
         common_constants::ROM_WORD_SIZE,
-        /* num_inits_and_teardowns_pairs */ 1,
+        /* num_inits_and_teardowns_pairs */ num_init_and_teardown_pairs,
         /* trace_len_log2 */ trace_len_log2,
         use_caches,
     )
@@ -687,7 +690,7 @@ mod test {
     use crate::constraint::Term;
     use test_utils::skip_if_ci;
 
-    const UNIFIED_CIRCUIT_TRACE_LEN_LOG2: usize = 24;
+    const UNIFIED_CIRCUIT_TRACE_LEN_LOG2: usize = 23;
     const LARGE_FIELD_UNIFIED_CIRCUIT_TRACE_LEN_LOG2: usize = 22;
 
     use super::*;
@@ -772,7 +775,7 @@ mod test {
         use ::field::baby_bear::base::BabyBearField;
 
         let artifact =
-            build_unified_artifact::<BabyBearField>(true, UNIFIED_CIRCUIT_TRACE_LEN_LOG2);
+            build_unified_artifact::<BabyBearField>(true, UNIFIED_CIRCUIT_TRACE_LEN_LOG2, 1);
 
         assert!(artifact
             .global_output_map
@@ -800,7 +803,7 @@ mod test {
         use ::field::baby_bear::base::BabyBearField;
 
         let artifact =
-            build_unified_artifact::<BabyBearField>(true, UNIFIED_CIRCUIT_TRACE_LEN_LOG2);
+            build_unified_artifact::<BabyBearField>(true, UNIFIED_CIRCUIT_TRACE_LEN_LOG2, 1);
         serialize_to_file(
             &artifact,
             "compiled_circuits/unified_reduced_machine_layout_gkr.json",
@@ -814,7 +817,7 @@ mod test {
         use ::field::baby_bear::base::BabyBearField;
 
         let artifact =
-            build_unified_artifact::<BabyBearField>(false, UNIFIED_CIRCUIT_TRACE_LEN_LOG2);
+            build_unified_artifact::<BabyBearField>(false, UNIFIED_CIRCUIT_TRACE_LEN_LOG2, 1);
         serialize_to_file(
             &artifact,
             "compiled_circuits/unified_reduced_machine_layout_no_caches_gkr.json",
@@ -846,7 +849,7 @@ mod test {
         use ::field::proth120::Proth120;
 
         let artifact =
-            build_unified_artifact::<Proth120>(true, LARGE_FIELD_UNIFIED_CIRCUIT_TRACE_LEN_LOG2);
+            build_unified_artifact::<Proth120>(true, LARGE_FIELD_UNIFIED_CIRCUIT_TRACE_LEN_LOG2, 1);
         serialize_to_file(
             &artifact,
             "compiled_circuits/unified_reduced_machine_layout_gkr_proth120.json",

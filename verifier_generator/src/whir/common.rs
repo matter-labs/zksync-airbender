@@ -14,7 +14,7 @@ pub fn generate_whir_common<MW: FieldWrapper>(max_fold_steps: usize) -> TokenStr
     let field_struct = MW::field_struct();
 
     // read_and_batch_leaf ops
-    let from_raw = MW::field_from_reduced_raw_repr(quote! { raw });
+    // let from_raw = MW::field_from_reduced_raw_repr(quote! { raw });
 
     let fma_into_acc_0 =
         MW::add_assign_product_with_base(quote! { *acc0 }, quote! { gamma }, quote! { base_val });

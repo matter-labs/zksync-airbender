@@ -1,5 +1,5 @@
 {
-  "trace_len": 16777216,
+  "trace_len": 8388608,
   "table_offsets": [
     0,
     1,

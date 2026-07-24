@@ -208,7 +208,7 @@ fn generate_verifier_for_circuit<MW: FieldWrapper<BaseField = BabyBearField>>(
 }
 
 macro_rules! generate_circuit_tests {
-    ($($name:ident; $layout_suffix:expr),* $(,)?) => {
+    ($($name:ident; $prod_path:expr),* $(,)?) => {
         $(
             #[test]
             fn $name() {

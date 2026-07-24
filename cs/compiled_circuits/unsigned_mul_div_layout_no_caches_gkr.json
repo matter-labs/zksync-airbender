@@ -446,22 +446,13 @@
                     "Product": [
                       {
                         "Place": {
-                          "BaseLayerMemory": 2
+                          "BaseLayerWitness": 2
                         }
                       },
                       {
-                        "Sum": [
-                          {
-                            "Place": {
-                              "BaseLayerWitness": 4
-                            }
-                          },
-                          {
-                            "Place": {
-                              "BaseLayerWitness": 5
-                            }
-                          }
-                        ]
+                        "Place": {
+                          "BaseLayerMemory": 15
+                        }
                       }
                     ]
                   },
@@ -483,13 +474,22 @@
                     "Product": [
                       {
                         "Place": {
-                          "BaseLayerWitness": 2
+                          "BaseLayerMemory": 2
                         }
                       },
                       {
-                        "Place": {
-                          "BaseLayerMemory": 15
-                        }
+                        "Sum": [
+                          {
+                            "Place": {
+                              "BaseLayerWitness": 4
+                            }
+                          },
+                          {
+                            "Place": {
+                              "BaseLayerWitness": 5
+                            }
+                          }
+                        ]
                       }
                     ]
                   }
@@ -572,22 +572,13 @@
                     "Product": [
                       {
                         "Place": {
-                          "BaseLayerMemory": 3
+                          "BaseLayerWitness": 2
                         }
                       },
                       {
-                        "Sum": [
-                          {
-                            "Place": {
-                              "BaseLayerWitness": 4
-                            }
-                          },
-                          {
-                            "Place": {
-                              "BaseLayerWitness": 5
-                            }
-                          }
-                        ]
+                        "Place": {
+                          "BaseLayerMemory": 16
+                        }
                       }
                     ]
                   },
@@ -609,13 +600,22 @@
                     "Product": [
                       {
                         "Place": {
-                          "BaseLayerWitness": 2
+                          "BaseLayerMemory": 3
                         }
                       },
                       {
-                        "Place": {
-                          "BaseLayerMemory": 16
-                        }
+                        "Sum": [
+                          {
+                            "Place": {
+                              "BaseLayerWitness": 4
+                            }
+                          },
+                          {
+                            "Place": {
+                              "BaseLayerWitness": 5
+                            }
+                          }
+                        ]
                       }
                     ]
                   }
@@ -852,12 +852,12 @@
                     "Product": [
                       {
                         "Place": {
-                          "BaseLayerWitness": 5
+                          "BaseLayerWitness": 4
                         }
                       },
                       {
                         "Place": {
-                          "BaseLayerWitness": 11
+                          "BaseLayerMemory": 15
                         }
                       }
                     ]
@@ -866,12 +866,12 @@
                     "Product": [
                       {
                         "Place": {
-                          "BaseLayerWitness": 4
+                          "BaseLayerWitness": 5
                         }
                       },
                       {
                         "Place": {
-                          "BaseLayerMemory": 15
+                          "BaseLayerWitness": 11
                         }
                       }
                     ]
@@ -978,12 +978,12 @@
                     "Product": [
                       {
                         "Place": {
-                          "BaseLayerWitness": 5
+                          "BaseLayerWitness": 4
                         }
                       },
                       {
                         "Place": {
-                          "BaseLayerWitness": 12
+                          "BaseLayerMemory": 16
                         }
                       }
                     ]
@@ -992,12 +992,12 @@
                     "Product": [
                       {
                         "Place": {
-                          "BaseLayerWitness": 4
+                          "BaseLayerWitness": 5
                         }
                       },
                       {
                         "Place": {
-                          "BaseLayerMemory": 16
+                          "BaseLayerWitness": 12
                         }
                       }
                     ]
@@ -1078,12 +1078,12 @@
                     "Product": [
                       {
                         "Place": {
-                          "BaseLayerWitness": 5
+                          "BaseLayerWitness": 4
                         }
                       },
                       {
                         "Place": {
-                          "BaseLayerMemory": 15
+                          "BaseLayerWitness": 11
                         }
                       }
                     ]
@@ -1092,12 +1092,12 @@
                     "Product": [
                       {
                         "Place": {
-                          "BaseLayerWitness": 4
+                          "BaseLayerWitness": 5
                         }
                       },
                       {
                         "Place": {
-                          "BaseLayerWitness": 11
+                          "BaseLayerMemory": 15
                         }
                       }
                     ]
@@ -1155,12 +1155,12 @@
                     "Product": [
                       {
                         "Place": {
-                          "BaseLayerWitness": 5
+                          "BaseLayerWitness": 4
                         }
                       },
                       {
                         "Place": {
-                          "BaseLayerMemory": 16
+                          "BaseLayerWitness": 12
                         }
                       }
                     ]
@@ -1169,12 +1169,12 @@
                     "Product": [
                       {
                         "Place": {
-                          "BaseLayerWitness": 4
+                          "BaseLayerWitness": 5
                         }
                       },
                       {
                         "Place": {
-                          "BaseLayerWitness": 12
+                          "BaseLayerMemory": 16
                         }
                       }
                     ]
@@ -2755,30 +2755,6 @@
                   {
                     "Sum": [
                       {
-                        "Constant": 1073741816
-                      },
-                      {
-                        "Place": {
-                          "BaseLayerMemory": 18
-                        }
-                      },
-                      {
-                        "Product": [
-                          {
-                            "Constant": 1744830467
-                          },
-                          {
-                            "Place": {
-                              "BaseLayerMemory": 22
-                            }
-                          }
-                        ]
-                      }
-                    ]
-                  },
-                  {
-                    "Sum": [
-                      {
                         "Constant": 1744830467
                       },
                       {
@@ -2809,6 +2785,30 @@
                                 ]
                               }
                             ]
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "Sum": [
+                      {
+                        "Constant": 1073741816
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerMemory": 18
+                        }
+                      },
+                      {
+                        "Product": [
+                          {
+                            "Constant": 1744830467
+                          },
+                          {
+                            "Place": {
+                              "BaseLayerMemory": 22
+                            }
                           }
                         ]
                       }
@@ -2863,18 +2863,6 @@
                   {
                     "Product": [
                       {
-                        "Constant": 1744830467
-                      },
-                      {
-                        "Place": {
-                          "BaseLayerMemory": 23
-                        }
-                      }
-                    ]
-                  },
-                  {
-                    "Product": [
-                      {
                         "Constant": 65536
                       },
                       {
@@ -2900,6 +2888,18 @@
                             ]
                           }
                         ]
+                      }
+                    ]
+                  },
+                  {
+                    "Product": [
+                      {
+                        "Constant": 1744830467
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerMemory": 23
+                        }
                       }
                     ]
                   }
@@ -4219,6 +4219,21 @@
                   {
                     "Product": [
                       {
+                        "Constant": 1744970275
+                      },
+                      {
+                        "Place": {
+                          "InnerLayer": {
+                            "layer": 1,
+                            "offset": 23
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "Product": [
+                      {
                         "Constant": 1744830467
                       },
                       {
@@ -4234,13 +4249,18 @@
                   {
                     "Product": [
                       {
-                        "Constant": 1744970275
+                        "Place": {
+                          "InnerLayer": {
+                            "layer": 1,
+                            "offset": 19
+                          }
+                        }
                       },
                       {
                         "Place": {
                           "InnerLayer": {
                             "layer": 1,
-                            "offset": 23
+                            "offset": 21
                           }
                         }
                       }
@@ -4321,26 +4341,6 @@
                             ]
                           }
                         ]
-                      }
-                    ]
-                  },
-                  {
-                    "Product": [
-                      {
-                        "Place": {
-                          "InnerLayer": {
-                            "layer": 1,
-                            "offset": 19
-                          }
-                        }
-                      },
-                      {
-                        "Place": {
-                          "InnerLayer": {
-                            "layer": 1,
-                            "offset": 21
-                          }
-                        }
                       }
                     ]
                   }
@@ -4567,6 +4567,21 @@
                   {
                     "Product": [
                       {
+                        "Constant": 1744970275
+                      },
+                      {
+                        "Place": {
+                          "InnerLayer": {
+                            "layer": 1,
+                            "offset": 24
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "Product": [
+                      {
                         "Constant": 1744830467
                       },
                       {
@@ -4582,13 +4597,18 @@
                   {
                     "Product": [
                       {
-                        "Constant": 1744970275
+                        "Place": {
+                          "InnerLayer": {
+                            "layer": 1,
+                            "offset": 19
+                          }
+                        }
                       },
                       {
                         "Place": {
                           "InnerLayer": {
                             "layer": 1,
-                            "offset": 24
+                            "offset": 22
                           }
                         }
                       }
@@ -4639,46 +4659,7 @@
                         "Place": {
                           "InnerLayer": {
                             "layer": 1,
-                            "offset": 22
-                          }
-                        }
-                      },
-                      {
-                        "Sum": [
-                          {
-                            "Place": {
-                              "InnerLayer": {
-                                "layer": 1,
-                                "offset": 14
-                              }
-                            }
-                          },
-                          {
-                            "Product": [
-                              {
-                                "Constant": 1744830467
-                              },
-                              {
-                                "Place": {
-                                  "InnerLayer": {
-                                    "layer": 1,
-                                    "offset": 19
-                                  }
-                                }
-                              }
-                            ]
-                          }
-                        ]
-                      }
-                    ]
-                  },
-                  {
-                    "Product": [
-                      {
-                        "Place": {
-                          "InnerLayer": {
-                            "layer": 1,
-                            "offset": 19
+                            "offset": 20
                           }
                         }
                       },
@@ -4686,7 +4667,7 @@
                         "Place": {
                           "InnerLayer": {
                             "layer": 1,
-                            "offset": 22
+                            "offset": 21
                           }
                         }
                       }
@@ -4722,6 +4703,84 @@
                                   "InnerLayer": {
                                     "layer": 1,
                                     "offset": 21
+                                  }
+                                }
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "Product": [
+                      {
+                        "Place": {
+                          "InnerLayer": {
+                            "layer": 1,
+                            "offset": 21
+                          }
+                        }
+                      },
+                      {
+                        "Sum": [
+                          {
+                            "Place": {
+                              "InnerLayer": {
+                                "layer": 1,
+                                "offset": 15
+                              }
+                            }
+                          },
+                          {
+                            "Product": [
+                              {
+                                "Constant": 1744830467
+                              },
+                              {
+                                "Place": {
+                                  "InnerLayer": {
+                                    "layer": 1,
+                                    "offset": 20
+                                  }
+                                }
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "Product": [
+                      {
+                        "Place": {
+                          "InnerLayer": {
+                            "layer": 1,
+                            "offset": 22
+                          }
+                        }
+                      },
+                      {
+                        "Sum": [
+                          {
+                            "Place": {
+                              "InnerLayer": {
+                                "layer": 1,
+                                "offset": 14
+                              }
+                            }
+                          },
+                          {
+                            "Product": [
+                              {
+                                "Constant": 1744830467
+                              },
+                              {
+                                "Place": {
+                                  "InnerLayer": {
+                                    "layer": 1,
+                                    "offset": 19
                                   }
                                 }
                               }
@@ -4789,65 +4848,6 @@
                             ]
                           }
                         ]
-                      }
-                    ]
-                  },
-                  {
-                    "Product": [
-                      {
-                        "Place": {
-                          "InnerLayer": {
-                            "layer": 1,
-                            "offset": 21
-                          }
-                        }
-                      },
-                      {
-                        "Sum": [
-                          {
-                            "Place": {
-                              "InnerLayer": {
-                                "layer": 1,
-                                "offset": 15
-                              }
-                            }
-                          },
-                          {
-                            "Product": [
-                              {
-                                "Constant": 1744830467
-                              },
-                              {
-                                "Place": {
-                                  "InnerLayer": {
-                                    "layer": 1,
-                                    "offset": 20
-                                  }
-                                }
-                              }
-                            ]
-                          }
-                        ]
-                      }
-                    ]
-                  },
-                  {
-                    "Product": [
-                      {
-                        "Place": {
-                          "InnerLayer": {
-                            "layer": 1,
-                            "offset": 20
-                          }
-                        }
-                      },
-                      {
-                        "Place": {
-                          "InnerLayer": {
-                            "layer": 1,
-                            "offset": 21
-                          }
-                        }
                       }
                     ]
                   }
@@ -5066,6 +5066,21 @@
                   {
                     "Product": [
                       {
+                        "Constant": 1744970275
+                      },
+                      {
+                        "Place": {
+                          "InnerLayer": {
+                            "layer": 1,
+                            "offset": 25
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "Product": [
+                      {
                         "Constant": 1744830467
                       },
                       {
@@ -5081,13 +5096,18 @@
                   {
                     "Product": [
                       {
-                        "Constant": 1744970275
+                        "Place": {
+                          "InnerLayer": {
+                            "layer": 1,
+                            "offset": 20
+                          }
+                        }
                       },
                       {
                         "Place": {
                           "InnerLayer": {
                             "layer": 1,
-                            "offset": 25
+                            "offset": 22
                           }
                         }
                       }
@@ -5123,6 +5143,106 @@
                                   "InnerLayer": {
                                     "layer": 1,
                                     "offset": 22
+                                  }
+                                }
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "Product": [
+                      {
+                        "Place": {
+                          "InnerLayer": {
+                            "layer": 1,
+                            "offset": 22
+                          }
+                        }
+                      },
+                      {
+                        "Sum": [
+                          {
+                            "Place": {
+                              "InnerLayer": {
+                                "layer": 1,
+                                "offset": 15
+                              }
+                            }
+                          },
+                          {
+                            "Product": [
+                              {
+                                "Constant": 1744830467
+                              },
+                              {
+                                "Place": {
+                                  "InnerLayer": {
+                                    "layer": 1,
+                                    "offset": 20
+                                  }
+                                }
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "Product": [
+                      {
+                        "Constant": 65536
+                      },
+                      {
+                        "Sum": [
+                          {
+                            "Place": {
+                              "InnerLayer": {
+                                "layer": 1,
+                                "offset": 10
+                              }
+                            }
+                          },
+                          {
+                            "Product": [
+                              {
+                                "Constant": 1744830467
+                              },
+                              {
+                                "Place": {
+                                  "InnerLayer": {
+                                    "layer": 1,
+                                    "offset": 21
+                                  }
+                                }
+                              }
+                            ]
+                          }
+                        ]
+                      },
+                      {
+                        "Sum": [
+                          {
+                            "Place": {
+                              "InnerLayer": {
+                                "layer": 1,
+                                "offset": 15
+                              }
+                            }
+                          },
+                          {
+                            "Product": [
+                              {
+                                "Constant": 1744830467
+                              },
+                              {
+                                "Place": {
+                                  "InnerLayer": {
+                                    "layer": 1,
+                                    "offset": 20
                                   }
                                 }
                               }
@@ -5184,126 +5304,6 @@
                                   "InnerLayer": {
                                     "layer": 1,
                                     "offset": 19
-                                  }
-                                }
-                              }
-                            ]
-                          }
-                        ]
-                      }
-                    ]
-                  },
-                  {
-                    "Product": [
-                      {
-                        "Place": {
-                          "InnerLayer": {
-                            "layer": 1,
-                            "offset": 22
-                          }
-                        }
-                      },
-                      {
-                        "Sum": [
-                          {
-                            "Place": {
-                              "InnerLayer": {
-                                "layer": 1,
-                                "offset": 15
-                              }
-                            }
-                          },
-                          {
-                            "Product": [
-                              {
-                                "Constant": 1744830467
-                              },
-                              {
-                                "Place": {
-                                  "InnerLayer": {
-                                    "layer": 1,
-                                    "offset": 20
-                                  }
-                                }
-                              }
-                            ]
-                          }
-                        ]
-                      }
-                    ]
-                  },
-                  {
-                    "Product": [
-                      {
-                        "Place": {
-                          "InnerLayer": {
-                            "layer": 1,
-                            "offset": 20
-                          }
-                        }
-                      },
-                      {
-                        "Place": {
-                          "InnerLayer": {
-                            "layer": 1,
-                            "offset": 22
-                          }
-                        }
-                      }
-                    ]
-                  },
-                  {
-                    "Product": [
-                      {
-                        "Constant": 65536
-                      },
-                      {
-                        "Sum": [
-                          {
-                            "Place": {
-                              "InnerLayer": {
-                                "layer": 1,
-                                "offset": 10
-                              }
-                            }
-                          },
-                          {
-                            "Product": [
-                              {
-                                "Constant": 1744830467
-                              },
-                              {
-                                "Place": {
-                                  "InnerLayer": {
-                                    "layer": 1,
-                                    "offset": 21
-                                  }
-                                }
-                              }
-                            ]
-                          }
-                        ]
-                      },
-                      {
-                        "Sum": [
-                          {
-                            "Place": {
-                              "InnerLayer": {
-                                "layer": 1,
-                                "offset": 15
-                              }
-                            }
-                          },
-                          {
-                            "Product": [
-                              {
-                                "Constant": 1744830467
-                              },
-                              {
-                                "Place": {
-                                  "InnerLayer": {
-                                    "layer": 1,
-                                    "offset": 20
                                   }
                                 }
                               }
@@ -5634,41 +5634,6 @@
                   {
                     "Sum": [
                       {
-                        "Place": {
-                          "InnerLayer": {
-                            "layer": 1,
-                            "offset": 14
-                          }
-                        }
-                      },
-                      {
-                        "Place": {
-                          "InnerLayer": {
-                            "layer": 1,
-                            "offset": 17
-                          }
-                        }
-                      },
-                      {
-                        "Product": [
-                          {
-                            "Constant": 1744830467
-                          },
-                          {
-                            "Place": {
-                              "InnerLayer": {
-                                "layer": 1,
-                                "offset": 12
-                              }
-                            }
-                          }
-                        ]
-                      }
-                    ]
-                  },
-                  {
-                    "Sum": [
-                      {
                         "Constant": 1744830467
                       },
                       {
@@ -5710,6 +5675,41 @@
                                 ]
                               }
                             ]
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "Sum": [
+                      {
+                        "Place": {
+                          "InnerLayer": {
+                            "layer": 1,
+                            "offset": 14
+                          }
+                        }
+                      },
+                      {
+                        "Place": {
+                          "InnerLayer": {
+                            "layer": 1,
+                            "offset": 17
+                          }
+                        }
+                      },
+                      {
+                        "Product": [
+                          {
+                            "Constant": 1744830467
+                          },
+                          {
+                            "Place": {
+                              "InnerLayer": {
+                                "layer": 1,
+                                "offset": 12
+                              }
+                            }
                           }
                         ]
                       }
@@ -5886,21 +5886,6 @@
                       {
                         "Product": [
                           {
-                            "Constant": 1744830467
-                          },
-                          {
-                            "Place": {
-                              "InnerLayer": {
-                                "layer": 1,
-                                "offset": 18
-                              }
-                            }
-                          }
-                        ]
-                      },
-                      {
-                        "Product": [
-                          {
                             "Constant": 2013200385
                           },
                           {
@@ -5943,21 +5928,6 @@
                       {
                         "Product": [
                           {
-                            "Constant": 1744830467
-                          },
-                          {
-                            "Place": {
-                              "InnerLayer": {
-                                "layer": 1,
-                                "offset": 15
-                              }
-                            }
-                          }
-                        ]
-                      },
-                      {
-                        "Product": [
-                          {
                             "Constant": 268295646
                           },
                           {
@@ -5981,6 +5951,36 @@
                                 ]
                               }
                             ]
+                          }
+                        ]
+                      },
+                      {
+                        "Product": [
+                          {
+                            "Constant": 1744830467
+                          },
+                          {
+                            "Place": {
+                              "InnerLayer": {
+                                "layer": 1,
+                                "offset": 15
+                              }
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "Product": [
+                          {
+                            "Constant": 1744830467
+                          },
+                          {
+                            "Place": {
+                              "InnerLayer": {
+                                "layer": 1,
+                                "offset": 18
+                              }
+                            }
                           }
                         ]
                       }
