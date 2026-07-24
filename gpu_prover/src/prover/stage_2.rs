@@ -1,6 +1,7 @@
 use super::arg_utils::{DecoderTableChallenges, LookupChallenges};
 use super::callbacks::Callbacks;
 use super::context::{HostAllocation, ProverContext};
+use super::memory_policy::MemoryPolicy;
 use super::setup::SetupPrecomputations;
 use super::stage_1::StageOneOutput;
 use super::trace_holder::{flatten_tree_caps, TraceHolder, TreesCacheMode};
@@ -44,8 +45,7 @@ impl StageTwoOutput {
         circuit: &CompiledCircuitArtifact<BF>,
         log_lde_factor: u32,
         log_tree_cap_size: u32,
-        recompute_cosets: bool,
-        trees_cache_mode: TreesCacheMode,
+        policy: &MemoryPolicy,
         context: &ProverContext,
     ) -> CudaResult<Self> {
         let trace_len = circuit.trace_len;
@@ -61,8 +61,8 @@ impl StageTwoOutput {
             num_stage_2_cols,
             true,
             true,
-            recompute_cosets,
-            trees_cache_mode,
+            policy.stage_two,
+            TreesCacheMode::CachePatrial,
             context,
         )?;
         Ok(Self {

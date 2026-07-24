@@ -17,6 +17,29 @@ pub enum CircuitType {
 }
 
 impl CircuitType {
+    #[cfg(any(test, feature = "memory_sweep"))]
+    pub(crate) fn get_all() -> [Self; 12] {
+        use DelegationCircuitType::*;
+        use UnrolledCircuitType::*;
+        use UnrolledMemoryCircuitType::*;
+        use UnrolledNonMemoryCircuitType::*;
+
+        [
+            Self::Delegation(BigIntWithControl),
+            Self::Delegation(Blake2WithCompression),
+            Self::Delegation(KeccakSpecial5),
+            Self::Unrolled(InitsAndTeardowns),
+            Self::Unrolled(Memory(LoadStoreSubwordOnly)),
+            Self::Unrolled(Memory(LoadStoreWordOnly)),
+            Self::Unrolled(NonMemory(AddSubLuiAuipcMop)),
+            Self::Unrolled(NonMemory(JumpBranchSlt)),
+            Self::Unrolled(NonMemory(MulDiv)),
+            Self::Unrolled(NonMemory(MulDivUnsigned)),
+            Self::Unrolled(NonMemory(ShiftBinaryCsr)),
+            Self::Unrolled(Unified),
+        ]
+    }
+
     #[inline(always)]
     pub fn from_delegation_type(delegation_type: u16) -> Self {
         Self::Delegation(delegation_type.into())
