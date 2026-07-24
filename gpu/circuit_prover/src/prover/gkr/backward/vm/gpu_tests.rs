@@ -3365,15 +3365,17 @@ fn bwd_vm_add_sub_l0_r0_parity() {
 }
 
 #[test]
-#[ignore] // GPU; bounded one-block diagnostic for the full all-round gate.
+#[ignore] // GPU; bounded production spike for D0/D1/D2/D3.
 #[cfg(not(no_cuda))]
 #[serial_test::serial]
-fn bwd_vm_add_sub_l0_ext_round_zero_single_block_parity() {
-    const ROWS: usize = 16;
-    const SOURCE_ELEMENTS: usize = 2 * ROWS;
+fn bwd_vm_add_sub_l0_rounds_zero_through_three_spike() {
+    const BUDGET: usize = 4;
+    const SOURCE_ELEMENTS: usize = 32;
+    const FOLDING_STEPS: usize = 5;
+    const LAST_SPIKE_ROUND: u8 = 3;
 
-    let r0_case = load_add_sub_l0_case(BwdRegime::R0, 2);
-    let ext_case = load_add_sub_l0_case(BwdRegime::Ext, 2);
+    let r0_case = load_add_sub_l0_case(BwdRegime::R0, BUDGET);
+    let ext_case = load_add_sub_l0_case(BwdRegime::Ext, BUDGET);
     eprintln!(
         "[bwd-vm-tiny] compiled R0 instr={} lanes={} windows={} Ext instr={} lanes={} windows={}",
         r0_case.compiled.compiled.program.instrs.len(),
@@ -3398,41 +3400,13 @@ fn bwd_vm_add_sub_l0_ext_round_zero_single_block_parity() {
         .num_threads(1)
         .build()
         .expect("single-thread tiny oracle pool");
-    let claim_point = (0..5)
+    let claim_point = (0..FOLDING_STEPS)
         .map(|index| e4(0x5100 + index as u32))
         .collect::<Vec<_>>();
-    let round_challenges = (0..24)
+    let round_challenges = (0..FOLDING_STEPS)
         .map(|round| e4(0x5300 + round as u32))
         .collect::<Vec<_>>();
-    let eq_sizes = make_eq_sizes(claim_point.len() - 1);
-    let (cpu_high, cpu_low) = cpu_factored_eq(&claim_point[1..]);
     let claim_point_device = upload(&claim_point, fixture.context());
-    let mut eq_low_device = upload(&vec![E4::ZERO; GKR_EQ_GROUP_TABLE_LEN], fixture.context());
-    launch_build_eq_high_and_low_groups_from_point::<E4>(
-        claim_point_device.as_ptr(),
-        1,
-        claim_point.len() - 1,
-        get_eq_high_constant_device_ptr(),
-        eq_low_device.as_mut_ptr(),
-        fixture.context(),
-    )
-    .expect("build tiny Ext factored eq");
-    let expected = all_round_expected_contributions(
-        &ext_case,
-        &oracle,
-        0,
-        ROWS,
-        &round_challenges,
-        &cpu_high,
-        &cpu_low,
-        &eq_sizes,
-        &pool,
-        23,
-        &[],
-        &HashMap::new(),
-        &[],
-        &HashMap::new(),
-    );
 
     let read_descriptors = ext_read_descriptors(&ext_case);
     let virtual_descriptors = ext_virtual_descriptors(&ext_case);
@@ -3468,38 +3442,157 @@ fn bwd_vm_add_sub_l0_ext_round_zero_single_block_parity() {
         GuardedPublicationMatrix::new(4, SOURCE_ELEMENTS, sentinel, fixture.context()),
         GuardedPublicationMatrix::new(4, SOURCE_ELEMENTS, sentinel, fixture.context()),
     ];
-    let current_host = build_publication_oracle(
-        &read_descriptors,
-        &materialization,
-        0,
-        ROWS,
-        &oracle,
-        &round_challenges,
-        &HashMap::new(),
-        &pool,
-        23,
-    );
-    run_all_budget_coordinate(
-        &fixture,
-        std::slice::from_ref(&ext_case),
-        &expected,
-        0,
-        23,
-        claim_point[0],
-        &round_challenges,
-        &eq_low_device,
-        eq_sizes,
-        Some(&materialization),
-        &desc_columns,
-        Some(&original_matrix),
-        Some(&mut publication_matrices),
-        &HashMap::new(),
-        &current_host,
-        &virtual_descriptors,
-        Some(&mut virtual_publications),
-        &HashMap::new(),
-        &HashMap::new(),
-    );
+    let mut previous_host = HashMap::<u16, PublishedHostColumn>::new();
+    let mut previous_device = HashMap::<u16, PublishedDeviceColumn>::new();
+    let mut previous_virtual_host = HashMap::<u16, PublishedHostColumn>::new();
+    let mut previous_virtual_device = HashMap::<u16, PublishedDeviceColumn>::new();
+
+    for round in 0..=LAST_SPIKE_ROUND {
+        let rows = SOURCE_ELEMENTS >> (round as usize + 1);
+        let remaining_point = &claim_point[round as usize + 1..];
+        let eq_sizes = make_eq_sizes(remaining_point.len());
+        let (cpu_high, cpu_low) = cpu_factored_eq(remaining_point);
+        let mut eq_low_device =
+            upload(&vec![E4::ZERO; GKR_EQ_GROUP_TABLE_LEN], fixture.context());
+        launch_build_eq_high_and_low_groups_from_point::<E4>(
+            claim_point_device.as_ptr(),
+            round as usize + 1,
+            remaining_point.len(),
+            get_eq_high_constant_device_ptr(),
+            eq_low_device.as_mut_ptr(),
+            fixture.context(),
+        )
+        .expect("build spike factored eq");
+
+        if round == 0 {
+            let expected = all_round_expected_contributions(
+                &r0_case,
+                &oracle,
+                round,
+                rows,
+                &round_challenges,
+                &cpu_high,
+                &cpu_low,
+                &eq_sizes,
+                &pool,
+                FOLDING_STEPS - 1,
+                &[],
+                &HashMap::new(),
+                &[],
+                &HashMap::new(),
+            );
+            run_all_budget_coordinate(
+                &fixture,
+                std::slice::from_ref(&r0_case),
+                &expected,
+                round,
+                FOLDING_STEPS - 1,
+                claim_point[round as usize],
+                &round_challenges,
+                &eq_low_device,
+                eq_sizes,
+                None,
+                &HashMap::new(),
+                None,
+                None,
+                &HashMap::new(),
+                &HashMap::new(),
+                &[],
+                None,
+                &HashMap::new(),
+                &HashMap::new(),
+            );
+        }
+
+        let current_virtual = build_virtual_publication_oracle(
+            &virtual_descriptors,
+            round,
+            rows,
+            &oracle,
+            &round_challenges,
+            &previous_virtual_host,
+            &pool,
+            FOLDING_STEPS - 1,
+        );
+        let current_host = build_publication_oracle(
+            &read_descriptors,
+            &materialization,
+            round,
+            rows,
+            &oracle,
+            &round_challenges,
+            &previous_host,
+            &pool,
+            FOLDING_STEPS - 1,
+        );
+        let expected = all_round_expected_contributions(
+            &ext_case,
+            &oracle,
+            round,
+            rows,
+            &round_challenges,
+            &cpu_high,
+            &cpu_low,
+            &eq_sizes,
+            &pool,
+            FOLDING_STEPS - 1,
+            &read_descriptors,
+            &HashMap::new(),
+            &virtual_descriptors,
+            &current_virtual,
+        );
+        run_all_budget_coordinate(
+            &fixture,
+            std::slice::from_ref(&ext_case),
+            &expected,
+            round,
+            FOLDING_STEPS - 1,
+            claim_point[round as usize],
+            &round_challenges,
+            &eq_low_device,
+            eq_sizes,
+            Some(&materialization),
+            &desc_columns,
+            Some(&original_matrix),
+            Some(&mut publication_matrices),
+            &previous_device,
+            &current_host,
+            &virtual_descriptors,
+            Some(&mut virtual_publications),
+            &previous_virtual_device,
+            &current_virtual,
+        );
+
+        previous_device = current_host
+            .keys()
+            .map(|&desc| {
+                (
+                    desc,
+                    PublishedDeviceColumn {
+                        matrix: (round as usize) & 1,
+                        depth: round,
+                    },
+                )
+            })
+            .collect();
+        previous_host = current_host;
+        if virtual_round_binding(round).store_for_next_round {
+            previous_virtual_device = current_virtual
+                .keys()
+                .map(|&desc| {
+                    (
+                        desc,
+                        PublishedDeviceColumn {
+                            matrix: (round as usize) & 1,
+                            depth: round,
+                        },
+                    )
+                })
+                .collect();
+            previous_virtual_host = current_virtual;
+        }
+        eprintln!("[bwd-vm-spike] c{BUDGET} round {round}/{LAST_SPIKE_ROUND} complete");
+    }
 }
 
 #[test]
