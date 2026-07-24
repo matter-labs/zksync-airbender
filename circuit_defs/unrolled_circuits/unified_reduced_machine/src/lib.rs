@@ -72,7 +72,10 @@ pub const ROM_ADDRESS_SPACE_SECOND_WORD_BITS: usize = common_constants::rom::ROM
 /// shape is bytecode-independent (special-table *content* is supplied at
 /// table-driver/setup time), so this takes no bytecode.
 pub fn get_circuit(use_caches: bool) -> cs::gkr_compiler::GKRCircuitArtifact<BabyBearField> {
-    risc_v_with_mem_get_circuit::<BabyBearField, UnifiedReducedMachineCircuit>(use_caches, &[])
+    circuit_common::risc_v_with_mem_get_circuit::<BabyBearField, UnifiedReducedMachineCircuit>(
+        use_caches,
+        &[],
+    )
 
     // cs::gkr_circuits::unified_reduced_machine::build_unified_artifact::<BabyBearField>(
     //     use_caches,
@@ -86,9 +89,9 @@ pub fn get_circuit(use_caches: bool) -> cs::gkr_compiler::GKRCircuitArtifact<Bab
 /// `build_unified_table_driver` used during witness generation.
 pub fn get_table_driver(binary: &[u32]) -> TableDriver<BabyBearField> {
     let mut table_driver = TableDriver::new();
-    <UnifiedReducedMachineCircuit as circuit_common::RiscVCycleCircuit<BabyBearField, true>>::table_driver_fn(&mut table_driver, bytecode);
+    <UnifiedReducedMachineCircuit as circuit_common::RiscVCycleCircuit<BabyBearField, true>>::table_driver_fn(&mut table_driver, binary);
     table_driver
-    
+
     // prover::gkr::witness_gen::family_circuits::build_unified_table_driver::<BabyBearField>(binary)
 }
 
