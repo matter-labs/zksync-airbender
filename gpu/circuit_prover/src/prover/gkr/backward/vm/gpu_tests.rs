@@ -4868,9 +4868,19 @@ fn bwd_vm_add_sub_l0_budget_sweep_report() {
             current_matrix,
             &previous_virtual_device,
         );
+        assert!(
+            selection.prepares_ext_round(round),
+            "Ext sweep reached an unneeded round {round}"
+        );
+        let times_round = ext_cases
+            .iter()
+            .any(|case| selection.includes("Ext", case.budget_cells, round));
         let mut stored_reference = None;
         for case in &ext_cases {
-            if !selection.includes("Ext", case.budget_cells, round) {
+            let time_case = selection.includes("Ext", case.budget_cells, round);
+            let prepares_predecessor =
+                !times_round && case.budget_cells == ext_cases[0].budget_cells;
+            if !time_case && !prepares_predecessor {
                 continue;
             }
             let (sources, resolved, stored, _) = resolved_ext_round_sources(
@@ -4914,6 +4924,18 @@ fn bwd_vm_add_sub_l0_budget_sweep_report() {
                 .iter()
                 .map(|desc| desc_columns[desc])
                 .collect::<Vec<_>>();
+            if prepares_predecessor {
+                setup
+                    .upload_constant_banks(context)
+                    .expect("upload Ext predecessor banks");
+                launch_bwd_vm_release(&setup.desc, case.budget_cells as u32, context)
+                    .expect("launch Ext predecessor");
+                context
+                    .get_exec_stream()
+                    .synchronize()
+                    .expect("Ext predecessor synchronization");
+                continue;
+            }
             let timing = time_vm_setup(
                 &setup,
                 case.budget_cells,

@@ -2,13 +2,13 @@ use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::path::Path;
 
-use era_cudart::event::{elapsed_time, CudaEvent};
+use era_cudart::event::{CudaEvent, elapsed_time};
 use era_cudart::result::CudaResult;
 use era_cudart::stream::CudaStream;
 
 use crate::primitives::field::E4;
-use crate::prover::gkr::backward::flat::FLAT_CONST_MAX;
 use crate::prover::ProverContext;
+use crate::prover::gkr::backward::flat::FLAT_CONST_MAX;
 use crate::upstream::Field;
 
 pub(super) const WARMUP_ITERS: usize = 10;
@@ -16,14 +16,12 @@ pub(super) const TIMING_ITERS: usize = 30;
 pub(super) const SWEEP_LOG_PATH: &str = "/tmp/plan5-bwd-vm-sweep.log";
 pub(super) const NCU_SELECTOR_ENV: &str = "PLAN5_BWD_VM_NCU_COORD";
 
-/// The profiler only needs the representative R0 coordinate or the first
-/// actual Ext round. Keeping that surface exact prevents a typo from profiling
-/// every budget or an ambiguous continuation round.
+/// An exact single coordinate for profiler collection, or the complete sweep.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum SweepSelection {
     All,
     R0 { budget_cells: usize },
-    ExtRound1 { budget_cells: usize },
+    Ext { budget_cells: usize, round: u8 },
 }
 
 impl SweepSelection {
@@ -43,9 +41,10 @@ impl SweepSelection {
             Self::R0 {
                 budget_cells: selected,
             } => regime == "R0" && budget_cells == selected && round == 0,
-            Self::ExtRound1 {
+            Self::Ext {
                 budget_cells: selected,
-            } => regime == "Ext" && budget_cells == selected && round == 1,
+                round: selected_round,
+            } => regime == "Ext" && budget_cells == selected && round == selected_round,
         }
     }
 
@@ -55,14 +54,32 @@ impl SweepSelection {
 
     pub(super) fn needs_incumbent_round(self, round: u8) -> bool {
         match self {
-            Self::All => true,
+            Self::All => round <= 3,
             Self::R0 { .. } => round == 0,
-            Self::ExtRound1 { .. } => round == 1,
+            Self::Ext {
+                round: selected, ..
+            } => round == selected,
+        }
+    }
+
+    pub(super) fn prepares_ext_round(self, round: u8) -> bool {
+        match self {
+            Self::All => round <= 3,
+            Self::R0 { .. } => false,
+            Self::Ext {
+                round: selected, ..
+            } => round <= selected,
         }
     }
 
     pub(super) fn stops_after_ext_round(self, round: u8) -> bool {
-        matches!(self, Self::ExtRound1 { .. }) && round == 1
+        match self {
+            Self::All => round == 3,
+            Self::Ext {
+                round: selected, ..
+            } => round == selected,
+            Self::R0 { .. } => false,
+        }
     }
 
     pub(super) fn assert_report_rows(self, rows: &[SweepRow]) {
@@ -83,9 +100,10 @@ pub(super) fn parse_ncu_selector(value: &str) -> Result<Option<SweepSelection>, 
     }
     let mut parts = value.split(':');
     let regime = parts.next().expect("split always yields first part");
-    let budget = parts.next().ok_or("expected <r0|ext>:c<2..16>")?;
+    let budget = parts.next().ok_or("expected <r0|ext>:c<2..16>:r<0..3>")?;
+    let round = parts.next().ok_or("expected <r0|ext>:c<2..16>:r<0..3>")?;
     if parts.next().is_some() {
-        return Err("expected exactly <r0|ext>:c<2..16>".to_owned());
+        return Err("expected exactly <r0|ext>:c<2..16>:r<0..3>".to_owned());
     }
     let budget_cells = budget
         .strip_prefix('c')
@@ -95,9 +113,19 @@ pub(super) fn parse_ncu_selector(value: &str) -> Result<Option<SweepSelection>, 
     if !(2..=16).contains(&budget_cells) {
         return Err("budget must be c2 through c16".to_owned());
     }
+    let round = round
+        .strip_prefix('r')
+        .ok_or("round must use r<0..3>")?
+        .parse::<u8>()
+        .map_err(|_| "round must use r<0..3>".to_owned())?;
     match regime {
-        "r0" => Ok(Some(SweepSelection::R0 { budget_cells })),
-        "ext" => Ok(Some(SweepSelection::ExtRound1 { budget_cells })),
+        "r0" if round == 0 => Ok(Some(SweepSelection::R0 { budget_cells })),
+        "r0" => Err("R0 selector requires r0".to_owned()),
+        "ext" if (1..=3).contains(&round) => Ok(Some(SweepSelection::Ext {
+            budget_cells,
+            round,
+        })),
+        "ext" => Err("Ext selector requires r1 through r3".to_owned()),
         _ => Err("regime must be r0 or ext".to_owned()),
     }
 }
@@ -339,16 +367,42 @@ mod tests {
     #[test]
     fn ncu_selector_accepts_only_unambiguous_representative_coordinates() {
         assert_eq!(
-            parse_ncu_selector("r0:c5"),
-            Ok(Some(SweepSelection::R0 { budget_cells: 5 }))
+            parse_ncu_selector("r0:c4:r0"),
+            Ok(Some(SweepSelection::R0 { budget_cells: 4 }))
         );
         assert_eq!(
-            parse_ncu_selector("ext:c12"),
-            Ok(Some(SweepSelection::ExtRound1 { budget_cells: 12 }))
+            parse_ncu_selector("ext:c2:r1"),
+            Ok(Some(SweepSelection::Ext {
+                budget_cells: 2,
+                round: 1,
+            }))
         );
-        assert!(parse_ncu_selector("ext:c12:r2").is_err());
-        assert!(parse_ncu_selector("r0:c5:r0").is_err());
-        assert!(parse_ncu_selector("ext:c1").is_err());
+        assert_eq!(
+            parse_ncu_selector("ext:c16:r3"),
+            Ok(Some(SweepSelection::Ext {
+                budget_cells: 16,
+                round: 3,
+            }))
+        );
+        assert!(parse_ncu_selector("r0:c5:r1").is_err());
+        assert!(parse_ncu_selector("ext:c12:r0").is_err());
+        assert!(parse_ncu_selector("ext:c12:r4").is_err());
+        assert!(parse_ncu_selector("ext:c1:r1").is_err());
+        assert!(parse_ncu_selector("ext:c12").is_err());
+        assert!(parse_ncu_selector("ext:c12:r1:extra").is_err());
+    }
+
+    #[test]
+    fn ext_selector_prepares_every_predecessor_round() {
+        let selection = SweepSelection::Ext {
+            budget_cells: 7,
+            round: 3,
+        };
+
+        assert!((1..=3).all(|round| selection.prepares_ext_round(round)));
+        assert!(!selection.prepares_ext_round(4));
+        assert!(!selection.includes("Ext", 7, 1));
+        assert!(selection.includes("Ext", 7, 3));
     }
 
     #[test]
