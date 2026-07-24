@@ -64,7 +64,7 @@ pub struct GKRCompiler<F: PrimeField> {
 }
 
 #[serde_with::serde_as]
-#[derive(Clone, Debug, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct GKRCircuitArtifact<F: PrimeField> {
     pub trace_len: usize,
     pub table_offsets: Vec<u32>,
@@ -286,8 +286,9 @@ impl<F: PrimeField> PartialOrd for NoFieldStructuredExpression<F> {
 impl<F: PrimeField> Ord for NoFieldStructuredExpression<F> {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         match (self, other) {
-            (Self::Constant(..), Self::Constant(..)) => {
-                unreachable!("unnormalized")
+            (Self::Constant(a), Self::Constant(b)) => {
+                // can happen in recursive comparisons below
+                a.as_u128_reduced().cmp(&b.as_u128_reduced())
             }
             (Self::Constant(..), _) => std::cmp::Ordering::Less,
             (_, Self::Constant(..)) => std::cmp::Ordering::Greater,
@@ -1093,6 +1094,7 @@ pub fn compile_unrolled_circuit_state_transition_into_gkr<F: PrimeField>(
     circuit_fn: &dyn Fn(&mut crate::cs::circuit_impl::BasicAssembly<F>) -> (),
     max_bytecode_size_in_words: usize,
     trace_len_log2: usize,
+    num_init_and_teardown_pairs: usize,
 ) -> GKRCircuitArtifact<F> {
     use crate::cs::circuit_impl::BasicAssembly;
     use crate::cs::circuit_trait::Circuit;
@@ -1108,7 +1110,7 @@ pub fn compile_unrolled_circuit_state_transition_into_gkr<F: PrimeField>(
     let compiled = compiler.compile_family_circuit(
         cs_output,
         max_bytecode_size_in_words,
-        0,
+        num_init_and_teardown_pairs,
         trace_len_log2,
         true,
     );
@@ -1121,6 +1123,7 @@ pub fn compile_unrolled_circuit_state_transition_into_unrolled_gkr_without_cache
     circuit_fn: &dyn Fn(&mut crate::cs::circuit_impl::BasicAssembly<F>) -> (),
     max_bytecode_size_in_words: usize,
     trace_len_log2: usize,
+    num_init_and_teardown_pairs: usize,
 ) -> GKRCircuitArtifact<F> {
     use crate::cs::circuit_impl::BasicAssembly;
     use crate::cs::circuit_trait::Circuit;
@@ -1136,7 +1139,7 @@ pub fn compile_unrolled_circuit_state_transition_into_unrolled_gkr_without_cache
     let compiled = compiler.compile_family_circuit(
         cs_output,
         max_bytecode_size_in_words,
-        0,
+        num_init_and_teardown_pairs,
         trace_len_log2,
         false,
     );

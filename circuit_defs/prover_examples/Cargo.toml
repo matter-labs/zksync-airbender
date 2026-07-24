@@ -21,7 +21,7 @@ serde_json = "*"
 bincode = { version = "1.3" }
 itertools = { workspace = true }
 verifier_common = { workspace = true, default-features = false }
-full_statement_verifier = { workspace = true, default-features = false, features = ["proof_utils", "replace_csr", "host_utils"]}
+full_statement_verifier = { workspace = true, default-features = false, features = ["proof_utils", "host_utils"]}
 
 [dev-dependencies]
 test_utils = { workspace = true }

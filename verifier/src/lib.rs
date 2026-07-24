@@ -1,4 +1,4 @@
-#![cfg_attr(not(any(test, feature = "replace_csr")), no_std)]
+#![cfg_attr(not(any(test, feature = "proof_utils")), no_std)]
 #![cfg_attr(any(test, feature = "proof_utils"), allow(incomplete_features))]
 #![cfg_attr(any(test, feature = "proof_utils"), feature(generic_const_exprs))]
 
@@ -12,7 +12,7 @@ pub use verifier_common::transcript;
 #[path = "generated"]
 mod __generated {
     macro_rules! declare_gkr_modules {
-        ($($name:ident; $layout_suffix:expr),* $(,)?) => {
+        ($($name:ident; $prod_path:expr),* $(,)?) => {
             $(
                 pub mod $name {
                     #[cfg(feature = "security_80")]

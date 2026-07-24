@@ -1325,23 +1325,16 @@
                   {
                     "Product": [
                       {
+                        "Place": {
+                          "BaseLayerWitness": 5
+                        }
+                      },
+                      {
                         "Sum": [
                           {
                             "Place": {
                               "BaseLayerMemory": 15
                             }
-                          },
-                          {
-                            "Product": [
-                              {
-                                "Constant": 1744830467
-                              },
-                              {
-                                "Place": {
-                                  "BaseLayerWitness": 15
-                                }
-                              }
-                            ]
                           },
                           {
                             "Product": [
@@ -1354,20 +1347,51 @@
                                 }
                               }
                             ]
-                          }
-                        ]
-                      },
-                      {
-                        "Sum": [
-                          {
-                            "Place": {
-                              "BaseLayerWitness": 7
-                            }
                           },
                           {
-                            "Place": {
-                              "BaseLayerWitness": 8
-                            }
+                            "Product": [
+                              {
+                                "Constant": 1744830467
+                              },
+                              {
+                                "Sum": [
+                                  {
+                                    "Place": {
+                                      "BaseLayerMemory": 2
+                                    }
+                                  },
+                                  {
+                                    "Place": {
+                                      "BaseLayerMemory": 7
+                                    }
+                                  },
+                                  {
+                                    "Product": [
+                                      {
+                                        "Constant": 268295646
+                                      },
+                                      {
+                                        "Place": {
+                                          "BaseLayerMemory": 3
+                                        }
+                                      }
+                                    ]
+                                  },
+                                  {
+                                    "Product": [
+                                      {
+                                        "Constant": 268295646
+                                      },
+                                      {
+                                        "Place": {
+                                          "BaseLayerMemory": 8
+                                        }
+                                      }
+                                    ]
+                                  }
+                                ]
+                              }
+                            ]
                           }
                         ]
                       }
@@ -1390,6 +1414,18 @@
                           {
                             "Product": [
                               {
+                                "Constant": 268295646
+                              },
+                              {
+                                "Place": {
+                                  "BaseLayerMemory": 16
+                                }
+                              }
+                            ]
+                          },
+                          {
+                            "Product": [
+                              {
                                 "Constant": 1744830467
                               },
                               {
@@ -1398,6 +1434,18 @@
                                     "Place": {
                                       "BaseLayerMemory": 2
                                     }
+                                  },
+                                  {
+                                    "Product": [
+                                      {
+                                        "Constant": 268295646
+                                      },
+                                      {
+                                        "Place": {
+                                          "BaseLayerMemory": 3
+                                        }
+                                      }
+                                    ]
                                   },
                                   {
                                     "Product": [
@@ -1426,22 +1474,37 @@
                                         ]
                                       }
                                     ]
-                                  },
-                                  {
-                                    "Product": [
-                                      {
-                                        "Constant": 268295646
-                                      },
-                                      {
-                                        "Place": {
-                                          "BaseLayerMemory": 3
-                                        }
-                                      }
-                                    ]
                                   }
                                 ]
                               }
                             ]
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "Product": [
+                      {
+                        "Sum": [
+                          {
+                            "Place": {
+                              "BaseLayerWitness": 7
+                            }
+                          },
+                          {
+                            "Place": {
+                              "BaseLayerWitness": 8
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "Sum": [
+                          {
+                            "Place": {
+                              "BaseLayerMemory": 15
+                            }
                           },
                           {
                             "Product": [
@@ -1454,24 +1517,6 @@
                                 }
                               }
                             ]
-                          }
-                        ]
-                      }
-                    ]
-                  },
-                  {
-                    "Product": [
-                      {
-                        "Place": {
-                          "BaseLayerWitness": 5
-                        }
-                      },
-                      {
-                        "Sum": [
-                          {
-                            "Place": {
-                              "BaseLayerMemory": 15
-                            }
                           },
                           {
                             "Product": [
@@ -1479,53 +1524,8 @@
                                 "Constant": 1744830467
                               },
                               {
-                                "Sum": [
-                                  {
-                                    "Place": {
-                                      "BaseLayerMemory": 2
-                                    }
-                                  },
-                                  {
-                                    "Place": {
-                                      "BaseLayerMemory": 7
-                                    }
-                                  },
-                                  {
-                                    "Product": [
-                                      {
-                                        "Constant": 268295646
-                                      },
-                                      {
-                                        "Place": {
-                                          "BaseLayerMemory": 8
-                                        }
-                                      }
-                                    ]
-                                  },
-                                  {
-                                    "Product": [
-                                      {
-                                        "Constant": 268295646
-                                      },
-                                      {
-                                        "Place": {
-                                          "BaseLayerMemory": 3
-                                        }
-                                      }
-                                    ]
-                                  }
-                                ]
-                              }
-                            ]
-                          },
-                          {
-                            "Product": [
-                              {
-                                "Constant": 268295646
-                              },
-                              {
                                 "Place": {
-                                  "BaseLayerMemory": 16
+                                  "BaseLayerWitness": 15
                                 }
                               }
                             ]
@@ -1922,13 +1922,25 @@
                   {
                     "Product": [
                       {
+                        "Place": {
+                          "BaseLayerWitness": 2
+                        }
+                      },
+                      {
                         "Sum": [
                           {
-                            "Constant": 268435454
+                            "Place": {
+                              "BaseLayerWitness": 0
+                            }
                           },
                           {
                             "Place": {
-                              "BaseLayerWitness": 11
+                              "BaseLayerMemory": 2
+                            }
+                          },
+                          {
+                            "Place": {
+                              "BaseLayerMemory": 7
                             }
                           },
                           {
@@ -1954,30 +1966,6 @@
                                 }
                               }
                             ]
-                          }
-                        ]
-                      },
-                      {
-                        "Sum": [
-                          {
-                            "Place": {
-                              "BaseLayerWitness": 5
-                            }
-                          },
-                          {
-                            "Place": {
-                              "BaseLayerWitness": 6
-                            }
-                          },
-                          {
-                            "Place": {
-                              "BaseLayerWitness": 7
-                            }
-                          },
-                          {
-                            "Place": {
-                              "BaseLayerWitness": 8
-                            }
                           }
                         ]
                       }
@@ -2080,25 +2068,13 @@
                   {
                     "Product": [
                       {
-                        "Place": {
-                          "BaseLayerWitness": 2
-                        }
-                      },
-                      {
                         "Sum": [
                           {
-                            "Place": {
-                              "BaseLayerWitness": 0
-                            }
+                            "Constant": 268435454
                           },
                           {
                             "Place": {
-                              "BaseLayerMemory": 2
-                            }
-                          },
-                          {
-                            "Place": {
-                              "BaseLayerMemory": 7
+                              "BaseLayerWitness": 11
                             }
                           },
                           {
@@ -2124,6 +2100,30 @@
                                 }
                               }
                             ]
+                          }
+                        ]
+                      },
+                      {
+                        "Sum": [
+                          {
+                            "Place": {
+                              "BaseLayerWitness": 5
+                            }
+                          },
+                          {
+                            "Place": {
+                              "BaseLayerWitness": 6
+                            }
+                          },
+                          {
+                            "Place": {
+                              "BaseLayerWitness": 7
+                            }
+                          },
+                          {
+                            "Place": {
+                              "BaseLayerWitness": 8
+                            }
                           }
                         ]
                       }
@@ -2422,18 +2422,30 @@
                   {
                     "Product": [
                       {
+                        "Place": {
+                          "BaseLayerWitness": 2
+                        }
+                      },
+                      {
                         "Sum": [
                           {
-                            "Constant": 2013200385
-                          },
-                          {
                             "Place": {
-                              "BaseLayerWitness": 12
+                              "BaseLayerWitness": 1
                             }
                           },
                           {
                             "Place": {
                               "BaseLayerWitness": 13
+                            }
+                          },
+                          {
+                            "Place": {
+                              "BaseLayerMemory": 3
+                            }
+                          },
+                          {
+                            "Place": {
+                              "BaseLayerMemory": 8
                             }
                           },
                           {
@@ -2459,30 +2471,6 @@
                                 }
                               }
                             ]
-                          }
-                        ]
-                      },
-                      {
-                        "Sum": [
-                          {
-                            "Place": {
-                              "BaseLayerWitness": 5
-                            }
-                          },
-                          {
-                            "Place": {
-                              "BaseLayerWitness": 6
-                            }
-                          },
-                          {
-                            "Place": {
-                              "BaseLayerWitness": 7
-                            }
-                          },
-                          {
-                            "Place": {
-                              "BaseLayerWitness": 8
-                            }
                           }
                         ]
                       }
@@ -2595,30 +2583,42 @@
                   {
                     "Product": [
                       {
-                        "Place": {
-                          "BaseLayerWitness": 2
-                        }
+                        "Sum": [
+                          {
+                            "Place": {
+                              "BaseLayerWitness": 5
+                            }
+                          },
+                          {
+                            "Place": {
+                              "BaseLayerWitness": 6
+                            }
+                          },
+                          {
+                            "Place": {
+                              "BaseLayerWitness": 7
+                            }
+                          },
+                          {
+                            "Place": {
+                              "BaseLayerWitness": 8
+                            }
+                          }
+                        ]
                       },
                       {
                         "Sum": [
                           {
+                            "Constant": 2013200385
+                          },
+                          {
                             "Place": {
-                              "BaseLayerWitness": 1
+                              "BaseLayerWitness": 12
                             }
                           },
                           {
                             "Place": {
                               "BaseLayerWitness": 13
-                            }
-                          },
-                          {
-                            "Place": {
-                              "BaseLayerMemory": 3
-                            }
-                          },
-                          {
-                            "Place": {
-                              "BaseLayerMemory": 8
                             }
                           },
                           {
@@ -2957,30 +2957,6 @@
                   {
                     "Sum": [
                       {
-                        "Constant": 1073741816
-                      },
-                      {
-                        "Place": {
-                          "BaseLayerMemory": 18
-                        }
-                      },
-                      {
-                        "Product": [
-                          {
-                            "Constant": 1744830467
-                          },
-                          {
-                            "Place": {
-                              "BaseLayerMemory": 22
-                            }
-                          }
-                        ]
-                      }
-                    ]
-                  },
-                  {
-                    "Sum": [
-                      {
                         "Constant": 1744830467
                       },
                       {
@@ -3011,6 +2987,30 @@
                                 ]
                               }
                             ]
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "Sum": [
+                      {
+                        "Constant": 1073741816
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerMemory": 18
+                        }
+                      },
+                      {
+                        "Product": [
+                          {
+                            "Constant": 1744830467
+                          },
+                          {
+                            "Place": {
+                              "BaseLayerMemory": 22
+                            }
                           }
                         ]
                       }
@@ -3065,18 +3065,6 @@
                   {
                     "Product": [
                       {
-                        "Constant": 1744830467
-                      },
-                      {
-                        "Place": {
-                          "BaseLayerMemory": 23
-                        }
-                      }
-                    ]
-                  },
-                  {
-                    "Product": [
-                      {
                         "Constant": 65536
                       },
                       {
@@ -3102,6 +3090,18 @@
                             ]
                           }
                         ]
+                      }
+                    ]
+                  },
+                  {
+                    "Product": [
+                      {
+                        "Constant": 1744830467
+                      },
+                      {
+                        "Place": {
+                          "BaseLayerMemory": 23
+                        }
                       }
                     ]
                   }

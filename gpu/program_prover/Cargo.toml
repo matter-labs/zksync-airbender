@@ -21,7 +21,6 @@ gpu_core = { workspace = true }
 # base build; native verification is gated behind our own `verifiers` feature.
 full_statement_verifier = { workspace = true, default-features = false, features = [
     "proof_utils",
-    "replace_csr",
     "host_utils",
 ] }
 prover = { workspace = true, features = ["prover"] }

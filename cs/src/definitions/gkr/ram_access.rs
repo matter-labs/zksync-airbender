@@ -3,24 +3,24 @@ use super::*;
 use crate::definitions::constants::*;
 use crate::definitions::GKRAddress;
 
-#[derive(Clone, Copy, Hash, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, Hash, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RegisterOnlyAccessAddress {
     pub register_index: usize,
 }
 
-#[derive(Clone, Copy, Hash, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, Hash, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum RegisterOrRamAddressSpace {
     RegisterAddressSpace(usize), // if true - address space should be 0 (register)
     RamAddressSpace(usize),      // if true - address space should be 1 (RAM)
 }
 
-#[derive(Clone, Copy, Hash, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, Hash, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RegisterOrRamAccessAddress {
     pub address_space: RegisterOrRamAddressSpace,
     pub address: [usize; REGISTER_SIZE],
 }
 
-#[derive(Clone, Copy, Hash, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, Hash, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct IndirectRamAccessAddress {
     pub base_register_value: [usize; REGISTER_SIZE],
     pub base_register_index: u16,
@@ -29,7 +29,7 @@ pub struct IndirectRamAccessAddress {
     pub variable_offset: Option<(u16, usize)>,
 }
 
-#[derive(Clone, Copy, Hash, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, Hash, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum RamAddress {
     ConstantRegister(u16),
     RegisterOnly(RegisterOnlyAccessAddress),
@@ -37,7 +37,7 @@ pub enum RamAddress {
     IndirectRam(IndirectRamAccessAddress),
 }
 
-#[derive(Clone, Copy, Hash, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, Hash, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RamReadQuery {
     pub in_cycle_write_index: u32,
     pub address: RamAddress,
@@ -52,7 +52,7 @@ pub enum RamWordRepresentation {
     U8Limbs([usize; REGISTER_SIZE * 2]),
 }
 
-#[derive(Clone, Copy, Hash, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, Hash, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RamWriteQuery {
     pub in_cycle_write_index: u32,
     pub address: RamAddress,
@@ -61,7 +61,7 @@ pub struct RamWriteQuery {
     pub write_value: RamWordRepresentation,
 }
 
-#[derive(Clone, Copy, Hash, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, Hash, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum RamQuery {
     Readonly(RamReadQuery),
     Write(RamWriteQuery),
@@ -105,7 +105,7 @@ pub struct RamAuxComparisonSet {
     pub intermediate_borrow: GKRAddress,
 }
 
-#[derive(Clone, Copy, Hash, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, Hash, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum RegisterAccessColumns {
     ReadAccess {
         register_index: u32,
@@ -145,7 +145,7 @@ impl RegisterAccessColumns {
     }
 }
 
-#[derive(Clone, Copy, Hash, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, Hash, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum IndirectAccess {
     ReadAccess {
         read_timestamp: [usize; NUM_TIMESTAMP_COLUMNS_FOR_RAM],
@@ -221,7 +221,7 @@ impl IndirectAccess {
     }
 }
 
-#[derive(Clone, Debug, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RegisterAndIndirectAccessDescription {
     pub register_access: RegisterAccessColumns,
     pub indirect_accesses: Vec<IndirectAccess>,
@@ -242,7 +242,7 @@ pub struct CompiledRegisterAndIndirectAccessDescription<'a> {
     pub indirect_accesses: &'a [IndirectAccess],
 }
 
-#[derive(Clone, Hash, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Hash, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RegisterAndIndirectAccessTimestampComparisonAuxVars {
     pub predicate: GKRAddress,
     pub write_timestamp_columns: [GKRAddress; NUM_TIMESTAMP_COLUMNS_FOR_RAM],
