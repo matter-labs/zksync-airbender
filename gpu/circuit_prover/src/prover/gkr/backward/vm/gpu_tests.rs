@@ -220,20 +220,27 @@ struct ExtRun {
 fn run_ext_case(
     context: &ProverContext,
     rows: usize,
-    depth: u8,
+    backing_depth: u8,
+    target_depth: u8,
     budget_cells: u32,
     materialize: bool,
     repeated: bool,
     malformed_source_bound: bool,
 ) -> (ExtRun, Vec<E4>, Vec<E4>) {
+    let depth = target_depth - backing_depth;
     let endpoint_count = 2 * rows;
     let input = (0..endpoint_count * (1usize << depth))
         .map(|index| e4(index as u32 + 11))
         .collect::<Vec<_>>();
-    let challenges = (0..depth)
+    let challenges = (0..target_depth)
         .map(|round| e4(round as u32 + 101))
         .collect::<Vec<_>>();
-    let mut expected = expected_roles(&input, rows, depth, &challenges);
+    let mut expected = expected_roles(
+        &input,
+        rows,
+        depth,
+        &challenges[backing_depth as usize..],
+    );
     if repeated {
         for value in &mut expected {
             let first = *value;
@@ -242,7 +249,12 @@ fn run_ext_case(
     }
     let expected_published = (0..endpoint_count)
         .map(|index| {
-            sumcheck_fold_point(&|source| input[source], index, depth, &challenges)
+            sumcheck_fold_point(
+                &|source| input[source],
+                index,
+                depth,
+                &challenges[backing_depth as usize..],
+            )
                 .expect("synthetic publication fold")
         })
         .collect::<Vec<_>>();
@@ -262,7 +274,7 @@ fn run_ext_case(
     let program = source_batch_program(OperandField::Ext, repeated);
     let mut desc = blank_desc(&program, if repeated { 3 } else { 2 }, rows);
     desc.round_challenges = challenge_device.as_ptr();
-    desc.n_round_challenges = depth as u32;
+    desc.n_round_challenges = target_depth as u32;
     desc.n_source_windows = u32::from(!malformed_source_bound);
     desc.source_windows[0] = BwdVmSourceWindow {
         read_base: input_device.as_ptr().cast(),
@@ -271,8 +283,8 @@ fn run_ext_case(
             .map_or(ptr::null_mut(), |device| device.as_mut_ptr().cast()),
         read_stride_bytes: (input.len() * size_of::<E4>()) as u32,
         publish_stride_bytes: (endpoint_count * size_of::<E4>()) as u32,
-        backing_depth: 0,
-        target_depth: depth,
+        backing_depth,
+        target_depth,
         source_kind: BWD_VM_SOURCE_READ_EXT,
         materialize: u8::from(materialize),
     };
@@ -860,7 +872,8 @@ fn bwd_vm_synthetic_source_parity() {
     let tails = [1usize, 7, 15, 16, 17];
     for budget_cells in 2..=16 {
         let rows = tails.get((budget_cells - 2) as usize).copied().unwrap_or(1);
-        let (run, expected, _) = run_ext_case(&context, rows, 0, budget_cells, false, false, false);
+        let (run, expected, _) =
+            run_ext_case(&context, rows, 0, 0, budget_cells, false, false, false);
         assert_eq!(run.error, 0, "plain E4 c{budget_cells} validation");
         assert_e4_bits(
             &format!("plain E4 c{budget_cells} rows={rows}"),
@@ -871,7 +884,16 @@ fn bwd_vm_synthetic_source_parity() {
 
     for depth in 1..=3 {
         let (run, expected, _) =
-            run_ext_case(&context, 7, depth, depth as u32 + 2, false, false, false);
+            run_ext_case(
+                &context,
+                7,
+                0,
+                depth,
+                depth as u32 + 2,
+                false,
+                false,
+                false,
+            );
         assert_eq!(run.error, 0, "lazy depth 0->{depth} validation");
         assert_e4_bits(
             &format!("lazy depth 0->{depth}"),
@@ -880,8 +902,17 @@ fn bwd_vm_synthetic_source_parity() {
         );
     }
 
+    let (round_four, expected, _) =
+        run_ext_case(&context, 7, 3, 4, 6, false, false, false);
+    assert_eq!(round_four.error, 0, "round 4 materialized depth 3->4");
+    assert_e4_bits(
+        "round 4 selects the D1 symbol",
+        &round_four.diagnostic,
+        &expected,
+    );
+
     let (materialized, expected, expected_published) =
-        run_ext_case(&context, 15, 2, 6, true, true, false);
+        run_ext_case(&context, 15, 0, 2, 6, true, true, false);
     assert_eq!(materialized.error, 0, "materializing repeated source");
     assert_e4_bits(
         "materializing repeated diagnostic",
@@ -894,7 +925,8 @@ fn bwd_vm_synthetic_source_parity() {
         &expected_published,
     );
 
-    let (repeated, expected, _) = run_ext_case(&context, 16, 3, 7, false, true, false);
+    let (repeated, expected, _) =
+        run_ext_case(&context, 16, 0, 3, 7, false, true, false);
     assert_eq!(repeated.error, 0, "non-materializing repeated source");
     assert!(repeated.published.is_empty());
     assert_e4_bits(
@@ -903,7 +935,8 @@ fn bwd_vm_synthetic_source_parity() {
         &expected,
     );
 
-    let (malformed, _, _) = run_ext_case(&context, 1, 0, 2, false, false, true);
+    let (malformed, _, _) =
+        run_ext_case(&context, 1, 0, 0, 2, false, false, true);
     assert_eq!(
         malformed.error, BWD_VM_ERR_SOURCE_OOB,
         "malformed source count must fail closed with the exact validation bit"
@@ -4223,10 +4256,14 @@ fn assert_vm_setup_parity(
     );
 }
 
-fn vm_occupancy_metadata(budget_cells: usize, max_threads_per_sm: i32) -> (usize, i32, f32) {
+fn vm_occupancy_metadata(
+    round: u32,
+    budget_cells: usize,
+    max_threads_per_sm: i32,
+) -> (usize, i32, f32) {
     let dynamic_smem_bytes = budget_cells * size_of::<E4>() * BWD_VM_THREADS_PER_BLOCK as usize;
-    let active_blocks =
-        bwd_vm_release_blocks_per_sm(budget_cells as u32).expect("query backward VM occupancy");
+    let active_blocks = bwd_vm_release_blocks_per_sm(round, budget_cells as u32)
+        .expect("query backward VM occupancy");
     let occupancy =
         active_blocks as f32 * BWD_VM_THREADS_PER_BLOCK as f32 / max_threads_per_sm as f32;
     (dynamic_smem_bytes, active_blocks, occupancy)
@@ -4348,7 +4385,7 @@ fn bwd_vm_add_sub_l0_budget_sweep_report() {
             |_| Ok(()),
         );
         let (dynamic_smem_bytes, active_blocks_per_sm, theoretical_occupancy) =
-            vm_occupancy_metadata(case.budget_cells, max_threads_per_sm);
+            vm_occupancy_metadata(0, case.budget_cells, max_threads_per_sm);
         report_rows.push(SweepRow {
             budget_cells: case.budget_cells,
             regime: "R0",
@@ -4653,7 +4690,7 @@ fn bwd_vm_add_sub_l0_budget_sweep_report() {
                 },
             );
             let (dynamic_smem_bytes, active_blocks_per_sm, theoretical_occupancy) =
-                vm_occupancy_metadata(case.budget_cells, max_threads_per_sm);
+                vm_occupancy_metadata(round.into(), case.budget_cells, max_threads_per_sm);
             report_rows.push(SweepRow {
                 budget_cells: case.budget_cells,
                 regime: "Ext",

@@ -142,5 +142,15 @@ static_assert(__builtin_offsetof(bwd_vm_desc, batch_acc_init) == 4668, "batch_ac
 // declared by flat.cuh; ConstDerivedE4 reuses the forward VM's 8-slot bank.
 EXTERN __device__ __constant__ e4 ab_gkr_fwd_vm_const_derived_e4[airbender::prover::gkr::BWD_VM_CONST_DERIVED_E4_CAP];
 
-EXTERN __global__ void ab_gkr_bwd_vm_release_kernel(const __grid_constant__ airbender::prover::gkr::bwd_vm_desc desc);
-EXTERN __global__ void ab_gkr_bwd_vm_validate_kernel(const __grid_constant__ airbender::prover::gkr::bwd_vm_desc desc, u32 *error_flag, e4 *diagnostic_t0_t2);
+EXTERN __global__ void ab_gkr_bwd_vm_release_d0_kernel(const __grid_constant__ airbender::prover::gkr::bwd_vm_desc desc);
+EXTERN __global__ void ab_gkr_bwd_vm_release_d1_kernel(const __grid_constant__ airbender::prover::gkr::bwd_vm_desc desc);
+EXTERN __global__ void ab_gkr_bwd_vm_release_d2_kernel(const __grid_constant__ airbender::prover::gkr::bwd_vm_desc desc);
+EXTERN __global__ void ab_gkr_bwd_vm_release_d3_kernel(const __grid_constant__ airbender::prover::gkr::bwd_vm_desc desc);
+EXTERN __global__ void ab_gkr_bwd_vm_validate_d0_kernel(const __grid_constant__ airbender::prover::gkr::bwd_vm_desc desc, u32 *error_flag,
+                                                        e4 *diagnostic_t0_t2);
+EXTERN __global__ void ab_gkr_bwd_vm_validate_d1_kernel(const __grid_constant__ airbender::prover::gkr::bwd_vm_desc desc, u32 *error_flag,
+                                                        e4 *diagnostic_t0_t2);
+EXTERN __global__ void ab_gkr_bwd_vm_validate_d2_kernel(const __grid_constant__ airbender::prover::gkr::bwd_vm_desc desc, u32 *error_flag,
+                                                        e4 *diagnostic_t0_t2);
+EXTERN __global__ void ab_gkr_bwd_vm_validate_d3_kernel(const __grid_constant__ airbender::prover::gkr::bwd_vm_desc desc, u32 *error_flag,
+                                                        e4 *diagnostic_t0_t2);

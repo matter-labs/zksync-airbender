@@ -495,7 +495,7 @@ template <bool VALIDATE> DEVICE_FORCEINLINE u32 descriptor_error(const bwd_vm_de
   return error;
 }
 
-template <bool VALIDATE> DEVICE_FORCEINLINE void bwd_vm_body(const bwd_vm_desc &desc, u32 *error_flag, e4 *diagnostic_t0_t2) {
+template <bool VALIDATE, u32 FOLD_DEPTH> DEVICE_FORCEINLINE void bwd_vm_body(const bwd_vm_desc &desc, u32 *error_flag, e4 *diagnostic_t0_t2) {
   extern __shared__ e4 bwd_vm_cells_dyn[];
   u32 smem_bytes;
   asm("mov.u32 %0, %%dynamic_smem_size;" : "=r"(smem_bytes));
@@ -566,11 +566,41 @@ template <bool VALIDATE> DEVICE_FORCEINLINE void bwd_vm_body(const bwd_vm_desc &
 } // namespace airbender::prover::gkr
 
 EXTERN __launch_bounds__(airbender::prover::gkr::BWD_VM_THREADS_PER_BLOCK) __global__
-    void ab_gkr_bwd_vm_release_kernel(const __grid_constant__ airbender::prover::gkr::bwd_vm_desc desc) {
-  airbender::prover::gkr::bwd_vm_body<false>(desc, nullptr, nullptr);
+    void ab_gkr_bwd_vm_release_d0_kernel(const __grid_constant__ airbender::prover::gkr::bwd_vm_desc desc) {
+  airbender::prover::gkr::bwd_vm_body<false, 0>(desc, nullptr, nullptr);
 }
 
 EXTERN __launch_bounds__(airbender::prover::gkr::BWD_VM_THREADS_PER_BLOCK) __global__
-    void ab_gkr_bwd_vm_validate_kernel(const __grid_constant__ airbender::prover::gkr::bwd_vm_desc desc, u32 *error_flag, e4 *diagnostic_t0_t2) {
-  airbender::prover::gkr::bwd_vm_body<true>(desc, error_flag, diagnostic_t0_t2);
+    void ab_gkr_bwd_vm_release_d1_kernel(const __grid_constant__ airbender::prover::gkr::bwd_vm_desc desc) {
+  airbender::prover::gkr::bwd_vm_body<false, 1>(desc, nullptr, nullptr);
+}
+
+EXTERN __launch_bounds__(airbender::prover::gkr::BWD_VM_THREADS_PER_BLOCK) __global__
+    void ab_gkr_bwd_vm_release_d2_kernel(const __grid_constant__ airbender::prover::gkr::bwd_vm_desc desc) {
+  airbender::prover::gkr::bwd_vm_body<false, 2>(desc, nullptr, nullptr);
+}
+
+EXTERN __launch_bounds__(airbender::prover::gkr::BWD_VM_THREADS_PER_BLOCK) __global__
+    void ab_gkr_bwd_vm_release_d3_kernel(const __grid_constant__ airbender::prover::gkr::bwd_vm_desc desc) {
+  airbender::prover::gkr::bwd_vm_body<false, 3>(desc, nullptr, nullptr);
+}
+
+EXTERN __launch_bounds__(airbender::prover::gkr::BWD_VM_THREADS_PER_BLOCK) __global__
+    void ab_gkr_bwd_vm_validate_d0_kernel(const __grid_constant__ airbender::prover::gkr::bwd_vm_desc desc, u32 *error_flag, e4 *diagnostic_t0_t2) {
+  airbender::prover::gkr::bwd_vm_body<true, 0>(desc, error_flag, diagnostic_t0_t2);
+}
+
+EXTERN __launch_bounds__(airbender::prover::gkr::BWD_VM_THREADS_PER_BLOCK) __global__
+    void ab_gkr_bwd_vm_validate_d1_kernel(const __grid_constant__ airbender::prover::gkr::bwd_vm_desc desc, u32 *error_flag, e4 *diagnostic_t0_t2) {
+  airbender::prover::gkr::bwd_vm_body<true, 1>(desc, error_flag, diagnostic_t0_t2);
+}
+
+EXTERN __launch_bounds__(airbender::prover::gkr::BWD_VM_THREADS_PER_BLOCK) __global__
+    void ab_gkr_bwd_vm_validate_d2_kernel(const __grid_constant__ airbender::prover::gkr::bwd_vm_desc desc, u32 *error_flag, e4 *diagnostic_t0_t2) {
+  airbender::prover::gkr::bwd_vm_body<true, 2>(desc, error_flag, diagnostic_t0_t2);
+}
+
+EXTERN __launch_bounds__(airbender::prover::gkr::BWD_VM_THREADS_PER_BLOCK) __global__
+    void ab_gkr_bwd_vm_validate_d3_kernel(const __grid_constant__ airbender::prover::gkr::bwd_vm_desc desc, u32 *error_flag, e4 *diagnostic_t0_t2) {
+  airbender::prover::gkr::bwd_vm_body<true, 3>(desc, error_flag, diagnostic_t0_t2);
 }
