@@ -1411,14 +1411,15 @@ fn checkpoint_stale_orphan_does_not_block_unique_temporary() {
 #[test]
 fn chain_census_reports_dram_floor_percentages_and_attainment() {
     let above_floor = Plan4CensusScore {
-        dram_bytes: 150,
+        read_bytes: 180,
+        nondomain_read_bytes: 50,
         source_ops: 5,
         instructions: 4,
         encoded_lanes: 3,
         arithmetic_ops: 2,
     };
     let at_floor = Plan4CensusScore {
-        dram_bytes: 100,
+        read_bytes: 150,
         ..above_floor.clone()
     };
     let scores = (0..15)
@@ -1432,21 +1433,22 @@ fn chain_census_reports_dram_floor_percentages_and_attainment() {
         .collect::<Vec<_>>();
     let mut output = String::new();
     render_plan4_chain_census(&mut output, "fixture", 0, BwdRegime::R0, 100, 5, &scores);
-    assert!(output.contains("DRAM above compulsory floor: c2=50.00% c3=0.00%"));
+    assert!(output.contains("read DRAM above compulsory floor: c2=20.00% c3=0.00%"));
 
     let mut totals = Plan4CorpusTotals {
         chains: 1,
         ..Default::default()
     };
     for (index, score) in scores.iter().enumerate() {
-        totals.record(index + 2, 100, score);
+        totals.record(index + 2, 150, score);
     }
     totals.render_aggregates(&mut output);
     assert!(output.contains("floor attainment: c2=0/1 (0.00%) c3=1/1 (100.00%)"));
 
     let zero_scores = vec![
         Plan4CensusScore {
-            dram_bytes: 0,
+            read_bytes: 0,
+            nondomain_read_bytes: 0,
             ..above_floor
         };
         15
@@ -1460,7 +1462,22 @@ fn chain_census_reports_dram_floor_percentages_and_attainment() {
         0,
         &zero_scores,
     );
-    assert!(output.contains("DRAM above compulsory floor: c2=n/a (zero floor)"));
+    assert!(output.contains("read DRAM above compulsory floor: c2=n/a (zero floor)"));
+}
+
+#[test]
+fn census_score_excludes_fixed_writes_from_realized_read_bytes() {
+    let mut plan = sample_plan(2);
+    plan.expected_score.whole_pass_dram_bytes = CanonicalU128::from(210);
+    plan.expected_paging.realized_read_cost.plain_read_bytes = CanonicalU128::from(100);
+    plan.expected_paging
+        .fixed_write_cost
+        .materialization_write_bytes = CanonicalU128::from(30);
+
+    let score = Plan4CensusScore::from_artifact(&plan);
+
+    assert_eq!(score.read_bytes, 180);
+    assert_eq!(score.nondomain_read_bytes, 80);
 }
 
 #[test]
@@ -1666,7 +1683,7 @@ fn plan4_backward_artifact_corpus_gate() {
     let mut census = String::new();
     writeln!(
         census,
-        "fixture | layer | regime | floor bytes | first floor budget | c2 ... c16 DRAM"
+        "fixture | layer | regime | read floor bytes | first floor budget | c2 ... c16 read DRAM"
     )
     .unwrap();
 
@@ -1727,7 +1744,11 @@ fn plan4_backward_artifact_corpus_gate() {
                     .expect("production artifact chains must have feasible problems"),
             )
             .unwrap();
-            let floor_bytes = floor.dram_bytes().unwrap();
+            let domain_read_floor_bytes = floor
+                .dram_bytes()
+                .unwrap()
+                .checked_sub(floor.materialization_write_bytes)
+                .expect("compulsory cost includes fixed writes");
             let floor_ops = floor.ops.primitive_equivalents().unwrap();
             let scores = (2..=16)
                 .into_par_iter()
@@ -1776,13 +1797,16 @@ fn plan4_backward_artifact_corpus_gate() {
                     });
 
                     let score = Plan4CensusScore::from_artifact(plan);
-                    assert!(score.dram_bytes >= floor_bytes);
                     assert!(score.source_ops >= floor_ops);
                     score
                 })
                 .collect::<Vec<_>>();
+            let read_floor_bytes = plan4_read_floor_bytes(domain_read_floor_bytes, &scores);
+            assert!(scores
+                .iter()
+                .all(|score| score.read_bytes >= read_floor_bytes));
             for (budget_cells, score) in (2..=16).zip(&scores) {
-                totals.record(budget_cells, floor_bytes, &score);
+                totals.record(budget_cells, read_floor_bytes, &score);
                 totals.entries += 1;
                 totals.certified += 1;
                 totals.semantic_parity += 1;
@@ -1792,7 +1816,7 @@ fn plan4_backward_artifact_corpus_gate() {
                 fixture,
                 input.layer_index,
                 input.regime,
-                floor_bytes,
+                domain_read_floor_bytes,
                 floor_ops,
                 &scores,
             );
@@ -1882,7 +1906,8 @@ fn post_placement_peepholes_preserve_unified_l0_r0_c2_values() {
 
 #[derive(Clone, Debug)]
 struct Plan4CensusScore {
-    dram_bytes: u128,
+    read_bytes: u128,
+    nondomain_read_bytes: u128,
     source_ops: u128,
     instructions: usize,
     encoded_lanes: usize,
@@ -1891,8 +1916,38 @@ struct Plan4CensusScore {
 
 impl Plan4CensusScore {
     fn from_artifact(plan: &BackwardPlanArtifact) -> Self {
+        let domain_read_bytes = [
+            plan.expected_paging
+                .realized_read_cost
+                .plain_read_bytes
+                .value(),
+            plan.expected_paging
+                .realized_read_cost
+                .lazy_read_bytes
+                .value(),
+            plan.expected_paging
+                .realized_read_cost
+                .materialized_read_bytes
+                .value(),
+        ]
+        .into_iter()
+        .sum::<u128>();
+        let fixed_write_bytes = plan
+            .expected_paging
+            .fixed_write_cost
+            .materialization_write_bytes
+            .value();
+        let read_bytes = plan
+            .expected_score
+            .whole_pass_dram_bytes
+            .value()
+            .checked_sub(fixed_write_bytes)
+            .expect("whole-pass DRAM includes fixed writes");
         Self {
-            dram_bytes: plan.expected_score.whole_pass_dram_bytes.value(),
+            read_bytes,
+            nondomain_read_bytes: read_bytes
+                .checked_sub(domain_read_bytes)
+                .expect("whole-pass reads include domain reads"),
             source_ops: plan.expected_score.primitive_source_ops.value(),
             instructions: plan.expected_score.instructions,
             encoded_lanes: plan.expected_score.encoded_lanes,
@@ -1918,8 +1973,8 @@ struct Plan4CorpusTotals {
     entries: usize,
     certified: usize,
     semantic_parity: usize,
-    compulsory_dram_floor_bytes: u128,
-    dram_bytes: [u128; 15],
+    compulsory_read_floor_bytes: u128,
+    read_bytes: [u128; 15],
     floor_attained: [usize; 15],
     source_ops: [u128; 15],
     instructions: [u128; 15],
@@ -1928,13 +1983,13 @@ struct Plan4CorpusTotals {
 }
 
 impl Plan4CorpusTotals {
-    fn record(&mut self, budget_cells: usize, floor_bytes: u128, score: &Plan4CensusScore) {
+    fn record(&mut self, budget_cells: usize, read_floor_bytes: u128, score: &Plan4CensusScore) {
         let index = budget_cells - 2;
         if budget_cells == 2 {
-            self.compulsory_dram_floor_bytes += floor_bytes;
+            self.compulsory_read_floor_bytes += read_floor_bytes;
         }
-        self.dram_bytes[index] += score.dram_bytes;
-        self.floor_attained[index] += usize::from(score.dram_bytes == floor_bytes);
+        self.read_bytes[index] += score.read_bytes;
+        self.floor_attained[index] += usize::from(score.read_bytes == read_floor_bytes);
         self.source_ops[index] += score.source_ops;
         self.instructions[index] += score.instructions as u128;
         self.encoded_lanes[index] += score.encoded_lanes as u128;
@@ -1945,20 +2000,20 @@ impl Plan4CorpusTotals {
         writeln!(output, "PLAN4-CENSUS-AGGREGATE chains={}", self.chains).unwrap();
         writeln!(
             output,
-            "row/round-weighted DRAM totals: {}",
-            render_u128_budget_values(&self.dram_bytes),
+            "row/round-weighted read DRAM totals: {}",
+            render_u128_budget_values(&self.read_bytes),
         )
         .unwrap();
         writeln!(
             output,
-            "aggregate DRAM above compulsory floor: {}",
-            self.dram_bytes
+            "aggregate read DRAM above compulsory floor: {}",
+            self.read_bytes
                 .iter()
                 .enumerate()
-                .map(|(index, dram_bytes)| format!(
+                .map(|(index, read_bytes)| format!(
                     "c{}={}",
                     index + 2,
-                    format_percentage_above_floor(*dram_bytes, self.compulsory_dram_floor_bytes),
+                    format_percentage_above_floor(*read_bytes, self.compulsory_read_floor_bytes,),
                 ))
                 .collect::<Vec<_>>()
                 .join(" "),
@@ -2008,19 +2063,36 @@ impl Plan4CorpusTotals {
     }
 }
 
+fn plan4_read_floor_bytes(domain_read_floor_bytes: u128, scores: &[Plan4CensusScore]) -> u128 {
+    let nondomain_read_bytes = scores
+        .first()
+        .expect("census has at least one budget")
+        .nondomain_read_bytes;
+    assert!(
+        scores
+            .iter()
+            .all(|score| score.nondomain_read_bytes == nondomain_read_bytes),
+        "non-domain read traffic must be budget-independent",
+    );
+    domain_read_floor_bytes
+        .checked_add(nondomain_read_bytes)
+        .expect("read floor fits u128")
+}
+
 fn render_plan4_chain_census(
     output: &mut String,
     fixture: &str,
     layer: usize,
     regime: BwdRegime,
-    floor_bytes: u128,
+    domain_read_floor_bytes: u128,
     floor_ops: u128,
     scores: &[Plan4CensusScore],
 ) {
     assert_eq!(scores.len(), 15);
+    let read_floor_bytes = plan4_read_floor_bytes(domain_read_floor_bytes, scores);
     let first_floor = scores
         .iter()
-        .position(|score| score.dram_bytes == floor_bytes)
+        .position(|score| score.read_bytes == read_floor_bytes)
         .map_or_else(|| ">16".to_owned(), |index| (index + 2).to_string());
     let values = |select: fn(&Plan4CensusScore) -> u128| {
         scores
@@ -2032,8 +2104,8 @@ fn render_plan4_chain_census(
     };
     writeln!(
         output,
-        "{fixture} | L{layer} | {regime:?} | {floor_bytes} | {first_floor} | {}",
-        values(|score| score.dram_bytes),
+        "{fixture} | L{layer} | {regime:?} | {read_floor_bytes} | {first_floor} | {}",
+        values(|score| score.read_bytes),
     )
     .unwrap();
     writeln!(
@@ -2062,14 +2134,14 @@ fn render_plan4_chain_census(
     .unwrap();
     writeln!(
         output,
-        "  DRAM above compulsory floor: {}",
+        "  read DRAM above compulsory floor: {}",
         scores
             .iter()
             .enumerate()
             .map(|(index, score)| format!(
                 "c{}={}",
                 index + 2,
-                format_percentage_above_floor(score.dram_bytes, floor_bytes),
+                format_percentage_above_floor(score.read_bytes, read_floor_bytes),
             ))
             .collect::<Vec<_>>()
             .join(" "),
@@ -2079,11 +2151,11 @@ fn render_plan4_chain_census(
     let mut improvements = Vec::new();
     if let Some(floor_index) = scores
         .iter()
-        .position(|score| score.dram_bytes == floor_bytes)
+        .position(|score| score.read_bytes == read_floor_bytes)
     {
         let mut best = scores[floor_index].secondary_key();
         for (index, score) in scores.iter().enumerate().skip(floor_index + 1) {
-            if score.dram_bytes == floor_bytes && score.secondary_key() < best {
+            if score.read_bytes == read_floor_bytes && score.secondary_key() < best {
                 best = score.secondary_key();
                 improvements.push(format!("c{}={best:?}", index + 2));
             }
