@@ -14,8 +14,9 @@ use crate::bwd::trace::{
     BwdFingerprint, BwdServeKind, DirectTopCorrection, freeze_demand_with, plan_epoch_fragment,
 };
 use crate::eval_plan::backward::{
-    BackwardEvaluationError, CompiledBackwardEvaluation, compile_backward_fragments_replayed,
-    compile_backward_fragments_uncached, validate_and_resolve_backward,
+    BackwardEvaluationError, CompiledBackwardEvaluation,
+    compile_backward_fragments_replayed_for_model, compile_backward_fragments_uncached,
+    validate_and_resolve_backward,
 };
 use crate::eval_plan::{ValueFingerprint, budget_lanes_from_cells, structural_fingerprints};
 
@@ -267,8 +268,9 @@ fn build_problem_from_compiled(
         compiled.trace.epoch,
         stream_reductions,
     );
-    let replayed = compile_backward_fragments_replayed(d, &plan, Some(order), budget_cells)
-        .map_err(BackwardSearchError::BackwardEvaluation)?;
+    let replayed =
+        compile_backward_fragments_replayed_for_model(d, &plan, Some(order), budget_cells)
+            .map_err(BackwardSearchError::BackwardEvaluation)?;
     let frozen = freeze_demand_with(
         d,
         &replayed.trace,

@@ -476,28 +476,39 @@ pub(crate) fn physical_traffic_events(
     })
 }
 
-/// Preserve the source-resolution traffic anchors only when their complete
-/// `(value, width)` multiset exactly matches the final post-peephole program.
-/// Partial retention would make duplicate occurrences ambiguous, so any
-/// missing or extra physical read fails closed.
+/// Preserve the earliest source-resolution traffic anchors required by the
+/// final post-peephole program. Peepholes may remove reads, but every surviving
+/// physical `(value, width)` occurrence must have a symbolic anchor; an extra
+/// physical read still fails closed.
 pub(crate) fn retain_physical_traffic_events(
     ordered_events: Vec<BwdEvent>,
     physical_events: &[BwdEvent],
 ) -> Option<Vec<BwdEvent>> {
-    let mut anchored = BTreeMap::<(ExprId, u32), usize>::new();
-    for event in &ordered_events {
-        if let BwdEvent::TrafficRead { value, cells } = event {
-            *anchored.entry((*value, *cells)).or_default() += 1;
-        }
-    }
-    let mut physical = BTreeMap::<(ExprId, u32), usize>::new();
+    let mut remaining = BTreeMap::<(ExprId, u32), usize>::new();
     for event in physical_events {
         let BwdEvent::TrafficRead { value, cells } = event else {
             return None;
         };
-        *physical.entry((*value, *cells)).or_default() += 1;
+        *remaining.entry((*value, *cells)).or_default() += 1;
     }
-    (anchored == physical).then_some(ordered_events)
+    let mut retained = Vec::with_capacity(ordered_events.len());
+    for event in ordered_events {
+        let BwdEvent::TrafficRead { value, cells } = event else {
+            retained.push(event);
+            continue;
+        };
+        let Some(count) = remaining.get_mut(&(value, cells)) else {
+            continue;
+        };
+        if *count != 0 {
+            retained.push(event);
+            *count -= 1;
+        }
+    }
+    remaining
+        .values()
+        .all(|&count| count == 0)
+        .then_some(retained)
 }
 
 // ── frozen demand (Task 2) ──────────────────────────────────────────────────
@@ -806,7 +817,7 @@ mod tests {
     }
 
     #[test]
-    fn physical_traffic_reconciliation_requires_every_duplicate_anchor() {
+    fn physical_traffic_reconciliation_allows_proven_post_peephole_reductions() {
         let value = ExprId(7);
         let read = BwdEvent::TrafficRead { value, cells: 4 };
         let ordered = vec![
@@ -838,14 +849,18 @@ mod tests {
             Some(ordered.clone()),
             "both duplicate anchors must survive in their original Serve order"
         );
-        for removed in 0..physical.len() {
-            let mut missing = physical.clone();
-            missing.remove(removed);
-            assert!(
-                retain_physical_traffic_events(ordered.clone(), &missing).is_none(),
-                "removing physical duplicate occurrence {removed} must fail closed"
-            );
-        }
+        let reduced = retain_physical_traffic_events(ordered.clone(), &[read])
+            .expect("one surviving physical read has a symbolic anchor");
+        assert_eq!(
+            reduced
+                .iter()
+                .filter(|event| matches!(event, BwdEvent::TrafficRead { .. }))
+                .count(),
+            1
+        );
+        assert!(matches!(reduced[0], BwdEvent::Serve { .. }));
+        assert_eq!(reduced[1], read);
+        assert!(matches!(reduced[2], BwdEvent::Serve { .. }));
         let mut extra = physical;
         extra.push(read);
         assert!(

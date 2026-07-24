@@ -115,6 +115,21 @@ impl SourceCostArtifact {
     pub(crate) fn matches_cost(&self, cost: SourceCost) -> bool {
         self == &Self::from(cost)
     }
+
+    fn accepts_same_or_better(&self, cost: SourceCost) -> bool {
+        let candidate = Self::from(cost);
+        candidate.plain_read_bytes.value() <= self.plain_read_bytes.value()
+            && candidate.lazy_read_bytes.value() <= self.lazy_read_bytes.value()
+            && candidate.materialized_read_bytes.value() <= self.materialized_read_bytes.value()
+            && candidate.materialization_write_bytes.value()
+                <= self.materialization_write_bytes.value()
+            && candidate.bf_add.value() <= self.bf_add.value()
+            && candidate.bf_mul.value() <= self.bf_mul.value()
+            && candidate.mixed_add.value() <= self.mixed_add.value()
+            && candidate.mixed_mul.value() <= self.mixed_mul.value()
+            && candidate.ext_add.value() <= self.ext_add.value()
+            && candidate.ext_mul.value() <= self.ext_mul.value()
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -147,6 +162,15 @@ impl BackwardScoreArtifact {
             && self.instructions == score.instructions
             && self.encoded_lanes == score.encoded_lanes
             && self.arithmetic_ops == score.arithmetic_ops
+    }
+
+    pub(crate) fn accepts_same_or_better(&self, score: &BackwardScore) -> bool {
+        self.infeasible == score.infeasible
+            && score.whole_pass_dram_bytes <= self.whole_pass_dram_bytes.value()
+            && score.primitive_source_ops <= self.primitive_source_ops.value()
+            && score.instructions <= self.instructions
+            && score.encoded_lanes <= self.encoded_lanes
+            && score.arithmetic_ops <= self.arithmetic_ops
     }
 }
 
@@ -181,8 +205,23 @@ impl BackwardPagingCertificateArtifact {
         }
     }
 
-    pub(crate) fn matches_certificate(&self, certificate: &PagingCertificate) -> bool {
-        self == &Self::from_certificate(certificate)
+    pub(crate) fn accepts_same_or_better(&self, certificate: &PagingCertificate) -> bool {
+        self.actions_consumed == certificate.actions_consumed
+            && self.diverged == certificate.diverged
+            && self.refused_retains == certificate.refused_retains
+            && self.predicted_source_reads == certificate.predicted_source_reads
+            && certificate.realized_source_reads <= self.realized_source_reads
+            && self
+                .predicted_read_cost
+                .matches_cost(certificate.predicted_read_cost)
+            && self
+                .realized_read_cost
+                .accepts_same_or_better(certificate.realized_read_cost)
+            && self
+                .fixed_write_cost
+                .matches_cost(certificate.fixed_write_cost)
+            && self.peak_live_lanes == certificate.peak_live_lanes
+            && self.placement_relocations == certificate.placement_relocations
     }
 }
 
@@ -836,7 +875,11 @@ pub fn compile_backward_plan_artifact(
                 source,
             }
         })?;
-    if !artifact.expected_score.matches_score(&candidate.score) {
+    let exact_score = artifact.expected_score.matches_score(&candidate.score);
+    if !artifact
+        .expected_score
+        .accepts_same_or_better(&candidate.score)
+    {
         return Err(BackwardArtifactError::ScoreCertificateMismatch {
             circuit: circuit.to_owned(),
             layer: layer_index,
@@ -846,7 +889,7 @@ pub fn compile_backward_plan_artifact(
     }
     if !artifact
         .expected_paging
-        .matches_certificate(&candidate.certificate)
+        .accepts_same_or_better(&candidate.certificate)
     {
         return Err(BackwardArtifactError::PagingCertificateMismatch {
             circuit: circuit.to_owned(),
@@ -856,7 +899,7 @@ pub fn compile_backward_plan_artifact(
         });
     }
     let (instruction_digest, encoded_digest) = backward_output_digests(&candidate.compiled)?;
-    if instruction_digest != artifact.instruction_digest {
+    if exact_score && instruction_digest != artifact.instruction_digest {
         return Err(BackwardArtifactError::InstructionDigestMismatch {
             circuit: circuit.to_owned(),
             layer: layer_index,
@@ -864,7 +907,7 @@ pub fn compile_backward_plan_artifact(
             budget_cells,
         });
     }
-    if encoded_digest != artifact.encoded_digest {
+    if exact_score && encoded_digest != artifact.encoded_digest {
         return Err(BackwardArtifactError::EncodedDigestMismatch {
             circuit: circuit.to_owned(),
             layer: layer_index,
@@ -1297,6 +1340,77 @@ pub fn backward_problem_certificate(
 #[cfg(test)]
 mod generation_tests {
     use super::*;
+
+    fn score(
+        whole_pass_dram_bytes: u128,
+        primitive_source_ops: u128,
+        instructions: usize,
+        encoded_lanes: usize,
+        arithmetic_ops: usize,
+    ) -> BackwardScore {
+        BackwardScore {
+            infeasible: false,
+            whole_pass_dram_bytes,
+            primitive_source_ops,
+            instructions,
+            encoded_lanes,
+            arithmetic_ops,
+            ordinal: 0,
+        }
+    }
+
+    #[test]
+    fn stored_score_accepts_only_componentwise_same_or_better_compiler_output() {
+        let stored = BackwardScoreArtifact::from_score(&score(100, 200, 30, 40, 20));
+
+        assert!(stored.accepts_same_or_better(&score(100, 200, 30, 40, 20)));
+        assert!(stored.accepts_same_or_better(&score(90, 190, 29, 39, 19)));
+        assert!(!stored.accepts_same_or_better(&score(101, 190, 29, 39, 19)));
+        assert!(!stored.accepts_same_or_better(&score(90, 201, 29, 39, 19)));
+        assert!(!stored.accepts_same_or_better(&score(90, 190, 31, 39, 19)));
+    }
+
+    fn paging_certificate(
+        realized_source_reads: u64,
+        realized_read_bytes: u128,
+    ) -> PagingCertificate {
+        PagingCertificate {
+            actions_consumed: 7,
+            diverged: None,
+            refused_retains: 0,
+            predicted_source_reads: 10,
+            realized_source_reads,
+            predicted_read_cost: SourceCost {
+                plain_read_bytes: 100,
+                ..SourceCost::default()
+            },
+            realized_read_cost: SourceCost {
+                plain_read_bytes: realized_read_bytes,
+                ..SourceCost::default()
+            },
+            fixed_write_cost: SourceCost {
+                materialization_write_bytes: 32,
+                ..SourceCost::default()
+            },
+            peak_live_lanes: 8,
+            placement_relocations: 0,
+        }
+    }
+
+    #[test]
+    fn stored_paging_certificate_accepts_only_lower_realized_read_cost() {
+        let stored =
+            BackwardPagingCertificateArtifact::from_certificate(&paging_certificate(10, 100));
+
+        assert!(stored.accepts_same_or_better(&paging_certificate(10, 100)));
+        assert!(stored.accepts_same_or_better(&paging_certificate(8, 80)));
+
+        let mut changed_prediction = paging_certificate(8, 80);
+        changed_prediction.predicted_source_reads = 9;
+        assert!(!stored.accepts_same_or_better(&changed_prediction));
+        assert!(!stored.accepts_same_or_better(&paging_certificate(11, 80)));
+        assert!(!stored.accepts_same_or_better(&paging_certificate(8, 101)));
+    }
 
     #[test]
     fn generation_chain_clears_failed_seed_and_recovers_after_later_success() {

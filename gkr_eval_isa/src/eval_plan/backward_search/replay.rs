@@ -208,7 +208,7 @@ pub fn compile_and_certify_paging(
         })
         .collect::<Vec<_>>();
     anchored_reads.sort_unstable();
-    if realized_reads != anchored_reads {
+    if !sorted_multiset_is_subset(&realized_reads, &anchored_reads) {
         return Err(BackwardSearchError::PagingSourceAccessMismatch {
             predicted_reads: predicted.reads,
             realized_reads: realized_reads
@@ -237,7 +237,7 @@ pub fn compile_and_certify_paging(
                 }
                 cost.checked_add(reprice_source_read(problem, source_desc, width)?)
             })?;
-    if realized_read_cost != predicted.cost {
+    if !source_cost_is_componentwise_leq(realized_read_cost, predicted.cost) {
         return Err(BackwardSearchError::PagingReadCostMismatch {
             predicted: predicted.cost,
             realized: realized_read_cost,
@@ -268,6 +268,36 @@ pub fn compile_and_certify_paging(
         certificate,
         score,
     })
+}
+
+fn sorted_multiset_is_subset<T: Ord>(subset: &[T], superset: &[T]) -> bool {
+    let mut superset_index = 0;
+    for item in subset {
+        while superset
+            .get(superset_index)
+            .is_some_and(|candidate| candidate < item)
+        {
+            superset_index += 1;
+        }
+        if superset.get(superset_index) != Some(item) {
+            return false;
+        }
+        superset_index += 1;
+    }
+    true
+}
+
+fn source_cost_is_componentwise_leq(candidate: SourceCost, ceiling: SourceCost) -> bool {
+    candidate.plain_read_bytes <= ceiling.plain_read_bytes
+        && candidate.lazy_read_bytes <= ceiling.lazy_read_bytes
+        && candidate.materialized_read_bytes <= ceiling.materialized_read_bytes
+        && candidate.materialization_write_bytes <= ceiling.materialization_write_bytes
+        && candidate.ops.bf_add <= ceiling.ops.bf_add
+        && candidate.ops.bf_mul <= ceiling.ops.bf_mul
+        && candidate.ops.mixed_add <= ceiling.ops.mixed_add
+        && candidate.ops.mixed_mul <= ceiling.ops.mixed_mul
+        && candidate.ops.ext_add <= ceiling.ops.ext_add
+        && candidate.ops.ext_mul <= ceiling.ops.ext_mul
 }
 
 /// Replay and score an already accepted production occurrence plan exactly.
@@ -743,12 +773,20 @@ mod tests {
     use super::{
         certify_demand_misses, compile_and_certify_paging, controlled_sources, map_replay_error,
         occurrence_plan_from_paging, predict_paging, realized_occupancy_profile,
+        sorted_multiset_is_subset,
     };
 
     struct SyntheticFixture {
         distilled: DistilledLayer,
         problem: BackwardSearchProblem,
         exact: ExactPagingPlan,
+    }
+
+    #[test]
+    fn physical_reads_must_be_a_duplicate_aware_subset_of_predicted_reads() {
+        assert!(sorted_multiset_is_subset(&[1, 2, 2, 4], &[1, 2, 2, 3, 4]));
+        assert!(!sorted_multiset_is_subset(&[1, 2, 2], &[1, 2, 3]));
+        assert!(!sorted_multiset_is_subset(&[1, 5], &[1, 2, 3, 4]));
     }
 
     #[test]

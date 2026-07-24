@@ -449,7 +449,7 @@ fn artifact_replay_rejects_stale_problem_score_paging_and_output_certificates() 
     ));
 
     let mut artifact = captured.clone();
-    artifact.expected_score.instructions += 1;
+    artifact.expected_score.instructions -= 1;
     assert!(matches!(
         replay_real_plan(&artifact),
         Err(BackwardArtifactError::ScoreCertificateMismatch {
@@ -1761,11 +1761,19 @@ fn plan4_backward_artifact_corpus_gate() {
                     assert!(!replayed.score.infeasible);
                     assert_eq!(replayed.certificate.diverged, None);
                     assert_eq!(replayed.certificate.refused_retains, 0);
-                    common::assert_bwd_value_parity(
-                        &replayed.compiled.compiled,
-                        &input.distilled,
-                        &input.canonical,
-                    );
+                    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                        common::assert_bwd_value_parity(
+                            &replayed.compiled.compiled,
+                            &input.distilled,
+                            &input.canonical,
+                        );
+                    }))
+                    .unwrap_or_else(|_| {
+                        panic!(
+                            "value parity failed for {fixture} L{} {:?} c{budget_cells}",
+                            input.layer_index, input.regime,
+                        )
+                    });
 
                     let score = Plan4CensusScore::from_artifact(plan);
                     assert!(score.dram_bytes >= floor_bytes);
@@ -1811,6 +1819,65 @@ fn plan4_backward_artifact_corpus_gate() {
         started.elapsed(),
     );
     println!("PLAN4-BWD-DIGEST {digest:016x}");
+}
+
+#[test]
+fn post_placement_peepholes_preserve_keccak_l0_ext_c2_c16_values() {
+    let fixture = "keccak_special5_layout_gkr.json";
+    let path = common::backward_artifact_path(fixture);
+    let artifact = load_backward_evaluation_artifact(&path).unwrap();
+    let input = build_plan4_chain_inputs(&[fixture])
+        .into_iter()
+        .find(|input| input.layer_index == 0 && input.regime == BwdRegime::Ext)
+        .unwrap();
+    (2..=16).into_par_iter().for_each(|budget_cells| {
+        let plan = select_backward_plan(&artifact, 0, BwdRegime::Ext, budget_cells).unwrap();
+        let replayed = compile_backward_plan_artifact(
+            &artifact.circuit,
+            0,
+            &input.canonical,
+            &input.distilled,
+            input.trace_len,
+            plan,
+        )
+        .unwrap();
+
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            common::assert_bwd_value_parity(
+                &replayed.compiled.compiled,
+                &input.distilled,
+                &input.canonical,
+            );
+        }))
+        .unwrap_or_else(|_| panic!("Keccak L0 Ext c{budget_cells} value parity failed"));
+    });
+}
+
+#[test]
+fn post_placement_peepholes_preserve_unified_l0_r0_c2_values() {
+    let fixture = "unified_reduced_machine_layout_gkr.json";
+    let path = common::backward_artifact_path(fixture);
+    let artifact = load_backward_evaluation_artifact(&path).unwrap();
+    let input = build_plan4_chain_inputs(&[fixture])
+        .into_iter()
+        .find(|input| input.layer_index == 0 && input.regime == BwdRegime::R0)
+        .unwrap();
+    let plan = select_backward_plan(&artifact, 0, BwdRegime::R0, 2).unwrap();
+    let replayed = compile_backward_plan_artifact(
+        &artifact.circuit,
+        0,
+        &input.canonical,
+        &input.distilled,
+        input.trace_len,
+        plan,
+    )
+    .unwrap();
+
+    common::assert_bwd_value_parity(
+        &replayed.compiled.compiled,
+        &input.distilled,
+        &input.canonical,
+    );
 }
 
 #[derive(Clone, Debug)]

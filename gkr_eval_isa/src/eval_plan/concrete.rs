@@ -390,6 +390,7 @@ enum ConcreteSourceMode<'a> {
     Backward {
         leaf_descs: &'a BTreeMap<ExprId, u16>,
         specials: &'a BwdSpecialTable,
+        optimize_reads: bool,
     },
 }
 
@@ -420,6 +421,45 @@ pub(super) fn bind_backward_packed_plan(
     leaf_descs: &BTreeMap<ExprId, u16>,
     specials: &BwdSpecialTable,
 ) -> Result<ConcreteEvalProgram, ConcreteBindError> {
+    bind_backward_packed_plan_with_read_optimization(
+        packed,
+        layer,
+        root,
+        budget_lanes,
+        leaf_descs,
+        specials,
+        true,
+    )
+}
+
+pub(super) fn bind_backward_packed_plan_for_model(
+    packed: &PackedEvalPlan,
+    layer: &DagLayer,
+    root: RootId,
+    budget_lanes: usize,
+    leaf_descs: &BTreeMap<ExprId, u16>,
+    specials: &BwdSpecialTable,
+) -> Result<ConcreteEvalProgram, ConcreteBindError> {
+    bind_backward_packed_plan_with_read_optimization(
+        packed,
+        layer,
+        root,
+        budget_lanes,
+        leaf_descs,
+        specials,
+        false,
+    )
+}
+
+fn bind_backward_packed_plan_with_read_optimization(
+    packed: &PackedEvalPlan,
+    layer: &DagLayer,
+    root: RootId,
+    budget_lanes: usize,
+    leaf_descs: &BTreeMap<ExprId, u16>,
+    specials: &BwdSpecialTable,
+    optimize_reads: bool,
+) -> Result<ConcreteEvalProgram, ConcreteBindError> {
     bind_packed_plan_with_source_mode(
         packed,
         layer,
@@ -430,6 +470,7 @@ pub(super) fn bind_backward_packed_plan(
         ConcreteSourceMode::Backward {
             leaf_descs,
             specials,
+            optimize_reads,
         },
     )
 }
@@ -584,16 +625,23 @@ fn bind_packed_plan_with_source_mode(
     }
 
     let mut program = emitted_program;
-    let backward_specials = match source_mode {
+    let backward_config = match source_mode {
         ConcreteSourceMode::Forward => None,
-        ConcreteSourceMode::Backward { specials, .. } => Some(specials),
+        ConcreteSourceMode::Backward {
+            specials,
+            optimize_reads,
+            ..
+        } => Some((specials, optimize_reads)),
     };
-    let backward_mode = backward_specials.is_some();
+    let backward_mode = backward_config.is_some();
     fold_direct_source_stores_with_mode(&mut program, backward_mode);
     fold_load_mul_add(&mut program);
     elide_accumulator_cell_roundtrips(&mut program);
-    if let Some(specials) = backward_specials {
-        elide_reloads_of_acc_preserved_by_batch_sink(&mut program, specials);
+    if let Some((specials, optimize_reads)) = backward_config {
+        if optimize_reads {
+            hoist_raw_source_batch_sinks(&mut program);
+            elide_reloads_of_acc_preserved_by_batch_sink(&mut program, specials);
+        }
     }
     let marker_mode = match source_mode {
         ConcreteSourceMode::Forward => SourceMarkerMode::Forward,
@@ -878,13 +926,12 @@ fn elide_reloads_of_acc_preserved_by_batch_sink(program: &mut Program, specials:
             ) if before_field == after_field
                 && before_src == after_src
                 && match before_src {
+                    OperandLine::LogicalGlobal { .. } | OperandLine::LogicalFold { .. } => true,
                     OperandLine::Smem { .. } | OperandLine::Ldc { .. } => true,
                     OperandLine::Special { desc } => {
                         matches!(specials.get(*desc), Some(BwdSpecial::VirtualSetup { .. }))
                     }
-                    OperandLine::LogicalGlobal { .. }
-                    | OperandLine::LogicalFold { .. }
-                    | OperandLine::Source { .. } => false,
+                    OperandLine::Source { .. } => false,
                 }
         );
         let reloads_just_stored_acc = matches!(
@@ -915,6 +962,133 @@ fn elide_reloads_of_acc_preserved_by_batch_sink(program: &mut Program, specials:
         instruction += 1;
         keep
     });
+}
+
+#[derive(Clone, Copy)]
+enum RawSourceHoistSite {
+    AccLoad {
+        instruction: usize,
+    },
+    PositiveAdd {
+        instruction: usize,
+        addend: OperandLine,
+    },
+}
+
+/// A raw source fragment may be emitted after a destructive use of the same
+/// source. Since batching addition is commutative and the sink preserves
+/// `acc`, move that sink to an earlier load/use and remove the repeated read.
+fn hoist_raw_source_batch_sinks(program: &mut Program) {
+    loop {
+        let Some((reload, source, sink)) =
+            (0..program.instrs.len().saturating_sub(1)).find_map(|instruction| {
+                let (
+                    Instr::Mov {
+                        dir: MovDir::AccFromSrc,
+                        field: OperandField::Base,
+                        dst: None,
+                        src: Some(source),
+                    },
+                    Instr::Mov {
+                        dir: MovDir::DstFromAcc,
+                        field: OperandField::Base,
+                        dst: Some(destination),
+                        src: None,
+                    },
+                ) = (
+                    &program.instrs[instruction],
+                    &program.instrs[instruction + 1],
+                )
+                else {
+                    return None;
+                };
+                if !matches!(
+                    source,
+                    OperandLine::LogicalGlobal { .. } | OperandLine::LogicalFold { .. }
+                ) || unpack_batch_dst(destination).is_none()
+                {
+                    return None;
+                }
+                let site = (0..instruction).rev().find_map(|earlier| {
+                    if matches!(
+                        &program.instrs[earlier],
+                        Instr::Mov {
+                            dir: MovDir::AccFromSrc,
+                            field: OperandField::Base,
+                            dst: None,
+                            src: Some(earlier_source),
+                        } if earlier_source == source
+                    ) {
+                        return Some(RawSourceHoistSite::AccLoad {
+                            instruction: earlier,
+                        });
+                    }
+                    let Some(window) = program.instrs.get(earlier..earlier + 2) else {
+                        return None;
+                    };
+                    match (&window[0], &window[1]) {
+                        (
+                            Instr::Mov {
+                                dir: MovDir::AccFromSrc,
+                                field: OperandField::Ext,
+                                dst: None,
+                                src: Some(addend),
+                            },
+                            Instr::Add {
+                                field: OperandField::Base,
+                                sign: Sign::Plus,
+                                promote: false,
+                                operands,
+                            },
+                        ) if operands.as_slice() == [*source] => {
+                            Some(RawSourceHoistSite::PositiveAdd {
+                                instruction: earlier,
+                                addend: *addend,
+                            })
+                        }
+                        _ => None,
+                    }
+                })?;
+                Some((instruction, site, program.instrs[instruction + 1].clone()))
+            })
+        else {
+            break;
+        };
+
+        program.instrs.drain(reload..reload + 2);
+        match source {
+            RawSourceHoistSite::AccLoad { instruction } => {
+                program.instrs.insert(instruction + 1, sink);
+            }
+            RawSourceHoistSite::PositiveAdd {
+                instruction,
+                addend,
+            } => {
+                let source = match &program.instrs[instruction + 1] {
+                    Instr::Add { operands, .. } => operands[0],
+                    _ => unreachable!("hoist site was matched as a positive add"),
+                };
+                program.instrs.splice(
+                    instruction..instruction + 2,
+                    [
+                        Instr::Mov {
+                            dir: MovDir::AccFromSrc,
+                            field: OperandField::Base,
+                            dst: None,
+                            src: Some(source),
+                        },
+                        sink,
+                        Instr::Add {
+                            field: OperandField::Ext,
+                            sign: Sign::Plus,
+                            promote: true,
+                            operands: vec![addend],
+                        },
+                    ],
+                );
+            }
+        }
+    }
 }
 
 fn smem_operand_overlaps(
@@ -1918,6 +2092,7 @@ impl Emitter<'_> {
         let backward_source = if let ConcreteSourceMode::Backward {
             leaf_descs,
             specials,
+            ..
         } = self.source_mode
         {
             leaf_descs
@@ -2534,10 +2709,19 @@ mod tests {
         let instrs = &concrete.compiled.program.instrs;
         assert_eq!(instrs.len(), 4);
         assert!(matches!(
+            &instrs[0],
+            Instr::Mov {
+                dir: MovDir::AccFromSrc,
+                src: Some(_),
+                ..
+            }
+        ));
+        assert!(matches!(
             &instrs[1],
             Instr::Mov {
                 dir: MovDir::DstFromAcc,
                 dst: Some(DstLine::Smem { .. }),
+                src: None,
                 ..
             }
         ));
@@ -2552,6 +2736,144 @@ mod tests {
                 } if unpack_batch_dst(dst).is_some()
             )
         }));
+    }
+
+    #[test]
+    fn batch_sink_preserves_acc_and_elides_logical_source_reload() {
+        let source = OperandLine::LogicalGlobal { slot: 1, col: 2 };
+        let sink = Instr::Mov {
+            dir: MovDir::DstFromAcc,
+            field: OperandField::Base,
+            dst: Some(pack_batch_dst(BATCH_COEFFICIENT_ONE).unwrap()),
+            src: None,
+        };
+        let load = Instr::Mov {
+            dir: MovDir::AccFromSrc,
+            field: OperandField::Base,
+            dst: None,
+            src: Some(source),
+        };
+        let mut program = Program {
+            instrs: vec![load.clone(), sink.clone(), load.clone()],
+        };
+
+        elide_reloads_of_acc_preserved_by_batch_sink(&mut program, &BwdSpecialTable::default());
+
+        assert_eq!(program.instrs, vec![load, sink]);
+    }
+
+    #[test]
+    fn raw_source_batch_sink_is_hoisted_before_destructive_accumulator_use() {
+        let source = OperandLine::LogicalGlobal { slot: 1, col: 2 };
+        let challenge = OperandLine::Ldc {
+            sub: LdcSub::ConstDerivedE4,
+            idx: 0,
+        };
+        let source_load = Instr::Mov {
+            dir: MovDir::AccFromSrc,
+            field: OperandField::Base,
+            dst: None,
+            src: Some(source),
+        };
+        let raw_sink = Instr::Mov {
+            dir: MovDir::DstFromAcc,
+            field: OperandField::Base,
+            dst: Some(pack_batch_dst(BATCH_COEFFICIENT_ONE).unwrap()),
+            src: None,
+        };
+        let destructive_add = Instr::Add {
+            field: OperandField::Ext,
+            sign: Sign::Plus,
+            promote: true,
+            operands: vec![challenge],
+        };
+        let ext_sink = Instr::Mov {
+            dir: MovDir::DstFromAcc,
+            field: OperandField::Ext,
+            dst: Some(pack_batch_dst(7).unwrap()),
+            src: None,
+        };
+        let mut program = Program {
+            instrs: vec![
+                source_load.clone(),
+                destructive_add.clone(),
+                ext_sink.clone(),
+                source_load.clone(),
+                raw_sink.clone(),
+            ],
+        };
+
+        hoist_raw_source_batch_sinks(&mut program);
+
+        assert_eq!(
+            program.instrs,
+            vec![source_load, raw_sink, destructive_add, ext_sink,]
+        );
+    }
+
+    #[test]
+    fn raw_source_batch_sink_commutes_positive_add_to_initialize_from_source() {
+        let source = OperandLine::LogicalGlobal { slot: 1, col: 2 };
+        let challenge = OperandLine::Ldc {
+            sub: LdcSub::ConstDerivedE4,
+            idx: 0,
+        };
+        let challenge_load = Instr::Mov {
+            dir: MovDir::AccFromSrc,
+            field: OperandField::Ext,
+            dst: None,
+            src: Some(challenge),
+        };
+        let source_add = Instr::Add {
+            field: OperandField::Base,
+            sign: Sign::Plus,
+            promote: false,
+            operands: vec![source],
+        };
+        let ext_sink = Instr::Mov {
+            dir: MovDir::DstFromAcc,
+            field: OperandField::Ext,
+            dst: Some(pack_batch_dst(7).unwrap()),
+            src: None,
+        };
+        let source_load = Instr::Mov {
+            dir: MovDir::AccFromSrc,
+            field: OperandField::Base,
+            dst: None,
+            src: Some(source),
+        };
+        let raw_sink = Instr::Mov {
+            dir: MovDir::DstFromAcc,
+            field: OperandField::Base,
+            dst: Some(pack_batch_dst(BATCH_COEFFICIENT_ONE).unwrap()),
+            src: None,
+        };
+        let mut program = Program {
+            instrs: vec![
+                challenge_load.clone(),
+                source_add,
+                ext_sink.clone(),
+                source_load.clone(),
+                raw_sink.clone(),
+            ],
+        };
+
+        hoist_raw_source_batch_sinks(&mut program);
+
+        assert_eq!(
+            program.instrs,
+            vec![
+                source_load,
+                raw_sink,
+                Instr::Add {
+                    field: OperandField::Ext,
+                    sign: Sign::Plus,
+                    promote: true,
+                    operands: vec![challenge],
+                },
+                ext_sink,
+            ]
+        );
     }
 
     #[test]
@@ -3181,11 +3503,13 @@ mod tests {
         for (index, &interval) in bases.iter().enumerate() {
             let lane = locations[&interval.id] as usize;
             assert!(lane < budget);
-            assert!(ext_by_quad
-                .get(lane / 4)
-                .into_iter()
-                .flatten()
-                .all(|other| !overlap(interval, *other)));
+            assert!(
+                ext_by_quad
+                    .get(lane / 4)
+                    .into_iter()
+                    .flatten()
+                    .all(|other| !overlap(interval, *other))
+            );
             for &other in &bases[index + 1..] {
                 if locations[&other.id] as usize == lane {
                     assert!(!overlap(interval, other));

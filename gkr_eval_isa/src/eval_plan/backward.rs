@@ -14,7 +14,8 @@ use crate::bwd::trace::{
 };
 
 use super::{
-    budget_lanes_from_cells, concrete::bind_backward_packed_plan,
+    budget_lanes_from_cells,
+    concrete::{bind_backward_packed_plan, bind_backward_packed_plan_for_model},
     elaborate_backward_fragments_driver, elaborate_backward_fragments_replayed_driver, pack_plan,
     BackwardReplay, ConcreteBindError, ConcreteEvalProgram, ConcreteTerminal, EvalPlan, PackConfig,
     PackError, PackedEvalPlan, PlanError,
@@ -277,7 +278,7 @@ pub fn compile_backward_fragments_uncached(
 ) -> Result<CompiledBackwardEvaluation, BackwardEvaluationError> {
     let symbolic =
         elaborate_backward_fragments_uncached(d, order, budget_cells, stream_reductions)?;
-    compile_backward_symbolic(d, symbolic, stream_reductions, false)
+    compile_backward_symbolic(d, symbolic, stream_reductions, false, false)
 }
 
 pub fn compile_backward_fragments_replayed(
@@ -287,7 +288,17 @@ pub fn compile_backward_fragments_replayed(
     budget_cells: usize,
 ) -> Result<CompiledBackwardEvaluation, BackwardEvaluationError> {
     let symbolic = elaborate_backward_fragments_replayed(d, plan, order, budget_cells)?;
-    compile_backward_symbolic(d, symbolic, plan.stream_reductions, true)
+    compile_backward_symbolic(d, symbolic, plan.stream_reductions, true, true)
+}
+
+pub(crate) fn compile_backward_fragments_replayed_for_model(
+    d: &DistilledLayer,
+    plan: &BwdOccurrencePlan,
+    order: Option<&[usize]>,
+    budget_cells: usize,
+) -> Result<CompiledBackwardEvaluation, BackwardEvaluationError> {
+    let symbolic = elaborate_backward_fragments_replayed(d, plan, order, budget_cells)?;
+    compile_backward_symbolic(d, symbolic, plan.stream_reductions, true, false)
 }
 
 fn compile_backward_symbolic(
@@ -295,9 +306,15 @@ fn compile_backward_symbolic(
     symbolic: BackwardSymbolicEvaluation,
     stream_reductions: bool,
     replayed: bool,
+    optimize_reads: bool,
 ) -> Result<CompiledBackwardEvaluation, BackwardEvaluationError> {
     let budget_lanes = symbolic.plan.budget_lanes;
-    let bound = bind_backward_packed_plan(
+    let bind = if optimize_reads {
+        bind_backward_packed_plan
+    } else {
+        bind_backward_packed_plan_for_model
+    };
+    let bound = bind(
         &symbolic.packed,
         &d.layer,
         d.root,
@@ -373,7 +390,7 @@ fn compile_backward_symbolic(
         })
         .sum();
     if symbolic_traffic != packed_traffic
-        || packed_traffic != concrete_traffic
+        || concrete_traffic > packed_traffic
         || concrete_traffic != traced_traffic
     {
         return Err(BackwardEvaluationError::TrafficCertificateMismatch {

@@ -1,14 +1,14 @@
 use std::collections::BTreeMap;
 
 use cs::gkr_compiler::dag_ir::{BwdRegime, ReadPlace};
-use gkr_eval_isa::bwd::batch::{unpack_batch_dst, BATCH_COEFFICIENT_ONE};
+use gkr_eval_isa::bwd::batch::{BATCH_COEFFICIENT_ONE, unpack_batch_dst};
 use gkr_eval_isa::bwd::compile::BwdCompiledLayer;
 use gkr_eval_isa::bwd::disasm::disassemble_bwd_layer;
 use gkr_eval_isa::bwd::source::BwdSpecial;
 use gkr_eval_isa::fwd::encode::decode;
 use gkr_eval_isa::fwd::isa::{DstLine, Instr, MovDir, OperandLine, Program};
 
-use super::{load_add_sub_l0_case, AddSubBwdVmCase};
+use super::{AddSubBwdVmCase, load_add_sub_l0_case};
 use crate::prover::gkr::forward::vm::desc::PROGRAM_CAP;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -314,10 +314,10 @@ fn dump_add_sub_l0_r0_c2_backward_vm() {
 #[test]
 fn add_sub_l0_c2_c16_program_census_matches_published_artifacts() {
     let expected_r0 = [
-        929, 913, 907, 909, 909, 909, 909, 909, 909, 909, 909, 909, 909, 909, 909,
+        921, 911, 905, 901, 901, 901, 901, 901, 901, 901, 901, 901, 901, 901, 901,
     ];
     let expected_ext = [
-        950, 910, 913, 906, 926, 922, 920, 917, 915, 915, 915, 915, 915, 915, 915,
+        946, 910, 913, 906, 922, 918, 916, 913, 911, 911, 911, 911, 911, 911, 911,
     ];
     for (regime, expected) in [(BwdRegime::R0, expected_r0), (BwdRegime::Ext, expected_ext)] {
         let got = (2..=16)
