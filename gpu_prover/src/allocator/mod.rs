@@ -1,6 +1,8 @@
 mod allocation_data;
 pub mod device;
 pub mod host;
+#[cfg(test)]
+mod tests;
 pub mod tracker;
 
 use allocation_data::StaticAllocationData;
@@ -21,10 +23,19 @@ pub trait StaticAllocationBackend: Sized {
     fn is_empty(&self) -> bool;
 }
 
+struct SmallAllocatorState {
+    tracker: AllocationsTracker,
+    log_chunk_size: u32,
+    threshold_bytes: usize,
+    start: usize,
+    len: usize,
+}
+
 pub struct InnerStaticAllocator<B: StaticAllocationBackend> {
     _backends: Vec<B>,
     tracker: AllocationsTracker,
     log_chunk_size: u32,
+    small: Option<SmallAllocatorState>,
 }
 
 impl<B: StaticAllocationBackend> InnerStaticAllocator<B> {
@@ -45,7 +56,32 @@ impl<B: StaticAllocationBackend> InnerStaticAllocator<B> {
             _backends: backends,
             tracker,
             log_chunk_size,
+            small: None,
         }
+    }
+
+    pub(crate) fn new_with_small_allocator(
+        backends: impl IntoIterator<Item = B>,
+        log_chunk_size: u32,
+        small_log_chunk_size: u32,
+        small_pool_bytes: usize,
+    ) -> Self {
+        assert!(small_log_chunk_size < log_chunk_size);
+        assert!(small_pool_bytes > 0);
+        assert_eq!(small_pool_bytes & ((1 << log_chunk_size) - 1), 0);
+        let mut allocator = Self::new(backends, log_chunk_size);
+        let ptr = allocator
+            .tracker
+            .alloc(small_pool_bytes, AllocationPlacement::Bottom)
+            .expect("not enough memory to carve out the small allocator pool");
+        allocator.small = Some(SmallAllocatorState {
+            tracker: AllocationsTracker::new(&[(ptr, small_pool_bytes)]),
+            log_chunk_size: small_log_chunk_size,
+            threshold_bytes: 1 << (log_chunk_size - 2),
+            start: ptr.as_ptr() as usize,
+            len: small_pool_bytes,
+        });
+        allocator
     }
 
     pub(crate) fn alloc<T>(
@@ -54,8 +90,23 @@ impl<B: StaticAllocationBackend> InnerStaticAllocator<B> {
         placement: AllocationPlacement,
     ) -> CudaResult<StaticAllocationData<T>> {
         let size_of_t = size_of::<T>();
+        let byte_len = len * size_of_t;
+        if let Some(small) = &mut self.small {
+            if byte_len > 0 && byte_len <= small.threshold_bytes {
+                assert!(align_of::<T>() <= 1 << small.log_chunk_size);
+                let alloc_len = byte_len.next_multiple_of(1 << small.log_chunk_size);
+                let ptr = small
+                    .tracker
+                    .alloc(alloc_len, placement)
+                    .unwrap_or_else(|_| {
+                        panic!("small allocation pool exhausted: requested {byte_len} bytes")
+                    });
+                assert!(ptr.is_aligned_to(align_of::<T>()));
+                return Ok(StaticAllocationData::new(ptr.cast(), len, alloc_len));
+            }
+        }
         let lcs = self.log_chunk_size;
-        let alloc_len = (len * size_of_t).next_multiple_of(1 << lcs);
+        let alloc_len = byte_len.next_multiple_of(1 << lcs);
         match self.tracker.alloc(alloc_len, placement) {
             Ok(ptr) => {
                 assert!(ptr.is_aligned_to(align_of::<T>()));
@@ -68,9 +119,17 @@ impl<B: StaticAllocationBackend> InnerStaticAllocator<B> {
     }
 
     pub(crate) fn free<T>(&mut self, data: StaticAllocationData<T>) {
-        let lcs = self.log_chunk_size;
         let ptr = data.ptr.cast::<u8>();
         let len = data.alloc_len;
+        if let Some(small) = &mut self.small {
+            let address = ptr.as_ptr() as usize;
+            if address >= small.start && address < small.start + small.len {
+                assert_eq!(len & ((1 << small.log_chunk_size) - 1), 0);
+                small.tracker.free(ptr, len);
+                return;
+            }
+        }
+        let lcs = self.log_chunk_size;
         assert_eq!(len & ((1 << lcs) - 1), 0);
         self.tracker.free(ptr, len);
     }
@@ -142,6 +201,33 @@ pub struct StaticAllocator<B: StaticAllocationBackend, W: InnerStaticAllocatorWr
     _phantom: PhantomData<B>,
 }
 
+pub struct SmallAllocator<B: StaticAllocationBackend, W: InnerStaticAllocatorWrapper<B>> {
+    inner: W,
+    _phantom: PhantomData<B>,
+}
+
+impl<B: StaticAllocationBackend, W: InnerStaticAllocatorWrapper<B>> SmallAllocator<B, W> {
+    pub fn get_used_mem_current(&self) -> usize {
+        self.inner.execute(|inner| {
+            inner
+                .small
+                .as_ref()
+                .expect("small allocator is not configured")
+                .tracker
+                .get_used_mem_current()
+        })
+    }
+}
+
+impl<B: StaticAllocationBackend, W: InnerStaticAllocatorWrapper<B>> Clone for SmallAllocator<B, W> {
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+            _phantom: PhantomData,
+        }
+    }
+}
+
 impl<B: StaticAllocationBackend, W: InnerStaticAllocatorWrapper<B>> StaticAllocator<B, W> {
     fn from_inner(inner: W, log_chunk_size: u32) -> Self {
         Self {
@@ -157,8 +243,33 @@ impl<B: StaticAllocationBackend, W: InnerStaticAllocatorWrapper<B>> StaticAlloca
         Self::from_inner(inner, log_chunk_size)
     }
 
+    pub fn new_with_small_allocator(
+        backends: impl IntoIterator<Item = B>,
+        log_chunk_size: u32,
+        small_log_chunk_size: u32,
+        small_pool_bytes: usize,
+    ) -> Self {
+        let allocator = InnerStaticAllocator::new_with_small_allocator(
+            backends,
+            log_chunk_size,
+            small_log_chunk_size,
+            small_pool_bytes,
+        );
+        let inner = W::new(allocator);
+        Self::from_inner(inner, log_chunk_size)
+    }
+
     pub fn capacity(&self) -> usize {
         self.inner.execute(|inner| inner.tracker.capacity())
+    }
+
+    pub fn small_allocator(&self) -> Option<SmallAllocator<B, W>> {
+        self.inner
+            .execute(|inner| inner.small.is_some())
+            .then(|| SmallAllocator {
+                inner: self.inner.clone(),
+                _phantom: PhantomData,
+            })
     }
 
     pub fn alloc<T>(

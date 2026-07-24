@@ -1,5 +1,6 @@
 use super::callbacks::Callbacks;
 use super::context::{DeviceAllocation, HostAllocation, ProverContext};
+use super::memory_policy::MemoryPolicy;
 use super::setup::SetupPrecomputations;
 use super::trace_holder::{TraceHolder, TreesCacheMode};
 use super::tracing_data::{
@@ -54,8 +55,7 @@ impl StageOneOutput {
         circuit: &CompiledCircuitArtifact<BF>,
         log_lde_factor: u32,
         log_tree_cap_size: u32,
-        recompute_cosets: bool,
-        trees_cache_mode: TreesCacheMode,
+        policy: &MemoryPolicy,
         context: &ProverContext,
     ) -> CudaResult<Self> {
         let trace_len = circuit.trace_len;
@@ -70,8 +70,8 @@ impl StageOneOutput {
             witness_columns_count,
             true,
             true,
-            recompute_cosets,
-            trees_cache_mode,
+            policy.witness,
+            TreesCacheMode::CachePatrial,
             context,
         )?;
         let memory_columns_count = circuit.memory_layout.total_width;
@@ -83,8 +83,8 @@ impl StageOneOutput {
             memory_columns_count,
             true,
             true,
-            recompute_cosets,
-            trees_cache_mode,
+            policy.memory,
+            TreesCacheMode::CachePatrial,
             context,
         )?;
         Ok(Self {

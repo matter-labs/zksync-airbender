@@ -6,8 +6,8 @@ use base64::Engine;
 use clap::{Parser, Subcommand, ValueEnum};
 use cli_lib::prover_utils::{
     default_backend_for_build, deserialize_from_file, serialize_to_file, u32_from_hex_string,
-    CpuConfig, GpuConfig, ProgramProver, ProgramProverConfig, ProgramSource, ProofArtifact,
-    ProofTarget, ProverBackend, SecurityLevel,
+    CpuConfig, GpuConfig, GpuMemoryPreset, ProgramProver, ProgramProverConfig, ProgramSource,
+    ProofArtifact, ProofTarget, ProverBackend, SecurityLevel,
 };
 use execution_utils::setups::read_binary;
 use reqwest::blocking::Client;
@@ -97,6 +97,8 @@ enum Commands {
 
         #[arg(long, default_value_t = 8)]
         gpu_replay_threads: usize,
+        #[arg(long, value_enum, default_value = "auto")]
+        gpu_memory_preset: GpuMemoryPreset,
     },
     /// Generate proof artifacts for many input files.
     ProveBatch {
@@ -128,6 +130,8 @@ enum Commands {
 
         #[arg(long, default_value_t = 8)]
         gpu_replay_threads: usize,
+        #[arg(long, value_enum, default_value = "auto")]
+        gpu_memory_preset: GpuMemoryPreset,
     },
     /// Continue staged proving from an existing proof artifact.
     ContinueProof {
@@ -293,6 +297,7 @@ fn make_prover_config(
     cpu_ram_bound: usize,
     cpu_worker_threads: Option<usize>,
     gpu_replay_threads: usize,
+    gpu_memory_preset: GpuMemoryPreset,
 ) -> ProgramProverConfig {
     ProgramProverConfig {
         security_level,
@@ -305,6 +310,7 @@ fn make_prover_config(
         },
         gpu: GpuConfig {
             replay_worker_threads_count: gpu_replay_threads,
+            memory_preset: gpu_memory_preset,
         },
     }
 }
@@ -342,6 +348,7 @@ fn main() {
             cpu_ram_bound,
             cpu_worker_threads,
             gpu_replay_threads,
+            gpu_memory_preset,
         } => {
             let input_words = fetch_input_data(&input)
                 .expect("Failed to fetch input")
@@ -356,6 +363,7 @@ fn main() {
                 cpu_ram_bound,
                 cpu_worker_threads,
                 gpu_replay_threads,
+                gpu_memory_preset,
             );
 
             let prover = ProgramProver::new(source, prover_config)
@@ -380,6 +388,7 @@ fn main() {
             cpu_ram_bound,
             cpu_worker_threads,
             gpu_replay_threads,
+            gpu_memory_preset,
         } => {
             let source = ProgramSource::from_paths(bin, text);
             let prover_config = make_prover_config(
@@ -390,6 +399,7 @@ fn main() {
                 cpu_ram_bound,
                 cpu_worker_threads,
                 gpu_replay_threads,
+                gpu_memory_preset,
             );
 
             let prover = ProgramProver::new(source, prover_config)
@@ -451,6 +461,7 @@ fn main() {
                 cpu_ram_bound,
                 cpu_worker_threads,
                 8,
+                GpuMemoryPreset::Auto,
             );
 
             let prover = ProgramProver::new(source, prover_config)

@@ -103,12 +103,33 @@ impl Default for CpuConfig {
 #[derive(Clone, Debug)]
 pub struct GpuConfig {
     pub replay_worker_threads_count: usize,
+    pub memory_preset: GpuMemoryPreset,
 }
 
 impl Default for GpuConfig {
     fn default() -> Self {
         Self {
             replay_worker_threads_count: 8,
+            memory_preset: GpuMemoryPreset::Auto,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, ValueEnum)]
+pub enum GpuMemoryPreset {
+    #[default]
+    Auto,
+    Normal,
+    Low,
+}
+
+#[cfg(feature = "gpu")]
+impl From<GpuMemoryPreset> for gpu_prover::prover::gpu_memory::GpuMemoryPreset {
+    fn from(value: GpuMemoryPreset) -> Self {
+        match value {
+            GpuMemoryPreset::Auto => Self::Auto,
+            GpuMemoryPreset::Normal => Self::Normal,
+            GpuMemoryPreset::Low => Self::Low,
         }
     }
 }
@@ -297,6 +318,8 @@ impl ProgramProver {
                         gpu_prover::execution::prover::ExecutionProverConfiguration::default();
                     prover_configuration.replay_worker_threads_count =
                         config.gpu.replay_worker_threads_count;
+                    prover_configuration.prover_context_config.gpu_memory_preset =
+                        config.gpu.memory_preset.into();
 
                     let max_level = match config.target {
                         ProofTarget::Base => UnrolledProverLevel::Base,

@@ -5,7 +5,7 @@ use super::stage_1::StageOneOutput;
 use super::stage_2::StageTwoOutput;
 use super::stage_3_kernels::*;
 use super::stage_3_utils::*;
-use super::trace_holder::{TraceHolder, TreesCacheMode};
+use super::trace_holder::{CosetsCacheMode, TraceHolder, TreesCacheMode};
 use super::{BF, E4};
 use crate::allocator::tracker::AllocationPlacement;
 use crate::device_structures::{DeviceMatrix, DeviceMatrixMut};
@@ -62,7 +62,7 @@ impl StageThreeOutput {
             4,
             true,
             false,
-            false,
+            CosetsCacheMode::CacheFull,
             trees_cache_mode,
             context,
         )?;

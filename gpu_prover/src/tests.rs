@@ -1,8 +1,8 @@
 use crate::circuit_type::{CircuitType, DelegationCircuitType, UnrolledMemoryCircuitType};
 use crate::circuit_type::{UnrolledCircuitType, UnrolledNonMemoryCircuitType};
 use crate::prover::context::{ProverContext, ProverContextConfig};
+use crate::prover::memory_policy::MemoryPolicy;
 use crate::prover::setup::SetupPrecomputations;
-use crate::prover::trace_holder::TreesCacheMode;
 use crate::prover::tracing_data::{
     DelegationTracingDataHost, DelegationTracingDataHostSource, InitsAndTeardownsTransfer,
     TracingDataHost, TracingDataTransfer, UnrolledTracingDataHost,
@@ -94,8 +94,6 @@ use trace_and_split::{
 use trace_holder::RowMajorTrace;
 use worker::Worker;
 
-const RECOMPUTE_COSETS_FOR_CORRECTNESS: bool = false;
-const TREES_CACHE_MODE_FOR_CORRECTNESS: TreesCacheMode = TreesCacheMode::CachePatrial;
 // const RECOMPUTE_COSETS_FOR_BENCHMARKS: bool = false;
 // const TREES_CACHE_MODE_FOR_BENCHMARKS: TreesCacheMode = TreesCacheMode::CacheFull;
 
@@ -3150,7 +3148,7 @@ fn run_unrolled_reduced_test() -> CudaResult<()> {
             &circuit,
             log_lde_factor,
             log_tree_cap_size,
-            false,
+            crate::prover::trace_holder::CosetsCacheMode::CacheFull,
             setup_trees_and_caps,
             &prover_context,
         )?;
@@ -3181,8 +3179,7 @@ fn run_unrolled_reduced_test() -> CudaResult<()> {
             lde_factor,
             &security_config,
             Some(proof.pow_challenges.clone()),
-            RECOMPUTE_COSETS_FOR_CORRECTNESS,
-            TREES_CACHE_MODE_FOR_CORRECTNESS,
+            &MemoryPolicy::normal(),
             &prover_context,
         )?;
         job.finish()?
@@ -3313,8 +3310,7 @@ pub fn prove_unrolled_execution_with_replayer<
 
     init_logger();
     let instant = std::time::Instant::now();
-    let mut prover_context_config = ProverContextConfig::default();
-    prover_context_config.allocator_block_log_size = 22;
+    let prover_context_config = ProverContextConfig::default();
     let prover_context = ProverContext::new(&prover_context_config)?;
     println!("prover_context created in {:?}", instant.elapsed());
 
@@ -4008,7 +4004,7 @@ pub fn prove_unrolled_execution_with_replayer<
                     &circuit,
                     log_lde_factor,
                     log_tree_cap_size,
-                    false,
+                    crate::prover::trace_holder::CosetsCacheMode::CacheFull,
                     setup_trees_and_caps,
                     &prover_context,
                 )?;
@@ -4033,8 +4029,7 @@ pub fn prove_unrolled_execution_with_replayer<
                     precomputation.lde_factor,
                     &security_config,
                     Some(proof.pow_challenges.clone()),
-                    RECOMPUTE_COSETS_FOR_CORRECTNESS,
-                    TREES_CACHE_MODE_FOR_CORRECTNESS,
+                    &MemoryPolicy::normal(),
                     &prover_context,
                 )?;
                 job.finish()?
@@ -4158,7 +4153,7 @@ pub fn prove_unrolled_execution_with_replayer<
                     &circuit,
                     log_lde_factor,
                     log_tree_cap_size,
-                    false,
+                    crate::prover::trace_holder::CosetsCacheMode::CacheFull,
                     setup_trees_and_caps,
                     &prover_context,
                 )?;
@@ -4183,8 +4178,7 @@ pub fn prove_unrolled_execution_with_replayer<
                     precomputation.lde_factor,
                     &security_config,
                     Some(proof.pow_challenges.clone()),
-                    RECOMPUTE_COSETS_FOR_CORRECTNESS,
-                    TREES_CACHE_MODE_FOR_CORRECTNESS,
+                    &MemoryPolicy::normal(),
                     &prover_context,
                 )?;
                 job.finish()?
@@ -4278,7 +4272,7 @@ pub fn prove_unrolled_execution_with_replayer<
                 &circuit,
                 log_lde_factor,
                 log_tree_cap_size,
-                false,
+                crate::prover::trace_holder::CosetsCacheMode::CacheFull,
                 setup_trees_and_caps,
                 &prover_context,
             )?;
@@ -4304,8 +4298,7 @@ pub fn prove_unrolled_execution_with_replayer<
                 inits_and_teardowns_precomputation.lde_factor,
                 &security_config,
                 Some(proof.pow_challenges.clone()),
-                RECOMPUTE_COSETS_FOR_CORRECTNESS,
-                TREES_CACHE_MODE_FOR_CORRECTNESS,
+                &MemoryPolicy::normal(),
                 &prover_context,
             )?;
             job.finish()?
@@ -4552,7 +4545,7 @@ where
                 &circuit,
                 log_lde_factor,
                 log_tree_cap_size,
-                false,
+                crate::prover::trace_holder::CosetsCacheMode::CacheFull,
                 setup_trees_and_caps,
                 &prover_context,
             )?;
@@ -4583,8 +4576,7 @@ where
                 prec.lde_factor,
                 &security_config,
                 Some(proof.pow_challenges.clone()),
-                RECOMPUTE_COSETS_FOR_CORRECTNESS,
-                TREES_CACHE_MODE_FOR_CORRECTNESS,
+                &MemoryPolicy::normal(),
                 &prover_context,
             )?;
             job.finish()?

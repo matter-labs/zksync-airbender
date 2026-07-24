@@ -1,6 +1,6 @@
 use super::callbacks::Callbacks;
 use super::context::{ProverContext, UnsafeMutAccessor};
-use super::trace_holder::{get_tree_caps, TraceHolder, TreesCacheMode};
+use super::trace_holder::{get_tree_caps, CosetsCacheMode, TraceHolder, TreesCacheMode};
 use super::tracing_data::{
     DelegationTracingDataDevice, InitsAndTeardownsTransfer, TracingDataDevice, TracingDataTransfer,
     UnrolledTracingDataDevice,
@@ -71,7 +71,7 @@ pub(crate) fn commit_memory<'a, A: GoodAllocator>(
         memory_columns_count,
         true,
         true,
-        false,
+        CosetsCacheMode::CacheFull,
         TreesCacheMode::CacheFull,
         context,
     )?;

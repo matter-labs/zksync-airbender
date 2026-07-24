@@ -91,27 +91,6 @@ jobs:
         run: |
           nvidia-smi
 
-      - name: Configure low VRAM mode
-        shell: bash
-        run: |
-          set -euo pipefail
-          gpu_info="$(nvidia-smi --query-gpu=memory.total --format=csv,noheader)"
-          min_full_vram_mib=32768
-          low_vram_mode=0
-          while IFS=',' read -r memory; do
-            memory_mib="$(echo "$memory" | tr -dc '0-9')"
-            if [[ "$memory_mib" -lt "$min_full_vram_mib" ]]; then
-              low_vram_mode=1
-              break
-            fi
-          done <<< "$gpu_info"
-          if [[ "$low_vram_mode" -eq 1 ]]; then
-            echo "ZKSYNC_AIRBENDER_LOW_VRAM_MODE=1" >> "$GITHUB_ENV"
-            echo "Enabled low VRAM mode"
-          else
-            echo "Low VRAM mode is not required"
-          fi
-
       - name: Download CLI binary
         uses: actions/download-artifact@v4
         with:
@@ -119,33 +98,42 @@ jobs:
           path: zksync-airbender-cli/
 
       - name: Prove recursion unified on GPU
+        shell: bash
         run: |
+          set -euo pipefail
           chmod +x zksync-airbender-cli/cli
           BIN="$PWD/examples/opcode_smoke/app.bin"
           TEXT="$PWD/examples/opcode_smoke/app.text"
           INPUT="$PWD/examples/opcode_smoke/input.txt"
-          zksync-airbender-cli/cli prove \
-            --bin "$BIN" \
-            --text "$TEXT" \
-            --input-file "$INPUT" \
-            --security-level ${{ matrix.security_level }} \
-            --target recursion-unified \
-            --backend gpu \
-            --output-dir output \
-            --output-file proof.json
+          for preset in low auto; do
+            zksync-airbender-cli/cli prove \
+              --bin "$BIN" \
+              --text "$TEXT" \
+              --input-file "$INPUT" \
+              --security-level ${{ matrix.security_level }} \
+              --target recursion-unified \
+              --backend gpu \
+              --gpu-memory-preset "$preset" \
+              --output-dir "output-$preset" \
+              --output-file proof.json
+          done
 
-      - name: Verify recursion unified proof
+      - name: Verify recursion unified proofs
+        shell: bash
         run: |
+          set -euo pipefail
           BIN="$PWD/examples/opcode_smoke/app.bin"
           TEXT="$PWD/examples/opcode_smoke/app.text"
-          verify_output="$(zksync-airbender-cli/cli verify \
-            --proof output/proof.json \
-            --bin "$BIN" \
-            --text "$TEXT" \
-            --security-level ${{ matrix.security_level }} \
-            --target recursion-unified)"
-          echo "$verify_output"
-          echo "$verify_output" | grep -F "output=[1330660171, 0, 0, 42, 2374183677, 305419896, 524296, 0"
+          for preset in low auto; do
+            verify_output="$(zksync-airbender-cli/cli verify \
+              --proof "output-$preset/proof.json" \
+              --bin "$BIN" \
+              --text "$TEXT" \
+              --security-level ${{ matrix.security_level }} \
+              --target recursion-unified)"
+            echo "$verify_output"
+            echo "$verify_output" | grep -F "output=[1330660171, 0, 0, 42, 2374183677, 305419896, 524296, 0"
+          done
 
   # Keep branch protection tied to one stable GPU check name even if we
   # split GPU coverage across multiple jobs or matrix entries later on.

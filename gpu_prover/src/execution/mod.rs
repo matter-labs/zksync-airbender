@@ -4,10 +4,10 @@ pub mod cpu_pipeline_model;
 mod cpu_worker;
 mod gpu_manager;
 mod gpu_worker;
-mod messages;
-mod precomputations;
+pub(crate) mod messages;
+pub(crate) mod precomputations;
 pub mod prover;
 mod simulation_runner;
 mod tracing;
 
-type A = ConcurrentStaticHostAllocator;
+pub(crate) type A = ConcurrentStaticHostAllocator;

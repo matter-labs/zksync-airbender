@@ -27,6 +27,9 @@ verifier_common = { workspace = true, features = ["proof_utils"] }
 worker = { workspace = true }
 itertools = { workspace = true }
 log = { workspace = true }
+clap = { workspace = true, optional = true }
+csv = { version = "1", optional = true }
+serde = { workspace = true, features = ["derive"], optional = true }
 
 era_cudart = "=0.156.0"
 era_cudart_sys = "=0.156.0"
@@ -42,6 +45,7 @@ type-map = "0.5"
 deterministic_pow = ["prover/deterministic_pow"]
 log_gpu_mem_usage = []
 log_gpu_stages_timings = []
+memory_sweep = ["dep:clap", "dep:csv", "dep:serde"]
 
 [dev-dependencies]
 # execution_utils = { workspace = true }
@@ -70,3 +74,8 @@ harness = false
 [[bench]]
 name = "cpu_pipeline"
 harness = false
+
+[[bin]]
+name = "gpu_memory_sweep"
+path = "src/bin/gpu_memory_sweep.rs"
+required-features = ["memory_sweep"]

@@ -49,7 +49,7 @@ use trace_and_split::{
 use type_map::concurrent::TypeMap;
 use verifier_common::security_100::Security100Marker;
 use verifier_common::security_80::Security80Marker;
-use verifier_common::{SecurityMarker, SecurityModel};
+use verifier_common::SecurityMarker;
 use worker::Worker;
 
 /// Specifies the execution mode for the prover.
@@ -489,7 +489,7 @@ impl<S: SecurityMarker> ExecutionProver<S> {
         }
     }
 
-    pub fn security(&self) -> SecurityModel {
+    pub fn security(&self) -> verifier_common::SecurityModel {
         S::MODEL
     }
 
