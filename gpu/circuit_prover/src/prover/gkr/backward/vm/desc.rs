@@ -155,6 +155,7 @@ pub(crate) struct DescriptorCounts {
     pub(crate) program_lanes: usize,
     pub(crate) source_windows: usize,
     pub(crate) specials: usize,
+    pub(crate) max_logical_coefficient_desc: Option<u16>,
     pub(crate) coefficient_slots: usize,
     pub(crate) batch_acc_init: bool,
     pub(crate) bf_constants: usize,
@@ -320,6 +321,7 @@ pub(crate) fn descriptor_counts(
         // folds have already become ordinary source lanes. The device special
         // map contains only the still-referenced descriptor namespace.
         specials: special_descs.len() - virtual_source_descs,
+        max_logical_coefficient_desc: coefficient_descs.iter().next_back().copied(),
         coefficient_slots: unique_recipes.len(),
         batch_acc_init: compiled.acc_init_desc.is_some(),
         bf_constants: compiled.consts.values().len(),
@@ -505,7 +507,9 @@ mod tests {
     fn add_sub_l0_descriptor_census_fits_the_exact_program_cap() {
         let mut max_program_lanes = 0;
 
-        eprintln!("regime budget lanes windows specials coeffs init bf arg_e4 const_e4 max_cell");
+        eprintln!(
+            "regime budget lanes windows virtual_specials logical_coeff_max compact_coeffs init bf arg_e4 const_e4 max_cell"
+        );
         for regime in [BwdRegime::R0, BwdRegime::Ext] {
             for budget_cells in 2..=16 {
                 let case = load_add_sub_l0_case(regime, budget_cells);
@@ -516,12 +520,13 @@ mod tests {
                 )
                 .expect("add/sub descriptor census must lower");
                 eprintln!(
-                    "{:?} {:>2} {:>4} {:>3} {:>3} {:>3} {:>4} {:>2} {:>2} {:>2} {:>3}",
+                    "{:?} {:>2} {:>4} {:>3} {:>3} {:>3?} {:>3} {:>4} {:>2} {:>2} {:>2} {:>3}",
                     regime,
                     budget_cells,
                     counts.program_lanes,
                     counts.source_windows,
                     counts.specials,
+                    counts.max_logical_coefficient_desc,
                     counts.coefficient_slots,
                     if counts.batch_acc_init { "yes" } else { "no" },
                     counts.bf_constants,
@@ -534,8 +539,9 @@ mod tests {
             }
         }
 
-        assert_eq!(max_program_lanes, 1_744);
+        assert_eq!(max_program_lanes, 992);
         assert_eq!(BWD_VM_PROGRAM_CAP, 1_744);
+        assert!(max_program_lanes <= BWD_VM_PROGRAM_CAP);
         let _ = core::mem::size_of::<BwdVmDesc>();
     }
 
@@ -554,6 +560,9 @@ mod tests {
                 maxima.program_lanes = maxima.program_lanes.max(counts.program_lanes);
                 maxima.source_windows = maxima.source_windows.max(counts.source_windows);
                 maxima.specials = maxima.specials.max(counts.specials);
+                maxima.max_logical_coefficient_desc = maxima
+                    .max_logical_coefficient_desc
+                    .max(counts.max_logical_coefficient_desc);
                 maxima.coefficient_slots = maxima.coefficient_slots.max(counts.coefficient_slots);
                 maxima.batch_acc_init |= counts.batch_acc_init;
                 maxima.bf_constants = maxima.bf_constants.max(counts.bf_constants);
@@ -563,18 +572,59 @@ mod tests {
             }
         }
 
-        assert_eq!(maxima.program_lanes, BWD_VM_PROGRAM_CAP);
+        assert_eq!(maxima.program_lanes, 992);
+        assert!(maxima.program_lanes <= BWD_VM_PROGRAM_CAP);
         assert_eq!(maxima.source_windows, 4);
         assert!(maxima.source_windows <= BWD_VM_SOURCE_WINDOW_CAP);
-        assert_eq!(maxima.specials, BWD_VM_SPECIAL_CAP);
-        assert_eq!(maxima.coefficient_slots, BWD_VM_COEFFICIENT_CAP);
+        assert_eq!(maxima.specials, 2);
+        assert!(maxima.specials <= BWD_VM_SPECIAL_CAP);
+        assert_eq!(maxima.max_logical_coefficient_desc, Some(203));
+        assert_eq!(maxima.coefficient_slots, 91);
+        assert!(maxima.coefficient_slots <= BWD_VM_COEFFICIENT_CAP);
         assert_eq!(maxima.bf_constants, 0);
         assert_eq!(maxima.arg_derived_e4, 0);
         assert_eq!(maxima.const_derived_e4, 1);
-        assert_eq!(maxima.encoded_max_cell + 1, BWD_VM_CELL_CAP);
+        assert_eq!(maxima.encoded_max_cell + 1, 13);
+        assert!(maxima.encoded_max_cell < BWD_VM_CELL_CAP);
         assert_eq!(BWD_VM_BF_CONSTANT_CAP, 40);
         assert_eq!(BWD_VM_ARG_DERIVED_E4_CAP, 12);
         assert_eq!(BWD_VM_CONST_DERIVED_E4_CAP, 8);
+        assert_eq!(core::mem::size_of::<BwdVmDesc>(), 4_672);
+        assert_eq!(crate::prover::gkr::backward::flat::FLAT_CONST_MAX, 1_024);
+        assert!(maxima.coefficient_slots <= crate::prover::gkr::backward::flat::FLAT_CONST_MAX);
+
+        let counts_at = |regime, budget_cells| {
+            let case = load_add_sub_l0_case(regime, budget_cells);
+            descriptor_counts(
+                &case.compiled.compiled,
+                &case.distilled.fragments,
+                &case.compiled.encoded,
+            )
+            .expect("maximum-realizing add/sub coordinate must lower")
+        };
+        let ext_c2 = counts_at(BwdRegime::Ext, 2);
+        assert_eq!(
+            (ext_c2.program_lanes, ext_c2.max_logical_coefficient_desc),
+            (992, Some(203)),
+            "add_sub L0 Ext c2 realizes the program and logical-coefficient maxima"
+        );
+        let r0_c2 = counts_at(BwdRegime::R0, 2);
+        assert_eq!(
+            (
+                r0_c2.source_windows,
+                r0_c2.specials,
+                r0_c2.coefficient_slots,
+                r0_c2.const_derived_e4,
+            ),
+            (4, 2, 91, 1),
+            "add_sub L0 R0 c2 realizes the window, virtual-special, compact-coefficient, and \
+             constant-E4 maxima"
+        );
+        assert_eq!(
+            counts_at(BwdRegime::R0, 4).encoded_max_cell + 1,
+            13,
+            "add_sub L0 R0 c4 realizes the cell-count maximum"
+        );
     }
 
     #[test]

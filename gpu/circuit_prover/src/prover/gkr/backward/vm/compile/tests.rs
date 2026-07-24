@@ -13,21 +13,38 @@ use crate::prover::gkr::forward::vm::desc::PROGRAM_CAP;
 fn dump_add_sub_l0_r0_c2_backward_vm() {
     let case = load_add_sub_l0_case(BwdRegime::R0, 2);
     let text = disassemble_bwd_layer("add_sub layer-0 R0 c2 backward VM", &case.compiled.compiled);
+    let program = text
+        .split_once("--- PROGRAM (single-accumulator VM; `acc` is implicit) ---")
+        .expect("backward VM program heading")
+        .1
+        .split_once("--- backings (slot -> storage region) ---")
+        .expect("backward VM backings heading")
+        .0;
+    let batch_sinks = program
+        .lines()
+        .filter(|line| line.contains("] batch +="))
+        .count();
 
     println!("\n{text}");
     assert!(text.contains("budget = c2 (8 BF lanes)"));
-    assert!(text.contains("--- PROGRAM (single-accumulator VM; `acc` is implicit) ---"));
-    assert!(text.contains("terminal = ReturnAcc"));
-    assert!(!text.contains("Mov {"));
+    assert!(text.contains("batch_init = coeff[2]"));
+    assert_eq!(batch_sinks, case.distilled.fragments.fragments.len());
+    assert_eq!(batch_sinks, 144);
+    assert!(!program.contains("AccInit"));
+    assert!(program
+        .lines()
+        .filter(|line| line.contains("coeff["))
+        .all(|line| line.contains("] batch +=")));
+    assert!(text.contains("terminal = ReturnBatch"));
 }
 
 #[test]
 fn add_sub_l0_c2_c16_program_census_matches_published_artifacts() {
     let expected_r0 = [
-        1448, 1419, 1396, 1388, 1388, 1388, 1388, 1388, 1388, 1388, 1388, 1388, 1388, 1388, 1388,
+        977, 957, 951, 957, 957, 957, 957, 957, 957, 957, 957, 957, 957, 957, 957,
     ];
     let expected_ext = [
-        1350, 1323, 1324, 1327, 1322, 1320, 1314, 1308, 1296, 1294, 1294, 1294, 1294, 1294, 1294,
+        992, 954, 957, 950, 968, 964, 962, 959, 957, 957, 957, 957, 957, 957, 957,
     ];
     for (regime, expected) in [(BwdRegime::R0, expected_r0), (BwdRegime::Ext, expected_ext)] {
         let got = (2..=16)

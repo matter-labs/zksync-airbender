@@ -25,7 +25,7 @@ use cs::gkr_compiler::dag_ir::{
     bwd_roots, BatchingOrder, BwdRegime, ChallengeKey, ChallengePower, ClaimInfo, FieldKind, Root,
     RootGroup, RootId, RootOrigin, RootSlot, SiteKey, SourceId, SourceInfo,
 };
-use gkr_eval_isa::bwd::batch::{unpack_batch_dst, BATCH_COEFFICIENT_ONE};
+use gkr_eval_isa::bwd::batch::{pack_batch_dst, unpack_batch_dst, BATCH_COEFFICIENT_ONE};
 use gkr_eval_isa::bwd::compile::{compile_distilled_legacy_only, BwdCompiledLayer};
 use gkr_eval_isa::bwd::distill::{bind, distill, distilled_site_domain, DistilledLayer};
 use gkr_eval_isa::bwd::interp::{interpret_bwd_row, role_combine, sumcheck_fold_point, Role};
@@ -33,7 +33,7 @@ use gkr_eval_isa::bwd::source::{BwdSpecial, FoldState, MaterializationPolicy, Or
 use gkr_eval_isa::fwd::compile::{build_cross_layer_field_map, SiteDecisions};
 use gkr_eval_isa::fwd::encode::{decode, encode as encode_result};
 use gkr_eval_isa::fwd::error::CompileError;
-use gkr_eval_isa::fwd::isa::{Instr, MovDir, OperandLine, Program};
+use gkr_eval_isa::fwd::isa::{Instr, MovDir, OperandField, OperandLine, Program};
 
 /// The cross-layer field map threaded into `distill` / `compile` (the width oracle
 /// for cross-layer reads). Same shape as `build_cross_layer_field_map`'s output.
@@ -545,6 +545,86 @@ pub fn program_has_fma(p: &Program) -> bool {
     p.instrs.iter().any(|i| matches!(i, Instr::Fma { .. }))
 }
 
+fn legacy_result_in_acc_field(program: &Program) -> OperandField {
+    assert!(
+        !program.instrs.is_empty(),
+        "legacy backward program must not be empty"
+    );
+    let mut acc_field = OperandField::Base;
+    for instruction in &program.instrs {
+        let step = |requires_ext: bool, promote: bool, acc_field: &mut OperandField| {
+            if promote {
+                assert_eq!(
+                    *acc_field,
+                    OperandField::Base,
+                    "legacy promote requires a base accumulator"
+                );
+                assert!(
+                    requires_ext,
+                    "legacy promote requires an extension-field operation"
+                );
+                *acc_field = OperandField::Ext;
+            } else if requires_ext {
+                assert_eq!(
+                    *acc_field,
+                    OperandField::Ext,
+                    "legacy extension-field operation requires an extension accumulator"
+                );
+            }
+        };
+        match instruction {
+            Instr::Mov {
+                dir: MovDir::AccFromSrc,
+                field,
+                ..
+            } => acc_field = *field,
+            Instr::Mov { .. } => {}
+            Instr::Add { field, promote, .. } => {
+                step(*field == OperandField::Ext, *promote, &mut acc_field)
+            }
+            Instr::Mul {
+                field,
+                promote,
+                operands,
+                ..
+            } => step(
+                *field == OperandField::Ext && !operands.is_empty(),
+                *promote,
+                &mut acc_field,
+            ),
+            Instr::Fma {
+                field_lhs,
+                field_rhs,
+                promote,
+                ..
+            } => {
+                assert!(
+                    !(*field_lhs == OperandField::Ext && *field_rhs == OperandField::Base),
+                    "legacy FMA field order must be canonical"
+                );
+                step(*field_rhs == OperandField::Ext, *promote, &mut acc_field);
+            }
+        }
+    }
+    assert!(
+        matches!(
+            program.instrs.last(),
+            Some(
+                Instr::Add { .. }
+                    | Instr::Mul { .. }
+                    | Instr::Fma { .. }
+                    | Instr::Mov {
+                        dir: MovDir::AccFromSrc,
+                        ..
+                    }
+            )
+        ),
+        "legacy backward program must leave its result in acc: {:?}",
+        program.instrs.last()
+    );
+    acc_field
+}
+
 /// The full per-(compiled, distilled) backward parity check against the independent
 /// expression oracle over `oracle_layer` (the RAW canonical layer for fixtures — its
 /// cache cones are recomputed against the witness-consistent read side; the distilled
@@ -568,6 +648,46 @@ pub fn assert_bwd_value_parity(c: &BwdCompiledLayer, d: &DistilledLayer, oracle_
     let plain = resolvers(&syn);
     let cc = CacheConsistentResolvers::new(oracle_layer);
     let cc_r = cache_consistent_resolvers(&cc);
+    let has_batch_sink = |compiled: &BwdCompiledLayer| {
+        compiled.program.instrs.iter().any(|instruction| {
+            matches!(
+                instruction,
+                Instr::Mov {
+                    dir: MovDir::DstFromAcc,
+                    dst: Some(dst),
+                    ..
+                } if unpack_batch_dst(dst).is_some()
+            )
+        })
+    };
+    let normalized;
+    let c = if has_batch_sink(c) {
+        c
+    } else {
+        assert!(
+            !has_batch_sink(c),
+            "legacy interpretation adapter requires a no-sink input"
+        );
+        let result_field = legacy_result_in_acc_field(&c.program);
+        normalized = {
+            let mut normalized = c.clone();
+            assert_eq!(
+                normalized.acc_init_desc, None,
+                "legacy result-in-acc program must not carry batch-init metadata"
+            );
+            normalized.program.instrs.push(Instr::Mov {
+                dir: MovDir::DstFromAcc,
+                field: result_field,
+                dst: Some(
+                    pack_batch_dst(BATCH_COEFFICIENT_ONE)
+                        .expect("literal-one batch carrier must encode"),
+                ),
+                src: None,
+            });
+            normalized
+        };
+        &normalized
+    };
 
     // (i) encode/decode roundtrip reproduces the program exactly.
     let lanes = encode_result(&c.program).expect("encode");

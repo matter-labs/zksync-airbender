@@ -15,8 +15,7 @@ use gkr_eval_isa::bwd::source::{BwdSpecial, BwdSpecialTable, OriginLeaf};
 use gkr_eval_isa::eval_plan::backward_search::problem::build_backward_search_problem;
 use gkr_eval_isa::eval_plan::backward_search::{
     compulsory_read_floor, construct_production_backward_bypass, search_production_backward,
-    solve_production_paging,
-    ProductionPagingSolver, ProductionSearchIdentity,
+    solve_production_paging, ProductionPagingSolver, ProductionSearchIdentity,
 };
 use gkr_eval_isa::eval_plan::{
     capture_backward_plan_artifact, compile_backward_plan_artifact,
@@ -125,6 +124,7 @@ fn captured_real_plan() -> &'static CapturedRealPlan {
         let instruction_lanes = encode(&searched.candidate.compiled.compiled.program).unwrap();
         let instruction_bytes = oracle_instruction_bytes(
             &instruction_lanes,
+            searched.candidate.compiled.compiled.acc_init_desc,
             &searched.candidate.compiled.compiled.specials,
             &searched.candidate.compiled.compiled.source_windows,
         );
@@ -144,10 +144,18 @@ fn oracle_encoded_bytes(encoded: &[u16]) -> Vec<u8> {
 
 fn oracle_instruction_bytes(
     encoded: &[u16],
+    acc_init_desc: Option<u16>,
     specials: &BwdSpecialTable,
     source_windows: &SourceWindowTable,
 ) -> Vec<u8> {
     let mut bytes = oracle_encoded_bytes(encoded);
+    match acc_init_desc {
+        Some(desc) => {
+            bytes.push(1);
+            bytes.extend_from_slice(&desc.to_le_bytes());
+        }
+        None => bytes.push(0),
+    }
     bytes.extend_from_slice(&(specials.len() as u64).to_le_bytes());
     for index in 0..specials.len() {
         oracle_serialize_bwd_special(
@@ -373,13 +381,31 @@ fn backend_neutrality_oracle_pins_special_lengths_tags_fields_and_endianness() {
     });
     specials.intern(BwdSpecial::AccInit);
 
-    let bytes = oracle_instruction_bytes(&[0x0201, 0x0403], &specials, &SourceWindowTable::default());
+    let bytes_with_acc_init = oracle_instruction_bytes(
+        &[0x0201],
+        Some(0x0102),
+        &specials,
+        &SourceWindowTable::default(),
+    );
+    assert_eq!(
+        &bytes_with_acc_init[..5],
+        &[0x01, 0x02, 1, 0x02, 0x01],
+        "acc-init metadata must use a one-byte tag and little-endian u16 descriptor"
+    );
+
+    let bytes = oracle_instruction_bytes(
+        &[0x0201, 0x0403],
+        None,
+        &specials,
+        &SourceWindowTable::default(),
+    );
     let mut cursor = 0usize;
     let mut take = |expected: &[u8]| {
         assert_eq!(&bytes[cursor..cursor + expected.len()], expected);
         cursor += expected.len();
     };
     take(&[0x01, 0x02, 0x03, 0x04]);
+    take(&[0]);
     take(&10u64.to_le_bytes());
     take(&[0, 0, 0]);
     take(&0x0102u64.to_le_bytes());
@@ -1150,17 +1176,31 @@ fn checkpoint_inventory(root: &Path) -> usize {
 fn checkpoint_resume_skips_certified_chains_and_preserves_digest() {
     let root = checkpoint_test_root("resume");
     let calls = AtomicUsize::new(0);
+    let searches = Mutex::new(BTreeMap::new());
     let producer = |input: &Plan4ChainInput,
                     budgets: RangeInclusive<usize>,
                     progress: &(dyn Fn(BackwardRegimeChainProgress) + Sync)| {
         calls.fetch_add(1, Ordering::Relaxed);
+        let instrumented_progress = |event| {
+            if let BackwardRegimeChainProgress::Search {
+                budget_cells,
+                search,
+            } = event
+            {
+                searches
+                    .lock()
+                    .expect("lock checkpoint test search telemetry")
+                    .insert((plan4_regime_code(input.regime), budget_cells), search);
+            }
+            progress(event);
+        };
         produce_backward_regime_chain_with_progress(
             &input.identity(),
             &input.canonical,
             &input.distilled,
             input.trace_len,
             budgets,
-            progress,
+            &instrumented_progress,
         )
     };
 
@@ -1174,7 +1214,34 @@ fn checkpoint_resume_skips_certified_chains_and_preserves_digest() {
     assert_eq!(calls.load(Ordering::Relaxed), 2);
     assert_eq!(first.summary.new_entries, 2);
     assert_eq!(first.summary.resumed_entries, 0);
-    assert_eq!(first.summary.exact_solver_calls, 2);
+    assert_eq!(first.summary.exact_solver_calls, 4);
+    {
+        let observed = searches
+            .lock()
+            .expect("lock first-run checkpoint search telemetry");
+        assert_eq!(observed.len(), 2);
+        for regime in [
+            plan4_regime_code(BwdRegime::R0),
+            plan4_regime_code(BwdRegime::Ext),
+        ] {
+            let search = observed
+                .get(&(regime, 2))
+                .expect("each checkpoint chain must report its final c2 search");
+            assert_eq!(
+                search.tier_evaluations, 2,
+                "production search may evaluate only the constructive seed and one distinct \
+                 budget-aware seed"
+            );
+            assert_eq!(
+                search.evaluations, 2,
+                "both distinct production seeds must be exact-scored"
+            );
+        }
+    }
+    searches
+        .lock()
+        .expect("clear checkpoint search telemetry before resume")
+        .clear();
 
     let second = run_plan4_matrix_with_checkpoints_and_producer(
         checkpoint_test_inputs(2),
@@ -1187,6 +1254,13 @@ fn checkpoint_resume_skips_certified_chains_and_preserves_digest() {
     assert_eq!(second.summary.new_entries, 0);
     assert_eq!(second.summary.resumed_entries, 2);
     assert_eq!(second.summary.exact_solver_calls, 0);
+    assert!(
+        searches
+            .lock()
+            .expect("lock resumed checkpoint search telemetry")
+            .is_empty(),
+        "resuming certified checkpoints must not restart production search"
+    );
     assert_eq!(first.digest(), second.digest());
     std::fs::remove_dir_all(root).unwrap();
 }
