@@ -20,11 +20,8 @@ constexpr u32 BWD_VM_HALF_WARP_MASK = BWD_VM_HALF_WARP_LANES - 1;
 constexpr u32 BWD_VM_E4_WORDS = 4;
 constexpr u32 BWD_VM_BUCKET_WORDS = BWD_VM_WARP_LANES * BWD_VM_E4_WORDS;
 constexpr u32 BWD_VM_BF_PER_BUCKET = BWD_VM_E4_WORDS;
-constexpr u32 BWD_VM_BF_SUB_MASK = BWD_VM_BF_PER_BUCKET - 1;
-constexpr u32 BWD_VM_BF_BUCKET_SHIFT = 2;
 
 static_assert(1u << BWD_VM_WARP_SHIFT == BWD_VM_WARP_LANES, "warp layout drift");
-static_assert(1u << BWD_VM_BF_BUCKET_SHIFT == BWD_VM_BF_PER_BUCKET, "cell aliasing layout drift");
 
 DEVICE_FORCEINLINE bf bf_minus_one() {
   constexpr bf value = bf::neg(bf::ONE());
@@ -36,29 +33,28 @@ DEVICE_FORCEINLINE e4 e4_minus_one() {
   return value;
 }
 
-DEVICE_FORCEINLINE u32 smem_warp_base(const u32 budget_cells) { return (threadIdx.x >> BWD_VM_WARP_SHIFT) * budget_cells * BWD_VM_BUCKET_WORDS; }
+DEVICE_FORCEINLINE bf smem_ld_bf(const bf *thread_cells, const u32 cell) { return thread_cells[cell << BWD_VM_WARP_SHIFT]; }
 
-DEVICE_FORCEINLINE u32 smem_bf_unit(const u32 cell, const u32 budget_cells) {
-  return smem_warp_base(budget_cells) + (cell >> BWD_VM_BF_BUCKET_SHIFT) * BWD_VM_BUCKET_WORDS + (cell & BWD_VM_BF_SUB_MASK) * BWD_VM_WARP_LANES +
-         (threadIdx.x & BWD_VM_LANE_MASK);
-}
+DEVICE_FORCEINLINE void smem_st_bf(bf *thread_cells, const u32 cell, const bf value) { thread_cells[cell << BWD_VM_WARP_SHIFT] = value; }
 
-DEVICE_FORCEINLINE bf smem_ld_bf(const bf *cells, const u32 cell, const u32 budget_cells) { return cells[smem_bf_unit(cell, budget_cells)]; }
-
-DEVICE_FORCEINLINE void smem_st_bf(bf *cells, const u32 cell, const u32 budget_cells, const bf value) { cells[smem_bf_unit(cell, budget_cells)] = value; }
-
-DEVICE_FORCEINLINE e4 smem_ld_e4(const bf *cells, const u32 bucket, const u32 budget_cells) {
-  const uint4 value = *reinterpret_cast<const uint4 *>(cells + smem_warp_base(budget_cells) + bucket * BWD_VM_BUCKET_WORDS +
-                                                       (threadIdx.x & BWD_VM_LANE_MASK) * BWD_VM_E4_WORDS);
+DEVICE_FORCEINLINE e4 smem_ld_e4(const e4 *thread_cells, const u32 bucket) {
+  const uint4 value = *reinterpret_cast<const uint4 *>(thread_cells + (bucket << BWD_VM_WARP_SHIFT));
   return *reinterpret_cast<const e4 *>(&value);
 }
 
-DEVICE_FORCEINLINE void smem_st_e4(bf *cells, const u32 bucket, const u32 budget_cells, const e4 value) {
-  *reinterpret_cast<uint4 *>(cells + smem_warp_base(budget_cells) + bucket * BWD_VM_BUCKET_WORDS + (threadIdx.x & BWD_VM_LANE_MASK) * BWD_VM_E4_WORDS) =
-      *reinterpret_cast<const uint4 *>(&value);
+DEVICE_FORCEINLINE void smem_st_e4(e4 *thread_cells, const u32 bucket, const e4 value) {
+  *reinterpret_cast<uint4 *>(thread_cells + (bucket << BWD_VM_WARP_SHIFT)) = *reinterpret_cast<const uint4 *>(&value);
 }
 
-DEVICE_FORCEINLINE e4 role_combine(const e4 endpoint, const u32 active_mask) {
+DEVICE_FORCEINLINE bf role_combine_bf(const bf endpoint, const u32 active_mask) {
+  const u32 paired_low_lane = threadIdx.x & BWD_VM_HALF_WARP_MASK;
+  const bf a = bf::from_reduced_raw_repr(__shfl_sync(active_mask, bf::into_raw_u32(endpoint), paired_low_lane));
+  if ((threadIdx.x & BWD_VM_LANE_MASK) < BWD_VM_HALF_WARP_LANES)
+    return a;
+  return bf::sub(bf::add(endpoint, endpoint), a);
+}
+
+DEVICE_FORCEINLINE e4 role_combine_e4(const e4 endpoint, const u32 active_mask) {
   const u32 paired_low_lane = threadIdx.x & BWD_VM_HALF_WARP_MASK;
   const uint4 endpoint_words = *reinterpret_cast<const uint4 *>(&endpoint);
   uint4 a_words;
@@ -80,21 +76,19 @@ DEVICE_FORCEINLINE char *publish_column(const bwd_vm_source_window &window, cons
   return window.publish_base + static_cast<size_t>(column) * window.publish_stride_bytes;
 }
 
-template <bool BASE> DEVICE_FORCEINLINE e4 load_source_value(const char *column, const size_t index) {
-  if constexpr (BASE)
-    return e4::from_scalar(load<bf, ld_modifier::ca>(reinterpret_cast<const bf *>(column), index));
-  else
-    return load<e4, ld_modifier::ca>(reinterpret_cast<const e4 *>(column), index);
+DEVICE_FORCEINLINE bf load_source_bf(const char *column, const size_t index) { return load<bf, ld_modifier::ca>(reinterpret_cast<const bf *>(column), index); }
+
+DEVICE_FORCEINLINE e4 load_source_e4(const char *column, const size_t index) { return load<e4, ld_modifier::ca>(reinterpret_cast<const e4 *>(column), index); }
+
+DEVICE_FORCEINLINE void store_source_bf(char *column, const size_t index, const bf value) {
+  store<bf, st_modifier::cs>(reinterpret_cast<bf *>(column), value, index);
 }
 
-template <bool BASE> DEVICE_FORCEINLINE void store_source_value(char *column, const size_t index, const e4 value) {
-  if constexpr (BASE)
-    store<bf, st_modifier::cs>(reinterpret_cast<bf *>(column), value[0][0], index);
-  else
-    store<e4, st_modifier::cs>(reinterpret_cast<e4 *>(column), value, index);
+DEVICE_FORCEINLINE void store_source_e4(char *column, const size_t index, const e4 value) {
+  store<e4, st_modifier::cs>(reinterpret_cast<e4 *>(column), value, index);
 }
 
-template <bool BASE, bool VALIDATE, typename Loader>
+template <bool VALIDATE, typename Loader>
 DEVICE_FORCEINLINE e4 fold_endpoint(const bwd_vm_desc &desc, Loader load_value, const size_t endpoint, const u8 backing_depth, const u8 target_depth,
                                     u32 &error) {
   if constexpr (VALIDATE) {
@@ -130,9 +124,46 @@ DEVICE_FORCEINLINE gkr_base_source_kind virtual_kind(const u32 payload) {
   return static_cast<gkr_base_source_kind>(GKR_BASE_SOURCE_VIRTUAL_RANGE_CHECK_16_BITS + payload);
 }
 
-template <bool BASE, bool VALIDATE>
-DEVICE_FORCEINLINE e4 resolve_source_endpoint(const bwd_vm_desc &desc, const u32 window_index, const u32 column, const bool first_access, const size_t endpoint,
-                                              u32 &error) {
+template <bool VALIDATE>
+DEVICE_FORCEINLINE bf resolve_source_bf(const bwd_vm_desc &desc, const u32 window_index, const u32 column, const bool first_access, const size_t endpoint,
+                                        u32 &error) {
+  if constexpr (VALIDATE) {
+    if (window_index >= desc.n_source_windows || window_index >= BWD_VM_SOURCE_WINDOW_CAP) {
+      error |= BWD_VM_ERR_SOURCE_OOB;
+      return bf::ZERO();
+    }
+  }
+  const bwd_vm_source_window &window = desc.source_windows[window_index];
+  if constexpr (VALIDATE) {
+    if (window.materialize > 1 || (window.materialize != 0 && (window.publish_base == nullptr || window.publish_stride_bytes == 0))) {
+      error |= window.materialize != 0 && window.publish_base == nullptr ? BWD_VM_ERR_NULL_POINTER : BWD_VM_ERR_DESC_BOUNDS;
+      return bf::ZERO();
+    }
+    if (window.source_kind != BWD_VM_SOURCE_READ_BASE) {
+      error |= EVAL_VM_ERR_FIELD_MISMATCH;
+      return bf::ZERO();
+    }
+    if (window.backing_depth != window.target_depth || window.target_depth > desc.n_round_challenges) {
+      error |= BWD_VM_ERR_DESC_BOUNDS;
+      return bf::ZERO();
+    }
+    if (window.read_base == nullptr || window.read_stride_bytes == 0) {
+      error |= window.read_base == nullptr ? BWD_VM_ERR_NULL_POINTER : BWD_VM_ERR_DESC_BOUNDS;
+      return bf::ZERO();
+    }
+  }
+  if (window.materialize != 0 && !first_access)
+    return load_source_bf(publish_column(window, column), endpoint);
+
+  const bf value = load_source_bf(source_column(window, column), endpoint);
+  if (window.materialize != 0)
+    store_source_bf(publish_column(window, column), endpoint, value);
+  return value;
+}
+
+template <bool VALIDATE, u32 FOLD_DEPTH>
+DEVICE_FORCEINLINE e4 resolve_source_e4(const bwd_vm_desc &desc, const u32 window_index, const u32 column, const bool first_access, const size_t endpoint,
+                                        u32 &error) {
   if constexpr (VALIDATE) {
     if (window_index >= desc.n_source_windows || window_index >= BWD_VM_SOURCE_WINDOW_CAP) {
       error |= BWD_VM_ERR_SOURCE_OOB;
@@ -147,10 +178,6 @@ DEVICE_FORCEINLINE e4 resolve_source_endpoint(const bwd_vm_desc &desc, const u32
     }
     if (window.source_kind == BWD_VM_SOURCE_VIRTUAL) {
       const bool procedural = window.backing_depth == 0;
-      if constexpr (BASE) {
-        error |= EVAL_VM_ERR_FIELD_MISMATCH;
-        return e4::ZERO();
-      }
       if (column > BWD_VM_VIRTUAL_INITS_AND_TEARDOWNS_HIGH) {
         error |= BWD_VM_ERR_BAD_SPECIAL;
         return e4::ZERO();
@@ -172,8 +199,7 @@ DEVICE_FORCEINLINE e4 resolve_source_endpoint(const bwd_vm_desc &desc, const u32
         return e4::ZERO();
       }
     } else {
-      const u8 expected_source_kind = BASE ? BWD_VM_SOURCE_READ_BASE : BWD_VM_SOURCE_READ_EXT;
-      if (window.source_kind != expected_source_kind) {
+      if (window.source_kind != BWD_VM_SOURCE_READ_EXT) {
         error |= EVAL_VM_ERR_FIELD_MISMATCH;
         return e4::ZERO();
       }
@@ -184,53 +210,55 @@ DEVICE_FORCEINLINE e4 resolve_source_endpoint(const bwd_vm_desc &desc, const u32
     }
   }
   if (window.materialize != 0 && !first_access)
-    return load_source_value<BASE>(publish_column(window, column), endpoint);
+    return load_source_e4(publish_column(window, column), endpoint);
 
+  e4 value;
   if (window.source_kind == BWD_VM_SOURCE_VIRTUAL) {
     const gkr_base_source_kind kind = virtual_kind(column);
-    e4 value;
     if (window.backing_depth == 0) {
-      value = fold_endpoint<true, VALIDATE>(
+      value = fold_endpoint<VALIDATE>(
           desc, [kind](const size_t index) { return e4::from_scalar(gkr_virtual_base_value(kind, index)); }, endpoint, 0, window.target_depth, error);
     } else {
       const char *read = source_column(window, column);
-      value = fold_endpoint<false, VALIDATE>(
-          desc, [read](const size_t index) { return load_source_value<false>(read, index); }, endpoint, window.backing_depth, window.target_depth, error);
+      value = fold_endpoint<VALIDATE>(
+          desc, [read](const size_t index) { return load_source_e4(read, index); }, endpoint, window.backing_depth, window.target_depth, error);
     }
-    if (window.materialize != 0)
-      store_source_value<false>(publish_column(window, column), endpoint, value);
-    return value;
+  } else {
+    const char *read = source_column(window, column);
+    value = fold_endpoint<VALIDATE>(
+        desc, [read](const size_t index) { return load_source_e4(read, index); }, endpoint, window.backing_depth, window.target_depth, error);
   }
-
-  const char *read = source_column(window, column);
-  const e4 value = fold_endpoint<BASE, VALIDATE>(
-      desc, [read](const size_t index) { return load_source_value<BASE>(read, index); }, endpoint, window.backing_depth, window.target_depth, error);
-  if (window.materialize != 0 && first_access)
-    store_source_value<BASE>(publish_column(window, column), endpoint, value);
+  if (window.materialize != 0)
+    store_source_e4(publish_column(window, column), endpoint, value);
   return value;
 }
 
 template <bool VALIDATE>
-DEVICE_FORCEINLINE e4 read_source(const bwd_vm_desc &desc, const u16 lane, const u32 active_mask, const size_t endpoint, const bool expect_base, u32 &error) {
+DEVICE_FORCEINLINE bf read_source_bf(const bwd_vm_desc &desc, const u16 lane, const u32 active_mask, const size_t endpoint, u32 &error) {
   const bool first_access = ((lane >> FWD_VM_FIRST_ACCESS_SHIFT) & 1u) != 0;
   const u32 window = (lane >> FWD_VM_SOURCE_WINDOW_SHIFT) & FWD_VM_SOURCE_WINDOW_MASK;
   const u32 column = (lane >> FWD_VM_SOURCE_COLUMN_SHIFT) & FWD_VM_SOURCE_COLUMN_MASK;
-  const e4 value = expect_base ? resolve_source_endpoint<true, VALIDATE>(desc, window, column, first_access, endpoint, error)
-                               : resolve_source_endpoint<false, VALIDATE>(desc, window, column, first_access, endpoint, error);
-  return role_combine(value, active_mask);
+  return role_combine_bf(resolve_source_bf<VALIDATE>(desc, window, column, first_access, endpoint, error), active_mask);
+}
+
+template <bool VALIDATE, u32 FOLD_DEPTH>
+DEVICE_FORCEINLINE e4 read_source_e4(const bwd_vm_desc &desc, const u16 lane, const u32 active_mask, const size_t endpoint, u32 &error) {
+  const bool first_access = ((lane >> FWD_VM_FIRST_ACCESS_SHIFT) & 1u) != 0;
+  const u32 window = (lane >> FWD_VM_SOURCE_WINDOW_SHIFT) & FWD_VM_SOURCE_WINDOW_MASK;
+  const u32 column = (lane >> FWD_VM_SOURCE_COLUMN_SHIFT) & FWD_VM_SOURCE_COLUMN_MASK;
+  return role_combine_e4(resolve_source_e4<VALIDATE, FOLD_DEPTH>(desc, window, column, first_access, endpoint, error), active_mask);
 }
 
 template <bool VALIDATE>
-DEVICE_FORCEINLINE e4 read_virtual(const bwd_vm_desc &desc, const u32 payload, const u32 active_mask, const size_t endpoint, u32 &error) {
+DEVICE_FORCEINLINE bf read_virtual_bf(const bwd_vm_desc &desc, const u32 payload, const u32 active_mask, const size_t endpoint, u32 &error) {
   if constexpr (VALIDATE) {
     if (payload > BWD_VM_VIRTUAL_INITS_AND_TEARDOWNS_HIGH) {
       error |= BWD_VM_ERR_BAD_SPECIAL;
-      return e4::ZERO();
+      return bf::ZERO();
     }
   }
-  const gkr_base_source_kind kind = virtual_kind(payload);
-  const e4 value = e4::from_scalar(gkr_virtual_base_value(kind, endpoint));
-  return role_combine(value, active_mask);
+  const bf value = gkr_virtual_base_value(virtual_kind(payload), endpoint);
+  return role_combine_bf(value, active_mask);
 }
 
 template <bool VALIDATE> DEVICE_FORCEINLINE u16 bwd_vm_lane(const bwd_vm_desc &desc, const u32 index, u32 &lane_error) {
@@ -276,9 +304,10 @@ DEVICE_FORCEINLINE u32 preflight_error(const bwd_vm_desc &desc) {
   return result.error;
 }
 
-template <bool VALIDATE> struct BwdVmAdapter {
+template <bool VALIDATE, u32 FOLD_DEPTH> struct BwdVmAdapter {
   const bwd_vm_desc &desc;
-  bf *cells;
+  bf *thread_bf_cells;
+  e4 *thread_e4_cells;
   u32 budget_cells;
   u32 active_mask;
   size_t endpoint;
@@ -294,7 +323,7 @@ template <bool VALIDATE> struct BwdVmAdapter {
     }
     switch (lane & FWD_VM_OPERAND_TAG_MASK) {
     case FWD_VM_OPERAND_SOURCE:
-      return read_source<VALIDATE>(desc, lane, active_mask, endpoint, true, error)[0][0];
+      return read_source_bf<VALIDATE>(desc, lane, active_mask, endpoint, error);
     case FWD_VM_OPERAND_SMEM: {
       const u32 cell = lane >> FWD_VM_OPERAND_CELL_SHIFT;
       if constexpr (VALIDATE) {
@@ -303,7 +332,7 @@ template <bool VALIDATE> struct BwdVmAdapter {
           return bf::ZERO();
         }
       }
-      return smem_ld_bf(cells, cell, budget_cells);
+      return smem_ld_bf(thread_bf_cells, cell);
     }
     case FWD_VM_OPERAND_LDC: {
       const u32 sub = (lane >> FWD_VM_LDC_SUB_SHIFT) & FWD_VM_LDC_SUB_MASK;
@@ -346,7 +375,7 @@ template <bool VALIDATE> struct BwdVmAdapter {
           error |= EVAL_VM_ERR_FIELD_MISMATCH;
         return bf::ZERO();
       }
-      return read_virtual<VALIDATE>(desc, payload, active_mask, endpoint, error)[0][0];
+      return read_virtual_bf<VALIDATE>(desc, payload, active_mask, endpoint, error);
     }
     }
   }
@@ -358,7 +387,7 @@ template <bool VALIDATE> struct BwdVmAdapter {
     }
     switch (lane & FWD_VM_OPERAND_TAG_MASK) {
     case FWD_VM_OPERAND_SOURCE:
-      return read_source<VALIDATE>(desc, lane, active_mask, endpoint, false, error);
+      return read_source_e4<VALIDATE, FOLD_DEPTH>(desc, lane, active_mask, endpoint, error);
     case FWD_VM_OPERAND_SMEM: {
       const u32 cell = lane >> FWD_VM_OPERAND_CELL_SHIFT;
       if constexpr (VALIDATE) {
@@ -367,7 +396,7 @@ template <bool VALIDATE> struct BwdVmAdapter {
           return e4::ZERO();
         }
       }
-      return smem_ld_e4(cells, cell, budget_cells);
+      return smem_ld_e4(thread_e4_cells, cell);
     }
     case FWD_VM_OPERAND_LDC: {
       const u32 sub = (lane >> FWD_VM_LDC_SUB_SHIFT) & FWD_VM_LDC_SUB_MASK;
@@ -443,7 +472,7 @@ template <bool VALIDATE> struct BwdVmAdapter {
         return;
       }
     }
-    smem_st_bf(cells, cell, budget_cells, value);
+    smem_st_bf(thread_bf_cells, cell, value);
   }
 
   DEVICE_FORCEINLINE void write_e4(const u16 dst, const e4 value, u32 &error) {
@@ -471,7 +500,7 @@ template <bool VALIDATE> struct BwdVmAdapter {
         return;
       }
     }
-    smem_st_e4(cells, cell, budget_cells, value);
+    smem_st_e4(thread_e4_cells, cell, value);
   }
 };
 
@@ -501,9 +530,13 @@ template <bool VALIDATE, u32 FOLD_DEPTH> DEVICE_FORCEINLINE void bwd_vm_body(con
   asm("mov.u32 %0, %%dynamic_smem_size;" : "=r"(smem_bytes));
   const u32 cell_bytes = blockDim.x * static_cast<u32>(sizeof(e4));
   const u32 budget_cells = cell_bytes == 0 ? 0 : smem_bytes / cell_bytes;
-  bf *cells = reinterpret_cast<bf *>(bwd_vm_cells_dyn);
+  bf *raw_cells = reinterpret_cast<bf *>(bwd_vm_cells_dyn);
+  const u32 lane = threadIdx.x & BWD_VM_LANE_MASK;
+  const u32 warp = threadIdx.x >> BWD_VM_WARP_SHIFT;
+  bf *thread_bf_cells = raw_cells + warp * budget_cells * BWD_VM_BUCKET_WORDS + lane;
+  e4 *thread_e4_cells = reinterpret_cast<e4 *>(raw_cells + warp * budget_cells * BWD_VM_BUCKET_WORDS) + lane;
   for (u32 cell = 0; cell < budget_cells * BWD_VM_BF_PER_BUCKET; cell++)
-    smem_st_bf(cells, cell, budget_cells, bf::ZERO());
+    smem_st_bf(thread_bf_cells, cell, bf::ZERO());
 
   u32 error = descriptor_error<VALIDATE>(desc, budget_cells, smem_bytes);
   if constexpr (VALIDATE) {
@@ -521,7 +554,6 @@ template <bool VALIDATE, u32 FOLD_DEPTH> DEVICE_FORCEINLINE void bwd_vm_body(con
       return;
     }
   }
-  const u32 lane = threadIdx.x & BWD_VM_LANE_MASK;
   const size_t global_warp = static_cast<size_t>(blockIdx.x) * (blockDim.x / BWD_VM_WARP_LANES) + (threadIdx.x >> BWD_VM_WARP_SHIFT);
   const size_t logical_row = global_warp * BWD_VM_HALF_WARP_LANES + (lane & BWD_VM_HALF_WARP_MASK);
   const bool active = logical_row < desc.logical_rows;
@@ -536,8 +568,8 @@ template <bool VALIDATE, u32 FOLD_DEPTH> DEVICE_FORCEINLINE void bwd_vm_body(con
 
   const size_t endpoint = 2 * logical_row + (lane >= BWD_VM_HALF_WARP_LANES ? 1 : 0);
   const e4 batch_acc_init = desc.batch_acc_init == BWD_VM_BATCH_ACC_INIT_NONE ? e4::ZERO() : ::ab_gkr_flat_coefficients[desc.batch_acc_init];
-  BwdVmAdapter<VALIDATE> adapter{desc, cells, budget_cells, active_mask, endpoint, batch_acc_init, 0};
-  const eval_vm_result result = eval_vm_execute<VALIDATE, BwdVmAdapter<VALIDATE>>(adapter, desc.n_instr, desc.program_lanes);
+  BwdVmAdapter<VALIDATE, FOLD_DEPTH> adapter{desc, thread_bf_cells, thread_e4_cells, budget_cells, active_mask, endpoint, batch_acc_init, 0};
+  const eval_vm_result result = eval_vm_execute<VALIDATE, BwdVmAdapter<VALIDATE, FOLD_DEPTH>>(adapter, desc.n_instr, desc.program_lanes);
   u32 executor_error = result.error;
   if constexpr (VALIDATE) {
     // A logical lane overrun is more precise than the executor's final

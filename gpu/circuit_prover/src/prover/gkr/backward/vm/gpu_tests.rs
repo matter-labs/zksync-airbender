@@ -355,6 +355,26 @@ fn run_base_plain(context: &ProverContext, rows: usize) {
     .expect("BF validate launch");
     let diagnostic = download_e4(&diagnostic_device, context);
     assert_e4_bits("BF plain T0/T2", &diagnostic, &expected);
+
+    let challenge_device = upload(&[e4(101)], context);
+    memory_copy_async(&mut error_device[..], &[0u32], context.get_exec_stream())
+        .expect("BF folded error reset H2D");
+    desc.round_challenges = challenge_device.as_ptr();
+    desc.n_round_challenges = 1;
+    desc.source_windows[0].target_depth = 1;
+    launch_bwd_vm_validate(
+        &desc,
+        2,
+        error_device.as_mut_ptr(),
+        diagnostic_device.as_mut_ptr(),
+        context,
+    )
+    .expect("BF folded validate launch");
+    assert_ne!(
+        download_u32(&error_device, context)[0] & BWD_VM_ERR_DESC_BOUNDS,
+        0,
+        "program-typed BF sources must reject a nonzero fold delta"
+    );
 }
 
 fn batch_sink(field: OperandField, coefficient: u16) -> Instr {
