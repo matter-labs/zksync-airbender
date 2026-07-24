@@ -88,36 +88,108 @@ DEVICE_FORCEINLINE void store_source_e4(char *column, const size_t index, const 
   store<e4, st_modifier::cs>(reinterpret_cast<e4 *>(column), value, index);
 }
 
-template <bool VALIDATE, typename Loader>
-DEVICE_FORCEINLINE e4 fold_endpoint(const bwd_vm_desc &desc, Loader load_value, const size_t endpoint, const u8 backing_depth, const u8 target_depth,
-                                    u32 &error) {
-  if constexpr (VALIDATE) {
-    if (backing_depth > target_depth || target_depth > desc.n_round_challenges || (target_depth != 0 && desc.round_challenges == nullptr)) {
-      error |= BWD_VM_ERR_DESC_BOUNDS;
-      return e4::ZERO();
-    }
+DEVICE_FORCEINLINE e4 lerp_bf(const bf a, const bf b, const e4 r) { return e4::fma(r, bf::sub(b, a), e4::from_scalar(a)); }
+
+DEVICE_FORCEINLINE e4 lerp_e4(const e4 a, const e4 b, const e4 r) { return e4::fma(r, e4::sub(b, a), a); }
+
+template <typename Loader> DEVICE_FORCEINLINE e4 fold_bf_d1(const bwd_vm_desc &desc, Loader load_value, const size_t endpoint, const u8 backing_depth) {
+  const size_t base = endpoint << 1;
+  const e4 r0 = desc.round_challenges[backing_depth];
+  return lerp_bf(load_value(base), load_value(base + 1), r0);
+}
+
+template <typename Loader> DEVICE_FORCEINLINE e4 fold_e4_d1(const bwd_vm_desc &desc, Loader load_value, const size_t endpoint, const u8 backing_depth) {
+  const size_t base = endpoint << 1;
+  const e4 r0 = desc.round_challenges[backing_depth];
+  return lerp_e4(load_value(base), load_value(base + 1), r0);
+}
+
+template <typename Loader> DEVICE_FORCEINLINE e4 fold_bf_d2(const bwd_vm_desc &desc, Loader load_value, const size_t endpoint, const u8 backing_depth) {
+  const size_t base = endpoint << 2;
+  const e4 r0 = desc.round_challenges[backing_depth];
+  const e4 r1 = desc.round_challenges[backing_depth + 1];
+  const e4 y0 = lerp_bf(load_value(base), load_value(base + 1), r0);
+  const e4 y1 = lerp_bf(load_value(base + 2), load_value(base + 3), r0);
+  return lerp_e4(y0, y1, r1);
+}
+
+template <typename Loader> DEVICE_FORCEINLINE e4 fold_e4_d2(const bwd_vm_desc &desc, Loader load_value, const size_t endpoint, const u8 backing_depth) {
+  const size_t base = endpoint << 2;
+  const e4 r0 = desc.round_challenges[backing_depth];
+  const e4 r1 = desc.round_challenges[backing_depth + 1];
+  const e4 y0 = lerp_e4(load_value(base), load_value(base + 1), r0);
+  const e4 y1 = lerp_e4(load_value(base + 2), load_value(base + 3), r0);
+  return lerp_e4(y0, y1, r1);
+}
+
+template <typename Loader> DEVICE_FORCEINLINE e4 fold_bf_d3(const bwd_vm_desc &desc, Loader load_value, const size_t endpoint, const u8 backing_depth) {
+  const size_t base = endpoint << 3;
+  const e4 r0 = desc.round_challenges[backing_depth];
+  const e4 r1 = desc.round_challenges[backing_depth + 1];
+  const e4 r2 = desc.round_challenges[backing_depth + 2];
+  const e4 y0 = lerp_bf(load_value(base), load_value(base + 1), r0);
+  const e4 y1 = lerp_bf(load_value(base + 2), load_value(base + 3), r0);
+  const e4 y2 = lerp_bf(load_value(base + 4), load_value(base + 5), r0);
+  const e4 y3 = lerp_bf(load_value(base + 6), load_value(base + 7), r0);
+  const e4 z0 = lerp_e4(y0, y1, r1);
+  const e4 z1 = lerp_e4(y2, y3, r1);
+  return lerp_e4(z0, z1, r2);
+}
+
+template <typename Loader> DEVICE_FORCEINLINE e4 fold_e4_d3(const bwd_vm_desc &desc, Loader load_value, const size_t endpoint, const u8 backing_depth) {
+  const size_t base = endpoint << 3;
+  const e4 r0 = desc.round_challenges[backing_depth];
+  const e4 r1 = desc.round_challenges[backing_depth + 1];
+  const e4 r2 = desc.round_challenges[backing_depth + 2];
+  const e4 y0 = lerp_e4(load_value(base), load_value(base + 1), r0);
+  const e4 y1 = lerp_e4(load_value(base + 2), load_value(base + 3), r0);
+  const e4 y2 = lerp_e4(load_value(base + 4), load_value(base + 5), r0);
+  const e4 y3 = lerp_e4(load_value(base + 6), load_value(base + 7), r0);
+  const e4 z0 = lerp_e4(y0, y1, r1);
+  const e4 z1 = lerp_e4(y2, y3, r1);
+  return lerp_e4(z0, z1, r2);
+}
+
+template <u32 FOLD_DEPTH> DEVICE_FORCEINLINE bool fold_delta_allowed(const u32 delta) {
+  if constexpr (FOLD_DEPTH == 0)
+    return delta == 0;
+  if constexpr (FOLD_DEPTH == 1)
+    return delta <= 1;
+  return delta == 0 || delta == 1 || delta == FOLD_DEPTH;
+}
+
+template <u32 FOLD_DEPTH, typename Loader>
+DEVICE_FORCEINLINE e4 fold_bf_exact(const bwd_vm_desc &desc, Loader load_value, const size_t endpoint, const u8 backing_depth, const u32 delta) {
+  if (delta == 0)
+    return e4::from_scalar(load_value(endpoint));
+  if (delta == 1)
+    return fold_bf_d1(desc, load_value, endpoint, backing_depth);
+  if constexpr (FOLD_DEPTH == 2) {
+    if (delta == 2)
+      return fold_bf_d2(desc, load_value, endpoint, backing_depth);
   }
-  const u32 delta = target_depth - backing_depth;
+  if constexpr (FOLD_DEPTH == 3) {
+    if (delta == 3)
+      return fold_bf_d3(desc, load_value, endpoint, backing_depth);
+  }
+  return e4::ZERO();
+}
+
+template <u32 FOLD_DEPTH, typename Loader>
+DEVICE_FORCEINLINE e4 fold_e4_exact(const bwd_vm_desc &desc, Loader load_value, const size_t endpoint, const u8 backing_depth, const u32 delta) {
   if (delta == 0)
     return load_value(endpoint);
-  if constexpr (VALIDATE) {
-    if (delta >= 31) {
-      error |= BWD_VM_ERR_DESC_BOUNDS;
-      return e4::ZERO();
-    }
+  if (delta == 1)
+    return fold_e4_d1(desc, load_value, endpoint, backing_depth);
+  if constexpr (FOLD_DEPTH == 2) {
+    if (delta == 2)
+      return fold_e4_d2(desc, load_value, endpoint, backing_depth);
   }
-  const u32 leaves = 1u << delta;
-  e4 folded = e4::ZERO();
-  for (u32 leaf = 0; leaf < leaves; leaf++) {
-    e4 weight = e4::ONE();
-    for (u32 round = 0; round < delta; round++) {
-      const e4 challenge = desc.round_challenges[backing_depth + round];
-      const e4 factor = ((leaf >> round) & 1u) != 0 ? challenge : e4::sub(e4::ONE(), challenge);
-      weight = e4::mul(weight, factor);
-    }
-    folded = e4::fma(load_value(endpoint * leaves + leaf), weight, folded);
+  if constexpr (FOLD_DEPTH == 3) {
+    if (delta == 3)
+      return fold_e4_d3(desc, load_value, endpoint, backing_depth);
   }
-  return folded;
+  return e4::ZERO();
 }
 
 DEVICE_FORCEINLINE gkr_base_source_kind virtual_kind(const u32 payload) {
@@ -172,6 +244,16 @@ DEVICE_FORCEINLINE e4 resolve_source_e4(const bwd_vm_desc &desc, const u32 windo
   }
   const bwd_vm_source_window &window = desc.source_windows[window_index];
   if constexpr (VALIDATE) {
+    if (window.backing_depth > window.target_depth) {
+      error |= BWD_VM_ERR_DESC_BOUNDS;
+      return e4::ZERO();
+    }
+    const u32 checked_delta = window.target_depth - window.backing_depth;
+    if (window.target_depth > desc.n_round_challenges || (checked_delta != 0 && desc.round_challenges == nullptr) ||
+        !fold_delta_allowed<FOLD_DEPTH>(checked_delta)) {
+      error |= BWD_VM_ERR_DESC_BOUNDS;
+      return e4::ZERO();
+    }
     if (window.materialize > 1 || (window.materialize != 0 && (window.publish_base == nullptr || window.publish_stride_bytes == 0))) {
       error |= window.materialize != 0 && window.publish_base == nullptr ? BWD_VM_ERR_NULL_POINTER : BWD_VM_ERR_DESC_BOUNDS;
       return e4::ZERO();
@@ -212,21 +294,19 @@ DEVICE_FORCEINLINE e4 resolve_source_e4(const bwd_vm_desc &desc, const u32 windo
   if (window.materialize != 0 && !first_access)
     return load_source_e4(publish_column(window, column), endpoint);
 
+  const u32 delta = window.target_depth - window.backing_depth;
   e4 value;
   if (window.source_kind == BWD_VM_SOURCE_VIRTUAL) {
     const gkr_base_source_kind kind = virtual_kind(column);
     if (window.backing_depth == 0) {
-      value = fold_endpoint<VALIDATE>(
-          desc, [kind](const size_t index) { return e4::from_scalar(gkr_virtual_base_value(kind, index)); }, endpoint, 0, window.target_depth, error);
+      value = fold_bf_exact<FOLD_DEPTH>(desc, [kind](const size_t index) { return gkr_virtual_base_value(kind, index); }, endpoint, 0, delta);
     } else {
       const char *read = source_column(window, column);
-      value = fold_endpoint<VALIDATE>(
-          desc, [read](const size_t index) { return load_source_e4(read, index); }, endpoint, window.backing_depth, window.target_depth, error);
+      value = fold_e4_exact<FOLD_DEPTH>(desc, [read](const size_t index) { return load_source_e4(read, index); }, endpoint, window.backing_depth, delta);
     }
   } else {
     const char *read = source_column(window, column);
-    value = fold_endpoint<VALIDATE>(
-        desc, [read](const size_t index) { return load_source_e4(read, index); }, endpoint, window.backing_depth, window.target_depth, error);
+    value = fold_e4_exact<FOLD_DEPTH>(desc, [read](const size_t index) { return load_source_e4(read, index); }, endpoint, window.backing_depth, delta);
   }
   if (window.materialize != 0)
     store_source_e4(publish_column(window, column), endpoint, value);

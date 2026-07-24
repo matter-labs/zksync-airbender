@@ -319,6 +319,51 @@ fn run_ext_case(
     )
 }
 
+fn run_ext_validation_error(
+    context: &ProverContext,
+    kernel_round: u8,
+    backing_depth: u8,
+    target_depth: u8,
+) -> u32 {
+    let rows = 1usize;
+    let delta = target_depth - backing_depth;
+    let input = (0..2 * rows * (1usize << delta))
+        .map(|index| e4(index as u32 + 0x501))
+        .collect::<Vec<_>>();
+    let challenge_count = usize::from(target_depth.max(kernel_round).max(1));
+    let challenges = (0..challenge_count)
+        .map(|round| e4(round as u32 + 0x601))
+        .collect::<Vec<_>>();
+    let input_device = upload(&input, context);
+    let challenge_device = upload(&challenges, context);
+    let mut diagnostic_device = upload(&vec![E4::ZERO; 2 * rows], context);
+    let mut error_device = upload(&[0u32], context);
+    let program = source_batch_program(OperandField::Ext, false);
+    let mut desc = blank_desc(&program, 2, rows);
+    desc.round_challenges = challenge_device.as_ptr();
+    desc.n_round_challenges = kernel_round.into();
+    desc.n_source_windows = 1;
+    desc.source_windows[0] = BwdVmSourceWindow {
+        read_base: input_device.as_ptr().cast(),
+        publish_base: ptr::null_mut(),
+        read_stride_bytes: (input.len() * size_of::<E4>()) as u32,
+        publish_stride_bytes: 0,
+        backing_depth,
+        target_depth,
+        source_kind: BWD_VM_SOURCE_READ_EXT,
+        materialize: 0,
+    };
+    launch_bwd_vm_validate(
+        &desc,
+        2,
+        error_device.as_mut_ptr(),
+        diagnostic_device.as_mut_ptr(),
+        context,
+    )
+    .expect("specialized fold validation launch");
+    download_u32(&error_device, context)[0]
+}
+
 fn run_base_plain(context: &ProverContext, rows: usize) {
     let input = (0..2 * rows)
         .map(|index| bf(index as u32 * 13 + 7))
@@ -961,6 +1006,46 @@ fn bwd_vm_synthetic_source_parity() {
         malformed.error, BWD_VM_ERR_SOURCE_OOB,
         "malformed source count must fail closed with the exact validation bit"
     );
+}
+
+#[test]
+#[cfg(not(no_cuda))]
+#[serial_test::serial]
+fn bwd_vm_specialized_fold_parity_and_validation() {
+    let context = make_test_context(16, 16);
+    for (backing_depth, target_depth) in [(0, 0), (0, 1), (1, 2), (0, 2), (2, 3), (0, 3)] {
+        let (run, expected, _) = run_ext_case(
+            &context,
+            7,
+            backing_depth,
+            target_depth,
+            6,
+            false,
+            false,
+            false,
+        );
+        assert_eq!(
+            run.error, 0,
+            "legal specialized fold {backing_depth}->{target_depth}"
+        );
+        assert_e4_bits(
+            &format!("specialized fold {backing_depth}->{target_depth}"),
+            &run.diagnostic,
+            &expected,
+        );
+    }
+
+    for (kernel_round, backing_depth, target_depth) in
+        [(0, 0, 1), (1, 0, 2), (2, 0, 3), (3, 1, 3), (3, 0, 4)]
+    {
+        let error =
+            run_ext_validation_error(&context, kernel_round, backing_depth, target_depth);
+        assert_ne!(
+            error & BWD_VM_ERR_DESC_BOUNDS,
+            0,
+            "illegal D{kernel_round} fold {backing_depth}->{target_depth}"
+        );
+    }
 }
 
 #[test]
