@@ -17,12 +17,10 @@
 //! outside its table.
 
 use super::error::BindError;
-use super::isa::{
-    Instr, MAX_COLS, MAX_SLOTS, MAX_SOURCE_WINDOWS, OperandField, OperandLine, Program,
-    SOURCE_WINDOW_COLUMNS,
-};
+use super::isa::{Instr, MAX_COLS, MAX_SLOTS, OperandField, OperandLine, Program};
+use crate::source_bind::{BindFailure, BoundSourceUse, LogicalSourceUse, bind_source_sequence};
 use cs::gkr_compiler::dag_ir::ReadPlace;
-use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum BackingKey {
@@ -210,21 +208,38 @@ impl BackingTable {
     }
 }
 
+/// One logical read this program still makes, in operand-visit order.
+///
+/// The dense `(slot, col)` is kept alongside the resolved key so a rejected
+/// sequence is reported in the operand's OWN vocabulary.
+struct LogicalRead {
+    backing: BackingKey,
+    absolute: usize,
+    fold_desc: Option<u16>,
+    slot: u8,
+    col: u16,
+}
+
 /// Rewrite compiler-private logical reads after all source-moving peepholes.
 /// Windows are freely based, deterministic, and contain only surviving reads.
+///
+/// The window partitioning and first-access marking are
+/// [`crate::source_bind::bind_source_sequence`]; this is the `Program` adapter
+/// around it. Window numbering is unchanged: the core numbers windows by ascending
+/// backing index, and this adapter indexes backings in `BackingKey` order.
 pub fn bind_final_sources(
     program: &mut Program,
     backings: &BackingTable,
     marker_mode: SourceMarkerMode,
 ) -> Result<SourceWindowTable, BindError> {
-    let mut referenced = BTreeMap::<BackingKey, BTreeMap<usize, Option<u16>>>::new();
+    let mut reads = Vec::<LogicalRead>::new();
     visit_operands_mut(program, |operand| {
         let logical = match *operand {
             OperandLine::LogicalGlobal { slot, col } => Some((slot, col, None)),
             OperandLine::LogicalFold { slot, col, desc } => Some((slot, col, Some(desc))),
             _ => None,
         };
-        if let Some((slot, col, desc)) = logical {
+        if let Some((slot, col, fold_desc)) = logical {
             let backing = backings
                 .backing(slot)
                 .cloned()
@@ -234,80 +249,95 @@ pub fn bind_final_sources(
                 .get(col as usize)
                 .copied()
                 .ok_or(BindError::UnknownLogicalSource { slot, col })?;
-            let entry = referenced.entry(backing).or_default().entry(absolute);
-            match entry {
-                std::collections::btree_map::Entry::Vacant(entry) => {
-                    entry.insert(desc);
-                }
-                std::collections::btree_map::Entry::Occupied(entry) if *entry.get() != desc => {
-                    return Err(BindError::ConflictingSourceBinding { slot, col });
-                }
-                std::collections::btree_map::Entry::Occupied(_) => {}
-            }
+            reads.push(LogicalRead {
+                backing,
+                absolute,
+                fold_desc,
+                slot,
+                col,
+            });
         }
         Ok(())
     })?;
 
-    let mut table = SourceWindowTable::default();
-    let mut locations = BTreeMap::<(BackingKey, usize), (u8, u8)>::new();
-    for (backing, columns) in referenced {
-        let mut active_window = None::<(u8, usize)>;
-        for (&absolute, &fold_desc) in &columns {
-            let (window, first_column) = match active_window {
-                Some((window, first)) if absolute < first + SOURCE_WINDOW_COLUMNS as usize => {
-                    (window, first)
-                }
-                _ => {
-                    if table.windows.len() as u32 >= MAX_SOURCE_WINDOWS {
-                        return Err(BindError::SourceWindowOverflow);
-                    }
-                    let window = table.windows.len() as u8;
-                    table.windows.push(SourceWindow {
-                        backing: backing.clone(),
-                        first_column: absolute,
-                        referenced_columns: BTreeSet::new(),
-                        fold_descs: BTreeMap::new(),
-                    });
-                    active_window = Some((window, absolute));
-                    (window, absolute)
-                }
-            };
-            table.windows[window as usize]
-                .referenced_columns
-                .insert(absolute);
-            if let Some(desc) = fold_desc {
-                table.windows[window as usize]
-                    .fold_descs
-                    .insert(absolute, desc);
-            }
-            locations.insert(
-                (backing.clone(), absolute),
-                (window, (absolute - first_column) as u8),
-            );
-        }
-    }
+    // Windows are numbered in `BackingKey` order, so that is the order the core's
+    // backing indices are assigned in.
+    let keys: Vec<BackingKey> = reads
+        .iter()
+        .map(|read| read.backing.clone())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect();
+    let index_of: BTreeMap<&BackingKey, u8> = keys
+        .iter()
+        .enumerate()
+        .map(|(index, key)| (key, index as u8))
+        .collect();
+    let sequence: Vec<LogicalSourceUse> = reads
+        .iter()
+        .map(|read| LogicalSourceUse {
+            slot: index_of[&read.backing],
+            column: read.absolute,
+            fold_desc: read.fold_desc,
+        })
+        .collect();
 
-    let mut seen = HashSet::<(BackingKey, usize)>::new();
+    let binding = bind_source_sequence(
+        &sequence,
+        marker_mode == SourceMarkerMode::Backward,
+    )
+    .map_err(|failure| match failure {
+        BindFailure::WindowOverflow => BindError::SourceWindowOverflow,
+        // Report the operand that disagreed, in ITS dense vocabulary.
+        BindFailure::ConflictingFoldDesc { slot, column } => {
+            let mut first = None::<Option<u16>>;
+            for read in &reads {
+                if index_of[&read.backing] != slot || read.absolute != column {
+                    continue;
+                }
+                match first {
+                    None => first = Some(read.fold_desc),
+                    Some(desc) if desc != read.fold_desc => {
+                        return BindError::ConflictingSourceBinding {
+                            slot: read.slot,
+                            col: read.col,
+                        };
+                    }
+                    Some(_) => {}
+                }
+            }
+            unreachable!("the core rejected a column no operand disagrees on")
+        }
+    })?;
+
+    let table = SourceWindowTable {
+        windows: binding
+            .windows
+            .iter()
+            .map(|window| SourceWindow {
+                backing: keys[window.slot as usize].clone(),
+                first_column: window.first_column,
+                referenced_columns: window.columns.iter().copied().collect(),
+                fold_descs: window.fold_descs.clone(),
+            })
+            .collect(),
+    };
+
+    // Same visit order as the collecting pass, so `binding.uses[i]` is the
+    // coordinate of the `i`-th logical operand.
+    let mut bound = binding.uses.iter();
     visit_operands_mut(program, |operand| {
-        let (slot, col) = match *operand {
-            OperandLine::LogicalGlobal { slot, col }
-            | OperandLine::LogicalFold { slot, col, .. } => (slot, col),
-            _ => return Ok(()),
-        };
-        let backing = backings
-            .backing(slot)
-            .cloned()
-            .ok_or(BindError::UnknownLogicalSource { slot, col })?;
-        let absolute = backings
-            .slot_columns(slot)
-            .get(col as usize)
-            .copied()
-            .ok_or(BindError::UnknownLogicalSource { slot, col })?;
-        let &(window, column) = locations
-            .get(&(backing.clone(), absolute))
-            .ok_or(BindError::UnknownLogicalSource { slot, col })?;
-        let first_access =
-            marker_mode == SourceMarkerMode::Backward && seen.insert((backing, absolute));
+        if !matches!(
+            *operand,
+            OperandLine::LogicalGlobal { .. } | OperandLine::LogicalFold { .. }
+        ) {
+            return Ok(());
+        }
+        let &BoundSourceUse {
+            window,
+            column,
+            first_access,
+        } = bound.next().expect("one bound coordinate per logical operand");
         *operand = OperandLine::Source {
             window,
             column,
@@ -315,6 +345,7 @@ pub fn bind_final_sources(
         };
         Ok(())
     })?;
+    debug_assert!(bound.next().is_none(), "every bound coordinate was consumed");
     Ok(table)
 }
 
@@ -376,7 +407,7 @@ fn backing_to_read_place(backing: &BackingKey, offset: usize) -> ReadPlace {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::fwd::isa::{Instr, MovDir, Program};
+    use crate::fwd::isa::{Instr, MovDir, Program, SOURCE_WINDOW_COLUMNS};
 
     fn load_program(operands: Vec<OperandLine>) -> Program {
         Program {

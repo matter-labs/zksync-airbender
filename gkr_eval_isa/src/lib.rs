@@ -9,4 +9,8 @@ pub mod fwd;
 /// Stage-3 allocator and the backward coefficient placer run. Not part of the
 /// crate's public surface.
 pub(crate) mod interval_pack;
+/// Crate-internal shared primitive: the final source-window binder both the
+/// forward `Program` adapter and the backward coefficient schedule run. Not part
+/// of the crate's public surface.
+pub(crate) mod source_bind;
 pub mod schedule_search;
