@@ -44,6 +44,33 @@
 //! `FillSource` destination and both move operands (§9.6: "six-bit BF lane
 //! indices, remaining bits zero").
 //!
+//! ## Two properties a bit table alone does not convey
+//!
+//! Both produce a Rust↔CUDA disagreement that only shows up on the GPU, so they
+//! are stated here as constraints rather than left to be inferred.
+//!
+//! **1. Bit 2 is a mode-discriminated overlay.** The same physical bit means four
+//! different things depending on which of the six word forms it sits in, and the
+//! form is fixed by the opcode plus (for extension words) the preceding input
+//! word's mode — never by the word's own content:
+//!
+//! ```text
+//! source-bearing input word   bit 2 = first_access          (window at bits 3..8)
+//! cell word (either form)     bit 2 = Endpoint0 lane bit 0  (lane at bits 2..7)
+//! plan word                   bit 2 = Endpoint0 lane bit 0  (lane at bits 2..7)
+//! bare lane word              bit 2 = lane bit 2            (lane at bits 0..5)
+//! ```
+//!
+//! A decoder that extracts `first_access` before dispatching on the mode reads a
+//! lane bit as a materialization flag.
+//!
+//! **2. The packed pair `Cell` form is opcode-scoped, not payload-detectable.**
+//! `DualProductE4` — and only `DualProductE4` — reads bits 10..15 of a `Cell` word
+//! as the `Delta` lane. Under every other opcode those bits are reserved and MUST
+//! be zero, so `Cell` lane 0 with a nonzero high payload is a rejected program,
+//! not a pair. There is no tag in the word distinguishing the two forms; the
+//! opcode is the only discriminator.
+//!
 //! # Operand width is a function of `(opcode, position)`
 //!
 //! A resident [`CellRead`] carries no window, so its width cannot come from the
@@ -445,10 +472,30 @@ pub enum CoeffCodecError {
     UseSlotMismatch { instr: u32, slot: u8 },
     /// A slot's source field is not the width the opcode assigns to its emitted
     /// position (§10.1: "BF helpers never carry E4 temporaries").
+    ///
+    /// DEFENCE IN DEPTH, deliberately unreachable today: [`term_slots`] already
+    /// rejects a term whose operand field disagrees with its source
+    /// (`ScheduleError::OperandFieldConflict`), and it runs first. Keep it — the
+    /// wire's whole width story rests on `(opcode, position)`, so if a future
+    /// lowering stops enforcing the agreement this is the guard that notices.
     OperandWidthMismatch { instr: u32, position: usize, expected: ValueWidth },
     /// A `C2ProductBF_E4` record does not have exactly one BF and one E4 slot, so
     /// the mixed normalization has nothing to normalize.
+    ///
+    /// DEFENCE IN DEPTH, deliberately unreachable today: the category is DERIVED
+    /// from the two operand fields ([`term_category`]), and a squared product
+    /// cannot be mixed because one source has one field. Keep it for the same
+    /// reason as [`CoeffCodecError::OperandWidthMismatch`].
     MixedProductNotMixed { instr: u32 },
+    /// An operand's fill writes lanes a LATER operand of the same term reads.
+    ///
+    /// §12.2's `FillClobbersTermInput` proves this for the placement, but it scopes
+    /// "later" to later BINDING slots — and [`program_records`] emits a mixed
+    /// product's BF factor first, so a transposed term's fill can execute before
+    /// the read it reclaims and escape that clause. The order the hazard is about
+    /// is the EMITTED one, so the check belongs here, where the transposition is
+    /// introduced.
+    FillClobbersLaterOperand { at: usize, lane: u16 },
     /// Two DISTINCT operand slots encode to byte-identical input records, which
     /// the squared discriminator (module doc) would read as one resolution.
     ///
@@ -459,7 +506,9 @@ pub enum CoeffCodecError {
     AmbiguousRepeatedRecord { at: usize },
     /// The program stream alone exceeds the by-value kernel-argument cap (§9.1).
     ProgramExceedsKernelArgumentCap { bytes: usize },
-    /// [`term_slots`] rejected the layer.
+    /// [`term_slots`] rejected the layer — a projection in a role its opcode
+    /// cannot consume, an unknown source, or an operand field that disagrees with
+    /// its source. Reachable: `rejects_a_layer_term_slots_refuses` drives it.
     Schedule(ScheduleError),
 
     // ── wire structure ───────────────────────────────────────────────────
@@ -611,6 +660,73 @@ fn decode_action(word: u16, action_shift: u32, lane_shift: u32) -> (u16, u16) {
 }
 
 // ── Lane checks ──────────────────────────────────────────────────────────────
+
+/// Lanes one operand record WRITES, as `(lane, width)` pairs.
+fn written_lanes(use_: &DecodedUse) -> Vec<u16> {
+    match *use_ {
+        DecodedUse::Fill { dst_lane, .. } => vec![dst_lane],
+        DecodedUse::Planned { endpoint0, delta, .. } => [endpoint0, delta]
+            .into_iter()
+            .filter_map(|a| match a {
+                PlanAction::Fill { lane } => Some(lane),
+                _ => None,
+            })
+            .collect(),
+        DecodedUse::Direct { .. } | DecodedUse::Cell(_) => Vec::new(),
+    }
+}
+
+/// Lanes one operand record READS.
+fn read_lanes(use_: &DecodedUse) -> Vec<u16> {
+    match *use_ {
+        DecodedUse::Cell(DecodedCell::Single { lane }) => vec![lane],
+        DecodedUse::Cell(DecodedCell::Pair { endpoint0_lane, delta_lane }) => {
+            vec![endpoint0_lane, delta_lane]
+        }
+        DecodedUse::Planned { endpoint0, delta, .. } => [endpoint0, delta]
+            .into_iter()
+            .filter_map(|a| match a {
+                PlanAction::UseResident { lane } => Some(lane),
+                _ => None,
+            })
+            .collect(),
+        DecodedUse::Direct { .. } | DecodedUse::Fill { .. } => Vec::new(),
+    }
+}
+
+/// No operand's fill may write lanes a LATER operand of the same term reads
+/// ([`CoeffCodecError::FillClobbersLaterOperand`]).
+///
+/// Scoped to EMITTED order and to DISTINCT operands only. Within one record a
+/// plan legitimately reads a lane and then reclaims it (§8's read-then-write
+/// phases), and a squared term performs its single resolution once (§9.1 as
+/// amended), so neither is a hazard.
+fn check_operand_hazards(
+    at: usize,
+    category: TermCategory,
+    uses: &[DecodedUse],
+) -> Result<(), CoeffCodecError> {
+    for (position, writer) in uses.iter().enumerate() {
+        let written = written_lanes(writer);
+        if written.is_empty() {
+            continue;
+        }
+        let Some(write_width) = operand_width(category, position) else { continue };
+        for (later, reader) in uses.iter().enumerate().skip(position + 1) {
+            let Some(read_width) = operand_width(category, later) else { continue };
+            for &w in &written {
+                for r in read_lanes(reader) {
+                    let (ws, we) = (u32::from(w), u32::from(w) + write_width.lanes());
+                    let (rs, re) = (u32::from(r), u32::from(r) + read_width.lanes());
+                    if ws < re && rs < we {
+                        return Err(CoeffCodecError::FillClobbersLaterOperand { at, lane: w });
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
+}
 
 fn check_lane(at: usize, lane: u16, width: ValueWidth, lanes: u32) -> Result<(), CoeffCodecError> {
     if width == ValueWidth::E4 && u32::from(lane) % LANES_PER_CELL != 0 {
@@ -881,6 +997,7 @@ pub fn encode_instrs(
                 if uses.len() == 2 && out[spans[0].clone()] == out[spans[1].clone()] {
                     return Err(CoeffCodecError::AmbiguousRepeatedRecord { at: spans[1].start });
                 }
+                check_operand_hazards(spans[0].start, *category, uses)?;
             }
         }
     }
@@ -1077,11 +1194,13 @@ pub fn decode_program(
             records.push((use_, &words[start..i]));
         }
         // Byte-identical input records denote a squared term: ONE resolution.
-        let uses = if arity == 2 && records[0].1 == records[1].1 {
+        let first = at + 1;
+        let uses: Vec<DecodedUse> = if arity == 2 && records[0].1 == records[1].1 {
             vec![records[0].0]
         } else {
             records.iter().map(|(u, _)| *u).collect()
         };
+        check_operand_hazards(first, category, &uses)?;
         out.push(DecodedInstr::Term { category, coefficient, uses });
     }
     Ok(out)

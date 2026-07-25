@@ -271,9 +271,47 @@ fn encoded_and_semantic_interpreters_agree_over_the_corpus() {
             in_scope::MAX_UPPER_BOUND_PROGRAM_BYTES,
         );
     }
-    // The corpus genuinely exercises the squared form, so the discriminator is not
-    // dead code on real programs.
-    assert!(total_squared > 0, "no coordinate exercised the squared encoding");
+
+    // ── EXACT pins ───────────────────────────────────────────────────────
+    //
+    // These are the numbers that answer Task 3's `TODO(task-8)` on
+    // `upper_bound_program_words`, so they are asserted rather than printed: a
+    // change is meant to be a signal, not noise. Re-pin deliberately if the
+    // encoder, the placer or the corpus changes.
+    const WORST: &str = "bigint_with_extended_control_layout_gkr.json L0 Ext";
+    /// `(cells, words, bytes)` of the largest program at each probed budget.
+    const PER_BUDGET_MAX: [(u8, usize, usize); 3] =
+        [(2, 5013, 10_026), (4, 5076, 10_152), (16, 5099, 10_198)];
+    /// Squared records the whole corpus realizes, at every budget. `term_slots`
+    /// deduplicates structurally, so the count does not depend on the budget.
+    const SQUARED_RECORDS: usize = 804;
+    /// Moves the whole corpus realizes. ZERO: placement's offline two-pass never
+    /// needs the event-scan repair, so `ASSUMED_MOVES_PER_REUSABLE_PROJECTION`'s
+    /// budget is entirely unused.
+    const REALIZED_MOVES: usize = 0;
+
+    for (cells, words, bytes) in PER_BUDGET_MAX {
+        let worst = realized.iter().find(|r| r.cells == cells).expect("a row per budget");
+        assert_eq!((worst.tag.as_str(), worst.words, worst.bytes), (WORST, words, bytes),
+            "c{cells} realized maximum moved");
+    }
+    assert_eq!(worst.bytes, 10_198, "the corpus-wide realized maximum moved");
+    assert_eq!(worst.tag, WORST);
+    assert_eq!(worst.cells, 16);
+    assert_eq!(total_moves, REALIZED_MOVES, "placement started emitting moves");
+    for cells in BUDGETS {
+        let squared: usize =
+            realized.iter().filter(|r| r.cells == cells).map(|r| r.squared).sum();
+        assert_eq!(squared, SQUARED_RECORDS, "c{cells} squared-record count moved");
+    }
+    assert_eq!(total_squared, SQUARED_RECORDS);
+    // ...and the realized maximum still sits inside every bound it must.
+    assert!(worst.bytes <= in_scope::MAX_UPPER_BOUND_PROGRAM_BYTES);
+    assert!(worst.bytes > in_scope::MAX_LOWER_BOUND_PROGRAM_BYTES, "a lower bound must be lower");
+    assert!(
+        worst.bytes * 2 < gkr_eval_isa::bwd::coeff::limits::KERNEL_ARGUMENT_CEILING_BYTES,
+        "the worst program leaves under half the by-value cap for Task 8's metadata"
+    );
 }
 
 // ── Synthetic coverage the corpus cannot reach ───────────────────────────────

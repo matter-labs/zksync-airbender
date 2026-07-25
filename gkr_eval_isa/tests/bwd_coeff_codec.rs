@@ -1285,6 +1285,109 @@ fn rejects_every_non_canonical_plan() {
     );
 }
 
+/// §12.2's `FillClobbersTermInput` scopes "later" to later BINDING slots
+/// (`place.rs`'s `slot_read_lanes[slot + 1..]`), but `program_records` emits a
+/// mixed product's BF factor FIRST — so a transposed term's fill can execute
+/// before the read it reclaims and escape that clause entirely. The codec
+/// therefore re-checks the hazard in EMITTED order, where the transposition is
+/// introduced.
+#[test]
+fn rejects_a_fill_that_clobbers_a_later_operand() {
+    let binding = dense_binding(8);
+    let budget = CellBudget::new(4).unwrap();
+    // The exact review probe: position 0 fills BF lane 4, position 1 reads the E4
+    // quad at lane 4. Accepted before this check existed.
+    let probe = term(
+        TermCategory::C2ProductBfE4,
+        ONE,
+        vec![
+            DecodedUse::Fill { coord: coord(0, 0, true), dst_lane: 4 },
+            DecodedUse::Cell(DecodedCell::Single { lane: 4 }),
+        ],
+    );
+    assert_eq!(
+        encode_instrs(BwdRegime::R0, budget, std::slice::from_ref(&probe))
+            .expect_err("the encoder must reject the clobber"),
+        CoeffCodecError::FillClobbersLaterOperand { at: 1, lane: 4 }
+    );
+
+    // ...and so must the pure-wire validator, which never sees the placement. The
+    // words are hand-assembled because the encoder now refuses to emit them.
+    let words = vec![
+        opcode_of(BwdRegime::R0, TermCategory::C2ProductBfE4).unwrap() << 13,
+        MODE_FILL_SOURCE | 1 << INPUT_FIRST_ACCESS_SHIFT,
+        4 << LANE_WORD_SHIFT,
+        MODE_CELL | 4 << CELL_ENDPOINT0_LANE_SHIFT,
+    ];
+    let smuggled = EncodedProgram { regime: BwdRegime::R0, budget, c_init: None, words };
+    assert_eq!(
+        reject(&smuggled, &binding),
+        CoeffCodecError::FillClobbersLaterOperand { at: 1, lane: 4 }
+    );
+
+    // The two shapes that look similar but are LEGAL stay legal:
+    //   * a plan reading a lane and then reclaiming it, within ONE record (§8's
+    //     read-then-write phases); and
+    //   * the reverse order — a later operand's fill cannot clobber an earlier
+    //     operand that has already been resolved.
+    let reclaim = term(
+        TermCategory::DualProductE4,
+        ONE,
+        vec![
+            DecodedUse::Planned {
+                coord: coord(0, 0, true),
+                endpoint0: PlanAction::UseResident { lane: 4 },
+                delta: PlanAction::Fill { lane: 4 },
+            },
+            DecodedUse::Direct { coord: coord(0, 4, false) },
+        ],
+    );
+    encode_instrs(BwdRegime::Ext, budget, std::slice::from_ref(&reclaim))
+        .expect("a plan may reclaim the lane it just read");
+    let reverse = term(
+        TermCategory::C2ProductBfE4,
+        ONE,
+        vec![
+            DecodedUse::Cell(DecodedCell::Single { lane: 4 }),
+            DecodedUse::Fill { coord: coord(0, 0, true), dst_lane: 4 },
+        ],
+    );
+    encode_instrs(BwdRegime::R0, budget, std::slice::from_ref(&reverse))
+        .expect("a later fill cannot clobber an already-resolved operand");
+    // A squared term performs ONE resolution (§9.1 as amended), so its repeated
+    // record is not a second reader either.
+    let squared = term(
+        TermCategory::C2ProductE4E4,
+        ONE,
+        vec![DecodedUse::Planned {
+            coord: coord(0, 0, true),
+            endpoint0: PlanAction::UseResident { lane: 4 },
+            delta: PlanAction::Fill { lane: 4 },
+        }],
+    );
+    encode_instrs(BwdRegime::R0, budget, std::slice::from_ref(&squared))
+        .expect("a squared term resolves once, so it cannot clobber itself");
+}
+
+/// `program_records` surfaces `term_slots`' own rejections rather than swallowing
+/// them.
+#[test]
+fn rejects_a_layer_term_slots_refuses() {
+    let (layer, prices) = squared_r0_layer();
+    let (placement, binding) = page_place_bind(&layer, &prices, 16);
+    let mut corrupt = layer.clone();
+    // A `C0Linear` whose value is a `Delta` projection: a role `term_slots`
+    // rejects, reported through `CoeffCodecError::Schedule`.
+    corrupt.terms[0] = CoeffTerm::C0Linear {
+        id: TermId(0),
+        coefficient: CoefficientRecipeId::ONE,
+        value: ProjectionId::delta(SourceId(0)),
+        field: FieldKind::Base,
+    };
+    let err = program_records(&corrupt, &placement, &binding).expect_err("bad projection role");
+    assert!(matches!(err, CoeffCodecError::Schedule(_)), "{err:?}");
+}
+
 #[test]
 fn rejects_a_program_past_the_kernel_argument_cap() {
     let budget = CellBudget::new(4).unwrap();
@@ -1580,7 +1683,7 @@ fn disassembly_format_is_pinned() {
                         },
                         DecodedUse::Cell(DecodedCell::Pair {
                             endpoint0_lane: 20,
-                            delta_lane: 24,
+                            delta_lane: 28,
                         }),
                     ],
                 ),
@@ -1600,7 +1703,7 @@ fn disassembly_format_is_pinned() {
 0002  C0LinearE4      k=-1     e0:e4 s3(w1c0)! proc fill l8
 0005  MoveE4          l8 -> l20
 0008  DualProductE4   k=#1     pair:e4 s1(w0c4)! plan e0=resident l20 d=fill l24  |  \
-pair:e4 resident e0=l20 d=l24
+pair:e4 resident e0=l20 d=l28
 0012  DualProductE4   k=#2     pair:e4 s2(w0c9). direct  [squared]
 ";
     assert_eq!(text, expected, "the disassembly format drifted");
