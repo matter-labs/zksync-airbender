@@ -25,6 +25,7 @@ pub mod interp;
 pub mod limits;
 pub mod lower;
 pub mod model;
+pub mod schedule;
 pub mod stats;
 
 pub use interp::{CoeffResolver, interpret_coeff_layer};
@@ -35,6 +36,13 @@ pub use limits::{
     SOURCE_WINDOW_COLUMNS, TermCategory, continuation_opcode, r0_opcode,
 };
 pub use lower::{LoweringTrace, lower_coeff_layer, lower_coeff_layer_traced};
+pub use schedule::{
+    BudgetOutcome, BudgetSweep, CellBudget, OpCounts, PagingAction, PagingCertificateError,
+    PagingCost, PagingPlan, PagingRequest, PagingScore, ProjectionAction, ProjectionOutcome,
+    RebuildPrice, ResolutionGroup, ScheduleError, SeedEvaluation, SeedKind, SourcePrice, ValueWidth,
+    budget_aware_greedy_order, certify_paging_plan, default_target_depth, page_projections,
+    select_paged_order, source_prices, stable_normalized_order, sweep_budgets,
+};
 pub use stats::{
     CoeffCensus, CoeffCensusFailure, CoeffCensusRow, census_coeff_layer, census_csv, census_layer,
     live_term_categories, source_window_count,
