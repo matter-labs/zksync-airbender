@@ -874,6 +874,11 @@ impl CarriedChainCombiner {
                 prover_configuration
                     .prover_context_config
                     .max_device_allocation_blocks_count = Some(COMBINER_DEVICE_POOL_BLOCKS);
+                // An exact pool size requires an explicit cache preset; Normal
+                // (full coset caching) is what COMBINER_DEVICE_POOL_BLOCKS was
+                // measured under.
+                prover_configuration.prover_context_config.gpu_memory_preset =
+                    gpu_prover::prover::gpu_memory::GpuMemoryPreset::Normal;
                 *host_state = Some(UnifiedRecursionProverHostState::new(
                     self.security_level.model(),
                     prover_configuration,
@@ -1059,6 +1064,11 @@ fn combine_artifacts_with_program(
             prover_configuration
                 .prover_context_config
                 .max_device_allocation_blocks_count = Some(COMBINER_DEVICE_POOL_BLOCKS);
+            // An exact pool size requires an explicit cache preset; Normal
+            // (full coset caching) is what COMBINER_DEVICE_POOL_BLOCKS was
+            // measured under.
+            prover_configuration.prover_context_config.gpu_memory_preset =
+                gpu_prover::prover::gpu_memory::GpuMemoryPreset::Normal;
             let host_state =
                 UnifiedRecursionProverHostState::new(security_level.model(), prover_configuration);
             CombinedUnifiedProver::new_gpu(&host_state, artifacts[0].batch_id)

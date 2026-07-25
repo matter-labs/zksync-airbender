@@ -509,8 +509,11 @@ fn main() {
                 ProverBackend::Gpu => {
                     #[cfg(feature = "gpu")]
                     {
+                        // The combiner ignores `memory_preset` and pins its own device
+                        // pool, so no `--gpu-memory-preset` flag is exposed here.
                         let gpu = GpuConfig {
                             replay_worker_threads_count: gpu_replay_threads,
+                            ..Default::default()
                         };
                         cli_lib::prover_utils::combine_artifacts_gpu(
                             &artifacts,
