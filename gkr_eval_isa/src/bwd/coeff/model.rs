@@ -464,6 +464,46 @@ impl CoeffTerm {
         }
     }
 
+    /// Operand SLOTS this term encodes: one for `C0Linear`, two for the two
+    /// product forms. Not the number of projections it consumes — a native dual
+    /// factor is ONE slot consuming TWO projections.
+    pub fn arity(&self) -> usize {
+        match self {
+            CoeffTerm::C0Linear { .. } => 1,
+            CoeffTerm::C2Product { .. } | CoeffTerm::DualProduct { .. } => 2,
+        }
+    }
+
+    /// Every projection this term CONSUMES, once per operand-slot occurrence, in
+    /// canonical operand order.
+    ///
+    /// The single definition of "consumed projection" in the crate: the census
+    /// ([`census_coeff_layer`](super::stats::census_coeff_layer)) counts operand
+    /// slots with it and the scheduler
+    /// ([`schedule`](super::schedule)) builds its next-use queues from it, so the
+    /// two cannot drift. A native dual factor contributes BOTH of its
+    /// projections here (§8: the factor explicitly consumes the pair), while the
+    /// physical grouping of those two into one source-pair resolution is a
+    /// SCHEDULE concern and lives in `schedule`.
+    ///
+    /// Occurrences are NOT deduplicated: `C2Product { lhs: d, rhs: d }` yields
+    /// `d` twice, which is what makes it a reusable projection in the census.
+    pub fn for_each_projection_use(&self, mut f: impl FnMut(ProjectionId)) {
+        match self {
+            CoeffTerm::C0Linear { value, .. } => f(*value),
+            CoeffTerm::C2Product { lhs, rhs, .. } => {
+                f(*lhs);
+                f(*rhs);
+            }
+            CoeffTerm::DualProduct { lhs, rhs, .. } => {
+                for source in [*lhs, *rhs] {
+                    f(ProjectionId::endpoint0(source));
+                    f(ProjectionId::delta(source));
+                }
+            }
+        }
+    }
+
     pub fn coefficient(&self) -> CoefficientRecipeId {
         match self {
             CoeffTerm::C0Linear { coefficient, .. }
@@ -566,4 +606,16 @@ pub enum CoeffError {
     /// A term projects a role its opcode cannot consume (`C0Linear` over `Delta`,
     /// `C2Product` over `Endpoint0`).
     ProjectionRoleMismatch { term: TermId, expected: Projection, found: Projection },
+    /// A claim-bearing root has no materialized sink and is not a
+    /// `RootSlot::Constraint` root — so §5.2's "claim-only constraint roots
+    /// contribute no `acc_c0`" accounting does not describe this layer.
+    ///
+    /// `lower_r0_root_c0` rejects the same contradiction as
+    /// [`MaterializedOutputMissing`](Self::MaterializedOutputMissing) /
+    /// [`MaterializedConstraintRoot`](Self::MaterializedConstraintRoot), but only
+    /// in the R0 regime, because that lowering is R0-gated. In `Ext` a sinkless
+    /// `RootSlot::Output` root lowers fine, so the census is the first place the
+    /// contradiction becomes observable — and it is derivable purely from
+    /// `DagLayer::roots`, which is why it is a typed error and not an assertion.
+    ConstraintRootAccountingMismatch { sinkless_claim_roots: usize, constraint_slot_roots: usize },
 }

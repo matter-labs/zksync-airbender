@@ -75,7 +75,11 @@ fn vs_tag(kind: &VirtualSetupKind) -> u8 {
 /// sink read (interned from `roots[..].materialize`, which is not a cone leaf and
 /// so has no `cross_fields` entry) — there the interned `CoeffSource::field` IS
 /// the sink's own field, which is the backing field.
-fn backing_field(place: &ReadPlace, source: &CoeffSource, distilled: &DistilledLayer) -> FieldKind {
+pub fn backing_field(
+    place: &ReadPlace,
+    source: &CoeffSource,
+    distilled: &DistilledLayer,
+) -> FieldKind {
     if let Some(f) = read_place_field(place) {
         return f;
     }
@@ -297,12 +301,19 @@ impl CoeffCensus {
 ///
 /// `canonical` and `distilled` must be the same pair `lowered` was produced from;
 /// `trace` must be that lowering's [`LoweringTrace`].
+///
+/// TOTAL: the only failure is
+/// [`CoeffError::ConstraintRootAccountingMismatch`], which is derivable from
+/// `canonical.roots` alone. This function is called by every downstream task, so
+/// it must not abort a caller's corpus sweep on input data — the crate
+/// convention is typed errors for anything derivable from input and assertions
+/// only for invariants unreachable by construction.
 pub fn census_coeff_layer(
     canonical: &DagLayer,
     distilled: &DistilledLayer,
     lowered: &CoeffLayer,
     trace: &LoweringTrace,
-) -> CoeffCensus {
+) -> Result<CoeffCensus, CoeffError> {
     let mut c = CoeffCensus {
         canonical_roots: bwd_roots(canonical).len(),
         fragments_total: trace.fragments_total,
@@ -338,16 +349,20 @@ pub fn census_coeff_layer(
         }
     }
     // `constraint_only_roots` is reported as "the roots §5.2 says contribute no
-    // `acc_c0`", so it must actually BE the claim-only CONSTRAINT roots. A REAL
-    // assertion, not a `debug_assert`: the census's only sanctioned mode is
-    // `--release`, where a debug assertion never runs, and a freeze gate that does
-    // not run is worse than none.
+    // `acc_c0`", so it must actually BE the claim-only CONSTRAINT roots.
     //
     // Reachable, not decorative: `lower_r0_root_c0` rejects a sinkless
     // `RootSlot::Output` root (`MaterializedOutputMissing`) and a materialized
     // `RootSlot::Constraint` root (`MaterializedConstraintRoot`), but that check
     // runs in the R0 regime ONLY. In `Ext` a sinkless output root lowers fine and
     // would silently inflate this field.
+    //
+    // A RETURNED error, not an assertion: the guarded condition is a pure
+    // function of `canonical.roots`, so it belongs in `CoeffError` next to the two
+    // R0-gated variants that reject the very same contradiction. A hard `assert!`
+    // here would abort the corpus sweep of every caller in Tasks 4-9 instead of
+    // reporting the offending coordinate as data (`CoeffCensusFailure`), which is
+    // exactly what §3.1's conditional-circuit handling needs.
     let constraint_slot_roots = canonical
         .roots
         .iter()
@@ -357,12 +372,12 @@ pub fn census_coeff_layer(
                 .is_some_and(|claim| matches!(claim.origin.slot, RootSlot::Constraint(_)))
         })
         .count();
-    assert_eq!(
-        c.constraint_only_roots, constraint_slot_roots,
-        "a claim-bearing root without a materialized sink must be a RootSlot::Constraint; \
-         {} sinkless claim roots vs {} constraint-slot roots",
-        c.constraint_only_roots, constraint_slot_roots
-    );
+    if c.constraint_only_roots != constraint_slot_roots {
+        return Err(CoeffError::ConstraintRootAccountingMismatch {
+            sinkless_claim_roots: c.constraint_only_roots,
+            constraint_slot_roots,
+        });
+    }
 
     let r0 = lowered.regime == BwdRegime::R0;
     let mut projection_uses: BTreeMap<ProjectionId, usize> = BTreeMap::new();
@@ -375,9 +390,12 @@ pub fn census_coeff_layer(
         if term.coefficient().literal().is_some() {
             c.reserved_literal_terms += 1;
         }
+        // ONE definition of "consumed projection", shared with the scheduler
+        // (`CoeffTerm::for_each_projection_use`), so the census's reuse counter and
+        // the pager's next-use queues cannot disagree about what a term reads.
+        term.for_each_projection_use(|p| *projection_uses.entry(p).or_default() += 1);
         let arity = match term {
-            CoeffTerm::C0Linear { value, field, .. } => {
-                *projection_uses.entry(*value).or_default() += 1;
+            CoeffTerm::C0Linear { field, .. } => {
                 if r0 {
                     match field {
                         FieldKind::Base => c.r0_c0_linear_bf += 1,
@@ -391,9 +409,7 @@ pub fn census_coeff_layer(
                 }
                 1
             }
-            CoeffTerm::C2Product { lhs, rhs, lhs_field, rhs_field, .. } => {
-                *projection_uses.entry(*lhs).or_default() += 1;
-                *projection_uses.entry(*rhs).or_default() += 1;
+            CoeffTerm::C2Product { lhs_field, rhs_field, .. } => {
                 if r0 {
                     match (lhs_field, rhs_field) {
                         (FieldKind::Base, FieldKind::Base) => c.r0_c2_bf_bf += 1,
@@ -410,13 +426,10 @@ pub fn census_coeff_layer(
                 }
                 2
             }
-            CoeffTerm::DualProduct { lhs, rhs, .. } => {
+            CoeffTerm::DualProduct { .. } => {
                 // A native dual consumes BOTH projections of each factor in one
-                // source-pair resolution (§8).
-                for source in [*lhs, *rhs] {
-                    *projection_uses.entry(ProjectionId::endpoint0(source)).or_default() += 1;
-                    *projection_uses.entry(ProjectionId::delta(source)).or_default() += 1;
-                }
+                // source-pair resolution (§8) — tallied by
+                // `for_each_projection_use` above.
                 if r0 {
                     // Structurally impossible: R0 emits `C2Product`, never a dual.
                     c.cont_standalone_product += 1;
@@ -454,7 +467,7 @@ pub fn census_coeff_layer(
         * (upper_words
             + c.reusable_projections * MOVE_WORDS * ASSUMED_MOVES_PER_REUSABLE_PROJECTION);
 
-    c
+    Ok(c)
 }
 
 // ── Corpus rows ──────────────────────────────────────────────────────────────
@@ -509,13 +522,19 @@ pub fn census_layer(
     let mut failures = Vec::new();
     for regime in [BwdRegime::R0, BwdRegime::Ext] {
         let distilled = distill(canonical, regime, cross_fields, None);
-        match lower_coeff_layer_traced(canonical, &distilled) {
-            Ok((lowered, trace)) => rows.push(CoeffCensusRow {
+        let censused = lower_coeff_layer_traced(canonical, &distilled).and_then(
+            |(lowered, trace)| {
+                let census = census_coeff_layer(canonical, &distilled, &lowered, &trace)?;
+                Ok((lowered, census))
+            },
+        );
+        match censused {
+            Ok((lowered, census)) => rows.push(CoeffCensusRow {
                 circuit: circuit.to_string(),
                 layer: layer_index,
                 regime,
                 live_categories: live_term_categories(&lowered),
-                census: census_coeff_layer(canonical, &distilled, &lowered, &trace),
+                census,
             }),
             Err(error) => failures.push(CoeffCensusFailure {
                 circuit: circuit.to_string(),
