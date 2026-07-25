@@ -23,7 +23,7 @@ use cs::gkr_compiler::dag_ir::{
 };
 use field::{Field, FieldExtension, PrimeField};
 use gkr_eval_isa::bwd::coeff::{
-    CoeffLayer, CoeffResolver, CoefficientRecipeId, SourceId, interpret_coeff_layer,
+    CoeffLayer, CoeffResolver, CoeffTerm, CoefficientRecipeId, SourceId, interpret_coeff_layer,
     lower_coeff_layer,
 };
 use gkr_eval_isa::bwd::distill::distill;
@@ -37,8 +37,13 @@ const CONSTRAINT_COL: usize = 3;
 /// Same, for the constant-addend layer: `w0*w1 - w4 + CONST_ADDEND` vanishes on
 /// the hypercube.
 const CONSTRAINT_COL2: usize = 4;
+/// Same, for the all-constraint layer's second cone: `w2*w1 - w5 + ALT_ADDEND`
+/// vanishes on the hypercube.
+const CONSTRAINT_COL3: usize = 5;
 /// The constant addend both cones in `r0_constant_addend_layer` carry.
 const CONST_ADDEND: u32 = 5;
+/// The second constant addend, used by `r0_all_constraint_layer`.
+const ALT_ADDEND: u32 = 3;
 
 // ── Affine witness model ─────────────────────────────────────────────────────
 
@@ -75,6 +80,14 @@ fn witness_pair(seed: u32, column: usize, row: usize) -> (Ext, Ext) {
         if column == CONSTRAINT_COL2 {
             e0.add_assign(&lift(bf(CONST_ADDEND)));
         }
+        return (e0, ds);
+    }
+    if column == CONSTRAINT_COL3 {
+        let (c0, _) = witness_pair(seed, 2, row);
+        let (b0, _) = witness_pair(seed, 1, row);
+        let mut e0 = c0;
+        e0.mul_assign(&b0);
+        e0.add_assign(&lift(bf(ALT_ADDEND)));
         return (e0, ds);
     }
     (lift(bf(fnv(FNV_OFFSET, &[seed, 0xe0, column as u32, row as u32]))), ds)
@@ -313,6 +326,66 @@ fn r0_constant_addend_layer() -> DagLayer {
     )
 }
 
+/// TWO materialized outputs whose batching positions are 1 and 2, so their
+/// `acc_c0` coefficients are `beta^1` and `beta^2` rather than the reserved
+/// `ONE`. "Root zero" is the claim-only constraint at `RootId(2)`, so the R0
+/// root-coefficient path runs with non-trivial batching factors — the case Task 1's
+/// per-root provenance exists for.
+fn r0_batched_output_layer() -> DagLayer {
+    let mut a = ArenaBuilder::new();
+    let w0 = read_leaf(&mut a, 0);
+    let w1 = read_leaf(&mut a, 1);
+    let w2 = read_leaf(&mut a, 2);
+    let w3 = read_leaf(&mut a, CONSTRAINT_COL);
+    let gamma = challenge_leaf(&mut a, ChallengeKey::LookupAdditive);
+    let neg = const_leaf(&mut a, NEG_ONE);
+
+    let out_a = a.mul(vec![gamma, w0, w1]);
+    let sum = a.add(vec![w1, w2]);
+    let out_b = a.mul(vec![sum, w0]);
+
+    let c1 = a.mul(vec![w0, w1]);
+    let c2 = a.mul(vec![neg, w3]);
+    let con_cone = a.add(vec![c1, c2]);
+
+    assemble(
+        &a,
+        vec![output_root(out_a, 0, 0), output_root(out_b, 1, 1), constraint_root(con_cone, 2)],
+        vec![RootId(2), RootId(0), RootId(1)],
+    )
+}
+
+/// EVERY claim root is a claim-only constraint, and both cones carry a scalar
+/// constant addend — so the spine's `c_init` is non-empty while `acc_c0` must be
+/// exactly zero. This is the strongest form of the R0 `c_init`-drop argument:
+/// there is no materialized output to absorb the constant, and the only correct
+/// `acc_c0` is zero.
+fn r0_all_constraint_layer() -> DagLayer {
+    let mut a = ArenaBuilder::new();
+    let w0 = read_leaf(&mut a, 0);
+    let w1 = read_leaf(&mut a, 1);
+    let w2 = read_leaf(&mut a, 2);
+    let w4 = read_leaf(&mut a, CONSTRAINT_COL2);
+    let w5 = read_leaf(&mut a, CONSTRAINT_COL3);
+    let five = const_leaf(&mut a, CONST_ADDEND);
+    let three = const_leaf(&mut a, ALT_ADDEND);
+    let neg = const_leaf(&mut a, NEG_ONE);
+
+    let a1 = a.mul(vec![w0, w1]);
+    let a2 = a.mul(vec![neg, w4]);
+    let cone_a = a.add(vec![a1, a2, five]);
+
+    let b1 = a.mul(vec![w2, w1]);
+    let b2 = a.mul(vec![neg, w5]);
+    let cone_b = a.add(vec![b1, b2, three]);
+
+    assemble(
+        &a,
+        vec![constraint_root(cone_a, 0), constraint_root(cone_b, 1)],
+        vec![RootId(1), RootId(0)],
+    )
+}
+
 // ── Oracle ───────────────────────────────────────────────────────────────────
 
 /// The canonical alpha-combined spine at sumcheck point `x`:
@@ -496,4 +569,101 @@ fn r0_constant_addends_are_covered_by_the_output_shortcut() {
     let ext_coeff = lower_coeff_layer(&layer, &ext).expect("Ext lowering");
     assert!(ext_coeff.c_init.is_some(), "continuation keeps the scalar contribution");
     assert_parity(&layer, BwdRegime::Ext, "const_addend/Ext");
+}
+
+/// An R0 layer whose materialized outputs sit at batching positions 1 and 2, so
+/// their `acc_c0` coefficients are real `beta` powers rather than the reserved
+/// `ONE`. Note the test `Chal` resolver is deliberately NOT power-consistent
+/// (`challenge(Static(2)) != challenge(One)^2`), so this also fails loudly if the
+/// normalizer ever starts merging challenge exponents.
+#[test]
+fn r0_batched_output_roots_carry_their_own_beta_power() {
+    let layer = r0_batched_output_layer();
+    assert_eq!(bwd_roots(&layer), &[RootId(2), RootId(0), RootId(1)]);
+
+    let d = distill(&layer, BwdRegime::R0, &HashMap::new(), None);
+    let coeff = lower_coeff_layer(&layer, &d).expect("R0 lowering");
+
+    // Two acc_c0 terms, and NEITHER carries the reserved literal: both are banked
+    // beta powers.
+    let linear: Vec<&CoeffTerm> =
+        coeff.terms.iter().filter(|t| matches!(t, CoeffTerm::C0Linear { .. })).collect();
+    assert_eq!(linear.len(), 2, "{:?}", coeff.terms);
+    for t in &linear {
+        assert_ne!(
+            t.coefficient(),
+            CoefficientRecipeId::ONE,
+            "a batched output must not carry the unscaled literal: {t:?}"
+        );
+        let r = coeff.banked_recipe(t.coefficient()).expect("banked beta power");
+        assert_eq!(r.terms.len(), 1);
+        assert_eq!(r.terms[0].challenges.len(), 1);
+        assert_eq!(r.terms[0].challenges[0].0.key, ChallengeKey::ClaimBatching);
+    }
+    let powers: BTreeMap<usize, ChallengePower> = linear
+        .iter()
+        .map(|t| {
+            let CoeffTerm::C0Linear { value, coefficient, .. } = t else { unreachable!() };
+            let OriginLeaf::Read(ReadPlace::LayerOutput { offset, .. }) =
+                &coeff.sources[value.source.0 as usize].origin
+            else {
+                panic!("R0 acc_c0 must read an output address")
+            };
+            let r = coeff.banked_recipe(*coefficient).unwrap();
+            (*offset, r.terms[0].challenges[0].0.power.clone())
+        })
+        .collect();
+    assert_eq!(
+        powers,
+        BTreeMap::from([(0, ChallengePower::One), (1, ChallengePower::Static(2))]),
+        "offset 0 is batching position 1 (beta^1), offset 1 is position 2 (beta^2)"
+    );
+
+    assert_parity(&layer, BwdRegime::R0, "batched_output/R0");
+    assert_parity(&layer, BwdRegime::Ext, "batched_output/Ext");
+}
+
+/// The R0 `c_init` drop with NO materialized output anywhere: `acc_c0` must be
+/// exactly zero even though the spine's scalar part is not.
+#[test]
+fn r0_all_constraint_layer_drops_a_nonempty_spine_c_init() {
+    let layer = r0_all_constraint_layer();
+    for root in &layer.roots {
+        assert!(root.materialize.is_none(), "this fixture has no materialized output");
+    }
+
+    // Both cones vanish on the hypercube, constant addend included.
+    for row in 0..6usize {
+        let leaves = Leaves { seed: 1, x: 0 };
+        let ch = Chal;
+        let r = resolvers_at(&leaves, &ch);
+        for (i, root) in layer.roots.iter().enumerate() {
+            assert_eq!(
+                eval_layer_expr(&layer, root.expr, row, &r),
+                Ext::ZERO,
+                "row {row}: constraint cone {i} must vanish at X=0"
+            );
+        }
+    }
+
+    let d = distill(&layer, BwdRegime::R0, &HashMap::new(), None);
+    assert!(
+        !d.fragments.c_init.terms.is_empty(),
+        "this fixture exists to exercise a NON-empty R0 c_init"
+    );
+    let coeff = lower_coeff_layer(&layer, &d).expect("R0 lowering");
+    assert_eq!(coeff.c_init, None, "R0 initializes acc_c0 to zero");
+    assert!(
+        !coeff.terms.iter().any(|t| matches!(t, CoeffTerm::C0Linear { .. })),
+        "no materialized output means no acc_c0 term at all: {:?}",
+        coeff.terms
+    );
+
+    let pairs = Pairs::new(&coeff, &layer, 1);
+    for row in 0..6usize {
+        let (c0, _) = interpret_coeff_layer(&coeff, row, &pairs).expect("interpret");
+        assert_eq!(c0, Ext::ZERO, "row {row}: acc_c0 must be exactly zero");
+    }
+    assert_parity(&layer, BwdRegime::R0, "all_constraint/R0");
+    assert_parity(&layer, BwdRegime::Ext, "all_constraint/Ext");
 }

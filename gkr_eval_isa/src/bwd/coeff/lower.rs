@@ -85,7 +85,7 @@ pub fn lower_coeff_layer(
     let mut cx = Lowering {
         canonical,
         distilled,
-        degrees: expr_degrees(&distilled.layer),
+        pure: scalar_pure_flags(&distilled.layer),
         origins: BTreeMap::new(),
         scalars: HashMap::new(),
         quads: HashMap::new(),
@@ -97,31 +97,34 @@ pub fn lower_coeff_layer(
     cx.finish()
 }
 
-// ── Degrees ──────────────────────────────────────────────────────────────────
+// ── Scalar purity ────────────────────────────────────────────────────────────
 
-/// Relation degree of every expression in `layer`, saturating at 3 ("above two").
+/// Bottom-up scalar purity of every expression in `layer`: a `Constant`/
+/// `Challenge` leaf is scalar-pure, any other source leaf is not, and an
+/// `Add`/`Mul` is scalar-pure iff every child is. The arena is in intern order
+/// (children always precede parents), so one forward pass suffices — the same
+/// argument `decompose_spine` uses for its identical flag.
 ///
-/// A `Constant`/`Challenge` leaf is degree 0 (scalar-pure); any other source leaf
-/// is degree 1; `Add` takes the max of its children and `Mul` their sum. The arena
-/// is in intern order (children always precede parents), so one forward pass
-/// suffices — the same argument `decompose_spine` uses for scalar purity.
-fn expr_degrees(layer: &DagLayer) -> Vec<u8> {
-    let mut d = vec![0u8; layer.exprs.len()];
+/// This is the ONLY structural predicate the lowering precomputes. The degree
+/// bound is enforced EXACTLY by [`Quad::mul`] on the pruned expansion, never
+/// estimated from a syntactic degree: a conservative pre-pass would reject
+/// fragments whose high-degree part cancels (e.g. an atom
+/// `A*B + (-1)*A*B` has syntactic degree 2 but expands to zero), which on the
+/// full corpus would be indistinguishable from a genuine overflow.
+fn scalar_pure_flags(layer: &DagLayer) -> Vec<bool> {
+    let mut pure = vec![false; layer.exprs.len()];
     for (i, expr) in layer.exprs.iter().enumerate() {
-        d[i] = match expr {
-            Expr::Source(sid) => match layer.sources[sid.0 as usize].kind {
-                SourceKind::Constant { .. } | SourceKind::Challenge { .. } => 0,
-                _ => 1,
-            },
-            Expr::Add(children) => {
-                children.iter().map(|c| d[c.0 as usize]).max().unwrap_or(0)
+        pure[i] = match expr {
+            Expr::Source(sid) => matches!(
+                layer.sources[sid.0 as usize].kind,
+                SourceKind::Constant { .. } | SourceKind::Challenge { .. }
+            ),
+            Expr::Add(children) | Expr::Mul(children) => {
+                children.iter().all(|c| pure[c.0 as usize])
             }
-            Expr::Mul(children) => children
-                .iter()
-                .fold(0u8, |acc, c| acc.saturating_add(d[c.0 as usize]).min(3)),
         };
     }
-    d
+    pure
 }
 
 // ── Degree-<=2 expansion ─────────────────────────────────────────────────────
@@ -192,10 +195,13 @@ impl Quad {
         out
     }
 
-    /// `None` when the product would exceed degree two.
-    fn mul(&self, other: &Self) -> Option<Self> {
-        if self.degree() + other.degree() > 2 {
-            return None;
+    /// `Err(degree)` when the product would exceed degree two. The degree is
+    /// EXACT for this product, computed from both operands' pruned parts, so a
+    /// part that cancelled to zero never inflates it.
+    fn mul(&self, other: &Self) -> Result<Self, usize> {
+        let degree = self.degree() + other.degree();
+        if degree > 2 {
+            return Err(degree);
         }
         let mut out = Quad::from_scalar(self.scalar.mul(&other.scalar));
         for (k, c) in &other.linear {
@@ -217,7 +223,7 @@ impl Quad {
             }
         }
         out.prune();
-        Some(out)
+        Ok(out)
     }
 }
 
@@ -252,7 +258,8 @@ impl BodyKey {
 struct Lowering<'a> {
     canonical: &'a DagLayer,
     distilled: &'a DistilledLayer,
-    degrees: Vec<u8>,
+    /// Bottom-up scalar purity, indexed by distilled `ExprId`.
+    pure: Vec<bool>,
     origins: BTreeMap<SourceKey, CoeffSource>,
     scalars: HashMap<ExprId, Recipe>,
     quads: HashMap<ExprId, Quad>,
@@ -385,20 +392,13 @@ impl Lowering<'_> {
                 // and never reaches the source table.
                 continue;
             }
-            let mut degree = 0usize;
-            for atom in &fragment.atoms {
-                degree = (degree + self.degrees[atom.0 as usize] as usize).min(3);
-            }
-            if degree > 2 {
-                return Err(CoeffError::DegreeTooHigh { fragment: index, degree });
-            }
+            // The degree bound is checked exactly, by the expansion itself.
             let mut value = Quad::one();
             for &atom in &fragment.atoms {
                 let atom_value = self.expand(atom)?;
-                value = value.mul(&atom_value).ok_or(CoeffError::DegreeTooHigh {
-                    fragment: index,
-                    degree: 3,
-                })?;
+                value = value
+                    .mul(&atom_value)
+                    .map_err(|degree| CoeffError::DegreeTooHigh { fragment: index, degree })?;
             }
             self.emit(&k, value);
         }
@@ -440,7 +440,7 @@ impl Lowering<'_> {
             return Ok(q.clone());
         }
         let d = self.distilled;
-        let q = if self.degrees[e.0 as usize] == 0 {
+        let q = if self.pure[e.0 as usize] {
             Quad::from_scalar(self.scalar_expr(e)?)
         } else {
             match &d.layer.exprs[e.0 as usize] {
@@ -457,12 +457,12 @@ impl Lowering<'_> {
                 Expr::Mul(children) => {
                     let children = children.clone();
                     let mut acc = Quad::one();
+                    let fragment = self.fragment;
                     for c in children {
                         let part = self.expand(c)?;
-                        acc = acc.mul(&part).ok_or(CoeffError::DegreeTooHigh {
-                            fragment: self.fragment,
-                            degree: 3,
-                        })?;
+                        acc = acc
+                            .mul(&part)
+                            .map_err(|degree| CoeffError::DegreeTooHigh { fragment, degree })?;
                     }
                     acc
                 }
@@ -516,7 +516,7 @@ impl Lowering<'_> {
         for term in &recipe.terms {
             let mut product = Recipe::one();
             for &factor in &term.factors {
-                if self.degrees[factor.0 as usize] != 0 {
+                if !self.pure[factor.0 as usize] {
                     return Err(CoeffError::NonScalarCoefficientFactor { expr: factor });
                 }
                 let part = self.scalar_expr(factor)?;

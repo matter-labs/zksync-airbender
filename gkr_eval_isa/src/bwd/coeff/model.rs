@@ -27,8 +27,8 @@
 use std::cmp::Ordering;
 
 use cs::gkr_compiler::dag_ir::{
-    Bf, BwdRegime, ChallengeRef, ChallengeResolver, ExprId, Ext, FieldKind, ReadPlace, RootId,
-    SinkKind, VirtualSetupKind,
+    Bf, BwdRegime, ChallengePower, ChallengeRef, ChallengeResolver, ExprId, Ext, FieldKind,
+    ReadPlace, RootId, SinkKind, VirtualSetupKind,
 };
 use field::{Field, FieldExtension, PrimeField};
 
@@ -180,14 +180,42 @@ pub fn sink_read_place(sink: &SinkKind) -> Option<ReadPlace> {
 
 // ── Normalized coefficient recipes (§6) ──────────────────────────────────────
 
-/// A challenge factor with a total order.
+/// A challenge factor with a total order, in canonical spelling.
 ///
 /// `ChallengeRef` is deliberately not `Ord`, so the order is delegated to
 /// [`FactorKey`] — the crate's existing stable factor order — which keeps
 /// coefficient canonicalization consistent with
 /// [`FragmentTable::stable_view`](crate::bwd::fragment::FragmentTable::stable_view).
+///
+/// Construct through [`CoeffChallenge::new`], which folds the redundant
+/// `Static(1)` spelling into `One`; [`NormalizedCoefficientRecipe::from_terms`]
+/// re-applies it, so a recipe never holds a non-canonical reference.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct CoeffChallenge(pub ChallengeRef);
+
+impl CoeffChallenge {
+    /// Canonical spelling of one challenge factor: `ChallengePower::Static(1)`
+    /// becomes `ChallengePower::One`.
+    ///
+    /// Both spell the FIRST power, and every resolver in this repo maps them to
+    /// the same element — `beta_pows[1] == beta`, `pow(beta, 1) == beta`, and the
+    /// power-ignoring arms (`LookupAdditive`, `PermutationAdditive`,
+    /// `PermutationLinearization`) are insensitive to `power` altogether. So this
+    /// rewrite is value-preserving and it removes a real two-spelling redundancy
+    /// from the coefficient bank (the pinned corpus spells
+    /// `LookupMultiplicative` powers as `Static(1)`, `Static(2)`, `Static(3)`,
+    /// never as `One`).
+    ///
+    /// HIGHER powers are deliberately NOT merged — see [`CoeffProduct`] for why
+    /// that would be unsound.
+    pub fn new(reference: ChallengeRef) -> Self {
+        let power = match reference.power {
+            ChallengePower::Static(1) => ChallengePower::One,
+            other => other,
+        };
+        CoeffChallenge(ChallengeRef { key: reference.key, power })
+    }
+}
 
 impl Ord for CoeffChallenge {
     fn cmp(&self, other: &Self) -> Ordering {
@@ -207,12 +235,32 @@ impl PartialOrd for CoeffChallenge {
 /// Invariants (upheld by [`NormalizedCoefficientRecipe`]'s constructors):
 ///   * `scalar` is a CANONICAL REDUCED BabyBear value and never `0` — an
 ///     annihilated product is dropped, not encoded;
-///   * `challenges` is sorted ascending, with multiplicity preserved (`beta^2` may
-///     appear either as one `Static(2)` reference or as two `One` references,
-///     whichever the DAG spells);
+///   * every challenge is in canonical spelling ([`CoeffChallenge::new`]);
+///   * `challenges` is sorted ascending, with multiplicity PRESERVED; and
 ///   * a scalar `1` with no challenges is the multiplicative identity, which the
 ///     compiler represents with [`CoefficientRecipeId::ONE`] instead of a bank
 ///     entry — an "ordinary multiplication by one" is never encoded.
+///
+/// # Why repeated challenge factors are not merged into an exponent
+///
+/// Collapsing `gamma * gamma` into a single `Static(2)` reference looks like a
+/// dedup win (it would make `beta * beta` and `beta^2` one recipe) but it is
+/// UNSOUND here, because `ChallengePower` is only an exponent for the keys whose
+/// resolver arm reads it. In this repo only `ClaimBatching`
+/// (`pow(beta, i)` / `beta_pows[i]`) and `LookupMultiplicative`
+/// (`alpha_pows[j]`) honour powers; `LookupAdditive`, `PermutationAdditive` and
+/// `PermutationLinearization` ignore `power` entirely and return their single
+/// challenge. Rewriting `gamma * gamma` as `{LookupAdditive, Static(2)}` would
+/// therefore resolve to `gamma`, not `gamma^2` — a silent factor-of-gamma error.
+///
+/// On the pinned corpus the repeated-key products are EXCLUSIVELY on those
+/// power-ignoring keys (334 `LookupAdditive x2`, 18 `PermutationAdditive x2`,
+/// 176 `PermutationLinearization(..) x2`), while no product repeats a
+/// power-honouring key at all — so the collapse would deduplicate nothing and
+/// corrupt 528 products. `coefficient_products_never_repeat_a_power_honouring_key`
+/// in `tests/bwd_coeff_corpus.rs` pins that, so if a future compiler change ever
+/// does emit `beta * beta` the guard fires and the exponent merge can then be
+/// introduced for that key alone, where it IS sound.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct CoeffProduct {
     pub scalar: u32,
@@ -273,13 +321,14 @@ impl NormalizedCoefficientRecipe {
     pub fn challenge(r: ChallengeRef) -> Self {
         Self::from_terms(vec![CoeffProduct {
             scalar: 1,
-            challenges: vec![CoeffChallenge(r)],
+            challenges: vec![CoeffChallenge::new(r)],
         }])
     }
 
-    /// Canonicalize `terms`: sort each product's challenges, merge products that
-    /// share a challenge multiset (summing their scalars), drop the ones whose
-    /// scalar cancels to zero, and sort what remains.
+    /// Canonicalize `terms`: put each challenge in canonical spelling and sort a
+    /// product's challenges, merge products that share a challenge multiset
+    /// (summing their scalars), drop the ones whose scalar cancels to zero, and
+    /// sort what remains.
     pub fn from_terms(mut terms: Vec<CoeffProduct>) -> Self {
         // Merge by challenge multiset. `BTreeMap` gives the canonical term order
         // for free.
@@ -289,7 +338,8 @@ impl NormalizedCoefficientRecipe {
             if t.scalar == 0 {
                 continue;
             }
-            let mut challenges = t.challenges;
+            let mut challenges: Vec<CoeffChallenge> =
+                t.challenges.into_iter().map(|c| CoeffChallenge::new(c.0)).collect();
             challenges.sort();
             let slot = merged.entry(challenges).or_insert(Bf::ZERO);
             slot.add_assign(&Bf::from_u32_with_reduction(t.scalar));
@@ -458,8 +508,13 @@ impl CoeffLayer {
 // ── Errors ───────────────────────────────────────────────────────────────────
 
 /// Compiler / interpreter errors of the coefficient lowering. Every variant is
-/// derivable from the input data; internal invariants that are unreachable by
-/// construction are `debug_assert`ed instead.
+/// derivable from the input data.
+///
+/// The module contains no `assert!` and no `debug_assert!`. Its only panicking
+/// paths are an `expect` and a handful of index accesses on tables the lowering
+/// itself just populated — the bank lookup for a recipe it interned, and the
+/// `SourceId` / `CoeffSource` lookups for an origin it interned — none of which
+/// can miss. Anything a caller's data can violate is one of the variants below.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum CoeffError {
     /// The canonical layer and the distilled layer disagree on how many backward

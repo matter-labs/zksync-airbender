@@ -44,11 +44,13 @@ fn const_leaf(a: &mut ArenaBuilder, value: u32) -> ExprId {
     a.source_expr(s)
 }
 
-fn challenge_leaf(a: &mut ArenaBuilder, key: ChallengeKey) -> ExprId {
-    let s = a.intern_source(SourceKind::Challenge {
-        reference: ChallengeRef { key, power: ChallengePower::One },
-    });
+fn challenge_leaf_with(a: &mut ArenaBuilder, key: ChallengeKey, power: ChallengePower) -> ExprId {
+    let s = a.intern_source(SourceKind::Challenge { reference: ChallengeRef { key, power } });
     a.source_expr(s)
+}
+
+fn challenge_leaf(a: &mut ArenaBuilder, key: ChallengeKey) -> ExprId {
+    challenge_leaf_with(a, key, ChallengePower::One)
 }
 
 /// A claim-bearing root with a materialized `Inner` output at `offset`.
@@ -541,6 +543,59 @@ fn degree_three_is_a_compiler_error() {
     let layer_b = assemble(&b, vec![constraint_root(deg3, 0)], vec![RootId(0)]);
     let err = lower(&layer_b, BwdRegime::Ext).expect_err("degree three must not compile");
     assert!(matches!(err, CoeffError::DegreeTooHigh { degree: 3, .. }), "wrong error {err:?}");
+}
+
+/// `Static(1)` and `One` spell the SAME power, so they must intern to one recipe
+/// and one id — while a repeated factor and a higher power must NOT be merged,
+/// because `ChallengePower` is only an exponent for the keys whose resolver arm
+/// reads it (`LookupAdditive` ignores it and returns `gamma` for any power, so
+/// rewriting `gamma*gamma` as `gamma^2` would silently lose a factor).
+#[test]
+fn challenge_power_spellings_of_one_intern_to_a_single_id() {
+    let mut a = ArenaBuilder::new();
+    let w0 = read_leaf(&mut a, 0);
+    let w1 = read_leaf(&mut a, 1);
+    let as_one = challenge_leaf_with(&mut a, ChallengeKey::LookupMultiplicative, ChallengePower::One);
+    let as_static_1 =
+        challenge_leaf_with(&mut a, ChallengeKey::LookupMultiplicative, ChallengePower::Static(1));
+    let t0 = a.mul(vec![as_one, w0]);
+    let t1 = a.mul(vec![as_static_1, w1]);
+    let cone = a.add(vec![t0, t1]);
+    let layer = assemble(&a, vec![constraint_root(cone, 0)], vec![RootId(0)]);
+
+    let c = lower(&layer, BwdRegime::Ext).expect("Ext lowering");
+    assert_eq!(c.terms.len(), 2, "{:?}", c.terms);
+    assert_eq!(c.coefficients.len(), 1, "one power, one bank entry: {:?}", c.coefficients);
+    let ids: std::collections::BTreeSet<CoefficientRecipeId> =
+        c.terms.iter().map(|t| t.coefficient()).collect();
+    assert_eq!(ids.len(), 1, "both spellings must reach the same CoefficientRecipeId");
+    assert_eq!(
+        c.coefficients[0].terms[0].challenges[0].0.power,
+        ChallengePower::One,
+        "the canonical spelling of the first power is One"
+    );
+
+    // The unsound merge must NOT happen: gamma*gamma and gamma^2 stay distinct.
+    let mut b = ArenaBuilder::new();
+    let v0 = read_leaf(&mut b, 0);
+    let v1 = read_leaf(&mut b, 1);
+    let g1 = challenge_leaf_with(&mut b, ChallengeKey::LookupAdditive, ChallengePower::One);
+    let g2 = challenge_leaf_with(&mut b, ChallengeKey::LookupAdditive, ChallengePower::Static(2));
+    let squared = b.mul(vec![g1, g1, v0]);
+    let power = b.mul(vec![g2, v1]);
+    let cone_b = b.add(vec![squared, power]);
+    let layer_b = assemble(&b, vec![constraint_root(cone_b, 0)], vec![RootId(0)]);
+
+    let cb = lower(&layer_b, BwdRegime::Ext).expect("Ext lowering");
+    assert_eq!(
+        cb.coefficients.len(),
+        2,
+        "gamma*gamma must not be rewritten as gamma^2 — LookupAdditive ignores power: {:?}",
+        cb.coefficients
+    );
+    let ids_b: std::collections::BTreeSet<CoefficientRecipeId> =
+        cb.terms.iter().map(|t| t.coefficient()).collect();
+    assert_eq!(ids_b.len(), 2);
 }
 
 // ── Normalization ────────────────────────────────────────────────────────────
