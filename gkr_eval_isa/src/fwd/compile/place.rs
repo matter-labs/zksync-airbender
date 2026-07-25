@@ -13,14 +13,15 @@
 //! `[def, last_use]` live range is known up front, so this is a pure offline packing
 //! problem — no forward eviction, no relocation, no cyclical recompute dependency.
 //!
-//!   1. **Ext phase.** Exts are the constrained resource (they need a contiguous
-//!      4-aligned quad). Assign each Ext, in `(def, id)` order, the lowest quad holding
-//!      no time-overlapping Ext — optimal interval partitioning at quad granularity.
-//!      Each Ext's quad is then fixed for its whole lifetime.
-//!   2. **Base phase.** The Ext quads are now immovable reservations. A Base is width-1
-//!      with no alignment constraint, so it drops into the lowest cell that is free
-//!      across its interval — i.e. not inside an overlapping Ext's quad and not sharing
-//!      a cell with a time-overlapping Base. Any residual cell-time hole works.
+//! The packing itself lives in [`crate::interval_pack`], generic over a stable value
+//! id, because the backward coefficient-term scheduler packs the same two widths over
+//! the same four-lane-aligned cell file. This module is the FORWARD adapter: it owns
+//! the `VirtualInstr`/`ResidencyStep` input shape, the forward live-range derivation
+//! ([`compute_live_ranges`]), the `Base`/`Ext` ↔ [`PackWidth`] mapping, and the
+//! translation of a [`PackFailure`] into `CompileError::BudgetBelowFloor`. The
+//! algorithm, its `(def, id)` packing order, its greedy fast path and its
+//! backtracking fallback are unchanged — see [`crate::interval_pack`]'s module doc
+//! for the two phases.
 //!
 //! Because a Base is never assigned a cell an Ext will occupy, **an Ext never has to
 //! evict a Base**: the placement is relocation-free by construction (`Placement::moves`
@@ -31,6 +32,10 @@
 //! Feasibility: if some value finds no legal cell, the layer does not fit at this
 //! `budget` and we return `BudgetBelowFloor` — the caller's fill-then-trim wrapper
 //! then admits fewer cached values and retries, exactly as before.
+//!
+//! One naming note: this module's `budget` counts the same quantity
+//! [`crate::interval_pack`] calls `lanes` (Base = 1, Ext = 4), so the forward `b16`
+//! budget is 16 of them. It is passed through unchanged.
 
 use std::collections::HashMap;
 
@@ -38,6 +43,7 @@ use cs::gkr_compiler::dag_ir::ExprId;
 
 use crate::fwd::compile::CompileError;
 use crate::fwd::isa::{LdcSub, OperandField, Sign};
+use crate::interval_pack::{self, Interval, PackFailure, PackWidth};
 
 /// Per-step resident-set membership this allocator's lifetime analysis reads
 /// (`resident_before`/`resident_after`). Local to this module — NOT the persisted
@@ -129,11 +135,10 @@ pub struct Placement {
 // Live ranges.
 // ─────────────────────────────────────────────────────────────────────────────────
 
-#[derive(Clone, Copy, Debug)]
-struct LiveRange {
-    def: usize,
-    last_use: usize,
-}
+/// The forward spelling of [`crate::interval_pack::Interval`]. Same inclusive
+/// `[def, last_use]` semantics; the alias keeps this module's own vocabulary while
+/// the packer owns the type.
+type LiveRange = Interval;
 
 /// Build the per-value `[def, last_use]` live range over the flat `instrs` index
 /// space (Step 3 item 1). See the module doc / task brief for the rules; briefly:
@@ -243,214 +248,43 @@ fn compute_live_ranges(input: &PlacementInput) -> HashMap<ValueId, LiveRange> {
     ranges
 }
 
-fn width_of(widths: &HashMap<ValueId, OperandField>, v: ValueId) -> usize {
+/// The packer's width for a forward value: `Ext` is one four-cell aligned quad,
+/// `Base` one cell. Panics on a value with no recorded width, exactly as before —
+/// `mod.rs`'s `defines` scan is exhaustive, so a miss is a compiler bug, not input
+/// data.
+fn pack_width_of(widths: &HashMap<ValueId, OperandField>, v: ValueId) -> PackWidth {
     match widths.get(&v) {
-        Some(OperandField::Ext) => 4,
-        Some(OperandField::Base) => 1,
+        Some(OperandField::Ext) => PackWidth::Quad,
+        Some(OperandField::Base) => PackWidth::Single,
         None => panic!("no width recorded for value {v:?}"),
     }
 }
 
-/// Inclusive-interval overlap on `[def, last_use]`. Two values conflict for a cell iff
-/// their live ranges overlap.
-fn overlaps(a: &LiveRange, b: &LiveRange) -> bool {
-    a.def <= b.last_use && b.def <= a.last_use
+fn width_of(widths: &HashMap<ValueId, OperandField>, v: ValueId) -> usize {
+    pack_width_of(widths, v).lanes()
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────
-// Two-phase interval packing (Ext-first). See the module doc.
+// Two-phase interval packing (Ext-first) — the adapter onto `crate::interval_pack`.
 // ─────────────────────────────────────────────────────────────────────────────────
-
-/// Backtracking-search node cap. The greedy fast path handles every layer in the
-/// committed corpus, so the search runs only when greedy strands a Base at a budget the
-/// instance actually fits (peak demand ≤ budget — checked up front). The cap bounds
-/// worst-case blowup on a pathological feasible layer, falling back to `BudgetBelowFloor`
-/// (never worse than greedy alone). Small enough to stay sub-second, large enough that
-/// no realistic layer — and no fuzzed small instance — reaches it.
-const EXT_SEARCH_NODE_CAP: u64 = 200_000;
-
-/// Greedy Ext coloring: assign each Ext (in the given order) the lowest quad holding no
-/// time-overlapping Ext. This is optimal interval partitioning — it uses exactly the
-/// peak concurrent-Ext count of quads — so it succeeds iff the Ext demand fits at all.
-/// Returns the per-Ext base cell plus the per-quad assigned ranges, or `None` when the
-/// Ext demand alone exceeds the budget (genuinely infeasible; no coloring can help).
-fn greedy_color_exts(
-    exts: &[ValueId],
-    ranges: &HashMap<ValueId, LiveRange>,
-    n_quads: usize,
-) -> Option<(HashMap<ValueId, u16>, Vec<Vec<LiveRange>>)> {
-    let mut cells: HashMap<ValueId, u16> = HashMap::new();
-    let mut quads: Vec<Vec<LiveRange>> = vec![Vec::new(); n_quads];
-    for &e in exts {
-        let r = ranges[&e];
-        let q = (0..n_quads).find(|&q| quads[q].iter().all(|o| !overlaps(&r, o)))?;
-        quads[q].push(r);
-        cells.insert(e, (q * 4) as u16);
-    }
-    Some((cells, quads))
-}
-
-/// Pack Bases into the residual cell-time left by a fixed Ext coloring: each Base (in
-/// the given order) takes the lowest cell that is (a) not inside a quad whose assigned
-/// Ext overlaps its interval, and (b) not shared with a time-overlapping Base. Cells
-/// past the last full quad (`budget % 4`) are Ext-free. Returns the per-Base cell map,
-/// or `None` if any Base finds no legal cell under this coloring. Never mutates shared
-/// state, so a caller can try it against several colorings.
-fn pack_bases(
-    bases: &[ValueId],
-    ranges: &HashMap<ValueId, LiveRange>,
-    quads: &[Vec<LiveRange>],
-    n_quads: usize,
-    budget: usize,
-) -> Option<HashMap<ValueId, u16>> {
-    let mut base_cells: HashMap<ValueId, u16> = HashMap::new();
-    let mut cell_bases: Vec<Vec<LiveRange>> = vec![Vec::new(); budget];
-    for &b in bases {
-        let r = ranges[&b];
-        let c = (0..budget).find(|&c| {
-            let q = c / 4;
-            let ext_ok = q >= n_quads || quads[q].iter().all(|o| !overlaps(&r, o));
-            ext_ok && cell_bases[c].iter().all(|o| !overlaps(&r, o))
-        })?;
-        cell_bases[c].push(r);
-        base_cells.insert(b, c as u16);
-    }
-    Some(base_cells)
-}
-
-/// Backtracking Ext coloring: assign `exts[i..]` to quads (best-fit exploration order —
-/// concentrate Exts onto already-busy quads so others stay Ext-free for longer), and at
-/// the leaf pack the Bases. Returns the first coloring under which every Base seats.
-/// Because greedy Ext coloring is base-blind, a base-feasible coloring can differ from
-/// the lowest-fit one; the search explores alternatives that greedy would never try.
-/// Fills `cells` with the winning Ext+Base assignment. `nodes` bounds the search.
-#[allow(clippy::too_many_arguments)]
-fn search_ext_coloring(
-    i: usize,
-    exts: &[ValueId],
-    bases: &[ValueId],
-    ranges: &HashMap<ValueId, LiveRange>,
-    n_quads: usize,
-    budget: usize,
-    quads: &mut Vec<Vec<LiveRange>>,
-    cells: &mut HashMap<ValueId, u16>,
-    nodes: &mut u64,
-) -> bool {
-    if *nodes == 0 {
-        return false;
-    }
-    *nodes -= 1;
-    if i == exts.len() {
-        return match pack_bases(bases, ranges, quads, n_quads, budget) {
-            Some(base_cells) => {
-                cells.extend(base_cells);
-                true
-            }
-            None => false,
-        };
-    }
-    let e = exts[i];
-    let r = ranges[&e];
-    // Eligible quads (no time-overlapping Ext), explored best-fit: quads already busy
-    // latest first (concentrate Exts, free other quads for Bases), lowest index to break
-    // ties and for a deterministic order. Exploration order is a performance heuristic —
-    // completeness comes from trying every eligible quad on backtrack.
-    let mut cand: Vec<usize> =
-        (0..n_quads).filter(|&q| quads[q].iter().all(|o| !overlaps(&r, o))).collect();
-    cand.sort_by_key(|&q| (std::cmp::Reverse(quads[q].iter().map(|o| o.last_use).max()), q));
-    for q in cand {
-        quads[q].push(r);
-        cells.insert(e, (q * 4) as u16);
-        if search_ext_coloring(i + 1, exts, bases, ranges, n_quads, budget, quads, cells, nodes) {
-            return true;
-        }
-        quads[q].pop();
-        cells.remove(&e);
-    }
-    false
-}
 
 /// Assign a fixed cell to every value: a 4-aligned quad per Ext, a single cell per Base,
 /// such that no two time-overlapping values share a cell and no Base ever lands in a
-/// live Ext's quad (⇒ relocation-free). Fast path is greedy lowest-fit (identical to the
-/// pre-search placement, so committed schedules recompile byte-for-byte); if greedy
-/// strands a Base — a base-blind Ext coloring can — fall back to a backtracking search
-/// over Ext colorings. `BudgetBelowFloor` only when the Ext demand alone overflows, or
-/// no coloring seats the Bases within the node cap.
+/// live Ext's quad (⇒ relocation-free).
+///
+/// Delegates to [`interval_pack::assign_lanes`], which is the same greedy-lowest-fit
+/// fast path plus backtracking fallback this function always ran; only the
+/// `Base`/`Ext` ↔ [`PackWidth`] mapping and the `BudgetBelowFloor` floor spelling are
+/// forward-specific and stay here. The three floors are exactly the ones this function
+/// reported before the extraction: the width-weighted peak, `(n_quads + 1) * 4` when the
+/// Ext demand alone overflows, and `budget + 1` when no coloring seats the Bases.
 fn assign_cells(
     ranges: &HashMap<ValueId, LiveRange>,
     widths: &HashMap<ValueId, OperandField>,
     budget: usize,
 ) -> Result<HashMap<ValueId, u16>, CompileError> {
-    let n_quads = budget / 4;
-
-    // Necessary feasibility condition, checked FIRST: at no instant may the width-weighted
-    // live demand (Ext=4, Base=1) exceed the budget. Failing this means no placement can
-    // fit, so return immediately — critically, this keeps a genuinely oversubscribed input
-    // (e.g. the fill-then-trim wrapper's eviction-off FILL probe, or a GA candidate that
-    // doesn't fit) from ever reaching the backtracking search and grinding to the node cap.
-    if let Some(max_last) = ranges.values().map(|r| r.last_use).max() {
-        let mut delta = vec![0i64; max_last + 2];
-        for (&v, r) in ranges {
-            let w = width_of(widths, v) as i64;
-            delta[r.def] += w;
-            delta[r.last_use + 1] -= w;
-        }
-        let (mut cur, mut peak) = (0i64, 0i64);
-        for d in delta {
-            cur += d;
-            peak = peak.max(cur);
-        }
-        if peak > budget as i64 {
-            return Err(CompileError::BudgetBelowFloor { floor: peak as usize, budget });
-        }
-    }
-
-    // Partition by width; pack each class in deterministic `(def, id)` order so the
-    // assignment is a pure function of the input (byte-exact program parity).
-    let mut exts: Vec<ValueId> = Vec::new();
-    let mut bases: Vec<ValueId> = Vec::new();
-    for &v in ranges.keys() {
-        match widths.get(&v) {
-            Some(OperandField::Ext) => exts.push(v),
-            Some(OperandField::Base) => bases.push(v),
-            None => panic!("no width recorded for value {v:?}"),
-        }
-    }
-    let sort_key = |v: &ValueId| (ranges[v].def, v.0);
-    exts.sort_by_key(sort_key);
-    bases.sort_by_key(sort_key);
-
-    // Greedy Ext coloring. Failure here means the peak concurrent-Ext count exceeds the
-    // quad budget — genuinely infeasible, no coloring recovers it.
-    let (mut cells, quads) = greedy_color_exts(&exts, ranges, n_quads)
-        .ok_or(CompileError::BudgetBelowFloor { floor: (n_quads + 1) * 4, budget })?;
-
-    // Fast path: greedy lowest-fit Base packing on the greedy coloring.
-    if let Some(base_cells) = pack_bases(&bases, ranges, &quads, n_quads, budget) {
-        cells.extend(base_cells);
-        return Ok(cells);
-    }
-
-    // A Base stranded under the greedy coloring. Because the Ext coloring is base-blind,
-    // a different (still ≤ n_quads) coloring may seat every Base — search for one.
-    let mut search_cells: HashMap<ValueId, u16> = HashMap::new();
-    let mut search_quads: Vec<Vec<LiveRange>> = vec![Vec::new(); n_quads];
-    let mut nodes = EXT_SEARCH_NODE_CAP;
-    if search_ext_coloring(
-        0,
-        &exts,
-        &bases,
-        ranges,
-        n_quads,
-        budget,
-        &mut search_quads,
-        &mut search_cells,
-        &mut nodes,
-    ) {
-        return Ok(search_cells);
-    }
-    Err(CompileError::BudgetBelowFloor { floor: budget + 1, budget })
+    interval_pack::assign_lanes(ranges, |v| pack_width_of(widths, v), budget)
+        .map_err(|e: PackFailure| CompileError::BudgetBelowFloor { floor: e.floor(budget), budget })
 }
 
 pub fn plan_placement(input: &PlacementInput) -> Result<Placement, CompileError> {
@@ -540,6 +374,12 @@ mod tests {
 
     fn v(n: u32) -> ExprId {
         ExprId(n)
+    }
+
+    /// The free-function spelling of [`Interval::overlaps`] these tests were written
+    /// against, kept so the oracle and the validity checks read as before.
+    fn overlaps(a: &LiveRange, b: &LiveRange) -> bool {
+        a.overlaps(b)
     }
 
     // Helper: one step whose resident sets are the given ExprId lists.

@@ -5,4 +5,5 @@
 pub mod bwd;
 pub mod eval_plan;
 pub mod fwd;
+pub mod interval_pack;
 pub mod schedule_search;
