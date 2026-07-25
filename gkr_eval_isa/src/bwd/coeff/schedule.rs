@@ -813,7 +813,12 @@ fn expand(layer: &CoeffLayer, order: &[TermId]) -> Result<Vec<(u32, u8, SlotKind
                 order: order.len(),
             });
         }
-        for (slot, kind) in term_slots(layer, term).into_iter().flatten().enumerate() {
+        // `?`, NOT `.into_iter().flatten()`: flattening a `Result` yields an
+        // EMPTY iterator on `Err`, which would make `ProjectionRoleMismatch`,
+        // `OperandFieldConflict` and `UnknownSource` inert and silently drop a
+        // malformed term from the action stream — in the certificate as well as
+        // the pager, since both expand through here.
+        for (slot, kind) in term_slots(layer, term)?.into_iter().enumerate() {
             out.push((position as u32, slot as u8, kind));
         }
     }
@@ -1995,5 +2000,86 @@ mod tests {
     fn e4_is_the_widest_value() {
         assert!(ValueWidth::E4 > ValueWidth::Bf, "a 16-byte E4 bucket is wider than a BF lane");
         assert_eq!(ValueWidth::E4.lanes(), 4 * ValueWidth::Bf.lanes());
+    }
+
+    fn key(next_use: u32, price: RebuildPrice, width: ValueWidth, source: u32) -> EvictionKey {
+        EvictionKey {
+            farthest_next_use: Reverse(next_use),
+            cheapest_rebuild: price,
+            widest_value: Reverse(width),
+            projection: ProjectionId::endpoint0(SourceId(source)),
+        }
+    }
+
+    /// Each of the four keys must be decisive in turn, and the lower-priority
+    /// keys must be set AGAINST the expected winner so they cannot be what
+    /// actually decided. `BTreeSet`'s first element is the victim, so "sorts
+    /// first" means "evicted first".
+    #[test]
+    fn eviction_ranking_is_lexicographic_in_the_declared_order() {
+        let cheap = RebuildPrice { source_read_bytes: 4, bf_ops: 0, mixed_ops: 0, e4_ops: 0 };
+        let dear = RebuildPrice { source_read_bytes: 16, bf_ops: 0, mixed_ops: 0, e4_ops: 0 };
+
+        // 1. Farthest next use wins even when price, width and id all disagree.
+        assert!(
+            key(9, dear, ValueWidth::Bf, 9) < key(3, cheap, ValueWidth::E4, 0),
+            "farthest next use is the primary key"
+        );
+        // 2. At equal distance, the cheapest rebuild goes first.
+        assert!(
+            key(5, cheap, ValueWidth::Bf, 9) < key(5, dear, ValueWidth::E4, 0),
+            "cheapest rebuild price is the secondary key"
+        );
+        // 3. At equal distance AND equal price, the WIDEST value goes first. The
+        //    E4 side carries the HIGHER id, so the id key cannot be what decided.
+        assert!(
+            key(5, cheap, ValueWidth::E4, 9) < key(5, cheap, ValueWidth::Bf, 0),
+            "widest value is the tertiary key: a 16-byte E4 bucket outranks a BF lane"
+        );
+        // 4. Only a total tie falls through to the stable identity.
+        assert!(
+            key(5, cheap, ValueWidth::E4, 0) < key(5, cheap, ValueWidth::E4, 1),
+            "stable ProjectionId is the final key"
+        );
+    }
+
+    /// The width key is INERT for prices built by [`source_prices`], and this
+    /// pins why — so a later task does not "fix" a ranking that is already
+    /// correct, and knows the effective ladder is (distance, price, id).
+    ///
+    /// Two projections tie on next use only if ONE term consumes both, since a
+    /// position holds one term. The terms that consume two projections of
+    /// different sources are `C2Product` (two `Delta`s, widths may differ) and
+    /// `DualProduct` (which §6 forces to Ext on both sides, so widths agree).
+    /// That leaves `C2Product`, and there a width tie is arithmetically
+    /// impossible: `Delta` adds one subtraction in its OWN field, so a BF delta
+    /// has `bf_ops = 2*k + 1` and an E4 delta has `bf_ops = 2*k'`, which can
+    /// never be equal. `bf_ops` precedes `widest_value`, so price always decides
+    /// first.
+    #[test]
+    fn width_cannot_decide_between_two_deltas_of_different_widths() {
+        for bf_endpoint_ops in 0..4u32 {
+            for e4_endpoint_ops in 0..4u32 {
+                let bf = SourcePrice {
+                    width: ValueWidth::Bf,
+                    element_bytes: 16,
+                    endpoint_ops: OpCounts { bf: bf_endpoint_ops, mixed: 0, e4: 0 },
+                };
+                let e4 = SourcePrice {
+                    width: ValueWidth::E4,
+                    element_bytes: 16,
+                    endpoint_ops: OpCounts { bf: e4_endpoint_ops, mixed: 0, e4: 0 },
+                };
+                let prices = rebuild_prices(&[bf, e4]);
+                let bf_delta = prices[projection_index(ProjectionId::delta(SourceId(0)))];
+                let e4_delta = prices[projection_index(ProjectionId::delta(SourceId(1)))];
+                assert_ne!(
+                    bf_delta.bf_ops % 2,
+                    e4_delta.bf_ops % 2,
+                    "a delta subtraction gives the two widths opposite bf_ops parity"
+                );
+                assert_ne!(bf_delta, e4_delta, "so two deltas of different widths never tie");
+            }
+        }
     }
 }

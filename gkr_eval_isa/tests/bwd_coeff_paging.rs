@@ -19,11 +19,12 @@ use std::collections::BTreeSet;
 use common::{FIXTURES, layers_with_bwd_roots};
 use cs::gkr_compiler::dag_ir::{BwdRegime, FieldKind, ReadPlace};
 use gkr_eval_isa::bwd::coeff::schedule::{
-    CellBudget, OpCounts, PagingAction, PagingPlan, PagingRequest, ProjectionOutcome,
-    ResolutionGroup, SeedKind, SourcePrice, ValueWidth, budget_aware_greedy_order,
-    certify_paging_plan, default_target_depth, page_projections, select_paged_order, source_prices,
-    stable_normalized_order, sweep_budgets,
+    CellBudget, OpCounts, PagingAction, PagingCertificateError, PagingPlan, PagingRequest,
+    ProjectionAction, ProjectionOutcome, ResolutionGroup, SeedKind, SourcePrice, ValueWidth,
+    budget_aware_greedy_order, certify_paging_plan, default_target_depth, page_projections,
+    select_paged_order, source_prices, stable_normalized_order, sweep_budgets,
 };
+use gkr_eval_isa::bwd::coeff::schedule::ScheduleError;
 use gkr_eval_isa::bwd::coeff::{
     CoeffLayer, CoeffSource, CoeffTerm, CoefficientRecipeId, ProjectionId, SourceId, TermId,
     lower_coeff_layer,
@@ -677,6 +678,11 @@ fn paging_certificate_rejects_mutated_action() {
     let good = page_stable(&l, &prices, r0(2));
     let step = good.actions.iter().position(|a| !a.evicted.is_empty()).expect("an eviction step");
 
+    // Each mutation asserts the EXACT rejecting variant. A bare `is_err()` would
+    // let a mutation pass for the wrong reason and leave the branch it was meant
+    // to exercise untested.
+    let rejects = |m: &PagingPlan| certify_paging_plan(&l, &prices, m).unwrap_err();
+
     // (a) A flipped hit/miss state.
     let mut m = good.clone();
     let hit = m
@@ -686,53 +692,149 @@ fn paging_certificate_rejects_mutated_action() {
         .find(|p| p.outcome == ProjectionOutcome::Hit)
         .expect("a hit");
     hit.outcome = ProjectionOutcome::Fill;
-    assert!(certify_paging_plan(&l, &prices, &m).is_err(), "a flipped hit/miss must be rejected");
+    assert!(
+        matches!(rejects(&m), PagingCertificateError::OutcomeMismatch { .. }),
+        "a flipped hit/miss must be rejected as an outcome mismatch"
+    );
 
     // (b) A tampered cost.
     let mut m = good.clone();
     m.actions[step].source_read_bytes += 4;
-    assert!(certify_paging_plan(&l, &prices, &m).is_err(), "a tampered read cost must be rejected");
+    assert!(
+        matches!(
+            rejects(&m),
+            PagingCertificateError::StepCostMismatch { field: "source_read_bytes", .. }
+        ),
+        "a tampered read cost must be rejected as a step cost mismatch"
+    );
 
     // (c) A tampered resident set.
     let mut m = good.clone();
     m.actions[step].resident_after.pop();
     assert!(
-        certify_paging_plan(&l, &prices, &m).is_err(),
+        matches!(rejects(&m), PagingCertificateError::ResidentSetMismatch { .. }),
         "a resident set that disagrees with the declared decisions must be rejected"
     );
 
-    // (d) A dropped eviction — the width would then exceed the budget.
+    // (d) A dropped eviction — the width then exceeds the budget.
     let mut m = good.clone();
     m.actions[step].evicted.clear();
     assert!(
-        certify_paging_plan(&l, &prices, &m).is_err(),
-        "dropping an eviction must be rejected"
-    );
-
-    // (e) An illegal paired resolution on an Endpoint0-only use.
-    let mut m = good.clone();
-    let single = m
-        .actions
-        .iter_mut()
-        .find(|a| matches!(a.group, ResolutionGroup::Single(_)))
-        .expect("a single resolution");
-    if let ResolutionGroup::Single(p) = single.group {
-        single.group =
-            ResolutionGroup::Pair { source: p.source, endpoint0: endpoint0(p.source.0), delta: p };
-    }
-    assert!(
-        certify_paging_plan(&l, &prices, &m).is_err(),
-        "an unauthorised paired resolution must be rejected"
+        matches!(rejects(&m), PagingCertificateError::CapacityExceeded { .. }),
+        "dropping an eviction must be rejected as a capacity overrun"
     );
 
     // (f) A tampered total cost.
     let mut m = good.clone();
     m.cost.source_read_bytes += 1;
-    assert!(certify_paging_plan(&l, &prices, &m).is_err(), "a tampered total must be rejected");
+    assert!(
+        matches!(
+            rejects(&m),
+            PagingCertificateError::TotalCostMismatch { field: "source_read_bytes", .. }
+        ),
+        "a tampered total must be rejected"
+    );
 
-    // The untouched plan still certifies, so the rejections above are about the
+    // (e) An illegal paired resolution. This needs a layer that HAS an
+    // `Endpoint0`-only use: on a `C2Product` operand both `Single` and `Pair` are
+    // legal forms (§8), so pairing one there is not the violation being tested —
+    // it trips the projection-list check instead and leaves
+    // `IllegalResolutionGroup` unexercised.
+    let e = FieldKind::Ext;
+    let c0_layer = layer(
+        BwdRegime::R0,
+        &[FieldKind::Ext],
+        vec![c0(0, 0, e), c2(1, 0, e, 0, e), c0(2, 0, e)],
+    );
+    let c0_prices = [e4_read()];
+    let c0_plan = page_stable(&c0_layer, &c0_prices, r0(2));
+
+    let mut m = c0_plan.clone();
+    let slot = m
+        .actions
+        .iter_mut()
+        .find(|a| a.term == TermId(0))
+        .expect("the C0Linear action");
+    let victim = endpoint0(0);
+    slot.group = ResolutionGroup::Pair { source: SourceId(0), endpoint0: victim, delta: delta(0) };
+    slot.projections.push(ProjectionAction {
+        projection: delta(0),
+        consumed: false,
+        outcome: ProjectionOutcome::Bypass,
+    });
+    assert!(
+        matches!(
+            certify_paging_plan(&c0_layer, &c0_prices, &m).unwrap_err(),
+            PagingCertificateError::IllegalResolutionGroup { .. }
+        ),
+        "an Endpoint0-only use may never resolve s1, so pairing it is illegal (§8)"
+    );
+
+    // The untouched plans still certify, so the rejections above are about the
     // mutations and not about the certificate being vacuously strict.
     certify_paging_plan(&l, &prices, &good).expect("the unmutated plan certifies");
+    certify_paging_plan(&c0_layer, &c0_prices, &c0_plan).expect("the unmutated C0 plan certifies");
+}
+
+/// A malformed term must be REJECTED, never silently dropped from the action
+/// stream.
+///
+/// `expand` used to build its slots with `term_slots(..).into_iter().flatten()`,
+/// which turns an `Err` into an EMPTY iterator — so a term with a bad operand
+/// role or a field its source contradicts simply vanished, in the certificate as
+/// well as the pager. Only the lowering's own discipline kept that latent.
+#[test]
+fn malformed_terms_are_rejected_not_silently_dropped() {
+    let b = FieldKind::Base;
+    let e = FieldKind::Ext;
+    let prices = [bf_read(), bf_read()];
+
+    // A `C0Linear` over a `Delta` — a role its opcode cannot consume.
+    let bad_role = layer(
+        BwdRegime::R0,
+        &[b, b],
+        vec![CoeffTerm::C0Linear {
+            id: TermId(0),
+            coefficient: CoefficientRecipeId::ONE,
+            value: delta(0),
+            field: b,
+        }],
+    );
+    let order = stable_normalized_order(&bad_role);
+    assert!(
+        matches!(
+            page_projections(&bad_role, &prices, r0(2), &order),
+            Err(ScheduleError::ProjectionRoleMismatch { term: TermId(0), .. })
+        ),
+        "a C0Linear over a Delta must be rejected, not dropped"
+    );
+    assert!(
+        budget_aware_greedy_order(&bad_role, &prices, budget(2)).is_err(),
+        "the seed constructor must reject it too"
+    );
+
+    // A term whose declared operand field contradicts its source's field: the
+    // opcode category and the resident width would disagree.
+    let bad_field = layer(BwdRegime::R0, &[b, b], vec![c2(0, 0, e, 1, b)]);
+    let order = stable_normalized_order(&bad_field);
+    assert!(
+        matches!(
+            page_projections(&bad_field, &prices, r0(2), &order),
+            Err(ScheduleError::OperandFieldConflict { term: TermId(0), .. })
+        ),
+        "a term field that contradicts its source must be rejected, not dropped"
+    );
+
+    // A term naming a source outside the table.
+    let bad_source = layer(BwdRegime::R0, &[b], vec![c2(0, 0, b, 5, b)]);
+    let order = stable_normalized_order(&bad_source);
+    assert!(
+        matches!(
+            page_projections(&bad_source, &prices, r0(2), &order),
+            Err(ScheduleError::UnknownSource { term: TermId(0), .. })
+        ),
+        "an out-of-range source must be rejected, not dropped"
+    );
 }
 
 // ── Production corpus: termination and capacity compliance ───────────────────
@@ -819,6 +921,115 @@ fn corpus_paging_terminates_and_fits_every_budget() {
     report.sort();
     report.reverse();
     println!("== c2 -> c16 source-read reduction, stable order, per coordinate ==");
+    for line in &report {
+        println!("{line}");
+    }
+}
+
+/// Seed selection and the ported greedy constructor, at production scale.
+///
+/// The other two corpus gates page the STABLE order only, which leaves
+/// `select_paged_order` / `sweep_budgets` and the quadratic
+/// `budget_aware_greedy_order` unmeasured on real layers. This runs the whole
+/// bounded c2..c16 sweep — greedy constructor, seed selection, pager and
+/// certificate — on the heaviest coordinates in the corpus.
+///
+/// Bounded and release-built: a fixed, deterministic coordinate set, three
+/// candidate orders per budget, no search.
+#[test]
+fn corpus_seed_selection_runs_at_scale() {
+    let coordinates = corpus_coordinates();
+
+    // Select deterministically: every coordinate that SATURATES c16 (peak
+    // residency pegged at 64 lanes, i.e. permanent eviction pressure) plus the
+    // eight largest by term count. Saturation is read from a cheap stable-order
+    // pass, so the selection itself costs nothing quadratic.
+    let mut sized: Vec<(usize, bool, usize)> = coordinates
+        .par_iter()
+        .enumerate()
+        .map(|(i, (_, _, regime, lowered, prices))| {
+            let order = stable_normalized_order(lowered);
+            let request = PagingRequest {
+                budget: *CellBudget::ALL.last().unwrap(),
+                target_depth: default_target_depth(*regime),
+            };
+            let plan = page_projections(lowered, prices, request, &order).expect("pager");
+            (i, plan.cost.peak_resident_lanes == request.budget.lanes(), lowered.terms.len())
+        })
+        .collect();
+    sized.sort_by_key(|(i, saturates, terms)| (std::cmp::Reverse(*terms), !*saturates, *i));
+    let selected: BTreeSet<usize> = sized
+        .iter()
+        .enumerate()
+        .filter(|(rank, (_, saturates, _))| *rank < 8 || *saturates)
+        .map(|(_, (i, _, _))| *i)
+        .collect();
+    assert!(selected.len() >= 16, "the selection must cover the c16-saturating coordinates");
+
+    let started = std::time::Instant::now();
+    let report: Vec<String> = selected
+        .par_iter()
+        .map(|&i| {
+            let (name, li, regime, lowered, prices) = &coordinates[i];
+            let tag = if *regime == BwdRegime::R0 { "R0" } else { "Ext" };
+            let depth = default_target_depth(*regime);
+            let sweep = sweep_budgets(lowered, prices, depth)
+                .unwrap_or_else(|e| panic!("[{name} L{li} {tag}] sweep: {e:?}"));
+            assert_eq!(sweep.outcomes.len(), CellBudget::ALL.len());
+
+            let mut greedy_wins = 0usize;
+            for outcome in &sweep.outcomes {
+                assert!(outcome.candidates.len() <= 3, "bounded seed selection");
+                certify_paging_plan(lowered, prices, &outcome.plan).unwrap_or_else(|e| {
+                    panic!(
+                        "[{name} L{li} {tag} {}] certificate: {e:?}",
+                        outcome.request.budget.label()
+                    )
+                });
+                assert!(
+                    outcome.plan.cost.peak_resident_lanes <= outcome.request.budget.lanes(),
+                    "[{name} L{li} {tag} {}] over budget",
+                    outcome.request.budget.label()
+                );
+                // The winner really is the exact best over the candidates.
+                let best = outcome
+                    .candidates
+                    .iter()
+                    .min_by(|a, b| (a.score, &a.order).cmp(&(b.score, &b.order)))
+                    .expect("at least one candidate");
+                assert_eq!(outcome.plan.order, best.order, "the exact best score wins");
+                if outcome.winner != SeedKind::StableNormalized {
+                    greedy_wins += 1;
+                }
+            }
+
+            // The whole sweep is byte-reproducible, seed selection included.
+            let again = sweep_budgets(lowered, prices, depth).expect("sweep");
+            let bytes = |s: &gkr_eval_isa::bwd::coeff::schedule::BudgetSweep| {
+                s.outcomes.iter().flat_map(|o| o.plan.canonical_bytes()).collect::<Vec<u8>>()
+            };
+            assert_eq!(bytes(&sweep), bytes(&again), "[{name} L{li} {tag}] sweep not deterministic");
+
+            let stable = &sweep.outcomes[0];
+            let widest = sweep.outcomes.last().unwrap();
+            format!(
+                "{name} L{li} {tag}: terms={} c2[bytes={}] c16[bytes={}] \
+                 non-stable winners={greedy_wins}/15",
+                lowered.terms.len(),
+                stable.plan.cost.source_read_bytes,
+                widest.plan.cost.source_read_bytes,
+            )
+        })
+        .collect();
+
+    let elapsed = started.elapsed();
+    println!(
+        "== seed selection over {} heaviest coordinates x 15 budgets x2 in {:.2?} ==",
+        selected.len(),
+        elapsed
+    );
+    let mut report = report;
+    report.sort();
     for line in &report {
         println!("{line}");
     }
