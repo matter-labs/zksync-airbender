@@ -30,8 +30,8 @@ use cs::gkr_compiler::dag_ir::{
 };
 
 use super::limits::{
-    KERNEL_ARGUMENT_CEILING_BYTES, MOVE_WORDS, SOURCE_WINDOW_COLUMNS, TermCategory,
-    WORDS_PER_INPUT_MAX, WORDS_PER_INPUT_MIN,
+    ASSUMED_MOVES_PER_REUSABLE_PROJECTION, KERNEL_ARGUMENT_CEILING_BYTES, MOVE_WORDS,
+    SOURCE_WINDOW_COLUMNS, TermCategory, WORDS_PER_INPUT_MAX, WORDS_PER_INPUT_MIN,
 };
 use super::lower::{LoweringTrace, lower_coeff_layer_traced};
 use super::model::{CoeffError, CoeffLayer, CoeffSource, CoeffTerm, ProjectionId};
@@ -227,8 +227,17 @@ impl CoeffCensus {
         self.lower_bound_program_bytes <= KERNEL_ARGUMENT_CEILING_BYTES
     }
 
-    /// `true` when even the most pessimistic stream fits, so the coordinate is
-    /// PROVEN to fit before any schedule exists.
+    /// `true` when the conservative stream fits, under the ONE assumption
+    /// [`upper_bound_program_words`](super::limits::upper_bound_program_words)
+    /// documents: [`ASSUMED_MOVES_PER_REUSABLE_PROJECTION`] move per reusable
+    /// projection. The term-word half is proven maximal; the move half is not,
+    /// because design §7.3 does not cap the moves Task 5's placement repair emits.
+    ///
+    /// Read this as "fits with the assumed move budget", not "no schedule can
+    /// overflow". The exposure is quantified on
+    /// `upper_bound_program_words` — 3.64x headroom on the worst coordinate.
+    ///
+    /// [`ASSUMED_MOVES_PER_REUSABLE_PROJECTION`]: super::limits::ASSUMED_MOVES_PER_REUSABLE_PROJECTION
     pub fn upper_bound_fits(&self) -> bool {
         self.upper_bound_program_bytes <= KERNEL_ARGUMENT_CEILING_BYTES
     }
@@ -328,20 +337,31 @@ pub fn census_coeff_layer(
             }
         }
     }
-    // A claim-only CONSTRAINT root is the case §5.2 says contributes no `acc_c0`;
-    // a claim-bearing OUTPUT root without a sink is a lowering error, so it can
-    // never reach here.
-    debug_assert_eq!(
-        c.constraint_only_roots,
-        canonical
-            .roots
-            .iter()
-            .filter(|r| {
-                r.claim
-                    .as_ref()
-                    .is_some_and(|claim| matches!(claim.origin.slot, RootSlot::Constraint(_)))
-            })
-            .count()
+    // `constraint_only_roots` is reported as "the roots §5.2 says contribute no
+    // `acc_c0`", so it must actually BE the claim-only CONSTRAINT roots. A REAL
+    // assertion, not a `debug_assert`: the census's only sanctioned mode is
+    // `--release`, where a debug assertion never runs, and a freeze gate that does
+    // not run is worse than none.
+    //
+    // Reachable, not decorative: `lower_r0_root_c0` rejects a sinkless
+    // `RootSlot::Output` root (`MaterializedOutputMissing`) and a materialized
+    // `RootSlot::Constraint` root (`MaterializedConstraintRoot`), but that check
+    // runs in the R0 regime ONLY. In `Ext` a sinkless output root lowers fine and
+    // would silently inflate this field.
+    let constraint_slot_roots = canonical
+        .roots
+        .iter()
+        .filter(|r| {
+            r.claim
+                .as_ref()
+                .is_some_and(|claim| matches!(claim.origin.slot, RootSlot::Constraint(_)))
+        })
+        .count();
+    assert_eq!(
+        c.constraint_only_roots, constraint_slot_roots,
+        "a claim-bearing root without a materialized sink must be a RootSlot::Constraint; \
+         {} sinkless claim roots vs {} constraint-slot roots",
+        c.constraint_only_roots, constraint_slot_roots
     );
 
     let r0 = lowered.regime == BwdRegime::R0;
@@ -421,11 +441,18 @@ pub fn census_coeff_layer(
     // words, no fills, no plans and no moves. Nothing a codec can do makes a
     // term set cheaper than this, so an overflow here is unrepairable.
     c.lower_bound_program_bytes = 2 * lower_words;
-    // UPPER: every input takes its maximum canonical extension (`FillSource` +
-    // destination lane, or `PlannedSource` + plan word — §9.4/§9.5 allow at most
-    // one extension word per input), plus one 3-word move (§9.6) for every
-    // projection a schedule could want to relocate. No schedule can exceed this.
-    c.upper_bound_program_bytes = 2 * (upper_words + c.reusable_projections * MOVE_WORDS);
+    // UPPER: two halves with different strength, both spelled out on
+    // `limits::upper_bound_program_words`.
+    //   * term words — PROVEN maximal: §9.4/§9.5 allow at most one extension word
+    //     per input (`FillSource` + destination lane, `PlannedSource` + plan word,
+    //     and for a native dual that one plan word covers the whole pair); and
+    //   * moves — ASSUMED at `ASSUMED_MOVES_PER_REUSABLE_PROJECTION` per reusable
+    //     projection. Design §7.3 does not cap the moves Task 5's placement repair
+    //     emits, so a schedule could exceed this half. See the TODO(task-8) on
+    //     `upper_bound_program_words` and the 3.64x exposure recorded there.
+    c.upper_bound_program_bytes = 2
+        * (upper_words
+            + c.reusable_projections * MOVE_WORDS * ASSUMED_MOVES_PER_REUSABLE_PROJECTION);
 
     c
 }
@@ -593,7 +620,15 @@ pub fn census_csv(rows: &[CoeffCensusRow]) -> String {
 }
 
 /// The live opcode categories one lowered layer uses, for the opcode-table
-/// freeze. Every entry must be a legal category of `lowered.regime`.
+/// freeze.
+///
+/// Every returned category is a legal category of `lowered.regime`, asserted for
+/// real rather than under `debug_assert` — the census runs in `--release`, so a
+/// debug assertion would never execute in the mode that produces the frozen
+/// numbers. Reachable, not decorative: a `DualProduct` in an R0 layer or a
+/// base-field `C0Linear` in an `Ext` layer maps to a category its regime's opcode
+/// table cannot encode, and this is the library-level guard for any caller (both
+/// censuses additionally assert it per row, where they can name the coordinate).
 pub fn live_term_categories(lowered: &CoeffLayer) -> BTreeSet<TermCategory> {
     let r0 = lowered.regime == BwdRegime::R0;
     let mut live = BTreeSet::new();
@@ -611,6 +646,13 @@ pub fn live_term_categories(lowered: &CoeffLayer) -> BTreeSet<TermCategory> {
             CoeffTerm::DualProduct { .. } => TermCategory::DualProductE4,
         });
     }
-    debug_assert!(live.iter().all(|category| category.is_legal_in(r0)));
+    for category in &live {
+        assert!(
+            category.is_legal_in(r0),
+            "{} is not encodable in the {} opcode table",
+            category.label(),
+            if r0 { "R0" } else { "continuation" }
+        );
+    }
     live
 }

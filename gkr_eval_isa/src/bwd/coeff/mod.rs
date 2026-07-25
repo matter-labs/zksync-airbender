@@ -29,9 +29,10 @@ pub mod stats;
 
 pub use interp::{CoeffResolver, interpret_coeff_layer};
 pub use limits::{
-    CONTINUATION_LIVE_OPCODES, HEADER_COEFFICIENT_BITS, HEADER_OPCODE_BITS,
-    KERNEL_ARGUMENT_CEILING_BYTES, MAX_COEFFICIENT_ENCODINGS, MAX_SOURCE_WINDOWS,
-    R0_LIVE_OPCODES, SOURCE_WINDOW_COLUMNS, TermCategory, continuation_opcode, r0_opcode,
+    ASSUMED_MOVES_PER_REUSABLE_PROJECTION, CONTINUATION_LIVE_OPCODES, CONTINUATION_OPCODE_TABLE,
+    HEADER_COEFFICIENT_BITS, HEADER_OPCODE_BITS, KERNEL_ARGUMENT_CEILING_BYTES,
+    MAX_COEFFICIENT_ENCODINGS, MAX_SOURCE_WINDOWS, R0_LIVE_OPCODES, R0_OPCODE_TABLE,
+    SOURCE_WINDOW_COLUMNS, TermCategory, continuation_opcode, r0_opcode,
 };
 pub use lower::{LoweringTrace, lower_coeff_layer, lower_coeff_layer_traced};
 pub use stats::{

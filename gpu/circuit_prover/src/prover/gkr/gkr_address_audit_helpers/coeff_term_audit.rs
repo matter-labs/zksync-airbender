@@ -156,6 +156,10 @@ struct Corpus {
     mandatory: Vec<CoeffCensusRow>,
     variant: Vec<CoeffCensusRow>,
     conditional: Vec<CoeffCensusRow>,
+    /// Coordinates the lowering REJECTED, as data. Empty on this corpus, which is
+    /// why the §3.1 exclude-and-continue branch is unreachable today — see the
+    /// comment on the assertion in `bwd_coeff_complete_corpus_census`. Kept because
+    /// §3.1 requires the first failing coordinate to be reportable.
     failures: Vec<CoeffCensusFailure>,
 }
 
@@ -237,9 +241,18 @@ fn maxima<'a>(rows: impl IntoIterator<Item = &'a CoeffCensusRow>) -> CoeffCensus
 fn bwd_coeff_complete_corpus_census() {
     let corpus = corpus();
 
-    // A lowering rejection anywhere is a finding, not a layer to skip. For the
-    // conditional circuit it would be §3.1's whole-circuit exclusion; for a
-    // mandatory one it fails the gate.
+    // A lowering rejection anywhere is a finding, not a layer to skip.
+    //
+    // As of this census there are ZERO rejections across all 138 coordinates, and
+    // this assertion is unconditional — so the §3.1 "exclude the conditional
+    // circuit and continue with the rest of the corpus" branch is currently
+    // UNREACHABLE, for the conditional circuit as much as for a mandatory one.
+    // `census_layer` still returns rejections as `CoeffCensusFailure` DATA rather
+    // than panicking, and `Corpus::failures` still carries them per coordinate,
+    // because §3.1 mandates that recording path: the day a conditional coordinate
+    // does fail, the first failing coordinate has to be reportable rather than a
+    // stack trace. Do not collapse the data path into a panic just because nothing
+    // reaches it today.
     assert_eq!(
         corpus.failures,
         Vec::new(),

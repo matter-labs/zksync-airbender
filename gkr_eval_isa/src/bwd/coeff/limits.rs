@@ -83,6 +83,35 @@ pub enum TermCategory {
 }
 
 impl TermCategory {
+    /// Every category, for the exhaustive opcode-table checks below. Adding a
+    /// variant without adding it here is a compile error
+    /// ([`all_categories_are_listed`]).
+    pub const ALL: [TermCategory; 8] = [
+        TermCategory::C0LinearBf,
+        TermCategory::C0LinearE4,
+        TermCategory::C2ProductBfBf,
+        TermCategory::C2ProductBfE4,
+        TermCategory::C2ProductE4E4,
+        TermCategory::DualProductE4,
+        TermCategory::MoveBf,
+        TermCategory::MoveE4,
+    ];
+
+    /// Const-comparable identity. Derived `PartialEq` is not `const`, and the
+    /// opcode-table checks run at compile time.
+    pub const fn tag(self) -> u8 {
+        match self {
+            TermCategory::C0LinearBf => 0,
+            TermCategory::C0LinearE4 => 1,
+            TermCategory::C2ProductBfBf => 2,
+            TermCategory::C2ProductBfE4 => 3,
+            TermCategory::C2ProductE4E4 => 4,
+            TermCategory::DualProductE4 => 5,
+            TermCategory::MoveBf => 6,
+            TermCategory::MoveE4 => 7,
+        }
+    }
+
     pub fn is_legal_in(self, r0: bool) -> bool {
         if r0 { r0_opcode(self).is_some() } else { continuation_opcode(self).is_some() }
     }
@@ -157,14 +186,147 @@ pub const fn continuation_opcode(category: TermCategory) -> Option<u16> {
     }
 }
 
-/// Live R0 opcodes: seven, exactly as §9.2 predicted.
-pub const R0_LIVE_OPCODES: usize = 7;
+// ── The opcode numbers, pinned as data ───────────────────────────────────────
+//
+// The wire ABI is these NUMBERS. Task 9 emits CUDA static assertions against
+// them, so a silent Rust-side renumber — reordering a match arm in
+// `r0_opcode`/`continuation_opcode` — would become a Rust<->CUDA disagreement
+// discovered on the GPU. The tables below are therefore the authority, and the
+// compile-time checks that follow make the two encoder functions AGREE with them
+// in both directions: every table row must be what the function returns, and
+// every category the function encodes must appear in the table.
+
+/// FROZEN R0 opcode assignment, `(opcode, category)`, in opcode order.
+pub const R0_OPCODE_TABLE: &[(u16, TermCategory)] = &[
+    (0, TermCategory::C0LinearBf),
+    (1, TermCategory::C0LinearE4),
+    (2, TermCategory::C2ProductBfBf),
+    (3, TermCategory::C2ProductBfE4),
+    (4, TermCategory::C2ProductE4E4),
+    (5, TermCategory::MoveBf),
+    (6, TermCategory::MoveE4),
+    // 7 is deliberately invalid: no uncensused category is pre-allocated.
+];
+
+/// FROZEN continuation opcode assignment, `(opcode, category)`, in opcode order.
+/// 3..7 are deliberately invalid — see [`continuation_opcode`].
+pub const CONTINUATION_OPCODE_TABLE: &[(u16, TermCategory)] = &[
+    (0, TermCategory::C0LinearE4),
+    (1, TermCategory::DualProductE4),
+    (2, TermCategory::MoveE4),
+];
+
+/// Live R0 opcodes: seven, exactly as §9.2 predicted. DERIVED from
+/// [`R0_OPCODE_TABLE`], never hand-written.
+pub const R0_LIVE_OPCODES: usize = R0_OPCODE_TABLE.len();
 /// Live continuation opcodes: three (§9.2 allows "at most five, including
 /// standalone split forms only if their census is nonzero" — the census is zero).
-pub const CONTINUATION_LIVE_OPCODES: usize = 3;
+/// DERIVED from [`CONTINUATION_OPCODE_TABLE`].
+pub const CONTINUATION_LIVE_OPCODES: usize = CONTINUATION_OPCODE_TABLE.len();
 
+const _: () = assert!(R0_LIVE_OPCODES == 7);
+const _: () = assert!(CONTINUATION_LIVE_OPCODES == 3);
 const _: () = assert!(R0_LIVE_OPCODES <= MAX_OPCODES_PER_REGIME);
 const _: () = assert!(CONTINUATION_LIVE_OPCODES <= MAX_OPCODES_PER_REGIME);
+
+/// Table rows are dense from zero, in order, and inside the three opcode bits.
+const fn table_is_canonical(table: &[(u16, TermCategory)]) -> bool {
+    let mut i = 0;
+    while i < table.len() {
+        let (opcode, _) = table[i];
+        if opcode as usize != i || opcode as usize >= MAX_OPCODES_PER_REGIME {
+            return false;
+        }
+        i += 1;
+    }
+    true
+}
+
+/// The encoder function returns exactly the table's opcode for every table row.
+const fn table_matches_encoder(table: &[(u16, TermCategory)], r0: bool) -> bool {
+    let mut i = 0;
+    while i < table.len() {
+        let (opcode, category) = table[i];
+        let encoded = if r0 { r0_opcode(category) } else { continuation_opcode(category) };
+        let Some(encoded) = encoded else { return false };
+        if encoded != opcode {
+            return false;
+        }
+        i += 1;
+    }
+    true
+}
+
+const fn table_contains(table: &[(u16, TermCategory)], category: TermCategory) -> bool {
+    let mut i = 0;
+    while i < table.len() {
+        let (_, listed) = table[i];
+        if listed.tag() == category.tag() {
+            return true;
+        }
+        i += 1;
+    }
+    false
+}
+
+/// Nothing the encoder function encodes is missing from the table — so adding an
+/// arm to `r0_opcode`/`continuation_opcode` without pinning its number fails to
+/// compile instead of silently entering the wire ABI.
+const fn encoder_matches_table(table: &[(u16, TermCategory)], r0: bool) -> bool {
+    let mut i = 0;
+    while i < TermCategory::ALL.len() {
+        let category = TermCategory::ALL[i];
+        let encoded = if r0 { r0_opcode(category) } else { continuation_opcode(category) };
+        if encoded.is_some() && !table_contains(table, category) {
+            return false;
+        }
+        i += 1;
+    }
+    true
+}
+
+/// `TermCategory::ALL` really is every variant: the tags are `0..8`, distinct.
+const fn all_categories_are_listed() -> bool {
+    let mut seen = [false; 8];
+    let mut i = 0;
+    while i < TermCategory::ALL.len() {
+        let tag = TermCategory::ALL[i].tag() as usize;
+        if tag >= seen.len() || seen[tag] {
+            return false;
+        }
+        seen[tag] = true;
+        i += 1;
+    }
+    true
+}
+
+const _: () = assert!(all_categories_are_listed());
+const _: () = assert!(table_is_canonical(R0_OPCODE_TABLE));
+const _: () = assert!(table_is_canonical(CONTINUATION_OPCODE_TABLE));
+const _: () = assert!(table_matches_encoder(R0_OPCODE_TABLE, true));
+const _: () = assert!(table_matches_encoder(CONTINUATION_OPCODE_TABLE, false));
+const _: () = assert!(encoder_matches_table(R0_OPCODE_TABLE, true));
+const _: () = assert!(encoder_matches_table(CONTINUATION_OPCODE_TABLE, false));
+
+// The individual numbers, spelled out, because these seven plus three values ARE
+// the ABI Task 9 mirrors into CUDA. Redundant with the table by design: an editor
+// changing one of them has to change two places that disagree loudly.
+const _: () = assert!(matches!(r0_opcode(TermCategory::C0LinearBf), Some(0)));
+const _: () = assert!(matches!(r0_opcode(TermCategory::C0LinearE4), Some(1)));
+const _: () = assert!(matches!(r0_opcode(TermCategory::C2ProductBfBf), Some(2)));
+const _: () = assert!(matches!(r0_opcode(TermCategory::C2ProductBfE4), Some(3)));
+const _: () = assert!(matches!(r0_opcode(TermCategory::C2ProductE4E4), Some(4)));
+const _: () = assert!(matches!(r0_opcode(TermCategory::MoveBf), Some(5)));
+const _: () = assert!(matches!(r0_opcode(TermCategory::MoveE4), Some(6)));
+const _: () = assert!(r0_opcode(TermCategory::DualProductE4).is_none());
+const _: () = assert!(matches!(continuation_opcode(TermCategory::C0LinearE4), Some(0)));
+const _: () = assert!(matches!(continuation_opcode(TermCategory::DualProductE4), Some(1)));
+const _: () = assert!(matches!(continuation_opcode(TermCategory::MoveE4), Some(2)));
+const _: () = assert!(continuation_opcode(TermCategory::C0LinearBf).is_none());
+const _: () = assert!(continuation_opcode(TermCategory::C2ProductBfBf).is_none());
+const _: () = assert!(continuation_opcode(TermCategory::C2ProductBfE4).is_none());
+const _: () = assert!(continuation_opcode(TermCategory::C2ProductE4E4).is_none());
+const _: () = assert!(continuation_opcode(TermCategory::MoveBf).is_none());
 
 // ── Schedule-independent stream bounds ───────────────────────────────────────
 
@@ -180,13 +342,42 @@ pub const fn lower_bound_program_words(unary_terms: usize, binary_terms: usize) 
     unary_terms * (1 + WORDS_PER_INPUT_MIN) + binary_terms * (1 + 2 * WORDS_PER_INPUT_MIN)
 }
 
-/// The MAXIMUM u16 words any schedule can need: every input takes its single
-/// canonical extension word, plus one 3-word move per projection a schedule could
-/// choose to relocate (§9.4-§9.6).
+/// Moves this bound BUDGETS per reusable projection.
 ///
-/// Fitting here PROVES the coordinate fits before scheduling exists. A coordinate
-/// that fits the lower bound but not this one is inconclusive at Task 3 and is
-/// decided by Task 8's real encoder.
+/// This is an **assumption**, not a derived bound — see
+/// [`upper_bound_program_words`]. It is named so the assumption is greppable and
+/// so Task 8 can check the realized move count against it.
+pub const ASSUMED_MOVES_PER_REUSABLE_PROJECTION: usize = 1;
+
+/// A conservative maximum program stream, with ONE part proven and ONE part
+/// assumed. Read both halves before treating a `fits` verdict as a proof.
+///
+/// **Proven half — the term words.** Every input takes its single canonical
+/// extension word, which is the most §9.4/§9.5 permit: `FillSource` is followed by
+/// exactly one destination-lane word, `PlannedSource` by exactly one plan word,
+/// and for a native dual factor that one plan word covers the WHOLE `Endpoint0`/
+/// `Delta` pair. No encoding of a term can exceed `1 + arity * WORDS_PER_INPUT_MAX`
+/// words.
+///
+/// **Assumed half — the moves.** This budgets
+/// [`ASSUMED_MOVES_PER_REUSABLE_PROJECTION`] `== 1` three-word move (§9.6) per
+/// projection referenced by two or more term operand slots. Design §7.3 does NOT
+/// cap moves at one per reusable projection: Task 5's placement repair emits moves
+/// and its count is not yet bounded, so a schedule COULD exceed this. Calling it
+/// "the maximum any schedule can need" would be wrong.
+///
+/// **Exposure, so the assumption is auditable.** On the worst in-scope coordinate
+/// (`blake2_with_extended_control` L0 `Ext`: 1791 terms, 1731 projections, 843
+/// reusable, 19_396 B) the term words alone are 14_338 B, leaving 18_426 B of the
+/// 32_764 B cap — room for 3_071 moves, or **3.64x** the 843 budgeted. Even one
+/// move for EVERY projection (1731, not 843) gives 24_724 B, still under the cap.
+/// The assumption would have to be wrong by more than 3.6x on the worst
+/// coordinate before any verdict changed, which is why
+/// [`in_scope::INCONCLUSIVE_COORDINATES`] `== 0` stands.
+///
+/// TODO(task-8): once the real encoder exists, compare the REALIZED move count per
+/// coordinate against `reusable_projections * ASSUMED_MOVES_PER_REUSABLE_PROJECTION`
+/// and either pin the ratio or replace this term with the encoder's own count.
 pub const fn upper_bound_program_words(
     unary_terms: usize,
     binary_terms: usize,
@@ -194,7 +385,7 @@ pub const fn upper_bound_program_words(
 ) -> usize {
     unary_terms * (1 + WORDS_PER_INPUT_MAX)
         + binary_terms * (1 + 2 * WORDS_PER_INPUT_MAX)
-        + reusable_projections * MOVE_WORDS
+        + reusable_projections * MOVE_WORDS * ASSUMED_MOVES_PER_REUSABLE_PROJECTION
 }
 
 pub const fn program_bytes(words: usize) -> usize {
