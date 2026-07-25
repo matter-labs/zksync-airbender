@@ -221,6 +221,9 @@ pub enum PlacementError {
     /// The plan declares a `Fill` of a projection that is already resident, or
     /// `resident_after` names a projection no `Fill` created.
     ResidencyContradiction { step: u32, projection: ProjectionId },
+    /// The plan was built for a different regime than the layer it is placed
+    /// against — the two describe different programs.
+    RegimeMismatch { declared: BwdRegime, found: BwdRegime },
     /// The plan's action stream is not the structural expansion of its order.
     Structure(ScheduleError),
 }
@@ -603,11 +606,14 @@ fn event_scan_repair(
                                     to_lane: to,
                                 });
                             }
-                            // Whatever remained in the quad was already dead.
+                            // Every LIVE occupant was just relocated and every
+                            // dead one was already released by this step's expiry,
+                            // so the quad is now empty with no extra clearing.
                             let base = candidate.key.quad * 4;
-                            for l in base..base + 4 {
-                                owner[l] = None;
-                            }
+                            debug_assert!(
+                                (base..base + 4).all(|l| owner[l].is_none()),
+                                "a cleared quad must hold no live occupant"
+                            );
                             base as u16
                         }
                     }
@@ -870,6 +876,12 @@ pub fn place_paging_plan(
     plan: &PagingPlan,
 ) -> Result<CoeffPlacement, PlacementError> {
     validate_prices(layer, prices)?;
+    if plan.regime != layer.regime {
+        return Err(PlacementError::RegimeMismatch {
+            declared: plan.regime,
+            found: layer.regime,
+        });
+    }
     let capacity = plan.request.budget.lanes() as usize;
     let d = derive(layer, prices, plan)?;
 
@@ -884,9 +896,13 @@ pub fn place_paging_plan(
         }
         // Offline packing failed while the peak still fits: this is the
         // pathological fragmentation §7.3 keeps moves for.
-        Err(PackFailure::QuadDemandExceedsBudget { .. }) | Err(PackFailure::NoFeasibleColoring) => {
-            event_scan_repair(&d, capacity)?
-        }
+        //
+        // One arm, not two: `QuadDemandExceedsBudget` cannot fire here. It means
+        // the concurrent E4 count exceeds the quad budget, but the peak check
+        // above already established `4 * concurrent_e4 <= peak <= 4 * n_quads`.
+        // It is handled identically rather than split out so a future change to
+        // the peak check cannot turn it into a silent panic.
+        Err(_) => event_scan_repair(&d, capacity)?,
     };
 
     let instrs = emit(layer, plan, &d, &lanes)?;
@@ -1093,9 +1109,6 @@ pub fn certify_cell_liveness(
         // Lanes and projections this term reads from cells, over ALL its slots.
         let mut term_read_lanes: BTreeSet<u16> = BTreeSet::new();
         let mut term_read_projections: BTreeSet<ProjectionId> = BTreeSet::new();
-        // Lanes this term FILLS. A move precedes the term, so a move into one of
-        // these would be undone by the fill.
-        let mut term_fill_lanes: BTreeSet<u16> = BTreeSet::new();
         // Per slot, the lanes that slot reads — needed to reject a fill that
         // clobbers a LATER slot's input.
         let mut slot_read_lanes: Vec<BTreeSet<u16>> = Vec::with_capacity(uses.len());
@@ -1123,26 +1136,7 @@ pub fn certify_cell_liveness(
                         note(ProjectionId::delta(*source), *lane);
                     }
                 }
-                ValueUse::Direct { .. } => {}
-                ValueUse::Fill { .. } => {}
-            }
-            let mut fill = |p: ProjectionId, lane: u16| {
-                let w = width_of(prices, p).lanes() as u16;
-                for l in lane..lane.saturating_add(w) {
-                    term_fill_lanes.insert(l);
-                }
-            };
-            match u {
-                ValueUse::Fill { projection, dst_lane } => fill(*projection, *dst_lane),
-                ValueUse::PlannedDelta { source, endpoint0, delta } => {
-                    if let PlanAction::Fill { lane } = endpoint0 {
-                        fill(ProjectionId::endpoint0(*source), *lane);
-                    }
-                    if let PlanAction::Fill { lane } = delta {
-                        fill(ProjectionId::delta(*source), *lane);
-                    }
-                }
-                ValueUse::Direct { .. } | ValueUse::Cell(_) => {}
+                ValueUse::Direct { .. } | ValueUse::Fill { .. } => {}
             }
             slot_read_lanes.push(here);
         }
@@ -1198,9 +1192,27 @@ pub fn certify_cell_liveness(
             if (from_lane..from_lane + w).any(|l| owner[l as usize] != Some(projection)) {
                 return Err(LivenessError::MoveSourceNotLive { index, projection, from_lane });
             }
+            // The rule, exactly: a move may not destroy a definition that is still
+            // needed. Two conditions cover it, and a THIRD one that looks necessary
+            // is not.
+            //
+            //   * not a lane this term READS — the move executes first, so it would
+            //     clobber the read; and
+            //   * the occupant must not survive the term.
+            //
+            // What is deliberately NOT checked here is "a lane some slot of this
+            // term FILLS". Rejecting all of them is over-strict, and provably so:
+            // a fill at a LATER slot may legitimately reclaim the moved value's
+            // lane once the plan has dropped it, and the placer cannot even know a
+            // later slot's destination when it picks the move (that lane is chosen
+            // afterwards). The one form that IS a hazard — a fill at an EARLIER
+            // slot overwriting the relocated value — needs no separate rule: the
+            // move only relocates a value live at its own step, residency within a
+            // residence is contiguous, so that value is in `resident_after` of
+            // every earlier step of the same term, and the fill is rejected by
+            // `FillClobbersLiveValue` naming the real violated invariant.
             if (to_lane..to_lane + w).any(|l| {
                 term_read_lanes.contains(&l)
-                    || term_fill_lanes.contains(&l)
                     || owner[l as usize].is_some_and(|victim| survivors.contains(&victim))
             }) {
                 return Err(LivenessError::MoveDestinationNotDead { index, projection, to_lane });

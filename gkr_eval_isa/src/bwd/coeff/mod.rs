@@ -47,7 +47,7 @@ pub use schedule::{
     PagingCost, PagingPlan, PagingRequest, PagingScore, ProjectionAction, ProjectionOutcome,
     LANES_PER_CELL, RebuildPrice, ResolutionGroup, ScheduleError, SeedEvaluation, SeedKind,
     SlotKind, SourcePrice, ValueWidth, budget_aware_greedy_order, certify_paging_plan,
-    default_target_depth, page_projections, projection_index, select_paged_order, source_prices,
+    default_target_depth, page_projections, select_paged_order, source_prices,
     stable_normalized_order, sweep_budgets, term_slots, validate_prices,
 };
 pub use stats::{

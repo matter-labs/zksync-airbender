@@ -763,8 +763,9 @@ pub enum SlotKind {
 }
 
 impl SlotKind {
-    /// The projections the TERM reads through this slot.
-    pub fn consumed(self) -> Vec<ProjectionId> {
+    /// The projections the TERM reads through this slot. Crate-internal: the
+    /// pager and the certificate need it, placement does not.
+    fn consumed(self) -> Vec<ProjectionId> {
         match self {
             SlotKind::Endpoint0Only(p) | SlotKind::DeltaOnly(p) => vec![p],
             SlotKind::DualFactor(s) => {

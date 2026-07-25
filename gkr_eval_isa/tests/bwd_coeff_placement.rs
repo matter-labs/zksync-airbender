@@ -142,6 +142,41 @@ fn pathological_layer() -> (CoeffLayer, Vec<SourcePrice>) {
     (synthetic(BwdRegime::R0, &fields, terms), prices)
 }
 
+/// The regression fixture for the placer/certificate move-destination
+/// disagreement.
+///
+/// At `c2` this layer's plan forces a two-move repair before term 4, and one of
+/// those moves lands `SourceId(3).Delta` in a lane that the SECOND operand slot
+/// of that same term then fills. That is legal — the plan drops the relocated
+/// value at that step and nothing reads it again — but the certificate used to
+/// reject every move destination any slot of the term filled, so
+/// `place_paging_plan` returned `Ok` and `certify_cell_liveness` returned
+/// `MoveDestinationNotDead`. Found by a 2.4M-placement hunt (8 hits), which is far
+/// too rare for the randomized gate to catch, so it is pinned here instead.
+fn later_slot_reclaim_layer() -> (CoeffLayer, Vec<SourcePrice>) {
+    use FieldKind::{Base as B, Ext as E};
+    let fields = [B, B, B, B, B, B, B, E];
+    let terms = vec![
+        c2(0, 7, E, 5, B),
+        c2(1, 3, B, 5, B),
+        c0(2, 7, E),
+        c2(3, 3, B, 4, B),
+        c2(4, 7, E, 1, B),
+        c2(5, 1, B, 6, B),
+        c2(6, 2, B, 1, B),
+        c2(7, 6, B, 2, B),
+        c2(8, 5, B, 7, E),
+        c0(9, 5, B),
+        c2(10, 5, B, 7, E),
+        c0(11, 4, B),
+        c2(12, 3, B, 4, B),
+        c0(13, 3, B),
+        c2(14, 3, B, 3, B),
+    ];
+    let prices = fields.iter().copied().map(price_of).collect();
+    (synthetic(BwdRegime::R0, &fields, terms), prices)
+}
+
 /// A layer with no mixed-width contention: uniform `Ext` sources at a comfortable
 /// budget, the shape design §7.3 expects to stay move-free.
 fn uniform_ext_layer() -> (CoeffLayer, Vec<SourcePrice>) {
@@ -700,23 +735,73 @@ fn liveness_certificate_rejects_overlap_and_stale_reads() {
     let mut tampered = path_placement.clone();
     let (index, ..) = moves(&path_placement)[0];
     let ScheduledInstr::Term { .. } = tampered.instrs[index + 1] else { unreachable!() };
-    let victim = cell_reads(&path_placement, &path_prices)
+    // Guarded exactly as (a) and (b) are. This is the ONLY coverage of
+    // `MoveOfCurrentTermInput`, so if the fixture ever stops offering a BF cell
+    // read on the term the move precedes, the test must fail loudly rather than
+    // skip and stay green.
+    let (_, projection, lane, _) = cell_reads(&path_placement, &path_prices)
         .into_iter()
-        .find(|(i, _, _, w)| *i == index + 1 && *w == ValueWidth::Bf);
-    if let Some((_, projection, lane, _)) = victim {
-        tampered.instrs[index] =
-            ScheduledInstr::MoveBF { projection, from_lane: lane, to_lane: lane };
-        let err = certify_cell_liveness(&path_layer, &path_prices, &path_plan, &tampered)
-            .expect_err("moving an input of the current term must be rejected");
-        assert!(
-            matches!(err, LivenessError::MoveOfCurrentTermInput { .. }),
-            "expected a current-term-input rejection, got {err:?}"
+        .find(|(i, _, _, w)| *i == index + 1 && *w == ValueWidth::Bf)
+        .expect(
+            "vacuous: the pathological fixture must read a BF cell in the term its move \
+             precedes, or MoveOfCurrentTermInput has no coverage",
         );
-    }
+    tampered.instrs[index] =
+        ScheduledInstr::MoveBF { projection, from_lane: lane, to_lane: lane };
+    let err = certify_cell_liveness(&path_layer, &path_prices, &path_plan, &tampered)
+        .expect_err("moving an input of the current term must be rejected");
+    assert!(
+        matches!(err, LivenessError::MoveOfCurrentTermInput { .. }),
+        "expected a current-term-input rejection, got {err:?}"
+    );
 
     // The unmutated placement still certifies, so the rejections above are about
     // the mutations and not about the certificate being broken.
     certify_cell_liveness(&layer, &prices, &plan, &good).expect("the good placement certifies");
+}
+
+/// Regression: a move destination a LATER operand slot of the same term reclaims.
+///
+/// The placer and the certificate must state one rule here, and it is the
+/// certificate that was wrong: rejecting every lane any slot of the term fills is
+/// over-strict, because a later slot may legitimately reclaim the relocated
+/// value's lane once the plan has dropped it — and the placer cannot even know a
+/// later slot's destination when it picks the move, since that lane is chosen
+/// afterwards. The genuine hazard, an EARLIER slot's fill overwriting the
+/// relocated value, is caught by `FillClobbersLiveValue`.
+#[test]
+fn move_destination_may_be_reclaimed_by_a_later_slot_fill() {
+    let (layer, prices) = later_slot_reclaim_layer();
+    let (_, placement) = page_and_place(&layer, &prices, 2);
+
+    assert!(placement.stats.repaired, "the fixture must exercise the repair");
+    let emitted = moves(&placement);
+    assert_eq!(emitted.len(), 2, "the fixture's repair takes two BF moves: {emitted:?}");
+
+    // The load-bearing shape: some move's destination is filled by a slot of the
+    // very term it precedes. Without this the test would pass for the wrong reason.
+    let fill_lanes: BTreeSet<(usize, u16)> = fills(&placement, &prices)
+        .into_iter()
+        .flat_map(|(i, _, lane, w)| (lane..lane + w.lanes() as u16).map(move |l| (i, l)))
+        .collect();
+    let reclaimed = emitted.iter().any(|&(index, projection, _, to_lane, _)| {
+        let width = prices[projection.source.0 as usize].width;
+        let mut next_term = index + 1;
+        while !matches!(placement.instrs.get(next_term), Some(ScheduledInstr::Term { .. })) {
+            next_term += 1;
+        }
+        (to_lane..to_lane + width.lanes() as u16).any(|l| fill_lanes.contains(&(next_term, l)))
+    });
+    assert!(
+        reclaimed,
+        "vacuous: no move destination is reclaimed by a fill of the term it precedes"
+    );
+
+    // And the whole thing certifies — which is what regressed.
+    let order = stable_normalized_order(&layer);
+    let plan = page_projections(&layer, &prices, request(2), &order).expect("pager");
+    certify_cell_liveness(&layer, &prices, &plan, &placement)
+        .expect("a later-slot reclaim is legal and must certify");
 }
 
 // ── Production corpus ────────────────────────────────────────────────────────
@@ -806,6 +891,8 @@ fn corpus_placement_terminates_and_certifies_every_budget() {
 
     let saturating: Vec<&Row> = rows.iter().filter(|r| r.c16_peak == 64).collect();
     println!("c16-saturating coordinates (peak_resident_lanes == 64): {}", saturating.len());
+    let saturating_ext = saturating.iter().filter(|r| r.tag.ends_with(" Ext")).count();
+    let saturating_r0 = saturating.iter().filter(|r| r.tag.ends_with(" R0")).count();
     for r in &saturating {
         println!(
             "  SATURATED {} max_moves={} total_moves={} repaired_budgets={}",
@@ -817,11 +904,28 @@ fn corpus_placement_terminates_and_certifies_every_budget() {
     for r in &with_moves {
         println!("  MOVES {} max_moves={} total={}", r.tag, r.max_moves, r.total_moves);
     }
-    println!(
-        "realized move maximum over the whole corpus x c2..c16: {}",
-        rows.iter().map(|r| r.max_moves).max().unwrap_or(0)
-    );
+    let corpus_max_moves = rows.iter().map(|r| r.max_moves).max().unwrap_or(0);
+    println!("realized move maximum over the whole corpus x c2..c16: {corpus_max_moves}");
+
     assert_eq!(saturating.len(), 16, "Task 4 measured 16 c16-saturating coordinates");
+    // The split is the evidence for "mixed BF/E4 competition is an R0-only
+    // phenomenon": Ext programs are priced at ONE fold depth, so every Ext source
+    // is E4 and the cell file is uniformly quad-width — quad colouring alone is
+    // then optimal and can never strand a single-lane value, because there are
+    // none. Saturation is a LANE-pressure fact, not an alignment one, and pinning
+    // the split is what makes that claim checkable rather than narrated.
+    assert_eq!(saturating_ext, 14, "14 of the 16 c16-saturating coordinates are Ext");
+    assert_eq!(saturating_r0, 2, "2 of the 16 c16-saturating coordinates are R0");
+    // The offline two-pass seats EVERY production coordinate at EVERY budget.
+    // Pinned, not printed: this is the first real evidence bearing on Task 3's
+    // `ASSUMED_MOVES_PER_REUSABLE_PROJECTION = 1`, and Task 8 has to revisit that
+    // bound. A regression here means the assumption needs re-deriving, not
+    // relaxing quietly.
+    assert_eq!(
+        corpus_max_moves, 0,
+        "the offline two-pass no longer seats the whole corpus move-free"
+    );
+    assert!(with_moves.is_empty(), "no production coordinate should need a move");
 }
 
 /// The realized move count against Task 3's
@@ -919,8 +1023,8 @@ fn randomized_placements_always_certify() {
     let mut unplaceable = 0usize;
     let mut checked = 0usize;
     // Biased toward the shape that actually fragments: mostly-BF R0 layers with a
-    // couple of E4 sources at the two tightest budgets. An unbiased generator
-    // reaches a repair roughly once in 40,000 layers, which is too rare to gate on.
+    // couple of E4 sources at tight budgets. An unbiased generator reaches a
+    // repair roughly once in 40,000 layers, which is too rare to gate on.
     for round in 0..12_000u64 {
         let regime = if round % 4 == 3 { BwdRegime::Ext } else { BwdRegime::R0 };
         let n_src = 4 + next(4) as usize;
@@ -954,7 +1058,11 @@ fn randomized_placements_always_certify() {
         let layer = synthetic(regime, &fields, terms);
         let prices: Vec<SourcePrice> = fields.iter().copied().map(price_of).collect();
         let order = stable_normalized_order(&layer);
-        for cells in [2u8, 3] {
+        // c2/c3 alone was the sample that MISSED the placer/certificate
+        // move-destination disagreement: at the tightest budgets few lanes are
+        // live, so a relocation rarely lands where a later slot of the same term
+        // fills. c4 and c6 give that interaction room to surface.
+        for cells in [2u8, 3, 4, 6] {
             let req = PagingRequest { budget: CellBudget::new(cells).unwrap(), target_depth: 0 };
             let Ok(plan) = page_projections(&layer, &prices, req, &order) else { continue };
             let before = plan.canonical_bytes();
@@ -995,6 +1103,6 @@ fn randomized_placements_always_certify() {
         "randomized placements checked={checked} repaired={repaired} \
          no_legal_relocation={unplaceable}"
     );
-    assert!(checked > 10_000, "vacuous: only {checked} instances reached placement");
+    assert!(checked > 20_000, "vacuous: only {checked} instances reached placement");
     assert!(repaired > 0, "vacuous: the repair path was never exercised");
 }
