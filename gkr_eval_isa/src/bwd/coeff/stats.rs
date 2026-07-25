@@ -1,0 +1,616 @@
+//! Per-coordinate census of the backward coefficient lowering (design §5.4,
+//! §6, §9.2-§9.4), plus the two schedule-independent stream bounds Task 3's
+//! freeze gate is decided on.
+//!
+//! One [`CoeffCensus`] describes exactly one `(circuit, layer, regime)`
+//! coordinate. Everything here is a pure function of `(DagLayer,
+//! DistilledLayer, CoeffLayer, LoweringTrace)` — no scheduling, no placement, no
+//! encoding — so the same code serves the crate-local committed-layout census
+//! and the GPU crate's complete-corpus census, and both must agree.
+//!
+//! # What is deliberately NOT here
+//!
+//! Exact encoded word counts. Fills, plans, moves and cell residency are
+//! SCHEDULE decisions that do not exist yet, so this module reports only:
+//!
+//!   * [`CoeffCensus::lower_bound_program_bytes`] — the minimum any codec can
+//!     achieve for this term set; an overflow here is UNREPAIRABLE by later
+//!     tasks; and
+//!   * [`CoeffCensus::upper_bound_program_bytes`] — a bound no schedule can
+//!     exceed; fitting here proves the coordinate fits before scheduling exists.
+//!
+//! A coordinate between the two is INCONCLUSIVE at this stage; Task 8 decides it
+//! with the real encoder.
+
+use std::collections::{BTreeMap, BTreeSet, HashMap};
+
+use cs::gkr_compiler::dag_ir::{
+    BwdRegime, DagLayer, FieldKind, ReadPlace, RootSlot, SinkKind, VirtualSetupKind, bwd_roots,
+    read_place_field,
+};
+
+use super::limits::{
+    KERNEL_ARGUMENT_CEILING_BYTES, MOVE_WORDS, SOURCE_WINDOW_COLUMNS, TermCategory,
+    WORDS_PER_INPUT_MAX, WORDS_PER_INPUT_MIN,
+};
+use super::lower::{LoweringTrace, lower_coeff_layer_traced};
+use super::model::{CoeffError, CoeffLayer, CoeffSource, CoeffTerm, ProjectionId};
+use crate::bwd::distill::{DistilledLayer, distill};
+use crate::bwd::source::OriginLeaf;
+
+/// One logical DRAM matrix, in the identity final source binding assigns windows
+/// over (§9.4). Field-qualified for cross-layer outputs and caches for the same
+/// reason `fwd::binding::BackingKey` is: the base and extension columns of one
+/// logical output live in different matrices and cannot share a window.
+///
+/// A `VirtualSetup` origin is procedurally resolved (§9.6: "procedural values
+/// remain ordinary source coordinates whose window descriptor selects procedural
+/// resolution"), so each distinct kind is its own single-column family.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum WindowFamily {
+    BaseLayerMemory,
+    BaseLayerWitness,
+    Setup,
+    Scratch,
+    LayerOutput { layer: usize, ext: bool },
+    CacheOutput { layer: usize, ext: bool },
+    VirtualSetup { kind: u8 },
+}
+
+fn vs_tag(kind: &VirtualSetupKind) -> u8 {
+    match kind {
+        VirtualSetupKind::RangeCheck16Bits => 0,
+        VirtualSetupKind::RangeCheckTimestamp => 1,
+        VirtualSetupKind::InitsAndTeardownsLow => 2,
+        VirtualSetupKind::InitsAndTeardownsHigh => 3,
+    }
+}
+
+/// The BACKING field of one read place — the matrix's own width, never the
+/// regime's fold override.
+///
+/// Resolution order: the natively typed families answer directly
+/// (`read_place_field`), a cross-layer output/cache comes from
+/// `DistilledLayer::cross_fields`, and the remaining case is an R0 materialized
+/// sink read (interned from `roots[..].materialize`, which is not a cone leaf and
+/// so has no `cross_fields` entry) — there the interned `CoeffSource::field` IS
+/// the sink's own field, which is the backing field.
+fn backing_field(place: &ReadPlace, source: &CoeffSource, distilled: &DistilledLayer) -> FieldKind {
+    if let Some(f) = read_place_field(place) {
+        return f;
+    }
+    if let Some(&f) = distilled.cross_fields.get(place) {
+        return f;
+    }
+    source.field
+}
+
+fn window_family(source: &CoeffSource, distilled: &DistilledLayer) -> (WindowFamily, usize) {
+    match &source.origin {
+        OriginLeaf::VirtualSetup { kind } => (WindowFamily::VirtualSetup { kind: vs_tag(kind) }, 0),
+        OriginLeaf::Read(place) => {
+            let ext = backing_field(place, source, distilled) == FieldKind::Ext;
+            match *place {
+                ReadPlace::BaseLayerMemory { column } => (WindowFamily::BaseLayerMemory, column),
+                ReadPlace::BaseLayerWitness { column } => (WindowFamily::BaseLayerWitness, column),
+                ReadPlace::Setup { column } => (WindowFamily::Setup, column),
+                ReadPlace::Scratch { slot } => (WindowFamily::Scratch, slot),
+                ReadPlace::LayerOutput { layer, offset } => {
+                    (WindowFamily::LayerOutput { layer, ext }, offset)
+                }
+                ReadPlace::CacheOutput { layer, offset } => {
+                    (WindowFamily::CacheOutput { layer, ext }, offset)
+                }
+            }
+        }
+    }
+}
+
+/// Minimum freely based, contiguous 128-column windows covering `columns`
+/// (§9.4: "windows are assigned freely and densely during final binding. Each
+/// window covers at most 128 contiguous referenced columns").
+///
+/// Greedy first-fit over the sorted columns is optimal for a fixed span: opening
+/// a window at the first uncovered column dominates any later start.
+pub fn window_count(columns: &BTreeSet<usize>) -> usize {
+    let mut windows = 0usize;
+    let mut covered_through: Option<usize> = None;
+    for &column in columns {
+        if covered_through.is_none_or(|end| column > end) {
+            windows += 1;
+            covered_through = Some(column + SOURCE_WINDOW_COLUMNS - 1);
+        }
+    }
+    windows
+}
+
+/// Windows the whole source table needs under the fixed 128-column rule.
+pub fn source_window_count(lowered: &CoeffLayer, distilled: &DistilledLayer) -> usize {
+    let mut per_family: BTreeMap<WindowFamily, BTreeSet<usize>> = BTreeMap::new();
+    for source in &lowered.sources {
+        let (family, column) = window_family(source, distilled);
+        per_family.entry(family).or_default().insert(column);
+    }
+    per_family.values().map(window_count).sum()
+}
+
+// ── Census ───────────────────────────────────────────────────────────────────
+
+/// Everything Task 3 pins for one `(circuit, layer, regime)` coordinate.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct CoeffCensus {
+    // ── canonical structure ──────────────────────────────────────────────
+    /// `bwd_roots(canonical).len()` — the canonical batching order's length.
+    pub canonical_roots: usize,
+    /// Claim-bearing roots carrying a materialized output sink.
+    pub materialized_roots: usize,
+    /// Claim-only constraint roots (structurally zero on the hypercube).
+    pub constraint_only_roots: usize,
+    /// Claim roots by materialized-sink family, for the `sink_read_place`
+    /// coverage argument.
+    pub sinks_inner: usize,
+    pub sinks_cache: usize,
+    pub sinks_scratch: usize,
+    pub sinks_export: usize,
+
+    // ── pre-distribution (§5.4) ──────────────────────────────────────────
+    pub fragments_total: usize,
+    pub fragments_live: usize,
+    pub pre_distribution_atoms: usize,
+    pub pre_distribution_products: usize,
+    pub distributed_monomials: usize,
+    pub distributed_degree0_residues: usize,
+    /// Maximum monomials a single pre-distribution product expanded to.
+    pub max_expansion_factor: usize,
+    pub max_fragment_atoms: usize,
+
+    // ── post-distribution term set (§6) ──────────────────────────────────
+    pub terms: usize,
+    /// R0: `C0Linear` reading a BF `Endpoint0`.
+    pub r0_c0_linear_bf: usize,
+    /// R0: `C0Linear` reading an E4 `Endpoint0`.
+    pub r0_c0_linear_e4: usize,
+    pub r0_c2_bf_bf: usize,
+    pub r0_c2_bf_e4: usize,
+    pub r0_c2_e4_e4: usize,
+    /// Mixed-field R0 products whose `lhs` is the E4 side. Structural-order
+    /// artifacts: the `BF_E4` opcode is canonical, so the encoder must swap
+    /// these operands. Zero would mean no swap is ever needed.
+    pub r0_c2_mixed_needing_swap: usize,
+    /// Continuation `C0Linear` (always E4).
+    pub cont_c0_linear: usize,
+    /// Continuation native `DualProduct`.
+    pub cont_dual_product: usize,
+    /// Continuation STANDALONE product terms — a `C2Product`/`C0Product` that is
+    /// not a native dual. §6 makes this category a structural compiler error
+    /// unless the census proves it live.
+    pub cont_standalone_product: usize,
+    /// Continuation `C0Linear` over a BF `Endpoint0` — must be zero, every
+    /// continuation source is an Ext fold leaf.
+    pub cont_c0_linear_bf: usize,
+
+    // ── stable identities (§6) ───────────────────────────────────────────
+    pub sources: usize,
+    pub projections: usize,
+    /// Distinct BANKED recipes (the `+1`/`-1` literals consume no entry).
+    pub coefficient_recipes: usize,
+    /// Distinct coefficient IDS the terms reference, including reserved literals.
+    pub coefficient_ids_used: usize,
+    pub reserved_literal_terms: usize,
+    pub has_c_init: bool,
+    /// Projections referenced by two or more term operand slots — the ones a
+    /// schedule may want to keep resident and therefore may need to move.
+    pub reusable_projections: usize,
+    pub source_windows: usize,
+
+    // ── stream bounds (§9.1, §9.6) ───────────────────────────────────────
+    pub lower_bound_program_bytes: usize,
+    pub upper_bound_program_bytes: usize,
+}
+
+impl CoeffCensus {
+    /// R0 `C0Linear` total.
+    pub fn r0_c0_linear(&self) -> usize {
+        self.r0_c0_linear_bf + self.r0_c0_linear_e4
+    }
+
+    /// R0 `C2Product` total.
+    pub fn r0_c2_product(&self) -> usize {
+        self.r0_c2_bf_bf + self.r0_c2_bf_e4 + self.r0_c2_e4_e4
+    }
+
+    /// `true` when the minimum-possible stream fits the kernel-argument cap. A
+    /// `false` here is TERMINAL: no codec, paging or placement decision in Tasks
+    /// 4-9 can make the term set smaller than one header plus one word per source
+    /// input.
+    pub fn lower_bound_fits(&self) -> bool {
+        self.lower_bound_program_bytes <= KERNEL_ARGUMENT_CEILING_BYTES
+    }
+
+    /// `true` when even the most pessimistic stream fits, so the coordinate is
+    /// PROVEN to fit before any schedule exists.
+    pub fn upper_bound_fits(&self) -> bool {
+        self.upper_bound_program_bytes <= KERNEL_ARGUMENT_CEILING_BYTES
+    }
+
+    /// Neither proven to fit nor proven to overflow — Task 8's real encoder
+    /// decides it.
+    pub fn inconclusive(&self) -> bool {
+        self.lower_bound_fits() && !self.upper_bound_fits()
+    }
+
+    pub fn merge_max(&mut self, other: &Self) {
+        macro_rules! max_fields {
+            ($($f:ident),* $(,)?) => { $( self.$f = self.$f.max(other.$f); )* };
+        }
+        max_fields!(
+            canonical_roots,
+            materialized_roots,
+            constraint_only_roots,
+            sinks_inner,
+            sinks_cache,
+            sinks_scratch,
+            sinks_export,
+            fragments_total,
+            fragments_live,
+            pre_distribution_atoms,
+            pre_distribution_products,
+            distributed_monomials,
+            distributed_degree0_residues,
+            max_expansion_factor,
+            max_fragment_atoms,
+            terms,
+            r0_c0_linear_bf,
+            r0_c0_linear_e4,
+            r0_c2_bf_bf,
+            r0_c2_bf_e4,
+            r0_c2_e4_e4,
+            r0_c2_mixed_needing_swap,
+            cont_c0_linear,
+            cont_dual_product,
+            cont_standalone_product,
+            cont_c0_linear_bf,
+            sources,
+            projections,
+            coefficient_recipes,
+            coefficient_ids_used,
+            reserved_literal_terms,
+            reusable_projections,
+            source_windows,
+            lower_bound_program_bytes,
+            upper_bound_program_bytes,
+        );
+        self.has_c_init |= other.has_c_init;
+    }
+}
+
+/// Census one lowered coordinate.
+///
+/// `canonical` and `distilled` must be the same pair `lowered` was produced from;
+/// `trace` must be that lowering's [`LoweringTrace`].
+pub fn census_coeff_layer(
+    canonical: &DagLayer,
+    distilled: &DistilledLayer,
+    lowered: &CoeffLayer,
+    trace: &LoweringTrace,
+) -> CoeffCensus {
+    let mut c = CoeffCensus {
+        canonical_roots: bwd_roots(canonical).len(),
+        fragments_total: trace.fragments_total,
+        fragments_live: trace.fragments_live,
+        pre_distribution_atoms: trace.pre_distribution_atoms,
+        pre_distribution_products: trace.pre_distribution_products,
+        distributed_monomials: trace.distributed_monomials,
+        distributed_degree0_residues: trace.distributed_degree0_residues,
+        max_expansion_factor: trace.max_expansion_factor,
+        max_fragment_atoms: trace.max_fragment_atoms,
+        terms: lowered.terms.len(),
+        sources: lowered.sources.len(),
+        coefficient_recipes: lowered.coefficients.len(),
+        has_c_init: lowered.c_init.is_some(),
+        ..Default::default()
+    };
+
+    for root in &canonical.roots {
+        if root.claim.is_none() {
+            continue;
+        }
+        match &root.materialize {
+            None => c.constraint_only_roots += 1,
+            Some(sink) => {
+                c.materialized_roots += 1;
+                match sink.kind {
+                    SinkKind::Inner { .. } => c.sinks_inner += 1,
+                    SinkKind::Cache { .. } => c.sinks_cache += 1,
+                    SinkKind::Scratch { .. } => c.sinks_scratch += 1,
+                    SinkKind::Export { .. } => c.sinks_export += 1,
+                }
+            }
+        }
+    }
+    // A claim-only CONSTRAINT root is the case §5.2 says contributes no `acc_c0`;
+    // a claim-bearing OUTPUT root without a sink is a lowering error, so it can
+    // never reach here.
+    debug_assert_eq!(
+        c.constraint_only_roots,
+        canonical
+            .roots
+            .iter()
+            .filter(|r| {
+                r.claim
+                    .as_ref()
+                    .is_some_and(|claim| matches!(claim.origin.slot, RootSlot::Constraint(_)))
+            })
+            .count()
+    );
+
+    let r0 = lowered.regime == BwdRegime::R0;
+    let mut projection_uses: BTreeMap<ProjectionId, usize> = BTreeMap::new();
+    let mut coefficient_ids: BTreeSet<_> = BTreeSet::new();
+    let mut lower_words = 0usize;
+    let mut upper_words = 0usize;
+
+    for term in &lowered.terms {
+        coefficient_ids.insert(term.coefficient());
+        if term.coefficient().literal().is_some() {
+            c.reserved_literal_terms += 1;
+        }
+        let arity = match term {
+            CoeffTerm::C0Linear { value, field, .. } => {
+                *projection_uses.entry(*value).or_default() += 1;
+                if r0 {
+                    match field {
+                        FieldKind::Base => c.r0_c0_linear_bf += 1,
+                        FieldKind::Ext => c.r0_c0_linear_e4 += 1,
+                    }
+                } else {
+                    c.cont_c0_linear += 1;
+                    if *field == FieldKind::Base {
+                        c.cont_c0_linear_bf += 1;
+                    }
+                }
+                1
+            }
+            CoeffTerm::C2Product { lhs, rhs, lhs_field, rhs_field, .. } => {
+                *projection_uses.entry(*lhs).or_default() += 1;
+                *projection_uses.entry(*rhs).or_default() += 1;
+                if r0 {
+                    match (lhs_field, rhs_field) {
+                        (FieldKind::Base, FieldKind::Base) => c.r0_c2_bf_bf += 1,
+                        (FieldKind::Ext, FieldKind::Ext) => c.r0_c2_e4_e4 += 1,
+                        (FieldKind::Base, FieldKind::Ext) => c.r0_c2_bf_e4 += 1,
+                        (FieldKind::Ext, FieldKind::Base) => {
+                            c.r0_c2_bf_e4 += 1;
+                            c.r0_c2_mixed_needing_swap += 1;
+                        }
+                    }
+                } else {
+                    // §6: a continuation product that is not a native dual.
+                    c.cont_standalone_product += 1;
+                }
+                2
+            }
+            CoeffTerm::DualProduct { lhs, rhs, .. } => {
+                // A native dual consumes BOTH projections of each factor in one
+                // source-pair resolution (§8).
+                for source in [*lhs, *rhs] {
+                    *projection_uses.entry(ProjectionId::endpoint0(source)).or_default() += 1;
+                    *projection_uses.entry(ProjectionId::delta(source)).or_default() += 1;
+                }
+                if r0 {
+                    // Structurally impossible: R0 emits `C2Product`, never a dual.
+                    c.cont_standalone_product += 1;
+                } else {
+                    c.cont_dual_product += 1;
+                }
+                2
+            }
+        };
+        lower_words += 1 + arity * WORDS_PER_INPUT_MIN;
+        upper_words += 1 + arity * WORDS_PER_INPUT_MAX;
+    }
+
+    c.projections = projection_uses.len();
+    c.reusable_projections = projection_uses.values().filter(|&&uses| uses >= 2).count();
+    c.coefficient_ids_used = coefficient_ids.len();
+    c.source_windows = source_window_count(lowered, distilled);
+
+    // ── stream bounds ────────────────────────────────────────────────────
+    //
+    // LOWER: one u16 header plus one u16 word per source input, no extension
+    // words, no fills, no plans and no moves. Nothing a codec can do makes a
+    // term set cheaper than this, so an overflow here is unrepairable.
+    c.lower_bound_program_bytes = 2 * lower_words;
+    // UPPER: every input takes its maximum canonical extension (`FillSource` +
+    // destination lane, or `PlannedSource` + plan word — §9.4/§9.5 allow at most
+    // one extension word per input), plus one 3-word move (§9.6) for every
+    // projection a schedule could want to relocate. No schedule can exceed this.
+    c.upper_bound_program_bytes = 2 * (upper_words + c.reusable_projections * MOVE_WORDS);
+
+    c
+}
+
+// ── Corpus rows ──────────────────────────────────────────────────────────────
+
+/// One censused coordinate, tagged so rows from any corpus sort and print
+/// identically. Both Task-3 censuses build their report out of these, which is
+/// what makes the crate-local and the GPU-crate numbers directly comparable.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CoeffCensusRow {
+    pub circuit: String,
+    pub layer: usize,
+    pub regime: BwdRegime,
+    pub live_categories: BTreeSet<TermCategory>,
+    pub census: CoeffCensus,
+}
+
+impl CoeffCensusRow {
+    pub fn regime_label(&self) -> &'static str {
+        if self.regime == BwdRegime::R0 { "R0" } else { "Ext" }
+    }
+
+    /// Total, lexical order over coordinates. Two runs that agree on the row set
+    /// therefore produce byte-identical reports.
+    pub fn sort_key(&self) -> (&str, usize, &'static str) {
+        (self.circuit.as_str(), self.layer, self.regime_label())
+    }
+}
+
+/// A coordinate the lowering REJECTED. Kept as data (never a panic) so a census
+/// can report the exact first failing coordinate of a conditional circuit and
+/// continue with the rest of the corpus (§3.1).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CoeffCensusFailure {
+    pub circuit: String,
+    pub layer: usize,
+    pub regime: BwdRegime,
+    pub error: CoeffError,
+}
+
+/// Distill, lower and census one canonical layer in BOTH regimes.
+///
+/// This is the whole per-coordinate pipeline, deliberately in the library rather
+/// than in either test, so the crate-local committed-layout census and the GPU
+/// crate's complete-corpus census cannot drift apart.
+pub fn census_layer(
+    circuit: &str,
+    layer_index: usize,
+    canonical: &DagLayer,
+    cross_fields: &HashMap<ReadPlace, FieldKind>,
+) -> (Vec<CoeffCensusRow>, Vec<CoeffCensusFailure>) {
+    let mut rows = Vec::with_capacity(2);
+    let mut failures = Vec::new();
+    for regime in [BwdRegime::R0, BwdRegime::Ext] {
+        let distilled = distill(canonical, regime, cross_fields, None);
+        match lower_coeff_layer_traced(canonical, &distilled) {
+            Ok((lowered, trace)) => rows.push(CoeffCensusRow {
+                circuit: circuit.to_string(),
+                layer: layer_index,
+                regime,
+                live_categories: live_term_categories(&lowered),
+                census: census_coeff_layer(canonical, &distilled, &lowered, &trace),
+            }),
+            Err(error) => failures.push(CoeffCensusFailure {
+                circuit: circuit.to_string(),
+                layer: layer_index,
+                regime,
+                error,
+            }),
+        }
+    }
+    (rows, failures)
+}
+
+/// CSV column names, in [`csv_line`](csv_line) order.
+pub const CSV_HEADER: &str = "circuit,layer,regime,\
+canonical_roots,materialized_roots,constraint_only_roots,\
+sinks_inner,sinks_cache,sinks_scratch,sinks_export,\
+fragments_total,fragments_live,pre_distribution_atoms,pre_distribution_products,\
+distributed_monomials,distributed_degree0_residues,max_expansion_factor,max_fragment_atoms,\
+terms,r0_c0_linear_bf,r0_c0_linear_e4,r0_c2_bf_bf,r0_c2_bf_e4,r0_c2_e4_e4,\
+r0_c2_mixed_needing_swap,cont_c0_linear,cont_dual_product,cont_standalone_product,\
+sources,projections,coefficient_recipes,coefficient_ids_used,reserved_literal_terms,\
+has_c_init,reusable_projections,source_windows,\
+lower_bound_program_bytes,upper_bound_program_bytes,lower_bound_fits,upper_bound_fits,\
+live_categories";
+
+/// One CSV record for `row`.
+pub fn csv_line(row: &CoeffCensusRow) -> String {
+    let c = &row.census;
+    let categories = row
+        .live_categories
+        .iter()
+        .map(|category| category.label())
+        .collect::<Vec<_>>()
+        .join("|");
+    format!(
+        "{},{},{},\
+{},{},{},\
+{},{},{},{},\
+{},{},{},{},\
+{},{},{},{},\
+{},{},{},{},{},{},\
+{},{},{},{},\
+{},{},{},{},{},\
+{},{},{},\
+{},{},{},{},\
+{}",
+        row.circuit,
+        row.layer,
+        row.regime_label(),
+        c.canonical_roots,
+        c.materialized_roots,
+        c.constraint_only_roots,
+        c.sinks_inner,
+        c.sinks_cache,
+        c.sinks_scratch,
+        c.sinks_export,
+        c.fragments_total,
+        c.fragments_live,
+        c.pre_distribution_atoms,
+        c.pre_distribution_products,
+        c.distributed_monomials,
+        c.distributed_degree0_residues,
+        c.max_expansion_factor,
+        c.max_fragment_atoms,
+        c.terms,
+        c.r0_c0_linear_bf,
+        c.r0_c0_linear_e4,
+        c.r0_c2_bf_bf,
+        c.r0_c2_bf_e4,
+        c.r0_c2_e4_e4,
+        c.r0_c2_mixed_needing_swap,
+        c.cont_c0_linear,
+        c.cont_dual_product,
+        c.cont_standalone_product,
+        c.sources,
+        c.projections,
+        c.coefficient_recipes,
+        c.coefficient_ids_used,
+        c.reserved_literal_terms,
+        u8::from(c.has_c_init),
+        c.reusable_projections,
+        c.source_windows,
+        c.lower_bound_program_bytes,
+        c.upper_bound_program_bytes,
+        u8::from(c.lower_bound_fits()),
+        u8::from(c.upper_bound_fits()),
+        categories,
+    )
+}
+
+/// The whole census as a CSV document. `rows` must already be sorted by
+/// [`CoeffCensusRow::sort_key`].
+pub fn census_csv(rows: &[CoeffCensusRow]) -> String {
+    let mut out = String::with_capacity(CSV_HEADER.len() + rows.len() * 160);
+    out.push_str(CSV_HEADER);
+    out.push('\n');
+    for row in rows {
+        out.push_str(&csv_line(row));
+        out.push('\n');
+    }
+    out
+}
+
+/// The live opcode categories one lowered layer uses, for the opcode-table
+/// freeze. Every entry must be a legal category of `lowered.regime`.
+pub fn live_term_categories(lowered: &CoeffLayer) -> BTreeSet<TermCategory> {
+    let r0 = lowered.regime == BwdRegime::R0;
+    let mut live = BTreeSet::new();
+    for term in &lowered.terms {
+        live.insert(match term {
+            CoeffTerm::C0Linear { field: FieldKind::Base, .. } => TermCategory::C0LinearBf,
+            CoeffTerm::C0Linear { field: FieldKind::Ext, .. } => TermCategory::C0LinearE4,
+            CoeffTerm::C2Product { lhs_field, rhs_field, .. } => {
+                match (lhs_field, rhs_field) {
+                    (FieldKind::Base, FieldKind::Base) => TermCategory::C2ProductBfBf,
+                    (FieldKind::Ext, FieldKind::Ext) => TermCategory::C2ProductE4E4,
+                    _ => TermCategory::C2ProductBfE4,
+                }
+            }
+            CoeffTerm::DualProduct { .. } => TermCategory::DualProductE4,
+        });
+    }
+    debug_assert!(live.iter().all(|category| category.is_legal_in(r0)));
+    live
+}

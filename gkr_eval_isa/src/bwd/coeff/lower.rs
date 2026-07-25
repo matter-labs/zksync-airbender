@@ -62,6 +62,7 @@ use cs::gkr_compiler::dag_ir::{
 };
 use field::PrimeField;
 
+use super::limits::MAX_COEFFICIENT_ENCODINGS;
 use super::model::{
     CoeffError, CoeffLayer, CoeffSource, CoeffTerm, CoefficientRecipeId,
     NormalizedCoefficientRecipe, ProjectionId, SourceId, TermId, sink_read_place, source_order_key,
@@ -77,11 +78,56 @@ type SourceKey = (u8, u8, usize, usize);
 
 type Recipe = NormalizedCoefficientRecipe;
 
+/// Distribution accounting the lowering observes but the [`CoeffLayer`] cannot
+/// reconstruct (design §5.4): the PRE-distribution atom/product volume and how far
+/// linearizing + distributing a fragment's product of linear sums grew it.
+///
+/// Every field is a pure observation of the same walk `lower_coeff_layer` performs,
+/// so producing it changes no output. It exists because the post-distribution term
+/// table has already merged bodies across fragments and roots, which destroys the
+/// per-fragment growth signal §5.4 requires to be pinned.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct LoweringTrace {
+    /// `DistilledLayer::fragments.fragments.len()`.
+    pub fragments_total: usize,
+    /// Fragments whose coefficient recipe did NOT cancel to zero — the ones that
+    /// actually reach distribution.
+    pub fragments_live: usize,
+    /// `Σ atoms.len()` over live fragments: the non-distributed atom volume.
+    pub pre_distribution_atoms: usize,
+    /// One pre-distribution product per live fragment (a fragment IS the product
+    /// of its atoms), so this equals `fragments_live`. Named separately because it
+    /// is the denominator of the expansion factor.
+    pub pre_distribution_products: usize,
+    /// `Σ` monomials produced by distributing each live fragment, counted BEFORE
+    /// cross-fragment body merging: a degree-0 residue counts 1, plus one per
+    /// distinct linear source and one per distinct quadratic source pair.
+    pub distributed_monomials: usize,
+    /// Largest monomial count a SINGLE fragment expanded to. Since each fragment
+    /// is exactly one pre-distribution product, this IS the maximum distribution
+    /// expansion factor.
+    pub max_expansion_factor: usize,
+    /// Largest `atoms.len()` over live fragments.
+    pub max_fragment_atoms: usize,
+    /// Degree-0 residues distribution produced (R0 drops them, `Ext` merges them
+    /// into `c_init`).
+    pub distributed_degree0_residues: usize,
+}
+
 /// Lower one distilled backward layer to coefficient terms.
 pub fn lower_coeff_layer(
     canonical: &DagLayer,
     distilled: &DistilledLayer,
 ) -> Result<CoeffLayer, CoeffError> {
+    lower_coeff_layer_traced(canonical, distilled).map(|(layer, _)| layer)
+}
+
+/// [`lower_coeff_layer`] plus the distribution accounting of §5.4. The `CoeffLayer`
+/// is bit-identical to what [`lower_coeff_layer`] returns.
+pub fn lower_coeff_layer_traced(
+    canonical: &DagLayer,
+    distilled: &DistilledLayer,
+) -> Result<(CoeffLayer, LoweringTrace), CoeffError> {
     let mut cx = Lowering {
         canonical,
         distilled,
@@ -92,9 +138,11 @@ pub fn lower_coeff_layer(
         bodies: BTreeMap::new(),
         c_init: Recipe::zero(),
         fragment: 0,
+        trace: LoweringTrace::default(),
     };
     cx.run()?;
-    cx.finish()
+    let trace = cx.trace.clone();
+    cx.finish().map(|layer| (layer, trace))
 }
 
 // ── Scalar purity ────────────────────────────────────────────────────────────
@@ -267,6 +315,7 @@ struct Lowering<'a> {
     c_init: Recipe,
     /// Fragment index the current expansion belongs to, for error reporting.
     fragment: usize,
+    trace: LoweringTrace,
 }
 
 impl Lowering<'_> {
@@ -384,6 +433,7 @@ impl Lowering<'_> {
 
     fn lower_fragments(&mut self) -> Result<(), CoeffError> {
         let d = self.distilled;
+        self.trace.fragments_total = d.fragments.fragments.len();
         for (index, fragment) in d.fragments.fragments.iter().enumerate() {
             self.fragment = index;
             let k = self.scalar_sum(&fragment.recipe)?;
@@ -392,6 +442,11 @@ impl Lowering<'_> {
                 // and never reaches the source table.
                 continue;
             }
+            self.trace.fragments_live += 1;
+            self.trace.pre_distribution_products += 1;
+            self.trace.pre_distribution_atoms += fragment.atoms.len();
+            self.trace.max_fragment_atoms =
+                self.trace.max_fragment_atoms.max(fragment.atoms.len());
             // The degree bound is checked exactly, by the expansion itself.
             let mut value = Quad::one();
             for &atom in &fragment.atoms {
@@ -400,6 +455,13 @@ impl Lowering<'_> {
                     .mul(&atom_value)
                     .map_err(|degree| CoeffError::DegreeTooHigh { fragment: index, degree })?;
             }
+            // Distribution growth of THIS fragment (§5.4), before cross-fragment
+            // body merging erases it.
+            let residue = usize::from(!value.scalar.is_zero());
+            let monomials = residue + value.linear.len() + value.quad.len();
+            self.trace.distributed_monomials += monomials;
+            self.trace.distributed_degree0_residues += residue;
+            self.trace.max_expansion_factor = self.trace.max_expansion_factor.max(monomials);
             self.emit(&k, value);
         }
         Ok(())
@@ -625,6 +687,17 @@ impl Lowering<'_> {
             }
         }
         let coefficients: Vec<Recipe> = bank.into_iter().collect();
+
+        // §9.2: thirteen coefficient bits, two of them reserved for the `+1`/`-1`
+        // literals. Overflow is a compiler error — there is no extended encoding.
+        let reserved = CoefficientRecipeId::RESERVED as usize;
+        if coefficients.len() + reserved > MAX_COEFFICIENT_ENCODINGS {
+            return Err(CoeffError::CoefficientBankOverflow {
+                recipes: coefficients.len(),
+                reserved,
+                limit: MAX_COEFFICIENT_ENCODINGS,
+            });
+        }
 
         let mut terms = Vec::with_capacity(live.len());
         for (index, (body, recipe)) in live.iter().enumerate() {

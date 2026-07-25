@@ -8,6 +8,12 @@
 //! against the full corpus, so every number here is asserted EXACTLY: a change is
 //! meant to be a signal, not noise.
 //!
+//! Task 3 adds `bwd_coeff_committed_layout_census` at the bottom: the same 114
+//! coordinates, censused per-coordinate through `coeff::stats` and pinned against
+//! the frozen `coeff::limits` maxima. It covers only the layouts this crate can
+//! reach; the GPU crate's `bwd_coeff_complete_corpus_census` extends it with the
+//! conditional `blake2_with_compression` setup.
+//!
 //! Parity is checked against an independent oracle — the DISTILLED spine
 //! evaluated at `X = 0, 1, 2` over affine source pairs, then interpolated. Both
 //! coefficients are checked in the `Ext` regime. In `R0` only `acc_c2` can be:
@@ -29,12 +35,14 @@ use cs::gkr_compiler::dag_ir::{
     VirtualSetupKind, VirtualSetupResolver, eval_layer_expr,
 };
 use field::{Field, FieldExtension, PrimeField};
+use gkr_eval_isa::bwd::coeff::limits::{in_scope, with_conditional_blake2};
 use gkr_eval_isa::bwd::coeff::{
-    CoeffLayer, CoeffResolver, CoeffTerm, CoefficientRecipeId, SourceId, interpret_coeff_layer,
-    lower_coeff_layer,
+    CoeffCensus, CoeffLayer, CoeffResolver, CoeffTerm, CoefficientRecipeId, SourceId,
+    interpret_coeff_layer, lower_coeff_layer,
 };
 use gkr_eval_isa::bwd::distill::distill;
 use gkr_eval_isa::bwd::source::OriginLeaf;
+use rayon::prelude::*;
 
 /// Rows sampled per layer x regime for the parity check.
 const ROWS: usize = 3;
@@ -501,6 +509,211 @@ fn corpus_lowers_and_matches_the_canonical_dag_with_a_pinned_census() {
     // Normalization leaves no non-canonical challenge spelling behind.
     assert_eq!(c.static_one_spellings, 0, "Static(1) is canonicalized to One");
     assert_eq!(c.static_zero_spellings, 0);
+}
+
+// ── Task 3: the committed-layout freeze census ────────────────────────────────
+
+/// Every censused coordinate of the 12 committed layouts, lexically sorted.
+///
+/// Built once and shared, because the whole point of the freeze gate is that ONE
+/// set of numbers backs every assertion below.
+fn committed_rows() -> &'static Vec<gkr_eval_isa::bwd::coeff::CoeffCensusRow> {
+    static ROWS: OnceLock<Vec<gkr_eval_isa::bwd::coeff::CoeffCensusRow>> = OnceLock::new();
+    ROWS.get_or_init(|| {
+        // Fixture loading + DAG lowering is the expensive part, so it is the outer
+        // parallel unit; the per-coordinate work inside is independent too.
+        let mut coordinates: Vec<(String, usize, DagLayer, common::CrossFields)> = FIXTURES
+            .par_iter()
+            .flat_map_iter(|name| {
+                layers_with_bwd_roots(name)
+                    .map(move |(li, layer, cross)| ((*name).to_string(), li, layer, cross))
+            })
+            .collect();
+        coordinates.sort_by(|a, b| (&a.0, a.1).cmp(&(&b.0, b.1)));
+
+        let (mut rows, failures): (Vec<_>, Vec<_>) = coordinates
+            .par_iter()
+            .map(|(name, li, layer, cross)| {
+                gkr_eval_isa::bwd::coeff::census_layer(name, *li, layer, cross)
+            })
+            .unzip();
+        let failures: Vec<_> = failures.into_iter().flatten().collect();
+        assert!(
+            failures.is_empty(),
+            "every committed-layout coordinate must lower: {failures:?}"
+        );
+        let mut rows: Vec<_> = rows.drain(..).flatten().collect();
+        rows.sort_by(|a, b| a.sort_key().cmp(&b.sort_key()));
+        rows
+    })
+}
+
+/// Task 3's freeze gate over the layouts this crate can reach.
+///
+/// Everything here is an EXACT pin against `coeff::limits::in_scope`, and every
+/// encoding limit is asserted SEPARATELY from the measurement that must fit it —
+/// a measured maximum and a format ceiling are different kinds of fact.
+#[test]
+fn bwd_coeff_committed_layout_census() {
+    let rows = committed_rows();
+
+    println!("{}", gkr_eval_isa::bwd::coeff::stats::CSV_HEADER);
+    for row in rows {
+        println!("{}", gkr_eval_isa::bwd::coeff::stats::csv_line(row));
+    }
+
+    // ── corpus shape ─────────────────────────────────────────────────────
+    assert_eq!(FIXTURES.len(), in_scope::CIRCUITS);
+    assert_eq!(rows.len(), in_scope::COORDINATES);
+    assert_eq!(rows.len() / 2, in_scope::LAYERS);
+    assert!(rows.iter().all(|row| row.census.canonical_roots > 0));
+
+    // ── per-coordinate maxima ────────────────────────────────────────────
+    let mut max = CoeffCensus::default();
+    for row in rows {
+        max.merge_max(&row.census);
+    }
+    println!("in-scope maxima: {max:#?}");
+
+    assert_eq!(max.coefficient_recipes, in_scope::MAX_COEFFICIENT_RECIPES);
+    assert_eq!(max.sources, in_scope::MAX_SOURCES);
+    assert_eq!(max.projections, in_scope::MAX_PROJECTIONS);
+    assert_eq!(max.terms, in_scope::MAX_TERMS);
+    assert_eq!(max.max_expansion_factor, in_scope::MAX_EXPANSION_FACTOR);
+    assert_eq!(max.max_fragment_atoms, in_scope::MAX_FRAGMENT_ATOMS);
+    assert_eq!(max.source_windows, in_scope::MAX_SOURCE_WINDOWS_USED);
+    assert_eq!(max.lower_bound_program_bytes, in_scope::MAX_LOWER_BOUND_PROGRAM_BYTES);
+    assert_eq!(max.upper_bound_program_bytes, in_scope::MAX_UPPER_BOUND_PROGRAM_BYTES);
+    assert_eq!(
+        max.cont_standalone_product,
+        in_scope::MAX_CONTINUATION_STANDALONE_PRODUCTS,
+        "a live standalone continuation product would need its own opcode"
+    );
+
+    // ── encoding limits (separate from the measurements above) ────────────
+    assert!(
+        max.coefficient_recipes + CoefficientRecipeId::RESERVED as usize
+            <= gkr_eval_isa::bwd::coeff::MAX_COEFFICIENT_ENCODINGS,
+        "deduplicated_bank_recipe_count + 2 must fit the 13-bit coefficient field"
+    );
+    assert!(
+        max.source_windows <= gkr_eval_isa::bwd::coeff::MAX_SOURCE_WINDOWS,
+        "final source-window count must fit the 6-bit window field"
+    );
+
+    // ── the lower bound is the only unrepairable one ──────────────────────
+    let overflowing: Vec<_> =
+        rows.iter().filter(|row| !row.census.lower_bound_fits()).map(|r| r.sort_key()).collect();
+    assert_eq!(
+        overflowing,
+        Vec::new(),
+        "a lower-bound overflow cannot be repaired by any later codec"
+    );
+    let inconclusive: Vec<_> =
+        rows.iter().filter(|row| row.census.inconclusive()).map(|r| r.sort_key()).collect();
+    println!(
+        "proven to fit: {}/{}; inconclusive (Task 8 decides): {:?}",
+        rows.len() - inconclusive.len(),
+        rows.len(),
+        inconclusive
+    );
+    // Every coordinate's CONSERVATIVE maximum program stream fits, so the term
+    // set is proven encodable before paging/placement exist. This bounds the
+    // PROGRAM STREAM only — the remaining by-value descriptor metadata still has
+    // `MIN_DESCRIPTOR_HEADROOM_BYTES` to fit in, and Tasks 8-9 freeze that.
+    assert_eq!(inconclusive.len(), in_scope::INCONCLUSIVE_COORDINATES);
+    assert_eq!(
+        in_scope::MIN_DESCRIPTOR_HEADROOM_BYTES,
+        gkr_eval_isa::bwd::coeff::KERNEL_ARGUMENT_CEILING_BYTES
+            - in_scope::MAX_UPPER_BOUND_PROGRAM_BYTES
+    );
+
+    // ── frozen opcode tables ─────────────────────────────────────────────
+    let mut live_r0: BTreeMap<&'static str, usize> = BTreeMap::new();
+    let mut live_ext: BTreeMap<&'static str, usize> = BTreeMap::new();
+    for row in rows {
+        let sink = if row.regime == BwdRegime::R0 { &mut live_r0 } else { &mut live_ext };
+        for category in &row.live_categories {
+            *sink.entry(category.label()).or_default() += 1;
+            let opcode = if row.regime == BwdRegime::R0 {
+                gkr_eval_isa::bwd::coeff::r0_opcode(*category)
+            } else {
+                gkr_eval_isa::bwd::coeff::continuation_opcode(*category)
+            };
+            assert!(
+                opcode.is_some(),
+                "{:?} emitted {} which the {} opcode table does not encode",
+                row.sort_key(),
+                category.label(),
+                if row.regime == BwdRegime::R0 { "R0" } else { "continuation" }
+            );
+        }
+    }
+    println!("live R0 categories: {live_r0:?}\nlive Ext categories: {live_ext:?}");
+    // Continuation stays a two-term ISA plus its move: no third arithmetic
+    // category exists to give opcode 3 to.
+    assert_eq!(
+        live_ext.keys().copied().collect::<Vec<_>>(),
+        vec!["C0LinearE4", "DualProductE4"],
+        "continuation emits only C0Linear and native DualProduct"
+    );
+
+    // ── aggregates, re-confirming Task 2 through the new census path ──────
+    let sum = |f: fn(&CoeffCensus) -> usize| rows.iter().map(|r| f(&r.census)).sum::<usize>();
+    assert_eq!(sum(|c| c.r0_c0_linear()), 1959);
+    assert_eq!(sum(|c| c.r0_c2_product()), 5872);
+    assert_eq!(sum(|c| c.cont_c0_linear), 2157);
+    assert_eq!(sum(|c| c.cont_dual_product), 5872);
+    assert_eq!(sum(|c| c.coefficient_recipes), 8320);
+    assert_eq!(sum(|c| c.sources), 9654);
+    assert_eq!(sum(|c| c.cont_c0_linear_bf), 0, "every continuation source is an Ext fold leaf");
+    assert_eq!(
+        rows.iter().filter(|r| r.census.has_c_init).count(),
+        27,
+        "only the Ext regime emits a c_init"
+    );
+    assert!(
+        rows.iter().filter(|r| r.regime == BwdRegime::R0).all(|r| !r.census.has_c_init),
+        "R0 drops the spine c_init (design §5.3)"
+    );
+
+    // Claim roots materialize ONLY to Inner sinks on this corpus, so
+    // `sink_read_place`'s Cache/Scratch arms are covered synthetically only.
+    let r0 = || rows.iter().filter(|r| r.regime == BwdRegime::R0);
+    assert_eq!(r0().map(|r| r.census.sinks_inner).sum::<usize>(), 1959);
+    assert_eq!(r0().map(|r| r.census.sinks_cache).sum::<usize>(), 0);
+    assert_eq!(r0().map(|r| r.census.sinks_scratch).sum::<usize>(), 0);
+    assert_eq!(r0().map(|r| r.census.sinks_export).sum::<usize>(), 0);
+    assert_eq!(r0().map(|r| r.census.constraint_only_roots).sum::<usize>(), 901);
+}
+
+/// The conditional-scope bookkeeping this crate can state on its own (design
+/// §3.1): `blake2_with_compression` has no committed `_layout_gkr.json`, so the
+/// in-scope maxima above are exactly the 12 mandatory layouts, and the diagnostic
+/// set differs from them only by that one conditional circuit.
+#[test]
+fn conditional_blake2_scope_is_recorded_separately() {
+    assert_eq!(in_scope::CIRCUITS, FIXTURES.len());
+    assert_eq!(with_conditional_blake2::CIRCUITS, in_scope::CIRCUITS + 1);
+    assert!(
+        with_conditional_blake2::COORDINATES > in_scope::COORDINATES,
+        "the diagnostic set must actually include the conditional circuit"
+    );
+    // Diagnostic maxima may never be SMALLER than in-scope ones: they are a
+    // superset census.
+    assert!(with_conditional_blake2::MAX_COEFFICIENT_RECIPES >= in_scope::MAX_COEFFICIENT_RECIPES);
+    assert!(with_conditional_blake2::MAX_TERMS >= in_scope::MAX_TERMS);
+    assert!(with_conditional_blake2::MAX_SOURCES >= in_scope::MAX_SOURCES);
+    assert!(
+        with_conditional_blake2::MAX_LOWER_BOUND_PROGRAM_BYTES
+            >= in_scope::MAX_LOWER_BOUND_PROGRAM_BYTES
+    );
+    // No format is sized from the diagnostic set, so it is allowed to be equal —
+    // and it IS equal here, because `get_blake2_with_compression_circuit_setup`
+    // compiles the same GKR circuit as the committed
+    // `blake2_with_extended_control_layout_gkr.json`. The GPU crate's
+    // `bwd_coeff_complete_corpus_census` is what proves that empirically.
+    assert_eq!(with_conditional_blake2::MAX_TERMS, in_scope::MAX_TERMS);
 }
 
 /// The guard behind the decision NOT to merge repeated challenge factors into an

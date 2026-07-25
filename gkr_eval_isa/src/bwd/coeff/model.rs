@@ -539,6 +539,14 @@ pub enum CoeffError {
     BatchingFactorNotChallenge { root: RootId, expr: ExprId },
     /// Relation degree above two (§5.4). `degree` saturates at 3.
     DegreeTooHigh { fragment: usize, degree: usize },
+    /// The deduplicated coefficient bank plus the two reserved literals does not
+    /// fit the thirteen coefficient bits of the u16 header (§9.2).
+    ///
+    /// This is a COMPILER ERROR by design: there is no extended encoding, no
+    /// version field, and no fallback format. For the conditional
+    /// `blake2_with_compression` scope it triggers §3.1's whole-circuit exclusion;
+    /// for any mandatory circuit it fails the build.
+    CoefficientBankOverflow { recipes: usize, reserved: usize, limit: usize },
     /// A coefficient recipe factor that is not scalar-pure.
     NonScalarCoefficientFactor { expr: ExprId },
     /// A distilled leaf that cannot be a backward source (a `LookupValue` leaf
