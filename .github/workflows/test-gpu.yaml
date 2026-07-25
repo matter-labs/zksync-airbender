@@ -43,7 +43,7 @@ jobs:
       # we need cmake 3.30 (as 3.24 doesn't properly pass cuda_standard_20)
       - name: Setup CMAKE
         run: |
-          curl -LO https://github.com/Kitware/CMake/releases/download/v3.30.2/cmake-3.30.2-linux-x86_64.sh && \
+          curl -fLO --retry 5 --retry-all-errors https://github.com/Kitware/CMake/releases/download/v3.30.2/cmake-3.30.2-linux-x86_64.sh && \
             chmod +x cmake-3.30.2-linux-x86_64.sh && \
             ./cmake-3.30.2-linux-x86_64.sh --skip-license --prefix=/usr/local
 
