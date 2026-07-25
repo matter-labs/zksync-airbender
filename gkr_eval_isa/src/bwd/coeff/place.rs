@@ -897,12 +897,16 @@ pub fn place_paging_plan(
         // Offline packing failed while the peak still fits: this is the
         // pathological fragmentation §7.3 keeps moves for.
         //
-        // One arm, not two: `QuadDemandExceedsBudget` cannot fire here. It means
-        // the concurrent E4 count exceeds the quad budget, but the peak check
-        // above already established `4 * concurrent_e4 <= peak <= 4 * n_quads`.
-        // It is handled identically rather than split out so a future change to
-        // the peak check cannot turn it into a silent panic.
-        Err(_) => event_scan_repair(&d, capacity)?,
+        // Matched exhaustively, never `Err(_)`: a new `PackFailure` variant must
+        // fail to compile here rather than be silently routed into the repair.
+        // `QuadDemandExceedsBudget` cannot actually fire — it means the concurrent
+        // E4 count exceeds the quad budget, but the peak check above already
+        // established `4 * concurrent_e4 <= peak <= 4 * n_quads` — and it shares
+        // this arm so a future change to the peak check cannot turn it into a
+        // panic.
+        Err(PackFailure::QuadDemandExceedsBudget { .. } | PackFailure::NoFeasibleColoring) => {
+            event_scan_repair(&d, capacity)?
+        }
     };
 
     let instrs = emit(layer, plan, &d, &lanes)?;

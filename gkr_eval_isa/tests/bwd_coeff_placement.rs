@@ -804,6 +804,99 @@ fn move_destination_may_be_reclaimed_by_a_later_slot_fill() {
         .expect("a later-slot reclaim is legal and must certify");
 }
 
+/// The other half of the pair: a move that lands where a fill of the same term
+/// will overwrite it while the plan still holds the relocated value resident is
+/// still rejected.
+///
+/// This pins what REPLACED the dropped all-slot `term_fill_lanes` clause. That
+/// clause was over-strict (see the sibling test), but it did cover one genuine
+/// hazard, and the argument that the hazard is still caught rests on two things
+/// no test asserted until now: `write`'s `after.contains(&victim)` check, and the
+/// end-of-step eviction that keeps `held` in step with `resident_after`. Narrow
+/// either one and the hazard silently reopens with every other test green — which
+/// is exactly the regression the dropped clause used to prevent.
+///
+/// Rather than probe a single lane, this sweeps the whole cell file and pins the
+/// complete partition, so the rule's boundary is documented rather than sampled.
+#[test]
+fn move_into_a_lane_the_term_fills_is_still_rejected() {
+    let (layer, prices) = later_slot_reclaim_layer();
+    let (plan, good) = page_and_place(&layer, &prices, 2);
+
+    // The second move is the one whose destination the later slot reclaims.
+    let emitted = moves(&good);
+    assert_eq!(emitted.len(), 2, "the fixture's repair takes two BF moves");
+    let (index, projection, from_lane, legal_to, _) = emitted[1];
+    let capacity = plan.request.budget.lanes() as u16;
+
+    let mut clobbered: Vec<u16> = Vec::new();
+    let mut not_dead: Vec<u16> = Vec::new();
+    let mut accepted: Vec<u16> = Vec::new();
+    for to_lane in 0..capacity {
+        let mut tampered = good.clone();
+        tampered.instrs[index] = ScheduledInstr::MoveBF { projection, from_lane, to_lane };
+        match certify_cell_liveness(&layer, &prices, &plan, &tampered) {
+            Ok(_) => accepted.push(to_lane),
+            Err(LivenessError::FillClobbersLiveValue { victim, .. }) => {
+                assert_eq!(
+                    victim, projection,
+                    "the clobbered value must be the relocated one, not a bystander"
+                );
+                clobbered.push(to_lane);
+            }
+            Err(LivenessError::MoveDestinationNotDead { .. }) => not_dead.push(to_lane),
+            Err(e) => panic!("unexpected rejection for to_lane {to_lane}: {e:?}"),
+        }
+    }
+
+    // Exactly one destination is legal: the later-slot reclaim the sibling test
+    // covers. Everything else is rejected, by one of the two rules.
+    assert_eq!(accepted, vec![legal_to], "only the later-slot reclaim may be accepted");
+    // The lanes the term's E4 fill takes are the replacement rule's own case: the
+    // move lands there, the fill overwrites it, and the plan still lists the
+    // relocated value resident at that step.
+    assert!(
+        !clobbered.is_empty(),
+        "vacuous: no destination exercised FillClobbersLiveValue, so nothing pins the \
+         replacement for the dropped clause"
+    );
+    assert!(
+        !not_dead.is_empty(),
+        "vacuous: no destination exercised the surviving MoveDestinationNotDead clause"
+    );
+    assert_eq!(
+        clobbered.len() + not_dead.len() + accepted.len(),
+        capacity as usize,
+        "every lane must be classified"
+    );
+    println!(
+        "move destination partition: ok={accepted:?} \
+         fill_clobbers_live={clobbered:?} not_dead={not_dead:?}"
+    );
+}
+
+/// A plan built for one regime may not be placed against a layer of the other.
+#[test]
+fn placement_rejects_a_regime_mismatch() {
+    let (layer, prices) = mixed_r0_layer();
+    let order = stable_normalized_order(&layer);
+    let plan = page_projections(&layer, &prices, request(4), &order).expect("pager");
+    assert_eq!(plan.regime, BwdRegime::R0);
+
+    let mut other = layer.clone();
+    other.regime = BwdRegime::Ext;
+    assert_eq!(
+        place_paging_plan(&other, &prices, &plan),
+        Err(PlacementError::RegimeMismatch {
+            declared: BwdRegime::R0,
+            found: BwdRegime::Ext
+        }),
+        "an R0 plan against an Ext layer describes a different program"
+    );
+    // And the matched pair still places, so the guard is not rejecting everything.
+    place_paging_plan(&layer, &prices, &plan).expect("the matching regime still places");
+}
+
 // ── Production corpus ────────────────────────────────────────────────────────
 
 /// Every `(circuit, layer, regime)` coordinate, lowered, priced, and censused.
@@ -1023,11 +1116,24 @@ fn randomized_placements_always_certify() {
     let mut unplaceable = 0usize;
     let mut checked = 0usize;
     // Biased toward the shape that actually fragments: mostly-BF R0 layers with a
-    // couple of E4 sources at tight budgets. An unbiased generator reaches a
-    // repair roughly once in 40,000 layers, which is too rare to gate on.
-    for round in 0..12_000u64 {
+    // couple of E4 sources at tight budgets.
+    //
+    // The size of the layer is the lever, and it was measured rather than guessed.
+    // A sweep over generator shapes at a fixed 24,000 placements gave, per shape,
+    // the number that reach the repair path:
+    //
+    //     4..9 sources,  6..13 terms   ->    19
+    //     6..13 sources, 12..25 terms  -> 1,085
+    //     8..15 sources, 16..31 terms  -> 2,642
+    //
+    // Confining sources to a sliding window of terms — the intuitive "short-lived
+    // BF occupant" bias — HALVES the yield at every size (1,085 -> 459), because a
+    // relocation needs the cell file near capacity as well as fragmented, and short
+    // residencies relieve exactly the pressure that fills it. Sustained occupancy
+    // is what matters, so the generator stays uniform and the layers got bigger.
+    for round in 0..6_000u64 {
         let regime = if round % 4 == 3 { BwdRegime::Ext } else { BwdRegime::R0 };
-        let n_src = 4 + next(4) as usize;
+        let n_src = 6 + next(7) as usize;
         let fields: Vec<FieldKind> = (0..n_src)
             .map(|_| {
                 if regime == BwdRegime::Ext || next(4) == 0 {
@@ -1037,7 +1143,7 @@ fn randomized_placements_always_certify() {
                 }
             })
             .collect();
-        let n_terms = 6 + next(8) as usize;
+        let n_terms = 12 + next(13) as usize;
         let mut terms = Vec::with_capacity(n_terms);
         for i in 0..n_terms {
             let id = i as u32;
@@ -1104,5 +1210,8 @@ fn randomized_placements_always_certify() {
          no_legal_relocation={unplaceable}"
     );
     assert!(checked > 20_000, "vacuous: only {checked} instances reached placement");
-    assert!(repaired > 0, "vacuous: the repair path was never exercised");
+    // Non-vacuity with real headroom: the repair path is reached hundreds of times
+    // per run, not once. A shape change that quietly stops fragmenting fails here
+    // instead of leaving the fuzz green and blind.
+    assert!(repaired > 100, "the repair path was reached only {repaired} times");
 }
