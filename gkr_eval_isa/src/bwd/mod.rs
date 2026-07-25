@@ -2,6 +2,7 @@
 //! backward-sumcheck instrument. Sibling of `fwd`; owns its own descriptor
 //! namespace (`BwdSpecialTable`) — never shares fwd's `SpecialTable`.
 pub mod batch;
+pub mod coeff;
 pub mod compile;
 pub mod construct;
 pub mod cost;
