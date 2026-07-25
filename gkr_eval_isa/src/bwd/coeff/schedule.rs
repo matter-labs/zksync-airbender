@@ -605,6 +605,17 @@ pub enum ScheduleError {
     /// A term operand names a source outside `CoeffLayer::sources`, or the price
     /// table is shorter than the source table.
     UnknownSource { term: TermId, source: SourceId },
+    /// The price table's resident width for a source disagrees with the layer's
+    /// own [`CoeffSource::field`](super::model::CoeffSource::field).
+    ///
+    /// [`SourcePrice::width`] and `CoeffSource::field` are two spellings of one
+    /// fact. [`source_prices`] derives the former FROM the latter and so cannot
+    /// disagree, but a caller-built price table can — and then the eviction
+    /// ranking, the lane accounting and the physical placement would all size a
+    /// projection differently from its opcode category. Every entry point that
+    /// reads `prices[..].width` validates the pair first, so the two can never
+    /// silently drift.
+    PriceWidthMismatch { source: SourceId, price: ValueWidth, layer: FieldKind },
     /// A term declares an operand field its source does not have, so the term's
     /// opcode category and the resident width would disagree.
     OperandFieldConflict {
@@ -684,6 +695,48 @@ impl From<ScheduleError> for PagingCertificateError {
     }
 }
 
+// ── Price-table validation ───────────────────────────────────────────────────
+
+/// Reject a price table that does not describe `layer`.
+///
+/// Two independent facts are checked, both derivable from the inputs:
+///
+///   * the table covers every [`SourceId`] the layer names; and
+///   * every [`SourcePrice::width`] equals the layer's own
+///     [`CoeffSource::field`](super::model::CoeffSource::field) for that source.
+///
+/// The second check exists because width has two spellings. [`source_prices`]
+/// keeps them in sync by construction (`ValueWidth::of(source.field)`), but
+/// nothing else did: [`page_projections`], [`certify_paging_plan`],
+/// [`budget_aware_greedy_order`] and the physical placement all read
+/// `prices[..].width` for lane accounting, while `term_slots`'s own `agree()`
+/// compares a term's DECLARED operand field against the source field — a
+/// different pair. A price table claiming `Bf` for an `Ext` source would therefore
+/// have been accepted, and every downstream lane count would be four times wrong.
+///
+/// Called by every entry point that reads a price width, so a mismatch is
+/// impossible to smuggle past.
+pub fn validate_prices(layer: &CoeffLayer, prices: &[SourcePrice]) -> Result<(), ScheduleError> {
+    if prices.len() < layer.sources.len() {
+        return Err(ScheduleError::UnknownSource {
+            term: TermId(u32::MAX),
+            source: SourceId(prices.len() as u32),
+        });
+    }
+    for (index, source) in layer.sources.iter().enumerate() {
+        let price = prices[index];
+        let expected = ValueWidth::of(source.field);
+        if price.width != expected {
+            return Err(ScheduleError::PriceWidthMismatch {
+                source: SourceId(index as u32),
+                price: price.width,
+                layer: source.field,
+            });
+        }
+    }
+    Ok(())
+}
+
 // ── Structural expansion: terms to resolution-group skeletons ────────────────
 //
 // PURELY structural: derived from `CoeffLayer` alone, with no reference to any
@@ -692,8 +745,14 @@ impl From<ScheduleError> for PagingCertificateError {
 // without re-deciding anything.
 
 /// The legal forms one operand slot may take.
+///
+/// Public because physical placement (design §7.3) has to know, per emitted
+/// resolution, whether the slot consumes `Endpoint0` only, `Delta` only, or both
+/// projections of a native dual factor — and re-deriving that from
+/// [`CoeffTerm`] in a second place would be a drift hazard. It is a
+/// STRUCTURAL classification of the layer, never a decision.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum SlotKind {
+pub enum SlotKind {
     /// A `C0Linear` operand: `Endpoint0` only, `Single` forever (§8).
     Endpoint0Only(ProjectionId),
     /// A `C2Product` operand: `Delta`; `Single`, or `Pair` when the resolution
@@ -705,7 +764,7 @@ enum SlotKind {
 
 impl SlotKind {
     /// The projections the TERM reads through this slot.
-    fn consumed(self) -> Vec<ProjectionId> {
+    pub fn consumed(self) -> Vec<ProjectionId> {
         match self {
             SlotKind::Endpoint0Only(p) | SlotKind::DeltaOnly(p) => vec![p],
             SlotKind::DualFactor(s) => {
@@ -714,7 +773,7 @@ impl SlotKind {
         }
     }
 
-    fn source(self) -> SourceId {
+    pub fn source(self) -> SourceId {
         match self {
             SlotKind::Endpoint0Only(p) | SlotKind::DeltaOnly(p) => p.source,
             SlotKind::DualFactor(s) => s,
@@ -729,7 +788,7 @@ impl SlotKind {
 /// product forms take operands of a single role, the surviving slots of a term
 /// always consume DISJOINT projection sets — which is what makes per-slot
 /// next-use bookkeeping unambiguous.
-fn term_slots(layer: &CoeffLayer, term: &CoeffTerm) -> Result<Vec<SlotKind>, ScheduleError> {
+pub fn term_slots(layer: &CoeffLayer, term: &CoeffTerm) -> Result<Vec<SlotKind>, ScheduleError> {
     let id = term.id();
     let check = |p: ProjectionId, expected: Projection| -> Result<(), ScheduleError> {
         if p.projection != expected {
@@ -966,12 +1025,7 @@ pub fn page_projections(
     request: PagingRequest,
     order: &[TermId],
 ) -> Result<PagingPlan, ScheduleError> {
-    if prices.len() < layer.sources.len() {
-        return Err(ScheduleError::UnknownSource {
-            term: TermId(u32::MAX),
-            source: SourceId(prices.len() as u32),
-        });
-    }
+    validate_prices(layer, prices)?;
     let capacity = request.budget.lanes();
     let sequence = expand(layer, order)?;
     let queues = next_use_queues(layer, order)?;
@@ -1239,13 +1293,7 @@ pub fn certify_paging_plan(
             found: layer.regime,
         });
     }
-    if prices.len() < layer.sources.len() {
-        return Err(ScheduleError::UnknownSource {
-            term: TermId(u32::MAX),
-            source: SourceId(prices.len() as u32),
-        }
-        .into());
-    }
+    validate_prices(layer, prices)?;
     let capacity = plan.request.budget.lanes();
     let sequence = expand(layer, &plan.order)?;
     let queues = next_use_queues(layer, &plan.order)?;
@@ -1597,12 +1645,7 @@ pub fn budget_aware_greedy_order(
     if term_count == 0 {
         return Ok(Vec::new());
     }
-    if prices.len() < layer.sources.len() {
-        return Err(ScheduleError::UnknownSource {
-            term: TermId(u32::MAX),
-            source: SourceId(prices.len() as u32),
-        });
-    }
+    validate_prices(layer, prices)?;
     // Validate operand roles/fields exactly as the pager does, so a rejected
     // layer cannot silently produce an order.
     for term in &layer.terms {

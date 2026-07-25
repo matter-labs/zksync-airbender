@@ -525,15 +525,16 @@ pub fn census_layer(
         let censused = lower_coeff_layer_traced(canonical, &distilled).and_then(
             |(lowered, trace)| {
                 let census = census_coeff_layer(canonical, &distilled, &lowered, &trace)?;
-                Ok((lowered, census))
+                let live_categories = live_term_categories(&lowered)?;
+                Ok((live_categories, census))
             },
         );
         match censused {
-            Ok((lowered, census)) => rows.push(CoeffCensusRow {
+            Ok((live_categories, census)) => rows.push(CoeffCensusRow {
                 circuit: circuit.to_string(),
                 layer: layer_index,
                 regime,
-                live_categories: live_term_categories(&lowered),
+                live_categories,
                 census,
             }),
             Err(error) => failures.push(CoeffCensusFailure {
@@ -641,14 +642,22 @@ pub fn census_csv(rows: &[CoeffCensusRow]) -> String {
 /// The live opcode categories one lowered layer uses, for the opcode-table
 /// freeze.
 ///
-/// Every returned category is a legal category of `lowered.regime`, asserted for
-/// real rather than under `debug_assert` — the census runs in `--release`, so a
-/// debug assertion would never execute in the mode that produces the frozen
-/// numbers. Reachable, not decorative: a `DualProduct` in an R0 layer or a
-/// base-field `C0Linear` in an `Ext` layer maps to a category its regime's opcode
-/// table cannot encode, and this is the library-level guard for any caller (both
-/// censuses additionally assert it per row, where they can name the coordinate).
-pub fn live_term_categories(lowered: &CoeffLayer) -> BTreeSet<TermCategory> {
+/// Every returned category is a legal category of `lowered.regime`. Reachable,
+/// not decorative: a `DualProduct` in an R0 layer or a base-field `C0Linear` in an
+/// `Ext` layer maps to a category its regime's opcode table cannot encode, and
+/// this is the library-level guard for any caller (both censuses additionally
+/// check it per row, where they can name the coordinate).
+///
+/// A RETURNED [`CoeffError::TermCategoryNotEncodable`], not an `assert!`: the
+/// guarded condition is a pure function of `lowered.regime` and `lowered.terms`,
+/// i.e. of input data, so the crate convention makes it a typed error — exactly
+/// as [`census_coeff_layer`]'s
+/// [`CoeffError::ConstraintRootAccountingMismatch`] already is. A library-level
+/// assertion here would abort the corpus sweep of every caller in Tasks 5-9
+/// instead of reporting the offending coordinate as data
+/// ([`CoeffCensusFailure`]), which is what §3.1's conditional-circuit handling
+/// needs.
+pub fn live_term_categories(lowered: &CoeffLayer) -> Result<BTreeSet<TermCategory>, CoeffError> {
     let r0 = lowered.regime == BwdRegime::R0;
     let mut live = BTreeSet::new();
     for term in &lowered.terms {
@@ -666,12 +675,12 @@ pub fn live_term_categories(lowered: &CoeffLayer) -> BTreeSet<TermCategory> {
         });
     }
     for category in &live {
-        assert!(
-            category.is_legal_in(r0),
-            "{} is not encodable in the {} opcode table",
-            category.label(),
-            if r0 { "R0" } else { "continuation" }
-        );
+        if !category.is_legal_in(r0) {
+            return Err(CoeffError::TermCategoryNotEncodable {
+                regime: lowered.regime,
+                category: *category,
+            });
+        }
     }
-    live
+    Ok(live)
 }

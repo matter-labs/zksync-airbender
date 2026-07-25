@@ -618,4 +618,12 @@ pub enum CoeffError {
     /// contradiction becomes observable — and it is derivable purely from
     /// `DagLayer::roots`, which is why it is a typed error and not an assertion.
     ConstraintRootAccountingMismatch { sinkless_claim_roots: usize, constraint_slot_roots: usize },
+    /// A lowered layer uses a term category its regime's opcode table cannot
+    /// encode — a `DualProduct` at R0, or a base-field `C0Linear` in `Ext`
+    /// (§9.2's opcode census).
+    ///
+    /// Derivable from `CoeffLayer::regime` and `CoeffLayer::terms` alone, so it is
+    /// a typed error rather than a library-level assertion: a census must be able
+    /// to report the offending coordinate as data and continue (§3.1).
+    TermCategoryNotEncodable { regime: BwdRegime, category: super::limits::TermCategory },
 }
