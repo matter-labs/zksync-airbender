@@ -558,9 +558,9 @@ pub(crate) fn project_layer_flat_round0_term_counts<E>(
                 counts.c1_bf_bf += (qt * lt) as u32;
             }
             K::MaterializeGrandProductTermExpression => {
+                // Round 0 emits only the output c0 term. The linear form
+                // starts contributing in continuation rounds.
                 counts.c0_ext += 1;
-                let (_, lt) = count_metadata_terms(&bp.constraint_metadata_source, true);
-                counts.c1_linear += lt as u32;
             }
             K::LookupPairFromBaseInputs | K::LookupPairFromVectorInputs => {
                 counts.c0_ext += 2;

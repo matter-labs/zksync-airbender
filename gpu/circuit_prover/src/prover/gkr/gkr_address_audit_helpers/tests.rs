@@ -577,3 +577,55 @@ fn layer_has_unsupported_relations(layer: &cs::gkr_compiler::GKRLayerDescription
             )
         })
 }
+
+#[test]
+fn round0_projection_excludes_materialize_linear_form() {
+    use crate::prover::gkr::backward::{
+        build_main_layer_kernel_blueprints_static, canonical_inits_and_teardowns_top_bits,
+    };
+    use crate::prover::gkr::storage_layout::{FieldType, GpuGKRStorageLayout};
+    use field::baby_bear::ext4::BabyBearExt4;
+    use prover::definitions::GKRExternalChallenges;
+    use prover::gkr::high_bits_offset_for_inits_and_teardowns;
+
+    let artifact =
+        load_artifact("cs/compiled_circuits/blake2_with_extended_control_layout_gkr.json");
+    let layer_idx = 0;
+    let layer = &artifact.layers[layer_idx];
+    let layout = GpuGKRStorageLayout::from_artifact(&artifact);
+    let inits_top_bits =
+        canonical_inits_and_teardowns_top_bits(artifact.memory_layout.teardown_sets.len());
+    let inits_high_bits_shift = if artifact.memory_layout.teardown_sets.is_empty() {
+        0
+    } else {
+        high_bits_offset_for_inits_and_teardowns::<2>(artifact.trace_len)
+    };
+    let external_challenges = GKRExternalChallenges::<BabyBearField, BabyBearExt4>::default();
+    let is_base_field_at_layer = |addr: &cs::definitions::GKRAddress| -> bool {
+        layout.layers[layer_idx]
+            .lookup(addr)
+            .map(|(_, field, _)| field == FieldType::Base)
+            .unwrap_or(false)
+    };
+    let blueprints = build_main_layer_kernel_blueprints_static::<BabyBearExt4>(
+        layer,
+        layer_idx,
+        &is_base_field_at_layer,
+        &external_challenges,
+        &inits_top_bits,
+        inits_high_bits_shift,
+        artifact.memory_layout.total_width,
+        artifact.witness_layout.total_width,
+    );
+
+    let counts = super::project_layer_flat_round0_term_counts(&blueprints);
+    assert_eq!(counts.c0_bf, 2);
+    assert_eq!(counts.c0_ext, 341);
+    assert_eq!(counts.c1_bf_bf, 754);
+    assert_eq!(counts.c1_e4_e4, 148);
+    assert_eq!(counts.c1_bf_e4, 1);
+    assert_eq!(
+        counts.c1_linear, 0,
+        "materialize linear forms start in continuation rounds"
+    );
+}

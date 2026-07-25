@@ -164,9 +164,9 @@ pub(crate) fn project_layer_flat_round0_recipe_audit<E>(
                 account_xprod(&mut a, &qt, &lt, imm);
             }
             K::MaterializeGrandProductTermExpression => {
+                // Round 0 emits only the output c0 recipe. The linear-form
+                // recipes belong to the continuation audit below.
                 account_bare(&mut a, 1);
-                let (_, lt) = metadata_qt_lt_term_lens(&bp.constraint_metadata_source, true);
-                account_single_group(&mut a, &lt, imm);
             }
             K::LookupPairFromBaseInputs | K::LookupPairFromVectorInputs => {
                 account_bare(&mut a, 2);
