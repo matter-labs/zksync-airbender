@@ -22,6 +22,7 @@
 //! decoder, and no old/new switch here.
 
 pub mod bind;
+pub mod encode;
 pub mod interp;
 pub mod limits;
 pub mod lower;
@@ -34,7 +35,20 @@ pub use bind::{
     BoundColumn, BoundInput, BoundSourceWindow, CoeffSourceBinding, SourceBindError,
     SourceCertificateError, bind_coeff_sources, certify_source_binding,
 };
-pub use interp::{CoeffResolver, interpret_coeff_layer};
+pub use encode::{
+    ACTION_DIRECT, ACTION_FILL, ACTION_INVALID, ACTION_USE_RESIDENT, CELL_DELTA_LANE_SHIFT,
+    CELL_ENDPOINT0_LANE_SHIFT, CoeffCodecError, DecodedCell, DecodedInstr, DecodedUse,
+    EncodedProgram, HEADER_COEFFICIENT_MASK, HEADER_COEFFICIENT_SHIFT, HEADER_OPCODE_MASK,
+    HEADER_OPCODE_SHIFT, INPUT_COLUMN_MASK, INPUT_COLUMN_SHIFT, INPUT_FIRST_ACCESS_SHIFT,
+    INPUT_MODE_MASK, INPUT_MODE_SHIFT, INPUT_WINDOW_MASK, INPUT_WINDOW_SHIFT, LANE_BITS, LANE_MASK,
+    LANE_WORD_SHIFT, MODE_CELL, MODE_DIRECT_SOURCE, MODE_FILL_SOURCE, MODE_PLANNED_SOURCE,
+    OperandRole, PLAN_ACTION_MASK, PLAN_DELTA_ACTION_SHIFT, PLAN_DELTA_LANE_SHIFT,
+    PLAN_ENDPOINT0_ACTION_SHIFT, PLAN_ENDPOINT0_LANE_SHIFT, ShortestForm, SourceCoord,
+    category_arity, category_of, category_role, certify_encoding, coord_source, decode_program,
+    disassemble, encode_instrs, encode_program, is_move, move_width, opcode_of, opcode_table,
+    operand_width, program_records, term_category, validate_program,
+};
+pub use interp::{CoeffResolver, interpret_coeff_layer, interpret_encoded_program};
 pub use limits::{
     ASSUMED_MOVES_PER_REUSABLE_PROJECTION, CONTINUATION_LIVE_OPCODES, CONTINUATION_OPCODE_TABLE,
     HEADER_COEFFICIENT_BITS, HEADER_OPCODE_BITS, KERNEL_ARGUMENT_CEILING_BYTES,
