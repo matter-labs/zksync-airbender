@@ -561,7 +561,9 @@ fn project_circuit_main_gather_num_addresses_max(
 /// static blueprint builder panics on these via `unimplemented!()`, and
 /// production callers can't process them either — so they're transparent
 /// holes in our term-count projection.
-fn layer_has_unsupported_relations(layer: &cs::gkr_compiler::GKRLayerDescription) -> bool {
+pub(super) fn layer_has_unsupported_relations(
+    layer: &cs::gkr_compiler::GKRLayerDescription,
+) -> bool {
     use cs::gkr_compiler::NoFieldGKRRelation as R;
     layer
         .gates
