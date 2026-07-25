@@ -80,20 +80,38 @@ pub fn backing_field(
     source: &CoeffSource,
     distilled: &DistilledLayer,
 ) -> FieldKind {
+    backing_field_in(place, source, &distilled.cross_fields)
+}
+
+/// [`backing_field`] against a bare cross-layer field map — the only part of a
+/// [`DistilledLayer`] the resolution actually reads. Final binding
+/// ([`crate::bwd::coeff::bind`]) takes the map, so a caller that has already
+/// dropped the distilled layer can still place a source in its matrix.
+pub fn backing_field_in(
+    place: &ReadPlace,
+    source: &CoeffSource,
+    cross_fields: &HashMap<ReadPlace, FieldKind>,
+) -> FieldKind {
     if let Some(f) = read_place_field(place) {
         return f;
     }
-    if let Some(&f) = distilled.cross_fields.get(place) {
+    if let Some(&f) = cross_fields.get(place) {
         return f;
     }
     source.field
 }
 
-fn window_family(source: &CoeffSource, distilled: &DistilledLayer) -> (WindowFamily, usize) {
+/// The logical matrix one source lives in, and its column there — the identity
+/// final binding partitions windows over. The SINGLE mapping: the census and
+/// [`crate::bwd::coeff::bind`] must not disagree about what a backing is.
+pub fn window_family(
+    source: &CoeffSource,
+    cross_fields: &HashMap<ReadPlace, FieldKind>,
+) -> (WindowFamily, usize) {
     match &source.origin {
         OriginLeaf::VirtualSetup { kind } => (WindowFamily::VirtualSetup { kind: vs_tag(kind) }, 0),
         OriginLeaf::Read(place) => {
-            let ext = backing_field(place, source, distilled) == FieldKind::Ext;
+            let ext = backing_field_in(place, source, cross_fields) == FieldKind::Ext;
             match *place {
                 ReadPlace::BaseLayerMemory { column } => (WindowFamily::BaseLayerMemory, column),
                 ReadPlace::BaseLayerWitness { column } => (WindowFamily::BaseLayerWitness, column),
@@ -132,7 +150,7 @@ pub fn window_count(columns: &BTreeSet<usize>) -> usize {
 pub fn source_window_count(lowered: &CoeffLayer, distilled: &DistilledLayer) -> usize {
     let mut per_family: BTreeMap<WindowFamily, BTreeSet<usize>> = BTreeMap::new();
     for source in &lowered.sources {
-        let (family, column) = window_family(source, distilled);
+        let (family, column) = window_family(source, &distilled.cross_fields);
         per_family.entry(family).or_default().insert(column);
     }
     per_family.values().map(window_count).sum()

@@ -21,6 +21,7 @@
 //! One backward production lineage: there is no format version, no compatibility
 //! decoder, and no old/new switch here.
 
+pub mod bind;
 pub mod interp;
 pub mod limits;
 pub mod lower;
@@ -29,6 +30,10 @@ pub mod place;
 pub mod schedule;
 pub mod stats;
 
+pub use bind::{
+    BoundColumn, BoundInput, BoundSourceWindow, CoeffSourceBinding, SourceBindError,
+    SourceCertificateError, bind_coeff_sources, certify_source_binding,
+};
 pub use interp::{CoeffResolver, interpret_coeff_layer};
 pub use limits::{
     ASSUMED_MOVES_PER_REUSABLE_PROJECTION, CONTINUATION_LIVE_OPCODES, CONTINUATION_OPCODE_TABLE,
