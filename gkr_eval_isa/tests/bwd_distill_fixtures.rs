@@ -20,18 +20,21 @@
 
 mod common;
 
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use common::{
     CacheConsistentResolvers, SyntheticResolvers, cache_consistent_resolvers, load_fixture,
     resolvers,
 };
 use cs::gkr_compiler::dag_ir::{
-    BwdRegime, ChallengeKey, ChallengePower, ChallengeRef, DagLayer, Expr, ExprId, Ext, Resolvers,
-    SourceKind, bwd_roots, eval_layer_root, lower_dag, validate,
+    ArenaBuilder, BatchingOrder, BwdRegime, ChallengeKey, ChallengePower, ChallengeRef, ClaimInfo,
+    DagLayer, Expr, ExprId, Ext, ReadPlace, Resolvers, Root, RootGroup, RootId, RootOrigin,
+    RootSlot, SourceKind, bwd_relation_units, bwd_roots, eval_layer_expr, eval_layer_root,
+    lower_dag, validate,
 };
 use field::Field;
 use gkr_eval_isa::bwd::compile::{BwdCompiledLayer, compile_distilled, spine_terms};
+use gkr_eval_isa::bwd::distill::{DistilledLayer, StableBwdExprKey, distill};
 use gkr_eval_isa::bwd::source::BwdSpecial;
 use gkr_eval_isa::fwd::compile::build_cross_layer_field_map;
 use gkr_eval_isa::fwd::isa::{DstLine, Instr, MovDir, OperandLine, Program};
@@ -181,6 +184,10 @@ fn distill_all_fixtures_both_regimes() {
                     skipped.insert(format!("{stem}[L{li}]"));
                 }
 
+                // Canonical root provenance (Plan-6 Task 1): the same gate the
+                // synthetic permutation test applies, over the whole corpus.
+                assert_root_terms_canonical(layer, &d, &format!("{stem} L{li} {regime:?}"));
+
                 // Value parity: distilled root == alpha-combined rewritten
                 // canonical roots (holds regardless of skipped_decoder — the
                 // rebuild itself is always well-defined).
@@ -236,6 +243,309 @@ fn distill_all_fixtures_both_regimes() {
         add_sub_nonempty_domain,
         "at least one add_sub distilled layer must expose a non-empty backward site domain"
     );
+}
+
+// ── Plan-6 Task 1: canonical root provenance (`DistilledLayer::root_terms`) ───
+
+/// A synthetic canonical layer with three claim-only backward roots in three
+/// distinct relation units (`relation_index` 0/1/2, so `bwd_relation_units`
+/// yields three permutable units) whose BATCHING order is deliberately NOT the
+/// root-index order: `batching.roots = [R2, R0, R1]`. "Root zero" (the unbatched
+/// claim, beta exponent 0) is therefore `RootId(2)`, so an implementation that
+/// keyed the unbatched slot off `RootId(0)` instead of `bwd_roots(layer)[0]`
+/// fails the gates below. The three cones are structurally distinct (no two roots
+/// intern to one rebuilt expression) but share read leaves, so cone re-interning
+/// is still exercised.
+fn synthetic_three_unit_layer() -> DagLayer {
+    fn read_leaf(a: &mut ArenaBuilder, column: usize) -> ExprId {
+        let s = a.intern_source(SourceKind::Read {
+            place: ReadPlace::BaseLayerWitness { column },
+        });
+        a.source_expr(s)
+    }
+    fn claim_only_root(expr: ExprId, relation_index: usize) -> Root {
+        Root {
+            expr,
+            materialize: None,
+            claim: Some(ClaimInfo {
+                origin: RootOrigin {
+                    group: RootGroup::Gates,
+                    relation_index,
+                    slot: RootSlot::Constraint(0),
+                },
+            }),
+        }
+    }
+
+    let mut a = ArenaBuilder::new();
+    let x0 = read_leaf(&mut a, 0);
+    let x1 = read_leaf(&mut a, 1);
+    let x2 = read_leaf(&mut a, 2);
+    let cone_a = a.add(vec![x0, x1]);
+    let cone_b = a.mul(vec![x1, x2]);
+    let cone_c = a.mul(vec![cone_a, x2]);
+
+    DagLayer {
+        sources: a.sources().to_vec(),
+        exprs: a.exprs().to_vec(),
+        roots: vec![
+            claim_only_root(cone_a, 0),
+            claim_only_root(cone_b, 1),
+            claim_only_root(cone_c, 2),
+        ],
+        batching: BatchingOrder {
+            roots: vec![RootId(2), RootId(0), RootId(1)],
+        },
+        resolutions: BTreeMap::new(),
+    }
+}
+
+/// The `ChallengeRef` of a distilled `Challenge` leaf — what a batching factor
+/// MUST be (a `ClaimBatching` power); anything else is a provenance bug.
+fn challenge_ref_of(layer: &DagLayer, e: ExprId) -> ChallengeRef {
+    match &layer.exprs[e.0 as usize] {
+        Expr::Source(sid) => match &layer.sources[sid.0 as usize].kind {
+            SourceKind::Challenge { reference } => reference.clone(),
+            other => panic!("batching factor must be a Challenge leaf, got {other:?}"),
+        },
+        other => panic!("batching factor must be a leaf, got {other:?}"),
+    }
+}
+
+/// Order-independent projection of one `DistilledRootTerm`. Distilled `ExprId`s
+/// are relation-unit-ORDER dependent, so the value/batched exprs are compared
+/// through their `StableBwdExprKey` provenance and the batching factor through
+/// its (structurally stable) `ChallengeRef`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct StableRootTerm {
+    canonical_root: RootId,
+    value: Option<StableBwdExprKey>,
+    factor: Option<ChallengeRef>,
+    batched: Option<StableBwdExprKey>,
+}
+
+fn stable_root_terms(d: &DistilledLayer) -> Vec<StableRootTerm> {
+    d.root_terms
+        .iter()
+        .map(|t| StableRootTerm {
+            canonical_root: t.canonical_root,
+            value: d.stable_key(t.value_expr),
+            factor: t.batching_factor.map(|f| challenge_ref_of(&d.layer, f)),
+            batched: d.stable_key(t.batched_expr),
+        })
+        .collect()
+}
+
+/// Multiset (count map) of a slice — the order-independent comparison, identical
+/// to `bwd_fragment_invariance.rs`.
+fn multiset<T: std::hash::Hash + Eq + Clone>(v: &[T]) -> HashMap<T, usize> {
+    let mut m: HashMap<T, usize> = HashMap::new();
+    for x in v {
+        *m.entry(x.clone()).or_insert(0) += 1;
+    }
+    m
+}
+
+/// The Task-1 provenance gate shared by the synthetic permutation test and the
+/// corpus smoke above: `root_terms` is exactly `bwd_roots(canonical)` IN ORDER,
+/// root zero (the first entry of that order) is UNSCALED, and every later entry
+/// names the exact `ClaimBatching` power of its canonical batching position.
+fn assert_root_terms_canonical(canonical: &DagLayer, d: &DistilledLayer, ctx: &str) {
+    let order = bwd_roots(canonical);
+    let got: Vec<RootId> = d.root_terms.iter().map(|t| t.canonical_root).collect();
+    assert_eq!(
+        got,
+        order.to_vec(),
+        "[{ctx}] root_terms must follow canonical bwd_roots order"
+    );
+    for (i, t) in d.root_terms.iter().enumerate() {
+        match (i, t.batching_factor) {
+            (0, None) => assert_eq!(
+                t.batched_expr, t.value_expr,
+                "[{ctx}] root zero is UNSCALED, so its batched term IS its value"
+            ),
+            (0, Some(_)) => panic!("[{ctx}] root zero must have no batching factor"),
+            (_, None) => panic!("[{ctx}] batched root at position {i} lost its batching factor"),
+            (_, Some(f)) => {
+                let expected = ChallengeRef {
+                    key: ChallengeKey::ClaimBatching,
+                    power: if i == 1 {
+                        ChallengePower::One
+                    } else {
+                        ChallengePower::Static(i as u32)
+                    },
+                };
+                assert_eq!(
+                    challenge_ref_of(&d.layer, f),
+                    expected,
+                    "[{ctx}] root at batching position {i} must name beta^{i}"
+                );
+                assert_ne!(
+                    t.batched_expr, t.value_expr,
+                    "[{ctx}] a batched root's term must differ from its unscaled value"
+                );
+            }
+        }
+    }
+}
+
+/// `root_terms` is a CANONICAL table: a relation-unit permutation changes the
+/// construction order (and hence the distilled `ExprId` numbering) but must not
+/// change the table's order, its root identities, or which entry is unbatched.
+/// Also re-asserts (regression) that `FragmentTable`'s stable view stays
+/// permutation-invariant on the same layer — `root_terms` is added ALONGSIDE the
+/// fragment decomposition, not in place of it.
+#[test]
+fn distilled_root_terms_preserve_canonical_relation_order_and_batching() {
+    let layer = synthetic_three_unit_layer();
+    let cross = HashMap::new();
+    assert_eq!(
+        bwd_relation_units(&layer).len(),
+        3,
+        "the synthetic layer must expose three permutable relation units"
+    );
+    // Canonical batching order is NOT root-index order: root zero is RootId(2).
+    assert_eq!(bwd_roots(&layer), &[RootId(2), RootId(0), RootId(1)]);
+
+    let perms: [Option<Vec<usize>>; 3] = [None, Some(vec![2, 1, 0]), Some(vec![1, 2, 0])];
+    for regime in [BwdRegime::R0, BwdRegime::Ext] {
+        let mut baseline: Option<(Vec<StableRootTerm>, _, _)> = None;
+        // Non-vacuity: a permutation must actually RENUMBER the distilled exprs,
+        // otherwise the invariance assertions below would hold trivially.
+        let mut raw: BTreeSet<Vec<ExprId>> = BTreeSet::new();
+        for p in &perms {
+            let d = distill(&layer, regime, &cross, p.as_deref());
+            let ctx = format!("{regime:?} perm {p:?}");
+            assert_root_terms_canonical(&layer, &d, &ctx);
+            assert_eq!(
+                d.root_terms[0].canonical_root,
+                RootId(2),
+                "[{ctx}] root zero is bwd_roots[0] (RootId(2)), not RootId(0)"
+            );
+            assert_eq!(
+                d.root_terms[1].canonical_root,
+                RootId(0),
+                "[{ctx}] RootId(0) sits at batching position 1 here, so it IS batched"
+            );
+
+            raw.insert(d.root_terms.iter().map(|t| t.batched_expr).collect());
+            let stable = stable_root_terms(&d);
+            let frag = multiset(&d.fragments.stable_view(&d));
+            let cinit = multiset(&d.fragments.stable_c_init(&d));
+            match &baseline {
+                None => baseline = Some((stable, frag, cinit)),
+                Some((b_stable, b_frag, b_cinit)) => {
+                    assert_eq!(
+                        &stable, b_stable,
+                        "[{ctx}] root_terms drifted under a relation-unit permutation"
+                    );
+                    assert_eq!(
+                        &frag, b_frag,
+                        "[{ctx}] FragmentTable::stable_view drifted under a relation-unit permutation"
+                    );
+                    assert_eq!(
+                        &cinit, b_cinit,
+                        "[{ctx}] FragmentTable::stable_c_init drifted under a relation-unit permutation"
+                    );
+                }
+            }
+        }
+        assert!(
+            raw.len() >= 2,
+            "[{regime:?}] the permutations never renumbered a batched term — \
+             the invariance assertions would be vacuous"
+        );
+        println!(
+            "{regime:?}: root_terms invariant over {} permutations ({} distinct raw ExprId tuples)",
+            perms.len(),
+            raw.len()
+        );
+    }
+}
+
+/// Each entry keeps BOTH representations: the rebuilt UNSCALED root cone
+/// (`value_expr`, value-equal to the canonical cone under the backward rewrite)
+/// and its batched spine term (`batched_expr == beta^i · value_expr`, with
+/// `batching_factor` naming beta^i). A table that stored only one of the two
+/// would fail here — that is exactly what R0 `acc_c0` lowering needs to keep
+/// apart (design §5.2).
+#[test]
+fn distilled_root_terms_distinguish_value_from_batched_term() {
+    let syn = SyntheticResolvers;
+    let r = resolvers(&syn);
+    let layer = synthetic_three_unit_layer();
+    let cross = HashMap::new();
+    let d = distill(&layer, BwdRegime::R0, &cross, None);
+    assert_eq!(d.root_terms.len(), bwd_roots(&layer).len());
+
+    // Non-vacuity: three structurally distinct cones stay three distinct values.
+    let mut values: Vec<ExprId> = d.root_terms.iter().map(|t| t.value_expr).collect();
+    let n_values = values.len();
+    values.sort_unstable();
+    values.dedup();
+    assert_eq!(
+        values.len(),
+        n_values,
+        "distinct canonical cones must not collapse into one rebuilt value_expr"
+    );
+
+    for (i, t) in d.root_terms.iter().enumerate() {
+        let canonical_expr = layer.roots[t.canonical_root.0 as usize].expr;
+        assert_eq!(
+            d.stable_key(t.value_expr),
+            Some(StableBwdExprKey::Canonical(canonical_expr)),
+            "position {i}: value_expr must be the rebuilt canonical cone of {:?}",
+            t.canonical_root
+        );
+
+        // Value side: value_expr == the unscaled cone, batched_expr == beta^i · cone.
+        for row in [0usize, 1] {
+            let mut memo: HashMap<ExprId, Ext> = HashMap::new();
+            let unscaled = eval_rewritten(&layer, canonical_expr, row, &r, &mut memo);
+            assert_eq!(
+                eval_layer_expr(&d.layer, t.value_expr, row, &r),
+                unscaled,
+                "position {i}: value_expr must evaluate to the UNSCALED canonical cone (row {row})"
+            );
+            let mut want = unscaled;
+            if i >= 1 {
+                want.mul_assign(&beta_i(&r, i));
+            }
+            assert_eq!(
+                eval_layer_expr(&d.layer, t.batched_expr, row, &r),
+                want,
+                "position {i}: batched_expr must evaluate to beta^{i} · value (row {row})"
+            );
+        }
+
+        // Structure side: the batched term is literally `Mul(beta^i, value_expr)`.
+        match t.batching_factor {
+            None => {
+                assert_eq!(i, 0, "only root zero may be unbatched");
+                assert_eq!(t.batched_expr, t.value_expr);
+            }
+            Some(f) => {
+                assert_ne!(f, t.value_expr, "position {i}: factor must not BE the value");
+                let children = match &d.layer.exprs[t.batched_expr.0 as usize] {
+                    Expr::Mul(children) => children.clone(),
+                    other => panic!("position {i}: batched_expr must be a Mul, got {other:?}"),
+                };
+                let mut got = children;
+                got.sort_unstable();
+                let mut want = vec![f, t.value_expr];
+                want.sort_unstable();
+                assert_eq!(
+                    got, want,
+                    "position {i}: batched_expr must be exactly beta^{i} · value_expr"
+                );
+                assert_eq!(
+                    d.stable_key(t.batched_expr),
+                    Some(StableBwdExprKey::BatchingTerm(t.canonical_root)),
+                    "position {i}: the batched term's stable provenance is its canonical root"
+                );
+            }
+        }
+    }
 }
 
 // ── Task 5: compile smoke over every distillable layer, b16, both regimes ─────

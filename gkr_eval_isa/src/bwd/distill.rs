@@ -79,6 +79,40 @@ pub struct DistilledLayer {
     /// distilled `ExprId`s inside are only cross-run comparable through
     /// [`FragmentTable::stable_view`] / [`FragmentTable::stable_c_init`].
     pub fragments: FragmentTable,
+    /// Per-root provenance of the alpha spine, in canonical [`bwd_roots`]
+    /// (batching) order — one entry per claim-bearing canonical root. Unlike
+    /// [`fragments`](Self::fragments), which deliberately MERGES occurrences
+    /// across roots (and so loses root identity), this table keeps each root's
+    /// own rebuilt cone and batching factor. It is the seam the R0 `acc_c0`
+    /// lowering needs to read a materialized root's output column instead of
+    /// re-evaluating its cone.
+    ///
+    /// Construction order (the relation-unit permutation) does NOT affect this
+    /// table: entries are recorded by canonical [`RootId`] and then assembled in
+    /// `bwd_roots` order.
+    pub root_terms: Vec<DistilledRootTerm>,
+}
+
+/// One canonical root's contribution to the distilled alpha spine.
+///
+/// `batched_expr` is what the spine actually adds; `value_expr` is the same root
+/// UNSCALED. For the first root in canonical [`bwd_roots`] order the two are the
+/// same `ExprId` and `batching_factor` is `None` (root zero is unscaled by
+/// construction, rule 1); for every later root `batched_expr` is
+/// `Mul(batching_factor, value_expr)` where the factor is the `ClaimBatching`
+/// beta power of that root's canonical batching position.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct DistilledRootTerm {
+    /// The canonical (pre-distillation) root this term came from.
+    pub canonical_root: RootId,
+    /// The rebuilt UNSCALED root cone.
+    pub value_expr: ExprId,
+    /// The rebuilt `Challenge` leaf carrying this root's beta power; `None` for
+    /// the first root in canonical batching order.
+    pub batching_factor: Option<ExprId>,
+    /// The spine addend: `value_expr` for root zero, else
+    /// `Mul(batching_factor, value_expr)`.
+    pub batched_expr: ExprId,
 }
 
 impl DistilledLayer {
@@ -185,12 +219,15 @@ pub fn distill(
     // Alpha spine terms, built in the (possibly permuted) unit order. Exponents
     // stay pinned to the canonical batching position regardless of permutation.
     let mut terms: Vec<ExprId> = Vec::new();
+    // Per-root provenance, keyed by CANONICAL root so the permuted construction
+    // order below cannot leak into `root_terms` (assembled in `order` after).
+    let mut by_root: BTreeMap<RootId, DistilledRootTerm> = BTreeMap::new();
     for &ui in &unit_indices {
         for &rid in &units[ui] {
             let cone = cx.reintern(layer.roots[rid.0 as usize].expr);
             let i = exponent[&rid];
-            let term = if i == 0 {
-                cone
+            let (term, batching_factor) = if i == 0 {
+                (cone, None)
             } else {
                 let power =
                     if i == 1 { ChallengePower::One } else { ChallengePower::Static(i as u32) };
@@ -198,13 +235,42 @@ pub fn distill(
                     reference: ChallengeRef { key: ChallengeKey::ClaimBatching, power },
                 });
                 let beta = cx.arena.source_expr(beta_src);
-                cx.arena.mul(vec![beta, cone])
+                (cx.arena.mul(vec![beta, cone]), Some(beta))
             };
             cx.record_stable(term, StableBwdExprKey::BatchingTerm(rid));
+            let prev = by_root.insert(
+                rid,
+                DistilledRootTerm {
+                    canonical_root: rid,
+                    value_expr: cone,
+                    batching_factor,
+                    batched_expr: term,
+                },
+            );
+            assert!(
+                prev.is_none(),
+                "backward root {} appears twice in the relation-unit decomposition",
+                rid.0
+            );
             terms.push(term);
         }
     }
     assert!(!terms.is_empty(), "distill requires >= 1 claim-bearing root");
+    // Canonical table: `bwd_roots` order is the single source of truth, and every
+    // backward root must have contributed a spine term (units partition the roots).
+    let root_terms: Vec<DistilledRootTerm> = order
+        .iter()
+        .map(|rid| {
+            *by_root
+                .get(rid)
+                .unwrap_or_else(|| panic!("backward root {} contributed no spine term", rid.0))
+        })
+        .collect();
+    assert_eq!(
+        root_terms.len(),
+        terms.len(),
+        "root_terms must have exactly one entry per spine term"
+    );
     let spine = match terms.len() {
         1 => terms[0],
         _ => cx.arena.add(terms),
@@ -279,6 +345,7 @@ pub fn distill(
         stable_exprs: cx.stable_exprs,
         skipped_decoder,
         fragments,
+        root_terms,
     }
 }
 
