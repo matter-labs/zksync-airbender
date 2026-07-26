@@ -431,21 +431,96 @@ pub(super) fn incumbent_r0_attributes() -> KernelAttributes {
     KernelAttributes::of(incumbent_r0_kernel().as_ptr())
 }
 
+/// The incumbent's registers, from the capture that also supplies its occupancy.
+///
+/// Pinned only so the pin below has a falsifiable premise: `incumbent_r0_attributes`
+/// measures the same number at runtime and
+/// `the_incumbent_published_occupancy_matches_its_capture` asserts they agree, so a
+/// recompile that changes the register allocation invalidates the occupancy pin
+/// loudly instead of leaving it stale.
+pub(super) const PINNED_INCUMBENT_R0_REGISTERS: i32 = 44;
+
+/// The incumbent's resident blocks per SM — PINNED from the profiler capture, not
+/// queried, and this is the one number in the report whose provenance differs from
+/// its neighbours.
+///
+/// # Why the occupancy API cannot supply it
+///
+/// The incumbent is compiled `__launch_bounds__(128, 8)` (`round0_flat.cu:19`). The
+/// second argument is a `minBlocksPerMultiprocessor` HINT to the register
+/// allocator, and `cudaOccupancyMaxActiveBlocksPerMultiprocessor` returns THAT HINT
+/// rather than what the achieved allocation permits. Measured on this machine:
+///
+/// ```text
+/// registers=44 static_smem=0 B local=0 B max_threads_per_block=128
+/// device: SMs=188 max_threads_per_sm=1536 max_regs_per_sm=65536
+/// API at 128 threads / 0 B dynamic -> blocks=8   (66.67%)
+/// ```
+///
+/// 8 blocks x 4 warps into 65,536 registers is 2,048 registers per warp = **64**
+/// registers per thread — exactly the cap `__launch_bounds__(128, 8)` asks for, not
+/// the 44 nvcc actually used. At 44 the register math gives
+/// `65536 / (ceil(44*32 -> 1536) * 4) = 10` blocks. Our own executors carry
+/// SINGLE-argument `__launch_bounds__(128)`, so nothing contaminates the API for
+/// them and it is used directly (76 registers -> 6 blocks, which is that same
+/// register math) — this asymmetry is why only the incumbent is pinned.
+///
+/// # Why the capture is the authority, decisively
+///
+/// From `target/profiling/ncu/bwd_coeff_add_sub_l0_r0_incumbent.ncu-rep`:
+///
+/// ```text
+/// launch__registers_per_thread             44
+/// launch__occupancy_limit_registers        10   <- binding limiter
+/// launch__occupancy_limit_warps            12
+/// launch__occupancy_limit_shared_mem       32
+/// launch__occupancy_limit_blocks           24
+/// sm__maximum_warps_per_active_cycle_pct   83.333333
+/// Achieved Occupancy                       81.57%
+/// ```
+///
+/// The last line settles it and is not a modelling claim: **81.57% achieved is
+/// above the 66.67% ceiling that 8 blocks/SM would impose**, so more than 8 blocks
+/// were demonstrably resident. The API's 8 is the compiled-in target; 10 is what
+/// the hardware did.
+///
+/// Publishing 8 understated the incumbent's occupancy as 66.67% against the new
+/// lineage's 50%, when the real comparison is 83.33% against 50% — i.e. it
+/// understated the occupancy half of the slowdown, in the durable record, which is
+/// the defect class these artifacts exist to prevent.
+pub(super) const PINNED_INCUMBENT_R0_BLOCKS_PER_SM: i32 = 10;
+
+/// What the occupancy API answers for the incumbent: its `__launch_bounds__` hint.
+///
+/// Asserted, not documented-and-forgotten. If nvcc's allocation or the launch
+/// bounds ever change, the guard test stops matching and the pin above has to be
+/// re-derived from a fresh capture rather than silently drifting.
+pub(super) const INCUMBENT_R0_LAUNCH_BOUNDS_MIN_BLOCKS: i32 = 8;
+
 /// Blocks per SM and theoretical occupancy of the incumbent at its own block
 /// width, so the published comparison carries BOTH sides of the occupancy story.
 ///
-/// The incumbent runs the same 128-thread block as the new lineage and declares no
-/// dynamic shared memory, which is why its occupancy is a pure register story.
+/// The block count is [`PINNED_INCUMBENT_R0_BLOCKS_PER_SM`] — read its doc for why
+/// it is pinned rather than queried. The PERCENTAGE is still derived from the
+/// device this run is on, so the two cannot disagree about the part that is a
+/// device fact. The incumbent runs the same 128-thread block as the new lineage and
+/// declares no dynamic shared memory, which is why its occupancy is a pure register
+/// story.
 pub(super) fn incumbent_r0_occupancy(device: &DeviceFacts) -> (i32, f32) {
-    let blocks = era_cudart::occupancy::max_active_blocks_per_multiprocessor(
+    let blocks = PINNED_INCUMBENT_R0_BLOCKS_PER_SM;
+    let occupancy =
+        blocks as f32 * BWD_COEFF_THREADS_PER_BLOCK as f32 / device.max_threads_per_sm as f32;
+    (blocks, occupancy)
+}
+
+/// What the occupancy API answers for the incumbent, for the guard test only.
+pub(super) fn incumbent_r0_queried_blocks() -> i32 {
+    era_cudart::occupancy::max_active_blocks_per_multiprocessor(
         &incumbent_r0_kernel(),
         BWD_COEFF_THREADS_PER_BLOCK as i32,
         0,
     )
-    .expect("query incumbent round-0 occupancy");
-    let occupancy =
-        blocks as f32 * BWD_COEFF_THREADS_PER_BLOCK as f32 / device.max_threads_per_sm as f32;
-    (blocks, occupancy)
+    .expect("query incumbent round-0 occupancy")
 }
 
 // ── Launch geometry, as measured ──────────────────────────────────────────────

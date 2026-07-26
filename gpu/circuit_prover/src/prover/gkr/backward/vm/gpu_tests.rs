@@ -2662,7 +2662,8 @@ use super::report::{
     render_selection_json, render_sweep_csv, select_budgets, sweep_output_path, time_cuda_launches,
     BudgetChoice, DeviceFacts, KernelAttributes, LaunchGeometry, SweepRow, TimingSummary,
     CORPUS_CSV, FOCUSED_CSV, INCUMBENT_CORRECTNESS_LAUNCHES, INCUMBENT_PROFILE_LAUNCH_SKIP,
-    PINNED_CYCLES_RATIO, PINNED_DRAM_GB_INCUMBENT, PINNED_DRAM_GB_NEW,
+    INCUMBENT_R0_LAUNCH_BOUNDS_MIN_BLOCKS, PINNED_CYCLES_RATIO, PINNED_DRAM_GB_INCUMBENT,
+    PINNED_DRAM_GB_NEW, PINNED_INCUMBENT_R0_BLOCKS_PER_SM, PINNED_INCUMBENT_R0_REGISTERS,
     PINNED_L2_MISS_SECTORS_INCUMBENT_M, PINNED_L2_MISS_SECTORS_NEW_M,
     PINNED_PROFILED_DURATION_RATIO, SELECTION_JSON, TIMING_ITERS, WARMUP_ITERS,
 };
@@ -3981,6 +3982,116 @@ fn head_to_head_add_sub_l0_r0(budgets: &[u8], nvtx_budget: Option<u8>) -> HeadTo
     }
 }
 
+/// The incumbent's published occupancy must equal what the profiler measured for
+/// the launch it is published for — and the reason it cannot simply be queried
+/// must still hold.
+///
+/// Three claims, because the published figure has a different provenance from its
+/// neighbours (see `PINNED_INCUMBENT_R0_BLOCKS_PER_SM`):
+///
+///   1. the pin's PREMISE — the runtime register count is still the capture's 44,
+///      so a recompile that changes the allocation invalidates the pin loudly;
+///   2. the pin's REASON — `cudaOccupancyMaxActiveBlocksPerMultiprocessor` still
+///      returns the `__launch_bounds__(128, 8)` minBlocks hint rather than the
+///      achieved allocation's limit, which is exactly why the pin exists. If nvcc
+///      ever starts answering 10 here, this fires and the pin can be deleted in
+///      favour of the query; and
+///   3. the pin's VALUE — 10 blocks and the capture's 83.33%, with the percentage
+///      re-derived from this run's own device facts.
+///
+/// This is what "do not leave two numbers disagreeing silently" looks like: both
+/// numbers are asserted, and the discrepancy between them is itself the assertion.
+///
+/// Not `#[ignore]`d: it is two driver queries, so it belongs in the default `bench`
+/// run rather than only firing when someone profiles.
+#[test]
+#[cfg(not(no_cuda))]
+#[serial_test::serial]
+fn the_incumbent_published_occupancy_matches_its_capture() {
+    let _context = make_test_context(16, 16);
+    let device = DeviceFacts::query();
+    let attributes = super::report::incumbent_r0_attributes();
+    let queried = super::report::incumbent_r0_queried_blocks();
+    let (blocks, occupancy) = super::report::incumbent_r0_occupancy(&device);
+
+    // Everything the occupancy calculator reads, printed so a disagreement names
+    // its own cause instead of needing a second investigation.
+    eprintln!(
+        "[incumbent-occupancy] registers={} static_smem={} B local={} B \
+         max_threads_per_block={} | device: SMs={} max_threads_per_sm={} \
+         max_regs_per_sm={} max_smem_per_sm={} | API at {} threads / 0 B dynamic: \
+         blocks={queried} | published: blocks={blocks} occupancy={:.4}%",
+        attributes.registers,
+        attributes.static_smem_bytes,
+        attributes.local_size_bytes,
+        attributes.max_threads_per_block,
+        device.multiprocessors,
+        device.max_threads_per_sm,
+        device_attribute(era_cudart_sys::CudaDeviceAttr::MaxRegistersPerMultiprocessor),
+        device_attribute(era_cudart_sys::CudaDeviceAttr::MaxSharedMemoryPerMultiprocessor),
+        BWD_COEFF_THREADS_PER_BLOCK,
+        occupancy * 100.0,
+    );
+
+    // 1. The premise.
+    assert_eq!(
+        attributes.registers, PINNED_INCUMBENT_R0_REGISTERS,
+        "the capture's registers per thread; the occupancy pin is derived from this \
+         allocation and has to be re-derived if it moves"
+    );
+    assert_eq!(
+        attributes.local_size_bytes, 0,
+        "the incumbent must not be spilling"
+    );
+    assert_eq!(
+        attributes.static_smem_bytes, 0,
+        "the incumbent's occupancy is a pure register story"
+    );
+
+    // 2. The reason. The API returns the launch-bounds hint, which is BELOW the
+    //    truth — 8 blocks x 4 warps into 65,536 registers is a 64-register cap,
+    //    not the 44 actually allocated.
+    assert_eq!(
+        queried, INCUMBENT_R0_LAUNCH_BOUNDS_MIN_BLOCKS,
+        "the occupancy API is expected to answer the `__launch_bounds__(128, 8)` \
+         minBlocks hint. If it now answers {PINNED_INCUMBENT_R0_BLOCKS_PER_SM}, delete the \
+         pin and query instead"
+    );
+    assert!(
+        queried < PINNED_INCUMBENT_R0_BLOCKS_PER_SM,
+        "the hint may only UNDERSTATE the achievable occupancy; a hint above the \
+         capture's limiter would mean the capture is the stale one"
+    );
+
+    // 3. The value.
+    assert_eq!(
+        blocks, PINNED_INCUMBENT_R0_BLOCKS_PER_SM,
+        "the capture's binding limiter"
+    );
+    assert!(
+        (occupancy - 0.833_333).abs() < 0.001,
+        "the capture's theoretical occupancy is 83.33% (and it measured 81.57% ACHIEVED, \
+         which 8 blocks could not reach); got {:.4}%",
+        occupancy * 100.0
+    );
+    // The comparison the summary draws: the incumbent really is the higher-occupancy
+    // side, and by more than the 66.67% the API would have published.
+    assert!(
+        occupancy
+            > 8.0 * f32::from(BWD_COEFF_THREADS_PER_BLOCK as u16)
+                / device.max_threads_per_sm as f32,
+        "publishing the API's answer would understate the occupancy half of the gap"
+    );
+}
+
+/// One raw device attribute, for the diagnostic above.
+#[cfg(not(no_cuda))]
+fn device_attribute(attribute: era_cudart_sys::CudaDeviceAttr) -> i32 {
+    use era_cudart::device::{device_get_attribute, get_device};
+    let device = get_device().expect("active CUDA device");
+    device_get_attribute(attribute, device).expect("device attribute")
+}
+
 /// §15's first profile: the exact incumbent, `c2`, the selected budget, and the
 /// `c16` diagnostic, all at the incumbent's own row count.
 #[test]
@@ -4111,11 +4222,22 @@ fn head_to_head_body(
          evidence about the lineage. The `.ncu-rep` files are the authority for all six \
          numbers in this paragraph; `report.rs` pins them with a re-pin duty.\n\n\
          ### Per configuration (measured on the device)\n\n\
-         The INCUMBENT, measured the same way in the same run: registers {}, local spill \
-         bytes {}, static shared {} B, dynamic shared 0 B, {} blocks/SM, theoretical \
-         occupancy {:.2}%. That register gap against the rows below is the occupancy half \
-         of the slowdown, and it is the reason a budget's dynamic shared memory is not the \
-         binding constraint on either side at these cell counts.\n\n",
+         The INCUMBENT: registers {}, local spill bytes {}, static shared {} B, dynamic \
+         shared 0 B, {} blocks/SM, theoretical occupancy {:.2}%. That register gap against \
+         the rows below is the occupancy half of the slowdown, and it is the reason a \
+         budget's dynamic shared memory is not the binding constraint on either side at \
+         these cell counts.\n\n\
+         Provenance differs for one of those figures, deliberately. Registers and spills \
+         are measured here via `cudaFuncGetAttributes`, like the rows below. The BLOCKS/SM \
+         is pinned from the `.ncu-rep` capture instead of queried, because the incumbent is \
+         compiled `__launch_bounds__(128, 8)` and \
+         `cudaOccupancyMaxActiveBlocksPerMultiprocessor` returns that minBlocks HINT (8, \
+         i.e. a 64-register cap) rather than what the 44 registers actually allocated \
+         permit (10). The capture measured 83.33% theoretical and 81.57% ACHIEVED, and \
+         81.57% is above the 66.67% ceiling 8 blocks would impose, so more than 8 were \
+         resident. The new executors carry single-argument `__launch_bounds__(128)`, so \
+         nothing contaminates the API for them and the rows below are queried. \
+         `the_incumbent_published_occupancy_matches_its_capture` asserts all of this.\n\n",
         PINNED_DRAM_GB_NEW,
         PINNED_DRAM_GB_INCUMBENT,
         (PINNED_DRAM_GB_NEW / PINNED_DRAM_GB_INCUMBENT - 1.0) * 100.0,

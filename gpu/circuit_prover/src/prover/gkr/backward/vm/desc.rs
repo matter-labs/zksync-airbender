@@ -629,6 +629,15 @@ pub(crate) const BWD_COEFF_C_INIT_NONE: u16 = u16::MAX;
 const _: () = {
     assert!(BWD_COEFF_THREADS_PER_BLOCK % BWD_COEFF_WARP_LANES == 0);
     assert!(BWD_COEFF_ROWS_PER_BLOCK == BWD_COEFF_THREADS_PER_BLOCK);
+    // The head-to-head compares the two lineages' occupancy at ONE block width, and
+    // the incumbent's width is the dimension-reducing launcher's, not this one. The
+    // comparison is only apples-to-apples while they are equal, and nothing else
+    // ties them: `GKR_DIM_REDUCING_THREADS_PER_BLOCK` is `WARP_SIZE * 4` in the
+    // incumbent lineage, which Task 14 will delete.
+    assert!(
+        BWD_COEFF_THREADS_PER_BLOCK
+            == crate::prover::gkr::backward::kernels::GKR_DIM_REDUCING_THREADS_PER_BLOCK
+    );
     assert!(BWD_COEFF_C_INIT_NONE == u16::MAX);
     assert!(BWD_COEFF_MAX_COEFFICIENT_ENCODINGS - 1 < BWD_COEFF_C_INIT_NONE as usize);
 };
