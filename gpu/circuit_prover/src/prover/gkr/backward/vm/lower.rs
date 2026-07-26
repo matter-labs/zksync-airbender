@@ -165,6 +165,15 @@ pub(crate) enum BwdCoeffLowerError {
     MissingPublishBacking { window: u8 },
     /// A non-materializing window was given a publish backing.
     UnexpectedPublishBacking { window: u8 },
+    /// A procedural window addresses more than one column.
+    ///
+    /// A procedural value is produced from the backing INDEX, so the device
+    /// resolver has nothing to do with the column coordinate and ignores it. One
+    /// virtual-setup kind is one column, and each kind is its own
+    /// `WindowFamily::VirtualSetup { kind }`, so a multi-column procedural window
+    /// cannot arise from binding — but if one ever did, every column past the
+    /// first would silently resolve to column zero's values.
+    MultiColumnProceduralWindow { window: u8, columns: usize },
     /// A procedural window named a kind outside `KIND_ORDER`.
     UnknownProceduralKind { window: u8, kind: u8 },
     /// A window addresses more than the 128 columns its `column:7` coordinate
@@ -199,6 +208,15 @@ pub(crate) enum BwdCoeffLowerError {
     /// mismatch would weight a correct-looking fold with the wrong challenges —
     /// silently, in a release kernel with no error channel.
     RoundTargetDepthMismatch { round: u8, target_depth: u8 },
+    /// An R0 program was lowered for a round other than zero.
+    ///
+    /// `launch_bwd_coeff` matches `(BwdRegime::R0, _, bank)` and always launches
+    /// the `<REGIME_IS_R0 = true, FOLD_DEPTH = 0>` specialization, because R0 IS
+    /// round zero. Nothing else in this function notices: an R0 program at round
+    /// three passes the challenge-count and target-depth checks and then runs a
+    /// kernel whose BF resolver never folds and whose E4 resolver accumulates
+    /// leaf zero only. Silently wrong, in a kernel with no error channel.
+    R0RoundMismatch { round: u8 },
     /// A window's catch-up distance is not one the runtime factor bank can
     /// weight.
     ///
@@ -301,6 +319,14 @@ pub(crate) fn lower_bwd_coeff(
         return Err(BwdCoeffLowerError::RoundTargetDepthMismatch {
             round: runtime.round,
             target_depth: binding.target_depth,
+        });
+    }
+    // ...and R0 IS round zero. `launch_bwd_coeff` ignores the fold depth for the
+    // R0 arm and always launches the D0 specialization, so an R0 program lowered
+    // for a later round would run a kernel that cannot fold.
+    if program.regime == BwdRegime::R0 && runtime.round != 0 {
+        return Err(BwdCoeffLowerError::R0RoundMismatch {
+            round: runtime.round,
         });
     }
     // A release kernel has no error channel, so the host is the only place a
@@ -456,6 +482,13 @@ fn lower_window(
     }
     if !bound.materialize && bound.publish.is_some() {
         return Err(BwdCoeffLowerError::UnexpectedPublishBacking { window });
+    }
+
+    // A procedural window's values come from the backing index, so the device
+    // resolver has no use for the column coordinate. Reject the case where that
+    // would matter rather than silently resolve every column to the first.
+    if procedural_kind.is_some() && columns > 1 {
+        return Err(BwdCoeffLowerError::MultiColumnProceduralWindow { window, columns });
     }
 
     let origin = match (procedural_kind, bound.read) {

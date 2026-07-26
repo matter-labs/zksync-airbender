@@ -531,9 +531,9 @@ DEVICE_FORCEINLINE void source_probe_body(const bwd_coeff_desc &desc, const bwd_
       flags |= BWD_COEFF_PROBE_ERR_DEAD_OPCODE;
     else if (bwd_coeff_is_move(REGIME_IS_R0, opcode))
       flags |= BWD_COEFF_PROBE_ERR_MOVE_OPCODE;
-    // Four words is the longest operand list any live opcode has, so this bounds
-    // every `desc.program` read the decode below performs.
-    if (pc + 4 > BWD_COEFF_PROGRAM_WORD_CAP)
+    // `bwd_coeff_decode_operands` reads at most BWD_COEFF_MAX_OPERAND_WORDS
+    // words from `pc`, so this bounds every `desc.program` read below.
+    if (pc + BWD_COEFF_MAX_OPERAND_WORDS > BWD_COEFF_PROGRAM_WORD_CAP)
       flags |= BWD_COEFF_PROBE_ERR_PROGRAM_OUT_OF_RANGE;
     if (flags != 0) {
       atomicOr(error, flags);
@@ -543,21 +543,10 @@ DEVICE_FORCEINLINE void source_probe_body(const bwd_coeff_desc &desc, const bwd_
     const u32 role = bwd_coeff_role(REGIME_IS_R0, opcode);
     const u32 arity = bwd_coeff_arity(REGIME_IS_R0, opcode);
     const bool pair_form = bwd_coeff_cell_word_is_pair_form(REGIME_IS_R0, opcode);
-    const bwd_coeff_input first = bwd_coeff_decode_input(desc.program, pc, pair_form);
-    bwd_coeff_input second = first;
-    bool squared = false;
-    u32 words = first.words;
-    if (arity == 2) {
-      second = bwd_coeff_decode_input(desc.program, pc + first.words, pair_form);
-      words += second.words;
-      // Section 9.1: byte-identical input records denote a SQUARED term. The
-      // operand is resolved once and consumed twice; re-executing the second
-      // copy is unsafe, not merely wasteful.
-      squared = second.words == first.words;
-      for (u32 word = 0; squared && word < first.words; word++)
-        squared = desc.program[pc + word] == desc.program[pc + first.words + word];
-    }
-    if (pc + words > desc.num_words) {
+    // Section 9.1's squared rule lives in that ONE header helper, shared with the
+    // release program loop.
+    const bwd_coeff_operands operands = bwd_coeff_decode_operands(desc.program, pc, arity, pair_form);
+    if (pc + operands.words > desc.num_words) {
       atomicOr(error, BWD_COEFF_PROBE_ERR_PROGRAM_OUT_OF_RANGE);
       continue;
     }
@@ -565,12 +554,12 @@ DEVICE_FORCEINLINE void source_probe_body(const bwd_coeff_desc &desc, const bwd_
     e4 endpoint0[BWD_COEFF_PROBE_OPERANDS];
     e4 delta[BWD_COEFF_PROBE_OPERANDS];
     for (u32 position = 0; position < arity; position++) {
-      if (position == 1 && squared) {
+      if (position == 1 && operands.squared) {
         endpoint0[1] = endpoint0[0];
         delta[1] = delta[0];
         break;
       }
-      const bwd_coeff_input &in = position == 0 ? first : second;
+      const bwd_coeff_input &in = position == 0 ? operands.first : operands.second;
       const bool operand_is_e4 = bwd_coeff_operand_is_e4(REGIME_IS_R0, opcode, position);
       const u32 input_flags = probe_input_flags<FOLD_DEPTH>(desc, in, role, operand_is_e4, lanes);
       if (input_flags != 0) {

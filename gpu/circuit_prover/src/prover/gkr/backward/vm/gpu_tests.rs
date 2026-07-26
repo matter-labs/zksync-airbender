@@ -739,6 +739,16 @@ fn assert_fixture(fixture: &Fixture, context: &ProverContext) {
 
     // 3. Publication: a first access wrote both RAW target-depth endpoints, and
     //    a column with no first access still holds exactly what was staged.
+    assert_eq!(
+        run.published.len(),
+        fixture
+            .windows
+            .iter()
+            .filter(|host| host.materialize())
+            .count(),
+        "{}: every materializing window must have a downloaded publish buffer",
+        fixture.name
+    );
     let mut materializing = 0usize;
     for host in &fixture.windows {
         if !host.materialize() {
@@ -857,15 +867,36 @@ fn term(category: TermCategory, uses: Vec<DecodedUse>) -> DecodedInstr {
     }
 }
 
+/// The lanes a fixture fills and reads back.
+///
+/// Chosen from the TOP of the cell file so a c16 run saturates the six-bit lane
+/// field: at c16 `bf` is 63 — the largest value `BWD_COEFF_LANE_MASK` can
+/// express — and the three E4 cells are the last three of the sixteen. At c4 the
+/// same rule gives lane 15 and cells 1..3, so both budgets exercise the boundary
+/// of whatever file they have.
+struct LanePlan {
+    bf: u16,
+    e4: [u16; 3],
+}
+
+fn lane_plan(budget_cells: u8) -> LanePlan {
+    let lanes = u16::from(budget_cells) * 4;
+    LanePlan {
+        bf: lanes - 1,
+        e4: [lanes - 12, lanes - 8, lanes - 4],
+    }
+}
+
 /// R0: every typed source mode at fold depth zero.
-fn r0_fixture(rows: usize) -> Fixture {
+fn r0_fixture(rows: usize, budget_cells: u8) -> Fixture {
     let span = 2 * rows;
+    let lane = lane_plan(budget_cells);
     Fixture {
-        name: "R0",
+        name: if budget_cells == 4 { "R0 c4" } else { "R0 c16" },
         rows,
         regime: BwdRegime::R0,
         round: 0,
-        budget: CellBudget::new(4).expect("c4"),
+        budget: CellBudget::new(budget_cells).expect("legal budget"),
         challenges: Vec::new(),
         windows: vec![
             host_window(
@@ -916,17 +947,25 @@ fn r0_fixture(rows: usize) -> Fixture {
             // A mixed product: BF first, E4 second, with the BF factor filled.
             term(
                 TermCategory::C2ProductBfE4,
-                vec![fill(0, 0, 1), direct(1, 1)],
+                vec![fill(0, 0, lane.bf), direct(1, 1)],
             ),
             // Cell hit on the BF lane the fill just retained.
-            term(TermCategory::C2ProductBfBf, vec![cell(1), direct(0, 2)]),
+            term(
+                TermCategory::C2ProductBfBf,
+                vec![cell(lane.bf), direct(0, 2)],
+            ),
             // Procedural source: row-dependent, produced rather than read.
             term(TermCategory::C0LinearBf, vec![direct(2, 0)]),
             // A plan that retains the co-produced Endpoint0 in an E4 cell...
             term(
                 TermCategory::C2ProductE4E4,
                 vec![
-                    planned(1, 0, PlanAction::Fill { lane: 4 }, PlanAction::Direct),
+                    planned(
+                        1,
+                        0,
+                        PlanAction::Fill { lane: lane.e4[0] },
+                        PlanAction::Direct,
+                    ),
                     direct(1, 1),
                 ],
             ),
@@ -937,31 +976,35 @@ fn r0_fixture(rows: usize) -> Fixture {
                     planned(
                         1,
                         0,
-                        PlanAction::UseResident { lane: 4 },
-                        PlanAction::Fill { lane: 8 },
+                        PlanAction::UseResident { lane: lane.e4[0] },
+                        PlanAction::Fill { lane: lane.e4[1] },
                     ),
                     direct(1, 1),
                 ],
             ),
             // E4 cell hit on the retained Delta.
-            term(TermCategory::C2ProductE4E4, vec![cell(8), direct(1, 1)]),
+            term(
+                TermCategory::C2ProductE4E4,
+                vec![cell(lane.e4[1]), direct(1, 1)],
+            ),
         ],
     }
 }
 
 /// Continuation at `round`: the bounded D0–D3 lazy fold, the native dual factor
 /// and — from the threshold up — first-access publication.
-fn continuation_fixture(round: u8, rows: usize) -> Fixture {
+fn continuation_fixture(round: u8, rows: usize, budget_cells: u8) -> Fixture {
     let fold_depth = bwd_coeff_fold_depth(round);
     let span = 2 * rows;
-    let materialize = round >= BWD_COEFF_PUBLISH_TARGET_DEPTH;
     let shallow = fold_depth.min(1);
+    let lane = lane_plan(budget_cells);
     // Window 0 has never caught up (delta = the launch's fold depth); window 1
     // is exactly one fold behind when there is one to be behind by, and is BASE
     // backed, so a continuation program folds a base matrix into E4; window 2 is
-    // procedural and exists only below the publication threshold, where a
-    // window with no matrix also needs no publish backing.
-    let mut windows = vec![
+    // procedural, and it is present at EVERY round — including at and above the
+    // publication threshold, where a procedural source must catch up and publish
+    // like any other, from a backing it produces rather than reads.
+    let windows = vec![
         host_window(
             0,
             WindowFamily::LayerOutput {
@@ -984,20 +1027,18 @@ fn continuation_fixture(round: u8, rows: usize) -> Fixture {
             base_backing(0x41, 1, span << usize::from(shallow)),
             vec![true],
         ),
-    ];
-    if !materialize {
-        windows.push(host_window(
+        host_window(
             2,
             WindowFamily::VirtualSetup { kind: 2 },
             1,
             round - fold_depth,
             round,
             Backing::Procedural(2),
-            vec![false],
-        ));
-    }
+            vec![true],
+        ),
+    ];
 
-    let mut instrs = vec![
+    let instrs = vec![
         // Folded Endpoint0, and the first access that publishes column 0.
         term(TermCategory::C0LinearE4, vec![direct_first(0, 0)]),
         // Native dual factor: ONE physical source-pair resolution per operand.
@@ -1012,8 +1053,8 @@ fn continuation_fixture(round: u8, rows: usize) -> Fixture {
                 planned(
                     0,
                     0,
-                    PlanAction::Fill { lane: 0 },
-                    PlanAction::Fill { lane: 4 },
+                    PlanAction::Fill { lane: lane.e4[0] },
+                    PlanAction::Fill { lane: lane.e4[1] },
                 ),
                 direct_first(0, 1),
             ],
@@ -1022,50 +1063,52 @@ fn continuation_fixture(round: u8, rows: usize) -> Fixture {
             TermCategory::DualProductE4,
             vec![
                 DecodedUse::Cell(DecodedCell::Pair {
-                    endpoint0_lane: 0,
-                    delta_lane: 4,
+                    endpoint0_lane: lane.e4[0],
+                    delta_lane: lane.e4[1],
                 }),
                 direct(0, 1),
             ],
         ),
         // A SQUARED term: the two input records are byte-identical, so the
         // operand is resolved ONCE and consumed twice. Re-executing the second
-        // copy would read lane 0 after this plan's fill overwrote it (§9.1).
+        // copy would read the Endpoint0 lane after this plan's fill overwrote it
+        // with the Delta (§9.1).
         term(
             TermCategory::DualProductE4,
             vec![planned(
                 0,
                 0,
-                PlanAction::UseResident { lane: 0 },
-                PlanAction::Fill { lane: 0 },
+                PlanAction::UseResident { lane: lane.e4[0] },
+                PlanAction::Fill { lane: lane.e4[0] },
             )],
         ),
         // Endpoint0 fill and its cell hit.
-        term(TermCategory::C0LinearE4, vec![fill(1, 0, 8)]),
-        term(TermCategory::C0LinearE4, vec![cell(8)]),
-    ];
-    if materialize {
-        // A materializing column no record first-accesses never catches up, so
-        // this use must read the staged publish buffer verbatim.
-        instrs.push(term(TermCategory::C0LinearE4, vec![direct(0, 2)]));
-    } else {
-        instrs.push(term(
+        term(TermCategory::C0LinearE4, vec![fill(1, 0, lane.e4[2])]),
+        term(TermCategory::C0LinearE4, vec![cell(lane.e4[2])]),
+        // The procedural source's own first access: at and above the threshold it
+        // catches up from a backing it PRODUCES and publishes both endpoints, and
+        // window 0 column 2 — which no record ever first-accesses — must still
+        // read back exactly what was staged.
+        term(
             TermCategory::DualProductE4,
-            vec![direct(2, 0), direct(0, 2)],
-        ));
-    }
+            vec![direct_first(2, 0), direct(0, 2)],
+        ),
+        // ...and the published procedural value read back on a later access.
+        term(TermCategory::C0LinearE4, vec![direct(2, 0)]),
+    ];
 
     Fixture {
-        name: match round {
-            0 => "Ext D0",
-            1 => "Ext D1",
-            2 => "Ext D2",
-            _ => "Ext D3",
+        name: match (round, budget_cells) {
+            (0, _) => "Ext D0 c4",
+            (1, _) => "Ext D1 c4",
+            (2, _) => "Ext D2 c4",
+            (_, 4) => "Ext D3 c4",
+            _ => "Ext D3 c16",
         },
         rows,
         regime: BwdRegime::Ext,
         round,
-        budget: CellBudget::new(4).expect("c4"),
+        budget: CellBudget::new(budget_cells).expect("legal budget"),
         challenges: (0..usize::from(round))
             .map(|index| e4(0x900 + index as u32))
             .collect(),
@@ -1253,10 +1296,17 @@ fn bwd_coeff_source_resolution_smoke() {
 
     // 200 rows: two blocks, the second partial, so the tail guard and the
     // per-warp transposed cell file are both exercised.
-    assert_fixture(&r0_fixture(200), &context);
-    for round in 0..=3u8 {
-        assert_fixture(&continuation_fixture(round, 200), &context);
+    for budget_cells in [4u8, 16] {
+        assert_fixture(&r0_fixture(200, budget_cells), &context);
     }
+    for round in 0..=3u8 {
+        assert_fixture(&continuation_fixture(round, 200, 4), &context);
+    }
+    // c16 is the six-bit lane field's boundary: cell 15 is lanes 60..63, and 63
+    // is the largest lane index the format can express. Its dynamic shared memory
+    // is 16 * 16 * 128 = 32,768 bytes per block, still under the 48 KB default
+    // per-block limit, so it needs no opt-in attribute.
+    assert_fixture(&continuation_fixture(3, 200, 16), &context);
     assert_hand_built_words_are_rejected(&context);
 }
 
@@ -1289,6 +1339,77 @@ fn the_fold_model_is_the_split_halves_recurrence() {
     };
     assert_e4("split-halves s0", s0, expect(values[0], values[2]));
     assert_e4("split-halves s1", s1, expect(values[1], values[3]));
+}
+
+/// ONE split-halves fold of `values` with `challenge`:
+/// `out[i] = v[i] + c * (v[i + len/2] - v[i])`, the incumbent
+/// `(index, this_layer_size + index)` recurrence and nothing else. No leaf table,
+/// no bit reversal, no span arithmetic.
+fn fold_once(values: &[E4], challenge: E4) -> Vec<E4> {
+    let half = values.len() / 2;
+    (0..half)
+        .map(|index| {
+            let mut diff = values[half + index];
+            diff.sub_assign(&values[index]);
+            diff.mul_assign(&challenge);
+            let mut out = values[index];
+            out.add_assign(&diff);
+            out
+        })
+        .collect()
+}
+
+/// The δ≥2 offset composition, derived from the recurrence rather than restated.
+///
+/// `HostWindow::endpoints` composes a δ-fold as one weighted sum over
+/// `bit_reverse(leaf) * span` offsets, and so does the kernel. Both were derived
+/// from the same reasoning, so a test that only re-states `bitrev * span` cannot
+/// catch a shared misunderstanding — and at δ=1 bit reversal is the identity, so
+/// `the_fold_model_is_the_split_halves_recurrence` cannot either. This applies
+/// the single-fold recurrence δ times instead, which is the definition the
+/// composition has to agree with.
+#[test]
+fn the_multi_fold_offsets_agree_with_the_recurrence_applied_delta_times() {
+    for delta in 1..=3u8 {
+        let rows = 3usize;
+        let challenges = (0..u32::from(delta))
+            .map(|round| e4(0x0500 + round))
+            .collect::<Vec<_>>();
+        let values = (0..(2 * rows) << delta)
+            .map(|index| e4(0x0600 + index as u32))
+            .collect::<Vec<_>>();
+
+        // The reference: fold the whole column δ times, challenge k at step k —
+        // the same order `ab_gkr_bwd_coeff_build_fold_factors_kernel` weights
+        // `round_challenges[backing_depth + k]` in.
+        let mut level = values.clone();
+        for &challenge in &challenges {
+            level = fold_once(&level, challenge);
+        }
+        assert_eq!(level.len(), 2 * rows, "D{delta} reference length");
+
+        let host = host_window(
+            0,
+            WindowFamily::LayerOutput {
+                layer: 0,
+                ext: true,
+            },
+            1,
+            0,
+            delta,
+            Backing::Ext(values),
+            vec![true],
+        );
+        for row in 0..rows {
+            let (s0, s1) = host.endpoints(0, row, rows, &challenges);
+            assert_e4(&format!("D{delta} recurrence s0 row {row}"), s0, level[row]);
+            assert_e4(
+                &format!("D{delta} recurrence s1 row {row}"),
+                s1,
+                level[rows + row],
+            );
+        }
+    }
 }
 
 #[test]

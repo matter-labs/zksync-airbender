@@ -1055,6 +1055,22 @@ fn program(words: usize, c_init: Option<CoefficientRecipeId>) -> EncodedProgram 
     }
 }
 
+/// The regime `round` belongs to: R0 IS round zero, every later round is
+/// continuation. The depth-policy tests are about depths, not regimes, so they
+/// take the program the round actually admits.
+fn program_for_round(round: u8, words: usize) -> EncodedProgram {
+    EncodedProgram {
+        regime: if round == 0 {
+            BwdRegime::R0
+        } else {
+            BwdRegime::Ext
+        },
+        budget: CellBudget::new(2).unwrap(),
+        c_init: None,
+        words: (0..words).map(|w| w as u16).collect(),
+    }
+}
+
 #[test]
 fn lowering_fills_the_descriptor_from_the_bound_program() {
     let binding = matrix_binding(3, 0);
@@ -1185,7 +1201,7 @@ fn a_materializing_round_needs_a_publish_backing() {
     bound[0].publish = None;
     let error = lower_err(
         lower_bwd_coeff(
-            &program(2, None),
+            &program_for_round(depth, 2),
             &binding,
             &round_binding(&bound),
             Vec::new(),
@@ -1268,7 +1284,7 @@ fn a_publish_range_may_not_alias_a_read_range() {
     bound[0].publish = Some(bf_column(FAKE_READ_BASE));
     let error = lower_err(
         lower_bwd_coeff(
-            &program(2, None),
+            &program_for_round(depth, 2),
             &binding,
             &round_binding(&bound),
             Vec::new(),
@@ -1338,7 +1354,7 @@ fn lower_one(
     target_depth: u8,
 ) -> Result<super::lower::BwdCoeffSetup, BwdCoeffLowerError> {
     lower_bwd_coeff(
-        &program(2, None),
+        &program_for_round(target_depth, 2),
         &matrix_binding(1, target_depth),
         &round_binding(bound),
         Vec::new(),
@@ -1452,5 +1468,179 @@ fn the_layer_target_depth_must_be_the_round() {
             round: 3,
             target_depth: 2,
         }
+    );
+}
+
+/// A procedural binding with `columns` columns of one virtual-setup kind.
+fn procedural_binding(columns: usize, target_depth: u8) -> CoeffSourceBinding {
+    CoeffSourceBinding {
+        target_depth,
+        materialize: target_depth >= BWD_COEFF_PUBLISH_TARGET_DEPTH,
+        windows: vec![BoundSourceWindow {
+            family: WindowFamily::VirtualSetup { kind: 0 },
+            first_column: 0,
+            columns: (0..columns)
+                .map(|column| BoundColumn {
+                    column,
+                    source: SourceId(column as u32),
+                })
+                .collect(),
+        }],
+        uses: Vec::new(),
+    }
+}
+
+/// R0 IS round zero.
+///
+/// `launch_bwd_coeff` matches `(R0, _, bank)` and always launches the
+/// `<true, 0>` specialization, so an R0 program lowered for a later round would
+/// run a kernel whose BF resolver cannot fold and whose E4 resolver accumulates
+/// leaf zero only — the same silent-wrong-answer class the other two depth
+/// guards close, and the one the launcher's wildcard hides.
+#[test]
+fn an_r0_program_must_be_lowered_for_round_zero() {
+    let bound = [resolved_window_at(3, 3)];
+    assert_eq!(
+        lower_err(
+            lower_bwd_coeff(
+                &program(2, None),
+                &matrix_binding(1, 3),
+                &round_binding(&bound),
+                Vec::new(),
+                std::ptr::null(),
+                BwdCoeffBank::Constant,
+            ),
+            "an R0 program at round three must be rejected",
+        ),
+        BwdCoeffLowerError::R0RoundMismatch { round: 3 }
+    );
+
+    // The guard is one-directional: continuation at round three is exactly what
+    // the D3 specialization is for, and continuation at round zero is the legal
+    // Ext D0 launch.
+    for round in [0u8, 3] {
+        let bound = [resolved_window_at(round, round)];
+        let ext = EncodedProgram {
+            regime: BwdRegime::Ext,
+            budget: CellBudget::new(2).unwrap(),
+            c_init: None,
+            words: vec![0, 0],
+        };
+        assert!(
+            lower_bwd_coeff(
+                &ext,
+                &matrix_binding(1, round),
+                &round_binding(&bound),
+                Vec::new(),
+                std::ptr::null(),
+                BwdCoeffBank::Constant,
+            )
+            .is_ok(),
+            "continuation at round {round} must lower"
+        );
+    }
+
+    // ...and R0 at round zero, which is the only R0 launch there is.
+    let bound = [resolved_window_at(0, 0)];
+    assert!(lower_one(&bound, 0).is_ok());
+}
+
+/// A procedural value is produced from the backing INDEX, so the device resolver
+/// ignores the column coordinate. One virtual-setup kind is one column and each
+/// kind is its own family, so binding cannot produce a multi-column procedural
+/// window — but a silently ignored coordinate is a wrong answer waiting for the
+/// first one that does, so the host rejects it.
+#[test]
+fn a_multi_column_procedural_window_is_rejected() {
+    let bound = [ResolvedBwdCoeffSourceWindow {
+        read: None,
+        publish: None,
+        backing_depth: 0,
+        target_depth: 0,
+        materialize: false,
+    }];
+    assert!(
+        lower_bwd_coeff(
+            &program(2, None),
+            &procedural_binding(1, 0),
+            &round_binding(&bound),
+            Vec::new(),
+            std::ptr::null(),
+            BwdCoeffBank::Constant,
+        )
+        .is_ok(),
+        "a single-column procedural window is the only shape binding produces"
+    );
+    assert_eq!(
+        lower_err(
+            lower_bwd_coeff(
+                &program(2, None),
+                &procedural_binding(2, 0),
+                &round_binding(&bound),
+                Vec::new(),
+                std::ptr::null(),
+                BwdCoeffBank::Constant,
+            ),
+            "a multi-column procedural window must be rejected",
+        ),
+        BwdCoeffLowerError::MultiColumnProceduralWindow {
+            window: 0,
+            columns: 2,
+        }
+    );
+}
+
+/// Round zero, pinned by name.
+///
+/// Most of the lowering tests above run at round zero only because
+/// [`resolved_windows`] defaults to depth zero, and [`round_binding`] now derives
+/// the round from the windows it is given. This test states the round-zero shape
+/// outright so that coverage cannot drift away again as an unnoticed side effect
+/// of a helper default.
+#[test]
+fn round_zero_lowering_is_pinned_explicitly() {
+    let bound = resolved_windows(2, 0);
+    let runtime = round_binding(&bound);
+    assert_eq!(runtime.round, 0);
+    assert_eq!(runtime.n_round_challenges, 0);
+    assert!(runtime.round_challenges.is_null());
+
+    let setup = lower_bwd_coeff(
+        &program(4, None),
+        &matrix_binding(2, 0),
+        &runtime,
+        Vec::new(),
+        std::ptr::null(),
+        BwdCoeffBank::Constant,
+    )
+    .expect("round zero must lower");
+    assert_eq!(setup.regime, BwdRegime::R0);
+    assert_eq!(setup.fold_depth, 0);
+    assert_eq!(setup.desc.n_round_challenges, 0);
+    assert!(setup.desc.round_challenges.is_null());
+    for window in &setup.desc.source_windows[..2] {
+        assert_eq!(window.backing_depth, 0);
+        assert_eq!(window.target_depth, 0);
+        assert_eq!(window.materialize, 0);
+        assert!(window.publish_base.is_null());
+    }
+
+    // Moving this program off round zero is rejected at the regime guard, which
+    // is upstream of the depth guards — `only_bank_backed_catch_up_distances_lower`
+    // covers round zero's "delta must be zero" side.
+    let behind = [resolved_window_at(0, 1)];
+    assert_eq!(
+        lower_err(
+            lower_bwd_coeff(
+                &program(2, None),
+                &matrix_binding(1, 1),
+                &round_binding(&behind),
+                Vec::new(),
+                std::ptr::null(),
+                BwdCoeffBank::Constant,
+            ),
+            "an R0 program has only round zero",
+        ),
+        BwdCoeffLowerError::R0RoundMismatch { round: 1 }
     );
 }

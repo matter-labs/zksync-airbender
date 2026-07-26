@@ -352,6 +352,54 @@ DEVICE_FORCEINLINE bwd_coeff_input bwd_coeff_decode_input(const u16 *program, co
   return in;
 }
 
+// One term's whole operand list.
+//
+// `squared` is section 9.1's rule and it is a SAFETY property, not an
+// optimization: when the two input records are byte-identical the operand is
+// resolved exactly ONCE and consumed twice, because re-executing the second copy
+// would re-run its residency actions — a `{UseResident l, Fill l}` plan would
+// read lane `l` again after the fill overwrote it. A consumer must therefore
+// resolve `first`, and take `second` only when `!squared`.
+struct bwd_coeff_operands {
+  bwd_coeff_input first;
+  // Equal to `first` for a unary opcode and for a squared binary one.
+  bwd_coeff_input second;
+  // u16 words the whole operand list occupies, header excluded.
+  u32 words;
+  bool squared;
+};
+
+// Decode `arity` input records starting at `pc` and apply the squared rule.
+//
+// THE ONE IMPLEMENTATION of that rule. Both the release program loop and the
+// validation probe call this; re-deriving the byte-identity test at a second
+// call site is how a safety rule gets subtly wrong.
+//
+// The caller must have bounds-checked `pc`: the longest operand list any live
+// opcode has is four words (two planned/fill records).
+DEVICE_FORCEINLINE bwd_coeff_operands bwd_coeff_decode_operands(const u16 *program, const u32 pc, const u32 arity, const bool cell_is_pair_form) {
+  bwd_coeff_operands out{};
+  out.first = bwd_coeff_decode_input(program, pc, cell_is_pair_form);
+  out.second = out.first;
+  out.words = out.first.words;
+  if (arity < 2)
+    return out;
+  out.second = bwd_coeff_decode_input(program, pc + out.first.words, cell_is_pair_form);
+  out.words += out.second.words;
+  // Word zero fixes the mode and the mode fixes the length, so equal lengths is
+  // implied by an equal first word; it is tested first only to bound the loop.
+  out.squared = out.second.words == out.first.words;
+  for (u32 word = 0; out.squared && word < out.first.words; word++)
+    out.squared = program[pc + word] == program[pc + out.first.words + word];
+  return out;
+}
+
+// The longest operand list a live opcode can have, in u16 words: two records,
+// each an input word plus one canonical extension (sections 9.4, 9.5). Every
+// `program` read `bwd_coeff_decode_operands` performs is inside
+// `[pc, pc + BWD_COEFF_MAX_OPERAND_WORDS)`.
+constexpr u32 BWD_COEFF_MAX_OPERAND_WORDS = 4;
+
 // ── Source-window origin (section 10.2) ─────────────────────────────────────
 //
 // The BACKING field of the window's matrix — NOT the width of the values read
