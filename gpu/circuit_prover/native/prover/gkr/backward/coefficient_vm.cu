@@ -92,7 +92,12 @@ template <bool REGIME_IS_R0, u32 FOLD_DEPTH, typename Bank> DEVICE_FORCEINLINE v
   // is warp-uniform and never randomly accessed. `cells` is its private file.
   (void)cells;
 
-  if (desc.contributions == nullptr)
+  // `lower_bwd_coeff` rejects a null `contributions` or `eq_low`
+  // (BwdCoeffLowerError::NullRuntimePointer), so this is defence in depth
+  // against a hand-built descriptor, NOT a supported "evaluate but do not
+  // store" mode. Silently producing nothing is the safest response a release
+  // kernel can give: it has no error channel.
+  if (desc.contributions == nullptr || desc.eq_low == nullptr)
     return;
   const e4 eq = gkr_compute_eq_inline<e4>(desc.eq_low, desc.eq_sizes, static_cast<u32>(logical_row));
   store<e4, st_modifier::cs>(desc.contributions, e4::mul(eq, acc_c0), logical_row);

@@ -10,17 +10,16 @@
 //! c16. There is no ABI or runtime switch back to the retired generic backward
 //! DAG VM: it is gone, not disabled.
 
-// The ABI surface lands before its consumers: TASK 10 and TASK 11 add the
-// device-side executor and its tests, and TASK 13 cuts the main-layer prover
-// over to `lower_bwd_coeff` + `launch_bwd_coeff`. Until then most of this
-// module is deliberately unreferenced. Drop this allow in Task 13.
-#![allow(dead_code)]
-
 pub(crate) mod compile;
 pub(crate) mod desc;
-// TASK 10 replaces this bench harness against the coefficient ABI. Until then
-// it still references the retired generic-VM lowering, so it is not compiled:
-// `any()` is unconditionally false. Removing it is part of Task 10.
+// ★ PARKED FOR TASK 10 ★ — `any()` is unconditionally false, so these 5,014
+// lines of GPU tests are NOT compiled. They still reference the retired
+// generic-VM lowering; Task 10 replaces the file wholesale.
+//
+// A `--exact` libtest run exits 0 when zero tests match, so a forgotten gate
+// would let Task 10's verification go green having run nothing. The tripwire
+// `abi_tests::retired_gpu_tests_are_still_parked_for_task_10` fails on purpose
+// until BOTH the `any()` below and the tripwire itself are removed.
 #[cfg(all(test, feature = "bench", any()))]
 mod gpu_tests;
 pub(crate) mod lower;
@@ -98,6 +97,7 @@ declare_bwd_coeff_kernel!(GkrBwdCoeffExtD3Ptr, ab_gkr_bwd_coeff_ext_d3_ptr_kerne
 /// carries an address-space tag, so this is a kernel specialization, never a
 /// per-instruction decision.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[allow(dead_code)] // TASK 13 wires this into the main-layer prover.
 pub(crate) enum BwdCoeffBank {
     /// The incumbent stream-ordered `__constant__` bank.
     Constant,
@@ -128,6 +128,7 @@ impl BwdCoeffBank {
 /// already published at its target depth, so a backing is at most ONE fold
 /// behind and D1 is exact — which is why the resolver set stays bounded instead
 /// of growing with the round index.
+#[allow(dead_code)] // TASK 13 wires this into the main-layer prover.
 pub(crate) fn bwd_coeff_fold_depth(round: u8) -> u8 {
     match round {
         0 => 0,
@@ -177,6 +178,7 @@ fn launch_fold_factor_prelude(setup: &BwdCoeffSetup, context: &ProverContext) ->
 
 /// Dynamic shared memory for one block: the private E4 cell file of every
 /// thread in it (§11).
+#[allow(dead_code)] // TASK 13 wires this into the main-layer prover.
 pub(crate) fn bwd_coeff_dynamic_smem_bytes(cell_budget: u32) -> usize {
     cell_budget as usize * core::mem::size_of::<E4>() * BWD_COEFF_THREADS_PER_BLOCK as usize
 }
@@ -196,6 +198,7 @@ fn launch_config<'a>(desc: &BwdCoeffDesc, context: &'a ProverContext) -> CudaLau
 }
 
 /// Launch the exact `(Regime, FoldDepth, CoeffBank)` executor for this setup.
+#[allow(dead_code)] // TASK 13 wires this into the main-layer prover.
 pub(crate) fn launch_bwd_coeff(setup: &BwdCoeffSetup, context: &ProverContext) -> CudaResult<()> {
     launch_fold_factor_prelude(setup, context)?;
     let config = launch_config(&setup.desc, context);
@@ -249,6 +252,7 @@ pub(crate) fn launch_bwd_coeff(setup: &BwdCoeffSetup, context: &ProverContext) -
 }
 
 /// Occupancy of the exact executor this setup would launch.
+#[allow(dead_code)] // TASK 13 wires this into the main-layer prover.
 pub(crate) fn bwd_coeff_blocks_per_sm(
     regime: BwdRegime,
     fold_depth: u8,

@@ -20,6 +20,11 @@
 //! Task 13 moves into `backward::coefficients`: this module takes coefficient
 //! VALUES already evaluated in the round's challenge context.
 
+// TASK 13 cuts the main-layer prover over to `lower_bwd_coeff`; until then this
+// whole module is deliberately unreferenced outside its tests. Scoped here
+// rather than on the parent so it does not also cover `report`/`compile`.
+#![allow(dead_code)]
+
 use era_cudart::result::CudaResult;
 use gkr_eval_isa::bwd::coeff::bind::CoeffSourceBinding;
 use gkr_eval_isa::bwd::coeff::encode::EncodedProgram;
@@ -71,12 +76,15 @@ pub(crate) struct ResolvedBwdCoeffSourceWindow {
 
 /// Everything about one sumcheck round that is not in the compiled program.
 pub(crate) struct BwdCoeffRoundBinding<'a> {
-    /// Sumcheck round index; also the number of active round challenges.
+    /// Sumcheck round index. It is ALSO the fold prelude's target depth and the
+    /// number of active round challenges — `lower_bwd_coeff` enforces
+    /// `n_round_challenges == round` so those three cannot diverge.
     pub round: u8,
     /// Logical rows this launch evaluates — one per thread, and the
     /// contribution half-stride.
     pub rows: u32,
-    /// Device-resident transcript challenges for the lazy-fold prelude.
+    /// Device-resident transcript challenges for the lazy-fold prelude. Must be
+    /// non-null whenever `n_round_challenges > 0`.
     pub round_challenges: *const E4,
     pub n_round_challenges: u32,
     /// One entry per `CoeffSourceBinding::windows` entry, in wire order.
@@ -192,8 +200,16 @@ pub(crate) enum BwdCoeffLowerError {
     CoefficientBankOverflow { coefficients: usize, cap: usize },
     /// The device-pointer bank has entries but no pointer.
     MissingCoefficientPointer,
-    /// The lazy-fold prelude needs more challenges than the round supplied.
-    RoundChallengesTooShort { required: u32, actual: u32 },
+    /// `n_round_challenges` is not exactly the round index.
+    ///
+    /// They are one number wearing two hats: `n_round_challenges` is what the
+    /// launcher hands the fold prelude as its `target_depth`, and `round` is
+    /// what selects the D0..D3 resolver. `>=` would let the prelude build
+    /// weights for a different depth than the kernel decodes at, silently, so
+    /// the relation is equality.
+    RoundChallengeCountMismatch { round: u8, n_round_challenges: u32 },
+    /// A runtime pointer the kernel dereferences unconditionally is null.
+    NullRuntimePointer { what: &'static str },
 }
 
 // ── Lowering ─────────────────────────────────────────────────────────────────
@@ -249,10 +265,29 @@ pub(crate) fn lower_bwd_coeff(
 
     let c_init = lower_c_init(program, coefficients.len())?;
     let fold_depth = bwd_coeff_fold_depth(runtime.round);
-    if runtime.n_round_challenges < u32::from(runtime.round) {
-        return Err(BwdCoeffLowerError::RoundChallengesTooShort {
-            required: u32::from(runtime.round),
-            actual: runtime.n_round_challenges,
+    // `launch_fold_factor_prelude` passes `desc.n_round_challenges` as the
+    // prelude's `target_depth` while `fold_depth` comes from `round`. Equality
+    // is what keeps those two readings of one number from diverging.
+    if runtime.n_round_challenges != u32::from(runtime.round) {
+        return Err(BwdCoeffLowerError::RoundChallengeCountMismatch {
+            round: runtime.round,
+            n_round_challenges: runtime.n_round_challenges,
+        });
+    }
+    // A release kernel has no error channel, so the host is the only place a
+    // null it would dereference can be reported. The device keeps its own guard
+    // as defence in depth against a hand-built descriptor.
+    if runtime.contributions.is_null() {
+        return Err(BwdCoeffLowerError::NullRuntimePointer {
+            what: "contributions",
+        });
+    }
+    if runtime.eq_low.is_null() {
+        return Err(BwdCoeffLowerError::NullRuntimePointer { what: "eq_low" });
+    }
+    if runtime.n_round_challenges > 0 && runtime.round_challenges.is_null() {
+        return Err(BwdCoeffLowerError::NullRuntimePointer {
+            what: "round_challenges",
         });
     }
 

@@ -524,7 +524,7 @@ fn the_coefficient_bank_choice_is_launch_wide() {
 ///
 /// Panics for a constant whose right-hand side is an expression — those are
 /// pinned by the header's own `static_assert`s and are checked with
-/// [`assert_header_contains`] instead.
+/// [`assert_header_asserts`] instead.
 fn cuda_literal(name: &str) -> u64 {
     let needle = format!(" {name} = ");
     let start = CUDA_HEADER
@@ -546,11 +546,72 @@ fn cuda_literal(name: &str) -> u64 {
     })
 }
 
-fn assert_header_contains(needle: &str) {
+/// Does `haystack` contain this exact `static_assert` claim?
+///
+/// The trailing comma is LOAD-BEARING. Every claim checked here sits inside a
+/// `static_assert(<claim>, "message");`, and without the terminator the needle
+/// is a plain substring: Rust `== 600` would match a CUDA header that asserts
+/// `== 6000`, and `== 12144` would match `== 121440`. A check whose whole job is
+/// catching silent drift must not itself pass silently, so the claim must run
+/// to the end of the `static_assert`'s first argument.
+fn asserts_in(haystack: &str, claim: &str) -> bool {
+    haystack.contains(&format!("{claim},"))
+}
+
+fn header_asserts(claim: &str) -> bool {
+    asserts_in(CUDA_HEADER, claim)
+}
+
+/// The header `static_assert`s this exact claim.
+fn assert_header_asserts(claim: &str) {
     assert!(
-        CUDA_HEADER.contains(needle),
-        "coefficient_vm.cuh is missing `{needle}`"
+        header_asserts(claim),
+        "coefficient_vm.cuh does not static_assert `{claim}`"
     );
+}
+
+/// The header mentions this text at all. For symbol NAMES, which are not
+/// numeric and therefore have no prefix hazard.
+fn assert_header_mentions(text: &str) {
+    assert!(
+        CUDA_HEADER.contains(text),
+        "coefficient_vm.cuh is missing `{text}`"
+    );
+}
+
+/// The terminator in [`asserts_in`] actually closes the prefix hole, and a
+/// missing claim is still a miss.
+#[test]
+fn the_static_assert_matcher_rejects_a_numeric_prefix() {
+    // The exact hole the reviewer demonstrated: a Rust-side value that is a
+    // PREFIX of the number the header really asserts.
+    let drifted =
+        r#"static_assert(__builtin_offsetof(bwd_coeff_desc, n_coefficients) == 6000, "m");"#;
+    assert!(!asserts_in(
+        drifted,
+        "__builtin_offsetof(bwd_coeff_desc, n_coefficients) == 600"
+    ));
+    assert!(asserts_in(
+        drifted,
+        "__builtin_offsetof(bwd_coeff_desc, n_coefficients) == 6000"
+    ));
+    let wide = r#"static_assert(sizeof(bwd_coeff_desc) == 121440, "m");"#;
+    assert!(!asserts_in(wide, "sizeof(bwd_coeff_desc) == 12144"));
+    assert!(asserts_in(wide, "sizeof(bwd_coeff_desc) == 121440"));
+
+    // Against the real header: the true claims hold and a prefix of one does
+    // not.
+    assert!(header_asserts(&format!(
+        "__builtin_offsetof(bwd_coeff_desc, n_coefficients) == {}",
+        offset_of!(BwdCoeffDesc, n_coefficients)
+    )));
+    assert!(!header_asserts(
+        "__builtin_offsetof(bwd_coeff_desc, n_coefficients) == 60"
+    ));
+    // A needle that is simply absent must be a miss, not a pass.
+    assert!(!header_asserts(
+        "__builtin_offsetof(bwd_coeff_desc, no_such_field) == 0"
+    ));
 }
 
 /// Every numeric constant this crate mirrors is present in the CUDA header with
@@ -764,13 +825,23 @@ fn cuda_constants_match_the_rust_mirror() {
     for (name, value) in expected {
         assert_eq!(cuda_literal(name), *value, "CUDA {name}");
     }
-    // The expression-valued constants are pinned by the header's own asserts.
-    assert_header_contains("BWD_COEFF_PROGRAM_BYTE_CAP == 11520");
-    assert_header_contains("BWD_COEFF_HEADER_COEFFICIENT_MASK == 0x1fffu");
-    assert_header_contains("BWD_COEFF_HEADER_OPCODE_MASK == 0x7u");
-    assert_header_contains("BWD_COEFF_MAX_COEFFICIENT_ENCODINGS == 8192");
-    assert_header_contains("BWD_COEFF_MAX_ENCODABLE_SOURCE_WINDOWS == 64");
-    assert_header_contains("BWD_COEFF_SOURCE_WINDOW_COLUMNS == 128");
+    // The expression-valued constants cannot be parsed as literals, so they are
+    // pinned by the header's own `static_assert`s — with the expected number
+    // built from the Rust mirror, never hand-written here.
+    for claim in [
+        format!("BWD_COEFF_PROGRAM_BYTE_CAP == {BWD_COEFF_PROGRAM_BYTE_CAP}"),
+        format!("BWD_COEFF_HEADER_COEFFICIENT_MASK == {BWD_COEFF_HEADER_COEFFICIENT_MASK:#x}u"),
+        format!("BWD_COEFF_HEADER_OPCODE_SHIFT == {BWD_COEFF_HEADER_OPCODE_SHIFT}"),
+        format!("BWD_COEFF_HEADER_OPCODE_MASK == {BWD_COEFF_HEADER_OPCODE_MASK:#x}u"),
+        format!("BWD_COEFF_MAX_COEFFICIENT_ENCODINGS == {BWD_COEFF_MAX_COEFFICIENT_ENCODINGS}"),
+        format!(
+            "BWD_COEFF_MAX_ENCODABLE_SOURCE_WINDOWS == {BWD_COEFF_MAX_ENCODABLE_SOURCE_WINDOWS}"
+        ),
+        format!("BWD_COEFF_SOURCE_WINDOW_COLUMNS == {BWD_COEFF_SOURCE_WINDOW_COLUMNS}"),
+        format!("BWD_COEFF_ROWS_PER_BLOCK == {BWD_COEFF_ROWS_PER_BLOCK}"),
+    ] {
+        assert_header_asserts(&claim);
+    }
     assert_eq!(BWD_COEFF_HEADER_COEFFICIENT_MASK, 0x1fff);
     assert_eq!(BWD_COEFF_HEADER_OPCODE_MASK, 0x7);
 }
@@ -807,7 +878,7 @@ fn cuda_layout_asserts_match_the_rust_layout() {
         ("program", offset_of!(BwdCoeffDesc, program)),
     ];
     for (field, offset) in desc {
-        assert_header_contains(&format!(
+        assert_header_asserts(&format!(
             "__builtin_offsetof(bwd_coeff_desc, {field}) == {offset}"
         ));
     }
@@ -842,24 +913,24 @@ fn cuda_layout_asserts_match_the_rust_layout() {
         ("reserved", offset_of!(BwdCoeffSourceWindow, reserved)),
     ];
     for (field, offset) in window {
-        assert_header_contains(&format!(
+        assert_header_asserts(&format!(
             "__builtin_offsetof(bwd_coeff_source_window, {field}) == {offset}"
         ));
     }
-    assert_header_contains(&format!(
+    assert_header_asserts(&format!(
         "sizeof(bwd_coeff_desc) == {}",
         size_of::<BwdCoeffDesc>()
     ));
-    assert_header_contains(&format!(
+    assert_header_asserts(&format!(
         "sizeof(bwd_coeff_source_window) == {}",
         size_of::<BwdCoeffSourceWindow>()
     ));
-    assert_header_contains(&format!(
+    assert_header_asserts(&format!(
         "alignof(bwd_coeff_source_window) == {}",
         align_of::<BwdCoeffSourceWindow>()
     ));
-    assert_header_contains("sizeof(bwd_coeff_desc) <= BWD_COEFF_DESC_CAP");
-    assert_header_contains("alignof(bwd_coeff_desc) == BWD_COEFF_DESC_ALIGN");
+    assert_header_asserts("sizeof(bwd_coeff_desc) <= BWD_COEFF_DESC_CAP");
+    assert_header_asserts("alignof(bwd_coeff_desc) == BWD_COEFF_DESC_ALIGN");
 }
 
 /// The launched symbol names ARE the ABI (kernels are `extern "C"`), so the ten
@@ -881,7 +952,7 @@ fn every_launched_symbol_is_declared_by_the_cuda_header() {
         "ab_gkr_bwd_coeff_ext_d3_ptr_kernel",
         "ab_gkr_bwd_coeff_fold_factors",
     ] {
-        assert_header_contains(symbol);
+        assert_header_mentions(symbol);
     }
     // The retired generic backward DAG VM is GONE, not switchable: no symbol,
     // no descriptor, no compatibility path.
@@ -1239,3 +1310,51 @@ fn the_device_pointer_bank_needs_a_pointer_when_it_has_entries() {
     assert!(!setup.desc.coefficients.is_null());
     assert!(2_000 > FLAT_CONST_MAX);
 }
+
+// ── Parked-work tripwire ─────────────────────────────────────────────────────
+
+/// **This test fails on purpose.** It is the loud half of the `any()` gate on
+/// `vm/gpu_tests.rs` (see `vm/mod.rs`).
+///
+/// The gate parks 5,014 lines of GPU tests that still target the retired
+/// generic-VM lowering. The danger is not the gate — it is that libtest
+/// **exits 0 when `--exact` matches zero tests**, so Task 10's verification
+/// would go green having executed nothing. A red test is the only signal that
+/// survives that, so this one stays red until the work is actually done.
+///
+/// It reports which of the two states the tree is in, and both are failures:
+/// the gate present, or the gate gone but the tripwire not yet deleted.
+#[test]
+fn retired_gpu_tests_are_still_parked_for_task_10() {
+    const VM_MOD: &str = include_str!("mod.rs");
+    const GATE: &str = r#"#[cfg(all(test, feature = "bench", any()))]"#;
+
+    if VM_MOD.contains(GATE) {
+        panic!(
+            "\nTASK 10 NOT DONE: {} lines of backward GPU tests are DARK.\n\
+             \n\
+             `vm/gpu_tests.rs` is gated off by `any()` in \
+             `gpu/circuit_prover/src/prover/gkr/backward/vm/mod.rs`, so it is not \
+             compiled and not run. libtest exits 0 when `--exact` matches zero \
+             tests, so Task 10's verification WOULD PASS WITHOUT RUNNING ANYTHING \
+             while this gate is in place.\n\
+             \n\
+             To fix, in this order:\n\
+             \x20 1. rewrite `vm/gpu_tests.rs` against the coefficient ABI (Task 10);\n\
+             \x20 2. delete `, any()` from the `#[cfg(...)]` on `mod gpu_tests;` in \
+             `vm/mod.rs`;\n\
+             \x20 3. delete this test (`retired_gpu_tests_are_still_parked_for_task_10`) \
+             from `vm/abi_tests.rs`.\n",
+            RETIRED_GPU_TEST_LINES
+        );
+    }
+    panic!(
+        "\nThe `any()` gate on `vm/gpu_tests.rs` is GONE, so Task 10 has landed.\n\
+         Delete this tripwire test (`retired_gpu_tests_are_still_parked_for_task_10`) \
+         from `vm/abi_tests.rs`; it has no job left.\n"
+    );
+}
+
+/// Lines of GPU tests the `any()` gate is keeping dark, so the tripwire can say
+/// how much is at stake rather than just "some tests".
+const RETIRED_GPU_TEST_LINES: usize = 5_014;

@@ -1,3 +1,9 @@
+// Every item here is consumed by `vm/gpu_tests.rs`, which is parked behind the
+// `any()` gate in `vm/mod.rs` until Task 10 rewrites it. Remove this allow with
+// that gate — it exists ONLY because the consumer is dark, which is a different
+// reason from the ABI-lands-before-its-consumers allow in `desc.rs`/`lower.rs`.
+#![allow(dead_code)] // TASK 10: remove with the `any()` gate on `mod gpu_tests`.
+
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::path::Path;

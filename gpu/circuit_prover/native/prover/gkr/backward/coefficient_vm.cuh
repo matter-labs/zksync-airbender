@@ -65,6 +65,9 @@ constexpr u16 BWD_COEFF_HEADER_OPCODE_MASK = (1u << BWD_COEFF_HEADER_OPCODE_BITS
 
 static_assert(BWD_COEFF_HEADER_COEFFICIENT_BITS + BWD_COEFF_HEADER_OPCODE_BITS == 16, "the header must be exactly saturated");
 static_assert(BWD_COEFF_HEADER_COEFFICIENT_MASK == 0x1fffu, "header coefficient mask drift");
+// Derived, so it cannot drift on its own — but a DE-derivation to a literal
+// would pass every other check here, so pin the value too.
+static_assert(BWD_COEFF_HEADER_OPCODE_SHIFT == 13, "header opcode shift drift");
 static_assert(BWD_COEFF_HEADER_OPCODE_MASK == 0x7u, "header opcode mask drift");
 
 // Reserved coefficient indices (section 9.2). `CoefficientRecipeId::{ONE,
@@ -240,6 +243,10 @@ constexpr u32 BWD_COEFF_FOLD_FACTOR_CAP = 10;
 constexpr u32 BWD_COEFF_MAX_FOLD_DEPTH = 3;
 
 static_assert(1u << BWD_COEFF_WARP_SHIFT == BWD_COEFF_WARP_LANES, "warp layout drift");
+// Same reason as BWD_COEFF_HEADER_OPCODE_SHIFT: derived constants still get a
+// literal pin, so a de-derivation cannot slip through.
+static_assert(BWD_COEFF_ROWS_PER_BLOCK == 128, "rows per block drift");
+static_assert(BWD_COEFF_LANE_INDEX_MASK == 31, "warp lane index mask drift");
 static_assert(BWD_COEFF_THREADS_PER_BLOCK % BWD_COEFF_WARP_LANES == 0, "a block must be a whole number of warps");
 
 // `c_init` is descriptor metadata (section 9.3): a coefficient index into the
