@@ -1,431 +1,320 @@
+//! CPU-side gates on the add/sub layer-0 coefficient realizations the GPU parity
+//! run consumes (design §9, §10.3, §12.1-§12.4).
+//!
+//! Everything here is host-only and runs without a GPU. Its job is to prove that
+//! what `load_add_sub_l0_coeff_case` hands the device is a real, certified,
+//! semantically faithful program — so that a GPU failure is a kernel failure and
+//! not a malformed fixture.
+
 use std::collections::BTreeMap;
 
-use cs::gkr_compiler::dag_ir::{BwdRegime, ReadPlace};
-use gkr_eval_isa::bwd::batch::{BATCH_COEFFICIENT_ONE, unpack_batch_dst};
-use gkr_eval_isa::bwd::compile::BwdCompiledLayer;
-use gkr_eval_isa::bwd::disasm::disassemble_bwd_layer;
-use gkr_eval_isa::bwd::source::BwdSpecial;
-use gkr_eval_isa::fwd::encode::decode;
-use gkr_eval_isa::fwd::isa::{DstLine, Instr, MovDir, OperandLine, Program};
+use cs::gkr_compiler::dag_ir::{BwdRegime, FieldKind};
+use gkr_eval_isa::bwd::coeff::encode::{decode_program, disassemble, DecodedInstr};
+use gkr_eval_isa::bwd::coeff::interp::{
+    interpret_coeff_layer, interpret_encoded_program, CoeffResolver,
+};
+use gkr_eval_isa::bwd::coeff::limits::SOURCE_WINDOW_COLUMNS;
+use gkr_eval_isa::bwd::coeff::model::{CoeffLayer, CoefficientRecipeId, SourceId};
 
-use super::{AddSubBwdVmCase, load_add_sub_l0_case};
-use crate::prover::gkr::forward::vm::desc::PROGRAM_CAP;
+use super::{
+    digit, load_add_sub_l0_coeff_case, pseudo_coefficient, pseudo_ext, AddSubCoeffCase,
+    PROBED_BUDGETS,
+};
+use crate::primitives::field::{BF, E4};
+use crate::prover::gkr::backward::vm::desc::{
+    BWD_COEFF_PROGRAM_WORD_CAP, BWD_COEFF_SOURCE_WINDOW_CAP,
+};
+use crate::upstream::FieldExtension;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct BatchProgramSummary {
-    batch_sinks: usize,
+/// A source's `(Endpoint0, Delta)` pair, matching the crate's own corpus
+/// resolver: a `FieldKind::Base` source must produce BASE-EMBEDDED values or the
+/// cell file would be lying about the width it stores.
+///
+/// The GPU harness does NOT use this: there, a source's value comes from the
+/// device backing behind its window, which is the whole point of the parity run.
+fn pseudo_source_pair(field: FieldKind, id: SourceId, row: usize) -> (E4, E4) {
+    match field {
+        FieldKind::Base => (
+            <E4 as FieldExtension<BF>>::from_base(digit(0xb0, id.0, row as u32)),
+            <E4 as FieldExtension<BF>>::from_base(digit(0xb1, id.0, row as u32)),
+        ),
+        FieldKind::Ext => (
+            pseudo_ext(0x5000, id.0, row as u32),
+            pseudo_ext(0x5001, id.0, row as u32),
+        ),
+    }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum FragmentAccState {
-    NeedsInit,
-    Active,
+struct Pseudo<'a> {
+    layer: &'a CoeffLayer,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum BatchProgramInvariantError {
-    BatchingSpecialOperand { instruction: usize, desc: u16 },
-    InvalidBatchSinkDescriptor { instruction: usize, desc: u16 },
-    BatchSinkBeforeInit { instruction: usize },
-    AccumulatorUseBeforeInit { instruction: usize },
-    AccumulatorInitWithoutSource { instruction: usize },
-    FinalInstructionNotBatchSink,
-    BatchSinkCount { expected: usize, actual: usize },
-}
-
-fn validate_raw_batch_sink_program(
-    compiled: &BwdCompiledLayer,
-    expected_fragments: usize,
-) -> Result<BatchProgramSummary, BatchProgramInvariantError> {
-    let mut acc_state = FragmentAccState::NeedsInit;
-    let mut batch_sinks = 0;
-
-    for (instruction_index, instruction) in compiled.program.instrs.iter().enumerate() {
-        let mut batching_special = None;
-        visit_instruction_operands(instruction, |operand| {
-            let OperandLine::Special { desc } = operand else {
-                return;
-            };
-            if matches!(
-                compiled.specials.get(*desc),
-                Some(BwdSpecial::Coefficient { .. } | BwdSpecial::AccInit)
-            ) {
-                batching_special.get_or_insert(*desc);
-            }
-        });
-        if let Some(desc) = batching_special {
-            return Err(BatchProgramInvariantError::BatchingSpecialOperand {
-                instruction: instruction_index,
-                desc,
-            });
-        }
-
-        if let Some(desc) = batch_sink_desc(instruction) {
-            if acc_state == FragmentAccState::NeedsInit {
-                return Err(BatchProgramInvariantError::BatchSinkBeforeInit {
-                    instruction: instruction_index,
-                });
-            }
-            if desc != BATCH_COEFFICIENT_ONE
-                && !matches!(
-                    compiled.specials.get(desc),
-                    Some(BwdSpecial::Coefficient { .. })
-                )
-            {
-                return Err(BatchProgramInvariantError::InvalidBatchSinkDescriptor {
-                    instruction: instruction_index,
-                    desc,
-                });
-            }
-            batch_sinks += 1;
-            continue;
-        }
-
-        match instruction {
-            Instr::Mov {
-                dir: MovDir::AccFromSrc,
-                src: Some(_),
-                ..
-            } => acc_state = FragmentAccState::Active,
-            Instr::Mov {
-                dir: MovDir::AccFromSrc,
-                src: None,
-                ..
-            } => {
-                return Err(BatchProgramInvariantError::AccumulatorInitWithoutSource {
-                    instruction: instruction_index,
-                });
-            }
-            Instr::Add { .. }
-            | Instr::Mul { .. }
-            | Instr::Fma { .. }
-            | Instr::Mov {
-                dir: MovDir::DstFromAcc,
-                ..
-            } if acc_state == FragmentAccState::NeedsInit => {
-                return Err(BatchProgramInvariantError::AccumulatorUseBeforeInit {
-                    instruction: instruction_index,
-                });
-            }
-            Instr::Add { .. }
-            | Instr::Mul { .. }
-            | Instr::Fma { .. }
-            | Instr::Mov {
-                dir: MovDir::DstFromAcc,
-                ..
-            }
-            | Instr::Mov {
-                dir: MovDir::DstFromSrc,
-                ..
-            } => {}
-        }
+impl CoeffResolver for Pseudo<'_> {
+    fn coefficient(&self, id: CoefficientRecipeId) -> E4 {
+        pseudo_coefficient(id)
     }
 
-    if compiled
-        .program
-        .instrs
-        .last()
-        .and_then(batch_sink_desc)
-        .is_none()
-    {
-        return Err(BatchProgramInvariantError::FinalInstructionNotBatchSink);
+    fn source_pair(&self, id: SourceId, row: usize) -> (E4, E4) {
+        pseudo_source_pair(self.layer.sources[id.0 as usize].field, id, row)
     }
-    if batch_sinks != expected_fragments {
-        return Err(BatchProgramInvariantError::BatchSinkCount {
-            expected: expected_fragments,
-            actual: batch_sinks,
-        });
-    }
-
-    Ok(BatchProgramSummary { batch_sinks })
 }
 
-fn batch_sink_desc(instruction: &Instr) -> Option<u16> {
-    let Instr::Mov {
-        dir: MovDir::DstFromAcc,
-        dst: Some(dst),
-        src: None,
-        ..
-    } = instruction
-    else {
-        return None;
-    };
-    unpack_batch_dst(dst)
+/// The `(regime, round)` coordinates the GPU ladder runs: R0 at round zero, and
+/// the single continuation schedule bound at each of D0..D3.
+fn probed_coordinates() -> Vec<(BwdRegime, u8)> {
+    let mut out = vec![(BwdRegime::R0, 0u8)];
+    out.extend((0..=3u8).map(|round| (BwdRegime::Ext, round)));
+    out
 }
 
-#[test]
-fn raw_batch_sink_gate_rejects_coefficient_source_operand() {
-    let case = load_add_sub_l0_case(BwdRegime::R0, 2);
-    let mut compiled = case.compiled.compiled.clone();
-    let desc = (0..compiled.specials.len())
-        .map(|desc| u16::try_from(desc).expect("backward descriptor fits u16"))
-        .find(|desc| {
-            matches!(
-                compiled.specials.get(*desc),
-                Some(BwdSpecial::Coefficient { .. })
-            )
+fn every_case() -> Vec<AddSubCoeffCase> {
+    probed_coordinates()
+        .into_iter()
+        .flat_map(|(regime, round)| {
+            PROBED_BUDGETS
+                .into_iter()
+                .map(move |cells| load_add_sub_l0_coeff_case(regime, round, cells))
         })
-        .expect("add/sub batching program must carry a coefficient descriptor");
-    let instruction = compiled
-        .program
-        .instrs
-        .iter()
-        .position(|instruction| {
-            matches!(
-                instruction,
-                Instr::Mov {
-                    dir: MovDir::AccFromSrc,
-                    src: Some(_),
-                    ..
-                }
-            )
-        })
-        .expect("add/sub batching program must initialize a fragment accumulator");
-    let Instr::Mov { src, .. } = &mut compiled.program.instrs[instruction] else {
-        unreachable!("located instruction is Mov");
-    };
-    *src = Some(OperandLine::Special { desc });
-
-    assert_eq!(
-        validate_raw_batch_sink_program(&compiled, case.fragment_order_len),
-        Err(BatchProgramInvariantError::BatchingSpecialOperand { instruction, desc })
-    );
+        .collect()
 }
 
-#[test]
-fn raw_batch_sink_gate_rejects_accumulator_use_without_initialization() {
-    let case = load_add_sub_l0_case(BwdRegime::R0, 2);
-    let mut compiled = case.compiled.compiled.clone();
-    let instruction = compiled
-        .program
-        .instrs
-        .iter()
-        .position(|instruction| {
-            matches!(
-                instruction,
-                Instr::Mov {
-                    dir: MovDir::AccFromSrc,
-                    src: Some(_),
-                    ..
-                }
-            )
-        })
-        .expect("add/sub batching program must initialize acc");
-    let Instr::Mov { field, .. } = &compiled.program.instrs[instruction] else {
-        unreachable!("located instruction is Mov");
-    };
-    compiled.program.instrs[instruction] = Instr::Mul {
-        field: *field,
-        promote: false,
-        negate_acc: true,
-        operands: vec![],
-    };
-
-    assert_eq!(
-        validate_raw_batch_sink_program(&compiled, case.fragment_order_len),
-        Err(BatchProgramInvariantError::AccumulatorUseBeforeInit { instruction })
-    );
+fn label(case: &AddSubCoeffCase) -> String {
+    format!(
+        "add/sub L0 {:?} round {} c{}",
+        case.regime, case.round, case.budget_cells
+    )
 }
 
+/// Every realization fits the frozen descriptor and binds its sources the way
+/// §10.3 requires.
+///
+/// `realize` already ran `certify_encoding` and `certify_source_binding`, so this
+/// checks the two things those certificates deliberately do NOT: that the result
+/// fits the GPU descriptor's MEASURED capacities (an encoding-legal program can
+/// still overflow the by-value array), and that first access is one-per-source
+/// from the binding's own use list rather than from the encoder's bookkeeping.
 #[test]
-fn batching_sink_does_not_force_reloading_the_preserved_accumulator() {
-    let case = load_add_sub_l0_case(BwdRegime::R0, 2);
-    let instructions = &case.compiled.compiled.program.instrs;
-
-    for (instruction, window) in instructions.windows(3).enumerate() {
-        let sink = batch_sink_desc(&window[1]).is_some();
-        let reloads_same_source = matches!(
-            (&window[0], &window[2]),
-            (
-                Instr::Mov {
-                    dir: MovDir::AccFromSrc,
-                    field: before_field,
-                    src: Some(before_src),
-                    ..
-                },
-                Instr::Mov {
-                    dir: MovDir::AccFromSrc,
-                    field: after_field,
-                    src: Some(after_src),
-                    ..
-                },
-            ) if before_field == after_field && before_src == after_src
-        );
-        let reloads_just_stored_acc = matches!(
-            (&window[0], &window[2]),
-            (
-                Instr::Mov {
-                    dir: MovDir::DstFromAcc,
-                    field: before_field,
-                    dst: Some(DstLine::Smem { cell: before_cell }),
-                    ..
-                },
-                Instr::Mov {
-                    dir: MovDir::AccFromSrc,
-                    field: after_field,
-                    src: Some(OperandLine::Smem { cell: after_cell }),
-                    ..
-                },
-            ) if before_field == after_field && before_cell == after_cell
-        );
-
+fn add_sub_l0_realizations_fit_the_descriptor_and_bind_first_access_once() {
+    for case in every_case() {
+        let name = label(&case);
         assert!(
-            !(sink && (reloads_same_source || reloads_just_stored_acc)),
-            "instruction {} redundantly reloads the accumulator preserved by batching sink {}",
-            instruction + 2,
-            instruction + 1,
+            case.program.words.len() <= BWD_COEFF_PROGRAM_WORD_CAP,
+            "{name}: {} words exceeds the by-value cap {BWD_COEFF_PROGRAM_WORD_CAP}",
+            case.program.words.len()
         );
-    }
-}
-
-#[test]
-#[ignore = "inspection tool: prints the add/sub L0 R0 c2 backward VM decompile"]
-fn dump_add_sub_l0_r0_c2_backward_vm() {
-    let case = load_add_sub_l0_case(BwdRegime::R0, 2);
-    let text = disassemble_bwd_layer("add_sub layer-0 R0 c2 backward VM", &case.compiled.compiled);
-    let program = text
-        .split_once("--- PROGRAM (single-accumulator VM; `acc` is implicit) ---")
-        .expect("backward VM program heading")
-        .1
-        .split_once("--- backings (slot -> storage region) ---")
-        .expect("backward VM backings heading")
-        .0;
-    let batch_sinks = program
-        .lines()
-        .filter(|line| line.contains("] batch +="))
-        .count();
-    let raw_summary =
-        validate_raw_batch_sink_program(&case.compiled.compiled, case.fragment_order_len)
-            .expect("raw add/sub program must have independent batching-sink fragments");
-
-    println!("\n{text}");
-    assert!(text.contains("budget = c2 (8 BF lanes)"));
-    assert!(text.contains("batch_init = coeff[2]"));
-    assert_eq!(
-        case.fragment_order_len,
-        case.distilled.fragments.fragments.len()
-    );
-    assert_eq!(raw_summary.batch_sinks, case.fragment_order_len);
-    assert_eq!(raw_summary.batch_sinks, 144);
-    assert_eq!(batch_sinks, raw_summary.batch_sinks);
-    assert!(text.contains("terminal = ReturnBatch"));
-}
-
-#[test]
-fn add_sub_l0_c2_c16_program_census_matches_published_artifacts() {
-    let expected_r0 = [
-        921, 911, 905, 901, 901, 901, 901, 901, 901, 901, 901, 901, 901, 901, 901,
-    ];
-    let expected_ext = [
-        946, 910, 913, 906, 922, 918, 916, 913, 911, 911, 911, 911, 911, 911, 911,
-    ];
-    for (regime, expected) in [(BwdRegime::R0, expected_r0), (BwdRegime::Ext, expected_ext)] {
-        let got = (2..=16)
-            .map(|budget| {
-                let case = load_add_sub_l0_case(regime, budget);
-                assert_case_program_bindings(&case);
-                case.compiled.encoded.len()
-            })
-            .collect::<Vec<_>>();
-        assert_eq!(got, expected);
-    }
-}
-
-fn assert_case_program_bindings(case: &AddSubBwdVmCase) {
-    assert_eq!(
-        decode(&case.compiled.encoded).unwrap(),
-        case.compiled.compiled.program
-    );
-    assert!(case.compiled.encoded.len() <= PROGRAM_CAP);
-    assert_no_logical_sources(&case.compiled.compiled.program);
-    assert_source_windows_are_bound(case);
-}
-
-fn assert_no_logical_sources(program: &Program) {
-    visit_operands(program, |operand| match operand {
-        OperandLine::LogicalGlobal { .. } | OperandLine::LogicalFold { .. } => {
-            panic!("backward program has unbound logical source: {operand:?}")
-        }
-        OperandLine::Source { .. }
-        | OperandLine::Smem { .. }
-        | OperandLine::Ldc { .. }
-        | OperandLine::Special { .. } => {}
-    });
-}
-
-fn assert_source_windows_are_bound(case: &AddSubBwdVmCase) {
-    let windows = &case.compiled.compiled.source_windows;
-    let mut referenced = BTreeMap::<(u8, u8), ReadPlace>::new();
-    for (window_index, window) in windows.windows().iter().enumerate() {
-        let window_index = u8::try_from(window_index).expect("source window index fits u8");
-        for absolute_column in window.referenced_columns() {
-            let column = absolute_column
-                .checked_sub(window.first_column)
-                .and_then(|column| u8::try_from(column).ok())
-                .expect("referenced source column fits its source window");
-            let place = windows
-                .resolve_read_place(window_index, column)
-                .expect("source window must reverse to a read place");
-            assert_eq!(referenced.insert((window_index, column), place), None);
-        }
-    }
-
-    let mut first_accesses = BTreeMap::<(u8, u8), usize>::new();
-    let mut uses = BTreeMap::<(u8, u8), usize>::new();
-    visit_operands(&case.compiled.compiled.program, |operand| {
-        if let OperandLine::Source {
-            window,
-            column,
-            first_access,
-        } = operand
-        {
-            assert!(
-                referenced.contains_key(&(*window, *column)),
-                "program source must reverse through source_windows"
-            );
-            *uses.entry((*window, *column)).or_default() += 1;
-            if *first_access {
-                *first_accesses.entry((*window, *column)).or_default() += 1;
-            }
-        }
-    });
-
-    for source in referenced.keys() {
         assert!(
-            uses.contains_key(source),
-            "source-window entry is not read by the program"
+            case.binding.windows.len() <= BWD_COEFF_SOURCE_WINDOW_CAP,
+            "{name}: {} windows exceeds the descriptor cap {BWD_COEFF_SOURCE_WINDOW_CAP}",
+            case.binding.windows.len()
         );
+        assert_eq!(case.binding.target_depth, case.round, "{name}: target depth");
         assert_eq!(
-            first_accesses.get(source).copied().unwrap_or_default(),
-            1,
-            "each backward read source must have one first_access"
+            case.binding.materialize,
+            case.round >= 3,
+            "{name}: §10.2's materialization policy is static in the target depth"
+        );
+
+        for (index, window) in case.binding.windows.iter().enumerate() {
+            let widest = window
+                .columns
+                .last()
+                .map(|column| column.column - window.first_column)
+                .unwrap_or(0);
+            assert!(
+                widest < SOURCE_WINDOW_COLUMNS,
+                "{name}: window {index} spans {widest} columns"
+            );
+            assert!(
+                !window.columns.is_empty(),
+                "{name}: window {index} is bound but addresses no column"
+            );
+        }
+
+        // §10.3: exactly one first access per materializing logical source, and
+        // never more than one for any source.
+        let mut firsts = BTreeMap::<SourceId, usize>::new();
+        let mut uses = BTreeMap::<SourceId, usize>::new();
+        for use_ in &case.binding.uses {
+            *uses.entry(use_.source).or_default() += 1;
+            if use_.first_access {
+                *firsts.entry(use_.source).or_default() += 1;
+            }
+        }
+        for (source, count) in &firsts {
+            assert_eq!(
+                *count, 1,
+                "{name}: source {source:?} carries {count} first accesses"
+            );
+        }
+        for source in uses.keys() {
+            assert_eq!(
+                firsts.get(source).copied().unwrap_or_default(),
+                1,
+                "{name}: source {source:?} has uses but no single first access"
+            );
+        }
+
+        // The stream decodes back to the same instruction count the encoder
+        // produced, with no trailing words.
+        let instrs = decode_program(&case.program, &case.binding)
+            .unwrap_or_else(|error| panic!("{name}: decode: {error:?}"));
+        assert_eq!(
+            instrs.iter().map(DecodedInstr::words).sum::<usize>(),
+            case.program.words.len(),
+            "{name}: decoded record widths must exactly cover the stream"
         );
     }
 }
 
-fn visit_operands(program: &Program, mut visit: impl FnMut(&OperandLine)) {
-    for instruction in &program.instrs {
-        visit_instruction_operands(instruction, &mut visit);
+/// §12.4's first gate, on the exact programs the GPU runs: the encoded
+/// interpreter and the semantic interpreter agree per row.
+#[test]
+fn the_encoded_and_semantic_interpreters_agree_on_add_sub_l0() {
+    for case in every_case() {
+        let name = label(&case);
+        let resolver = Pseudo { layer: &case.layer };
+        for row in [0usize, 1, 37, 200] {
+            let semantic = interpret_coeff_layer(&case.layer, row, &resolver)
+                .unwrap_or_else(|error| panic!("{name}: semantic row {row}: {error:?}"));
+            let encoded =
+                interpret_encoded_program(&case.program, &case.binding, row, &resolver)
+                    .unwrap_or_else(|error| panic!("{name}: encoded row {row}: {error:?}"));
+            assert_eq!(semantic.0, encoded.0, "{name}: acc_c0 row {row}");
+            assert_eq!(semantic.1, encoded.1, "{name}: acc_c2 row {row}");
+        }
     }
 }
 
-fn visit_instruction_operands(instruction: &Instr, mut visit: impl FnMut(&OperandLine)) {
-    match instruction {
-        Instr::Add { operands, .. } | Instr::Mul { operands, .. } => {
-            for operand in operands {
-                visit(operand);
+/// What the production corpus for this layer actually reaches, and what it does
+/// NOT.
+///
+/// This is the coverage contract between the two GPU tests. The parity ladder
+/// runs REAL programs, so whatever this census says is absent from them can only
+/// be reached by `bwd_coeff_release_executor_covers_every_form`'s hand-built
+/// fixtures — and if a future corpus change starts emitting one of the absent
+/// forms, or stops emitting a present one, this test says so instead of letting
+/// a kernel path go quietly untested.
+///
+/// Measured over R0 plus the four continuation bindings at c2/c5/c16:
+///
+/// | Form | add/sub L0 |
+/// |---|---|
+/// | every live term opcode of each regime | present |
+/// | `Direct`, `Cell`, `FillSource` | present |
+/// | `PlannedSource` | continuation only |
+/// | squared terms (§9.1) | present, 19 per program |
+/// | banked coefficient | present |
+/// | reserved `+1` | R0 only, ONE term |
+/// | reserved `-1` | ABSENT |
+/// | `MoveBF` / `MoveE4` | ABSENT |
+#[test]
+fn the_add_sub_l0_form_census_matches_what_the_gpu_tests_assume() {
+    let mut seen_plus_one = false;
+    let mut seen_banked = false;
+    let mut seen_squared = 0usize;
+    let mut seen_moves = 0usize;
+    let mut seen_minus_one = 0usize;
+    let mut r0_categories = std::collections::BTreeSet::new();
+    let mut ext_categories = std::collections::BTreeSet::new();
+    for case in every_case() {
+        for instr in decode_program(&case.program, &case.binding).expect("decode") {
+            match &instr {
+                DecodedInstr::Move { .. } => seen_moves += 1,
+                DecodedInstr::Term {
+                    category,
+                    coefficient,
+                    ..
+                } => {
+                    match case.regime {
+                        BwdRegime::R0 => r0_categories.insert(format!("{category:?}")),
+                        BwdRegime::Ext => ext_categories.insert(format!("{category:?}")),
+                    };
+                    if instr.is_squared() {
+                        seen_squared += 1;
+                    }
+                    match coefficient.0 {
+                        0 => seen_plus_one = true,
+                        1 => seen_minus_one += 1,
+                        _ => seen_banked = true,
+                    }
+                }
             }
         }
-        Instr::Fma { pairs, .. } => {
-            for (lhs, rhs) in pairs {
-                visit(lhs);
-                visit(rhs);
-            }
-        }
-        Instr::Mov { src, .. } => {
-            if let Some(source) = src {
-                visit(source);
-            }
-        }
+    }
+
+    assert_eq!(
+        r0_categories,
+        [
+            "C0LinearBf",
+            "C0LinearE4",
+            "C2ProductBfBf",
+            "C2ProductBfE4",
+            "C2ProductE4E4",
+        ]
+        .map(String::from)
+        .into_iter()
+        .collect(),
+        "the R0 ladder must reach every live R0 term opcode"
+    );
+    assert_eq!(
+        ext_categories,
+        ["C0LinearE4", "DualProductE4"]
+            .map(String::from)
+            .into_iter()
+            .collect(),
+        "the continuation ladder must reach every live continuation term opcode"
+    );
+    assert!(seen_plus_one, "the reserved +1 fast path is unreachable");
+    assert!(seen_banked, "the banked coefficient path is unreachable");
+    assert!(
+        seen_squared > 0,
+        "§9.1's resolve-once rule is unreachable from real programs"
+    );
+    // The two forms the corpus does NOT emit. Asserted as ZERO rather than
+    // ignored, so the day one appears the coverage story is re-read instead of
+    // silently drifting.
+    assert_eq!(
+        seen_minus_one, 0,
+        "add/sub L0 now emits a reserved -1; the ladder covers it too, so relax \
+         this and drop the note in `bwd_coeff_release_executor_covers_every_form`"
+    );
+    assert_eq!(
+        seen_moves, 0,
+        "add/sub L0 now emits moves; the ladder covers them too, so relax this \
+         and drop the note in `bwd_coeff_release_executor_covers_every_form`"
+    );
+}
+
+/// Durable inspection tool: the readable decompile of add/sub layer-0 R0 at c2,
+/// the budget the parity ladder selects in the middle of the range, and c16.
+///
+/// Ignored on purpose — it produces output rather than a verdict. Run it with:
+///
+/// ```text
+/// cargo +nightly-2026-02-10 test -p gpu_circuit_prover --features bench --release \
+///   add_sub_l0_r0_coefficient_decompile -- --ignored --nocapture
+/// ```
+#[test]
+#[ignore = "inspection tool: prints the add/sub L0 R0 coefficient decompile; run with --ignored --nocapture"]
+fn add_sub_l0_r0_coefficient_decompile() {
+    for cells in PROBED_BUDGETS {
+        let case = load_add_sub_l0_coeff_case(BwdRegime::R0, 0, cells);
+        let text = disassemble(&case.program, &case.binding)
+            .unwrap_or_else(|error| panic!("disassemble c{cells}: {error:?}"));
+        println!(
+            "===== add/sub L0 R0 c{cells}: {} terms, {} words ({} bytes), {} windows, \
+             {} coefficients, digest 0x{:016x} =====",
+            case.report.terms,
+            case.program.words.len(),
+            case.program.bytes(),
+            case.binding.windows.len(),
+            case.layer.coefficients.len(),
+            case.report.program_digest,
+        );
+        println!("{text}");
+        assert!(
+            !text.is_empty(),
+            "c{cells}: the decompile must not be empty"
+        );
     }
 }

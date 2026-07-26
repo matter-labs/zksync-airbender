@@ -26,18 +26,22 @@
 //! convention of `gkr_eval_isa::bwd::interp::sumcheck_fold_point`; the fold
 //! WEIGHTS coincide, only the backing offsets differ.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::mem::{align_of, size_of};
 
+use cs::gkr_compiler::dag_ir::FieldKind;
 use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
+use era_cudart::slice::DeviceSlice;
 use era_cudart::{cuda_kernel_declaration, cuda_kernel_signature_arguments_and_function};
 use gkr_eval_isa::bwd::coeff::bind::{BoundColumn, BoundSourceWindow, CoeffSourceBinding};
 use gkr_eval_isa::bwd::coeff::encode::{
     encode_instrs, opcode_of, DecodedCell, DecodedInstr, DecodedUse, EncodedProgram, SourceCoord,
 };
-use gkr_eval_isa::bwd::coeff::interp::{interpret_encoded_program, CoeffResolver};
+use gkr_eval_isa::bwd::coeff::interp::{
+    interpret_coeff_layer, interpret_encoded_program, CoeffResolver,
+};
 use gkr_eval_isa::bwd::coeff::limits::TermCategory;
 use gkr_eval_isa::bwd::coeff::model::{CoefficientRecipeId, SourceId};
 use gkr_eval_isa::bwd::coeff::place::PlanAction;
@@ -51,21 +55,32 @@ use super::desc::{
     BWD_COEFF_MODE_CELL, BWD_COEFF_MODE_DIRECT_SOURCE, BWD_COEFF_MODE_PLANNED_SOURCE,
     BWD_COEFF_ORIGIN_READ_EXT, BWD_COEFF_PLAN_DELTA_ACTION_SHIFT,
     BWD_COEFF_PLAN_ENDPOINT0_ACTION_SHIFT, BWD_COEFF_PROGRAM_WORD_CAP,
-    BWD_COEFF_PUBLISH_TARGET_DEPTH, BWD_COEFF_ROLE_ENDPOINT0, BWD_COEFF_ROLE_PAIR,
-    BWD_COEFF_THREADS_PER_BLOCK,
+    BWD_COEFF_MAX_FOLD_DEPTH, BWD_COEFF_PUBLISH_TARGET_DEPTH, BWD_COEFF_ROLE_ENDPOINT0,
+    BWD_COEFF_ROLE_PAIR, BWD_COEFF_THREADS_PER_BLOCK,
+};
+use super::compile::{
+    load_add_sub_l0_coeff_case, pseudo_bank, AddSubCoeffCase, PROBED_BUDGETS,
 };
 use super::lower::{lower_bwd_coeff, BwdCoeffRoundBinding, ResolvedBwdCoeffSourceWindow};
 use super::{
-    bwd_coeff_dynamic_smem_bytes, bwd_coeff_fold_depth, launch_fold_factor_prelude, BwdCoeffBank,
+    bwd_coeff_dynamic_smem_bytes, bwd_coeff_fold_depth, launch_bwd_coeff,
+    launch_fold_factor_prelude, BwdCoeffBank,
 };
 use crate::allocator::tracker::AllocationPlacement;
+use crate::ops::blake2s::STATE_SIZE;
+use crate::ops::gkr_ops::backward_sumcheck_round_update;
 use crate::primitives::context::DeviceAllocation;
 use crate::primitives::field::{BF, E4};
-use crate::prover::gkr::backward::GkrEqSizes;
+use crate::prover::gkr::backward::{
+    get_eq_high_constant_device_ptr, launch_backward_dual_finalize_from_acc, make_eq_sizes,
+    GkrEqSizes, GKR_EQ_GROUP_SIZE, GKR_EQ_GROUP_TABLE_LEN, GKR_EQ_HIGH_SLOTS,
+};
 use crate::prover::gkr::forward::vm::lower::ResolvedColumn;
 use crate::prover::test_utils::make_test_context;
 use crate::prover::ProverContext;
-use crate::upstream::{BwdRegime, Field, FieldExtension, PrimeField, TIMESTAMP_COLUMNS_NUM_BITS};
+use crate::upstream::{
+    BwdRegime, Field, FieldExtension, PrimeField, Seed, TIMESTAMP_COLUMNS_NUM_BITS,
+};
 
 // ── The validation-only probe binding ────────────────────────────────────────
 
@@ -365,11 +380,21 @@ struct HostSources<'a> {
     sources: &'a HashMap<u32, (usize, usize)>,
     rows: usize,
     challenges: &'a [E4],
+    /// The evaluated coefficient bank, in index order — `None` for a fixture
+    /// whose terms all carry the reserved `+1` literal, so that a bank lookup
+    /// there is a test bug rather than a silently invented value.
+    bank: Option<&'a [E4]>,
 }
 
 impl CoeffResolver for HostSources<'_> {
     fn coefficient(&self, id: CoefficientRecipeId) -> E4 {
-        panic!("these fixtures use only the reserved +1 literal, never bank entry {id:?}")
+        let Some(bank) = self.bank else {
+            panic!("this fixture uses only the reserved +1 literal, never bank entry {id:?}")
+        };
+        let slot = id
+            .bank_index()
+            .expect("a reserved literal never reaches the bank");
+        bank[slot]
     }
 
     fn source_pair(&self, id: SourceId, row: usize) -> (E4, E4) {
@@ -384,7 +409,7 @@ impl CoeffResolver for HostSources<'_> {
 // ── Fixtures ─────────────────────────────────────────────────────────────────
 
 struct Fixture {
-    name: &'static str,
+    name: String,
     rows: usize,
     regime: BwdRegime,
     round: u8,
@@ -392,6 +417,11 @@ struct Fixture {
     challenges: Vec<E4>,
     windows: Vec<HostWindow>,
     instrs: Vec<DecodedInstr>,
+    /// The evaluated coefficient bank. Empty for a probe fixture, whose terms all
+    /// carry the reserved `+1`.
+    bank: Vec<E4>,
+    /// §9.3's per-thread `acc_c0` initializer, as a coefficient index.
+    c_init: Option<CoefficientRecipeId>,
 }
 
 /// Everything one fixture produced on the device.
@@ -445,18 +475,27 @@ struct RunOutcome {
     sources: HashMap<u32, (usize, usize)>,
 }
 
-fn run_fixture(fixture: &Fixture, context: &ProverContext) -> RunOutcome {
-    let rows = fixture.rows;
+/// Encode a synthetic fixture and bind every `(window, column)` of it to its own
+/// source, in wire order.
+///
+/// Shared by the probe path and the release path so both execute the same words
+/// against the same binding.
+fn encode_and_bind(
+    fixture: &Fixture,
+) -> (
+    EncodedProgram,
+    CoeffSourceBinding,
+    HashMap<u32, (usize, usize)>,
+) {
     let words = encode_instrs(fixture.regime, fixture.budget, &fixture.instrs)
         .unwrap_or_else(|error| panic!("{}: encode: {error:?}", fixture.name));
     let program = EncodedProgram {
         regime: fixture.regime,
         budget: fixture.budget,
-        c_init: None,
+        c_init: fixture.c_init,
         words,
     };
 
-    // Bind every (window, column) to its own source, in wire order.
     let mut sources = HashMap::new();
     let mut next_source = 0u32;
     let bound_windows = fixture
@@ -482,63 +521,24 @@ fn run_fixture(fixture: &Fixture, context: &ProverContext) -> RunOutcome {
         windows: bound_windows,
         uses: Vec::new(),
     };
+    (program, binding, sources)
+}
+
+fn run_fixture(fixture: &Fixture, context: &ProverContext) -> RunOutcome {
+    let rows = fixture.rows;
+    let (program, binding, sources) = encode_and_bind(fixture);
 
     // Device storage. Every allocation below stays alive until the last download
     // has synchronized the stream.
     let mut backings = Backings::default();
     let mut publishes = Vec::new();
-    let mut resolved = Vec::new();
-    for (index, host) in fixture.windows.iter().enumerate() {
-        let column_len = host.column_len(rows);
-        let read = match &host.backing {
-            Backing::Base(values) => {
-                let device = upload(values, context);
-                let column = ResolvedColumn {
-                    is_e4: false,
-                    ptr: device.as_ptr().cast(),
-                    matrix_base: device.as_ptr() as *mut u8,
-                    stride_bytes: (column_len * size_of::<BF>()) as u32,
-                };
-                backings.base.push(device);
-                Some(column)
-            }
-            Backing::Ext(values) => {
-                let device = upload(values, context);
-                let column = ResolvedColumn {
-                    is_e4: true,
-                    ptr: device.as_ptr().cast(),
-                    matrix_base: device.as_ptr() as *mut u8,
-                    stride_bytes: (column_len * size_of::<E4>()) as u32,
-                };
-                backings.ext.push(device);
-                Some(column)
-            }
-            Backing::Procedural(_) => None,
-        };
-        let publish = host.materialize().then(|| {
-            let staged = (0..host.columns)
-                .flat_map(|column| {
-                    (0..2 * rows).map(move |slot| staged_publication(index, column, slot))
-                })
-                .collect::<Vec<_>>();
-            let device = upload(&staged, context);
-            let column = ResolvedColumn {
-                is_e4: true,
-                ptr: device.as_ptr().cast(),
-                matrix_base: device.as_ptr() as *mut u8,
-                stride_bytes: (2 * rows * size_of::<E4>()) as u32,
-            };
-            publishes.push(device);
-            column
-        });
-        resolved.push(ResolvedBwdCoeffSourceWindow {
-            read,
-            publish,
-            backing_depth: host.backing_depth,
-            target_depth: host.target_depth,
-            materialize: host.materialize(),
-        });
-    }
+    let resolved = upload_windows(
+        &fixture.windows,
+        rows,
+        context,
+        &mut backings,
+        &mut publishes,
+    );
 
     let challenges_device = upload(&fixture.challenges, context);
     let eq_low = upload(&[E4::ZERO], context);
@@ -610,6 +610,74 @@ fn run_fixture(fixture: &Fixture, context: &ProverContext) -> RunOutcome {
     }
 }
 
+/// Upload every window's read backing and, where §10.2 materializes, its staged
+/// publish buffer, and return the per-window round geometry `lower_bwd_coeff`
+/// takes.
+///
+/// `backings` and `publishes` own the allocations: they must outlive the launch
+/// AND the downloads that synchronize the stream after it.
+fn upload_windows(
+    windows: &[HostWindow],
+    rows: usize,
+    context: &ProverContext,
+    backings: &mut Backings,
+    publishes: &mut Vec<DeviceAllocation<E4>>,
+) -> Vec<ResolvedBwdCoeffSourceWindow> {
+    let mut resolved = Vec::with_capacity(windows.len());
+    for (index, host) in windows.iter().enumerate() {
+        let column_len = host.column_len(rows);
+        let read = match &host.backing {
+            Backing::Base(values) => {
+                let device = upload(values, context);
+                let column = ResolvedColumn {
+                    is_e4: false,
+                    ptr: device.as_ptr().cast(),
+                    matrix_base: device.as_ptr() as *mut u8,
+                    stride_bytes: (column_len * size_of::<BF>()) as u32,
+                };
+                backings.base.push(device);
+                Some(column)
+            }
+            Backing::Ext(values) => {
+                let device = upload(values, context);
+                let column = ResolvedColumn {
+                    is_e4: true,
+                    ptr: device.as_ptr().cast(),
+                    matrix_base: device.as_ptr() as *mut u8,
+                    stride_bytes: (column_len * size_of::<E4>()) as u32,
+                };
+                backings.ext.push(device);
+                Some(column)
+            }
+            Backing::Procedural(_) => None,
+        };
+        let publish = host.materialize().then(|| {
+            let staged = (0..host.columns)
+                .flat_map(|column| {
+                    (0..2 * rows).map(move |slot| staged_publication(index, column, slot))
+                })
+                .collect::<Vec<_>>();
+            let device = upload(&staged, context);
+            let column = ResolvedColumn {
+                is_e4: true,
+                ptr: device.as_ptr().cast(),
+                matrix_base: device.as_ptr() as *mut u8,
+                stride_bytes: (2 * rows * size_of::<E4>()) as u32,
+            };
+            publishes.push(device);
+            column
+        });
+        resolved.push(ResolvedBwdCoeffSourceWindow {
+            read,
+            publish,
+            backing_depth: host.backing_depth,
+            target_depth: host.target_depth,
+            materialize: host.materialize(),
+        });
+    }
+    resolved
+}
+
 // ── Assertions ───────────────────────────────────────────────────────────────
 
 /// Accumulate the probe's per-operand projections with §4's role algebra. Every
@@ -674,6 +742,7 @@ fn assert_fixture(fixture: &Fixture, context: &ProverContext) {
         sources: &outcome.sources,
         rows: fixture.rows,
         challenges: &fixture.challenges,
+        bank: None,
     };
     let regime_is_r0 = fixture.regime == BwdRegime::R0;
 
@@ -860,10 +929,29 @@ fn cell(lane: u16) -> DecodedUse {
 }
 
 fn term(category: TermCategory, uses: Vec<DecodedUse>) -> DecodedInstr {
+    term_k(category, CoefficientRecipeId::ONE, uses)
+}
+
+fn term_k(
+    category: TermCategory,
+    coefficient: CoefficientRecipeId,
+    uses: Vec<DecodedUse>,
+) -> DecodedInstr {
     DecodedInstr::Term {
         category,
-        coefficient: CoefficientRecipeId::ONE,
+        coefficient,
         uses,
+    }
+}
+
+/// A cell-file move. §9.6: the OPCODE carries the width, both operands are bare
+/// six-bit BF lanes, and the coefficient bits are canonical zero — which is what
+/// `CoefficientRecipeId::ONE` encodes.
+fn move_instr(category: TermCategory, from_lane: u16, to_lane: u16) -> DecodedInstr {
+    DecodedInstr::Move {
+        category,
+        from_lane,
+        to_lane,
     }
 }
 
@@ -892,11 +980,13 @@ fn r0_fixture(rows: usize, budget_cells: u8) -> Fixture {
     let span = 2 * rows;
     let lane = lane_plan(budget_cells);
     Fixture {
-        name: if budget_cells == 4 { "R0 c4" } else { "R0 c16" },
+        name: format!("R0 probe c{budget_cells}"),
         rows,
         regime: BwdRegime::R0,
         round: 0,
         budget: CellBudget::new(budget_cells).expect("legal budget"),
+        bank: Vec::new(),
+        c_init: None,
         challenges: Vec::new(),
         windows: vec![
             host_window(
@@ -1098,17 +1188,13 @@ fn continuation_fixture(round: u8, rows: usize, budget_cells: u8) -> Fixture {
     ];
 
     Fixture {
-        name: match (round, budget_cells) {
-            (0, _) => "Ext D0 c4",
-            (1, _) => "Ext D1 c4",
-            (2, _) => "Ext D2 c4",
-            (_, 4) => "Ext D3 c4",
-            _ => "Ext D3 c16",
-        },
+        name: format!("Ext probe D{fold_depth} round {round} c{budget_cells}"),
         rows,
         regime: BwdRegime::Ext,
         round,
         budget: CellBudget::new(budget_cells).expect("legal budget"),
+        bank: Vec::new(),
+        c_init: None,
         challenges: (0..usize::from(round))
             .map(|index| e4(0x900 + index as u32))
             .collect(),
@@ -1308,6 +1394,984 @@ fn bwd_coeff_source_resolution_smoke() {
     // per-block limit, so it needs no opt-in attribute.
     assert_fixture(&continuation_fixture(3, 200, 16), &context);
     assert_hand_built_words_are_rejected(&context);
+}
+
+// ── The parity ladder over real add/sub layer-0 programs ────────────────────
+//
+// Everything above drives the validation-only probe over HAND-BUILT programs.
+// This section drives the RELEASE executors over programs the production
+// compiler emitted, and follows the whole chain §12.4 requires:
+//
+//   semantic CPU (acc_c0, acc_c2)
+//     -> encoded CPU over the same u16 stream
+//     -> GPU per-row contributions
+//     -> the reduced (e_partial, c_partial) pair
+//     -> the four round coefficients
+//     -> the challenge and claim after the INCUMBENT round update.
+//
+// The incumbent enters at the last two rungs by construction: the reduction and
+// the round update are `mega_finalize` / `ab_backward_sumcheck_round_update_kernel`
+// and the upstream `output_univariate_monomial_form_max_quadratic`, all untouched.
+// Nothing in this section compares the new path only against itself.
+
+/// Rows every real-program run evaluates.
+///
+/// 200 is two blocks with a partial tail (so the row guard and the per-warp
+/// transposed cell file are both exercised) and still <=
+/// `MEGA_FINALIZE_BLOCK_THREADS`, which is what lets the incumbent
+/// single-launch fused tail reduce the contribution buffer directly instead of
+/// through a two-stage partials pass.
+const COEFF_ROWS: usize = 200;
+
+/// One realized add/sub layer-0 program plus the host model of its storage.
+struct CoeffCase {
+    name: String,
+    case: AddSubCoeffCase,
+    rows: usize,
+    challenges: Vec<E4>,
+    windows: Vec<HostWindow>,
+    /// `SourceId` -> `(window, window-relative column)`.
+    sources: HashMap<u32, (usize, usize)>,
+    /// The evaluated coefficient bank both the CPU oracles and the launch use.
+    bank: Vec<E4>,
+    storage: BwdCoeffBank,
+}
+
+/// The catch-up distances the runtime factor bank can weight at `round` (§10.2).
+///
+/// `ab_gkr_bwd_coeff_build_fold_factors_kernel` fills the depth-one pair and one
+/// depth-`fold_depth` table, so a window is either at target depth, one fold
+/// behind, or has never caught up. `lower_bwd_coeff` rejects anything else, which
+/// is exactly why the fixture assigns distances from this set rather than freely.
+fn legal_catch_up_distances(round: u8) -> Vec<u8> {
+    let fold_depth = bwd_coeff_fold_depth(round);
+    let mut out = vec![0u8];
+    if fold_depth >= 1 {
+        out.push(1);
+    }
+    if fold_depth > 1 {
+        out.push(fold_depth);
+    }
+    out
+}
+
+/// Build the host storage model for one realized program.
+///
+/// The windows, their families, their column spans and every first-access bit
+/// come from the COMPILER's binding; only the backing VALUES and the per-window
+/// catch-up distance are the fixture's, because a compiled program does not carry
+/// device addresses or a round's fold state.
+fn coeff_case(
+    regime: BwdRegime,
+    round: u8,
+    budget_cells: u8,
+    storage: BwdCoeffBank,
+) -> CoeffCase {
+    let case = load_add_sub_l0_coeff_case(regime, round, budget_cells);
+    let rows = COEFF_ROWS;
+    let distances = legal_catch_up_distances(round);
+
+    // §10.3: the binding's own use list says which physical resolution of which
+    // column carries the first-access bit.
+    let mut first_accessed = HashSet::<(usize, usize)>::new();
+    for use_ in &case.binding.uses {
+        if use_.first_access {
+            first_accessed.insert((usize::from(use_.window), usize::from(use_.column)));
+        }
+    }
+
+    let mut sources = HashMap::new();
+    let mut windows = Vec::with_capacity(case.binding.windows.len());
+    for (index, window) in case.binding.windows.iter().enumerate() {
+        let columns = window
+            .columns
+            .last()
+            .map(|column| column.column - window.first_column)
+            .expect("a bound window addresses at least one column")
+            + 1;
+        for column in &window.columns {
+            let offset = column.column - window.first_column;
+            assert!(
+                sources.insert(column.source.0, (index, offset)).is_none(),
+                "{regime:?} round {round} c{budget_cells}: source {:?} bound twice",
+                column.source
+            );
+            // At R0 a source is read at its NATIVE width, so the operand width
+            // the opcode carries must be the backing's field. In the Ext regime
+            // every value is E4 regardless of what it is folded from, so the two
+            // legitimately differ there.
+            if regime == BwdRegime::R0 {
+                assert_eq!(
+                    case.layer.sources[column.source.0 as usize].field,
+                    window.backing_field(),
+                    "R0 c{budget_cells}: window {index} field disagrees with its source"
+                );
+            }
+        }
+
+        let delta = distances[index % distances.len()];
+        let column_len = (2 * rows) << usize::from(delta);
+        // Widely separated seeds, so a window that read another window's backing
+        // would produce visibly wrong values rather than plausible ones.
+        let seed = 0x0100_0000u32 + ((index as u32) << 20);
+        let backing = match window.family {
+            WindowFamily::VirtualSetup { kind } => Backing::Procedural(kind),
+            _ => match window.backing_field() {
+                FieldKind::Base => base_backing(seed, columns, column_len),
+                FieldKind::Ext => ext_backing(seed, columns, column_len),
+            },
+        };
+        windows.push(host_window(
+            index,
+            window.family,
+            columns,
+            round - delta,
+            round,
+            backing,
+            (0..columns)
+                .map(|column| first_accessed.contains(&(index, column)))
+                .collect(),
+        ));
+    }
+
+    CoeffCase {
+        name: format!(
+            "add/sub L0 {regime:?} round {round} c{budget_cells} {storage:?}"
+        ),
+        bank: pseudo_bank(&case.layer),
+        case,
+        rows,
+        challenges: (0..usize::from(round))
+            .map(|index| e4(0x0d00 + index as u32))
+            .collect(),
+        windows,
+        sources,
+        storage,
+    }
+}
+
+/// Stage the incumbent factored-eq state the release kernel reads inline, and
+/// return the host twin of `eq(row)`.
+///
+/// `make_eq_sizes(GKR_EQ_GROUP_SIZE)` puts all eight bits in the LOW slab, so
+/// both high slabs have size zero and `gkr_compute_eq_inline` reads their slot
+/// ZERO as a sentinel — which the incumbent build kernel fills with `E::ONE()`.
+/// Only that build kernel writes `ab_gkr_eq_high`, so the test writes the same
+/// sentinel itself and `eq(row)` is exactly `eq_low[row]`. A per-row-varying
+/// `eq_low` is the point: a constant one would let a kernel that dropped the eq
+/// multiply entirely still pass.
+fn stage_eq(rows: usize, context: &ProverContext) -> (Vec<E4>, DeviceAllocation<E4>, GkrEqSizes) {
+    assert!(
+        rows <= GKR_EQ_GROUP_TABLE_LEN,
+        "one eq group covers {GKR_EQ_GROUP_TABLE_LEN} rows"
+    );
+    let sentinel = vec![E4::ONE; GKR_EQ_HIGH_SLOTS * GKR_EQ_GROUP_TABLE_LEN];
+    // SAFETY: `get_eq_high_constant_device_ptr` returns the device address of the
+    // `__constant__` `ab_gkr_eq_high` symbol, whose declared extent is exactly
+    // `GKR_EQ_HIGH_SLOTS * GKR_EQ_GROUP_TABLE_LEN` E4 values.
+    let slab = unsafe { DeviceSlice::from_raw_parts_mut(get_eq_high_constant_device_ptr(), sentinel.len()) };
+    memory_copy_async(slab, &sentinel, context.get_exec_stream()).expect("eq high sentinel");
+
+    let host = (0..GKR_EQ_GROUP_TABLE_LEN)
+        .map(|slot| e4(0x00e0_0000 + slot as u32))
+        .collect::<Vec<_>>();
+    let device = upload(&host, context);
+    (host, device, make_eq_sizes(GKR_EQ_GROUP_SIZE))
+}
+
+/// What one release launch produced.
+struct CoeffRun {
+    /// `2 * rows` values: `eq * acc_c0` then `eq * acc_c2`.
+    contributions: Vec<E4>,
+    /// The host twin of the factored-eq low slab the launch read.
+    eq_low: Vec<E4>,
+    /// The incumbent fused tail's reduction plus round update, run straight off
+    /// the contribution buffer the release kernel wrote.
+    incumbent: RoundUpdate,
+}
+
+/// The five things a round update produces.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct RoundUpdate {
+    seed: Seed,
+    claim: E4,
+    eq_prefactor: E4,
+    coeffs: [E4; 4],
+    challenge: E4,
+}
+
+/// Fixed, non-degenerate round-update input state.
+///
+/// `prev_coord` and `eq_prefactor` are both inverted by the round update, so
+/// neither may be zero.
+fn round_update_inputs() -> (Seed, E4, E4, E4) {
+    let seed = Seed([
+        0x0123_4567,
+        0x89ab_cdef,
+        0xfedc_ba98,
+        0x7654_3210,
+        0x0f1e_2d3c,
+        0x4b5a_6978,
+        0xc3d2_e1f0,
+        0x1122_3344,
+    ]);
+    let claim = e4(0x00c1_0000);
+    let eq_prefactor = e4(0x00c1_0001);
+    let prev_coord = e4(0x00c1_0002);
+    assert_ne!(prev_coord, E4::ZERO);
+    assert_ne!(eq_prefactor, E4::ZERO);
+    (seed, claim, eq_prefactor, prev_coord)
+}
+
+/// The incumbent CPU round update, exactly as `crate::ops::gkr_ops`'s own parity
+/// test runs it. This is upstream algebra plus the upstream transcript; nothing
+/// in the coefficient ISA reimplements it.
+fn cpu_round_update(e_partial: E4, c_partial: E4) -> RoundUpdate {
+    use prover::gkr::prover::transcript_utils::{commit_field_els, draw_random_field_els};
+    use prover::gkr::sumcheck::{
+        evaluate_eq_poly, evaluate_small_univariate_poly,
+        output_univariate_monomial_form_max_quadratic,
+    };
+
+    let (mut seed, claim, eq_prefactor, prev_coord) = round_update_inputs();
+    let mut normalized_claim = claim;
+    normalized_claim.mul_assign(&eq_prefactor.inverse().expect("non-zero eq prefactor"));
+    let coeffs = output_univariate_monomial_form_max_quadratic::<BF, E4>(
+        prev_coord,
+        normalized_claim,
+        e_partial,
+        c_partial,
+    );
+    commit_field_els::<BF, E4>(&mut seed, &coeffs);
+    let challenge = draw_random_field_els::<BF, E4>(&mut seed, 1)[0];
+    RoundUpdate {
+        seed,
+        claim: evaluate_small_univariate_poly::<BF, E4, 4>(&coeffs, &challenge),
+        eq_prefactor: evaluate_eq_poly::<BF, E4>(&challenge, &prev_coord),
+        coeffs,
+        challenge,
+    }
+}
+
+/// Device-resident round-update state, reused by both incumbent entry points.
+struct RoundUpdateState {
+    seed: DeviceAllocation<u32>,
+    claim: DeviceAllocation<E4>,
+    eq_prefactor: DeviceAllocation<E4>,
+    coeffs: DeviceAllocation<E4>,
+    challenge: DeviceAllocation<E4>,
+    prev_coord: DeviceAllocation<E4>,
+    /// The fold destination `mega_finalize` would write. Never used: the fixture
+    /// passes `active_eq_size_before_fold = 0`, which skips the fold.
+    eq_slot: DeviceAllocation<E4>,
+}
+
+fn round_update_state(context: &ProverContext) -> RoundUpdateState {
+    let (seed, claim, eq_prefactor, prev_coord) = round_update_inputs();
+    RoundUpdateState {
+        seed: upload(&seed.0[..], context),
+        claim: upload(&[claim], context),
+        eq_prefactor: upload(&[eq_prefactor], context),
+        coeffs: upload(&[E4::ZERO; 4], context),
+        challenge: upload(&[E4::ZERO], context),
+        prev_coord: upload(&[prev_coord], context),
+        eq_slot: upload(&[E4::ZERO], context),
+    }
+}
+
+fn download_round_update(state: &RoundUpdateState, context: &ProverContext) -> RoundUpdate {
+    let mut seed = Seed::default();
+    memory_copy_async(&mut seed.0[..], &state.seed[..STATE_SIZE], context.get_exec_stream())
+        .expect("seed D2H");
+    context
+        .get_exec_stream()
+        .synchronize()
+        .expect("round-update sync");
+    let coeffs = download_e4(&state.coeffs, 4, context);
+    RoundUpdate {
+        seed,
+        claim: download_e4(&state.claim, 1, context)[0],
+        eq_prefactor: download_e4(&state.eq_prefactor, 1, context)[0],
+        coeffs: [coeffs[0], coeffs[1], coeffs[2], coeffs[3]],
+        challenge: download_e4(&state.challenge, 1, context)[0],
+    }
+}
+
+/// Lower, launch the release executor, then run the INCUMBENT fused tail over the
+/// contribution buffer it wrote.
+fn run_coeff_case(case: &CoeffCase, context: &ProverContext) -> CoeffRun {
+    let rows = case.rows;
+    let mut backings = Backings::default();
+    let mut publishes = Vec::new();
+    let resolved = upload_windows(&case.windows, rows, context, &mut backings, &mut publishes);
+
+    let (eq_host, eq_low, eq_sizes) = stage_eq(rows, context);
+    let challenges = upload(&case.challenges, context);
+    let mut contributions = upload(&vec![E4::ZERO; 2 * rows], context);
+    let coefficients = upload(&case.bank, context);
+
+    let runtime = BwdCoeffRoundBinding {
+        round: case.case.round,
+        rows: rows as u32,
+        round_challenges: if case.challenges.is_empty() {
+            std::ptr::null()
+        } else {
+            challenges.as_ptr()
+        },
+        n_round_challenges: case.challenges.len() as u32,
+        windows: &resolved,
+        eq_low: eq_low.as_ptr(),
+        eq_sizes,
+        contributions: contributions.as_mut_ptr(),
+    };
+    let setup = lower_bwd_coeff(
+        &case.case.program,
+        &case.case.binding,
+        &runtime,
+        case.bank.clone(),
+        match case.storage {
+            BwdCoeffBank::Constant => std::ptr::null(),
+            BwdCoeffBank::DevicePointer => coefficients.as_ptr(),
+        },
+        case.storage,
+    )
+    .unwrap_or_else(|error| panic!("{}: lower: {error:?}", case.name));
+    assert_eq!(setup.fold_depth, bwd_coeff_fold_depth(case.case.round));
+
+    setup
+        .upload_constant_bank(context)
+        .unwrap_or_else(|error| panic!("{}: constant bank: {error:?}", case.name));
+    // `launch_bwd_coeff` runs the transcript-derived fold prelude itself.
+    launch_bwd_coeff(&setup, context)
+        .unwrap_or_else(|error| panic!("{}: release launch: {error:?}", case.name));
+
+    let mut state = round_update_state(context);
+    launch_backward_dual_finalize_from_acc(
+        contributions.as_ptr(),
+        rows,
+        state.prev_coord.as_ptr(),
+        state.seed.as_mut_ptr(),
+        state.claim.as_mut_ptr(),
+        state.eq_prefactor.as_mut_ptr(),
+        state.coeffs.as_mut_ptr(),
+        state.challenge.as_mut_ptr(),
+        state.eq_slot.as_mut_ptr(),
+        // Zero skips `mega_finalize`'s eq fold; only its reduction and round
+        // update are under test here.
+        0,
+        context,
+    )
+    .unwrap_or_else(|error| panic!("{}: incumbent fused tail: {error:?}", case.name));
+
+    let run = CoeffRun {
+        contributions: download_e4(&contributions, 2 * rows, context),
+        eq_low: eq_host,
+        incumbent: download_round_update(&state, context),
+    };
+    drop(backings);
+    drop(publishes);
+    run
+}
+
+/// The whole ladder for one realized program.
+fn assert_coeff_case(case: &CoeffCase, context: &ProverContext) {
+    let name = &case.name;
+    let rows = case.rows;
+    let run = run_coeff_case(case, context);
+    let resolver = HostSources {
+        windows: &case.windows,
+        sources: &case.sources,
+        rows,
+        challenges: &case.challenges,
+        bank: Some(&case.bank),
+    };
+
+    // Rungs 1-3, per row: semantic CPU, encoded CPU, GPU contribution pair.
+    let mut e_partial = E4::ZERO;
+    let mut c_partial = E4::ZERO;
+    for row in 0..rows {
+        let semantic = interpret_coeff_layer(&case.case.layer, row, &resolver)
+            .unwrap_or_else(|error| panic!("{name}: semantic row {row}: {error:?}"));
+        let encoded = interpret_encoded_program(
+            &case.case.program,
+            &case.case.binding,
+            row,
+            &resolver,
+        )
+        .unwrap_or_else(|error| panic!("{name}: encoded row {row}: {error:?}"));
+        assert_e4(&format!("{name}: semantic vs encoded acc_c0 row {row}"), encoded.0, semantic.0);
+        assert_e4(&format!("{name}: semantic vs encoded acc_c2 row {row}"), encoded.1, semantic.1);
+
+        let eq = run.eq_low[row & (GKR_EQ_GROUP_TABLE_LEN - 1)];
+        let mut expected_c0 = eq;
+        expected_c0.mul_assign(&encoded.0);
+        let mut expected_c2 = eq;
+        expected_c2.mul_assign(&encoded.1);
+        assert_e4(
+            &format!("{name}: GPU eq*acc_c0 row {row}"),
+            run.contributions[row],
+            expected_c0,
+        );
+        assert_e4(
+            &format!("{name}: GPU eq*acc_c2 row {row}"),
+            run.contributions[rows + row],
+            expected_c2,
+        );
+        e_partial.add_assign(&expected_c0);
+        c_partial.add_assign(&expected_c2);
+    }
+
+    // Rung 4: the two halves reduce INDEPENDENTLY, and the incumbent device
+    // reduction agrees with the host sum of the same halves.
+    let device_e_partial = run.contributions[..rows]
+        .iter()
+        .fold(E4::ZERO, |mut acc, value| {
+            acc.add_assign(value);
+            acc
+        });
+    let device_c_partial = run.contributions[rows..]
+        .iter()
+        .fold(E4::ZERO, |mut acc, value| {
+            acc.add_assign(value);
+            acc
+        });
+    assert_e4(&format!("{name}: reduced e_partial"), device_e_partial, e_partial);
+    assert_e4(&format!("{name}: reduced c_partial"), device_c_partial, c_partial);
+
+    // Rungs 5-6: the four round coefficients and the state after the round
+    // update, against BOTH incumbent helpers.
+    //
+    // `(c0, c2) -> (e_partial, c_partial)`: the reduced X^0 half is the round
+    // polynomial's CONSTANT coefficient and the reduced X^2 half its QUADRATIC
+    // coefficient, which is the `(e, c)` pair
+    // `compute_univariate_coeffs_max_quadratic` / the upstream
+    // `output_univariate_monomial_form_max_quadratic` take in that order.
+    let expected = cpu_round_update(e_partial, c_partial);
+    assert_eq!(
+        run.incumbent, expected,
+        "{name}: the incumbent fused tail must reproduce the CPU round update"
+    );
+    let standalone = run_standalone_round_update(e_partial, c_partial, context);
+    assert_eq!(
+        standalone, expected,
+        "{name}: the incumbent standalone round-update kernel must agree too"
+    );
+
+    // ...and the mapping stated as §4's algebra rather than taken on trust. `c1`
+    // is recovered ONCE from the normalized claim, not per row.
+    let (_, claim, eq_prefactor, prev_coord) = round_update_inputs();
+    let mut normalized_claim = claim;
+    normalized_claim.mul_assign(&eq_prefactor.inverse().expect("non-zero eq prefactor"));
+    let mut b = E4::ONE;
+    b.sub_assign(&prev_coord);
+    let mut a = prev_coord;
+    a.double();
+    a.sub_assign(&E4::ONE);
+
+    let mut c1 = normalized_claim;
+    let mut b_e = b;
+    b_e.mul_assign(&e_partial);
+    c1.sub_assign(&b_e);
+    c1.mul_assign(&prev_coord.inverse().expect("non-zero previous challenge"));
+    c1.sub_assign(&c_partial);
+    c1.sub_assign(&e_partial);
+
+    let combine = |x: E4, y: E4, u: E4, v: E4| {
+        let mut left = x;
+        left.mul_assign(&y);
+        let mut right = u;
+        right.mul_assign(&v);
+        left.add_assign(&right);
+        left
+    };
+    let mut a_c = a;
+    a_c.mul_assign(&c_partial);
+    assert_e4(&format!("{name}: coeff[0] = b*acc_c0"), expected.coeffs[0], b_e);
+    assert_e4(
+        &format!("{name}: coeff[1] = a*acc_c0 + b*c1"),
+        expected.coeffs[1],
+        combine(a, e_partial, b, c1),
+    );
+    assert_e4(
+        &format!("{name}: coeff[2] = a*c1 + b*acc_c2"),
+        expected.coeffs[2],
+        combine(a, c1, b, c_partial),
+    );
+    assert_e4(&format!("{name}: coeff[3] = a*acc_c2"), expected.coeffs[3], a_c);
+}
+
+/// The incumbent's OTHER round-update entry point: the standalone
+/// `ab_backward_sumcheck_round_update_kernel`, fed the reduced pair directly.
+///
+/// Running both is what pins the `(c0, c2)` -> `(e_partial, c_partial)` mapping to
+/// the pair's ORDER in the reduction buffer rather than to one kernel's reading
+/// of it.
+fn run_standalone_round_update(
+    e_partial: E4,
+    c_partial: E4,
+    context: &ProverContext,
+) -> RoundUpdate {
+    let mut state = round_update_state(context);
+    let reduction = upload(&[e_partial, c_partial], context);
+    backward_sumcheck_round_update(
+        &reduction[..2],
+        &state.prev_coord[..1],
+        &mut state.seed[..STATE_SIZE],
+        &mut state.claim[..1],
+        &mut state.eq_prefactor[..1],
+        &mut state.coeffs[..4],
+        &mut state.challenge[..1],
+        context.get_exec_stream(),
+    )
+    .expect("standalone round update");
+    download_round_update(&state, context)
+}
+
+/// R0, the first rung of the ladder: add/sub layer 0 at c2, c5 and c16, through
+/// both coefficient banks.
+#[test]
+#[cfg(not(no_cuda))]
+#[serial_test::serial]
+fn bwd_coeff_add_sub_l0_r0_spike() {
+    let context = make_test_context(16, 16);
+    for cells in PROBED_BUDGETS {
+        for storage in [BwdCoeffBank::Constant, BwdCoeffBank::DevicePointer] {
+            assert_coeff_case(&coeff_case(BwdRegime::R0, 0, cells, storage), &context);
+        }
+    }
+}
+
+/// Continuation: ONE Ext schedule, bound at each of D0-D3, at c2, c5 and c16.
+///
+/// The bank alternates with the round so both `CoeffBank` specializations run at
+/// every fold depth across the two tests without doubling this one's launches.
+#[test]
+#[cfg(not(no_cuda))]
+#[serial_test::serial]
+fn bwd_coeff_add_sub_l0_d0_d3_parity() {
+    let context = make_test_context(16, 16);
+    for round in 0..=BWD_COEFF_MAX_FOLD_DEPTH {
+        let storage = if round % 2 == 0 {
+            BwdCoeffBank::Constant
+        } else {
+            BwdCoeffBank::DevicePointer
+        };
+        for cells in PROBED_BUDGETS {
+            assert_coeff_case(&coeff_case(BwdRegime::Ext, round, cells, storage), &context);
+        }
+    }
+}
+
+// ── Release-executor coverage of the forms the corpus does not emit ─────────
+//
+// `the_add_sub_l0_form_census_matches_what_the_gpu_tests_assume` measures what
+// add/sub layer 0 actually emits. Two things it never does: a reserved `-1`
+// coefficient, and a cell-file MOVE. Both are live parts of the format and of the
+// decode loop, so they are covered here by hand-built programs run through the
+// same release executors — and every arithmetic shape is additionally run at each
+// of the three coefficient forms, so a sign or a width error in one shape cannot
+// hide behind another shape's coverage.
+
+/// Bank entries the arithmetic fixtures use; index `i` is coefficient index
+/// `RESERVED + i`.
+fn arithmetic_bank() -> Vec<E4> {
+    vec![e4(0x000a_1100), e4(0x000a_1200)]
+}
+
+fn banked(slot: usize) -> CoefficientRecipeId {
+    CoefficientRecipeId::from_bank_index(slot)
+}
+
+/// The lanes the arithmetic fixtures fill, move and read back.
+///
+/// Two BF lanes at the bottom of cell zero and three E4 cells at the TOP, so a
+/// c16 run still saturates the six-bit lane field (cell 15 is lanes 60..63, and
+/// 63 is the largest index `BWD_COEFF_LANE_MASK` can express) while the BF lanes
+/// stay clear of every E4 range.
+struct ArithLanes {
+    bf: [u16; 2],
+    e4: [u16; 3],
+}
+
+fn arith_lanes(budget_cells: u8) -> ArithLanes {
+    let lanes = u16::from(budget_cells) * 4;
+    ArithLanes {
+        bf: [0, 1],
+        e4: [lanes - 12, lanes - 8, lanes - 4],
+    }
+}
+
+/// R0: every term shape at every coefficient form, plus both move widths.
+fn r0_arithmetic_fixture(rows: usize, budget_cells: u8) -> Fixture {
+    let span = 2 * rows;
+    let lane = arith_lanes(budget_cells);
+    Fixture {
+        name: format!("R0 arithmetic c{budget_cells}"),
+        rows,
+        regime: BwdRegime::R0,
+        round: 0,
+        budget: CellBudget::new(budget_cells).expect("legal budget"),
+        bank: arithmetic_bank(),
+        // §5.3: R0 drops the spine `c_init` entirely, so a compiled R0 program
+        // never carries one and neither does this fixture.
+        c_init: None,
+        challenges: Vec::new(),
+        windows: vec![
+            host_window(
+                0,
+                WindowFamily::BaseLayerWitness,
+                3,
+                0,
+                0,
+                base_backing(0x0071, 3, span),
+                vec![false; 3],
+            ),
+            host_window(
+                1,
+                WindowFamily::LayerOutput {
+                    layer: 1,
+                    ext: true,
+                },
+                2,
+                0,
+                0,
+                ext_backing(0x0081, 2, span),
+                vec![false; 2],
+            ),
+            host_window(
+                2,
+                WindowFamily::VirtualSetup { kind: 1 },
+                1,
+                0,
+                0,
+                Backing::Procedural(1),
+                vec![false],
+            ),
+        ],
+        instrs: vec![
+            // BF Endpoint0 into an E4 accumulator: add, subtract, mixed FMA.
+            term_k(TermCategory::C0LinearBf, CoefficientRecipeId::ONE, vec![direct(0, 0)]),
+            term_k(TermCategory::C0LinearBf, CoefficientRecipeId::NEG_ONE, vec![direct(0, 1)]),
+            term_k(TermCategory::C0LinearBf, banked(0), vec![direct(0, 2)]),
+            // E4 Endpoint0.
+            term_k(TermCategory::C0LinearE4, CoefficientRecipeId::ONE, vec![direct(1, 0)]),
+            term_k(TermCategory::C0LinearE4, CoefficientRecipeId::NEG_ONE, vec![direct(1, 1)]),
+            term_k(TermCategory::C0LinearE4, banked(1), vec![direct(1, 0)]),
+            // BF*BF: the product must be formed in BF and folded into limb zero.
+            term_k(
+                TermCategory::C2ProductBfBf,
+                CoefficientRecipeId::ONE,
+                vec![direct(0, 0), direct(0, 1)],
+            ),
+            term_k(
+                TermCategory::C2ProductBfBf,
+                CoefficientRecipeId::NEG_ONE,
+                vec![direct(0, 1), direct(0, 2)],
+            ),
+            term_k(
+                TermCategory::C2ProductBfBf,
+                banked(0),
+                vec![direct(0, 2), direct(0, 0)],
+            ),
+            // ...and squared: ONE record, consumed twice (§9.1).
+            term_k(
+                TermCategory::C2ProductBfBf,
+                CoefficientRecipeId::NEG_ONE,
+                vec![direct(0, 1)],
+            ),
+            // Mixed BF*E4, BF first and E4 second.
+            term_k(
+                TermCategory::C2ProductBfE4,
+                CoefficientRecipeId::ONE,
+                vec![direct(0, 0), direct(1, 0)],
+            ),
+            term_k(
+                TermCategory::C2ProductBfE4,
+                CoefficientRecipeId::NEG_ONE,
+                vec![direct(0, 1), direct(1, 1)],
+            ),
+            term_k(
+                TermCategory::C2ProductBfE4,
+                banked(1),
+                vec![direct(0, 2), direct(1, 0)],
+            ),
+            // E4*E4, including a squared one.
+            term_k(
+                TermCategory::C2ProductE4E4,
+                CoefficientRecipeId::ONE,
+                vec![direct(1, 0), direct(1, 1)],
+            ),
+            term_k(
+                TermCategory::C2ProductE4E4,
+                CoefficientRecipeId::NEG_ONE,
+                vec![direct(1, 1), direct(1, 0)],
+            ),
+            term_k(
+                TermCategory::C2ProductE4E4,
+                banked(0),
+                vec![direct(1, 0), direct(1, 1)],
+            ),
+            term_k(
+                TermCategory::C2ProductE4E4,
+                CoefficientRecipeId::ONE,
+                vec![direct(1, 1)],
+            ),
+            // A procedural source, produced from the row rather than read.
+            term_k(TermCategory::C0LinearBf, banked(1), vec![direct(2, 0)]),
+            // MoveBF: retain a BF Delta, relocate it, read it back at the new
+            // lane. A move is a local typed copy — nothing is dropped and no
+            // source is touched — so the third term must see the same value.
+            term_k(
+                TermCategory::C2ProductBfBf,
+                CoefficientRecipeId::ONE,
+                vec![fill(0, 0, lane.bf[0]), direct(0, 1)],
+            ),
+            move_instr(TermCategory::MoveBf, lane.bf[0], lane.bf[1]),
+            term_k(
+                TermCategory::C2ProductBfBf,
+                banked(0),
+                vec![cell(lane.bf[1]), direct(0, 2)],
+            ),
+            // MoveE4, same shape one width up.
+            term_k(
+                TermCategory::C0LinearE4,
+                CoefficientRecipeId::ONE,
+                vec![fill(1, 0, lane.e4[0])],
+            ),
+            move_instr(TermCategory::MoveE4, lane.e4[0], lane.e4[1]),
+            term_k(
+                TermCategory::C0LinearE4,
+                CoefficientRecipeId::NEG_ONE,
+                vec![cell(lane.e4[1])],
+            ),
+        ],
+    }
+}
+
+/// Continuation at `round`: both live opcodes at every coefficient form, a native
+/// dual factor's plan/packed-pair forms, a squared dual, a `MoveE4`, and a
+/// `c_init` that alternates between a banked recipe and a reserved literal.
+fn ext_arithmetic_fixture(round: u8, rows: usize, budget_cells: u8) -> Fixture {
+    let fold_depth = bwd_coeff_fold_depth(round);
+    let shallow = fold_depth.min(1);
+    let span = 2 * rows;
+    let lane = arith_lanes(budget_cells);
+    Fixture {
+        name: format!("Ext arithmetic D{fold_depth} round {round} c{budget_cells}"),
+        rows,
+        regime: BwdRegime::Ext,
+        round,
+        budget: CellBudget::new(budget_cells).expect("legal budget"),
+        bank: arithmetic_bank(),
+        // Both descriptor forms of §9.3's initializer: a bank entry, and a
+        // reserved literal, which `lower_c_init` accepts and `coefficient_value`
+        // resolves without touching the bank.
+        c_init: Some(if round % 2 == 0 {
+            banked(1)
+        } else {
+            CoefficientRecipeId::NEG_ONE
+        }),
+        challenges: (0..usize::from(round))
+            .map(|index| e4(0x0b00 + index as u32))
+            .collect(),
+        windows: vec![
+            host_window(
+                0,
+                WindowFamily::LayerOutput {
+                    layer: 2,
+                    ext: true,
+                },
+                2,
+                round - fold_depth,
+                round,
+                ext_backing(0x0091, 2, span << usize::from(fold_depth)),
+                vec![true, true],
+            ),
+            host_window(
+                1,
+                WindowFamily::BaseLayerMemory,
+                1,
+                round - shallow,
+                round,
+                base_backing(0x00a1, 1, span << usize::from(shallow)),
+                vec![true],
+            ),
+        ],
+        instrs: vec![
+            term_k(
+                TermCategory::C0LinearE4,
+                CoefficientRecipeId::ONE,
+                vec![direct_first(0, 0)],
+            ),
+            term_k(
+                TermCategory::C0LinearE4,
+                CoefficientRecipeId::NEG_ONE,
+                vec![direct(0, 0)],
+            ),
+            term_k(TermCategory::C0LinearE4, banked(0), vec![direct_first(0, 1)]),
+            // One coefficient and one pair resolution per factor, BOTH accumulators.
+            term_k(
+                TermCategory::DualProductE4,
+                CoefficientRecipeId::ONE,
+                vec![direct(0, 0), direct_first(1, 0)],
+            ),
+            term_k(
+                TermCategory::DualProductE4,
+                CoefficientRecipeId::NEG_ONE,
+                vec![direct(0, 1), direct(1, 0)],
+            ),
+            term_k(
+                TermCategory::DualProductE4,
+                banked(1),
+                vec![direct(0, 0), direct(0, 1)],
+            ),
+            // Squared dual: the plan below is the unsafe case §9.1 exists for, but
+            // a squared DIRECT record is the cheap one, so cover both.
+            term_k(
+                TermCategory::DualProductE4,
+                CoefficientRecipeId::NEG_ONE,
+                vec![direct(0, 1)],
+            ),
+            // A pair fill, a move of the retained Endpoint0 lane, then the packed
+            // pair `Cell` form reading the moved Endpoint0 and the original Delta.
+            term_k(
+                TermCategory::DualProductE4,
+                banked(0),
+                vec![
+                    planned(
+                        0,
+                        0,
+                        PlanAction::Fill { lane: lane.e4[0] },
+                        PlanAction::Fill { lane: lane.e4[1] },
+                    ),
+                    direct(0, 1),
+                ],
+            ),
+            move_instr(TermCategory::MoveE4, lane.e4[0], lane.e4[2]),
+            term_k(
+                TermCategory::DualProductE4,
+                CoefficientRecipeId::ONE,
+                vec![
+                    DecodedUse::Cell(DecodedCell::Pair {
+                        endpoint0_lane: lane.e4[2],
+                        delta_lane: lane.e4[1],
+                    }),
+                    direct(0, 1),
+                ],
+            ),
+            // A squared PLAN: `{UseResident l, Fill l}` on one lane. Re-executing
+            // the second record would read lane `l` after the fill overwrote it.
+            term_k(
+                TermCategory::DualProductE4,
+                banked(1),
+                vec![planned(
+                    0,
+                    0,
+                    PlanAction::UseResident { lane: lane.e4[2] },
+                    PlanAction::Fill { lane: lane.e4[2] },
+                )],
+            ),
+        ],
+    }
+}
+
+/// Run the RELEASE executor over a synthetic fixture, through BOTH coefficient
+/// banks, and compare its contributions against the encoded CPU interpreter.
+fn assert_release_fixture(fixture: &Fixture, context: &ProverContext) {
+    let rows = fixture.rows;
+    let (program, binding, sources) = encode_and_bind(fixture);
+    let mut backings = Backings::default();
+    let mut publishes = Vec::new();
+    let resolved = upload_windows(&fixture.windows, rows, context, &mut backings, &mut publishes);
+    let (eq_table, eq_low, eq_sizes) = stage_eq(rows, context);
+    let challenges = upload(&fixture.challenges, context);
+    let coefficients = upload(&fixture.bank, context);
+    let mut contributions = upload(&vec![E4::ZERO; 2 * rows], context);
+    let runtime = BwdCoeffRoundBinding {
+        round: fixture.round,
+        rows: rows as u32,
+        round_challenges: if fixture.challenges.is_empty() {
+            std::ptr::null()
+        } else {
+            challenges.as_ptr()
+        },
+        n_round_challenges: fixture.challenges.len() as u32,
+        windows: &resolved,
+        eq_low: eq_low.as_ptr(),
+        eq_sizes,
+        contributions: contributions.as_mut_ptr(),
+    };
+
+    let resolver = HostSources {
+        windows: &fixture.windows,
+        sources: &sources,
+        rows,
+        challenges: &fixture.challenges,
+        bank: Some(&fixture.bank),
+    };
+    let expected = (0..rows)
+        .map(|row| {
+            interpret_encoded_program(&program, &binding, row, &resolver)
+                .unwrap_or_else(|error| panic!("{}: CPU oracle row {row}: {error:?}", fixture.name))
+        })
+        .collect::<Vec<_>>();
+
+    for storage in [BwdCoeffBank::Constant, BwdCoeffBank::DevicePointer] {
+        let setup = lower_bwd_coeff(
+            &program,
+            &binding,
+            &runtime,
+            fixture.bank.clone(),
+            match storage {
+                BwdCoeffBank::Constant => std::ptr::null(),
+                BwdCoeffBank::DevicePointer => coefficients.as_ptr(),
+            },
+            storage,
+        )
+        .unwrap_or_else(|error| panic!("{}: lower: {error:?}", fixture.name));
+        setup
+            .upload_constant_bank(context)
+            .unwrap_or_else(|error| panic!("{}: constant bank: {error:?}", fixture.name));
+        launch_bwd_coeff(&setup, context)
+            .unwrap_or_else(|error| panic!("{}: release launch: {error:?}", fixture.name));
+        let got = download_e4(&contributions, 2 * rows, context);
+        for (row, (expected_c0, expected_c2)) in expected.iter().enumerate() {
+            let eq = eq_table[row & (GKR_EQ_GROUP_TABLE_LEN - 1)];
+            let mut scaled_c0 = eq;
+            scaled_c0.mul_assign(expected_c0);
+            let mut scaled_c2 = eq;
+            scaled_c2.mul_assign(expected_c2);
+            assert_e4(
+                &format!("{} {storage:?}: eq*acc_c0 row {row}", fixture.name),
+                got[row],
+                scaled_c0,
+            );
+            assert_e4(
+                &format!("{} {storage:?}: eq*acc_c2 row {row}", fixture.name),
+                got[rows + row],
+                scaled_c2,
+            );
+        }
+    }
+    drop(backings);
+    drop(publishes);
+}
+
+/// The release executors over every arithmetic shape, coefficient form, value-use
+/// form and move width the ISA has.
+#[test]
+#[cfg(not(no_cuda))]
+#[serial_test::serial]
+fn bwd_coeff_release_executor_covers_every_form() {
+    let context = make_test_context(16, 16);
+    // 200 rows: two blocks with a partial tail. c4 and c16 bracket the cell file;
+    // the real-program ladder covers c2 and c5.
+    for budget_cells in [4u8, 16] {
+        assert_release_fixture(&r0_arithmetic_fixture(200, budget_cells), &context);
+        for round in 0..=BWD_COEFF_MAX_FOLD_DEPTH {
+            assert_release_fixture(&ext_arithmetic_fixture(round, 200, budget_cells), &context);
+        }
+    }
 }
 
 // ── Host-model unit tests (no GPU) ───────────────────────────────────────────

@@ -1,14 +1,12 @@
 // Backward coefficient-term ISA executor (design sections 10, 11).
 //
-// SCOPE OF THIS FILE AT THIS POINT IN THE PLAN. Task 9 established the ABI, the
-// launch geometry and the specialization set. Task 10 added the typed source
-// resolvers (section 10) plus the validation-only probe kernel that tests them.
-// The u16 HEADER decode and the arithmetic loop (Task 11) are NOT here yet:
-// `coefficient_body` sets up the private cell file, initializes the two
-// accumulators exactly as section 11 specifies, and writes the contribution
-// pair. `desc.program` is not walked by the release executors, so they still
-// publish the `c_init`-only value of `acc_c0`. They are launchable and correct
-// for a zero-word program; they are not yet the executor.
+// SCOPE OF THIS FILE. Task 9 established the ABI, the launch geometry and the
+// specialization set. Task 10 added the typed source resolvers (section 10)
+// plus the validation-only probe kernel that tests them. Task 11 added the
+// sequential u16 decode loop, the typed arithmetic and the contribution write,
+// so `coefficient_body` is now the whole executor: it sets up the private cell
+// file, initializes the two accumulators exactly as section 11 specifies, walks
+// `desc.program` word by word, and writes the eq-scaled contribution pair.
 //
 // What is deliberately absent, and must stay absent (section 11): a T0/T2
 // split, warp shuffles, a general accumulator, an accumulator stash, a
@@ -56,6 +54,11 @@ struct coeff_bank_pointer {
 
 // The one place a coefficient index becomes a value: the two reserved literals
 // never touch a bank.
+//
+// Used for `c_init`, which is descriptor metadata initializing `acc_c0` once per
+// thread. A TERM coefficient goes through `decode_coefficient` instead, which
+// keeps the reserved literals out of the arithmetic entirely rather than
+// materializing them as `e4::ONE()` and multiplying by it.
 template <typename Bank> DEVICE_FORCEINLINE e4 coefficient_value(const Bank &bank, const u16 index) {
   if (index == BWD_COEFF_INDEX_ONE)
     return e4::ONE();
@@ -64,6 +67,27 @@ template <typename Bank> DEVICE_FORCEINLINE e4 coefficient_value(const Bank &ban
     return minus_one;
   }
   return bank[index];
+}
+
+// A decoded TERM coefficient (section 9.2).
+//
+// The reserved `+1` / `-1` indices exist so the executor can select add/subtract
+// or FMA/FMS without an E4 coefficient multiplication, so this deliberately does
+// NOT hand back a value for them: `value` is only meaningful when `banked`, and
+// every `accumulate_*` helper below branches on `banked` before it multiplies.
+// The index is warp-uniform, so every branch on it is too.
+struct coeff_scale {
+  e4 value;
+  bool banked;
+  bool negate;
+};
+
+template <typename Bank> DEVICE_FORCEINLINE coeff_scale decode_coefficient(const Bank &bank, const u16 index) {
+  if (index == BWD_COEFF_INDEX_ONE)
+    return coeff_scale{e4::ZERO(), false, false};
+  if (index == BWD_COEFF_INDEX_NEG_ONE)
+    return coeff_scale{e4::ZERO(), false, true};
+  return coeff_scale{bank[index], true, false};
 }
 
 // Each thread owns a private cell file of `cell_budget` E4 cells. Within a warp
@@ -408,6 +432,152 @@ DEVICE_FORCEINLINE e4_value resolve_use_e4(const bwd_coeff_desc &desc, const bwd
   return out;
 }
 
+// ── Typed accumulation (sections 4, 6, 9.2) ─────────────────────────────────
+//
+// One helper per (operand width) shape, and the widths are the OPCODE's, not the
+// accumulator's. The accumulators are E4 because `c_init` and every banked
+// coefficient are, but a BF operand stays BF all the way into the accumulator's
+// limb zero: `e4::add/sub(e4, bf)` touch one limb, `e4::fma(e4, bf, e4)` is four
+// fused `bf::fma`s, and `bf::fma` folds a whole BF*BF product into limb zero in
+// ONE instruction. Nothing here calls `e4::from_scalar` on an operand — lifting
+// a BF into an E4 just to multiply it is the exact waste this ISA exists to
+// avoid, and it would cost a 4x-wider multiply for three limbs of zero.
+
+// `acc += k * value`, `value` BF (R0 `C0LinearBF`).
+DEVICE_FORCEINLINE e4 accumulate_bf(const e4 acc, const coeff_scale &k, const bf value) {
+  if (!k.banked)
+    return k.negate ? e4::sub(acc, value) : e4::add(acc, value);
+  return e4::fma(k.value, value, acc);
+}
+
+// `acc += k * value`, `value` E4 (`C0LinearE4`).
+DEVICE_FORCEINLINE e4 accumulate_e4(const e4 acc, const coeff_scale &k, const e4 value) {
+  if (!k.banked)
+    return k.negate ? e4::sub(acc, value) : e4::add(acc, value);
+  return e4::fma(k.value, value, acc);
+}
+
+// `acc += k * a * b`, BOTH factors BF (R0 `C2ProductBF_BF`).
+//
+// At +-1 the whole term is ONE `bf::fma` into limb zero. The subtracting form
+// negates the FACTOR rather than the fused result — `bf::fms(a, b, c)` is
+// `a*b - c`, so using it here would need a four-limb negation afterwards, while
+// one `bf::neg` on `a` gets the same answer.
+DEVICE_FORCEINLINE e4 accumulate_bf_bf(const e4 acc, const coeff_scale &k, const bf a, const bf b) {
+  if (!k.banked) {
+    const bf lhs = k.negate ? bf::neg(a) : a;
+    return e4(e2(bf::fma(lhs, b, acc[0][0]), acc[0][1]), acc[1]);
+  }
+  return e4::fma(k.value, bf::mul(a, b), acc);
+}
+
+// `acc += k * a * b` with `a` BF and `b` E4 (R0 `C2ProductBF_E4`).
+//
+// Section 9.1 fixes BF first and E4 second, so `a` is always the position-zero
+// operand. At +-1 this is one mixed `e4::fma`: four fused `bf::fma`s and no
+// E4xE4 multiply at all.
+DEVICE_FORCEINLINE e4 accumulate_bf_e4(const e4 acc, const coeff_scale &k, const bf a, const e4 b) {
+  if (!k.banked)
+    return e4::fma(b, k.negate ? bf::neg(a) : a, acc);
+  return e4::fma(k.value, e4::mul(b, a), acc);
+}
+
+// `acc += k * a * b`, both E4 (R0 `C2ProductE4_E4`, continuation `DualProduct`).
+DEVICE_FORCEINLINE e4 accumulate_e4_e4(const e4 acc, const coeff_scale &k, const e4 a, const e4 b) {
+  if (!k.banked)
+    return k.negate ? e4::sub(acc, e4::mul(a, b)) : e4::fma(a, b, acc);
+  return e4::fma(k.value, e4::mul(a, b), acc);
+}
+
+// ── Instruction execution (sections 6, 9.1, 9.6) ────────────────────────────
+
+// A move is a LOCAL TYPED CELL COPY and nothing else (section 6): no cache drop,
+// no materialization, no source touched. The OPCODE carries the width; both
+// operands are bare six-bit BF lanes either way (section 9.6).
+DEVICE_FORCEINLINE void execute_move(const cell_file &cells, const bool is_e4, const u16 from_lane, const u16 to_lane) {
+  if (is_e4)
+    cell_write_e4(cells, to_lane, cell_read_e4(cells, from_lane));
+  else
+    cell_write_bf(cells, to_lane, cell_read_bf(cells, from_lane));
+}
+
+// One term: resolve its operands at their own widths and update the accumulators.
+//
+// The opcode's regime is a TEMPLATE parameter, so only the live opcodes of the
+// launched regime are instantiated and the other table never reaches the switch.
+// Section 9.1's squared rule is applied HERE rather than inside
+// `bwd_coeff_decode_operands` because reuse is a per-width decision: it is the
+// resolution that must not run twice, and only the opcode knows how wide that
+// resolution is.
+template <bool REGIME_IS_R0, u32 FOLD_DEPTH>
+DEVICE_FORCEINLINE void execute_term(const bwd_coeff_desc &desc, const u16 opcode, const coeff_scale &k, const bwd_coeff_operands &operands, const u32 row,
+                                     const cell_file &cells, e4 &acc_c0, e4 &acc_c2) {
+  const u32 role = bwd_coeff_role(REGIME_IS_R0, opcode);
+  if constexpr (REGIME_IS_R0) {
+    switch (opcode) {
+    case BWD_COEFF_R0_OP_C0_LINEAR_BF: {
+      const bf_value a = resolve_use_bf(desc, operands.first, role, row, cells);
+      acc_c0 = accumulate_bf(acc_c0, k, a.endpoint0);
+      break;
+    }
+    case BWD_COEFF_R0_OP_C0_LINEAR_E4: {
+      const e4_value a = resolve_use_e4<FOLD_DEPTH>(desc, operands.first, role, row, cells);
+      acc_c0 = accumulate_e4(acc_c0, k, a.endpoint0);
+      break;
+    }
+    case BWD_COEFF_R0_OP_C2_PRODUCT_BF_BF: {
+      const bf_value a = resolve_use_bf(desc, operands.first, role, row, cells);
+      // Section 9.1: byte-identical records are ONE resolution consumed twice.
+      // Re-running the second record is unsafe, not merely wasteful.
+      const bf b = operands.squared ? a.delta : resolve_use_bf(desc, operands.second, role, row, cells).delta;
+      acc_c2 = accumulate_bf_bf(acc_c2, k, a.delta, b);
+      break;
+    }
+    case BWD_COEFF_R0_OP_C2_PRODUCT_BF_E4: {
+      // The two positions have DIFFERENT widths, so byte-identical records
+      // cannot name one value and the squared rule is unreachable here. The
+      // assertion is the debug-build guard; the host validator is the real one.
+      assert(!operands.squared);
+      const bf_value a = resolve_use_bf(desc, operands.first, role, row, cells);
+      const e4_value b = resolve_use_e4<FOLD_DEPTH>(desc, operands.second, role, row, cells);
+      acc_c2 = accumulate_bf_e4(acc_c2, k, a.delta, b.delta);
+      break;
+    }
+    case BWD_COEFF_R0_OP_C2_PRODUCT_E4_E4: {
+      const e4_value a = resolve_use_e4<FOLD_DEPTH>(desc, operands.first, role, row, cells);
+      const e4 b = operands.squared ? a.delta : resolve_use_e4<FOLD_DEPTH>(desc, operands.second, role, row, cells).delta;
+      acc_c2 = accumulate_e4_e4(acc_c2, k, a.delta, b);
+      break;
+    }
+    default:
+      // Opcode 7 is deliberately dead and the two move opcodes never reach
+      // here. A release kernel has no error channel, so an invalid descriptor
+      // contributes nothing rather than reading an undefined operand shape.
+      break;
+    }
+    return;
+  }
+  switch (opcode) {
+  case BWD_COEFF_EXT_OP_C0_LINEAR_E4: {
+    const e4_value a = resolve_use_e4<FOLD_DEPTH>(desc, operands.first, role, row, cells);
+    acc_c0 = accumulate_e4(acc_c0, k, a.endpoint0);
+    break;
+  }
+  case BWD_COEFF_EXT_OP_DUAL_PRODUCT_E4: {
+    // Section 6: ONE coefficient and ONE source-pair resolution per factor feed
+    // BOTH accumulators. Splitting this into a C0 and a C2 term would resolve
+    // every endpoint twice, which is the whole reason the opcode is native.
+    const e4_value a = resolve_use_e4<FOLD_DEPTH>(desc, operands.first, role, row, cells);
+    const e4_value b = operands.squared ? a : resolve_use_e4<FOLD_DEPTH>(desc, operands.second, role, row, cells);
+    acc_c0 = accumulate_e4_e4(acc_c0, k, a.endpoint0, b.endpoint0);
+    acc_c2 = accumulate_e4_e4(acc_c2, k, a.delta, b.delta);
+    break;
+  }
+  default:
+    break;
+  }
+}
+
 // REGIME_IS_R0 and FOLD_DEPTH are the section 11 specialization axes; the cell
 // budget is runtime launch metadata, so one instantiation covers c2..c16.
 template <bool REGIME_IS_R0, u32 FOLD_DEPTH, typename Bank> DEVICE_FORCEINLINE void coefficient_body(const bwd_coeff_desc &desc, const Bank &bank) {
@@ -425,13 +595,36 @@ template <bool REGIME_IS_R0, u32 FOLD_DEPTH, typename Bank> DEVICE_FORCEINLINE v
   e4 acc_c0 = desc.c_init == BWD_COEFF_C_INIT_NONE ? e4::ZERO() : coefficient_value(bank, desc.c_init);
   e4 acc_c2 = e4::ZERO();
 
-  // TASK 11 inserts the sequential u16 decode loop over
-  // `desc.program[0 .. desc.num_words)` here — warp-uniform and never randomly
-  // accessed. `cells` is its private file; `resolve_use_bf` and
-  // `resolve_use_e4<FOLD_DEPTH>` above are its typed source resolvers, and
-  // `bwd_coeff_role` / `bwd_coeff_arity` / `bwd_coeff_operand_is_e4` turn a
-  // decoded header opcode into the shape they need.
-  (void)cells;
+  // The program loop (section 9.1). Every thread decodes the SAME u16 stream and
+  // advances by the same amount, so a variable record length costs no divergence
+  // and the runtime never performs a random instruction access.
+  //
+  // `#pragma unroll 1` is the point, not a concession: the stride is
+  // data-dependent, so an unrolled body would have to re-decode from scratch on
+  // every copy, duplicating the whole decoder and the whole opcode switch for no
+  // fewer loads. The row loop is one thread wide and the term count is a runtime
+  // value, so there is nothing here an unroll could hoist.
+  const u32 row = static_cast<u32>(logical_row);
+#pragma unroll 1
+  for (u32 pc = 0; pc < desc.num_words;) {
+    const u16 header = desc.program[pc++];
+    const u16 opcode = (header >> BWD_COEFF_HEADER_OPCODE_SHIFT) & BWD_COEFF_HEADER_OPCODE_MASK;
+    const u16 coefficient = (header >> BWD_COEFF_HEADER_COEFFICIENT_SHIFT) & BWD_COEFF_HEADER_COEFFICIENT_MASK;
+    if (bwd_coeff_is_move(REGIME_IS_R0, opcode)) {
+      // Section 9.6: two bare six-bit lane words, and the coefficient bits are
+      // canonical zero rather than a value.
+      const u16 from_lane = (desc.program[pc] >> BWD_COEFF_LANE_WORD_SHIFT) & BWD_COEFF_LANE_MASK;
+      const u16 to_lane = (desc.program[pc + 1] >> BWD_COEFF_LANE_WORD_SHIFT) & BWD_COEFF_LANE_MASK;
+      pc += 2;
+      execute_move(cells, bwd_coeff_move_is_e4(REGIME_IS_R0, opcode), from_lane, to_lane);
+      continue;
+    }
+    // ONE implementation of section 9.1's squared rule, shared with the probe.
+    const bwd_coeff_operands operands =
+        bwd_coeff_decode_operands(desc.program, pc, bwd_coeff_arity(REGIME_IS_R0, opcode), bwd_coeff_cell_word_is_pair_form(REGIME_IS_R0, opcode));
+    pc += operands.words;
+    execute_term<REGIME_IS_R0, FOLD_DEPTH>(desc, opcode, decode_coefficient(bank, coefficient), operands, row, cells, acc_c0, acc_c2);
+  }
 
   // `lower_bwd_coeff` rejects a null `contributions` or `eq_low`
   // (BwdCoeffLowerError::NullRuntimePointer), so this is defence in depth
