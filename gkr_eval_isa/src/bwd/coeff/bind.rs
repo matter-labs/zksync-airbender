@@ -166,16 +166,20 @@ pub enum SourceCertificateError {
     FirstAccessNotFirst { source: SourceId, marked: usize },
     /// The window layout is not dense, ascending, in-span or unmergeable.
     MalformedWindow { window: usize },
-    /// A window's declared [`BoundSourceWindow::family`], or one of its column
-    /// addresses, is not the one its own source resolves to.
+    /// A window column's declared BACKING COORDINATE — the pair
+    /// ([`BoundSourceWindow::family`], column address) — is not the one its own
+    /// source resolves to.
+    ///
+    /// Named for the pair and not for the family alone because it fires on either
+    /// half: `window_family` returns both, and the certificate compares both.
     ///
     /// The family is not decoration: it is what selects DRAM versus procedural
     /// resolution ([`BoundSourceWindow::is_procedural`]) and the backing's own
     /// field width ([`BoundSourceWindow::backing_field`]). A window claiming the
     /// wrong family would still `resolve` to the right [`SourceId`] — the column
     /// table is keyed by column alone — so nothing else in the certificate can
-    /// catch it.
-    WindowFamilyMismatch { window: usize, column: usize, source: SourceId },
+    /// catch that half.
+    WindowBackingMismatch { window: usize, column: usize, source: SourceId },
     /// `materialize` is not §10.2's static policy for `target_depth`.
     MaterializationNotPolicy { target_depth: u8, materialize: bool },
 }
@@ -445,7 +449,7 @@ pub fn certify_source_binding(
                 return Err(malformed());
             };
             if window_family(source, cross_fields) != (window.family, column.column) {
-                return Err(SourceCertificateError::WindowFamilyMismatch {
+                return Err(SourceCertificateError::WindowBackingMismatch {
                     window: index,
                     column: column.column,
                     source: column.source,

@@ -19,9 +19,15 @@
 //! emits ZERO moves at every budget probed (placement's offline two-pass never
 //! needs the repair), so hand-built programs are the only way to cover them.
 //!
-//! This file also records the REALIZED encoded program size per coordinate against
-//! Task 3's schedule-independent bounds. It is a gate, not a report: the artifact
-//! and the budget sweep are Task 8.
+//! This file also pins the REALIZED encoded program size per coordinate against
+//! Task 3's schedule-independent bounds. Read the scope carefully: those sizes are
+//! measured on THIS file's pipeline — [`stable_normalized_order`] at the three
+//! sampled budgets [`BUDGETS`] — which is a codec-stability gate, NOT the
+//! production schedule. Production uses `select_paged_order`, which is larger at
+//! every overlapping budget, and its corpus-wide maximum over all fifteen budgets
+//! is Task 8's `in_scope::MAX_REALIZED_PROGRAM_BYTES`. The two numbers are
+//! different quantities and neither contradicts the other; see
+//! [`STABLE_ORDER_MAX_BYTES`].
 
 mod common;
 
@@ -156,11 +162,17 @@ struct Realized {
     moves: usize,
     squared: usize,
 }
+// ── The corpus sweep both gates run on ───────────────────────────────────────
 
-// ── The corpus gate ──────────────────────────────────────────────────────────
-
-#[test]
-fn encoded_and_semantic_interpreters_agree_over_the_corpus() {
+/// Page, place, bind and encode every in-scope coordinate at every sampled budget
+/// on the [`stable_normalized_order`] path, asserting encoded/semantic parity as it
+/// goes, and return each program's realized size sorted worst-first.
+///
+/// SCOPE, because the numbers this returns are easy to mistake for production
+/// ones: the order is `stable_normalized_order`, not `select_paged_order`, and the
+/// budgets are the three of [`BUDGETS`], not all fifteen. Both gates below are
+/// therefore statements about *this* pipeline.
+fn stable_order_corpus_sweep() -> Vec<Realized> {
     let rows: Vec<Vec<Realized>> = FIXTURES
         .par_iter()
         .map(|name| {
@@ -220,15 +232,50 @@ fn encoded_and_semantic_interpreters_agree_over_the_corpus() {
         .collect();
 
     let mut realized: Vec<Realized> = rows.into_iter().flatten().collect();
-    realized.sort_by(|a, b| b.bytes.cmp(&a.bytes).then(a.tag.cmp(&b.tag)).then(a.cells.cmp(&b.cells)));
+    realized
+        .sort_by(|a, b| b.bytes.cmp(&a.bytes).then(a.tag.cmp(&b.tag)).then(a.cells.cmp(&b.cells)));
     assert_eq!(
         realized.len(),
         in_scope::COORDINATES * BUDGETS.len(),
         "114 coordinates x {} budgets",
         BUDGETS.len()
     );
+    realized
+}
 
-    println!("realized encoded program size, worst 15 (coordinate, budget) pairs:");
+// ── The parity gate ──────────────────────────────────────────────────────────
+
+#[test]
+fn encoded_and_semantic_interpreters_agree_over_the_corpus() {
+    // Every parity claim is an assertion inside the sweep, made per
+    // `(coordinate, budget, row)`. Reaching this line means all of them held.
+    let realized = stable_order_corpus_sweep();
+    assert_eq!(realized.len(), in_scope::COORDINATES * BUDGETS.len());
+}
+
+// ── The codec-stability size gate ────────────────────────────────────────────
+
+/// Realized encoded sizes on the [`stable_normalized_order`] path at the three
+/// sampled budgets, pinned exactly.
+///
+/// **This is not a corpus-wide production maximum, and must never be read as one.**
+/// It is a codec-stability regression gate: it fixes what THIS file's pipeline
+/// emits so that a change in the encoder, the placer or the pager shows up as a
+/// signal rather than as noise. Production compiles with `select_paged_order` over
+/// all fifteen budgets, which is strictly larger at every overlapping budget
+/// (c2 5,756 vs 5,013 words; c4 5,667 vs 5,076; c16 5,636 vs 5,099), and its
+/// corpus-wide maximum is Task 8's `in_scope::MAX_REALIZED_PROGRAM_BYTES`
+/// (11,518 B at c3). Even swept over all fifteen budgets, this file's own path
+/// peaks at 5,164 words (`bigint_with_extended_control` L0 Ext at c7, measured) —
+/// so nothing here was ever a maximum over budgets either.
+#[test]
+fn stable_order_encoded_program_sizes_are_pinned() {
+    let realized = stable_order_corpus_sweep();
+
+    println!(
+        "realized encoded program size on the stable_normalized_order path, \
+         worst 15 (coordinate, budget) pairs:"
+    );
     for row in realized.iter().take(15) {
         println!(
             "  {:<58} c{:<3} terms={:<5} words={:<6} bytes={:<6} squared={:<4} moves={}",
@@ -250,10 +297,12 @@ fn encoded_and_semantic_interpreters_agree_over_the_corpus() {
         .map(|r| r.squared)
         .sum();
     println!(
-        "MAX realized = {} bytes ({} c{}), upper bound = {}, lower bound max = {}, cap = {}",
+        "MAX on this path = {} bytes ({} c{}); production maximum = {} bytes; \
+         upper bound = {}, lower bound max = {}, cap = {}",
         worst.bytes,
         worst.tag,
         worst.cells,
+        in_scope::MAX_REALIZED_PROGRAM_BYTES,
         in_scope::MAX_UPPER_BOUND_PROGRAM_BYTES,
         in_scope::MAX_LOWER_BOUND_PROGRAM_BYTES,
         gkr_eval_isa::bwd::coeff::limits::KERNEL_ARGUMENT_CEILING_BYTES,
@@ -274,44 +323,63 @@ fn encoded_and_semantic_interpreters_agree_over_the_corpus() {
 
     // ── EXACT pins ───────────────────────────────────────────────────────
     //
-    // These are the numbers that answer Task 3's `TODO(task-8)` on
-    // `upper_bound_program_words`, so they are asserted rather than printed: a
-    // change is meant to be a signal, not noise. Re-pin deliberately if the
-    // encoder, the placer or the corpus changes.
-    const WORST: &str = "bigint_with_extended_control_layout_gkr.json L0 Ext";
-    /// `(cells, words, bytes)` of the largest program at each probed budget.
-    const PER_BUDGET_MAX: [(u8, usize, usize); 3] =
+    // Re-pin deliberately if the encoder, the placer or the corpus changes. Every
+    // name below is prefixed `STABLE_ORDER_` so the scope travels with the number:
+    // the constant, the assertion message and the test name all say the same thing
+    // and cannot drift apart.
+    const STABLE_ORDER_WORST: &str = "bigint_with_extended_control_layout_gkr.json L0 Ext";
+    /// `(cells, words, bytes)` of the largest program at each sampled budget.
+    const STABLE_ORDER_PER_BUDGET_MAX: [(u8, usize, usize); 3] =
         [(2, 5013, 10_026), (4, 5076, 10_152), (16, 5099, 10_198)];
+    /// The largest program over the three SAMPLED budgets on THIS path. Not a
+    /// corpus-wide maximum — see the test's doc comment.
+    const STABLE_ORDER_MAX_BYTES: usize = 10_198;
     /// Squared records the whole corpus realizes, at every budget. `term_slots`
     /// deduplicates structurally, so the count does not depend on the budget.
-    const SQUARED_RECORDS: usize = 804;
-    /// Moves the whole corpus realizes. ZERO: placement's offline two-pass never
-    /// needs the event-scan repair, so `ASSUMED_MOVES_PER_REUSABLE_PROJECTION`'s
-    /// budget is entirely unused.
-    const REALIZED_MOVES: usize = 0;
+    const STABLE_ORDER_SQUARED_RECORDS: usize = 804;
+    /// Moves this path emits. ZERO: placement's offline two-pass never needs the
+    /// event-scan repair. Task 8 re-measured the same zero over all fifteen budgets
+    /// on the production path (`in_scope::REALIZED_MOVES`).
+    const STABLE_ORDER_MOVES: usize = 0;
 
-    for (cells, words, bytes) in PER_BUDGET_MAX {
+    for (cells, words, bytes) in STABLE_ORDER_PER_BUDGET_MAX {
         let worst = realized.iter().find(|r| r.cells == cells).expect("a row per budget");
-        assert_eq!((worst.tag.as_str(), worst.words, worst.bytes), (WORST, words, bytes),
-            "c{cells} realized maximum moved");
+        assert_eq!(
+            (worst.tag.as_str(), worst.words, worst.bytes),
+            (STABLE_ORDER_WORST, words, bytes),
+            "c{cells} maximum on the stable_normalized_order path moved"
+        );
     }
-    assert_eq!(worst.bytes, 10_198, "the corpus-wide realized maximum moved");
-    assert_eq!(worst.tag, WORST);
+    assert_eq!(
+        worst.bytes, STABLE_ORDER_MAX_BYTES,
+        "the maximum over the three sampled budgets on the stable_normalized_order path moved"
+    );
+    assert_eq!(worst.tag, STABLE_ORDER_WORST);
     assert_eq!(worst.cells, 16);
-    assert_eq!(total_moves, REALIZED_MOVES, "placement started emitting moves");
+    assert_eq!(total_moves, STABLE_ORDER_MOVES, "placement started emitting moves");
     for cells in BUDGETS {
         let squared: usize =
             realized.iter().filter(|r| r.cells == cells).map(|r| r.squared).sum();
-        assert_eq!(squared, SQUARED_RECORDS, "c{cells} squared-record count moved");
+        assert_eq!(squared, STABLE_ORDER_SQUARED_RECORDS, "c{cells} squared-record count moved");
     }
-    assert_eq!(total_squared, SQUARED_RECORDS);
-    // ...and the realized maximum still sits inside every bound it must.
+    assert_eq!(total_squared, STABLE_ORDER_SQUARED_RECORDS);
+
+    // This path is a LOWER witness for the production maximum, never an upper one:
+    // `select_paged_order` is larger at every overlapping budget, so a pin here can
+    // only ever be at or below Task 8's number. Const-vs-const, so it is checked
+    // when the file compiles rather than as a runtime assertion that cannot fail —
+    // but stated, because it is what keeps the two suites' claims ordered.
+    const _: () = assert!(STABLE_ORDER_MAX_BYTES < in_scope::MAX_REALIZED_PROGRAM_BYTES);
+    /// The program array Task 9 embeds leaves over half the by-value cap for its
+    /// own metadata.
+    const _: () = assert!(
+        in_scope::DESCRIPTOR_PROGRAM_BYTES * 2
+            < gkr_eval_isa::bwd::coeff::limits::KERNEL_ARGUMENT_CEILING_BYTES
+    );
+
+    // ...and the measured maximum still sits inside every bound it must.
     assert!(worst.bytes <= in_scope::MAX_UPPER_BOUND_PROGRAM_BYTES);
     assert!(worst.bytes > in_scope::MAX_LOWER_BOUND_PROGRAM_BYTES, "a lower bound must be lower");
-    assert!(
-        worst.bytes * 2 < gkr_eval_isa::bwd::coeff::limits::KERNEL_ARGUMENT_CEILING_BYTES,
-        "the worst program leaves under half the by-value cap for Task 8's metadata"
-    );
 }
 
 // ── Synthetic coverage the corpus cannot reach ───────────────────────────────

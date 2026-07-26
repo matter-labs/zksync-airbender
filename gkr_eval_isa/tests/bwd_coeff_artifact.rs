@@ -36,17 +36,39 @@ use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 use common::{CrossFields, FIXTURES, layers_with_bwd_roots};
-use cs::gkr_compiler::dag_ir::{BwdRegime, DagLayer};
+use cs::gkr_compiler::dag_ir::{BwdRegime, DagLayer, FieldKind, ReadPlace};
 use gkr_eval_isa::bwd::coeff::artifact::{
-    ArtifactError, ArtifactRegime, ChainProgress, CircuitArtifact, CoordinateArtifact,
-    CoordinateReport, CorpusSummary, artifact_bytes, artifact_file_name, compile_coordinate,
-    read_circuit_artifact, replay_coordinate, summarize, write_circuit_artifact,
+    ArtifactError, ArtifactRegime, ArtifactScore, ChainProgress, CircuitArtifact,
+    CoordinateArtifact, CoordinateReport, CorpusSummary, artifact_bytes, artifact_file_name,
+    compile_coordinate, read_circuit_artifact, realize, replay_coordinate, summarize,
+    write_circuit_artifact,
 };
+use gkr_eval_isa::bwd::coeff::encode::CoeffCodecError;
 use gkr_eval_isa::bwd::coeff::limits::{
     DESCRIPTOR_ALIGNMENT_BYTES, KERNEL_ARGUMENT_CEILING_BYTES, in_scope,
 };
-use gkr_eval_isa::bwd::coeff::schedule::CellBudget;
+use gkr_eval_isa::bwd::coeff::schedule::{
+    CellBudget, OpCounts, PagingRequest, SourcePrice, ValueWidth, default_target_depth,
+};
+use gkr_eval_isa::bwd::coeff::{
+    CoeffLayer, CoeffSource, CoeffTerm, CoefficientRecipeId, ProjectionId, SourceId, TermId,
+};
+use gkr_eval_isa::bwd::source::OriginLeaf;
 use rayon::prelude::*;
+
+// ── Relations between the pinned constants ───────────────────────────────────
+//
+// Const-vs-const, so they hold at COMPILE time rather than as runtime assertions
+// that cannot fail. The runtime assertions in this file are the ones with a
+// MEASUREMENT on one side.
+
+/// The descriptor array is 16-byte aligned and carries no speculative headroom
+/// beyond that alignment.
+const _: () = assert!(
+    in_scope::DESCRIPTOR_PROGRAM_BYTES - in_scope::MAX_REALIZED_PROGRAM_BYTES
+        < DESCRIPTOR_ALIGNMENT_BYTES
+);
+const _: () = assert!(in_scope::DESCRIPTOR_PROGRAM_BYTES < KERNEL_ARGUMENT_CEILING_BYTES);
 
 // ── One small real coordinate, for the rejection paths ───────────────────────
 
@@ -61,6 +83,114 @@ fn small_coordinate() -> (DagLayer, CrossFields, CoordinateArtifact) {
     let compiled = compile_coordinate(name, layer_index, &canonical, &cross, BwdRegime::R0)
         .expect("the smallest coordinate compiles");
     (canonical, cross, compiled.artifact)
+}
+
+// ── The by-value kernel-argument cap (§9.1) ──────────────────────────────────
+
+/// §9.1: "the program AND all other by-value descriptor metadata must fit the
+/// existing 32,764-byte kernel-argument cap. There is no device-pointer program
+/// representation or overflow fallback."
+///
+/// The production corpus is nowhere near it — 11,518 bytes is the worst — so the
+/// boundary can only be exercised synthetically. It is worth exercising: it is the
+/// one terminal failure of the whole artifact path, and an untested terminal path
+/// is a path that fires wrong the first time it fires.
+///
+/// There are TWO gates, one strictly tighter than the other, and the test pins
+/// where each takes over:
+///
+///   * Task 7's codec rejects a program **above** the cap
+///     (`CoeffCodecError::ProgramExceedsKernelArgumentCap`); and
+///   * this task's `realize` rejects a program **at or above** it, because §9.1
+///     requires the program *and all other by-value descriptor metadata* to fit —
+///     a program that exactly fills the cap leaves the metadata nowhere to go.
+///
+/// So exactly one program size, 32,764 bytes, is accepted by the codec and refused
+/// here. That one size is what makes this gate more than a duplicate, so the test
+/// hits it exactly rather than merely overshooting.
+const SOURCES: u32 = 64;
+
+fn cap_probe(terms: u32) -> (CoeffLayer, Vec<SourcePrice>, Vec<TermId>) {
+    let sources = (0..SOURCES as usize)
+        .map(|column| CoeffSource {
+            origin: OriginLeaf::Read(ReadPlace::BaseLayerMemory { column }),
+            field: FieldKind::Base,
+        })
+        .collect();
+    let prices = (0..SOURCES)
+        .map(|_| SourcePrice {
+            width: ValueWidth::Bf,
+            element_bytes: 4,
+            endpoint_ops: OpCounts::ZERO,
+        })
+        .collect();
+    let layer = CoeffLayer {
+        regime: BwdRegime::R0,
+        c_init: None,
+        coefficients: Vec::new(),
+        sources,
+        terms: (0..terms)
+            .map(|id| CoeffTerm::C0Linear {
+                id: TermId(id),
+                coefficient: CoefficientRecipeId::ONE,
+                value: ProjectionId::endpoint0(SourceId(id % SOURCES)),
+                field: FieldKind::Base,
+            })
+            .collect(),
+    };
+    (layer, prices, (0..terms).map(TermId).collect())
+}
+
+fn cap_probe_request() -> PagingRequest {
+    PagingRequest {
+        budget: CellBudget::new(16).expect("c16"),
+        target_depth: default_target_depth(BwdRegime::R0),
+    }
+}
+
+fn cap_probe_realize(terms: u32) -> Result<usize, ArtifactError> {
+    let (layer, prices, order) = cap_probe(terms);
+    realize(&layer, &prices, &CrossFields::new(), cap_probe_request(), &order, 0)
+        .map(|realized| realized.report.bytes)
+}
+
+#[test]
+fn a_program_at_or_above_the_kernel_argument_cap_is_rejected() {
+    // Encoded size is affine in the term count for this shape — the first
+    // `SOURCES` terms fill a lane, every later one reads a resident — so two
+    // measurements predict the term count that lands EXACTLY on the cap.
+    let low = cap_probe_realize(1_000).expect("well under the cap");
+    let high = cap_probe_realize(2_000).expect("well under the cap");
+    let slope = (high - low) / 1_000;
+    let intercept = low - slope * 1_000;
+    let at_cap_terms = ((KERNEL_ARGUMENT_CEILING_BYTES - intercept) / slope) as u32;
+    assert_eq!(
+        slope * at_cap_terms as usize + intercept,
+        KERNEL_ARGUMENT_CEILING_BYTES,
+        "the probe shape is not affine in the term count; re-derive the boundary"
+    );
+
+    // One term short: the largest program the artifact path accepts.
+    let under = cap_probe_realize(at_cap_terms - 1).expect("under the cap");
+    assert_eq!(under, KERNEL_ARGUMENT_CEILING_BYTES - slope);
+
+    // Exactly at the cap: the codec is happy, this gate is not. This is the whole
+    // reason the gate exists.
+    match cap_probe_realize(at_cap_terms) {
+        Err(ArtifactError::ProgramExceedsKernelArgumentCap { cells, bytes }) => {
+            assert_eq!(cells, 16);
+            assert_eq!(bytes, KERNEL_ARGUMENT_CEILING_BYTES);
+        }
+        other => panic!("a program exactly at the cap must be rejected here, got {other:?}"),
+    }
+
+    // Above the cap: Task 7's codec gets there first, and it is equally terminal.
+    match cap_probe_realize(at_cap_terms + 1_000) {
+        Err(ArtifactError::Codec(CoeffCodecError::ProgramExceedsKernelArgumentCap { bytes })) => {
+            assert!(bytes > KERNEL_ARGUMENT_CEILING_BYTES);
+        }
+        other => panic!("a program past the cap must be terminal, got {other:?}"),
+    }
 }
 
 // ── The schema ───────────────────────────────────────────────────────────────
@@ -134,6 +264,9 @@ fn an_artifact_round_trips_through_disk() {
 
 // ── Replay rejects every disagreement ────────────────────────────────────────
 
+/// A named mutation of one score component.
+type ScoreMutation = (&'static str, fn(&mut ArtifactScore));
+
 fn replay_err(
     canonical: &DagLayer,
     cross: &CrossFields,
@@ -202,7 +335,7 @@ fn replay_rejects_a_tampered_paging_digest() {
 #[test]
 fn replay_rejects_a_tampered_score_in_any_component() {
     let (canonical, cross, coordinate) = small_coordinate();
-    let mutations: [(&str, fn(&mut gkr_eval_isa::bwd::coeff::artifact::ArtifactScore)); 6] = [
+    let mutations: [ScoreMutation; 6] = [
         ("source_read_bytes", |s| s.source_read_bytes += 1),
         ("e4_ops", |s| s.e4_ops += 1),
         ("mixed_ops", |s| s.mixed_ops += 1),
@@ -480,13 +613,6 @@ fn bwd_coeff_artifacts_are_deterministic_and_replay_exactly() {
             );
         }
     }
-    assert_eq!(in_scope::DESCRIPTOR_PROGRAM_BYTES % DESCRIPTOR_ALIGNMENT_BYTES, 0);
-    assert!(
-        in_scope::DESCRIPTOR_PROGRAM_BYTES - in_scope::MAX_REALIZED_PROGRAM_BYTES
-            < DESCRIPTOR_ALIGNMENT_BYTES,
-        "no speculative headroom beyond the ABI's own alignment"
-    );
-    assert!(in_scope::DESCRIPTOR_PROGRAM_BYTES < KERNEL_ARGUMENT_CEILING_BYTES);
     println!(
         "[abi] Task 9 sizes the program array at {} u16 words = {} bytes \
          (measured max {} words = {} B, cap {} B)",

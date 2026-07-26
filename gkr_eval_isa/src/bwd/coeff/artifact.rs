@@ -45,7 +45,7 @@
 //! has no conditional artifact family, no all-or-nothing gate and no exclusion
 //! path — dead code the plan's global constraints forbid.
 
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use cs::gkr_compiler::dag_ir::{BwdRegime, DagLayer, FieldKind, ReadPlace};
@@ -57,7 +57,7 @@ use super::bind::{
 };
 use super::encode::{CoeffCodecError, EncodedProgram, certify_encoding, encode_program};
 use super::limits;
-use super::model::{CoeffError, CoeffLayer, Projection, SourceId, TermId};
+use super::model::{CoeffError, CoeffLayer, TermId};
 use super::place::{
     CoeffPlacement, LivenessError, PlacementError, ScheduledInstr, ValueUse, certify_cell_liveness,
     place_paging_plan,
@@ -548,12 +548,12 @@ pub fn realize(
     certify_paging_plan(layer, prices, &plan)?;
 
     // §7.3: "paging fixes admission, bypass, retention, and eviction before
-    // placement. Placement may not change those decisions." Byte equality of the
-    // canonical serialization across the call is the only check that actually
-    // proves that.
-    let before = plan.canonical_bytes();
+    // placement. Placement may not change those decisions." Enforced by the TYPE:
+    // `place_paging_plan` takes `&PagingPlan`, so the plan is immutable across the
+    // call and no runtime check could ever fail. An earlier revision compared the
+    // canonical bytes either side under `debug_assert_eq!`, which was both
+    // tautological and — since this path runs `--release` — never executed.
     let placement = place_paging_plan(layer, prices, &plan)?;
-    debug_assert_eq!(before, plan.canonical_bytes(), "the plan is read-only");
     certify_cell_liveness(layer, prices, &plan, &placement)?;
 
     let binding = bind_coeff_sources(layer, cross_fields, &placement)?;
@@ -565,7 +565,12 @@ pub fn realize(
     // one — a stream with extra trailing records decodes and validates happily.
     certify_encoding(layer, &placement, &binding, &program)?;
 
-    if program.bytes() > limits::KERNEL_ARGUMENT_CEILING_BYTES {
+    // §9.1: "the program AND all other by-value descriptor metadata must fit the
+    // existing 32,764-byte kernel-argument cap". So a program that exactly fills
+    // the cap already violates it — there would be nothing left for the metadata
+    // that has to travel with it. The gate is `>=`, not `>`. There is no
+    // device-pointer fallback: an overflow requires a tighter encoding.
+    if program.bytes() >= limits::KERNEL_ARGUMENT_CEILING_BYTES {
         return Err(ArtifactError::ProgramExceedsKernelArgumentCap {
             cells: request.budget.cells(),
             bytes: program.bytes(),
@@ -804,10 +809,10 @@ pub fn summarize(reports: &[CoordinateReport]) -> CorpusSummary {
             summary.programs += 1;
             summary.total_moves += program.moves;
             folded.extend_from_slice(&program.program_digest.to_le_bytes());
-            if program.realized_total_read_bytes == program.total_read_floor_bytes {
-                if let Some(slot) = summary.at_floor_per_budget.get_mut(index) {
-                    *slot += 1;
-                }
+            if program.realized_total_read_bytes == program.total_read_floor_bytes
+                && let Some(slot) = summary.at_floor_per_budget.get_mut(index)
+            {
+                *slot += 1;
             }
             if program.words > summary.max_program_words {
                 summary.max_program_words = program.words;
@@ -942,27 +947,3 @@ impl ChainProgress {
     }
 }
 
-// ── Coefficient-recipe and window diagnostics ────────────────────────────────
-
-/// Distinct sources one coordinate's schedule actually resolves, and the windows
-/// its final binding needed. Diagnostic only: nothing is sized from it.
-pub fn binding_shape(binding: &CoeffSourceBinding) -> (usize, usize) {
-    let sources: BTreeSet<SourceId> = binding.uses.iter().map(|use_| use_.source).collect();
-    (sources.len(), binding.windows.len())
-}
-
-/// Projections a layer consumes, by projection kind. Diagnostic for the report's
-/// floor column.
-pub fn projection_mix(layer: &CoeffLayer) -> BTreeMap<&'static str, usize> {
-    let mut mix: BTreeMap<&'static str, usize> = BTreeMap::new();
-    for term in &layer.terms {
-        term.for_each_projection_use(|p| {
-            let key = match p.projection {
-                Projection::Endpoint0 => "endpoint0",
-                Projection::Delta => "delta",
-            };
-            *mix.entry(key).or_default() += 1;
-        });
-    }
-    mix
-}

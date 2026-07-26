@@ -36,9 +36,28 @@ use gkr_eval_isa::bwd::coeff::artifact::{
     ChainProgress, CoordinateReport, budget_totals, compile_coordinate, percent_above_floor_table,
     summarize,
 };
-use gkr_eval_isa::bwd::coeff::limits::{KERNEL_ARGUMENT_CEILING_BYTES, in_scope};
+use gkr_eval_isa::bwd::coeff::limits::{
+    DESCRIPTOR_ALIGNMENT_WORDS, KERNEL_ARGUMENT_CEILING_BYTES, in_scope,
+};
 use gkr_eval_isa::bwd::coeff::schedule::{CellBudget, SeedKind};
 use rayon::prelude::*;
+
+// ── Relations between the pinned constants ───────────────────────────────────
+//
+// Const-vs-const, so they are proven at COMPILE time and never as a runtime
+// assertion that cannot fail. `limits.rs` proves the same relations beside the
+// constants; restating them here is what makes this file's numbers self-contained.
+
+/// Task 3's conservative maximum must bound the real encoder.
+const _: () = assert!(in_scope::MAX_REALIZED_PROGRAM_BYTES <= in_scope::MAX_UPPER_BOUND_PROGRAM_BYTES);
+/// The descriptor array is the measured maximum rounded up to the 16-byte ABI
+/// alignment, and NOTHING more.
+const _: () = assert!(in_scope::DESCRIPTOR_PROGRAM_WORDS >= in_scope::MAX_REALIZED_PROGRAM_WORDS);
+const _: () = assert!(
+    in_scope::DESCRIPTOR_PROGRAM_WORDS - in_scope::MAX_REALIZED_PROGRAM_WORDS
+        < DESCRIPTOR_ALIGNMENT_WORDS
+);
+const _: () = assert!(in_scope::DESCRIPTOR_PROGRAM_BYTES < KERNEL_ARGUMENT_CEILING_BYTES);
 
 /// Compile every in-scope coordinate's whole budget family, in parallel, with one
 /// progress line per completed `(circuit, layer, regime)` chain.
@@ -246,17 +265,6 @@ fn bwd_coeff_budget_sweep_report() {
     );
     assert_eq!(summary.total_moves, in_scope::REALIZED_MOVES);
     assert_eq!(summary.programs, in_scope::REALIZED_PLACEMENTS);
-    assert!(
-        in_scope::MAX_REALIZED_PROGRAM_BYTES <= in_scope::MAX_UPPER_BOUND_PROGRAM_BYTES,
-        "Task 3's conservative maximum must bound the real encoder"
-    );
-    assert!(
-        in_scope::DESCRIPTOR_PROGRAM_WORDS >= in_scope::MAX_REALIZED_PROGRAM_WORDS
-            && in_scope::DESCRIPTOR_PROGRAM_WORDS - in_scope::MAX_REALIZED_PROGRAM_WORDS < 8,
-        "the descriptor array is the measured maximum rounded up to 16-byte alignment, \
-         and nothing more"
-    );
-    assert!(in_scope::DESCRIPTOR_PROGRAM_BYTES < KERNEL_ARGUMENT_CEILING_BYTES);
 
     // c16 is a diagnostic ceiling, not a selection: it is reported, and the report
     // is expected to show it at or near the floor.

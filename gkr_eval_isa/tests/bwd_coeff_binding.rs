@@ -428,7 +428,7 @@ fn a_window_may_not_declare_a_family_its_source_does_not_have() {
         .expect_err("a wrong family must be rejected");
     assert_eq!(
         error,
-        SourceCertificateError::WindowFamilyMismatch {
+        SourceCertificateError::WindowBackingMismatch {
             window: 0,
             column: binding.windows[0].columns[0].column,
             source: binding.windows[0].columns[0].source,
@@ -469,7 +469,7 @@ fn a_window_may_not_relabel_a_column_address() {
     assert!(
         matches!(
             error,
-            SourceCertificateError::WindowFamilyMismatch { .. }
+            SourceCertificateError::WindowBackingMismatch { .. }
                 | SourceCertificateError::CoordinateMismatch { .. }
         ),
         "unexpected rejection: {error:?}"

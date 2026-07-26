@@ -594,7 +594,9 @@ pub mod in_scope {
     const _: () = assert!(
         DESCRIPTOR_PROGRAM_WORDS - MAX_REALIZED_PROGRAM_WORDS < DESCRIPTOR_ALIGNMENT_WORDS
     );
-    const _: () = assert!(DESCRIPTOR_PROGRAM_BYTES % DESCRIPTOR_ALIGNMENT_BYTES == 0);
+    // Aligning an already-aligned length is a no-op, which is the same claim as
+    // "the array is 16-byte aligned" without a modulo.
+    const _: () = assert!(align_program_words(DESCRIPTOR_PROGRAM_WORDS) == DESCRIPTOR_PROGRAM_WORDS);
     const _: () = assert!(DESCRIPTOR_PROGRAM_BYTES < KERNEL_ARGUMENT_CEILING_BYTES);
     const _: () = assert!(REALIZED_PLACEMENTS == 1_710);
 }
