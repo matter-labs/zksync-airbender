@@ -65,15 +65,104 @@ pub(super) const SUMMARY_MD: &str = "bwd_coeff_profile_summary.md";
 /// The budget the profiler test launches, overridable so a profiling session can
 /// re-target without a rebuild.
 ///
-/// The DEFAULT is the measured `add_sub` layer-0 R0 selection. Note what the sweep
-/// found about that coordinate: c2 through c7 all run at 6 blocks per SM and their
-/// medians sit inside [`SELECTION_TIE_FRACTION`] of each other, so the tier — not
-/// this exact member — is the finding. Re-pin it when the sweep moves the tier.
+/// This must equal the PERSISTED `add_sub` layer-0 R0 selection in
+/// [`SELECTION_JSON`], which is the single authority for a production budget.
+/// `assert_profile_cells_match_persisted_selection` enforces that whenever the
+/// sidecar exists, so a stale pin is a test failure rather than three sources
+/// disagreeing.
+///
+/// Note what the sweep found about that coordinate: c2 through c7 all run at 6
+/// blocks per SM and their medians sit inside [`SELECTION_TIE_FRACTION`] of each
+/// other, so the tier — not this exact member — is the finding.
 pub(super) const PROFILE_CELLS_ENV: &str = "BWD_COEFF_PROFILE_CELLS";
-pub(super) const PROFILE_DEFAULT_CELLS: u8 = 4;
+pub(super) const PROFILE_DEFAULT_CELLS: u8 = 3;
+
+/// Raw counters from the `add_sub` layer-0 R0 capture PAIR, pinned so the
+/// generated head-to-head section can bound its own synthetic-source caveat.
+///
+/// These four are the only profiler-only numbers this module restates, and they
+/// are here rather than inline because they carry a re-pin duty: they come from
+/// `target/profiling/ncu/bwd_coeff_add_sub_l0_r0{,_incumbent}.ncu-rep`, which are
+/// the authority. Read them back with
+/// `ncu --import <rep> --page raw --csv` and the metrics
+/// `dram__bytes.sum.per_second * gpu__time_duration.sum` and
+/// `lts__t_sectors_lookup_miss.sum`.
+///
+/// Why they are worth pinning at all: they are what turns "the cache-hit gap
+/// might be a synthetic-layout artifact" from a hedge into a bound. The new
+/// lineage moves FEWER DRAM bytes and misses L2 FEWER times than the incumbent,
+/// so consolidating the source layout can only reduce traffic where the new side
+/// is already ahead — it cannot be hiding a regression.
+pub(super) const PINNED_DRAM_GB_NEW: f64 = 8.673;
+pub(super) const PINNED_DRAM_GB_INCUMBENT: f64 = 8.846;
+pub(super) const PINNED_L2_MISS_SECTORS_NEW_M: f64 = 271.6;
+pub(super) const PINNED_L2_MISS_SECTORS_INCUMBENT_M: f64 = 276.5;
+/// `(instructions / elapsed IPC)` new over incumbent, and the duration ratio the
+/// same capture pair measured. The two agreeing is the claim that the occupancy
+/// and instruction-count model accounts for the gap without a cache term.
+pub(super) const PINNED_MODEL_RATIO: f64 = 1.182;
+pub(super) const PINNED_PROFILED_DURATION_RATIO: f64 = 1.176;
+
+/// Matching incumbent launches `ncu` must skip to reach the first TIMED one.
+///
+/// Derived, not hard-coded: `head_to_head_add_sub_l0_r0` runs exactly one untimed
+/// correctness launch before handing the incumbent to `time_cuda_launches`, which
+/// then runs [`WARMUP_ITERS`] warmups before the first timed sample. Changing the
+/// warmup count therefore moves this number with it, instead of silently
+/// profiling a cold warmup launch.
+pub(super) const INCUMBENT_CORRECTNESS_LAUNCHES: usize = 1;
+pub(super) const INCUMBENT_PROFILE_LAUNCH_SKIP: usize =
+    INCUMBENT_CORRECTNESS_LAUNCHES + WARMUP_ITERS;
 
 pub(super) fn sweep_output_path(file: &str) -> PathBuf {
     PathBuf::from(SWEEP_OUTPUT_DIR).join(file)
+}
+
+/// Reconcile the compiled pin against the persisted selection.
+///
+/// The corpus sweep writes [`SELECTION_JSON`]; that file, not this constant, is
+/// what §13 calls the production choice, and Task 13 is required to consume it.
+/// So whenever it exists, the pin must agree with it — otherwise "the profiled
+/// budget", "the compiled default" and "the persisted selection" are three
+/// different answers, which is exactly the confusion this guard exists to stop.
+///
+/// Absent sidecar means the sweep has not run on this machine yet; that is not a
+/// failure, and the profile still runs at the pin.
+pub(super) fn assert_profile_cells_match_persisted_selection(cells: u8, coordinate: &str) {
+    let path = sweep_output_path(SELECTION_JSON);
+    let Ok(text) = std::fs::read_to_string(&path) else {
+        eprintln!(
+            "[bwd-coeff-profile] no persisted selection at {}; profiling at the compiled pin c{cells}",
+            path.display()
+        );
+        return;
+    };
+    // The sidecar is one object per line by construction (`render_selection_json`),
+    // so the coordinate's line is its own record and a substring search over it
+    // cannot cross into a neighbour.
+    let Some(line) = text
+        .lines()
+        .find(|line| line.contains(coordinate) && line.contains("\"regime\": \"R0\""))
+    else {
+        panic!("{}: no R0 selection for {coordinate}", path.display());
+    };
+    let needle = "\"round_class\": \"R0\", \"cells\": ";
+    let start = line
+        .find(needle)
+        .unwrap_or_else(|| panic!("{}: malformed R0 selection: {line}", path.display()))
+        + needle.len();
+    let persisted: u8 = line[start..]
+        .trim_start()
+        .split(|c: char| !c.is_ascii_digit())
+        .next()
+        .and_then(|digits| digits.parse().ok())
+        .unwrap_or_else(|| panic!("{}: malformed R0 cells: {line}", path.display()));
+    assert_eq!(
+        cells, persisted,
+        "the profiled budget must be the persisted {coordinate} R0 selection from {}; \
+         re-pin PROFILE_DEFAULT_CELLS (or set {PROFILE_CELLS_ENV} deliberately)",
+        path.display()
+    );
 }
 
 /// The profiled budget: [`PROFILE_CELLS_ENV`] when set, else

@@ -102,9 +102,15 @@ under `.agents/bin/with_gpu_lock.sh`, and pass `--ignored`.
   write CSVs plus the selection metadata under `target/gkr/` and index
   themselves in `target/gkr/bwd_coeff_profile_summary.md`.
 
-`BWD_COEFF_PROFILE_CELLS=c<n>` re-targets the profiled and compared budget
-without a rebuild; the compiled default is the measured `add_sub` layer-0 R0
-selection (`report.rs`'s `PROFILE_DEFAULT_CELLS`).
+The **persisted selection is the authority** for which budget is profiled:
+`target/gkr/bwd_coeff_selected_budgets.json`, written by the corpus sweep, holds
+the production choice per `(circuit, layer, round class)`.
+`report.rs`'s `PROFILE_DEFAULT_CELLS` is only a compiled mirror of that file's
+`add_sub` layer-0 R0 entry, and both profiling tests assert the two agree
+whenever the sidecar exists — so a stale pin fails the test instead of quietly
+profiling a different budget than the one production would select. Re-run the
+corpus sweep, read the entry, re-pin. `BWD_COEFF_PROFILE_CELLS=c<n>` overrides
+both for an ad-hoc session.
 
 ### Build and profile
 
@@ -151,3 +157,9 @@ correctness launch and the three warmups:
   --kernel-name 'regex:ab_gkr_main_round0_flat_constant_compact_e4_kernel' \
   --launch-skip 4 --launch-count 1
 ```
+
+The skip is `INCUMBENT_PROFILE_LAUNCH_SKIP` = one untimed correctness launch plus
+`WARMUP_ITERS`, and the head-to-head test counts its own incumbent launches and
+asserts that relationship — so changing the warmup count fails the test rather
+than silently profiling a cold warmup launch. The generated
+`target/gkr/bwd_coeff_profile_summary.md` section prints the current value.

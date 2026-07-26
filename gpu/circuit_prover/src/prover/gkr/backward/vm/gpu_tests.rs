@@ -2641,11 +2641,14 @@ use super::compile::{
     BLAKE2_LAYOUT, KECCAK_LAYOUT,
 };
 use super::report::{
-    executor_attributes, log_selection, poison_contributions, profile_cells,
-    record_summary_section, render_selection_csv, render_selection_json, render_sweep_csv,
-    select_budgets, sweep_output_path, time_cuda_launches, BudgetChoice, DeviceFacts,
-    LaunchGeometry, SweepRow, TimingSummary, CORPUS_CSV, FOCUSED_CSV, SELECTION_JSON,
-    TIMING_ITERS, WARMUP_ITERS,
+    assert_profile_cells_match_persisted_selection, executor_attributes, log_selection,
+    poison_contributions, profile_cells, record_summary_section, render_selection_csv,
+    render_selection_json, render_sweep_csv, select_budgets, sweep_output_path,
+    time_cuda_launches, BudgetChoice, DeviceFacts, LaunchGeometry, SweepRow, TimingSummary,
+    CORPUS_CSV, FOCUSED_CSV, INCUMBENT_CORRECTNESS_LAUNCHES, INCUMBENT_PROFILE_LAUNCH_SKIP,
+    PINNED_DRAM_GB_INCUMBENT, PINNED_DRAM_GB_NEW, PINNED_L2_MISS_SECTORS_INCUMBENT_M,
+    PINNED_L2_MISS_SECTORS_NEW_M, PINNED_MODEL_RATIO, PINNED_PROFILED_DURATION_RATIO,
+    SELECTION_JSON, TIMING_ITERS, WARMUP_ITERS,
 };
 
 /// Every budget §13 compiles an artifact for.
@@ -3679,7 +3682,14 @@ fn head_to_head_add_sub_l0_r0(budgets: &[u8], nvtx_budget: Option<u8>) -> HeadTo
     );
 
     // ── the incumbent ────────────────────────────────────────────────────
+    //
+    // Every incumbent launch goes through this one closure and is COUNTED, so
+    // `INCUMBENT_PROFILE_LAUNCH_SKIP` — the `--launch-skip` a profiler needs to
+    // reach the first TIMED incumbent launch — is asserted against the launches
+    // this test actually performs rather than left as a comment that can drift.
+    let incumbent_launches = std::cell::Cell::new(0usize);
     let incumbent_launch = |context: &ProverContext| {
+        incumbent_launches.set(incumbent_launches.get() + 1);
         compact::launch_main_round0_constant::<E4>(
             &plan
                 .flat_round0_template_compact
@@ -3698,6 +3708,11 @@ fn head_to_head_add_sub_l0_r0(budgets: &[u8], nvtx_budget: Option<u8>) -> HeadTo
     let preflight = e4(0x00a1_0000);
     poison_ptr(output_ptr, rows, preflight, &context).expect("poison the incumbent preflight");
     incumbent_launch(&context).expect("incumbent correctness launch");
+    assert_eq!(
+        incumbent_launches.get(),
+        INCUMBENT_CORRECTNESS_LAUNCHES,
+        "the untimed incumbent launch count is what `INCUMBENT_PROFILE_LAUNCH_SKIP` is          derived from"
+    );
     let incumbent_output = download_ptr(output_ptr, 2 * rows, &context);
     assert!(
         incumbent_output.iter().any(|value| *value != preflight),
@@ -3709,6 +3724,11 @@ fn head_to_head_add_sub_l0_r0(budgets: &[u8], nvtx_budget: Option<u8>) -> HeadTo
         || incumbent_launch(&context),
     )
     .expect("time the incumbent round-0 launch");
+    assert_eq!(
+        incumbent_launches.get(),
+        INCUMBENT_PROFILE_LAUNCH_SKIP + TIMING_ITERS,
+        "`--launch-skip {INCUMBENT_PROFILE_LAUNCH_SKIP}` must land on the first of the          {TIMING_ITERS} timed incumbent launches"
+    );
     eprintln!(
         "[bwd-coeff-profile] incumbent median={:.3}us min={:.3}us ({INCUMBENT_R0_SEQUENCE})",
         incumbent.median_us, incumbent.min_us
@@ -3888,6 +3908,7 @@ fn head_to_head_add_sub_l0_r0(budgets: &[u8], nvtx_budget: Option<u8>) -> HeadTo
 #[serial_test::serial]
 fn bwd_coeff_add_sub_l0_r0_head_to_head() {
     let selected = profile_cells();
+    assert_profile_cells_match_persisted_selection(selected, ADD_SUB_LAYOUT);
     let mut budgets = vec![2u8, selected, 16];
     budgets.sort_unstable();
     budgets.dedup();
@@ -3895,27 +3916,70 @@ fn bwd_coeff_add_sub_l0_r0_head_to_head() {
 
     let csv_path = sweep_output_path("bwd_coeff_add_sub_l0_r0_head_to_head.csv");
     super::report::publish(&csv_path, &render_sweep_csv(&outcome.new));
+    record_summary_section(
+        "add/sub layer-0 R0 head-to-head",
+        &head_to_head_body(&outcome, selected, Some(&csv_path), None),
+    );
+}
 
+/// The durable head-to-head section, GENERATED so a re-run replaces it rather
+/// than leaving a hand-edited file stale.
+///
+/// Every number in it comes from the `outcome` that was just measured, so the
+/// median column and the ratio column are same-run pairs by construction — there
+/// is no path by which a median from one run can be printed beside a ratio from
+/// another.
+///
+/// `profiled` names the budget whose launch sat inside the NVTX range, when this
+/// was a profiler run.
+fn head_to_head_body(
+    outcome: &HeadToHead,
+    selected: u8,
+    csv_path: Option<&std::path::Path>,
+    profiled: Option<u8>,
+) -> String {
     let mut body = format!(
         "Incumbent: `{INCUMBENT_R0_SEQUENCE}`\n\n\
-         Rows {} (one thread per row), folding steps {}, three warmups and ten timed samples on \
-         both lineages, identical eq state, identical contribution buffer and geometry.\n\n\
+         Rows {} (one thread per row), folding steps {}, {WARMUP_ITERS} warmups and \
+         {TIMING_ITERS} timed samples on both lineages.\n\n\
+         Every row below is a SAME-RUN pair: the ratio is this run's new median over \
+         this run's incumbent median, both measured in the process that wrote this \
+         section. Do not pair a median here with a ratio from another run.\n\n\
+         {}\
          | configuration | median (us) | min (us) | new / incumbent |\n\
          |---|---|---|---|\n\
          | incumbent | {:.3} | {:.3} | 1.000 |\n",
-        outcome.rows, outcome.folding_steps, outcome.incumbent.median_us, outcome.incumbent.min_us,
+        outcome.rows,
+        outcome.folding_steps,
+        if profiled.is_some() {
+            "**These medians were measured with the profiler attached**, which serializes \
+             and replays launches. They are a same-run pair and therefore internally \
+             consistent, but the \"add/sub layer-0 R0 head-to-head\" section is the \
+             authority for the ratio -- it is measured with nothing attached.\n\n"
+        } else {
+            ""
+        },
+        outcome.incumbent.median_us,
+        outcome.incumbent.min_us,
     );
     for row in &outcome.new {
+        let mut tags = Vec::new();
+        if row.budget_cells == 16 {
+            tags.push("diagnostic".to_owned());
+        } else if row.budget_cells == selected {
+            tags.push("selected".to_owned());
+        }
+        if profiled == Some(row.budget_cells) {
+            tags.push("profiled".to_owned());
+        }
         writeln!(
             body,
             "| new c{}{} | {:.3} | {:.3} | {:.4} |",
             row.budget_cells,
-            if row.budget_cells == 16 {
-                " (diagnostic)"
-            } else if row.budget_cells == selected {
-                " (selected)"
+            if tags.is_empty() {
+                String::new()
             } else {
-                ""
+                format!(" ({})", tags.join(", "))
             },
             row.timing.median_us,
             row.timing.min_us,
@@ -3923,24 +3987,100 @@ fn bwd_coeff_add_sub_l0_r0_head_to_head() {
         )
         .expect("write String");
     }
-    writeln!(body, "\nCSV: `{}`\n", csv_path.display()).expect("write String");
+
+    body.push_str(&format!(
+        "\n### What is shared between the two lineages, and the one thing that is not\n\n\
+         Shared, in one process and one context: the row count (taken from the real \
+         incumbent plan), the same `eq_low` device pointer and the same `GkrEqSizes` \
+         built by the real factored-eq build kernel, the same contribution buffer with \
+         the same `2 x rows` half-stride, the incumbent fused reduction and round \
+         update, the same `__constant__` coefficient symbol (each lineage stages its own \
+         compiler's host-evaluated bank outside every timed span), and one release \
+         binary with no validation launch on either side. R0 materializes nothing on \
+         either side, which the run asserts.\n\n\
+         **Not shared: the new executor's source windows read SYNTHETIC backings.** The \
+         production backward source binder does not exist yet, so each bound window gets \
+         its own device buffer whose field width, column count, column stride, fold delta \
+         and publish geometry all come from the compiler's real `CoeffSourceBinding` for \
+         this coordinate -- but not its real addresses. Consequence and bound:\n\n\
+         - The CACHE-HIT comparison is a synthetic-layout artifact and should not be \
+           quoted as a property of the lineage: windows that would be neighbouring \
+           columns of one consolidated production matrix are separate allocations here.\n\
+         - The RATIO is not. Raw counters from the capture pair have the new side moving \
+           FEWER DRAM bytes than the incumbent ({:.3} GB vs {:.3} GB, {:+.1}%) and fewer \
+           L2-miss sectors ({:.1} M vs {:.1} M), so consolidating the layout can only \
+           reduce traffic where the new side is already ahead -- it cannot be hiding a \
+           regression. And the gap closes without any cache term: \
+           `instructions / elapsed-IPC` gives {:.3} against a measured duration ratio of \
+           {:.3}, a residual of {:.1}%.\n\n\
+         So the ratio is sound to about a percentage point; the cache-hit numbers are not \
+         evidence about the lineage. The `.ncu-rep` files are the authority for all six \
+         numbers in this paragraph; `report.rs` pins them with a re-pin duty.\n\n\
+         ### Per configuration (measured on the device)\n\n",
+        PINNED_DRAM_GB_NEW,
+        PINNED_DRAM_GB_INCUMBENT,
+        (PINNED_DRAM_GB_NEW / PINNED_DRAM_GB_INCUMBENT - 1.0) * 100.0,
+        PINNED_L2_MISS_SECTORS_NEW_M,
+        PINNED_L2_MISS_SECTORS_INCUMBENT_M,
+        PINNED_MODEL_RATIO,
+        PINNED_PROFILED_DURATION_RATIO,
+        (PINNED_MODEL_RATIO / PINNED_PROFILED_DURATION_RATIO - 1.0) * 100.0,
+    ));
     for row in &outcome.new {
         writeln!(
             body,
-            "- c{}: registers {}, local spill bytes {}, dynamic shared {} B, {} blocks/SM, \
-             theoretical occupancy {:.1}%, {} program words, realized read bytes {}",
+            "- c{}: registers {}, local spill bytes {}, static shared {} B, dynamic shared \
+             {} B, {} blocks/SM, theoretical occupancy {:.1}%, {:.2} waves/SM, {} program \
+             words, realized read bytes {}, read floor {}",
             row.budget_cells,
             row.attributes.registers,
             row.attributes.local_size_bytes,
+            row.attributes.static_smem_bytes,
             row.geometry.dynamic_smem_bytes,
             row.geometry.active_blocks_per_sm,
             row.geometry.theoretical_occupancy * 100.0,
+            row.geometry.waves,
             row.program.words,
             row.program.realized_total_read_bytes,
+            row.program.total_read_floor_bytes,
         )
         .expect("write String");
     }
-    record_summary_section("add/sub layer-0 R0 head-to-head", &body);
+    if let Some(path) = csv_path {
+        writeln!(body, "\nCSV: `{}`", path.display()).expect("write String");
+    }
+
+    if let Some(cells) = profiled {
+        write!(
+            body,
+            "\n### Nsight Compute capture\n\n\
+             Profiled budget: c{cells}. One post-warmup launch, the only thing inside the \
+             durable registered range `{PROFILE_NVTX_DOMAIN}@{PROFILE_NVTX_MESSAGE}`.\n\n\
+             `ncu --nvtx-include` takes `Domain@Range`; the reversed form matches nothing \
+             and reports `No kernels were profiled` rather than failing.\n\n\
+             New executor:\n\n\
+             ```\n\
+             --nvtx --nvtx-include '{PROFILE_NVTX_DOMAIN}@{PROFILE_NVTX_MESSAGE}' \\\n\
+             --kernel-name-base demangled --kernel-name 'regex:ab_gkr_bwd_coeff_.*r0.*' \\\n\
+             --launch-count 1 -o target/profiling/ncu/bwd_coeff_add_sub_l0_r0\n\
+             ```\n\n\
+             Incumbent (its launch is deliberately OUTSIDE the range, so no NVTX filter; \
+             the skip is {INCUMBENT_CORRECTNESS_LAUNCHES} correctness launch plus \
+             {WARMUP_ITERS} warmups, derived from `WARMUP_ITERS` rather than hard-coded):\n\n\
+             ```\n\
+             --kernel-name 'regex:ab_gkr_main_round0_flat_constant_compact_e4_kernel' \\\n\
+             --launch-skip {INCUMBENT_PROFILE_LAUNCH_SKIP} --launch-count 1 \\\n\
+             -o target/profiling/ncu/bwd_coeff_add_sub_l0_r0_incumbent\n\
+             ```\n\n\
+             Registers, spills, shared memory and occupancy above are measured here via \
+             `cudaFuncGetAttributes` and the occupancy API. The profiler-only counters -- \
+             instruction counts, cache hit rates, DRAM bytes, warp stall reasons -- live \
+             in the two `.ncu-rep` files and are not restated here, because this section \
+             is regenerated by a run that cannot read them.\n"
+        )
+        .expect("write String");
+    }
+    body
 }
 
 /// The single profiler selector the brief specifies: after warmup, ONE incumbent
@@ -3952,7 +4092,12 @@ fn bwd_coeff_add_sub_l0_r0_head_to_head() {
 #[serial_test::serial]
 fn bwd_coeff_add_sub_l0_r0_profile() {
     let selected = profile_cells();
+    assert_profile_cells_match_persisted_selection(selected, ADD_SUB_LAYOUT);
     let outcome = head_to_head_add_sub_l0_r0(&[selected], Some(selected));
+    record_summary_section(
+        "Nsight Compute profile (add/sub layer-0 R0)",
+        &head_to_head_body(&outcome, selected, None, Some(selected)),
+    );
     eprintln!(
         "[bwd-coeff-profile] profiled c{selected}: new median={:.3}us vs incumbent {:.3}us \
          (ratio {:.4}) at {} rows",
