@@ -207,6 +207,22 @@ pub enum PlacementFloor {
     /// [`super::schedule::page_projections`] produced (module doc).
     PeakOccupancy { peak: u32 },
     /// Offline packing failed and no legal relocation exists at this step.
+    ///
+    /// "Legal" here is deliberately STRICTER than correctness requires: a
+    /// candidate quad is rejected if relocating its occupants would move any input
+    /// of the CURRENT term, even though a move that is emitted before the term
+    /// executes is perfectly sound. Task 8 measured the cost of the strictness and
+    /// left it in place: it loses 2 of 24,000 synthetic placements at c2/c3 and
+    /// ZERO of the 1,710 real ones — every in-scope coordinate seats at every
+    /// budget `c2`..`c16`, so §13's "an artifact at every budget" never forces the
+    /// relaxation.
+    ///
+    /// Relaxing it is a THREE-part change, and doing only the first two
+    /// reintroduces a bug Task 5 already fixed: (a) relax the rule here; (b) relax
+    /// the certificate's `MoveOfCurrentTermInput` in lockstep; and (c) exempt the
+    /// moved projection's own POST-move range from the destination test, because a
+    /// later-slot read is named at the post-move lane and would otherwise land
+    /// straight back in the surviving clause below. Do not attempt (a) alone.
     NoLegalRelocation { step: u32, projection: ProjectionId },
 }
 

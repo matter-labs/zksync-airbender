@@ -56,13 +56,33 @@ pub const WORDS_PER_INPUT_MIN: usize = 1;
 /// u16 words one input contributes at MAXIMUM: the input word plus its single
 /// canonical extension word (§9.4 `FillSource` destination lane / §9.5 plan).
 pub const WORDS_PER_INPUT_MAX: usize = 2;
-/// A move is `move_header`, `source_cell`, `destination_cell` (§9.6) — 6 bytes,
-/// never extended.
+/// A move is `move_header`, `source_lane`, `destination_lane` (§9.6) — 6 bytes,
+/// never extended. Both operands are six-bit BF lane indices, so the spelling is
+/// LANE and not "cell": a cell-granular index cannot express `MoveBF` at all.
 pub const MOVE_WORDS: usize = 3;
 
 /// The by-value kernel-argument cap the whole encoded program plus its descriptor
 /// metadata must fit (§9.1). There is no device-pointer program representation.
 pub const KERNEL_ARGUMENT_CEILING_BYTES: usize = 32_764;
+
+/// Alignment of the by-value launch descriptor, in bytes.
+///
+/// Sixteen, because an E4 value is four `BabyBear` limbs and the descriptor's
+/// vector members are `16`-byte quantities; a `__grid_constant__` aggregate
+/// therefore aligns to 16 and its trailing program array is padded to a multiple
+/// of it. Task 9 mirrors this into CUDA — the constant lives here only so Task 8
+/// can round the MEASURED program maximum up by exactly the ABI's requirement and
+/// no further.
+pub const DESCRIPTOR_ALIGNMENT_BYTES: usize = 16;
+/// [`DESCRIPTOR_ALIGNMENT_BYTES`] in u16 program words: eight.
+pub const DESCRIPTOR_ALIGNMENT_WORDS: usize = DESCRIPTOR_ALIGNMENT_BYTES / 2;
+const _: () = assert!(DESCRIPTOR_ALIGNMENT_WORDS == 8);
+
+/// Round a measured word count up to the descriptor's ABI alignment — the ONLY
+/// rounding Task 8 applies to a measurement.
+pub const fn align_program_words(words: usize) -> usize {
+    words.div_ceil(DESCRIPTOR_ALIGNMENT_WORDS) * DESCRIPTOR_ALIGNMENT_WORDS
+}
 
 // ── Frozen regime opcode tables (§6, §9.2) ───────────────────────────────────
 
@@ -344,9 +364,12 @@ pub const fn lower_bound_program_words(unary_terms: usize, binary_terms: usize) 
 
 /// Moves this bound BUDGETS per reusable projection.
 ///
-/// This is an **assumption**, not a derived bound — see
-/// [`upper_bound_program_words`]. It is named so the assumption is greppable and
-/// so Task 8 can check the realized move count against it.
+/// Still an **assumption**, not a derived bound — see [`upper_bound_program_words`]
+/// — but no longer an unmeasured one: Task 8 realized the whole corpus through the
+/// real placer and encoder at every budget and emitted
+/// [`in_scope::REALIZED_MOVES`] `== 0` moves in 1,710 placements. The budget is
+/// therefore pure slack, and NOTHING is sized from it: the descriptor ABI is sized
+/// from [`in_scope::MAX_REALIZED_PROGRAM_WORDS`], a measurement.
 pub const ASSUMED_MOVES_PER_REUSABLE_PROJECTION: usize = 1;
 
 /// A conservative maximum program stream, with ONE part proven and ONE part
@@ -375,9 +398,32 @@ pub const ASSUMED_MOVES_PER_REUSABLE_PROJECTION: usize = 1;
 /// coordinate before any verdict changed, which is why
 /// [`in_scope::INCONCLUSIVE_COORDINATES`] `== 0` stands.
 ///
-/// TODO(task-8): once the real encoder exists, compare the REALIZED move count per
-/// coordinate against `reusable_projections * ASSUMED_MOVES_PER_REUSABLE_PROJECTION`
-/// and either pin the ratio or replace this term with the encoder's own count.
+/// **Resolved by Task 8 (this is the former `TODO(task-8)`).** The real placer and
+/// the real encoder have now run over every in-scope coordinate at every budget —
+/// [`in_scope::REALIZED_PLACEMENTS`] placements — and emitted
+/// [`in_scope::REALIZED_MOVES`] moves. The realized ratio against the budgeted
+/// `reusable_projections * ASSUMED_MOVES_PER_REUSABLE_PROJECTION` is therefore
+/// exactly ZERO, and the whole move term of this bound is slack.
+///
+/// The TODO's two options were "pin the ratio" or "replace this term with the
+/// encoder's own count". NEITHER is taken, deliberately:
+///
+///   * pinning `realized / budgeted == 0` would pin an accident. Task 5's repair
+///     emits a move only when an E4 fill finds no free quad while live BF
+///     occupants block one, and the corpus's mixed-width pressure never reaches
+///     that state at c2..c16. A future layer could; the budget must survive it.
+///   * substituting the measured count would turn a BOUND into a MEASUREMENT. This
+///     function is the a-priori guard Task 3's census sizes unmeasured coordinates
+///     with, and a bound that assumes zero moves would stop bounding anything.
+///
+/// The TODO existed because an unmeasured assumption was load-bearing. It is no
+/// longer load-bearing: nothing is sized from this function any more. The
+/// descriptor ABI is sized from [`in_scope::MAX_REALIZED_PROGRAM_WORDS`], a
+/// measurement of the real encoder, which came in at
+/// [`in_scope::MAX_REALIZED_PROGRAM_BYTES`] `== 11_518` against this bound's
+/// [`in_scope::MAX_UPPER_BOUND_PROGRAM_BYTES`] `== 19_396` — loose by 1.68x,
+/// exactly as a conservative bound should be. `bwd_coeff_budget_sweep_report`
+/// re-measures both numbers and fails if either moves.
 pub const fn upper_bound_program_words(
     unary_terms: usize,
     binary_terms: usize,
@@ -456,6 +502,69 @@ pub mod in_scope {
     /// continuation opcodes 3..7 invalid.
     pub const MAX_CONTINUATION_STANDALONE_PRODUCTS: usize = 0;
 
+    // ── Task 8: the REAL encoder's measurements ──────────────────────────────
+    //
+    // Everything above this line is a bound or a population count Task 3 derived
+    // from the lowered IR. Everything below is what the real pager, placer, binder
+    // and encoder ACTUALLY produced over the whole corpus at every budget
+    // `c2`..`c16`. Task 9's ABI is sized from THESE, never from the bounds:
+    // `bwd_coeff_budget_sweep_report` recomputes each one and fails on any drift.
+
+    /// Programs the sweep realizes: every in-scope coordinate at every budget.
+    /// Also the placement count the move measurement is taken over.
+    pub const REALIZED_PLACEMENTS: usize = COORDINATES * BUDGETS;
+    /// Cell budgets per coordinate, `c2`..`c16` inclusive.
+    pub const BUDGETS: usize = 15;
+
+    /// Moves the real placer emitted across all [`REALIZED_PLACEMENTS`]
+    /// placements. ZERO.
+    ///
+    /// Task 5's repair emits a move only when an E4 fill finds no free quad and
+    /// live BF occupants block one; the corpus's mixed-width pressure never
+    /// reaches that state at any budget. This retires the unmeasured half of
+    /// [`super::ASSUMED_MOVES_PER_REUSABLE_PROJECTION`] — see the note there for
+    /// why the bound still budgets moves anyway.
+    pub const REALIZED_MOVES: usize = 0;
+
+    /// The largest program the REAL encoder emits, in u16 words, over every
+    /// in-scope coordinate and every budget.
+    ///
+    /// **This is the number Task 9 sizes the by-value descriptor's program array
+    /// from.** It is a measurement, not a bound: it is what
+    /// [`crate::bwd::coeff::encode::encode_program`] produced, after the
+    /// §12.1 encoding certificate accepted it.
+    pub const MAX_REALIZED_PROGRAM_WORDS: usize = 5_759;
+    /// [`MAX_REALIZED_PROGRAM_WORDS`] in bytes.
+    pub const MAX_REALIZED_PROGRAM_BYTES: usize = program_bytes(MAX_REALIZED_PROGRAM_WORDS);
+    /// The `(circuit, layer, regime)` that realizes it, so a drift in the maximum
+    /// says WHERE immediately.
+    pub const MAX_REALIZED_PROGRAM_COORDINATE: &str =
+        "blake2_with_extended_control_layout_gkr.json L0 Ext";
+    /// The BUDGET that realizes it — `c3`, not `c16`.
+    ///
+    /// Worth pinning because it is counter-intuitive. Program length is not
+    /// monotone in the cell budget: a bigger cell file retains more projections,
+    /// which turns `FillSource` inputs (input word + destination-lane extension)
+    /// into resident reads (input word alone), so the longest stream comes from a
+    /// SMALL budget that still fills constantly, not from the largest one. `c2`
+    /// fills even more but pages so aggressively that it re-uses fewer distinct
+    /// records. The corpus maximum therefore sits at the c3 turning point.
+    pub const MAX_REALIZED_PROGRAM_CELLS: u8 = 3;
+
+    /// The by-value descriptor's program array length, in u16 words:
+    /// [`MAX_REALIZED_PROGRAM_WORDS`] rounded up to the descriptor's 16-byte ABI
+    /// alignment and NOT ONE WORD FURTHER.
+    ///
+    /// The remaining `KERNEL_ARGUMENT_CEILING_BYTES - DESCRIPTOR_PROGRAM_BYTES` is
+    /// deliberately NOT claimed as headroom. Task 9 puts a by-value array of this
+    /// length into every launch descriptor, so an unearned word is unearned
+    /// kernel-argument budget in every kernel launch, forever. If a future circuit
+    /// needs more, this constant is re-measured and moved — that is a deliberate
+    /// act with a test behind it, which speculative headroom would have hidden.
+    pub const DESCRIPTOR_PROGRAM_WORDS: usize = align_program_words(MAX_REALIZED_PROGRAM_WORDS);
+    /// [`DESCRIPTOR_PROGRAM_WORDS`] in bytes: 16-byte aligned by construction.
+    pub const DESCRIPTOR_PROGRAM_BYTES: usize = program_bytes(DESCRIPTOR_PROGRAM_WORDS);
+
     /// Every in-scope coordinate's UPPER bound fits, so no coordinate is left
     /// inconclusive for Task 8's real encoder — at the program-stream level.
     pub const INCONCLUSIVE_COORDINATES: usize = 0;
@@ -475,6 +584,19 @@ pub mod in_scope {
     const _: () = assert!(MAX_SOURCE_WINDOWS_USED <= MAX_SOURCE_WINDOWS);
     const _: () = assert!(MAX_LOWER_BOUND_PROGRAM_BYTES <= KERNEL_ARGUMENT_CEILING_BYTES);
     const _: () = assert!(MAX_UPPER_BOUND_PROGRAM_BYTES <= KERNEL_ARGUMENT_CEILING_BYTES);
+
+    // The measurement sits between the two bounds it is supposed to sit between,
+    // and the descriptor array is the measurement rounded up by strictly less than
+    // one alignment quantum.
+    const _: () = assert!(MAX_REALIZED_PROGRAM_BYTES >= MAX_LOWER_BOUND_PROGRAM_BYTES);
+    const _: () = assert!(MAX_REALIZED_PROGRAM_BYTES <= MAX_UPPER_BOUND_PROGRAM_BYTES);
+    const _: () = assert!(DESCRIPTOR_PROGRAM_WORDS >= MAX_REALIZED_PROGRAM_WORDS);
+    const _: () = assert!(
+        DESCRIPTOR_PROGRAM_WORDS - MAX_REALIZED_PROGRAM_WORDS < DESCRIPTOR_ALIGNMENT_WORDS
+    );
+    const _: () = assert!(DESCRIPTOR_PROGRAM_BYTES % DESCRIPTOR_ALIGNMENT_BYTES == 0);
+    const _: () = assert!(DESCRIPTOR_PROGRAM_BYTES < KERNEL_ARGUMENT_CEILING_BYTES);
+    const _: () = assert!(REALIZED_PLACEMENTS == 1_710);
 }
 
 /// The same census INCLUDING the conditional `blake2_with_compression` attempt

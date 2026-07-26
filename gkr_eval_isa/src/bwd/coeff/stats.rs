@@ -146,6 +146,40 @@ pub fn window_count(columns: &BTreeSet<usize>) -> usize {
     windows
 }
 
+/// Endpoint resolutions of each source that NO schedule can avoid, indexed by
+/// [`SourceId`](super::model::SourceId).
+///
+/// A pure function of the term set — no prices, no order, no residency — which is
+/// what makes it a floor rather than a measurement:
+///
+///   * a source nothing consumes is read zero times;
+///   * a source consumed only at `Endpoint0` needs `s0` once; and
+///   * a source any term consumes at `Delta` needs both `s0` and `s1`, because
+///     `ds = s1 - s0` (§8) cannot be formed from one of them — and once both are
+///     read, a cache can serve every later use of EITHER projection, including an
+///     `Endpoint0` use that a `Delta` resolution exposes for free (§7.1).
+///
+/// Multiplying entry `i` by source `i`'s per-endpoint byte price gives the read
+/// floor [`crate::bwd::coeff::artifact::total_read_floor_bytes`] reports §15's
+/// percentage against. The bound is TIGHT: with enough lanes the pager retains
+/// every projection that has a later use, so the realized traffic reaches it.
+pub fn compulsory_endpoint_reads(lowered: &CoeffLayer) -> Vec<u8> {
+    let mut reads = vec![0u8; lowered.sources.len()];
+    for term in &lowered.terms {
+        term.for_each_projection_use(|p| {
+            let Some(slot) = reads.get_mut(p.source.0 as usize) else {
+                return;
+            };
+            let needed = match p.projection {
+                crate::bwd::coeff::model::Projection::Endpoint0 => 1,
+                crate::bwd::coeff::model::Projection::Delta => 2,
+            };
+            *slot = (*slot).max(needed);
+        });
+    }
+    reads
+}
+
 /// Windows the whole source table needs under the fixed 128-column rule.
 pub fn source_window_count(lowered: &CoeffLayer, distilled: &DistilledLayer) -> usize {
     let mut per_family: BTreeMap<WindowFamily, BTreeSet<usize>> = BTreeMap::new();
@@ -479,8 +513,12 @@ pub fn census_coeff_layer(
     //     and for a native dual that one plan word covers the whole pair); and
     //   * moves — ASSUMED at `ASSUMED_MOVES_PER_REUSABLE_PROJECTION` per reusable
     //     projection. Design §7.3 does not cap the moves Task 5's placement repair
-    //     emits, so a schedule could exceed this half. See the TODO(task-8) on
-    //     `upper_bound_program_words` and the 3.64x exposure recorded there.
+    //     emits, so a schedule could exceed this half. Task 8 measured the real
+    //     count — `in_scope::REALIZED_MOVES == 0` over 1,710 placements — and left
+    //     the budget in as slack rather than pinning an accident; the reasoning and
+    //     the 3.64x exposure are on `upper_bound_program_words`. Nothing is sized
+    //     from this bound: the descriptor ABI uses the measurement
+    //     `in_scope::MAX_REALIZED_PROGRAM_WORDS`.
     c.upper_bound_program_bytes = 2
         * (upper_words
             + c.reusable_projections * MOVE_WORDS * ASSUMED_MOVES_PER_REUSABLE_PROJECTION);

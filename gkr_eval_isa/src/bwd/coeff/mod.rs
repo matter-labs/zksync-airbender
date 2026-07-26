@@ -13,14 +13,17 @@
 //!   * [`limits`] — the FROZEN wire-format bounds and regime opcode tables, plus
 //!     the exact corpus maxima the census measured.
 //!
-//! Everything physical is deliberately absent: no moves, no cells, no paging, no
-//! source-window binding, no wire encoding, no artifact. Those are SCHEDULE
-//! concerns layered on this IR later, and a [`CoeffTerm`] must never grow to carry
-//! them.
+//! Everything physical is deliberately absent FROM THE IR: no moves, no cells, no
+//! paging, no source-window binding, no wire encoding. Those are SCHEDULE concerns,
+//! and they live in their own strictly later modules — [`schedule`] (paging),
+//! [`place`] (cells and moves), [`bind`] (source windows), [`encode`] (the u16
+//! wire), [`artifact`] (the deterministic `c2`-`c16` schedules, their replay and
+//! the exact report). A [`CoeffTerm`] must never grow to carry any of it.
 //!
 //! One backward production lineage: there is no format version, no compatibility
 //! decoder, and no old/new switch here.
 
+pub mod artifact;
 pub mod bind;
 pub mod encode;
 pub mod interp;
@@ -31,6 +34,14 @@ pub mod place;
 pub mod schedule;
 pub mod stats;
 
+pub use artifact::{
+    ArtifactError, ArtifactRegime, ArtifactScore, BudgetSchedule, BudgetTotals, ChainProgress,
+    CircuitArtifact, CompiledCoordinate, CoordinateArtifact, CoordinateReport, CorpusSummary,
+    ProgramReport, Realization, artifact_bytes, artifact_file_name, budget_totals,
+    compile_coordinate, digest, lower_and_price, percent_above_floor_table, program_digest,
+    read_circuit_artifact, realize, replay_coordinate, summarize, total_read_floor_bytes,
+    write_circuit_artifact,
+};
 pub use bind::{
     BoundColumn, BoundInput, BoundSourceWindow, CoeffSourceBinding, SourceBindError,
     SourceCertificateError, bind_coeff_sources, certify_source_binding,
@@ -71,7 +82,7 @@ pub use schedule::{
 };
 pub use stats::{
     CoeffCensus, CoeffCensusFailure, CoeffCensusRow, census_coeff_layer, census_csv, census_layer,
-    live_term_categories, source_window_count,
+    compulsory_endpoint_reads, live_term_categories, source_window_count,
 };
 pub use model::{
     CoeffChallenge, CoeffError, CoeffLayer, CoeffProduct, CoeffSource, CoeffTerm,
