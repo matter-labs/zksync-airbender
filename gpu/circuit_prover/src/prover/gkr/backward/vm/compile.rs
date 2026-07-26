@@ -1,8 +1,8 @@
-// Every item here is consumed by `vm/gpu_tests.rs`, which is parked behind the
-// `any()` gate in `vm/mod.rs` until Task 10 rewrites it. Remove this allow with
-// that gate — it exists ONLY because the consumer is dark, which is a different
-// reason from the ABI-lands-before-its-consumers allow in `desc.rs`/`lower.rs`.
-#![allow(dead_code)] // TASK 10: remove with the `any()` gate on `mod gpu_tests`.
+//! Artifact-certified backward fixtures for the GPU tests.
+//!
+//! Task 11 replaces this module with the coefficient-ISA add/sub case; Task 10's
+//! source-resolution tests are synthetic and do not consume it, so the loader
+//! below is exercised only by its own `compile/tests.rs`.
 
 #[cfg(all(test, feature = "bench"))]
 use std::path::PathBuf;
@@ -25,6 +25,10 @@ use gkr_eval_isa::fwd::compile::build_cross_layer_field_map;
 /// invoke a schedule or pager solver. `compile_backward_plan_artifact` rebuilds
 /// and certifies the selected plan against its published digest and score.
 #[cfg(all(test, feature = "bench"))]
+// TASK 11 replaces this loader; `compile/tests.rs` reads `compiled`,
+// `distilled` and `fragment_order_len`, and the rest were the retired GPU
+// test's inputs. Scoped to the struct so a NEW unread field still warns.
+#[allow(dead_code)]
 pub(crate) struct AddSubBwdVmCase {
     pub(crate) dag: DagCircuit,
     pub(crate) canonical: DagLayer,

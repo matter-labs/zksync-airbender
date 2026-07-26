@@ -190,6 +190,27 @@ pub(crate) enum BwdCoeffLowerError {
         expected: u8,
         actual: u8,
     },
+    /// The compiled program's layer-wide target depth is not this round.
+    ///
+    /// The fold prelude builds its weights from `round` (it is handed
+    /// `n_round_challenges` as its target depth), while the device resolves a
+    /// window's catch-up from `target_depth - backing_depth`. The two only name
+    /// the same challenges when the layer's target depth IS the round, so a
+    /// mismatch would weight a correct-looking fold with the wrong challenges —
+    /// silently, in a release kernel with no error channel.
+    RoundTargetDepthMismatch { round: u8, target_depth: u8 },
+    /// A window's catch-up distance is not one the runtime factor bank can
+    /// weight.
+    ///
+    /// `ab_gkr_bwd_coeff_build_fold_factors_kernel` fills exactly two groups:
+    /// the depth-one pair and one depth-`fold_depth` leaf table (§10.2). So a
+    /// window is either already at target depth, one fold behind, or has never
+    /// caught up — nothing between.
+    UnsupportedFoldDelta {
+        window: u8,
+        delta: u8,
+        fold_depth: u8,
+    },
     /// A publish range overlaps a read range or another publish range.
     UnsafePublishAlias { window: u8, other: u8 },
     /// The cell budget is outside c2..c16.
@@ -274,6 +295,14 @@ pub(crate) fn lower_bwd_coeff(
             n_round_challenges: runtime.n_round_challenges,
         });
     }
+    // ...and the program's own target depth has to be that same round, or the
+    // prelude's weights belong to a different fold than the device performs.
+    if binding.target_depth != runtime.round {
+        return Err(BwdCoeffLowerError::RoundTargetDepthMismatch {
+            round: runtime.round,
+            target_depth: binding.target_depth,
+        });
+    }
     // A release kernel has no error channel, so the host is the only place a
     // null it would dereference can be reported. The device keeps its own guard
     // as defence in depth against a hand-built descriptor.
@@ -322,6 +351,7 @@ pub(crate) fn lower_bwd_coeff(
             procedural_kind,
             columns,
             binding.target_depth,
+            fold_depth,
             bound,
         )?;
     }
@@ -383,6 +413,7 @@ fn lower_window(
     procedural_kind: Option<u8>,
     columns: usize,
     layer_target_depth: u8,
+    fold_depth: u8,
     bound: &ResolvedBwdCoeffSourceWindow,
 ) -> Result<BwdCoeffSourceWindow, BwdCoeffLowerError> {
     if bound.target_depth != layer_target_depth {
@@ -399,6 +430,17 @@ fn lower_window(
             window,
             backing_depth: bound.backing_depth,
             target_depth: bound.target_depth,
+        });
+    }
+    // The device's bounded lazy resolver indexes the runtime factor bank by
+    // catch-up distance, and the bank holds only the depth-one pair and one
+    // depth-`fold_depth` table.
+    let delta = bound.target_depth - bound.backing_depth;
+    if delta > fold_depth || !(delta == 0 || delta == 1 || delta == fold_depth) {
+        return Err(BwdCoeffLowerError::UnsupportedFoldDelta {
+            window,
+            delta,
+            fold_depth,
         });
     }
     // §10.2's materialization policy is static, not a per-window choice.

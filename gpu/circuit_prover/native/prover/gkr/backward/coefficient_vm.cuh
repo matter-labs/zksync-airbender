@@ -105,6 +105,8 @@ static_assert(BWD_COEFF_SOURCE_WINDOW_CAP <= BWD_COEFF_MAX_ENCODABLE_SOURCE_WIND
 constexpr u32 BWD_COEFF_LANE_BITS = 6;
 constexpr u16 BWD_COEFF_LANE_MASK = (1u << BWD_COEFF_LANE_BITS) - 1;
 constexpr u32 BWD_COEFF_LANES_PER_CELL = 4;
+constexpr u32 BWD_COEFF_LANES_PER_CELL_LOG2 = 2;
+static_assert(1u << BWD_COEFF_LANES_PER_CELL_LOG2 == BWD_COEFF_LANES_PER_CELL, "E4 cell lane count is not a power of two");
 constexpr u32 BWD_COEFF_MIN_BUDGET_CELLS = 2;
 constexpr u32 BWD_COEFF_MAX_BUDGET_CELLS = 16;
 static_assert(BWD_COEFF_LANE_MASK + 1 == BWD_COEFF_MAX_BUDGET_CELLS * BWD_COEFF_LANES_PER_CELL, "six lane bits must address exactly the c16 cell file");
@@ -207,6 +209,149 @@ static_assert(!bwd_coeff_cell_word_is_pair_form(true, BWD_COEFF_R0_OP_C2_PRODUCT
 static_assert(!bwd_coeff_cell_word_is_pair_form(true, BWD_COEFF_R0_OP_C0_LINEAR_E4),
               "an R0 opcode numerically equal to the continuation dual opcode is NOT a pair form");
 
+// ── Operand shape: arity, role and per-position width (sections 6, 9.1) ─────
+//
+// Mirrors `gkr_eval_isa::bwd::coeff::encode::{category_arity, category_role,
+// operand_width, move_width, is_move}`; `desc.rs` pins these exact numbers
+// against those functions, so a divergence fails the Rust build.
+//
+// Operand width is a function of (OPCODE, POSITION) and of nothing else:
+// `C2ProductBF_E4` fixes BF first and E4 second, and a resident `Cell` operand
+// carries no window at all, so its width CANNOT come from a source descriptor.
+
+constexpr u32 BWD_COEFF_ROLE_ENDPOINT0 = 0;
+constexpr u32 BWD_COEFF_ROLE_DELTA = 1;
+constexpr u32 BWD_COEFF_ROLE_PAIR = 2;
+// Not a role: the opcode is a standalone cell-file move, whose two words are
+// bare lanes rather than input records.
+constexpr u32 BWD_COEFF_ROLE_MOVE = 3;
+
+// Both opcode tables are dense from zero, so liveness is a single comparison.
+constexpr bool bwd_coeff_opcode_is_live(const bool regime_is_r0, const u16 opcode) {
+  return u32{opcode} < (regime_is_r0 ? BWD_COEFF_R0_LIVE_OPCODES : BWD_COEFF_EXT_LIVE_OPCODES);
+}
+
+constexpr bool bwd_coeff_is_move(const bool regime_is_r0, const u16 opcode) {
+  return regime_is_r0 ? (opcode == BWD_COEFF_R0_OP_MOVE_BF || opcode == BWD_COEFF_R0_OP_MOVE_E4) : (opcode == BWD_COEFF_EXT_OP_MOVE_E4);
+}
+
+// The width a move relocates (section 9.6): the OPCODE carries it, not the
+// operand, which is a bare six-bit BF lane either way.
+constexpr bool bwd_coeff_move_is_e4(const bool regime_is_r0, const u16 opcode) {
+  return regime_is_r0 ? opcode == BWD_COEFF_R0_OP_MOVE_E4 : opcode == BWD_COEFF_EXT_OP_MOVE_E4;
+}
+
+constexpr u32 bwd_coeff_role(const bool regime_is_r0, const u16 opcode) {
+  if (bwd_coeff_is_move(regime_is_r0, opcode))
+    return BWD_COEFF_ROLE_MOVE;
+  if (regime_is_r0)
+    return (opcode == BWD_COEFF_R0_OP_C0_LINEAR_BF || opcode == BWD_COEFF_R0_OP_C0_LINEAR_E4) ? BWD_COEFF_ROLE_ENDPOINT0 : BWD_COEFF_ROLE_DELTA;
+  return opcode == BWD_COEFF_EXT_OP_C0_LINEAR_E4 ? BWD_COEFF_ROLE_ENDPOINT0 : BWD_COEFF_ROLE_PAIR;
+}
+
+// Input RECORDS the opcode carries (section 9.1); zero for a move.
+constexpr u32 bwd_coeff_arity(const bool regime_is_r0, const u16 opcode) {
+  switch (bwd_coeff_role(regime_is_r0, opcode)) {
+  case BWD_COEFF_ROLE_MOVE:
+    return 0;
+  case BWD_COEFF_ROLE_ENDPOINT0:
+    return 1;
+  default:
+    return 2;
+  }
+}
+
+// Storage width of operand `position`: true = E4, false = BF. Only meaningful
+// below the opcode's arity.
+constexpr bool bwd_coeff_operand_is_e4(const bool regime_is_r0, const u16 opcode, const u32 position) {
+  if (!regime_is_r0)
+    return true; // Every live continuation operand is E4.
+  switch (opcode) {
+  case BWD_COEFF_R0_OP_C0_LINEAR_E4:
+  case BWD_COEFF_R0_OP_C2_PRODUCT_E4_E4:
+    return true;
+  case BWD_COEFF_R0_OP_C2_PRODUCT_BF_E4:
+    return position == 1;
+  default:
+    return false;
+  }
+}
+
+static_assert(bwd_coeff_role(true, BWD_COEFF_R0_OP_C0_LINEAR_BF) == BWD_COEFF_ROLE_ENDPOINT0, "R0 C0LinearBF role drift");
+static_assert(bwd_coeff_role(true, BWD_COEFF_R0_OP_C2_PRODUCT_BF_E4) == BWD_COEFF_ROLE_DELTA, "R0 C2ProductBF_E4 role drift");
+static_assert(bwd_coeff_role(false, BWD_COEFF_EXT_OP_DUAL_PRODUCT_E4) == BWD_COEFF_ROLE_PAIR, "continuation DualProductE4 role drift");
+static_assert(bwd_coeff_role(true, BWD_COEFF_R0_OP_MOVE_BF) == BWD_COEFF_ROLE_MOVE, "R0 MoveBF is not a term");
+static_assert(bwd_coeff_arity(true, BWD_COEFF_R0_OP_C0_LINEAR_BF) == 1, "R0 C0LinearBF arity drift");
+static_assert(bwd_coeff_arity(true, BWD_COEFF_R0_OP_C2_PRODUCT_E4_E4) == 2, "R0 C2ProductE4E4 arity drift");
+static_assert(bwd_coeff_arity(false, BWD_COEFF_EXT_OP_MOVE_E4) == 0, "a move carries no input record");
+// THE mixed-order rule: BF first, E4 second.
+static_assert(!bwd_coeff_operand_is_e4(true, BWD_COEFF_R0_OP_C2_PRODUCT_BF_E4, 0), "C2ProductBF_E4 operand 0 must be BF");
+static_assert(bwd_coeff_operand_is_e4(true, BWD_COEFF_R0_OP_C2_PRODUCT_BF_E4, 1), "C2ProductBF_E4 operand 1 must be E4");
+static_assert(!bwd_coeff_operand_is_e4(true, BWD_COEFF_R0_OP_C2_PRODUCT_BF_BF, 1), "C2ProductBFBF operand 1 must be BF");
+static_assert(bwd_coeff_operand_is_e4(false, BWD_COEFF_EXT_OP_DUAL_PRODUCT_E4, 0), "continuation operands are E4");
+static_assert(bwd_coeff_move_is_e4(true, BWD_COEFF_R0_OP_MOVE_E4) && !bwd_coeff_move_is_e4(true, BWD_COEFF_R0_OP_MOVE_BF), "R0 move width drift");
+static_assert(bwd_coeff_opcode_is_live(true, 6) && !bwd_coeff_opcode_is_live(true, 7), "R0 opcode 7 is deliberately dead");
+static_assert(bwd_coeff_opcode_is_live(false, 2) && !bwd_coeff_opcode_is_live(false, 3), "continuation opcodes 3..7 are deliberately dead");
+
+// ── Decoded input word (sections 9.4, 9.5) ──────────────────────────────────
+//
+// Pure bit extraction: no bounds check, no canonical-form check and no
+// resolution. Release kernels trust validated artifacts (section 12); the
+// checks live in the host validator and in the validation-only probe kernel
+// declared at the bottom of this header.
+//
+// The ONE thing this must get right is ABI FACT 1: `first_access` is read only
+// in the source-bearing branch, AFTER the mode dispatch, because in a `Cell`
+// word bit 2 is the Endpoint0 lane's bit 0.
+struct bwd_coeff_input {
+  u16 mode;
+  u16 window;
+  u16 column;
+  // `Cell` Endpoint0 lane, or a plan's Endpoint0 lane. Zero otherwise.
+  u16 endpoint0_lane;
+  // Packed-pair `Cell` Delta lane, or a plan's Delta lane. Zero otherwise.
+  u16 delta_lane;
+  // Plan actions (`BWD_COEFF_ACTION_*`); zero (`Direct`) outside a plan.
+  u16 endpoint0_action;
+  u16 delta_action;
+  // `FillSource` destination lane; zero otherwise.
+  u16 dst_lane;
+  bool first_access;
+  // u16 words this record occupies: 1 for `DirectSource`/`Cell`, 2 otherwise.
+  u32 words;
+};
+
+// `cell_is_pair_form` MUST come from `bwd_coeff_cell_word_is_pair_form` — the
+// opcode is the only discriminator (ABI FACT 2); the payload never is.
+DEVICE_FORCEINLINE bwd_coeff_input bwd_coeff_decode_input(const u16 *program, const u32 pc, const bool cell_is_pair_form) {
+  bwd_coeff_input in{};
+  const u16 word = program[pc];
+  in.mode = word & BWD_COEFF_INPUT_MODE_MASK;
+  in.words = 1;
+  if (in.mode == BWD_COEFF_MODE_CELL) {
+    in.endpoint0_lane = (word >> BWD_COEFF_CELL_ENDPOINT0_LANE_SHIFT) & BWD_COEFF_LANE_MASK;
+    if (cell_is_pair_form)
+      in.delta_lane = (word >> BWD_COEFF_CELL_DELTA_LANE_SHIFT) & BWD_COEFF_LANE_MASK;
+    return in;
+  }
+  in.first_access = ((word >> BWD_COEFF_INPUT_FIRST_ACCESS_SHIFT) & 1u) != 0;
+  in.window = (word >> BWD_COEFF_INPUT_WINDOW_SHIFT) & BWD_COEFF_INPUT_WINDOW_MASK;
+  in.column = (word >> BWD_COEFF_INPUT_COLUMN_SHIFT) & BWD_COEFF_INPUT_COLUMN_MASK;
+  if (in.mode == BWD_COEFF_MODE_DIRECT_SOURCE)
+    return in;
+  const u16 extension = program[pc + 1];
+  in.words = 2;
+  if (in.mode == BWD_COEFF_MODE_FILL_SOURCE) {
+    in.dst_lane = (extension >> BWD_COEFF_LANE_WORD_SHIFT) & BWD_COEFF_LANE_MASK;
+    return in;
+  }
+  in.endpoint0_action = (extension >> BWD_COEFF_PLAN_ENDPOINT0_ACTION_SHIFT) & BWD_COEFF_PLAN_ACTION_MASK;
+  in.endpoint0_lane = (extension >> BWD_COEFF_PLAN_ENDPOINT0_LANE_SHIFT) & BWD_COEFF_LANE_MASK;
+  in.delta_action = (extension >> BWD_COEFF_PLAN_DELTA_ACTION_SHIFT) & BWD_COEFF_PLAN_ACTION_MASK;
+  in.delta_lane = (extension >> BWD_COEFF_PLAN_DELTA_LANE_SHIFT) & BWD_COEFF_LANE_MASK;
+  return in;
+}
+
 // ── Source-window origin (section 10.2) ─────────────────────────────────────
 //
 // The BACKING field of the window's matrix — NOT the width of the values read
@@ -225,6 +370,21 @@ constexpr u8 BWD_COEFF_PROCEDURAL_INITS_AND_TEARDOWNS_LOW = 2;
 constexpr u8 BWD_COEFF_PROCEDURAL_INITS_AND_TEARDOWNS_HIGH = 3;
 constexpr u8 BWD_COEFF_PROCEDURAL_NONE = 0xff;
 
+// The four kinds are contiguous in BOTH numbering schemes, so the translation to
+// the incumbent `gkr_base_source_kind` the shared `gkr_virtual_base_value`
+// helper takes is one addition. Asserted, because a reordering on either side
+// would silently swap two procedural columns.
+static_assert(GKR_BASE_SOURCE_VIRTUAL_RANGE_CHECK_TIMESTAMP == GKR_BASE_SOURCE_VIRTUAL_RANGE_CHECK_16_BITS + 1, "virtual kind order drift");
+static_assert(GKR_BASE_SOURCE_VIRTUAL_INITS_AND_TEARDOWNS_LOW == GKR_BASE_SOURCE_VIRTUAL_RANGE_CHECK_16_BITS + 2, "virtual kind order drift");
+static_assert(GKR_BASE_SOURCE_VIRTUAL_INITS_AND_TEARDOWNS_HIGH == GKR_BASE_SOURCE_VIRTUAL_RANGE_CHECK_16_BITS + 3, "virtual kind order drift");
+static_assert(BWD_COEFF_PROCEDURAL_RANGE_CHECK_TIMESTAMP == BWD_COEFF_PROCEDURAL_RANGE_CHECK_16_BITS + 1, "procedural kind order drift");
+static_assert(BWD_COEFF_PROCEDURAL_INITS_AND_TEARDOWNS_LOW == BWD_COEFF_PROCEDURAL_RANGE_CHECK_16_BITS + 2, "procedural kind order drift");
+static_assert(BWD_COEFF_PROCEDURAL_INITS_AND_TEARDOWNS_HIGH == BWD_COEFF_PROCEDURAL_RANGE_CHECK_16_BITS + 3, "procedural kind order drift");
+
+constexpr gkr_base_source_kind bwd_coeff_procedural_source_kind(const u8 procedural_kind) {
+  return static_cast<gkr_base_source_kind>(GKR_BASE_SOURCE_VIRTUAL_RANGE_CHECK_16_BITS + procedural_kind);
+}
+
 // Section 10.2's static materialization policy: publish on first physical
 // access iff `target_depth >= BWD_COEFF_PUBLISH_TARGET_DEPTH`. One tunable
 // constant, not a scheduling decision.
@@ -241,6 +401,18 @@ constexpr u32 BWD_COEFF_WARP_SHIFT = 5;
 constexpr u32 BWD_COEFF_LANE_INDEX_MASK = BWD_COEFF_WARP_LANES - 1;
 constexpr u32 BWD_COEFF_FOLD_FACTOR_CAP = 10;
 constexpr u32 BWD_COEFF_MAX_FOLD_DEPTH = 3;
+
+// `ab_gkr_bwd_coeff_build_fold_factors_kernel` fills TWO weight groups: slots
+// 0..1 are the depth-ONE weights (a backing that is one fold behind) and slots
+// 2.. the depth-`fold_depth` weights (a backing that never caught up). Those are
+// the only two catch-up distances the bank can express, so a window's
+// `target_depth - backing_depth` must be 0, 1 or the launch's fold depth —
+// `lower_bwd_coeff` rejects anything else rather than let a release kernel
+// silently weight a depth-2 catch-up with depth-3 factors.
+constexpr u32 BWD_COEFF_FOLD_FACTOR_SHALLOW_BASE = 0;
+constexpr u32 BWD_COEFF_FOLD_FACTOR_DEEP_BASE = 2;
+static_assert(BWD_COEFF_FOLD_FACTOR_DEEP_BASE + (1u << BWD_COEFF_MAX_FOLD_DEPTH) == BWD_COEFF_FOLD_FACTOR_CAP,
+              "the fold-factor bank must hold exactly the depth-1 pair plus one full depth-D3 leaf table");
 
 static_assert(1u << BWD_COEFF_WARP_SHIFT == BWD_COEFF_WARP_LANES, "warp layout drift");
 // Same reason as BWD_COEFF_HEADER_OPCODE_SHIFT: derived constants still get a
@@ -357,6 +529,42 @@ static_assert(__builtin_offsetof(bwd_coeff_desc, program) % BWD_COEFF_DESC_ALIGN
 static_assert(sizeof(bwd_coeff_desc) == __builtin_offsetof(bwd_coeff_desc, program) + BWD_COEFF_PROGRAM_BYTE_CAP,
               "the program array must be the descriptor tail");
 
+// ── Validation-only source probe (sections 10, 12) ──────────────────────────
+//
+// Section 12 sanctions "host artifact checks and validation-only test kernels";
+// release kernels trust their descriptor. This is that test kernel: it drives
+// the SAME typed resolvers the release executors use, one value use at a time,
+// and writes out both projections of every operand instead of accumulating
+// them. It is what lets Task 10's source resolution be tested against the CPU
+// oracle BEFORE Task 11's header decode and arithmetic loop exist.
+//
+// It is never launched by production code.
+struct bwd_coeff_probe_record {
+  // The regime opcode of the term whose operands this record resolves. It fixes
+  // the arity, the role and the per-position width exactly as a decoded header
+  // would; the probe does not decode headers (that is Task 11).
+  u16 opcode;
+  // Index into `bwd_coeff_desc::program` of this record's FIRST input word.
+  u16 word;
+};
+
+static_assert(sizeof(bwd_coeff_probe_record) == 4, "bwd_coeff_probe_record ABI size drift");
+static_assert(alignof(bwd_coeff_probe_record) == 2, "bwd_coeff_probe_record ABI alignment drift");
+
+// Operand positions the probe reports per record. Two covers every live opcode.
+constexpr u32 BWD_COEFF_PROBE_OPERANDS = 2;
+
+// Sticky error bits, `atomicOr`-ed into the probe's single error word.
+constexpr u32 BWD_COEFF_PROBE_ERR_DEAD_OPCODE = 1u << 0;
+constexpr u32 BWD_COEFF_PROBE_ERR_MOVE_OPCODE = 1u << 1;
+constexpr u32 BWD_COEFF_PROBE_ERR_PROGRAM_OUT_OF_RANGE = 1u << 2;
+constexpr u32 BWD_COEFF_PROBE_ERR_WINDOW_OUT_OF_RANGE = 1u << 3;
+constexpr u32 BWD_COEFF_PROBE_ERR_LANE_OUT_OF_BUDGET = 1u << 4;
+constexpr u32 BWD_COEFF_PROBE_ERR_MISALIGNED_E4_LANE = 1u << 5;
+constexpr u32 BWD_COEFF_PROBE_ERR_MODE_ILLEGAL_FOR_ROLE = 1u << 6;
+constexpr u32 BWD_COEFF_PROBE_ERR_PLAN_ACTION_INVALID = 1u << 7;
+constexpr u32 BWD_COEFF_PROBE_ERR_UNSUPPORTED_FOLD_DELTA = 1u << 8;
+
 } // namespace airbender::prover::gkr
 
 // Runtime transcript-derived fold weights (section 10.2). Stream-ordered
@@ -379,3 +587,13 @@ EXTERN __global__ void ab_gkr_bwd_coeff_ext_d2_const_kernel(const __grid_constan
 EXTERN __global__ void ab_gkr_bwd_coeff_ext_d2_ptr_kernel(const __grid_constant__ airbender::prover::gkr::bwd_coeff_desc desc);
 EXTERN __global__ void ab_gkr_bwd_coeff_ext_d3_const_kernel(const __grid_constant__ airbender::prover::gkr::bwd_coeff_desc desc);
 EXTERN __global__ void ab_gkr_bwd_coeff_ext_d3_ptr_kernel(const __grid_constant__ airbender::prover::gkr::bwd_coeff_desc desc);
+
+// The validation-only source probe. `regime_is_r0` and `fold_depth` are runtime
+// here — the probe is not on any hot path, and one symbol keeps the test side
+// from having to mirror the whole specialization matrix. `endpoint0_out` and
+// `delta_out` each hold
+// `n_records * BWD_COEFF_PROBE_OPERANDS * desc.logical_rows` values, indexed
+// `(record * BWD_COEFF_PROBE_OPERANDS + position) * logical_rows + row`.
+EXTERN __global__ void ab_gkr_bwd_coeff_source_probe_kernel(const __grid_constant__ airbender::prover::gkr::bwd_coeff_desc desc, u32 regime_is_r0,
+                                                            u32 fold_depth, const airbender::prover::gkr::bwd_coeff_probe_record *records, u32 n_records,
+                                                            e4 *endpoint0_out, e4 *delta_out, u32 *error);

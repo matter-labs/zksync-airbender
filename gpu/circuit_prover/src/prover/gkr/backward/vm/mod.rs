@@ -12,15 +12,7 @@
 
 pub(crate) mod compile;
 pub(crate) mod desc;
-// ★ PARKED FOR TASK 10 ★ — `any()` is unconditionally false, so these 5,014
-// lines of GPU tests are NOT compiled. They still reference the retired
-// generic-VM lowering; Task 10 replaces the file wholesale.
-//
-// A `--exact` libtest run exits 0 when zero tests match, so a forgotten gate
-// would let Task 10's verification go green having run nothing. The tripwire
-// `abi_tests::retired_gpu_tests_are_still_parked_for_task_10` fails on purpose
-// until BOTH the `any()` below and the tripwire itself are removed.
-#[cfg(all(test, feature = "bench", any()))]
+#[cfg(all(test, feature = "bench"))]
 mod gpu_tests;
 pub(crate) mod lower;
 #[cfg(all(test, feature = "bench"))]

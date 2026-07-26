@@ -316,6 +316,168 @@ const _: () = {
     assert!(BWD_COEFF_EXT_LIVE_OPCODES <= BWD_COEFF_HEADER_OPCODE_MASK as usize + 1);
 };
 
+// ── Operand shape: arity, role and per-position width (§6, §9.1) ─────────────
+//
+// The CUDA half decodes an operand's WIDTH from `(opcode, position)` and from
+// nothing else — a resident `Cell` operand carries no window, so its width
+// cannot come from a source descriptor, and even a source-bearing operand's
+// width is not its window's backing field (a continuation program folds a base
+// matrix into E4). These mirrors exist so the device's opcode-shape table is
+// pinned against `gkr_eval_isa`'s, not merely against a comment.
+
+pub(crate) const BWD_COEFF_ROLE_ENDPOINT0: u32 = 0;
+pub(crate) const BWD_COEFF_ROLE_DELTA: u32 = 1;
+pub(crate) const BWD_COEFF_ROLE_PAIR: u32 = 2;
+/// Not a role: the opcode is a standalone cell-file move (§9.6), whose two
+/// words are bare lanes rather than input records.
+pub(crate) const BWD_COEFF_ROLE_MOVE: u32 = 3;
+
+/// Both opcode tables are dense from zero, so liveness is one comparison.
+pub(crate) const fn bwd_coeff_opcode_is_live(regime_is_r0: bool, opcode: u16) -> bool {
+    (opcode as usize)
+        < if regime_is_r0 {
+            BWD_COEFF_R0_LIVE_OPCODES
+        } else {
+            BWD_COEFF_EXT_LIVE_OPCODES
+        }
+}
+
+pub(crate) const fn bwd_coeff_is_move(regime_is_r0: bool, opcode: u16) -> bool {
+    if regime_is_r0 {
+        opcode == BWD_COEFF_R0_OP_MOVE_BF || opcode == BWD_COEFF_R0_OP_MOVE_E4
+    } else {
+        opcode == BWD_COEFF_EXT_OP_MOVE_E4
+    }
+}
+
+/// The width a move relocates: §9.6 puts it on the OPCODE, since both operands
+/// are bare six-bit BF lanes either way.
+pub(crate) const fn bwd_coeff_move_is_e4(regime_is_r0: bool, opcode: u16) -> bool {
+    if regime_is_r0 {
+        opcode == BWD_COEFF_R0_OP_MOVE_E4
+    } else {
+        opcode == BWD_COEFF_EXT_OP_MOVE_E4
+    }
+}
+
+pub(crate) const fn bwd_coeff_role(regime_is_r0: bool, opcode: u16) -> u32 {
+    if bwd_coeff_is_move(regime_is_r0, opcode) {
+        return BWD_COEFF_ROLE_MOVE;
+    }
+    if regime_is_r0 {
+        if opcode == BWD_COEFF_R0_OP_C0_LINEAR_BF || opcode == BWD_COEFF_R0_OP_C0_LINEAR_E4 {
+            BWD_COEFF_ROLE_ENDPOINT0
+        } else {
+            BWD_COEFF_ROLE_DELTA
+        }
+    } else if opcode == BWD_COEFF_EXT_OP_C0_LINEAR_E4 {
+        BWD_COEFF_ROLE_ENDPOINT0
+    } else {
+        BWD_COEFF_ROLE_PAIR
+    }
+}
+
+/// Input RECORDS the opcode carries (§9.1); zero for a move.
+pub(crate) const fn bwd_coeff_arity(regime_is_r0: bool, opcode: u16) -> usize {
+    match bwd_coeff_role(regime_is_r0, opcode) {
+        BWD_COEFF_ROLE_MOVE => 0,
+        BWD_COEFF_ROLE_ENDPOINT0 => 1,
+        _ => 2,
+    }
+}
+
+/// Storage width of operand `position`: `true` = E4. Only meaningful below the
+/// opcode's arity.
+pub(crate) const fn bwd_coeff_operand_is_e4(
+    regime_is_r0: bool,
+    opcode: u16,
+    position: usize,
+) -> bool {
+    if !regime_is_r0 {
+        // Every live continuation operand is E4.
+        return true;
+    }
+    match opcode {
+        BWD_COEFF_R0_OP_C0_LINEAR_E4 | BWD_COEFF_R0_OP_C2_PRODUCT_E4_E4 => true,
+        BWD_COEFF_R0_OP_C2_PRODUCT_BF_E4 => position == 1,
+        _ => false,
+    }
+}
+
+const _: () = {
+    use gkr_eval_isa::bwd::coeff::encode::{
+        category_arity, category_role, is_move, move_width, operand_width, OperandRole,
+    };
+    use gkr_eval_isa::bwd::coeff::schedule::ValueWidth;
+
+    /// The mirror's answers for one `(regime, opcode)`, against `gkr_eval_isa`'s
+    /// for the category that opcode names.
+    const fn check(regime_is_r0: bool, opcode: u16, category: TermCategory) {
+        assert!(bwd_coeff_opcode_is_live(regime_is_r0, opcode));
+        assert!(bwd_coeff_is_move(regime_is_r0, opcode) == is_move(category));
+        let role = bwd_coeff_role(regime_is_r0, opcode);
+        match category_role(category) {
+            None => assert!(role == BWD_COEFF_ROLE_MOVE),
+            Some(OperandRole::Endpoint0) => assert!(role == BWD_COEFF_ROLE_ENDPOINT0),
+            Some(OperandRole::Delta) => assert!(role == BWD_COEFF_ROLE_DELTA),
+            Some(OperandRole::Pair) => assert!(role == BWD_COEFF_ROLE_PAIR),
+        }
+        let arity = bwd_coeff_arity(regime_is_r0, opcode);
+        assert!(arity == category_arity(category));
+        match move_width(category) {
+            None => assert!(!bwd_coeff_is_move(regime_is_r0, opcode)),
+            Some(width) => assert!(
+                bwd_coeff_move_is_e4(regime_is_r0, opcode) == matches!(width, ValueWidth::E4)
+            ),
+        }
+        let mut position = 0;
+        while position < arity {
+            let is_e4 = bwd_coeff_operand_is_e4(regime_is_r0, opcode, position);
+            match operand_width(category, position) {
+                Some(ValueWidth::E4) => assert!(is_e4),
+                Some(ValueWidth::Bf) => assert!(!is_e4),
+                None => panic!("arity bounds the position"),
+            }
+            position += 1;
+        }
+    }
+
+    check(true, BWD_COEFF_R0_OP_C0_LINEAR_BF, TermCategory::C0LinearBf);
+    check(true, BWD_COEFF_R0_OP_C0_LINEAR_E4, TermCategory::C0LinearE4);
+    check(
+        true,
+        BWD_COEFF_R0_OP_C2_PRODUCT_BF_BF,
+        TermCategory::C2ProductBfBf,
+    );
+    check(
+        true,
+        BWD_COEFF_R0_OP_C2_PRODUCT_BF_E4,
+        TermCategory::C2ProductBfE4,
+    );
+    check(
+        true,
+        BWD_COEFF_R0_OP_C2_PRODUCT_E4_E4,
+        TermCategory::C2ProductE4E4,
+    );
+    check(true, BWD_COEFF_R0_OP_MOVE_BF, TermCategory::MoveBf);
+    check(true, BWD_COEFF_R0_OP_MOVE_E4, TermCategory::MoveE4);
+    check(
+        false,
+        BWD_COEFF_EXT_OP_C0_LINEAR_E4,
+        TermCategory::C0LinearE4,
+    );
+    check(
+        false,
+        BWD_COEFF_EXT_OP_DUAL_PRODUCT_E4,
+        TermCategory::DualProductE4,
+    );
+    check(false, BWD_COEFF_EXT_OP_MOVE_E4, TermCategory::MoveE4);
+
+    // The dead slots stay dead on this side too.
+    assert!(!bwd_coeff_opcode_is_live(true, 7));
+    assert!(!bwd_coeff_opcode_is_live(false, 3));
+};
+
 // ── ABI FACT 2: the packed pair `Cell` form is OPCODE-SCOPED ─────────────────
 
 /// Whether a `Cell` word under this `(regime, opcode)` reads bits 10..15 as a

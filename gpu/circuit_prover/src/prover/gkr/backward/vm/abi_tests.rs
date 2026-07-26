@@ -1013,12 +1013,20 @@ fn resolved_windows(windows: usize, target_depth: u8) -> Vec<ResolvedBwdCoeffSou
         .collect()
 }
 
+/// The round is the windows' own target depth: `lower_bwd_coeff` requires the
+/// two to agree, because the fold prelude derives its weights from the round
+/// while the device derives its catch-up from the window's depths.
 fn round_binding(windows: &[ResolvedBwdCoeffSourceWindow]) -> BwdCoeffRoundBinding<'_> {
+    let round = windows.first().map_or(0, |window| window.target_depth);
     BwdCoeffRoundBinding {
-        round: 0,
+        round,
         rows: 4_096,
-        round_challenges: std::ptr::null(),
-        n_round_challenges: 0,
+        round_challenges: if round == 0 {
+            std::ptr::null()
+        } else {
+            0x6000_0000 as *const E4
+        },
+        n_round_challenges: u32::from(round),
         windows,
         eq_low: 0x3000_0000 as *const E4,
         eq_sizes: GkrEqSizes::zeroed(),
@@ -1311,50 +1319,138 @@ fn the_device_pointer_bank_needs_a_pointer_when_it_has_entries() {
     assert!(2_000 > FLAT_CONST_MAX);
 }
 
-// ── Parked-work tripwire ─────────────────────────────────────────────────────
+// ── Round binding: depth policy and catch-up distances ───────────────────────
 
-/// **This test fails on purpose.** It is the loud half of the `any()` gate on
-/// `vm/gpu_tests.rs` (see `vm/mod.rs`).
-///
-/// The gate parks 5,014 lines of GPU tests that still target the retired
-/// generic-VM lowering. The danger is not the gate — it is that libtest
-/// **exits 0 when `--exact` matches zero tests**, so Task 10's verification
-/// would go green having executed nothing. A red test is the only signal that
-/// survives that, so this one stays red until the work is actually done.
-///
-/// It reports which of the two states the tree is in, and both are failures:
-/// the gate present, or the gate gone but the tripwire not yet deleted.
-#[test]
-fn retired_gpu_tests_are_still_parked_for_task_10() {
-    const VM_MOD: &str = include_str!("mod.rs");
-    const GATE: &str = r#"#[cfg(all(test, feature = "bench", any()))]"#;
-
-    if VM_MOD.contains(GATE) {
-        panic!(
-            "\nTASK 10 NOT DONE: {} lines of backward GPU tests are DARK.\n\
-             \n\
-             `vm/gpu_tests.rs` is gated off by `any()` in \
-             `gpu/circuit_prover/src/prover/gkr/backward/vm/mod.rs`, so it is not \
-             compiled and not run. libtest exits 0 when `--exact` matches zero \
-             tests, so Task 10's verification WOULD PASS WITHOUT RUNNING ANYTHING \
-             while this gate is in place.\n\
-             \n\
-             To fix, in this order:\n\
-             \x20 1. rewrite `vm/gpu_tests.rs` against the coefficient ABI (Task 10);\n\
-             \x20 2. delete `, any()` from the `#[cfg(...)]` on `mod gpu_tests;` in \
-             `vm/mod.rs`;\n\
-             \x20 3. delete this test (`retired_gpu_tests_are_still_parked_for_task_10`) \
-             from `vm/abi_tests.rs`.\n",
-            RETIRED_GPU_TEST_LINES
-        );
+/// A window whose backing sits `target_depth - backing_depth` folds behind.
+fn resolved_window_at(backing_depth: u8, target_depth: u8) -> ResolvedBwdCoeffSourceWindow {
+    let materialize = target_depth >= BWD_COEFF_PUBLISH_TARGET_DEPTH;
+    ResolvedBwdCoeffSourceWindow {
+        read: Some(bf_column(FAKE_READ_BASE)),
+        publish: materialize.then(|| bf_column(FAKE_PUBLISH_BASE)),
+        backing_depth,
+        target_depth,
+        materialize,
     }
-    panic!(
-        "\nThe `any()` gate on `vm/gpu_tests.rs` is GONE, so Task 10 has landed.\n\
-         Delete this tripwire test (`retired_gpu_tests_are_still_parked_for_task_10`) \
-         from `vm/abi_tests.rs`; it has no job left.\n"
-    );
 }
 
-/// Lines of GPU tests the `any()` gate is keeping dark, so the tripwire can say
-/// how much is at stake rather than just "some tests".
-const RETIRED_GPU_TEST_LINES: usize = 5_014;
+fn lower_one(
+    bound: &[ResolvedBwdCoeffSourceWindow],
+    target_depth: u8,
+) -> Result<super::lower::BwdCoeffSetup, BwdCoeffLowerError> {
+    lower_bwd_coeff(
+        &program(2, None),
+        &matrix_binding(1, target_depth),
+        &round_binding(bound),
+        Vec::new(),
+        std::ptr::null(),
+        BwdCoeffBank::Constant,
+    )
+}
+
+/// §10.2's materialization policy is ONE static constant, and the constant is
+/// three: below it nothing publishes, at or above it every source publishes on
+/// its first physical access. It is not a scheduling decision, not a per-window
+/// choice and not a search parameter, so the binder rejects a window that
+/// disagrees with the threshold in either direction.
+#[test]
+fn materialization_is_the_static_depth_three_threshold() {
+    assert_eq!(BWD_COEFF_PUBLISH_TARGET_DEPTH, 3);
+    for target_depth in 0..=4u8 {
+        let expected = target_depth >= BWD_COEFF_PUBLISH_TARGET_DEPTH;
+        let bound = [resolved_window_at(target_depth, target_depth)];
+        let setup = lower_one(&bound, target_depth)
+            .unwrap_or_else(|error| panic!("depth {target_depth} must lower: {error:?}"));
+        assert_eq!(
+            setup.desc.source_windows[0].materialize,
+            u8::from(expected),
+            "target depth {target_depth} publishes iff it is at or past the threshold"
+        );
+        assert_eq!(
+            setup.desc.source_windows[0].publish_base.is_null(),
+            !expected,
+            "a publish backing exists exactly when the window materializes"
+        );
+
+        // The threshold is not negotiable from either side.
+        let mut flipped = bound;
+        flipped[0].materialize = !expected;
+        flipped[0].publish = (!expected).then(|| bf_column(FAKE_PUBLISH_BASE));
+        assert_eq!(
+            lower_err(
+                lower_one(&flipped, target_depth),
+                "the depth-three policy is not a per-window choice",
+            ),
+            BwdCoeffLowerError::MaterializationPolicyMismatch {
+                window: 0,
+                target_depth,
+                materialize: !expected,
+            }
+        );
+    }
+}
+
+/// The runtime factor bank holds the depth-one pair and ONE depth-`fold_depth`
+/// leaf table, so a window is either already at target depth, exactly one fold
+/// behind, or has never caught up. A depth-two catch-up under D3 would be
+/// weighted with D3's challenges and produce a silently wrong fold.
+#[test]
+fn only_bank_backed_catch_up_distances_lower() {
+    for round in 0..=4u8 {
+        let fold_depth = bwd_coeff_fold_depth(round);
+        for delta in 0..=round.min(BWD_COEFF_MAX_FOLD_DEPTH) {
+            let bound = [resolved_window_at(round - delta, round)];
+            let supported =
+                delta <= fold_depth && (delta == 0 || delta == 1 || delta == fold_depth);
+            let result = lower_one(&bound, round);
+            if supported {
+                assert!(
+                    result.is_ok(),
+                    "round {round} (D{fold_depth}) must accept a depth-{delta} catch-up"
+                );
+            } else {
+                assert_eq!(
+                    lower_err(
+                        result,
+                        "an unweightable catch-up distance must be rejected on the host",
+                    ),
+                    BwdCoeffLowerError::UnsupportedFoldDelta {
+                        window: 0,
+                        delta,
+                        fold_depth,
+                    },
+                    "round {round} (D{fold_depth}) must reject a depth-{delta} catch-up"
+                );
+            }
+        }
+    }
+}
+
+/// The prelude is handed `n_round_challenges` as its target depth while the
+/// device resolves from the window's own depths; the two only name the same
+/// challenges when the layer's target depth IS the round.
+#[test]
+fn the_layer_target_depth_must_be_the_round() {
+    let bound = [resolved_window_at(1, 2)];
+    let runtime = BwdCoeffRoundBinding {
+        round: 3,
+        n_round_challenges: 3,
+        ..round_binding(&bound)
+    };
+    assert_eq!(
+        lower_err(
+            lower_bwd_coeff(
+                &program(2, None),
+                &matrix_binding(1, 2),
+                &runtime,
+                Vec::new(),
+                std::ptr::null(),
+                BwdCoeffBank::Constant,
+            ),
+            "a layer bound for a different depth than the round must be rejected",
+        ),
+        BwdCoeffLowerError::RoundTargetDepthMismatch {
+            round: 3,
+            target_depth: 2,
+        }
+    );
+}

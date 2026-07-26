@@ -1,8 +1,10 @@
-// Every item here is consumed by `vm/gpu_tests.rs`, which is parked behind the
-// `any()` gate in `vm/mod.rs` until Task 10 rewrites it. Remove this allow with
-// that gate — it exists ONLY because the consumer is dark, which is a different
-// reason from the ABI-lands-before-its-consumers allow in `desc.rs`/`lower.rs`.
-#![allow(dead_code)] // TASK 10: remove with the `any()` gate on `mod gpu_tests`.
+//! Sweep-report rendering for the backward GPU benchmark.
+//!
+//! Task 12 replaces this module with the coefficient-ISA sweep; what survives
+//! here is the shape of that report — the timing summary, the CSV, the
+//! ranking and the NCU coordinate selector — each covered by its own unit test
+//! below. `time_cuda_launches` and `upload_incumbent_coefficients` are the two
+//! GPU-touching helpers Task 12's sweep will call.
 
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
@@ -17,20 +19,29 @@ use crate::prover::ProverContext;
 use crate::prover::gkr::backward::flat::FLAT_CONST_MAX;
 use crate::upstream::Field;
 
+// TASK 12 rewires the sweep that consumes this; the retired VM's sweep test
+// was its only caller. Scoped per item so nothing else in this module can go
+// dead unnoticed in the meantime.
+#[allow(dead_code)]
 pub(super) const WARMUP_ITERS: usize = 10;
+#[allow(dead_code)]
 pub(super) const TIMING_ITERS: usize = 30;
+#[allow(dead_code)]
 pub(super) const SWEEP_LOG_PATH: &str = "/tmp/plan5-bwd-vm-sweep.log";
+#[allow(dead_code)]
 pub(super) const NCU_SELECTOR_ENV: &str = "PLAN5_BWD_VM_NCU_COORD";
 
 /// An exact single coordinate for profiler collection, or the complete sweep.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum SweepSelection {
+    #[allow(dead_code)] // TASK 12: only `from_env` produces the whole sweep.
     All,
     R0 { budget_cells: usize },
     Ext { budget_cells: usize, round: u8 },
 }
 
 impl SweepSelection {
+    #[allow(dead_code)] // TASK 12: driven by the sweep test.
     pub(super) fn from_env() -> Self {
         match std::env::var(NCU_SELECTOR_ENV) {
             Ok(value) => parse_ncu_selector(&value)
@@ -54,10 +65,12 @@ impl SweepSelection {
         }
     }
 
+    #[allow(dead_code)] // TASK 12: driven by the sweep test.
     pub(super) fn needs_ext_setup(self) -> bool {
         !matches!(self, Self::R0 { .. })
     }
 
+    #[allow(dead_code)] // TASK 12: driven by the sweep test.
     pub(super) fn needs_incumbent_round(self, round: u8) -> bool {
         match self {
             Self::All => round <= 3,
@@ -78,6 +91,7 @@ impl SweepSelection {
         }
     }
 
+    #[allow(dead_code)] // TASK 12: driven by the sweep test.
     pub(super) fn stops_after_ext_round(self, round: u8) -> bool {
         match self {
             Self::All => round == 3,
@@ -88,6 +102,7 @@ impl SweepSelection {
         }
     }
 
+    #[allow(dead_code)] // TASK 12: driven by the sweep test.
     pub(super) fn assert_report_rows(self, rows: &[SweepRow]) {
         if !matches!(self, Self::All) {
             assert_eq!(rows.len(), 1, "NCU selector must time one coordinate");
@@ -184,6 +199,7 @@ impl SweepRow {
 
 /// Time one already-prepared launch sequence. Poisoning is enqueued before the
 /// start event, so output reset is deliberately outside every measured span.
+#[allow(dead_code)] // TASK 12: called by the sweep test.
 pub(super) fn time_cuda_launches(
     stream: &CudaStream,
     warmups: usize,
@@ -216,6 +232,7 @@ pub(super) fn time_cuda_launches(
     Ok(TimingSummary::from_milliseconds(samples))
 }
 
+#[allow(dead_code)] // TASK 12: called by the sweep test.
 pub(super) fn upload_incumbent_coefficients(
     coefficients: &[E4],
     context: &ProverContext,
