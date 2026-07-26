@@ -486,6 +486,12 @@ pub enum CoeffCodecError {
     /// from the two operand fields ([`term_category`]), and a squared product
     /// cannot be mixed because one source has one field. Keep it for the same
     /// reason as [`CoeffCodecError::OperandWidthMismatch`].
+    ///
+    /// [`encode_instrs`] also raises it for the converse shape — a mixed category
+    /// carrying §9.1's SQUARED form, i.e. one record standing in for both
+    /// positions. That would encode cleanly and then ask a resolver to produce one
+    /// coordinate at two different widths, and it is the only place that shape is
+    /// rejected, so the GPU executor's mixed branch relies on it.
     MixedProductNotMixed { instr: u32 },
     /// An operand's fill writes lanes a LATER operand of the same term reads.
     ///
@@ -977,6 +983,26 @@ pub fn encode_instrs(
                         slots: arity,
                         uses: uses.len(),
                     });
+                }
+                // §9.1's squared form repeats ONE record at every position, so a
+                // MIXED-width opcode can never be squared: its positions disagree
+                // about the operand's width and one record cannot be both. As
+                // [`CoeffCodecError::MixedProductNotMixed`] says, lowering cannot
+                // produce this — the category is derived from the operand fields —
+                // so this is DEFENCE IN DEPTH against a hand-built instruction.
+                //
+                // It is load-bearing defence, though: unchecked, such a term
+                // encodes cleanly and then means "resolve this coordinate once at
+                // BF and consume it as an E4", which no resolver can honour. This
+                // is the ONLY check for it, and it is what lets the GPU executor's
+                // mixed branch carry none (§12.1: release kernels trust validated
+                // artifacts).
+                if uses.len() < arity
+                    && (1..arity).any(|position| {
+                        operand_width(*category, position) != operand_width(*category, 0)
+                    })
+                {
+                    return Err(CoeffCodecError::MixedProductNotMixed { instr: index });
                 }
                 out.push(header_word(opcode, coefficient.0 as u16));
                 let mut spans: Vec<std::ops::Range<usize>> = Vec::with_capacity(arity);

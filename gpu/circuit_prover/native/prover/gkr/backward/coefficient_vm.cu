@@ -534,10 +534,19 @@ DEVICE_FORCEINLINE void execute_term(const bwd_coeff_desc &desc, const u16 opcod
       break;
     }
     case BWD_COEFF_R0_OP_C2_PRODUCT_BF_E4: {
-      // The two positions have DIFFERENT widths, so byte-identical records
-      // cannot name one value and the squared rule is unreachable here. The
-      // assertion is the debug-build guard; the host validator is the real one.
-      assert(!operands.squared);
+      // The two positions have DIFFERENT widths, so one record cannot stand for
+      // both and section 9.1's squared rule is inapplicable here — this branch
+      // resolves both records unconditionally and never consults
+      // `operands.squared`.
+      //
+      // That is safe because the HOST rejects the shape:
+      // `encode_instrs` raises `CoeffCodecError::MixedProductNotMixed` for a
+      // mixed-width category carrying the squared form, and it is the only place
+      // that shape is rejected (section 12.1: release kernels trust validated
+      // artifacts). There is deliberately no device-side check: `native_build`
+      // compiles this translation unit with `-DNDEBUG` unconditionally, so an
+      // `assert` here would be dead in every build and would document protection
+      // that does not exist.
       const bf_value a = resolve_use_bf(desc, operands.first, role, row, cells);
       const e4_value b = resolve_use_e4<FOLD_DEPTH>(desc, operands.second, role, row, cells);
       acc_c2 = accumulate_bf_e4(acc_c2, k, a.delta, b.delta);

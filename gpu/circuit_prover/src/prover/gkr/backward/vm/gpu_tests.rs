@@ -31,7 +31,7 @@ use std::mem::{align_of, size_of};
 
 use cs::gkr_compiler::dag_ir::FieldKind;
 use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
-use era_cudart::memory::memory_copy_async;
+use era_cudart::memory::{memory_copy, memory_copy_async};
 use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
 use era_cudart::{cuda_kernel_declaration, cuda_kernel_signature_arguments_and_function};
@@ -1550,8 +1550,47 @@ fn coeff_case(
     }
 }
 
-/// Stage the incumbent factored-eq state the release kernel reads inline, and
-/// return the host twin of `eq(row)`.
+/// E4 values the `__constant__` `ab_gkr_eq_high` symbol holds.
+const EQ_HIGH_SLAB_LEN: usize = GKR_EQ_HIGH_SLOTS * GKR_EQ_GROUP_TABLE_LEN;
+
+/// The `__constant__` eq-high slab, as a device slice.
+///
+/// SAFETY: `get_eq_high_constant_device_ptr` returns the device address of the
+/// `ab_gkr_eq_high` symbol, whose declared extent is exactly [`EQ_HIGH_SLAB_LEN`]
+/// E4 values.
+fn eq_high_slab() -> &'static mut DeviceSlice<E4> {
+    unsafe { DeviceSlice::from_raw_parts_mut(get_eq_high_constant_device_ptr(), EQ_HIGH_SLAB_LEN) }
+}
+
+/// Owns the staged `ab_gkr_eq_high` sentinel and clears it again on drop.
+///
+/// The slab is a process-wide `__constant__` symbol that only the incumbent
+/// factored-eq BUILD kernel writes in production, so a test that stages it and
+/// walks away leaves state behind for whatever runs next — and because the
+/// sentinel is `ONE`, a later test that forgot to stage would silently inherit a
+/// working eq instead of failing. Restoring zero makes that omission loud: an
+/// unstaged inline eq evaluates to zero and every contribution with it.
+struct StagedEqHigh;
+
+impl Drop for StagedEqHigh {
+    fn drop(&mut self) {
+        // Synchronous on purpose: `Drop` has no stream, and this must land before
+        // the next test observes the symbol.
+        memory_copy(eq_high_slab(), &[E4::ZERO; EQ_HIGH_SLAB_LEN]).expect("eq high restore");
+    }
+}
+
+/// The staged factored-eq state one run needs.
+struct StagedEq {
+    /// Host twin of `eq(row)`: with all eight bits in the low slab and both high
+    /// slabs at their `ONE` sentinel, `eq(row) == low[row]`.
+    low: Vec<E4>,
+    device_low: DeviceAllocation<E4>,
+    sizes: GkrEqSizes,
+    _guard: StagedEqHigh,
+}
+
+/// Stage the incumbent factored-eq state the release kernel reads inline.
 ///
 /// `make_eq_sizes(GKR_EQ_GROUP_SIZE)` puts all eight bits in the LOW slab, so
 /// both high slabs have size zero and `gkr_compute_eq_inline` reads their slot
@@ -1560,23 +1599,29 @@ fn coeff_case(
 /// sentinel itself and `eq(row)` is exactly `eq_low[row]`. A per-row-varying
 /// `eq_low` is the point: a constant one would let a kernel that dropped the eq
 /// multiply entirely still pass.
-fn stage_eq(rows: usize, context: &ProverContext) -> (Vec<E4>, DeviceAllocation<E4>, GkrEqSizes) {
+fn stage_eq(rows: usize, context: &ProverContext) -> StagedEq {
     assert!(
         rows <= GKR_EQ_GROUP_TABLE_LEN,
         "one eq group covers {GKR_EQ_GROUP_TABLE_LEN} rows"
     );
-    let sentinel = vec![E4::ONE; GKR_EQ_HIGH_SLOTS * GKR_EQ_GROUP_TABLE_LEN];
-    // SAFETY: `get_eq_high_constant_device_ptr` returns the device address of the
-    // `__constant__` `ab_gkr_eq_high` symbol, whose declared extent is exactly
-    // `GKR_EQ_HIGH_SLOTS * GKR_EQ_GROUP_TABLE_LEN` E4 values.
-    let slab = unsafe { DeviceSlice::from_raw_parts_mut(get_eq_high_constant_device_ptr(), sentinel.len()) };
-    memory_copy_async(slab, &sentinel, context.get_exec_stream()).expect("eq high sentinel");
+    let guard = StagedEqHigh;
+    memory_copy_async(
+        eq_high_slab(),
+        &[E4::ONE; EQ_HIGH_SLAB_LEN],
+        context.get_exec_stream(),
+    )
+    .expect("eq high sentinel");
 
-    let host = (0..GKR_EQ_GROUP_TABLE_LEN)
+    let low = (0..GKR_EQ_GROUP_TABLE_LEN)
         .map(|slot| e4(0x00e0_0000 + slot as u32))
         .collect::<Vec<_>>();
-    let device = upload(&host, context);
-    (host, device, make_eq_sizes(GKR_EQ_GROUP_SIZE))
+    let device_low = upload(&low, context);
+    StagedEq {
+        low,
+        device_low,
+        sizes: make_eq_sizes(GKR_EQ_GROUP_SIZE),
+        _guard: guard,
+    }
 }
 
 /// What one release launch produced.
@@ -1705,7 +1750,7 @@ fn run_coeff_case(case: &CoeffCase, context: &ProverContext) -> CoeffRun {
     let mut publishes = Vec::new();
     let resolved = upload_windows(&case.windows, rows, context, &mut backings, &mut publishes);
 
-    let (eq_host, eq_low, eq_sizes) = stage_eq(rows, context);
+    let eq = stage_eq(rows, context);
     let challenges = upload(&case.challenges, context);
     let mut contributions = upload(&vec![E4::ZERO; 2 * rows], context);
     let coefficients = upload(&case.bank, context);
@@ -1720,8 +1765,8 @@ fn run_coeff_case(case: &CoeffCase, context: &ProverContext) -> CoeffRun {
         },
         n_round_challenges: case.challenges.len() as u32,
         windows: &resolved,
-        eq_low: eq_low.as_ptr(),
-        eq_sizes,
+        eq_low: eq.device_low.as_ptr(),
+        eq_sizes: eq.sizes,
         contributions: contributions.as_mut_ptr(),
     };
     let setup = lower_bwd_coeff(
@@ -1765,7 +1810,7 @@ fn run_coeff_case(case: &CoeffCase, context: &ProverContext) -> CoeffRun {
 
     let run = CoeffRun {
         contributions: download_e4(&contributions, 2 * rows, context),
-        eq_low: eq_host,
+        eq_low: eq.low.clone(),
         incumbent: download_round_update(&state, context),
     };
     drop(backings);
@@ -1821,8 +1866,16 @@ fn assert_coeff_case(case: &CoeffCase, context: &ProverContext) {
         c_partial.add_assign(&expected_c2);
     }
 
-    // Rung 4: the two halves reduce INDEPENDENTLY, and the incumbent device
-    // reduction agrees with the host sum of the same halves.
+    // Rung 4: the two halves reduce INDEPENDENTLY. Each is summed over its own
+    // slice of the GPU's contribution buffer and checked against the running total
+    // the per-row loop above accumulated, so a half that leaked into the other —
+    // or a stride error between them — shows up here.
+    //
+    // The INCUMBENT device reduction is not compared here; it is pinned one rung
+    // later, where `run.incumbent` (which `launch_backward_dual_finalize_from_acc`
+    // produced by reducing this same buffer on the device) is asserted equal to
+    // the CPU round update fed the host-reduced pair. That comparison is what ties
+    // the device reduction to these two values.
     let device_e_partial = run.contributions[..rows]
         .iter()
         .fold(E4::ZERO, |mut acc, value| {
@@ -2144,6 +2197,36 @@ fn r0_arithmetic_fixture(rows: usize, budget_cells: u8) -> Fixture {
                 CoefficientRecipeId::NEG_ONE,
                 vec![cell(lane.e4[1])],
             ),
+            // A squared PLAN at BF width. Retain the co-produced Endpoint0 in a BF
+            // lane, then square a `{UseResident l, Fill l}` plan on that SAME lane:
+            // §9.1's resolve-once rule is what makes this legal, because
+            // re-executing the second record would read lane `l` again after the
+            // fill overwrote it with the Delta. The continuation fixture covers the
+            // E4 width of the same hazard; both widths have their own resolver and
+            // their own cell-file accessor, so both need the pin.
+            term_k(
+                TermCategory::C2ProductBfBf,
+                CoefficientRecipeId::ONE,
+                vec![
+                    planned(
+                        0,
+                        0,
+                        PlanAction::Fill { lane: lane.bf[0] },
+                        PlanAction::Direct,
+                    ),
+                    direct(0, 1),
+                ],
+            ),
+            term_k(
+                TermCategory::C2ProductBfBf,
+                banked(1),
+                vec![planned(
+                    0,
+                    0,
+                    PlanAction::UseResident { lane: lane.bf[0] },
+                    PlanAction::Fill { lane: lane.bf[0] },
+                )],
+            ),
         ],
     }
 }
@@ -2283,7 +2366,7 @@ fn assert_release_fixture(fixture: &Fixture, context: &ProverContext) {
     let mut backings = Backings::default();
     let mut publishes = Vec::new();
     let resolved = upload_windows(&fixture.windows, rows, context, &mut backings, &mut publishes);
-    let (eq_table, eq_low, eq_sizes) = stage_eq(rows, context);
+    let eq = stage_eq(rows, context);
     let challenges = upload(&fixture.challenges, context);
     let coefficients = upload(&fixture.bank, context);
     let mut contributions = upload(&vec![E4::ZERO; 2 * rows], context);
@@ -2297,8 +2380,8 @@ fn assert_release_fixture(fixture: &Fixture, context: &ProverContext) {
         },
         n_round_challenges: fixture.challenges.len() as u32,
         windows: &resolved,
-        eq_low: eq_low.as_ptr(),
-        eq_sizes,
+        eq_low: eq.device_low.as_ptr(),
+        eq_sizes: eq.sizes,
         contributions: contributions.as_mut_ptr(),
     };
 
@@ -2332,14 +2415,25 @@ fn assert_release_fixture(fixture: &Fixture, context: &ProverContext) {
         setup
             .upload_constant_bank(context)
             .unwrap_or_else(|error| panic!("{}: constant bank: {error:?}", fixture.name));
+        // Clear the buffer between banks so the second launch's result stands on
+        // its own. Without this, a change that made the second launch skip a row
+        // would read the FIRST launch's value there and the comparison would still
+        // pass — the two banks must produce identical numbers, which is exactly
+        // what makes a stale read invisible.
+        memory_copy_async(
+            &mut contributions[..2 * rows],
+            &vec![E4::ZERO; 2 * rows],
+            context.get_exec_stream(),
+        )
+        .expect("clear contributions between banks");
         launch_bwd_coeff(&setup, context)
             .unwrap_or_else(|error| panic!("{}: release launch: {error:?}", fixture.name));
         let got = download_e4(&contributions, 2 * rows, context);
         for (row, (expected_c0, expected_c2)) in expected.iter().enumerate() {
-            let eq = eq_table[row & (GKR_EQ_GROUP_TABLE_LEN - 1)];
-            let mut scaled_c0 = eq;
+            let eq_row = eq.low[row & (GKR_EQ_GROUP_TABLE_LEN - 1)];
+            let mut scaled_c0 = eq_row;
             scaled_c0.mul_assign(expected_c0);
-            let mut scaled_c2 = eq;
+            let mut scaled_c2 = eq_row;
             scaled_c2.mul_assign(expected_c2);
             assert_e4(
                 &format!("{} {storage:?}: eq*acc_c0 row {row}", fixture.name),

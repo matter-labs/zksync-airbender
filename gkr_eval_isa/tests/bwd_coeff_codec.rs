@@ -422,13 +422,23 @@ fn every_legal_form() -> Vec<(BwdRegime, DecodedInstr)> {
             for (e0, d) in plans_for(role) {
                 forms.push(DecodedUse::Planned { coord: coord(0, 3, false), endpoint0: e0, delta: d });
             }
+            // §9.1's squared form stands ONE record in for every position, so it
+            // is only legal where every position has the same width. A mixed
+            // category squared would have to be resolved at BF and consumed as an
+            // E4; `encode_instrs` rejects it (`MixedProductNotMixed`) and
+            // `rejects_a_squared_mixed_width_product` pins that. This enumeration
+            // used to emit it, which made the shape look legal.
+            let squarable = (1..arity)
+                .all(|position| operand_width(category, position) == operand_width(category, 0));
             for form in forms {
                 // One record per form, both as a lone operand and (for a binary
-                // opcode) paired with a plain direct operand and as a squared
-                // term.
+                // opcode) paired with a plain direct operand and — where the widths
+                // permit — as a squared term.
                 let mut uses = vec![form];
                 if arity == 2 {
-                    out.push((regime, term(category, CoefficientRecipeId(2), uses.clone())));
+                    if squarable {
+                        out.push((regime, term(category, CoefficientRecipeId(2), uses.clone())));
+                    }
                     uses.push(DecodedUse::Direct { coord: coord(0, 12, false) });
                 }
                 out.push((regime, term(category, CoefficientRecipeId(3), uses)));
@@ -1025,6 +1035,41 @@ fn rejects_an_out_of_budget_lane() {
         reject(&program, &binding),
         CoeffCodecError::LaneOutOfBudget { at: 1, lane: 8, lanes: 8 }
     );
+}
+
+/// §9.1's squared form and a MIXED-width opcode are mutually exclusive.
+///
+/// A squared term repeats one record at every position, so `C2ProductBF_E4`
+/// carrying a single use would ask a resolver to produce one coordinate at BF
+/// width and at E4 width at the same time. Lowering cannot build it (the category
+/// is derived from the operand fields), but nothing downstream would notice: the
+/// words encode cleanly and both interpreters plus the GPU executor would read the
+/// one record twice. This is the only rejection, so it is the one that matters.
+#[test]
+fn rejects_a_squared_mixed_width_product() {
+    assert_eq!(
+        encode_instrs(
+            BwdRegime::R0,
+            CellBudget::new(4).unwrap(),
+            &[term(
+                TermCategory::C2ProductBfE4,
+                ONE,
+                vec![DecodedUse::Direct { coord: coord(0, 0, false) }],
+            )],
+        )
+        .expect_err("squared mixed product"),
+        CoeffCodecError::MixedProductNotMixed { instr: 0 }
+    );
+    // The same-width squared forms stay legal — this must reject the MIXING, not
+    // the squaring.
+    for category in [TermCategory::C2ProductBfBf, TermCategory::C2ProductE4E4] {
+        encode_instrs(
+            BwdRegime::R0,
+            CellBudget::new(4).unwrap(),
+            &[term(category, ONE, vec![DecodedUse::Direct { coord: coord(0, 0, false) }])],
+        )
+        .unwrap_or_else(|e| panic!("{category:?} squared must encode: {e:?}"));
+    }
 }
 
 #[test]
