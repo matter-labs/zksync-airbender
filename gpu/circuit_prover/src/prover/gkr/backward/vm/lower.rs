@@ -1,2879 +1,497 @@
-use std::collections::{BTreeMap, BTreeSet};
-use std::ptr;
+//! Host lowering for the backward coefficient-term ISA: bind one round's
+//! storage to the compiler's source windows and build the complete by-value
+//! [`BwdCoeffDesc`] (design §9.3, §10.2, §11).
+//!
+//! The compiler has already done everything structural. `bind_coeff_sources`
+//! assigned wire windows and window-relative columns, and `encode_program`
+//! produced the u16 stream; neither depends on a device pointer. What is left,
+//! and all this module does, is:
+//!
+//!   1. attach the ROUND's physical geometry — read/publish backing, stride,
+//!      backing depth, target depth, origin field and the materialize flag — to
+//!      each live window;
+//!   2. copy the encoded program into the by-value array; and
+//!   3. reject anything that would make the launch unsound before it reaches a
+//!      release kernel that trusts its descriptor (§12: "release kernels trust
+//!      validated artifacts").
+//!
+//! Source RESOLUTION (Task 10) and the arithmetic loop (Task 11) are device
+//! work and are not here. Neither is coefficient-recipe compilation, which
+//! Task 13 moves into `backward::coefficients`: this module takes coefficient
+//! VALUES already evaluated in the round's challenge context.
 
 use era_cudart::result::CudaResult;
-use gkr_eval_isa::bwd::batch::{pack_batch_dst, unpack_batch_dst, BATCH_COEFFICIENT_ONE};
-use gkr_eval_isa::bwd::distill::DistilledLayer;
-use gkr_eval_isa::bwd::fragment::{FragmentTable, MergedRecipe};
-use gkr_eval_isa::bwd::source::{BwdSpecial, OriginLeaf};
-#[cfg(all(test, feature = "bench"))]
-use gkr_eval_isa::eval_plan::backward_search::{
-    problem::build_backward_search_problem, BackwardSearchError, StaticMaterialization,
-};
-use gkr_eval_isa::eval_plan::CompiledBackwardEvaluation;
-use gkr_eval_isa::fwd::encode::{decode, encode};
-use gkr_eval_isa::fwd::error::EncodeError;
-use gkr_eval_isa::fwd::isa::{
-    DstLine, Instr, LdcSub, MovDir, OperandField, OperandLine, Program, MAX_SOURCE_WINDOWS,
-    SOURCE_WINDOW_COLUMNS,
-};
-use gkr_eval_isa::fwd::source::virtual_setup_kind_code;
-
-use crate::primitives::field::{BF, E4};
-use crate::prover::gkr::backward::flat::FLAT_CONST_MAX;
-use crate::prover::gkr::backward::GkrEqSizes;
-use crate::prover::gkr::forward::vm::lower::{read_place_to_gkr_address, ResolvedColumn};
-use crate::prover::ProverContext;
-use crate::upstream::{ChallengeRef, Field, GKRAddress, PrimeField};
-#[cfg(all(test, feature = "bench"))]
-use cs::gkr_compiler::dag_ir::DagLayer;
+use gkr_eval_isa::bwd::coeff::bind::CoeffSourceBinding;
+use gkr_eval_isa::bwd::coeff::encode::EncodedProgram;
+use gkr_eval_isa::bwd::coeff::stats::WindowFamily;
 
 use super::desc::{
-    BwdVmDesc, BwdVmSourceWindow, BwdVmSpecial, SpecialLoweringError, BWD_VM_ARG_DERIVED_E4_CAP,
-    BWD_VM_BATCH_ACC_INIT_NONE, BWD_VM_BF_CONSTANT_CAP, BWD_VM_CELL_CAP, BWD_VM_COEFFICIENT_CAP,
-    BWD_VM_CONST_DERIVED_E4_CAP, BWD_VM_PROGRAM_CAP, BWD_VM_SOURCE_READ_BASE,
-    BWD_VM_SOURCE_READ_EXT, BWD_VM_SOURCE_VIRTUAL, BWD_VM_SOURCE_WINDOW_CAP, BWD_VM_SPECIAL_CAP,
-    BWD_VM_VIRTUAL_MATERIALIZE_DEPTH,
+    BwdCoeffDesc, BwdCoeffSourceWindow, BWD_COEFF_C_INIT_NONE, BWD_COEFF_MAX_BUDGET_CELLS,
+    BWD_COEFF_MAX_COEFFICIENT_ENCODINGS, BWD_COEFF_MAX_FOLD_DEPTH, BWD_COEFF_MIN_BUDGET_CELLS,
+    BWD_COEFF_ORIGIN_PROCEDURAL, BWD_COEFF_ORIGIN_READ_BASE, BWD_COEFF_ORIGIN_READ_EXT,
+    BWD_COEFF_PROCEDURAL_KINDS, BWD_COEFF_PROCEDURAL_NONE, BWD_COEFF_PROGRAM_WORD_CAP,
+    BWD_COEFF_PUBLISH_TARGET_DEPTH, BWD_COEFF_SOURCE_WINDOW_CAP, BWD_COEFF_SOURCE_WINDOW_COLUMNS,
 };
+use super::{bwd_coeff_fold_depth, BwdCoeffBank};
+use crate::primitives::field::E4;
+use crate::prover::gkr::backward::flat::FLAT_CONST_MAX;
+use crate::prover::gkr::backward::GkrEqSizes;
+use crate::prover::gkr::forward::vm::lower::ResolvedColumn;
+use crate::prover::ProverContext;
+use crate::upstream::{BwdRegime, Field};
 
-pub(crate) struct BwdVmRoundBinding<'a> {
+/// Bytes one column of a backing occupies, by storage field.
+const BF_COLUMN_BYTES: u32 = 4;
+const E4_COLUMN_BYTES: u32 = 16;
+
+// ── Round binding inputs ─────────────────────────────────────────────────────
+
+/// The round's physical geometry for ONE bound source window.
+///
+/// Indexed positionally by wire window: entry `w` describes
+/// `CoeffSourceBinding::windows[w]`. `read`/`publish` name the window's FIRST
+/// column, so the device resolves a bound coordinate as
+/// `read_base + column * read_stride_bytes`.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct ResolvedBwdCoeffSourceWindow {
+    /// The matrix column the window is based at. `None` only for a procedural
+    /// window whose values are produced from the row rather than read.
+    pub read: Option<ResolvedColumn>,
+    /// Where a first access publishes both raw target-depth endpoints. Required
+    /// whenever `materialize` is set.
+    pub publish: Option<ResolvedColumn>,
+    /// Depth the read backing is currently at.
+    pub backing_depth: u8,
+    /// Depth a use of this window must observe.
+    pub target_depth: u8,
+    /// §10.2's static policy: publish on first physical access. Layer-wide, but
+    /// carried per entry so the device never has to consult two places.
+    pub materialize: bool,
+}
+
+/// Everything about one sumcheck round that is not in the compiled program.
+pub(crate) struct BwdCoeffRoundBinding<'a> {
+    /// Sumcheck round index; also the number of active round challenges.
     pub round: u8,
+    /// Logical rows this launch evaluates — one per thread, and the
+    /// contribution half-stride.
     pub rows: u32,
-    pub round_challenges: &'a [E4],
-    pub sources: &'a [ResolvedBwdSourceWindow],
-    pub virtual_sources: &'a [ResolvedBwdVirtualSource],
-    pub resolve_source: &'a dyn Fn(GKRAddress) -> Option<ResolvedColumn>,
+    /// Device-resident transcript challenges for the lazy-fold prelude.
+    pub round_challenges: *const E4,
+    pub n_round_challenges: u32,
+    /// One entry per `CoeffSourceBinding::windows` entry, in wire order.
+    pub windows: &'a [ResolvedBwdCoeffSourceWindow],
     pub eq_low: *const E4,
     pub eq_sizes: GkrEqSizes,
     pub contributions: *mut E4,
 }
 
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct ResolvedBwdSourceWindow {
-    pub logical_window: u8,
-    pub logical_column: u8,
-    pub read: ResolvedColumn,
-    pub publish: Option<ResolvedColumn>,
-    pub backing_depth: u8,
-    pub target_depth: u8,
-    pub materialize: bool,
-}
-
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct ResolvedBwdVirtualSource {
-    pub desc: u16,
-    pub read: Option<ResolvedColumn>,
-    pub publish: Option<ResolvedColumn>,
-    pub backing_depth: u8,
-    pub target_depth: u8,
-    pub materialize: bool,
-}
-
-pub(crate) struct BwdVmSetup {
-    pub desc: BwdVmDesc,
-    pub const_derived_e4: Vec<E4>,
+/// A lowered launch: the by-value descriptor plus the coefficient bank it was
+/// lowered against.
+pub(crate) struct BwdCoeffSetup {
+    pub desc: BwdCoeffDesc,
+    /// Bank entries, in index order. Coefficient index `i >= RESERVED` names
+    /// `coefficients[i - RESERVED]`; `+1` and `-1` never reach the bank.
     pub coefficients: Vec<E4>,
+    pub bank: BwdCoeffBank,
+    pub regime: BwdRegime,
+    pub fold_depth: u8,
 }
 
-/// Rebuild the static source-round projection whose certificate was checked
-/// while loading an add/sub artifact case. The projection is independent of
-/// the paging decisions in the compiled candidate; callers must still map its
-/// states and `store_for_next_round` bit literally into runtime storage.
-#[cfg(all(test, feature = "bench"))]
-pub(crate) fn artifact_static_materialization(
-    canonical: &DagLayer,
-    distilled: &DistilledLayer,
-    trace_len: usize,
-    budget_cells: usize,
-) -> Result<StaticMaterialization, BackwardSearchError> {
-    let (_, problem) =
-        build_backward_search_problem(canonical, distilled, trace_len, budget_cells)?;
-    let problem = problem.ok_or(BackwardSearchError::SearchDriverFailure {
-        reason: "artifact-certified backward problem is infeasible",
-    })?;
-    Ok(problem.materialization)
-}
-
-impl BwdVmSetup {
-    /// Upload the two host-evaluated banks consumed by the backward VM. Both
-    /// copies are enqueued on `exec_stream`, so a following validate or release
-    /// launch observes this setup without a host synchronization. Unused slots
-    /// are cleared to keep relaunches independent of the previous setup.
-    pub(crate) fn upload_constant_banks(&self, context: &ProverContext) -> CudaResult<()> {
+impl BwdCoeffSetup {
+    /// Stage the constant-backed coefficient bank.
+    ///
+    /// A no-op for [`BwdCoeffBank::DevicePointer`], whose values are already
+    /// device-resident behind `desc.coefficients`. The copy is enqueued on
+    /// `exec_stream`, so a following launch observes it with no host
+    /// synchronization; unused slots are cleared to keep relaunches independent
+    /// of the previous setup.
+    pub(crate) fn upload_constant_bank(&self, context: &ProverContext) -> CudaResult<()> {
+        if self.bank != BwdCoeffBank::Constant {
+            return Ok(());
+        }
         assert_eq!(self.coefficients.len(), self.desc.n_coefficients as usize);
-        assert_eq!(
-            self.const_derived_e4.len(),
-            self.desc.n_const_derived_e4 as usize
-        );
-        assert!(self.coefficients.len() <= BWD_VM_COEFFICIENT_CAP);
-        assert!(self.const_derived_e4.len() <= BWD_VM_CONST_DERIVED_E4_CAP);
-
-        let coefficients: [E4; FLAT_CONST_MAX] =
+        assert!(self.coefficients.len() <= FLAT_CONST_MAX);
+        let bank: [E4; FLAT_CONST_MAX] =
             core::array::from_fn(|index| self.coefficients.get(index).copied().unwrap_or(E4::ZERO));
-        let const_derived_e4: [E4; BWD_VM_CONST_DERIVED_E4_CAP] = core::array::from_fn(|index| {
-            self.const_derived_e4
-                .get(index)
-                .copied()
-                .unwrap_or(E4::ZERO)
-        });
-        // SAFETY: both Rust statics are stubs for the exact CUDA __constant__
-        // arrays with matching element counts/layout. Pageable sources are
-        // staged by cudaMemcpyToSymbolAsync before this function returns; the
-        // device copies remain ordered before the caller's next exec-stream
-        // launch.
+        // SAFETY: the Rust static is the stub for the exact CUDA `__constant__`
+        // E4 array with a matching element count and layout. The pageable
+        // source is staged by `cudaMemcpyToSymbolAsync` before this returns,
+        // and the device copy stays ordered before the caller's next
+        // exec-stream launch.
         unsafe {
             crate::primitives::utils::memcpy_to_symbol_async(
                 &super::ab_gkr_flat_coefficients,
-                &coefficients,
-                context.get_exec_stream(),
-            )?;
-            crate::primitives::utils::memcpy_to_symbol_async(
-                &super::ab_gkr_fwd_vm_const_derived_e4,
-                &const_derived_e4,
+                &bank,
                 context.get_exec_stream(),
             )
         }
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum BwdVmLowerError {
-    InvalidInputEncoding,
-    InputProgramMismatch,
-    Encode(EncodeError),
-    OutputRoundTripMismatch,
-    UnmappedSource {
+// ── Errors ───────────────────────────────────────────────────────────────────
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum BwdCoeffLowerError {
+    /// The encoded stream does not fit the by-value program array. §9.1: this
+    /// requires a tighter encoding or a re-measured pin, never a device program
+    /// pointer.
+    ProgramOverflow { words: usize, cap: usize },
+    /// More live windows than the measured corpus maximum the descriptor is
+    /// sized from.
+    SourceWindowOverflow { windows: usize, cap: usize },
+    /// The round supplied a different number of window bindings than the
+    /// compiled program has windows.
+    SourceWindowCountMismatch { compiled: usize, bound: usize },
+    /// A matrix-backed window has no read backing.
+    MissingReadBacking { window: u8 },
+    /// A window's read or publish backing is null, or its stride is zero.
+    NullWindowGeometry { window: u8 },
+    /// A backing's column stride does not match its storage field.
+    WindowStrideMismatch {
         window: u8,
-        column: u8,
+        is_e4: bool,
+        stride_bytes: u32,
     },
-    MissingSourceBinding {
-        window: u8,
-        column: u8,
-    },
-    DuplicateSourceBinding {
-        window: u8,
-        column: u8,
-    },
-    UnknownSourceBinding {
-        window: u8,
-        column: u8,
-    },
-    ConflictingSourceField {
-        window: u8,
-        column: u8,
-    },
-    SourceFieldMismatch {
-        window: u8,
-        column: u8,
-        expect_e4: bool,
-        got_e4: bool,
-    },
-    MissingResolvedSource {
-        window: u8,
-        column: u8,
-    },
-    SourceIdentityMismatch {
-        window: u8,
-        column: u8,
-    },
-    NullSourceGeometry {
-        window: u8,
-        column: u8,
-    },
-    SourceColumnOffStride {
-        window: u8,
-        column: u8,
-    },
-    SourceColumnRemapCollision {
-        window: u8,
-        column: u8,
-        matrix_column: usize,
-    },
-    SourceColumnOverflow {
-        window: u8,
-        column: u8,
-        offset: usize,
-    },
-    MissingPublishBinding {
-        window: u8,
-        column: u8,
-    },
-    UnexpectedPublishBinding {
-        window: u8,
-        column: u8,
-    },
-    PublishFieldMismatch {
-        window: u8,
-        column: u8,
-        expect_e4: bool,
-        got_e4: bool,
-    },
-    NullPublishGeometry {
-        window: u8,
-        column: u8,
-    },
+    /// A materializing window has no publish backing.
+    MissingPublishBacking { window: u8 },
+    /// A non-materializing window was given a publish backing.
+    UnexpectedPublishBacking { window: u8 },
+    /// A procedural window named a kind outside `KIND_ORDER`.
+    UnknownProceduralKind { window: u8, kind: u8 },
+    /// A window addresses more than the 128 columns its `column:7` coordinate
+    /// can reach.
+    WindowColumnOverflow { window: u8, offset: usize },
+    /// `backing_depth > target_depth`, or a depth outside the bounded D0..D3
+    /// resolver range.
     InvalidDepths {
         window: u8,
-        column: u8,
         backing_depth: u8,
         target_depth: u8,
-        round: u8,
     },
-    PlainSourceDepthMismatch {
+    /// The materialize flag disagrees with §10.2's static depth policy.
+    MaterializationPolicyMismatch {
         window: u8,
-        column: u8,
-    },
-    MissingVirtualSourceBinding {
-        desc: u16,
-    },
-    DuplicateVirtualSourceBinding {
-        desc: u16,
-    },
-    UnknownVirtualSourceBinding {
-        desc: u16,
-    },
-    VirtualSourceFieldMismatch {
-        desc: u16,
-    },
-    MissingVirtualReadBinding {
-        desc: u16,
-    },
-    UnexpectedVirtualReadBinding {
-        desc: u16,
-    },
-    MissingVirtualPublishBinding {
-        desc: u16,
-    },
-    UnexpectedVirtualPublishBinding {
-        desc: u16,
-    },
-    InvalidVirtualDepths {
-        desc: u16,
-        backing_depth: u8,
-        target_depth: u8,
-        round: u8,
-    },
-    InvalidVirtualMaterialization {
-        desc: u16,
         target_depth: u8,
         materialize: bool,
     },
-    VirtualSourceGeometryMismatch {
-        desc: u16,
-    },
-    VirtualSourceColumnMismatch {
-        desc: u16,
+    /// A window's target depth is not the layer-wide one the program was bound
+    /// for.
+    TargetDepthMismatch {
+        window: u8,
         expected: u8,
-        actual: usize,
+        actual: u8,
     },
-    UnsafeVirtualReadPublishAlias {
-        desc: u16,
-    },
-    UnmappedVirtualSource {
-        desc: u16,
-    },
-    RoundChallengesTooShort {
-        required: usize,
-        actual: usize,
-    },
-    UnsafeReadPublishAlias {
-        window: u8,
-        column: u8,
-    },
-    UnsafePublishAlias {
-        window: u8,
-        column: u8,
-        other_window: u8,
-        other_column: u8,
-    },
-    UnsafeCrossClassSourceAlias,
-    InvalidFoldDescriptor {
-        window: u8,
-        column: u8,
-        desc: u16,
-    },
-    MissingSpecial {
-        desc: u16,
-    },
-    ReadFoldSpecial {
-        desc: u16,
-    },
-    InvalidCoefficientFragment {
-        desc: u16,
-        fragment: u32,
-    },
-    UnexpectedOperandSpecial {
-        desc: u16,
-    },
-    InvalidBatchCoefficient {
-        desc: u16,
-    },
-    InvalidAccInit {
-        desc: u16,
-    },
-    Special(SpecialLoweringError),
-    Capacity {
-        field: &'static str,
-        actual: usize,
-        cap: usize,
-    },
+    /// A publish range overlaps a read range or another publish range.
+    UnsafePublishAlias { window: u8, other: u8 },
+    /// The cell budget is outside c2..c16.
+    InvalidCellBudget { cells: u32 },
+    /// `c_init` names a coefficient index the bank cannot supply.
+    InvalidCInit { index: u32 },
+    /// More coefficients than the selected bank holds.
+    CoefficientBankOverflow { coefficients: usize, cap: usize },
+    /// The device-pointer bank has entries but no pointer.
+    MissingCoefficientPointer,
+    /// The lazy-fold prelude needs more challenges than the round supplied.
+    RoundChallengesTooShort { required: u32, actual: u32 },
 }
 
-pub(crate) fn lower_bwd_vm(
-    compiled: &CompiledBackwardEvaluation,
-    distilled: &DistilledLayer,
-    runtime: &BwdVmRoundBinding<'_>,
-    evaluate_derived: &impl Fn(&ChallengeRef) -> E4,
-    evaluate_recipe: &impl Fn(&MergedRecipe) -> E4,
-) -> Result<BwdVmSetup, BwdVmLowerError> {
-    let active_round_challenges = runtime.round as usize;
-    if runtime.round_challenges.len() < active_round_challenges {
-        return Err(BwdVmLowerError::RoundChallengesTooShort {
-            required: active_round_challenges,
-            actual: runtime.round_challenges.len(),
+// ── Lowering ─────────────────────────────────────────────────────────────────
+
+/// Build the complete by-value descriptor for one `(program, round)` pair.
+///
+/// `coefficients` are already evaluated in this round's challenge context and
+/// indexed as bank entries: coefficient index `i` names `coefficients[i -
+/// RESERVED]`, and the reserved `+1` / `-1` indices never reach the bank.
+pub(crate) fn lower_bwd_coeff(
+    program: &EncodedProgram,
+    binding: &CoeffSourceBinding,
+    runtime: &BwdCoeffRoundBinding<'_>,
+    coefficients: Vec<E4>,
+    coefficient_ptr: *const E4,
+    bank: BwdCoeffBank,
+) -> Result<BwdCoeffSetup, BwdCoeffLowerError> {
+    if program.words.len() > BWD_COEFF_PROGRAM_WORD_CAP {
+        return Err(BwdCoeffLowerError::ProgramOverflow {
+            words: program.words.len(),
+            cap: BWD_COEFF_PROGRAM_WORD_CAP,
         });
     }
-    let input = decode(&compiled.encoded).map_err(|_| BwdVmLowerError::InvalidInputEncoding)?;
-    if input != compiled.compiled.program {
-        return Err(BwdVmLowerError::InputProgramMismatch);
+    if binding.windows.len() > BWD_COEFF_SOURCE_WINDOW_CAP {
+        return Err(BwdCoeffLowerError::SourceWindowOverflow {
+            windows: binding.windows.len(),
+            cap: BWD_COEFF_SOURCE_WINDOW_CAP,
+        });
+    }
+    if binding.windows.len() != runtime.windows.len() {
+        return Err(BwdCoeffLowerError::SourceWindowCountMismatch {
+            compiled: binding.windows.len(),
+            bound: runtime.windows.len(),
+        });
     }
 
-    let mut source_geometry = lower_source_geometry(compiled, runtime, &input)?;
-    let virtual_geometry = lower_virtual_source_geometry(
-        compiled,
-        runtime,
-        &input,
-        source_geometry.windows.len() as u8,
-    )?;
-    validate_cross_class_source_aliases(runtime.sources, runtime.virtual_sources)?;
-    if let Some(window) = virtual_geometry.window {
-        source_geometry.windows.push(window);
-    }
-    check_cap(
-        "source_windows",
-        source_geometry.windows.len(),
-        BWD_VM_SOURCE_WINDOW_CAP,
-    )?;
-    let special_geometry = lower_specials(
-        compiled,
-        &distilled.fragments,
-        &input,
-        &virtual_geometry.remap,
-        evaluate_recipe,
-    )?;
-    let rewritten = rewrite_program(
-        &input,
-        &source_geometry.remap,
-        &virtual_geometry.remap,
-        &special_geometry.remap,
-        &special_geometry.batch_remap,
-    )?;
-    let encoded = encode(&rewritten).map_err(BwdVmLowerError::Encode)?;
-    if decode(&encoded).ok().as_ref() != Some(&rewritten) {
-        return Err(BwdVmLowerError::OutputRoundTripMismatch);
-    }
-    check_cap("program_lanes", encoded.len(), BWD_VM_PROGRAM_CAP)?;
-
-    // SAFETY: all-zero bytes are a valid descriptor: it contains POD scalars,
-    // arrays, and nullable raw pointers. Every live range is filled below.
-    let mut desc: BwdVmDesc = unsafe { core::mem::zeroed() };
-    desc.source_windows[..source_geometry.windows.len()].copy_from_slice(&source_geometry.windows);
-    desc.specials[..special_geometry.specials.len()].copy_from_slice(&special_geometry.specials);
-    desc.program[..encoded.len()].copy_from_slice(&encoded);
-
-    let consts = compiled.compiled.consts.values();
-    check_cap("bf_constants", consts.len(), BWD_VM_BF_CONSTANT_CAP)?;
-    for (dst, &value) in desc.bf_constants.iter_mut().zip(consts) {
-        *dst = BF::from_u32_with_reduction(value);
+    let cells = u32::from(program.budget.cells());
+    if !(BWD_COEFF_MIN_BUDGET_CELLS..=BWD_COEFF_MAX_BUDGET_CELLS).contains(&cells) {
+        return Err(BwdCoeffLowerError::InvalidCellBudget { cells });
     }
 
-    let n_arg = derived_e4_bank_len(compiled, LdcSub::ArgDerivedE4, BWD_VM_ARG_DERIVED_E4_CAP);
-    check_cap("arg_derived_e4", n_arg, BWD_VM_ARG_DERIVED_E4_CAP)?;
-    for index in 0..n_arg {
-        let reference = compiled
-            .compiled
-            .derived_e4
-            .get(LdcSub::ArgDerivedE4, index as u16)
-            .expect("derived bank is dense below its measured length");
-        desc.arg_derived_e4[index] = evaluate_derived(reference);
+    let cap = bank.capacity();
+    if coefficients.len() > cap {
+        return Err(BwdCoeffLowerError::CoefficientBankOverflow {
+            coefficients: coefficients.len(),
+            cap,
+        });
+    }
+    if bank == BwdCoeffBank::DevicePointer && !coefficients.is_empty() && coefficient_ptr.is_null()
+    {
+        return Err(BwdCoeffLowerError::MissingCoefficientPointer);
     }
 
-    let n_const = derived_e4_bank_len(
-        compiled,
-        LdcSub::ConstDerivedE4,
-        BWD_VM_CONST_DERIVED_E4_CAP,
-    );
-    check_cap("const_derived_e4", n_const, BWD_VM_CONST_DERIVED_E4_CAP)?;
-    let const_derived_e4 = (0..n_const)
-        .map(|index| {
-            evaluate_derived(
-                compiled
-                    .compiled
-                    .derived_e4
-                    .get(LdcSub::ConstDerivedE4, index as u16)
-                    .expect("derived bank is dense below its measured length"),
-            )
-        })
-        .collect();
+    let c_init = lower_c_init(program, coefficients.len())?;
+    let fold_depth = bwd_coeff_fold_depth(runtime.round);
+    if runtime.n_round_challenges < u32::from(runtime.round) {
+        return Err(BwdCoeffLowerError::RoundChallengesTooShort {
+            required: u32::from(runtime.round),
+            actual: runtime.n_round_challenges,
+        });
+    }
 
-    let cell_count = program_cell_count(&rewritten);
-    check_cap("cell_count", cell_count, BWD_VM_CELL_CAP)?;
-    check_cap(
-        "round_challenges",
-        active_round_challenges,
-        u32::MAX as usize,
+    let mut desc = BwdCoeffDesc::empty();
+    let mut window_columns = Vec::with_capacity(binding.windows.len());
+    for (index, (compiled, bound)) in binding.windows.iter().zip(runtime.windows).enumerate() {
+        let window = index as u8;
+        let procedural_kind = match compiled.family {
+            WindowFamily::VirtualSetup { kind } => {
+                if usize::from(kind) >= BWD_COEFF_PROCEDURAL_KINDS {
+                    return Err(BwdCoeffLowerError::UnknownProceduralKind { window, kind });
+                }
+                Some(kind)
+            }
+            _ => None,
+        };
+        let widest = compiled
+            .columns
+            .last()
+            .map(|column| column.column - compiled.first_column)
+            .unwrap_or(0);
+        if widest >= BWD_COEFF_SOURCE_WINDOW_COLUMNS {
+            return Err(BwdCoeffLowerError::WindowColumnOverflow {
+                window,
+                offset: widest,
+            });
+        }
+        let columns = widest + 1;
+        window_columns.push(columns);
+        desc.source_windows[index] = lower_window(
+            window,
+            procedural_kind,
+            columns,
+            binding.target_depth,
+            bound,
+        )?;
+    }
+    check_publish_aliases(
+        &desc.source_windows[..binding.windows.len()],
+        &window_columns,
     )?;
 
-    desc.round_challenges = runtime.round_challenges.as_ptr();
+    desc.coefficients = if bank == BwdCoeffBank::DevicePointer {
+        coefficient_ptr
+    } else {
+        std::ptr::null()
+    };
+    desc.round_challenges = runtime.round_challenges;
     desc.eq_low = runtime.eq_low;
     desc.contributions = runtime.contributions;
     desc.eq_sizes = runtime.eq_sizes;
-    desc.n_instr = rewritten.instrs.len() as u32;
-    desc.program_lanes = encoded.len() as u32;
-    desc.n_source_windows = source_geometry.windows.len() as u32;
-    desc.n_specials = special_geometry.specials.len() as u32;
-    desc.n_coefficients = special_geometry.coefficients.len() as u32;
-    desc.n_bf_constants = consts.len() as u32;
-    desc.n_arg_derived_e4 = n_arg as u32;
-    desc.n_const_derived_e4 = n_const as u32;
-    // This count is also the procedural Ext VirtualSetup fold depth in CUDA.
-    // The backing slice may contain later transcript challenges, but only the
-    // active prefix is semantically visible in this round.
-    desc.n_round_challenges = runtime.round.into();
+    desc.num_words = program.words.len() as u32;
+    desc.n_source_windows = binding.windows.len() as u32;
+    desc.n_round_challenges = runtime.n_round_challenges;
+    desc.n_coefficients = coefficients.len() as u32;
     desc.logical_rows = runtime.rows;
-    desc.cell_count = cell_count as u32;
-    desc.batch_acc_init = special_geometry.batch_acc_init;
+    desc.cell_budget = cells;
+    desc.c_init = c_init;
+    desc.program[..program.words.len()].copy_from_slice(&program.words);
 
-    Ok(BwdVmSetup {
+    Ok(BwdCoeffSetup {
         desc,
-        const_derived_e4,
-        coefficients: special_geometry.coefficients,
+        coefficients,
+        bank,
+        regime: program.regime,
+        fold_depth,
     })
 }
 
-fn check_cap(field: &'static str, actual: usize, cap: usize) -> Result<(), BwdVmLowerError> {
-    if actual > cap {
-        return Err(BwdVmLowerError::Capacity { field, actual, cap });
+/// `c_init` as a descriptor coefficient index, or the absent sentinel.
+///
+/// The sentinel is `u16::MAX`, which is NOT reachable as a coefficient encoding
+/// — thirteen coefficient bits top out well below it — so a reader can never
+/// mistake one for the other.
+fn lower_c_init(program: &EncodedProgram, bank_entries: usize) -> Result<u16, BwdCoeffLowerError> {
+    let Some(recipe) = program.c_init else {
+        return Ok(BWD_COEFF_C_INIT_NONE);
+    };
+    let index = recipe.0;
+    let in_bank = match recipe.bank_index() {
+        Some(slot) => slot < bank_entries,
+        // The reserved `+1` / `-1` literals never touch the bank.
+        None => true,
+    };
+    if !in_bank || index as usize >= BWD_COEFF_MAX_COEFFICIENT_ENCODINGS {
+        return Err(BwdCoeffLowerError::InvalidCInit { index });
     }
-    Ok(())
+    Ok(index as u16)
 }
 
-fn source_fields(program: &Program) -> Result<BTreeMap<(u8, u8), OperandField>, BwdVmLowerError> {
-    let mut fields = BTreeMap::new();
-    let mut conflict = None;
-    visit_operands(program, |operand, field| {
-        if let OperandLine::Source { window, column, .. } = *operand {
-            let coordinate = (window, column);
-            if fields
-                .insert(coordinate, field)
-                .is_some_and(|prior| prior != field)
-            {
-                conflict = Some(coordinate);
-            }
-        }
-    });
-    if let Some((window, column)) = conflict {
-        return Err(BwdVmLowerError::ConflictingSourceField { window, column });
-    }
-    Ok(fields)
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct SourceGroupKey {
-    read_base: usize,
-    read_stride: u32,
-    publish_base: usize,
-    publish_stride: u32,
-    publish_delta: i128,
-    is_e4: bool,
-    backing_depth: u8,
-    target_depth: u8,
-    materialize: bool,
-}
-
-struct SourceGroup {
-    key: SourceGroupKey,
-    entries: Vec<((u8, u8), usize, Option<usize>)>,
-}
-
-struct SourceGeometry {
-    windows: Vec<BwdVmSourceWindow>,
-    remap: BTreeMap<(u8, u8), (u8, u8)>,
-}
-
-fn lower_source_geometry(
-    compiled: &CompiledBackwardEvaluation,
-    runtime: &BwdVmRoundBinding<'_>,
-    program: &Program,
-) -> Result<SourceGeometry, BwdVmLowerError> {
-    let source_fields = source_fields(program)?;
-    let coordinates = source_fields.keys().copied().collect::<BTreeSet<_>>();
-    let mut bindings = BTreeMap::<(u8, u8), &ResolvedBwdSourceWindow>::new();
-    for binding in runtime.sources {
-        let coordinate = (binding.logical_window, binding.logical_column);
-        if !coordinates.contains(&coordinate) {
-            return Err(BwdVmLowerError::UnknownSourceBinding {
-                window: coordinate.0,
-                column: coordinate.1,
-            });
-        }
-        if bindings.insert(coordinate, binding).is_some() {
-            return Err(BwdVmLowerError::DuplicateSourceBinding {
-                window: coordinate.0,
-                column: coordinate.1,
-            });
-        }
-    }
-    for &(window, column) in &coordinates {
-        if !bindings.contains_key(&(window, column)) {
-            return Err(BwdVmLowerError::MissingSourceBinding { window, column });
-        }
-    }
-
-    let mut groups = Vec::<SourceGroup>::new();
-    for &(window, column) in &coordinates {
-        let binding = bindings
-            .get(&(window, column))
-            .copied()
-            .ok_or(BwdVmLowerError::MissingSourceBinding { window, column })?;
-        let place = compiled
-            .compiled
-            .source_windows
-            .resolve_read_place(window, column)
-            .ok_or(BwdVmLowerError::UnmappedSource { window, column })?;
-        let fold_desc = compiled.compiled.source_windows.fold_desc(window, column);
-        if let Some(desc) = fold_desc {
-            match compiled.compiled.specials.get(desc) {
-                Some(BwdSpecial::FoldSource {
-                    origin: OriginLeaf::Read(expected),
-                }) if *expected == place => {}
-                _ => {
-                    return Err(BwdVmLowerError::InvalidFoldDescriptor {
-                        window,
-                        column,
-                        desc,
-                    });
-                }
-            }
-        }
-
-        // A backward Ext FoldSource is evaluated as Ext even when its physical
-        // origin is a base-field matrix. The instruction operand field is the
-        // runtime backing contract; SourceWindowTable::source_field describes
-        // only that origin matrix and would reject the required lifted backing.
-        let expect_e4 = source_fields[&(window, column)] == OperandField::Ext;
-        if binding.read.is_e4 != expect_e4 {
-            return Err(BwdVmLowerError::SourceFieldMismatch {
-                window,
-                column,
-                expect_e4,
-                got_e4: binding.read.is_e4,
-            });
-        }
-        validate_source_geometry(&binding.read, window, column)?;
-        let expected_read = (runtime.resolve_source)(read_place_to_gkr_address(&place))
-            .ok_or(BwdVmLowerError::MissingResolvedSource { window, column })?;
-        validate_source_geometry(&expected_read, window, column)?;
-        if !same_resolved_column(&binding.read, &expected_read) {
-            return Err(BwdVmLowerError::SourceIdentityMismatch { window, column });
-        }
-        if binding.backing_depth > binding.target_depth || binding.target_depth != runtime.round {
-            return Err(BwdVmLowerError::InvalidDepths {
-                window,
-                column,
-                backing_depth: binding.backing_depth,
-                target_depth: binding.target_depth,
-                round: runtime.round,
-            });
-        }
-        if fold_desc.is_none() && binding.backing_depth != binding.target_depth {
-            return Err(BwdVmLowerError::PlainSourceDepthMismatch { window, column });
-        }
-        let required_challenges = binding.target_depth as usize;
-        if runtime.round_challenges.len() < required_challenges {
-            return Err(BwdVmLowerError::RoundChallengesTooShort {
-                required: required_challenges,
-                actual: runtime.round_challenges.len(),
-            });
-        }
-
-        let read_column = matrix_column(&binding.read, window, column)?;
-        let publish_column = match (binding.materialize, binding.publish.as_ref()) {
-            (true, None) => {
-                return Err(BwdVmLowerError::MissingPublishBinding { window, column });
-            }
-            (false, Some(_)) => {
-                return Err(BwdVmLowerError::UnexpectedPublishBinding { window, column });
-            }
-            (_, publish) => publish
-                .map(|publish| {
-                    if publish.is_e4 != expect_e4 {
-                        return Err(BwdVmLowerError::PublishFieldMismatch {
-                            window,
-                            column,
-                            expect_e4,
-                            got_e4: publish.is_e4,
-                        });
-                    }
-                    validate_publish_geometry(publish, window, column)?;
-                    matrix_column(publish, window, column)
-                })
-                .transpose()?,
-        };
-        let publish = binding.publish.as_ref();
-        let key = SourceGroupKey {
-            read_base: binding.read.matrix_base as usize,
-            read_stride: binding.read.stride_bytes,
-            publish_base: publish.map_or(0, |column| column.matrix_base as usize),
-            publish_stride: publish.map_or(0, |column| column.stride_bytes),
-            publish_delta: publish_column.map_or(0, |publish_column| {
-                publish_column as i128 - read_column as i128
-            }),
-            is_e4: expect_e4,
-            backing_depth: binding.backing_depth,
-            target_depth: binding.target_depth,
-            materialize: binding.materialize,
-        };
-        let group = if let Some(index) = groups.iter().position(|group| group.key == key) {
-            index
-        } else {
-            groups.push(SourceGroup {
-                key,
-                entries: Vec::new(),
-            });
-            groups.len() - 1
-        };
-        groups[group]
-            .entries
-            .push(((window, column), read_column, publish_column));
-    }
-
-    // Materialization writes a complete target column on first access even
-    // when the source is already at the target depth. Every publish therefore
-    // must be disjoint from every read and from every other publish.
-    let materialized = bindings
-        .iter()
-        .filter_map(|(&coordinate, binding)| {
-            if binding.materialize {
-                binding
-                    .publish
-                    .as_ref()
-                    .map(|publish| (coordinate, publish))
-            } else {
-                None
-            }
-        })
-        .collect::<Vec<_>>();
-    for &((window, column), publish) in &materialized {
-        if bindings.values().any(|other| {
-            byte_ranges_overlap(
-                other.read.ptr,
-                other.read.stride_bytes,
-                publish.ptr,
-                publish.stride_bytes,
-            )
-        }) {
-            return Err(BwdVmLowerError::UnsafeReadPublishAlias { window, column });
-        }
-    }
-    for (index, &((window, column), publish)) in materialized.iter().enumerate() {
-        for &((other_window, other_column), other_publish) in &materialized[index + 1..] {
-            if byte_ranges_overlap(
-                publish.ptr,
-                publish.stride_bytes,
-                other_publish.ptr,
-                other_publish.stride_bytes,
-            ) {
-                return Err(BwdVmLowerError::UnsafePublishAlias {
-                    window,
-                    column,
-                    other_window,
-                    other_column,
-                });
-            }
-        }
-    }
-
-    check_cap(
-        "encoded_source_windows",
-        groups.len(),
-        MAX_SOURCE_WINDOWS as usize,
-    )?;
-    check_cap("source_windows", groups.len(), BWD_VM_SOURCE_WINDOW_CAP)?;
-
-    let mut windows = Vec::with_capacity(groups.len());
-    let mut remap = BTreeMap::new();
-    for (wire, mut group) in groups.into_iter().enumerate() {
-        group
-            .entries
-            .sort_by_key(|(_, read_column, _)| *read_column);
-        let first_read = group.entries[0].1;
-        let first_publish = group.entries[0].2;
-        let mut claimed = BTreeSet::new();
-        for &((window, column), read_column, publish_column) in &group.entries {
-            if !claimed.insert(read_column) {
-                return Err(BwdVmLowerError::SourceColumnRemapCollision {
-                    window,
-                    column,
-                    matrix_column: read_column,
-                });
-            }
-            let offset = read_column - first_read;
-            if offset >= SOURCE_WINDOW_COLUMNS as usize {
-                return Err(BwdVmLowerError::SourceColumnOverflow {
-                    window,
-                    column,
-                    offset,
-                });
-            }
-            if let (Some(publish_column), Some(first_publish)) = (publish_column, first_publish) {
-                debug_assert_eq!(publish_column - first_publish, offset);
-            }
-            remap.insert((window, column), (wire as u8, offset as u8));
-        }
-
-        let read_base = checked_column_ptr(group.key.read_base, first_read, group.key.read_stride)
-            .ok_or_else(|| {
-                let ((window, column), _, _) = group.entries[0];
-                BwdVmLowerError::SourceColumnOffStride { window, column }
-            })?;
-        let publish_base = match first_publish {
-            Some(first_publish) => checked_column_ptr(
-                group.key.publish_base,
-                first_publish,
-                group.key.publish_stride,
-            )
-            .ok_or_else(|| {
-                let ((window, column), _, _) = group.entries[0];
-                BwdVmLowerError::SourceColumnOffStride { window, column }
-            })? as *mut u8,
-            None => ptr::null_mut(),
-        };
-        windows.push(BwdVmSourceWindow {
-            read_base: read_base as *const u8,
-            publish_base,
-            read_stride_bytes: group.key.read_stride,
-            publish_stride_bytes: group.key.publish_stride,
-            backing_depth: group.key.backing_depth,
-            target_depth: group.key.target_depth,
-            source_kind: if group.key.is_e4 {
-                BWD_VM_SOURCE_READ_EXT
-            } else {
-                BWD_VM_SOURCE_READ_BASE
-            },
-            materialize: u8::from(group.key.materialize),
+fn lower_window(
+    window: u8,
+    procedural_kind: Option<u8>,
+    columns: usize,
+    layer_target_depth: u8,
+    bound: &ResolvedBwdCoeffSourceWindow,
+) -> Result<BwdCoeffSourceWindow, BwdCoeffLowerError> {
+    if bound.target_depth != layer_target_depth {
+        return Err(BwdCoeffLowerError::TargetDepthMismatch {
+            window,
+            expected: layer_target_depth,
+            actual: bound.target_depth,
         });
     }
-
-    Ok(SourceGeometry { windows, remap })
-}
-
-struct VirtualSourceGeometry {
-    window: Option<BwdVmSourceWindow>,
-    remap: BTreeMap<u16, (u8, u8)>,
-}
-
-fn lower_virtual_source_geometry(
-    compiled: &CompiledBackwardEvaluation,
-    runtime: &BwdVmRoundBinding<'_>,
-    program: &Program,
-    wire_window: u8,
-) -> Result<VirtualSourceGeometry, BwdVmLowerError> {
-    let mut referenced = BTreeMap::<u16, u8>::new();
-    let mut field_error = None;
-    visit_operands(program, |operand, field| {
-        let OperandLine::Special { desc } = *operand else {
-            return;
-        };
-        let Some(BwdSpecial::FoldSource {
-            origin: OriginLeaf::VirtualSetup { kind },
-        }) = compiled.compiled.specials.get(desc)
-        else {
-            return;
-        };
-        if field != OperandField::Ext {
-            field_error = Some(desc);
-            return;
-        }
-        referenced.insert(desc, virtual_setup_kind_code(kind) as u8);
-    });
-    if let Some(desc) = field_error {
-        return Err(BwdVmLowerError::VirtualSourceFieldMismatch { desc });
-    }
-
-    let mut bindings = BTreeMap::<u16, &ResolvedBwdVirtualSource>::new();
-    for binding in runtime.virtual_sources {
-        if !referenced.contains_key(&binding.desc) {
-            return Err(BwdVmLowerError::UnknownVirtualSourceBinding { desc: binding.desc });
-        }
-        if bindings.insert(binding.desc, binding).is_some() {
-            return Err(BwdVmLowerError::DuplicateVirtualSourceBinding { desc: binding.desc });
-        }
-    }
-    for &desc in referenced.keys() {
-        if !bindings.contains_key(&desc) {
-            return Err(BwdVmLowerError::MissingVirtualSourceBinding { desc });
-        }
-    }
-    if referenced.is_empty() {
-        return Ok(VirtualSourceGeometry {
-            window: None,
-            remap: BTreeMap::new(),
+    if bound.backing_depth > bound.target_depth
+        || bound.target_depth - bound.backing_depth > BWD_COEFF_MAX_FOLD_DEPTH
+    {
+        return Err(BwdCoeffLowerError::InvalidDepths {
+            window,
+            backing_depth: bound.backing_depth,
+            target_depth: bound.target_depth,
         });
     }
-
-    let mut common_depths = None;
-    let mut read_geometry = None;
-    let mut publish_geometry = None;
-    let mut read_columns = Vec::new();
-    let mut publish_columns = Vec::new();
-    let mut remap = BTreeMap::new();
-    let mut claimed_columns = BTreeSet::new();
-
-    for (&desc, &column) in &referenced {
-        let binding = bindings[&desc];
-        if binding.target_depth != runtime.round
-            || !((binding.backing_depth == 0
-                && binding.target_depth <= BWD_VM_VIRTUAL_MATERIALIZE_DEPTH)
-                || (binding.backing_depth >= BWD_VM_VIRTUAL_MATERIALIZE_DEPTH
-                    && binding.backing_depth.checked_add(1) == Some(binding.target_depth)))
-        {
-            return Err(BwdVmLowerError::InvalidVirtualDepths {
-                desc,
-                backing_depth: binding.backing_depth,
-                target_depth: binding.target_depth,
-                round: runtime.round,
-            });
-        }
-        let expected_materialize = binding.target_depth >= BWD_VM_VIRTUAL_MATERIALIZE_DEPTH;
-        if binding.materialize != expected_materialize {
-            return Err(BwdVmLowerError::InvalidVirtualMaterialization {
-                desc,
-                target_depth: binding.target_depth,
-                materialize: binding.materialize,
-            });
-        }
-        let depths = (
-            binding.backing_depth,
-            binding.target_depth,
-            binding.materialize,
-        );
-        if common_depths.is_some_and(|common| common != depths) {
-            return Err(BwdVmLowerError::VirtualSourceGeometryMismatch { desc });
-        }
-        common_depths = Some(depths);
-
-        match (binding.backing_depth, binding.read.as_ref()) {
-            (0, Some(_)) => {
-                return Err(BwdVmLowerError::UnexpectedVirtualReadBinding { desc });
-            }
-            (0, None) => {}
-            (_, None) => {
-                return Err(BwdVmLowerError::MissingVirtualReadBinding { desc });
-            }
-            (_, Some(read)) => {
-                if !read.is_e4 {
-                    return Err(BwdVmLowerError::VirtualSourceFieldMismatch { desc });
-                }
-                validate_source_geometry(read, wire_window, column)?;
-                let actual = matrix_column(read, wire_window, column)?;
-                if actual != column as usize {
-                    return Err(BwdVmLowerError::VirtualSourceColumnMismatch {
-                        desc,
-                        expected: column,
-                        actual,
-                    });
-                }
-                let geometry = (read.matrix_base as usize, read.stride_bytes);
-                if read_geometry.is_some_and(|common| common != geometry) {
-                    return Err(BwdVmLowerError::VirtualSourceGeometryMismatch { desc });
-                }
-                read_geometry = Some(geometry);
-                read_columns.push((desc, read));
-            }
-        }
-
-        match (binding.materialize, binding.publish.as_ref()) {
-            (true, None) => {
-                return Err(BwdVmLowerError::MissingVirtualPublishBinding { desc });
-            }
-            (false, Some(_)) => {
-                return Err(BwdVmLowerError::UnexpectedVirtualPublishBinding { desc });
-            }
-            (false, None) => {}
-            (true, Some(publish)) => {
-                if !publish.is_e4 {
-                    return Err(BwdVmLowerError::VirtualSourceFieldMismatch { desc });
-                }
-                validate_publish_geometry(publish, wire_window, column)?;
-                let actual = matrix_column(publish, wire_window, column)?;
-                if actual != column as usize {
-                    return Err(BwdVmLowerError::VirtualSourceColumnMismatch {
-                        desc,
-                        expected: column,
-                        actual,
-                    });
-                }
-                let geometry = (publish.matrix_base as usize, publish.stride_bytes);
-                if publish_geometry.is_some_and(|common| common != geometry) {
-                    return Err(BwdVmLowerError::VirtualSourceGeometryMismatch { desc });
-                }
-                publish_geometry = Some(geometry);
-                publish_columns.push((desc, publish));
-            }
-        }
-
-        if !claimed_columns.insert(column) {
-            return Err(BwdVmLowerError::VirtualSourceGeometryMismatch { desc });
-        }
-        remap.insert(desc, (wire_window, column));
+    // §10.2's materialization policy is static, not a per-window choice.
+    if bound.materialize != (bound.target_depth >= BWD_COEFF_PUBLISH_TARGET_DEPTH) {
+        return Err(BwdCoeffLowerError::MaterializationPolicyMismatch {
+            window,
+            target_depth: bound.target_depth,
+            materialize: bound.materialize,
+        });
+    }
+    if bound.materialize && bound.publish.is_none() {
+        return Err(BwdCoeffLowerError::MissingPublishBacking { window });
+    }
+    if !bound.materialize && bound.publish.is_some() {
+        return Err(BwdCoeffLowerError::UnexpectedPublishBacking { window });
     }
 
-    for &(desc, publish) in &publish_columns {
-        if read_columns.iter().any(|&(_, read)| {
-            byte_ranges_overlap(
-                read.ptr,
-                read.stride_bytes,
-                publish.ptr,
-                publish.stride_bytes,
-            )
-        }) {
-            return Err(BwdVmLowerError::UnsafeVirtualReadPublishAlias { desc });
+    let origin = match (procedural_kind, bound.read) {
+        (Some(_), _) => BWD_COEFF_ORIGIN_PROCEDURAL,
+        (None, Some(read)) if read.is_e4 => BWD_COEFF_ORIGIN_READ_EXT,
+        (None, Some(_)) => BWD_COEFF_ORIGIN_READ_BASE,
+        (None, None) => return Err(BwdCoeffLowerError::MissingReadBacking { window }),
+    };
+
+    let (read_base, read_stride_bytes) = match bound.read {
+        Some(read) => {
+            check_column_geometry(window, &read)?;
+            (read.ptr, read.stride_bytes)
+        }
+        None => (std::ptr::null(), 0),
+    };
+    let (publish_base, publish_stride_bytes) = match bound.publish {
+        Some(publish) => {
+            check_column_geometry(window, &publish)?;
+            (publish.ptr as *mut u8, publish.stride_bytes)
+        }
+        None => (std::ptr::null_mut(), 0),
+    };
+    // A window addresses `columns` contiguous columns of each backing; the far
+    // end must still be a representable address.
+    for (base, stride) in [
+        (read_base as usize, read_stride_bytes),
+        (publish_base as usize, publish_stride_bytes),
+    ] {
+        if base != 0 && base.checked_add(columns * stride as usize).is_none() {
+            return Err(BwdCoeffLowerError::NullWindowGeometry { window });
         }
     }
 
-    let (backing_depth, target_depth, materialize) =
-        common_depths.expect("a referenced virtual source has runtime geometry");
-    let (read_base, read_stride_bytes) = read_geometry.unwrap_or((0, 0));
-    let (publish_base, publish_stride_bytes) = publish_geometry.unwrap_or((0, 0));
-    let window = BwdVmSourceWindow {
-        read_base: read_base as *const u8,
-        publish_base: publish_base as *mut u8,
+    Ok(BwdCoeffSourceWindow {
+        read_base,
+        publish_base,
         read_stride_bytes,
         publish_stride_bytes,
-        backing_depth,
-        target_depth,
-        source_kind: BWD_VM_SOURCE_VIRTUAL,
-        materialize: u8::from(materialize),
-    };
-    Ok(VirtualSourceGeometry {
-        window: Some(window),
-        remap,
+        backing_depth: bound.backing_depth,
+        target_depth: bound.target_depth,
+        origin,
+        materialize: u8::from(bound.materialize),
+        procedural_kind: procedural_kind.unwrap_or(BWD_COEFF_PROCEDURAL_NONE),
+        reserved: [0; 3],
     })
 }
 
-fn matrix_column(
-    resolved: &ResolvedColumn,
-    window: u8,
-    column: u8,
-) -> Result<usize, BwdVmLowerError> {
-    if resolved.stride_bytes == 0 {
-        return Err(BwdVmLowerError::SourceColumnOffStride { window, column });
+fn check_column_geometry(window: u8, column: &ResolvedColumn) -> Result<(), BwdCoeffLowerError> {
+    if column.ptr.is_null() || column.stride_bytes == 0 {
+        return Err(BwdCoeffLowerError::NullWindowGeometry { window });
     }
-    let offset = (resolved.ptr as usize)
-        .checked_sub(resolved.matrix_base as usize)
-        .ok_or(BwdVmLowerError::SourceColumnOffStride { window, column })?;
-    if offset % resolved.stride_bytes as usize != 0 {
-        return Err(BwdVmLowerError::SourceColumnOffStride { window, column });
-    }
-    Ok(offset / resolved.stride_bytes as usize)
-}
-
-fn validate_source_geometry(
-    resolved: &ResolvedColumn,
-    window: u8,
-    column: u8,
-) -> Result<(), BwdVmLowerError> {
-    if resolved.ptr.is_null() || resolved.matrix_base.is_null() {
-        return Err(BwdVmLowerError::NullSourceGeometry { window, column });
+    let element = if column.is_e4 {
+        E4_COLUMN_BYTES
+    } else {
+        BF_COLUMN_BYTES
+    };
+    if column.stride_bytes % element != 0 {
+        return Err(BwdCoeffLowerError::WindowStrideMismatch {
+            window,
+            is_e4: column.is_e4,
+            stride_bytes: column.stride_bytes,
+        });
     }
     Ok(())
 }
 
-fn validate_publish_geometry(
-    resolved: &ResolvedColumn,
-    window: u8,
-    column: u8,
-) -> Result<(), BwdVmLowerError> {
-    if resolved.ptr.is_null() || resolved.matrix_base.is_null() {
-        return Err(BwdVmLowerError::NullPublishGeometry { window, column });
-    }
-    Ok(())
-}
-
-fn same_resolved_column(lhs: &ResolvedColumn, rhs: &ResolvedColumn) -> bool {
-    lhs.is_e4 == rhs.is_e4
-        && lhs.ptr == rhs.ptr
-        && lhs.matrix_base == rhs.matrix_base
-        && lhs.stride_bytes == rhs.stride_bytes
-}
-
-fn checked_column_ptr(base: usize, column: usize, stride: u32) -> Option<usize> {
-    column
-        .checked_mul(stride as usize)
-        .and_then(|offset| base.checked_add(offset))
-}
-
-fn byte_ranges_overlap(a: *const u8, a_len: u32, b: *const u8, b_len: u32) -> bool {
-    let a_start = a as usize;
-    let b_start = b as usize;
-    let a_end = a_start.checked_add(a_len as usize).unwrap_or(usize::MAX);
-    let b_end = b_start.checked_add(b_len as usize).unwrap_or(usize::MAX);
-    a_start < b_end && b_start < a_end
-}
-
-fn validate_cross_class_source_aliases(
-    ordinary: &[ResolvedBwdSourceWindow],
-    virtuals: &[ResolvedBwdVirtualSource],
-) -> Result<(), BwdVmLowerError> {
-    for virtual_publish in virtuals
-        .iter()
-        .filter_map(|binding| binding.publish.as_ref())
-    {
-        if ordinary.iter().any(|binding| {
-            byte_ranges_overlap(
-                virtual_publish.ptr,
-                virtual_publish.stride_bytes,
-                binding.read.ptr,
-                binding.read.stride_bytes,
-            )
-        }) {
-            return Err(BwdVmLowerError::UnsafeCrossClassSourceAlias);
-        }
-    }
-
-    for ordinary_publish in ordinary
-        .iter()
-        .filter_map(|binding| binding.publish.as_ref())
-    {
-        if virtuals
-            .iter()
-            .filter_map(|binding| binding.read.as_ref())
-            .any(|virtual_read| {
-                byte_ranges_overlap(
-                    ordinary_publish.ptr,
-                    ordinary_publish.stride_bytes,
-                    virtual_read.ptr,
-                    virtual_read.stride_bytes,
-                )
-            })
-        {
-            return Err(BwdVmLowerError::UnsafeCrossClassSourceAlias);
-        }
-    }
-
-    for virtual_publish in virtuals
-        .iter()
-        .filter_map(|binding| binding.publish.as_ref())
-    {
-        if ordinary
-            .iter()
-            .filter_map(|binding| binding.publish.as_ref())
-            .any(|ordinary_publish| {
-                byte_ranges_overlap(
-                    virtual_publish.ptr,
-                    virtual_publish.stride_bytes,
-                    ordinary_publish.ptr,
-                    ordinary_publish.stride_bytes,
-                )
-            })
-        {
-            return Err(BwdVmLowerError::UnsafeCrossClassSourceAlias);
-        }
-    }
-
-    Ok(())
-}
-
-struct SpecialGeometry {
-    specials: Vec<BwdVmSpecial>,
-    coefficients: Vec<E4>,
-    remap: BTreeMap<u16, u16>,
-    batch_remap: BTreeMap<u16, u16>,
-    batch_acc_init: u16,
-}
-
-fn lower_specials(
-    compiled: &CompiledBackwardEvaluation,
-    fragments: &FragmentTable,
-    program: &Program,
-    virtual_remap: &BTreeMap<u16, (u8, u8)>,
-    evaluate_recipe: &impl Fn(&MergedRecipe) -> E4,
-) -> Result<SpecialGeometry, BwdVmLowerError> {
-    let mut referenced = BTreeMap::<u16, BTreeSet<OperandField>>::new();
-    visit_operands(program, |operand, field| {
-        if let OperandLine::Special { desc } = *operand {
-            if !virtual_remap.contains_key(&desc) {
-                referenced.entry(desc).or_default().insert(field);
-            }
-        }
-    });
-    check_cap("specials", referenced.len(), BWD_VM_SPECIAL_CAP)?;
-
-    for &old in referenced.keys() {
-        match compiled
-            .compiled
-            .specials
-            .get(old)
-            .ok_or(BwdVmLowerError::MissingSpecial { desc: old })?
-        {
-            BwdSpecial::FoldSource {
-                origin: OriginLeaf::Read(_),
-            } => return Err(BwdVmLowerError::ReadFoldSpecial { desc: old }),
-            BwdSpecial::FoldSource {
-                origin: OriginLeaf::VirtualSetup { .. },
-            } => return Err(BwdVmLowerError::UnmappedVirtualSource { desc: old }),
-            BwdSpecial::Coefficient { .. } | BwdSpecial::AccInit => {
-                return Err(BwdVmLowerError::UnexpectedOperandSpecial { desc: old })
-            }
-            BwdSpecial::VirtualSetup { .. } => {}
-        }
-    }
-
-    let mut batch_descs = BTreeSet::new();
-    for instruction in &program.instrs {
-        let Instr::Mov {
-            dir: gkr_eval_isa::fwd::isa::MovDir::DstFromAcc,
-            dst: Some(dst),
-            ..
-        } = instruction
-        else {
+/// A published range may not overlap any read range or any other published
+/// range: a first access writes both raw target-depth endpoints, and a write
+/// racing a read of the same bytes is a correctness bug the kernel cannot see.
+///
+/// `columns[w]` is window `w`'s ACTUAL addressable column count, not the 128 the
+/// coordinate can reach — two windows of one backing may be based fewer than 128
+/// columns apart, so the encoding limit would report a phantom overlap.
+fn check_publish_aliases(
+    windows: &[BwdCoeffSourceWindow],
+    columns: &[usize],
+) -> Result<(), BwdCoeffLowerError> {
+    debug_assert_eq!(windows.len(), columns.len());
+    let span = |base: *const u8, stride: u32, count: usize| -> Option<(usize, usize)> {
+        (!base.is_null()).then(|| (base as usize, base as usize + count * stride as usize))
+    };
+    for (index, window) in windows.iter().enumerate() {
+        let Some((publish_lo, publish_hi)) = span(
+            window.publish_base as *const u8,
+            window.publish_stride_bytes,
+            columns[index],
+        ) else {
             continue;
         };
-        if let Some(desc) = unpack_batch_dst(dst) {
-            if desc != BATCH_COEFFICIENT_ONE {
-                batch_descs.insert(desc);
+        for (other_index, other) in windows.iter().enumerate() {
+            let mut ranges = Vec::with_capacity(2);
+            ranges.extend(span(
+                other.read_base,
+                other.read_stride_bytes,
+                columns[other_index],
+            ));
+            if other_index != index {
+                ranges.extend(span(
+                    other.publish_base as *const u8,
+                    other.publish_stride_bytes,
+                    columns[other_index],
+                ));
             }
-        }
-    }
-
-    // Validate the full logical namespace before evaluating any recipe. A
-    // malformed carrier must not leave partial observable work in a stateful
-    // host evaluator.
-    for &desc in &batch_descs {
-        match compiled
-            .compiled
-            .specials
-            .get(desc)
-            .ok_or(BwdVmLowerError::MissingSpecial { desc })?
-        {
-            BwdSpecial::Coefficient { fragment } => {
-                if fragments.fragments.get(*fragment as usize).is_none() {
-                    return Err(BwdVmLowerError::InvalidCoefficientFragment {
-                        desc,
-                        fragment: *fragment,
+            for (lo, hi) in ranges {
+                if publish_lo < hi && lo < publish_hi {
+                    return Err(BwdCoeffLowerError::UnsafePublishAlias {
+                        window: index as u8,
+                        other: other_index as u8,
                     });
                 }
             }
-            _ => return Err(BwdVmLowerError::InvalidBatchCoefficient { desc }),
         }
     }
-    if let Some(desc) = compiled.compiled.acc_init_desc {
-        match compiled
-            .compiled
-            .specials
-            .get(desc)
-            .ok_or(BwdVmLowerError::MissingSpecial { desc })?
-        {
-            BwdSpecial::AccInit => {}
-            _ => return Err(BwdVmLowerError::InvalidAccInit { desc }),
-        }
-    }
-
-    // Descriptor order is deterministic, while recipe equality collapses
-    // logically identical coefficients to one compact constant-memory slot.
-    // AccInit is considered last and may reuse a fragment slot.
-    let mut unique_recipes = Vec::<&MergedRecipe>::new();
-    let mut batch_remap = BTreeMap::new();
-    for &desc in &batch_descs {
-        let BwdSpecial::Coefficient { fragment } = compiled
-            .compiled
-            .specials
-            .get(desc)
-            .expect("batch descriptors were validated above")
-        else {
-            unreachable!("batch descriptors were validated as coefficients");
-        };
-        let recipe = &fragments.fragments[*fragment as usize].recipe;
-        let slot = if let Some(slot) = unique_recipes
-            .iter()
-            .position(|&candidate| candidate == recipe)
-        {
-            slot
-        } else {
-            unique_recipes.push(recipe);
-            unique_recipes.len() - 1
-        };
-        batch_remap.insert(desc, slot as u16);
-    }
-    let batch_acc_init = if compiled.compiled.acc_init_desc.is_some() {
-        let recipe = &fragments.c_init;
-        let slot = if let Some(slot) = unique_recipes
-            .iter()
-            .position(|&candidate| candidate == recipe)
-        {
-            slot
-        } else {
-            unique_recipes.push(recipe);
-            unique_recipes.len() - 1
-        };
-        slot as u16
-    } else {
-        BWD_VM_BATCH_ACC_INIT_NONE
-    };
-    check_cap("coefficients", unique_recipes.len(), BWD_VM_COEFFICIENT_CAP)?;
-    let coefficients = unique_recipes
-        .into_iter()
-        .map(evaluate_recipe)
-        .collect::<Vec<_>>();
-
-    let mut specials = Vec::with_capacity(referenced.len());
-    let mut remap = BTreeMap::new();
-    for (&old, fields) in &referenced {
-        let special = compiled
-            .compiled
-            .specials
-            .get(old)
-            .ok_or(BwdVmLowerError::MissingSpecial { desc: old })?;
-        let mut packed = None;
-        for &field in fields {
-            let candidate =
-                BwdVmSpecial::from_special(special, field).map_err(BwdVmLowerError::Special)?;
-            if let Some(previous) = packed {
-                debug_assert_eq!(previous, candidate);
-            } else {
-                packed = Some(candidate);
-            }
-        }
-        let dense = specials.len() as u16;
-        specials.push(packed.expect("a referenced special has at least one operand field"));
-        remap.insert(old, dense);
-    }
-    Ok(SpecialGeometry {
-        specials,
-        coefficients,
-        remap,
-        batch_remap,
-        batch_acc_init,
-    })
-}
-
-fn rewrite_program(
-    program: &Program,
-    source_remap: &BTreeMap<(u8, u8), (u8, u8)>,
-    virtual_remap: &BTreeMap<u16, (u8, u8)>,
-    special_remap: &BTreeMap<u16, u16>,
-    batch_remap: &BTreeMap<u16, u16>,
-) -> Result<Program, BwdVmLowerError> {
-    let mut seen_virtual = BTreeSet::new();
-    let mut remap_operand = |operand: OperandLine| -> Result<OperandLine, BwdVmLowerError> {
-        Ok(match operand {
-            OperandLine::Source {
-                window,
-                column,
-                first_access,
-            } => {
-                let &(window, column) = source_remap
-                    .get(&(window, column))
-                    .ok_or(BwdVmLowerError::UnmappedSource { window, column })?;
-                OperandLine::Source {
-                    window,
-                    column,
-                    first_access,
-                }
-            }
-            OperandLine::Special { desc } => {
-                if let Some(&(window, column)) = virtual_remap.get(&desc) {
-                    OperandLine::Source {
-                        window,
-                        column,
-                        first_access: seen_virtual.insert(desc),
-                    }
-                } else {
-                    OperandLine::Special {
-                        desc: *special_remap
-                            .get(&desc)
-                            .ok_or(BwdVmLowerError::MissingSpecial { desc })?,
-                    }
-                }
-            }
-            other => other,
-        })
-    };
-
-    let mut instrs = Vec::with_capacity(program.instrs.len());
-    for instruction in &program.instrs {
-        instrs.push(match instruction {
-            Instr::Add {
-                field,
-                sign,
-                promote,
-                operands,
-            } => Instr::Add {
-                field: *field,
-                sign: *sign,
-                promote: *promote,
-                operands: operands
-                    .iter()
-                    .copied()
-                    .map(&mut remap_operand)
-                    .collect::<Result<_, _>>()?,
-            },
-            Instr::Mul {
-                field,
-                promote,
-                negate_acc,
-                operands,
-            } => Instr::Mul {
-                field: *field,
-                promote: *promote,
-                negate_acc: *negate_acc,
-                operands: operands
-                    .iter()
-                    .copied()
-                    .map(&mut remap_operand)
-                    .collect::<Result<_, _>>()?,
-            },
-            Instr::Fma {
-                field_lhs,
-                field_rhs,
-                sign,
-                promote,
-                pairs,
-            } => Instr::Fma {
-                field_lhs: *field_lhs,
-                field_rhs: *field_rhs,
-                sign: *sign,
-                promote: *promote,
-                pairs: pairs
-                    .iter()
-                    .map(|&(lhs, rhs)| Ok((remap_operand(lhs)?, remap_operand(rhs)?)))
-                    .collect::<Result<_, BwdVmLowerError>>()?,
-            },
-            Instr::Mov {
-                dir,
-                field,
-                dst,
-                src,
-            } => Instr::Mov {
-                dir: *dir,
-                field: *field,
-                dst: match (*dir, *dst) {
-                    (MovDir::DstFromAcc, Some(dst)) => {
-                        if let Some(logical) = unpack_batch_dst(&dst) {
-                            if logical == BATCH_COEFFICIENT_ONE {
-                                Some(dst)
-                            } else {
-                                let compact = *batch_remap
-                                    .get(&logical)
-                                    .ok_or(BwdVmLowerError::MissingSpecial { desc: logical })?;
-                                Some(
-                                    pack_batch_dst(compact)
-                                        .expect("compact coefficient ID fits the batch carrier"),
-                                )
-                            }
-                        } else {
-                            Some(dst)
-                        }
-                    }
-                    (_, dst) => dst,
-                },
-                src: src.map(&mut remap_operand).transpose()?,
-            },
-        });
-    }
-    Ok(Program { instrs })
-}
-
-fn visit_operands(program: &Program, mut visit: impl FnMut(&OperandLine, OperandField)) {
-    for instruction in &program.instrs {
-        match instruction {
-            Instr::Add {
-                field, operands, ..
-            }
-            | Instr::Mul {
-                field, operands, ..
-            } => operands.iter().for_each(|operand| visit(operand, *field)),
-            Instr::Fma {
-                field_lhs,
-                field_rhs,
-                pairs,
-                ..
-            } => {
-                for (lhs, rhs) in pairs {
-                    visit(lhs, *field_lhs);
-                    visit(rhs, *field_rhs);
-                }
-            }
-            Instr::Mov {
-                field,
-                src: Some(src),
-                ..
-            } => visit(src, *field),
-            Instr::Mov { src: None, .. } => {}
-        }
-    }
-}
-
-fn derived_e4_bank_len(compiled: &CompiledBackwardEvaluation, sub: LdcSub, cap: usize) -> usize {
-    let mut len = 0usize;
-    while len <= cap && compiled.compiled.derived_e4.get(sub, len as u16).is_some() {
-        len += 1;
-    }
-    len
-}
-
-fn program_cell_count(program: &Program) -> usize {
-    let mut max_cell = 0usize;
-    let mut any = false;
-    visit_operands(program, |operand, _| {
-        if let OperandLine::Smem { cell } = *operand {
-            any = true;
-            max_cell = max_cell.max(cell as usize);
-        }
-    });
-    for instruction in &program.instrs {
-        if let Instr::Mov {
-            dst: Some(DstLine::Smem { cell }),
-            ..
-        } = instruction
-        {
-            any = true;
-            max_cell = max_cell.max(*cell as usize);
-        }
-    }
-    usize::from(any) + max_cell
-}
-
-#[cfg(test)]
-mod binding_tests {
-    use std::collections::{BTreeMap, HashMap};
-
-    use cs::gkr_compiler::dag_ir::{
-        BatchingOrder, BwdRegime, ClaimInfo, DagLayer, Expr, ExprId, Root, RootGroup, RootId,
-        RootOrigin, RootSlot, SourceId, SourceInfo, SourceKind, VirtualSetupKind,
-    };
-    use gkr_eval_isa::bwd::batch::{pack_batch_dst, unpack_batch_dst, BATCH_COEFFICIENT_ONE};
-    use gkr_eval_isa::bwd::distill::{distill, DistilledLayer};
-    use gkr_eval_isa::bwd::fragment::{FragmentSpec, MergedRecipe, ProductRecipe};
-    use gkr_eval_isa::bwd::source::{BwdSpecial, BwdSpecialTable};
-    use gkr_eval_isa::eval_plan::{
-        compile_backward_fragments_uncached, CompiledBackwardEvaluation,
-    };
-    use gkr_eval_isa::fwd::encode::{decode, encode};
-    use gkr_eval_isa::fwd::isa::{Instr, MovDir, OperandField, OperandLine, Program};
-
-    use super::*;
-    use crate::upstream::FieldExtension;
-
-    fn read_source(column: usize) -> SourceInfo {
-        SourceInfo {
-            kind: SourceKind::Read {
-                place: cs::gkr_compiler::dag_ir::ReadPlace::BaseLayerWitness { column },
-            },
-        }
-    }
-
-    fn claim_root(expr: ExprId, relation_index: usize) -> Root {
-        Root {
-            expr,
-            materialize: None,
-            claim: Some(ClaimInfo {
-                origin: RootOrigin {
-                    group: RootGroup::Gates,
-                    relation_index,
-                    slot: RootSlot::Constraint(0),
-                },
-            }),
-        }
-    }
-
-    fn synthetic_case() -> (DistilledLayer, CompiledBackwardEvaluation) {
-        let roots = vec![claim_root(ExprId(0), 0), claim_root(ExprId(1), 1)];
-        let layer = DagLayer {
-            sources: vec![read_source(0), read_source(1)],
-            exprs: vec![Expr::Source(SourceId(0)), Expr::Source(SourceId(1))],
-            batching: BatchingOrder {
-                roots: (0..roots.len()).map(|index| RootId(index as u32)).collect(),
-            },
-            roots,
-            resolutions: BTreeMap::new(),
-        };
-        let distilled = distill(&layer, BwdRegime::R0, &HashMap::new(), None);
-        let compiled = compile_backward_fragments_uncached(&distilled, None, 2, false)
-            .expect("synthetic backward layer must compile");
-        (distilled, compiled)
-    }
-
-    fn recipe(seed: u32) -> MergedRecipe {
-        MergedRecipe {
-            terms: vec![ProductRecipe {
-                factors: vec![ExprId(seed)],
-            }],
-        }
-    }
-
-    fn recipe_value(recipe: &MergedRecipe) -> E4 {
-        let seed = recipe
-            .terms
-            .first()
-            .and_then(|term| term.factors.first())
-            .map_or(0, |factor| factor.0 + 1);
-        <E4 as FieldExtension<BF>>::from_base(BF::from_u32_with_reduction(seed))
-    }
-
-    fn sink(field: OperandField, coefficient: u16) -> Instr {
-        Instr::Mov {
-            dir: MovDir::DstFromAcc,
-            field,
-            dst: Some(pack_batch_dst(coefficient).expect("synthetic coefficient must encode")),
-            src: None,
-        }
-    }
-
-    fn configure(
-        compiled: &mut CompiledBackwardEvaluation,
-        program: Program,
-        specials: BwdSpecialTable,
-        acc_init_desc: Option<u16>,
-    ) {
-        compiled.encoded = encode(&program).expect("synthetic program must encode");
-        compiled.compiled.program = program;
-        compiled.compiled.specials = specials;
-        compiled.compiled.acc_init_desc = acc_init_desc;
-    }
-
-    fn lower_synthetic(
-        compiled: &CompiledBackwardEvaluation,
-        distilled: &DistilledLayer,
-    ) -> Result<BwdVmSetup, BwdVmLowerError> {
-        let resolve_none = |_| None;
-        lower_bwd_vm(
-            compiled,
-            distilled,
-            &BwdVmRoundBinding {
-                round: 0,
-                rows: 1,
-                round_challenges: &[],
-                sources: &[],
-                virtual_sources: &[],
-                resolve_source: &resolve_none,
-                eq_low: ptr::null(),
-                eq_sizes: GkrEqSizes::zeroed(),
-                contributions: ptr::null_mut(),
-            },
-            &|_| E4::ZERO,
-            &recipe_value,
-        )
-    }
-
-    #[test]
-    fn batch_destinations_bind_independently_and_deduplicate_recipes() {
-        let (mut distilled, mut compiled) = synthetic_case();
-        let shared_recipe = recipe(7);
-        distilled.fragments.fragments[0].recipe = shared_recipe.clone();
-        distilled.fragments.fragments[1].recipe = shared_recipe;
-        distilled.fragments.c_init = recipe(11);
-
-        let mut specials = BwdSpecialTable::default();
-        let virtual_desc = specials.intern(BwdSpecial::VirtualSetup {
-            kind: VirtualSetupKind::RangeCheck16Bits,
-        });
-        let coefficient_a = specials.intern(BwdSpecial::Coefficient { fragment: 0 });
-        let coefficient_b = specials.intern(BwdSpecial::Coefficient { fragment: 1 });
-        let acc_init = specials.intern(BwdSpecial::AccInit);
-        let program = Program {
-            instrs: vec![
-                Instr::Mov {
-                    dir: MovDir::AccFromSrc,
-                    field: OperandField::Base,
-                    dst: None,
-                    src: Some(OperandLine::Special { desc: virtual_desc }),
-                },
-                sink(OperandField::Base, coefficient_a),
-                sink(OperandField::Base, BATCH_COEFFICIENT_ONE),
-                sink(OperandField::Ext, coefficient_b),
-            ],
-        };
-        let logical_lanes = encode(&program).unwrap().len();
-        configure(&mut compiled, program, specials, Some(acc_init));
-
-        let setup = lower_synthetic(&compiled, &distilled).unwrap();
-
-        assert_eq!(
-            setup.coefficients,
-            vec![recipe_value(&recipe(7)), recipe_value(&recipe(11))]
-        );
-        assert_eq!(setup.desc.n_coefficients, 2);
-        assert_eq!(setup.desc.batch_acc_init, 1);
-        assert_eq!(setup.desc.n_specials, 1);
-        assert_eq!(
-            setup.desc.specials[0].kind(),
-            super::super::desc::BWD_VM_SPECIAL_KIND_VIRTUAL_SETUP
-        );
-        assert_eq!(setup.desc.program_lanes as usize, logical_lanes);
-
-        let rewritten = decode(&setup.desc.program[..setup.desc.program_lanes as usize]).unwrap();
-        let sinks = rewritten
-            .instrs
-            .iter()
-            .filter_map(|instruction| match instruction {
-                Instr::Mov {
-                    dir: MovDir::DstFromAcc,
-                    field,
-                    dst: Some(dst),
-                    src: None,
-                } => Some((*field, unpack_batch_dst(dst).unwrap())),
-                _ => None,
-            })
-            .collect::<Vec<_>>();
-        assert_eq!(
-            sinks,
-            vec![
-                (OperandField::Base, 0),
-                (OperandField::Base, BATCH_COEFFICIENT_ONE),
-                (OperandField::Ext, 0),
-            ]
-        );
-    }
-
-    #[test]
-    fn batch_destination_rejects_a_non_coefficient_special() {
-        let (distilled, mut compiled) = synthetic_case();
-        let mut specials = BwdSpecialTable::default();
-        let virtual_desc = specials.intern(BwdSpecial::VirtualSetup {
-            kind: VirtualSetupKind::RangeCheckTimestamp,
-        });
-        configure(
-            &mut compiled,
-            Program {
-                instrs: vec![sink(OperandField::Base, virtual_desc)],
-            },
-            specials,
-            None,
-        );
-
-        assert!(matches!(
-            lower_synthetic(&compiled, &distilled),
-            Err(BwdVmLowerError::InvalidBatchCoefficient { desc })
-                if desc == virtual_desc
-        ));
-    }
-
-    #[test]
-    fn acc_init_rejects_a_non_acc_init_special() {
-        let (distilled, mut compiled) = synthetic_case();
-        let mut specials = BwdSpecialTable::default();
-        let coefficient = specials.intern(BwdSpecial::Coefficient { fragment: 0 });
-        configure(
-            &mut compiled,
-            Program {
-                instrs: vec![sink(OperandField::Base, BATCH_COEFFICIENT_ONE)],
-            },
-            specials,
-            Some(coefficient),
-        );
-
-        assert!(matches!(
-            lower_synthetic(&compiled, &distilled),
-            Err(BwdVmLowerError::InvalidAccInit { desc }) if desc == coefficient
-        ));
-    }
-
-    #[test]
-    fn coefficient_special_is_rejected_as_an_ordinary_operand() {
-        let (distilled, mut compiled) = synthetic_case();
-        let mut specials = BwdSpecialTable::default();
-        let coefficient = specials.intern(BwdSpecial::Coefficient { fragment: 0 });
-        configure(
-            &mut compiled,
-            Program {
-                instrs: vec![
-                    Instr::Mov {
-                        dir: MovDir::AccFromSrc,
-                        field: OperandField::Ext,
-                        dst: None,
-                        src: Some(OperandLine::Special { desc: coefficient }),
-                    },
-                    sink(OperandField::Ext, coefficient),
-                ],
-            },
-            specials,
-            None,
-        );
-
-        assert!(matches!(
-            lower_synthetic(&compiled, &distilled),
-            Err(BwdVmLowerError::UnexpectedOperandSpecial { desc })
-                if desc == coefficient
-        ));
-    }
-
-    #[test]
-    fn absent_acc_init_uses_the_dedicated_none_marker() {
-        let (distilled, mut compiled) = synthetic_case();
-        configure(
-            &mut compiled,
-            Program {
-                instrs: vec![sink(OperandField::Ext, BATCH_COEFFICIENT_ONE)],
-            },
-            BwdSpecialTable::default(),
-            None,
-        );
-
-        let setup = lower_synthetic(&compiled, &distilled).unwrap();
-        assert_eq!(setup.desc.batch_acc_init, BWD_VM_BATCH_ACC_INIT_NONE);
-        assert!(setup.coefficients.is_empty());
-    }
-
-    #[test]
-    fn unique_compact_coefficient_overflow_is_rejected() {
-        let (mut distilled, mut compiled) = synthetic_case();
-        let template = distilled.fragments.fragments[0].clone();
-        distilled.fragments.fragments = (0..=BWD_VM_COEFFICIENT_CAP)
-            .map(|index| FragmentSpec {
-                atoms: template.atoms.clone(),
-                recipe: recipe(index as u32 + 1),
-            })
-            .collect();
-
-        let mut specials = BwdSpecialTable::default();
-        let program = Program {
-            instrs: (0..=BWD_VM_COEFFICIENT_CAP)
-                .map(|fragment| {
-                    let desc = specials.intern(BwdSpecial::Coefficient {
-                        fragment: fragment as u32,
-                    });
-                    sink(OperandField::Ext, desc)
-                })
-                .collect(),
-        };
-        configure(&mut compiled, program, specials, None);
-
-        assert!(matches!(
-            lower_synthetic(&compiled, &distilled),
-            Err(BwdVmLowerError::Capacity {
-                field: "coefficients",
-                actual,
-                cap: BWD_VM_COEFFICIENT_CAP,
-            }) if actual == BWD_VM_COEFFICIENT_CAP + 1
-        ));
-    }
-}
-
-#[cfg(all(test, feature = "bench"))]
-mod tests {
-    use std::cell::Cell;
-    use std::collections::{BTreeMap, BTreeSet};
-
-    use cs::gkr_compiler::dag_ir::BwdRegime;
-    use cs::gkr_compiler::dag_ir::{ChallengeKey, ChallengePower, ChallengeRef};
-    use field::{Field, FieldExtension, PrimeField};
-    use gkr_eval_isa::bwd::source::BwdSpecial;
-    use gkr_eval_isa::fwd::encode::decode;
-    use gkr_eval_isa::fwd::isa::{Instr, OperandField, OperandLine, Program};
-
-    use super::*;
-    use crate::primitives::field::{BF, E4};
-    use crate::prover::gkr::backward::vm::compile::{load_add_sub_l0_case, AddSubBwdVmCase};
-    use crate::prover::gkr::backward::vm::desc::{
-        BWD_VM_SOURCE_WINDOW_CAP, BWD_VM_SPECIAL_KIND_VIRTUAL_SETUP,
-    };
-    use crate::prover::gkr::backward::GkrEqSizes;
-    use crate::prover::gkr::forward::bench_interp::fixture::deterministic_backward_challenge_value;
-    use crate::prover::gkr::forward::vm::lower::ResolvedColumn;
-    use crate::upstream::GKRAddress;
-
-    fn e4(value: u32) -> E4 {
-        <E4 as FieldExtension<BF>>::from_base(BF::from_u32_with_reduction(value))
-    }
-
-    fn visit_operands(program: &Program, mut visit: impl FnMut(&OperandLine, OperandField)) {
-        for instruction in &program.instrs {
-            match instruction {
-                Instr::Add {
-                    field, operands, ..
-                }
-                | Instr::Mul {
-                    field, operands, ..
-                } => operands.iter().for_each(|operand| visit(operand, *field)),
-                Instr::Fma {
-                    field_lhs,
-                    field_rhs,
-                    pairs,
-                    ..
-                } => {
-                    for (lhs, rhs) in pairs {
-                        visit(lhs, *field_lhs);
-                        visit(rhs, *field_rhs);
-                    }
-                }
-                Instr::Mov {
-                    field,
-                    src: Some(src),
-                    ..
-                } => visit(src, *field),
-                Instr::Mov { src: None, .. } => {}
-            }
-        }
-    }
-
-    fn source_coordinates(program: &Program) -> Vec<(u8, u8)> {
-        let mut coordinates = BTreeSet::new();
-        visit_operands(program, |operand, _| {
-            if let OperandLine::Source { window, column, .. } = *operand {
-                coordinates.insert((window, column));
-            }
-        });
-        coordinates.into_iter().collect()
-    }
-
-    fn fake_sources(
-        case: &AddSubBwdVmCase,
-        backing_depth: u8,
-        target_depth: u8,
-        materialize: bool,
-    ) -> Vec<ResolvedBwdSourceWindow> {
-        let fields = source_fields(&case.compiled.compiled.program)
-            .expect("compiled source operands have one field");
-        source_coordinates(&case.compiled.compiled.program)
-            .into_iter()
-            .map(|(window, column)| {
-                let is_e4 = fields[&(window, column)] == OperandField::Ext;
-                let stride = 0x1_000u32;
-                let matrix_base = 0x1000_0000usize + window as usize * 0x0100_0000;
-                let absolute = case.compiled.compiled.source_windows.windows()[window as usize]
-                    .first_column
-                    + column as usize;
-                let read = ResolvedColumn {
-                    is_e4,
-                    ptr: (matrix_base + absolute * stride as usize) as *const u8,
-                    matrix_base: matrix_base as *mut u8,
-                    stride_bytes: stride,
-                };
-                let publish = materialize.then_some(ResolvedColumn {
-                    is_e4,
-                    ptr: (0x5000_0000usize
-                        + window as usize * 0x0100_0000
-                        + absolute * stride as usize) as *const u8,
-                    matrix_base: (0x5000_0000usize + window as usize * 0x0100_0000) as *mut u8,
-                    stride_bytes: stride,
-                });
-                ResolvedBwdSourceWindow {
-                    logical_window: window,
-                    logical_column: column,
-                    read,
-                    publish,
-                    backing_depth,
-                    target_depth,
-                    materialize,
-                }
-            })
-            .collect()
-    }
-
-    fn fake_virtual_sources(
-        case: &AddSubBwdVmCase,
-        backing_depth: u8,
-        target_depth: u8,
-        materialize: bool,
-    ) -> Vec<ResolvedBwdVirtualSource> {
-        let mut referenced = BTreeMap::new();
-        visit_operands(&case.compiled.compiled.program, |operand, field| {
-            let OperandLine::Special { desc } = *operand else {
-                return;
-            };
-            let Some(BwdSpecial::FoldSource {
-                origin: OriginLeaf::VirtualSetup { kind },
-            }) = case.compiled.compiled.specials.get(desc)
-            else {
-                return;
-            };
-            assert_eq!(field, OperandField::Ext);
-            referenced.insert(desc, virtual_setup_kind_code(kind) as usize);
-        });
-
-        referenced
-            .into_iter()
-            .map(|(desc, column)| {
-                let stride_bytes = 0x1_000u32;
-                let read_base = 0x6000_0000usize;
-                let publish_base = 0x7000_0000usize;
-                ResolvedBwdVirtualSource {
-                    desc,
-                    read: (backing_depth > 0).then_some(ResolvedColumn {
-                        is_e4: true,
-                        ptr: (read_base + column * stride_bytes as usize) as *const u8,
-                        matrix_base: read_base as *mut u8,
-                        stride_bytes,
-                    }),
-                    publish: materialize.then_some(ResolvedColumn {
-                        is_e4: true,
-                        ptr: (publish_base + column * stride_bytes as usize) as *const u8,
-                        matrix_base: publish_base as *mut u8,
-                        stride_bytes,
-                    }),
-                    backing_depth,
-                    target_depth,
-                    materialize,
-                }
-            })
-            .collect()
-    }
-
-    fn rebase_virtual_publish_to_alias(
-        virtual_sources: &mut [ResolvedBwdVirtualSource],
-        alias: ResolvedColumn,
-    ) {
-        let first = virtual_sources[0]
-            .publish
-            .expect("materialized virtual fixture has a publish column");
-        let first_column =
-            (first.ptr as usize - first.matrix_base as usize) / first.stride_bytes as usize;
-        let matrix_base = alias.ptr as usize - first_column * alias.stride_bytes as usize;
-        for source in virtual_sources {
-            let publish = source
-                .publish
-                .expect("materialized virtual fixture has a publish column");
-            let column = (publish.ptr as usize - publish.matrix_base as usize)
-                / publish.stride_bytes as usize;
-            source.publish = Some(ResolvedColumn {
-                is_e4: true,
-                ptr: (matrix_base + column * alias.stride_bytes as usize) as *const u8,
-                matrix_base: matrix_base as *mut u8,
-                stride_bytes: alias.stride_bytes,
-            });
-        }
-    }
-
-    fn runtime_with_virtual<'a>(
-        round: u8,
-        sources: &'a [ResolvedBwdSourceWindow],
-        virtual_sources: &'a [ResolvedBwdVirtualSource],
-        challenges: &'a [E4],
-        resolve_source: &'a dyn Fn(GKRAddress) -> Option<ResolvedColumn>,
-    ) -> BwdVmRoundBinding<'a> {
-        runtime(round, sources, virtual_sources, challenges, resolve_source)
-    }
-
-    fn runtime<'a>(
-        round: u8,
-        sources: &'a [ResolvedBwdSourceWindow],
-        virtual_sources: &'a [ResolvedBwdVirtualSource],
-        challenges: &'a [E4],
-        resolve_source: &'a dyn Fn(GKRAddress) -> Option<ResolvedColumn>,
-    ) -> BwdVmRoundBinding<'a> {
-        BwdVmRoundBinding {
-            round,
-            rows: 32,
-            round_challenges: challenges,
-            sources,
-            virtual_sources,
-            resolve_source,
-            eq_low: 0x8800_0000usize as *const E4,
-            eq_sizes: GkrEqSizes::zeroed(),
-            contributions: 0x9900_0000usize as *mut E4,
-        }
-    }
-
-    fn expected_sources(
-        case: &AddSubBwdVmCase,
-        sources: &[ResolvedBwdSourceWindow],
-    ) -> BTreeMap<GKRAddress, ResolvedColumn> {
-        sources
-            .iter()
-            .filter_map(|source| {
-                case.compiled
-                    .compiled
-                    .source_windows
-                    .resolve_read_place(source.logical_window, source.logical_column)
-                    .map(|place| (read_place_to_gkr_address(&place), source.read))
-            })
-            .collect()
-    }
-
-    fn lower_case(
-        case: &AddSubBwdVmCase,
-        binding: &BwdVmRoundBinding<'_>,
-    ) -> Result<BwdVmSetup, BwdVmLowerError> {
-        lower_bwd_vm(
-            &case.compiled,
-            &case.distilled,
-            binding,
-            &|reference| e4(derived_tag(reference)),
-            &|recipe| e4(recipe_tag(recipe)),
-        )
-    }
-
-    fn lower_case_at(
-        case: &AddSubBwdVmCase,
-        round: u8,
-        sources: &[ResolvedBwdSourceWindow],
-        challenges: &[E4],
-    ) -> Result<BwdVmSetup, BwdVmLowerError> {
-        let expected = expected_sources(case, sources);
-        let resolve_source = |address| expected.get(&address).copied();
-        let virtual_sources = fake_virtual_sources(case, 0, round, false);
-        lower_case(
-            case,
-            &runtime(
-                round,
-                sources,
-                &virtual_sources,
-                challenges,
-                &resolve_source,
-            ),
-        )
-    }
-
-    fn derived_tag(reference: &crate::upstream::ChallengeRef) -> u32 {
-        format!("{reference:?}")
-            .bytes()
-            .fold(0x811c_9dc5u32, |hash, byte| {
-                (hash ^ byte as u32).wrapping_mul(0x0100_0193)
-            })
-    }
-
-    fn recipe_tag(recipe: &gkr_eval_isa::bwd::fragment::MergedRecipe) -> u32 {
-        recipe
-            .terms
-            .iter()
-            .flat_map(|term| term.factors.iter())
-            .fold(recipe.terms.len() as u32 + 1, |tag, factor| {
-                tag.wrapping_mul(16777619).wrapping_add(factor.0)
-            })
-    }
-
-    #[test]
-    fn r0_plain_sources_bind_equal_depth_without_publish_and_keep_first_access() {
-        let case = load_add_sub_l0_case(BwdRegime::R0, 2);
-        let sources = fake_sources(&case, 0, 0, false);
-        let setup = lower_case_at(&case, 0, &sources, &[]).unwrap();
-
-        assert!(setup.desc.n_source_windows > 0);
-        for window in &setup.desc.source_windows[..setup.desc.n_source_windows as usize] {
-            assert_eq!(window.backing_depth, window.target_depth);
-            assert!(window.publish_base.is_null());
-            assert_eq!(window.materialize, 0);
-        }
-
-        let decoded = decode(&setup.desc.program[..setup.desc.program_lanes as usize]).unwrap();
-        let mut expected = BTreeMap::<usize, Vec<bool>>::new();
-        let bindings = sources
-            .iter()
-            .map(|binding| ((binding.logical_window, binding.logical_column), binding))
-            .collect::<BTreeMap<_, _>>();
-        visit_operands(&case.compiled.compiled.program, |operand, _| {
-            if let OperandLine::Source {
-                window,
-                column,
-                first_access,
-            } = *operand
-            {
-                expected
-                    .entry(bindings[&(window, column)].read.ptr as usize)
-                    .or_default()
-                    .push(first_access);
-            }
-        });
-        let mut actual = BTreeMap::<usize, Vec<bool>>::new();
-        visit_operands(&decoded, |operand, _| {
-            if let OperandLine::Source {
-                window,
-                column,
-                first_access,
-            } = *operand
-            {
-                let physical = &setup.desc.source_windows[window as usize];
-                actual
-                    .entry(
-                        physical.read_base as usize
-                            + column as usize * physical.read_stride_bytes as usize,
-                    )
-                    .or_default()
-                    .push(first_access);
-            }
-        });
-        for accesses in expected.values_mut().chain(actual.values_mut()) {
-            accesses.sort_unstable();
-        }
-        assert_eq!(actual, expected);
-    }
-
-    #[test]
-    fn ext_lazy_round_two_binds_depth_zero_to_two() {
-        let case = load_add_sub_l0_case(BwdRegime::Ext, 2);
-        let sources = fake_sources(&case, 0, 2, false);
-        let challenges = [e4(7), e4(11)];
-        let setup = lower_case_at(&case, 2, &sources, &challenges).unwrap();
-
-        for window in &setup.desc.source_windows[..setup.desc.n_source_windows as usize] {
-            assert_eq!((window.backing_depth, window.target_depth), (0, 2));
-            assert_eq!(window.materialize, 0);
-        }
-        assert_eq!(setup.desc.round_challenges, challenges.as_ptr());
-        assert_eq!(setup.desc.n_round_challenges, 2);
-    }
-
-    #[test]
-    fn ext_fold_sources_bind_the_operand_field_not_the_origin_field() {
-        let case = load_add_sub_l0_case(BwdRegime::Ext, 2);
-        let sources = fake_sources(&case, 0, 0, false);
-        let fields = source_fields(&case.compiled.compiled.program)
-            .expect("compiled source operands have one field");
-        let (window, column) = fields
-            .iter()
-            .find_map(|(&coordinate, &field)| {
-                (field == OperandField::Ext
-                    && case
-                        .compiled
-                        .compiled
-                        .source_windows
-                        .source_field(coordinate.0)
-                        == Some(OperandField::Base))
-                .then_some(coordinate)
-            })
-            .expect("fixture has an Ext FoldSource over a base origin");
-        assert!(
-            sources
-                .iter()
-                .find(|source| {
-                    (source.logical_window, source.logical_column) == (window, column)
-                })
-                .expect("source binding")
-                .read
-                .is_e4
-        );
-        lower_case_at(&case, 0, &sources, &[])
-            .expect("lifted Ext backing must satisfy the operand field");
-    }
-
-    #[test]
-    fn descriptor_exposes_only_the_active_round_challenge_prefix() {
-        let case = load_add_sub_l0_case(BwdRegime::Ext, 2);
-        let challenges = (0..24).map(|round| e4(0x80 + round)).collect::<Vec<_>>();
-        let round_zero_sources = fake_sources(&case, 0, 0, false);
-        let round_zero = lower_case_at(&case, 0, &round_zero_sources, &challenges)
-            .expect("round-zero Ext descriptor");
-        assert_eq!(
-            round_zero.desc.n_round_challenges, 0,
-            "Ext VirtualSetup must fold to the active round, not every supplied challenge"
-        );
-
-        let round_two_sources = fake_sources(&case, 0, 2, false);
-        let round_two = lower_case_at(&case, 2, &round_two_sources, &challenges)
-            .expect("round-two Ext descriptor");
-        assert_eq!(round_two.desc.n_round_challenges, 2);
-        assert!(matches!(
-            lower_case_at(&case, 2, &round_two_sources, &challenges[..1]),
-            Err(BwdVmLowerError::RoundChallengesTooShort {
-                required: 2,
-                actual: 1,
-            })
-        ));
-    }
-
-    #[test]
-    fn bwd_vm_virtual_source_lowering() {
-        let mut case = load_add_sub_l0_case(BwdRegime::Ext, 2);
-        let virtual_desc = (0..case.compiled.compiled.specials.len() as u16)
-            .find(|&desc| {
-                matches!(
-                    case.compiled.compiled.specials.get(desc),
-                    Some(BwdSpecial::FoldSource {
-                        origin: OriginLeaf::VirtualSetup { .. },
-                    })
-                )
-            })
-            .expect("Ext fixture has a virtual fold descriptor");
-        let kind_code = match case.compiled.compiled.specials.get(virtual_desc) {
-            Some(BwdSpecial::FoldSource {
-                origin: OriginLeaf::VirtualSetup { kind },
-            }) => virtual_setup_kind_code(kind) as u8,
-            _ => unreachable!(),
-        };
-        let virtual_program = Program {
-            instrs: vec![Instr::Add {
-                field: OperandField::Ext,
-                sign: gkr_eval_isa::fwd::isa::Sign::Plus,
-                promote: false,
-                operands: vec![
-                    OperandLine::Special { desc: virtual_desc },
-                    OperandLine::Special { desc: virtual_desc },
-                ],
-            }],
-        };
-        case.compiled.compiled.program = virtual_program.clone();
-        case.compiled.encoded = encode(&virtual_program).unwrap();
-        let no_sources = [];
-        let resolve_none = |_| None;
-
-        let round_two_virtuals = fake_virtual_sources(&case, 0, 2, false);
-        let round_two_challenges = [e4(7), e4(11)];
-        let setup = lower_case(
-            &case,
-            &runtime_with_virtual(
-                2,
-                &no_sources,
-                &round_two_virtuals,
-                &round_two_challenges,
-                &resolve_none,
-            ),
-        )
-        .unwrap();
-        let decoded = decode(&setup.desc.program[..setup.desc.program_lanes as usize]).unwrap();
-        let mut decoded_virtual_operands = Vec::new();
-        visit_operands(&decoded, |operand, _| {
-            decoded_virtual_operands.push(*operand);
-        });
-        let OperandLine::Source {
-            window: virtual_window,
-            ..
-        } = decoded_virtual_operands[0]
-        else {
-            panic!("first virtual fold use must lower to a source");
-        };
-        assert_eq!(
-            decoded_virtual_operands,
-            [
-                OperandLine::Source {
-                    window: virtual_window,
-                    column: kind_code,
-                    first_access: true,
-                },
-                OperandLine::Source {
-                    window: virtual_window,
-                    column: kind_code,
-                    first_access: false,
-                },
-            ]
-        );
-        let source = setup.desc.source_windows[virtual_window as usize];
-        assert_eq!(source.materialize, 0);
-        assert_eq!(source.backing_depth, 0);
-        assert_eq!(source.target_depth, 2);
-
-        let invalid_round_two_virtuals = fake_virtual_sources(&case, 0, 2, true);
-        assert!(matches!(
-            lower_case(
-                &case,
-                &runtime_with_virtual(
-                    2,
-                    &no_sources,
-                    &invalid_round_two_virtuals,
-                    &round_two_challenges,
-                    &resolve_none,
-                ),
-            ),
-            Err(BwdVmLowerError::InvalidVirtualMaterialization {
-                target_depth: 2,
-                materialize: true,
-                ..
-            })
-        ));
-
-        let impossible_round_two_continuation = fake_virtual_sources(&case, 1, 2, false);
-        assert!(matches!(
-            lower_case(
-                &case,
-                &runtime_with_virtual(
-                    2,
-                    &no_sources,
-                    &impossible_round_two_continuation,
-                    &round_two_challenges,
-                    &resolve_none,
-                ),
-            ),
-            Err(BwdVmLowerError::InvalidVirtualDepths {
-                backing_depth: 1,
-                target_depth: 2,
-                ..
-            })
-        ));
-
-        let round_three_virtuals = fake_virtual_sources(&case, 0, 3, true);
-        let round_three_challenges = [e4(7), e4(11), e4(13)];
-        let round_three = lower_case(
-            &case,
-            &runtime_with_virtual(
-                3,
-                &no_sources,
-                &round_three_virtuals,
-                &round_three_challenges,
-                &resolve_none,
-            ),
-        )
-        .unwrap();
-        let source = round_three.desc.source_windows[virtual_window as usize];
-        assert_eq!(source.materialize, 1);
-        assert_eq!((source.backing_depth, source.target_depth), (0, 3));
-
-        let invalid_round_three_virtuals = fake_virtual_sources(&case, 0, 3, false);
-        assert!(matches!(
-            lower_case(
-                &case,
-                &runtime_with_virtual(
-                    3,
-                    &no_sources,
-                    &invalid_round_three_virtuals,
-                    &round_three_challenges,
-                    &resolve_none,
-                ),
-            ),
-            Err(BwdVmLowerError::InvalidVirtualMaterialization {
-                target_depth: 3,
-                materialize: false,
-                ..
-            })
-        ));
-
-        let impossible_round_three_continuation = fake_virtual_sources(&case, 2, 3, true);
-        assert!(matches!(
-            lower_case(
-                &case,
-                &runtime_with_virtual(
-                    3,
-                    &no_sources,
-                    &impossible_round_three_continuation,
-                    &round_three_challenges,
-                    &resolve_none,
-                ),
-            ),
-            Err(BwdVmLowerError::InvalidVirtualDepths {
-                backing_depth: 2,
-                target_depth: 3,
-                ..
-            })
-        ));
-
-        let round_four_virtuals = fake_virtual_sources(&case, 3, 4, true);
-        let round_four_challenges = [e4(7), e4(11), e4(13), e4(17)];
-        let round_four = lower_case(
-            &case,
-            &runtime_with_virtual(
-                4,
-                &no_sources,
-                &round_four_virtuals,
-                &round_four_challenges,
-                &resolve_none,
-            ),
-        )
-        .unwrap();
-        let source = round_four.desc.source_windows[virtual_window as usize];
-        assert_eq!(source.materialize, 1);
-        assert_eq!((source.backing_depth, source.target_depth), (3, 4));
-
-        let mut r0 = load_add_sub_l0_case(BwdRegime::R0, 2);
-        let plain_desc = (0..r0.compiled.compiled.specials.len() as u16)
-            .find(|&desc| {
-                matches!(
-                    r0.compiled.compiled.specials.get(desc),
-                    Some(BwdSpecial::VirtualSetup { .. })
-                )
-            })
-            .expect("R0 fixture has a plain virtual descriptor");
-        let r0_program = Program {
-            instrs: vec![Instr::Add {
-                field: OperandField::Base,
-                sign: gkr_eval_isa::fwd::isa::Sign::Plus,
-                promote: false,
-                operands: vec![OperandLine::Special { desc: plain_desc }],
-            }],
-        };
-        r0.compiled.compiled.program = r0_program.clone();
-        r0.compiled.encoded = encode(&r0_program).unwrap();
-        let r0_setup = lower_case(
-            &r0,
-            &runtime_with_virtual(0, &no_sources, &[], &[], &resolve_none),
-        )
-        .unwrap();
-        let r0_decoded =
-            decode(&r0_setup.desc.program[..r0_setup.desc.program_lanes as usize]).unwrap();
-        assert!(matches!(
-            r0_decoded.instrs[0],
-            Instr::Add {
-                ref operands,
-                ..
-            } if matches!(operands.as_slice(), [OperandLine::Special { .. }])
-        ));
-    }
-
-    #[test]
-    fn materialized_sources_bind_equal_depths_and_publish_geometry() {
-        let case = load_add_sub_l0_case(BwdRegime::Ext, 2);
-        let sources = fake_sources(&case, 2, 2, true);
-        let challenges = [e4(7), e4(11)];
-        let setup = lower_case_at(&case, 2, &sources, &challenges).unwrap();
-
-        for window in &setup.desc.source_windows[..setup.desc.n_source_windows as usize] {
-            if window.source_kind == BWD_VM_SOURCE_VIRTUAL {
-                continue;
-            }
-            assert_eq!((window.backing_depth, window.target_depth), (2, 2));
-            assert_eq!(window.materialize, 1);
-            assert!(!window.publish_base.is_null());
-            assert_ne!(window.read_base, window.publish_base.cast_const());
-        }
-        let decoded = decode(&setup.desc.program[..setup.desc.program_lanes as usize]).unwrap();
-        let mut uses = BTreeMap::<(u8, u8), Vec<bool>>::new();
-        visit_operands(&decoded, |operand, _| {
-            if let OperandLine::Source {
-                window,
-                column,
-                first_access,
-            } = *operand
-            {
-                uses.entry((window, column)).or_default().push(first_access);
-            }
-        });
-        assert!(uses
-            .values()
-            .any(|accesses| { accesses.contains(&true) && accesses.iter().any(|first| !first) }));
-    }
-
-    #[test]
-    fn virtual_specials_and_batch_coefficients_use_disjoint_dense_namespaces() {
-        let case = load_add_sub_l0_case(BwdRegime::Ext, 2);
-        let sources = fake_sources(&case, 0, 2, false);
-        let challenges = [e4(7), e4(11)];
-        let virtual_sources = fake_virtual_sources(&case, 0, 2, false);
-        let next_value = Cell::new(0u32);
-        let expected = expected_sources(&case, &sources);
-        let resolve_source = |address| expected.get(&address).copied();
-        let setup = lower_bwd_vm(
-            &case.compiled,
-            &case.distilled,
-            &runtime(2, &sources, &virtual_sources, &challenges, &resolve_source),
-            &|reference| e4(derived_tag(reference)),
-            &|_| {
-                let slot = next_value.get();
-                next_value.set(slot + 1);
-                e4(0x1000 + slot)
-            },
-        )
-        .unwrap();
-
-        let mut old_fields = BTreeMap::<u16, BTreeSet<OperandField>>::new();
-        visit_operands(&case.compiled.compiled.program, |operand, field| {
-            if let OperandLine::Special { desc } = *operand {
-                if !matches!(
-                    case.compiled.compiled.specials.get(desc),
-                    Some(BwdSpecial::FoldSource {
-                        origin: OriginLeaf::VirtualSetup { .. },
-                    })
-                ) {
-                    old_fields.entry(desc).or_default().insert(field);
-                }
-            }
-        });
-        assert_eq!(setup.desc.n_specials as usize, old_fields.len());
-
-        for (dense, old) in old_fields.keys().copied().enumerate() {
-            let lowered = setup.desc.specials[dense];
-            match case.compiled.compiled.specials.get(old).unwrap() {
-                BwdSpecial::VirtualSetup { .. }
-                | BwdSpecial::FoldSource {
-                    origin: gkr_eval_isa::bwd::source::OriginLeaf::VirtualSetup { .. },
-                } => assert_eq!(lowered.kind(), BWD_VM_SPECIAL_KIND_VIRTUAL_SETUP),
-                BwdSpecial::FoldSource {
-                    origin: gkr_eval_isa::bwd::source::OriginLeaf::Read(_),
-                } => panic!("read-origin FoldSource survived final binding"),
-                BwdSpecial::Coefficient { .. } | BwdSpecial::AccInit => {
-                    panic!("batch-only descriptor survived in the operand namespace")
-                }
-            }
-        }
-        assert_eq!(next_value.get(), setup.coefficients.len() as u32);
-        for (slot, &coefficient) in setup.coefficients.iter().enumerate() {
-            assert_eq!(coefficient, e4(0x1000 + slot as u32));
-        }
-        if case.compiled.compiled.acc_init_desc.is_some() {
-            assert!((setup.desc.batch_acc_init as u32) < setup.desc.n_coefficients);
-        } else {
-            assert_eq!(setup.desc.batch_acc_init, BWD_VM_BATCH_ACC_INIT_NONE);
-        }
-
-        let decoded = decode(&setup.desc.program[..setup.desc.program_lanes as usize]).unwrap();
-        visit_operands(&decoded, |operand, _| {
-            if let OperandLine::Special { desc } = *operand {
-                assert!((desc as u32) < setup.desc.n_specials);
-            }
-        });
-        for instruction in &decoded.instrs {
-            let Instr::Mov {
-                dir: MovDir::DstFromAcc,
-                dst: Some(dst),
-                ..
-            } = instruction
-            else {
-                continue;
-            };
-            if let Some(coefficient) = unpack_batch_dst(dst) {
-                assert!(
-                    coefficient == BATCH_COEFFICIENT_ONE
-                        || (coefficient as u32) < setup.desc.n_coefficients
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn keyed_source_bindings_are_order_independent() {
-        let case = load_add_sub_l0_case(BwdRegime::Ext, 2);
-        let sources = fake_sources(&case, 0, 2, false);
-        let mut permuted = sources.clone();
-        permuted.reverse();
-        let challenges = [e4(7), e4(11)];
-
-        let ordered = lower_case_at(&case, 2, &sources, &challenges).unwrap();
-        let shuffled = lower_case_at(&case, 2, &permuted, &challenges).unwrap();
-
-        assert_eq!(
-            ordered.desc.program[..ordered.desc.program_lanes as usize],
-            shuffled.desc.program[..shuffled.desc.program_lanes as usize]
-        );
-        assert_eq!(
-            ordered.desc.n_source_windows,
-            shuffled.desc.n_source_windows
-        );
-        assert_eq!(ordered.desc.n_specials, shuffled.desc.n_specials);
-        assert_eq!(ordered.desc.n_coefficients, shuffled.desc.n_coefficients);
-        for (ordered, shuffled) in ordered.desc.source_windows
-            [..ordered.desc.n_source_windows as usize]
-            .iter()
-            .zip(&shuffled.desc.source_windows[..shuffled.desc.n_source_windows as usize])
-        {
-            assert_eq!(ordered.read_base, shuffled.read_base);
-            assert_eq!(ordered.publish_base, shuffled.publish_base);
-            assert_eq!(ordered.read_stride_bytes, shuffled.read_stride_bytes);
-            assert_eq!(ordered.publish_stride_bytes, shuffled.publish_stride_bytes);
-            assert_eq!(ordered.backing_depth, shuffled.backing_depth);
-            assert_eq!(ordered.target_depth, shuffled.target_depth);
-            assert_eq!(ordered.source_kind, shuffled.source_kind);
-            assert_eq!(ordered.materialize, shuffled.materialize);
-        }
-        assert_eq!(ordered.coefficients, shuffled.coefficients);
-        assert_eq!(ordered.const_derived_e4, shuffled.const_derived_e4);
-    }
-
-    #[test]
-    fn lowering_rejects_swapped_same_field_sources_and_null_geometry() {
-        let case = load_add_sub_l0_case(BwdRegime::Ext, 2);
-        let challenges = [e4(7), e4(11)];
-        let canonical = fake_sources(&case, 0, 2, false);
-        let virtual_sources = fake_virtual_sources(&case, 0, 2, false);
-        let expected = expected_sources(&case, &canonical);
-        let resolve_source = |address| expected.get(&address).copied();
-
-        let coordinates = source_coordinates(&case.compiled.compiled.program);
-        let pair = coordinates
-            .iter()
-            .enumerate()
-            .find_map(|(left, &(window, _))| {
-                coordinates
-                    .iter()
-                    .enumerate()
-                    .skip(left + 1)
-                    .find(|(_, (other_window, _))| *other_window == window)
-                    .map(|(right, _)| (left, right))
-            })
-            .expect("fixture has two same-field source columns");
-
-        let mut swapped = canonical.clone();
-        let left = swapped[pair.0].read;
-        swapped[pair.0].read = swapped[pair.1].read;
-        swapped[pair.1].read = left;
-        assert!(matches!(
-            lower_case(
-                &case,
-                &runtime(2, &swapped, &virtual_sources, &challenges, &resolve_source,)
-            ),
-            Err(BwdVmLowerError::SourceIdentityMismatch { .. })
-        ));
-
-        let mut null_read = canonical.clone();
-        null_read[0].read.ptr = ptr::null();
-        assert!(matches!(
-            lower_case(
-                &case,
-                &runtime(
-                    2,
-                    &null_read,
-                    &virtual_sources,
-                    &challenges,
-                    &resolve_source,
-                )
-            ),
-            Err(BwdVmLowerError::NullSourceGeometry { .. })
-        ));
-
-        let mut null_publish = fake_sources(&case, 2, 2, true);
-        null_publish[0].publish.as_mut().unwrap().ptr = ptr::null();
-        assert!(matches!(
-            lower_case_at(&case, 2, &null_publish, &challenges),
-            Err(BwdVmLowerError::NullPublishGeometry { .. })
-        ));
-    }
-
-    #[test]
-    fn lowering_rejects_equal_depth_read_and_publish_aliases() {
-        let case = load_add_sub_l0_case(BwdRegime::Ext, 2);
-        let challenges = [e4(7), e4(11)];
-
-        let mut read_alias = fake_sources(&case, 2, 2, true);
-        read_alias[0].publish = Some(read_alias[1].read);
-        assert!(matches!(
-            lower_case_at(&case, 2, &read_alias, &challenges),
-            Err(BwdVmLowerError::UnsafeReadPublishAlias { .. })
-        ));
-
-        let mut publish_alias = fake_sources(&case, 2, 2, true);
-        publish_alias[1].publish = publish_alias[0].publish;
-        assert!(matches!(
-            lower_case_at(&case, 2, &publish_alias, &challenges),
-            Err(BwdVmLowerError::UnsafePublishAlias { .. })
-        ));
-    }
-
-    #[test]
-    fn lowering_rejects_cross_class_source_aliases() {
-        let case = load_add_sub_l0_case(BwdRegime::Ext, 2);
-        let challenges = [e4(7), e4(11), e4(13), e4(17)];
-        let canonical_sources = fake_sources(&case, 3, 4, true);
-        let canonical_virtuals = fake_virtual_sources(&case, 3, 4, true);
-        let expected = expected_sources(&case, &canonical_sources);
-        let resolve_source = |address| expected.get(&address).copied();
-
-        let mut virtual_publish_vs_ordinary_read = canonical_virtuals.clone();
-        rebase_virtual_publish_to_alias(
-            &mut virtual_publish_vs_ordinary_read,
-            canonical_sources[0].read,
-        );
-        assert!(matches!(
-            lower_case(
-                &case,
-                &runtime(
-                    4,
-                    &canonical_sources,
-                    &virtual_publish_vs_ordinary_read,
-                    &challenges,
-                    &resolve_source,
-                ),
-            ),
-            Err(BwdVmLowerError::UnsafeCrossClassSourceAlias)
-        ));
-
-        let mut ordinary_publish_vs_virtual_read = canonical_sources.clone();
-        ordinary_publish_vs_virtual_read[0].publish = canonical_virtuals[0].read;
-        assert!(matches!(
-            lower_case(
-                &case,
-                &runtime(
-                    4,
-                    &ordinary_publish_vs_virtual_read,
-                    &canonical_virtuals,
-                    &challenges,
-                    &resolve_source,
-                ),
-            ),
-            Err(BwdVmLowerError::UnsafeCrossClassSourceAlias)
-        ));
-
-        let mut virtual_publish_vs_ordinary_publish = canonical_virtuals.clone();
-        rebase_virtual_publish_to_alias(
-            &mut virtual_publish_vs_ordinary_publish,
-            canonical_sources[0]
-                .publish
-                .expect("materialized ordinary fixture has a publish column"),
-        );
-        assert!(matches!(
-            lower_case(
-                &case,
-                &runtime(
-                    4,
-                    &canonical_sources,
-                    &virtual_publish_vs_ordinary_publish,
-                    &challenges,
-                    &resolve_source,
-                ),
-            ),
-            Err(BwdVmLowerError::UnsafeCrossClassSourceAlias)
-        ));
-    }
-
-    #[test]
-    fn deterministic_backward_resolver_covers_transcript_only_challenges() {
-        let claim = ChallengeRef {
-            key: ChallengeKey::ClaimBatching,
-            power: ChallengePower::One,
-        };
-        let claim_squared = ChallengeRef {
-            key: ChallengeKey::ClaimBatching,
-            power: ChallengePower::Static(2),
-        };
-        let constraint = ChallengeRef {
-            key: ChallengeKey::ConstraintAggregation,
-            power: ChallengePower::One,
-        };
-        let claim_value = deterministic_backward_challenge_value(&claim);
-        let mut square = claim_value;
-        square.mul_assign(&claim_value);
-        assert_eq!(
-            deterministic_backward_challenge_value(&claim_squared),
-            square
-        );
-        assert_ne!(
-            deterministic_backward_challenge_value(&constraint),
-            claim_value
-        );
-    }
-
-    #[test]
-    fn all_thirty_add_sub_cases_lower_round_trip_and_omit_sparse_special_holes() {
-        let mut cases = 0usize;
-        let mut max_host_specials = 0usize;
-        let mut max_dense_specials = 0usize;
-        let mut max_omitted = 0usize;
-        let mut saw_dense_special_census = false;
-        for regime in [BwdRegime::R0, BwdRegime::Ext] {
-            for budget in 2..=16 {
-                let case = load_add_sub_l0_case(regime, budget);
-                let round = u8::from(regime == BwdRegime::Ext) * 2;
-                let sources = fake_sources(&case, 0, round, false);
-                let challenges = [e4(7), e4(11)];
-                let setup = lower_case_at(&case, round, &sources, &challenges[..round as usize])
-                    .unwrap_or_else(|error| panic!("{regime:?} c{budget}: {error:?}"));
-                let decoded =
-                    decode(&setup.desc.program[..setup.desc.program_lanes as usize]).unwrap();
-                let reencoded = gkr_eval_isa::fwd::encode::encode(&decoded).unwrap();
-                assert_eq!(
-                    reencoded,
-                    setup.desc.program[..setup.desc.program_lanes as usize]
-                );
-                assert!(setup.desc.n_source_windows as usize <= BWD_VM_SOURCE_WINDOW_CAP);
-
-                let mut referenced = BTreeSet::new();
-                visit_operands(&case.compiled.compiled.program, |operand, _| {
-                    if let OperandLine::Special { desc } = *operand {
-                        if !matches!(
-                            case.compiled.compiled.specials.get(desc),
-                            Some(BwdSpecial::FoldSource {
-                                origin: OriginLeaf::VirtualSetup { .. },
-                            })
-                        ) {
-                            referenced.insert(desc);
-                        }
-                    }
-                });
-                let host = case.compiled.compiled.specials.len();
-                max_host_specials = max_host_specials.max(host);
-                max_dense_specials = max_dense_specials.max(referenced.len());
-                max_omitted = max_omitted.max(host - referenced.len());
-                saw_dense_special_census |=
-                    host == 204 && referenced.len() == 145 && host - referenced.len() == 59;
-                assert_eq!(setup.desc.n_specials as usize, referenced.len());
-                cases += 1;
-            }
-        }
-        assert_eq!(cases, 30);
-        assert_eq!(max_host_specials, 204);
-        assert_eq!(max_dense_specials, 147);
-        assert_eq!(max_omitted, 59);
-        assert!(saw_dense_special_census);
-    }
-
-    #[test]
-    fn lowering_rejects_missing_field_stride_window_column_and_alias_bindings() {
-        let case = load_add_sub_l0_case(BwdRegime::Ext, 2);
-        let challenges = [e4(7), e4(11)];
-
-        let mut missing = fake_sources(&case, 0, 2, false);
-        missing.pop();
-        assert!(matches!(
-            lower_case_at(&case, 2, &missing, &challenges),
-            Err(BwdVmLowerError::MissingSourceBinding { .. })
-        ));
-
-        let mut duplicate = fake_sources(&case, 0, 2, false);
-        duplicate.push(duplicate[0]);
-        assert!(matches!(
-            lower_case_at(&case, 2, &duplicate, &challenges),
-            Err(BwdVmLowerError::DuplicateSourceBinding { .. })
-        ));
-
-        let mut unknown = fake_sources(&case, 0, 2, false);
-        unknown[0].logical_window = u8::MAX;
-        assert!(matches!(
-            lower_case_at(&case, 2, &unknown, &challenges),
-            Err(BwdVmLowerError::UnknownSourceBinding { .. })
-        ));
-
-        let mut wrong_field = fake_sources(&case, 0, 2, false);
-        wrong_field[0].read.is_e4 = !wrong_field[0].read.is_e4;
-        assert!(matches!(
-            lower_case_at(&case, 2, &wrong_field, &challenges),
-            Err(BwdVmLowerError::SourceFieldMismatch { .. })
-        ));
-
-        let mut off_stride = fake_sources(&case, 0, 2, false);
-        off_stride[0].read.ptr = (off_stride[0].read.matrix_base as usize + 1) as *const u8;
-        assert!(matches!(
-            lower_case_at(&case, 2, &off_stride, &challenges),
-            Err(BwdVmLowerError::SourceColumnOffStride { .. })
-        ));
-
-        let mut wide = fake_sources(&case, 0, 2, false);
-        let coordinates = source_coordinates(&case.compiled.compiled.program);
-        let pair = coordinates
-            .iter()
-            .enumerate()
-            .find_map(|(left, &(window, _))| {
-                coordinates
-                    .iter()
-                    .enumerate()
-                    .skip(left + 1)
-                    .find(|(_, (other_window, _))| *other_window == window)
-                    .map(|(right, _)| (left, right))
-            })
-            .expect("fixture has two coordinates in one source matrix");
-        let base = wide[pair.0].read.matrix_base as usize;
-        let stride = wide[pair.0].read.stride_bytes as usize;
-        wide[pair.0].read.ptr = base as *const u8;
-        wide[pair.1].read.ptr = (base + 128 * stride) as *const u8;
-        assert!(matches!(
-            lower_case_at(&case, 2, &wide, &challenges),
-            Err(BwdVmLowerError::SourceColumnOverflow { .. })
-        ));
-
-        let mut too_many_windows = fake_sources(&case, 0, 2, false);
-        assert!(too_many_windows.len() > BWD_VM_SOURCE_WINDOW_CAP);
-        for (index, source) in too_many_windows.iter_mut().enumerate() {
-            source.read.matrix_base = (0x7000_0000usize + index * 0x0010_0000) as *mut u8;
-            source.read.ptr = source.read.matrix_base.cast_const();
-        }
-        assert!(matches!(
-            lower_case_at(&case, 2, &too_many_windows, &challenges),
-            Err(BwdVmLowerError::Capacity {
-                field: "source_windows",
-                cap: BWD_VM_SOURCE_WINDOW_CAP,
-                ..
-            })
-        ));
-
-        let mut alias = fake_sources(&case, 0, 2, true);
-        for source in &mut alias {
-            source.publish = Some(source.read);
-        }
-        assert!(matches!(
-            lower_case_at(&case, 2, &alias, &challenges),
-            Err(BwdVmLowerError::UnsafeReadPublishAlias { .. })
-        ));
-
-        let mut cross_alias = fake_sources(&case, 0, 2, true);
-        cross_alias[0].publish = Some(cross_alias[1].read);
-        assert!(matches!(
-            lower_case_at(&case, 2, &cross_alias, &challenges),
-            Err(BwdVmLowerError::UnsafeReadPublishAlias { .. })
-        ));
-    }
+    Ok(())
 }

@@ -80,7 +80,7 @@ pub(crate) use cs::gkr_circuits::{
     shift_binop_table_driver_fn, ExecutorFamilyDecoderData as CSExecutorFamilyDecoderData,
 };
 pub(crate) use cs::gkr_compiler::dag_ir::VirtualSetupKind;
-pub(crate) use cs::gkr_compiler::dag_ir::{ChallengeRef, RangeWidth, ReadPlace};
+pub(crate) use cs::gkr_compiler::dag_ir::{BwdRegime, ChallengeRef, RangeWidth, ReadPlace};
 pub(crate) use cs::gkr_compiler::{
     compile_unrolled_circuit_state_transition_into_gkr, CompiledAddressSpaceRelationStrict,
     CompiledAddressStrict, CompiledMemoryTimestamp, GKRAuxLayoutData, GKRCircuitArtifact,

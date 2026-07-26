@@ -1,755 +1,593 @@
-use std::cell::Cell;
-use std::collections::{BTreeMap, BTreeSet};
+//! Backward coefficient-term ISA: the by-value launch descriptor and the frozen
+//! u16 wire format (design §9, §10.2, §11).
+//!
+//! THIS FILE IS ONE HALF OF AN ABI. Its CUDA half is
+//! `native/prover/gkr/backward/coefficient_vm.cuh`, which carries the same
+//! numeric literals under `static_assert`. Neither half may move without the
+//! other in the same commit, and both fail to BUILD — not to test — when they
+//! disagree: the CUDA `static_assert`s fire during `cargo check` (the build
+//! script runs nvcc) and the Rust `const _: () = assert!(...)` blocks fire in
+//! the same pass.
+//!
+//! Every literal below is additionally tied to its AUTHORITY in `gkr_eval_isa`,
+//! so the two languages cannot agree with each other while disagreeing with the
+//! compiler that produced the program:
+//!
+//!   * opcode numbers → `bwd::coeff::limits::{r0_opcode, continuation_opcode}`,
+//!     which `limits` already pins in both directions against
+//!     `R0_OPCODE_TABLE` / `CONTINUATION_OPCODE_TABLE`;
+//!   * shifts, masks, modes and plan actions → `bwd::coeff::encode`;
+//!   * the two array capacities → `bwd::coeff::limits::in_scope`; and
+//!   * the reserved coefficient literals → `model::CoefficientRecipeId`.
+//!
+//! The program stream is embedded BY VALUE. There is no device program pointer,
+//! no format version and no compatibility path (§9.1). An overflow of a cap
+//! here requires a tighter encoding, never a second storage path.
 
-use gkr_eval_isa::bwd::batch::{unpack_batch_dst, BATCH_COEFFICIENT_ONE};
-use gkr_eval_isa::bwd::compile::BwdCompiledLayer;
-use gkr_eval_isa::bwd::fragment::{FragmentTable, MergedRecipe};
-use gkr_eval_isa::bwd::source::{BwdSpecial, OriginLeaf, VIRTUAL_SETUP_MATERIALIZE_DEPTH};
-use gkr_eval_isa::fwd::encode::decode;
-use gkr_eval_isa::fwd::isa::{DstLine, Instr, LdcSub, MovDir, OperandField, OperandLine, Program};
-use gkr_eval_isa::fwd::source::virtual_setup_kind_code;
+use gkr_eval_isa::bwd::coeff::encode::{
+    ACTION_DIRECT, ACTION_FILL, ACTION_INVALID, ACTION_USE_RESIDENT, CELL_DELTA_LANE_SHIFT,
+    CELL_ENDPOINT0_LANE_SHIFT, HEADER_COEFFICIENT_MASK, HEADER_COEFFICIENT_SHIFT,
+    HEADER_OPCODE_MASK, HEADER_OPCODE_SHIFT, INPUT_COLUMN_MASK, INPUT_COLUMN_SHIFT,
+    INPUT_FIRST_ACCESS_SHIFT, INPUT_MODE_MASK, INPUT_MODE_SHIFT, INPUT_WINDOW_MASK,
+    INPUT_WINDOW_SHIFT, LANE_BITS, LANE_MASK, LANE_WORD_SHIFT, MODE_CELL, MODE_DIRECT_SOURCE,
+    MODE_FILL_SOURCE, MODE_PLANNED_SOURCE, PLAN_ACTION_MASK, PLAN_DELTA_ACTION_SHIFT,
+    PLAN_DELTA_LANE_SHIFT, PLAN_ENDPOINT0_ACTION_SHIFT, PLAN_ENDPOINT0_LANE_SHIFT,
+};
+use gkr_eval_isa::bwd::coeff::limits::{
+    continuation_opcode, in_scope, r0_opcode, TermCategory, DESCRIPTOR_ALIGNMENT_BYTES,
+    HEADER_COEFFICIENT_BITS, HEADER_OPCODE_BITS, KERNEL_ARGUMENT_CEILING_BYTES,
+    MAX_COEFFICIENT_ENCODINGS, MAX_SOURCE_WINDOWS, SOURCE_WINDOW_COLUMNS,
+};
+use gkr_eval_isa::bwd::coeff::model::CoefficientRecipeId;
+use gkr_eval_isa::bwd::coeff::schedule::{CellBudget, LANES_PER_CELL, PUBLISH_TARGET_DEPTH};
+use gkr_eval_isa::fwd::source::KIND_ORDER;
 
-use crate::primitives::field::{BF, E4};
-use crate::prover::gkr::backward::{flat::FLAT_CONST_MAX, GkrEqSizes};
-use crate::prover::gkr::forward::vm::desc::{
-    ARG_DERIVED_E4_CAP as FWD_VM_ARG_DERIVED_E4_CAP, CONST_CAP as FWD_VM_BF_CONSTANT_CAP,
-    CONST_DERIVED_E4_CAP as FWD_VM_CONST_DERIVED_E4_CAP,
+use crate::primitives::field::E4;
+use crate::prover::gkr::backward::GkrEqSizes;
+
+// ── By-value capacities (§9.1, Task 8's measured corpus maxima) ──────────────
+
+/// The by-value kernel-argument cap. `size_of::<BwdCoeffDesc>() <=
+/// BWD_COEFF_DESC_CAP` is the FINAL authority on the descriptor's shape.
+pub(crate) const BWD_COEFF_DESC_CAP: usize = 32_764;
+/// Descriptor alignment. Load-bearing rather than cosmetic: it is what places
+/// [`BwdCoeffDesc::program`] on a 16-byte boundary, which is the only reason
+/// Task 8's one-word round-up of the measured program maximum buys anything
+/// (§9.1: "the implementation may buffer the stream through aligned wide
+/// loads"). Pinned by `descriptor_alignment_is_load_bearing`.
+pub(crate) const BWD_COEFF_DESC_ALIGN: usize = 16;
+/// Live source-window slots. The EXACT measured corpus maximum, deliberately
+/// NOT the 64 windows the `source_window:6` coordinate can express — see
+/// [`BWD_COEFF_MAX_ENCODABLE_SOURCE_WINDOWS`] for that separate claim.
+pub(crate) const BWD_COEFF_SOURCE_WINDOW_CAP: usize = 17;
+/// The by-value program array, in u16 words: the measured maximum 5,759 words
+/// (`blake2_with_extended_control` L0 `Ext` at **c3**, not at c16 — program
+/// length is not monotone in the cell budget) plus exactly one word of 16-byte
+/// alignment. Not a headroom allowance: every unearned word is unearned
+/// kernel-argument budget in every launch, forever.
+pub(crate) const BWD_COEFF_PROGRAM_WORD_CAP: usize = 5_760;
+/// [`BWD_COEFF_PROGRAM_WORD_CAP`] in bytes.
+pub(crate) const BWD_COEFF_PROGRAM_BYTE_CAP: usize = 2 * BWD_COEFF_PROGRAM_WORD_CAP;
+
+const _: () = {
+    assert!(BWD_COEFF_DESC_CAP == KERNEL_ARGUMENT_CEILING_BYTES);
+    assert!(BWD_COEFF_DESC_ALIGN == DESCRIPTOR_ALIGNMENT_BYTES);
+    assert!(BWD_COEFF_SOURCE_WINDOW_CAP == in_scope::MAX_SOURCE_WINDOWS_USED);
+    assert!(BWD_COEFF_PROGRAM_WORD_CAP == in_scope::DESCRIPTOR_PROGRAM_WORDS);
+    assert!(BWD_COEFF_PROGRAM_BYTE_CAP == in_scope::DESCRIPTOR_PROGRAM_BYTES);
+    // The array is the MEASUREMENT rounded up by strictly less than one
+    // alignment quantum, so it can never silently drift into headroom.
+    assert!(BWD_COEFF_PROGRAM_WORD_CAP >= in_scope::MAX_REALIZED_PROGRAM_WORDS);
+    assert!(
+        (BWD_COEFF_PROGRAM_WORD_CAP - in_scope::MAX_REALIZED_PROGRAM_WORDS) * 2
+            < BWD_COEFF_DESC_ALIGN
+    );
+    assert!(BWD_COEFF_PROGRAM_BYTE_CAP % BWD_COEFF_DESC_ALIGN == 0);
 };
 
-pub(crate) const BWD_VM_PROGRAM_CAP: usize = 1_744;
-pub(crate) const BWD_VM_SOURCE_READ_BASE: u8 = 0;
-pub(crate) const BWD_VM_SOURCE_READ_EXT: u8 = 1;
-pub(crate) const BWD_VM_SOURCE_VIRTUAL: u8 = 2;
-pub(crate) const BWD_VM_SOURCE_WINDOW_CAP: usize = 5;
-// Mirrored by BWD_VM_VIRTUAL_MATERIALIZE_DEPTH in bwd_vm.cuh.
-pub(crate) const BWD_VM_VIRTUAL_MATERIALIZE_DEPTH: u8 = 3;
-pub(crate) const BWD_VM_SPECIAL_CAP: usize = 147;
-pub(crate) const BWD_VM_COEFFICIENT_CAP: usize = 145;
-pub(crate) const BWD_VM_CELL_CAP: usize = 18;
-pub(crate) const BWD_VM_BATCH_ACC_INIT_NONE: u16 = 0xffff;
+// ── Frozen wire format (§9.2, §9.4, §9.5, §9.6) ──────────────────────────────
+//
+// ```text
+// header       [ opcode:3 @13 | coefficient:13 @0 ]
+// input word   [ column:7 @9 | window:6 @3 | first_access:1 @2 | mode:2 @0 ]
+// cell single  [ 0:8 @8 | lane:6 @2 | mode:2 @0 ]
+// cell pair    [ delta_lane:6 @10 | 0:2 @8 | e0_lane:6 @2 | mode:2 @0 ]
+// plan word    [ delta_lane:6 @10 | delta_act:2 @8 | e0_lane:6 @2 | e0_act:2 @0 ]
+// lane word    [ 0:10 @6 | lane:6 @0 ]
+// ```
 
-// The add/sub census uses no plain BF or ArgDerivedE4 entries, but those two
-// ISA channels remain part of the shared evaluator contract. Reuse the exact
-// established forward-VM ABI banks instead of inventing a new capacity.
-pub(crate) const BWD_VM_BF_CONSTANT_CAP: usize = FWD_VM_BF_CONSTANT_CAP;
-pub(crate) const BWD_VM_ARG_DERIVED_E4_CAP: usize = FWD_VM_ARG_DERIVED_E4_CAP;
-// ConstDerivedE4 values use the already-defined forward constant-memory bank.
-pub(crate) const BWD_VM_CONST_DERIVED_E4_CAP: usize = FWD_VM_CONST_DERIVED_E4_CAP;
+pub(crate) const BWD_COEFF_HEADER_COEFFICIENT_BITS: u32 = 13;
+pub(crate) const BWD_COEFF_HEADER_COEFFICIENT_SHIFT: u32 = 0;
+pub(crate) const BWD_COEFF_HEADER_COEFFICIENT_MASK: u16 = 0x1fff;
+pub(crate) const BWD_COEFF_HEADER_OPCODE_BITS: u32 = 3;
+pub(crate) const BWD_COEFF_HEADER_OPCODE_SHIFT: u32 = 13;
+pub(crate) const BWD_COEFF_HEADER_OPCODE_MASK: u16 = 0x7;
 
-pub(crate) const BWD_VM_SPECIAL_KIND_VIRTUAL_SETUP: u32 = 2;
-pub(crate) const BWD_VM_SPECIAL_KIND_BITS: u32 = 2;
-pub(crate) const BWD_VM_SPECIAL_KIND_MASK: u32 = (1 << BWD_VM_SPECIAL_KIND_BITS) - 1;
-pub(crate) const BWD_VM_SPECIAL_PAYLOAD_SHIFT: u32 = BWD_VM_SPECIAL_KIND_BITS;
-pub(crate) const BWD_VM_SPECIAL_PAYLOAD_MASK: u32 = u32::MAX >> BWD_VM_SPECIAL_KIND_BITS;
+pub(crate) const BWD_COEFF_INPUT_MODE_SHIFT: u32 = 0;
+pub(crate) const BWD_COEFF_INPUT_MODE_MASK: u16 = 0x3;
+pub(crate) const BWD_COEFF_INPUT_FIRST_ACCESS_SHIFT: u32 = 2;
+pub(crate) const BWD_COEFF_INPUT_WINDOW_SHIFT: u32 = 3;
+pub(crate) const BWD_COEFF_INPUT_WINDOW_MASK: u16 = 0x3f;
+pub(crate) const BWD_COEFF_INPUT_COLUMN_SHIFT: u32 = 9;
+pub(crate) const BWD_COEFF_INPUT_COLUMN_MASK: u16 = 0x7f;
 
-pub(crate) const BWD_VM_VIRTUAL_RANGE_CHECK_16_BITS: u32 = 0;
-pub(crate) const BWD_VM_VIRTUAL_RANGE_CHECK_TIMESTAMP: u32 = 1;
-pub(crate) const BWD_VM_VIRTUAL_INITS_AND_TEARDOWNS_LOW: u32 = 2;
-pub(crate) const BWD_VM_VIRTUAL_INITS_AND_TEARDOWNS_HIGH: u32 = 3;
+pub(crate) const BWD_COEFF_LANE_BITS: u32 = 6;
+pub(crate) const BWD_COEFF_LANE_MASK: u16 = 0x3f;
+pub(crate) const BWD_COEFF_LANES_PER_CELL: u32 = 4;
+pub(crate) const BWD_COEFF_MIN_BUDGET_CELLS: u32 = 2;
+pub(crate) const BWD_COEFF_MAX_BUDGET_CELLS: u32 = 16;
+
+pub(crate) const BWD_COEFF_CELL_ENDPOINT0_LANE_SHIFT: u32 = 2;
+pub(crate) const BWD_COEFF_CELL_DELTA_LANE_SHIFT: u32 = 10;
+pub(crate) const BWD_COEFF_PLAN_ENDPOINT0_ACTION_SHIFT: u32 = 0;
+pub(crate) const BWD_COEFF_PLAN_ENDPOINT0_LANE_SHIFT: u32 = 2;
+pub(crate) const BWD_COEFF_PLAN_DELTA_ACTION_SHIFT: u32 = 8;
+pub(crate) const BWD_COEFF_PLAN_DELTA_LANE_SHIFT: u32 = 10;
+pub(crate) const BWD_COEFF_PLAN_ACTION_MASK: u16 = 0x3;
+pub(crate) const BWD_COEFF_LANE_WORD_SHIFT: u32 = 0;
+
+pub(crate) const BWD_COEFF_MODE_DIRECT_SOURCE: u16 = 0;
+pub(crate) const BWD_COEFF_MODE_CELL: u16 = 1;
+pub(crate) const BWD_COEFF_MODE_FILL_SOURCE: u16 = 2;
+pub(crate) const BWD_COEFF_MODE_PLANNED_SOURCE: u16 = 3;
+
+pub(crate) const BWD_COEFF_ACTION_DIRECT: u16 = 0;
+pub(crate) const BWD_COEFF_ACTION_USE_RESIDENT: u16 = 1;
+pub(crate) const BWD_COEFF_ACTION_FILL: u16 = 2;
+pub(crate) const BWD_COEFF_ACTION_INVALID: u16 = 3;
+
+/// Windows the `source_window:6` coordinate can express. An ENCODING limit, a
+/// different kind of fact from [`BWD_COEFF_SOURCE_WINDOW_CAP`], which is a
+/// measurement. Conflating the two is how a descriptor ends up sized for a
+/// number nobody measured.
+pub(crate) const BWD_COEFF_MAX_ENCODABLE_SOURCE_WINDOWS: usize = 64;
+/// Columns one window can cover (`column:7`).
+pub(crate) const BWD_COEFF_SOURCE_WINDOW_COLUMNS: usize = 128;
+/// Coefficient encodings thirteen bits admit, including the two reserved ones.
+pub(crate) const BWD_COEFF_MAX_COEFFICIENT_ENCODINGS: usize = 8_192;
+
+/// Reserved coefficient index for the literal `+1` (§9.2).
+pub(crate) const BWD_COEFF_INDEX_ONE: u16 = 0;
+/// Reserved coefficient index for the literal `-1` (§9.2).
+pub(crate) const BWD_COEFF_INDEX_NEG_ONE: u16 = 1;
+/// Bank entry `i` is coefficient index `BWD_COEFF_INDEX_RESERVED + i`.
+pub(crate) const BWD_COEFF_INDEX_RESERVED: u16 = 2;
+
+// The wire format, tied to its authority in `gkr_eval_isa::bwd::coeff::encode`.
+const _: () = {
+    assert!(BWD_COEFF_HEADER_COEFFICIENT_BITS == HEADER_COEFFICIENT_BITS);
+    assert!(BWD_COEFF_HEADER_COEFFICIENT_SHIFT == HEADER_COEFFICIENT_SHIFT);
+    assert!(BWD_COEFF_HEADER_COEFFICIENT_MASK == HEADER_COEFFICIENT_MASK);
+    assert!(BWD_COEFF_HEADER_OPCODE_BITS == HEADER_OPCODE_BITS);
+    assert!(BWD_COEFF_HEADER_OPCODE_SHIFT == HEADER_OPCODE_SHIFT);
+    assert!(BWD_COEFF_HEADER_OPCODE_MASK == HEADER_OPCODE_MASK);
+    assert!(BWD_COEFF_HEADER_COEFFICIENT_BITS + BWD_COEFF_HEADER_OPCODE_BITS == 16);
+
+    assert!(BWD_COEFF_INPUT_MODE_SHIFT == INPUT_MODE_SHIFT);
+    assert!(BWD_COEFF_INPUT_MODE_MASK == INPUT_MODE_MASK);
+    assert!(BWD_COEFF_INPUT_FIRST_ACCESS_SHIFT == INPUT_FIRST_ACCESS_SHIFT);
+    assert!(BWD_COEFF_INPUT_WINDOW_SHIFT == INPUT_WINDOW_SHIFT);
+    assert!(BWD_COEFF_INPUT_WINDOW_MASK == INPUT_WINDOW_MASK);
+    assert!(BWD_COEFF_INPUT_COLUMN_SHIFT == INPUT_COLUMN_SHIFT);
+    assert!(BWD_COEFF_INPUT_COLUMN_MASK == INPUT_COLUMN_MASK);
+    // The input word is exactly saturated, which is WHY a resident operand's
+    // width comes from the opcode instead of from its window descriptor.
+    assert!(BWD_COEFF_INPUT_COLUMN_SHIFT + 7 == 16);
+
+    assert!(BWD_COEFF_LANE_BITS == LANE_BITS);
+    assert!(BWD_COEFF_LANE_MASK == LANE_MASK);
+    assert!(BWD_COEFF_LANES_PER_CELL == LANES_PER_CELL);
+    assert!(BWD_COEFF_MIN_BUDGET_CELLS == CellBudget::MIN_CELLS as u32);
+    assert!(BWD_COEFF_MAX_BUDGET_CELLS == CellBudget::MAX_CELLS as u32);
+    // Six lane bits address the largest legal cell file exactly: c16 = 64 BF
+    // lanes. `c16` is 64 BF lanes because a cell is four of them.
+    assert!(
+        BWD_COEFF_LANE_MASK as u32 + 1 == BWD_COEFF_MAX_BUDGET_CELLS * BWD_COEFF_LANES_PER_CELL
+    );
+
+    assert!(BWD_COEFF_CELL_ENDPOINT0_LANE_SHIFT == CELL_ENDPOINT0_LANE_SHIFT);
+    assert!(BWD_COEFF_CELL_DELTA_LANE_SHIFT == CELL_DELTA_LANE_SHIFT);
+    assert!(BWD_COEFF_PLAN_ENDPOINT0_ACTION_SHIFT == PLAN_ENDPOINT0_ACTION_SHIFT);
+    assert!(BWD_COEFF_PLAN_ENDPOINT0_LANE_SHIFT == PLAN_ENDPOINT0_LANE_SHIFT);
+    assert!(BWD_COEFF_PLAN_DELTA_ACTION_SHIFT == PLAN_DELTA_ACTION_SHIFT);
+    assert!(BWD_COEFF_PLAN_DELTA_LANE_SHIFT == PLAN_DELTA_LANE_SHIFT);
+    assert!(BWD_COEFF_PLAN_ACTION_MASK == PLAN_ACTION_MASK);
+    assert!(BWD_COEFF_LANE_WORD_SHIFT == LANE_WORD_SHIFT);
+    // The pair-carrying words share ONE lane geometry on purpose: a decoder
+    // needs one pair-of-lanes extractor, not two.
+    assert!(BWD_COEFF_CELL_ENDPOINT0_LANE_SHIFT == BWD_COEFF_PLAN_ENDPOINT0_LANE_SHIFT);
+    assert!(BWD_COEFF_CELL_DELTA_LANE_SHIFT == BWD_COEFF_PLAN_DELTA_LANE_SHIFT);
+
+    assert!(BWD_COEFF_MODE_DIRECT_SOURCE == MODE_DIRECT_SOURCE);
+    assert!(BWD_COEFF_MODE_CELL == MODE_CELL);
+    assert!(BWD_COEFF_MODE_FILL_SOURCE == MODE_FILL_SOURCE);
+    assert!(BWD_COEFF_MODE_PLANNED_SOURCE == MODE_PLANNED_SOURCE);
+    assert!(BWD_COEFF_ACTION_DIRECT == ACTION_DIRECT);
+    assert!(BWD_COEFF_ACTION_USE_RESIDENT == ACTION_USE_RESIDENT);
+    assert!(BWD_COEFF_ACTION_FILL == ACTION_FILL);
+    assert!(BWD_COEFF_ACTION_INVALID == ACTION_INVALID);
+    // The four modes and the four actions exactly cover their two bits.
+    assert!(BWD_COEFF_MODE_PLANNED_SOURCE == BWD_COEFF_INPUT_MODE_MASK);
+    assert!(BWD_COEFF_ACTION_INVALID == BWD_COEFF_PLAN_ACTION_MASK);
+
+    assert!(BWD_COEFF_MAX_ENCODABLE_SOURCE_WINDOWS == MAX_SOURCE_WINDOWS);
+    assert!(BWD_COEFF_SOURCE_WINDOW_COLUMNS == SOURCE_WINDOW_COLUMNS);
+    assert!(BWD_COEFF_MAX_COEFFICIENT_ENCODINGS == MAX_COEFFICIENT_ENCODINGS);
+    assert!(BWD_COEFF_MAX_ENCODABLE_SOURCE_WINDOWS == BWD_COEFF_INPUT_WINDOW_MASK as usize + 1);
+    assert!(BWD_COEFF_SOURCE_WINDOW_COLUMNS == BWD_COEFF_INPUT_COLUMN_MASK as usize + 1);
+    assert!(BWD_COEFF_MAX_COEFFICIENT_ENCODINGS == 1 << BWD_COEFF_HEADER_COEFFICIENT_BITS);
+    // The measured window maximum must fit the coordinate that encodes it.
+    assert!(BWD_COEFF_SOURCE_WINDOW_CAP <= BWD_COEFF_MAX_ENCODABLE_SOURCE_WINDOWS);
+
+    assert!(BWD_COEFF_INDEX_ONE as u32 == CoefficientRecipeId::ONE.0);
+    assert!(BWD_COEFF_INDEX_NEG_ONE as u32 == CoefficientRecipeId::NEG_ONE.0);
+    assert!(BWD_COEFF_INDEX_RESERVED as u32 == CoefficientRecipeId::RESERVED);
+};
+
+// ── ABI FACT 1: bit 2 is a MODE-DISCRIMINATED OVERLAY ────────────────────────
+//
+// One physical bit means four different things depending on which of the six
+// word forms it sits in, and the FORM is fixed by the opcode plus (for an
+// extension word) the preceding input word's mode — never by the word's own
+// content:
+//
+// ```text
+// source-bearing input word   bit 2 = first_access          (window at 3..8)
+// cell word (either form)     bit 2 = Endpoint0 lane bit 0  (lane   at 2..7)
+// plan word                   bit 2 = Endpoint0 lane bit 0  (lane   at 2..7)
+// bare lane word              bit 2 = lane bit 2            (lane   at 0..5)
+// ```
+//
+// A decoder that extracts `first_access` BEFORE dispatching on the mode reads a
+// lane bit as a materialization flag. The collision is pinned here so it cannot
+// be "fixed" into a non-overlapping layout on one side only.
+const _: () = {
+    assert!(BWD_COEFF_INPUT_FIRST_ACCESS_SHIFT == BWD_COEFF_CELL_ENDPOINT0_LANE_SHIFT);
+    assert!(BWD_COEFF_INPUT_FIRST_ACCESS_SHIFT == BWD_COEFF_PLAN_ENDPOINT0_LANE_SHIFT);
+    assert!(BWD_COEFF_INPUT_FIRST_ACCESS_SHIFT >= BWD_COEFF_LANE_WORD_SHIFT);
+    assert!(BWD_COEFF_INPUT_FIRST_ACCESS_SHIFT < BWD_COEFF_LANE_WORD_SHIFT + BWD_COEFF_LANE_BITS);
+    // ... and it is genuinely an overlay, not an accident of a spare bit: the
+    // window field starts one bit above it in the only form that reads it as a
+    // flag.
+    assert!(BWD_COEFF_INPUT_WINDOW_SHIFT == BWD_COEFF_INPUT_FIRST_ACCESS_SHIFT + 1);
+};
+
+// ── Frozen opcode tables (§6, §9.2) ──────────────────────────────────────────
+
+pub(crate) const BWD_COEFF_R0_OP_C0_LINEAR_BF: u16 = 0;
+pub(crate) const BWD_COEFF_R0_OP_C0_LINEAR_E4: u16 = 1;
+pub(crate) const BWD_COEFF_R0_OP_C2_PRODUCT_BF_BF: u16 = 2;
+pub(crate) const BWD_COEFF_R0_OP_C2_PRODUCT_BF_E4: u16 = 3;
+pub(crate) const BWD_COEFF_R0_OP_C2_PRODUCT_E4_E4: u16 = 4;
+pub(crate) const BWD_COEFF_R0_OP_MOVE_BF: u16 = 5;
+pub(crate) const BWD_COEFF_R0_OP_MOVE_E4: u16 = 6;
+pub(crate) const BWD_COEFF_R0_LIVE_OPCODES: usize = 7;
+
+pub(crate) const BWD_COEFF_EXT_OP_C0_LINEAR_E4: u16 = 0;
+pub(crate) const BWD_COEFF_EXT_OP_DUAL_PRODUCT_E4: u16 = 1;
+pub(crate) const BWD_COEFF_EXT_OP_MOVE_E4: u16 = 2;
+pub(crate) const BWD_COEFF_EXT_LIVE_OPCODES: usize = 3;
+
+/// The frozen R0 opcode of `category`. Panicking rather than `Option` so the
+/// const assertions below read as equalities; a category with no R0 encoding is
+/// a compile error at the call site, not a runtime `None`.
+const fn r0_op(category: TermCategory) -> u16 {
+    match r0_opcode(category) {
+        Some(opcode) => opcode,
+        None => panic!("category has no R0 opcode"),
+    }
+}
+
+/// The frozen continuation opcode of `category`; see [`r0_op`].
+const fn ext_op(category: TermCategory) -> u16 {
+    match continuation_opcode(category) {
+        Some(opcode) => opcode,
+        None => panic!("category has no continuation opcode"),
+    }
+}
+
+const _: () = {
+    assert!(BWD_COEFF_R0_OP_C0_LINEAR_BF == r0_op(TermCategory::C0LinearBf));
+    assert!(BWD_COEFF_R0_OP_C0_LINEAR_E4 == r0_op(TermCategory::C0LinearE4));
+    assert!(BWD_COEFF_R0_OP_C2_PRODUCT_BF_BF == r0_op(TermCategory::C2ProductBfBf));
+    assert!(BWD_COEFF_R0_OP_C2_PRODUCT_BF_E4 == r0_op(TermCategory::C2ProductBfE4));
+    assert!(BWD_COEFF_R0_OP_C2_PRODUCT_E4_E4 == r0_op(TermCategory::C2ProductE4E4));
+    assert!(BWD_COEFF_R0_OP_MOVE_BF == r0_op(TermCategory::MoveBf));
+    assert!(BWD_COEFF_R0_OP_MOVE_E4 == r0_op(TermCategory::MoveE4));
+    // R0 has no native dual factor, and opcode 7 stays unallocated.
+    assert!(r0_opcode(TermCategory::DualProductE4).is_none());
+    assert!(BWD_COEFF_R0_LIVE_OPCODES == gkr_eval_isa::bwd::coeff::limits::R0_LIVE_OPCODES);
+    assert!(BWD_COEFF_R0_LIVE_OPCODES <= BWD_COEFF_HEADER_OPCODE_MASK as usize + 1);
+
+    assert!(BWD_COEFF_EXT_OP_C0_LINEAR_E4 == ext_op(TermCategory::C0LinearE4));
+    assert!(BWD_COEFF_EXT_OP_DUAL_PRODUCT_E4 == ext_op(TermCategory::DualProductE4));
+    assert!(BWD_COEFF_EXT_OP_MOVE_E4 == ext_op(TermCategory::MoveE4));
+    // Continuation lowering emits ONLY C0Linear and native DualProduct, so a
+    // standalone continuation product is a structural error, not an opcode.
+    assert!(continuation_opcode(TermCategory::C0LinearBf).is_none());
+    assert!(continuation_opcode(TermCategory::C2ProductBfBf).is_none());
+    assert!(continuation_opcode(TermCategory::C2ProductBfE4).is_none());
+    assert!(continuation_opcode(TermCategory::C2ProductE4E4).is_none());
+    assert!(continuation_opcode(TermCategory::MoveBf).is_none());
+    assert!(in_scope::MAX_CONTINUATION_STANDALONE_PRODUCTS == 0);
+    assert!(
+        BWD_COEFF_EXT_LIVE_OPCODES == gkr_eval_isa::bwd::coeff::limits::CONTINUATION_LIVE_OPCODES
+    );
+    assert!(BWD_COEFF_EXT_LIVE_OPCODES <= BWD_COEFF_HEADER_OPCODE_MASK as usize + 1);
+};
+
+// ── ABI FACT 2: the packed pair `Cell` form is OPCODE-SCOPED ─────────────────
+
+/// Whether a `Cell` word under this `(regime, opcode)` reads bits 10..15 as a
+/// packed `Delta` lane.
+///
+/// `DualProductE4` — and only `DualProductE4` — does. Under every other opcode
+/// those bits are reserved and MUST be zero, so a `Cell` word naming lane 0 with
+/// a nonzero high payload is a REJECTED program, not a pair. There is no tag in
+/// the word: the opcode is the only discriminator, which is why this predicate
+/// takes one and why no decode site may sniff the payload instead. Mirrored by
+/// `bwd_coeff_cell_word_is_pair_form` in `coefficient_vm.cuh`.
+pub(crate) const fn bwd_coeff_cell_word_is_pair_form(regime_is_r0: bool, opcode: u16) -> bool {
+    !regime_is_r0 && opcode == BWD_COEFF_EXT_OP_DUAL_PRODUCT_E4
+}
+
+const _: () = {
+    assert!(bwd_coeff_cell_word_is_pair_form(
+        false,
+        BWD_COEFF_EXT_OP_DUAL_PRODUCT_E4
+    ));
+    assert!(!bwd_coeff_cell_word_is_pair_form(
+        false,
+        BWD_COEFF_EXT_OP_C0_LINEAR_E4
+    ));
+    assert!(!bwd_coeff_cell_word_is_pair_form(
+        false,
+        BWD_COEFF_EXT_OP_MOVE_E4
+    ));
+    // R0 has no native dual factor. In particular an R0 opcode that happens to
+    // be numerically equal to the continuation dual opcode is NOT a pair form.
+    assert!(!bwd_coeff_cell_word_is_pair_form(
+        true,
+        BWD_COEFF_R0_OP_C0_LINEAR_E4
+    ));
+    assert!(!bwd_coeff_cell_word_is_pair_form(
+        true,
+        BWD_COEFF_R0_OP_C2_PRODUCT_E4_E4
+    ));
+};
+
+// ── Source-window origin (§10.2) ─────────────────────────────────────────────
+
+/// Window origin: a base-field matrix backing.
+pub(crate) const BWD_COEFF_ORIGIN_READ_BASE: u8 = 0;
+/// Window origin: an extension-field matrix backing.
+pub(crate) const BWD_COEFF_ORIGIN_READ_EXT: u8 = 1;
+/// Window origin: a procedurally produced (virtual-setup) source. Row-dependent
+/// and never materialized from a matrix.
+pub(crate) const BWD_COEFF_ORIGIN_PROCEDURAL: u8 = 2;
+
+pub(crate) const BWD_COEFF_PROCEDURAL_RANGE_CHECK_16_BITS: u8 = 0;
+pub(crate) const BWD_COEFF_PROCEDURAL_RANGE_CHECK_TIMESTAMP: u8 = 1;
+pub(crate) const BWD_COEFF_PROCEDURAL_INITS_AND_TEARDOWNS_LOW: u8 = 2;
+pub(crate) const BWD_COEFF_PROCEDURAL_INITS_AND_TEARDOWNS_HIGH: u8 = 3;
+/// A window whose origin is a real matrix carries no procedural kind. Zero would
+/// alias [`BWD_COEFF_PROCEDURAL_RANGE_CHECK_16_BITS`], so the absent marker is
+/// `0xff` and [`BwdCoeffSourceWindow::default`] uses it.
+pub(crate) const BWD_COEFF_PROCEDURAL_NONE: u8 = 0xff;
+/// Procedural kinds the format admits.
+pub(crate) const BWD_COEFF_PROCEDURAL_KINDS: usize = 4;
+
+/// §10.2's static materialization policy: publish on first physical access iff
+/// `target_depth >= BWD_COEFF_PUBLISH_TARGET_DEPTH`. One tunable constant, not
+/// a scheduling decision or a genome.
+pub(crate) const BWD_COEFF_PUBLISH_TARGET_DEPTH: u8 = 3;
 
 const _: () = {
     use crate::upstream::VirtualSetupKind::*;
-    use gkr_eval_isa::fwd::source::KIND_ORDER;
-    assert!(KIND_ORDER.len() == 4);
+    assert!(BWD_COEFF_PROCEDURAL_KINDS == KIND_ORDER.len());
     assert!(matches!(
-        KIND_ORDER[BWD_VM_VIRTUAL_RANGE_CHECK_16_BITS as usize],
+        KIND_ORDER[BWD_COEFF_PROCEDURAL_RANGE_CHECK_16_BITS as usize],
         RangeCheck16Bits
     ));
     assert!(matches!(
-        KIND_ORDER[BWD_VM_VIRTUAL_RANGE_CHECK_TIMESTAMP as usize],
+        KIND_ORDER[BWD_COEFF_PROCEDURAL_RANGE_CHECK_TIMESTAMP as usize],
         RangeCheckTimestamp
     ));
     assert!(matches!(
-        KIND_ORDER[BWD_VM_VIRTUAL_INITS_AND_TEARDOWNS_LOW as usize],
+        KIND_ORDER[BWD_COEFF_PROCEDURAL_INITS_AND_TEARDOWNS_LOW as usize],
         InitsAndTeardownsLow
     ));
     assert!(matches!(
-        KIND_ORDER[BWD_VM_VIRTUAL_INITS_AND_TEARDOWNS_HIGH as usize],
+        KIND_ORDER[BWD_COEFF_PROCEDURAL_INITS_AND_TEARDOWNS_HIGH as usize],
         InitsAndTeardownsHigh
     ));
+    assert!(BWD_COEFF_PROCEDURAL_NONE as usize >= BWD_COEFF_PROCEDURAL_KINDS);
+    assert!(BWD_COEFF_PUBLISH_TARGET_DEPTH == PUBLISH_TARGET_DEPTH);
 };
+
+// ── Launch geometry (§11) ────────────────────────────────────────────────────
+
+/// ONE thread per logical row, [`BWD_COEFF_ROWS_PER_BLOCK`] rows per block.
+/// There is no two-half role split, no shuffle and no paired-lane scheme.
+pub(crate) const BWD_COEFF_THREADS_PER_BLOCK: u32 = 128;
+/// Logical rows one block evaluates. Equal to the block width by construction.
+pub(crate) const BWD_COEFF_ROWS_PER_BLOCK: u32 = BWD_COEFF_THREADS_PER_BLOCK;
+pub(crate) const BWD_COEFF_WARP_LANES: u32 = 32;
+pub(crate) const BWD_COEFF_FOLD_FACTOR_CAP: usize = 10;
+/// D0..D3: the bounded lazy-fold depths the resolver retains.
+pub(crate) const BWD_COEFF_MAX_FOLD_DEPTH: u8 = 3;
+
+/// The descriptor-only sentinel meaning "this layer has no `c_init`" (§5.3).
+///
+/// It is NOT a program coefficient encoding: thirteen coefficient bits top out
+/// at [`BWD_COEFF_MAX_COEFFICIENT_ENCODINGS`] `- 1`, so no header can ever name
+/// it. Asserted below so nobody later reads it as one.
+pub(crate) const BWD_COEFF_C_INIT_NONE: u16 = u16::MAX;
 
 const _: () = {
-    assert!(OperandField::Base as u8 == 0);
-    assert!(OperandField::Ext as u8 == 1);
-    assert!(BWD_VM_VIRTUAL_MATERIALIZE_DEPTH == VIRTUAL_SETUP_MATERIALIZE_DEPTH);
-    assert!(BATCH_COEFFICIENT_ONE == 0x3fff);
-    assert!(BWD_VM_BATCH_ACC_INIT_NONE == u16::MAX);
+    assert!(BWD_COEFF_THREADS_PER_BLOCK % BWD_COEFF_WARP_LANES == 0);
+    assert!(BWD_COEFF_ROWS_PER_BLOCK == BWD_COEFF_THREADS_PER_BLOCK);
+    assert!(BWD_COEFF_C_INIT_NONE == u16::MAX);
+    assert!(BWD_COEFF_MAX_COEFFICIENT_ENCODINGS - 1 < BWD_COEFF_C_INIT_NONE as usize);
 };
 
+// ── Descriptor ───────────────────────────────────────────────────────────────
+
+/// One live source window (§10.2): read backing and stride, publish backing and
+/// stride, backing depth, target depth, origin field, materialize flag, and the
+/// procedural source kind where applicable.
+///
+/// A window covers at most [`BWD_COEFF_SOURCE_WINDOW_COLUMNS`] contiguous
+/// referenced columns of ONE logical backing. `read_base` / `publish_base`
+/// already point at the window's FIRST column, so a bound coordinate resolves to
+/// `read_base + column * read_stride_bytes`.
+///
+/// `origin` is the BACKING field, not the width of the values read through the
+/// window: a continuation program folds a base matrix into E4, and operand width
+/// comes from the opcode.
 #[repr(C)]
-#[derive(Clone, Copy, Default)]
-pub(crate) struct BwdVmSourceWindow {
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct BwdCoeffSourceWindow {
     pub read_base: *const u8,
     pub publish_base: *mut u8,
     pub read_stride_bytes: u32,
     pub publish_stride_bytes: u32,
     pub backing_depth: u8,
     pub target_depth: u8,
-    pub source_kind: u8,
+    pub origin: u8,
     pub materialize: u8,
+    pub procedural_kind: u8,
+    pub reserved: [u8; 3],
 }
 
-#[repr(transparent)]
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) struct BwdVmSpecial {
-    packed: u32,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum SpecialLoweringError {
-    NonVirtualSpecial,
-    WrongVirtualSetupField {
-        expected: OperandField,
-        actual: OperandField,
-    },
-    FoldSource,
-}
-
-impl BwdVmSpecial {
-    pub(crate) fn from_special(
-        special: &BwdSpecial,
-        field: OperandField,
-    ) -> Result<Self, SpecialLoweringError> {
-        let (kind, payload) = match special {
-            BwdSpecial::VirtualSetup { kind } => {
-                check_virtual_setup_field(OperandField::Base, field)?;
-                (
-                    BWD_VM_SPECIAL_KIND_VIRTUAL_SETUP,
-                    virtual_setup_kind_code(kind),
-                )
-            }
-            BwdSpecial::FoldSource { .. } => return Err(SpecialLoweringError::FoldSource),
-            BwdSpecial::Coefficient { .. } | BwdSpecial::AccInit => {
-                return Err(SpecialLoweringError::NonVirtualSpecial)
-            }
-        };
-        debug_assert!(kind <= BWD_VM_SPECIAL_KIND_MASK);
-        debug_assert!(payload <= BWD_VM_SPECIAL_PAYLOAD_MASK);
-        Ok(Self {
-            packed: kind | (payload << BWD_VM_SPECIAL_PAYLOAD_SHIFT),
-        })
-    }
-
-    pub(crate) const fn kind(self) -> u32 {
-        self.packed & BWD_VM_SPECIAL_KIND_MASK
-    }
-
-    pub(crate) const fn payload(self) -> u32 {
-        self.packed >> BWD_VM_SPECIAL_PAYLOAD_SHIFT
-    }
-}
-
-fn check_virtual_setup_field(
-    expected: OperandField,
-    actual: OperandField,
-) -> Result<(), SpecialLoweringError> {
-    if actual != expected {
-        return Err(SpecialLoweringError::WrongVirtualSetupField { expected, actual });
-    }
-    Ok(())
-}
-
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) struct DescriptorCounts {
-    pub(crate) program_lanes: usize,
-    pub(crate) source_windows: usize,
-    pub(crate) specials: usize,
-    pub(crate) max_logical_coefficient_desc: Option<u16>,
-    pub(crate) coefficient_slots: usize,
-    pub(crate) batch_acc_init: bool,
-    pub(crate) bf_constants: usize,
-    pub(crate) arg_derived_e4: usize,
-    pub(crate) const_derived_e4: usize,
-    pub(crate) encoded_max_cell: usize,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum DescriptorCountError {
-    InvalidEncoding,
-    Capacity {
-        field: &'static str,
-        actual: usize,
-        cap: usize,
-    },
-    MissingSpecial(u16),
-    ReadFoldSpecial(u16),
-    UnexpectedOperandSpecial(u16),
-    BatchSpecialNotCoefficient(u16),
-    AccInitSpecialNotAccInit(u16),
-    InvalidCoefficientFragment {
-        desc: u16,
-        fragment: u32,
-    },
-    WrongVirtualSetupField {
-        desc: u16,
-        expected: OperandField,
-        actual: OperandField,
-    },
-}
-
-pub(crate) fn descriptor_counts(
-    compiled: &BwdCompiledLayer,
-    fragments: &FragmentTable,
-    encoded: &[u16],
-) -> Result<DescriptorCounts, DescriptorCountError> {
-    let program = decode(encoded).map_err(|_| DescriptorCountError::InvalidEncoding)?;
-    let mut special_descs = BTreeMap::<u16, BTreeSet<OperandField>>::new();
-    let mut coefficient_descs = BTreeSet::new();
-    let mut arg_derived_e4 = 0;
-    let mut const_derived_e4 = 0;
-    let encoded_max_cell = Cell::new(0);
-
-    visit_program(
-        &program,
-        |operand, field| match operand {
-            OperandLine::Smem { cell } => {
-                encoded_max_cell.set(encoded_max_cell.get().max(*cell as usize))
-            }
-            OperandLine::Ldc { sub, idx } => match sub {
-                LdcSub::ConstDerivedE4 => {
-                    const_derived_e4 = const_derived_e4.max(*idx as usize + 1)
-                }
-                LdcSub::ArgDerivedE4 => arg_derived_e4 = arg_derived_e4.max(*idx as usize + 1),
-                LdcSub::Const | LdcSub::Special => {}
-            },
-            OperandLine::Special { desc } => {
-                special_descs.entry(*desc).or_default().insert(field);
-            }
-            OperandLine::LogicalGlobal { .. }
-            | OperandLine::LogicalFold { .. }
-            | OperandLine::Source { .. } => {}
-        },
-        |dst| {
-            if let DstLine::Smem { cell } = dst {
-                encoded_max_cell.set(encoded_max_cell.get().max(*cell as usize));
-            }
-        },
-    );
-
-    for instruction in &program.instrs {
-        let Instr::Mov {
-            dir: MovDir::DstFromAcc,
-            dst: Some(dst),
-            ..
-        } = instruction
-        else {
-            continue;
-        };
-        let Some(desc) = unpack_batch_dst(dst) else {
-            continue;
-        };
-        if desc == BATCH_COEFFICIENT_ONE {
-            continue;
-        }
-        match compiled.specials.get(desc) {
-            Some(BwdSpecial::Coefficient { fragment })
-                if fragments.fragments.get(*fragment as usize).is_some() =>
-            {
-                coefficient_descs.insert(desc);
-            }
-            Some(BwdSpecial::Coefficient { fragment }) => {
-                return Err(DescriptorCountError::InvalidCoefficientFragment {
-                    desc,
-                    fragment: *fragment,
-                })
-            }
-            Some(_) => return Err(DescriptorCountError::BatchSpecialNotCoefficient(desc)),
-            None => return Err(DescriptorCountError::MissingSpecial(desc)),
-        }
-    }
-    if let Some(desc) = compiled.acc_init_desc {
-        match compiled.specials.get(desc) {
-            Some(BwdSpecial::AccInit) => {}
-            Some(_) => return Err(DescriptorCountError::AccInitSpecialNotAccInit(desc)),
-            None => return Err(DescriptorCountError::MissingSpecial(desc)),
-        }
-    }
-
-    let mut unique_recipes = Vec::<&MergedRecipe>::new();
-    for &desc in &coefficient_descs {
-        let BwdSpecial::Coefficient { fragment } = compiled
-            .specials
-            .get(desc)
-            .expect("coefficient descriptors were validated above")
-        else {
-            unreachable!("batch coefficient set contains only fragment coefficients");
-        };
-        let recipe = &fragments.fragments[*fragment as usize].recipe;
-        if !unique_recipes.contains(&recipe) {
-            unique_recipes.push(recipe);
-        }
-    }
-    if compiled.acc_init_desc.is_some() && !unique_recipes.contains(&&fragments.c_init) {
-        unique_recipes.push(&fragments.c_init);
-    }
-
-    for (&desc, fields) in &special_descs {
-        match compiled.specials.get(desc) {
-            Some(BwdSpecial::FoldSource {
-                origin: OriginLeaf::VirtualSetup { .. },
-            }) => validate_special_fields(desc, fields, OperandField::Ext)?,
-            Some(BwdSpecial::FoldSource {
-                origin: OriginLeaf::Read(_),
-            }) => return Err(DescriptorCountError::ReadFoldSpecial(desc)),
-            Some(BwdSpecial::VirtualSetup { .. }) => {
-                validate_special_fields(desc, fields, OperandField::Base)?
-            }
-            Some(BwdSpecial::Coefficient { .. } | BwdSpecial::AccInit) => {
-                return Err(DescriptorCountError::UnexpectedOperandSpecial(desc))
-            }
-            None => return Err(DescriptorCountError::MissingSpecial(desc)),
-        }
-    }
-
-    let virtual_source_descs = special_descs
-        .keys()
-        .filter(|&&desc| {
-            matches!(
-                compiled.specials.get(desc),
-                Some(BwdSpecial::FoldSource {
-                    origin: OriginLeaf::VirtualSetup { .. },
-                })
-            )
-        })
-        .count();
-    let counts = DescriptorCounts {
-        program_lanes: encoded.len(),
-        source_windows: compiled.source_windows.len() + usize::from(virtual_source_descs != 0),
-        // Final source binding leaves FoldSource entries in the host table,
-        // but virtual-origin folds become one source window and Read-origin
-        // folds have already become ordinary source lanes. The device special
-        // map contains only the still-referenced descriptor namespace.
-        specials: special_descs.len() - virtual_source_descs,
-        max_logical_coefficient_desc: coefficient_descs.iter().next_back().copied(),
-        coefficient_slots: unique_recipes.len(),
-        batch_acc_init: compiled.acc_init_desc.is_some(),
-        bf_constants: compiled.consts.values().len(),
-        arg_derived_e4,
-        const_derived_e4,
-        encoded_max_cell: encoded_max_cell.get(),
-    };
-    check_descriptor_cap("program_lanes", counts.program_lanes, BWD_VM_PROGRAM_CAP)?;
-    check_descriptor_cap(
-        "source_windows",
-        counts.source_windows,
-        BWD_VM_SOURCE_WINDOW_CAP,
-    )?;
-    check_descriptor_cap("specials", counts.specials, BWD_VM_SPECIAL_CAP)?;
-    check_descriptor_cap(
-        "coefficient_slots",
-        counts.coefficient_slots,
-        BWD_VM_COEFFICIENT_CAP,
-    )?;
-    check_descriptor_cap("bf_constants", counts.bf_constants, BWD_VM_BF_CONSTANT_CAP)?;
-    check_descriptor_cap(
-        "arg_derived_e4",
-        counts.arg_derived_e4,
-        BWD_VM_ARG_DERIVED_E4_CAP,
-    )?;
-    check_descriptor_cap(
-        "const_derived_e4",
-        counts.const_derived_e4,
-        BWD_VM_CONST_DERIVED_E4_CAP,
-    )?;
-    check_descriptor_cap(
-        "cell_count",
-        counts.encoded_max_cell.saturating_add(1),
-        BWD_VM_CELL_CAP,
-    )?;
-    Ok(counts)
-}
-
-fn check_descriptor_cap(
-    field: &'static str,
-    actual: usize,
-    cap: usize,
-) -> Result<(), DescriptorCountError> {
-    if actual > cap {
-        return Err(DescriptorCountError::Capacity { field, actual, cap });
-    }
-    Ok(())
-}
-
-fn visit_program(
-    program: &Program,
-    mut operand: impl FnMut(&OperandLine, OperandField),
-    mut dst: impl FnMut(&DstLine),
-) {
-    for instruction in &program.instrs {
-        match instruction {
-            Instr::Add {
-                field, operands, ..
-            }
-            | Instr::Mul {
-                field, operands, ..
-            } => {
-                for value in operands {
-                    operand(value, *field);
-                }
-            }
-            Instr::Fma {
-                field_lhs,
-                field_rhs,
-                pairs,
-                ..
-            } => {
-                for (lhs, rhs) in pairs {
-                    operand(lhs, *field_lhs);
-                    operand(rhs, *field_rhs);
-                }
-            }
-            Instr::Mov {
-                field,
-                dst: instruction_dst,
-                src,
-                ..
-            } => {
-                if let Some(value) = src {
-                    operand(value, *field);
-                }
-                if let Some(value) = instruction_dst {
-                    dst(value);
-                }
-            }
+impl Default for BwdCoeffSourceWindow {
+    /// A dead slot. `procedural_kind` is [`BWD_COEFF_PROCEDURAL_NONE`], NOT
+    /// zero — zero is a live kind.
+    fn default() -> Self {
+        Self {
+            read_base: std::ptr::null(),
+            publish_base: std::ptr::null_mut(),
+            read_stride_bytes: 0,
+            publish_stride_bytes: 0,
+            backing_depth: 0,
+            target_depth: 0,
+            origin: BWD_COEFF_ORIGIN_READ_BASE,
+            materialize: 0,
+            procedural_kind: BWD_COEFF_PROCEDURAL_NONE,
+            reserved: [0; 3],
         }
     }
 }
 
-fn validate_special_fields(
-    desc: u16,
-    fields: &BTreeSet<OperandField>,
-    expected: OperandField,
-) -> Result<(), DescriptorCountError> {
-    if let Some(&actual) = fields.iter().find(|&&field| field != expected) {
-        return Err(DescriptorCountError::WrongVirtualSetupField {
-            desc,
-            expected,
-            actual,
-        });
-    }
-    Ok(())
-}
-
-#[repr(C)]
+/// The complete by-value launch descriptor, passed as a single
+/// `__grid_constant__` kernel parameter.
+///
+/// `program` is embedded, never pointed to (§9.1). The one pointer to
+/// coefficient DATA is the sanctioned exception: it is read only by the
+/// `DevicePointer` bank specialization and ignored by the `Constant` one.
+#[repr(C, align(16))]
 #[derive(Clone, Copy)]
-pub(crate) struct BwdVmDesc {
-    pub arg_derived_e4: [E4; BWD_VM_ARG_DERIVED_E4_CAP],
+pub(crate) struct BwdCoeffDesc {
+    /// Evaluated E4 coefficients for the `DevicePointer` bank specialization.
+    /// The `Constant` specialization ignores it.
+    pub coefficients: *const E4,
     pub round_challenges: *const E4,
+    /// Production factored-eq low table; high tables remain in `ab_gkr_eq_high`.
     pub eq_low: *const E4,
+    /// `2 * logical_rows` entries: `eq * acc_c0` in `[0, logical_rows)` and
+    /// `eq * acc_c2` in `[logical_rows, 2 * logical_rows)`.
     pub contributions: *mut E4,
-    pub source_windows: [BwdVmSourceWindow; BWD_VM_SOURCE_WINDOW_CAP],
+    pub source_windows: [BwdCoeffSourceWindow; BWD_COEFF_SOURCE_WINDOW_CAP],
     pub eq_sizes: GkrEqSizes,
-    pub bf_constants: [BF; BWD_VM_BF_CONSTANT_CAP],
-    pub specials: [BwdVmSpecial; BWD_VM_SPECIAL_CAP],
-    pub n_instr: u32,
-    pub program_lanes: u32,
+    /// u16 words of `program` this launch executes. There is no end opcode.
+    pub num_words: u32,
     pub n_source_windows: u32,
-    pub n_specials: u32,
-    pub n_coefficients: u32,
-    pub n_bf_constants: u32,
-    pub n_arg_derived_e4: u32,
-    pub n_const_derived_e4: u32,
     pub n_round_challenges: u32,
+    /// Bank entries behind [`BWD_COEFF_INDEX_RESERVED`].
+    pub n_coefficients: u32,
+    /// Rows this launch evaluates, one per thread. Also the contribution
+    /// half-stride: the incumbent `acc_size`.
     pub logical_rows: u32,
-    pub cell_count: u32,
-    pub program: [u16; BWD_VM_PROGRAM_CAP],
-    pub batch_acc_init: u16,
+    /// Private cell file per thread, in E4 cells (c2..c16). Dynamic shared
+    /// memory is exactly `cell_budget * size_of::<E4>() * threads_per_block`.
+    pub cell_budget: u32,
+    /// Coefficient index of the per-thread `acc_c0` initializer, or
+    /// [`BWD_COEFF_C_INIT_NONE`].
+    pub c_init: u16,
+    /// Explicit: keeps `program` 16-byte aligned. Never read by the kernel.
+    pub pad: [u16; 5],
+    pub program: [u16; BWD_COEFF_PROGRAM_WORD_CAP],
 }
 
-const _: () = {
-    assert!(BWD_VM_COEFFICIENT_CAP <= FLAT_CONST_MAX);
-    assert!(core::mem::size_of::<BwdVmSourceWindow>() == 32);
-    assert!(core::mem::align_of::<BwdVmSourceWindow>() == 8);
-    assert!(core::mem::size_of::<BwdVmSpecial>() == 4);
-    assert!(core::mem::align_of::<BwdVmSpecial>() == 4);
-    assert!(core::mem::size_of::<BwdVmDesc>() == 4672);
-    assert!(core::mem::align_of::<BwdVmDesc>() == 16);
-    assert!(core::mem::size_of::<BwdVmDesc>() <= 32764);
-};
+impl BwdCoeffDesc {
+    /// An empty descriptor: null pointers, no windows, no program.
+    ///
+    /// `[u16; BWD_COEFF_PROGRAM_WORD_CAP]` is far past the arity `Default` is
+    /// derived for, so this is written out rather than derived.
+    pub(crate) fn empty() -> Self {
+        Self {
+            coefficients: std::ptr::null(),
+            round_challenges: std::ptr::null(),
+            eq_low: std::ptr::null(),
+            contributions: std::ptr::null_mut(),
+            source_windows: [BwdCoeffSourceWindow::default(); BWD_COEFF_SOURCE_WINDOW_CAP],
+            eq_sizes: GkrEqSizes::zeroed(),
+            num_words: 0,
+            n_source_windows: 0,
+            n_round_challenges: 0,
+            n_coefficients: 0,
+            logical_rows: 0,
+            cell_budget: 0,
+            c_init: BWD_COEFF_C_INIT_NONE,
+            pad: [0; 5],
+            program: [0; BWD_COEFF_PROGRAM_WORD_CAP],
+        }
+    }
+}
 
-#[cfg(test)]
-mod abi_tests {
+// The layout, pinned against the same literals `coefficient_vm.cuh`
+// `static_assert`s. A change to either struct fails one of the two builds.
+const _: () = {
     use core::mem::{align_of, offset_of, size_of};
 
-    use super::BwdVmDesc;
+    assert!(size_of::<BwdCoeffSourceWindow>() == 32);
+    assert!(align_of::<BwdCoeffSourceWindow>() == 8);
+    assert!(offset_of!(BwdCoeffSourceWindow, read_base) == 0);
+    assert!(offset_of!(BwdCoeffSourceWindow, publish_base) == 8);
+    assert!(offset_of!(BwdCoeffSourceWindow, read_stride_bytes) == 16);
+    assert!(offset_of!(BwdCoeffSourceWindow, publish_stride_bytes) == 20);
+    assert!(offset_of!(BwdCoeffSourceWindow, backing_depth) == 24);
+    assert!(offset_of!(BwdCoeffSourceWindow, target_depth) == 25);
+    assert!(offset_of!(BwdCoeffSourceWindow, origin) == 26);
+    assert!(offset_of!(BwdCoeffSourceWindow, materialize) == 27);
+    assert!(offset_of!(BwdCoeffSourceWindow, procedural_kind) == 28);
+    assert!(offset_of!(BwdCoeffSourceWindow, reserved) == 29);
 
-    #[test]
-    fn batch_acc_init_uses_existing_descriptor_tail_padding() {
-        assert_eq!(offset_of!(BwdVmDesc, batch_acc_init), 4668);
-        assert_eq!(size_of::<BwdVmDesc>(), 4672);
-        assert_eq!(align_of::<BwdVmDesc>(), 16);
-    }
-}
-
-#[cfg(all(test, feature = "bench"))]
-mod tests {
-    use cs::gkr_compiler::dag_ir::BwdRegime;
-    use gkr_eval_isa::bwd::source::{BwdSpecial, OriginLeaf};
-    use gkr_eval_isa::fwd::isa::OperandField;
-    use gkr_eval_isa::fwd::source::KIND_ORDER;
-
-    use super::{
-        descriptor_counts, BwdVmDesc, BwdVmSourceWindow, BwdVmSpecial, BWD_VM_ARG_DERIVED_E4_CAP,
-        BWD_VM_BF_CONSTANT_CAP, BWD_VM_CELL_CAP, BWD_VM_COEFFICIENT_CAP,
-        BWD_VM_CONST_DERIVED_E4_CAP, BWD_VM_PROGRAM_CAP, BWD_VM_SOURCE_READ_BASE,
-        BWD_VM_SOURCE_READ_EXT, BWD_VM_SOURCE_VIRTUAL, BWD_VM_SOURCE_WINDOW_CAP,
-        BWD_VM_SPECIAL_CAP, BWD_VM_SPECIAL_KIND_VIRTUAL_SETUP,
-        BWD_VM_VIRTUAL_INITS_AND_TEARDOWNS_HIGH, BWD_VM_VIRTUAL_INITS_AND_TEARDOWNS_LOW,
-        BWD_VM_VIRTUAL_MATERIALIZE_DEPTH, BWD_VM_VIRTUAL_RANGE_CHECK_16_BITS,
-        BWD_VM_VIRTUAL_RANGE_CHECK_TIMESTAMP,
-    };
-    use crate::prover::gkr::backward::vm::compile::load_add_sub_l0_case;
-    use crate::prover::gkr::forward::vm::desc::PROGRAM_CAP;
-    use crate::upstream::VirtualSetupKind;
-
-    #[test]
-    fn add_sub_l0_descriptor_census_fits_the_exact_program_cap() {
-        let mut max_program_lanes = 0;
-
-        eprintln!(
-            "regime budget lanes windows virtual_specials logical_coeff_max compact_coeffs init bf arg_e4 const_e4 max_cell"
-        );
-        for regime in [BwdRegime::R0, BwdRegime::Ext] {
-            for budget_cells in 2..=16 {
-                let case = load_add_sub_l0_case(regime, budget_cells);
-                let counts = descriptor_counts(
-                    &case.compiled.compiled,
-                    &case.distilled.fragments,
-                    &case.compiled.encoded,
-                )
-                .expect("add/sub descriptor census must lower");
-                eprintln!(
-                    "{:?} {:>2} {:>4} {:>3} {:>3} {:>3?} {:>3} {:>4} {:>2} {:>2} {:>2} {:>3}",
-                    regime,
-                    budget_cells,
-                    counts.program_lanes,
-                    counts.source_windows,
-                    counts.specials,
-                    counts.max_logical_coefficient_desc,
-                    counts.coefficient_slots,
-                    if counts.batch_acc_init { "yes" } else { "no" },
-                    counts.bf_constants,
-                    counts.arg_derived_e4,
-                    counts.const_derived_e4,
-                    counts.encoded_max_cell,
-                );
-                max_program_lanes = max_program_lanes.max(counts.program_lanes);
-                assert!(counts.program_lanes <= PROGRAM_CAP);
-            }
-        }
-
-        assert_eq!(max_program_lanes, 992);
-        assert_eq!(BWD_VM_PROGRAM_CAP, 1_744);
-        assert!(max_program_lanes <= BWD_VM_PROGRAM_CAP);
-        let _ = core::mem::size_of::<BwdVmDesc>();
-    }
-
-    #[test]
-    fn add_sub_l0_descriptor_census_pins_every_cap() {
-        let mut maxima = super::DescriptorCounts::default();
-        for regime in [BwdRegime::R0, BwdRegime::Ext] {
-            for budget_cells in 2..=16 {
-                let case = load_add_sub_l0_case(regime, budget_cells);
-                let counts = descriptor_counts(
-                    &case.compiled.compiled,
-                    &case.distilled.fragments,
-                    &case.compiled.encoded,
-                )
-                .expect("add/sub descriptor census must lower");
-                maxima.program_lanes = maxima.program_lanes.max(counts.program_lanes);
-                maxima.source_windows = maxima.source_windows.max(counts.source_windows);
-                maxima.specials = maxima.specials.max(counts.specials);
-                maxima.max_logical_coefficient_desc = maxima
-                    .max_logical_coefficient_desc
-                    .max(counts.max_logical_coefficient_desc);
-                maxima.coefficient_slots = maxima.coefficient_slots.max(counts.coefficient_slots);
-                maxima.batch_acc_init |= counts.batch_acc_init;
-                maxima.bf_constants = maxima.bf_constants.max(counts.bf_constants);
-                maxima.arg_derived_e4 = maxima.arg_derived_e4.max(counts.arg_derived_e4);
-                maxima.const_derived_e4 = maxima.const_derived_e4.max(counts.const_derived_e4);
-                maxima.encoded_max_cell = maxima.encoded_max_cell.max(counts.encoded_max_cell);
-            }
-        }
-
-        assert_eq!(maxima.program_lanes, 992);
-        assert!(maxima.program_lanes <= BWD_VM_PROGRAM_CAP);
-        assert_eq!(maxima.source_windows, 4);
-        assert!(maxima.source_windows <= BWD_VM_SOURCE_WINDOW_CAP);
-        assert_eq!(maxima.specials, 2);
-        assert!(maxima.specials <= BWD_VM_SPECIAL_CAP);
-        assert_eq!(maxima.max_logical_coefficient_desc, Some(203));
-        assert_eq!(maxima.coefficient_slots, 91);
-        assert!(maxima.coefficient_slots <= BWD_VM_COEFFICIENT_CAP);
-        assert_eq!(maxima.bf_constants, 0);
-        assert_eq!(maxima.arg_derived_e4, 0);
-        assert_eq!(maxima.const_derived_e4, 1);
-        assert_eq!(maxima.encoded_max_cell + 1, 13);
-        assert!(maxima.encoded_max_cell < BWD_VM_CELL_CAP);
-        assert_eq!(BWD_VM_BF_CONSTANT_CAP, 40);
-        assert_eq!(BWD_VM_ARG_DERIVED_E4_CAP, 12);
-        assert_eq!(BWD_VM_CONST_DERIVED_E4_CAP, 8);
-        assert_eq!(core::mem::size_of::<BwdVmDesc>(), 4_672);
-        assert_eq!(crate::prover::gkr::backward::flat::FLAT_CONST_MAX, 1_024);
-        assert!(maxima.coefficient_slots <= crate::prover::gkr::backward::flat::FLAT_CONST_MAX);
-
-        let counts_at = |regime, budget_cells| {
-            let case = load_add_sub_l0_case(regime, budget_cells);
-            descriptor_counts(
-                &case.compiled.compiled,
-                &case.distilled.fragments,
-                &case.compiled.encoded,
-            )
-            .expect("maximum-realizing add/sub coordinate must lower")
-        };
-        let ext_c2 = counts_at(BwdRegime::Ext, 2);
-        assert_eq!(
-            (ext_c2.program_lanes, ext_c2.max_logical_coefficient_desc),
-            (992, Some(203)),
-            "add_sub L0 Ext c2 realizes the program and logical-coefficient maxima"
-        );
-        let r0_c2 = counts_at(BwdRegime::R0, 2);
-        assert_eq!(
-            (
-                r0_c2.source_windows,
-                r0_c2.specials,
-                r0_c2.coefficient_slots,
-                r0_c2.const_derived_e4,
-            ),
-            (4, 2, 91, 1),
-            "add_sub L0 R0 c2 realizes the window, virtual-special, compact-coefficient, and \
-             constant-E4 maxima"
-        );
-        assert_eq!(
-            counts_at(BwdRegime::R0, 4).encoded_max_cell + 1,
-            13,
-            "add_sub L0 R0 c4 realizes the cell-count maximum"
-        );
-    }
-
-    #[test]
-    fn source_window_layout_matches_the_semantic_record() {
-        use core::mem::{align_of, offset_of, size_of};
-
-        assert_eq!(size_of::<BwdVmSourceWindow>(), 32);
-        assert_eq!(align_of::<BwdVmSourceWindow>(), 8);
-        assert_eq!(offset_of!(BwdVmSourceWindow, read_base), 0);
-        assert_eq!(offset_of!(BwdVmSourceWindow, publish_base), 8);
-        assert_eq!(offset_of!(BwdVmSourceWindow, read_stride_bytes), 16);
-        assert_eq!(offset_of!(BwdVmSourceWindow, publish_stride_bytes), 20);
-        assert_eq!(offset_of!(BwdVmSourceWindow, backing_depth), 24);
-        assert_eq!(offset_of!(BwdVmSourceWindow, target_depth), 25);
-        assert_eq!(offset_of!(BwdVmSourceWindow, source_kind), 26);
-        assert_eq!(offset_of!(BwdVmSourceWindow, materialize), 27);
-    }
-
-    #[test]
-    fn special_record_maps_only_virtual_setup_recipes() {
-        use core::mem::{align_of, offset_of, size_of};
-
-        assert_eq!(KIND_ORDER.len(), 4);
-        assert_eq!(BWD_VM_SOURCE_READ_BASE, 0);
-        assert_eq!(BWD_VM_SOURCE_READ_EXT, 1);
-        assert_eq!(BWD_VM_SOURCE_VIRTUAL, 2);
-        assert_eq!(BWD_VM_VIRTUAL_MATERIALIZE_DEPTH, 3);
-        assert_eq!(
-            BWD_VM_VIRTUAL_MATERIALIZE_DEPTH,
-            gkr_eval_isa::bwd::source::VIRTUAL_SETUP_MATERIALIZE_DEPTH
-        );
-        assert_eq!(size_of::<BwdVmSpecial>(), 4);
-        assert_eq!(align_of::<BwdVmSpecial>(), 4);
-        assert_eq!(offset_of!(BwdVmSpecial, packed), 0);
-
-        assert!(BwdVmSpecial::from_special(
-            &BwdSpecial::Coefficient { fragment: 17 },
-            OperandField::Ext,
-        )
-        .is_err());
-
-        assert!(BwdVmSpecial::from_special(&BwdSpecial::AccInit, OperandField::Ext).is_err());
-
-        for (kind, payload) in [
-            (
-                VirtualSetupKind::RangeCheck16Bits,
-                BWD_VM_VIRTUAL_RANGE_CHECK_16_BITS,
-            ),
-            (
-                VirtualSetupKind::RangeCheckTimestamp,
-                BWD_VM_VIRTUAL_RANGE_CHECK_TIMESTAMP,
-            ),
-            (
-                VirtualSetupKind::InitsAndTeardownsLow,
-                BWD_VM_VIRTUAL_INITS_AND_TEARDOWNS_LOW,
-            ),
-            (
-                VirtualSetupKind::InitsAndTeardownsHigh,
-                BWD_VM_VIRTUAL_INITS_AND_TEARDOWNS_HIGH,
-            ),
-        ] {
-            let packed =
-                BwdVmSpecial::from_special(&BwdSpecial::VirtualSetup { kind }, OperandField::Base)
-                    .unwrap();
-            assert_eq!(packed.kind(), BWD_VM_SPECIAL_KIND_VIRTUAL_SETUP);
-            assert_eq!(packed.payload(), payload);
-        }
-    }
-
-    #[test]
-    fn special_record_rejects_wrong_virtual_setup_forms() {
-        use cs::gkr_compiler::dag_ir::ReadPlace;
-
-        assert!(BwdVmSpecial::from_special(
-            &BwdSpecial::VirtualSetup {
-                kind: VirtualSetupKind::RangeCheckTimestamp,
-            },
-            OperandField::Ext,
-        )
-        .is_err());
-        assert!(BwdVmSpecial::from_special(
-            &BwdSpecial::FoldSource {
-                origin: OriginLeaf::VirtualSetup {
-                    kind: VirtualSetupKind::RangeCheckTimestamp,
-                },
-            },
-            OperandField::Base,
-        )
-        .is_err());
-        assert!(BwdVmSpecial::from_special(
-            &BwdSpecial::FoldSource {
-                origin: OriginLeaf::Read(ReadPlace::BaseLayerMemory { column: 0 }),
-            },
-            OperandField::Base,
-        )
-        .is_err());
-    }
-
-    #[test]
-    fn descriptor_layout_is_pinned_field_for_field() {
-        use core::mem::{align_of, offset_of, size_of};
-
-        assert_eq!(offset_of!(BwdVmDesc, arg_derived_e4), 0);
-        assert_eq!(offset_of!(BwdVmDesc, round_challenges), 192);
-        assert_eq!(offset_of!(BwdVmDesc, eq_low), 200);
-        assert_eq!(offset_of!(BwdVmDesc, contributions), 208);
-        assert_eq!(offset_of!(BwdVmDesc, source_windows), 216);
-        assert_eq!(offset_of!(BwdVmDesc, eq_sizes), 376);
-        assert_eq!(offset_of!(BwdVmDesc, bf_constants), 388);
-        assert_eq!(offset_of!(BwdVmDesc, specials), 548);
-        assert_eq!(offset_of!(BwdVmDesc, n_instr), 1136);
-        assert_eq!(offset_of!(BwdVmDesc, program_lanes), 1140);
-        assert_eq!(offset_of!(BwdVmDesc, n_source_windows), 1144);
-        assert_eq!(offset_of!(BwdVmDesc, n_specials), 1148);
-        assert_eq!(offset_of!(BwdVmDesc, n_coefficients), 1152);
-        assert_eq!(offset_of!(BwdVmDesc, n_bf_constants), 1156);
-        assert_eq!(offset_of!(BwdVmDesc, n_arg_derived_e4), 1160);
-        assert_eq!(offset_of!(BwdVmDesc, n_const_derived_e4), 1164);
-        assert_eq!(offset_of!(BwdVmDesc, n_round_challenges), 1168);
-        assert_eq!(offset_of!(BwdVmDesc, logical_rows), 1172);
-        assert_eq!(offset_of!(BwdVmDesc, cell_count), 1176);
-        assert_eq!(offset_of!(BwdVmDesc, program), 1180);
-        assert_eq!(offset_of!(BwdVmDesc, batch_acc_init), 4668);
-        assert_eq!(size_of::<BwdVmDesc>(), 4672);
-        assert_eq!(align_of::<BwdVmDesc>(), 16);
-        assert!(size_of::<BwdVmDesc>() <= 32764);
-    }
-}
+    assert!(size_of::<BwdCoeffDesc>() == 12_144);
+    assert!(align_of::<BwdCoeffDesc>() == BWD_COEFF_DESC_ALIGN);
+    // The FINAL authority on the descriptor's shape (§9.1).
+    assert!(size_of::<BwdCoeffDesc>() <= BWD_COEFF_DESC_CAP);
+    assert!(offset_of!(BwdCoeffDesc, coefficients) == 0);
+    assert!(offset_of!(BwdCoeffDesc, round_challenges) == 8);
+    assert!(offset_of!(BwdCoeffDesc, eq_low) == 16);
+    assert!(offset_of!(BwdCoeffDesc, contributions) == 24);
+    assert!(offset_of!(BwdCoeffDesc, source_windows) == 32);
+    assert!(offset_of!(BwdCoeffDesc, eq_sizes) == 576);
+    assert!(offset_of!(BwdCoeffDesc, num_words) == 588);
+    assert!(offset_of!(BwdCoeffDesc, n_source_windows) == 592);
+    assert!(offset_of!(BwdCoeffDesc, n_round_challenges) == 596);
+    assert!(offset_of!(BwdCoeffDesc, n_coefficients) == 600);
+    assert!(offset_of!(BwdCoeffDesc, logical_rows) == 604);
+    assert!(offset_of!(BwdCoeffDesc, cell_budget) == 608);
+    assert!(offset_of!(BwdCoeffDesc, c_init) == 612);
+    assert!(offset_of!(BwdCoeffDesc, pad) == 614);
+    assert!(offset_of!(BwdCoeffDesc, program) == 624);
+    // The whole point of the 16-byte descriptor alignment: the program stream
+    // starts on a 16-byte boundary and can be buffered through wide loads.
+    assert!(offset_of!(BwdCoeffDesc, program) % BWD_COEFF_DESC_ALIGN == 0);
+    // The program is the descriptor's tail: nothing follows it, so its size and
+    // the descriptor's size move together.
+    assert!(
+        size_of::<BwdCoeffDesc>() == offset_of!(BwdCoeffDesc, program) + BWD_COEFF_PROGRAM_BYTE_CAP
+    );
+};

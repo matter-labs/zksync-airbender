@@ -531,8 +531,8 @@ impl CircuitFixture {
     }
 
     /// Resolve one resident column together with its consolidated matrix
-    /// geometry. Backward final binding uses this to construct explicitly keyed
-    /// [`ResolvedBwdSourceWindow`](crate::prover::gkr::backward::vm::lower::ResolvedBwdSourceWindow)
+    /// geometry. Backward round binding uses this to construct
+    /// [`ResolvedBwdCoeffSourceWindow`](crate::prover::gkr::backward::vm::lower::ResolvedBwdCoeffSourceWindow)
     /// records; ownership remains with this fixture.
     pub(crate) fn resolved_storage_column(&self, addr: GKRAddress) -> Option<ResolvedColumn> {
         if let Some(column) = self.storage.try_get_base_poly(addr) {
