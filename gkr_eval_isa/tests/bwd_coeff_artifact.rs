@@ -644,3 +644,119 @@ fn bwd_coeff_artifacts_are_deterministic_and_replay_exactly() {
     }
     assert_eq!(seen.len(), in_scope::REALIZED_PLACEMENTS, "an artifact at every budget");
 }
+
+// ── §13's measured budget selection ──────────────────────────────────────────
+//
+// The selection is METADATA on a coordinate, not a schedule: it is the one field
+// a GPU measurement writes, and Task 12's sweep is its only producer. These tests
+// pin the two properties the rest of the plan depends on — that a compiled
+// artifact carries no selection (so an artifact stays a function of the DAG), and
+// that a persisted selection cannot name §15's diagnostic ceiling.
+
+#[test]
+fn a_compiled_artifact_carries_no_measured_selection() {
+    let (_, _, coordinate) = small_coordinate();
+    assert!(
+        coordinate.selected_budgets.is_empty(),
+        "deterministic compilation has nothing to select from"
+    );
+}
+
+#[test]
+fn an_absent_selection_round_trips_and_does_not_widen_the_serialized_artifact() {
+    let (_, _, coordinate) = small_coordinate();
+    let artifact = CircuitArtifact::new("round_trip.json", vec![coordinate]);
+    let bytes = artifact_bytes(&artifact);
+    let text = std::str::from_utf8(&bytes).expect("artifact JSON is UTF-8");
+    assert!(
+        !text.contains("selected_budgets"),
+        "an empty selection must not appear in the canonical bytes"
+    );
+    let root = std::env::temp_dir().join(format!("bwd-coeff-selection-{}", std::process::id()));
+    let path = write_circuit_artifact(&root, &artifact).expect("write");
+    assert_eq!(read_circuit_artifact(&path).expect("read"), artifact);
+    std::fs::remove_dir_all(&root).expect("clean up");
+}
+
+#[test]
+fn a_persisted_selection_round_trips_and_is_rejected_when_malformed() {
+    use gkr_eval_isa::bwd::coeff::artifact::{
+        BwdRoundClass, SELECTION_DIAGNOSTIC_CELLS, SelectedBudget, SelectionError,
+        validate_selected_budgets,
+    };
+
+    let (_, _, mut coordinate) = small_coordinate();
+    assert_eq!(coordinate.regime, ArtifactRegime::R0);
+    coordinate.selected_budgets = vec![SelectedBudget {
+        round_class: BwdRoundClass::R0,
+        cells: 5,
+    }];
+    assert_eq!(
+        validate_selected_budgets(coordinate.regime, &coordinate.selected_budgets),
+        Ok(())
+    );
+
+    let artifact = CircuitArtifact::new("selected.json", vec![coordinate.clone()]);
+    let bytes = artifact_bytes(&artifact);
+    let text = std::str::from_utf8(&bytes).expect("artifact JSON is UTF-8");
+    assert!(text.contains("selected_budgets"), "a live selection is serialized");
+    let root = std::env::temp_dir().join(format!("bwd-coeff-selected-{}", std::process::id()));
+    let path = write_circuit_artifact(&root, &artifact).expect("write");
+    assert_eq!(read_circuit_artifact(&path).expect("read"), artifact);
+    std::fs::remove_dir_all(&root).expect("clean up");
+
+    // §15: `c16` is the diagnostic approach-to-floor point, never a selection.
+    assert_eq!(
+        validate_selected_budgets(
+            ArtifactRegime::R0,
+            &[SelectedBudget {
+                round_class: BwdRoundClass::R0,
+                cells: SELECTION_DIAGNOSTIC_CELLS
+            }]
+        ),
+        Err(SelectionError::DiagnosticBudgetSelected {
+            round_class: BwdRoundClass::R0
+        })
+    );
+    // A continuation class cannot be selected for the R0 regime, and vice versa.
+    assert_eq!(
+        validate_selected_budgets(
+            ArtifactRegime::R0,
+            &[SelectedBudget {
+                round_class: BwdRoundClass::D1,
+                cells: 4
+            }]
+        ),
+        Err(SelectionError::WrongRegime {
+            round_class: BwdRoundClass::D1,
+            regime: ArtifactRegime::R0
+        })
+    );
+    // One entry per class, ascending.
+    assert_eq!(
+        validate_selected_budgets(
+            ArtifactRegime::Ext,
+            &[
+                SelectedBudget { round_class: BwdRoundClass::D2, cells: 4 },
+                SelectedBudget { round_class: BwdRoundClass::D1, cells: 4 },
+            ]
+        ),
+        Err(SelectionError::NotAscending { round_class: BwdRoundClass::D1 })
+    );
+    assert_eq!(
+        validate_selected_budgets(
+            ArtifactRegime::Ext,
+            &[SelectedBudget { round_class: BwdRoundClass::D0, cells: 1 }]
+        ),
+        Err(SelectionError::BudgetOutOfRange { round_class: BwdRoundClass::D0, cells: 1 })
+    );
+    // Every class of a regime is admissible, and the two regimes partition them.
+    for class in BwdRoundClass::ALL {
+        assert_eq!(
+            validate_selected_budgets(class.regime(), &[SelectedBudget { round_class: class, cells: 2 }]),
+            Ok(()),
+            "{} must be selectable for its own regime",
+            class.label()
+        );
+    }
+}

@@ -186,6 +186,128 @@ pub struct BudgetSchedule {
     pub score: ArtifactScore,
 }
 
+/// The executor specialization a sumcheck round selects (§10.2, §11).
+///
+/// An `R0` coordinate has exactly one round class. An `Ext` coordinate's program
+/// is reused across continuation rounds, and `bwd_coeff_fold_depth` maps rounds
+/// 0..3 to `D0`..`D3` and every later round to `D1` — so `D1` is also the all-E4
+/// suffix's class, which is why §13 lets the selector treat "early mixed rounds"
+/// and "the all-E4 suffix" separately even though the PROGRAM is one.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub enum BwdRoundClass {
+    R0,
+    D0,
+    D1,
+    D2,
+    D3,
+}
+
+impl BwdRoundClass {
+    /// `R0` plus `D0`..`D3`, ascending.
+    pub const ALL: [BwdRoundClass; 5] = [
+        BwdRoundClass::R0,
+        BwdRoundClass::D0,
+        BwdRoundClass::D1,
+        BwdRoundClass::D2,
+        BwdRoundClass::D3,
+    ];
+
+    /// The continuation fold depth, or `None` for `R0`.
+    pub fn fold_depth(self) -> Option<u8> {
+        match self {
+            BwdRoundClass::R0 => None,
+            BwdRoundClass::D0 => Some(0),
+            BwdRoundClass::D1 => Some(1),
+            BwdRoundClass::D2 => Some(2),
+            BwdRoundClass::D3 => Some(3),
+        }
+    }
+
+    /// The regime that owns this class.
+    pub fn regime(self) -> ArtifactRegime {
+        match self {
+            BwdRoundClass::R0 => ArtifactRegime::R0,
+            _ => ArtifactRegime::Ext,
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            BwdRoundClass::R0 => "R0",
+            BwdRoundClass::D0 => "D0",
+            BwdRoundClass::D1 => "D1",
+            BwdRoundClass::D2 => "D2",
+            BwdRoundClass::D3 => "D3",
+        }
+    }
+}
+
+/// §13's PRODUCTION budget choice for one round class of one coordinate.
+///
+/// The DECISION only. Runtimes, occupancy and every other measured quantity stay
+/// in the sweep's CSV: an artifact that carried them would stop being a function
+/// of the DAG, and [`artifact_bytes`]'s determinism — which the whole replay gate
+/// rests on — would become a property of the machine that measured it.
+///
+/// [`SELECTION_DIAGNOSTIC_CELLS`] may never appear here. §15 keeps `c16` as the
+/// diagnostic approach-to-floor reference, so a selector that drifted into
+/// choosing it is a bug, and [`validate_selected_budgets`] rejects it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SelectedBudget {
+    pub round_class: BwdRoundClass,
+    /// `2..=15`.
+    pub cells: u8,
+}
+
+/// `c16` is §15's diagnostic ceiling and never an automatic production choice.
+pub const SELECTION_DIAGNOSTIC_CELLS: u8 = 16;
+
+/// Everything a persisted selection list can get wrong.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SelectionError {
+    /// A round class appears twice, or out of ascending order.
+    NotAscending { round_class: BwdRoundClass },
+    /// The class belongs to the other regime.
+    WrongRegime { round_class: BwdRoundClass, regime: ArtifactRegime },
+    /// Outside `c2`..`c16`.
+    BudgetOutOfRange { round_class: BwdRoundClass, cells: u8 },
+    /// The selector named §15's diagnostic ceiling.
+    DiagnosticBudgetSelected { round_class: BwdRoundClass },
+}
+
+/// Reject a selection list that is not a canonical, in-regime, non-diagnostic set
+/// of explicit choices.
+pub fn validate_selected_budgets(
+    regime: ArtifactRegime,
+    selected: &[SelectedBudget],
+) -> Result<(), SelectionError> {
+    let mut previous: Option<BwdRoundClass> = None;
+    for entry in selected {
+        if previous.is_some_and(|last| last >= entry.round_class) {
+            return Err(SelectionError::NotAscending { round_class: entry.round_class });
+        }
+        previous = Some(entry.round_class);
+        if entry.round_class.regime() != regime {
+            return Err(SelectionError::WrongRegime {
+                round_class: entry.round_class,
+                regime,
+            });
+        }
+        if !(CellBudget::MIN_CELLS..=CellBudget::MAX_CELLS).contains(&entry.cells) {
+            return Err(SelectionError::BudgetOutOfRange {
+                round_class: entry.round_class,
+                cells: entry.cells,
+            });
+        }
+        if entry.cells == SELECTION_DIAGNOSTIC_CELLS {
+            return Err(SelectionError::DiagnosticBudgetSelected {
+                round_class: entry.round_class,
+            });
+        }
+    }
+    Ok(())
+}
+
 /// One `(layer, regime)` coordinate: its whole `c2`..`c16` family.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CoordinateArtifact {
@@ -196,6 +318,14 @@ pub struct CoordinateArtifact {
     pub target_depth: u8,
     /// One entry per budget, ascending `c2`..`c16`.
     pub budgets: Vec<BudgetSchedule>,
+    /// §13's measured production selection, one entry per round class of this
+    /// coordinate's regime, ascending. EMPTY in a freshly compiled artifact:
+    /// [`compile_coordinate`] is deterministic and GPU-free, so it has nothing to
+    /// select from. Task 12's GPU sweep fills it, which is what makes the
+    /// production budget an explicit recorded choice instead of a runtime
+    /// inference from one layer or one whole-pass budget.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub selected_budgets: Vec<SelectedBudget>,
 }
 
 /// One circuit's complete artifact.
@@ -691,6 +821,9 @@ pub fn compile_coordinate(
             regime: ArtifactRegime::of(regime),
             target_depth,
             budgets,
+            // Deterministic compilation has nothing to select from; Task 12's
+            // GPU sweep is the only producer of a selection.
+            selected_budgets: Vec::new(),
         },
         report: CoordinateReport {
             circuit: circuit.to_string(),

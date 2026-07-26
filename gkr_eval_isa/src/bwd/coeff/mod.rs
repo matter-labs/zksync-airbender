@@ -35,11 +35,12 @@ pub mod schedule;
 pub mod stats;
 
 pub use artifact::{
-    ArtifactError, ArtifactRegime, ArtifactScore, BudgetSchedule, BudgetTotals, ChainProgress,
-    CircuitArtifact, CompiledCoordinate, CoordinateArtifact, CoordinateReport, CorpusSummary,
-    ProgramReport, Realization, artifact_bytes, artifact_file_name, budget_totals,
-    compile_coordinate, digest, lower_and_price, percent_above_floor_table, program_digest,
-    read_circuit_artifact, realize, replay_coordinate, summarize, total_read_floor_bytes,
+    ArtifactError, ArtifactRegime, ArtifactScore, BudgetSchedule, BudgetTotals, BwdRoundClass,
+    ChainProgress, CircuitArtifact, CompiledCoordinate, CoordinateArtifact, CoordinateReport,
+    CorpusSummary, ProgramReport, Realization, SELECTION_DIAGNOSTIC_CELLS, SelectedBudget,
+    SelectionError, artifact_bytes, artifact_file_name, budget_totals, compile_coordinate, digest,
+    lower_and_price, percent_above_floor_table, program_digest, read_circuit_artifact, realize,
+    replay_coordinate, summarize, total_read_floor_bytes, validate_selected_budgets,
     write_circuit_artifact,
 };
 pub use bind::{
