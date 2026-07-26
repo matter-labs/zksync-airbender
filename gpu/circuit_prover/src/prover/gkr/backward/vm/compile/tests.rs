@@ -17,7 +17,7 @@ use gkr_eval_isa::bwd::coeff::limits::SOURCE_WINDOW_COLUMNS;
 use gkr_eval_isa::bwd::coeff::model::{CoeffLayer, CoefficientRecipeId, SourceId};
 
 use super::{
-    digit, load_add_sub_l0_coeff_case, pseudo_coefficient, pseudo_ext, AddSubCoeffCase,
+    digit, load_add_sub_l0_coeff_case, pseudo_coefficient, pseudo_ext, RealizedCoeffCase,
     PROBED_BUDGETS,
 };
 use crate::primitives::field::{BF, E4};
@@ -67,7 +67,7 @@ fn probed_coordinates() -> Vec<(BwdRegime, u8)> {
     out
 }
 
-fn every_case() -> Vec<AddSubCoeffCase> {
+fn every_case() -> Vec<RealizedCoeffCase> {
     probed_coordinates()
         .into_iter()
         .flat_map(|(regime, round)| {
@@ -78,7 +78,7 @@ fn every_case() -> Vec<AddSubCoeffCase> {
         .collect()
 }
 
-fn label(case: &AddSubCoeffCase) -> String {
+fn label(case: &RealizedCoeffCase) -> String {
     format!(
         "add/sub L0 {:?} round {} c{}",
         case.regime, case.round, case.budget_cells

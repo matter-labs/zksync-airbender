@@ -1,155 +1,103 @@
-//! Sweep-report rendering for the backward GPU benchmark.
+//! Task 12's measurement harness: per-configuration timing, the sweep CSV, the
+//! per-round-class budget SELECTION, and the kernel-attribute probe §15's release
+//! gate is stated in terms of.
 //!
-//! Task 12 replaces this module with the coefficient-ISA sweep; what survives
-//! here is the shape of that report — the timing summary, the CSV, the
-//! ranking and the NCU coordinate selector — each covered by its own unit test
-//! below. `time_cuda_launches` and `upload_incumbent_coefficients` are the two
-//! GPU-touching helpers Task 12's sweep will call.
+//! This is a finite benchmark, not a search. The sweep walks a fixed coordinate
+//! set — `(circuit, layer, regime, round class, budget)` — times each with three
+//! warmups and ten samples, and reports median and min. Nothing here explores;
+//! [`select_budgets`] reads off the fastest measured budget per
+//! `(circuit, layer, round class)`, resolving the [`SELECTION_TIE_FRACTION`] band
+//! of budgets that measure the same in favour of the smallest.
+//!
+//! # What is measured and what is modeled
+//!
+//! Two different kinds of number share one row, and the CSV names them apart:
+//!
+//!   * MEASURED on the device: median/min runtime, registers, local-memory
+//!     spills, static/dynamic shared memory, and occupancy (blocks per SM from
+//!     `cudaOccupancyMaxActiveBlocksPerMultiprocessor` against the real launch
+//!     geometry).
+//!   * MODELED by the compiler, exactly and not estimated: realized source-read
+//!     bytes and the read floor, cell-file loads and stores, the BF/mixed/E4
+//!     arithmetic classes, the term count, moves, and the encoded program's words
+//!     and bytes. These come straight from [`ProgramReport`] — the same numbers
+//!     Task 8's static sweep pins — so a runtime that moves without any of them
+//!     moving is a scheduling or occupancy effect, not a program change.
+//!
+//! # §15's release gate
+//!
+//! "Release kernels must have zero validation work and zero local-memory spills."
+//! [`KernelAttributes`] queries `cudaFuncGetAttributes` on the exact instantiation
+//! a row launched, so the gate is asserted per instantiation against the loaded
+//! module rather than read off a build log.
 
 use std::collections::BTreeMap;
+use std::ffi::c_void;
 use std::fmt::Write as _;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use era_cudart::event::{CudaEvent, elapsed_time};
-use era_cudart::result::CudaResult;
+use era_cudart::result::{CudaResult, CudaResultWrap};
 use era_cudart::stream::CudaStream;
+use era_cudart_sys::{CudaFuncAttributes, cudaFuncGetAttributes};
+use gkr_eval_isa::bwd::coeff::artifact::{
+    ArtifactRegime, BwdRoundClass, ProgramReport, SELECTION_DIAGNOSTIC_CELLS, SelectedBudget,
+};
 
+use super::desc::BWD_COEFF_THREADS_PER_BLOCK;
+use super::{BwdCoeffBank, bwd_coeff_blocks_per_sm, bwd_coeff_dynamic_smem_bytes};
 use crate::primitives::field::E4;
 use crate::prover::ProverContext;
-use crate::prover::gkr::backward::flat::FLAT_CONST_MAX;
-use crate::upstream::Field;
+use crate::upstream::BwdRegime;
 
-// TASK 12 rewires the sweep that consumes this; the retired VM's sweep test
-// was its only caller. Scoped per item so nothing else in this module can go
-// dead unnoticed in the meantime.
-#[allow(dead_code)]
-pub(super) const WARMUP_ITERS: usize = 10;
-#[allow(dead_code)]
-pub(super) const TIMING_ITERS: usize = 30;
-#[allow(dead_code)]
-pub(super) const SWEEP_LOG_PATH: &str = "/tmp/plan5-bwd-vm-sweep.log";
-#[allow(dead_code)]
-pub(super) const NCU_SELECTOR_ENV: &str = "PLAN5_BWD_VM_NCU_COORD";
+/// §15's sample discipline: three warmups, ten timed samples, median and min.
+pub(super) const WARMUP_ITERS: usize = 3;
+pub(super) const TIMING_ITERS: usize = 10;
 
-/// An exact single coordinate for profiler collection, or the complete sweep.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) enum SweepSelection {
-    #[allow(dead_code)] // TASK 12: only `from_env` produces the whole sweep.
-    All,
-    R0 { budget_cells: usize },
-    Ext { budget_cells: usize, round: u8 },
+/// Every sweep artefact lands under `target/`, which is git-ignored on purpose:
+/// these are machine measurements, not repository content.
+pub(super) const SWEEP_OUTPUT_DIR: &str = "target/gkr";
+pub(super) const FOCUSED_CSV: &str = "bwd_coeff_focused_layer0_sweep.csv";
+pub(super) const CORPUS_CSV: &str = "bwd_coeff_corpus_sweep.csv";
+pub(super) const SELECTION_JSON: &str = "bwd_coeff_selected_budgets.json";
+pub(super) const SUMMARY_MD: &str = "bwd_coeff_profile_summary.md";
+
+/// The budget the profiler test launches, overridable so a profiling session can
+/// re-target without a rebuild.
+///
+/// The DEFAULT is the measured `add_sub` layer-0 R0 selection. Note what the sweep
+/// found about that coordinate: c2 through c7 all run at 6 blocks per SM and their
+/// medians sit inside [`SELECTION_TIE_FRACTION`] of each other, so the tier — not
+/// this exact member — is the finding. Re-pin it when the sweep moves the tier.
+pub(super) const PROFILE_CELLS_ENV: &str = "BWD_COEFF_PROFILE_CELLS";
+pub(super) const PROFILE_DEFAULT_CELLS: u8 = 4;
+
+pub(super) fn sweep_output_path(file: &str) -> PathBuf {
+    PathBuf::from(SWEEP_OUTPUT_DIR).join(file)
 }
 
-impl SweepSelection {
-    #[allow(dead_code)] // TASK 12: driven by the sweep test.
-    pub(super) fn from_env() -> Self {
-        match std::env::var(NCU_SELECTOR_ENV) {
-            Ok(value) => parse_ncu_selector(&value)
-                .unwrap_or_else(|error| panic!("invalid {NCU_SELECTOR_ENV}={value:?}: {error}"))
-                .expect("non-empty environment selector"),
-            Err(std::env::VarError::NotPresent) => Self::All,
-            Err(error) => panic!("read {NCU_SELECTOR_ENV}: {error}"),
-        }
-    }
-
-    pub(super) fn includes(self, regime: &str, budget_cells: usize, round: u8) -> bool {
-        match self {
-            Self::All => true,
-            Self::R0 {
-                budget_cells: selected,
-            } => regime == "R0" && budget_cells == selected && round == 0,
-            Self::Ext {
-                budget_cells: selected,
-                round: selected_round,
-            } => regime == "Ext" && budget_cells == selected && round == selected_round,
-        }
-    }
-
-    #[allow(dead_code)] // TASK 12: driven by the sweep test.
-    pub(super) fn needs_ext_setup(self) -> bool {
-        !matches!(self, Self::R0 { .. })
-    }
-
-    #[allow(dead_code)] // TASK 12: driven by the sweep test.
-    pub(super) fn needs_incumbent_round(self, round: u8) -> bool {
-        match self {
-            Self::All => round <= 3,
-            Self::R0 { .. } => round == 0,
-            Self::Ext {
-                round: selected, ..
-            } => round == selected,
-        }
-    }
-
-    pub(super) fn prepares_ext_round(self, round: u8) -> bool {
-        match self {
-            Self::All => round <= 3,
-            Self::R0 { .. } => false,
-            Self::Ext {
-                round: selected, ..
-            } => round <= selected,
-        }
-    }
-
-    #[allow(dead_code)] // TASK 12: driven by the sweep test.
-    pub(super) fn stops_after_ext_round(self, round: u8) -> bool {
-        match self {
-            Self::All => round == 3,
-            Self::Ext {
-                round: selected, ..
-            } => round == selected,
-            Self::R0 { .. } => false,
-        }
-    }
-
-    #[allow(dead_code)] // TASK 12: driven by the sweep test.
-    pub(super) fn assert_report_rows(self, rows: &[SweepRow]) {
-        if !matches!(self, Self::All) {
-            assert_eq!(rows.len(), 1, "NCU selector must time one coordinate");
-            let row = &rows[0];
+/// The profiled budget: [`PROFILE_CELLS_ENV`] when set, else
+/// [`PROFILE_DEFAULT_CELLS`].
+pub(super) fn profile_cells() -> u8 {
+    match std::env::var(PROFILE_CELLS_ENV) {
+        Ok(value) => {
+            let cells = value
+                .trim()
+                .trim_start_matches('c')
+                .parse::<u8>()
+                .unwrap_or_else(|error| panic!("invalid {PROFILE_CELLS_ENV}={value:?}: {error}"));
             assert!(
-                self.includes(row.regime, row.budget_cells, row.round),
-                "NCU selector result must match its requested coordinate"
+                (2..=16).contains(&cells),
+                "{PROFILE_CELLS_ENV} must name c2..c16, got c{cells}"
             );
+            cells
         }
+        Err(std::env::VarError::NotPresent) => PROFILE_DEFAULT_CELLS,
+        Err(error) => panic!("read {PROFILE_CELLS_ENV}: {error}"),
     }
 }
 
-pub(super) fn parse_ncu_selector(value: &str) -> Result<Option<SweepSelection>, String> {
-    if value.is_empty() {
-        return Ok(None);
-    }
-    let mut parts = value.split(':');
-    let regime = parts.next().expect("split always yields first part");
-    let budget = parts.next().ok_or("expected <r0|ext>:c<2..16>:r<0..3>")?;
-    let round = parts.next().ok_or("expected <r0|ext>:c<2..16>:r<0..3>")?;
-    if parts.next().is_some() {
-        return Err("expected exactly <r0|ext>:c<2..16>:r<0..3>".to_owned());
-    }
-    let budget_cells = budget
-        .strip_prefix('c')
-        .ok_or("budget must use c<2..16>")?
-        .parse::<usize>()
-        .map_err(|_| "budget must use c<2..16>".to_owned())?;
-    if !(2..=16).contains(&budget_cells) {
-        return Err("budget must be c2 through c16".to_owned());
-    }
-    let round = round
-        .strip_prefix('r')
-        .ok_or("round must use r<0..3>")?
-        .parse::<u8>()
-        .map_err(|_| "round must use r<0..3>".to_owned())?;
-    match regime {
-        "r0" if round == 0 => Ok(Some(SweepSelection::R0 { budget_cells })),
-        "r0" => Err("R0 selector requires r0".to_owned()),
-        "ext" if (1..=3).contains(&round) => Ok(Some(SweepSelection::Ext {
-            budget_cells,
-            round,
-        })),
-        "ext" => Err("Ext selector requires r1 through r3".to_owned()),
-        _ => Err("regime must be r0 or ext".to_owned()),
-    }
-}
+// ── Timing ───────────────────────────────────────────────────────────────────
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) struct TimingSummary {
@@ -174,45 +122,14 @@ impl TimingSummary {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub(super) struct SweepRow {
-    pub(super) budget_cells: usize,
-    pub(super) regime: &'static str,
-    pub(super) round: u8,
-    pub(super) rows: usize,
-    pub(super) dynamic_smem_bytes: usize,
-    pub(super) active_blocks_per_sm: i32,
-    pub(super) theoretical_occupancy: f32,
-    pub(super) program_instructions: usize,
-    pub(super) program_lanes: usize,
-    pub(super) predicted_source_bytes: u128,
-    pub(super) incumbent_sequence: &'static str,
-    pub(super) vm: TimingSummary,
-    pub(super) incumbent: TimingSummary,
-}
-
-impl SweepRow {
-    pub(super) fn ratio(&self) -> f32 {
-        self.vm.median_us / self.incumbent.median_us
-    }
-}
-
 /// Time one already-prepared launch sequence. Poisoning is enqueued before the
 /// start event, so output reset is deliberately outside every measured span.
-#[allow(dead_code)] // TASK 12: called by the sweep test.
 pub(super) fn time_cuda_launches(
     stream: &CudaStream,
-    warmups: usize,
-    iterations: usize,
     mut poison: impl FnMut() -> CudaResult<()>,
     mut launch: impl FnMut() -> CudaResult<()>,
 ) -> CudaResult<TimingSummary> {
-    assert!(warmups >= WARMUP_ITERS, "at least {WARMUP_ITERS} warmups");
-    assert!(
-        iterations >= TIMING_ITERS,
-        "at least {TIMING_ITERS} samples"
-    );
-    for _ in 0..warmups {
+    for _ in 0..WARMUP_ITERS {
         poison()?;
         launch()?;
     }
@@ -220,8 +137,8 @@ pub(super) fn time_cuda_launches(
 
     let start = CudaEvent::create()?;
     let end = CudaEvent::create()?;
-    let mut samples = Vec::with_capacity(iterations);
-    for _ in 0..iterations {
+    let mut samples = Vec::with_capacity(TIMING_ITERS);
+    for _ in 0..TIMING_ITERS {
         poison()?;
         start.record(stream)?;
         launch()?;
@@ -232,116 +149,589 @@ pub(super) fn time_cuda_launches(
     Ok(TimingSummary::from_milliseconds(samples))
 }
 
-#[allow(dead_code)] // TASK 12: called by the sweep test.
-pub(super) fn upload_incumbent_coefficients(
-    coefficients: &[E4],
-    context: &ProverContext,
-) -> CudaResult<()> {
-    assert!(coefficients.len() <= FLAT_CONST_MAX);
-    let bank: [E4; FLAT_CONST_MAX] =
-        core::array::from_fn(|index| coefficients.get(index).copied().unwrap_or(E4::ZERO));
-    // SAFETY: this Rust stub names the exact CUDA `e4[FLAT_CONST_MAX]`
-    // coefficient symbol. The pageable source is staged by the helper and the
-    // copy is ordered before subsequent launches on `exec_stream`.
-    unsafe {
-        crate::primitives::utils::memcpy_to_symbol_async(
-            &super::ab_gkr_flat_coefficients,
-            &bank,
-            context.get_exec_stream(),
-        )
+// ── Kernel attributes: §15's release gate, per instantiation ──────────────────
+
+/// What the loaded module says about one instantiation.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) struct KernelAttributes {
+    pub(super) registers: i32,
+    /// `localSizeBytes`. §15 requires this to be ZERO for every release kernel:
+    /// it is the per-thread local frame, which is where a spill lands.
+    pub(super) local_size_bytes: usize,
+    /// Statically declared shared memory. The cell file is DYNAMIC, so a release
+    /// executor's own static shared use is whatever the linked image declares.
+    pub(super) static_smem_bytes: usize,
+    pub(super) max_threads_per_block: i32,
+}
+
+impl KernelAttributes {
+    /// Query the exact instantiation. `kernel` must be a `__global__` function
+    /// pointer from one of the declared kernel symbols.
+    fn of(kernel: *const c_void) -> Self {
+        let mut attributes = std::mem::MaybeUninit::<CudaFuncAttributes>::zeroed();
+        // SAFETY: `CudaFuncAttributes` is plain data and `kernel` is a valid
+        // `__global__` entry point taken from a `KernelFunction::as_ptr`.
+        unsafe { cudaFuncGetAttributes(attributes.as_mut_ptr(), kernel) }
+            .wrap()
+            .expect("cudaFuncGetAttributes for a backward coefficient executor");
+        // SAFETY: the call above initialized it.
+        let attributes = unsafe { attributes.assume_init() };
+        Self {
+            registers: attributes.numRegs,
+            local_size_bytes: attributes.localSizeBytes,
+            static_smem_bytes: attributes.sharedSizeBytes,
+            max_threads_per_block: attributes.maxThreadsPerBlock,
+        }
+    }
+
+    /// §15: zero local-memory traffic in a release kernel.
+    pub(super) fn assert_no_spills(&self, label: &str) {
+        assert_eq!(
+            self.local_size_bytes, 0,
+            "{label}: release executors must have zero local-memory spills, \
+             cudaFuncGetAttributes reports {} bytes",
+            self.local_size_bytes
+        );
+        assert!(
+            self.max_threads_per_block >= BWD_COEFF_THREADS_PER_BLOCK as i32,
+            "{label}: the executor cannot host its own {BWD_COEFF_THREADS_PER_BLOCK}-thread block"
+        );
     }
 }
 
-pub(super) fn render_full_report(rows: &[SweepRow]) -> String {
-    let mut output = String::from(
-        "budget,regime,round,rows,dynamic_smem_bytes,active_blocks_per_sm,theoretical_occupancy_percent,program_instructions,program_lanes,predicted_source_bytes,incumbent_sequence,vm_median_us,vm_min_us,incumbent_median_us,incumbent_min_us,vm_over_incumbent\n",
-    );
-    let mut aggregates = BTreeMap::<usize, (f32, f32, f32, f32)>::new();
-    for row in rows {
-        writeln!(
-            output,
-            "c{},{},{},{},{},{},{:.2},{},{},{},{},{:.3},{:.3},{:.3},{:.3},{:.6}",
-            row.budget_cells,
-            row.regime,
-            row.round,
-            row.rows,
-            row.dynamic_smem_bytes,
-            row.active_blocks_per_sm,
-            row.theoretical_occupancy * 100.0,
-            row.program_instructions,
-            row.program_lanes,
-            row.predicted_source_bytes,
-            row.incumbent_sequence,
-            row.vm.median_us,
-            row.vm.min_us,
-            row.incumbent.median_us,
-            row.incumbent.min_us,
-            row.ratio(),
-        )
-        .expect("write String");
-        let aggregate = aggregates.entry(row.budget_cells).or_default();
-        aggregate.0 += row.vm.median_us;
-        aggregate.1 += row.vm.min_us;
-        aggregate.2 += row.incumbent.median_us;
-        aggregate.3 += row.incumbent.min_us;
+/// The attributes of the exact `(regime, fold depth, bank)` executor.
+pub(super) fn executor_attributes(
+    regime: BwdRegime,
+    fold_depth: u8,
+    bank: BwdCoeffBank,
+) -> KernelAttributes {
+    use super::*;
+    macro_rules! attributes {
+        ($function:ident, $symbol:ident) => {
+            KernelAttributes::of($function($symbol).as_ptr())
+        };
     }
-    output.push_str(
-        "whole-layer,budget,vm_median_us,vm_min_us,incumbent_median_us,incumbent_min_us,vm_over_incumbent\n",
-    );
-    for (budget, (vm_median, vm_min, incumbent_median, incumbent_min)) in aggregates {
+    match (regime, fold_depth, bank) {
+        (BwdRegime::R0, _, BwdCoeffBank::Constant) => {
+            attributes!(GkrBwdCoeffR0ConstFunction, ab_gkr_bwd_coeff_r0_const_kernel)
+        }
+        (BwdRegime::R0, _, BwdCoeffBank::DevicePointer) => {
+            attributes!(GkrBwdCoeffR0PtrFunction, ab_gkr_bwd_coeff_r0_ptr_kernel)
+        }
+        (BwdRegime::Ext, 0, BwdCoeffBank::Constant) => attributes!(
+            GkrBwdCoeffExtD0ConstFunction,
+            ab_gkr_bwd_coeff_ext_d0_const_kernel
+        ),
+        (BwdRegime::Ext, 0, BwdCoeffBank::DevicePointer) => attributes!(
+            GkrBwdCoeffExtD0PtrFunction,
+            ab_gkr_bwd_coeff_ext_d0_ptr_kernel
+        ),
+        (BwdRegime::Ext, 1, BwdCoeffBank::Constant) => attributes!(
+            GkrBwdCoeffExtD1ConstFunction,
+            ab_gkr_bwd_coeff_ext_d1_const_kernel
+        ),
+        (BwdRegime::Ext, 1, BwdCoeffBank::DevicePointer) => attributes!(
+            GkrBwdCoeffExtD1PtrFunction,
+            ab_gkr_bwd_coeff_ext_d1_ptr_kernel
+        ),
+        (BwdRegime::Ext, 2, BwdCoeffBank::Constant) => attributes!(
+            GkrBwdCoeffExtD2ConstFunction,
+            ab_gkr_bwd_coeff_ext_d2_const_kernel
+        ),
+        (BwdRegime::Ext, 2, BwdCoeffBank::DevicePointer) => attributes!(
+            GkrBwdCoeffExtD2PtrFunction,
+            ab_gkr_bwd_coeff_ext_d2_ptr_kernel
+        ),
+        (BwdRegime::Ext, 3, BwdCoeffBank::Constant) => attributes!(
+            GkrBwdCoeffExtD3ConstFunction,
+            ab_gkr_bwd_coeff_ext_d3_const_kernel
+        ),
+        (BwdRegime::Ext, 3, BwdCoeffBank::DevicePointer) => attributes!(
+            GkrBwdCoeffExtD3PtrFunction,
+            ab_gkr_bwd_coeff_ext_d3_ptr_kernel
+        ),
+        (BwdRegime::Ext, depth, _) => panic!("continuation fold depth D{depth} is outside D0..D3"),
+    }
+}
+
+// ── Launch geometry, as measured ──────────────────────────────────────────────
+
+/// The occupancy and shared-memory facts of one launch.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(super) struct LaunchGeometry {
+    pub(super) rows: usize,
+    pub(super) blocks: u32,
+    pub(super) dynamic_smem_bytes: usize,
+    pub(super) active_blocks_per_sm: i32,
+    /// `active_blocks_per_sm * threads_per_block / max_threads_per_sm`.
+    pub(super) theoretical_occupancy: f32,
+    /// Whether the grid covers at least one full wave of the device.
+    pub(super) waves: f32,
+}
+
+impl LaunchGeometry {
+    pub(super) fn of(
+        regime: BwdRegime,
+        fold_depth: u8,
+        bank: BwdCoeffBank,
+        cell_budget: u32,
+        rows: usize,
+        device: &DeviceFacts,
+    ) -> Self {
+        let blocks = (rows.max(1) as u32).div_ceil(BWD_COEFF_THREADS_PER_BLOCK);
+        let active_blocks_per_sm = bwd_coeff_blocks_per_sm(regime, fold_depth, bank, cell_budget)
+            .expect("query backward coefficient executor occupancy");
+        let per_wave = (active_blocks_per_sm.max(1) as u32) * device.multiprocessors;
+        Self {
+            rows,
+            blocks,
+            dynamic_smem_bytes: bwd_coeff_dynamic_smem_bytes(cell_budget),
+            active_blocks_per_sm,
+            theoretical_occupancy: active_blocks_per_sm as f32
+                * BWD_COEFF_THREADS_PER_BLOCK as f32
+                / device.max_threads_per_sm as f32,
+            waves: blocks as f32 / per_wave as f32,
+        }
+    }
+}
+
+/// The device constants every occupancy number is relative to.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct DeviceFacts {
+    pub(super) multiprocessors: u32,
+    pub(super) max_threads_per_sm: i32,
+    pub(super) total_global_bytes: usize,
+}
+
+impl DeviceFacts {
+    pub(super) fn query() -> Self {
+        use era_cudart::device::{device_get_attribute, get_device};
+        use era_cudart_sys::CudaDeviceAttr;
+        let device = get_device().expect("active CUDA device");
+        Self {
+            multiprocessors: device_get_attribute(CudaDeviceAttr::MultiProcessorCount, device)
+                .expect("query MultiProcessorCount") as u32,
+            max_threads_per_sm: device_get_attribute(
+                CudaDeviceAttr::MaxThreadsPerMultiProcessor,
+                device,
+            )
+            .expect("query MaxThreadsPerMultiProcessor"),
+            total_global_bytes: era_cudart::device::get_device_properties(device)
+                .expect("query device properties")
+                .totalGlobalMem,
+        }
+    }
+
+    /// Rows that fill `waves` complete waves of `active_blocks_per_sm`-deep
+    /// residency. This is the sweep's saturation target.
+    pub(super) fn rows_for_waves(&self, active_blocks_per_sm: i32, waves: u32) -> usize {
+        (self.multiprocessors as usize)
+            * (active_blocks_per_sm.max(1) as usize)
+            * (waves as usize)
+            * BWD_COEFF_THREADS_PER_BLOCK as usize
+    }
+}
+
+// ── One measured configuration ────────────────────────────────────────────────
+
+#[derive(Clone, Debug)]
+pub(super) struct SweepRow {
+    pub(super) circuit: String,
+    pub(super) layer: usize,
+    pub(super) regime: ArtifactRegime,
+    pub(super) round_class: BwdRoundClass,
+    /// The sumcheck round the binding was realized at.
+    pub(super) round: u8,
+    pub(super) budget_cells: u8,
+    pub(super) bank: BwdCoeffBank,
+    pub(super) geometry: LaunchGeometry,
+    pub(super) attributes: KernelAttributes,
+    /// Whether `geometry.rows` reached the saturation target, or memory capped it.
+    pub(super) saturated: bool,
+    /// The compiler's exact static cost model for this program.
+    pub(super) program: ProgramReport,
+    pub(super) timing: TimingSummary,
+    /// Present only where an exact incumbent launch exists for the coordinate.
+    pub(super) incumbent: Option<TimingSummary>,
+    pub(super) incumbent_sequence: &'static str,
+    /// Whether this row is a PRODUCTION selection candidate. False for a
+    /// diagnostic row — the published steady state shares D1's executor, so it is
+    /// measured and reported but never selected on, which keeps one round class
+    /// from having two winners.
+    pub(super) selects: bool,
+}
+
+impl SweepRow {
+    pub(super) fn coordinate(&self) -> (String, usize, BwdRoundClass) {
+        (self.circuit.clone(), self.layer, self.round_class)
+    }
+
+    pub(super) fn label(&self) -> String {
+        format!(
+            "{} L{} {} c{}",
+            self.circuit,
+            self.layer,
+            self.round_class.label(),
+            self.budget_cells
+        )
+    }
+
+    /// New over incumbent, by median. `None` where no incumbent was timed.
+    pub(super) fn ratio(&self) -> Option<f32> {
+        self.incumbent
+            .map(|incumbent| self.timing.median_us / incumbent.median_us)
+    }
+}
+
+pub(super) const CSV_HEADER: &str = "circuit,layer,regime,round_class,round,budget_cells,bank,\
+rows,blocks,waves,saturated,dynamic_smem_bytes,static_smem_bytes,registers,local_spill_bytes,\
+active_blocks_per_sm,theoretical_occupancy_percent,terms,program_words,program_bytes,moves,\
+realized_read_bytes,read_floor_bytes,percent_above_floor,materialization_write_bytes,\
+shared_loads,shared_stores,bf_ops,mixed_ops,e4_ops,source_resolutions,hits,misses,fills,evictions,\
+peak_resident_lanes,median_us,min_us,incumbent_median_us,incumbent_min_us,new_over_incumbent,\
+incumbent_sequence\n";
+
+fn bank_label(bank: BwdCoeffBank) -> &'static str {
+    match bank {
+        BwdCoeffBank::Constant => "const",
+        BwdCoeffBank::DevicePointer => "ptr",
+    }
+}
+
+/// The complete per-configuration table. One row per measured configuration, in
+/// the order the sweep produced them, plus nothing aggregated — aggregation over
+/// round classes is exactly the mistake §13 forbids, so it is not offered here.
+pub(super) fn render_sweep_csv(rows: &[SweepRow]) -> String {
+    let mut output = String::from(CSV_HEADER);
+    for row in rows {
+        let (incumbent_median, incumbent_min) = row
+            .incumbent
+            .map_or((f32::NAN, f32::NAN), |t| (t.median_us, t.min_us));
+        let ratio = row.ratio().unwrap_or(f32::NAN);
         writeln!(
             output,
-            "whole-layer,c{budget},{vm_median:.3},{vm_min:.3},{incumbent_median:.3},{incumbent_min:.3},{:.6}",
-            vm_median / incumbent_median,
+            "{},{},{},{},{},c{},{},{},{},{:.3},{},{},{},{},{},{},{:.2},{},{},{},{},\
+             {},{},{:.4},{},{},{},{},{},{},{},{},{},{},{},{},{:.3},{:.3},{:.3},{:.3},{:.6},{}",
+            row.circuit,
+            row.layer,
+            row.regime.label(),
+            row.round_class.label(),
+            row.round,
+            row.budget_cells,
+            bank_label(row.bank),
+            row.geometry.rows,
+            row.geometry.blocks,
+            row.geometry.waves,
+            row.saturated,
+            row.geometry.dynamic_smem_bytes,
+            row.attributes.static_smem_bytes,
+            row.attributes.registers,
+            row.attributes.local_size_bytes,
+            row.geometry.active_blocks_per_sm,
+            row.geometry.theoretical_occupancy * 100.0,
+            row.program.terms,
+            row.program.words,
+            row.program.bytes,
+            row.program.moves,
+            row.program.realized_total_read_bytes,
+            row.program.total_read_floor_bytes,
+            row.program.percent_above_floor(),
+            row.program.materialization_write_bytes,
+            row.program.shared_loads,
+            row.program.shared_stores,
+            row.program.bf_ops,
+            row.program.mixed_ops,
+            row.program.e4_ops,
+            row.program.source_resolutions,
+            row.program.hits,
+            row.program.misses,
+            row.program.fills,
+            row.program.evictions,
+            row.program.peak_resident_lanes,
+            row.timing.median_us,
+            row.timing.min_us,
+            incumbent_median,
+            incumbent_min,
+            ratio,
+            row.incumbent_sequence,
         )
         .expect("write String");
     }
     output
 }
 
-pub(super) fn ranked_budgets(rows: &[SweepRow]) -> Vec<(f32, usize, f32, f32)> {
-    let mut aggregates = BTreeMap::<usize, (f32, f32)>::new();
-    for row in rows {
-        let aggregate = aggregates.entry(row.budget_cells).or_default();
-        aggregate.0 += row.vm.median_us;
-        aggregate.1 += row.incumbent.median_us;
-    }
-    let mut ranked = aggregates
-        .into_iter()
-        .map(|(budget, (vm, incumbent))| (vm / incumbent, budget, vm, incumbent))
-        .collect::<Vec<_>>();
-    ranked.sort_by(|lhs, rhs| lhs.0.partial_cmp(&rhs.0).expect("finite aggregate ratio"));
-    ranked
+// ── Selection ─────────────────────────────────────────────────────────────────
+
+/// One `(circuit, layer, round class)`'s measured winner, with the diagnostic
+/// `c16` reference beside it.
+#[derive(Clone, Debug, PartialEq)]
+pub(super) struct BudgetChoice {
+    pub(super) circuit: String,
+    pub(super) layer: usize,
+    pub(super) round_class: BwdRoundClass,
+    /// The fastest measured PRODUCTION budget — `c16` excluded, §15.
+    pub(super) cells: u8,
+    pub(super) median_us: f32,
+    pub(super) min_us: f32,
+    /// `c16`'s median for the same coordinate. Reported so the distance to the
+    /// diagnostic floor is visible, never selected.
+    pub(super) diagnostic_c16_median_us: f32,
+    /// `c2`'s median, §15's "does the compact path lose at the lowest budget"
+    /// reference point.
+    pub(super) c2_median_us: f32,
+    pub(super) rows: usize,
 }
 
-pub(super) fn publish_report(rows: &[SweepRow], path: &Path) {
-    let report = render_full_report(rows);
+impl BudgetChoice {
+    pub(super) fn selected(&self) -> SelectedBudget {
+        SelectedBudget {
+            round_class: self.round_class,
+            cells: self.cells,
+        }
+    }
+}
+
+/// How close to the fastest median a budget must be to count as tied with it.
+///
+/// Not a fudge factor — a measured property of the thing being selected. The
+/// executor's runtime is a STEP function of the cell budget, because the budget
+/// sets dynamic shared memory and therefore blocks per SM: `add_sub` layer-0 R0
+/// runs at 6 blocks/SM for c2..c7, 5 for c8..c9, 4 for c10..c12 and 3 for
+/// c13..c16, and the four medians in each tier land within a few CUDA-event ticks
+/// of each other while the tiers themselves are 12% apart. Selecting on the raw
+/// argmin therefore names an arbitrary member of the winning tier and names a
+/// different one on the next run.
+///
+/// So the rule is "the SMALLEST budget that is not measurably slower than the
+/// fastest": same measured speed, least shared memory, and a choice that does not
+/// move when the clock does. One percent is above the event timer's resolution at
+/// these durations (~1 microsecond on a ~500 microsecond launch) and well below a
+/// one-block occupancy step.
+pub(super) const SELECTION_TIE_FRACTION: f32 = 0.01;
+
+/// The fastest measured budget for every `(circuit, layer, round class)` the rows
+/// cover, INDEPENDENTLY per round class.
+///
+/// `c16` is excluded from candidacy by §15 and carried alongside as a diagnostic.
+/// Among budgets tied with the fastest to within [`SELECTION_TIE_FRACTION`], the
+/// SMALLEST wins.
+pub(super) fn select_budgets(rows: &[SweepRow]) -> Vec<BudgetChoice> {
+    let mut grouped: BTreeMap<(String, usize, BwdRoundClass), Vec<&SweepRow>> = BTreeMap::new();
+    for row in rows {
+        grouped.entry(row.coordinate()).or_default().push(row);
+    }
+    grouped
+        .into_iter()
+        .map(|((circuit, layer, round_class), mut candidates)| {
+            candidates.sort_by_key(|row| row.budget_cells);
+            let diagnostic = candidates
+                .iter()
+                .find(|row| row.budget_cells == SELECTION_DIAGNOSTIC_CELLS)
+                .map_or(f32::NAN, |row| row.timing.median_us);
+            let c2 = candidates
+                .iter()
+                .find(|row| row.budget_cells == 2)
+                .map_or(f32::NAN, |row| row.timing.median_us);
+            let production = candidates
+                .iter()
+                .filter(|row| row.budget_cells != SELECTION_DIAGNOSTIC_CELLS)
+                .collect::<Vec<_>>();
+            let fastest = production
+                .iter()
+                .map(|row| row.timing.median_us)
+                .reduce(f32::min)
+                .unwrap_or_else(|| {
+                    panic!("{circuit} L{layer} {} has no production candidate", round_class.label())
+                });
+            let threshold = fastest * (1.0 + SELECTION_TIE_FRACTION);
+            // `production` is ascending by budget, so the first row within the tie
+            // band IS the smallest one.
+            let winner = production
+                .iter()
+                .find(|row| row.timing.median_us <= threshold)
+                .expect("the fastest row is within its own tie band");
+            BudgetChoice {
+                circuit,
+                layer,
+                round_class,
+                cells: winner.budget_cells,
+                median_us: winner.timing.median_us,
+                min_us: winner.timing.min_us,
+                diagnostic_c16_median_us: diagnostic,
+                c2_median_us: c2,
+                rows: winner.geometry.rows,
+            }
+        })
+        .collect()
+}
+
+pub(super) const SELECTION_HEADER: &str =
+    "circuit,layer,round_class,selected_cells,rows,selected_median_us,selected_min_us,\
+c2_median_us,c16_diagnostic_median_us,selected_over_c2,selected_over_c16\n";
+
+pub(super) fn render_selection_csv(choices: &[BudgetChoice]) -> String {
+    let mut output = String::from(SELECTION_HEADER);
+    for choice in choices {
+        writeln!(
+            output,
+            "{},{},{},c{},{},{:.3},{:.3},{:.3},{:.3},{:.6},{:.6}",
+            choice.circuit,
+            choice.layer,
+            choice.round_class.label(),
+            choice.cells,
+            choice.rows,
+            choice.median_us,
+            choice.min_us,
+            choice.c2_median_us,
+            choice.diagnostic_c16_median_us,
+            choice.median_us / choice.c2_median_us,
+            choice.median_us / choice.diagnostic_c16_median_us,
+        )
+        .expect("write String");
+    }
+    output
+}
+
+/// Persist the selection as EXPLICIT per-round-class choices, grouped by circuit
+/// and layer, and validated against §15's diagnostic exclusion.
+///
+/// The shape mirrors [`SelectedBudget`], which is what a `CoordinateArtifact`
+/// carries — so applying this file to an artifact family is a copy, never an
+/// inference.
+pub(super) fn render_selection_json(choices: &[BudgetChoice]) -> String {
+    use gkr_eval_isa::bwd::coeff::artifact::validate_selected_budgets;
+
+    let mut by_coordinate: BTreeMap<(&str, usize, ArtifactRegime), Vec<SelectedBudget>> =
+        BTreeMap::new();
+    for choice in choices {
+        by_coordinate
+            .entry((
+                choice.circuit.as_str(),
+                choice.layer,
+                choice.round_class.regime(),
+            ))
+            .or_default()
+            .push(choice.selected());
+    }
+
+    let mut output = String::from("[\n");
+    let mut first = true;
+    for ((circuit, layer, regime), mut selected) in by_coordinate {
+        selected.sort_by_key(|entry| entry.round_class);
+        validate_selected_budgets(regime, &selected).unwrap_or_else(|error| {
+            panic!("{circuit} L{layer} {} selection: {error:?}", regime.label())
+        });
+        if !first {
+            output.push_str(",\n");
+        }
+        first = false;
+        write!(
+            output,
+            "  {{ \"circuit\": {circuit:?}, \"layer\": {layer}, \"regime\": {:?}, \
+             \"selected_budgets\": [",
+            regime.label()
+        )
+        .expect("write String");
+        for (index, entry) in selected.iter().enumerate() {
+            if index > 0 {
+                output.push_str(", ");
+            }
+            write!(
+                output,
+                "{{ \"round_class\": {:?}, \"cells\": {} }}",
+                entry.round_class.label(),
+                entry.cells
+            )
+            .expect("write String");
+        }
+        output.push_str("] }");
+    }
+    output.push_str("\n]\n");
+    output
+}
+
+// ── Publication ───────────────────────────────────────────────────────────────
+
+/// Write `contents` to `path` through a process-unique temporary, so a reader
+/// never observes a half-written table.
+pub(super) fn publish(path: &Path, contents: &str) {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .unwrap_or_else(|error| panic!("create {}: {error}", parent.display()));
+    }
     let file_name = path
         .file_name()
         .and_then(|name| name.to_str())
         .unwrap_or("sweep");
     let temporary = path.with_file_name(format!(".{file_name}.{}.tmp", std::process::id()));
-    std::fs::write(&temporary, report)
+    std::fs::write(&temporary, contents)
         .unwrap_or_else(|error| panic!("write {}: {error}", temporary.display()));
     std::fs::rename(&temporary, path)
         .unwrap_or_else(|error| panic!("publish {}: {error}", path.display()));
+}
 
-    let ranked = ranked_budgets(rows);
-    eprintln!(
-        "[bwd-vm-sweep] complete coordinates={} full_log={}",
-        rows.len(),
-        path.display()
-    );
-    for (ratio, budget, vm, incumbent) in ranked.into_iter().take(4) {
+/// Append one section to `target/gkr/bwd_coeff_profile_summary.md`, the index the
+/// brief requires for the sweep CSV and NCU report paths.
+pub(super) fn record_summary_section(title: &str, body: &str) {
+    let path = sweep_output_path(SUMMARY_MD);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .unwrap_or_else(|error| panic!("create {}: {error}", parent.display()));
+    }
+    let mut existing = std::fs::read_to_string(&path).unwrap_or_default();
+    if existing.is_empty() {
+        existing.push_str("# Backward coefficient-ISA GPU profile summary\n");
+    }
+    // Replace an earlier run's identical section rather than stacking duplicates.
+    let heading = format!("\n## {title}\n");
+    if let Some(start) = existing.find(&heading) {
+        let tail = existing[start + heading.len()..]
+            .find("\n## ")
+            .map(|offset| start + heading.len() + offset)
+            .unwrap_or(existing.len());
+        existing.replace_range(start..tail, "");
+    }
+    existing.push_str(&heading);
+    existing.push_str(body);
+    publish(&path, &existing);
+}
+
+/// Print the per-round-class winners and the c2/c16 reference points.
+pub(super) fn log_selection(tag: &str, choices: &[BudgetChoice]) {
+    for choice in choices {
         eprintln!(
-            "[bwd-vm-sweep] best c{budget}: vm={vm:.3}us incumbent={incumbent:.3}us ratio={ratio:.4}"
+            "[{tag}] {} L{} {}: selected c{} median={:.3}us (c2={:.3}us, c16 diagnostic={:.3}us) rows={}",
+            choice.circuit,
+            choice.layer,
+            choice.round_class.label(),
+            choice.cells,
+            choice.median_us,
+            choice.c2_median_us,
+            choice.diagnostic_c16_median_us,
+            choice.rows,
         );
     }
+}
+
+/// A contribution-buffer poisoner: the sweep resets both halves before every
+/// measured launch so a kernel that wrote nothing cannot pass as fast.
+pub(super) fn poison_contributions(
+    ptr: *mut E4,
+    rows: usize,
+    value: E4,
+    context: &ProverContext,
+) -> CudaResult<()> {
+    use era_cudart::slice::DeviceSlice;
+    // SAFETY: every caller supplies a live device allocation of at least
+    // `2 * rows` E4 values and serializes access on `exec_stream`.
+    let slice = unsafe { DeviceSlice::from_raw_parts_mut(ptr, 2 * rows) };
+    crate::ops::simple::set_by_val(value, slice, context.get_exec_stream())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use gkr_eval_isa::bwd::coeff::artifact::{SelectionError, validate_selected_budgets};
 
     #[test]
     fn timing_summary_uses_sorted_median_and_minimum() {
@@ -358,149 +748,250 @@ mod tests {
     }
 
     #[test]
-    fn sweep_report_has_stable_metadata_columns_and_aggregate() {
-        let rows = vec![SweepRow {
-            budget_cells: 4,
-            regime: "Ext",
-            round: 2,
-            rows: 16,
-            dynamic_smem_bytes: 8_192,
-            active_blocks_per_sm: 3,
-            theoretical_occupancy: 0.75,
-            program_instructions: 100,
-            program_lanes: 150,
-            predicted_source_bytes: 3_072,
-            incumbent_sequence: "compact evaluator launcher",
-            vm: TimingSummary {
-                median_us: 12.0,
-                min_us: 10.0,
+    fn the_sample_discipline_is_three_warmups_and_ten_samples() {
+        assert_eq!(WARMUP_ITERS, 3);
+        assert_eq!(TIMING_ITERS, 10);
+    }
+
+    fn row(
+        circuit: &str,
+        layer: usize,
+        round_class: BwdRoundClass,
+        cells: u8,
+        median_us: f32,
+    ) -> SweepRow {
+        SweepRow {
+            circuit: circuit.to_owned(),
+            layer,
+            regime: round_class.regime(),
+            round_class,
+            round: round_class.fold_depth().unwrap_or(0),
+            budget_cells: cells,
+            bank: BwdCoeffBank::Constant,
+            geometry: LaunchGeometry {
+                rows: 4_096,
+                blocks: 32,
+                dynamic_smem_bytes: usize::from(cells) * 16 * 128,
+                active_blocks_per_sm: 4,
+                theoretical_occupancy: 0.25,
+                waves: 1.5,
             },
-            incumbent: TimingSummary {
-                median_us: 6.0,
-                min_us: 5.0,
+            attributes: KernelAttributes {
+                registers: 76,
+                local_size_bytes: 0,
+                static_smem_bytes: 0,
+                max_threads_per_block: 1_024,
             },
-        }];
-        let rendered = render_full_report(&rows);
-        assert!(rendered.contains("budget,regime,round,rows,dynamic_smem_bytes"));
-        assert!(rendered.contains("c4,Ext,2,16,8192,3,75.00"));
-        assert!(rendered.contains("whole-layer,c4"));
-        assert!(rendered.contains(",2.000000"));
+            saturated: true,
+            program: ProgramReport {
+                cells,
+                terms: 100,
+                total_read_floor_bytes: 1_000,
+                realized_total_read_bytes: 1_200,
+                cacheable_reread_bytes: 200,
+                words: 300,
+                bytes: 600,
+                ..Default::default()
+            },
+            timing: TimingSummary {
+                median_us,
+                min_us: median_us - 1.0,
+            },
+            incumbent: None,
+            incumbent_sequence: "-",
+            selects: true,
+        }
     }
 
     #[test]
-    fn ncu_selector_accepts_only_unambiguous_representative_coordinates() {
-        assert_eq!(
-            parse_ncu_selector("r0:c4:r0"),
-            Ok(Some(SweepSelection::R0 { budget_cells: 4 }))
-        );
-        assert_eq!(
-            parse_ncu_selector("ext:c2:r1"),
-            Ok(Some(SweepSelection::Ext {
-                budget_cells: 2,
-                round: 1,
-            }))
-        );
-        assert_eq!(
-            parse_ncu_selector("ext:c16:r3"),
-            Ok(Some(SweepSelection::Ext {
-                budget_cells: 16,
-                round: 3,
-            }))
-        );
-        assert!(parse_ncu_selector("r0:c5:r1").is_err());
-        assert!(parse_ncu_selector("ext:c12:r0").is_err());
-        assert!(parse_ncu_selector("ext:c12:r4").is_err());
-        assert!(parse_ncu_selector("ext:c1:r1").is_err());
-        assert!(parse_ncu_selector("ext:c12").is_err());
-        assert!(parse_ncu_selector("ext:c12:r1:extra").is_err());
-    }
-
-    #[test]
-    fn ext_selector_prepares_every_predecessor_round() {
-        let selection = SweepSelection::Ext {
-            budget_cells: 7,
-            round: 3,
-        };
-
-        assert!((1..=3).all(|round| selection.prepares_ext_round(round)));
-        assert!(!selection.prepares_ext_round(4));
-        assert!(!selection.includes("Ext", 7, 1));
-        assert!(selection.includes("Ext", 7, 3));
-    }
-
-    #[test]
-    fn ranking_and_aggregation_cover_multiple_rounds_and_budgets() {
+    fn selection_is_per_round_class_and_never_aggregated_over_the_layer() {
+        // R0 is fastest at c4, D1 at c8. Aggregating the layer would pick one of
+        // them for both, which is exactly what §13 forbids.
         let rows = vec![
-            test_row(2, "R0", 0, 30.0, 10.0),
-            test_row(4, "Ext", 1, 12.0, 10.0),
-            test_row(4, "Ext", 2, 8.0, 10.0),
+            row("add_sub", 0, BwdRoundClass::R0, 2, 30.0),
+            row("add_sub", 0, BwdRoundClass::R0, 4, 10.0),
+            row("add_sub", 0, BwdRoundClass::R0, 8, 20.0),
+            row("add_sub", 0, BwdRoundClass::D1, 2, 40.0),
+            row("add_sub", 0, BwdRoundClass::D1, 4, 25.0),
+            row("add_sub", 0, BwdRoundClass::D1, 8, 12.0),
         ];
-        let rendered = render_full_report(&rows);
-        assert!(rendered.contains("whole-layer,c4,20.000,20.000,20.000,20.000,1.000000"));
-        assert_eq!(ranked_budgets(&rows)[0].1, 4);
-        assert_eq!(ranked_budgets(&rows)[1].1, 2);
-        assert!(rendered.contains("program_instructions,program_lanes,predicted_source_bytes"));
-        assert!(rendered.contains("incumbent_sequence"));
+        let choices = select_budgets(&rows);
+        assert_eq!(choices.len(), 2);
+        assert_eq!(choices[0].round_class, BwdRoundClass::R0);
+        assert_eq!(choices[0].cells, 4);
+        assert_eq!(choices[1].round_class, BwdRoundClass::D1);
+        assert_eq!(choices[1].cells, 8);
     }
 
     #[test]
-    fn report_preserves_the_full_budget_range_and_distinct_round_coordinates() {
-        let mut rows = (2..=16)
-            .map(|budget| test_row(budget, "R0", 0, budget as f32, 1.0))
+    fn c16_is_reported_as_a_diagnostic_and_never_selected() {
+        let rows = vec![
+            row("keccak_special5", 0, BwdRoundClass::R0, 2, 90.0),
+            row("keccak_special5", 0, BwdRoundClass::R0, 15, 50.0),
+            // The genuinely fastest budget IS c16 here, and it still loses.
+            row("keccak_special5", 0, BwdRoundClass::R0, 16, 5.0),
+        ];
+        let choices = select_budgets(&rows);
+        assert_eq!(choices[0].cells, 15);
+        assert_eq!(choices[0].diagnostic_c16_median_us, 5.0);
+        assert_eq!(
+            validate_selected_budgets(ArtifactRegime::R0, &[choices[0].selected()]),
+            Ok(())
+        );
+        assert_eq!(
+            validate_selected_budgets(
+                ArtifactRegime::R0,
+                &[SelectedBudget {
+                    round_class: BwdRoundClass::R0,
+                    cells: 16
+                }]
+            ),
+            Err(SelectionError::DiagnosticBudgetSelected {
+                round_class: BwdRoundClass::R0
+            })
+        );
+    }
+
+    #[test]
+    fn a_tie_breaks_to_the_smaller_budget() {
+        let rows = vec![
+            row("shift_binop", 3, BwdRoundClass::D3, 5, 12.0),
+            row("shift_binop", 3, BwdRoundClass::D3, 9, 12.0),
+        ];
+        assert_eq!(select_budgets(&rows)[0].cells, 5);
+    }
+
+    #[test]
+    fn a_budget_within_the_tie_band_of_the_fastest_wins_on_size() {
+        // c9 is the raw argmin, but c4 is 0.5% behind it — inside the band — and
+        // c3 is 4% behind, outside. So the selection is c4, and it stays c4 when
+        // the whole run drifts by a constant factor.
+        let rows = vec![
+            row("mem_word_only", 1, BwdRoundClass::D1, 3, 104.0),
+            row("mem_word_only", 1, BwdRoundClass::D1, 4, 100.5),
+            row("mem_word_only", 1, BwdRoundClass::D1, 9, 100.0),
+        ];
+        assert_eq!(select_budgets(&rows)[0].cells, 4);
+
+        let drifted = rows
+            .iter()
+            .map(|entry| {
+                let mut copy = entry.clone();
+                copy.timing.median_us *= 1.07;
+                copy
+            })
             .collect::<Vec<_>>();
-        rows.push(test_row(2, "Ext", 1, 2.0, 1.0));
-        rows.push(test_row(2, "Ext", 2, 3.0, 1.0));
-
-        let rendered = render_full_report(&rows);
-        assert_eq!(rendered.matches("\nwhole-layer,c").count(), 15);
-        assert!(rendered.contains("c2,Ext,1,"));
-        assert!(rendered.contains("c2,Ext,2,"));
-        assert!(rendered.contains("c16,R0,0,"));
+        assert_eq!(select_budgets(&drifted)[0].cells, 4);
     }
 
     #[test]
-    fn publication_writes_the_complete_table_to_its_own_path() {
+    fn a_budget_outside_the_tie_band_never_wins_on_size() {
+        let rows = vec![
+            row("keccak_special5", 0, BwdRoundClass::D2, 2, 200.0),
+            row("keccak_special5", 0, BwdRoundClass::D2, 10, 100.0),
+        ];
+        assert_eq!(select_budgets(&rows)[0].cells, 10);
+    }
+
+    #[test]
+    fn the_csv_names_every_required_column_and_keeps_round_classes_distinct() {
+        let mut rows = vec![
+            row("add_sub", 0, BwdRoundClass::R0, 2, 30.0),
+            row("add_sub", 0, BwdRoundClass::D2, 2, 40.0),
+        ];
+        rows[0].incumbent = Some(TimingSummary {
+            median_us: 15.0,
+            min_us: 14.0,
+        });
+        rows[0].incumbent_sequence = "compact evaluator launcher";
+        let rendered = render_sweep_csv(&rows);
+        for column in [
+            "median_us",
+            "min_us",
+            "realized_read_bytes",
+            "shared_loads",
+            "shared_stores",
+            "registers",
+            "local_spill_bytes",
+            "dynamic_smem_bytes",
+            "theoretical_occupancy_percent",
+            "program_words",
+            "new_over_incumbent",
+        ] {
+            assert!(rendered.contains(column), "missing column {column}");
+        }
+        assert!(rendered.contains("add_sub,0,R0,R0,0,c2,const"));
+        assert!(rendered.contains("add_sub,0,Ext,D2,2,c2,const"));
+        assert!(rendered.contains("2.000000,compact evaluator launcher"));
+        assert_eq!(rows[0].ratio(), Some(2.0));
+        assert_eq!(rows[1].ratio(), None);
+    }
+
+    #[test]
+    fn the_selection_json_is_grouped_by_coordinate_and_ascending_by_class() {
+        let rows = vec![
+            row("add_sub", 0, BwdRoundClass::D3, 7, 10.0),
+            row("add_sub", 0, BwdRoundClass::D1, 4, 10.0),
+            row("add_sub", 0, BwdRoundClass::R0, 3, 10.0),
+        ];
+        let json = render_selection_json(&select_budgets(&rows));
+        let r0 = json.find("\"R0\"").expect("R0 class");
+        let d1 = json.find("\"D1\"").expect("D1 class");
+        let d3 = json.find("\"D3\"").expect("D3 class");
+        assert!(r0 < d1 && d1 < d3, "classes must be ascending: {json}");
+        assert!(json.contains("\"regime\": \"Ext\""));
+        assert!(json.contains("\"regime\": \"R0\""));
+        assert!(json.contains("\"cells\": 4"));
+    }
+
+    fn clean_attributes() -> KernelAttributes {
+        KernelAttributes {
+            registers: 76,
+            local_size_bytes: 0,
+            static_smem_bytes: 0,
+            max_threads_per_block: 1_024,
+        }
+    }
+
+    #[test]
+    fn a_release_executor_without_spills_passes_the_gate() {
+        clean_attributes().assert_no_spills("clean");
+    }
+
+    #[test]
+    #[should_panic(expected = "zero local-memory spills")]
+    fn one_spilled_byte_fails_the_release_gate() {
+        KernelAttributes {
+            local_size_bytes: 8,
+            ..clean_attributes()
+        }
+        .assert_no_spills("spilling");
+    }
+
+    #[test]
+    #[should_panic(expected = "cannot host its own")]
+    fn an_executor_that_cannot_host_its_own_block_fails_the_gate() {
+        KernelAttributes {
+            max_threads_per_block: 64,
+            ..clean_attributes()
+        }
+        .assert_no_spills("too narrow");
+    }
+
+    #[test]
+    fn publication_writes_the_whole_table_to_its_own_path() {
         let path = std::env::temp_dir().join(format!(
-            "bwd-vm-sweep-report-{}-{}.csv",
+            "bwd-coeff-sweep-{}-{}.csv",
             std::process::id(),
             std::thread::current().name().unwrap_or("report-test")
         ));
-        let rows = vec![test_row(2, "R0", 0, 20.0, 10.0)];
-        publish_report(&rows, &path);
+        let rows = vec![row("add_sub", 0, BwdRoundClass::R0, 2, 20.0)];
+        let rendered = render_sweep_csv(&rows);
+        publish(&path, &rendered);
         assert_eq!(
             std::fs::read_to_string(&path).expect("published report"),
-            render_full_report(&rows)
+            rendered
         );
         std::fs::remove_file(path).expect("remove published report");
-    }
-
-    fn test_row(
-        budget_cells: usize,
-        regime: &'static str,
-        round: u8,
-        vm_median_us: f32,
-        incumbent_median_us: f32,
-    ) -> SweepRow {
-        SweepRow {
-            budget_cells,
-            regime,
-            round,
-            rows: 16,
-            dynamic_smem_bytes: 8_192,
-            active_blocks_per_sm: 3,
-            theoretical_occupancy: 0.75,
-            program_instructions: 100,
-            program_lanes: 150,
-            predicted_source_bytes: 3_072,
-            incumbent_sequence: "compact evaluator launcher",
-            vm: TimingSummary {
-                median_us: vm_median_us,
-                min_us: vm_median_us,
-            },
-            incumbent: TimingSummary {
-                median_us: incumbent_median_us,
-                min_us: incumbent_median_us,
-            },
-        }
     }
 }

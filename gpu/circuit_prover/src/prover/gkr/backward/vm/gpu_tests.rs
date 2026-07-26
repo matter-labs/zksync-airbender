@@ -59,11 +59,11 @@ use super::desc::{
     BWD_COEFF_ROLE_PAIR, BWD_COEFF_THREADS_PER_BLOCK,
 };
 use super::compile::{
-    load_add_sub_l0_coeff_case, pseudo_bank, AddSubCoeffCase, PROBED_BUDGETS,
+    load_add_sub_l0_coeff_case, pseudo_bank, RealizedCoeffCase, PROBED_BUDGETS,
 };
 use super::lower::{lower_bwd_coeff, BwdCoeffRoundBinding, ResolvedBwdCoeffSourceWindow};
 use super::{
-    bwd_coeff_dynamic_smem_bytes, bwd_coeff_fold_depth, launch_bwd_coeff,
+    bwd_coeff_blocks_per_sm, bwd_coeff_dynamic_smem_bytes, bwd_coeff_fold_depth, launch_bwd_coeff,
     launch_fold_factor_prelude, BwdCoeffBank,
 };
 use crate::allocator::tracker::AllocationPlacement;
@@ -1426,7 +1426,7 @@ const COEFF_ROWS: usize = 200;
 /// One realized add/sub layer-0 program plus the host model of its storage.
 struct CoeffCase {
     name: String,
-    case: AddSubCoeffCase,
+    case: RealizedCoeffCase,
     rows: usize,
     challenges: Vec<E4>,
     windows: Vec<HostWindow>,
@@ -1599,11 +1599,14 @@ struct StagedEq {
 /// sentinel itself and `eq(row)` is exactly `eq_low[row]`. A per-row-varying
 /// `eq_low` is the point: a constant one would let a kernel that dropped the eq
 /// multiply entirely still pass.
-fn stage_eq(rows: usize, context: &ProverContext) -> StagedEq {
-    assert!(
-        rows <= GKR_EQ_GROUP_TABLE_LEN,
-        "one eq group covers {GKR_EQ_GROUP_TABLE_LEN} rows"
-    );
+/// With `sizes.high[0] == sizes.high[1] == 0`, `gkr_compute_eq_inline` reads
+/// `eq_low[gid & (GKR_EQ_GROUP_TABLE_LEN - 1)]` and slot ZERO of both high slabs,
+/// for ANY `gid`. So a run with more rows than one group simply WRAPS the low
+/// table, which is exactly how every oracle in this module indexes it — and the
+/// per-row eq cost (two constant loads, one global load, two multiplies) is the
+/// same at every row count and every eq size, which is why a sweep may use this
+/// configuration without changing the eq work it measures.
+fn stage_eq(_rows: usize, context: &ProverContext) -> StagedEq {
     let guard = StagedEqHigh;
     memory_copy_async(
         eq_high_slab(),
@@ -2598,4 +2601,1366 @@ fn bit_reversal_maps_a_leaf_to_its_split_halves_offset() {
     assert_eq!(bit_reverse(0b011, 3), 0b110);
     assert_eq!(bit_reverse(0, 1), 0);
     assert_eq!(bit_reverse(1, 1), 1);
+}
+
+// ══ Task 12: the c2-c16 budget sweep, its selection, and the add/sub profile ══
+//
+// This section MEASURES. It compiles no new decision and searches nothing: the
+// coordinate set is fixed, each configuration gets three warmups and ten timed
+// samples, and `select_budgets` reads off the fastest measured budget per
+// `(circuit, layer, round class)`.
+//
+// # What the sweep launches against
+//
+// The corpus has twelve circuits; only three have a GPU forward fixture in this
+// crate, and none has a backward source binder yet (that is Task 13). So the
+// sweep binds each program's windows to SYNTHETIC backings whose field width,
+// column count, column stride, fold delta and publish geometry all come from the
+// compiler's own binding for that coordinate. What the budget changes — cell-file
+// residency, and therefore how many of those reads recur — is measured exactly;
+// what it does not change (which matrices, how wide, how many columns, what
+// stride) is taken from the real compiled program. That makes the sweep's
+// cross-budget ranking, which is the thing being selected on, a measurement of
+// the schedule rather than of a synthetic layout.
+//
+// # Cross-budget identity is the correctness gate
+//
+// Every budget of one `(coordinate, round)` evaluates the SAME layer over the
+// SAME sources with the SAME coefficients; only residency differs. So all fifteen
+// must produce bit-identical contributions, and the sweep asserts it against c2
+// before any of them is allowed into the selection. A residency bug that made a
+// budget fast by reading the wrong lane fails here rather than winning.
+
+use std::collections::BTreeMap;
+use std::fmt::Write as _;
+
+use gkr_eval_isa::bwd::coeff::artifact::{ArtifactRegime, BwdRoundClass};
+
+use super::compile::{
+    bearing_layers, corpus_layers, realize_coeff_family, CanonicalLayer, ADD_SUB_LAYOUT,
+    BLAKE2_LAYOUT, KECCAK_LAYOUT,
+};
+use super::report::{
+    executor_attributes, log_selection, poison_contributions, profile_cells,
+    record_summary_section, render_selection_csv, render_selection_json, render_sweep_csv,
+    select_budgets, sweep_output_path, time_cuda_launches, BudgetChoice, DeviceFacts,
+    LaunchGeometry, SweepRow, TimingSummary, CORPUS_CSV, FOCUSED_CSV, SELECTION_JSON,
+    TIMING_ITERS, WARMUP_ITERS,
+};
+
+/// Every budget §13 compiles an artifact for.
+const ALL_BUDGETS: [u8; 15] = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
+
+/// Complete device waves the sweep aims for. Two rather than one so a coordinate
+/// whose grid does not divide the device evenly is not measured on a single
+/// partially-filled wave.
+const SWEEP_WAVES: u32 = 2;
+/// Never fewer than this many rows: below it a launch measures dispatch overhead.
+const SWEEP_MIN_ROWS: usize = 1 << 12;
+/// Never more, so one wide coordinate cannot dominate the sweep's runtime.
+const SWEEP_MAX_ROWS: usize = 1 << 20;
+/// Device bytes the sweep will spend on ONE coordinate's synthetic backings.
+/// Rows are halved until the coordinate fits, and the row that reports
+/// `saturated == false` is the one that had to shrink.
+const SWEEP_BACKING_BUDGET_BYTES: usize = 24 << 30;
+/// The sweep's own device arena, in bytes.
+const SWEEP_ARENA_BYTES: usize = 64 << 30;
+/// Contribution rows compared against c2 when the full buffer is too large to
+/// download for every budget. A residency fault corrupts essentially every row,
+/// so a bounded prefix of each half is enough to catch one.
+const IDENTITY_SAMPLE_ROWS: usize = 1 << 13;
+
+/// A sweep context: the same allocator the parity tests use, sized for the widest
+/// coordinate's synthetic backings.
+fn make_sweep_context() -> ProverContext {
+    let block_log = crate::prover::ProverContextConfig::default().allocator_block_log_size;
+    let blocks = SWEEP_ARENA_BYTES >> block_log;
+    make_test_context(blocks.max(1), 64)
+}
+
+/// The `(round class, sumcheck round)` pairs one regime is swept at.
+///
+/// R0 has one class by definition. A continuation program is reused across rounds
+/// and `bwd_coeff_fold_depth` maps rounds 0..3 onto D0..D3, so those four rounds
+/// are exactly the four continuation executors — the brief's "R0 and the first
+/// three continuation rounds" plus D0.
+fn round_classes(regime: BwdRegime) -> Vec<(BwdRoundClass, u8)> {
+    match regime {
+        BwdRegime::R0 => vec![(BwdRoundClass::R0, 0)],
+        BwdRegime::Ext => vec![
+            (BwdRoundClass::D0, 0),
+            (BwdRoundClass::D1, 1),
+            (BwdRoundClass::D2, 2),
+            (BwdRoundClass::D3, 3),
+        ],
+    }
+}
+
+/// The published steady state: every round past `BWD_COEFF_PUBLISH_TARGET_DEPTH`
+/// runs the D1 executor with every DRAM-backed source already published. Measured
+/// as a DIAGNOSTIC on the focused layers only — it shares D1's executor and D1's
+/// selection, and the brief scopes selection to R0 plus the first three
+/// continuation rounds.
+const STEADY_STATE_ROUND: u8 = BWD_COEFF_PUBLISH_TARGET_DEPTH + 1;
+
+/// One coordinate's whole measured budget family for one round class.
+struct SweepCoordinate {
+    circuit: String,
+    layer: usize,
+    regime: BwdRegime,
+    round_class: BwdRoundClass,
+    round: u8,
+    /// False for the steady-state diagnostic rows.
+    selects: bool,
+    /// `ALL_BUDGETS`, realized and certified.
+    cases: Vec<RealizedCoeffCase>,
+}
+
+impl SweepCoordinate {
+    fn label(&self) -> String {
+        format!(
+            "{} L{} {} round {}",
+            self.circuit,
+            self.layer,
+            self.round_class.label(),
+            self.round
+        )
+    }
+}
+
+/// Realize every budget of every round class of one canonical layer.
+///
+/// The two regimes and the four continuation rounds are independent realizations,
+/// so they parallelize; the ascending budget family inside one of them does not
+/// (§7.2's selection feeds the preceding winner forward).
+fn realize_sweep_coordinates(
+    entry: &CanonicalLayer,
+    include_steady_state: bool,
+) -> Vec<SweepCoordinate> {
+    use rayon::prelude::*;
+
+    let mut requests: Vec<(BwdRegime, BwdRoundClass, u8, bool)> = Vec::new();
+    for regime in [BwdRegime::R0, BwdRegime::Ext] {
+        for (round_class, round) in round_classes(regime) {
+            requests.push((regime, round_class, round, true));
+        }
+    }
+    if include_steady_state {
+        requests.push((BwdRegime::Ext, BwdRoundClass::D1, STEADY_STATE_ROUND, false));
+    }
+
+    requests
+        .into_par_iter()
+        .map(|(regime, round_class, round, selects)| {
+            let cases = realize_coeff_family(
+                entry.circuit,
+                entry.layer,
+                &entry.canonical,
+                &entry.cross,
+                regime,
+                round,
+                &ALL_BUDGETS,
+            );
+            SweepCoordinate {
+                circuit: entry.circuit.to_owned(),
+                layer: entry.layer,
+                regime,
+                round_class,
+                round,
+                selects,
+                cases,
+            }
+        })
+        .collect()
+}
+
+/// The synthetic device storage one coordinate's whole budget family shares.
+///
+/// The window list is a property of the LAYER's sources and its round, not of the
+/// cell budget, so it is built once from the first budget's binding and every
+/// other budget is asserted against it. That assertion is load-bearing twice
+/// over: it is why one upload serves fifteen timings, and it is why the fifteen
+/// timings are comparable at all.
+///
+/// Unlike the parity fixture, the sweep keeps NO host twin. It needs none: its
+/// correctness gate is cross-budget identity of the device output, and a host
+/// oracle over hundreds of millions of elements would cost more than every launch
+/// it guards. What it does keep exactly is the GEOMETRY — per window, the
+/// backing's field width, its column count, its column stride, its fold delta and
+/// its publish buffer.
+struct SweepStorage {
+    rows: usize,
+    saturated: bool,
+    resolved: Vec<ResolvedBwdCoeffSourceWindow>,
+    /// Read backings, kept alive for the whole coordinate.
+    base: Vec<DeviceAllocation<BF>>,
+    ext: Vec<DeviceAllocation<E4>>,
+    /// Publish buffers of the materializing windows.
+    publishes: Vec<DeviceAllocation<E4>>,
+    challenges: DeviceAllocation<E4>,
+    n_challenges: u32,
+    backing_bytes: usize,
+}
+
+/// Elements one host tile carries. Backings are filled by repeating this tile on
+/// the device, so host generation cost is bounded by the tile and not by the
+/// backing: a coordinate that needs four gigabytes of storage still generates one
+/// tile's worth of values.
+///
+/// The values still VARY per index inside the tile, which is what keeps
+/// cross-budget identity a real check: a resolver that read the wrong lane would
+/// have to be wrong by an exact multiple of the tile to go unnoticed.
+const BACKING_TILE_ELEMENTS: usize = 1 << 20;
+
+/// Fill `device` by repeating `tile`.
+fn fill_tiled<T: Copy>(device: &mut DeviceAllocation<T>, tile: &[T], context: &ProverContext) {
+    assert!(!tile.is_empty());
+    let len = device.len();
+    let mut at = 0;
+    while at < len {
+        let span = tile.len().min(len - at);
+        memory_copy_async(
+            &mut device[at..at + span],
+            &tile[..span],
+            context.get_exec_stream(),
+        )
+        .expect("stage a synthetic backing tile");
+        at += span;
+    }
+}
+
+fn tiled_base(len: usize, seed: u32, context: &ProverContext) -> DeviceAllocation<BF> {
+    let tile = (0..len.min(BACKING_TILE_ELEMENTS))
+        .map(|index| bf(seed ^ ((index as u32).wrapping_mul(0x9e37_79b9))))
+        .collect::<Vec<_>>();
+    let mut device = context
+        .alloc(len, AllocationPlacement::BestFit)
+        .expect("allocate a synthetic base backing");
+    fill_tiled(&mut device, &tile, context);
+    device
+}
+
+fn tiled_ext(len: usize, seed: u32, context: &ProverContext) -> DeviceAllocation<E4> {
+    let tile = (0..len.min(BACKING_TILE_ELEMENTS))
+        .map(|index| e4(seed ^ ((index as u32).wrapping_mul(0x9e37_79b9))))
+        .collect::<Vec<_>>();
+    let mut device = context
+        .alloc(len, AllocationPlacement::BestFit)
+        .expect("allocate a synthetic ext backing");
+    fill_tiled(&mut device, &tile, context);
+    device
+}
+
+/// Per-window fold distance, cycling the legal catch-up set exactly as the parity
+/// fixture does so a sweep row and a parity row describe the same physical work.
+fn window_delta(index: usize, round: u8) -> u8 {
+    let distances = legal_catch_up_distances(round);
+    distances[index % distances.len()]
+}
+
+/// One window's static shape, as the compiler's binding gives it.
+struct SweepWindowShape {
+    columns: usize,
+    delta: u8,
+    /// `None` for a procedural (virtual-setup) window, which reads no DRAM.
+    element_bytes: Option<usize>,
+    procedural_kind: Option<u8>,
+}
+
+fn window_shapes(binding: &CoeffSourceBinding, round: u8) -> Vec<SweepWindowShape> {
+    binding
+        .windows
+        .iter()
+        .enumerate()
+        .map(|(index, window)| {
+            let columns = window
+                .columns
+                .last()
+                .map(|column| column.column - window.first_column)
+                .expect("a bound window addresses at least one column")
+                + 1;
+            let (element_bytes, procedural_kind) = match window.family {
+                WindowFamily::VirtualSetup { kind } => (None, Some(kind)),
+                _ => (
+                    Some(match window.backing_field() {
+                        FieldKind::Base => size_of::<BF>(),
+                        FieldKind::Ext => size_of::<E4>(),
+                    }),
+                    None,
+                ),
+            };
+            SweepWindowShape {
+                columns,
+                delta: window_delta(index, round),
+                element_bytes,
+                procedural_kind,
+            }
+        })
+        .collect()
+}
+
+/// Device bytes one row of a coordinate's synthetic storage costs: every window's
+/// read backing, every materializing window's publish buffer, and the two
+/// contribution halves.
+fn bytes_per_row(shapes: &[SweepWindowShape], materialize: bool) -> usize {
+    let mut bytes = 2 * size_of::<E4>();
+    for shape in shapes {
+        bytes += shape.columns
+            * (2usize << shape.delta)
+            * shape.element_bytes.unwrap_or(0);
+        if materialize {
+            bytes += shape.columns * 2 * size_of::<E4>();
+        }
+    }
+    bytes
+}
+
+/// The row count one coordinate is swept at: the saturation target, shrunk by
+/// halving until the synthetic backings fit [`SWEEP_BACKING_BUDGET_BYTES`].
+///
+/// The target is taken at the SMALLEST budget, whose residency per SM is the
+/// highest and which therefore needs the most blocks to fill the device. Taking it
+/// at the largest budget instead would leave `c2` measured below one wave, which
+/// is exactly the budget §15 wants a trustworthy number for.
+fn sweep_row_count(
+    coordinate: &SweepCoordinate,
+    shapes: &[SweepWindowShape],
+    materialize: bool,
+    device: &DeviceFacts,
+) -> (usize, bool, usize) {
+    let fold_depth = bwd_coeff_fold_depth(coordinate.round);
+    let densest = bwd_coeff_blocks_per_sm(
+        coordinate.regime,
+        fold_depth,
+        BwdCoeffBank::Constant,
+        u32::from(ALL_BUDGETS[0]),
+    )
+    .expect("query occupancy at the smallest budget");
+    let target = device
+        .rows_for_waves(densest, SWEEP_WAVES)
+        .clamp(SWEEP_MIN_ROWS, SWEEP_MAX_ROWS);
+    let per_row = bytes_per_row(shapes, materialize);
+
+    let mut rows = target.next_power_of_two().min(SWEEP_MAX_ROWS);
+    while rows > SWEEP_MIN_ROWS && rows.saturating_mul(per_row) > SWEEP_BACKING_BUDGET_BYTES {
+        rows /= 2;
+    }
+    (rows, rows >= target, rows * per_row)
+}
+
+/// Allocate and fill one coordinate's synthetic storage at `rows`, and return the
+/// per-window round geometry `lower_bwd_coeff` takes.
+fn build_sweep_storage(
+    coordinate: &SweepCoordinate,
+    rows: usize,
+    saturated: bool,
+    backing_bytes: usize,
+    shapes: &[SweepWindowShape],
+    materialize: bool,
+    context: &ProverContext,
+) -> SweepStorage {
+    let mut base = Vec::new();
+    let mut ext = Vec::new();
+    let mut publishes = Vec::new();
+    let mut resolved = Vec::with_capacity(shapes.len());
+    for (index, shape) in shapes.iter().enumerate() {
+        let column_len = (2 * rows) << usize::from(shape.delta);
+        let seed = 0x0100_0000u32 + ((index as u32) << 20);
+        let read = match (shape.element_bytes, shape.procedural_kind) {
+            // A procedural window produces its values from the row; there is
+            // nothing to allocate and nothing to read.
+            (None, Some(_)) => None,
+            (Some(bytes), None) if bytes == size_of::<BF>() => {
+                let device = tiled_base(shape.columns * column_len, seed, context);
+                let column = ResolvedColumn {
+                    is_e4: false,
+                    ptr: device.as_ptr().cast(),
+                    matrix_base: device.as_ptr() as *mut u8,
+                    stride_bytes: (column_len * size_of::<BF>()) as u32,
+                };
+                base.push(device);
+                Some(column)
+            }
+            (Some(_), None) => {
+                let device = tiled_ext(shape.columns * column_len, seed, context);
+                let column = ResolvedColumn {
+                    is_e4: true,
+                    ptr: device.as_ptr().cast(),
+                    matrix_base: device.as_ptr() as *mut u8,
+                    stride_bytes: (column_len * size_of::<E4>()) as u32,
+                };
+                ext.push(device);
+                Some(column)
+            }
+            (element, kind) => panic!("window {index}: inconsistent shape {element:?}/{kind:?}"),
+        };
+        let publish = materialize.then(|| {
+            let device = tiled_ext(shape.columns * 2 * rows, seed ^ 0x0070_0000, context);
+            let column = ResolvedColumn {
+                is_e4: true,
+                ptr: device.as_ptr().cast(),
+                matrix_base: device.as_ptr() as *mut u8,
+                stride_bytes: (2 * rows * size_of::<E4>()) as u32,
+            };
+            publishes.push(device);
+            column
+        });
+        resolved.push(ResolvedBwdCoeffSourceWindow {
+            read,
+            publish,
+            backing_depth: coordinate.round - shape.delta,
+            target_depth: coordinate.round,
+            materialize,
+        });
+    }
+    let challenge_values = (0..usize::from(coordinate.round))
+        .map(|index| e4(0x0d00 + index as u32))
+        .collect::<Vec<_>>();
+    let n_challenges = challenge_values.len() as u32;
+    // A zero-length allocation is not a thing, so R0 still gets one slot and
+    // `n_challenges == 0` is what tells the lowering there are no challenges.
+    let mut challenge_slots = challenge_values;
+    if challenge_slots.is_empty() {
+        challenge_slots.push(e4(0x0d00));
+    }
+    let challenges = upload(&challenge_slots, context);
+    SweepStorage {
+        rows,
+        saturated,
+        resolved,
+        base,
+        ext,
+        publishes,
+        challenges,
+        n_challenges,
+        backing_bytes,
+    }
+}
+
+/// The shapes every budget of one coordinate must agree on, and the materialize
+/// flag its round carries.
+fn coordinate_shapes(coordinate: &SweepCoordinate) -> (Vec<SweepWindowShape>, bool) {
+    let reference = coordinate
+        .cases
+        .first()
+        .expect("a coordinate realizes at least one budget");
+    let mut bound = HashSet::<u32>::new();
+    for window in &reference.binding.windows {
+        for column in &window.columns {
+            assert!(
+                bound.insert(column.source.0),
+                "{}: source {:?} bound twice",
+                coordinate.label(),
+                column.source
+            );
+        }
+    }
+    for case in &coordinate.cases {
+        assert_eq!(
+            (case.circuit.as_str(), case.layer_index),
+            (coordinate.circuit.as_str(), coordinate.layer),
+            "a realized case must belong to the coordinate it is swept under"
+        );
+        assert_eq!(
+            case.binding.windows, reference.binding.windows,
+            "{}: the window list must not depend on the cell budget",
+            coordinate.label()
+        );
+        assert_eq!(case.binding.materialize, reference.binding.materialize);
+        assert_eq!(case.binding.target_depth, reference.binding.target_depth);
+    }
+    (
+        window_shapes(&reference.binding, coordinate.round),
+        reference.binding.materialize,
+    )
+}
+
+/// One coordinate's storage at the sweep's own row count.
+fn sweep_storage(
+    coordinate: &SweepCoordinate,
+    device: &DeviceFacts,
+    context: &ProverContext,
+) -> SweepStorage {
+    let (shapes, materialize) = coordinate_shapes(coordinate);
+    let (rows, saturated, backing_bytes) =
+        sweep_row_count(coordinate, &shapes, materialize, device);
+    build_sweep_storage(
+        coordinate,
+        rows,
+        saturated,
+        backing_bytes,
+        &shapes,
+        materialize,
+        context,
+    )
+}
+
+
+/// Which coefficient bank a layer's recipe count forces (§9.3). The corpus
+/// maximum is 1,138 recipes and the `__constant__` symbol holds `FLAT_CONST_MAX`,
+/// so this is a real branch for wide layers and not a test knob.
+fn required_bank(layer: &gkr_eval_isa::bwd::coeff::model::CoeffLayer) -> BwdCoeffBank {
+    if layer.coefficients.len() <= BwdCoeffBank::Constant.capacity() {
+        BwdCoeffBank::Constant
+    } else {
+        BwdCoeffBank::DevicePointer
+    }
+}
+
+/// Rows of `contributions` compared for cross-budget identity.
+fn identity_span(rows: usize) -> usize {
+    rows.min(IDENTITY_SAMPLE_ROWS)
+}
+
+/// Download the compared span of both contribution halves.
+fn download_identity_sample(
+    contributions: &DeviceAllocation<E4>,
+    rows: usize,
+    context: &ProverContext,
+) -> Vec<E4> {
+    let span = identity_span(rows);
+    let whole = download_e4(contributions, 2 * rows, context);
+    let mut sample = Vec::with_capacity(2 * span);
+    sample.extend_from_slice(&whole[..span]);
+    sample.extend_from_slice(&whole[rows..rows + span]);
+    sample
+}
+
+/// Time every budget of one coordinate and return one [`SweepRow`] each.
+fn sweep_one_coordinate(
+    coordinate: &SweepCoordinate,
+    device: &DeviceFacts,
+    context: &ProverContext,
+) -> Vec<SweepRow> {
+    let storage = sweep_storage(coordinate, device, context);
+    let rows = storage.rows;
+    let label = coordinate.label();
+    eprintln!(
+        "[bwd-coeff-sweep] {label}: rows={rows} saturated={} backing={:.2}GiB windows={} \
+         (base {}, ext {}, publish {})",
+        storage.saturated,
+        storage.backing_bytes as f64 / (1u64 << 30) as f64,
+        storage.resolved.len(),
+        storage.base.len(),
+        storage.ext.len(),
+        storage.publishes.len(),
+    );
+
+    let eq = stage_eq(rows, context);
+    let mut contributions = upload(&vec![E4::ZERO; 2 * rows], context);
+    let fold_depth = bwd_coeff_fold_depth(coordinate.round);
+
+    let mut out = Vec::with_capacity(coordinate.cases.len());
+    let mut reference_sample: Option<Vec<E4>> = None;
+    for case in &coordinate.cases {
+        let bank_values = pseudo_bank(&case.layer);
+        let bank = required_bank(&case.layer);
+        let coefficients = upload(&bank_values, context);
+        let runtime = BwdCoeffRoundBinding {
+            round: case.round,
+            rows: rows as u32,
+            round_challenges: if storage.n_challenges == 0 {
+                std::ptr::null()
+            } else {
+                storage.challenges.as_ptr()
+            },
+            n_round_challenges: storage.n_challenges,
+            windows: &storage.resolved,
+            eq_low: eq.device_low.as_ptr(),
+            eq_sizes: eq.sizes,
+            contributions: contributions.as_mut_ptr(),
+        };
+        let setup = lower_bwd_coeff(
+            &case.program,
+            &case.binding,
+            &runtime,
+            bank_values.clone(),
+            match bank {
+                BwdCoeffBank::Constant => std::ptr::null(),
+                BwdCoeffBank::DevicePointer => coefficients.as_ptr(),
+            },
+            bank,
+        )
+        .unwrap_or_else(|error| panic!("{label} c{}: lower: {error:?}", case.budget_cells));
+        assert_eq!(setup.fold_depth, fold_depth);
+
+        let attributes = executor_attributes(coordinate.regime, fold_depth, bank);
+        attributes.assert_no_spills(&format!("{label} c{}", case.budget_cells));
+
+        // One untimed correctness launch, then cross-budget identity against c2.
+        let poison = e4(0x00b0_0000 + u32::from(case.budget_cells));
+        poison_contributions(contributions.as_mut_ptr(), rows, poison, context)
+            .expect("poison sweep contributions");
+        setup
+            .upload_constant_bank(context)
+            .expect("stage sweep constant bank");
+        launch_bwd_coeff(&setup, context).expect("sweep correctness launch");
+        let sample = download_identity_sample(&contributions, rows, context);
+        assert!(
+            sample.iter().any(|value| *value != poison),
+            "{label} c{}: the correctness launch left every sampled output poisoned",
+            case.budget_cells
+        );
+        match &reference_sample {
+            None => reference_sample = Some(sample),
+            Some(reference) => assert!(
+                sample == *reference,
+                "{label} c{}: contributions differ from c{}; a residency fault, not a budget",
+                case.budget_cells,
+                ALL_BUDGETS[0],
+            ),
+        }
+
+        let timing = time_cuda_launches(
+            context.get_exec_stream(),
+            || poison_contributions(contributions.as_mut_ptr(), rows, poison, context),
+            || launch_bwd_coeff(&setup, context),
+        )
+        .expect("time the sweep launch");
+
+        out.push(SweepRow {
+            circuit: coordinate.circuit.clone(),
+            layer: coordinate.layer,
+            regime: ArtifactRegime::of(coordinate.regime),
+            round_class: coordinate.round_class,
+            round: coordinate.round,
+            budget_cells: case.budget_cells,
+            bank,
+            geometry: LaunchGeometry::of(
+                coordinate.regime,
+                fold_depth,
+                bank,
+                u32::from(case.budget_cells),
+                rows,
+                device,
+            ),
+            attributes,
+            saturated: storage.saturated,
+            program: case.report,
+            timing,
+            incumbent: None,
+            incumbent_sequence: "-",
+            selects: coordinate.selects,
+        });
+    }
+
+    drop(contributions);
+    drop(storage);
+    out
+}
+
+/// Time a list of canonical layers whole, in coordinate order.
+fn sweep_layers(
+    entries: &[CanonicalLayer],
+    include_steady_state: bool,
+    tag: &str,
+) -> (Vec<SweepRow>, Vec<BudgetChoice>) {
+    let started = std::time::Instant::now();
+    let context = make_sweep_context();
+    let device = DeviceFacts::query();
+    eprintln!(
+        "[{tag}] device: {} SMs, {} threads/SM, {:.1}GiB global; {} layers, {} budgets",
+        device.multiprocessors,
+        device.max_threads_per_sm,
+        device.total_global_bytes as f64 / (1u64 << 30) as f64,
+        entries.len(),
+        ALL_BUDGETS.len(),
+    );
+
+    let mut rows = Vec::new();
+    for (index, entry) in entries.iter().enumerate() {
+        let coordinates = realize_sweep_coordinates(entry, include_steady_state);
+        for coordinate in &coordinates {
+            rows.extend(sweep_one_coordinate(coordinate, &device, &context));
+        }
+        eprintln!(
+            "[{tag}] {}/{} layers, {} rows, elapsed {:.1}s",
+            index + 1,
+            entries.len(),
+            rows.len(),
+            started.elapsed().as_secs_f64(),
+        );
+    }
+    let selectable = rows
+        .iter()
+        .filter(|row| row.selects)
+        .cloned()
+        .collect::<Vec<_>>();
+    let choices = select_budgets(&selectable);
+    (rows, choices)
+}
+
+/// Assert the whole in-scope corpus was covered exactly once per configuration.
+fn assert_sweep_covered(rows: &[SweepRow], expected_layers: usize) {
+    use std::collections::BTreeSet;
+    let mut seen = BTreeSet::new();
+    for row in rows {
+        assert!(
+            seen.insert((
+                row.circuit.clone(),
+                row.layer,
+                row.round_class,
+                row.round,
+                row.budget_cells,
+            )),
+            "{} was measured twice",
+            row.label()
+        );
+    }
+    let layers = rows
+        .iter()
+        .map(|row| (row.circuit.clone(), row.layer))
+        .collect::<BTreeSet<_>>();
+    assert_eq!(layers.len(), expected_layers, "every layer must appear");
+    let r0 = rows.iter().filter(|row| row.regime == ArtifactRegime::R0).count();
+    let ext = rows.iter().filter(|row| row.regime == ArtifactRegime::Ext).count();
+    assert_eq!(
+        r0,
+        expected_layers * ALL_BUDGETS.len(),
+        "one R0 class per layer at every budget"
+    );
+    assert!(
+        ext >= expected_layers * 4 * ALL_BUDGETS.len(),
+        "four continuation classes per layer at every budget"
+    );
+}
+
+/// §15: the c2 comparison, the fastest budget, and the c16 diagnostic, for the
+/// three focused layer-0 coordinates the brief names — `add_sub`,
+/// `keccak_special5` and `blake2_with_extended_control` — at R0 and each of D0-D3,
+/// plus the published steady state as a diagnostic.
+///
+/// Run BEFORE any default budget policy: `add_sub`'s winner is not generalized,
+/// and this test is what shows whether the three agree.
+#[test]
+#[ignore] // GPU timing; build unlocked and run the executable under with_gpu_lock.sh.
+#[cfg(not(no_cuda))]
+#[serial_test::serial]
+fn bwd_coeff_focused_layer0_budget_sweep() {
+    let entries = [ADD_SUB_LAYOUT, KECCAK_LAYOUT, BLAKE2_LAYOUT]
+        .into_iter()
+        .map(|circuit| {
+            bearing_layers(circuit)
+                .into_iter()
+                .find(|entry| entry.layer == 0)
+                .unwrap_or_else(|| panic!("{circuit} layer 0 must bear backward roots"))
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(entries.len(), 3);
+
+    let (rows, choices) = sweep_layers(&entries, true, "bwd-coeff-focused");
+    assert_eq!(
+        rows.len(),
+        // 5 selectable classes + 1 steady-state diagnostic, per circuit.
+        3 * 6 * ALL_BUDGETS.len(),
+        "every focused configuration must be measured"
+    );
+    log_selection("bwd-coeff-focused", &choices);
+
+    let csv_path = sweep_output_path(FOCUSED_CSV);
+    super::report::publish(&csv_path, &render_sweep_csv(&rows));
+    let selection_path = sweep_output_path("bwd_coeff_focused_selected_budgets.csv");
+    super::report::publish(&selection_path, &render_selection_csv(&choices));
+
+    // Do the three layers agree on a winner? Reported either way; the answer is
+    // WHY a default policy may not be set from `add_sub` alone.
+    let mut agreement = String::new();
+    for class in BwdRoundClass::ALL {
+        let per_class = choices
+            .iter()
+            .filter(|choice| choice.round_class == class)
+            .collect::<Vec<_>>();
+        if per_class.is_empty() {
+            continue;
+        }
+        let unanimous = per_class.iter().all(|choice| choice.cells == per_class[0].cells);
+        writeln!(
+            agreement,
+            "- {}: {} {}",
+            class.label(),
+            per_class
+                .iter()
+                .map(|choice| format!("{}=c{}", choice.circuit, choice.cells))
+                .collect::<Vec<_>>()
+                .join(" "),
+            if unanimous { "(agree)" } else { "(DISAGREE)" },
+        )
+        .expect("write String");
+        eprintln!(
+            "[bwd-coeff-focused] {} agreement: {}",
+            class.label(),
+            if unanimous { "yes" } else { "no" }
+        );
+    }
+
+    record_summary_section(
+        "Focused layer-0 sweep",
+        &format!(
+            "Sweep CSV: `{}`\n\nSelection CSV: `{}`\n\nPer-round-class agreement across the three \
+             focused layer-0 coordinates:\n\n{agreement}\n\
+             Warmups {WARMUP_ITERS}, timed samples {TIMING_ITERS}; median and min in the CSV.\n",
+            csv_path.display(),
+            selection_path.display(),
+        ),
+    );
+}
+
+/// The whole in-scope corpus: every `(circuit, layer, regime, round class,
+/// budget)` executor, timed, with the selection persisted as explicit
+/// per-round-class choices.
+#[test]
+#[ignore] // GPU timing; build unlocked and run the executable under with_gpu_lock.sh.
+#[cfg(not(no_cuda))]
+#[serial_test::serial]
+fn bwd_coeff_corpus_budget_sweep() {
+    let entries = corpus_layers();
+    let expected_layers = entries.len();
+    let (rows, choices) = sweep_layers(&entries, false, "bwd-coeff-corpus");
+    assert_sweep_covered(&rows, expected_layers);
+    log_selection("bwd-coeff-corpus", &choices);
+
+    let csv_path = sweep_output_path(CORPUS_CSV);
+    super::report::publish(&csv_path, &render_sweep_csv(&rows));
+    let selection_csv = sweep_output_path("bwd_coeff_corpus_selected_budgets.csv");
+    super::report::publish(&selection_csv, &render_selection_csv(&choices));
+    let selection_json = sweep_output_path(SELECTION_JSON);
+    super::report::publish(&selection_json, &render_selection_json(&choices));
+
+    let unsaturated = rows.iter().filter(|row| !row.saturated).count();
+    let histogram = BwdRoundClass::ALL
+        .iter()
+        .map(|class| {
+            let counts = choices
+                .iter()
+                .filter(|choice| choice.round_class == *class)
+                .fold(BTreeMap::<u8, usize>::new(), |mut acc, choice| {
+                    *acc.entry(choice.cells).or_default() += 1;
+                    acc
+                });
+            format!("- {}: {counts:?}\n", class.label())
+        })
+        .collect::<String>();
+    record_summary_section(
+        "In-scope corpus sweep",
+        &format!(
+            "Sweep CSV: `{}`\n\nSelection CSV: `{}`\n\nSelection metadata: `{}`\n\n\
+             {} configurations over {} layers; {} configurations could not reach the \
+             {SWEEP_WAVES}-wave saturation target within {} GiB of synthetic backing per \
+             coordinate.\n\nSelected budget histogram per round class:\n\n{histogram}",
+            csv_path.display(),
+            selection_csv.display(),
+            selection_json.display(),
+            rows.len(),
+            expected_layers,
+            unsaturated,
+            SWEEP_BACKING_BUDGET_BYTES >> 30,
+        ),
+    );
+}
+
+// ── The add/sub layer-0 R0 head-to-head and its profiler selector ────────────
+//
+// §15: "The first profile compares one `add_sub` layer-0 R0 launch with its exact
+// incumbent under identical rows, eq work, coefficients, contribution geometry,
+// reduction/finalization, and release configuration."
+//
+// So this runs the REAL production incumbent: the same
+// `prepare_basic_unrolled_async_backward_fixture` preamble, driven to the real
+// `add_sub` layer-0 sumcheck plan, with the real host-evaluated round-0
+// coefficient bank, the real factored eq built by the real build kernel at the
+// real eq sizes, and the plan's own accumulator as the contribution buffer. The
+// new executor then runs at the SAME row count, against the SAME eq pointer and
+// sizes, writing the SAME buffer, and the incumbent fused tail reduces whichever
+// one wrote last.
+//
+// ONE input is not physically shared: the new executor's source windows are bound
+// to synthetic backings, because the production source binder is Task 13's work.
+// Their field widths, column counts, column strides and fold geometry are the
+// compiler's real ones for this coordinate, so the read VOLUME and the access
+// SHAPE match; the addresses do not.
+
+use crate::prover::gkr::backward::compact;
+use crate::prover::gkr::backward::flat::CoefficientRecipe;
+use crate::prover::gkr::backward::{
+    GpuGKRMainLayerDeferredChallengeSource, GpuGKRMainLayerSumcheckLayerPlan,
+};
+use crate::prover::tests::prepare_basic_unrolled_async_backward_fixture;
+
+/// The exact NVTX range the `ncu` workflow captures. Domain and message are
+/// spelled out here because the profiler matches the literal
+/// `message@domain` string.
+const PROFILE_NVTX_DOMAIN: &str = "circuit_prover.tests";
+const PROFILE_NVTX_MESSAGE: &str = "test.gpu.bwd_coeff.add_sub_l0_r0";
+
+/// The incumbent launch sequence this comparison times, named in the report so a
+/// reader knows exactly what the ratio is against.
+const INCUMBENT_R0_SEQUENCE: &str = "compact flat round-0 constant evaluator \
+(ab_gkr_main_round0_flat_constant_compact_kernel)";
+
+/// Host-evaluate one incumbent coefficient recipe list in the fixture's challenge
+/// context — the same arithmetic `GpuGKRMainLayerBackwardState` performs on the
+/// device before a round-0 launch.
+fn evaluate_incumbent_recipes(
+    recipes: &[CoefficientRecipe<E4>],
+    batch_base: E4,
+    lookup_multiplicative: E4,
+    lookup_additive: E4,
+    external_challenges: &[E4],
+) -> Vec<E4> {
+    recipes
+        .iter()
+        .map(|recipe| {
+            let immediate = if recipe.negate {
+                recipe.immediate_recipe.negated()
+            } else {
+                recipe.immediate_recipe.clone()
+            };
+            let mut coefficient = batch_base.pow(recipe.batch_power);
+            coefficient.mul_assign(&immediate.evaluate(external_challenges));
+            for group in &recipe.prefactors {
+                let mut group_sum = E4::ZERO;
+                for term in group {
+                    let challenge = match term.source {
+                        GpuGKRMainLayerDeferredChallengeSource::LookupMultiplicative => {
+                            lookup_multiplicative
+                        }
+                        GpuGKRMainLayerDeferredChallengeSource::LookupAdditive => lookup_additive,
+                    };
+                    let mut value = challenge.pow(term.power);
+                    value.mul_assign_by_base(&term.coeff);
+                    group_sum.add_assign(&value);
+                }
+                coefficient.mul_assign(&group_sum);
+            }
+            coefficient
+        })
+        .collect()
+}
+
+/// Stage a host-evaluated bank into the shared `__constant__` coefficient symbol.
+///
+/// Both lineages read the SAME symbol, so whichever is about to launch must own
+/// it. The copy is enqueued on `exec_stream` and therefore ordered before the
+/// launch that follows, and always outside a timed span.
+fn stage_incumbent_coefficients(coefficients: &[E4], context: &ProverContext) -> CudaResult<()> {
+    assert!(
+        coefficients.len() <= crate::prover::gkr::backward::flat::FLAT_CONST_MAX,
+        "the incumbent add/sub round-0 bank must fit the constant symbol"
+    );
+    let bank: [E4; crate::prover::gkr::backward::flat::FLAT_CONST_MAX] =
+        core::array::from_fn(|index| coefficients.get(index).copied().unwrap_or(E4::ZERO));
+    // SAFETY: this Rust stub names the exact CUDA `e4[FLAT_CONST_MAX]`
+    // coefficient symbol; the pageable source is staged by the helper and the
+    // copy stays ordered before the next `exec_stream` launch.
+    unsafe {
+        crate::primitives::utils::memcpy_to_symbol_async(
+            &super::ab_gkr_flat_coefficients,
+            &bank,
+            context.get_exec_stream(),
+        )
+    }
+}
+
+fn poison_ptr(ptr: *mut E4, rows: usize, value: E4, context: &ProverContext) -> CudaResult<()> {
+    poison_contributions(ptr, rows, value, context)
+}
+
+fn download_ptr(ptr: *const E4, len: usize, context: &ProverContext) -> Vec<E4> {
+    let mut host = vec![E4::ZERO; len];
+    // SAFETY: the caller supplies a live device span of `len` E4 values.
+    let device = unsafe { DeviceSlice::from_raw_parts(ptr, len) };
+    memory_copy_async(&mut host, device, context.get_exec_stream()).expect("contribution D2H");
+    context
+        .get_exec_stream()
+        .synchronize()
+        .expect("contribution D2H sync");
+    host
+}
+
+/// One head-to-head result.
+struct HeadToHead {
+    rows: usize,
+    folding_steps: usize,
+    incumbent: TimingSummary,
+    /// One entry per requested budget, ascending.
+    new: Vec<SweepRow>,
+}
+
+/// Time the real incumbent `add_sub` layer-0 R0 launch and the new executor at
+/// `budgets`, in one process, one context, one row count and one eq state.
+///
+/// `nvtx_budget`, when set, wraps ONLY that budget's timed launches in the
+/// registered profiler range. Nothing else is wrapped: the profiler must see one
+/// incumbent kernel and one new kernel, not a sweep.
+fn head_to_head_add_sub_l0_r0(budgets: &[u8], nvtx_budget: Option<u8>) -> HeadToHead {
+    use crate::prover::gkr::backward::launch_build_eq_high_and_low_groups_from_point;
+
+    let fixture = prepare_basic_unrolled_async_backward_fixture(8);
+    let context = fixture.context;
+    let mut gpu_backward_state = fixture.gpu_backward_state;
+    while let Some(plan) = gpu_backward_state
+        .prepare_next_layer_static(&context)
+        .expect("prepare incumbent dimension-reducing layer")
+    {
+        drop(plan);
+    }
+    let mut main_state = gpu_backward_state.into_main_layer_backward_state(
+        fixture.compiled_circuit,
+        fixture.external_challenges.clone(),
+        fixture.lookup_multiplicative_part,
+        fixture.lookup_additive_part,
+        false,
+    );
+    let mut plan: GpuGKRMainLayerSumcheckLayerPlan<E4> = loop {
+        let Some(plan) = main_state
+            .prepare_next_layer(fixture.batching_challenge, &context)
+            .expect("prepare incumbent main layer")
+        else {
+            panic!("the incumbent fixture produced no add/sub layer 0")
+        };
+        if plan.layer_idx == 0 {
+            break plan;
+        }
+        drop(plan);
+    };
+
+    assert!(
+        plan.flat_use_constant,
+        "add/sub R0 must use the constant-coefficient incumbent path"
+    );
+    assert!(plan.flat_coeff_device_buf.is_none());
+
+    let mut external_values = fixture
+        .external_challenges
+        .permutation_argument_linearization_challenges
+        .to_vec();
+    external_values.push(fixture.external_challenges.permutation_argument_additive_part);
+    let incumbent_bank = evaluate_incumbent_recipes(
+        &plan
+            .flat_round0_template_compact
+            .as_ref()
+            .expect("incumbent round-0 descriptor")
+            .recipes,
+        fixture.batching_challenge,
+        fixture.lookup_multiplicative_part,
+        fixture.lookup_additive_part,
+        &external_values,
+    );
+
+    let folding_steps = plan.folding_steps;
+    let rows = plan.trace_len >> 1;
+    let remaining = folding_steps - 1;
+    let eq_sizes = make_eq_sizes(remaining);
+    let point = (0..folding_steps)
+        .map(|index| e4(0x4100 + index as u32))
+        .collect::<Vec<_>>();
+    let point_device = upload(&point, &context);
+    let mut eq_low = upload(&vec![E4::ZERO; GKR_EQ_GROUP_TABLE_LEN], &context);
+    launch_build_eq_high_and_low_groups_from_point::<E4>(
+        point_device.as_ptr(),
+        1,
+        remaining,
+        get_eq_high_constant_device_ptr(),
+        eq_low.as_mut_ptr(),
+        &context,
+    )
+    .expect("build the real factored eq for round 0");
+
+    let output_ptr = plan.round_scratch.accumulator.as_mut_ptr();
+    let device = DeviceFacts::query();
+    eprintln!(
+        "[bwd-coeff-profile] add/sub L0 R0: trace_len={} rows={rows} folding_steps={folding_steps} \
+         eq_sizes={{low:{},high:[{},{}]}} incumbent_bank={}",
+        plan.trace_len,
+        eq_sizes.low,
+        eq_sizes.high[0],
+        eq_sizes.high[1],
+        incumbent_bank.len(),
+    );
+
+    // ── the incumbent ────────────────────────────────────────────────────
+    let incumbent_launch = |context: &ProverContext| {
+        compact::launch_main_round0_constant::<E4>(
+            &plan
+                .flat_round0_template_compact
+                .as_ref()
+                .expect("incumbent round-0 descriptor")
+                .static_desc,
+            eq_low.as_ptr(),
+            &eq_sizes,
+            output_ptr,
+            rows as u32,
+            context,
+        )
+    };
+    stage_incumbent_coefficients(&incumbent_bank, &context)
+        .expect("stage the incumbent round-0 bank");
+    let preflight = e4(0x00a1_0000);
+    poison_ptr(output_ptr, rows, preflight, &context).expect("poison the incumbent preflight");
+    incumbent_launch(&context).expect("incumbent correctness launch");
+    let incumbent_output = download_ptr(output_ptr, 2 * rows, &context);
+    assert!(
+        incumbent_output.iter().any(|value| *value != preflight),
+        "the incumbent round-0 launch left every contribution poisoned"
+    );
+    let incumbent = time_cuda_launches(
+        context.get_exec_stream(),
+        || poison_ptr(output_ptr, rows, e4(0x00a2_0000), &context),
+        || incumbent_launch(&context),
+    )
+    .expect("time the incumbent round-0 launch");
+    eprintln!(
+        "[bwd-coeff-profile] incumbent median={:.3}us min={:.3}us ({INCUMBENT_R0_SEQUENCE})",
+        incumbent.median_us, incumbent.min_us
+    );
+
+    // ── the new executor, at the same rows / eq / output ──────────────────
+    let entry = bearing_layers(ADD_SUB_LAYOUT)
+        .into_iter()
+        .find(|entry| entry.layer == 0)
+        .expect("add/sub layer 0 bears backward roots");
+    let cases = realize_coeff_family(
+        ADD_SUB_LAYOUT,
+        0,
+        &entry.canonical,
+        &entry.cross,
+        BwdRegime::R0,
+        0,
+        budgets,
+    );
+    let coordinate = SweepCoordinate {
+        circuit: ADD_SUB_LAYOUT.to_owned(),
+        layer: 0,
+        regime: BwdRegime::R0,
+        round_class: BwdRoundClass::R0,
+        round: 0,
+        selects: true,
+        cases,
+    };
+    // The incumbent's OWN row count, so the two lineages evaluate the same rows.
+    let (shapes, materialize) = coordinate_shapes(&coordinate);
+    assert!(
+        !materialize,
+        "R0 publishes nothing; a materializing binding here means the round drifted"
+    );
+    let per_row = bytes_per_row(&shapes, materialize);
+    eprintln!(
+        "[bwd-coeff-profile] new-side synthetic storage: {} windows, {} B/row, {:.2}GiB total",
+        shapes.len(),
+        per_row,
+        (rows * per_row) as f64 / (1u64 << 30) as f64,
+    );
+    let storage = build_sweep_storage(
+        &coordinate,
+        rows,
+        true,
+        rows * per_row,
+        &shapes,
+        materialize,
+        &context,
+    );
+    assert!(storage.publishes.is_empty());
+
+    let mut new = Vec::with_capacity(coordinate.cases.len());
+    for case in &coordinate.cases {
+        let bank_values = pseudo_bank(&case.layer);
+        let bank = required_bank(&case.layer);
+        let coefficients = upload(&bank_values, &context);
+        let runtime = BwdCoeffRoundBinding {
+            round: 0,
+            rows: rows as u32,
+            round_challenges: std::ptr::null(),
+            n_round_challenges: 0,
+            windows: &storage.resolved,
+            // The incumbent's OWN eq state: same pointer, same sizes, same
+            // per-row cost.
+            eq_low: eq_low.as_ptr(),
+            eq_sizes,
+            contributions: output_ptr,
+        };
+        let setup = lower_bwd_coeff(
+            &case.program,
+            &case.binding,
+            &runtime,
+            bank_values.clone(),
+            match bank {
+                BwdCoeffBank::Constant => std::ptr::null(),
+                BwdCoeffBank::DevicePointer => coefficients.as_ptr(),
+            },
+            bank,
+        )
+        .unwrap_or_else(|error| panic!("head-to-head c{}: lower: {error:?}", case.budget_cells));
+        let attributes = executor_attributes(BwdRegime::R0, 0, bank);
+        attributes.assert_no_spills(&format!("add/sub L0 R0 c{}", case.budget_cells));
+
+        let poison = e4(0x00b1_0000 + u32::from(case.budget_cells));
+        poison_ptr(output_ptr, rows, poison, &context).expect("poison the new preflight");
+        setup
+            .upload_constant_bank(&context)
+            .expect("stage the new constant bank");
+        launch_bwd_coeff(&setup, &context).expect("new correctness launch");
+        let output = download_ptr(output_ptr, 2 * rows, &context);
+        assert!(
+            output.iter().any(|value| *value != poison),
+            "add/sub L0 R0 c{}: the new launch left every contribution poisoned",
+            case.budget_cells
+        );
+
+        let timing = time_cuda_launches(
+            context.get_exec_stream(),
+            || poison_ptr(output_ptr, rows, poison, &context),
+            || launch_bwd_coeff(&setup, &context),
+        )
+        .expect("time the new round-0 launch");
+
+        // The profiler's launch: ONE, after every warmup and every timed sample,
+        // and the only thing inside the durable registered range. Wrapping the
+        // timing loop instead would put the range around thirteen launches, the
+        // first of which is a cold warmup — `--launch-count 1` would then profile
+        // exactly the launch §15 excludes.
+        if nvtx_budget == Some(case.budget_cells) {
+            poison_ptr(output_ptr, rows, poison, &context).expect("poison the profiled launch");
+            context
+                .get_exec_stream()
+                .synchronize()
+                .expect("settle before the profiled launch");
+            {
+                let _range = crate::primitives::nvtx::scoped_range(
+                    Some(PROFILE_NVTX_DOMAIN),
+                    PROFILE_NVTX_MESSAGE,
+                );
+                launch_bwd_coeff(&setup, &context).expect("profiled launch");
+                context
+                    .get_exec_stream()
+                    .synchronize()
+                    .expect("profiled launch completion");
+            }
+        }
+
+        eprintln!(
+            "[bwd-coeff-profile] new c{} median={:.3}us min={:.3}us ratio={:.4}",
+            case.budget_cells,
+            timing.median_us,
+            timing.min_us,
+            timing.median_us / incumbent.median_us,
+        );
+        new.push(SweepRow {
+            circuit: ADD_SUB_LAYOUT.to_owned(),
+            layer: 0,
+            regime: ArtifactRegime::R0,
+            round_class: BwdRoundClass::R0,
+            round: 0,
+            budget_cells: case.budget_cells,
+            bank,
+            geometry: LaunchGeometry::of(
+                BwdRegime::R0,
+                0,
+                bank,
+                u32::from(case.budget_cells),
+                rows,
+                &device,
+            ),
+            attributes,
+            saturated: true,
+            program: case.report,
+            timing,
+            incumbent: Some(incumbent),
+            incumbent_sequence: INCUMBENT_R0_SEQUENCE,
+            selects: true,
+        });
+    }
+
+    drop(storage);
+    drop(plan);
+    HeadToHead {
+        rows,
+        folding_steps,
+        incumbent,
+        new,
+    }
+}
+
+/// §15's first profile: the exact incumbent, `c2`, the selected budget, and the
+/// `c16` diagnostic, all at the incumbent's own row count.
+#[test]
+#[ignore] // GPU timing; build unlocked and run the executable under with_gpu_lock.sh.
+#[cfg(not(no_cuda))]
+#[serial_test::serial]
+fn bwd_coeff_add_sub_l0_r0_head_to_head() {
+    let selected = profile_cells();
+    let mut budgets = vec![2u8, selected, 16];
+    budgets.sort_unstable();
+    budgets.dedup();
+    let outcome = head_to_head_add_sub_l0_r0(&budgets, None);
+
+    let csv_path = sweep_output_path("bwd_coeff_add_sub_l0_r0_head_to_head.csv");
+    super::report::publish(&csv_path, &render_sweep_csv(&outcome.new));
+
+    let mut body = format!(
+        "Incumbent: `{INCUMBENT_R0_SEQUENCE}`\n\n\
+         Rows {} (one thread per row), folding steps {}, three warmups and ten timed samples on \
+         both lineages, identical eq state, identical contribution buffer and geometry.\n\n\
+         | configuration | median (us) | min (us) | new / incumbent |\n\
+         |---|---|---|---|\n\
+         | incumbent | {:.3} | {:.3} | 1.000 |\n",
+        outcome.rows, outcome.folding_steps, outcome.incumbent.median_us, outcome.incumbent.min_us,
+    );
+    for row in &outcome.new {
+        writeln!(
+            body,
+            "| new c{}{} | {:.3} | {:.3} | {:.4} |",
+            row.budget_cells,
+            if row.budget_cells == 16 {
+                " (diagnostic)"
+            } else if row.budget_cells == selected {
+                " (selected)"
+            } else {
+                ""
+            },
+            row.timing.median_us,
+            row.timing.min_us,
+            row.ratio().expect("head-to-head rows carry an incumbent"),
+        )
+        .expect("write String");
+    }
+    writeln!(body, "\nCSV: `{}`\n", csv_path.display()).expect("write String");
+    for row in &outcome.new {
+        writeln!(
+            body,
+            "- c{}: registers {}, local spill bytes {}, dynamic shared {} B, {} blocks/SM, \
+             theoretical occupancy {:.1}%, {} program words, realized read bytes {}",
+            row.budget_cells,
+            row.attributes.registers,
+            row.attributes.local_size_bytes,
+            row.geometry.dynamic_smem_bytes,
+            row.geometry.active_blocks_per_sm,
+            row.geometry.theoretical_occupancy * 100.0,
+            row.program.words,
+            row.program.realized_total_read_bytes,
+        )
+        .expect("write String");
+    }
+    record_summary_section("add/sub layer-0 R0 head-to-head", &body);
+}
+
+/// The single profiler selector the brief specifies: after warmup, ONE incumbent
+/// launch sequence and ONE new launch sequence, with only the new one inside the
+/// registered NVTX range `test.gpu.bwd_coeff.add_sub_l0_r0@circuit_prover.tests`.
+#[test]
+#[ignore] // GPU profiling; run under `ncu` through with_gpu_lock.sh.
+#[cfg(not(no_cuda))]
+#[serial_test::serial]
+fn bwd_coeff_add_sub_l0_r0_profile() {
+    let selected = profile_cells();
+    let outcome = head_to_head_add_sub_l0_r0(&[selected], Some(selected));
+    eprintln!(
+        "[bwd-coeff-profile] profiled c{selected}: new median={:.3}us vs incumbent {:.3}us \
+         (ratio {:.4}) at {} rows",
+        outcome.new[0].timing.median_us,
+        outcome.incumbent.median_us,
+        outcome.new[0]
+            .ratio()
+            .expect("the profile row carries an incumbent"),
+        outcome.rows,
+    );
 }
