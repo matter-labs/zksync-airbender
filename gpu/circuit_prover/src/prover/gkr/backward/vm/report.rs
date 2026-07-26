@@ -80,28 +80,57 @@ pub(super) const PROFILE_DEFAULT_CELLS: u8 = 3;
 /// Raw counters from the `add_sub` layer-0 R0 capture PAIR, pinned so the
 /// generated head-to-head section can bound its own synthetic-source caveat.
 ///
-/// These four are the only profiler-only numbers this module restates, and they
-/// are here rather than inline because they carry a re-pin duty: they come from
-/// `target/profiling/ncu/bwd_coeff_add_sub_l0_r0{,_incumbent}.ncu-rep`, which are
-/// the authority. Read them back with
-/// `ncu --import <rep> --page raw --csv` and the metrics
-/// `dram__bytes.sum.per_second * gpu__time_duration.sum` and
-/// `lts__t_sectors_lookup_miss.sum`.
+/// These are the only profiler-only numbers this module restates, and they carry
+/// a **re-pin duty**: the `.ncu-rep` files are the authority, and every value here
+/// must be re-derived FROM them — never by hand, never from a previous session's
+/// notes. Re-derive all six with exactly this, from the repository root:
+///
+/// ```text
+/// for r in bwd_coeff_add_sub_l0_r0 bwd_coeff_add_sub_l0_r0_incumbent; do
+///   ncu --import target/profiling/ncu/$r.ncu-rep --page raw --csv | python3 -c "
+/// import csv,sys
+/// rows=list(csv.reader(sys.stdin)); hdr,vals=rows[0],rows[-1]
+/// g=lambda k: float(vals[hdr.index(k)])
+/// dur=g('gpu__time_duration.sum')
+/// print('dur_ms=%.6f dram_GB=%.6f l2_miss_M=%.4f inst=%.0f ipc_elapsed_sum=%.6f' % (
+///     dur, g('dram__bytes.sum.per_second')*dur, g('lts__t_sectors_lookup_miss.sum')/1e6,
+///     g('smsp__inst_executed.sum'), g('sm__inst_executed.sum.per_cycle_elapsed')))
+/// "
+/// done
+/// ```
+///
+/// then `duration ratio = dur_new / dur_inc` and
+/// `model ratio = (inst_new / ipc_new) / (inst_inc / ipc_inc)`.
+///
+/// A previous revision pinned these from an INTERMEDIATE capture that was later
+/// overwritten, so four of them disagreed with the files they cited while the
+/// prose quoted the files. That is why the command is written out here: the
+/// failure mode is re-pinning from memory, and it is invisible unless someone
+/// reads the captures back.
 ///
 /// Why they are worth pinning at all: they are what turns "the cache-hit gap
 /// might be a synthetic-layout artifact" from a hedge into a bound. The new
 /// lineage moves FEWER DRAM bytes and misses L2 FEWER times than the incumbent,
 /// so consolidating the source layout can only reduce traffic where the new side
 /// is already ahead — it cannot be hiding a regression.
-pub(super) const PINNED_DRAM_GB_NEW: f64 = 8.673;
-pub(super) const PINNED_DRAM_GB_INCUMBENT: f64 = 8.846;
+///
+/// Current values, from the captures in the tree:
+/// new `dur_ms=7.153984 dram_GB=8.674392 l2_miss_M=271.6137 inst=6808836096
+/// ipc_elapsed_sum=412.528688`; incumbent `dur_ms=6.068544 dram_GB=8.844551
+/// l2_miss_M=276.5579 inst=4971730944 ipc_elapsed_sum=354.995755`.
+pub(super) const PINNED_DRAM_GB_NEW: f64 = 8.674;
+pub(super) const PINNED_DRAM_GB_INCUMBENT: f64 = 8.845;
 pub(super) const PINNED_L2_MISS_SECTORS_NEW_M: f64 = 271.6;
-pub(super) const PINNED_L2_MISS_SECTORS_INCUMBENT_M: f64 = 276.5;
+pub(super) const PINNED_L2_MISS_SECTORS_INCUMBENT_M: f64 = 276.6;
 /// `(instructions / elapsed IPC)` new over incumbent, and the duration ratio the
 /// same capture pair measured. The two agreeing is the claim that the occupancy
 /// and instruction-count model accounts for the gap without a cache term.
-pub(super) const PINNED_MODEL_RATIO: f64 = 1.182;
-pub(super) const PINNED_PROFILED_DURATION_RATIO: f64 = 1.176;
+///
+/// ELAPSED IPC, not active: the thing being predicted is elapsed duration.
+/// (6808836096 / 412.528688) / (4971730944 / 354.995755) = 1.178513, against a
+/// measured 7.153984 / 6.068544 = 1.178863 — a residual of 0.03%.
+pub(super) const PINNED_MODEL_RATIO: f64 = 1.1785;
+pub(super) const PINNED_PROFILED_DURATION_RATIO: f64 = 1.1789;
 
 /// Matching incumbent launches `ncu` must skip to reach the first TIMED one.
 ///
@@ -834,6 +863,43 @@ mod tests {
         let summary = TimingSummary::from_milliseconds(vec![4.0, 1.0, 3.0, 2.0]);
         assert_eq!(summary.median_us, 2_500.0);
         assert_eq!(summary.min_us, 1_000.0);
+    }
+
+    /// The pinned capture counters must tell the story the generated caveat claims
+    /// they tell. A mis-pin that inverted either comparison would print a
+    /// self-contradicting paragraph — a caveat whose own evidence disagrees with it
+    /// is worse than no caveat — and this is what makes that a test failure.
+    ///
+    /// It cannot check the constants against the `.ncu-rep` files (a unit test has
+    /// no profiler), so it checks the two RELATIONS the paragraph asserts. The
+    /// values themselves carry a documented re-derivation command.
+    #[test]
+    fn the_pinned_capture_counters_support_the_caveat_they_are_quoted_for() {
+        assert!(
+            PINNED_DRAM_GB_NEW < PINNED_DRAM_GB_INCUMBENT,
+            "the caveat's bound rests on the new lineage moving FEWER DRAM bytes"
+        );
+        assert!(
+            PINNED_L2_MISS_SECTORS_NEW_M < PINNED_L2_MISS_SECTORS_INCUMBENT_M,
+            "and on it missing L2 fewer times"
+        );
+        // "The model closes the gap": within a quarter of a percent, which is far
+        // tighter than the ~1% the report claims the ratio is good to.
+        let residual = (PINNED_MODEL_RATIO / PINNED_PROFILED_DURATION_RATIO - 1.0).abs();
+        assert!(
+            residual < 0.0025,
+            "the instruction/IPC model must reproduce the measured duration ratio; \
+             residual is {:.4}%",
+            residual * 100.0
+        );
+        // Both ratios describe the same measured slowdown, so they must agree on
+        // its sign and rough size too.
+        for ratio in [PINNED_MODEL_RATIO, PINNED_PROFILED_DURATION_RATIO] {
+            assert!(
+                (1.0..2.0).contains(&ratio),
+                "a duration ratio outside 1..2 is a pinning error, not a measurement"
+            );
+        }
     }
 
     #[test]
