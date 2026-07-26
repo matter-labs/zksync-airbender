@@ -121,10 +121,14 @@ DEVICE_FORCEINLINE bf cell_read_bf(const cell_file &cells, const u32 lane) { ret
 DEVICE_FORCEINLINE void cell_write_bf(const cell_file &cells, const u32 lane, const bf value) { cells.bf_lanes[lane << BWD_COEFF_WARP_SHIFT] = value; }
 
 // Four-lane alignment is REQUIRED, not assumed. A misaligned lane would silently
-// resolve to the containing cell and read a neighbouring value, so it is
-// rejected on the host (`gkr_eval_isa`'s `check_lane`) and reported by the probe
-// kernel below; this assertion is the last line of defence for a hand-built
-// descriptor in any build that keeps assertions enabled.
+// resolve to the containing cell and read a neighbouring value.
+//
+// Two things enforce it, and neither is the `assert` below. The host encoder
+// rejects a misaligned lane before the descriptor is ever staged
+// (`gkr_eval_isa`'s `check_lane`), and `probe_lane_flags` further down reports it
+// from the device. The `assert` documents the precondition at its point of use:
+// native builds are always `-DNDEBUG` (see `native/AGENTS.md`), so it never
+// executes in any build this repo produces.
 DEVICE_FORCEINLINE u32 cell_e4_bucket(const u32 lane) {
   assert((lane & (BWD_COEFF_LANES_PER_CELL - 1)) == 0);
   return lane >> BWD_COEFF_LANES_PER_CELL_LOG2;
@@ -463,6 +467,28 @@ DEVICE_FORCEINLINE e4 accumulate_e4(const e4 acc, const coeff_scale &k, const e4
 // negates the FACTOR rather than the fused result — `bf::fms(a, b, c)` is
 // `a*b - c`, so using it here would need a four-limb negation afterwards, while
 // one `bf::neg` on `a` gets the same answer.
+//
+// OPEN QUESTION (not investigated; raised deliberately for a later pass).
+// `fms(x, y, z)` negates the ACCUMULATOR, not the product: it computes
+// `x*y - z`. An accumulate-subtract loop like every one below wants the opposite,
+// `z - x*y`, so no site in this file can use `fms` directly — each instead
+// negates one BF factor (`bf::neg`, one instruction) or falls back to
+// `sub(acc, mul(..))` in `accumulate_e4_e4`. Both cost what the adding form costs
+// and neither pays a four-limb negation, so nothing here is currently losing.
+//
+// Should `fms` subtract the PRODUCT instead? That reads as the more useful
+// primitive, and it is tempting to assume the current spelling is simply
+// backwards. It may not be: `bf::fms` gets `- z` for free by adding
+// `ORDER - z.limb` to the high word of the wide product, i.e. the
+// accumulator-subtracting form is the one the reduction makes cheap, while
+// `z - x*y` would need the wide product negated before reduction and might save
+// no instructions at all. Measure before changing anything.
+//
+// If it is ever changed, do NOT change it in place. `fms` has callers across the
+// field tower (`e2`/`e4`/`e6` all forward to it) and flipping its sense silently
+// returns the negation to every one of them — a wrong-answer bug that still
+// compiles and still type-checks. Any change needs a new name or a coordinated
+// sweep of all callers in the same commit.
 DEVICE_FORCEINLINE e4 accumulate_bf_bf(const e4 acc, const coeff_scale &k, const bf a, const bf b) {
   if (!k.banked) {
     const bf lhs = k.negate ? bf::neg(a) : a;

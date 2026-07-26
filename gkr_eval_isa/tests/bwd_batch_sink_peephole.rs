@@ -91,7 +91,20 @@ fn batch_sink_desc(instruction: &Instr) -> Option<u16> {
 
 #[test]
 fn batching_sink_does_not_force_reloading_the_preserved_accumulator() {
-    for regime in [BwdRegime::R0, BwdRegime::Ext] {
+    // The kept-reload count is ASSERTED, not printed. Two reasons.
+    //
+    // First, an unasserted number is invisible: a regression that changed the
+    // filter's scope would only move a line of output nobody reads.
+    //
+    // Second, it pins WHICH arm of the filter below is actually load-bearing.
+    // `concrete` lowering runs the peepholes (`:642`-`:643`) and only then calls
+    // `bind_final_sources` (`:651`), which rewrites every `LogicalGlobal` and
+    // `LogicalFold` operand into an `OperandLine::Source`. This guard reads that
+    // bound program, so those two arms are unreachable HERE even though the
+    // peephole itself sees them — the count is decided by `Source` and by the
+    // non-`VirtualSetup` `Special`. Pinning it keeps that asymmetry on the
+    // record: R0 keeps nothing, Ext keeps exactly the one `Special`.
+    for (regime, expected_kept) in [(BwdRegime::R0, 0usize), (BwdRegime::Ext, 1usize)] {
         let compiled = compiled_add_sub_l0(regime, 2);
         let instructions = &compiled.program.instrs;
         // The guard is only meaningful if the program actually contains sinks.
@@ -102,7 +115,7 @@ fn batching_sink_does_not_force_reloading_the_preserved_accumulator() {
 
         // Reloads the peephole deliberately leaves alone. Counted rather than
         // ignored, so its SCOPE is part of the record: if this ever reaches zero
-        // for both regimes, the filter has become untested and the simpler
+        // for BOTH regimes, the filter has become untested and the simpler
         // unconditional postcondition would be the one to assert.
         let mut kept_non_idempotent = 0usize;
 
@@ -180,6 +193,10 @@ fn batching_sink_does_not_force_reloading_the_preserved_accumulator() {
             );
         }
 
-        println!("{regime:?} c2: {kept_non_idempotent} non-idempotent sink-adjacent reload(s) kept");
+        assert_eq!(
+            kept_non_idempotent, expected_kept,
+            "{regime:?} c2: expected the filter to keep {expected_kept} non-idempotent \
+             sink-adjacent reload(s), found {kept_non_idempotent}"
+        );
     }
 }

@@ -1555,9 +1555,18 @@ const EQ_HIGH_SLAB_LEN: usize = GKR_EQ_HIGH_SLOTS * GKR_EQ_GROUP_TABLE_LEN;
 
 /// The `__constant__` eq-high slab, as a device slice.
 ///
-/// SAFETY: `get_eq_high_constant_device_ptr` returns the device address of the
+/// SAFETY: two things, since this mints a fresh `&'static mut` on every call and
+/// so cannot rely on the borrow checker for exclusivity.
+///
+/// Extent: `get_eq_high_constant_device_ptr` returns the device address of the
 /// `ab_gkr_eq_high` symbol, whose declared extent is exactly [`EQ_HIGH_SLAB_LEN`]
 /// E4 values.
+///
+/// Aliasing: callers must hold ONE borrow AT A TIME. Nothing here reborrows —
+/// each call site passes the result straight into a single `memory_copy*` and
+/// drops it, so two of these slices are never live together. Binding one to a
+/// variable that outlives another call, or handing two to the same expression,
+/// would create aliasing `&mut`s and is not allowed.
 fn eq_high_slab() -> &'static mut DeviceSlice<E4> {
     unsafe { DeviceSlice::from_raw_parts_mut(get_eq_high_constant_device_ptr(), EQ_HIGH_SLAB_LEN) }
 }
