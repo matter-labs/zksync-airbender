@@ -18,7 +18,10 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use common::{CrossFields, FIXTURES, layers_with_bwd_roots, load_dag_sched};
 use cs::gkr_compiler::dag_ir::{BwdRegime, FieldKind, ReadPlace};
-use gkr_eval_isa::bwd::coeff::bind::{CoeffSourceBinding, bind_coeff_sources, certify_source_binding};
+use gkr_eval_isa::bwd::coeff::bind::{
+    CoeffSourceBinding, SourceCertificateError, bind_coeff_sources, certify_source_binding,
+};
+use gkr_eval_isa::bwd::coeff::stats::WindowFamily;
 use gkr_eval_isa::bwd::coeff::limits::in_scope::MAX_SOURCE_WINDOWS_USED;
 use gkr_eval_isa::bwd::coeff::place::{CoeffPlacement, ScheduledInstr, ValueUse, place_paging_plan};
 use gkr_eval_isa::bwd::coeff::schedule::{
@@ -259,8 +262,9 @@ fn page_place_bind(
     };
     let plan = page_projections(layer, prices, request, &order).expect("pager");
     let placement = place_paging_plan(layer, prices, &plan).expect("placement");
-    let binding = bind_coeff_sources(layer, &CrossFields::new(), &placement).expect("binding");
-    certify_source_binding(layer, &placement, &binding).expect("source certificate");
+    let cross = CrossFields::new();
+    let binding = bind_coeff_sources(layer, &cross, &placement).expect("binding");
+    certify_source_binding(layer, &cross, &placement, &binding).expect("source certificate");
     (plan, placement, binding)
 }
 
@@ -384,6 +388,94 @@ fn assert_contiguous_windows(binding: &CoeffSourceBinding) {
     }
 }
 
+// ── The declared window family ───────────────────────────────────────────────
+
+/// A window's `family` is what the descriptor reads to choose DRAM versus
+/// procedural resolution and to size the backing's own field, so the certificate
+/// has to RE-DERIVE it from the source rather than trust it.
+///
+/// Nothing else can catch a wrong one: `CoeffSourceBinding::resolve` is keyed by
+/// `(window, column)` alone, so a window claiming the wrong family still resolves
+/// every coordinate to the right `SourceId` and every other §12.3 clause passes.
+/// This test flips one family and requires the rejection.
+#[test]
+fn a_window_may_not_declare_a_family_its_source_does_not_have() {
+    let (layer, prices) = spread_layer();
+    let (_, placement, binding) = page_place_bind(&layer, &prices, 4);
+    let cross = CrossFields::new();
+
+    // `SPREAD` is all `BaseLayerWitness`, so procedural is a genuine flip: it
+    // changes `is_procedural`, which is exactly the decision the family drives.
+    let true_family = binding.windows[0].family;
+    assert_ne!(true_family, WindowFamily::VirtualSetup { kind: 0 });
+
+    let mut tampered = binding.clone();
+    tampered.windows[0].family = WindowFamily::VirtualSetup { kind: 0 };
+    assert!(
+        tampered.windows[0].is_procedural() && !binding.windows[0].is_procedural(),
+        "the flip must change the DRAM/procedural decision, or it proves nothing"
+    );
+    // Everything else about the tampered binding is still perfectly consistent.
+    for use_ in &tampered.uses {
+        assert_eq!(
+            tampered.resolve(use_.window, use_.column),
+            binding.resolve(use_.window, use_.column),
+            "the tamper must not disturb coordinate resolution"
+        );
+    }
+
+    let error = certify_source_binding(&layer, &cross, &placement, &tampered)
+        .expect_err("a wrong family must be rejected");
+    assert_eq!(
+        error,
+        SourceCertificateError::WindowFamilyMismatch {
+            window: 0,
+            column: binding.windows[0].columns[0].column,
+            source: binding.windows[0].columns[0].source,
+        }
+    );
+}
+
+/// A wrong COLUMN address is caught too — by coordinate resolution first, since
+/// a relabelled column no longer resolves the bound `(window, column)` pair, and
+/// by the family/address comparison as the backstop when it does.
+///
+/// Kept separate from the test above because only that one is a real gap probe:
+/// removing the family check leaves this case still rejected.
+#[test]
+fn a_window_may_not_relabel_a_column_address() {
+    let (layer, prices) = spread_layer();
+    let (_, placement, binding) = page_place_bind(&layer, &prices, 4);
+    let cross = CrossFields::new();
+
+    // Move an INTERIOR column of one window down by one. It stays ascending, in
+    // span, based at the same `first_column` and inside the same window, so every
+    // structural rule still holds — the only thing wrong is the address itself.
+    let (window, slot) = binding
+        .windows
+        .iter()
+        .enumerate()
+        .find_map(|(w, entry)| {
+            (1..entry.columns.len().saturating_sub(1))
+                .find(|&i| entry.columns[i].column - 1 > entry.columns[i - 1].column)
+                .map(|i| (w, i))
+        })
+        .expect("SPREAD gives window 0 the columns 0, 64, 127");
+    let mut tampered = binding.clone();
+    tampered.windows[window].columns[slot].column -= 1;
+
+    let error = certify_source_binding(&layer, &cross, &placement, &tampered)
+        .expect_err("a relabelled column must be rejected");
+    assert!(
+        matches!(
+            error,
+            SourceCertificateError::WindowFamilyMismatch { .. }
+                | SourceCertificateError::CoordinateMismatch { .. }
+        ),
+        "unexpected rejection: {error:?}"
+    );
+}
+
 // ── First access ─────────────────────────────────────────────────────────────
 
 #[test]
@@ -503,7 +595,7 @@ fn materializing_source_has_exactly_one_first_access() {
                 let placement = place_paging_plan(&lowered, &prices, &plan).expect("placement");
                 let binding = bind_coeff_sources(&lowered, &distilled.cross_fields, &placement)
                     .unwrap_or_else(|e| panic!("[{name} L{li} {regime:?}] binding: {e:?}"));
-                certify_source_binding(&lowered, &placement, &binding)
+                certify_source_binding(&lowered, &distilled.cross_fields, &placement, &binding)
                     .unwrap_or_else(|e| panic!("[{name} L{li} {regime:?}] certificate: {e:?}"));
 
                 // §10.2's static policy, and nothing else, decides materialization.
@@ -582,7 +674,7 @@ fn window_and_column_fit_six_and_seven_bits() {
                         let binding =
                             bind_coeff_sources(&lowered, &distilled.cross_fields, &placement)
                                 .unwrap_or_else(|e| panic!("[{tag} c{cells}] binding: {e:?}"));
-                        certify_source_binding(&lowered, &placement, &binding)
+                        certify_source_binding(&lowered, &distilled.cross_fields, &placement, &binding)
                             .unwrap_or_else(|e| panic!("[{tag} c{cells}] certificate: {e:?}"));
                         assert_contiguous_windows(&binding);
                         for use_ in &binding.uses {

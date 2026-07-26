@@ -136,7 +136,7 @@ fn page_place_bind_encode(
         .unwrap_or_else(|e| panic!("[{tag}] placement: {e:?}"));
     let binding = bind_coeff_sources(layer, cross, &placement)
         .unwrap_or_else(|e| panic!("[{tag}] binding: {e:?}"));
-    certify_source_binding(layer, &placement, &binding)
+    certify_source_binding(layer, cross, &placement, &binding)
         .unwrap_or_else(|e| panic!("[{tag}] source certificate: {e:?}"));
     let program = encode_program(layer, &placement, &binding)
         .unwrap_or_else(|e| panic!("[{tag}] encode: {e:?}"));

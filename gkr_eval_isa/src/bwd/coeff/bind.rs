@@ -36,7 +36,7 @@
 //! [`crate::source_bind::bind_source_sequence`], the same core the forward
 //! compiler's `Program` adapter runs; this module is the coefficient adapter
 //! around it. What is deliberately NOT here: the u16 encoding (Task 7), the
-//! descriptor's publish backing/stride (Task 8), and any peephole.
+//! descriptor's publish backing/stride (Task 9), and any peephole.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
@@ -65,7 +65,8 @@ pub struct BoundColumn {
 /// and its procedural kind are [`BoundSourceWindow::family`]; the origin field is
 /// [`BoundSourceWindow::backing_field`]; the target depth and materialize flag are
 /// layer-wide and live on [`CoeffSourceBinding`]. Strides and the publish backing
-/// are device layout and belong to the artifact, not here.
+/// are device layout: they belong to Task 9's launch descriptor, not here — and
+/// not to the artifact either, which §13 keeps free of physical pointers.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BoundSourceWindow {
     pub family: WindowFamily,
@@ -165,6 +166,16 @@ pub enum SourceCertificateError {
     FirstAccessNotFirst { source: SourceId, marked: usize },
     /// The window layout is not dense, ascending, in-span or unmergeable.
     MalformedWindow { window: usize },
+    /// A window's declared [`BoundSourceWindow::family`], or one of its column
+    /// addresses, is not the one its own source resolves to.
+    ///
+    /// The family is not decoration: it is what selects DRAM versus procedural
+    /// resolution ([`BoundSourceWindow::is_procedural`]) and the backing's own
+    /// field width ([`BoundSourceWindow::backing_field`]). A window claiming the
+    /// wrong family would still `resolve` to the right [`SourceId`] — the column
+    /// table is keyed by column alone — so nothing else in the certificate can
+    /// catch it.
+    WindowFamilyMismatch { window: usize, column: usize, source: SourceId },
     /// `materialize` is not §10.2's static policy for `target_depth`.
     MaterializationNotPolicy { target_depth: u8, materialize: bool },
 }
@@ -321,12 +332,32 @@ pub fn bind_coeff_sources(
 
 /// Prove a binding against the program it claims to bind.
 ///
-/// Design §12.3, minus the two claims that are not statically decidable here:
-/// read/publish aliasing is a device-layout property of the Task 8 descriptor, and
-/// "non-materializing sources do not depend on publication" is the resolver
-/// contract §10.2 states, which this module cannot observe.
+/// Design §12.3, minus the two claims no compiler pass can decide. Both are
+/// RESOLVER/RUNTIME obligations, discharged by Tasks 10-13 rather than here, and
+/// they are named so nobody re-derives the gap as a finding:
+///
+///   * **"read and publish backings do not alias destructively"** is a property of
+///     the DEVICE layout — which buffer the resolver publishes into versus which
+///     one it reads. Task 8's artifact deliberately contains no physical pointer
+///     and no publish backing (§13), so the fact this clause is about does not
+///     exist at compile time. It becomes checkable when Task 9's descriptor
+///     assigns the concrete backings, and it is the source-resolution path in
+///     Tasks 10-13 that must honour it.
+///   * **"non-materializing sources do not depend on publication"** is the §10.2
+///     resolver contract: when [`CoeffSourceBinding::materialize`] is false, every
+///     `first_access` bit is INERT and no resolution may read a published buffer.
+///     The certificate can and does prove the static half — `materialize` is
+///     exactly §10.2's policy for `target_depth` — but "the resolver ignores the
+///     marker" is a statement about the resolver's behaviour, which this module
+///     cannot observe. Task 10's D0-D3 source resolution owns it.
+///
+/// `cross_fields` is the same circuit-level map [`bind_coeff_sources`] was given.
+/// It is required — not optional — because it is the only way to recompute a
+/// window's true [`WindowFamily`], and a family the certificate does not check is
+/// a family that can be wrong.
 pub fn certify_source_binding(
     layer: &CoeffLayer,
+    cross_fields: &HashMap<ReadPlace, FieldKind>,
     placement: &CoeffPlacement,
     binding: &CoeffSourceBinding,
 ) -> Result<(), SourceCertificateError> {
@@ -404,12 +435,22 @@ pub fn certify_source_binding(
         if window.columns.windows(2).any(|pair| pair[0].column >= pair[1].column) {
             return Err(malformed());
         }
-        if window
-            .columns
-            .iter()
-            .any(|column| layer.source(column.source).is_none())
-        {
-            return Err(malformed());
+        // Every column resolves to a real source, and the window's DECLARED family
+        // and column address are the ones that source actually lives at. This is
+        // the check that gives `BoundSourceWindow::family` its meaning: the
+        // descriptor picks DRAM versus procedural resolution off it, so it must be
+        // re-derived from the source, never trusted.
+        for column in &window.columns {
+            let Some(source) = layer.source(column.source) else {
+                return Err(malformed());
+            };
+            if window_family(source, cross_fields) != (window.family, column.column) {
+                return Err(SourceCertificateError::WindowFamilyMismatch {
+                    window: index,
+                    column: column.column,
+                    source: column.source,
+                });
+            }
         }
         if let Some((family, first_column)) = previous
             && family == window.family
