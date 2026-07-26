@@ -4,10 +4,25 @@
 //! THIS FILE IS ONE HALF OF AN ABI. Its CUDA half is
 //! `native/prover/gkr/backward/coefficient_vm.cuh`, which carries the same
 //! numeric literals under `static_assert`. Neither half may move without the
-//! other in the same commit, and both fail to BUILD — not to test — when they
-//! disagree: the CUDA `static_assert`s fire during `cargo check` (the build
-//! script runs nvcc) and the Rust `const _: () = assert!(...)` blocks fire in
-//! the same pass.
+//! other in the same commit.
+//!
+//! **What actually enforces that, and what does not.** Nothing at build time
+//! compares a CUDA literal against a Rust one — the two compilers never see each
+//! other's constants. Three separate mechanisms cover the three drift directions:
+//!
+//!   1. **Rust-side drift is a BUILD failure.** The `const _: () = assert!(...)`
+//!      blocks below tie every literal to its authority in `gkr_eval_isa`, so a
+//!      Rust-only edit fails `cargo check`.
+//!   2. **CUDA-side STRUCT drift is a BUILD failure too.** The `.cuh`'s
+//!      `static_assert`s on every field offset and size run under nvcc during
+//!      `cargo check` (the build script compiles the archive) — but they are
+//!      CUDA-vs-CUDA, not CUDA-vs-Rust.
+//!   3. **CUDA-side CONSTANT drift is a TEST failure only.** A CUDA-only constant
+//!      edit passes both compilers. `abi_tests::cuda_constants_match_the_rust_mirror`
+//!      and `cuda_layout_asserts_match_the_rust_layout` read the header as text and
+//!      compare each mirrored literal against the Rust value — and they are
+//!      `#[cfg(test)]`, so `cargo check` alone does not run them. Do not skip them
+//!      after editing the header.
 //!
 //! Every literal below is additionally tied to its AUTHORITY in `gkr_eval_isa`,
 //! so the two languages cannot agree with each other while disagreeing with the
@@ -578,6 +593,31 @@ pub(crate) const BWD_COEFF_WARP_LANES: u32 = 32;
 pub(crate) const BWD_COEFF_FOLD_FACTOR_CAP: usize = 10;
 /// D0..D3: the bounded lazy-fold depths the resolver retains.
 pub(crate) const BWD_COEFF_MAX_FOLD_DEPTH: u8 = 3;
+
+/// Where the fold-factor bank's two weight groups start.
+///
+/// `ab_gkr_bwd_coeff_build_fold_factors_kernel` writes the depth-ONE leaf pair at
+/// [`BWD_COEFF_FOLD_FACTOR_SHALLOW_BASE`] and the depth-`fold_depth` leaf table at
+/// [`BWD_COEFF_FOLD_FACTOR_DEEP_BASE`]; `fold_factor_base` reads them back. Both
+/// are mirrored HERE rather than left CUDA-only, because a CUDA-only constant edit
+/// passes both compilers — the header-text matcher
+/// (`cuda_constants_match_the_rust_mirror`) is the only thing that catches it, and
+/// it can only check names this side declares. Drift in the shallow base
+/// mis-weights every depth-1 catch-up, i.e. every continuation round >= 4.
+pub(crate) const BWD_COEFF_FOLD_FACTOR_SHALLOW_BASE: usize = 0;
+pub(crate) const BWD_COEFF_FOLD_FACTOR_DEEP_BASE: usize = 2;
+
+const _: () = {
+    // The shallow group is exactly the depth-1 leaf pair; the deep group is one
+    // full depth-D3 leaf table, and together they are the whole bank.
+    assert!(BWD_COEFF_FOLD_FACTOR_SHALLOW_BASE == 0);
+    assert!(BWD_COEFF_FOLD_FACTOR_DEEP_BASE == 2);
+    assert!(BWD_COEFF_FOLD_FACTOR_SHALLOW_BASE + 2 == BWD_COEFF_FOLD_FACTOR_DEEP_BASE);
+    assert!(
+        BWD_COEFF_FOLD_FACTOR_DEEP_BASE + (1 << BWD_COEFF_MAX_FOLD_DEPTH)
+            == BWD_COEFF_FOLD_FACTOR_CAP
+    );
+};
 
 /// The descriptor-only sentinel meaning "this layer has no `c_init`" (§5.3).
 ///

@@ -837,6 +837,57 @@ fn malformed_terms_are_rejected_not_silently_dropped() {
     );
 }
 
+/// Width has two spellings, and this is the guard that stops them drifting.
+///
+/// `SourcePrice::width` and `CoeffSource::field` are one fact.
+/// `source_prices` derives the former FROM the latter and so cannot disagree — but
+/// every entry point is `pub` with every `SourcePrice` field `pub`, so a hand-built
+/// price table is the exposed population, and a table claiming `Bf` for an `Ext`
+/// source would make every downstream lane count four times too small: the
+/// eviction ranking, the resident-lane accounting and the physical placement would
+/// all size the projection differently from its opcode category.
+///
+/// `validate_prices` is called from every entry point that reads `prices[..].width`
+/// — so all three checked here reject the SAME table with the SAME typed error
+/// rather than one of them silently accepting it. Falsifying the guard is the point:
+/// the correctly-priced table must still be accepted.
+#[test]
+fn a_price_table_that_contradicts_the_source_field_is_rejected_everywhere() {
+    let e = FieldKind::Ext;
+    // One `Ext` source, consumed by a `C2Product` that agrees with it.
+    let lowered = layer(BwdRegime::R0, &[e, e], vec![c2(0, 0, e, 1, e)]);
+    let order = stable_normalized_order(&lowered);
+
+    let honest = [e4_read(), e4_read()];
+    page_projections(&lowered, &honest, r0(4), &order).expect("an honest price table must page");
+    budget_aware_greedy_order(&lowered, &honest, budget(4)).expect("...and must seed");
+    let plan = page_stable(&lowered, &honest, r0(4));
+    certify_paging_plan(&lowered, &honest, &plan).expect("...and must certify");
+
+    // The same table with source 1 mis-priced as BF.
+    let mut lying = honest;
+    lying[1].width = ValueWidth::Bf;
+    let expected = ScheduleError::PriceWidthMismatch {
+        source: SourceId(1),
+        price: ValueWidth::Bf,
+        layer: FieldKind::Ext,
+    };
+    assert_eq!(
+        page_projections(&lowered, &lying, r0(4), &order).expect_err("pager must reject"),
+        expected
+    );
+    assert_eq!(
+        budget_aware_greedy_order(&lowered, &lying, budget(4)).expect_err("seed must reject"),
+        expected
+    );
+    // The certificate reads widths too, so it may not accept a plan priced by a
+    // table it would itself reject — even a plan that is otherwise legal.
+    assert_eq!(
+        certify_paging_plan(&lowered, &lying, &plan).expect_err("certificate must reject"),
+        PagingCertificateError::Structure(expected)
+    );
+}
+
 // ── Production corpus: termination and capacity compliance ───────────────────
 
 /// Every `(circuit, layer, regime)` coordinate, lowered and priced.

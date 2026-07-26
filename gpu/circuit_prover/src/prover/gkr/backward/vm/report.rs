@@ -37,6 +37,7 @@ use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
 use era_cudart::event::{CudaEvent, elapsed_time};
+use era_cudart::execution::KernelFunction;
 use era_cudart::result::{CudaResult, CudaResultWrap};
 use era_cudart::stream::CudaStream;
 use era_cudart_sys::{CudaFuncAttributes, cudaFuncGetAttributes};
@@ -71,9 +72,14 @@ pub(super) const SUMMARY_MD: &str = "bwd_coeff_profile_summary.md";
 /// sidecar exists, so a stale pin is a test failure rather than three sources
 /// disagreeing.
 ///
-/// Note what the sweep found about that coordinate: c2 through c7 all run at 6
-/// blocks per SM and their medians sit inside [`SELECTION_TIE_FRACTION`] of each
-/// other, so the tier — not this exact member — is the finding.
+/// Note what the sweep actually found about that coordinate, from
+/// `target/gkr/bwd_coeff_corpus_sweep.csv` (add_sub L0 R0, const bank): c2 through
+/// c7 all run at 6 blocks per SM, but they do NOT all tie. Against the fastest
+/// median (528.384 us at c4/c5/c6): c3 is +0.78%, c7 is +0.19% — inside
+/// [`SELECTION_TIE_FRACTION`] — while **c2 is +1.55%, outside the band.** That is
+/// precisely why the selector produced c3 and not c2: the tie band is c3..c7 and
+/// c3 is its smallest member. The occupancy TIER is wider than the timing tie, so
+/// "6 blocks per SM" is not by itself a reason to expect equal medians.
 pub(super) const PROFILE_CELLS_ENV: &str = "BWD_COEFF_PROFILE_CELLS";
 pub(super) const PROFILE_DEFAULT_CELLS: u8 = 3;
 
@@ -100,7 +106,7 @@ pub(super) const PROFILE_DEFAULT_CELLS: u8 = 3;
 /// ```
 ///
 /// then `duration ratio = dur_new / dur_inc` and
-/// `model ratio = (inst_new / ipc_new) / (inst_inc / ipc_inc)`.
+/// `cycles ratio = (inst_new / ipc_new) / (inst_inc / ipc_inc)`.
 ///
 /// A previous revision pinned these from an INTERMEDIATE capture that was later
 /// overwritten, so four of them disagreed with the files they cited while the
@@ -123,13 +129,28 @@ pub(super) const PINNED_DRAM_GB_INCUMBENT: f64 = 8.845;
 pub(super) const PINNED_L2_MISS_SECTORS_NEW_M: f64 = 271.6;
 pub(super) const PINNED_L2_MISS_SECTORS_INCUMBENT_M: f64 = 276.6;
 /// `(instructions / elapsed IPC)` new over incumbent, and the duration ratio the
-/// same capture pair measured. The two agreeing is the claim that the occupancy
-/// and instruction-count model accounts for the gap without a cache term.
+/// same capture pair measured.
 ///
-/// ELAPSED IPC, not active: the thing being predicted is elapsed duration.
+/// **This pair is NOT a model that predicts the gap — read what it actually
+/// says.** `smsp__inst_executed.sum / sm__inst_executed.sum.per_cycle_elapsed` IS
+/// `sm__cycles_elapsed` by construction, so this ratio is the CYCLES ratio and it
+/// differs from the duration ratio only by the two kernels' SM-clock ratio. The
+/// 0.03% agreement therefore demonstrates that both kernels boosted to the same
+/// clock (2.3070 vs 2.3077 GHz) — it is an algebraic identity holding, not evidence
+/// that instruction count explains the slowdown. Corroboration that it is an
+/// identity: the residual SHRANK from 0.3% to 0.03% exactly when the metric was
+/// switched from active to elapsed IPC, which is what the identity predicts.
+///
+/// What IS real, and what the generated summary says: the cycles ratio 1.1785
+/// DECOMPOSES as +37% instructions offset by +16% IPC. That decomposition is a
+/// correct account of where the extra cycles sit. The conclusion that the gap is
+/// not a cache effect has independent support from the DRAM and L2 counters above,
+/// not from this pair.
+///
+/// ELAPSED IPC, not active: the quantity being decomposed is elapsed duration.
 /// (6808836096 / 412.528688) / (4971730944 / 354.995755) = 1.178513, against a
-/// measured 7.153984 / 6.068544 = 1.178863 — a residual of 0.03%.
-pub(super) const PINNED_MODEL_RATIO: f64 = 1.1785;
+/// measured 7.153984 / 6.068544 = 1.178863 — clocks matched to 0.03%.
+pub(super) const PINNED_CYCLES_RATIO: f64 = 1.1785;
 pub(super) const PINNED_PROFILED_DURATION_RATIO: f64 = 1.1789;
 
 /// Matching incumbent launches `ncu` must skip to reach the first TIMED one.
@@ -370,6 +391,61 @@ pub(super) fn executor_attributes(
         ),
         (BwdRegime::Ext, depth, _) => panic!("continuation fold depth D{depth} is outside D0..D3"),
     }
+}
+
+/// A bare entry point as a [`KernelFunction`].
+///
+/// The macro-generated `...Function` wrappers hold their signature in a PRIVATE
+/// tuple field, so a kernel declared in another module cannot be wrapped from here.
+/// Both CUDA queries this module makes of the incumbent — `cudaFuncGetAttributes`
+/// and the occupancy API — need only the entry-point address, so this adapter
+/// supplies exactly that and no launch path (`Signature = ()` makes
+/// `KernelFunction::launch` uncallable, which is the point: nothing may launch
+/// through this).
+struct RawKernel(*const c_void);
+
+impl KernelFunction for RawKernel {
+    type Signature = ();
+
+    fn as_ptr(&self) -> *const c_void {
+        self.0
+    }
+}
+
+/// The INCUMBENT `add_sub` layer-0 R0 entry point.
+fn incumbent_r0_kernel() -> RawKernel {
+    use crate::prover::gkr::backward::compact::ab_gkr_main_round0_flat_constant_compact_e4_kernel;
+    RawKernel(ab_gkr_main_round0_flat_constant_compact_e4_kernel as *const c_void)
+}
+
+/// The attributes of the incumbent `add_sub` layer-0 R0 kernel, measured the same
+/// way as the new lineage's.
+///
+/// Its register count is the head-to-head's headline root cause — 44 registers
+/// against the new executor's 76 is what buys the incumbent 10 blocks/SM instead of
+/// 6 — and it previously existed only inside a profiler capture under `target/`,
+/// which means the published comparison could not be audited against the thing it
+/// blames. `cudaFuncGetAttributes` needs no profiler, so the head-to-head measures
+/// it in the same run that produces the ratio.
+pub(super) fn incumbent_r0_attributes() -> KernelAttributes {
+    KernelAttributes::of(incumbent_r0_kernel().as_ptr())
+}
+
+/// Blocks per SM and theoretical occupancy of the incumbent at its own block
+/// width, so the published comparison carries BOTH sides of the occupancy story.
+///
+/// The incumbent runs the same 128-thread block as the new lineage and declares no
+/// dynamic shared memory, which is why its occupancy is a pure register story.
+pub(super) fn incumbent_r0_occupancy(device: &DeviceFacts) -> (i32, f32) {
+    let blocks = era_cudart::occupancy::max_active_blocks_per_multiprocessor(
+        &incumbent_r0_kernel(),
+        BWD_COEFF_THREADS_PER_BLOCK as i32,
+        0,
+    )
+    .expect("query incumbent round-0 occupancy");
+    let occupancy =
+        blocks as f32 * BWD_COEFF_THREADS_PER_BLOCK as f32 / device.max_threads_per_sm as f32;
+    (blocks, occupancy)
 }
 
 // ── Launch geometry, as measured ──────────────────────────────────────────────
@@ -883,18 +959,23 @@ mod tests {
             PINNED_L2_MISS_SECTORS_NEW_M < PINNED_L2_MISS_SECTORS_INCUMBENT_M,
             "and on it missing L2 fewer times"
         );
-        // "The model closes the gap": within a quarter of a percent, which is far
-        // tighter than the ~1% the report claims the ratio is good to.
-        let residual = (PINNED_MODEL_RATIO / PINNED_PROFILED_DURATION_RATIO - 1.0).abs();
+        // The cycles ratio and the duration ratio agreeing means the two kernels
+        // ran at the same SM CLOCK — `inst / elapsed-IPC` is `cycles_elapsed` by
+        // construction, so this is an identity holding, not a model predicting.
+        // What it buys the paragraph is the right to compare cycle counts across
+        // the pair at all; the +37%-instructions / +16%-IPC decomposition is the
+        // real content, and the no-cache-term conclusion rests on the two counters
+        // asserted above.
+        let clock_gap = (PINNED_CYCLES_RATIO / PINNED_PROFILED_DURATION_RATIO - 1.0).abs();
         assert!(
-            residual < 0.0025,
-            "the instruction/IPC model must reproduce the measured duration ratio; \
-             residual is {:.4}%",
-            residual * 100.0
+            clock_gap < 0.0025,
+            "the cycles ratio and the duration ratio must agree, i.e. the pair must \
+             have run at the same clock; they differ by {:.4}%",
+            clock_gap * 100.0
         );
         // Both ratios describe the same measured slowdown, so they must agree on
         // its sign and rough size too.
-        for ratio in [PINNED_MODEL_RATIO, PINNED_PROFILED_DURATION_RATIO] {
+        for ratio in [PINNED_CYCLES_RATIO, PINNED_PROFILED_DURATION_RATIO] {
             assert!(
                 (1.0..2.0).contains(&ratio),
                 "a duration ratio outside 1..2 is a pinning error, not a measurement"

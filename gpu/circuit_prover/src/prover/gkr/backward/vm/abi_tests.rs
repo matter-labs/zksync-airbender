@@ -22,7 +22,9 @@ use std::collections::HashMap;
 use std::mem::{align_of, offset_of, size_of};
 
 use gkr_eval_isa::bwd::coeff::bind::{BoundColumn, BoundSourceWindow, CoeffSourceBinding};
-use gkr_eval_isa::bwd::coeff::encode::EncodedProgram;
+use gkr_eval_isa::bwd::coeff::encode::{
+    EncodedProgram, CELL_ENDPOINT0_LANE_SHIFT, HEADER_OPCODE_SHIFT, LANE_MASK, MODE_CELL,
+};
 use gkr_eval_isa::bwd::coeff::limits::{
     continuation_opcode, in_scope, r0_opcode, TermCategory, DESCRIPTOR_ALIGNMENT_BYTES,
     KERNEL_ARGUMENT_CEILING_BYTES, MAX_SOURCE_WINDOWS,
@@ -820,6 +822,17 @@ fn cuda_constants_match_the_rust_mirror() {
             BWD_COEFF_FOLD_FACTOR_CAP as u64,
         ),
         ("BWD_COEFF_MAX_FOLD_DEPTH", BWD_COEFF_MAX_FOLD_DEPTH as u64),
+        // Both weight-group bases: the prelude WRITES the split and
+        // `fold_factor_base` READS it, and this is the only direction that catches
+        // a CUDA-only edit to either.
+        (
+            "BWD_COEFF_FOLD_FACTOR_SHALLOW_BASE",
+            BWD_COEFF_FOLD_FACTOR_SHALLOW_BASE as u64,
+        ),
+        (
+            "BWD_COEFF_FOLD_FACTOR_DEEP_BASE",
+            BWD_COEFF_FOLD_FACTOR_DEEP_BASE as u64,
+        ),
         ("BWD_COEFF_C_INIT_NONE", BWD_COEFF_C_INIT_NONE as u64),
     ];
     for (name, value) in expected {
@@ -972,6 +985,7 @@ fn every_launched_symbol_is_declared_by_the_cuda_header() {
 const FAKE_READ_BASE: usize = 0x1000_0000;
 const FAKE_PUBLISH_BASE: usize = 0x2000_0000;
 const BF_STRIDE: u32 = 4 * 64;
+const E4_STRIDE: u32 = 16 * 64;
 
 fn bf_column(base: usize) -> ResolvedColumn {
     ResolvedColumn {
@@ -979,6 +993,19 @@ fn bf_column(base: usize) -> ResolvedColumn {
         ptr: base as *const u8,
         matrix_base: base as *mut u8,
         stride_bytes: BF_STRIDE,
+    }
+}
+
+/// A PUBLISH backing is always E4: §10.2 publishes `2 * rows` E4 per column and
+/// the device stores through it as E4 unconditionally, which `lower_window`
+/// enforces (`PublishBackingNotExt`). Modelling it as BF would encode the wrong
+/// shape as legal.
+fn e4_column(base: usize) -> ResolvedColumn {
+    ResolvedColumn {
+        is_e4: true,
+        ptr: base as *const u8,
+        matrix_base: base as *mut u8,
+        stride_bytes: E4_STRIDE,
     }
 }
 
@@ -1005,7 +1032,7 @@ fn resolved_windows(windows: usize, target_depth: u8) -> Vec<ResolvedBwdCoeffSou
     (0..windows)
         .map(|w| ResolvedBwdCoeffSourceWindow {
             read: Some(bf_column(FAKE_READ_BASE + w * 0x1_0000)),
-            publish: materialize.then(|| bf_column(FAKE_PUBLISH_BASE + w * 0x1_0000)),
+            publish: materialize.then(|| e4_column(FAKE_PUBLISH_BASE + w * 0x1_0000)),
             backing_depth: target_depth,
             target_depth,
             materialize,
@@ -1046,12 +1073,33 @@ fn lower_err(
     }
 }
 
+/// A stream of `words` u16s that is structurally WALKABLE but semantically inert.
+///
+/// Every even word is a `C0Linear` header naming [`CoefficientRecipeId::ONE`] — a
+/// reserved literal, so it consumes no bank entry — and every odd word is a `Cell`
+/// record with a varying lane, giving a two-word record. The lowering does not
+/// interpret operands, but it DOES walk headers to bound the coefficient bank
+/// (`CoefficientIndexPastBank`), so an arbitrary word soup would make these
+/// fixtures name random bank indices. The lanes vary so the descriptor's
+/// copy-verbatim assertion is not satisfiable by the zero-initialized array.
+fn inert_words(words: usize) -> Vec<u16> {
+    (0..words)
+        .map(|w| {
+            if w % 2 == 0 {
+                (0 << HEADER_OPCODE_SHIFT) | CoefficientRecipeId::ONE.0 as u16
+            } else {
+                MODE_CELL | (((w / 2) as u16 & LANE_MASK) << CELL_ENDPOINT0_LANE_SHIFT)
+            }
+        })
+        .collect()
+}
+
 fn program(words: usize, c_init: Option<CoefficientRecipeId>) -> EncodedProgram {
     EncodedProgram {
         regime: BwdRegime::R0,
         budget: CellBudget::new(2).unwrap(),
         c_init,
-        words: (0..words).map(|w| w as u16).collect(),
+        words: inert_words(words),
     }
 }
 
@@ -1067,7 +1115,7 @@ fn program_for_round(round: u8, words: usize) -> EncodedProgram {
         },
         budget: CellBudget::new(2).unwrap(),
         c_init: None,
-        words: (0..words).map(|w| w as u16).collect(),
+        words: inert_words(words),
     }
 }
 
@@ -1276,12 +1324,97 @@ fn a_c_init_outside_the_bank_is_rejected() {
     }
 }
 
+/// A supplied bank must COVER the program's term headers, not merely fit the
+/// storage cap.
+///
+/// `coeff_bank_pointer::operator[]` has no bound of its own, so this is the only
+/// thing between a short coefficient vector and an out-of-bounds device read — a
+/// stale `ab_gkr_flat_coefficients` slot on the `Constant` bank, past-the-buffer on
+/// `DevicePointer`. `c_init` had this check; term headers did not.
+#[test]
+fn a_term_coefficient_outside_the_bank_is_rejected() {
+    let binding = matrix_binding(1, 0);
+    let bound = resolved_windows(1, 0);
+    // One `C0Linear` header naming bank entry 3, then its `Cell` record.
+    let mut words = inert_words(2);
+    words[0] = (0 << HEADER_OPCODE_SHIFT) | CoefficientRecipeId::from_bank_index(3).0 as u16;
+    let named = EncodedProgram {
+        regime: BwdRegime::R0,
+        budget: CellBudget::new(2).unwrap(),
+        c_init: None,
+        words,
+    };
+
+    for bank in [BwdCoeffBank::Constant, BwdCoeffBank::DevicePointer] {
+        assert_eq!(
+            lower_err(
+                lower_bwd_coeff(
+                    &named,
+                    &binding,
+                    &round_binding(&bound),
+                    vec![E4::ZERO; 3],
+                    0x5000_0000 as *const E4,
+                    bank,
+                ),
+                "a bank that does not reach the program's largest index must be rejected",
+            ),
+            BwdCoeffLowerError::CoefficientIndexPastBank {
+                index: 3,
+                entries: 3
+            }
+        );
+        // One more entry and the same program lowers: the check is the COVERAGE
+        // relation, not a blanket rejection of banked indices.
+        lower_bwd_coeff(
+            &named,
+            &binding,
+            &round_binding(&bound),
+            vec![E4::ZERO; 4],
+            0x5000_0000 as *const E4,
+            bank,
+        )
+        .expect("a bank that covers the largest index must lower");
+    }
+}
+
+/// A publish backing that is not E4 is rejected.
+///
+/// The device stores 16-byte E4 endpoint pairs through `window_publish_column`
+/// unconditionally (§10.2), so a BF publish column would be written four times past
+/// its own element width. `check_column_geometry` cannot see it: a BF column's
+/// stride IS a whole number of BF elements.
+#[test]
+fn a_publish_backing_that_is_not_ext_is_rejected() {
+    let depth = BWD_COEFF_PUBLISH_TARGET_DEPTH;
+    let binding = matrix_binding(1, depth);
+    let mut bound = resolved_windows(1, depth);
+    assert!(
+        bound[0].publish.is_some_and(|publish| publish.is_e4),
+        "the fixture must model a publish backing as E4 — that is the shape §10.2 defines"
+    );
+    bound[0].publish = Some(bf_column(FAKE_PUBLISH_BASE));
+    assert_eq!(
+        lower_err(
+            lower_bwd_coeff(
+                &program_for_round(depth, 2),
+                &binding,
+                &round_binding(&bound),
+                Vec::new(),
+                std::ptr::null(),
+                BwdCoeffBank::Constant,
+            ),
+            "a BF publish backing must be rejected",
+        ),
+        BwdCoeffLowerError::PublishBackingNotExt { window: 0 }
+    );
+}
+
 #[test]
 fn a_publish_range_may_not_alias_a_read_range() {
     let depth = BWD_COEFF_PUBLISH_TARGET_DEPTH;
     let binding = matrix_binding(1, depth);
     let mut bound = resolved_windows(1, depth);
-    bound[0].publish = Some(bf_column(FAKE_READ_BASE));
+    bound[0].publish = Some(e4_column(FAKE_READ_BASE));
     let error = lower_err(
         lower_bwd_coeff(
             &program_for_round(depth, 2),
@@ -1342,7 +1475,7 @@ fn resolved_window_at(backing_depth: u8, target_depth: u8) -> ResolvedBwdCoeffSo
     let materialize = target_depth >= BWD_COEFF_PUBLISH_TARGET_DEPTH;
     ResolvedBwdCoeffSourceWindow {
         read: Some(bf_column(FAKE_READ_BASE)),
-        publish: materialize.then(|| bf_column(FAKE_PUBLISH_BASE)),
+        publish: materialize.then(|| e4_column(FAKE_PUBLISH_BASE)),
         backing_depth,
         target_depth,
         materialize,
@@ -1390,7 +1523,7 @@ fn materialization_is_the_static_depth_three_threshold() {
         // The threshold is not negotiable from either side.
         let mut flipped = bound;
         flipped[0].materialize = !expected;
-        flipped[0].publish = (!expected).then(|| bf_column(FAKE_PUBLISH_BASE));
+        flipped[0].publish = (!expected).then(|| e4_column(FAKE_PUBLISH_BASE));
         assert_eq!(
             lower_err(
                 lower_one(&flipped, target_depth),

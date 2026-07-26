@@ -14,9 +14,12 @@
 //! reach; the GPU crate's `bwd_coeff_complete_corpus_census` extends it with the
 //! conditional `blake2_with_compression` setup.
 //!
-//! Parity is checked against an independent oracle — the DISTILLED spine
-//! evaluated at `X = 0, 1, 2` over affine source pairs, then interpolated. Both
-//! coefficients are checked in the `Ext` regime. In `R0` only `acc_c2` can be:
+//! Parity is checked against the DISTILLED spine evaluated at `X = 0, 1, 2` over
+//! affine source pairs, then interpolated. That oracle is independent of the
+//! COEFFICIENT lowering but not of `distill`, which sits on both sides — the
+//! canonical-DAG oracle that is independent of both is `bwd_coeff_parity.rs`, over
+//! five hand-built layers. Both coefficients are checked in the `Ext` regime. In
+//! `R0` only `acc_c2` can be:
 //! `acc_c0` there reads materialized OUTPUT columns, which requires a
 //! witness-consistent oracle (`read(output) == cone(0)`), and that is what the
 //! synthetic layers in `bwd_coeff_parity.rs` construct. `r0_acc_c0_nonzero_rows`
@@ -405,8 +408,32 @@ fn check_parity(
 
 // ── Gates ────────────────────────────────────────────────────────────────────
 
+/// Corpus-scale lowering, value parity against the DISTILLED SPINE, and the
+/// frozen census.
+///
+/// The oracle is `distilled.roots[0].expr` (`spine_at`), NOT the canonical DAG, so
+/// a distillation bug is invisible to this gate by construction — `distill` is on
+/// both sides of the comparison. The canonical-DAG oracle exists and is genuinely
+/// independent, but it runs over five hand-built layers in
+/// `bwd_coeff_parity.rs::semantic_coefficients_match_canonical_dag_on_synthetic_rows`;
+/// this file's job is real cones at scale, not oracle independence.
+///
+/// Coverage is therefore split, exactly as the module doc says:
+///
+///   * `acc_c2` — value-compared on every layer x regime x row;
+///   * `acc_c0` — value-compared in the `Ext` regime only; and
+///   * R0's `acc_c0` — NOT value-compared here, only counted non-zero
+///     (`r0_acc_c0_nonzero_rows`). It reads materialized OUTPUT columns, which
+///     needs a witness-consistent oracle (`read(output) == cone(0)`) across
+///     layers; this file's `read_pair` is a deliberately independent FNV model
+///     that cannot supply that. Its independent anchor is
+///     `bwd_coeff_parity.rs`'s synthetic layers, and §12.4's own gate for R0 on
+///     real cones is the COST pin below
+///     (`terms[R0][C0Linear] == claim_root_sinks["Inner"] == 1959`) — value parity
+///     alone is insufficient for the output shortcut, which is why the design asks
+///     for the cost identity instead.
 #[test]
-fn corpus_lowers_and_matches_the_canonical_dag_with_a_pinned_census() {
+fn corpus_lowers_and_matches_the_distilled_spine_with_a_pinned_census() {
     let c = census();
 
     assert_eq!(c.lowering_errors, Vec::<String>::new(), "every corpus layer must lower");
@@ -417,6 +444,8 @@ fn corpus_lowers_and_matches_the_canonical_dag_with_a_pinned_census() {
     assert_eq!(c.parity_failures, Vec::<String>::new(), "coefficient parity");
     assert_eq!(c.parity_c2_ok, 114 * ROWS, "acc_c2 checked on every layer x regime x row");
     assert_eq!(c.parity_c0_ok_ext, 57 * ROWS, "acc_c0 checked on every Ext layer x row");
+    // NOT a value comparison — see the doc comment. This only proves R0's `acc_c0`
+    // is live on every layer, i.e. the output shortcut is not silently zero.
     assert_eq!(
         c.r0_acc_c0_nonzero_rows,
         57 * ROWS,
@@ -691,29 +720,63 @@ fn bwd_coeff_committed_layout_census() {
 /// §3.1): `blake2_with_compression` has no committed `_layout_gkr.json`, so the
 /// in-scope maxima above are exactly the 12 mandatory layouts, and the diagnostic
 /// set differs from them only by that one conditional circuit.
+///
+/// **Every maximum is compared against a MEASUREMENT, never against its own
+/// `in_scope` counterpart.** `limits.rs`'s diagnostic maxima are literally defined
+/// as aliases (`MAX_TERMS: usize = in_scope::MAX_TERMS`), so `>=` or `==` against
+/// those counterparts is a tautology that cannot fail — which would make
+/// `limits.rs`'s claim that "this module is where a divergence shows up" false.
+/// Comparing the diagnostic constants to the maxima this file censuses instead
+/// makes the ALIASING itself the thing under test: replacing an alias with a
+/// literal, which is the edit that would let the two sets drift, trips here.
+///
+/// What still cannot be checked from this crate is whether the delegation wrapper
+/// really compiles the same circuit — that needs the conditional setup, which has
+/// no committed layout. The GPU crate's `bwd_coeff_complete_corpus_census` is the
+/// empirical proof.
 #[test]
 fn conditional_blake2_scope_is_recorded_separately() {
+    let rows = committed_rows();
+    let mut measured = CoeffCensus::default();
+    for row in rows {
+        measured.merge_max(&row.census);
+    }
+
     assert_eq!(in_scope::CIRCUITS, FIXTURES.len());
+    // Exact deltas, not `>`: the conditional circuit contributes 8 layers x 2
+    // regimes and one circuit, and those three literals are the whole difference
+    // between the two sets.
     assert_eq!(with_conditional_blake2::CIRCUITS, in_scope::CIRCUITS + 1);
-    assert!(
-        with_conditional_blake2::COORDINATES > in_scope::COORDINATES,
-        "the diagnostic set must actually include the conditional circuit"
+    assert_eq!(with_conditional_blake2::LAYERS, in_scope::LAYERS + 8);
+    assert_eq!(with_conditional_blake2::COORDINATES, in_scope::COORDINATES + 16);
+    assert_eq!(
+        with_conditional_blake2::COORDINATES,
+        2 * with_conditional_blake2::LAYERS,
+        "every layer is censused in both regimes"
     );
-    // Diagnostic maxima may never be SMALLER than in-scope ones: they are a
-    // superset census.
-    assert!(with_conditional_blake2::MAX_COEFFICIENT_RECIPES >= in_scope::MAX_COEFFICIENT_RECIPES);
+
+    // The diagnostic maxima against the MEASURED in-scope ones. Equality is the
+    // claim: `get_blake2_with_compression_circuit_setup` compiles
+    // `define_blake2_with_extended_control_delegation_circuit` at the same
+    // `DOMAIN_SIZE_LOG2` with caches on, which is byte-for-byte the call that
+    // generated the committed `blake2_with_extended_control_layout_gkr.json`, so
+    // the conditional circuit is the SAME GKR circuit as an already-mandatory one.
+    // No format is sized from these, which is why equality is allowed at all.
+    assert_eq!(with_conditional_blake2::MAX_COEFFICIENT_RECIPES, measured.coefficient_recipes);
+    assert_eq!(with_conditional_blake2::MAX_TERMS, measured.terms);
+    assert_eq!(with_conditional_blake2::MAX_SOURCES, measured.sources);
+    assert_eq!(with_conditional_blake2::MAX_PROJECTIONS, measured.projections);
+    assert_eq!(
+        with_conditional_blake2::MAX_LOWER_BOUND_PROGRAM_BYTES,
+        measured.lower_bound_program_bytes
+    );
+    assert_eq!(
+        with_conditional_blake2::MAX_UPPER_BOUND_PROGRAM_BYTES,
+        measured.upper_bound_program_bytes
+    );
+    // A superset census may never report a SMALLER maximum than the subset it
+    // contains, which is the invariant the equalities above happen to satisfy.
     assert!(with_conditional_blake2::MAX_TERMS >= in_scope::MAX_TERMS);
-    assert!(with_conditional_blake2::MAX_SOURCES >= in_scope::MAX_SOURCES);
-    assert!(
-        with_conditional_blake2::MAX_LOWER_BOUND_PROGRAM_BYTES
-            >= in_scope::MAX_LOWER_BOUND_PROGRAM_BYTES
-    );
-    // No format is sized from the diagnostic set, so it is allowed to be equal —
-    // and it IS equal here, because `get_blake2_with_compression_circuit_setup`
-    // compiles the same GKR circuit as the committed
-    // `blake2_with_extended_control_layout_gkr.json`. The GPU crate's
-    // `bwd_coeff_complete_corpus_census` is what proves that empirically.
-    assert_eq!(with_conditional_blake2::MAX_TERMS, in_scope::MAX_TERMS);
 }
 
 /// The guard behind the decision NOT to merge repeated challenge factors into an

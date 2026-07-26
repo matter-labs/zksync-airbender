@@ -26,6 +26,13 @@
 //! convention of `gkr_eval_isa::bwd::interp::sumcheck_fold_point`; the fold
 //! WEIGHTS coincide, only the backing offsets differ.
 
+/// Proof to the always-compiled `super::gating` module that this file was built.
+///
+/// It is the only thing that distinguishes "the GPU gates passed" from "the GPU
+/// gates were never compiled", which a `--features bench`-less run cannot tell
+/// apart on its own.
+pub(super) const GPU_PARITY_SUITE_COMPILED: bool = true;
+
 use std::collections::{HashMap, HashSet};
 use std::mem::{align_of, size_of};
 
@@ -2652,12 +2659,12 @@ use super::compile::{
 use super::report::{
     assert_profile_cells_match_persisted_selection, executor_attributes, log_selection,
     poison_contributions, profile_cells, record_summary_section, render_selection_csv,
-    render_selection_json, render_sweep_csv, select_budgets, sweep_output_path,
-    time_cuda_launches, BudgetChoice, DeviceFacts, LaunchGeometry, SweepRow, TimingSummary,
+    render_selection_json, render_sweep_csv, select_budgets, sweep_output_path, time_cuda_launches,
+    BudgetChoice, DeviceFacts, KernelAttributes, LaunchGeometry, SweepRow, TimingSummary,
     CORPUS_CSV, FOCUSED_CSV, INCUMBENT_CORRECTNESS_LAUNCHES, INCUMBENT_PROFILE_LAUNCH_SKIP,
-    PINNED_DRAM_GB_INCUMBENT, PINNED_DRAM_GB_NEW, PINNED_L2_MISS_SECTORS_INCUMBENT_M,
-    PINNED_L2_MISS_SECTORS_NEW_M, PINNED_MODEL_RATIO, PINNED_PROFILED_DURATION_RATIO,
-    SELECTION_JSON, TIMING_ITERS, WARMUP_ITERS,
+    PINNED_CYCLES_RATIO, PINNED_DRAM_GB_INCUMBENT, PINNED_DRAM_GB_NEW,
+    PINNED_L2_MISS_SECTORS_INCUMBENT_M, PINNED_L2_MISS_SECTORS_NEW_M,
+    PINNED_PROFILED_DURATION_RATIO, SELECTION_JSON, TIMING_ITERS, WARMUP_ITERS,
 };
 
 /// Every budget §13 compiles an artifact for.
@@ -3452,13 +3459,56 @@ fn bwd_coeff_corpus_budget_sweep() {
             format!("- {}: {counts:?}\n", class.label())
         })
         .collect::<String>();
+    // Registers and spills PER ROUND CLASS, measured from these rows. The
+    // head-to-head section below can only show the R0 executor's 76, so a reader
+    // who took the register count from there alone would understate D3 by 22 — the
+    // deep-fold specializations are the ones the occupancy story turns on. Emitted
+    // as a range so a per-bank or per-budget divergence is visible rather than
+    // averaged away.
+    let register_table = BwdRoundClass::ALL
+        .iter()
+        .filter_map(|class| {
+            let class_rows: Vec<_> = rows
+                .iter()
+                .filter(|row| row.round_class == *class)
+                .collect();
+            let registers = class_rows.iter().map(|row| row.attributes.registers);
+            let (low, high) = (registers.clone().min()?, registers.max()?);
+            let spills: usize = class_rows
+                .iter()
+                .map(|row| row.attributes.local_size_bytes)
+                .max()
+                .unwrap_or(0);
+            let blocks = class_rows
+                .iter()
+                .map(|row| row.geometry.active_blocks_per_sm);
+            Some(format!(
+                "| {} | {} | {} | {}-{} |\n",
+                class.label(),
+                if low == high {
+                    low.to_string()
+                } else {
+                    format!("{low}-{high}")
+                },
+                spills,
+                blocks.clone().min().unwrap_or(0),
+                blocks.max().unwrap_or(0),
+            ))
+        })
+        .collect::<String>();
     record_summary_section(
         "In-scope corpus sweep",
         &format!(
             "Sweep CSV: `{}`\n\nSelection CSV: `{}`\n\nSelection metadata: `{}`\n\n\
              {} configurations over {} layers; {} configurations could not reach the \
              {SWEEP_WAVES}-wave saturation target within {} GiB of synthetic backing per \
-             coordinate.\n\nSelected budget histogram per round class:\n\n{histogram}",
+             coordinate.\n\nSelected budget histogram per round class:\n\n{histogram}\n\
+             Registers and spills per round class, measured via `cudaFuncGetAttributes` \
+             over every configuration in the CSV. The register count is a property of the \
+             SPECIALIZATION, not of the budget, so it is the same across c2..c16 within a \
+             class; blocks/SM varies with the budget's dynamic shared memory.\n\n\
+             | round class | registers | max local spill bytes | blocks/SM |\n\
+             |---|---|---|---|\n{register_table}",
             csv_path.display(),
             selection_csv.display(),
             selection_json.display(),
@@ -3498,16 +3548,26 @@ use crate::prover::gkr::backward::{
 };
 use crate::prover::tests::prepare_basic_unrolled_async_backward_fixture;
 
-/// The exact NVTX range the `ncu` workflow captures. Domain and message are
-/// spelled out here because the profiler matches the literal
-/// `message@domain` string.
+/// The exact NVTX range the `ncu` workflow captures.
+///
+/// Domain and message are spelled out separately because `ncu --nvtx-include`
+/// matches the literal `Domain@Range` string — DOMAIN FIRST, i.e.
+/// `circuit_prover.tests@test.gpu.bwd_coeff.add_sub_l0_r0`. The reversed order
+/// matches nothing and `ncu` reports `No kernels were profiled` instead of
+/// failing, which is how this plan produced a vacuous profiling run once already.
+/// (`nsys --nvtx-capture` takes the OPPOSITE order, `range@domain`.)
 const PROFILE_NVTX_DOMAIN: &str = "circuit_prover.tests";
 const PROFILE_NVTX_MESSAGE: &str = "test.gpu.bwd_coeff.add_sub_l0_r0";
 
 /// The incumbent launch sequence this comparison times, named in the report so a
 /// reader knows exactly what the ratio is against.
+///
+/// The symbol is the REAL one — `round0_flat.cu:19` — and it is the same string the
+/// generated `ncu` incumbent filter uses, so a reader can paste either. A previous
+/// revision dropped the `_e4` and published a symbol that does not exist in the
+/// binary, which `ncu` answers with `No kernels were profiled` rather than an error.
 const INCUMBENT_R0_SEQUENCE: &str = "compact flat round-0 constant evaluator \
-(ab_gkr_main_round0_flat_constant_compact_kernel)";
+(ab_gkr_main_round0_flat_constant_compact_e4_kernel)";
 
 /// Host-evaluate one incumbent coefficient recipe list in the fixture's challenge
 /// context — the same arithmetic `GpuGKRMainLayerBackwardState` performs on the
@@ -3594,6 +3654,14 @@ struct HeadToHead {
     rows: usize,
     folding_steps: usize,
     incumbent: TimingSummary,
+    /// The incumbent's own registers/spills, measured in this run.
+    ///
+    /// Published beside the new lineage's because the register gap is what the
+    /// occupancy half of the slowdown IS: without it the durable artifact names a
+    /// cause it never states a number for.
+    incumbent_attributes: KernelAttributes,
+    /// The incumbent's blocks/SM and theoretical occupancy at its own block width.
+    incumbent_occupancy: (i32, f32),
     /// One entry per requested budget, ascending.
     new: Vec<SweepRow>,
 }
@@ -3907,6 +3975,8 @@ fn head_to_head_add_sub_l0_r0(budgets: &[u8], nvtx_budget: Option<u8>) -> HeadTo
         rows,
         folding_steps,
         incumbent,
+        incumbent_attributes: super::report::incumbent_r0_attributes(),
+        incumbent_occupancy: super::report::incumbent_r0_occupancy(&device),
         new,
     }
 }
@@ -4027,21 +4097,38 @@ fn head_to_head_body(
            FEWER DRAM bytes than the incumbent ({:.3} GB vs {:.3} GB, {:+.1}%) and fewer \
            L2-miss sectors ({:.1} M vs {:.1} M), so consolidating the layout can only \
            reduce traffic where the new side is already ahead -- it cannot be hiding a \
-           regression. And the gap closes without any cache term: \
-           `instructions / elapsed-IPC` gives {:.4} against a measured duration ratio of \
-           {:.4}, a residual of {:.2}%.\n\n\
+           regression. THAT is what rules out a cache term.\n\
+         - Where the extra time sits: the cycles ratio {:.4} decomposes as **+37% \
+           instructions offset by +16% IPC**. Read that as a decomposition, NOT as a \
+           model that predicts the gap -- `instructions / elapsed-IPC` IS \
+           `cycles_elapsed` by construction, so its agreeing with the measured duration \
+           ratio {:.4} to {:.2}% shows only that the two kernels boosted to the SAME \
+           CLOCK, which is what makes their cycle counts comparable in the first place. \
+           The instruction and occupancy figures are CONSISTENT with the gap; they do not \
+           independently prove they cause it, and no measurement in the tree separates \
+           the instruction-count half from the occupancy half.\n\n\
          So the ratio is sound to about a percentage point; the cache-hit numbers are not \
          evidence about the lineage. The `.ncu-rep` files are the authority for all six \
          numbers in this paragraph; `report.rs` pins them with a re-pin duty.\n\n\
-         ### Per configuration (measured on the device)\n\n",
+         ### Per configuration (measured on the device)\n\n\
+         The INCUMBENT, measured the same way in the same run: registers {}, local spill \
+         bytes {}, static shared {} B, dynamic shared 0 B, {} blocks/SM, theoretical \
+         occupancy {:.2}%. That register gap against the rows below is the occupancy half \
+         of the slowdown, and it is the reason a budget's dynamic shared memory is not the \
+         binding constraint on either side at these cell counts.\n\n",
         PINNED_DRAM_GB_NEW,
         PINNED_DRAM_GB_INCUMBENT,
         (PINNED_DRAM_GB_NEW / PINNED_DRAM_GB_INCUMBENT - 1.0) * 100.0,
         PINNED_L2_MISS_SECTORS_NEW_M,
         PINNED_L2_MISS_SECTORS_INCUMBENT_M,
-        PINNED_MODEL_RATIO,
+        PINNED_CYCLES_RATIO,
         PINNED_PROFILED_DURATION_RATIO,
-        (PINNED_MODEL_RATIO / PINNED_PROFILED_DURATION_RATIO - 1.0).abs() * 100.0,
+        (PINNED_CYCLES_RATIO / PINNED_PROFILED_DURATION_RATIO - 1.0).abs() * 100.0,
+        outcome.incumbent_attributes.registers,
+        outcome.incumbent_attributes.local_size_bytes,
+        outcome.incumbent_attributes.static_smem_bytes,
+        outcome.incumbent_occupancy.0,
+        outcome.incumbent_occupancy.1 * 100.0,
     ));
     for row in &outcome.new {
         writeln!(
@@ -4102,7 +4189,8 @@ fn head_to_head_body(
 
 /// The single profiler selector the brief specifies: after warmup, ONE incumbent
 /// launch sequence and ONE new launch sequence, with only the new one inside the
-/// registered NVTX range `test.gpu.bwd_coeff.add_sub_l0_r0@circuit_prover.tests`.
+/// registered NVTX range `circuit_prover.tests@test.gpu.bwd_coeff.add_sub_l0_r0`
+/// (`ncu --nvtx-include` order: DOMAIN first).
 #[test]
 #[ignore] // GPU profiling; run under `ncu` through with_gpu_lock.sh.
 #[cfg(not(no_cuda))]

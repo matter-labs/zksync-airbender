@@ -33,8 +33,8 @@ use gkr_eval_isa::bwd::coeff::encode::{
     OperandRole, PLAN_ACTION_MASK, PLAN_DELTA_ACTION_SHIFT, PLAN_DELTA_LANE_SHIFT,
     PLAN_ENDPOINT0_ACTION_SHIFT, PLAN_ENDPOINT0_LANE_SHIFT, ShortestForm, SourceCoord,
     category_arity, category_of, category_role, certify_encoding, decode_program, disassemble,
-    encode_instrs, encode_program, is_move, move_width, opcode_of, opcode_table, operand_width,
-    program_records, term_category, validate_program,
+    encode_instrs, encode_program, is_move, max_coefficient_bank_index, move_width, opcode_of,
+    opcode_table, operand_width, program_records, term_category, validate_program,
 };
 use gkr_eval_isa::bwd::coeff::limits::{
     CONTINUATION_OPCODE_TABLE, HEADER_COEFFICIENT_BITS, HEADER_OPCODE_BITS,
@@ -358,7 +358,17 @@ fn common_encoded_sizes_match_the_design_table() {
 
 // ── 2. Canonical round-trip ──────────────────────────────────────────────────
 
-/// Every legal `(category, form)` combination the format admits.
+/// Every legal `(category, form)` combination the format admits, per `(regime,
+/// opcode)`: 3 moves + 9 unary + 40 Delta-binary + 18 pair = 70.
+///
+/// Exhaustive over SINGLE-RECORD forms. Deliberately NOT exhaustive over:
+///
+///   * ordered form x form operand pairs — a binary opcode is emitted only as
+///     `form x Direct` and (where the widths permit) squared, not as all 3 x 3
+///     product-of-forms combinations; and
+///   * `first_access` — it is `true` in exactly one form (the leading
+///     `Direct { coord(1, 5, true) }`), so this enumeration pins that the bit
+///     round-trips, not that it round-trips in every carrier.
 fn every_legal_form() -> Vec<(BwdRegime, DecodedInstr)> {
     let plans_for = |role: OperandRole| -> Vec<(PlanAction, PlanAction)> {
         let acts = |lane: u16| {
@@ -469,7 +479,85 @@ fn every_legal_form_round_trips_byte_for_byte() {
         seen_forms += 1;
     }
     println!("legal forms round-tripped: {seen_forms}");
-    assert!(seen_forms >= 60, "the enumeration went stale: only {seen_forms} forms");
+    // EXACT, not a floor. The enumeration is exhaustive over single-record forms
+    // per `(regime, opcode)` — 3 moves + 9 unary + 40 Delta-binary + 18 pair = 70
+    // — and 70 is a pure function of the two frozen opcode tables plus
+    // `category_arity` / `category_role` / `operand_width` and §9.5's canonical
+    // exclusions. A floor of 60 tolerated silently losing ten forms: dropping all
+    // eight `C2ProductBF_E4` forms (62) or every squared form of one squarable
+    // category (61-62) both passed it. Anything that moves this number is a
+    // deliberate ISA change and has to be re-stated here.
+    assert_eq!(seen_forms, 70, "the enumeration went stale: {seen_forms} forms");
+}
+
+/// `max_coefficient_bank_index` walks the stream a SECOND time, so its answer has
+/// to be the answer `decode_program` would give.
+///
+/// It is the guard a launch descriptor uses to prove the runtime coefficient bank
+/// covers every index the program names, and it deliberately does not decode — it
+/// classifies headers and skips records by mode. That is a second reader of the
+/// record-length rules, so the agreement is pinned here rather than assumed: over
+/// every legal form, over multi-instruction programs mixing all of them (which is
+/// what exercises the skip lengths), and over a squared and a move form (whose
+/// lengths are the two special cases).
+#[test]
+fn the_bank_index_bound_agrees_with_decode() {
+    let binding = windowed_binding(&[
+        (WindowFamily::BaseLayerWitness, 0, (0..64).collect()),
+        (WindowFamily::Setup, 0, (0..64).collect()),
+    ]);
+    let bank = bank(8);
+    let from_decode = |program: &EncodedProgram| -> Option<usize> {
+        validate_program(program, &binding, &bank)
+            .expect("fixture must validate")
+            .iter()
+            .filter_map(|instr| match instr {
+                DecodedInstr::Term { coefficient, .. } => coefficient.bank_index(),
+                DecodedInstr::Move { .. } => None,
+            })
+            .max()
+    };
+
+    let forms = every_legal_form();
+    // Every form on its own.
+    for (regime, instr) in &forms {
+        let program = encoded(*regime, 16, std::slice::from_ref(instr));
+        assert_eq!(
+            max_coefficient_bank_index(&program),
+            from_decode(&program),
+            "{instr:?}: the bound disagrees with decode"
+        );
+    }
+
+    // Then the whole enumeration of each regime as ONE program, so every record
+    // length is skipped over with later records still to classify.
+    for regime in [BwdRegime::R0, BwdRegime::Ext] {
+        let instrs: Vec<DecodedInstr> = forms
+            .iter()
+            .filter(|(r, _)| *r == regime)
+            .map(|(_, instr)| instr.clone())
+            .collect();
+        let program = encoded(regime, 16, &instrs);
+        let expected = from_decode(&program);
+        assert_eq!(max_coefficient_bank_index(&program), expected, "{regime:?} whole enumeration");
+        // Non-vacuity: the enumeration really does name a banked index, so this is
+        // not `None == None`.
+        assert!(expected.is_some(), "{regime:?}: the fixture must name a bank index");
+    }
+
+    // A reserved-literal-only program has no bank index at all, and the launch
+    // check must not demand one.
+    let literal = encoded(
+        BwdRegime::R0,
+        4,
+        &[term(
+            TermCategory::C0LinearBf,
+            ONE,
+            vec![DecodedUse::Direct { coord: coord(0, 0, false) }],
+        )],
+    );
+    assert_eq!(max_coefficient_bank_index(&literal), None);
+    assert_eq!(from_decode(&literal), None);
 }
 
 // ── Seeded randomized round-trip ─────────────────────────────────────────────
@@ -1042,9 +1130,12 @@ fn rejects_an_out_of_budget_lane() {
 /// A squared term repeats one record at every position, so `C2ProductBF_E4`
 /// carrying a single use would ask a resolver to produce one coordinate at BF
 /// width and at E4 width at the same time. Lowering cannot build it (the category
-/// is derived from the operand fields), but nothing downstream would notice: the
-/// words encode cleanly and both interpreters plus the GPU executor would read the
-/// one record twice. This is the only rejection, so it is the one that matters.
+/// is derived from the operand fields), and the two evaluators DISAGREE about what
+/// it would mean — `interpret_encoded_program` reads one resolution consumed
+/// twice, the GPU executor's mixed branch resolves both records — so BOTH
+/// directions of the wire language reject it: `encode_instrs` on the way out and
+/// `decode_program` on the way back in, which is the direction a foreign or
+/// mutated stream arrives through.
 #[test]
 fn rejects_a_squared_mixed_width_product() {
     assert_eq!(
@@ -1070,6 +1161,42 @@ fn rejects_a_squared_mixed_width_product() {
         )
         .unwrap_or_else(|e| panic!("{category:?} squared must encode: {e:?}"));
     }
+
+    // The decode direction, reached the only way the encoder allows: encode the
+    // SAME-width squared product (two byte-identical records) and retag the
+    // header's opcode to the mixed one. That is exactly the stream a mutated or
+    // foreign artifact would present, and `decode_program` — not just
+    // `validate_program`'s re-encode round trip — has to reject it.
+    let binding = dense_binding(8);
+    let mut program = encoded(
+        BwdRegime::R0,
+        4,
+        &[term(
+            TermCategory::C2ProductE4E4,
+            ONE,
+            vec![DecodedUse::Direct { coord: coord(0, 0, false) }],
+        )],
+    );
+    let mixed = opcode_of(BwdRegime::R0, TermCategory::C2ProductBfE4).expect("R0 encodes it");
+    program.words[0] = (program.words[0] & !(HEADER_OPCODE_MASK << HEADER_OPCODE_SHIFT))
+        | (mixed << HEADER_OPCODE_SHIFT);
+    assert_eq!(
+        decode_program(&program, &binding).expect_err("squared mixed product must not decode"),
+        CoeffCodecError::MixedProductNotMixed { instr: 0 }
+    );
+    // The retag itself is not what rejects it: the same stream under a same-width
+    // opcode decodes to the squared record.
+    let same = opcode_of(BwdRegime::R0, TermCategory::C2ProductBfBf).expect("R0 encodes it");
+    program.words[0] = (program.words[0] & !(HEADER_OPCODE_MASK << HEADER_OPCODE_SHIFT))
+        | (same << HEADER_OPCODE_SHIFT);
+    assert_eq!(
+        decode_program(&program, &binding).expect("a same-width squared product decodes"),
+        vec![term(
+            TermCategory::C2ProductBfBf,
+            ONE,
+            vec![DecodedUse::Direct { coord: coord(0, 0, false) }]
+        )]
+    );
 }
 
 #[test]

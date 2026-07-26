@@ -19,6 +19,13 @@
 //! `page -> place -> bind -> encode` chain would skip those certificates and let
 //! a malformed program become a kernel bug instead of a compiler error.
 //!
+//! **`--features bench` is REQUIRED to compile any of this**, including the tests
+//! in `compile/tests.rs`, which are pure CPU work. Every item in this file is
+//! `#[cfg(all(test, feature = "bench"))]`, so a default `cargo test -p
+//! gpu_circuit_prover` compiles none of it and reports nothing about it. See the
+//! module doc of [`super`] for the invocation and for the always-compiled notice
+//! that says so in a default run's output.
+//!
 //! **One schedule, round-specific bindings.** The term ORDER is selected once per
 //! `(regime, budget)` at the regime's own `default_target_depth`, exactly as
 //! `compile_coordinate` does. Each round then re-realizes that same order with

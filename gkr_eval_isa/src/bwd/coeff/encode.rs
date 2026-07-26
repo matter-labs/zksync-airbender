@@ -297,6 +297,23 @@ pub const fn operand_width(category: TermCategory, position: usize) -> Option<Va
     }
 }
 
+/// Whether the opcode's operand positions disagree about width.
+///
+/// Exactly the opcodes for which §9.1's SQUARED form — ONE record standing in for
+/// every position — is inexpressible: one record cannot be both widths, so such a
+/// term would ask a resolver to produce one coordinate at BF and at E4 at the same
+/// time. `C2ProductBF_E4` is the only such opcode today.
+///
+/// ONE definition, used by [`encode_instrs`] on the way out and
+/// [`decode_program`] on the way back in, because the two evaluators DISAGREE on
+/// the shape: the interpreter reads it as one resolution consumed twice while the
+/// GPU executor's mixed branch resolves both records. Neither direction of the
+/// wire language may admit it.
+fn has_mixed_operand_widths(category: TermCategory) -> bool {
+    let arity = category_arity(category);
+    (1..arity).any(|position| operand_width(category, position) != operand_width(category, 0))
+}
+
 /// The width a move relocates (§9.6: the opcode, not the operand, carries it).
 pub const fn move_width(category: TermCategory) -> Option<ValueWidth> {
     match category {
@@ -487,11 +504,15 @@ pub enum CoeffCodecError {
     /// cannot be mixed because one source has one field. Keep it for the same
     /// reason as [`CoeffCodecError::OperandWidthMismatch`].
     ///
-    /// [`encode_instrs`] also raises it for the converse shape — a mixed category
-    /// carrying §9.1's SQUARED form, i.e. one record standing in for both
-    /// positions. That would encode cleanly and then ask a resolver to produce one
-    /// coordinate at two different widths, and it is the only place that shape is
-    /// rejected, so the GPU executor's mixed branch relies on it.
+    /// [`encode_instrs`] and [`decode_program`] also raise it for the converse
+    /// shape — a mixed category carrying §9.1's SQUARED form, i.e. one record
+    /// standing in for both positions. That would encode cleanly and then ask a
+    /// resolver to produce one coordinate at two different widths. BOTH directions
+    /// reject it, because the two evaluators disagree about what it means: the
+    /// interpreter reads one resolution consumed twice
+    /// ([`interpret_encoded_program`](super::interp::interpret_encoded_program))
+    /// while the GPU executor's mixed branch resolves both records. A shape whose
+    /// evaluators differ may not be a legal stream in either direction.
     MixedProductNotMixed { instr: u32 },
     /// An operand's fill writes lanes a LATER operand of the same term reads.
     ///
@@ -993,15 +1014,10 @@ pub fn encode_instrs(
                 //
                 // It is load-bearing defence, though: unchecked, such a term
                 // encodes cleanly and then means "resolve this coordinate once at
-                // BF and consume it as an E4", which no resolver can honour. This
-                // is the ONLY check for it, and it is what lets the GPU executor's
-                // mixed branch carry none (§12.1: release kernels trust validated
-                // artifacts).
-                if uses.len() < arity
-                    && (1..arity).any(|position| {
-                        operand_width(*category, position) != operand_width(*category, 0)
-                    })
-                {
+                // BF and consume it as an E4", which no resolver can honour.
+                // [`decode_program`] rejects the same shape on the way back in, so
+                // neither direction of the wire language admits it.
+                if uses.len() < arity && has_mixed_operand_widths(*category) {
                     return Err(CoeffCodecError::MixedProductNotMixed { instr: index });
                 }
                 out.push(header_word(opcode, coefficient.0 as u16));
@@ -1167,6 +1183,55 @@ pub fn encode_program(
 
 /// Decode and structurally validate the whole word stream (§12.1).
 ///
+/// The largest coefficient BANK index the stream's term headers name, or `None`
+/// when every header names a reserved literal.
+///
+/// **A bound extractor, not a validator.** It walks headers and record LENGTHS
+/// only — a record's length is fixed by its mode (§9.4/§9.5: `DirectSource` and
+/// `Cell` are one word, `FillSource` and `PlannedSource` two) and a move is three
+/// words (§9.6) — so it needs no binding, no budget and no lane arithmetic. It
+/// stops at the first word it cannot classify and returns what it found up to
+/// there; [`decode_program`] is the thing that decides whether a stream is legal.
+///
+/// It exists because a LAUNCH needs exactly one number the codec does not
+/// otherwise expose: how many coefficient-bank entries the device must be given.
+/// A runtime bank shorter than the largest index a header names is an
+/// out-of-bounds device read with no error channel, and unlike `c_init` — which
+/// the descriptor carries as its own field and which is therefore easy to
+/// bounds-check — term indices are buried in the stream.
+///
+/// `the_bank_index_bound_agrees_with_decode` pins it against [`decode_program`]
+/// over every legal form and over real corpus programs, so the two walks cannot
+/// drift.
+pub fn max_coefficient_bank_index(program: &EncodedProgram) -> Option<usize> {
+    let words = &program.words;
+    let mut max: Option<usize> = None;
+    let mut i = 0usize;
+    while i < words.len() {
+        let header = words[i];
+        let Some(category) = category_of(program.regime, header_opcode(header)) else {
+            break;
+        };
+        i += 1;
+        if is_move(category) {
+            i += 2;
+            continue;
+        }
+        max = max.max(CoefficientRecipeId(u32::from(header_coefficient(header))).bank_index());
+        for _ in 0..category_arity(category) {
+            let Some(&word) = words.get(i) else {
+                return max;
+            };
+            i += 1;
+            // The extension word, where the mode has one.
+            if !matches!(input_mode(word), MODE_DIRECT_SOURCE | MODE_CELL) {
+                i += 1;
+            }
+        }
+    }
+    max
+}
+
 /// The stream must end exactly at `program.words.len()`; a record that overruns it
 /// is [`CoeffCodecError::TruncatedRecord`] or
 /// [`CoeffCodecError::MissingExtension`].
@@ -1222,6 +1287,15 @@ pub fn decode_program(
         // Byte-identical input records denote a squared term: ONE resolution.
         let first = at + 1;
         let uses: Vec<DecodedUse> = if arity == 2 && records[0].1 == records[1].1 {
+            // ...but not on a MIXED-width opcode, whose two positions cannot both
+            // be served by one resolution. [`encode_instrs`] refuses to emit that
+            // shape; the wire language has to refuse to accept it too, because the
+            // two evaluators disagree about what it means (see
+            // [`has_mixed_operand_widths`]). `out.len()` IS the instruction index:
+            // one record has been pushed per preceding instruction.
+            if has_mixed_operand_widths(category) {
+                return Err(CoeffCodecError::MixedProductNotMixed { instr: out.len() as u32 });
+            }
             vec![records[0].0]
         } else {
             records.iter().map(|(u, _)| *u).collect()

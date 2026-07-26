@@ -13,8 +13,18 @@
 //   * the shifts/masks/modes/actions to `bwd::coeff::encode`; and
 //   * the two array capacities to `bwd::coeff::limits::in_scope`.
 //
-// Nothing here may change without changing the Rust side in the same commit;
-// both sides fail to BUILD (not to test) when they disagree.
+// Nothing here may change without changing the Rust side in the same commit.
+//
+// WHAT ENFORCES THAT: not the build. Nothing at build time compares a constant in
+// this file against a Rust one — the two compilers never see each other's
+// constants. The `static_assert`s below are CUDA-vs-CUDA (they do run under nvcc
+// during `cargo check`, so a STRUCT layout edit here is a build failure), and
+// `desc.rs`'s `const _: () = assert!(...)` blocks are Rust-vs-`gkr_eval_isa`. A
+// CONSTANT-only edit in this file passes BOTH compilers; the only thing that
+// catches it is `abi_tests::cuda_constants_match_the_rust_mirror`, which reads this
+// header as text and is `#[cfg(test)]`. After editing a constant here, run
+// `cargo test -p gpu_circuit_prover --lib backward::vm::abi` — `cargo check` will
+// not tell you.
 //
 // The program stream is embedded BY VALUE. There is no device program pointer,
 // no format version and no compatibility path (section 9.1).
@@ -457,8 +467,17 @@ constexpr u32 BWD_COEFF_MAX_FOLD_DEPTH = 3;
 // `target_depth - backing_depth` must be 0, 1 or the launch's fold depth —
 // `lower_bwd_coeff` rejects anything else rather than let a release kernel
 // silently weight a depth-2 catch-up with depth-3 factors.
+// Both bases are read by `fold_factor_base` AND written by the prelude kernel, so
+// both get a literal pin: the derived assertion below holds DEEP_BASE, but nothing
+// held SHALLOW_BASE. Moving it compiled clean, passed every test, and mis-weighted
+// every depth-1 catch-up — i.e. every continuation round >= 4.
 constexpr u32 BWD_COEFF_FOLD_FACTOR_SHALLOW_BASE = 0;
 constexpr u32 BWD_COEFF_FOLD_FACTOR_DEEP_BASE = 2;
+static_assert(BWD_COEFF_FOLD_FACTOR_SHALLOW_BASE == 0, "fold-factor shallow base drift");
+static_assert(BWD_COEFF_FOLD_FACTOR_DEEP_BASE == 2, "fold-factor deep base drift");
+// The shallow group is exactly the depth-1 leaf pair, so it ends where the deep
+// group begins.
+static_assert(BWD_COEFF_FOLD_FACTOR_SHALLOW_BASE + (1u << 1) == BWD_COEFF_FOLD_FACTOR_DEEP_BASE, "the depth-1 pair must occupy the whole shallow group");
 static_assert(BWD_COEFF_FOLD_FACTOR_DEEP_BASE + (1u << BWD_COEFF_MAX_FOLD_DEPTH) == BWD_COEFF_FOLD_FACTOR_CAP,
               "the fold-factor bank must hold exactly the depth-1 pair plus one full depth-D3 leaf table");
 

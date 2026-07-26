@@ -4,13 +4,21 @@ Generic Nsight Compute methodology for any `gpu/` crate. Start from
 [`profiling.md`](./profiling.md) for the parameter conventions; supply
 `$TEST_BINARY`, `$NVTX_RANGE`, and `$SOURCE_FOLDERS` (plus the crate's
 `GPU_<X>_ENABLE_LINEINFO` for source correlation) from your crate's profiling
-doc. Invoke `$TEST_BINARY` with whatever libtest args select + run the
+doc.
+
+> **`--nvtx-include` takes `Domain@Range` — domain FIRST.** The reversed order
+> matches nothing and `ncu` prints `==WARNING== No kernels were profiled.` rather
+> than failing, so an empty report reads as a successful run. (`nsys
+> --nvtx-capture` wants the opposite order; see
+> [`profiling.md`](./profiling.md#nvtx-range-orientation--the-two-tools-disagree).)
+> `ncu` lists the ranges it actually saw under "NVTX Start/End Ranges" in
+> `--page details`, so drop `--nvtx-include` to diagnose a run that matched nothing. Invoke `$TEST_BINARY` with whatever libtest args select + run the
 kernel-exercising test (e.g. `--exact <test> --nocapture`, adding `--ignored`
 only if that test is marked `#[ignore]`).
 
 > Concrete example (the prover): see
 > [`../circuit_prover/docs/profiling.md`](../circuit_prover/docs/profiling.md) —
-> `$NVTX_RANGE = test.gpu.prove.profiled_call@circuit_prover.tests`,
+> `$NVTX_RANGE = gpu_circuit_prover.tests@test.gpu.prove.profiled_call`,
 > `$SOURCE_FOLDERS = gpu/circuit_prover/native`, lineinfo env
 > `GPU_PROVER_ENABLE_LINEINFO`.
 
@@ -94,7 +102,7 @@ range replay, cache flushing disabled, and the same full-section list:
 ```bash
 .agents/bin/with_gpu_lock.sh ncu \
   --nvtx \
-  --nvtx-include 'profile.tmp.<kernel_group>@<your.domain>' \
+  --nvtx-include '<your.domain>@profile.tmp.<kernel_group>' \
   --replay-mode range \
   --cache-control none \
   --import-source yes \

@@ -957,18 +957,44 @@ fn corpus_placement_terminates_and_certifies_every_budget() {
                     "[{tag} {}] placement mutated the plan",
                     budget.label()
                 );
-                certify_cell_liveness(layer, prices, &plan, &placement).unwrap_or_else(|e| {
-                    panic!("[{tag} {}] liveness: {e:?}", budget.label())
-                });
+                // The certificate's own numbers, not the producer's. `place_paging_plan`
+                // reports `PlacementStats` about itself; `certify_cell_liveness` replays
+                // the emitted stream and counts independently. Asserting capacity
+                // compliance on `placement.stats` would let a producer that
+                // miscounted its own lanes certify and pass — so the gate below reads
+                // the REPORT, and the producer's counters are then required to agree
+                // with it, which is what makes `PlacementStats` trustworthy enough to
+                // print.
+                let report = certify_cell_liveness(layer, prices, &plan, &placement)
+                    .unwrap_or_else(|e| panic!("[{tag} {}] liveness: {e:?}", budget.label()));
                 assert!(
-                    placement.stats.lanes_used <= budget.lanes(),
-                    "[{tag} {}] lane {} exceeds capacity {}",
+                    report.lanes_used <= budget.lanes(),
+                    "[{tag} {}] certified lane {} exceeds capacity {}",
                     budget.label(),
-                    placement.stats.lanes_used,
+                    report.lanes_used,
                     budget.lanes()
                 );
-                let m = placement.stats.bf_moves + placement.stats.e4_moves;
-                assert_eq!(placement.stats.e4_moves, 0, "[{tag} {}] MoveE4", budget.label());
+                assert_eq!(report.e4_moves, 0, "[{tag} {}] certified MoveE4", budget.label());
+                for (what, certified, produced) in [
+                    ("terms", report.terms, placement.stats.terms),
+                    ("cell_reads", report.cell_reads, placement.stats.cell_reads),
+                    ("fills", report.fills, placement.stats.fills),
+                    ("bf_moves", report.bf_moves, placement.stats.bf_moves),
+                    ("e4_moves", report.e4_moves, placement.stats.e4_moves),
+                    (
+                        "lanes_used",
+                        report.lanes_used as usize,
+                        placement.stats.lanes_used as usize,
+                    ),
+                ] {
+                    assert_eq!(
+                        certified,
+                        produced,
+                        "[{tag} {}] {what}: certificate {certified} vs producer {produced}",
+                        budget.label()
+                    );
+                }
+                let m = report.bf_moves + report.e4_moves;
                 max_moves = max_moves.max(m);
                 total_moves += m;
                 if placement.stats.repaired {

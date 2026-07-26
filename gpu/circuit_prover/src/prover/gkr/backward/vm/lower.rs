@@ -27,7 +27,7 @@
 
 use era_cudart::result::CudaResult;
 use gkr_eval_isa::bwd::coeff::bind::CoeffSourceBinding;
-use gkr_eval_isa::bwd::coeff::encode::EncodedProgram;
+use gkr_eval_isa::bwd::coeff::encode::{max_coefficient_bank_index, EncodedProgram};
 use gkr_eval_isa::bwd::coeff::stats::WindowFamily;
 
 use super::desc::{
@@ -231,10 +231,30 @@ pub(crate) enum BwdCoeffLowerError {
     },
     /// A publish range overlaps a read range or another publish range.
     UnsafePublishAlias { window: u8, other: u8 },
+    /// A publish backing is not an E4 column.
+    ///
+    /// `window_publish_column` stores 16-byte E4 endpoint pairs through it
+    /// unconditionally — §10.2's published shape is `2 * rows` E4 per column — so a
+    /// BF publish column would be written four times past its own element width,
+    /// corrupting whatever follows it, in a release kernel with no error channel.
+    /// `check_column_geometry` cannot catch it: that only checks the stride against
+    /// the column's OWN declared width, which a BF column satisfies.
+    PublishBackingNotExt { window: u8 },
     /// The cell budget is outside c2..c16.
     InvalidCellBudget { cells: u32 },
     /// `c_init` names a coefficient index the bank cannot supply.
     InvalidCInit { index: u32 },
+    /// A term header names a coefficient index past the supplied bank.
+    ///
+    /// The device indexes the bank with no bound of its own
+    /// (`coeff_bank_pointer::operator[]`), so a runtime vector shorter than the
+    /// program's largest header index is an out-of-bounds read on the
+    /// `DevicePointer` bank and a silent read of stale
+    /// `ab_gkr_flat_coefficients` slots on the `Constant` one. `c_init` was
+    /// already checked because the descriptor carries it as its own field; term
+    /// indices are buried in the stream, which is why they needed
+    /// `max_coefficient_bank_index`.
+    CoefficientIndexPastBank { index: usize, entries: usize },
     /// More coefficients than the selected bank holds.
     CoefficientBankOverflow { coefficients: usize, cap: usize },
     /// The device-pointer bank has entries but no pointer.
@@ -296,6 +316,17 @@ pub(crate) fn lower_bwd_coeff(
             coefficients: coefficients.len(),
             cap,
         });
+    }
+    // The bank must COVER the program, not merely fit the storage. The device
+    // reads `coefficients[index]` with no bound of its own, so a vector shorter
+    // than the largest index the stream's term headers name reads past the buffer.
+    if let Some(index) = max_coefficient_bank_index(program) {
+        if index >= coefficients.len() {
+            return Err(BwdCoeffLowerError::CoefficientIndexPastBank {
+                index,
+                entries: coefficients.len(),
+            });
+        }
     }
     if bank == BwdCoeffBank::DevicePointer && !coefficients.is_empty() && coefficient_ptr.is_null()
     {
@@ -482,6 +513,13 @@ fn lower_window(
     }
     if !bound.materialize && bound.publish.is_some() {
         return Err(BwdCoeffLowerError::UnexpectedPublishBacking { window });
+    }
+    // §10.2 publishes `2 * rows` E4 per column and the device stores through
+    // `window_publish_column` as E4 unconditionally, so the backing has to declare
+    // E4. A BF column passes `check_column_geometry` (its stride is a whole number
+    // of BF elements) and then gets 16-byte stores.
+    if bound.publish.is_some_and(|publish| !publish.is_e4) {
+        return Err(BwdCoeffLowerError::PublishBackingNotExt { window });
     }
 
     // A procedural window's values come from the backing index, so the device

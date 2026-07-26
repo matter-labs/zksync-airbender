@@ -319,11 +319,24 @@ pub struct CoordinateArtifact {
     /// One entry per budget, ascending `c2`..`c16`.
     pub budgets: Vec<BudgetSchedule>,
     /// §13's measured production selection, one entry per round class of this
-    /// coordinate's regime, ascending. EMPTY in a freshly compiled artifact:
+    /// coordinate's regime, ascending.
+    ///
+    /// **ALWAYS EMPTY in practice, and that is the governing ruling — not a gap.**
     /// [`compile_coordinate`] is deterministic and GPU-free, so it has nothing to
-    /// select from. Task 12's GPU sweep fills it, which is what makes the
-    /// production budget an explicit recorded choice instead of a runtime
-    /// inference from one layer or one whole-pass budget.
+    /// select from, and Task 12's GPU sweep deliberately does NOT fill it either:
+    /// the measured selections live in the git-ignored sidecar
+    /// `target/gkr/bwd_coeff_selected_budgets.json`, written by the sweep and read
+    /// by the cutover. Folding machine measurements into this artifact would make
+    /// the artifact machine-dependent and break the byte-identical replay gate
+    /// (`bwd_coeff_artifacts_are_deterministic_and_replay_exactly`), which is the
+    /// property the whole artifact exists to have.
+    ///
+    /// The field is kept as a validated forward-looking slot — `#[serde(default,
+    /// skip_serializing_if)]`, checked by [`validate_selected_budgets`], and
+    /// asserted empty and absent from serialization by the artifact tests — so a
+    /// future in-artifact selection has a schema to land in. Nothing outside this
+    /// module writes it today. The sidecar is the single authority for a production
+    /// budget; do not add a second one here without retiring the replay gate.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub selected_budgets: Vec<SelectedBudget>,
 }
@@ -821,8 +834,9 @@ pub fn compile_coordinate(
             regime: ArtifactRegime::of(regime),
             target_depth,
             budgets,
-            // Deterministic compilation has nothing to select from; Task 12's
-            // GPU sweep is the only producer of a selection.
+            // Deterministic compilation has nothing to select from, and the GPU
+            // sweep publishes its selections to the `target/gkr` sidecar rather
+            // than here — see the field's own doc for why.
             selected_budgets: Vec::new(),
         },
         report: CoordinateReport {

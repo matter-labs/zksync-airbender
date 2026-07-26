@@ -565,11 +565,12 @@ DEVICE_FORCEINLINE void execute_term(const bwd_coeff_desc &desc, const u16 opcod
       // resolves both records unconditionally and never consults
       // `operands.squared`.
       //
-      // That is safe because the HOST rejects the shape:
+      // That is safe because the HOST rejects the shape in BOTH directions:
       // `encode_instrs` raises `CoeffCodecError::MixedProductNotMixed` for a
-      // mixed-width category carrying the squared form, and it is the only place
-      // that shape is rejected (section 12.1: release kernels trust validated
-      // artifacts). There is deliberately no device-side check: `native_build`
+      // mixed-width category carrying the squared form, and `decode_program`
+      // raises it for the same shape arriving on the wire — so no stream this
+      // kernel can be handed carries it (section 12.1: release kernels trust
+      // validated artifacts). There is deliberately no device-side check: `native_build`
       // compiles this translation unit with `-DNDEBUG` unconditionally, so an
       // `assert` here would be dead in every build and would document protection
       // that does not exist.
@@ -823,17 +824,24 @@ DEVICE_FORCEINLINE void source_probe_body(const bwd_coeff_desc &desc, const bwd_
 
 EXTERN __global__ void ab_gkr_bwd_coeff_build_fold_factors_kernel(const e4 *round_challenges, const u32 target_depth, const u32 fold_depth, e4 *fold_factors) {
   using namespace airbender::primitives::field;
+  using airbender::prover::gkr::BWD_COEFF_FOLD_FACTOR_DEEP_BASE;
+  using airbender::prover::gkr::BWD_COEFF_FOLD_FACTOR_SHALLOW_BASE;
   const u32 slot = threadIdx.x;
   u32 delta;
   u32 leaf;
-  if (slot < 2) {
+  // The WRITER of the two weight groups `fold_factor_base` READS. Both sides spell
+  // the split with the same named constants: a bare `2` here would drift silently
+  // and mis-weight every depth-1 catch-up.
+  if (slot < BWD_COEFF_FOLD_FACTOR_DEEP_BASE) {
     delta = 1;
-    leaf = slot;
+    leaf = slot - BWD_COEFF_FOLD_FACTOR_SHALLOW_BASE;
   } else {
-    if (fold_depth < 2 || slot >= 2 + (1u << fold_depth))
+    // `2` here is a fold DEPTH, not a bank base: at `fold_depth < 2` the deep
+    // group's distance would be 0 or 1, and 1 is already the shallow group.
+    if (fold_depth < 2 || slot >= BWD_COEFF_FOLD_FACTOR_DEEP_BASE + (1u << fold_depth))
       return;
     delta = fold_depth;
-    leaf = slot - 2;
+    leaf = slot - BWD_COEFF_FOLD_FACTOR_DEEP_BASE;
   }
   if (target_depth < delta)
     return;

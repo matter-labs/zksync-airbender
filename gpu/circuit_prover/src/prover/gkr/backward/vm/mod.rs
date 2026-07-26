@@ -9,6 +9,27 @@
 //! budget is runtime launch metadata, so one instantiation covers c2 through
 //! c16. There is no ABI or runtime switch back to the retired generic backward
 //! DAG VM: it is gone, not disabled.
+//!
+//! # Running the tests — `--features bench` is REQUIRED
+//!
+//! Everything below that carries the correctness story is
+//! `#[cfg(all(test, feature = "bench"))]`: [`gpu_tests`] (the parity ladder, the
+//! release-executor coverage gate, the sweep and the profiler), [`report`], and
+//! [`compile`]'s fixture loader with its tests. A plain
+//! `cargo test -p gpu_circuit_prover` compiles NONE of them and exits 0 having run
+//! none of the four GPU gates. Only [`abi_tests`] — the Rust↔CUDA ABI gate — is
+//! always compiled.
+//!
+//! Build unlocked, then run under the GPU lock:
+//!
+//! ```text
+//! cargo test -p gpu_circuit_prover --release --features bench --no-run
+//! .agents/bin/with_gpu_lock.sh <binary> --exact <test> --ignored --nocapture
+//! ```
+//!
+//! `bwd_coeff_gating_notice` below states this in the default run's own output, and
+//! `AB_REQUIRE_BENCH_GATES=1` turns a `bench`-less run into a failure for callers
+//! that need non-vacuity proved rather than assumed.
 
 pub(crate) mod compile;
 pub(crate) mod desc;
@@ -20,6 +41,81 @@ mod report;
 
 #[cfg(test)]
 mod abi_tests;
+
+/// Makes the `bench`-feature gating above visible from a DEFAULT test run.
+///
+/// This plan has produced six vacuous-verification incidents, several of them the
+/// same shape: a runner that matched nothing, exited 0, and read as a pass. The
+/// whole coefficient-ISA GPU suite being feature-gated is a standing instance of
+/// that shape — `cargo test -p gpu_circuit_prover` is green whether or not a single
+/// gate ran.
+///
+/// So this module is deliberately NOT feature-gated. It does three things:
+///
+///   1. names the required invocation in the default run's own output, under a test
+///      name that says what is missing;
+///   2. under `--features bench`, references a marker the gated module defines, so
+///      the suite is proved to have compiled rather than assumed; and
+///   3. honours `AB_REQUIRE_BENCH_GATES=1` by FAILING a `bench`-less run — the
+///      opt-in a CI job or an agent uses when "the GPU gates ran" is the claim
+///      being made.
+///
+/// It does not fail a plain developer run: making the default invocation red would
+/// just teach people to ignore it.
+#[cfg(test)]
+mod gating {
+    /// The four gates §15's acceptance rests on, so a reader of a `bench`-less run
+    /// can see exactly what did not execute.
+    const GPU_GATES: [&str; 4] = [
+        "bwd_coeff_source_resolution_smoke",
+        "bwd_coeff_add_sub_l0_r0_spike",
+        "bwd_coeff_add_sub_l0_d0_d3_parity",
+        "bwd_coeff_release_executor_covers_every_form",
+    ];
+
+    const REQUIRE_ENV: &str = "AB_REQUIRE_BENCH_GATES";
+
+    #[test]
+    fn bwd_coeff_gating_notice() {
+        let invocation = "cargo test -p gpu_circuit_prover --release --features bench --no-run, \
+                          then run the binary under .agents/bin/with_gpu_lock.sh";
+
+        #[cfg(feature = "bench")]
+        {
+            // A real link to the gated module: if `gpu_tests` is renamed, moved or
+            // loses its marker, this stops compiling under `--features bench`
+            // instead of silently going back to proving nothing.
+            assert!(
+                super::gpu_tests::GPU_PARITY_SUITE_COMPILED,
+                "the bench-gated GPU parity suite must be compiled in a bench build"
+            );
+            eprintln!(
+                "[bwd-coeff] bench feature ON: the GPU parity suite is compiled. \
+                 Its four gates are #[ignore]d GPU tests -- {GPU_GATES:?} -- so they \
+                 still need --ignored to actually run."
+            );
+        }
+
+        #[cfg(not(feature = "bench"))]
+        {
+            let message = format!(
+                "[bwd-coeff] bench feature OFF: the backward coefficient-ISA GPU suite \
+                 was NOT compiled and NONE of its gates ran ({GPU_GATES:?}). This run \
+                 says nothing about them. To run them: {invocation}. Set \
+                 {REQUIRE_ENV}=1 to make this a failure."
+            );
+            eprintln!("{message}");
+            assert!(
+                std::env::var_os(REQUIRE_ENV).is_none(),
+                "{REQUIRE_ENV} is set, but this binary was built WITHOUT --features bench, \
+                 so the GPU gates cannot have run. {message}"
+            );
+        }
+
+        // Referenced in both configurations so neither arm carries a dead binding.
+        assert!(!invocation.is_empty() && GPU_GATES.len() == 4);
+    }
+}
 
 use std::ffi::c_void;
 use std::ptr::null_mut;

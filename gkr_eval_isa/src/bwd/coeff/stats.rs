@@ -30,8 +30,8 @@ use cs::gkr_compiler::dag_ir::{
 };
 
 use super::limits::{
-    ASSUMED_MOVES_PER_REUSABLE_PROJECTION, KERNEL_ARGUMENT_CEILING_BYTES, MOVE_WORDS,
-    SOURCE_WINDOW_COLUMNS, TermCategory, WORDS_PER_INPUT_MAX, WORDS_PER_INPUT_MIN,
+    KERNEL_ARGUMENT_CEILING_BYTES, SOURCE_WINDOW_COLUMNS, TermCategory,
+    lower_bound_program_words, program_bytes, upper_bound_program_words,
 };
 use super::lower::{LoweringTrace, lower_coeff_layer_traced};
 use super::model::{CoeffError, CoeffLayer, CoeffSource, CoeffTerm, ProjectionId};
@@ -434,8 +434,11 @@ pub fn census_coeff_layer(
     let r0 = lowered.regime == BwdRegime::R0;
     let mut projection_uses: BTreeMap<ProjectionId, usize> = BTreeMap::new();
     let mut coefficient_ids: BTreeSet<_> = BTreeSet::new();
-    let mut lower_words = 0usize;
-    let mut upper_words = 0usize;
+    // The two stream bounds are computed by `limits::{lower,upper}_bound_program_words`,
+    // which own the reasoning and the exposure documentation. All this census
+    // contributes is the term arity population they take.
+    let mut unary_terms = 0usize;
+    let mut binary_terms = 0usize;
 
     for term in &lowered.terms {
         coefficient_ids.insert(term.coefficient());
@@ -491,8 +494,11 @@ pub fn census_coeff_layer(
                 2
             }
         };
-        lower_words += 1 + arity * WORDS_PER_INPUT_MIN;
-        upper_words += 1 + arity * WORDS_PER_INPUT_MAX;
+        match arity {
+            1 => unary_terms += 1,
+            2 => binary_terms += 1,
+            other => unreachable!("the arity match above yields only 1 or 2, not {other}"),
+        }
     }
 
     c.projections = projection_uses.len();
@@ -502,26 +508,20 @@ pub fn census_coeff_layer(
 
     // ── stream bounds ────────────────────────────────────────────────────
     //
-    // LOWER: one u16 header plus one u16 word per source input, no extension
-    // words, no fills, no plans and no moves. Nothing a codec can do makes a
-    // term set cheaper than this, so an overflow here is unrepairable.
-    c.lower_bound_program_bytes = 2 * lower_words;
-    // UPPER: two halves with different strength, both spelled out on
-    // `limits::upper_bound_program_words`.
-    //   * term words — PROVEN maximal: §9.4/§9.5 allow at most one extension word
-    //     per input (`FillSource` + destination lane, `PlannedSource` + plan word,
-    //     and for a native dual that one plan word covers the whole pair); and
-    //   * moves — ASSUMED at `ASSUMED_MOVES_PER_REUSABLE_PROJECTION` per reusable
-    //     projection. Design §7.3 does not cap the moves Task 5's placement repair
-    //     emits, so a schedule could exceed this half. Task 8 measured the real
-    //     count — `in_scope::REALIZED_MOVES == 0` over 1,710 placements — and left
-    //     the budget in as slack rather than pinning an accident; the reasoning and
-    //     the 3.64x exposure are on `upper_bound_program_words`. Nothing is sized
-    //     from this bound: the descriptor ABI uses the measurement
-    //     `in_scope::MAX_REALIZED_PROGRAM_WORDS`.
-    c.upper_bound_program_bytes = 2
-        * (upper_words
-            + c.reusable_projections * MOVE_WORDS * ASSUMED_MOVES_PER_REUSABLE_PROJECTION);
+    // ONE definition of each bound, in `limits`. Both are FROZEN, and a frozen
+    // bound with two implementations is exactly the drift the freeze exists to
+    // prevent — so this census supplies the term population and nothing else. The
+    // strength of each half (the lower bound terminal, the upper bound's proven
+    // term words plus its ASSUMED move budget and 3.64x exposure) is documented on
+    // `limits::lower_bound_program_words` / `limits::upper_bound_program_words`;
+    // read it there before treating a `fits` verdict as a proof.
+    c.lower_bound_program_bytes =
+        program_bytes(lower_bound_program_words(unary_terms, binary_terms));
+    c.upper_bound_program_bytes = program_bytes(upper_bound_program_words(
+        unary_terms,
+        binary_terms,
+        c.reusable_projections,
+    ));
 
     Ok(c)
 }
