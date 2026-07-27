@@ -38,6 +38,10 @@ mod gpu_tests;
 pub(crate) mod lower;
 #[cfg(all(test, feature = "bench"))]
 mod report;
+/// Launchers for the SEGMENTED lean VM: its own `__constant__` coefficient bank,
+/// the `32 * k`-thread tile geometry, and the three epilogue specializations. The
+/// cell-era launchers below are untouched — the two lineages share no symbol.
+pub(crate) mod seg;
 /// The SEGMENTED lean VM's launch descriptors (a separate lineage: it shares
 /// only [`desc::BwdCoeffSourceWindow`] and the publication threshold with the
 /// cell-era descriptor above).

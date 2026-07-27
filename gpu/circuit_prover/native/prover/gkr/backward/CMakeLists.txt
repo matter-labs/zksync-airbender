@@ -16,5 +16,7 @@ target_sources(circuit_prover_native PRIVATE
         round1_flat_warp_partial.cu
         round2_flat_warp_partial.cu
         round3_flat_warp_partial.cu
+        segmented_vm.cu
+        segmented_vm.cuh
         tail_fused.cu
 )

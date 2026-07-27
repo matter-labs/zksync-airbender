@@ -1,0 +1,476 @@
+#pragma once
+
+// SEGMENTED lean VM: the by-value launch descriptors, the lean u16 wire, and the
+// kernel matrix (segmented-lean-VM design sections 3, 4, 5, 7).
+//
+// THIS FILE IS ONE HALF OF AN ABI. Its Rust half is
+// `src/prover/gkr/backward/vm/seg_desc.rs`, which carries the same field offsets
+// and the same sizes under `const _: () = assert!(...)`, and additionally ties
+// each capacity to its authority in the `gkr_eval_isa` crate. Neither half may
+// move without the other in the same commit.
+//
+// WHAT ENFORCES THAT, exactly as for the cell-era `coefficient_vm.cuh`: the
+// `static_assert`s below are CUDA-vs-CUDA and DO run under nvcc during
+// `cargo check`, so a STRUCT layout edit here is a build failure; `seg_desc.rs`'s
+// `const _: () = assert!(...)` blocks are Rust-vs-`gkr_eval_isa`. What neither
+// compiler sees is an edit to a constant here that changes no layout — the wire
+// shifts and the two class tables are the only such constants, and they are
+// pinned by their own `static_assert`s against the layout facts they must satisfy
+// (exact header saturation, dense class tables). A text matcher over this header,
+// the shape `abi_tests::cuda_constants_match_the_rust_mirror` uses for the
+// cell-era header, is the remaining gap and is NOT part of this task.
+//
+// # What this lineage does NOT carry
+//
+// No challenge pointer (fold challenges have exactly ONE authority, the
+// `ab_gkr_main_layer_claim_point` `__constant__` symbol), no cell budget (there
+// is no cell file and no residency), no program length (`list_offset[k]` IS the
+// end of the stream) and no coefficient index on the seed path (`c_init` is
+// resolved E4 limbs).
+//
+// # What it shares with the cell-era lineage
+//
+// `bwd_coeff_source_window` and its origin / procedural-kind / publication
+// constants are IMPORTED from `coefficient_vm.cuh`, never forked — exactly as
+// `seg_desc.rs` imports `desc::BwdCoeffSourceWindow` and
+// `desc::BWD_COEFF_PUBLISH_TARGET_DEPTH` rather than copying them. Both halves
+// therefore have the same single dependency edge on the older lineage, and the
+// eventual retirement of the cell-era lineage has to rehome the window struct on
+// both sides in the same commit.
+
+#include "coefficient_vm.cuh"
+
+namespace airbender::prover::gkr {
+
+// ── Capacities and launch geometry (section 3, 5) ────────────────────────────
+
+// `gkr_eval_isa::bwd::coeff::limits::KERNEL_ARGUMENT_CEILING_BYTES`.
+constexpr u32 BWD_SEG_DESC_CAP = 32764;
+// `gkr_eval_isa::bwd::coeff::limits::DESCRIPTOR_ALIGNMENT_BYTES`. Load-bearing:
+// it is what puts `bwd_seg_desc::program` — the descriptor's FIRST field — on a
+// 16-byte boundary, which is the only reason the lean census's one-word round-up
+// buys anything.
+constexpr u32 BWD_SEG_DESC_ALIGN = 16;
+
+// Warps a block may run, i.e. the largest legal `K` of the round-robin term
+// split. One warp per term list, `blockDim == 32 * k`, so `K` tops out exactly
+// where the CUDA block does.
+constexpr u32 BWD_SEG_MAX_K = 32;
+constexpr u32 BWD_SEG_MAX_THREADS_PER_BLOCK = 1024;
+// Lane = row inside the 32-row tile; `tile_row0 = blockIdx.x * 32`.
+constexpr u32 BWD_SEG_WARP_LANES = 32;
+constexpr u32 BWD_SEG_WARP_SHIFT = 5;
+constexpr u32 BWD_SEG_LANE_INDEX_MASK = BWD_SEG_WARP_LANES - 1;
+
+static_assert(BWD_SEG_MAX_K * BWD_SEG_WARP_LANES == BWD_SEG_MAX_THREADS_PER_BLOCK, "one warp per list, and the block is the cap");
+static_assert(1u << BWD_SEG_WARP_SHIFT == BWD_SEG_WARP_LANES, "warp layout drift");
+static_assert(BWD_SEG_LANE_INDEX_MASK == 31, "warp lane index mask drift");
+// This lineage's warp geometry is the cell-era one; they differ only in how many
+// warps a block runs.
+static_assert(BWD_SEG_WARP_LANES == BWD_COEFF_WARP_LANES, "warp lane count diverged from the cell-era lineage");
+static_assert(BWD_SEG_WARP_SHIFT == BWD_COEFF_WARP_SHIFT, "warp shift diverged from the cell-era lineage");
+
+// Slots in this lineage's OWN `__constant__` coefficient bank
+// (`ab_gkr_bwd_seg_coeff_bank`, declared at the bottom of this header). No
+// `backward::flat` symbol is involved.
+//
+// RR ruling 2026-07-27: the two reserved literal ids are MATERIALIZED at the bank
+// head — `bank[0] = ONE`, `bank[1] = NEG_ONE`, banked recipes from
+// `BWD_COEFF_INDEX_RESERVED` on — so the executor resolves EVERY coefficient with
+// one uniform `bank[coeff_idx]` load: no ±ONE fast path, no branch, no offset
+// subtraction. Host lowering owns the materialization; wire coefficient ids are
+// reserved-INCLUSIVE and this side indexes raw.
+//
+// Sized from the census (1,138 recipes + 2 literals = 1,140), rounded up so the
+// bank is exactly 18 KiB of the 64 KB per-module `__constant__` budget.
+constexpr u32 BWD_SEG_CONST_BANK = 1152;
+// Source-table slots: the census maximum of 1,062 rounded up to a multiple of 16
+// so both source-indexed arrays are a whole number of 16-byte lines.
+constexpr u32 BWD_SEG_MAX_SOURCES = 1072;
+// `gkr_eval_isa::bwd::coeff::limits::LEAN_DESCRIPTOR_PROGRAM_WORDS` — the
+// measured maximum 7,164 words (4 words x 1,791 terms) rounded up by exactly one
+// 16-byte quantum. Not a headroom allowance.
+constexpr u32 BWD_SEG_PROGRAM_WORD_CAP = 7168;
+constexpr u32 BWD_SEG_PROGRAM_BYTE_CAP = 2 * BWD_SEG_PROGRAM_WORD_CAP;
+// `in_scope::MAX_SOURCE_WINDOWS_USED`, shared with the cell-era descriptor
+// because the window STRUCT is shared.
+constexpr u32 BWD_SEG_SOURCE_WINDOW_CAP = BWD_COEFF_SOURCE_WINDOW_CAP;
+
+static_assert(BWD_SEG_PROGRAM_BYTE_CAP == 14336, "program array byte size drift");
+static_assert(BWD_SEG_PROGRAM_BYTE_CAP % BWD_SEG_DESC_ALIGN == 0, "the program array is not a whole number of 16-byte quanta");
+static_assert(BWD_SEG_CONST_BANK * sizeof(e4) == 18 * 1024, "coefficient bank size drift");
+static_assert(BWD_SEG_CONST_BANK * sizeof(e4) <= 64 * 1024, "the coefficient bank exceeds the per-module __constant__ budget");
+// Every bank slot must be nameable by the thirteen coefficient bits of the lean
+// header, reserved literals included.
+static_assert(BWD_SEG_CONST_BANK <= BWD_COEFF_MAX_COEFFICIENT_ENCODINGS, "a bank slot the wire cannot name");
+static_assert(BWD_SEG_MAX_SOURCES % 16 == 0, "the source arrays are not whole 16-byte lines");
+static_assert(BWD_SEG_SOURCE_WINDOW_CAP == 17, "source window capacity drift");
+
+// ── The lean wire (section 4) ───────────────────────────────────────────────
+//
+// ```text
+// word0 = [class:3 @13 | coeff_idx:13 @0]
+// word1 = source_a           (slot into bwd_seg_desc::source)
+// word2 = source_b           (slot, or BWD_SEG_SOURCE_NONE)
+// word3 = 0                  (reserved; host-validated, never read here)
+// ```
+//
+// HEADER-FIRST because each warp walks its own contiguous list strictly
+// sequentially. The width is FIXED at four words even though the class already
+// fixes the source count, which is what makes a term's address a shift and the
+// round-robin K-split of the word stream positional.
+//
+// Mirrors `gkr_eval_isa::bwd::coeff::lean`.
+constexpr u32 BWD_SEG_WORDS_PER_TERM = 4;
+constexpr u32 BWD_SEG_COEFFICIENT_SHIFT = 0;
+constexpr u16 BWD_SEG_COEFFICIENT_MASK = (1u << BWD_COEFF_HEADER_COEFFICIENT_BITS) - 1;
+constexpr u32 BWD_SEG_CLASS_SHIFT = BWD_COEFF_HEADER_COEFFICIENT_BITS;
+constexpr u16 BWD_SEG_CLASS_MASK = (1u << BWD_COEFF_HEADER_OPCODE_BITS) - 1;
+// `source_b` of a one-source class. Never a slot: BWD_SEG_MAX_SOURCES stays
+// strictly below it.
+constexpr u16 BWD_SEG_SOURCE_NONE = 0xffff;
+
+static_assert(BWD_SEG_CLASS_SHIFT == 13, "lean class shift drift");
+static_assert(BWD_SEG_COEFFICIENT_MASK == 0x1fffu, "lean coefficient mask drift");
+static_assert(BWD_SEG_CLASS_MASK == 0x7u, "lean class mask drift");
+// The header is exactly saturated, which is what makes the class free.
+static_assert(BWD_COEFF_HEADER_COEFFICIENT_BITS + BWD_COEFF_HEADER_OPCODE_BITS == 16, "the lean header must be exactly saturated");
+static_assert(BWD_SEG_MAX_SOURCES < BWD_SEG_SOURCE_NONE, "a source slot could collide with the no-second-source sentinel");
+static_assert(BWD_SEG_PROGRAM_WORD_CAP % BWD_SEG_WORDS_PER_TERM == 0, "the program array is not a whole number of fixed-width records");
+
+// Lean class tables (`lean::LEAN_R0_OPCODES`, `lean::LEAN_CONT_OPCODES`): the
+// FROZEN cell-era tables minus the two `Move` forms, re-densified. Same
+// categories in the same relative order, so each lean class is its cell-era
+// opcode shifted down past the deleted `Move` rows — which for both regimes is a
+// shift of zero, because the `Move` rows are the TAIL of each table. The
+// static_asserts below pin exactly that.
+constexpr u16 BWD_SEG_R0_CLASS_C0_LINEAR_BF = 0;
+constexpr u16 BWD_SEG_R0_CLASS_C0_LINEAR_E4 = 1;
+constexpr u16 BWD_SEG_R0_CLASS_C2_PRODUCT_BF_BF = 2;
+constexpr u16 BWD_SEG_R0_CLASS_C2_PRODUCT_BF_E4 = 3;
+constexpr u16 BWD_SEG_R0_CLASS_C2_PRODUCT_E4_E4 = 4;
+constexpr u32 BWD_SEG_R0_LIVE_CLASSES = 5;
+
+constexpr u16 BWD_SEG_EXT_CLASS_C0_LINEAR_E4 = 0;
+constexpr u16 BWD_SEG_EXT_CLASS_DUAL_PRODUCT_E4 = 1;
+constexpr u32 BWD_SEG_EXT_LIVE_CLASSES = 2;
+
+static_assert(BWD_SEG_R0_LIVE_CLASSES <= BWD_SEG_CLASS_MASK + 1u, "the R0 class census exceeds three class bits");
+static_assert(BWD_SEG_EXT_LIVE_CLASSES <= BWD_SEG_CLASS_MASK + 1u, "the continuation class census exceeds three class bits");
+// The lean tables are the cell-era tables with the `Move` rows deleted, and those
+// rows sit at the tail, so every surviving class number is unchanged. A
+// renumbering on either side would break these.
+static_assert(BWD_SEG_R0_CLASS_C0_LINEAR_BF == BWD_COEFF_R0_OP_C0_LINEAR_BF, "R0 C0LinearBF class renumbered");
+static_assert(BWD_SEG_R0_CLASS_C0_LINEAR_E4 == BWD_COEFF_R0_OP_C0_LINEAR_E4, "R0 C0LinearE4 class renumbered");
+static_assert(BWD_SEG_R0_CLASS_C2_PRODUCT_BF_BF == BWD_COEFF_R0_OP_C2_PRODUCT_BF_BF, "R0 C2ProductBF_BF class renumbered");
+static_assert(BWD_SEG_R0_CLASS_C2_PRODUCT_BF_E4 == BWD_COEFF_R0_OP_C2_PRODUCT_BF_E4, "R0 C2ProductBF_E4 class renumbered");
+static_assert(BWD_SEG_R0_CLASS_C2_PRODUCT_E4_E4 == BWD_COEFF_R0_OP_C2_PRODUCT_E4_E4, "R0 C2ProductE4_E4 class renumbered");
+static_assert(BWD_SEG_EXT_CLASS_C0_LINEAR_E4 == BWD_COEFF_EXT_OP_C0_LINEAR_E4, "continuation C0LinearE4 class renumbered");
+static_assert(BWD_SEG_EXT_CLASS_DUAL_PRODUCT_E4 == BWD_COEFF_EXT_OP_DUAL_PRODUCT_E4, "continuation DualProductE4 class renumbered");
+// The lean tables are exactly the live cell-era opcodes minus the moves.
+static_assert(BWD_SEG_R0_LIVE_CLASSES + 2 == BWD_COEFF_R0_LIVE_OPCODES, "R0 lean table is not the frozen table minus its two moves");
+static_assert(BWD_SEG_EXT_LIVE_CLASSES + 1 == BWD_COEFF_EXT_LIVE_OPCODES, "continuation lean table is not the frozen table minus its move");
+
+// ── Source classes (section 4) ──────────────────────────────────────────────
+//
+// How the operand behind ONE wire source slot is produced at ONE round. This is
+// NOT the wire's three-bit TERM class: the term class fixes an operation's
+// projection and arity, this fixes where its operand comes from.
+//
+// The AUTHORITY for these five numbers is Rust's `seg_lower::SourceClass`, which
+// carries them as enum discriminants and asserts them; this is the byte they
+// travel in.
+constexpr u8 BWD_SEG_SOURCE_CLASS_BF_DIRECT = 0;
+constexpr u8 BWD_SEG_SOURCE_CLASS_BF_INLINE_D1 = 1;
+constexpr u8 BWD_SEG_SOURCE_CLASS_BF_INLINE_D2 = 2;
+constexpr u8 BWD_SEG_SOURCE_CLASS_E4_DIRECT = 3;
+constexpr u8 BWD_SEG_SOURCE_CLASS_PROCEDURAL_INLINE = 4;
+constexpr u32 BWD_SEG_SOURCE_CLASSES = 5;
+
+static_assert(BWD_SEG_SOURCE_CLASS_BF_DIRECT == 0, "source class BfDirect drift");
+static_assert(BWD_SEG_SOURCE_CLASS_BF_INLINE_D1 == 1, "source class BfInlineD1 drift");
+static_assert(BWD_SEG_SOURCE_CLASS_BF_INLINE_D2 == 2, "source class BfInlineD2 drift");
+static_assert(BWD_SEG_SOURCE_CLASS_E4_DIRECT == 3, "source class E4Direct drift");
+static_assert(BWD_SEG_SOURCE_CLASS_PROCEDURAL_INLINE == 4, "source class ProceduralInline drift");
+static_assert(BWD_SEG_SOURCE_CLASSES == 5, "source class count drift");
+static_assert(BWD_SEG_SOURCE_CLASSES <= 256, "a source class must fit its byte");
+
+// Fold depths. The PROLOGUE materializes at up to
+// `BWD_SEG_MAX_FOLD_DEPTH` (the depth-3 pyramid); the EVAL loop's inline classes
+// never exceed `BWD_SEG_MAX_INLINE_FOLD_DEPTH`, because the assignment matrix
+// publishes at depth 3 instead of inlining it (`assign_class`, and
+// `BWD_COEFF_PUBLISH_TARGET_DEPTH` is the same 3).
+constexpr u32 BWD_SEG_MAX_FOLD_DEPTH = BWD_COEFF_MAX_FOLD_DEPTH;
+constexpr u32 BWD_SEG_MAX_INLINE_FOLD_DEPTH = 2;
+
+static_assert(BWD_SEG_MAX_FOLD_DEPTH == 3, "max fold depth drift");
+static_assert(BWD_SEG_MAX_FOLD_DEPTH == BWD_COEFF_PUBLISH_TARGET_DEPTH,
+              "the publication threshold is what bounds the inline depth: at and past it the prologue materializes");
+static_assert(BWD_SEG_MAX_INLINE_FOLD_DEPTH + 1 == BWD_SEG_MAX_FOLD_DEPTH, "the inline depth cap must be one below the publication threshold");
+
+// ── Source table ────────────────────────────────────────────────────────────
+
+// One entry of the per-launch source table: which window a source reads through,
+// which column of it, and how THIS round resolves it.
+//
+// `source_class` is Rust's `class` field (C++ cannot spell that name); the
+// offsets are what the ABI pins, not the spelling.
+struct bwd_seg_source_record {
+  // Slot in `bwd_seg_desc::window`.
+  u8 window;
+  // One of the `BWD_SEG_SOURCE_CLASS_*` values.
+  u8 source_class;
+  // Column WITHIN the window: the address is
+  // `read_base + column * read_stride_bytes`.
+  u16 column;
+};
+
+static_assert(sizeof(bwd_seg_source_record) == 4, "bwd_seg_source_record/BwdSegSourceRecord ABI size drift");
+static_assert(alignof(bwd_seg_source_record) == 2, "bwd_seg_source_record ABI alignment drift");
+static_assert(__builtin_offsetof(bwd_seg_source_record, window) == 0, "window ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_source_record, source_class) == 1, "class ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_source_record, column) == 2, "column ABI offset drift");
+
+// ── The inline-program descriptor (section 3) ───────────────────────────────
+
+// The complete by-value launch descriptor, passed as a single
+// `__grid_constant__` kernel parameter.
+//
+// Field order is the ABI. `program` sits at offset 0 — 16-byte aligned by the
+// descriptor's own alignment, at no cost in padding — and the launch tail's
+// pointers land naturally aligned after the arrays. SIX bytes of implicit
+// padding precede `window` (the source array is 2-byte-aligned, the window array
+// 8-byte-aligned); rustc inserts the same gap by the same rule and both sides
+// assert every offset, so it needs no explicit field.
+struct alignas(BWD_SEG_DESC_ALIGN) bwd_seg_desc {
+  // The lean term stream, embedded by value. Warp `w` walks
+  // `program[list_offset[w] .. list_offset[w + 1]]`.
+  u16 program[BWD_SEG_PROGRAM_WORD_CAP];
+  // `k + 1` word offsets into `program`; `list_offset[k]` is the END of the
+  // stream, which is why the descriptor needs no program-length field.
+  u16 list_offset[BWD_SEG_MAX_K + 1];
+  // Term lists, i.e. warps in the block. `blockDim == 32 * k`.
+  u16 k;
+  // Terms across all `k` lists. Never read by the executor (the list offsets
+  // bound every walk); host lowering keeps it for the validator and the
+  // disassembler.
+  u16 term_count;
+  // Live entries of `source`. Never read by the executor: every slot a wire
+  // record names is bounds-checked host-side
+  // (`BwdSegLowerError::SourceSlotOutOfRange`).
+  u16 num_sources;
+  // Leading entries of `fold_source` the JAOT prologue folds.
+  u16 num_foldable;
+  // Source slots the prologue folds, in FOLD order: warp `w` takes
+  // `s = w, w + k, w + 2k, ...`. The order is a performance contract
+  // (section 7) — the sources the eval loop touches EARLIEST are folded LAST, so
+  // they are the warmest in L1 when eval starts. The kernel just walks it.
+  u16 fold_source[BWD_SEG_MAX_SOURCES];
+  // The per-launch source table; entries at and past `num_sources` are
+  // zero-filled and never read.
+  bwd_seg_source_record source[BWD_SEG_MAX_SOURCES];
+  // Live source windows, IMPORTED from the cell-era descriptor rather than
+  // forked, so both lineages share one window layout and one publication policy.
+  bwd_coeff_source_window window[BWD_SEG_SOURCE_WINDOW_CAP];
+  // The per-thread `acc_c0` seed as RESOLVED E4 limbs in their IN-MEMORY
+  // (Montgomery) representation, all-zero when the layer has none. Zero is a
+  // safe "absent" value — an additive identity, not a sentinel — so there is no
+  // `*_NONE` constant here and no bank lookup on the seed path.
+  u32 c_init[4];
+  // Evaluated E4 coefficients for the `ptr` loader specialization; the `const`
+  // loader reads `ab_gkr_bwd_seg_coeff_bank` and ignores this. Reserved-inclusive
+  // either way: `[ONE, NEG_ONE, recipes...]`.
+  const e4 *coefficients;
+  // Production factored-eq low table; high tables remain in `ab_gkr_eq_high`.
+  const e4 *eq_low;
+  // `2 * logical_rows` entries: `eq * acc_c0` in `[0, logical_rows)` and
+  // `eq * acc_c2` in `[logical_rows, 2 * logical_rows)`.
+  e4 *contributions;
+  gkr_eq_sizes eq_sizes;
+  // Bank entries, reserved literals included. Never read by the executor: a
+  // coefficient id past the payload is a host rejection
+  // (`BwdSegLowerError::CoefficientIndexPastBank`), and the device indexes raw.
+  u32 n_coefficients;
+  // Rows this launch evaluates. Also the contribution half-stride and the
+  // endpoint half-stride of every target-depth backing.
+  u32 logical_rows;
+  // Explicit: makes the SIZE a multiple of the alignment without implicit
+  // trailing padding the two languages would have to agree on. Never read.
+  u32 pad[1];
+};
+
+static_assert(sizeof(bwd_seg_desc) == 21456, "bwd_seg_desc/BwdSegDesc ABI size drift");
+static_assert(alignof(bwd_seg_desc) == BWD_SEG_DESC_ALIGN, "bwd_seg_desc ABI alignment drift");
+// The final authority on the descriptor's shape. An overflow needs a tighter
+// encoding, never a second storage path.
+static_assert(sizeof(bwd_seg_desc) <= BWD_SEG_DESC_CAP, "bwd_seg_desc exceeds the __grid_constant__ parameter budget");
+static_assert(__builtin_offsetof(bwd_seg_desc, program) == 0, "program ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_desc, list_offset) == 14336, "list_offset ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_desc, k) == 14402, "k ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_desc, term_count) == 14404, "term_count ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_desc, num_sources) == 14406, "num_sources ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_desc, num_foldable) == 14408, "num_foldable ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_desc, fold_source) == 14410, "fold_source ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_desc, source) == 16554, "source ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_desc, window) == 20848, "window ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_desc, c_init) == 21392, "c_init ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_desc, coefficients) == 21408, "coefficients ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_desc, eq_low) == 21416, "eq_low ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_desc, contributions) == 21424, "contributions ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_desc, eq_sizes) == 21432, "eq_sizes ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_desc, n_coefficients) == 21444, "n_coefficients ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_desc, logical_rows) == 21448, "logical_rows ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_desc, pad) == 21452, "pad ABI offset drift");
+// The program stream starts 16-byte aligned so it can be buffered through wide
+// loads, and `pad` is the tail that makes the size a whole number of quanta.
+static_assert(__builtin_offsetof(bwd_seg_desc, program) % BWD_SEG_DESC_ALIGN == 0, "the program stream must start 16-byte aligned");
+static_assert(__builtin_offsetof(bwd_seg_desc, pad) + sizeof(u32) == sizeof(bwd_seg_desc), "pad must be the descriptor tail");
+static_assert(sizeof(bwd_seg_desc) % BWD_SEG_DESC_ALIGN == 0, "the descriptor size must be a whole number of alignment quanta");
+// The six-byte gap is implicit on BOTH sides, so it is asserted rather than
+// spelled: this is the arithmetic that proves it is exactly six.
+static_assert(__builtin_offsetof(bwd_seg_desc, window) - (__builtin_offsetof(bwd_seg_desc, source) + sizeof(bwd_seg_desc::source)) == 6,
+              "the implicit gap before `window` is not the six bytes both halves assert");
+
+// ── The device-program A/B twin (section 5) ─────────────────────────────────
+
+// `bwd_seg_desc` field-for-field, with the inline `program` array REPLACED by a
+// device pointer and its length. Dropping the array is the whole point: keeping
+// it and merely not reading it would leave 14,336 bytes resident in every
+// launch's parameter space and measure nothing.
+struct alignas(BWD_SEG_DESC_ALIGN) bwd_seg_progptr_desc {
+  // Device-resident lean term stream, `program_words` u16 words long.
+  const u16 *program;
+  u32 program_words;
+  // Offsets index the DEVICE stream here; otherwise as `bwd_seg_desc`.
+  u16 list_offset[BWD_SEG_MAX_K + 1];
+  u16 k;
+  u16 term_count;
+  u16 num_sources;
+  u16 num_foldable;
+  u16 fold_source[BWD_SEG_MAX_SOURCES];
+  bwd_seg_source_record source[BWD_SEG_MAX_SOURCES];
+  bwd_coeff_source_window window[BWD_SEG_SOURCE_WINDOW_CAP];
+  u32 c_init[4];
+  const e4 *coefficients;
+  const e4 *eq_low;
+  e4 *contributions;
+  gkr_eq_sizes eq_sizes;
+  u32 n_coefficients;
+  u32 logical_rows;
+  // Three words rather than one: the head is 12 bytes here instead of 14,336, so
+  // the tail lands elsewhere modulo 16.
+  u32 pad[3];
+};
+
+static_assert(sizeof(bwd_seg_progptr_desc) == 7136, "bwd_seg_progptr_desc/BwdSegProgPtrDesc ABI size drift");
+static_assert(alignof(bwd_seg_progptr_desc) == BWD_SEG_DESC_ALIGN, "bwd_seg_progptr_desc ABI alignment drift");
+static_assert(sizeof(bwd_seg_progptr_desc) <= BWD_SEG_DESC_CAP, "bwd_seg_progptr_desc exceeds the __grid_constant__ parameter budget");
+static_assert(__builtin_offsetof(bwd_seg_progptr_desc, program) == 0, "progptr program ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_progptr_desc, program_words) == 8, "progptr program_words ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_progptr_desc, list_offset) == 12, "progptr list_offset ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_progptr_desc, k) == 78, "progptr k ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_progptr_desc, term_count) == 80, "progptr term_count ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_progptr_desc, num_sources) == 82, "progptr num_sources ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_progptr_desc, num_foldable) == 84, "progptr num_foldable ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_progptr_desc, fold_source) == 86, "progptr fold_source ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_progptr_desc, source) == 2230, "progptr source ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_progptr_desc, window) == 6520, "progptr window ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_progptr_desc, c_init) == 7064, "progptr c_init ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_progptr_desc, coefficients) == 7080, "progptr coefficients ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_progptr_desc, eq_low) == 7088, "progptr eq_low ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_progptr_desc, contributions) == 7096, "progptr contributions ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_progptr_desc, eq_sizes) == 7104, "progptr eq_sizes ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_progptr_desc, n_coefficients) == 7116, "progptr n_coefficients ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_progptr_desc, logical_rows) == 7120, "progptr logical_rows ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_progptr_desc, pad) == 7124, "progptr pad ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_progptr_desc, pad) + 3 * sizeof(u32) == sizeof(bwd_seg_progptr_desc), "progptr pad must be the descriptor tail");
+static_assert(sizeof(bwd_seg_progptr_desc) % BWD_SEG_DESC_ALIGN == 0, "the progptr descriptor size must be a whole number of alignment quanta");
+// The A/B twin really drops the array rather than leaving it resident.
+static_assert(sizeof(bwd_seg_desc) - sizeof(bwd_seg_progptr_desc) >= BWD_SEG_PROGRAM_BYTE_CAP - BWD_SEG_DESC_ALIGN,
+              "the progptr twin must actually drop the by-value program");
+static_assert(__builtin_offsetof(bwd_seg_progptr_desc, window) - (__builtin_offsetof(bwd_seg_progptr_desc, source) + sizeof(bwd_seg_progptr_desc::source)) == 2,
+              "the implicit gap before `window` is not the two bytes both halves assert");
+
+// ── Epilogue specialization (section 3) ─────────────────────────────────────
+//
+// The cross-warp reduction the eval loop's per-warp partials need. NO default is
+// pre-committed: all three are compiled and the A/B decides.
+enum bwd_seg_epilogue : u32 {
+  // Serial read-modify-write through ONE 32-lane (acc_c0, acc_c2) plane pair:
+  // K - 1 barriers, ~1 KiB of shared memory.
+  BWD_SEG_EPILOGUE_STAGED = 0,
+  // Incumbent-style `[K - 1][32]` plane REUSED for c0 then c2: 3 barriers,
+  // ~15.5 KiB at K = 32.
+  BWD_SEG_EPILOGUE_PLANE = 1,
+  // Both planes at once: 1 barrier, ~31 KiB at K = 32, which eats the L1
+  // carveout.
+  BWD_SEG_EPILOGUE_WIDE = 2,
+};
+
+// Shared-memory bytes each epilogue needs at `k` warps. The Rust launcher
+// computes the same three numbers; they are the dynamic-smem argument of the
+// launch, so a disagreement is an out-of-bounds shared access rather than a
+// build failure — which is why they are spelled once here and mirrored there.
+constexpr u32 bwd_seg_epilogue_smem_bytes(const u32 epilogue, const u32 k) {
+  if (k < 2)
+    return 0; // K == 1: warp 0's register partials ARE the block result.
+  switch (epilogue) {
+  case BWD_SEG_EPILOGUE_STAGED:
+    return 2 * BWD_SEG_WARP_LANES * static_cast<u32>(sizeof(e4));
+  case BWD_SEG_EPILOGUE_PLANE:
+    return (k - 1) * BWD_SEG_WARP_LANES * static_cast<u32>(sizeof(e4));
+  default:
+    return 2 * (k - 1) * BWD_SEG_WARP_LANES * static_cast<u32>(sizeof(e4));
+  }
+}
+
+static_assert(bwd_seg_epilogue_smem_bytes(BWD_SEG_EPILOGUE_STAGED, 1) == 0, "K == 1 needs no plane");
+static_assert(bwd_seg_epilogue_smem_bytes(BWD_SEG_EPILOGUE_STAGED, BWD_SEG_MAX_K) == 1024, "staged plane pair size drift");
+static_assert(bwd_seg_epilogue_smem_bytes(BWD_SEG_EPILOGUE_PLANE, BWD_SEG_MAX_K) == 15872, "plane size drift");
+static_assert(bwd_seg_epilogue_smem_bytes(BWD_SEG_EPILOGUE_WIDE, BWD_SEG_MAX_K) == 31744, "wide plane pair size drift");
+// Every variant stays inside the 48 KB a block gets without an opt-in carveout.
+static_assert(bwd_seg_epilogue_smem_bytes(BWD_SEG_EPILOGUE_WIDE, BWD_SEG_MAX_K) <= 48 * 1024, "the wide epilogue exceeds the default shared-memory limit");
+
+} // namespace airbender::prover::gkr
+
+// This lineage's OWN coefficient bank. Stream-ordered `__constant__` memory,
+// uploaded by the host with the reserved-inclusive payload
+// `[ONE, NEG_ONE, recipes...]` and indexed RAW by the wire's thirteen-bit
+// coefficient id. Declared at global scope (NTT pattern) so the `const` loader
+// can name the symbol directly, which is what LDC emission requires.
+EXTERN __device__ __constant__ e4 ab_gkr_bwd_seg_coeff_bank[airbender::prover::gkr::BWD_SEG_CONST_BANK];
+
+// The ONE authority on fold challenges, which is why this lineage's descriptor
+// carries no challenge pointer: the incumbent main-layer claim point, DEFINED by
+// `round1_flat_warp_split.cu` and declared identically by `continuation.cuh`. The
+// fold prologue reads index `backing_depth + level - 1` — front-indexed, so a
+// delta-step catch-up at round `r` reads `[r - delta, r)`, which is the span host
+// lowering bounds with `claim_point.len() >= round`.
+EXTERN __device__ __constant__ e4 ab_gkr_main_layer_claim_point[airbender::prover::gkr::GKR_MAIN_LAYER_CLAIM_POINT_LEN];
+
+// ── The kernel matrix (section 3, 5) ────────────────────────────────────────
+//
+// Four axes, only the listed cells instantiated:
+//
+//   family          r0 | cont
+//   coeff loader    const (the `__constant__` bank) | ptr (`desc.coefficients`)
+//   program source  inline (`desc.program`) | devptr (cont + const only)
+//   epilogue        staged | plane | wide
+//
+// `__launch_bounds__` is deliberately UNSET: the register measurement is the
+// point, and buying blocks with the second argument forces spills (section 15).
+EXTERN __global__ void ab_gkr_bwd_seg_r0_const_epi_staged_kernel(const __grid_constant__ airbender::prover::gkr::bwd_seg_desc desc);
+EXTERN __global__ void ab_gkr_bwd_seg_r0_const_epi_plane_kernel(const __grid_constant__ airbender::prover::gkr::bwd_seg_desc desc);
+EXTERN __global__ void ab_gkr_bwd_seg_r0_const_epi_wide_kernel(const __grid_constant__ airbender::prover::gkr::bwd_seg_desc desc);
+EXTERN __global__ void ab_gkr_bwd_seg_r0_ptr_epi_staged_kernel(const __grid_constant__ airbender::prover::gkr::bwd_seg_desc desc);
+EXTERN __global__ void ab_gkr_bwd_seg_r0_ptr_epi_plane_kernel(const __grid_constant__ airbender::prover::gkr::bwd_seg_desc desc);
+EXTERN __global__ void ab_gkr_bwd_seg_r0_ptr_epi_wide_kernel(const __grid_constant__ airbender::prover::gkr::bwd_seg_desc desc);
+EXTERN __global__ void ab_gkr_bwd_seg_cont_const_epi_staged_kernel(const __grid_constant__ airbender::prover::gkr::bwd_seg_desc desc);
+EXTERN __global__ void ab_gkr_bwd_seg_cont_const_epi_plane_kernel(const __grid_constant__ airbender::prover::gkr::bwd_seg_desc desc);
+EXTERN __global__ void ab_gkr_bwd_seg_cont_const_epi_wide_kernel(const __grid_constant__ airbender::prover::gkr::bwd_seg_desc desc);
+EXTERN __global__ void ab_gkr_bwd_seg_cont_ptr_epi_staged_kernel(const __grid_constant__ airbender::prover::gkr::bwd_seg_desc desc);
+EXTERN __global__ void ab_gkr_bwd_seg_cont_ptr_epi_plane_kernel(const __grid_constant__ airbender::prover::gkr::bwd_seg_desc desc);
+EXTERN __global__ void ab_gkr_bwd_seg_cont_ptr_epi_wide_kernel(const __grid_constant__ airbender::prover::gkr::bwd_seg_desc desc);
+EXTERN __global__ void ab_gkr_bwd_seg_cont_const_progptr_epi_staged_kernel(const __grid_constant__ airbender::prover::gkr::bwd_seg_progptr_desc desc);
+EXTERN __global__ void ab_gkr_bwd_seg_cont_const_progptr_epi_plane_kernel(const __grid_constant__ airbender::prover::gkr::bwd_seg_progptr_desc desc);
+EXTERN __global__ void ab_gkr_bwd_seg_cont_const_progptr_epi_wide_kernel(const __grid_constant__ airbender::prover::gkr::bwd_seg_progptr_desc desc);
