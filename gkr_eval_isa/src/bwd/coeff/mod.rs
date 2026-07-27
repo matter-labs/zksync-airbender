@@ -18,8 +18,9 @@
 //! and they live in their own strictly later modules — [`order`] (the committed
 //! term order and the physical K-split), [`schedule`] (paging),
 //! [`place`] (cells and moves), [`bind`] (source windows), [`encode`] (the u16
-//! wire), [`artifact`] (the deterministic `c2`-`c16` schedules, their replay and
-//! the exact report). A [`CoeffTerm`] must never grow to carry any of it.
+//! wire), [`lean`] (the segmented lean VM's fixed 8-byte term wire), [`artifact`]
+//! (the deterministic `c2`-`c16` schedules, their replay and the exact report). A
+//! [`CoeffTerm`] must never grow to carry any of it.
 //!
 //! One backward production lineage: there is no format version, no compatibility
 //! decoder, and no old/new switch here.
@@ -28,6 +29,7 @@ pub mod artifact;
 pub mod bind;
 pub mod encode;
 pub mod interp;
+pub mod lean;
 pub mod limits;
 pub mod lower;
 pub mod model;
@@ -63,6 +65,14 @@ pub use encode::{
     opcode_of, opcode_table, operand_width, program_records, term_category, validate_program,
 };
 pub use interp::{CoeffResolver, interpret_coeff_layer, interpret_encoded_program};
+// The lean codec's four entry points keep their module path: `encode_program`,
+// `decode_program`, `validate_program` and `disassemble` are names the cell-era
+// codec owns at this facade until that lineage is retired.
+pub use lean::{
+    LEAN_BYTES_PER_TERM, LEAN_CLASS_MASK, LEAN_CLASS_SHIFT, LEAN_COEFFICIENT_MASK,
+    LEAN_COEFFICIENT_SHIFT, LEAN_CONT_OPCODES, LEAN_R0_OPCODES, LEAN_WORDS_PER_TERM,
+    LeanCodecError, LeanProgram, LeanTerm, SOURCE_NONE,
+};
 pub use limits::{
     ASSUMED_MOVES_PER_REUSABLE_PROJECTION, CONTINUATION_LIVE_OPCODES, CONTINUATION_OPCODE_TABLE,
     HEADER_COEFFICIENT_BITS, HEADER_OPCODE_BITS, KERNEL_ARGUMENT_CEILING_BYTES,
