@@ -163,6 +163,15 @@ struct bf {
     return red_wide(w);
   }
 
+  // Fused negate-multiply-add: c - a*b (the accumulate-subtract orientation).
+  // Same high-word principle, mirrored: ORDER·2³² vanishes mod p, so (ORDER + c.limb)·2³² carries
+  // c·R in the high word while keeping the subtraction of the wide product non-negative
+  // (w < p² < ORDER·2³²). Total < 2p·2³² < 2⁶⁴; red_wide handles any u64 input.
+  static DEVICE_FORCEINLINE bf fnma(const bf a, const bf b, const bf c) {
+    const u64 w = mul_wide(a.limb, b.limb);
+    return red_wide((static_cast<u64>(ORDER + c.limb) << 32) - w);
+  }
+
   static constexpr DEVICE_FORCEINLINE bf dbl(const bf x) { return add(x, x); }
 
   template <unsigned LOG2_EXP> static DEVICE_FORCEINLINE bf pow_log2_exp(const bf x) {
@@ -355,6 +364,30 @@ struct __align__(8) e2 {
   static DEVICE_FORCEINLINE e2 fms(const e2 x, const bf s, const bf z) { return e2(bf::fms(x[0], s, z), bf::mul(x[1], s)); }
 
   static DEVICE_FORCEINLINE e2 fms(const bf s, const e2 x, const bf z) { return fms(x, s, z); }
+
+  // Fused negate-multiply-add: c - a*b. Mirrors fms with the merge flipped: each wide Karatsuba
+  // accumulator is subtracted from (ORDER + cᵢ)·2³² — ORDER·2³² vanishes mod p and carries cᵢ·R in
+  // the high word, while accᵢ < 2·p² < ORDER·2³² keeps the subtraction non-negative and the total
+  // under 2p·2³² < 2⁶⁴. red_wide handles any u64 input.
+  static DEVICE_FORCEINLINE e2 fnma(const e2 a, const e2 b, const e2 c) {
+    const u32 a1n = bf::mul_by_non_residue(a[1]).limb;
+    const u64 acc0 = mad_wide(a1n, b[1].limb, mul_wide(a[0].limb, b[0].limb));
+    const u64 acc1 = mad_wide(a[1].limb, b[0].limb, mul_wide(a[0].limb, b[1].limb));
+    const u64 m0 = (static_cast<u64>(bf::ORDER + c[0].limb) << 32) - acc0;
+    const u64 m1 = (static_cast<u64>(bf::ORDER + c[1].limb) << 32) - acc1;
+    return e2(bf::red_wide(m0), bf::red_wide(m1));
+  }
+
+  // Fused scalar negate-multiply-add: z - x*s where s is a base field scalar. One scalar negation
+  // amortized across both lanes, then the fused fma family.
+  static DEVICE_FORCEINLINE e2 fnma(const e2 x, const bf s, const e2 z) { return fma(x, bf::neg(s), z); }
+
+  static DEVICE_FORCEINLINE e2 fnma(const bf s, const e2 x, const e2 z) { return fnma(x, s, z); }
+
+  // Mixed: z_bf - x*s where z_bf is a base field element (entering only coefficient 0).
+  static DEVICE_FORCEINLINE e2 fnma(const e2 x, const bf s, const bf z) { return fma(x, bf::neg(s), z); }
+
+  static DEVICE_FORCEINLINE e2 fnma(const bf s, const e2 x, const bf z) { return fnma(x, s, z); }
 
   static DEVICE_FORCEINLINE e2 inv(const e2 x) {
     const auto a = x[0];
@@ -597,6 +630,20 @@ struct __align__(16) e4 {
   // Swapped: s*x - z_bf.
   static DEVICE_FORCEINLINE e4 fms(const bf s, const e4 x, const bf z) { return fms(x, s, z); }
 
+  // Fused negate-multiply-add: z - x*y. Like fma/fms, cannot fuse into the flat quartic accumulator.
+  static DEVICE_FORCEINLINE e4 fnma(const e4 x, const e4 y, const e4 z) { return sub(z, mul(x, y)); }
+
+  // Fused scalar negate-multiply-add: z - x*s where s is a base field scalar. One scalar negation
+  // amortized across all four lanes, then the fused fma family.
+  static DEVICE_FORCEINLINE e4 fnma(const e4 x, const bf s, const e4 z) { return fma(x, bf::neg(s), z); }
+
+  static DEVICE_FORCEINLINE e4 fnma(const bf s, const e4 x, const e4 z) { return fnma(x, s, z); }
+
+  // Mixed: z_bf - x*s where z_bf is a base field element (entering only coefficient [0][0]).
+  static DEVICE_FORCEINLINE e4 fnma(const e4 x, const bf s, const bf z) { return fma(x, bf::neg(s), z); }
+
+  static DEVICE_FORCEINLINE e4 fnma(const bf s, const e4 x, const bf z) { return fnma(x, s, z); }
+
   static DEVICE_FORCEINLINE e4 inv(const e4 x) {
     const auto a = x[0];
     const auto b = x[1];
@@ -779,6 +826,28 @@ struct __align__(8) e6 {
   static DEVICE_FORCEINLINE e6 fms(const e6 x, const e2 s, const e2 z) { return e6(e2::fms(x[0], s, z), e2::mul(x[1], s), e2::mul(x[2], s)); }
 
   static DEVICE_FORCEINLINE e6 fms(const e2 s, const e6 x, const e2 z) { return fms(x, s, z); }
+
+  // Fused negate-multiply-add: z - x*y. Like fma/fms, not fused internally.
+  static DEVICE_FORCEINLINE e6 fnma(const e6 x, const e6 y, const e6 z) { return sub(z, mul(x, y)); }
+
+  // Fused scalar negate-multiply-add: z - x*s. One scalar negation, then the fused fma family.
+  static DEVICE_FORCEINLINE e6 fnma(const e6 x, const bf s, const e6 z) { return fma(x, bf::neg(s), z); }
+
+  static DEVICE_FORCEINLINE e6 fnma(const bf s, const e6 x, const e6 z) { return fnma(x, s, z); }
+
+  static DEVICE_FORCEINLINE e6 fnma(const e6 x, const e2 s, const e6 z) { return fma(x, e2::neg(s), z); }
+
+  static DEVICE_FORCEINLINE e6 fnma(const e2 s, const e6 x, const e6 z) { return fnma(x, s, z); }
+
+  // Mixed: z_bf - x*s (entering only coefficient [0]).
+  static DEVICE_FORCEINLINE e6 fnma(const e6 x, const bf s, const bf z) { return fma(x, bf::neg(s), z); }
+
+  static DEVICE_FORCEINLINE e6 fnma(const bf s, const e6 x, const bf z) { return fnma(x, s, z); }
+
+  // Mixed: z_e2 - x*s (entering only coefficient [0]).
+  static DEVICE_FORCEINLINE e6 fnma(const e6 x, const e2 s, const e2 z) { return fma(x, e2::neg(s), z); }
+
+  static DEVICE_FORCEINLINE e6 fnma(const e2 s, const e6 x, const e2 z) { return fnma(x, s, z); }
 
   static DEVICE_FORCEINLINE e6 inv(const e6 x) {
     const auto c0 = e2::add(e2::neg(e2::mul(e2::mul_by_cubic_non_residue(x[2]), x[1])), e2::sqr(x[0]));
