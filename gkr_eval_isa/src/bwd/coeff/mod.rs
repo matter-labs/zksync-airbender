@@ -18,8 +18,10 @@
 //! and they live in their own strictly later modules — [`order`] (the committed
 //! term order and the physical K-split), [`schedule`] (paging),
 //! [`place`] (cells and moves), [`bind`] (source windows), [`encode`] (the u16
-//! wire), [`lean`] (the segmented lean VM's fixed 8-byte term wire), [`artifact`]
-//! (the deterministic `c2`-`c16` schedules, their replay and the exact report). A
+//! wire), [`lean`] (the segmented lean VM's fixed 8-byte term wire),
+//! [`lean_bind`] (that VM's placement-free per-source binding), [`artifact`]
+//! (the deterministic `c2`-`c16` schedules, their replay and the exact report) and
+//! [`lean_artifact`] (the per-layer lean coordinate and its corpus). A
 //! [`CoeffTerm`] must never grow to carry any of it.
 //!
 //! One backward production lineage: there is no format version, no compatibility
@@ -30,6 +32,8 @@ pub mod bind;
 pub mod encode;
 pub mod interp;
 pub mod lean;
+pub mod lean_artifact;
+pub mod lean_bind;
 pub mod limits;
 pub mod lower;
 pub mod model;
@@ -76,9 +80,23 @@ pub use lean::{
     LEAN_COEFFICIENT_SHIFT, LEAN_CONT_OPCODES, LEAN_R0_OPCODES, LEAN_WORDS_PER_TERM,
     LeanCodecError, LeanProgram, LeanTerm, SOURCE_NONE,
 };
+// Every lean artifact helper is spelled with a `lean_` prefix — `lean_artifact_
+// bytes`, `lean_artifact_file_name`, `write_lean_circuit_artifact`,
+// `read_lean_circuit_artifact` — precisely so both lineages can be re-exported side
+// by side while the cell-era `artifact` module still owns the unprefixed names.
+pub use lean_artifact::{
+    LeanArtifactError, LeanCircuitArtifact, LeanCoordinateArtifact, compile_lean_coordinate,
+    lean_artifact_bytes, lean_artifact_file_name, lean_target_depth, lower_lean_layer,
+    order_covers_layer, read_lean_circuit_artifact, write_lean_circuit_artifact,
+};
+pub use lean_bind::{
+    LEAN_PROCEDURAL_KINDS, LeanBindError, LeanBoundColumn, LeanBoundWindow, LeanSourceBinding,
+    LeanSourceSlot, bind_lean_sources,
+};
 pub use limits::{
     ASSUMED_MOVES_PER_REUSABLE_PROJECTION, CONTINUATION_LIVE_OPCODES, CONTINUATION_OPCODE_TABLE,
     HEADER_COEFFICIENT_BITS, HEADER_OPCODE_BITS, KERNEL_ARGUMENT_CEILING_BYTES,
+    LEAN_DESCRIPTOR_PROGRAM_BYTES, LEAN_DESCRIPTOR_PROGRAM_WORDS, LEAN_MAX_REALIZED_PROGRAM_WORDS,
     MAX_COEFFICIENT_ENCODINGS, MAX_SOURCE_WINDOWS, R0_LIVE_OPCODES, R0_OPCODE_TABLE,
     SOURCE_WINDOW_COLUMNS, TermCategory, continuation_opcode, r0_opcode,
 };
@@ -98,8 +116,9 @@ pub use schedule::{
     stable_normalized_order, sweep_budgets, term_slots, validate_prices,
 };
 pub use stats::{
-    CoeffCensus, CoeffCensusFailure, CoeffCensusRow, census_coeff_layer, census_csv, census_layer,
-    compulsory_endpoint_reads, live_term_categories, source_window_count,
+    CoeffCensus, CoeffCensusFailure, CoeffCensusRow, NegOneCensus, census_coeff_layer, census_csv,
+    census_layer, compulsory_endpoint_reads, live_term_categories, neg_one_census,
+    source_window_count,
 };
 pub use model::{
     CoeffChallenge, CoeffError, CoeffLayer, CoeffProduct, CoeffSource, CoeffTerm,

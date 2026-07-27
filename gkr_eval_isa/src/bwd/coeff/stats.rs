@@ -28,13 +28,17 @@ use cs::gkr_compiler::dag_ir::{
     BwdRegime, DagLayer, FieldKind, ReadPlace, RootSlot, SinkKind, VirtualSetupKind, bwd_roots,
     read_place_field,
 };
+use serde::{Deserialize, Serialize};
 
+use super::encode::term_category;
 use super::limits::{
     KERNEL_ARGUMENT_CEILING_BYTES, SOURCE_WINDOW_COLUMNS, TermCategory,
     lower_bound_program_words, program_bytes, upper_bound_program_words,
 };
 use super::lower::{LoweringTrace, lower_coeff_layer_traced};
-use super::model::{CoeffError, CoeffLayer, CoeffSource, CoeffTerm, ProjectionId};
+use super::model::{
+    CoeffError, CoeffLayer, CoeffSource, CoeffTerm, CoefficientRecipeId, ProjectionId,
+};
 use crate::bwd::distill::{DistilledLayer, distill};
 use crate::bwd::source::OriginLeaf;
 
@@ -46,7 +50,13 @@ use crate::bwd::source::OriginLeaf;
 /// A `VirtualSetup` origin is procedurally resolved (§9.6: "procedural values
 /// remain ordinary source coordinates whose window descriptor selects procedural
 /// resolution"), so each distinct kind is its own single-column family.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+///
+/// `Serialize`/`Deserialize` because
+/// [`LeanBoundWindow`](super::lean_bind::LeanBoundWindow) nests this inside a
+/// serialized lean coordinate. The family is deliberately NOT mirrored into a
+/// second serializable enum: this type is the SINGLE mapping from a source to its
+/// backing, and a mirror would be a second answer to "what is a backing".
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum WindowFamily {
     BaseLayerMemory,
     BaseLayerWitness,
@@ -739,4 +749,44 @@ pub fn live_term_categories(lowered: &CoeffLayer) -> Result<BTreeSet<TermCategor
         }
     }
     Ok(live)
+}
+
+// ── The NEG_ONE census (segmented-lean-VM design §8) ─────────────────────────
+
+/// [`NEG_ONE`](CoefficientRecipeId::NEG_ONE)-coefficient terms of one layer, by
+/// category.
+///
+/// The input to the `fnma` (`z - x*y`) adoption decision. Signs live in
+/// coefficients, so a `NEG_ONE` term is a SUBTRACT-shaped accumulate: `acc - x*y`
+/// rather than `acc + k*x*y`, which fuses into one instruction per width class
+/// instead of a multiply followed by an add. How much that is worth is exactly the
+/// frequency of those terms per width class, which is what this measures.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct NegOneCensus {
+    /// `(category, NEG_ONE terms)`, ascending by category. A category with no
+    /// `NEG_ONE` term is ABSENT rather than zero, so the vector is the census's
+    /// support and its sum is the layer's `NEG_ONE` term count.
+    pub per_category: Vec<(TermCategory, u64)>,
+    /// ALL terms of the layer — the denominator. Reported even when
+    /// [`NegOneCensus::per_category`] is empty, so a layer with no `NEG_ONE` term is
+    /// distinguishable from a layer nobody censused.
+    pub total_terms: u64,
+}
+
+/// Count one layer's [`NEG_ONE`](CoefficientRecipeId::NEG_ONE) terms per category.
+///
+/// The category is [`term_category`]'s — the same width classification the wire
+/// encodes — so the result is directly the per-width-class frequency the `fnma`
+/// decision needs, and not a re-derivation of it.
+pub fn neg_one_census(layer: &CoeffLayer) -> NegOneCensus {
+    let mut per_category: BTreeMap<TermCategory, u64> = BTreeMap::new();
+    for term in &layer.terms {
+        if term.coefficient() == CoefficientRecipeId::NEG_ONE {
+            *per_category.entry(term_category(term)).or_default() += 1;
+        }
+    }
+    NegOneCensus {
+        per_category: per_category.into_iter().collect(),
+        total_terms: layer.terms.len() as u64,
+    }
 }

@@ -648,3 +648,50 @@ pub mod with_conditional_blake2 {
     const _: () = assert!(MAX_LOWER_BOUND_PROGRAM_BYTES <= KERNEL_ARGUMENT_CEILING_BYTES);
     const _: () = assert!(MAX_UPPER_BOUND_PROGRAM_BYTES <= KERNEL_ARGUMENT_CEILING_BYTES);
 }
+
+// ── The segmented lean VM's measurements (lean design §4) ────────────────────
+//
+// The lean wire is FIXED at `LEAN_WORDS_PER_TERM` words per term, so a lean
+// program's length is `4 * terms` and there is no bound/measurement gap to close:
+// the term population IS the program length. These three numbers therefore replace
+// the whole `lower_bound_program_words` / `upper_bound_program_words` /
+// `in_scope::MAX_REALIZED_PROGRAM_WORDS` triple the cell-era codec needed, and
+// nothing here is a schedule measurement — there is no schedule.
+
+/// The largest lean program over the whole in-scope corpus, in u16 words.
+///
+/// A MEASUREMENT, pinned by `bwd_lean_program_word_census_sizes_the_descriptor` in
+/// `tests/bwd_coeff_lean_artifact.rs`, and by construction it is
+/// `LEAN_WORDS_PER_TERM * in_scope::MAX_TERMS`: the fixed-width wire makes the
+/// longest program the one with the most terms
+/// (`blake2_with_extended_control` L0 `Ext`, 1791 terms). The identity is asserted
+/// below rather than assumed, so a codec that stopped being fixed-width would trip
+/// here instead of silently under-sizing the descriptor.
+pub const LEAN_MAX_REALIZED_PROGRAM_WORDS: usize = 7_164;
+
+/// The segmented descriptor's program array length, in u16 words:
+/// [`LEAN_MAX_REALIZED_PROGRAM_WORDS`] rounded up to the descriptor's 16-byte ABI
+/// alignment and NOT ONE WORD FURTHER.
+///
+/// The remaining `KERNEL_ARGUMENT_CEILING_BYTES - LEAN_DESCRIPTOR_PROGRAM_BYTES` is
+/// deliberately not claimed as headroom, for the same reason
+/// [`in_scope::DESCRIPTOR_PROGRAM_WORDS`] does not claim it: an unearned word is
+/// unearned kernel-argument budget in every launch, forever.
+pub const LEAN_DESCRIPTOR_PROGRAM_WORDS: usize = 7_168;
+/// [`LEAN_DESCRIPTOR_PROGRAM_WORDS`] in bytes: 16-byte aligned by construction.
+pub const LEAN_DESCRIPTOR_PROGRAM_BYTES: usize = 14_336;
+
+// The measurement is the fixed-width identity, the array is the measurement
+// rounded up by strictly less than one alignment quantum, and the whole array fits
+// the by-value cap with room for the rest of the descriptor.
+const _: () = assert!(
+    LEAN_MAX_REALIZED_PROGRAM_WORDS == super::lean::LEAN_WORDS_PER_TERM * in_scope::MAX_TERMS
+);
+const _: () =
+    assert!(LEAN_DESCRIPTOR_PROGRAM_WORDS == align_program_words(LEAN_MAX_REALIZED_PROGRAM_WORDS));
+const _: () =
+    assert!(LEAN_DESCRIPTOR_PROGRAM_BYTES == program_bytes(LEAN_DESCRIPTOR_PROGRAM_WORDS));
+const _: () = assert!(
+    LEAN_DESCRIPTOR_PROGRAM_WORDS - LEAN_MAX_REALIZED_PROGRAM_WORDS < DESCRIPTOR_ALIGNMENT_WORDS
+);
+const _: () = assert!(LEAN_DESCRIPTOR_PROGRAM_BYTES < KERNEL_ARGUMENT_CEILING_BYTES);
