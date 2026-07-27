@@ -320,9 +320,24 @@ pub fn decode_program(program: &LeanProgram) -> Result<Vec<LeanTerm>, LeanCodecE
     Ok(out)
 }
 
-/// Accept only a stream `layer` can execute: every class live in its regime,
-/// every coefficient id addressable, every slot inside the source table, and
-/// `source_b` present exactly for the two-source classes.
+/// Check the stream against `layer`. Exactly six rules, one per
+/// [`LeanCodecError`] variant: the length and the reserved words
+/// ([`decode_program`]), then per record the class is live in `layer.regime`, the
+/// coefficient id addresses a reserved literal or a bank entry, every slot is
+/// inside `layer.sources`, and `source_b` is [`SOURCE_NONE`] exactly for the
+/// one-source classes.
+///
+/// What it does NOT check: that each slot's [`CoeffSource::field`] is the width
+/// its class implies. A class-3 (`C2ProductBF_E4`) record whose `source_a`
+/// addresses an `Ext` source passes here and is still unexecutable at that class,
+/// so `Ok(())` means WELL-FORMED, not executable. Operand widths — including the
+/// BF-first normalization of a mixed product a GPU executor's mixed branch
+/// depends on — are an ENCODER invariant, pinned by
+/// `a_mixed_product_puts_the_bf_factor_first`, not a validated one: the frozen
+/// seven-variant error list has no honest home for a width rule, and reusing
+/// [`LeanCodecError::ClassNotInRegime`] would misreport it as a dead class.
+///
+/// [`CoeffSource::field`]: super::model::CoeffSource::field
 pub fn validate_program(program: &LeanProgram, layer: &CoeffLayer) -> Result<(), LeanCodecError> {
     let terms = decode_program(program)?;
     let coefficients = CoefficientRecipeId::RESERVED as usize + layer.coefficients.len();
