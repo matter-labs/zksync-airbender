@@ -8,13 +8,15 @@
 //! literals below, so a CUDA-side STRUCT edit is a build failure.
 //!
 //! The header-text matchers that catch a CUDA-only CONSTANT edit (the failure
-//! direction neither compiler sees) are NOT here and were not Task 7's: they land
-//! with Task 8's test work. Most of the header's constants are layout-bearing and
-//! are therefore already pinned by its own `static_assert`s; the one genuinely
-//! uncovered constant is [`BWD_SEG_CONST_BANK`], which sizes a `__constant__`
-//! symbol nothing on this side can see — a CUDA-side shrink would let the host's
-//! bank upload write past the symbol with no build error anywhere, so it MUST be
-//! among the matched constants.
+//! direction neither compiler sees) are
+//! [`seg_cuda_constants_match_the_rust_mirror`] and
+//! [`seg_cuda_layout_asserts_match_the_rust_layout`]. Most of the header's
+//! constants are layout-bearing and are therefore already pinned by its own
+//! `static_assert`s; the two that are NOT are [`BWD_SEG_CONST_BANK`], which sizes a
+//! `__constant__` symbol nothing on this side can see (a CUDA-side shrink would let
+//! the host's bank upload write past the symbol with no build error anywhere), and
+//! the five SOURCE-CLASS numbers, which the header pins only against its own
+//! restatements — their authority is Rust's [`SourceClass`] enum.
 //!
 //! Either way the checks here pin EXACT numbers rather than bounds: an offset or a
 //! size that moves is a silent Rust↔CUDA divergence.
@@ -27,9 +29,12 @@
 
 use std::mem::{align_of, offset_of, size_of};
 
-use gkr_eval_isa::bwd::coeff::lean::{LEAN_WORDS_PER_TERM, SOURCE_NONE};
+use gkr_eval_isa::bwd::coeff::lean::{
+    LEAN_CLASS_MASK, LEAN_CLASS_SHIFT, LEAN_COEFFICIENT_MASK, LEAN_COEFFICIENT_SHIFT,
+    LEAN_CONT_OPCODES, LEAN_R0_OPCODES, LEAN_WORDS_PER_TERM, SOURCE_NONE,
+};
 use gkr_eval_isa::bwd::coeff::limits::{
-    in_scope, DESCRIPTOR_ALIGNMENT_BYTES, KERNEL_ARGUMENT_CEILING_BYTES,
+    in_scope, TermCategory, DESCRIPTOR_ALIGNMENT_BYTES, KERNEL_ARGUMENT_CEILING_BYTES,
     LEAN_DESCRIPTOR_PROGRAM_BYTES, LEAN_DESCRIPTOR_PROGRAM_WORDS, LEAN_MAX_REALIZED_PROGRAM_WORDS,
     MAX_COEFFICIENT_ENCODINGS,
 };
@@ -44,9 +49,16 @@ use super::seg_desc::{
     BWD_SEG_DESC_CAP, BWD_SEG_INLINE_KERNEL_ARGUMENT_BYTES, BWD_SEG_MAX_K, BWD_SEG_MAX_SOURCES,
     BWD_SEG_MAX_THREADS_PER_BLOCK, BWD_SEG_PROGPTR_KERNEL_ARGUMENT_BYTES,
 };
+use super::seg_lower::SourceClass;
 use crate::primitives::field::E4;
 use crate::primitives::utils::WARP_SIZE;
 use crate::prover::gkr::backward::GkrEqSizes;
+
+/// The CUDA half of the ABI, read as TEXT so a constant-only edit there cannot slip
+/// past both builds: nvcc's own `static_assert`s are CUDA-vs-CUDA and cannot compare
+/// against Rust.
+const SEG_CUDA_HEADER: &str =
+    include_str!("../../../../../native/prover/gkr/backward/segmented_vm.cuh");
 
 /// The pinned size of the inline-program descriptor.
 const INLINE_DESC_BYTES: usize = 21_456;
@@ -473,4 +485,397 @@ fn seg_empty_descriptors_are_inert() {
     assert_eq!(progptr.program_words, 0);
     assert!(progptr.coefficients.is_null());
     assert_eq!(progptr.num_foldable, 0);
+}
+
+// ── The CUDA header, as text ─────────────────────────────────────────────────
+//
+// The third drift direction. Rust-side drift is a build failure (`seg_desc`'s
+// `const _: () = assert!(...)` blocks); CUDA-side STRUCT drift is a build failure
+// under nvcc; a CUDA-side edit to a constant that changes no layout is seen by
+// NEITHER compiler, and these are what close it. Same shape as
+// `abi_tests::cuda_constants_match_the_rust_mirror` for the cell-era header,
+// deliberately: one reader should recognize both.
+
+/// The value `segmented_vm.cuh` defines `name` as, for a LITERAL definition.
+///
+/// An expression-valued constant cannot be parsed and must be pinned through the
+/// header's own `static_assert` instead, so this panics rather than guessing.
+fn seg_cuda_literal(name: &str) -> u64 {
+    let needle = format!(" {name} = ");
+    let start = SEG_CUDA_HEADER
+        .find(&needle)
+        .unwrap_or_else(|| panic!("segmented_vm.cuh does not define {name}"))
+        + needle.len();
+    let rest = &SEG_CUDA_HEADER[start..];
+    let end = rest
+        .find(';')
+        .unwrap_or_else(|| panic!("{name} has no terminated definition"));
+    let raw = rest[..end].trim().trim_end_matches(['u', 'U']);
+    let parsed = if let Some(hex) = raw.strip_prefix("0x") {
+        u64::from_str_radix(hex, 16).ok()
+    } else {
+        raw.parse::<u64>().ok()
+    };
+    parsed.unwrap_or_else(|| {
+        panic!("{name} is defined as the expression `{raw}`; pin it with a static_assert instead")
+    })
+}
+
+/// The value `segmented_vm.cuh` gives an ENUMERATOR of `bwd_seg_epilogue`.
+///
+/// A second parser rather than a flag on [`seg_cuda_literal`]: an enumerator's
+/// definition runs to a COMMA, not a semicolon, and conflating the two terminators
+/// is exactly how a matcher starts silently reading the rest of the enum body.
+fn seg_cuda_enumerator(name: &str) -> u64 {
+    let needle = format!("  {name} = ");
+    let start = SEG_CUDA_HEADER
+        .find(&needle)
+        .unwrap_or_else(|| panic!("segmented_vm.cuh does not define enumerator {name}"))
+        + needle.len();
+    let rest = &SEG_CUDA_HEADER[start..];
+    let end = rest
+        .find(',')
+        .unwrap_or_else(|| panic!("{name} has no terminated enumerator"));
+    rest[..end]
+        .trim()
+        .parse::<u64>()
+        .unwrap_or_else(|error| panic!("enumerator {name} is not a plain literal: {error}"))
+}
+
+/// Does `haystack` contain this exact `static_assert` claim?
+///
+/// The trailing comma is LOAD-BEARING, exactly as in `abi_tests`: every claim sits
+/// inside a `static_assert(<claim>, "message");`, and without the terminator the
+/// needle is a plain substring — Rust `== 17` would match a header asserting
+/// `== 1712`. A check whose whole job is catching silent drift must not itself pass
+/// silently.
+fn seg_asserts_in(haystack: &str, claim: &str) -> bool {
+    haystack.contains(&format!("{claim},"))
+}
+
+fn seg_header_asserts(claim: &str) -> bool {
+    seg_asserts_in(SEG_CUDA_HEADER, claim)
+}
+
+fn assert_seg_header_asserts(claim: &str) {
+    assert!(
+        seg_header_asserts(claim),
+        "segmented_vm.cuh does not static_assert `{claim}`"
+    );
+}
+
+#[test]
+fn the_seg_static_assert_matcher_rejects_a_numeric_prefix() {
+    let drifted = r#"static_assert(sizeof(bwd_seg_desc) == 214560, "m");"#;
+    assert!(!seg_asserts_in(drifted, "sizeof(bwd_seg_desc) == 21456"));
+    assert!(seg_asserts_in(drifted, "sizeof(bwd_seg_desc) == 214560"));
+    // Against the real header: a true claim holds, a prefix of one does not, and a
+    // needle that is simply absent is a miss rather than a pass.
+    assert!(seg_header_asserts(&format!(
+        "sizeof(bwd_seg_desc) == {}",
+        size_of::<BwdSegDesc>()
+    )));
+    assert!(seg_header_asserts("BWD_SEG_SOURCE_WINDOW_CAP == 17"));
+    assert!(!seg_header_asserts("BWD_SEG_SOURCE_WINDOW_CAP == 1"));
+    assert!(!seg_header_asserts("__builtin_offsetof(bwd_seg_desc, no_such_field) == 0"));
+}
+
+/// Every numeric constant this lineage mirrors is present in the CUDA header with
+/// the same value.
+///
+/// Two groups matter more than the rest and are the reason this test is mandatory:
+///
+///   * [`BWD_SEG_CONST_BANK`] sizes a `__constant__` symbol. The host uploads its
+///     coefficient payload straight to that symbol's address, and lowering bounds
+///     the payload with the RUST number — so a CUDA-side shrink is an out-of-bounds
+///     `__constant__` write with no build error on either side.
+///   * the five SOURCE-CLASS numbers travel in a descriptor byte the kernel
+///     switches on. Their authority is [`SourceClass`]'s discriminants; the header
+///     pins them only against its own restatements, which is no cross-language
+///     check at all.
+#[test]
+fn seg_cuda_constants_match_the_rust_mirror() {
+    let expected: &[(&str, u64)] = &[
+        ("BWD_SEG_DESC_CAP", BWD_SEG_DESC_CAP as u64),
+        ("BWD_SEG_DESC_ALIGN", BWD_SEG_DESC_ALIGN as u64),
+        ("BWD_SEG_MAX_K", BWD_SEG_MAX_K as u64),
+        (
+            "BWD_SEG_MAX_THREADS_PER_BLOCK",
+            BWD_SEG_MAX_THREADS_PER_BLOCK as u64,
+        ),
+        ("BWD_SEG_WARP_LANES", WARP_SIZE as u64),
+        // The `__constant__` bank the host uploads into. MANDATORY.
+        ("BWD_SEG_CONST_BANK", BWD_SEG_CONST_BANK as u64),
+        ("BWD_SEG_MAX_SOURCES", BWD_SEG_MAX_SOURCES as u64),
+        (
+            "BWD_SEG_PROGRAM_WORD_CAP",
+            LEAN_DESCRIPTOR_PROGRAM_WORDS as u64,
+        ),
+        ("BWD_SEG_WORDS_PER_TERM", LEAN_WORDS_PER_TERM as u64),
+        (
+            "BWD_SEG_COEFFICIENT_SHIFT",
+            u64::from(LEAN_COEFFICIENT_SHIFT),
+        ),
+        ("BWD_SEG_SOURCE_NONE", u64::from(SOURCE_NONE)),
+        // The five source classes. MANDATORY: `SourceClass` is the authority.
+        (
+            "BWD_SEG_SOURCE_CLASS_BF_DIRECT",
+            u64::from(SourceClass::BfDirect.code()),
+        ),
+        (
+            "BWD_SEG_SOURCE_CLASS_BF_INLINE_D1",
+            u64::from(SourceClass::BfInlineD1.code()),
+        ),
+        (
+            "BWD_SEG_SOURCE_CLASS_BF_INLINE_D2",
+            u64::from(SourceClass::BfInlineD2.code()),
+        ),
+        (
+            "BWD_SEG_SOURCE_CLASS_E4_DIRECT",
+            u64::from(SourceClass::E4Direct.code()),
+        ),
+        (
+            "BWD_SEG_SOURCE_CLASS_PROCEDURAL_INLINE",
+            u64::from(SourceClass::ProceduralInline.code()),
+        ),
+        ("BWD_SEG_SOURCE_CLASSES", 5),
+        ("BWD_SEG_MAX_INLINE_FOLD_DEPTH", 2),
+    ];
+    for (name, value) in expected {
+        assert_eq!(seg_cuda_literal(name), *value, "CUDA {name}");
+    }
+
+    // The epilogue enumerators. The launcher selects a SYMBOL rather than passing
+    // one of these, but the header's `bwd_seg_epilogue_smem_bytes` switches on them
+    // — so a renumbering here silently re-sizes the plane a launch allocates.
+    for (name, value) in [
+        ("BWD_SEG_EPILOGUE_STAGED", 0),
+        ("BWD_SEG_EPILOGUE_PLANE", 1),
+        ("BWD_SEG_EPILOGUE_WIDE", 2),
+    ] {
+        assert_eq!(seg_cuda_enumerator(name), value, "CUDA {name}");
+    }
+
+    // The lean class tables, against the wire tables `gkr_eval_isa` owns.
+    let r0_class = |category| {
+        LEAN_R0_OPCODES
+            .iter()
+            .find(|(_, listed)| *listed == category)
+            .map(|(class, _)| u64::from(*class))
+            .unwrap_or_else(|| panic!("{category:?} is not a live R0 class"))
+    };
+    let cont_class = |category| {
+        LEAN_CONT_OPCODES
+            .iter()
+            .find(|(_, listed)| *listed == category)
+            .map(|(class, _)| u64::from(*class))
+            .unwrap_or_else(|| panic!("{category:?} is not a live continuation class"))
+    };
+    for (name, value) in [
+        (
+            "BWD_SEG_R0_CLASS_C0_LINEAR_BF",
+            r0_class(TermCategory::C0LinearBf),
+        ),
+        (
+            "BWD_SEG_R0_CLASS_C0_LINEAR_E4",
+            r0_class(TermCategory::C0LinearE4),
+        ),
+        (
+            "BWD_SEG_R0_CLASS_C2_PRODUCT_BF_BF",
+            r0_class(TermCategory::C2ProductBfBf),
+        ),
+        (
+            "BWD_SEG_R0_CLASS_C2_PRODUCT_BF_E4",
+            r0_class(TermCategory::C2ProductBfE4),
+        ),
+        (
+            "BWD_SEG_R0_CLASS_C2_PRODUCT_E4_E4",
+            r0_class(TermCategory::C2ProductE4E4),
+        ),
+        ("BWD_SEG_R0_LIVE_CLASSES", LEAN_R0_OPCODES.len() as u64),
+        (
+            "BWD_SEG_EXT_CLASS_C0_LINEAR_E4",
+            cont_class(TermCategory::C0LinearE4),
+        ),
+        (
+            "BWD_SEG_EXT_CLASS_DUAL_PRODUCT_E4",
+            cont_class(TermCategory::DualProductE4),
+        ),
+        ("BWD_SEG_EXT_LIVE_CLASSES", LEAN_CONT_OPCODES.len() as u64),
+    ] {
+        assert_eq!(seg_cuda_literal(name), value, "CUDA {name}");
+    }
+
+    // The expression-valued constants cannot be parsed as literals, so they are
+    // pinned by the header's own `static_assert`s — with the expected number built
+    // from the Rust mirror, never hand-written here.
+    for claim in [
+        format!("BWD_SEG_CLASS_SHIFT == {LEAN_CLASS_SHIFT}"),
+        format!("BWD_SEG_COEFFICIENT_MASK == {LEAN_COEFFICIENT_MASK:#x}u"),
+        format!("BWD_SEG_CLASS_MASK == {LEAN_CLASS_MASK:#x}u"),
+        format!("BWD_SEG_PROGRAM_BYTE_CAP == {LEAN_DESCRIPTOR_PROGRAM_BYTES}"),
+        format!(
+            "BWD_SEG_SOURCE_WINDOW_CAP == {}",
+            in_scope::MAX_SOURCE_WINDOWS_USED
+        ),
+        format!("BWD_SEG_MAX_FOLD_DEPTH == {BWD_COEFF_PUBLISH_TARGET_DEPTH}"),
+        format!("BWD_SEG_LANE_INDEX_MASK == {}", WARP_SIZE - 1),
+    ] {
+        assert_seg_header_asserts(&claim);
+    }
+
+    // The three epilogue footprints. They are the launch's dynamic-smem argument and
+    // are mirrored by HAND on the two sides, so a disagreement is an out-of-bounds
+    // shared access rather than a build error — the one number in this ABI whose
+    // drift a GPU run discovers.
+    for claim in [
+        "bwd_seg_epilogue_smem_bytes(BWD_SEG_EPILOGUE_STAGED, 1) == 0".to_string(),
+        format!(
+            "bwd_seg_epilogue_smem_bytes(BWD_SEG_EPILOGUE_STAGED, BWD_SEG_MAX_K) == {}",
+            2 * WARP_SIZE as usize * size_of::<E4>()
+        ),
+        format!(
+            "bwd_seg_epilogue_smem_bytes(BWD_SEG_EPILOGUE_PLANE, BWD_SEG_MAX_K) == {}",
+            (BWD_SEG_MAX_K - 1) * WARP_SIZE as usize * size_of::<E4>()
+        ),
+        format!(
+            "bwd_seg_epilogue_smem_bytes(BWD_SEG_EPILOGUE_WIDE, BWD_SEG_MAX_K) == {}",
+            2 * (BWD_SEG_MAX_K - 1) * WARP_SIZE as usize * size_of::<E4>()
+        ),
+    ] {
+        assert_seg_header_asserts(&claim);
+    }
+}
+
+/// Every offset and size Rust computes is `static_assert`ed with the same number on
+/// the CUDA side. The needles are BUILT from `offset_of!`, so there is no
+/// hand-maintained number here.
+#[test]
+fn seg_cuda_layout_asserts_match_the_rust_layout() {
+    let inline: &[(&str, usize)] = &[
+        ("program", offset_of!(BwdSegDesc, program)),
+        ("list_offset", offset_of!(BwdSegDesc, list_offset)),
+        ("k", offset_of!(BwdSegDesc, k)),
+        ("term_count", offset_of!(BwdSegDesc, term_count)),
+        ("num_sources", offset_of!(BwdSegDesc, num_sources)),
+        ("num_foldable", offset_of!(BwdSegDesc, num_foldable)),
+        ("fold_source", offset_of!(BwdSegDesc, fold_source)),
+        ("source", offset_of!(BwdSegDesc, source)),
+        ("window", offset_of!(BwdSegDesc, window)),
+        ("c_init", offset_of!(BwdSegDesc, c_init)),
+        ("coefficients", offset_of!(BwdSegDesc, coefficients)),
+        ("eq_low", offset_of!(BwdSegDesc, eq_low)),
+        ("contributions", offset_of!(BwdSegDesc, contributions)),
+        ("eq_sizes", offset_of!(BwdSegDesc, eq_sizes)),
+        ("n_coefficients", offset_of!(BwdSegDesc, n_coefficients)),
+        ("logical_rows", offset_of!(BwdSegDesc, logical_rows)),
+        ("pad", offset_of!(BwdSegDesc, pad)),
+    ];
+    for (field, offset) in inline {
+        assert_seg_header_asserts(&format!(
+            "__builtin_offsetof(bwd_seg_desc, {field}) == {offset}"
+        ));
+    }
+    let progptr: &[(&str, usize)] = &[
+        ("program", offset_of!(BwdSegProgPtrDesc, program)),
+        (
+            "program_words",
+            offset_of!(BwdSegProgPtrDesc, program_words),
+        ),
+        ("list_offset", offset_of!(BwdSegProgPtrDesc, list_offset)),
+        ("k", offset_of!(BwdSegProgPtrDesc, k)),
+        ("term_count", offset_of!(BwdSegProgPtrDesc, term_count)),
+        ("num_sources", offset_of!(BwdSegProgPtrDesc, num_sources)),
+        ("num_foldable", offset_of!(BwdSegProgPtrDesc, num_foldable)),
+        ("fold_source", offset_of!(BwdSegProgPtrDesc, fold_source)),
+        ("source", offset_of!(BwdSegProgPtrDesc, source)),
+        ("window", offset_of!(BwdSegProgPtrDesc, window)),
+        ("c_init", offset_of!(BwdSegProgPtrDesc, c_init)),
+        ("coefficients", offset_of!(BwdSegProgPtrDesc, coefficients)),
+        ("eq_low", offset_of!(BwdSegProgPtrDesc, eq_low)),
+        (
+            "contributions",
+            offset_of!(BwdSegProgPtrDesc, contributions),
+        ),
+        ("eq_sizes", offset_of!(BwdSegProgPtrDesc, eq_sizes)),
+        (
+            "n_coefficients",
+            offset_of!(BwdSegProgPtrDesc, n_coefficients),
+        ),
+        ("logical_rows", offset_of!(BwdSegProgPtrDesc, logical_rows)),
+        ("pad", offset_of!(BwdSegProgPtrDesc, pad)),
+    ];
+    for (field, offset) in progptr {
+        assert_seg_header_asserts(&format!(
+            "__builtin_offsetof(bwd_seg_progptr_desc, {field}) == {offset}"
+        ));
+    }
+    for claim in [
+        format!("sizeof(bwd_seg_desc) == {}", size_of::<BwdSegDesc>()),
+        format!(
+            "sizeof(bwd_seg_progptr_desc) == {}",
+            size_of::<BwdSegProgPtrDesc>()
+        ),
+        format!("alignof(bwd_seg_desc) == BWD_SEG_DESC_ALIGN"),
+    ] {
+        assert_seg_header_asserts(&claim);
+    }
+    // The source record, whose three offsets are the descriptor's per-source ABI.
+    for (field, offset) in [
+        ("window", offset_of!(BwdSegSourceRecord, window)),
+        ("source_class", offset_of!(BwdSegSourceRecord, class)),
+        ("column", offset_of!(BwdSegSourceRecord, column)),
+    ] {
+        assert_seg_header_asserts(&format!(
+            "__builtin_offsetof(bwd_seg_source_record, {field}) == {offset}"
+        ));
+    }
+    // The two implicit gaps before `window`, which neither language spells.
+    assert_seg_header_asserts(&format!(
+        "__builtin_offsetof(bwd_seg_desc, window) - (__builtin_offsetof(bwd_seg_desc, source) + sizeof(bwd_seg_desc::source)) == {INLINE_IMPLICIT_PAD_BYTES}"
+    ));
+    assert_seg_header_asserts(&format!(
+        "__builtin_offsetof(bwd_seg_progptr_desc, window) - (__builtin_offsetof(bwd_seg_progptr_desc, source) + sizeof(bwd_seg_progptr_desc::source)) == {PROGPTR_IMPLICIT_PAD_BYTES}"
+    ));
+}
+
+/// Every kernel symbol the Rust launcher declares is DECLARED in the header, and
+/// with the descriptor type the launcher passes.
+///
+/// Symbol names, not numbers, so there is no prefix hazard: `EXTERN` makes the bare
+/// name the ABI, and a launcher naming a symbol the header does not declare fails at
+/// LINK time — but a launcher naming the WRONG one of two live symbols does not.
+#[test]
+fn seg_cuda_header_declares_every_launched_kernel() {
+    let mut declared = 0usize;
+    for regime in ["r0", "cont"] {
+        for coeff in ["const", "ptr"] {
+            for epilogue in ["staged", "plane", "wide"] {
+                let symbol =
+                    format!("ab_gkr_bwd_seg_{regime}_{coeff}_epi_{epilogue}_kernel(const __grid_constant__ airbender::prover::gkr::bwd_seg_desc desc)");
+                assert!(
+                    SEG_CUDA_HEADER.contains(&symbol),
+                    "segmented_vm.cuh does not declare `{symbol}`"
+                );
+                declared += 1;
+            }
+        }
+    }
+    for epilogue in ["staged", "plane", "wide"] {
+        let symbol = format!(
+            "ab_gkr_bwd_seg_cont_const_progptr_epi_{epilogue}_kernel(const __grid_constant__ airbender::prover::gkr::bwd_seg_progptr_desc desc)"
+        );
+        assert!(
+            SEG_CUDA_HEADER.contains(&symbol),
+            "segmented_vm.cuh does not declare `{symbol}`"
+        );
+        declared += 1;
+    }
+    // The device-program family has ONE cell by design (spec §5: it measures the
+    // program-source axis alone), so the matrix is twelve plus three, not twenty-four.
+    assert_eq!(declared, 15);
+    // The two `__constant__` symbols a launch stages into, named rather than
+    // matched numerically.
+    assert!(SEG_CUDA_HEADER.contains("ab_gkr_bwd_seg_coeff_bank[airbender::prover::gkr::BWD_SEG_CONST_BANK]"));
+    assert!(SEG_CUDA_HEADER.contains("ab_gkr_main_layer_claim_point["));
 }

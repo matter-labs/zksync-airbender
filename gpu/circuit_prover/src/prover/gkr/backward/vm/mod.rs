@@ -42,10 +42,20 @@ mod report;
 /// the `32 * k`-thread tile geometry, and the three epilogue specializations. The
 /// cell-era launchers below are untouched — the two lineages share no symbol.
 pub(crate) mod seg;
+/// The segmented lean VM's fixture bridge: lean artifact plus round binding to
+/// [`seg_lower::BwdSegSetup`], and the host storage model its CPU oracles resolve
+/// through. `bench`-gated like [`compile`], and for the same reason.
+#[cfg(all(test, feature = "bench"))]
+mod seg_compile;
 /// The SEGMENTED lean VM's launch descriptors (a separate lineage: it shares
 /// only [`desc::BwdCoeffSourceWindow`] and the publication threshold with the
 /// cell-era descriptor above).
 pub(crate) mod seg_desc;
+/// The segmented lean VM's GPU parity ladder: `K`, rounds, epilogues, D2 policies,
+/// a nonzero `c_init` and the d3→d4 chain, each against BOTH CPU oracles and the
+/// incumbent round update. `bench`-gated and `#[ignore]`d, like [`gpu_tests`].
+#[cfg(all(test, feature = "bench"))]
+mod seg_gpu_tests;
 /// Host lowering for the segmented lean VM: per-round source classes, the
 /// publish-scratch plan, and the validated by-value descriptor.
 pub(crate) mod seg_lower;
