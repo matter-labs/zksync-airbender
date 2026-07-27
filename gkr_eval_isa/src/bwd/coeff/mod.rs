@@ -64,7 +64,10 @@ pub use encode::{
     disassemble, encode_instrs, encode_program, is_move, max_coefficient_bank_index, move_width,
     opcode_of, opcode_table, operand_width, program_records, term_category, validate_program,
 };
-pub use interp::{CoeffResolver, interpret_coeff_layer, interpret_encoded_program};
+pub use interp::{
+    CoeffResolver, LeanInterpError, interpret_coeff_layer, interpret_encoded_program,
+    interpret_lean_program,
+};
 // The lean codec's four entry points keep their module path: `encode_program`,
 // `decode_program`, `validate_program` and `disassemble` are names the cell-era
 // codec owns at this facade until that lineage is retired.
