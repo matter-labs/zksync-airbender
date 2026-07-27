@@ -41,7 +41,6 @@ use serde::{Deserialize, Serialize};
 
 use super::model::{CoeffLayer, CoeffTerm, SourceId, TermId};
 use super::stats::{WindowFamily, window_count, window_family};
-use crate::bwd::source::VIRTUAL_SETUP_MATERIALIZE_DEPTH;
 use crate::source_bind::{
     self, BindFailure, LogicalSourceUse, SOURCE_WINDOW_COLUMNS, bind_source_sequence,
 };
@@ -174,6 +173,14 @@ pub enum LeanBindError {
     /// A window column lies outside its own span
     /// `[first_column, first_column + SOURCE_WINDOW_COLUMNS)`, or the span's
     /// columns are not strictly ascending from `first_column`.
+    ///
+    /// **A MERGEABLE window maps here too**, reported as
+    /// `{ window, column: first_column }`: a window whose backing equals the
+    /// PREVIOUS window's and whose base is still inside that window's span could
+    /// have been the same window, so the partition is not canonical. That is a
+    /// defect of the window's BASE, which is what this variant is about, and the
+    /// five-variant list has no separate home for it — `WindowBackingMismatch` would
+    /// misreport it, since both windows name their backing correctly.
     ColumnOverflow { window: u8, column: usize },
     /// A window column's declared BACKING COORDINATE — the pair
     /// ([`LeanBoundWindow::family`], column address) — is not the one its own
@@ -232,32 +239,36 @@ fn operand_sources(term: &CoeffTerm) -> (SourceId, Option<SourceId>) {
 /// decides which homogeneous matrix a cross-layer output read belongs to, exactly
 /// as it does for the census.
 ///
-/// `target_depth` is the fold depth this program is bound FOR. It is not stored —
-/// the coordinate owns it — and it is not a per-window property either: §10.2's
-/// publish policy needs a `first_access` marker to hang off, and the lean VM has
-/// none. What it does here is the one depth rule that is placement- AND round-free:
-/// the depth must be inside the bounded `D0`..`D3` range the segmented VM admits.
+/// `target_depth` is the fold depth this program is bound FOR, and it is RECORDED
+/// rather than validated here: it is passed through to
+/// [`LeanCoordinateArtifact::target_depth`] and every rule about it is
+/// round-dependent, so GPU round lowering is what validates a depth — against the
+/// round it is binding. Nothing in the window layout depends on it, because §10.2's
+/// publish policy needs a `first_access` marker to hang off and the lean VM has
+/// none.
 ///
 /// # Panics
 ///
 /// If `order` names a term outside `layer.terms`, if a term names a source outside
-/// `layer.sources`, if `order` leaves a source of the layer resolved by nothing, or
-/// if `target_depth` is outside `D0..D3`. All four are compiler bugs rather than
-/// input defects: [`order_terms`](super::order::order_terms) returns a permutation
-/// of the layer's terms, [`lower_coeff_layer`](super::lower::lower_coeff_layer)
-/// interns a source only when a term consumes it, and
+/// `layer.sources`, or if `order` leaves a source of the layer resolved by nothing.
+/// All three are compiler bugs rather than input defects:
+/// [`order_terms`](super::order::order_terms) returns a permutation of the layer's
+/// terms, [`lower_coeff_layer`](super::lower::lower_coeff_layer) interns a source
+/// only when a term consumes it, and
 /// [`compile_lean_coordinate`](super::lean_artifact::compile_lean_coordinate)
 /// checks the coverage explicitly before it gets here.
+///
+/// [`LeanCoordinateArtifact::target_depth`]: super::lean_artifact::LeanCoordinateArtifact
 pub fn bind_lean_sources(
     layer: &CoeffLayer,
     cross_fields: &HashMap<ReadPlace, FieldKind>,
     order: &[TermId],
     target_depth: u8,
 ) -> Result<LeanSourceBinding, LeanBindError> {
-    assert!(
-        target_depth <= VIRTUAL_SETUP_MATERIALIZE_DEPTH,
-        "a lean program is bound at a bounded D0..D3 fold depth, not D{target_depth}",
-    );
+    // Recorded, not validated — see the doc above. Named in the signature because
+    // the coordinate this binding belongs to is bound at one depth and callers read
+    // the two together.
+    let _ = target_depth;
 
     // Where each source lives. `(family, column)` IS the read place, so this is
     // the identity the window partition is taken over.
@@ -384,8 +395,8 @@ pub fn bind_lean_sources(
     Ok(LeanSourceBinding { windows, source_slots })
 }
 
-/// The span, origin, alias and procedural-kind checks, against the layer the
-/// binding claims to bind.
+/// The span, canonical-partition, origin, alias and procedural-kind checks, against
+/// the layer the binding claims to bind.
 ///
 /// This is [`bind::certify_source_binding`](super::bind::certify_source_binding)'s
 /// placement-free half. It runs on every binding the constructor above produces —
@@ -413,18 +424,20 @@ fn audit_windows(
 
     let mut claimed: BTreeMap<(WindowFamily, usize), u8> = BTreeMap::new();
     let mut sources: BTreeSet<u32> = BTreeSet::new();
+    // The preceding window's `(backing, base)`, for the unmergeable rule below.
+    let mut preceding: Option<(WindowFamily, usize)> = None;
     for (index, window) in windows.iter().enumerate() {
         let at = index as u8;
         // Span: dense, ascending, and inside the window's own 128 columns.
-        let mut previous: Option<usize> = None;
+        let mut last_column: Option<usize> = None;
         for column in &window.columns {
             let inside = column.column >= window.first_column
                 && column.column - window.first_column < SOURCE_WINDOW_COLUMNS;
-            let ascending = previous.is_none_or(|last| last < column.column);
+            let ascending = last_column.is_none_or(|last| last < column.column);
             if !inside || !ascending {
                 return Err(LeanBindError::ColumnOverflow { window: at, column: column.column });
             }
-            previous = Some(column.column);
+            last_column = Some(column.column);
         }
         if window.columns.first().is_none_or(|first| first.column != window.first_column) {
             let column = window.columns.first().map_or(window.first_column, |c| c.column);
@@ -463,6 +476,21 @@ fn audit_windows(
                 return Err(LeanBindError::WindowBackingMismatch { window: at });
             }
         }
+
+        // Unmergeable within one backing — the rule that makes the partition
+        // CANONICAL rather than merely valid (mirrors the cell-era certificate's
+        // final window check). Windows are numbered by ascending
+        // `(backing, column)`, so two windows of one backing are adjacent, and a
+        // second one based inside the first's 128-column span could have been the
+        // first. A layout that admitted it would not be minimal, and window indices
+        // are the scarce resource the six-bit field rations.
+        if let Some((family, base)) = preceding
+            && family == window.family
+            && window.first_column < base + SOURCE_WINDOW_COLUMNS
+        {
+            return Err(LeanBindError::ColumnOverflow { window: at, column: window.first_column });
+        }
+        preceding = Some((window.family, window.first_column));
     }
     Ok(())
 }
@@ -757,6 +785,55 @@ mod tests {
         );
     }
 
+    /// The unmergeable rule: two windows of ONE backing whose bases are within a
+    /// span of each other could have been one window, so the partition is not
+    /// canonical. Reported against the SECOND window's base.
+    #[test]
+    fn mergeable_same_backing_windows_are_rejected() {
+        let adjacent = layer(vec![witness(0), witness(1)], vec![c0(0, 0), c0(1, 1)]);
+        let window = |first_column: usize, source: u32| LeanBoundWindow {
+            family: WindowFamily::BaseLayerWitness,
+            first_column,
+            columns: vec![LeanBoundColumn { column: first_column, source }],
+        };
+        assert_eq!(
+            audited(vec![window(0, 0), window(1, 1)], &adjacent),
+            Err(LeanBindError::ColumnOverflow { window: 1, column: 1 }),
+            "column 1 fits window 0's span, so the two are one window",
+        );
+        // Exactly one span apart is the first legal base, and a DIFFERENT backing
+        // may share a base — the rule is per backing, not global.
+        let far = layer(vec![witness(0), witness(SOURCE_WINDOW_COLUMNS)], vec![c0(0, 0), c0(1, 1)]);
+        assert_eq!(audited(vec![window(0, 0), window(SOURCE_WINDOW_COLUMNS, 1)], &far), Ok(()));
+        let mixed = layer(vec![witness(0), output(0, 0)], vec![c0(0, 0), c0(1, 1)]);
+        let other = LeanBoundWindow {
+            family: WindowFamily::LayerOutput { layer: 0, ext: true },
+            first_column: 0,
+            columns: vec![LeanBoundColumn { column: 0, source: 1 }],
+        };
+        assert_eq!(audited(vec![window(0, 0), other], &mixed), Ok(()));
+    }
+
+    /// A window whose DECLARED family is not the one its column's own source
+    /// resolves to. Nothing else in the certificate can catch this: the column table
+    /// is keyed by column alone, so such a window still resolves to the right
+    /// `SourceId` while selecting the wrong backing — DRAM versus procedural, and
+    /// the wrong width.
+    #[test]
+    fn a_window_declaring_the_wrong_family_is_rejected() {
+        let one_witness = layer(vec![witness(0)], vec![c0(0, 0)]);
+        let relabelled = LeanBoundWindow {
+            family: WindowFamily::BaseLayerMemory,
+            first_column: 0,
+            columns: vec![LeanBoundColumn { column: 0, source: 0 }],
+        };
+        assert_eq!(
+            audited(vec![relabelled], &one_witness),
+            Err(LeanBindError::WindowBackingMismatch { window: 0 }),
+            "the source is a witness column, not a memory column",
+        );
+    }
+
     /// An empty window has no first column to be based at.
     #[test]
     fn an_empty_window_is_rejected() {
@@ -772,11 +849,20 @@ mod tests {
         );
     }
 
+    /// `target_depth` is recorded, not validated: the binding is the same object at
+    /// every depth, because nothing in the window layout depends on one. GPU round
+    /// lowering owns the depth rules, all of which are round-dependent.
     #[test]
-    #[should_panic(expected = "bounded D0..D3")]
-    fn a_depth_outside_d0_d3_is_rejected() {
-        let layer = layer(vec![witness(0)], vec![c0(0, 0)]);
-        let _ = bind_lean_sources(&layer, &no_cross(), &ids(1), 4);
+    fn the_binding_does_not_depend_on_the_target_depth() {
+        let layer = layer(vec![witness(0), output(1, 2)], vec![c0(0, 0), dual(1, 0, 1)]);
+        let at_zero = bind_lean_sources(&layer, &no_cross(), &ids(2), 0).expect("binds");
+        for depth in 1..=8u8 {
+            assert_eq!(
+                bind_lean_sources(&layer, &no_cross(), &ids(2), depth),
+                Ok(at_zero.clone()),
+                "depth {depth}",
+            );
+        }
     }
 
     #[test]
