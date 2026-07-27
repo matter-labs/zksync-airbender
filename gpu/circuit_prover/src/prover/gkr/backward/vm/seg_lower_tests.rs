@@ -2227,8 +2227,10 @@ fn a_plan_that_disagrees_with_the_policy_about_publishing_is_rejected() {
     );
 
     // Planned as publishing, lowered as a direct read: a region nothing writes.
+    // The direct read is an E4 backing already at target depth — a raw base one
+    // at depth three is rejected by `BaseReadAtFoldedDepth` before it gets here.
     let scratch = scratch_for(plan_for(3, &publishing, &[2]));
-    let direct = [bound(Some(bf_column(0)), 3, 3, false)];
+    let direct = [bound(Some(e4_column(0)), 3, 3, false)];
     assert_eq!(
         lower_bwd_seg(
             &bf_artifact(),
@@ -2289,5 +2291,170 @@ fn a_row_count_of_zero_is_rejected() {
             CoeffMode::Constant,
         ),
         Err(BwdSegLowerError::RowsOutOfRange { rows: 0 }),
+    );
+}
+
+/// **The landmine's inverse.** Deriving the origin from the round binding trusts
+/// the binding, so a binding that LIES about physical state must be rejected
+/// rather than lowered. A raw base matrix is only ever at depth zero — a fold
+/// weights with E4 challenges and produces E4 — so a nonzero `backing_depth` on
+/// one claims raw data was folded in place and silently shortens the catch-up.
+#[test]
+fn a_base_read_at_a_folded_depth_is_rejected() {
+    assert_eq!(
+        lower_one(
+            &bf_artifact(),
+            3,
+            bound(Some(bf_column(0)), 2, 3, false),
+            2,
+            1,
+            D2Policy::Inline,
+        ),
+        Err(BwdSegLowerError::BaseReadAtFoldedDepth {
+            window: 0,
+            backing_depth: 2,
+        }),
+    );
+    // The legal shape it is one step away from: depth zero, folded by the round.
+    assert!(lower_one(
+        &bf_artifact(),
+        3,
+        bound(Some(bf_column(0)), 0, 3, true),
+        2,
+        1,
+        D2Policy::Inline,
+    )
+    .is_ok());
+}
+
+/// The other half of the inverse: a window the PREVIOUS round published must
+/// chain off that region. Binding it back to its raw source refolds data the
+/// chain has already moved past — and at `backing_depth = 0` the depth guard
+/// above cannot see it, which is why both guards exist.
+#[test]
+fn a_raw_read_where_the_previous_round_published_is_rejected() {
+    let claim = claim_point(8);
+    let coeffs = coefficients(4);
+    let read_elements = generous(1);
+    // Round 2 materialized window 0 (the D2 policy's other arm), so round 3's
+    // folded values live in parity 0.
+    let round2 = [bound(Some(bf_column(0)), 0, 2, true)];
+    let plan = plan_publish_scratch(
+        &[&[], &[], &round2[..], &round2[..]],
+        &[&[], &[], &[2], &[2]],
+        &ROWS[..4],
+    )
+    .expect("a legal two-round plan");
+    let scratch = scratch_for(plan);
+
+    // A raw BF read at depth 0 is a legal-looking (BF, d3) pyramid in isolation.
+    let raw = [bound(Some(bf_column(0)), 0, 3, true)];
+    assert_eq!(
+        lower_bwd_seg(
+            &bf_artifact(),
+            &round_binding(3, &raw, &read_elements, &claim, &coeffs),
+            &scratch,
+            1,
+            D2Policy::Inline,
+            ProgramMode::Inline,
+            CoeffMode::Constant,
+        ),
+        Err(BwdSegLowerError::RawReadOverPriorPublish { window: 0 }),
+    );
+
+    // A procedural window is the virtual-setup shape of the same mistake.
+    let procedural = artifact(
+        ArtifactRegime::Ext,
+        3,
+        vec![virtual_setup(0, 0)],
+        slots(&[(0, 0)]),
+        program(&[record(0, 0, 0, SOURCE_NONE)]),
+    );
+    let synthesized = [bound(None, 0, 3, true)];
+    let plan = plan_publish_scratch(
+        &[&[], &[], &synthesized[..], &synthesized[..]],
+        &[&[], &[], &[1], &[1]],
+        &ROWS[..4],
+    )
+    .expect("a legal two-round plan");
+    let scratch = scratch_for(plan);
+    assert_eq!(
+        lower_bwd_seg(
+            &procedural,
+            &round_binding(3, &synthesized, &read_elements, &claim, &coeffs),
+            &scratch,
+            1,
+            D2Policy::Inline,
+            ProgramMode::Inline,
+            CoeffMode::Constant,
+        ),
+        Err(BwdSegLowerError::RawReadOverPriorPublish { window: 0 }),
+    );
+
+    // The route that IS legal at round 3: chain off round 2's region.
+    let (chain_ptr, chain_stride) =
+        chain_read_column(&scratch, 3, 0).expect("round 2 published this window");
+    let chained = [bound(
+        Some(column_at(chain_ptr as usize, true, chain_stride)),
+        2,
+        3,
+        true,
+    )];
+    assert!(lower_bwd_seg(
+        &procedural,
+        &round_binding(3, &chained, &read_elements, &claim, &coeffs),
+        &scratch,
+        1,
+        D2Policy::Inline,
+        ProgramMode::Inline,
+        CoeffMode::Constant,
+    )
+    .is_ok());
+}
+
+/// A previous round planned for a NARROWER artifact would make
+/// `chain_read_column` answer `None` for the windows it does not reach, which
+/// reads exactly like "published nothing" — so the chain check would go quiet
+/// instead of failing. The prior round's shape is therefore checked like this
+/// round's.
+#[test]
+fn a_previous_round_planned_for_fewer_windows_is_rejected() {
+    let narrow = [bound(Some(bf_column(0)), 0, 3, true)];
+    let wide = [
+        bound(Some(e4_column(0)), 3, 4, true),
+        bound(Some(e4_column(1)), 3, 4, true),
+    ];
+    let plan = plan_publish_scratch(
+        &[&[], &[], &[], &narrow[..], &wide[..]],
+        &[&[], &[], &[], &[1], &[1, 1]],
+        &ROWS[..5],
+    )
+    .expect("a legal plan");
+    let scratch = scratch_for(plan);
+    let claim = claim_point(8);
+    let coeffs = coefficients(4);
+    let read_elements = generous(2);
+    let artifact = artifact(
+        ArtifactRegime::Ext,
+        3,
+        vec![ext_output(1, &[0]), ext_output(2, &[1])],
+        slots(&[(0, 0), (1, 0)]),
+        program(&[record(1, 2, 0, 1)]),
+    );
+    assert_eq!(
+        lower_bwd_seg(
+            &artifact,
+            &round_binding(4, &wide, &read_elements, &claim, &coeffs),
+            &scratch,
+            1,
+            D2Policy::Inline,
+            ProgramMode::Inline,
+            CoeffMode::Constant,
+        ),
+        Err(BwdSegLowerError::PlanShapeMismatch {
+            round: 3,
+            windows: 2,
+            entries: 1,
+        }),
     );
 }

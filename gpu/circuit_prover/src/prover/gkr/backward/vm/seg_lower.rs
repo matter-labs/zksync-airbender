@@ -618,6 +618,15 @@ pub(crate) enum BwdSegLowerError {
     /// A chain read does not point at the previous round's published region for
     /// this window — the parity rule, enforced rather than assumed.
     ChainReadNotPriorPublish { window: u8 },
+    /// A base-field read backing at nonzero depth. A fold weights with E4
+    /// challenges and produces E4, so a raw base matrix can only ever be at depth
+    /// zero: a nonzero depth on one shortens the catch-up over data that was
+    /// never folded.
+    BaseReadAtFoldedDepth { window: u8, backing_depth: u8 },
+    /// A window the PREVIOUS round published was bound to a raw (base-field or
+    /// procedural) source at this round. Its folded values are in the scratch
+    /// region; refolding the raw source reads data the chain has moved past.
+    RawReadOverPriorPublish { window: u8 },
     /// A publish region overlaps a read range or another publish region.
     UnsafePublishAlias { window: u8, other: u8 },
     /// A read range lies inside the parity buffer this round publishes into.
@@ -974,6 +983,26 @@ pub(crate) fn lower_bwd_seg(
             entries: layout.window_base.len(),
         });
     }
+    // The PREVIOUS round's shape matters too, and its failure is silent rather
+    // than loud: `chain_read_column` answers `None` for a window index the prior
+    // layout does not reach, which is indistinguishable from "that window
+    // published nothing" — so a plan whose round `r - 1` was built for a
+    // different (narrower) artifact would disable the chain check instead of
+    // failing it. An EMPTY prior layout is legitimate (a round that planned
+    // nothing at all); a nonempty one that is too short is drift.
+    if let Some(previous) = usize::from(round)
+        .checked_sub(1)
+        .and_then(|index| scratch.plan.per_round.get(index))
+    {
+        let entries = previous.window_base.len();
+        if entries != 0 && entries < compiled.len() {
+            return Err(BwdSegLowerError::PlanShapeMismatch {
+                round: usize::from(round) - 1,
+                windows: compiled.len(),
+                entries,
+            });
+        }
+    }
     let expected_stride = binding.rows * 2 * E4_COLUMN_BYTES as usize;
     if layout.column_stride_bytes != expected_stride {
         return Err(BwdSegLowerError::PublishStrideMismatch {
@@ -1209,6 +1238,32 @@ fn lower_window(
         (Some(_), None) => SourceOrigin::Procedural,
         (None, None) => return Err(BwdSegLowerError::MissingReadBacking { window }),
     };
+    // THE LANDMINE'S INVERSE. Deriving the origin from the round binding trusts
+    // the binding, so the two ways a binding can lie about physical state are
+    // rejected here rather than lowered:
+    //
+    //   1. a base-field backing at NONZERO depth. A fold weights with E4
+    //      challenges and produces E4, so a raw base matrix is only ever at depth
+    //      zero; a nonzero `backing_depth` on one is a claim that raw data has
+    //      been folded in place, and it silently shortens the catch-up.
+    //   2. a raw backing for a window the PREVIOUS round PUBLISHED. The folded
+    //      values live in the scratch region; refolding the raw matrix instead
+    //      reads data the chain has already moved past.
+    //
+    // Both are exactly the "silent raw refold" the module doc says this file
+    // exists to prevent, arrived at from the binding side instead of the family
+    // side.
+    if bound.read.is_some_and(|column| !column.is_e4) && bound.backing_depth != 0 {
+        return Err(BwdSegLowerError::BaseReadAtFoldedDepth {
+            window,
+            backing_depth: bound.backing_depth,
+        });
+    }
+    if origin != SourceOrigin::E4
+        && chain_read_column(scratch, u32::from(round), usize::from(window)).is_some()
+    {
+        return Err(BwdSegLowerError::RawReadOverPriorPublish { window });
+    }
     let (class, publishes) = assign_class(origin, delta, d2);
 
     // The plan was built from the DECLARED flag, so a disagreement is a plan that
