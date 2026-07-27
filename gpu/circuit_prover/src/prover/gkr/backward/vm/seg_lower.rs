@@ -1,0 +1,1555 @@
+//! Host lowering for the SEGMENTED lean VM (segmented-lean-VM design §3, §5,
+//! §6, §7): bind one round's physical geometry to a `K`-free lean coordinate and
+//! build the complete by-value launch descriptor.
+//!
+//! The artifact ([`LeanCoordinateArtifact`]) is a pure function of the DAG: a
+//! committed term order, a fixed-width program, and a placement-free source
+//! binding. Everything PHYSICAL is here, and only here:
+//!
+//!   1. the per-`(source, round)` [`SourceClass`] — the axis that decides how the
+//!      operand behind a wire slot is produced (raw read, inline fold, folded
+//!      register, procedural synthesis);
+//!   2. the publish-scratch geometry the JAOT prologue writes through and the
+//!      NEXT round's chain reads from ([`plan_publish_scratch`] plans the whole
+//!      round sequence; [`lower_bwd_seg`] resolves one round of it);
+//!   3. the `K`-split of the committed order into per-warp lists, with its
+//!      per-list work model ([`ListWorkStats`]); and
+//!   4. the validations a release kernel with no error channel cannot make for
+//!      itself.
+//!
+//! # Where the round's truth comes from
+//!
+//! The compile-time window FAMILY says where a source lives in the DAG. It does
+//! NOT say what is physically there at round `r`: a base-field or virtual-setup
+//! source that a previous round materialized is an E4 matrix now. The old
+//! cell-era lowering derived the window ORIGIN from that compile-time family,
+//! which would refold raw data that has moved — silently, in a release kernel.
+//! Here the ROUND BINDING supplies the origin ([`ResolvedBwdCoeffSourceWindow::read`]'s
+//! own field), and the family is consulted for exactly one thing: whether the
+//! window is procedural at all. The descriptor's `procedural_kind` is therefore a
+//! PER-ROUND statement — it is cleared for a window that resolves from DRAM this
+//! round even though its family is a virtual setup.
+//!
+//! # Two-pass by necessity
+//!
+//! Lowering needs resolved scratch POINTERS, and allocation is the caller's. So
+//! planning ([`plan_publish_scratch`], which knows the whole round sequence
+//! because the row count halves per round and no single stride serves both the
+//! prior-round read and the current-round write) is separated from filling
+//! ([`lower_bwd_seg`], which takes the caller's [`ResolvedPublishScratch`]).
+//!
+//! Nothing in this module dereferences a device pointer, so it is fully testable
+//! on the CPU: see [`seg_lower_tests`](super::seg_lower_tests).
+
+// TASK 7 launches with these descriptors; until then the module is referenced
+// only by its tests. Scoped here rather than on the parent.
+#![allow(dead_code)]
+
+use gkr_eval_isa::bwd::coeff::encode::category_arity;
+use gkr_eval_isa::bwd::coeff::lean::{
+    decode_program, LeanCodecError, LeanTerm, LEAN_CONT_OPCODES, LEAN_R0_OPCODES,
+    LEAN_WORDS_PER_TERM, SOURCE_NONE,
+};
+use gkr_eval_isa::bwd::coeff::lean_artifact::LeanCoordinateArtifact;
+use gkr_eval_isa::bwd::coeff::lean_bind::LeanSourceBinding;
+use gkr_eval_isa::bwd::coeff::limits::{
+    in_scope, TermCategory, LEAN_DESCRIPTOR_PROGRAM_WORDS, MAX_COEFFICIENT_ENCODINGS,
+    SOURCE_WINDOW_COLUMNS,
+};
+use gkr_eval_isa::bwd::coeff::model::CoefficientRecipeId;
+use gkr_eval_isa::bwd::coeff::order::split_round_robin;
+
+use super::bwd_coeff_fold_depth;
+use super::desc::{
+    BwdCoeffSourceWindow, BWD_COEFF_MAX_FOLD_DEPTH, BWD_COEFF_ORIGIN_PROCEDURAL,
+    BWD_COEFF_ORIGIN_READ_BASE, BWD_COEFF_ORIGIN_READ_EXT, BWD_COEFF_PROCEDURAL_KINDS,
+    BWD_COEFF_PROCEDURAL_NONE, BWD_COEFF_PUBLISH_TARGET_DEPTH,
+};
+use super::lower::ResolvedBwdCoeffSourceWindow;
+use super::seg_desc::{
+    BwdSegDesc, BwdSegProgPtrDesc, BwdSegSourceRecord, BWD_SEG_CONST_BANK, BWD_SEG_MAX_K,
+    BWD_SEG_MAX_SOURCES,
+};
+use crate::primitives::field::E4;
+use crate::prover::gkr::backward::GkrEqSizes;
+use crate::prover::gkr::forward::vm::lower::ResolvedColumn;
+use crate::upstream::BwdRegime;
+
+/// Bytes one column of a backing occupies, by storage field.
+const BF_COLUMN_BYTES: u32 = 4;
+const E4_COLUMN_BYTES: u32 = 16;
+
+// ── Source classes ───────────────────────────────────────────────────────────
+
+/// How the operand behind ONE wire source slot is produced at ONE round.
+///
+/// This is the AUTHORITY for [`BwdSegSourceRecord::class`]'s five documented
+/// numbers (`seg_desc.rs`'s struct doc states them; the assertion below is what
+/// makes them binding). It is NOT the lean wire's three-bit TERM class: the term
+/// class fixes an operation's projection and arity, this fixes where its operand
+/// comes from.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub(crate) enum SourceClass {
+    /// A matrix read already at target depth: no fold at all.
+    BfDirect = 0,
+    /// Raw base field, one fold behind: two raw values per endpoint, folded in
+    /// registers.
+    BfInlineD1 = 1,
+    /// Raw base field, two folds behind: four raw values per endpoint, folded in
+    /// registers. The alternative is [`D2Policy::Materialize`], which turns the
+    /// same window into a published E4 pyramid instead.
+    BfInlineD2 = 2,
+    /// An E4 value the prologue produced (a chain step, a BF pyramid, or a
+    /// procedural materialization) or read directly at target depth.
+    E4Direct = 3,
+    /// Synthesized from the row index; no DRAM read.
+    ProceduralInline = 4,
+}
+
+impl SourceClass {
+    pub(crate) const fn code(self) -> u8 {
+        self as u8
+    }
+}
+
+// The `class: u8` byte's documented values. `seg_desc` states them in prose and
+// cannot enforce them (the enum is here), so this is the whole guard against the
+// two halves drifting.
+const _: () = {
+    assert!(SourceClass::BfDirect.code() == 0);
+    assert!(SourceClass::BfInlineD1.code() == 1);
+    assert!(SourceClass::BfInlineD2.code() == 2);
+    assert!(SourceClass::E4Direct.code() == 3);
+    assert!(SourceClass::ProceduralInline.code() == 4);
+    // The publish depth the procedural row of the assignment matrix pivots on is
+    // the descriptor's own, never a second copy.
+    assert!(BWD_COEFF_PUBLISH_TARGET_DEPTH == 3);
+};
+
+/// What is PHYSICALLY behind a window at this round — the class matrix's first
+/// axis.
+///
+/// Derived from the round binding, never from the compile-time family: see the
+/// module doc.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum SourceOrigin {
+    Bf,
+    E4,
+    Procedural,
+}
+
+/// The one genuine policy choice in the matrix: what to do with a base-field
+/// window that is TWO folds behind.
+///
+/// `Materialize` has an explicit ABI representation (the window's
+/// `materialize` flag plus a fold-list entry), so it is a lowering decision the
+/// descriptor carries, not a kernel flag.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum D2Policy {
+    Inline,
+    Materialize,
+}
+
+/// Which coefficient loader the launch is specialized for.
+///
+/// In BOTH modes [`BwdSegSetup::coefficients`] is the RESERVED-INCLUSIVE payload
+/// `[ONE, NEG_ONE, recipes…]` (RR ruling 2026-07-27) and the descriptor's
+/// `coefficients` pointer is left null: `Constant` uploads the payload to the
+/// `ab_gkr_bwd_seg_coeff_bank` symbol, `DevPtr` uploads it to a device buffer and
+/// patches the pointer into its host copy of the descriptor before launch.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum CoeffMode {
+    Constant,
+    DevPtr,
+}
+
+/// Which program family the launch uses: the by-value array, or the spike-only
+/// device-pointer twin.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ProgramMode {
+    Inline,
+    DevPtr,
+}
+
+/// The lowered descriptor, boxed.
+///
+/// Boxed on purpose: the inline descriptor is 21 KB of `Copy` data, and moving it
+/// through the stack by value both costs a memcpy per move and risks carrying
+/// uninitialized interior padding into the launch. Lowering allocates it
+/// ZEROED and fills named fields, so the launch bytes are deterministic.
+pub(crate) enum BwdSegLaunchDesc {
+    Inline(Box<BwdSegDesc>),
+    ProgPtr(Box<BwdSegProgPtrDesc>),
+}
+
+// ── Publish scratch planning ─────────────────────────────────────────────────
+
+/// [`PublishRoundLayout::window_base`] entry for a window that publishes NOTHING
+/// at that round. Not zero: zero is the first publishing window's own offset.
+pub(crate) const PUBLISH_WINDOW_ABSENT: usize = usize::MAX;
+
+/// One round's publish layout inside ONE parity buffer.
+///
+/// The backing of a publishing window is `columns` consecutive column regions of
+/// `column_stride_bytes` bytes each, so a source at window-relative column `c`
+/// publishes at `window_base[w] + c * column_stride_bytes` — the same
+/// base-plus-stride shape [`BwdCoeffSourceWindow`] already models.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct PublishRoundLayout {
+    /// Bytes this round needs in its parity buffer.
+    pub bytes: usize,
+    /// Per window (indexed by window slot, NOT densified): the byte offset of its
+    /// column-0 backing, or [`PUBLISH_WINDOW_ABSENT`].
+    ///
+    /// Indexed by window rather than packed over the publishing ones so that
+    /// resolving a window needs no second computation of which windows fold —
+    /// the one place that decision is made is [`assign_class`].
+    pub window_base: Vec<usize>,
+    /// `2 * rows_r * 16`: both endpoint halves of every row, as E4.
+    pub column_stride_bytes: usize,
+}
+
+/// The publish geometry of a WHOLE round sequence.
+///
+/// One layout per round, because the row count halves per round: no single
+/// stride can serve both round `r - 1`'s read and round `r`'s write. Two buffers
+/// suffice regardless of the sequence length — round `r` writes parity `r & 1`
+/// and reads parity `(r + 1) & 1` — so each parity is sized by the WORST round it
+/// serves, not by the sum.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct PublishScratchPlan {
+    /// Indexed by ABSOLUTE round. A round that publishes nothing costs nothing.
+    pub per_round: Vec<PublishRoundLayout>,
+    /// Bytes each parity buffer must hold: the max over the rounds it serves.
+    pub bytes_per_parity: [usize; 2],
+    /// `bytes_per_parity[0] + bytes_per_parity[1]`.
+    pub total_bytes: usize,
+}
+
+/// A plan plus the caller's two allocations.
+///
+/// **The parity rule (normative).** Round `r`'s prologue WRITES via
+/// `plan.per_round[r]` offsets into `parity_base[r & 1]`, and its E4 chain READS
+/// round `r - 1`'s publishes via `plan.per_round[r - 1]` offsets from
+/// `parity_base[(r + 1) & 1]`. The write stride is this round's
+/// `column_stride_bytes`, the read stride the previous round's.
+pub(crate) struct ResolvedPublishScratch {
+    pub parity_base: [*mut u8; 2],
+    pub plan: PublishScratchPlan,
+}
+
+/// Plan the publish scratch for a whole round sequence.
+///
+/// The three slices are parallel and indexed by ABSOLUTE round: `windows_per_round[r]`
+/// is round `r`'s bound windows, `columns_per_round[r]` their addressable column
+/// counts ([`window_columns`] derives these from the artifact), `rows_per_round[r]`
+/// its logical row count. A round with no windows is legal and plans nothing.
+///
+/// A window publishes at round `r` iff its
+/// [`ResolvedBwdCoeffSourceWindow::materialize`] is set — the caller's
+/// declaration, which [`lower_bwd_seg`] then checks against the class the policy
+/// actually derives, so a plan and a lowering cannot disagree about who publishes.
+///
+/// Validates STRUCTURAL non-overlap within each parity buffer. It cannot validate
+/// anything about POINTERS: there are none yet.
+pub(crate) fn plan_publish_scratch(
+    windows_per_round: &[&[ResolvedBwdCoeffSourceWindow]],
+    columns_per_round: &[&[usize]],
+    rows_per_round: &[usize],
+) -> Result<PublishScratchPlan, BwdSegLowerError> {
+    if windows_per_round.len() != rows_per_round.len()
+        || columns_per_round.len() != rows_per_round.len()
+    {
+        return Err(BwdSegLowerError::PlanRoundCountMismatch {
+            windows: windows_per_round.len(),
+            columns: columns_per_round.len(),
+            rows: rows_per_round.len(),
+        });
+    }
+
+    let mut per_round = Vec::with_capacity(rows_per_round.len());
+    for (round, ((windows, columns), &rows)) in windows_per_round
+        .iter()
+        .zip(columns_per_round)
+        .zip(rows_per_round)
+        .enumerate()
+    {
+        if windows.len() != columns.len() {
+            return Err(BwdSegLowerError::PlanShapeMismatch {
+                round,
+                windows: windows.len(),
+                entries: columns.len(),
+            });
+        }
+        let column_stride_bytes = rows
+            .checked_mul(2 * E4_COLUMN_BYTES as usize)
+            .ok_or(BwdSegLowerError::PublishScratchOverflow { round })?;
+
+        let mut window_base = vec![PUBLISH_WINDOW_ABSENT; windows.len()];
+        let mut regions: Vec<(u8, usize, usize)> = Vec::new();
+        let mut cursor = 0usize;
+        for (index, bound) in windows.iter().enumerate() {
+            if !bound.materialize {
+                continue;
+            }
+            let span = columns[index]
+                .checked_mul(column_stride_bytes)
+                .ok_or(BwdSegLowerError::PublishScratchOverflow { round })?;
+            let end = cursor
+                .checked_add(span)
+                .ok_or(BwdSegLowerError::PublishScratchOverflow { round })?;
+            window_base[index] = cursor;
+            regions.push((u8::try_from(index).unwrap_or(u8::MAX), cursor, end));
+            cursor = end;
+        }
+        // Packed by a cursor, so disjoint by construction — checked anyway,
+        // because "the regions of one parity buffer are disjoint" is the
+        // property every publish pointer downstream rests on.
+        check_regions_disjoint(&regions)?;
+
+        per_round.push(PublishRoundLayout {
+            bytes: cursor,
+            window_base,
+            column_stride_bytes,
+        });
+    }
+
+    let mut bytes_per_parity = [0usize; 2];
+    for (round, layout) in per_round.iter().enumerate() {
+        let parity = round & 1;
+        bytes_per_parity[parity] = bytes_per_parity[parity].max(layout.bytes);
+    }
+    Ok(PublishScratchPlan {
+        total_bytes: bytes_per_parity[0] + bytes_per_parity[1],
+        per_round,
+        bytes_per_parity,
+    })
+}
+
+/// The read column round `round`'s E4 chain must use for `window`, or `None` when
+/// the previous round published nothing for it.
+///
+/// The ONE place the parity-plus-offset arithmetic of the chain lives: a caller
+/// builds the round's [`ResolvedBwdCoeffSourceWindow::read`] from this, and
+/// [`lower_bwd_seg`] re-derives it and rejects a disagreement
+/// ([`BwdSegLowerError::ChainReadNotPriorPublish`]).
+pub(crate) fn chain_read_column(
+    scratch: &ResolvedPublishScratch,
+    round: u32,
+    window: usize,
+) -> Option<(*const u8, u32)> {
+    let previous = usize::try_from(round).ok()?.checked_sub(1)?;
+    let layout = scratch.plan.per_round.get(previous)?;
+    let offset = *layout.window_base.get(window)?;
+    if offset == PUBLISH_WINDOW_ABSENT {
+        return None;
+    }
+    let base = scratch.parity_base[((round + 1) & 1) as usize];
+    if base.is_null() {
+        return None;
+    }
+    let stride = u32::try_from(layout.column_stride_bytes).ok()?;
+    // SAFETY: the offset is inside the parity buffer the plan sized, which the
+    // caller allocated; this computes an address and never reads it.
+    Some((unsafe { base.add(offset) } as *const u8, stride))
+}
+
+/// `[(window, lo, hi)]` regions must be pairwise disjoint.
+pub(crate) fn check_regions_disjoint(
+    regions: &[(u8, usize, usize)],
+) -> Result<(), BwdSegLowerError> {
+    for (index, &(window, lo, hi)) in regions.iter().enumerate() {
+        for &(other, other_lo, other_hi) in &regions[..index] {
+            if lo < other_hi && other_lo < hi {
+                return Err(BwdSegLowerError::UnsafePublishAlias { window, other });
+            }
+        }
+    }
+    Ok(())
+}
+
+// ── Per-list work model ──────────────────────────────────────────────────────
+
+/// One wire term annotated with the SOURCE classes its operands resolved to —
+/// the input the static cost model needs and the wire alone cannot supply.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct AnnotatedTerm {
+    /// The term class's category: its projection and arity.
+    pub category: TermCategory,
+    /// Per operand slot, in wire order. `None` past the category's arity.
+    pub operands: [Option<SourceClass>; 2],
+}
+
+/// Static work of one term, in arbitrary comparable units.
+///
+/// The model, documented once here because it is the only thing that decides
+/// whether a `K`-split is balanced:
+///
+/// | contribution | cost | why |
+/// |---|---|---|
+/// | `C0Linear*` | 2 | one E4 multiply-add against the coefficient |
+/// | `C2Product*` | 6 | two E4 multiplies plus the accumulate |
+/// | `DualProductE4` | 10 | both projections of both operands |
+/// | `BfInlineD1` operand | +4 | two raw reads and one fold per endpoint |
+/// | `BfInlineD2` operand | +10 | four raw reads and a two-level fold |
+/// | `ProceduralInline` operand | +3 | closed-form synthesis from the row |
+/// | `BfDirect` / `E4Direct` operand | +0 | a load, or an already-folded register |
+///
+/// Relative, not absolute: it exists to compare LISTS of the same program, and
+/// [`ListWorkStats::max_over_mean`] is the only number read off it.
+pub(crate) fn static_term_work(term: &AnnotatedTerm) -> u64 {
+    let base = match term.category {
+        TermCategory::C0LinearBf | TermCategory::C0LinearE4 => 2,
+        TermCategory::C2ProductBfBf | TermCategory::C2ProductBfE4 | TermCategory::C2ProductE4E4 => {
+            6
+        }
+        TermCategory::DualProductE4 => 10,
+        // The lean class tables carry no `Move` rows, so no wire record can
+        // decode to one.
+        TermCategory::MoveBf | TermCategory::MoveE4 => 0,
+    };
+    let operands: u64 = term
+        .operands
+        .iter()
+        .flatten()
+        .map(|class| match class {
+            SourceClass::BfInlineD1 => 4,
+            SourceClass::BfInlineD2 => 10,
+            SourceClass::ProceduralInline => 3,
+            SourceClass::BfDirect | SourceClass::E4Direct => 0,
+        })
+        .sum();
+    base + operands
+}
+
+/// The `K`-split's balance, measured with [`static_term_work`].
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct ListWorkStats {
+    /// The busiest list — the block's critical path, since warps join at the
+    /// epilogue.
+    pub max_work: u64,
+    /// Mean over the `k` lists. Zero-length lists count.
+    pub mean_work: f64,
+    /// `max_work / mean_work`, or `0.0` for a program with no work at all. One
+    /// means perfectly balanced.
+    pub max_over_mean: f64,
+}
+
+// ── Round binding and setup ──────────────────────────────────────────────────
+
+/// Everything about one sumcheck round that a `K`-free artifact cannot carry.
+pub(crate) struct BwdSegRoundBinding<'a> {
+    /// Sumcheck round index. It is ALSO every window's target depth.
+    pub round: u32,
+    /// Logical rows this launch evaluates: one per thread, and the contribution
+    /// half-stride.
+    pub rows: usize,
+    /// One entry per artifact binding window, in wire order.
+    pub windows: &'a [ResolvedBwdCoeffSourceWindow],
+    /// Per window: elements readable at its read base, per addressed column.
+    ///
+    /// The span length the cell-era `ResolvedColumn` had no field for, and the
+    /// reason a short backing is a rejection here instead of an out-of-bounds
+    /// read on the device.
+    pub window_read_elements: &'a [u32],
+    /// The main-layer claim point, as a HOST slice. It becomes
+    /// [`BwdSegSetup::claim_point`] (the caller uploads it to the
+    /// `ab_gkr_main_layer_claim_point` symbol, which is the ONE challenge
+    /// authority) and bounds-checks the challenge slots the fold prologue reads.
+    /// It is NEVER copied into the descriptor — the descriptor has no challenge
+    /// pointer.
+    pub claim_point: &'a [E4],
+    /// Bank recipes, ALREADY EVALUATED in this round's challenge context, in
+    /// recipe-index order. Reserved-EXCLUSIVE: lowering materializes `ONE` and
+    /// `NEG_ONE` at the head of [`BwdSegSetup::coefficients`].
+    pub coefficients: &'a [E4],
+    /// The layer's `acc_c0` seed recipe, or `None`.
+    ///
+    /// A layer property whose VALUE is round-dependent (a recipe evaluated in
+    /// this round's challenge context), which is why it arrives with
+    /// [`Self::coefficients`] and resolves against the same payload. The lean
+    /// artifact does not carry it: `LeanCoordinateArtifact` is the program plus
+    /// the binding, and a seed is neither.
+    pub c_init: Option<CoefficientRecipeId>,
+    pub eq_low: *const E4,
+    pub eq_sizes: GkrEqSizes,
+    pub contributions: *mut E4,
+    /// The contribution half-stride. One number wearing two hats with
+    /// [`Self::rows`]; the descriptor carries ONE field, so lowering requires
+    /// them equal rather than picking one.
+    pub acc_size: u32,
+}
+
+/// A lowered launch: the descriptor plus every payload the caller must upload.
+pub(crate) struct BwdSegSetup {
+    pub desc: BwdSegLaunchDesc,
+    /// The RESERVED-INCLUSIVE coefficient payload `[ONE, NEG_ONE, recipes…]`,
+    /// indexed raw by wire coefficient ids. Upload target is the mode's
+    /// ([`CoeffMode`]).
+    pub coefficients: Vec<E4>,
+    /// The `ab_gkr_main_layer_claim_point` upload payload.
+    pub claim_point: Vec<E4>,
+    /// The reordered lean stream for [`ProgramMode::DevPtr`]; empty inline.
+    pub program_words: Vec<u16>,
+    pub work: ListWorkStats,
+}
+
+// ── Errors ───────────────────────────────────────────────────────────────────
+
+/// Everything host lowering can reject. One variant per check.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum BwdSegLowerError {
+    /// `k` is zero, or past the warps a CUDA block can hold.
+    InvalidListCount { k: usize },
+    /// The round index does not fit the depth fields it also serves as.
+    RoundTooDeep { round: u32 },
+    /// An R0 program was lowered off round zero. R0 IS round zero: its kernel
+    /// never folds, so a later round would silently read leaf zero only.
+    R0RoundMismatch { round: u32 },
+    /// R0 lowering DROPS the spine's scalar addends (they are already inside the
+    /// materialized output the `acc_c0` shortcut reads), so seeding one would
+    /// double-count it.
+    R0CarriesCInit { id: CoefficientRecipeId },
+    /// `c_init` names a coefficient id the payload cannot supply.
+    InvalidCInit { index: u32 },
+    /// The stream does not fit the by-value program array.
+    ProgramOverflow { words: usize, cap: usize },
+    /// The stream is longer than a `u16` list offset can address.
+    ProgramOffsetOverflow { words: usize },
+    /// The lean wire itself is malformed: length, reserved words, a class dead in
+    /// the regime, or a source-arity rule.
+    Codec(LeanCodecError),
+    /// More live windows than the measured corpus maximum the descriptor is sized
+    /// from.
+    SourceWindowOverflow { windows: usize, cap: usize },
+    /// The round bound a different number of windows than the artifact compiled.
+    SourceWindowCountMismatch { compiled: usize, bound: usize },
+    /// The round supplied read spans for a different number of windows.
+    ReadElementCountMismatch { compiled: usize, bound: usize },
+    /// A window addresses more columns than its coordinate can reach.
+    WindowColumnOverflow { window: u8, offset: usize },
+    /// A procedural window named a kind the resolver does not serve.
+    UnknownProceduralKind { window: u8, kind: u8 },
+    /// A procedural window addresses more than one column: a procedural value
+    /// comes from the ROW, so every column past the first would silently resolve
+    /// to column zero.
+    MultiColumnProceduralWindow { window: u8, columns: usize },
+    /// A matrix-backed window has no read backing.
+    MissingReadBacking { window: u8 },
+    /// A procedural family was bound to a raw BASE matrix. Its materialization is
+    /// E4 by construction, so a base backing is neither the synthesis nor the
+    /// materialized form.
+    ProceduralWindowWithMatrixRead { window: u8 },
+    /// A backing pointer is null, or its stride is zero.
+    NullWindowGeometry { window: u8 },
+    /// A backing's column stride is not a whole number of its own elements.
+    WindowStrideMismatch {
+        window: u8,
+        is_e4: bool,
+        stride_bytes: u32,
+    },
+    /// A window's target depth is not this round.
+    ///
+    /// The prologue builds its fold weights from the ROUND while the resolver
+    /// takes a window's catch-up from `target_depth - backing_depth`; the two name
+    /// the same challenges only when the target depth IS the round.
+    WindowTargetDepthMismatch {
+        window: u8,
+        round: u8,
+        target_depth: u8,
+    },
+    /// `backing_depth > target_depth`, or a depth outside the D0..D3 range.
+    InvalidDepths {
+        window: u8,
+        backing_depth: u8,
+        target_depth: u8,
+    },
+    /// A catch-up distance the runtime factor bank cannot weight: it holds the
+    /// depth-one pair and ONE depth-`fold_depth` table, nothing between.
+    UnsupportedFoldDelta {
+        window: u8,
+        delta: u8,
+        fold_depth: u8,
+    },
+    /// The round's declared `materialize` disagrees with the class the policy
+    /// derives. The scratch plan was built from the DECLARATION, so a
+    /// disagreement means either a publishing window with no region or a region
+    /// nothing writes.
+    MaterializePolicyMismatch {
+        window: u8,
+        declared: bool,
+        derived: bool,
+    },
+    /// A caller-supplied publish backing. Publish geometry comes from the scratch
+    /// plan, so this one would be silently ignored.
+    UnexpectedPublishBacking { window: u8 },
+    /// A read is shorter than the PAIR total the round needs: both endpoint
+    /// halves, each consuming its own `2^delta` inputs.
+    ReadSpanOverflow { window: u8, needed: u32, have: u32 },
+    /// The plan's stride is not `2 * rows * 16` for the rows this round claims.
+    PublishStrideMismatch {
+        round: u8,
+        expected: usize,
+        actual: usize,
+    },
+    /// The plan does not cover this round.
+    PlanMissingRound { round: u8, rounds: usize },
+    /// A round's window and column slices disagree.
+    PlanShapeMismatch {
+        round: usize,
+        windows: usize,
+        entries: usize,
+    },
+    /// The three per-round slices have different lengths.
+    PlanRoundCountMismatch {
+        windows: usize,
+        columns: usize,
+        rows: usize,
+    },
+    /// A window the policy publishes has no region in the plan.
+    PlanMissingPublishRegion { window: u8 },
+    /// A window the policy does NOT publish has a region in the plan.
+    PlanPublishRegionUnused { window: u8 },
+    /// The plan's byte arithmetic overflowed.
+    PublishScratchOverflow { round: usize },
+    /// A parity buffer the plan needs was not allocated.
+    NullParityBase { parity: usize },
+    /// A chain read does not point at the previous round's published region for
+    /// this window — the parity rule, enforced rather than assumed.
+    ChainReadNotPriorPublish { window: u8 },
+    /// A publish region overlaps a read range or another publish region.
+    UnsafePublishAlias { window: u8, other: u8 },
+    /// A read range lies inside the parity buffer this round publishes into.
+    ReadAliasesPublishBuffer { window: u8 },
+    /// The two parity buffers overlap, so ping-pong would read what the prologue
+    /// is writing.
+    ParityBuffersAlias,
+    /// More sources than the descriptor's table can hold.
+    SourceOverflow { sources: usize, cap: usize },
+    /// A source names a window the binding does not have.
+    SourceWindowOutOfRange { source: usize, window: u8 },
+    /// A source names a column past its window's addressable span.
+    SourceColumnOutOfWindow {
+        source: usize,
+        window: u8,
+        column: u16,
+    },
+    /// A wire record names a slot past the source table.
+    SourceSlotOutOfRange { term: usize, slot: u16 },
+    /// A term header names a coefficient id past the payload. The device indexes
+    /// the bank with no bound of its own.
+    CoefficientIndexPastBank { index: usize, entries: usize },
+    /// More coefficients than the selected loader holds.
+    CoefficientBankOverflow { coefficients: usize, cap: usize },
+    /// The claim point does not reach the challenge the deepest catch-up needs.
+    ClaimPointTooShort { round: u8, entries: usize },
+    /// The row count is zero, or past what the span arithmetic can express.
+    RowsOutOfRange { rows: usize },
+    /// `acc_size` is not the row count.
+    AccSizeRowsMismatch { rows: usize, acc_size: u32 },
+    /// A pointer the kernel dereferences unconditionally is null.
+    NullRuntimePointer { what: &'static str },
+}
+
+impl From<LeanCodecError> for BwdSegLowerError {
+    fn from(error: LeanCodecError) -> Self {
+        BwdSegLowerError::Codec(error)
+    }
+}
+
+// ── The assignment matrix ────────────────────────────────────────────────────
+
+/// The per-`(source, round)` class and whether the prologue publishes for it.
+///
+/// The complete matrix, over `(origin, catch-up delta, D2 policy)`:
+///
+/// ```text
+/// (BF,         d0, either)      -> BfDirect          no publish
+/// (BF,         d1, either)      -> BfInlineD1        no publish
+/// (BF,         d2, Inline)      -> BfInlineD2        no publish
+/// (BF,         d2, Materialize) -> E4Direct          PUBLISH (depth-2 4xBF->E4 pyramid)
+/// (BF,         d3, either)      -> E4Direct          PUBLISH (depth-3 pyramid)
+/// (E4,         d0, either)      -> E4Direct          no publish
+/// (E4,        d>=1, either)     -> E4Direct          PUBLISH (one chain step)
+/// (procedural, d<3, either)     -> ProceduralInline  no publish
+/// (procedural, d>=3, either)    -> E4Direct          PUBLISH (synthesize, then chain)
+/// ```
+///
+/// `delta` is assumed already validated into `0..=BWD_COEFF_MAX_FOLD_DEPTH`.
+/// Publishing is per WINDOW (every source of a window shares its origin and
+/// depth), and it is what the scratch plan's regions and the descriptor's fold
+/// list are both derived from.
+pub(crate) fn assign_class(origin: SourceOrigin, delta: u8, d2: D2Policy) -> (SourceClass, bool) {
+    match (origin, delta) {
+        (SourceOrigin::Procedural, delta) if delta < BWD_COEFF_PUBLISH_TARGET_DEPTH => {
+            (SourceClass::ProceduralInline, false)
+        }
+        (SourceOrigin::Procedural, _) => (SourceClass::E4Direct, true),
+        (SourceOrigin::Bf, 0) => (SourceClass::BfDirect, false),
+        (SourceOrigin::Bf, 1) => (SourceClass::BfInlineD1, false),
+        (SourceOrigin::Bf, 2) => match d2 {
+            D2Policy::Inline => (SourceClass::BfInlineD2, false),
+            D2Policy::Materialize => (SourceClass::E4Direct, true),
+        },
+        (SourceOrigin::Bf, _) => (SourceClass::E4Direct, true),
+        (SourceOrigin::E4, 0) => (SourceClass::E4Direct, false),
+        (SourceOrigin::E4, _) => (SourceClass::E4Direct, true),
+    }
+}
+
+// ── Lowering ─────────────────────────────────────────────────────────────────
+
+/// Per-window addressable column counts, from the artifact's own binding.
+///
+/// A window's span is `[first_column, first_column + SOURCE_WINDOW_COLUMNS)` and
+/// an unreferenced column inside it is a hole, so the count is the WIDEST
+/// referenced offset plus one — not the number of referenced columns.
+pub(crate) fn window_columns(binding: &LeanSourceBinding) -> Result<Vec<usize>, BwdSegLowerError> {
+    let mut columns = Vec::with_capacity(binding.windows.len());
+    for (index, window) in binding.windows.iter().enumerate() {
+        let widest = window
+            .columns
+            .last()
+            .map(|column| column.column.saturating_sub(window.first_column))
+            .unwrap_or(0);
+        if widest >= SOURCE_WINDOW_COLUMNS {
+            return Err(BwdSegLowerError::WindowColumnOverflow {
+                window: index as u8,
+                offset: widest,
+            });
+        }
+        columns.push(widest + 1);
+    }
+    Ok(columns)
+}
+
+/// One E4 value as the descriptor's `[u32; 4]` limbs.
+///
+/// The limbs are the value's IN-MEMORY representation — Montgomery form, exactly
+/// the bytes a device load of an `e4` sees — NOT canonical integers. The
+/// descriptor field exists so the seed path needs no bank lookup, which only
+/// works if the bytes are already what the kernel would have loaded.
+pub(crate) fn e4_limbs(value: E4) -> [u32; 4] {
+    const _: () = assert!(core::mem::size_of::<E4>() == core::mem::size_of::<[u32; 4]>());
+    // SAFETY: `E4` is `repr(C, align(16))` over four base-field limbs, each a
+    // `repr(transparent)`-shaped `u32` wrapper, so the two types have identical
+    // size and a compatible layout. A by-value transmute copies the bytes; the
+    // weaker alignment of the target is irrelevant.
+    unsafe { core::mem::transmute::<E4, [u32; 4]>(value) }
+}
+
+/// Fill every field both descriptor families share.
+///
+/// A macro rather than a function: the two structs are field-for-field identical
+/// over this set, so a field added to one and not the other stops compiling here.
+macro_rules! fill_seg_desc {
+    ($desc:expr, $body:expr) => {{
+        let desc = &mut *$desc;
+        let body = &$body;
+        desc.list_offset[..body.list_offset.len()].copy_from_slice(&body.list_offset);
+        desc.k = body.k;
+        desc.term_count = body.term_count;
+        desc.num_sources = body.num_sources;
+        desc.num_foldable = body.num_foldable;
+        desc.fold_source[..body.fold_source.len()].copy_from_slice(&body.fold_source);
+        desc.source[..body.sources.len()].copy_from_slice(&body.sources);
+        // Dead window slots carry the ABSENT procedural kind rather than the
+        // zeroed `0`, which is a LIVE kind.
+        for (index, slot) in desc.window.iter_mut().enumerate() {
+            *slot = body
+                .windows
+                .get(index)
+                .copied()
+                .unwrap_or_else(BwdCoeffSourceWindow::default);
+        }
+        desc.c_init = body.c_init;
+        desc.eq_low = body.eq_low;
+        desc.contributions = body.contributions;
+        desc.eq_sizes = body.eq_sizes;
+        desc.n_coefficients = body.n_coefficients;
+        desc.logical_rows = body.logical_rows;
+    }};
+}
+
+/// A zero-initialized `Box<T>`.
+///
+/// # Safety
+///
+/// The all-zero bit pattern must be a valid `T`.
+unsafe fn zeroed_box<T>() -> Box<T> {
+    let layout = std::alloc::Layout::new::<T>();
+    let ptr = std::alloc::alloc_zeroed(layout) as *mut T;
+    if ptr.is_null() {
+        std::alloc::handle_alloc_error(layout);
+    }
+    Box::from_raw(ptr)
+}
+
+/// What one window resolved to at this round.
+struct LoweredWindow {
+    desc: BwdCoeffSourceWindow,
+    class: SourceClass,
+    publishes: bool,
+}
+
+/// The pieces both descriptor families carry, computed once.
+struct SegDescBody {
+    list_offset: Vec<u16>,
+    k: u16,
+    term_count: u16,
+    num_sources: u16,
+    num_foldable: u16,
+    fold_source: Vec<u16>,
+    sources: Vec<BwdSegSourceRecord>,
+    windows: Vec<BwdCoeffSourceWindow>,
+    c_init: [u32; 4],
+    eq_low: *const E4,
+    contributions: *mut E4,
+    eq_sizes: GkrEqSizes,
+    n_coefficients: u32,
+    logical_rows: u32,
+}
+
+/// Build the complete launch setup for one `(artifact, round)` pair.
+///
+/// `k` is the number of per-warp term lists; `d2` the base-field depth-two
+/// policy; `prog` and `coeff` select the program and coefficient-loader
+/// families. Everything the caller must still do is in [`BwdSegSetup`]: upload
+/// the coefficient payload, upload the claim point, and (in
+/// [`ProgramMode::DevPtr`]) upload the stream and patch the pointer into its host
+/// copy of the descriptor.
+pub(crate) fn lower_bwd_seg(
+    artifact: &LeanCoordinateArtifact,
+    binding: &BwdSegRoundBinding<'_>,
+    scratch: &ResolvedPublishScratch,
+    k: usize,
+    d2: D2Policy,
+    prog: ProgramMode,
+    coeff: CoeffMode,
+) -> Result<BwdSegSetup, BwdSegLowerError> {
+    if k == 0 || k > BWD_SEG_MAX_K {
+        return Err(BwdSegLowerError::InvalidListCount { k });
+    }
+    let round = u8::try_from(binding.round).map_err(|_| BwdSegLowerError::RoundTooDeep {
+        round: binding.round,
+    })?;
+    let regime = artifact.regime.regime();
+    // R0 IS round zero: its kernel is the `FOLD_DEPTH = 0` specialization.
+    if regime == BwdRegime::R0 && round != 0 {
+        return Err(BwdSegLowerError::R0RoundMismatch {
+            round: binding.round,
+        });
+    }
+    let fold_depth = bwd_coeff_fold_depth(round);
+
+    // The reserved literals are MATERIALIZED at the payload head (RR ruling
+    // 2026-07-27), so the kernel resolves every coefficient with one uniform
+    // `bank[coeff_idx]` load: no fast path, no offset subtraction.
+    let mut coefficients =
+        Vec::with_capacity(CoefficientRecipeId::RESERVED as usize + binding.coefficients.len());
+    coefficients.push(
+        CoefficientRecipeId::ONE
+            .literal()
+            .expect("ONE is a reserved literal"),
+    );
+    coefficients.push(
+        CoefficientRecipeId::NEG_ONE
+            .literal()
+            .expect("NEG_ONE is a reserved literal"),
+    );
+    coefficients.extend_from_slice(binding.coefficients);
+    let bank_cap = match coeff {
+        CoeffMode::Constant => BWD_SEG_CONST_BANK,
+        // A device buffer is unbounded; the wire's thirteen coefficient bits are
+        // not.
+        CoeffMode::DevPtr => MAX_COEFFICIENT_ENCODINGS,
+    };
+    if coefficients.len() > bank_cap {
+        return Err(BwdSegLowerError::CoefficientBankOverflow {
+            coefficients: coefficients.len(),
+            cap: bank_cap,
+        });
+    }
+
+    let c_init = match binding.c_init {
+        None => [0u32; 4],
+        Some(id) if regime == BwdRegime::R0 => return Err(BwdSegLowerError::R0CarriesCInit { id }),
+        // The same rule the CPU oracle applies (`interp.rs`'s
+        // `coefficient(layer, id, resolver)`), resolved here against the
+        // reserved-inclusive payload instead of a resolver: a reserved literal
+        // and a banked recipe are one indexing.
+        Some(id) => {
+            let index = usize::try_from(id.0).ok();
+            let value = index
+                .and_then(|index| coefficients.get(index))
+                .copied()
+                .ok_or(BwdSegLowerError::InvalidCInit { index: id.0 })?;
+            e4_limbs(value)
+        }
+    };
+
+    // Bounded so that BOTH derived quantities stay in `u32`: the deepest pair
+    // total (`2 * rows * 2^3` elements) and the publish stride
+    // (`2 * rows * 16` bytes).
+    let bound_by = 2 * (1usize << BWD_COEFF_MAX_FOLD_DEPTH).max(E4_COLUMN_BYTES as usize);
+    if binding.rows == 0
+        || binding
+            .rows
+            .checked_mul(bound_by)
+            .and_then(|value| u32::try_from(value).ok())
+            .is_none()
+    {
+        return Err(BwdSegLowerError::RowsOutOfRange { rows: binding.rows });
+    }
+    let logical_rows = binding.rows as u32;
+    if binding.acc_size != logical_rows {
+        return Err(BwdSegLowerError::AccSizeRowsMismatch {
+            rows: binding.rows,
+            acc_size: binding.acc_size,
+        });
+    }
+    // The deepest catch-up at round `r` weights with the challenges of rounds
+    // `[r - delta, r)`, so the claim point has to reach index `r - 1`.
+    if binding.claim_point.len() < usize::from(round) {
+        return Err(BwdSegLowerError::ClaimPointTooShort {
+            round,
+            entries: binding.claim_point.len(),
+        });
+    }
+    if binding.eq_low.is_null() {
+        return Err(BwdSegLowerError::NullRuntimePointer { what: "eq_low" });
+    }
+    if binding.contributions.is_null() {
+        return Err(BwdSegLowerError::NullRuntimePointer {
+            what: "contributions",
+        });
+    }
+
+    // ── The wire ─────────────────────────────────────────────────────────────
+    let records = decode_program(&artifact.program)?;
+    let words = artifact.program.words.len();
+    if prog == ProgramMode::Inline && words > LEAN_DESCRIPTOR_PROGRAM_WORDS {
+        return Err(BwdSegLowerError::ProgramOverflow {
+            words,
+            cap: LEAN_DESCRIPTOR_PROGRAM_WORDS,
+        });
+    }
+    if u16::try_from(words).is_err() || u16::try_from(records.len()).is_err() {
+        return Err(BwdSegLowerError::ProgramOffsetOverflow { words });
+    }
+
+    // ── Windows ──────────────────────────────────────────────────────────────
+    let compiled = &artifact.binding.windows;
+    if compiled.len() > in_scope::MAX_SOURCE_WINDOWS_USED {
+        return Err(BwdSegLowerError::SourceWindowOverflow {
+            windows: compiled.len(),
+            cap: in_scope::MAX_SOURCE_WINDOWS_USED,
+        });
+    }
+    if compiled.len() != binding.windows.len() {
+        return Err(BwdSegLowerError::SourceWindowCountMismatch {
+            compiled: compiled.len(),
+            bound: binding.windows.len(),
+        });
+    }
+    if compiled.len() != binding.window_read_elements.len() {
+        return Err(BwdSegLowerError::ReadElementCountMismatch {
+            compiled: compiled.len(),
+            bound: binding.window_read_elements.len(),
+        });
+    }
+    let columns = window_columns(&artifact.binding)?;
+
+    let rounds = scratch.plan.per_round.len();
+    let layout = scratch
+        .plan
+        .per_round
+        .get(usize::from(round))
+        .ok_or(BwdSegLowerError::PlanMissingRound { round, rounds })?;
+    if layout.window_base.len() != compiled.len() {
+        return Err(BwdSegLowerError::PlanShapeMismatch {
+            round: usize::from(round),
+            windows: compiled.len(),
+            entries: layout.window_base.len(),
+        });
+    }
+    let expected_stride = binding.rows * 2 * E4_COLUMN_BYTES as usize;
+    if layout.column_stride_bytes != expected_stride {
+        return Err(BwdSegLowerError::PublishStrideMismatch {
+            round,
+            expected: expected_stride,
+            actual: layout.column_stride_bytes,
+        });
+    }
+    // In `u32` because the row guard above bounds `2 * rows * 16`.
+    let publish_stride = expected_stride as u32;
+    let write_parity = usize::from(round & 1);
+    let read_parity = write_parity ^ 1;
+    // A parity buffer with bytes must exist. `layout.bytes` is checked as well as
+    // the plan's per-parity total so that a hand-built plan whose totals
+    // under-report a round still cannot get an offset computed off a null base.
+    for parity in [write_parity, read_parity] {
+        let needed = scratch.plan.bytes_per_parity[parity] > 0
+            || (parity == write_parity && layout.bytes > 0);
+        if needed && scratch.parity_base[parity].is_null() {
+            return Err(BwdSegLowerError::NullParityBase { parity });
+        }
+    }
+
+    let mut lowered = Vec::with_capacity(compiled.len());
+    for (index, (window, bound)) in compiled.iter().zip(binding.windows).enumerate() {
+        lowered.push(lower_window(
+            index as u8,
+            window.procedural_kind(),
+            columns[index],
+            bound,
+            binding,
+            scratch,
+            layout,
+            publish_stride,
+            round,
+            fold_depth,
+            d2,
+        )?);
+    }
+    check_alias(&lowered, &columns, scratch, write_parity, read_parity)?;
+
+    // ── Sources ──────────────────────────────────────────────────────────────
+    let slots = &artifact.binding.source_slots;
+    if slots.len() > BWD_SEG_MAX_SOURCES {
+        return Err(BwdSegLowerError::SourceOverflow {
+            sources: slots.len(),
+            cap: BWD_SEG_MAX_SOURCES,
+        });
+    }
+    let mut sources = Vec::with_capacity(slots.len());
+    let mut source_classes = Vec::with_capacity(slots.len());
+    for (source, slot) in slots.iter().enumerate() {
+        let window = usize::from(slot.window);
+        let entry = lowered
+            .get(window)
+            .ok_or(BwdSegLowerError::SourceWindowOutOfRange {
+                source,
+                window: slot.window,
+            })?;
+        if usize::from(slot.column) >= columns[window] {
+            return Err(BwdSegLowerError::SourceColumnOutOfWindow {
+                source,
+                window: slot.window,
+                column: slot.column,
+            });
+        }
+        sources.push(BwdSegSourceRecord {
+            window: slot.window,
+            class: entry.class.code(),
+            column: slot.column,
+        });
+        source_classes.push(entry.class);
+    }
+
+    // ── The wire, validated and annotated against those sources ──────────────
+    let annotated = annotate_terms(&records, regime, &source_classes, coefficients.len())?;
+
+    // ── The fold list (§7) ───────────────────────────────────────────────────
+    // The sources the eval loop touches EARLIEST are folded LAST, so they are the
+    // warmest in L1 when eval starts. First touch is taken over the COMMITTED
+    // order, which is the global order the `K` warps advance through together.
+    let mut first_touch = vec![usize::MAX; sources.len()];
+    for (position, term) in records.iter().enumerate() {
+        for slot in [term.source_a, term.source_b] {
+            if slot == SOURCE_NONE {
+                continue;
+            }
+            let entry = &mut first_touch[usize::from(slot)];
+            *entry = (*entry).min(position);
+        }
+    }
+    let mut fold_source: Vec<u16> = (0..sources.len())
+        .filter(|&source| lowered[usize::from(sources[source].window)].publishes)
+        .map(|source| source as u16)
+        .collect();
+    // Descending first touch; ties by ascending slot, so the order is total. A
+    // source no term reads (`usize::MAX`) sorts first — it is dead weight either
+    // way.
+    fold_source
+        .sort_by_key(|&source| (std::cmp::Reverse(first_touch[usize::from(source)]), source));
+    let num_foldable = fold_source.len() as u16;
+
+    // ── The K-split ──────────────────────────────────────────────────────────
+    // `split_round_robin` over POSITIONS, then the descriptor's stream is those
+    // lists concatenated, so warp `w` walks one contiguous span.
+    let positions: Vec<usize> = (0..records.len()).collect();
+    let lists = split_round_robin(&positions, k);
+    let mut stream: Vec<u16> = Vec::with_capacity(artifact.program.words.len());
+    let mut list_offset = vec![0u16; k + 1];
+    for (list, list_positions) in lists.iter().enumerate() {
+        list_offset[list] = u16::try_from(stream.len())
+            .map_err(|_| BwdSegLowerError::ProgramOffsetOverflow { words })?;
+        for &position in list_positions {
+            let at = position * LEAN_WORDS_PER_TERM;
+            stream.extend_from_slice(&artifact.program.words[at..at + LEAN_WORDS_PER_TERM]);
+        }
+    }
+    list_offset[k] = u16::try_from(stream.len())
+        .map_err(|_| BwdSegLowerError::ProgramOffsetOverflow { words })?;
+
+    let work = list_work_stats(&lists, &annotated);
+
+    // ── The descriptor ───────────────────────────────────────────────────────
+    let body = SegDescBody {
+        list_offset,
+        k: k as u16,
+        term_count: records.len() as u16,
+        num_sources: sources.len() as u16,
+        num_foldable,
+        fold_source,
+        sources,
+        windows: lowered.iter().map(|entry| entry.desc).collect(),
+        c_init,
+        eq_low: binding.eq_low,
+        contributions: binding.contributions,
+        eq_sizes: binding.eq_sizes,
+        n_coefficients: coefficients.len() as u32,
+        logical_rows,
+    };
+
+    let (desc, program_words) = match prog {
+        ProgramMode::Inline => {
+            // SAFETY: `BwdSegDesc` is `repr(C)` plain data — arrays of `u16` /
+            // `u32`, `repr(C)` plain-data structs and raw pointers — so the
+            // all-zero bit pattern is a valid value (null pointers, empty
+            // program). Allocating it zeroed rather than moving an `empty()`
+            // through the stack is what makes the 21 KB by-value launch
+            // parameter's INTERIOR PADDING deterministic: the six bytes before
+            // `window` are never read by the kernel but are copied by the launch.
+            let mut desc: Box<BwdSegDesc> = unsafe { zeroed_box() };
+            fill_seg_desc!(desc, body);
+            desc.program[..stream.len()].copy_from_slice(&stream);
+            (BwdSegLaunchDesc::Inline(desc), Vec::new())
+        }
+        ProgramMode::DevPtr => {
+            // SAFETY: as above; the twin is the same plain data with the array
+            // replaced by a null pointer.
+            let mut desc: Box<BwdSegProgPtrDesc> = unsafe { zeroed_box() };
+            fill_seg_desc!(desc, body);
+            // `program` stays NULL: the caller uploads `program_words` and
+            // patches the pointer into its own host copy before launch.
+            desc.program_words = stream.len() as u32;
+            (BwdSegLaunchDesc::ProgPtr(desc), stream)
+        }
+    };
+
+    Ok(BwdSegSetup {
+        desc,
+        coefficients,
+        claim_point: binding.claim_point.to_vec(),
+        program_words,
+        work,
+    })
+}
+
+/// Resolve ONE window's class, geometry and publish region.
+#[allow(clippy::too_many_arguments)]
+fn lower_window(
+    window: u8,
+    family_kind: Option<u8>,
+    columns: usize,
+    bound: &ResolvedBwdCoeffSourceWindow,
+    binding: &BwdSegRoundBinding<'_>,
+    scratch: &ResolvedPublishScratch,
+    layout: &PublishRoundLayout,
+    publish_stride: u32,
+    round: u8,
+    fold_depth: u8,
+    d2: D2Policy,
+) -> Result<LoweredWindow, BwdSegLowerError> {
+    if let Some(kind) = family_kind {
+        if usize::from(kind) >= BWD_COEFF_PROCEDURAL_KINDS {
+            return Err(BwdSegLowerError::UnknownProceduralKind { window, kind });
+        }
+        // A procedural value comes from the backing INDEX, so the resolver has no
+        // use for the column coordinate.
+        if columns > 1 {
+            return Err(BwdSegLowerError::MultiColumnProceduralWindow { window, columns });
+        }
+    }
+    if bound.target_depth != round {
+        return Err(BwdSegLowerError::WindowTargetDepthMismatch {
+            window,
+            round,
+            target_depth: bound.target_depth,
+        });
+    }
+    if bound.backing_depth > bound.target_depth
+        || bound.target_depth - bound.backing_depth > BWD_COEFF_MAX_FOLD_DEPTH
+    {
+        return Err(BwdSegLowerError::InvalidDepths {
+            window,
+            backing_depth: bound.backing_depth,
+            target_depth: bound.target_depth,
+        });
+    }
+    let delta = bound.target_depth - bound.backing_depth;
+    if delta > fold_depth || !(delta == 0 || delta == 1 || delta == fold_depth) {
+        return Err(BwdSegLowerError::UnsupportedFoldDelta {
+            window,
+            delta,
+            fold_depth,
+        });
+    }
+
+    // THE ORIGIN IS THE ROUND'S, NOT THE FAMILY'S. See the module doc.
+    let origin = match (family_kind, bound.read) {
+        (_, Some(column)) if column.is_e4 => SourceOrigin::E4,
+        (Some(_), Some(_)) => {
+            return Err(BwdSegLowerError::ProceduralWindowWithMatrixRead { window })
+        }
+        (None, Some(_)) => SourceOrigin::Bf,
+        (Some(_), None) => SourceOrigin::Procedural,
+        (None, None) => return Err(BwdSegLowerError::MissingReadBacking { window }),
+    };
+    let (class, publishes) = assign_class(origin, delta, d2);
+
+    // The plan was built from the DECLARED flag, so a disagreement is a plan that
+    // does not match the classes.
+    if bound.materialize != publishes {
+        return Err(BwdSegLowerError::MaterializePolicyMismatch {
+            window,
+            declared: bound.materialize,
+            derived: publishes,
+        });
+    }
+    if bound.publish.is_some() {
+        return Err(BwdSegLowerError::UnexpectedPublishBacking { window });
+    }
+
+    let (read_base, read_stride_bytes) = match bound.read {
+        Some(column) => {
+            check_column_geometry(window, &column)?;
+            // The PAIR total: the backing carries both endpoint halves
+            // (`2 * rows` outputs), and each output consumes its own `2^delta`
+            // inputs. In `u32` because the row guard bounds `2 * rows * 2^3`.
+            let needed = (2 * binding.rows * (1usize << delta)) as u32;
+            let have = binding.window_read_elements[usize::from(window)];
+            if have < needed {
+                return Err(BwdSegLowerError::ReadSpanOverflow {
+                    window,
+                    needed,
+                    have,
+                });
+            }
+            (column.ptr, column.stride_bytes)
+        }
+        None => (std::ptr::null(), 0),
+    };
+
+    let (publish_base, publish_stride_bytes) = if publishes {
+        let offset = layout.window_base[usize::from(window)];
+        if offset == PUBLISH_WINDOW_ABSENT {
+            return Err(BwdSegLowerError::PlanMissingPublishRegion { window });
+        }
+        // SAFETY: the offset is inside the parity buffer this plan sized and the
+        // caller allocated; this computes an address and never reads it.
+        let base = unsafe { scratch.parity_base[usize::from(round & 1)].add(offset) };
+        (base, publish_stride)
+    } else {
+        if layout.window_base[usize::from(window)] != PUBLISH_WINDOW_ABSENT {
+            return Err(BwdSegLowerError::PlanPublishRegionUnused { window });
+        }
+        (std::ptr::null_mut(), 0)
+    };
+
+    // The chain: when the PREVIOUS round published for this window, this round's
+    // E4 read must be exactly that region, at that round's stride.
+    if origin == SourceOrigin::E4 && delta >= 1 {
+        if let Some((expected_base, expected_stride)) =
+            chain_read_column(scratch, u32::from(round), usize::from(window))
+        {
+            if read_base != expected_base || read_stride_bytes != expected_stride {
+                return Err(BwdSegLowerError::ChainReadNotPriorPublish { window });
+            }
+        }
+    }
+
+    // A window addresses `columns` contiguous columns of each backing; the far end
+    // must still be a representable address.
+    for (base, stride) in [
+        (read_base as usize, read_stride_bytes),
+        (publish_base as usize, publish_stride_bytes),
+    ] {
+        if base != 0 && base.checked_add(columns * stride as usize).is_none() {
+            return Err(BwdSegLowerError::NullWindowGeometry { window });
+        }
+    }
+
+    Ok(LoweredWindow {
+        desc: BwdCoeffSourceWindow {
+            read_base,
+            publish_base,
+            read_stride_bytes,
+            publish_stride_bytes,
+            backing_depth: bound.backing_depth,
+            target_depth: bound.target_depth,
+            origin: match origin {
+                SourceOrigin::Bf => BWD_COEFF_ORIGIN_READ_BASE,
+                SourceOrigin::E4 => BWD_COEFF_ORIGIN_READ_EXT,
+                SourceOrigin::Procedural => BWD_COEFF_ORIGIN_PROCEDURAL,
+            },
+            materialize: u8::from(publishes),
+            // PER-ROUND, not the family's: a virtual setup this round resolves
+            // from DRAM must not also look synthesizable.
+            procedural_kind: match (origin, family_kind) {
+                (SourceOrigin::Procedural, Some(kind)) => kind,
+                _ => BWD_COEFF_PROCEDURAL_NONE,
+            },
+            reserved: [0; 3],
+        },
+        class,
+        publishes,
+    })
+}
+
+fn check_column_geometry(window: u8, column: &ResolvedColumn) -> Result<(), BwdSegLowerError> {
+    if column.ptr.is_null() || column.stride_bytes == 0 {
+        return Err(BwdSegLowerError::NullWindowGeometry { window });
+    }
+    let element = if column.is_e4 {
+        E4_COLUMN_BYTES
+    } else {
+        BF_COLUMN_BYTES
+    };
+    if column.stride_bytes % element != 0 {
+        return Err(BwdSegLowerError::WindowStrideMismatch {
+            window,
+            is_e4: column.is_e4,
+            stride_bytes: column.stride_bytes,
+        });
+    }
+    Ok(())
+}
+
+/// The pointer-range validations the planner could not make.
+///
+///   1. the two parity buffers are disjoint — otherwise ping-pong reads what the
+///      prologue is writing;
+///   2. no publish region overlaps any read range or another publish region; and
+///   3. no read range lies inside the parity buffer this round publishes into.
+///      Stricter than (2) on purpose: the whole buffer is the prologue's for the
+///      launch, and its stale tail belongs to an earlier same-parity round.
+fn check_alias(
+    lowered: &[LoweredWindow],
+    columns: &[usize],
+    scratch: &ResolvedPublishScratch,
+    write_parity: usize,
+    read_parity: usize,
+) -> Result<(), BwdSegLowerError> {
+    let buffer = |parity: usize| -> Option<(usize, usize)> {
+        let base = scratch.parity_base[parity] as usize;
+        let bytes = scratch.plan.bytes_per_parity[parity];
+        (base != 0 && bytes != 0).then_some((base, base + bytes))
+    };
+    if let (Some(write), Some(read)) = (buffer(write_parity), buffer(read_parity)) {
+        if write.0 < read.1 && read.0 < write.1 {
+            return Err(BwdSegLowerError::ParityBuffersAlias);
+        }
+    }
+
+    let span = |base: usize, stride: u32, count: usize| -> Option<(usize, usize)> {
+        (base != 0).then(|| (base, base + count * stride as usize))
+    };
+    for (index, entry) in lowered.iter().enumerate() {
+        let Some(publish) = span(
+            entry.desc.publish_base as usize,
+            entry.desc.publish_stride_bytes,
+            columns[index],
+        ) else {
+            continue;
+        };
+        for (other_index, other) in lowered.iter().enumerate() {
+            let mut ranges = Vec::with_capacity(2);
+            ranges.extend(span(
+                other.desc.read_base as usize,
+                other.desc.read_stride_bytes,
+                columns[other_index],
+            ));
+            if other_index != index {
+                ranges.extend(span(
+                    other.desc.publish_base as usize,
+                    other.desc.publish_stride_bytes,
+                    columns[other_index],
+                ));
+            }
+            for (lo, hi) in ranges {
+                if publish.0 < hi && lo < publish.1 {
+                    return Err(BwdSegLowerError::UnsafePublishAlias {
+                        window: index as u8,
+                        other: other_index as u8,
+                    });
+                }
+            }
+        }
+    }
+
+    if let Some(write) = buffer(write_parity) {
+        for (index, entry) in lowered.iter().enumerate() {
+            let Some(read) = span(
+                entry.desc.read_base as usize,
+                entry.desc.read_stride_bytes,
+                columns[index],
+            ) else {
+                continue;
+            };
+            if read.0 < write.1 && write.0 < read.1 {
+                return Err(BwdSegLowerError::ReadAliasesPublishBuffer {
+                    window: index as u8,
+                });
+            }
+        }
+    }
+    Ok(())
+}
+
+/// The category a lean class names in `regime`, or `None` for a dead class.
+fn lean_category(regime: BwdRegime, class: u8) -> Option<TermCategory> {
+    let table = match regime {
+        BwdRegime::R0 => LEAN_R0_OPCODES,
+        BwdRegime::Ext => LEAN_CONT_OPCODES,
+    };
+    table
+        .iter()
+        .find(|(listed, _)| *listed == u16::from(class))
+        .map(|(_, category)| *category)
+}
+
+/// Validate every record against the regime, the payload and the source table,
+/// and annotate it with its operands' classes.
+///
+/// This is `lean::validate_program`'s rule set, restated against the objects
+/// lowering has: that function needs a `CoeffLayer`, which the GPU side never
+/// builds. The release kernel trusts these, so they are checked here or nowhere.
+fn annotate_terms(
+    records: &[LeanTerm],
+    regime: BwdRegime,
+    source_classes: &[SourceClass],
+    coefficients: usize,
+) -> Result<Vec<AnnotatedTerm>, BwdSegLowerError> {
+    let mut annotated = Vec::with_capacity(records.len());
+    for (term, record) in records.iter().enumerate() {
+        let category =
+            lean_category(regime, record.class).ok_or(LeanCodecError::ClassNotInRegime {
+                term,
+                opcode: u16::from(record.class),
+            })?;
+        if usize::from(record.coeff) >= coefficients {
+            return Err(BwdSegLowerError::CoefficientIndexPastBank {
+                index: usize::from(record.coeff),
+                entries: coefficients,
+            });
+        }
+        let class_of = |slot: u16| -> Result<SourceClass, BwdSegLowerError> {
+            source_classes
+                .get(usize::from(slot))
+                .copied()
+                .ok_or(BwdSegLowerError::SourceSlotOutOfRange { term, slot })
+        };
+        let first = class_of(record.source_a)?;
+        let second = if category_arity(category) == 1 {
+            if record.source_b != SOURCE_NONE {
+                return Err(LeanCodecError::SourceBMustBeNone { term }.into());
+            }
+            None
+        } else {
+            if record.source_b == SOURCE_NONE {
+                return Err(LeanCodecError::SourceBMissing { term }.into());
+            }
+            Some(class_of(record.source_b)?)
+        };
+        annotated.push(AnnotatedTerm {
+            category,
+            operands: [Some(first), second],
+        });
+    }
+    Ok(annotated)
+}
+
+/// The per-list work of one split.
+fn list_work_stats(lists: &[Vec<usize>], annotated: &[AnnotatedTerm]) -> ListWorkStats {
+    let per_list: Vec<u64> = lists
+        .iter()
+        .map(|positions| {
+            positions
+                .iter()
+                .map(|&position| static_term_work(&annotated[position]))
+                .sum()
+        })
+        .collect();
+    let max_work = per_list.iter().copied().max().unwrap_or(0);
+    let total: u64 = per_list.iter().sum();
+    let mean_work = total as f64 / per_list.len().max(1) as f64;
+    ListWorkStats {
+        max_work,
+        mean_work,
+        max_over_mean: if mean_work > 0.0 {
+            max_work as f64 / mean_work
+        } else {
+            0.0
+        },
+    }
+}
+
+#[cfg(test)]
+impl BwdSegLaunchDesc {
+    /// The descriptor exactly as a launch copies it — INTERIOR PADDING INCLUDED,
+    /// which is the point: lowering allocates it zeroed, so two identical
+    /// lowerings are byte-identical.
+    pub(crate) fn launch_bytes(&self) -> &[u8] {
+        let (base, len) = match self {
+            BwdSegLaunchDesc::Inline(desc) => (
+                &**desc as *const BwdSegDesc as *const u8,
+                core::mem::size_of::<BwdSegDesc>(),
+            ),
+            BwdSegLaunchDesc::ProgPtr(desc) => (
+                &**desc as *const BwdSegProgPtrDesc as *const u8,
+                core::mem::size_of::<BwdSegProgPtrDesc>(),
+            ),
+        };
+        // SAFETY: both descriptors are `repr(C)` plain data with no interior
+        // mutability, and the slice borrows from `self`.
+        unsafe { std::slice::from_raw_parts(base, len) }
+    }
+}
+
+/// Test-only, so that `assert_eq!(lower_bwd_seg(...), Err(...))` compiles: the
+/// descriptor is 21 KB of `Copy` plain data that derives no `PartialEq`, so it is
+/// compared as the bytes a launch would carry.
+#[cfg(test)]
+impl PartialEq for BwdSegSetup {
+    fn eq(&self, other: &Self) -> bool {
+        self.desc.launch_bytes() == other.desc.launch_bytes()
+            && self.coefficients == other.coefficients
+            && self.claim_point == other.claim_point
+            && self.program_words == other.program_words
+            && self.work == other.work
+    }
+}
+
+/// Test-only, and a SUMMARY on purpose: the derived form would print 21 KB of
+/// mostly-zero arrays into a failure message.
+#[cfg(test)]
+impl core::fmt::Debug for BwdSegSetup {
+    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let family = match &self.desc {
+            BwdSegLaunchDesc::Inline(_) => "inline",
+            BwdSegLaunchDesc::ProgPtr(_) => "progptr",
+        };
+        formatter
+            .debug_struct("BwdSegSetup")
+            .field("desc", &family)
+            .field("coefficients", &self.coefficients.len())
+            .field("claim_point", &self.claim_point.len())
+            .field("program_words", &self.program_words.len())
+            .field("work", &self.work)
+            .finish()
+    }
+}

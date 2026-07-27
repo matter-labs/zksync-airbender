@@ -42,11 +42,16 @@ mod report;
 /// only [`desc::BwdCoeffSourceWindow`] and the publication threshold with the
 /// cell-era descriptor above).
 pub(crate) mod seg_desc;
+/// Host lowering for the segmented lean VM: per-round source classes, the
+/// publish-scratch plan, and the validated by-value descriptor.
+pub(crate) mod seg_lower;
 
 #[cfg(test)]
 mod abi_tests;
 #[cfg(test)]
 mod seg_abi_tests;
+#[cfg(test)]
+mod seg_lower_tests;
 
 /// Makes the `bench`-feature gating above visible from a DEFAULT test run.
 ///
