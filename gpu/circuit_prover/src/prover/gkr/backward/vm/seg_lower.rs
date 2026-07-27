@@ -618,10 +618,14 @@ pub(crate) enum BwdSegLowerError {
     /// A chain read does not point at the previous round's published region for
     /// this window — the parity rule, enforced rather than assumed.
     ChainReadNotPriorPublish { window: u8 },
-    /// A base-field read backing at nonzero depth. A fold weights with E4
-    /// challenges and produces E4, so a raw base matrix can only ever be at depth
-    /// zero: a nonzero depth on one shortens the catch-up over data that was
-    /// never folded.
+    /// A RAW source at nonzero depth: a base-field read backing, or a procedural
+    /// window with no read backing at all.
+    ///
+    /// A value at depth `k > 0` is the output of `k` folds, and a fold weights
+    /// with E4 challenges and produces E4 — so only an E4 backing can carry a
+    /// nonzero depth. A base matrix is never folded in place and a procedural
+    /// source is row-synthesized at depth zero, so a nonzero depth on either
+    /// shortens the catch-up over data that was never folded.
     BaseReadAtFoldedDepth { window: u8, backing_depth: u8 },
     /// A window the PREVIOUS round published was bound to a raw (base-field or
     /// procedural) source at this round. Its folded values are in the scratch
@@ -1242,18 +1246,27 @@ fn lower_window(
     // the binding, so the two ways a binding can lie about physical state are
     // rejected here rather than lowered:
     //
-    //   1. a base-field backing at NONZERO depth. A fold weights with E4
-    //      challenges and produces E4, so a raw base matrix is only ever at depth
-    //      zero; a nonzero `backing_depth` on one is a claim that raw data has
-    //      been folded in place, and it silently shortens the catch-up.
+    //   1. a RAW source at NONZERO depth. A value at depth `k > 0` is the output
+    //      of `k` folds, a fold weights with E4 challenges and therefore produces
+    //      E4, so ONLY an E4 backing can honestly carry a nonzero depth. The two
+    //      raw shapes both produce depth-zero values — a base matrix (never
+    //      folded) and row synthesis (procedural, no backing at all) — so the
+    //      predicate is "the read backing is not E4", `None` INCLUDED. A nonzero
+    //      depth on either is a claim that raw data was folded in place, and it
+    //      silently shortens the catch-up.
     //   2. a raw backing for a window the PREVIOUS round PUBLISHED. The folded
-    //      values live in the scratch region; refolding the raw matrix instead
+    //      values live in the scratch region; refolding the raw source instead
     //      reads data the chain has already moved past.
     //
     // Both are exactly the "silent raw refold" the module doc says this file
     // exists to prevent, arrived at from the binding side instead of the family
-    // side.
-    if bound.read.is_some_and(|column| !column.is_e4) && bound.backing_depth != 0 {
+    // side. Neither can false-reject a chained window: once a round publishes, the
+    // next round's read IS the scratch region — an E4 column, built by
+    // `chain_read_column` and required to be E4 by guard 2 — so a chained
+    // procedural window takes the E4 arm of (1) rather than needing an exemption
+    // from it. Both guards sit AFTER the origin match on purpose, so a read-less
+    // NON-procedural window still reports `MissingReadBacking`.
+    if bound.read.is_none_or(|column| !column.is_e4) && bound.backing_depth != 0 {
         return Err(BwdSegLowerError::BaseReadAtFoldedDepth {
             window,
             backing_depth: bound.backing_depth,

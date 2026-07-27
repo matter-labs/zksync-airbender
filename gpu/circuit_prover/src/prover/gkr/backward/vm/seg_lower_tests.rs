@@ -2327,6 +2327,89 @@ fn a_base_read_at_a_folded_depth_is_rejected() {
     .is_ok());
 }
 
+/// The read-LESS half of the same lie. A procedural source is row-synthesized at
+/// depth zero, so a nonzero `backing_depth` on one is the same silently-shortened
+/// catch-up — and the delta rules do NOT bound it: at round 2 (`fold_depth = 2`)
+/// `backing_depth = 1` gives `delta = 1`, a legal catch-up distance, so nothing
+/// else in the precondition set objects. `RawReadOverPriorPublish` cannot cover it
+/// either: at round 2 no previous round reserved a region for this window.
+#[test]
+fn a_procedural_window_at_a_folded_depth_is_rejected() {
+    let procedural = artifact(
+        ArtifactRegime::Ext,
+        3,
+        vec![virtual_setup(1, 0)],
+        slots(&[(0, 0)]),
+        program(&[record(0, 0, 0, SOURCE_NONE)]),
+    );
+    assert_eq!(
+        lower_one(
+            &procedural,
+            2,
+            bound(None, 1, 2, false),
+            1,
+            1,
+            D2Policy::Inline,
+        ),
+        Err(BwdSegLowerError::BaseReadAtFoldedDepth {
+            window: 0,
+            backing_depth: 1,
+        }),
+    );
+    // Synthesis at depth zero, folded by the round, is the legal shape.
+    assert!(lower_one(
+        &procedural,
+        2,
+        bound(None, 0, 2, false),
+        1,
+        1,
+        D2Policy::Inline,
+    )
+    .is_ok());
+    // ...and so is the publish-then-chain pair, whose second half reads the
+    // scratch region as E4 and so is exempt from the depth guard by taking its E4
+    // arm rather than by an exemption.
+    let round3 = [bound(None, 0, 3, true)];
+    let plan = plan_publish_scratch(
+        &[&[], &[], &[], &round3[..], &round3[..]],
+        &[&[], &[], &[], &[1], &[1]],
+        &ROWS[..5],
+    )
+    .expect("a legal two-round plan");
+    let scratch = scratch_for(plan);
+    let claim = claim_point(8);
+    let coeffs = coefficients(4);
+    let read_elements = generous(1);
+    assert!(lower_bwd_seg(
+        &procedural,
+        &round_binding(3, &round3, &read_elements, &claim, &coeffs),
+        &scratch,
+        1,
+        D2Policy::Inline,
+        ProgramMode::Inline,
+        CoeffMode::Constant,
+    )
+    .is_ok());
+    let (chain_ptr, chain_stride) =
+        chain_read_column(&scratch, 4, 0).expect("round 3 published this window");
+    let round4 = [bound(
+        Some(column_at(chain_ptr as usize, true, chain_stride)),
+        3,
+        4,
+        true,
+    )];
+    assert!(lower_bwd_seg(
+        &procedural,
+        &round_binding(4, &round4, &read_elements, &claim, &coeffs),
+        &scratch,
+        1,
+        D2Policy::Inline,
+        ProgramMode::Inline,
+        CoeffMode::Constant,
+    )
+    .is_ok());
+}
+
 /// The other half of the inverse: a window the PREVIOUS round published must
 /// chain off that region. Binding it back to its raw source refolds data the
 /// chain has already moved past — and at `backing_depth = 0` the depth guard
