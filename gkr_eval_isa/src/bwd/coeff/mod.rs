@@ -15,7 +15,8 @@
 //!
 //! Everything physical is deliberately absent FROM THE IR: no moves, no cells, no
 //! paging, no source-window binding, no wire encoding. Those are SCHEDULE concerns,
-//! and they live in their own strictly later modules — [`schedule`] (paging),
+//! and they live in their own strictly later modules — [`order`] (the committed
+//! term order and the physical K-split), [`schedule`] (paging),
 //! [`place`] (cells and moves), [`bind`] (source windows), [`encode`] (the u16
 //! wire), [`artifact`] (the deterministic `c2`-`c16` schedules, their replay and
 //! the exact report). A [`CoeffTerm`] must never grow to carry any of it.
@@ -30,6 +31,7 @@ pub mod interp;
 pub mod limits;
 pub mod lower;
 pub mod model;
+pub mod order;
 pub mod place;
 pub mod schedule;
 pub mod stats;
@@ -68,6 +70,7 @@ pub use limits::{
     SOURCE_WINDOW_COLUMNS, TermCategory, continuation_opcode, r0_opcode,
 };
 pub use lower::{LoweringTrace, lower_coeff_layer, lower_coeff_layer_traced};
+pub use order::{order_terms, split_round_robin};
 pub use place::{
     CellRead, CoeffPlacement, LivenessError, LivenessReport, PlacementError, PlacementFloor,
     PlacementStats, PlanAction, Residence, ScheduledInstr, ValueUse, certify_cell_liveness,
