@@ -56,23 +56,26 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::rc::Rc;
 use std::sync::Arc;
 
-use cs::gkr_compiler::dag_ir::BwdRegime;
+use cs::gkr_compiler::dag_ir::{BwdRegime, FieldKind};
 use era_cudart::memory::{memory_copy, memory_copy_async};
 use era_cudart::slice::DeviceSlice;
 use gkr_eval_isa::bwd::coeff::interp::{interpret_coeff_layer, interpret_lean_program};
 use gkr_eval_isa::bwd::coeff::lean::decode_program;
 use gkr_eval_isa::bwd::coeff::model::{CoeffLayer, CoefficientRecipeId};
 
-use super::desc::{BWD_COEFF_ORIGIN_READ_EXT, BWD_COEFF_PROCEDURAL_NONE};
+use super::desc::{
+    BWD_COEFF_ORIGIN_PROCEDURAL, BWD_COEFF_ORIGIN_READ_BASE, BWD_COEFF_ORIGIN_READ_EXT,
+    BWD_COEFF_PROCEDURAL_NONE,
+};
 use super::seg::{
     bwd_seg_blocks_per_sm, bwd_seg_claim_point_device_ptr, bwd_seg_coeff_bank_device_ptr,
     bwd_seg_epilogue_smem_bytes, launch_bwd_seg, BwdSegEpilogue,
 };
 use super::seg_compile::{
     chained_round_storage, download_e4, lean_coordinate, seg_chained_model, seg_claim_point,
-    seg_ext, seg_host_model, seg_round_binding, short_name, upload_round_storage, E4Deltas,
-    SegCoordinate, SegHostModel, SegResolver, SegRoundStorage, SegScratch, ADD_SUB_LAYOUT,
-    SEG_LAYOUTS,
+    seg_ext, seg_host_model, seg_publish_poison, seg_round_binding, short_name,
+    upload_round_storage, E4Deltas, SegCoordinate, SegHostModel, SegResolver, SegRoundStorage,
+    SegScratch, ADD_SUB_LAYOUT, SEG_LAYOUTS,
 };
 use super::seg_desc::{BwdSegDesc, BWD_SEG_CONST_BANK, BWD_SEG_MAX_K};
 use super::seg_lower::{
@@ -106,19 +109,29 @@ const SEG_ROWS: usize = 200;
 /// `K = 2` (the staged epilogue's `for w in 2..k` loop runs zero times).
 const SEG_K: [usize; 5] = [1, 2, 4, 16, 32];
 
-/// The continuation family's MEASURED `K` ceiling, which is below the geometry cap.
+/// The largest member of [`SEG_K`] the continuation family can launch.
 ///
-/// A 1024-thread block gets 65,536 registers, i.e. 64 per thread, and the
-/// continuation executor needs more than that — it carries the fold pyramids and the
-/// dual-product pair resolution, and `segmented_vm.cu` deliberately sets no
+/// **This is not the family's ceiling.** It is the largest launchable value of the
+/// PROBED axis `[1, 2, 4, 16, 32]`, and that axis has a hole: `K` in `17..=31` was
+/// never tried. `K = 24` in particular is plausible — 768 threads at roughly 80
+/// allocated registers is about 61,440 of the 65,536 a block gets — so the true
+/// ceiling may well be above this number. Nothing here claims otherwise.
+///
+/// Why 32 fails at all: a 1024-thread block gets 65,536 registers, i.e. 64 per
+/// thread, and the continuation executor needs more — it carries the fold pyramids
+/// and the dual-product pair resolution, and `segmented_vm.cu` deliberately sets no
 /// `__launch_bounds__` (spec §15: the natural register count is the measurement). So
-/// `K = 32` is a legal GEOMETRY that the compiled kernel cannot host, and a launch at
-/// it fails with `ErrorLaunchOutOfResources`.
+/// `K = 32` is a legal GEOMETRY the compiled kernel cannot host, and a launch at it
+/// fails with `ErrorLaunchOutOfResources`.
+///
+/// **Task 9's sweep must bisect `17..=31` (start at 24) before anyone concludes the
+/// continuation family caps at 16.** Probing that range is a measurement task, not a
+/// correctness gate, which is why this ladder states the hole instead of closing it.
 ///
 /// Pinned rather than only derived: it is how far up the axis the continuation cells
 /// of the matrix run, so a silent change would silently shrink what the matrix
 /// covers. [`bwd_seg_k_ceiling_is_measured_not_assumed`] is where it is measured.
-const PINNED_CONT_K_CEILING: usize = 16;
+const PINNED_CONT_LARGEST_LAUNCHABLE_PROBED_K: usize = 16;
 
 const _: () = {
     assert!(SEG_K[SEG_K.len() - 1] == BWD_SEG_MAX_K);
@@ -645,6 +658,16 @@ impl SegFixture {
             context.get_exec_stream(),
         )
         .expect("contribution poison");
+        // ...and the parity buffer this round PUBLISHES into. Without this, launch
+        // two of a fixture reads back launch one's correct publications and a
+        // prologue that did nothing passes.
+        self.scratch.poison_write_parity(self.model.round, context);
+        // Proved, not assumed: read the buffer back BEFORE the launch and require it
+        // to be all poison. A re-poison that silently stopped happening — deleted,
+        // moved after the launch, aimed at the wrong parity — would restore exactly
+        // the stale-publish masking it was added to remove, and every downstream
+        // assertion would go on passing. This is the only place that can see it.
+        self.assert_write_parity_is_poison(context);
 
         stage_claim_point(&setup.claim_point, context);
 
@@ -802,6 +825,30 @@ impl SegFixture {
         run
     }
 
+    /// The parity buffer this round is about to publish into holds NOTHING but
+    /// poison.
+    ///
+    /// The pre-condition every publish assertion rests on: `assert_published` reads
+    /// a launch's output out of a buffer that persists across the launches of one
+    /// fixture, so "the prologue wrote this" and "an earlier launch wrote this" are
+    /// the same bytes unless the buffer was cleared in between.
+    fn assert_write_parity_is_poison(&self, context: &ProverContext) {
+        let before = self
+            .scratch
+            .download_write_parity(self.model.round, context);
+        let poison = seg_publish_poison(usize::from(self.model.round & 1));
+        for (slot, value) in before.iter().enumerate() {
+            assert_e4(
+                &format!(
+                    "{}: parity slot {slot} was not re-poisoned before the launch",
+                    self.label()
+                ),
+                *value,
+                poison,
+            );
+        }
+    }
+
     /// Every published `(window, column)`'s region holds exactly the fold the host
     /// model predicts, in the split-halves layout — and every HOLE is untouched.
     ///
@@ -833,7 +880,7 @@ impl SegFixture {
                 written[offset + slot] = true;
             }
         }
-        let poison = seg_ext(0xdead, u32::from(self.model.round & 1), 0);
+        let poison = seg_publish_poison(usize::from(self.model.round & 1));
         for (slot, value) in run.published.iter().enumerate() {
             if !written[slot] {
                 assert_e4(
@@ -894,11 +941,15 @@ fn seg_launchable_k(
         .collect()
 }
 
-/// The ceiling every gate below runs against, and the reason it is not always 32.
+/// How far up [`SEG_K`] each family can be launched, and why that is not always 32.
+///
+/// What this measures is the largest launchable member of the PROBED axis, per
+/// family — not the family's true ceiling, since `17..=31` is never tried. See
+/// [`PINNED_CONT_LARGEST_LAUNCHABLE_PROBED_K`].
 ///
 /// Reported rather than silently applied: a `K` the ladder skips is a `K` nothing
 /// proves anything about, and the whole point of the axis is that segmentation is
-/// invisible to the value. The assertions pin the CURRENT ceiling per family, so a
+/// invisible to the value. The assertions pin the CURRENT value per family, so a
 /// kernel change that lowers it — or a `__launch_bounds__` that finally raises the
 /// continuation family to 32 — is a test failure that has to be read, not a quiet
 /// change in what the matrix covers.
@@ -908,8 +959,8 @@ fn seg_launchable_k(
 #[serial_test::serial]
 fn bwd_seg_k_ceiling_is_measured_not_assumed() {
     let _context = make_seg_context();
-    let mut r0_ceiling = usize::MAX;
-    let mut cont_ceiling = usize::MAX;
+    let mut r0_largest = usize::MAX;
+    let mut cont_largest = usize::MAX;
     for regime in [BwdRegime::R0, BwdRegime::Ext] {
         for coeff in [CoeffMode::Constant, CoeffMode::DevPtr] {
             for epilogue in [
@@ -936,10 +987,10 @@ fn bwd_seg_k_ceiling_is_measured_not_assumed() {
                     "[seg-ladder] {regime:?}/{coeff:?}/{epilogue:?} blocks/SM {} -> launchable {launchable:?}",
                     blocks.join(" ")
                 );
-                let ceiling = *launchable.last().expect("some K must be launchable");
+                let largest = *launchable.last().expect("some K must be launchable");
                 match regime {
-                    BwdRegime::R0 => r0_ceiling = r0_ceiling.min(ceiling),
-                    BwdRegime::Ext => cont_ceiling = cont_ceiling.min(ceiling),
+                    BwdRegime::R0 => r0_largest = r0_largest.min(largest),
+                    BwdRegime::Ext => cont_largest = cont_largest.min(largest),
                 }
                 // The launchable set must be a PREFIX of the axis: occupancy falls
                 // monotonically in the block size, so a hole would mean the query
@@ -948,7 +999,7 @@ fn bwd_seg_k_ceiling_is_measured_not_assumed() {
                     launchable,
                     SEG_K
                         .into_iter()
-                        .take_while(|&k| k <= ceiling)
+                        .take_while(|&k| k <= largest)
                         .collect::<Vec<_>>(),
                     "{regime:?}/{coeff:?}/{epilogue:?}: the launchable set must be a prefix"
                 );
@@ -963,12 +1014,13 @@ fn bwd_seg_k_ceiling_is_measured_not_assumed() {
     );
     eprintln!("[seg-ladder] Ext/DevPtr-program launchable {progptr:?}");
     eprintln!(
-        "[seg-ladder] measured K ceilings: R0 {r0_ceiling}, continuation {cont_ceiling}, \
-         BWD_SEG_MAX_K {BWD_SEG_MAX_K}"
+        "[seg-ladder] largest LAUNCHABLE PROBED K over the axis {SEG_K:?}: R0 {r0_largest}, \
+         continuation {cont_largest}; BWD_SEG_MAX_K {BWD_SEG_MAX_K}. 17..=31 is NOT probed — \
+         Task 9's sweep must bisect it (start at 24) before concluding a ceiling."
     );
 
     assert_eq!(
-        r0_ceiling, BWD_SEG_MAX_K,
+        r0_largest, BWD_SEG_MAX_K,
         "the R0 family reached the geometry cap before; a drop means its register count grew"
     );
     // The CONTINUATION family does NOT reach the geometry cap: its executor carries
@@ -978,13 +1030,14 @@ fn bwd_seg_k_ceiling_is_measured_not_assumed() {
     // ladder, and it is pinned here so the number is a measurement on the record
     // rather than a launch failure someone rediscovers.
     assert_eq!(
-        cont_ceiling, PINNED_CONT_K_CEILING,
-        "the continuation family's K ceiling moved; re-read the register measurement before \
-         changing this pin, and widen `SEG_K` if the ceiling ROSE"
+        cont_largest, PINNED_CONT_LARGEST_LAUNCHABLE_PROBED_K,
+        "the largest LAUNCHABLE PROBED continuation K moved (probed axis {SEG_K:?}; 17..=31 is \
+         not probed, so this is not the family's ceiling). Re-read the register measurement \
+         before changing this pin, and widen `SEG_K` if it ROSE."
     );
     assert!(
-        cont_ceiling >= 16,
-        "a continuation ceiling below 16 would leave the multi-warp epilogues barely covered"
+        cont_largest >= 16,
+        "a continuation value below 16 would leave the multi-warp epilogues barely covered"
     );
 }
 
@@ -1455,7 +1508,22 @@ fn bwd_seg_progptr_program_source_parity() {
         CoeffMode::Constant,
         BwdSegEpilogue::Plane,
     );
-    for k in inline_axis.into_iter().filter(|k| devptr_axis.contains(k)) {
+    let probes: Vec<usize> = inline_axis
+        .into_iter()
+        .filter(|k| devptr_axis.contains(k))
+        .collect();
+    // A filtered-to-empty axis is the vacuity this whole file is written against:
+    // libtest is just as green for a gate that launched nothing as for one that
+    // launched everything, so the intersection is asserted non-empty AND asserted to
+    // contain the shape that matters (`K = 1` is the smem bypass; a set that had
+    // collapsed to it alone would test no multi-warp device-program launch at all).
+    assert!(
+        probes.len() >= 2 && probes.contains(&1),
+        "the device-program probe set collapsed to {probes:?}: inline and devptr occupancy must \
+         overlap on more than one K, or this gate proves nothing"
+    );
+    let mut launched = 0usize;
+    for k in probes.iter().copied() {
         let inline = fixture.assert_shape(SegShape::inline(k, CoeffMode::Constant), &eq, &context);
         let shape = SegShape {
             k,
@@ -1492,7 +1560,14 @@ fn bwd_seg_progptr_program_source_parity() {
             "{}: the device-program family diverged from the inline one at K{k}",
             fixture.label()
         );
+        launched += 1;
     }
+    assert_eq!(
+        launched,
+        probes.len(),
+        "every probed K must have run both program families"
+    );
+    eprintln!("[seg-ladder] device-program parity over K {probes:?}");
 }
 
 /// Row counts that are not whole tiles, including the shapes a deep round on a
@@ -1567,10 +1642,17 @@ fn bwd_seg_d3_to_d4_chain_ping_pongs() {
         .map(|circuit| lean_coordinate(circuit, 0, BwdRegime::Ext))
         .find(|coord| {
             let windows = &coord.artifact.binding.windows;
+            // BASE-FIELD, not merely non-procedural: the interesting half of the
+            // chain is the depth-three BF pyramid, and an E4 window would satisfy
+            // "not procedural" while folding an already-extension backing.
+            // `backing_field()` answers `Base` for a virtual setup too, so the
+            // procedural test has to be excluded explicitly.
             windows.iter().any(|window| window.is_procedural())
-                && windows.iter().any(|window| !window.is_procedural())
+                && windows.iter().any(|window| {
+                    !window.is_procedural() && window.backing_field() == FieldKind::Base
+                })
         })
-        .expect("the corpus must carry a layer with both a procedural and a matrix window");
+        .expect("the corpus must carry a layer with both a procedural window and a BASE-FIELD one");
     eprintln!(
         "[seg-ladder] chain coordinate: {}",
         short_name(coord.circuit)
@@ -1593,6 +1675,30 @@ fn bwd_seg_d3_to_d4_chain_ping_pongs() {
     let scratch = Rc::new(SegScratch::new(&[&d3_model, &d4_model], &context));
     let d3_storage = upload_round_storage(&d3_model, &context);
     let d4_storage = chained_round_storage(&d4_model, &scratch.resolved());
+    // Both origins really reach the prologue at D3: a base-field window (the
+    // depth-three `8xBF -> E4` pyramid) and a procedural one (row synthesis, no DRAM
+    // read at all). Read off the LOWERED windows rather than the families, since the
+    // origin is a per-round statement.
+    let d3_origins: BTreeSet<u8> = d3_storage
+        .windows
+        .iter()
+        .zip(&d3_model.windows)
+        .map(|(bound, host)| match (bound.read, host.publishes) {
+            (None, _) => BWD_COEFF_ORIGIN_PROCEDURAL,
+            (Some(column), _) if column.is_e4 => BWD_COEFF_ORIGIN_READ_EXT,
+            (Some(_), _) => BWD_COEFF_ORIGIN_READ_BASE,
+        })
+        .collect();
+    eprintln!("[seg-ladder] chain D3 window origins: {d3_origins:?}");
+    assert!(
+        d3_origins.contains(&BWD_COEFF_ORIGIN_READ_BASE),
+        "the chain's D3 round must fold a BASE-FIELD window: that pyramid is the half the \
+         d3->d4 handshake is really about"
+    );
+    assert!(
+        d3_origins.contains(&BWD_COEFF_ORIGIN_PROCEDURAL),
+        "the chain's D3 round must also synthesize a procedural window"
+    );
 
     let mut d3 = SegFixture::finish(
         Arc::clone(&coord),

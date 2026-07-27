@@ -47,6 +47,7 @@ use cs::gkr_compiler::dag_ir::{
     bwd_roots, lower_dag, validate, BwdRegime, DagLayer, FieldKind, ReadPlace,
 };
 use era_cudart::memory::memory_copy_async;
+use era_cudart::slice::DeviceSlice;
 use gkr_eval_isa::bwd::coeff::interp::CoeffResolver;
 use gkr_eval_isa::bwd::coeff::lean_artifact::{
     compile_lean_coordinate, lower_lean_layer, LeanCoordinateArtifact,
@@ -270,6 +271,16 @@ pub(crate) fn seg_bank(layer: &CoeffLayer, round: u8) -> Vec<E4> {
     (0..layer.coefficients.len())
         .map(|index| seg_ext(0xc0ef, index as u32, u32::from(round)))
         .collect()
+}
+
+/// The value a publish-scratch slot holds when NOTHING wrote it.
+///
+/// One definition for the two readers — [`SegScratch::poison_write_parity`], which
+/// stamps it before every launch, and the ladder's hole check, which asserts it
+/// survived. A second literal would let the two drift and quietly turn the hole
+/// check into a tautology.
+pub(crate) fn seg_publish_poison(parity: usize) -> E4 {
+    seg_ext(0xdead, parity as u32, 0)
 }
 
 /// `gkr_virtual_base_value`'s host twin, keyed by `BWD_COEFF_PROCEDURAL_*` /
@@ -932,11 +943,46 @@ impl SegScratch {
                 // Poisoned rather than zeroed: an unwritten publish slot the eval
                 // loop then reads must produce a visibly wrong contribution, not a
                 // plausible zero.
-                let poison = vec![seg_ext(0xdead, index as u32, 0); bytes / E4_BYTES];
+                let poison = vec![seg_publish_poison(index); bytes / E4_BYTES];
                 upload(&poison, context)
             })
         });
         Self { plan, parity }
+    }
+
+    /// Re-upload the poison to the parity buffer round `round` WRITES into.
+    ///
+    /// **Every launch, not once at allocation.** A fixture runs several launches
+    /// against ONE scratch, and after the first one the buffer already holds the
+    /// correct published values — so from launch two on, a prologue that published
+    /// NOTHING (or skipped a region) would read back the previous launch's work and
+    /// pass both the publish check and the per-row comparison. That is a `K`- or
+    /// shape-dependent prologue bug going invisible above the first cell of the
+    /// axis, which is exactly the failure the poison exists to expose.
+    ///
+    /// Only the WRITE parity is re-poisoned. The READ parity is the previous round's
+    /// output and is precisely what a chain step must consume: round `r` writes
+    /// `r & 1` and reads `(r + 1) & 1`, and the chain gate runs round `r` before
+    /// round `r + 1` in every iteration, so this never destroys a live input.
+    pub fn poison_write_parity(&self, round: u8, context: &ProverContext) {
+        let parity = usize::from(round & 1);
+        let Some(device) = self.parity[parity].as_ref() else {
+            return;
+        };
+        let len = self.plan.bytes_per_parity[parity] / E4_BYTES;
+        if len == 0 {
+            return;
+        }
+        let poison = vec![seg_publish_poison(parity); len];
+        // SAFETY: `device` is a live `DeviceAllocation<E4>` of exactly `len` values
+        // (the allocation above is sized from the same `bytes_per_parity` entry).
+        // The slice is created, used for ONE stream-ordered copy, and dropped, so no
+        // second mutable view of the allocation exists. The `&self` borrow is what
+        // lets the shared `Rc<SegScratch>` of the chain gate re-poison without
+        // interior mutability.
+        let slab = unsafe { DeviceSlice::from_raw_parts_mut(device.as_ptr() as *mut E4, len) };
+        memory_copy_async(slab, &poison, context.get_exec_stream())
+            .expect("publish parity re-poison");
     }
 
     pub fn resolved(&self) -> ResolvedPublishScratch {
