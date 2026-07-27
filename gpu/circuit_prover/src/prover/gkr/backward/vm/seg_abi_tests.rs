@@ -2,12 +2,22 @@
 //!
 //! This is the sibling of [`abi_tests`](super::abi_tests) for the new lineage,
 //! and it deliberately covers only what exists at Task 5: the two descriptors and
-//! their capacities. There is no CUDA half yet — Task 7 creates
-//! `native/prover/gkr/backward/segmented_vm.cuh` and adds the header-text
-//! matchers that catch a CUDA-only constant edit (the failure direction neither
-//! compiler sees). Until then the checks here are the whole gate, so they pin
-//! EXACT numbers rather than bounds: an offset or a size that moves is a silent
-//! Rust↔CUDA divergence once the header lands.
+//! their capacities. The CUDA half —
+//! `native/prover/gkr/backward/segmented_vm.cuh` — landed in Task 7 and
+//! `static_assert`s every field offset and both descriptor sizes against the
+//! literals below, so a CUDA-side STRUCT edit is a build failure.
+//!
+//! The header-text matchers that catch a CUDA-only CONSTANT edit (the failure
+//! direction neither compiler sees) are NOT here and were not Task 7's: they land
+//! with Task 8's test work. Most of the header's constants are layout-bearing and
+//! are therefore already pinned by its own `static_assert`s; the one genuinely
+//! uncovered constant is [`BWD_SEG_CONST_BANK`], which sizes a `__constant__`
+//! symbol nothing on this side can see — a CUDA-side shrink would let the host's
+//! bank upload write past the symbol with no build error anywhere, so it MUST be
+//! among the matched constants.
+//!
+//! Either way the checks here pin EXACT numbers rather than bounds: an offset or a
+//! size that moves is a silent Rust↔CUDA divergence.
 //!
 //! [`seg_desc`](super::seg_desc) already carries `const _: () = assert!(...)`
 //! blocks for everything that can be const, which makes Rust-side drift a BUILD

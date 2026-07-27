@@ -288,6 +288,38 @@ fn seg_progptr_symbol(epilogue: BwdSegEpilogue) -> GkrBwdSegProgPtrSignature {
     }
 }
 
+/// Whether the `(regime, program source, coefficient loader)` triple HAS a
+/// compiled kernel.
+///
+/// The ONE statement of the instantiation matrix, because two paths need the same
+/// answer: launching a triple with no symbol, and ASKING ABOUT one. The occupancy
+/// helper answering an R0 or `ptr` device-program query with the cont/const
+/// kernel's number would feed Task 9's report a measurement of a different kernel
+/// than the one it asked about, which is worse than a failed launch.
+fn seg_family_is_instantiated(regime: BwdRegime, program: ProgramMode, coeff: CoeffMode) -> bool {
+    match program {
+        // Every (regime, loader) pair is compiled for the by-value program.
+        ProgramMode::Inline => true,
+        // The device-program family exists to measure ONE axis (§5's
+        // param-space-versus-device-memory program), so the other cells would be
+        // code with no comparison point.
+        ProgramMode::DevPtr => regime == BwdRegime::Ext && coeff == CoeffMode::Constant,
+    }
+}
+
+/// Reject an uninstantiated triple — a panic, matching how the rest of this module
+/// rejects a launch geometry no `lower_bwd_seg` output can produce. Both the launch
+/// path and the occupancy path go through here, so they cannot diverge on which
+/// cells exist.
+fn assert_seg_family_is_instantiated(regime: BwdRegime, program: ProgramMode, coeff: CoeffMode) {
+    assert!(
+        seg_family_is_instantiated(regime, program, coeff),
+        "only the continuation regime with the const coefficient loader is instantiated for the \
+         device-program family (spec §5: it measures the program source axis alone); asked for \
+         {regime:?} with the {coeff:?} coefficient loader"
+    );
+}
+
 /// Launch the exact `(regime, program source, coefficient loader, epilogue)`
 /// executor for this setup. Enqueue-only.
 ///
@@ -316,11 +348,8 @@ pub(crate) fn launch_bwd_seg(
             function.launch(&config, &GkrBwdSegInlineArguments::new(**desc))
         }
         BwdSegLaunchDesc::ProgPtr(desc) => {
-            assert!(
-                regime == BwdRegime::Ext && coeff == CoeffMode::Constant,
-                "only the continuation regime with the const coefficient loader is instantiated for \
-                 the device-program family (spec §5: it measures the program source axis alone)"
-            );
+            // The descriptor variant IS the program source, so this is the triple.
+            assert_seg_family_is_instantiated(regime, ProgramMode::DevPtr, coeff);
             assert!(
                 desc.program.is_null() == (desc.program_words == 0),
                 "the device program pointer must be patched to the uploaded stream; lowering leaves \
@@ -334,6 +363,11 @@ pub(crate) fn launch_bwd_seg(
 
 /// Blocks per SM the exact executor this setup would launch can hold — the
 /// THEORETICAL occupancy ceiling, not an achieved one.
+///
+/// Answers for the triple ASKED ABOUT or not at all: the device-program family has
+/// one compiled cell, and reporting its number for an R0 or `ptr` query would be a
+/// measurement of a different kernel. Same guard as the launch path, by
+/// construction.
 pub(crate) fn bwd_seg_blocks_per_sm(
     regime: BwdRegime,
     program: ProgramMode,
@@ -341,6 +375,7 @@ pub(crate) fn bwd_seg_blocks_per_sm(
     epilogue: BwdSegEpilogue,
     k: u32,
 ) -> CudaResult<i32> {
+    assert_seg_family_is_instantiated(regime, program, coeff);
     assert!(
         k >= 1 && k <= BWD_SEG_MAX_K as u32,
         "segmented lean VM occupancy list count outside 1..={BWD_SEG_MAX_K}"
@@ -390,6 +425,62 @@ mod tests {
         assert_eq!(
             bwd_seg_epilogue_smem_bytes(BwdSegEpilogue::Staged, 2),
             bwd_seg_epilogue_smem_bytes(BwdSegEpilogue::Staged, k)
+        );
+    }
+
+    /// The instantiation matrix, over EVERY `(regime, program, loader)` triple —
+    /// the twelve inline symbols plus the device-program family's single cell.
+    #[test]
+    fn seg_family_matrix_covers_every_triple() {
+        for regime in [BwdRegime::R0, BwdRegime::Ext] {
+            for coeff in [CoeffMode::Constant, CoeffMode::DevPtr] {
+                assert!(
+                    seg_family_is_instantiated(regime, ProgramMode::Inline, coeff),
+                    "{regime:?}/{coeff:?} is one of the twelve inline symbols"
+                );
+            }
+        }
+        assert!(seg_family_is_instantiated(
+            BwdRegime::Ext,
+            ProgramMode::DevPtr,
+            CoeffMode::Constant
+        ));
+        for (regime, coeff) in [
+            (BwdRegime::R0, CoeffMode::Constant),
+            (BwdRegime::R0, CoeffMode::DevPtr),
+            (BwdRegime::Ext, CoeffMode::DevPtr),
+        ] {
+            assert!(
+                !seg_family_is_instantiated(regime, ProgramMode::DevPtr, coeff),
+                "{regime:?}/{coeff:?} has no device-program symbol"
+            );
+        }
+    }
+
+    /// The occupancy helper must REJECT a triple with no symbol rather than answer
+    /// with the one compiled device-program kernel's number. The guard runs ahead of
+    /// any CUDA call, so these need no device.
+    #[test]
+    #[should_panic(expected = "device-program family")]
+    fn seg_occupancy_rejects_an_r0_device_program_query() {
+        let _ = bwd_seg_blocks_per_sm(
+            BwdRegime::R0,
+            ProgramMode::DevPtr,
+            CoeffMode::Constant,
+            BwdSegEpilogue::Staged,
+            4,
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "device-program family")]
+    fn seg_occupancy_rejects_a_ptr_loader_device_program_query() {
+        let _ = bwd_seg_blocks_per_sm(
+            BwdRegime::Ext,
+            ProgramMode::DevPtr,
+            CoeffMode::DevPtr,
+            BwdSegEpilogue::Staged,
+            4,
         );
     }
 }
