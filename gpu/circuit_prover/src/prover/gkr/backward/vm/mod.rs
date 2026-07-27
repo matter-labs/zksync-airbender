@@ -38,9 +38,15 @@ mod gpu_tests;
 pub(crate) mod lower;
 #[cfg(all(test, feature = "bench"))]
 mod report;
+/// The SEGMENTED lean VM's launch descriptors (a separate lineage: it shares
+/// only [`desc::BwdCoeffSourceWindow`] and the publication threshold with the
+/// cell-era descriptor above).
+pub(crate) mod seg_desc;
 
 #[cfg(test)]
 mod abi_tests;
+#[cfg(test)]
+mod seg_abi_tests;
 
 /// Makes the `bench`-feature gating above visible from a DEFAULT test run.
 ///
