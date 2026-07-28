@@ -92,6 +92,74 @@ pub(crate) const SEG_LAYOUTS: [&str; 4] = [
 /// The ladder's reference coordinate.
 pub(crate) const ADD_SUB_LAYOUT: &str = SEG_LAYOUTS[0];
 
+/// The TWELVE committed layouts of the lean corpus — the same set
+/// `gkr_eval_isa`'s `tests/common::FIXTURES` names and the Task-4 census froze
+/// (12 layouts / 57 layers with backward roots / 114 coordinates).
+///
+/// [`SEG_LAYOUTS`] above is a four-circuit SUBSET of this, kept separate on
+/// purpose: the parity ladder runs every round of every layer of its circuits and
+/// pays for it, while the corpus sweep runs one shape family per coordinate over
+/// everything. Widening the ladder to twelve circuits is a different (much
+/// longer) run, not a bigger constant.
+pub(crate) const SEG_CORPUS_LAYOUTS: [&str; 12] = [
+    "add_sub_lui_auipc_mop_layout_gkr.json",
+    "bigint_with_extended_control_layout_gkr.json",
+    "blake2_g_function_layout_gkr.json",
+    "blake2_with_extended_control_layout_gkr.json",
+    "inits_and_teardowns_preprocessed_layout_gkr.json",
+    "jump_branch_slt_layout_gkr.json",
+    "keccak_special5_layout_gkr.json",
+    "mem_subword_only_layout_gkr.json",
+    "mem_word_only_layout_gkr.json",
+    "shift_binop_layout_gkr.json",
+    "unified_reduced_machine_layout_gkr.json",
+    "unsigned_mul_div_layout_gkr.json",
+];
+
+const _: () = {
+    // The narrow ladder set must stay a subset of the corpus, or the two would be
+    // measuring different circuits under the same names.
+    let mut outer = 0;
+    while outer < SEG_LAYOUTS.len() {
+        let mut found = false;
+        let mut inner = 0;
+        while inner < SEG_CORPUS_LAYOUTS.len() {
+            // `str` equality is not const, so compare the bytes.
+            let lhs = SEG_LAYOUTS[outer].as_bytes();
+            let rhs = SEG_CORPUS_LAYOUTS[inner].as_bytes();
+            if lhs.len() == rhs.len() {
+                let mut byte = 0;
+                let mut same = true;
+                while byte < lhs.len() {
+                    if lhs[byte] != rhs[byte] {
+                        same = false;
+                    }
+                    byte += 1;
+                }
+                if same {
+                    found = true;
+                }
+            }
+            inner += 1;
+        }
+        assert!(found, "every ladder layout must be a corpus layout");
+        outer += 1;
+    }
+};
+
+/// The layer indices of `circuit` that carry backward roots, i.e. the layers that
+/// ARE coordinates.
+///
+/// The same predicate [`lean_coordinate`] asserts on, hoisted so a caller can
+/// enumerate the corpus instead of guessing layer indices and catching panics.
+/// Reads the cached lowering, so calling it per circuit costs one parse.
+pub(crate) fn seg_coordinate_layers(circuit: &'static str) -> Vec<usize> {
+    let dag = lowered_dag(circuit);
+    (0..dag.0.len())
+        .filter(|index| !bwd_roots(&dag.0[*index]).is_empty())
+        .collect()
+}
+
 /// A layout name shortened for assertion messages.
 pub(crate) fn short_name(circuit: &str) -> &str {
     circuit

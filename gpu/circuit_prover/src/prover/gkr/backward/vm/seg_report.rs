@@ -76,7 +76,8 @@ use super::seg::{
 };
 use super::seg_desc::BWD_SEG_MAX_K;
 use super::seg_lower::{
-    lower_bwd_seg, BwdSegLaunchDesc, BwdSegSetup, CoeffMode, D2Policy, ProgramMode,
+    lower_bwd_seg, BwdSegLaunchDesc, BwdSegLowerError, BwdSegSetup, CoeffMode, D2Policy,
+    ListWorkStats, ProgramMode,
 };
 use crate::primitives::field::E4;
 use crate::primitives::utils::WARP_SIZE;
@@ -119,6 +120,25 @@ const _: () = {
 /// is enough, and downloading two halves of eight million E4 values per cell is
 /// not.
 pub(super) const SEG_IDENTITY_SAMPLE_ROWS: usize = 1 << 13;
+
+/// The certification window a cell of `rows` rows actually uses.
+///
+/// [`SEG_IDENTITY_SAMPLE_ROWS`], except that it never takes more than HALF the
+/// cell. The head window is `[0, sample)` and the tail window is
+/// `[rows - sample, rows)`, so a sample wider than half the cell would make the
+/// two overlap — at which point the tail check is reading rows the head check
+/// already covered and `SegCell::preflight`'s self-proving `head != tail`
+/// assertion fails on a cell that is perfectly correct.
+///
+/// Above `2 * SEG_IDENTITY_SAMPLE_ROWS` rows this is the constant, so every cell
+/// the Stage-A matrix and the parity ladder measure is unaffected. It exists for
+/// the CORPUS SWEEP, whose heaviest coordinates fit only a few thousand rows
+/// inside the per-cell backing budget: those are recorded as below the timing
+/// floor, but they are still certified, and certifying them must not depend on
+/// the floor.
+pub(super) fn identity_sample_rows(rows: usize) -> usize {
+    SEG_IDENTITY_SAMPLE_ROWS.min(rows / 2)
+}
 
 /// Everything this harness writes lands under `target/`, which is git-ignored on
 /// purpose: these are machine measurements, not repository content.
@@ -1209,6 +1229,25 @@ use crate::prover::gkr::backward::GkrEqSizes as EqSizes;
 /// would be a second copy of that rule, and the two would diverge the first time
 /// the delta policy changed.
 pub(super) fn probe_bytes_per_row(coord: &SegCoordinate, round: u8, d2: D2Policy) -> usize {
+    probe_geometry(coord, round, d2).bytes_per_row
+}
+
+/// The per-row device footprint AND the source width mix of one
+/// `(coordinate, round, D2 policy)` cell, from ONE probe model.
+///
+/// The width mix is per SOURCE rather than per window: the closed-form `K` policy
+/// reads it, and what costs a term an operand load is the source it names, not
+/// how many windows the binding happens to group those sources into.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) struct SegGeometryProbe {
+    pub(super) bytes_per_row: usize,
+    pub(super) windows: usize,
+    pub(super) bf_sources: usize,
+    pub(super) e4_sources: usize,
+    pub(super) procedural_sources: usize,
+}
+
+pub(super) fn probe_geometry(coord: &SegCoordinate, round: u8, d2: D2Policy) -> SegGeometryProbe {
     let probe = seg_host_model(coord, round, 1, d2, E4Deltas::Supported);
     // The two contribution halves.
     let mut bytes = 2 * size_of::<E4>();
@@ -1225,7 +1264,21 @@ pub(super) fn probe_bytes_per_row(coord: &SegCoordinate, round: u8, d2: D2Policy
             bytes += probe.columns[index] * 2 * size_of::<E4>();
         }
     }
-    bytes
+    let mut mix = SegGeometryProbe {
+        bytes_per_row: bytes,
+        windows: probe.windows.len(),
+        bf_sources: 0,
+        e4_sources: 0,
+        procedural_sources: 0,
+    };
+    for &(window, _) in &probe.slots {
+        match probe.windows[window].backing {
+            SegBacking::Bf(_) => mix.bf_sources += 1,
+            SegBacking::Ext(_) => mix.e4_sources += 1,
+            SegBacking::Procedural(_) => mix.procedural_sources += 1,
+        }
+    }
+    mix
 }
 
 /// The row count a cell is measured at: `target`, halved until its synthetic
@@ -1383,6 +1436,21 @@ impl SegCell {
     ///
     /// Staging happens HERE, once per shape, and never inside a timed loop.
     pub(super) fn prepare(&self, shape: SegShape, context: &ProverContext) -> SegLaunchable {
+        let setup = self.try_lower(shape).unwrap_or_else(|error| {
+            panic!("{}: {}: lower: {error:?}", self.label(), shape.label())
+        });
+        self.stage(setup, shape, context)
+    }
+
+    /// Lower this cell at one shape WITHOUT staging anything.
+    ///
+    /// Split out of [`Self::prepare`] for the corpus sweep, which walks
+    /// coordinates the parity ladder never lowered: a coordinate host lowering
+    /// REJECTS must be recorded with its rejection, not turned into a panic that
+    /// takes the rest of the chunk with it. It is also how a cell that will never
+    /// be timed still contributes its [`ListWorkStats`], which is a property of
+    /// the lowering rather than of any launch.
+    pub(super) fn try_lower(&self, shape: SegShape) -> Result<BwdSegSetup, BwdSegLowerError> {
         let binding = seg_round_binding(
             &self.model,
             &self.storage,
@@ -1393,7 +1461,7 @@ impl SegCell {
             self.eq_sizes,
             self.contributions,
         );
-        let mut setup = lower_bwd_seg(
+        lower_bwd_seg(
             &self.coord.artifact,
             &binding,
             &self.scratch.resolved(),
@@ -1402,8 +1470,16 @@ impl SegCell {
             shape.program,
             shape.coeff,
         )
-        .unwrap_or_else(|error| panic!("{}: {}: lower: {error:?}", self.label(), shape.label()));
+    }
 
+    /// Upload everything a lowered shape reads and patch the descriptor's runtime
+    /// pointers. Never called from inside a timed loop.
+    fn stage(
+        &self,
+        mut setup: BwdSegSetup,
+        shape: SegShape,
+        context: &ProverContext,
+    ) -> SegLaunchable {
         stage_claim_point(&setup.claim_point, context);
         let coefficients = match shape.coeff {
             CoeffMode::Constant => {
@@ -1532,7 +1608,7 @@ impl SegCell {
         launchable
             .launch(context)
             .unwrap_or_else(|error| panic!("{}: {}: {error:?}", self.label(), shape.label()));
-        let sample = SEG_IDENTITY_SAMPLE_ROWS.min(self.rows);
+        let sample = identity_sample_rows(self.rows);
         // HEAD **and TAIL** of both halves. A prefix alone cannot see a short grid
         // or a truncated row count: those faults leave the last rows untouched, and
         // a kernel that evaluates fewer rows than it was asked for is FASTER, so a
@@ -1563,8 +1639,9 @@ impl SegCell {
         // guard is decoration. Contributions are `eq(row) * acc(row)` over
         // per-row-distinct pseudorandom sources, so head and tail cannot coincide;
         // asserting that they differ is what makes this measured rather than
-        // assumed. (`tail > 0` always: `SEG_MIN_TIMED_ROWS` is eight times
-        // `SEG_IDENTITY_SAMPLE_ROWS`.)
+        // assumed. (`tail > 0` for every cell of two rows or more: see
+        // [`identity_sample_rows`], which halves the window rather than letting a
+        // narrow cell's head and tail coincide.)
         assert!(
             tail > 0,
             "the timed cell must be wider than one sample window"
@@ -1600,7 +1677,9 @@ impl SegCell {
 
 use cs::gkr_compiler::dag_ir::BwdRegime as DagBwdRegime;
 
-use super::seg_compile::{lean_coordinate, ADD_SUB_LAYOUT, SEG_LAYOUTS};
+use super::seg_compile::{
+    lean_coordinate, seg_coordinate_layers, ADD_SUB_LAYOUT, SEG_CORPUS_LAYOUTS, SEG_LAYOUTS,
+};
 use crate::prover::test_utils::make_test_context;
 
 /// The `K` axis.
@@ -2873,6 +2952,1646 @@ fn bwd_seg_keccak_l0_monster() {
     drop(eq_low);
 }
 
+// ── Task 10: the full-corpus sweep and the closed-form `K` policy ────────────
+//
+// Stage A answered "which configuration wins on ONE coordinate". This answers
+// "what does a launcher choose, at setup, for ANY coordinate" — which is a
+// different question and needs the whole corpus rather than the four circuits the
+// parity ladder runs.
+//
+// Three properties are deliberate, and each of them is a lesson from Stage A:
+//
+//   * `K` is the ONLY free axis. Epilogue, coefficient loader and program source
+//     are pinned to the Task-9 winner, because at the winning `K` those three
+//     axes were measured to be INSIDE the selection tie band — sweeping them
+//     again over 12 circuits would multiply the run by six and resolve nothing.
+//   * every non-baseline `K` is PAIRED against the same cell's `K = 4` twin.
+//     A `K`-vs-`K` comparison on one cell is a genuine A/B (same rows, same
+//     buffer, same context), so it gets the normative protocol and an interval.
+//     Stage B's review found that dividing two solo medians carries a
+//     fixed-direction drift bias of ~0.3% and no interval at all; the loss table
+//     below is built entirely out of paired estimates for exactly that reason.
+//   * a coordinate that cannot be measured is RECORDED with the reason. There are
+//     four of those (see [`SegCorpusStatus`]) and the sweep's coverage line prints
+//     all of them, because a corpus sweep that quietly measured 60% of the corpus
+//     would look identical to one that measured all of it.
+
+/// The `K` axis the corpus sweep ranks: the plan's set, unextended.
+///
+/// Stage A extended its own axis DOWN to `{1, 2}` after the gate coordinate's
+/// winner landed at the bottom of the named set. That is not repeated here and
+/// the omission is a measurement, not an oversight: `K = 1` ran 4% behind the
+/// incumbent on the gate coordinate (50% occupancy, no cross-warp amortization)
+/// and `K = 2` lost to `K = 4` on every Stage-A cell it was launchable in.
+pub(super) const SEG_CORPUS_K: [usize; 5] = [4, 8, 16, 24, 32];
+
+/// The member of [`SEG_CORPUS_K`] every other `K` of a coordinate is paired
+/// against: the Task-9 winner, so a corpus ratio reads directly as "against the
+/// configuration the gate was won at".
+pub(super) const SEG_CORPUS_BASELINE_K: usize = SEG_CORPUS_K[0];
+pub(super) const SEG_CORPUS_BASELINE_LABEL: &str = "K4-same-cell";
+
+/// Rows a corpus cell aims for.
+///
+/// Chosen so the grid stays deep at EVERY `K` of the axis rather than so the cell
+/// is large: at `K = 4` the R0 family is resident 12 blocks deep on 188 SMs, so
+/// 2^20 rows is 2^15 blocks over a 2,256-block wave — about 14 waves — and at
+/// `K = 32` it is 166. Task 9 measured the gate coordinate at 116 waves and noted
+/// that tail effects are negligible there; 14 is the shallowest point of this
+/// sweep and every row records its own `waves` so a reader can see it.
+const SEG_CORPUS_TARGET_ROWS: usize = 1 << 20;
+
+/// Device bytes ONE corpus cell may spend on its synthetic backings and publish
+/// scratch together.
+///
+/// This is the sweep's real budget and it is a HOST-time budget, not a device one:
+/// the backings are generated on the CPU one field element at a time, so a cell is
+/// paid for twice — once to synthesize it and once to upload it. 2 GiB per cell
+/// keeps the whole 12-circuit corpus inside a locked afternoon; raising it makes
+/// the heavy continuation coordinates measurable at more rows and makes the sweep
+/// several hours long. The consequence is recorded per coordinate rather than
+/// smoothed: a cell that cannot reach [`SEG_MIN_TIMED_ROWS`] inside this budget is
+/// flagged [`SegCorpusStatus::BelowFloor`] and excluded from the policy fit.
+const SEG_CORPUS_DEFAULT_BUDGET_BYTES: usize = 2 << 30;
+
+/// The budget this invocation runs under: [`SEG_CORPUS_DEFAULT_BUDGET_BYTES`], or
+/// `BWD_SEG_CORPUS_BUDGET_GIB`.
+///
+/// It exists to break a CONFOUND, and that is the only reason it is a knob. Under
+/// one fixed budget the row count is a deterministic function of the coordinate's
+/// per-row footprint, so grid depth and coordinate weight move together and no
+/// amount of corpus can separate them: every deep-grid coordinate is light because
+/// only a light coordinate fits 2^20 rows. Re-running the heavy circuits at a
+/// larger budget puts a HEAVY coordinate at a DEEP grid, which is the missing
+/// quadrant. Every row records the rows it was measured at, so the two passes
+/// merge into one table rather than overwriting each other.
+fn corpus_budget_bytes() -> usize {
+    match std::env::var("BWD_SEG_CORPUS_BUDGET_GIB") {
+        Err(_) => SEG_CORPUS_DEFAULT_BUDGET_BYTES,
+        Ok(value) => {
+            let gib: usize = value.trim().parse().unwrap_or_else(|error| {
+                panic!("invalid BWD_SEG_CORPUS_BUDGET_GIB={value:?}: {error}")
+            });
+            assert!(gib > 0, "the corpus budget must admit at least one cell");
+            gib << 30
+        }
+    }
+}
+
+/// The row LADDER every coordinate is measured on: the fitted row count, and the
+/// same coordinate a quarter and a sixteenth as deep.
+///
+/// The second half of the confound fix. Sweeping one row count per coordinate
+/// measures `best_k` as a function of the coordinate, and the coordinate alone
+/// fixes the grid depth — so "does depth matter, or does weight?" is unanswerable
+/// from it. Re-measuring the SAME coordinate at three depths answers it within the
+/// coordinate, where weight is held constant by construction.
+///
+/// Divisors rather than absolute row counts, because the fitted row count already
+/// differs per coordinate; rungs that would fall under [`SEG_MIN_TIMED_ROWS`] are
+/// dropped rather than measured below the floor, since the ladder exists to vary
+/// depth and a below-floor rung varies the protocol as well.
+const SEG_CORPUS_ROW_STEPS: [usize; 3] = [1, 4, 16];
+
+/// Rows below which a corpus cell is not launched at all: at four blocks it is
+/// measuring dispatch, and the certification windows have nothing to sample.
+const SEG_CORPUS_MIN_ROWS: usize = 1 << 10;
+
+const _: () = {
+    assert!(SEG_CORPUS_MIN_ROWS >= 2 * 32);
+    assert!(SEG_CORPUS_TARGET_ROWS > SEG_MIN_TIMED_ROWS);
+    assert!(SEG_CORPUS_K[0] == 4);
+    assert!(SEG_CORPUS_ROW_STEPS[0] == 1);
+};
+
+/// The round classes a coordinate is swept at.
+///
+/// `R0` is the round-zero regime (no fold). The continuation regime is swept at
+/// D1, D2 and D3, and D2 is swept TWICE — the two `D2Policy` values are the same
+/// round with different source classes for every base-field window at catch-up
+/// two, and Task 9 saw them 35% apart on a single coordinate. That single
+/// coordinate is why the policy is decided here and not there.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub(super) enum SegRoundClass {
+    R0,
+    D1,
+    D2Inline,
+    D2Materialize,
+    D3,
+}
+
+pub(super) const SEG_ROUND_CLASSES: [SegRoundClass; 5] = [
+    SegRoundClass::R0,
+    SegRoundClass::D1,
+    SegRoundClass::D2Inline,
+    SegRoundClass::D2Materialize,
+    SegRoundClass::D3,
+];
+
+impl SegRoundClass {
+    pub(super) fn regime(self) -> BwdRegime {
+        match self {
+            Self::R0 => BwdRegime::R0,
+            _ => BwdRegime::Ext,
+        }
+    }
+
+    pub(super) fn round(self) -> u8 {
+        match self {
+            Self::R0 => 0,
+            Self::D1 => 1,
+            Self::D2Inline | Self::D2Materialize => 2,
+            Self::D3 => 3,
+        }
+    }
+
+    pub(super) fn d2(self) -> D2Policy {
+        match self {
+            Self::D2Materialize => D2Policy::Materialize,
+            _ => D2Policy::Inline,
+        }
+    }
+
+    /// Whether this class is one of the two the `D2Policy` A/B is decided on.
+    pub(super) fn is_d2_class(self) -> bool {
+        matches!(self, Self::D2Inline | Self::D2Materialize)
+    }
+
+    pub(super) fn label(self) -> &'static str {
+        match self {
+            Self::R0 => "R0",
+            Self::D1 => "D1",
+            Self::D2Inline => "D2-inline",
+            Self::D2Materialize => "D2-materialize",
+            Self::D3 => "D3",
+        }
+    }
+
+    pub(super) fn parse(label: &str) -> Option<Self> {
+        SEG_ROUND_CLASSES
+            .into_iter()
+            .find(|class| class.label() == label)
+    }
+}
+
+/// Why a coordinate at one `K` carries no wall time — or that it does.
+///
+/// Five outcomes, and the sweep's coverage line prints the count of each. The
+/// point of enumerating them is that they are NOT interchangeable: an
+/// unlaunchable cell is a property of the compiled kernel, a below-floor cell is
+/// a property of this harness's memory budget, and a lower-rejected cell is a
+/// property of the coordinate itself and the only one of the three that would be
+/// a finding about the VM.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum SegCorpusStatus {
+    /// Timed at or above [`SEG_MIN_TIMED_ROWS`], certified, counts for the policy.
+    Timed,
+    /// Timed and certified, but at fewer rows than the timing floor because the
+    /// cell's per-row footprint would not fit [`corpus_budget_bytes`]. The
+    /// number is real; it is a different measurement from the ones beside it, so
+    /// it is excluded from the policy fit and reported separately.
+    BelowFloor,
+    /// Not even [`SEG_CORPUS_MIN_ROWS`] rows fit the budget. Nothing was launched.
+    OverBudget,
+    /// The compiled kernel cannot host a `32 * k`-thread block for this family.
+    Unlaunchable,
+    /// HOST LOWERING rejected the shape. Recorded rather than panicked: the corpus
+    /// reaches coordinates the parity ladder's four circuits never lowered.
+    LowerRejected,
+}
+
+impl SegCorpusStatus {
+    pub(super) fn label(self) -> &'static str {
+        match self {
+            Self::Timed => "timed",
+            Self::BelowFloor => "below-floor",
+            Self::OverBudget => "over-budget",
+            Self::Unlaunchable => "unlaunchable",
+            Self::LowerRejected => "lower-rejected",
+        }
+    }
+
+    pub(super) fn parse(label: &str) -> Option<Self> {
+        [
+            Self::Timed,
+            Self::BelowFloor,
+            Self::OverBudget,
+            Self::Unlaunchable,
+            Self::LowerRejected,
+        ]
+        .into_iter()
+        .find(|status| status.label() == label)
+    }
+
+    /// Whether a row with this status carries a wall time at all.
+    pub(super) fn measured(self) -> bool {
+        matches!(self, Self::Timed | Self::BelowFloor)
+    }
+}
+
+/// The production shape: the Task-9 winner's epilogue, loader and program source,
+/// with `K` the only free axis.
+pub(super) fn corpus_shape(k: usize) -> SegShape {
+    SegShape::regs(
+        k,
+        CoeffMode::Constant,
+        ProgramMode::Inline,
+        BwdSegEpilogue::Plane,
+    )
+}
+
+/// The `K`-independent facts of one corpus coordinate.
+///
+/// Everything the closed-form policy is ALLOWED to read lives here, and nothing
+/// else does: the policy has to be evaluable at setup, before any launch, so it
+/// may not depend on a measured median. `total_static_work` is the lowering's own
+/// per-list work model summed back over the lists, which is where the "width mix"
+/// of spec §12 actually enters — a BF-inline-d2 operand costs 10 and an E4-direct
+/// one costs 0, so the sum already carries the mix that a raw term count does not.
+#[derive(Clone, Debug, PartialEq)]
+pub(super) struct SegCoordFacts {
+    pub(super) circuit: String,
+    pub(super) layer: usize,
+    pub(super) class: SegRoundClass,
+    pub(super) terms: usize,
+    pub(super) sources: usize,
+    pub(super) windows: usize,
+    pub(super) bf_sources: usize,
+    pub(super) e4_sources: usize,
+    pub(super) procedural_sources: usize,
+    pub(super) total_static_work: u64,
+    pub(super) bytes_per_row: usize,
+    pub(super) rows: usize,
+}
+
+impl SegCoordFacts {
+    /// One MEASUREMENT POINT, i.e. one group of `K` rows.
+    ///
+    /// The row count is part of the key, not an attribute of the coordinate: the
+    /// same coordinate is deliberately measured at several depths (see
+    /// [`SEG_CORPUS_ROW_STEPS`]), each of which has its own best `K`, and a key
+    /// without it would silently merge three measurements into one.
+    pub(super) fn key(&self) -> (String, usize, SegRoundClass, usize) {
+        (self.circuit.clone(), self.layer, self.class, self.rows)
+    }
+
+    /// The coordinate the point belongs to, without the depth.
+    pub(super) fn coordinate(&self) -> (String, usize, SegRoundClass) {
+        (self.circuit.clone(), self.layer, self.class)
+    }
+
+    pub(super) fn label(&self) -> String {
+        format!(
+            "{} L{} {} @{}",
+            self.circuit,
+            self.layer,
+            self.class.label(),
+            self.rows
+        )
+    }
+
+    /// The launch grid: one 32-row tile per block, at every `K`.
+    pub(super) fn grid_blocks(&self) -> u32 {
+        (self.rows.max(1) as u32).div_ceil(WARP_SIZE)
+    }
+}
+
+/// One corpus coordinate at one `K`.
+#[derive(Clone, Debug, PartialEq)]
+pub(super) struct SegCorpusRow {
+    pub(super) facts: SegCoordFacts,
+    pub(super) k: usize,
+    pub(super) status: SegCorpusStatus,
+    pub(super) blocks_per_sm: i32,
+    pub(super) theoretical_occupancy: f64,
+    pub(super) registers: i32,
+    pub(super) dynamic_smem_bytes: usize,
+    pub(super) waves: f64,
+    /// The lowering's static per-list spread at THIS `K`; one is perfect balance.
+    pub(super) max_over_mean_work: f64,
+    pub(super) parity: SegParity,
+    pub(super) median_us: Option<f64>,
+    pub(super) min_us: Option<f64>,
+    /// Against the same cell's `K = 4` twin. `None` on the baseline row itself
+    /// (which is timed solo, and says so) and on every untimed row.
+    pub(super) ratio_vs_baseline: Option<RatioEstimate>,
+}
+
+impl SegCorpusRow {
+    /// A row for a coordinate that produced no launch.
+    pub(super) fn untimed(facts: SegCoordFacts, k: usize, status: SegCorpusStatus) -> Self {
+        Self {
+            facts,
+            k,
+            status,
+            blocks_per_sm: 0,
+            theoretical_occupancy: 0.0,
+            registers: 0,
+            dynamic_smem_bytes: 0,
+            waves: 0.0,
+            max_over_mean_work: 0.0,
+            parity: SegParity::Unlaunchable,
+            median_us: None,
+            min_us: None,
+            ratio_vs_baseline: None,
+        }
+    }
+
+    pub(super) fn protocol(&self) -> &'static str {
+        if !self.status.measured() {
+            "-"
+        } else if self.ratio_vs_baseline.is_some() {
+            "paired"
+        } else {
+            "solo"
+        }
+    }
+}
+
+/// The filename prefix `load_corpus_tables` globs for. Every sweep chunk carries
+/// it; nothing else under [`SEG_OUTPUT_DIR`] may.
+pub(super) const SEG_CORPUS_CHUNK_PREFIX: &str = "seg_corpus_";
+/// The policy pass's own table. Deliberately OUTSIDE the chunk prefix.
+pub(super) const SEG_POLICY_CSV: &str = "seg_k_policy.csv";
+
+pub(super) const SEG_CORPUS_CSV_HEADER: &str = "circuit,layer,class,regime,round,d2_policy,terms,\
+sources,windows,bf_sources,e4_sources,procedural_sources,total_static_work,bytes_per_row,rows,\
+grid_blocks,k,status,blocks_per_sm,theoretical_occupancy_percent,registers,dynamic_smem_bytes,\
+waves,max_over_mean_work,parity,protocol,median_us,min_us,ratio_vs_k4,ci_low,ci_high\n";
+
+fn optional(value: Option<f64>) -> String {
+    value.map_or_else(|| "-".to_owned(), |value| format!("{value:.3}"))
+}
+
+fn parse_optional(field: &str) -> Option<f64> {
+    (field != "-").then(|| field.parse().expect("a finite CSV measurement"))
+}
+
+pub(super) fn render_corpus_csv(rows: &[SegCorpusRow]) -> String {
+    let mut out = String::from(SEG_CORPUS_CSV_HEADER);
+    for row in rows {
+        let (ratio, low, high) = match row.ratio_vs_baseline {
+            Some(estimate) => (
+                format!("{:.6}", estimate.median_ratio),
+                format!("{:.6}", estimate.ci_low),
+                format!("{:.6}", estimate.ci_high),
+            ),
+            None => ("-".to_owned(), "-".to_owned(), "-".to_owned()),
+        };
+        writeln!(
+            out,
+            "{},{},{},{:?},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{:.4},{},{},{:.4},{:.6},\
+             {},{},{},{},{ratio},{low},{high}",
+            row.facts.circuit,
+            row.facts.layer,
+            row.facts.class.label(),
+            row.facts.class.regime(),
+            row.facts.class.round(),
+            d2_label(row.facts.class.d2()),
+            row.facts.terms,
+            row.facts.sources,
+            row.facts.windows,
+            row.facts.bf_sources,
+            row.facts.e4_sources,
+            row.facts.procedural_sources,
+            row.facts.total_static_work,
+            row.facts.bytes_per_row,
+            row.facts.rows,
+            row.facts.grid_blocks(),
+            row.k,
+            row.status.label(),
+            row.blocks_per_sm,
+            row.theoretical_occupancy * 100.0,
+            row.registers,
+            row.dynamic_smem_bytes,
+            row.waves,
+            row.max_over_mean_work,
+            row.parity.label(),
+            row.protocol(),
+            optional(row.median_us),
+            optional(row.min_us),
+        )
+        .expect("write String");
+    }
+    out
+}
+
+/// Read a corpus CSV back.
+///
+/// The sweep is CHUNKED — twelve circuits is far more than one locked run should
+/// hold — so the policy is derived in a separate pass over every chunk's table
+/// rather than inside the process that measured one of them. That makes the
+/// round-trip load-bearing, which is why the header is compared literally and
+/// every field is parsed rather than skipped: a column silently added to the
+/// writer and not the reader would shift every field after it.
+pub(super) fn parse_corpus_csv(text: &str) -> Vec<SegCorpusRow> {
+    let mut lines = text.lines();
+    let header = lines.next().expect("a corpus CSV has a header");
+    assert_eq!(
+        format!("{header}\n"),
+        SEG_CORPUS_CSV_HEADER,
+        "the corpus CSV header changed; the reader and the writer must move together"
+    );
+    let expected = SEG_CORPUS_CSV_HEADER.trim_end().split(',').count();
+    lines
+        .filter(|line| !line.trim().is_empty())
+        .map(|line| {
+            let field: Vec<&str> = line.split(',').collect();
+            assert_eq!(field.len(), expected, "corpus CSV row: {line}");
+            let facts = SegCoordFacts {
+                circuit: field[0].to_owned(),
+                layer: field[1].parse().expect("layer"),
+                class: SegRoundClass::parse(field[2]).expect("round class"),
+                terms: field[6].parse().expect("terms"),
+                sources: field[7].parse().expect("sources"),
+                windows: field[8].parse().expect("windows"),
+                bf_sources: field[9].parse().expect("bf sources"),
+                e4_sources: field[10].parse().expect("e4 sources"),
+                procedural_sources: field[11].parse().expect("procedural sources"),
+                total_static_work: field[12].parse().expect("static work"),
+                bytes_per_row: field[13].parse().expect("bytes per row"),
+                rows: field[14].parse().expect("rows"),
+            };
+            let ratio = parse_optional(field[28]).map(|median_ratio| RatioEstimate {
+                median_ratio,
+                ci_low: parse_optional(field[29]).expect("a ratio carries an interval"),
+                ci_high: parse_optional(field[30]).expect("a ratio carries an interval"),
+            });
+            SegCorpusRow {
+                facts,
+                k: field[16].parse().expect("k"),
+                status: SegCorpusStatus::parse(field[17]).expect("status"),
+                blocks_per_sm: field[18].parse().expect("blocks/SM"),
+                theoretical_occupancy: field[19].parse::<f64>().expect("occupancy") / 100.0,
+                registers: field[20].parse().expect("registers"),
+                dynamic_smem_bytes: field[21].parse().expect("smem"),
+                waves: field[22].parse().expect("waves"),
+                max_over_mean_work: field[23].parse().expect("max/mean"),
+                parity: match field[24] {
+                    "oracles+identity" => SegParity::OraclesAndIdentity,
+                    "oracles+reference" => SegParity::OraclesAndReference,
+                    "unlaunchable" => SegParity::Unlaunchable,
+                    other => panic!("unknown parity label {other:?}"),
+                },
+                median_us: parse_optional(field[26]),
+                min_us: parse_optional(field[27]),
+                ratio_vs_baseline: ratio,
+            }
+        })
+        .collect()
+}
+
+// ── The closed-form `K` policy (spec §12) ────────────────────────────────────
+
+/// Below this per-row source footprint a coordinate takes the NARROW block.
+///
+/// 1,280 B/row is 40 KiB per 32-row tile. FITTED — an exhaustive scan of both
+/// thresholds over the sweep's own best-`K` column, minimizing first the count of
+/// points losing more than [`SEG_POLICY_LOSS_THRESHOLD`] and then the mean loss.
+/// The optimum is broad: anything in 1,216–1,280 B/row scores identically.
+pub(super) const SEG_POLICY_NARROW_BYTES_PER_ROW: usize = 1_280;
+
+/// Above this per-row source footprint a coordinate takes the WIDEST block its
+/// family can host. 18,432 B/row is 576 KiB per tile; the optimum is flat from
+/// ~16.5 KiB/row to ~19 KiB/row.
+pub(super) const SEG_POLICY_WIDE_BYTES_PER_ROW: usize = 18_432;
+
+const _: () = assert!(SEG_POLICY_NARROW_BYTES_PER_ROW < SEG_POLICY_WIDE_BYTES_PER_ROW);
+
+/// The closed form (spec §12), and what the corpus says its arguments are.
+///
+/// Spec §12 expected `k = f(sources, rows, width mix)`. The corpus says **`k` is a
+/// function of the per-row source footprint alone**, and the two other candidates
+/// were tested and dropped rather than assumed away:
+///
+///   * **rows do not enter.** The first pass measured one row count per coordinate
+///     and produced a convincing "deeper grid wants a narrower block" rule — which
+///     was an ARTIFACT: under one memory budget the row count is a deterministic
+///     function of the footprint, so depth and weight moved together. Re-measuring
+///     every coordinate at three depths, and the heavy circuits again at a six-times
+///     larger budget, separates them: a LIGHT coordinate still wants `K = 4` at the
+///     shallowest grid swept, and a HEAVY one still wants a wide block at the
+///     deepest. Grid depth as a single feature scores no better than the constant
+///     `K = 4`.
+///   * **static work does not add.** `ListWorkStats`'s per-list work, the term
+///     count and the source count were each fitted as the step feature; all three
+///     score measurably worse than the footprint, and adding a work term on top of
+///     the footprint moves nothing.
+///
+/// `bytes_per_row` is [`probe_geometry`]'s, i.e. the round's own window geometry:
+/// `sum over windows of columns * (2 << delta) * width`, plus two E4 per published
+/// column. That is exactly "sources and width mix" as one number, and a launcher can
+/// compute it at setup from the binding it is about to lower.
+///
+/// `ceiling` is the largest `K` the compiled family can host — a register fact, not
+/// a choice: 32 for R0, 24 for the continuation families (Task 9's enumeration).
+///
+/// The result is always a member of [`SEG_CORPUS_K`] at or below `ceiling`, and
+/// never `K = 16`: on the continuation family `K = 16` and `K = 24` are both one
+/// block per SM, so 16 is strictly dominated (33% occupancy against 50%), and on R0
+/// no band of the corpus preferred it by enough to earn one. It is deliberately not
+/// interpolated either — `K` is a block geometry, and a launcher choosing `K = 11`
+/// would be choosing a shape nothing was measured at.
+pub(super) fn seg_policy_k(bytes_per_row: usize, ceiling: usize) -> usize {
+    let want = if bytes_per_row < SEG_POLICY_NARROW_BYTES_PER_ROW {
+        4
+    } else if bytes_per_row < SEG_POLICY_WIDE_BYTES_PER_ROW {
+        8
+    } else {
+        24
+    };
+    // `want` is at least the axis minimum and so is `ceiling`, so the filter is
+    // never empty; the `unwrap_or` is a total function, not a guess.
+    let cap = want.min(ceiling);
+    SEG_CORPUS_K
+        .into_iter()
+        .filter(|k| *k <= cap)
+        .max()
+        .unwrap_or(SEG_CORPUS_K[0])
+}
+
+/// One coordinate's verdict: what measured best, what the formula picks, and what
+/// the difference costs.
+#[derive(Clone, Debug, PartialEq)]
+pub(super) struct SegPolicyVerdict {
+    pub(super) facts: SegCoordFacts,
+    pub(super) ceiling: usize,
+    pub(super) best_k: usize,
+    pub(super) policy_k: usize,
+    /// `median(policy_k) / median(best_k) - 1`, as a fraction.
+    ///
+    /// A QUOTIENT OF TWO PAIRED ESTIMATES against the same `K = 4` twin, measured
+    /// in the same cell of the same run — not a quotient of two solo medians. The
+    /// shared baseline is what makes it legitimate; it also means the loss inherits
+    /// both estimates' intervals, so a loss under a few tenths of a percent is not
+    /// resolved and the table says so.
+    pub(super) loss: f64,
+    /// `max_over_mean` at the policy's `K`, for the skew comparison.
+    pub(super) max_over_mean_at_policy: f64,
+    pub(super) best_ratio: Option<RatioEstimate>,
+    pub(super) policy_ratio: Option<RatioEstimate>,
+}
+
+/// A coordinate's ranking key: its ratio against the shared `K = 4` twin, or 1.0
+/// for the baseline row itself.
+///
+/// The ratio, never the raw median: two rows of one coordinate were measured at
+/// the same rows in the same cell, but only the paired estimate removes the drift
+/// between the moments they were measured at.
+fn corpus_score(row: &SegCorpusRow, below_floor_counts: bool) -> Option<f64> {
+    let usable = match row.status {
+        SegCorpusStatus::Timed => true,
+        SegCorpusStatus::BelowFloor => below_floor_counts,
+        _ => false,
+    };
+    if !usable {
+        return None;
+    }
+    match row.ratio_vs_baseline {
+        Some(estimate) => Some(estimate.median_ratio),
+        None => (row.k == SEG_CORPUS_BASELINE_K).then_some(1.0),
+    }
+}
+
+/// The measured best `K` of one coordinate, with the same tie discipline the
+/// Stage-A winner uses: inside [`SEG_SELECTION_TIE_FRACTION`] of the fastest,
+/// prefer the SMALLEST `K` — it is the axis that costs residency.
+pub(super) fn corpus_best_k(group: &[SegCorpusRow], below_floor_counts: bool) -> Option<usize> {
+    let best = group
+        .iter()
+        .filter_map(|row| corpus_score(row, below_floor_counts))
+        .fold(f64::MAX, f64::min);
+    if !best.is_finite() {
+        return None;
+    }
+    let threshold = best * (1.0 + SEG_SELECTION_TIE_FRACTION);
+    group
+        .iter()
+        .filter(|row| corpus_score(row, below_floor_counts).is_some_and(|score| score <= threshold))
+        .map(|row| row.k)
+        .min()
+}
+
+/// Group a sweep's rows by coordinate and judge the formula against each.
+///
+/// `below_floor_counts` is the one knob: the POLICY FIT reads only coordinates
+/// that reached the timing floor, and the audit's coverage section reads both, so
+/// a reader can see whether the below-floor coordinates would have moved it.
+pub(super) fn evaluate_policy(
+    rows: &[SegCorpusRow],
+    below_floor_counts: bool,
+) -> Vec<SegPolicyVerdict> {
+    let mut keys: Vec<(String, usize, SegRoundClass, usize)> = Vec::new();
+    for row in rows {
+        if !keys.contains(&row.facts.key()) {
+            keys.push(row.facts.key());
+        }
+    }
+    keys.sort();
+    let mut out = Vec::new();
+    for key in keys {
+        let group: Vec<SegCorpusRow> = rows
+            .iter()
+            .filter(|row| row.facts.key() == key)
+            .cloned()
+            .collect();
+        let Some(best_k) = corpus_best_k(&group, below_floor_counts) else {
+            continue;
+        };
+        let facts = group[0].facts.clone();
+        // The ceiling is READ OFF THE SWEEP, not assumed: a row is unlaunchable
+        // exactly when the compiled family cannot host its block, so the largest
+        // launchable `K` in the group IS the family's ceiling at this coordinate.
+        let ceiling = group
+            .iter()
+            .filter(|row| row.status != SegCorpusStatus::Unlaunchable)
+            .map(|row| row.k)
+            .max()
+            .unwrap_or(SEG_CORPUS_BASELINE_K);
+        let policy_k = seg_policy_k(facts.bytes_per_row, ceiling);
+        let score = |k: usize| {
+            group
+                .iter()
+                .find(|row| row.k == k)
+                .and_then(|row| corpus_score(row, below_floor_counts))
+        };
+        let best_score = score(best_k).expect("the best K is a scored row");
+        // A policy that names a `K` this coordinate could not measure is a loss of
+        // the whole comparison, not a small one: report it as such rather than
+        // silently falling back to the best.
+        let loss = match score(policy_k) {
+            Some(policy_score) => policy_score / best_score - 1.0,
+            None => f64::INFINITY,
+        };
+        let ratio_of = |k: usize| {
+            group
+                .iter()
+                .find(|row| row.k == k)
+                .and_then(|row| row.ratio_vs_baseline)
+        };
+        out.push(SegPolicyVerdict {
+            max_over_mean_at_policy: group
+                .iter()
+                .find(|row| row.k == policy_k)
+                .map_or(0.0, |row| row.max_over_mean_work),
+            facts,
+            ceiling,
+            best_k,
+            policy_k,
+            loss,
+            best_ratio: ratio_of(best_k),
+            policy_ratio: ratio_of(policy_k),
+        });
+    }
+    out
+}
+
+/// The plan's threshold: a coordinate the formula loses more than this on is
+/// tabulated individually.
+pub(super) const SEG_POLICY_LOSS_THRESHOLD: f64 = 0.02;
+
+// ── The sweep driver ─────────────────────────────────────────────────────────
+
+/// The largest launchable `K` of each regime's production family, probed once.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct SegKCeilings {
+    pub(super) r0: usize,
+    pub(super) ext: usize,
+}
+
+impl SegKCeilings {
+    fn probe() -> Self {
+        let largest = |regime| {
+            seg_launchable_k_axis(
+                regime,
+                ProgramMode::Inline,
+                CoeffMode::Constant,
+                BwdSegEpilogue::Plane,
+            )
+            .into_iter()
+            .filter(|(_, blocks)| *blocks > 0)
+            .map(|(k, _)| k as usize)
+            .max()
+            .expect("a production family hosts at least one K")
+        };
+        Self {
+            r0: largest(BwdRegime::R0),
+            ext: largest(BwdRegime::Ext),
+        }
+    }
+
+    fn of(&self, regime: BwdRegime) -> usize {
+        match regime {
+            BwdRegime::R0 => self.r0,
+            _ => self.ext,
+        }
+    }
+}
+
+/// The circuits this invocation sweeps.
+///
+/// The whole corpus in one locked run would be a single very long section, so the
+/// driver takes a chunk: `BWD_SEG_CORPUS_CIRCUITS=keccak_special5,blake2_g_function`
+/// (short names, comma-separated) or `all`. Each chunk publishes its own CSV and
+/// the policy pass reads every chunk's, so chunking changes only how the run is
+/// scheduled, never what it covers.
+fn corpus_chunk() -> Vec<&'static str> {
+    let requested = std::env::var("BWD_SEG_CORPUS_CIRCUITS").unwrap_or_else(|_| "all".to_owned());
+    if requested.trim() == "all" {
+        return SEG_CORPUS_LAYOUTS.to_vec();
+    }
+    requested
+        .split(',')
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .map(|name| {
+            SEG_CORPUS_LAYOUTS
+                .into_iter()
+                .find(|layout| short_name(layout) == name || *layout == name)
+                .unwrap_or_else(|| {
+                    panic!(
+                        "BWD_SEG_CORPUS_CIRCUITS names {name:?}, which is not a corpus layout; \
+                         the corpus is {:?}",
+                        SEG_CORPUS_LAYOUTS.map(short_name)
+                    )
+                })
+        })
+        .collect()
+}
+
+fn corpus_csv_name(chunk: &[&'static str], budget: usize, profiled: bool) -> String {
+    // A PROFILED run is not a chunk. `ncu` serializes and replays the launches it
+    // intercepts, so every median in that process is perturbed; publishing it under
+    // the chunk prefix would silently merge profiler timings into the corpus table
+    // (and, because the same coordinate is then present twice, would show up as a
+    // 250% "run-to-run band"). Learned the hard way.
+    if profiled {
+        return "seg_profiled_corpus_run.csv".to_owned();
+    }
+    let circuits = if chunk.len() == SEG_CORPUS_LAYOUTS.len() {
+        "all".to_owned()
+    } else {
+        chunk
+            .iter()
+            .map(|layout| short_name(layout))
+            .collect::<Vec<_>>()
+            .join("+")
+    };
+    // The budget rides in the NAME, so a deep re-run of the heavy circuits lands
+    // beside the default-budget table instead of overwriting it. The two together
+    // are what separate grid depth from coordinate weight.
+    if budget == SEG_CORPUS_DEFAULT_BUDGET_BYTES {
+        format!("seg_corpus_{circuits}.csv")
+    } else {
+        format!("seg_corpus_{circuits}_{}gib.csv", budget >> 30)
+    }
+}
+
+/// The ONE `(circuit, layer, class, K)` this invocation wraps in the profiler's
+/// NVTX range, from `BWD_SEG_CORPUS_PROFILE=<circuit>:<layer>:<class>:<K>`.
+///
+/// The corpus sweep's own answer to the plan's skew question is a wall-time
+/// comparison against the static work model, which is a proxy. This is how the
+/// direct observable is reached: warps of one block join at the epilogue, so a
+/// warp that finishes its list early waits there, and `ncu`'s barrier stall is
+/// warp-completion skew measured rather than modelled. One shape per capture,
+/// selected the same way [`profile_shape`] selects the Stage-A one.
+fn corpus_profile_target() -> Option<(String, usize, SegRoundClass, usize)> {
+    let spec = std::env::var("BWD_SEG_CORPUS_PROFILE").ok()?;
+    let field: Vec<&str> = spec.split(':').map(str::trim).collect();
+    assert_eq!(
+        field.len(),
+        4,
+        "BWD_SEG_CORPUS_PROFILE must be <circuit>:<layer>:<class>:<K>, got {spec:?}"
+    );
+    let class = SegRoundClass::parse(field[2]).unwrap_or_else(|| {
+        panic!(
+            "BWD_SEG_CORPUS_PROFILE names class {:?}; the classes are {:?}",
+            field[2],
+            SEG_ROUND_CLASSES.map(SegRoundClass::label)
+        )
+    });
+    let k: usize = field[3].parse().expect("BWD_SEG_CORPUS_PROFILE K");
+    assert!(
+        SEG_CORPUS_K.contains(&k),
+        "BWD_SEG_CORPUS_PROFILE names K{k}, which is not on the axis {SEG_CORPUS_K:?}"
+    );
+    Some((
+        field[0].to_owned(),
+        field[1].parse().expect("layer"),
+        class,
+        k,
+    ))
+}
+
+/// **The corpus sweep.** Every coordinate of the requested circuits, at every
+/// round class, over [`SEG_CORPUS_K`], certified before every timing.
+#[test]
+#[ignore = "GPU timing; build unlocked and run the executable under with_gpu_lock.sh"]
+#[cfg(not(no_cuda))]
+#[serial_test::serial]
+fn bwd_seg_corpus_sweep() {
+    let chunk = corpus_chunk();
+    let budget = corpus_budget_bytes();
+    let profile = corpus_profile_target();
+    let context = make_seg_spike_context(SEG_CONT_ARENA_BYTES);
+    let device = SegDeviceFacts::query();
+    let ceilings = SegKCeilings::probe();
+    let (eq_low, eq_sizes) = build_shared_eq(24, &context);
+    let host_eq = HostEq::download(eq_low.as_ptr(), eq_sizes, &context);
+    eprintln!(
+        "[seg-corpus] chunk {:?}; K axis {SEG_CORPUS_K:?}; ceilings R0={} Ext={}; target {} rows \
+         within {} GiB per cell",
+        chunk.iter().map(|c| short_name(c)).collect::<Vec<_>>(),
+        ceilings.r0,
+        ceilings.ext,
+        SEG_CORPUS_TARGET_ROWS,
+        budget >> 30,
+    );
+
+    let mut rows = Vec::new();
+    for circuit in &chunk {
+        let layers = seg_coordinate_layers(circuit);
+        eprintln!(
+            "[seg-corpus] {}: {} layers with backward roots",
+            short_name(circuit),
+            layers.len()
+        );
+        for layer in layers {
+            for class in SEG_ROUND_CLASSES {
+                rows.extend(measure_corpus_cell(
+                    circuit,
+                    layer,
+                    class,
+                    profile.as_ref(),
+                    &host_eq,
+                    eq_low.as_ptr(),
+                    eq_sizes,
+                    &device,
+                    &context,
+                ));
+            }
+        }
+    }
+
+    let csv = seg_output_path(&corpus_csv_name(&chunk, budget, profile.is_some()));
+    publish(&csv, &render_corpus_csv(&rows));
+    let count = |status| rows.iter().filter(|row| row.status == status).count();
+    let coordinates = distinct_count(rows.iter().map(|row| row.facts.coordinate()));
+    let points = distinct_count(rows.iter().map(|row| row.facts.key()));
+    eprintln!(
+        "[seg-corpus] {coordinates} coordinates over {points} depth points, {} cells: \
+         timed {}, below-floor {}, over-budget {}, unlaunchable {}, lower-rejected {} -> {}",
+        rows.len(),
+        count(SegCorpusStatus::Timed),
+        count(SegCorpusStatus::BelowFloor),
+        count(SegCorpusStatus::OverBudget),
+        count(SegCorpusStatus::Unlaunchable),
+        count(SegCorpusStatus::LowerRejected),
+        csv.display(),
+    );
+    assert!(!rows.is_empty(), "the sweep must record every coordinate");
+    // Every launchable cell is certified; the certification itself panics on a
+    // mismatch, so this asserts that the accounting agrees with what ran rather
+    // than re-checking the values.
+    for row in &rows {
+        assert_eq!(
+            row.status.measured(),
+            row.parity != SegParity::Unlaunchable,
+            "{} K{}: a measured cell must carry a certificate",
+            row.facts.label(),
+            row.k
+        );
+        // The family ceiling was probed ONCE up front and every cell probes its own
+        // geometry again inside `measure_shape`; the two are independent paths onto
+        // the same register limit and must not disagree. (Host lowering never
+        // rejects on `K` inside the axis, so an above-ceiling row can only be
+        // unlaunchable.)
+        if row.status == SegCorpusStatus::OverBudget {
+            continue;
+        }
+        assert_eq!(
+            row.k > ceilings.of(row.facts.class.regime()),
+            row.status == SegCorpusStatus::Unlaunchable,
+            "{} K{}: the per-family ceiling probe and the per-cell occupancy probe \
+             disagree (ceiling R0={} Ext={})",
+            row.facts.label(),
+            row.k,
+            ceilings.r0,
+            ceilings.ext,
+        );
+    }
+    drop(eq_low);
+}
+
+/// Sweep ONE `(circuit, layer, round class)` coordinate: the whole `K` axis at
+/// every rung of the row ladder.
+#[allow(clippy::too_many_arguments)]
+fn measure_corpus_cell(
+    circuit: &'static str,
+    layer: usize,
+    class: SegRoundClass,
+    profile: Option<&(String, usize, SegRoundClass, usize)>,
+    eq: &HostEq,
+    eq_low: *const E4,
+    eq_sizes: EqSizes,
+    device: &SegDeviceFacts,
+    context: &ProverContext,
+) -> Vec<SegCorpusRow> {
+    let regime = class.regime();
+    let coord = lean_coordinate(circuit, layer, regime);
+    let round = class.round();
+    let d2 = class.d2();
+    let budget = corpus_budget_bytes();
+    let probe = probe_geometry(&coord, round, d2);
+    let (top_rows, _) = fit_rows(
+        SEG_CORPUS_TARGET_ROWS,
+        probe.bytes_per_row,
+        budget,
+        SEG_CORPUS_MIN_ROWS,
+    );
+    let facts_at = |rows: usize| SegCoordFacts {
+        circuit: short_name(circuit).to_owned(),
+        layer,
+        class,
+        terms: coord.layer.terms.len(),
+        sources: coord.layer.sources.len(),
+        windows: probe.windows,
+        bf_sources: probe.bf_sources,
+        e4_sources: probe.e4_sources,
+        procedural_sources: probe.procedural_sources,
+        total_static_work: 0,
+        bytes_per_row: probe.bytes_per_row,
+        rows,
+    };
+
+    if top_rows.saturating_mul(probe.bytes_per_row) > budget {
+        let facts = facts_at(top_rows);
+        eprintln!(
+            "[seg-corpus] {}: OVER BUDGET -- {} B/row needs {:.1} GiB at the \
+             {top_rows}-row minimum",
+            facts.label(),
+            probe.bytes_per_row,
+            (top_rows * probe.bytes_per_row) as f64 / (1u64 << 30) as f64,
+        );
+        return SEG_CORPUS_K
+            .into_iter()
+            .map(|k| SegCorpusRow::untimed(facts.clone(), k, SegCorpusStatus::OverBudget))
+            .collect();
+    }
+
+    // One parity twin for the whole ladder: it is a property of the
+    // `(coordinate, round, policy)`, not of the row count, and rebuilding it per
+    // rung would triple the oracle cost for an identical certificate.
+    let parity = SegCell::build(
+        Arc::clone(&coord),
+        round,
+        SEG_PARITY_ROWS,
+        true,
+        d2,
+        eq_low,
+        eq_sizes,
+        context,
+    );
+
+    let mut out = Vec::with_capacity(SEG_CORPUS_K.len() * SEG_CORPUS_ROW_STEPS.len());
+    for step in SEG_CORPUS_ROW_STEPS {
+        let rows = top_rows / step;
+        // A rung under the timing floor is DROPPED rather than measured: the ladder
+        // varies grid depth, and a below-floor rung would vary the protocol with it.
+        // The TOP rung is always kept, even below the floor — that is the
+        // coordinate's only measurement, and it is recorded as below-floor.
+        if step != 1 && rows < SEG_MIN_TIMED_ROWS {
+            continue;
+        }
+        // Only the TOP rung is ever profiled: a capture is one launch, and the
+        // rung a reader means by "this coordinate" is the one it was fitted at.
+        let profile_k = profile.and_then(|(c, l, cl, k)| {
+            (step == 1 && *c == short_name(circuit) && *l == layer && *cl == class).then_some(*k)
+        });
+        out.extend(measure_corpus_rung(
+            &coord,
+            facts_at(rows),
+            round,
+            d2,
+            rows,
+            profile_k,
+            eq,
+            eq_low,
+            eq_sizes,
+            device,
+            &parity,
+            context,
+        ));
+    }
+    drop(parity);
+    out
+}
+
+/// One rung of the ladder: a `(coordinate, round, policy, rows)` cell over the
+/// whole `K` axis, paired against its own `K = 4` twin.
+#[allow(clippy::too_many_arguments)]
+fn measure_corpus_rung(
+    coord: &Arc<SegCoordinate>,
+    mut facts: SegCoordFacts,
+    round: u8,
+    d2: D2Policy,
+    rows: usize,
+    profile_k: Option<usize>,
+    eq: &HostEq,
+    eq_low: *const E4,
+    eq_sizes: EqSizes,
+    device: &SegDeviceFacts,
+    parity: &SegCell,
+    context: &ProverContext,
+) -> Vec<SegCorpusRow> {
+    let below_floor = rows < SEG_MIN_TIMED_ROWS;
+    let timed = SegCell::build(
+        Arc::clone(coord),
+        round,
+        rows,
+        !below_floor,
+        d2,
+        eq_low,
+        eq_sizes,
+        context,
+    );
+
+    // Lower every `K` BEFORE launching anything. The work model is a property of
+    // the lowering, so this is also how an unlaunchable or rejected cell still
+    // contributes its `max_over_mean`.
+    let lowered: Vec<Result<ListWorkStats, BwdSegLowerError>> = SEG_CORPUS_K
+        .into_iter()
+        .map(|k| timed.try_lower(corpus_shape(k)).map(|setup| setup.work))
+        .collect();
+    facts.total_static_work = SEG_CORPUS_K
+        .into_iter()
+        .zip(lowered.iter())
+        .find_map(|(k, work)| {
+            work.as_ref()
+                .ok()
+                .map(|w| (w.mean_work * k as f64).round() as u64)
+        })
+        .unwrap_or(0);
+    eprintln!(
+        "[seg-corpus] {}: {} terms, {} sources ({} bf / {} e4 / {} proc), {} windows, work {}, \
+         {} B/row -> {rows} rows ({:.2} GiB, below_floor={below_floor})",
+        facts.label(),
+        facts.terms,
+        facts.sources,
+        facts.bf_sources,
+        facts.e4_sources,
+        facts.procedural_sources,
+        facts.windows,
+        facts.total_static_work,
+        facts.bytes_per_row,
+        (rows * facts.bytes_per_row) as f64 / (1u64 << 30) as f64,
+    );
+
+    let benchmark = facts.label();
+    let mut reference: Option<Vec<E4>> = None;
+    let mut out: Vec<SegCorpusRow> = Vec::with_capacity(SEG_CORPUS_K.len());
+
+    // The baseline `K` first, for the two reasons Stage B established: it is the
+    // identity reference every other `K` must reproduce bit for bit, and it is the
+    // twin they are paired against.
+    let baseline_shape = corpus_shape(SEG_CORPUS_BASELINE_K);
+    let twin = match &lowered[0] {
+        Err(error) => {
+            eprintln!(
+                "[seg-corpus] {benchmark} K{SEG_CORPUS_BASELINE_K}: LOWER REJECTED {error:?}"
+            );
+            out.push(SegCorpusRow::untimed(
+                facts.clone(),
+                SEG_CORPUS_BASELINE_K,
+                SegCorpusStatus::LowerRejected,
+            ));
+            None
+        }
+        Ok(work) => {
+            let row = measure_shape(
+                &benchmark,
+                &timed,
+                parity,
+                baseline_shape,
+                eq,
+                device,
+                &mut reference,
+                None,
+                profile_k == Some(SEG_CORPUS_BASELINE_K),
+                context,
+            );
+            let launchable = row.launchable();
+            out.push(corpus_row(facts.clone(), *work, &row, below_floor));
+            launchable.then(|| timed.prepare(baseline_shape, context))
+        }
+    };
+
+    for (index, k) in SEG_CORPUS_K.into_iter().enumerate().skip(1) {
+        let work = match &lowered[index] {
+            Err(error) => {
+                eprintln!("[seg-corpus] {benchmark} K{k}: LOWER REJECTED {error:?}");
+                out.push(SegCorpusRow::untimed(
+                    facts.clone(),
+                    k,
+                    SegCorpusStatus::LowerRejected,
+                ));
+                continue;
+            }
+            Ok(work) => *work,
+        };
+        let shape = corpus_shape(k);
+        let row = match &twin {
+            Some(twin) => measure_shape(
+                &benchmark,
+                &timed,
+                parity,
+                shape,
+                eq,
+                device,
+                &mut reference,
+                Some((SEG_CORPUS_BASELINE_LABEL, &|ctx: &ProverContext| {
+                    twin.launch(ctx)
+                })),
+                profile_k == Some(k),
+                context,
+            ),
+            None => measure_shape(
+                &benchmark,
+                &timed,
+                parity,
+                shape,
+                eq,
+                device,
+                &mut reference,
+                None,
+                profile_k == Some(k),
+                context,
+            ),
+        };
+        out.push(corpus_row(facts.clone(), work, &row, below_floor));
+    }
+
+    drop(twin);
+    drop(timed);
+    out
+}
+
+/// Fold one measured [`SegMatrixRow`] and the coordinate's facts into a corpus row.
+fn corpus_row(
+    facts: SegCoordFacts,
+    work: ListWorkStats,
+    row: &SegMatrixRow,
+    below_floor: bool,
+) -> SegCorpusRow {
+    let status = if !row.launchable() {
+        SegCorpusStatus::Unlaunchable
+    } else if below_floor {
+        SegCorpusStatus::BelowFloor
+    } else {
+        SegCorpusStatus::Timed
+    };
+    SegCorpusRow {
+        facts,
+        k: row.shape.k,
+        status,
+        blocks_per_sm: row.blocks_per_sm,
+        theoretical_occupancy: row.theoretical_occupancy,
+        registers: row.attributes.registers,
+        dynamic_smem_bytes: row.dynamic_smem_bytes,
+        waves: row.waves,
+        max_over_mean_work: work.max_over_mean,
+        parity: row.parity,
+        median_us: status.measured().then_some(row.candidate_median_us),
+        min_us: status.measured().then_some(row.candidate_min_us),
+        ratio_vs_baseline: status.measured().then_some(row.ratio).flatten(),
+    }
+}
+
+// ── The policy pass ──────────────────────────────────────────────────────────
+
+/// Every corpus chunk this workspace has measured, in one table.
+///
+/// Reads the published CSVs rather than re-measuring: the sweep is chunked across
+/// locked runs, so the policy must be derivable from their union without a GPU.
+pub(super) fn load_corpus_tables() -> (Vec<SegCorpusRow>, SegCorpusRepeats) {
+    let directory = PathBuf::from(SEG_OUTPUT_DIR);
+    let mut files: Vec<PathBuf> = std::fs::read_dir(&directory)
+        .unwrap_or_else(|error| panic!("read {}: {error}", directory.display()))
+        .filter_map(|entry| entry.ok().map(|entry| entry.path()))
+        .filter(|path| {
+            path.file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| {
+                    name.starts_with(SEG_CORPUS_CHUNK_PREFIX) && name.ends_with(".csv")
+                })
+        })
+        .collect();
+    files.sort();
+    let mut rows = Vec::new();
+    for file in &files {
+        let text = std::fs::read_to_string(file)
+            .unwrap_or_else(|error| panic!("read {}: {error}", file.display()));
+        rows.extend(parse_corpus_csv(&text));
+    }
+    // Two chunks CAN cover the same measurement point — a re-run at a larger
+    // budget re-measures every coordinate the budget did not move, and a
+    // deliberate repeat of one chunk is how the run-to-run band is measured at all.
+    // So a repeat is folded rather than rejected: the FIRST reading is kept (chunk
+    // files are read in sorted order, so which one that is, is deterministic) and
+    // every later reading of the same point contributes its relative disagreement
+    // to the band. Silently averaging them would hide exactly the quantity the
+    // solo-protocol discipline requires to be reported.
+    let mut kept: Vec<SegCorpusRow> = Vec::with_capacity(rows.len());
+    let mut band: Vec<f64> = Vec::new();
+    for row in rows {
+        let point = (row.facts.key(), row.k);
+        match kept
+            .iter()
+            .find(|other| (other.facts.key(), other.k) == point)
+        {
+            None => kept.push(row),
+            Some(first) => {
+                if let (Some(a), Some(b)) = (first.median_us, row.median_us) {
+                    band.push((b - a).abs() / a);
+                }
+            }
+        }
+    }
+    (kept, SegCorpusRepeats { band, files })
+}
+
+/// What the repeated measurement points in a loaded table say about run-to-run
+/// spread — the band every SOLO median in this sweep has to be read against.
+pub(super) struct SegCorpusRepeats {
+    pub(super) band: Vec<f64>,
+    pub(super) files: Vec<PathBuf>,
+}
+
+impl SegCorpusRepeats {
+    /// `(repeats, median, p90, worst)` of the relative disagreement, as fractions.
+    pub(super) fn summary(&self) -> (usize, f64, f64, f64) {
+        if self.band.is_empty() {
+            return (0, f64::NAN, f64::NAN, f64::NAN);
+        }
+        let mut sorted = self.band.clone();
+        sorted.sort_by(|lhs, rhs| lhs.partial_cmp(rhs).expect("finite band"));
+        (
+            sorted.len(),
+            median_of_sorted(&sorted),
+            percentile(&sorted, 0.9),
+            *sorted.last().expect("nonempty"),
+        )
+    }
+}
+
+/// How many distinct values an iterator yields.
+fn distinct_count<T: Ord>(items: impl Iterator<Item = T>) -> usize {
+    let mut all: Vec<T> = items.collect();
+    all.sort();
+    all.dedup();
+    all.len()
+}
+
+/// The per-round-class summary the audit's corpus table is.
+fn render_class_summary(rows: &[SegCorpusRow]) -> String {
+    let mut body = String::from(
+        "| round class | coordinates | depth points | timed | below floor | over budget | \
+         unlaunchable cells | lower-rejected cells | best K (mode) |\n\
+         |---|---|---|---|---|---|---|---|---|\n",
+    );
+    for class in SEG_ROUND_CLASSES {
+        let group: Vec<SegCorpusRow> = rows
+            .iter()
+            .filter(|row| row.facts.class == class)
+            .cloned()
+            .collect();
+        if group.is_empty() {
+            continue;
+        }
+        let coordinates = distinct_count(group.iter().map(|row| row.facts.coordinate()));
+        let points = distinct_count(group.iter().map(|row| row.facts.key()));
+        let count = |status| group.iter().filter(|row| row.status == status).count();
+        let verdicts = evaluate_policy(&group, false);
+        let mut modes: Vec<(usize, usize)> = SEG_CORPUS_K
+            .into_iter()
+            .map(|k| (verdicts.iter().filter(|v| v.best_k == k).count(), k))
+            .collect();
+        modes.sort_by(|lhs, rhs| rhs.cmp(lhs));
+        writeln!(
+            body,
+            "| {} | {coordinates} | {points} | {} | {} | {} | {} | {} | K{} ({} of {}) |",
+            class.label(),
+            count(SegCorpusStatus::Timed),
+            count(SegCorpusStatus::BelowFloor),
+            count(SegCorpusStatus::OverBudget),
+            count(SegCorpusStatus::Unlaunchable),
+            count(SegCorpusStatus::LowerRejected),
+            modes[0].1,
+            modes[0].0,
+            verdicts.len(),
+        )
+        .expect("write String");
+    }
+    body
+}
+
+/// The loss table: every coordinate the closed form gives up more than
+/// [`SEG_POLICY_LOSS_THRESHOLD`] on.
+fn render_loss_table(verdicts: &[SegPolicyVerdict]) -> String {
+    let mut body = String::from(
+        "| coordinate | terms | sources (bf/e4/proc) | static work | rows | ceiling | best K | \
+         policy K | loss |\n|---|---|---|---|---|---|---|---|---|\n",
+    );
+    for verdict in verdicts {
+        writeln!(
+            body,
+            "| {} | {} | {} ({}/{}/{}) | {} | {} | {} | K{} | K{} | {} |",
+            verdict.facts.label(),
+            verdict.facts.terms,
+            verdict.facts.sources,
+            verdict.facts.bf_sources,
+            verdict.facts.e4_sources,
+            verdict.facts.procedural_sources,
+            verdict.facts.total_static_work,
+            verdict.facts.rows,
+            verdict.ceiling,
+            verdict.best_k,
+            verdict.policy_k,
+            if verdict.loss.is_finite() {
+                format!("{:+.2}%", verdict.loss * 100.0)
+            } else {
+                "policy K not measurable here".to_owned()
+            },
+        )
+        .expect("write String");
+    }
+    body
+}
+
+/// **The K policy pass.** Reads every published corpus chunk, derives the best `K`
+/// per coordinate, scores the closed form against it and publishes both tables.
+///
+/// No GPU: the sweep already did the measuring, and a policy that could only be
+/// re-derived on the machine that measured it would be unreviewable.
+#[test]
+#[ignore = "reads the corpus sweep's published CSVs; run bwd_seg_corpus_sweep first"]
+fn bwd_seg_corpus_k_policy() {
+    let (rows, repeats) = load_corpus_tables();
+    let files = &repeats.files;
+    assert!(
+        !rows.is_empty(),
+        "no corpus chunk under {SEG_OUTPUT_DIR}; run bwd_seg_corpus_sweep first"
+    );
+    let verdicts = evaluate_policy(&rows, false);
+    let with_below_floor = evaluate_policy(&rows, true);
+    let over: Vec<SegPolicyVerdict> = verdicts
+        .iter()
+        .filter(|verdict| !(verdict.loss <= SEG_POLICY_LOSS_THRESHOLD))
+        .cloned()
+        .collect();
+    let exact = verdicts
+        .iter()
+        .filter(|verdict| verdict.policy_k == verdict.best_k)
+        .count();
+    let losses: Vec<f64> = verdicts
+        .iter()
+        .map(|verdict| verdict.loss)
+        .filter(|loss| loss.is_finite())
+        .collect();
+    let worst = losses.iter().copied().fold(0.0f64, f64::max);
+    let (repeated, band_median, band_p90, band_worst) = repeats.summary();
+    eprintln!(
+        "[seg-corpus] policy over {} coordinates ({} chunk files, {repeated} repeated \
+         points: median {:.3}%, p90 {:.3}%, worst {:.3}%): exact {exact}, \
+         mean loss {:+.3}%, worst {:+.2}%, over {:.0}% threshold {} | with below-floor \
+         coordinates included {} coordinates",
+        verdicts.len(),
+        files.len(),
+        band_median * 100.0,
+        band_p90 * 100.0,
+        band_worst * 100.0,
+        losses.iter().sum::<f64>() / losses.len().max(1) as f64 * 100.0,
+        worst * 100.0,
+        SEG_POLICY_LOSS_THRESHOLD * 100.0,
+        over.len(),
+        with_below_floor.len(),
+    );
+
+    // The skew comparison the plan asks for: the static per-list work model
+    // against the coordinates where more warps stopped paying. Reported, never
+    // asserted — a correlation is evidence for a follow-up lever, not a gate.
+    let skew: Vec<(f64, f64)> = verdicts
+        .iter()
+        .filter(|verdict| verdict.loss.is_finite() && verdict.max_over_mean_at_policy > 0.0)
+        .map(|verdict| (verdict.max_over_mean_at_policy, verdict.loss))
+        .collect();
+    let mean_skew = skew.iter().map(|(spread, _)| spread).sum::<f64>() / skew.len().max(1) as f64;
+    let worst_skew = skew
+        .iter()
+        .map(|(spread, _)| *spread)
+        .fold(0.0f64, f64::max);
+
+    // NOT `seg_corpus_*`: that prefix is the chunk glob `load_corpus_tables` reads,
+    // and a policy table left in it would be parsed as a chunk on the next run --
+    // which the header assertion would turn into a panic on a perfectly good
+    // workspace.
+    let csv = seg_output_path(SEG_POLICY_CSV);
+    let mut table = String::from(
+        "circuit,layer,class,terms,sources,bf_sources,e4_sources,procedural_sources,\
+         total_static_work,rows,grid_blocks,ceiling,best_k,policy_k,loss_fraction,\
+         max_over_mean_at_policy\n",
+    );
+    for verdict in &verdicts {
+        writeln!(
+            table,
+            "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{:.6},{:.6}",
+            verdict.facts.circuit,
+            verdict.facts.layer,
+            verdict.facts.class.label(),
+            verdict.facts.terms,
+            verdict.facts.sources,
+            verdict.facts.bf_sources,
+            verdict.facts.e4_sources,
+            verdict.facts.procedural_sources,
+            verdict.facts.total_static_work,
+            verdict.facts.rows,
+            verdict.facts.grid_blocks(),
+            verdict.ceiling,
+            verdict.best_k,
+            verdict.policy_k,
+            verdict.loss,
+            verdict.max_over_mean_at_policy,
+        )
+        .expect("write String");
+    }
+    publish(&csv, &table);
+
+    record_summary_section(
+        "Corpus sweep: coverage by round class",
+        &format!(
+            "Chunks read: {}.\n\nEvery cell counted below was launch-probed before it was \
+             timed and certified against BOTH CPU oracles at {SEG_PARITY_ROWS} rows plus \
+             head-and-tail identity on the timed cell. `K` is the only free axis \
+             ({SEG_CORPUS_K:?}); epilogue `plane`, loader `const`, program by-value -- the \
+             Task-9 winner.\n\n{}\n",
+            files
+                .iter()
+                .map(|file| format!("`{}`", file.display()))
+                .collect::<Vec<_>>()
+                .join(", "),
+            render_class_summary(&rows),
+        ),
+    );
+    record_summary_section(
+        "Corpus sweep: the closed-form K policy",
+        &format!(
+            "`seg_policy_k(bytes_per_row, ceiling)`: `K = 4` below \
+             {SEG_POLICY_NARROW_BYTES_PER_ROW} B/row, `K = 8` below \
+             {SEG_POLICY_WIDE_BYTES_PER_ROW} B/row, otherwise the widest `K` the \
+             family hosts -- clamped to the family ceiling (32 on R0, 24 on \
+             continuation).\n\n\
+             Scored over **{} measurement points that reached the timing floor**: it \
+             names the measured best `K` on **{exact}** of them, mean loss **{:+.3}%**, \
+             worst **{:+.2}%**, and **{}** point(s) lose more than \
+             {:.0}%.\n\nStatic per-list spread (`ListWorkStats.max_over_mean`) at the \
+             policy's `K`: mean **{mean_skew:.3}**, worst **{worst_skew:.3}** over {} \
+             points.\n\n**Run-to-run band, measured**: {repeated} points were measured \
+             twice; their medians disagree by {:.3}% (median), {:.3}% (p90), {:.3}% \
+             (worst). No loss below that band is resolved.\n\n\
+             Points over the threshold:\n\n{}\n\nCSV: `{}`\n",
+            verdicts.len(),
+            losses.iter().sum::<f64>() / losses.len().max(1) as f64 * 100.0,
+            worst * 100.0,
+            over.len(),
+            SEG_POLICY_LOSS_THRESHOLD * 100.0,
+            skew.len(),
+            band_median * 100.0,
+            band_p90 * 100.0,
+            band_worst * 100.0,
+            if over.is_empty() {
+                "None.\n".to_owned()
+            } else {
+                render_loss_table(&over)
+            },
+            csv.display(),
+        ),
+    );
+}
+
+/// **The `D2Policy` verdict.** `Inline` against `Materialize` at every D2-class
+/// coordinate the sweep timed, at each one's own best `K`.
+///
+/// Task 9 saw `Materialize` 35% ahead on ONE coordinate and explicitly refused to
+/// make it policy on that evidence. This is the evidence.
+#[test]
+#[ignore = "reads the corpus sweep's published CSVs; run bwd_seg_corpus_sweep first"]
+fn bwd_seg_corpus_d2_policy() {
+    let (rows, repeats) = load_corpus_tables();
+    let (repeated, band_median, band_p90, band_worst) = repeats.summary();
+    let d2: Vec<SegCorpusRow> = rows
+        .iter()
+        .filter(|row| row.facts.class.is_d2_class())
+        .cloned()
+        .collect();
+    assert!(!d2.is_empty(), "the sweep must cover the D2 classes");
+
+    // Pair the two policies point by point: same circuit, same layer, same ROW
+    // COUNT, and each side at ITS OWN best `K`, since the policy changes the source
+    // classes and could move the best `K` with them.
+    //
+    // Equal rows is not a nicety. The two policies have different per-row
+    // footprints (`Materialize` publishes what `Inline` refolds), so the budget
+    // fits them at different depths, and a quotient taken across two depths would
+    // be measuring the row count.
+    let mut points: Vec<(String, usize, usize)> = d2
+        .iter()
+        .map(|row| (row.facts.circuit.clone(), row.facts.layer, row.facts.rows))
+        .collect();
+    points.sort();
+    points.dedup();
+
+    let mut body = String::from(
+        "| coordinate | rows | inline best K | inline (us) | materialize best K | \
+         materialize (us) | materialize / inline |\n|---|---|---|---|---|---|---|\n",
+    );
+    let mut wins = 0usize;
+    let mut losses = 0usize;
+    let mut ratios: Vec<f64> = Vec::new();
+    let mut unresolved = 0usize;
+    for (circuit, layer, rows) in &points {
+        let side = |class: SegRoundClass| -> Option<(usize, f64)> {
+            let group: Vec<SegCorpusRow> = d2
+                .iter()
+                .filter(|row| {
+                    row.facts.circuit == *circuit
+                        && row.facts.layer == *layer
+                        && row.facts.rows == *rows
+                        && row.facts.class == class
+                })
+                .cloned()
+                .collect();
+            let best = corpus_best_k(&group, true)?;
+            Some((best, group.iter().find(|row| row.k == best)?.median_us?))
+        };
+        let (Some(inline), Some(materialize)) = (
+            side(SegRoundClass::D2Inline),
+            side(SegRoundClass::D2Materialize),
+        ) else {
+            unresolved += 1;
+            continue;
+        };
+        // The two policies are DIFFERENT cells (different backings, different
+        // scratch), so this is a quotient of two solo medians, quoted with no
+        // interval. The verdict rests on the sign and on effects far outside the
+        // run-to-run band, not on the third digit.
+        let ratio = materialize.1 / inline.1;
+        ratios.push(ratio);
+        if ratio < 1.0 {
+            wins += 1;
+        } else {
+            losses += 1;
+        }
+        writeln!(
+            body,
+            "| {circuit} L{layer} D2 | {rows} | K{} | {:.1} | K{} | {:.1} | {ratio:.3} |",
+            inline.0, inline.1, materialize.0, materialize.1,
+        )
+        .expect("write String");
+    }
+    ratios.sort_by(|lhs, rhs| lhs.partial_cmp(rhs).expect("finite ratio"));
+    let median_ratio = if ratios.is_empty() {
+        f64::NAN
+    } else {
+        median_of_sorted(&ratios)
+    };
+    eprintln!(
+        "[seg-corpus] D2 policy over {} paired points: materialize faster on {wins}, \
+         slower on {losses}, median materialize/inline {median_ratio:.3} ({unresolved} \
+         point(s) unresolved)",
+        ratios.len(),
+    );
+    record_summary_section(
+        "Corpus sweep: the D2Policy verdict",
+        &format!(
+            "Each side at its own best `K`, at the SAME row count. **SOLO medians on two \
+             different cells** -- the two policies allocate different backings and \
+             different publish scratch, so no paired protocol exists between them and the \
+             quotient is quoted with no interval. The measured run-to-run band on repeated \
+             points of this sweep is {:.3}% (median) / {:.3}% (p90) / {:.3}% (worst) over \
+             {} repeats, which is what a quotient near 1.0 has to be read against.\n\n\
+             Over **{} paired points**: `Materialize` is faster on **{wins}**, slower \
+             on **{losses}**, median `materialize / inline` **{median_ratio:.3}**. \
+             {unresolved} point(s) had no comparable pair.\n\n{body}\n",
+            band_median * 100.0,
+            band_p90 * 100.0,
+            band_worst * 100.0,
+            repeated,
+            ratios.len(),
+        ),
+    );
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -3190,5 +4909,306 @@ mod tests {
         // The floor wins over the budget: a cell too big even at the floor is
         // measured at the floor and reported unsaturated, never at zero rows.
         assert_eq!(fit_rows(1 << 20, usize::MAX / 2, 1, 1 << 10).0, 1 << 10);
+    }
+
+    // ── Task 10: the corpus sweep and the K policy ───────────────────────────
+
+    /// The certification window never eats the whole cell.
+    ///
+    /// This is what lets a below-floor corpus coordinate still be certified: the
+    /// head and tail windows have to name different rows, and at the constant they
+    /// would overlap for anything under two sample widths.
+    #[test]
+    fn the_certification_window_leaves_a_tail_on_a_narrow_cell() {
+        assert_eq!(identity_sample_rows(1 << 20), SEG_IDENTITY_SAMPLE_ROWS);
+        assert_eq!(
+            identity_sample_rows(2 * SEG_IDENTITY_SAMPLE_ROWS),
+            SEG_IDENTITY_SAMPLE_ROWS
+        );
+        for rows in [2usize, 3, 64, 1_000, SEG_CORPUS_MIN_ROWS, 12_345] {
+            let sample = identity_sample_rows(rows);
+            assert!(sample >= 1, "{rows} rows must sample something");
+            assert!(
+                rows - sample > 0,
+                "{rows} rows must leave a tail the head does not cover"
+            );
+        }
+    }
+
+    fn corpus_facts(class: SegRoundClass, work: u64, rows: usize) -> SegCoordFacts {
+        SegCoordFacts {
+            circuit: "add_sub_lui_auipc_mop".to_owned(),
+            layer: 0,
+            class,
+            terms: 128,
+            sources: 64,
+            windows: 3,
+            bf_sources: 40,
+            e4_sources: 20,
+            procedural_sources: 4,
+            total_static_work: work,
+            bytes_per_row: 1_824,
+            rows,
+        }
+    }
+
+    fn corpus_fixture(k: usize, status: SegCorpusStatus, ratio: Option<f64>) -> SegCorpusRow {
+        SegCorpusRow {
+            facts: corpus_facts(SegRoundClass::R0, 1_024, 1 << 20),
+            k,
+            status,
+            blocks_per_sm: 12,
+            theoretical_occupancy: 1.0,
+            registers: 40,
+            dynamic_smem_bytes: 1_536,
+            waves: 14.5,
+            max_over_mean_work: 1.02,
+            parity: match status {
+                SegCorpusStatus::Timed | SegCorpusStatus::BelowFloor => {
+                    SegParity::OraclesAndIdentity
+                }
+                _ => SegParity::Unlaunchable,
+            },
+            median_us: status.measured().then_some(1_000.0),
+            min_us: status.measured().then_some(999.0),
+            ratio_vs_baseline: ratio.map(|median_ratio| RatioEstimate {
+                median_ratio,
+                ci_low: median_ratio - 0.001,
+                ci_high: median_ratio + 0.001,
+            }),
+        }
+    }
+
+    /// The chunked sweep only works if the table survives the round trip.
+    #[test]
+    fn a_corpus_table_round_trips_through_its_csv() {
+        let rows = vec![
+            corpus_fixture(4, SegCorpusStatus::Timed, None),
+            corpus_fixture(8, SegCorpusStatus::Timed, Some(0.97)),
+            corpus_fixture(24, SegCorpusStatus::BelowFloor, Some(1.31)),
+            corpus_fixture(32, SegCorpusStatus::Unlaunchable, None),
+            SegCorpusRow::untimed(
+                corpus_facts(SegRoundClass::D2Materialize, 4_096, 1 << 14),
+                16,
+                SegCorpusStatus::OverBudget,
+            ),
+            SegCorpusRow::untimed(
+                corpus_facts(SegRoundClass::D3, 0, 1 << 13),
+                4,
+                SegCorpusStatus::LowerRejected,
+            ),
+        ];
+        let csv = render_corpus_csv(&rows);
+        let back = parse_corpus_csv(&csv);
+        assert_eq!(back.len(), rows.len());
+        for (got, want) in back.iter().zip(rows.iter()) {
+            assert_eq!(got.facts, want.facts);
+            assert_eq!(got.k, want.k);
+            assert_eq!(got.status, want.status);
+            assert_eq!(got.parity, want.parity);
+            assert_eq!(got.median_us, want.median_us);
+            assert_eq!(got.protocol(), want.protocol());
+            assert_eq!(
+                got.ratio_vs_baseline.map(|estimate| estimate.median_ratio),
+                want.ratio_vs_baseline.map(|estimate| estimate.median_ratio)
+            );
+        }
+    }
+
+    /// An untimed row must not print a number a reader could average.
+    #[test]
+    fn an_untimed_corpus_row_prints_no_wall_time() {
+        let csv = render_corpus_csv(&[SegCorpusRow::untimed(
+            corpus_facts(SegRoundClass::D1, 0, 1 << 15),
+            32,
+            SegCorpusStatus::Unlaunchable,
+        )]);
+        let row = csv.lines().nth(1).expect("one data row");
+        assert!(row.contains(",unlaunchable,"), "{row}");
+        assert!(row.ends_with(",-,-,-,-,-"), "{row}");
+    }
+
+    /// The parse must not silently accept a table whose columns moved.
+    #[test]
+    #[should_panic(expected = "the corpus CSV header changed")]
+    fn a_shifted_corpus_header_is_rejected() {
+        parse_corpus_csv("circuit,layer,class\nadd_sub,0,R0\n");
+    }
+
+    /// Best-`K` reads the PAIRED ratios, prefers the smallest `K` inside the tie
+    /// band, and never names a `K` that was not timed.
+    #[test]
+    fn best_k_uses_the_paired_ratios_and_resolves_the_tie_band() {
+        let group = vec![
+            corpus_fixture(4, SegCorpusStatus::Timed, None),
+            // Inside the 0.1% band of the K=8 minimum, so the smaller K wins.
+            corpus_fixture(8, SegCorpusStatus::Timed, Some(0.9000)),
+            corpus_fixture(16, SegCorpusStatus::Timed, Some(0.9005)),
+            corpus_fixture(24, SegCorpusStatus::Timed, Some(1.4000)),
+            corpus_fixture(32, SegCorpusStatus::Unlaunchable, None),
+        ];
+        assert_eq!(corpus_best_k(&group, false), Some(8));
+
+        // The baseline row alone still scores: it IS the 1.0 of its own axis.
+        let only_baseline = vec![
+            corpus_fixture(4, SegCorpusStatus::Timed, None),
+            corpus_fixture(8, SegCorpusStatus::Unlaunchable, None),
+        ];
+        assert_eq!(corpus_best_k(&only_baseline, false), Some(4));
+
+        // A coordinate that never reached the timing floor contributes nothing to
+        // the fit, and everything to the inclusive view.
+        let below: Vec<SegCorpusRow> = group
+            .iter()
+            .map(|row| SegCorpusRow {
+                status: match row.status {
+                    SegCorpusStatus::Timed => SegCorpusStatus::BelowFloor,
+                    other => other,
+                },
+                ..row.clone()
+            })
+            .collect();
+        assert_eq!(corpus_best_k(&below, false), None);
+        assert_eq!(corpus_best_k(&below, true), Some(8));
+    }
+
+    /// The closed form stays inside the axis and inside the family's ceiling.
+    #[test]
+    fn the_policy_never_leaves_the_axis_or_the_ceiling() {
+        for bytes in [0usize, 1, 1_279, 1_280, 18_431, 18_432, 1 << 20, usize::MAX] {
+            for ceiling in [4usize, 8, 16, 24, 28, 32] {
+                let k = seg_policy_k(bytes, ceiling);
+                assert!(
+                    SEG_CORPUS_K.contains(&k),
+                    "policy named K{k}, which is not on the axis"
+                );
+                assert!(
+                    k <= ceiling,
+                    "policy named K{k} above the ceiling {ceiling}"
+                );
+            }
+        }
+        // A ceiling below the whole axis still yields the axis minimum rather than
+        // nothing: every compiled family hosts K=4.
+        assert_eq!(seg_policy_k(usize::MAX, 4), 4);
+        // The continuation ceiling is 24, so the widest band lands there and never
+        // on the R0-only K=32.
+        assert_eq!(seg_policy_k(usize::MAX, 24), 24);
+        assert_eq!(seg_policy_k(usize::MAX, 32), 24, "K=32 is never selected");
+    }
+
+    /// The closed form is monotone in its one argument, and its two thresholds are
+    /// where the documentation says they are.
+    #[test]
+    fn the_policy_is_monotone_in_the_per_row_footprint() {
+        let mut previous = 0;
+        for bytes in [0usize, 512, 1_279, 1_280, 4_096, 18_431, 18_432, 1 << 20] {
+            let k = seg_policy_k(bytes, 32);
+            assert!(
+                k >= previous,
+                "{bytes} B/row lowered the policy from K{previous} to K{k}"
+            );
+            previous = k;
+        }
+        assert_eq!(seg_policy_k(SEG_POLICY_NARROW_BYTES_PER_ROW - 1, 32), 4);
+        assert_eq!(seg_policy_k(SEG_POLICY_NARROW_BYTES_PER_ROW, 32), 8);
+        assert_eq!(seg_policy_k(SEG_POLICY_WIDE_BYTES_PER_ROW - 1, 32), 8);
+        assert_eq!(seg_policy_k(SEG_POLICY_WIDE_BYTES_PER_ROW, 32), 24);
+        // The Task-9 gate coordinate: `add_sub` L0 R0 is 1,824 B/row, and the policy
+        // must reproduce a `K` the gate was actually won at rather than a third one.
+        assert!(matches!(seg_policy_k(1_824, 32), 4 | 8));
+    }
+
+    /// A policy that names a `K` the coordinate could not run is an INFINITE loss,
+    /// not a quietly-substituted best.
+    #[test]
+    fn a_policy_k_that_was_never_measured_is_reported_as_a_total_loss() {
+        let mut group = vec![
+            corpus_fixture(4, SegCorpusStatus::Timed, None),
+            corpus_fixture(8, SegCorpusStatus::Timed, Some(0.95)),
+        ];
+        // The remaining axis members were never measured at all.
+        let verdicts = evaluate_policy(&group, false);
+        assert_eq!(verdicts.len(), 1);
+        assert_eq!(verdicts[0].best_k, 8);
+        assert_eq!(verdicts[0].ceiling, 8, "the ceiling is read off the sweep");
+        assert!(verdicts[0].loss.is_finite());
+
+        // Now make the group's best K unlaunchable and leave a slower one behind:
+        // the loss must be the real quotient, not zero.
+        group.push(corpus_fixture(16, SegCorpusStatus::Timed, Some(1.10)));
+        let verdicts = evaluate_policy(&group, false);
+        assert_eq!(verdicts[0].best_k, 8);
+        assert_eq!(verdicts[0].ceiling, 16);
+        let policy = verdicts[0].policy_k;
+        let expected = match policy {
+            4 => 1.0 / 0.95 - 1.0,
+            8 => 0.0,
+            16 => 1.10 / 0.95 - 1.0,
+            other => panic!("unexpected policy K{other}"),
+        };
+        assert!(
+            (verdicts[0].loss - expected).abs() < 1e-12,
+            "loss {} for policy K{policy}",
+            verdicts[0].loss
+        );
+    }
+
+    /// The policy table must not land inside the glob that reads sweep chunks.
+    ///
+    /// It did, once: the policy pass wrote `seg_corpus_k_policy.csv`, which the
+    /// next run's loader would have picked up as a chunk and rejected on the header
+    /// assertion — a self-inflicted panic on an otherwise healthy workspace.
+    #[test]
+    fn the_policy_table_is_not_mistaken_for_a_sweep_chunk() {
+        assert!(!SEG_POLICY_CSV.starts_with(SEG_CORPUS_CHUNK_PREFIX));
+        assert!(SEG_MATRIX_CSV.starts_with("seg_stage_a"));
+        assert!(!SEG_MATRIX_CSV.starts_with(SEG_CORPUS_CHUNK_PREFIX));
+        assert!(
+            corpus_csv_name(&SEG_CORPUS_LAYOUTS, SEG_CORPUS_DEFAULT_BUDGET_BYTES, false)
+                .starts_with(SEG_CORPUS_CHUNK_PREFIX)
+        );
+        assert!(corpus_csv_name(&[ADD_SUB_LAYOUT], 12 << 30, false)
+            .starts_with(SEG_CORPUS_CHUNK_PREFIX));
+        // A deep re-run must not overwrite the default-budget chunk.
+        assert_ne!(
+            corpus_csv_name(&[ADD_SUB_LAYOUT], SEG_CORPUS_DEFAULT_BUDGET_BYTES, false),
+            corpus_csv_name(&[ADD_SUB_LAYOUT], 12 << 30, false)
+        );
+        // A PROFILED run never lands in the chunk glob: its medians are the
+        // profiler's, not the sweep's.
+        assert!(
+            !corpus_csv_name(&[ADD_SUB_LAYOUT], SEG_CORPUS_DEFAULT_BUDGET_BYTES, true)
+                .starts_with(SEG_CORPUS_CHUNK_PREFIX)
+        );
+    }
+
+    /// The round classes are the axis the sweep and the audit both read.
+    #[test]
+    fn the_round_classes_agree_on_regime_round_and_policy() {
+        assert_eq!(SegRoundClass::R0.regime(), BwdRegime::R0);
+        assert_eq!(SegRoundClass::R0.round(), 0);
+        for class in SEG_ROUND_CLASSES.into_iter().skip(1) {
+            assert_eq!(class.regime(), BwdRegime::Ext, "{}", class.label());
+        }
+        assert_eq!(SegRoundClass::D2Inline.round(), 2);
+        assert_eq!(SegRoundClass::D2Materialize.round(), 2);
+        assert_eq!(SegRoundClass::D2Inline.d2(), D2Policy::Inline);
+        assert_eq!(SegRoundClass::D2Materialize.d2(), D2Policy::Materialize);
+        assert!(SegRoundClass::D2Inline.is_d2_class());
+        assert!(SegRoundClass::D2Materialize.is_d2_class());
+        assert!(!SegRoundClass::D3.is_d2_class());
+        for class in SEG_ROUND_CLASSES {
+            assert_eq!(SegRoundClass::parse(class.label()), Some(class));
+        }
+        for status in [
+            SegCorpusStatus::Timed,
+            SegCorpusStatus::BelowFloor,
+            SegCorpusStatus::OverBudget,
+            SegCorpusStatus::Unlaunchable,
+            SegCorpusStatus::LowerRejected,
+        ] {
+            assert_eq!(SegCorpusStatus::parse(status.label()), Some(status));
+        }
     }
 }
