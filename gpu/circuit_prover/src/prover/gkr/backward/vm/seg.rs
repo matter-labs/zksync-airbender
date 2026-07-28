@@ -396,6 +396,137 @@ pub(crate) fn bwd_seg_blocks_per_sm(
     }
 }
 
+// ── Task 9 Stage B: the AccPlacement rungs ──────────────────────────────────
+//
+// Design section 6's register fallback ladder, compiled ON the Stage-A winner
+// (`plane` epilogue, `const` loader) and nowhere else. Deliberately a SEPARATE,
+// narrow API rather than a placement parameter threaded through the launchers
+// above: the fifteen release symbols have exactly one placement, and widening
+// their signatures would make every call site state a constant.
+
+declare_bwd_seg_kernel!(ab_gkr_bwd_seg_r0_const_epi_plane_acc2smem_kernel, BwdSegDesc);
+declare_bwd_seg_kernel!(
+    ab_gkr_bwd_seg_r0_const_epi_plane_accbothsmem_kernel,
+    BwdSegDesc
+);
+declare_bwd_seg_kernel!(
+    ab_gkr_bwd_seg_cont_const_epi_plane_acc2smem_kernel,
+    BwdSegDesc
+);
+declare_bwd_seg_kernel!(
+    ab_gkr_bwd_seg_cont_const_epi_plane_accbothsmem_kernel,
+    BwdSegDesc
+);
+
+/// Where a launch keeps its two accumulators between terms (design §6's ladder).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum BwdSegAccPlacement {
+    /// (b): `acc_c2` per thread in shared memory.
+    AccC2Smem,
+    /// (c): both accumulators per thread in shared memory.
+    AccBothSmem,
+}
+
+impl BwdSegAccPlacement {
+    /// Accumulators this placement keeps in shared memory, per thread.
+    fn slots(self) -> usize {
+        match self {
+            Self::AccC2Smem => 1,
+            Self::AccBothSmem => 2,
+        }
+    }
+
+    pub(crate) fn label(self) -> &'static str {
+        match self {
+            Self::AccC2Smem => "acc2smem",
+            Self::AccBothSmem => "accbothsmem",
+        }
+    }
+}
+
+/// Shared-memory bytes the per-thread accumulator carveout needs at `k` warps.
+///
+/// MIRROR of `bwd_seg_acc_smem_bytes` in `segmented_vm.cuh`, and mirrored for the
+/// same reason [`bwd_seg_epilogue_smem_bytes`] is: it is a launch argument, so a
+/// disagreement is an out-of-bounds shared access rather than a build error.
+pub(crate) fn bwd_seg_acc_smem_bytes(placement: BwdSegAccPlacement, k: u32) -> usize {
+    placement.slots() * size_of::<E4>() * k as usize * WARP_SIZE as usize
+}
+
+/// Total dynamic shared memory of an AccPlacement rung: the winning epilogue's
+/// plane, then the carveout — the same order the kernel addresses them in.
+pub(crate) fn bwd_seg_acc_dynamic_smem_bytes(placement: BwdSegAccPlacement, k: u32) -> usize {
+    bwd_seg_epilogue_smem_bytes(BWD_SEG_ACC_RUNG_EPILOGUE, k) + bwd_seg_acc_smem_bytes(placement, k)
+}
+
+/// The epilogue the rungs are compiled on — Stage A's winner.
+pub(crate) const BWD_SEG_ACC_RUNG_EPILOGUE: BwdSegEpilogue = BwdSegEpilogue::Plane;
+
+fn seg_acc_symbol(regime: BwdRegime, placement: BwdSegAccPlacement) -> GkrBwdSegInlineSignature {
+    match (regime, placement) {
+        (BwdRegime::R0, BwdSegAccPlacement::AccC2Smem) => {
+            ab_gkr_bwd_seg_r0_const_epi_plane_acc2smem_kernel
+        }
+        (BwdRegime::R0, BwdSegAccPlacement::AccBothSmem) => {
+            ab_gkr_bwd_seg_r0_const_epi_plane_accbothsmem_kernel
+        }
+        (BwdRegime::Ext, BwdSegAccPlacement::AccC2Smem) => {
+            ab_gkr_bwd_seg_cont_const_epi_plane_acc2smem_kernel
+        }
+        (BwdRegime::Ext, BwdSegAccPlacement::AccBothSmem) => {
+            ab_gkr_bwd_seg_cont_const_epi_plane_accbothsmem_kernel
+        }
+    }
+}
+
+/// Launch one AccPlacement rung. Enqueue-only, and `const`-loader only: the rung
+/// reads this lineage's `__constant__` bank, so a setup lowered for
+/// [`CoeffMode::DevPtr`] has no kernel here.
+pub(crate) fn launch_bwd_seg_acc(
+    setup: &BwdSegSetup,
+    regime: BwdRegime,
+    placement: BwdSegAccPlacement,
+    context: &ProverContext,
+) -> CudaResult<()> {
+    let BwdSegLaunchDesc::Inline(desc) = &setup.desc else {
+        panic!("the AccPlacement rungs are compiled on the by-value program only")
+    };
+    let geometry = seg_geometry(&setup.desc);
+    let config = CudaLaunchConfig::builder()
+        .grid_dim(geometry.logical_rows.div_ceil(WARP_SIZE))
+        .block_dim(geometry.k * WARP_SIZE)
+        .dynamic_smem_bytes(bwd_seg_acc_dynamic_smem_bytes(placement, geometry.k))
+        .stream(context.get_exec_stream())
+        .build();
+    GkrBwdSegInlineFunction(seg_acc_symbol(regime, placement))
+        .launch(&config, &GkrBwdSegInlineArguments::new(**desc))
+}
+
+/// Blocks per SM of one AccPlacement rung, at its own total carveout.
+pub(crate) fn bwd_seg_acc_blocks_per_sm(
+    regime: BwdRegime,
+    placement: BwdSegAccPlacement,
+    k: u32,
+) -> CudaResult<i32> {
+    assert!(
+        k >= 1 && k <= BWD_SEG_MAX_K as u32,
+        "segmented lean VM occupancy list count outside 1..={BWD_SEG_MAX_K}"
+    );
+    era_cudart::occupancy::max_active_blocks_per_multiprocessor(
+        &GkrBwdSegInlineFunction(seg_acc_symbol(regime, placement)),
+        (k * WARP_SIZE) as i32,
+        bwd_seg_acc_dynamic_smem_bytes(placement, k),
+    )
+}
+
+/// The device entry point of one AccPlacement rung, for `cudaFuncGetAttributes`.
+pub(crate) fn bwd_seg_acc_entry_point(
+    regime: BwdRegime,
+    placement: BwdSegAccPlacement,
+) -> *const std::ffi::c_void {
+    GkrBwdSegInlineFunction(seg_acc_symbol(regime, placement)).as_ptr()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -483,4 +614,5 @@ mod tests {
             4,
         );
     }
+
 }

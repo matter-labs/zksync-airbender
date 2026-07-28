@@ -431,6 +431,66 @@ static_assert(bwd_seg_epilogue_smem_bytes(BWD_SEG_EPILOGUE_WIDE, BWD_SEG_MAX_K) 
 // Every variant stays inside the 48 KB a block gets without an opt-in carveout.
 static_assert(bwd_seg_epilogue_smem_bytes(BWD_SEG_EPILOGUE_WIDE, BWD_SEG_MAX_K) <= 48 * 1024, "the wide epilogue exceeds the default shared-memory limit");
 
+// ── AccPlacement: the design's register fallback ladder, measured ────────────
+//
+// Design section 6 states the ladder for a loop that lands above the 40-register
+// target: (a) both accumulators in registers, (b) ONE per thread in shared
+// memory, (c) both. (b) and (c) buy registers with a `ld.shared` + `st.shared`
+// pair on every term that touches the accumulator, so they are only ever worth it
+// if the occupancy gain dominates — which is a measurement, not a prediction, and
+// is why all three are compiled rather than one being chosen up front.
+//
+// The carveout is PER THREAD and laid out `[word][lane]`: word `w` of thread `t`
+// sits at `words[w * threads + t]`, so the 32 lanes of a warp touch 32 CONSECUTIVE
+// 4-byte banks in every one of the four accesses. That is conflict-free by
+// construction, unlike the `e4`-per-thread layout, whose 16-byte stride would put
+// four lanes on every bank.
+enum : u32 {
+  // (a): both accumulators stay in registers. The default and the only placement
+  // the fifteen release symbols use.
+  BWD_SEG_ACC_IN_REGISTERS = 0,
+  // (b): `acc_c2` per thread in shared memory.
+  BWD_SEG_ACC_C2_SMEM = 1,
+  // (c): both accumulators per thread in shared memory.
+  BWD_SEG_ACC_BOTH_SMEM = 2,
+};
+
+// Accumulators this placement keeps in shared memory, per thread.
+constexpr u32 bwd_seg_acc_smem_slots(const u32 placement) {
+  switch (placement) {
+  case BWD_SEG_ACC_C2_SMEM:
+    return 1;
+  case BWD_SEG_ACC_BOTH_SMEM:
+    return 2;
+  default:
+    return 0;
+  }
+}
+
+// Shared-memory bytes the accumulator carveout needs at `k` warps. Mirrored by
+// the Rust launcher for the same reason `bwd_seg_epilogue_smem_bytes` is: it is a
+// launch argument, so a disagreement is an out-of-bounds access, not a build
+// failure.
+constexpr u32 bwd_seg_acc_smem_bytes(const u32 placement, const u32 k) {
+  return bwd_seg_acc_smem_slots(placement) * static_cast<u32>(sizeof(e4)) * k * BWD_SEG_WARP_LANES;
+}
+
+// Total dynamic shared memory: the epilogue's planes, then the accumulator
+// carveout. The accumulators sit AFTER the planes so the epilogue's own addressing
+// is untouched by the placement.
+constexpr u32 bwd_seg_dynamic_smem_bytes(const u32 epilogue, const u32 placement, const u32 k) {
+  return bwd_seg_epilogue_smem_bytes(epilogue, k) + bwd_seg_acc_smem_bytes(placement, k);
+}
+
+static_assert(bwd_seg_acc_smem_bytes(BWD_SEG_ACC_IN_REGISTERS, BWD_SEG_MAX_K) == 0, "the register placement must carve out nothing");
+static_assert(bwd_seg_acc_smem_bytes(BWD_SEG_ACC_C2_SMEM, 4) == 2048, "acc_c2 carveout size drift at the measured K");
+static_assert(bwd_seg_acc_smem_bytes(BWD_SEG_ACC_BOTH_SMEM, 4) == 4096, "both-accumulator carveout size drift at the measured K");
+static_assert(bwd_seg_acc_smem_bytes(BWD_SEG_ACC_BOTH_SMEM, BWD_SEG_MAX_K) == 32768, "both-accumulator carveout size drift at the maximum K");
+// The widest rung the matrix can launch still fits the default 48 KB block budget,
+// so no opt-in carveout is needed for any of them.
+static_assert(bwd_seg_dynamic_smem_bytes(BWD_SEG_EPILOGUE_PLANE, BWD_SEG_ACC_BOTH_SMEM, BWD_SEG_MAX_K) <= 48 * 1024,
+              "the widest accumulator rung exceeds the default shared-memory limit");
+
 } // namespace airbender::prover::gkr
 
 // This lineage's OWN coefficient bank. Stream-ordered `__constant__` memory,

@@ -578,11 +578,40 @@ DEVICE_FORCEINLINE void seg_execute_term(const Desc &desc, const Bank &bank, con
   }
 }
 
+// ── AccPlacement: one accumulator in shared memory (section 6's ladder) ─────
+
+// A per-thread accumulator slot in the dynamic shared-memory carveout, in the
+// conflict-free `[word][lane]` layout `bwd_seg_acc_smem_bytes` sizes.
+//
+// Word `w` of thread `t` sits at `words[w * threads + t]`, so a warp's 32 lanes
+// touch 32 CONSECUTIVE 4-byte banks in each of the four accesses. The obvious
+// `e4`-per-thread layout would give a 16-byte stride and put four lanes on every
+// bank — a four-way conflict on every access, which is the cost this placement
+// exists to avoid paying on top of the traffic it already adds.
+struct seg_acc_slot {
+  bf *words;
+  u32 threads;
+  u32 tid;
+
+  DEVICE_FORCEINLINE e4 load() const {
+    const bf c[4] = {words[tid], words[threads + tid], words[2 * threads + tid], words[3 * threads + tid]};
+    return e4(c);
+  }
+
+  DEVICE_FORCEINLINE void store(const e4 &value) const {
+    words[tid] = value.base_coefficient_from_flat_idx(0);
+    words[threads + tid] = value.base_coefficient_from_flat_idx(1);
+    words[2 * threads + tid] = value.base_coefficient_from_flat_idx(2);
+    words[3 * threads + tid] = value.base_coefficient_from_flat_idx(3);
+  }
+};
+
 // ── The executor body ───────────────────────────────────────────────────────
 
-template <bool IS_R0, u32 EPILOGUE, typename Desc, typename Bank, typename Program>
+template <bool IS_R0, u32 EPILOGUE, u32 ACC, typename Desc, typename Bank, typename Program>
 DEVICE_FORCEINLINE void seg_body(const Desc &desc, const Bank &bank, const Program &program) {
   static_assert(EPILOGUE <= BWD_SEG_EPILOGUE_WIDE, "unknown epilogue specialization");
+  static_assert(ACC <= BWD_SEG_ACC_BOTH_SMEM, "unknown accumulator placement");
   // R0 is depth 0 everywhere: no prologue, and no inline fold either.
   constexpr u32 MAX_DEPTH = IS_R0 ? 0u : BWD_SEG_MAX_INLINE_FOLD_DEPTH;
 
@@ -620,12 +649,37 @@ DEVICE_FORCEINLINE void seg_body(const Desc &desc, const Bank &bank, const Progr
   // reduce to `k * c_init`. R0 has no seed path at all — R0 lowering drops the
   // spine's scalar addends, so seeding one would double-count it (enforced by
   // `lower_bwd_seg`'s `R0CarriesCInit`).
+  //
+  // Under a shared-memory placement the corresponding register below is written
+  // once, never read inside the loop, and dead by the time ptxas allocates — which
+  // is the whole point of the rung. Its declaration stays unconditional because
+  // the epilogue consumes an `e4` either way.
   e4 acc_c0 = e4::ZERO();
   e4 acc_c2 = e4::ZERO();
+  const u32 threads = k * BWD_SEG_WARP_LANES;
+  seg_acc_slot slot_c0{};
+  seg_acc_slot slot_c2{};
+  if constexpr (ACC != BWD_SEG_ACC_IN_REGISTERS) {
+    // The one dynamic-shared allocation of the launch, re-declared here because
+    // `seg_epilogue` declares the same `extern __shared__` array for its planes —
+    // both names alias the same block, which is exactly what makes the carveout
+    // addressable as "after the planes".
+    extern __shared__ e4 ab_gkr_bwd_seg_plane[];
+    // The carveout sits AFTER the epilogue's planes in the same dynamic
+    // allocation, so the epilogue's own addressing is untouched.
+    bf *carveout = reinterpret_cast<bf *>(reinterpret_cast<char *>(ab_gkr_bwd_seg_plane) + bwd_seg_epilogue_smem_bytes(EPILOGUE, k));
+    slot_c2 = seg_acc_slot{carveout, threads, threadIdx.x};
+    if constexpr (ACC == BWD_SEG_ACC_BOTH_SMEM)
+      slot_c0 = seg_acc_slot{carveout + 4 * threads, threads, threadIdx.x};
+  }
   if constexpr (!IS_R0) {
     if (warp_id == 0)
       acc_c0 = seg_c_init(desc);
   }
+  if constexpr (ACC != BWD_SEG_ACC_IN_REGISTERS)
+    slot_c2.store(acc_c2);
+  if constexpr (ACC == BWD_SEG_ACC_BOTH_SMEM)
+    slot_c0.store(acc_c0);
 
   // Warp `w` walks its own contiguous list. `blockDim == 32 * k`, so `warp_id < k`
   // and `warp_id + 1` is inside `list_offset`.
@@ -645,7 +699,32 @@ DEVICE_FORCEINLINE void seg_body(const Desc &desc, const Bank &bank, const Progr
     const u16 coefficient_index = (header >> BWD_SEG_COEFFICIENT_SHIFT) & BWD_SEG_COEFFICIENT_MASK;
     const u16 source_a = program.word(pc + 1);
     const u16 source_b = program.word(pc + 2);
-    seg_execute_term<IS_R0, MAX_DEPTH>(desc, bank, term_class, coefficient_index, source_a, source_b, row, rows, acc_c0, acc_c2);
+    // `seg_execute_term` is placement-BLIND on purpose: the ladder is about where
+    // the accumulator LIVES between terms, and wrapping it here keeps the register
+    // placement's instruction stream byte-identical to what the fifteen release
+    // symbols compile today.
+    if constexpr (ACC == BWD_SEG_ACC_IN_REGISTERS) {
+      seg_execute_term<IS_R0, MAX_DEPTH>(desc, bank, term_class, coefficient_index, source_a, source_b, row, rows, acc_c0, acc_c2);
+    } else if constexpr (ACC == BWD_SEG_ACC_C2_SMEM) {
+      e4 live_c2 = slot_c2.load();
+      seg_execute_term<IS_R0, MAX_DEPTH>(desc, bank, term_class, coefficient_index, source_a, source_b, row, rows, acc_c0, live_c2);
+      slot_c2.store(live_c2);
+    } else {
+      e4 live_c0 = slot_c0.load();
+      e4 live_c2 = slot_c2.load();
+      seg_execute_term<IS_R0, MAX_DEPTH>(desc, bank, term_class, coefficient_index, source_a, source_b, row, rows, live_c0, live_c2);
+      slot_c0.store(live_c0);
+      slot_c2.store(live_c2);
+    }
+  }
+
+  if constexpr (ACC != BWD_SEG_ACC_IN_REGISTERS) {
+    // The eval loop and the epilogue are separated by no barrier, and none is
+    // needed: every slot is PRIVATE to its thread, so the read below is of this
+    // thread's own last write.
+    acc_c2 = slot_c2.load();
+    if constexpr (ACC == BWD_SEG_ACC_BOTH_SMEM)
+      acc_c0 = slot_c0.load();
   }
 
   // Phase 3.
@@ -654,16 +733,29 @@ DEVICE_FORCEINLINE void seg_body(const Desc &desc, const Bank &bank, const Progr
 
 // ── Specialization wrappers ─────────────────────────────────────────────────
 
-template <bool IS_R0, u32 EPILOGUE> DEVICE_FORCEINLINE void seg_body_const_inline(const bwd_seg_desc &desc) {
-  seg_body<IS_R0, EPILOGUE>(desc, seg_coeff_bank_constant{}, seg_program_inline<bwd_seg_desc>{desc});
+template <bool IS_R0, u32 EPILOGUE, u32 ACC = BWD_SEG_ACC_IN_REGISTERS> DEVICE_FORCEINLINE void seg_body_const_inline(const bwd_seg_desc &desc) {
+  seg_body<IS_R0, EPILOGUE, ACC>(desc, seg_coeff_bank_constant{}, seg_program_inline<bwd_seg_desc>{desc});
 }
 
 template <bool IS_R0, u32 EPILOGUE> DEVICE_FORCEINLINE void seg_body_ptr_inline(const bwd_seg_desc &desc) {
-  seg_body<IS_R0, EPILOGUE>(desc, seg_coeff_bank_pointer{desc.coefficients}, seg_program_inline<bwd_seg_desc>{desc});
+  seg_body<IS_R0, EPILOGUE, BWD_SEG_ACC_IN_REGISTERS>(desc, seg_coeff_bank_pointer{desc.coefficients}, seg_program_inline<bwd_seg_desc>{desc});
 }
 
 template <bool IS_R0, u32 EPILOGUE> DEVICE_FORCEINLINE void seg_body_const_progptr(const bwd_seg_progptr_desc &desc) {
-  seg_body<IS_R0, EPILOGUE>(desc, seg_coeff_bank_constant{}, seg_program_devptr{desc.program});
+  seg_body<IS_R0, EPILOGUE, BWD_SEG_ACC_IN_REGISTERS>(desc, seg_coeff_bank_constant{}, seg_program_devptr{desc.program});
+}
+
+// The Task-9 Stage-B rungs, instantiated ON the Stage-A winner's epilogue and
+// coefficient loader only: `plane` + `const`. Every other cell would be a kernel
+// with no comparison point, and the ladder's question is whether moving an
+// accumulator out of registers pays where the register count is the binding
+// occupancy limiter — not whether it pays in general.
+template <bool IS_R0> DEVICE_FORCEINLINE void seg_body_const_inline_acc2smem(const bwd_seg_desc &desc) {
+  seg_body_const_inline<IS_R0, BWD_SEG_EPILOGUE_PLANE, BWD_SEG_ACC_C2_SMEM>(desc);
+}
+
+template <bool IS_R0> DEVICE_FORCEINLINE void seg_body_const_inline_accbothsmem(const bwd_seg_desc &desc) {
+  seg_body_const_inline<IS_R0, BWD_SEG_EPILOGUE_PLANE, BWD_SEG_ACC_BOTH_SMEM>(desc);
 }
 
 } // namespace airbender::prover::gkr
@@ -693,3 +785,17 @@ AB_GKR_BWD_SEG_KERNEL(ab_gkr_bwd_seg_cont_const_progptr_epi_plane_kernel, bwd_se
 AB_GKR_BWD_SEG_KERNEL(ab_gkr_bwd_seg_cont_const_progptr_epi_wide_kernel, bwd_seg_progptr_desc, seg_body_const_progptr, false, BWD_SEG_EPILOGUE_WIDE)
 
 #undef AB_GKR_BWD_SEG_KERNEL
+
+// The Stage-B AccPlacement rungs. Separate macro because the placement is baked
+// into the wrapper rather than passed as the epilogue axis: these four symbols
+// exist to be MEASURED against the four register-placement symbols above with the
+// same epilogue and loader, and nothing else may launch them.
+#define AB_GKR_BWD_SEG_ACC_KERNEL(symbol, body, is_r0)                                                                                                         \
+  EXTERN __global__ void symbol(const __grid_constant__ airbender::prover::gkr::bwd_seg_desc desc) { airbender::prover::gkr::body<is_r0>(desc); }
+
+AB_GKR_BWD_SEG_ACC_KERNEL(ab_gkr_bwd_seg_r0_const_epi_plane_acc2smem_kernel, seg_body_const_inline_acc2smem, true)
+AB_GKR_BWD_SEG_ACC_KERNEL(ab_gkr_bwd_seg_r0_const_epi_plane_accbothsmem_kernel, seg_body_const_inline_accbothsmem, true)
+AB_GKR_BWD_SEG_ACC_KERNEL(ab_gkr_bwd_seg_cont_const_epi_plane_acc2smem_kernel, seg_body_const_inline_acc2smem, false)
+AB_GKR_BWD_SEG_ACC_KERNEL(ab_gkr_bwd_seg_cont_const_epi_plane_accbothsmem_kernel, seg_body_const_inline_accbothsmem, false)
+
+#undef AB_GKR_BWD_SEG_ACC_KERNEL
