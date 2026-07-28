@@ -239,14 +239,70 @@ template <u32 MAX_DEPTH, typename Raw> DEVICE_FORCEINLINE e4 seg_fold(const Raw 
   return seg_lift(raw(index));
 }
 
-// A target-depth value, as a leaf source in its own right: this is what lets the
-// projection helper below be written once for folded and unfolded operands alike.
-template <u32 MAX_DEPTH, typename Raw> struct seg_folded_value {
-  Raw raw;
-  u32 span;
-  u32 delta;
-  DEVICE_FORCEINLINE e4 operator()(const u32 index) const { return seg_fold<MAX_DEPTH>(raw, index, span, delta); }
-};
+// Both target-depth endpoints of one folded source in ONE pass over q: same
+// loads as two seg_fold_flat calls, each weight consumed once, two
+// independent fma chains for ILP. This is also the prologue's shape — fold
+// then publish both halves — so it is written once here.
+template <u32 DELTA, typename Raw>
+DEVICE_FORCEINLINE void seg_fold_endpoints_flat(const Raw &raw, const u32 row, const u32 rows, const u32 span, e4 &s0, e4 &s1) {
+  static_assert(DELTA >= 1 && DELTA <= BWD_SEG_MAX_FOLD_DEPTH, "fold outside 1..BWD_SEG_MAX_FOLD_DEPTH");
+  constexpr u32 BASE = DELTA == 1 ? BWD_SEG_FOLD_WEIGHT_BASE_D1 : DELTA == 2 ? BWD_SEG_FOLD_WEIGHT_BASE_D2 : BWD_SEG_FOLD_WEIGHT_BASE_D3;
+  const auto leaf0_lo = raw(row);
+  const auto leaf0_hi = raw(rows + row);
+  s0 = seg_lift(leaf0_lo);
+  s1 = seg_lift(leaf0_hi);
+#pragma unroll
+  for (u32 q = 1; q < (1u << DELTA); q++) {
+    const e4 w = ::ab_gkr_bwd_seg_fold_weights[BASE + q - 1];
+    s0 = e4::fma(w, decltype(leaf0_lo)::sub(raw(row + q * span), leaf0_lo), s0);
+    s1 = e4::fma(w, decltype(leaf0_hi)::sub(raw(rows + row + q * span), leaf0_hi), s1);
+  }
+}
+
+template <u32 MAX_DEPTH, typename Raw>
+DEVICE_FORCEINLINE void seg_fold_endpoints(const Raw &raw, const u32 row, const u32 rows, const u32 span, const u32 delta, e4 &s0, e4 &s1) {
+  if constexpr (MAX_DEPTH >= 3)
+    if (delta == 3)
+      return seg_fold_endpoints_flat<3>(raw, row, rows, span, s0, s1);
+  if constexpr (MAX_DEPTH >= 2)
+    if (delta == 2)
+      return seg_fold_endpoints_flat<2>(raw, row, rows, span, s0, s1);
+  if constexpr (MAX_DEPTH >= 1)
+    if (delta == 1)
+      return seg_fold_endpoints_flat<1>(raw, row, rows, span, s0, s1);
+  s0 = seg_lift(raw(row));
+  s1 = seg_lift(raw(rows + row));
+}
+
+// The Delta projection of a folded source, folding the DIFFERENCE leaves
+// d_q = raw(hi) - raw(lo) directly: they are a valid leaf set and the weights
+// sum to one, so the same difference form applies with ONE accumulator.
+template <u32 DELTA, typename Raw> DEVICE_FORCEINLINE e4 seg_fold_delta_flat(const Raw &raw, const u32 row, const u32 rows, const u32 span) {
+  static_assert(DELTA >= 1 && DELTA <= BWD_SEG_MAX_FOLD_DEPTH, "fold outside 1..BWD_SEG_MAX_FOLD_DEPTH");
+  constexpr u32 BASE = DELTA == 1 ? BWD_SEG_FOLD_WEIGHT_BASE_D1 : DELTA == 2 ? BWD_SEG_FOLD_WEIGHT_BASE_D2 : BWD_SEG_FOLD_WEIGHT_BASE_D3;
+  const auto d0 = decltype(raw(0))::sub(raw(rows + row), raw(row));
+  e4 acc = seg_lift(d0);
+#pragma unroll
+  for (u32 q = 1; q < (1u << DELTA); q++) {
+    const e4 w = ::ab_gkr_bwd_seg_fold_weights[BASE + q - 1];
+    const auto dq = decltype(d0)::sub(raw(rows + row + q * span), raw(row + q * span));
+    acc = e4::fma(w, decltype(d0)::sub(dq, d0), acc);
+  }
+  return acc;
+}
+
+template <u32 MAX_DEPTH, typename Raw> DEVICE_FORCEINLINE e4 seg_fold_delta(const Raw &raw, const u32 row, const u32 rows, const u32 span, const u32 delta) {
+  if constexpr (MAX_DEPTH >= 3)
+    if (delta == 3)
+      return seg_fold_delta_flat<3>(raw, row, rows, span);
+  if constexpr (MAX_DEPTH >= 2)
+    if (delta == 2)
+      return seg_fold_delta_flat<2>(raw, row, rows, span);
+  if constexpr (MAX_DEPTH >= 1)
+    if (delta == 1)
+      return seg_fold_delta_flat<1>(raw, row, rows, span);
+  return e4::sub(seg_lift(raw(rows + row)), seg_lift(raw(row)));
+}
 
 // ── Projections (section 4) ─────────────────────────────────────────────────
 
@@ -279,6 +335,25 @@ template <seg_projection P, typename Value> DEVICE_FORCEINLINE auto seg_project(
       return seg_value<T>{T::ZERO(), delta};
     else
       return seg_value<T>{s0, delta};
+  }
+}
+
+// The same three projections over a FOLDED source, each fused into a SINGLE pass
+// over the leaves instead of folding first and projecting after: a Delta never
+// materializes the two endpoints it would subtract, and a Pair walks the leaves
+// once for both chains. `seg_project` above serves the DIRECT sources, where a
+// leaf read already IS the target-depth value.
+template <seg_projection P, u32 MAX_DEPTH, typename Raw>
+DEVICE_FORCEINLINE seg_value<e4> seg_project_folded(const Raw &raw, const u32 row, const u32 rows, const u32 span, const u32 delta) {
+  if constexpr (P == SEG_PROJ_ENDPOINT0) {
+    return seg_value<e4>{seg_fold<MAX_DEPTH>(raw, row, span, delta), e4::ZERO()};
+  } else if constexpr (P == SEG_PROJ_DELTA) {
+    return seg_value<e4>{e4::ZERO(), seg_fold_delta<MAX_DEPTH>(raw, row, rows, span, delta)};
+  } else {
+    e4 s0;
+    e4 s1;
+    seg_fold_endpoints<MAX_DEPTH>(raw, row, rows, span, delta, s0, s1);
+    return seg_value<e4>{s0, e4::sub(s1, s0)};
   }
 }
 
@@ -332,10 +407,10 @@ DEVICE_FORCEINLINE seg_value<e4> seg_resolve_e4(const Desc &desc, const u16 slot
   const u32 delta = u32{window.target_depth} - u32{window.backing_depth};
   if (record.source_class == BWD_SEG_SOURCE_CLASS_PROCEDURAL_INLINE) {
     const seg_raw_synthesized raw{bwd_coeff_procedural_source_kind(window.procedural_kind)};
-    return seg_project<P>(seg_folded_value<MAX_DEPTH, seg_raw_synthesized>{raw, span, delta}, row, rows);
+    return seg_project_folded<P, MAX_DEPTH>(raw, row, rows, span, delta);
   }
   const seg_raw_bf_column<ld_modifier::ca> raw{seg_read_bf_column(window, record.column)};
-  return seg_project<P>(seg_folded_value<MAX_DEPTH, seg_raw_bf_column<ld_modifier::ca>>{raw, span, delta}, row, rows);
+  return seg_project_folded<P, MAX_DEPTH>(raw, row, rows, span, delta);
 }
 
 // ── The JAOT fold prologue (section 3) ──────────────────────────────────────
@@ -363,16 +438,13 @@ template <typename Desc> DEVICE_FORCEINLINE void seg_fold_and_publish(const Desc
   e4 s1;
   if (window.origin == BWD_COEFF_ORIGIN_READ_EXT) {
     const seg_raw_e4_column<ld_modifier::cs> raw{seg_read_e4_column(window, record.column)};
-    s0 = seg_fold<BWD_SEG_MAX_FOLD_DEPTH>(raw, row, span, delta);
-    s1 = seg_fold<BWD_SEG_MAX_FOLD_DEPTH>(raw, rows + row, span, delta);
+    seg_fold_endpoints<BWD_SEG_MAX_FOLD_DEPTH>(raw, row, rows, span, delta, s0, s1);
   } else if (window.origin == BWD_COEFF_ORIGIN_PROCEDURAL) {
     const seg_raw_synthesized raw{bwd_coeff_procedural_source_kind(window.procedural_kind)};
-    s0 = seg_fold<BWD_SEG_MAX_FOLD_DEPTH>(raw, row, span, delta);
-    s1 = seg_fold<BWD_SEG_MAX_FOLD_DEPTH>(raw, rows + row, span, delta);
+    seg_fold_endpoints<BWD_SEG_MAX_FOLD_DEPTH>(raw, row, rows, span, delta, s0, s1);
   } else {
     const seg_raw_bf_column<ld_modifier::cs> raw{seg_read_bf_column(window, record.column)};
-    s0 = seg_fold<BWD_SEG_MAX_FOLD_DEPTH>(raw, row, span, delta);
-    s1 = seg_fold<BWD_SEG_MAX_FOLD_DEPTH>(raw, rows + row, span, delta);
+    seg_fold_endpoints<BWD_SEG_MAX_FOLD_DEPTH>(raw, row, rows, span, delta, s0, s1);
   }
 
   // Only a live row publishes. A dead lane of the last tile folded a CLAMPED row
