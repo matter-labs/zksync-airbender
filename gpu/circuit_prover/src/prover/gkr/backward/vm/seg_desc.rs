@@ -269,7 +269,6 @@ impl Default for BwdCoeffSourceWindow {
 /// byte it travels in.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-#[allow(dead_code)] // TASK 6 fills these; TASK 7 reads them on the device.
 pub(crate) struct BwdSegSourceRecord {
     /// Slot in [`BwdSegDesc::window`].
     pub window: u8,
@@ -303,7 +302,6 @@ const _: () = {
 /// pointers land naturally aligned after the arrays.
 #[repr(C, align(16))]
 #[derive(Clone, Copy)]
-#[allow(dead_code)] // TASK 6 fills this; TASK 7 launches with it.
 pub(crate) struct BwdSegDesc {
     /// The lean term stream, embedded by value. Warp `w` walks
     /// `program[list_offset[w]..list_offset[w + 1]]`.
@@ -370,7 +368,14 @@ impl BwdSegDesc {
     ///
     /// `[u16; LEAN_DESCRIPTOR_PROGRAM_WORDS]` is far past the arity `Default` is
     /// derived for, so this is written out rather than derived.
-    #[allow(dead_code)] // TASK 6 builds descriptors from this.
+    /// ABI-GATE ONLY, and the `cfg_attr` says so rather than a blanket `allow`:
+    /// under `cfg(test)` there is no suppression, so if
+    /// [`seg_abi_tests`](super::seg_abi_tests) ever stops calling this, it goes
+    /// back to warning instead of sitting here forever. Production lowering builds
+    /// a descriptor field-by-field from a real round binding
+    /// ([`seg_lower::lower_bwd_seg`](super::seg_lower::lower_bwd_seg)) and never
+    /// starts from a zeroed one.
+    #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) fn empty() -> Self {
         Self {
             program: [0; LEAN_DESCRIPTOR_PROGRAM_WORDS],
@@ -413,7 +418,6 @@ impl BwdSegDesc {
 /// the staging buffer is the caller's, exactly as for the coefficient bank.
 #[repr(C, align(16))]
 #[derive(Clone, Copy)]
-#[allow(dead_code)] // TASK 6 fills this; TASK 7 launches the progptr family.
 pub(crate) struct BwdSegProgPtrDesc {
     /// Device-resident lean term stream, `program_words` u16 words long.
     pub program: *const u16,
@@ -440,8 +444,9 @@ pub(crate) struct BwdSegProgPtrDesc {
 }
 
 impl BwdSegProgPtrDesc {
-    /// An empty descriptor; see [`BwdSegDesc::empty`].
-    #[allow(dead_code)] // TASK 6 builds descriptors from this.
+    /// An empty descriptor; ABI-gate only, for the same reason and under the same
+    /// `cfg_attr` as [`BwdSegDesc::empty`].
+    #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) fn empty() -> Self {
         Self {
             program: std::ptr::null(),
@@ -473,7 +478,13 @@ impl BwdSegProgPtrDesc {
 /// own alignment.
 ///
 /// `formals` is `(size, align)` in DECLARATION order.
-#[allow(dead_code)] // TASK 7 owns the signatures these budgets describe.
+///
+/// ABI-GATE ONLY: no launch reads this. The launcher hands nvcc a descriptor and
+/// nvcc does the packing, so the budget is a CLAIM about the launch ABI that only
+/// [`seg_abi_tests::seg_kernel_argument_bytes_are_pinned_for_both_launcher_shapes`](super::seg_abi_tests)
+/// can check. `cfg_attr(not(test), ...)` rather than a blanket `allow` so losing
+/// that test brings the warning back.
+#[cfg_attr(not(test), allow(dead_code))]
 const fn kernel_argument_bytes(formals: &[(usize, usize)]) -> usize {
     let mut total: usize = 0;
     let mut index = 0;
@@ -492,17 +503,19 @@ const fn kernel_argument_bytes(formals: &[(usize, usize)]) -> usize {
 /// `ab_gkr_main_layer_claim_point` `__constant__` symbol, the coefficient bank in
 /// this lineage's own `__constant__` symbol (or, under the `ptr` loader, behind
 /// [`BwdSegDesc::coefficients`]), the epilogue plane in DYNAMIC shared memory,
-/// and `k` in [`BwdSegDesc::k`]. If Task 7's signature grows a formal, add it
+/// and `k` in [`BwdSegDesc::k`]. If a launcher signature grows a formal, add it
 /// here and update the pin in [`seg_abi_tests`](super::seg_abi_tests) in the same
 /// commit.
-#[allow(dead_code)] // TASK 7 launches with it.
+///
+/// ABI-GATE ONLY — see [`kernel_argument_bytes`].
+#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) const BWD_SEG_INLINE_KERNEL_ARGUMENT_BYTES: usize =
     kernel_argument_bytes(&[(size_of::<BwdSegDesc>(), align_of::<BwdSegDesc>())]);
 
 /// Total kernel-argument bytes one launch of the progptr family consumes; the
-/// assumed formal list is `(BwdSegProgPtrDesc desc)`. See
+/// assumed formal list is `(BwdSegProgPtrDesc desc)`. ABI-GATE ONLY; see
 /// [`BWD_SEG_INLINE_KERNEL_ARGUMENT_BYTES`].
-#[allow(dead_code)] // TASK 7 launches with it.
+#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) const BWD_SEG_PROGPTR_KERNEL_ARGUMENT_BYTES: usize = kernel_argument_bytes(&[(
     size_of::<BwdSegProgPtrDesc>(),
     align_of::<BwdSegProgPtrDesc>(),

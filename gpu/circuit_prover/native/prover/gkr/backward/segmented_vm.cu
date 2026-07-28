@@ -95,7 +95,8 @@ struct seg_program_devptr {
 // A bound coordinate resolves to `base + column * stride_bytes`; `*_base` already
 // points at the window's first column. `bwd_coeff_source_window` keeps its name
 // from the retired cell-era lineage it was rehomed out of; there is one backward
-// executor now, and these helpers are its only window addressing.
+// coefficient-ISA executor now, and these helpers are its only window addressing.
+// (The incumbent FLAT lineage is a separate thing entirely and does not use them.)
 
 DEVICE_FORCEINLINE const bf *seg_read_bf_column(const bwd_coeff_source_window &window, const u32 column) {
   return reinterpret_cast<const bf *>(window.read_base + static_cast<size_t>(column) * window.read_stride_bytes);
@@ -159,12 +160,17 @@ DEVICE_FORCEINLINE e4 seg_lift(const e4 &value) { return value; }
 // the WIDEST stride instead is the shape that folds correctly at delta 1 and
 // silently transposes the challenges at delta 2 and 3.
 //
-// Ground truth for that pairing is the incumbent, whose leaf form is
-// `(__brev(leaf) >> (32 - delta)) * span` with leaf bit `k` weighted by
+// The pairing was originally derived against the cell-era executor, whose leaf form
+// was `(__brev(leaf) >> (32 - delta)) * span` with leaf bit `k` weighted by
 // `challenge[backing_depth + k]` (`coefficient_vm.cu`'s `fold_leaf_offset` plus
 // `ab_gkr_bwd_coeff_build_fold_factors_kernel`): the bit-reversal is exactly what
 // gives challenge `backing_depth + k` the multiplier `2^(delta - 1 - k)` that this
 // recursion reproduces. It is the split-halves layout, not an interleaving.
+//
+// HISTORICAL: those symbols were deleted in 0a2de89e with the cell-era lineage —
+// see git history if the derivation needs re-reading. The formula is restated
+// above, and its LIVE authority is the parity ladder against
+// `interpret_coeff_layer`, not the retired kernel.
 template <u32 LEVEL, u32 DELTA, typename Raw> DEVICE_FORCEINLINE e4 seg_fold_level(const Raw &raw, const u32 index, const u32 span, const u32 backing_depth) {
   static_assert(LEVEL >= 1 && LEVEL <= DELTA, "fold level outside 1..DELTA");
   static_assert(DELTA <= BWD_SEG_MAX_FOLD_DEPTH, "pyramid deeper than BWD_SEG_MAX_FOLD_DEPTH");
@@ -172,9 +178,10 @@ template <u32 LEVEL, u32 DELTA, typename Raw> DEVICE_FORCEINLINE e4 seg_fold_lev
   const u32 stride = span << (DELTA - LEVEL);
   if constexpr (LEVEL == 1) {
     // The leaf level, and the only one whose operands are the backing's own
-    // width: for a base-field or synthesized leaf `e4::fma(e4, bf, bf)` is four
-    // fused `bf::fma`s and no widening multiply, which is why the lift happens
-    // HERE and not before the subtraction.
+    // width: for a base-field or synthesized leaf `e4::fma(e4, bf, bf)` is ONE
+    // fused `bf::fma` plus three `bf::mul`s (only limb 0 has an addend; see
+    // `gpu/core/native_headers/primitives/field.cuh`) and no widening multiply,
+    // which is why the lift happens HERE and not before the subtraction.
     const auto f0 = raw(index);
     const auto f1 = raw(index + stride);
     return e4::fma(challenge, decltype(f0)::sub(f1, f0), f0);

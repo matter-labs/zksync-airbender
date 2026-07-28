@@ -180,11 +180,16 @@ static_assert(BWD_SEG_LANE_INDEX_MASK == 31, "warp lane index mask drift");
 // `backward::flat` symbol is involved.
 //
 // RR ruling 2026-07-27: the two reserved literal ids are MATERIALIZED at the bank
-// head — `bank[0] = ONE`, `bank[1] = NEG_ONE`, banked recipes from
-// `BWD_COEFF_INDEX_RESERVED` on — so the executor resolves EVERY coefficient with
-// one uniform `bank[coeff_idx]` load: no ±ONE fast path, no branch, no offset
+// head — `bank[0] = ONE`, `bank[1] = NEG_ONE`, banked recipes from index
+// `CoefficientRecipeId::RESERVED` on — so the executor resolves EVERY coefficient
+// with one uniform `bank[coeff_idx]` load: no ±ONE fast path, no branch, no offset
 // subtraction. Host lowering owns the materialization; wire coefficient ids are
 // reserved-INCLUSIVE and this side indexes raw.
+//
+// That reserved count is `gkr_eval_isa::bwd::coeff::model::CoefficientRecipeId::
+// RESERVED`, pinned at 2 by `seg_abi_tests::seg_coefficient_bank_materializes_the_
+// reserved_literals`. (It used to be spelled `BWD_COEFF_INDEX_RESERVED` in the
+// cell-era header; that constant no longer exists on either side.)
 //
 // Sized from the census (1,138 recipes + 2 literals = 1,140), rounded up so the
 // bank is exactly 18 KiB of the 64 KB per-module `__constant__` budget.

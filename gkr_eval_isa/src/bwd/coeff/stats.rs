@@ -1,6 +1,6 @@
 //! Per-coordinate census of the backward coefficient lowering (design §5.4,
-//! §6, §9.2-§9.4), plus the two schedule-independent stream bounds Task 3's
-//! freeze gate is decided on.
+//! §6, §9.2-§9.4), plus the two schedule-independent stream bounds the format
+//! freeze was decided on.
 //!
 //! One [`CoeffCensus`] describes exactly one `(circuit, layer, regime)`
 //! coordinate. Everything here is a pure function of `(DagLayer,
@@ -10,17 +10,31 @@
 //!
 //! # What is deliberately NOT here
 //!
-//! Exact encoded word counts. Fills, plans, moves and cell residency are
-//! SCHEDULE decisions that do not exist yet, so this module reports only:
+//! Exact encoded word counts. This module reports the term POPULATION and two
+//! a-priori bounds over it, never a program size:
 //!
-//!   * [`CoeffCensus::lower_bound_program_bytes`] — the minimum any codec can
-//!     achieve for this term set; an overflow here is UNREPAIRABLE by later
-//!     tasks; and
-//!   * [`CoeffCensus::upper_bound_program_bytes`] — a bound no schedule can
-//!     exceed; fitting here proves the coordinate fits before scheduling exists.
+//!   * [`CoeffCensus::lower_bound_program_bytes`] — one header plus one word per
+//!     source input. A true floor for any codec of this term set, so an overflow
+//!     here is unrepairable by any encoder.
+//!   * [`CoeffCensus::upper_bound_program_bytes`] — the CELL-era codec's
+//!     worst-case shape (every input taking its canonical extension word, plus a
+//!     budgeted move per reusable projection). See
+//!     [`CoeffCensus::upper_bound_fits`] for what it does and does not prove.
 //!
-//! A coordinate between the two is INCONCLUSIVE at this stage; Task 8 decides it
-//! with the real encoder.
+//! # These are census diagnostics, not the live sizing authority
+//!
+//! The live backward wire is the lean codec ([`lean`](super::lean)): a FIXED four
+//! u16 words per term, no extension words, no moves. Nothing is sized from either
+//! bound — the segmented descriptor's program array comes from
+//! [`LEAN_DESCRIPTOR_PROGRAM_WORDS`](super::limits::LEAN_DESCRIPTOR_PROGRAM_WORDS),
+//! a MEASUREMENT of the lean encoder over the whole corpus. The bounds survive
+//! because they are the a-priori guard this census reports per coordinate, and
+//! because a lower-bound overflow is still a real impossibility result.
+//!
+//! The cell-era pager, placement and codec those bounds describe were retired in
+//! favour of the lean codec — see [`super`]'s module doc. Read "fills, plans,
+//! moves and cell residency" below as the vocabulary of a format that no longer
+//! exists.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
@@ -291,15 +305,25 @@ impl CoeffCensus {
         self.lower_bound_program_bytes <= KERNEL_ARGUMENT_CEILING_BYTES
     }
 
-    /// `true` when the conservative stream fits, under the ONE assumption
-    /// [`upper_bound_program_words`](super::limits::upper_bound_program_words)
+    /// `true` when the CELL-era codec's conservative stream fits, under the ONE
+    /// assumption [`upper_bound_program_words`](super::limits::upper_bound_program_words)
     /// documents: [`ASSUMED_MOVES_PER_REUSABLE_PROJECTION`] move per reusable
-    /// projection. The term-word half is proven maximal; the move half is not,
-    /// because design §7.3 does not cap the moves Task 5's placement repair emits.
+    /// projection. The term-word half is maximal for that codec; the move half is
+    /// an assumption, because design §7.3 never capped the moves placement repair
+    /// could emit.
     ///
-    /// Read this as "fits with the assumed move budget", not "no schedule can
-    /// overflow". The exposure is quantified on
-    /// `upper_bound_program_words` — 3.64x headroom on the worst coordinate.
+    /// **Two things this does NOT prove.** It is not "no schedule can overflow" —
+    /// read it as "fits with the assumed move budget" (the exposure is quantified
+    /// on `upper_bound_program_words`: 3.64x headroom on the worst coordinate). And
+    /// it is not a bound on the LIVE lean codec, which is a different format and is
+    /// not dominated by this one in general: the bound charges `1 + arity` words per
+    /// term plus moves, while the lean wire charges a flat four, so an all-unary
+    /// layer with no reusable projections gives `4u` lean words against a `3u`
+    /// bound. The two maxima happen to sit the right way round on this corpus
+    /// (14,328 B of lean program against a 19,396 B worst-case bound), but that is
+    /// a corpus fact about two separately-maximized numbers, not a theorem — and
+    /// nothing relies on it, because the descriptor is sized from the lean
+    /// measurement directly.
     ///
     /// [`ASSUMED_MOVES_PER_REUSABLE_PROJECTION`]: super::limits::ASSUMED_MOVES_PER_REUSABLE_PROJECTION
     pub fn upper_bound_fits(&self) -> bool {

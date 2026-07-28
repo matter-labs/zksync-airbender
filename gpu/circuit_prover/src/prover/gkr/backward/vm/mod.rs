@@ -96,6 +96,10 @@ mod gating {
         "bwd_seg_add_sub_l0_r0_matrix",
     ];
 
+    /// Read only by the `bench`-less arm below, which is the arm that can lie about
+    /// having run the gates. Under `--features bench` there is nothing to opt into,
+    /// so the constant is genuinely unused there.
+    #[cfg_attr(feature = "bench", allow(dead_code))]
     const REQUIRE_ENV: &str = "AB_REQUIRE_BENCH_GATES";
 
     #[test]

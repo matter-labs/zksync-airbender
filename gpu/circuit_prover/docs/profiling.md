@@ -147,17 +147,21 @@ module is `#[cfg(all(test, feature = "bench"))]`. `--ignored` is required too �
 the test is `#[ignore]`d, and libtest exits 0 when a filter matches nothing, so
 omitting it profiles an empty run that looks successful.
 
-To profile the INCUMBENT side of the comparison, drop `--nvtx*` (its launch is
-deliberately outside the range) and filter on its own symbol, skipping the
-correctness launch and the three warmups:
+To profile the INCUMBENT side of the comparison, keep `--nvtx` and swap the range
+message for the incumbent's own — it registers a SEPARATE range for exactly this
+purpose:
 
 ```bash
-  --kernel-name 'regex:ab_gkr_main_round0_flat_constant_compact_e4_kernel' \
-  --launch-skip 4 --launch-count 1
+  --nvtx --nvtx-include 'gpu_circuit_prover.tests@test.gpu.bwd_seg.incumbent' \
+  --launch-count 1 -o target/profiling/ncu/seg_r0_incumbent
 ```
 
-The skip is `INCUMBENT_PROFILE_LAUNCH_SKIP` = one untimed correctness launch plus
-`WARMUP_ITERS`, and the head-to-head test counts its own incumbent launches and
-asserts that relationship — so changing the warmup count fails the test rather
-than silently profiling a cold warmup launch. The generated
-`target/gkr/bwd_coeff_profile_summary.md` section prints the current value.
+Both sides are therefore selected **by NVTX, never by a launch-skip count**. A
+`--launch-skip` recipe has to encode "one untimed correctness launch plus
+`SEG_WARMUP_ITERS` warmups", which silently profiles a cold warmup launch the
+moment the warmup constant moves — and `SEG_WARMUP_ITERS` is a tuning knob
+(currently 5, floored at 5 by `seg_report.rs`). The range is not. `seg_report.rs`'s
+`SEG_NVTX_{DOMAIN,MESSAGE,INCUMBENT_MESSAGE}` are the three authoritative strings,
+and the harness prints both invocations into its generated
+`target/gkr/seg/seg_spike_summary.md` under "Nsight Compute invocation" — copy them
+from there rather than from here if the two ever disagree.

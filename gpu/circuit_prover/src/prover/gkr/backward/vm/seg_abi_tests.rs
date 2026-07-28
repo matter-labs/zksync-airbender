@@ -1,8 +1,10 @@
 //! The Rust-side ABI gate for the SEGMENTED lean VM's launch descriptors.
 //!
 //! Since the cell-era lineage was retired this is the WHOLE Rust-side ABI gate for
-//! backward evaluation: the two descriptors, the source record, the source window,
-//! and every capacity and constant either side mirrors. The CUDA half —
+//! the backward COEFFICIENT-ISA lineage: the two descriptors, the source record,
+//! the source window, and every capacity and constant either side mirrors. (The
+//! incumbent FLAT lineage — `backward::flat`, `continuation.cuh`, `compact/` — is
+//! production and has its own guards; nothing here covers it.) The CUDA half —
 //! `native/prover/gkr/backward/segmented_vm.cuh` — `static_assert`s every field
 //! offset and both descriptor sizes against the literals below, so a CUDA-side
 //! STRUCT edit is a build failure.
