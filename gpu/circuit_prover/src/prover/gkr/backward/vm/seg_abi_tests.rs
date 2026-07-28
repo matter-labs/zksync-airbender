@@ -61,8 +61,9 @@ use super::seg_desc::{
     BWD_COEFF_PROCEDURAL_INITS_AND_TEARDOWNS_LOW, BWD_COEFF_PROCEDURAL_NONE,
     BWD_COEFF_PROCEDURAL_RANGE_CHECK_16_BITS, BWD_COEFF_PROCEDURAL_RANGE_CHECK_TIMESTAMP,
     BWD_COEFF_PUBLISH_TARGET_DEPTH, BWD_SEG_CONST_BANK, BWD_SEG_DESC_ALIGN, BWD_SEG_DESC_CAP,
-    BWD_SEG_INLINE_KERNEL_ARGUMENT_BYTES, BWD_SEG_MAX_K, BWD_SEG_MAX_SOURCES,
-    BWD_SEG_MAX_THREADS_PER_BLOCK, BWD_SEG_PROGPTR_KERNEL_ARGUMENT_BYTES,
+    BWD_SEG_FOLD_WEIGHT_BASE_D1, BWD_SEG_FOLD_WEIGHT_BASE_D2, BWD_SEG_FOLD_WEIGHT_BASE_D3,
+    BWD_SEG_FOLD_WEIGHT_SLOTS, BWD_SEG_INLINE_KERNEL_ARGUMENT_BYTES, BWD_SEG_MAX_K,
+    BWD_SEG_MAX_SOURCES, BWD_SEG_MAX_THREADS_PER_BLOCK, BWD_SEG_PROGPTR_KERNEL_ARGUMENT_BYTES,
 };
 use super::seg_lower::SourceClass;
 use crate::primitives::field::E4;
@@ -311,10 +312,19 @@ fn seg_kernel_argument_bytes_are_pinned_for_both_launcher_shapes() {
     //
     // i.e. ONE by-value descriptor and nothing else. Everything a launch also
     // needs is out of band: fold challenges in `ab_gkr_main_layer_claim_point`,
-    // the coefficient bank in this lineage's own `__constant__` symbol (or, in
-    // the `ptr` loader, in `desc.coefficients`), the epilogue plane in DYNAMIC
-    // shared memory, `k` in `desc.k`, and the program in `desc.program` (inline)
-    // or behind `desc.program` (progptr).
+    // the fold weights in `ab_gkr_bwd_seg_fold_weights`, the coefficient bank in
+    // this lineage's own `__constant__` symbol (or, in the `ptr` loader, in
+    // `desc.coefficients`), the epilogue plane in DYNAMIC shared memory, `k` in
+    // `desc.k`, and the program in `desc.program` (inline) or behind
+    // `desc.program` (progptr).
+    //
+    // The fold-weight prelude is the ONE exception, and takes no descriptor at
+    // all:
+    //
+    //   ab_gkr_bwd_seg_build_fold_weights_kernel(E4 *fold_weights, u32 round)
+    //
+    // `fold_weights` being the weight symbol's own address rather than a buffer
+    // is why it needs no descriptor and no budget of its own.
     eprintln!(
         "kernel-argument bytes: inline={BWD_SEG_INLINE_KERNEL_ARGUMENT_BYTES} B, \
          progptr={BWD_SEG_PROGPTR_KERNEL_ARGUMENT_BYTES} B, ceiling={KERNEL_ARGUMENT_CEILING_BYTES} B"
@@ -323,6 +333,9 @@ fn seg_kernel_argument_bytes_are_pinned_for_both_launcher_shapes() {
     assert_eq!(BWD_SEG_PROGPTR_KERNEL_ARGUMENT_BYTES, PROGPTR_DESC_BYTES);
     assert!(BWD_SEG_INLINE_KERNEL_ARGUMENT_BYTES <= KERNEL_ARGUMENT_CEILING_BYTES);
     assert!(BWD_SEG_PROGPTR_KERNEL_ARGUMENT_BYTES <= KERNEL_ARGUMENT_CEILING_BYTES);
+    let prelude_bytes = size_of::<*mut E4>() + size_of::<u32>();
+    eprintln!("fold-weight prelude argument bytes: {prelude_bytes} B");
+    assert!(prelude_bytes <= KERNEL_ARGUMENT_CEILING_BYTES);
 }
 
 // ── Capacities ──────────────────────────────────────────────────────────────
@@ -680,6 +693,27 @@ fn seg_cuda_constants_match_the_rust_mirror() {
         ),
         ("BWD_SEG_SOURCE_CLASSES", 5),
         ("BWD_SEG_MAX_INLINE_FOLD_DEPTH", 2),
+        // The fold-weight bank. MANDATORY for the same reason
+        // [`BWD_SEG_CONST_BANK`] is: the slot count sizes a `__constant__`
+        // symbol the host writes through its own address, and the three base
+        // offsets are the PHYSICAL slot order — a CUDA-only renumber gives every
+        // catch-up the wrong challenge product, which no compiler sees.
+        (
+            "BWD_SEG_FOLD_WEIGHT_SLOTS",
+            BWD_SEG_FOLD_WEIGHT_SLOTS as u64,
+        ),
+        (
+            "BWD_SEG_FOLD_WEIGHT_BASE_D1",
+            BWD_SEG_FOLD_WEIGHT_BASE_D1 as u64,
+        ),
+        (
+            "BWD_SEG_FOLD_WEIGHT_BASE_D2",
+            BWD_SEG_FOLD_WEIGHT_BASE_D2 as u64,
+        ),
+        (
+            "BWD_SEG_FOLD_WEIGHT_BASE_D3",
+            BWD_SEG_FOLD_WEIGHT_BASE_D3 as u64,
+        ),
         // ── The block rehomed out of the retired `coefficient_vm.cuh` ──────────
         //
         // Window ORIGIN. MANDATORY: `seg_resolve_e4` selects the backing field off
@@ -1049,7 +1083,8 @@ fn seg_cuda_layout_asserts_match_the_rust_layout() {
 }
 
 /// Every kernel symbol the Rust launcher declares is DECLARED in the header, and
-/// with the descriptor type the launcher passes.
+/// with the formal list the launcher passes — the descriptor type for the fifteen
+/// matrix cells, the weight-bank alias and the round for the prelude.
 ///
 /// Symbol names, not numbers, so there is no prefix hazard: `EXTERN` makes the bare
 /// name the ABI, and a launcher naming a symbol the header does not declare fails at
@@ -1083,8 +1118,15 @@ fn seg_cuda_header_declares_every_launched_kernel() {
     // The device-program family has ONE cell by design (spec §5: it measures the
     // program-source axis alone), so the matrix is twelve plus three, not twenty-four.
     assert_eq!(declared, 15);
-    // The two `__constant__` symbols a launch stages into, named rather than
+    // The fold-weight prelude is launched but is NOT a matrix cell, so it is
+    // asserted apart from the count — with its formal list, which is the only
+    // signature in this lineage that is not one by-value descriptor.
+    assert!(SEG_CUDA_HEADER
+        .contains("ab_gkr_bwd_seg_build_fold_weights_kernel(e4 *fold_weights, u32 round)"));
+    // The three `__constant__` symbols a launch stages into, named rather than
     // matched numerically.
     assert!(SEG_CUDA_HEADER.contains("ab_gkr_bwd_seg_coeff_bank[airbender::prover::gkr::BWD_SEG_CONST_BANK]"));
     assert!(SEG_CUDA_HEADER.contains("ab_gkr_main_layer_claim_point["));
+    assert!(SEG_CUDA_HEADER
+        .contains("ab_gkr_bwd_seg_fold_weights[airbender::prover::gkr::BWD_SEG_FOLD_WEIGHT_SLOTS]"));
 }

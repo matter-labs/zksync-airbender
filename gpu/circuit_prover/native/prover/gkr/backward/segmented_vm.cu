@@ -18,11 +18,19 @@
 // to the consolidated row, never per partial.
 //
 // What is deliberately absent, and must stay absent: a cell file, residency
-// modes, a fold-capable load path inside the term loop, a fold-factor prelude
-// kernel (the pyramid weights ARE the claim-point challenges), a +-1 coefficient
-// fast path (RR ruling 2026-07-27: the bank materializes both reserved literals
-// at its head and every coefficient is one uniform `bank[coeff_idx]` load), and
-// any validation in a release kernel.
+// modes, a fold-capable load path inside the term loop, a +-1 coefficient fast
+// path (RR ruling 2026-07-27: the bank materializes both reserved literals at
+// its head and every coefficient is one uniform `bank[coeff_idx]` load), and any
+// validation in a release kernel.
+//
+// FOLD WEIGHTS come from a PRELUDE, not from the term loop. The flat fold weighs
+// each of a delta-step catch-up's `2^delta` endpoints by a product of
+// claim-point challenges, so those products are built once per round by
+// `ab_gkr_bwd_seg_build_fold_weights_kernel` into `ab_gkr_bwd_seg_fold_weights`
+// — writing through the symbol's own device address, the only way device code
+// can store to a `__constant__`. That launch is continuation-only (round 0 has
+// no challenges and no folds) and stays OUTSIDE the term loop: the prelude is
+// the bank's only writer, and no executor kernel ever builds a weight.
 //
 // ENDPOINT LAYOUT. A source at target depth is `2 * logical_rows` values with the
 // two endpoints in SPLIT HALVES: `s0 = V[row]`, `s1 = V[rows + row]`. That is the
@@ -46,6 +54,8 @@
 #include "segmented_vm.cuh"
 
 __device__ __constant__ e4 ab_gkr_bwd_seg_coeff_bank[airbender::prover::gkr::BWD_SEG_CONST_BANK];
+
+__device__ __constant__ e4 ab_gkr_bwd_seg_fold_weights[airbender::prover::gkr::BWD_SEG_FOLD_WEIGHT_SLOTS];
 
 namespace airbender::prover::gkr {
 
@@ -140,6 +150,34 @@ struct seg_raw_synthesized {
 DEVICE_FORCEINLINE e4 seg_lift(const bf value) { return e4::from_scalar(value); }
 
 DEVICE_FORCEINLINE e4 seg_lift(const e4 &value) { return value; }
+
+// ── Fold-weight prelude (flat fold, spec 2026-07-28) ────────────────────────
+
+// One thread builds one slot. Challenges come from the claim-point constant —
+// the round's update is stream-ordered before this launch — and the store
+// permutation here is the ONLY place the physical-order convention exists.
+DEVICE_FORCEINLINE void seg_build_fold_weights(e4 *fold_weights, const u32 round) {
+  const u32 slot = threadIdx.x;
+  if (blockIdx.x != 0 || slot >= BWD_SEG_FOLD_WEIGHT_SLOTS)
+    return;
+  const u32 delta = slot < BWD_SEG_FOLD_WEIGHT_BASE_D2 ? 1 : slot < BWD_SEG_FOLD_WEIGHT_BASE_D3 ? 2 : 3;
+  const u32 base = delta == 1 ? BWD_SEG_FOLD_WEIGHT_BASE_D1 : delta == 2 ? BWD_SEG_FOLD_WEIGHT_BASE_D2 : BWD_SEG_FOLD_WEIGHT_BASE_D3;
+  const u32 q = slot - base + 1;
+  if (delta > round) {
+    // Unreachable by lowering (delta <= round, seg_lower's InvalidDepths /
+    // target == round checks); zeroed rather than left stale.
+    fold_weights[slot] = e4::ZERO();
+    return;
+  }
+  const e4 one = e4::from_scalar(bf::ONE());
+  e4 w = one;
+  for (u32 j = 0; j < delta; j++) {
+    const e4 c = ::ab_gkr_main_layer_claim_point[round - delta + j];
+    const u32 bit = (q >> (delta - 1 - j)) & 1;
+    w = e4::mul(w, bit != 0 ? c : e4::sub(one, c));
+  }
+  fold_weights[slot] = w;
+}
 
 // ── The fold pyramid (section 3) ────────────────────────────────────────────
 
@@ -806,3 +844,12 @@ AB_GKR_BWD_SEG_ACC_KERNEL(ab_gkr_bwd_seg_cont_const_epi_plane_acc2smem_kernel, s
 AB_GKR_BWD_SEG_ACC_KERNEL(ab_gkr_bwd_seg_cont_const_epi_plane_accbothsmem_kernel, seg_body_const_inline_accbothsmem, false)
 
 #undef AB_GKR_BWD_SEG_ACC_KERNEL
+
+// The fold-weight prelude. `fold_weights` is the ab_gkr_bwd_seg_fold_weights
+// symbol's own device address — device code cannot name a __constant__ as a
+// store target, but writing through its cudaGetSymbolAddress alias between
+// launches is this repo's established round-update path (the incumbent's
+// round kernels update ab_gkr_main_layer_claim_point the same way).
+EXTERN __global__ void ab_gkr_bwd_seg_build_fold_weights_kernel(e4 *const fold_weights, const u32 round) {
+  airbender::prover::gkr::seg_build_fold_weights(fold_weights, round);
+}

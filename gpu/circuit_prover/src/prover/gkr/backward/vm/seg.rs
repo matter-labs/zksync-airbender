@@ -30,6 +30,17 @@
 //! This module launches; it stages nothing, allocates nothing, and reads no
 //! device memory, so it adds no obligations to the GPU scheduling contract beyond
 //! "everything above is enqueued on `exec_stream` before the launch".
+//!
+//! One launch here is not an executor: [`launch_bwd_seg_build_fold_weights`] is
+//! the per-round fold-weight prelude, which still stages and allocates nothing
+//! but WRITES the [`bwd_seg_fold_weights_device_ptr`] `__constant__` bank through
+//! that symbol's own address. So the bank is round-mutable shared state, exactly
+//! like the claim point: `exec_stream` order is what makes a round's weights
+//! visible to the segment launches behind it, but what keeps two proofs from
+//! interleaving their rounds into the one bank is the proof-level serialization
+//! invariant the claim point and the coefficient bank already rely on (flat-fold
+//! design §4.2) — the scheduling contract governs stream ordering, not
+//! orchestration concurrency.
 
 // TASK 8's parity ladder and TASK 9's report are the first callers.
 #![allow(dead_code)]
@@ -44,7 +55,9 @@ use std::ffi::c_void;
 use std::ptr::null_mut;
 use std::sync::OnceLock;
 
-use super::seg_desc::{BwdSegDesc, BwdSegProgPtrDesc, BWD_SEG_CONST_BANK, BWD_SEG_MAX_K};
+use super::seg_desc::{
+    BwdSegDesc, BwdSegProgPtrDesc, BWD_SEG_CONST_BANK, BWD_SEG_FOLD_WEIGHT_SLOTS, BWD_SEG_MAX_K,
+};
 use super::seg_lower::{BwdSegLaunchDesc, BwdSegSetup, CoeffMode, ProgramMode};
 use crate::primitives::field::E4;
 use crate::primitives::utils::WARP_SIZE;
@@ -95,6 +108,34 @@ pub(crate) fn bwd_seg_claim_point_device_ptr() -> *mut E4 {
     get_main_layer_claim_point_device_ptr()
 }
 
+cuda_struct_and_stub! {
+    static ab_gkr_bwd_seg_fold_weights: [E4; BWD_SEG_FOLD_WEIGHT_SLOTS];
+}
+
+/// Device address of the fold-weight bank — BOTH the prelude's write target
+/// (passed as its `fold_weights` argument; the alias-write path, spec §4.2) and
+/// the tests' readback window. Round-mutable shared state like the claim point:
+/// safe under the proof-level serialization invariant, not by stream ordering
+/// alone.
+pub(crate) fn bwd_seg_fold_weights_device_ptr() -> *mut E4 {
+    static PTR: OnceLock<usize> = OnceLock::new();
+    let ptr = *PTR.get_or_init(|| {
+        let mut ptr: *mut c_void = null_mut();
+        // SAFETY: the Rust static is the stub for the exact CUDA `__constant__`
+        // E4 bank `segmented_vm.cu` defines.
+        unsafe {
+            cudaGetSymbolAddress(
+                &mut ptr,
+                &ab_gkr_bwd_seg_fold_weights as *const _ as *const c_void,
+            )
+        }
+        .wrap()
+        .expect("cudaGetSymbolAddress failed for ab_gkr_bwd_seg_fold_weights");
+        ptr as usize
+    });
+    ptr as *mut E4
+}
+
 // ── The kernel matrix ───────────────────────────────────────────────────────
 //
 // ONE by-value descriptor is the whole formal list of every symbol, so the
@@ -141,6 +182,42 @@ declare_bwd_seg_kernel!(
     ab_gkr_bwd_seg_cont_const_progptr_epi_wide_kernel,
     BwdSegProgPtrDesc
 );
+
+// ── The fold-weight prelude ─────────────────────────────────────────────────
+//
+// The one launched symbol outside the matrix, and the one with formals other than
+// a descriptor: it writes the `__constant__` weight bank through that symbol's
+// own address, because device code cannot name a `__constant__` as a store
+// target.
+
+cuda_kernel_signature_arguments_and_function!(
+    pub(crate) GkrBwdSegBuildFoldWeights,
+    fold_weights: *mut E4,
+    round: u32,
+);
+cuda_kernel_declaration!(
+    pub(crate) ab_gkr_bwd_seg_build_fold_weights_kernel(fold_weights: *mut E4, round: u32)
+);
+
+/// Enqueue the per-round fold-weight build: one warp, grid 1, exec_stream.
+/// Order per continuation round: claim-point update -> this -> segment kernels.
+/// R0 rounds must not call it (no folds; round 0 has no challenges).
+pub(crate) fn launch_bwd_seg_build_fold_weights(
+    round: u32,
+    context: &ProverContext,
+) -> CudaResult<()> {
+    assert!(round >= 1, "the fold-weight prelude is continuation-only");
+    let config = CudaLaunchConfig::builder()
+        .grid_dim(1)
+        .block_dim(WARP_SIZE)
+        .stream(context.get_exec_stream())
+        .build();
+    let function = GkrBwdSegBuildFoldWeightsFunction(ab_gkr_bwd_seg_build_fold_weights_kernel);
+    function.launch(
+        &config,
+        &GkrBwdSegBuildFoldWeightsArguments::new(bwd_seg_fold_weights_device_ptr(), round),
+    )
+}
 
 /// The cross-warp reduction shape a launch is specialized for (§3).
 ///
