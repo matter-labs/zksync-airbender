@@ -29,7 +29,9 @@ use gkr_eval_isa::bwd::coeff::ArtifactRegime;
 
 use super::seg_desc::{
     BwdSegDesc, BWD_COEFF_ORIGIN_PROCEDURAL, BWD_COEFF_ORIGIN_READ_BASE, BWD_COEFF_ORIGIN_READ_EXT,
-    BWD_COEFF_PROCEDURAL_NONE, BWD_SEG_CONST_BANK, BWD_SEG_MAX_K, BWD_SEG_MAX_SOURCES,
+    BWD_COEFF_PROCEDURAL_NONE, BWD_SEG_CONST_BANK, BWD_SEG_FOLD_WEIGHT_BASE_D1,
+    BWD_SEG_FOLD_WEIGHT_BASE_D2, BWD_SEG_FOLD_WEIGHT_BASE_D3, BWD_SEG_FOLD_WEIGHT_SLOTS,
+    BWD_SEG_MAX_K, BWD_SEG_MAX_SOURCES,
 };
 use super::seg_lower::{
     assign_class, chain_read_column, check_regions_disjoint, e4_limbs, lower_bwd_seg,
@@ -2656,4 +2658,153 @@ fn a_previous_round_planned_for_fewer_windows_is_rejected() {
             entries: 1,
         }),
     );
+}
+
+// ── The flat fold-weight algebra ─────────────────────────────────────────────
+
+/// Host recomputation of the fold-weight bank (spec §3.3): slot layout
+/// [0] = D1, [1..4) = D2 q=1..3, [4..11) = D3 q=1..7, physical-offset order —
+/// challenge j pairs with bit (delta-1-j) of q. delta > round groups are ZERO.
+pub(crate) fn expected_fold_weights(
+    round: u32,
+    claim_point: &[E4],
+) -> [E4; BWD_SEG_FOLD_WEIGHT_SLOTS] {
+    let mut slots = [E4::ZERO; BWD_SEG_FOLD_WEIGHT_SLOTS];
+    let mut slot = 0usize;
+    for delta in 1u32..=3 {
+        for q in 1u32..(1 << delta) {
+            if delta <= round {
+                let mut w = E4::ONE;
+                for j in 0..delta {
+                    let c = claim_point[(round - delta + j) as usize];
+                    let factor = if (q >> (delta - 1 - j)) & 1 == 1 {
+                        c
+                    } else {
+                        let mut one_minus = E4::ONE;
+                        one_minus.sub_assign(&c);
+                        one_minus
+                    };
+                    w.mul_assign(&factor);
+                }
+                slots[slot] = w;
+            }
+            slot += 1;
+        }
+    }
+    slots
+}
+
+/// The LIVE pyramid's exact recursion (segmented_vm.cu's seg_fold_level as of
+/// the pre-flat lineage), over a physical leaf array with span 1: level L
+/// weights with challenges[L-1], stride 1 << (delta - L).
+fn fold_level_reference(
+    leaves: &[E4],
+    challenges: &[E4],
+    level: u32,
+    delta: u32,
+    index: u32,
+) -> E4 {
+    let challenge = challenges[(level - 1) as usize];
+    let stride = 1u32 << (delta - level);
+    let node = |f0: E4, f1: E4| {
+        let mut d = f1;
+        d.sub_assign(&f0);
+        d.mul_assign(&challenge);
+        d.add_assign(&f0);
+        d
+    };
+    if level == 1 {
+        node(leaves[index as usize], leaves[(index + stride) as usize])
+    } else {
+        node(
+            fold_level_reference(leaves, challenges, level - 1, delta, index),
+            fold_level_reference(leaves, challenges, level - 1, delta, index + stride),
+        )
+    }
+}
+
+/// Deterministic non-trivial field elements without a rand dependency:
+/// x <- x^2 + x + g. An algebraic identity must hold for every value, so
+/// distribution quality is irrelevant; variety is enough.
+fn next_e4(state: &mut E4, g: &E4) -> E4 {
+    let mut next = *state;
+    next.mul_assign(state);
+    next.add_assign(state);
+    next.add_assign(g);
+    *state = next;
+    next
+}
+
+#[test]
+fn the_flat_fold_weights_reproduce_the_pyramid_and_sum_to_one() {
+    let mut state = E4::ONE;
+    let mut g = E4::ONE;
+    g.add_assign(&E4::ONE); // g = 2
+    for round in 1u32..=3 {
+        let claim_point: Vec<E4> = (0..round).map(|_| next_e4(&mut state, &g)).collect();
+        let weights = expected_fold_weights(round, &claim_point);
+        for delta in 1u32..=round {
+            let base = match delta {
+                1 => BWD_SEG_FOLD_WEIGHT_BASE_D1,
+                2 => BWD_SEG_FOLD_WEIGHT_BASE_D2,
+                _ => BWD_SEG_FOLD_WEIGHT_BASE_D3,
+            };
+            let challenges = &claim_point[(round - delta) as usize..round as usize];
+            for _ in 0..100 {
+                let leaves: Vec<E4> = (0..1u32 << delta)
+                    .map(|_| next_e4(&mut state, &g))
+                    .collect();
+                // (a) the live pyramid
+                let pyramid = fold_level_reference(&leaves, challenges, delta, delta, 0);
+                // (b) partition-of-unity difference form over the stored slots
+                let mut flat = leaves[0];
+                for q in 1..leaves.len() {
+                    let mut d = leaves[q];
+                    d.sub_assign(&leaves[0]);
+                    d.mul_assign(&weights[base + q - 1]);
+                    flat.add_assign(&d);
+                }
+                // (c) naive Lagrange dot product, w_0 recomputed inline
+                let mut w0 = E4::ONE;
+                for j in 0..delta {
+                    let mut one_minus = E4::ONE;
+                    one_minus.sub_assign(&challenges[j as usize]);
+                    w0.mul_assign(&one_minus);
+                }
+                let mut dot = leaves[0];
+                dot.mul_assign(&w0);
+                let mut weight_sum = w0;
+                for q in 1..leaves.len() {
+                    let mut term = leaves[q];
+                    term.mul_assign(&weights[base + q - 1]);
+                    dot.add_assign(&term);
+                    weight_sum.add_assign(&weights[base + q - 1]);
+                }
+                assert_eq!(pyramid, flat, "pyramid != difference form at delta {delta}");
+                assert_eq!(pyramid, dot, "pyramid != Lagrange dot at delta {delta}");
+                assert_eq!(
+                    weight_sum,
+                    E4::ONE,
+                    "partition of unity broken at delta {delta}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn fold_weights_zero_the_deltas_a_round_cannot_reach() {
+    let mut state = E4::ONE;
+    let mut g = E4::ONE;
+    g.add_assign(&E4::ONE);
+    let claim_point: Vec<E4> = (0..2).map(|_| next_e4(&mut state, &g)).collect();
+    let weights = expected_fold_weights(2, &claim_point);
+    for slot in BWD_SEG_FOLD_WEIGHT_BASE_D3..BWD_SEG_FOLD_WEIGHT_SLOTS {
+        assert_eq!(
+            weights[slot],
+            E4::ZERO,
+            "delta-3 slot {slot} must be zero at round 2"
+        );
+    }
+    assert_ne!(weights[BWD_SEG_FOLD_WEIGHT_BASE_D1], E4::ZERO);
 }

@@ -97,6 +97,16 @@ pub(crate) const BWD_SEG_MAX_THREADS_PER_BLOCK: usize = 1_024;
 /// 12 slots of slack, which [`seg_abi_tests`](super::seg_abi_tests) prints.
 pub(crate) const BWD_SEG_CONST_BANK: usize = 1_152;
 
+/// Fold-weight bank shape (spec §4.1): slots hold only q >= 1 (the q = 0
+/// coefficient is the difference form's implicit 1), packed per delta.
+pub(crate) const BWD_SEG_FOLD_WEIGHT_SLOTS: usize = 11;
+pub(crate) const BWD_SEG_FOLD_WEIGHT_BASE_D1: usize = 0;
+pub(crate) const BWD_SEG_FOLD_WEIGHT_BASE_D2: usize = 1;
+pub(crate) const BWD_SEG_FOLD_WEIGHT_BASE_D3: usize = 4;
+const _: () = assert!(BWD_SEG_FOLD_WEIGHT_BASE_D2 == BWD_SEG_FOLD_WEIGHT_BASE_D1 + 1);
+const _: () = assert!(BWD_SEG_FOLD_WEIGHT_BASE_D3 == BWD_SEG_FOLD_WEIGHT_BASE_D2 + 3);
+const _: () = assert!(BWD_SEG_FOLD_WEIGHT_SLOTS == BWD_SEG_FOLD_WEIGHT_BASE_D3 + 7);
+
 /// Source-table slots the descriptor can hold: the census maximum of 1,062
 /// rounded up to a multiple of 16 slots, which makes both source-indexed arrays
 /// ([`BwdSegDesc::fold_source`] and [`BwdSegDesc::source`]) a whole number of
