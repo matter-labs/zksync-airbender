@@ -2653,6 +2653,163 @@ fn bwd_seg_add_sub_l0_cont_matrix() {
     drop(eq_low);
 }
 
+/// Back-to-back prelude launches inside one event window, for the amortized arm.
+///
+/// The serialized arm records an event pair around ONE launch on an idle stream, so
+/// its number carries the dispatch bubble as well as the kernel; this arm divides a
+/// window that holds many launches by their count, which bounds the same cost from
+/// below. Both bounds are reported — the production round's true charge is between
+/// them, and which end it sits at depends on how far ahead the round's launches are
+/// enqueued.
+const SEG_PRELUDE_BATCH: usize = 32;
+
+/// **The prelude's own cost — the term every continuation median in this module
+/// omits.**
+///
+/// [`SegCell::stage`] enqueues `ab_gkr_bwd_seg_build_fold_weights_kernel` once per
+/// shape and staging is outside every timed loop by construction ("Never called from
+/// inside a timed loop"), so every continuation number this module publishes is
+/// EXECUTOR-ONLY while a production continuation round pays one prelude launch per
+/// round on top of it. Reporting a total without measuring this term would be a
+/// guess, and reporting the executor alone as the round's cost would be wrong; this
+/// cell measures it so both columns exist.
+///
+/// Three things are measured, none of them assumed:
+/// - the prelude alone, serialized (upper bound) and amortized over
+///   [`SEG_PRELUDE_BATCH`] launches (lower bound), at four rounds — the round axis
+///   CHECKS the "one warp, 11 slots, cost independent of round" claim rather than
+///   resting on it, `round = 8` being the beyond-every-fold-depth case;
+/// - the same prelude INTERLEAVED against a real continuation executor in one
+///   process, so the fraction is a paired ratio with an interval rather than a
+///   quotient of two runs' medians.
+///
+/// The executor side is a DENOMINATOR, not a claim: its parity is the ladder's and
+/// the matrices' business, and nothing here divides two medians from two processes.
+#[test]
+#[ignore = "GPU timing; build unlocked and run the executable under with_gpu_lock.sh"]
+#[cfg(not(no_cuda))]
+#[serial_test::serial]
+fn bwd_seg_fold_weight_prelude_cost() {
+    let context = make_seg_spike_context(SEG_CONT_ARENA_BYTES);
+    let stream = context.get_exec_stream();
+
+    let mut solo = String::from(
+        "| round | serialized median (us) | serialized min (us) | amortized per launch (us) |\n\
+         |---|---|---|---|\n",
+    );
+    for round in [1u8, 2, 3, 8] {
+        stage_claim_point(&super::seg_compile::seg_claim_point(round), &context);
+        stream.synchronize().expect("claim point staged");
+        let one = time_solo(stream, || {
+            launch_bwd_seg_build_fold_weights(u32::from(round), &context)
+        })
+        .expect("serialized prelude timing");
+        let batched = time_solo(stream, || {
+            for _ in 0..SEG_PRELUDE_BATCH {
+                launch_bwd_seg_build_fold_weights(u32::from(round), &context)?;
+            }
+            Ok(())
+        })
+        .expect("amortized prelude timing");
+        let median_us = median(&one);
+        let min_us = one.iter().copied().fold(f64::MAX, f64::min);
+        let amortized = median(&batched) / SEG_PRELUDE_BATCH as f64;
+        eprintln!(
+            "[seg-spike] prelude r{round}: serialized {median_us:.3}us median / {min_us:.3}us \
+             min, amortized {amortized:.3}us per launch over {SEG_PRELUDE_BATCH}"
+        );
+        writeln!(
+            solo,
+            "| {round} | {median_us:.3} | {min_us:.3} | {amortized:.3} |"
+        )
+        .expect("write String");
+    }
+
+    // The paired arm: the same row counts and the same production-loader shape the
+    // continuation matrix reports, so the ratio below divides two numbers that were
+    // measured in one loop against each other.
+    let (eq_low, eq_sizes) = build_shared_eq(24, &context);
+    let coord = lean_coordinate(ADD_SUB_LAYOUT, 0, DagBwdRegime::Ext);
+    let shape = SegShape::regs(
+        4,
+        CoeffMode::Constant,
+        ProgramMode::Inline,
+        BwdSegEpilogue::Plane,
+    );
+    let mut paired_body = String::from(
+        "| cell | rows | shape | prelude (us) | executor (us) | prelude / executor | 95% CI |\n\
+         |---|---|---|---|---|---|---|\n",
+    );
+    for round in [1u8, 2] {
+        let per_row = probe_bytes_per_row(&coord, round, D2Policy::Inline);
+        let target = (1usize << 23) >> usize::from(round);
+        let (rows, _saturated) = fit_rows(
+            target,
+            per_row,
+            SEG_BACKING_BUDGET_BYTES,
+            SEG_MIN_TIMED_ROWS,
+        );
+        let cell = SegCell::build(
+            Arc::clone(&coord),
+            round,
+            rows,
+            false,
+            D2Policy::Inline,
+            eq_low.as_ptr(),
+            eq_sizes,
+            &context,
+        );
+        let launchable = cell.prepare(shape, &context);
+        let paired = time_paired(
+            stream,
+            || launch_bwd_seg_build_fold_weights(u32::from(round), &context),
+            || launchable.launch(&context),
+        )
+        .expect("interleaved prelude-vs-executor timing");
+        let estimate = paired.estimate();
+        eprintln!(
+            "[seg-spike] prelude r{round} vs executor {}: prelude {:.3}us vs executor \
+             {:.3}us -> {:.6} [{:.6}, {:.6}] ({rows} rows)",
+            shape.label(),
+            paired.candidate_median(),
+            paired.incumbent_median(),
+            estimate.median_ratio,
+            estimate.ci_low,
+            estimate.ci_high,
+        );
+        writeln!(
+            paired_body,
+            "| add_sub L0 D{round} inline | {rows} | {} | {:.3} | {:.1} | {:.6} | [{:.6}, \
+             {:.6}] |",
+            shape.label(),
+            paired.candidate_median(),
+            paired.incumbent_median(),
+            estimate.median_ratio,
+            estimate.ci_low,
+            estimate.ci_high,
+        )
+        .expect("write String");
+        drop(launchable);
+        drop(cell);
+    }
+    drop(eq_low);
+
+    record_summary_section(
+        "Continuation prelude: the fold-weight build's own per-round cost",
+        &format!(
+            "One warp, grid 1, 11 slots. Staged OUTSIDE every timed loop, so every \
+             continuation median elsewhere in this report is EXECUTOR-ONLY and a production \
+             round's cost is `executor + one prelude`.\n\n\
+             Serialized = an event pair around one launch on an idle stream (carries the \
+             dispatch bubble); amortized = one window holding {SEG_PRELUDE_BATCH} launches, \
+             divided by {SEG_PRELUDE_BATCH} (kernel-bound lower bound). \
+             {SEG_WARMUP_ITERS} warmups and {SEG_TIMING_ITERS} samples per arm.\n\n{solo}\n\
+             Interleaved against a real continuation executor, one process, one loop:\n\n\
+             {paired_body}\n"
+        ),
+    );
+}
+
 /// **Stage B: the AccPlacement ladder**, measured on the Stage-A winner.
 ///
 /// Design section 6 offers three placements for a loop that lands above the
