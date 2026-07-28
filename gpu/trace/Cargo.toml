@@ -1,0 +1,41 @@
+[package]
+name = "gpu_trace"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+license.workspace = true
+keywords.workspace = true
+categories.workspace = true
+build = "build.rs"
+links = "gpu_trace_native"
+
+[dependencies]
+gpu_core = { workspace = true }
+gpu_ntt = { workspace = true }
+gpu_ops = { workspace = true }
+gpu_hash = { workspace = true }
+gpu_cub = { workspace = true }
+gpu_prover_context = { workspace = true }
+
+era_cudart = "=0.156.0"
+era_cudart_sys = "=0.156.0"
+
+cs = { workspace = true, features = ["compiler"] }
+prover = { workspace = true, features = ["prover"] }
+field = { workspace = true }
+setups = { workspace = true }
+common_constants = { workspace = true }
+circuit_common = { workspace = true }
+blake2s_u32 = { workspace = true }
+fft = { workspace = true }
+riscv_transpiler = { workspace = true, features = ["jit"] }
+
+itertools = "0.14"
+
+[build-dependencies]
+gpu_native_build = { workspace = true }
+
+[dev-dependencies]
+worker = { workspace = true }

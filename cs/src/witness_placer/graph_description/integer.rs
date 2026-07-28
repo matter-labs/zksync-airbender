@@ -163,9 +163,7 @@ impl<F: PrimeField> FixedWidthIntegerNodeExpression<F> {
 
                 rhs_width
             }
-            Self::WrappingShl { lhs, .. } | Self::WrappingShr { lhs, .. } => {
-                lhs.bit_width()
-            }
+            Self::WrappingShl { lhs, .. } | Self::WrappingShr { lhs, .. } => lhs.bit_width(),
             Self::DivAssumeNonzero { lhs, rhs }
             | Self::RemAssumeNonzero { lhs, rhs }
             | Self::SignedDivAssumeNonzeroNoOverflowBits { lhs, rhs }

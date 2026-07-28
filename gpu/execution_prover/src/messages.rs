@@ -3,10 +3,10 @@ use crate::A;
 use common_constants::TimestampScalar;
 use crossbeam_channel::{Receiver, Sender};
 use fft::GoodAllocator;
-use gpu_circuit_prover::prover::trace::tracing_data::TracingDataHost;
-use gpu_circuit_prover::witness::circuit_type::CircuitType;
-use gpu_circuit_prover::witness::trace_unrolled::InitsAndTeardownsTraceHost;
 use gpu_core::primitives::field::{BF, E4};
+use gpu_trace::trace::tracing_data::TracingDataHost;
+use gpu_trace::witness::circuit_type::CircuitType;
+use gpu_trace::witness::trace_unrolled::InitsAndTeardownsTraceHost;
 
 use crate::upstream::{
     DefaultTreeConstructor, FinalRegisterValue, GKRExternalChallenges, GKRProof,
@@ -34,6 +34,11 @@ pub(crate) struct SimulationResult {
     pub final_timestamp: TimestampScalar,
 }
 
+// Short-lived channel message: one value is sent and dropped per worker
+// event, so boxing `GpuWorkResult` to shrink the enum would trade a
+// heap-alloc/dealloc on every send for a smaller stack footprint that never
+// accumulates. Not worth it on this hot path.
+#[allow(clippy::large_enum_variant)]
 pub(crate) enum WorkerResult<A: GoodAllocator> {
     SnapshotProduced,
     InitsAndTeardownsData(InitsAndTeardownsData),
@@ -114,6 +119,10 @@ impl<A: GoodAllocator> GpuWorkRequest<A> {
     }
 }
 
+// Same rationale as `WorkerResult` above: this is a short-lived channel
+// message, not a long-lived collection, so boxing `ProofResult` to shrink the
+// enum would add a heap alloc per GPU-work result for no steady-state benefit.
+#[allow(clippy::large_enum_variant)]
 pub(crate) enum GpuWorkResult<A: GoodAllocator> {
     MemoryCommitment(MemoryCommitmentResult<A>),
     Proof(ProofResult<A>),

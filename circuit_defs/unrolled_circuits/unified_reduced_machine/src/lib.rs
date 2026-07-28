@@ -27,7 +27,8 @@ pub struct UnifiedReducedMachineCircuit;
 impl<F: PrimeField> circuit_common::RiscVCycleCircuit<F, true> for UnifiedReducedMachineCircuit {
     const CIRCUIT_FAMILY: u8 =
         common_constants::circuit_families::REDUCED_MACHINE_CIRCUIT_FAMILY_IDX;
-    const DOMAIN_SIZE_LOG2: u32 = 24;
+    const DOMAIN_SIZE_LOG2: u32 = 23;
+    const NUM_INIT_AND_TEARDOWN_PAIRS: usize = 1;
 
     fn circuit_fn<CS: cs::cs::circuit_trait::Circuit<F>>(cs: &mut CS, _bytecode: &[u32]) {
         unified_reduced_machine_circuit_with_preprocessed_bytecode_for_gkr(cs);
@@ -64,12 +65,6 @@ impl<F: PrimeField> circuit_common::RiscVCycleCircuit<F, true> for UnifiedReduce
     }
 }
 
-/// The unified circuit is compiled with a `1 << 24` row domain (see
-/// `compile_family_circuit_with_inline_inits_and_teardowns` in `cs`).
-pub const TRACE_LEN_LOG2: u32 = 24;
-pub const DOMAIN_SIZE: usize = 1 << TRACE_LEN_LOG2;
-pub const NUM_CYCLES: usize = DOMAIN_SIZE;
-pub const LDE_FACTOR: usize = 2;
 pub const MAX_ROM_SIZE: usize = common_constants::rom::ROM_BYTE_SIZE;
 pub const ROM_ADDRESS_SPACE_SECOND_WORD_BITS: usize = common_constants::rom::ROM_SECOND_WORD_BITS;
 
@@ -77,14 +72,27 @@ pub const ROM_ADDRESS_SPACE_SECOND_WORD_BITS: usize = common_constants::rom::ROM
 /// shape is bytecode-independent (special-table *content* is supplied at
 /// table-driver/setup time), so this takes no bytecode.
 pub fn get_circuit(use_caches: bool) -> cs::gkr_compiler::GKRCircuitArtifact<BabyBearField> {
-    cs::gkr_circuits::unified_reduced_machine::build_unified_artifact::<BabyBearField>(use_caches)
+    circuit_common::risc_v_with_mem_get_circuit::<BabyBearField, UnifiedReducedMachineCircuit>(
+        use_caches,
+        &[],
+    )
+
+    // cs::gkr_circuits::unified_reduced_machine::build_unified_artifact::<BabyBearField>(
+    //     use_caches,
+    //     <UnifiedReducedMachineCircuit as circuit_common::RiscVCycleCircuit<BabyBearField, true>>::DOMAIN_SIZE_LOG2 as usize,
+    //     <UnifiedReducedMachineCircuit as circuit_common::RiscVCycleCircuit<BabyBearField, true>>::NUM_INIT_AND_TEARDOWN_PAIRS as usize,
+    // )
 }
 
 /// Build the table driver for the unified circuit. Base tables plus the
 /// bytecode-dependent mem-word special tables, matching the prover-side
 /// `build_unified_table_driver` used during witness generation.
 pub fn get_table_driver(binary: &[u32]) -> TableDriver<BabyBearField> {
-    prover::gkr::witness_gen::family_circuits::build_unified_table_driver::<BabyBearField>(binary)
+    let mut table_driver = TableDriver::new();
+    <UnifiedReducedMachineCircuit as circuit_common::RiscVCycleCircuit<BabyBearField, true>>::table_driver_fn(&mut table_driver, binary);
+    table_driver
+
+    // prover::gkr::witness_gen::family_circuits::build_unified_table_driver::<BabyBearField>(binary)
 }
 
 mod sealed {

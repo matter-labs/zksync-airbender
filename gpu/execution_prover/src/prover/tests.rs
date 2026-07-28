@@ -1,9 +1,8 @@
 use super::{ExecutionKind, ExecutionProver, ExecutionProverConfiguration, ProveResult};
 use crate::upstream::{read_binary, SecurityLevel};
-use gpu_circuit_prover::witness::circuit_type::{DelegationCircuitType, UnrolledCircuitType};
 use gpu_core::primitives::machine_type::MachineType;
+use gpu_trace::witness::circuit_type::{DelegationCircuitType, UnrolledCircuitType};
 use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
-use serial_test::serial;
 
 fn test_artifact(relative_path: &str) -> std::path::PathBuf {
     // Workspace-root-relative paths; crate is at gpu/execution_prover/, so two "..".
@@ -69,7 +68,6 @@ fn assert_delegation_proofs_present(result: &ProveResult, delegation_type: Deleg
 #[test]
 #[cfg(not(no_cuda))]
 #[ignore]
-#[serial]
 fn test_execution_prover() {
     // hashed_fibonacci's first ND read is `n` (register-only fibonacci
     // iterations — no memory accesses, so chunk-fill never fires
@@ -96,7 +94,6 @@ fn test_execution_prover() {
 #[test]
 #[cfg(not(no_cuda))]
 #[ignore]
-#[serial]
 fn test_execution_prover_commit_then_prove() {
     init_test_logger();
     let configuration = ExecutionProverConfiguration::default();
@@ -129,7 +126,6 @@ fn test_execution_prover_commit_then_prove() {
 #[test]
 #[cfg(not(no_cuda))]
 #[ignore]
-#[serial]
 fn test_execution_prover_blake2_with_compression_delegation() {
     let result = commit_and_prove_binary(
         ExecutionKind::Unrolled,
@@ -152,7 +148,6 @@ fn test_execution_prover_blake2_with_compression_delegation() {
 #[test]
 #[cfg(not(no_cuda))]
 #[ignore]
-#[serial]
 fn test_execution_prover_blake2_g_function_delegation() {
     let result = commit_and_prove_binary(
         ExecutionKind::Unrolled,
@@ -175,7 +170,6 @@ fn test_execution_prover_blake2_g_function_delegation() {
 #[test]
 #[cfg(not(no_cuda))]
 #[ignore]
-#[serial]
 fn test_execution_prover_unified() {
     let result = commit_and_prove_binary(
         ExecutionKind::Unified,
@@ -196,18 +190,23 @@ fn test_execution_prover_unified() {
     assert_delegation_proofs_present(&result, DelegationCircuitType::Blake2WithCompression);
 }
 
+/// Every upstream `SecurityLevel` is currently GPU-supported; this fails the
+/// moment upstream adds a level the GPU stack does not handle, forcing an
+/// explicit decision instead of a silent `validate()` rejection at runtime.
 #[test]
-fn rejects_unsupported_security_level_in_configuration() {
-    let mut configuration = ExecutionProverConfiguration::default();
-    configuration.security_level = SecurityLevel::Sec100;
-
-    let err = ExecutionProver::with_configuration(configuration)
-        .err()
-        .expect("Sec100 should be rejected before GPU prover construction");
-
-    assert_eq!(err.requested, SecurityLevel::Sec100);
+fn cpu_all_security_levels_supported_in_configuration() {
     assert_eq!(
         ExecutionProverConfiguration::supported_security_levels(),
-        &[SecurityLevel::Sec80],
+        SecurityLevel::ALL,
     );
+    for &level in SecurityLevel::ALL {
+        let configuration = ExecutionProverConfiguration {
+            security_level: level,
+            ..Default::default()
+        };
+        assert!(
+            configuration.validate().is_ok(),
+            "{level:?} must pass configuration validation"
+        );
+    }
 }

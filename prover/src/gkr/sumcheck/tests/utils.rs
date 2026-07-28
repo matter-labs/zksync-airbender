@@ -222,7 +222,7 @@ pub(super) fn compute_lookup_add<F: PrimeField, E: FieldExtension<F> + Field>(
 
 pub(super) fn create_alternating_mask_base<F: PrimeField>(size: usize) -> Vec<F> {
     (0..size)
-        .map(|el| F::from_u64_with_reduction((el % 2) as u64))
+        .map(|el| F::from_u32_with_reduction((el % 2) as u32))
         .collect()
 }
 

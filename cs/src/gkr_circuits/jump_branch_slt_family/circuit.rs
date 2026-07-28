@@ -848,6 +848,7 @@ mod test {
             &|cs| jump_branch_slt_circuit_with_preprocessed_bytecode_for_gkr(cs),
             common_constants::ROM_WORD_SIZE,
             24,
+            0,
         );
 
         serialize_to_file(
@@ -881,6 +882,7 @@ mod test {
                 &|cs| jump_branch_slt_circuit_with_preprocessed_bytecode_for_gkr(cs),
                 common_constants::ROM_WORD_SIZE,
                 24,
+                0,
             );
 
         serialize_to_file(

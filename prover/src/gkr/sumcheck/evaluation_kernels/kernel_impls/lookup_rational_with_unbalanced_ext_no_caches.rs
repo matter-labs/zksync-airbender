@@ -5,14 +5,14 @@ use worker::Worker;
 use super::*;
 
 #[derive(Debug)]
-pub struct LookupRationalPairWithUnbalancedExtensionWithoutCachesGKRRelation {
+pub struct LookupRationalPairWithUnbalancedExtensionWithoutCachesGKRRelation<F: PrimeField> {
     pub inputs: [GKRAddress; 2],
-    pub remainder: NoFieldVectorLookupRelation,
+    pub remainder: NoFieldVectorLookupRelation<F>,
     pub outputs: [GKRAddress; 2],
 }
 
 impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E>
-    for LookupRationalPairWithUnbalancedExtensionWithoutCachesGKRRelation
+    for LookupRationalPairWithUnbalancedExtensionWithoutCachesGKRRelation<F>
 {
     fn num_challenges(&self) -> usize {
         2

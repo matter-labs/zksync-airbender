@@ -19,14 +19,15 @@ use prover::fft::*;
 use prover::field::baby_bear::base::BabyBearField;
 use prover::field::baby_bear::ext4::BabyBearExt4;
 use prover::field::*;
-use prover::gkr::prover::prove_configured_with_gkr;
 use prover::gkr::prover::GKRExternalChallenges;
 use prover::gkr::prover::GKRProof;
+use prover::gkr::prover::{prove_configured_with_gkr, CommitmentMode};
 use prover::gkr::witness_gen::family_circuits::evaluate_gkr_witness_for_executor_family;
 use prover::gkr::witness_gen::oracles::UnifiedRiscvCircuitOracle;
 use prover::merkle_trees::ColumnMajorMerkleTreeConstructor;
 use prover::merkle_trees::DefaultTreeConstructor;
 use prover::merkle_trees::MerkleTreeCapVarLength;
+use prover::transcript::Blake2sTranscript;
 use prover::worker;
 use riscv_transpiler::cycle::{MachineConfig, ReducedMachineWithDelegation};
 use riscv_transpiler::vm::Counters;
@@ -587,14 +588,19 @@ pub fn prove_unified_execution_with_replayer<A: GoodAllocator>(
     );
 
     let pow_challenge = if permutation_argument_pow_bits > 0 {
-        Transcript::search_pow(&all_challenges_seed, permutation_argument_pow_bits, worker).1
+        Blake2sTranscript::<true>::search_pow(
+            &all_challenges_seed,
+            permutation_argument_pow_bits,
+            worker,
+        )
+        .1
     } else {
         0
     };
     program_proof.pow_challenge = pow_challenge;
 
     let external_challenges =
-        GKRExternalChallenges::<BabyBearField, BabyBearExt4>::draw_from_transcript_seed(
+        GKRExternalChallenges::<BabyBearField, BabyBearExt4>::draw_from_blake_transcript_seed(
             all_challenges_seed,
             permutation_argument_pow_bits as usize,
             pow_challenge,
@@ -699,19 +705,24 @@ pub fn prove_unified_execution_with_replayer<A: GoodAllocator>(
             );
 
             let now = std::time::Instant::now();
-            let proof =
-                prove_configured_with_gkr::<BabyBearField, BabyBearExt4, DefaultTreeConstructor>(
-                    &unified_setup.compiled_circuit,
-                    &external_challenges,
-                    witness_trace,
-                    &unified_setup.setup,
-                    &setup_commitment,
-                    twiddles_for_size,
-                    &prover_config,
-                    top_bits.clone(),
-                    trace_len,
-                    worker,
-                );
+            let proof = prove_configured_with_gkr::<
+                BabyBearField,
+                BabyBearExt4,
+                DefaultTreeConstructor,
+                Blake2sTranscript,
+            >(
+                &unified_setup.compiled_circuit,
+                &external_challenges,
+                witness_trace,
+                &unified_setup.setup,
+                &setup_commitment,
+                twiddles_for_size,
+                &prover_config,
+                CommitmentMode::SeparateMemoryAndWitness,
+                top_bits.clone(),
+                trace_len,
+                worker,
+            );
             println!("Proving time for unified circuit is {:?}", now.elapsed());
 
             program_proof
@@ -940,7 +951,7 @@ pub(crate) mod test {
                 let mut it = families_setups.into_iter().chain(responses.into_iter());
 
                 let verification_result =
-                    full_statement_verifier::unified_circuit_statement::verify_unified_circuit_base_layer::<
+                    full_statement_verifier::unified_circuit_statement::verify_unified_circuit_base_layer_sec_80::<
                         _,
                         DebugErrorCreator,
                         true,

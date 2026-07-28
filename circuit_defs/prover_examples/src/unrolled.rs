@@ -23,6 +23,7 @@ use prover::fft::*;
 use prover::field::baby_bear::base::BabyBearField;
 use prover::field::baby_bear::ext4::BabyBearExt4;
 use prover::field::*;
+use prover::gkr::prover::CommitmentMode;
 use prover::gkr::prover::GKRExternalChallenges;
 use prover::gkr::prover::GKRProof;
 use prover::gkr::prover_config::ProverConfig;
@@ -32,6 +33,7 @@ use prover::gkr::witness_gen::oracles::*;
 use prover::merkle_trees::ColumnMajorMerkleTreeConstructor;
 use prover::merkle_trees::DefaultTreeConstructor;
 use prover::tracers::oracles::transpiler_oracles::delegation::DelegationOracle;
+use prover::transcript::Blake2sTranscript;
 use prover::worker;
 use prover::worker::Worker;
 use riscv_transpiler::cycle::MachineConfig;
@@ -977,8 +979,12 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
         );
         #[cfg(feature = "timing_logs")]
         let now = std::time::Instant::now();
-        let pow_challenge =
-            Transcript::search_pow(&all_challenges_seed, permutation_argument_pow_bits, worker).1;
+        let pow_challenge = Blake2sTranscript::<true>::search_pow(
+            &all_challenges_seed,
+            permutation_argument_pow_bits,
+            worker,
+        )
+        .1;
         #[cfg(feature = "timing_logs")]
         println!(
             "PoW for {} took {:?}",
@@ -992,7 +998,7 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
     program_proof.pow_challenge = pow_challenge;
 
     let external_challenges =
-        GKRExternalChallenges::<BabyBearField, BabyBearExt4>::draw_from_transcript_seed(
+        GKRExternalChallenges::<BabyBearField, BabyBearExt4>::draw_from_blake_transcript_seed(
             all_challenges_seed,
             permutation_argument_pow_bits as usize,
             pow_challenge,
@@ -1189,19 +1195,24 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
             // }
 
             let now = std::time::Instant::now();
-            let proof =
-                prove_configured_with_gkr::<BabyBearField, BabyBearExt4, DefaultTreeConstructor>(
-                    &setup.compiled_circuit,
-                    &external_challenges,
-                    witness_trace,
-                    &setup.setup,
-                    &setup_commitment,
-                    &*twiddles_for_size,
-                    &prover_config,
-                    vec![],
-                    trace_len,
-                    &worker,
-                );
+            let proof = prove_configured_with_gkr::<
+                BabyBearField,
+                BabyBearExt4,
+                DefaultTreeConstructor,
+                Blake2sTranscript,
+            >(
+                &setup.compiled_circuit,
+                &external_challenges,
+                witness_trace,
+                &setup.setup,
+                &setup_commitment,
+                &*twiddles_for_size,
+                &prover_config,
+                CommitmentMode::SeparateMemoryAndWitness,
+                vec![],
+                trace_len,
+                &worker,
+            );
             println!(
                 "Proving time for unrolled circuit type {} is {:?}",
                 family_idx,
@@ -1354,19 +1365,24 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
             // }
 
             let now = std::time::Instant::now();
-            let proof =
-                prove_configured_with_gkr::<BabyBearField, BabyBearExt4, DefaultTreeConstructor>(
-                    &setup.compiled_circuit,
-                    &external_challenges,
-                    witness_trace,
-                    &setup.setup,
-                    &setup_commitment,
-                    &*twiddles_for_size,
-                    &prover_config,
-                    vec![],
-                    trace_len,
-                    &worker,
-                );
+            let proof = prove_configured_with_gkr::<
+                BabyBearField,
+                BabyBearExt4,
+                DefaultTreeConstructor,
+                Blake2sTranscript,
+            >(
+                &setup.compiled_circuit,
+                &external_challenges,
+                witness_trace,
+                &setup.setup,
+                &setup_commitment,
+                &*twiddles_for_size,
+                &prover_config,
+                CommitmentMode::SeparateMemoryAndWitness,
+                vec![],
+                trace_len,
+                &worker,
+            );
             println!(
                 "Proving time for unrolled circuit type {} is {:?}",
                 family_idx,
@@ -1437,7 +1453,12 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
 
         #[cfg(feature = "timing_logs")]
         let now = std::time::Instant::now();
-        let proof = prove_configured_with_gkr::<BabyBearField, BabyBearExt4, DefaultTreeConstructor>(
+        let proof = prove_configured_with_gkr::<
+            BabyBearField,
+            BabyBearExt4,
+            DefaultTreeConstructor,
+            Blake2sTranscript,
+        >(
             &setup.compiled_circuit,
             &external_challenges,
             witness_trace,
@@ -1445,6 +1466,7 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
             &setup_commitment,
             &*twiddles_for_size,
             &prover_config,
+            CommitmentMode::SeparateMemoryAndWitness,
             inits_and_teardowns_top_bits,
             trace_len,
             &worker,
@@ -1765,7 +1787,12 @@ pub(crate) fn prove_delegation_circuit<
         #[cfg(feature = "timing_logs")]
         let now = std::time::Instant::now();
         assert!(delegation_type < 1 << 12);
-        let proof = prove_configured_with_gkr::<BabyBearField, BabyBearExt4, DefaultTreeConstructor>(
+        let proof = prove_configured_with_gkr::<
+            BabyBearField,
+            BabyBearExt4,
+            DefaultTreeConstructor,
+            Blake2sTranscript,
+        >(
             &setup.compiled_circuit,
             &external_challenges,
             witness_trace,
@@ -1773,6 +1800,7 @@ pub(crate) fn prove_delegation_circuit<
             &setup_commitment,
             &*twiddles_for_size,
             prover_config,
+            CommitmentMode::SeparateMemoryAndWitness,
             vec![],
             trace_len,
             &worker,
@@ -1873,7 +1901,7 @@ pub(crate) mod test {
                 // prover::nd_source_std::set_iterator(it);
 
                 let verification_result =
-                    full_statement_verifier::unrolled_proof_statement::verify_unrolled_base_layer::<
+                    full_statement_verifier::unrolled_proof_statement::verify_unrolled_base_layer_sec_80::<
                         _,
                         DebugErrorCreator,
                         true,
@@ -1914,7 +1942,7 @@ pub(crate) mod test {
                 // prover::nd_source_std::set_iterator(it);
 
                 let (family, verifier_fn) =
-                    full_statement_verifier::unrolled_circuit_params::unrolled_circuit_verifiers_for_base_layer::<
+                    full_statement_verifier::unrolled_circuit_params::unrolled_circuit_verifiers_for_base_layer_sec_80::<
                         _,
                         DebugErrorCreator,
                     >()[verifier_idx];

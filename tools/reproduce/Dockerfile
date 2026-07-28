@@ -10,20 +10,28 @@ RUN apt-get update && apt-get install -y \
     pkg-config \
     && rm -rf /var/lib/apt/lists/*
 
-# The version of compiler must pinned and in sync with the one specified in `../verifier/rust-toolchain.toml`.
-ENV RUST_VERSION=nightly-2026-02-19
+# The verifier binaries build on STABLE Rust. This must stay in sync with the
+# channel pinned in `../gkr_verifier/rust-toolchain.toml`. The build still needs
+# a few unstable options (`-Z build-std`, `-Z panic-immediate-abort`, the
+# `[unstable]` config section, and the `cargo-features` manifest flag); those are
+# unlocked with the `RUSTC_BOOTSTRAP=1` trick set inside `dump_bin.sh`, so no
+# nightly toolchain is required.
+ENV RUST_VERSION=1.97.1
 
 ENV PATH="/root/.cargo/bin:${PATH}"
 
 RUN curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain "$RUST_VERSION" \
     && rustup target add riscv32i-unknown-none-elf \
-    && rustup component add llvm-tools-preview \
+    && rustup component add llvm-tools \
     && rustup component add rust-src \
     && cargo install cargo-binutils
 
 COPY . zksync-airbender
 
-WORKDIR zksync-airbender/tools/verifier
+WORKDIR zksync-airbender/tools/gkr_verifier
 
-# Pass rust version to make sure that we're building with the same compiler.
-RUN ./build.sh "$RUST_VERSION"
+# Build the full-statement-verifier (fsv_*) RISC-V binaries in every blake
+# variant / security level the recursion pipeline can select. The toolchain is
+# pinned to $RUST_VERSION by this crate's rust-toolchain.toml; RUSTC_BOOTSTRAP=1
+# (set inside dump_bin.sh) unlocks the unstable build options on stable.
+RUN ./dump_recursive_verifiers.sh

@@ -11,7 +11,7 @@ use verifier_common::gkr::flatten::flatten_gkr_proof_for_nds;
 pub const VERIFIER_STACK_SIZE: usize = 1 << 27;
 
 macro_rules! define_dispatch {
-    ($($name:ident; $trace_len_log_2:expr; $layout_suffix:expr),* $(,)?) => {
+    ($($name:ident; $prod_path:expr),* $(,)?) => {
         macro_rules! with_circuit {
             ($circuit_name:expr, $level:expr, |$m:ident| $body:expr) => {
                 match ($circuit_name, $level) {

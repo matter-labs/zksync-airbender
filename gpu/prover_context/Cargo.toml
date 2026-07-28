@@ -1,0 +1,17 @@
+[package]
+name = "gpu_prover_context"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+license.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+gpu_core = { workspace = true }
+gpu_ntt = { workspace = true }
+era_cudart = "=0.156.0"
+era_cudart_sys = "=0.156.0"
+log = "0.4.29"

@@ -2,15 +2,14 @@ use std::collections::{BTreeSet, HashSet};
 
 use crate::cs::circuit_trait::Circuit;
 use crate::cs::utils::PreprocessedConstraintForEval;
+use crate::definitions::*;
 use crate::types::{Boolean, Num};
-use crate::witness_placer::{WitnessPlacer, WitnessTypeSet};
-use crate::{cs, definitions::*};
+use crate::witness_placer::WitnessPlacer;
 use field::PrimeField;
 
 pub const TERM_INNER_CAPACITY: usize = 4;
 
-// #[derive(Clone, Debug, Copy, PartialEq, Eq)]
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum Term<F: PrimeField> {
     Constant(F),
     Expression {
@@ -31,8 +30,8 @@ impl<F: PrimeField> std::fmt::Display for Term<F> {
                 inner,
                 degree,
             } => {
-                let coeff = coeff.as_u32_reduced();
-                let coeff_opp = F::CHARACTERISTICS - coeff;
+                let coeff = coeff.as_u128_reduced();
+                let coeff_opp = F::CHARACTERISTICS_U128 - coeff;
                 if coeff < coeff_opp {
                     if coeff != 1 {
                         write!(f, " + {coeff}")?;
@@ -71,7 +70,7 @@ impl<F: PrimeField> Ord for Term<F> {
         }
 
         match (self, other) {
-            (Term::Constant(s), Term::Constant(o)) => s.as_u32_reduced().cmp(&o.as_u32_reduced()),
+            (Term::Constant(s), Term::Constant(o)) => s.as_u128_reduced().cmp(&o.as_u128_reduced()),
             (Term::Constant(..), Term::Expression { .. }) => std::cmp::Ordering::Less,
             (Term::Expression { .. }, Term::Constant(..)) => std::cmp::Ordering::Greater,
             (
@@ -94,7 +93,7 @@ impl<F: PrimeField> Ord for Term<F> {
                     return t;
                 }
 
-                s_coeff.as_u32_reduced().cmp(&o_coeff.as_u32_reduced())
+                s_coeff.as_u128_reduced().cmp(&o_coeff.as_u128_reduced())
             }
         }
     }
@@ -331,7 +330,7 @@ impl<F: PrimeField> Term<F> {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct Constraint<F: PrimeField> {
     pub terms: Vec<Term<F>>,
 }
@@ -522,10 +521,7 @@ impl<F: PrimeField> Constraint<F> {
             }
         }
 
-        self.terms = combined
-            .into_iter()
-            .filter(|el| !el.is_zero())
-            .collect();
+        self.terms = combined.into_iter().filter(|el| !el.is_zero()).collect();
         let final_degree = self.degree();
         assert!(final_degree <= 2);
 

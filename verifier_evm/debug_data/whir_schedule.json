@@ -1,0 +1,183 @@
+{
+  "description": "Optimized WHIR schedules for the EVM verifier skeleton (verifier_evm/whir/whir.sol). Trace 2^24, security target 80 bits under the pessimistic (list-decoding-to-capacity) conjecture. These re-balance the stock config_for_80_bits_under_pessimistic_conjecture(24) toward far fewer queries by raising the evaluation-domain rate (LDE factor) and leaning on proof-of-work, which is the right trade for an L1 verifier whose dominant cost is calldata (Merkle openings).",
+
+  "optimizations_applied": [
+    "Merged the memory(38) and witness(65) base oracles into ONE oracle (103 cols); setup(10) stays separate. Round 0 now opens 2 Merkle trees per query instead of 3 (one fewer path + leaf hash + state root). Allowed because this verifier may dictate a custom commitment layout. TOTAL_ORACLE_COLS unchanged at 113.",
+    "First (initial) query round PoW raised to 30 bits.",
+    "First-round LDE factor raised from 2 to 16 (variant A) or 32 (variant B). RS-evaluation-domain log2 is then held CONSTANT across all rounds (28 for A, 29 for B), so LDE factors increase automatically as the polynomial folds down, and query counts fall.",
+    "Intermediate/final rounds use up to 32 PoW bits where it removes a query."
+  ],
+
+  "security_model": {
+    "formula": "queries * log2(lde_factor) + pow_bits >= 80",
+    "regime": "pessimistic conjecture (1 verifier bit per query per inverse-rate bit)",
+    "validation_against_stock_config": "round3: 5*log2(16384)+10 = 5*14+10 = 80; round4: 3*log2(2^19)+23 = 3*19+23 = 80; round0: 63*log2(2)+28 = 91",
+    "field_prime": "159 * 2^119 + 1 (0x4F80000000000000000000000000000001); 2-adicity 119 >= max rs_domain_log2 (29), so all domains exist"
+  },
+
+  "fold_steps_schedule": [1, 5, 5, 5, 4, 3],
+  "fold_steps_note": "Unchanged. Sums to 23 = number of opening-point variables. poly_size_log2 per round before folding: [24,23,18,13,8,4]; final remainder = 1 var => FINAL_MONOMIALS_LEN = 2.",
+
+  "rounds_layout": "round 0 = initial (2 base oracles), rounds 1..4 = internal, round 5 = final",
+
+  "stock_baseline_2pow24_sec80": {
+    "base_lde_factor": 2,
+    "whir_steps_schedule": [1, 5, 5, 5, 4, 3],
+    "whir_queries_schedule": [63, 17, 8, 5, 3, 3],
+    "whir_steps_lde_factors": [16, 512, 16384, 524288, 524288],
+    "whir_pow_schedule": [28, 20, 17, 10, 23, 23],
+    "total_queries": 99,
+    "rs_domain_log2_per_round": [25, 27, 27, 27, 27, 23],
+    "merkle_depth_per_round_single_root": [24, 22, 22, 22, 23, 20],
+    "num_base_oracles_round0": 3,
+    "approx_proof_bytes_skeleton": 416144
+  },
+
+  "variant_A_lde16": {
+    "note": "First-round LDE = 16. Constant RS-domain log2 = 28.",
+    "base_lde_factor": 16,
+    "whir_steps_schedule": [1, 5, 5, 5, 4, 3],
+    "whir_queries_schedule": [13, 10, 5, 4, 3, 2],
+    "whir_pow_schedule": [30, 30, 30, 20, 20, 32],
+    "whir_steps_lde_factors": [32, 1024, 32768, 1048576, 16777216],
+    "per_round": [
+      {"round": 0, "poly_size_log2": 24, "lde_factor": 16,       "lde_log2": 4,  "queries": 13, "pow_bits": 30, "rs_domain_log2": 28, "merkle_depth": 27, "security_bits": 82},
+      {"round": 1, "poly_size_log2": 23, "lde_factor": 32,       "lde_log2": 5,  "queries": 10, "pow_bits": 30, "rs_domain_log2": 28, "merkle_depth": 23, "security_bits": 80},
+      {"round": 2, "poly_size_log2": 18, "lde_factor": 1024,     "lde_log2": 10, "queries": 5,  "pow_bits": 30, "rs_domain_log2": 28, "merkle_depth": 23, "security_bits": 80},
+      {"round": 3, "poly_size_log2": 13, "lde_factor": 32768,    "lde_log2": 15, "queries": 4,  "pow_bits": 20, "rs_domain_log2": 28, "merkle_depth": 23, "security_bits": 80},
+      {"round": 4, "poly_size_log2": 8,  "lde_factor": 1048576,  "lde_log2": 20, "queries": 3,  "pow_bits": 20, "rs_domain_log2": 28, "merkle_depth": 24, "security_bits": 80},
+      {"round": 5, "poly_size_log2": 4,  "lde_factor": 16777216, "lde_log2": 24, "queries": 2,  "pow_bits": 32, "rs_domain_log2": 28, "merkle_depth": 25, "security_bits": 80}
+    ],
+    "total_queries": 37
+  },
+
+  "variant_B_lde32": {
+    "note": "First-round LDE = 32. Constant RS-domain log2 = 29. Fewest queries; preferred for calldata.",
+    "base_lde_factor": 32,
+    "whir_steps_schedule": [1, 5, 5, 5, 4, 3],
+    "whir_queries_schedule": [10, 8, 5, 3, 3, 2],
+    "whir_pow_schedule": [30, 32, 25, 32, 17, 30],
+    "whir_steps_lde_factors": [64, 2048, 65536, 2097152, 33554432],
+    "per_round": [
+      {"round": 0, "poly_size_log2": 24, "lde_factor": 32,       "lde_log2": 5,  "queries": 10, "pow_bits": 30, "rs_domain_log2": 29, "merkle_depth": 28, "security_bits": 80},
+      {"round": 1, "poly_size_log2": 23, "lde_factor": 64,       "lde_log2": 6,  "queries": 8,  "pow_bits": 32, "rs_domain_log2": 29, "merkle_depth": 24, "security_bits": 80},
+      {"round": 2, "poly_size_log2": 18, "lde_factor": 2048,     "lde_log2": 11, "queries": 5,  "pow_bits": 25, "rs_domain_log2": 29, "merkle_depth": 24, "security_bits": 80},
+      {"round": 3, "poly_size_log2": 13, "lde_factor": 65536,    "lde_log2": 16, "queries": 3,  "pow_bits": 32, "rs_domain_log2": 29, "merkle_depth": 24, "security_bits": 80},
+      {"round": 4, "poly_size_log2": 8,  "lde_factor": 2097152,  "lde_log2": 21, "queries": 3,  "pow_bits": 17, "rs_domain_log2": 29, "merkle_depth": 25, "security_bits": 80},
+      {"round": 5, "poly_size_log2": 4,  "lde_factor": 33554432, "lde_log2": 25, "queries": 2,  "pow_bits": 30, "rs_domain_log2": 29, "merkle_depth": 26, "security_bits": 80}
+    ],
+    "total_queries": 31
+  },
+
+  "variant_C_packed_2pow28": {
+    "note": "NEW LEAF/TREE LAYOUT. Polynomials committed 16x bigger (2^28 instead of 2^24), so the merged memory+witness oracle is 8 polynomials (103 cols padded to 128, grouped 16-per-poly) and setup is 1 polynomial => 9 batched columns total (was 113), over 2 trees. A round-0 leaf holds cols*2^k0 elements; with k0 now VARIABLE the narrow 9-column leaves slash per-query calldata even though WHIR must fold 28 variables and trees are deeper. Schedule found by brute-force search minimizing calldata (the dominant L1 cost), with correct round-0 (2-oracle) costing.",
+    "search_constraints": "RS_domain_log2 <= 32, pow_bits <= 30, first fold k0 <= 3, subsequent folds <= 6, security q*log2(lde)+pow >= 80. PoW pinned to 30 every round (free verifier security => always maximal). k0=2 wins (k0=3 grows the round-0 leaf too much; k0=1 leaves too many later rounds).",
+    "whir_steps_schedule": [2, 4, 4, 4, 5, 5],
+    "whir_queries_schedule": [13, 9, 5, 4, 3, 3],
+    "whir_pow_schedule": [30, 30, 30, 30, 30, 30],
+    "base_lde_factor": 16,
+    "whir_steps_lde_factors": [64, 1024, 8192, 131072, 131072],
+    "final_monomials_len": 16,
+    "per_round": [
+      {"round": 0, "poly_size_log2": 28, "fold": 2, "lde_factor": 16,     "lde_log2": 4,  "queries": 13, "pow_bits": 30, "rs_domain_log2": 32, "merkle_depth": 30, "leaf_elems": "9 cols x 2^2 = 36", "trees": 2, "security_bits": 82},
+      {"round": 1, "poly_size_log2": 26, "fold": 4, "lde_factor": 64,     "lde_log2": 6,  "queries": 9,  "pow_bits": 30, "rs_domain_log2": 32, "merkle_depth": 28, "leaf_elems": "2^4 = 16", "trees": 1, "security_bits": 84},
+      {"round": 2, "poly_size_log2": 22, "fold": 4, "lde_factor": 1024,   "lde_log2": 10, "queries": 5,  "pow_bits": 30, "rs_domain_log2": 32, "merkle_depth": 28, "leaf_elems": "2^4 = 16", "trees": 1, "security_bits": 80},
+      {"round": 3, "poly_size_log2": 18, "fold": 4, "lde_factor": 8192,   "lde_log2": 13, "queries": 4,  "pow_bits": 30, "rs_domain_log2": 31, "merkle_depth": 27, "leaf_elems": "2^4 = 16", "trees": 1, "security_bits": 82},
+      {"round": 4, "poly_size_log2": 14, "fold": 5, "lde_factor": 131072, "lde_log2": 17, "queries": 3,  "pow_bits": 30, "rs_domain_log2": 31, "merkle_depth": 26, "leaf_elems": "2^5 = 32", "trees": 1, "security_bits": 81},
+      {"round": 5, "poly_size_log2": 9,  "fold": 5, "lde_factor": 131072, "lde_log2": 17, "queries": 3,  "pow_bits": 30, "rs_domain_log2": 26, "merkle_depth": 21, "leaf_elems": "2^5 = 32", "trees": 1, "security_bits": 81}
+    ],
+    "total_queries": 37,
+    "whir_variables": 28,
+    "measured_calldata_bytes": 62336,
+    "measured_calldata_gas": 2493440,
+    "measured_verify_gas": 947902,
+    "measured_total_gas": 3462342
+  },
+
+  "measured_gas_comparison_2pow24_sec80": {
+    "note": "Skeleton-measured. calldata_gas = EIP-7623 nonzero floor (40 gas/byte). All keccak256, single-root trees.",
+    "variant_A_lde16":  {"calldata_bytes": 99536, "calldata_gas": 3981440, "verify_gas": 1303193, "total_gas": 5305633},
+    "variant_B_lde32":  {"calldata_bytes": 81072, "calldata_gas": 3242880, "verify_gas": 1084917, "total_gas": 4348797},
+    "variant_C_packed": {"calldata_bytes": 62336, "calldata_gas": 2493440, "verify_gas": 947902,  "total_gas": 3462342}
+  },
+
+  "input_state_packing": {
+    "note": "Input state (transcript seed, batching challenge, opening value, opening point z_initial, base-oracle commitments) is committed as a SINGLE keccak256 stored in one slot. The proof carries the preimage as its first bytes; the verifier hashes it once and checks against the slot (sink). Replaces ~33 cold SLOADs (~69k gas) with 1 SLOAD + 1 keccak, at the cost of ~0.5KB extra calldata.",
+    "preimage_layout": "[seed:32][batching:16][opening:16][z_initial:nz*16][base_cap_0:CAP*32]...[base_cap_{nbcaps-1}:CAP*32]",
+    "measured_effect_packed_single_root": "per-slot storage: 62336B / verify 947902 / total 3462342;  preimage: 62912B / verify 888846 / total 3426326  => net -36016 gas (SLOAD saving > +576B calldata)."
+  },
+
+  "merkle_caps_packed_2pow24_sec80": {
+    "note": "Cap of 2^CAP_LOG2 hashes per commitment. Path shortens by CAP_LOG2 nodes per query (saves total_paths * CAP_LOG2 sibling words); each commitment grows to CAP*32 bytes (base caps in the preimage, 5 intermediate caps in the proof). PACKED has 50 total paths and 7 commitments, so the optimum is small. Measured on VARIANT=2 with preimage state.",
+    "total_paths": 50,
+    "total_commitments": 7,
+    "measured": {
+      "cap_1_single_root": {"calldata_bytes": 62912, "calldata_gas": 2516480, "verify_gas": 888846, "total_gas": 3426326},
+      "cap_8":             {"calldata_bytes": 59680, "calldata_gas": 2387200, "verify_gas": 868113, "total_gas": 3276313},
+      "cap_16":            {"calldata_bytes": 59872, "calldata_gas": 2394880, "verify_gas": 864160, "total_gas": 3280040},
+      "cap_32":            {"calldata_bytes": 61856, "calldata_gas": 2474240, "verify_gas": 869189, "total_gas": 3364429}
+    },
+    "conclusion": "Caps ARE beneficial. cap 8 is optimal (cap 16 is within 0.1%, effectively tied); cap 32 over-pays on commitment size and is worse than cap 8 by ~88k gas though still better than single-root. Best (preimage + cap 8): 59680B / 3.28M total, vs 62336B / 3.46M for per-slot storage + single root (~5.4% saving)."
+  },
+
+  "variant_D_fully_packed_1column_2pow31": {
+    "note": "MOST-packed option: the 113 witness/memory polys are packed into ONE poly of size 2^(24+ceil(log2 113)) = 2^31 (one column, one tree). A full RS code is computed over 2^31 and the proximity check folds 31 variables. Leaf = 1 column * 2^k0 (tiny), 1 path/query. Implemented as VARIANT=3 (with preimage + cap 8). Verified by build+run, lockstep.",
+    "key_effect": "V jumps to 31, so round 0's poly is 2^31. Under RS_domain <= 2^32 the round-0 LDE is FORCED to 2 (31+1=32) => 50 queries in round 0, which dominates. The tiny 1-column leaves do NOT compensate. Beneficial only if the RS-domain cap is relaxed (larger RS code = more prover work, which the user deems acceptable).",
+    "measured_gas_vs_rs_cap": {
+      "rs_2pow32_strict":  {"folds": [3,4,5,5,5,5], "lde_log2": [1,4,8,13,17,17], "queries": [50,13,7,4,3,3], "Qtot": 80, "calldata_bytes": 86608, "verify_gas": 1626178, "total_gas": 5111498, "verdict": "WORSE than 8-col packed (3.28M)"},
+      "rs_2pow34_relaxed": {"folds": [3,4,5,5,5,5], "lde_log2": [3,6,10,13,17,25], "queries": [17,9,5,4,3,2], "Qtot": 40, "calldata_bytes": 49552, "verify_gas": 901686,  "total_gas": 2904766, "verdict": "BETTER than 8-col packed by ~11%"},
+      "rs_2pow36_relaxed": {"folds": [3,5,4,5,5,5], "lde_log2": [5,8,13,17,17,25], "queries": [10,7,4,3,3,2], "Qtot": 29, "calldata_bytes": 39920, "verify_gas": 705018,  "total_gas": 2322818, "verdict": "BETTER than 8-col packed by ~29%"}
+    },
+    "conclusion": "Batching all the way to 1 column trades prover RS-domain size for verifier proof size. Under the stated 2^32 RS cap it LOSES (5.11M vs 3.28M for the 8-column V=28 layout) because V=31 forces 50 round-0 queries. It only wins once the RS cap is relaxed: ~2.90M at 2^34 (4x prover domain), ~2.32M at 2^36 (16x prover domain). So 'achievable' gas depends entirely on the tolerated RS-domain blowup."
+  },
+
+  "packing_width_sweep_2pow24_sec80": {
+    "note": "One tree of W columns (witness+memory+setup all packed together, 123 cols padded to 128 => 2^31 total), V = 31 - log2(W), 1 Merkle path/query. RS cap 2^32, cap-8 commitments, hashed-state preimage. MEASURED in the skeleton; calldata matches the DP exactly at every width.",
+    "tradeoff": "Smaller W = more packing = larger V = round-0 LDE capped lower (32-V) => more round-0 queries. Larger W = wider leaves but fewer round-0 queries. Round-0 queries = ceil(50/(32-V)).",
+    "rows": [
+      {"packing": "1x2^31", "W": 1,  "V": 31, "round0_queries": 50, "total_queries": 80, "calldata_bytes": 86608, "total_gas": 5111498},
+      {"packing": "2x2^30", "W": 2,  "V": 30, "round0_queries": 25, "total_queries": 51, "calldata_bytes": 59936, "total_gas": 3523205},
+      {"packing": "4x2^29", "W": 4,  "V": 29, "round0_queries": 17, "total_queries": 43, "calldata_bytes": 51728, "total_gas": 3018686},
+      {"packing": "8x2^28", "W": 8,  "V": 28, "round0_queries": 13, "total_queries": 37, "calldata_bytes": 47360, "total_gas": 2727781},
+      {"packing": "16x2^27","W": 16, "V": 27, "round0_queries": 10, "total_queries": 34, "calldata_bytes": 43504, "total_gas": 2513361, "note": "global optimum among widths"}
+    ],
+    "conclusion": "Among {1,2,4,8} the ranking is monotonic: 8x2^28 best, 1x2^31 worst (each less-packed step cuts gas because it relieves RS-cap pressure on round 0; queries 50->25->17->13). Packing harder toward 1 column is the WRONG direction under the 2^32 RS cap. Global optimum is W=16 (~2.51M), flat to W=32. Also: one-tree (setup merged in) beats the earlier two-tree VARIANT 2 by ~0.55M (one fewer path/query)."
+  },
+
+  "ram_constraint_140GB": {
+    "note": "Prover must hold the round-0 RS-encoded oracle in RAM. Total original data = 2^31 elements (16 bytes each, BabyBear quartic), so the round-0 oracle = W * 2^(V+lde0) * 16 = 2^(35+lde0) bytes, INDEPENDENT of packing width W (W*2^V is fixed at 2^31). Later rounds hold 1 column => 2^(RS_domain)*16 bytes.",
+    "ram_vs_round0_lde": {"x2": "64GB", "x4": "128GB", "x8": "256GB", "x16": "512GB (=the 8x2^28 RS-2^32 case, infeasible)"},
+    "under_140GB": "round-0 LDE capped at x4 (lde0<=2) => round-0 queries >= 25; later-round RS-domain capped at 2^33. The 8x2^28-with-RS-2^32 (0.5TB) option is INFEASIBLE.",
+    "packing_width_options_at_140GB_measured": [
+      {"packing": "1x2^31", "calldata_bytes": 59088, "total_gas": 3429460, "round0_RAM": "128GB"},
+      {"packing": "2x2^30", "calldata_bytes": 58080, "total_gas": 3371080, "round0_RAM": "128GB"},
+      {"packing": "4x2^29", "calldata_bytes": 58032, "total_gas": 3369160, "round0_RAM": "128GB"},
+      {"packing": "8x2^28", "calldata_bytes": 57952, "total_gas": 3368988, "round0_RAM": "128GB", "note": "MEASURED exactly; best, but only marginally"},
+      {"packing": "16x2^27","calldata_bytes": 61136, "total_gas": 3475260, "round0_RAM": "128GB"}
+    ],
+    "packing_conclusion": "Under 140GB the packing width barely matters: round-0 queries are RAM-pinned at 25 for every W, so all of {1,2,4,8}x give ~3.37-3.43M (8x2^28 marginally best). The width that mattered without RAM (8-16x) no longer does.",
+    "ram_budget_vs_best_gas": [
+      {"RAM": "64GB",   "round0_lde": "x2",  "round0_q": 50, "best_packing": "8x",  "total_gas": 4969880},
+      {"RAM": "140GB",  "round0_lde": "x4",  "round0_q": 25, "best_packing": "8x",  "total_gas": 3368988},
+      {"RAM": "256GB",  "round0_lde": "x8",  "round0_q": 17, "best_packing": "16x", "total_gas": 2803000},
+      {"RAM": "512GB",  "round0_lde": "x16", "round0_q": 13, "best_packing": "16x", "total_gas": 2450300},
+      {"RAM": "1024GB", "round0_lde": "x32", "round0_q": 10, "best_packing": "16x", "total_gas": 2186060}
+    ],
+    "pow_lever": "When RAM caps round-0 LDE, the other knob to cut round-0 queries is PoW: q0 = ceil((80-pow)/lde0). At 140GB (lde0=2): pow30->25q, pow40->20q, pow50->15q, pow60->10q. Trades prover grind (2^pow hashes) for verifier proof size when RAM blocks a bigger LDE; PoW costs the verifier ~1 hash regardless.",
+    "summary": "RAM directly buys round-0 LDE (each RAM doubling => +1 LDE bit => ~halves round-0 queries => ~0.5M gas). At 140GB the achievable WHIR verifier gas is ~3.37M (vs 2.45M at 512GB / x16 LDE, vs 2.73M unconstrained-best). Packing width is nearly irrelevant under RAM pressure; raising PoW above 30 is the only further lever without more RAM."
+  },
+
+  "oracle_layout": {
+    "round0_oracles": [
+      {"name": "merged_mem_witness", "num_columns": 103, "gamma_offset": 0},
+      {"name": "setup",             "num_columns": 10,  "gamma_offset": 103}
+    ],
+    "total_oracle_cols": 113
+  },
+
+  "tradeoffs": {
+    "verifier_win": "Far fewer queries => fewer Merkle openings => much smaller calldata (the dominant L1 cost) and less verifier hashing/mulmod. Variant A ~37 queries, Variant B ~31 queries, vs stock 99.",
+    "prover_cost": "Holding rs_domain at 2^28/2^29 means EVERY round commits an oracle over a 2^28/2^29 domain (stock middle rounds were 2^27, base was 2^25). Expect ~2-4x more prover FFT/commit work. PoW grind rises to 2^30..2^32 per round (stock was 2^10..2^28).",
+    "depth_note": "Merkle depths shown assume a SINGLE bytes32 root per commitment (skeleton model). With the production CAP_SIZE=16 cap, subtract 4 from every depth."
+  }
+}

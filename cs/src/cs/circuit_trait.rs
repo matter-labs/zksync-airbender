@@ -1,6 +1,5 @@
 use super::*;
 
-use crate::constraint::Constraint;
 use crate::cs::circuit::LookupQueryTableType;
 use crate::cs::circuit::RegisterAccessRequest;
 use crate::cs::circuit::RegisterAndIndirectAccesses;
@@ -160,19 +159,27 @@ pub trait Circuit<F: PrimeField>: Sized {
     fn get_value(&self, _var: Variable) -> Option<F> {
         None
     }
-    fn add_constraint(&mut self, constraint: Constraint<F>);
-    fn add_constraint_allow_explicit_linear(&mut self, constraint: Constraint<F>);
-    fn add_constraint_allow_explicit_linear_prevent_optimizations(
-        &mut self,
-        constraint: Constraint<F>,
-    );
+
     fn add_constraint_expr(&mut self, expr: Expr<F>);
-    fn add_constraint_allow_explicit_linear_expr(&mut self, expr: Expr<F>);
-    fn add_constraint_allow_explicit_linear_prevent_optimizations_expr(&mut self, expr: Expr<F>);
-    fn define_variable_from_expr(&mut self, dst: Variable, expr: Expr<F>);
-    fn add_constraint_into_intermediate_variable(
+    fn add_constraint_expr_allow_explicit_linear(&mut self, expr: Expr<F>);
+    fn add_constraint_expr_allow_explicit_linear_prevent_optimizations_expr(
         &mut self,
-        constraint: Constraint<F>,
+        expr: Expr<F>,
+    );
+    // adding variables in such a way will make a new one at the SAME layer - so it can only be used to
+    // add variables at the base layer
+    fn add_variable_from_expr(&mut self, expr: Expr<F>) -> Variable;
+    fn add_named_variable_from_expr(&mut self, expr: Expr<F>, name: &str) -> Variable;
+    fn add_variable_from_expr_allow_explicit_linear(&mut self, expr: Expr<F>) -> Variable;
+    // it'll link externally defined variable with a constraint, but at the same layer
+    fn define_variable_from_expr(&mut self, dst: Variable, expr: Expr<F>);
+
+    // adding variables in such a way will push the result of the evaluation to the next layer
+    fn add_intermediate_named_variable_from_expr(&mut self, expr: Expr<F>, name: &str) -> Variable;
+
+    fn add_constraint_expr_into_intermediate_variable(
+        &mut self,
+        expr: Expr<F>,
         intermediate_var: Variable,
     );
 
@@ -237,48 +244,6 @@ pub trait Circuit<F: PrimeField>: Sized {
         self.require_invariant(new_var, Invariant::RangeChecked { width });
         Num::Var(new_var)
     }
-
-    #[track_caller]
-    fn add_variable_from_constraint(&mut self, constraint: Constraint<F>) -> Variable {
-        let name = format!("Variable at {}::{}", file!(), line!());
-        self.add_named_variable_from_constraint(constraint, &name)
-    }
-
-    fn add_named_variable_from_constraint(
-        &mut self,
-        constraint: Constraint<F>,
-        name: &str,
-    ) -> Variable;
-    fn add_variable_from_expr(&mut self, expr: Expr<F>) -> Variable;
-    fn add_named_variable_from_expr(&mut self, expr: Expr<F>, name: &str) -> Variable;
-
-    fn add_intermediate_named_variable_from_constraint(
-        &mut self,
-        constraint: Constraint<F>,
-        name: &str,
-    ) -> Variable;
-    fn add_intermediate_named_variable_from_expr(&mut self, expr: Expr<F>, name: &str) -> Variable;
-
-    #[track_caller]
-    fn add_variable_from_constraint_without_witness_evaluation(
-        &mut self,
-        constraint: Constraint<F>,
-    ) -> Variable;
-
-    #[track_caller]
-    fn add_variable_from_constraint_allow_explicit_linear(
-        &mut self,
-        constraint: Constraint<F>,
-    ) -> Variable;
-
-    #[track_caller]
-    fn add_variable_from_expr_allow_explicit_linear(&mut self, expr: Expr<F>) -> Variable;
-
-    #[track_caller]
-    fn add_variable_from_constraint_allow_explicit_linear_without_witness_evaluation(
-        &mut self,
-        constraint: Constraint<F>,
-    ) -> Variable;
 
     #[track_caller]
     fn choose(&mut self, flag: Boolean, if_true_val: Num<F>, if_false_val: Num<F>) -> Num<F> {

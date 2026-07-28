@@ -2,17 +2,19 @@ use std::alloc::Global;
 use std::collections::BTreeMap;
 
 use cs::gkr_compiler::{GKRCircuitArtifact, OutputType};
+use cs::utils::split_timestamp;
 use field::TwoAdicField;
 use field::{Field, FieldExtension, PrimeField};
+use transcript::Keccak256Transcript;
 use worker::WorkerGeometry;
 
 use super::*;
 pub use crate::definitions::GKRExternalChallenges;
-use crate::definitions::Transcript;
 use crate::fft::Twiddles;
 use crate::gkr::prover::debug_utils::compute_initial_sumcheck_claims;
 use crate::gkr::prover::setup::GKRSetup;
-use crate::gkr::prover::stages::stage1;
+use crate::gkr::prover::stages::commitment_utils;
+use crate::gkr::prover::stages::commitment_utils::ColumnMajorCosetBoundTracePart;
 use crate::gkr::prover::transcript_utils::{
     commit_field_els, draw_random_field_els, draw_random_field_els_with_pow,
 };
@@ -21,12 +23,17 @@ use crate::gkr::prover_config::{pow_bits, ProverConfig};
 use crate::gkr::sumcheck::access_and_fold::{BaseFieldPoly, GKRStorage};
 use crate::gkr::sumcheck::eq_poly::*;
 use crate::gkr::virtual_polys::range_check::materialize_virtual_range_check_setup_poly;
-use crate::gkr::whir::{whir_fold, ColumnMajorBaseOracleForLDE, WhirPolyCommitProof};
+use crate::gkr::whir::coset_commit::CosetByCosetBaseCommitment;
+use crate::gkr::whir::queries::BaseFieldQuery;
+use crate::gkr::whir::{
+    whir_fold, ColumnMajorBaseOracleForCoset, ColumnMajorBaseOracleForLDE, WhirPolyCommitProof,
+};
 use crate::gkr::witness_gen::family_circuits::GKRFullWitnessTrace;
 use crate::merkle_trees::ColumnMajorMerkleTreeConstructor;
 use crate::worker::Worker;
-use common_constants::TIMESTAMP_COLUMNS_NUM_BITS;
+use common_constants::{TimestampScalar, TIMESTAMP_COLUMNS_NUM_BITS};
 use cs::definitions::{GKRAddress, VirtualSetupPoly};
+use std::sync::Arc;
 
 mod debug_utils;
 pub mod dimension_reduction;
@@ -38,6 +45,19 @@ pub mod sumcheck_loop;
 pub mod test_forge;
 pub mod transcript_utils;
 pub mod utils;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub enum CommitmentMode {
+    SeparateMemoryAndWitness,
+    MergedMemoryAndWitness,
+    MergedAndPackedMemoryAndWitness {
+        pack_log2: usize,
+        external_challenges_pow_bits: u32,
+        register_final_state: [crate::definitions::FinalRegisterValue; 32],
+        final_pc: u32,
+        final_timestamp: TimestampScalar,
+    }, // this mode assumes that external challenges are not "external" anymore
+}
 
 pub(crate) struct SendPtr<T: Sized>(*mut T);
 unsafe impl<T: Send + Sync> Send for SendPtr<T> {}
@@ -91,6 +111,8 @@ pub struct GKRProof<
     pub inits_and_teardowns_top_bits: Vec<u32>,
     pub lookup_challenges_pow_nonce: u64,
     pub batched_proximity_check_pow_nonce: u64,
+    #[serde(default)]
+    pub intermediate_transcript_seed: Option<[u8; 32]>,
 }
 
 impl<F: PrimeField, E: FieldExtension<F> + Field, T: ColumnMajorMerkleTreeConstructor<F>>
@@ -127,109 +149,6 @@ impl WhirSchedule {
 
     pub fn total_poly_size_reduction(&self) -> usize {
         self.whir_steps_schedule.iter().sum()
-    }
-
-    pub fn default_for_tests_80_bits_20() -> Self {
-        let mut new = Self {
-            base_lde_factor: 2,
-            cap_size: 16,
-            whir_steps_schedule: vec![1, 4, 4, 4, 4],
-            whir_pow_schedule: vec![24, 24, 24, 24, 24],
-            whir_steps_lde_factors: vec![8, 64, 128, 128],
-            whir_queries_schedule: vec![],
-        };
-
-        assert_eq!(
-            new.whir_steps_lde_factors.len() + 1,
-            new.whir_steps_schedule.len()
-        );
-        assert_eq!(new.whir_pow_schedule.len(), new.whir_steps_schedule.len());
-
-        for (lde, pow) in Some(new.base_lde_factor)
-            .iter()
-            .chain(new.whir_steps_lde_factors.iter())
-            .zip(new.whir_pow_schedule.iter())
-        {
-            let sec_bits = 80 - *pow;
-            let bits_per_query = lde.trailing_zeros();
-            let num_queries = (sec_bits * 120).div_ceil(bits_per_query * 100); // roughly extra 20% on top of conjecture. Latest paper decrease conjectured value by 5-10% depending on rate
-            new.whir_queries_schedule.push(num_queries as usize);
-        }
-
-        new
-    }
-
-    pub fn default_for_tests_80_bits_22() -> Self {
-        let mut new = Self {
-            base_lde_factor: 2,
-            cap_size: 16,
-            whir_steps_schedule: vec![1, 4, 4, 4, 4, 2],
-            whir_pow_schedule: vec![24, 24, 24, 24, 24, 24],
-            whir_steps_lde_factors: vec![8, 64, 128, 128, 128],
-            whir_queries_schedule: vec![],
-        };
-
-        assert_eq!(
-            new.whir_steps_lde_factors.len() + 1,
-            new.whir_steps_schedule.len()
-        );
-        assert_eq!(new.whir_pow_schedule.len(), new.whir_steps_schedule.len());
-
-        for (lde, pow) in Some(new.base_lde_factor)
-            .iter()
-            .chain(new.whir_steps_lde_factors.iter())
-            .zip(new.whir_pow_schedule.iter())
-        {
-            let sec_bits = 80 - *pow;
-            let bits_per_query = lde.trailing_zeros();
-            let num_queries = (sec_bits * 120).div_ceil(bits_per_query * 100); // roughly extra 20% on top of conjecture. Latest paper decrease conjectured value by 5-10% depending on rate
-            new.whir_queries_schedule.push(num_queries as usize);
-        }
-
-        new
-    }
-
-    pub fn default_for_tests_80_bits_24() -> Self {
-        let mut new = Self {
-            base_lde_factor: 2,
-            cap_size: 16,
-            whir_steps_schedule: vec![1, 4, 4, 4, 4, 4],
-            whir_pow_schedule: vec![24, 24, 24, 24, 24, 24],
-            whir_steps_lde_factors: vec![8, 64, 128, 128, 128],
-            whir_queries_schedule: vec![],
-        };
-
-        assert_eq!(
-            new.whir_steps_lde_factors.len() + 1,
-            new.whir_steps_schedule.len()
-        );
-        assert_eq!(new.whir_pow_schedule.len(), new.whir_steps_schedule.len());
-
-        for (lde, pow) in Some(new.base_lde_factor)
-            .iter()
-            .chain(new.whir_steps_lde_factors.iter())
-            .zip(new.whir_pow_schedule.iter())
-        {
-            let sec_bits = 80 - *pow;
-            let bits_per_query = lde.trailing_zeros();
-            let num_queries = (sec_bits * 120).div_ceil(bits_per_query * 100); // roughly extra 20% on top of conjecture. Latest paper decrease conjectured value by 5-10% depending on rate
-            new.whir_queries_schedule.push(num_queries as usize);
-        }
-
-        new
-    }
-
-    // TODO(100-bit)
-    pub fn default_for_tests_100_bits_20() -> Self {
-        todo!()
-    }
-
-    pub fn default_for_tests_100_bits_22() -> Self {
-        todo!()
-    }
-
-    pub fn default_for_tests_100_bits_24() -> Self {
-        todo!()
     }
 }
 
@@ -297,6 +216,7 @@ pub fn prove_configured_with_gkr<
     F: PrimeField + TwoAdicField,
     E: FieldExtension<F> + Field,
     T: ColumnMajorMerkleTreeConstructor<F>,
+    TR: ::transcript::Transcript<F, E>,
 >(
     compiled_circuit: &GKRCircuitArtifact<F>,
     external_challenges: &GKRExternalChallenges<F, E>,
@@ -305,6 +225,7 @@ pub fn prove_configured_with_gkr<
     setup_commitment: &ColumnMajorBaseOracleForLDE<F, T>,
     twiddles: &Twiddles<F, Global>,
     prover_config: &ProverConfig,
+    commitment_mode: CommitmentMode,
     inits_and_teardowns_top_bits: Vec<u32>,
     trace_len: usize,
     worker: &Worker,
@@ -314,10 +235,19 @@ where
     [(); E::DEGREE]: Sized,
 {
     assert_eq!(compiled_circuit.trace_len, trace_len);
-    assert_eq!(
-        witness_eval_data.column_major_memory_trace[0].len(),
-        trace_len
-    );
+    if witness_eval_data.column_major_memory_trace.len() > 0 {
+        assert_eq!(
+            witness_eval_data.column_major_memory_trace[0].len(),
+            trace_len
+        );
+    }
+    if witness_eval_data.column_major_witness_trace.len() > 0 {
+        assert_eq!(
+            witness_eval_data.column_major_witness_trace[0].len(),
+            trace_len
+        );
+    }
+
     assert_eq!(
         inits_and_teardowns_top_bits.len(),
         compiled_circuit.memory_layout.teardown_sets.len()
@@ -328,62 +258,291 @@ where
         prover_config.whir_schedule.whir_steps_schedule[0]
     );
 
-    // first we would commit to the witness - WHIR commitment itself is just the same as FRI commitment
-    let (mem_oracle, wit_oracle) = stage1::stage1::<F, T>(
-        &witness_eval_data,
-        twiddles,
-        prover_config.lde_factor,
-        prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
-        prover_config.cap_size,
-        trace_len.trailing_zeros() as usize,
-        worker,
-    );
+    let mut external_challenges = *external_challenges;
 
-    let mut transcript_input = vec![];
-    // we should commit all "external" variables,
-    // that are still part of the circuit, even though they are not formally the public input
+    let (
+        mut seed,
+        mem_oracle,
+        wit_oracle,
+        lookup_challenges_pow_nonce,
+        [lookup_alpha, lookup_additive_part],
+        // Present only in the packed mode: the lazy (coset-by-coset) base commitment
+        // whose query hook serves round-0 base queries in `whir_fold`.
+        packed_base_commitment,
+    ) = match commitment_mode {
+        CommitmentMode::SeparateMemoryAndWitness => {
+            // first we would commit to the witness - WHIR commitment itself is just the same as FRI commitment
+            let (mem_oracle, wit_oracle) =
+                stages::initial_commit::commit_separate_memory_and_witness_subtrees::<F, T>(
+                    &witness_eval_data,
+                    twiddles,
+                    prover_config.lde_factor,
+                    prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
+                    prover_config.cap_size,
+                    trace_len.trailing_zeros() as usize,
+                    worker,
+                );
 
-    // circuit sequence and delegation type
-    transcript_input.extend_from_slice(&inits_and_teardowns_top_bits[..]);
+            let mut transcript_input = vec![];
+            // we should commit all "external" variables,
+            // that are still part of the circuit, even though they are not formally the public input
 
-    external_challenges.flatten_into_buffer(&mut transcript_input);
+            // circuit sequence and delegation type
+            transcript_input.extend_from_slice(&inits_and_teardowns_top_bits[..]);
 
-    // commit our setup
-    if setup.hypercube_evals.len() > 0 {
-        flatten_merkle_caps_iter_into(
-            Some(setup_commitment.tree.get_cap()).into_iter(),
-            &mut transcript_input,
-        );
-    }
+            external_challenges.flatten_into_buffer(&mut transcript_input);
 
-    // memory
-    if compiled_circuit.memory_layout.total_width > 0 {
-        flatten_merkle_caps_iter_into(
-            Some(mem_oracle.tree.get_cap()).into_iter(),
-            &mut transcript_input,
-        );
-    }
+            // commit our setup
+            if setup.hypercube_evals.len() > 0 {
+                flatten_merkle_caps_iter_into(
+                    Some(setup_commitment.tree.get_cap()).into_iter(),
+                    &mut transcript_input,
+                );
+            }
 
-    // and witness
-    if compiled_circuit.witness_layout.total_width > 0 {
-        flatten_merkle_caps_iter_into(
-            Some(wit_oracle.tree.get_cap()).into_iter(),
-            &mut transcript_input,
-        );
-    }
+            // memory
+            if compiled_circuit.memory_layout.total_width > 0 {
+                flatten_merkle_caps_iter_into(
+                    Some(mem_oracle.tree.get_cap()).into_iter(),
+                    &mut transcript_input,
+                );
+            }
 
-    let mut seed = Transcript::commit_initial(&transcript_input);
+            // and witness
+            if compiled_circuit.witness_layout.total_width > 0 {
+                flatten_merkle_caps_iter_into(
+                    Some(wit_oracle.tree.get_cap()).into_iter(),
+                    &mut transcript_input,
+                );
+            }
 
-    // Now we need to draw prove-local challenges, and in our case it's just a challenge for lookups,
-    // and challenge to batch all constraints. They are gated behind a proof-of-work; commit-before-draw
-    // is satisfied by `commit_initial` above.
-    let lookup_challenges_pow_bits = pow_bits::lookup_challenges_pow_bits(
-        prover_config.security_level.security_bits(),
-        pow_bits::lookup_identity_degree(compiled_circuit),
-    );
-    let (lookup_challenges_pow_nonce, challenges): (u64, Vec<E>) =
-        draw_random_field_els_with_pow(&mut seed, 2, lookup_challenges_pow_bits, worker);
-    let [lookup_alpha, lookup_additive_part] = challenges.try_into().unwrap();
+            let mut seed =
+                <TR as ::transcript::Transcript<F, E>>::commit_initial_u32(&transcript_input);
+
+            // Now we need to draw prove-local challenges, and in our case it's just a challenge for lookups,
+            // and challenge to batch all constraints. They are gated behind a proof-of-work; commit-before-draw
+            // is satisfied by `commit_initial` above.
+            let lookup_challenges_pow_bits = pow_bits::lookup_challenges_pow_bits(
+                prover_config.security_level.security_bits(),
+                pow_bits::lookup_identity_degree(compiled_circuit),
+            );
+            let (lookup_challenges_pow_nonce, challenges): (u64, Vec<E>) =
+                draw_random_field_els_with_pow::<F, E, TR>(
+                    &mut seed,
+                    2,
+                    lookup_challenges_pow_bits,
+                    worker,
+                );
+            let [lookup_alpha, lookup_additive_part] = challenges.try_into().unwrap();
+
+            (
+                seed,
+                mem_oracle,
+                wit_oracle,
+                lookup_challenges_pow_nonce,
+                [lookup_alpha, lookup_additive_part],
+                None,
+            )
+        }
+        CommitmentMode::MergedMemoryAndWitness => {
+            let merged_oracle =
+                stages::initial_commit::commit_merged_memory_and_witness_subtrees::<F, T>(
+                    &witness_eval_data,
+                    twiddles,
+                    prover_config.lde_factor,
+                    prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
+                    prover_config.cap_size,
+                    trace_len.trailing_zeros() as usize,
+                    worker,
+                );
+
+            let mut transcript_input = vec![];
+            // we should commit all "external" variables,
+            // that are still part of the circuit, even though they are not formally the public input
+
+            // circuit sequence and delegation type
+            transcript_input.extend_from_slice(&inits_and_teardowns_top_bits[..]);
+
+            external_challenges.flatten_into_buffer(&mut transcript_input);
+
+            // commit our setup
+            if setup.hypercube_evals.len() > 0 {
+                flatten_merkle_caps_iter_into(
+                    Some(setup_commitment.tree.get_cap()).into_iter(),
+                    &mut transcript_input,
+                );
+            }
+
+            flatten_merkle_caps_iter_into(
+                Some(merged_oracle.tree.get_cap()).into_iter(),
+                &mut transcript_input,
+            );
+
+            let mut seed =
+                <TR as ::transcript::Transcript<F, E>>::commit_initial_u32(&transcript_input);
+
+            let lookup_challenges_pow_bits = pow_bits::lookup_challenges_pow_bits(
+                prover_config.security_level.security_bits(),
+                pow_bits::lookup_identity_degree(compiled_circuit),
+            );
+            let (lookup_challenges_pow_nonce, challenges): (u64, Vec<E>) =
+                draw_random_field_els_with_pow::<F, E, TR>(
+                    &mut seed,
+                    2,
+                    lookup_challenges_pow_bits,
+                    worker,
+                );
+            let [lookup_alpha, lookup_additive_part] = challenges.try_into().unwrap();
+
+            (
+                seed,
+                merged_oracle,
+                ColumnMajorBaseOracleForLDE::empty(
+                    prover_config.base_oracles_values_per_leaf,
+                    trace_len.trailing_zeros() as usize,
+                    prover_config.lde_factor,
+                ),
+                lookup_challenges_pow_nonce,
+                [lookup_alpha, lookup_additive_part],
+                None,
+            )
+        }
+        CommitmentMode::MergedAndPackedMemoryAndWitness {
+            pack_log2,
+            external_challenges_pow_bits,
+            register_final_state,
+            final_pc,
+            final_timestamp,
+        } => {
+            // in this mode we will re-derive external challenges.
+            //
+            // Lazy (coset-by-coset) commitment: the packed polynomials are
+            // 2^(N + pack_log2) and their LDE codeword (x base_lde_factor) is far too
+            // large to materialize monolithically. We build a coset-by-coset commitment
+            // (keeps only the packed monomial forms + the small top tree) and hand
+            // `whir_fold` a "slim" base oracle that carries only the main-domain (coset 0)
+            // columns and the commitment cap; round-0 base queries are served on demand by
+            // the query hook installed at the `whir_fold` call.
+            let merged_inputs: Vec<&[F]> = witness_eval_data
+                .column_major_memory_trace
+                .iter()
+                .chain(witness_eval_data.column_major_witness_trace.iter())
+                .map(|el| &el[..])
+                .collect();
+            let commitment = CosetByCosetBaseCommitment::<F, T>::commit_packed(
+                &merged_inputs,
+                twiddles,
+                prover_config.lde_factor,
+                prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
+                prover_config.cap_size,
+                trace_len.trailing_zeros() as usize,
+                pack_log2,
+                worker,
+            );
+            let packed_size_log2 = trace_len.trailing_zeros() as usize + pack_log2;
+            let cap = commitment.get_cap();
+            // Slim base oracle: only coset 0 (main domain, read for batching) + the cap.
+            let merged_oracle = ColumnMajorBaseOracleForLDE::<F, T> {
+                cosets: vec![ColumnMajorBaseOracleForCoset {
+                    original_values_normal_order: commitment
+                        .main_domain_columns(twiddles, worker)
+                        .into_iter()
+                        .map(|col| ColumnMajorCosetBoundTracePart {
+                            column: Arc::new(col),
+                            offset: F::ONE,
+                        })
+                        .collect(),
+                    offset: F::ONE,
+                    coset_size_log2: packed_size_log2,
+                }],
+                tree: T::build_over_leaf_hashes(cap.cap.clone(), cap.cap.len(), worker),
+                values_per_leaf: commitment.values_per_leaf,
+                coset_size_log2: packed_size_log2,
+            };
+
+            let mut transcript_input = vec![];
+            // we should commit all "external" variables,
+            // that are still part of the circuit, even though they are not formally the public input
+
+            // register final state - flatten same way as full statement verifier,
+            // and in general it can be flattened to (32+1) * 3 u32 words -> bytes without interpretation
+            // for L1 verifier
+            let mut registers_buffer = [0u32; 32 * 3];
+            for reg_idx in 0..32 {
+                let value = register_final_state[reg_idx].value;
+                let (timestamp_low, timestamp_high) =
+                    split_timestamp(register_final_state[reg_idx].last_access_timestamp);
+                registers_buffer[reg_idx * 3] = value;
+                registers_buffer[reg_idx * 3 + 1] = timestamp_low;
+                registers_buffer[reg_idx * 3 + 2] = timestamp_high;
+            }
+            transcript_input.extend(registers_buffer);
+
+            let mut final_pc_buffer = [0u32; 3];
+            final_pc_buffer[0] = final_pc;
+            final_pc_buffer[1] = split_timestamp(final_timestamp).0;
+            final_pc_buffer[2] = split_timestamp(final_timestamp).1;
+            transcript_input.extend(final_pc_buffer);
+
+            // inits and teardown bits
+            transcript_input.extend_from_slice(&inits_and_teardowns_top_bits[..]);
+
+            // commit our setup
+            if setup.hypercube_evals.len() > 0 {
+                flatten_merkle_caps_iter_into(
+                    Some(setup_commitment.tree.get_cap()).into_iter(),
+                    &mut transcript_input,
+                );
+            }
+
+            flatten_merkle_caps_iter_into(
+                Some(merged_oracle.tree.get_cap()).into_iter(),
+                &mut transcript_input,
+            );
+
+            let mut seed =
+                <TR as ::transcript::Transcript<F, E>>::commit_initial_u32(&transcript_input);
+
+            let lookup_challenges_pow_bits = pow_bits::lookup_challenges_pow_bits(
+                prover_config.security_level.security_bits(),
+                pow_bits::lookup_identity_degree(compiled_circuit),
+            );
+
+            let pow_bits = core::cmp::max(lookup_challenges_pow_bits, external_challenges_pow_bits);
+
+            let num_challenges = GKRExternalChallenges::<F, E>::TOTAL_CHALLENGES + 2;
+
+            let (lookup_challenges_pow_nonce, challenges): (u64, Vec<E>) =
+                draw_random_field_els_with_pow::<F, E, TR>(
+                    &mut seed,
+                    num_challenges,
+                    pow_bits,
+                    worker,
+                );
+            external_challenges = GKRExternalChallenges::from_slice(
+                &challenges[..GKRExternalChallenges::<F, E>::TOTAL_CHALLENGES],
+            );
+            let [lookup_alpha, lookup_additive_part] = challenges
+                [GKRExternalChallenges::<F, E>::TOTAL_CHALLENGES..]
+                .try_into()
+                .unwrap();
+
+            (
+                seed,
+                merged_oracle,
+                ColumnMajorBaseOracleForLDE::empty(
+                    prover_config.base_oracles_values_per_leaf,
+                    trace_len.trailing_zeros() as usize,
+                    prover_config.lde_factor,
+                ),
+                lookup_challenges_pow_nonce,
+                [lookup_alpha, lookup_additive_part],
+                Some(commitment),
+            )
+        }
+    };
+
+    // then GKR is the same until the end of backward pass and derivation of claims
 
     let mut gkr_storage = GKRStorage::<F, E>::default();
 
@@ -445,7 +604,7 @@ where
             layer,
             &mut gkr_storage,
             compiled_circuit,
-            external_challenges,
+            &external_challenges,
             &mut witness_eval_data,
             &inits_and_teardowns_top_bits,
             trace_len,
@@ -510,10 +669,10 @@ where
             }
         }
     }
-    commit_field_els(&mut seed, &evals_flattened);
+    commit_field_els::<F, E, TR>(&mut seed, &evals_flattened);
 
     let num_challenges = final_trace_size_log_2 + 1;
-    let mut challenges = draw_random_field_els::<F, E>(&mut seed, num_challenges);
+    let mut challenges = draw_random_field_els::<F, E, TR>(&mut seed, num_challenges);
     let batching_challenge = challenges.pop().unwrap();
 
     println!("Evaluating initial claims for sumcheck loop");
@@ -537,7 +696,6 @@ where
         worker,
     );
 
-    // let output_map = &compiled_circuit.global_output_map;
     let mut top_layer_claims: BTreeMap<GKRAddress, E> = BTreeMap::new();
     let output_map = &dimension_reducing_inputs[&initial_layer_for_sumcheck];
     top_layer_claims.insert(
@@ -582,7 +740,7 @@ where
     let mut sumcheck_batching_challenge = batching_challenge;
     let mut reduced_trace_size_log_2 = final_trace_size_log_2;
     for (layer_idx, layer) in dimension_reducing_inputs.into_iter().rev() {
-        let proof = sumcheck_loop::evaluate_dimension_reducing_sumcheck_for_layer(
+        let proof = sumcheck_loop::evaluate_dimension_reducing_sumcheck_for_layer::<F, E, TR>(
             layer_idx,
             &layer,
             &mut points_for_claims_at_layer,
@@ -608,7 +766,7 @@ where
 
     // Backward loop: standard layer-by-layer sumcheck
     for (layer_idx, layer) in compiled_circuit.layers.iter().enumerate().rev() {
-        let proof = sumcheck_loop::evaluate_sumcheck_for_layer(
+        let proof = sumcheck_loop::evaluate_sumcheck_for_layer::<F, E, TR>(
             layer_idx,
             layer,
             &mut points_for_claims_at_layer,
@@ -621,7 +779,7 @@ where
             lookup_additive_part,
             &inits_and_teardowns_top_bits[..],
             address_high_bits_shift,
-            external_challenges,
+            &external_challenges,
             &mut seed,
             worker,
         );
@@ -630,14 +788,15 @@ where
 
     drop(preprocessed_generic_lookup);
 
-    let base_layer_z = points_for_claims_at_layer
+    let mut base_layer_z = points_for_claims_at_layer
         .get(&0)
-        .expect("must have base layer point");
+        .expect("must have base layer point")
+        .clone();
 
     let mut _eq_at_z: Box<[E]> = vec![].into_boxed_slice();
     #[cfg(feature = "gkr_self_checks")]
     {
-        let mut eq_precomputed = make_eq_poly_in_full(base_layer_z, worker);
+        let mut eq_precomputed = make_eq_poly_in_full(&base_layer_z, worker);
         _eq_at_z = eq_precomputed.pop().unwrap();
     }
 
@@ -672,22 +831,16 @@ where
     let mut setup_polys_claims = Vec::with_capacity(setup.hypercube_evals.len());
     for i in 0..setup.hypercube_evals.len() {
         let key = GKRAddress::Setup(i);
-        if let Some(value) = claims_for_layers[&0].get(&key).copied() {
-            #[cfg(feature = "gkr_self_checks")]
-            {
-                let poly = gkr_storage.get_base_layer(key);
-                let evaluation = evaluate_with_precomputed_eq::<F, E>(poly, &_eq_at_z[..]);
-                assert_eq!(evaluation, value, "diverged for {:?}", key);
-            }
-            setup_polys_claims.push(value);
-        } else {
-            // we have rare case when setup poly is not used, but we keep setup logic simple,
-            // we have rare case when setup poly is not used, but we keep setup logic simple,
-            // and so we have to re-evaluate it
+        let Some(value) = claims_for_layers[&0].get(&key).copied() else {
+            panic!("Missing claim for {:?}", key);
+        };
+        #[cfg(feature = "gkr_self_checks")]
+        {
             let poly = gkr_storage.get_base_layer(key);
             let evaluation = evaluate_with_precomputed_eq::<F, E>(poly, &_eq_at_z[..]);
-            setup_polys_claims.push(evaluation);
+            assert_eq!(evaluation, value, "diverged for {:?}", key);
         }
+        setup_polys_claims.push(value);
     }
 
     #[cfg(feature = "gkr_self_checks")]
@@ -702,7 +855,7 @@ where
             assert_eq!(
                 value,
                 evaluate_virtual_range_check_setup_poly::<F, E, 16>(
-                    base_layer_z,
+                    &base_layer_z,
                     trace_len.trailing_zeros()
                 )
             );
@@ -717,13 +870,12 @@ where
             assert_eq!(
                 value,
                 evaluate_virtual_range_check_setup_poly::<F, E, TIMESTAMP_COLUMNS_NUM_BITS>(
-                    base_layer_z,
+                    &base_layer_z,
                     trace_len.trailing_zeros()
                 )
             );
         }
     }
-
     drop(gkr_storage);
 
     // The WHIR batching challenge is gated behind a proof-of-work; the GKR sumcheck
@@ -736,11 +888,159 @@ where
         prover_config.whir_schedule.base_lde_factor.trailing_zeros() as usize,
         pow_bits::total_base_oracle_columns(compiled_circuit),
     );
+
+    let mut trace_len_log2_for_whir = trace_len.trailing_zeros() as usize;
+
+    // and for WHIR we may need to reshuffle/merge claims depending on the mode
+    let (mem_polys_claims, wit_polys_claims, setup_polys_claims) = match commitment_mode {
+        CommitmentMode::SeparateMemoryAndWitness => {
+            (mem_polys_claims, wit_polys_claims, setup_polys_claims)
+        }
+        CommitmentMode::MergedMemoryAndWitness => {
+            // just move all witness claims to the memory same order
+            let mut merged_claims = mem_polys_claims;
+            merged_claims.extend(wit_polys_claims);
+
+            (merged_claims, Vec::new(), setup_polys_claims)
+        }
+        CommitmentMode::MergedAndPackedMemoryAndWitness { pack_log2, .. } => {
+            // in the same manner - we should be consistent with how we packed polynomials.
+
+            // NOTE: this only allows Keccak trascript, that doesn't buffer and instead hashes every time
+            assert!(
+                core::any::TypeId::of::<TR>() == core::any::TypeId::of::<Keccak256Transcript>()
+            );
+
+            // We already have all prover-controlled variables in the transcript, so we can just draw
+            // extra coordinates' values here
+            let extra_coordinates: Vec<E> = draw_random_field_els::<F, E, TR>(&mut seed, pack_log2);
+
+            // now recursively merge
+            let mut merged_claims = mem_polys_claims;
+            merged_claims.extend(wit_polys_claims);
+
+            let [merged_claims, setup_polys_claims] = [merged_claims, setup_polys_claims]
+                .map(|input| merge_claims(&input, &extra_coordinates));
+
+            // and we need to update claim point
+            let mut new_claim_point = extra_coordinates;
+            new_claim_point.extend_from_slice(&base_layer_z);
+
+            base_layer_z = new_claim_point;
+            trace_len_log2_for_whir += pack_log2;
+
+            #[cfg(feature = "gkr_self_checks")]
+            {
+                use crate::gkr::prover::stages::commitment_utils::compute_column_major_monomial_form_from_main_domain;
+                use crate::gkr::whir::hypercube_to_monomial::multivariate_coeffs_into_hypercube_evals;
+
+                // Reconstruct every packed polynomial from the committed base oracle
+                // and check that its multilinear evaluation at the (now extended)
+                // claim point matches the merged claim we just derived. We take the
+                // FIRST coset (offset == 1, i.e. the base evaluation domain), invert
+                // its NTT to recover the packed poly's monomial coefficients, turn
+                // those into hypercube evaluations, and evaluate at `base_layer_z`.
+                let coset0 = &mem_oracle.cosets[0];
+                debug_assert_eq!(coset0.offset, F::ONE, "coset 0 must be the base domain");
+                assert_eq!(
+                    coset0.original_values_normal_order.len(),
+                    merged_claims.len(),
+                    "one committed packed column per merged claim"
+                );
+                let eq_at_point = make_eq_poly_in_full::<E>(&base_layer_z, worker);
+                let eq_at_point = eq_at_point.last().expect("eq poly has a full layer");
+                for (column, expected_claim) in coset0
+                    .original_values_normal_order
+                    .iter()
+                    .zip(merged_claims.iter())
+                {
+                    // coset 0 evaluations -> IFFT -> natural monomial coefficients
+                    let mut hypercube_evals = compute_column_major_monomial_form_from_main_domain::<
+                        F,
+                        F,
+                        Global,
+                    >(&column.column[..], twiddles);
+                    // monomials -> hypercube evaluations of the packed multilinear,
+                    // then bit-reverse (the packing committed `evals_into_coeffs(bitrev(H))`,
+                    // so the inverse is `coeffs_into_hypercube_evals` then `bitreverse`;
+                    // this mirrors `whir_fold`'s own claim recomputation).
+                    let size_log2 = hypercube_evals.len().trailing_zeros();
+                    multivariate_coeffs_into_hypercube_evals(&mut hypercube_evals, size_log2);
+                    crate::fft::bitreverse_enumeration_inplace(&mut hypercube_evals);
+                    // re-evaluate at the extended claim point and compare
+                    assert_eq!(hypercube_evals.len(), eq_at_point.len());
+                    let reevaluated =
+                        evaluate_with_precomputed_eq::<F, E>(&hypercube_evals, eq_at_point);
+                    assert_eq!(
+                        reevaluated, *expected_claim,
+                        "packed-commitment self-check: reconstructed evaluation must match merged claim"
+                    );
+                }
+            }
+
+            (merged_claims, Vec::new(), setup_polys_claims)
+        }
+    };
+
     let (batched_proximity_check_pow_nonce, whir_batching_challenges): (u64, Vec<E>) =
-        draw_random_field_els_with_pow(&mut seed, 1, batched_proximity_pow_bits, worker);
+        draw_random_field_els_with_pow::<F, E, TR>(
+            &mut seed,
+            1,
+            batched_proximity_pow_bits,
+            worker,
+        );
     let whir_batching_challenge = whir_batching_challenges[0];
 
-    let whir_proof = whir_fold(
+    // In the packed mode the base (memory+witness) oracle was committed
+    // coset-by-coset, so it does not hold every LDE coset. Install a query hook that
+    // recomputes the queried coset on demand from `packed_base_commitment`, and switch
+    // the intermediate (folded) RS oracles to the coset-by-coset mode too. `set_idx`:
+    // 0 = merged memory+witness (the lazy commitment), 2 = setup (still the passed
+    // monolithic oracle); witness (1) carries no columns in this mode.
+    let packed_hook = packed_base_commitment.as_ref().map(|commitment| {
+        move |set_idx: usize, query_index: usize| -> (Vec<Vec<F>>, BaseFieldQuery<F, T>) {
+            match set_idx {
+                0 => commitment.query_structured(query_index, twiddles, worker),
+                2 => {
+                    let (_coset, leaf, query) =
+                        setup_commitment.query_for_folded_index(query_index);
+                    (leaf, query)
+                }
+                _ => unreachable!("packed mode: only merged(0)/setup(2) base sets carry columns"),
+            }
+        }
+    });
+    let base_query_hook: Option<&dyn Fn(usize, usize) -> (Vec<Vec<F>>, BaseFieldQuery<F, T>)> =
+        packed_hook
+            .as_ref()
+            .map(|h| h as &dyn Fn(usize, usize) -> (Vec<Vec<F>>, BaseFieldQuery<F, T>));
+    let intermediate_oracle_mode = if packed_base_commitment.is_some() {
+        crate::gkr::whir::WhirIntermediateOracleMode::CosetByCoset
+    } else {
+        crate::gkr::whir::WhirIntermediateOracleMode::Monolithic
+    };
+
+    let intermediate_transcript_seed =
+        if core::any::TypeId::of::<TR>() == core::any::TypeId::of::<Keccak256Transcript>() {
+            // some unsafe magic
+            assert_eq!(
+                core::any::TypeId::of::<F>(),
+                core::any::TypeId::of::<::field::Proth120>()
+            );
+            assert_eq!(
+                core::any::TypeId::of::<E>(),
+                core::any::TypeId::of::<::field::Proth120>()
+            );
+            let seed_copy: <Keccak256Transcript as ::transcript::Transcript<
+                ::field::Proth120,
+                ::field::Proth120,
+            >>::Seed = unsafe { core::mem::transmute_copy(&seed) };
+            Some(seed_copy.0)
+        } else {
+            None
+        };
+
+    let whir_proof = whir_fold::<F, E, T, TR>(
         mem_oracle,
         mem_polys_claims,
         wit_oracle,
@@ -753,7 +1053,9 @@ where
         twiddles,
         seed,
         prover_config.whir_schedule.cap_size,
-        trace_len.trailing_zeros() as usize,
+        trace_len_log2_for_whir,
+        base_query_hook,
+        intermediate_oracle_mode,
         worker,
     );
 
@@ -779,20 +1081,71 @@ where
     // accumulator so the caller can do `initial_contribution * accumulator == 1`
     // as a single check (mirroring the standalone i/t proof's role).
     if let Some(it_evals) = final_explicit_evaluations.get(&OutputType::InitsAndTeardownsProduct) {
-        let [init_set_computed, teardown_set_computed] = it_evals.clone().map(|els| {
+        // here the numbering is read - write
+        let [teardown_set_computed, init_set_computed] = it_evals.clone().map(|els| {
             let mut result = E::ONE;
             for el in els.iter() {
                 result.mul_assign(el);
             }
             result
         });
-        let mut it_contribution = teardown_set_computed;
-        it_contribution.mul_assign(&init_set_computed.inverse().expect("must not be zero"));
-        grand_product_accumulator_computed.mul_assign(&it_contribution);
+        // accumulation is write/read
+        grand_product_accumulator_computed.mul_assign(&init_set_computed);
+        grand_product_accumulator_computed
+            .mul_assign(&teardown_set_computed.inverse().expect("must not be zero"));
+    }
+
+    #[cfg(feature = "gkr_self_checks")]
+    if let CommitmentMode::MergedAndPackedMemoryAndWitness {
+        register_final_state,
+        final_pc,
+        final_timestamp,
+        ..
+    } = commitment_mode
+    {
+        // self-check, write set/read set
+        let mut registers_buffer = [0u32; 32 * 3];
+        for reg_idx in 0..32 {
+            let value = register_final_state[reg_idx].value;
+            let (timestamp_low, timestamp_high) =
+                split_timestamp(register_final_state[reg_idx].last_access_timestamp);
+            registers_buffer[reg_idx * 3] = value;
+            registers_buffer[reg_idx * 3 + 1] = timestamp_low;
+            registers_buffer[reg_idx * 3 + 2] = timestamp_high;
+        }
+
+        use common_constants::{INITIAL_PC, INITIAL_TIMESTAMP};
+        use cs::definitions::NUM_REGISTERS;
+
+        let (final_ts_low, final_ts_high) = split_timestamp(final_timestamp);
+
+        let (machine_state_read_set_contribution, machine_state_write_set_contribution) =
+            prover::definitions::produce_initial_permutation_product_separate_contributions(
+                unsafe {
+                    core::mem::transmute::<_, &[(u32, (u32, u32)); NUM_REGISTERS]>(
+                        &registers_buffer,
+                    )
+                },
+                INITIAL_PC,
+                split_timestamp(INITIAL_TIMESTAMP),
+                final_pc,
+                (final_ts_low, final_ts_high),
+                &external_challenges,
+            );
+
+        let mut t = grand_product_accumulator_computed;
+        t.mul_assign(
+            &machine_state_read_set_contribution
+                .inverse()
+                .expect("non-zero"),
+        );
+        t.mul_assign(&machine_state_write_set_contribution);
+
+        assert_eq!(t, E::ONE);
     }
 
     GKRProof {
-        external_challenges: *external_challenges,
+        external_challenges: external_challenges,
         whir_proof,
         final_explicit_evaluations,
         sumcheck_intermediate_values,
@@ -800,5 +1153,147 @@ where
         inits_and_teardowns_top_bits: inits_and_teardowns_top_bits.to_vec(),
         lookup_challenges_pow_nonce,
         batched_proximity_check_pow_nonce,
+        intermediate_transcript_seed,
+    }
+}
+
+fn merge_claims<F: Field>(input: &[F], extra_coordinates: &[F]) -> Vec<F> {
+    let pack_log2 = extra_coordinates.len();
+    let mut result = vec![];
+    for chunk in input.chunks(1 << pack_log2) {
+        let mut input = if chunk.len() == 1 << pack_log2 {
+            chunk.to_vec()
+        } else {
+            let mut padded = chunk.to_vec();
+            padded.resize(1 << pack_log2, F::ZERO);
+
+            padded
+        };
+        let mut buffer = vec![];
+        // note `rev` on the coordiantes - we will later on concatenate
+        // coordiantes, so first coordiante is MSB
+        for merge_point in extra_coordinates.iter().rev() {
+            for [a, b] in input.as_chunks::<2>().0 {
+                // canonical interpolation a + (b - a) * r', consistent with the packing
+                // that concatenates sub-polys in order (block 0 => a at coordinate 0)
+                use crate::gkr::prover::sumcheck_loop::interpolate_linear;
+                let t = interpolate_linear(*a, *b, merge_point);
+                buffer.push(t);
+            }
+
+            core::mem::swap(&mut input, &mut buffer);
+            buffer.clear();
+        }
+        assert_eq!(input.len(), 1);
+        result.push(input[0]);
+    }
+
+    result
+}
+
+#[cfg(test)]
+mod packing_merge_tests {
+    use super::merge_claims;
+    use crate::gkr::prover::stages::commitment_utils::pack_polys_parallel_from_hypercubes_to_monomials;
+    use crate::gkr::sumcheck::eq_poly::{evaluate_with_precomputed_eq, make_eq_poly_in_full};
+    use crate::gkr::whir::hypercube_to_monomial::multivariate_coeffs_into_hypercube_evals;
+    use field::baby_bear::base::BabyBearField;
+    use field::baby_bear::ext4::BabyBearExt4;
+    use field::{Field, FieldExtension, PrimeField};
+    use rand::RngCore;
+    use worker::Worker;
+
+    type F = BabyBearField;
+    type E = BabyBearExt4;
+
+    fn rand_f(rng: &mut impl RngCore) -> F {
+        F::from_u32_with_reduction(rng.next_u32())
+    }
+
+    fn rand_e(rng: &mut impl RngCore) -> E {
+        let coeffs = [(); 4].map(|_| rand_f(rng));
+        <E as FieldExtension<F>>::from_coeffs(coeffs)
+    }
+
+    /// Inverse of `pack_polys_parallel_from_hypercubes_to_monomials` for a single
+    /// packed poly: turn the whole `(N + pack_log2)`-variate monomial vector back
+    /// into hypercube evaluations. The forward transform is `bitreverse` then
+    /// `multivariate_hypercube_evals_into_coeffs` over ALL variables, so the inverse
+    /// is `multivariate_coeffs_into_hypercube_evals` then `bitreverse`. The vector is
+    /// treated as one multilinear — it can NOT be split into per-sub-poly halves.
+    fn packed_monomials_to_hypercube_evals(packed: &mut [F]) {
+        let size_log2 = packed.len().trailing_zeros();
+        multivariate_coeffs_into_hypercube_evals(packed, size_log2);
+        crate::fft::bitreverse_enumeration_inplace(packed);
+    }
+
+    /// Concatenate two `2^N`-sized multilinear polys `a`, `b` into a single
+    /// `(N + 1)`-variate multilinear poly `P` (block index = most significant
+    /// coordinate, `P(x, 0) = a(x)`, `P(x, 1) = b(x)`) and check that `merge_claims`
+    /// reproduces `P` at the extended point, agreeing with a naive dot product
+    /// against the full `(N + 1)`-variate equality polynomial.
+    #[test]
+    fn concatenate_two_polys_merge_claims_matches_extended_eq() {
+        let worker = Worker::new_with_num_threads(2);
+        const N: usize = 4;
+        let size = 1usize << N;
+
+        let mut rng = rand::rng();
+
+        // two independent multilinear polys in hypercube-evaluation form
+        let a: Vec<F> = (0..size).map(|_| rand_f(&mut rng)).collect();
+        let b: Vec<F> = (0..size).map(|_| rand_f(&mut rng)).collect();
+
+        // 1) a single random N-coordinate point, and the claims `a(r)`, `b(r)`
+        //    obtained as a dot product with the equality poly of `r`.
+        let r: Vec<E> = (0..N).map(|_| rand_e(&mut rng)).collect();
+        let eq_r_layers = make_eq_poly_in_full::<E>(&r, &worker);
+        let eq_r = eq_r_layers.last().unwrap();
+        assert_eq!(eq_r.len(), size);
+        let claim_a = evaluate_with_precomputed_eq::<F, E>(&a, eq_r);
+        let claim_b = evaluate_with_precomputed_eq::<F, E>(&b, eq_r);
+
+        // 2) concatenate the two polys "as monomials" via the commitment helper.
+        //    `pack_log2 = 1` merges the 2 sub-polys into one packed poly that is the
+        //    monomial form of the single (N + 1)-variate multilinear `P`.
+        let packed =
+            pack_polys_parallel_from_hypercubes_to_monomials::<F>(&[&a[..], &b[..]], 1, &worker);
+        assert_eq!(packed.len(), 1);
+        let mut p_evals = packed.into_iter().next().unwrap();
+        assert_eq!(p_evals.len(), 2 * size);
+
+        // 3) go back to hypercube evaluations of the (N + 1)-variate poly `P` by
+        //    inverting the transform over the WHOLE vector (the packed monomials mix
+        //    all variables and can not be split into per-sub-poly halves).
+        packed_monomials_to_hypercube_evals(&mut p_evals);
+        // the round-trip must recover the concatenated sub-poly evaluations exactly:
+        // block 0 (low half) is `a`, block 1 (high half) is `b`.
+        assert_eq!(&p_evals[..size], &a[..], "block 0 must round-trip to `a`");
+        assert_eq!(&p_evals[size..], &b[..], "block 1 must round-trip to `b`");
+
+        // 4a) evaluation via `merge_claims`: merge the two claims at a random extra
+        //     coordinate `r'` (canonical interpolation a(r) + (b(r) - a(r)) * r').
+        let r_prime = rand_e(&mut rng);
+        let merged = merge_claims::<E>(&[claim_a, claim_b], &[r_prime]);
+        assert_eq!(merged.len(), 1);
+        let merged = merged[0];
+
+        // 4b) naive evaluation: dot product of `P`'s hypercube evaluations with the
+        //     full (N + 1)-variate equality poly at the extended point. `make_eq_poly`
+        //     treats `challenges[0]` as the MOST-significant index bit, so the block
+        //     coordinate (the MSB of `P`) is listed first, followed by `r`. With the
+        //     canonical interpolation the block challenge is exactly `r'`.
+        let mut ext_point = Vec::with_capacity(N + 1);
+        ext_point.push(r_prime);
+        ext_point.extend_from_slice(&r);
+        let eq_ext_layers = make_eq_poly_in_full::<E>(&ext_point, &worker);
+        let eq_ext = eq_ext_layers.last().unwrap();
+        assert_eq!(eq_ext.len(), 2 * size);
+        let naive = evaluate_with_precomputed_eq::<F, E>(&p_evals, eq_ext);
+
+        assert_eq!(
+            merged, naive,
+            "merge_claims must equal the naive extended-eq evaluation of the merged poly"
+        );
     }
 }

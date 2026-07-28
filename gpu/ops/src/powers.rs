@@ -12,7 +12,6 @@ cuda_kernel_signature_arguments_and_function!(
     GetPowersByVal<T>,
     base: T,
     offset: u32,
-    bit_reverse: bool,
     result: *mut T,
     count: u32,
 );
@@ -24,7 +23,6 @@ macro_rules! get_powers_by_val_kernel {
                 [<ab_get_powers_by_val_ $type:lower _kernel>](
                     base: $type,
                     offset: u32,
-                    bit_reverse: bool,
                     result: *mut $type,
                     count: u32,
                 )
@@ -33,6 +31,7 @@ macro_rules! get_powers_by_val_kernel {
     };
 }
 
+#[doc(hidden)]
 pub trait GetPowersByVal: Sized {
     const KERNEL_FUNCTION: GetPowersByValSignature<Self>;
 }
@@ -43,7 +42,6 @@ pub trait GetPowersByVal: Sized {
 pub fn get_powers_by_val<T: GetPowersByVal>(
     base: T,
     offset: u32,
-    bit_reverse: bool,
     result: &mut DeviceSlice<T>,
     stream: &CudaStream,
 ) -> CudaResult<()> {
@@ -52,7 +50,7 @@ pub fn get_powers_by_val<T: GetPowersByVal>(
     let (grid_dim, block_dim) = get_grid_block_dims_for_warp_groups(4, count);
     let result = result.as_mut_ptr();
     let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
-    let args = GetPowersByValArguments::new(base, offset, bit_reverse, result, count);
+    let args = GetPowersByValArguments::new(base, offset, result, count);
     GetPowersByValFunction(T::KERNEL_FUNCTION).launch(&config, &args)
 }
 
@@ -74,7 +72,6 @@ cuda_kernel_signature_arguments_and_function!(
     GetPowersByRef<T>,
     base: *const T,
     offset: u32,
-    bit_reverse: bool,
     result: *mut T,
     count: u32,
 );
@@ -86,7 +83,6 @@ macro_rules! get_powers_by_ref_kernel {
                 [<ab_get_powers_by_ref_ $type:lower _kernel>](
                     base: *const $type,
                     offset: u32,
-                    bit_reverse: bool,
                     result: *mut $type,
                     count: u32,
                 )
@@ -95,6 +91,7 @@ macro_rules! get_powers_by_ref_kernel {
     };
 }
 
+#[doc(hidden)]
 pub trait GetPowersByRef: Sized {
     const KERNEL_FUNCTION: GetPowersByRefSignature<Self>;
 }
@@ -102,7 +99,6 @@ pub trait GetPowersByRef: Sized {
 pub fn get_powers_by_ref<T: GetPowersByRef>(
     base: &DeviceVariable<T>,
     offset: u32,
-    bit_reverse: bool,
     result: &mut DeviceSlice<T>,
     stream: &CudaStream,
 ) -> CudaResult<()> {
@@ -112,7 +108,7 @@ pub fn get_powers_by_ref<T: GetPowersByRef>(
     let base = base.as_ptr();
     let result = result.as_mut_ptr();
     let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
-    let args = GetPowersByRefArguments::new(base, offset, bit_reverse, result, count);
+    let args = GetPowersByRefArguments::new(base, offset, result, count);
     GetPowersByRefFunction(T::KERNEL_FUNCTION).launch(&config, &args)
 }
 
@@ -135,7 +131,6 @@ mod tests {
     use super::*;
     use era_cudart::memory::{memory_copy_async, DeviceAllocation};
     use field::Field;
-    use serial_test::serial;
 
     fn assert_equal<T: PartialEq + core::fmt::Debug>((a, b): (T, T)) {
         assert_eq!(a, b);
@@ -153,11 +148,11 @@ mod tests {
         let b = &d_base[0];
         let (d_result_0, d_result_1) = d_result.split_at_mut(N / 2);
         if by_val {
-            get_powers_by_val(base, 0, false, d_result_0, &stream).unwrap();
-            get_powers_by_val(base, N as u32 / 2, false, d_result_1, &stream).unwrap();
+            get_powers_by_val(base, 0, d_result_0, &stream).unwrap();
+            get_powers_by_val(base, N as u32 / 2, d_result_1, &stream).unwrap();
         } else {
-            get_powers_by_ref(b, 0, false, d_result_0, &stream).unwrap();
-            get_powers_by_ref(b, N as u32 / 2, false, d_result_1, &stream).unwrap();
+            get_powers_by_ref(b, 0, d_result_0, &stream).unwrap();
+            get_powers_by_ref(b, N as u32 / 2, d_result_1, &stream).unwrap();
         }
         memory_copy_async(&mut h_result, &d_result, &stream).unwrap();
         stream.synchronize().unwrap();
@@ -169,25 +164,21 @@ mod tests {
     }
 
     #[test]
-    #[serial]
     fn get_powers_by_val_bf() {
         test_get_powers::<BF>(true);
     }
 
     #[test]
-    #[serial]
     fn get_powers_by_ref_bf() {
         test_get_powers::<BF>(false);
     }
 
     #[test]
-    #[serial]
     fn get_powers_by_val_e4() {
         test_get_powers::<E4>(true);
     }
 
     #[test]
-    #[serial]
     fn get_powers_by_ref_e4() {
         test_get_powers::<E4>(false);
     }

@@ -11,7 +11,7 @@ use verifier_common::blake2s_u32::{
 use verifier_common::errors::ErrorCreator;
 use verifier_common::field::baby_bear::base::BabyBearField;
 use verifier_common::field::baby_bear::ext4::BabyBearExt4;
-use verifier_common::field::{Field, FieldExtension};
+use verifier_common::field::{Field, FieldExtension, PrimeField};
 use verifier_common::field_ops;
 use verifier_common::lazy_vec::LazyVec;
 use verifier_common::non_determinism_source::NonDeterminismSource;
@@ -19,15 +19,15 @@ use verifier_common::structs::{CommitBuf, TranscriptState};
 use verifier_common::whir::{
     draw_query_indices, read_and_verify_pow, read_commit_return_merkle_cap,
 };
-const INITIAL_QUERY_INDEX_BITS: usize = 24usize;
+const INITIAL_QUERY_INDEX_BITS: usize = 23usize;
 const INITIAL_NUM_QUERIES: usize = 63usize;
 const INITIAL_POW_BITS: u32 = 28u32;
-const INITIAL_DRAW_WORDS: usize = 56usize;
-const INITIAL_RS_DOMAIN_LOG2: usize = 25usize;
+const INITIAL_DRAW_WORDS: usize = 48usize;
+const INITIAL_RS_DOMAIN_LOG2: usize = 24usize;
 const NUM_COSETS: usize = 2usize;
 const NUM_COSETS_LOG2: usize = 1usize;
-const COSET_TREE_SIZE: usize = 8388608usize;
-pub fn verify_initial_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
+const COSET_TREE_SIZE: usize = 4194304usize;
+pub fn verify_initial_whir_round<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator>(
     initial_transcript: &ConcreteInitialTranscript,
     ts: &mut TranscriptState,
     hash_buf: &mut AlignedArray64<MaybeUninit<u32>, WHIR_HASH_BUF_SIZE>,
@@ -79,7 +79,7 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
         {
             let mut i = 0;
             while i < OOD_DATA_WORDS {
-                ood_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
+                ood_buf.data_write(i, read_reduced_field_el::<I>(nd_source).as_u32_raw_repr());
                 i += 1;
             }
         }
@@ -117,7 +117,7 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
                 hash_buf,
                 38usize,
                 tree_index,
-                20usize,
+                19usize,
                 initial_transcript.memory_caps_slice(),
                 &gamma_powers[..],
                 0usize,
@@ -131,7 +131,7 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
                 hash_buf,
                 66usize,
                 tree_index,
-                20usize,
+                19usize,
                 initial_transcript.witness_caps_slice(),
                 &gamma_powers[..],
                 38usize,
@@ -145,7 +145,7 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
                 hash_buf,
                 10usize,
                 tree_index,
-                20usize,
+                19usize,
                 initial_transcript.setup_caps_slice(),
                 &gamma_powers[..],
                 104usize,
@@ -185,13 +185,13 @@ use super::common::{ext_from_raw_word_slice, EXT_DEGREE};
 use verifier_common::whir::{hash_leaf_data_into_state, verify_merkle_path};
 pub const NUM_INTERNAL_ROUNDS: usize = 4usize;
 const INTERNAL_QUERY_INDEX_BITS: [usize; NUM_INTERNAL_ROUNDS] =
-    [22usize, 22usize, 22usize, 23usize];
+    [21usize, 21usize, 21usize, 22usize];
 const INTERNAL_NUM_COSETS: [usize; NUM_INTERNAL_ROUNDS] =
     [16usize, 512usize, 16384usize, 524288usize];
 const INTERNAL_NUM_COSETS_LOG2: [usize; NUM_INTERNAL_ROUNDS] = [4usize, 9usize, 14usize, 19usize];
 const INTERNAL_COSET_TREE_SIZE: [usize; NUM_INTERNAL_ROUNDS] =
-    [262144usize, 8192usize, 256usize, 16usize];
-const INTERNAL_RS_DOMAIN_LOG2: [usize; NUM_INTERNAL_ROUNDS] = [27usize, 27usize, 27usize, 27usize];
+    [131072usize, 4096usize, 128usize, 8usize];
+const INTERNAL_RS_DOMAIN_LOG2: [usize; NUM_INTERNAL_ROUNDS] = [26usize, 26usize, 26usize, 26usize];
 const MAX_INTERNAL_FOLD_STEPS: usize = 5usize;
 const MAX_INTERNAL_VALUES_PER_LEAF: usize = 32usize;
 const MAX_INTERNAL_LEAF_EXT_WORDS: usize = MAX_INTERNAL_VALUES_PER_LEAF * EXT_DEGREE;
@@ -201,7 +201,7 @@ const INTERNAL_HASH_BUF_SIZE: usize = MAX_INTERNAL_LEAF_EXT_WORDS
 const MAX_INTERNAL_NUM_QUERIES: usize = 17usize;
 const MAX_INTERNAL_DRAW_WORDS: usize = 16usize;
 const INTERNAL_DRAW_WORDS: [usize; NUM_INTERNAL_ROUNDS] = [16usize, 8usize, 8usize, 8usize];
-pub fn verify_internal_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
+pub fn verify_internal_whir_round<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator>(
     ts: &mut TranscriptState,
     hash_buf: &mut AlignedArray64<MaybeUninit<u32>, WHIR_HASH_BUF_SIZE>,
     claim: BabyBearExt4,
@@ -246,7 +246,7 @@ pub fn verify_internal_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
         {
             let mut i = 0;
             while i < OOD_DATA_WORDS {
-                ood_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
+                ood_buf.data_write(i, read_reduced_field_el::<I>(nd_source).as_u32_raw_repr());
                 i += 1;
             }
         }
@@ -286,7 +286,7 @@ pub fn verify_internal_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
             {
                 let mut i = 0;
                 while i < leaf_ext_words {
-                    hash_buf.write(i, read_reduced_field_el::<I>(nd_source));
+                    hash_buf.write(i, read_reduced_field_el::<I>(nd_source).as_u32_raw_repr());
                     i += 1;
                 }
             }
@@ -329,21 +329,21 @@ pub fn verify_internal_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
         Ok((claim, intermediate_cap))
     }
 }
-const FINAL_FOLD_STEPS: usize = 3usize;
+const FINAL_FOLD_STEPS: usize = 2usize;
 const FINAL_NUM_QUERIES: usize = 3usize;
-const FINAL_VALUES_PER_LEAF: usize = 8usize;
+const FINAL_VALUES_PER_LEAF: usize = 4usize;
 const FINAL_LEAF_EXT_WORDS: usize = FINAL_VALUES_PER_LEAF * EXT_DEGREE;
 const FINAL_HASH_BUF_SIZE: usize =
     FINAL_LEAF_EXT_WORDS.div_ceil(BLAKE2S_BLOCK_SIZE_U32_WORDS) * BLAKE2S_BLOCK_SIZE_U32_WORDS;
 const FINAL_QUERY_INDEX_BITS: usize = 20usize;
-const FINAL_RS_DOMAIN_LOG2: usize = 23usize;
+const FINAL_RS_DOMAIN_LOG2: usize = 22usize;
 const FINAL_NUM_COSETS: usize = 524288usize;
 const FINAL_NUM_COSETS_LOG2: usize = 19usize;
 const FINAL_COSET_TREE_SIZE: usize = 2usize;
 const FINAL_DRAW_WORDS: usize = 8usize;
 const FINAL_POW_BITS: u32 = 23u32;
 const FINAL_ORACLE_DEPTH_IDX: usize = 4usize;
-pub fn verify_final_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
+pub fn verify_final_whir_round<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator>(
     ts: &mut TranscriptState,
     hash_buf: &mut AlignedArray64<MaybeUninit<u32>, WHIR_HASH_BUF_SIZE>,
     claim: BabyBearExt4,
@@ -379,7 +379,8 @@ pub fn verify_final_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
         {
             let mut i = 0;
             while i < FINAL_MONOMIALS_DATA_WORDS {
-                monomials_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
+                monomials_buf
+                    .data_write(i, read_reduced_field_el::<I>(nd_source).as_u32_raw_repr());
                 i += 1;
             }
         }
@@ -411,7 +412,7 @@ pub fn verify_final_whir_round<I: NonDeterminismSource, E: ErrorCreator>(
             {
                 let mut i = 0;
                 while i < FINAL_LEAF_EXT_WORDS {
-                    hash_buf.write(i, read_reduced_field_el::<I>(nd_source));
+                    hash_buf.write(i, read_reduced_field_el::<I>(nd_source).as_u32_raw_repr());
                     i += 1;
                 }
             }
@@ -554,7 +555,7 @@ const _: () = assert!(
     "WHIR stats labels array is too small for NUM_INTERNAL_ROUNDS"
 );
 pub const WHIR_HASH_BUF_SIZE: usize = 144usize;
-pub fn verify_whir<I: NonDeterminismSource, E: ErrorCreator>(
+pub fn verify_whir<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator>(
     initial_transcript: &ConcreteInitialTranscript,
     ts: &mut TranscriptState,
     batching_challenge: BabyBearExt4,

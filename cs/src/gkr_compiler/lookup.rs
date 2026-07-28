@@ -8,7 +8,7 @@ use crate::gkr_compiler::lookup_nodes::{LookupDenominator, LookupInputRelation, 
 use crate::tables::TableType;
 
 pub(crate) fn layout_width_1_lookup_expressions<F: PrimeField>(
-    graph: &mut GKRGraph,
+    graph: &mut GKRGraph<F>,
     expressions: Vec<LookupInput<F>>,
     num_variables: &mut u64,
     all_variables_to_place: &mut BTreeSet<Variable>,
@@ -17,10 +17,10 @@ pub(crate) fn layout_width_1_lookup_expressions<F: PrimeField>(
     lookup_type: &str,
     lookup: LookupType,
 ) -> (
-    Variable,                               // multiplicity var
-    [GKRAddress; 2],                        // final num/den pair
-    NoFieldGKRRelation,                     // relation that gives rise to final pair
-    Vec<NoFieldSingleColumnLookupRelation>, // all lookup relations for witness evaluation and multiplicity counting
+    Variable,                                  // multiplicity var
+    [GKRAddress; 2],                           // final num/den pair
+    NoFieldGKRRelation<F>,                     // relation that gives rise to final pair
+    Vec<NoFieldSingleColumnLookupRelation<F>>, // all lookup relations for witness evaluation and multiplicity counting
 ) {
     let (a, b, c, rels) = layout_lookup_expressions::<F, true>(
         graph,
@@ -224,7 +224,7 @@ fn lookup_input_node_from_expr<F: PrimeField, const SINGLE_COLUMN: bool>(
 }
 
 pub(crate) fn layout_lookup_expressions<F: PrimeField, const SINGLE_COLUMN: bool>(
-    graph: &mut GKRGraph,
+    graph: &mut GKRGraph<F>,
     expressions: Vec<(Vec<LookupInput<F>>, LookupQueryTableType<F>)>,
     num_variables: &mut u64,
     all_variables_to_place: &mut BTreeSet<Variable>,
@@ -236,10 +236,10 @@ pub(crate) fn layout_lookup_expressions<F: PrimeField, const SINGLE_COLUMN: bool
     total_width: usize,
     expect_table_id: bool,
 ) -> (
-    Variable,                         // multiplicity var
-    [GKRAddress; 2],                  // final num/den pair
-    NoFieldGKRRelation,               // relation that gives rise to final pair
-    Vec<NoFieldVectorLookupRelation>, // all lookup relations for witness evaluation and multiplicity counting
+    Variable,                            // multiplicity var
+    [GKRAddress; 2],                     // final num/den pair
+    NoFieldGKRRelation<F>,               // relation that gives rise to final pair
+    Vec<NoFieldVectorLookupRelation<F>>, // all lookup relations for witness evaluation and multiplicity counting
 ) {
     let mut all_relations_for_witness_eval = vec![];
     // sanity checks
@@ -377,7 +377,7 @@ pub(crate) fn layout_lookup_expressions<F: PrimeField, const SINGLE_COLUMN: bool
 }
 
 fn drive_lookup_placement<F: PrimeField, const SINGLE_COLUMN: bool>(
-    graph: &mut GKRGraph,
+    graph: &mut GKRGraph<F>,
     input_layer: usize,
     lookup_type: &str,
     lookup: LookupType,
@@ -391,13 +391,13 @@ fn drive_lookup_placement<F: PrimeField, const SINGLE_COLUMN: bool>(
             usize,
             (
                 (Vec<LookupInput<F>>, LookupQueryTableType<F>),
-                NoFieldVectorLookupRelation,
+                NoFieldVectorLookupRelation<F>,
             ),
         >,
     >,
     intermediate_values: &mut BTreeMap<usize, Vec<(LookupNumerator, LookupDenominator)>>,
-    relations_map: &mut BTreeMap<[GKRAddress; 2], NoFieldGKRRelation>,
-    all_relations_for_witness_eval: &mut Vec<NoFieldVectorLookupRelation>,
+    relations_map: &mut BTreeMap<[GKRAddress; 2], NoFieldGKRRelation<F>>,
+    all_relations_for_witness_eval: &mut Vec<NoFieldVectorLookupRelation<F>>,
 ) {
     if decoder_lookup.is_some() || multiplicity.is_some() {
         assert_eq!(input_layer, 0);
@@ -597,14 +597,7 @@ fn drive_lookup_placement<F: PrimeField, const SINGLE_COLUMN: bool>(
             relations_map,
         );
 
-        assert_eq!(
-            intermediate_values
-                .entry(input_layer)
-                .or_insert(vec![])
-                .len()
-                + 2,
-            t
-        );
+        assert_eq!(intermediate_values.get(&input_layer).unwrap().len() + 2, t);
     }
 
     if inputs.len() == 1
@@ -805,7 +798,7 @@ fn drive_lookup_placement<F: PrimeField, const SINGLE_COLUMN: bool>(
 }
 
 fn merge_lookup_inputs_pair<F: PrimeField, const SINGLE_COLUMN: bool>(
-    graph: &mut GKRGraph,
+    graph: &mut GKRGraph<F>,
     input_layer: usize,
     lookup_type: &str,
     lookup: LookupType,
@@ -815,12 +808,12 @@ fn merge_lookup_inputs_pair<F: PrimeField, const SINGLE_COLUMN: bool>(
         usize,
         (
             (Vec<LookupInput<F>>, LookupQueryTableType<F>),
-            NoFieldVectorLookupRelation,
+            NoFieldVectorLookupRelation<F>,
         ),
     >,
     intermediate_values: &mut BTreeMap<usize, Vec<(LookupNumerator, LookupDenominator)>>,
-    relations_map: &mut BTreeMap<[GKRAddress; 2], NoFieldGKRRelation>,
-    all_relations_for_witness_eval: &mut Vec<NoFieldVectorLookupRelation>,
+    relations_map: &mut BTreeMap<[GKRAddress; 2], NoFieldGKRRelation<F>>,
+    all_relations_for_witness_eval: &mut Vec<NoFieldVectorLookupRelation<F>>,
 ) {
     let single_columns_lookup_width = match lookup {
         LookupType::RangeCheck16 => Some(16),
@@ -878,15 +871,16 @@ fn merge_lookup_inputs_pair<F: PrimeField, const SINGLE_COLUMN: bool>(
     }
 }
 
+// NOTE: iteratively called by outside loop, so we just merge values by 2
 fn merge_intermediate_lookup_pair<F: PrimeField, const SINGLE_COLUMN: bool>(
-    graph: &mut GKRGraph,
+    graph: &mut GKRGraph<F>,
     input_layer: usize,
     lookup_type: &str,
     lookup: LookupType,
     total_width: usize,
     expect_table_id: bool,
     intermediate_values: &mut BTreeMap<usize, Vec<(LookupNumerator, LookupDenominator)>>,
-    relations_map: &mut BTreeMap<[GKRAddress; 2], NoFieldGKRRelation>,
+    relations_map: &mut BTreeMap<[GKRAddress; 2], NoFieldGKRRelation<F>>,
 ) {
     let single_columns_lookup_width = match lookup {
         LookupType::RangeCheck16 => Some(16),
@@ -1011,465 +1005,3 @@ fn merge_intermediate_lookup_pair<F: PrimeField, const SINGLE_COLUMN: bool>(
         }
     }
 }
-
-//     // we need to rank values, such that
-
-//     let total_rational_terms = expressions.len() + 1 + (decoder_lookup.is_some() as usize);
-
-//     let mut initial_reduction_layer_nodes = vec![];
-//     assert!(total_rational_terms > 0);
-//     let mut placement_layer = 1;
-
-//     if total_rational_terms % 2 == 0 {
-//         if let Some(decoder_lookup) = decoder_lookup {
-//             {
-//                 let (decoder_predicate_var, decoder_lookup) = decoder_lookup;
-//                 let decoder_predicate = graph.get_address_for_variable(decoder_predicate_var);
-//                 let input = lookup_input_node_from_expr::<F, SINGLE_COLUMN>(
-//                     &(
-//                         decoder_lookup,
-//                         LookupQueryTableType::Constant(TableType::Decoder),
-//                     ),
-//                     total_width,
-//                     expect_table_id,
-//                 );
-//                 let input = lookup_input_into_relation::<F, SINGLE_COLUMN>(
-//                     &input,
-//                     DECODER_LOOKUP_FORMAL_SET_INDEX,
-//                     &*graph,
-//                 );
-//                 assert_eq!(input.columns.len(), graph.setup_addresses(lookup).len());
-//                 assert!(SINGLE_COLUMN == false);
-
-//                 let a = LookupRationalPair {
-//                     num: lookup_nodes::LookupNumerator::Positive(decoder_predicate),
-//                     num_node: None,
-//                     den: vector_or_single_input::<SINGLE_COLUMN>(input),
-//                     den_node: None,
-//                     lookup_type: lookup,
-//                 };
-//                 let b = LookupRationalPair {
-//                     num: lookup_nodes::LookupNumerator::Negative(multiplicity_pos),
-//                     num_node: None,
-//                     den: vector_or_single_setup::<SINGLE_COLUMN>(graph, lookup),
-//                     den_node: None,
-//                     lookup_type: lookup,
-//                 };
-
-//                 let (next_pair, rel) = LookupRationalPair::accumulate_pair_into_graph(
-//                     (a, b),
-//                     graph,
-//                     placement_layer,
-//                     single_columns_lookup_width,
-//                 );
-
-//                 if expressions.is_empty() {
-//                     return (multiplicity_var, next_pair, rel, initial_relations);
-//                 }
-
-//                 initial_reduction_layer_nodes.push((next_pair, rel));
-//             }
-
-//             // and continue over all other pairs
-//             assert_eq!(expressions.len() % 2, 0);
-//             let mut set_idx = 0;
-//             for [a, b] in expressions.as_chunks::<2>().0 {
-//                 // We will take 2 inputs with "1" in the numerator, and some witness in denominator
-//                 let a = lookup_input_node_from_expr::<F, SINGLE_COLUMN>(
-//                     &a,
-//                     total_width,
-//                     expect_table_id,
-//                 );
-//                 let b = lookup_input_node_from_expr::<F, SINGLE_COLUMN>(
-//                     &b,
-//                     total_width,
-//                     expect_table_id,
-//                 );
-//                 let a = lookup_input_into_relation::<F, SINGLE_COLUMN>(&a, set_idx, &*graph);
-//                 set_idx += 1;
-//                 let b = lookup_input_into_relation::<F, SINGLE_COLUMN>(&b, set_idx, &*graph);
-//                 set_idx += 1;
-//                 let a = LookupRationalPair {
-//                     num: lookup_nodes::LookupNumerator::Identity,
-//                     num_node: None,
-//                     den: vector_or_single_input::<SINGLE_COLUMN>(a),
-//                     den_node: None,
-//                     lookup_type: lookup,
-//                 };
-//                 let b = LookupRationalPair {
-//                     num: lookup_nodes::LookupNumerator::Identity,
-//                     num_node: None,
-//                     den: vector_or_single_input::<SINGLE_COLUMN>(b),
-//                     den_node: None,
-//                     lookup_type: lookup,
-//                 };
-//                 let (next_pair, rel) = LookupRationalPair::accumulate_pair_into_graph(
-//                     (a, b),
-//                     graph,
-//                     placement_layer,
-//                     single_columns_lookup_width,
-//                 );
-
-//                 initial_reduction_layer_nodes.push((next_pair, rel));
-//             }
-//         } else {
-//             // we will make a mixed node with one of the witnesses to avoid copying multiplicity
-//             assert_eq!(expressions.len() % 2, 1);
-//             let (first, expressions) = expressions.split_at(1);
-//             let first = &first[0];
-//             let mut set_idx = 0;
-//             {
-//                 let input = lookup_input_node_from_expr::<F, SINGLE_COLUMN>(
-//                     first,
-//                     total_width,
-//                     expect_table_id,
-//                 );
-//                 let input =
-//                     lookup_input_into_relation::<F, SINGLE_COLUMN>(&input, set_idx, &*graph);
-//                 set_idx += 1;
-//                 assert_eq!(input.columns.len(), graph.setup_addresses(lookup).len());
-
-//                 let a = LookupRationalPair {
-//                     num: lookup_nodes::LookupNumerator::Identity,
-//                     num_node: None,
-//                     den: vector_or_single_input::<SINGLE_COLUMN>(input),
-//                     den_node: None,
-//                     lookup_type: lookup,
-//                 };
-//                 let b = LookupRationalPair {
-//                     num: lookup_nodes::LookupNumerator::Negative(multiplicity_pos),
-//                     num_node: None,
-//                     den: vector_or_single_setup::<SINGLE_COLUMN>(graph, lookup),
-//                     den_node: None,
-//                     lookup_type: lookup,
-//                 };
-
-//                 let (next_pair, rel) = LookupRationalPair::accumulate_pair_into_graph(
-//                     (a, b),
-//                     graph,
-//                     placement_layer,
-//                     single_columns_lookup_width,
-//                 );
-
-//                 if expressions.is_empty() {
-//                     return (multiplicity_var, next_pair, rel, initial_relations);
-//                 }
-
-//                 initial_reduction_layer_nodes.push((next_pair, rel));
-//             }
-
-//             assert_eq!(expressions.len() % 2, 0);
-//             for [a, b] in expressions.as_chunks::<2>().0 {
-//                 let a = lookup_input_node_from_expr::<F, SINGLE_COLUMN>(
-//                     &a,
-//                     total_width,
-//                     expect_table_id,
-//                 );
-//                 let b = lookup_input_node_from_expr::<F, SINGLE_COLUMN>(
-//                     &b,
-//                     total_width,
-//                     expect_table_id,
-//                 );
-//                 let a = lookup_input_into_relation::<F, SINGLE_COLUMN>(&a, set_idx, &*graph);
-//                 set_idx += 1;
-//                 let b = lookup_input_into_relation::<F, SINGLE_COLUMN>(&b, set_idx, &*graph);
-//                 set_idx += 1;
-//                 let a = LookupRationalPair {
-//                     num: lookup_nodes::LookupNumerator::Identity,
-//                     num_node: None,
-//                     den: vector_or_single_input::<SINGLE_COLUMN>(a),
-//                     den_node: None,
-//                     lookup_type: lookup,
-//                 };
-//                 let b = LookupRationalPair {
-//                     num: lookup_nodes::LookupNumerator::Identity,
-//                     num_node: None,
-//                     den: vector_or_single_input::<SINGLE_COLUMN>(b),
-//                     den_node: None,
-//                     lookup_type: lookup,
-//                 };
-//                 let (next_pair, rel) = LookupRationalPair::accumulate_pair_into_graph(
-//                     (a, b),
-//                     graph,
-//                     placement_layer,
-//                     single_columns_lookup_width,
-//                 );
-
-//                 initial_reduction_layer_nodes.push((next_pair, rel));
-//             }
-//         }
-//     } else {
-//         // inevitably we will need to copy something, so we will try to copy the simplest case
-//         if let Some(decoder_lookup) = decoder_lookup {
-//             assert!(expressions.is_empty() == false);
-//             {
-//                 let (decoder_predicate_var, decoder_lookup) = decoder_lookup;
-//                 let decoder_predicate = graph.get_address_for_variable(decoder_predicate_var);
-//                 let input = lookup_input_node_from_expr::<F, SINGLE_COLUMN>(
-//                     &(
-//                         decoder_lookup,
-//                         LookupQueryTableType::Constant(TableType::Decoder),
-//                     ),
-//                     total_width,
-//                     expect_table_id,
-//                 );
-//                 let input = lookup_input_into_relation::<F, SINGLE_COLUMN>(
-//                     &input,
-//                     DECODER_LOOKUP_FORMAL_SET_INDEX,
-//                     &*graph,
-//                 );
-//                 assert_eq!(input.columns.len(), graph.setup_addresses(lookup).len());
-
-//                 let a = LookupRationalPair {
-//                     num: lookup_nodes::LookupNumerator::Positive(decoder_predicate),
-//                     num_node: None,
-//                     den: vector_or_single_input::<SINGLE_COLUMN>(input),
-//                     den_node: None,
-//                     lookup_type: lookup,
-//                 };
-//                 let b = LookupRationalPair {
-//                     num: lookup_nodes::LookupNumerator::Negative(multiplicity_pos),
-//                     num_node: None,
-//                     den: vector_or_single_setup::<SINGLE_COLUMN>(graph, lookup),
-//                     den_node: None,
-//                     lookup_type: lookup,
-//                 };
-
-//                 let (next_pair, rel) = LookupRationalPair::accumulate_pair_into_graph(
-//                     (a, b),
-//                     graph,
-//                     placement_layer,
-//                     single_columns_lookup_width,
-//                 );
-
-//                 if expressions.is_empty() {
-//                     return (multiplicity_var, next_pair, rel, initial_relations);
-//                 }
-
-//                 initial_reduction_layer_nodes.push((next_pair, rel));
-//             }
-
-//             // and continue over all other pairs
-//             assert_eq!(expressions.len() % 2, 1);
-//             let mut set_idx = 0;
-//             for [a, b] in expressions.as_chunks::<2>().0 {
-//                 let a = lookup_input_node_from_expr::<F, SINGLE_COLUMN>(
-//                     &a,
-//                     total_width,
-//                     expect_table_id,
-//                 );
-//                 let b = lookup_input_node_from_expr::<F, SINGLE_COLUMN>(
-//                     &b,
-//                     total_width,
-//                     expect_table_id,
-//                 );
-//                 let a = lookup_input_into_relation::<F, SINGLE_COLUMN>(&a, set_idx, &*graph);
-//                 set_idx += 1;
-//                 let b = lookup_input_into_relation::<F, SINGLE_COLUMN>(&b, set_idx, &*graph);
-//                 set_idx += 1;
-//                 let a = LookupRationalPair {
-//                     num: lookup_nodes::LookupNumerator::Identity,
-//                     num_node: None,
-//                     den: vector_or_single_input::<SINGLE_COLUMN>(a),
-//                     den_node: None,
-//                     lookup_type: lookup,
-//                 };
-//                 let b = LookupRationalPair {
-//                     num: lookup_nodes::LookupNumerator::Identity,
-//                     num_node: None,
-//                     den: vector_or_single_input::<SINGLE_COLUMN>(b),
-//                     den_node: None,
-//                     lookup_type: lookup,
-//                 };
-//                 let (next_pair, rel) = LookupRationalPair::accumulate_pair_into_graph(
-//                     (a, b),
-//                     graph,
-//                     placement_layer,
-//                     single_columns_lookup_width,
-//                 );
-
-//                 initial_reduction_layer_nodes.push((next_pair, rel));
-//             }
-//             {
-//                 let last_input = expressions.as_chunks::<2>().1[0].clone();
-//                 let last_input = lookup_input_node_from_expr::<F, SINGLE_COLUMN>(
-//                     &last_input,
-//                     total_width,
-//                     expect_table_id,
-//                 );
-//                 let last_input =
-//                     lookup_input_into_relation::<F, SINGLE_COLUMN>(&last_input, set_idx, &*graph);
-//                 let last_input = LookupRationalPair {
-//                     num: lookup_nodes::LookupNumerator::Identity,
-//                     num_node: None,
-//                     den: copy_single_base_input_or_materialize_vector::<SINGLE_COLUMN>(last_input),
-//                     den_node: None,
-//                     lookup_type: lookup,
-//                 };
-
-//                 let (next_pair, rel) = LookupRationalPair::add_single_into_graph(
-//                     last_input,
-//                     graph,
-//                     placement_layer,
-//                     single_columns_lookup_width,
-//                 );
-
-//                 initial_reduction_layer_nodes.push((next_pair, rel));
-//             }
-//         } else {
-//             // we will make a mixed node with one of the witnesses to avoid copying multiplicity and setup
-//             assert_eq!(expressions.len() % 2, 0);
-//             let (first, expressions) = expressions.split_at(1);
-//             let first = &first[0];
-//             let mut set_idx = 0;
-//             {
-//                 let input = lookup_input_node_from_expr::<F, SINGLE_COLUMN>(
-//                     first,
-//                     total_width,
-//                     expect_table_id,
-//                 );
-//                 let input =
-//                     lookup_input_into_relation::<F, SINGLE_COLUMN>(&input, set_idx, &*graph);
-//                 set_idx += 1;
-//                 let a = LookupRationalPair {
-//                     num: lookup_nodes::LookupNumerator::Identity,
-//                     num_node: None,
-//                     den: vector_or_single_input::<SINGLE_COLUMN>(input),
-//                     den_node: None,
-//                     lookup_type: lookup,
-//                 };
-//                 let b = LookupRationalPair {
-//                     num: lookup_nodes::LookupNumerator::Negative(multiplicity_pos),
-//                     num_node: None,
-//                     den: vector_or_single_setup::<SINGLE_COLUMN>(graph, lookup),
-//                     den_node: None,
-//                     lookup_type: lookup,
-//                 };
-
-//                 let (next_pair, rel) = LookupRationalPair::accumulate_pair_into_graph(
-//                     (a, b),
-//                     graph,
-//                     placement_layer,
-//                     single_columns_lookup_width,
-//                 );
-
-//                 initial_reduction_layer_nodes.push((next_pair, rel));
-//             }
-
-//             assert_eq!(expressions.len() % 2, 1);
-//             for [a, b] in expressions.as_chunks::<2>().0 {
-//                 let a = lookup_input_node_from_expr::<F, SINGLE_COLUMN>(
-//                     &a,
-//                     total_width,
-//                     expect_table_id,
-//                 );
-//                 let b = lookup_input_node_from_expr::<F, SINGLE_COLUMN>(
-//                     &b,
-//                     total_width,
-//                     expect_table_id,
-//                 );
-//                 let a = lookup_input_into_relation::<F, SINGLE_COLUMN>(&a, set_idx, &*graph);
-//                 set_idx += 1;
-//                 let b = lookup_input_into_relation::<F, SINGLE_COLUMN>(&b, set_idx, &*graph);
-//                 set_idx += 1;
-//                 let a = LookupRationalPair {
-//                     num: lookup_nodes::LookupNumerator::Identity,
-//                     num_node: None,
-//                     den: vector_or_single_input::<SINGLE_COLUMN>(a),
-//                     den_node: None,
-//                     lookup_type: lookup,
-//                 };
-//                 let b = LookupRationalPair {
-//                     num: lookup_nodes::LookupNumerator::Identity,
-//                     num_node: None,
-//                     den: vector_or_single_input::<SINGLE_COLUMN>(b),
-//                     den_node: None,
-//                     lookup_type: lookup,
-//                 };
-//                 let (next_pair, rel) = LookupRationalPair::accumulate_pair_into_graph(
-//                     (a, b),
-//                     graph,
-//                     placement_layer,
-//                     single_columns_lookup_width,
-//                 );
-
-//                 initial_reduction_layer_nodes.push((next_pair, rel));
-//             }
-//             {
-//                 let last_input = expressions.as_chunks::<2>().1[0].clone();
-//                 let last_input = lookup_input_node_from_expr::<F, SINGLE_COLUMN>(
-//                     &last_input,
-//                     total_width,
-//                     expect_table_id,
-//                 );
-//                 let last_input =
-//                     lookup_input_into_relation::<F, SINGLE_COLUMN>(&last_input, set_idx, &*graph);
-//                 let last_input = LookupRationalPair {
-//                     num: lookup_nodes::LookupNumerator::Identity,
-//                     num_node: None,
-//                     den: copy_single_base_input_or_materialize_vector::<SINGLE_COLUMN>(last_input),
-//                     den_node: None,
-//                     lookup_type: lookup,
-//                 };
-
-//                 let (next_pair, rel) = LookupRationalPair::add_single_into_graph(
-//                     last_input,
-//                     graph,
-//                     placement_layer,
-//                     single_columns_lookup_width,
-//                 );
-
-//                 initial_reduction_layer_nodes.push((next_pair, rel));
-//             }
-//         }
-//     }
-
-//     // now we resolved a problem of copying from base layer, but we still want to have all the relations to be between two
-//     // nearby layers only
-
-//     println!(
-//         "Will continue placement of {} lookup rationals into layer {}",
-//         initial_reduction_layer_nodes.len(),
-//         placement_layer + 1
-//     );
-
-//     let mut current_layer = initial_reduction_layer_nodes;
-
-//     loop {
-//         if current_layer.len() == 1 {
-//             let (last_pair, rel) = current_layer.pop().unwrap();
-//             return (multiplicity_var, last_pair, rel, initial_relations);
-//         }
-
-//         placement_layer += 1;
-//         let mut next_layer = vec![];
-//         for [a, b] in current_layer.as_chunks::<2>().0.iter() {
-//             let next_pair = LookupRationalPair::accumulate_pair_into_graph(
-//                 (a.0.clone(), b.0.clone()),
-//                 graph,
-//                 placement_layer,
-//                 single_columns_lookup_width,
-//             );
-
-//             next_layer.push(next_pair);
-//         }
-//         match current_layer.as_chunks::<2>().1 {
-//             [] => {}
-//             [last] => {
-//                 let next_pair = LookupRationalPair::add_single_into_graph(
-//                     last.0.clone(),
-//                     graph,
-//                     placement_layer,
-//                     single_columns_lookup_width,
-//                 );
-
-//                 next_layer.push(next_pair);
-//             }
-//             _ => {
-//                 unreachable!()
-//             }
-//         }
-
-//         current_layer = next_layer;
-//     }
-// }

@@ -23,10 +23,8 @@ era_cudart_sys = "=0.156.0"
 bench = []
 
 [dev-dependencies]
-gpu_core = { workspace = true }
 worker = { workspace = true }
-rand = "0.9"
-serial_test = "3"
+rand = { workspace = true, features = ["std_rng", "thread_rng"] }
 criterion = "0.5"
 era_criterion_cuda = "0.2"
 

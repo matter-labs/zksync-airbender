@@ -117,6 +117,18 @@ impl<F: PrimeField> WitnessPlacer<F> for CSDebugWitnessEvaluator<F> {
         }
     }
 
+    fn get_oracle_timestamp_columns(
+        &mut self,
+        placeholder: Placeholder,
+    ) -> [Self::Field; NUM_TIMESTAMP_COLUMNS_FOR_RAM] {
+        let scalar = if let Some(oracle) = self.oracle.as_ref() {
+            oracle.get_timestamp_witness_from_placeholder(placeholder, 0)
+        } else {
+            0
+        };
+        timestamp_scalar_into_column_values(scalar).map(F::from_u32_with_reduction)
+    }
+
     fn get_oracle_u16(&mut self, placeholder: Placeholder) -> Self::U16 {
         if let Some(oracle) = self.oracle.as_ref() {
             oracle.get_u16_witness_from_placeholder(placeholder, 0)
@@ -313,7 +325,13 @@ impl<F: PrimeField> WitnessPlacer<F> for CSDebugWitnessEvaluator<F> {
         if let Some(funct7) = decoder_data.funct7 {
             self.assign_u8(funct7, &entry.funct7.unwrap());
         }
-        assert!(entry.opcode_family_bits <= 1 << (F::CHAR_BITS - 1));
+        assert!(
+            entry
+                .opcode_family_bits
+                .next_power_of_two()
+                .trailing_zeros()
+                < F::CHAR_BITS as u32
+        );
         if !decoder_data.circuit_family_extra_mask.is_placeholder() {
             assert!(decoder_data.circuit_family_mask_bits.is_empty());
             self.assign_field(

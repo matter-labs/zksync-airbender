@@ -4,14 +4,14 @@ use cs::definitions::{gkr::NoFieldVectorLookupRelation, GKRAddress};
 use worker::Worker;
 
 #[derive(Debug)]
-pub struct LookupExtensionMinusMultiplicityByExtensionWithoutCachesGKRRelation {
-    pub input: NoFieldVectorLookupRelation,
+pub struct LookupExtensionMinusMultiplicityByExtensionWithoutCachesGKRRelation<F: PrimeField> {
+    pub input: NoFieldVectorLookupRelation<F>,
     pub setup: (GKRAddress, Box<[GKRAddress]>),
     pub outputs: [GKRAddress; 2],
 }
 
 impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRKernel<F, E>
-    for LookupExtensionMinusMultiplicityByExtensionWithoutCachesGKRRelation
+    for LookupExtensionMinusMultiplicityByExtensionWithoutCachesGKRRelation<F>
 {
     fn num_challenges(&self) -> usize {
         2

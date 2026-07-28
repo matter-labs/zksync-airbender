@@ -2,19 +2,57 @@
 
 namespace airbender::hash {
 
-EXTERN __global__ void ab_gather_rows_kernel(const unsigned *indexes, const unsigned indexes_count, const bool bit_reverse_indexes,
-                                             const unsigned log_rows_count, const matrix_getter<bf, ld_modifier::cs> values,
-                                             const matrix_setter<bf, st_modifier::cs> results) {
-  const unsigned idx = threadIdx.y + blockIdx.x * blockDim.y;
-  if (idx >= indexes_count)
+// Warp-shuffle Merkle-path collection constants. Only the gather kernels below
+// need them, so they live here rather than in the shared hash.cuh surface.
+constexpr unsigned LOG_WARP_SIZE = 5;
+constexpr unsigned WARP_MASK = (1u << LOG_WARP_SIZE) - 1;
+constexpr u32 FULL_MASK = 0xffffffff;
+
+// Warp-cooperative Merkle-path collection for one query. Given this lane's
+// absorbed leaf `state`, hashes the bottom LOG_WARP_SIZE layers via warp-shuffle
+// (the output lane writes each layer's sibling digest), then walks the remaining
+// layers from the cached `tree_bottom`. `merkle_paths` points at layer 0's slot;
+// consecutive layers are `layer_stride_words` apart. `state` is consumed.
+DEVICE_FORCEINLINE void collect_merkle_path_warp(u32 state[STATE_SIZE], u32 *merkle_paths, const unsigned layer_stride_words, const unsigned lane_idx,
+                                                 const bool is_output_lane, const unsigned query_index, const unsigned log_total_leaves_count,
+                                                 const unsigned layers_count, const u32 *tree_bottom) {
+  u32 block[BLOCK_SIZE];
+#pragma unroll
+  for (unsigned layer = 0; layer < LOG_WARP_SIZE; layer++) {
+    digest other_state;
+    const bool take_other_first = (lane_idx >> layer) & 1;
+#pragma unroll
+    for (unsigned i = 0; i < STATE_SIZE; i++) {
+      other_state[i] = __shfl_xor_sync(FULL_MASK, state[i], 1 << layer);
+      if (take_other_first) {
+        block[i] = other_state[i];
+        block[i + STATE_SIZE] = state[i];
+      } else {
+        block[i] = state[i];
+        block[i + STATE_SIZE] = other_state[i];
+      }
+    }
+    if (is_output_lane)
+      store_cs(reinterpret_cast<digest *>(merkle_paths), other_state);
+    initialize(state);
+    u32 t = 0;
+    compress<true>(state, t, block, BLOCK_SIZE);
+    merkle_paths += layer_stride_words;
+  }
+  if (lane_idx >= STATE_SIZE)
     return;
-  const unsigned i = indexes[idx];
-  const unsigned index = bit_reverse_indexes ? __brev(i) >> (32 - log_rows_count) : i;
-  const unsigned src_row = index * blockDim.x + threadIdx.x;
-  const unsigned dst_row = idx * blockDim.x + threadIdx.x;
-  const unsigned col = blockIdx.y;
-  const bf result = values.get(src_row, col);
-  results.set(dst_row, col, result);
+  unsigned digest_index = query_index >> LOG_WARP_SIZE;
+  unsigned log_digests_count = log_total_leaves_count - LOG_WARP_SIZE;
+  const u32 *tree_layer = tree_bottom + lane_idx;
+  u32 *merkle_paths_dst = merkle_paths + lane_idx;
+  for (unsigned layer = LOG_WARP_SIZE; layer < layers_count; layer++) {
+    const unsigned other_index = digest_index ^ 1;
+    *merkle_paths_dst = *(tree_layer + other_index * STATE_SIZE);
+    digest_index >>= 1;
+    tree_layer += (1u << log_digests_count) * STATE_SIZE;
+    log_digests_count--;
+    merkle_paths_dst += layer_stride_words;
+  }
 }
 
 EXTERN __global__ void ab_gather_leaf_rows_kernel(const unsigned *indexes, const unsigned indexes_count, const bool bit_reverse_indexes,
@@ -24,7 +62,7 @@ EXTERN __global__ void ab_gather_leaf_rows_kernel(const unsigned *indexes, const
   if (idx >= indexes_count)
     return;
   const unsigned i = indexes[idx];
-  const unsigned leaf_index = bit_reverse_indexes ? __brev(i) >> (32 - log_leaves_count) : i;
+  const unsigned leaf_index = bit_reverse_indexes ? bitreverse_low_bits(i, log_leaves_count) : i;
   const unsigned leaves_count = 1u << log_leaves_count;
   const unsigned src_row = leaf_index + bitreverse_low_bits(threadIdx.x, log_rows_per_leaf) * leaves_count;
   const unsigned dst_row = (idx << log_rows_per_leaf) + threadIdx.x;
@@ -48,93 +86,6 @@ EXTERN __global__ void ab_gather_merkle_paths_kernel(const unsigned *indexes, co
   results[dst_index] = values[src_index];
 }
 
-EXTERN __global__ void ab_gather_rows_and_merkle_paths_kernel(const unsigned *indexes, const unsigned indexes_count, const bool bit_reverse_indexes,
-                                                              const bf *values, const unsigned log_rows_per_leaf, const unsigned cols_count,
-                                                              const unsigned log_total_leaves_count, const matrix_setter<bf, st_modifier::cs> leaf_values,
-                                                              const u32 *tree_bottom, const unsigned layers_count, u32 *merkle_paths) {
-  // This fused kernel is for partial-tree queries: it hashes the queried leaves, writes the first
-  // LOG_WARP_SIZE sibling layers from warp-local reductions, then resumes path collection from
-  // the cached upper tree pointed to by tree_bottom.
-  const unsigned lane_idx = threadIdx.x;
-  const unsigned idx = blockIdx.x;
-  if (idx >= indexes_count)
-    return;
-  const unsigned query_index = indexes[idx];
-  const unsigned index_lane = (query_index & ~WARP_MASK) | lane_idx;
-  const bool is_output_lane = query_index == index_lane;
-  const unsigned leaf_index = bit_reverse_indexes ? __brev(index_lane) >> (32 - log_total_leaves_count) : index_lane;
-  const unsigned log_rows_count = log_total_leaves_count + log_rows_per_leaf;
-  const unsigned leaves_count = 1u << log_total_leaves_count;
-  merkle_paths += idx * STATE_SIZE;
-  auto read = [=](const unsigned offset) {
-    const unsigned row_slot = offset & ((1u << log_rows_per_leaf) - 1);
-    const unsigned col = offset >> log_rows_per_leaf;
-    const unsigned row = leaf_index + bitreverse_low_bits(row_slot, log_rows_per_leaf) * leaves_count;
-    const auto address = values + row + (col << log_rows_count);
-    return col < cols_count ? bf::into_raw_u32(load_cs(address)) : 0;
-  };
-  u32 state[STATE_SIZE];
-  u32 block[BLOCK_SIZE];
-  initialize(state);
-  u32 t = 0;
-  const unsigned values_count = cols_count << log_rows_per_leaf;
-  unsigned offset = 0;
-  while (offset < values_count) {
-    const unsigned remaining = values_count - offset;
-    const bool is_final_block = remaining <= BLOCK_SIZE;
-#pragma unroll
-    for (unsigned i = 0; i < BLOCK_SIZE; i++, offset++) {
-      const u32 value = read(offset);
-      block[i] = value;
-      if (is_output_lane && offset < values_count) {
-        const unsigned row = offset & ((1u << log_rows_per_leaf) - 1);
-        const unsigned col = offset >> log_rows_per_leaf;
-        leaf_values.set((idx << log_rows_per_leaf) + row, col, bf::from_reduced_raw_repr(value));
-      }
-    }
-    if (is_final_block)
-      compress<true>(state, t, block, remaining);
-    else
-      compress<false>(state, t, block, BLOCK_SIZE);
-  }
-#pragma unroll
-  for (unsigned layer = 0; layer < LOG_WARP_SIZE; layer++) {
-    digest other_state;
-    const bool take_other_first = (lane_idx >> layer) & 1;
-#pragma unroll
-    for (unsigned i = 0; i < STATE_SIZE; i++) {
-      other_state[i] = __shfl_xor_sync(FULL_MASK, state[i], 1 << layer);
-      if (take_other_first) {
-        block[i] = other_state[i];
-        block[i + STATE_SIZE] = state[i];
-      } else {
-        block[i] = state[i];
-        block[i + STATE_SIZE] = other_state[i];
-      }
-    }
-    if (is_output_lane)
-      store_cs(reinterpret_cast<digest *>(merkle_paths), other_state);
-    initialize(state);
-    t = 0;
-    compress<true>(state, t, block, BLOCK_SIZE);
-    merkle_paths += indexes_count * STATE_SIZE;
-  }
-  if (lane_idx >= STATE_SIZE)
-    return;
-  unsigned digest_index = query_index >> LOG_WARP_SIZE;
-  unsigned log_digests_count = log_total_leaves_count - LOG_WARP_SIZE;
-  const u32 *tree_layer = tree_bottom + lane_idx;
-  u32 *merkle_paths_dst = merkle_paths + lane_idx;
-  for (unsigned layer = LOG_WARP_SIZE; layer < layers_count; layer++) {
-    const unsigned other_index = digest_index ^ 1;
-    *merkle_paths_dst = *(tree_layer + other_index * STATE_SIZE);
-    digest_index >>= 1;
-    tree_layer += (1u << log_digests_count) * STATE_SIZE;
-    log_digests_count--;
-    merkle_paths_dst += indexes_count * STATE_SIZE;
-  }
-}
-
 EXTERN __global__ void ab_gather_merkle_paths_from_rows_kernel(const unsigned *indexes, const unsigned indexes_count, const bool bit_reverse_indexes,
                                                                const bf *values, const unsigned log_rows_per_leaf, const unsigned cols_count,
                                                                const unsigned log_total_leaves_count, const u32 *tree_bottom, const unsigned layers_count,
@@ -146,10 +97,9 @@ EXTERN __global__ void ab_gather_merkle_paths_from_rows_kernel(const unsigned *i
   const unsigned query_index = indexes[idx];
   const unsigned index_lane = (query_index & ~WARP_MASK) | lane_idx;
   const bool is_output_lane = query_index == index_lane;
-  const unsigned leaf_index = bit_reverse_indexes ? __brev(index_lane) >> (32 - log_total_leaves_count) : index_lane;
+  const unsigned leaf_index = bit_reverse_indexes ? bitreverse_low_bits(index_lane, log_total_leaves_count) : index_lane;
   const unsigned log_rows_count = log_total_leaves_count + log_rows_per_leaf;
   const unsigned leaves_count = 1u << log_total_leaves_count;
-  merkle_paths += idx * STATE_SIZE;
   auto read = [=](const unsigned offset) {
     const unsigned row_slot = offset & ((1u << log_rows_per_leaf) - 1);
     const unsigned col = offset >> log_rows_per_leaf;
@@ -158,82 +108,19 @@ EXTERN __global__ void ab_gather_merkle_paths_from_rows_kernel(const unsigned *i
     return col < cols_count ? bf::into_raw_u32(load_cs(address)) : 0;
   };
   u32 state[STATE_SIZE];
-  u32 block[BLOCK_SIZE];
   initialize(state);
   u32 t = 0;
-  const unsigned values_count = cols_count << log_rows_per_leaf;
-  unsigned offset = 0;
-  while (offset < values_count) {
-    const unsigned remaining = values_count - offset;
-    const bool is_final_block = remaining <= BLOCK_SIZE;
-#pragma unroll
-    for (unsigned i = 0; i < BLOCK_SIZE; i++, offset++)
-      block[i] = read(offset);
-    if (is_final_block)
-      compress<true>(state, t, block, remaining);
-    else
-      compress<false>(state, t, block, BLOCK_SIZE);
-  }
-#pragma unroll
-  for (unsigned layer = 0; layer < LOG_WARP_SIZE; layer++) {
-    digest other_state;
-    const bool take_other_first = (lane_idx >> layer) & 1;
-#pragma unroll
-    for (unsigned i = 0; i < STATE_SIZE; i++) {
-      other_state[i] = __shfl_xor_sync(FULL_MASK, state[i], 1 << layer);
-      if (take_other_first) {
-        block[i] = other_state[i];
-        block[i + STATE_SIZE] = state[i];
-      } else {
-        block[i] = state[i];
-        block[i + STATE_SIZE] = other_state[i];
-      }
-    }
-    if (is_output_lane)
-      store_cs(reinterpret_cast<digest *>(merkle_paths), other_state);
-    initialize(state);
-    t = 0;
-    compress<true>(state, t, block, BLOCK_SIZE);
-    merkle_paths += indexes_count * STATE_SIZE;
-  }
-  if (lane_idx >= STATE_SIZE)
-    return;
-  unsigned digest_index = query_index >> LOG_WARP_SIZE;
-  unsigned log_digests_count = log_total_leaves_count - LOG_WARP_SIZE;
-  const u32 *tree_layer = tree_bottom + lane_idx;
-  u32 *merkle_paths_dst = merkle_paths + lane_idx;
-  for (unsigned layer = LOG_WARP_SIZE; layer < layers_count; layer++) {
-    const unsigned other_index = digest_index ^ 1;
-    *merkle_paths_dst = *(tree_layer + other_index * STATE_SIZE);
-    digest_index >>= 1;
-    tree_layer += (1u << log_digests_count) * STATE_SIZE;
-    log_digests_count--;
-    merkle_paths_dst += indexes_count * STATE_SIZE;
-  }
+  absorb_stream(state, t, cols_count << log_rows_per_leaf, read);
+  // Layer-major output layout: consecutive layers are indexes_count digests apart.
+  collect_merkle_path_warp(state, merkle_paths + idx * STATE_SIZE, indexes_count * STATE_SIZE, lane_idx, is_output_lane, query_index, log_total_leaves_count,
+                           layers_count, tree_bottom);
 }
 
-// Gather Merkle-tree cap regions from N source buffers into one contiguous destination, in the
-// order given by `src_ptrs`. Each block handles one coset; threads stripe the per-coset copy.
-// `src_ptrs[i]` is a u64 carrying the device pointer to coset i's cap region
-// (cap_words_per_coset u32s). The kernel reinterprets it as `const u32 *` on device.
-// dst[i*cap_words_per_coset .. (i+1)*cap_words_per_coset] receives that coset's data.
-EXTERN __global__ void ab_gather_tree_caps_kernel(const unsigned long long *src_ptrs, u32 *dst, const unsigned cap_words_per_coset,
-                                                  const unsigned coset_count) {
-  const unsigned coset_idx = blockIdx.x;
-  if (coset_idx >= coset_count)
-    return;
-  const u32 *src = reinterpret_cast<const u32 *>(src_ptrs[coset_idx]);
-  u32 *coset_dst = dst + coset_idx * cap_words_per_coset;
-  for (unsigned i = threadIdx.x; i < cap_words_per_coset; i += blockDim.x) {
-    coset_dst[i] = src[i];
-  }
-}
-
-// Mirror of `GpuGatherTreeCapsDesc` in gpu/circuit_prover/src/ops/blake2s.rs.
+// Mirror of `GpuGatherTreeCapsDesc` in gpu/hash/src/blake2s/gather.rs.
 // Consolidated-tree form: a single base pointer + per-coset stride lets the
 // kernel gather all per-coset cap regions from one contiguous tree backing.
 // The kernel folds the natural→bit-reversed coset reindex inline so the
-// unified-cap destination layout matches the legacy stage1 ordering.
+// unified-cap destination is in bit-reversed coset order.
 struct gpu_gather_tree_caps_desc {
   u32 coset_count;
   u32 cap_words_per_coset;
@@ -242,32 +129,31 @@ struct gpu_gather_tree_caps_desc {
   unsigned long long base_ptr;
 };
 
-static_assert(sizeof(gpu_gather_tree_caps_desc) <= 32u * 1024u, "gpu_gather_tree_caps_desc must fit under the 32 KB inline kernel-arg ceiling");
+static_assert(sizeof(gpu_gather_tree_caps_desc) == 24, "must mirror GpuGatherTreeCapsDesc in gpu/hash/src/blake2s/gather.rs");
 
-// Inline-descriptor variant of `ab_gather_tree_caps_kernel`. Each block
-// gathers one coset's cap region from a single contiguous backing:
+// Each block gathers one coset's cap region from a single contiguous backing:
 //   src[natural_idx] = base + natural_idx * stride
-//   dst[stage1_pos] = bitreverse(natural_idx, log_lde_factor) * cap_words
-// The bit-reversal preserves the legacy stage1 coset ordering used by the
-// per-coset readers (e.g. read_per_coset_caps_synchronously).
+//   dst[bitrev_pos] = bitreverse(natural_idx, log_lde_factor) * cap_words
+// The bit-reversal yields the cap order the prover-side per-coset readers
+// expect.
 EXTERN __global__ void ab_gather_tree_caps_inline_kernel(__grid_constant__ const gpu_gather_tree_caps_desc desc, u32 *dst) {
   const unsigned natural_idx = blockIdx.x;
   if (natural_idx >= desc.coset_count)
     return;
-  unsigned stage1_pos = 0;
+  unsigned bitrev_pos = 0;
   for (unsigned b = 0; b < desc.log_lde_factor; ++b) {
-    stage1_pos |= ((natural_idx >> b) & 1u) << (desc.log_lde_factor - 1u - b);
+    bitrev_pos |= ((natural_idx >> b) & 1u) << (desc.log_lde_factor - 1u - b);
   }
   const u32 *src = reinterpret_cast<const u32 *>(desc.base_ptr) + natural_idx * desc.stride_per_coset_in_u32_words;
-  u32 *coset_dst = dst + stage1_pos * desc.cap_words_per_coset;
+  u32 *coset_dst = dst + bitrev_pos * desc.cap_words_per_coset;
   for (unsigned i = threadIdx.x; i < desc.cap_words_per_coset; i += blockDim.x) {
     coset_dst[i] = src[i];
   }
 }
 
-// Mirror of `GpuGatherEAddressesDesc` in gpu/circuit_prover/src/ops/blake2s.rs.
-// Holds the per-launch source-pointer table inline as kernel-arg data —
-// replaces the prior per-launch H2D of the pointer table.
+// Mirror of `GpuGatherEAddressesDesc` in gpu/hash/src/blake2s/gather.rs.
+// Holds the per-launch source-pointer table inline as kernel-arg data (no
+// per-launch H2D of the pointer table).
 constexpr unsigned GKR_GATHER_MAX_ADDRESSES = 1280;
 
 struct gpu_gather_e_addresses_desc {
@@ -276,6 +162,7 @@ struct gpu_gather_e_addresses_desc {
   unsigned long long src_ptrs[GKR_GATHER_MAX_ADDRESSES];
 };
 
+static_assert(sizeof(gpu_gather_e_addresses_desc) == 8 + 8 * GKR_GATHER_MAX_ADDRESSES, "must mirror GpuGatherEAddressesDesc in gpu/hash/src/blake2s/gather.rs");
 static_assert(sizeof(gpu_gather_e_addresses_desc) <= 32u * 1024u, "gpu_gather_e_addresses_desc must fit under the 32 KB inline kernel-arg ceiling");
 
 // Gather E4 evaluations from N source buffers (one per address) into one
@@ -284,8 +171,8 @@ static_assert(sizeof(gpu_gather_e_addresses_desc) <= 32u * 1024u, "gpu_gather_e_
 // is a u64 carrying the device pointer to address i's `elements_per_addr`
 // E4 values. dst[i*elements_per_addr .. (i+1)*elements_per_addr] receives
 // that address's data. Internally copies `elements_per_addr * 4` u32 words
-// per address (each E4 is 16 bytes / 4 u32 words). Replaces the per-address
-// `memory_copy_async` loop in the backward schedulers with a single launch.
+// per address (each E4 is 16 bytes / 4 u32 words). One launch replaces a
+// per-address copy loop.
 EXTERN __global__ void ab_gather_e_addresses_kernel(__grid_constant__ const gpu_gather_e_addresses_desc desc, u32 *dst) {
   const unsigned addr_idx = blockIdx.x;
   if (addr_idx >= desc.num_addresses)
@@ -312,7 +199,7 @@ EXTERN __global__ void ab_query_index_to_tree_index_kernel(const u32 *d_query_in
   const u32 lde_mask = log_lde_factor == 0u ? 0u : ((1u << log_lde_factor) - 1u);
   const u32 coset = q & lde_mask;
   const u32 internal = q >> log_lde_factor;
-  const u32 coset_dest = log_lde_factor == 0u ? 0u : (__brev(coset) >> (32u - log_lde_factor));
+  const u32 coset_dest = bitreverse_low_bits(coset, log_lde_factor);
   const u32 tree_idx = (coset_dest << coset_tree_size_log2) | internal;
   d_out[i] = tree_idx;
 }
@@ -335,7 +222,7 @@ struct gpu_oracle_gather_desc {
   unsigned long long slab_dst_ptr; // bf*, slab destination for this oracle
 };
 
-static_assert(sizeof(gpu_oracle_gather_desc) <= 32u * 1024u, "gpu_oracle_gather_desc must fit under the 32 KB inline kernel-arg ceiling");
+static_assert(sizeof(gpu_oracle_gather_desc) == 24, "must mirror OracleGatherDesc in gpu/hash/src/blake2s/gather.rs");
 
 EXTERN __global__ void ab_gather_leaves_for_queries_kernel(const u32 num_oracles, __grid_constant__ const gpu_oracle_gather_desc desc0,
                                                            __grid_constant__ const gpu_oracle_gather_desc desc1,
@@ -374,8 +261,8 @@ EXTERN __global__ void ab_gather_leaves_for_queries_kernel(const u32 num_oracles
 
 // Sibling of `ab_gather_leaves_for_queries_kernel` for the WHIR oracle's
 // natural-multi-coset NTT cosets backing. The existing kernel reads `cosets[q
-// & lde_mask * stride + col * domain_size + src_row]`; with WHIR's old
-// TraceHolder shape (log_lde_factor = 0, log_rows_per_leaf = 0) this
+// & lde_mask * stride + col * domain_size + src_row]`; with WHIR's
+// single-packed-coset shape (log_lde_factor = 0, log_rows_per_leaf = 0) this
 // collapsed to `cosets[col * total_leaf_count + q]` against the packed
 // cosets backing. The new kernel reverses pack's full transform — coset
 // bit-reverse, within-leaf value-slot bit-reverse, column reshape — so it
@@ -418,10 +305,9 @@ EXTERN __global__ void ab_gather_leaves_for_queries_from_ntt_kernel(const bf *nt
 // consolidated tree backing, resolving the per-coset segment via
 // `coset = q & lde_mask`. The consolidated backing stores cosets in NATURAL
 // order (coset c occupies
-// `[c * stride_per_coset_in_digests, (c+1) * stride_per_coset_in_digests)`),
-// matching `CosetsHolder::Full`/`TreesHolder::Full` indexing in
-// `prover/trace/holder/mod.rs`. `stride_per_coset_in_digests` is the per-coset
-// tree size in `Digest` items (= `2 * leaves_count` for Full mode); the kernel
+// `[c * stride_per_coset_in_digests, (c+1) * stride_per_coset_in_digests)`).
+// `stride_per_coset_in_digests` is the per-coset full-tree size in `Digest`
+// items (= `2 * leaves_count`); the kernel
 // multiplies by `STATE_SIZE` internally to index into the `u32` view of the
 // backing. `log_leaves_count` is per-coset, not whole tree.
 //   slab[q * layers_count * STATE_SIZE + layer * STATE_SIZE + word]
@@ -457,8 +343,8 @@ EXTERN __global__ void ab_gather_merkle_paths_full_for_queries_kernel(const u32 
 // Per-oracle consolidated partial-tree backing: coset `c` lives at
 //   base_digests + c * stride_per_coset_in_digests digests
 // (multiplied by STATE_SIZE for the u32 view). `stride_per_coset_in_digests`
-// matches `1 << (log_total_leaves_count + 1 - LOG_WARP_SIZE)` (= per-coset
-// partial-tree length in digests for `TreesHolder::Partial`).
+// matches `1 << (log_total_leaves_count + 1 - LOG_WARP_SIZE)` (= the full
+// per-coset partial-tree slab length in digests).
 //
 // Thread mapping: gridDim.x = indexes_count, blockDim.x = WARP_SIZE. The oracle
 // dimension uses gridDim.y. Oracles with columns_count == 0 are skipped.
@@ -470,7 +356,7 @@ struct gpu_oracle_partial_path_desc {
   unsigned long long slab_dst_ptr; // u32*, slab destination for this oracle
 };
 
-static_assert(sizeof(gpu_oracle_partial_path_desc) <= 32u * 1024u, "gpu_oracle_partial_path_desc must fit under the 32 KB inline kernel-arg ceiling");
+static_assert(sizeof(gpu_oracle_partial_path_desc) == 32, "must mirror OraclePartialPathDesc in gpu/hash/src/blake2s/gather.rs");
 
 EXTERN __global__ void ab_gather_merkle_paths_partial_for_queries_kernel(const u32 num_oracles, __grid_constant__ const gpu_oracle_partial_path_desc desc0,
                                                                          __grid_constant__ const gpu_oracle_partial_path_desc desc1,
@@ -519,58 +405,11 @@ EXTERN __global__ void ab_gather_merkle_paths_partial_for_queries_kernel(const u
     return col < cols_count ? bf::into_raw_u32(load_cs(address)) : 0;
   };
   u32 state[STATE_SIZE];
-  u32 block[BLOCK_SIZE];
   initialize(state);
   u32 t = 0;
-  const unsigned values_count = cols_count << log_rows_per_leaf;
-  unsigned offset = 0;
-  while (offset < values_count) {
-    const unsigned remaining = values_count - offset;
-    const bool is_final_block = remaining <= BLOCK_SIZE;
-#pragma unroll
-    for (unsigned i = 0; i < BLOCK_SIZE; i++, offset++)
-      block[i] = read(offset);
-    if (is_final_block)
-      compress<true>(state, t, block, remaining);
-    else
-      compress<false>(state, t, block, BLOCK_SIZE);
-  }
-#pragma unroll
-  for (unsigned layer = 0; layer < LOG_WARP_SIZE; layer++) {
-    digest other_state;
-    const bool take_other_first = (lane_idx >> layer) & 1;
-#pragma unroll
-    for (unsigned i = 0; i < STATE_SIZE; i++) {
-      other_state[i] = __shfl_xor_sync(FULL_MASK, state[i], 1 << layer);
-      if (take_other_first) {
-        block[i] = other_state[i];
-        block[i + STATE_SIZE] = state[i];
-      } else {
-        block[i] = state[i];
-        block[i + STATE_SIZE] = other_state[i];
-      }
-    }
-    if (is_output_lane)
-      store_cs(reinterpret_cast<digest *>(merkle_paths), other_state);
-    initialize(state);
-    t = 0;
-    compress<true>(state, t, block, BLOCK_SIZE);
-    merkle_paths += STATE_SIZE;
-  }
-  if (lane_idx >= STATE_SIZE)
-    return;
-  unsigned digest_index = query_index >> LOG_WARP_SIZE;
-  unsigned log_digests_count = log_total_leaves_count - LOG_WARP_SIZE;
-  const u32 *tree_layer = tree_bottom + lane_idx;
-  u32 *merkle_paths_dst = merkle_paths + lane_idx;
-  for (unsigned layer = LOG_WARP_SIZE; layer < layers_count; layer++) {
-    const unsigned other_index = digest_index ^ 1;
-    *merkle_paths_dst = *(tree_layer + other_index * STATE_SIZE);
-    digest_index >>= 1;
-    tree_layer += (1u << log_digests_count) * STATE_SIZE;
-    log_digests_count--;
-    merkle_paths_dst += STATE_SIZE;
-  }
+  absorb_stream(state, t, cols_count << log_rows_per_leaf, read);
+  // Query-major output layout: consecutive layers are STATE_SIZE words apart.
+  collect_merkle_path_warp(state, merkle_paths, STATE_SIZE, lane_idx, is_output_lane, query_index, log_total_leaves_count, layers_count, tree_bottom);
 }
 
 // Sibling of `ab_gather_merkle_paths_partial_for_queries_kernel` for the WHIR
@@ -580,7 +419,7 @@ EXTERN __global__ void ab_gather_merkle_paths_partial_for_queries_kernel(const u
 // `ab_gather_leaves_for_queries_from_ntt_kernel`; the upper layers come from
 // the partial-tree backing as in the packed-layout sibling.
 //
-// Single oracle, single TraceHolder coset (WHIR oracle uses TraceHolder
+// Single oracle, single packed coset (the WHIR oracle tree has
 // `log_lde_factor = 0`, `log_rows_per_leaf = 0`). Grid: gridDim.x =
 // indexes_count, blockDim.x = WARP_SIZE.
 EXTERN __global__ void ab_gather_merkle_paths_partial_for_queries_from_ntt_kernel(const bf *ntt_output, const u32 *partial_tree, u32 *slab_dst,
@@ -594,7 +433,7 @@ EXTERN __global__ void ab_gather_merkle_paths_partial_for_queries_from_ntt_kerne
     return;
 
   const unsigned q = query_indexes[idx];
-  // TraceHolder log_lde_factor == 0 ⇒ query_index == q.
+  // The WHIR oracle tree has log_lde_factor == 0 ⇒ query_index == q.
   const unsigned query_index = q;
 
   const unsigned index_lane = (query_index & ~WARP_MASK) | lane_idx;
@@ -624,63 +463,14 @@ EXTERN __global__ void ab_gather_merkle_paths_partial_for_queries_from_ntt_kerne
   };
 
   u32 state[STATE_SIZE];
-  u32 block[BLOCK_SIZE];
   initialize(state);
   u32 t = 0;
-  unsigned offset = 0;
-  while (offset < cols_count) {
-    const unsigned remaining = cols_count - offset;
-    const bool is_final_block = remaining <= BLOCK_SIZE;
-#pragma unroll
-    for (unsigned i = 0; i < BLOCK_SIZE; i++, offset++)
-      block[i] = read(offset);
-    if (is_final_block)
-      compress<true>(state, t, block, remaining);
-    else
-      compress<false>(state, t, block, BLOCK_SIZE);
-  }
+  absorb_stream(state, t, cols_count, read);
 
-  // Warp-shuffle reduction of bottom LOG_WARP_SIZE layers (identical to the
-  // packed-layout sibling).
-#pragma unroll
-  for (unsigned layer = 0; layer < LOG_WARP_SIZE; layer++) {
-    digest other_state;
-    const bool take_other_first = (lane_idx >> layer) & 1;
-#pragma unroll
-    for (unsigned i = 0; i < STATE_SIZE; i++) {
-      other_state[i] = __shfl_xor_sync(FULL_MASK, state[i], 1 << layer);
-      if (take_other_first) {
-        block[i] = other_state[i];
-        block[i + STATE_SIZE] = state[i];
-      } else {
-        block[i] = state[i];
-        block[i + STATE_SIZE] = other_state[i];
-      }
-    }
-    if (is_output_lane)
-      store_cs(reinterpret_cast<digest *>(merkle_paths), other_state);
-    initialize(state);
-    t = 0;
-    compress<true>(state, t, block, BLOCK_SIZE);
-    merkle_paths += STATE_SIZE;
-  }
-
-  // Walk upper layers from the partial tree backing. Single coset ⇒ no
-  // per-coset offset; partial_tree is the slab base directly.
-  if (lane_idx >= STATE_SIZE)
-    return;
-  unsigned digest_index = query_index >> LOG_WARP_SIZE;
-  unsigned log_digests_count = log_total_leaves_count - LOG_WARP_SIZE;
-  const u32 *tree_layer = partial_tree + lane_idx;
-  u32 *merkle_paths_dst = merkle_paths + lane_idx;
-  for (unsigned layer = LOG_WARP_SIZE; layer < layers_count; layer++) {
-    const unsigned other_index = digest_index ^ 1;
-    *merkle_paths_dst = *(tree_layer + other_index * STATE_SIZE);
-    digest_index >>= 1;
-    tree_layer += (1u << log_digests_count) * STATE_SIZE;
-    log_digests_count--;
-    merkle_paths_dst += STATE_SIZE;
-  }
+  // Bottom LOG_WARP_SIZE layers via warp-shuffle, then walk the upper layers
+  // from the partial-tree backing. Single coset ⇒ partial_tree is the slab base
+  // directly. Query-major output: consecutive layers are STATE_SIZE words apart.
+  collect_merkle_path_warp(state, merkle_paths, STATE_SIZE, lane_idx, is_output_lane, query_index, log_total_leaves_count, layers_count, partial_tree);
 }
 
 } // namespace airbender::hash

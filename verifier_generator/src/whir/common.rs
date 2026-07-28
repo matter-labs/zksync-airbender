@@ -14,7 +14,7 @@ pub fn generate_whir_common<MW: FieldWrapper>(max_fold_steps: usize) -> TokenStr
     let field_struct = MW::field_struct();
 
     // read_and_batch_leaf ops
-    let from_raw = MW::field_from_reduced_raw_repr(quote! { raw });
+    // let from_raw = MW::field_from_reduced_raw_repr(quote! { raw });
 
     let fma_into_acc_0 =
         MW::add_assign_product_with_base(quote! { *acc0 }, quote! { gamma }, quote! { base_val });
@@ -71,7 +71,7 @@ pub fn generate_whir_common<MW: FieldWrapper>(max_fold_steps: usize) -> TokenStr
         }
 
         #[inline(always)]
-        pub fn verify_whir_sumcheck_step<I: NonDeterminismSource, E: ErrorCreator>(
+        pub fn verify_whir_sumcheck_step<I: NonDeterminismSource<#field_struct>, E: ErrorCreator>(
             ts: &mut TranscriptState,
             claim: #quartic_struct,
             round: usize,
@@ -89,7 +89,7 @@ pub fn generate_whir_common<MW: FieldWrapper>(max_fold_steps: usize) -> TokenStr
             {
                 let mut i = 0;
                 while i < WHIR_SC_DATA_WORDS {
-                    buf.data_write(i, read_reduced_field_el::<I>(nd_source));
+                    buf.data_write(i, read_reduced_field_el::<I>(nd_source).as_u32_raw_repr());
                     i += 1;
                 }
             }
@@ -195,7 +195,7 @@ pub fn generate_whir_common<MW: FieldWrapper>(max_fold_steps: usize) -> TokenStr
 
         #[inline(always)]
         #[allow(clippy::too_many_arguments)]
-        pub unsafe fn read_and_batch_leaf<I: NonDeterminismSource>(
+        pub unsafe fn read_and_batch_leaf<I: NonDeterminismSource<#field_struct>>(
             hash_buf: &mut [u32],
             num_columns: usize,
             gamma_powers: &[#quartic_struct],
@@ -210,13 +210,13 @@ pub fn generate_whir_common<MW: FieldWrapper>(max_fold_steps: usize) -> TokenStr
                 let idx = col * 2;
 
                 let raw = read_reduced_field_el::<I>(nd_source);
-                *hash_buf.get_unchecked_mut(idx) = raw;
-                let base_val = #from_raw;
+                *hash_buf.get_unchecked_mut(idx) = raw.as_u32_raw_repr();
+                let base_val = raw;
                 #fma_into_acc_0;
 
                 let raw = read_reduced_field_el::<I>(nd_source);
-                *hash_buf.get_unchecked_mut(idx + 1) = raw;
-                let base_val = #from_raw;
+                *hash_buf.get_unchecked_mut(idx + 1) = raw.as_u32_raw_repr();
+                let base_val = raw;
                 #fma_into_acc_1;
 
                 col += 1;
@@ -277,7 +277,7 @@ pub fn generate_whir_common<MW: FieldWrapper>(max_fold_steps: usize) -> TokenStr
 
         #[inline(always)]
         #[allow(clippy::too_many_arguments)]
-        pub unsafe fn process_oracle_query<I: NonDeterminismSource, E: ErrorCreator, const BUF_SIZE: usize, const LEAF_WORDS: usize>(
+        pub unsafe fn process_oracle_query<I: NonDeterminismSource<#field_struct>, E: ErrorCreator, const BUF_SIZE: usize, const LEAF_WORDS: usize>(
             hasher: &mut DelegatedBlake2sState,
             hash_buf: &mut ::verifier_common::blake2s_u32::AlignedArray64<core::mem::MaybeUninit<u32>, BUF_SIZE>,
             num_columns: usize,

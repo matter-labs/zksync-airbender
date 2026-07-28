@@ -419,7 +419,7 @@ impl AllocationsTracker {
 unsafe impl Send for AllocationsTracker {}
 
 #[cfg(test)]
-mod tests {
+mod cpu_tests {
     use super::{AllocationPlacement, AllocationsTracker};
 
     const REGION_A: usize = 0x1000;

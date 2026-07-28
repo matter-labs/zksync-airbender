@@ -50,6 +50,7 @@ pub trait DelegationCircuit<F: PrimeField> {
 pub trait RiscVCycleCircuit<F: PrimeField, const USE_BYTECODE: bool> {
     const CIRCUIT_FAMILY: u8;
     const DOMAIN_SIZE_LOG2: u32;
+    const NUM_INIT_AND_TEARDOWN_PAIRS: usize;
 
     fn table_driver_fn(table_driver: &mut TableDriver<F>, bytecode: &[u32]);
     fn table_addition_fn<CS: Circuit<F>>(cs: &mut CS, bytecode: &[u32]);
@@ -65,6 +66,7 @@ pub fn risc_v_non_mem_get_circuit<F: PrimeField, C: RiscVCycleCircuit<F, false>>
             &|cs| C::circuit_fn(cs, &[]),
             common_constants::ROM_WORD_SIZE,
             C::DOMAIN_SIZE_LOG2 as usize,
+            0,
         )
     } else {
         compile_unrolled_circuit_state_transition_into_unrolled_gkr_without_caches::<F>(
@@ -72,6 +74,7 @@ pub fn risc_v_non_mem_get_circuit<F: PrimeField, C: RiscVCycleCircuit<F, false>>
             &|cs| C::circuit_fn(cs, &[]),
             common_constants::ROM_WORD_SIZE,
             C::DOMAIN_SIZE_LOG2 as usize,
+            0,
         )
     }
 }
@@ -102,6 +105,7 @@ pub fn risc_v_with_mem_get_circuit<F: PrimeField, C: RiscVCycleCircuit<F, true>>
             &|cs| C::circuit_fn(cs, bytecode),
             common_constants::ROM_WORD_SIZE,
             C::DOMAIN_SIZE_LOG2 as usize,
+            C::NUM_INIT_AND_TEARDOWN_PAIRS,
         )
     } else {
         compile_unrolled_circuit_state_transition_into_unrolled_gkr_without_caches::<F>(
@@ -109,6 +113,7 @@ pub fn risc_v_with_mem_get_circuit<F: PrimeField, C: RiscVCycleCircuit<F, true>>
             &|cs| C::circuit_fn(cs, &[]),
             common_constants::ROM_WORD_SIZE,
             C::DOMAIN_SIZE_LOG2 as usize,
+            C::NUM_INIT_AND_TEARDOWN_PAIRS,
         )
     }
 }

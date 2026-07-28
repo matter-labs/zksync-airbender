@@ -1,10 +1,10 @@
-use super::common::{circuit_in_filter, ensure_memory_trace_consistency};
+use super::common::{circuit_in_filter, ensure_memory_trace_consistency, log_prove_decision};
 use super::delegations::{deserialize_from_file, serialize_to_file};
 use crate::cs::gkr_compiler::GKRCircuitArtifact;
 use crate::cs::tables::TableDriver;
 use crate::definitions::SecurityLevel;
-use crate::gkr::prover::prove_configured_with_gkr;
 use crate::gkr::prover::setup::GKRSetup;
+use crate::gkr::prover::{prove_configured_with_gkr, CommitmentMode};
 use crate::gkr::prover::{GKRExternalChallenges, GKRProof};
 use crate::gkr::prover_config::example_configs;
 use crate::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
@@ -25,6 +25,7 @@ use riscv_transpiler::witness::data_structs::{
 };
 use riscv_transpiler::witness::{MemDestinationHolder, NonMemDestinationHolder};
 use std::alloc::Global;
+use transcript::Blake2sTranscript;
 use worker::Worker;
 
 const USE_GKR_WITH_CACHES: bool = cfg!(not(feature = "no_caches"));
@@ -90,7 +91,12 @@ pub fn prove_built_family_trace(
 
     println!("Trying to prove");
     let now = std::time::Instant::now();
-    let proof = prove_configured_with_gkr::<BabyBearField, BabyBearExt4, DefaultTreeConstructor>(
+    let proof = prove_configured_with_gkr::<
+        BabyBearField,
+        BabyBearExt4,
+        DefaultTreeConstructor,
+        Blake2sTranscript,
+    >(
         circuit,
         external_challenges,
         full_trace,
@@ -98,6 +104,7 @@ pub fn prove_built_family_trace(
         &setup_commitment,
         &twiddles,
         &prover_config,
+        CommitmentMode::SeparateMemoryAndWitness,
         Vec::new(),
         trace_len,
         worker,
@@ -144,8 +151,6 @@ pub fn prove_non_mem_family<const CIRCUIT_TYPE: u8, C>(
 where
     C: Counters + Copy + Default + PartialEq + std::fmt::Debug,
 {
-    println!("Will try to prove family circuit '{circuit_stem}'");
-
     let circuit: GKRCircuitArtifact<BabyBearField> =
         deserialize_from_file(&circuit_path(circuit_stem));
     let mut table_driver = TableDriver::<BabyBearField>::new();
@@ -169,6 +174,7 @@ where
     let should_prove = !compute_only
         && circuit_in_filter(circuits_filter, circuit_stem)
         && (prove_empty || !built.oracle_is_empty);
+    log_prove_decision(circuit_stem, should_prove, compute_only);
 
     let proof = if should_prove {
         #[cfg(all(feature = "gkr_check_satisfied", any(test, feature = "test")))]
@@ -239,8 +245,6 @@ pub fn prove_mem_family<const CIRCUIT_TYPE: u8, C>(
 where
     C: Counters + Copy + Default + PartialEq + std::fmt::Debug,
 {
-    println!("Will try to prove family circuit '{circuit_stem}'");
-
     let circuit: GKRCircuitArtifact<BabyBearField> =
         deserialize_from_file(&circuit_path(circuit_stem));
     let mut table_driver = TableDriver::<BabyBearField>::new();
@@ -264,6 +268,7 @@ where
     let should_prove = !compute_only
         && circuit_in_filter(circuits_filter, circuit_stem)
         && (prove_empty || !built.oracle_is_empty);
+    log_prove_decision(circuit_stem, should_prove, compute_only);
 
     let proof = if should_prove {
         #[cfg(all(feature = "gkr_check_satisfied", any(test, feature = "test")))]
@@ -325,8 +330,6 @@ pub fn prove_inits_and_teardowns(
     proof_suffix: &str,
     worker: &Worker,
 ) -> FamilyProveOutput {
-    println!("Will try to prove memory inits and teardowns circuit");
-
     // i/t has historically always read the `no_caches` layout in this
     // test path. Preserving that here — see the original family_circuits.rs.
     let circuit: GKRCircuitArtifact<BabyBearField> = deserialize_from_file(
@@ -343,6 +346,7 @@ pub fn prove_inits_and_teardowns(
     };
 
     let should_prove = !compute_only && circuit_in_filter(circuits_filter, "inits_and_teardowns");
+    log_prove_decision("inits_and_teardowns", should_prove, compute_only);
 
     if !should_prove {
         return FamilyProveOutput {
@@ -390,7 +394,12 @@ pub fn prove_inits_and_teardowns(
         .collect();
 
     let now = std::time::Instant::now();
-    let proof = prove_configured_with_gkr::<BabyBearField, BabyBearExt4, DefaultTreeConstructor>(
+    let proof = prove_configured_with_gkr::<
+        BabyBearField,
+        BabyBearExt4,
+        DefaultTreeConstructor,
+        Blake2sTranscript,
+    >(
         &circuit,
         external_challenges,
         full_trace,
@@ -398,6 +407,7 @@ pub fn prove_inits_and_teardowns(
         &setup_commitment,
         &twiddles,
         &prover_config,
+        CommitmentMode::SeparateMemoryAndWitness,
         inits_and_teardowns_top_bits,
         trace_len,
         worker,

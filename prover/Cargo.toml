@@ -30,6 +30,7 @@ quote = { version = "1", optional = true }
 serde_json = { version = "*", optional = true }
 bincode = { version = "1.3", optional = true }
 serde_with = { version = "*", optional = true }
+sha3 = { workspace = true, optional = true }
 
 [dev-dependencies]
 test_utils = { workspace = true }
@@ -37,7 +38,6 @@ rand = { workspace = true, features = ["std", "thread_rng", "std_rng"]}
 bincode = { version = "1.3" }
 criterion = "0.5"
 hex = "*"
-serial_test = "3"
 proptest = "1"
 
 [[bench]]
@@ -45,7 +45,7 @@ name = "pow_bench"
 harness = false
 
 [features]
-prover = ["worker", "seq-macro", "fft", "cs/compiler", "transcript/pow", "riscv_transpiler", "proc-macro2", "quote", "serde_json", "serde_with", "itertools"]
+prover = ["worker", "seq-macro", "fft", "cs/compiler", "transcript/pow", "riscv_transpiler", "proc-macro2", "quote", "serde_json", "serde_with", "itertools", "sha3"]
 deterministic_pow = ["transcript/deterministic_pow"]
 # Print logs related to timings only.
 timing_logs = []

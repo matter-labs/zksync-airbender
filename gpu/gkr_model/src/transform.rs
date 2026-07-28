@@ -4,6 +4,13 @@ use crate::upstream::{
 };
 use std::collections::BTreeMap;
 
+/// Element type of `NoFieldMaxQuadraticGKRRelation::quadratic_terms`.
+type MaxQuadraticTerm = (GKRAddress, Box<[(u32, GKRAddress)]>);
+/// Element type of `NoFieldMaxQuadraticConstraintsGKRRelation::quadratic_terms`.
+type ConstraintsQuadraticTerm = ((GKRAddress, GKRAddress), Box<[(u32, usize)]>);
+/// Element type of `NoFieldMaxQuadraticConstraintsGKRRelation::linear_terms`.
+type ConstraintsLinearTerm = (GKRAddress, Box<[(u32, usize)]>);
+
 pub fn normalize_compiled_circuit_for_gpu<F: PrimeField>(
     mut compiled_circuit: GKRCircuitArtifact<F>,
 ) -> GKRCircuitArtifact<F> {
@@ -95,7 +102,7 @@ fn rewrite_max_quadratic(
     rel: &mut NoFieldMaxQuadraticGKRRelation,
     mapping: &BTreeMap<GKRAddress, usize>,
 ) {
-    let mut rewritten_quadratic: Vec<(GKRAddress, Box<[(u32, GKRAddress)]>)> =
+    let mut rewritten_quadratic: Vec<MaxQuadraticTerm> =
         Vec::with_capacity(rel.quadratic_terms.len());
     for (lhs, rhs_terms) in rel.quadratic_terms.iter() {
         let mut new_lhs = *lhs;
@@ -133,7 +140,7 @@ fn rewrite_relation_scratch_addresses(
             rewrite_max_quadratic(input, mapping);
         }
         EnforceConstraintsMaxQuadratic { input } => {
-            let mut rewritten_quadratic: Vec<((GKRAddress, GKRAddress), Box<[(u32, usize)]>)> =
+            let mut rewritten_quadratic: Vec<ConstraintsQuadraticTerm> =
                 Vec::with_capacity(input.quadratic_terms.len());
             for ((a, b), coeffs) in input.quadratic_terms.iter() {
                 let mut new_a = *a;
@@ -143,7 +150,7 @@ fn rewrite_relation_scratch_addresses(
                 rewritten_quadratic.push(((new_a, new_b), coeffs.clone()));
             }
             input.quadratic_terms = rewritten_quadratic.into_boxed_slice();
-            let mut rewritten_linear: Vec<(GKRAddress, Box<[(u32, usize)]>)> =
+            let mut rewritten_linear: Vec<ConstraintsLinearTerm> =
                 Vec::with_capacity(input.linear_terms.len());
             for (addr, coeffs) in input.linear_terms.iter() {
                 let mut new_addr = *addr;

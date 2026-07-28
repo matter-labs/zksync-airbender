@@ -57,8 +57,6 @@ pub use self::hash_like_holder::*;
 pub use self::leaf_inclusion_verifier::*;
 pub use self::optimal_folding::*;
 
-pub type Transcript = Blake2sTranscript;
-
 #[derive(
     Clone, Copy, Debug, Hash, Default, serde::Serialize, serde::Deserialize, PartialEq, Eq,
 )]
@@ -71,6 +69,27 @@ pub struct GKRExternalChallenges<F: PrimeField, E: FieldExtension<F> + Field> {
 }
 
 impl<F: PrimeField, E: FieldExtension<F> + Field> GKRExternalChallenges<F, E> {
+    pub const TOTAL_CHALLENGES: usize = NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES + 1;
+
+    #[cfg(feature = "prover")]
+    pub fn from_slice(challenges: &[E]) -> Self {
+        assert_eq!(
+            challenges.len(),
+            NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES + 1
+        );
+        let (permutation_argument_linearization_challenges, permutation_argument_additive_part) =
+            challenges.as_chunks::<NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES>();
+        let permutation_argument_linearization_challenges =
+            permutation_argument_linearization_challenges[0];
+        let permutation_argument_additive_part = permutation_argument_additive_part[0];
+
+        Self {
+            permutation_argument_linearization_challenges,
+            permutation_argument_additive_part,
+            _marker: core::marker::PhantomData,
+        }
+    }
+
     #[cfg(feature = "prover")]
     pub fn flatten_into_buffer(&self, dst: &mut Vec<u32>)
     where
@@ -136,7 +155,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> GKRExternalChallenges<F, E> {
         }
     }
 
-    pub fn draw_from_transcript_seed(
+    pub fn draw_from_blake_transcript_seed(
         mut seed: transcript::Seed,
         pow_bits: usize,
         pow_challenge: u64,
@@ -144,7 +163,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> GKRExternalChallenges<F, E> {
         let mut hasher = blake2s_u32::DelegatedBlake2sState::new();
 
         if pow_bits > 0 {
-            Transcript::verify_pow_using_hasher(
+            Blake2sTranscript::<USE_REDUCED_BLAKE2_ROUNDS>::verify_pow_using_hasher(
                 &mut hasher,
                 &mut seed,
                 pow_challenge,

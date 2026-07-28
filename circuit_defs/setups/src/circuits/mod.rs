@@ -168,9 +168,13 @@ fn write_and_fmt(path: &str, content: &proc_macro2::TokenStream) {
 #[cfg(test)]
 mod test {
     use super::*;
+    use test_utils::skip_if_ci;
 
     #[test]
     fn generate_delegation_circuits_artifacts() {
+        skip_if_ci!();
+
         dump_delegation_setups_for_verifier(true, SecurityLevel::Sec80);
+        dump_delegation_setups_for_verifier(true, SecurityLevel::Sec100);
     }
 }

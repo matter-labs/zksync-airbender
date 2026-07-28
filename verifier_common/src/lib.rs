@@ -1,4 +1,4 @@
-#![cfg_attr(not(any(test, feature = "replace_csr")), no_std)]
+#![cfg_attr(not(any(test, feature = "proof_utils")), no_std)]
 #![cfg_attr(any(test, feature = "proof_utils"), allow(incomplete_features))]
 #![cfg_attr(any(test, feature = "proof_utils"), feature(generic_const_exprs))]
 
@@ -6,18 +6,18 @@
 macro_rules! gkr_circuits {
     ($callback:ident) => {
         $callback! {
-            add_sub_lui_auipc_mop; 24 ; "_layout",
-            jump_branch_slt; 24 ; "_layout",
-            shift_binop; 24 ; "_layout",
-            unsigned_mul_div; 24 ; "_layout",
-            mem_word_only; 24 ; "_layout",
-            mem_subword_only; 24 ; "_layout",
-            bigint_with_extended_control; 22 ; "_layout",
-            blake2_with_extended_control; 20 ; "_layout",
-            keccak_special5; 22 ; "_layout",
-            blake2_g_function; 22 ; "_layout",
-            inits_and_teardowns; 24 ; "_layout",
-            unified_reduced_machine; 24 ; "_layout",
+            add_sub_lui_auipc_mop; "../circuit_defs/unrolled_circuits/add_sub_lui_auipc_mop",
+            jump_branch_slt; "../circuit_defs/unrolled_circuits/jump_branch_slt",
+            shift_binop; "../circuit_defs/unrolled_circuits/shift_binary",
+            unsigned_mul_div; "../circuit_defs/unrolled_circuits/mul_div_unsigned",
+            mem_word_only; "../circuit_defs/unrolled_circuits/load_store_word_only",
+            mem_subword_only; "../circuit_defs/unrolled_circuits/load_store_subword_only",
+            bigint_with_extended_control; "../circuit_defs/bigint_with_control",
+            blake2_with_extended_control; "../circuit_defs/blake2_with_compression",
+            keccak_special5; "../circuit_defs/keccak_special5",
+            blake2_g_function; "../circuit_defs/blake2_g_function",
+            inits_and_teardowns; "../circuit_defs/unrolled_circuits/inits_and_teardowns",
+            unified_reduced_machine; "../circuit_defs/unrolled_circuits/unified_reduced_machine",
         }
     };
 }
@@ -147,7 +147,7 @@ pub const unsafe fn slice_from_ptr_range<'a, T>(range: core::ops::Range<*const T
     unsafe { core::slice::from_raw_parts(range.start, range.end.offset_from(range.start) as usize) }
 }
 
-#[cfg(any(test, feature = "replace_csr", feature = "proof_utils"))]
+#[cfg(any(test, feature = "proof_utils"))]
 extern crate alloc;
 
 use crate::errors::ErrorCreator;
@@ -192,15 +192,6 @@ pub mod field_ops {
     #[cfg(not(target_arch = "riscv32"))]
     pub use crate::no_inline_ops::*;
 }
-
-#[cfg(all(not(target_arch = "riscv32"), feature = "replace_csr"))]
-pub type DefaultNonDeterminismSource = ::prover::nd_source_std::ThreadLocalBasedSource;
-
-#[cfg(all(not(target_arch = "riscv32"), not(feature = "replace_csr")))]
-pub type DefaultNonDeterminismSource = ();
-
-#[cfg(target_arch = "riscv32")]
-pub type DefaultNonDeterminismSource = non_determinism_source::CSRBasedSource;
 
 #[cfg(not(all(
     target_arch = "riscv32",
@@ -279,7 +270,7 @@ pub trait ConcreteVerifierImpl<
     const ADDRS: usize,
 >: 'static
 {
-    fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
+    fn verify_gkr<I: NonDeterminismSource<F>, E: ErrorCreator>(
         external_challenges: &::prover::definitions::GKRExternalChallenges<F, EE>,
         initial_transcript: &InitialGKRTranscript<
             EE,
@@ -294,7 +285,7 @@ pub trait ConcreteVerifierImpl<
         transcript_state: &mut ::transcript::TranscriptState,
         nd_source: &mut I,
     ) -> Result<GKRVerifierOutput<EE, ROUNDS, ADDRS>, E::Error>;
-    fn verify_whir<I: NonDeterminismSource, E: ErrorCreator>(
+    fn verify_whir<I: NonDeterminismSource<F>, E: ErrorCreator>(
         initial_transcript: &InitialGKRTranscript<
             EE,
             INIT_AND_TEARDOWN_SETS,
@@ -314,7 +305,7 @@ pub trait ConcreteVerifierImpl<
 }
 
 pub fn verify_impl<
-    I: NonDeterminismSource,
+    I: NonDeterminismSource<F>,
     E: ErrorCreator,
     F: PrimeField,
     EE: FieldExtension<F> + Field,
@@ -397,7 +388,7 @@ pub fn verify_impl<
 pub fn read_external_challenges<
     F: PrimeField,
     E: FieldExtension<F> + Field,
-    I: NonDeterminismSource,
+    I: NonDeterminismSource<F>,
 >(
     nd_source: &mut I,
 ) -> prover::definitions::GKRExternalChallenges<F, E> {

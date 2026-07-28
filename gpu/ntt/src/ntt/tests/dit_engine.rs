@@ -1,12 +1,14 @@
 //! End-to-end GPU parity harness for the vendored DIT NTT engine bring-up
 //! kernels (`gpu/ntt/native/dit_kernels_extern.cu`).
 //!
-//! Covers all 12 single-pass configs:
-//!   v8 (LOG_VPT=3): LOG_N ∈ {3,4,5,6,7,8}  → ab_dit_single_{3..8}_3
-//!   v4 (LOG_VPT=2): LOG_N ∈ {2,3,4,5,6,7}  → ab_dit_single_{2..7}_2
+//! Covers all 12 single-pass configs against the PRODUCTION streaming kernels:
+//!   v8 (LOG_VPT=3): LOG_N ∈ {3,4,5,6,7,8}  → ab_dit_single_stream_{3..8}_3
+//!   v4 (LOG_VPT=2): LOG_N ∈ {2,3,4,5,6,7}  → ab_dit_single_stream_{2..7}_2
 //!
-//! Every config is validated against the `bitreversed_monomials_to_natural_evals`
-//! oracle across ALL cosets emitted by a single grid=1 launch.
+//! Every config is validated against the independent compact/per-stage oracle
+//! across ALL cosets the streaming kernel emits. The streaming kernel takes
+//! `num_cosets` as a runtime guard bound and grid-strides the coset walk, so the
+//! grid is free (the test uses a small deterministic grid).
 //!
 //! Architecture notes:
 //!  - The per-stage butterfly triangle (`tw_clean`) is computed in Rust and
@@ -22,8 +24,7 @@ use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResultWrap;
 use era_cudart_sys::{cudaFuncSetAttribute, CudaFuncAttribute};
 
-use fft::field_utils::domain_generator_for_size;
-use serial_test::serial;
+use crate::upstream::domain_generator_for_size;
 
 use super::make_context;
 use crate::ntt_twiddles::OMEGA_LOG_ORDER;
@@ -36,34 +37,42 @@ use gpu_core::primitives::field::BaseField;
 type BF = BaseField;
 
 // ---------------------------------------------------------------------------
-// Kernel bindings — one `cuda_kernel!` type shared by all single-pass symbols
-// (they all have identical signatures), then one `dit_single!(sym)` per symbol.
+// Single-pass kernel bindings — the SUBJECT is the production streaming kernel
+// `ab_dit_single_stream_<N>_<V>` (7-arg ABI), the same symbols the launcher
+// drives in `crate::ntt::dit`. We re-bind them with a test-local `cuda_kernel!`
+// type (one shared type for all 12 — identical signatures — then one
+// `dit_single_stream_hot!(sym)` per symbol) rather than importing the launcher's
+// bindings, because that macro's generated `Function` newtype has a private
+// tuple field that only its declaring module can construct. Multiple `extern "C"`
+// declarations of one kernel symbol across modules resolve to the same device
+// function at link time (the bench section relies on the same pattern).
 // ---------------------------------------------------------------------------
 cuda_kernel!(
-    DitSingle,
-    dit_single,
+    DitSingleStreamHot,
+    dit_single_stream_hot,
     monomials_bitrev: *const BF,
     tw_clean: *const BF,
     out_natural: *mut BF,
     cfp_0: u32,
     coset_step: u32,
+    num_cosets: u32,
     coset_out_stride: u32,
 );
 
 // v8 family (LOG_VPT=3), LOG_N 3..8
-dit_single!(ab_dit_single_3_3);
-dit_single!(ab_dit_single_4_3);
-dit_single!(ab_dit_single_5_3);
-dit_single!(ab_dit_single_6_3);
-dit_single!(ab_dit_single_7_3);
-dit_single!(ab_dit_single_8_3);
+dit_single_stream_hot!(ab_dit_single_stream_3_3);
+dit_single_stream_hot!(ab_dit_single_stream_4_3);
+dit_single_stream_hot!(ab_dit_single_stream_5_3);
+dit_single_stream_hot!(ab_dit_single_stream_6_3);
+dit_single_stream_hot!(ab_dit_single_stream_7_3);
+dit_single_stream_hot!(ab_dit_single_stream_8_3);
 // v4 family (LOG_VPT=2), LOG_N 2..7
-dit_single!(ab_dit_single_2_2);
-dit_single!(ab_dit_single_3_2);
-dit_single!(ab_dit_single_4_2);
-dit_single!(ab_dit_single_5_2);
-dit_single!(ab_dit_single_6_2);
-dit_single!(ab_dit_single_7_2);
+dit_single_stream_hot!(ab_dit_single_stream_2_2);
+dit_single_stream_hot!(ab_dit_single_stream_3_2);
+dit_single_stream_hot!(ab_dit_single_stream_4_2);
+dit_single_stream_hot!(ab_dit_single_stream_5_2);
+dit_single_stream_hot!(ab_dit_single_stream_6_2);
+dit_single_stream_hot!(ab_dit_single_stream_7_2);
 
 // ---------------------------------------------------------------------------
 // Rust port of the deleted C++ host builder `build_clean_triangle<LOG_M,LOG_VPT>`
@@ -142,12 +151,15 @@ fn build_clean_triangle(log_m: u32, log_vpt: u32) -> Vec<BF> {
 // Geometry helpers
 // ---------------------------------------------------------------------------
 
-/// Number of cosets emitted by a single grid=1 single-pass launch.
+/// Coset count for the streaming single-pass parity sweep.
 ///
-/// SLOTS_PER_BLOCK = NUM_WARPS * NTTS_PER_WARP = 4 * (32 / LANES)
-/// where LANES = 1 << (log_n - log_vpt).
-/// num_cosets = SLOTS_PER_BLOCK * K = 4 * (32 / LANES) * 8
-///            = 1 << (10 - (log_n - log_vpt))
+/// The streaming kernel takes `num_cosets` as a runtime guard bound (the grid is
+/// free), so this count is a test choice, not a kernel-imposed emission. We keep
+/// the harness's historical multi-coset sweep `2^(10 - (log_n - log_vpt))` — it
+/// is always a power of two and keeps `log_n + log_lde_factor <= 27` for every
+/// config, giving each coset-walk meaningful multi-coset coverage while leaving
+/// the oracle mapping (coset `cc` at `out[cc*N]`, twist `cc*coset_step`)
+/// unchanged.
 fn single_pass_num_cosets(log_n: u32, log_vpt: u32) -> usize {
     1usize << (10 - (log_n - log_vpt))
 }
@@ -156,9 +168,10 @@ fn single_pass_num_cosets(log_n: u32, log_vpt: u32) -> usize {
 // Parameterized parity helper
 // ---------------------------------------------------------------------------
 
-/// Core single-pass parity check. Builds the triangle, runs the kernel on GPU,
-/// and compares ALL emitted cosets against the oracle.
-fn run_single_pass_parity(log_n: u32, log_vpt: u32) {
+/// Core single-pass parity check. Builds the clean triangle, runs the production
+/// streaming kernel `ab_dit_single_stream_<N>_<V>` on GPU, and compares ALL
+/// emitted cosets against the independent compact/per-stage oracle.
+fn run_single_pass_stream_parity(log_n: u32, log_vpt: u32) {
     let n: usize = 1 << log_n;
     let num_cosets = single_pass_num_cosets(log_n, log_vpt);
     // log_lde_factor satisfies num_cosets = 2^log_lde_factor.
@@ -174,7 +187,7 @@ fn run_single_pass_parity(log_n: u32, log_vpt: u32) {
 
     // Bit-reversed-order monomial coefficients shared by all cosets.
     let monomials_host: Vec<BF> = (0..n)
-        .map(|idx| BF::new((17 + (idx as u32).wrapping_mul(31)) as u32))
+        .map(|idx| BF::new(17 + (idx as u32).wrapping_mul(31)))
         .collect();
 
     // --- Engine path ---------------------------------------------------------
@@ -189,41 +202,51 @@ fn run_single_pass_parity(log_n: u32, log_vpt: u32) {
     memory_copy_async(&mut tw_clean_dev, &tw_clean_host, stream).unwrap();
 
     {
-        let grid_dim: Dim3 = 1u32.into();
+        // Production single-pass geometry: block = NUM_WARPS*32 = 128 threads;
+        // dynamic smem = clean-triangle bytes (< 48 KB for every config, so no
+        // `cudaFuncSetAttribute` opt-in). The grid is FREE — the kernel's guarded
+        // grid-stride loop covers [0, num_cosets) exactly once for ANY grid >= 1
+        // (production sizes it by occupancy waves). We use a small fixed grid of
+        // 4 blocks so the coset-walk wrap is exercised deterministically.
+        let grid_dim: Dim3 = 4u32.into();
         let block_dim: Dim3 = (4u32 * 32u32).into(); // 128 threads = 4 warps
         let mut config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
-        // All single-pass configs are < 48 KB — no cudaFuncSetAttribute needed.
         config.dynamic_smem_bytes =
             clean_triangle_count(log_n, log_vpt) * std::mem::size_of::<BF>();
 
         let mono_ptr = monomials_dev[..].as_ptr();
         let tw_ptr = tw_clean_dev[..].as_ptr();
-        let out_ptr = (&mut out_dev[..]).as_mut_ptr();
+        let out_ptr = out_dev[..].as_mut_ptr();
         // coset_out_stride = N keeps the contiguous-output expectation.
         let coset_out_stride: u32 = 1u32 << log_n;
-        let args = DitSingleArguments::new(
+        // 7-arg streaming ABI: runtime `num_cosets` (the grid-stride guard bound),
+        // no d-table.
+        let args = DitSingleStreamHotArguments::new(
             mono_ptr,
             tw_ptr,
             out_ptr,
             cfp_0,
             coset_step,
+            num_cosets as u32,
             coset_out_stride,
         );
 
-        // Dispatch to the correct kernel symbol for this (log_n, log_vpt).
+        // Dispatch to the production streaming symbol for this (log_n, log_vpt).
+        // All stream symbols share the ABI, so each wraps the shared
+        // `DitSingleStreamHotFunction` newtype.
         let result = match (log_n, log_vpt) {
-            (3, 3) => DitSingleFunction(ab_dit_single_3_3).launch(&config, &args),
-            (4, 3) => DitSingleFunction(ab_dit_single_4_3).launch(&config, &args),
-            (5, 3) => DitSingleFunction(ab_dit_single_5_3).launch(&config, &args),
-            (6, 3) => DitSingleFunction(ab_dit_single_6_3).launch(&config, &args),
-            (7, 3) => DitSingleFunction(ab_dit_single_7_3).launch(&config, &args),
-            (8, 3) => DitSingleFunction(ab_dit_single_8_3).launch(&config, &args),
-            (2, 2) => DitSingleFunction(ab_dit_single_2_2).launch(&config, &args),
-            (3, 2) => DitSingleFunction(ab_dit_single_3_2).launch(&config, &args),
-            (4, 2) => DitSingleFunction(ab_dit_single_4_2).launch(&config, &args),
-            (5, 2) => DitSingleFunction(ab_dit_single_5_2).launch(&config, &args),
-            (6, 2) => DitSingleFunction(ab_dit_single_6_2).launch(&config, &args),
-            (7, 2) => DitSingleFunction(ab_dit_single_7_2).launch(&config, &args),
+            (3, 3) => DitSingleStreamHotFunction(ab_dit_single_stream_3_3).launch(&config, &args),
+            (4, 3) => DitSingleStreamHotFunction(ab_dit_single_stream_4_3).launch(&config, &args),
+            (5, 3) => DitSingleStreamHotFunction(ab_dit_single_stream_5_3).launch(&config, &args),
+            (6, 3) => DitSingleStreamHotFunction(ab_dit_single_stream_6_3).launch(&config, &args),
+            (7, 3) => DitSingleStreamHotFunction(ab_dit_single_stream_7_3).launch(&config, &args),
+            (8, 3) => DitSingleStreamHotFunction(ab_dit_single_stream_8_3).launch(&config, &args),
+            (2, 2) => DitSingleStreamHotFunction(ab_dit_single_stream_2_2).launch(&config, &args),
+            (3, 2) => DitSingleStreamHotFunction(ab_dit_single_stream_3_2).launch(&config, &args),
+            (4, 2) => DitSingleStreamHotFunction(ab_dit_single_stream_4_2).launch(&config, &args),
+            (5, 2) => DitSingleStreamHotFunction(ab_dit_single_stream_5_2).launch(&config, &args),
+            (6, 2) => DitSingleStreamHotFunction(ab_dit_single_stream_6_2).launch(&config, &args),
+            (7, 2) => DitSingleStreamHotFunction(ab_dit_single_stream_7_2).launch(&config, &args),
             _ => panic!("unsupported single-pass config (log_n={log_n}, log_vpt={log_vpt})"),
         };
         result.unwrap();
@@ -238,29 +261,35 @@ fn run_single_pass_parity(log_n: u32, log_vpt: u32) {
     let mut ref_out_dev = context.alloc(n).unwrap();
     memory_copy_async(&mut monomials_ref_dev, &monomials_host, stream).unwrap();
 
-    // Oracle: call the compact 1-pass kernel DIRECTLY (not via
-    // `bitreversed_monomials_to_natural_evals`, which now routes the DIT range
-    // to the engine under test — that would be circular). Compact reads twiddles
-    // from `__constant__` tables, so it is a true independent baseline. All
-    // single-pass configs have log_n <= 8 (<= 12), so 1-pass compact applies.
+    // Oracle: an INDEPENDENT baseline that never re-enters the DIT engine under
+    // test. For log_n 8 the compact 1-pass kernel is called DIRECTLY (reads
+    // `__constant__` tables, not DitTriangles); for log_n <= 7 a num_cosets=1
+    // `lde_with_coset_range` routes through the strategy to a subwarp/compact
+    // launch (the DIT single-pass gate declines at num_cosets=1). All single-pass
+    // configs have log_n <= 8.
     let oracle_coset_factor_shift = OMEGA_LOG_ORDER - log_n - log_lde_factor;
     let device_props = context.get_device_properties();
     for cc in 0..num_cosets {
         {
             let inputs_matrix = DeviceMatrixChunk::new(&monomials_ref_dev[..], n, 0, n);
-            let mut outputs_matrix = DeviceMatrixChunkMut::new(&mut ref_out_dev[..], n, 0, n);
             // compact 1-pass only supports log_n in [4, 12]. For log_n <= 7 the
-            // single-coset strategy entry is an independent baseline (it never
-            // routes to DIT at num_cosets=1: no two-pass below log_n 8, and
-            // single-pass needs num_cosets >> 1); log_n 8 uses 1-pass compact.
+            // single-coset multi-coset entry at num_cosets=1 is an independent
+            // baseline: `lde_with_coset_range` at num_cosets=1 declines the DIT
+            // single-pass divisibility gate and (log_n <= 13) never takes the
+            // lde-intermediate fast path, so it routes AWAY from the DIT engine
+            // under test to a subwarp/compact single-coset launch; log_n 8 uses
+            // 1-pass compact called directly.
             if log_n <= 7 {
-                super::super::ntt::bitreversed_monomials_to_natural_evals(
+                super::super::lde::lde_with_coset_range(
                     &inputs_matrix,
-                    &mut outputs_matrix,
+                    &mut ref_out_dev[..],
                     log_n as usize,
                     log_lde_factor as usize,
+                    1,
                     cc,
-                    false,
+                    1,
+                    1,
+                    1,
                     context.device_context(),
                     None,
                     stream,
@@ -268,7 +297,8 @@ fn run_single_pass_parity(log_n: u32, log_vpt: u32) {
                 )
                 .unwrap();
             } else {
-                super::super::ntt::monomials_to_evals_compact_1_pass(
+                let mut outputs_matrix = DeviceMatrixChunkMut::new(&mut ref_out_dev[..], n, 0, n);
+                super::super::forward::monomials_to_evals_compact_1_pass(
                     &inputs_matrix,
                     &mut outputs_matrix,
                     log_n as usize,
@@ -277,7 +307,6 @@ fn run_single_pass_parity(log_n: u32, log_vpt: u32) {
                     1,
                     1,
                     1,
-                    false,
                     stream,
                 )
                 .unwrap();
@@ -321,7 +350,7 @@ fn run_single_pass_parity(log_n: u32, log_vpt: u32) {
     }
 
     println!(
-        "DIT single-pass parity PASS: log_n={log_n}, log_vpt={log_vpt}, \
+        "DIT single-pass stream parity PASS: log_n={log_n}, log_vpt={log_vpt}, \
          num_cosets={num_cosets} (all match the oracle)"
     );
 }
@@ -330,31 +359,30 @@ fn run_single_pass_parity(log_n: u32, log_vpt: u32) {
 // Per-config test functions — clear failure attribution in the test runner.
 // ---------------------------------------------------------------------------
 
-macro_rules! dit_single_parity_test {
+macro_rules! dit_single_stream_parity_test {
     ($name:ident, $log_n:expr, $log_vpt:expr) => {
         #[test]
         #[cfg(not(no_cuda))]
-        #[serial]
         fn $name() {
-            run_single_pass_parity($log_n, $log_vpt);
+            run_single_pass_stream_parity($log_n, $log_vpt);
         }
     };
 }
 
 // v8 family (LOG_VPT=3)
-dit_single_parity_test!(dit_single_3_3_parity, 3, 3);
-dit_single_parity_test!(dit_single_4_3_parity, 4, 3);
-dit_single_parity_test!(dit_single_5_3_parity, 5, 3);
-dit_single_parity_test!(dit_single_6_3_parity, 6, 3);
-dit_single_parity_test!(dit_single_7_3_parity, 7, 3);
-dit_single_parity_test!(dit_single_8_3_parity, 8, 3);
+dit_single_stream_parity_test!(dit_single_stream_3_3_parity, 3, 3);
+dit_single_stream_parity_test!(dit_single_stream_4_3_parity, 4, 3);
+dit_single_stream_parity_test!(dit_single_stream_5_3_parity, 5, 3);
+dit_single_stream_parity_test!(dit_single_stream_6_3_parity, 6, 3);
+dit_single_stream_parity_test!(dit_single_stream_7_3_parity, 7, 3);
+dit_single_stream_parity_test!(dit_single_stream_8_3_parity, 8, 3);
 // v4 family (LOG_VPT=2)
-dit_single_parity_test!(dit_single_2_2_parity, 2, 2);
-dit_single_parity_test!(dit_single_3_2_parity, 3, 2);
-dit_single_parity_test!(dit_single_4_2_parity, 4, 2); // was the original test
-dit_single_parity_test!(dit_single_5_2_parity, 5, 2);
-dit_single_parity_test!(dit_single_6_2_parity, 6, 2);
-dit_single_parity_test!(dit_single_7_2_parity, 7, 2);
+dit_single_stream_parity_test!(dit_single_stream_2_2_parity, 2, 2);
+dit_single_stream_parity_test!(dit_single_stream_3_2_parity, 3, 2);
+dit_single_stream_parity_test!(dit_single_stream_4_2_parity, 4, 2);
+dit_single_stream_parity_test!(dit_single_stream_5_2_parity, 5, 2);
+dit_single_stream_parity_test!(dit_single_stream_6_2_parity, 6, 2);
+dit_single_stream_parity_test!(dit_single_stream_7_2_parity, 7, 2);
 
 // ===========================================================================
 // TWO-PASS family
@@ -363,8 +391,8 @@ dit_single_parity_test!(dit_single_7_2_parity, 7, 2);
 //   v8 (LOG_VPT=3): LOG_N ∈ {9,10,11,12,13} → ab_dit_two_pass_{9..13}_3
 //   v4 (LOG_VPT=2): LOG_N ∈ {8,9,10,11,12}  → ab_dit_two_pass_{8..12}_2
 //
-// Each config is exercised against the `bitreversed_monomials_to_natural_evals`
-// oracle across pow2-divisor grid shapes: grid=1 (one block does all cosets), a
+// Each config is exercised against an independent compact-kernel oracle across
+// pow2-divisor grid shapes: grid=1 (one block does all cosets), a
 // mid grid (grid = coset_count / 2), and grid = coset_count (one coset per
 // block). The kernel processes EXACTLY `cosets_per_block = coset_count / grid`
 // cosets per block, so `grid` MUST be a power-of-two divisor of the coset count
@@ -569,7 +597,7 @@ fn run_two_pass_parity(log_n: u32, log_vpt: u32, total: u32, grid: u32) {
 
     // Bit-reversed-order monomial coefficients shared by all cosets.
     let monomials_host: Vec<BF> = (0..n)
-        .map(|idx| BF::new((17 + (idx as u32).wrapping_mul(31)) as u32))
+        .map(|idx| BF::new(17 + (idx as u32).wrapping_mul(31)))
         .collect();
 
     // --- Engine path ---------------------------------------------------------
@@ -606,7 +634,7 @@ fn run_two_pass_parity(log_n: u32, log_vpt: u32, total: u32, grid: u32) {
         let tw_p1_ptr = tw_p1_dev[..].as_ptr();
         let tw_p2_ptr = tw_p2_dev[..].as_ptr();
         let d_ptr = d_table_dev[..].as_ptr();
-        let out_ptr = (&mut out_dev[..]).as_mut_ptr();
+        let out_ptr = out_dev[..].as_mut_ptr();
         // coset_out_stride = N keeps the contiguous-output expectation.
         let coset_out_stride: u32 = 1u32 << log_n;
         let args = DitTwoPassArguments::new(
@@ -662,19 +690,18 @@ fn run_two_pass_parity(log_n: u32, log_vpt: u32, total: u32, grid: u32) {
     let mut ref_out_dev = context.alloc(n).unwrap();
     memory_copy_async(&mut monomials_ref_dev, &monomials_host, stream).unwrap();
 
-    // Oracle: call the compact path DIRECTLY (not via
-    // `bitreversed_monomials_to_natural_evals`, which now routes the DIT range
-    // to the engine under test — that would be circular). Compact reads twiddles
-    // from `__constant__` tables, so it is a true independent baseline. The
-    // two-pass DIT range is log_n in [8, 13]: log_n <= 12 → 1-pass compact;
-    // log_n == 13 → 2-pass-compact-initial.
+    // Oracle: call the compact path DIRECTLY — an independent baseline that never
+    // re-enters the DIT engine under test. Compact reads twiddles from
+    // `__constant__` tables (not DitTriangles). The two-pass DIT range is log_n
+    // in [8, 13]: log_n <= 12 → 1-pass compact; log_n == 13 →
+    // 2-pass-compact-initial.
     let oracle_coset_factor_shift = OMEGA_LOG_ORDER - log_n - log_lde_factor;
     for ci in 0..total as usize {
         {
             let inputs_matrix = DeviceMatrixChunk::new(&monomials_ref_dev[..], n, 0, n);
             let mut outputs_matrix = DeviceMatrixChunkMut::new(&mut ref_out_dev[..], n, 0, n);
             if log_n <= 12 {
-                super::super::ntt::monomials_to_evals_compact_1_pass(
+                super::super::forward::monomials_to_evals_compact_1_pass(
                     &inputs_matrix,
                     &mut outputs_matrix,
                     log_n as usize,
@@ -683,12 +710,11 @@ fn run_two_pass_parity(log_n: u32, log_vpt: u32, total: u32, grid: u32) {
                     1,
                     1,
                     1,
-                    false,
                     stream,
                 )
                 .unwrap();
             } else {
-                super::super::ntt::monomials_to_evals_2_pass_compact_initial(
+                super::super::forward::monomials_to_evals_2_pass_compact_initial(
                     &inputs_matrix,
                     &mut outputs_matrix,
                     log_n as usize,
@@ -698,7 +724,6 @@ fn run_two_pass_parity(log_n: u32, log_vpt: u32, total: u32, grid: u32) {
                     1,
                     1,
                     1,
-                    false,
                     stream,
                 )
                 .unwrap();
@@ -763,19 +788,17 @@ macro_rules! dit_two_pass_parity_test {
     ($name:ident, $log_n:expr, $log_vpt:expr) => {
         #[test]
         #[cfg(not(no_cuda))]
-        #[serial]
         fn $name() {
             // single coset
             run_two_pass_parity($log_n, $log_vpt, 1, 1);
             // grid = 1: one block does all cosets
             run_two_pass_parity($log_n, $log_vpt, 8, 1);
-            // mid grid: cosets_per_block = coset_count / 2
-            run_two_pass_parity($log_n, $log_vpt, 8, 4);
-            // grid = coset_count: one coset per block
-            run_two_pass_parity($log_n, $log_vpt, 8, 8);
             // ragged: grid does NOT divide total — exercises the streaming
             // guard (blocks do unequal trip counts; the loop condition is the
             // only bound). 5 blocks over 8 cosets: bx<3 do 2, bx>=3 do 1.
+            // (The divisible mid/one-per-block grids 8/4 and 8/8 were dropped:
+            // the 1/1, 8/1 and ragged 8/5 grids already cover every per-symbol
+            // path — one block/all cosets, and the guarded grid-stride walk.)
             run_two_pass_parity($log_n, $log_vpt, 8, 5);
         }
     };
@@ -916,7 +939,6 @@ macro_rules! dit_fill_clean_parity_test {
     ($name:ident, $log_m:expr, $log_vpt:expr) => {
         #[test]
         #[cfg(not(no_cuda))]
-        #[serial]
         fn $name() {
             run_fill_clean_parity($log_m, $log_vpt);
         }
@@ -927,7 +949,6 @@ macro_rules! dit_fill_coupled_parity_test {
     ($name:ident, $log_n:expr, $log_vpt:expr) => {
         #[test]
         #[cfg(not(no_cuda))]
-        #[serial]
         fn $name() {
             run_fill_coupled_parity($log_n, $log_vpt);
         }
@@ -938,45 +959,30 @@ macro_rules! dit_fill_d_table_parity_test {
     ($name:ident, $log_n:expr) => {
         #[test]
         #[cfg(not(no_cuda))]
-        #[serial]
         fn $name() {
             run_fill_d_table_parity($log_n);
         }
     };
 }
 
-// CLEAN: the deduped 12-pair set.
-dit_fill_clean_parity_test!(dit_fill_clean_2_2_parity, 2, 2);
-dit_fill_clean_parity_test!(dit_fill_clean_3_2_parity, 3, 2);
-dit_fill_clean_parity_test!(dit_fill_clean_3_3_parity, 3, 3);
-dit_fill_clean_parity_test!(dit_fill_clean_4_2_parity, 4, 2);
-dit_fill_clean_parity_test!(dit_fill_clean_4_3_parity, 4, 3);
-dit_fill_clean_parity_test!(dit_fill_clean_5_2_parity, 5, 2);
-dit_fill_clean_parity_test!(dit_fill_clean_5_3_parity, 5, 3);
-dit_fill_clean_parity_test!(dit_fill_clean_6_2_parity, 6, 2);
-dit_fill_clean_parity_test!(dit_fill_clean_6_3_parity, 6, 3);
+// CLEAN / COUPLED direct-dispatcher regression anchors. The full per-config
+// device-fill-vs-Rust-builder sweep is `dit_context_triangle_precompute_parity`,
+// which iterates EVERY `CLEAN_CONFIGS`/`COUPLED_CONFIGS` entry through the same
+// `fill_clean_triangle`/`fill_coupled_triangle` dispatchers (via
+// `DeviceContext::build`) and compares against `build_clean_triangle` /
+// `build_coupled_triangle`. These direct-call anchors (one boundary pair each)
+// keep the grid=1/block=256 dispatcher launch contract explicitly guarded.
 dit_fill_clean_parity_test!(dit_fill_clean_7_2_parity, 7, 2);
-dit_fill_clean_parity_test!(dit_fill_clean_7_3_parity, 7, 3);
 dit_fill_clean_parity_test!(dit_fill_clean_8_3_parity, 8, 3);
 
-// COUPLED: every two-pass config.
-dit_fill_coupled_parity_test!(dit_fill_coupled_9_3_parity, 9, 3);
-dit_fill_coupled_parity_test!(dit_fill_coupled_10_3_parity, 10, 3);
-dit_fill_coupled_parity_test!(dit_fill_coupled_11_3_parity, 11, 3);
-dit_fill_coupled_parity_test!(dit_fill_coupled_12_3_parity, 12, 3);
 dit_fill_coupled_parity_test!(dit_fill_coupled_13_3_parity, 13, 3);
-dit_fill_coupled_parity_test!(dit_fill_coupled_8_2_parity, 8, 2);
-dit_fill_coupled_parity_test!(dit_fill_coupled_9_2_parity, 9, 2);
-dit_fill_coupled_parity_test!(dit_fill_coupled_10_2_parity, 10, 2);
-dit_fill_coupled_parity_test!(dit_fill_coupled_11_2_parity, 11, 2);
 dit_fill_coupled_parity_test!(dit_fill_coupled_12_2_parity, 12, 2);
 
-// D-TABLE: every two-pass LOG_N.
+// D-TABLE: boundary LOG_Ns. The runtime `fill_d_table` path is also exercised
+// end-to-end by `dit_launcher_two_pass_parity` (which fills the d-table at
+// runtime for log_n=9 and validates the full output against the compact oracle).
 dit_fill_d_table_parity_test!(dit_fill_d_table_8_parity, 8);
-dit_fill_d_table_parity_test!(dit_fill_d_table_9_parity, 9);
 dit_fill_d_table_parity_test!(dit_fill_d_table_10_parity, 10);
-dit_fill_d_table_parity_test!(dit_fill_d_table_11_parity, 11);
-dit_fill_d_table_parity_test!(dit_fill_d_table_12_parity, 12);
 dit_fill_d_table_parity_test!(dit_fill_d_table_13_parity, 13);
 
 // ===========================================================================
@@ -990,7 +996,6 @@ dit_fill_d_table_parity_test!(dit_fill_d_table_13_parity, 13);
 // ===========================================================================
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn dit_context_triangle_precompute_parity() {
     use super::super::dit::{CLEAN_CONFIGS, COUPLED_CONFIGS};
     use crate::ntt_twiddles::DeviceContext;
@@ -1050,8 +1055,8 @@ fn dit_context_triangle_precompute_parity() {
 // ===========================================================================
 // Production launcher (`monomials_to_evals_dit`) parity.
 //
-// Exercises the launcher end-to-end vs the `bitreversed_monomials_to_natural_evals`
-// oracle across BOTH paths (single-pass, two-pass) AND the strided/multi-column
+// Exercises the launcher end-to-end vs an independent compact-kernel oracle
+// across BOTH paths (single-pass, two-pass) AND the strided/multi-column
 // output layout enabled by the `coset_out_stride` ABI change. The launcher
 // borrows the precomputed triangles from the `DeviceContext` and fills the
 // two-pass d-table at runtime, so this covers the full production code path
@@ -1093,9 +1098,7 @@ fn run_launcher_parity(log_n: u32, log_vpt: u32, num_cosets: usize, num_ntts: us
     let monomials_host: Vec<BF> = (0..num_ntts)
         .flat_map(|col| {
             (0..n).map(move |idx| {
-                BF::new(
-                    (17 + (idx as u32).wrapping_mul(31) + (col as u32).wrapping_mul(101)) as u32,
-                )
+                BF::new(17 + (idx as u32).wrapping_mul(31) + (col as u32).wrapping_mul(101))
             })
         })
         .collect();
@@ -1136,9 +1139,8 @@ fn run_launcher_parity(log_n: u32, log_vpt: u32, num_cosets: usize, num_ntts: us
     stream.synchronize().unwrap();
 
     // --- Reference (ORACLE) path: compact 1-pass kernel, called DIRECTLY -----
-    // Not via `bitreversed_monomials_to_natural_evals` (which now routes the DIT
-    // range to the engine under test — that would be circular). Compact reads
-    // twiddles from `__constant__` tables, an independent baseline. Both
+    // An independent baseline that never re-enters the DIT engine under test:
+    // compact reads twiddles from `__constant__` tables (not DitTriangles). Both
     // launcher configs (log_n 9 two-pass, log_n 4 single-pass) have log_n <= 12,
     // so 1-pass compact applies.
     let mut monomials_ref_dev = context.alloc(n).unwrap();
@@ -1152,7 +1154,7 @@ fn run_launcher_parity(log_n: u32, log_vpt: u32, num_cosets: usize, num_ntts: us
             {
                 let inputs_matrix = DeviceMatrixChunk::new(&monomials_ref_dev[..], n, 0, n);
                 let mut outputs_matrix = DeviceMatrixChunkMut::new(&mut ref_out_dev[..], n, 0, n);
-                super::super::ntt::monomials_to_evals_compact_1_pass(
+                super::super::forward::monomials_to_evals_compact_1_pass(
                     &inputs_matrix,
                     &mut outputs_matrix,
                     log_n as usize,
@@ -1161,7 +1163,6 @@ fn run_launcher_parity(log_n: u32, log_vpt: u32, num_cosets: usize, num_ntts: us
                     1,
                     1,
                     1,
-                    false,
                     stream,
                 )
                 .unwrap();
@@ -1213,7 +1214,6 @@ fn run_launcher_parity(log_n: u32, log_vpt: u32, num_cosets: usize, num_ntts: us
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn dit_launcher_two_pass_parity() {
     // Two-pass path (log_n=9, log_vpt=3 → two_pass since 9 > 3+5=8), multi-coset,
     // multi-column, back-to-back strided output (num_cols_per_coset = num_ntts).
@@ -1222,7 +1222,6 @@ fn dit_launcher_two_pass_parity() {
 
 #[test]
 #[cfg(not(no_cuda))]
-#[serial]
 fn dit_launcher_single_pass_parity() {
     // Single-pass path (log_n=4, log_vpt=2 → cosets_per_block = 1024/4 = 256).
     // num_cosets=512 → grid = 512/256 = 2; multi-column, strided output.
@@ -1317,7 +1316,7 @@ mod bench_variants {
         // and grid must itself be a power of two (the coset walk strides by grid).
         assert!(k.is_power_of_two(), "k must be a power of two");
         assert!(
-            total % k == 0,
+            total.is_multiple_of(k),
             "k ({k}) must divide total ({total}) exactly"
         );
         let grid: u32 = total / k;
@@ -1337,7 +1336,7 @@ mod bench_variants {
 
         // Bit-reversed-order monomial coefficients shared by all cosets.
         let monomials_host: Vec<BF> = (0..n)
-            .map(|idx| BF::new((17 + (idx as u32).wrapping_mul(31)) as u32))
+            .map(|idx| BF::new(17 + (idx as u32).wrapping_mul(31)))
             .collect();
 
         // --- Engine path -----------------------------------------------------
@@ -1374,7 +1373,7 @@ mod bench_variants {
             let tw_p1_ptr = tw_p1_dev[..].as_ptr();
             let tw_p2_ptr = tw_p2_dev[..].as_ptr();
             let d_ptr = d_table_dev[..].as_ptr();
-            let out_ptr = (&mut out_dev[..]).as_mut_ptr();
+            let out_ptr = out_dev[..].as_mut_ptr();
             // coset_out_stride = N keeps the contiguous-output expectation.
             let coset_out_stride: u32 = 1u32 << log_n;
             // 8-arg ABI: NO cosets_per_block (K is a compile-time template arg).
@@ -1428,7 +1427,7 @@ mod bench_variants {
                 let inputs_matrix = DeviceMatrixChunk::new(&monomials_ref_dev[..], n, 0, n);
                 let mut outputs_matrix = DeviceMatrixChunkMut::new(&mut ref_out_dev[..], n, 0, n);
                 if log_n <= 12 {
-                    super::super::super::ntt::monomials_to_evals_compact_1_pass(
+                    super::super::super::forward::monomials_to_evals_compact_1_pass(
                         &inputs_matrix,
                         &mut outputs_matrix,
                         log_n as usize,
@@ -1437,12 +1436,11 @@ mod bench_variants {
                         1,
                         1,
                         1,
-                        false,
                         stream,
                     )
                     .unwrap();
                 } else {
-                    super::super::super::ntt::monomials_to_evals_2_pass_compact_initial(
+                    super::super::super::forward::monomials_to_evals_2_pass_compact_initial(
                         &inputs_matrix,
                         &mut outputs_matrix,
                         log_n as usize,
@@ -1452,7 +1450,6 @@ mod bench_variants {
                         1,
                         1,
                         1,
-                        false,
                         stream,
                     )
                     .unwrap();
@@ -1502,7 +1499,7 @@ mod bench_variants {
     }
 
     // -----------------------------------------------------------------------
-    // single_stream parity. Body mirrors `run_single_pass_parity` but with
+    // single_stream parity. Body mirrors `run_single_pass_stream_parity` but with
     // `num_cosets = total` and the streaming geometry: 4 warps (128 threads),
     // `slots_per_block = 128 / lanes`, `cosets_per_block = total / (grid *
     // slots_per_block)`. NO d-table; smem = clean-triangle bytes (same as
@@ -1536,7 +1533,7 @@ mod bench_variants {
 
         // Bit-reversed-order monomial coefficients shared by all cosets.
         let monomials_host: Vec<BF> = (0..n)
-            .map(|idx| BF::new((17 + (idx as u32).wrapping_mul(31)) as u32))
+            .map(|idx| BF::new(17 + (idx as u32).wrapping_mul(31)))
             .collect();
 
         // --- Engine path -----------------------------------------------------
@@ -1560,7 +1557,7 @@ mod bench_variants {
 
             let mono_ptr = monomials_dev[..].as_ptr();
             let tw_ptr = tw_clean_dev[..].as_ptr();
-            let out_ptr = (&mut out_dev[..]).as_mut_ptr();
+            let out_ptr = out_dev[..].as_mut_ptr();
             // coset_out_stride = N keeps the contiguous-output expectation.
             let coset_out_stride: u32 = 1u32 << log_n;
             // 7-arg ABI: runtime num_cosets (guard bound), NO d-table.
@@ -1597,15 +1594,22 @@ mod bench_variants {
         for cc in 0..num_cosets {
             {
                 let inputs_matrix = DeviceMatrixChunk::new(&monomials_ref_dev[..], n, 0, n);
-                let mut outputs_matrix = DeviceMatrixChunkMut::new(&mut ref_out_dev[..], n, 0, n);
+                // For log_n <= 7 the single-coset multi-coset entry at num_cosets=1
+                // is an independent baseline: `lde_with_coset_range` at num_cosets=1
+                // declines the DIT single-pass divisibility gate and (log_n <= 13)
+                // never takes the lde-intermediate fast path, so it routes AWAY from
+                // the DIT engine under test; log_n 8 uses 1-pass compact directly.
                 if log_n <= 7 {
-                    super::super::super::ntt::bitreversed_monomials_to_natural_evals(
+                    super::super::super::lde::lde_with_coset_range(
                         &inputs_matrix,
-                        &mut outputs_matrix,
+                        &mut ref_out_dev[..],
                         log_n as usize,
                         log_lde_factor as usize,
+                        1,
                         cc,
-                        false,
+                        1,
+                        1,
+                        1,
                         context.device_context(),
                         None,
                         stream,
@@ -1613,7 +1617,9 @@ mod bench_variants {
                     )
                     .unwrap();
                 } else {
-                    super::super::super::ntt::monomials_to_evals_compact_1_pass(
+                    let mut outputs_matrix =
+                        DeviceMatrixChunkMut::new(&mut ref_out_dev[..], n, 0, n);
+                    super::super::super::forward::monomials_to_evals_compact_1_pass(
                         &inputs_matrix,
                         &mut outputs_matrix,
                         log_n as usize,
@@ -1622,7 +1628,6 @@ mod bench_variants {
                         1,
                         1,
                         1,
-                        false,
                         stream,
                     )
                     .unwrap();
@@ -1676,7 +1681,6 @@ mod bench_variants {
     // (13,3,K=8): grid = total/8. total=8 → grid=1; total=16 → grid=2.
     #[test]
     #[cfg(not(no_cuda))]
-    #[serial]
     fn two_pass_fixed_13_3_k8_parity() {
         run_two_pass_fixed_parity(13, 3, 8, 8); // grid=1, log_n+log_lde = 13+3 = 16 <= 27
         run_two_pass_fixed_parity(13, 3, 8, 16); // grid=2, log_n+log_lde = 13+4 = 17 <= 27
@@ -1685,7 +1689,6 @@ mod bench_variants {
     // (9,3,K=4): grid = total/4. total=4 → grid=1; total=8 → grid=2.
     #[test]
     #[cfg(not(no_cuda))]
-    #[serial]
     fn two_pass_fixed_9_3_k4_parity() {
         run_two_pass_fixed_parity(9, 3, 4, 4); // grid=1, log_n+log_lde = 9+2 = 11 <= 27
         run_two_pass_fixed_parity(9, 3, 4, 8); // grid=2, log_n+log_lde = 9+3 = 12 <= 27
@@ -1696,18 +1699,17 @@ mod bench_variants {
     //        grid=2,total=64 → cpb=8.
     #[test]
     #[cfg(not(no_cuda))]
-    #[serial]
     fn single_stream_8_3_parity() {
         run_single_stream_parity(8, 3, 1, 32); // grid*spb=4, 32/4=8 cpb; 8+5=13 <= 27
         run_single_stream_parity(8, 3, 2, 64); // grid*spb=8, 64/8=8 cpb; 8+6=14 <= 27
-                                               // ragged: grid*spb=12 does NOT divide 32 — exercises the guard.
+
+        // ragged: grid*spb=12 does NOT divide 32 — exercises the guard.
         run_single_stream_parity(8, 3, 3, 32);
     }
 
     // (3,3): lanes=1, slots_per_block=128/1=128. grid=1,total=128 → cpb=1.
     #[test]
     #[cfg(not(no_cuda))]
-    #[serial]
     fn single_stream_3_3_parity() {
         run_single_stream_parity(3, 3, 1, 128); // grid*spb=128, 128/128=1 cpb; 3+7=10 <= 27
     }

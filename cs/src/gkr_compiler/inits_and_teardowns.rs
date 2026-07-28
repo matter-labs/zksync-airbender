@@ -173,13 +173,13 @@ pub fn compile_inits_and_teardowns_circuit<F: PrimeField, const WORD_BITS: u32>(
     }
 }
 
-pub(crate) fn create_inits_and_teardowns_set(
-    graph: &mut impl GraphHolder,
+pub(crate) fn create_inits_and_teardowns_set<F: PrimeField>(
+    graph: &mut impl GraphHolder<F>,
     set_idxes: [usize; 2],
     allocated_teardown_ts_and_values: [([GKRAddress; 2], [GKRAddress; 2]); 2],
 ) -> (
-    (GKRAddress, NoFieldGKRRelation),
-    (GKRAddress, NoFieldGKRRelation),
+    (GKRAddress, NoFieldGKRRelation<F>),
+    (GKRAddress, NoFieldGKRRelation<F>),
 ) {
     let output = [(); 2].map(|_| graph.add_intermediate_variable_at_layer(1));
     // inits and teardowns are almost the same, so we just use enum to indicate

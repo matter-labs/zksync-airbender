@@ -8,13 +8,12 @@ use common_constants::{
     REDUCED_MACHINE_CIRCUIT_FAMILY_IDX,
 };
 use full_statement_verifier::program_proof::ProgramProof;
-use full_statement_verifier::unified_circuit_statement::verify_unified_circuit_base_layer;
+use full_statement_verifier::unified_circuit_statement::verify_unified_circuit_base_layer_sec_80;
 use verifier_common::cs::gkr_compiler::GKRCircuitArtifact;
 use verifier_common::errors::DebugErrorCreator;
 use verifier_common::field::baby_bear::base::BabyBearField;
 use verifier_common::prover::definitions::{MerkleTreeCap, DEFAULT_CAP_SIZE};
 use verifier_common::prover::fsv_fixture::UnifiedBaseLayerComponents;
-use verifier_common::prover::nd_source_std::{set_iterator, ThreadLocalBasedSource};
 
 fn load_compiled_circuit(name: &str) -> GKRCircuitArtifact<BabyBearField> {
     let path = format!(
@@ -112,14 +111,10 @@ fn run_unified_base_layer(responses: Vec<u32>) -> Result<[u32; 16], ()> {
         .name("fsv unified verifier".to_string())
         .stack_size(1 << 27)
         .spawn(move || {
-            set_iterator(responses.into_iter());
-            let mut src = ThreadLocalBasedSource;
-            // verifier reads only from the thread-local NDS set above
-            verify_unified_circuit_base_layer::<
-                ThreadLocalBasedSource,
-                DebugErrorCreator,
-                REDUCED_ROUNDS,
-            >(&mut src)
+            let mut src = responses.into_iter();
+            verify_unified_circuit_base_layer_sec_80::<_, DebugErrorCreator, REDUCED_ROUNDS>(
+                &mut src,
+            )
         })
         .expect("spawn verifier thread")
         .join()

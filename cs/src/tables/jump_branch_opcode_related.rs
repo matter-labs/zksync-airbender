@@ -59,8 +59,7 @@ pub fn create_conditional_op_resolution_table_unified<F: PrimeField>(id: u32) ->
     const FUNCT3_MASK: u32 = 0b111u32;
 
     let keys = key_for_continuous_log2_range::<F, 1>(CONDITIONAL_RESOLUTION_UNIFIED_TABLE_WIDTH);
-    const TABLE_NAME: &str =
-        "Conditional family resolution table (unified, rs2-sign split)";
+    const TABLE_NAME: &str = "Conditional family resolution table (unified, rs2-sign split)";
 
     LookupTable::create_table_from_key_and_pure_generation_fn(
         &keys,

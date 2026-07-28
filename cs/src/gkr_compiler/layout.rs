@@ -10,19 +10,19 @@ pub struct GKRAuxLayoutData {
 
 #[serde_with::serde_as]
 #[derive(Clone, Hash, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct GKRLayerDescription {
+pub struct GKRLayerDescription<F: PrimeField> {
     pub layer: usize,
     // our point of convergence is batched sumchecks for lookup and grand product reduction,
     // but as we move to GKR stage where polynomial sizes are not changing, it'll reflect which random evaluation point to use
     // for the sumcheck like f(r) = \sum_x eq(r, x) a(x) b(x)
-    pub gates_with_external_connections: Vec<GateArtifacts>,
+    pub gates_with_external_connections: Vec<GateArtifacts<F>>,
     #[serde_as(as = "Vec<(_, _)>")]
-    pub cached_relations: BTreeMap<GKRAddress, NoFieldGKRCacheRelation>,
-    pub gates: Vec<GateArtifacts>,
+    pub cached_relations: BTreeMap<GKRAddress, NoFieldGKRCacheRelation<F>>,
+    pub gates: Vec<GateArtifacts<F>>,
     pub intermediate_layer_width: Option<usize>, // number of polys in intermediate layers. None for the base one
 }
 
-impl GKRLayerDescription {
+impl<F: PrimeField> GKRLayerDescription<F> {
     pub fn inputs(&self) -> BTreeSet<GKRAddress> {
         let mut result = BTreeSet::new();
         for gate in self
@@ -51,15 +51,15 @@ impl GKRLayerDescription {
 }
 
 #[derive(Clone, Debug)]
-pub(crate) enum LookupOutput {
-    Direct(NoFieldGKRRelation),
+pub(crate) enum LookupOutput<F: PrimeField> {
+    Direct(NoFieldGKRRelation<F>),
     Copied {
-        num: NoFieldGKRRelation,
-        den: NoFieldGKRRelation,
+        num: NoFieldGKRRelation<F>,
+        den: NoFieldGKRRelation<F>,
     },
 }
 
-impl GKRGraph {
+impl<F: PrimeField> GKRGraph<F> {
     // fn dump_base_layer_set(&self) -> BTreeSet<GKRAddress> {
     //     let mut result = BTreeSet::new();
     //     result.extend(self.base_layer_memory_rev.keys().copied());
@@ -71,11 +71,11 @@ impl GKRGraph {
 
     pub(crate) fn layout_layers(
         &mut self,
-        mut grand_product_outputs: [(GKRAddress, NoFieldGKRRelation); 2],
-        mut lookup_outputs: BTreeMap<LookupType, ([GKRAddress; 2], LookupOutput)>,
-        mut inits_teardowns_outputs: Option<[(GKRAddress, NoFieldGKRRelation); 2]>,
+        mut grand_product_outputs: [(GKRAddress, NoFieldGKRRelation<F>); 2],
+        mut lookup_outputs: BTreeMap<LookupType, ([GKRAddress; 2], LookupOutput<F>)>,
+        mut inits_teardowns_outputs: Option<[(GKRAddress, NoFieldGKRRelation<F>); 2]>,
     ) -> (
-        Vec<GKRLayerDescription>,
+        Vec<GKRLayerDescription<F>>,
         BTreeMap<OutputType, Vec<GKRAddress>>,
     ) {
         assert!(!self.enforced_relations.is_empty());

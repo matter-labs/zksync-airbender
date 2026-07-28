@@ -1,0 +1,13 @@
+# The verifier binaries build on STABLE Rust, overriding the repo-root
+# nightly toolchain for this crate only. The build still needs a few
+# unstable options (`-Z build-std`, `-Z panic-immediate-abort`, and the
+# `[unstable]` section in .cargo/config.toml); those are unlocked at build
+# time with the `RUSTC_BOOTSTRAP=1` trick set in dump_bin.sh — no nightly
+# toolchain required.
+#
+# `rust-src` is required by `-Z build-std` (core/alloc are recompiled from
+# source); `llvm-tools` provides the `objcopy` used to extract .bin/.elf/.text.
+[toolchain]
+channel = "1.97.1"
+components = ["rust-src", "llvm-tools"]
+targets = ["riscv32i-unknown-none-elf"]

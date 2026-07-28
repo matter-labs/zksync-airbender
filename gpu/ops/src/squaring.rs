@@ -88,10 +88,8 @@ mod tests {
     use super::*;
     use era_cudart::memory::{memory_copy_async, DeviceAllocation};
     use field::{Field, FieldExtension};
-    use serial_test::serial;
 
     #[test]
-    #[serial]
     fn squaring_sequence_e4_matches_host() {
         let count = 10usize;
         // Pick a non-trivial E4 value.
@@ -123,7 +121,6 @@ mod tests {
     }
 
     #[test]
-    #[serial]
     fn query_squaring_sequences_matches_host() {
         let count_per_query = 8usize;
         let query_indexes: Vec<u32> = vec![3, 7, 11, 15, 42, 100];

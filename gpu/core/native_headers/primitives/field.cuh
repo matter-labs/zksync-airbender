@@ -831,6 +831,13 @@ struct __align__(8) e6 {
   }
 };
 
+// ABI drift guards for the by-value field PODs (must match the Rust field types
+// they are passed as / reinterpreted to across the kernel boundary).
+static_assert(sizeof(bf) == 4 && alignof(bf) == 4, "bf ABI");
+static_assert(sizeof(e2) == 8 && alignof(e2) == 8, "e2 ABI");
+static_assert(sizeof(e4) == 16 && alignof(e4) == 16, "e4 ABI");
+static_assert(sizeof(e6) == 24 && alignof(e6) == 8, "e6 ABI");
+
 using namespace memory;
 
 template <ld_modifier LD_MODIFIER = ld_modifier::none> struct bf_vector_getter : vector_getter<bf, LD_MODIFIER> {};

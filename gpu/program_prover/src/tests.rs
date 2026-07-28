@@ -10,7 +10,6 @@ use gpu_execution_prover::{
     ExecutionKind, ExecutionProver, ExecutionProverConfiguration, MachineType,
 };
 use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
-use serial_test::serial;
 use setups::read_binary;
 
 fn test_artifact(relative_path: &str) -> std::path::PathBuf {
@@ -21,6 +20,50 @@ fn test_artifact(relative_path: &str) -> std::path::PathBuf {
         .join(relative_path)
 }
 
+/// Idempotent `env_logger` init shared by every e2e below.
+#[cfg(all(not(no_cuda), feature = "verifiers"))]
+fn init_test_logger() {
+    let _ = env_logger::builder()
+        .is_test(true)
+        .filter_level(log::LevelFilter::Info)
+        .try_init();
+}
+
+/// Load the `blake2_with_compression` build of an `examples/<name>` workload as
+/// `(binary_image, text_section)`.
+#[cfg(all(not(no_cuda), feature = "verifiers"))]
+fn load_workload(name: &str) -> (Vec<u32>, Vec<u32>) {
+    let (_, binary_image) = read_binary(&test_artifact(&format!(
+        "examples/{name}/app_blake2_with_compression.bin"
+    )));
+    let (_, text_section) = read_binary(&test_artifact(&format!(
+        "examples/{name}/app_blake2_with_compression.text"
+    )));
+    (binary_image, text_section)
+}
+
+/// Prove `(binary_image, text_section)` with the given non-determinism reads on
+/// the GPU `ExecutionProver` and assemble the `(ProgramProof, Setups)`. The
+/// shared prove tail of every e2e below and of each `run_gpu_recursive_pipeline`
+/// stage; callers apply their own `set_recursion_chain` / native verify (which
+/// differ per stage).
+#[cfg(all(not(no_cuda), feature = "verifiers"))]
+fn prove_on_gpu(
+    prover: &mut ExecutionProver,
+    kind: ExecutionKind,
+    machine: MachineType,
+    binary_image: Vec<u32>,
+    text_section: Vec<u32>,
+    reads: Vec<u32>,
+    security_level: crate::upstream::SecurityLevel,
+    worker: &worker::Worker,
+) -> (crate::upstream::ProgramProof, crate::upstream::Setups) {
+    let handle = prover.add_binary(kind, machine, binary_image, text_section, None);
+    let result = prover.commit_memory_and_prove(0, &handle, QuasiUARTSource::new_with_reads(reads));
+    let artifacts = prover.program_artifacts(&handle);
+    assemble_program_proof(&artifacts, result, security_level, worker)
+}
+
 /// Prove `hashed_fibonacci` (blake2_with_compression build — fires the
 /// Blake2WithCompression delegation) on the GPU, assemble the
 /// `ProgramProof` + setups map, build the unrolled ND stream, and run the
@@ -28,34 +71,23 @@ fn test_artifact(relative_path: &str) -> std::path::PathBuf {
 #[test]
 #[cfg(all(not(no_cuda), feature = "verifiers"))]
 #[ignore]
-#[serial]
 fn test_program_prover_base_layer_verify() {
-    let _ = env_logger::builder()
-        .is_test(true)
-        .filter_level(log::LevelFilter::Info)
-        .try_init();
+    init_test_logger();
     let configuration = ExecutionProverConfiguration::default();
     let security_level = configuration.security_level;
     let mut prover = ExecutionProver::with_configuration(configuration).unwrap();
-    let (_, binary_image) = read_binary(&test_artifact(
-        "examples/hashed_fibonacci/app_blake2_with_compression.bin",
-    ));
-    let (_, text_section) = read_binary(&test_artifact(
-        "examples/hashed_fibonacci/app_blake2_with_compression.text",
-    ));
-    let handle = prover.add_binary(
+    let worker = worker::Worker::new();
+    let (binary_image, text_section) = load_workload("hashed_fibonacci");
+    let (proof, setups) = prove_on_gpu(
+        &mut prover,
         ExecutionKind::Unrolled,
         MachineType::FullUnsigned,
         binary_image,
         text_section,
-        None,
+        vec![100, 5],
+        security_level,
+        &worker,
     );
-    let non_determinism_source = QuasiUARTSource::new_with_reads(vec![100, 5]);
-    let result = prover.commit_memory_and_prove(0, &handle, non_determinism_source);
-
-    let artifacts = prover.program_artifacts(&handle);
-    let worker = worker::Worker::new();
-    let (proof, setups) = assemble_program_proof(&artifacts, result, security_level, &worker);
     log::info!(
         "assembled ProgramProof: {} cycles, {} riscv families, {} delegation types",
         proof.executed_cycles(),
@@ -76,8 +108,8 @@ fn test_program_prover_base_layer_verify() {
 /// base-layer unified verifier natively.
 ///
 /// This test used to fail the global memory-permutation closure
-/// (`read_set_product_accumulator == write_set_product_accumulator`,
-/// full_statement_verifier/src/unified_circuit_statement.rs:255). The root
+/// (`read_set_product_accumulator == write_set_product_accumulator`, in
+/// `full_statement_verifier`'s unified circuit statement). The root
 /// cause was NOT the canonical inits-and-teardowns top bits (for this
 /// workload the touched 2^24-word RAM chunks are exactly {0, 1}, so the
 /// canonical `[0, 1]` equals the real top bits): the JIT simulator was
@@ -90,34 +122,23 @@ fn test_program_prover_base_layer_verify() {
 #[test]
 #[cfg(all(not(no_cuda), feature = "verifiers"))]
 #[ignore]
-#[serial]
 fn test_program_prover_unified_base_layer_verify() {
-    let _ = env_logger::builder()
-        .is_test(true)
-        .filter_level(log::LevelFilter::Info)
-        .try_init();
+    init_test_logger();
     let configuration = ExecutionProverConfiguration::default();
     let security_level = configuration.security_level;
     let mut prover = ExecutionProver::with_configuration(configuration).unwrap();
-    let (_, binary_image) = read_binary(&test_artifact(
-        "examples/multi_family_smoke/app_blake2_with_compression.bin",
-    ));
-    let (_, text_section) = read_binary(&test_artifact(
-        "examples/multi_family_smoke/app_blake2_with_compression.text",
-    ));
-    let handle = prover.add_binary(
+    let worker = worker::Worker::new();
+    let (binary_image, text_section) = load_workload("multi_family_smoke");
+    let (proof, setups) = prove_on_gpu(
+        &mut prover,
         ExecutionKind::Unified,
         MachineType::Reduced,
         binary_image,
         text_section,
-        None,
+        vec![50, 0xDEAD_BEEF],
+        security_level,
+        &worker,
     );
-    let non_determinism_source = QuasiUARTSource::new_with_reads(vec![50, 0xDEAD_BEEF]);
-    let result = prover.commit_memory_and_prove(0, &handle, non_determinism_source);
-
-    let artifacts = prover.program_artifacts(&handle);
-    let worker = worker::Worker::new();
-    let (proof, setups) = assemble_program_proof(&artifacts, result, security_level, &worker);
     log::info!(
         "assembled unified ProgramProof: {} cycles, {} unified circuits, num_it_circuits {:?}, {} delegation types",
         proof.executed_cycles(),
@@ -143,18 +164,9 @@ fn test_program_prover_unified_base_layer_verify() {
 #[test]
 #[cfg(all(not(no_cuda), feature = "verifiers"))]
 #[ignore]
-#[serial]
 fn test_program_prover_unified_cpu_gpu_proof_diff() {
-    let _ = env_logger::builder()
-        .is_test(true)
-        .filter_level(log::LevelFilter::Info)
-        .try_init();
-    let (_, binary_image) = read_binary(&test_artifact(
-        "examples/multi_family_smoke/app_blake2_with_compression.bin",
-    ));
-    let (_, text_section) = read_binary(&test_artifact(
-        "examples/multi_family_smoke/app_blake2_with_compression.text",
-    ));
+    init_test_logger();
+    let (binary_image, text_section) = load_workload("multi_family_smoke");
     let (_, padded_binary_image) = setups::read_and_pad_binary(&test_artifact(
         "examples/multi_family_smoke/app_blake2_with_compression.bin",
     ));
@@ -186,21 +198,16 @@ fn test_program_prover_unified_cpu_gpu_proof_diff() {
 
     // GPU flow.
     let mut prover = ExecutionProver::with_configuration(configuration).unwrap();
-    let handle = prover.add_binary(
+    let (gpu_proof, _gpu_setups) = prove_on_gpu(
+        &mut prover,
         ExecutionKind::Unified,
         MachineType::Reduced,
         binary_image,
         text_section,
-        None,
+        vec![50, 0xDEAD_BEEF],
+        security_level,
+        &worker,
     );
-    let result = prover.commit_memory_and_prove(
-        0,
-        &handle,
-        QuasiUARTSource::new_with_reads(vec![50, 0xDEAD_BEEF]),
-    );
-    let artifacts = prover.program_artifacts(&handle);
-    let (gpu_proof, _gpu_setups) =
-        assemble_program_proof(&artifacts, result, security_level, &worker);
 
     serde_json::to_writer(
         std::fs::File::create("/tmp/pp_unified_cpu_proof.json").unwrap(),
@@ -262,18 +269,9 @@ fn test_program_prover_unified_cpu_gpu_proof_diff() {
 #[test]
 #[cfg(all(not(no_cuda), feature = "verifiers"))]
 #[ignore]
-#[serial]
 fn test_program_prover_cpu_gpu_proof_diff() {
-    let _ = env_logger::builder()
-        .is_test(true)
-        .filter_level(log::LevelFilter::Info)
-        .try_init();
-    let (_, binary_image) = read_binary(&test_artifact(
-        "examples/hashed_fibonacci/app_blake2_with_compression.bin",
-    ));
-    let (_, text_section) = read_binary(&test_artifact(
-        "examples/hashed_fibonacci/app_blake2_with_compression.text",
-    ));
+    init_test_logger();
+    let (binary_image, text_section) = load_workload("hashed_fibonacci");
 
     // CPU reference (params mirror prover_examples::recursion's base layer,
     // including the ROM-word padding its `load_program` applies).
@@ -309,18 +307,16 @@ fn test_program_prover_cpu_gpu_proof_diff() {
     let configuration = ExecutionProverConfiguration::default();
     let security_level = configuration.security_level;
     let mut prover = ExecutionProver::with_configuration(configuration).unwrap();
-    let handle = prover.add_binary(
+    let (gpu_proof, gpu_setups) = prove_on_gpu(
+        &mut prover,
         ExecutionKind::Unrolled,
         MachineType::FullUnsigned,
         binary_image,
         text_section,
-        None,
+        vec![100, 5],
+        security_level,
+        &worker,
     );
-    let result =
-        prover.commit_memory_and_prove(0, &handle, QuasiUARTSource::new_with_reads(vec![100, 5]));
-    let artifacts = prover.program_artifacts(&handle);
-    let (gpu_proof, gpu_setups) =
-        assemble_program_proof(&artifacts, result, security_level, &worker);
 
     // Diff setups.
     assert_eq!(
@@ -477,41 +473,27 @@ fn test_program_prover_cpu_gpu_proof_diff() {
 #[test]
 #[cfg(all(not(no_cuda), feature = "verifiers"))]
 #[ignore]
-#[serial]
 fn test_program_prover_recursion_layer_verify() {
     use crate::upstream::{compute_end_params, native_verify_unrolled, FsvRecursionChain};
 
-    let _ = env_logger::builder()
-        .is_test(true)
-        .filter_level(log::LevelFilter::Info)
-        .try_init();
+    init_test_logger();
     let configuration = ExecutionProverConfiguration::default();
     let security_level = configuration.security_level;
     let mut prover = ExecutionProver::with_configuration(configuration).unwrap();
     let worker = worker::Worker::new();
 
     // Stage 1: base layer (identical to test_program_prover_base_layer_verify).
-    let (_, binary_image) = read_binary(&test_artifact(
-        "examples/hashed_fibonacci/app_blake2_with_compression.bin",
-    ));
-    let (_, text_section) = read_binary(&test_artifact(
-        "examples/hashed_fibonacci/app_blake2_with_compression.text",
-    ));
-    let base_handle = prover.add_binary(
+    let (binary_image, text_section) = load_workload("hashed_fibonacci");
+    let (base_proof, base_setups) = prove_on_gpu(
+        &mut prover,
         ExecutionKind::Unrolled,
         MachineType::FullUnsigned,
         binary_image,
         text_section,
-        None,
+        vec![100, 5],
+        security_level,
+        &worker,
     );
-    let result = prover.commit_memory_and_prove(
-        0,
-        &base_handle,
-        QuasiUARTSource::new_with_reads(vec![100, 5]),
-    );
-    let artifacts = prover.program_artifacts(&base_handle);
-    let (base_proof, base_setups) =
-        assemble_program_proof(&artifacts, result, security_level, &worker);
     native_verify_unrolled(build_unrolled_stream(&base_setups, &base_proof), true);
     log::info!(
         "base layer proved on GPU + verified natively ({} cycles)",
@@ -528,19 +510,17 @@ fn test_program_prover_recursion_layer_verify() {
     let (_, fsv_text) = read_binary(&test_artifact(
         "tools/gkr_verifier/fsv_unrolled_base_layer_sec_80_blake2_with_compression.text",
     ));
-    let fsv_handle = prover.add_binary(
+    let stream = build_unrolled_stream(&base_setups, &base_proof);
+    let (mut recursion_proof, recursion_setups) = prove_on_gpu(
+        &mut prover,
         ExecutionKind::Unrolled,
         MachineType::Reduced,
         fsv_binary,
         fsv_text,
-        None,
+        stream,
+        security_level,
+        &worker,
     );
-    let stream = build_unrolled_stream(&base_setups, &base_proof);
-    let result =
-        prover.commit_memory_and_prove(0, &fsv_handle, QuasiUARTSource::new_with_reads(stream));
-    let artifacts = prover.program_artifacts(&fsv_handle);
-    let (mut recursion_proof, recursion_setups) =
-        assemble_program_proof(&artifacts, result, security_level, &worker);
     recursion_proof.set_recursion_chain(&chain);
     log::info!(
         "recursion layer proved on GPU ({} cycles)",
@@ -574,18 +554,9 @@ fn test_program_prover_recursion_layer_verify() {
 #[test]
 #[cfg(all(not(no_cuda), feature = "verifiers"))]
 #[ignore]
-#[serial]
 fn test_program_prover_recursive_pipeline() {
-    let _ = env_logger::builder()
-        .is_test(true)
-        .filter_level(log::LevelFilter::Info)
-        .try_init();
-    let (_, binary_image) = read_binary(&test_artifact(
-        "examples/hashed_fibonacci/app_blake2_with_compression.bin",
-    ));
-    let (_, text_section) = read_binary(&test_artifact(
-        "examples/hashed_fibonacci/app_blake2_with_compression.text",
-    ));
+    init_test_logger();
+    let (binary_image, text_section) = load_workload("hashed_fibonacci");
     run_gpu_recursive_pipeline(binary_image, text_section, vec![100, 5], true);
 }
 
@@ -598,12 +569,8 @@ fn test_program_prover_recursive_pipeline() {
 #[test]
 #[cfg(all(not(no_cuda), feature = "verifiers"))]
 #[ignore]
-#[serial]
 fn test_program_prover_recursive_pipeline_zksync_os() {
-    let _ = env_logger::builder()
-        .is_test(true)
-        .filter_level(log::LevelFilter::Info)
-        .try_init();
+    init_test_logger();
     // Mirrors prover_examples::recursion::read_hex_witness.
     let raw = std::fs::read_to_string(test_artifact(
         "riscv_transpiler/examples/zksync_os/23620012_witness",
@@ -689,21 +656,16 @@ fn run_gpu_recursive_pipeline(
     let worker = worker::Worker::new();
 
     // === Stage 1: base layer. ===
-    let base_handle = prover.add_binary(
+    let (base_proof, base_setups) = prove_on_gpu(
+        &mut prover,
         ExecutionKind::Unrolled,
         MachineType::FullUnsigned,
         base_binary_image,
         base_text_section,
-        None,
+        base_non_determinism,
+        security_level,
+        &worker,
     );
-    let result = prover.commit_memory_and_prove(
-        0,
-        &base_handle,
-        QuasiUARTSource::new_with_reads(base_non_determinism),
-    );
-    let artifacts = prover.program_artifacts(&base_handle);
-    let (base_proof, base_setups) =
-        assemble_program_proof(&artifacts, result, security_level, &worker);
     native_verify_unrolled(build_unrolled_stream(&base_setups, &base_proof), true);
     log::info!(
         "stage 1: base layer proved + verified ({} cycles)",
@@ -754,21 +716,16 @@ fn run_gpu_recursive_pipeline(
             break;
         }
 
-        let fsv_handle = prover.add_binary(
+        let (mut new_proof, new_setups) = prove_on_gpu(
+            &mut prover,
             ExecutionKind::Unrolled,
             MachineType::Reduced,
             bin.clone(),
             text.clone(),
-            None,
+            build_unrolled_stream(&setups, &proof),
+            security_level,
+            &worker,
         );
-        let result = prover.commit_memory_and_prove(
-            0,
-            &fsv_handle,
-            QuasiUARTSource::new_with_reads(build_unrolled_stream(&setups, &proof)),
-        );
-        let artifacts = prover.program_artifacts(&fsv_handle);
-        let (mut new_proof, new_setups) =
-            assemble_program_proof(&artifacts, result, security_level, &worker);
         new_proof.set_recursion_chain(&chain);
         native_verify_unrolled(build_unrolled_stream(&new_setups, &new_proof), false);
         log::info!(
@@ -793,21 +750,16 @@ fn run_gpu_recursive_pipeline(
     };
     let (bridge_bin, bridge_text) = load_fsv_program(&fsv_dir, bridge_program, bridge_blake);
     let (bridge_bin, bridge_text) = (&bridge_bin, &bridge_text);
-    let bridge_handle = prover.add_binary(
+    let (mut bridge_proof, bridge_setups) = prove_on_gpu(
+        &mut prover,
         ExecutionKind::Unified,
         MachineType::Reduced,
         bridge_bin.clone(),
         bridge_text.clone(),
-        None,
+        build_unrolled_stream(&setups, &proof),
+        security_level,
+        &worker,
     );
-    let result = prover.commit_memory_and_prove(
-        0,
-        &bridge_handle,
-        QuasiUARTSource::new_with_reads(build_unrolled_stream(&setups, &proof)),
-    );
-    let artifacts = prover.program_artifacts(&bridge_handle);
-    let (mut bridge_proof, bridge_setups) =
-        assemble_program_proof(&artifacts, result, security_level, &worker);
     bridge_proof.set_recursion_chain(&chain);
     native_verify_unified(build_unified_stream(&bridge_setups, &bridge_proof), false);
     log::info!(
@@ -821,21 +773,16 @@ fn run_gpu_recursive_pipeline(
     // === Stage 5: final — fsv_unified_recursion_layer in unified mode. ===
     let (final_bin, final_text) =
         load_fsv_program(&fsv_dir, FsvProgram::UnifiedRecursionLayer, final_blake);
-    let final_handle = prover.add_binary(
+    let (mut final_proof, final_setups) = prove_on_gpu(
+        &mut prover,
         ExecutionKind::Unified,
         MachineType::Reduced,
         final_bin.clone(),
         final_text.clone(),
-        None,
+        build_unified_stream(&bridge_setups, &bridge_proof),
+        security_level,
+        &worker,
     );
-    let result = prover.commit_memory_and_prove(
-        0,
-        &final_handle,
-        QuasiUARTSource::new_with_reads(build_unified_stream(&bridge_setups, &bridge_proof)),
-    );
-    let artifacts = prover.program_artifacts(&final_handle);
-    let (mut final_proof, final_setups) =
-        assemble_program_proof(&artifacts, result, security_level, &worker);
     final_proof.set_recursion_chain(&chain);
     let output = native_verify_unified(build_unified_stream(&final_setups, &final_proof), false);
     log::info!(
@@ -855,21 +802,16 @@ fn run_gpu_recursive_pipeline(
     for round in 0..extra_rounds {
         let end_params = compute_end_params(&setups, proof.final_pc);
         chain.extend(&end_params);
-        let handle = prover.add_binary(
+        let (mut new_proof, new_setups) = prove_on_gpu(
+            &mut prover,
             ExecutionKind::Unified,
             MachineType::Reduced,
             final_bin.clone(),
             final_text.clone(),
-            None,
+            build_unified_stream(&setups, &proof),
+            security_level,
+            &worker,
         );
-        let result = prover.commit_memory_and_prove(
-            0,
-            &handle,
-            QuasiUARTSource::new_with_reads(build_unified_stream(&setups, &proof)),
-        );
-        let artifacts = prover.program_artifacts(&handle);
-        let (mut new_proof, new_setups) =
-            assemble_program_proof(&artifacts, result, security_level, &worker);
         new_proof.set_recursion_chain(&chain);
         native_verify_unified(build_unified_stream(&new_setups, &new_proof), false);
         log::info!(

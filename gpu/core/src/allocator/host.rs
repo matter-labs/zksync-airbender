@@ -13,10 +13,6 @@ use std::fmt::{Debug, Formatter};
 use std::ops::{Deref, DerefMut};
 use std::ptr::NonNull;
 use std::slice;
-use std::sync::OnceLock;
-
-#[allow(dead_code)]
-pub static STATIC_HOST_ALLOCATOR: OnceLock<ConcurrentStaticHostAllocator> = OnceLock::new();
 
 impl StaticAllocationBackend for HostAllocation<u8> {
     fn as_non_null(&mut self) -> NonNull<u8> {
@@ -50,12 +46,6 @@ type StaticHostAllocator<W> = StaticAllocator<HostAllocation<u8>, W>;
 
 pub type ConcurrentStaticHostAllocator =
     StaticHostAllocator<ConcurrentInnerStaticHostAllocatorWrapper>;
-
-impl ConcurrentStaticHostAllocator {
-    pub fn get_global() -> &'static ConcurrentStaticHostAllocator {
-        STATIC_HOST_ALLOCATOR.get().unwrap()
-    }
-}
 
 pub type NonConcurrentStaticHostAllocator =
     StaticHostAllocator<NonConcurrentInnerStaticHostAllocatorWrapper>;
@@ -111,7 +101,10 @@ unsafe impl<W: InnerStaticHostAllocatorWrapper> Allocator for StaticHostAllocato
 
 impl Default for ConcurrentStaticHostAllocator {
     fn default() -> Self {
-        ConcurrentStaticHostAllocator::get_global().clone()
+        panic!(
+            "ConcurrentStaticHostAllocator has no meaningful Default; \
+             construct it explicitly via ConcurrentStaticHostAllocator::new"
+        )
     }
 }
 

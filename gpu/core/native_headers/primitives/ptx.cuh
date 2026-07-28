@@ -173,6 +173,8 @@ struct __align__(32) u32x8 {
   uint4 hi;
 };
 
+static_assert(sizeof(u32x8) == 32 && alignof(u32x8) == 32, "u32x8 ABI");
+
 #define AB_PTX_LD_V1(NAME, MOD)                                                                                                                                \
   DEVICE_FORCEINLINE u32 NAME(const u32 *p) {                                                                                                                  \
     u32 r;                                                                                                                                                     \

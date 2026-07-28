@@ -35,10 +35,6 @@
 namespace airbender {
 namespace ntt {
 
-// hbr(x, n): bit-reverse of x within n bits. Matches the Rust hbr() and the
-// engine's bitrev(); __brev reverses 32 bits, the shift drops the high (32-n).
-DEVICE_FORCEINLINE unsigned hbr_dev(unsigned x, unsigned n) { return __brev(x) >> (32u - n); }
-
 // off(s) for the CLEAN triangle (LOG_TBL == LOG_M, THREADS == LANES).
 template <unsigned LOG_M, unsigned LOG_VPT> DEVICE_FORCEINLINE unsigned clean_off(unsigned s) {
   constexpr unsigned VPT = 1u << LOG_VPT, LANES = 1u << (LOG_M - LOG_VPT);
@@ -76,11 +72,11 @@ template <unsigned LOG_M, unsigned LOG_VPT> DEVICE_FORCEINLINE void fill_clean_t
         const unsigned U = VPT >> (s + 1u);
         for (unsigned q = 0; q < U; ++q) {
           const unsigned grp = lane * U + q;
-          dst[clean_off<LOG_M, LOG_VPT>(s) + lane * U + q] = get_forward_twiddle_power(hbr_dev(grp, LOG_M - 1u) << SHIFT);
+          dst[clean_off<LOG_M, LOG_VPT>(s) + lane * U + q] = get_forward_twiddle_power(::bitreverse_low_bits(grp, LOG_M - 1u) << SHIFT);
         }
       } else {
         const unsigned bg = lane >> (s + 1u - LOG_VPT);
-        dst[clean_off<LOG_M, LOG_VPT>(s) + bg] = get_forward_twiddle_power(hbr_dev(bg, LOG_M - 1u) << SHIFT);
+        dst[clean_off<LOG_M, LOG_VPT>(s) + bg] = get_forward_twiddle_power(::bitreverse_low_bits(bg, LOG_M - 1u) << SHIFT);
       }
     }
   }
@@ -108,12 +104,12 @@ template <unsigned LOG_N, unsigned LOG_VPT> DEVICE_FORCEINLINE void fill_coupled
         const unsigned U = VPT >> (s + 1u);
         for (unsigned q = 0; q < U; ++q) {
           const unsigned grp = (n2 << (LOG_N1 - 1u - s)) | (lane * U + q);
-          dst[coupled_off<LOG_N, LOG_VPT>(s) + tid * U + q] = get_forward_twiddle_power(hbr_dev(grp, LOG_N - 1u) << SHIFT);
+          dst[coupled_off<LOG_N, LOG_VPT>(s) + tid * U + q] = get_forward_twiddle_power(::bitreverse_low_bits(grp, LOG_N - 1u) << SHIFT);
         }
       } else {
         const unsigned bg = lane >> (s + 1u - LOG_VPT);
         const unsigned grp = (n2 << (LOG_N1 - 1u - s)) | bg;
-        dst[coupled_off<LOG_N, LOG_VPT>(s) + grp] = get_forward_twiddle_power(hbr_dev(grp, LOG_N - 1u) << SHIFT);
+        dst[coupled_off<LOG_N, LOG_VPT>(s) + grp] = get_forward_twiddle_power(::bitreverse_low_bits(grp, LOG_N - 1u) << SHIFT);
       }
     }
   }
@@ -129,7 +125,7 @@ template <unsigned LOG_N> DEVICE_FORCEINLINE void fill_d_table(bf *dst, unsigned
   const unsigned tid = blockIdx.x * blockDim.x + threadIdx.x;
   const unsigned stride = gridDim.x * blockDim.x;
   for (unsigned i = tid; i < NN; i += stride)
-    dst[i] = get_forward_twiddle_power(hbr_dev(i, LOG_N) * step_per_iter); // u32 wrap matches Rust wrapping_mul
+    dst[i] = get_forward_twiddle_power(::bitreverse_low_bits(i, LOG_N) * step_per_iter); // u32 wrap matches Rust wrapping_mul
 }
 
 // --- EXTERN wrappers: one unmangled symbol per config (mirrors dit_kernels_extern.cu).

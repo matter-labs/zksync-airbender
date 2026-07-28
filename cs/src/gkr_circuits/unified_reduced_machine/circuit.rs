@@ -6,7 +6,6 @@ use super::jump_branch_slt::{
 };
 use super::mem_word_only::apply_unified_mem_word_only_inner;
 use super::*;
-use crate::constraint::{Constraint, Term};
 use crate::cs::circuit_trait::*;
 use crate::gkr_circuits::add_sub_family::{
     add_sub_lui_auipc_mop_table_addition_fn, add_sub_lui_auipc_mop_table_driver_fn,
@@ -15,6 +14,7 @@ use crate::gkr_circuits::mem_word_only::{
     mem_word_only_table_addition_fn, mem_word_only_table_driver_fn,
 };
 use crate::oracle::Placeholder;
+use crate::structured_expr::Expr;
 use crate::tables::TableDriver;
 use crate::types::{Boolean, Register, LIMB_WIDTH};
 use crate::witness_placer::*;
@@ -68,7 +68,7 @@ pub const UNIFIED_REDUCED_MACHINE_NUM_FLAGS: usize = UNIFIED_F1_NUM_FLAGS
 /// only inside that family's flag-gated constraints, hence unconstrained (free)
 /// on rows where the family is idle. Because at most one family fires per row,
 /// these slots can be ALIASED across families into one shared pool.
-pub(super) const F1_SCRATCH_BOOLS: usize = 4; // 2-input add/sub: carry, intermediate_carry ([0],[1]); tri-add (unified-only) also uses [2],[3] so each limb's carry ∈ {0,1,2} is a sum of two Booleans. Aliased (one-hot ⇒ ≤1 family/row) with F4's pooled bools: [0],[1]=of_lo,of_hi; [2]=is_rom; [3]=sw-align bit_0.
+pub(super) const F1_SCRATCH_BOOLS: usize = 5; // 2-input add/sub: carry, intermediate_carry ([0],[1]); tri-add (unified-only) also uses [2],[3] so each limb's carry ∈ {0,1,2} is a sum of two Booleans; two-field mop.rr reuses [2],[3],[4] for the q-top/k bits t0/t1/t2 (written only on is_mul_like/is_addmod/is_submod rows — disjoint from is_tri_add). Aliased (one-hot ⇒ ≤1 family/row) with F4's pooled bools: [0],[1]=of_lo,of_hi; [2]=is_rom; [3]=sw-align bit_0; [4]=sw-align bit_1 — and with F2's [4]=next_pc_bit_1.
 pub(super) const F2_SCRATCH_BOOLS: usize = 5; // add_rel_{0,1}_{intermediate,final}_of (4) + next_pc_bit_1
 pub(super) const F3_SCRATCH_BOOLS: usize = 0;
 pub(super) const F4_SCRATCH_BOOLS: usize = 5; // of_lo, of_hi, is_rom, sw-align bit_0, bit_1
@@ -88,7 +88,7 @@ const UNIFIED_SCRATCH_BOOL_COUNT: usize = const_max(
     const_max(F3_SCRATCH_BOOLS, F4_SCRATCH_BOOLS),
 );
 
-pub(super) const F1_SCRATCH_VARS: usize = 0;
+pub(super) const F1_SCRATCH_VARS: usize = 2; // two-field mop.rr quotient low limbs q_lo16, q_hi16 ([0],[1]); written only on is_mul_like rows and RC-16'd (unconditional, holds pool-wide since every family's value in [0],[1] is < 2^16). 0 on the single-field native path (F == MopF branch never touches these). Aliased with F2's [0]=comparison_result_is_zero,[1]=rs1_sign; F3's [0]=imm_sign_ext/trunc_shift,[1]=shift_output byte; F4's [0],[1]=ram_addr limbs.
 pub(super) const F2_SCRATCH_VARS: usize = 5; // comparison_result_is_zero, rs1_sign, should_jump_or_slt_value, slt_sign_source, rs2_sign
 pub(super) const F3_SCRATCH_VARS: usize = 21; // shift/binop scratch_space (17) + 4 rs1/rs2 low-byte split points (xor-rotate reuses the rs2 split: rs2 aliases rd at decode)
 pub(super) const F4_SCRATCH_VARS: usize = 2; // ram_addr[0], ram_addr[1]
@@ -102,17 +102,22 @@ const UNIFIED_SCRATCH_VAR_COUNT: usize = const_max(
 pub(super) const UNIFIED_LOOKUP_WIDTH: usize = 8;
 
 pub(super) struct LookupRequest<F: PrimeField> {
-    table_id: Constraint<F>,
-    inputs: Vec<Constraint<F>>,
+    table_id: Expr<F>,
+    inputs: Vec<Expr<F>>,
 }
 
 impl<F: PrimeField> LookupRequest<F> {
-    pub(super) fn new(table_id: Constraint<F>, inputs: Vec<Constraint<F>>) -> Self {
+    pub(super) fn new(table_id: Expr<F>, inputs: Vec<Expr<F>>) -> Self {
         assert!(
             inputs.len() <= UNIFIED_LOOKUP_WIDTH,
             "LookupRequest has {} inputs, exceeds UNIFIED_LOOKUP_WIDTH={UNIFIED_LOOKUP_WIDTH}",
             inputs.len()
         );
+        assert!(table_id.degree() <= 2);
+        for inp in inputs.iter() {
+            assert!(inp.degree() <= 2);
+        }
+
         Self { table_id, inputs }
     }
 }
@@ -123,30 +128,38 @@ fn flush_unified_lookup_pool<F: PrimeField, CS: Circuit<F>>(
 ) {
     let num_slots = per_family.iter().map(Vec::len).max().unwrap_or(0);
     for k in 0..num_slots {
-        let mut table_id = Constraint::<F>::empty();
-        let mut inputs: [Constraint<F>; UNIFIED_LOOKUP_WIDTH] =
-            core::array::from_fn(|_| Constraint::empty());
+        // Pool the per-family requests for slot `k` by adding their `Expr`s (a slot no family
+        // populates stays `None` and folds in as the constant 0). Kept as `Expr` so each masked
+        // product `mask * input` reaches the compiler as one multiplication rather than the
+        // distributed sum a flattened `Constraint` would produce.
+        let mut table_id: Option<Expr<F>> = None;
+        let mut inputs: [Option<Expr<F>>; UNIFIED_LOOKUP_WIDTH] = core::array::from_fn(|_| None);
         for family in per_family {
             let Some(req) = family.get(k) else { continue };
             assert!(req.inputs.len() <= UNIFIED_LOOKUP_WIDTH);
-            table_id = table_id + req.table_id.clone();
+            table_id = Some(match table_id.take() {
+                None => req.table_id.clone(),
+                Some(acc) => acc + req.table_id.clone(),
+            });
             for (j, inp) in req.inputs.iter().enumerate() {
-                inputs[j] = inputs[j].clone() + inp.clone();
+                inputs[j] = Some(match inputs[j].take() {
+                    None => inp.clone(),
+                    Some(acc) => acc + inp.clone(),
+                });
             }
         }
-        let table_id_var = cs.add_intermediate_named_variable_from_constraint(
-            table_id,
+        let table_id_var = cs.add_intermediate_named_variable_from_expr(
+            table_id.expect("a pooled slot must have at least one contributing family"),
             &format!("pooled lookup table_id (slot {k})"),
         );
         let tuple: [LookupInput<F>; UNIFIED_LOOKUP_WIDTH] = core::array::from_fn(|j| {
             // Positions no family populates fold in as the constant 0 (no column).
-            if inputs[j].is_empty() {
-                LookupInput::from(F::ZERO)
-            } else {
-                LookupInput::from(cs.add_intermediate_named_variable_from_constraint(
-                    inputs[j].clone(),
+            match inputs[j].take() {
+                None => LookupInput::from(F::ZERO),
+                Some(expr) => LookupInput::from(cs.add_intermediate_named_variable_from_expr(
+                    expr,
                     &format!("pooled lookup input (slot {k}, pos {j})"),
-                ))
+                )),
             }
         });
         cs.enforce_lookup_tuple_for_variable_table::<UNIFIED_LOOKUP_WIDTH>(&tuple, table_id_var);
@@ -196,12 +209,32 @@ pub fn unified_reduced_machine_table_driver_fn<F: PrimeField>(table_driver: &mut
     }
 }
 
+/// Wrapper preserving the historic single-field signature; delegates to the
+/// two-generic core with the mop field fixed to `BabyBearField` — the only mop.rr
+/// field (asserted in `mop_two_field_decompose`). For `F = BabyBearField` this is
+/// the native single-field path; for a large `F` (e.g. Proth120) it IS the
+/// two-field instantiation. The `_core` form exists for the generic threading,
+/// not as an extension point for other mop fields.
+pub fn unified_reduced_machine_circuit_with_preprocessed_bytecode_for_gkr<
+    F: PrimeField,
+    CS: Circuit<F>,
+>(
+    cs: &mut CS,
+) {
+    unified_reduced_machine_circuit_with_preprocessed_bytecode_for_gkr_core::<
+        F,
+        ::field::baby_bear::base::BabyBearField,
+        CS,
+    >(cs);
+}
+
 /// Top-level unified circuit body. Allocates a single shared set of memory accesses
 /// for all reduced-machine families, then dispatches to each family's per-flag body.
 /// Per-family bodies don't allocate their own accesses — they accept extracted
 /// limbs/timestamps as parameters.
-pub fn unified_reduced_machine_circuit_with_preprocessed_bytecode_for_gkr<
+pub fn unified_reduced_machine_circuit_with_preprocessed_bytecode_for_gkr_core<
     F: PrimeField,
+    MopF: PrimeField,
     CS: Circuit<F>,
 >(
     cs: &mut CS,
@@ -215,10 +248,10 @@ pub fn unified_reduced_machine_circuit_with_preprocessed_bytecode_for_gkr<
     let bitmask: [_; UNIFIED_REDUCED_MACHINE_NUM_FLAGS] = bitmask.try_into().unwrap();
     let bitmask = bitmask.map(Boolean::Is);
 
-    apply_unified_reduced_machine_inner(cs, input, bitmask);
+    apply_unified_reduced_machine_inner::<F, MopF, _>(cs, input, bitmask);
 }
 
-fn apply_unified_reduced_machine_inner<F: PrimeField, CS: Circuit<F>>(
+fn apply_unified_reduced_machine_inner<F: PrimeField, MopF: PrimeField, CS: Circuit<F>>(
     cs: &mut CS,
     inputs: OpcodeFamilyCircuitState<F>,
     bitmask: [Boolean; UNIFIED_REDUCED_MACHINE_NUM_FLAGS],
@@ -330,7 +363,7 @@ fn apply_unified_reduced_machine_inner<F: PrimeField, CS: Circuit<F>>(
     // is_* flags are 1 per cycle. Family 4's body owns the cleanaddr/ROM/lookup
     // logic and the register-side address-binding constraints (gated on
     // `NOT is_lw` / `NOT is_sw`, which fire for Families 1-3 too).
-    apply_unified_add_sub_lui_auipc_mop_inner(
+    apply_unified_add_sub_lui_auipc_mop_inner::<F, MopF, _>(
         cs,
         inputs.clone(),
         unified_mask.add_sub_lui_auipc_mop(),
@@ -342,6 +375,7 @@ fn apply_unified_reduced_machine_inner<F: PrimeField, CS: Circuit<F>>(
         rs2_read_timestamp,
         shared_intermediate_reg,
         core::array::from_fn::<_, F1_SCRATCH_BOOLS, _>(|i| scratch_bools[i]),
+        core::array::from_fn::<_, F1_SCRATCH_VARS, _>(|i| scratch_vars[i]),
     );
     let f2_lookups = apply_unified_jump_branch_slt_inner(
         cs,
@@ -483,27 +517,28 @@ fn apply_unified_pc_bump<F: PrimeField, CS: Circuit<F>>(
     // Setup constraint: pc_bump_gate = execute - sum(execute * family_2_subop_bits)
     //   ⇒ pc_bump_gate - execute + sum(execute * family_2_subop_bits) = 0  (deg 2)
     {
-        let mut setup = Constraint::from(pc_bump_gate) - Term::from(execute);
+        let mut setup = Expr::from(pc_bump_gate) - Expr::var(execute);
         for &b in family_2_bits[..4].iter() {
-            setup = setup + Constraint::from(execute) * Constraint::from(b);
+            setup = setup + Expr::var(execute) * Expr::from(b);
         }
-        cs.add_constraint(setup);
+        cs.add_constraint_expr(setup);
     }
 
-    let pc_step: Term<F> = Term::from(common_constants::PC_STEP as u32);
-    let shift16: Term<F> = Term::from(1 << 16);
+    let pc_step: Expr<F> =
+        Expr::constant(F::from_u32_with_reduction(common_constants::PC_STEP as u32));
+    let shift16: Expr<F> = Expr::constant(F::from_u32_with_reduction(1 << 16));
 
     // pc_bump_gate * (pc_in[0] + 4 - pc_out[0] - 2^16 * pc_inc_carry) = 0  (deg 2)
-    cs.add_constraint(
-        Constraint::from(pc_bump_gate)
-            * (Constraint::from(pc_in[0]) + pc_step
-                - Term::from(pc_out[0])
-                - shift16 * Term::from(pc_inc_carry)),
+    cs.add_constraint_expr(
+        Expr::from(pc_bump_gate)
+            * (Expr::var(pc_in[0]) + pc_step
+                - Expr::var(pc_out[0])
+                - shift16 * Expr::from(pc_inc_carry)),
     );
     // pc_bump_gate * (pc_inc_carry + pc_in[1] - pc_out[1]) = 0  (deg 2)
-    cs.add_constraint(
-        Constraint::from(pc_bump_gate)
-            * (Constraint::from(pc_inc_carry) + Term::from(pc_in[1]) - Term::from(pc_out[1])),
+    cs.add_constraint_expr(
+        Expr::from(pc_bump_gate)
+            * (Expr::from(pc_inc_carry) + Expr::var(pc_in[1]) - Expr::var(pc_out[1])),
     );
 }
 
@@ -551,19 +586,19 @@ fn apply_unified_family_dispatch_one_hot<F: PrimeField, CS: Circuit<F>>(
     // Setup constraint (deg 2):
     //   is_any_family_active - execute * (sum of dispatch bits) = 0
     // sum = family_1_bits[..] + family_2_bits[..4] + family_3_bits[..] + is_lw + is_sw
-    let mut setup = Constraint::from(is_any_family_active);
+    let mut setup = Expr::from(is_any_family_active);
     for &b in family_1_bits.iter() {
-        setup = setup - Constraint::from(execute) * Constraint::from(b);
+        setup = setup - Expr::var(execute) * Expr::from(b);
     }
     for &b in family_2_bits[..4].iter() {
-        setup = setup - Constraint::from(execute) * Constraint::from(b);
+        setup = setup - Expr::var(execute) * Expr::from(b);
     }
     for &b in family_3_bits.iter() {
-        setup = setup - Constraint::from(execute) * Constraint::from(b);
+        setup = setup - Expr::var(execute) * Expr::from(b);
     }
-    setup = setup - Constraint::from(execute) * Constraint::from(is_lw);
-    setup = setup - Constraint::from(execute) * Constraint::from(is_sw);
-    cs.add_constraint(setup);
+    setup = setup - Expr::var(execute) * Expr::from(is_lw);
+    setup = setup - Expr::var(execute) * Expr::from(is_sw);
+    cs.add_constraint_expr(setup);
 
     // Padding-row zeroing: on execute=0 rows, the decoder lookup is gated by
     // `execute` and so doesn't bind the bitmask — without this constraint a
@@ -573,19 +608,19 @@ fn apply_unified_family_dispatch_one_hot<F: PrimeField, CS: Circuit<F>>(
     //   (1 - execute) * (sum of all family bits) = 0
     // forces the sum to 0 in the field, which forces each bit to 0 (since each
     // is in {0,1}). One degree-2 constraint covers all 17 bits.
-    let mut padding_zero_sum = Constraint::empty();
+    let mut padding_zero_sum: Expr<F> = Expr::zero();
     for &b in family_1_bits.iter() {
-        padding_zero_sum = padding_zero_sum + Constraint::from(b);
+        padding_zero_sum = padding_zero_sum + Expr::from(b);
     }
     for &b in family_2_bits.iter() {
-        padding_zero_sum = padding_zero_sum + Constraint::from(b);
+        padding_zero_sum = padding_zero_sum + Expr::from(b);
     }
     for &b in family_3_bits.iter() {
-        padding_zero_sum = padding_zero_sum + Constraint::from(b);
+        padding_zero_sum = padding_zero_sum + Expr::from(b);
     }
-    padding_zero_sum = padding_zero_sum + Constraint::from(is_lw);
-    padding_zero_sum = padding_zero_sum + Constraint::from(is_sw);
-    cs.add_constraint((Term::from(1u32) - Term::from(execute)) * padding_zero_sum);
+    padding_zero_sum = padding_zero_sum + Expr::from(is_lw);
+    padding_zero_sum = padding_zero_sum + Expr::from(is_sw);
+    cs.add_constraint_expr((Expr::<F>::one() - Expr::var(execute)) * padding_zero_sum);
 }
 
 /// Register all tables the unified circuit body looks up against. Shared by both
@@ -612,30 +647,51 @@ fn unified_register_all_tables<F: ::field::PrimeField, CS: Circuit<F>>(cs: &mut 
 /// Single source of truth used by the cs-side serialization tests below,
 /// the verifier_generator integration test, and the `unified_reduced_machine`
 /// setup crate that wires the circuit into the GKR prover.
+///
+/// BabyBear wrapper preserving the historic single-field signature; delegates to
+/// `build_unified_artifact_core` with `MopF = BabyBearField`.
 pub fn build_unified_artifact<F: ::field::PrimeField>(
     use_caches: bool,
+    trace_len_log2: usize,
+    num_init_and_teardown_pairs: usize,
+) -> crate::gkr_compiler::GKRCircuitArtifact<F> {
+    build_unified_artifact_core::<F, ::field::baby_bear::base::BabyBearField>(
+        use_caches,
+        trace_len_log2,
+        num_init_and_teardown_pairs,
+    )
+}
+
+pub fn build_unified_artifact_core<F: ::field::PrimeField, MopF: ::field::PrimeField>(
+    use_caches: bool,
+    trace_len_log2: usize,
+    num_init_and_teardown_pairs: usize,
 ) -> crate::gkr_compiler::GKRCircuitArtifact<F> {
     use crate::cs::circuit_impl::BasicAssembly;
     use crate::gkr_compiler::GKRCompiler;
 
     let mut cs = BasicAssembly::<F>::new();
     unified_register_all_tables(&mut cs);
-    unified_reduced_machine_circuit_with_preprocessed_bytecode_for_gkr(&mut cs);
+    unified_reduced_machine_circuit_with_preprocessed_bytecode_for_gkr_core::<F, MopF, _>(&mut cs);
     let (cs_output, _) = cs.finalize();
 
     let compiler = GKRCompiler::<F>::default();
     compiler.compile_family_circuit_with_inline_inits_and_teardowns(
         cs_output,
         common_constants::ROM_WORD_SIZE,
-        /* num_inits_and_teardowns_pairs */ 1,
-        /* trace_len_log2 */ 24,
+        /* num_inits_and_teardowns_pairs */ num_init_and_teardown_pairs,
+        /* trace_len_log2 */ trace_len_log2,
         use_caches,
     )
 }
 
 #[cfg(test)]
 mod test {
+    use crate::constraint::Term;
     use test_utils::skip_if_ci;
+
+    const UNIFIED_CIRCUIT_TRACE_LEN_LOG2: usize = 23;
+    const LARGE_FIELD_UNIFIED_CIRCUIT_TRACE_LEN_LOG2: usize = 22;
 
     use super::*;
     use crate::definitions::OutputType;
@@ -659,6 +715,20 @@ mod test {
                 .find(|(_, n)| n.as_str() == name)
                 .map(|(v, _)| *v)
         };
+        // Pooled lookup intermediates are now defined from `Expr` via
+        // `add_intermediate_named_variable_from_expr`; `variables_from_constraints` maps the
+        // variable to the index of its `Define` statement, which carries the lowered
+        // (max-quadratic) `compiled_constraint`.
+        let defining_constraint = |var: Variable| -> &crate::constraint::Constraint<BabyBearField> {
+            let idx = output.variables_from_constraints[&var];
+            match &output.structured_statements[idx] {
+                crate::structured_expr::StructuredStatement::Define {
+                    compiled_constraint,
+                    ..
+                } => compiled_constraint,
+                other => panic!("expected a Define statement for {var:?}, got {other:?}"),
+            }
+        };
         let slt_sign_source =
             var_by_name("shared scratch var[3]").expect("F2 sign-source scratch var must exist");
         let u16getsign_id =
@@ -670,7 +740,7 @@ mod test {
             let Some(tid_var) = var_by_name(&format!("pooled lookup table_id (slot {k})")) else {
                 break;
             };
-            let tid_c = &output.variables_from_constraints[&tid_var];
+            let tid_c = defining_constraint(tid_var);
             // F2's contribution to the slot's table id is `is_fam2_sum() * U16GetSign`,
             // i.e. degree-1 terms with the table id as coefficient.
             let has_u16getsign = tid_c.terms.iter().any(|t| {
@@ -680,7 +750,7 @@ mod test {
             else {
                 continue;
             };
-            let in0_c = &output.variables_from_constraints[&in0_var];
+            let in0_c = defining_constraint(in0_var);
             let reads_sign_source = in0_c
                 .terms
                 .iter()
@@ -704,7 +774,8 @@ mod test {
         skip_if_ci!();
         use ::field::baby_bear::base::BabyBearField;
 
-        let artifact = build_unified_artifact::<BabyBearField>(true);
+        let artifact =
+            build_unified_artifact::<BabyBearField>(true, UNIFIED_CIRCUIT_TRACE_LEN_LOG2, 1);
 
         assert!(artifact
             .global_output_map
@@ -731,7 +802,8 @@ mod test {
         skip_if_ci!();
         use ::field::baby_bear::base::BabyBearField;
 
-        let artifact = build_unified_artifact::<BabyBearField>(true);
+        let artifact =
+            build_unified_artifact::<BabyBearField>(true, UNIFIED_CIRCUIT_TRACE_LEN_LOG2, 1);
         serialize_to_file(
             &artifact,
             "compiled_circuits/unified_reduced_machine_layout_gkr.json",
@@ -744,7 +816,8 @@ mod test {
         skip_if_ci!();
         use ::field::baby_bear::base::BabyBearField;
 
-        let artifact = build_unified_artifact::<BabyBearField>(false);
+        let artifact =
+            build_unified_artifact::<BabyBearField>(false, UNIFIED_CIRCUIT_TRACE_LEN_LOG2, 1);
         serialize_to_file(
             &artifact,
             "compiled_circuits/unified_reduced_machine_layout_no_caches_gkr.json",
@@ -767,6 +840,35 @@ mod test {
         serialize_to_file(
             &ssa_forms,
             "compiled_circuits/unified_reduced_machine_ssa_gkr.json",
+        );
+    }
+
+    #[test]
+    fn compile_unified_reduced_machine_into_gkr_large_field() {
+        skip_if_ci!();
+        use ::field::proth120::Proth120;
+
+        let artifact =
+            build_unified_artifact::<Proth120>(true, LARGE_FIELD_UNIFIED_CIRCUIT_TRACE_LEN_LOG2, 1);
+        serialize_to_file(
+            &artifact,
+            "compiled_circuits/unified_reduced_machine_layout_gkr_proth120.json",
+        );
+    }
+
+    #[test]
+    fn compile_unified_reduced_machine_gkr_witness_graph_large_field() {
+        skip_if_ci!();
+        use crate::gkr_compiler::dump_ssa_witness_eval_form;
+        use ::field::proth120::Proth120;
+
+        let ssa_forms =
+            dump_ssa_witness_eval_form::<Proth120>(&|cs| unified_register_all_tables(cs), &|cs| {
+                unified_reduced_machine_circuit_with_preprocessed_bytecode_for_gkr(cs)
+            });
+        serialize_to_file(
+            &ssa_forms,
+            "compiled_circuits/unified_reduced_machine_ssa_gkr_proth120.json",
         );
     }
 }
