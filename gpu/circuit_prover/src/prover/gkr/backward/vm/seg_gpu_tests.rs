@@ -121,9 +121,8 @@ const SEG_K: [usize; 5] = [1, 2, 4, 16, 32];
 ///
 /// The continuation family now reaches the GEOMETRY cap, so this equals
 /// [`BWD_SEG_MAX_K`] and the axis has no launchability hole left above it: a
-/// 1024-thread block gets 65,536 registers, i.e. 64 per thread, and every
-/// continuation symbol of the flat-fold build allocates at most that (the peak is
-/// the `accbothsmem` rung at exactly 64; `segmented_vm.cu` still sets no
+/// 1024-thread block gets 65,536 registers, i.e. 64 per thread, and every symbol
+/// this pin MEASURES allocates at most 56 of them (`segmented_vm.cu` still sets no
 /// `__launch_bounds__` — spec §15: the natural register count is the measurement).
 ///
 /// It was 16 while the fold was the recursive pyramid and while the unrolled flat
@@ -132,6 +131,16 @@ const SEG_K: [usize; 5] = [1, 2, 4, 16, 32];
 /// kernel could not host and a launch at it failed with
 /// `ErrorLaunchOutOfResources`). The rolled flat fold brought the band to 50–64,
 /// which is what made the cap reachable.
+///
+/// **What this pin does NOT cover:** the AccPlacement rungs. [`seg_launchable_k`]
+/// probes [`bwd_seg_blocks_per_sm`], which takes no placement, so the
+/// `acc2smem`/`accbothsmem` symbols are outside its measured set — and
+/// `accbothsmem` is the rung at EXACTLY 64 registers, i.e. zero slack under the
+/// 1024-thread limit while the probed set has eight. One added register there takes
+/// `K = 32` away from that rung with this pin still green, surfacing only as a
+/// runtime `ErrorLaunchOutOfResources`. A guard would have to probe
+/// [`super::seg::bwd_seg_acc_blocks_per_sm`] (the placement-parameterized query
+/// this module never calls); nothing here does that today.
 ///
 /// `17..=31` is still never PROBED here, but nothing above the cap exists to find:
 /// `BWD_SEG_MAX_K` is `32 * k <= 1024`. A sweep over that range is a
@@ -956,18 +965,22 @@ fn seg_launchable_k(
         .collect()
 }
 
-/// How far up [`SEG_K`] each family can be launched, and why that is not always 32.
+/// How far up [`SEG_K`] each family can be launched — currently the geometry cap for
+/// both, which is a register fact and not a given.
 ///
 /// What this measures is the largest launchable member of the PROBED axis, per
-/// family — not the family's true ceiling, since `17..=31` is never tried. See
-/// [`PINNED_CONT_LARGEST_LAUNCHABLE_PROBED_K`].
+/// family. Both families now reach `BWD_SEG_MAX_K`, so the axis's `17..=31` hole no
+/// longer hides a higher ceiling; what it still hides is where between 16 and 32 the
+/// blocks/SM curve turns, which is a performance question. The measured set also
+/// excludes the AccPlacement rungs entirely — see
+/// [`PINNED_CONT_LARGEST_LAUNCHABLE_PROBED_K`] for what that leaves unguarded.
 ///
 /// Reported rather than silently applied: a `K` the ladder skips is a `K` nothing
 /// proves anything about, and the whole point of the axis is that segmentation is
 /// invisible to the value. The assertions pin the CURRENT value per family, so a
-/// kernel change that lowers it — or a `__launch_bounds__` that finally raises the
-/// continuation family to 32 — is a test failure that has to be read, not a quiet
-/// change in what the matrix covers.
+/// kernel change that lowers one — a fold that gets its registers back, or a
+/// `__launch_bounds__` that changes the allocation — is a test failure that has to be
+/// read, not a quiet change in what the matrix covers.
 #[test]
 #[cfg(not(no_cuda))]
 #[ignore = "GPU; build unlocked and run the executable under with_gpu_lock.sh"]
@@ -1030,21 +1043,24 @@ fn bwd_seg_k_ceiling_is_measured_not_assumed() {
     eprintln!("[seg-ladder] Ext/DevPtr-program launchable {progptr:?}");
     eprintln!(
         "[seg-ladder] largest LAUNCHABLE PROBED K over the axis {SEG_K:?}: R0 {r0_largest}, \
-         continuation {cont_largest}; BWD_SEG_MAX_K {BWD_SEG_MAX_K}. 17..=31 is NOT probed — \
-         Task 9's sweep must bisect it (start at 24) before concluding a ceiling."
+         continuation {cont_largest}; BWD_SEG_MAX_K {BWD_SEG_MAX_K}. Both families reach the \
+         geometry cap, so 17..=31 hides no higher ceiling — a sweep there is a blocks/SM \
+         question. The AccPlacement rungs are NOT in this probed set (no placement axis in \
+         bwd_seg_blocks_per_sm); accbothsmem sits at exactly 64 registers, unguarded here."
     );
 
     assert_eq!(
         r0_largest, BWD_SEG_MAX_K,
         "the R0 family reached the geometry cap before; a drop means its register count grew"
     );
-    // The CONTINUATION family reaches the geometry cap too, but for a different
-    // reason than R0: its executor carries the folds and the dual-product pair
-    // resolution, so it sits just under the 64 registers per thread a 1024-thread
-    // block allows rather than comfortably below. That is a property of
-    // `segmented_vm.cu`'s deliberate absence of `__launch_bounds__`, not of this
-    // ladder, and it is pinned here so the number is a measurement on the record
-    // rather than a launch failure someone rediscovers.
+    // The CONTINUATION family reaches the geometry cap too, but with less room than
+    // R0: its executor carries the folds and the dual-product pair resolution, so the
+    // symbols probed here allocate 50-56 of the 64 registers per thread a 1024-thread
+    // block allows, against R0's 40-44. That is a property of `segmented_vm.cu`'s
+    // deliberate absence of `__launch_bounds__`, not of this ladder, and it is pinned
+    // here so the number is a measurement on the record rather than a launch failure
+    // someone rediscovers. The AccPlacement rungs, which have less room still, are
+    // outside this probed set — see `PINNED_CONT_LARGEST_LAUNCHABLE_PROBED_K`.
     assert_eq!(
         cont_largest, PINNED_CONT_LARGEST_LAUNCHABLE_PROBED_K,
         "the largest LAUNCHABLE PROBED continuation K moved (probed axis {SEG_K:?}; 17..=31 is \
