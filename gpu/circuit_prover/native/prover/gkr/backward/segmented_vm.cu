@@ -123,8 +123,8 @@ DEVICE_FORCEINLINE e4 *seg_publish_column(const bwd_coeff_source_window &window,
 // ── Raw leaf sources ────────────────────────────────────────────────────────
 //
 // One value of a backing at ITS OWN depth and width. The three shapes differ only
-// in where the value comes from, so everything above them — the lift, the fold
-// pyramid, the projections — is written once.
+// in where the value comes from, so everything above them — the lift, the flat
+// fold, the projections — is written once.
 
 template <ld_modifier HINT> struct seg_raw_bf_column {
   const bf *column;
@@ -179,76 +179,57 @@ DEVICE_FORCEINLINE void seg_build_fold_weights(e4 *fold_weights, const u32 round
   fold_weights[slot] = w;
 }
 
-// ── The fold pyramid (section 3) ────────────────────────────────────────────
-
-// ONE level of the plain `fma(r, f1 - f0, f0)` recurrence, evaluated DEPTH-FIRST:
-// at most LEVEL E4 temporaries are live at any point, so a depth-3 pyramid costs
-// three of them and the prologue never sets the kernel's register peak.
+// ── The flat fold (spec 2026-07-28 §3, §5.1) ────────────────────────────────
 //
-// Level `L` of a `DELTA`-step pyramid weights with
-// `claim_point[backing_depth + L - 1]` — the challenge that lifted depth
-// `backing_depth + L - 1` to `backing_depth + L` — so `DELTA` is the OUTERMOST
-// level and the deepest index a pyramid touches is `target_depth - 1 == round - 1`.
+// A depth-DELTA fold is a dot product over its 2^DELTA physical leaves with
+// challenge-only weights; the Lagrange weights sum to ONE exactly, so it is
+// evaluated in DIFFERENCE form with the q = 0 coefficient identically 1:
 //
-// THE STRIDE RUNS OPPOSITE TO THE CHALLENGE INDEX: level `L` combines two values
-// `span << (DELTA - L)` apart. A fold halves the array it starts from, so the LAST
-// fold — the latest challenge, level `DELTA` — is the one whose two operands are
-// exactly the target-depth span (`2 * rows`, both endpoint halves) apart, and each
-// earlier fold works on an array twice as long. Pairing the latest challenge with
-// the WIDEST stride instead is the shape that folds correctly at delta 1 and
-// silently transposes the challenges at delta 2 and 3.
+//   fold(base) = leaf0 + sum_{q>=1} w_q * (raw(base + q*span) - leaf0)
 //
-// The pairing was originally derived against the cell-era executor, whose leaf form
-// was `(__brev(leaf) >> (32 - delta)) * span` with leaf bit `k` weighted by
-// `challenge[backing_depth + k]` (`coefficient_vm.cu`'s `fold_leaf_offset` plus
-// `ab_gkr_bwd_coeff_build_fold_factors_kernel`): the bit-reversal is exactly what
-// gives challenge `backing_depth + k` the multiplier `2^(delta - 1 - k)` that this
-// recursion reproduces. It is the split-halves layout, not an interleaving.
+// One accumulator, one common subtrahend, 2^DELTA - 1 mixed fmas, no interior
+// e4 x e4 nodes. Leaf `q` sits at `index + q * span`: the SPLIT-HALVES layout,
+// not an interleaving, with `span` the target-depth stride (`2 * rows`, both
+// endpoint halves). The weights live in `ab_gkr_bwd_seg_fold_weights` in
+// PHYSICAL-offset order — the bit reversal is baked into the prelude's store
+// permutation (`seg_build_fold_weights`), so this loop walks q monotonically and
+// has no ordering convention left to violate; the truth-table pin and the parity
+// ladder are the authority. At DELTA == 1 this is instruction-for-instruction the
+// affine `fma(r, f1 - f0, f0)` form, for e4 chain leaves too.
 //
-// HISTORICAL: those symbols were deleted in 0a2de89e with the cell-era lineage —
-// see git history if the derivation needs re-reading. The formula is restated
-// above, and its LIVE authority is the parity ladder against
-// `interpret_coeff_layer`, not the retired kernel.
-template <u32 LEVEL, u32 DELTA, typename Raw> DEVICE_FORCEINLINE e4 seg_fold_level(const Raw &raw, const u32 index, const u32 span, const u32 backing_depth) {
-  static_assert(LEVEL >= 1 && LEVEL <= DELTA, "fold level outside 1..DELTA");
-  static_assert(DELTA <= BWD_SEG_MAX_FOLD_DEPTH, "pyramid deeper than BWD_SEG_MAX_FOLD_DEPTH");
-  const e4 challenge = ::ab_gkr_main_layer_claim_point[backing_depth + LEVEL - 1];
-  const u32 stride = span << (DELTA - LEVEL);
-  if constexpr (LEVEL == 1) {
-    // The leaf level, and the only one whose operands are the backing's own
-    // width: for a base-field or synthesized leaf `e4::fma(e4, bf, bf)` is ONE
-    // fused `bf::fma` plus three `bf::mul`s (only limb 0 has an addend; see
-    // `gpu/core/native_headers/primitives/field.cuh`) and no widening multiply,
-    // which is why the lift happens HERE and not before the subtraction.
-    const auto f0 = raw(index);
-    const auto f1 = raw(index + stride);
-    return e4::fma(challenge, decltype(f0)::sub(f1, f0), f0);
-  } else {
-    const e4 f0 = seg_fold_level<LEVEL - 1, DELTA>(raw, index, span, backing_depth);
-    const e4 f1 = seg_fold_level<LEVEL - 1, DELTA>(raw, index + stride, span, backing_depth);
-    return e4::fma(challenge, e4::sub(f1, f0), f0);
+// HISTORICAL: the recursive pyramid this replaced (and its stride/challenge
+// pairing derivation) is in git history under `seg_fold_level`.
+template <u32 DELTA, typename Raw> DEVICE_FORCEINLINE e4 seg_fold_flat(const Raw &raw, const u32 index, const u32 span) {
+  static_assert(DELTA >= 1 && DELTA <= BWD_SEG_MAX_FOLD_DEPTH, "fold outside 1..BWD_SEG_MAX_FOLD_DEPTH");
+  constexpr u32 BASE = DELTA == 1 ? BWD_SEG_FOLD_WEIGHT_BASE_D1 : DELTA == 2 ? BWD_SEG_FOLD_WEIGHT_BASE_D2 : BWD_SEG_FOLD_WEIGHT_BASE_D3;
+  const auto leaf0 = raw(index);
+  e4 acc = seg_lift(leaf0);
+#pragma unroll
+  for (u32 q = 1; q < (1u << DELTA); q++) {
+    const e4 w = ::ab_gkr_bwd_seg_fold_weights[BASE + q - 1];
+    acc = e4::fma(w, decltype(leaf0)::sub(raw(index + q * span), leaf0), acc);
   }
+  return acc;
 }
 
 // One target-depth value out of a backing `delta` folds behind it.
 //
-// `MAX_DEPTH` is the deepest pyramid this call site can need — 3 in the prologue,
+// `MAX_DEPTH` is the deepest fold this call site can need — 3 in the prologue,
 // `BWD_SEG_MAX_INLINE_FOLD_DEPTH` in the eval loop (the assignment matrix
 // publishes at depth 3 instead of inlining it), 0 at R0 (depth 0 everywhere) — so
-// no site compiles a pyramid it cannot execute.
-template <u32 MAX_DEPTH, typename Raw>
-DEVICE_FORCEINLINE e4 seg_fold(const Raw &raw, const u32 index, const u32 span, const u32 delta, const u32 backing_depth) {
+// no site compiles a fold it cannot execute.
+template <u32 MAX_DEPTH, typename Raw> DEVICE_FORCEINLINE e4 seg_fold(const Raw &raw, const u32 index, const u32 span, const u32 delta) {
   if constexpr (MAX_DEPTH >= 3) {
     if (delta == 3)
-      return seg_fold_level<3, 3>(raw, index, span, backing_depth);
+      return seg_fold_flat<3>(raw, index, span);
   }
   if constexpr (MAX_DEPTH >= 2) {
     if (delta == 2)
-      return seg_fold_level<2, 2>(raw, index, span, backing_depth);
+      return seg_fold_flat<2>(raw, index, span);
   }
   if constexpr (MAX_DEPTH >= 1) {
     if (delta == 1)
-      return seg_fold_level<1, 1>(raw, index, span, backing_depth);
+      return seg_fold_flat<1>(raw, index, span);
   }
   // `delta == 0`: the backing IS at target depth. A delta past `MAX_DEPTH` cannot
   // arrive — `lower_bwd_seg` rejects one (`UnsupportedFoldDelta`, `InvalidDepths`)
@@ -264,8 +245,7 @@ template <u32 MAX_DEPTH, typename Raw> struct seg_folded_value {
   Raw raw;
   u32 span;
   u32 delta;
-  u32 backing_depth;
-  DEVICE_FORCEINLINE e4 operator()(const u32 index) const { return seg_fold<MAX_DEPTH>(raw, index, span, delta, backing_depth); }
+  DEVICE_FORCEINLINE e4 operator()(const u32 index) const { return seg_fold<MAX_DEPTH>(raw, index, span, delta); }
 };
 
 // ── Projections (section 4) ─────────────────────────────────────────────────
@@ -334,10 +314,10 @@ template <seg_projection P, typename Desc> DEVICE_FORCEINLINE seg_value<bf> seg_
 //                     prologue materialized this window and from the read backing
 //                     otherwise. There is never a fold here: `assign_class`
 //                     publishes every E4Direct window whose delta is nonzero.
-//   BfInlineD1/D2     a depth-1 or depth-2 pyramid straight from raw base field,
+//   BfInlineD1/D2     a depth-1 or depth-2 flat fold straight from raw base field,
 //                     in registers, `ld.ca` because those raws are re-read across
 //                     terms.
-//   ProceduralInline  the same pyramid over row synthesis; no DRAM read at all.
+//   ProceduralInline  the same fold over row synthesis; no DRAM read at all.
 //   BfDirect          depth zero, so the lift. Reachable only at R0 (see
 //                     `seg_resolve_bf`), where `MAX_DEPTH` is zero anyway.
 template <seg_projection P, u32 MAX_DEPTH, typename Desc>
@@ -349,14 +329,13 @@ DEVICE_FORCEINLINE seg_value<e4> seg_resolve_e4(const Desc &desc, const u16 slot
     return seg_project<P>(seg_raw_e4_column<ld_modifier::ca>{column}, row, rows);
   }
   const u32 span = rows << 1;
-  const u32 backing_depth = window.backing_depth;
-  const u32 delta = u32{window.target_depth} - backing_depth;
+  const u32 delta = u32{window.target_depth} - u32{window.backing_depth};
   if (record.source_class == BWD_SEG_SOURCE_CLASS_PROCEDURAL_INLINE) {
     const seg_raw_synthesized raw{bwd_coeff_procedural_source_kind(window.procedural_kind)};
-    return seg_project<P>(seg_folded_value<MAX_DEPTH, seg_raw_synthesized>{raw, span, delta, backing_depth}, row, rows);
+    return seg_project<P>(seg_folded_value<MAX_DEPTH, seg_raw_synthesized>{raw, span, delta}, row, rows);
   }
   const seg_raw_bf_column<ld_modifier::ca> raw{seg_read_bf_column(window, record.column)};
-  return seg_project<P>(seg_folded_value<MAX_DEPTH, seg_raw_bf_column<ld_modifier::ca>>{raw, span, delta, backing_depth}, row, rows);
+  return seg_project<P>(seg_folded_value<MAX_DEPTH, seg_raw_bf_column<ld_modifier::ca>>{raw, span, delta}, row, rows);
 }
 
 // ── The JAOT fold prologue (section 3) ──────────────────────────────────────
@@ -370,31 +349,30 @@ DEVICE_FORCEINLINE seg_value<e4> seg_resolve_e4(const Desc &desc, const u16 slot
 // the origin is what says whether the leaves are raw base field, a previous
 // round's E4 materialization, or row synthesis.
 //
-// Depth work per origin, all through the same depth-first pyramid: an E4 chain
-// step is `2xE4 -> E4` at delta 1, a base-field or procedural window at the
-// publication depth is an `8xBF -> E4` depth-3 pyramid, and a base-field window
-// under `D2Policy::Materialize` is the depth-2 `4xBF -> E4` case.
+// Depth work per origin, all through the same flat fold: an E4 chain step is
+// `2xE4 -> E4` at delta 1, a base-field or procedural window at the publication
+// depth is an `8xBF -> E4` depth-3 fold, and a base-field window under
+// `D2Policy::Materialize` is the depth-2 `4xBF -> E4` case.
 template <typename Desc> DEVICE_FORCEINLINE void seg_fold_and_publish(const Desc &desc, const u16 slot, const u32 row, const u32 rows, const bool active) {
   const bwd_seg_source_record record = desc.source[slot];
   const bwd_coeff_source_window &window = desc.window[record.window];
   const u32 span = rows << 1;
-  const u32 backing_depth = window.backing_depth;
-  const u32 delta = u32{window.target_depth} - backing_depth;
+  const u32 delta = u32{window.target_depth} - u32{window.backing_depth};
 
   e4 s0;
   e4 s1;
   if (window.origin == BWD_COEFF_ORIGIN_READ_EXT) {
     const seg_raw_e4_column<ld_modifier::cs> raw{seg_read_e4_column(window, record.column)};
-    s0 = seg_fold<BWD_SEG_MAX_FOLD_DEPTH>(raw, row, span, delta, backing_depth);
-    s1 = seg_fold<BWD_SEG_MAX_FOLD_DEPTH>(raw, rows + row, span, delta, backing_depth);
+    s0 = seg_fold<BWD_SEG_MAX_FOLD_DEPTH>(raw, row, span, delta);
+    s1 = seg_fold<BWD_SEG_MAX_FOLD_DEPTH>(raw, rows + row, span, delta);
   } else if (window.origin == BWD_COEFF_ORIGIN_PROCEDURAL) {
     const seg_raw_synthesized raw{bwd_coeff_procedural_source_kind(window.procedural_kind)};
-    s0 = seg_fold<BWD_SEG_MAX_FOLD_DEPTH>(raw, row, span, delta, backing_depth);
-    s1 = seg_fold<BWD_SEG_MAX_FOLD_DEPTH>(raw, rows + row, span, delta, backing_depth);
+    s0 = seg_fold<BWD_SEG_MAX_FOLD_DEPTH>(raw, row, span, delta);
+    s1 = seg_fold<BWD_SEG_MAX_FOLD_DEPTH>(raw, rows + row, span, delta);
   } else {
     const seg_raw_bf_column<ld_modifier::cs> raw{seg_read_bf_column(window, record.column)};
-    s0 = seg_fold<BWD_SEG_MAX_FOLD_DEPTH>(raw, row, span, delta, backing_depth);
-    s1 = seg_fold<BWD_SEG_MAX_FOLD_DEPTH>(raw, rows + row, span, delta, backing_depth);
+    s0 = seg_fold<BWD_SEG_MAX_FOLD_DEPTH>(raw, row, span, delta);
+    s1 = seg_fold<BWD_SEG_MAX_FOLD_DEPTH>(raw, rows + row, span, delta);
   }
 
   // Only a live row publishes. A dead lane of the last tile folded a CLAMPED row

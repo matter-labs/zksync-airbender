@@ -2694,9 +2694,10 @@ pub(crate) fn expected_fold_weights(
     slots
 }
 
-/// The LIVE pyramid's exact recursion (segmented_vm.cu's seg_fold_level as of
-/// the pre-flat lineage), over a physical leaf array with span 1: level L
-/// weights with challenges[L-1], stride 1 << (delta - L).
+/// The retired pyramid's exact recursion (segmented_vm.cu's seg_fold_level,
+/// pre-flat lineage), kept as the INDEPENDENT oracle for the weight tables: the
+/// flat kernel is pinned against it through them. Over a physical leaf array
+/// with span 1: level L weights with challenges[L-1], stride 1 << (delta - L).
 fn fold_level_reference(
     leaves: &[E4],
     challenges: &[E4],

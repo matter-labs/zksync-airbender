@@ -625,9 +625,10 @@ EXTERN __device__ __constant__ e4 ab_gkr_bwd_seg_coeff_bank[airbender::prover::g
 // The ONE authority on fold challenges, which is why this lineage's descriptor
 // carries no challenge pointer: the incumbent main-layer claim point, DEFINED by
 // `round1_flat_warp_split.cu` and declared identically by `continuation.cuh`. The
-// fold prologue reads index `backing_depth + level - 1` — front-indexed, so a
+// fold-weight prelude reads index `round - delta + j` — front-indexed, so a
 // delta-step catch-up at round `r` reads `[r - delta, r)`, which is the span host
-// lowering bounds with `claim_point.len() >= round`.
+// lowering bounds with `claim_point.len() >= round`. No executor kernel reads it:
+// the weights the folds consume are the prelude's product of these challenges.
 EXTERN __device__ __constant__ e4 ab_gkr_main_layer_claim_point[airbender::prover::gkr::GKR_MAIN_LAYER_CLAIM_POINT_LEN];
 
 // The flat fold's weight table: one entry per (delta, q >= 1) pair, in the
