@@ -441,15 +441,20 @@ impl SegHostWindow {
 
     /// The target-depth `(endpoint0, endpoint1)` pair of `column` at `row`.
     ///
-    /// The pyramid `segmented_vm.cu`'s `seg_fold_level` evaluates, written as its
-    /// leaf sum: level `L` of a `delta`-step pyramid weights with
+    /// The challenge/stride pairing convention, derived here from scratch as a
+    /// pyramid's leaf sum: level `L` of a `delta`-step pyramid weights with
     /// `claim_point[backing_depth + L - 1]` and combines two values
     /// `span << (delta - L)` apart, so leaf bit `k` (level `k + 1`) carries
     /// challenge `backing_depth + k` and offset `span << (delta - 1 - k)` — which
     /// is the bit-reversal below. THE STRIDE RUNS OPPOSITE TO THE CHALLENGE INDEX:
     /// pairing the latest challenge with the widest stride folds correctly at
-    /// delta 1 and silently transposes the challenges at delta 2 and 3, so this is
-    /// the one place the ladder must not paraphrase the kernel.
+    /// delta 1 and silently transposes the challenges at delta 2 and 3. The kernel
+    /// recurses over no pyramid of its own: it consumes the precomputed weights the
+    /// per-round prelude (`seg_build_fold_weights` in `segmented_vm.cu`) stores in
+    /// PHYSICAL-offset order, with this bit reversal baked into that store
+    /// permutation (the retired pyramid is in git history). So THIS derivation is
+    /// the INDEPENDENT check of the convention the prelude bakes in, and is the one
+    /// place the ladder must not paraphrase the kernel.
     ///
     /// A publishing window resolves through the SAME expression: the prologue
     /// computes this fold and stores it, and eval reads the store back, so there is

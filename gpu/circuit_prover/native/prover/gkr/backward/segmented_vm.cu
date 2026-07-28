@@ -209,8 +209,15 @@ template <u32 DELTA, typename Raw> DEVICE_FORCEINLINE e4 seg_fold_flat(const Raw
   // registers — above the 64 per thread a 1024-thread block gets, which makes
   // `K = 32` unlaunchable. One leaf per trip holds the band to 50-64, so the
   // continuation family reaches the `K` geometry cap
-  // (`bwd_seg_k_ceiling_is_measured_not_assumed` pins that measurement). The trip
+  // (`bwd_seg_k_ceiling_is_measured_not_assumed` pins that reach over the executor
+  // symbols it probes; the band's 64-end is arithmetic rather than a launch that pin
+  // confirms, since the AccPlacement rungs sit outside its probed set). The trip
   // count is 1, 3 or 7, and the weight stays a uniform constant-bank broadcast.
+  // The roll is not free on the clock: at DELTA == 3 with `K = 24` — one block per
+  // SM, so the 7-trip chain has no co-resident work to hide its latency behind — it
+  // costs 13-66%, which buys `K = 32` plus the `K = 16` two-block occupancy step and
+  // so does not justify restoring the blanket unroll; a per-depth loop form (rolled
+  // at DELTA <= 2, unrolled at 3) is an open follow-up.
 #pragma unroll 1
   for (u32 q = 1; q < (1u << DELTA); q++) {
     const e4 w = ::ab_gkr_bwd_seg_fold_weights[BASE + q - 1];

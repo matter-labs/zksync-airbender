@@ -25,7 +25,13 @@
 //!      [`bwd_seg_claim_point_device_ptr`], the ONE authority on fold challenges;
 //!   3. in [`ProgramMode::DevPtr`], the reordered stream
 //!      ([`BwdSegSetup::program_words`]) → a device buffer whose pointer the
-//!      caller patches into the descriptor.
+//!      caller patches into the descriptor;
+//!   4. in a CONTINUATION round (round ≥ 1), that round's fold weights →
+//!      [`launch_bwd_seg_build_fold_weights`], enqueued AFTER the claim point and
+//!      BEFORE the round's segment launches; R0 folds nothing and must NOT call
+//!      it. Skipping it is UNDETECTABLE at runtime: a stale or zeroed bank makes
+//!      every fold collapse to its `leaf0`, and a release kernel carries no error
+//!      channel, no assert, and no validation to say so.
 //!
 //! Every EXECUTOR launch here stages nothing, allocates nothing, and reads no
 //! device memory, so it adds no obligations to the GPU scheduling contract beyond
@@ -42,7 +48,7 @@
 //! design §4.2) — the scheduling contract governs stream ordering, not
 //! orchestration concurrency.
 
-// TASK 8's parity ladder and TASK 9's report are the first callers.
+// The `seg_gpu_tests` parity ladder and the `seg_report` bench harness are the callers.
 #![allow(dead_code)]
 
 use std::mem::size_of;
