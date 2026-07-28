@@ -72,7 +72,8 @@ use gkr_eval_isa::bwd::coeff::model::{CoeffLayer, CoefficientRecipeId};
 
 use super::seg::{
     bwd_seg_blocks_per_sm, bwd_seg_claim_point_device_ptr, bwd_seg_coeff_bank_device_ptr,
-    bwd_seg_epilogue_smem_bytes, launch_bwd_seg, BwdSegEpilogue,
+    bwd_seg_epilogue_smem_bytes, bwd_seg_fold_weights_device_ptr, launch_bwd_seg,
+    launch_bwd_seg_build_fold_weights, BwdSegEpilogue,
 };
 use super::seg_compile::{
     chained_round_storage, download_e4, lean_coordinate, seg_chained_model, seg_claim_point,
@@ -82,12 +83,13 @@ use super::seg_compile::{
 };
 use super::seg_desc::{
     BwdSegDesc, BWD_COEFF_ORIGIN_PROCEDURAL, BWD_COEFF_ORIGIN_READ_BASE, BWD_COEFF_ORIGIN_READ_EXT,
-    BWD_COEFF_PROCEDURAL_NONE, BWD_SEG_CONST_BANK, BWD_SEG_MAX_K,
+    BWD_COEFF_PROCEDURAL_NONE, BWD_SEG_CONST_BANK, BWD_SEG_FOLD_WEIGHT_SLOTS, BWD_SEG_MAX_K,
 };
 use super::seg_lower::{
     e4_limbs, lower_bwd_seg, BwdSegLaunchDesc, BwdSegSetup, CoeffMode, D2Policy, ProgramMode,
     SourceClass,
 };
+use super::seg_lower_tests::expected_fold_weights;
 use crate::allocator::tracker::AllocationPlacement;
 use crate::ops::blake2s::STATE_SIZE;
 use crate::ops::gkr_ops::backward_sumcheck_round_update;
@@ -676,6 +678,12 @@ impl SegFixture {
         self.assert_write_parity_is_poison(context);
 
         stage_claim_point(&setup.claim_point, context);
+        // The prelude is continuation-only — round 0 has no challenges to fold — and
+        // it must be enqueued AFTER the claim point it reads, on the same stream.
+        if self.model.round >= 1 {
+            launch_bwd_seg_build_fold_weights(u32::from(self.model.round), context)
+                .expect("fold-weight prelude");
+        }
 
         // Everything a launch needs beyond the by-value descriptor is the CALLER's
         // to stage, on the same stream, before the launch.
@@ -1757,4 +1765,69 @@ fn bwd_seg_d3_to_d4_chain_ping_pongs() {
         d3.assert_shape(SegShape::inline(k, CoeffMode::Constant), &eq, &context);
         d4.assert_shape(SegShape::inline(k, CoeffMode::Constant), &eq, &context);
     }
+}
+
+// ── The fold-weight bank ─────────────────────────────────────────────────────
+
+/// The device truth tables against the host algebra, slot for slot.
+///
+/// The prelude kernel is the ONE producer of `ab_gkr_bwd_seg_fold_weights`, and the
+/// flat fold reads that bank instead of walking the pyramid — so every fold value
+/// the segmented VM will produce is downstream of these eleven slots. The host side
+/// [`expected_fold_weights`] is pinned to the live pyramid's own recursion by
+/// `seg_lower_tests`, which makes this the link that carries that proof onto the
+/// device: nothing else compares the kernel's `q`-bit-to-challenge pairing, its
+/// per-delta bases, or its `delta > round` zeroing against anything.
+#[test]
+#[cfg(not(no_cuda))]
+#[ignore = "GPU; build unlocked and run the executable under with_gpu_lock.sh"]
+#[serial_test::serial]
+fn bwd_seg_fold_weight_bank_matches_the_truth_tables() {
+    let context = make_seg_context();
+    // The claim point is process-wide shared state; restore it like every other
+    // test in this file that stages it.
+    let _claim = StagedClaimPoint;
+    // SAFETY: the pointer is the address of `ab_gkr_bwd_seg_fold_weights`, whose
+    // declared extent is exactly BWD_SEG_FOLD_WEIGHT_SLOTS (mirrors the
+    // CLAIM_POINT_SLOTS slab idiom above). One borrow per call site, each passed
+    // straight into a single `memory_copy*` and dropped.
+    let bank = || unsafe {
+        DeviceSlice::from_raw_parts_mut(
+            bwd_seg_fold_weights_device_ptr(),
+            BWD_SEG_FOLD_WEIGHT_SLOTS,
+        )
+    };
+    // 4 is the deepest legal case: CLAIM_POINT_SLOTS = 4 and `stage_claim_point`
+    // asserts len <= slots, so round 5 would panic before the prelude ever ran.
+    // Round 4 still exercises delta < round.
+    for round in [1u8, 2, 3, 4] {
+        // Re-poison EVERY case: a stale bank from the previous case must not be able
+        // to satisfy this one. The sentinel is the suite's established poison value,
+        // which is also what makes the `delta > round` zero-check non-vacuous — an
+        // unwritten slot reads poison, not the zero the host expects.
+        memory_copy(bank(), &[seg_publish_poison(0); BWD_SEG_FOLD_WEIGHT_SLOTS])
+            .expect("weight bank poison");
+        let claim_point = seg_claim_point(round);
+        stage_claim_point(&claim_point, &context);
+        launch_bwd_seg_build_fold_weights(u32::from(round), &context).expect("prelude launch");
+        // `download_e4` takes a `DeviceAllocation`; the symbol slab is not one, so
+        // this is its body applied to the slab directly.
+        let mut readback = vec![E4::ZERO; BWD_SEG_FOLD_WEIGHT_SLOTS];
+        memory_copy_async(&mut readback[..], bank(), context.get_exec_stream())
+            .expect("weight bank D2H");
+        context
+            .get_exec_stream()
+            .synchronize()
+            .expect("weight bank sync");
+        let expected = expected_fold_weights(u32::from(round), &claim_point);
+        for slot in 0..BWD_SEG_FOLD_WEIGHT_SLOTS {
+            assert_e4(
+                &format!("weight slot {slot} mismatch at round {round}"),
+                readback[slot],
+                expected[slot],
+            );
+        }
+    }
+    // Leave the bank zeroed, mirroring the claim-point restore discipline.
+    memory_copy(bank(), &[E4::ZERO; BWD_SEG_FOLD_WEIGHT_SLOTS]).expect("weight bank restore");
 }

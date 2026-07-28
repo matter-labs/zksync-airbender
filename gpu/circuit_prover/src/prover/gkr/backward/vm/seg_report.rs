@@ -72,7 +72,8 @@ use era_cudart_sys::{cudaFuncGetAttributes, CudaFuncAttributes};
 use super::seg::{
     bwd_seg_acc_blocks_per_sm, bwd_seg_acc_dynamic_smem_bytes, bwd_seg_acc_entry_point,
     bwd_seg_blocks_per_sm, bwd_seg_entry_point, bwd_seg_epilogue_smem_bytes, launch_bwd_seg,
-    launch_bwd_seg_acc, BwdSegAccPlacement, BwdSegEpilogue, BWD_SEG_ACC_RUNG_EPILOGUE,
+    launch_bwd_seg_acc, launch_bwd_seg_build_fold_weights, BwdSegAccPlacement, BwdSegEpilogue,
+    BWD_SEG_ACC_RUNG_EPILOGUE,
 };
 use super::seg_desc::BWD_SEG_MAX_K;
 use super::seg_lower::{
@@ -1490,6 +1491,13 @@ impl SegCell {
         context: &ProverContext,
     ) -> SegLaunchable {
         stage_claim_point(&setup.claim_point, context);
+        // The prelude is continuation-only — round 0 has no challenges to fold — and
+        // it must be enqueued AFTER the claim point it reads, on the same stream.
+        // Staging, so outside every timed region by construction.
+        if self.model.round >= 1 {
+            launch_bwd_seg_build_fold_weights(u32::from(self.model.round), context)
+                .expect("fold-weight prelude");
+        }
         let coefficients = match shape.coeff {
             CoeffMode::Constant => {
                 stage_seg_bank(&setup.coefficients, context);
