@@ -27,7 +27,7 @@
 //!      ([`BwdSegSetup::program_words`]) → a device buffer whose pointer the
 //!      caller patches into the descriptor.
 //!
-//! This module launches; it stages nothing, allocates nothing, and reads no
+//! Every EXECUTOR launch here stages nothing, allocates nothing, and reads no
 //! device memory, so it adds no obligations to the GPU scheduling contract beyond
 //! "everything above is enqueued on `exec_stream` before the launch".
 //!
