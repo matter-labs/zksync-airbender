@@ -59,6 +59,13 @@ mod seg_gpu_tests;
 /// Host lowering for the segmented lean VM: per-round source classes, the
 /// publish-scratch plan, and the validated by-value descriptor.
 pub(crate) mod seg_lower;
+/// The segmented lean VM's spike harness: interleaved paired timing against the
+/// incumbent compact evaluator, the Stage-A `(epilogue, K)` matrix and the
+/// launch-attribute probe. `bench`-gated and `#[ignore]`d, like [`report`] — and
+/// self-contained rather than built on it, because [`report`] retires with the
+/// cell executor.
+#[cfg(all(test, feature = "bench"))]
+mod seg_report;
 
 #[cfg(test)]
 mod abi_tests;

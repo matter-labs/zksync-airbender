@@ -527,6 +527,31 @@ pub(crate) fn bwd_seg_acc_entry_point(
     GkrBwdSegInlineFunction(seg_acc_symbol(regime, placement)).as_ptr()
 }
 
+/// The device entry point of the exact `(regime, program source, coefficient
+/// loader, epilogue)` executor — what `cudaFuncGetAttributes` and a profiler
+/// filter need, and nothing that can launch.
+///
+/// It exists because the macro-generated `…Function` wrappers hold their
+/// signature in a PRIVATE tuple field: a caller in another module cannot
+/// construct one, so without this it would have to restate the fifteen-way symbol
+/// match — a second statement of the instantiation matrix, which is exactly what
+/// [`seg_family_is_instantiated`] exists to prevent. Same guard as the launch and
+/// occupancy paths, by construction.
+pub(crate) fn bwd_seg_entry_point(
+    regime: BwdRegime,
+    program: ProgramMode,
+    coeff: CoeffMode,
+    epilogue: BwdSegEpilogue,
+) -> *const std::ffi::c_void {
+    assert_seg_family_is_instantiated(regime, program, coeff);
+    match program {
+        ProgramMode::Inline => {
+            GkrBwdSegInlineFunction(seg_inline_symbol(regime, coeff, epilogue)).as_ptr()
+        }
+        ProgramMode::DevPtr => GkrBwdSegProgPtrFunction(seg_progptr_symbol(epilogue)).as_ptr(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -615,4 +640,16 @@ mod tests {
         );
     }
 
+    /// The attribute path shares the occupancy path's guard, so it cannot answer
+    /// about a kernel that was never instantiated either.
+    #[test]
+    #[should_panic(expected = "device-program family")]
+    fn seg_entry_point_rejects_an_r0_device_program_query() {
+        let _ = bwd_seg_entry_point(
+            BwdRegime::R0,
+            ProgramMode::DevPtr,
+            CoeffMode::Constant,
+            BwdSegEpilogue::Staged,
+        );
+    }
 }
