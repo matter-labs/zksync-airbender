@@ -28,8 +28,8 @@ use gkr_eval_isa::bwd::coeff::stats::WindowFamily;
 use gkr_eval_isa::bwd::coeff::ArtifactRegime;
 
 use super::seg_desc::{
-    BwdSegDesc, BWD_COEFF_ORIGIN_PROCEDURAL, BWD_COEFF_ORIGIN_READ_BASE,
-    BWD_COEFF_ORIGIN_READ_EXT, BWD_COEFF_PROCEDURAL_NONE, BWD_SEG_CONST_BANK, BWD_SEG_MAX_K,
+    BwdSegDesc, BWD_COEFF_ORIGIN_PROCEDURAL, BWD_COEFF_ORIGIN_READ_BASE, BWD_COEFF_ORIGIN_READ_EXT,
+    BWD_COEFF_PROCEDURAL_NONE, BWD_SEG_CONST_BANK, BWD_SEG_MAX_K,
 };
 use super::seg_lower::{
     assign_class, chain_read_column, check_regions_disjoint, e4_limbs, lower_bwd_seg,

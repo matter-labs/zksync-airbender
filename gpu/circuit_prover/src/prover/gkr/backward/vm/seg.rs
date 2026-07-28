@@ -1,8 +1,8 @@
 //! Launchers for the SEGMENTED lean VM (segmented-lean-VM design §3, §5, §6).
 //!
 //! The CUDA half is `native/prover/gkr/backward/segmented_vm.{cuh,cu}`. The
-//! launch geometry is §3's and it is the whole reason this module exists as a
-//! separate lineage from the cell-era [`launch_bwd_coeff`](super::launch_bwd_coeff):
+//! launch geometry is §3's, and it is the whole reason this module was built as a
+//! separate lineage rather than a variant of the retired cell-era launcher:
 //!
 //!   * a block is `k` warps by 32 lanes, a LANE is a row of the block's 32-row
 //!     tile, and the grid covers `logical_rows / 32` tiles — so `block_dim` is a

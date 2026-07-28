@@ -93,9 +93,9 @@ struct seg_program_devptr {
 // ── Window addressing ───────────────────────────────────────────────────────
 //
 // A bound coordinate resolves to `base + column * stride_bytes`; `*_base` already
-// points at the window's first column. Spelled here rather than shared with the
-// cell-era executor because that executor's helpers live in its `.cu`; the two
-// lineages share the window STRUCT, which is what the ABI pins.
+// points at the window's first column. `bwd_coeff_source_window` keeps its name
+// from the retired cell-era lineage it was rehomed out of; there is one backward
+// executor now, and these helpers are its only window addressing.
 
 DEVICE_FORCEINLINE const bf *seg_read_bf_column(const bwd_coeff_source_window &window, const u32 column) {
   return reinterpret_cast<const bf *>(window.read_base + static_cast<size_t>(column) * window.read_stride_bytes);

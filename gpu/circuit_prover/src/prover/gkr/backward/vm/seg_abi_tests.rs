@@ -1,22 +1,32 @@
 //! The Rust-side ABI gate for the SEGMENTED lean VM's launch descriptors.
 //!
-//! This is the sibling of [`abi_tests`](super::abi_tests) for the new lineage,
-//! and it deliberately covers only what exists at Task 5: the two descriptors and
-//! their capacities. The CUDA half —
-//! `native/prover/gkr/backward/segmented_vm.cuh` — landed in Task 7 and
-//! `static_assert`s every field offset and both descriptor sizes against the
-//! literals below, so a CUDA-side STRUCT edit is a build failure.
+//! Since the cell-era lineage was retired this is the WHOLE Rust-side ABI gate for
+//! backward evaluation: the two descriptors, the source record, the source window,
+//! and every capacity and constant either side mirrors. The CUDA half —
+//! `native/prover/gkr/backward/segmented_vm.cuh` — `static_assert`s every field
+//! offset and both descriptor sizes against the literals below, so a CUDA-side
+//! STRUCT edit is a build failure.
 //!
 //! The header-text matchers that catch a CUDA-only CONSTANT edit (the failure
 //! direction neither compiler sees) are
 //! [`seg_cuda_constants_match_the_rust_mirror`] and
-//! [`seg_cuda_layout_asserts_match_the_rust_layout`]. Most of the header's
+//! [`seg_cuda_layout_asserts_match_the_rust_layout`]. Many of the header's
 //! constants are layout-bearing and are therefore already pinned by its own
-//! `static_assert`s; the two that are NOT are [`BWD_SEG_CONST_BANK`], which sizes a
-//! `__constant__` symbol nothing on this side can see (a CUDA-side shrink would let
-//! the host's bank upload write past the symbol with no build error anywhere), and
-//! the five SOURCE-CLASS numbers, which the header pins only against its own
-//! restatements — their authority is Rust's [`SourceClass`] enum.
+//! `static_assert`s; these are the ones that are NOT, and each is a silent wrong
+//! answer rather than a build error:
+//!
+//!   * [`BWD_SEG_CONST_BANK`] sizes a `__constant__` symbol nothing on this side
+//!     can see — a CUDA-side shrink would let the host's bank upload write past the
+//!     symbol with no build error anywhere;
+//!   * the five SOURCE-CLASS numbers, which the header pins only against its own
+//!     restatements — their authority is Rust's [`SourceClass`] enum; and
+//!   * the `BWD_COEFF_*` block REHOMED into `segmented_vm.cuh` when the cell-era
+//!     header was deleted — the window ORIGIN values, the procedural kinds and the
+//!     absent marker, the publication threshold, the lean header's bit widths, and
+//!     the frozen opcode numbering. Their previous matcher died with
+//!     `abi_tests.rs`; the window's field OFFSETS came back the same way, because
+//!     the header's own asserts on them are CUDA-vs-CUDA and a consistent
+//!     same-width field swap satisfies all of them.
 //!
 //! Either way the checks here pin EXACT numbers rather than bounds: an offset or a
 //! size that moves is a silent Rust↔CUDA divergence.
@@ -34,17 +44,23 @@ use gkr_eval_isa::bwd::coeff::lean::{
     LEAN_CONT_OPCODES, LEAN_R0_OPCODES, LEAN_WORDS_PER_TERM, SOURCE_NONE,
 };
 use gkr_eval_isa::bwd::coeff::limits::{
-    in_scope, TermCategory, DESCRIPTOR_ALIGNMENT_BYTES, KERNEL_ARGUMENT_CEILING_BYTES,
-    LEAN_DESCRIPTOR_PROGRAM_BYTES, LEAN_DESCRIPTOR_PROGRAM_WORDS, LEAN_MAX_REALIZED_PROGRAM_WORDS,
-    MAX_COEFFICIENT_ENCODINGS, PUBLISH_TARGET_DEPTH,
+    continuation_opcode, in_scope, r0_opcode, TermCategory, CONTINUATION_LIVE_OPCODES,
+    DESCRIPTOR_ALIGNMENT_BYTES, HEADER_COEFFICIENT_BITS, HEADER_OPCODE_BITS,
+    KERNEL_ARGUMENT_CEILING_BYTES, LEAN_DESCRIPTOR_PROGRAM_BYTES, LEAN_DESCRIPTOR_PROGRAM_WORDS,
+    LEAN_MAX_REALIZED_PROGRAM_WORDS, MAX_COEFFICIENT_ENCODINGS, PUBLISH_TARGET_DEPTH,
+    R0_LIVE_OPCODES,
 };
 use gkr_eval_isa::bwd::coeff::model::CoefficientRecipeId;
 
 use super::seg_desc::{
     BwdCoeffSourceWindow, BwdSegDesc, BwdSegProgPtrDesc, BwdSegSourceRecord,
-    BWD_COEFF_PROCEDURAL_NONE, BWD_COEFF_PUBLISH_TARGET_DEPTH, BWD_SEG_CONST_BANK,
-    BWD_SEG_DESC_ALIGN, BWD_SEG_DESC_CAP, BWD_SEG_INLINE_KERNEL_ARGUMENT_BYTES, BWD_SEG_MAX_K,
-    BWD_SEG_MAX_SOURCES, BWD_SEG_MAX_THREADS_PER_BLOCK, BWD_SEG_PROGPTR_KERNEL_ARGUMENT_BYTES,
+    BWD_COEFF_MAX_FOLD_DEPTH, BWD_COEFF_ORIGIN_PROCEDURAL, BWD_COEFF_ORIGIN_READ_BASE,
+    BWD_COEFF_ORIGIN_READ_EXT, BWD_COEFF_PROCEDURAL_INITS_AND_TEARDOWNS_HIGH,
+    BWD_COEFF_PROCEDURAL_INITS_AND_TEARDOWNS_LOW, BWD_COEFF_PROCEDURAL_NONE,
+    BWD_COEFF_PROCEDURAL_RANGE_CHECK_16_BITS, BWD_COEFF_PROCEDURAL_RANGE_CHECK_TIMESTAMP,
+    BWD_COEFF_PUBLISH_TARGET_DEPTH, BWD_SEG_CONST_BANK, BWD_SEG_DESC_ALIGN, BWD_SEG_DESC_CAP,
+    BWD_SEG_INLINE_KERNEL_ARGUMENT_BYTES, BWD_SEG_MAX_K, BWD_SEG_MAX_SOURCES,
+    BWD_SEG_MAX_THREADS_PER_BLOCK, BWD_SEG_PROGPTR_KERNEL_ARGUMENT_BYTES,
 };
 use super::seg_lower::SourceClass;
 use crate::primitives::field::E4;
@@ -580,7 +596,7 @@ fn the_seg_static_assert_matcher_rejects_a_numeric_prefix() {
 /// Every numeric constant this lineage mirrors is present in the CUDA header with
 /// the same value.
 ///
-/// Two groups matter more than the rest and are the reason this test is mandatory:
+/// Three groups matter more than the rest and are the reason this test is mandatory:
 ///
 ///   * [`BWD_SEG_CONST_BANK`] sizes a `__constant__` symbol. The host uploads its
 ///     coefficient payload straight to that symbol's address, and lowering bounds
@@ -590,8 +606,33 @@ fn the_seg_static_assert_matcher_rejects_a_numeric_prefix() {
 ///     switches on. Their authority is [`SourceClass`]'s discriminants; the header
 ///     pins them only against its own restatements, which is no cross-language
 ///     check at all.
+///   * the `BWD_COEFF_*` block REHOMED out of the retired cell-era header, whose
+///     only text matcher (`abi_tests::cuda_constants_match_the_rust_mirror`) died
+///     with that lineage. `origin` is the sharpest case: `seg_resolve_e4` in
+///     `segmented_vm.cu` branches on it to pick a window's backing field, so a
+///     CUDA-only swap of `READ_BASE`/`READ_EXT` passes nvcc, passes `cargo check`,
+///     passes every `static_assert` in the header (they are CUDA-vs-CUDA), and
+///     mis-resolves every window — with only the GPU parity ladder behind it. Same
+///     shape for the procedural BASE value and the `NONE` absent marker, which the
+///     header's contiguity asserts pin only relative to each other.
 #[test]
 fn seg_cuda_constants_match_the_rust_mirror() {
+    // The FROZEN opcode numbering the lean class tables are densified from. Its
+    // authority is `gkr_eval_isa`, not `seg_desc.rs` — the Rust side of this
+    // lineage deliberately does not restate it — so the needles are built from
+    // `limits::{r0_opcode, continuation_opcode}` directly.
+    let r0_opcode_of = |category| {
+        u64::from(
+            r0_opcode(category).unwrap_or_else(|| panic!("{category:?} has no frozen R0 opcode")),
+        )
+    };
+    let cont_opcode_of = |category| {
+        u64::from(
+            continuation_opcode(category)
+                .unwrap_or_else(|| panic!("{category:?} has no frozen continuation opcode")),
+        )
+    };
+
     let expected: &[(&str, u64)] = &[
         ("BWD_SEG_DESC_CAP", BWD_SEG_DESC_CAP as u64),
         ("BWD_SEG_DESC_ALIGN", BWD_SEG_DESC_ALIGN as u64),
@@ -637,6 +678,117 @@ fn seg_cuda_constants_match_the_rust_mirror() {
         ),
         ("BWD_SEG_SOURCE_CLASSES", 5),
         ("BWD_SEG_MAX_INLINE_FOLD_DEPTH", 2),
+        // ── The block rehomed out of the retired `coefficient_vm.cuh` ──────────
+        //
+        // Window ORIGIN. MANDATORY: `seg_resolve_e4` selects the backing field off
+        // this byte, so a CUDA-only renumber is a wrong answer, not a build error.
+        (
+            "BWD_COEFF_ORIGIN_READ_BASE",
+            u64::from(BWD_COEFF_ORIGIN_READ_BASE),
+        ),
+        (
+            "BWD_COEFF_ORIGIN_READ_EXT",
+            u64::from(BWD_COEFF_ORIGIN_READ_EXT),
+        ),
+        (
+            "BWD_COEFF_ORIGIN_PROCEDURAL",
+            u64::from(BWD_COEFF_ORIGIN_PROCEDURAL),
+        ),
+        // Procedural kinds. The header asserts each kind's offset FROM the base and
+        // that `NONE` is outside the range, but nothing there pins the base itself
+        // or the marker's value — `bwd_coeff_procedural_source_kind` adds the base
+        // to `GKR_BASE_SOURCE_VIRTUAL_RANGE_CHECK_16_BITS`, so a nonzero base
+        // shifts every procedural column by that amount.
+        (
+            "BWD_COEFF_PROCEDURAL_RANGE_CHECK_16_BITS",
+            u64::from(BWD_COEFF_PROCEDURAL_RANGE_CHECK_16_BITS),
+        ),
+        (
+            "BWD_COEFF_PROCEDURAL_RANGE_CHECK_TIMESTAMP",
+            u64::from(BWD_COEFF_PROCEDURAL_RANGE_CHECK_TIMESTAMP),
+        ),
+        (
+            "BWD_COEFF_PROCEDURAL_INITS_AND_TEARDOWNS_LOW",
+            u64::from(BWD_COEFF_PROCEDURAL_INITS_AND_TEARDOWNS_LOW),
+        ),
+        (
+            "BWD_COEFF_PROCEDURAL_INITS_AND_TEARDOWNS_HIGH",
+            u64::from(BWD_COEFF_PROCEDURAL_INITS_AND_TEARDOWNS_HIGH),
+        ),
+        (
+            "BWD_COEFF_PROCEDURAL_NONE",
+            u64::from(BWD_COEFF_PROCEDURAL_NONE),
+        ),
+        // The publication threshold and the prologue's depth bound.
+        (
+            "BWD_COEFF_PUBLISH_TARGET_DEPTH",
+            u64::from(BWD_COEFF_PUBLISH_TARGET_DEPTH),
+        ),
+        (
+            "BWD_COEFF_MAX_FOLD_DEPTH",
+            u64::from(BWD_COEFF_MAX_FOLD_DEPTH),
+        ),
+        // The lean header's two bit widths. `BWD_SEG_{COEFFICIENT,CLASS}_MASK` and
+        // `BWD_SEG_CLASS_SHIFT` are all derived from these, so pinning them here
+        // makes the derivation's inputs cross-checked as well as its outputs.
+        (
+            "BWD_COEFF_HEADER_COEFFICIENT_BITS",
+            u64::from(HEADER_COEFFICIENT_BITS),
+        ),
+        (
+            "BWD_COEFF_HEADER_OPCODE_BITS",
+            u64::from(HEADER_OPCODE_BITS),
+        ),
+        // The FROZEN opcode numbering. Transitively covered by the
+        // `BWD_SEG_*_CLASS_* == BWD_COEFF_*_OP_*` static_asserts plus the
+        // `BWD_SEG_*` rows above, but pinned directly so the chain does not have to
+        // be reasoned through — and so the two `MOVE` rows, which no `BWD_SEG_*`
+        // constant mentions, are covered at all.
+        (
+            "BWD_COEFF_R0_OP_C0_LINEAR_BF",
+            r0_opcode_of(TermCategory::C0LinearBf),
+        ),
+        (
+            "BWD_COEFF_R0_OP_C0_LINEAR_E4",
+            r0_opcode_of(TermCategory::C0LinearE4),
+        ),
+        (
+            "BWD_COEFF_R0_OP_C2_PRODUCT_BF_BF",
+            r0_opcode_of(TermCategory::C2ProductBfBf),
+        ),
+        (
+            "BWD_COEFF_R0_OP_C2_PRODUCT_BF_E4",
+            r0_opcode_of(TermCategory::C2ProductBfE4),
+        ),
+        (
+            "BWD_COEFF_R0_OP_C2_PRODUCT_E4_E4",
+            r0_opcode_of(TermCategory::C2ProductE4E4),
+        ),
+        (
+            "BWD_COEFF_R0_OP_MOVE_BF",
+            r0_opcode_of(TermCategory::MoveBf),
+        ),
+        (
+            "BWD_COEFF_R0_OP_MOVE_E4",
+            r0_opcode_of(TermCategory::MoveE4),
+        ),
+        ("BWD_COEFF_R0_LIVE_OPCODES", R0_LIVE_OPCODES as u64),
+        (
+            "BWD_COEFF_EXT_OP_C0_LINEAR_E4",
+            cont_opcode_of(TermCategory::C0LinearE4),
+        ),
+        (
+            "BWD_COEFF_EXT_OP_DUAL_PRODUCT_E4",
+            cont_opcode_of(TermCategory::DualProductE4),
+        ),
+        (
+            "BWD_COEFF_EXT_OP_MOVE_E4",
+            cont_opcode_of(TermCategory::MoveE4),
+        ),
+        (
+            "BWD_COEFF_EXT_LIVE_OPCODES",
+            CONTINUATION_LIVE_OPCODES as u64,
+        ),
     ];
     for (name, value) in expected {
         assert_eq!(seg_cuda_literal(name), *value, "CUDA {name}");
@@ -717,6 +869,10 @@ fn seg_cuda_constants_match_the_rust_mirror() {
         ),
         format!("BWD_SEG_MAX_FOLD_DEPTH == {BWD_COEFF_PUBLISH_TARGET_DEPTH}"),
         format!("BWD_SEG_LANE_INDEX_MASK == {}", WARP_SIZE - 1),
+        // Rehomed and expression-valued: `1u << BWD_COEFF_HEADER_COEFFICIENT_BITS`.
+        // Its own `static_assert` is the pin, and the number here comes from the
+        // Rust mirror.
+        format!("BWD_COEFF_MAX_COEFFICIENT_ENCODINGS == {MAX_COEFFICIENT_ENCODINGS}"),
     ] {
         assert_seg_header_asserts(&claim);
     }
@@ -826,6 +982,60 @@ fn seg_cuda_layout_asserts_match_the_rust_layout() {
         assert_seg_header_asserts(&format!(
             "__builtin_offsetof(bwd_seg_source_record, {field}) == {offset}"
         ));
+    }
+    // The SOURCE WINDOW, rehomed here with the rest of the cell-era block. Its
+    // offsets were Rust-pinned by `abi_tests::cuda_layout_asserts_match_the_rust_layout`
+    // until that lineage was deleted; without these needles the struct is
+    // CUDA-vs-CUDA only, and a CONSISTENT same-width field swap — say
+    // `read_stride_bytes` and `publish_stride_bytes` exchanged on both sides with
+    // their literals updated — satisfies nvcc, `cargo check` and every
+    // `static_assert` in the header while transposing what a publish writes and a
+    // read loads. Built from `offset_of!`, so no number is maintained by hand.
+    for (field, offset) in [
+        ("read_base", offset_of!(BwdCoeffSourceWindow, read_base)),
+        (
+            "publish_base",
+            offset_of!(BwdCoeffSourceWindow, publish_base),
+        ),
+        (
+            "read_stride_bytes",
+            offset_of!(BwdCoeffSourceWindow, read_stride_bytes),
+        ),
+        (
+            "publish_stride_bytes",
+            offset_of!(BwdCoeffSourceWindow, publish_stride_bytes),
+        ),
+        (
+            "backing_depth",
+            offset_of!(BwdCoeffSourceWindow, backing_depth),
+        ),
+        (
+            "target_depth",
+            offset_of!(BwdCoeffSourceWindow, target_depth),
+        ),
+        ("origin", offset_of!(BwdCoeffSourceWindow, origin)),
+        ("materialize", offset_of!(BwdCoeffSourceWindow, materialize)),
+        (
+            "procedural_kind",
+            offset_of!(BwdCoeffSourceWindow, procedural_kind),
+        ),
+        ("reserved", offset_of!(BwdCoeffSourceWindow, reserved)),
+    ] {
+        assert_seg_header_asserts(&format!(
+            "__builtin_offsetof(bwd_coeff_source_window, {field}) == {offset}"
+        ));
+    }
+    for claim in [
+        format!(
+            "sizeof(bwd_coeff_source_window) == {}",
+            size_of::<BwdCoeffSourceWindow>()
+        ),
+        format!(
+            "alignof(bwd_coeff_source_window) == {}",
+            align_of::<BwdCoeffSourceWindow>()
+        ),
+    ] {
+        assert_seg_header_asserts(&claim);
     }
     // The two implicit gaps before `window`, which neither language spells.
     assert_seg_header_asserts(&format!(

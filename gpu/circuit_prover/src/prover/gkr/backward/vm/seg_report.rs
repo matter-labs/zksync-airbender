@@ -47,9 +47,9 @@
 //!
 //! # `--features bench`
 //!
-//! Gated exactly like [`report`](super::report) and [`seg_gpu_tests`](super::seg_gpu_tests):
-//! a default `cargo test -p gpu_circuit_prover` compiles none of it. The GPU
-//! drivers are additionally `#[ignore]`d.
+//! Gated exactly like [`seg_gpu_tests`](super::seg_gpu_tests): a default
+//! `cargo test -p gpu_circuit_prover` compiles none of it. The GPU drivers are
+//! additionally `#[ignore]`d.
 //!
 //! ```text
 //! cargo +nightly-2026-02-10 test -p gpu_circuit_prover --features bench --release --no-run
@@ -406,10 +406,10 @@ pub(super) fn time_solo(
 
 /// What the loaded module says about one instantiation.
 ///
-/// Self-contained rather than borrowed from the cell-era [`report`](super::report):
-/// that module is retired with the cell executor, and this lineage's gate is a
-/// different one — `max_threads_per_block` has to admit `32 * k`, not a fixed
-/// 128-thread block.
+/// Self-contained rather than borrowed from the cell-era harness: that module was
+/// deleted with the cell executor, and this lineage's gate is a different one
+/// anyway — `max_threads_per_block` has to admit `32 * k`, not a fixed 128-thread
+/// block.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) struct SegKernelAttributes {
     pub(super) registers: i32,

@@ -477,14 +477,19 @@ impl CoeffTerm {
     /// Every projection this term CONSUMES, once per operand-slot occurrence, in
     /// canonical operand order.
     ///
-    /// The single definition of "consumed projection" in the crate: the census
-    /// ([`census_coeff_layer`](super::stats::census_coeff_layer)) counts operand
-    /// slots with it and the scheduler
-    /// ([`schedule`](super::schedule)) builds its next-use queues from it, so the
-    /// two cannot drift. A native dual factor contributes BOTH of its
-    /// projections here (§8: the factor explicitly consumes the pair), while the
-    /// physical grouping of those two into one source-pair resolution is a
-    /// SCHEDULE concern and lives in `schedule`.
+    /// The single definition of "consumed projection" in the crate. Two passes read
+    /// it and nothing else may count operand slots its own way: the census
+    /// ([`census_coeff_layer`](super::stats::census_coeff_layer)), whose reuse
+    /// counter IS this callback's occurrence count, and the term ordering
+    /// ([`order`](super::order)'s `term_sources`), which derives each term's
+    /// distinct sources from it — and those are the sources the lean wire's
+    /// `source_a`/`source_b` name. So the census's reuse number and the wire's
+    /// source set cannot drift apart. (The third party used to be the cell-era
+    /// scheduler's next-use queues; that lineage is retired.)
+    ///
+    /// A native dual factor contributes BOTH of its projections here (§8: the
+    /// factor explicitly consumes the pair), which `term_sources` then dedups to
+    /// ONE source — one physical read serves both.
     ///
     /// Occurrences are NOT deduplicated: `C2Product { lhs: d, rhs: d }` yields
     /// `d` twice, which is what makes it a reusable projection in the census.

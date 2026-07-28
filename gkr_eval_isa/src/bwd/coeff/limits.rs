@@ -629,9 +629,11 @@ pub const LEAN_MAX_REALIZED_PROGRAM_WORDS: usize = 7_164;
 /// alignment and NOT ONE WORD FURTHER.
 ///
 /// The remaining `KERNEL_ARGUMENT_CEILING_BYTES - LEAN_DESCRIPTOR_PROGRAM_BYTES` is
-/// deliberately not claimed as headroom, for the same reason
-/// [`in_scope::DESCRIPTOR_PROGRAM_WORDS`] does not claim it: an unearned word is
-/// unearned kernel-argument budget in every launch, forever.
+/// deliberately not claimed as headroom: a by-value array of this length rides in
+/// every launch descriptor, so an unearned word is unearned kernel-argument budget
+/// in every launch, forever. If a future circuit needs more, this constant is
+/// re-measured and moved — a deliberate act with a test behind it, which
+/// speculative headroom would have hidden.
 pub const LEAN_DESCRIPTOR_PROGRAM_WORDS: usize = 7_168;
 /// [`LEAN_DESCRIPTOR_PROGRAM_WORDS`] in bytes: 16-byte aligned by construction.
 pub const LEAN_DESCRIPTOR_PROGRAM_BYTES: usize = 14_336;

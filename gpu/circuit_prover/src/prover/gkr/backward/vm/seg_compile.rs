@@ -1,13 +1,13 @@
 //! Artifact-certified fixtures for the SEGMENTED lean VM's GPU parity ladder.
 //!
 //! The lean-artifact→[`BwdSegSetup`] bridge, and the HOST MODEL of the storage a
-//! round reads. It is to [`seg_gpu_tests`](super::seg_gpu_tests) what
-//! [`compile`](super::compile) was to [`gpu_tests`](super::gpu_tests), with one
-//! structural difference that follows from the lineage: the cell-era bridge had to
-//! pick a cell BUDGET and re-realize a paging plan per round, and a lean coordinate
-//! has neither. What it has instead is a per-round PHYSICAL binding, so everything
-//! here is about the round: which origin sits behind each window, how far behind
-//! target depth it is, and what the fold of it must produce.
+//! round reads. It is the fixture layer [`seg_gpu_tests`](super::seg_gpu_tests)
+//! builds on, and it differs structurally from the retired cell-era fixture bridge
+//! for a reason that follows from the lineage: that one had to pick a cell BUDGET
+//! and re-realize a paging plan per round, and a lean coordinate has neither. What
+//! it has instead is a per-round PHYSICAL binding, so everything here is about the
+//! round: which origin sits behind each window, how far behind target depth it is,
+//! and what the fold of it must produce.
 //!
 //! # The three objects
 //!
@@ -57,9 +57,9 @@ use gkr_eval_isa::fwd::compile::build_cross_layer_field_map;
 use rayon::prelude::*;
 
 use super::seg_lower::{
-    bwd_coeff_fold_depth, ResolvedBwdCoeffSourceWindow,
-    assign_class, chain_read_column, plan_publish_scratch, window_columns, BwdSegRoundBinding,
-    D2Policy, PublishScratchPlan, ResolvedPublishScratch, SourceOrigin,
+    assign_class, bwd_coeff_fold_depth, chain_read_column, plan_publish_scratch, window_columns,
+    BwdSegRoundBinding, D2Policy, PublishScratchPlan, ResolvedBwdCoeffSourceWindow,
+    ResolvedPublishScratch, SourceOrigin,
 };
 use crate::allocator::tracker::AllocationPlacement;
 use crate::primitives::context::DeviceAllocation;

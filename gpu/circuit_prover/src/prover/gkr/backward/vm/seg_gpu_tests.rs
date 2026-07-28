@@ -70,10 +70,6 @@ use gkr_eval_isa::bwd::coeff::interp::{interpret_coeff_layer, interpret_lean_pro
 use gkr_eval_isa::bwd::coeff::lean::decode_program;
 use gkr_eval_isa::bwd::coeff::model::{CoeffLayer, CoefficientRecipeId};
 
-use super::seg_desc::{
-    BWD_COEFF_ORIGIN_PROCEDURAL, BWD_COEFF_ORIGIN_READ_BASE, BWD_COEFF_ORIGIN_READ_EXT,
-    BWD_COEFF_PROCEDURAL_NONE,
-};
 use super::seg::{
     bwd_seg_blocks_per_sm, bwd_seg_claim_point_device_ptr, bwd_seg_coeff_bank_device_ptr,
     bwd_seg_epilogue_smem_bytes, launch_bwd_seg, BwdSegEpilogue,
@@ -84,7 +80,10 @@ use super::seg_compile::{
     upload_round_storage, E4Deltas, SegCoordinate, SegHostModel, SegResolver, SegRoundStorage,
     SegScratch, ADD_SUB_LAYOUT, SEG_LAYOUTS,
 };
-use super::seg_desc::{BwdSegDesc, BWD_SEG_CONST_BANK, BWD_SEG_MAX_K};
+use super::seg_desc::{
+    BwdSegDesc, BWD_COEFF_ORIGIN_PROCEDURAL, BWD_COEFF_ORIGIN_READ_BASE, BWD_COEFF_ORIGIN_READ_EXT,
+    BWD_COEFF_PROCEDURAL_NONE, BWD_SEG_CONST_BANK, BWD_SEG_MAX_K,
+};
 use super::seg_lower::{
     e4_limbs, lower_bwd_seg, BwdSegLaunchDesc, BwdSegSetup, CoeffMode, D2Policy, ProgramMode,
     SourceClass,

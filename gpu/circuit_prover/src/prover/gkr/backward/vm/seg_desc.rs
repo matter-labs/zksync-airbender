@@ -176,8 +176,9 @@ pub(crate) const BWD_COEFF_PROCEDURAL_KINDS: usize = 4;
 pub(crate) const BWD_COEFF_PUBLISH_TARGET_DEPTH: u8 = 3;
 
 /// D0..D3: the bounded lazy-fold depths the JAOT prologue materializes over.
-/// Equal to [`BWD_COEFF_PUBLISH_TARGET_DEPTH`] by construction — see the assert
-/// in [`super::mod`](super)'s round-to-depth map.
+/// Equal to [`BWD_COEFF_PUBLISH_TARGET_DEPTH`] by construction — asserted in the
+/// `const` block below, which is what bounds the round-to-depth map
+/// [`seg_lower::bwd_coeff_fold_depth`](super::seg_lower::bwd_coeff_fold_depth).
 pub(crate) const BWD_COEFF_MAX_FOLD_DEPTH: u8 = 3;
 
 const _: () = {

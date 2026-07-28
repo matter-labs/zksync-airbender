@@ -1,14 +1,18 @@
 //! The LEAN term wire (segmented-lean-VM design §4): one fixed 8-byte,
 //! header-first record per coefficient term, and nothing else.
 //!
-//! # Why a second codec
+//! # The only backward wire
 //!
-//! [`encode`](super::encode) encodes the CELL-era ISA: source windows,
-//! first-access bits, residency modes, fill/plan extension words, and standalone
-//! `Move` opcodes. The segmented lean VM has no resident state and no cell file,
-//! so none of those fields have a meaning it could carry. This module is
-//! therefore not a variant of that format but a different one, and the two live
-//! side by side until the cell-era lineage is retired.
+//! The retired cell-era codec encoded source windows, first-access bits, residency
+//! modes, fill/plan extension words and standalone `Move` opcodes. The segmented
+//! lean VM has no resident state and no cell file, so none of those fields had a
+//! meaning it could carry — this was never a variant of that format but a
+//! different one, and since that lineage was deleted it is the ONLY backward term
+//! wire. Its neighbours are [`lean_bind`](super::lean_bind) (the placement-free
+//! per-source binding) and [`lean_artifact`](super::lean_artifact) (the per-layer
+//! coordinate); the opcode NUMBERING it densifies still lives in
+//! [`limits`](super::limits), which is what `is_densified_frozen_table` below
+//! checks it against.
 //!
 //! # The record (v2)
 //!
