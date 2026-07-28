@@ -204,7 +204,14 @@ template <u32 DELTA, typename Raw> DEVICE_FORCEINLINE e4 seg_fold_flat(const Raw
   constexpr u32 BASE = DELTA == 1 ? BWD_SEG_FOLD_WEIGHT_BASE_D1 : DELTA == 2 ? BWD_SEG_FOLD_WEIGHT_BASE_D2 : BWD_SEG_FOLD_WEIGHT_BASE_D3;
   const auto leaf0 = raw(index);
   e4 acc = seg_lift(leaf0);
-#pragma unroll
+  // ROLLED deliberately, and measured: fully unrolled, all `2^DELTA - 1` leaves and
+  // their weights are live at once and the continuation executors allocate 72
+  // registers — above the 64 per thread a 1024-thread block gets, which makes
+  // `K = 32` unlaunchable. One leaf per trip holds the band to 50-64, so the
+  // continuation family reaches the `K` geometry cap
+  // (`bwd_seg_k_ceiling_is_measured_not_assumed` pins that measurement). The trip
+  // count is 1, 3 or 7, and the weight stays a uniform constant-bank broadcast.
+#pragma unroll 1
   for (u32 q = 1; q < (1u << DELTA); q++) {
     const e4 w = ::ab_gkr_bwd_seg_fold_weights[BASE + q - 1];
     acc = e4::fma(w, decltype(leaf0)::sub(raw(index + q * span), leaf0), acc);
@@ -251,7 +258,9 @@ DEVICE_FORCEINLINE void seg_fold_endpoints_flat(const Raw &raw, const u32 row, c
   const auto leaf0_hi = raw(rows + row);
   s0 = seg_lift(leaf0_lo);
   s1 = seg_lift(leaf0_hi);
-#pragma unroll
+  // Rolled for the register reason `seg_fold_flat` spells out — more so here: two
+  // chains would double the live leaf set an unroll keeps resident.
+#pragma unroll 1
   for (u32 q = 1; q < (1u << DELTA); q++) {
     const e4 w = ::ab_gkr_bwd_seg_fold_weights[BASE + q - 1];
     s0 = e4::fma(w, decltype(leaf0_lo)::sub(raw(row + q * span), leaf0_lo), s0);
@@ -282,7 +291,8 @@ template <u32 DELTA, typename Raw> DEVICE_FORCEINLINE e4 seg_fold_delta_flat(con
   constexpr u32 BASE = DELTA == 1 ? BWD_SEG_FOLD_WEIGHT_BASE_D1 : DELTA == 2 ? BWD_SEG_FOLD_WEIGHT_BASE_D2 : BWD_SEG_FOLD_WEIGHT_BASE_D3;
   const auto d0 = decltype(raw(0))::sub(raw(rows + row), raw(row));
   e4 acc = seg_lift(d0);
-#pragma unroll
+  // Rolled for the register reason `seg_fold_flat` spells out.
+#pragma unroll 1
   for (u32 q = 1; q < (1u << DELTA); q++) {
     const e4 w = ::ab_gkr_bwd_seg_fold_weights[BASE + q - 1];
     const auto dq = decltype(d0)::sub(raw(rows + row + q * span), raw(row + q * span));

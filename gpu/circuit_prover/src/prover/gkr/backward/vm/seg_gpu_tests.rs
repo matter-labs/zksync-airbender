@@ -119,27 +119,28 @@ const SEG_K: [usize; 5] = [1, 2, 4, 16, 32];
 
 /// The largest member of [`SEG_K`] the continuation family can launch.
 ///
-/// **This is not the family's ceiling.** It is the largest launchable value of the
-/// PROBED axis `[1, 2, 4, 16, 32]`, and that axis has a hole: `K` in `17..=31` was
-/// never tried. `K = 24` in particular is plausible — 768 threads at roughly 80
-/// allocated registers is about 61,440 of the 65,536 a block gets — so the true
-/// ceiling may well be above this number. Nothing here claims otherwise.
+/// The continuation family now reaches the GEOMETRY cap, so this equals
+/// [`BWD_SEG_MAX_K`] and the axis has no launchability hole left above it: a
+/// 1024-thread block gets 65,536 registers, i.e. 64 per thread, and every
+/// continuation symbol of the flat-fold build allocates at most that (the peak is
+/// the `accbothsmem` rung at exactly 64; `segmented_vm.cu` still sets no
+/// `__launch_bounds__` — spec §15: the natural register count is the measurement).
 ///
-/// Why 32 fails at all: a 1024-thread block gets 65,536 registers, i.e. 64 per
-/// thread, and the continuation executor needs more — it carries the fold pyramids
-/// and the dual-product pair resolution, and `segmented_vm.cu` deliberately sets no
-/// `__launch_bounds__` (spec §15: the natural register count is the measurement). So
-/// `K = 32` is a legal GEOMETRY the compiled kernel cannot host, and a launch at it
-/// fails with `ErrorLaunchOutOfResources`.
+/// It was 16 while the fold was the recursive pyramid and while the unrolled flat
+/// fold kept every leaf load live at once (continuation peak 76 and 72 registers
+/// respectively — both above 64, so `K = 32` was a legal geometry the compiled
+/// kernel could not host and a launch at it failed with
+/// `ErrorLaunchOutOfResources`). The rolled flat fold brought the band to 50–64,
+/// which is what made the cap reachable.
 ///
-/// **Task 9's sweep must bisect `17..=31` (start at 24) before anyone concludes the
-/// continuation family caps at 16.** Probing that range is a measurement task, not a
-/// correctness gate, which is why this ladder states the hole instead of closing it.
+/// `17..=31` is still never PROBED here, but nothing above the cap exists to find:
+/// `BWD_SEG_MAX_K` is `32 * k <= 1024`. A sweep over that range is a
+/// blocks/SM-versus-`K` performance question, not a launchability one.
 ///
 /// Pinned rather than only derived: it is how far up the axis the continuation cells
 /// of the matrix run, so a silent change would silently shrink what the matrix
 /// covers. [`bwd_seg_k_ceiling_is_measured_not_assumed`] is where it is measured.
-const PINNED_CONT_LARGEST_LAUNCHABLE_PROBED_K: usize = 16;
+const PINNED_CONT_LARGEST_LAUNCHABLE_PROBED_K: usize = 32;
 
 const _: () = {
     assert!(SEG_K[SEG_K.len() - 1] == BWD_SEG_MAX_K);
@@ -1037,17 +1038,18 @@ fn bwd_seg_k_ceiling_is_measured_not_assumed() {
         r0_largest, BWD_SEG_MAX_K,
         "the R0 family reached the geometry cap before; a drop means its register count grew"
     );
-    // The CONTINUATION family does NOT reach the geometry cap: its executor carries
-    // the fold pyramids and the dual-product pair resolution, so it needs more than
-    // the 64 registers per thread a 1024-thread block allows. That is a property of
+    // The CONTINUATION family reaches the geometry cap too, but for a different
+    // reason than R0: its executor carries the folds and the dual-product pair
+    // resolution, so it sits just under the 64 registers per thread a 1024-thread
+    // block allows rather than comfortably below. That is a property of
     // `segmented_vm.cu`'s deliberate absence of `__launch_bounds__`, not of this
     // ladder, and it is pinned here so the number is a measurement on the record
     // rather than a launch failure someone rediscovers.
     assert_eq!(
         cont_largest, PINNED_CONT_LARGEST_LAUNCHABLE_PROBED_K,
         "the largest LAUNCHABLE PROBED continuation K moved (probed axis {SEG_K:?}; 17..=31 is \
-         not probed, so this is not the family's ceiling). Re-read the register measurement \
-         before changing this pin, and widen `SEG_K` if it ROSE."
+         not probed, but the cap itself is: `BWD_SEG_MAX_K` is the geometry limit). Re-read the \
+         register measurement before changing this pin, and widen `SEG_K` if it ROSE."
     );
     assert!(
         cont_largest >= 16,
