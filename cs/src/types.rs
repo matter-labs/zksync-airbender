@@ -23,7 +23,7 @@ impl<F: PrimeField> Num<F> {
             Num::Constant(..) => {
                 panic!("this Num is not a variable")
             }
-            Num::Var(v) => v.clone(),
+            Num::Var(v) => *v,
         }
     }
 
@@ -125,13 +125,13 @@ impl Boolean {
     }
 
     pub fn get_terms<F: PrimeField>(&self) -> Term<F> {
-        match self {
-            &Boolean::Is(var) => var.into(),
-            &Boolean::Not(_var) => {
+        match *self {
+            Boolean::Is(var) => var.into(),
+            Boolean::Not(_var) => {
                 unreachable!()
                 // Term::from(1) - Term::from(var)
             }
-            &Boolean::Constant(var) => {
+            Boolean::Constant(var) => {
                 let var = var as u32;
                 var.into()
             }
@@ -211,10 +211,10 @@ impl Boolean {
     }
 
     pub fn toggle(&self) -> Self {
-        match self {
-            &Boolean::Constant(c) => Boolean::Constant(!c),
-            &Boolean::Is(ref v) => Boolean::Not(v.clone()),
-            &Boolean::Not(ref v) => Boolean::Is(v.clone()),
+        match *self {
+            Boolean::Constant(c) => Boolean::Constant(!c),
+            Boolean::Is(v) => Boolean::Not(v),
+            Boolean::Not(v) => Boolean::Is(v),
         }
     }
 
@@ -285,7 +285,7 @@ impl Boolean {
                 Boolean::Constant(false)
             }
             // true AND x is always x
-            (&Boolean::Constant(true), x) | (x, &Boolean::Constant(true)) => x.clone(),
+            (&Boolean::Constant(true), x) | (x, &Boolean::Constant(true)) => *x,
             (a, b) => Self::apply_binary_op(
                 cs,
                 *a,
@@ -303,7 +303,7 @@ impl Boolean {
                 Boolean::Constant(true)
             }
             // false OR x is always x
-            (&Boolean::Constant(false), x) | (x, &Boolean::Constant(false)) => x.clone(),
+            (&Boolean::Constant(false), x) | (x, &Boolean::Constant(false)) => *x,
             (a, b) => {
                 Self::apply_binary_op(cs, *a, *b, Self::or_expr::<F>(*a, *b), BooleanBinaryOp::Or)
             }
@@ -313,7 +313,7 @@ impl Boolean {
     #[track_caller]
     pub fn xor<F: PrimeField, C: Circuit<F>>(a: &Self, b: &Self, cs: &mut C) -> Self {
         match (a, b) {
-            (&Boolean::Constant(false), x) | (x, &Boolean::Constant(false)) => x.clone(),
+            (&Boolean::Constant(false), x) | (x, &Boolean::Constant(false)) => *x,
             (&Boolean::Constant(true), x) | (x, &Boolean::Constant(true)) => x.toggle(),
             (a, b) if a == b => Boolean::Constant(false),
             (&Boolean::Is(a), &Boolean::Not(b)) | (&Boolean::Not(b), &Boolean::Is(a)) if a == b => {
@@ -357,13 +357,13 @@ impl Boolean {
                         panic!("multi_and contains constant false");
                     }
                 }
-                a @ _ => {
+                a => {
                     meaningful_terms.push(*a);
                 }
             }
         }
 
-        assert!(meaningful_terms.len() > 0);
+        assert!(!meaningful_terms.is_empty());
         if meaningful_terms.len() == 1 {
             return meaningful_terms[0];
         }
@@ -398,13 +398,13 @@ impl Boolean {
                         // nothing, do not add
                     }
                 }
-                a @ _ => {
+                a => {
                     meaningful_terms.push(*a);
                 }
             }
         }
 
-        assert!(meaningful_terms.len() > 0);
+        assert!(!meaningful_terms.is_empty());
         if meaningful_terms.len() == 1 {
             return meaningful_terms[0];
         }
@@ -531,7 +531,7 @@ impl<F: PrimeField> Register<F> {
 
         // set value
         let vars = new.0.map(|el| el.get_variable());
-        if CS::ASSUME_MEMORY_VALUES_ASSIGNED == false {
+        if !CS::ASSUME_MEMORY_VALUES_ASSIGNED {
             let value_fn = move |placer: &mut CS::WitnessPlacer| {
                 let value = placer.get_oracle_u32(placeholder);
 

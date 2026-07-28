@@ -51,7 +51,7 @@ pub fn create_keccak_permutation_indices_table<F: PrimeField>(id: u32) -> Lookup
         let key = [F::from_u32_unchecked(control_with_exe)];
         keys.push(key);
     }
-    let table_name = format!("keccak permutation indices table");
+    let table_name = "keccak permutation indices table".to_string();
 
     LookupTable::create_table_from_key_and_pure_generation_fn(
         &keys,
@@ -179,7 +179,7 @@ pub fn create_xor_special_keccak_iota_table<F: PrimeField>(id: u32) -> LookupTab
             keys.push(key);
         }
     }
-    let table_name = format!("Keccak Special Xor with Iota Round Constants table");
+    let table_name = "Keccak Special Xor with Iota Round Constants table".to_string();
 
     LookupTable::create_table_from_key_and_pure_generation_fn(
         &keys,
@@ -219,7 +219,7 @@ pub fn create_andn_table<F: PrimeField>(id: u32) -> LookupTable<F> {
             keys.push(key);
         }
     }
-    let table_name = format!("AndNot (ie. !a & b) table");
+    let table_name = "AndNot (ie. !a & b) table".to_string();
 
     LookupTable::create_table_from_key_and_pure_generation_fn(
         &keys,
@@ -250,7 +250,7 @@ pub fn create_rotl_table<F: PrimeField>(id: u32) -> LookupTable<F> {
             keys.push(key);
         }
     }
-    let table_name = format!("RotateLeft u16 table");
+    let table_name = "RotateLeft u16 table".to_string();
 
     LookupTable::create_table_from_key_and_pure_generation_fn(
         &keys,

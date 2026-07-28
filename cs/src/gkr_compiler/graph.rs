@@ -271,7 +271,7 @@ impl GraphHolder for GKRGraph {
     #[track_caller]
     fn get_address_for_variable(&self, variable: Variable) -> GKRAddress {
         assert!(
-            variable.is_placeholder() == false,
+            !variable.is_placeholder(),
             "trying to place a placeholder variable"
         );
         let Some(pos) = self.get_fixed_layout_pos(&variable) else {
@@ -331,7 +331,7 @@ impl GraphHolder for GKRGraph {
         relation: NoFieldGKRCacheRelation,
         output_layer: usize,
     ) -> GKRAddress {
-        if self.caching_is_allowed == false {
+        if !self.caching_is_allowed {
             panic!("Current graph doesn't allow cache relations");
         }
 

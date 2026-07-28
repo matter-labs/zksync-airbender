@@ -40,11 +40,7 @@ impl GKRAddress {
     }
 
     pub const fn is_cache(&self) -> bool {
-        if let Self::Cached { .. } = self {
-            true
-        } else {
-            false
-        }
+        matches!(self, Self::Cached { .. })
     }
 
     #[inline(always)]

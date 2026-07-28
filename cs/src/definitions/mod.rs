@@ -50,11 +50,9 @@ pub const fn timestamp_from_chunk_cycle_and_sequence(
     debug_assert!(trace_len.is_power_of_two());
     debug_assert!(cycle_in_chunk < trace_len);
 
-    let timestamp = INITIAL_TIMESTAMP_AT_CHUNK_START
+    INITIAL_TIMESTAMP_AT_CHUNK_START
         + TIMESTAMP_STEP * (cycle_in_chunk as TimestampScalar)
-        + timestamp_high_contribution_from_circuit_sequence(circuit_sequence, trace_len);
-
-    timestamp
+        + timestamp_high_contribution_from_circuit_sequence(circuit_sequence, trace_len)
 }
 
 #[inline]
@@ -64,10 +62,8 @@ pub const fn timestamp_high_contribution_from_circuit_sequence(
 ) -> TimestampScalar {
     debug_assert!(trace_len.is_power_of_two());
     // low timestamp chunk comes from the setup's two columns
-    let timestamp_high_from_circuit_sequence = (circuit_sequence as TimestampScalar)
-        << (trace_len.trailing_zeros() + NUM_EMPTY_BITS_FOR_RAM_TIMESTAMP);
-
-    timestamp_high_from_circuit_sequence
+    (circuit_sequence as TimestampScalar)
+        << (trace_len.trailing_zeros() + NUM_EMPTY_BITS_FOR_RAM_TIMESTAMP)
 }
 
 pub const fn timestamp_scalar_into_column_values(

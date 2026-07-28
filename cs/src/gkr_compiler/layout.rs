@@ -78,7 +78,7 @@ impl GKRGraph {
         Vec<GKRLayerDescription>,
         BTreeMap<OutputType, Vec<GKRAddress>>,
     ) {
-        assert!(self.enforced_relations.len() > 0);
+        assert!(!self.enforced_relations.is_empty());
 
         // We put all external outputs to the same layer
 
@@ -125,7 +125,7 @@ impl GKRGraph {
                 }
             }
 
-            let max_output_layer = output_layers.iter().map(|(_k, v)| *v).max().unwrap();
+            let max_output_layer = output_layers.values().copied().max().unwrap();
             assert!(output_layers.len() <= 5);
 
             for (k, output_layer_idx) in output_layers.into_iter() {

@@ -71,7 +71,7 @@ pub fn create_table_for_word_aligned_rom_image<
         .collect_into_vec(&mut keys);
 
     assert_eq!(keys.len(), keys_len);
-    const TABLE_NAME: &'static str = "Aligned ROM table";
+    const TABLE_NAME: &str = "Aligned ROM table";
     let image = image.to_vec();
     LookupTable::<F>::create_table_from_key_and_key_generation_closure(
         &keys,
@@ -111,9 +111,7 @@ pub fn create_table_for_word_aligned_rom_image<
                 1u32 << (16 + ROM_ADDRESS_SPACE_SECOND_WORD_BITS)
             );
             assert!(pc % 4 == 0, "PC = {} is not aligned in key lookup", pc);
-            let index = (pc / 4) as usize;
-
-            index
+            (pc / 4) as usize
         }),
         id,
     )
@@ -156,7 +154,7 @@ pub fn create_load_halfword_from_rom_table<
         .collect_into_vec(&mut keys);
 
     assert_eq!(keys.len(), keys_len);
-    const TABLE_NAME: &'static str = "ROM halfword read table";
+    const TABLE_NAME: &str = "ROM halfword read table";
     let image = image.to_vec();
     LookupTable::<F>::create_table_from_key_and_key_generation_closure(
         &keys,
@@ -255,7 +253,7 @@ pub fn create_load_byte_from_rom_table<
         .collect_into_vec(&mut keys);
 
     assert_eq!(keys.len(), keys_len);
-    const TABLE_NAME: &'static str = "ROM byte read table";
+    const TABLE_NAME: &str = "ROM byte read table";
     let image = image.to_vec();
     LookupTable::<F>::create_table_from_key_and_key_generation_closure(
         &keys,

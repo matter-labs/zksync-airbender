@@ -248,7 +248,7 @@ pub fn apply_unified_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
                     &mut intermedaite_of_value,
                     &is_jump,
                     &pc_low,
-                    &&<CS::WitnessPlacer as WitnessTypeSet<F>>::U16::constant(
+                    &<CS::WitnessPlacer as WitnessTypeSet<F>>::U16::constant(
                         core::mem::size_of::<u32>() as u16,
                     ),
                     None,
@@ -648,7 +648,7 @@ pub fn apply_unified_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
                     &mut intermedaite_of_value,
                     &is_slt,
                     &pc_low,
-                    &&<CS::WitnessPlacer as WitnessTypeSet<F>>::U16::constant(
+                    &<CS::WitnessPlacer as WitnessTypeSet<F>>::U16::constant(
                         core::mem::size_of::<u32>() as u16,
                     ),
                     None,

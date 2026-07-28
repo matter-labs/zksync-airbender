@@ -131,7 +131,7 @@ pub fn define_blake2_g_function_delegation_circuit<F: PrimeField, CS: Circuit<F>
         );
         let inputs: [_; TOTAL_TABLE_WIDTH] = inputs.try_into().unwrap();
         cs.enforce_lookup_tuple_for_fixed_table(
-            &inputs.map(|el| LookupInput::from(el)),
+            &inputs,
             TableType::BlakeGFunctionControlLookup,
             false,
         );

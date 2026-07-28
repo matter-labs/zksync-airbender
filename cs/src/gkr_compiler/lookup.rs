@@ -97,7 +97,7 @@ fn input_layer_for_lookup_expression<F: PrimeField, const SINGLE_COLUMN: bool>(
         }
     }
 
-    if SINGLE_COLUMN == false && expect_table_id {
+    if !SINGLE_COLUMN && expect_table_id {
         assert_ne!(
             *table_type,
             LookupQueryTableType::Constant(TableType::DynamicPlaceholder)
@@ -147,7 +147,7 @@ fn lookup_input_node_from_expr<F: PrimeField, const SINGLE_COLUMN: bool>(
 ) -> LookupInputRelation<F> {
     let (expr, table_type) = expr;
     if SINGLE_COLUMN {
-        assert!(expect_table_id == false);
+        assert!(!expect_table_id);
         assert_eq!(total_width, 1);
         assert_eq!(expr.len(), 1);
         assert_eq!(
@@ -180,7 +180,7 @@ fn lookup_input_node_from_expr<F: PrimeField, const SINGLE_COLUMN: bool>(
         }
     }
     let mut table_id = None;
-    if SINGLE_COLUMN == false && expect_table_id {
+    if !SINGLE_COLUMN && expect_table_id {
         assert_ne!(
             *table_type,
             LookupQueryTableType::Constant(TableType::DynamicPlaceholder)
@@ -338,11 +338,10 @@ pub(crate) fn layout_lookup_expressions<F: PrimeField, const SINGLE_COLUMN: bool
 
         input_layer += 1;
 
-        let has_inputs_at_current_layer = inputs_at_layers
+        let has_inputs_at_current_layer = !inputs_at_layers
             .entry(input_layer)
             .or_insert(BTreeMap::new())
-            .len()
-            > 0;
+            .is_empty();
         let has_inputs_at_future_layers = inputs_at_layers
             .range((input_layer + 1)..)
             .any(|(_, v)| !v.is_empty());
@@ -452,13 +451,13 @@ fn drive_lookup_placement<F: PrimeField, const SINGLE_COLUMN: bool>(
             // NOTE: we do not put it into relations for witness eval, as it's
             // special
             assert_eq!(input.columns.len(), graph.setup_addresses(lookup).len());
-            assert!(SINGLE_COLUMN == false);
+            assert!(!SINGLE_COLUMN);
 
             let setup = graph.setup_addresses(lookup).to_vec().into_boxed_slice();
             use crate::gkr_compiler::lookup_nodes::LookupMaskedWitnessMinusSetupInputNode;
             let node = LookupMaskedWitnessMinusSetupInputNode {
                 mask: decoder_predicate,
-                input: input,
+                input,
                 multiplicity,
                 setup,
             };
@@ -508,7 +507,7 @@ fn drive_lookup_placement<F: PrimeField, const SINGLE_COLUMN: bool>(
 
                 use crate::gkr_compiler::lookup_nodes::LookupSingleColumnWitnessMinusSetupInputNode;
                 let node = LookupSingleColumnWitnessMinusSetupInputNode {
-                    input: input,
+                    input,
                     multiplicity,
                     setup: setup[0],
                     range_check_width: single_columns_lookup_width.unwrap(),
@@ -535,7 +534,7 @@ fn drive_lookup_placement<F: PrimeField, const SINGLE_COLUMN: bool>(
                 let node = VectorLookupWitnessMinusSetupInputNode {
                     input: rel,
                     multiplicity,
-                    setup: setup,
+                    setup,
                 };
                 let ([num, den], rel) = node.add_at_layer(graph, input_layer + 1);
                 // insert for next layer
@@ -765,7 +764,7 @@ fn drive_lookup_placement<F: PrimeField, const SINGLE_COLUMN: bool>(
                 LookupNumerator::Identity,
                 LookupDenominator::ExtensionFieldValueWithoutAdditiveConstant(input),
             ) => {
-                assert!(SINGLE_COLUMN == false);
+                assert!(!SINGLE_COLUMN);
                 let output = graph.add_intermediate_variable_at_layer(input_layer + 1);
                 let relation = NoFieldGKRRelation::CopyInExtensionField { input, output };
                 graph.add_enforced_relation(relation.clone(), input_layer + 1);
@@ -957,7 +956,7 @@ fn merge_intermediate_lookup_pair<F: PrimeField, const SINGLE_COLUMN: bool>(
                 LookupNumerator::Identity,
                 LookupDenominator::ExtensionFieldValueWithoutAdditiveConstant(ext_den),
             ),
-        ) if SINGLE_COLUMN == false => {
+        ) if !SINGLE_COLUMN => {
             use crate::gkr_compiler::lookup_nodes::VectorLookupExplicitPairWithMaterializedInputAggregationNode;
             let node = VectorLookupExplicitPairWithMaterializedInputAggregationNode {
                 lhs_num: num,

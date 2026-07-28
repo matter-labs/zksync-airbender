@@ -314,7 +314,7 @@ impl<F: PrimeField> WitnessPlacer<F> for CSDebugWitnessEvaluator<F> {
             self.assign_u8(funct7, &entry.funct7.unwrap());
         }
         assert!(entry.opcode_family_bits <= 1 << (F::CHAR_BITS - 1));
-        if decoder_data.circuit_family_extra_mask.is_placeholder() == false {
+        if !decoder_data.circuit_family_extra_mask.is_placeholder() {
             assert!(decoder_data.circuit_family_mask_bits.is_empty());
             self.assign_field(
                 decoder_data.circuit_family_extra_mask,

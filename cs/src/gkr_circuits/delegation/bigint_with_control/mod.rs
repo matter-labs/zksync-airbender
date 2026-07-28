@@ -563,7 +563,7 @@ pub fn define_bigint_with_extended_control_delegation_circuit<F: PrimeField, CS:
 
     let full_product: [Variable; 32] = product_low
         .into_iter()
-        .chain(product_high.into_iter())
+        .chain(product_high)
         .collect::<Vec<_>>()
         .try_into()
         .unwrap();
@@ -654,7 +654,7 @@ pub fn define_bigint_with_extended_control_delegation_circuit<F: PrimeField, CS:
     {
         for (i, (a, b)) in additive_ops_result
             .into_iter()
-            .zip(product_low.into_iter())
+            .zip(product_low)
             .enumerate()
         {
             let expr = Expr::var(a).mask(perform_add_boolean)
@@ -693,7 +693,7 @@ pub fn define_bigint_with_extended_control_delegation_circuit<F: PrimeField, CS:
                 let b = LookupInput::from(b.clone());
                 cs.enforce_lookup_tuple_for_fixed_table(&[a, b], table_type, false);
             }
-            if remainder.len() > 0 {
+            if !remainder.is_empty() {
                 let a = &remainder[0];
                 let a = LookupInput::from(a.clone());
                 cs.enforce_lookup_tuple_for_fixed_table(
@@ -766,7 +766,7 @@ pub fn define_bigint_with_extended_control_delegation_circuit<F: PrimeField, CS:
         let mut accumulation_expr = Expr::<F>::zero();
         for (comparison_output, product_high) in eq_operation_words_for_zero_check
             .into_iter()
-            .zip(product_high.into_iter())
+            .zip(product_high)
         {
             accumulation_expr = accumulation_expr
                 + Expr::var(comparison_output).mask(perform_eq_boolean)

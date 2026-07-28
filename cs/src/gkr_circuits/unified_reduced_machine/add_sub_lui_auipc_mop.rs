@@ -386,7 +386,7 @@ pub fn apply_unified_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
             }
 
             // actually assign
-            if CS::ASSUME_MEMORY_VALUES_ASSIGNED == false {
+            if !CS::ASSUME_MEMORY_VALUES_ASSIGNED {
                 placer.assign_u32_from_u16_parts(out_vars, &out_value);
             }
 

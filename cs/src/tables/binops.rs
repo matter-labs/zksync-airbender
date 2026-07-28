@@ -150,7 +150,7 @@ pub fn create_wide_and_table<F: PrimeField>(id: u32) -> LookupTable<F> {
 
 pub fn create_and_table<F: PrimeField>(id: u32) -> LookupTable<F> {
     let keys = key_binary_generation::<F, 2>();
-    const TABLE_NAME: &'static str = "AND table";
+    const TABLE_NAME: &str = "AND table";
     LookupTable::create_table_from_key_and_pure_generation_fn(
         &keys,
         TABLE_NAME.to_string(),
@@ -178,7 +178,7 @@ pub fn create_and_table<F: PrimeField>(id: u32) -> LookupTable<F> {
 
 pub fn create_or_table<F: PrimeField>(id: u32) -> LookupTable<F> {
     let keys = key_binary_generation::<F, 2>();
-    const TABLE_NAME: &'static str = "OR table";
+    const TABLE_NAME: &str = "OR table";
     LookupTable::create_table_from_key_and_pure_generation_fn(
         &keys,
         TABLE_NAME.to_string(),
@@ -206,7 +206,7 @@ pub fn create_or_table<F: PrimeField>(id: u32) -> LookupTable<F> {
 
 pub fn create_and_not_table<F: PrimeField>(id: u32) -> LookupTable<F> {
     let keys = key_binary_generation::<F, 2>();
-    const TABLE_NAME: &'static str = "AND NOT table";
+    const TABLE_NAME: &str = "AND NOT table";
     LookupTable::create_table_from_key_and_pure_generation_fn(
         &keys,
         TABLE_NAME.to_string(),
@@ -234,7 +234,7 @@ pub fn create_and_not_table<F: PrimeField>(id: u32) -> LookupTable<F> {
 
 pub fn create_sign_extension_byte_table<F: PrimeField>(id: u32) -> LookupTable<F> {
     let keys = key_for_continuous_log2_range::<F, 1>(8);
-    const TABLE_NAME: &'static str = "Sign extension byte for binops immediate table";
+    const TABLE_NAME: &str = "Sign extension byte for binops immediate table";
     LookupTable::create_table_from_key_and_pure_generation_fn(
         &keys,
         TABLE_NAME.to_string(),

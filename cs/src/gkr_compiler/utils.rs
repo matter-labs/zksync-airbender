@@ -505,15 +505,13 @@ pub(crate) fn mem_permutation_expr_into_gkr_relation(
         ),
     };
 
-    let rel = NoFieldSpecialMemoryContributionRelation {
+    NoFieldSpecialMemoryContributionRelation {
         address_space,
         address,
         timestamp,
         value,
         timestamp_offset: mem.timestamp_offset,
-    };
-
-    rel
+    }
 }
 
 pub(crate) fn mem_permutation_expr_into_cached_expr(

@@ -532,7 +532,7 @@ pub fn mem_subword_only_circuit_with_preprocessed_bytecode_for_gkr<
     let (input, bitmask) =
         cs.allocate_machine_state(false, false, SUBWORD_ONLY_MEMORY_FAMILY_NUM_FLAGS);
     let bitmask: [_; SUBWORD_ONLY_MEMORY_FAMILY_NUM_FLAGS] = bitmask.try_into().unwrap();
-    let bitmask = bitmask.map(|el| Boolean::Is(el));
+    let bitmask = bitmask.map(Boolean::Is);
     let decoder = SubwordOnlyMemoryFamilyCircuitMask::from_mask(bitmask);
     apply_mem_subword_only_inner(cs, input, decoder);
 }

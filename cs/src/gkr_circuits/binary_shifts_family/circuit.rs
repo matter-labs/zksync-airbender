@@ -318,19 +318,17 @@ fn apply_shift_binop_inner<F: PrimeField, CS: Circuit<F>>(
                 .try_into()
                 .unwrap();
 
-            let lookup_inputs = input_vars.map(|el| LookupInput::from(el));
+            let lookup_inputs = input_vars.map(LookupInput::from);
 
             let table_id = {
                 let shift_table_id = TableType::ShiftImplementationOverBytes;
                 let table_id = Expr::<F>::from(shift_table_id).mask(is_shift)
                     + Expr::var(inputs.decoder_data.funct3.expect("must be present"))
                         .mask(is_binary_op);
-                let table_id = cs.add_intermediate_named_variable_from_expr(
+                cs.add_intermediate_named_variable_from_expr(
                     table_id,
                     "table ID for binary/shift main ops",
-                );
-
-                table_id
+                )
             };
 
             cs.enforce_lookup_tuple_for_variable_table(&lookup_inputs, table_id);
@@ -382,7 +380,7 @@ pub fn shift_binop_circuit_with_preprocessed_bytecode_for_gkr<F: PrimeField, CS:
 ) {
     let (input, bitmask) = cs.allocate_machine_state(true, false, SHIFT_BINARY_FAMILY_NUM_FLAGS);
     let bitmask: [_; SHIFT_BINARY_FAMILY_NUM_FLAGS] = bitmask.try_into().unwrap();
-    let bitmask = bitmask.map(|el| Boolean::Is(el));
+    let bitmask = bitmask.map(Boolean::Is);
     let decoder = ShiftBinaryFamilyCircuitMask::from_mask(bitmask);
     apply_shift_binop_inner(cs, input, decoder);
 }

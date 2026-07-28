@@ -47,7 +47,7 @@ impl<F: PrimeField> std::fmt::Display for Term<F> {
                     }
                 }
                 if coeff != 0 {
-                    for &Variable(var) in inner.into_iter().take(*degree) {
+                    for &Variable(var) in inner.iter().take(*degree) {
                         write!(f, "(v{var})")?;
                     }
                 }
@@ -189,7 +189,7 @@ impl<F: PrimeField> Term<F> {
             ) => {
                 assert_eq!(*s_d, *o_d);
 
-                &s_inner[..*s_d] == &o_inner[..*o_d]
+                s_inner[..*s_d] == o_inner[..*o_d]
             }
         }
     }
@@ -201,7 +201,7 @@ impl<F: PrimeField> Term<F> {
 
         match (self, other) {
             (Term::Constant(c), Term::Constant(o)) => {
-                c.add_assign(&*o);
+                c.add_assign(o);
 
                 true
             }
@@ -227,8 +227,8 @@ impl<F: PrimeField> Term<F> {
             ) => {
                 assert_eq!(*s_d, *o_d);
 
-                if &s_inner[..*s_d] == &o_inner[..*o_d] {
-                    s_coeff.add_assign(&*o_coeff);
+                if s_inner[..*s_d] == o_inner[..*o_d] {
+                    s_coeff.add_assign(o_coeff);
 
                     true
                 } else {
@@ -341,7 +341,7 @@ impl<F: PrimeField> std::fmt::Display for Constraint<F> {
         for term in self.terms.iter() {
             write!(f, "{term}")?;
         }
-        writeln!(f, "")
+        writeln!(f)
     }
 }
 
@@ -448,11 +448,11 @@ impl<F: PrimeField> Constraint<F> {
                     linear_terms.push((coeff, inner[0]));
                 }
                 0 => {
-                    assert!(constant_used == false);
+                    assert!(!constant_used);
                     constant_term = term.get_coef();
                     constant_used = true;
                 }
-                a @ _ => {
+                a => {
                     panic!("Degree {} is not supported", a);
                 }
             }
@@ -524,7 +524,7 @@ impl<F: PrimeField> Constraint<F> {
 
         self.terms = combined
             .into_iter()
-            .filter(|el| el.is_zero() == false)
+            .filter(|el| !el.is_zero())
             .collect();
         let final_degree = self.degree();
         assert!(final_degree <= 2);
@@ -572,7 +572,7 @@ impl<F: PrimeField> Constraint<F> {
         self.dump_variables(&mut tmp);
         let mut stable_set = BTreeSet::new();
         for el in tmp.into_iter() {
-            assert!(el.is_placeholder() == false);
+            assert!(!el.is_placeholder());
             stable_set.insert(el);
         }
 
@@ -590,7 +590,7 @@ impl<F: PrimeField> Constraint<F> {
                 assert!(term.degree_for_var(&variable) == 1);
                 prefactor = term.prefactor_for_var(&variable);
             } else {
-                new_terms.push(term.clone());
+                new_terms.push(*term);
             }
         }
         let mut prefactor = prefactor.inverse().unwrap();
@@ -636,12 +636,12 @@ impl<F: PrimeField> Constraint<F> {
                     } else {
                         unreachable!()
                     };
-                    assert!(other_var.is_placeholder() == false);
+                    assert!(!other_var.is_placeholder());
                     let term = Term::from((*coeff, other_var));
                     extra_constraints_to_add.push(expression.clone() * term);
                 }
             } else {
-                new_terms.push(term.clone());
+                new_terms.push(*term);
             }
         }
         let mut new = Self { terms: new_terms };
@@ -1026,8 +1026,7 @@ impl<F: PrimeField> Term<F> {
                 let arrays_are_equal = inner_left[0..*degree_left]
                     .iter()
                     .zip(inner_right[0..*degree_right].iter())
-                    .map(|(left_var, right_var)| left_var.0 == right_var.0)
-                    .all(|x| x);
+                    .all(|(left_var, right_var)| left_var.0 == right_var.0);
                 degrees_are_equalt && arrays_are_equal
             }
             _ => false,

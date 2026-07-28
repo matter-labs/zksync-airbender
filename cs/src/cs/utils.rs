@@ -35,7 +35,7 @@ pub fn collapse_max_quadratic_constraint_into<F: PrimeField, C: Circuit<F>>(
     constraint: Constraint<F>,
     result: Variable,
 ) {
-    return collapse_max_quadratic_constraint_into_fixed(cs, constraint, result);
+    collapse_max_quadratic_constraint_into_fixed(cs, constraint, result)
 }
 
 /// Assigns a preallocated result variable from an expression.

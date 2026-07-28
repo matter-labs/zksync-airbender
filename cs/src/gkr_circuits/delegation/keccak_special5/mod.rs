@@ -305,7 +305,7 @@ pub fn define_keccak_special5_delegation_circuit<
                         zero_value.clone(),
                         |acc, (flag, option)| {
                             <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U16::select(
-                                &flag, &option, &acc,
+                                flag, &option, &acc,
                             )
                         },
                     )
@@ -334,7 +334,7 @@ pub fn define_keccak_special5_delegation_circuit<
                         zero_value.clone(),
                         |acc, (flag, option)| {
                             <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U16::select(
-                                &flag, &option, &acc,
+                                flag, &option, &acc,
                             )
                         },
                     )
@@ -758,7 +758,7 @@ pub fn define_keccak_special5_delegation_circuit<
                     .overflowing_add(&u64_value[1].shr(32 - rot_const_mod32))
                     .0;
             }
-            let u16input = tou16(&u64_value);
+            let u16input = tou16(u64_value);
             let zero =
                 <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Field::constant(F::ZERO);
             let a: [<<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Field; 8] = {
@@ -799,10 +799,10 @@ pub fn define_keccak_special5_delegation_circuit<
         };
         let xor = |a_value: &[<<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U32; 2], b_value: &[<<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U32; 2]| {
             let out = core::array::from_fn(|i| a_value[i].xor(&b_value[i]));
-            let a = tou8(&a_value)
+            let a = tou8(a_value)
                 .map(|x| x.widen().widen())
                 .map(<<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Field::from_integer);
-            let b = tou8(&b_value)
+            let b = tou8(b_value)
                 .map(|x| x.widen().widen())
                 .map(<<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Field::from_integer);
             let c = tou8(&out)
@@ -815,10 +815,10 @@ pub fn define_keccak_special5_delegation_circuit<
                     b_value: &[<<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U32;
                          2]| {
             let out = core::array::from_fn(|i| a_value[i].not().and(&b_value[i]));
-            let a = tou8(&a_value)
+            let a = tou8(a_value)
                 .map(|x| x.widen().widen())
                 .map(<<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Field::from_integer);
-            let b = tou8(&b_value)
+            let b = tou8(b_value)
                 .map(|x| x.widen().widen())
                 .map(<<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Field::from_integer);
             let c = tou8(&out)
@@ -1057,17 +1057,17 @@ pub fn define_keccak_special5_delegation_circuit<
                         let (possible_rotation_value, possible_binop) = rotl(&idx_value, rot_const);
                         (
                             from_fn(|i| {
-                                <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U32::select(&iter_value, &possible_rotation_value[i], &acc_value[i])
+                                <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U32::select(iter_value, &possible_rotation_value[i], &acc_value[i])
                             }),
                             (
                                 from_fn(|i| {
-                                    <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Field::select(&iter_value, &possible_binop.0[i], &acc_binop.0[i])
+                                    <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Field::select(iter_value, &possible_binop.0[i], &acc_binop.0[i])
                                 }),
                                 from_fn(|i| {
-                                    <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Field::select(&iter_value, &possible_binop.1[i], &acc_binop.1[i])
+                                    <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Field::select(iter_value, &possible_binop.1[i], &acc_binop.1[i])
                                 }),
                                 from_fn(|i| {
-                                    <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Field::select(&iter_value, &possible_binop.2[i], &acc_binop.2[i])
+                                    <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Field::select(iter_value, &possible_binop.2[i], &acc_binop.2[i])
                                 }),
                             ),
                         )
@@ -1176,8 +1176,8 @@ pub fn define_keccak_special5_delegation_circuit<
                 .zip([p0_state_output_values[i].clone(), p1_state_output_values[i].clone(), p2_state_output_values[i].clone(), p3_state_output_values[i].clone(), p4_state_output_values[i].clone(), p5_state_output_values[i].clone(), p6_state_output_values[i].clone()])
                 .fold(zero_u64.clone(), |[acc_low32, acc_high32], (flag, [possible_low32, possible_high32])| {
                     [
-                        <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U32::select(&flag, &possible_low32, &acc_low32),
-                        <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U32::select(&flag, &possible_high32, &acc_high32),
+                        <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U32::select(flag, &possible_low32, &acc_low32),
+                        <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U32::select(flag, &possible_high32, &acc_high32),
                     ]
                 })
             });
@@ -1187,8 +1187,8 @@ pub fn define_keccak_special5_delegation_circuit<
                 .zip([p0_tmp_values[i].clone(), p1_tmp_values[i].clone(), p2_tmp_values[i].clone(), p3_tmp_values[i].clone(), p4_tmp_values[i].clone(), p5_tmp_values[i].clone(), p6_tmp_values[i].clone()])
                 .fold(zero_u64.clone(), |[acc_low32, acc_high32], (flag, [possible_low32, possible_high32])| {
                     [
-                        <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U32::select(&flag, &possible_low32, &acc_low32),
-                        <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U32::select(&flag, &possible_high32, &acc_high32),
+                        <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U32::select(flag, &possible_low32, &acc_low32),
+                        <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U32::select(flag, &possible_high32, &acc_high32),
                     ]
                 })
             });
@@ -1198,9 +1198,9 @@ pub fn define_keccak_special5_delegation_circuit<
                 .zip([p0_binop_values[i].clone(), p1_binop_values[i].clone(), p2_binop_values[i].clone(), p3_binop_values[i].clone(), p4_binop_values[i].clone(), p5_binop_values[i].clone(), p6_binop_values[i].clone()])
                 .fold(zero_binop.clone(), |acc, (flag, possible_binop)| {
                     (
-                        from_fn(|i| <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Field::select(&flag, &possible_binop.0[i], &acc.0[i])),
-                        from_fn(|i| <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Field::select(&flag, &possible_binop.1[i], &acc.1[i])),
-                        from_fn(|i| <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Field::select(&flag, &possible_binop.2[i], &acc.2[i]))
+                        from_fn(|i| <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Field::select(flag, &possible_binop.0[i], &acc.0[i])),
+                        from_fn(|i| <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Field::select(flag, &possible_binop.1[i], &acc.1[i])),
+                        from_fn(|i| <<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Field::select(flag, &possible_binop.2[i], &acc.2[i]))
                     )
                 })
             });
@@ -1555,13 +1555,12 @@ fn enforce_binop<F: PrimeField, CS: Circuit<F>, const N: usize, const DEBUG: boo
             precompile_rotation_flags
                 .iter()
                 .zip(precompile_rotation_constants.iter())
-                .filter_map(|(&flag, &constant)| {
-                    (lower <= constant && constant < upper).then(|| Expr::from(flag))
-                })
+                .filter(|&(_, &constant)| lower <= constant && constant < upper)
+                .map(|(&flag, _)| Expr::from(flag))
                 .collect(),
         )
     });
-    let is_rot = Expr::sum(rot_out_u16_boundary_flags.iter().cloned().collect());
+    let is_rot = Expr::sum(rot_out_u16_boundary_flags.to_vec());
 
     // FINALLY, we enforce manual routing!
     let (in1, in2, out): ([Expr<F>; 4], [Expr<F>; 4], [Expr<F>; 4]) = {

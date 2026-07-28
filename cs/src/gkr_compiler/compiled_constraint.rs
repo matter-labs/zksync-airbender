@@ -73,7 +73,7 @@ impl<F: PrimeField> GKRGate for OneStepConstraintsEvaluationNode<F> {
                     .or_insert(vec![])
                     .push((coeff.as_u32_reduced(), i));
             }
-            if c.is_zero() == false {
+            if !c.is_zero() {
                 constant_sorted.push((c.as_u32_reduced(), i));
             }
         }
@@ -140,7 +140,7 @@ pub(crate) fn layout_constraints_at_layers<F: PrimeField, const USE_BATCHING: bo
                 let (q, l, c) = c.split_max_quadratic();
 
                 if q.is_empty() {
-                    assert!(l.is_empty() == false);
+                    assert!(!l.is_empty());
                     let compiled = Degree1Constraint {
                         linear_terms: l.clone().into_boxed_slice(),
                         constant_term: c,
@@ -177,7 +177,7 @@ pub(crate) fn layout_constraints_at_layers<F: PrimeField, const USE_BATCHING: bo
                 let (q, l, c) = c.split_max_quadratic();
 
                 if q.is_empty() {
-                    assert!(l.is_empty() == false);
+                    assert!(!l.is_empty());
                     let compiled = Degree1Constraint {
                         linear_terms: l.clone().into_boxed_slice(),
                         constant_term: c,
@@ -217,7 +217,7 @@ impl<F: PrimeField> GKRGate for SingleConstraintEvaluationNode<F> {
     type Output = ();
 
     fn short_name(&self) -> String {
-        format!("Constraint evaluation node",)
+        "Constraint evaluation node".to_string()
     }
 
     fn add_at_layer(

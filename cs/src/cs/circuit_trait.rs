@@ -119,19 +119,19 @@ impl MemoryAccess {
 
     pub fn read_value(&self) -> WordRepresentation {
         match self {
-            Self::ConstantRegister(inner) => inner.read_value.clone(),
-            Self::RegisterOnly(inner) => inner.read_value.clone(),
-            Self::RegisterOrRam(inner) => inner.read_value.clone(),
-            Self::RamIndirect(inner) => inner.read_value.clone(),
+            Self::ConstantRegister(inner) => inner.read_value,
+            Self::RegisterOnly(inner) => inner.read_value,
+            Self::RegisterOrRam(inner) => inner.read_value,
+            Self::RamIndirect(inner) => inner.read_value,
         }
     }
 
     pub fn write_value(&self) -> WordRepresentation {
         match self {
-            Self::ConstantRegister(inner) => inner.write_value.clone(),
-            Self::RegisterOnly(inner) => inner.write_value.clone(),
-            Self::RegisterOrRam(inner) => inner.write_value.clone(),
-            Self::RamIndirect(inner) => inner.write_value.clone(),
+            Self::ConstantRegister(inner) => inner.write_value,
+            Self::RegisterOnly(inner) => inner.write_value,
+            Self::RegisterOrRam(inner) => inner.write_value,
+            Self::RamIndirect(inner) => inner.write_value,
         }
     }
 
@@ -426,9 +426,9 @@ pub trait Circuit<F: PrimeField>: Sized {
         table: Num<F>,
         exec_flag: Boolean,
     ) {
-        assert!(inputs.len() > 0);
+        assert!(!inputs.is_empty());
 
-        let output_variables: [Variable; N] = outputs.clone();
+        let output_variables: [Variable; N] = *outputs;
         let inputs = inputs.clone();
         let exec_flag = exec_flag.get_variable().unwrap();
 

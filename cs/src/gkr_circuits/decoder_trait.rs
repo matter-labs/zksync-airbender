@@ -217,7 +217,7 @@ pub fn process_binary_into_separate_tables_ext<
     for family in families.iter() {
         let family_type = family.instruction_family_index();
         let witness_eval_data =
-            preprocess_bytecode::<F, OPT, A>(&binary, bytecode_size_words, &family, supported_csrs);
+            preprocess_bytecode::<F, OPT, A>(binary, bytecode_size_words, family, supported_csrs);
         assert_eq!(witness_eval_data.len(), bytecode_size_words);
         for (idx, entry) in witness_eval_data.iter().enumerate() {
             if entry.is_some() {
@@ -229,20 +229,18 @@ pub fn process_binary_into_separate_tables_ext<
         result.insert(family_type, witness_eval_data);
     }
 
-    if ALLOW_UNSUPPORTED == false {
-        if pc_set.len() != binary.len() {
-            for i in 0..binary.len() {
-                if pc_set.contains(&i) == false {
-                    println!(
-                        "PC = 0x{:08x}, opcode = 0x{:08x} is not supported",
-                        i << 2,
-                        binary[i]
-                    );
-                }
+    if !ALLOW_UNSUPPORTED && pc_set.len() != binary.len() {
+        for i in 0..binary.len() {
+            if !pc_set.contains(&i) {
+                println!(
+                    "PC = 0x{:08x}, opcode = 0x{:08x} is not supported",
+                    i << 2,
+                    binary[i]
+                );
             }
-
-            panic!("Not all the opcodes are supported");
         }
+
+        panic!("Not all the opcodes are supported");
     }
 
     result
@@ -271,7 +269,7 @@ pub fn materialize_flattened_decoder_table_with_bitmask<F: PrimeField>(
             let row =
                 DecoderTableEntry::<F>::from_executor_family_data(pc as u32, supported).flatten();
             let mut selected_row = arrayvec::ArrayVec::new();
-            for (mask, value) in fields_bitmask.iter().zip(row.into_iter()) {
+            for (mask, value) in fields_bitmask.iter().zip(row) {
                 if *mask {
                     selected_row.push(value);
                 }

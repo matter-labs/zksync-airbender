@@ -121,7 +121,7 @@ impl<F: PrimeField> PartialOrd for LookupKey<F> {
                 std::cmp::Ordering::Equal => {
                     continue;
                 }
-                ordering @ _ => {
+                ordering => {
                     return Some(ordering);
                 }
             }
@@ -140,7 +140,7 @@ impl<F: PrimeField> Ord for LookupKey<F> {
                 std::cmp::Ordering::Equal => {
                     continue;
                 }
-                ordering @ _ => {
+                ordering => {
                     return ordering;
                 }
             }
@@ -157,7 +157,7 @@ impl<F: PrimeField> LookupTable<F> {
         let mut tmp = HashSet::new();
         for el in data.iter() {
             let is_unique = tmp.insert(el.clone());
-            if is_unique == false {
+            if !is_unique {
                 return false;
             }
         }
@@ -559,7 +559,7 @@ impl<F: PrimeField> LookupTable<F> {
                     "index {} is beyond table size {} for table {}",
                     index,
                     self.table_size(),
-                    &self.name
+                    self.name
                 );
 
                 index
@@ -577,7 +577,7 @@ impl<F: PrimeField> LookupTable<F> {
                     "index {} is beyond table size {} for table {}",
                     index,
                     self.table_size(),
-                    &self.name
+                    self.name
                 );
 
                 index
@@ -595,7 +595,7 @@ impl<F: PrimeField> LookupTable<F> {
                     "index {} is beyond table size {} for table {}",
                     index,
                     self.table_size(),
-                    &self.name
+                    self.name
                 );
 
                 index
@@ -674,10 +674,7 @@ pub enum LookupWrapper<F: PrimeField> {
 }
 impl<F: PrimeField> LookupWrapper<F> {
     pub fn is_initialized(&self) -> bool {
-        match self {
-            Self::Uninitialized => false,
-            _ => true,
-        }
+        !matches!(self, Self::Uninitialized)
     }
 
     pub fn width(&self) -> usize {
@@ -954,7 +951,7 @@ impl TableType {
             TableType::WideXor => LookupWrapper::Initialized(create_wide_xor_table::<F>(id)),
             TableType::WideOr => LookupWrapper::Initialized(create_wide_or_table::<F>(id)),
             TableType::WideAnd => LookupWrapper::Initialized(create_wide_and_table::<F>(id)),
-            a @ _ => {
+            a => {
                 todo!("Support {:?}", a);
             }
         }
@@ -1076,7 +1073,7 @@ pub fn key_for_continuous_range<F: PrimeField, const N: usize>(
 }
 
 pub fn key_get_bit<F: PrimeField, const N: usize>() -> Vec<SmallVec<[F; N]>> {
-    let keys = (0..=u16::MAX)
+    (0..=u16::MAX)
         .flat_map(|a| {
             (0..16).map(move |b| {
                 smallvec::smallvec![
@@ -1085,9 +1082,7 @@ pub fn key_get_bit<F: PrimeField, const N: usize>() -> Vec<SmallVec<[F; N]>> {
                 ]
             })
         })
-        .collect();
-
-    keys
+        .collect()
 }
 
 /// Manages multiple lookup tables.
@@ -1121,14 +1116,11 @@ impl<F: PrimeField> TableDriver<F> {
     }
 
     pub fn add_table_with_content(&mut self, table_type: TableType, table: LookupWrapper<F>) {
-        match &table {
-            LookupWrapper::Uninitialized => {
-                panic!(
-                    "Trying to add initialized wrapper for table type {:?}",
-                    table_type
-                );
-            }
-            _ => {}
+        if let LookupWrapper::Uninitialized = &table {
+            panic!(
+                "Trying to add initialized wrapper for table type {:?}",
+                table_type
+            );
         }
         let id = table.get_table_id() as usize;
         assert_eq!(id, table_type.to_table_id() as usize);
@@ -1168,9 +1160,7 @@ impl<F: PrimeField> TableDriver<F> {
             "table with id = {:?} is not initialized",
             id
         );
-        let values = table.lookup_value(keys);
-
-        values
+        table.lookup_value(keys)
     }
 
     #[track_caller]
@@ -1245,7 +1235,7 @@ impl<F: PrimeField> TableDriver<F> {
         if max_width_without_id >= total_width_including_id {
             for t in self.tables.iter() {
                 if let LookupWrapper::Initialized(t) = t {
-                    println!("Table `{}` has width {} (without ID)", &t.name, t.width());
+                    println!("Table `{}` has width {} (without ID)", t.name, t.width());
                 }
             }
             panic!("trying to dump tables with max width {} (without ID) into total of {} columns (with ID)", max_width_without_id, total_width_including_id);

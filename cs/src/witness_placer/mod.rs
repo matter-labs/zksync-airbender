@@ -52,7 +52,7 @@ impl<F: PrimeField, W: WitnessPlacer<F>> WitnessResolutionDescription<F, W> for 
     }
 
     fn box_clone(&self) -> Box<dyn WitnessResolutionDescription<F, W>> {
-        Box::new(self.clone()) as Box<dyn WitnessResolutionDescription<F, W>>
+        Box::new(*self) as Box<dyn WitnessResolutionDescription<F, W>>
     }
 
     fn clone_self(&self) -> Self
@@ -165,13 +165,11 @@ impl<F: PrimeField, W: WitnessPlacer<F>> WitnessResolutionGraph<F, W> {
                     b,
                     _marker: core::marker::PhantomData,
                 };
-                let full_node = WitnessResolutionNode {
+                WitnessResolutionNode {
                     a: Box::new(new_a) as Box<dyn WitnessResolutionDescription<F, W>>,
                     b: next,
                     _marker: core::marker::PhantomData,
-                };
-
-                full_node
+                }
             },
         );
 
@@ -207,13 +205,11 @@ impl<F: PrimeField, W: WitnessPlacer<F>> WitnessResolutionGraph<F, W> {
                     b,
                     _marker: core::marker::PhantomData,
                 };
-                let full_node = WitnessResolutionNode {
+                WitnessResolutionNode {
                     a: Box::new(new_a) as Box<dyn WitnessResolutionDescription<F, W>>,
                     b: next,
                     _marker: core::marker::PhantomData,
-                };
-
-                full_node
+                }
             },
         );
 
@@ -226,7 +222,7 @@ impl<F: PrimeField, W: WitnessPlacer<F>> WitnessResolutionGraph<F, W> {
 }
 
 // default implementation for any closure (and only closures are possible as implementing `Fn` is not yet allowed)
-impl<F: PrimeField, W: WitnessPlacer<F>, T: 'static + Clone + Fn(&mut W) -> ()>
+impl<F: PrimeField, W: WitnessPlacer<F>, T: 'static + Clone + Fn(&mut W)>
     WitnessResolutionDescription<F, W> for T
 {
     fn evaluate(&self, placer: &mut W) {
@@ -513,7 +509,7 @@ pub trait WitnessComputationalU16: WitnessComputationalInteger<u16> {
     fn truncate(&self) -> Self::Narrow;
     #[inline(always)]
     fn wrapping_product(&self, other: &Self) -> Self {
-        Self::split_widening_product(&self, other).0
+        Self::split_widening_product(self, other).0
     }
     fn widening_product(&self, other: &Self) -> Self::Wide;
     fn split_widening_product(&self, other: &Self) -> (Self, Self);
@@ -525,7 +521,7 @@ pub trait WitnessComputationalU8: WitnessComputationalInteger<u8> {
     fn widen(&self) -> Self::Wide;
     #[inline(always)]
     fn wrapping_product(&self, other: &Self) -> Self {
-        Self::split_widening_product(&self, other).0
+        Self::split_widening_product(self, other).0
     }
     fn widening_product(&self, other: &Self) -> Self::Wide;
     fn split_widening_product(&self, other: &Self) -> (Self, Self);

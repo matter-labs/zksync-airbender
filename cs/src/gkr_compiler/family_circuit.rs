@@ -161,7 +161,7 @@ impl<F: PrimeField> GKRCompiler<F> {
             assert_eq!(
                 decode_table_columns_mask
                     .iter()
-                    .filter(|el| **el == true)
+                    .filter(|el| **el)
                     .count(),
                 decoder_table_width
             );
@@ -564,7 +564,7 @@ impl<F: PrimeField> GKRCompiler<F> {
 
         for boolean in boolean_vars.iter() {
             let t = Term::<F>::from(*boolean);
-            let c = t.clone() * t.clone() - t;
+            let c = t * t - t;
             constraints.push((c, false));
         }
 
@@ -584,7 +584,7 @@ impl<F: PrimeField> GKRCompiler<F> {
 
         // filter constraints that define variables
         let len_before = constraints.len();
-        for (_, c) in variables_from_constraints.iter_mut() {
+        for c in variables_from_constraints.values_mut() {
             c.normalize();
             let mut to_remove = None;
             for (idx, (cc, _)) in constraints.iter().enumerate() {
@@ -622,7 +622,7 @@ impl<F: PrimeField> GKRCompiler<F> {
         let mut variables_via_constraints_are_disjoint = true;
         let mut all_variables_in_constraints = HashSet::new();
         for (c, _) in constraints.iter() {
-            for (var, _) in variables_from_constraints.iter() {
+            for var in variables_from_constraints.keys() {
                 if c.contains_var(var) {
                     variables_via_constraints_are_disjoint = false;
                 }
@@ -635,8 +635,8 @@ impl<F: PrimeField> GKRCompiler<F> {
         //     variables_via_constraints_are_disjoint
         // );
 
-        if variables_from_constraints.len() > 0 {
-            assert!(all_variables_to_place.len() > 0);
+        if !variables_from_constraints.is_empty() {
+            assert!(!all_variables_to_place.is_empty());
 
             // put all variables into base layer that are not defined via constraints
             for var in all_variables_to_place.clone().iter() {
@@ -724,7 +724,7 @@ impl<F: PrimeField> GKRCompiler<F> {
 
         // placing lookup is move involved
         {
-            if range_check_16_expressions.len() > 0 {
+            if !range_check_16_expressions.is_empty() {
                 let (multiplicity, final_pair, final_rel, rels_for_witness_eval) =
                     layout_width_1_lookup_expressions(
                         &mut graph,
@@ -741,7 +741,7 @@ impl<F: PrimeField> GKRCompiler<F> {
                 lookup_outputs.insert(LookupType::RangeCheck16, (final_pair, final_rel));
             }
 
-            if timestamp_range_check_expressions_to_compile.len() > 0 {
+            if !timestamp_range_check_expressions_to_compile.is_empty() {
                 let (multiplicity, final_pair, final_rel, rels_for_witness_eval) =
                     layout_width_1_lookup_expressions(
                         &mut graph,
@@ -758,7 +758,7 @@ impl<F: PrimeField> GKRCompiler<F> {
                 lookup_outputs.insert(LookupType::TimestampRangeCheck, (final_pair, final_rel));
             }
 
-            if generic_lookups.len() > 0 || decoder_lookup_pair.is_some() {
+            if !generic_lookups.is_empty() || decoder_lookup_pair.is_some() {
                 let decoder_lookup_is_present = decoder_lookup_pair.is_some();
                 num_generic_lookups += decoder_lookup_is_present as usize;
                 num_generic_lookups += generic_lookups.len();
@@ -876,11 +876,10 @@ impl<F: PrimeField> GKRCompiler<F> {
                 .decoder_data
                 .imm
                 .map(|el| graph.get_address_for_variable(el));
-            let funct3 = if let Some(funct3) = executor_machine_state.decoder_data.funct3 {
-                Some(graph.get_address_for_variable(funct3))
-            } else {
-                None
-            };
+            let funct3 = executor_machine_state
+                .decoder_data
+                .funct3
+                .map(|funct3| graph.get_address_for_variable(funct3));
             let mut circuit_family_mask_bits = vec![];
             for el in circuit_family_bitmask.iter() {
                 let pos = graph.get_address_for_variable(*el);
@@ -1001,14 +1000,11 @@ impl<F: PrimeField> GKRCompiler<F> {
         let mut scratch_space_mapping = BTreeMap::new();
         let mut scratch_space_mapping_rev = BTreeMap::new();
         let mut scratch_space_counter = 0usize;
-        for (_var, pos) in placement_data.iter() {
-            match pos {
-                GKRAddress::InnerLayer { .. } => {
-                    scratch_space_mapping.insert(*pos, scratch_space_counter);
-                    scratch_space_mapping_rev.insert(scratch_space_counter, *pos);
-                    scratch_space_counter += 1;
-                }
-                _ => {}
+        for pos in placement_data.values() {
+            if let GKRAddress::InnerLayer { .. } = pos {
+                scratch_space_mapping.insert(*pos, scratch_space_counter);
+                scratch_space_mapping_rev.insert(scratch_space_counter, *pos);
+                scratch_space_counter += 1;
             }
         }
 
@@ -1026,8 +1022,7 @@ impl<F: PrimeField> GKRCompiler<F> {
             .chain(
                 generic_lookups_compiled
                     .iter_mut()
-                    .map(|el: &mut NoFieldVectorLookupRelation| el.columns.iter_mut())
-                    .flatten(),
+                    .flat_map(|el: &mut NoFieldVectorLookupRelation| el.columns.iter_mut()),
             )
         {
             for (_, addr) in rel.linear_terms.iter_mut() {
@@ -1068,7 +1063,7 @@ impl<F: PrimeField> GKRCompiler<F> {
             range_check_16_lookup_expressions: range_check_16_lookups_compiled,
             timestamp_range_check_lookup_expressions: timestamp_range_check_lookups_compiled,
 
-            variable_names: BTreeMap::from_iter(variable_names.into_iter()),
+            variable_names: BTreeMap::from_iter(variable_names),
             scratch_space_mapping,
             scratch_space_mapping_rev,
 

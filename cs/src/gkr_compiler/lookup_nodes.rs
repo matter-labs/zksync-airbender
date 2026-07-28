@@ -211,9 +211,7 @@ impl GKRGate for LookupSingleColumnWitnessMinusSetupInputNode {
             };
             assert!(output_layer > 0);
             let layer_for_caches = output_layer - 1;
-            let cached_input = graph.add_cached_relation(cached_input, layer_for_caches);
-
-            cached_input
+            graph.add_cached_relation(cached_input, layer_for_caches)
         };
 
         let relation = NoFieldGKRRelation::LookupFromMaterializedBaseInputWithSetup {
@@ -260,9 +258,7 @@ impl GKRGate for LookupSingleColumnWitnessPairAggregationNode {
                     };
                     assert!(output_layer > 0);
                     let layer_for_caches = output_layer - 1;
-                    let cached_input = graph.add_cached_relation(cached_input, layer_for_caches);
-
-                    cached_input
+                    graph.add_cached_relation(cached_input, layer_for_caches)
                 }
             });
 
@@ -351,9 +347,7 @@ impl GKRGate for LookupExplicitPairWithSingleColumnInputAggregationNode {
             };
             assert!(output_layer > 0);
             let layer_for_caches = output_layer - 1;
-            let cached_input = graph.add_cached_relation(cached_input, layer_for_caches);
-
-            cached_input
+            graph.add_cached_relation(cached_input, layer_for_caches)
         };
 
         let node = LookupExplicitPairWithSingleColumnMaterializedInputAggregationNode {
@@ -426,9 +420,7 @@ impl GKRGate for VectorLookupWitnessPairAggregationFromCachesNode {
                 let cached_input = NoFieldGKRCacheRelation::VectorizedLookup(input.clone());
                 assert!(output_layer > 0);
                 let layer_for_caches = output_layer - 1;
-                let cached_input = graph.add_cached_relation(cached_input, layer_for_caches);
-
-                cached_input
+                graph.add_cached_relation(cached_input, layer_for_caches)
             });
 
             let relation =
