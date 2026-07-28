@@ -3270,8 +3270,20 @@ pub(super) struct SegCorpusRow {
     /// The lowering's static per-list spread at THIS `K`; one is perfect balance.
     pub(super) max_over_mean_work: f64,
     pub(super) parity: SegParity,
+    /// **Two protocols share this column.** On the `K = 4` baseline row it is a
+    /// SOLO median; on every other `K` it is the candidate median of an
+    /// INTERLEAVED pair. The two are not interchangeable — 23 of 792 points
+    /// disagree by more than 10% between the solo and the interleaved reading of
+    /// the same baseline, worst 1.795x — so anything that divides medians ACROSS
+    /// rows must first put both sides on one protocol (see
+    /// [`interleaved_baseline_median`]). Ratios are unaffected: they are measured
+    /// inside the pair.
     pub(super) median_us: Option<f64>,
     pub(super) min_us: Option<f64>,
+    /// The PAIRED baseline's own median, as measured inside the same interleaved
+    /// loop. `None` on the baseline row and on every untimed row — and on every
+    /// row of a schema-v1 chunk, which did not carry the column.
+    pub(super) baseline_median_us: Option<f64>,
     /// Against the same cell's `K = 4` twin. `None` on the baseline row itself
     /// (which is timed solo, and says so) and on every untimed row.
     pub(super) ratio_vs_baseline: Option<RatioEstimate>,
@@ -3293,6 +3305,7 @@ impl SegCorpusRow {
             parity: SegParity::Unlaunchable,
             median_us: None,
             min_us: None,
+            baseline_median_us: None,
             ratio_vs_baseline: None,
         }
     }
@@ -3314,10 +3327,27 @@ pub(super) const SEG_CORPUS_CHUNK_PREFIX: &str = "seg_corpus_";
 /// The policy pass's own table. Deliberately OUTSIDE the chunk prefix.
 pub(super) const SEG_POLICY_CSV: &str = "seg_k_policy.csv";
 
+/// The chunk table's columns.
+///
+/// **Schema v2.** v1 was this without `baseline_median_us`, and the reader accepts
+/// both — see [`parse_corpus_csv`]. The column was added because the row already
+/// computed the paired baseline's median and then threw it away, which left
+/// `median_us` carrying two different protocols in one column (a solo median on the
+/// `K = 4` baseline row, an interleaved candidate median on every other row) with
+/// no way to recover the missing half. The `K` policy never saw it — it reads
+/// paired ratios only — but the D2 verdict consumes raw medians, and a reader
+/// cannot tell the two apart from the number.
 pub(super) const SEG_CORPUS_CSV_HEADER: &str = "circuit,layer,class,regime,round,d2_policy,terms,\
 sources,windows,bf_sources,e4_sources,procedural_sources,total_static_work,bytes_per_row,rows,\
 grid_blocks,k,status,blocks_per_sm,theoretical_occupancy_percent,registers,dynamic_smem_bytes,\
-waves,max_over_mean_work,parity,protocol,median_us,min_us,ratio_vs_k4,ci_low,ci_high\n";
+waves,max_over_mean_work,parity,protocol,median_us,min_us,baseline_median_us,ratio_vs_k4,ci_low,\
+ci_high\n";
+
+/// The one column schema v1 lacks. Absent from an on-disk v1 chunk, and its
+/// absence is not an error: the sweeps that produced this workspace's tables ran
+/// before it existed, and regenerating 12 locked chunk runs to add a column that
+/// no conclusion depends on would be a worse trade than reading both schemas.
+pub(super) const SEG_CORPUS_V2_COLUMN: &str = "baseline_median_us";
 
 fn optional(value: Option<f64>) -> String {
     value.map_or_else(|| "-".to_owned(), |value| format!("{value:.3}"))
@@ -3341,7 +3371,7 @@ pub(super) fn render_corpus_csv(rows: &[SegCorpusRow]) -> String {
         writeln!(
             out,
             "{},{},{},{:?},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{:.4},{},{},{:.4},{:.6},\
-             {},{},{},{},{ratio},{low},{high}",
+             {},{},{},{},{},{ratio},{low},{high}",
             row.facts.circuit,
             row.facts.layer,
             row.facts.class.label(),
@@ -3370,71 +3400,96 @@ pub(super) fn render_corpus_csv(rows: &[SegCorpusRow]) -> String {
             row.protocol(),
             optional(row.median_us),
             optional(row.min_us),
+            optional(row.baseline_median_us),
         )
         .expect("write String");
     }
     out
 }
 
-/// Read a corpus CSV back.
+/// Read a corpus CSV back, schema v1 or v2.
 ///
 /// The sweep is CHUNKED — twelve circuits is far more than one locked run should
 /// hold — so the policy is derived in a separate pass over every chunk's table
 /// rather than inside the process that measured one of them. That makes the
-/// round-trip load-bearing, which is why the header is compared literally and
-/// every field is parsed rather than skipped: a column silently added to the
-/// writer and not the reader would shift every field after it.
+/// round-trip load-bearing.
+///
+/// Fields are resolved BY COLUMN NAME, not by position. The earlier positional
+/// reader made the schema unextendable: adding a column meant either shifting
+/// every index in lockstep (and re-running twelve locked GPU chunks to reissue the
+/// on-disk tables) or shipping a silently misaligned parse. Name resolution means
+/// a v1 chunk — everything this workspace measured — stays readable while new runs
+/// carry [`SEG_CORPUS_V2_COLUMN`]. Every other column is still REQUIRED, so a
+/// dropped or renamed one is a loud failure rather than a default.
 pub(super) fn parse_corpus_csv(text: &str) -> Vec<SegCorpusRow> {
     let mut lines = text.lines();
     let header = lines.next().expect("a corpus CSV has a header");
-    assert_eq!(
-        format!("{header}\n"),
-        SEG_CORPUS_CSV_HEADER,
-        "the corpus CSV header changed; the reader and the writer must move together"
+    let names: Vec<&str> = header.split(',').map(str::trim).collect();
+    let index = |column: &str| -> Option<usize> { names.iter().position(|name| *name == column) };
+    for column in SEG_CORPUS_CSV_HEADER.trim_end().split(',') {
+        assert!(
+            index(column).is_some() || column == SEG_CORPUS_V2_COLUMN,
+            "the corpus CSV is missing the required column {column:?}; header was {header:?}"
+        );
+    }
+    let at = |column: &'static str| -> usize { index(column).expect("a required column") };
+    let (circuit, layer, class) = (at("circuit"), at("layer"), at("class"));
+    let (terms, sources, windows) = (at("terms"), at("sources"), at("windows"));
+    let (bf, e4, proc) = (at("bf_sources"), at("e4_sources"), at("procedural_sources"));
+    let (work, bpr, rows) = (at("total_static_work"), at("bytes_per_row"), at("rows"));
+    let (k, status, blocks) = (at("k"), at("status"), at("blocks_per_sm"));
+    let (occupancy, registers, smem) = (
+        at("theoretical_occupancy_percent"),
+        at("registers"),
+        at("dynamic_smem_bytes"),
     );
-    let expected = SEG_CORPUS_CSV_HEADER.trim_end().split(',').count();
+    let (waves, spread, parity) = (at("waves"), at("max_over_mean_work"), at("parity"));
+    let (median, min) = (at("median_us"), at("min_us"));
+    let baseline = index(SEG_CORPUS_V2_COLUMN);
+    let (ratio_at, low_at, high_at) = (at("ratio_vs_k4"), at("ci_low"), at("ci_high"));
     lines
         .filter(|line| !line.trim().is_empty())
         .map(|line| {
             let field: Vec<&str> = line.split(',').collect();
-            assert_eq!(field.len(), expected, "corpus CSV row: {line}");
+            assert_eq!(field.len(), names.len(), "corpus CSV row: {line}");
             let facts = SegCoordFacts {
-                circuit: field[0].to_owned(),
-                layer: field[1].parse().expect("layer"),
-                class: SegRoundClass::parse(field[2]).expect("round class"),
-                terms: field[6].parse().expect("terms"),
-                sources: field[7].parse().expect("sources"),
-                windows: field[8].parse().expect("windows"),
-                bf_sources: field[9].parse().expect("bf sources"),
-                e4_sources: field[10].parse().expect("e4 sources"),
-                procedural_sources: field[11].parse().expect("procedural sources"),
-                total_static_work: field[12].parse().expect("static work"),
-                bytes_per_row: field[13].parse().expect("bytes per row"),
-                rows: field[14].parse().expect("rows"),
+                circuit: field[circuit].to_owned(),
+                layer: field[layer].parse().expect("layer"),
+                class: SegRoundClass::parse(field[class]).expect("round class"),
+                terms: field[terms].parse().expect("terms"),
+                sources: field[sources].parse().expect("sources"),
+                windows: field[windows].parse().expect("windows"),
+                bf_sources: field[bf].parse().expect("bf sources"),
+                e4_sources: field[e4].parse().expect("e4 sources"),
+                procedural_sources: field[proc].parse().expect("procedural sources"),
+                total_static_work: field[work].parse().expect("static work"),
+                bytes_per_row: field[bpr].parse().expect("bytes per row"),
+                rows: field[rows].parse().expect("rows"),
             };
-            let ratio = parse_optional(field[28]).map(|median_ratio| RatioEstimate {
+            let ratio = parse_optional(field[ratio_at]).map(|median_ratio| RatioEstimate {
                 median_ratio,
-                ci_low: parse_optional(field[29]).expect("a ratio carries an interval"),
-                ci_high: parse_optional(field[30]).expect("a ratio carries an interval"),
+                ci_low: parse_optional(field[low_at]).expect("a ratio carries an interval"),
+                ci_high: parse_optional(field[high_at]).expect("a ratio carries an interval"),
             });
             SegCorpusRow {
                 facts,
-                k: field[16].parse().expect("k"),
-                status: SegCorpusStatus::parse(field[17]).expect("status"),
-                blocks_per_sm: field[18].parse().expect("blocks/SM"),
-                theoretical_occupancy: field[19].parse::<f64>().expect("occupancy") / 100.0,
-                registers: field[20].parse().expect("registers"),
-                dynamic_smem_bytes: field[21].parse().expect("smem"),
-                waves: field[22].parse().expect("waves"),
-                max_over_mean_work: field[23].parse().expect("max/mean"),
-                parity: match field[24] {
+                k: field[k].parse().expect("k"),
+                status: SegCorpusStatus::parse(field[status]).expect("status"),
+                blocks_per_sm: field[blocks].parse().expect("blocks/SM"),
+                theoretical_occupancy: field[occupancy].parse::<f64>().expect("occupancy") / 100.0,
+                registers: field[registers].parse().expect("registers"),
+                dynamic_smem_bytes: field[smem].parse().expect("smem"),
+                waves: field[waves].parse().expect("waves"),
+                max_over_mean_work: field[spread].parse().expect("max/mean"),
+                parity: match field[parity] {
                     "oracles+identity" => SegParity::OraclesAndIdentity,
                     "oracles+reference" => SegParity::OraclesAndReference,
                     "unlaunchable" => SegParity::Unlaunchable,
                     other => panic!("unknown parity label {other:?}"),
                 },
-                median_us: parse_optional(field[26]),
-                min_us: parse_optional(field[27]),
+                median_us: parse_optional(field[median]),
+                min_us: parse_optional(field[min]),
+                baseline_median_us: baseline.and_then(|at| parse_optional(field[at])),
                 ratio_vs_baseline: ratio,
             }
         })
@@ -3445,15 +3500,24 @@ pub(super) fn parse_corpus_csv(text: &str) -> Vec<SegCorpusRow> {
 
 /// Below this per-row source footprint a coordinate takes the NARROW block.
 ///
-/// 1,280 B/row is 40 KiB per 32-row tile. FITTED — an exhaustive scan of both
-/// thresholds over the sweep's own best-`K` column, minimizing first the count of
-/// points losing more than [`SEG_POLICY_LOSS_THRESHOLD`] and then the mean loss.
-/// The optimum is broad: anything in 1,216–1,280 B/row scores identically.
+/// 1,280 B/row is exactly 40 KiB per 32-row tile. **This is the scan optimum
+/// ROUNDED, not the scan optimum.** [`fit_policy_thresholds`] over the corpus
+/// returns 1,248 B/row, which scores 78 points over threshold at mean +0.6478%
+/// against this constant's 83 at +0.6784%. The rounding is deliberate — a whole
+/// tile size is a number a reader can hold and a launcher can justify, and the
+/// difference is five points out of 782, inside the leave-one-circuit-out spread
+/// ([`loco_validation`]) — but it IS a difference and the audit states it.
+///
+/// The neighbourhood is broad but not flat: 1,216–1,472 B/row all score 81–84.
 pub(super) const SEG_POLICY_NARROW_BYTES_PER_ROW: usize = 1_280;
 
 /// Above this per-row source footprint a coordinate takes the WIDEST block its
-/// family can host. 18,432 B/row is 576 KiB per tile; the optimum is flat from
-/// ~16.5 KiB/row to ~19 KiB/row.
+/// family can host. 18,432 B/row is exactly 576 KiB per tile.
+///
+/// Same story: the scan optimum is 19,200 B/row, and it is a THREE-POINT SPIKE
+/// rather than a plateau — the neighbouring candidates score worse. Rounding down
+/// to a whole tile size trades those three points for a constant that is not
+/// balanced on a spike in one dataset.
 pub(super) const SEG_POLICY_WIDE_BYTES_PER_ROW: usize = 18_432;
 
 const _: () = assert!(SEG_POLICY_NARROW_BYTES_PER_ROW < SEG_POLICY_WIDE_BYTES_PER_ROW);
@@ -3493,9 +3557,28 @@ const _: () = assert!(SEG_POLICY_NARROW_BYTES_PER_ROW < SEG_POLICY_WIDE_BYTES_PE
 /// interpolated either — `K` is a block geometry, and a launcher choosing `K = 11`
 /// would be choosing a shape nothing was measured at.
 pub(super) fn seg_policy_k(bytes_per_row: usize, ceiling: usize) -> usize {
-    let want = if bytes_per_row < SEG_POLICY_NARROW_BYTES_PER_ROW {
+    seg_policy_k_with(
+        bytes_per_row,
+        ceiling,
+        SEG_POLICY_NARROW_BYTES_PER_ROW,
+        SEG_POLICY_WIDE_BYTES_PER_ROW,
+    )
+}
+
+/// [`seg_policy_k`] with the two thresholds supplied rather than committed.
+///
+/// The fit and the leave-one-circuit-out validation both need to evaluate the
+/// policy at thresholds that are NOT the committed ones; sharing this function is
+/// what stops the validation from silently scoring a differently-shaped rule.
+pub(super) fn seg_policy_k_with(
+    bytes_per_row: usize,
+    ceiling: usize,
+    narrow: usize,
+    wide: usize,
+) -> usize {
+    let want = if bytes_per_row < narrow {
         4
-    } else if bytes_per_row < SEG_POLICY_WIDE_BYTES_PER_ROW {
+    } else if bytes_per_row < wide {
         8
     } else {
         24
@@ -3581,6 +3664,23 @@ pub(super) fn evaluate_policy(
     rows: &[SegCorpusRow],
     below_floor_counts: bool,
 ) -> Vec<SegPolicyVerdict> {
+    evaluate_policy_with(
+        rows,
+        below_floor_counts,
+        SEG_POLICY_NARROW_BYTES_PER_ROW,
+        SEG_POLICY_WIDE_BYTES_PER_ROW,
+    )
+}
+
+/// [`evaluate_policy`] at supplied thresholds — the fit's and the validation's
+/// scoring function, and the committed policy's, so all three agree by
+/// construction.
+pub(super) fn evaluate_policy_with(
+    rows: &[SegCorpusRow],
+    below_floor_counts: bool,
+    narrow: usize,
+    wide: usize,
+) -> Vec<SegPolicyVerdict> {
     let mut keys: Vec<(String, usize, SegRoundClass, usize)> = Vec::new();
     for row in rows {
         if !keys.contains(&row.facts.key()) {
@@ -3608,7 +3708,7 @@ pub(super) fn evaluate_policy(
             .map(|row| row.k)
             .max()
             .unwrap_or(SEG_CORPUS_BASELINE_K);
-        let policy_k = seg_policy_k(facts.bytes_per_row, ceiling);
+        let policy_k = seg_policy_k_with(facts.bytes_per_row, ceiling, narrow, wide);
         let score = |k: usize| {
             group
                 .iter()
@@ -3649,6 +3749,375 @@ pub(super) fn evaluate_policy(
 /// The plan's threshold: a coordinate the formula loses more than this on is
 /// tabulated individually.
 pub(super) const SEG_POLICY_LOSS_THRESHOLD: f64 = 0.02;
+
+/// How a set of verdicts scores: `(over threshold, mean loss, exact hits)`.
+///
+/// The objective the fit minimizes, lexicographically in that order — count first
+/// because the plan's criterion is stated as a count, mean second to break its
+/// many ties.
+pub(super) fn policy_score(verdicts: &[SegPolicyVerdict]) -> (usize, f64, usize) {
+    let finite: Vec<f64> = verdicts
+        .iter()
+        .map(|verdict| verdict.loss)
+        .filter(|loss| loss.is_finite())
+        .collect();
+    (
+        verdicts
+            .iter()
+            .filter(|verdict| !(verdict.loss <= SEG_POLICY_LOSS_THRESHOLD))
+            .count(),
+        finite.iter().sum::<f64>() / finite.len().max(1) as f64,
+        verdicts
+            .iter()
+            .filter(|verdict| verdict.policy_k == verdict.best_k)
+            .count(),
+    )
+}
+
+/// One measurement point reduced to what a threshold search needs.
+///
+/// The fit evaluates ~15,000 threshold pairs per fold and twelve folds; doing that
+/// through [`evaluate_policy_with`] would re-group 782 rows by key inside every
+/// evaluation, which is quadratic and turns a seconds-long reduction into an
+/// hour-long one. This is the same computation hoisted out of the loop: grouping,
+/// best-`K` selection and the ceiling are properties of the DATA, and only the
+/// `K` the thresholds name changes between candidates.
+#[derive(Clone, Debug, PartialEq)]
+pub(super) struct SegPolicyPoint {
+    pub(super) circuit: String,
+    pub(super) bytes_per_row: usize,
+    pub(super) ceiling: usize,
+    pub(super) best_k: usize,
+    /// The paired score of every scored `K`, and the best `K`'s score, so a loss is
+    /// one lookup and one divide.
+    pub(super) scores: Vec<(usize, f64)>,
+    pub(super) best_score: f64,
+}
+
+impl SegPolicyPoint {
+    /// The loss of choosing `k`: infinite if this point never measured it.
+    pub(super) fn loss(&self, k: usize) -> f64 {
+        self.scores
+            .iter()
+            .find(|(candidate, _)| *candidate == k)
+            .map_or(f64::INFINITY, |(_, score)| score / self.best_score - 1.0)
+    }
+}
+
+/// Reduce rows to the compact points the fit and the validation score.
+pub(super) fn policy_points(
+    rows: &[SegCorpusRow],
+    below_floor_counts: bool,
+) -> Vec<SegPolicyPoint> {
+    let mut keys: Vec<(String, usize, SegRoundClass, usize)> =
+        rows.iter().map(|row| row.facts.key()).collect();
+    keys.sort();
+    keys.dedup();
+    let mut out = Vec::with_capacity(keys.len());
+    for key in keys {
+        let group: Vec<&SegCorpusRow> = rows.iter().filter(|row| row.facts.key() == key).collect();
+        let scores: Vec<(usize, f64)> = group
+            .iter()
+            .filter_map(|row| corpus_score(row, below_floor_counts).map(|score| (row.k, score)))
+            .collect();
+        if scores.is_empty() {
+            continue;
+        }
+        let best = scores
+            .iter()
+            .map(|(_, score)| *score)
+            .fold(f64::MAX, f64::min);
+        let threshold = best * (1.0 + SEG_SELECTION_TIE_FRACTION);
+        let best_k = scores
+            .iter()
+            .filter(|(_, score)| *score <= threshold)
+            .map(|(k, _)| *k)
+            .min()
+            .expect("a nonempty score set has a minimum");
+        let best_score = scores
+            .iter()
+            .find(|(k, _)| *k == best_k)
+            .map(|(_, score)| *score)
+            .expect("the best K is a scored row");
+        out.push(SegPolicyPoint {
+            circuit: group[0].facts.circuit.clone(),
+            bytes_per_row: group[0].facts.bytes_per_row,
+            ceiling: group
+                .iter()
+                .filter(|row| row.status != SegCorpusStatus::Unlaunchable)
+                .map(|row| row.k)
+                .max()
+                .unwrap_or(SEG_CORPUS_BASELINE_K),
+            best_k,
+            scores,
+            best_score,
+        });
+    }
+    out
+}
+
+/// Score a threshold pair over compact points: `(over threshold, mean loss)`.
+pub(super) fn score_points(points: &[SegPolicyPoint], narrow: usize, wide: usize) -> (usize, f64) {
+    let mut over = 0;
+    let mut sum = 0.0;
+    let mut finite = 0usize;
+    for point in points {
+        let loss = point.loss(seg_policy_k_with(
+            point.bytes_per_row,
+            point.ceiling,
+            narrow,
+            wide,
+        ));
+        if !(loss <= SEG_POLICY_LOSS_THRESHOLD) {
+            over += 1;
+        }
+        if loss.is_finite() {
+            sum += loss;
+            finite += 1;
+        }
+    }
+    (over, sum / finite.max(1) as f64)
+}
+
+/// Fit both thresholds to `rows` by exhaustive search.
+///
+/// The candidate set is the OBSERVED `bytes_per_row` values, not an arbitrary
+/// grid: a threshold only matters where it separates two coordinates, so every
+/// distinct footprint is a candidate and nothing between two of them can score
+/// differently. That makes this an exact argmin over the rule's whole parameter
+/// space, which is what lets [`loco_validation`] refit honestly per fold.
+///
+/// ~177 distinct footprints over the corpus, so ~15k threshold pairs; over the
+/// compact points of [`policy_points`] the whole twelve-fold validation is a few
+/// seconds of CPU on the published tables.
+pub(super) fn fit_policy_thresholds(rows: &[SegCorpusRow]) -> (usize, usize) {
+    fit_over_points(&policy_points(rows, false))
+}
+
+/// [`fit_policy_thresholds`] over points already reduced.
+pub(super) fn fit_over_points(points: &[SegPolicyPoint]) -> (usize, usize) {
+    let mut candidates: Vec<usize> = points.iter().map(|point| point.bytes_per_row).collect();
+    candidates.sort_unstable();
+    candidates.dedup();
+    let mut best: Option<((usize, u64), (usize, usize))> = None;
+    for (position, narrow) in candidates.iter().copied().enumerate() {
+        for wide in candidates[position + 1..].iter().copied() {
+            let (over, mean) = score_points(points, narrow, wide);
+            // The mean is compared as sortable bits so the objective is a total
+            // order and the argmin cannot depend on float comparison order.
+            let key = ((over, (mean * 1e12) as u64), (narrow, wide));
+            if best.as_ref().is_none_or(|current| key.0 < current.0) {
+                best = Some(key);
+            }
+        }
+    }
+    best.map(|(_, thresholds)| thresholds)
+        .expect("a corpus with at least two distinct footprints")
+}
+
+/// One fold of [`loco_validation`].
+#[derive(Clone, Debug, PartialEq)]
+pub(super) struct SegLocoFold {
+    pub(super) held_out: String,
+    pub(super) narrow: usize,
+    pub(super) wide: usize,
+    pub(super) points: usize,
+    /// Points whose loss is finite, i.e. the denominator of `mean_loss`. Carried
+    /// separately so [`loco_summary`] can pool exactly instead of weighting a mean
+    /// over finite losses by a count that includes infinite ones.
+    pub(super) finite: usize,
+    pub(super) mean_loss: f64,
+    pub(super) over_threshold: usize,
+}
+
+/// Leave-one-CIRCUIT-out validation of the fitted thresholds.
+///
+/// The thresholds are two degrees of freedom fitted on the same 782 points they
+/// were then scored against, and the first version of this audit defended that
+/// with "the optimum is broad" plus one out-of-sample point — a defence that was
+/// **wrong on its own terms** (see the K-policy section: that point disagrees with
+/// the policy). This is the defence that actually holds: refit BOTH thresholds on
+/// eleven circuits, score the twelfth, and repeat.
+///
+/// Leave-one-CIRCUIT-out rather than leave-one-point-out because the points are
+/// not independent — 782 points are 285 coordinates measured at up to four depths,
+/// and a held-out point whose own coordinate stayed in the training set is not
+/// held out in any useful sense. Circuits are the coarsest grouping the corpus
+/// offers and the only one that removes a whole family of related coordinates.
+pub(super) fn loco_validation(rows: &[SegCorpusRow]) -> Vec<SegLocoFold> {
+    let mut circuits: Vec<String> = rows.iter().map(|row| row.facts.circuit.clone()).collect();
+    circuits.sort();
+    circuits.dedup();
+    circuits
+        .into_iter()
+        .map(|held_out| {
+            let train: Vec<SegCorpusRow> = rows
+                .iter()
+                .filter(|row| row.facts.circuit != held_out)
+                .cloned()
+                .collect();
+            let test: Vec<SegCorpusRow> = rows
+                .iter()
+                .filter(|row| row.facts.circuit == held_out)
+                .cloned()
+                .collect();
+            let (narrow, wide) = fit_over_points(&policy_points(&train, false));
+            let held = policy_points(&test, false);
+            let (over, mean) = score_points(&held, narrow, wide);
+            let finite = held
+                .iter()
+                .filter(|point| {
+                    point
+                        .loss(seg_policy_k_with(
+                            point.bytes_per_row,
+                            point.ceiling,
+                            narrow,
+                            wide,
+                        ))
+                        .is_finite()
+                })
+                .count();
+            SegLocoFold {
+                held_out,
+                narrow,
+                wide,
+                points: held.len(),
+                finite,
+                mean_loss: mean,
+                over_threshold: over,
+            }
+        })
+        .collect()
+}
+
+/// What the static per-list work model says about measured `K` scaling.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(super) struct SegCriticalPathFit {
+    pub(super) pairs: usize,
+    pub(super) pearson: f64,
+    pub(super) spearman: f64,
+    pub(super) predicted_median: f64,
+    pub(super) measured_median: f64,
+}
+
+/// Correlate the static critical-path prediction with the measured `K` ratio.
+///
+/// The static model says a block finishes when its slowest list does, so its
+/// per-`K` prediction is `(max_over_mean(K) / K) / (max_over_mean(4) / 4)` — the
+/// busiest list's work at `K`, relative to the busiest list's work at the baseline.
+/// The measurement is the paired ratio the same row carries.
+///
+/// Committed rather than computed once in a scratch script: the audit's skew
+/// section quotes these four numbers, and a number in an audit that cannot be
+/// regenerated from the published tables is an assertion, not a measurement.
+pub(super) fn static_critical_path_correlation(rows: &[SegCorpusRow]) -> SegCriticalPathFit {
+    let mut groups: Vec<(String, usize, SegRoundClass, usize)> =
+        rows.iter().map(|row| row.facts.key()).collect();
+    groups.sort();
+    groups.dedup();
+    let mut predicted = Vec::new();
+    let mut measured = Vec::new();
+    for key in groups {
+        let group: Vec<&SegCorpusRow> = rows.iter().filter(|row| row.facts.key() == key).collect();
+        let Some(base) = group
+            .iter()
+            .find(|row| row.k == SEG_CORPUS_BASELINE_K && row.status.measured())
+        else {
+            continue;
+        };
+        if base.max_over_mean_work <= 0.0 {
+            continue;
+        }
+        let reference = base.max_over_mean_work / SEG_CORPUS_BASELINE_K as f64;
+        for row in &group {
+            let (Some(ratio), true) = (row.ratio_vs_baseline, row.status.measured()) else {
+                continue;
+            };
+            if row.max_over_mean_work <= 0.0 {
+                continue;
+            }
+            predicted.push((row.max_over_mean_work / row.k as f64) / reference);
+            measured.push(ratio.median_ratio);
+        }
+    }
+    SegCriticalPathFit {
+        pairs: predicted.len(),
+        pearson: pearson(&predicted, &measured),
+        spearman: spearman(&predicted, &measured),
+        predicted_median: if predicted.is_empty() {
+            f64::NAN
+        } else {
+            median(&predicted)
+        },
+        measured_median: if measured.is_empty() {
+            f64::NAN
+        } else {
+            median(&measured)
+        },
+    }
+}
+
+/// Pearson's product-moment correlation. `NaN` for fewer than two points or a
+/// degenerate side.
+pub(super) fn pearson(lhs: &[f64], rhs: &[f64]) -> f64 {
+    assert_eq!(lhs.len(), rhs.len());
+    let n = lhs.len();
+    if n < 2 {
+        return f64::NAN;
+    }
+    let mean = |values: &[f64]| values.iter().sum::<f64>() / n as f64;
+    let (mean_lhs, mean_rhs) = (mean(lhs), mean(rhs));
+    let mut covariance = 0.0;
+    let mut variance_lhs = 0.0;
+    let mut variance_rhs = 0.0;
+    for (left, right) in lhs.iter().zip(rhs.iter()) {
+        covariance += (left - mean_lhs) * (right - mean_rhs);
+        variance_lhs += (left - mean_lhs).powi(2);
+        variance_rhs += (right - mean_rhs).powi(2);
+    }
+    covariance / (variance_lhs.sqrt() * variance_rhs.sqrt())
+}
+
+/// Spearman's rank correlation, by Pearson over ordinal ranks.
+///
+/// Ties take their ordinal position rather than a mid-rank. Over 2,544 pairs of
+/// continuous timings, ties are rare enough that the difference is far below the
+/// third decimal this is quoted to; the simplification is stated rather than left
+/// for a reader to discover.
+pub(super) fn spearman(lhs: &[f64], rhs: &[f64]) -> f64 {
+    fn ranks(values: &[f64]) -> Vec<f64> {
+        let mut order: Vec<usize> = (0..values.len()).collect();
+        order.sort_by(|left, right| {
+            values[*left]
+                .partial_cmp(&values[*right])
+                .expect("finite sample")
+        });
+        let mut out = vec![0.0; values.len()];
+        for (rank, index) in order.into_iter().enumerate() {
+            out[index] = rank as f64;
+        }
+        out
+    }
+    pearson(&ranks(lhs), &ranks(rhs))
+}
+
+/// The pooled leave-one-circuit-out figures: `(points, mean loss, over threshold)`.
+///
+/// Pooled over folds by POINT, not averaged over folds, so a twelve-point circuit
+/// does not weigh the same as a 168-point one.
+pub(super) fn loco_summary(folds: &[SegLocoFold]) -> (usize, f64, usize) {
+    let points: usize = folds.iter().map(|fold| fold.points).sum();
+    let finite: usize = folds.iter().map(|fold| fold.finite).sum();
+    let weighted: f64 = folds
+        .iter()
+        .map(|fold| fold.mean_loss * fold.finite as f64)
+        .sum();
+    (
+        points,
+        weighted / finite.max(1) as f64,
+        folds.iter().map(|fold| fold.over_threshold).sum(),
+    )
+}
 
 // ── The sweep driver ─────────────────────────────────────────────────────────
 
@@ -4164,6 +4633,10 @@ fn corpus_row(
         parity: row.parity,
         median_us: status.measured().then_some(row.candidate_median_us),
         min_us: status.measured().then_some(row.candidate_min_us),
+        baseline_median_us: status
+            .measured()
+            .then_some(row.incumbent_median_us)
+            .flatten(),
         ratio_vs_baseline: status.measured().then_some(row.ratio).flatten(),
     }
 }
@@ -4218,7 +4691,90 @@ pub(super) fn load_corpus_tables() -> (Vec<SegCorpusRow>, SegCorpusRepeats) {
             }
         }
     }
+    assert_corpus_coverage(&kept, &files);
     (kept, SegCorpusRepeats { band, files })
+}
+
+/// Layers with backward roots across [`SEG_CORPUS_LAYOUTS`] — the Task-4 census
+/// freeze, restated here so the coverage assertion has something to compare to
+/// without lowering twelve DAGs.
+pub(super) const SEG_CORPUS_LAYER_COUNT: usize = 57;
+/// `(coordinate, round class)` cells the corpus has: 57 layers x 5 classes.
+pub(super) const SEG_CORPUS_CLASS_CELL_COUNT: usize =
+    SEG_CORPUS_LAYER_COUNT * SEG_ROUND_CLASSES.len();
+
+/// The union of the chunk tables must BE the corpus.
+///
+/// Without this the policy is a function of which files happen to be on disk. A
+/// chunk that was never run, or one deleted to resolve a stale-data problem,
+/// silently narrows the corpus and moves both thresholds — and the reduction would
+/// publish the narrowed result with the same confident headline. Asserted before
+/// anything is published rather than reported afterwards, because the failure mode
+/// is a plausible-looking number, not a crash.
+pub(super) fn assert_corpus_coverage(rows: &[SegCorpusRow], files: &[PathBuf]) {
+    let named = |paths: &[PathBuf]| {
+        paths
+            .iter()
+            .map(|path| path.display().to_string())
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    let mut circuits: Vec<&str> = rows.iter().map(|row| row.facts.circuit.as_str()).collect();
+    circuits.sort_unstable();
+    circuits.dedup();
+    let mut expected: Vec<&str> = SEG_CORPUS_LAYOUTS.iter().copied().map(short_name).collect();
+    expected.sort_unstable();
+    assert_eq!(
+        circuits,
+        expected,
+        "the chunk tables under {SEG_OUTPUT_DIR} do not cover the corpus; found {} of {}          circuits across [{}] -- re-run the missing chunk instead of publishing a policy          fitted on part of the corpus",
+        circuits.len(),
+        expected.len(),
+        named(files),
+    );
+    let layers = distinct_count(rows.iter().map(|row| (&row.facts.circuit, row.facts.layer)));
+    assert_eq!(
+        layers, SEG_CORPUS_LAYER_COUNT,
+        "the chunk tables cover {layers} layers; the corpus has {SEG_CORPUS_LAYER_COUNT}"
+    );
+    let cells = distinct_count(rows.iter().map(|row| row.facts.coordinate()));
+    assert_eq!(
+        cells, SEG_CORPUS_CLASS_CELL_COUNT,
+        "the chunk tables cover {cells} (coordinate, round class) cells; the corpus has          {SEG_CORPUS_CLASS_CELL_COUNT}"
+    );
+}
+
+/// The `K = 4` twin's median AS MEASURED INSIDE THE PAIRED LOOP, reconstructed
+/// from the group's paired rows.
+///
+/// This is the protocol-consistent anchor. `median_us` on the `K = 4` row is a
+/// SOLO median — measured on its own, before any interleaving — while every other
+/// row's `median_us` is the candidate half of an interleaved pair. Dividing one by
+/// the other silently crosses protocols, and on this corpus that is not
+/// hypothetical: 23 of 792 points disagree by more than 10% between the two
+/// readings of the same baseline (19 of them R0, which is swept first in each
+/// chunk and therefore pays a cold-clock cost on its solo baseline), worst
+/// **1.795x** on `blake2_g_function` L0 R0.
+///
+/// Reconstructed as the median over paired rows of `candidate_median / ratio`,
+/// because schema v1 chunks did not record the baseline's own median. On a v2
+/// chunk [`SegCorpusRow::baseline_median_us`] carries it directly and the two
+/// agree; the reconstruction is used regardless so a mixed-schema workspace
+/// reduces one way.
+pub(super) fn interleaved_baseline_median(group: &[SegCorpusRow]) -> Option<f64> {
+    let mut samples: Vec<f64> = group
+        .iter()
+        .filter_map(|row| {
+            let ratio = row.ratio_vs_baseline?.median_ratio;
+            let median = row.median_us?;
+            (ratio > 0.0).then_some(median / ratio)
+        })
+        .collect();
+    if samples.is_empty() {
+        return None;
+    }
+    samples.sort_by(|lhs, rhs| lhs.partial_cmp(rhs).expect("finite median"));
+    Some(median_of_sorted(&samples))
 }
 
 /// What the repeated measurement points in a loaded table say about run-to-run
@@ -4391,6 +4947,54 @@ fn bwd_seg_corpus_k_policy() {
         .iter()
         .map(|(spread, _)| *spread)
         .fold(0.0f64, f64::max);
+    let critical_path = static_critical_path_correlation(&rows);
+
+    // Leave-one-CIRCUIT-out: refit BOTH thresholds on eleven circuits, score the
+    // twelfth. This is the committed derivation of the out-of-sample number; the
+    // audit quotes it beside the in-sample one and does not defend the fit any
+    // other way.
+    let folds = loco_validation(&rows);
+    let (loco_points, loco_mean, loco_over) = loco_summary(&folds);
+    let points = policy_points(&rows, false);
+    let scan_optimum = fit_over_points(&points);
+    let (fit_over, fit_mean) = score_points(&points, scan_optimum.0, scan_optimum.1);
+    let agreeing = folds
+        .iter()
+        .filter(|fold| (fold.narrow, fold.wide) == scan_optimum)
+        .count();
+    let dissenting: String = {
+        let listed: Vec<String> = folds
+            .iter()
+            .filter(|fold| (fold.narrow, fold.wide) != scan_optimum)
+            .map(|fold| format!("{} -> ({}, {})", fold.held_out, fold.narrow, fold.wide))
+            .collect();
+        if listed.is_empty() {
+            "none".to_owned()
+        } else {
+            listed.join("; ")
+        }
+    };
+    eprintln!(
+        "[seg-corpus] LOCO over {} folds: {loco_points} points, mean loss {:+.3}%          (in-sample {:+.3}%), {loco_over} over threshold (in-sample {}); full-corpus scan          optimum ({}, {}) reproduced by {agreeing} of {} folds [{dissenting}]; \
+         committed ({}, {})",
+        folds.len(),
+        loco_mean * 100.0,
+        losses.iter().sum::<f64>() / losses.len().max(1) as f64 * 100.0,
+        over.len(),
+        scan_optimum.0,
+        scan_optimum.1,
+        folds.len(),
+        SEG_POLICY_NARROW_BYTES_PER_ROW,
+        SEG_POLICY_WIDE_BYTES_PER_ROW,
+    );
+    eprintln!(
+        "[seg-corpus] static critical-path model vs measured K scaling over {} pairs:          Pearson {:.3}, Spearman {:.3}; model predicts median {:.3}x where the          measurement shows {:.3}x",
+        critical_path.pairs,
+        critical_path.pearson,
+        critical_path.spearman,
+        critical_path.predicted_median,
+        critical_path.measured_median,
+    );
 
     // NOT `seg_corpus_*`: that prefix is the chunk glob `load_corpus_tables` reads,
     // and a policy table left in it would be parsed as a chunk on the next run --
@@ -4450,7 +5054,20 @@ fn bwd_seg_corpus_k_policy() {
              {SEG_POLICY_NARROW_BYTES_PER_ROW} B/row, `K = 8` below \
              {SEG_POLICY_WIDE_BYTES_PER_ROW} B/row, otherwise the widest `K` the \
              family hosts -- clamped to the family ceiling (32 on R0, 24 on \
-             continuation).\n\n\
+             continuation). The committed thresholds are the full-corpus scan \
+             optimum ({}, {}) ROUNDED to whole 32-row tile sizes (40 KiB, 576 KiB); \
+             the optimum itself scores {} over threshold at {:+.4}%.\n\n\
+             **Leave-one-circuit-out**: refit both thresholds on 11 circuits, score \
+             the 12th, x12 -> {loco_points} points, mean loss **{:+.3}%** against \
+             {:+.3}% in-sample, **{loco_over}** over threshold against {}. The scan \
+             optimum is reproduced by **{agreeing} of {}** folds ({dissenting}). The \
+             points are NOT \
+             independent (782 points are 285 coordinates at up to four depths, and \
+             three 12 GiB circuits supply 323 of them), which is why the fold is the \
+             circuit and not the point.\n\n\
+             **`best_k` is an argmin over noisy candidates**, so every loss below is \
+             slightly OVER-estimated wherever two `K` are within the band: the \
+             winner absorbs the favourable noise and the policy pays for it.\n\n\
              Scored over **{} measurement points that reached the timing floor**: it \
              names the measured best `K` on **{exact}** of them, mean loss **{:+.3}%**, \
              worst **{:+.2}%**, and **{}** point(s) lose more than \
@@ -4459,7 +5076,18 @@ fn bwd_seg_corpus_k_policy() {
              points.\n\n**Run-to-run band, measured**: {repeated} points were measured \
              twice; their medians disagree by {:.3}% (median), {:.3}% (p90), {:.3}% \
              (worst). No loss below that band is resolved.\n\n\
+             **Static critical-path model vs measured `K` scaling** over {} pairs: \
+             Pearson **{:.3}**, Spearman **{:.3}**; the model predicts a median \
+             **{:.3}x** where the measurement shows **{:.3}x**.\n\n\
              Points over the threshold:\n\n{}\n\nCSV: `{}`\n",
+            scan_optimum.0,
+            scan_optimum.1,
+            fit_over,
+            fit_mean * 100.0,
+            loco_mean * 100.0,
+            losses.iter().sum::<f64>() / losses.len().max(1) as f64 * 100.0,
+            over.len(),
+            folds.len(),
             verdicts.len(),
             losses.iter().sum::<f64>() / losses.len().max(1) as f64 * 100.0,
             worst * 100.0,
@@ -4469,6 +5097,11 @@ fn bwd_seg_corpus_k_policy() {
             band_median * 100.0,
             band_p90 * 100.0,
             band_worst * 100.0,
+            critical_path.pairs,
+            critical_path.pearson,
+            critical_path.spearman,
+            critical_path.predicted_median,
+            critical_path.measured_median,
             if over.is_empty() {
                 "None.\n".to_owned()
             } else {
@@ -4513,14 +5146,24 @@ fn bwd_seg_corpus_d2_policy() {
 
     let mut body = String::from(
         "| coordinate | rows | inline best K | inline (us) | materialize best K | \
-         materialize (us) | materialize / inline |\n|---|---|---|---|---|---|---|\n",
+         materialize (us) | materialize / inline (anchored) | as-recorded |\n\
+         |---|---|---|---|---|---|---|---|\n",
     );
     let mut wins = 0usize;
     let mut losses = 0usize;
     let mut ratios: Vec<f64> = Vec::new();
+    let mut recorded: Vec<f64> = Vec::new();
+    let mut recorded_wins = 0usize;
+    let mut mixed = 0usize;
     let mut unresolved = 0usize;
     for (circuit, layer, rows) in &points {
-        let side = |class: SegRoundClass| -> Option<(usize, f64)> {
+        // Two readings of each side, so the protocol asymmetry is visible rather
+        // than absorbed. `as-recorded` divides the winning row's `median_us`
+        // directly, which crosses protocols whenever one side's best `K` is the
+        // solo baseline and the other's is not. `anchored` puts BOTH sides on the
+        // interleaved protocol first: the twin's in-loop median times the winning
+        // `K`'s paired ratio.
+        let side = |class: SegRoundClass| -> Option<(usize, f64, f64)> {
             let group: Vec<SegCorpusRow> = d2
                 .iter()
                 .filter(|row| {
@@ -4532,7 +5175,16 @@ fn bwd_seg_corpus_d2_policy() {
                 .cloned()
                 .collect();
             let best = corpus_best_k(&group, true)?;
-            Some((best, group.iter().find(|row| row.k == best)?.median_us?))
+            let row = group.iter().find(|row| row.k == best)?;
+            let ratio = row.ratio_vs_baseline.map_or_else(
+                || (best == SEG_CORPUS_BASELINE_K).then_some(1.0),
+                |estimate| Some(estimate.median_ratio),
+            )?;
+            Some((
+                best,
+                interleaved_baseline_median(&group)? * ratio,
+                row.median_us?,
+            ))
         };
         let (Some(inline), Some(materialize)) = (
             side(SegRoundClass::D2Inline),
@@ -4541,12 +5193,17 @@ fn bwd_seg_corpus_d2_policy() {
             unresolved += 1;
             continue;
         };
+        if (inline.0 == SEG_CORPUS_BASELINE_K) != (materialize.0 == SEG_CORPUS_BASELINE_K) {
+            mixed += 1;
+        }
         // The two policies are DIFFERENT cells (different backings, different
-        // scratch), so this is a quotient of two solo medians, quoted with no
-        // interval. The verdict rests on the sign and on effects far outside the
-        // run-to-run band, not on the third digit.
+        // scratch), so this is still a quotient of two SOLO-anchored medians and is
+        // quoted with no interval. The verdict rests on the sign and on effects far
+        // outside the run-to-run band, not on the third digit.
         let ratio = materialize.1 / inline.1;
         ratios.push(ratio);
+        recorded.push(materialize.2 / inline.2);
+        recorded_wins += usize::from(materialize.2 / inline.2 < 1.0);
         if ratio < 1.0 {
             wins += 1;
         } else {
@@ -4554,11 +5211,22 @@ fn bwd_seg_corpus_d2_policy() {
         }
         writeln!(
             body,
-            "| {circuit} L{layer} D2 | {rows} | K{} | {:.1} | K{} | {:.1} | {ratio:.3} |",
-            inline.0, inline.1, materialize.0, materialize.1,
+            "| {circuit} L{layer} D2 | {rows} | K{} | {:.1} | K{} | {:.1} | {ratio:.4} | \
+             {:.4} |",
+            inline.0,
+            inline.1,
+            materialize.0,
+            materialize.1,
+            materialize.2 / inline.2,
         )
         .expect("write String");
     }
+    recorded.sort_by(|lhs, rhs| lhs.partial_cmp(rhs).expect("finite ratio"));
+    let recorded_median = if recorded.is_empty() {
+        f64::NAN
+    } else {
+        median_of_sorted(&recorded)
+    };
     ratios.sort_by(|lhs, rhs| lhs.partial_cmp(rhs).expect("finite ratio"));
     let median_ratio = if ratios.is_empty() {
         f64::NAN
@@ -4566,9 +5234,10 @@ fn bwd_seg_corpus_d2_policy() {
         median_of_sorted(&ratios)
     };
     eprintln!(
-        "[seg-corpus] D2 policy over {} paired points: materialize faster on {wins}, \
-         slower on {losses}, median materialize/inline {median_ratio:.3} ({unresolved} \
-         point(s) unresolved)",
+        "[seg-corpus] D2 policy over {} paired points (anchored): materialize faster on \
+         {wins}, slower on {losses}, median materialize/inline {median_ratio:.4} | \
+         as-recorded: faster on {recorded_wins}, median {recorded_median:.4} | {mixed} \
+         pair(s) mix protocols, {unresolved} unresolved",
         ratios.len(),
     );
     record_summary_section(
@@ -4580,9 +5249,18 @@ fn bwd_seg_corpus_d2_policy() {
              quotient is quoted with no interval. The measured run-to-run band on repeated \
              points of this sweep is {:.3}% (median) / {:.3}% (p90) / {:.3}% (worst) over \
              {} repeats, which is what a quotient near 1.0 has to be read against.\n\n\
-             Over **{} paired points**: `Materialize` is faster on **{wins}**, slower \
-             on **{losses}**, median `materialize / inline` **{median_ratio:.3}**. \
-             {unresolved} point(s) had no comparable pair.\n\n{body}\n",
+             **Protocol asymmetry, disclosed.** The corpus table\'s `median_us` column \
+             carries a SOLO median on each cell\'s `K = 4` row and an INTERLEAVED \
+             candidate median on every other `K`. **{mixed} of {} pairs here divide across \
+             those two protocols** because one side\'s best `K` is the baseline and the \
+             other\'s is not. Both readings are therefore given: `anchored` rebuilds each \
+             side from the twin\'s in-loop median times the winning `K`\'s paired ratio, so \
+             both sides are on the interleaved protocol; `as-recorded` divides the raw \
+             column. **The verdict is the same under both** -- anchored: faster on \
+             **{wins}**, slower on **{losses}**, median **{median_ratio:.4}**; \
+             as-recorded: faster on **{recorded_wins}**, median \
+             **{recorded_median:.4}**. {unresolved} point(s) had no comparable \
+             pair.\n\n{body}\n",
             band_median * 100.0,
             band_p90 * 100.0,
             band_worst * 100.0,
@@ -4971,6 +5649,7 @@ mod tests {
             },
             median_us: status.measured().then_some(1_000.0),
             min_us: status.measured().then_some(999.0),
+            baseline_median_us: ratio.map(|_| 1_000.0),
             ratio_vs_baseline: ratio.map(|median_ratio| RatioEstimate {
                 median_ratio,
                 ci_low: median_ratio - 0.001,
@@ -5030,9 +5709,60 @@ mod tests {
 
     /// The parse must not silently accept a table whose columns moved.
     #[test]
-    #[should_panic(expected = "the corpus CSV header changed")]
+    #[should_panic(expected = "missing the required column")]
     fn a_shifted_corpus_header_is_rejected() {
         parse_corpus_csv("circuit,layer,class\nadd_sub,0,R0\n");
+    }
+
+    /// A schema-v1 chunk — everything measured before `baseline_median_us` existed
+    /// — must still read, and must read the SAME values.
+    ///
+    /// Positional parsing made this impossible: adding one column would have meant
+    /// re-running twelve locked GPU chunks. Name resolution is what keeps the
+    /// on-disk record valid across the schema change.
+    #[test]
+    fn a_schema_v1_chunk_still_reads_and_agrees_with_v2() {
+        let rows = vec![
+            corpus_fixture(4, SegCorpusStatus::Timed, None),
+            corpus_fixture(8, SegCorpusStatus::Timed, Some(0.97)),
+        ];
+        let v2 = render_corpus_csv(&rows);
+        // Strip the v2 column from the header and from every row to make a v1 table.
+        let strip = |line: &str, at: usize| {
+            let mut field: Vec<&str> = line.split(',').collect();
+            field.remove(at);
+            field.join(",")
+        };
+        let at = SEG_CORPUS_CSV_HEADER
+            .trim_end()
+            .split(',')
+            .position(|name| name == SEG_CORPUS_V2_COLUMN)
+            .expect("the v2 column is in the v2 header");
+        let v1: String = v2
+            .lines()
+            .map(|line| format!("{}\n", strip(line, at)))
+            .collect();
+        assert!(!v1.contains(SEG_CORPUS_V2_COLUMN));
+        let from_v1 = parse_corpus_csv(&v1);
+        let from_v2 = parse_corpus_csv(&v2);
+        assert_eq!(from_v1.len(), from_v2.len());
+        for (old, new) in from_v1.iter().zip(from_v2.iter()) {
+            assert_eq!(old.facts, new.facts);
+            assert_eq!(old.median_us, new.median_us);
+            assert_eq!(old.ratio_vs_baseline, new.ratio_vs_baseline);
+            assert_eq!(
+                old.baseline_median_us, None,
+                "a v1 chunk cannot carry the baseline median"
+            );
+        }
+        assert!(from_v2[1].baseline_median_us.is_some());
+    }
+
+    /// A missing chunk must fail loudly rather than narrow the corpus.
+    #[test]
+    #[should_panic(expected = "do not cover the corpus")]
+    fn a_missing_chunk_fails_the_coverage_assertion() {
+        assert_corpus_coverage(&[corpus_fixture(4, SegCorpusStatus::Timed, None)], &[]);
     }
 
     /// Best-`K` reads the PAIRED ratios, prefers the smallest `K` inside the tie
@@ -5114,9 +5844,160 @@ mod tests {
         assert_eq!(seg_policy_k(SEG_POLICY_NARROW_BYTES_PER_ROW, 32), 8);
         assert_eq!(seg_policy_k(SEG_POLICY_WIDE_BYTES_PER_ROW - 1, 32), 8);
         assert_eq!(seg_policy_k(SEG_POLICY_WIDE_BYTES_PER_ROW, 32), 24);
-        // The Task-9 gate coordinate: `add_sub` L0 R0 is 1,824 B/row, and the policy
-        // must reproduce a `K` the gate was actually won at rather than a third one.
-        assert!(matches!(seg_policy_k(1_824, 32), 4 | 8));
+    }
+
+    /// **The Task-9 gate coordinate, pinned as a DISAGREEMENT.**
+    ///
+    /// `add_sub` L0 R0 is 1,824 B/row, so the policy answers `K = 8`. The gate was
+    /// won at `K = 4`, and at the gate's own row count (8,388,608 — four times
+    /// deeper than anything the corpus sweep reached) `K = 8` measured **1.27%
+    /// slower** (5,948.2 us against 5,873.4 us, `seg_stage_a_matrix.csv`). This is
+    /// the policy's only out-of-sample point and **it is a loss, not a
+    /// validation** — an earlier draft of the audit claimed the opposite by
+    /// asserting the policy returns 4 here without evaluating it.
+    ///
+    /// Pinned exactly rather than as `4 | 8` so the disagreement cannot be
+    /// re-absorbed by a threshold change without someone reading this comment. It
+    /// is also a live instance of the audit's own footprint-vs-traffic caveat: the
+    /// gate coordinate ALLOCATES 1,824 B/row but MOVES 1,004.3 B/row, and 1,004.3
+    /// is on the `K = 4` side of the narrow threshold.
+    #[test]
+    fn the_gate_coordinate_is_the_policys_known_out_of_sample_disagreement() {
+        assert_eq!(seg_policy_k(1_824, 32), 8);
+        // The measured traffic, had the policy been keyed on traffic instead of
+        // footprint, would have landed on the K the gate was actually won at.
+        assert_eq!(seg_policy_k(1_004, 32), 4);
+    }
+
+    /// The fit is an exact argmin over its own candidate set, and the committed
+    /// constants are a ROUNDING of it rather than the argmin itself.
+    #[test]
+    fn the_committed_thresholds_are_a_rounding_of_the_fitted_optimum() {
+        // Three synthetic coordinates whose best K is a clean step in footprint, so
+        // the argmin is checkable by hand.
+        let rows = policy_fixture();
+        let points = policy_points(&rows, false);
+        assert_eq!(points.len(), 3, "one point per synthetic coordinate");
+        let (narrow, wide) = fit_over_points(&points);
+        assert!(narrow < wide, "the fit must return an ordered pair");
+        let fitted = score_points(&points, narrow, wide);
+        for candidate in [(600usize, 5_000usize), (2_000, 30_000), (100, 200)] {
+            let other = score_points(&points, candidate.0, candidate.1);
+            assert!(
+                fitted <= other,
+                "the fit is not the argmin: {candidate:?} scores {other:?} against {fitted:?}"
+            );
+        }
+        // The fit finds the step the fixture was built from: every point on its own
+        // best K, so nothing is over threshold.
+        assert_eq!(fitted.0, 0, "the synthetic step is perfectly separable");
+        // The compact scoring and the verdict path must agree.
+        let verdicts = evaluate_policy_with(&rows, false, narrow, wide);
+        assert_eq!(policy_score(&verdicts).0, fitted.0);
+        assert!((policy_score(&verdicts).1 - fitted.1).abs() < 1e-12);
+    }
+
+    /// Leave-one-circuit-out holds out a whole circuit and refits.
+    #[test]
+    fn leave_one_circuit_out_refits_per_fold_and_pools_by_point() {
+        let mut rows = policy_fixture();
+        for row in &mut rows {
+            row.facts.circuit = format!("circuit_{}", row.facts.bytes_per_row);
+        }
+        let folds = loco_validation(&rows);
+        assert_eq!(folds.len(), 3, "one fold per circuit");
+        let mut held: Vec<&str> = folds.iter().map(|fold| fold.held_out.as_str()).collect();
+        held.sort_unstable();
+        held.dedup();
+        assert_eq!(held.len(), 3, "every circuit is held out exactly once");
+        for fold in &folds {
+            assert_eq!(fold.points, 1, "each synthetic circuit holds one point");
+            // The fold's thresholds must be the argmin on the COMPLEMENT, i.e. the
+            // held-out circuit may not have voted on the rule it is scored by.
+            let train: Vec<SegCorpusRow> = rows
+                .iter()
+                .filter(|row| row.facts.circuit != fold.held_out)
+                .cloned()
+                .collect();
+            assert_eq!(
+                fit_policy_thresholds(&train),
+                (fold.narrow, fold.wide),
+                "fold {} was scored by thresholds that are not its training argmin",
+                fold.held_out
+            );
+        }
+        let (points, mean, over) = loco_summary(&folds);
+        assert_eq!(points, 3);
+        assert!(mean.is_finite());
+        assert!(over <= points);
+    }
+
+    /// Pearson and Spearman on inputs whose answers are known.
+    #[test]
+    fn the_correlations_are_the_textbook_ones() {
+        let rising = [1.0, 2.0, 3.0, 4.0, 5.0];
+        let doubled = [2.0, 4.0, 6.0, 8.0, 10.0];
+        assert!((pearson(&rising, &doubled) - 1.0).abs() < 1e-12);
+        assert!((spearman(&rising, &doubled) - 1.0).abs() < 1e-12);
+        let falling = [5.0, 4.0, 3.0, 2.0, 1.0];
+        assert!((pearson(&rising, &falling) + 1.0).abs() < 1e-12);
+        assert!((spearman(&rising, &falling) + 1.0).abs() < 1e-12);
+        // Monotone but not linear: Spearman sees the order, Pearson does not.
+        let convex = [1.0, 4.0, 9.0, 16.0, 25.0];
+        assert!((spearman(&rising, &convex) - 1.0).abs() < 1e-12);
+        assert!(pearson(&rising, &convex) < 1.0);
+        assert!(
+            pearson(&[1.0], &[1.0]).is_nan(),
+            "one point is no correlation"
+        );
+    }
+
+    /// The anchor puts a solo baseline and a paired candidate on one protocol.
+    #[test]
+    fn the_interleaved_anchor_ignores_the_solo_baseline_median() {
+        let mut group = vec![
+            corpus_fixture(4, SegCorpusStatus::Timed, None),
+            corpus_fixture(8, SegCorpusStatus::Timed, Some(0.5)),
+            corpus_fixture(16, SegCorpusStatus::Timed, Some(0.25)),
+        ];
+        // The paired rows say the twin ran at 2,000 us in-loop; the baseline row's
+        // SOLO median says 1,000. The anchor must believe the paired rows.
+        group[1].median_us = Some(1_000.0);
+        group[2].median_us = Some(500.0);
+        assert_eq!(interleaved_baseline_median(&group), Some(2_000.0));
+        // With no paired row there is nothing to reconstruct from.
+        assert_eq!(
+            interleaved_baseline_median(&group[..1]),
+            None,
+            "a solo-only group has no interleaved reading"
+        );
+    }
+
+    /// Three synthetic coordinates: a light one that wants K4, a mid one that wants
+    /// K8 and a heavy one that wants K24.
+    fn policy_fixture() -> Vec<SegCorpusRow> {
+        let mut rows = Vec::new();
+        for (bytes, best) in [(512usize, 4usize), (4_096, 8), (40_960, 24)] {
+            for k in SEG_CORPUS_K {
+                let ratio = if k == best { Some(0.5) } else { Some(1.5) };
+                let mut row = corpus_fixture(
+                    k,
+                    SegCorpusStatus::Timed,
+                    (k != SEG_CORPUS_BASELINE_K).then(|| ratio.expect("set")),
+                );
+                row.facts.bytes_per_row = bytes;
+                row.facts.circuit = format!("c{bytes}");
+                if best == SEG_CORPUS_BASELINE_K && k != SEG_CORPUS_BASELINE_K {
+                    row.ratio_vs_baseline = Some(RatioEstimate {
+                        median_ratio: 1.5,
+                        ci_low: 1.4,
+                        ci_high: 1.6,
+                    });
+                }
+                rows.push(row);
+            }
+        }
+        rows
     }
 
     /// A policy that names a `K` the coordinate could not run is an INFINITE loss,
