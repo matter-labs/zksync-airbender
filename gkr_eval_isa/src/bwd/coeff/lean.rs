@@ -47,10 +47,9 @@ use std::fmt::Write as _;
 use cs::gkr_compiler::dag_ir::{BwdRegime, FieldKind};
 use serde::{Deserialize, Serialize};
 
-use super::encode::{category_arity, is_move, term_category};
 use super::limits::{
     CONTINUATION_OPCODE_TABLE, HEADER_COEFFICIENT_BITS, HEADER_OPCODE_BITS, MAX_OPCODES_PER_REGIME,
-    R0_OPCODE_TABLE, TermCategory,
+    R0_OPCODE_TABLE, TermCategory, category_arity, is_move, term_category,
 };
 use super::model::{CoeffLayer, CoeffTerm, CoefficientRecipeId, SourceId, TermId};
 

@@ -23,7 +23,10 @@
 //! One backward production lineage: an overflow of any bound here is a compiler
 //! error. There is no extended record, no version field, and no fallback format.
 
-use super::model::CoefficientRecipeId;
+use cs::gkr_compiler::dag_ir::FieldKind;
+
+use super::model::{CoeffTerm, CoefficientRecipeId};
+use crate::bwd::source::VIRTUAL_SETUP_MATERIALIZE_DEPTH;
 
 // ── Encoding limits (§9) ─────────────────────────────────────────────────────
 
@@ -83,6 +86,18 @@ const _: () = assert!(DESCRIPTOR_ALIGNMENT_WORDS == 8);
 pub const fn align_program_words(words: usize) -> usize {
     words.div_ceil(DESCRIPTOR_ALIGNMENT_WORDS) * DESCRIPTOR_ALIGNMENT_WORDS
 }
+
+/// First target depth whose first physical access PUBLISHES (§10.2:
+/// "target depth < 3: do not publish; target depth >= 3: publish on first
+/// physical access").
+///
+/// One tunable constant, NOT a scheduling decision and NOT a search variable. It
+/// is also the bound on the segmented executor's inline fold depth: at and past
+/// it the JAOT prologue materializes instead. Mirrored into CUDA as
+/// `BWD_COEFF_PUBLISH_TARGET_DEPTH`.
+pub const PUBLISH_TARGET_DEPTH: u8 = VIRTUAL_SETUP_MATERIALIZE_DEPTH;
+
+const _: () = assert!(PUBLISH_TARGET_DEPTH == 3);
 
 // ── Frozen regime opcode tables (§6, §9.2) ───────────────────────────────────
 
@@ -147,6 +162,47 @@ impl TermCategory {
             TermCategory::MoveBf => "MoveBF",
             TermCategory::MoveE4 => "MoveE4",
         }
+    }
+}
+
+/// The category of one lowered term, exactly as
+/// [`live_term_categories`](super::stats::live_term_categories) classifies it.
+///
+/// The classification is a pure function of the semantic term, so it lives with
+/// [`TermCategory`] rather than with any one codec.
+pub fn term_category(term: &CoeffTerm) -> TermCategory {
+    match term {
+        CoeffTerm::C0Linear { field: FieldKind::Base, .. } => TermCategory::C0LinearBf,
+        CoeffTerm::C0Linear { field: FieldKind::Ext, .. } => TermCategory::C0LinearE4,
+        CoeffTerm::C2Product { lhs_field, rhs_field, .. } => match (lhs_field, rhs_field) {
+            (FieldKind::Base, FieldKind::Base) => TermCategory::C2ProductBfBf,
+            (FieldKind::Ext, FieldKind::Ext) => TermCategory::C2ProductE4E4,
+            _ => TermCategory::C2ProductBfE4,
+        },
+        CoeffTerm::DualProduct { .. } => TermCategory::DualProductE4,
+    }
+}
+
+/// Whether the category is one of the two standalone cell-file moves (§9.6).
+///
+/// No live codec EMITS a move — the lean wire has no move form at all — but the
+/// two `Move` rows are still part of the FROZEN opcode tables, and the lean
+/// tables are defined as those tables with exactly the move rows deleted
+/// (`lean::is_densified_frozen_table`). That definition needs this predicate.
+pub const fn is_move(category: TermCategory) -> bool {
+    matches!(category, TermCategory::MoveBf | TermCategory::MoveE4)
+}
+
+/// Source operands the category carries — `0` for a move, whose two words are
+/// bare lanes rather than source records.
+pub const fn category_arity(category: TermCategory) -> usize {
+    match category {
+        TermCategory::C0LinearBf | TermCategory::C0LinearE4 => 1,
+        TermCategory::C2ProductBfBf
+        | TermCategory::C2ProductBfE4
+        | TermCategory::C2ProductE4E4
+        | TermCategory::DualProductE4 => 2,
+        TermCategory::MoveBf | TermCategory::MoveE4 => 0,
     }
 }
 
@@ -364,12 +420,11 @@ pub const fn lower_bound_program_words(unary_terms: usize, binary_terms: usize) 
 
 /// Moves this bound BUDGETS per reusable projection.
 ///
-/// Still an **assumption**, not a derived bound — see [`upper_bound_program_words`]
-/// — but no longer an unmeasured one: Task 8 realized the whole corpus through the
-/// real placer and encoder at every budget and emitted
-/// [`in_scope::REALIZED_MOVES`] `== 0` moves in 1,710 placements. The budget is
-/// therefore pure slack, and NOTHING is sized from it: the descriptor ABI is sized
-/// from [`in_scope::MAX_REALIZED_PROGRAM_WORDS`], a measurement.
+/// An **assumption**, not a derived bound — see [`upper_bound_program_words`].
+/// Nothing is SIZED from it: the live descriptor ABI is sized from
+/// [`LEAN_MAX_REALIZED_PROGRAM_WORDS`], and the lean wire has no move form at
+/// all. The term survives only inside the a-priori census bound, where its whole
+/// job is to stay conservative.
 pub const ASSUMED_MOVES_PER_REUSABLE_PROJECTION: usize = 1;
 
 /// A conservative maximum program stream, with ONE part proven and ONE part
@@ -385,9 +440,8 @@ pub const ASSUMED_MOVES_PER_REUSABLE_PROJECTION: usize = 1;
 /// **Assumed half — the moves.** This budgets
 /// [`ASSUMED_MOVES_PER_REUSABLE_PROJECTION`] `== 1` three-word move (§9.6) per
 /// projection referenced by two or more term operand slots. Design §7.3 does NOT
-/// cap moves at one per reusable projection: Task 5's placement repair emits moves
-/// and its count is not yet bounded, so a schedule COULD exceed this. Calling it
-/// "the maximum any schedule can need" would be wrong.
+/// cap moves at one per reusable projection, so calling this "the maximum any
+/// schedule can need" would be wrong.
 ///
 /// **Exposure, so the assumption is auditable.** On the worst in-scope coordinate
 /// (`blake2_with_extended_control` L0 `Ext`: 1791 terms, 1731 projections, 843
@@ -398,32 +452,11 @@ pub const ASSUMED_MOVES_PER_REUSABLE_PROJECTION: usize = 1;
 /// coordinate before any verdict changed, which is why
 /// [`in_scope::INCONCLUSIVE_COORDINATES`] `== 0` stands.
 ///
-/// **Resolved by Task 8 (this is the former `TODO(task-8)`).** The real placer and
-/// the real encoder have now run over every in-scope coordinate at every budget —
-/// [`in_scope::REALIZED_PLACEMENTS`] placements — and emitted
-/// [`in_scope::REALIZED_MOVES`] moves. The realized ratio against the budgeted
-/// `reusable_projections * ASSUMED_MOVES_PER_REUSABLE_PROJECTION` is therefore
-/// exactly ZERO, and the whole move term of this bound is slack.
-///
-/// The TODO's two options were "pin the ratio" or "replace this term with the
-/// encoder's own count". NEITHER is taken, deliberately:
-///
-///   * pinning `realized / budgeted == 0` would pin an accident. Task 5's repair
-///     emits a move only when an E4 fill finds no free quad while live BF
-///     occupants block one, and the corpus's mixed-width pressure never reaches
-///     that state at c2..c16. A future layer could; the budget must survive it.
-///   * substituting the measured count would turn a BOUND into a MEASUREMENT. This
-///     function is the a-priori guard Task 3's census sizes unmeasured coordinates
-///     with, and a bound that assumes zero moves would stop bounding anything.
-///
-/// The TODO existed because an unmeasured assumption was load-bearing. It is no
-/// longer load-bearing: nothing is sized from this function any more. The
-/// descriptor ABI is sized from [`in_scope::MAX_REALIZED_PROGRAM_WORDS`], a
-/// measurement of the real encoder, which came in at
-/// [`in_scope::MAX_REALIZED_PROGRAM_BYTES`] `== 11_518` against this bound's
-/// [`in_scope::MAX_UPPER_BOUND_PROGRAM_BYTES`] `== 19_396` — loose by 1.68x,
-/// exactly as a conservative bound should be. `bwd_coeff_budget_sweep_report`
-/// re-measures both numbers and fails if either moves.
+/// **Nothing is sized from this function.** It is the a-priori guard Task 3's
+/// census reports per coordinate, and the census alone; the live descriptor ABI
+/// is sized from [`LEAN_MAX_REALIZED_PROGRAM_WORDS`], a measurement of the lean
+/// encoder over the whole corpus. Substituting a measurement here would turn a
+/// BOUND into a measurement and stop it bounding anything.
 pub const fn upper_bound_program_words(
     unary_terms: usize,
     binary_terms: usize,
@@ -502,69 +535,6 @@ pub mod in_scope {
     /// continuation opcodes 3..7 invalid.
     pub const MAX_CONTINUATION_STANDALONE_PRODUCTS: usize = 0;
 
-    // ── Task 8: the REAL encoder's measurements ──────────────────────────────
-    //
-    // Everything above this line is a bound or a population count Task 3 derived
-    // from the lowered IR. Everything below is what the real pager, placer, binder
-    // and encoder ACTUALLY produced over the whole corpus at every budget
-    // `c2`..`c16`. Task 9's ABI is sized from THESE, never from the bounds:
-    // `bwd_coeff_budget_sweep_report` recomputes each one and fails on any drift.
-
-    /// Programs the sweep realizes: every in-scope coordinate at every budget.
-    /// Also the placement count the move measurement is taken over.
-    pub const REALIZED_PLACEMENTS: usize = COORDINATES * BUDGETS;
-    /// Cell budgets per coordinate, `c2`..`c16` inclusive.
-    pub const BUDGETS: usize = 15;
-
-    /// Moves the real placer emitted across all [`REALIZED_PLACEMENTS`]
-    /// placements. ZERO.
-    ///
-    /// Task 5's repair emits a move only when an E4 fill finds no free quad and
-    /// live BF occupants block one; the corpus's mixed-width pressure never
-    /// reaches that state at any budget. This retires the unmeasured half of
-    /// [`super::ASSUMED_MOVES_PER_REUSABLE_PROJECTION`] — see the note there for
-    /// why the bound still budgets moves anyway.
-    pub const REALIZED_MOVES: usize = 0;
-
-    /// The largest program the REAL encoder emits, in u16 words, over every
-    /// in-scope coordinate and every budget.
-    ///
-    /// **This is the number Task 9 sizes the by-value descriptor's program array
-    /// from.** It is a measurement, not a bound: it is what
-    /// [`crate::bwd::coeff::encode::encode_program`] produced, after the
-    /// §12.1 encoding certificate accepted it.
-    pub const MAX_REALIZED_PROGRAM_WORDS: usize = 5_759;
-    /// [`MAX_REALIZED_PROGRAM_WORDS`] in bytes.
-    pub const MAX_REALIZED_PROGRAM_BYTES: usize = program_bytes(MAX_REALIZED_PROGRAM_WORDS);
-    /// The `(circuit, layer, regime)` that realizes it, so a drift in the maximum
-    /// says WHERE immediately.
-    pub const MAX_REALIZED_PROGRAM_COORDINATE: &str =
-        "blake2_with_extended_control_layout_gkr.json L0 Ext";
-    /// The BUDGET that realizes it — `c3`, not `c16`.
-    ///
-    /// Worth pinning because it is counter-intuitive. Program length is not
-    /// monotone in the cell budget: a bigger cell file retains more projections,
-    /// which turns `FillSource` inputs (input word + destination-lane extension)
-    /// into resident reads (input word alone), so the longest stream comes from a
-    /// SMALL budget that still fills constantly, not from the largest one. `c2`
-    /// fills even more but pages so aggressively that it re-uses fewer distinct
-    /// records. The corpus maximum therefore sits at the c3 turning point.
-    pub const MAX_REALIZED_PROGRAM_CELLS: u8 = 3;
-
-    /// The by-value descriptor's program array length, in u16 words:
-    /// [`MAX_REALIZED_PROGRAM_WORDS`] rounded up to the descriptor's 16-byte ABI
-    /// alignment and NOT ONE WORD FURTHER.
-    ///
-    /// The remaining `KERNEL_ARGUMENT_CEILING_BYTES - DESCRIPTOR_PROGRAM_BYTES` is
-    /// deliberately NOT claimed as headroom. Task 9 puts a by-value array of this
-    /// length into every launch descriptor, so an unearned word is unearned
-    /// kernel-argument budget in every kernel launch, forever. If a future circuit
-    /// needs more, this constant is re-measured and moved — that is a deliberate
-    /// act with a test behind it, which speculative headroom would have hidden.
-    pub const DESCRIPTOR_PROGRAM_WORDS: usize = align_program_words(MAX_REALIZED_PROGRAM_WORDS);
-    /// [`DESCRIPTOR_PROGRAM_WORDS`] in bytes: 16-byte aligned by construction.
-    pub const DESCRIPTOR_PROGRAM_BYTES: usize = program_bytes(DESCRIPTOR_PROGRAM_WORDS);
-
     /// Every in-scope coordinate's UPPER bound fits, so no coordinate is left
     /// inconclusive for Task 8's real encoder — at the program-stream level.
     pub const INCONCLUSIVE_COORDINATES: usize = 0;
@@ -584,21 +554,6 @@ pub mod in_scope {
     const _: () = assert!(MAX_SOURCE_WINDOWS_USED <= MAX_SOURCE_WINDOWS);
     const _: () = assert!(MAX_LOWER_BOUND_PROGRAM_BYTES <= KERNEL_ARGUMENT_CEILING_BYTES);
     const _: () = assert!(MAX_UPPER_BOUND_PROGRAM_BYTES <= KERNEL_ARGUMENT_CEILING_BYTES);
-
-    // The measurement sits between the two bounds it is supposed to sit between,
-    // and the descriptor array is the measurement rounded up by strictly less than
-    // one alignment quantum.
-    const _: () = assert!(MAX_REALIZED_PROGRAM_BYTES >= MAX_LOWER_BOUND_PROGRAM_BYTES);
-    const _: () = assert!(MAX_REALIZED_PROGRAM_BYTES <= MAX_UPPER_BOUND_PROGRAM_BYTES);
-    const _: () = assert!(DESCRIPTOR_PROGRAM_WORDS >= MAX_REALIZED_PROGRAM_WORDS);
-    const _: () = assert!(
-        DESCRIPTOR_PROGRAM_WORDS - MAX_REALIZED_PROGRAM_WORDS < DESCRIPTOR_ALIGNMENT_WORDS
-    );
-    // Aligning an already-aligned length is a no-op, which is the same claim as
-    // "the array is 16-byte aligned" without a modulo.
-    const _: () = assert!(align_program_words(DESCRIPTOR_PROGRAM_WORDS) == DESCRIPTOR_PROGRAM_WORDS);
-    const _: () = assert!(DESCRIPTOR_PROGRAM_BYTES < KERNEL_ARGUMENT_CEILING_BYTES);
-    const _: () = assert!(REALIZED_PLACEMENTS == 1_710);
 }
 
 /// The same census INCLUDING the conditional `blake2_with_compression` attempt

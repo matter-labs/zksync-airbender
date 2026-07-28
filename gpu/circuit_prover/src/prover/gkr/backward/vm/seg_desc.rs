@@ -2,20 +2,24 @@
 //! design §3, §5, §7).
 //!
 //! THIS FILE IS ONE HALF OF AN ABI. Its CUDA half is
-//! `native/prover/gkr/backward/segmented_vm.cuh`, which Task 7 creates carrying
-//! the same field offsets under `static_assert`. Neither half may move without
-//! the other in the same commit. The three drift directions and what closes each
-//! are exactly as documented in [`desc`](super::desc): Rust-side drift is a build
-//! failure (the `const _: () = assert!(...)` blocks below), CUDA-side STRUCT
-//! drift is a build failure under nvcc, and CUDA-side CONSTANT drift is caught
-//! only by the header-text matchers — which do not exist until Task 7 writes the
-//! header, so until then [`seg_abi_tests`](super::seg_abi_tests) is the whole
-//! gate.
+//! `native/prover/gkr/backward/segmented_vm.cuh`, which carries the same field
+//! offsets under `static_assert`. Neither half may move without the other in the
+//! same commit. Three separate mechanisms cover the three drift directions:
+//!
+//!   1. **Rust-side drift is a BUILD failure.** The `const _: () = assert!(...)`
+//!      blocks below tie every literal to its authority in `gkr_eval_isa`.
+//!   2. **CUDA-side STRUCT drift is a BUILD failure too.** The `.cuh`'s
+//!      `static_assert`s on every field offset and size run under nvcc during
+//!      `cargo check` — but they are CUDA-vs-CUDA, not CUDA-vs-Rust.
+//!   3. **CUDA-side CONSTANT drift is a TEST failure only.**
+//!      [`seg_abi_tests`](super::seg_abi_tests)'s header-text matchers read
+//!      `segmented_vm.cuh` and compare each mirrored literal against the Rust
+//!      value — and they are `#[cfg(test)]`, so `cargo check` alone does not run
+//!      them. Do not skip them after editing the header.
 //!
 //! # What this lineage does NOT carry
 //!
-//! It is a separate descriptor, not a variant of [`desc::BwdCoeffDesc`], and the
-//! absences are load-bearing:
+//! The absences relative to the retired cell-era descriptor are load-bearing:
 //!
 //!   * **No challenge pointer.** Fold challenges have exactly ONE authority, the
 //!     `ab_gkr_main_layer_claim_point` `__constant__` symbol (the incumbent
@@ -27,12 +31,12 @@
 //!   * **No coefficient recipe index on the seed path** — see
 //!     [`BwdSegDesc::c_init`].
 //!
-//! What it DOES share with the cell-era descriptor is deliberate and minimal:
-//! [`desc::BwdCoeffSourceWindow`] (imported, never forked — including
-//! `procedural_kind` at offset 28) and [`desc::BWD_COEFF_PUBLISH_TARGET_DEPTH`]
-//! (imported, never duplicated). Everything else — the coefficient bank
-//! included — this lineage owns, which is what keeps Task 11's retirement of the
-//! cell-era lineage a deletion rather than a rehoming.
+//! [`BwdCoeffSourceWindow`] and the origin / procedural-kind / publication
+//! constants below are the ONE thing the retired cell-era descriptor left behind:
+//! they were shared by both lineages and were rehomed here verbatim — same field
+//! order, same offsets (`procedural_kind` at 28), same numbering — when that
+//! lineage was deleted. Their `BWD_COEFF_` prefix is kept precisely so the CUDA
+//! half and the ABI matchers stay word-for-word comparable across the move.
 //!
 //! # The program stream
 //!
@@ -48,12 +52,11 @@ use gkr_eval_isa::bwd::coeff::lean::SOURCE_NONE;
 use gkr_eval_isa::bwd::coeff::limits::{
     in_scope, DESCRIPTOR_ALIGNMENT_BYTES, KERNEL_ARGUMENT_CEILING_BYTES,
     LEAN_DESCRIPTOR_PROGRAM_BYTES, LEAN_DESCRIPTOR_PROGRAM_WORDS, MAX_COEFFICIENT_ENCODINGS,
-    SOURCE_WINDOW_COLUMNS,
+    PUBLISH_TARGET_DEPTH, SOURCE_WINDOW_COLUMNS,
 };
 use gkr_eval_isa::bwd::coeff::model::CoefficientRecipeId;
-use gkr_eval_isa::bwd::coeff::schedule::PUBLISH_TARGET_DEPTH;
+use gkr_eval_isa::fwd::source::KIND_ORDER;
 
-use super::desc::{BwdCoeffSourceWindow, BWD_COEFF_PUBLISH_TARGET_DEPTH};
 use crate::primitives::field::E4;
 use crate::primitives::utils::WARP_SIZE;
 use crate::prover::gkr::backward::GkrEqSizes;
@@ -135,13 +138,120 @@ const _: () = {
     // source" sentinel, so the capacity must stay strictly below it.
     assert!(BWD_SEG_MAX_SOURCES < SOURCE_NONE as usize);
 
-    // The window struct is imported, not forked, so its publication policy comes
-    // along verbatim: publish on first physical access iff
-    // `target_depth >= BWD_COEFF_PUBLISH_TARGET_DEPTH`. Tied to `gkr_eval_isa`
-    // here as well as in `desc.rs`, so Task 11's deletion of the cell-era lineage
-    // cannot quietly change the threshold this lineage was measured under.
+    // The window struct's publication policy: publish on first physical access
+    // iff `target_depth >= BWD_COEFF_PUBLISH_TARGET_DEPTH`. Tied to `gkr_eval_isa`
+    // so the rehoming out of the retired cell-era descriptor cannot have quietly
+    // changed the threshold this lineage was measured under.
     assert!(BWD_COEFF_PUBLISH_TARGET_DEPTH == PUBLISH_TARGET_DEPTH);
 };
+
+// ── Source-window origin (§10.2) ─────────────────────────────────────────────
+//
+// Rehomed verbatim from the retired cell-era descriptor, together with
+// [`BwdCoeffSourceWindow`] below: the two lineages shared this struct and these
+// numbers, and the segmented executor still resolves a window through them.
+
+/// Window origin: a base-field matrix backing.
+pub(crate) const BWD_COEFF_ORIGIN_READ_BASE: u8 = 0;
+/// Window origin: an extension-field matrix backing.
+pub(crate) const BWD_COEFF_ORIGIN_READ_EXT: u8 = 1;
+/// Window origin: a procedurally produced (virtual-setup) source. Row-dependent
+/// and never materialized from a matrix.
+pub(crate) const BWD_COEFF_ORIGIN_PROCEDURAL: u8 = 2;
+
+pub(crate) const BWD_COEFF_PROCEDURAL_RANGE_CHECK_16_BITS: u8 = 0;
+pub(crate) const BWD_COEFF_PROCEDURAL_RANGE_CHECK_TIMESTAMP: u8 = 1;
+pub(crate) const BWD_COEFF_PROCEDURAL_INITS_AND_TEARDOWNS_LOW: u8 = 2;
+pub(crate) const BWD_COEFF_PROCEDURAL_INITS_AND_TEARDOWNS_HIGH: u8 = 3;
+/// A window whose origin is a real matrix carries no procedural kind. Zero would
+/// alias [`BWD_COEFF_PROCEDURAL_RANGE_CHECK_16_BITS`], so the absent marker is
+/// `0xff` and [`BwdCoeffSourceWindow::default`] uses it.
+pub(crate) const BWD_COEFF_PROCEDURAL_NONE: u8 = 0xff;
+/// Procedural kinds the format admits.
+pub(crate) const BWD_COEFF_PROCEDURAL_KINDS: usize = 4;
+
+/// §10.2's static materialization policy: publish on first physical access iff
+/// `target_depth >= BWD_COEFF_PUBLISH_TARGET_DEPTH`. One tunable constant, not
+/// a scheduling decision or a genome.
+pub(crate) const BWD_COEFF_PUBLISH_TARGET_DEPTH: u8 = 3;
+
+/// D0..D3: the bounded lazy-fold depths the JAOT prologue materializes over.
+/// Equal to [`BWD_COEFF_PUBLISH_TARGET_DEPTH`] by construction — see the assert
+/// in [`super::mod`](super)'s round-to-depth map.
+pub(crate) const BWD_COEFF_MAX_FOLD_DEPTH: u8 = 3;
+
+const _: () = {
+    use crate::upstream::VirtualSetupKind::*;
+    assert!(BWD_COEFF_PROCEDURAL_KINDS == KIND_ORDER.len());
+    assert!(matches!(
+        KIND_ORDER[BWD_COEFF_PROCEDURAL_RANGE_CHECK_16_BITS as usize],
+        RangeCheck16Bits
+    ));
+    assert!(matches!(
+        KIND_ORDER[BWD_COEFF_PROCEDURAL_RANGE_CHECK_TIMESTAMP as usize],
+        RangeCheckTimestamp
+    ));
+    assert!(matches!(
+        KIND_ORDER[BWD_COEFF_PROCEDURAL_INITS_AND_TEARDOWNS_LOW as usize],
+        InitsAndTeardownsLow
+    ));
+    assert!(matches!(
+        KIND_ORDER[BWD_COEFF_PROCEDURAL_INITS_AND_TEARDOWNS_HIGH as usize],
+        InitsAndTeardownsHigh
+    ));
+    assert!(BWD_COEFF_PROCEDURAL_NONE as usize >= BWD_COEFF_PROCEDURAL_KINDS);
+    // §10.2's publication threshold is what bounds the resolver set: past it a
+    // backing is at most one fold behind.
+    assert!(BWD_COEFF_MAX_FOLD_DEPTH == BWD_COEFF_PUBLISH_TARGET_DEPTH);
+};
+
+// ── Source window ────────────────────────────────────────────────────────────
+
+/// One live source window (§10.2): read backing and stride, publish backing and
+/// stride, backing depth, target depth, origin field, materialize flag, and the
+/// procedural source kind where applicable.
+///
+/// A window covers at most [`SOURCE_WINDOW_COLUMNS`] contiguous referenced
+/// columns of ONE logical backing. `read_base` / `publish_base` already point at
+/// the window's FIRST column, so a bound coordinate resolves to
+/// `read_base + column * read_stride_bytes`.
+///
+/// `origin` is the BACKING field, not the width of the values read through the
+/// window: a continuation program folds a base matrix into E4, and operand width
+/// comes from the term class.
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct BwdCoeffSourceWindow {
+    pub read_base: *const u8,
+    pub publish_base: *mut u8,
+    pub read_stride_bytes: u32,
+    pub publish_stride_bytes: u32,
+    pub backing_depth: u8,
+    pub target_depth: u8,
+    pub origin: u8,
+    pub materialize: u8,
+    pub procedural_kind: u8,
+    pub reserved: [u8; 3],
+}
+
+impl Default for BwdCoeffSourceWindow {
+    /// A dead slot. `procedural_kind` is [`BWD_COEFF_PROCEDURAL_NONE`], NOT
+    /// zero — zero is a live kind.
+    fn default() -> Self {
+        Self {
+            read_base: std::ptr::null(),
+            publish_base: std::ptr::null_mut(),
+            read_stride_bytes: 0,
+            publish_stride_bytes: 0,
+            backing_depth: 0,
+            target_depth: 0,
+            origin: BWD_COEFF_ORIGIN_READ_BASE,
+            materialize: 0,
+            procedural_kind: BWD_COEFF_PROCEDURAL_NONE,
+            reserved: [0; 3],
+        }
+    }
+}
 
 // ── Source table ─────────────────────────────────────────────────────────────
 

@@ -9,16 +9,15 @@
 // each capacity to its authority in the `gkr_eval_isa` crate. Neither half may
 // move without the other in the same commit.
 //
-// WHAT ENFORCES THAT, exactly as for the cell-era `coefficient_vm.cuh`: the
-// `static_assert`s below are CUDA-vs-CUDA and DO run under nvcc during
-// `cargo check`, so a STRUCT layout edit here is a build failure; `seg_desc.rs`'s
-// `const _: () = assert!(...)` blocks are Rust-vs-`gkr_eval_isa`. What neither
-// compiler sees is an edit to a constant here that changes no layout — the wire
-// shifts and the two class tables are the only such constants, and they are
-// pinned by their own `static_assert`s against the layout facts they must satisfy
-// (exact header saturation, dense class tables). A text matcher over this header,
-// the shape `abi_tests::cuda_constants_match_the_rust_mirror` uses for the
-// cell-era header, is the remaining gap and is NOT part of this task.
+// WHAT ENFORCES THAT: the `static_assert`s below are CUDA-vs-CUDA and DO run
+// under nvcc during `cargo check`, so a STRUCT layout edit here is a build
+// failure; `seg_desc.rs`'s `const _: () = assert!(...)` blocks are
+// Rust-vs-`gkr_eval_isa`. What neither compiler sees is an edit to a constant
+// here that changes no layout — and that gap is closed by
+// `seg_abi_tests::seg_cuda_constants_match_the_rust_mirror`, which reads THIS
+// FILE as text and compares each mirrored literal against the Rust value. It is
+// `#[cfg(test)]`, so `cargo check` alone does not run it; do not skip it after
+// editing this header.
 //
 // # What this lineage does NOT carry
 //
@@ -28,19 +27,129 @@
 // end of the stream) and no coefficient index on the seed path (`c_init` is
 // resolved E4 limbs).
 //
-// # What it shares with the cell-era lineage
+// # What it inherited from the retired cell-era lineage
 //
-// `bwd_coeff_source_window` and its origin / procedural-kind / publication
-// constants are IMPORTED from `coefficient_vm.cuh`, never forked — exactly as
-// `seg_desc.rs` imports `desc::BwdCoeffSourceWindow` and
-// `desc::BWD_COEFF_PUBLISH_TARGET_DEPTH` rather than copying them. Both halves
-// therefore have the same single dependency edge on the older lineage, and the
-// eventual retirement of the cell-era lineage has to rehome the window struct on
-// both sides in the same commit.
+// `bwd_coeff_source_window`, the origin / procedural-kind / publication
+// constants, the lean header's two bit widths and the FROZEN cell-era opcode
+// numbering were shared with `coefficient_vm.cuh`. That header is gone; they were
+// rehomed here verbatim, keeping their `BWD_COEFF_` prefix so this half and
+// `seg_desc.rs` stay word-for-word comparable across the move.
 
-#include "coefficient_vm.cuh"
+#include "flat.cuh"
 
 namespace airbender::prover::gkr {
+
+// ── Rehomed from the retired cell-era header ─────────────────────────────────
+//
+// Everything in this section was shared with `coefficient_vm.cuh` before that
+// lineage was deleted. It is reproduced verbatim, prefix included, so the Rust
+// half (`seg_desc.rs`, same names) and any reader of the old header recognize it
+// unchanged.
+
+// The lean header's two bit widths
+// (`gkr_eval_isa::bwd::coeff::limits::{HEADER_COEFFICIENT_BITS, HEADER_OPCODE_BITS}`).
+constexpr u32 BWD_COEFF_HEADER_COEFFICIENT_BITS = 13;
+constexpr u32 BWD_COEFF_HEADER_OPCODE_BITS = 3;
+// `gkr_eval_isa::bwd::coeff::limits::MAX_COEFFICIENT_ENCODINGS`: what thirteen
+// coefficient bits can name, reserved literals included.
+constexpr u32 BWD_COEFF_MAX_COEFFICIENT_ENCODINGS = 1u << BWD_COEFF_HEADER_COEFFICIENT_BITS;
+static_assert(BWD_COEFF_MAX_COEFFICIENT_ENCODINGS == 8192, "coefficient encoding space drift");
+
+// The FROZEN regime opcode numbering
+// (`gkr_eval_isa::bwd::coeff::limits::{R0_OPCODE_TABLE, CONTINUATION_OPCODE_TABLE}`).
+// No live kernel decodes these: the lean class tables below are DEFINED as this
+// numbering with the `Move` rows deleted and the rest re-densified, and the
+// `static_assert`s further down are what make that definition binding on both
+// sides. They are reference data, not an opcode set.
+constexpr u16 BWD_COEFF_R0_OP_C0_LINEAR_BF = 0;
+constexpr u16 BWD_COEFF_R0_OP_C0_LINEAR_E4 = 1;
+constexpr u16 BWD_COEFF_R0_OP_C2_PRODUCT_BF_BF = 2;
+constexpr u16 BWD_COEFF_R0_OP_C2_PRODUCT_BF_E4 = 3;
+constexpr u16 BWD_COEFF_R0_OP_C2_PRODUCT_E4_E4 = 4;
+constexpr u16 BWD_COEFF_R0_OP_MOVE_BF = 5;
+constexpr u16 BWD_COEFF_R0_OP_MOVE_E4 = 6;
+constexpr u32 BWD_COEFF_R0_LIVE_OPCODES = 7;
+
+constexpr u16 BWD_COEFF_EXT_OP_C0_LINEAR_E4 = 0;
+constexpr u16 BWD_COEFF_EXT_OP_DUAL_PRODUCT_E4 = 1;
+constexpr u16 BWD_COEFF_EXT_OP_MOVE_E4 = 2;
+constexpr u32 BWD_COEFF_EXT_LIVE_OPCODES = 3;
+
+static_assert(BWD_COEFF_R0_OP_MOVE_BF + 1 == BWD_COEFF_R0_OP_MOVE_E4, "the R0 move rows must stay adjacent");
+static_assert(BWD_COEFF_R0_OP_MOVE_E4 + 1 == BWD_COEFF_R0_LIVE_OPCODES, "the R0 move rows must stay at the tail");
+static_assert(BWD_COEFF_EXT_OP_MOVE_E4 + 1 == BWD_COEFF_EXT_LIVE_OPCODES, "the continuation move row must stay at the tail");
+
+// ── Source-window origin (section 10.2) ─────────────────────────────────────
+//
+// The BACKING field of the window's matrix — NOT the width of the values read
+// through it, which comes from the term class: a continuation program folds a
+// base matrix into E4.
+constexpr u8 BWD_COEFF_ORIGIN_READ_BASE = 0;
+constexpr u8 BWD_COEFF_ORIGIN_READ_EXT = 1;
+constexpr u8 BWD_COEFF_ORIGIN_PROCEDURAL = 2;
+
+// Procedural (virtual-setup) source kinds, in `gkr_eval_isa::fwd::source::
+// KIND_ORDER` order. `BWD_COEFF_PROCEDURAL_NONE` marks a window whose origin is
+// a real matrix.
+constexpr u8 BWD_COEFF_PROCEDURAL_RANGE_CHECK_16_BITS = 0;
+constexpr u8 BWD_COEFF_PROCEDURAL_RANGE_CHECK_TIMESTAMP = 1;
+constexpr u8 BWD_COEFF_PROCEDURAL_INITS_AND_TEARDOWNS_LOW = 2;
+constexpr u8 BWD_COEFF_PROCEDURAL_INITS_AND_TEARDOWNS_HIGH = 3;
+constexpr u8 BWD_COEFF_PROCEDURAL_NONE = 0xff;
+
+// The four kinds are contiguous in BOTH numbering schemes, so the translation to
+// the incumbent `gkr_base_source_kind` the shared `gkr_virtual_base_value`
+// helper takes is one addition. Asserted, because a reordering on either side
+// would silently swap two procedural columns.
+static_assert(GKR_BASE_SOURCE_VIRTUAL_RANGE_CHECK_TIMESTAMP == GKR_BASE_SOURCE_VIRTUAL_RANGE_CHECK_16_BITS + 1, "virtual kind order drift");
+static_assert(GKR_BASE_SOURCE_VIRTUAL_INITS_AND_TEARDOWNS_LOW == GKR_BASE_SOURCE_VIRTUAL_RANGE_CHECK_16_BITS + 2, "virtual kind order drift");
+static_assert(GKR_BASE_SOURCE_VIRTUAL_INITS_AND_TEARDOWNS_HIGH == GKR_BASE_SOURCE_VIRTUAL_RANGE_CHECK_16_BITS + 3, "virtual kind order drift");
+static_assert(BWD_COEFF_PROCEDURAL_RANGE_CHECK_TIMESTAMP == BWD_COEFF_PROCEDURAL_RANGE_CHECK_16_BITS + 1, "procedural kind order drift");
+static_assert(BWD_COEFF_PROCEDURAL_INITS_AND_TEARDOWNS_LOW == BWD_COEFF_PROCEDURAL_RANGE_CHECK_16_BITS + 2, "procedural kind order drift");
+static_assert(BWD_COEFF_PROCEDURAL_INITS_AND_TEARDOWNS_HIGH == BWD_COEFF_PROCEDURAL_RANGE_CHECK_16_BITS + 3, "procedural kind order drift");
+
+constexpr gkr_base_source_kind bwd_coeff_procedural_source_kind(const u8 procedural_kind) {
+  return static_cast<gkr_base_source_kind>(GKR_BASE_SOURCE_VIRTUAL_RANGE_CHECK_16_BITS + procedural_kind);
+}
+
+// Section 10.2's static materialization policy: publish on first physical
+// access iff `target_depth >= BWD_COEFF_PUBLISH_TARGET_DEPTH`. One tunable
+// constant, not a scheduling decision.
+constexpr u8 BWD_COEFF_PUBLISH_TARGET_DEPTH = 3;
+// D0..D3: the bounded lazy-fold depths the JAOT prologue materializes over.
+constexpr u32 BWD_COEFF_MAX_FOLD_DEPTH = 3;
+
+// One live source window (section 10.2): read backing and stride, publish
+// backing and stride, backing depth, target depth, origin field, materialize
+// flag, and the procedural source kind where applicable.
+//
+// `*_base` already points at the window's first column, so a bound coordinate
+// resolves to `read_base + column * read_stride_bytes`.
+struct bwd_coeff_source_window {
+  const char *read_base;
+  char *publish_base;
+  u32 read_stride_bytes;
+  u32 publish_stride_bytes;
+  u8 backing_depth;
+  u8 target_depth;
+  u8 origin;
+  u8 materialize;
+  u8 procedural_kind;
+  u8 reserved[3];
+};
+
+static_assert(sizeof(bwd_coeff_source_window) == 32, "bwd_coeff_source_window ABI size drift");
+static_assert(alignof(bwd_coeff_source_window) == 8, "bwd_coeff_source_window ABI alignment drift");
+static_assert(__builtin_offsetof(bwd_coeff_source_window, read_base) == 0, "read_base ABI offset drift");
+static_assert(__builtin_offsetof(bwd_coeff_source_window, publish_base) == 8, "publish_base ABI offset drift");
+static_assert(__builtin_offsetof(bwd_coeff_source_window, read_stride_bytes) == 16, "read_stride_bytes ABI offset drift");
+static_assert(__builtin_offsetof(bwd_coeff_source_window, publish_stride_bytes) == 20, "publish_stride_bytes ABI offset drift");
+static_assert(__builtin_offsetof(bwd_coeff_source_window, backing_depth) == 24, "backing_depth ABI offset drift");
+static_assert(__builtin_offsetof(bwd_coeff_source_window, target_depth) == 25, "target_depth ABI offset drift");
+static_assert(__builtin_offsetof(bwd_coeff_source_window, origin) == 26, "origin ABI offset drift");
+static_assert(__builtin_offsetof(bwd_coeff_source_window, materialize) == 27, "materialize ABI offset drift");
+static_assert(__builtin_offsetof(bwd_coeff_source_window, procedural_kind) == 28, "procedural_kind ABI offset drift");
+static_assert(__builtin_offsetof(bwd_coeff_source_window, reserved) == 29, "reserved ABI offset drift");
 
 // ── Capacities and launch geometry (section 3, 5) ────────────────────────────
 
@@ -65,10 +174,6 @@ constexpr u32 BWD_SEG_LANE_INDEX_MASK = BWD_SEG_WARP_LANES - 1;
 static_assert(BWD_SEG_MAX_K * BWD_SEG_WARP_LANES == BWD_SEG_MAX_THREADS_PER_BLOCK, "one warp per list, and the block is the cap");
 static_assert(1u << BWD_SEG_WARP_SHIFT == BWD_SEG_WARP_LANES, "warp layout drift");
 static_assert(BWD_SEG_LANE_INDEX_MASK == 31, "warp lane index mask drift");
-// This lineage's warp geometry is the cell-era one; they differ only in how many
-// warps a block runs.
-static_assert(BWD_SEG_WARP_LANES == BWD_COEFF_WARP_LANES, "warp lane count diverged from the cell-era lineage");
-static_assert(BWD_SEG_WARP_SHIFT == BWD_COEFF_WARP_SHIFT, "warp shift diverged from the cell-era lineage");
 
 // Slots in this lineage's OWN `__constant__` coefficient bank
 // (`ab_gkr_bwd_seg_coeff_bank`, declared at the bottom of this header). No
@@ -92,9 +197,9 @@ constexpr u32 BWD_SEG_MAX_SOURCES = 1072;
 // 16-byte quantum. Not a headroom allowance.
 constexpr u32 BWD_SEG_PROGRAM_WORD_CAP = 7168;
 constexpr u32 BWD_SEG_PROGRAM_BYTE_CAP = 2 * BWD_SEG_PROGRAM_WORD_CAP;
-// `in_scope::MAX_SOURCE_WINDOWS_USED`, shared with the cell-era descriptor
-// because the window STRUCT is shared.
-constexpr u32 BWD_SEG_SOURCE_WINDOW_CAP = BWD_COEFF_SOURCE_WINDOW_CAP;
+// `in_scope::MAX_SOURCE_WINDOWS_USED`: the EXACT measured corpus maximum,
+// deliberately not the 64 windows the wire could name.
+constexpr u32 BWD_SEG_SOURCE_WINDOW_CAP = 17;
 
 static_assert(BWD_SEG_PROGRAM_BYTE_CAP == 14336, "program array byte size drift");
 static_assert(BWD_SEG_PROGRAM_BYTE_CAP % BWD_SEG_DESC_ALIGN == 0, "the program array is not a whole number of 16-byte quanta");

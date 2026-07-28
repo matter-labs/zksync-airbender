@@ -52,6 +52,13 @@
 //! .agents/bin/with_gpu_lock.sh <binary> --exact <test> --ignored --nocapture
 //! ```
 
+/// Proof to the always-compiled `super::gating` module that this file was built.
+///
+/// It is the only thing that distinguishes "the GPU gates passed" from "the GPU
+/// gates were never compiled", which a `--features bench`-less run cannot tell
+/// apart on its own.
+pub(super) const SEG_PARITY_SUITE_COMPILED: bool = true;
+
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::rc::Rc;
 use std::sync::Arc;
@@ -63,7 +70,7 @@ use gkr_eval_isa::bwd::coeff::interp::{interpret_coeff_layer, interpret_lean_pro
 use gkr_eval_isa::bwd::coeff::lean::decode_program;
 use gkr_eval_isa::bwd::coeff::model::{CoeffLayer, CoefficientRecipeId};
 
-use super::desc::{
+use super::seg_desc::{
     BWD_COEFF_ORIGIN_PROCEDURAL, BWD_COEFF_ORIGIN_READ_BASE, BWD_COEFF_ORIGIN_READ_EXT,
     BWD_COEFF_PROCEDURAL_NONE,
 };

@@ -7,29 +7,27 @@
 //!     normalized coefficient recipes, and [`CoeffError`];
 //!   * [`lower`] — [`lower_coeff_layer`], the normalized lowering from a canonical
 //!     `DagLayer` plus its `DistilledLayer`;
-//!   * [`interp`] — the scalar `(acc_c0, acc_c2)` interpreter;
+//!   * [`interp`] — the scalar `(acc_c0, acc_c2)` semantic oracle and the lean
+//!     segmented interpreter stated against it;
 //!   * [`stats`] — the per-`(circuit, layer, regime)` census and the two
 //!     schedule-independent stream bounds; and
-//!   * [`limits`] — the FROZEN wire-format bounds and regime opcode tables, plus
-//!     the exact corpus maxima the census measured.
+//!   * [`limits`] — the FROZEN wire-format bounds, the regime opcode tables and
+//!     the term-category classification, plus the exact corpus maxima the census
+//!     measured.
 //!
-//! Everything physical is deliberately absent FROM THE IR: no moves, no cells, no
-//! paging, no source-window binding, no wire encoding. Those are SCHEDULE concerns,
-//! and they live in their own strictly later modules — [`order`] (the committed
-//! term order and the physical K-split), [`schedule`] (paging),
-//! [`place`] (cells and moves), [`bind`] (source windows), [`encode`] (the u16
-//! wire), [`lean`] (the segmented lean VM's fixed 8-byte term wire),
-//! [`lean_bind`] (that VM's placement-free per-source binding), [`artifact`]
-//! (the deterministic `c2`-`c16` schedules, their replay and the exact report) and
+//! Everything physical is deliberately absent FROM THE IR: no source-window
+//! binding and no wire encoding. Those are SCHEDULE concerns, and they live in
+//! their own strictly later modules — [`order`] (the committed term order and the
+//! physical K-split), [`lean`] (the segmented lean VM's fixed 8-byte term wire),
+//! [`lean_bind`] (that VM's placement-free per-source binding) and
 //! [`lean_artifact`] (the per-layer lean coordinate and its corpus). A
 //! [`CoeffTerm`] must never grow to carry any of it.
 //!
 //! One backward production lineage: there is no format version, no compatibility
-//! decoder, and no old/new switch here.
+//! decoder, and no old/new switch here. The Plan-6 cell executor — its pager,
+//! placement, u16 cell codec, cell interpreter and budget artifacts — was retired
+//! wholesale in favour of the segmented lean VM; nothing of it is kept disabled.
 
-pub mod artifact;
-pub mod bind;
-pub mod encode;
 pub mod interp;
 pub mod lean;
 pub mod lean_artifact;
@@ -38,88 +36,43 @@ pub mod limits;
 pub mod lower;
 pub mod model;
 pub mod order;
-pub mod place;
-pub mod schedule;
 pub mod stats;
 
-pub use artifact::{
-    ArtifactError, ArtifactRegime, ArtifactScore, BudgetSchedule, BudgetTotals, BwdRoundClass,
-    ChainProgress, CircuitArtifact, CompiledCoordinate, CoordinateArtifact, CoordinateReport,
-    CorpusSummary, ProgramReport, Realization, SELECTION_DIAGNOSTIC_CELLS, SelectedBudget,
-    SelectionError, artifact_bytes, artifact_file_name, budget_totals, compile_coordinate, digest,
-    lower_and_price, percent_above_floor_table, program_digest, read_circuit_artifact, realize,
-    replay_coordinate, summarize, total_read_floor_bytes, validate_selected_budgets,
-    write_circuit_artifact,
-};
-pub use bind::{
-    BoundColumn, BoundInput, BoundSourceWindow, CoeffSourceBinding, SourceBindError,
-    SourceCertificateError, bind_coeff_sources, certify_source_binding,
-};
-pub use encode::{
-    ACTION_DIRECT, ACTION_FILL, ACTION_INVALID, ACTION_USE_RESIDENT, CELL_DELTA_LANE_SHIFT,
-    CELL_ENDPOINT0_LANE_SHIFT, CoeffCodecError, DecodedCell, DecodedInstr, DecodedUse,
-    EncodedProgram, HEADER_COEFFICIENT_MASK, HEADER_COEFFICIENT_SHIFT, HEADER_OPCODE_MASK,
-    HEADER_OPCODE_SHIFT, INPUT_COLUMN_MASK, INPUT_COLUMN_SHIFT, INPUT_FIRST_ACCESS_SHIFT,
-    INPUT_MODE_MASK, INPUT_MODE_SHIFT, INPUT_WINDOW_MASK, INPUT_WINDOW_SHIFT, LANE_BITS, LANE_MASK,
-    LANE_WORD_SHIFT, MODE_CELL, MODE_DIRECT_SOURCE, MODE_FILL_SOURCE, MODE_PLANNED_SOURCE,
-    OperandRole, PLAN_ACTION_MASK, PLAN_DELTA_ACTION_SHIFT, PLAN_DELTA_LANE_SHIFT,
-    PLAN_ENDPOINT0_ACTION_SHIFT, PLAN_ENDPOINT0_LANE_SHIFT, ShortestForm, SourceCoord,
-    category_arity, category_of, category_role, certify_encoding, coord_source, decode_program,
-    disassemble, encode_instrs, encode_program, is_move, max_coefficient_bank_index, move_width,
-    opcode_of, opcode_table, operand_width, program_records, term_category, validate_program,
-};
-pub use interp::{
-    CoeffResolver, LeanInterpError, interpret_coeff_layer, interpret_encoded_program,
-    interpret_lean_program,
-};
-// The lean codec's four entry points keep their module path: `encode_program`,
-// `decode_program`, `validate_program` and `disassemble` are names the cell-era
-// codec owns at this facade until that lineage is retired.
+pub use interp::{CoeffResolver, LeanInterpError, interpret_coeff_layer, interpret_lean_program};
 pub use lean::{
     LEAN_BYTES_PER_TERM, LEAN_CLASS_MASK, LEAN_CLASS_SHIFT, LEAN_COEFFICIENT_MASK,
     LEAN_COEFFICIENT_SHIFT, LEAN_CONT_OPCODES, LEAN_R0_OPCODES, LEAN_WORDS_PER_TERM,
     LeanCodecError, LeanProgram, LeanTerm, SOURCE_NONE,
 };
-// Every lean artifact helper is spelled with a `lean_` prefix — `lean_artifact_
-// bytes`, `lean_artifact_file_name`, `write_lean_circuit_artifact`,
-// `read_lean_circuit_artifact` — precisely so both lineages can be re-exported side
-// by side while the cell-era `artifact` module still owns the unprefixed names.
+// The lean artifact helpers keep their `lean_` prefix — `lean_artifact_bytes`,
+// `lean_artifact_file_name`, `write_lean_circuit_artifact`,
+// `read_lean_circuit_artifact` — because that is the spelling the corpus, the GPU
+// fixture bridge and the committed file names already use.
 pub use lean_artifact::{
-    LeanArtifactError, LeanCircuitArtifact, LeanCoordinateArtifact, compile_lean_coordinate,
-    lean_artifact_bytes, lean_artifact_file_name, lean_target_depth, lower_lean_layer,
-    order_covers_layer, read_lean_circuit_artifact, write_lean_circuit_artifact,
+    ArtifactRegime, LeanArtifactError, LeanCircuitArtifact, LeanCoordinateArtifact,
+    compile_lean_coordinate, lean_artifact_bytes, lean_artifact_file_name, lean_target_depth,
+    lower_lean_layer, order_covers_layer, read_lean_circuit_artifact, write_lean_circuit_artifact,
 };
 pub use lean_bind::{
     LEAN_PROCEDURAL_KINDS, LeanBindError, LeanBoundColumn, LeanBoundWindow, LeanSourceBinding,
     LeanSourceSlot, bind_lean_sources,
 };
 pub use limits::{
-    ASSUMED_MOVES_PER_REUSABLE_PROJECTION, CONTINUATION_LIVE_OPCODES, CONTINUATION_OPCODE_TABLE,
-    HEADER_COEFFICIENT_BITS, HEADER_OPCODE_BITS, KERNEL_ARGUMENT_CEILING_BYTES,
-    LEAN_DESCRIPTOR_PROGRAM_BYTES, LEAN_DESCRIPTOR_PROGRAM_WORDS, LEAN_MAX_REALIZED_PROGRAM_WORDS,
-    MAX_COEFFICIENT_ENCODINGS, MAX_SOURCE_WINDOWS, R0_LIVE_OPCODES, R0_OPCODE_TABLE,
-    SOURCE_WINDOW_COLUMNS, TermCategory, continuation_opcode, r0_opcode,
+    CONTINUATION_LIVE_OPCODES, CONTINUATION_OPCODE_TABLE, HEADER_COEFFICIENT_BITS,
+    HEADER_OPCODE_BITS, KERNEL_ARGUMENT_CEILING_BYTES, LEAN_DESCRIPTOR_PROGRAM_BYTES,
+    LEAN_DESCRIPTOR_PROGRAM_WORDS, LEAN_MAX_REALIZED_PROGRAM_WORDS, MAX_COEFFICIENT_ENCODINGS,
+    MAX_SOURCE_WINDOWS, PUBLISH_TARGET_DEPTH, R0_LIVE_OPCODES, R0_OPCODE_TABLE,
+    SOURCE_WINDOW_COLUMNS, TermCategory, category_arity, continuation_opcode, is_move, r0_opcode,
+    term_category,
 };
 pub use lower::{LoweringTrace, lower_coeff_layer, lower_coeff_layer_traced};
 pub use order::{order_terms, split_round_robin};
-pub use place::{
-    CellRead, CoeffPlacement, LivenessError, LivenessReport, PlacementError, PlacementFloor,
-    PlacementStats, PlanAction, Residence, ScheduledInstr, ValueUse, certify_cell_liveness,
-    place_paging_plan,
-};
-pub use schedule::{
-    BudgetOutcome, BudgetSweep, CellBudget, OpCounts, PagingAction, PagingCertificateError,
-    PagingCost, PagingPlan, PagingRequest, PagingScore, ProjectionAction, ProjectionOutcome,
-    LANES_PER_CELL, RebuildPrice, ResolutionGroup, ScheduleError, SeedEvaluation, SeedKind,
-    SlotKind, SourcePrice, ValueWidth, budget_aware_greedy_order, certify_paging_plan,
-    default_target_depth, page_projections, select_paged_order, source_prices,
-    stable_normalized_order, sweep_budgets, term_slots, validate_prices,
-};
 pub use stats::{
     CoeffCensus, CoeffCensusFailure, CoeffCensusRow, NegOneCensus, census_coeff_layer, census_csv,
     census_layer, compulsory_endpoint_reads, live_term_categories, neg_one_census,
     source_window_count,
 };
+
 pub use model::{
     CoeffChallenge, CoeffError, CoeffLayer, CoeffProduct, CoeffSource, CoeffTerm,
     CoefficientRecipeId, NormalizedCoefficientRecipe, Projection, ProjectionId, SourceId, TermId,

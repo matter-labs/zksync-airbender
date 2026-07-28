@@ -27,18 +27,16 @@ use gkr_eval_isa::bwd::coeff::order::split_round_robin;
 use gkr_eval_isa::bwd::coeff::stats::WindowFamily;
 use gkr_eval_isa::bwd::coeff::ArtifactRegime;
 
-use super::desc::{
-    BWD_COEFF_ORIGIN_PROCEDURAL, BWD_COEFF_ORIGIN_READ_BASE, BWD_COEFF_ORIGIN_READ_EXT,
-    BWD_COEFF_PROCEDURAL_NONE,
+use super::seg_desc::{
+    BwdSegDesc, BWD_COEFF_ORIGIN_PROCEDURAL, BWD_COEFF_ORIGIN_READ_BASE,
+    BWD_COEFF_ORIGIN_READ_EXT, BWD_COEFF_PROCEDURAL_NONE, BWD_SEG_CONST_BANK, BWD_SEG_MAX_K,
 };
-use super::lower::ResolvedBwdCoeffSourceWindow;
-use super::seg_desc::{BwdSegDesc, BWD_SEG_CONST_BANK, BWD_SEG_MAX_K};
 use super::seg_lower::{
     assign_class, chain_read_column, check_regions_disjoint, e4_limbs, lower_bwd_seg,
     plan_publish_scratch, static_term_work, window_columns, AnnotatedTerm, BwdSegLaunchDesc,
     BwdSegLowerError, BwdSegRoundBinding, BwdSegSetup, CoeffMode, D2Policy, ProgramMode,
-    PublishRoundLayout, PublishScratchPlan, ResolvedPublishScratch, SourceClass, SourceOrigin,
-    PUBLISH_WINDOW_ABSENT,
+    PublishRoundLayout, PublishScratchPlan, ResolvedBwdCoeffSourceWindow, ResolvedPublishScratch,
+    SourceClass, SourceOrigin, PUBLISH_WINDOW_ABSENT,
 };
 use crate::primitives::field::E4;
 use crate::prover::gkr::backward::GkrEqSizes;

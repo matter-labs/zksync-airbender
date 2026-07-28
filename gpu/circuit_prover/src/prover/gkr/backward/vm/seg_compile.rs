@@ -56,8 +56,8 @@ use gkr_eval_isa::bwd::coeff::model::{CoeffLayer, CoefficientRecipeId, SourceId}
 use gkr_eval_isa::fwd::compile::build_cross_layer_field_map;
 use rayon::prelude::*;
 
-use super::lower::ResolvedBwdCoeffSourceWindow;
 use super::seg_lower::{
+    bwd_coeff_fold_depth, ResolvedBwdCoeffSourceWindow,
     assign_class, chain_read_column, plan_publish_scratch, window_columns, BwdSegRoundBinding,
     D2Policy, PublishScratchPlan, ResolvedPublishScratch, SourceOrigin,
 };
@@ -503,7 +503,7 @@ pub(crate) struct SegHostModel {
 /// (`BwdSegLowerError::UnsupportedFoldDelta`). Rounds past the publication depth
 /// have fold depth one, so their set is `{0, 1}` — which is the steady state.
 pub(crate) fn e4_deltas(round: u8) -> Vec<u8> {
-    let fold_depth = super::bwd_coeff_fold_depth(round);
+    let fold_depth = bwd_coeff_fold_depth(round);
     let mut out = vec![0u8];
     if fold_depth >= 1 {
         out.push(1);

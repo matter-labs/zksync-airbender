@@ -45,7 +45,6 @@
 // only by its tests. Scoped here rather than on the parent.
 #![allow(dead_code)]
 
-use gkr_eval_isa::bwd::coeff::encode::category_arity;
 use gkr_eval_isa::bwd::coeff::lean::{
     decode_program, LeanCodecError, LeanTerm, LEAN_CONT_OPCODES, LEAN_R0_OPCODES,
     LEAN_WORDS_PER_TERM, SOURCE_NONE,
@@ -53,22 +52,17 @@ use gkr_eval_isa::bwd::coeff::lean::{
 use gkr_eval_isa::bwd::coeff::lean_artifact::LeanCoordinateArtifact;
 use gkr_eval_isa::bwd::coeff::lean_bind::LeanSourceBinding;
 use gkr_eval_isa::bwd::coeff::limits::{
-    in_scope, TermCategory, LEAN_DESCRIPTOR_PROGRAM_WORDS, MAX_COEFFICIENT_ENCODINGS,
-    SOURCE_WINDOW_COLUMNS,
+    category_arity, in_scope, TermCategory, LEAN_DESCRIPTOR_PROGRAM_WORDS,
+    MAX_COEFFICIENT_ENCODINGS, SOURCE_WINDOW_COLUMNS,
 };
 use gkr_eval_isa::bwd::coeff::model::CoefficientRecipeId;
 use gkr_eval_isa::bwd::coeff::order::split_round_robin;
 
-use super::bwd_coeff_fold_depth;
-use super::desc::{
-    BwdCoeffSourceWindow, BWD_COEFF_MAX_FOLD_DEPTH, BWD_COEFF_ORIGIN_PROCEDURAL,
-    BWD_COEFF_ORIGIN_READ_BASE, BWD_COEFF_ORIGIN_READ_EXT, BWD_COEFF_PROCEDURAL_KINDS,
-    BWD_COEFF_PROCEDURAL_NONE, BWD_COEFF_PUBLISH_TARGET_DEPTH,
-};
-use super::lower::ResolvedBwdCoeffSourceWindow;
 use super::seg_desc::{
-    BwdSegDesc, BwdSegProgPtrDesc, BwdSegSourceRecord, BWD_SEG_CONST_BANK, BWD_SEG_MAX_K,
-    BWD_SEG_MAX_SOURCES,
+    BwdCoeffSourceWindow, BwdSegDesc, BwdSegProgPtrDesc, BwdSegSourceRecord,
+    BWD_COEFF_MAX_FOLD_DEPTH, BWD_COEFF_ORIGIN_PROCEDURAL, BWD_COEFF_ORIGIN_READ_BASE,
+    BWD_COEFF_ORIGIN_READ_EXT, BWD_COEFF_PROCEDURAL_KINDS, BWD_COEFF_PROCEDURAL_NONE,
+    BWD_COEFF_PUBLISH_TARGET_DEPTH, BWD_SEG_CONST_BANK, BWD_SEG_MAX_K, BWD_SEG_MAX_SOURCES,
 };
 use crate::primitives::field::E4;
 use crate::prover::gkr::backward::GkrEqSizes;
@@ -78,6 +72,45 @@ use crate::upstream::BwdRegime;
 /// Bytes one column of a backing occupies, by storage field.
 const BF_COLUMN_BYTES: u32 = 4;
 const E4_COLUMN_BYTES: u32 = 16;
+
+/// The bounded lazy-fold resolver this round needs (§10.2).
+///
+/// Rounds 0..=3 map to D0..D3. From [`BWD_COEFF_PUBLISH_TARGET_DEPTH`] `+ 1` on,
+/// every materializing source has already published at its target depth, so a
+/// backing is at most ONE fold behind and D1 is exact — which is why the resolver
+/// set stays bounded instead of growing with the round index.
+pub(crate) fn bwd_coeff_fold_depth(round: u8) -> u8 {
+    match round {
+        0 => 0,
+        1 => 1,
+        2 => 2,
+        3 => 3,
+        _ => 1,
+    }
+}
+
+/// The round's physical geometry for ONE bound source window.
+///
+/// Indexed positionally by wire window: entry `w` describes
+/// `LeanSourceBinding::windows[w]`. `read`/`publish` name the window's FIRST
+/// column, so the device resolves a bound coordinate as
+/// `read_base + column * read_stride_bytes`.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct ResolvedBwdCoeffSourceWindow {
+    /// The matrix column the window is based at. `None` only for a procedural
+    /// window whose values are produced from the row rather than read.
+    pub read: Option<ResolvedColumn>,
+    /// Where a first access publishes both raw target-depth endpoints. Required
+    /// whenever `materialize` is set.
+    pub publish: Option<ResolvedColumn>,
+    /// Depth the read backing is currently at.
+    pub backing_depth: u8,
+    /// Depth a use of this window must observe.
+    pub target_depth: u8,
+    /// §10.2's static policy: publish on first physical access. Layer-wide, but
+    /// carried per entry so the device never has to consult two places.
+    pub materialize: bool,
+}
 
 // ── Source classes ───────────────────────────────────────────────────────────
 

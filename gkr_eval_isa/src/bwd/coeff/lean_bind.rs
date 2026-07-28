@@ -2,7 +2,7 @@
 //! design §4, §5; coefficient-ISA design §9.4, §10.2).
 //!
 //! The lean VM has no cell file, no residency and no paging, so a source binding
-//! here is a much smaller object than [`bind`](super::bind)'s: there is no
+//! here is a small object: there is no
 //! per-operand coordinate to emit, because the wire already carries the source
 //! SLOT ([`lean`](super::lean)'s `source_a`/`source_b`), and the executor turns a
 //! slot into an address through a per-source record. This module produces exactly
@@ -14,16 +14,15 @@
 //!     SOURCE SLOT order, which is the CPU-side origin of the GPU descriptor's
 //!     per-source record.
 //!
-//! # Why this is not [`bind::bind_coeff_sources`](super::bind::bind_coeff_sources)
+//! # What it inherited from the retired cell-era binder
 //!
-//! That function takes a `&CoeffPlacement` and is coupled to the cell era at
-//! module scope (`place::{CoeffPlacement, ScheduledInstr, ValueUse}`,
-//! `schedule::PUBLISH_TARGET_DEPTH`). Its CHECKS carry over — the window span, the
-//! backing origin, the source alias, and the procedural kind — and they are what
-//! this module re-implements against a committed TERM ORDER instead of a placed
-//! program. Its `first_access` marker does NOT carry over: there is no
-//! publish-on-first-access state in a VM with no residency, so
-//! [`bind_lean_sources`] asks the shared core for no marker at all.
+//! The retired `bind_coeff_sources` took a placed program and emitted a
+//! per-operand coordinate. Its CHECKS carry over — the window span, the backing
+//! origin, the source alias, and the procedural kind — and they are what this
+//! module states against a committed TERM ORDER instead of a placement. Its
+//! `first_access` marker does NOT carry over: there is no publish-on-first-access
+//! state in a VM with no residency, so [`bind_lean_sources`] asks the shared core
+//! for no marker at all.
 //!
 //! # What is deliberately NOT here
 //!
@@ -60,9 +59,8 @@ pub const LEAN_PROCEDURAL_KINDS: u8 = 4;
 
 /// One addressable column of one window.
 ///
-/// Mirrors [`bind::BoundColumn`](super::bind::BoundColumn) field for field, with
-/// the source artifactized as a `u32` slot: [`SourceId`] carries no serde derives
-/// and this struct nests inside the serialized coordinate.
+/// The source is artifactized as a `u32` slot: [`SourceId`] carries no serde
+/// derives and this struct nests inside the serialized coordinate.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LeanBoundColumn {
     /// The backing's OWN column, not the window-relative offset.
@@ -74,11 +72,6 @@ pub struct LeanBoundColumn {
 /// One bound source window: at most [`SOURCE_WINDOW_COLUMNS`] contiguous columns
 /// of ONE logical backing, of which only [`LeanBoundWindow::columns`] are
 /// addressable.
-///
-/// Mirrors [`bind::BoundSourceWindow`](super::bind::BoundSourceWindow) field for
-/// field. It is a NEW type rather than that one because the cell-era struct
-/// carries no serde derives and this one nests inside the serialized coordinate;
-/// retro-deriving there would widen a frozen type the lean lineage is retiring.
 ///
 /// [`SOURCE_WINDOW_COLUMNS`]: super::limits::SOURCE_WINDOW_COLUMNS
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -398,8 +391,8 @@ pub fn bind_lean_sources(
 /// The span, canonical-partition, origin, alias and procedural-kind checks, against
 /// the layer the binding claims to bind.
 ///
-/// This is [`bind::certify_source_binding`](super::bind::certify_source_binding)'s
-/// placement-free half. It runs on every binding the constructor above produces —
+/// The placement-free half of the retired cell-era binding certificate. It runs
+/// on every binding the constructor above produces —
 /// the checks are `O(sources)` and they are the only thing that gives
 /// [`LeanBoundWindow::family`] its meaning, since the GPU descriptor picks DRAM
 /// versus procedural resolution off it. Three of the four defects are unreachable

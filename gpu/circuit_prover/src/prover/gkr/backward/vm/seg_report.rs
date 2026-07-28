@@ -81,9 +81,18 @@ use super::seg_lower::{
 };
 use crate::primitives::field::E4;
 use crate::primitives::utils::WARP_SIZE;
+use crate::prover::gkr::backward::flat::FLAT_CONST_MAX;
 use crate::prover::gkr::backward::{GkrEqSizes, GKR_EQ_GROUP_TABLE_LEN, GKR_EQ_HIGH_SLOTS};
 use crate::prover::ProverContext;
 use crate::upstream::{BwdRegime, Field, FieldExtension};
+
+// The INCUMBENT's `__constant__` coefficient symbol, declared here because this
+// harness is the only thing in the segmented lineage that touches it: the paired
+// A/B timing has to stage the incumbent's own bank before timing its launch. The
+// segmented executor reads `ab_gkr_bwd_seg_coeff_bank` and nothing else.
+era_cudart_sys::cuda_struct_and_stub! {
+    static ab_gkr_flat_coefficients: [E4; FLAT_CONST_MAX];
+}
 
 // ── The protocol's constants ─────────────────────────────────────────────────
 
@@ -2083,17 +2092,17 @@ fn run_r0_matrix(profile: Option<SegShape>) -> Vec<SegMatrixRow> {
 
     // ── the incumbent's own preflight ────────────────────────────────────
     assert!(
-        incumbent_bank.len() <= crate::prover::gkr::backward::flat::FLAT_CONST_MAX,
+        incumbent_bank.len() <= FLAT_CONST_MAX,
         "the incumbent add/sub round-0 bank must fit its constant symbol"
     );
-    let staged: [E4; crate::prover::gkr::backward::flat::FLAT_CONST_MAX] =
+    let staged: [E4; FLAT_CONST_MAX] =
         core::array::from_fn(|index| incumbent_bank.get(index).copied().unwrap_or(E4::ZERO));
     // SAFETY: this Rust stub names the exact CUDA `e4[FLAT_CONST_MAX]` coefficient
     // symbol; the copy is stream-ordered before every launch that reads it and is
     // always outside a timed span.
     unsafe {
         crate::primitives::utils::memcpy_to_symbol_async(
-            &super::ab_gkr_flat_coefficients,
+            &ab_gkr_flat_coefficients,
             &staged,
             context.get_exec_stream(),
         )

@@ -30,10 +30,9 @@ use cs::gkr_compiler::dag_ir::{
 };
 use serde::{Deserialize, Serialize};
 
-use super::encode::term_category;
 use super::limits::{
-    KERNEL_ARGUMENT_CEILING_BYTES, SOURCE_WINDOW_COLUMNS, TermCategory,
-    lower_bound_program_words, program_bytes, upper_bound_program_words,
+    KERNEL_ARGUMENT_CEILING_BYTES, SOURCE_WINDOW_COLUMNS, TermCategory, lower_bound_program_words,
+    program_bytes, term_category, upper_bound_program_words,
 };
 use super::lower::{LoweringTrace, lower_coeff_layer_traced};
 use super::model::{
@@ -95,7 +94,7 @@ pub fn backing_field(
 
 /// [`backing_field`] against a bare cross-layer field map — the only part of a
 /// [`DistilledLayer`] the resolution actually reads. Final binding
-/// ([`crate::bwd::coeff::bind`]) takes the map, so a caller that has already
+/// ([`crate::bwd::coeff::lean_bind`]) takes the map, so a caller that has already
 /// dropped the distilled layer can still place a source in its matrix.
 pub fn backing_field_in(
     place: &ReadPlace,
@@ -113,7 +112,7 @@ pub fn backing_field_in(
 
 /// The logical matrix one source lives in, and its column there — the identity
 /// final binding partitions windows over. The SINGLE mapping: the census and
-/// [`crate::bwd::coeff::bind`] must not disagree about what a backing is.
+/// [`crate::bwd::coeff::lean_bind`] must not disagree about what a backing is.
 pub fn window_family(
     source: &CoeffSource,
     cross_fields: &HashMap<ReadPlace, FieldKind>,
@@ -169,10 +168,9 @@ pub fn window_count(columns: &BTreeSet<usize>) -> usize {
 ///     read, a cache can serve every later use of EITHER projection, including an
 ///     `Endpoint0` use that a `Delta` resolution exposes for free (§7.1).
 ///
-/// Multiplying entry `i` by source `i`'s per-endpoint byte price gives the read
-/// floor [`crate::bwd::coeff::artifact::total_read_floor_bytes`] reports §15's
-/// percentage against. The bound is TIGHT: with enough lanes the pager retains
-/// every projection that has a later use, so the realized traffic reaches it.
+/// Multiplying entry `i` by source `i`'s per-endpoint byte price gives the layer's
+/// compulsory read floor in bytes. The bound is TIGHT: an evaluator that retains
+/// every projection with a later use realizes exactly it.
 pub fn compulsory_endpoint_reads(lowered: &CoeffLayer) -> Vec<u8> {
     let mut reads = vec![0u8; lowered.sources.len()];
     for term in &lowered.terms {

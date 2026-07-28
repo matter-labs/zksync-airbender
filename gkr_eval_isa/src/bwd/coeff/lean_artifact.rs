@@ -2,11 +2,9 @@
 //! coefficient-ISA design §13).
 //!
 //! One [`LeanCoordinateArtifact`] is everything the segmented VM needs to be
-//! launched for one `(circuit, layer, regime)`, and nothing else. It is the lean
-//! analog of [`artifact::CoordinateArtifact`](super::artifact::CoordinateArtifact):
-//! the same `layer` / `regime` / `target_depth` identity, with that type's
-//! `c2`..`c16` budget family replaced by the three objects the lean pipeline
-//! produces —
+//! launched for one `(circuit, layer, regime)`, and nothing else: a
+//! `layer` / `regime` / `target_depth` identity plus the three objects the lean
+//! pipeline produces —
 //!
 //! ```text
 //! lower_coeff_layer -> order_terms -> encode_program -> bind_lean_sources
@@ -38,7 +36,6 @@ use std::path::{Path, PathBuf};
 use cs::gkr_compiler::dag_ir::{BwdRegime, DagLayer, FieldKind, ReadPlace};
 use serde::{Deserialize, Serialize};
 
-use super::artifact::ArtifactRegime;
 use super::lean::{LeanCodecError, LeanProgram, encode_program, validate_program};
 use super::lean_bind::{LeanBindError, LeanSourceBinding, bind_lean_sources};
 use super::lower::lower_coeff_layer;
@@ -48,6 +45,37 @@ use crate::bwd::distill::distill;
 use crate::bwd::source::VIRTUAL_SETUP_MATERIALIZE_DEPTH;
 
 // ── Schema ───────────────────────────────────────────────────────────────────
+
+/// The serialized spelling of [`BwdRegime`], which is not `serde`-derived
+/// upstream. `R0` / `Ext`, the same two labels every report in this crate uses.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub enum ArtifactRegime {
+    R0,
+    Ext,
+}
+
+impl ArtifactRegime {
+    pub fn of(regime: BwdRegime) -> Self {
+        match regime {
+            BwdRegime::R0 => ArtifactRegime::R0,
+            BwdRegime::Ext => ArtifactRegime::Ext,
+        }
+    }
+
+    pub fn regime(self) -> BwdRegime {
+        match self {
+            ArtifactRegime::R0 => BwdRegime::R0,
+            ArtifactRegime::Ext => BwdRegime::Ext,
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            ArtifactRegime::R0 => "R0",
+            ArtifactRegime::Ext => "Ext",
+        }
+    }
+}
 
 /// One `(layer, regime)` lean coordinate: one program, one binding, one order.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -158,11 +186,10 @@ impl From<LeanBindError> for LeanArtifactError {
 /// continuation round but the first
 /// [`VIRTUAL_SETUP_MATERIALIZE_DEPTH`] of them.
 ///
-/// Restated here rather than taken from
-/// `schedule::default_target_depth`: that module is the cell-era scheduler and the
-/// lean pipeline carries no dependency on it.
-/// `lean_target_depth_agrees_with_the_scheduler` pins the two against each other
-/// for as long as both exist.
+/// The lean pipeline's ONLY target-depth authority since the cell-era scheduler
+/// was retired. It reads [`VIRTUAL_SETUP_MATERIALIZE_DEPTH`] directly, the same
+/// constant [`limits::PUBLISH_TARGET_DEPTH`](super::limits::PUBLISH_TARGET_DEPTH)
+/// names for the publication threshold.
 pub const fn lean_target_depth(regime: BwdRegime) -> u8 {
     match regime {
         BwdRegime::R0 => 0,
@@ -194,10 +221,8 @@ pub fn order_covers_layer(order: &[TermId], terms: usize) -> bool {
 
 /// Lower one canonical layer in one regime, into the lean IR.
 ///
-/// The lean analog of
-/// [`artifact::lower_and_price`](super::artifact::lower_and_price) minus the
-/// prices: nothing in this pipeline is priced, because the per-list work model
-/// needs the round-binding dependent source classes, which do not exist at the
+/// Nothing in this pipeline is priced: the per-list work model needs the
+/// round-binding dependent source classes, which do not exist at the
 /// [`CoeffLayer`] layer.
 pub fn lower_lean_layer(
     canonical: &DagLayer,
@@ -211,10 +236,8 @@ pub fn lower_lean_layer(
 
 /// Compile one `(circuit, layer, regime)` lean coordinate.
 ///
-/// The same five inputs as
-/// [`artifact::compile_coordinate`](super::artifact::compile_coordinate), and
-/// fallible for the same reason: the chain either succeeds whole or returns its
-/// first failure. Nothing is written from here — the caller writes one circuit's
+/// Fallible as a whole: the chain either succeeds outright or returns its first
+/// failure. Nothing is written from here — the caller writes one circuit's
 /// artifact once its coordinates have all succeeded.
 ///
 /// # Panics
@@ -257,17 +280,15 @@ pub fn compile_lean_coordinate(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::bwd::coeff::schedule::default_target_depth;
+    use crate::bwd::coeff::limits::PUBLISH_TARGET_DEPTH;
 
-    /// The lean depth is the scheduler's, restated. Pinned while both exist so the
-    /// restatement cannot drift before the cell-era module is retired.
+    /// R0 is round zero; the continuation depth is the publication threshold, and
+    /// the two spellings of that threshold must not drift apart.
     #[test]
-    fn lean_target_depth_agrees_with_the_scheduler() {
-        for regime in [BwdRegime::R0, BwdRegime::Ext] {
-            assert_eq!(lean_target_depth(regime), default_target_depth(regime), "{regime:?}");
-        }
+    fn lean_target_depth_is_the_publication_threshold() {
         assert_eq!(lean_target_depth(BwdRegime::R0), 0);
         assert_eq!(lean_target_depth(BwdRegime::Ext), 3);
+        assert_eq!(lean_target_depth(BwdRegime::Ext), PUBLISH_TARGET_DEPTH);
     }
 
     /// The check the lean codec deliberately does not make: a partial order, a

@@ -1,7 +1,5 @@
 target_sources(circuit_prover_native PRIVATE
         coeff.cuh
-        coefficient_vm.cu
-        coefficient_vm.cuh
         continuation.cuh
         dim_reducing.cu
         flat.cuh
