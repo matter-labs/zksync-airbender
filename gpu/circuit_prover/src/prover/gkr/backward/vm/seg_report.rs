@@ -1960,6 +1960,38 @@ fn profile_shape() -> SegShape {
 fn bwd_seg_add_sub_l0_r0_matrix() {
     let rows = run_r0_matrix(None);
     assert!(!rows.is_empty(), "the matrix must record every coordinate");
+
+    // THE GATE, asserted rather than printed. `run_r0_matrix` reports the winner
+    // and its interval to stderr and into the CSV, but until this assertion existed
+    // a regressed kernel re-ran this test GREEN — the only check was that the
+    // matrix was non-empty, which a uniformly slower executor satisfies just as
+    // well as a winning one.
+    //
+    // The claim is the plan's, unweakened: the fastest PRODUCTION-loader
+    // configuration must INVERT the deficit, and `RatioEstimate::inverts` is the
+    // plan's own rule — the whole bootstrap interval below 1.0, not just the
+    // median. An interval spanning 1.0 means the deficit merely CLOSED, which is
+    // not the acceptance criterion.
+    //
+    // Deliberately NOT asserted in `bwd_seg_add_sub_l0_r0_profile`: that test runs
+    // under `ncu`, whose instrumentation dominates the timing, so an inversion
+    // claim there would be measuring the profiler.
+    let winner = select_winner(&rows).expect("at least one launchable production-loader row");
+    let gate = winner
+        .ratio
+        .expect("the winning row is paired against the incumbent, so it carries a ratio");
+    assert!(
+        gate.inverts(),
+        "add/sub L0 R0 must INVERT against the incumbent: winner {} regs={} \
+         median={:.3}us ratio={:.4} CI [{:.4}, {:.4}] -> {}",
+        winner.shape.label(),
+        winner.attributes.registers,
+        winner.candidate_median_us,
+        gate.median_ratio,
+        gate.ci_low,
+        gate.ci_high,
+        gate.verdict(),
+    );
 }
 
 /// The profiler selector: ONE candidate launch and ONE incumbent launch, each
@@ -5434,6 +5466,45 @@ mod tests {
         let solo = render_matrix_csv(&[row_fixture(4, 6, None)]);
         assert!(solo.contains("solo,-,"), "{solo}");
         assert!(render_matrix_table(&[row_fixture(4, 6, None)]).contains("| solo | solo | solo |"));
+    }
+
+    /// The GATE's own predicate, on CPU: `select_winner(...).ratio.inverts()` says
+    /// YES on an inverting matrix and NO on a regressed one.
+    ///
+    /// `bwd_seg_add_sub_l0_r0_matrix` asserts exactly this composition, and that
+    /// test needs a GPU. Proving the composition DISCRIMINATES belongs here, or the
+    /// gate would rest on "it passed once with the assert in place" — which is
+    /// equally true of an assertion that can never fail.
+    #[test]
+    fn the_gate_predicate_separates_an_inverting_matrix_from_a_regressed_one() {
+        let matrix_with = |ratio: RatioEstimate| vec![row_fixture(4, 6, Some(ratio))];
+        let gate_holds = |rows: &[SegMatrixRow]| {
+            select_winner(rows)
+                .expect("a launchable production row")
+                .ratio
+                .expect("a paired row")
+                .inverts()
+        };
+
+        // The shape the GPU gate actually measured: whole interval below one.
+        assert!(gate_holds(&matrix_with(RatioEstimate {
+            median_ratio: 0.9722,
+            ci_low: 0.9722,
+            ci_high: 0.9726,
+        })));
+        // Measurably slower — the regression the reviewer's finding was about.
+        assert!(!gate_holds(&matrix_with(RatioEstimate {
+            median_ratio: 1.0499,
+            ci_low: 1.0499,
+            ci_high: 1.0502,
+        })));
+        // Merely CLOSED: the median wins but the interval spans 1.0. The plan does
+        // NOT accept this, and neither may the gate.
+        assert!(!gate_holds(&matrix_with(RatioEstimate {
+            median_ratio: 0.998,
+            ci_low: 0.990,
+            ci_high: 1.004,
+        })));
     }
 
     /// The winner is chosen among PRODUCTION-loader rows, resolves its tie band to

@@ -866,6 +866,99 @@ mod tests {
         );
     }
 
+    /// Every single-bit mutation of a canonical multi-class program is either
+    /// REJECTED with a classified error, or still valid and still decodes to a
+    /// well-formed record set. Never a panic, and never a record the validator
+    /// accepted but the decoder disagrees about.
+    ///
+    /// Exhaustive per word, and cheap enough to be: fixed 8-byte records with
+    /// masked fields mean the whole wire of a five-term program is 20 u16 words —
+    /// 320 mutations, each a decode plus a validate. There is no length field on
+    /// the wire and no variable-width record, so bit-flipping the words IS the
+    /// complete malformed-input space at this level.
+    ///
+    /// This restores the malformed-input property the retired cell-era codec's
+    /// suite carried; the lean codec had per-rule tests but nothing exhaustive.
+    #[test]
+    fn every_single_bit_mutation_is_rejected_or_consistently_valid() {
+        let layer = r0_layer();
+        let canonical = encode_program(&layer, &order_terms(&layer)).expect("a legal R0 layer");
+        validate_program(&canonical, &layer).expect("the canonical program validates");
+
+        let coefficients = CoefficientRecipeId::RESERVED as usize + layer.coefficients.len();
+        let mut rejected = 0usize;
+        let mut still_valid = 0usize;
+
+        for word in 0..canonical.words.len() {
+            for bit in 0..16u32 {
+                let mut mutated = canonical.clone();
+                mutated.words[word] ^= 1u16 << bit;
+                let where_ = format!("word {word} bit {bit}");
+
+                match validate_program(&mutated, &layer) {
+                    // (a) Rejected. The error is classified by construction — the
+                    // enum has no catch-all variant — so reaching here is the
+                    // property. `decode_program` must agree that something is
+                    // wrong OR must at least not panic.
+                    Err(_) => {
+                        rejected += 1;
+                        // Decoding a rejected stream must still be panic-free: the
+                        // disassembler is read exactly when a program is malformed.
+                        let _ = decode_program(&mutated);
+                        let _ = disassemble(&mutated, &layer);
+                    }
+                    // (b) Still valid. Then the decode must succeed and every
+                    // record must independently satisfy the four field rules, so
+                    // the validator cannot have accepted something the executor
+                    // would mis-read.
+                    Ok(()) => {
+                        still_valid += 1;
+                        let terms = decode_program(&mutated)
+                            .unwrap_or_else(|e| panic!("{where_}: valid but undecodable: {e:?}"));
+                        assert_eq!(terms.len(), layer.terms.len(), "{where_}: record count");
+                        for (index, decoded) in terms.iter().enumerate() {
+                            let category = lean_category(layer.regime, u16::from(decoded.class))
+                                .unwrap_or_else(|| panic!("{where_}: term {index} dead class"));
+                            assert!(
+                                usize::from(decoded.coeff) < coefficients,
+                                "{where_}: term {index} coefficient out of range"
+                            );
+                            assert!(
+                                usize::from(decoded.source_a) < layer.sources.len(),
+                                "{where_}: term {index} source_a out of range"
+                            );
+                            if category_arity(category) == 1 {
+                                assert_eq!(
+                                    decoded.source_b, SOURCE_NONE,
+                                    "{where_}: term {index} unary source_b"
+                                );
+                            } else {
+                                assert!(
+                                    decoded.source_b != SOURCE_NONE
+                                        && usize::from(decoded.source_b) < layer.sources.len(),
+                                    "{where_}: term {index} binary source_b"
+                                );
+                            }
+                        }
+                        let _ = disassemble(&mutated, &layer);
+                    }
+                }
+            }
+        }
+
+        assert_eq!(rejected + still_valid, canonical.words.len() * 16);
+        // Both outcome classes must actually occur, or this sweep is proving only
+        // one of the two properties it claims. Printed so the split is visible
+        // rather than assumed: a change that collapsed one class to a handful
+        // would still pass the bounds below but would mean much less.
+        eprintln!(
+            "[lean-mutation] {} words x 16 bits: {rejected} rejected, {still_valid} still valid",
+            canonical.words.len()
+        );
+        assert!(rejected > 0, "no mutation was rejected");
+        assert!(still_valid > 0, "no mutation stayed valid");
+    }
+
     #[test]
     fn program_survives_a_serde_roundtrip() {
         let layer = ext_layer();

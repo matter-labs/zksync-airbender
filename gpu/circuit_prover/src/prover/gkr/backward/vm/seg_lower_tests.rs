@@ -29,7 +29,7 @@ use gkr_eval_isa::bwd::coeff::ArtifactRegime;
 
 use super::seg_desc::{
     BwdSegDesc, BWD_COEFF_ORIGIN_PROCEDURAL, BWD_COEFF_ORIGIN_READ_BASE, BWD_COEFF_ORIGIN_READ_EXT,
-    BWD_COEFF_PROCEDURAL_NONE, BWD_SEG_CONST_BANK, BWD_SEG_MAX_K,
+    BWD_COEFF_PROCEDURAL_NONE, BWD_SEG_CONST_BANK, BWD_SEG_MAX_K, BWD_SEG_MAX_SOURCES,
 };
 use super::seg_lower::{
     assign_class, chain_read_column, check_regions_disjoint, e4_limbs, lower_bwd_seg,
@@ -1057,6 +1057,124 @@ fn an_r0_program_lowered_off_round_zero_is_rejected() {
             D2Policy::Inline,
         ),
         Err(BwdSegLowerError::R0RoundMismatch { round: 1 }),
+    );
+}
+
+/// One past the MEASURED window maximum is rejected.
+///
+/// `in_scope::MAX_SOURCE_WINDOWS_USED` sizes `BwdSegDesc::window`, a FIXED-length
+/// array, so this rejection is what stands between a wider layer and a descriptor
+/// write past its end. The cell-era lineage covered exactly this in
+/// `abi_tests::more_windows_than_the_measured_maximum_are_rejected`, which was
+/// deleted with it; this is that coverage restored against the seg lowering.
+#[test]
+fn more_windows_than_the_measured_maximum_are_rejected() {
+    let cap = in_scope::MAX_SOURCE_WINDOWS_USED;
+    // One window per source, one column each, one past the cap. Distinct layers so
+    // no two windows share a backing.
+    let windows: Vec<LeanBoundWindow> = (0..=cap)
+        .map(|index| ext_output(index + 1, &[index as u32]))
+        .collect();
+    let slot_spec: Vec<(u8, u16)> = (0..=cap).map(|index| (index as u8, 0u16)).collect();
+    let artifact = artifact(
+        ArtifactRegime::Ext,
+        2,
+        windows,
+        slots(&slot_spec),
+        program(&[record(0, 0, 0, SOURCE_NONE)]),
+    );
+
+    let bounds: Vec<ResolvedBwdCoeffSourceWindow> = (0..=cap)
+        .map(|_| bound(Some(e4_column(0)), 2, 2, false))
+        .collect();
+    let columns = vec![1usize; cap + 1];
+    let scratch = scratch_for(plan_for(2, &bounds, &columns));
+    let claim = claim_point(8);
+    let coeffs = coefficients(4);
+    let read_elements = generous(cap + 1);
+    let binding = round_binding(2, &bounds, &read_elements, &claim, &coeffs);
+
+    assert_eq!(
+        lower_bwd_seg(
+            &artifact,
+            &binding,
+            &scratch,
+            1,
+            D2Policy::Inline,
+            ProgramMode::Inline,
+            CoeffMode::Constant,
+        ),
+        Err(BwdSegLowerError::SourceWindowOverflow {
+            windows: cap + 1,
+            cap,
+        }),
+    );
+}
+
+/// One past the source-table capacity is rejected.
+///
+/// `BWD_SEG_MAX_SOURCES` sizes BOTH source-indexed descriptor arrays
+/// (`fold_source` and `source`), so the same argument applies: without this
+/// rejection a layer with more sources than the census measured writes past two
+/// fixed-length arrays. Spread over the fewest legal windows — a window spans at
+/// most `SOURCE_WINDOW_COLUMNS` columns, so `ceil(1073 / 128) = 9` of them, well
+/// inside the window cap this must NOT trip instead.
+#[test]
+fn more_sources_than_the_table_capacity_are_rejected() {
+    let cap = BWD_SEG_MAX_SOURCES;
+    let total = cap + 1;
+    let per_window = SOURCE_WINDOW_COLUMNS;
+    let window_count = total.div_ceil(per_window);
+    assert!(
+        window_count <= in_scope::MAX_SOURCE_WINDOWS_USED,
+        "the source overflow must be reachable without also overflowing the window cap"
+    );
+
+    let windows: Vec<LeanBoundWindow> = (0..window_count)
+        .map(|index| {
+            let first = index * per_window;
+            let last = ((index + 1) * per_window).min(total);
+            let sources: Vec<u32> = (first..last).map(|source| source as u32).collect();
+            ext_output(index + 1, &sources)
+        })
+        .collect();
+    let slot_spec: Vec<(u8, u16)> = (0..total)
+        .map(|source| ((source / per_window) as u8, (source % per_window) as u16))
+        .collect();
+    let artifact = artifact(
+        ArtifactRegime::Ext,
+        2,
+        windows,
+        slots(&slot_spec),
+        program(&[record(0, 0, 0, SOURCE_NONE)]),
+    );
+
+    let bounds: Vec<ResolvedBwdCoeffSourceWindow> = (0..window_count)
+        .map(|_| bound(Some(e4_column(0)), 2, 2, false))
+        .collect();
+    let columns: Vec<usize> = (0..window_count)
+        .map(|index| (total - index * per_window).min(per_window))
+        .collect();
+    let scratch = scratch_for(plan_for(2, &bounds, &columns));
+    let claim = claim_point(8);
+    let coeffs = coefficients(4);
+    let read_elements = generous(window_count);
+    let binding = round_binding(2, &bounds, &read_elements, &claim, &coeffs);
+
+    assert_eq!(
+        lower_bwd_seg(
+            &artifact,
+            &binding,
+            &scratch,
+            1,
+            D2Policy::Inline,
+            ProgramMode::Inline,
+            CoeffMode::Constant,
+        ),
+        Err(BwdSegLowerError::SourceOverflow {
+            sources: total,
+            cap,
+        }),
     );
 }
 
