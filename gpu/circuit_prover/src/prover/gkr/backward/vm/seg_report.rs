@@ -504,6 +504,12 @@ pub(super) const INCUMBENT_R0_THREADS_PER_BLOCK: u32 = 128;
 pub(super) const INCUMBENT_R0_SEQUENCE: &str = "compact flat round-0 constant evaluator \
 (ab_gkr_main_round0_flat_constant_compact_e4_kernel)";
 
+/// Short form of [`INCUMBENT_R0_SEQUENCE`] for the ratio-baseline column.
+pub(super) const INCUMBENT_R0_BASELINE_LABEL: &str = "incumbent-compact-r0";
+/// The Stage-B ratio baseline: each rung's own register-placement twin, at the
+/// same `K`, epilogue, loader, cell and rows.
+pub(super) const STAGE_B_TWIN_BASELINE_LABEL: &str = "register-twin";
+
 // ── Device facts ─────────────────────────────────────────────────────────────
 
 /// The device constants every occupancy number is relative to.
@@ -744,19 +750,42 @@ pub(super) struct SegMatrixRow {
     pub(super) incumbent_median_us: Option<f64>,
     pub(super) incumbent_min_us: Option<f64>,
     pub(super) ratio: Option<RatioEstimate>,
+    /// WHAT the ratio is against, or `"-"` when the cell was timed solo.
+    ///
+    /// The ratio column carries two different comparisons — the R0 matrix pairs
+    /// against the incumbent compact evaluator, Stage B pairs each rung against its
+    /// own register-placement twin — and a reader cannot tell them apart from the
+    /// number. Naming the baseline in the row is what keeps them distinguishable in
+    /// the CSV and in every generated table.
+    pub(super) baseline: &'static str,
 }
 
 impl SegMatrixRow {
     pub(super) fn launchable(&self) -> bool {
         self.blocks_per_sm > 0
     }
+
+    /// Which timing protocol produced this row's numbers.
+    ///
+    /// `paired` is the plan's normative protocol: interleaved, one baseline sample
+    /// between every two candidate samples, and a bootstrap CI over the pairs.
+    /// `solo` is warmup-and-samples on one side only — a wall time with no
+    /// interval, and NOT a number two rows of which may be divided to four
+    /// decimals. Recorded per row so no table can quietly mix them.
+    pub(super) fn protocol(&self) -> &'static str {
+        if self.ratio.is_some() {
+            "paired"
+        } else {
+            "solo"
+        }
+    }
 }
 
 pub(super) const SEG_CSV_HEADER: &str = "benchmark,circuit,layer,regime,round,rows,saturated,k,\
 epilogue,coeff,program,acc_placement,d2_policy,launchable,blocks_per_sm,theoretical_occupancy_percent,registers,\
 local_spill_bytes,static_smem_bytes,max_threads_per_block,dynamic_smem_bytes,grid_blocks,waves,\
-max_over_mean_work,parity,candidate_median_us,candidate_min_us,incumbent_median_us,\
-incumbent_min_us,median_ratio,ci_low,ci_high,verdict\n";
+max_over_mean_work,parity,protocol,ratio_baseline,candidate_median_us,candidate_min_us,\
+baseline_median_us,baseline_min_us,median_ratio,ci_low,ci_high,verdict\n";
 
 pub(super) fn render_matrix_csv(rows: &[SegMatrixRow]) -> String {
     let mut out = String::from(SEG_CSV_HEADER);
@@ -773,7 +802,7 @@ pub(super) fn render_matrix_csv(rows: &[SegMatrixRow]) -> String {
         writeln!(
             out,
             "{},{},{},{:?},{},{},{},{},{},{},{},{},{},{},{},{:.2},{},{},{},{},{},{},{:.3},{:.4},\
-             {},{:.3},{:.3},{:.3},{:.3},{:.6},{:.6},{:.6},{}",
+             {},{},{},{:.3},{:.3},{:.3},{:.3},{:.6},{:.6},{:.6},{}",
             row.benchmark,
             row.circuit,
             row.layer,
@@ -799,6 +828,8 @@ pub(super) fn render_matrix_csv(rows: &[SegMatrixRow]) -> String {
             row.waves,
             row.max_over_mean_work,
             row.parity.label(),
+            row.protocol(),
+            row.baseline,
             row.candidate_median_us,
             row.candidate_min_us,
             row.incumbent_median_us.unwrap_or(f64::NAN),
@@ -1130,9 +1161,12 @@ pub(super) fn render_matrix_table(rows: &[SegMatrixRow]) -> String {
             Some(estimate) => (
                 format!("{:.4}", estimate.median_ratio),
                 format!("[{:.4}, {:.4}]", estimate.ci_low, estimate.ci_high),
-                estimate.verdict().to_owned(),
+                format!("{} vs {}", estimate.verdict(), row.baseline),
             ),
-            None => ("-".to_owned(), "-".to_owned(), "-".to_owned()),
+            // A solo cell has no baseline sampled beside it, so it gets no ratio and
+            // no interval — printing either would invent a comparison the protocol
+            // did not make.
+            None => ("solo".to_owned(), "solo".to_owned(), "solo".to_owned()),
         };
         writeln!(
             body,
@@ -1499,22 +1533,65 @@ impl SegCell {
             .launch(context)
             .unwrap_or_else(|error| panic!("{}: {}: {error:?}", self.label(), shape.label()));
         let sample = SEG_IDENTITY_SAMPLE_ROWS.min(self.rows);
-        let low = download_e4(self.contributions, sample, context);
-        let high = download_e4(
-            // SAFETY: `contributions` spans `2 * rows` E4 values, so the second half
-            // starts `rows` values in.
-            unsafe { self.contributions.add(self.rows) },
-            sample,
-            context,
-        );
-        let mut out = low;
-        out.extend(high);
+        // HEAD **and TAIL** of both halves. A prefix alone cannot see a short grid
+        // or a truncated row count: those faults leave the last rows untouched, and
+        // a kernel that evaluates fewer rows than it was asked for is FASTER, so a
+        // prefix-only check would let a deflated wall time through certified.
+        // Sampling `[rows - sample, rows)` of each half is what makes the far end of
+        // the launch's own output an assertion.
+        let tail = self.rows - sample;
+        let mut out = download_e4(self.contributions, sample, context);
+        // SAFETY: `contributions` spans `2 * rows` E4 values, so every offset below
+        // is inside it: the second half starts `rows` values in, and `tail + sample`
+        // is exactly `rows`.
+        unsafe {
+            out.extend(download_e4(
+                self.contributions.add(self.rows),
+                sample,
+                context,
+            ));
+            out.extend(download_e4(self.contributions.add(tail), sample, context));
+            out.extend(download_e4(
+                self.contributions.add(self.rows + tail),
+                sample,
+                context,
+            ));
+        }
+        // The tail check is only worth having if it reads DIFFERENT memory from the
+        // head check, and a wrong offset would leave it silently reading the head
+        // twice — at which point every downstream assertion still passes and the
+        // guard is decoration. Contributions are `eq(row) * acc(row)` over
+        // per-row-distinct pseudorandom sources, so head and tail cannot coincide;
+        // asserting that they differ is what makes this measured rather than
+        // assumed. (`tail > 0` always: `SEG_MIN_TIMED_ROWS` is eight times
+        // `SEG_IDENTITY_SAMPLE_ROWS`.)
         assert!(
-            out.iter().any(|value| e4_bits(*value) != e4_bits(poison)),
-            "{}: {}: the launch left every sampled contribution poisoned",
-            self.label(),
-            shape.label()
+            tail > 0,
+            "the timed cell must be wider than one sample window"
         );
+        assert_ne!(
+            e4_bits(out[0]),
+            e4_bits(out[2 * sample]),
+            "{}: {}: the tail sample read the same bytes as the head sample -- the \
+             tail-inclusive certification is not reading the far end of the launch",
+            self.label(),
+            shape.label(),
+        );
+        // EVERY sampled slot, not merely one of them. `any` is satisfied by a single
+        // changed value, so it passes a launch that wrote one tile and stopped; the
+        // poison is a pseudorandom E4, so a correct contribution colliding with it
+        // is a 2^-124 event and `all` costs nothing in false failures.
+        for (slot, value) in out.iter().enumerate() {
+            assert_ne!(
+                e4_bits(*value),
+                e4_bits(poison),
+                "{}: {}: sampled contribution slot {slot} (of head+tail over both \
+                 halves at {} rows) is still poison -- the launch did not cover it",
+                self.label(),
+                shape.label(),
+                self.rows,
+            );
+        }
         out
     }
 }
@@ -2023,7 +2100,7 @@ fn run_r0_matrix(profile: Option<SegShape>) -> Vec<SegMatrixRow> {
             &host_eq,
             &device,
             &mut reference,
-            Some(&incumbent_launch),
+            Some((INCUMBENT_R0_BASELINE_LABEL, &incumbent_launch)),
             profile == Some(shape),
             &context,
         ));
@@ -2146,7 +2223,9 @@ fn measure_shape(
     eq: &HostEq,
     device: &SegDeviceFacts,
     reference: &mut Option<Vec<E4>>,
-    incumbent: Option<&dyn Fn(&ProverContext) -> CudaResult<()>>,
+    // `baseline`: what this shape is PAIRED against, and the label naming it.
+    // `None` falls back to solo timing, which the row records as such.
+    baseline: Option<(&'static str, &dyn Fn(&ProverContext) -> CudaResult<()>)>,
     profile: bool,
     context: &ProverContext,
 ) -> SegMatrixRow {
@@ -2179,6 +2258,7 @@ fn measure_shape(
         incumbent_median_us: None,
         incumbent_min_us: None,
         ratio: None,
+        baseline: baseline.map_or("-", |(label, _)| label),
     };
     if blocks_per_sm == 0 {
         eprintln!(
@@ -2228,13 +2308,13 @@ fn measure_shape(
     // Rung 3: the timing loop. Nothing is poisoned, downloaded or synchronized
     // inside it beyond the event pair each sample needs.
     let stream = context.get_exec_stream();
-    match incumbent {
-        Some(incumbent) => {
-            let paired = time_paired(stream, || launchable.launch(context), || incumbent(context))
+    match baseline {
+        Some((label, baseline)) => {
+            let paired = time_paired(stream, || launchable.launch(context), || baseline(context))
                 .expect("interleaved paired timing");
             let estimate = paired.estimate();
             eprintln!(
-                "[seg-spike] {benchmark} {}: candidate {:.3}us vs incumbent {:.3}us -> \
+                "[seg-spike] {benchmark} {}: candidate {:.3}us vs {label} {:.3}us -> \
                  {:.4} [{:.4}, {:.4}] {}",
                 shape.label(),
                 paired.candidate_median(),
@@ -2256,8 +2336,8 @@ fn measure_shape(
             row.candidate_median_us = median(&samples);
             row.candidate_min_us = samples.iter().copied().fold(f64::MAX, f64::min);
             eprintln!(
-                "[seg-spike] {benchmark} {}: candidate {:.3}us (blocks/SM {blocks_per_sm}, \
-                 occ {:.1}%, regs {})",
+                "[seg-spike] {benchmark} {}: candidate {:.3}us SOLO (blocks/SM \
+                 {blocks_per_sm}, occ {:.1}%, regs {})",
                 shape.label(),
                 row.candidate_median_us,
                 occupancy * 100.0,
@@ -2279,12 +2359,12 @@ fn measure_shape(
                 .synchronize()
                 .expect("profiled candidate completion");
         }
-        if let Some(incumbent) = incumbent {
+        if let Some((_, baseline)) = baseline {
             let _range = crate::primitives::nvtx::scoped_range(
                 Some(SEG_NVTX_DOMAIN),
                 SEG_NVTX_INCUMBENT_MESSAGE,
             );
-            incumbent(context).expect("profiled incumbent");
+            baseline(context).expect("profiled baseline");
             context
                 .get_exec_stream()
                 .synchronize()
@@ -2575,34 +2655,51 @@ fn bwd_seg_stage_b_acc_ladder() {
             &context,
         );
         let mut reference: Option<Vec<E4>> = None;
-        // The register placement FIRST, so it is the identity reference every rung
-        // is compared against: a rung that computed something else would fail the
-        // prefix check against the placement it is supposed to be equivalent to,
-        // not merely against an arbitrary earlier row.
         for k in [4usize, 8] {
-            for acc in [
+            // The register placement FIRST at each `K`, for two reasons: it is the
+            // identity reference every rung of that `K` is compared against (so a
+            // rung that computed something else fails against the placement it is
+            // supposed to be equivalent to, not against an arbitrary earlier row),
+            // and it is the BASELINE the rungs are then paired against.
+            let twin_shape = SegShape::regs(
+                k,
+                CoeffMode::Constant,
+                ProgramMode::Inline,
+                BWD_SEG_ACC_RUNG_EPILOGUE,
+            );
+            matrix.push(measure_shape(
+                benchmark,
+                &timed,
+                &parity,
+                twin_shape,
+                &host_eq,
+                &device,
+                &mut reference,
                 None,
-                Some(BwdSegAccPlacement::AccC2Smem),
-                Some(BwdSegAccPlacement::AccBothSmem),
+                false,
+                &context,
+            ));
+            // A live twin to pair against. Rung-vs-twin is exactly a pairable
+            // comparison — same cell, same rows, same buffer — so it gets the
+            // NORMATIVE protocol rather than a quotient of two separately-timed
+            // medians, which would carry a fixed-direction drift bias (the twin is
+            // always measured first) and no interval at all.
+            let twin = timed.prepare(twin_shape, &context);
+            for placement in [
+                BwdSegAccPlacement::AccC2Smem,
+                BwdSegAccPlacement::AccBothSmem,
             ] {
-                let shape = match acc {
-                    None => SegShape::regs(
-                        k,
-                        CoeffMode::Constant,
-                        ProgramMode::Inline,
-                        BWD_SEG_ACC_RUNG_EPILOGUE,
-                    ),
-                    Some(placement) => SegShape::rung(k, placement),
-                };
                 matrix.push(measure_shape(
                     benchmark,
                     &timed,
                     &parity,
-                    shape,
+                    SegShape::rung(k, placement),
                     &host_eq,
                     &device,
                     &mut reference,
-                    None,
+                    Some((STAGE_B_TWIN_BASELINE_LABEL, &|ctx: &ProverContext| {
+                        twin.launch(ctx)
+                    })),
                     false,
                     &context,
                 ));
@@ -2614,31 +2711,40 @@ fn bwd_seg_stage_b_acc_ladder() {
 
     let csv = seg_output_path("seg_stage_b_acc_ladder.csv");
     publish(&csv, &render_matrix_csv(&matrix));
-    // Per (benchmark, K): the rung's median against its own register twin's.
+    // Per (benchmark, K): the rung against its own register twin, as the paired
+    // estimate the row already carries. NOT a quotient of two medians — that is
+    // the thing this fix removed.
     let mut pairs = String::from(
-        "| benchmark | K | placement | regs | blocks/SM | occ % | median (us) | \
-         rung / registers |\n|---|---|---|---|---|---|---|---|\n",
+        "| benchmark | K | placement | protocol | regs | blocks/SM | occ % | median (us) | \
+         rung / twin | 95% CI | verdict |\n|---|---|---|---|---|---|---|---|---|---|---|\n",
     );
     for row in &matrix {
-        let baseline = matrix
-            .iter()
-            .find(|other| {
-                other.benchmark == row.benchmark
-                    && other.shape.k == row.shape.k
-                    && other.shape.acc.is_none()
-            })
-            .expect("every rung has a register-placement twin at its own K");
+        let (ratio, ci, verdict) = match row.ratio {
+            Some(estimate) => (
+                format!("{:.4}", estimate.median_ratio),
+                format!("[{:.4}, {:.4}]", estimate.ci_low, estimate.ci_high),
+                // Against the twin, "INVERTED" means the RUNG is faster. Spelled
+                // out because the same word means something else in the gate table.
+                match (estimate.inverts(), estimate.regresses()) {
+                    (true, _) => "rung faster",
+                    (_, true) => "rung slower",
+                    _ => "indistinguishable",
+                }
+                .to_owned(),
+            ),
+            None => ("baseline".to_owned(), "-".to_owned(), "-".to_owned()),
+        };
         writeln!(
             pairs,
-            "| {} | {} | {} | {} | {} | {:.1} | {:.3} | {:.4} |",
+            "| {} | {} | {} | {} | {} | {} | {:.1} | {:.3} | {ratio} | {ci} | {verdict} |",
             row.benchmark,
             row.shape.k,
             row.shape.acc_label(),
+            row.protocol(),
             row.attributes.registers,
             row.blocks_per_sm,
             row.theoretical_occupancy * 100.0,
             row.candidate_median_us,
-            row.candidate_median_us / baseline.candidate_median_us,
         )
         .expect("write String");
     }
@@ -2650,9 +2756,14 @@ fn bwd_seg_stage_b_acc_ladder() {
              `const`) and nowhere else. Registers, spills and `maxThreadsPerBlock` are \
              `cudaFuncGetAttributes` on the loaded module; every timed rung was \
              parity-checked against BOTH CPU oracles at {SEG_PARITY_ROWS} rows first and \
-             is bit-identical to its register-placement twin.\n\n\
+             is bit-identical to its register-placement twin (head AND tail of both \
+             contribution halves).\n\n\
              Register ladder:\n\n{ladder}\n\
-             Wall time, each rung against its own twin:\n\n{pairs}\n\
+             Wall time: each rung is INTERLEAVED against its own register-placement \
+             twin under the normative protocol ({SEG_WARMUP_ITERS} warmups and \
+             {SEG_TIMING_ITERS} samples per side, alternating), so every ratio below \
+             carries a bootstrap CI and no fixed-direction drift bias. The twin rows \
+             are the baseline and are timed solo.\n\n{pairs}\n\
              CSV: `{}`\n",
             csv.display(),
         ),
@@ -2897,8 +3008,10 @@ mod tests {
             "theoretical_occupancy_percent",
             "dynamic_smem_bytes",
             "candidate_median_us",
-            "incumbent_median_us",
-            "incumbent_min_us",
+            "baseline_median_us",
+            "baseline_min_us",
+            "protocol",
+            "ratio_baseline",
             "median_ratio",
             "ci_low",
             "ci_high",
@@ -2909,6 +3022,12 @@ mod tests {
             assert!(csv.contains(column), "missing column {column}");
         }
         assert!(csv.contains("INVERTED"), "{csv}");
+        // A paired row says so and names what it was paired against; a solo row
+        // says THAT, and carries no ratio to be divided by anything.
+        assert!(csv.contains("paired,incumbent"), "{csv}");
+        let solo = render_matrix_csv(&[row_fixture(4, 6, None)]);
+        assert!(solo.contains("solo,-,"), "{solo}");
+        assert!(render_matrix_table(&[row_fixture(4, 6, None)]).contains("| solo | solo | solo |"));
     }
 
     /// The winner is chosen among PRODUCTION-loader rows, resolves its tie band to
@@ -3026,6 +3145,7 @@ mod tests {
             incumbent_median_us: ratio.map(|_| 6_101.5),
             incumbent_min_us: ratio.map(|_| 6_098.9),
             ratio,
+            baseline: if ratio.is_some() { "incumbent" } else { "-" },
         }
     }
 
