@@ -565,7 +565,16 @@ impl CarveoutShape {
 struct CarveoutEntry {
     entry: *const std::ffi::c_void,
     requested_pct: i32,
-    prior_pct: i32,
+    /// `Some` exactly once this slot's prior has been QUERIED, and that is the whole
+    /// point: the restore set is the queried set, per slot, never a whole-plan flag.
+    ///
+    /// A single `applied: bool` cannot express it and both placements are wrong. Set
+    /// AFTER the loop, an unwind on entry `n` skips the restore entirely and leaks
+    /// the overrides already installed on `1..n` for the rest of the process — the
+    /// exact failure this type exists to eliminate. Hoisted BEFORE the loop, the
+    /// restore writes a default over slots whose priors were never read, which
+    /// installs a value the driver never had.
+    prior_pct: Option<i32>,
 }
 
 /// The pair-scoped owner of the carveout preference (spec §3.2).
@@ -588,7 +597,6 @@ pub(crate) struct CarveoutPlan {
     mode: CarveoutMode,
     entries: Vec<CarveoutEntry>,
     demand_source: String,
-    applied: bool,
 }
 
 impl CarveoutPlan {
@@ -610,7 +618,7 @@ impl CarveoutPlan {
         entries.push(CarveoutEntry {
             entry,
             requested_pct: pct,
-            prior_pct: 0,
+            prior_pct: None,
         });
     }
 
@@ -683,17 +691,29 @@ impl CarveoutPlan {
             mode,
             entries,
             demand_source,
-            applied: false,
         }
     }
 
     /// One arm, for a solo-timed cell.
+    ///
+    /// `FixedBucket` carries the SAME containment gate as [`Self::for_pair`], because
+    /// the pin-decision set contains solo cells: a solo cell over the fixed bucket
+    /// would under-request the reference clock's partition, and the requested pct is
+    /// not a gate, so nothing downstream would say so.
     pub(crate) fn for_solo(mode: CarveoutMode, shape: CarveoutShape, with_prelude: bool) -> Self {
         let demand = shape.demand_bytes();
         let mut entries = Vec::with_capacity(2);
         if mode != CarveoutMode::Off {
             let target = match mode {
-                CarveoutMode::FixedBucket(bucket) => bucket,
+                CarveoutMode::FixedBucket(bucket) => {
+                    assert!(
+                        demand <= bucket,
+                        "the fixed reference-clock bucket {bucket} B cannot hold demand \
+                         {demand} B; re-derive SEG_REFERENCE_CLOCK_BUCKET_BYTES from \
+                         the demand table before timing"
+                    );
+                    bucket
+                }
                 _ => demand,
             };
             Self::push_unique(&mut entries, shape.entry, bwd_seg_pct_for_demand(target));
@@ -705,22 +725,31 @@ impl CarveoutPlan {
             mode,
             entries,
             demand_source: format!("{} only, {demand} B", shape.label),
-            applied: false,
         }
     }
 
     /// Query each entry point's current preference, then set it. Called OUTSIDE
     /// every timed region, re-computed and re-applied per cell, never once per
     /// process or per shape family.
+    ///
+    /// UNWIND-SAFE per slot: each prior is committed to its own slot BEFORE that
+    /// slot is overridden, so if a query or a set panics on entry `n` the plan's
+    /// restore set is exactly `1..n` — the slots actually touched — and `drop` puts
+    /// every one of them back. See [`CarveoutEntry::prior_pct`] for why a whole-plan
+    /// flag cannot do this.
     pub(crate) fn apply(&mut self) {
+        // `Off` pushes no entries in either constructor, so the loop would already be
+        // inert; the guard is kept so the control arm of §7.1.0's isolation stays
+        // structurally incapable of touching a preference even if a future variant
+        // starts pushing entries.
         if self.mode == CarveoutMode::Off {
             return;
         }
         for slot in &mut self.entries {
-            slot.prior_pct = bwd_seg_query_carveout(slot.entry);
+            let prior = bwd_seg_query_carveout(slot.entry);
+            slot.prior_pct = Some(prior);
             set_shared_carveout(slot.entry, slot.requested_pct);
         }
-        self.applied = true;
     }
 
     pub(crate) fn mode(&self) -> CarveoutMode {
@@ -751,12 +780,15 @@ impl Drop for CarveoutPlan {
     /// measuring the driver's heuristic instead. RAII, so an early return or a panic
     /// inside a probe cannot leak state into every later sample. Entries are unique
     /// by construction (`push_unique`), so the restore order cannot matter.
+    ///
+    /// Restores exactly the slots whose priors were captured — no more, so a slot
+    /// `apply` never reached keeps the value the driver already had, and no less, so
+    /// a mid-`apply` unwind cannot leave an override installed.
     fn drop(&mut self) {
-        if !self.applied {
-            return;
-        }
         for slot in &self.entries {
-            set_shared_carveout(slot.entry, slot.prior_pct);
+            if let Some(prior) = slot.prior_pct {
+                set_shared_carveout(slot.entry, prior);
+            }
         }
     }
 }
@@ -1418,12 +1450,169 @@ mod tests {
             let mut plan =
                 CarveoutPlan::for_pair(CarveoutMode::CommonBucket, shape(8), shape(4), false);
             plan.apply();
-            assert!(plan.requested_pct_of(entry).is_some());
+            assert_eq!(plan.entries.len(), 1, "two arms, one symbol, ONE entry");
+            let requested = plan
+                .requested_pct_of(entry)
+                .expect("the deduped entry carries the request");
+            // The restore assertion below is vacuous unless the override was really
+            // INSTALLED: a plan that silently set nothing would also "restore" the
+            // prior. Read it back through the driver while the plan is alive.
+            assert_eq!(
+                bwd_seg_query_carveout(entry),
+                requested,
+                "the plan must install the requested preference while it lives"
+            );
+            assert_ne!(
+                requested, prior,
+                "the fixture must actually CHANGE the preference, or neither this \
+                 assertion nor the restore below proves anything"
+            );
         }
         assert_eq!(
             bwd_seg_query_carveout(entry),
             prior,
             "the restore must return the EXACT prior value, not the override"
+        );
+    }
+
+    /// `apply` must be unwind-safe PER SLOT: when it panics part-way, the plan
+    /// restores exactly the slots whose priors it captured, and touches nothing else.
+    ///
+    /// This is a DEVICE test and it has to be. The only way to fail `apply` mid-loop
+    /// without inserting a fake indirection layer into production code is to hand
+    /// `cudaFuncGetAttributes` an address that is not a registered `__global__` entry
+    /// point, and that needs a live runtime to reject it.
+    ///
+    /// It uses the `wide` symbol rather than `plane` so it cannot race
+    /// [`a_same_symbol_pair_yields_one_deduped_entry`] over one preference when the
+    /// suite runs multi-threaded.
+    #[test]
+    fn a_mid_apply_unwind_restores_the_queried_prefix_and_nothing_else() {
+        static NOT_A_KERNEL: u8 = 0;
+        let good = bwd_seg_entry_point(
+            BwdRegime::Ext,
+            ProgramMode::Inline,
+            CoeffMode::Constant,
+            BwdSegEpilogue::Wide,
+        );
+        // A host data address: `cudaFuncGetAttributes` fails to find it in the
+        // registered-function table, so `apply` unwinds on the SECOND slot — after the
+        // first is already overridden.
+        let bogus = &NOT_A_KERNEL as *const u8 as *const std::ffi::c_void;
+        let prior = bwd_seg_query_carveout(good);
+        let mut plan = CarveoutPlan::for_solo(
+            CarveoutMode::CommonBucket,
+            CarveoutShape {
+                entry: good,
+                dynamic_smem_bytes: bwd_seg_epilogue_smem_bytes(BwdSegEpilogue::Wide, 8),
+                target_blocks_per_sm: bwd_seg_register_bound_blocks_per_sm(50, 8),
+                label: "unwind-probe",
+            },
+            false,
+        );
+        CarveoutPlan::push_unique(&mut plan.entries, bogus, 50);
+        assert_eq!(
+            plan.entries.len(),
+            2,
+            "one real slot then one that will fail"
+        );
+
+        let hook = std::panic::take_hook();
+        std::panic::set_hook(Box::new(|_| {}));
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| plan.apply()));
+        std::panic::set_hook(hook);
+        assert!(
+            outcome.is_err(),
+            "the bogus entry point must make `apply` panic"
+        );
+
+        assert!(
+            plan.entries[0].prior_pct.is_some(),
+            "slot 0's prior was captured, so it IS in the restore set"
+        );
+        assert!(
+            plan.entries[1].prior_pct.is_none(),
+            "slot 1 unwound before its prior existed, so it is NOT in the restore set \
+             and drop must not write a default over it"
+        );
+        assert_eq!(
+            bwd_seg_query_carveout(good),
+            plan.entries[0].requested_pct,
+            "slot 0 is genuinely overridden at the moment of the unwind — which is what \
+             makes the restore below load-bearing rather than decorative"
+        );
+
+        drop(plan);
+        assert_eq!(
+            bwd_seg_query_carveout(good),
+            prior,
+            "the unwind path must still restore the exact prior of every touched slot"
+        );
+        // The rejected query latched a non-sticky error on the runtime; clear it so no
+        // later `cudaGetLastError` in this process inherits this test's failure.
+        let _ = era_cudart::error::get_last_error();
+    }
+
+    /// `for_solo` must carry `for_pair`'s containment gate. The pin-decision set has
+    /// SOLO cells, the requested pct is never itself a gate, and a solo cell over the
+    /// fixed bucket would therefore under-request the reference clock's partition with
+    /// nothing anywhere to say so.
+    #[test]
+    fn solo_fixed_bucket_gates_the_demand_against_the_bucket() {
+        const BUCKET: usize = 8 * 1024;
+        let reserve = bwd_seg_reserved_smem_bytes_per_block();
+        let entry = bwd_seg_entry_point(
+            BwdRegime::R0,
+            ProgramMode::Inline,
+            CoeffMode::Constant,
+            BwdSegEpilogue::Plane,
+        );
+        // One block, so `demand == dynamic + reserve` and the boundary is exact.
+        let shape = |dynamic: usize| CarveoutShape {
+            entry,
+            dynamic_smem_bytes: dynamic,
+            target_blocks_per_sm: 1,
+            label: "solo-gate",
+        };
+
+        // Exactly filling the bucket is legal: the gate is `<=`, not `<`. And the
+        // request is the BUCKET's pct, not the demand's — that is the whole point of
+        // `FixedBucket`, and it is why the two helpers must agree.
+        let exact = CarveoutPlan::for_solo(
+            CarveoutMode::FixedBucket(BUCKET),
+            shape(BUCKET - reserve),
+            false,
+        );
+        assert_eq!(
+            exact.requested_pct_of(entry),
+            Some(bwd_seg_carveout_pct_for_bucket(BUCKET)),
+        );
+        drop(exact);
+
+        // One byte over is not.
+        let over_demand = BUCKET + 1;
+        let hook = std::panic::take_hook();
+        std::panic::set_hook(Box::new(|_| {}));
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            CarveoutPlan::for_solo(
+                CarveoutMode::FixedBucket(BUCKET),
+                shape(over_demand - reserve),
+                false,
+            )
+        }));
+        std::panic::set_hook(hook);
+        let message = *outcome
+            .err()
+            .expect("a solo demand over the fixed bucket must not be silently accepted")
+            .downcast::<String>()
+            .expect("a formatted assertion message");
+        assert!(
+            message.contains("SEG_REFERENCE_CLOCK_BUCKET_BYTES"),
+            "the message must name what to re-derive, got {message:?}"
+        );
+        assert!(
+            message.contains(&format!("{over_demand} B")),
+            "the message must name the offending demand, got {message:?}"
         );
     }
 }
