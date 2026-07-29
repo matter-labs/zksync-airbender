@@ -1080,7 +1080,7 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
     let build_dim_reducing_addrs = |layer_idx: usize| -> Vec<GKRAddress> {
         let mut addrs = Vec::new();
         if layer_idx == num_standard_layers {
-            for (_, group_addrs) in compiled_circuit.global_output_map.iter() {
+            for group_addrs in compiled_circuit.global_output_map.values() {
                 for addr in group_addrs.iter() {
                     addrs.push(*addr);
                 }
@@ -1438,7 +1438,7 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
         layer_0_src_kind,
         layer_0_src_pos,
     ) = if standard_sorted_addrs.is_empty() {
-        for (_, group_addrs) in compiled_circuit.global_output_map.iter() {
+        for group_addrs in compiled_circuit.global_output_map.values() {
             for addr in group_addrs {
                 assert!(
                     !matches!(addr, GKRAddress::VirtualSetup(_)),
@@ -2048,12 +2048,12 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
         }
     }
 
-    let total_oracle_cols: usize = oracles.iter().map(|(_, o)| o.num_columns).sum();
+    let total_oracle_cols: usize = oracles.values().map(|o| o.num_columns).sum();
     let digest_words = prover::transcript::blake2s_u32::BLAKE2S_DIGEST_SIZE_U32_WORDS;
     let whir_cap_words = whir_cap_size * digest_words;
 
-    let oracle_depths: Vec<usize> = oracles.iter().map(|(_, o)| o.depth).collect();
-    let oracle_num_cols: Vec<usize> = oracles.iter().map(|(_, o)| o.num_columns).collect();
+    let oracle_depths: Vec<usize> = oracles.values().map(|o| o.depth).collect();
+    let oracle_num_cols: Vec<usize> = oracles.values().map(|o| o.num_columns).collect();
     let num_oracles = oracles.len();
 
     let num_intermediate_oracles = whir_rounds - 1;

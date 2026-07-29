@@ -115,14 +115,13 @@ fn generate_whir_verifier<MW: FieldWrapper>(
 
     // Compute max hash buf size across all WHIR rounds (padded to 16-word boundary)
     let initial_vpf = 1usize << whir_schedule.whir_steps_schedule[0];
-    let initial_hbs = (gkr_files
+    let initial_hbs = gkr_files
         .oracles
-        .iter()
-        .map(|(_, o)| o.num_columns * initial_vpf)
+        .values()
+        .map(|o| o.num_columns * initial_vpf)
         .max()
         .unwrap_or(0)
-        + 15)
-        / 16
+        .div_ceil(16)
         * 16;
     let num_whir_rounds = whir_schedule.whir_steps_schedule.len();
     let internal_hbs = if num_whir_rounds > 2 {
@@ -130,12 +129,12 @@ fn generate_whir_verifier<MW: FieldWrapper>(
             .iter()
             .max()
             .unwrap();
-        ((1usize << max_fold) * 4 + 15) / 16 * 16
+        ((1usize << max_fold) * 4).div_ceil(16) * 16
     } else {
         0
     };
     let final_hbs =
-        ((1usize << whir_schedule.whir_steps_schedule[num_whir_rounds - 1]) * 4 + 15) / 16 * 16;
+        ((1usize << whir_schedule.whir_steps_schedule[num_whir_rounds - 1]) * 4).div_ceil(16) * 16;
     let whir_hash_buf_size = initial_hbs.max(internal_hbs).max(final_hbs);
 
     let whir_verify = whir::generate_whir_verify::<MW>(whir_hash_buf_size);

@@ -294,7 +294,7 @@ pub fn collect_extra_addrs_from_cached_relations<F: PrimeField>(
     use std::collections::BTreeSet;
     let input_set: BTreeSet<GKRAddress> = input_sorted_addrs.iter().copied().collect();
     let mut extra = BTreeSet::new();
-    for (_cached_addr, relation) in layer.cached_relations.iter() {
+    for relation in layer.cached_relations.values() {
         for dep in relation.dependencies() {
             if !input_set.contains(&dep) {
                 extra.insert(dep);
