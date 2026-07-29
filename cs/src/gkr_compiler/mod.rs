@@ -687,11 +687,11 @@ impl<F: PrimeField> NoFieldGKRRelation<F> {
                 let mut result = vec![];
                 for inp in input {
                     if inp.is_cache() {
-                        result.push(inp);
+                        result.push(*inp);
                     }
                 }
 
-                input.to_vec()
+                result
             }
             Self::LookupPairFromCachedVectorInputs { input, output: _ } => {
                 assert!(input[0].is_cache());
