@@ -188,7 +188,7 @@ fn lookup_input_node_from_expr<F: PrimeField, const SINGLE_COLUMN: bool>(
         let table_id_constraint = match table_type {
             LookupQueryTableType::Constant(constant) => Degree1Constraint {
                 linear_terms: vec![].into_boxed_slice(),
-                constant_term: F::from_u32_unchecked(constant.to_table_id() as u32),
+                constant_term: F::from_u32_unchecked(constant.to_table_id()),
             },
             LookupQueryTableType::Variable(var) => Degree1Constraint {
                 linear_terms: vec![(F::ONE, *var)].into_boxed_slice(),

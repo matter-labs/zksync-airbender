@@ -164,8 +164,8 @@ pub fn create_jump_cleanup_offset_table<F: PrimeField>(id: u32) -> LookupTable<F
             let output = a & (!0x3);
 
             let mut result = ArrayVec::new();
-            result.push(F::from_u32_unchecked(check_bit as u32));
-            result.push(F::from_u32_unchecked(output as u32));
+            result.push(F::from_u32_unchecked(check_bit));
+            result.push(F::from_u32_unchecked(output));
 
             (a as usize, result)
         },

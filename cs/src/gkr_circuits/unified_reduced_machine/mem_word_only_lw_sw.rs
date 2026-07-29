@@ -272,7 +272,7 @@ pub(super) fn apply_unified_mem_word_only_lw_sw_data_path<F: PrimeField, CS: Cir
     // LW from ROM reads the word from the AlignedRomRead table (mask-gated lookup:
     // on non-ROM rows the pooled address holds junk and must not be looked up).
     // Gated on is_lw | is_sw.
-    if CS::ASSUME_MEMORY_VALUES_ASSIGNED == false {
+    if !CS::ASSUME_MEMORY_VALUES_ASSIGNED {
         let [r_lo_var, r_hi_var] = rs2_read_or_lw_mem_value_u16;
         let [w_lo_var, w_hi_var] = rd_write_or_sw_mem_value_u16;
         // ROM-read predicate is the committed `gate_fam4_rom_read` (= is_lw AND is_rom).

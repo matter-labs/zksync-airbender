@@ -255,7 +255,7 @@ pub fn apply_unified_binary_shifts_inner<F: PrimeField, CS: Circuit<F>>(
     // chunk[i][(k - i) mod 4], degenerating to identity byte placement for the rot-0
     // Wide{Xor,Or,And} tables. Computed in field space (honest per-lane sums stay
     // < 2^16). Gated on Family 3 (is_binary_op + is_shift).
-    if CS::ASSUME_MEMORY_VALUES_ASSIGNED == false {
+    if !CS::ASSUME_MEMORY_VALUES_ASSIGNED {
         let is_binary_var = is_binary_op.expect_variable();
         let is_shift_var = is_shift.expect_variable();
         let chunks: [[Variable; 4]; 4] = core::array::from_fn(|i| shift_output_chunks[i]);

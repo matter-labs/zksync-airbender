@@ -26,7 +26,7 @@ pub fn create_xor_table<F: PrimeField, const WIDTH: usize>(id: u32) -> LookupTab
             );
 
             let binop_result = a ^ b;
-            let value = binop_result as u32;
+            let value = binop_result;
 
             let mut result = ArrayVec::new();
             result.push(F::from_u32_unchecked(value));
@@ -164,7 +164,7 @@ pub fn create_and_table<F: PrimeField>(id: u32) -> LookupTable<F> {
             assert!(b <= u8::MAX as u32);
 
             let binop_result = a & b;
-            let value = binop_result as u32;
+            let value = binop_result;
 
             let mut result = ArrayVec::new();
             result.push(F::from_u32_unchecked(value));
@@ -192,7 +192,7 @@ pub fn create_or_table<F: PrimeField>(id: u32) -> LookupTable<F> {
             assert!(b <= u8::MAX as u32);
 
             let binop_result = a | b;
-            let value = binop_result as u32;
+            let value = binop_result;
 
             let mut result = ArrayVec::new();
             result.push(F::from_u32_unchecked(value));
@@ -220,7 +220,7 @@ pub fn create_and_not_table<F: PrimeField>(id: u32) -> LookupTable<F> {
             assert!(b <= u8::MAX as u32);
 
             let binop_result = a & (!b);
-            let value = binop_result as u32;
+            let value = binop_result;
 
             let mut result = ArrayVec::new();
             result.push(F::from_u32_unchecked(value));

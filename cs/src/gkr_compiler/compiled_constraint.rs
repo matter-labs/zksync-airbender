@@ -107,14 +107,14 @@ pub(crate) fn layout_constraints_at_layers<F: PrimeField, const USE_BATCHING: bo
     expressions: &Vec<StructuredStatement<F>>,
     layers_mapping: &HashMap<Variable, usize>,
 ) -> (Vec<Degree2Constraint<F>>, Vec<Degree1Constraint<F>>) {
-    assert!(USE_BATCHING == false);
+    assert!(!USE_BATCHING);
 
     // sort constraints by layers
     let mut layers = BTreeMap::new();
     let mut compiled_quadratic = vec![];
     let mut compiled_linear = vec![];
 
-    for statement in expressions.into_iter() {
+    for statement in expressions {
         // let mut expected_output_layer = None;
         let constraint = match statement {
             StructuredStatement::AssertZero {

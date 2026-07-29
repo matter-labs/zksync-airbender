@@ -1005,8 +1005,8 @@ pub(crate) fn place_variables_from_constraints<F: PrimeField>(
     // NOTE: `variables_from_constraints` only contain variables to place into intermediate layer
 
     let mut used_definitions = BTreeSet::new();
-    if variables_from_constraints.len() > 0 {
-        assert!(all_variables_to_place.len() > 0);
+    if !variables_from_constraints.is_empty() {
+        assert!(!all_variables_to_place.is_empty());
 
         // put all variables into base layer that are not defined via constraints
         for var in all_variables_to_place.clone().iter() {
@@ -1086,7 +1086,7 @@ pub(crate) fn place_variables_from_constraints<F: PrimeField>(
     for (idx, expr) in structured_statements.iter().enumerate() {
         match expr {
             StructuredStatement::AssertZero { .. } => {
-                assert!(used_definitions.contains(&idx) == false);
+                assert!(!used_definitions.contains(&idx));
             }
             StructuredStatement::Define { .. } => {
                 assert!(used_definitions.contains(&idx));
@@ -1106,7 +1106,7 @@ pub(crate) fn add_boolean_constraints<F: PrimeField>(
         expr.validate_degree_at_most(2);
         let compiled_constraint = expr.to_max_quadratic_constraint();
         structured_statements.push(StructuredStatement::AssertZero {
-            expr: expr,
+            expr,
             compiled_constraint,
             prevent_optimizations: true,
         });

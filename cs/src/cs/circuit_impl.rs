@@ -272,8 +272,8 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
         expr.validate_degree_at_most(4);
         let mut constraint = expr.clone().to_max_quadratic_constraint();
         assert!(constraint.degree() <= 2);
-        assert!(constraint.is_empty() == false);
-        assert!(constraint.terms.iter().all(|x| x.is_constant()) == false);
+        assert!(!constraint.is_empty());
+        assert!(!constraint.terms.iter().all(|x| x.is_constant()));
         constraint.normalize();
 
         // let idx = self.structured_statements.len();
@@ -301,8 +301,8 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
         expr.validate_degree_at_most(4);
         let mut constraint = expr.to_max_quadratic_constraint();
         assert!(constraint.degree() <= 2);
-        assert!(constraint.is_empty() == false);
-        assert!(constraint.terms.iter().all(|x| x.is_constant()) == false);
+        assert!(!constraint.is_empty());
+        assert!(!constraint.terms.iter().all(|x| x.is_constant()));
         constraint.normalize();
         let new_var = self.add_variable();
 
@@ -314,7 +314,7 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
         use crate::cs::utils::collapse_max_quadratic_constraint_into;
         collapse_max_quadratic_constraint_into(self, constraint.clone(), new_var);
 
-        constraint = constraint - Term::from(new_var);
+        constraint -= Term::from(new_var);
 
         self.structured_statements
             .push(StructuredStatement::AssertZero {
@@ -332,7 +332,7 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
         expr.validate_degree_at_most(4);
         let mut constraint = expr.to_max_quadratic_constraint();
         assert!(constraint.degree() <= 2);
-        assert!(constraint.is_empty() == false);
+        assert!(!constraint.is_empty());
         constraint.normalize();
         constraint -= Term::from(dst);
         constraint.normalize();
@@ -364,8 +364,8 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
         expr.validate_degree_at_most(4);
         let mut constraint = expr.to_max_quadratic_constraint();
         assert!(constraint.degree() <= 2);
-        assert!(constraint.is_empty() == false);
-        assert!(constraint.terms.iter().all(|x| x.is_constant()) == false);
+        assert!(!constraint.is_empty());
+        assert!(!constraint.terms.iter().all(|x| x.is_constant()));
         constraint.normalize();
         let mut max_input_layer = isize::MIN;
         let mut all_vars = HashSet::new();
@@ -1574,7 +1574,7 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
 
         let mut range_check_8_iter = range_check_8_elements.into_iter();
 
-        for _ in 0..(num_range_check_8.next_multiple_of(2) / 2) {
+        for _ in 0..num_range_check_8.div_ceil(2) {
             let first_input = range_check_8_iter.next().unwrap();
             let LookupInput::Variable(first_input) = first_input.input else {
                 unimplemented!()

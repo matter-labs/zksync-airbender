@@ -157,7 +157,7 @@ impl Boolean {
             return [Boolean::Constant(false); N];
         }
 
-        assert!(N <= F::CHAR_BITS - 1);
+        assert!(N < F::CHAR_BITS);
 
         let type_bitmask: [Boolean; N] = std::array::from_fn(|_| Boolean::new(circuit));
 
@@ -559,7 +559,7 @@ impl<F: PrimeField> Register<F> {
         assert!(low <= u16::MAX as u32);
         assert!(high <= u16::MAX as u32);
 
-        Some(low as u32 | (high as u32) << 16)
+        Some(low | (high << 16))
     }
 
     pub fn get_value_signed<C: Circuit<F>>(self, cs: &C) -> Option<i32> {
@@ -570,7 +570,7 @@ impl<F: PrimeField> Register<F> {
 
     pub fn new_from_constant(value: u32) -> Self {
         let vars: [Num<F>; 2] = std::array::from_fn(|idx: usize| {
-            Num::Constant(F::from_u32_unchecked(((value >> idx * 16) & 0xffff) as u32))
+            Num::Constant(F::from_u32_unchecked((value >> idx * 16) & 0xffff))
         });
         Self(vars)
     }
@@ -601,8 +601,8 @@ impl<F: PrimeField> Register<F> {
     }
 
     pub fn equals_to<C: Circuit<F>>(&self, cs: &mut C, cnst: u32) -> Boolean {
-        let low_cnst = Num::Constant(F::from_u32_unchecked((cnst & 0xffff) as u32));
-        let high_cnst = Num::Constant(F::from_u32_unchecked((cnst >> 16) as u32));
+        let low_cnst = Num::Constant(F::from_u32_unchecked(cnst & 0xffff));
+        let high_cnst = Num::Constant(F::from_u32_unchecked(cnst >> 16));
 
         let low_eq_flag = cs.equals_to(self.0[0], low_cnst);
         let high_eq_flag = cs.equals_to(self.0[1], high_cnst);

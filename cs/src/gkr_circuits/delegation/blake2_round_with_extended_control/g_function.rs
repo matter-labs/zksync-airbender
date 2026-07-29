@@ -744,7 +744,7 @@ fn witness_eval_addition_with_expr<
             let mut shift = 0u32;
             for (chunk_width, variable) in input_decomposition.iter() {
                 let value = placer.get_u16(*variable);
-                let value = value.shl(shift as u32);
+                let value = value.shl(shift);
                 let value = value.widen();
                 // we have enough capacity to never overflow
                 input_value.add_assign(&value);

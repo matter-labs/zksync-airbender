@@ -120,9 +120,7 @@ impl<F: PrimeField> DecoderTableEntry<F> {
                 .funct3
                 .map(|el| F::from_u32_unchecked(el as u32)),
             funct7: None,
-            circuit_family_extra_mask: F::from_u32_unchecked(
-                executor_data.opcode_family_bits as u32,
-            ),
+            circuit_family_extra_mask: F::from_u32_unchecked(executor_data.opcode_family_bits),
         }
     }
 
@@ -311,7 +309,7 @@ pub fn preprocess_bytecode<F: PrimeField, OPT: DecodingOptions, A: GoodAllocator
         };
         if opcode.name == InstructionName::ZicsrDelegation {
             assert!(
-                supported_csrs.contains(&(opcode.imm as u32 as u16)),
+                supported_csrs.contains(&(opcode.imm as u16)),
                 "unsupported CSR 0x{:04x} at PC = 0x{:08x}",
                 opcode.imm,
                 i * core::mem::size_of::<u32>()

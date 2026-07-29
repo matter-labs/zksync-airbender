@@ -658,7 +658,7 @@ impl<F: PrimeField> LookupTable<F> {
                 assembled_row.push(F::ZERO);
             }
             if let Some(id) = id {
-                assembled_row.push(F::from_u32_unchecked(id as u32));
+                assembled_row.push(F::from_u32_unchecked(id));
             }
             dst.push(assembled_row);
         }

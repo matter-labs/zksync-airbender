@@ -210,9 +210,8 @@ fn apply_add_sub_lui_auipc_mop_inner<F: PrimeField, CS: Circuit<F>>(
             let modulus_low = <CS::WitnessPlacer as WitnessTypeSet<F>>::U16::constant(
                 F::CHARACTERISTICS_U32 as u16,
             );
-            let modulus_constant = <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::constant(
-                F::CHARACTERISTICS_U32 as u32,
-            );
+            let modulus_constant =
+                <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::constant(F::CHARACTERISTICS_U32);
             {
                 let is_add = placer.get_boolean(is_add_var);
                 let (add_result, of0) = rs1_u32.overflowing_add(&rs2_u32);

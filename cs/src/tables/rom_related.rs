@@ -174,7 +174,11 @@ pub fn create_load_halfword_from_rom_table<
                 address,
                 1u32 << (16 + ROM_ADDRESS_SPACE_SECOND_WORD_BITS)
             );
-            assert!(address % 4 == 0, "address = {} is not aligned", address);
+            assert!(
+                address.is_multiple_of(4),
+                "address = {} is not aligned",
+                address
+            );
 
             let index = (address as usize) / 4;
             let opcode = if index < image.len() {
@@ -206,7 +210,11 @@ pub fn create_load_halfword_from_rom_table<
                 address,
                 1u32 << (16 + ROM_ADDRESS_SPACE_SECOND_WORD_BITS)
             );
-            assert!(address % 4 == 0, "address = {} is not aligned", address);
+            assert!(
+                address.is_multiple_of(4),
+                "address = {} is not aligned",
+                address
+            );
 
             input as usize
         }),
@@ -274,7 +282,11 @@ pub fn create_load_byte_from_rom_table<
                 address,
                 1u32 << (16 + ROM_ADDRESS_SPACE_SECOND_WORD_BITS)
             );
-            assert!(address % 4 == 0, "address = {} is not aligned", address);
+            assert!(
+                address.is_multiple_of(4),
+                "address = {} is not aligned",
+                address
+            );
 
             let index = (address as usize) / 4;
             let opcode = if index < image.len() {
@@ -315,7 +327,11 @@ pub fn create_load_byte_from_rom_table<
                 address,
                 1u32 << (16 + ROM_ADDRESS_SPACE_SECOND_WORD_BITS)
             );
-            assert!(address % 4 == 0, "address = {} is not aligned", address);
+            assert!(
+                address.is_multiple_of(4),
+                "address = {} is not aligned",
+                address
+            );
 
             input as usize
         }),

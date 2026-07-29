@@ -324,7 +324,7 @@ pub fn define_blake2_with_extended_control_delegation_circuit<F: PrimeField, CS:
                 .choose(
                     compression_mode,
                     Num::Constant(F::from_u32_unchecked(
-                        ((initialization_word >> (16 * i)) & 0xffff) as u32,
+                        (initialization_word >> (16 * i)) & 0xffff,
                     )),
                     Num::Var(state_word[i]),
                 )
@@ -348,8 +348,8 @@ pub fn define_blake2_with_extended_control_delegation_circuit<F: PrimeField, CS:
             let keep_existing =
                 (Expr::<F>::one() - Expr::var(first_round_var)) * Expr::var(existing[i]);
             // otherwise - from constants
-            let use_initialization = Expr::var(first_round_var)
-                * Expr::from((initialization_word >> (16 * i)) as u32 & 0xffff);
+            let use_initialization =
+                Expr::var(first_round_var) * Expr::from((initialization_word >> (16 * i)) & 0xffff);
             let expr = keep_existing + use_initialization;
             let selected = cs.add_variable_from_expr(expr);
             existing[i] = selected;
@@ -370,7 +370,7 @@ pub fn define_blake2_with_extended_control_delegation_circuit<F: PrimeField, CS:
             // otherwise - from constants
             let use_initialization_in_compression_mode = Expr::var(first_round_var)
                 * Expr::var(compression_mode_var)
-                * Expr::from((initialization_word >> (16 * i)) as u32 & 0xffff);
+                * Expr::from((initialization_word >> (16 * i)) & 0xffff);
             let expr = keep_existing
                 + keep_existing_in_normal_mode
                 + use_initialization_in_compression_mode;

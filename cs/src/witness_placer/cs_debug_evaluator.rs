@@ -336,7 +336,7 @@ impl<F: PrimeField> WitnessPlacer<F> for CSDebugWitnessEvaluator<F> {
             assert!(decoder_data.circuit_family_mask_bits.is_empty());
             self.assign_field(
                 decoder_data.circuit_family_extra_mask,
-                &F::from_u32_unchecked(entry.opcode_family_bits as u32),
+                &F::from_u32_unchecked(entry.opcode_family_bits),
             );
         } else {
             let mut t = entry.opcode_family_bits;

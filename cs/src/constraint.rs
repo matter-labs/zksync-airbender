@@ -642,7 +642,7 @@ impl<F: PrimeField> Constraint<F> {
         }
         let mut new = Self { terms: new_terms };
         for el in extra_constraints_to_add.into_iter() {
-            new = new + el;
+            new += el;
             assert!(new.degree() <= 2);
         }
         new.normalize();
@@ -732,7 +732,7 @@ impl<F: PrimeField> std::ops::Mul for Constraint<F> {
     fn mul(self, rhs: Self) -> Self::Output {
         let mut ans = Constraint::empty();
         for term in self.terms {
-            ans = ans + term * rhs.clone();
+            ans += term * rhs.clone();
         }
         ans
     }
@@ -800,7 +800,7 @@ impl<F: PrimeField> std::ops::Mul<Term<F>> for Constraint<F> {
         let mut ans = Constraint::empty();
         for existing in self.terms.into_iter() {
             let intermediate_constraint = existing * rhs;
-            ans = ans + intermediate_constraint;
+            ans += intermediate_constraint;
         }
         ans.normalize();
 
