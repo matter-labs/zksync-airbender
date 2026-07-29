@@ -163,7 +163,7 @@ impl GprUsage {
 
     fn fmt_table(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut order: Vec<usize> = (1..32).collect();
-        order.sort_by(|&a, &b| self.total(b).cmp(&self.total(a)));
+        order.sort_by_key(|&a| core::cmp::Reverse(self.total(a)));
         let grand: u64 = (1..32).map(|i| self.total(i)).sum();
         writeln!(
             f,

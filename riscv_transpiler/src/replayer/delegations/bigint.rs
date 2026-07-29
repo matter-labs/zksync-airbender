@@ -82,7 +82,7 @@ pub(crate) fn bigint_call<C: Counters, R: RAM>(
         tracer.needs_tracing_data_for_circuit_family::<ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX>();
     let needs_delegation_data = tracer.needs_tracing_data_for_delegation_type::<{common_constants::bigint_with_control::BIGINT_OPS_WITH_CONTROL_CSR_REGISTER as u16}>();
 
-    if needs_cycle_data == false && needs_delegation_data == false {
+    if !needs_cycle_data && !needs_delegation_data {
         // do as little as possible
         ram.skip_if_replaying(16);
         let (ts, mut expected_of) = ram.read_word(0, state.timestamp | 3);

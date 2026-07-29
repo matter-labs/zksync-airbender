@@ -27,7 +27,7 @@ pub(crate) fn touch_x0_with_ts<C: Counters, const TIMESTAMP_OFFSET: TimestampSca
     state: &mut State<C>,
 ) -> TimestampScalar {
     unsafe {
-        let reg = state.registers.get_unchecked_mut(0 as usize);
+        let reg = state.registers.get_unchecked_mut(0);
         let ts = reg.timestamp;
         debug_assert!(ts < (state.timestamp | TIMESTAMP_OFFSET));
         reg.timestamp = state.timestamp | TIMESTAMP_OFFSET;

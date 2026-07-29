@@ -2,7 +2,6 @@ use std::mem::MaybeUninit;
 
 use super::*;
 use blake2s_u32::g_function_control_flags::*;
-use blake2s_u32::state_with_extended_control::Blake2RoundFunctionEvaluator;
 use blake2s_u32::*;
 use common_constants::*;
 
@@ -76,8 +75,8 @@ pub(crate) fn blake2_g_function_call<
 
     assert!(x10 != x11);
 
-    assert!(x10 % 64 == 0, "state pointer is unaligned");
-    assert!(x11 % 64 == 0, "input pointer is unaligned");
+    assert!(x10.is_multiple_of(64), "state pointer is unaligned");
+    assert!(x11.is_multiple_of(64), "input pointer is unaligned");
 
     assert!(
         x12 < (1 << BLAKE2S_G_FUNCTION_NUM_CONTROL_REGISTER_BITS),
@@ -120,6 +119,9 @@ pub(crate) fn blake2_g_function_call<
             [const { MaybeUninit::uninit() }; BLAKE2S_EXTENDED_STATE_WIDTH_IN_U32_WORDS];
 
         let state_base_addr = x10;
+        // `i` is used for guest-address arithmetic (`state_base_addr + size_of::<u32>() * i`),
+        // not just to index `extended_state`.
+        #[expect(clippy::needless_range_loop)]
         for i in 0..BLAKE2S_EXTENDED_STATE_WIDTH_IN_U32_WORDS {
             let state_word_addr = state_base_addr + (core::mem::size_of::<u32>() * i) as u32;
             let value = ram.peek_word(state_word_addr);
@@ -132,6 +134,9 @@ pub(crate) fn blake2_g_function_call<
             [const { MaybeUninit::uninit() }; BLAKE2S_BLOCK_SIZE_U32_WORDS];
 
         let input_base_addr = x11;
+        // `i` is used for guest-address arithmetic (`input_base_addr + size_of::<u32>() * i`),
+        // not just to index `input`.
+        #[expect(clippy::needless_range_loop)]
         for i in 0..BLAKE2S_BLOCK_SIZE_U32_WORDS {
             let input_word_addr = input_base_addr + (core::mem::size_of::<u32>() * i) as u32;
             let value = ram.peek_word(input_word_addr);
@@ -193,6 +198,8 @@ pub(crate) fn blake2_g_function_call<
                 snapshotter.append_memory_read(state_address, old_value, ts, write_ts);
             }
 
+            // `idx` is used for guest-address arithmetic as well as indexing `sigma_invs`.
+            #[expect(clippy::needless_range_loop)]
             for idx in 0..BLAKE2S_BLOCK_SIZE_U32_WORDS {
                 let g_function_index = sigma_invs[idx];
                 let write_ts =

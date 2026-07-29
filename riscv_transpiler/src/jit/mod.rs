@@ -3,6 +3,7 @@ use common_constants::*;
 use std::alloc::Allocator;
 #[cfg(all(target_arch = "x86_64", feature = "jit"))]
 use std::collections::HashSet;
+#[cfg(all(target_arch = "x86_64", feature = "jit"))]
 use std::mem::offset_of;
 use std::ptr::NonNull;
 
@@ -69,7 +70,7 @@ pub const NUM_RV_REGISTERS_IN_GPRS: usize = 8;
 // Number of RISC-V registers kept in vector lanes (32 - 1 (x0) - 8 host GPRs).
 pub const NUM_XMM_RESIDENT_REGISTERS: usize = 23;
 // Number of vector registers used to hold those (4 lanes each; round up).
-pub const NUM_RV_REGISTER_XMMS: u8 = (NUM_XMM_RESIDENT_REGISTERS as u8 + 3) / 4;
+pub const NUM_RV_REGISTER_XMMS: u8 = (NUM_XMM_RESIDENT_REGISTERS as u8).div_ceil(4);
 // Sentinel meaning "this RISC-V register is not in a vector lane" (i.e. it is x0
 // or one of the host-GPR-mapped registers).
 pub const RV_XMM_SLOT_NONE: u8 = 0xFF;
@@ -207,7 +208,6 @@ impl core::ops::IndexMut<usize> for MachineCounters {
 
 const _: () = const {
     assert!(MAX_NUM_COUNTERS >= CounterType::FormalEnd as u8 as usize);
-    ()
 };
 
 #[repr(u8)]
@@ -271,6 +271,11 @@ pub struct MachineState {
 #[cfg(not(feature = "xmm_ts"))]
 pub const PACKED_TS_LEN: usize = 32 * 33 * 33;
 
+// Field offsets and size constants that the dynasm codegen in `impls.rs` bakes into the
+// emitted machine code. `impls.rs` is the only consumer and is itself gated on
+// `x86_64 + jit`, so gate these the same way rather than letting them read as dead code on
+// every other host.
+#[cfg(all(target_arch = "x86_64", feature = "jit"))]
 impl MachineState {
     const SIZE: usize = core::mem::size_of::<Self>();
     const _T: () = const {
@@ -297,7 +302,9 @@ impl MachineState {
     const CONTEXT_PTR_OFFSET: usize = offset_of!(Self, context_ptr);
     const NON_DETERMINISM_RESPONSES_PTR_OFFSET: usize =
         offset_of!(Self, non_determinism_responses_ptr);
+}
 
+impl MachineState {
     pub fn initial() -> Self {
         Self {
             gpr_registers: [0; GPR_REGISTERS_ARRAY_LEN],
@@ -362,6 +369,9 @@ impl MachineState {
         // them. They only ever touch x0 (2 mod 4) and the precompile-ABI registers
         // a0/a1/a2 = x10/x11/x12 (3 mod 4); everything else stays 0. Take whichever is
         // larger (the delegation effect or the scanned per-cycle touch).
+        // `r` indexes both `self.register_timestamps` and `ts` and is also compared against
+        // specific register numbers in the debug assertions, so a plain iterator loses it.
+        #[expect(clippy::needless_range_loop)]
         for r in 0..32usize {
             let d = self.register_timestamps[r];
             #[cfg(debug_assertions)]

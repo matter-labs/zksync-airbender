@@ -3,6 +3,18 @@ use common_constants::*;
 use field::PrimeField;
 use std::alloc::{self, Allocator, Layout};
 
+/// Per-worker-thread lists of `(word_index, (last_timestamp, last_value))` RAM
+/// init/teardown records, as produced by `collect_inits_and_teardowns`.
+pub type RamInitsAndTeardowns<A> = Vec<Vec<(u32, (TimestampScalar, u32)), A>>;
+
+/// One chunk's worth of RAM shadow columns: `(timestamp_low_high, value_low_high)`,
+/// each half split into its low and high 16-bit limb column.
+pub type TimestampAndValueColumns<F, A> = ([Vec<F, A>; 2], [Vec<F, A>; 2]);
+
+/// A set of RAM shadow chunks grouped for one circuit instance: the chunks' address
+/// top-bit selectors, paired positionally with their column data.
+pub type RamShadowChunkSet<F, A> = (Vec<u32>, Vec<TimestampAndValueColumns<F, A>>);
+
 /// Allocate a zeroed `Vec<Register>` without touching every backing page.
 ///
 /// `RamWithRomRegion` can reserve a full 1 GiB VM address space. A `vec![...; N]`
@@ -59,53 +71,6 @@ impl<const ROM_BOUND_SECOND_WORD_BITS: usize> RamWithRomRegion<ROM_BOUND_SECOND_
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::vm::RAM;
-
-    #[test]
-    fn alloc_zeroed_registers_are_valid() {
-        let registers = alloc_zeroed_registers(64);
-
-        for register in registers.iter() {
-            assert_eq!(register.value, 0);
-            assert_eq!(register.timestamp, 0);
-        }
-    }
-
-    #[test]
-    fn alloc_zeroed_registers_empty() {
-        let registers = alloc_zeroed_registers(0);
-
-        assert!(registers.is_empty());
-    }
-
-    #[test]
-    fn from_rom_content_preserves_read_write_behavior() {
-        let total_size = 1 << 17;
-        let rom_words = (1 << 16) / core::mem::size_of::<u32>();
-        let content: Vec<u32> = (0..rom_words as u32).collect();
-
-        let mut ram = RamWithRomRegion::<0>::from_rom_content(&content, total_size);
-
-        for i in 0..rom_words {
-            assert_eq!(ram.peek_word(i as u32 * 4), i as u32);
-        }
-
-        let ram_addr = rom_words as u32 * 4;
-        assert_eq!(ram.peek_word(ram_addr), 0);
-
-        let (old_timestamp, old_value) = ram.write_word(ram_addr, 0xDEAD_BEEF, 4);
-        assert_eq!(old_timestamp, 0);
-        assert_eq!(old_value, 0);
-
-        let (read_timestamp, read_value) = ram.read_word(ram_addr, 8);
-        assert_eq!(read_timestamp, 4 | 2);
-        assert_eq!(read_value, 0xDEAD_BEEF);
-    }
-}
-
 pub const fn timestamp_scalar_into_column_values(
     timestamp: TimestampScalar,
 ) -> [u32; NUM_TIMESTAMP_COLUMNS_FOR_RAM] {
@@ -140,9 +105,7 @@ impl<const ROM_BOUND_SECOND_WORD_BITS: usize> RamPeek
             let word_idx = (address / 4) as usize;
             debug_assert!(word_idx < self.backing.len());
             let slot = self.backing.get_unchecked(word_idx);
-            let value = slot.value;
-
-            value
+            slot.value
         }
     }
 }
@@ -249,10 +212,10 @@ impl<const ROM_BOUND_SECOND_WORD_BITS: usize> RamWithRomRegion<ROM_BOUND_SECOND_
         &self,
         worker: &worker::Worker,
         allocator: A,
-    ) -> Vec<Vec<(u32, (TimestampScalar, u32)), A>> {
+    ) -> RamInitsAndTeardowns<A> {
         // parallel collect
         // first we will walk over access_bitmask and collect subparts
-        let mut chunks: Vec<Vec<(u32, (TimestampScalar, u32)), A>> =
+        let mut chunks: RamInitsAndTeardowns<A> =
             vec![Vec::new_in(allocator).clone(); worker.get_num_cores()];
         let mut dst = &mut chunks[..];
         worker.scope(self.backing.len(), |scope, geometry| {
@@ -295,7 +258,7 @@ impl<const ROM_BOUND_SECOND_WORD_BITS: usize> RamWithRomRegion<ROM_BOUND_SECOND_
         worker: &worker::Worker,
         words_per_chunk_log2: usize,
         offset_in_words: usize,
-        column_chunks: &mut [([Vec<F, A>; 2], [Vec<F, A>; 2])], // ts, value
+        column_chunks: &mut [TimestampAndValueColumns<F, A>],
     ) {
         use common_constants::*;
 
@@ -344,8 +307,8 @@ impl<const ROM_BOUND_SECOND_WORD_BITS: usize> RamWithRomRegion<ROM_BOUND_SECOND_
                 let src = &self.backing[start..end];
 
                 worker::Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| {
-                    let mut word_idx = start;
-                    for word in src.iter() {
+                    for (offset_in_chunk, word) in src.iter().enumerate() {
+                        let word_idx = start + offset_in_chunk;
                         let in_chunk_idx = word_idx % (1 << words_per_chunk_log2);
                         let chunk_idx = (word_idx - offset_in_words) >> words_per_chunk_log2;
                         let address = word_idx * core::mem::size_of::<u32>();
@@ -359,17 +322,13 @@ impl<const ROM_BOUND_SECOND_WORD_BITS: usize> RamWithRomRegion<ROM_BOUND_SECOND_
                         let (val_low, val_high) = split_u32_into_pair_u16(word_value);
                         let (ts_low, ts_high) = split_timestamp(last_timestamp);
 
-                        mapped[chunk_idx].0[0][in_chunk_idx]
-                            .write(F::from_u32_unchecked(ts_low as u32));
-                        mapped[chunk_idx].0[1][in_chunk_idx]
-                            .write(F::from_u32_unchecked(ts_high as u32));
+                        mapped[chunk_idx].0[0][in_chunk_idx].write(F::from_u32_unchecked(ts_low));
+                        mapped[chunk_idx].0[1][in_chunk_idx].write(F::from_u32_unchecked(ts_high));
 
                         mapped[chunk_idx].1[0][in_chunk_idx]
                             .write(F::from_u32_unchecked(val_low as u32));
                         mapped[chunk_idx].1[1][in_chunk_idx]
                             .write(F::from_u32_unchecked(val_high as u32));
-
-                        word_idx += 1;
                     }
                 });
             }
@@ -394,8 +353,7 @@ impl<const ROM_BOUND_SECOND_WORD_BITS: usize> RamWithRomRegion<ROM_BOUND_SECOND_
         words_per_chunk_log2: usize,
         chunks_in_set: usize,
         upper_ram_bound_hint_in_words: Option<usize>,
-    ) -> Vec<(Vec<u32>, Vec<([Vec<F, A>; 2], [Vec<F, A>; 2])>)> // ts, value
-    {
+    ) -> Vec<RamShadowChunkSet<F, A>> {
         assert!(chunks_in_set > 0);
         assert!(
             chunks_in_set <= 2,
@@ -439,8 +397,8 @@ impl<const ROM_BOUND_SECOND_WORD_BITS: usize> RamWithRomRegion<ROM_BOUND_SECOND_
                         let src = &self.backing[start..][..1 << words_per_chunk_log2];
                         let mut non_trivial_word = false;
                         let top_bits = chunk_idx as u32;
-                        let mut word_idx = start;
                         for (buffer_idx, word) in src.iter().enumerate() {
+                            let word_idx = start + buffer_idx;
                             let address = word_idx * core::mem::size_of::<u32>();
                             let mut word_value = word.value;
                             // we mask ROM region to be zero-valued
@@ -454,13 +412,11 @@ impl<const ROM_BOUND_SECOND_WORD_BITS: usize> RamWithRomRegion<ROM_BOUND_SECOND_
                             let (val_low, val_high) = split_u32_into_pair_u16(word_value);
                             let (ts_low, ts_high) = split_timestamp(last_timestamp);
 
-                            buffer.0[0][buffer_idx] = F::from_u32_unchecked(ts_low as u32);
-                            buffer.0[1][buffer_idx] = F::from_u32_unchecked(ts_high as u32);
+                            buffer.0[0][buffer_idx] = F::from_u32_unchecked(ts_low);
+                            buffer.0[1][buffer_idx] = F::from_u32_unchecked(ts_high);
 
                             buffer.1[0][buffer_idx] = F::from_u32_unchecked(val_low as u32);
                             buffer.1[1][buffer_idx] = F::from_u32_unchecked(val_high as u32);
-
-                            word_idx += 1;
                         }
 
                         if non_trivial_word {
@@ -495,14 +451,14 @@ impl<const ROM_BOUND_SECOND_WORD_BITS: usize> RamWithRomRegion<ROM_BOUND_SECOND_
             result.push((top_bits, buffer));
         }
 
-        result.sort_by(|a, b| a.0.cmp(&b.0));
+        result.sort_by_key(|a| a.0);
 
         let num_extra_elements = result.len() % chunks_in_set;
         let need_extra_element = num_extra_elements != 0;
         let groups = result.len().div_ceil(chunks_in_set);
 
         let mut grouped = vec![];
-        if need_extra_element == false {
+        if !need_extra_element {
             let mut it = result.into_iter();
             for _ in 0..groups {
                 let mut chunk = (vec![], vec![]);
@@ -580,5 +536,52 @@ impl<const ROM_BOUND_SECOND_WORD_BITS: usize> RamWithRomRegion<ROM_BOUND_SECOND_
         }
 
         grouped
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::vm::RAM;
+
+    #[test]
+    fn alloc_zeroed_registers_are_valid() {
+        let registers = alloc_zeroed_registers(64);
+
+        for register in registers.iter() {
+            assert_eq!(register.value, 0);
+            assert_eq!(register.timestamp, 0);
+        }
+    }
+
+    #[test]
+    fn alloc_zeroed_registers_empty() {
+        let registers = alloc_zeroed_registers(0);
+
+        assert!(registers.is_empty());
+    }
+
+    #[test]
+    fn from_rom_content_preserves_read_write_behavior() {
+        let total_size = 1 << 17;
+        let rom_words = (1 << 16) / core::mem::size_of::<u32>();
+        let content: Vec<u32> = (0..rom_words as u32).collect();
+
+        let mut ram = RamWithRomRegion::<0>::from_rom_content(&content, total_size);
+
+        for i in 0..rom_words {
+            assert_eq!(ram.peek_word(i as u32 * 4), i as u32);
+        }
+
+        let ram_addr = rom_words as u32 * 4;
+        assert_eq!(ram.peek_word(ram_addr), 0);
+
+        let (old_timestamp, old_value) = ram.write_word(ram_addr, 0xDEAD_BEEF, 4);
+        assert_eq!(old_timestamp, 0);
+        assert_eq!(old_value, 0);
+
+        let (read_timestamp, read_value) = ram.read_word(ram_addr, 8);
+        assert_eq!(read_timestamp, 4 | 2);
+        assert_eq!(read_value, 0xDEAD_BEEF);
     }
 }

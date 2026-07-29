@@ -34,8 +34,8 @@ pub(crate) fn blake2_round_function_call<C: Counters, R: RAM>(
 
     assert!(x10 != x11);
 
-    assert!(x10 % 128 == 0, "input pointer is unaligned");
-    assert!(x11 % 64 == 0, "input pointer is unaligned");
+    assert!(x10.is_multiple_of(128), "input pointer is unaligned");
+    assert!(x11.is_multiple_of(64), "input pointer is unaligned");
 
     let control_bitmask = (x12 >> 16) & ((1 << BLAKE2S_NUM_CONTROL_BITS) - 1);
     let mode_compression =
@@ -62,15 +62,12 @@ pub(crate) fn blake2_round_function_call<C: Counters, R: RAM>(
             (1 << 10) & ((1 << BLAKE2S_MAX_ROUNDS) - 1)
         };
 
-        let final_x12 =
-            (control_bitmask | (final_permutation_bitmask << BLAKE2S_NUM_CONTROL_BITS)) << 16;
-
-        final_x12
+        (control_bitmask | (final_permutation_bitmask << BLAKE2S_NUM_CONTROL_BITS)) << 16
     };
 
     let num_rounds = if reduced_rounds { 7 } else { 10 };
 
-    if needs_cycle_data == false && needs_delegation_data == false {
+    if !needs_cycle_data && !needs_delegation_data {
         ram.skip_if_replaying(24 + 16);
 
         state.timestamp += ((num_rounds - 1) as TimestampScalar) * TIMESTAMP_STEP;
@@ -123,7 +120,7 @@ pub(crate) fn blake2_round_function_call<C: Counters, R: RAM>(
                 state.pc = next_pc;
             }
 
-            if last_round == false {
+            if !last_round {
                 state.timestamp += TIMESTAMP_STEP;
             }
         }
@@ -184,7 +181,7 @@ pub(crate) fn blake2_round_function_call<C: Counters, R: RAM>(
                 .as_mut_ptr()
                 .cast::<[u32; BLAKE2S_STATE_WIDTH_IN_U32_WORDS]>()
                 .as_mut_unchecked();
-            let mut extended_state: &mut [u32; BLAKE2S_EXTENDED_STATE_WIDTH_IN_U32_WORDS] =
+            let extended_state: &mut [u32; BLAKE2S_EXTENDED_STATE_WIDTH_IN_U32_WORDS] =
                 extended_state
                     .as_mut_ptr()
                     .cast::<[u32; BLAKE2S_EXTENDED_STATE_WIDTH_IN_U32_WORDS]>()
@@ -197,6 +194,9 @@ pub(crate) fn blake2_round_function_call<C: Counters, R: RAM>(
 
             let mut previous_round_write_ts = 0;
 
+            // `call_round` is compared against `num_rounds - 1` and indexes `SIGMAS`, so it is a
+            // real loop counter and not just a slice cursor.
+            #[expect(clippy::needless_range_loop)]
             for call_round in 0..num_rounds {
                 let last_round = call_round == num_rounds - 1;
 
@@ -206,11 +206,8 @@ pub(crate) fn blake2_round_function_call<C: Counters, R: RAM>(
                     let shifted_permutation_bitmask =
                         (permutation_bitmask << 1) & ((1 << BLAKE2S_MAX_ROUNDS) - 1);
 
-                    let updated_x12 = (control_bitmask
-                        | (shifted_permutation_bitmask << BLAKE2S_NUM_CONTROL_BITS))
-                        << 16;
-
-                    updated_x12
+                    (control_bitmask | (shifted_permutation_bitmask << BLAKE2S_NUM_CONTROL_BITS))
+                        << 16
                 };
 
                 let mut witness = Blake2sRoundFunctionDelegationWitness::empty();
@@ -265,17 +262,13 @@ pub(crate) fn blake2_round_function_call<C: Counters, R: RAM>(
                 if call_round == 0 {
                     if mode_compression {
                         // overwrite first 8 elements to the extended
-                        for i in 0..8 {
-                            extended_state[i] = CONFIGURED_IV[i];
-                            extended_state[i + 8] = IV[i];
-                        }
+                        extended_state[..8].copy_from_slice(&CONFIGURED_IV);
+                        extended_state[8..16].copy_from_slice(&IV);
                         extended_state[12] ^= BLAKE2S_BLOCK_SIZE_BYTES as u32;
                         extended_state[14] ^= 0xffffffff;
                     } else {
                         // overwrite first 8 elements of the extended with current state
-                        for i in 0..8 {
-                            extended_state[i] = blake_state[i];
-                        }
+                        extended_state[..8].copy_from_slice(blake_state);
                         // overwrite elements 8-11, 13, 15
                         extended_state[8] = IV[0];
                         extended_state[9] = IV[1];
@@ -297,10 +290,10 @@ pub(crate) fn blake2_round_function_call<C: Counters, R: RAM>(
                         buffer[8..].copy_from_slice(&input[..8]);
                     }
                     let sigma = &SIGMAS[call_round];
-                    mixing_function(&mut extended_state, &buffer, sigma);
+                    mixing_function(extended_state, &buffer, sigma);
                 } else {
                     let sigma = &SIGMAS[call_round];
-                    mixing_function(&mut extended_state, &input, sigma);
+                    mixing_function(extended_state, &input, sigma);
                 }
 
                 // update output the state if needed
@@ -315,6 +308,9 @@ pub(crate) fn blake2_round_function_call<C: Counters, R: RAM>(
                 }
 
                 // write values for state only
+                // `i` indexes `witness.indirect_writes` and `blake_state_full` in lockstep on the hot
+                // per-round witness path; zipping the two would not read more clearly here.
+                #[expect(clippy::needless_range_loop)]
                 for i in 0..24 {
                     witness.indirect_writes[i].write_value = blake_state_full[i];
                 }

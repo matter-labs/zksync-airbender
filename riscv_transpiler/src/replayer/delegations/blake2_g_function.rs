@@ -38,8 +38,8 @@ pub(crate) fn blake2_g_function_call<C: Counters, R: RAM>(
 
     assert!(x10 != x11);
 
-    assert!(x10 % 64 == 0, "state pointer is unaligned");
-    assert!(x11 % 64 == 0, "input pointer is unaligned");
+    assert!(x10.is_multiple_of(64), "state pointer is unaligned");
+    assert!(x11.is_multiple_of(64), "input pointer is unaligned");
 
     assert!(
         x12 < (1 << BLAKE2S_G_FUNCTION_NUM_CONTROL_REGISTER_BITS),
@@ -59,7 +59,7 @@ pub(crate) fn blake2_g_function_call<C: Counters, R: RAM>(
 
     let final_x12 = control_bitmask << BLAKE2S_G_FUNCTION_COUNTER_BITS;
 
-    if needs_cycle_data == false && needs_delegation_data == false {
+    if !needs_cycle_data && !needs_delegation_data {
         ram.skip_if_replaying(
             BLAKE2S_EXTENDED_STATE_WIDTH_IN_U32_WORDS + BLAKE2S_BLOCK_SIZE_U32_WORDS,
         );
@@ -114,7 +114,7 @@ pub(crate) fn blake2_g_function_call<C: Counters, R: RAM>(
                 state.pc = next_pc;
             }
 
-            if last_round == false {
+            if !last_round {
                 state.timestamp += TIMESTAMP_STEP;
             }
         }
@@ -187,10 +187,7 @@ pub(crate) fn blake2_g_function_call<C: Counters, R: RAM>(
                     if next_counter >= num_invocations {
                         next_counter = 0;
                     }
-                    let updated_x12 = (control_bitmask << BLAKE2S_G_FUNCTION_COUNTER_BITS)
-                        | (next_counter as u32);
-
-                    updated_x12
+                    (control_bitmask << BLAKE2S_G_FUNCTION_COUNTER_BITS) | (next_counter as u32)
                 };
 
                 let mut witness = Blake2sGFunctionDelegationWitness::empty();
@@ -218,10 +215,9 @@ pub(crate) fn blake2_g_function_call<C: Counters, R: RAM>(
 
                 // every time we read 4 elements from state and 2 elements from input
 
-                let round_number =
-                    (g_function_call_idx as usize) / BLAKE2S_G_FUNCTIONS_PER_ROUND_FUNCTION;
+                let round_number = g_function_call_idx / BLAKE2S_G_FUNCTIONS_PER_ROUND_FUNCTION;
                 let mixing_function_number =
-                    (g_function_call_idx as usize) % BLAKE2S_G_FUNCTIONS_PER_ROUND_FUNCTION;
+                    g_function_call_idx % BLAKE2S_G_FUNCTIONS_PER_ROUND_FUNCTION;
                 let sigma_pairs = &SIGMAS_BY_PAIRS[round_number];
 
                 let [a, b, c, d] = MIXING_FUNCTION_ACCESS_IDXES[mixing_function_number];

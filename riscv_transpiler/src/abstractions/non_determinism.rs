@@ -81,7 +81,7 @@ impl QuasiUARTSourceState {
                     }
                 }
                 if remaining_words.unwrap() == 0 {
-                    let buffer = std::mem::replace(buffer, Vec::new());
+                    let buffer = std::mem::take(buffer);
                     println!("UART: `{}`", String::from_utf8_lossy(&buffer));
                     *self = QuasiUARTSourceState::Ready;
                 }

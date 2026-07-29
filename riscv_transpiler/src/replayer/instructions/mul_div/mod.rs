@@ -75,11 +75,8 @@ pub(crate) fn divu<C: Counters, R: RAM>(
 ) {
     let (rs1_value, rs1_ts) = read_register_with_ts::<C, 0>(state, instr.rs1);
     let (rs2_value, rs2_ts) = read_register_with_ts::<C, 1>(state, instr.rs2);
-    let rd = if rs2_value == 0 {
-        0xffffffff
-    } else {
-        rs1_value / rs2_value
-    };
+    // RISC-V DIVU yields all-ones on division by zero.
+    let rd = rs1_value.checked_div(rs2_value).unwrap_or(0xffffffff);
     let (rd_old_value, rd_ts) = write_register_with_ts_for_pure_opcode::<C, 2>(state, instr.rd, rd);
 
     if tracer.needs_tracing_data_for_circuit_family::<MUL_DIV_CIRCUIT_FAMILY_IDX>() {

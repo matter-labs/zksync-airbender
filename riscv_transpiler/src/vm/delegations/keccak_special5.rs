@@ -57,6 +57,9 @@ pub(crate) fn keccak_special5_call<
         let mut local_state: [MaybeUninit<u64>; 31] = [const { MaybeUninit::uninit() }; 31];
 
         let mut addr = x11;
+        // `i` writes into a `MaybeUninit` array while a separate `addr` cursor advances twice
+        // per iteration (low then high word) through guest memory.
+        #[expect(clippy::needless_range_loop)]
         for i in 0..31 {
             // low and high
             let low_value = ram.peek_word(addr);
@@ -474,8 +477,12 @@ const RC: [u64; 24] = [
 // Same cause for erasing_op: the `y`/`y_step == 0` unrolled iterations fold row
 // offsets like `5 * y` into `5 * 0`, which the lint reports as "always zero"; the
 // multiplication is meaningful for the other unrolled rows.
+// Same cause for identity_op: the `x == 0` / `y == 0` unrolled iterations fold index
+// arithmetic into `y + 0`, `5 * 0 + x`, `array[(0 + 4) % 5]` etc.; the operands are
+// meaningful for every other unrolled index, so they must stay.
 #[expect(clippy::eq_op)]
 #[expect(clippy::erasing_op)]
+#[expect(clippy::identity_op)]
 pub(crate) fn keccak_f1600_impl_ext(state: &mut [u64; 31]) {
     // Even using small precompile we have regular structure like
     // seq!(round in 0..24 {
@@ -487,6 +494,9 @@ pub(crate) fn keccak_f1600_impl_ext(state: &mut [u64; 31]) {
 
     use seq_macro::seq;
     // 23 first rounds are just normal - we do not care about anything
+    // `round` indexes `RC` inside the hot Keccak-f1600 permutation; the loop body is a
+    // heavily unrolled `seq!` block and the explicit index keeps it aligned with the spec.
+    #[expect(clippy::needless_range_loop)]
     for round in 0..23 {
         let rc = RC[round];
         let mut array = [0u64; 5];

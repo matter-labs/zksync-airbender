@@ -9,7 +9,7 @@ pub mod mul_div;
 #[inline(always)]
 pub(crate) fn touch_x0<C: Counters, const TIMESTAMP_OFFSET: TimestampScalar>(state: &mut State<C>) {
     unsafe {
-        let reg = state.registers.get_unchecked_mut(0 as usize);
+        let reg = state.registers.get_unchecked_mut(0);
         debug_assert!(reg.timestamp < (state.timestamp | TIMESTAMP_OFFSET));
         reg.timestamp = state.timestamp | TIMESTAMP_OFFSET;
     }

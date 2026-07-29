@@ -177,17 +177,17 @@ impl Counters for DelegationsAndUnifiedCounters {
     }
     #[inline(always)]
     fn log_circuit_family<const FAMILY: u8>(&mut self) {
-        if const { FAMILY == ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX } {
-            self.cycles += 1;
-        } else if const { FAMILY == JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX } {
-            self.cycles += 1;
-        } else if const { FAMILY == SHIFT_BINARY_CIRCUIT_FAMILY_IDX } {
-            self.cycles += 1;
-        } else if const { FAMILY == MUL_DIV_CIRCUIT_FAMILY_IDX } {
-            self.cycles += 1;
-        } else if const { FAMILY == LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX } {
-            self.cycles += 1;
-        } else if const { FAMILY == LOAD_STORE_SUBWORD_ONLY_CIRCUIT_FAMILY_IDX } {
+        // The unified counter charges one cycle per call regardless of which family it was,
+        // so the whitelist is a single const disjunction rather than a per-family chain.
+        // Any family outside the whitelist stays UB-on-reach, as before.
+        if const {
+            FAMILY == ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX
+                || FAMILY == JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX
+                || FAMILY == SHIFT_BINARY_CIRCUIT_FAMILY_IDX
+                || FAMILY == MUL_DIV_CIRCUIT_FAMILY_IDX
+                || FAMILY == LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX
+                || FAMILY == LOAD_STORE_SUBWORD_ONLY_CIRCUIT_FAMILY_IDX
+        } {
             self.cycles += 1;
         } else {
             unsafe { core::hint::unreachable_unchecked() }
@@ -195,17 +195,15 @@ impl Counters for DelegationsAndUnifiedCounters {
     }
     #[inline(always)]
     fn log_multiple_circuit_family_calls<const FAMILY: u8>(&mut self, num_calls: usize) {
-        if const { FAMILY == ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX } {
-            self.cycles += num_calls;
-        } else if const { FAMILY == JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX } {
-            self.cycles += num_calls;
-        } else if const { FAMILY == SHIFT_BINARY_CIRCUIT_FAMILY_IDX } {
-            self.cycles += num_calls;
-        } else if const { FAMILY == MUL_DIV_CIRCUIT_FAMILY_IDX } {
-            self.cycles += num_calls;
-        } else if const { FAMILY == LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX } {
-            self.cycles += num_calls;
-        } else if const { FAMILY == LOAD_STORE_SUBWORD_ONLY_CIRCUIT_FAMILY_IDX } {
+        // Same single-disjunction whitelist as `log_circuit_family` above.
+        if const {
+            FAMILY == ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX
+                || FAMILY == JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX
+                || FAMILY == SHIFT_BINARY_CIRCUIT_FAMILY_IDX
+                || FAMILY == MUL_DIV_CIRCUIT_FAMILY_IDX
+                || FAMILY == LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX
+                || FAMILY == LOAD_STORE_SUBWORD_ONLY_CIRCUIT_FAMILY_IDX
+        } {
             self.cycles += num_calls;
         } else {
             unsafe { core::hint::unreachable_unchecked() }
@@ -261,11 +259,20 @@ pub struct PartialSnapshot {
 
 pub trait ReplayBuffer<T: Sized> {
     fn new_with_snapshots_bound(bound: usize) -> Self;
+    /// # Safety
+    ///
+    /// The buffer must have spare capacity for at least one more element, i.e. the caller must
+    /// have reserved it up front via [`ReplayBuffer::new_with_snapshots_bound`] and pushed
+    /// strictly fewer than `bound` elements so far. Pushing beyond the reserved capacity is
+    /// undefined behaviour.
     unsafe fn push_within_capacity_unchecked(&mut self, value: T);
     fn make_range<'a>(&'a self, range: core::ops::Range<usize>) -> Vec<&'a [T]>
     where
         T: 'a;
     fn len(&self) -> usize;
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
 }
 
 impl<T: Sized, A: Allocator + Default> ReplayBuffer<T> for Vec<T, A> {
