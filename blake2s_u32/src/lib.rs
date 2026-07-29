@@ -101,11 +101,16 @@ pub mod g_function_control_flags {
     pub const TEST_IF_REDUCE_ROUNDS_MASK: u32 = 1 << REDUCE_ROUNDS_BIT_IDX;
 }
 
+/// # Safety
+///
+/// TODO: document the exact contract. `dst` and `end` must be 4-byte aligned,
+/// `end` must be reachable from `dst` by repeated `add(1)`, and the whole
+/// `dst..end` range must be a single valid writable allocation.
 #[cfg(target_arch = "riscv32")]
 #[inline(always)]
 pub unsafe fn spec_memzero_u32(mut dst: *mut u32, end: *mut u32) {
-    core::hint::assert_unchecked(dst.addr() % 4 == 0);
-    core::hint::assert_unchecked(end.addr() % 4 == 0);
+    core::hint::assert_unchecked(dst.addr().is_multiple_of(4));
+    core::hint::assert_unchecked(end.addr().is_multiple_of(4));
     while dst < end {
         // this prevents LLVM to insert memset, but fine for our purposes
         dst.write_volatile(0);
@@ -113,19 +118,29 @@ pub unsafe fn spec_memzero_u32(mut dst: *mut u32, end: *mut u32) {
     }
 }
 
+/// # Safety
+///
+/// TODO: document the exact contract. `dst` and `end` must be 4-byte aligned,
+/// `end` must be reachable from `dst` by repeated `add(1)`, and the whole
+/// `dst..end` range must be a single valid writable allocation.
 #[cfg(not(target_arch = "riscv32"))]
 #[inline(always)]
 pub unsafe fn spec_memzero_u32(mut dst: *mut u32, end: *mut u32) {
-    debug_assert!(dst.addr() % 4 == 0);
-    debug_assert!(end.addr() % 4 == 0);
-    core::hint::assert_unchecked(dst.addr() % 4 == 0);
-    core::hint::assert_unchecked(end.addr() % 4 == 0);
+    debug_assert!(dst.addr().is_multiple_of(4));
+    debug_assert!(end.addr().is_multiple_of(4));
+    core::hint::assert_unchecked(dst.addr().is_multiple_of(4));
+    core::hint::assert_unchecked(end.addr().is_multiple_of(4));
     while dst < end {
         dst.write(0);
         dst = dst.add(1);
     }
 }
 
+/// # Safety
+///
+/// TODO: document the exact contract. `src` and `dst` must be 4-byte aligned,
+/// both must be valid for `count` `u32`s (read and write respectively), and the
+/// two ranges must not overlap.
 #[cfg(target_arch = "riscv32")]
 #[inline(always)]
 pub unsafe fn spec_memcopy_u32_nonoverlapping(
@@ -133,8 +148,8 @@ pub unsafe fn spec_memcopy_u32_nonoverlapping(
     mut dst: *mut u32,
     count: usize,
 ) {
-    core::hint::assert_unchecked(src.addr() % 4 == 0);
-    core::hint::assert_unchecked(dst.addr() % 4 == 0);
+    core::hint::assert_unchecked(src.addr().is_multiple_of(4));
+    core::hint::assert_unchecked(dst.addr().is_multiple_of(4));
     let end = dst.add(count);
     while dst < end {
         // this prevents LLVM to insert memcpy, but fine for our purposes
@@ -144,12 +159,21 @@ pub unsafe fn spec_memcopy_u32_nonoverlapping(
     }
 }
 
+/// # Safety
+///
+/// TODO: document the exact contract. `src` and `dst` must be 4-byte aligned,
+/// both must be valid for `count` `u32`s (read and write respectively), and the
+/// two ranges must not overlap.
 #[cfg(not(target_arch = "riscv32"))]
 #[inline(always)]
 pub unsafe fn spec_memcopy_u32_nonoverlapping(src: *const u32, dst: *mut u32, count: usize) {
     core::ptr::copy_nonoverlapping(src, dst, count);
 }
 
+/// # Safety
+///
+/// TODO: document the exact contract. `src` and `dst` must be 4-byte aligned and
+/// valid for reads of `count` `u32`s each, and the two ranges must not overlap.
 #[cfg(target_arch = "riscv32")]
 #[inline(always)]
 pub unsafe fn spec_memcmp_u32_nonoverlapping(
@@ -168,6 +192,10 @@ pub unsafe fn spec_memcmp_u32_nonoverlapping(
     equal
 }
 
+/// # Safety
+///
+/// TODO: document the exact contract. `T` must have alignment and size of at
+/// least 4 bytes, and its size must be a whole number of `u32`s.
 #[cfg(target_arch = "riscv32")]
 #[inline]
 pub unsafe fn spec_memcopy<T: Sized + Copy>(src: &T, dst: &mut T) {
@@ -182,6 +210,10 @@ pub unsafe fn spec_memcopy<T: Sized + Copy>(src: &T, dst: &mut T) {
     );
 }
 
+/// # Safety
+///
+/// TODO: document the exact contract. `T` must have alignment and size of at
+/// least 4 bytes, and its size must be a whole number of `u32`s.
 #[cfg(not(target_arch = "riscv32"))]
 #[inline(always)]
 pub unsafe fn spec_memcopy<T: Sized + Copy>(src: &T, dst: &mut T) {
@@ -190,6 +222,10 @@ pub unsafe fn spec_memcopy<T: Sized + Copy>(src: &T, dst: &mut T) {
     *dst = *src;
 }
 
+/// # Safety
+///
+/// TODO: document the exact contract. For non-zero-sized `T`, alignment and size
+/// must be at least 4 bytes, and the size must be a whole number of `u32`s.
 #[cfg(target_arch = "riscv32")]
 #[inline]
 pub unsafe fn spec_memcmp<T: Sized + Copy + Eq>(src: &T, dst: &T) -> bool {
@@ -208,6 +244,10 @@ pub unsafe fn spec_memcmp<T: Sized + Copy + Eq>(src: &T, dst: &T) -> bool {
     }
 }
 
+/// # Safety
+///
+/// TODO: document the exact contract. For non-zero-sized `T`, alignment and size
+/// must be at least 4 bytes, and the size must be a whole number of `u32`s.
 #[cfg(not(target_arch = "riscv32"))]
 #[inline(always)]
 pub unsafe fn spec_memcmp<T: Sized + Copy + Eq>(src: &T, dst: &T) -> bool {

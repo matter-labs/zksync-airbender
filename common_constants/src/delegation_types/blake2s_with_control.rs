@@ -89,7 +89,9 @@ pub unsafe fn blake_csr_trigger_delegation_full_rounds(
 pub const NUM_BLAKE2S_REGISTER_ACCESSES: usize = 3;
 pub const NUM_BLAKE2S_VARIABLE_OFFSETS: usize = 0;
 
-pub const BLAKE2S_NORMAL_MODE_FULL_ROUNDS_INITIAL_CONTROL_REGISTER: u32 = (0b1000 | 0b000) << 16;
+// Bit 3 of the mode nibble marks "normal mode"; the low 3 bits select the round
+// schedule (0b000 = full rounds, 0b001 = reduced rounds).
+pub const BLAKE2S_NORMAL_MODE_FULL_ROUNDS_INITIAL_CONTROL_REGISTER: u32 = 0b1000 << 16;
 pub const BLAKE2S_NORMAL_MODE_REDUCED_ROUNDS_INITIAL_CONTROL_REGISTER: u32 = (0b1000 | 0b001) << 16;
 pub const BLAKE2S_COMPRESSION_MODE_IS_RIGHT_EXTRA_BITS: u32 = 0b010 << 16;
 pub const BLAKE2S_COMPRESSION_MODE_EXTRA_BITS: u32 = 0b100 << 16;

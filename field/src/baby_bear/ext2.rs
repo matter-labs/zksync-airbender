@@ -28,8 +28,6 @@ const _: () = const {
 
     #[cfg(target_arch = "riscv32")]
     assert!(core::mem::align_of::<BabyBearExt2>() == 4);
-
-    ()
 };
 
 impl BabyBearExt2 {

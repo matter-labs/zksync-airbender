@@ -8,9 +8,20 @@ pub struct Blake2sState {
     pub t: u32, // we limit ourselves to <4Gb inputs
 }
 
+impl Default for Blake2sState {
+    #[inline(always)]
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Blake2sState {
     pub const SUPPORT_SPEC_SINGLE_ROUND: bool = false;
 
+    /// # Safety
+    ///
+    /// TODO: document the exact contract. `dst` must be valid for writes of a
+    /// full digest and correctly aligned.
     #[unroll::unroll_for_loops]
     #[inline(always)]
     pub unsafe fn spec_run_single_round_into_destination<const REDUCED_ROUNDS: bool>(
@@ -81,6 +92,12 @@ impl Blake2sState {
 
     /// caller must fill the buffer (do not forget to zero-pad),
     /// and then specify the parameters of the input block
+    ///
+    /// # Safety
+    ///
+    /// TODO: document the exact contract. The input buffer must have been filled
+    /// (and zero-padded) before this call, and `input_size_words` must not exceed
+    /// the block size.
     #[inline(always)]
     pub unsafe fn run_round_function<const REDUCED_ROUNDS: bool>(
         &mut self,
@@ -93,6 +110,11 @@ impl Blake2sState {
         );
     }
 
+    /// # Safety
+    ///
+    /// TODO: document the exact contract. The input buffer must have been filled
+    /// (and zero-padded) before this call, and `input_size_bytes` must not exceed
+    /// the block size in bytes.
     #[inline]
     #[unroll::unroll_for_loops]
     pub unsafe fn run_round_function_with_byte_len<const REDUCED_ROUNDS: bool>(

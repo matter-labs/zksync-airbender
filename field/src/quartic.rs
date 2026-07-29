@@ -25,8 +25,6 @@ const _: () = const {
 
     #[cfg(target_arch = "riscv32")]
     assert!(core::mem::align_of::<Mersenne31Quartic>() == 4);
-
-    ()
 };
 
 impl Mersenne31Quartic {
@@ -49,11 +47,15 @@ impl Mersenne31Quartic {
         }
     }
 
+    /// # Safety
+    ///
+    /// TODO: document the exact contract. `base_ptr` must be valid for reads of 4
+    /// consecutive `Mersenne31Field`s; alignment is not required.
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     pub unsafe fn read_unaligned(base_ptr: *const Mersenne31Field) -> Self {
         let [c0, c1, c2, c3] = base_ptr.cast::<[Mersenne31Field; 4]>().read();
         Self {
-            c0: Mersenne31Complex { c0: c0, c1: c1 },
+            c0: Mersenne31Complex { c0, c1 },
             c1: Mersenne31Complex { c0: c2, c1: c3 },
         }
     }
@@ -65,7 +67,7 @@ impl Mersenne31Quartic {
             && core::mem::size_of::<Self>() == core::mem::size_of::<Mersenne31Field>() * 4
         {
             // alignments and expected sized match, so we can just cast pointer
-            unsafe { core::mem::transmute(els) }
+            unsafe { core::mem::transmute::<&[Mersenne31Field; 4], &Self>(els) }
         } else {
             unimplemented!()
         }

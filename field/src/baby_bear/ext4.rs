@@ -30,8 +30,6 @@ const _: () = const {
 
     #[cfg(target_arch = "riscv32")]
     assert!(core::mem::align_of::<BabyBearExt4>() == 4);
-
-    ()
 };
 
 impl BabyBearExt4 {
@@ -54,11 +52,15 @@ impl BabyBearExt4 {
         }
     }
 
+    /// # Safety
+    ///
+    /// TODO: document the exact contract. `base_ptr` must be valid for reads of 4
+    /// consecutive `BabyBearField`s; alignment is not required.
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     pub unsafe fn read_unaligned(base_ptr: *const BabyBearField) -> Self {
         let [c0, c1, c2, c3] = base_ptr.cast::<[BabyBearField; 4]>().read();
         Self {
-            c0: BabyBearExt2 { c0: c0, c1: c1 },
+            c0: BabyBearExt2 { c0, c1 },
             c1: BabyBearExt2 { c0: c2, c1: c3 },
         }
     }
@@ -70,7 +72,7 @@ impl BabyBearExt4 {
             && core::mem::size_of::<Self>() == core::mem::size_of::<BabyBearField>() * 4
         {
             // alignments and expected sized match, so we can just cast pointer
-            unsafe { core::mem::transmute(els) }
+            unsafe { core::mem::transmute::<&[BabyBearField; 4], &Self>(els) }
         } else {
             unimplemented!()
         }
@@ -116,6 +118,26 @@ impl BabyBearExt4 {
     //   out[1] = a0·b1 + a1·b0  +    a2·b2  + 11·a3·b3
     //   out[2] = a0·b2 + 11·a1·b3 +  a2·b0  + 11·a3·b1
     //   out[3] = a0·b3 + a1·b2  +    a2·b1  +    a3·b0
+    // Dispatched to only from the riscv32 `modular_ops` (non-`modular_fma`) build,
+    // and cross-checked against the tower path by this file's proptests; kept
+    // compiled on every target so those tests can exercise it on host.
+    // The `expect` is gated to exactly the builds where nothing calls this: the
+    // trait dispatch below only picks it on riscv32 + `modular_ops` without
+    // `modular_fma`, and the proptests in this file call it directly.
+    #[cfg_attr(
+        not(any(
+            test,
+            all(
+                target_arch = "riscv32",
+                feature = "modular_ops",
+                not(feature = "modular_fma")
+            )
+        )),
+        expect(
+            dead_code,
+            reason = "alternative implementation selected by target_arch + features"
+        )
+    )]
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     pub(crate) fn mul_assign_flat_impl(&mut self, other: &Self) {
         let a0 = self.c0.c0;
@@ -275,7 +297,24 @@ impl BabyBearExt4 {
     //   out[1] = 2·a0·a1 + a2² + 11·a3²
     //   out[2] = 2·a0·a2 + 2·11·a1·a3
     //   out[3] = 2·(a0·a3 + a1·a2)
-    // Companion to `mul_assign_flat_impl`.
+    // Companion to `mul_assign_flat_impl`; same dispatch/reachability story.
+    // The `expect` is gated to exactly the builds where nothing calls this: the
+    // trait dispatch below only picks it on riscv32 + `modular_ops` without
+    // `modular_fma`, and the proptests in this file call it directly.
+    #[cfg_attr(
+        not(any(
+            test,
+            all(
+                target_arch = "riscv32",
+                feature = "modular_ops",
+                not(feature = "modular_fma")
+            )
+        )),
+        expect(
+            dead_code,
+            reason = "alternative implementation selected by target_arch + features"
+        )
+    )]
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     pub(crate) fn square_flat_impl(&mut self) {
         let a0 = self.c0.c0;

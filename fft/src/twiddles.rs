@@ -26,7 +26,7 @@ pub fn precompute_twiddles_for_fft<E: TwoAdicField, A: GoodAllocator, const INVE
 
     // NB: number of omegas is twice lesss than the number of elements in the original domain
     let num_powers = fft_size / 2;
-    let mut powers = materialize_powers_parallel_starting_with_one(omega, num_powers, &worker);
+    let mut powers = materialize_powers_parallel_starting_with_one(omega, num_powers, worker);
     // NB: all twiddles go in bitreversed order
     bitreverse_enumeration_inplace(&mut powers);
 

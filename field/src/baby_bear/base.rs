@@ -5,15 +5,13 @@ use super::ops;
 use crate::field::{Field, PrimeField};
 use core::ops::{Add, Sub};
 
-#[derive(Clone, Copy, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, Default, serde::Serialize, serde::Deserialize)]
 #[repr(transparent)]
 pub struct BabyBearField(pub u32);
 
 const _: () = const {
     assert!(core::mem::size_of::<BabyBearField>() == core::mem::size_of::<u32>());
     assert!(core::mem::align_of::<BabyBearField>() == core::mem::align_of::<u32>());
-
-    ()
 };
 
 // NOTE: We choose "standard" Montgomery multiplication, where integers at rest are < modulus
@@ -31,6 +29,15 @@ impl BabyBearField {
         r2 as u32
     };
     pub(crate) const NON_RES: Self = Self::new(11);
+    // Only read by `BabyBearExt4::square_flat_impl_fma`, which exists solely under
+    // riscv32 + `modular_fma`. Kept here next to `NON_RES`.
+    #[cfg_attr(
+        not(all(target_arch = "riscv32", feature = "modular_fma")),
+        expect(
+            dead_code,
+            reason = "read by the riscv32 `modular_fma` flat-quartic squaring path"
+        )
+    )]
     pub(crate) const NON_RES_DOUBLED: Self = Self::new(22);
     pub const HALF: Self = const { Self::new(2).inverse_impl().unwrap() };
 
@@ -68,12 +75,6 @@ impl BabyBearField {
             c -= Self::ORDER;
         }
         Self::new(c)
-    }
-}
-
-impl Default for BabyBearField {
-    fn default() -> Self {
-        Self(0u32)
     }
 }
 
@@ -383,7 +384,6 @@ impl Sub for BabyBearField {
     #[cfg_attr(not(feature = "no_inline"), inline)]
     fn sub(self, rhs: Self) -> Self {
         let lhs = self;
-        let rhs = rhs;
         let mut res = lhs;
         res.sub_assign(&rhs);
         res

@@ -181,9 +181,9 @@ pub extern "C" fn invoke_keccak_f1600(state: &mut KeccakF1600State) {
     fn normalize_disassembly(disassembly: &str) -> String {
         disassembly
             .lines()
-            .skip_while(|line| line.contains("<invoke_keccak_f1600>:") == false)
+            .skip_while(|line| !line.contains("<invoke_keccak_f1600>:"))
             .skip(1)
-            .filter(|line| line.trim().is_empty() == false)
+            .filter(|line| !line.trim().is_empty())
             .map(str::trim)
             .collect::<vec::Vec<_>>()
             .join("\n")
