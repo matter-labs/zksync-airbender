@@ -571,7 +571,6 @@ fn drive_lookup_placement<F: PrimeField, const SINGLE_COLUMN: bool>(
             expect_table_id,
             inputs,
             intermediate_values,
-            relations_map,
             all_relations_for_witness_eval,
         );
         assert_eq!(inputs.len() + 2, t);
@@ -816,9 +815,13 @@ fn merge_lookup_inputs_pair<F: PrimeField, const SINGLE_COLUMN: bool>(
         ),
     >,
     intermediate_values: &mut BTreeMap<usize, Vec<(LookupNumerator, LookupDenominator)>>,
-    relations_map: &mut BTreeMap<[GKRAddress; 2], NoFieldGKRRelation<F>>,
     all_relations_for_witness_eval: &mut Vec<NoFieldVectorLookupRelation<F>>,
 ) {
+    // Unlike `merge_lookup_inputs` / `merge_intermediate_lookup_pair`, this stage does
+    // not register its (num, den) pairs in the driver's relations_map: layer 0 always
+    // emits a carrier relation, and a terminal singleton is inspected before it can be
+    // copied again, so a pair produced here can never be the terminal one the driver
+    // resolves via `relations_map.get(..).expect("final relation")`.
     let single_columns_lookup_width = match lookup {
         LookupType::RangeCheck16 => Some(16),
         LookupType::TimestampRangeCheck => Some(TIMESTAMP_COLUMNS_NUM_BITS),

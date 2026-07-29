@@ -11,7 +11,6 @@ use crate::definitions::DelegationCircuitState;
 use crate::definitions::GKRAddress;
 use crate::definitions::OpcodeFamilyCircuitState;
 use crate::definitions::Variable;
-use crate::definitions::REGISTER_SIZE;
 use crate::gkr_compiler::graph::GKRGraph;
 use crate::gkr_compiler::graph::GraphHolder;
 use crate::gkr_compiler::lookup_nodes::LookupInputRelation;
@@ -236,35 +235,19 @@ pub fn no_field_gkr_max_quadratic_from_expr_and_constraint<F: PrimeField>(
 //     address
 // }
 
-#[derive(Clone, Hash, Debug, serde::Serialize, serde::Deserialize)]
-pub struct MachineStateWithDecoderData {
-    pub execute: usize,
-    pub initial_pc: [usize; 2],
-    pub initial_timestamp: [usize; NUM_TIMESTAMP_COLUMNS_FOR_RAM],
-    pub final_pc: [usize; 2],
-    pub final_timestamp: [usize; NUM_TIMESTAMP_COLUMNS_FOR_RAM],
-    pub rs1_index: usize,
-    // can be memory or witness, as there can be some selection there
-    pub rs2_index: GKRAddress,
-    pub rd_index: GKRAddress,
-    pub imm: [GKRAddress; REGISTER_SIZE],
-    pub funct3: Option<GKRAddress>,
-    pub circuit_family_extra_mask: Vec<GKRAddress>,
-}
-
 pub(crate) fn layout_machine_state_for_preprocessed_bytecode<F: PrimeField>(
     graph: &mut GKRGraph<F>,
     all_variables_to_place: &mut BTreeSet<Variable>,
     state: &OpcodeFamilyCircuitState<F>,
     family_bitmask: Vec<Variable>,
     layers_mapping: &HashMap<Variable, usize>,
-) -> MachineStateWithDecoderData {
+) {
     let [execute] = graph.layout_memory_subtree_multiple_variables(
         [state.execute],
         all_variables_to_place,
         layers_mapping,
     );
-    let GKRAddress::BaseLayerMemory(execute) = execute else {
+    let GKRAddress::BaseLayerMemory(_execute) = execute else {
         unreachable!()
     };
     let initial_pc = graph.layout_memory_subtree_multiple_variables(
@@ -272,7 +255,7 @@ pub(crate) fn layout_machine_state_for_preprocessed_bytecode<F: PrimeField>(
         all_variables_to_place,
         layers_mapping,
     );
-    let initial_pc = initial_pc.map(|el| {
+    let _initial_pc = initial_pc.map(|el| {
         let GKRAddress::BaseLayerMemory(el) = el else {
             unreachable!()
         };
@@ -284,7 +267,7 @@ pub(crate) fn layout_machine_state_for_preprocessed_bytecode<F: PrimeField>(
         all_variables_to_place,
         layers_mapping,
     );
-    let initial_timestamp = initial_timestamp.map(|el| {
+    let _initial_timestamp = initial_timestamp.map(|el| {
         let GKRAddress::BaseLayerMemory(el) = el else {
             unreachable!()
         };
@@ -297,7 +280,7 @@ pub(crate) fn layout_machine_state_for_preprocessed_bytecode<F: PrimeField>(
         all_variables_to_place,
         layers_mapping,
     );
-    let final_pc = final_pc.map(|el| {
+    let _final_pc = final_pc.map(|el| {
         let GKRAddress::BaseLayerMemory(el) = el else {
             unreachable!()
         };
@@ -309,7 +292,7 @@ pub(crate) fn layout_machine_state_for_preprocessed_bytecode<F: PrimeField>(
         all_variables_to_place,
         layers_mapping,
     );
-    let final_timestamp = final_timestamp.map(|el| {
+    let _final_timestamp = final_timestamp.map(|el| {
         let GKRAddress::BaseLayerMemory(el) = el else {
             unreachable!()
         };
@@ -330,14 +313,14 @@ pub(crate) fn layout_machine_state_for_preprocessed_bytecode<F: PrimeField>(
         ..
     } = state.decoder_data.clone();
 
-    let rs1_index =
+    let _rs1_index =
         if let Some(GKRAddress::BaseLayerMemory(offset)) = graph.get_fixed_layout_pos(&rs1_index) {
             offset
         } else {
             unreachable!();
         };
 
-    let rs2_index =
+    let _rs2_index =
         if let Some(GKRAddress::BaseLayerMemory(offset)) = graph.get_fixed_layout_pos(&rs2_index) {
             GKRAddress::BaseLayerMemory(offset)
         } else {
@@ -350,7 +333,7 @@ pub(crate) fn layout_machine_state_for_preprocessed_bytecode<F: PrimeField>(
             t[0]
         };
 
-    let rd_index =
+    let _rd_index =
         if let Some(GKRAddress::BaseLayerMemory(offset)) = graph.get_fixed_layout_pos(&rd_index) {
             GKRAddress::BaseLayerMemory(offset)
         } else {
@@ -363,12 +346,12 @@ pub(crate) fn layout_machine_state_for_preprocessed_bytecode<F: PrimeField>(
             t[0]
         };
 
-    let imm = graph.layout_witness_subtree_multiple_variables(
+    let _imm = graph.layout_witness_subtree_multiple_variables(
         imm,
         all_variables_to_place,
         layers_mapping,
     );
-    let funct3 = if let Some(funct3) = funct3 {
+    let _funct3 = if let Some(funct3) = funct3 {
         let funct3 = graph.layout_witness_subtree_multiple_variables(
             [funct3],
             all_variables_to_place,
@@ -397,20 +380,6 @@ pub(crate) fn layout_machine_state_for_preprocessed_bytecode<F: PrimeField>(
             t[0]
         };
         bitmask.push(el);
-    }
-
-    MachineStateWithDecoderData {
-        execute,
-        initial_pc,
-        initial_timestamp,
-        final_pc,
-        final_timestamp,
-        rs1_index,
-        rs2_index,
-        rd_index,
-        imm,
-        funct3,
-        circuit_family_extra_mask: bitmask,
     }
 }
 

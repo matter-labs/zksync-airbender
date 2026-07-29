@@ -483,7 +483,7 @@ impl<F: PrimeField> GKRCompiler<F> {
             });
         };
 
-        let _machine_state = layout_machine_state_for_preprocessed_bytecode(
+        layout_machine_state_for_preprocessed_bytecode(
             &mut graph,
             &mut all_variables_to_place,
             &executor_machine_state,
