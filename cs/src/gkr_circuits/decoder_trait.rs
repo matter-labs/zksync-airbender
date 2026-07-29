@@ -228,7 +228,7 @@ pub fn process_binary_into_separate_tables_ext<
     }
 
     if !ALLOW_UNSUPPORTED && pc_set.len() != binary.len() {
-        #[allow(clippy::needless_range_loop)]
+        #[expect(clippy::needless_range_loop)]
         for i in 0..binary.len() {
             if !pc_set.contains(&i) {
                 println!(

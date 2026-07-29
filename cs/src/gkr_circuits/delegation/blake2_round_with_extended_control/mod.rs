@@ -343,7 +343,7 @@ pub fn define_blake2_with_extended_control_delegation_circuit<F: PrimeField, CS:
     for word_idx in [8, 9, 10, 11, 13, 15] {
         let existing = &mut input_extended_state[word_idx];
         let initialization_word = EXTENDED_CONFIGURED_IV[word_idx];
-        #[allow(clippy::needless_range_loop)]
+        #[expect(clippy::needless_range_loop)]
         for i in 0..2 {
             // if it's not the first round - keep existing
             let keep_existing =
@@ -360,7 +360,7 @@ pub fn define_blake2_with_extended_control_delegation_circuit<F: PrimeField, CS:
     for word_idx in [12, 14] {
         let existing = &mut input_extended_state[word_idx];
         let initialization_word = COMPRESSION_MODE_EXTENDED_CONFIGURED_IV[word_idx];
-        #[allow(clippy::needless_range_loop)]
+        #[expect(clippy::needless_range_loop)]
         for i in 0..2 {
             // if it's not the first round - keep existing
             let keep_existing =

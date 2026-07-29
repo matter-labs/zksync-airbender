@@ -2,9 +2,9 @@ use super::*;
 use crate::structured_expr::Expr;
 
 pub(crate) struct GFunctionIntermediateValues<F: PrimeField> {
-    #[allow(clippy::type_complexity)]
+    #[expect(clippy::type_complexity)]
     pub(crate) a_var_chunks_and_constraint: [([(i32, Variable); 1], Expr<F>); 2],
-    #[allow(clippy::type_complexity)]
+    #[expect(clippy::type_complexity)]
     pub(crate) c_var_chunks_and_constraint: [([(i32, Variable); 1], Expr<F>); 2],
 }
 

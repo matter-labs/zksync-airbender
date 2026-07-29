@@ -30,7 +30,7 @@ use super::mem_word_only_lw_sw::apply_unified_mem_word_only_lw_sw_data_path;
 /// Caller (unified body) owns the `memread_addr` / `memwrite_addr` witness
 /// vars and passes them inside the access objects.
 #[allow(non_snake_case)]
-#[allow(clippy::too_many_arguments)]
+#[expect(clippy::too_many_arguments)]
 pub fn apply_unified_mem_word_only_inner<F: PrimeField, CS: Circuit<F>>(
     cs: &mut CS,
     inputs: OpcodeFamilyCircuitState<F>,

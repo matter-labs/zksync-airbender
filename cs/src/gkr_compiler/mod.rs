@@ -104,7 +104,7 @@ pub struct GKRCircuitArtifact<F: PrimeField> {
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct NoFieldMaxQuadraticGKRRelation<F: PrimeField> {
-    #[allow(clippy::type_complexity)]
+    #[expect(clippy::type_complexity)]
     pub quadratic_terms: Box<[(GKRAddress, Box<[(F, GKRAddress)]>)]>,
     pub linear_terms: Box<[(F, GKRAddress)]>,
     pub constant: F,
@@ -128,7 +128,7 @@ pub enum CompiledAddress {
         low_offset: u64,
         high: GKRAddress,
     },
-    #[allow(clippy::type_complexity)]
+    #[expect(clippy::type_complexity)]
     U32SpaceGeneric([(Box<[(u64, GKRAddress)]>, u64); 2]),
 }
 
@@ -162,7 +162,7 @@ pub enum CompiledAddressStrict {
         low_offset: u32,
         high: usize,
     },
-    #[allow(clippy::type_complexity)]
+    #[expect(clippy::type_complexity)]
     U32SpaceGeneric([(Box<[(u64, usize)]>, u64); 2]),
 }
 
@@ -256,9 +256,9 @@ pub struct NoFieldLookupPostTrivialNumeratorRelation {
 // constant temrs: (constant, power of random challenge)
 #[derive(Clone, Debug, Hash, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct NoFieldMaxQuadraticConstraintsGKRRelation<F: PrimeField> {
-    #[allow(clippy::type_complexity)]
+    #[expect(clippy::type_complexity)]
     pub quadratic_terms: Box<[((GKRAddress, GKRAddress), Box<[(F, usize)]>)]>,
-    #[allow(clippy::type_complexity)]
+    #[expect(clippy::type_complexity)]
     pub linear_terms: Box<[(GKRAddress, Box<[(F, usize)]>)]>,
     pub constants: Box<[(F, usize)]>,
 }
@@ -1188,7 +1188,7 @@ pub fn compile_delegation_circuit_into_gkr_without_caches<F: PrimeField>(
 
 use crate::witness_placer::graph_description::WitnessGraphCreator;
 
-#[allow(clippy::type_complexity)]
+#[expect(clippy::type_complexity)]
 pub fn dump_wintess_graph<F: PrimeField>(
     table_addition_fn: &dyn Fn(
         &mut crate::cs::circuit_impl::BasicAssembly<F, WitnessGraphCreator<F>>,
@@ -1211,7 +1211,7 @@ pub fn dump_wintess_graph<F: PrimeField>(
     witness_placer.unwrap()
 }
 
-#[allow(clippy::type_complexity)]
+#[expect(clippy::type_complexity)]
 pub fn dump_ssa_witness_eval_form<F: PrimeField>(
     table_addition_fn: &dyn Fn(
         &mut crate::cs::circuit_impl::BasicAssembly<F, WitnessGraphCreator<F>>,

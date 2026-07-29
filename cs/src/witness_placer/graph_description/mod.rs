@@ -457,7 +457,7 @@ impl<F: PrimeField> WitnessGraphCreator<F> {
         idx
     }
 
-    #[allow(clippy::type_complexity)]
+    #[expect(clippy::type_complexity)]
     pub fn compute_resolution_order(
         &self,
     ) -> (

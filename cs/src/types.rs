@@ -172,7 +172,7 @@ impl Boolean {
         let value_fn = move |placer: &mut CS::WitnessPlacer| {
             let input_value = placer.get_field(input).as_integer();
 
-            #[allow(clippy::needless_range_loop)]
+            #[expect(clippy::needless_range_loop)]
             for idx in 0..N {
                 let bit = input_value.get_bit(idx as u32);
                 placer.assign_mask(outputs[idx], &bit);

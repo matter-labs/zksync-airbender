@@ -534,7 +534,7 @@ impl<F: PrimeField> GKRCompiler<F> {
         );
 
         // Build the inline inits/teardowns grand product
-        #[allow(clippy::type_complexity)]
+        #[expect(clippy::type_complexity)]
         let inline_it_output: Option<(
             (GKRAddress, NoFieldGKRRelation<F>),
             (GKRAddress, NoFieldGKRRelation<F>),

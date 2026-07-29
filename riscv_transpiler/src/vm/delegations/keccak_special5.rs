@@ -474,8 +474,8 @@ const RC: [u64; 24] = [
 // Same cause for erasing_op: the `y`/`y_step == 0` unrolled iterations fold row
 // offsets like `5 * y` into `5 * 0`, which the lint reports as "always zero"; the
 // multiplication is meaningful for the other unrolled rows.
-#[allow(clippy::eq_op)]
-#[allow(clippy::erasing_op)]
+#[expect(clippy::eq_op)]
+#[expect(clippy::erasing_op)]
 pub(crate) fn keccak_f1600_impl_ext(state: &mut [u64; 31]) {
     // Even using small precompile we have regular structure like
     // seq!(round in 0..24 {
