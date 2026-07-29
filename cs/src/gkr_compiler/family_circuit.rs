@@ -993,7 +993,7 @@ impl<F: PrimeField> GKRCompiler<F> {
 }
 
 pub(crate) fn place_variables_from_constraints<F: PrimeField>(
-    structured_statements: &Vec<StructuredStatement<F>>,
+    structured_statements: &[StructuredStatement<F>],
     variables_from_constraints: &mut BTreeMap<Variable, usize>,
     layers_mapping: &HashMap<Variable, usize>,
     graph: &mut GKRGraph<F>,

@@ -15,6 +15,12 @@ pub struct CSDebugWitnessEvaluator<F: PrimeField> {
     pub(crate) preprocessed_decoder_table: Option<Vec<ExecutorFamilyDecoderData>>,
 }
 
+impl<F: PrimeField> Default for CSDebugWitnessEvaluator<F> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<F: PrimeField> CSDebugWitnessEvaluator<F> {
     pub fn new() -> Self {
         Self {

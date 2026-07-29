@@ -788,9 +788,29 @@ impl<F: PrimeField> std::ops::Sub<Term<F>> for Constraint<F> {
 
 impl<F: PrimeField> std::ops::SubAssign<Term<F>> for Constraint<F> {
     fn sub_assign(&mut self, rhs: Term<F>) {
-        let minus_one: Term<F> = Term::from_field(F::MINUS_ONE);
-        let t: Constraint<F> = rhs * minus_one;
-        self.terms.push(t.terms[0]);
+        // Negate the term inline, mirroring `Sub<Term>` above (equivalent to the previous
+        // `rhs * Term::from_field(F::MINUS_ONE)` route, without the temporary Constraint).
+        let inv_term = match rhs {
+            Term::Expression {
+                coeff,
+                inner,
+                degree,
+            } => {
+                let mut v = coeff;
+                v.mul_assign(&F::MINUS_ONE);
+                Term::Expression {
+                    coeff: v,
+                    inner,
+                    degree,
+                }
+            }
+            Term::Constant(coeff) => {
+                let mut v = coeff;
+                v.mul_assign(&F::MINUS_ONE);
+                Term::Constant(v)
+            }
+        };
+        self.terms.push(inv_term);
     }
 }
 
@@ -885,9 +905,7 @@ impl<F: PrimeField> std::ops::Mul for Term<F> {
                     degree2
                 );
                 let mut res_inner = inner;
-                for i in 0..degree2 {
-                    res_inner[degree + i] = inner2[i];
-                }
+                res_inner[degree..degree + degree2].copy_from_slice(&inner2[..degree2]);
                 let mut res_coeff = coeff;
                 res_coeff.mul_assign(&coeff2);
                 let mut constraint = Constraint::empty();

@@ -689,10 +689,8 @@ fn add_chunks_into_expr<F: PrimeField>(mut expr: Expr<F>, chunks: &[(usize, Vari
 
 /// Adds incoming carry bits at consecutive low bit positions.
 fn add_carries_into_expr<F: PrimeField>(mut expr: Expr<F>, carries: &[Variable]) -> Expr<F> {
-    let mut shift = 0;
-    for var in carries.iter() {
+    for (shift, var) in carries.iter().enumerate() {
         expr = expr + Expr::var(*var) * F::from_u32_unchecked(1u32 << shift);
-        shift += 1;
     }
 
     expr
@@ -700,10 +698,8 @@ fn add_carries_into_expr<F: PrimeField>(mut expr: Expr<F>, carries: &[Variable])
 
 /// Subtracts outgoing carry bits starting above the 16-bit limb.
 fn sub_carries_from_expr<F: PrimeField>(mut expr: Expr<F>, carries: &[Variable]) -> Expr<F> {
-    let mut shift = 16;
-    for var in carries.iter() {
-        expr = expr - Expr::var(*var) * F::from_u32_unchecked(1u32 << shift);
-        shift += 1;
+    for (i, var) in carries.iter().enumerate() {
+        expr = expr - Expr::var(*var) * F::from_u32_unchecked(1u32 << (16 + i));
     }
 
     expr
@@ -764,12 +760,10 @@ fn witness_eval_addition_with_expr<
         let constraint_eval_result = constraint_eval_result.as_integer();
         input_value.add_assign(&constraint_eval_result);
 
-        let mut shift = 0;
-        for carry_in in carries_in.iter() {
+        for (shift, carry_in) in carries_in.iter().enumerate() {
             let carry_in = placer.get_boolean(*carry_in);
             let carry_in = <CS::WitnessPlacer as WitnessTypeSet<F>>::U32::from_mask(carry_in);
-            let carry_in = carry_in.shl(shift);
-            shift += 1;
+            let carry_in = carry_in.shl(shift as u32);
             input_value.add_assign(&carry_in);
         }
 

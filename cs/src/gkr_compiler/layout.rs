@@ -51,6 +51,9 @@ impl<F: PrimeField> GKRLayerDescription<F> {
 }
 
 #[derive(Clone, Debug)]
+// Variant sizes differ (Copied carries two relations) but values are short-lived
+// compiler-side temporaries — boxing would add indirection for no benefit.
+#[expect(clippy::large_enum_variant)]
 pub(crate) enum LookupOutput<F: PrimeField> {
     Direct(NoFieldGKRRelation<F>),
     Copied {

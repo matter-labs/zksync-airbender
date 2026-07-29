@@ -8,6 +8,9 @@ use std::collections::HashMap;
 use std::{collections::BTreeMap, hash::Hash};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+// The shared `From` prefix is descriptive (each variant names the copy SOURCE);
+// renaming would churn call sites for no clarity gain.
+#[expect(clippy::enum_variant_names)]
 pub enum CopyNode {
     FromBaseLayerInBase(GKRAddress),
     FromBaseLayerInExtension(GKRAddress),

@@ -112,6 +112,10 @@ impl<F: PrimeField> LookupKey<F> {
     }
 }
 
+// NOT the canonical `Some(self.cmp(other))`: unlike `Ord::cmp` (which returns `Equal` for
+// map lookups), `partial_cmp` deliberately panics on full equality as a duplicate-table-entry
+// tripwire during sorting. Delegating to `cmp` would silence that check.
+#[expect(clippy::non_canonical_partial_ord_impl)]
 impl<F: PrimeField> PartialOrd for LookupKey<F> {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         if self.0.len() != other.0.len() {
@@ -186,7 +190,12 @@ impl<F: PrimeField> LookupTable<F> {
         index_gen_fn: Option<fn(&[F]) -> usize>,
         id: u32,
     ) -> Self {
-        assert!(num_key_columns + num_value_columns + 1 <= MAX_TABLE_WIDTH);
+        // `+ 1 <=` (not `<`) is deliberate: rows are key||value, and one extra column
+        // beyond them is reserved within MAX_TABLE_WIDTH.
+        #[expect(clippy::int_plus_one)]
+        {
+            assert!(num_key_columns + num_value_columns + 1 <= MAX_TABLE_WIDTH);
+        }
 
         let mut content = Vec::with_capacity(keys.len());
         if keys.len() < 1 << 14 {
@@ -257,7 +266,12 @@ impl<F: PrimeField> LookupTable<F> {
         index_gen_fn: Option<fn(&[F]) -> usize>,
         id: u32,
     ) -> Self {
-        assert!(num_key_columns + num_value_columns + 1 <= MAX_TABLE_WIDTH);
+        // `+ 1 <=` (not `<`) is deliberate: rows are key||value, and one extra column
+        // beyond them is reserved within MAX_TABLE_WIDTH.
+        #[expect(clippy::int_plus_one)]
+        {
+            assert!(num_key_columns + num_value_columns + 1 <= MAX_TABLE_WIDTH);
+        }
 
         let mut content = Vec::with_capacity(keys.len());
         if keys.len() < 1 << 14 {
@@ -338,7 +352,12 @@ impl<F: PrimeField> LookupTable<F> {
         num_key_columns: usize,
         num_value_columns: usize,
     ) -> HashMap<LookupKey<F>, LookupValue<F>> {
-        assert!(num_key_columns + num_value_columns + 1 <= MAX_TABLE_WIDTH);
+        // `+ 1 <=` (not `<`) is deliberate: rows are key||value, and one extra column
+        // beyond them is reserved within MAX_TABLE_WIDTH.
+        #[expect(clippy::int_plus_one)]
+        {
+            assert!(num_key_columns + num_value_columns + 1 <= MAX_TABLE_WIDTH);
+        }
         let result: HashMap<_, _> = data
             .par_iter()
             .map(|row| {
@@ -969,7 +988,7 @@ impl TableType {
         if id as usize >= TOTAL_NUM_OF_TABLES {
             panic!("Unknown table id {}", id);
         } else {
-            unsafe { std::mem::transmute(id) }
+            unsafe { std::mem::transmute::<u32, Self>(id) }
         }
     }
 }
@@ -1100,6 +1119,12 @@ pub struct TableDriver<F: PrimeField> {
     pub tables: [LookupWrapper<F>; TABLE_TYPES_UPPER_BOUNDS],
     offsets_for_multiplicities: [usize; TABLE_TYPES_UPPER_BOUNDS],
     pub total_tables_len: usize,
+}
+
+impl<F: PrimeField> Default for TableDriver<F> {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl<F: PrimeField> TableDriver<F> {

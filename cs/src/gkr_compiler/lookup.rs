@@ -340,10 +340,8 @@ pub(crate) fn layout_lookup_expressions<F: PrimeField, const SINGLE_COLUMN: bool
 
         input_layer += 1;
 
-        let has_inputs_at_current_layer = !inputs_at_layers
-            .entry(input_layer)
-            .or_insert(BTreeMap::new())
-            .is_empty();
+        let has_inputs_at_current_layer =
+            !inputs_at_layers.entry(input_layer).or_default().is_empty();
         let has_inputs_at_future_layers = inputs_at_layers
             .range((input_layer + 1)..)
             .any(|(_, v)| !v.is_empty());
@@ -413,7 +411,7 @@ fn drive_lookup_placement<F: PrimeField, const SINGLE_COLUMN: bool>(
         LookupType::Generic => None,
     };
 
-    let num_inputs = inputs.entry(input_layer).or_insert(BTreeMap::new()).len();
+    let num_inputs = inputs.entry(input_layer).or_default().len();
     let num_intermediates = intermediate_values
         .entry(input_layer)
         .or_insert(vec![])
@@ -482,7 +480,7 @@ fn drive_lookup_placement<F: PrimeField, const SINGLE_COLUMN: bool>(
         (None, Some(multiplicity)) => {
             // merge with something
             assert_eq!(input_layer, 0);
-            let inputs = inputs.entry(input_layer).or_insert(BTreeMap::new());
+            let inputs = inputs.entry(input_layer).or_default();
             let num_inputs = inputs.len();
             let num_intermedaites = intermediate_values
                 .entry(input_layer)
@@ -560,7 +558,7 @@ fn drive_lookup_placement<F: PrimeField, const SINGLE_COLUMN: bool>(
     // we try to merge by pair between inputs and intermediates separately,
     // and then either merge between them, or copy something to the next layer
 
-    let inputs = inputs.entry(input_layer).or_insert(BTreeMap::new());
+    let inputs = inputs.entry(input_layer).or_default();
     while inputs.len() > 1 {
         // merge inputs
         let t = inputs.len();

@@ -1122,7 +1122,7 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
             .push(access.clone());
         // we always maintain sort
         self.register_and_indirect_memory_accesses
-            .sort_by(|a, b| a.register_index.cmp(&b.register_index));
+            .sort_by_key(|a| a.register_index);
 
         access
     }

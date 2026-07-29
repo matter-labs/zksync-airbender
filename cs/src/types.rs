@@ -571,7 +571,7 @@ impl<F: PrimeField> Register<F> {
 
     pub fn new_from_constant(value: u32) -> Self {
         let vars: [Num<F>; 2] = std::array::from_fn(|idx: usize| {
-            Num::Constant(F::from_u32_unchecked((value >> idx * 16) & 0xffff))
+            Num::Constant(F::from_u32_unchecked((value >> (idx * 16)) & 0xffff))
         });
         Self(vars)
     }

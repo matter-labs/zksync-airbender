@@ -127,6 +127,12 @@ pub struct WitnessResolutionGraph<F: PrimeField, W: WitnessPlacer<F>> {
     _marker: std::marker::PhantomData<(F, W)>,
 }
 
+impl<F: PrimeField, W: WitnessPlacer<F>> Default for WitnessResolutionGraph<F, W> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<F: PrimeField, W: WitnessPlacer<F>> WitnessResolutionGraph<F, W> {
     fn placeholder() -> Self {
         Self {
@@ -465,6 +471,9 @@ pub trait WitnessComputationalField<F: PrimeField>: 'static + Sized + Clone + De
     fn equal(&self, other: &Self) -> Self::Mask;
     fn inverse(&self) -> Self;
     fn inverse_or_zero(&self) -> Self;
+    // By-value is deliberate: witness scalars are Copy and consumed at conversion sites;
+    // switching to `&self` churns every impl (incl. generated witness-eval code) for nothing.
+    #[expect(clippy::wrong_self_convention)]
     fn as_integer(self) -> Self::IntegerRepresentation;
     fn from_integer(value: Self::IntegerRepresentation) -> Self;
 
@@ -537,6 +546,7 @@ pub trait WitnessComputationalU8: WitnessComputationalInteger<u8> {
 pub trait WitnessComputationalI32: 'static + Sized + Clone + Debug {
     type UnsignedRepresentation: WitnessComputationalU32;
     fn from_unsigned(value: Self::UnsignedRepresentation) -> Self;
+    #[expect(clippy::wrong_self_convention)]
     fn as_unsigned(self) -> Self::UnsignedRepresentation;
     fn widening_product_bits(
         &self,
@@ -693,11 +703,10 @@ impl<F: PrimeField> WitnessComputationalField<F> for F {
     #[inline(always)]
     #[track_caller]
     fn from_integer(value: Self::IntegerRepresentation) -> Self {
-        if F::CHAR_BITS > 32 {
-            Self::from_u32_with_reduction(value)
-        } else {
-            Self::from_u32_with_reduction(value)
-        }
+        // Same path for both CHAR_BITS regimes (unlike the sibling raw-repr
+        // conversions below, which branch): the integer representation here is
+        // u32 either way, so reduction handles both.
+        Self::from_u32_with_reduction(value)
     }
 
     #[inline(always)]

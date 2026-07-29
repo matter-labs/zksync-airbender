@@ -161,6 +161,12 @@ pub struct ResolverDetails<F: PrimeField> {
     pub outputs: BTreeMap<Variable, SingleAssignment<F>>,
 }
 
+impl<F: PrimeField> Default for ResolverDetails<F> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<F: PrimeField> ResolverDetails<F> {
     pub fn new() -> Self {
         Self {
@@ -428,6 +434,12 @@ impl<F: PrimeField> SubexpressionsMapper<F> {
                 }
             }
         }
+    }
+}
+
+impl<F: PrimeField> Default for WitnessGraphCreator<F> {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
