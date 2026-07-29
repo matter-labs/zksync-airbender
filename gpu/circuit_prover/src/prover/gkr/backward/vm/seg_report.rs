@@ -12,16 +12,30 @@
 //!
 //! # The measurement protocol (normative, from the plan)
 //!
-//!   * [`SEG_WARMUP_ITERS`] warmups and [`SEG_TIMING_ITERS`] timed samples PER
-//!     SIDE, alternating candidate/incumbent inside one loop — so a clock or
-//!     thermal drift moves both sides together instead of landing on whichever was
-//!     measured second.
-//!   * The statistic is the MEDIAN RATIO with a 95% percentile bootstrap CI over
-//!     resampled PAIRS ([`SEG_BOOTSTRAP_RESAMPLES`] resamples, seeded, so the
-//!     interval is reproducible from the same samples).
+//!   * The PAIRED path is BALANCED TWO-PAIR BLOCKS (spec §6(a)):
+//!     [`SEG_WARMUP_SUPERBLOCKS`] whole warmup superblocks, then
+//!     [`SEG_TIMED_BLOCKS`] timed blocks of four samples each — `ABBA` or `BAAB`,
+//!     so every block holds one candidate-first and one incumbent-first pair and
+//!     the arm order is not a constant of the experiment. A clock or thermal drift
+//!     still moves both sides together, and an ORDER effect is now identifiable
+//!     instead of being absorbed into the ratio.
+//!   * The statistic is the MEDIAN BLOCK RATIO with a 95% percentile bootstrap CI
+//!     whose resample unit is the BLOCK, stratified jointly on `(orientation,
+//!     incoming transition class)` ([`SEG_BOOTSTRAP_RESAMPLES`] resamples, seeded,
+//!     so the interval is reproducible from the same samples).
+//!   * The ONE interaction statistic is the order contrast
+//!     ([`SegBlockedSamples::order_interaction`]), and it is a HARD GATE: a cell
+//!     whose whole CI does not lie inside ±[`SEG_ORDER_EQUIVALENCE_PCT`]% has NO
+//!     pooled ratio at all — [`SegRatio`] makes that unrepresentable rather than a
+//!     label three consumers could forget to read.
 //!   * **Inversion is `ci_high < 1.0`.** An interval straddling 1.0 means the
 //!     deficit CLOSED; it does not mean it inverted, and
 //!     [`RatioEstimate::inverts`] is the only place that judgement is made.
+//!   * Every timed sample is RETAINED (spec §6(c)): [`record_raw_samples`] writes
+//!     one row per sample, with its block, orientation, incoming class, boundary
+//!     source, order id and the run's full identity, into the run-unique directory
+//!     the launcher reserved. [`time_paired`] and [`PairedSamples::estimate`]
+//!     survive only for the solo/ladder paths that have no incumbent arm.
 //!   * Nothing is poisoned or read back inside a timed loop. The parity ladder's
 //!     per-launch poison + D2H sync is correctness hygiene and costs milliseconds
 //!     per launch; a timing loop that paid it would be measuring the harness.
@@ -110,6 +124,270 @@ pub(super) const SEG_BOOTSTRAP_RESAMPLES: usize = 10_000;
 pub(super) const SEG_BOOTSTRAP_SEED: u64 = 0x5E67_1EA1_0000_0009;
 /// Two-sided 95%.
 pub(super) const SEG_CI_ALPHA: f64 = 0.05;
+
+// ── The physical schedule (spec §6(a) step 1) ────────────────────────────────
+
+/// Timed two-pair BLOCKS per cell: `SEG_TIMING_ITERS` pairs, four samples each.
+pub(super) const SEG_TIMED_BLOCKS: usize = SEG_TIMING_ITERS / 2;
+/// Warmup superblocks. A whole number of superblocks, so the timed region never
+/// begins mid-orientation, and at least [`SEG_WARMUP_ITERS`] pairs per side: two
+/// superblocks are 8 pairs against that floor of 5. The LAST one must be of the
+/// type that leads the timed sequence — that is what supplies the leading
+/// boundary and brings it INSIDE the census.
+pub(super) const SEG_WARMUP_SUPERBLOCKS: usize = 2;
+const _: () = assert!(SEG_WARMUP_SUPERBLOCKS * 4 >= SEG_WARMUP_ITERS);
+const _: () = assert!(
+    SEG_TIMED_BLOCKS == 16,
+    "the 3/5/3/5 census is exact at 16 blocks"
+);
+/// Predeclared equivalence bound on the order contrast, in percent (spec §6(a)
+/// step 5), from results §2.3's 42-cell same-cell p90 of 0.28%, rounded up. It
+/// CANNOT see II-1's predicted ~0.1% reconfiguration term — a passing gate is not
+/// evidence the flap is absent, only that no measurable order coupling is
+/// present. Removing the mechanism is §7.2.1's primary column's job.
+pub(super) const SEG_ORDER_EQUIVALENCE_PCT: f64 = 0.30;
+/// Discovery shortlist band (spec §6(b) stage 1). NOT
+/// [`SEG_SELECTION_TIE_FRACTION`]: 0.1% is an order of magnitude below the
+/// measured repeat noise, so a 0.1% cut can exclude the true winner on one run's
+/// noise and the freeze would make that permanent and invisible. From the
+/// corpus-wide repeated-point spread (0.932% p90 over 620 points), rounded up.
+pub(super) const SEG_DISCOVERY_SHORTLIST_FRACTION: f64 = 0.010;
+/// Cross-process tie band for the §4.5 pin decision, and the same number as the
+/// repeated-level reproduction threshold: the 0.932% p90 is the finest
+/// distinction three processes support.
+pub(super) const SEG_PIN_TIE_FRACTION: f64 = 0.0093;
+/// The predeclared confirmation process count, and the ONE predeclared escalation
+/// count. Nothing else is admissible — "adding a fourth process ad hoc" is
+/// exactly what §6(b) forbids.
+pub(super) const SEG_CONFIRM_PROCESSES: usize = 3;
+pub(super) const SEG_ESCALATION_PROCESSES: usize = 5;
+/// The recorded schedule seed. It chooses only which of the two exactly balanced
+/// mirrors runs; both have the same census.
+pub(super) const SEG_SCHEDULE_SEED: u64 = 0x5E67_1EA1_0000_000A;
+
+/// Which arm a sample times. `A` is the candidate, `B` the incumbent — the
+/// lettering spec §6(a)'s transition census uses.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum SegArm {
+    A,
+    B,
+}
+
+/// A two-pair block's arm order. Both orientations hold one candidate-first pair
+/// and one incumbent-first pair, so every block is internally balanced.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum SegBlockOrientation {
+    /// `A, B, B, A` — starts A, ends A.
+    Abba,
+    /// `B, A, A, B` — starts B, ends B.
+    Baab,
+}
+
+impl SegBlockOrientation {
+    pub(super) fn arms(self) -> [SegArm; 4] {
+        match self {
+            Self::Abba => [SegArm::A, SegArm::B, SegArm::B, SegArm::A],
+            Self::Baab => [SegArm::B, SegArm::A, SegArm::A, SegArm::B],
+        }
+    }
+
+    fn first(self) -> SegArm {
+        self.arms()[0]
+    }
+
+    fn last(self) -> SegArm {
+        self.arms()[3]
+    }
+
+    pub(super) fn label(self) -> &'static str {
+        match self {
+            Self::Abba => "ABBA",
+            Self::Baab => "BAAB",
+        }
+    }
+}
+
+/// A superblock TYPE. Superblocks are a PHYSICAL SCHEDULING CONSTRUCT ONLY — they
+/// exist to make the transition census balance, and are never an inference unit
+/// (spec §6(a) step 3, and the round-6 adjudication in §2.2).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum SegSuperblockType {
+    /// `ABBA` then `BAAB`: starts A, ends B.
+    X,
+    /// `BAAB` then `ABBA`: starts B, ends A.
+    Y,
+}
+
+impl SegSuperblockType {
+    fn blocks(self) -> [SegBlockOrientation; 2] {
+        match self {
+            Self::X => [SegBlockOrientation::Abba, SegBlockOrientation::Baab],
+            Self::Y => [SegBlockOrientation::Baab, SegBlockOrientation::Abba],
+        }
+    }
+
+    fn other(self) -> Self {
+        match self {
+            Self::X => Self::Y,
+            Self::Y => Self::X,
+        }
+    }
+}
+
+/// The incoming-transition class of a block or a sample: the arm that ran last
+/// before it, paired with its own arm. Exactly four values, and it is NOT the
+/// same fact as [`SegBoundarySource`] — the warmup-supplied boundary has a real
+/// direction, and which one it is swaps with the mirror, so folding "warmup" into
+/// this enum would destroy the census the stratification depends on.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub(super) enum SegTransitionClass {
+    SelfA,
+    SelfB,
+    AToB,
+    BToA,
+}
+
+impl SegTransitionClass {
+    pub(super) fn of(previous: SegArm, next: SegArm) -> Self {
+        match (previous, next) {
+            (SegArm::A, SegArm::A) => Self::SelfA,
+            (SegArm::B, SegArm::B) => Self::SelfB,
+            (SegArm::A, SegArm::B) => Self::AToB,
+            (SegArm::B, SegArm::A) => Self::BToA,
+        }
+    }
+
+    pub(super) fn label(self) -> &'static str {
+        match self {
+            Self::SelfA => "self-A",
+            Self::SelfB => "self-B",
+            Self::AToB => "A->B",
+            Self::BToA => "B->A",
+        }
+    }
+
+    fn parse(text: &str) -> Self {
+        match text {
+            "self-A" => Self::SelfA,
+            "self-B" => Self::SelfB,
+            "A->B" => Self::AToB,
+            "B->A" => Self::BToA,
+            other => panic!("transition class {other:?}"),
+        }
+    }
+}
+
+/// Where a block's incoming boundary came from. Emitted separately from the class
+/// so the 15-internal-plus-1 accounting can be re-verified.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum SegBoundarySource {
+    Internal,
+    WarmupSupplied,
+}
+
+impl SegBoundarySource {
+    pub(super) fn label(self) -> &'static str {
+        match self {
+            Self::Internal => "internal",
+            Self::WarmupSupplied => "warmup_supplied",
+        }
+    }
+}
+
+/// One planned block: its orientation, its superblock, and the incoming boundary
+/// it will receive.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) struct SegPlannedBlock {
+    pub(super) block_id: usize,
+    pub(super) superblock_id: usize,
+    pub(super) orientation: SegBlockOrientation,
+    pub(super) incoming: SegTransitionClass,
+    pub(super) boundary_source: SegBoundarySource,
+}
+
+/// The cell's plan: warmup superblock types, timed superblock types, and the 16
+/// planned blocks with their boundary census.
+#[derive(Clone, Debug)]
+pub(super) struct SegSchedule {
+    pub(super) seed: u64,
+    pub(super) warmup: Vec<SegSuperblockType>,
+    pub(super) timed: Vec<SegSuperblockType>,
+    pub(super) blocks: Vec<SegPlannedBlock>,
+}
+
+/// The base superblock sequence (spec §6(a) step 1).
+///
+/// Of the 256 length-8 arrangements, **30 balance all four transition
+/// categories** once the warmup supplies the leading boundary. This is the one
+/// closest to strict alternation (a single adjacent repeat), which also minimizes
+/// same-orientation runs. Strict alternation itself FAILS at n = 8: it balances
+/// self directions only when n is odd (n=7 -> 3/3, n=8 -> 4/3, n=9 -> 4/4), and
+/// `SEG_TIMING_ITERS = 32` gives exactly 8 superblocks.
+const SEG_SUPERBLOCK_SEQUENCE: [SegSuperblockType; 8] = {
+    use SegSuperblockType::{X, Y};
+    [X, Y, X, Y, Y, X, Y, X]
+};
+
+/// Build the cell's schedule. The seed chooses only the mirror; both mirrors are
+/// exactly balanced (superblock-level self 3/3 and cross 1/1; block-level joint
+/// census 3/5/3/5; sample-level 11/11/21/21 over 64 transitions), so this is
+/// reproducibility, not randomization of the balance.
+pub(super) fn seg_schedule(seed: u64) -> SegSchedule {
+    let mirror = SplitMix64(seed).below(2) == 1;
+    let timed: Vec<SegSuperblockType> = SEG_SUPERBLOCK_SEQUENCE
+        .iter()
+        .map(|kind| if mirror { kind.other() } else { *kind })
+        .collect();
+    let lead = timed[0];
+    // The last warmup superblock MUST be of the leading timed type: that is what
+    // supplies the leading boundary and brings it inside the census. The
+    // preceding warmup superblocks alternate away from it so the warmup itself is
+    // not a run of one type.
+    let mut warmup = Vec::with_capacity(SEG_WARMUP_SUPERBLOCKS);
+    for slot in 0..SEG_WARMUP_SUPERBLOCKS {
+        let from_end = SEG_WARMUP_SUPERBLOCKS - 1 - slot;
+        warmup.push(if from_end % 2 == 0 {
+            lead
+        } else {
+            lead.other()
+        });
+    }
+
+    let orientations: Vec<(usize, SegBlockOrientation)> = timed
+        .iter()
+        .enumerate()
+        .flat_map(|(sb, kind)| kind.blocks().into_iter().map(move |o| (sb, o)))
+        .collect();
+    // The warmup's final sample is the last arm of its final superblock's final
+    // block, so the leading boundary is data with a real direction.
+    let mut previous = warmup
+        .last()
+        .expect("at least one warmup superblock")
+        .blocks()[1]
+        .last();
+    let mut blocks = Vec::with_capacity(orientations.len());
+    for (block_id, (superblock_id, orientation)) in orientations.into_iter().enumerate() {
+        blocks.push(SegPlannedBlock {
+            block_id,
+            superblock_id,
+            orientation,
+            incoming: SegTransitionClass::of(previous, orientation.first()),
+            boundary_source: if block_id == 0 {
+                SegBoundarySource::WarmupSupplied
+            } else {
+                SegBoundarySource::Internal
+            },
+        });
+        previous = orientation.last();
+    }
+    assert_eq!(blocks.len(), SEG_TIMED_BLOCKS, "16 two-pair blocks");
+    SegSchedule {
+        seed,
+        warmup,
+        timed,
+        blocks,
+    }
+}
 
 /// Rows the parity twin of every timed cell evaluates.
 ///
@@ -291,6 +569,11 @@ impl PairedSamples {
 
     /// The median ratio and its percentile bootstrap interval, resampling PAIRS.
     ///
+    /// **LEGACY IID PROTOCOL — not admissible for a headline; the paired path is
+    /// [`SegBlockedSamples::estimate_stratified`].** It resamples adjacent pairs
+    /// independently, which has no orientation balance to preserve because
+    /// [`time_paired`] produced none.
+    ///
     /// Pairs rather than each side independently: the two sides share a clock, a
     /// thermal state and a memory state at every index, and resampling them apart
     /// would throw that pairing away and widen the interval with variance the
@@ -343,6 +626,12 @@ fn percentile(sorted: &[f64], q: f64) -> f64 {
 /// [`SEG_TIMING_ITERS`] iterations of `candidate` then `incumbent`, each inside its
 /// own event pair.
 ///
+/// **LEGACY IID PROTOCOL — not admissible for a headline; the paired path is
+/// [`time_paired_blocked`].** Kept for the solo/ladder callers that have no
+/// incumbent arm to balance against: its fixed candidate-then-incumbent order gives
+/// every candidate sample an `A->B` predecessor and every incumbent sample a `B->A`
+/// one, so an order effect is not identifiable from its samples at all.
+///
 /// Neither closure may poison, download or synchronize: the loop's cost must be the
 /// kernels' cost. Callers stage everything a launch reads BEFORE this is entered.
 pub(super) fn time_paired(
@@ -379,6 +668,105 @@ pub(super) fn time_paired(
     })
 }
 
+/// One timed block's four samples, with everything the analyses need to be
+/// reproduced after the fact.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct SegBlockSample {
+    pub(super) plan: SegPlannedBlock,
+    /// The first timed sample index of this block, so an order effect tied to
+    /// elapsed time stays visible in the raw data.
+    pub(super) first_order_id: usize,
+    /// The block's two candidate samples, in the order they ran.
+    pub(super) candidate_us: [f64; 2],
+    /// The block's two incumbent samples, in the order they ran.
+    pub(super) incumbent_us: [f64; 2],
+}
+
+impl SegBlockSample {
+    /// `cand_mean / inc_mean` (spec §6(a) step 4). Means over the block's two
+    /// samples per arm, so the block is internally orientation-balanced.
+    pub(super) fn ratio(&self) -> f64 {
+        let cand = (self.candidate_us[0] + self.candidate_us[1]) / 2.0;
+        let inc = (self.incumbent_us[0] + self.incumbent_us[1]) / 2.0;
+        cand / inc
+    }
+
+    pub(super) fn candidate_mean(&self) -> f64 {
+        (self.candidate_us[0] + self.candidate_us[1]) / 2.0
+    }
+
+    pub(super) fn incumbent_mean(&self) -> f64 {
+        (self.incumbent_us[0] + self.incumbent_us[1]) / 2.0
+    }
+}
+
+/// Every timed block of one cell, plus the schedule that produced them.
+#[derive(Clone, Debug)]
+pub(super) struct SegBlockedSamples {
+    pub(super) schedule: SegSchedule,
+    pub(super) blocks: Vec<SegBlockSample>,
+}
+
+/// Seeded balanced two-pair blocks (spec §6(a) steps 1-2).
+///
+/// Neither closure may poison, download or synchronize: the loop's cost must be
+/// the kernels' cost. Callers stage everything a launch reads, and apply the
+/// pair's `CarveoutPlan`, BEFORE this is entered.
+pub(super) fn time_paired_blocked(
+    stream: &CudaStream,
+    mut candidate: impl FnMut() -> CudaResult<()>,
+    mut incumbent: impl FnMut() -> CudaResult<()>,
+    schedule: &SegSchedule,
+) -> CudaResult<SegBlockedSamples> {
+    let mut run = |arm: SegArm| -> CudaResult<()> {
+        match arm {
+            SegArm::A => candidate(),
+            SegArm::B => incumbent(),
+        }
+    };
+    // Warmups are complete superblocks, and the last one has the required type.
+    for kind in &schedule.warmup {
+        for orientation in kind.blocks() {
+            for arm in orientation.arms() {
+                run(arm)?;
+            }
+        }
+    }
+    stream.synchronize()?;
+
+    let start = CudaEvent::create()?;
+    let end = CudaEvent::create()?;
+    let mut blocks = Vec::with_capacity(schedule.blocks.len());
+    let mut order_id = 0usize;
+    for plan in &schedule.blocks {
+        let first_order_id = order_id;
+        let mut candidate_us = Vec::with_capacity(2);
+        let mut incumbent_us = Vec::with_capacity(2);
+        for arm in plan.orientation.arms() {
+            start.record(stream)?;
+            run(arm)?;
+            end.record(stream)?;
+            stream.synchronize()?;
+            let micros = f64::from(elapsed_time(&start, &end)?) * 1_000.0;
+            match arm {
+                SegArm::A => candidate_us.push(micros),
+                SegArm::B => incumbent_us.push(micros),
+            }
+            order_id += 1;
+        }
+        blocks.push(SegBlockSample {
+            plan: *plan,
+            first_order_id,
+            candidate_us: [candidate_us[0], candidate_us[1]],
+            incumbent_us: [incumbent_us[0], incumbent_us[1]],
+        });
+    }
+    Ok(SegBlockedSamples {
+        schedule: schedule.clone(),
+        blocks,
+    })
+}
+
 /// One side alone, same warmup and sample discipline. Used where the coordinate has
 /// no incumbent launch to pair against — the matrix still records a wall time for
 /// every cell.
@@ -401,6 +789,1228 @@ pub(super) fn time_solo(
         samples.push(f64::from(elapsed_time(&start, &end)?) * 1_000.0);
     }
     Ok(samples)
+}
+
+// ── The joint-stratified block bootstrap (spec §6(a) steps 3-6) ───────────────
+
+/// The four joint strata (spec §6(a) step 3). An `ABBA` block starts with a
+/// candidate sample, so its incoming class is `self-A` or `B->A`; a `BAAB` block
+/// symmetrically admits only `self-B` or `A->B`. Hence exactly four non-empty
+/// cells, and the resample preserves BOTH the 8/8 orientation balance and the
+/// 3/5/3/5 boundary composition in every replicate by construction.
+pub(super) const SEG_JOINT_STRATA: [(SegBlockOrientation, SegTransitionClass); 4] = [
+    (SegBlockOrientation::Abba, SegTransitionClass::SelfA),
+    (SegBlockOrientation::Abba, SegTransitionClass::BToA),
+    (SegBlockOrientation::Baab, SegTransitionClass::SelfB),
+    (SegBlockOrientation::Baab, SegTransitionClass::AToB),
+];
+
+/// The order interaction (spec §6(a) step 5) — the ONE interaction statistic.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct SegOrderInteraction {
+    pub(super) delta_order_pct: f64,
+    pub(super) ci_low_pct: f64,
+    pub(super) ci_high_pct: f64,
+}
+
+impl SegOrderInteraction {
+    /// The HARD validity gate: the ENTIRE CI must lie within the predeclared
+    /// bound, which is what an equivalence test requires. Not the point estimate,
+    /// and not "the interval overlaps the bound".
+    pub(super) fn passes(&self) -> bool {
+        self.ci_low_pct >= -SEG_ORDER_EQUIVALENCE_PCT
+            && self.ci_high_pct <= SEG_ORDER_EQUIVALENCE_PCT
+    }
+}
+
+impl SegBlockedSamples {
+    pub(super) fn block_ratios(&self) -> Vec<f64> {
+        self.blocks.iter().map(SegBlockSample::ratio).collect()
+    }
+
+    /// Observed joint-stratum membership, as block indices per stratum.
+    fn strata(&self) -> [Vec<usize>; 4] {
+        let mut out: [Vec<usize>; 4] = Default::default();
+        for (slot, (orientation, class)) in SEG_JOINT_STRATA.iter().enumerate() {
+            for (index, block) in self.blocks.iter().enumerate() {
+                if block.plan.orientation == *orientation && block.plan.incoming == *class {
+                    out[slot].push(index);
+                }
+            }
+        }
+        out
+    }
+
+    /// The observed census, for the property tests and the emitted metadata.
+    pub(super) fn stratum_census(&self) -> [usize; 4] {
+        let s = self.strata();
+        [s[0].len(), s[1].len(), s[2].len(), s[3].len()]
+    }
+
+    /// The point estimate: the MEDIAN BLOCK RATIO over the 16 observed blocks.
+    pub(super) fn point_ratio(&self) -> f64 {
+        median(&self.block_ratios())
+    }
+
+    /// One replicate's block indices, as `(stratum slot, block index)` pairs:
+    /// resampled with replacement WITHIN each stratum at its observed size.
+    /// Factored out so a test can assert the COMPOSITION of a replicate rather
+    /// than only of the observed set.
+    fn resample_indices(rng: &mut SplitMix64, strata: &[Vec<usize>; 4]) -> Vec<(usize, usize)> {
+        let mut out = Vec::with_capacity(SEG_TIMED_BLOCKS);
+        for (slot, indices) in strata.iter().enumerate() {
+            for _ in 0..indices.len() {
+                out.push((slot, indices[rng.below(indices.len())]));
+            }
+        }
+        out
+    }
+
+    /// The per-replicate stratum counts, for the composition property test.
+    pub(super) fn replicate_stratum_counts(&self, replicates: usize) -> Vec<[usize; 4]> {
+        let strata = self.strata();
+        let mut rng = SplitMix64(SEG_BOOTSTRAP_SEED);
+        (0..replicates)
+            .map(|_| {
+                let mut counts = [0usize; 4];
+                for (slot, _) in Self::resample_indices(&mut rng, &strata) {
+                    counts[slot] += 1;
+                }
+                counts
+            })
+            .collect()
+    }
+
+    /// `(pooled median, ABBA median, BAAB median)` per replicate.
+    fn replicates(&self) -> Vec<(f64, f64, f64)> {
+        let strata = self.strata();
+        let ratios = self.block_ratios();
+        let mut rng = SplitMix64(SEG_BOOTSTRAP_SEED);
+        let mut out = Vec::with_capacity(SEG_BOOTSTRAP_RESAMPLES);
+        for _ in 0..SEG_BOOTSTRAP_RESAMPLES {
+            let mut all = Vec::with_capacity(SEG_TIMED_BLOCKS);
+            let mut abba = Vec::new();
+            let mut baab = Vec::new();
+            for (slot, index) in Self::resample_indices(&mut rng, &strata) {
+                let ratio = ratios[index];
+                all.push(ratio);
+                if SEG_JOINT_STRATA[slot].0 == SegBlockOrientation::Abba {
+                    abba.push(ratio);
+                } else {
+                    baab.push(ratio);
+                }
+            }
+            out.push((median(&all), median(&abba), median(&baab)));
+        }
+        out
+    }
+
+    /// The percentile interval on the median block ratio, from the
+    /// joint-stratified replicates. Replaces [`PairedSamples::estimate`]'s IID
+    /// resampling of adjacent pairs, which would destroy the orientation balance
+    /// the design just paid for.
+    pub(super) fn estimate_stratified(&self) -> RatioEstimate {
+        let mut pooled: Vec<f64> = self.replicates().iter().map(|(all, _, _)| *all).collect();
+        pooled.sort_by(|lhs, rhs| lhs.partial_cmp(rhs).expect("finite ratio"));
+        RatioEstimate {
+            median_ratio: self.point_ratio(),
+            ci_low: percentile(&pooled, SEG_CI_ALPHA / 2.0),
+            ci_high: percentile(&pooled, 1.0 - SEG_CI_ALPHA / 2.0),
+        }
+    }
+
+    /// `Delta_order = 100 * (median(ratio | ABBA) / median(ratio | BAAB) - 1)`,
+    /// with its CI from the SAME joint-stratified replicates, so the contrast
+    /// costs nothing extra. The four strata are aggregated back up by orientation
+    /// (`ABBA` = 3 + 5, `BAAB` = 3 + 5). This is the ONLY interaction statistic.
+    pub(super) fn order_interaction(&self) -> SegOrderInteraction {
+        let ratios = self.block_ratios();
+        let by = |want: SegBlockOrientation| -> Vec<f64> {
+            self.blocks
+                .iter()
+                .enumerate()
+                .filter(|(_, block)| block.plan.orientation == want)
+                .map(|(index, _)| ratios[index])
+                .collect()
+        };
+        let point = 100.0
+            * (median(&by(SegBlockOrientation::Abba)) / median(&by(SegBlockOrientation::Baab))
+                - 1.0);
+        let mut deltas: Vec<f64> = self
+            .replicates()
+            .iter()
+            .map(|(_, abba, baab)| 100.0 * (abba / baab - 1.0))
+            .collect();
+        deltas.sort_by(|lhs, rhs| lhs.partial_cmp(rhs).expect("finite delta"));
+        SegOrderInteraction {
+            delta_order_pct: point,
+            ci_low_pct: percentile(&deltas, SEG_CI_ALPHA / 2.0),
+            ci_high_pct: percentile(&deltas, 1.0 - SEG_CI_ALPHA / 2.0),
+        }
+    }
+
+    /// The four order-conditional medians §7.2.1's secondary column reports.
+    pub(super) fn order_conditional_medians(&self) -> [f64; 4] {
+        let pick = |want: SegBlockOrientation, arm: SegArm| -> f64 {
+            let values: Vec<f64> = self
+                .blocks
+                .iter()
+                .filter(|block| block.plan.orientation == want)
+                .map(|block| match arm {
+                    SegArm::A => block.candidate_mean(),
+                    SegArm::B => block.incumbent_mean(),
+                })
+                .collect();
+            median(&values)
+        };
+        [
+            pick(SegBlockOrientation::Abba, SegArm::A),
+            pick(SegBlockOrientation::Abba, SegArm::B),
+            pick(SegBlockOrientation::Baab, SegArm::A),
+            pick(SegBlockOrientation::Baab, SegArm::B),
+        ]
+    }
+}
+
+/// A paired cell's ratio WITH its order-gate verdict fused in, so a
+/// materially order-coupled cell has no selectable ratio at all.
+///
+/// §6(a) step 6 is an absolute: "If any part of the CI falls outside, do not pool
+/// and do not assert the headline." Expressing that as a label would leave three
+/// consumers — `select_winner`, the §6(b) confirmation and the §4.5 pin
+/// aggregation — each free to forget it. Here the only way to obtain a ratio for
+/// any decision is [`Self::selectable`], which yields `None` for `OrderInvalid`.
+#[derive(Clone, Copy, Debug)]
+pub(super) enum SegRatio {
+    /// Solo-timed: no incumbent arm, so no ratio exists.
+    Solo,
+    /// Paired, and the whole `Delta_order` CI lies inside +/-0.30%.
+    Valid {
+        estimate: RatioEstimate,
+        order: SegOrderInteraction,
+        /// `[ABBA candidate, ABBA incumbent, BAAB candidate, BAAB incumbent]`, in
+        /// microseconds. Carried on the VALID variant too, because §7.2.1's
+        /// secondary column is required to report "its four order-conditional
+        /// medians" and that column's cells normally PASS the gate — a field that
+        /// existed only on `OrderInvalid` would leave the requirement homeless.
+        conditional_medians: [f64; 4],
+    },
+    /// Paired, but the order gate FAILED.
+    ///
+    /// **It carries NO `RatioEstimate`.** §6(a) step 6 says "do not POOL and do not
+    /// assert the headline", and a pooled median block ratio is precisely the pooled
+    /// quantity the gate forbids — storing one would leave a publishable number one
+    /// field access away, which is how a label-based gate leaks. What is published
+    /// instead is DIAGNOSTIC: the order contrast that failed, and the four
+    /// order-conditional medians that show the coupling. A reader can see the effect
+    /// and cannot quote a ratio.
+    OrderInvalid {
+        order: SegOrderInteraction,
+        /// `[ABBA candidate, ABBA incumbent, BAAB candidate, BAAB incumbent]`, in
+        /// microseconds — the shape of the coupling, not a ratio.
+        conditional_medians: [f64; 4],
+    },
+}
+
+impl SegRatio {
+    /// Build from a completed paired cell. The estimate is COMPUTED but DISCARDED
+    /// when the gate fails, so no pooled number survives into the invalid variant.
+    pub(super) fn of(samples: &SegBlockedSamples) -> Self {
+        let order = samples.order_interaction();
+        if order.passes() {
+            Self::Valid {
+                estimate: samples.estimate_stratified(),
+                order,
+                conditional_medians: samples.order_conditional_medians(),
+            }
+        } else {
+            Self::OrderInvalid {
+                order,
+                conditional_medians: samples.order_conditional_medians(),
+            }
+        }
+    }
+
+    /// The ONLY accessor any decision may use.
+    pub(super) fn selectable(&self) -> Option<(RatioEstimate, SegOrderInteraction)> {
+        match self {
+            Self::Valid {
+                estimate, order, ..
+            } => Some((*estimate, *order)),
+            _ => None,
+        }
+    }
+
+    /// The pooled estimate, for CSV and table rendering. `None` for an
+    /// order-coupled cell, because none exists — the ratio columns render `-`.
+    pub(super) fn reported_estimate(&self) -> Option<RatioEstimate> {
+        match self {
+            Self::Valid { estimate, .. } => Some(*estimate),
+            _ => None,
+        }
+    }
+
+    /// The order diagnostics, which exist for EVERY paired cell and are always
+    /// emitted — that is how an order-coupled cell is visible without being
+    /// quotable.
+    pub(super) fn order(&self) -> Option<SegOrderInteraction> {
+        match self {
+            Self::Solo => None,
+            Self::Valid { order, .. } | Self::OrderInvalid { order, .. } => Some(*order),
+        }
+    }
+
+    /// Available for EVERY paired cell, valid or not.
+    pub(super) fn conditional_medians(&self) -> Option<[f64; 4]> {
+        match self {
+            Self::Solo => None,
+            Self::Valid {
+                conditional_medians,
+                ..
+            }
+            | Self::OrderInvalid {
+                conditional_medians,
+                ..
+            } => Some(*conditional_medians),
+        }
+    }
+
+    pub(super) fn verdict(&self) -> &'static str {
+        match self {
+            Self::Solo => "-",
+            Self::OrderInvalid { .. } => "ORDER-COUPLED",
+            Self::Valid { estimate, .. } => estimate.verdict(),
+        }
+    }
+}
+
+// ── The decision rule (spec §6(b)) ───────────────────────────────────────────
+
+/// The verdict on a frozen shape (spec §6(b)).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum SegConfirmOutcome {
+    Inverted,
+    NotInverted,
+    Unresolved,
+}
+
+impl SegConfirmOutcome {
+    pub(super) fn label(self) -> &'static str {
+        match self {
+            Self::Inverted => "INVERTED",
+            Self::NotInverted => "NOT INVERTED",
+            Self::Unresolved => "UNRESOLVED",
+        }
+    }
+}
+
+/// What §6(b) requires a confirmed cell to report — as an ENUM, so an unresolved
+/// cell cannot carry pooled headline numbers.
+///
+/// A struct with `median_ratio` / `min_ratio` / `max_ratio` plus an `outcome` label
+/// computes and stores the pooled summary and *then* marks it unresolved, leaving a
+/// publishable number one field access away. §6(a) step 6 says "do not POOL and do
+/// not assert the headline" — so the unresolved variant simply has no such fields.
+#[derive(Clone, Debug)]
+pub(super) enum SegConfirmSummary {
+    /// All processes' order gates passed AND their intervals agree in direction.
+    /// The ONLY variant with pooled numbers.
+    Resolved {
+        /// `true` = INVERTED, `false` = NOT INVERTED. Both require unanimity.
+        inverted: bool,
+        process_ratios: Vec<f64>,
+        median_ratio: f64,
+        min_ratio: f64,
+        max_ratio: f64,
+        intervals: Vec<RatioEstimate>,
+        order: Vec<SegOrderInteraction>,
+        conditional_medians: Vec<[f64; 4]>,
+    },
+    /// No pooled number exists, and none is computed. Diagnostics only.
+    Unresolved {
+        reason: String,
+        /// Per process: `Some` where that process's order gate passed, `None` where
+        /// it did not. Deliberately NOT reduced to a median.
+        per_process: Vec<Option<RatioEstimate>>,
+        order: Vec<SegOrderInteraction>,
+        conditional_medians: Vec<[f64; 4]>,
+    },
+}
+
+impl SegConfirmSummary {
+    pub(super) fn outcome(&self) -> SegConfirmOutcome {
+        match self {
+            Self::Resolved { inverted: true, .. } => SegConfirmOutcome::Inverted,
+            Self::Resolved {
+                inverted: false, ..
+            } => SegConfirmOutcome::NotInverted,
+            Self::Unresolved { .. } => SegConfirmOutcome::Unresolved,
+        }
+    }
+}
+
+/// **The predeclared decision rule (spec §6(b)), verbatim:**
+///
+/// > *For a frozen shape, let each of the three confirmation processes contribute
+/// > one stratified-bootstrap interval (§6(a) step 4) and one order-interaction
+/// > verdict (§6(a) step 6). The shape is classified into exactly one of three
+/// > outcomes:*
+/// >
+/// > - ***INVERTED** — all three intervals lie **strictly below 1.0** and all
+/// >   three interaction gates pass. Report inverted; quote the median of the
+/// >   three point ratios with the across-process min and max.*
+/// > - ***NOT INVERTED** — all three intervals lie **strictly above 1.0** and all
+/// >   three interaction gates pass. Report not inverted, with the same
+/// >   three-number summary.*
+/// > - ***UNRESOLVED** — every other case: any interval straddling 1.0, any
+/// >   mixture of directions across the three, or any failed interaction gate.
+/// >   Report UNRESOLVED.*
+/// >
+/// > *An UNRESOLVED outcome is never silently coerced into either verdict — not
+/// > by majority, not by mean, not by discarding the odd run, and not by adding a
+/// > fourth process ad hoc. It triggers the predeclared escalation: **either** run
+/// > a predeclared larger process count (five, decided before looking further)
+/// > **or** investigate the disagreement as a defect, and record which was chosen
+/// > and why. Selection stability — whether discovery's argmin reappears as the
+/// > best shape in each confirmation process — is recorded separately and never
+/// > substituted for this rule.*
+///
+/// NOT INVERTED requires the SAME unanimity as INVERTED, so a genuinely ambiguous
+/// cell cannot be reported as a clean negative.
+pub(super) fn classify_confirmation(
+    runs: &[(RatioEstimate, SegOrderInteraction)],
+) -> SegConfirmOutcome {
+    // EXACTLY the predeclared counts. Four processes is the ad-hoc addition the
+    // rule forbids, so it is rejected here rather than tolerated.
+    assert!(
+        runs.len() == SEG_CONFIRM_PROCESSES || runs.len() == SEG_ESCALATION_PROCESSES,
+        "the rule admits exactly {SEG_CONFIRM_PROCESSES} processes, or the \
+         predeclared escalation to {SEG_ESCALATION_PROCESSES}; got {}",
+        runs.len()
+    );
+    if runs.iter().any(|(_, order)| !order.passes()) {
+        return SegConfirmOutcome::Unresolved;
+    }
+    if runs.iter().all(|(estimate, _)| estimate.ci_high < 1.0) {
+        SegConfirmOutcome::Inverted
+    } else if runs.iter().all(|(estimate, _)| estimate.ci_low > 1.0) {
+        SegConfirmOutcome::NotInverted
+    } else {
+        SegConfirmOutcome::Unresolved
+    }
+}
+
+pub(super) fn summarize_confirmation(processes: &[SegBlockedSamples]) -> SegConfirmSummary {
+    // Every process contributes its ratio through `SegRatio`, so an order-coupled
+    // process yields `None` and NOTHING pools it.
+    let ratios: Vec<SegRatio> = processes.iter().map(SegRatio::of).collect();
+    let order: Vec<SegOrderInteraction> =
+        ratios.iter().map(|r| r.order().expect("paired")).collect();
+    let conditional_medians: Vec<[f64; 4]> = ratios
+        .iter()
+        .map(|r| r.conditional_medians().expect("paired"))
+        .collect();
+    let per_process: Vec<Option<RatioEstimate>> =
+        ratios.iter().map(|r| r.reported_estimate()).collect();
+    assert!(
+        processes.len() == SEG_CONFIRM_PROCESSES || processes.len() == SEG_ESCALATION_PROCESSES,
+        "the rule admits exactly {SEG_CONFIRM_PROCESSES} processes, or the \
+         predeclared escalation to {SEG_ESCALATION_PROCESSES}; got {}",
+        processes.len()
+    );
+    // Any failed gate, or any missing interval, is UNRESOLVED — and the pooled
+    // fields are never computed on that path.
+    if per_process.iter().any(Option::is_none) {
+        let failed: Vec<usize> = per_process
+            .iter()
+            .enumerate()
+            .filter(|(_, e)| e.is_none())
+            .map(|(i, _)| i)
+            .collect();
+        return SegConfirmSummary::Unresolved {
+            reason: format!("order gate failed in process(es) {failed:?}"),
+            per_process,
+            order,
+            conditional_medians,
+        };
+    }
+    let intervals: Vec<RatioEstimate> = per_process.iter().map(|e| e.expect("checked")).collect();
+    let inverted = intervals.iter().all(|e| e.ci_high < 1.0);
+    let not_inverted = intervals.iter().all(|e| e.ci_low > 1.0);
+    if !inverted && !not_inverted {
+        return SegConfirmSummary::Unresolved {
+            reason: "intervals straddle 1.0 or disagree in direction".to_owned(),
+            per_process,
+            order,
+            conditional_medians,
+        };
+    }
+    let process_ratios: Vec<f64> = intervals.iter().map(|e| e.median_ratio).collect();
+    SegConfirmSummary::Resolved {
+        inverted,
+        median_ratio: median(&process_ratios),
+        min_ratio: process_ratios.iter().copied().fold(f64::MAX, f64::min),
+        max_ratio: process_ratios.iter().copied().fold(f64::MIN, f64::max),
+        process_ratios,
+        intervals,
+        order,
+        conditional_medians,
+    }
+}
+
+// ── Run identity and raw-sample emission (spec §6(c)) ────────────────────────
+
+/// Everything that identifies the bytes a number came from. A resolved path plus
+/// a byte size does NOT identify the bytes that were timed, because changing
+/// `AB_GKR_SEG_CONT_MAXNREG` reruns the build script without creating a distinct
+/// Cargo unit hash or output directory.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct SegRunMeta {
+    pub(super) run_id: String,
+    pub(super) commit: String,
+    pub(super) feature_set: String,
+    /// The STAGE this process is (`natural-r0-primary-2`, `40-3`,
+    /// `natural-repeat-1`). Distinct from `pin_level`, which is the compiled
+    /// qualifier: conflating them made a row's compiled pin unrecoverable.
+    pub(super) run_label: String,
+    /// The COMPILED qualifier the artifact carries: `natural`, `48`, `40`, `56`,
+    /// `control`, or `unrecorded`.
+    pub(super) pin_level: String,
+    pub(super) archive_sha256: String,
+    /// The TEST BINARY's hash. The harness is source too, so a row that names only
+    /// its archive cannot prove which runner produced it.
+    pub(super) test_binary_sha256: String,
+    pub(super) toolkit: String,
+    pub(super) device: String,
+    pub(super) seed: u64,
+}
+
+impl SegRunMeta {
+    /// From the campaign's environment.
+    ///
+    /// **A RESERVATION IS REQUIRED for any paired cell** — chosen over "unique
+    /// non-publishable storage for unrecorded runs" because every caller of
+    /// `measure_shape`'s paired branch is a campaign cell, and a raw file nobody can
+    /// trace to an artifact is a number §7.3 criterion 4c forbids publishing. So
+    /// refusing to run is more honest than writing an untraceable file, and the cost
+    /// is one `seg_env` call in each block that reaches a paired cell.
+    ///
+    /// `BWD_SEG_REQUIRE_PROVENANCE=1` additionally makes the metadata fields fatal
+    /// rather than `unrecorded`. Since `seg_env` sets it and `seg_env` is also what
+    /// reserves the run directory, in practice **every** run that reaches a paired
+    /// cell is fully identified — the `unrecorded` defaults survive only for a
+    /// non-paired caller (nothing in this pass) and must never appear in a published
+    /// row. Resolving this also PRINTS the run identity once, so a log is
+    /// self-identifying and a reader never has to match a log to a run directory by
+    /// timestamp.
+    ///
+    /// **There is no ad-hoc unrecorded run of a paired cell.** `record_raw_samples`
+    /// requires the reserved directory `seg_env` creates, so a paired cell without
+    /// `seg_env` PANICS rather than producing untraceable rows — that is the
+    /// mandatory-reservation policy, chosen deliberately (see the doc above). The
+    /// `unrecorded` defaults below therefore describe only a hypothetical non-paired
+    /// caller; nothing in this pass is one, and such a value must never appear in a
+    /// published row.
+    pub(super) fn from_env() -> Self {
+        let required = std::env::var_os("BWD_SEG_REQUIRE_PROVENANCE").is_some();
+        // NOTE: `run_label` and `pin_level` are separate variables on purpose; see
+        // the field docs. `seg_env <run_label> <pin_level>` sets both.
+        let get = |key: &str, fallback: &str| -> String {
+            match std::env::var(key) {
+                Ok(value) => value,
+                Err(_) if !required => fallback.to_owned(),
+                Err(_) => panic!(
+                    "{key} must be set under BWD_SEG_REQUIRE_PROVENANCE=1: every \
+                     published number is identified by its artifact (§7.3 4c)"
+                ),
+            }
+        };
+        Self {
+            run_id: get("BWD_SEG_RUN_ID", "unrecorded"),
+            commit: get("BWD_SEG_RUN_COMMIT", "unrecorded"),
+            feature_set: get("BWD_SEG_RUN_FEATURES", "unrecorded"),
+            run_label: get("BWD_SEG_RUN_LABEL", "unrecorded"),
+            pin_level: get("BWD_SEG_RUN_PIN_LEVEL", "unrecorded"),
+            archive_sha256: get("BWD_SEG_RUN_ARCHIVE_SHA256", "unrecorded"),
+            test_binary_sha256: get("BWD_SEG_RUN_TEST_BINARY_SHA256", "unrecorded"),
+            toolkit: get("BWD_SEG_RUN_TOOLKIT", "unrecorded"),
+            device: get("BWD_SEG_RUN_DEVICE", "unrecorded"),
+            seed: SEG_SCHEDULE_SEED,
+        }
+    }
+
+    /// One process, one meta. Read on every paired cell, so it is resolved once —
+    /// and announced once, into the run's own log.
+    pub(super) fn current() -> &'static Self {
+        static META: std::sync::OnceLock<SegRunMeta> = std::sync::OnceLock::new();
+        META.get_or_init(|| {
+            let meta = Self::from_env();
+            eprintln!(
+                "[seg-run] run_id={} run_label={} pin_level={} archive_sha256={} \
+                 test_binary_sha256={} commit={} dir={}",
+                meta.run_id,
+                meta.run_label,
+                meta.pin_level,
+                meta.archive_sha256,
+                meta.test_binary_sha256,
+                meta.commit,
+                seg_run_dir(&meta).display(),
+            );
+            meta
+        })
+    }
+
+    fn fields(&self) -> [&str; 9] {
+        [
+            &self.run_id,
+            &self.commit,
+            &self.feature_set,
+            &self.run_label,
+            &self.pin_level,
+            &self.archive_sha256,
+            &self.test_binary_sha256,
+            &self.toolkit,
+            &self.device,
+        ]
+    }
+}
+
+pub(super) const SEG_RAW_SAMPLES_TSV: &str = "seg_raw_samples.tsv";
+pub(super) const SEG_FROZEN_CELLS_TSV: &str = "seg_frozen_cells.tsv";
+
+/// TAB-separated, because a metadata field may contain a comma (a device name, a
+/// toolkit string) and unquoted comma splitting would silently shift every later
+/// column. Tabs are asserted absent on write.
+pub(super) const SEG_RAW_TSV_HEADER: &str = "run_id\tcommit\tfeature_set\trun_label\t\
+pin_level\tarchive_sha256\ttest_binary_sha256\ttoolkit\tdevice\tseed\tcell\tblock_id\t\
+superblock_id\torientation\tincoming_class\tboundary_source\tfirst_order_id\torder_id\t\
+arm\tsample_us\n";
+
+/// A UNIQUE directory per process invocation, so repeats accumulate instead of
+/// overwriting. A median-of-three must never be reconstructed by hand from
+/// overwritten summaries.
+pub(super) fn seg_run_dir(meta: &SegRunMeta) -> PathBuf {
+    // The harness does NOT invent this path: the launcher RESERVES it with `mkdir`
+    // (an atomic claim; a read-then-write counter is not one) and passes it in.
+    // Deriving it here too would be a second source of truth that could disagree.
+    let _ = meta;
+    PathBuf::from(
+        std::env::var("BWD_SEG_RUN_DIR")
+            .unwrap_or_else(|_| panic!("BWD_SEG_RUN_DIR must name the reserved run directory")),
+    )
+}
+
+/// One row per SAMPLE. Floats are written with `{:?}`, which is Rust's
+/// shortest-round-trip form: `{:.3}` would lose the low bits and make the
+/// round-trip test's own tolerance unmeetable.
+pub(super) fn render_raw_samples_tsv(
+    meta: &SegRunMeta,
+    cell: &str,
+    samples: &SegBlockedSamples,
+) -> String {
+    for field in meta.fields() {
+        assert!(
+            !field.contains('\t'),
+            "a TSV metadata field may not contain a tab"
+        );
+    }
+    assert!(!cell.contains('\t'), "a cell label may not contain a tab");
+    let mut out = String::from(SEG_RAW_TSV_HEADER);
+    let [run_id, commit, features, label, pin, sha, bin_sha, toolkit, device] = meta.fields();
+    for block in &samples.blocks {
+        let mut candidate = 0usize;
+        let mut incumbent = 0usize;
+        for (slot, arm) in block.plan.orientation.arms().into_iter().enumerate() {
+            // `arm_label`, not `label`: `label` is the run label above.
+            let (arm_label, micros) = match arm {
+                SegArm::A => {
+                    candidate += 1;
+                    ("candidate", block.candidate_us[candidate - 1])
+                }
+                SegArm::B => {
+                    incumbent += 1;
+                    ("incumbent", block.incumbent_us[incumbent - 1])
+                }
+            };
+            writeln!(
+                out,
+                "{run_id}\t{commit}\t{features}\t{label}\t{pin}\t{sha}\t{bin_sha}\t\
+                 {toolkit}\t{device}\t{:#x}\t{cell}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t\
+                 {arm_label}\t{micros:?}",
+                meta.seed,
+                block.plan.block_id,
+                block.plan.superblock_id,
+                block.plan.orientation.label(),
+                block.plan.incoming.label(),
+                block.plan.boundary_source.label(),
+                block.first_order_id,
+                block.first_order_id + slot,
+            )
+            .expect("write String");
+        }
+    }
+    out
+}
+
+/// CLAIM `path` as one this process has begun writing. Returns **`true` on the FIRST
+/// claim** and `false` on every later one — `HashSet::insert` reports "newly inserted",
+/// so the name is a claim, not a question. The caller's `let fresh = …` therefore reads
+/// correctly: `fresh` is true exactly once per path.
+///
+/// Per-path, so a process that writes several runs' samples gives each file its own
+/// header; the first write to a path is still the one that must find no existing file.
+fn seg_raw_writer_started(path: &Path) -> bool {
+    static STARTED: std::sync::OnceLock<std::sync::Mutex<std::collections::HashSet<PathBuf>>> =
+        std::sync::OnceLock::new();
+    STARTED
+        .get_or_init(Default::default)
+        .lock()
+        .expect("the raw-writer start set is not poisoned")
+        .insert(path.to_path_buf())
+}
+
+/// Append one cell's raw samples into the run's own directory. APPEND, never
+/// truncate: one process writes many cells and no cell may overwrite another.
+pub(super) fn record_raw_samples(meta: &SegRunMeta, cell: &str, samples: &SegBlockedSamples) {
+    // `seg_run_dir` reads the reservation, which the launcher created with `mkdir`.
+    // It must already exist: creating it here would defeat the reservation's whole
+    // purpose (an unclaimed directory two processes could share).
+    let path = seg_run_dir(meta).join(SEG_RAW_SAMPLES_TSV);
+    let parent = path.parent().expect("run dir has a parent");
+    assert!(
+        parent.is_dir(),
+        "{} was not reserved: call `seg_env <run_label> <pin_level>` before any \
+         paired cell (a paired number without a traceable artifact cannot be \
+         published — §7.3 4c)",
+        parent.display()
+    );
+    // One process owns its reserved directory, so the FIRST write must create the
+    // file: appending to a pre-existing one would silently merge two processes'
+    // samples into a single "run" and the median-of-three would be a median of two.
+    // **Start state is keyed PER RESERVED PATH, not per process.** A process-global
+    // `OnceLock` makes only the FIRST call in the process write `SEG_RAW_TSV_HEADER`;
+    // every later call — including the first call for a DIFFERENT run directory —
+    // appends a headerless body, and `parse_raw_samples_tsv` then panics on header
+    // drift. That breaks any process that legitimately writes more than one run's
+    // samples (the driven test writes three) and makes the writer order-dependent on
+    // whatever else ran first.
+    let fresh = seg_raw_writer_started(&path);
+    if fresh {
+        assert!(
+            !path.exists(),
+            "{} already exists: that run directory was not exclusively reserved, so \
+             its samples would be merged with another run's",
+            path.display()
+        );
+    }
+    let text = render_raw_samples_tsv(meta, cell, samples);
+    let body = if fresh {
+        text
+    } else {
+        text[SEG_RAW_TSV_HEADER.len()..].to_owned()
+    };
+    {
+        use std::io::Write as _;
+        let mut file = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+            .unwrap_or_else(|error| panic!("open {}: {error}", path.display()));
+        file.write_all(body.as_bytes())
+            .unwrap_or_else(|error| panic!("append {}: {error}", path.display()));
+    }
+}
+
+/// Rebuild `(meta, per-cell blocks)` from an emitted raw-sample TSV. The
+/// round-trip is what makes the schema a record rather than a print.
+pub(super) fn parse_raw_samples_tsv(text: &str) -> (SegRunMeta, Vec<(String, SegBlockSample)>) {
+    let mut lines = text.lines();
+    let header = lines.next().expect("a raw-sample TSV has a header");
+    assert_eq!(
+        format!("{header}\n"),
+        SEG_RAW_TSV_HEADER,
+        "raw-sample schema drift"
+    );
+    let mut meta: Option<SegRunMeta> = None;
+    // `[Option<f64>; 4]` indexed by SCHEDULED SLOT, not two push-vectors.
+    let mut open: Vec<(String, SegPlannedBlock, usize, [Option<f64>; 4])> = Vec::new();
+    for line in lines.filter(|line| !line.trim().is_empty()) {
+        let f: Vec<&str> = line.split('\t').collect();
+        assert_eq!(f.len(), 20, "raw-sample row arity: {line}");
+        // EVERY row's identity is validated, not just the first: a file that mixed
+        // two runs would otherwise parse as one, and the median-of-three would be a
+        // median over the wrong population.
+        let row_meta = SegRunMeta {
+            run_id: f[0].to_owned(),
+            commit: f[1].to_owned(),
+            feature_set: f[2].to_owned(),
+            run_label: f[3].to_owned(),
+            pin_level: f[4].to_owned(),
+            archive_sha256: f[5].to_owned(),
+            test_binary_sha256: f[6].to_owned(),
+            toolkit: f[7].to_owned(),
+            device: f[8].to_owned(),
+            seed: u64::from_str_radix(f[9].trim_start_matches("0x"), 16).expect("seed"),
+        };
+        match &meta {
+            None => meta = Some(row_meta),
+            Some(first) => assert_eq!(
+                *first, row_meta,
+                "raw-sample file mixes runs: row identity differs from the first row"
+            ),
+        }
+        let plan = SegPlannedBlock {
+            block_id: f[11].parse().expect("block_id"),
+            superblock_id: f[12].parse().expect("superblock_id"),
+            orientation: match f[13] {
+                "ABBA" => SegBlockOrientation::Abba,
+                "BAAB" => SegBlockOrientation::Baab,
+                other => panic!("orientation {other:?}"),
+            },
+            incoming: SegTransitionClass::parse(f[14]),
+            boundary_source: match f[15] {
+                "internal" => SegBoundarySource::Internal,
+                "warmup_supplied" => SegBoundarySource::WarmupSupplied,
+                other => panic!("boundary source {other:?}"),
+            },
+        };
+        let cell = f[10].to_owned();
+        let first_order_id: usize = f[16].parse().expect("first_order_id");
+        let order_id: usize = f[17].parse().expect("order_id");
+        let arm = f[18];
+        let micros: f64 = f[19].parse().expect("sample_us");
+        // **The row must agree with the SCHEDULE, not merely with itself.** Rebuild the
+        // plan from the seed and check this row's block against it: an emitted plan is
+        // data, and data that disagrees with its own declared seed is corruption.
+        let schedule = seg_schedule(meta.as_ref().expect("meta set above").seed);
+        let scheduled = &schedule.blocks[plan.block_id];
+        assert_eq!(
+            (
+                plan.superblock_id,
+                plan.orientation,
+                plan.incoming,
+                plan.boundary_source
+            ),
+            (
+                scheduled.superblock_id,
+                scheduled.orientation,
+                scheduled.incoming,
+                scheduled.boundary_source
+            ),
+            "block {} disagrees with seg_schedule(seed)",
+            plan.block_id
+        );
+        assert_eq!(
+            first_order_id,
+            plan.block_id * 4,
+            "block {}'s first_order_id must be 4 x block_id",
+            plan.block_id
+        );
+        // The arm and its position are both determined by the orientation, so an
+        // out-of-order or mislabelled sample cannot slip through.
+        let slot = order_id
+            .checked_sub(first_order_id)
+            .filter(|slot| *slot < 4)
+            .unwrap_or_else(|| panic!("order_id {order_id} outside block {}", plan.block_id));
+        let expected_arm = match plan.orientation.arms()[slot] {
+            SegArm::A => "candidate",
+            SegArm::B => "incumbent",
+        };
+        assert_eq!(
+            arm, expected_arm,
+            "block {} slot {slot} must be {expected_arm}",
+            plan.block_id
+        );
+        let index = open
+            .iter()
+            .position(|(c, p, _, _)| *c == cell && p.block_id == plan.block_id)
+            .unwrap_or_else(|| {
+                open.push((cell.clone(), plan, first_order_id, [None; 4]));
+                open.len() - 1
+            });
+        // A later row for an already-open block must carry the SAME plan: grouping on
+        // `(cell, block_id)` alone would let orientation, incoming class, boundary
+        // source or first_order_id drift silently between a block's four rows.
+        assert_eq!(
+            (open[index].1, open[index].2),
+            (plan, first_order_id),
+            "block {} rows disagree on their plan",
+            plan.block_id
+        );
+        // **Store BY SCHEDULED SLOT.** Pushing by arm and checking "2 and 2" at the end
+        // accepts order ids `0,0,1,1`: two candidate rows at slot 0 and two incumbent
+        // rows at slot 1 would fill both vectors to length two and pass. A slot-indexed
+        // array rejects the duplicate on sight and the completeness check below rejects
+        // a missing one.
+        assert!(
+            open[index].3[slot].is_none(),
+            "block {} slot {slot} appears twice",
+            plan.block_id
+        );
+        open[index].3[slot] = Some(micros);
+        // The arm was already validated against the schedule above; nothing else to
+        // dispatch on, because the SLOT determines which array position this is.
+        let _ = arm;
+    }
+    let out = open
+        .into_iter()
+        .map(|(cell, plan, first_order_id, slots)| {
+            // ALL FOUR slots present — a missing one is as fatal as a duplicate.
+            let filled: Vec<f64> = slots
+                .iter()
+                .enumerate()
+                .map(|(slot, value)| {
+                    value
+                        .unwrap_or_else(|| panic!("block {} slot {slot} is missing", plan.block_id))
+                })
+                .collect();
+            // Reconstruct the two arrays BY SCHEDULE, not by encounter order, so the
+            // sample order in the file cannot silently reorder a block.
+            let mut cand = Vec::with_capacity(2);
+            let mut inc = Vec::with_capacity(2);
+            for (slot, arm) in plan.orientation.arms().into_iter().enumerate() {
+                match arm {
+                    SegArm::A => cand.push(filled[slot]),
+                    SegArm::B => inc.push(filled[slot]),
+                }
+            }
+            (
+                cell,
+                SegBlockSample {
+                    plan,
+                    first_order_id,
+                    candidate_us: [cand[0], cand[1]],
+                    incumbent_us: [inc[0], inc[1]],
+                },
+            )
+        })
+        .collect();
+    (meta.expect("at least one raw-sample row"), out)
+}
+
+/// Read ONE run directory: parse its raw samples, and index its blocks by cell.
+///
+/// **The single place raw evidence becomes typed.** Both `aggregate_confirmation_runs`
+/// and Task 7's `aggregate_arm` go through it, so the two cannot drift into divergent
+/// parsing or divergent provenance rules — which is the whole reason this is a refactor
+/// rather than a second implementation.
+fn read_run(
+    dir: &Path,
+) -> (
+    SegRunMeta,
+    std::collections::BTreeMap<String, Vec<SegBlockSample>>,
+) {
+    let path = dir.join(SEG_RAW_SAMPLES_TSV);
+    let text = std::fs::read_to_string(&path)
+        .unwrap_or_else(|error| panic!("read {}: {error}", path.display()));
+    let (meta, rows) = parse_raw_samples_tsv(&text);
+    let mut by_cell: std::collections::BTreeMap<String, Vec<SegBlockSample>> = Default::default();
+    for (cell, block) in rows {
+        by_cell.entry(cell).or_default().push(block);
+    }
+    // The per-cell completeness assertion lives HERE, so both callers get it and
+    // neither can forget it. Blocks are sorted by `block_id` so a caller never depends
+    // on file order.
+    for (cell, blocks) in &mut by_cell {
+        blocks.sort_by_key(|b| b.plan.block_id);
+        assert_eq!(
+            blocks.len(),
+            SEG_TIMED_BLOCKS,
+            "{}: cell {cell} contributes {} blocks, expected {SEG_TIMED_BLOCKS}",
+            path.display(),
+            blocks.len()
+        );
+        let ids: Vec<usize> = blocks.iter().map(|b| b.plan.block_id).collect();
+        assert!(
+            ids.iter().copied().eq(0..SEG_TIMED_BLOCKS),
+            "{}: cell {cell} block ids are {ids:?}, expected 0..{SEG_TIMED_BLOCKS}",
+            path.display()
+        );
+    }
+    (meta, by_cell)
+}
+
+/// The identity a set of runs must SHARE, validated and returned.
+///
+/// Constant: archive, test binary, commit, compiled pin, feature set, toolkit, device,
+/// seed. Distinct: run id, pairwise. Extracted so one rule serves every caller.
+fn shared_identity(ids: &[SegRunMeta]) -> SegRunMeta {
+    let first = ids.first().expect("at least one run").clone();
+    for other in &ids[1..] {
+        for (field, a, b) in [
+            ("ARCHIVE", &other.archive_sha256, &first.archive_sha256),
+            (
+                "TEST BINARY",
+                &other.test_binary_sha256,
+                &first.test_binary_sha256,
+            ),
+            ("COMMIT", &other.commit, &first.commit),
+            ("COMPILED PIN", &other.pin_level, &first.pin_level),
+            ("FEATURE SET", &other.feature_set, &first.feature_set),
+            ("TOOLKIT", &other.toolkit, &first.toolkit),
+            ("DEVICE", &other.device, &first.device),
+        ] {
+            assert_eq!(a, b, "runs differ in {field}");
+        }
+        assert_eq!(other.seed, first.seed, "runs differ in SEED");
+    }
+    for i in 0..ids.len() {
+        for j in (i + 1)..ids.len() {
+            assert_ne!(
+                ids[i].run_id, ids[j].run_id,
+                "runs {i} and {j} share a run id"
+            );
+        }
+    }
+    first
+}
+
+/// Median-of-three across the frozen confirmation runs, applying the predeclared
+/// rule mechanically. Retires the manual reconstruction §9 flagged.
+///
+/// §6(b)'s three-process confirmation for ONE cell. Goes through [`read_run`] and
+/// [`shared_identity`], so it and Task 7's `aggregate_arm` share one parsing and one
+/// provenance rule.
+pub(super) fn aggregate_confirmation_runs(dirs: &[PathBuf], cell: &str) -> SegConfirmSummary {
+    // ONE parser and ONE provenance rule, shared with `aggregate_arm`. This function
+    // previously carried its own `read_to_string` + `parse_raw_samples_tsv` + a
+    // duplicated eight-field provenance loop; the two copies could drift, and a plan
+    // that CLAIMED a single rule while shipping two is worse than one that admits the
+    // duplication. `read_run` and `shared_identity` are now the only implementations.
+    let mut unique: Vec<&PathBuf> = dirs.iter().collect();
+    unique.sort();
+    unique.dedup();
+    assert_eq!(
+        unique.len(),
+        dirs.len(),
+        "the confirmation run directories must be distinct: {dirs:?}"
+    );
+    assert!(
+        dirs.len() == SEG_CONFIRM_PROCESSES || dirs.len() == SEG_ESCALATION_PROCESSES,
+        "the rule admits exactly {SEG_CONFIRM_PROCESSES} processes, or the predeclared \
+         escalation to {SEG_ESCALATION_PROCESSES}; got {}",
+        dirs.len()
+    );
+    let runs: Vec<(SegRunMeta, _)> = dirs.iter().map(|dir| read_run(dir)).collect();
+    // Validated and DISCARDED here on purpose: this function's caller wants the
+    // verdict, and Task 7's `aggregate_arm` is the entry point that RETURNS the
+    // identity for callers (the δ3 attribution) that must bind a payload to an arm.
+    let _identity = shared_identity(&runs.iter().map(|(m, _)| m.clone()).collect::<Vec<_>>());
+    let processes: Vec<SegBlockedSamples> = runs
+        .iter()
+        .map(|(meta, by_cell)| {
+            let blocks = by_cell
+                .get(cell)
+                .unwrap_or_else(|| panic!("a run has no blocks for cell {cell}"));
+            SegBlockedSamples {
+                schedule: seg_schedule(meta.seed),
+                blocks: blocks.clone(),
+            }
+        })
+        .collect();
+    summarize_confirmation(&processes)
+}
+
+// ── The freeze (spec §6(b) stage 2) ──────────────────────────────────────────
+
+/// One frozen decision cell (spec §6(b) stage 2). Written once, BEFORE any level
+/// is timed, and read back by the confirmation runs — which time ONLY these.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct SegFrozenCell {
+    pub(super) label: String,
+    pub(super) circuit: String,
+    pub(super) layer: usize,
+    pub(super) class: SegRoundClass,
+    pub(super) k: usize,
+    pub(super) epilogue: String,
+    pub(super) coeff: String,
+    pub(super) program: String,
+}
+
+const SEG_FROZEN_TSV_HEADER: &str = "label\tcircuit\tlayer\tclass\tk\tepilogue\tcoeff\tprogram\n";
+
+/// One probed shape. `bwd_seg_freeze_r0_headline` intersects discovery's shortlist
+/// with this set, and `write_frozen_cells` asserts every surviving row is a member.
+pub(super) struct SegProbedTuple {
+    pub(super) epilogue: &'static str,
+    pub(super) k: usize,
+    pub(super) coeff: &'static str,
+    pub(super) program: &'static str,
+}
+
+/// **The shapes §7.1.0's `common-bucket` captures actually cover** (Task 9 step 1):
+/// `plane`, `const`, inline, at `K in {4, 24}`. `K = 4` is results §2.3's measured
+/// winner and `K = 24` is the one-block regime, so the pair spans both occupancy
+/// regimes the R0 winner has ever occupied.
+///
+/// The CLASS and the coordinate are checked separately in `write_frozen_cells`: this
+/// table is the shape axis only.
+pub(super) const ADD_SUB_LAYOUT_SHORT: &str = "add_sub_lui_auipc_mop";
+pub(super) const SEG_R0_PROBED_TUPLES: [SegProbedTuple; 2] = [
+    SegProbedTuple {
+        epilogue: "plane",
+        k: 4,
+        coeff: "const",
+        program: "inline",
+    },
+    SegProbedTuple {
+        epilogue: "plane",
+        k: 24,
+        coeff: "const",
+        program: "inline",
+    },
+];
+
+/// Write the freeze, with the seed and the rule alongside it.
+///
+/// The freeze's IDENTITY is a `sha256sum` of this file taken in the shell and
+/// compared across discovery and every confirmation process — not a digest
+/// computed here. `gpu_circuit_prover` has no one-shot hasher (`blake2s_u32` is a
+/// low-level state machine and `sha2` is not a dependency — both verified), and
+/// the repo rule forbids dependency churn, so the identity check lives where a
+/// hasher already exists.
+pub(super) fn write_frozen_cells(path: &Path, campaign: &str, cells: &[SegFrozenCell], seed: u64) {
+    assert!(!cells.is_empty(), "a freeze with no cells freezes nothing");
+    // The campaign tag is a GATE, not a comment: the two campaigns have different
+    // rules, and a runner handed the other campaign's freeze would silently time the
+    // wrong cells under the wrong statistic.
+    // THREE campaigns, each refusing the others' freezes: the R0 headline, the pin
+    // decision, and the δ3 attribution. The δ3 set is scored by its OWN rule
+    // (`summarize_d3_attribution`), not the pin rule, so sharing a tag with
+    // `pin-decision` would let each runner silently accept the other's cells.
+    assert!(
+        matches!(campaign, "r0-headline" | "pin-decision" | "d3-attribution"),
+        "unknown campaign {campaign:?}"
+    );
+    // **The probed-tuple predicate, ENFORCED here rather than described.** §9 item 2's
+    // precondition is established only on the shapes the NCU probe covered, so a
+    // freeze naming anything else would carry an unestablished precondition into the
+    // acceptance gate.
+    if campaign == "r0-headline" {
+        for cell in cells {
+            // The CLASS is part of the identity. Without it a D1 continuation cell
+            // with the same epilogue/K/loader passes the guard — and the probe
+            // established the precondition on an R0 launch, on a different data path.
+            assert_eq!(
+                cell.class,
+                SegRoundClass::R0,
+                "the R0 headline freeze may only name R0 cells; {} is {:?}",
+                cell.label,
+                cell.class
+            );
+            assert_eq!(
+                (cell.circuit.as_str(), cell.layer),
+                (ADD_SUB_LAYOUT_SHORT, 0),
+                "the R0 headline is add_sub layer 0 (`bwd_seg_add_sub_l0_r0_matrix`); \
+                 {} names {} layer {}",
+                cell.label,
+                cell.circuit,
+                cell.layer
+            );
+            assert!(
+                SEG_R0_PROBED_TUPLES.iter().any(|probed| {
+                    probed.epilogue == cell.epilogue
+                        && probed.k == cell.k
+                        && probed.coeff == cell.coeff
+                        && probed.program == cell.program
+                }),
+                "the R0 freeze names an UNPROBED tuple ({} K{} {} {}): the forced \
+                 common-bucket precondition was not established for it. Either extend \
+                 the probe set and re-probe, or drop the shape — never freeze an \
+                 unprobed tuple (§9 item 2).",
+                cell.epilogue,
+                cell.k,
+                cell.coeff,
+                cell.program
+            );
+        }
+    }
+    let mut out = format!(
+        "# campaign = {campaign}\n# seed = {seed:#x}\n\
+         # rule = r0-headline: spec §6(b) stage 3 | pin-decision: spec §4.5 \
+         cross-level | d3-attribution: spec §4.5 loop form, two arms at one pin\n"
+    );
+    out.push_str(SEG_FROZEN_TSV_HEADER);
+    for cell in cells {
+        writeln!(
+            out,
+            "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+            cell.label,
+            cell.circuit,
+            cell.layer,
+            cell.class.label(),
+            cell.k,
+            cell.epilogue,
+            cell.coeff,
+            cell.program,
+        )
+        .expect("write String");
+    }
+    publish(path, &out);
+}
+
+/// Read a freeze and REJECT one belonging to the other campaign.
+pub(super) fn read_frozen_cells(path: &Path, campaign: &str) -> Vec<SegFrozenCell> {
+    let text = std::fs::read_to_string(path)
+        .unwrap_or_else(|error| panic!("the freeze must exist before confirmation: {error}"));
+    let declared = text
+        .lines()
+        .find_map(|line| line.strip_prefix("# campaign = "))
+        .unwrap_or_else(|| panic!("{}: no campaign tag", path.display()));
+    assert_eq!(
+        declared.trim(),
+        campaign,
+        "{}: this is the {declared:?} freeze; {campaign:?} refuses it. The two \
+         campaigns have different cell sets AND different rules (spec §4.5: using \
+         §6(b)'s rule for the pin decision is a category error).",
+        path.display()
+    );
+    let mut cells = Vec::new();
+    let mut saw_header = false;
+    for line in text.lines() {
+        if line.starts_with('#') {
+            continue;
+        }
+        if !saw_header {
+            assert_eq!(
+                format!("{line}\n"),
+                SEG_FROZEN_TSV_HEADER,
+                "freeze schema drift"
+            );
+            saw_header = true;
+            continue;
+        }
+        if line.trim().is_empty() {
+            continue;
+        }
+        let f: Vec<&str> = line.split('\t').collect();
+        assert_eq!(f.len(), 8, "freeze row arity: {line}");
+        cells.push(SegFrozenCell {
+            label: f[0].to_owned(),
+            circuit: f[1].to_owned(),
+            layer: f[2].parse().expect("layer"),
+            class: SegRoundClass::parse(f[3])
+                .unwrap_or_else(|| panic!("freeze names class {:?}", f[3])),
+            k: f[4].parse().expect("k"),
+            epilogue: f[5].to_owned(),
+            coeff: f[6].to_owned(),
+            program: f[7].to_owned(),
+        });
+    }
+    assert!(!cells.is_empty(), "the freeze file names no cells");
+    cells
+}
+
+/// The confirmation runs' cell filter: `BWD_SEG_FROZEN_CELLS=<path>` selects the
+/// freeze, and a run with that variable set may time NOTHING else. Absent, the
+/// caller is in discovery and times its own exploration set.
+pub(super) fn frozen_cell_filter(campaign: &str) -> Option<Vec<SegFrozenCell>> {
+    let path = std::env::var("BWD_SEG_FROZEN_CELLS").ok()?;
+    let cells = read_frozen_cells(Path::new(&path), campaign);
+    // Echo the path so the shell can `sha256sum` exactly the file this process
+    // read and compare it against the one discovery wrote.
+    eprintln!("[seg-freeze] consumed {} ({} cells)", path, cells.len());
+    Some(cells)
 }
 
 // ── Kernel attributes: the spec's register and spill gate, per instantiation ──
@@ -779,7 +2389,19 @@ pub(super) struct SegMatrixRow {
     pub(super) candidate_min_us: f64,
     pub(super) incumbent_median_us: Option<f64>,
     pub(super) incumbent_min_us: Option<f64>,
-    pub(super) ratio: Option<RatioEstimate>,
+    /// The paired estimate WITH its order gate fused in — never a bare
+    /// [`RatioEstimate`], so an order-coupled cell has no ratio any consumer could
+    /// read by forgetting to check a label (spec §6(a) step 6).
+    pub(super) ratio: SegRatio,
+    /// The RUN this row's paired numbers came from, or `"-"` for a solo row.
+    ///
+    /// The published CSV is a DERIVED table at a fixed path; the record of authority
+    /// is the run directory's raw TSV. Carrying the run id in the row is what lets a
+    /// quoted `median_ratio` be joined back to `seg_raw_samples.tsv` — and from there
+    /// to the archive and test-binary SHA-256s — without guessing which process wrote
+    /// the file (§7.3 criterion 4c). Solo rows carry no run identity because they emit
+    /// no raw samples.
+    pub(super) run_id: &'static str,
     /// WHAT the ratio is against, or `"-"` when the cell was timed solo.
     ///
     /// The ratio column carries two different comparisons — the R0 matrix pairs
@@ -803,36 +2425,65 @@ impl SegMatrixRow {
     /// interval, and NOT a number two rows of which may be divided to four
     /// decimals. Recorded per row so no table can quietly mix them.
     pub(super) fn protocol(&self) -> &'static str {
-        if self.ratio.is_some() {
-            "paired"
-        } else {
+        if matches!(self.ratio, SegRatio::Solo) {
             "solo"
+        } else {
+            "paired"
         }
     }
 }
 
+/// The paired columns describe the PROTOCOL that produced them: `candidate_median_us`
+/// is the median of the block candidate means, the ratio columns come from the
+/// joint-stratified bootstrap, and the four `delta_order_*` / `order_gate` columns plus
+/// the four order-conditional medians are emitted for EVERY paired row — that is how an
+/// order-coupled cell stays visible while its pooled ratio columns render `-`.
 pub(super) const SEG_CSV_HEADER: &str = "benchmark,circuit,layer,regime,round,rows,saturated,k,\
 epilogue,coeff,program,acc_placement,d2_policy,launchable,blocks_per_sm,theoretical_occupancy_percent,registers,\
 local_spill_bytes,static_smem_bytes,max_threads_per_block,dynamic_smem_bytes,grid_blocks,waves,\
 max_over_mean_work,parity,protocol,ratio_baseline,candidate_median_us,candidate_min_us,\
-baseline_median_us,baseline_min_us,median_ratio,ci_low,ci_high,verdict\n";
+baseline_median_us,baseline_min_us,median_ratio,ci_low,ci_high,verdict,delta_order_pct,\
+delta_order_ci_low,delta_order_ci_high,order_gate,abba_candidate_us,abba_incumbent_us,\
+baab_candidate_us,baab_incumbent_us,run_id\n";
 
 pub(super) fn render_matrix_csv(rows: &[SegMatrixRow]) -> String {
     let mut out = String::from(SEG_CSV_HEADER);
     for row in rows {
-        let (ratio, low, high, verdict) = match row.ratio {
+        // `-`, not a number, when no pooled estimate exists: a solo cell never had
+        // one, and an order-coupled cell may not quote one (§6(a) step 6).
+        let (ratio, low, high) = match row.ratio.reported_estimate() {
             Some(estimate) => (
-                estimate.median_ratio,
-                estimate.ci_low,
-                estimate.ci_high,
-                estimate.verdict(),
+                format!("{:.6}", estimate.median_ratio),
+                format!("{:.6}", estimate.ci_low),
+                format!("{:.6}", estimate.ci_high),
             ),
-            None => (f64::NAN, f64::NAN, f64::NAN, "-"),
+            None => ("-".to_owned(), "-".to_owned(), "-".to_owned()),
+        };
+        let verdict = row.ratio.verdict();
+        let (delta, delta_low, delta_high, gate) = match row.ratio.order() {
+            Some(order) => (
+                format!("{:.4}", order.delta_order_pct),
+                format!("{:.4}", order.ci_low_pct),
+                format!("{:.4}", order.ci_high_pct),
+                order.passes().to_string(),
+            ),
+            None => (
+                "-".to_owned(),
+                "-".to_owned(),
+                "-".to_owned(),
+                "-".to_owned(),
+            ),
+        };
+        let conditional = match row.ratio.conditional_medians() {
+            Some([abba_candidate, abba_incumbent, baab_candidate, baab_incumbent]) => format!(
+                "{abba_candidate:.3},{abba_incumbent:.3},{baab_candidate:.3},{baab_incumbent:.3}"
+            ),
+            None => "-,-,-,-".to_owned(),
         };
         writeln!(
             out,
             "{},{},{},{:?},{},{},{},{},{},{},{},{},{},{},{},{:.2},{},{},{},{},{},{},{:.3},{:.4},\
-             {},{},{},{:.3},{:.3},{:.3},{:.3},{:.6},{:.6},{:.6},{}",
+             {},{},{},{:.3},{:.3},{:.3},{:.3},{},{},{},{},{},{},{},{},{},{}",
             row.benchmark,
             row.circuit,
             row.layer,
@@ -868,6 +2519,12 @@ pub(super) fn render_matrix_csv(rows: &[SegMatrixRow]) -> String {
             low,
             high,
             verdict,
+            delta,
+            delta_low,
+            delta_high,
+            gate,
+            conditional,
+            row.run_id,
         )
         .expect("write String");
     }
@@ -910,10 +2567,22 @@ pub(super) const SEG_SELECTION_TIE_FRACTION: f64 = 0.001;
 /// block leaves more blocks per SM and more room for the next benchmark's register
 /// pressure — and smallest carveout second because two configurations that measure
 /// the same should not both be carried forward.
+/// Whether a selection may READ this row's timing at all (spec §6(a) step 6).
+///
+/// A SOLO row stays eligible: it never had an order contrast to fail. A PAIRED row is
+/// eligible only through [`SegRatio::selectable`], which is `None` exactly when the
+/// order gate failed — and a winner IS a headline, which §6(a) step 6 forbids
+/// asserting for an order-coupled cell.
+pub(super) fn is_selectable_row(row: &SegMatrixRow) -> bool {
+    row.ratio.order().is_none() || row.ratio.selectable().is_some()
+}
+
 pub(super) fn select_winner(rows: &[SegMatrixRow]) -> Option<&SegMatrixRow> {
     let production: Vec<&SegMatrixRow> = rows
         .iter()
-        .filter(|row| row.launchable() && is_production_loader(&row.shape))
+        .filter(|row| {
+            row.launchable() && is_production_loader(&row.shape) && is_selectable_row(row)
+        })
         .collect();
     let best = production
         .iter()
@@ -937,7 +2606,9 @@ pub(super) fn tie_band(rows: &[SegMatrixRow]) -> Vec<&SegMatrixRow> {
     };
     let best = rows
         .iter()
-        .filter(|row| row.launchable() && is_production_loader(&row.shape))
+        .filter(|row| {
+            row.launchable() && is_production_loader(&row.shape) && is_selectable_row(row)
+        })
         .map(|row| row.candidate_median_us)
         .fold(f64::MAX, f64::min);
     let threshold = best * (1.0 + SEG_SELECTION_TIE_FRACTION);
@@ -946,6 +2617,7 @@ pub(super) fn tie_band(rows: &[SegMatrixRow]) -> Vec<&SegMatrixRow> {
         .filter(|row| {
             row.launchable()
                 && is_production_loader(&row.shape)
+                && is_selectable_row(row)
                 && row.candidate_median_us <= threshold
         })
         .collect()
@@ -1167,14 +2839,14 @@ pub(super) fn record_summary_section(title: &str, body: &str) {
 pub(super) fn render_matrix_table(rows: &[SegMatrixRow]) -> String {
     let mut body = String::from(
         "| K | epilogue | coeff | program | acc | d2 | regs | blocks/SM | occ % | smem B | \
-         median (us) | ratio | 95% CI | verdict |\n\
-         |---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n",
+         median (us) | ratio | 95% CI | verdict | order delta % |\n\
+         |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n",
     );
     for row in rows {
         if !row.launchable() {
             writeln!(
                 body,
-                "| {} | {} | {} | {} | {} | {} | {} | 0 | - | {} | UNLAUNCHABLE | - | - | - |",
+                "| {} | {} | {} | {} | {} | {} | {} | 0 | - | {} | UNLAUNCHABLE | - | - | - | - |",
                 row.shape.k,
                 epilogue_label(row.shape.epilogue),
                 coeff_label(row.shape.coeff),
@@ -1187,7 +2859,7 @@ pub(super) fn render_matrix_table(rows: &[SegMatrixRow]) -> String {
             .expect("write String");
             continue;
         }
-        let (ratio, ci, verdict) = match row.ratio {
+        let (ratio, ci, verdict) = match row.ratio.reported_estimate() {
             Some(estimate) => (
                 format!("{:.4}", estimate.median_ratio),
                 format!("[{:.4}, {:.4}]", estimate.ci_low, estimate.ci_high),
@@ -1196,12 +2868,31 @@ pub(super) fn render_matrix_table(rows: &[SegMatrixRow]) -> String {
             // A solo cell has no baseline sampled beside it, so it gets no ratio and
             // no interval — printing either would invent a comparison the protocol
             // did not make.
-            None => ("solo".to_owned(), "solo".to_owned(), "solo".to_owned()),
+            None if row.ratio.order().is_none() => {
+                ("solo".to_owned(), "solo".to_owned(), "solo".to_owned())
+            }
+            // Paired, but order-coupled: the diagnostics print, the pooled ratio does
+            // not exist to print (§6(a) step 6).
+            None => (
+                "-".to_owned(),
+                "-".to_owned(),
+                format!("{} vs {}", row.ratio.verdict(), row.baseline),
+            ),
+        };
+        let order = match row.ratio.order() {
+            Some(order) => format!(
+                "{:+.3} [{:+.3}, {:+.3}] {}",
+                order.delta_order_pct,
+                order.ci_low_pct,
+                order.ci_high_pct,
+                if order.passes() { "pass" } else { "FAIL" },
+            ),
+            None => "-".to_owned(),
         };
         writeln!(
             body,
             "| {} | {} | {} | {} | {} | {} | {} | {} | {:.1} | {} | {:.3} | {ratio} | {ci} | \
-             {verdict} |",
+             {verdict} | {order} |",
             row.shape.k,
             epilogue_label(row.shape.epilogue),
             coeff_label(row.shape.coeff),
@@ -1985,13 +3676,18 @@ fn bwd_seg_add_sub_l0_r0_matrix() {
     // under `ncu`, whose instrumentation dominates the timing, so an inversion
     // claim there would be measuring the profiler.
     let winner = select_winner(&rows).expect("at least one launchable production-loader row");
-    let gate = winner
-        .ratio
-        .expect("the winning row is paired against the incumbent, so it carries a ratio");
+    // `selectable()` is the ONLY admissible source: it is `None` exactly when the
+    // order gate failed, and §6(a) step 6 forbids asserting a headline for such a
+    // cell — so an order-coupled winner fails the gate instead of being quoted.
+    let (gate, order) = winner.ratio.selectable().expect(
+        "the winning row is paired against the incumbent and passed its order gate, \
+         so it carries a ratio",
+    );
     assert!(
         gate.inverts(),
         "add/sub L0 R0 must INVERT against the incumbent: winner {} regs={} \
-         median={:.3}us ratio={:.4} CI [{:.4}, {:.4}] -> {}",
+         median={:.3}us ratio={:.4} CI [{:.4}, {:.4}] -> {} (order delta {:+.3}% \
+         [{:+.3}, {:+.3}])",
         winner.shape.label(),
         winner.attributes.registers,
         winner.candidate_median_us,
@@ -1999,7 +3695,93 @@ fn bwd_seg_add_sub_l0_r0_matrix() {
         gate.ci_low,
         gate.ci_high,
         gate.verdict(),
+        order.delta_order_pct,
+        order.ci_low_pct,
+        order.ci_high_pct,
     );
+}
+
+/// **The live-path integration gate for Task 0.** Runs ONE small paired cell
+/// through the migrated `measure_shape` and proves the protocol is actually in
+/// use end to end: 16 blocks x 4 samples were emitted with their labels, the
+/// order gate was computed, and re-deriving the interval from the emitted file
+/// reproduces the in-process one bit for bit. A green unit suite with this test
+/// absent would not distinguish "the protocol exists" from "the protocol runs".
+#[test]
+#[ignore = "GPU timing; build unlocked and run the executable under with_gpu_lock.sh"]
+#[cfg(not(no_cuda))]
+#[serial_test::serial]
+fn bwd_seg_protocol_emits_a_reconstructable_record() {
+    let rows = run_r0_matrix(None);
+    // `ratio` is a `SegRatio`, not an `Option`: a paired row is any non-`Solo`
+    // variant, and an order-coupled one has diagnostics but no pooled estimate.
+    let paired: Vec<&SegMatrixRow> = rows
+        .iter()
+        .filter(|row| !matches!(row.ratio, SegRatio::Solo))
+        .collect();
+    assert!(!paired.is_empty(), "the R0 matrix must produce paired rows");
+    let meta = SegRunMeta::current();
+    // The RESERVED directory, from the environment — not a path derived from the id.
+    let path = PathBuf::from(std::env::var("BWD_SEG_RUN_DIR").expect("BWD_SEG_RUN_DIR"))
+        .join(SEG_RAW_SAMPLES_TSV);
+    let text = std::fs::read_to_string(&path)
+        .unwrap_or_else(|error| panic!("the migrated path must emit raw samples: {error}"));
+    let (back_meta, emitted) = parse_raw_samples_tsv(&text);
+    assert_eq!(&back_meta, meta);
+    let mut by_cell: std::collections::BTreeMap<String, Vec<SegBlockSample>> = Default::default();
+    for (cell, block) in emitted {
+        by_cell.entry(cell).or_default().push(block);
+    }
+    assert_eq!(
+        by_cell.len(),
+        paired.len(),
+        "every paired cell emits exactly one raw-sample group"
+    );
+    for (cell, blocks) in &by_cell {
+        assert_eq!(blocks.len(), SEG_TIMED_BLOCKS, "{cell}: 16 blocks");
+        let samples = SegBlockedSamples {
+            schedule: seg_schedule(back_meta.seed),
+            blocks: blocks.clone(),
+        };
+        assert_eq!(samples.stratum_census(), [3, 5, 3, 5], "{cell}");
+        let row = paired
+            .iter()
+            .find(|row| format!("{}|{}", row.benchmark, row.shape.label()) == *cell)
+            .unwrap_or_else(|| panic!("{cell} has no matrix row"));
+        // The order contrast exists for every paired cell.
+        let recorded_order = row
+            .ratio
+            .order()
+            .expect("a paired row has an order contrast");
+        let rebuilt_order = samples.order_interaction();
+        assert_eq!(
+            recorded_order.ci_low_pct, rebuilt_order.ci_low_pct,
+            "{cell}: the order CI must reconstruct"
+        );
+        // The pooled estimate exists IF AND ONLY IF the gate passed — and when it
+        // does, it reconstructs bit for bit from the emitted rows.
+        match row.ratio.reported_estimate() {
+            Some(recorded) => {
+                assert!(
+                    rebuilt_order.passes(),
+                    "{cell}: a Valid ratio implies a passing gate"
+                );
+                let estimate = samples.estimate_stratified();
+                assert_eq!(estimate.ci_low, recorded.ci_low, "{cell}: CI low");
+                assert_eq!(estimate.ci_high, recorded.ci_high, "{cell}: CI high");
+            }
+            None => {
+                assert!(
+                    !rebuilt_order.passes(),
+                    "{cell}: no estimate implies a failed gate"
+                );
+                assert!(
+                    row.ratio.conditional_medians().is_some(),
+                    "{cell}: an order-coupled cell publishes its conditional medians"
+                );
+            }
+        }
+    }
 }
 
 /// The profiler selector: ONE candidate launch and ONE incumbent launch, each
@@ -2245,20 +4027,40 @@ fn run_r0_matrix(profile: Option<SegShape>) -> Vec<SegMatrixRow> {
     let quickest = fastest(&matrix).expect("at least one launchable R0 configuration");
     let inverted: Vec<&SegMatrixRow> = matrix
         .iter()
-        .filter(|row| row.ratio.is_some_and(|ratio| ratio.inverts()))
+        .filter(|row| {
+            row.ratio
+                .selectable()
+                .is_some_and(|(estimate, _)| estimate.inverts())
+        })
         .collect();
-    let gate = best.ratio.expect("the gate row carries an incumbent");
+    // An order-coupled winner has NO pooled ratio (§6(a) step 6), so the headline
+    // prints its diagnostics rather than a number it may not assert. This log line is
+    // not the gate — `bwd_seg_add_sub_l0_r0_matrix` is — so it reports instead of
+    // aborting the run that produced the CSV above.
+    let gate_line = match best.ratio.selectable() {
+        Some((estimate, order)) => format!(
+            "ratio={:.4} [{:.4}, {:.4}] {} (order delta {:+.3}% [{:+.3}, {:+.3}])",
+            estimate.median_ratio,
+            estimate.ci_low,
+            estimate.ci_high,
+            estimate.verdict(),
+            order.delta_order_pct,
+            order.ci_low_pct,
+            order.ci_high_pct,
+        ),
+        None => format!(
+            "ratio=- {} order={:?}",
+            best.ratio.verdict(),
+            best.ratio.order()
+        ),
+    };
     eprintln!(
-        "[seg-spike] add/sub L0 R0 WINNER {} regs={} median={:.3}us ratio={:.4} \
-         [{:.4}, {:.4}] {} | tie band {} rows | raw argmin over all loaders {} at \
+        "[seg-spike] add/sub L0 R0 WINNER {} regs={} median={:.3}us {gate_line} \
+         | tie band {} rows | raw argmin over all loaders {} at \
          {:.3}us | {} of {} launchable configurations invert",
         best.shape.label(),
         best.attributes.registers,
         best.candidate_median_us,
-        gate.median_ratio,
-        gate.ci_low,
-        gate.ci_high,
-        gate.verdict(),
         band.len(),
         quickest.shape.label(),
         quickest.candidate_median_us,
@@ -2273,14 +4075,17 @@ fn run_r0_matrix(profile: Option<SegShape>) -> Vec<SegMatrixRow> {
         },
         &format!(
             "{}Incumbent: `{INCUMBENT_R0_SEQUENCE}`\n\n\
+             {}\n\n\
              Rows {rows} (candidate) against the incumbent at the same `acc_size`; the real \
              plan's row count is {incumbent_rows} (saturated={saturated}). \
-             {SEG_WARMUP_ITERS} warmups and {SEG_TIMING_ITERS} timed samples PER SIDE, \
-             interleaved. Ratio is candidate/incumbent; the interval is a \
-             {SEG_BOOTSTRAP_RESAMPLES}-resample percentile bootstrap over PAIRS. \
-             **Inversion is `ci_high < 1.0`.**\n\n\
-             **Winner: `{}`, {} registers, {:.3} us, ratio {:.4} with 95% CI \
-             [{:.4}, {:.4}] -- {}.** Chosen among PRODUCTION-loader rows \
+             {SEG_WARMUP_SUPERBLOCKS} warmup superblocks and {SEG_TIMED_BLOCKS} timed \
+             two-pair blocks (spec §6(a)), so every block holds one candidate-first and \
+             one incumbent-first pair. The statistic is the MEDIAN BLOCK RATIO with a \
+             {SEG_BOOTSTRAP_RESAMPLES}-resample percentile bootstrap whose resample unit \
+             is the block, stratified jointly on `(orientation, incoming class)`. A cell \
+             whose order-interaction CI leaves +/-{SEG_ORDER_EQUIVALENCE_PCT}% has NO \
+             quotable ratio. **Inversion is `ci_high < 1.0`.**\n\n\
+             **Winner: `{}`, {} registers, {:.3} us, {}.** Chosen among PRODUCTION-loader rows \
              (`const` bank, by-value program) with the tie band resolved to the \
              smallest `K` and then the smallest carveout; {} production rows sit \
              inside that band, so the epilogue axis is NOT resolved at this `K`. \
@@ -2295,13 +4100,29 @@ fn run_r0_matrix(profile: Option<SegShape>) -> Vec<SegMatrixRow> {
             } else {
                 ""
             },
+            // PROVENANCE, in the published section itself: this table is a derived
+            // summary at a fixed path, so a reader must be able to reach the raw
+            // samples and the two SHA-256s from the number they are quoting (§7.3
+            // criterion 4c). The `run_id` column of the CSV carries the same key
+            // per row.
+            {
+                let meta = SegRunMeta::current();
+                format!(
+                    "Run `{}` (label `{}`, compiled pin `{}`), commit `{}`, archive \
+                     `{}`, test binary `{}`. Raw samples: `{}`.",
+                    meta.run_id,
+                    meta.run_label,
+                    meta.pin_level,
+                    meta.commit,
+                    meta.archive_sha256,
+                    meta.test_binary_sha256,
+                    seg_run_dir(meta).join(SEG_RAW_SAMPLES_TSV).display(),
+                )
+            },
             best.shape.label(),
             best.attributes.registers,
             best.candidate_median_us,
-            gate.median_ratio,
-            gate.ci_low,
-            gate.ci_high,
-            gate.verdict(),
+            gate_line,
             band.len(),
             quickest.shape.label(),
             quickest.candidate_median_us,
@@ -2385,7 +4206,8 @@ fn measure_shape(
         candidate_min_us: 0.0,
         incumbent_median_us: None,
         incumbent_min_us: None,
-        ratio: None,
+        ratio: SegRatio::Solo,
+        run_id: "-",
         baseline: baseline.map_or("-", |(label, _)| label),
     };
     if blocks_per_sm == 0 {
@@ -2438,25 +4260,73 @@ fn measure_shape(
     let stream = context.get_exec_stream();
     match baseline {
         Some((label, baseline)) => {
-            let paired = time_paired(stream, || launchable.launch(context), || baseline(context))
-                .expect("interleaved paired timing");
-            let estimate = paired.estimate();
+            // The BALANCED protocol (spec §6(a)): seeded two-pair blocks, a
+            // joint-stratified block bootstrap, and the order contrast as a gate.
+            // `time_paired`'s fixed candidate-then-incumbent order cannot identify an
+            // order effect at all, which is defect §1(d).
+            let blocked = time_paired_blocked(
+                stream,
+                || launchable.launch(context),
+                || baseline(context),
+                &seg_schedule(SEG_SCHEDULE_SEED),
+            )
+            .expect("balanced two-pair paired timing");
+            let ratio = SegRatio::of(&blocked);
+            let order = blocked.order_interaction();
+            // The medians a paired row reports come from the BLOCK MEANS, so the CSV's
+            // median columns describe the protocol that produced the ratio.
+            let candidate_means: Vec<f64> = blocked
+                .blocks
+                .iter()
+                .map(SegBlockSample::candidate_mean)
+                .collect();
+            let incumbent_means: Vec<f64> = blocked
+                .blocks
+                .iter()
+                .map(SegBlockSample::incumbent_mean)
+                .collect();
+            let reported = match ratio.reported_estimate() {
+                Some(estimate) => format!(
+                    "{:.4} [{:.4}, {:.4}] {}",
+                    estimate.median_ratio,
+                    estimate.ci_low,
+                    estimate.ci_high,
+                    estimate.verdict(),
+                ),
+                None => format!("- {}", ratio.verdict()),
+            };
             eprintln!(
                 "[seg-spike] {benchmark} {}: candidate {:.3}us vs {label} {:.3}us -> \
-                 {:.4} [{:.4}, {:.4}] {}",
+                 {reported} | order delta {:+.3}% [{:+.3}, {:+.3}] gate={}",
                 shape.label(),
-                paired.candidate_median(),
-                paired.incumbent_median(),
-                estimate.median_ratio,
-                estimate.ci_low,
-                estimate.ci_high,
-                estimate.verdict(),
+                median(&candidate_means),
+                median(&incumbent_means),
+                order.delta_order_pct,
+                order.ci_low_pct,
+                order.ci_high_pct,
+                order.passes(),
             );
-            row.candidate_median_us = paired.candidate_median();
-            row.candidate_min_us = paired.candidate_min();
-            row.incumbent_median_us = Some(paired.incumbent_median());
-            row.incumbent_min_us = Some(paired.incumbent_min());
-            row.ratio = Some(estimate);
+            // The RECORD, into the run's reserved directory: every sample with its
+            // block, orientation, incoming class and order id, so every §6 analysis is
+            // reproducible after the process has exited.
+            let meta = SegRunMeta::current();
+            record_raw_samples(meta, &format!("{benchmark}|{}", shape.label()), &blocked);
+            row.run_id = meta.run_id.as_str();
+            row.candidate_median_us = median(&candidate_means);
+            row.candidate_min_us = blocked
+                .blocks
+                .iter()
+                .flat_map(|block| block.candidate_us)
+                .fold(f64::MAX, f64::min);
+            row.incumbent_median_us = Some(median(&incumbent_means));
+            row.incumbent_min_us = Some(
+                blocked
+                    .blocks
+                    .iter()
+                    .flat_map(|block| block.incumbent_us)
+                    .fold(f64::MAX, f64::min),
+            );
+            row.ratio = ratio;
         }
         None => {
             let samples =
@@ -2760,6 +4630,14 @@ fn bwd_seg_fold_weight_prelude_cost() {
             &context,
         );
         let launchable = cell.prepare(shape, &context);
+        // The LEGACY IID protocol on purpose, and NOT a §6 A/B: the two arms are
+        // DIFFERENT kernels three orders of magnitude apart, so this ratio is a cost
+        // FRACTION ("how much of a round is the prelude"), not a candidate-versus-
+        // incumbent verdict. §6(a)'s balanced blocks and its ±0.30% equivalence gate
+        // answer the other question, and applying them here would suppress a
+        // perfectly readable fraction on a contrast that cannot change its reading.
+        // This interval is therefore NOT admissible as a §6 result and the published
+        // section says so.
         let paired = time_paired(
             stream,
             || launch_bwd_seg_build_fold_weights(u32::from(round), &context),
@@ -2804,7 +4682,12 @@ fn bwd_seg_fold_weight_prelude_cost() {
              dispatch bubble); amortized = one window holding {SEG_PRELUDE_BATCH} launches, \
              divided by {SEG_PRELUDE_BATCH} (kernel-bound lower bound). \
              {SEG_WARMUP_ITERS} warmups and {SEG_TIMING_ITERS} samples per arm.\n\n{solo}\n\
-             Interleaved against a real continuation executor, one process, one loop:\n\n\
+             Interleaved against a real continuation executor, one process, one loop. \
+             **This fraction is NOT a §6 A/B result and must not be quoted as one:** its \
+             two arms are different kernels three orders of magnitude apart, it uses the \
+             LEGACY interleaved protocol (fixed arm order, IID bootstrap over pairs), and \
+             it emits no raw samples and no order contrast. It answers \"how much of a \
+             round is the prelude\", nothing else.\n\n\
              {paired_body}\n"
         ),
     );
@@ -3004,7 +4887,7 @@ fn bwd_seg_stage_b_acc_ladder() {
          rung / twin | 95% CI | verdict |\n|---|---|---|---|---|---|---|---|---|---|---|\n",
     );
     for row in &matrix {
-        let (ratio, ci, verdict) = match row.ratio {
+        let (ratio, ci, verdict) = match row.ratio.reported_estimate() {
             Some(estimate) => (
                 format!("{:.4}", estimate.median_ratio),
                 format!("[{:.4}, {:.4}]", estimate.ci_low, estimate.ci_high),
@@ -3017,7 +4900,16 @@ fn bwd_seg_stage_b_acc_ladder() {
                 }
                 .to_owned(),
             ),
-            None => ("baseline".to_owned(), "-".to_owned(), "-".to_owned()),
+            // The register-placement twin itself is timed solo; an order-coupled rung
+            // has diagnostics but no quotable ratio.
+            None if row.ratio.order().is_none() => {
+                ("baseline".to_owned(), "-".to_owned(), "-".to_owned())
+            }
+            None => (
+                "-".to_owned(),
+                "-".to_owned(),
+                row.ratio.verdict().to_owned(),
+            ),
         };
         writeln!(
             pairs,
@@ -4843,7 +6735,12 @@ fn corpus_row(
             .measured()
             .then_some(row.incumbent_median_us)
             .flatten(),
-        ratio_vs_baseline: status.measured().then_some(row.ratio).flatten(),
+        // Through `selectable()`: the corpus ratio feeds `corpus_best_k`, which is a
+        // DECISION, so an order-coupled cell contributes no ratio to it.
+        ratio_vs_baseline: status
+            .measured()
+            .then(|| row.ratio.selectable().map(|(estimate, _)| estimate))
+            .flatten(),
     }
 }
 
@@ -5480,6 +7377,800 @@ fn bwd_seg_corpus_d2_policy() {
 mod tests {
     use super::*;
 
+    /// A blocked sample set from a per-sample cost function, so the census and
+    /// bootstrap properties are testable without a GPU. The cost sees the block's
+    /// ORIENTATION and the sample's WITHIN-BLOCK SLOT as well as the global order,
+    /// because an order effect is a function of what ran before — a cost that depends
+    /// only on `order % 2` is invisible to the contrast (each orientation gets one
+    /// even and one odd candidate slot, so the means match identically).
+    fn blocked_fixture(
+        seed: u64,
+        cost: impl Fn(SegArm, SegBlockOrientation, usize, usize) -> f64,
+    ) -> SegBlockedSamples {
+        let schedule = seg_schedule(seed);
+        let mut order_id = 0usize;
+        let blocks = schedule
+            .blocks
+            .iter()
+            .map(|plan| {
+                let first_order_id = order_id;
+                let mut cand = Vec::new();
+                let mut inc = Vec::new();
+                for (slot, arm) in plan.orientation.arms().into_iter().enumerate() {
+                    let micros = cost(arm, plan.orientation, slot, order_id);
+                    match arm {
+                        SegArm::A => cand.push(micros),
+                        SegArm::B => inc.push(micros),
+                    }
+                    order_id += 1;
+                }
+                SegBlockSample {
+                    plan: *plan,
+                    first_order_id,
+                    candidate_us: [cand[0], cand[1]],
+                    incumbent_us: [inc[0], inc[1]],
+                }
+            })
+            .collect();
+        SegBlockedSamples { schedule, blocks }
+    }
+
+    fn flat_cost(
+        candidate: f64,
+        incumbent: f64,
+    ) -> impl Fn(SegArm, SegBlockOrientation, usize, usize) -> f64 {
+        move |arm, _, _, _| match arm {
+            SegArm::A => candidate,
+            SegArm::B => incumbent,
+        }
+    }
+
+    #[test]
+    fn the_schedule_balances_orientation_and_the_superblock_census() {
+        for seed in [SEG_SCHEDULE_SEED, SEG_SCHEDULE_SEED ^ 1] {
+            let schedule = seg_schedule(seed);
+            assert_eq!(schedule.timed.len(), 8, "8 timed superblocks");
+            assert_eq!(schedule.blocks.len(), 16, "16 two-pair blocks");
+            let abba = schedule
+                .blocks
+                .iter()
+                .filter(|b| b.orientation == SegBlockOrientation::Abba)
+                .count();
+            assert_eq!(
+                (abba, 16 - abba),
+                (8, 8),
+                "orientation balance is exact 8/8"
+            );
+            // The warmup's last superblock leads the timed sequence, so the leading
+            // boundary is COUNTED and nothing is excluded.
+            assert_eq!(*schedule.warmup.last().unwrap(), schedule.timed[0]);
+            assert_eq!(
+                schedule
+                    .blocks
+                    .iter()
+                    .filter(|b| b.boundary_source == SegBoundarySource::WarmupSupplied)
+                    .count(),
+                1,
+                "exactly one warmup-supplied boundary; the other 15 are internal"
+            );
+            // Superblock-level census: self 3/3, cross 1/1 — exact, no residual.
+            let types = {
+                let mut all = schedule.warmup.clone();
+                all.extend(schedule.timed.iter().copied());
+                all
+            };
+            let mut census = std::collections::BTreeMap::new();
+            for pair in types.windows(2).skip(SEG_WARMUP_SUPERBLOCKS - 1) {
+                let class = match (pair[0], pair[1]) {
+                    (SegSuperblockType::X, SegSuperblockType::Y) => SegTransitionClass::SelfB,
+                    (SegSuperblockType::Y, SegSuperblockType::X) => SegTransitionClass::SelfA,
+                    (SegSuperblockType::X, SegSuperblockType::X) => SegTransitionClass::BToA,
+                    (SegSuperblockType::Y, SegSuperblockType::Y) => SegTransitionClass::AToB,
+                };
+                *census.entry(class).or_insert(0usize) += 1;
+            }
+            assert_eq!(census[&SegTransitionClass::SelfA], 3);
+            assert_eq!(census[&SegTransitionClass::SelfB], 3);
+            assert_eq!(census[&SegTransitionClass::AToB], 1);
+            assert_eq!(census[&SegTransitionClass::BToA], 1);
+        }
+    }
+
+    /// Spec §6(a)'s STRONGEST form of the balance claim: over the whole timed
+    /// sequence the census is balanced in both directions — 64 incoming transitions
+    /// (8 outer + 56 interior) split self-A 11 / self-B 11 / A->B 21 / B->A 21.
+    /// Verified here by enumeration, in both mirrors.
+    #[test]
+    fn the_sample_level_census_is_eleven_eleven_twentyone_twentyone() {
+        for seed in [SEG_SCHEDULE_SEED, SEG_SCHEDULE_SEED ^ 1] {
+            let schedule = seg_schedule(seed);
+            let mut previous = schedule.warmup.last().unwrap().blocks()[1].last();
+            let mut census = std::collections::BTreeMap::new();
+            let mut total = 0usize;
+            for block in &schedule.blocks {
+                for arm in block.orientation.arms() {
+                    *census
+                        .entry(SegTransitionClass::of(previous, arm))
+                        .or_insert(0usize) += 1;
+                    previous = arm;
+                    total += 1;
+                }
+            }
+            assert_eq!(total, 64, "16 blocks x 4 samples");
+            assert_eq!(census[&SegTransitionClass::SelfA], 11);
+            assert_eq!(census[&SegTransitionClass::SelfB], 11);
+            assert_eq!(census[&SegTransitionClass::AToB], 21);
+            assert_eq!(census[&SegTransitionClass::BToA], 21);
+        }
+    }
+
+    #[test]
+    fn the_joint_stratum_census_is_three_five_three_five_in_both_mirrors() {
+        for seed in [SEG_SCHEDULE_SEED, SEG_SCHEDULE_SEED ^ 1] {
+            let samples = blocked_fixture(seed, flat_cost(90.0, 100.0));
+            assert_eq!(
+                samples.stratum_census(),
+                [3, 5, 3, 5],
+                "joint (orientation, incoming) census is fixed by construction"
+            );
+            assert!((samples.point_ratio() - 0.9).abs() < 1e-12);
+        }
+    }
+
+    /// Inspects ACTUAL REPLICATES, not the observed set: the invariant is that every
+    /// replicate reproduces both the 3/5/3/5 stratum composition and, from it, the
+    /// 8/8 orientation balance.
+    #[test]
+    fn every_replicate_preserves_both_compositions() {
+        let samples = blocked_fixture(SEG_SCHEDULE_SEED, |arm, _, _, order| match arm {
+            SegArm::A => 90.0 + order as f64,
+            SegArm::B => 100.0,
+        });
+        assert_eq!(samples.stratum_census(), [3, 5, 3, 5]);
+        let counts = samples.replicate_stratum_counts(512);
+        assert_eq!(counts.len(), 512);
+        for (index, counts) in counts.iter().enumerate() {
+            assert_eq!(
+                *counts,
+                [3, 5, 3, 5],
+                "replicate {index} lost its composition"
+            );
+            assert_eq!(counts.iter().sum::<usize>(), SEG_TIMED_BLOCKS);
+            assert_eq!(counts[0] + counts[1], 8, "replicate {index}: ABBA balance");
+            assert_eq!(counts[2] + counts[3], 8, "replicate {index}: BAAB balance");
+        }
+    }
+
+    #[test]
+    fn the_stratified_bootstrap_reproduces_a_known_interval() {
+        // A constant ratio must give a degenerate interval, exactly. Any resampling
+        // that mixed arms or lost the pairing would widen it.
+        let samples = blocked_fixture(SEG_SCHEDULE_SEED, flat_cost(80.0, 100.0));
+        let estimate = samples.estimate_stratified();
+        for value in [estimate.median_ratio, estimate.ci_low, estimate.ci_high] {
+            assert!((value - 0.8).abs() < 1e-12, "{estimate:?}");
+        }
+        // Seeded: re-deriving from the same samples gives the same numbers.
+        let again = samples.estimate_stratified();
+        assert_eq!(
+            (estimate.ci_low, estimate.ci_high),
+            (again.ci_low, again.ci_high)
+        );
+    }
+
+    #[test]
+    fn the_order_contrast_is_zero_on_order_independent_input() {
+        let samples = blocked_fixture(SEG_SCHEDULE_SEED, flat_cost(95.0, 100.0));
+        let order = samples.order_interaction();
+        assert!(order.delta_order_pct.abs() < 1e-9, "{order:?}");
+        assert!(order.passes(), "{order:?}");
+    }
+
+    /// The gate must genuinely FIRE. The coupling is made a function of the block's
+    /// ORIENTATION — the candidate pays 4% more in `BAAB` blocks, where it never
+    /// leads — which is exactly the confound §1(d) says is unidentifiable from the
+    /// existing fixed-order samples.
+    #[test]
+    fn the_order_gate_fails_on_a_materially_order_coupled_cell() {
+        let samples = blocked_fixture(SEG_SCHEDULE_SEED, |arm, orientation, _, _| match arm {
+            SegArm::A => {
+                if orientation == SegBlockOrientation::Baab {
+                    104.0
+                } else {
+                    100.0
+                }
+            }
+            SegArm::B => 100.0,
+        });
+        let order = samples.order_interaction();
+        assert!(
+            order.delta_order_pct < -3.0,
+            "the fixture must produce a real contrast; got {order:?}"
+        );
+        assert!(
+            !order.passes(),
+            "the WHOLE CI must sit inside +/-{SEG_ORDER_EQUIVALENCE_PCT}%; got {order:?}"
+        );
+    }
+
+    #[test]
+    fn the_decision_rule_returns_unresolved_on_two_of_three() {
+        let ok = SegOrderInteraction {
+            delta_order_pct: 0.0,
+            ci_low_pct: -0.05,
+            ci_high_pct: 0.05,
+        };
+        let inverted = RatioEstimate {
+            median_ratio: 0.97,
+            ci_low: 0.965,
+            ci_high: 0.975,
+        };
+        let straddles = RatioEstimate {
+            median_ratio: 0.999,
+            ci_low: 0.99,
+            ci_high: 1.01,
+        };
+        let regressed = RatioEstimate {
+            median_ratio: 1.03,
+            ci_low: 1.02,
+            ci_high: 1.04,
+        };
+        assert_eq!(
+            classify_confirmation(&[(inverted, ok); 3]),
+            SegConfirmOutcome::Inverted
+        );
+        assert_eq!(
+            classify_confirmation(&[(regressed, ok); 3]),
+            SegConfirmOutcome::NotInverted
+        );
+        // 2 of 3 inverted is NOT a result.
+        assert_eq!(
+            classify_confirmation(&[(inverted, ok), (inverted, ok), (straddles, ok)]),
+            SegConfirmOutcome::Unresolved
+        );
+        // A mixture of directions is not a result either.
+        assert_eq!(
+            classify_confirmation(&[(inverted, ok), (inverted, ok), (regressed, ok)]),
+            SegConfirmOutcome::Unresolved
+        );
+        // A failed interaction gate voids the cell regardless of the intervals.
+        let bad = SegOrderInteraction {
+            delta_order_pct: 0.9,
+            ci_low_pct: 0.5,
+            ci_high_pct: 1.3,
+        };
+        assert_eq!(
+            classify_confirmation(&[(inverted, ok), (inverted, ok), (inverted, bad)]),
+            SegConfirmOutcome::Unresolved
+        );
+    }
+
+    /// Four processes is the ad-hoc addition §6(b) forbids, so the API rejects it.
+    #[test]
+    #[should_panic(expected = "admits exactly")]
+    fn the_decision_rule_rejects_a_fourth_process() {
+        let ok = SegOrderInteraction {
+            delta_order_pct: 0.0,
+            ci_low_pct: -0.05,
+            ci_high_pct: 0.05,
+        };
+        let inverted = RatioEstimate {
+            median_ratio: 0.97,
+            ci_low: 0.965,
+            ci_high: 0.975,
+        };
+        let _ = classify_confirmation(&[(inverted, ok); 4]);
+    }
+
+    #[test]
+    fn the_confirmation_summary_carries_the_three_number_report() {
+        let processes: Vec<SegBlockedSamples> = [0.970_f64, 0.972, 0.968]
+            .into_iter()
+            .map(|ratio| blocked_fixture(SEG_SCHEDULE_SEED, flat_cost(100.0 * ratio, 100.0)))
+            .collect();
+        // `SegConfirmSummary` is an ENUM: the pooled numbers exist only on `Resolved`,
+        // so this destructures rather than reading fields off a struct.
+        match summarize_confirmation(&processes) {
+            SegConfirmSummary::Resolved {
+                inverted,
+                ref process_ratios,
+                median_ratio,
+                min_ratio,
+                max_ratio,
+                ref conditional_medians,
+                ..
+            } => {
+                assert!(inverted, "all three intervals lie strictly below 1.0");
+                assert_eq!(process_ratios.len(), SEG_CONFIRM_PROCESSES);
+                assert!((median_ratio - 0.970).abs() < 1e-9);
+                assert!((min_ratio - 0.968).abs() < 1e-9);
+                assert!((max_ratio - 0.972).abs() < 1e-9);
+                // §7.2.1's secondary column needs these, and they are carried on the
+                // VALID path too — not only on order-coupled cells.
+                assert_eq!(conditional_medians.len(), SEG_CONFIRM_PROCESSES);
+            }
+            other => panic!("expected Resolved, got {other:?}"),
+        }
+        assert_eq!(
+            summarize_confirmation(&processes).outcome(),
+            SegConfirmOutcome::Inverted
+        );
+    }
+
+    /// An order-coupled process yields an `Unresolved` summary with **no pooled fields
+    /// at all** — the type has none on that path, which is the point.
+    #[test]
+    fn an_unresolved_confirmation_carries_no_pooled_numbers() {
+        let clean = blocked_fixture(SEG_SCHEDULE_SEED, flat_cost(97.0, 100.0));
+        let coupled = blocked_fixture(SEG_SCHEDULE_SEED, |arm, orientation, _, _| match arm {
+            SegArm::A => {
+                if orientation == SegBlockOrientation::Baab {
+                    101.0
+                } else {
+                    97.0
+                }
+            }
+            SegArm::B => 100.0,
+        });
+        let summary = summarize_confirmation(&[clean.clone(), clean, coupled]);
+        match summary {
+            SegConfirmSummary::Unresolved {
+                ref reason,
+                ref per_process,
+                ref order,
+                ref conditional_medians,
+            } => {
+                assert!(reason.contains("order gate failed"), "{reason}");
+                assert_eq!(per_process.len(), SEG_CONFIRM_PROCESSES);
+                assert!(
+                    per_process[2].is_none(),
+                    "the coupled process has no interval"
+                );
+                assert_eq!(order.len(), SEG_CONFIRM_PROCESSES);
+                assert_eq!(conditional_medians.len(), SEG_CONFIRM_PROCESSES);
+            }
+            other => panic!("expected Unresolved, got {other:?}"),
+        }
+        assert_eq!(summary.outcome(), SegConfirmOutcome::Unresolved);
+    }
+
+    #[test]
+    fn the_raw_sample_schema_round_trips_exactly() {
+        let meta = SegRunMeta {
+            run_id: "r0001-0123456789ab".to_owned(),
+            commit: "9bf7a80e".to_owned(),
+            feature_set: "bench".to_owned(),
+            run_label: "natural-r0-primary-1".to_owned(),
+            pin_level: "natural".to_owned(),
+            archive_sha256: "0".repeat(64),
+            test_binary_sha256: "1".repeat(64),
+            // A comma-bearing field, which is exactly why the raw file is TSV.
+            device: "NVIDIA Test Device, 32 GiB".to_owned(),
+            toolkit: "Build cuda_13.3, r13.3".to_owned(),
+            seed: SEG_SCHEDULE_SEED,
+        };
+        let samples = blocked_fixture(SEG_SCHEDULE_SEED, |arm, _, slot, order| match arm {
+            SegArm::A => 90.0 + order as f64 / 7.0 + slot as f64 / 13.0,
+            SegArm::B => 100.0 + order as f64 / 11.0,
+        });
+        let tsv = render_raw_samples_tsv(&meta, "r0-primary", &samples);
+        for column in [
+            "run_id",
+            "archive_sha256",
+            "seed",
+            "block_id",
+            "superblock_id",
+            "orientation",
+            "incoming_class",
+            "boundary_source",
+            "order_id",
+            "arm",
+            "sample_us",
+        ] {
+            assert!(tsv.contains(column), "missing column {column}");
+        }
+        assert_eq!(tsv.lines().count(), 1 + 4 * SEG_TIMED_BLOCKS);
+        let (back_meta, rows) = parse_raw_samples_tsv(&tsv);
+        assert_eq!(
+            back_meta, meta,
+            "metadata must survive the round trip verbatim"
+        );
+        assert_eq!(rows.len(), SEG_TIMED_BLOCKS);
+        let rebuilt = SegBlockedSamples {
+            schedule: seg_schedule(back_meta.seed),
+            blocks: rows.into_iter().map(|(_, block)| block).collect(),
+        };
+        assert_eq!(rebuilt.stratum_census(), samples.stratum_census());
+        // Exact, not approximate: `{:?}` is round-trip-safe, `{:.3}` is not.
+        for (a, b) in rebuilt.blocks.iter().zip(samples.blocks.iter()) {
+            assert_eq!(a.candidate_us, b.candidate_us);
+            assert_eq!(a.incumbent_us, b.incumbent_us);
+        }
+        let (x, y) = (rebuilt.estimate_stratified(), samples.estimate_stratified());
+        assert_eq!((x.ci_low, x.ci_high), (y.ci_low, y.ci_high));
+    }
+
+    /// **`aggregate_confirmation_runs` is DRIVEN too**, to the same standard as
+    /// `aggregate_arm`: it goes through `read_run`/`shared_identity`, and a rewrite
+    /// nothing executes is a rewrite nobody has checked. Three real headered TSVs, written
+    /// by the real writer, one of them order-coupled.
+    #[test]
+    #[serial_test::serial]
+    fn aggregate_confirmation_runs_uses_the_shared_reader_end_to_end() {
+        let root = std::env::temp_dir().join(format!("seg_conf_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let cell = "r0-primary";
+        let mut dirs = Vec::new();
+        for run in 0..SEG_CONFIRM_PROCESSES {
+            let dir = root.join(format!("r{run}"));
+            std::fs::create_dir_all(&dir).expect("run dir");
+            let meta = SegRunMeta {
+                run_id: format!("r001{run}-cccccccccccc"),
+                commit: "c".to_owned(),
+                feature_set: "bench".to_owned(),
+                run_label: format!("natural-r0-primary-{run}"),
+                pin_level: "natural".to_owned(),
+                archive_sha256: "e".repeat(64),
+                test_binary_sha256: "f".repeat(64),
+                toolkit: "13.3".to_owned(),
+                device: "d".to_owned(),
+                seed: SEG_SCHEDULE_SEED,
+            };
+            let samples = blocked_fixture(SEG_SCHEDULE_SEED, flat_cost(97.0, 100.0));
+            std::env::set_var("BWD_SEG_RUN_DIR", &dir);
+            record_raw_samples(&meta, cell, &samples);
+            dirs.push(dir);
+        }
+        std::env::remove_var("BWD_SEG_RUN_DIR");
+        // EVERY file must carry its own header — the per-path start state is what makes
+        // three runs in one process possible at all.
+        for dir in &dirs {
+            let text = std::fs::read_to_string(dir.join(SEG_RAW_SAMPLES_TSV)).expect("raw");
+            assert!(
+                text.starts_with(SEG_RAW_TSV_HEADER),
+                "{} is headerless — the writer's start state is not per-path",
+                dir.display()
+            );
+        }
+        match aggregate_confirmation_runs(&dirs, cell) {
+            SegConfirmSummary::Resolved {
+                inverted,
+                median_ratio,
+                ..
+            } => {
+                assert!(inverted);
+                assert!((median_ratio - 0.97).abs() < 1e-9);
+            }
+            other => panic!("expected Resolved, got {other:?}"),
+        }
+        // A shared run id is refused by the SHARED rule, not by a local copy of it.
+        let dup = root.join("dup");
+        std::fs::create_dir_all(&dup).expect("dup dir");
+        let meta = SegRunMeta {
+            run_id: "r0010-cccccccccccc".to_owned(), // collides with run 0
+            commit: "c".to_owned(),
+            feature_set: "bench".to_owned(),
+            run_label: "natural-r0-primary-dup".to_owned(),
+            pin_level: "natural".to_owned(),
+            archive_sha256: "e".repeat(64),
+            test_binary_sha256: "f".repeat(64),
+            toolkit: "13.3".to_owned(),
+            device: "d".to_owned(),
+            seed: SEG_SCHEDULE_SEED,
+        };
+        std::env::set_var("BWD_SEG_RUN_DIR", &dup);
+        record_raw_samples(
+            &meta,
+            cell,
+            &blocked_fixture(SEG_SCHEDULE_SEED, flat_cost(97.0, 100.0)),
+        );
+        std::env::remove_var("BWD_SEG_RUN_DIR");
+        let collided = vec![dirs[0].clone(), dirs[1].clone(), dup];
+        assert!(
+            std::panic::catch_unwind(move || { aggregate_confirmation_runs(&collided, cell) })
+                .is_err()
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// **The generic reader and provenance rule, driven with real TSVs, one defect at a
+    /// time.** These belong here because `read_run` and `shared_identity` are defined here:
+    /// they are the single parser and the single provenance rule for EVERY caller, so their
+    /// negatives cannot live in a task six steps later that merely happens to be their
+    /// first D3 consumer.
+    #[test]
+    #[serial_test::serial]
+    fn the_shared_reader_rejects_every_generic_identity_defect() {
+        let cell = "generic-cell";
+        let base = |run: usize| SegRunMeta {
+            run_id: format!("r020{run}-aaaaaaaaaaaa"),
+            commit: "c".to_owned(),
+            feature_set: "bench".to_owned(),
+            run_label: format!("generic-{run}"),
+            pin_level: "natural".to_owned(),
+            archive_sha256: "a".repeat(64),
+            test_binary_sha256: "b".repeat(64),
+            toolkit: "13.3".to_owned(),
+            device: "d".to_owned(),
+            seed: SEG_SCHEDULE_SEED,
+        };
+        // Three runs; `mutate` damages run 3's metadata only.
+        let build = |tag: &str, mutate: &dyn Fn(&mut SegRunMeta)| {
+            let root = std::env::temp_dir().join(format!("seg_gen_{tag}_{}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&root);
+            let mut dirs = Vec::new();
+            for run in 1..=SEG_CONFIRM_PROCESSES {
+                let dir = root.join(format!("r{run}"));
+                std::fs::create_dir_all(&dir).expect("run dir");
+                let mut meta = base(run);
+                if run == SEG_CONFIRM_PROCESSES {
+                    mutate(&mut meta);
+                }
+                std::env::set_var("BWD_SEG_RUN_DIR", &dir);
+                record_raw_samples(
+                    &meta,
+                    cell,
+                    &blocked_fixture(SEG_SCHEDULE_SEED, flat_cost(90.0, 100.0)),
+                );
+                dirs.push(dir);
+            }
+            std::env::remove_var("BWD_SEG_RUN_DIR");
+            (root, dirs)
+        };
+        // POSITIVE control: `read_run` parses each file and `shared_identity` accepts them.
+        let (root, dirs) = build("ok", &|_| {});
+        let ids: Vec<SegRunMeta> = dirs.iter().map(|d| read_run(d).0).collect();
+        assert_eq!(shared_identity(&ids).archive_sha256, "a".repeat(64));
+        // And every file carries its own header — the per-path writer state in one assertion.
+        for dir in &dirs {
+            let text = std::fs::read_to_string(dir.join(SEG_RAW_SAMPLES_TSV)).expect("raw");
+            assert!(
+                text.starts_with(SEG_RAW_TSV_HEADER),
+                "{} is headerless",
+                dir.display()
+            );
+        }
+        let _ = std::fs::remove_dir_all(&root);
+        // Every generic defect, one at a time, through `read_run` + `shared_identity`.
+        let cases: Vec<(&str, Box<dyn Fn(&mut SegRunMeta)>)> = vec![
+            (
+                "dupid",
+                Box::new(|m: &mut SegRunMeta| m.run_id = "r0201-aaaaaaaaaaaa".to_owned()),
+            ),
+            (
+                "archive",
+                Box::new(|m: &mut SegRunMeta| m.archive_sha256 = "9".repeat(64)),
+            ),
+            (
+                "testbin",
+                Box::new(|m: &mut SegRunMeta| m.test_binary_sha256 = "9".repeat(64)),
+            ),
+            (
+                "commit",
+                Box::new(|m: &mut SegRunMeta| m.commit = "other".to_owned()),
+            ),
+            (
+                "pin",
+                Box::new(|m: &mut SegRunMeta| m.pin_level = "48".to_owned()),
+            ),
+            (
+                "features",
+                Box::new(|m: &mut SegRunMeta| m.feature_set = "plain".to_owned()),
+            ),
+            (
+                "toolkit",
+                Box::new(|m: &mut SegRunMeta| m.toolkit = "12.9".to_owned()),
+            ),
+            (
+                "device",
+                Box::new(|m: &mut SegRunMeta| m.device = "other".to_owned()),
+            ),
+            (
+                "seed",
+                Box::new(|m: &mut SegRunMeta| m.seed = SEG_SCHEDULE_SEED ^ 1),
+            ),
+        ];
+        for (tag, mutate) in cases {
+            let (root, dirs) = build(tag, mutate.as_ref());
+            let attempt = std::panic::catch_unwind(|| {
+                let ids: Vec<SegRunMeta> = dirs.iter().map(|d| read_run(d).0).collect();
+                shared_identity(&ids)
+            });
+            assert!(
+                attempt.is_err(),
+                "the shared reader accepted defect {tag:?}"
+            );
+            let _ = std::fs::remove_dir_all(&root);
+        }
+        // A per-run LABEL difference is accepted on purpose: labels differ by design, and
+        // binding a label to an arm is the D3 layer's job (Task 7), not the reader's.
+        let (root, dirs) = build("label", &|m: &mut SegRunMeta| {
+            m.run_label = "other-9".to_owned()
+        });
+        let ids: Vec<SegRunMeta> = dirs.iter().map(|d| read_run(d).0).collect();
+        shared_identity(&ids);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// SERIAL: it mutates `BWD_SEG_RUN_DIR`, which is process-wide state that every other
+    /// paired-path test reads. Two of these running concurrently would each see the other's
+    /// reservation.
+    #[test]
+    #[serial_test::serial]
+    fn a_unique_run_directory_per_process_cannot_overwrite() {
+        // `seg_run_dir` reads the RESERVED directory from the environment (the launcher
+        // claims it with `mkdir`), so what this pins is that two runs cannot be handed
+        // the same reservation and that the reservation is what is used.
+        let base = SegRunMeta {
+            run_id: "r0001-aaaaaaaaaaaa".to_owned(),
+            commit: "c".to_owned(),
+            feature_set: "bench".to_owned(),
+            run_label: "40-1".to_owned(),
+            pin_level: "40".to_owned(),
+            archive_sha256: "a".repeat(64),
+            test_binary_sha256: "b".repeat(64),
+            toolkit: "13.3".to_owned(),
+            device: "d".to_owned(),
+            seed: SEG_SCHEDULE_SEED,
+        };
+        let first = std::env::temp_dir().join(format!("seg_rd_a_{}", std::process::id()));
+        let second = std::env::temp_dir().join(format!("seg_rd_b_{}", std::process::id()));
+        // SAFETY: single-threaded test; the harness reads this once per process.
+        std::env::set_var("BWD_SEG_RUN_DIR", &first);
+        assert_eq!(seg_run_dir(&base), first);
+        std::env::set_var("BWD_SEG_RUN_DIR", &second);
+        assert_ne!(
+            seg_run_dir(&base),
+            first,
+            "the reservation is the only source"
+        );
+        assert_eq!(seg_run_dir(&base), second);
+        std::env::remove_var("BWD_SEG_RUN_DIR");
+    }
+
+    #[test]
+    fn the_freeze_round_trips_and_its_hash_is_stable() {
+        // Tagged `pin-decision`, because the cell is a CONTINUATION shape and the
+        // `r0-headline` predicate (class == R0, add_sub layer 0, probed tuple) would — and
+        // should — refuse it. A generic round-trip fixture must name a cell its campaign
+        // actually admits.
+        let cells = vec![SegFrozenCell {
+            label: "cont-d1-k4-plane-const-inline".to_owned(),
+            circuit: ADD_SUB_LAYOUT_SHORT.to_owned(),
+            layer: 0,
+            class: SegRoundClass::D1,
+            k: 4,
+            epilogue: "plane".to_owned(),
+            coeff: "const".to_owned(),
+            program: "inline".to_owned(),
+        }];
+        let dir = std::env::temp_dir().join(format!("seg_freeze_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let path = dir.join(SEG_FROZEN_CELLS_TSV);
+        write_frozen_cells(&path, "pin-decision", &cells, SEG_SCHEDULE_SEED);
+        assert_eq!(
+            read_frozen_cells(&path, "pin-decision"),
+            cells,
+            "the freeze must round-trip verbatim"
+        );
+        // Byte-stability, so the shell's sha256sum comparison is meaningful: writing
+        // the same freeze twice must produce identical bytes.
+        let first = std::fs::read(&path).expect("read freeze");
+        write_frozen_cells(&path, "pin-decision", &cells, SEG_SCHEDULE_SEED);
+        assert_eq!(first, std::fs::read(&path).expect("read freeze"));
+    }
+
+    /// An UNPROBED tuple is refused at write time, so §9 item 2's precondition cannot be
+    /// carried into the acceptance gate on a shape it was never established for.
+    /// A CONTINUATION cell whose shape happens to be probed is still refused: the
+    /// precondition was established on an R0 launch, on a different data path.
+    #[test]
+    #[should_panic(expected = "may only name R0 cells")]
+    fn the_r0_freeze_refuses_a_continuation_class() {
+        let dir = std::env::temp_dir().join(format!("seg_probe_d1_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        write_frozen_cells(
+            &dir.join(SEG_FROZEN_CELLS_TSV),
+            "r0-headline",
+            &[SegFrozenCell {
+                label: "d1-masquerading-as-probed".to_owned(),
+                circuit: ADD_SUB_LAYOUT_SHORT.to_owned(),
+                layer: 0,
+                // The shape (plane / K4 / const / inline) IS in the probed set; only the
+                // class differs. That must be enough to refuse it.
+                class: SegRoundClass::D1,
+                k: 4,
+                epilogue: "plane".to_owned(),
+                coeff: "const".to_owned(),
+                program: "inline".to_owned(),
+            }],
+            SEG_SCHEDULE_SEED,
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "UNPROBED tuple")]
+    fn the_r0_freeze_refuses_an_unprobed_tuple() {
+        let cell = |k: usize, epi: &str| SegFrozenCell {
+            label: format!("r0-k{k}-{epi}"),
+            circuit: ADD_SUB_LAYOUT_SHORT.to_owned(),
+            layer: 0,
+            class: SegRoundClass::R0,
+            k,
+            epilogue: epi.to_owned(),
+            coeff: "const".to_owned(),
+            program: "inline".to_owned(),
+        };
+        let dir = std::env::temp_dir().join(format!("seg_probe_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        // A MIXED set: K=4 plane is probed, K=8 plane is not. The probed member must not
+        // license the unprobed one.
+        write_frozen_cells(
+            &dir.join(SEG_FROZEN_CELLS_TSV),
+            "r0-headline",
+            &[cell(4, "plane"), cell(8, "plane")],
+            SEG_SCHEDULE_SEED,
+        );
+    }
+
+    /// A fully probed set is accepted, and the pin campaign is not subject to the R0
+    /// predicate at all (its cells are continuation shapes by construction).
+    #[test]
+    fn the_r0_freeze_accepts_probed_tuples_and_ignores_pin_cells() {
+        let probed = SegFrozenCell {
+            label: "r0-k24-plane".to_owned(),
+            circuit: ADD_SUB_LAYOUT_SHORT.to_owned(),
+            layer: 0,
+            class: SegRoundClass::R0,
+            k: 24,
+            epilogue: "plane".to_owned(),
+            coeff: "const".to_owned(),
+            program: "inline".to_owned(),
+        };
+        let dir = std::env::temp_dir().join(format!("seg_probe_ok_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let path = dir.join(SEG_FROZEN_CELLS_TSV);
+        write_frozen_cells(&path, "r0-headline", &[probed.clone()], SEG_SCHEDULE_SEED);
+        assert_eq!(read_frozen_cells(&path, "r0-headline"), vec![probed]);
+        // The pin campaign's K=8 continuation cell is fine: the predicate is R0-only.
+        let pin = SegFrozenCell {
+            label: "cont-d1-k8".to_owned(),
+            circuit: ADD_SUB_LAYOUT_SHORT.to_owned(),
+            layer: 0,
+            class: SegRoundClass::D1,
+            k: 8,
+            epilogue: "plane".to_owned(),
+            coeff: "const".to_owned(),
+            program: "inline".to_owned(),
+        };
+        write_frozen_cells(&path, "pin-decision", &[pin], SEG_SCHEDULE_SEED);
+    }
+
+    /// The other campaign's freeze is REFUSED, not silently accepted: a pin runner handed
+    /// the R0 freeze would time shapes it does not have and shrink the decision set.
+    #[test]
+    #[should_panic(expected = "refuses it")]
+    fn a_campaign_refuses_the_other_campaigns_freeze() {
+        // A VALID `r0-headline` cell: R0 class, add_sub layer 0, a probed tuple. Writing a
+        // D1 cell under `r0-headline` would panic in the WRITER with the class message and
+        // never reach the reader — testing the wrong thing.
+        let cells = vec![SegFrozenCell {
+            label: "r0-k4-plane".to_owned(),
+            circuit: ADD_SUB_LAYOUT_SHORT.to_owned(),
+            layer: 0,
+            class: SegRoundClass::R0,
+            k: 4,
+            epilogue: "plane".to_owned(),
+            coeff: "const".to_owned(),
+            program: "inline".to_owned(),
+        }];
+        let dir = std::env::temp_dir().join(format!("seg_freeze_x_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let path = dir.join(SEG_FROZEN_CELLS_TSV);
+        write_frozen_cells(&path, "r0-headline", &cells, SEG_SCHEDULE_SEED);
+        let _ = read_frozen_cells(&path, "pin-decision");
+    }
+
     #[test]
     fn the_sample_discipline_meets_the_protocol_floors() {
         assert!(SEG_WARMUP_ITERS >= 5, "the plan's warmup floor is five");
@@ -5621,6 +8312,18 @@ mod tests {
             "verdict",
             "parity",
             "saturated",
+            // The order diagnostics and the four order-conditional medians are
+            // emitted for EVERY paired row (spec §6(a) step 5, §7.2.1), and `run_id`
+            // is what joins a quoted number to its raw samples and its SHA-256s.
+            "delta_order_pct",
+            "delta_order_ci_low",
+            "delta_order_ci_high",
+            "order_gate",
+            "abba_candidate_us",
+            "abba_incumbent_us",
+            "baab_candidate_us",
+            "baab_incumbent_us",
+            "run_id",
         ] {
             assert!(csv.contains(column), "missing column {column}");
         }
@@ -5633,8 +8336,8 @@ mod tests {
         assert!(render_matrix_table(&[row_fixture(4, 6, None)]).contains("| solo | solo | solo |"));
     }
 
-    /// The GATE's own predicate, on CPU: `select_winner(...).ratio.inverts()` says
-    /// YES on an inverting matrix and NO on a regressed one.
+    /// The GATE's own predicate, on CPU: `select_winner(...).ratio.selectable()`
+    /// inverts on an inverting matrix and does not on a regressed one.
     ///
     /// `bwd_seg_add_sub_l0_r0_matrix` asserts exactly this composition, and that
     /// test needs a GPU. Proving the composition DISCRIMINATES belongs here, or the
@@ -5647,7 +8350,9 @@ mod tests {
             select_winner(rows)
                 .expect("a launchable production row")
                 .ratio
-                .expect("a paired row")
+                .selectable()
+                .expect("a paired row whose order gate passed")
+                .0
                 .inverts()
         };
 
@@ -5786,7 +8491,26 @@ mod tests {
             candidate_min_us: if blocks > 0 { 4_990.0 } else { 0.0 },
             incumbent_median_us: ratio.map(|_| 6_101.5),
             incumbent_min_us: ratio.map(|_| 6_098.9),
-            ratio,
+            // A fixture's paired ratio is a PASSING one: the order-gate axis has its
+            // own tests above, and a fixture that failed the gate would carry no
+            // ratio at all.
+            ratio: match ratio {
+                Some(estimate) => SegRatio::Valid {
+                    estimate,
+                    order: SegOrderInteraction {
+                        delta_order_pct: 0.0,
+                        ci_low_pct: -0.02,
+                        ci_high_pct: 0.02,
+                    },
+                    conditional_medians: [5_000.0, 6_101.5, 5_000.0, 6_101.5],
+                },
+                None => SegRatio::Solo,
+            },
+            run_id: if ratio.is_some() {
+                "r0001-aaaaaaaaaaaa"
+            } else {
+                "-"
+            },
             baseline: if ratio.is_some() { "incumbent" } else { "-" },
         }
     }
