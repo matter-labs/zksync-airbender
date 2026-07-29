@@ -211,7 +211,7 @@ where
     // transcript. Filtered debug runs keep the historical hardcoded challenges (they cannot
     // close the permutation argument anyway, so the FS seed would be ill-defined).
     let external_challenges = if use_fiat_shamir {
-        let (unified_trace, _, _) = unified_built
+        let (unified_trace, _, _, unified_top_bits) = unified_built
             .as_ref()
             .expect("no circuits filter ⇒ unified circuit is always proved");
         let unified_memory_columns: Vec<&[BabyBearField]> = unified_trace
@@ -223,7 +223,7 @@ where
         derive_unified_fiat_shamir_challenges::<C>(
             &vm,
             &unified_memory_cap,
-            num_unified_teardown_sets,
+            unified_top_bits,
             level,
             proof_suffix,
             worker,
@@ -309,7 +309,9 @@ where
 
     // --- Prove the unified circuit, reusing the pre-built trace. ---
     let (unified_proof, unified_setup_cap) =
-        if let Some((unified_full_trace, unified_table_driver, decoder_table)) = unified_built {
+        if let Some((unified_full_trace, unified_table_driver, decoder_table, unified_top_bits)) =
+            unified_built
+        {
             #[cfg(all(feature = "gkr_check_satisfied", any(test, feature = "test")))]
             {
                 println!("Checking constraint satisfiability (unified)");
@@ -324,7 +326,7 @@ where
                 unified_full_trace,
                 &unified_table_driver,
                 &decoder_table,
-                num_unified_teardown_sets,
+                unified_top_bits,
                 &external_challenges,
                 level,
                 worker,
@@ -440,7 +442,7 @@ fn flatten_merkle_cap(cap: &MerkleTreeCapVarLength) -> Vec<u32> {
 fn derive_unified_fiat_shamir_challenges<C>(
     vm: &VmRunOutput<C>,
     unified_memory_cap: &MerkleTreeCapVarLength,
-    num_unified_teardown_sets: usize,
+    inits_and_teardowns_top_bits: &[u32],
     level: SecurityLevel,
     proof_suffix: &str,
     worker: &Worker,
@@ -565,13 +567,12 @@ where
     }
 
     let register_final_values = unified_register_final_values(vm);
-    let inits_and_teardowns_top_bits: Vec<u32> = (0..num_unified_teardown_sets as u32).collect();
     let seed = fs_transform_for_unified_circuit(
         &register_final_values,
         vm.final_pc(),
         vm.final_timestamp(),
         unified_memory_cap,
-        &inits_and_teardowns_top_bits,
+        inits_and_teardowns_top_bits,
         &delegation_caps,
     );
 
@@ -664,6 +665,7 @@ pub fn build_unified_full_trace<C>(
     GKRFullWitnessTrace<BabyBearField, Global, Global>,
     TableDriver<BabyBearField>,
     Vec<Option<ExecutorFamilyDecoderData>>,
+    Vec<u32>,
 )
 where
     C: Counters + Copy + Default + PartialEq + std::fmt::Debug,
@@ -726,24 +728,38 @@ where
 
     // Collect i/t columns sized to the unified circuit's set count. Geometry comes
     // from the loaded artifact (the unified domain is sized independently of the
-    // per-family TRACE_LEN_LOG2 constant).
+    // per-family TRACE_LEN_LOG2 constant), and the per-set `top_bits` come from a RAM
+    // scan — NOT a blind `0..n` enumeration — mirroring `prover_examples::unified`.
+    // (The smoke program's stack sits at ~68MB; with the 2^23 domain each set covers
+    // 2^23 words, so the stack lands in chunk 2 and a hardcoded `[0, 1]` drops its
+    // inits/teardowns from the grand product.)
     let unified_trace_len = unified_circuit.trace_len;
     let unified_trace_len_log2 = unified_trace_len.trailing_zeros() as usize;
-    let mut unified_inits_and_teardowns = Vec::with_capacity(num_unified_teardown_sets);
-    for _ in 0..num_unified_teardown_sets {
-        let a = Vec::with_capacity(unified_trace_len);
-        let b = Vec::with_capacity(unified_trace_len);
-        let c = Vec::with_capacity(unified_trace_len);
-        let d = Vec::with_capacity(unified_trace_len);
-        unified_inits_and_teardowns.push(([a, b], [c, d]));
-    }
-    vm.ram
-        .collect_inits_and_teardowns_into_columns::<BabyBearField, _>(
+    let mut it_sets = vm
+        .ram
+        .collect_inits_and_teardowns_sets::<BabyBearField, Global>(
             worker,
             unified_trace_len_log2,
-            0,
-            &mut unified_inits_and_teardowns,
+            num_unified_teardown_sets,
+            Some((1 << 27) / 4), // 128MB scan bound, mirrors prover_examples
         );
+    assert!(
+        it_sets.len() <= 1,
+        "program's touched RAM needs {} unified instances for i/t coverage; \
+         the single-instance test harness supports exactly 1",
+        it_sets.len()
+    );
+    let (unified_top_bits, unified_inits_and_teardowns) = it_sets.pop().unwrap_or_else(|| {
+        // No touched RAM at all — zero columns with zero top-bits (dummy instance,
+        // mirrors the live path's padding instances).
+        let zeros = (0..num_unified_teardown_sets)
+            .map(|_| {
+                let z = || vec![BabyBearField::ZERO; unified_trace_len];
+                ([z(), z()], [z(), z()])
+            })
+            .collect();
+        (vec![0u32; num_unified_teardown_sets], zeros)
+    });
 
     let memory_trace = if run_memory_consistency_check {
         println!("Computing memory trace (unified)");
@@ -782,7 +798,12 @@ where
         super::common::ensure_memory_trace_consistency(memory_trace, &unified_full_trace);
     }
 
-    (unified_full_trace, unified_table_driver, decoder_table)
+    (
+        unified_full_trace,
+        unified_table_driver,
+        decoder_table,
+        unified_top_bits,
+    )
 }
 
 /// Prove a *pre-built* unified witness trace: prover config + twiddles, construct &
@@ -796,7 +817,7 @@ pub fn prove_built_unified_trace(
     unified_full_trace: GKRFullWitnessTrace<BabyBearField, Global, Global>,
     unified_table_driver: &TableDriver<BabyBearField>,
     decoder_table: &[Option<ExecutorFamilyDecoderData>],
-    num_unified_teardown_sets: usize,
+    unified_top_bits: Vec<u32>,
     external_challenges: &GKRExternalChallenges<BabyBearField, BabyBearExt4>,
     level: SecurityLevel,
     worker: &Worker,
@@ -827,8 +848,6 @@ pub fn prove_built_unified_trace(
         trace_len.trailing_zeros() as usize,
         worker,
     );
-
-    let unified_top_bits: Vec<u32> = (0..num_unified_teardown_sets).map(|i| i as u32).collect();
 
     println!("Trying to prove (unified)");
     let now = std::time::Instant::now();

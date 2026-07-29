@@ -83,7 +83,7 @@ fn build_satisfying_trace_with_mutation(
     assert!(num_calls < NUM_CYCLES_PER_CHUNK);
 
     let num_teardown_sets = circuit.memory_layout.teardown_sets.len();
-    let (mut full_trace, _table_driver, _decoder_table) =
+    let (mut full_trace, _table_driver, _decoder_table, _top_bits) =
         super::orchestration::unified::build_unified_full_trace(
             &vm,
             &circuit,
@@ -1145,7 +1145,7 @@ fn generate_malicious_unified_proof(
         .get_calls_to_circuit_family::<REDUCED_MACHINE_CIRCUIT_FAMILY_IDX>();
     let num_teardown_sets = circuit.memory_layout.teardown_sets.len();
 
-    let (mut full_trace, table_driver, decoder_table) = build_unified_full_trace(
+    let (mut full_trace, table_driver, decoder_table, top_bits) = build_unified_full_trace(
         &vm,
         &circuit,
         num_teardown_sets,
@@ -1183,7 +1183,7 @@ fn generate_malicious_unified_proof(
         full_trace,
         &table_driver,
         &decoder_table,
-        num_teardown_sets,
+        top_bits,
         &hardcoded_external_challenges(),
         SecurityLevel::Sec80,
         &worker,
