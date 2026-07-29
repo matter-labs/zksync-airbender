@@ -92,9 +92,14 @@ template <typename Desc> struct seg_program_inline {
 // A plain indexed read, not a hinted `load<>`: the hinted family's payload unit is
 // four bytes or wider (`load_unit`), so a u16 has no hinted form at all. The
 // default global load caches in L1, which is the hint this stream would ask for
-// anyway. Widening the record to one 8-byte vector load would add a host-side
-// alignment obligation to a spike-only path, so it is left to whatever the A/B
-// finds worth measuring.
+// anyway. Widening the record to one 8-byte vector load is left to whatever the A/B
+// finds worth measuring — NOT because of a host alignment obligation, which the
+// inline family does not have: `program` is field 0 of an `alignas(16)` struct and
+// `list_offset[w]` is always a multiple of `LEAN_WORDS_PER_TERM = 4`
+// (`seg_lower.rs`, `lower_bwd_seg`: the stream grows only in 4-word chunks and
+// `list_offset[list] = stream.len()`), so every term already starts 8-byte aligned.
+// The device-pointer stream here is the variant that would owe an allocation
+// guarantee.
 struct seg_program_devptr {
   const u16 *words;
   DEVICE_FORCEINLINE u16 word(const u32 pc) const { return words[pc]; }
@@ -215,15 +220,18 @@ template <u32 DELTA, typename Raw> DEVICE_FORCEINLINE e4 seg_fold_flat(const Raw
   constexpr u32 BASE = DELTA == 1 ? BWD_SEG_FOLD_WEIGHT_BASE_D1 : DELTA == 2 ? BWD_SEG_FOLD_WEIGHT_BASE_D2 : BWD_SEG_FOLD_WEIGHT_BASE_D3;
   const auto leaf0 = raw(index);
   e4 acc = seg_lift(leaf0);
-  // ROLLED deliberately, and measured: fully unrolled, all `2^DELTA - 1` leaves and
-  // their weights are live at once and the continuation executors allocate 72
-  // registers — above the 64 per thread a 1024-thread block gets, which makes
+  // ROLLED deliberately, and measured: fully unrolled, all `2^DELTA - 1` LEAVES are
+  // live at once and the continuation executors allocate 72 registers — above the
+  // 64 per thread a 1024-thread block gets, which makes
   // `K = 32` unlaunchable. One leaf per trip holds the band to 50-64, so the
   // continuation family reaches the `K` geometry cap
   // (`bwd_seg_k_ceiling_is_measured_not_assumed` pins that reach over the executor
   // symbols it probes; the band's 64-end is arithmetic rather than a launch that pin
   // confirms, since the AccPlacement rungs sit outside its probed set). The trip
-  // count is 1, 3 or 7, and the weight stays a uniform constant-bank broadcast.
+  // count is 1, 3 or 7, and the weight stays a uniform constant-bank broadcast — free
+  // in EITHER loop form: `BASE + q - 1` is a compile-time index once unrolled, so a
+  // weight is four uniform registers on the uniform datapath and never part of the
+  // per-thread peak. The peak the roll buys back is the live leaf set alone.
   // The roll is not free on the clock: at DELTA == 3 with `K = 24` — one block per
   // SM, so the 7-trip chain has no co-resident work to hide its latency behind — it
   // costs 13-66%, which buys `K = 32` plus the `K = 16` two-block occupancy step and
@@ -345,6 +353,19 @@ template <u32 DELTA, typename Raw> DEVICE_FORCEINLINE e4 seg_fold_delta_flat(con
 }
 
 template <u32 MAX_DEPTH, typename Raw> DEVICE_FORCEINLINE e4 seg_fold_delta(const Raw &raw, const u32 row, const u32 rows, const u32 span, const u32 delta) {
+  // INTENTIONALLY DEAD at `MAX_DEPTH >= 1`, and this assert makes that a CONTRACT
+  // rather than a coincidence of the R0 template pin. Two-sided proof: kernel
+  // side, `SEG_PROJ_DELTA` is reached only from the `if constexpr (IS_R0)` arm of
+  // `seg_execute_term` (the C2_PRODUCT_BF_E4 and C2_PRODUCT_E4_E4 classes) and R0
+  // pins `MAX_DEPTH = 0`; lowering side, `seg_lower` forces
+  // `delta = target_depth - backing_depth == 0` at round 0 and the
+  // DELTA-projection classes exist only in `LEAN_R0_OPCODES`. So no lowering output
+  // can pair a DELTA projection with a folded source. A future instantiation at
+  // `MAX_DEPTH >= 1` is a BUILD FAILURE that points at this argument rather than a
+  // silently divergent helper — and any fold change applied to `seg_fold_flat` /
+  // `seg_fold_endpoints_flat` MUST also be applied to `seg_fold_delta_flat`, which
+  // this assert is the reminder for.
+  static_assert(MAX_DEPTH == 0, "seg_fold_delta has no live instantiation above MAX_DEPTH 0; see the two-sided proof above");
   if constexpr (MAX_DEPTH >= 3)
     if (delta == 3)
       return seg_fold_delta_flat<3>(raw, row, rows, span);
@@ -445,7 +466,14 @@ template <seg_projection P, typename Desc> DEVICE_FORCEINLINE seg_value<bf> seg_
 //   BfInlineD1/D2     a depth-1 or depth-2 flat fold straight from raw base field,
 //                     in registers, `ld.ca` because those raws are re-read across
 //                     terms.
-//   ProceduralInline  the same fold over row synthesis; no DRAM read at all.
+//   ProceduralInline  the same fold over row synthesis. Compute PLUS one dependent
+//                     L1-latency load, not zero memory traffic: nvcc materializes
+//                     `gkr_virtual_base_value`'s `bf::ZERO()` returns as objects in
+//                     `.nv.global` and loads them (`UMOV UR5, 0x0` then `LDG.E`).
+//                     Removing that load is parked (audit I-7 / F5, spec section 8):
+//                     the fix belongs in a shared upstream helper with eight call
+//                     sites, one of them the PRODUCTION forward VM, which this
+//                     lineage's parity authority does not cover.
 //   BfDirect          depth zero, so the lift. Reachable only at R0 (see
 //                     `seg_resolve_bf`), where `MAX_DEPTH` is zero anyway.
 template <seg_projection P, u32 MAX_DEPTH, typename Desc>
@@ -732,10 +760,14 @@ DEVICE_FORCEINLINE void seg_execute_term(const Desc &desc, const Bank &bank, con
 // conflict-free `[word][lane]` layout `bwd_seg_acc_smem_bytes` sizes.
 //
 // Word `w` of thread `t` sits at `words[w * threads + t]`, so a warp's 32 lanes
-// touch 32 CONSECUTIVE 4-byte banks in each of the four accesses. The obvious
-// `e4`-per-thread layout would give a 16-byte stride and put four lanes on every
-// bank — a four-way conflict on every access, which is the cost this placement
-// exists to avoid paying on top of the traffic it already adds.
+// touch 32 CONSECUTIVE 4-byte banks in each of the four accesses: conflict-free,
+// but not UNIQUELY so. `e4`-per-thread is conflict-free as well — an
+// `LDS.128`/`STS.128` issues in quarter-warp phases of 8 lanes x 16 B = 128 B and
+// each phase covers all 32 banks exactly once — so the transposition avoids no
+// conflict. What it costs is four `LDS` + four `STS` and three extra address adds
+// per term where one of each would do, because the word stride `threads * 4` is a
+// RUNTIME value and so cannot fold into immediates off one base. Re-addressing to
+// `e4[tid]` is parked (audit I-4, spec section 8).
 struct seg_acc_slot {
   bf *words;
   u32 threads;
@@ -839,9 +871,13 @@ DEVICE_FORCEINLINE void seg_body(const Desc &desc, const Bank &bank, const Progr
 #pragma unroll 1
   for (u32 pc = desc.list_offset[warp_id]; pc < pc_end; pc += BWD_SEG_WORDS_PER_TERM) {
     // Header-first: the class arrives before the words whose meaning it fixes.
-    // Both source words are read unconditionally — a one-source class carries
-    // `BWD_SEG_SOURCE_NONE` in the second, and the class is what decides whether
-    // it is looked at. `word3` is reserved and never read.
+    // Both source words are read unconditionally IN C++, which keeps the header
+    // decode branch-free at the source level; a one-source class carries
+    // `BWD_SEG_SOURCE_NONE` in the second, and the class is what decides whether it
+    // is looked at. In SASS it is NOT unconditional: nvcc sinks `program[pc + 2]`
+    // into the class-switch arms that use it, so a one-source class such as
+    // `C0LinearE4` issues two `LDC.U16` and not three. `word3` is reserved and never
+    // read.
     const u16 header = program.word(pc);
     const u16 term_class = (header >> BWD_SEG_CLASS_SHIFT) & BWD_SEG_CLASS_MASK;
     const u16 coefficient_index = (header >> BWD_SEG_COEFFICIENT_SHIFT) & BWD_SEG_COEFFICIENT_MASK;
@@ -973,7 +1009,7 @@ template <bool IS_R0> DEVICE_FORCEINLINE void seg_body_const_inline_accbothsmem(
 // any K; one more register drops the budget to 40 warps (K=8 6->5, K=16 3->2,
 // K=24 2->1). They already allocate exactly 40, so the pin is a pure guard.
 // The two `staged` R0 symbols allocate 44 — band 41-48 — so their ceiling is 48;
-// a 40-pin would force them to spill and fail the STACK:0/LOCAL:0 gate. They crossed the
+// a 40-pin would force them to spill and fail the `STACK:0 LOCAL:0` gate. They crossed the
 // 40 boundary unnoticed and II-5's epilogue A/B inherited the resulting 20-33%
 // occupancy difference as an unattributed confound.
 AB_GKR_BWD_SEG_KERNEL(ab_gkr_bwd_seg_r0_const_epi_staged_kernel, bwd_seg_desc, seg_body_const_inline, true, BWD_SEG_EPILOGUE_STAGED, AB_GKR_SEG_PIN(48))

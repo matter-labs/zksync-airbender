@@ -277,7 +277,14 @@ impl Default for BwdCoeffSourceWindow {
 /// source class fixes how the operand behind a slot is produced. The enum with
 /// those discriminants is Task 6's, so it is the authority; this field is the
 /// byte it travels in.
-#[repr(C)]
+///
+/// `align(4)` mirrors the CUDA `alignas(4)`: the array START moves so a slot
+/// address is 0 mod 4 instead of always 2 mod 4, which is the precondition for ever
+/// reading the record as one 32-bit word. `size_of` stays 4; the two bytes come out
+/// of the descriptor's existing implicit padding before `window`, so neither
+/// descriptor's size changes. On CUDA 13.3 the alignment ALONE changes no SASS and
+/// no register count — the CUDA half carries that measurement.
+#[repr(C, align(4))]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) struct BwdSegSourceRecord {
     /// Slot in [`BwdSegDesc::window`].
@@ -293,7 +300,7 @@ const _: () = {
     use core::mem::offset_of;
 
     assert!(size_of::<BwdSegSourceRecord>() == 4);
-    assert!(align_of::<BwdSegSourceRecord>() == 2);
+    assert!(align_of::<BwdSegSourceRecord>() == 4);
     assert!(offset_of!(BwdSegSourceRecord, window) == 0);
     assert!(offset_of!(BwdSegSourceRecord, class) == 1);
     assert!(offset_of!(BwdSegSourceRecord, column) == 2);
@@ -547,9 +554,9 @@ const _: () = {
     assert!(offset_of!(BwdSegDesc, num_sources) == 14_406);
     assert!(offset_of!(BwdSegDesc, num_foldable) == 14_408);
     assert!(offset_of!(BwdSegDesc, fold_source) == 14_410);
-    assert!(offset_of!(BwdSegDesc, source) == 16_554);
-    // Six bytes of implicit padding precede `window`: the source array is
-    // 2-byte-aligned and the window array is 8-byte-aligned. nvcc inserts the
+    assert!(offset_of!(BwdSegDesc, source) == 16_556);
+    // Four bytes of implicit padding precede `window`: the source array is
+    // 4-byte-aligned and the window array is 8-byte-aligned. nvcc inserts the
     // same gap by the same rule, and the offsets on both sides are asserted, so
     // it needs no explicit field.
     assert!(offset_of!(BwdSegDesc, window) == 20_848);
@@ -580,7 +587,9 @@ const _: () = {
     assert!(offset_of!(BwdSegProgPtrDesc, num_sources) == 82);
     assert!(offset_of!(BwdSegProgPtrDesc, num_foldable) == 84);
     assert!(offset_of!(BwdSegProgPtrDesc, fold_source) == 86);
-    assert!(offset_of!(BwdSegProgPtrDesc, source) == 2_230);
+    assert!(offset_of!(BwdSegProgPtrDesc, source) == 2_232);
+    // No gap here: with a 4-byte-aligned record the progptr `source` array ends
+    // exactly at `window`.
     assert!(offset_of!(BwdSegProgPtrDesc, window) == 6_520);
     assert!(offset_of!(BwdSegProgPtrDesc, c_init) == 7_064);
     assert!(offset_of!(BwdSegProgPtrDesc, coefficients) == 7_080);

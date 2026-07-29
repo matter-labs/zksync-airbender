@@ -81,10 +81,24 @@ const INLINE_DESC_BYTES: usize = 21_456;
 /// The pinned size of the device-program A/B twin.
 const PROGPTR_DESC_BYTES: usize = 7_136;
 /// Implicit padding rustc (and nvcc, by the same C rules) inserts to align the
-/// 8-byte-aligned `window` array after the 2-byte-aligned `source` array.
-const INLINE_IMPLICIT_PAD_BYTES: usize = 6;
-/// The same gap in the progptr twin, whose head is 12 bytes instead of 14,336.
-const PROGPTR_IMPLICIT_PAD_BYTES: usize = 2;
+/// 8-byte-aligned `window` array after the 4-byte-aligned `source` array. This is
+/// the gap before `window` ONLY — the descriptor's total implicit padding is this
+/// plus [`INLINE_PRE_SOURCE_PAD_BYTES`], and it is the sum that the size pins.
+const INLINE_IMPLICIT_PAD_BYTES: usize = 4;
+/// Padding before the `source` array: `fold_source` ends 2 mod 4 (the whole
+/// descriptor tail from 14,402 on is, because `list_offset` is 33 x u16), and
+/// `BwdSegSourceRecord` is `align(4)`. Two bytes therefore moved here OUT of the
+/// gap before `window` — the total is what does not change, which is why the
+/// descriptor's SIZE does not change either.
+const INLINE_PRE_SOURCE_PAD_BYTES: usize = 2;
+/// The gap before `window` in the progptr twin, whose head is 12 bytes instead of
+/// 14,336: with a 4-byte-aligned record the `source` array ends exactly at
+/// `window`, so there is none.
+const PROGPTR_IMPLICIT_PAD_BYTES: usize = 0;
+/// The progptr twin's padding before `source`, by the same rule as the inline
+/// descriptor's: its head is a different size but also 2 mod 4 at `fold_source`'s
+/// end.
+const PROGPTR_PRE_SOURCE_PAD_BYTES: usize = 2;
 
 // ── The inline-program descriptor ────────────────────────────────────────────
 
@@ -132,7 +146,7 @@ fn seg_descriptor_layout_is_pinned_field_for_field() {
     assert_eq!(offset_of!(BwdSegDesc, num_sources), 14_406);
     assert_eq!(offset_of!(BwdSegDesc, num_foldable), 14_408);
     assert_eq!(offset_of!(BwdSegDesc, fold_source), 14_410);
-    assert_eq!(offset_of!(BwdSegDesc, source), 16_554);
+    assert_eq!(offset_of!(BwdSegDesc, source), 16_556);
     assert_eq!(offset_of!(BwdSegDesc, window), 20_848);
     assert_eq!(offset_of!(BwdSegDesc, c_init), 21_392);
     assert_eq!(offset_of!(BwdSegDesc, coefficients), 21_408);
@@ -196,12 +210,13 @@ fn seg_descriptor_has_no_unaccounted_bytes() {
         ("pad", size_of::<u32>()),
     ];
     let payload: usize = fields.iter().map(|(_, bytes)| bytes).sum();
+    let implicit_pad = INLINE_PRE_SOURCE_PAD_BYTES + INLINE_IMPLICIT_PAD_BYTES;
     eprintln!(
-        "BwdSegDesc accounting: {payload} B of fields + {INLINE_IMPLICIT_PAD_BYTES} B implicit pad \
-         = {INLINE_DESC_BYTES} B"
+        "BwdSegDesc accounting: {payload} B of fields + {INLINE_PRE_SOURCE_PAD_BYTES} B pad before \
+         `source` + {INLINE_IMPLICIT_PAD_BYTES} B pad before `window` = {INLINE_DESC_BYTES} B"
     );
-    assert_eq!(payload + INLINE_IMPLICIT_PAD_BYTES, INLINE_DESC_BYTES);
-    assert_eq!(payload, size_of::<BwdSegDesc>() - INLINE_IMPLICIT_PAD_BYTES);
+    assert_eq!(payload + implicit_pad, INLINE_DESC_BYTES);
+    assert_eq!(payload, size_of::<BwdSegDesc>() - implicit_pad);
     // The explicit `pad` is what makes the SIZE a multiple of the alignment
     // without trailing padding the two languages would have to agree on
     // implicitly.
@@ -235,7 +250,7 @@ fn seg_progptr_descriptor_layout_is_pinned_field_for_field() {
     assert_eq!(offset_of!(BwdSegProgPtrDesc, num_sources), 82);
     assert_eq!(offset_of!(BwdSegProgPtrDesc, num_foldable), 84);
     assert_eq!(offset_of!(BwdSegProgPtrDesc, fold_source), 86);
-    assert_eq!(offset_of!(BwdSegProgPtrDesc, source), 2_230);
+    assert_eq!(offset_of!(BwdSegProgPtrDesc, source), 2_232);
     assert_eq!(offset_of!(BwdSegProgPtrDesc, window), 6_520);
     assert_eq!(offset_of!(BwdSegProgPtrDesc, c_init), 7_064);
     assert_eq!(offset_of!(BwdSegProgPtrDesc, coefficients), 7_080);
@@ -294,7 +309,10 @@ fn seg_progptr_descriptor_actually_drops_the_inline_program() {
         ("pad", 3 * size_of::<u32>()),
     ];
     let payload: usize = fields.iter().map(|(_, bytes)| bytes).sum();
-    assert_eq!(payload + PROGPTR_IMPLICIT_PAD_BYTES, PROGPTR_DESC_BYTES);
+    assert_eq!(
+        payload + PROGPTR_PRE_SOURCE_PAD_BYTES + PROGPTR_IMPLICIT_PAD_BYTES,
+        PROGPTR_DESC_BYTES
+    );
 }
 
 // ── Kernel-argument budget ───────────────────────────────────────────────────
@@ -394,7 +412,7 @@ fn seg_source_capacity_covers_the_census() {
 #[test]
 fn seg_source_record_is_a_four_byte_triple() {
     assert_eq!(size_of::<BwdSegSourceRecord>(), 4);
-    assert_eq!(align_of::<BwdSegSourceRecord>(), 2);
+    assert_eq!(align_of::<BwdSegSourceRecord>(), 4);
     assert_eq!(offset_of!(BwdSegSourceRecord, window), 0);
     assert_eq!(offset_of!(BwdSegSourceRecord, class), 1);
     assert_eq!(offset_of!(BwdSegSourceRecord, column), 2);

@@ -337,7 +337,26 @@ static_assert(BWD_SEG_FOLD_WEIGHT_SLOTS == BWD_SEG_FOLD_WEIGHT_BASE_D3 + 7, "D3 
 //
 // `source_class` is Rust's `class` field (C++ cannot spell that name); the
 // offsets are what the ABI pins, not the spelling.
-struct bwd_seg_source_record {
+// `alignas(4)`: without it the array's START is 16,554, which is 2 mod 4, so
+// `&source[slot] = 16554 + 4 * slot` is ALWAYS 2 mod 4 and a 32-bit load of this
+// 4-byte record is misaligned by construction. With it the array starts at 16,556
+// and a slot address is 0 mod 4. `sizeof` stays 4, so only the array's start moves,
+// and the two bytes come out of the descriptor's six bytes of implicit padding, four
+// of which sit before `window` (asserted below) and two of which sit before
+// `source` — the descriptor's SIZE is 21,456 either way. The root cause is upstream
+// of the record: `list_offset[BWD_SEG_MAX_K + 1]` is 33 x u16 = 66 bytes, so the
+// whole descriptor tail from 14,402 on is 2 mod 4.
+//
+// WHAT THIS DOES NOT BUY, measured rather than predicted: on CUDA 13.3 the
+// alignment alone does NOT collapse the record read into one 32-bit `LDC`.
+// `cont_const_epi_plane`'s record reads are instruction-for-instruction identical
+// before and after — `LDC.U8` + `LDC.U8` + `LDC.U16` where all three fields are
+// live, `LDC.U8` + `LDC.U16` where the class is dead — with only the base offset
+// shifted 0x442a -> 0x442c, and all twenty device-linked symbols keep their exact
+// register counts. Collapsing the loads needs the record to be READ as one word (a
+// `u32` load plus shifts, which changes the ABI's access pattern rather than its
+// layout); this annotation is only what makes such a read LEGAL.
+struct alignas(4) bwd_seg_source_record {
   // Slot in `bwd_seg_desc::window`.
   u8 window;
   // One of the `BWD_SEG_SOURCE_CLASS_*` values.
@@ -348,7 +367,7 @@ struct bwd_seg_source_record {
 };
 
 static_assert(sizeof(bwd_seg_source_record) == 4, "bwd_seg_source_record/BwdSegSourceRecord ABI size drift");
-static_assert(alignof(bwd_seg_source_record) == 2, "bwd_seg_source_record ABI alignment drift");
+static_assert(alignof(bwd_seg_source_record) == 4, "bwd_seg_source_record ABI alignment drift");
 static_assert(__builtin_offsetof(bwd_seg_source_record, window) == 0, "window ABI offset drift");
 static_assert(__builtin_offsetof(bwd_seg_source_record, source_class) == 1, "class ABI offset drift");
 static_assert(__builtin_offsetof(bwd_seg_source_record, column) == 2, "column ABI offset drift");
@@ -433,7 +452,7 @@ static_assert(__builtin_offsetof(bwd_seg_desc, term_count) == 14404, "term_count
 static_assert(__builtin_offsetof(bwd_seg_desc, num_sources) == 14406, "num_sources ABI offset drift");
 static_assert(__builtin_offsetof(bwd_seg_desc, num_foldable) == 14408, "num_foldable ABI offset drift");
 static_assert(__builtin_offsetof(bwd_seg_desc, fold_source) == 14410, "fold_source ABI offset drift");
-static_assert(__builtin_offsetof(bwd_seg_desc, source) == 16554, "source ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_desc, source) == 16556, "source ABI offset drift");
 static_assert(__builtin_offsetof(bwd_seg_desc, window) == 20848, "window ABI offset drift");
 static_assert(__builtin_offsetof(bwd_seg_desc, c_init) == 21392, "c_init ABI offset drift");
 static_assert(__builtin_offsetof(bwd_seg_desc, coefficients) == 21408, "coefficients ABI offset drift");
@@ -448,10 +467,10 @@ static_assert(__builtin_offsetof(bwd_seg_desc, pad) == 21452, "pad ABI offset dr
 static_assert(__builtin_offsetof(bwd_seg_desc, program) % BWD_SEG_DESC_ALIGN == 0, "the program stream must start 16-byte aligned");
 static_assert(__builtin_offsetof(bwd_seg_desc, pad) + sizeof(u32) == sizeof(bwd_seg_desc), "pad must be the descriptor tail");
 static_assert(sizeof(bwd_seg_desc) % BWD_SEG_DESC_ALIGN == 0, "the descriptor size must be a whole number of alignment quanta");
-// The six-byte gap is implicit on BOTH sides, so it is asserted rather than
-// spelled: this is the arithmetic that proves it is exactly six.
-static_assert(__builtin_offsetof(bwd_seg_desc, window) - (__builtin_offsetof(bwd_seg_desc, source) + sizeof(bwd_seg_desc::source)) == 6,
-              "the implicit gap before `window` is not the six bytes both halves assert");
+// The four-byte gap is implicit on BOTH sides, so it is asserted rather than
+// spelled: this is the arithmetic that proves it is exactly four.
+static_assert(__builtin_offsetof(bwd_seg_desc, window) - (__builtin_offsetof(bwd_seg_desc, source) + sizeof(bwd_seg_desc::source)) == 4,
+              "the implicit gap before `window` is not the four bytes both halves assert");
 
 // ── The device-program A/B twin (section 5) ─────────────────────────────────
 
@@ -495,7 +514,7 @@ static_assert(__builtin_offsetof(bwd_seg_progptr_desc, term_count) == 80, "progp
 static_assert(__builtin_offsetof(bwd_seg_progptr_desc, num_sources) == 82, "progptr num_sources ABI offset drift");
 static_assert(__builtin_offsetof(bwd_seg_progptr_desc, num_foldable) == 84, "progptr num_foldable ABI offset drift");
 static_assert(__builtin_offsetof(bwd_seg_progptr_desc, fold_source) == 86, "progptr fold_source ABI offset drift");
-static_assert(__builtin_offsetof(bwd_seg_progptr_desc, source) == 2230, "progptr source ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_progptr_desc, source) == 2232, "progptr source ABI offset drift");
 static_assert(__builtin_offsetof(bwd_seg_progptr_desc, window) == 6520, "progptr window ABI offset drift");
 static_assert(__builtin_offsetof(bwd_seg_progptr_desc, c_init) == 7064, "progptr c_init ABI offset drift");
 static_assert(__builtin_offsetof(bwd_seg_progptr_desc, coefficients) == 7080, "progptr coefficients ABI offset drift");
@@ -510,8 +529,9 @@ static_assert(sizeof(bwd_seg_progptr_desc) % BWD_SEG_DESC_ALIGN == 0, "the progp
 // The A/B twin really drops the array rather than leaving it resident.
 static_assert(sizeof(bwd_seg_desc) - sizeof(bwd_seg_progptr_desc) >= BWD_SEG_PROGRAM_BYTE_CAP - BWD_SEG_DESC_ALIGN,
               "the progptr twin must actually drop the by-value program");
-static_assert(__builtin_offsetof(bwd_seg_progptr_desc, window) - (__builtin_offsetof(bwd_seg_progptr_desc, source) + sizeof(bwd_seg_progptr_desc::source)) == 2,
-              "the implicit gap before `window` is not the two bytes both halves assert");
+// No gap here: the progptr `source` array ends exactly at `window`.
+static_assert(__builtin_offsetof(bwd_seg_progptr_desc, window) - (__builtin_offsetof(bwd_seg_progptr_desc, source) + sizeof(bwd_seg_progptr_desc::source)) == 0,
+              "the progptr `source` array must end exactly at `window`, with no gap");
 
 // ── Epilogue specialization (section 3) ─────────────────────────────────────
 //
@@ -564,9 +584,12 @@ static_assert(bwd_seg_epilogue_smem_bytes(BWD_SEG_EPILOGUE_WIDE, BWD_SEG_MAX_K) 
 //
 // The carveout is PER THREAD and laid out `[word][lane]`: word `w` of thread `t`
 // sits at `words[w * threads + t]`, so the 32 lanes of a warp touch 32 CONSECUTIVE
-// 4-byte banks in every one of the four accesses. That is conflict-free by
-// construction, unlike the `e4`-per-thread layout, whose 16-byte stride would put
-// four lanes on every bank.
+// 4-byte banks in every one of the four accesses. Conflict-free — but so is the
+// `e4`-per-thread layout, because an `LDS.128`/`STS.128` issues in quarter-warp
+// phases of 8 lanes x 16 B, each covering all 32 banks exactly once. The
+// transposition therefore avoids no conflict; it costs four shared accesses and
+// three runtime address adds per term where one of each would do. Re-addressing is
+// parked (audit I-4, spec section 8).
 enum : u32 {
   // (a): both accumulators stay in registers. The default and the only placement
   // the fifteen release symbols use.
