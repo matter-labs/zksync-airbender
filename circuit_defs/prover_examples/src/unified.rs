@@ -42,6 +42,15 @@ use riscv_transpiler::witness::delegation::blake2_round_function::Blake2sRoundFu
 use riscv_transpiler::witness::delegation::keccak_special5::KeccakSpecial5AbiDescription;
 use riscv_transpiler::witness::UnifiedDestinationHolder;
 use setups::UnrolledCircuitSetupParams;
+
+// Upstream #368 moved the unified trace size to the circuit's `DOMAIN_SIZE_LOG2`
+// associated constant; the old `UNIFIED_TRACE_LEN_LOG2`
+// no longer exists. Single source of truth, mirrored from setups' own usage.
+const UNIFIED_TRACE_LEN_LOG2: usize =
+    <setups::unrolled_circuits::unified_reduced_machine::UnifiedReducedMachineCircuit as circuit_common::RiscVCycleCircuit<
+        BabyBearField,
+        true,
+    >>::DOMAIN_SIZE_LOG2 as usize;
 use setups::UnrolledCircuitWitnessEvalFn;
 use std::alloc::Global;
 use std::collections::BTreeMap;
@@ -207,7 +216,7 @@ pub fn prove_unified_execution_with_replayer<A: GoodAllocator>(
         &snapshotter,
         &tape,
         cycles_bound,
-        1 << setups::unified_reduced_machine::TRACE_LEN_LOG2,
+        1 << UNIFIED_TRACE_LEN_LOG2,
         &expected_final_state,
         num_unified_calls,
     );
@@ -329,14 +338,14 @@ pub fn prove_unified_execution_with_replayer<A: GoodAllocator>(
 
     // for unified circuits we have non-trivial splitting of inits and teardowns - only last N circuits out of all
     // `num_circuits_to_prove` will contribute to the grand product, and so we need to compute N. In general it would
-    // require us to scan all continuous `setups::unified_reduced_machine::TRACE_LEN_LOG2` * core::mem::size_of::<u32>() byte chunks
+    // require us to scan all continuous `UNIFIED_TRACE_LEN_LOG2` * core::mem::size_of::<u32>() byte chunks
     // of RAM to check if any address in those is touched, but we assume to fully control the recursion program
     // (and it's the only one + may be few test ones that will run in such mode), so we know that we will not touch anything above
     // quite low upper bound (and we can update linker script to make this bound even lower)
 
     let inits_and_teardown_chunks = ram.collect_inits_and_teardowns_sets::<BabyBearField, Global>(
         worker,
-        setups::unified_reduced_machine::TRACE_LEN_LOG2 as usize,
+        UNIFIED_TRACE_LEN_LOG2 as usize,
         num_teardown_sets,
         Some((1 << 27) / 4), // 128Mb
     );
@@ -380,22 +389,10 @@ pub fn prove_unified_execution_with_replayer<A: GoodAllocator>(
                 // create zeroes ones
                 let mut inits_and_teardowns = Vec::with_capacity(num_teardown_sets);
                 for _ in 0..num_teardown_sets {
-                    let a = vec![
-                        BabyBearField::ZERO;
-                        1 << setups::unified_reduced_machine::TRACE_LEN_LOG2
-                    ];
-                    let b = vec![
-                        BabyBearField::ZERO;
-                        1 << setups::unified_reduced_machine::TRACE_LEN_LOG2
-                    ];
-                    let c = vec![
-                        BabyBearField::ZERO;
-                        1 << setups::unified_reduced_machine::TRACE_LEN_LOG2
-                    ];
-                    let d = vec![
-                        BabyBearField::ZERO;
-                        1 << setups::unified_reduced_machine::TRACE_LEN_LOG2
-                    ];
+                    let a = vec![BabyBearField::ZERO; 1 << UNIFIED_TRACE_LEN_LOG2];
+                    let b = vec![BabyBearField::ZERO; 1 << UNIFIED_TRACE_LEN_LOG2];
+                    let c = vec![BabyBearField::ZERO; 1 << UNIFIED_TRACE_LEN_LOG2];
+                    let d = vec![BabyBearField::ZERO; 1 << UNIFIED_TRACE_LEN_LOG2];
                     inits_and_teardowns.push(([a, b], [c, d]));
                 }
 
@@ -665,22 +662,10 @@ pub fn prove_unified_execution_with_replayer<A: GoodAllocator>(
                 // create zeroes ones
                 let mut inits_and_teardowns = Vec::with_capacity(num_teardown_sets);
                 for _ in 0..num_teardown_sets {
-                    let a = vec![
-                        BabyBearField::ZERO;
-                        1 << setups::unified_reduced_machine::TRACE_LEN_LOG2
-                    ];
-                    let b = vec![
-                        BabyBearField::ZERO;
-                        1 << setups::unified_reduced_machine::TRACE_LEN_LOG2
-                    ];
-                    let c = vec![
-                        BabyBearField::ZERO;
-                        1 << setups::unified_reduced_machine::TRACE_LEN_LOG2
-                    ];
-                    let d = vec![
-                        BabyBearField::ZERO;
-                        1 << setups::unified_reduced_machine::TRACE_LEN_LOG2
-                    ];
+                    let a = vec![BabyBearField::ZERO; 1 << UNIFIED_TRACE_LEN_LOG2];
+                    let b = vec![BabyBearField::ZERO; 1 << UNIFIED_TRACE_LEN_LOG2];
+                    let c = vec![BabyBearField::ZERO; 1 << UNIFIED_TRACE_LEN_LOG2];
+                    let d = vec![BabyBearField::ZERO; 1 << UNIFIED_TRACE_LEN_LOG2];
                     inits_and_teardowns.push(([a, b], [c, d]));
                 }
 
