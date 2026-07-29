@@ -36,7 +36,7 @@ fn test_base_minus_multiplicity_by_base() {
         .map(|el| F::from_u32_with_reduction(el as u32))
         .collect();
 
-    let gamma = E::from_base(F::from_u32_with_reduction(2 as u32));
+    let gamma = E::from_base(F::from_u32_with_reduction(2_u32));
 
     let mut nums = vec![];
     let mut dens = vec![];
@@ -66,8 +66,10 @@ fn test_base_minus_multiplicity_by_base() {
     dbg!(&dens);
 
     let mut storage = GKRStorage::<F, E>::default();
-    let mut layer_0 = GKRLayerSource::default();
-    layer_0.layer_idx = 0;
+    let mut layer_0 = GKRLayerSource {
+        layer_idx: 0,
+        ..Default::default()
+    };
     layer_0.base_field_inputs.insert(
         GKRAddress::InnerLayer {
             layer: 0,
@@ -91,8 +93,10 @@ fn test_base_minus_multiplicity_by_base() {
     );
     storage.layers.push(layer_0);
 
-    let mut layer_1 = GKRLayerSource::default();
-    layer_1.layer_idx = 1;
+    let mut layer_1 = GKRLayerSource {
+        layer_idx: 1,
+        ..Default::default()
+    };
     layer_1.extension_field_inputs.insert(
         GKRAddress::InnerLayer {
             layer: 1,
@@ -149,6 +153,10 @@ fn test_base_minus_multiplicity_by_base() {
     let batching_challenges = vec![E::ONE, E::from_base(F::from_nonreduced_u32(123))];
 
     let mut claim = E::ZERO;
+    #[expect(
+        clippy::needless_range_loop,
+        reason = "index is used to cross-index several arrays; iterator form would not read better here"
+    )]
     for i in 0..2 {
         let mut subclaim = evaluate_with_precomputed_eq_ext::<E>(
             &storage.layers[1]
@@ -202,7 +210,7 @@ fn test_base_minus_multiplicity_by_base() {
 
             let [c0, c2] = evaluate_constant_and_quadratic_coeffs_with_precomputed_eq::<F, E>(
                 &accumulator,
-                &eq,
+                eq,
                 &worker,
             );
 
@@ -267,7 +275,7 @@ fn test_base_minus_multiplicity_by_base() {
             );
 
             // we would commit those values
-            assert!(last_evaluations.len() > 0);
+            assert!(!last_evaluations.is_empty());
 
             // in the accumulator we should have kernel(X(b), Y(b)) (batched), and now we can just multiply corresponding coordinates
             // over (1 - previous_round_challenges[last]) and previous_round_challenges[last], and add them up to verify that they match the claim
@@ -279,7 +287,7 @@ fn test_base_minus_multiplicity_by_base() {
 
             // [eq(r_last, 0) * A(r'.., 0) * B(r'..., 0) + eq(r_last, 1) * A(r'..., 1) * B(r'..., 1)] of the example above
             let [[f0, f1]] = accumulator;
-            let [eq0, eq1] = evaluate_eq_poly_at_line::<F, E>(&previous_round_last_challenge);
+            let [eq0, eq1] = evaluate_eq_poly_at_line::<F, E>(previous_round_last_challenge);
 
             dbg!([f0, f1]);
             dbg!([eq0, eq1]);

@@ -117,6 +117,10 @@ pub trait BaseFieldInOutFixedSizesEvaluationKernel<
     }
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "prover/witness-gen stage plumbing; grouping these into a struct would just move the fan-out"
+)]
 pub fn evaluate_single_input_type_fixed_in_out_kernel_with_base_inputs<
     F: PrimeField,
     E: FieldExtension<F> + Field,
@@ -145,7 +149,7 @@ pub fn evaluate_single_input_type_fixed_in_out_kernel_with_base_inputs<
                 let sources = storage.get_for_sumcheck_round_0(inputs);
                 assert!(sources.extension_field_outputs.is_empty());
                 assert!(sources.extension_field_inputs.is_empty());
-                if sources.base_field_outputs.is_empty() == false {
+                if !sources.base_field_outputs.is_empty() {
                     assert_eq!(sources.base_field_inputs.len(), IN);
                     assert_eq!(sources.base_field_outputs.len(), OUT);
                     assert_eq!(batch_challenges.len(), OUT);
@@ -162,6 +166,10 @@ pub fn evaluate_single_input_type_fixed_in_out_kernel_with_base_inputs<
                         |_, mut ext_dest, chunk_start, chunk_size| {
                             assert_eq!(ext_dest.len(), 1);
                             let accumulator = ext_dest.pop().unwrap();
+                            #[expect(
+                                clippy::needless_range_loop,
+                                reason = "index arithmetic / parallel multi-array indexing in a hot kernel; iterator form obscures the chunk offsets"
+                            )]
                             for index in 0..chunk_size {
                                 let absolute_index = chunk_start + index;
                                 let value = kernel.evaluate_first_round(
@@ -191,6 +199,10 @@ pub fn evaluate_single_input_type_fixed_in_out_kernel_with_base_inputs<
                         |_, mut ext_dest, chunk_start, chunk_size| {
                             assert_eq!(ext_dest.len(), 1);
                             let accumulator = ext_dest.pop().unwrap();
+                            #[expect(
+                                clippy::needless_range_loop,
+                                reason = "index arithmetic / parallel multi-array indexing in a hot kernel; iterator form obscures the chunk offsets"
+                            )]
                             for index in 0..chunk_size {
                                 let absolute_index = chunk_start + index;
                                 let value = kernel.evaluate::<_, _, false>(
@@ -226,6 +238,10 @@ pub fn evaluate_single_input_type_fixed_in_out_kernel_with_base_inputs<
                             assert_eq!(ext_dest.len(), 1);
                             let accumulator = ext_dest.pop().unwrap();
                             let ctx = inputs[0].get_collapse_context();
+                            #[expect(
+                                clippy::needless_range_loop,
+                                reason = "index arithmetic / parallel multi-array indexing in a hot kernel; iterator form obscures the chunk offsets"
+                            )]
                             for index in 0..chunk_size {
                                 let absolute_index = chunk_start + index;
                                 let value = kernel.evaluate::<_, _, false>(
@@ -261,6 +277,10 @@ pub fn evaluate_single_input_type_fixed_in_out_kernel_with_base_inputs<
                             assert_eq!(ext_dest.len(), 1);
                             let accumulator = ext_dest.pop().unwrap();
                             let ctx = inputs[0].get_collapse_context();
+                            #[expect(
+                                clippy::needless_range_loop,
+                                reason = "index arithmetic / parallel multi-array indexing in a hot kernel; iterator form obscures the chunk offsets"
+                            )]
                             for index in 0..chunk_size {
                                 let absolute_index = chunk_start + index;
                                 let value = kernel.evaluate::<_, _, false>(
@@ -298,6 +318,10 @@ pub fn evaluate_single_input_type_fixed_in_out_kernel_with_base_inputs<
                             assert_eq!(ext_dest.len(), 1);
                             let accumulator = ext_dest.pop().unwrap();
                             let ctx = inputs[0].get_collapse_context();
+                            #[expect(
+                                clippy::needless_range_loop,
+                                reason = "index arithmetic / parallel multi-array indexing in a hot kernel; iterator form obscures the chunk offsets"
+                            )]
                             for index in 0..chunk_size {
                                 let absolute_index = chunk_start + index;
                                 let value = kernel.evaluate::<_, _, true>(
@@ -338,6 +362,10 @@ pub fn evaluate_single_input_type_fixed_in_out_kernel_with_base_inputs<
                             assert_eq!(ext_dest.len(), 1);
                             let accumulator = ext_dest.pop().unwrap();
                             let ctx = inputs[0].get_collapse_context();
+                            #[expect(
+                                clippy::needless_range_loop,
+                                reason = "index arithmetic / parallel multi-array indexing in a hot kernel; iterator form obscures the chunk offsets"
+                            )]
                             for index in 0..chunk_size {
                                 let absolute_index = chunk_start + index;
                                 let value = kernel.evaluate::<_, _, false>(

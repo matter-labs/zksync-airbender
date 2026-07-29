@@ -40,6 +40,12 @@ impl<'a, O: Oracle<F> + 'a, F: PrimeField> ColumnMajorWitnessProxy<'a, O, F> {
         self.absolute_row_idx += 1;
     }
 
+    // reason: one writer per placeholder kind; which ones the `include!`d generated witness code
+    // calls depends on the circuit set compiled in, so the family is kept complete.
+    #[expect(
+        dead_code,
+        reason = "placeholder-writer family kept complete for generated circuits"
+    )]
     #[inline]
     pub(crate) fn write_timestamp_placeholder_into_columns(
         &mut self,
@@ -69,10 +75,10 @@ impl<'a, O: Oracle<F> + 'a, F: PrimeField> ColumnMajorWitnessProxy<'a, O, F> {
         unsafe {
             self.memory_rows_starts
                 .get_unchecked_mut(offset_low)
-                .write(F::from_u32_unchecked(low as u32));
+                .write(F::from_u32_unchecked(low));
             self.memory_rows_starts
                 .get_unchecked_mut(offset_high)
-                .write(F::from_u32_unchecked(high as u32));
+                .write(F::from_u32_unchecked(high));
         }
     }
 
@@ -206,7 +212,7 @@ impl<'a, O: Oracle<F> + 'a, F: PrimeField> ColumnMajorWitnessProxy<'a, O, F> {
                 debug_assert!(*el < self.memory_rows_starts.len());
             }
 
-            for (value, offset) in bytes.into_iter().zip(placeholder_columns.into_iter()) {
+            for (value, offset) in bytes.into_iter().zip(placeholder_columns) {
                 unsafe {
                     self.memory_rows_starts
                         .get_unchecked_mut(offset)
@@ -218,7 +224,7 @@ impl<'a, O: Oracle<F> + 'a, F: PrimeField> ColumnMajorWitnessProxy<'a, O, F> {
                 debug_assert!(*el < self.witness_rows_starts.len());
             }
 
-            for (value, offset) in bytes.into_iter().zip(placeholder_columns.into_iter()) {
+            for (value, offset) in bytes.into_iter().zip(placeholder_columns) {
                 unsafe {
                     self.witness_rows_starts
                         .get_unchecked_mut(offset)
@@ -271,6 +277,10 @@ impl<'a, O: Oracle<F> + 'a, F: PrimeField> ColumnMajorWitnessProxy<'a, O, F> {
     }
 
     #[inline]
+    #[expect(
+        dead_code,
+        reason = "placeholder-writer family kept complete for generated circuits"
+    )]
     pub(crate) fn write_u8_placeholder_into_columns<const USE_MEMORY: bool>(
         &mut self,
         placeholder_columns: usize,
@@ -313,6 +323,10 @@ impl<'a, O: Oracle<F> + 'a, F: PrimeField> ColumnMajorWitnessProxy<'a, O, F> {
     }
 
     #[inline]
+    #[expect(
+        dead_code,
+        reason = "placeholder-writer family kept complete for generated circuits"
+    )]
     pub(crate) fn write_boolean_placeholder_into_columns<const USE_MEMORY: bool>(
         &mut self,
         placeholder_columns: usize,
@@ -355,6 +369,10 @@ impl<'a, O: Oracle<F> + 'a, F: PrimeField> ColumnMajorWitnessProxy<'a, O, F> {
     }
 
     #[inline]
+    #[expect(
+        dead_code,
+        reason = "placeholder-writer family kept complete for generated circuits"
+    )]
     pub(crate) fn write_field_value_into_columns<const USE_MEMORY: bool>(
         &mut self,
         column: usize,

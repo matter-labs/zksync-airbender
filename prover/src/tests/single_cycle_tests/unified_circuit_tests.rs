@@ -7,9 +7,13 @@ mod test {
     use cs::gkr_circuits::unified_reduced_machine::UnifiedReducedMachineDecoder;
     use cs::gkr_circuits::unified_reduced_machine::*;
     use field::baby_bear::base::BabyBearField;
-    use field::Proth120;
+
     use riscv_transpiler::ir::ReducedMachineDecoderConfig;
 
+    #[expect(
+        dead_code,
+        reason = "base-field alias kept alongside the Proth120 test paths"
+    )]
     type F = BabyBearField;
 
     fn read_binary(path: &std::path::Path) -> (Vec<u8>, Vec<u32>) {
@@ -185,7 +189,7 @@ mod test {
         let witness: Vec<UnifiedOpcodeTracingDataWithTimestamp> =
             bincode_deserialize_from_file("unified_proth120_witness.bin");
         println!("{} inputs in total", witness.len());
-        let (_, binary) = read_binary(&Path::new("../examples/basic_fibonacci/app.bin"));
+        let (_, binary) = read_binary(Path::new("../examples/basic_fibonacci/app.bin"));
 
         for (i, wit) in witness.into_iter().enumerate().skip(10) {
             let pc = wit.initial_pc();
@@ -212,7 +216,7 @@ mod two_field_mop_tests {
         unified_reduced_machine_circuit_with_preprocessed_bytecode_for_gkr,
         unified_reduced_machine_table_addition_fn, UnifiedReducedMachineDecoder,
     };
-    use cs::witness_placer::{WitnessComputationalField, WitnessPlacer};
+    use cs::witness_placer::WitnessPlacer;
     use field::baby_bear::base::BabyBearField;
     use field::{Field, PrimeField, Proth120};
     use riscv_transpiler::ir::ReducedMachineDecoderConfig;

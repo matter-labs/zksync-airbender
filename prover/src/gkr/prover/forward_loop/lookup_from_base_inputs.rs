@@ -6,6 +6,10 @@ use cs::definitions::gkr::NoFieldSingleColumnLookupRelation;
 
 use super::*;
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "prover/witness-gen stage plumbing; grouping these into a struct would just move the fan-out"
+)]
 pub fn forward_evaluate_lookup_from_base_inputs_with_setup<
     F: PrimeField,
     E: FieldExtension<F> + Field,
@@ -49,6 +53,10 @@ pub fn forward_evaluate_lookup_base_inputs_pair<F: PrimeField, E: FieldExtension
 }
 
 // 1/(b+gamma) + 1/(d + gamma) -> (b + d + 2*gamma), (b+gamma)*(d+gamma)
+#[expect(
+    clippy::too_many_arguments,
+    reason = "prover/witness-gen stage plumbing; grouping these into a struct would just move the fan-out"
+)]
 pub fn forward_evaluate_lookup_base_inputs_pair_range_check_16<
     F: PrimeField,
     E: FieldExtension<F> + Field,
@@ -66,14 +74,10 @@ pub fn forward_evaluate_lookup_base_inputs_pair_range_check_16<
     let mut den_destination = Box::<[E], Global>::new_uninit_slice(trace_len);
 
     let [lhs, rhs] = inputs;
-    let lhs_source = std::mem::replace(
-        &mut witness_trace.range_check_16_lookup_mapping[lhs.lookup_set_index],
-        vec![],
-    );
-    let rhs_source = std::mem::replace(
-        &mut witness_trace.range_check_16_lookup_mapping[rhs.lookup_set_index],
-        vec![],
-    );
+    let lhs_source =
+        std::mem::take(&mut witness_trace.range_check_16_lookup_mapping[lhs.lookup_set_index]);
+    let rhs_source =
+        std::mem::take(&mut witness_trace.range_check_16_lookup_mapping[rhs.lookup_set_index]);
     let lhs_source_ref = &lhs_source;
     let rhs_source_ref = &rhs_source;
     assert_eq!(lhs_source_ref.len(), trace_len);
@@ -127,10 +131,7 @@ pub fn forward_evaluate_lookup_base_inputs_pair_range_check_16<
         },
     );
 
-    for (output, destination) in outputs
-        .into_iter()
-        .zip([num_destination, den_destination].into_iter())
-    {
+    for (output, destination) in outputs.into_iter().zip([num_destination, den_destination]) {
         let destination = unsafe { destination.assume_init() };
         output.assert_as_layer(expected_output_layer);
         gkr_storage.insert_extension_at_layer(
@@ -142,6 +143,10 @@ pub fn forward_evaluate_lookup_base_inputs_pair_range_check_16<
 }
 
 // 1/(b+gamma) + 1/(d + gamma) -> (b + d + 2*gamma), (b+gamma)*(d+gamma)
+#[expect(
+    clippy::too_many_arguments,
+    reason = "prover/witness-gen stage plumbing; grouping these into a struct would just move the fan-out"
+)]
 pub fn forward_evaluate_lookup_base_inputs_pair_timestamp_range_check<
     F: PrimeField,
     E: FieldExtension<F> + Field,
@@ -159,13 +164,11 @@ pub fn forward_evaluate_lookup_base_inputs_pair_timestamp_range_check<
     let mut den_destination = Box::<[E], Global>::new_uninit_slice(trace_len);
 
     let [lhs, rhs] = inputs;
-    let lhs_source = std::mem::replace(
+    let lhs_source = std::mem::take(
         &mut witness_trace.timestamp_range_check_lookup_mapping[lhs.lookup_set_index],
-        vec![],
     );
-    let rhs_source = std::mem::replace(
+    let rhs_source = std::mem::take(
         &mut witness_trace.timestamp_range_check_lookup_mapping[rhs.lookup_set_index],
-        vec![],
     );
     let lhs_source_ref = &lhs_source;
     let rhs_source_ref = &rhs_source;
@@ -220,10 +223,7 @@ pub fn forward_evaluate_lookup_base_inputs_pair_timestamp_range_check<
         },
     );
 
-    for (output, destination) in outputs
-        .into_iter()
-        .zip([num_destination, den_destination].into_iter())
-    {
+    for (output, destination) in outputs.into_iter().zip([num_destination, den_destination]) {
         let destination = unsafe { destination.assume_init() };
         output.assert_as_layer(expected_output_layer);
         gkr_storage.insert_extension_at_layer(
@@ -234,6 +234,10 @@ pub fn forward_evaluate_lookup_base_inputs_pair_timestamp_range_check<
     }
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "prover/witness-gen stage plumbing; grouping these into a struct would just move the fan-out"
+)]
 pub fn forward_evaluate_lookup_rational_with_base_remainder_input<
     F: PrimeField,
     E: FieldExtension<F> + Field,

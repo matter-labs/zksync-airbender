@@ -128,6 +128,10 @@ pub fn circuit_path(stem: &str) -> String {
 /// Caller passes the const-generic family index via `CIRCUIT_TYPE`,
 /// the compiled-circuit stem (e.g. "add_sub_lui_auipc_mop"), and the
 /// preprocessing data slice.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "prover/witness-gen stage plumbing; grouping these into a struct would just move the fan-out"
+)]
 pub fn prove_non_mem_family<const CIRCUIT_TYPE: u8, C>(
     snapshotter: &SimpleSnapshotter<C, { common_constants::ROM_SECOND_WORD_BITS }>,
     tape: &SimpleTape,
@@ -222,6 +226,10 @@ where
 /// mem_subword_only). The `mem_word_only` family also needs a
 /// binary-derived extra-tables setup; the caller drives that via
 /// `table_driver_setup`.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "prover/witness-gen stage plumbing; grouping these into a struct would just move the fan-out"
+)]
 pub fn prove_mem_family<const CIRCUIT_TYPE: u8, C>(
     snapshotter: &SimpleSnapshotter<C, { common_constants::ROM_SECOND_WORD_BITS }>,
     tape: &SimpleTape,
@@ -316,6 +324,14 @@ where
 /// different from the executor family helpers above — there's no
 /// snapshotter replay; the witness is built directly from the dumped
 /// inits/teardowns columns the VM produced.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "prover/witness-gen stage plumbing; grouping these into a struct would just move the fan-out"
+)]
+#[expect(
+    clippy::type_complexity,
+    reason = "generic over field + allocator; a bound-free type alias would drop those bounds"
+)]
 pub fn prove_inits_and_teardowns(
     inits_and_teardowns: Vec<(
         [Vec<BabyBearField, Global>; 2],
@@ -430,6 +446,10 @@ pub fn prove_inits_and_teardowns(
     }
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "prover/witness-gen stage plumbing; grouping these into a struct would just move the fan-out"
+)]
 pub fn build_nonmem_family_full_trace<const CIRCUIT_TYPE: u8, C>(
     snapshotter: &SimpleSnapshotter<C, { common_constants::ROM_SECOND_WORD_BITS }>,
     tape: &SimpleTape,
@@ -455,7 +475,7 @@ where
         ram_log: &mut ram_log_buffers,
     };
     let mut buffer = vec![NonMemoryOpcodeTracingDataWithTimestamp::default(); num_calls];
-    let mut buffers = vec![&mut buffer[..]];
+    let mut buffers = [&mut buffer[..]];
     let mut tracer = NonMemDestinationHolder::<CIRCUIT_TYPE> {
         buffers: &mut buffers[..],
     };
@@ -551,7 +571,7 @@ where
         ram_log: &mut ram_log_buffers,
     };
     let mut buffer = vec![MemoryOpcodeTracingDataWithTimestamp::default(); num_calls];
-    let mut buffers = vec![&mut buffer[..]];
+    let mut buffers = [&mut buffer[..]];
     let mut tracer = MemDestinationHolder::<CIRCUIT_TYPE> {
         buffers: &mut buffers[..],
     };

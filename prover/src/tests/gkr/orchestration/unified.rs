@@ -52,11 +52,19 @@ use worker::Worker;
 /// circuits filter explicitly excludes `unified_reduced_machine`.
 pub struct UnifiedProverOutput {
     pub unified_proof: Option<GKRProof<BabyBearField, BabyBearExt4, DefaultTreeConstructor>>,
+    #[expect(
+        dead_code,
+        reason = "prove-output field, not consumed by current tests"
+    )]
     pub compiled_unified_circuit: GKRCircuitArtifact<BabyBearField>,
     pub delegation_outputs: Vec<DelegationProveOutput>,
     pub register_final_state: [RamShuffleMemStateRecord; 32],
     pub final_pc: u32,
     pub final_timestamp: TimestampScalar,
+    #[expect(
+        dead_code,
+        reason = "prove-output field, not consumed by current tests"
+    )]
     pub external_challenges: GKRExternalChallenges<BabyBearField, BabyBearExt4>,
     /// The unified circuit's setup-tree cap (the FSV's prepended verification key).
     /// `Some` whenever the unified circuit was proved; `None` only under a circuits
@@ -647,6 +655,10 @@ fn fs_transform_for_unified_circuit(
     transcript.finalize()
 }
 
+#[expect(
+    clippy::type_complexity,
+    reason = "generic over field + allocator; a bound-free type alias would drop those bounds"
+)]
 pub fn build_unified_full_trace<C>(
     vm: &VmRunOutput<C>,
     unified_circuit: &GKRCircuitArtifact<BabyBearField>,
@@ -680,7 +692,7 @@ where
         ram_log: &mut ram_log_buffers,
     };
     let mut buffer = vec![UnifiedOpcodeTracingDataWithTimestamp::default(); num_calls];
-    let mut buffers = vec![&mut buffer[..]];
+    let mut buffers = [&mut buffer[..]];
     let mut tracer = UnifiedDestinationHolder {
         buffers: &mut buffers[..],
     };

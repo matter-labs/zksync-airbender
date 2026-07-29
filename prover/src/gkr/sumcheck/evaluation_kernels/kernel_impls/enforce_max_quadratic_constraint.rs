@@ -176,7 +176,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field>
             result.add_assign(&t);
         }
 
-        if result.is_zero() == false {
+        if !result.is_zero() {
             for (i, source) in sources.iter().enumerate() {
                 let value = source.get_at_index(index).0;
                 println!("Source {} = {}", i, value);

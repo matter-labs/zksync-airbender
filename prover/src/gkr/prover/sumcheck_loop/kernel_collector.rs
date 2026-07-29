@@ -13,15 +13,19 @@ use crate::gkr::sumcheck::evaluation_kernels::{
     LookupBaseMinusMultiplicityByBaseGKRRelation, LookupBasePairGKRRelation,
     LookupBasePairWithoutCachesGKRRelation, LookupExtensionMinusMultiplicityByExtensionGKRRelation,
     LookupExtensionMinusMultiplicityByExtensionWithoutCachesGKRRelation,
-    LookupExtensionPairGKRRelation, LookupExtensionPairGKRRelationKernel,
-    LookupExtensionPairWithoutCachesGKRRelation, LookupPairGKRRelation,
-    LookupRationalPairWithUnbalancedBaseGKRRelation,
+    LookupExtensionPairGKRRelation, LookupExtensionPairWithoutCachesGKRRelation,
+    LookupPairGKRRelation, LookupRationalPairWithUnbalancedBaseGKRRelation,
     LookupRationalPairWithUnbalancedExtensionGKRRelation,
-    LookupRationalPairWithUnbalancedExtensionGKRRelationKernel,
     LookupRationalPairWithUnbalancedExtensionWithoutCachesGKRRelation,
     MaskIntoIdentityProductGKRRelation, MaterializeMemoryTermGKRRelation,
     MaterializeSingleLookupInputGKRRelation, MaterializeVectorLookupInputGKRRelation,
     MaxQuadraticGKRRelation, SameSizeProductGKRRelation, SameSizeProductGKRRelationWithoutCaches,
+};
+// Only named by `gkr_self_checks` assertions further down this module.
+#[cfg(feature = "gkr_self_checks")]
+use crate::gkr::sumcheck::evaluation_kernels::{
+    LookupExtensionPairGKRRelationKernel,
+    LookupRationalPairWithUnbalancedExtensionGKRRelationKernel,
 };
 use crate::worker::Worker;
 use field::{Field, FieldExtension, PrimeField};
@@ -35,6 +39,11 @@ macro_rules! define_kernel_variants {
         pair { $($p_name:ident($p_type:ty)),* $(,)? }
         no_output { $($n_name:ident($n_type:ty)),* $(,)? }
     ) => {
+        // reason: `EnforceConstraintsMaxQuadratic` is declared for parity with the upstream
+        // `NoFieldGKRRelation` set but is no longer produced by `from_enforced_relations`
+        // (see the `unimplemented!("no longer supported")` arm in `forward_loop`). The macro DSL
+        // has no per-variant attribute slot, so the expectation sits on the generated enum.
+        #[expect(dead_code, reason = "some relation variants are declared but no longer produced")]
         #[derive(Debug)]
         pub(super) enum KernelVariant<F: PrimeField, E: FieldExtension<F> + Field> {
             $($s_name($s_type, [E; 1], GKRAddress),)*
@@ -67,6 +76,7 @@ macro_rules! define_kernel_variants {
                 }
             }
 
+            #[expect(clippy::too_many_arguments, reason = "prover/witness-gen stage plumbing; grouping these into a struct would just move the fan-out")]
             pub fn evaluate_over_storage<const N: usize>(
                 &self,
                 storage: &mut GKRStorage<F, E>,
@@ -168,9 +178,13 @@ define_kernel_variants! {
 }
 
 impl<F: PrimeField, E: FieldExtension<F> + Field> KernelVariant<F, E> {
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "prover/witness-gen stage plumbing; grouping these into a struct would just move the fan-out"
+    )]
     pub fn from_enforced_relations(
         relation: &NoFieldGKRRelation<F>,
-        layer_idx: usize,
+        _layer_idx: usize,
         lookup_challenges_multiplicative_part: E,
         lookup_challenges_additive_part: E,
         inits_and_teardowns_top_bits: &[u32],
@@ -331,7 +345,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelVariant<F, E> {
                     *output,
                 )
             }
-            NoFieldGKRRelation::EnforceConstraintsMaxQuadratic { input } => {
+            NoFieldGKRRelation::EnforceConstraintsMaxQuadratic { input: _ } => {
                 unimplemented!("no longer supported");
                 // let challenge = [get_challenge()];
                 // Self::EnforceConstraintsMaxQuadratic(
@@ -527,7 +541,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelVariant<F, E> {
             // NoFieldGKRRelation::MaterializedVectorLookupInput { .. } => todo!(),
             // NoFieldGKRRelation::LookupPairFromBaseInputs { .. } => todo!(),
             // NoFieldGKRRelation::LookupPairFromVectorInputs { .. } => todo!(),
-            a @ _ => {
+            a => {
                 panic!("Relation {:?} is not yet implemented", a);
             }
         }
@@ -557,13 +571,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
 
     pub(super) fn register(&mut self, kernel: KernelVariant<F, E>) {
         // Kernels can have a bug in them, place to debug
-        match kernel {
-            // KernelVariant::LookupVectorPair(..) if self.layer == 1 => {}
-            // KernelVariant::AggregateLookupPair(..) if self.layer == 1 => {}
-            // KernelVariant::EnforceSingleMaxQuadraticConstraint(..) if self.layer == 1 => {}
-            // KernelVariant::LookupUnbalancedWithExtensionWithoutCaches(..) => {}
-            _ => self.kernels.push(kernel),
-        }
+        self.kernels.push(kernel)
     }
 
     pub(super) fn compute_combined_claim(&self, output_claims: &BTreeMap<GKRAddress, E>) -> E {
@@ -662,6 +670,10 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
         collector
     }
 
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "prover/witness-gen stage plumbing; grouping these into a struct would just move the fan-out"
+    )]
     pub(super) fn evaluate_kernels_over_storage<const N: usize>(
         &self,
         storage: &mut GKRStorage<F, E>,
@@ -697,6 +709,10 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
     ) {
         let terms = kernel.terms(challenge_constants);
         assert_eq!(terms.len(), challenges.len());
+        #[expect(
+            clippy::needless_range_loop,
+            reason = "self-check kernel mirrors the prover loop structure; index is used to cross-index the accumulator"
+        )]
         for j in 0..2usize {
             for (term_idx, term) in terms.iter().enumerate() {
                 let mut contribution = term.constant_term;
@@ -708,11 +724,11 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
                 {
                     for (b, c) in other.iter() {
                         let a = last_evaluations
-                            .get(&a)
+                            .get(a)
                             .unwrap_or_else(|| panic!("input addr {a:?} not in last_evaluations"))
                             [j];
                         let b = last_evaluations
-                            .get(&b)
+                            .get(b)
                             .unwrap_or_else(|| panic!("input addr {b:?} not in last_evaluations"))
                             [j];
                         let mut t = *c;
@@ -727,7 +743,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
                     .chain(term.linear_part_ext.iter())
                 {
                     let a = last_evaluations
-                        .get(&a)
+                        .get(a)
                         .unwrap_or_else(|| panic!("input addr {a:?} not in last_evaluations"))[j];
                     let mut t = *c;
                     t.mul_assign(&a);
@@ -783,6 +799,10 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
             match kernel {
                 KernelVariant::BaseCopy(rel, challenge, _) => {
                     let k = BaseFieldCopyGKRRelationKernel::<F, E>::default();
+                    #[expect(
+                        clippy::needless_range_loop,
+                        reason = "self-check kernel mirrors the prover loop structure; index is used to cross-index the accumulator"
+                    )]
                     for j in 0..2usize {
                         let in0 = efr(get(rel.input, j));
                         let [out] = BaseFieldInOutFixedSizesEvaluationKernelCore::<F, E, 1, 1>::pointwise_eval(&k, &[in0]);
@@ -793,6 +813,10 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
                 }
                 KernelVariant::ExtCopy(rel, challenge, _) => {
                     let k = ExtensionCopyGKRRelationKernel::<F, E>::default();
+                    #[expect(
+                        clippy::needless_range_loop,
+                        reason = "self-check kernel mirrors the prover loop structure; index is used to cross-index the accumulator"
+                    )]
                     for j in 0..2usize {
                         let in0 = efr(get(rel.input, j));
                         let [mut val] = ExtensionFieldInOutFixedSizesEvaluationKernelCore::<
@@ -807,6 +831,10 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
                 }
                 KernelVariant::Product(rel, challenge, _) => {
                     let k = ProductGKRRelationKernel::<F, E>::default();
+                    #[expect(
+                        clippy::needless_range_loop,
+                        reason = "self-check kernel mirrors the prover loop structure; index is used to cross-index the accumulator"
+                    )]
                     for j in 0..2usize {
                         let in0 = efr(get(rel.inputs[0], j));
                         let in1 = efr(get(rel.inputs[1], j));
@@ -822,6 +850,10 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
                 }
                 KernelVariant::MaskIdentity(rel, challenge, _) => {
                     let k = MaskIntoIdentityProductGKRRelationKernel::<F, E>::default();
+                    #[expect(
+                        clippy::needless_range_loop,
+                        reason = "self-check kernel mirrors the prover loop structure; index is used to cross-index the accumulator"
+                    )]
                     for j in 0..2usize {
                         let in_base = efr(get(rel.mask, j));
                         let in_ext = efr(get(rel.input, j));
@@ -840,6 +872,10 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
                 }
                 KernelVariant::AggregateLookupPair(rel, challenges, _) => {
                     let k = LookupAdditionGKRRelationKernel::<F, E>::default();
+                    #[expect(
+                        clippy::needless_range_loop,
+                        reason = "self-check kernel mirrors the prover loop structure; index is used to cross-index the accumulator"
+                    )]
                     for j in 0..2usize {
                         let in0 = efr(get(rel.inputs[0][0], j));
                         let in1 = efr(get(rel.inputs[0][1], j));
@@ -866,6 +902,10 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
                 KernelVariant::LookupBasePair(rel, challenges, _) => {
                     let k =
                         LookupBasePairGKRRelationKernel::<F, E>::new(rel.lookup_additive_challenge);
+                    #[expect(
+                        clippy::needless_range_loop,
+                        reason = "self-check kernel mirrors the prover loop structure; index is used to cross-index the accumulator"
+                    )]
                     for j in 0..2usize {
                         let in0 = efr(get(rel.inputs[0], j));
                         let in1 = efr(get(rel.inputs[1], j));
@@ -892,6 +932,10 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
                     let k = LookupExtensionPairGKRRelationKernel::<F, E>::new(
                         rel.lookup_additive_challenge,
                     );
+                    #[expect(
+                        clippy::needless_range_loop,
+                        reason = "self-check kernel mirrors the prover loop structure; index is used to cross-index the accumulator"
+                    )]
                     for j in 0..2usize {
                         let in0 = efr(get(rel.inputs[0], j));
                         let in1 = efr(get(rel.inputs[1], j));
@@ -915,6 +959,10 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
                     let k = LookupBaseMinusMultiplicityByBaseGKRRelationKernel::<F, E>::new(
                         rel.lookup_additive_challenge,
                     );
+                    #[expect(
+                        clippy::needless_range_loop,
+                        reason = "self-check kernel mirrors the prover loop structure; index is used to cross-index the accumulator"
+                    )]
                     for j in 0..2usize {
                         let in0 = efr(get(rel.input, j));
                         let in1 = efr(get(rel.setup[0], j));
@@ -942,6 +990,10 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
                     let k = LookupRationalPairWithUnbalancedBaseGKRRelationKernel::<F, E>::new(
                         rel.lookup_additive_challenge,
                     );
+                    #[expect(
+                        clippy::needless_range_loop,
+                        reason = "self-check kernel mirrors the prover loop structure; index is used to cross-index the accumulator"
+                    )]
                     for j in 0..2usize {
                         let in_base = efr(get(rel.remainder, j));
                         let in_ext0 = efr(get(rel.inputs[0], j));
@@ -972,6 +1024,10 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
                         LookupExtensionMinusMultiplicityByExtensionGKRRelationKernel::<F, E>::new(
                             rel.lookup_additive_challenge,
                         );
+                    #[expect(
+                        clippy::needless_range_loop,
+                        reason = "self-check kernel mirrors the prover loop structure; index is used to cross-index the accumulator"
+                    )]
                     for j in 0..2usize {
                         let b_in0 = efr(get(rel.setup[0], j));
                         let e_in0 = efr(get(rel.input, j));
@@ -999,6 +1055,10 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
                     let k = LookupRationalPairWithUnbalancedExtensionGKRRelationKernel::<F, E>::new(
                         rel.lookup_additive_challenge,
                     );
+                    #[expect(
+                        clippy::needless_range_loop,
+                        reason = "self-check kernel mirrors the prover loop structure; index is used to cross-index the accumulator"
+                    )]
                     for j in 0..2usize {
                         let in_ext0 = efr(get(rel.inputs[0], j));
                         let in_ext1 = efr(get(rel.inputs[1], j));
@@ -1025,6 +1085,10 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
                     let k = LookupBaseExtMinusBaseExtGKRRelationKernel::<F, E>::new(
                         rel.lookup_additive_challenge,
                     );
+                    #[expect(
+                        clippy::needless_range_loop,
+                        reason = "self-check kernel mirrors the prover loop structure; index is used to cross-index the accumulator"
+                    )]
                     for j in 0..2usize {
                         let in_base0 = efr(get(rel.nums[0], j));
                         let in_base1 = efr(get(rel.nums[1], j));
@@ -1050,6 +1114,10 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
                     }
                 }
                 KernelVariant::MaterializeVectorLookupInput(rel, challenge, _) => {
+                    #[expect(
+                        clippy::needless_range_loop,
+                        reason = "self-check kernel mirrors the prover loop structure; index is used to cross-index the accumulator"
+                    )]
                     for j in 0..2usize {
                         let inputs_vec: Vec<E> =
                             rel.inputs.iter().map(|addr| get(*addr, j)).collect();
@@ -1059,7 +1127,12 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
                         acc[j].add_assign(&contrib);
                     }
                 }
-                KernelVariant::MaxQuadratic(rel, challenge, _) => {
+                KernelVariant::MaxQuadratic(rel, challenge, _) =>
+                {
+                    #[expect(
+                        clippy::needless_range_loop,
+                        reason = "self-check kernel mirrors the prover loop structure; index is used to cross-index the accumulator"
+                    )]
                     for j in 0..2usize {
                         let inputs_vec: Vec<E> =
                             rel.inputs.iter().map(|addr| get(*addr, j)).collect();
@@ -1073,6 +1146,10 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
                     // BatchConstraintEval: sum of quadratic/linear/constant terms over the input
                     // polys. For a valid circuit each pointwise evaluation is zero, so this
                     // contributes nothing to acc — but we compute it for completeness/debugging.
+                    #[expect(
+                        clippy::needless_range_loop,
+                        reason = "self-check kernel mirrors the prover loop structure; index is used to cross-index the accumulator"
+                    )]
                     for j in 0..2usize {
                         let inputs_vec: Vec<E> = rel
                             .inputs

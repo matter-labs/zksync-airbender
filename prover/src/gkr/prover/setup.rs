@@ -40,7 +40,7 @@ impl<F: PrimeField + TwoAdicField> GKRSetup<F> {
         assert_eq!(total_tables_size, compiled_circuit.total_tables_size);
 
         let mut num_table_subsets = total_tables_size / table_encoding_capacity_per_tuple;
-        if total_tables_size % table_encoding_capacity_per_tuple != 0 {
+        if !total_tables_size.is_multiple_of(table_encoding_capacity_per_tuple) {
             num_table_subsets += 1;
         }
         assert!(
@@ -63,8 +63,8 @@ impl<F: PrimeField + TwoAdicField> GKRSetup<F> {
 
         // no parallelism for now
 
-        if compiled_circuit.tables_ids_in_generic_lookups == false {
-            assert!(all_generic_tables.len() == 0 || decoder_table.len() == 0);
+        if !compiled_circuit.tables_ids_in_generic_lookups {
+            assert!(all_generic_tables.is_empty() || decoder_table.is_empty());
         }
 
         for row_idx in 0..all_generic_tables.len() {
@@ -82,7 +82,7 @@ impl<F: PrimeField + TwoAdicField> GKRSetup<F> {
         }
         let offset = compiled_circuit.offset_for_decoder_table;
 
-        if decoder_table.len() > 0 {
+        if !decoder_table.is_empty() {
             let table = materialize_flattened_decoder_table_with_bitmask(
                 decoder_table,
                 &compiled_circuit.decode_table_columns_mask,
@@ -101,6 +101,10 @@ impl<F: PrimeField + TwoAdicField> GKRSetup<F> {
                 for column in 0..width {
                     result[column][row_idx + offset] = table[row_idx][column];
                 }
+                #[expect(
+                    clippy::needless_range_loop,
+                    reason = "index arithmetic / parallel multi-array indexing in a hot kernel; iterator form obscures the chunk offsets"
+                )]
                 for column in width..padding_len {
                     result[column][row_idx + offset] = F::ZERO;
                 }
@@ -182,10 +186,12 @@ impl<F: PrimeField + TwoAdicField> GKRSetup<F> {
 
                     Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| {
                         let mut buffer = vec![F::ZERO; compiled_circuit.generic_lookup_tables_width];
+                        #[expect(clippy::needless_range_loop, reason = "index arithmetic / parallel multi-array indexing in a hot kernel; iterator form obscures the chunk offsets")]
                         for i in 0..chunk_size {
                             buffer.fill(F::ZERO);
                             let absolute_row_idx = chunk_start + i;
 
+                            #[expect(clippy::needless_range_loop, reason = "index arithmetic / parallel multi-array indexing in a hot kernel; iterator form obscures the chunk offsets")]
                             for column in 0..compiled_circuit.generic_lookup_tables_width {
                                 buffer[column] = self.hypercube_evals[column][absolute_row_idx];
                             }
@@ -379,6 +385,10 @@ impl<F: PrimeField + TwoAdicField> GKRSetup<F> {
     /// [`Self::commit`]); the resulting packed polynomials have `trace_len_log2 +
     /// pack_log2` variables, so `twiddles` must be sized for the enlarged
     /// `2^(trace_len_log2 + pack_log2)` domain.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "prover/witness-gen stage plumbing; grouping these into a struct would just move the fan-out"
+    )]
     pub fn commit_packed<T: ColumnMajorMerkleTreeConstructor<F>>(
         &self,
         twiddles: &Twiddles<F, Global>,

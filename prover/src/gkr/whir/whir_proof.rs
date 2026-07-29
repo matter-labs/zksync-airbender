@@ -49,7 +49,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field, T: ColumnMajorMerkleTreeConstr
             + self.queries.len()
                 * self
                     .queries
-                    .get(0)
+                    .first()
                     .map(|el| el.estimate_size())
                     .unwrap_or(0)
     }
@@ -76,7 +76,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field, T: ColumnMajorMerkleTreeConstr
             + self.queries.len()
                 * self
                     .queries
-                    .get(0)
+                    .first()
                     .map(|el| el.estimate_size())
                     .unwrap_or(0)
     }

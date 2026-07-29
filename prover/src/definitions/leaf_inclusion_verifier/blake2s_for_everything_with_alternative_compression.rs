@@ -1,5 +1,3 @@
-use core::mem::MaybeUninit;
-
 use super::*;
 use blake2s_u32::state_with_extended_control::*;
 use blake2s_u32::AlignedArray64;
@@ -18,7 +16,6 @@ impl LeafInclusionVerifier for Blake2sForEverythingVerifierWithAlternativeCompre
         }
     }
 
-    #[allow(invalid_value)]
     #[unroll::unroll_for_loops]
     unsafe fn verify_leaf_inclusion<
         I: U32WordNonDeterminismSource,
@@ -39,9 +36,7 @@ impl LeafInclusionVerifier for Blake2sForEverythingVerifierWithAlternativeCompre
         let mut num_full_rounds = input_len_words / BLAKE2S_BLOCK_SIZE_U32_WORDS;
         let mut last_round_len = input_len_words % BLAKE2S_BLOCK_SIZE_U32_WORDS;
         if last_round_len == 0 {
-            if num_full_rounds > 0 {
-                num_full_rounds -= 1;
-            }
+            num_full_rounds = num_full_rounds.saturating_sub(1);
             last_round_len = BLAKE2S_BLOCK_SIZE_U32_WORDS;
         }
 
@@ -63,18 +58,20 @@ impl LeafInclusionVerifier for Blake2sForEverythingVerifierWithAlternativeCompre
         // last round unrolled padding, and here we will copy to temporary buffer
         {
             // NOTE: here we have to "touch" full buffer
-            let mut buffer: AlignedArray64<u32, BLAKE2S_BLOCK_SIZE_U32_WORDS> =
-                MaybeUninit::uninit().assume_init();
-            blake2s_u32::spec_memzero_u32(
-                buffer.as_mut_ptr_range().start,
-                buffer.as_mut_ptr_range().end,
-            );
+            let mut buffer = AlignedArray64::<u32, BLAKE2S_BLOCK_SIZE_U32_WORDS>::new_uninit();
+            let range = buffer.as_mut_ptr_range();
+            blake2s_u32::spec_memzero_u32(range.start.cast::<u32>(), range.end.cast::<u32>());
             let src_ptr = src_ptr.cast::<u32>();
             let dst_ptr = buffer.as_mut_ptr().cast::<u32>();
             blake2s_u32::spec_memcopy_u32_nonoverlapping(src_ptr, dst_ptr, last_round_len);
+            // SAFETY: `spec_memzero_u32` above wrote `0` into every one of the
+            // `BLAKE2S_BLOCK_SIZE_U32_WORDS` slots, so the whole buffer is initialized;
+            // `spec_memcopy_u32_nonoverlapping` then overwrote the first `last_round_len`
+            // of those slots with the tail of the leaf encoding.
+            let buffer = buffer.assume_init_ref();
             self.hasher
                 .run_round_function_with_input::<USE_REDUCED_BLAKE2_ROUNDS>(
-                    &buffer,
+                    buffer,
                     last_round_len,
                     true,
                 );

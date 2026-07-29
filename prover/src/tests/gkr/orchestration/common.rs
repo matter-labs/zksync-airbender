@@ -7,7 +7,6 @@ use fft::materialize_powers_serial_starting_with_elem;
 use field::{Field, FieldExtension, PrimeField};
 use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
 use riscv_transpiler::ir::simple_instruction_set::{preprocess_bytecode, Instruction};
-use riscv_transpiler::ir::FullUnsignedMachineDecoderConfig;
 use riscv_transpiler::vm::{Counters, RamWithRomRegion, SimpleSnapshotter, SimpleTape, State, VM};
 use std::alloc::Global;
 use worker::Worker;
@@ -15,6 +14,10 @@ use worker::Worker;
 /// log2 of the trace length used by every executor-family circuit (per-family,
 /// unified, i/t). Must match the cs-side compile constant.
 pub const TRACE_LEN_LOG2: usize = 24;
+#[expect(
+    dead_code,
+    reason = "derived cs-side parity constant, kept next to TRACE_LEN_LOG2"
+)]
 pub const NUM_CYCLES_PER_CHUNK: usize = 1 << TRACE_LEN_LOG2;
 pub const WORD_BITS: u32 = core::mem::size_of::<u32>().trailing_zeros();
 
@@ -137,9 +140,17 @@ impl ProgramConfig {
 
 /// Output of [`run_vm_and_capture`]: the binary buffers, the snapshotter the
 /// downstream proves replay against, and end-of-execution state.
+#[expect(
+    clippy::type_complexity,
+    reason = "generic over field + allocator; a bound-free type alias would drop those bounds"
+)]
 pub struct VmRunOutput<C: Counters + Copy + Default> {
     pub binary: Vec<u32>,
     pub text_section: Vec<u32>,
+    #[expect(
+        dead_code,
+        reason = "captured VM output field, not consumed by current tests"
+    )]
     pub instructions: Vec<Instruction>,
     pub tape: SimpleTape,
     pub ram: RamWithRomRegion<{ common_constants::ROM_SECOND_WORD_BITS }>,
@@ -195,8 +206,8 @@ where
 
     let binary_bytes = std::fs::read(&config.binary_path).expect("program binary");
     let text_bytes = std::fs::read(&config.text_section_path).expect("program text section");
-    assert!(binary_bytes.len() % 4 == 0);
-    assert!(text_bytes.len() % 4 == 0);
+    assert!(binary_bytes.len().is_multiple_of(4));
+    assert!(text_bytes.len().is_multiple_of(4));
     let binary: Vec<u32> = binary_bytes
         .as_chunks::<4>()
         .0

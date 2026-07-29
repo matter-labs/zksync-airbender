@@ -1,12 +1,12 @@
 use std::collections::BTreeSet;
 
 use super::*;
-use cs::{
-    definitions::NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES,
-    gkr_compiler::GKRCircuitArtifact,
-};
+#[cfg(test)]
+use cs::definitions::NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES;
+use cs::gkr_compiler::GKRCircuitArtifact;
 
 impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
+    #[cfg(test)]
     pub(crate) fn analyze_terms(&self) {
         let challenge_constants = BatchedGKRTermDescriptionConstants {
             external_challenges: GKRExternalChallenges {
@@ -106,9 +106,15 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
     }
 }
 
+// reason: developer-only greedy cache-scheduling analysis tool; it is an entry point invoked
+// ad hoc (never from library or test code), and `search_step` below is reachable only from it.
+#[expect(
+    dead_code,
+    reason = "developer analysis entry point, not wired into any build"
+)]
 pub fn liveness_analysis<F: PrimeField>(circuit: &GKRCircuitArtifact<F>, layer_idx: usize) {
     let layer = &circuit.layers[layer_idx];
-    if layer.gates_with_external_connections.len() > 0 {
+    if !layer.gates_with_external_connections.is_empty() {
         panic!("Last layer is usually not interesting");
     }
 
@@ -119,10 +125,7 @@ pub fn liveness_analysis<F: PrimeField>(circuit: &GKRCircuitArtifact<F>, layer_i
         let mut set = BTreeSet::new();
         gate.enforced_relation.dump_inputs(&mut set);
         for el in set.iter() {
-            inv_occurance_matrix
-                .entry(*el)
-                .or_insert(BTreeSet::new())
-                .insert(idx);
+            inv_occurance_matrix.entry(*el).or_default().insert(idx);
         }
 
         occurance_matrix.insert(idx, set);
@@ -134,7 +137,7 @@ pub fn liveness_analysis<F: PrimeField>(circuit: &GKRCircuitArtifact<F>, layer_i
             if *a >= *b {
                 continue;
             }
-            let common = inputs.intersection(&other_inputs);
+            let common = inputs.intersection(other_inputs);
             let num_common = common.count();
             matrix.push((*a, *b, num_common));
         }
@@ -169,7 +172,7 @@ pub fn liveness_analysis<F: PrimeField>(circuit: &GKRCircuitArtifact<F>, layer_i
             starting_points.insert(*b);
         }
     }
-    assert!(starting_points.len() > 0);
+    assert!(!starting_points.is_empty());
 
     // now we should do greedy search (speed is not an issue) to find a sequence of gate evaluations
     // that would use as much cache as possible. For that we will want liveness analysis, and we will use a simple one
@@ -178,9 +181,9 @@ pub fn liveness_analysis<F: PrimeField>(circuit: &GKRCircuitArtifact<F>, layer_i
     let mut reports = BTreeMap::new();
     let all_gates: BTreeSet<usize> = (0..layer.gates.len()).collect();
 
-    println!("Starting points are {:?}", &starting_points);
+    println!("Starting points are {:?}", starting_points);
 
-    for gate_idx in starting_points.into_iter().skip(0) {
+    for gate_idx in starting_points.into_iter() {
         println!("Starting from {}", gate_idx);
 
         let mut remaining_gates = all_gates.clone();
@@ -222,6 +225,14 @@ pub fn liveness_analysis<F: PrimeField>(circuit: &GKRCircuitArtifact<F>, layer_i
     dbg!(&reports);
 }
 
+#[expect(
+    dead_code,
+    reason = "reachable only from the dev-only `liveness_analysis` entry point"
+)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "prover/witness-gen stage plumbing; grouping these into a struct would just move the fan-out"
+)]
 fn search_step<F: PrimeField, const MAX_CANDIDATES: usize>(
     layer: &GKRLayerDescription<F>,
     epoch: usize,
@@ -249,7 +260,7 @@ fn search_step<F: PrimeField, const MAX_CANDIDATES: usize>(
         if final_report < worst_case {
             println!(
                 "Inserting chain {:?} with {} max live variables",
-                &chain, final_report
+                chain, final_report
             );
             reports.insert(chain, final_report);
             if reports.len() > 10 {
@@ -298,9 +309,9 @@ fn search_step<F: PrimeField, const MAX_CANDIDATES: usize>(
         }
     }
     assert!(
-        reuse_stats.is_empty() == false,
+        !reuse_stats.is_empty(),
         "disjoint set if we do {:?} chain",
-        &chain
+        chain
     ); // we do not consider disjoint sequences yet
 
     let mut candidates_via_reuse: Vec<_> = reuse_stats.into_iter().collect();
@@ -320,7 +331,7 @@ fn search_step<F: PrimeField, const MAX_CANDIDATES: usize>(
         assert!(
             remaining_gates.contains(&gate_idx),
             "gates set is {:?}, but gate {} is missing",
-            &remaining_gates,
+            remaining_gates,
             gate_idx
         );
 
@@ -374,7 +385,7 @@ fn search_step<F: PrimeField, const MAX_CANDIDATES: usize>(
         assert!(
             remaining_gates.contains(&gate_idx),
             "gates set is {:?}, but gate {} is missing",
-            &remaining_gates,
+            remaining_gates,
             gate_idx
         );
 

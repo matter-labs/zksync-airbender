@@ -58,10 +58,7 @@ pub(crate) fn compute_aggregated_key_value_dyn<F: PrimeField, E: FieldExtension<
     assert_eq!(key_values_to_aggregate.len(), aggregation_challenges.len());
     let mut result = *additive_part;
     result.add_assign_base(&base_value);
-    for (a, b) in key_values_to_aggregate
-        .into_iter()
-        .zip(aggregation_challenges.into_iter())
-    {
+    for (a, b) in key_values_to_aggregate.iter().zip(aggregation_challenges) {
         let mut t = *b;
         t.mul_assign_by_base(a);
         result.add_assign(&t);

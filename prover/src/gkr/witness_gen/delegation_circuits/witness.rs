@@ -11,6 +11,10 @@ use fft::GoodAllocator;
 use field::PrimeField;
 use worker::Worker;
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "prover/witness-gen stage plumbing; grouping these into a struct would just move the fan-out"
+)]
 pub fn evaluate_gkr_witness_for_delegation_circuit<
     F: PrimeField,
     O: Oracle<F>,
@@ -86,7 +90,7 @@ pub fn evaluate_gkr_witness_for_delegation_circuit<
     unsafe {
         worker.scope(trace_len, |scope, geometry| {
             let (proxies, range_check_16_mappings, timestamp_range_check_mappings) =
-                full_trace.make_proxies_for_geometry(oracle, geometry, &table_driver, trace_len);
+                full_trace.make_proxies_for_geometry(oracle, geometry, table_driver, trace_len);
 
             let mut range_16_multiplicity_subcounters_chunks = range_16_multiplicity_subcounters
                 .as_chunks_mut::<1>()
@@ -106,8 +110,8 @@ pub fn evaluate_gkr_witness_for_delegation_circuit<
             for (thread_idx, ((proxy, range_check_16_chunk), timestamp_range_check_chunk)) in
                 proxies
                     .into_iter()
-                    .zip(range_check_16_mappings.into_iter())
-                    .zip(timestamp_range_check_mappings.into_iter())
+                    .zip(range_check_16_mappings)
+                    .zip(timestamp_range_check_mappings)
                     .enumerate()
             {
                 let chunk_size = geometry.get_chunk_size(thread_idx);
@@ -212,6 +216,10 @@ pub fn evaluate_gkr_witness_for_delegation_circuit<
     full_trace
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "prover/witness-gen stage plumbing; grouping these into a struct would just move the fan-out"
+)]
 unsafe fn evaluate_gkr_witness_for_delegation_circuit_inner<
     'a,
     F: PrimeField,
@@ -225,7 +233,7 @@ unsafe fn evaluate_gkr_witness_for_delegation_circuit_inner<
     compiled_circuit: &GKRCircuitArtifact<F>,
     range_check_16_multiplicieties: &mut [u32],
     timestamp_range_check_multiplicieties: &mut [u32],
-    trace_len: usize,
+    _trace_len: usize,
 ) {
     for absolute_row_idx in range {
         // fill the memory and auxiliary witness related to it

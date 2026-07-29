@@ -1,5 +1,9 @@
 use super::*;
 
+#[expect(
+    clippy::type_complexity,
+    reason = "generic over field + allocator; a bound-free type alias would drop those bounds"
+)]
 pub fn evaluate_init_and_teardown_memory_witness<
     F: PrimeField,
     A: Allocator + Clone,
@@ -24,20 +28,23 @@ pub fn evaluate_init_and_teardown_memory_witness<
     );
 
     for el in result.iter() {
-        assert!(el.is_empty() == false);
+        assert!(!el.is_empty());
     }
 
     result
 }
 
-pub(crate) fn populate_inline_inits_and_teardowns_columns<F: PrimeField, A, B>(
-    column_major_trace: &mut Vec<Vec<F, A>, B>,
+#[expect(
+    clippy::type_complexity,
+    reason = "generic over field + allocator; a bound-free type alias would drop those bounds"
+)]
+pub(crate) fn populate_inline_inits_and_teardowns_columns<F: PrimeField, A>(
+    column_major_trace: &mut [Vec<F, A>],
     dumped_inits_and_teardowns: Vec<([Vec<F, A>; 2], [Vec<F, A>; 2])>,
     teardown_sets: &[([GKRAddress; 2], [GKRAddress; 2])],
     require_target_empty: bool,
 ) where
     A: Allocator + Clone,
-    B: Allocator + Clone,
 {
     assert_eq!(
         teardown_sets.len(),
@@ -72,7 +79,7 @@ pub(crate) fn populate_inline_inits_and_teardowns_columns<F: PrimeField, A, B>(
 mod tests {
     use super::*;
     use field::baby_bear::base::BabyBearField;
-    use field::Field;
+
     use std::alloc::Global;
     use std::vec;
     use std::vec::Vec;
@@ -95,6 +102,10 @@ mod tests {
         BabyBearField::from_u32_with_reduction((set_idx * 1_000_000) + (limb * 10_000) + row)
     }
 
+    #[expect(
+        clippy::type_complexity,
+        reason = "generic over field + allocator; a bound-free type alias would drop those bounds"
+    )]
     fn synth_dumped_data(
         teardown_sets: &[([GKRAddress; 2], [GKRAddress; 2])],
         trace_len: usize,
@@ -133,6 +144,10 @@ mod tests {
         );
 
         // Every destination column has trace_len entries with the right marker.
+        #[expect(
+            clippy::needless_range_loop,
+            reason = "index arithmetic / parallel multi-array indexing in a hot kernel; iterator form obscures the chunk offsets"
+        )]
         for set_idx in 0..teardown_sets.len() {
             let ([ts0, ts1], [v0, v1]) = teardown_sets[set_idx];
             for (limb_idx, addr) in [ts0, ts1, v0, v1].iter().enumerate() {
@@ -147,6 +162,10 @@ mod tests {
                     limb_idx,
                     col
                 );
+                #[expect(
+                    clippy::needless_range_loop,
+                    reason = "index arithmetic / parallel multi-array indexing in a hot kernel; iterator form obscures the chunk offsets"
+                )]
                 for row in 0..trace_len {
                     assert_eq!(
                         column_major_trace[col][row],

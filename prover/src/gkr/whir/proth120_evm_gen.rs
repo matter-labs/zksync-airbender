@@ -289,7 +289,7 @@ fn run_generation(cfg: &GenConfig, worker: &Worker) {
     cd.extend_from_slice(&be16(batched));
     // z_initial: nz elements (nz even for both variants -> exactly nz*16 bytes)
     assert!(
-        n % 2 == 0,
+        n.is_multiple_of(2),
         "odd nz would need padding to the EVM's ceil(nz/2) words"
     );
     for e in z.iter() {

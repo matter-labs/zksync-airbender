@@ -2,14 +2,16 @@ use crate::gkr::prover::SumcheckIntermediateProofValues;
 use std::collections::BTreeMap;
 
 use crate::gkr::prover::GKRExternalChallenges;
+// Only used by `gkr_self_checks` claim-recomputation asserts in this module.
+#[cfg(feature = "gkr_self_checks")]
+use crate::gkr::sumcheck::eq_poly::*;
 use crate::gkr::sumcheck::evaluation_kernels::*;
 use crate::gkr::{
     prover::dimension_reduction::forward::DimensionReducingInputOutput,
     sumcheck::{
         access_and_fold::GKRStorage,
         eq_poly::{
-            evaluate_constant_and_quadratic_coeffs_with_precomputed_eq,
-            evaluate_with_precomputed_eq, evaluate_with_precomputed_eq_ext, make_eq_poly_in_full,
+            evaluate_constant_and_quadratic_coeffs_with_precomputed_eq, make_eq_poly_in_full,
         },
         evaluate_eq_poly, evaluate_small_univariate_poly,
         output_univariate_monomial_form_max_quadratic,
@@ -30,6 +32,10 @@ mod kernel_collector;
 
 /// # Panics
 /// Panics if claims or challenge points for the output layer are missing from storage.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "prover/witness-gen stage plumbing; grouping these into a struct would just move the fan-out"
+)]
 pub fn evaluate_dimension_reducing_sumcheck_for_layer<
     F: PrimeField,
     E: FieldExtension<F> + Field,
@@ -64,7 +70,7 @@ where
     assert!(folding_steps >= 2, "need at least 2 folding steps");
 
     // Precompute eq polynomial evaluations over the boolean hypercube
-    let eq_polys = make_eq_poly_in_full::<E>(prev_challenges, &worker);
+    let eq_polys = make_eq_poly_in_full::<E>(prev_challenges, worker);
 
     let batch_challenge_base = *batching_challenge;
 
@@ -74,7 +80,7 @@ where
 
     let claim = collector.compute_combined_claim(output_claims);
 
-    let (mut folding_challenges, internal_round_coefficients, last_evaluations, final_claim) =
+    let (mut folding_challenges, internal_round_coefficients, last_evaluations, _final_claim) =
         run_sumcheck_loop::<F, E, TR, 4, false>(
             &collector,
             claim,
@@ -128,7 +134,7 @@ where
             &augmented_claims,
         );
         assert_eq!(
-            recomputed[0], final_claim,
+            recomputed[0], _final_claim,
             "final_claim inconsistent with recomputed gate kernels"
         );
     }
@@ -192,6 +198,10 @@ where
 
 /// # Panics
 /// Panics if claims or challenge points for the output layer are missing from storage.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "prover/witness-gen stage plumbing; grouping these into a struct would just move the fan-out"
+)]
 pub fn evaluate_sumcheck_for_layer<
     F: PrimeField,
     E: FieldExtension<F> + Field,
@@ -251,12 +261,12 @@ where
 
     let challenge_constants = BatchedGKRTermDescriptionConstants::<F, E> {
         external_challenges: *external_challenges,
-        lookup_challenges_multiplicative_part: lookup_challenges_multiplicative_part,
-        lookup_challenges_additive_part: lookup_challenges_additive_part,
+        lookup_challenges_multiplicative_part,
+        lookup_challenges_additive_part,
         _marker: core::marker::PhantomData,
     };
 
-    let (folding_challenges, internal_round_coefficients, last_evaluations, final_claim) =
+    let (folding_challenges, internal_round_coefficients, last_evaluations, _final_claim) =
         run_sumcheck_loop::<F, E, TR, 2, true>(
             &collector,
             claim,
@@ -302,7 +312,7 @@ where
         let recomputed = collector
             .compute_last_step_accumulator_from_evals(&challenge_constants, &augmented_claims);
         assert_eq!(
-            recomputed[0], final_claim,
+            recomputed[0], _final_claim,
             "last_evaluations inconsistent with final accumulator constant term G(0)"
         );
     }
@@ -333,7 +343,7 @@ where
     }
 
     let mut extra_evaluations_from_caching_relations = BTreeMap::new();
-    if layer.cached_relations.is_empty() == false {
+    if !layer.cached_relations.is_empty() {
         use crate::gkr::sumcheck::eq_poly::*;
         let mut eq_poly = None;
 
@@ -463,6 +473,14 @@ where
     }
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "prover/witness-gen stage plumbing; grouping these into a struct would just move the fan-out"
+)]
+#[expect(
+    clippy::type_complexity,
+    reason = "generic over field + allocator; a bound-free type alias would drop those bounds"
+)]
 fn run_sumcheck_loop<
     F: PrimeField,
     E: FieldExtension<F> + Field,
@@ -546,7 +564,7 @@ where
         assert_eq!(eq.len(), acc_size);
 
         let [c0, c2] = evaluate_constant_and_quadratic_coeffs_with_precomputed_eq::<F, E>(
-            &accumulator,
+            accumulator,
             eq,
             worker,
         );

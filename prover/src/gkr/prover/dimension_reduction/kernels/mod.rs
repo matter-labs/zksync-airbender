@@ -27,9 +27,8 @@ pub trait DimensionReducingEvaluationKernel<
         let pairwise_index = index + 1;
         let a = std::array::from_fn(|i| sources[i].get_at_index(index));
         let b = std::array::from_fn(|i| sources[i].get_at_index(pairwise_index));
-        let eval = self.pointwise_eval_forward(&a, &b);
 
-        eval
+        self.pointwise_eval_forward(&a, &b)
     }
 
     #[inline(always)]
@@ -169,7 +168,7 @@ pub fn forward_evaluate_dimension_reducing_kernel<
     let output_trace_len = input_trace_len / 2;
     unsafe {
         let mut inputs = inputs.clone();
-        let outputs = std::mem::replace(&mut inputs.outputs_in_extension, vec![]);
+        let outputs = std::mem::take(&mut inputs.outputs_in_extension);
         assert_eq!(outputs.len(), OUT);
         for output in outputs.iter() {
             output.assert_as_layer(expected_output_layer);
@@ -197,14 +196,14 @@ pub fn forward_evaluate_dimension_reducing_kernel<
                 for index in 0..chunk_size {
                     let absolute_index = chunk_start + index;
                     let value = kernel.evaluate_forward(absolute_index, inputs);
-                    for (dst, val) in destinations.iter_mut().zip(value.into_iter()) {
+                    for (dst, val) in destinations.iter_mut().zip(value) {
                         dst[index].write(val);
                     }
                 }
             },
         );
 
-        for (output, destination) in outputs.into_iter().zip(destinations.into_iter()) {
+        for (output, destination) in outputs.into_iter().zip(destinations) {
             let values = destination.assume_init();
             storage.insert_extension_at_layer(
                 expected_output_layer,
@@ -215,6 +214,10 @@ pub fn forward_evaluate_dimension_reducing_kernel<
     }
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "prover/witness-gen stage plumbing; grouping these into a struct would just move the fan-out"
+)]
 pub fn evaluate_single_dimension_reducing_kernel<
     F: PrimeField,
     E: FieldExtension<F> + Field,
@@ -243,7 +246,7 @@ pub fn evaluate_single_dimension_reducing_kernel<
                 let sources = storage.get_for_sumcheck_round_0(inputs);
                 assert!(sources.base_field_inputs.is_empty());
                 assert!(sources.base_field_outputs.is_empty());
-                if sources.extension_field_outputs.is_empty() == false {
+                if !sources.extension_field_outputs.is_empty() {
                     assert_eq!(sources.extension_field_inputs.len(), IN);
                     assert_eq!(sources.extension_field_outputs.len(), OUT);
                     assert_eq!(batch_challenges.len(), OUT);
@@ -271,6 +274,10 @@ pub fn evaluate_single_dimension_reducing_kernel<
                         |_, mut ext_dest, chunk_start, chunk_size| {
                             assert_eq!(ext_dest.len(), 1);
                             let accumulator = ext_dest.pop().unwrap();
+                            #[expect(
+                                clippy::needless_range_loop,
+                                reason = "index arithmetic / parallel multi-array indexing in a hot kernel; iterator form obscures the chunk offsets"
+                            )]
                             for index in 0..chunk_size {
                                 let absolute_index = chunk_start + index;
                                 let value = kernel.evaluate_first_round(
@@ -303,6 +310,10 @@ pub fn evaluate_single_dimension_reducing_kernel<
                         |_, mut ext_dest, chunk_start, chunk_size| {
                             assert_eq!(ext_dest.len(), 1);
                             let accumulator = ext_dest.pop().unwrap();
+                            #[expect(
+                                clippy::needless_range_loop,
+                                reason = "index arithmetic / parallel multi-array indexing in a hot kernel; iterator form obscures the chunk offsets"
+                            )]
                             for index in 0..chunk_size {
                                 let absolute_index = chunk_start + index;
                                 let value =
@@ -337,6 +348,10 @@ pub fn evaluate_single_dimension_reducing_kernel<
                         |_, mut ext_dest, chunk_start, chunk_size| {
                             assert_eq!(ext_dest.len(), 1);
                             let accumulator = ext_dest.pop().unwrap();
+                            #[expect(
+                                clippy::needless_range_loop,
+                                reason = "index arithmetic / parallel multi-array indexing in a hot kernel; iterator form obscures the chunk offsets"
+                            )]
                             for index in 0..chunk_size {
                                 let absolute_index = chunk_start + index;
                                 let value =

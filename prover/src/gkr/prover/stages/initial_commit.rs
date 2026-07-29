@@ -86,6 +86,10 @@ where
     merged
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "prover/witness-gen stage plumbing; grouping these into a struct would just move the fan-out"
+)]
 pub fn commit_packed_merged_memory_and_witness_subtrees<
     F: PrimeField + TwoAdicField,
     T: ColumnMajorMerkleTreeConstructor<F>,
@@ -131,9 +135,13 @@ where
     let mut cosets = Vec::with_capacity(lde_factor);
     let new_coset_size_log2 = trace_len_log2 + pack_log2;
 
+    #[expect(
+        clippy::needless_range_loop,
+        reason = "index arithmetic / parallel multi-array indexing in a hot kernel; iterator form obscures the chunk offsets"
+    )]
     for i in 0..lde_factor {
         let mut sources = if i == lde_factor - 1 {
-            core::mem::replace(&mut monomials, vec![])
+            std::mem::take(&mut monomials)
         } else {
             monomials.clone()
         };

@@ -69,7 +69,9 @@ use crate::gkr::prover::transcript_utils::{
     add_whir_commitment_to_transcript, commit_field_els, draw_query_bits, draw_random_field_els,
 };
 use crate::gkr::prover::WhirSchedule;
-use crate::gkr::sumcheck::eq_poly::{make_domain_eq_poly_in_full, make_eq_poly_in_full};
+#[cfg(test)]
+use crate::gkr::sumcheck::eq_poly::make_domain_eq_poly_in_full;
+use crate::gkr::sumcheck::eq_poly::make_eq_poly_in_full;
 use crate::gkr::sumcheck::*;
 use crate::gkr::whir::hypercube_to_monomial::multivariate_coeffs_into_hypercube_evals;
 use crate::gkr::PAR_THRESHOLD;
@@ -85,7 +87,9 @@ use fft::{
 use field::{Field, FieldExtension, PrimeField, TwoAdicField};
 use std::alloc::Global;
 use std::sync::Arc;
-use transcript::{Seed, Transcript};
+#[cfg(test)]
+use transcript::Seed;
+use transcript::Transcript;
 use worker::{IterableWithGeometry, Worker};
 
 pub mod coset_commit;
@@ -172,7 +176,7 @@ impl<F: PrimeField + TwoAdicField> ColumnMajorBaseOracleForCoset<F> {
                     }
                 }
             }
-            a @ _ => {
+            a => {
                 panic!("unsupported: {} values per leaf", a);
             }
         }
@@ -207,6 +211,10 @@ impl<F: PrimeField + TwoAdicField, T: ColumnMajorMerkleTreeConstructor<F>>
             coset_size_log2,
         };
 
+        #[expect(
+            clippy::needless_range_loop,
+            reason = "index arithmetic / parallel multi-array indexing in a hot kernel; iterator form obscures the chunk offsets"
+        )]
         for i in 0..lde_factor {
             let offset = generators[i];
             let coset = ColumnMajorBaseOracleForCoset {
@@ -331,6 +339,10 @@ fn offsets_for_leaf_construction<const N: usize>(trace_len: usize) -> [usize; N]
     assert!(N.is_power_of_two());
     let mut result = [0; N];
     let stride = trace_len / N;
+    #[expect(
+        clippy::needless_range_loop,
+        reason = "index arithmetic / parallel multi-array indexing in a hot kernel; iterator form obscures the chunk offsets"
+    )]
     for i in 0..N {
         result[i] = stride * i;
     }
@@ -356,7 +368,7 @@ impl<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field>
     ColumnMajorExtensionOracleForCoset<F, E>
 {
     pub fn values_for_folded_index(&self, index: usize, values_per_leaf: usize) -> Vec<E> {
-        let trace_len = self.values_normal_order.column.len() as usize;
+        let trace_len = self.values_normal_order.column.len();
         assert!(values_per_leaf.is_power_of_two());
         assert!(
             index < trace_len / values_per_leaf,
@@ -409,7 +421,7 @@ impl<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field>
                     result.push(value);
                 }
             }
-            a @ _ => {
+            a => {
                 panic!("unsupported: {} values per leaf", a);
             }
         }
@@ -475,6 +487,10 @@ pub enum WhirIntermediateOracleMode {
 /// `ColumnMajorExtensionOracleForLDE::query_for_folded_index`) plus the coset count
 /// (needed to size the next round's query domain). Depending on the mode the closure
 /// owns either the whole extension oracle or a coset-by-coset commitment.
+#[expect(
+    clippy::type_complexity,
+    reason = "generic over field + allocator; a bound-free type alias would drop those bounds"
+)]
 struct IntermediateOracle<'a, F, E, T>
 where
     F: PrimeField + TwoAdicField + 'a,
@@ -539,6 +555,14 @@ where
     }
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "prover/witness-gen stage plumbing; grouping these into a struct would just move the fan-out"
+)]
+#[expect(
+    clippy::type_complexity,
+    reason = "generic over field + allocator; a bound-free type alias would drop those bounds"
+)]
 pub fn whir_fold<
     F: PrimeField + TwoAdicField,
     E: FieldExtension<F> + Field,
@@ -749,12 +773,12 @@ where
     let mut batched_claim = E::ZERO;
     for (challenges_set, values_set) in [base_mem_powers, base_witness_powers, base_setup_powers]
         .into_iter()
-        .zip(evals_refs.into_iter())
+        .zip(evals_refs)
     {
         assert_eq!(challenges_set.len(), values_set.len());
-        for (a, b) in challenges_set.iter().zip(values_set.into_iter()) {
+        for (a, b) in challenges_set.iter().zip(values_set) {
             let mut result = *b;
-            result.mul_assign(&a);
+            result.mul_assign(a);
             batched_claim.add_assign(&result);
         }
     }
@@ -793,7 +817,7 @@ where
 
     #[cfg(feature = "gkr_self_checks")]
     {
-        let recomputed_claim = dot_product(&sumchecked_poly_evaluation_form, &eq_poly, worker);
+        let recomputed_claim = dot_product(sumchecked_poly_evaluation_form, eq_poly, worker);
         assert_eq!(recomputed_claim, claim);
     }
 
@@ -903,7 +927,7 @@ where
 
         #[cfg(feature = "gkr_self_checks")]
         {
-            let full_sum = dot_product(&sumchecked_poly_evaluation_form, &eq_poly, worker);
+            let full_sum = dot_product(sumchecked_poly_evaluation_form, eq_poly, worker);
             assert_eq!(full_sum, claim);
         }
 
@@ -951,7 +975,7 @@ where
                 ood_point,
                 sumchecked_poly_evaluation_form.len().trailing_zeros() as usize,
             );
-            let value = evaluate_multivariate(&sumchecked_poly_evaluation_form, &pows, worker);
+            let value = evaluate_multivariate(sumchecked_poly_evaluation_form, &pows, worker);
             assert_eq!(value, ood_value);
         }
 
@@ -1053,7 +1077,7 @@ where
                     oracle.cosets[0].original_values_normal_order.len(),
                     batching_challenges.len()
                 );
-                if oracle.cosets[0].original_values_normal_order.len() > 0 {
+                if !oracle.cosets[0].original_values_normal_order.is_empty() {
                     let (leaf, query) = match base_query_hook {
                         Some(hook) => hook(set_idx, query_index),
                         None => {
@@ -1148,7 +1172,7 @@ where
                     sumchecked_poly_evaluation_form.len().trailing_zeros() as usize,
                 );
                 let eval_from_multivariate =
-                    evaluate_multivariate_at_base(&sumchecked_poly_evaluation_form, &pows, worker);
+                    evaluate_multivariate_at_base(sumchecked_poly_evaluation_form, &pows, worker);
                 assert_eq!(eval_from_monomial, eval_from_multivariate);
             }
             query_references.clear();
@@ -1270,7 +1294,7 @@ where
 
         #[cfg(feature = "gkr_self_checks")]
         {
-            let full_sum = dot_product(&sumchecked_poly_evaluation_form, &eq_poly, worker);
+            let full_sum = dot_product(sumchecked_poly_evaluation_form, eq_poly, worker);
             assert_eq!(full_sum, claim);
         }
 
@@ -1315,7 +1339,7 @@ where
                 ood_point,
                 sumchecked_poly_evaluation_form.len().trailing_zeros() as usize,
             );
-            let value = evaluate_multivariate(&sumchecked_poly_evaluation_form, &pows, worker);
+            let value = evaluate_multivariate(sumchecked_poly_evaluation_form, &pows, worker);
             assert_eq!(value, ood_value);
         }
 
@@ -1444,7 +1468,7 @@ where
                     sumchecked_poly_evaluation_form.len().trailing_zeros() as usize,
                 );
                 let eval_from_multivariate =
-                    evaluate_multivariate_at_base(&sumchecked_poly_evaluation_form, &pows, worker);
+                    evaluate_multivariate_at_base(sumchecked_poly_evaluation_form, &pows, worker);
                 assert_eq!(eval_from_monomial, eval_from_multivariate);
             }
             query_references.clear();
@@ -1512,7 +1536,13 @@ where
             folding_challenges_in_round.push(folding_challenge);
 
             let next_claim = evaluate_small_univariate_poly(&univariate_coeffs, &folding_challenge);
-            claim = next_claim;
+            // In this final round `claim` is only read again by the `gkr_self_checks` asserts
+            // (next iteration's round check and the post-loop full-sum check), so with those
+            // compiled out this last store is dead. Kept so both builds share the same codegen.
+            #[cfg_attr(not(feature = "gkr_self_checks"), expect(unused_assignments))]
+            {
+                claim = next_claim;
+            }
             // and fold the poly itself - both multivariate evals mapping, and monomial form
 
             fold_monomial_form(
@@ -1545,7 +1575,7 @@ where
 
         #[cfg(feature = "gkr_self_checks")]
         {
-            let full_sum = dot_product(&sumchecked_poly_evaluation_form, &eq_poly, worker);
+            let full_sum = dot_product(sumchecked_poly_evaluation_form, eq_poly, worker);
             assert_eq!(full_sum, claim);
         }
 
@@ -1645,7 +1675,7 @@ where
                     sumchecked_poly_evaluation_form.len().trailing_zeros() as usize,
                 );
                 let eval_from_multivariate =
-                    evaluate_multivariate_at_base(&sumchecked_poly_evaluation_form, &pows, worker);
+                    evaluate_multivariate_at_base(sumchecked_poly_evaluation_form, &pows, worker);
                 assert_eq!(eval_from_monomial, eval_from_multivariate);
             }
             query_references.clear();
@@ -1759,7 +1789,6 @@ impl<F: PrimeField + TwoAdicField> ExtCoeffConvCtx<F> {
             for chunk_idx in 0..geometry.len() {
                 let chunk_start = geometry.get_chunk_start_pos(chunk_idx);
                 let chunk_size = geometry.get_chunk_size(chunk_idx);
-                let base_ptr = base_ptr;
                 let offsets = &self.offsets;
                 let base_root_invs = &base_root_invs;
                 let high_powers_offsets = &self.high_powers_offsets;
@@ -1770,6 +1799,7 @@ impl<F: PrimeField + TwoAdicField> ExtCoeffConvCtx<F> {
                     let mut leaf_buf = vec![E::ZERO; values_per_leaf];
                     let mut scratch_a = vec![E::ZERO; values_per_leaf];
                     let mut scratch_b = vec![E::ZERO; values_per_leaf];
+                    #[expect(clippy::needless_range_loop, reason = "index arithmetic / parallel multi-array indexing in a hot kernel; iterator form obscures the chunk offsets")]
                     for leaf_idx in chunk_start..(chunk_start + chunk_size) {
                         for (k, &off) in offsets.iter().enumerate() {
                             leaf_buf[k] = unsafe { *ptr.add(off + leaf_idx) };
@@ -2052,7 +2082,7 @@ where
     let coset_generator_inv = coset_generator.inverse().unwrap();
 
     for (mut column, offset) in cosets.into_iter() {
-        assert!(column.len() > 0);
+        assert!(!column.is_empty());
 
         if num_folding_rounds > 0 {
             let offset_inv = offset.inverse().unwrap();
@@ -2074,7 +2104,6 @@ where
                 for chunk_idx in 0..geometry.len() {
                     let chunk_start = geometry.get_chunk_start_pos(chunk_idx);
                     let chunk_size = geometry.get_chunk_size(chunk_idx);
-                    let base_ptr = base_ptr;
                     let offsets = &offsets;
                     let base_root_invs = &base_root_invs;
                     let high_powers_offsets = &high_powers_offsets;
@@ -2085,6 +2114,7 @@ where
                         let mut leaf_buf = vec![E::ZERO; values_per_leaf];
                         let mut scratch_a = vec![E::ZERO; values_per_leaf];
                         let mut scratch_b = vec![E::ZERO; values_per_leaf];
+                        #[expect(clippy::needless_range_loop, reason = "index arithmetic / parallel multi-array indexing in a hot kernel; iterator form obscures the chunk offsets")]
                         for leaf_idx in chunk_start..(chunk_start + chunk_size) {
                             for (k, &off) in offsets.iter().enumerate() {
                                 leaf_buf[k] = unsafe { *ptr.add(off + leaf_idx) };
@@ -2319,7 +2349,7 @@ fn fold_eq_poly<'a, F: PrimeField, E: FieldExtension<F> + Field>(
 
 #[cfg(test)]
 fn dot_product_serial<F: PrimeField, E: FieldExtension<F> + Field>(a: &[E], b: &[E]) -> E {
-    assert!(a.len() > 0);
+    assert!(!a.is_empty());
     assert_eq!(a.len(), b.len());
     let mut result = E::ZERO;
     for (a, b) in a.iter().zip(b.iter()) {
@@ -2330,12 +2360,13 @@ fn dot_product_serial<F: PrimeField, E: FieldExtension<F> + Field>(a: &[E], b: &
     result
 }
 
+#[cfg(any(test, feature = "gkr_self_checks"))]
 fn dot_product<F: PrimeField, E: FieldExtension<F> + Field>(
     a: &[E],
     b: &[E],
     worker: &Worker,
 ) -> E {
-    assert!(a.len() > 0);
+    assert!(!a.is_empty());
     assert_eq!(a.len(), b.len());
 
     let geometry = worker.get_geometry_with_threshold(a.len(), PAR_THRESHOLD);
@@ -2400,7 +2431,7 @@ fn special_three_point_eval_serial<F: PrimeField, E: FieldExtension<F> + Field>(
     a: &[E],
     b: &[E],
 ) -> (E, E, E) {
-    assert!(a.len() > 0);
+    assert!(!a.is_empty());
     assert_eq!(a.len(), b.len());
     let quart = F::from_u32_unchecked(4).inverse().unwrap();
     let half = a.len() / 2;
@@ -2416,7 +2447,7 @@ fn special_three_point_eval<F: PrimeField, E: FieldExtension<F> + Field>(
     b: &[E],
     worker: &Worker,
 ) -> (E, E, E) {
-    assert!(a.len() > 0);
+    assert!(!a.is_empty());
     assert_eq!(a.len(), b.len());
 
     let quart = F::from_u32_unchecked(4).inverse().unwrap();
@@ -2661,6 +2692,7 @@ fn update_eq_poly<F: PrimeField, E: FieldExtension<F> + Field>(
     }
 }
 
+#[cfg(test)]
 fn evaluate_base_multivariate<F: PrimeField, E: FieldExtension<F> + Field>(
     evals: &[F],
     point: &[E],
@@ -2678,6 +2710,7 @@ fn evaluate_base_multivariate<F: PrimeField, E: FieldExtension<F> + Field>(
     result
 }
 
+#[cfg(any(test, feature = "gkr_self_checks"))]
 fn evaluate_multivariate<E: Field>(evals: &[E], point: &[E], worker: &Worker) -> E {
     let mut eqs = make_eq_poly_in_full::<E>(point, worker);
     let eq = eqs.pop().unwrap();
@@ -2691,6 +2724,7 @@ fn evaluate_multivariate<E: Field>(evals: &[E], point: &[E], worker: &Worker) ->
     result
 }
 
+#[cfg(feature = "gkr_self_checks")]
 fn evaluate_multivariate_at_base<F: PrimeField, E: FieldExtension<F> + Field>(
     evals: &[E],
     point: &[F],
@@ -2708,6 +2742,7 @@ fn evaluate_multivariate_at_base<F: PrimeField, E: FieldExtension<F> + Field>(
     result
 }
 
+#[cfg(test)]
 fn evaluate_multivariate_at_base_for_domain_hypercube<
     F: PrimeField + TwoAdicField,
     E: FieldExtension<F> + Field,
@@ -2849,6 +2884,10 @@ fn fold_coset<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field>(
     let mut root_inv = *base_root_inv;
     // Now we can fold queries values, in a normal FRI style
     let mut buffer = Vec::with_capacity(flattened_evals.len());
+    #[expect(
+        clippy::needless_range_loop,
+        reason = "index arithmetic / parallel multi-array indexing in a hot kernel; iterator form obscures the chunk offsets"
+    )]
     for folding_step in 0..num_folding_rounds {
         let (src, dst) = if folding_step % 2 == 0 {
             (&flattened_evals[..], &mut buffer)
@@ -2856,7 +2895,7 @@ fn fold_coset<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field>(
             (&buffer[..], &mut flattened_evals)
         };
         assert!(dst.is_empty());
-        assert!(src.is_empty() == false);
+        assert!(!src.is_empty());
         assert!(src.len().is_power_of_two());
         assert_eq!(src.len(), 1 << (num_folding_rounds - folding_step));
         let folding_challenge = folding_challenges[folding_step];
@@ -3172,9 +3211,9 @@ mod test {
     // }
 
     fn make_base_oracle(
-        size: usize,
-        worker: &Worker,
-        offset: usize,
+        _size: usize,
+        _worker: &Worker,
+        _offset: usize,
     ) -> (
         ColumnMajorBaseOracleForLDE<F, Blake2sU32MerkleTreeWithCap>,
         Vec<F>,
@@ -3432,7 +3471,7 @@ mod test {
 
     #[test]
     fn test_domain_hypercube_evals() {
-        let worker = Worker::new_with_num_threads(1);
+        let _worker = Worker::new_with_num_threads(1);
         let size: usize = 4;
 
         let main_domain: Vec<F> = (1..=size)
@@ -3497,7 +3536,7 @@ mod test {
             whir_pow_schedule: vec![10, 10, 10],
         };
 
-        let proof = whir_fold::<F, E, _, ::transcript::Blake2sTranscript>(
+        let _proof = whir_fold::<F, E, _, ::transcript::Blake2sTranscript>(
             mem,
             a,
             wit,

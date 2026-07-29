@@ -21,6 +21,8 @@ use crate::gkr::prover::transcript_utils::{
 use crate::gkr::prover::utils::flatten_merkle_caps_iter_into;
 use crate::gkr::prover_config::{pow_bits, ProverConfig};
 use crate::gkr::sumcheck::access_and_fold::{BaseFieldPoly, GKRStorage};
+// Only used by `gkr_self_checks` claim-consistency blocks in this module.
+#[cfg(feature = "gkr_self_checks")]
 use crate::gkr::sumcheck::eq_poly::*;
 use crate::gkr::virtual_polys::range_check::materialize_virtual_range_check_setup_poly;
 use crate::gkr::whir::coset_commit::CosetByCosetBaseCommitment;
@@ -47,6 +49,13 @@ pub mod transcript_utils;
 pub mod utils;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+// reason: boxing the large variant would put an allocation behind a `Copy`-ish config enum that is
+// threaded through every prover stage; the size difference is deliberate and the enum is only ever
+// held once per proof, so the real fix is not worth the API churn in a lint pass.
+#[expect(
+    clippy::large_enum_variant,
+    reason = "config enum held once per proof; boxing would churn the prover API"
+)]
 pub enum CommitmentMode {
     SeparateMemoryAndWitness,
     MergedMemoryAndWitness,
@@ -82,8 +91,8 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> SumcheckIntermediateProofValue
         self.internal_round_coefficients.len() * E::DEGREE * 4 * core::mem::size_of::<u32>()
             + self
                 .final_step_evaluations
-                .iter()
-                .map(|(_, v)| E::DEGREE * core::mem::size_of::<u32>() * v.len())
+                .values()
+                .map(|v| E::DEGREE * core::mem::size_of::<u32>() * v.len())
                 .sum::<usize>()
             + self.extra_evaluations_from_caching_relations.len()
                 * E::DEGREE
@@ -120,13 +129,13 @@ impl<F: PrimeField, E: FieldExtension<F> + Field, T: ColumnMajorMerkleTreeConstr
 {
     pub fn estimate_size(&self) -> usize {
         self.final_explicit_evaluations
-            .iter()
-            .map(|(_, v)| E::DEGREE * core::mem::size_of::<u32>() * (v[0].len() + v[1].len()))
+            .values()
+            .map(|v| E::DEGREE * core::mem::size_of::<u32>() * (v[0].len() + v[1].len()))
             .sum::<usize>()
             + self
                 .sumcheck_intermediate_values
-                .iter()
-                .map(|(_, v)| v.estimate_size())
+                .values()
+                .map(|v| v.estimate_size())
                 .sum::<usize>()
             + self.whir_proof.estimate_size()
     }
@@ -162,6 +171,10 @@ pub(crate) fn split_destinations<T: Sized>(
         result.push(Vec::with_capacity(len));
     }
     for mut dest in dest.into_iter() {
+        #[expect(
+            clippy::needless_range_loop,
+            reason = "index arithmetic / parallel multi-array indexing in a hot kernel; iterator form obscures the chunk offsets"
+        )]
         for chunk_idx in 0..geometry.len() {
             let chunk_size = geometry.get_chunk_size(chunk_idx);
             let (chunk, rest) = dest.split_at_mut(chunk_size);
@@ -190,9 +203,9 @@ pub(crate) fn apply_row_wise<'a, A: 'static + Send + Sync, B: 'static + Send + S
     let ext_d_len = extension_destination.len();
     worker.scope(trace_len, |scope, geometry| {
         let mut destination_chunks = split_destinations(destination, geometry);
-        let mut destination_chunks = destination_chunks.drain(..).into_iter();
+        let mut destination_chunks = destination_chunks.drain(..);
         let mut extension_destination_chunks = split_destinations(extension_destination, geometry);
-        let mut extension_destination_chunks = extension_destination_chunks.drain(..).into_iter();
+        let mut extension_destination_chunks = extension_destination_chunks.drain(..);
         let func_ref = &func;
         for thread_idx in 0..geometry.len() {
             let chunk_size = geometry.get_chunk_size(thread_idx);
@@ -212,6 +225,14 @@ pub(crate) fn apply_row_wise<'a, A: 'static + Send + Sync, B: 'static + Send + S
     });
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "prover/witness-gen stage plumbing; grouping these into a struct would just move the fan-out"
+)]
+#[expect(
+    clippy::type_complexity,
+    reason = "generic over field + allocator; a bound-free type alias would drop those bounds"
+)]
 pub fn prove_configured_with_gkr<
     F: PrimeField + TwoAdicField,
     E: FieldExtension<F> + Field,
@@ -235,13 +256,13 @@ where
     [(); E::DEGREE]: Sized,
 {
     assert_eq!(compiled_circuit.trace_len, trace_len);
-    if witness_eval_data.column_major_memory_trace.len() > 0 {
+    if !witness_eval_data.column_major_memory_trace.is_empty() {
         assert_eq!(
             witness_eval_data.column_major_memory_trace[0].len(),
             trace_len
         );
     }
-    if witness_eval_data.column_major_witness_trace.len() > 0 {
+    if !witness_eval_data.column_major_witness_trace.is_empty() {
         assert_eq!(
             witness_eval_data.column_major_witness_trace[0].len(),
             trace_len
@@ -293,7 +314,7 @@ where
             external_challenges.flatten_into_buffer(&mut transcript_input);
 
             // commit our setup
-            if setup.hypercube_evals.len() > 0 {
+            if !setup.hypercube_evals.is_empty() {
                 flatten_merkle_caps_iter_into(
                     Some(setup_commitment.tree.get_cap()).into_iter(),
                     &mut transcript_input,
@@ -366,7 +387,7 @@ where
             external_challenges.flatten_into_buffer(&mut transcript_input);
 
             // commit our setup
-            if setup.hypercube_evals.len() > 0 {
+            if !setup.hypercube_evals.is_empty() {
                 flatten_merkle_caps_iter_into(
                     Some(setup_commitment.tree.get_cap()).into_iter(),
                     &mut transcript_input,
@@ -488,7 +509,7 @@ where
             transcript_input.extend_from_slice(&inits_and_teardowns_top_bits[..]);
 
             // commit our setup
-            if setup.hypercube_evals.len() > 0 {
+            if !setup.hypercube_evals.is_empty() {
                 flatten_merkle_caps_iter_into(
                     Some(setup_commitment.tree.get_cap()).into_iter(),
                     &mut transcript_input,
@@ -575,7 +596,7 @@ where
                 TIMESTAMP_COLUMNS_NUM_BITS,
             >(trace_len.trailing_zeros())),
         );
-        if inits_and_teardowns_top_bits.is_empty() == false {
+        if !inits_and_teardowns_top_bits.is_empty() {
             use crate::gkr::virtual_polys::init_and_teardown_base::materialize_virtual_inits_and_teardowns_base_address_setup_poly;
             let (low, high) = materialize_virtual_inits_and_teardowns_base_address_setup_poly::<
                 F,
@@ -757,7 +778,7 @@ where
 
     assert_eq!(1 << reduced_trace_size_log_2, trace_len);
 
-    let address_high_bits_shift = if inits_and_teardowns_top_bits.len() > 0 {
+    let address_high_bits_shift = if !inits_and_teardowns_top_bits.is_empty() {
         high_bits_offset_for_inits_and_teardowns::<2>(trace_len)
     } else {
         // not important
@@ -1122,9 +1143,10 @@ where
         let (machine_state_read_set_contribution, machine_state_write_set_contribution) =
             prover::definitions::produce_initial_permutation_product_separate_contributions(
                 unsafe {
-                    core::mem::transmute::<_, &[(u32, (u32, u32)); NUM_REGISTERS]>(
-                        &registers_buffer,
-                    )
+                    core::mem::transmute::<
+                        &[u32; NUM_REGISTERS * 3],
+                        &[(u32, (u32, u32)); NUM_REGISTERS],
+                    >(&registers_buffer)
                 },
                 INITIAL_PC,
                 split_timestamp(INITIAL_TIMESTAMP),
@@ -1145,7 +1167,7 @@ where
     }
 
     GKRProof {
-        external_challenges: external_challenges,
+        external_challenges,
         whir_proof,
         final_explicit_evaluations,
         sumcheck_intermediate_values,
@@ -1199,7 +1221,7 @@ mod packing_merge_tests {
     use crate::gkr::whir::hypercube_to_monomial::multivariate_coeffs_into_hypercube_evals;
     use field::baby_bear::base::BabyBearField;
     use field::baby_bear::ext4::BabyBearExt4;
-    use field::{Field, FieldExtension, PrimeField};
+    use field::{FieldExtension, PrimeField};
     use rand::RngCore;
     use worker::Worker;
 

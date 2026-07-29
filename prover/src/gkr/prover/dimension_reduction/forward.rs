@@ -31,7 +31,7 @@ pub fn evaluate_dimension_reduction_forward<F: PrimeField, E: FieldExtension<F> 
         BTreeMap<OutputType, DimensionReducingInputOutput>,
     > = BTreeMap::new();
     let layer_idx = compiled_circuit.layers.len();
-    for (_, v) in compiled_circuit.global_output_map.iter() {
+    for v in compiled_circuit.global_output_map.values() {
         for address in v.iter() {
             address.assert_as_layer(layer_idx);
         }

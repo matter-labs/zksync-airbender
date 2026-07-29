@@ -9,7 +9,6 @@ use cs::gkr_compiler::GKRCircuitArtifact;
 use cs::oracle::Oracle;
 use cs::utils::split_timestamp;
 use field::PrimeField;
-use worker::WorkerGeometry;
 
 mod init_and_teardown;
 mod memory;
@@ -48,9 +47,8 @@ pub(crate) fn evaluate_linear_relation<'a, F: PrimeField, O: Oracle<F> + 'a>(
 pub fn non_trivial_padding_convention_for_executor_circuit_memory<
     F: PrimeField,
     A: Allocator + Clone,
-    B: Allocator + Clone,
 >(
-    trace: &mut Vec<Vec<F, A>, B>,
+    trace: &mut [Vec<F, A>],
     compiled_circuit: &GKRCircuitArtifact<F>,
     num_cycles: usize,
 ) {
@@ -66,7 +64,7 @@ pub fn non_trivial_padding_convention_for_executor_circuit_memory<
         .as_ref()
         .expect("is present");
     trace[machine_state.initial_state.timestamp[0]][num_cycles..]
-        .fill(F::from_u32_unchecked(low_start as u32));
+        .fill(F::from_u32_unchecked(low_start));
     trace[machine_state.final_state.timestamp[0]][num_cycles..]
-        .fill(F::from_u32_unchecked(low_end as u32));
+        .fill(F::from_u32_unchecked(low_end));
 }

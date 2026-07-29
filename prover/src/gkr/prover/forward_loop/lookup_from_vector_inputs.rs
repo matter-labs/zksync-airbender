@@ -5,6 +5,10 @@ use crate::gkr::sumcheck::evaluation_kernels::{
 
 use super::*;
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "prover/witness-gen stage plumbing; grouping these into a struct would just move the fan-out"
+)]
 pub fn forward_evaluate_masked_lookup_from_vector_inputs_with_setup<
     F: PrimeField,
     E: FieldExtension<F> + Field,
@@ -49,6 +53,10 @@ pub fn forward_evaluate_lookup_from_vector_inputs_pair<
     kernel.evaluate_forward_over_storage(gkr_storage, expected_output_layer, trace_len, worker);
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "prover/witness-gen stage plumbing; grouping these into a struct would just move the fan-out"
+)]
 pub fn forward_evaluate_lookup_rational_with_vector_remainder_input<
     F: PrimeField,
     E: FieldExtension<F> + Field,
@@ -73,6 +81,10 @@ pub fn forward_evaluate_lookup_rational_with_vector_remainder_input<
     kernel.evaluate_forward_over_storage(gkr_storage, expected_output_layer, trace_len, worker);
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "prover/witness-gen stage plumbing; grouping these into a struct would just move the fan-out"
+)]
 pub fn forward_evaluate_lookup_from_vector_inputs_with_setup<
     F: PrimeField,
     E: FieldExtension<F> + Field,

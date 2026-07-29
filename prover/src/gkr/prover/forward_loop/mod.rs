@@ -1,7 +1,7 @@
 use super::*;
-use crate::gkr::prover::forward_loop::utils::{
-    evaluate_linear_relation_at_row, evaluate_memory_query,
-};
+#[cfg(feature = "gkr_self_checks")]
+use crate::gkr::prover::forward_loop::utils::evaluate_linear_relation_at_row;
+use crate::gkr::prover::forward_loop::utils::evaluate_memory_query;
 use crate::gkr::sumcheck::access_and_fold::BaseFieldPoly;
 use crate::{cs::definitions::*, gkr::sumcheck::access_and_fold::ExtensionFieldPoly};
 use cs::definitions::gkr::RamWordRepresentation;
@@ -26,6 +26,10 @@ pub(crate) mod single_column_lookup;
 pub(crate) mod utils;
 pub(crate) mod vector_lookup;
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "prover/witness-gen stage plumbing; grouping these into a struct would just move the fan-out"
+)]
 fn evaluate_cache_relation<F: PrimeField, E: FieldExtension<F> + Field>(
     layer_idx: usize,
     address: GKRAddress,
@@ -114,6 +118,10 @@ fn evaluate_cache_relation<F: PrimeField, E: FieldExtension<F> + Field>(
     }
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "prover/witness-gen stage plumbing; grouping these into a struct would just move the fan-out"
+)]
 pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
     layer_idx: usize,
     layer: &GKRLayerDescription<F>,
@@ -146,7 +154,6 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
         for (i, poly) in witness_trace
             .column_major_memory_trace
             .drain(..)
-            .into_iter()
             .enumerate()
         {
             gkr_storage.insert_base_field_at_layer(
@@ -158,7 +165,6 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
         for (i, poly) in witness_trace
             .column_major_witness_trace
             .drain(..)
-            .into_iter()
             .enumerate()
         {
             gkr_storage.insert_base_field_at_layer(
@@ -179,13 +185,13 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
                 if let GKRAddress::InnerLayer { layer, .. } = *place {
                     if layer == layer_idx {
                         assert!(
-                            poly.is_empty() == false,
+                            !poly.is_empty(),
                             "trying to fill {:?} from scratch space, but it's source is empty",
                             place
                         );
                         if gkr_storage.try_get_base_poly(*place).is_none() {
                             // some Copy relations could already fill it
-                            let poly = core::mem::replace(poly, vec![]);
+                            let poly = std::mem::take(poly);
                             gkr_storage.insert_base_field_at_layer(
                                 layer_idx,
                                 *place,
@@ -342,7 +348,7 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
                     expected_output_layer,
                     *output,
                     input,
-                    *range_check_width as u32,
+                    *range_check_width,
                     gkr_storage,
                     witness_trace,
                     trace_len,
@@ -680,7 +686,7 @@ pub fn evaluate_layer<F: PrimeField, E: FieldExtension<F> + Field>(
                     ExtensionFieldPoly::new(destination),
                 );
             }
-            rel @ _ => {
+            rel => {
                 panic!("Should evaluate {:?}", rel);
             }
         }

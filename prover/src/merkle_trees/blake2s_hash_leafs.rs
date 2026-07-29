@@ -98,11 +98,11 @@ where
                                         write_into,
                                     );
                                 } else {
-                                    hasher.absorb::<USE_REDUCED_BLAKE2_ROUNDS>(&block);
+                                    hasher.absorb::<USE_REDUCED_BLAKE2_ROUNDS>(block);
                                 }
                             }
 
-                            if only_full_rounds == false {
+                            if !only_full_rounds {
                                 let mut block = [0u32; BLAKE2S_BLOCK_SIZE_U32_WORDS];
                                 let len = remainder.len();
                                 block[..len].copy_from_slice(remainder);
@@ -219,7 +219,7 @@ where
 
                     let mut dests = Vec::with_capacity(num_cosets);
                     let mut new_dests = Vec::with_capacity(num_cosets);
-                    for el in coset_destinations.drain(..).into_iter() {
+                    for el in coset_destinations.drain(..) {
                         let (chunk, rest) = el.split_at_mut(chunk_size);
                         dests.push(chunk);
                         new_dests.push(rest);
@@ -231,7 +231,7 @@ where
                         let mut hasher = Blake2sState::new();
                         let mut buffer = Vec::with_capacity(leaf_width_in_field_elements);
                         let dests = dests;
-                        for (coset_index, dest) in coset_indexes_ref.iter().zip(dests.into_iter()) {
+                        for (coset_index, dest) in coset_indexes_ref.iter().zip(dests) {
                             let coset = &trace[*coset_index];
                             let mut dst_ptr = dest.as_mut_ptr();
                             for i in src_range.clone() {
@@ -263,11 +263,11 @@ where
                                             write_into,
                                         );
                                     } else {
-                                        hasher.absorb::<USE_REDUCED_BLAKE2_ROUNDS>(&block);
+                                        hasher.absorb::<USE_REDUCED_BLAKE2_ROUNDS>(block);
                                     }
                                 }
 
-                                if only_full_rounds == false {
+                                if !only_full_rounds {
                                     let mut block = [0u32; BLAKE2S_BLOCK_SIZE_U32_WORDS];
                                     let len = remainder.len();
                                     block[..len].copy_from_slice(remainder);

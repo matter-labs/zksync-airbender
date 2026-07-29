@@ -138,7 +138,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> BatchedGKRTermDescription<F, E
 
             for (b, c_b) in b_terms.iter() {
                 let mut coeff = c_a;
-                coeff.mul_assign(&c_b);
+                coeff.mul_assign(c_b);
                 self.add_base_by_base(a, *b, coeff);
             }
         }
@@ -190,6 +190,10 @@ pub trait BatchedGKRKernel<F: PrimeField, E: FieldExtension<F> + Field> {
         input_trace_len: usize,
         worker: &Worker,
     );
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "prover/witness-gen stage plumbing; grouping these into a struct would just move the fan-out"
+    )]
     fn evaluate_over_storage<const N: usize>(
         &self,
         storage: &mut GKRStorage<F, E>,
@@ -230,7 +234,7 @@ pub fn forward_evaluate_single_input_kernel_with_base_inputs<
     assert!(trace_len.is_power_of_two());
     unsafe {
         let mut inputs = inputs.clone();
-        let outputs = std::mem::replace(&mut inputs.outputs_in_base, vec![]);
+        let outputs = std::mem::take(&mut inputs.outputs_in_base);
         assert_eq!(outputs.len(), OUT);
         for output in outputs.iter() {
             output.assert_as_layer(expected_output_layer);
@@ -258,14 +262,14 @@ pub fn forward_evaluate_single_input_kernel_with_base_inputs<
                 for index in 0..chunk_size {
                     let absolute_index = chunk_start + index;
                     let value = kernel.evaluate_forward(absolute_index, inputs);
-                    for (dst, val) in destinations.iter_mut().zip(value.into_iter()) {
+                    for (dst, val) in destinations.iter_mut().zip(value) {
                         dst[index].write(val);
                     }
                 }
             },
         );
 
-        for (output, destination) in outputs.into_iter().zip(destinations.into_iter()) {
+        for (output, destination) in outputs.into_iter().zip(destinations) {
             let values = destination.assume_init();
             storage.insert_base_field_at_layer(
                 expected_output_layer,
@@ -276,6 +280,10 @@ pub fn forward_evaluate_single_input_kernel_with_base_inputs<
     }
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "prover/witness-gen stage plumbing; grouping these into a struct would just move the fan-out"
+)]
 pub fn evaluate_single_input_kernel_with_base_inputs<
     F: PrimeField,
     E: FieldExtension<F> + Field,
@@ -311,7 +319,7 @@ pub fn evaluate_single_input_kernel_with_base_inputs<
                 sources.extension_field_outputs.len(),
                 inputs.outputs_in_extension.len()
             );
-            if sources.base_field_outputs.is_empty() == false {
+            if !sources.base_field_outputs.is_empty() {
                 let outputs = &sources.base_field_outputs;
                 apply_row_wise::<F, _>(
                     vec![],
@@ -321,6 +329,10 @@ pub fn evaluate_single_input_kernel_with_base_inputs<
                     |_, mut ext_dest, chunk_start, chunk_size| {
                         assert_eq!(ext_dest.len(), 1);
                         let accumulator = ext_dest.pop().unwrap();
+                        #[expect(
+                            clippy::needless_range_loop,
+                            reason = "index arithmetic / parallel multi-array indexing in a hot kernel; iterator form obscures the chunk offsets"
+                        )]
                         for index in 0..chunk_size {
                             let absolute_index = chunk_start + index;
                             let value = kernel.evaluate_first_round(
@@ -337,7 +349,7 @@ pub fn evaluate_single_input_kernel_with_base_inputs<
                         }
                     },
                 );
-            } else if sources.extension_field_outputs.is_empty() == false {
+            } else if !sources.extension_field_outputs.is_empty() {
                 let outputs = &sources.extension_field_outputs;
                 apply_row_wise::<F, _>(
                     vec![],
@@ -347,6 +359,10 @@ pub fn evaluate_single_input_kernel_with_base_inputs<
                     |_, mut ext_dest, chunk_start, chunk_size| {
                         assert_eq!(ext_dest.len(), 1);
                         let accumulator = ext_dest.pop().unwrap();
+                        #[expect(
+                            clippy::needless_range_loop,
+                            reason = "index arithmetic / parallel multi-array indexing in a hot kernel; iterator form obscures the chunk offsets"
+                        )]
                         for index in 0..chunk_size {
                             let absolute_index = chunk_start + index;
                             let value = kernel.evaluate_first_round(
@@ -373,6 +389,10 @@ pub fn evaluate_single_input_kernel_with_base_inputs<
                     |_, mut ext_dest, chunk_start, chunk_size| {
                         assert_eq!(ext_dest.len(), 1);
                         let accumulator = ext_dest.pop().unwrap();
+                        #[expect(
+                            clippy::needless_range_loop,
+                            reason = "index arithmetic / parallel multi-array indexing in a hot kernel; iterator form obscures the chunk offsets"
+                        )]
                         for index in 0..chunk_size {
                             let absolute_index = chunk_start + index;
                             let value = kernel.evaluate_first_round(
@@ -404,6 +424,10 @@ pub fn evaluate_single_input_kernel_with_base_inputs<
                     assert_eq!(ext_dest.len(), 1);
                     let accumulator = ext_dest.pop().unwrap();
                     let ctx = inputs[0].get_collapse_context();
+                    #[expect(
+                        clippy::needless_range_loop,
+                        reason = "index arithmetic / parallel multi-array indexing in a hot kernel; iterator form obscures the chunk offsets"
+                    )]
                     for index in 0..chunk_size {
                         let absolute_index = chunk_start + index;
                         let value =
@@ -428,6 +452,10 @@ pub fn evaluate_single_input_kernel_with_base_inputs<
                     assert_eq!(ext_dest.len(), 1);
                     let accumulator = ext_dest.pop().unwrap();
                     let ctx = inputs[0].get_collapse_context();
+                    #[expect(
+                        clippy::needless_range_loop,
+                        reason = "index arithmetic / parallel multi-array indexing in a hot kernel; iterator form obscures the chunk offsets"
+                    )]
                     for index in 0..chunk_size {
                         let absolute_index = chunk_start + index;
                         let value =
@@ -455,6 +483,10 @@ pub fn evaluate_single_input_kernel_with_base_inputs<
                         assert_eq!(ext_dest.len(), 1);
                         let accumulator = ext_dest.pop().unwrap();
                         let ctx = inputs[0].get_collapse_context();
+                        #[expect(
+                            clippy::needless_range_loop,
+                            reason = "index arithmetic / parallel multi-array indexing in a hot kernel; iterator form obscures the chunk offsets"
+                        )]
                         for index in 0..chunk_size {
                             let absolute_index = chunk_start + index;
                             let value = kernel.evaluate::<_, _, true>(
@@ -486,6 +518,10 @@ pub fn evaluate_single_input_kernel_with_base_inputs<
                     assert_eq!(ext_dest.len(), 1);
                     let accumulator = ext_dest.pop().unwrap();
                     let ctx = inputs[0].get_collapse_context();
+                    #[expect(
+                        clippy::needless_range_loop,
+                        reason = "index arithmetic / parallel multi-array indexing in a hot kernel; iterator form obscures the chunk offsets"
+                    )]
                     for index in 0..chunk_size {
                         let absolute_index = chunk_start + index;
                         let value =

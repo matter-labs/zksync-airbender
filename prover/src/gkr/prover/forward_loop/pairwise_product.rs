@@ -15,6 +15,10 @@ pub fn forward_evaluate_pairwise_product<F: PrimeField, E: FieldExtension<F> + F
     kernel.evaluate_forward_over_storage(gkr_storage, expected_output_layer, trace_len, worker);
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "prover/witness-gen stage plumbing; grouping these into a struct would just move the fan-out"
+)]
 pub fn forward_evaluate_base_layer_pairwise_product_without_caches<
     F: PrimeField,
     E: FieldExtension<F> + Field,

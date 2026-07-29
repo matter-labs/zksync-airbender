@@ -41,6 +41,10 @@ pub struct BaseFieldPolySource<F: PrimeField> {
 }
 
 impl<F: PrimeField> BaseFieldPolySource<F> {
+    #[expect(
+        dead_code,
+        reason = "fold-state inspection accessor kept for API symmetry"
+    )]
     pub(crate) fn current_values(&'_ self) -> &'_ [F] {
         unsafe { core::slice::from_raw_parts(self.start, self.next_layer_size * 2) }
     }
@@ -230,6 +234,10 @@ pub struct BaseFieldPolySourceAfterTwoFoldings<F: PrimeField, E: FieldExtension<
 }
 
 impl<F: PrimeField, E: FieldExtension<F> + Field> BaseFieldPolySourceAfterTwoFoldings<F, E> {
+    #[expect(
+        dead_code,
+        reason = "fold-state inspection accessor kept for API symmetry"
+    )]
     pub(crate) fn current_values(&self) -> Vec<E> {
         let mut result_evals = Vec::with_capacity(self.base_layer_half_size);
         unsafe {

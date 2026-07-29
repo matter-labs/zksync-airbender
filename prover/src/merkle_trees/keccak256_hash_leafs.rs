@@ -88,7 +88,7 @@ where
     let tree_size = num_cosets * coset_tree_size;
     assert!(tree_size.is_power_of_two());
 
-    if bitreverse_evaluations == false {
+    if !bitreverse_evaluations {
         // The Blake2s variant only implements the bit-reversed evaluation
         // layout; mirror that here.
         todo!("non-bit-reversed evaluation layout is not implemented");

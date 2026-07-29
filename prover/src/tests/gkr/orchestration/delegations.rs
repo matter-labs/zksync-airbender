@@ -66,6 +66,14 @@ impl DelegationProveOutput {
 }
 
 /// Common prove-side logic shared by all four delegations.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "prover/witness-gen stage plumbing; grouping these into a struct would just move the fan-out"
+)]
+#[expect(
+    clippy::type_complexity,
+    reason = "generic over field + allocator; a bound-free type alias would drop those bounds"
+)]
 fn prove_delegation_inner<O: Oracle<BabyBearField> + DelegationOracleExt>(
     circuit: &GKRCircuitArtifact<BabyBearField>,
     table_driver: &TableDriver<BabyBearField>,
@@ -197,6 +205,10 @@ fn circuit_path(stem: &str) -> String {
     }
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "prover/witness-gen stage plumbing; grouping these into a struct would just move the fan-out"
+)]
 pub fn prove_delegation_blake<C>(
     snapshotter: &SimpleSnapshotter<C, { common_constants::ROM_SECOND_WORD_BITS }>,
     tape: &SimpleTape,
@@ -229,7 +241,7 @@ where
     };
 
     let mut buffer = vec![DelegationWitness::empty(); num_calls];
-    let mut buffers = vec![&mut buffer[..]];
+    let mut buffers = [&mut buffer[..]];
     let mut tracer = BlakeDelegationDestinationHolder {
         buffers: &mut buffers[..],
     };
@@ -277,6 +289,10 @@ where
     }
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "prover/witness-gen stage plumbing; grouping these into a struct would just move the fan-out"
+)]
 pub fn prove_delegation_bigint<C>(
     snapshotter: &SimpleSnapshotter<C, { common_constants::ROM_SECOND_WORD_BITS }>,
     tape: &SimpleTape,
@@ -309,7 +325,7 @@ where
     };
 
     let mut buffer = vec![DelegationWitness::empty(); num_calls];
-    let mut buffers = vec![&mut buffer[..]];
+    let mut buffers = [&mut buffer[..]];
     let mut tracer = BigintDelegationDestinationHolder {
         buffers: &mut buffers[..],
     };
@@ -357,6 +373,10 @@ where
     }
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "prover/witness-gen stage plumbing; grouping these into a struct would just move the fan-out"
+)]
 pub fn prove_delegation_keccak<C>(
     snapshotter: &SimpleSnapshotter<C, { common_constants::ROM_SECOND_WORD_BITS }>,
     tape: &SimpleTape,
@@ -389,7 +409,7 @@ where
     };
 
     let mut buffer = vec![DelegationWitness::empty(); num_calls];
-    let mut buffers = vec![&mut buffer[..]];
+    let mut buffers = [&mut buffer[..]];
     let mut tracer = KeccakDelegationDestinationHolder {
         buffers: &mut buffers[..],
     };
@@ -437,6 +457,10 @@ where
     }
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "prover/witness-gen stage plumbing; grouping these into a struct would just move the fan-out"
+)]
 pub fn prove_delegation_blake_g_function<C>(
     snapshotter: &SimpleSnapshotter<C, { common_constants::ROM_SECOND_WORD_BITS }>,
     tape: &SimpleTape,
@@ -473,7 +497,7 @@ where
     };
 
     let mut buffer = vec![DelegationWitness::empty(); num_calls];
-    let mut buffers = vec![&mut buffer[..]];
+    let mut buffers = [&mut buffer[..]];
     let mut tracer = BlakeGFunctionDelegationDestinationHolder {
         buffers: &mut buffers[..],
     };

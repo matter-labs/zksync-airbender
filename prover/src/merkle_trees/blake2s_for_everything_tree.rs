@@ -1,7 +1,7 @@
 use super::*;
 use crate::definitions::Blake2sForEverythingVerifier;
 use blake2s_u32::*;
-use field::{baby_bear::base::BabyBearField, PrimeField};
+use field::baby_bear::base::BabyBearField;
 use std::alloc::Global;
 
 #[derive(Clone, Debug)]
