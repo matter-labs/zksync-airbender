@@ -11,9 +11,9 @@ use crate::types::Boolean;
 
 use super::circuit::{
     FAMILY_1_FLAG_OFFSET as F1_OFFSET, FAMILY_1_TRI_ADD_BIT, FAMILY_2_FLAG_OFFSET as F2_OFFSET,
-    FAMILY_3_BINARY_OP_BIT, FAMILY_3_FLAG_OFFSET as F3_OFFSET, FAMILY_4_FLAG_OFFSET as F4_OFFSET,
-    FAMILY_4_LW_BIT as F4_LW_BIT, FAMILY_4_SW_BIT as F4_SW_BIT, UNIFIED_F1_NUM_FLAGS,
-    UNIFIED_F3_NUM_FLAGS, UNIFIED_REDUCED_MACHINE_NUM_FLAGS,
+    FAMILY_3_BINARY_OP_BIT, FAMILY_3_FLAG_OFFSET as F3_OFFSET, FAMILY_4_LW_BIT as F4_LW_BIT,
+    FAMILY_4_SW_BIT as F4_SW_BIT, UNIFIED_F1_NUM_FLAGS, UNIFIED_F3_NUM_FLAGS,
+    UNIFIED_REDUCED_MACHINE_NUM_FLAGS,
 };
 use crate::tables::TableType;
 
@@ -241,6 +241,7 @@ impl OpcodeFamilyDecoder for UnifiedReducedMachineDecoder {
 #[cfg(test)]
 mod tests {
     use super::super::circuit::UNIFIED_REDUCED_MACHINE_NUM_FLAGS;
+    use super::circuit::FAMILY_4_FLAG_OFFSET as F4_OFFSET;
     use super::*;
 
     /// The unified bitmask layout must accommodate every per-family bit plus the

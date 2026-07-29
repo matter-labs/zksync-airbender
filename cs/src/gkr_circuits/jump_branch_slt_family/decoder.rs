@@ -58,9 +58,9 @@ impl OpcodeFamilyDecoder for JumpSltBranchDecoder {
         preprocessed_opcode: Instruction,
     ) -> Result<ExecutorFamilyDecoderData, ()> {
         let (mut rs1_index, mut rs2_index, mut rd_index) = (0, 0u16, 0);
-        let mut imm = 0;
+        let imm;
         let mut bitmask = 0u32;
-        let mut funct3 = None;
+        let funct3;
 
         // NOTE: SLT/SLTU and BRANCH opcode's funct3s are disjoint, so
         // we will use single table for resolution in the circuit

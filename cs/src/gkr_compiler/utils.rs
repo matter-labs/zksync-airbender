@@ -660,7 +660,7 @@ pub(crate) fn lookup_input_into_relation<F: PrimeField, const SINGLE_COLUMN: boo
 impl NoFieldSpecialMemoryContributionRelation {
     pub(crate) fn dump_inputs(&self, result: &mut BTreeSet<GKRAddress>) {
         match self.address_space {
-            CompiledAddressSpaceRelationStrict::Constant(c) => {}
+            CompiledAddressSpaceRelationStrict::Constant(_c) => {}
             CompiledAddressSpaceRelationStrict::IsRam(offset)
             | CompiledAddressSpaceRelationStrict::IsRegister(offset) => {
                 result.insert(GKRAddress::BaseLayerMemory(offset));

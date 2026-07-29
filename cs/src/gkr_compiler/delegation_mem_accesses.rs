@@ -1,8 +1,6 @@
 use super::*;
 use crate::constraint::{Constraint, Term};
-use crate::cs::circuit::{
-    IndirectAccessType, RangeCheckQuery, RegisterAccessType, RegisterAndIndirectAccesses,
-};
+use crate::cs::circuit::{RangeCheckQuery, RegisterAccessType, RegisterAndIndirectAccesses};
 use crate::cs::circuit_trait::{
     ConstantRegisterAccess, MemoryAccess, RegisterIndirectRamAccess, WordRepresentation,
 };

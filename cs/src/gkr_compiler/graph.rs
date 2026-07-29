@@ -69,8 +69,6 @@ impl<F: PrimeField> GKRGate<F> for CopyNode {
 
 pub struct GKRGraph<F: PrimeField> {
     pub(crate) caching_is_allowed: bool,
-    pub(crate) mapping: BTreeMap<GKRAddress, usize>,
-    pub(crate) rev_mapping: BTreeMap<usize, GKRAddress>,
     pub(crate) base_layer_memory: BTreeMap<Variable, GKRAddress>,
     pub(crate) base_layer_memory_rev: BTreeMap<GKRAddress, Variable>,
     pub(crate) base_layer_witness: BTreeMap<Variable, GKRAddress>,
@@ -78,8 +76,6 @@ pub struct GKRGraph<F: PrimeField> {
     pub(crate) setups: Vec<GKRAddress>,
     pub(crate) cached_relations: BTreeMap<usize, Vec<NoFieldGKRCacheRelation<F>>>,
     pub(crate) enforced_relations: BTreeMap<usize, Vec<NoFieldGKRRelation<F>>>,
-    pub(crate) generic_lookup_setup_width: usize,
-    pub(crate) copies: Vec<BTreeMap<GKRAddress, GKRAddress>>,
     pub(crate) intermediate_layers_offsets: BTreeMap<usize, usize>,
     pub(crate) intermediate_layers: BTreeMap<Variable, GKRAddress>,
     pub(crate) intermediate_layers_rev: BTreeMap<GKRAddress, Variable>,
@@ -89,8 +85,6 @@ impl<F: PrimeField> GKRGraph<F> {
     pub fn new(generic_lookup_setup_width: usize, caching_is_allowed: bool) -> Self {
         let mut new = Self {
             caching_is_allowed,
-            mapping: BTreeMap::new(),
-            rev_mapping: BTreeMap::new(),
             base_layer_memory: BTreeMap::new(),
             base_layer_memory_rev: BTreeMap::new(),
             base_layer_witness: BTreeMap::new(),
@@ -98,8 +92,6 @@ impl<F: PrimeField> GKRGraph<F> {
             setups: vec![],
             cached_relations: BTreeMap::new(),
             enforced_relations: BTreeMap::new(),
-            generic_lookup_setup_width,
-            copies: vec![],
             intermediate_layers_offsets: BTreeMap::new(),
             intermediate_layers: BTreeMap::new(),
             intermediate_layers_rev: BTreeMap::new(),
@@ -479,11 +471,6 @@ impl<F: PrimeField> GraphHolder<F> for GKRGraph<F> {
     }
 }
 
-#[derive(
-    Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, serde::Serialize, serde::Deserialize,
-)]
-pub struct NodeIndex(usize);
-
 pub trait GraphHolder<F: PrimeField> {
     // Whether caching relations are allowed
     fn can_use_caching(&self) -> bool;
@@ -585,24 +572,3 @@ pub trait GraphHolder<F: PrimeField> {
 //         NoFieldGKRRelation<F>::FormalBaseLayerInput
 //     }
 // }
-
-#[track_caller]
-fn find_variable(
-    gkr_address: GKRAddress,
-    base_layer_mapping: &BTreeMap<Variable, GKRAddress>,
-) -> Option<Variable> {
-    match gkr_address {
-        GKRAddress::BaseLayerMemory(..) | GKRAddress::BaseLayerWitness(..) => {}
-        _ => {
-            return None;
-        }
-    }
-
-    for (var, addr) in base_layer_mapping.iter() {
-        if addr == &gkr_address {
-            return Some(*var);
-        }
-    }
-
-    None
-}

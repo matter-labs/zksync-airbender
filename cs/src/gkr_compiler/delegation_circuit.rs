@@ -26,7 +26,7 @@ impl<F: PrimeField> GKRCompiler<F> {
             memory_queries,
             range_check_expressions,
             boolean_vars,
-            substitutions,
+            substitutions: _,
             register_and_indirect_memory_accesses,
             executor_machine_state,
             delegation_circuit_state,
@@ -349,7 +349,7 @@ impl<F: PrimeField> GKRCompiler<F> {
 
         let indirect_access_variable_offsets = indirect_access_variable_offsets
             .into_iter()
-            .map(|(idx, place)| {
+            .map(|(_idx, place)| {
                 let GKRAddress::BaseLayerMemory(offset) = place else {
                     unreachable!()
                 };

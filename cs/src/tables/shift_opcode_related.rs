@@ -101,8 +101,7 @@ pub fn create_shift_implementation_table<F: PrimeField>(id: u32) -> LookupTable<
             let input_value = input_byte << (byte_index * 8);
 
             use crate::gkr_circuits::binary_shifts_family::{
-                FORMAL_ROL_FUNCT3, FORMAL_ROR_FUNCT3, FORMAL_SLL_FUNCT3, FORMAL_SRA_FUNCT3,
-                FORMAL_SRL_FUNCT3,
+                FORMAL_SLL_FUNCT3, FORMAL_SRA_FUNCT3, FORMAL_SRL_FUNCT3,
             };
 
             match funct3 {

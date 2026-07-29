@@ -411,8 +411,8 @@ fn drive_lookup_placement<F: PrimeField, const SINGLE_COLUMN: bool>(
         LookupType::Generic => None,
     };
 
-    let num_inputs = inputs.entry(input_layer).or_default().len();
-    let num_intermediates = intermediate_values
+    let _num_inputs = inputs.entry(input_layer).or_default().len();
+    let _num_intermediates = intermediate_values
         .entry(input_layer)
         .or_insert(vec![])
         .len();
@@ -804,10 +804,10 @@ fn drive_lookup_placement<F: PrimeField, const SINGLE_COLUMN: bool>(
 fn merge_lookup_inputs_pair<F: PrimeField, const SINGLE_COLUMN: bool>(
     graph: &mut GKRGraph<F>,
     input_layer: usize,
-    lookup_type: &str,
+    _lookup_type: &str,
     lookup: LookupType,
-    total_width: usize,
-    expect_table_id: bool,
+    _total_width: usize,
+    _expect_table_id: bool,
     inputs: &mut BTreeMap<
         usize,
         (
@@ -880,10 +880,10 @@ fn merge_lookup_inputs_pair<F: PrimeField, const SINGLE_COLUMN: bool>(
 fn merge_intermediate_lookup_pair<F: PrimeField, const SINGLE_COLUMN: bool>(
     graph: &mut GKRGraph<F>,
     input_layer: usize,
-    lookup_type: &str,
+    _lookup_type: &str,
     lookup: LookupType,
-    total_width: usize,
-    expect_table_id: bool,
+    _total_width: usize,
+    _expect_table_id: bool,
     intermediate_values: &mut BTreeMap<usize, Vec<(LookupNumerator, LookupDenominator)>>,
     relations_map: &mut BTreeMap<[GKRAddress; 2], NoFieldGKRRelation<F>>,
 ) {

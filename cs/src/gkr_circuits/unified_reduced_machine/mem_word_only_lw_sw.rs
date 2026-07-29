@@ -169,7 +169,7 @@ pub(super) fn apply_unified_mem_word_only_lw_sw_data_path<F: PrimeField, CS: Cir
     cs.add_constraint_expr(Expr::from(is_lw) * (Expr::var(ram_addr[1]) - Expr::from(readaddr_hi)));
     cs.add_constraint_expr(Expr::from(is_sw) * (Expr::var(ram_addr[1]) - Expr::from(writeaddr_hi)));
 
-    let is_fam4: Constraint<F> = Constraint::from(is_lw) + Constraint::from(is_sw);
+    let _is_fam4: Constraint<F> = Constraint::from(is_lw) + Constraint::from(is_sw);
     let is_fam4_expr = Expr::from(is_lw) + Expr::from(is_sw);
 
     let (is_rom_base_layer, rom_addr_constraint) = {

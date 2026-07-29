@@ -1,5 +1,4 @@
 use super::*;
-use crate::constraint::{Constraint, Term};
 use crate::cs::circuit_trait::*;
 use crate::cs::lookup_utils::peek_lookup_values_unconstrained_into_variables_from_constraints_conditional;
 use crate::gkr_circuits::jump_branch_slt_family::JumpSltBranchFamilyCircuitMask;
