@@ -348,8 +348,8 @@ impl<F: PrimeField> GKRCompiler<F> {
         }
 
         let indirect_access_variable_offsets = indirect_access_variable_offsets
-            .into_iter()
-            .map(|(_idx, place)| {
+            .into_values()
+            .map(|place| {
                 let GKRAddress::BaseLayerMemory(offset) = place else {
                     unreachable!()
                 };

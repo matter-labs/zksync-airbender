@@ -121,11 +121,7 @@ pub(crate) fn layout_constraints_at_layers<F: PrimeField, const USE_BATCHING: bo
                 compiled_constraint,
                 ..
             } => compiled_constraint,
-            StructuredStatement::Define {
-                compiled_constraint: _,
-                output_layer: _,
-                ..
-            } => {
+            StructuredStatement::Define { .. } => {
                 continue;
                 // expected_output_layer = Some(*output_layer);
                 // compiled_constraint

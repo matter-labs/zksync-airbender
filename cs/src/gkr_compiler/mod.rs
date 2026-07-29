@@ -534,11 +534,7 @@ impl<F: PrimeField> NoFieldGKRRelation<F> {
         match self {
             // Self::FormalBaseLayerInput(..) => vec![],
             Self::LinearBaseFieldRelation { .. } => vec![],
-            Self::MaxQuadratic {
-                input: _,
-                output: _,
-                ..
-            } => vec![],
+            Self::MaxQuadratic { .. } => vec![],
             Self::EnforceConstraintsMaxQuadratic { input: _ } => vec![],
             Self::CopyInBaseField { input, output } => {
                 assert!(!output.is_cache());
@@ -596,11 +592,7 @@ impl<F: PrimeField> NoFieldGKRRelation<F> {
             } => {
                 vec![]
             }
-            Self::MaterializeSingleLookupInput {
-                input: _,
-                output: _,
-                ..
-            } => {
+            Self::MaterializeSingleLookupInput { .. } => {
                 vec![]
             }
             Self::MaterializedVectorLookupInput {
@@ -624,11 +616,7 @@ impl<F: PrimeField> NoFieldGKRRelation<F> {
             Self::LookupWithDensAndSetupExpressions { .. } => {
                 vec![]
             }
-            Self::LookupPairFromBaseInputs {
-                input: _,
-                output: _,
-                ..
-            } => {
+            Self::LookupPairFromBaseInputs { .. } => {
                 vec![]
             }
             Self::LookupPairFromMaterializedBaseInputs { input, output: _ } => {
@@ -761,9 +749,7 @@ impl<F: PrimeField> NoFieldGKRRelation<F> {
                     result.insert(*el);
                 }
             }
-            Self::MaxQuadratic {
-                input, output: _, ..
-            } => {
+            Self::MaxQuadratic { input, .. } => {
                 for (a, other) in input.quadratic_terms.iter() {
                     result.insert(*a);
                     for (_, b) in other.iter() {
@@ -814,9 +800,7 @@ impl<F: PrimeField> NoFieldGKRRelation<F> {
                 result.insert(*input);
                 result.insert(*mask);
             }
-            Self::MaterializeSingleLookupInput {
-                input, output: _, ..
-            } => {
+            Self::MaterializeSingleLookupInput { input, .. } => {
                 for (_, el) in input.input.linear_terms.iter() {
                     result.insert(*el);
                 }
@@ -838,9 +822,7 @@ impl<F: PrimeField> NoFieldGKRRelation<F> {
                 result.insert(setup[0]);
                 result.insert(setup[1]);
             }
-            Self::LookupPairFromBaseInputs {
-                input, output: _, ..
-            } => {
+            Self::LookupPairFromBaseInputs { input, .. } => {
                 for el in input.iter() {
                     for (_, el) in el.input.linear_terms.iter() {
                         result.insert(*el);
