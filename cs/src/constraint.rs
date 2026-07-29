@@ -414,6 +414,7 @@ impl<F: PrimeField> Constraint<F> {
         Self { terms: vec![term] }
     }
 
+    #[allow(clippy::type_complexity)]
     pub fn split_max_quadratic(mut self) -> (Vec<(F, Variable, Variable)>, Vec<(F, Variable)>, F) {
         self.normalize();
         let mut quadratic_terms = Vec::with_capacity(self.terms.len());

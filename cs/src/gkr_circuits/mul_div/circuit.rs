@@ -796,6 +796,7 @@ fn apply_mul_div_inner<F: PrimeField, CS: Circuit<F>, const SUPPORT_SIGNED: bool
 
                 let mut expr = Expr::<F>::zero();
 
+                #[allow(clippy::needless_range_loop)]
                 for j in 0..4 {
                     let q_byte = &quotient_bytes[j];
                     for k in 0..4 {

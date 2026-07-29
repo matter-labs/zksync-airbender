@@ -48,6 +48,7 @@ pub fn jump_branch_slt_unified_table_driver_fn<F: PrimeField>(table_driver: &mut
 /// (1) the `JumpCleanupOffset` lookup is gated so non-Family-2 cycles route to
 /// `ZeroEntry`, and (2) the rd-write constraints are gated on per-opcode
 /// `is_X_writes_rd` Booleans so non-Family-2 cycles don't pin rd_write_limbs.
+#[allow(clippy::too_many_arguments)]
 pub fn apply_unified_jump_branch_slt_inner<F: PrimeField, CS: Circuit<F>>(
     cs: &mut CS,
     inputs: OpcodeFamilyCircuitState<F>,

@@ -191,6 +191,7 @@ fn reg_boolean_into_address_space_raw(is_register: Boolean) -> AddressSpaceIsReg
     }
 }
 
+#[allow(clippy::type_complexity)]
 pub(crate) fn layout_initial_grand_product_accumulation<F: PrimeField>(
     graph: &mut impl GraphHolder<F>,
     predicate: Variable,

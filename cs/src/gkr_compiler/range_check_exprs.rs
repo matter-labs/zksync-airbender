@@ -59,6 +59,7 @@ pub(crate) fn compile_timestamp_comparison_range_checks<F: PrimeField>(
     }
 }
 
+#[allow(clippy::type_complexity)]
 pub(crate) fn split_range_check_exprs_from_compiler<F: PrimeField>(
     range_check_expressions: &[RangeCheckQuery<F>],
 ) -> (

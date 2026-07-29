@@ -32,6 +32,7 @@ fn word_from_u16_limbs_expr<F: PrimeField>(limbs: [Variable; 2], limb_shift: F) 
 /// The discriminator is a `TypeId` comparison. Because `q̂` is masked in full, the
 /// quotient limbs and q-top/k bits are committed as *shared scratch pool* slots
 /// (0 dedicated columns) rather than dedicated columns
+#[allow(clippy::too_many_arguments)]
 pub fn apply_unified_add_sub_lui_auipc_mop_inner<
     F: PrimeField,
     MopF: PrimeField,
@@ -397,6 +398,7 @@ pub fn apply_unified_add_sub_lui_auipc_mop_inner<
                 placer.conditionally_assign_u16(q_lo16_var.unwrap(), &is_mul_like_m, &dec.q_lo16);
                 placer.conditionally_assign_u16(q_hi16_var.unwrap(), &is_mul_like_m, &dec.q_hi16);
 
+                #[allow(clippy::needless_range_loop)]
                 for i in 0..3 {
                     let mut ti = <CS::WitnessPlacer as WitnessTypeSet<F>>::Mask::constant(false);
                     ti = <CS::WitnessPlacer as WitnessTypeSet<F>>::Mask::select(

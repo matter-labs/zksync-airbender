@@ -22,6 +22,7 @@ use field::PrimeField;
 /// `is_fam4` is inlined as `(is_lw + is_sw)` everywhere it appears; no
 /// committed Boolean column.
 #[allow(non_snake_case)]
+#[allow(clippy::too_many_arguments)]
 pub(super) fn apply_unified_mem_word_only_lw_sw_data_path<F: PrimeField, CS: Circuit<F>>(
     cs: &mut CS,
     inputs: &OpcodeFamilyCircuitState<F>,

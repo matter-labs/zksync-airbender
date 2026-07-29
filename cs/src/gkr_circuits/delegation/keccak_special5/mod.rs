@@ -568,12 +568,15 @@ pub fn define_keccak_special5_delegation_circuit<
             let mut iter_bitmask_bools: [<<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Mask; 5] = from_fn(|_| zero_bool.clone());
             let mut round_bools: [<<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::Mask;
                 5] = from_fn(|_| zero_bool.clone());
+            #[allow(clippy::needless_range_loop)]
             for i in 0..7 {
                 precompile_bitmask_bools[i] = precompile_value.equal_to_constant(i as u16);
             }
+            #[allow(clippy::needless_range_loop)]
             for i in 0..5 {
                 iter_bitmask_bools[i] = iter_value.equal_to_constant(i as u16);
             }
+            #[allow(clippy::needless_range_loop)]
             for i in 0..5 {
                 round_bools[i] = round_value.shr(i as u32).and(&one_value).is_one();
             }
@@ -1040,6 +1043,7 @@ pub fn define_keccak_special5_delegation_circuit<
 
                 let iter_values =
                     iter_bitmask.map(|x| placer.get_boolean(x.get_variable().unwrap()));
+                #[allow(clippy::type_complexity)]
                 let fn_folder = |idx_value: [<<CS as Circuit<F>>::WitnessPlacer as WitnessTypeSet<F>>::U32;
                                      2]| {
                     move |(acc_value, acc_binop): (
@@ -1474,6 +1478,7 @@ pub fn define_keccak_special5_delegation_circuit<
     }
 }
 
+#[allow(clippy::type_complexity)]
 fn enforce_binop<F: PrimeField, CS: Circuit<F>, const N: usize, const DEBUG: bool>(
     cs: &mut CS,
     precompile_flags: [Boolean; 7],
@@ -1563,6 +1568,7 @@ fn enforce_binop<F: PrimeField, CS: Circuit<F>, const N: usize, const DEBUG: boo
     let is_rot = Expr::sum(rot_out_u16_boundary_flags.to_vec());
 
     // FINALLY, we enforce manual routing!
+    #[allow(clippy::type_complexity)]
     let (in1, in2, out): ([Expr<F>; 4], [Expr<F>; 4], [Expr<F>; 4]) = {
         // we need to extract some partial results first
         // when we deal with a column: it's either u8 input chunks or (u16 input || u4 rotconst) chunks

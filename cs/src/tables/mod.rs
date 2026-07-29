@@ -67,6 +67,7 @@ pub enum IndexLookupFn<F: PrimeField> {
     Pure(fn(&[F]) -> usize),
     ReuseGenerationFn(PureTableGenerationFn<F>),
     ReuseGenerationClosure(TableGenerationClosure<F>),
+    #[allow(clippy::type_complexity)]
     Closure(std::sync::Arc<dyn Fn(&[F]) -> usize + 'static + Send + Sync>),
 }
 
@@ -309,6 +310,7 @@ impl<F: PrimeField> LookupTable<F> {
         }
     }
 
+    #[allow(clippy::type_complexity)]
     fn compute_default_lookup_impls(
         data: &Vec<ArrayVec<F, MAX_TABLE_WIDTH>>,
         num_key_columns: usize,

@@ -7,6 +7,7 @@ use crate::gkr_compiler::graph::{GKRGraph, GraphHolder};
 use crate::gkr_compiler::lookup_nodes::{LookupDenominator, LookupInputRelation, LookupNumerator};
 use crate::tables::TableType;
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn layout_width_1_lookup_expressions<F: PrimeField>(
     graph: &mut GKRGraph<F>,
     expressions: Vec<LookupInput<F>>,
@@ -223,6 +224,7 @@ fn lookup_input_node_from_expr<F: PrimeField, const SINGLE_COLUMN: bool>(
     LookupInputRelation { inputs, table_id }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn layout_lookup_expressions<F: PrimeField, const SINGLE_COLUMN: bool>(
     graph: &mut GKRGraph<F>,
     expressions: Vec<(Vec<LookupInput<F>>, LookupQueryTableType<F>)>,
@@ -376,6 +378,8 @@ pub(crate) fn layout_lookup_expressions<F: PrimeField, const SINGLE_COLUMN: bool
     }
 }
 
+#[allow(clippy::too_many_arguments)]
+#[allow(clippy::type_complexity)]
 fn drive_lookup_placement<F: PrimeField, const SINGLE_COLUMN: bool>(
     graph: &mut GKRGraph<F>,
     input_layer: usize,
@@ -797,6 +801,8 @@ fn drive_lookup_placement<F: PrimeField, const SINGLE_COLUMN: bool>(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
+#[allow(clippy::type_complexity)]
 fn merge_lookup_inputs_pair<F: PrimeField, const SINGLE_COLUMN: bool>(
     graph: &mut GKRGraph<F>,
     input_layer: usize,
@@ -872,6 +878,7 @@ fn merge_lookup_inputs_pair<F: PrimeField, const SINGLE_COLUMN: bool>(
 }
 
 // NOTE: iteratively called by outside loop, so we just merge values by 2
+#[allow(clippy::too_many_arguments)]
 fn merge_intermediate_lookup_pair<F: PrimeField, const SINGLE_COLUMN: bool>(
     graph: &mut GKRGraph<F>,
     input_layer: usize,

@@ -14,6 +14,7 @@ use crate::gkr_compiler::graph::GKRGraph;
 
 const LOCAL_TIMESTAMP_FOR_INDIRECTS: u32 = 2;
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn compile_register_and_indirect_mem_accesses<F: PrimeField>(
     graph: &mut GKRGraph<F>,
     num_variables: &mut u64,

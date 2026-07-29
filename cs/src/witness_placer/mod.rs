@@ -104,12 +104,14 @@ impl<
 }
 
 pub struct WitnessResolutionGraph<F: PrimeField, W: WitnessPlacer<F>> {
+    #[allow(clippy::type_complexity)]
     inner: WitnessResolutionNode<
         F,
         W,
         Box<dyn WitnessResolutionDescription<F, W>>,
         Box<dyn WitnessResolutionDescription<F, W>>,
     >,
+    #[allow(clippy::type_complexity)]
     reorder_fn: Box<
         dyn FnOnce(
             Box<dyn WitnessResolutionDescription<F, W>>,

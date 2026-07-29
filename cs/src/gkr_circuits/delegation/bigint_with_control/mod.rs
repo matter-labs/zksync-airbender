@@ -573,6 +573,7 @@ pub fn define_bigint_with_extended_control_delegation_circuit<F: PrimeField, CS:
     for (i, product_word) in full_product.iter().enumerate() {
         let mut product_expr = carry_expr.clone();
         let mut product_range = carry_range;
+        #[allow(clippy::needless_range_loop)]
         for a_byte_idx in 0..32 {
             for b_byte_idx in 0..32 {
                 if a_byte_idx + b_byte_idx == 2 * i {

@@ -134,26 +134,28 @@ pub enum SingleAssignment<F: PrimeField> {
     },
 }
 
+/// One lookup query captured during graph construction:
+/// (input expressions, table-id expression, query index).
+pub type LookupQuery<F> = (
+    Box<[FieldNodeExpression<F>]>,
+    FixedWidthIntegerNodeExpression<F>,
+    usize,
+);
+
+/// A conditional lookup query: a [`LookupQuery`] plus the predicate under which
+/// its outputs are assigned.
+pub type MaybeLookupQuery<F> = (
+    Box<[FieldNodeExpression<F>]>,
+    FixedWidthIntegerNodeExpression<F>,
+    BoolNodeExpression<F>,
+    usize,
+);
+
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct ResolverDetails<F: PrimeField> {
     pub inputs: BTreeMap<Variable, Expression<F>>,
-    pub lookup_inputs: BTreeMap<
-        usize,
-        (
-            Box<[FieldNodeExpression<F>]>,
-            FixedWidthIntegerNodeExpression<F>,
-            usize,
-        ),
-    >,
-    pub maybe_lookup_inputs: BTreeMap<
-        usize,
-        (
-            Box<[FieldNodeExpression<F>]>,
-            FixedWidthIntegerNodeExpression<F>,
-            BoolNodeExpression<F>,
-            usize,
-        ),
-    >,
+    pub lookup_inputs: BTreeMap<usize, LookupQuery<F>>,
+    pub maybe_lookup_inputs: BTreeMap<usize, MaybeLookupQuery<F>>,
     pub oracles: Vec<Expression<F>>,
     pub quasi_outputs_for_lookup_enforcements: Vec<usize>, // index into self.lookups
     pub outputs: BTreeMap<Variable, SingleAssignment<F>>,
@@ -176,18 +178,9 @@ impl<F: PrimeField> ResolverDetails<F> {
 pub struct WitnessGraphCreator<F: PrimeField> {
     pub values: Vec<Option<AssignedExpression<F>>>,
     // a sequence of lookup expressions that are unconditional (would be used for multiplicity counting)
-    pub lookups: Vec<(
-        Box<[FieldNodeExpression<F>]>,
-        FixedWidthIntegerNodeExpression<F>,
-        usize,
-    )>,
+    pub lookups: Vec<LookupQuery<F>>,
     // a sequence of the lookups that are conditional and will be used to only assign values
-    pub maybe_lookups: Vec<(
-        Box<[FieldNodeExpression<F>]>,
-        FixedWidthIntegerNodeExpression<F>,
-        BoolNodeExpression<F>,
-        usize,
-    )>,
+    pub maybe_lookups: Vec<MaybeLookupQuery<F>>,
     current_stats_resolver: Option<ResolverDetails<F>>,
     variables_considered_assigned: BTreeSet<Variable>, // We will consider some variables as assigned by external source
     pub variable_names: HashMap<Variable, String>,
@@ -198,23 +191,8 @@ pub struct WitnessGraphCreator<F: PrimeField> {
 pub struct SubexpressionsMapper<F: PrimeField> {
     ssa_expr_set: HashMap<RawExpression<F>, usize>,
     ssa_form: Vec<RawExpression<F>>,
-    known_lookups: BTreeMap<
-        usize,
-        (
-            Box<[FieldNodeExpression<F>]>,
-            FixedWidthIntegerNodeExpression<F>,
-            usize,
-        ),
-    >,
-    known_maybe_lookups: BTreeMap<
-        usize,
-        (
-            Box<[FieldNodeExpression<F>]>,
-            FixedWidthIntegerNodeExpression<F>,
-            BoolNodeExpression<F>,
-            usize,
-        ),
-    >,
+    known_lookups: BTreeMap<usize, LookupQuery<F>>,
+    known_maybe_lookups: BTreeMap<usize, MaybeLookupQuery<F>>,
 }
 
 impl<F: PrimeField> SubexpressionsMapper<F> {
@@ -479,6 +457,7 @@ impl<F: PrimeField> WitnessGraphCreator<F> {
         idx
     }
 
+    #[allow(clippy::type_complexity)]
     pub fn compute_resolution_order(
         &self,
     ) -> (
