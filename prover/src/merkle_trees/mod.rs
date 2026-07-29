@@ -101,6 +101,10 @@ pub trait RSQueriable<T: 'static + Sized + Clone>: core::fmt::Debug + Send + Syn
     fn num_columns(&self) -> usize;
     /// Number of LDE cosets (= LDE factor).
     fn num_cosets(&self) -> usize;
+    /// log2 of the size of a single LDE coset (the per-coset polynomial length).
+    /// Exposed for future self-checks (verifying a source's coset dimensions
+    /// against the schedule/trace length).
+    fn coset_size_log2(&self) -> usize;
     /// Packed leaf values (offset-major `[offset][column]`) for folded index
     /// `index` inside the natural-order coset `coset_in_natural_enumeration`.
     fn values_for_coset_and_index(
@@ -114,6 +118,9 @@ pub trait RSQueriable<T: 'static + Sized + Clone>: core::fmt::Debug + Send + Syn
     /// coefficients for a monomial-storing recompute source). The only coset
     /// `whir_fold` reads in full, for the batched proximity poly.
     fn main_domain_column(&self, column_index: usize) -> MainDomainColumn<'_, T>;
+    /// Downcast bridge: lets a boxed source recover its concrete type (e.g. to reach
+    /// `MaterializedCosets::serialize_to_disk` through a `Box<dyn RSQueriable>`).
+    fn as_any(&self) -> &dyn std::any::Any;
 }
 
 /// The Merkle-tree side of an oracle: the cap and inclusion paths, decoupled from
@@ -144,9 +151,10 @@ pub trait ColumnMajorMerkleTreeConstructor<F: PrimeField>:
     fn dummy() -> Self;
 
     /// Serialize the built tree into the simple on-disk format consumed by
-    /// [`Self::disk_path`]: a small header followed by the cap digests, the leaf
-    /// hashes, and the internal layer hashes (see [`on_disk`]).
-    fn serialize_to_disk_format(&self) -> Vec<u8>;
+    /// [`Self::disk_path`] (a small header followed by the cap digests, the leaf
+    /// hashes, and the internal layer hashes — see [`on_disk`]), streaming it into
+    /// any [`std::io::Write`] sink (a file, a `Vec<u8>`, …).
+    fn serialize_to_disk_format<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()>;
 
     /// Build a [`PathQueriable`] over mmap'd (or otherwise borrowed) bytes that were
     /// produced by [`Self::serialize_to_disk_format`].

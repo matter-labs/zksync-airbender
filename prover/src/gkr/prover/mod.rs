@@ -107,26 +107,95 @@ impl<'a, F: PrimeField + TwoAdicField, T: ColumnMajorMerkleTreeConstructor<F>>
         }
     }
 
-    /// The in-memory oracle whir_fold reads for batching + queries. The on-disk
-    /// path is not wired into whir_fold yet (no on-disk `RSQueriable`).
+    #[inline]
+    fn is_on_disk(&self) -> bool {
+        matches!(self, SetupCommitment::OnDisk { .. })
+    }
+
+    /// The borrowed in-memory setup oracle. Only valid for the `InMemory` variant;
+    /// for `OnDisk`, whir_fold reads a slim oracle built by
+    /// [`Self::build_whir_setup_oracle`] instead.
     fn as_in_memory_oracle(&self) -> &ColumnMajorBaseOracleForLDE<F, T> {
         match self {
             SetupCommitment::InMemory(oracle) => oracle,
             SetupCommitment::OnDisk { .. } => {
-                unimplemented!("on-disk setup commitment is not wired into whir_fold yet")
+                unreachable!("on-disk setup uses a slim oracle, not as_in_memory_oracle")
             }
         }
     }
 
-    /// Round-0 base query for the setup set (offset-major leaf values + path).
-    fn query_for_folded_index(&self, query_index: usize) -> (Vec<Vec<F>>, BaseFieldQuery<F, T>) {
+    /// For `OnDisk`, materialize the "slim" setup oracle whir_fold reads for batching
+    /// (main-domain columns from the on-disk RS source + a cap tree from the on-disk
+    /// tree's cap); `None` for `InMemory` (use the borrowed oracle directly). Round-0
+    /// setup queries are served separately by [`Self::hook_query`] against the
+    /// on-disk tree, so this slim oracle's tree only needs to reproduce the cap.
+    fn build_whir_setup_oracle(&self, worker: &Worker) -> Option<ColumnMajorBaseOracleForLDE<F, T>>
+    where
+        [(); F::DEGREE]: Sized,
+    {
         match self {
-            SetupCommitment::InMemory(oracle) => {
-                let (_coset, leaf, query) = oracle.query_for_folded_index(query_index);
-                (leaf, query)
+            SetupCommitment::InMemory(_) => None,
+            SetupCommitment::OnDisk {
+                rs,
+                tree,
+                values_per_leaf,
+                coset_size_log2,
+            } => {
+                let num_columns = rs.num_columns();
+                let coset0: Vec<ColumnMajorCosetBoundTracePart<F, F>> = (0..num_columns)
+                    .map(|c| ColumnMajorCosetBoundTracePart {
+                        column: Arc::new(rs.main_domain_column(c).into_owned().into_boxed_slice()),
+                        offset: F::ONE,
+                    })
+                    .collect();
+                let cap = PathQueriable::<F>::get_cap(tree);
+                Some(ColumnMajorBaseOracleForLDE {
+                    cosets: Box::new(MaterializedCosets {
+                        cosets: vec![ColumnMajorBaseOracleForCoset {
+                            original_values_normal_order: coset0,
+                            offset: F::ONE,
+                            coset_size_log2: *coset_size_log2,
+                        }],
+                    }),
+                    tree: T::build_over_leaf_hashes(cap.cap.clone(), cap.cap.len(), worker),
+                    values_per_leaf: *values_per_leaf,
+                    coset_size_log2: *coset_size_log2,
+                })
             }
-            SetupCommitment::OnDisk { .. } => {
-                unimplemented!("on-disk setup commitment queries are not implemented yet")
+        }
+    }
+
+    /// For `OnDisk`, the round-0 setup query for `query_index`: offset-major leaf
+    /// values from the on-disk RS source and the Merkle path from the on-disk tree.
+    /// `None` for `InMemory` (whir_fold falls back to the materialized setup oracle).
+    fn hook_query(&self, query_index: usize) -> Option<(Vec<Vec<F>>, BaseFieldQuery<F, T>)> {
+        match self {
+            SetupCommitment::InMemory(_) => None,
+            SetupCommitment::OnDisk {
+                rs,
+                tree,
+                values_per_leaf,
+                coset_size_log2,
+            } => {
+                let num_cosets = rs.num_cosets();
+                let coset_index = query_index & (num_cosets - 1);
+                let internal_index = query_index / num_cosets;
+                let coset_tree_size = (1usize << coset_size_log2) / values_per_leaf;
+                assert!(internal_index < coset_tree_size);
+                let values =
+                    rs.values_for_coset_and_index(coset_index, internal_index, *values_per_leaf);
+                let coset_dest_index =
+                    crate::fft::bitreverse_index(coset_index, num_cosets.trailing_zeros());
+                let tree_index = coset_dest_index * coset_tree_size + internal_index;
+                let (_leaf_hash, path) = PathQueriable::<F>::get_proof::<Global>(tree, tree_index);
+                let leaf_values_concatenated = values.iter().flatten().copied().collect();
+                let query = BaseFieldQuery::<F, T> {
+                    index: tree_index,
+                    leaf_values_concatenated,
+                    path,
+                    _marker: core::marker::PhantomData,
+                };
+                Some((values, query))
             }
         }
     }
@@ -1299,36 +1368,50 @@ where
         );
     let whir_batching_challenge = whir_batching_challenges[0];
 
-    // Under `RsCodewordSource::Recompute` the base oracles are "slim" (they don't
-    // hold every LDE coset), so install a query hook that recomputes the queried
-    // coset on demand from the per-set coset-by-coset commitments, and switch the
-    // intermediate (folded) RS oracles to coset-by-coset too. `set_idx`: 0 = memory
-    // (or the merged mem+witness oracle), 1 = witness (separate mode only), 2 =
-    // setup (always the in-memory setup commitment). Sets with no columns are never
-    // queried, so their recompute source may be `None`.
-    let recompute_hook = base_recompute.as_ref().map(|sources| {
-        move |set_idx: usize, query_index: usize| -> (Vec<Vec<F>>, BaseFieldQuery<F, T>) {
+    // Setup oracle whir_fold reads for batching: for an on-disk setup, a slim oracle
+    // materialized from the on-disk RS source + tree cap; for in-memory, the passed
+    // oracle. (Kept in a local so the borrow lives across the whir_fold call.)
+    let setup_slim_owned = setup_commitment.build_whir_setup_oracle(worker);
+    let setup_oracle: &ColumnMajorBaseOracleForLDE<F, T> = match &setup_slim_owned {
+        Some(slim) => slim,
+        None => setup_commitment.as_in_memory_oracle(),
+    };
+
+    // A per-set base query hook is needed when the memory/witness RS codewords are
+    // recomputed (slim base oracles) OR the setup is on-disk. The hook returns `None`
+    // for a set it doesn't own, so whir_fold falls back to that set's materialized
+    // oracle. `set_idx`: 0 = memory (or merged mem+witness), 1 = witness (separate
+    // mode), 2 = setup. The intermediate (folded) oracle policy follows the
+    // memory/witness RS policy only — the setup's storage does not affect it.
+    let use_recompute_intermediates = base_recompute.is_some();
+    let need_hook = base_recompute.is_some() || setup_commitment.is_on_disk();
+    let query_hook = if need_hook {
+        let hook = move |set_idx: usize,
+                         query_index: usize|
+              -> Option<(Vec<Vec<F>>, BaseFieldQuery<F, T>)> {
             match set_idx {
-                0 => sources
-                    .mem
+                0 => base_recompute
                     .as_ref()
-                    .expect("memory recompute source must exist when set 0 has columns")
-                    .query_structured(query_index, twiddles, worker),
-                1 => sources
-                    .wit
+                    .and_then(|s| s.mem.as_ref())
+                    .map(|c| c.query_structured(query_index, twiddles, worker)),
+                1 => base_recompute
                     .as_ref()
-                    .expect("witness recompute source must exist when set 1 has columns")
-                    .query_structured(query_index, twiddles, worker),
-                2 => setup_commitment.query_for_folded_index(query_index),
-                _ => unreachable!("only memory(0)/witness(1)/setup(2) base sets exist"),
+                    .and_then(|s| s.wit.as_ref())
+                    .map(|c| c.query_structured(query_index, twiddles, worker)),
+                2 => setup_commitment.hook_query(query_index),
+                _ => None,
             }
-        }
-    });
-    let base_query_hook: Option<&dyn Fn(usize, usize) -> (Vec<Vec<F>>, BaseFieldQuery<F, T>)> =
-        recompute_hook
-            .as_ref()
-            .map(|h| h as &dyn Fn(usize, usize) -> (Vec<Vec<F>>, BaseFieldQuery<F, T>));
-    let intermediate_oracle_mode = if base_recompute.is_some() {
+        };
+        Some(hook)
+    } else {
+        None
+    };
+    let base_query_hook: Option<
+        &dyn Fn(usize, usize) -> Option<(Vec<Vec<F>>, BaseFieldQuery<F, T>)>,
+    > = query_hook
+        .as_ref()
+        .map(|h| h as &dyn Fn(usize, usize) -> Option<(Vec<Vec<F>>, BaseFieldQuery<F, T>)>);
+    let intermediate_oracle_mode = if use_recompute_intermediates {
         crate::gkr::whir::WhirIntermediateOracleMode::CosetByCoset
     } else {
         crate::gkr::whir::WhirIntermediateOracleMode::Monolithic
@@ -1359,7 +1442,7 @@ where
         mem_polys_claims,
         wit_oracle,
         wit_polys_claims,
-        setup_commitment.as_in_memory_oracle(),
+        setup_oracle,
         setup_polys_claims,
         base_layer_z.clone(),
         whir_batching_challenge,

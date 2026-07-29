@@ -319,7 +319,8 @@ mod test {
             trace, 1, cap_size, true, false, false, &worker,
         );
 
-        let bytes = tree.serialize_to_disk_format();
+        let mut bytes = Vec::new();
+        tree.serialize_to_disk_format(&mut bytes).unwrap();
         let disk = <Keccak256MerkleTreeWithCap<Global> as ColumnMajorMerkleTreeConstructor<
             Proth120,
         >>::disk_path(&bytes);

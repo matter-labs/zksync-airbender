@@ -191,14 +191,15 @@ fn run_generation(cfg: &GenConfig, worker: &Worker) {
         worker,
     );
 
-    // set_idx: 0 = memory (8 cols), 1 = witness (1 col); setup (2) is empty.
+    // set_idx: 0 = memory (8 cols), 1 = witness (1 col); setup (2) is empty. The hook
+    // returns `None` for sets it doesn't own (whir_fold falls back to the oracle).
     let base_query_hook = |set_idx: usize,
                            query_index: usize|
-     -> (Vec<Vec<Proth120>>, BaseFieldQuery<Proth120, Tree>) {
+     -> Option<(Vec<Vec<Proth120>>, BaseFieldQuery<Proth120, Tree>)> {
         match set_idx {
-            0 => mem_commitment.query_structured(query_index, &twiddles, worker),
-            1 => wit_commitment.query_structured(query_index, &twiddles, worker),
-            _ => unreachable!("only memory(0)/witness(1) base sets carry columns"),
+            0 => Some(mem_commitment.query_structured(query_index, &twiddles, worker)),
+            1 => Some(wit_commitment.query_structured(query_index, &twiddles, worker)),
+            _ => None,
         }
     };
 

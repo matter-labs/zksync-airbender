@@ -128,20 +128,13 @@ impl<B: GoodAllocator> ColumnMajorMerkleTreeConstructor<Proth120>
         }
     }
 
-    fn serialize_to_disk_format(&self) -> Vec<u8> {
-        use crate::merkle_trees::on_disk;
-        let mut out = Vec::with_capacity(on_disk::serialized_len(
-            self.leaf_hashes.len(),
-            self.cap_size,
-        ));
-        on_disk::serialize_tree(
-            &mut out,
+    fn serialize_to_disk_format<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        crate::merkle_trees::on_disk::serialize_tree(
+            writer,
             self.cap_size,
             &self.leaf_hashes[..],
             &self.node_hashes_enumerated_from_leafs,
         )
-        .expect("writing to an in-memory Vec cannot fail");
-        out
     }
 
     fn disk_path<'a>(bytes: &'a [u8]) -> Self::DiskPath<'a> {

@@ -96,6 +96,7 @@ pub mod coset_commit;
 pub mod hypercube_to_monomial;
 pub mod proximity_testing_modes;
 pub mod queries;
+pub mod rs_on_disk;
 pub mod whir_proof;
 
 #[cfg(test)]
@@ -203,6 +204,10 @@ impl<F: PrimeField + TwoAdicField> RSQueriable<F> for MaterializedCosets<F> {
         self.cosets.len()
     }
 
+    fn coset_size_log2(&self) -> usize {
+        self.cosets[0].coset_size_log2
+    }
+
     fn values_for_coset_and_index(
         &self,
         coset_in_natural_enumeration: usize,
@@ -217,6 +222,10 @@ impl<F: PrimeField + TwoAdicField> RSQueriable<F> for MaterializedCosets<F> {
         MainDomainColumn::Evals(Cow::Borrowed(
             &self.cosets[0].original_values_normal_order[column_index].column[..],
         ))
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
     }
 }
 
@@ -605,12 +614,14 @@ pub fn whir_fold<
     mut transcript_seed: TR::Seed,
     tree_cap_size: usize,
     trace_len_log2: usize,
-    // Optional base-layer query source. When `Some`, round-0 queries come from here
-    // (given `set_idx` in {0=mem,1=witness,2=setup} and the folded-domain index)
-    // instead of `oracle.query_for_folded_index`, so the base oracles need not hold
-    // every LDE coset (see `coset_commit::CosetByCosetBaseCommitment`). Returns the
-    // offset-major leaf values (for batching) and the `BaseFieldQuery` (for the proof).
-    base_query_hook: Option<&dyn Fn(usize, usize) -> (Vec<Vec<F>>, BaseFieldQuery<F, T>)>,
+    // Optional base-layer query source. When present, round-0 queries for a given
+    // `set_idx` (in {0=mem,1=witness,2=setup}) and folded-domain index come from here
+    // instead of `oracle.query_for_folded_index`, so those base oracles need not hold
+    // every LDE coset (see `coset_commit::CosetByCosetBaseCommitment`) or need not be
+    // in memory at all (on-disk setup). Returns `None` for sets it doesn't own (they
+    // fall back to the materialized oracle), else the offset-major leaf values (for
+    // batching) and the `BaseFieldQuery` (for the proof).
+    base_query_hook: Option<&dyn Fn(usize, usize) -> Option<(Vec<Vec<F>>, BaseFieldQuery<F, T>)>>,
     // How to materialize each intermediate (folded) RS oracle.
     intermediate_oracle_mode: WhirIntermediateOracleMode,
     worker: &Worker,
@@ -1144,8 +1155,13 @@ where
             {
                 assert_eq!(oracle.num_columns(), batching_challenges.len());
                 if oracle.num_columns() > 0 {
-                    let (leaf, query) = match base_query_hook {
-                        Some(hook) => hook(set_idx, query_index),
+                    // The hook (when present) may serve only some sets; it returns
+                    // `None` for sets it doesn't own, which fall back to the
+                    // materialized oracle. This lets e.g. an on-disk setup set be
+                    // hooked while in-memory memory/witness sets are not.
+                    let (leaf, query) = match base_query_hook.and_then(|hook| hook(set_idx, query_index))
+                    {
+                        Some(pair) => pair,
                         None => {
                             let (_idx, leaf, query) = oracle.query_for_folded_index(query_index);
                             (leaf, query)
