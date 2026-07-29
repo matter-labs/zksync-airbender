@@ -125,12 +125,34 @@ impl<B: GoodAllocator, const USE_REDUCED_BLAKE2_ROUNDS: bool>
 {
     type Verifier = Blake2sForEverythingVerifier;
 
+    type DiskPath<'a> = crate::merkle_trees::on_disk::MmapMerkleTreePath<'a>;
+
     fn dummy() -> Self {
         Blake2sU32MerkleTreeWithCap {
             cap_size: 0,
             leaf_hashes: Vec::new_in(B::default()),
             node_hashes_enumerated_from_leafs: vec![],
         }
+    }
+
+    fn serialize_to_disk_format(&self) -> Vec<u8> {
+        use crate::merkle_trees::on_disk;
+        let mut out = Vec::with_capacity(on_disk::serialized_len(
+            self.leaf_hashes.len(),
+            self.cap_size,
+        ));
+        on_disk::serialize_tree(
+            &mut out,
+            self.cap_size,
+            &self.leaf_hashes[..],
+            &self.node_hashes_enumerated_from_leafs,
+        )
+        .expect("writing to an in-memory Vec cannot fail");
+        out
+    }
+
+    fn disk_path<'a>(bytes: &'a [u8]) -> Self::DiskPath<'a> {
+        crate::merkle_trees::on_disk::MmapMerkleTreePath::from_bytes(bytes)
     }
 
     fn get_cap(&self) -> MerkleTreeCapVarLength {

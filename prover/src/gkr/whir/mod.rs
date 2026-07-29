@@ -76,8 +76,12 @@ use crate::gkr::PAR_THRESHOLD;
 use crate::query_utils::assemble_query_index;
 use crate::{
     gkr::prover::apply_row_wise,
-    merkle_trees::{ColumnMajorMerkleTreeConstructor, MerkleTreeCapVarLength},
+    merkle_trees::{
+        ColumnMajorMerkleTreeConstructor, MainDomainColumn, MerkleTreeCapVarLength, RSQueriable,
+        SingleCosetRSQueriable,
+    },
 };
+use std::borrow::Cow;
 use fft::{
     batch_inverse_inplace, bitreverse_enumeration_inplace, bitreverse_index,
     domain_generator_for_size, materialize_powers_serial_starting_with_one, Twiddles,
@@ -85,7 +89,7 @@ use fft::{
 use field::{Field, FieldExtension, PrimeField, TwoAdicField};
 use std::alloc::Global;
 use std::sync::Arc;
-use transcript::{Seed, Transcript};
+use transcript::Transcript;
 use worker::{IterableWithGeometry, Worker};
 
 pub mod coset_commit;
@@ -110,8 +114,8 @@ pub struct ColumnMajorBaseOracleForCoset<F: PrimeField + TwoAdicField> {
     pub coset_size_log2: usize,
 }
 
-impl<F: PrimeField + TwoAdicField> ColumnMajorBaseOracleForCoset<F> {
-    pub fn values_for_folded_index(&self, index: usize, values_per_leaf: usize) -> Vec<Vec<F>> {
+impl<F: PrimeField + TwoAdicField> SingleCosetRSQueriable<F> for ColumnMajorBaseOracleForCoset<F> {
+    fn values_for_folded_index(&self, index: usize, values_per_leaf: usize) -> Vec<Vec<F>> {
         assert!(values_per_leaf.is_power_of_two());
         assert!(index < (1 << self.coset_size_log2) / values_per_leaf);
         let trace_len = 1 << self.coset_size_log2;
@@ -181,12 +185,55 @@ impl<F: PrimeField + TwoAdicField> ColumnMajorBaseOracleForCoset<F> {
     }
 }
 
+/// A full RS codeword held fully materialized in RAM: every LDE coset's
+/// evaluations for every column. Implements [`RSQueriable`] so a base oracle can
+/// talk to it (or to a recompute-on-demand source such as
+/// `CosetByCosetBaseCommitment`) behind the same trait object.
+#[derive(Debug)]
+pub struct MaterializedCosets<F: PrimeField + TwoAdicField> {
+    pub cosets: Vec<ColumnMajorBaseOracleForCoset<F>>,
+}
+
+impl<F: PrimeField + TwoAdicField> RSQueriable<F> for MaterializedCosets<F> {
+    fn num_columns(&self) -> usize {
+        self.cosets[0].original_values_normal_order.len()
+    }
+
+    fn num_cosets(&self) -> usize {
+        self.cosets.len()
+    }
+
+    fn values_for_coset_and_index(
+        &self,
+        coset_in_natural_enumeration: usize,
+        index: usize,
+        values_per_leaf: usize,
+    ) -> Vec<Vec<F>> {
+        self.cosets[coset_in_natural_enumeration].values_for_folded_index(index, values_per_leaf)
+    }
+
+    fn main_domain_column(&self, column_index: usize) -> MainDomainColumn<'_, F> {
+        // Materialized cosets hold main-domain EVALUATIONS.
+        MainDomainColumn::Evals(Cow::Borrowed(
+            &self.cosets[0].original_values_normal_order[column_index].column[..],
+        ))
+    }
+}
+
+/// Boxed [`RSQueriable`] value source for a base oracle. The trait object is
+/// `Send + Sync + Debug` via the trait's supertraits, so it can back a
+/// `#[derive(Debug)]` oracle and cross the worker boundary.
+pub type BoxedBaseRSSource<F> = Box<dyn RSQueriable<F>>;
+
 #[derive(Debug)]
 pub struct ColumnMajorBaseOracleForLDE<
     F: PrimeField + TwoAdicField,
     T: ColumnMajorMerkleTreeConstructor<F>,
 > {
-    pub cosets: Vec<ColumnMajorBaseOracleForCoset<F>>,
+    /// The RS-codeword value source (materialized cosets, or a recompute-on-demand
+    /// commitment). Kept behind a trait object so the storage policy is decoupled
+    /// from the query logic.
+    pub cosets: BoxedBaseRSSource<F>,
     pub tree: T,
     pub values_per_leaf: usize,
     pub coset_size_log2: usize,
@@ -200,13 +247,7 @@ impl<F: PrimeField + TwoAdicField, T: ColumnMajorMerkleTreeConstructor<F>>
             domain_generator_for_size::<F>((1 << coset_size_log2) * lde_factor as u64),
             lde_factor,
         );
-        let mut new = Self {
-            cosets: Vec::with_capacity(lde_factor),
-            tree: T::dummy(),
-            values_per_leaf,
-            coset_size_log2,
-        };
-
+        let mut cosets = Vec::with_capacity(lde_factor);
         for i in 0..lde_factor {
             let offset = generators[i];
             let coset = ColumnMajorBaseOracleForCoset {
@@ -214,27 +255,35 @@ impl<F: PrimeField + TwoAdicField, T: ColumnMajorMerkleTreeConstructor<F>>
                 offset,
                 coset_size_log2,
             };
-            new.cosets.push(coset);
+            cosets.push(coset);
         }
 
-        new
+        Self {
+            cosets: Box::new(MaterializedCosets { cosets }),
+            tree: T::dummy(),
+            values_per_leaf,
+            coset_size_log2,
+        }
     }
 
     pub fn num_columns(&self) -> usize {
-        self.cosets[0].original_values_normal_order.len()
+        self.cosets.num_columns()
     }
 
     pub fn query_for_folded_index(
         &self,
         index: usize,
     ) -> (usize, Vec<Vec<F>>, BaseFieldQuery<F, T>) {
-        let num_cosets = self.cosets.len();
+        let num_cosets = self.cosets.num_cosets();
         let coset_index = index & (num_cosets - 1);
         let internal_index = index / num_cosets;
         let coset_tree_size = (1 << self.coset_size_log2) / self.values_per_leaf;
         assert!(internal_index < coset_tree_size);
-        let values =
-            self.cosets[coset_index].values_for_folded_index(internal_index, self.values_per_leaf);
+        let values = self.cosets.values_for_coset_and_index(
+            coset_index,
+            internal_index,
+            self.values_per_leaf,
+        );
 
         // Tree leaves are laid out sequentially by coset (with bit-reversed coset
         // order)
@@ -251,11 +300,8 @@ impl<F: PrimeField + TwoAdicField, T: ColumnMajorMerkleTreeConstructor<F>>
             // the coset-by-coset tests already validate that leaf hashing against the
             // monolithic tree.
             if core::mem::size_of::<F>() <= core::mem::size_of::<u32>() {
-                let recomputed = Self::compute_base_field_leaf_hash(
-                    &self.cosets[coset_index],
-                    internal_index,
-                    self.values_per_leaf,
-                );
+                let recomputed =
+                    Self::compute_base_field_leaf_hash(&values, self.values_per_leaf);
                 assert_eq!(
                     recomputed, _leaf_hash,
                     "Leaf hash mismatch at query_index={index}, tree_index={tree_index}"
@@ -273,22 +319,23 @@ impl<F: PrimeField + TwoAdicField, T: ColumnMajorMerkleTreeConstructor<F>>
     }
 
     /// Hash leaf data the same way `blake2s_leaf_hashes_from_cosets` does:
-    /// column-major with bit-reversed offsets.
+    /// column-major with bit-reversed offsets. `values_offset_major` is the
+    /// `[offset][column]` leaf produced by [`RSQueriable::values_for_coset_and_index`];
+    /// the tree hashes it column-major (column outer, offset inner), so we transpose.
     #[cfg(feature = "gkr_self_checks")]
     fn compute_base_field_leaf_hash(
-        coset: &ColumnMajorBaseOracleForCoset<F>,
-        internal_index: usize,
+        values_offset_major: &[Vec<F>],
         values_per_leaf: usize,
     ) -> [u32; 8] {
         use blake2s_u32::{Blake2sState, BLAKE2S_BLOCK_SIZE_U32_WORDS};
 
-        let trace_len = 1 << coset.coset_size_log2;
-        let offsets = offsets_vec_for_leaf_construction(trace_len, values_per_leaf);
+        debug_assert_eq!(values_offset_major.len(), values_per_leaf);
+        let num_columns = values_offset_major[0].len();
 
         let mut buffer = Vec::new();
-        for col in coset.original_values_normal_order.iter() {
-            for &offset in offsets.iter() {
-                buffer.push(col.column[offset + internal_index].as_u32_raw_repr_reduced());
+        for c in 0..num_columns {
+            for o in 0..values_per_leaf {
+                buffer.push(values_offset_major[o][c].as_u32_raw_repr_reduced());
             }
         }
 
@@ -584,12 +631,17 @@ where
         // just blindly compute consistency of RS oracles and evaluation points
         for (j, (rs, evals)) in oracle_refs.iter().zip(evals_refs.iter()).enumerate() {
             for (i, eval) in evals.iter().enumerate() {
-                let main_domain_evals =
-                    rs.cosets[0].original_values_normal_order[i].column[..].to_vec();
-                let monomial_form = compute_column_major_monomial_form_from_main_domain_owned(
-                    main_domain_evals,
-                    twiddles,
-                );
+                let column = rs.cosets.main_domain_column(i);
+                // Reduce to monomial form: evals need the inverse transform,
+                // monomials are already there.
+                let monomial_form = if column.is_monomials() {
+                    column.into_owned()
+                } else {
+                    compute_column_major_monomial_form_from_main_domain_owned(
+                        column.into_owned(),
+                        twiddles,
+                    )
+                };
                 assert_eq!(monomial_form.len(), 1 << trace_len_log2);
                 let mut sumcheck_evals = monomial_form;
                 multivariate_coeffs_into_hypercube_evals(
@@ -674,7 +726,7 @@ where
         evals_refs.iter().map(|el| el.len()).sum::<usize>()
     );
     for (a, b) in oracle_refs.iter().zip(evals_refs.iter()) {
-        assert_eq!(a.cosets[0].original_values_normal_order.len(), b.len());
+        assert_eq!(a.num_columns(), b.len());
     }
 
     let challenge_powers = materialize_powers_serial_starting_with_one::<E, Global>(
@@ -693,49 +745,90 @@ where
     ];
 
     println!("Computing batched poly for proximity testing");
-    let mut batched_poly_on_main_domain = vec![E::ZERO; 1 << trace_len_log2];
 
-    apply_row_wise::<F, E>(
-        vec![],
-        vec![&mut batched_poly_on_main_domain],
-        1 << trace_len_log2,
-        worker,
-        |_, dest, chunk_start, chunk_size| {
-            assert_eq!(dest.len(), 1);
-            let mut dest = dest;
-            let dest = dest.pop().unwrap();
-            for (challenges_set, values_set) in [
-                (
-                    base_mem_powers,
-                    &oracle_refs[0].cosets[0].original_values_normal_order,
-                ),
-                (
-                    base_witness_powers,
-                    &oracle_refs[1].cosets[0].original_values_normal_order,
-                ),
-                (
-                    base_setup_powers,
-                    &oracle_refs[2].cosets[0].original_values_normal_order,
-                ),
-            ] {
-                assert_eq!(challenges_set.len(), values_set.len());
-                for (batch_challenge, base_value) in challenges_set.iter().zip(values_set.iter()) {
-                    let src = &base_value.column[..]; // main domain only
-                    assert_eq!(src.len(), 1 << trace_len_log2);
-                    for i in 0..chunk_size {
-                        let mut result = *batch_challenge;
-                        result.mul_assign_by_base(&src[chunk_start + i]);
-                        dest[i].add_assign(&result);
-                    }
-                }
+    // Materialize each oracle set's MAIN-domain columns once via
+    // `RSQueriable::main_domain_column`. A source returns whichever form it holds
+    // cheaply: materialized cosets give EVALUATIONS, a monomial-storing recompute
+    // source gives MONOMIAL coefficients directly.
+    let main_domain_cols: [Vec<MainDomainColumn<'_, F>>; 3] = [
+        (0..oracle_refs[0].num_columns())
+            .map(|c| oracle_refs[0].cosets.main_domain_column(c))
+            .collect(),
+        (0..oracle_refs[1].num_columns())
+            .map(|c| oracle_refs[1].cosets.main_domain_column(c))
+            .collect(),
+        (0..oracle_refs[2].num_columns())
+            .map(|c| oracle_refs[2].cosets.main_domain_column(c))
+            .collect(),
+    ];
+
+    // Split the columns by representation. Both batching and the evals→coefficients
+    // inverse transform are linear, so we can accumulate the eval-form and the
+    // monomial-form columns into separate batched polynomials and combine in
+    // monomial space:
+    //   monomial_form = IFFT(sum_i c_i * evals_i) + sum_j c_j * monomials_j
+    // When every source is materialized (all evals) this reduces to the original
+    // single IFFT; a monomial-storing source contributes with no transform at all.
+    let mut eval_cols: Vec<(E, &[F])> = Vec::new();
+    let mut monomial_cols: Vec<(E, &[F])> = Vec::new();
+    for (challenges_set, values_set) in [
+        (base_mem_powers, &main_domain_cols[0]),
+        (base_witness_powers, &main_domain_cols[1]),
+        (base_setup_powers, &main_domain_cols[2]),
+    ] {
+        assert_eq!(challenges_set.len(), values_set.len());
+        for (batch_challenge, column) in challenges_set.iter().zip(values_set.iter()) {
+            let src = column.as_slice();
+            assert_eq!(src.len(), 1 << trace_len_log2);
+            if column.is_monomials() {
+                monomial_cols.push((*batch_challenge, src));
+            } else {
+                eval_cols.push((*batch_challenge, src));
             }
-        },
-    );
+        }
+    }
 
-    let monomial_form = compute_column_major_monomial_form_from_main_domain_owned(
-        batched_poly_on_main_domain,
-        twiddles,
-    );
+    // Weighted sum of a set of same-length base-field columns into an E-valued
+    // accumulator (`dest += challenge * column`), parallelized over rows.
+    let batch_columns = |cols: &[(E, &[F])], worker: &Worker| -> Vec<E> {
+        let mut acc = vec![E::ZERO; 1 << trace_len_log2];
+        if !cols.is_empty() {
+            apply_row_wise::<F, E>(
+                vec![],
+                vec![&mut acc],
+                1 << trace_len_log2,
+                worker,
+                |_, dest, chunk_start, chunk_size| {
+                    let mut dest = dest;
+                    let dest = dest.pop().unwrap();
+                    for (batch_challenge, src) in cols.iter() {
+                        for i in 0..chunk_size {
+                            let mut result = *batch_challenge;
+                            result.mul_assign_by_base(&src[chunk_start + i]);
+                            dest[i].add_assign(&result);
+                        }
+                    }
+                },
+            );
+        }
+        acc
+    };
+
+    let batched_evals = batch_columns(&eval_cols, worker);
+    let batched_monomials_direct = batch_columns(&monomial_cols, worker);
+
+    // Eval-form contribution needs the inverse transform; the monomial-form
+    // contribution is already in coefficient space and is simply added on.
+    let mut monomial_form = if eval_cols.is_empty() {
+        // No eval columns: `batched_evals` is the zero polynomial, whose monomial
+        // form is itself — skip the (otherwise wasted) inverse transform.
+        batched_evals
+    } else {
+        compute_column_major_monomial_form_from_main_domain_owned(batched_evals, twiddles)
+    };
+    for (m, d) in monomial_form.iter_mut().zip(batched_monomials_direct.iter()) {
+        m.add_assign(d);
+    }
 
     assert_eq!(monomial_form.len(), 1 << trace_len_log2);
 
@@ -1049,11 +1142,8 @@ where
             for (set_idx, (oracle, batching_challenges)) in
                 oracle_refs.iter().zip(batch_challenges.iter()).enumerate()
             {
-                assert_eq!(
-                    oracle.cosets[0].original_values_normal_order.len(),
-                    batching_challenges.len()
-                );
-                if oracle.cosets[0].original_values_normal_order.len() > 0 {
+                assert_eq!(oracle.num_columns(), batching_challenges.len());
+                if oracle.num_columns() > 0 {
                     let (leaf, query) = match base_query_hook {
                         Some(hook) => hook(set_idx, query_index),
                         None => {
@@ -3508,7 +3598,7 @@ mod test {
             E::from_base(F::from_u32_with_reduction(7)),
             &whir_schedule,
             &twiddles,
-            Seed::default(),
+            ::transcript::Seed::default(),
             1,
             size.trailing_zeros() as usize,
             None,

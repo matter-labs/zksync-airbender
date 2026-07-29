@@ -120,25 +120,36 @@ pub(super) fn assert_recursive_whir_oracle_parity_for_supported_path(
     let (base_mem_powers, rest) = challenge_powers.split_at(evals_refs[0].len());
     let (base_wit_powers, base_setup_powers) = rest.split_at(evals_refs[1].len());
 
+    // Main-domain (coset-0) columns per oracle set, read through the RSQueriable
+    // value source (matches `whir_fold`'s batching after the lazy-oracle refactor).
+    // These test oracles are materialized, so the source returns EVALUATIONS.
+    use prover::merkle_trees::{MainDomainColumn, RSQueriable};
+    let main_domain_cols: [Vec<MainDomainColumn<'_, BF>>; 3] = [
+        (0..oracle_refs[0].num_columns())
+            .map(|c| oracle_refs[0].cosets.main_domain_column(c))
+            .collect(),
+        (0..oracle_refs[1].num_columns())
+            .map(|c| oracle_refs[1].cosets.main_domain_column(c))
+            .collect(),
+        (0..oracle_refs[2].num_columns())
+            .map(|c| oracle_refs[2].cosets.main_domain_column(c))
+            .collect(),
+    ];
+
     let mut batched_poly_on_main_domain = vec![E4::ZERO; 1 << trace_len_log2];
     for (challenges_set, values_set) in [
-        (
-            base_mem_powers,
-            &oracle_refs[0].cosets[0].original_values_normal_order,
-        ),
-        (
-            base_wit_powers,
-            &oracle_refs[1].cosets[0].original_values_normal_order,
-        ),
-        (
-            base_setup_powers,
-            &oracle_refs[2].cosets[0].original_values_normal_order,
-        ),
+        (base_mem_powers, &main_domain_cols[0]),
+        (base_wit_powers, &main_domain_cols[1]),
+        (base_setup_powers, &main_domain_cols[2]),
     ] {
         for (batch_challenge, base_value) in challenges_set.iter().zip(values_set.iter()) {
+            debug_assert!(
+                !base_value.is_monomials(),
+                "parity reference batches in evaluation form"
+            );
             for (dst, src) in batched_poly_on_main_domain
                 .iter_mut()
-                .zip(base_value.column.iter())
+                .zip(base_value.as_slice().iter())
             {
                 let mut term = *batch_challenge;
                 term.mul_assign_by_base(src);

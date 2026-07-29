@@ -4,7 +4,10 @@ use crate::cs::gkr_compiler::GKRCircuitArtifact;
 use crate::cs::tables::TableDriver;
 use crate::definitions::SecurityLevel;
 use crate::gkr::prover::setup::GKRSetup;
-use crate::gkr::prover::{prove_configured_with_gkr, CommitmentMode};
+use crate::gkr::prover::{
+    prove_configured_with_gkr, prove_configured_with_gkr_with_storage, CommitmentMode,
+    RsCodewordSource, SetupCommitment,
+};
 use crate::gkr::prover::{GKRExternalChallenges, GKRProof};
 use crate::gkr::prover_config::example_configs;
 use crate::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
@@ -112,6 +115,70 @@ pub fn prove_built_family_trace(
     println!("Proving time is {:?}", now.elapsed());
 
     proof
+}
+
+/// Like [`prove_built_family_trace`] but lets the caller pick the RS-codeword
+/// storage policy ([`RsCodewordSource`]) via the config-aware prover entry point.
+/// The setup commitment is always in-memory. For a fixed [`CommitmentMode`] the
+/// resulting proof must be identical across storage policies — see
+/// `add_sub_family_rs_codeword_source_parity`.
+#[allow(clippy::too_many_arguments)]
+pub fn prove_built_family_trace_with_rs_source(
+    circuit: &GKRCircuitArtifact<BabyBearField>,
+    table_driver: &TableDriver<BabyBearField>,
+    decoder_table_data: &[Option<ExecutorFamilyDecoderData>],
+    full_trace: GKRFullWitnessTrace<BabyBearField, Global, Global>,
+    trace_len: usize,
+    external_challenges: &GKRExternalChallenges<BabyBearField, BabyBearExt4>,
+    level: SecurityLevel,
+    rs_codeword_source: RsCodewordSource,
+    worker: &Worker,
+) -> GKRProof<BabyBearField, BabyBearExt4, DefaultTreeConstructor> {
+    let mut prover_config =
+        example_configs::config_for_security_level_under_pessimistic_conjecture(
+            trace_len.trailing_zeros() as usize,
+            level,
+        );
+    // `RsCodewordSource::Recompute` (coset-by-coset) requires `cap_size <= lde_factor`
+    // (the cap must sit at or above the per-coset subtree roots). The default family
+    // config has cap_size (16) > lde_factor (2), so clamp the cap for this parity
+    // path — applied identically to both storage policies, so the comparison stays
+    // apples-to-apples.
+    if prover_config.cap_size > prover_config.lde_factor {
+        prover_config.cap_size = prover_config.lde_factor;
+        prover_config.whir_schedule.cap_size = prover_config.lde_factor;
+    }
+    let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, worker);
+    let setup = GKRSetup::construct(table_driver, decoder_table_data, trace_len, circuit);
+    let setup_oracle = setup.commit(
+        &twiddles,
+        prover_config.lde_factor,
+        prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
+        prover_config.cap_size,
+        trace_len.trailing_zeros() as usize,
+        worker,
+    );
+    let setup_commitment = SetupCommitment::InMemory(&setup_oracle);
+
+    prove_configured_with_gkr_with_storage::<
+        BabyBearField,
+        BabyBearExt4,
+        DefaultTreeConstructor,
+        Blake2sTranscript,
+    >(
+        circuit,
+        external_challenges,
+        full_trace,
+        &setup,
+        &setup_commitment,
+        &twiddles,
+        &prover_config,
+        CommitmentMode::SeparateMemoryAndWitness,
+        rs_codeword_source,
+        Vec::new(),
+        trace_len,
+        worker,
+    )
 }
 
 /// Per-variant compiled-circuit JSON path

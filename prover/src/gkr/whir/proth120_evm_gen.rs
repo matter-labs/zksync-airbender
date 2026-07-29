@@ -169,7 +169,9 @@ fn run_generation(cfg: &GenConfig, worker: &Worker) {
             let cap = c.get_cap();
             let cap_tree = Tree::continue_from_leaf_hashes(cap.cap.clone(), cap.cap.len(), worker);
             ColumnMajorBaseOracleForLDE {
-                cosets: vec![coset0],
+                cosets: Box::new(MaterializedCosets {
+                    cosets: vec![coset0],
+                }),
                 tree: cap_tree,
                 values_per_leaf: c.values_per_leaf,
                 coset_size_log2: n,

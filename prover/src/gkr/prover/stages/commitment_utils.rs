@@ -1,5 +1,5 @@
 use super::*;
-use crate::gkr::whir::{hypercube_to_monomial, ColumnMajorBaseOracleForLDE};
+use crate::gkr::whir::{hypercube_to_monomial, ColumnMajorBaseOracleForLDE, MaterializedCosets};
 use fft::Twiddles;
 use fft::{
     bitreverse_enumeration_inplace, distribute_powers_parallel, distribute_powers_serial,
@@ -500,7 +500,7 @@ where
             cosets.push(trace_part);
         }
         return ColumnMajorBaseOracleForLDE {
-            cosets,
+            cosets: Box::new(MaterializedCosets { cosets }),
             tree: T::dummy(),
             values_per_leaf: 1 << whir_first_fold_step_log2,
             coset_size_log2: trace_len_log2,
@@ -554,7 +554,7 @@ where
     );
 
     ColumnMajorBaseOracleForLDE {
-        cosets,
+        cosets: Box::new(MaterializedCosets { cosets }),
         tree,
         values_per_leaf,
         coset_size_log2: trace_len_log2,
@@ -608,7 +608,7 @@ where
             });
         }
         return ColumnMajorBaseOracleForLDE {
-            cosets,
+            cosets: Box::new(MaterializedCosets { cosets }),
             tree: T::dummy(),
             values_per_leaf,
             coset_size_log2: packed_trace_len_log2,
@@ -686,7 +686,7 @@ where
     );
 
     ColumnMajorBaseOracleForLDE {
-        cosets,
+        cosets: Box::new(MaterializedCosets { cosets }),
         tree,
         values_per_leaf,
         coset_size_log2: packed_trace_len_log2,
