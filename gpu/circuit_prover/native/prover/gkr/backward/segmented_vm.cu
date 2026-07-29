@@ -181,6 +181,17 @@ DEVICE_FORCEINLINE void seg_build_fold_weights(e4 *fold_weights, const u32 round
 
 // ── The flat fold (spec 2026-07-28 §3, §5.1) ────────────────────────────────
 //
+// §4.5's loop-form attribution arm. `#pragma unroll 1` currently sits at three
+// sites, all fold helpers — `seg_fold_flat`, `seg_fold_endpoints_flat`,
+// `seg_fold_delta_flat` — and only the FIRST TWO have live instantiations (F3 pins
+// the third's deadness), so the axis touches two sites. A define rather than a
+// source edit, so this build is the same revision as the three pin levels (M4).
+#if defined(AB_GKR_SEG_D3_UNROLL) && AB_GKR_SEG_D3_UNROLL
+constexpr bool AB_GKR_SEG_D3_UNROLL_ENABLED = true;
+#else
+constexpr bool AB_GKR_SEG_D3_UNROLL_ENABLED = false;
+#endif
+
 // A depth-DELTA fold is a dot product over its 2^DELTA physical leaves with
 // challenge-only weights; the Lagrange weights sum to ONE exactly, so it is
 // evaluated in DIFFERENCE form with the q = 0 coefficient identically 1:
@@ -217,11 +228,24 @@ template <u32 DELTA, typename Raw> DEVICE_FORCEINLINE e4 seg_fold_flat(const Raw
   // SM, so the 7-trip chain has no co-resident work to hide its latency behind — it
   // costs 13-66%, which buys `K = 32` plus the `K = 16` two-block occupancy step and
   // so does not justify restoring the blanket unroll; a per-depth loop form (rolled
-  // at DELTA <= 2, unrolled at 3) is an open follow-up.
+  // at DELTA <= 2, unrolled at 3) is the `AB_GKR_SEG_D3_UNROLL` arm below.
+  //
+  // The loop body is duplicated between the two arms because a `#pragma` must
+  // precede its loop TEXTUALLY and `DELTA` is a template parameter — there is no
+  // expression that selects a pragma. Only DELTA == 3 is unrolled; delta <= 2 stays
+  // rolled either way, which is exactly §4.5's minimal matrix.
+  if constexpr (AB_GKR_SEG_D3_UNROLL_ENABLED && DELTA == 3) {
+#pragma unroll
+    for (u32 q = 1; q < (1u << DELTA); q++) {
+      const e4 w = ::ab_gkr_bwd_seg_fold_weights[BASE + q - 1];
+      acc = e4::fma(w, decltype(leaf0)::sub(raw(index + q * span), leaf0), acc);
+    }
+  } else {
 #pragma unroll 1
-  for (u32 q = 1; q < (1u << DELTA); q++) {
-    const e4 w = ::ab_gkr_bwd_seg_fold_weights[BASE + q - 1];
-    acc = e4::fma(w, decltype(leaf0)::sub(raw(index + q * span), leaf0), acc);
+    for (u32 q = 1; q < (1u << DELTA); q++) {
+      const e4 w = ::ab_gkr_bwd_seg_fold_weights[BASE + q - 1];
+      acc = e4::fma(w, decltype(leaf0)::sub(raw(index + q * span), leaf0), acc);
+    }
   }
   return acc;
 }
@@ -267,11 +291,23 @@ DEVICE_FORCEINLINE void seg_fold_endpoints_flat(const Raw &raw, const u32 row, c
   s1 = seg_lift(leaf0_hi);
   // Rolled for the register reason `seg_fold_flat` spells out — more so here: two
   // chains would double the live leaf set an unroll keeps resident.
+  //
+  // Body duplicated for the reason `seg_fold_flat` states: the `#pragma` must
+  // precede its loop textually and `DELTA` is a template parameter.
+  if constexpr (AB_GKR_SEG_D3_UNROLL_ENABLED && DELTA == 3) {
+#pragma unroll
+    for (u32 q = 1; q < (1u << DELTA); q++) {
+      const e4 w = ::ab_gkr_bwd_seg_fold_weights[BASE + q - 1];
+      s0 = e4::fma(w, decltype(leaf0_lo)::sub(raw(row + q * span), leaf0_lo), s0);
+      s1 = e4::fma(w, decltype(leaf0_hi)::sub(raw(rows + row + q * span), leaf0_hi), s1);
+    }
+  } else {
 #pragma unroll 1
-  for (u32 q = 1; q < (1u << DELTA); q++) {
-    const e4 w = ::ab_gkr_bwd_seg_fold_weights[BASE + q - 1];
-    s0 = e4::fma(w, decltype(leaf0_lo)::sub(raw(row + q * span), leaf0_lo), s0);
-    s1 = e4::fma(w, decltype(leaf0_hi)::sub(raw(rows + row + q * span), leaf0_hi), s1);
+    for (u32 q = 1; q < (1u << DELTA); q++) {
+      const e4 w = ::ab_gkr_bwd_seg_fold_weights[BASE + q - 1];
+      s0 = e4::fma(w, decltype(leaf0_lo)::sub(raw(row + q * span), leaf0_lo), s0);
+      s1 = e4::fma(w, decltype(leaf0_hi)::sub(raw(rows + row + q * span), leaf0_hi), s1);
+    }
   }
 }
 
@@ -872,29 +908,93 @@ template <bool IS_R0> DEVICE_FORCEINLINE void seg_body_const_inline_accbothsmem(
 
 } // namespace airbender::prover::gkr
 
-// The kernel matrix. `__launch_bounds__` is deliberately UNSET: this task records
-// the natural register count, and buying blocks with the second argument forces
-// spills (section 15).
-#define AB_GKR_BWD_SEG_KERNEL(symbol, desc_type, body, is_r0, epilogue)                                                                                        \
-  EXTERN __global__ void symbol(const __grid_constant__ airbender::prover::gkr::desc_type desc) {                                                              \
+// ── Register pins (measurement-trust pass §4, audit P2, I-2, I-3) ───────────
+//
+// The lever is `__maxnreg__`, NOT `__launch_bounds__`. The previously recorded
+// reason for leaving bounds unset is corrected here: one symbol serves all
+// `K in 1..32`, so `maxT` must be 1024, which pins `minB = 1` and a 64-register
+// budget — i.e. `__launch_bounds__(1024, 1)` is a NO-OP and never bought
+// anything. `__maxnreg__` states the register budget directly and is the whole
+// mechanism. Classic `__launch_bounds__` is off the table for this family.
+//
+// `__maxnreg__` makes ptxas COMPLY; it does not fail the build. ptxas will spill
+// to a stack frame to honour a budget, so the pin is not itself a guard — the
+// guard is *pin + the `STACK:0 LOCAL:0` assertion* (the spill shows up as STACK,
+// not LOCAL: measured, a 40-pin on the swept nine buys 16-24 bytes of stack frame
+// with LOCAL still 0), and every artifact is additionally
+// checked for `EIATTR_MAXREG_COUNT` in the linked image, because a deliberately
+// nonbinding qualifier leaves the resource row byte-identical whether it was
+// compiled, silently dropped, or never reached the compiler.
+//
+// PERMANENT pins sit at each non-swept EXECUTOR's own band ceiling (the uniform
+// rule of §4.3), so a future edit that wants more registers surfaces at the
+// res-usage gate rather than as a runtime occupancy loss or a
+// CUDA_ERROR_LAUNCH_OUT_OF_RESOURCES. Bands on sm_120: 33-40 (48 warps),
+// 41-48 (40), 49-56 (36), 57-64 (32).
+//
+// M9: a HARD #error, not a silent fallback-to-natural. `__maxnreg__` is CUDA
+// 12.4+, `gpu/native_build/src/lib.rs:19` admits 12.0-12.3, and the permanent
+// guards compile in EVERY build — so silently omitting them would leave the
+// cliffs unguarded on exactly the toolkits nobody is watching, which is the
+// failure mode §4.3 exists to remove.
+#if !defined(CUDART_VERSION) || CUDART_VERSION < 12040
+#error "the segmented VM's register pins require CUDA >= 12.4 (__maxnreg__)"
+#endif
+
+#if defined(AB_GKR_SEG_NO_MAXNREG) && AB_GKR_SEG_NO_MAXNREG
+// The H9 control build: NO qualifier anywhere in the family, the ten permanent
+// ones included. Its expected EIATTR_MAXREG_COUNT map is 0xff on all twenty
+// symbols, which is how "all qualifiers off" becomes a verified property.
+#define AB_GKR_SEG_PIN(n)
+#define AB_GKR_SEG_CONT_PIN
+#else
+#define AB_GKR_SEG_PIN(n) __maxnreg__(n)
+#if defined(AB_GKR_SEG_CONT_MAXNREG) && AB_GKR_SEG_CONT_MAXNREG > 0
+#define AB_GKR_SEG_CONT_PIN __maxnreg__(AB_GKR_SEG_CONT_MAXNREG)
+#else
+// `natural`: the allocator is unconstrained on the swept nine. If this level wins
+// the sweep, the SHIPPED form is `AB_GKR_SEG_PIN(56)` — the natural band's
+// ceiling, for a family whose counts are 50 (`cont_const_*`) and 56
+// (`cont_ptr_*`, `cont_const_progptr_*`), both inside 49-56 — because a bare "no
+// qualifier" would leave the winning family the ONLY unguarded one in the matrix.
+// A win for `natural` is a win for not constraining the allocator, not for having
+// no guard.
+#define AB_GKR_SEG_CONT_PIN
+#endif
+#endif
+
+#define AB_GKR_BWD_SEG_KERNEL(symbol, desc_type, body, is_r0, epilogue, regq)                                                                                  \
+  EXTERN __global__ void regq symbol(const __grid_constant__ airbender::prover::gkr::desc_type desc) {                                                         \
     airbender::prover::gkr::body<is_r0, airbender::prover::gkr::epilogue>(desc);                                                                               \
   }
 
-AB_GKR_BWD_SEG_KERNEL(ab_gkr_bwd_seg_r0_const_epi_staged_kernel, bwd_seg_desc, seg_body_const_inline, true, BWD_SEG_EPILOGUE_STAGED)
-AB_GKR_BWD_SEG_KERNEL(ab_gkr_bwd_seg_r0_const_epi_plane_kernel, bwd_seg_desc, seg_body_const_inline, true, BWD_SEG_EPILOGUE_PLANE)
-AB_GKR_BWD_SEG_KERNEL(ab_gkr_bwd_seg_r0_const_epi_wide_kernel, bwd_seg_desc, seg_body_const_inline, true, BWD_SEG_EPILOGUE_WIDE)
-AB_GKR_BWD_SEG_KERNEL(ab_gkr_bwd_seg_r0_ptr_epi_staged_kernel, bwd_seg_desc, seg_body_ptr_inline, true, BWD_SEG_EPILOGUE_STAGED)
-AB_GKR_BWD_SEG_KERNEL(ab_gkr_bwd_seg_r0_ptr_epi_plane_kernel, bwd_seg_desc, seg_body_ptr_inline, true, BWD_SEG_EPILOGUE_PLANE)
-AB_GKR_BWD_SEG_KERNEL(ab_gkr_bwd_seg_r0_ptr_epi_wide_kernel, bwd_seg_desc, seg_body_ptr_inline, true, BWD_SEG_EPILOGUE_WIDE)
-AB_GKR_BWD_SEG_KERNEL(ab_gkr_bwd_seg_cont_const_epi_staged_kernel, bwd_seg_desc, seg_body_const_inline, false, BWD_SEG_EPILOGUE_STAGED)
-AB_GKR_BWD_SEG_KERNEL(ab_gkr_bwd_seg_cont_const_epi_plane_kernel, bwd_seg_desc, seg_body_const_inline, false, BWD_SEG_EPILOGUE_PLANE)
-AB_GKR_BWD_SEG_KERNEL(ab_gkr_bwd_seg_cont_const_epi_wide_kernel, bwd_seg_desc, seg_body_const_inline, false, BWD_SEG_EPILOGUE_WIDE)
-AB_GKR_BWD_SEG_KERNEL(ab_gkr_bwd_seg_cont_ptr_epi_staged_kernel, bwd_seg_desc, seg_body_ptr_inline, false, BWD_SEG_EPILOGUE_STAGED)
-AB_GKR_BWD_SEG_KERNEL(ab_gkr_bwd_seg_cont_ptr_epi_plane_kernel, bwd_seg_desc, seg_body_ptr_inline, false, BWD_SEG_EPILOGUE_PLANE)
-AB_GKR_BWD_SEG_KERNEL(ab_gkr_bwd_seg_cont_ptr_epi_wide_kernel, bwd_seg_desc, seg_body_ptr_inline, false, BWD_SEG_EPILOGUE_WIDE)
-AB_GKR_BWD_SEG_KERNEL(ab_gkr_bwd_seg_cont_const_progptr_epi_staged_kernel, bwd_seg_progptr_desc, seg_body_const_progptr, false, BWD_SEG_EPILOGUE_STAGED)
-AB_GKR_BWD_SEG_KERNEL(ab_gkr_bwd_seg_cont_const_progptr_epi_plane_kernel, bwd_seg_progptr_desc, seg_body_const_progptr, false, BWD_SEG_EPILOGUE_PLANE)
-AB_GKR_BWD_SEG_KERNEL(ab_gkr_bwd_seg_cont_const_progptr_epi_wide_kernel, bwd_seg_progptr_desc, seg_body_const_progptr, false, BWD_SEG_EPILOGUE_WIDE)
+// 33-40 is the last band whose 48-warp budget equals the 1536-thread/SM cap, so
+// the four `plane`/`wide` R0 symbols have NO register-imposed occupancy limit at
+// any K; one more register drops the budget to 40 warps (K=8 6->5, K=16 3->2,
+// K=24 2->1). They already allocate exactly 40, so the pin is a pure guard.
+// The two `staged` R0 symbols allocate 44 — band 41-48 — so their ceiling is 48;
+// a 40-pin would force them to spill and fail the STACK:0/LOCAL:0 gate. They crossed the
+// 40 boundary unnoticed and II-5's epilogue A/B inherited the resulting 20-33%
+// occupancy difference as an unattributed confound.
+AB_GKR_BWD_SEG_KERNEL(ab_gkr_bwd_seg_r0_const_epi_staged_kernel, bwd_seg_desc, seg_body_const_inline, true, BWD_SEG_EPILOGUE_STAGED, AB_GKR_SEG_PIN(48))
+AB_GKR_BWD_SEG_KERNEL(ab_gkr_bwd_seg_r0_const_epi_plane_kernel, bwd_seg_desc, seg_body_const_inline, true, BWD_SEG_EPILOGUE_PLANE, AB_GKR_SEG_PIN(40))
+AB_GKR_BWD_SEG_KERNEL(ab_gkr_bwd_seg_r0_const_epi_wide_kernel, bwd_seg_desc, seg_body_const_inline, true, BWD_SEG_EPILOGUE_WIDE, AB_GKR_SEG_PIN(40))
+AB_GKR_BWD_SEG_KERNEL(ab_gkr_bwd_seg_r0_ptr_epi_staged_kernel, bwd_seg_desc, seg_body_ptr_inline, true, BWD_SEG_EPILOGUE_STAGED, AB_GKR_SEG_PIN(48))
+AB_GKR_BWD_SEG_KERNEL(ab_gkr_bwd_seg_r0_ptr_epi_plane_kernel, bwd_seg_desc, seg_body_ptr_inline, true, BWD_SEG_EPILOGUE_PLANE, AB_GKR_SEG_PIN(40))
+AB_GKR_BWD_SEG_KERNEL(ab_gkr_bwd_seg_r0_ptr_epi_wide_kernel, bwd_seg_desc, seg_body_ptr_inline, true, BWD_SEG_EPILOGUE_WIDE, AB_GKR_SEG_PIN(40))
+// The swept nine: the A/B axis (§4.1).
+AB_GKR_BWD_SEG_KERNEL(ab_gkr_bwd_seg_cont_const_epi_staged_kernel, bwd_seg_desc, seg_body_const_inline, false, BWD_SEG_EPILOGUE_STAGED, AB_GKR_SEG_CONT_PIN)
+AB_GKR_BWD_SEG_KERNEL(ab_gkr_bwd_seg_cont_const_epi_plane_kernel, bwd_seg_desc, seg_body_const_inline, false, BWD_SEG_EPILOGUE_PLANE, AB_GKR_SEG_CONT_PIN)
+AB_GKR_BWD_SEG_KERNEL(ab_gkr_bwd_seg_cont_const_epi_wide_kernel, bwd_seg_desc, seg_body_const_inline, false, BWD_SEG_EPILOGUE_WIDE, AB_GKR_SEG_CONT_PIN)
+AB_GKR_BWD_SEG_KERNEL(ab_gkr_bwd_seg_cont_ptr_epi_staged_kernel, bwd_seg_desc, seg_body_ptr_inline, false, BWD_SEG_EPILOGUE_STAGED, AB_GKR_SEG_CONT_PIN)
+AB_GKR_BWD_SEG_KERNEL(ab_gkr_bwd_seg_cont_ptr_epi_plane_kernel, bwd_seg_desc, seg_body_ptr_inline, false, BWD_SEG_EPILOGUE_PLANE, AB_GKR_SEG_CONT_PIN)
+AB_GKR_BWD_SEG_KERNEL(ab_gkr_bwd_seg_cont_ptr_epi_wide_kernel, bwd_seg_desc, seg_body_ptr_inline, false, BWD_SEG_EPILOGUE_WIDE, AB_GKR_SEG_CONT_PIN)
+AB_GKR_BWD_SEG_KERNEL(ab_gkr_bwd_seg_cont_const_progptr_epi_staged_kernel, bwd_seg_progptr_desc, seg_body_const_progptr, false, BWD_SEG_EPILOGUE_STAGED,
+                      AB_GKR_SEG_CONT_PIN)
+AB_GKR_BWD_SEG_KERNEL(ab_gkr_bwd_seg_cont_const_progptr_epi_plane_kernel, bwd_seg_progptr_desc, seg_body_const_progptr, false, BWD_SEG_EPILOGUE_PLANE,
+                      AB_GKR_SEG_CONT_PIN)
+AB_GKR_BWD_SEG_KERNEL(ab_gkr_bwd_seg_cont_const_progptr_epi_wide_kernel, bwd_seg_progptr_desc, seg_body_const_progptr, false, BWD_SEG_EPILOGUE_WIDE,
+                      AB_GKR_SEG_CONT_PIN)
 
 #undef AB_GKR_BWD_SEG_KERNEL
 
@@ -902,13 +1002,30 @@ AB_GKR_BWD_SEG_KERNEL(ab_gkr_bwd_seg_cont_const_progptr_epi_wide_kernel, bwd_seg
 // into the wrapper rather than passed as the epilogue axis: these four symbols
 // exist to be MEASURED against the four register-placement symbols above with the
 // same epilogue and loader, and nothing else may launch them.
-#define AB_GKR_BWD_SEG_ACC_KERNEL(symbol, body, is_r0)                                                                                                         \
-  EXTERN __global__ void symbol(const __grid_constant__ airbender::prover::gkr::bwd_seg_desc desc) { airbender::prover::gkr::body<is_r0>(desc); }
+#define AB_GKR_BWD_SEG_ACC_KERNEL(symbol, body, is_r0, regq)                                                                                                   \
+  EXTERN __global__ void regq symbol(const __grid_constant__ airbender::prover::gkr::bwd_seg_desc desc) { airbender::prover::gkr::body<is_r0>(desc); }
 
-AB_GKR_BWD_SEG_ACC_KERNEL(ab_gkr_bwd_seg_r0_const_epi_plane_acc2smem_kernel, seg_body_const_inline_acc2smem, true)
-AB_GKR_BWD_SEG_ACC_KERNEL(ab_gkr_bwd_seg_r0_const_epi_plane_accbothsmem_kernel, seg_body_const_inline_accbothsmem, true)
-AB_GKR_BWD_SEG_ACC_KERNEL(ab_gkr_bwd_seg_cont_const_epi_plane_acc2smem_kernel, seg_body_const_inline_acc2smem, false)
-AB_GKR_BWD_SEG_ACC_KERNEL(ab_gkr_bwd_seg_cont_const_epi_plane_accbothsmem_kernel, seg_body_const_inline_accbothsmem, false)
+// The rungs are PINNED, never swept: their measured verdict is void as evidence
+// until a zero-persistent-state slot exists (audit I-4/II-6 — they RAISE the
+// register count they exist to lower, +8 at R0 and +4 at cont, because ptxas
+// keeps four fully-formed 32-bit shared addresses). The pin keeps them launchable
+// and nothing else; it holds them where they are rather than blessing the
+// regression. Both R0 rungs allocate 48 — band top of 41-48.
+AB_GKR_BWD_SEG_ACC_KERNEL(ab_gkr_bwd_seg_r0_const_epi_plane_acc2smem_kernel, seg_body_const_inline_acc2smem, true, AB_GKR_SEG_PIN(48))
+AB_GKR_BWD_SEG_ACC_KERNEL(ab_gkr_bwd_seg_r0_const_epi_plane_accbothsmem_kernel, seg_body_const_inline_accbothsmem, true, AB_GKR_SEG_PIN(48))
+// M3/M10: the cont acc2 rung allocates 54, so ITS OWN ceiling is 56, not the rung
+// ceiling. A 64 pin would permit silent growth through 57-64, which crosses into
+// the 32-warp band and loses occupancy while still passing the pin — precisely the
+// cliff the uniform rule exists to stop.
+AB_GKR_BWD_SEG_ACC_KERNEL(ab_gkr_bwd_seg_cont_const_epi_plane_acc2smem_kernel, seg_body_const_inline_acc2smem, false, AB_GKR_SEG_PIN(56))
+// 64 here is the HARD BLOCK CEILING, not a band top: a 1024-thread block may use
+// at most 65536/1024 = 64 registers and this symbol allocates EXACTLY 64, so at 65
+// the K=32 launch fails with CUDA_ERROR_LAUNCH_OUT_OF_RESOURCES. Here 64 is both
+// the band top (57-64) and the launch limit, so one number serves. The existing
+// guard `bwd_seg_k_ceiling_is_measured_not_assumed` probes the NON-placement
+// matrix only, so this symbol sits outside it — the pin is the guard that test
+// cannot be.
+AB_GKR_BWD_SEG_ACC_KERNEL(ab_gkr_bwd_seg_cont_const_epi_plane_accbothsmem_kernel, seg_body_const_inline_accbothsmem, false, AB_GKR_SEG_PIN(64))
 
 #undef AB_GKR_BWD_SEG_ACC_KERNEL
 
@@ -917,6 +1034,12 @@ AB_GKR_BWD_SEG_ACC_KERNEL(ab_gkr_bwd_seg_cont_const_epi_plane_accbothsmem_kernel
 // store target, but writing through its cudaGetSymbolAddress alias between
 // launches is this repo's established round-update path (the incumbent's
 // round kernels update ab_gkr_main_layer_claim_point the same way).
+// It carries NO register pin, deliberately: grid 1, block 32 — one block, one
+// warp, for the whole device — so no register count it could reach changes any
+// occupancy, and a band-ceiling pin at 32 would guard nothing while constraining a
+// kernel whose entire cost is a launch boundary. The exemption is VERIFIED rather
+// than assumed: its EIATTR_MAXREG_COUNT is asserted absent (0xff) at every pin
+// level, so a stray qualifier here fails the same gate a missing one does.
 EXTERN __global__ void ab_gkr_bwd_seg_build_fold_weights_kernel(e4 *const fold_weights, const u32 round) {
   airbender::prover::gkr::seg_build_fold_weights(fold_weights, round);
 }

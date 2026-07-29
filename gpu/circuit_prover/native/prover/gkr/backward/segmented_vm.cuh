@@ -649,8 +649,13 @@ EXTERN __device__ __constant__ e4 ab_gkr_bwd_seg_fold_weights[airbender::prover:
 //   program source  inline (`desc.program`) | devptr (cont + const only)
 //   epilogue        staged | plane | wide
 //
-// `__launch_bounds__` is deliberately UNSET: the register measurement is the
-// point, and buying blocks with the second argument forces spills (section 15).
+// The register lever on these symbols is `__maxnreg__`, not `__launch_bounds__`:
+// one symbol serves every `K in 1..32`, so `maxT` would have to be 1024, which
+// pins `minB = 1` and a 64-register budget — `__launch_bounds__(1024, 1)` is a
+// NO-OP here and never bought anything. The declarations carry no qualifier
+// because a `__global__` attribute belongs on the DEFINITION; the pins and the
+// swept continuation budget live in `segmented_vm.cu`'s kernel matrix, which
+// states the band arithmetic each number comes from.
 EXTERN __global__ void ab_gkr_bwd_seg_r0_const_epi_staged_kernel(const __grid_constant__ airbender::prover::gkr::bwd_seg_desc desc);
 EXTERN __global__ void ab_gkr_bwd_seg_r0_const_epi_plane_kernel(const __grid_constant__ airbender::prover::gkr::bwd_seg_desc desc);
 EXTERN __global__ void ab_gkr_bwd_seg_r0_const_epi_wide_kernel(const __grid_constant__ airbender::prover::gkr::bwd_seg_desc desc);

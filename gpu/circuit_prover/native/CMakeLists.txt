@@ -6,6 +6,12 @@ if ((NOT DEFINED CMAKE_CUDA_ARCHITECTURES) OR (CMAKE_CUDA_ARCHITECTURES STREQUAL
     set(CMAKE_CUDA_ARCHITECTURES native)
 endif ()
 option(AB_DETERMINISTIC_POW "Enable deterministic PoW search" OFF)
+# The segmented VM's register-pin sweep (measurement-trust pass §4.1). The
+# SHIPPED default lives in `build/main.rs`, which forwards a value on every
+# build; these entries exist so a direct CMake invocation is still well-defined.
+set(AB_GKR_SEG_CONT_MAXNREG 0 CACHE STRING "__maxnreg__ budget for the bwd seg continuation executors (0 = natural)")
+option(AB_GKR_SEG_NO_MAXNREG "Suppress ALL __maxnreg__ qualifiers in the bwd segmented VM (H9 control build)" OFF)
+option(AB_GKR_SEG_D3_UNROLL "Fully unroll the delta-3 fold arm (measurement-trust pass §4.5 attribution cell)" OFF)
 option(GPU_PROVER_ENABLE_LINEINFO "Enable lineinfo for CUDA profiling builds" OFF)
 # Main native archive (NTT now lives in the gpu_ntt crate's own archive).
 add_library(circuit_prover_native STATIC)
@@ -20,6 +26,13 @@ foreach (circuit_prover_target circuit_prover_native)
     set_target_properties(${circuit_prover_target} PROPERTIES CUDA_RESOLVE_DEVICE_SYMBOLS ON)
     if (AB_DETERMINISTIC_POW)
         target_compile_definitions(${circuit_prover_target} PRIVATE AB_DETERMINISTIC_POW=1)
+    endif ()
+    target_compile_definitions(${circuit_prover_target} PRIVATE AB_GKR_SEG_CONT_MAXNREG=${AB_GKR_SEG_CONT_MAXNREG})
+    if (AB_GKR_SEG_NO_MAXNREG)
+        target_compile_definitions(${circuit_prover_target} PRIVATE AB_GKR_SEG_NO_MAXNREG=1)
+    endif ()
+    if (AB_GKR_SEG_D3_UNROLL)
+        target_compile_definitions(${circuit_prover_target} PRIVATE AB_GKR_SEG_D3_UNROLL=1)
     endif ()
     # CCCL headers in CUDA 12+ require MSVC's standard conforming preprocessor.
     if (MSVC)
