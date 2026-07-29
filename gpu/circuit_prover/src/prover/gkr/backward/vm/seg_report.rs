@@ -2559,14 +2559,6 @@ pub(super) fn is_production_loader(shape: &SegShape) -> bool {
 /// and far below any real shape effect.
 pub(super) const SEG_SELECTION_TIE_FRACTION: f64 = 0.001;
 
-/// The Stage-A winner: the fastest PRODUCTION-loader configuration, with the tie
-/// band resolved in favour of the smallest `K` and then the smallest shared-memory
-/// carveout.
-///
-/// Smallest `K` first because `K` is the axis that costs residency — a narrower
-/// block leaves more blocks per SM and more room for the next benchmark's register
-/// pressure — and smallest carveout second because two configurations that measure
-/// the same should not both be carried forward.
 /// Whether a selection may READ this row's timing at all (spec §6(a) step 6).
 ///
 /// A SOLO row stays eligible: it never had an order contrast to fail. A PAIRED row is
@@ -2577,6 +2569,14 @@ pub(super) fn is_selectable_row(row: &SegMatrixRow) -> bool {
     row.ratio.order().is_none() || row.ratio.selectable().is_some()
 }
 
+/// The Stage-A winner: the fastest PRODUCTION-loader configuration, with the tie
+/// band resolved in favour of the smallest `K` and then the smallest shared-memory
+/// carveout.
+///
+/// Smallest `K` first because `K` is the axis that costs residency — a narrower
+/// block leaves more blocks per SM and more room for the next benchmark's register
+/// pressure — and smallest carveout second because two configurations that measure
+/// the same should not both be carried forward.
 pub(super) fn select_winner(rows: &[SegMatrixRow]) -> Option<&SegMatrixRow> {
     let production: Vec<&SegMatrixRow> = rows
         .iter()
@@ -5408,10 +5408,25 @@ impl SegCorpusRow {
         }
     }
 
+    /// Which timing protocol produced this row — from PAIRED-NESS, never from
+    /// whether a ratio survived.
+    ///
+    /// A row is paired iff a baseline arm was sampled beside it. Inferring that from
+    /// `ratio_vs_baseline` alone breaks under §6(a) step 6: an order-coupled cell IS
+    /// timed against its baseline but carries no interval, and the old predicate then
+    /// published `protocol = solo` on a row that also carried
+    /// `baseline_median_us` — a self-contradiction, in the very column that exists so
+    /// no table can quietly mix the two protocols.
+    ///
+    /// The ratio is still consulted so a schema-v1 chunk (which predates
+    /// [`SEG_CORPUS_V2_COLUMN`] and therefore has no `baseline_median_us`) keeps
+    /// reporting `paired`. On a v2 row the two together are unambiguous: `paired`
+    /// with an empty `ratio_vs_k4` means the order gate withheld the interval, and a
+    /// baseline rung says `solo` because nothing was sampled beside it.
     pub(super) fn protocol(&self) -> &'static str {
         if !self.status.measured() {
             "-"
-        } else if self.ratio_vs_baseline.is_some() {
+        } else if self.baseline_median_us.is_some() || self.ratio_vs_baseline.is_some() {
             "paired"
         } else {
             "solo"
@@ -8661,6 +8676,59 @@ mod tests {
                 want.ratio_vs_baseline.map(|estimate| estimate.median_ratio)
             );
         }
+    }
+
+    /// The corpus twin of `SegMatrixRow::protocol()`'s `SegRatio::Solo` discriminator:
+    /// an ORDER-COUPLED paired cell has no interval, and inferring the protocol from
+    /// the interval labelled it `solo` while it still carried `baseline_median_us`.
+    /// The column exists so no table can quietly mix the two protocols, so this
+    /// asserts the whole truth table — through the CSV as well, since the policy pass
+    /// reads chunks back rather than the in-process rows.
+    #[test]
+    fn the_corpus_protocol_column_never_calls_a_paired_cell_solo() {
+        // Paired and selectable: an interval survived.
+        let paired = corpus_fixture(8, SegCorpusStatus::Timed, Some(0.97));
+        assert_eq!(paired.protocol(), "paired");
+        // Paired and ORDER-COUPLED: `selectable()` yielded `None`, so no interval was
+        // recorded — but a baseline arm WAS sampled, and the row says so.
+        let coupled = SegCorpusRow {
+            ratio_vs_baseline: None,
+            ..paired.clone()
+        };
+        assert!(
+            coupled.baseline_median_us.is_some(),
+            "the fixture is paired"
+        );
+        assert_eq!(
+            coupled.protocol(),
+            "paired",
+            "an order-coupled cell was timed PAIRED; calling it solo contradicts its \
+             own baseline_median_us"
+        );
+        // Genuinely solo: the baseline rung has nothing sampled beside it.
+        let solo = corpus_fixture(4, SegCorpusStatus::Timed, None);
+        assert_eq!(solo.protocol(), "solo");
+        assert!(solo.baseline_median_us.is_none());
+        // A schema-v1 chunk has no `baseline_median_us` at all; its ratio still
+        // identifies it as paired.
+        let v1_paired = SegCorpusRow {
+            baseline_median_us: None,
+            ..paired.clone()
+        };
+        assert_eq!(v1_paired.protocol(), "paired");
+        // And an unmeasured row claims no protocol either way.
+        assert_eq!(
+            corpus_fixture(32, SegCorpusStatus::Unlaunchable, None).protocol(),
+            "-"
+        );
+        // Through the CSV, which is what the policy pass actually reads.
+        let back = parse_corpus_csv(&render_corpus_csv(&[coupled, solo]));
+        assert_eq!(back[0].protocol(), "paired", "{back:?}");
+        assert!(
+            back[0].ratio_vs_baseline.is_none(),
+            "the withheld interval stays withheld"
+        );
+        assert_eq!(back[1].protocol(), "solo", "{back:?}");
     }
 
     /// An untimed row must not print a number a reader could average.
