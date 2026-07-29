@@ -47,6 +47,24 @@
 //! invariant the claim point and the coefficient bank already rely on (flat-fold
 //! design §4.2) — the scheduling contract governs stream ordering, not
 //! orchestration concurrency.
+//!
+//! The shared-memory carveout PREFERENCE ([`CarveoutPlan`]) is per-function process
+//! state of exactly that class. It is not stream-ordered at all: it is a property of
+//! the entry point, read by the driver when a launch is configured, so two proofs
+//! interleaving their rounds would interleave their preferences too. What makes it
+//! safe is the same proof-level serialization invariant the claim point and the
+//! fold-weight bank already require, and nothing weaker — the preference is set by
+//! the measurement caller, BEFORE staging, on the same scheduling thread that writes
+//! those banks, and restored to the exact prior value when the cell's plan drops. So
+//! no new invariant is introduced and the scheduling contract gains no obligation.
+//!
+//! PRODUCTION WIRING IS OUT OF SCOPE. At `9bf7a80e` this whole family is bench-only:
+//! the parity ladder and [`super::seg_report`] are its only callers, so there is no
+//! production launch site to hang a `configure_kernel_attributes` hook on the way
+//! `flat::kernel_setup::configure_flat_kernel_cache_preference` hangs off the flat
+//! lineage's. Whoever cuts this lineage over owes that hook, and the obligation joins
+//! the cutover list beside "the fold-weight prelude has no production caller" and
+//! audit I-18's `SchedulerHostAllocator` obligation.
 
 // The `seg_gpu_tests` parity ladder and the `seg_report` bench harness are the callers.
 #![allow(dead_code)]
@@ -66,7 +84,7 @@ use super::seg_desc::{
 };
 use super::seg_lower::{BwdSegLaunchDesc, BwdSegSetup, CoeffMode, ProgramMode};
 use crate::primitives::field::E4;
-use crate::primitives::utils::WARP_SIZE;
+use crate::primitives::utils::{set_shared_carveout, smem_pool_bytes_per_sm, WARP_SIZE};
 use crate::prover::gkr::backward::compact::get_main_layer_claim_point_device_ptr;
 use crate::prover::ProverContext;
 use crate::upstream::BwdRegime;
@@ -261,6 +279,485 @@ pub(crate) fn bwd_seg_epilogue_smem_bytes(epilogue: BwdSegEpilogue, k: u32) -> u
         BwdSegEpilogue::Staged => 2 * lanes,
         BwdSegEpilogue::Plane => (k as usize - 1) * lanes,
         BwdSegEpilogue::Wide => 2 * (k as usize - 1) * lanes,
+    }
+}
+
+// ── Shared-memory carveout control (spec §3) ─────────────────────────────────
+//
+// `compute_minimal_carveout` (gpu/core/src/primitives/utils.rs:94-124) MUST NOT be
+// reused here. It reads `cudaFuncAttributes::sharedSizeBytes` and returns 0 when
+// that is zero; every seg kernel declares `extern __shared__`
+// (segmented_vm.cu:779) so its STATIC figure is 0 and the shared helper would
+// return 0 for an accidental reason rather than the right one. That is the whole
+// reason the seg path needs its own helper.
+
+/// The per-block driver reserve, in bytes — QUERIED, not assumed.
+///
+/// A block consumes a fixed slice of the shared partition beyond its dynamic
+/// request. Expected 1,024 B on this part (the figure the linked cubin's
+/// `SHARED:1024` label reports), but read rather than assumed. It is **not** part
+/// of `cudaFuncAttributes::sharedSizeBytes` — that field is user STATIC shared
+/// only, which is why the header's 48 KiB `static_assert`s were already correct
+/// and F4 was withdrawn (spec §2.2 row 3, §5.4).
+pub(crate) fn bwd_seg_reserved_smem_bytes_per_block() -> usize {
+    use era_cudart::device::{device_get_attribute, get_device};
+    use era_cudart_sys::CudaDeviceAttr;
+    let device = get_device().expect("get_device");
+    device_get_attribute(CudaDeviceAttr::ReservedSharedMemoryPerBlock, device)
+        .expect("query ReservedSharedMemoryPerBlock") as usize
+}
+
+/// The hardware per-SM resident block cap — QUERIED, not an empirically inferred
+/// constant. Without it the occupancy formula predicts 48 blocks at `k == 1` and
+/// doubles every `k == 1` demand row.
+pub(crate) fn bwd_seg_max_blocks_per_sm() -> u32 {
+    use era_cudart::device::{device_get_attribute, get_device};
+    use era_cudart_sys::CudaDeviceAttr;
+    let device = get_device().expect("get_device");
+    u32::try_from(
+        device_get_attribute(CudaDeviceAttr::MaxBlocksPerMultiprocessor, device)
+            .expect("query MaxBlocksPerMultiprocessor"),
+    )
+    .expect("a non-negative block cap")
+}
+
+/// L2 capacity, for §7.2.2's per-direction conservative soft bound.
+pub(crate) fn bwd_seg_l2_capacity_bytes() -> u64 {
+    use era_cudart::device::{device_get_attribute, get_device};
+    use era_cudart_sys::CudaDeviceAttr;
+    let device = get_device().expect("get_device");
+    u64::try_from(
+        device_get_attribute(CudaDeviceAttr::L2CacheSize, device).expect("query L2CacheSize"),
+    )
+    .expect("a non-negative L2 size")
+}
+
+/// Warps per SM the thread cap allows: 1,536 threads / 32 lanes.
+const BWD_SEG_WARP_CAP_PER_SM: u32 = 48;
+/// Registers per SM the allocator partitions, and its granularity.
+const BWD_SEG_REGS_PER_SM: u32 = 16_384;
+const BWD_SEG_REG_ALLOC_GRANULARITY: u32 = 256;
+
+/// Register-bound resident blocks per SM at `registers` per thread and `k` warps
+/// per block (spec §3.1). Reproduces results §2.5's measured column exactly:
+/// R40 -> `[24, 24, 12, 6, 3, 2, 1]` and R50 -> `[24, 18, 9, 4, 2, 1, 1]` at
+/// `k = 1/2/4/8/16/24/32`.
+pub(crate) fn bwd_seg_register_bound_blocks_per_sm(registers: u32, k: u32) -> u32 {
+    assert!(registers >= 1 && k >= 1, "registers and k are positive");
+    let regs_per_warp = (registers * WARP_SIZE).next_multiple_of(BWD_SEG_REG_ALLOC_GRANULARITY);
+    let warp_budget = (4 * (BWD_SEG_REGS_PER_SM / regs_per_warp)).min(BWD_SEG_WARP_CAP_PER_SM);
+    (warp_budget / k)
+        .min(BWD_SEG_WARP_CAP_PER_SM / k)
+        .min(bwd_seg_max_blocks_per_sm())
+}
+
+/// The supported realized shared-memory partitions on this part, in bytes.
+///
+/// DOCUMENTED, not measured — spec §9 item 4 flags that §3.1's zero-reclaim
+/// finding for `wide` turns on 49,152 B needing the 64 KiB bucket rather than a
+/// 48 KiB one, and that §1(b)'s whole "P1 is epilogue-dependent" reading follows
+/// from it. The realized NCU field is the authority and step 7 confirms or
+/// corrects this list BEFORE the demand table is trusted.
+pub(crate) const BWD_SEG_SMEM_BUCKETS_BYTES: [usize; 6] =
+    [0, 8 * 1024, 16 * 1024, 32 * 1024, 64 * 1024, 100 * 1024];
+
+/// The bucket the driver is EXPECTED to realize for a per-SM demand: the smallest
+/// supported partition that holds it. An expected value the realized field then
+/// confirms or corrects, never an assertion in its own right.
+pub(crate) fn bwd_seg_expected_smem_bucket_bytes(demand_bytes: usize) -> usize {
+    BWD_SEG_SMEM_BUCKETS_BYTES
+        .into_iter()
+        .find(|bucket| *bucket >= demand_bytes)
+        .unwrap_or_else(|| {
+            panic!("per-SM demand {demand_bytes} B exceeds the largest supported partition")
+        })
+}
+
+/// The requested carveout percentage for one launch shape.
+///
+/// The demand is per **SM**: `blocks * (dynamic + reserve)`. The percentage is a
+/// HINT — the driver rounds it up to the next supported bucket, so several
+/// distinct values land on the same realized split, and 0 is safe because the
+/// driver still raises the configuration to the smallest bucket that satisfies the
+/// launch's dynamic request. **The gate is the realized field, never this number**
+/// (spec §3.4).
+pub(crate) fn bwd_seg_carveout_pct(target_blocks_per_sm: u32, dynamic_smem_bytes: usize) -> i32 {
+    let demand = target_blocks_per_sm as usize
+        * (dynamic_smem_bytes + bwd_seg_reserved_smem_bytes_per_block());
+    bwd_seg_pct_for_demand(demand)
+}
+
+/// The requested pct for a per-SM demand. **`pub(crate)`** because `seg_report.rs`'s
+/// pin-decision assertion must use the SAME arithmetic the production path uses, and
+/// the registry promises this visibility (§4.5).
+pub(crate) fn bwd_seg_pct_for_demand(demand_bytes: usize) -> i32 {
+    let pct = (demand_bytes * 100).div_ceil(smem_pool_bytes_per_sm());
+    i32::try_from(pct)
+        .expect("a percentage fits an i32")
+        .clamp(0, 100)
+}
+
+/// The pct that lands on ONE EXPLICIT bucket, independent of either arm's demand —
+/// exactly what `CarveoutMode::FixedBucket` requests, exposed so
+/// `bwd_seg_pin_decision_cells` can assert the realized field **without restating the
+/// arithmetic**. A thin wrapper on purpose: two expressions that must agree are better
+/// written as one expression.
+pub(crate) fn bwd_seg_carveout_pct_for_bucket(bucket_bytes: usize) -> i32 {
+    bwd_seg_pct_for_demand(bucket_bytes)
+}
+
+/// Compute and set the minimal carveout for one entry point; returns the requested
+/// percentage so the caller can record it beside the realized field.
+///
+/// `target_blocks_per_sm` is the REGISTER-BOUND count at the pin level of the
+/// binary actually being timed — not `bwd_seg_blocks_per_sm`'s answer, which models
+/// shared memory against the device's full pool rather than any realized
+/// configuration (audit II-4). Setting the carveout from a stale block count would
+/// ask for less shared memory than the pinned build's blocks need and cost
+/// occupancy. This is the deliberate P1<->P2 coupling (spec §3.1).
+pub(crate) fn bwd_seg_set_minimal_carveout(
+    entry: *const std::ffi::c_void,
+    target_blocks_per_sm: u32,
+    dynamic_smem_bytes: usize,
+) -> i32 {
+    let pct = bwd_seg_carveout_pct(target_blocks_per_sm, dynamic_smem_bytes);
+    set_shared_carveout(entry, pct);
+    pct
+}
+
+/// The entry point's CURRENT preference, so a restore can write back the exact
+/// prior value rather than the driver default.
+pub(crate) fn bwd_seg_query_carveout(entry: *const std::ffi::c_void) -> i32 {
+    use era_cudart_sys::{cudaFuncGetAttributes, CudaFuncAttributes};
+    let mut attributes = std::mem::MaybeUninit::<CudaFuncAttributes>::zeroed();
+    // SAFETY: `CudaFuncAttributes` is plain data and `entry` is a valid
+    // `__global__` entry point from one of this module's accessors.
+    unsafe { cudaFuncGetAttributes(attributes.as_mut_ptr(), entry) }
+        .wrap()
+        .expect("cudaFuncGetAttributes for a carveout query");
+    // SAFETY: initialized by the call above.
+    unsafe { attributes.assume_init() }.preferredShmemCarveout
+}
+
+/// **The reference clock's ONE predeclared realized partition (§4.5, round-2
+/// blocker 4).**
+///
+/// `CommonBucket` derives its pct from `max(candidate, baseline)` demand, so the
+/// flat-R0 reference clock would run at a DIFFERENT L1 partition at each pin level
+/// — `plane` K24 demands `1 x 12,800 = 12,800 B` (16 KiB bucket) at the natural
+/// band and `2 x 12,800 = 25,600 B` (32 KiB) at a 40-pin. A denominator whose own
+/// cache configuration moves with the level is not invariant, and §4.5's entire
+/// cross-build argument rests on its invariance.
+///
+/// So the pin-decision pairs are configured at ONE FIXED bucket, predeclared here:
+/// **64 KiB**, on two independent grounds.
+///
+/// **(i) Demand.** Over the decision set (`plane`, `const`, inline,
+/// `K in {1,2,4,8,16,24,32}`, pins 40/48/50/56) the worst per-SM demand is R40
+/// **K=2 = 36,864 B** — 24 register-bound blocks × (512 B epilogue + 1,024 B
+/// reserve). Small `K` is RESERVE-DOMINATED, which is why the worst cell is not the
+/// widest one: the epilogue plane shrinks faster with `K` than the block count grows.
+/// 36,864 B exceeds 32,768 B, and the realized-partition probe settled §9 item 4 —
+/// a 49,152 B request realized 65,536 B, so **there is no 48 KiB bucket** — leaving
+/// 65,536 B as the smallest supported bucket that covers every decision cell at
+/// every level.
+///
+/// **(ii) Mechanism, which is the stronger ground.** The requested percentage is a
+/// FLOOR, not a setting: measured over this pass's captures,
+/// `realized = max(driver heuristic, bucket)`, and the heuristic alone picks 64 KiB
+/// for a `K = 4` seg launch. So every bucket below 64 KiB can be silently overridden
+/// upward by the driver, per kernel and per launch shape, and 64 KiB is the ONLY
+/// partition the driver can never raise. Invariance — not speed — is the reference
+/// clock's whole job: a denominator whose own cache configuration moves with the
+/// level would void §4.5's cross-build argument, and the L1 that costs is a price
+/// paid identically by both arms at every level.
+///
+/// A fixed sub-64 bucket was rejected for the same reason: the observed
+/// same-request divergence (both arms asked for one partition, one realized 64 KiB
+/// and the other 32 KiB) kills commonality below 64 KiB regardless of the demand
+/// arithmetic. **`bwd_seg_pin_decision_cells` asserts the realized field equals this
+/// in every decision process** — a hint that did not land invalidates the level
+/// comparison, so it is a gate, not a note.
+pub(crate) const SEG_REFERENCE_CLOCK_BUCKET_BYTES: usize = 64 * 1024;
+
+/// How a pair is configured (spec §7.1.0, §7.2.1).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum CarveoutMode {
+    /// No preference set anywhere; the driver's own split. §7.1.0's `off` arm —
+    /// the control half of the same-binary isolation, so the `off`-to-
+    /// `CommonBucket` delta IS P1 and nothing else.
+    Off,
+    /// BOTH arms forced to ONE realized bucket, from the larger demand. §7.2.1's
+    /// PRIMARY column: the flap is fully removed, one SM partition, no
+    /// reconfiguration at any sample boundary, so the ratio is a statement about
+    /// the two kernels. Also the mode every solo cell uses.
+    ///
+    /// The request is a FLOOR — across Task 3's captures,
+    /// `realized = max(driver heuristic, bucket)` — so commonality below 64 KiB is
+    /// VERIFIED per capture by `pair_gate.py`, never assumed; a heuristic override
+    /// above the bucket is a recorded protocol failure.
+    CommonBucket,
+    /// Both arms forced to ONE EXPLICIT bucket, independent of either arm's demand.
+    /// §4.5's pin-decision pairs use this so the reference clock's own realized
+    /// partition is identical at every pin level — see
+    /// [`SEG_REFERENCE_CLOCK_BUCKET_BYTES`]. Not reachable from
+    /// `BWD_SEG_CARVEOUT`: the decision runner hardcodes it.
+    FixedBucket(usize),
+    /// Each arm at the preference this bench design gives it: the candidate its own
+    /// computed pct, the baseline the preference it already carries (the flat R0
+    /// incumbent's explicit 0%, written behind the `Once` in
+    /// `flat/kernel_setup.rs:20-38`). §7.2.1's SECONDARY column — a stress test of
+    /// the repartition transition, reported with its four order-conditional
+    /// medians, and NOT an acceptance gate (M7).
+    AsConfigured,
+}
+
+impl CarveoutMode {
+    pub(crate) fn label(self) -> &'static str {
+        match self {
+            Self::Off => "off",
+            Self::CommonBucket => "common-bucket",
+            Self::AsConfigured => "as-configured",
+            Self::FixedBucket(_) => "fixed-bucket",
+        }
+    }
+}
+
+/// One arm's launch shape, as the plan needs to see it.
+///
+/// Carried EXPLICITLY with each arm rather than inferred: the harness's paired
+/// baselines are not all the flat R0 incumbent — the Stage-B ladder pairs a rung
+/// against a segmented twin and the corpus pairs K against the K4 same-cell twin,
+/// and an opaque launch callback carries no shape at all.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct CarveoutShape {
+    pub(crate) entry: *const std::ffi::c_void,
+    pub(crate) dynamic_smem_bytes: usize,
+    /// Register-bound resident blocks at the ACTIVE pin level of this binary.
+    pub(crate) target_blocks_per_sm: u32,
+    /// Names the shape in the emitted row.
+    pub(crate) label: &'static str,
+}
+
+impl CarveoutShape {
+    pub(crate) fn demand_bytes(&self) -> usize {
+        self.target_blocks_per_sm as usize
+            * (self.dynamic_smem_bytes + bwd_seg_reserved_smem_bytes_per_block())
+    }
+
+    /// The prelude's shape: grid 1, block 32 — ONE block on one SM for the whole
+    /// device. Feeding it an occupancy-maximum block count would reserve shared
+    /// memory for blocks that can never coexist. It declares no shared memory at
+    /// all, so 0% both maximizes L1 and lets the driver raise the configuration to
+    /// the smallest bucket satisfying its (zero) dynamic request. The one symbol
+    /// whose preference is a constant (spec §3.1).
+    pub(crate) fn prelude() -> Self {
+        Self {
+            entry: bwd_seg_prelude_entry_point(),
+            dynamic_smem_bytes: 0,
+            target_blocks_per_sm: 1,
+            label: "prelude",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+struct CarveoutEntry {
+    entry: *const std::ffi::c_void,
+    requested_pct: i32,
+    prior_pct: i32,
+}
+
+/// The pair-scoped owner of the carveout preference (spec §3.2).
+///
+/// `SegCell::stage` knows ONE shape and is never passed the baseline, so it cannot
+/// compute a two-arm maximum — the plan is therefore built by the caller that owns
+/// both closures, and staging keeps its existing job (uploads and descriptor
+/// patching). There is NO process-lifetime configuration of this family and `Once`
+/// has no role here: one continuation entry point serves every runtime `K` while
+/// its block count and dynamic demand move with `K`, pin, epilogue and placement.
+///
+/// Per-cell sequence, and the order is load-bearing: **build plan (both arms +
+/// prelude) -> `apply()` -> stage arm A -> stage arm B -> balanced warmup ->
+/// timed blocks -> restore (on drop)**. `apply()` runs before EITHER arm stages,
+/// not merely before the warmup, because `SegCell::stage` LAUNCHES the fold-weight
+/// prelude — applying after staging would run the prelude at whatever preference
+/// the previous cell left behind, silently, on every continuation cell, and would
+/// leave a twin baseline staged under the wrong preference too.
+pub(crate) struct CarveoutPlan {
+    mode: CarveoutMode,
+    entries: Vec<CarveoutEntry>,
+    demand_source: String,
+    applied: bool,
+}
+
+impl CarveoutPlan {
+    fn push_unique(entries: &mut Vec<CarveoutEntry>, entry: *const std::ffi::c_void, pct: i32) {
+        // DEDUPE BY ENTRY POINTER. One symbol serves every `K`, so a pair's two
+        // arms can be the SAME function — the corpus's K-vs-K4 twin always is. Two
+        // entries for one pointer would query the second `prior_pct` AFTER the
+        // first `set`, capturing the override as the "prior" value, and the restore
+        // would then reinstall it and leak into every later cell in the process.
+        if let Some(existing) = entries
+            .iter_mut()
+            .find(|slot| std::ptr::eq(slot.entry, entry))
+        {
+            // Same symbol, two demands: the larger request wins, for the same
+            // reason a cross-shape pair takes the maximum.
+            existing.requested_pct = existing.requested_pct.max(pct);
+            return;
+        }
+        entries.push(CarveoutEntry {
+            entry,
+            requested_pct: pct,
+            prior_pct: 0,
+        });
+    }
+
+    /// Both arms plus (optionally) the prelude.
+    ///
+    /// In `CommonBucket`, cross-shape pairs take `max(demand_a, demand_b)` and both
+    /// arms are configured from that one number: a pair whose two sides request
+    /// different partitions is defect (a) reintroduced. Where the two demands
+    /// quantize to DIFFERENT buckets the smaller-demand side ran at less L1 than it
+    /// could have had alone, and that asymmetry statement must travel with the
+    /// reported number; where they quantize to the SAME bucket the note is vacuous
+    /// and is omitted (spec §3.2 rule 3).
+    ///
+    /// In `AsConfigured`, the candidate gets its own pct and the baseline is LEFT
+    /// ALONE — its shipped preference is data, not a constant to assume.
+    pub(crate) fn for_pair(
+        mode: CarveoutMode,
+        candidate: CarveoutShape,
+        baseline: CarveoutShape,
+        with_prelude: bool,
+    ) -> Self {
+        let (a, b) = (candidate.demand_bytes(), baseline.demand_bytes());
+        let mut entries = Vec::with_capacity(3);
+        let demand_source = match mode {
+            CarveoutMode::Off => "driver default (no preference set)".to_owned(),
+            CarveoutMode::CommonBucket => {
+                let (winner, demand) = if a >= b {
+                    (candidate.label, a)
+                } else {
+                    (baseline.label, b)
+                };
+                let pct = bwd_seg_pct_for_demand(demand);
+                Self::push_unique(&mut entries, candidate.entry, pct);
+                Self::push_unique(&mut entries, baseline.entry, pct);
+                if bwd_seg_expected_smem_bucket_bytes(a) == bwd_seg_expected_smem_bucket_bytes(b) {
+                    format!("{winner}, {demand} B (both arms quantize alike)")
+                } else {
+                    format!(
+                        "{winner}, {demand} B (ASYMMETRIC: {a} B vs {b} B quantize to \
+                         different buckets; the smaller-demand arm ran at less L1)"
+                    )
+                }
+            }
+            CarveoutMode::AsConfigured => {
+                Self::push_unique(&mut entries, candidate.entry, bwd_seg_pct_for_demand(a));
+                format!(
+                    "{} only, {a} B; baseline left at its own preference",
+                    candidate.label
+                )
+            }
+            CarveoutMode::FixedBucket(bucket) => {
+                // A pct that lands exactly on `bucket`, independent of demand. Both
+                // arms get it, so the reference clock's partition is level-invariant.
+                assert!(
+                    a <= bucket && b <= bucket,
+                    "the fixed reference-clock bucket {bucket} B cannot hold demands \
+                     {a} B / {b} B; re-derive SEG_REFERENCE_CLOCK_BUCKET_BYTES from \
+                     the demand table before timing"
+                );
+                let pct = bwd_seg_pct_for_demand(bucket);
+                Self::push_unique(&mut entries, candidate.entry, pct);
+                Self::push_unique(&mut entries, baseline.entry, pct);
+                format!("FIXED {bucket} B (predeclared, level-invariant)")
+            }
+        };
+        if with_prelude && mode != CarveoutMode::Off {
+            Self::push_unique(&mut entries, CarveoutShape::prelude().entry, 0);
+        }
+        Self {
+            mode,
+            entries,
+            demand_source,
+            applied: false,
+        }
+    }
+
+    /// One arm, for a solo-timed cell.
+    pub(crate) fn for_solo(mode: CarveoutMode, shape: CarveoutShape, with_prelude: bool) -> Self {
+        let demand = shape.demand_bytes();
+        let mut entries = Vec::with_capacity(2);
+        if mode != CarveoutMode::Off {
+            let target = match mode {
+                CarveoutMode::FixedBucket(bucket) => bucket,
+                _ => demand,
+            };
+            Self::push_unique(&mut entries, shape.entry, bwd_seg_pct_for_demand(target));
+            if with_prelude {
+                Self::push_unique(&mut entries, CarveoutShape::prelude().entry, 0);
+            }
+        }
+        Self {
+            mode,
+            entries,
+            demand_source: format!("{} only, {demand} B", shape.label),
+            applied: false,
+        }
+    }
+
+    /// Query each entry point's current preference, then set it. Called OUTSIDE
+    /// every timed region, re-computed and re-applied per cell, never once per
+    /// process or per shape family.
+    pub(crate) fn apply(&mut self) {
+        if self.mode == CarveoutMode::Off {
+            return;
+        }
+        for slot in &mut self.entries {
+            slot.prior_pct = bwd_seg_query_carveout(slot.entry);
+            set_shared_carveout(slot.entry, slot.requested_pct);
+        }
+        self.applied = true;
+    }
+
+    pub(crate) fn mode(&self) -> CarveoutMode {
+        self.mode
+    }
+
+    pub(crate) fn requested_pct_of(&self, entry: *const std::ffi::c_void) -> Option<i32> {
+        self.entries
+            .iter()
+            .find(|slot| std::ptr::eq(slot.entry, entry))
+            .map(|slot| slot.requested_pct)
+    }
+
+    pub(crate) fn demand_source_label(&self) -> &str {
+        &self.demand_source
+    }
+}
+
+impl Drop for CarveoutPlan {
+    /// Restores the EXACT prior value, never the driver default.
+    ///
+    /// `reset_shared_carveout` (gpu/core/src/primitives/utils.rs:148-150) writes
+    /// `cudaSharedmemCarveoutDefault == -1`, which is NOT a synonym for "put it
+    /// back". The incumbent R0 kernel is the case that proves it: its shipped state
+    /// is an explicit `0` written once behind a `Once`, so a probe that overrides it
+    /// and then "resets" leaves it at DEFAULT and the `Once` will never reapply the
+    /// 0 — a later column believing it measured the as-shipped incumbent would be
+    /// measuring the driver's heuristic instead. RAII, so an early return or a panic
+    /// inside a probe cannot leak state into every later sample. Entries are unique
+    /// by construction (`push_unique`), so the restore order cannot matter.
+    fn drop(&mut self) {
+        if !self.applied {
+            return;
+        }
+        for slot in &self.entries {
+            set_shared_carveout(slot.entry, slot.prior_pct);
+        }
     }
 }
 
@@ -610,6 +1107,15 @@ pub(crate) fn bwd_seg_acc_entry_point(
     GkrBwdSegInlineFunction(seg_acc_symbol(regime, placement)).as_ptr()
 }
 
+/// The fold-weight prelude's device entry point. Added because the macro's
+/// `…Function` wrapper holds its signature in a PRIVATE tuple field, so a caller
+/// in another module cannot construct one — the same reason [`bwd_seg_entry_point`]
+/// exists. With this, entry-point coverage is 15 executors + 4 rungs + 1 prelude =
+/// the full 20-symbol family.
+pub(crate) fn bwd_seg_prelude_entry_point() -> *const std::ffi::c_void {
+    GkrBwdSegBuildFoldWeightsFunction(ab_gkr_bwd_seg_build_fold_weights_kernel).as_ptr()
+}
+
 /// The device entry point of the exact `(regime, program source, coefficient
 /// loader, epilogue)` executor — what `cudaFuncGetAttributes` and a profiler
 /// filter need, and nothing that can launch.
@@ -733,6 +1239,191 @@ mod tests {
             ProgramMode::DevPtr,
             CoeffMode::Constant,
             BwdSegEpilogue::Staged,
+        );
+    }
+
+    /// The occupancy formula must reproduce results §2.5's MEASURED column, or the
+    /// whole demand table is fiction.
+    #[test]
+    fn seg_register_bound_blocks_reproduce_the_measured_column() {
+        const K: [u32; 7] = [1, 2, 4, 8, 16, 24, 32];
+        let at = |registers: u32| K.map(|k| bwd_seg_register_bound_blocks_per_sm(registers, k));
+        assert_eq!(at(40), [24, 24, 12, 6, 3, 2, 1], "R40 plane");
+        assert_eq!(at(50), [24, 18, 9, 4, 2, 1, 1], "R50 cont");
+        // The pins this pass installs, whose rows the demand table needs.
+        assert_eq!(at(48)[2], 10, "R48 at k=4");
+        assert_eq!(at(48)[1], 20, "R48 at k=2");
+        assert_eq!(at(56)[5], 1, "R56 at k=24");
+        assert_eq!(at(64)[0], 24, "R64 at k=1");
+        assert_eq!(at(64)[2], 8, "R64 at k=4");
+    }
+
+    #[test]
+    fn seg_expected_buckets_match_the_specs_generated_rows() {
+        let kib = |n: usize| n * 1024;
+        assert_eq!(
+            bwd_seg_expected_smem_bucket_bytes(6_144),
+            kib(8),
+            "staged R40 k16"
+        );
+        assert_eq!(
+            bwd_seg_expected_smem_bucket_bytes(4_096),
+            kib(8),
+            "staged R40 k24"
+        );
+        assert_eq!(
+            bwd_seg_expected_smem_bucket_bytes(12_800),
+            kib(16),
+            "plane natural k24"
+        );
+        assert_eq!(
+            bwd_seg_expected_smem_bucket_bytes(23_040),
+            kib(32),
+            "cont natural k4"
+        );
+        assert_eq!(
+            bwd_seg_expected_smem_bucket_bytes(25_600),
+            kib(32),
+            "cont R48 k4"
+        );
+        assert_eq!(
+            bwd_seg_expected_smem_bucket_bytes(30_720),
+            kib(32),
+            "cont R40 k4"
+        );
+        assert_eq!(
+            bwd_seg_expected_smem_bucket_bytes(25_088),
+            kib(32),
+            "acc2 k24, both regimes"
+        );
+        assert_eq!(
+            bwd_seg_expected_smem_bucket_bytes(49_152),
+            kib(64),
+            "wide R40 k=4..24 — ZERO reclaim"
+        );
+        assert_eq!(
+            bwd_seg_expected_smem_bucket_bytes(32_768),
+            kib(32),
+            "wide R40 k32"
+        );
+        assert_eq!(
+            bwd_seg_expected_smem_bucket_bytes(66_560),
+            kib(100),
+            "accboth R0 pin48 k4"
+        );
+        assert_eq!(
+            bwd_seg_expected_smem_bucket_bytes(71_680),
+            kib(100),
+            "accboth R0 pin48 k2"
+        );
+    }
+
+    /// `wide`'s "exactly 49,152 B" is a 40-PIN IDENTITY, not a property of the
+    /// epilogue: dynamic bytes are `2(k-1)*512 ~= 1024(k-1)`, so with the reserve the
+    /// per-block figure is ~`1024k` and at R40 the block count is exactly `48/k`.
+    #[test]
+    fn seg_wide_zero_reclaim_is_a_forty_pin_identity() {
+        let reserve = bwd_seg_reserved_smem_bytes_per_block();
+        let at = |registers: u32, k: u32| {
+            (bwd_seg_epilogue_smem_bytes(BwdSegEpilogue::Wide, k) + reserve)
+                * bwd_seg_register_bound_blocks_per_sm(registers, k) as usize
+        };
+        for k in [4u32, 8, 16, 24] {
+            assert_eq!(
+                at(40, k),
+                49_152,
+                "wide at R40 k={k} must be exactly 48 KiB"
+            );
+        }
+        // At looser pins the demand differs AND so does the bucket.
+        assert_eq!(at(48, 16), 32_768, "R48 wide k16");
+        assert_eq!(at(48, 24), 24_576, "R48 wide k24");
+        assert_eq!(at(50, 24), 24_576, "natural wide k24");
+    }
+
+    /// The rungs need their own demand rows because `bwd_seg_acc_smem_bytes` is
+    /// non-zero at every `k` including 1, where the plain executors are 0.
+    #[test]
+    fn seg_acc_rung_demand_is_non_zero_at_k_one() {
+        assert_eq!(
+            bwd_seg_acc_smem_bytes(BwdSegAccPlacement::AccC2Smem, 1),
+            512
+        );
+        assert_eq!(
+            bwd_seg_acc_smem_bytes(BwdSegAccPlacement::AccBothSmem, 1),
+            1_024
+        );
+        assert_eq!(
+            bwd_seg_acc_dynamic_smem_bytes(BwdSegAccPlacement::AccC2Smem, 24),
+            24_064
+        );
+        assert_eq!(
+            bwd_seg_epilogue_smem_bytes(BwdSegEpilogue::Plane, 24),
+            11_776
+        );
+    }
+
+    /// The predeclared reference-clock bucket must cover EVERY pin-decision cell at
+    /// EVERY level, or the level comparison is starving one of them. Re-derived here
+    /// from the same formula the demand table uses, so a future edit to the decision
+    /// set or the pin ladder breaks this test rather than a published number.
+    #[test]
+    fn the_reference_clock_bucket_covers_every_decision_cell() {
+        let reserve = bwd_seg_reserved_smem_bytes_per_block();
+        let mut worst = 0usize;
+        for pin in [40u32, 48, 50, 56] {
+            for k in [1u32, 2, 4, 8, 16, 24, 32] {
+                let demand = bwd_seg_register_bound_blocks_per_sm(pin, k) as usize
+                    * (bwd_seg_epilogue_smem_bytes(BwdSegEpilogue::Plane, k) + reserve);
+                worst = worst.max(demand);
+                assert!(
+                    demand <= SEG_REFERENCE_CLOCK_BUCKET_BYTES,
+                    "plane pin{pin} K{k} demands {demand} B > the fixed reference-clock \
+                     bucket {SEG_REFERENCE_CLOCK_BUCKET_BYTES} B"
+                );
+            }
+        }
+        // And it is the SMALLEST supported bucket that does: 32 KiB would not hold the
+        // worst cell, so 64 KiB is the right predeclared value rather than a round one.
+        assert_eq!(
+            worst, 36_864,
+            "the worst plane decision cell is R40 K=2 (24 register-bound blocks x \
+             (512 B epilogue + 1,024 B reserve))"
+        );
+        assert!(worst > 32 * 1024, "32 KiB would starve the worst cell");
+        assert_eq!(
+            bwd_seg_expected_smem_bucket_bytes(worst),
+            SEG_REFERENCE_CLOCK_BUCKET_BYTES
+        );
+    }
+
+    /// One symbol serves every `K`, so a pair's two arms can be the SAME pointer. The
+    /// plan must hold ONE entry for it, or the restore reinstalls the override.
+    #[test]
+    fn a_same_symbol_pair_yields_one_deduped_entry() {
+        let entry = bwd_seg_entry_point(
+            BwdRegime::Ext,
+            ProgramMode::Inline,
+            CoeffMode::Constant,
+            BwdSegEpilogue::Plane,
+        );
+        let shape = |k: u32| CarveoutShape {
+            entry,
+            dynamic_smem_bytes: bwd_seg_epilogue_smem_bytes(BwdSegEpilogue::Plane, k),
+            target_blocks_per_sm: bwd_seg_register_bound_blocks_per_sm(50, k),
+            label: "same-symbol",
+        };
+        let prior = bwd_seg_query_carveout(entry);
+        {
+            let mut plan =
+                CarveoutPlan::for_pair(CarveoutMode::CommonBucket, shape(8), shape(4), false);
+            plan.apply();
+            assert!(plan.requested_pct_of(entry).is_some());
+        }
+        assert_eq!(
+            bwd_seg_query_carveout(entry),
+            prior,
+            "the restore must return the EXACT prior value, not the override"
         );
     }
 }

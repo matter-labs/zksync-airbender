@@ -83,11 +83,15 @@ use era_cudart::slice::DeviceSlice;
 use era_cudart::stream::CudaStream;
 use era_cudart_sys::{cudaFuncGetAttributes, CudaFuncAttributes};
 
+// `seg_report.rs` CONSUMES the carveout vocabulary Task 3 defines in `seg.rs`; the
+// names are added to this one import block. Nothing is redefined here — one
+// definition, one file.
 use super::seg::{
     bwd_seg_acc_blocks_per_sm, bwd_seg_acc_dynamic_smem_bytes, bwd_seg_acc_entry_point,
-    bwd_seg_blocks_per_sm, bwd_seg_entry_point, bwd_seg_epilogue_smem_bytes, launch_bwd_seg,
-    launch_bwd_seg_acc, launch_bwd_seg_build_fold_weights, BwdSegAccPlacement, BwdSegEpilogue,
-    BWD_SEG_ACC_RUNG_EPILOGUE,
+    bwd_seg_blocks_per_sm, bwd_seg_entry_point, bwd_seg_epilogue_smem_bytes,
+    bwd_seg_register_bound_blocks_per_sm, launch_bwd_seg, launch_bwd_seg_acc,
+    launch_bwd_seg_build_fold_weights, BwdSegAccPlacement, BwdSegEpilogue, CarveoutMode,
+    CarveoutPlan, CarveoutShape, BWD_SEG_ACC_RUNG_EPILOGUE,
 };
 use super::seg_desc::BWD_SEG_MAX_K;
 use super::seg_lower::{
@@ -2150,6 +2154,351 @@ pub(super) const INCUMBENT_R0_BASELINE_LABEL: &str = "incumbent-compact-r0";
 /// same `K`, epilogue, loader, cell and rows.
 pub(super) const STAGE_B_TWIN_BASELINE_LABEL: &str = "register-twin";
 
+// ── The carveout plan's view of a pair (spec §3.2) ───────────────────────────
+
+/// HOW the other arm of a paired cell is launched.
+///
+/// Two variants because the two kinds of baseline differ in WHEN they may be
+/// staged, and that difference is the whole point of spec §3.2's ordering rule.
+/// The incumbent compact evaluator is an opaque closure its caller staged long
+/// before this cell existed and which stages nothing per cell, so it is safe to
+/// carry as a callback. A segmented TWIN is a second shape of the SAME cell, and
+/// `SegCell::prepare` launches the fold-weight prelude — so a twin prepared by the
+/// caller would run that prelude at whatever preference the previous cell left
+/// behind. Carrying the twin as a SHAPE rather than a prepared launchable is what
+/// makes "the plan is applied before BOTH arms stage" structural instead of a
+/// convention every caller has to remember.
+pub(super) enum SegBaselineLaunch<'a> {
+    /// A launch prepared outside this cell entirely (the incumbent compact
+    /// evaluator). Staging is the caller's and happens once, not per cell.
+    External(&'a dyn Fn(&ProverContext) -> CudaResult<()>),
+    /// A second shape of the same [`SegCell`], prepared by `measure_shape` AFTER the
+    /// plan is applied and BEFORE the candidate — the order the callers had.
+    SegTwin(SegShape),
+}
+
+/// The other arm of a paired cell: its label, its launch, and its LAUNCH SHAPE.
+///
+/// The shape is explicit because the harness's baselines are heterogeneous — the
+/// flat R0 incumbent (128 threads, zero dynamic smem, its own pinned occupancy) in
+/// the R0 matrix, a segmented twin in the Stage-B ladder and in the corpus — and a
+/// launch callback carries none of that. A plan that assumed "baseline == flat R0"
+/// would configure a seg twin from the wrong demand and silently reintroduce
+/// defect (a) on two of the three paired paths.
+pub(super) struct SegBaselineArm<'a> {
+    pub(super) label: &'static str,
+    pub(super) launch: SegBaselineLaunch<'a>,
+    pub(super) shape: CarveoutShape,
+}
+
+impl<'a> SegBaselineArm<'a> {
+    /// The incumbent compact R0 evaluator, as an opaque callback.
+    pub(super) fn incumbent(launch: &'a dyn Fn(&ProverContext) -> CudaResult<()>) -> Self {
+        Self {
+            label: INCUMBENT_R0_BASELINE_LABEL,
+            launch: SegBaselineLaunch::External(launch),
+            shape: incumbent_r0_carveout_shape(),
+        }
+    }
+
+    /// A segmented twin of the same cell, named by `label` and staged inside
+    /// `measure_shape`.
+    pub(super) fn seg_twin(label: &'static str, regime: BwdRegime, shape: SegShape) -> Self {
+        Self {
+            label,
+            launch: SegBaselineLaunch::SegTwin(shape),
+            shape: seg_carveout_shape(regime, shape, "twin-baseline"),
+        }
+    }
+}
+
+/// The flat R0 incumbent's shape. [`PINNED_INCUMBENT_R0_BLOCKS_PER_SM`] is `i32`, so
+/// the conversion is explicit rather than an implicit mismatch with
+/// `CarveoutShape::target_blocks_per_sm`.
+pub(super) fn incumbent_r0_carveout_shape() -> CarveoutShape {
+    CarveoutShape {
+        entry: incumbent_r0_kernel().as_ptr(),
+        dynamic_smem_bytes: 0,
+        target_blocks_per_sm: u32::try_from(PINNED_INCUMBENT_R0_BLOCKS_PER_SM)
+            .expect("the pinned incumbent block count is positive"),
+        label: "incumbent-flat-r0",
+    }
+}
+
+/// A segmented shape's own carveout shape, from the attributes of the exact
+/// executor it launches.
+pub(super) fn seg_carveout_shape(
+    regime: BwdRegime,
+    shape: SegShape,
+    label: &'static str,
+) -> CarveoutShape {
+    let attributes = shape_attributes(regime, shape);
+    let k = u32::try_from(shape.k).expect("k fits u32");
+    // `shape.acc` is an `Option<BwdSegAccPlacement>` — `None` is the fifteen release
+    // symbols' register placement.
+    let (entry, dynamic) = match shape.acc {
+        Some(placement) => (
+            bwd_seg_acc_entry_point(regime, placement),
+            bwd_seg_acc_dynamic_smem_bytes(placement, k),
+        ),
+        None => (
+            bwd_seg_entry_point(regime, shape.program, shape.coeff, shape.epilogue),
+            bwd_seg_epilogue_smem_bytes(shape.epilogue, k),
+        ),
+    };
+    CarveoutShape {
+        entry,
+        dynamic_smem_bytes: dynamic,
+        target_blocks_per_sm: bwd_seg_register_bound_blocks_per_sm(
+            u32::try_from(attributes.registers).expect("a positive register count"),
+            k,
+        ),
+        label,
+    }
+}
+
+/// §7.1.0 / §7.2.1's mode selector. Default `common-bucket`: the primary column's
+/// configuration, and the one every non-R0 cell uses.
+pub(super) fn carveout_mode() -> CarveoutMode {
+    match std::env::var("BWD_SEG_CARVEOUT")
+        .unwrap_or_else(|_| "common-bucket".to_owned())
+        .trim()
+    {
+        "off" => CarveoutMode::Off,
+        "common-bucket" => CarveoutMode::CommonBucket,
+        "as-configured" => CarveoutMode::AsConfigured,
+        // The pin decision does not read this variable — it hardcodes
+        // `FixedBucket(SEG_REFERENCE_CLOCK_BUCKET_BYTES)` so no environment can
+        // make the reference clock level-dependent.
+        other => panic!(
+            "BWD_SEG_CARVEOUT must be `off`, `common-bucket` or `as-configured`, got {other:?}"
+        ),
+    }
+}
+
+/// **The generated carveout demand table (spec §3.1).** One row per REAL
+/// `{symbol, pin, K, epilogue, placement}` tuple, from the helper's own formula.
+/// No GPU timing — it queries device attributes and computes.
+///
+/// **No impossible rows.** The pin is a property of the SYMBOL, not a free axis:
+/// `cont_const_*` are natural-50 and `cont_ptr_*` / `cont_const_progptr_*` are
+/// natural-56, the R0 `plane`/`wide` are 40 and the R0 `staged` 44/48. Emitting
+/// "generic cont at both 50 and 56" or "R0-plane/wide with a `staged` epilogue"
+/// would publish tuples no build produces. `{staged, any K}` is deliberately NOT a
+/// class either: its dynamic bytes are `K`-independent but its block count is not.
+#[test]
+#[ignore = "GPU device query; run the executable under with_gpu_lock.sh"]
+#[cfg(not(no_cuda))]
+#[serial_test::serial]
+fn bwd_seg_carveout_demand_table() {
+    use super::seg::{
+        bwd_seg_carveout_pct, bwd_seg_expected_smem_bucket_bytes, bwd_seg_max_blocks_per_sm,
+        bwd_seg_reserved_smem_bytes_per_block,
+    };
+    const UNIFIED_ARRAY_BYTES: usize = 128 * 1024;
+    const DRIVER_BASELINE_L1_BYTES: usize = 64 * 1024;
+    let reserve = bwd_seg_reserved_smem_bytes_per_block();
+    // `#` comment lines are this pass's established artifact convention (Task 2's
+    // frozen-cells TSV carries its `# campaign =` tag the same way), and the
+    // residency rule has to be stated where the table is read: `blocks_per_sm` is the
+    // REGISTER-BOUND count for every executor and rung row, but a launch whose grid
+    // cannot fill an SM is capped by its GRID, and reserving shared memory for blocks
+    // that can never coexist would overstate its demand.
+    let mut out = String::from(
+        "# blocks_per_sm is register-bound, EXCEPT where the launch geometry caps it: \
+the build_fold_weights prelude is a grid-1 launch, so its row is 1 block.\n\
+symbol,regime,loader,program,epilogue,placement,pin,pin_kind,k,dynamic_bytes,\
+per_block_bytes,blocks_per_sm,sm_demand_bytes,requested_pct,expected_bucket_bytes,\
+expected_l1_bytes,reclaim_vs_baseline_pct\n",
+    );
+    let mut rows = 0usize;
+    #[allow(clippy::too_many_arguments)]
+    let mut push = |symbol: &str,
+                    regime: &str,
+                    loader: &str,
+                    program: &str,
+                    epi: &str,
+                    placement: &str,
+                    pin: u32,
+                    pin_kind: &str,
+                    k: u32,
+                    dynamic: usize,
+                    // `Some(n)` when the GRID, not the register allocation, is what
+                    // bounds residency. The prelude is the only such launch.
+                    grid_capped_blocks: Option<u32>| {
+        let blocks =
+            grid_capped_blocks.unwrap_or_else(|| bwd_seg_register_bound_blocks_per_sm(pin, k));
+        let per_block = dynamic + reserve;
+        let demand = blocks as usize * per_block;
+        let bucket = bwd_seg_expected_smem_bucket_bytes(demand);
+        let l1 = UNIFIED_ARRAY_BYTES - bucket;
+        writeln!(
+            out,
+            "{symbol},{regime},{loader},{program},{epi},{placement},{pin},{pin_kind},{k},\
+             {dynamic},{per_block},{blocks},{demand},{},{bucket},{l1},{:+.2}",
+            bwd_seg_carveout_pct(blocks, dynamic),
+            (l1 as f64 / DRIVER_BASELINE_L1_BYTES as f64 - 1.0) * 100.0,
+        )
+        .expect("write String");
+        rows += 1;
+    };
+    let epilogues = [
+        (BwdSegEpilogue::Staged, "staged"),
+        (BwdSegEpilogue::Plane, "plane"),
+        (BwdSegEpilogue::Wide, "wide"),
+    ];
+    for k in STAGE_A_K.iter().map(|k| *k as u32) {
+        for (epi, epi_label) in epilogues {
+            let dynamic = bwd_seg_epilogue_smem_bytes(epi, k);
+            // The SIX R0 executors, at the pin §4.3 gives each: 40 for
+            // `plane`/`wide` (band 33-40, their current allocation), 48 for
+            // `staged` (band top of 41-48, whose current allocation is 44).
+            for loader in ["const", "ptr"] {
+                let (pin, kind) = match epi {
+                    BwdSegEpilogue::Staged => (48u32, "permanent-band-top"),
+                    _ => (40u32, "permanent-band-top"),
+                };
+                push(
+                    &format!("r0_{loader}_epi_{epi_label}"),
+                    "r0",
+                    loader,
+                    "inline",
+                    epi_label,
+                    "registers",
+                    pin,
+                    kind,
+                    k,
+                    dynamic,
+                    None,
+                );
+            }
+            // The NINE swept continuation executors. Their NATURAL pin differs by
+            // loader — `cont_const_*` allocate 50, `cont_ptr_*` and
+            // `cont_const_progptr_*` allocate 56 — so `natural` is one row per
+            // symbol, not two rows per class.
+            for (loader, program, natural) in [
+                ("const", "inline", 50u32),
+                ("ptr", "inline", 56),
+                ("const", "progptr", 56),
+            ] {
+                let symbol = if program == "progptr" {
+                    format!("cont_{loader}_progptr_epi_{epi_label}")
+                } else {
+                    format!("cont_{loader}_epi_{epi_label}")
+                };
+                push(
+                    &symbol,
+                    "cont",
+                    loader,
+                    program,
+                    epi_label,
+                    "registers",
+                    natural,
+                    "swept-natural",
+                    k,
+                    dynamic,
+                    None,
+                );
+                for pin in [48u32, 40] {
+                    push(
+                        &symbol,
+                        "cont",
+                        loader,
+                        program,
+                        epi_label,
+                        "registers",
+                        pin,
+                        "swept",
+                        k,
+                        dynamic,
+                        None,
+                    );
+                }
+            }
+        }
+        // The FOUR acc rungs, at the pin §4.3 gives each. They exist only on the
+        // `plane` epilogue with the `const` loader (BWD_SEG_ACC_RUNG_EPILOGUE), so
+        // no other epilogue row is emitted for them.
+        for (placement, label) in [
+            (BwdSegAccPlacement::AccC2Smem, "acc2smem"),
+            (BwdSegAccPlacement::AccBothSmem, "accbothsmem"),
+        ] {
+            let dynamic = bwd_seg_acc_dynamic_smem_bytes(placement, k);
+            push(
+                &format!("r0_const_epi_plane_{label}"),
+                "r0",
+                "const",
+                "inline",
+                "plane",
+                label,
+                48,
+                "permanent-band-top",
+                k,
+                dynamic,
+                None,
+            );
+            let (cont_pin, kind) = match placement {
+                BwdSegAccPlacement::AccC2Smem => (56u32, "permanent-band-top"),
+                BwdSegAccPlacement::AccBothSmem => (64u32, "permanent-launch-ceiling"),
+            };
+            push(
+                &format!("cont_const_epi_plane_{label}"),
+                "cont",
+                "const",
+                "inline",
+                "plane",
+                label,
+                cont_pin,
+                kind,
+                k,
+                dynamic,
+                None,
+            );
+        }
+    }
+    // The prelude: grid 1, block 32, zero dynamic smem, a CONSTANT 0%, no pin.
+    push(
+        "build_fold_weights",
+        "any",
+        "none",
+        "none",
+        "none",
+        "none",
+        27,
+        "exempt",
+        1,
+        0,
+        // A grid-1 launch: ONE block on one SM for the whole device, so its row must
+        // not claim the 24-block register-bound occupancy the formula would give it.
+        Some(1),
+    );
+    let path = std::env::var("BWD_SEG_DEMAND_TABLE_OUT").map_or_else(
+        |_| seg_output_path("seg_carveout_demand_table.csv"),
+        PathBuf::from,
+    );
+    publish(&path, &out);
+    // `l2=` is emitted HERE, pre-freeze, because Task 11's floor banding needs the
+    // device attribute (`cudaDevAttrL2CacheSize`) as its authority and Task 11 is
+    // data-only — it may not add a source edit to produce it.
+    eprintln!(
+        "[seg-carveout] reserve={reserve} B pool={} B block_cap={} l2={} rows={rows} -> {}",
+        crate::primitives::utils::smem_pool_bytes_per_sm(),
+        bwd_seg_max_blocks_per_sm(),
+        super::seg::bwd_seg_l2_capacity_bytes(),
+        path.display(),
+    );
+    // 7 K values x (6 R0 + 9 cont x 3 pins + 4 rungs) + 1 prelude.
+    assert_eq!(rows, 7 * (6 + 27 + 4) + 1, "the enumeration must be exact");
+    // Sanity against spec §3.1's own numbers. A different part is fine — the
+    // arithmetic is queried — but it must be RECORDED as different, not silently
+    // absorbed.
+    assert_eq!(
+        reserve, 1_024,
+        "expected 1,024 B on this part; record the deviation"
+    );
+    assert_eq!(bwd_seg_max_blocks_per_sm(), 24, "expected 24 on this part");
+}
+
 // ── Device facts ─────────────────────────────────────────────────────────────
 
 /// The device constants every occupancy number is relative to.
@@ -2410,6 +2759,16 @@ pub(super) struct SegMatrixRow {
     /// number. Naming the baseline in the row is what keeps them distinguishable in
     /// the CSV and in every generated table.
     pub(super) baseline: &'static str,
+    /// How the cell's shared-memory carveout was configured (spec §3), or `"-"` when
+    /// nothing was configured because the cell could not launch.
+    pub(super) carveout_mode: &'static str,
+    /// The percentage REQUESTED for the candidate's entry point. `None` in `off` mode
+    /// and on an unlaunchable cell. It is a hint, never the gate — the gate is the
+    /// realized `launch__shared_mem_config_size` (spec §3.4).
+    pub(super) carveout_requested_pct: Option<i32>,
+    /// WHICH arm's demand the request came from, and — when the two arms quantize to
+    /// different buckets — the asymmetry statement that must travel with the number.
+    pub(super) carveout_source: String,
 }
 
 impl SegMatrixRow {
@@ -2444,7 +2803,8 @@ local_spill_bytes,static_smem_bytes,max_threads_per_block,dynamic_smem_bytes,gri
 max_over_mean_work,parity,protocol,ratio_baseline,candidate_median_us,candidate_min_us,\
 baseline_median_us,baseline_min_us,median_ratio,ci_low,ci_high,verdict,delta_order_pct,\
 delta_order_ci_low,delta_order_ci_high,order_gate,abba_candidate_us,abba_incumbent_us,\
-baab_candidate_us,baab_incumbent_us,run_id\n";
+baab_candidate_us,baab_incumbent_us,run_id,carveout_mode,carveout_requested_pct,\
+carveout_source\n";
 
 pub(super) fn render_matrix_csv(rows: &[SegMatrixRow]) -> String {
     let mut out = String::from(SEG_CSV_HEADER);
@@ -2480,10 +2840,14 @@ pub(super) fn render_matrix_csv(rows: &[SegMatrixRow]) -> String {
             ),
             None => "-,-,-,-".to_owned(),
         };
+        // The demand source is prose and CONTAINS commas (`"{winner}, {demand} B …"`);
+        // this renderer emits unquoted fields, so the separator is neutralized rather
+        // than the sentence truncated.
+        let carveout_source = row.carveout_source.replace(',', ";");
         writeln!(
             out,
             "{},{},{},{:?},{},{},{},{},{},{},{},{},{},{},{},{:.2},{},{},{},{},{},{},{:.3},{:.4},\
-             {},{},{},{:.3},{:.3},{:.3},{:.3},{},{},{},{},{},{},{},{},{},{}",
+             {},{},{},{:.3},{:.3},{:.3},{:.3},{},{},{},{},{},{},{},{},{},{},{},{},{}",
             row.benchmark,
             row.circuit,
             row.layer,
@@ -2525,6 +2889,10 @@ pub(super) fn render_matrix_csv(rows: &[SegMatrixRow]) -> String {
             gate,
             conditional,
             row.run_id,
+            row.carveout_mode,
+            row.carveout_requested_pct
+                .map_or_else(|| "-".to_owned(), |pct| pct.to_string()),
+            carveout_source,
         )
         .expect("write String");
     }
@@ -4010,7 +4378,8 @@ fn run_r0_matrix(profile: Option<SegShape>) -> Vec<SegMatrixRow> {
             &host_eq,
             &device,
             &mut reference,
-            Some((INCUMBENT_R0_BASELINE_LABEL, &incumbent_launch)),
+            Some(SegBaselineArm::incumbent(&incumbent_launch)),
+            carveout_mode(),
             profile == Some(shape),
             &context,
         ));
@@ -4172,9 +4541,15 @@ fn measure_shape(
     eq: &HostEq,
     device: &SegDeviceFacts,
     reference: &mut Option<Vec<E4>>,
-    // `baseline`: what this shape is PAIRED against, and the label naming it.
+    // `baseline`: what this shape is PAIRED against, its label, and its LAUNCH
+    // SHAPE — the plan cannot compute a two-arm maximum from an opaque callback.
     // `None` falls back to solo timing, which the row records as such.
-    baseline: Option<(&'static str, &dyn Fn(&ProverContext) -> CudaResult<()>)>,
+    baseline: Option<SegBaselineArm>,
+    // The carveout configuration is a PARAMETER, not a global read: `carveout_mode()`
+    // parses an env var and cannot yield `FixedBucket`, so the pin-decision runner —
+    // whose reference clock must sit at ONE level-invariant partition — has to be able
+    // to pass it.
+    carveout: CarveoutMode,
     profile: bool,
     context: &ProverContext,
 ) -> SegMatrixRow {
@@ -4208,7 +4583,12 @@ fn measure_shape(
         incumbent_min_us: None,
         ratio: SegRatio::Solo,
         run_id: "-",
-        baseline: baseline.map_or("-", |(label, _)| label),
+        baseline: baseline.as_ref().map_or("-", |arm| arm.label),
+        // An unlaunchable cell returns before the plan is built, and `-` is then the
+        // truth: nothing was configured.
+        carveout_mode: "-",
+        carveout_requested_pct: None,
+        carveout_source: "-".to_owned(),
     };
     if blocks_per_sm == 0 {
         eprintln!(
@@ -4222,6 +4602,29 @@ fn measure_shape(
 
     // Rung 1: both CPU oracles, at this exact shape, on the small twin.
     parity.assert_oracles(shape, eq, context);
+
+    // Held for the whole cell. Built here because this is the only site that sees
+    // both arms; applied before EITHER arm stages because `SegCell::stage` launches
+    // the fold-weight prelude. RAII restores the exact prior values on the way out —
+    // declared before both launchables, so the restore is the last thing to run.
+    let candidate_shape = seg_carveout_shape(regime, shape, "candidate");
+    let mut carveout_plan = match &baseline {
+        Some(arm) => {
+            CarveoutPlan::for_pair(carveout, candidate_shape, arm.shape, timed.model.round >= 1)
+        }
+        None => CarveoutPlan::for_solo(carveout, candidate_shape, timed.model.round >= 1),
+    };
+    carveout_plan.apply();
+    row.carveout_mode = carveout_plan.mode().label();
+    row.carveout_requested_pct = carveout_plan.requested_pct_of(candidate_shape.entry);
+    row.carveout_source = carveout_plan.demand_source_label().to_owned();
+
+    // A segmented twin stages HERE — under the applied plan, and BEFORE the
+    // candidate, which is the order the callers that used to prepare it had.
+    let twin = match baseline.as_ref().map(|arm| &arm.launch) {
+        Some(SegBaselineLaunch::SegTwin(twin_shape)) => Some(timed.prepare(*twin_shape, context)),
+        _ => None,
+    };
 
     // Rung 2: the timed cell's own preflight and prefix identity.
     let launchable = timed.prepare(shape, context);
@@ -4258,8 +4661,24 @@ fn measure_shape(
     // Rung 3: the timing loop. Nothing is poisoned, downloaded or synchronized
     // inside it beyond the event pair each sample needs.
     let stream = context.get_exec_stream();
-    match baseline {
-        Some((label, baseline)) => {
+    // One launch expression for both baseline kinds: the external callback, or the
+    // twin this function staged above.
+    let launch_baseline = |ctx: &ProverContext| -> CudaResult<()> {
+        match &baseline
+            .as_ref()
+            .expect("a baseline launch is only asked for on a paired cell")
+            .launch
+        {
+            SegBaselineLaunch::External(launch) => launch(ctx),
+            SegBaselineLaunch::SegTwin(_) => twin
+                .as_ref()
+                .expect("a `SegTwin` baseline is prepared before the timing loop")
+                .launch(ctx),
+        }
+    };
+    match &baseline {
+        Some(arm) => {
+            let label = arm.label;
             // The BALANCED protocol (spec §6(a)): seeded two-pair blocks, a
             // joint-stratified block bootstrap, and the order contrast as a gate.
             // `time_paired`'s fixed candidate-then-incumbent order cannot identify an
@@ -4267,7 +4686,7 @@ fn measure_shape(
             let blocked = time_paired_blocked(
                 stream,
                 || launchable.launch(context),
-                || baseline(context),
+                || launch_baseline(context),
                 &seg_schedule(SEG_SCHEDULE_SEED),
             )
             .expect("balanced two-pair paired timing");
@@ -4357,12 +4776,12 @@ fn measure_shape(
                 .synchronize()
                 .expect("profiled candidate completion");
         }
-        if let Some((_, baseline)) = baseline {
+        if baseline.is_some() {
             let _range = crate::primitives::nvtx::scoped_range(
                 Some(SEG_NVTX_DOMAIN),
                 SEG_NVTX_INCUMBENT_MESSAGE,
             );
-            baseline(context).expect("profiled baseline");
+            launch_baseline(context).expect("profiled baseline");
             context
                 .get_exec_stream()
                 .synchronize()
@@ -4448,6 +4867,7 @@ fn bwd_seg_add_sub_l0_cont_matrix() {
                         &device,
                         &mut reference,
                         None,
+                        carveout_mode(),
                         false,
                         &context,
                     ));
@@ -4844,6 +5264,7 @@ fn bwd_seg_stage_b_acc_ladder() {
                 &device,
                 &mut reference,
                 None,
+                carveout_mode(),
                 false,
                 &context,
             ));
@@ -4852,7 +5273,11 @@ fn bwd_seg_stage_b_acc_ladder() {
             // NORMATIVE protocol rather than a quotient of two separately-timed
             // medians, which would carry a fixed-direction drift bias (the twin is
             // always measured first) and no interval at all.
-            let twin = timed.prepare(twin_shape, &context);
+            //
+            // The twin is passed as a SHAPE, not as a prepared launchable:
+            // `SegCell::prepare` launches the fold-weight prelude, so staging it here
+            // would run that prelude at the PREVIOUS cell's carveout preference.
+            // `measure_shape` stages it after applying the pair's plan.
             for placement in [
                 BwdSegAccPlacement::AccC2Smem,
                 BwdSegAccPlacement::AccBothSmem,
@@ -4865,9 +5290,12 @@ fn bwd_seg_stage_b_acc_ladder() {
                     &host_eq,
                     &device,
                     &mut reference,
-                    Some((STAGE_B_TWIN_BASELINE_LABEL, &|ctx: &ProverContext| {
-                        twin.launch(ctx)
-                    })),
+                    Some(SegBaselineArm::seg_twin(
+                        STAGE_B_TWIN_BASELINE_LABEL,
+                        timed.coord.regime,
+                        twin_shape,
+                    )),
+                    carveout_mode(),
                     false,
                     &context,
                 ));
@@ -5014,6 +5442,7 @@ fn bwd_seg_keccak_l0_monster() {
                 &device,
                 &mut reference,
                 None,
+                carveout_mode(),
                 shape == profiled,
                 &context,
             ));
@@ -6638,7 +7067,11 @@ fn measure_corpus_rung(
     // identity reference every other `K` must reproduce bit for bit, and it is the
     // twin they are paired against.
     let baseline_shape = corpus_shape(SEG_CORPUS_BASELINE_K);
-    let twin = match &lowered[0] {
+    // The twin is carried as a SHAPE, not as a prepared launchable: `SegCell::prepare`
+    // launches the fold-weight prelude, so staging it out here would run that prelude
+    // at the previous cell's carveout preference on every subsequent `K`.
+    // `measure_shape` stages it per cell, after applying that cell's plan.
+    let twin: Option<SegShape> = match &lowered[0] {
         Err(error) => {
             eprintln!(
                 "[seg-corpus] {benchmark} K{SEG_CORPUS_BASELINE_K}: LOWER REJECTED {error:?}"
@@ -6660,12 +7093,13 @@ fn measure_corpus_rung(
                 device,
                 &mut reference,
                 None,
+                carveout_mode(),
                 profile_k == Some(SEG_CORPUS_BASELINE_K),
                 context,
             );
             let launchable = row.launchable();
             out.push(corpus_row(facts.clone(), *work, &row, below_floor));
-            launchable.then(|| timed.prepare(baseline_shape, context))
+            launchable.then_some(baseline_shape)
         }
     };
 
@@ -6683,38 +7117,24 @@ fn measure_corpus_rung(
             Ok(work) => *work,
         };
         let shape = corpus_shape(k);
-        let row = match &twin {
-            Some(twin) => measure_shape(
-                &benchmark,
-                &timed,
-                parity,
-                shape,
-                eq,
-                device,
-                &mut reference,
-                Some((SEG_CORPUS_BASELINE_LABEL, &|ctx: &ProverContext| {
-                    twin.launch(ctx)
-                })),
-                profile_k == Some(k),
-                context,
-            ),
-            None => measure_shape(
-                &benchmark,
-                &timed,
-                parity,
-                shape,
-                eq,
-                device,
-                &mut reference,
-                None,
-                profile_k == Some(k),
-                context,
-            ),
-        };
+        let row = measure_shape(
+            &benchmark,
+            &timed,
+            parity,
+            shape,
+            eq,
+            device,
+            &mut reference,
+            twin.map(|twin_shape| {
+                SegBaselineArm::seg_twin(SEG_CORPUS_BASELINE_LABEL, timed.coord.regime, twin_shape)
+            }),
+            carveout_mode(),
+            profile_k == Some(k),
+            context,
+        );
         out.push(corpus_row(facts.clone(), work, &row, below_floor));
     }
 
-    drop(twin);
     drop(timed);
     out
 }
@@ -8339,9 +8759,26 @@ mod tests {
             "baab_candidate_us",
             "baab_incumbent_us",
             "run_id",
+            // The carveout configuration is part of a row's provenance, not a side
+            // note: a ratio measured at a different SM partition is a different
+            // measurement (spec §3.4).
+            "carveout_mode",
+            "carveout_requested_pct",
+            "carveout_source",
         ] {
             assert!(csv.contains(column), "missing column {column}");
         }
+        // The demand-source prose contains a comma; the renderer must neutralize it
+        // rather than let it split the row into an extra field.
+        assert!(
+            csv.contains("common-bucket,31,candidate; 30720 B (both arms quantize alike)"),
+            "{csv}"
+        );
+        assert_eq!(
+            csv.lines().next().expect("a header").matches(',').count(),
+            csv.lines().nth(1).expect("a row").matches(',').count(),
+            "the row must have exactly as many separators as the header"
+        );
         assert!(csv.contains("INVERTED"), "{csv}");
         // A paired row says so and names what it was paired against; a solo row
         // says THAT, and carries no ratio to be divided by anything.
@@ -8527,6 +8964,11 @@ mod tests {
                 "-"
             },
             baseline: if ratio.is_some() { "incumbent" } else { "-" },
+            carveout_mode: "common-bucket",
+            carveout_requested_pct: Some(31),
+            // Prose WITH a comma in it, so the renderer's separator handling is
+            // exercised by the column test rather than assumed.
+            carveout_source: "candidate, 30720 B (both arms quantize alike)".to_owned(),
         }
     }
 
