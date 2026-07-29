@@ -1,3 +1,13 @@
+// `seq_macro::seq!(N in 0..K { ... })` unrolls `N` to compile-time constants, so the
+// index arithmetic in the unrolled word-copy bodies constant-folds on the `N == 0`
+// instantiation: `2 * N` / `N * 8` become `2 * 0` / `0 * 8` (clippy::erasing_op,
+// "always returns zero") and `0 + 2 * N` becomes `0 + 0` (clippy::identity_op, "no
+// effect"). Both operands are load-bearing for every other unrolled `N`, so the
+// expressions must keep their symbolic form; the lints are macro-expansion false
+// positives here. Same cause and same treatment as `keccak_f1600_impl_ext` in
+// `riscv_transpiler/src/vm/delegations/keccak_special5.rs`.
+#[expect(clippy::erasing_op)]
+#[expect(clippy::identity_op)]
 #[allow(dead_code)]
 #[inline(always)]
 pub(crate) unsafe fn memcpy_impl(dest: *mut u8, src: *const u8, n: usize) -> *mut u8 {
@@ -48,7 +58,7 @@ pub(crate) unsafe fn memcpy_impl(dest: *mut u8, src: *const u8, n: usize) -> *mu
 
     const WORD_SIZE: usize = const { core::mem::size_of::<u32>() };
 
-    while n > 0 && src.addr() % WORD_SIZE != 0 {
+    while n > 0 && !src.addr().is_multiple_of(WORD_SIZE) {
         dest.write(src.read());
         src = src.add(1);
         dest = dest.add(1);
@@ -59,7 +69,7 @@ pub(crate) unsafe fn memcpy_impl(dest: *mut u8, src: *const u8, n: usize) -> *mu
 
     // Now happy case - both(!) source and destination are aligned
 
-    if dest.addr() % WORD_SIZE == 0 {
+    if dest.addr().is_multiple_of(WORD_SIZE) {
         // start via unrolling. Unroll size choice is somewhat arbitrary, but 16 as the maximum seems the best as:
         // - copy is done as mem -> reg -> mem, so we need 16 available registers + values of source, dest and n itself
         // - offset of 16 * core::mem::size_of::<u32>() is encodable as IMM in the ISA

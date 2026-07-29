@@ -2,7 +2,6 @@ use crate::unrolled::make_tracer_buffers;
 use crate::unrolled::{
     prove_delegation_circuit, replay_delegation_circuit, run_unrolled_machine_in_full,
 };
-use common_constants::TimestampScalar;
 use common_constants::BIGINT_OPS_WITH_CONTROL_CSR_REGISTER;
 use common_constants::BLAKE2S_DELEGATION_CSR_REGISTER;
 use common_constants::BLAKE2S_G_FUNCTION_DELEGATION_CSR_REGISTER;
@@ -10,7 +9,6 @@ use common_constants::INITIAL_PC;
 use common_constants::INITIAL_TIMESTAMP;
 use common_constants::KECCAK_SPECIAL5_CSR_REGISTER;
 use common_constants::REDUCED_MACHINE_CIRCUIT_FAMILY_IDX;
-use common_constants::ROM_WORD_SIZE;
 use prover::cs::utils::split_timestamp;
 use prover::definitions::produce_initial_permutation_product_contribution;
 use prover::definitions::FinalRegisterValue;
@@ -20,7 +18,6 @@ use prover::field::baby_bear::base::BabyBearField;
 use prover::field::baby_bear::ext4::BabyBearExt4;
 use prover::field::*;
 use prover::gkr::prover::GKRExternalChallenges;
-use prover::gkr::prover::GKRProof;
 use prover::gkr::prover::{prove_configured_with_gkr, CommitmentMode};
 use prover::gkr::witness_gen::family_circuits::evaluate_gkr_witness_for_executor_family;
 use prover::gkr::witness_gen::oracles::UnifiedRiscvCircuitOracle;
@@ -29,10 +26,9 @@ use prover::merkle_trees::DefaultTreeConstructor;
 use prover::merkle_trees::MerkleTreeCapVarLength;
 use prover::transcript::Blake2sTranscript;
 use prover::worker;
-use riscv_transpiler::cycle::{MachineConfig, ReducedMachineWithDelegation};
+use riscv_transpiler::cycle::ReducedMachineWithDelegation;
 use riscv_transpiler::vm::Counters;
 use riscv_transpiler::vm::DelegationsAndUnifiedCounters;
-use riscv_transpiler::vm::SimpleSnapshotter;
 use riscv_transpiler::vm::SimpleTape;
 use riscv_transpiler::vm::State;
 use riscv_transpiler::witness::data_structs::UnifiedOpcodeTracingDataWithTimestamp;
@@ -64,11 +60,7 @@ use trace_and_split::fs_transform_unified_for_permutation_argument;
 /// the unified tracing-data layout for the single reduced-machine circuit.
 fn replay_unified_circuit<C: Counters>(
     initial_counters: C,
-    snapshotter: &SimpleSnapshotter<
-        C,
-        { common_constants::ROM_SECOND_WORD_BITS },
-        Vec<(u32, (u32, u32))>,
-    >,
+    snapshotter: &crate::ReplaySnapshotter<C>,
     tape: &SimpleTape,
     cycles_bound: usize,
     capacity_per_circuit: usize,
@@ -120,6 +112,11 @@ fn replay_unified_circuit<C: Counters>(
 /// [`crate::unrolled::prove_unrolled_execution_with_replayer`]; it follows the
 /// same Fiat-Shamir flow (commit memory trees -> derive challenges -> prove) and
 /// asserts that the global permutation grand-product closes to ONE.
+// End-to-end example driver: the argument list is the full prove configuration
+// (program image, bounds, non-determinism source, worker, security level, ...).
+// Bundling it into a config struct would only move the same fields behind one more
+// type for a single call site.
+#[expect(clippy::too_many_arguments)]
 pub fn prove_unified_execution_with_replayer<A: GoodAllocator>(
     cycles_bound: usize,
     binary_image: &[u32],
@@ -204,7 +201,7 @@ pub fn prove_unified_execution_with_replayer<A: GoodAllocator>(
         "Execution ended at PC = 0x{:08x} at timestamp {}",
         final_pc, final_timestamp
     );
-    println!("Final usage: {:?}", &counters);
+    println!("Final usage: {:?}", counters);
 
     // The unified circuit handles all executor cycles in a single circuit.
     let num_unified_calls =
@@ -345,7 +342,7 @@ pub fn prove_unified_execution_with_replayer<A: GoodAllocator>(
 
     let inits_and_teardown_chunks = ram.collect_inits_and_teardowns_sets::<BabyBearField, Global>(
         worker,
-        UNIFIED_TRACE_LEN_LOG2 as usize,
+        UNIFIED_TRACE_LEN_LOG2,
         num_teardown_sets,
         Some((1 << 27) / 4), // 128Mb
     );
@@ -375,7 +372,7 @@ pub fn prove_unified_execution_with_replayer<A: GoodAllocator>(
     {
         let twiddles_for_size = &twiddles[&trace_len];
         let UnrolledCircuitWitnessEvalFn::Unified {
-            witness_fn,
+            witness_fn: _,
             decoder_table,
         } = unified_setup.witness_eval_fn.as_ref().unwrap()
         else {
@@ -424,7 +421,7 @@ pub fn prove_unified_execution_with_replayer<A: GoodAllocator>(
         let delegation_type = <setups::Blake2sWithCompressionDelegationCircuit as circuit_common::DelegationCircuit<BabyBearField>>::DELEGATION_TYPE_ID;
         let delegation_circuits = &blake_circuits;
         let setup = &blake_round_function_setup;
-        if delegation_circuits.is_empty() == false {
+        if !delegation_circuits.is_empty() {
             let trace_len = setup.trace_len;
             let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
             let twiddles_for_size = twiddles
@@ -461,7 +458,7 @@ pub fn prove_unified_execution_with_replayer<A: GoodAllocator>(
         >>::DELEGATION_TYPE_ID;
         let delegation_circuits = &bigint_circuits;
         let setup = &bigint_setup;
-        if delegation_circuits.is_empty() == false {
+        if !delegation_circuits.is_empty() {
             let trace_len = setup.trace_len;
             let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
             let twiddles_for_size = twiddles
@@ -499,7 +496,7 @@ pub fn prove_unified_execution_with_replayer<A: GoodAllocator>(
             >>::DELEGATION_TYPE_ID;
         let delegation_circuits = &keccak_special5_circuits;
         let setup = &keccak_special5_setup;
-        if delegation_circuits.is_empty() == false {
+        if !delegation_circuits.is_empty() {
             let trace_len = setup.trace_len;
             let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
             let twiddles_for_size = twiddles
@@ -537,7 +534,7 @@ pub fn prove_unified_execution_with_replayer<A: GoodAllocator>(
             >>::DELEGATION_TYPE_ID;
         let delegation_circuits = &blake_g_function_circuits;
         let setup = &blake_g_function_setup;
-        if delegation_circuits.is_empty() == false {
+        if !delegation_circuits.is_empty() {
             let trace_len = setup.trace_len;
             let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
             let twiddles_for_size = twiddles
@@ -735,14 +732,14 @@ pub fn prove_unified_execution_with_replayer<A: GoodAllocator>(
     {
         let delegation_type = <setups::Blake2sWithCompressionDelegationCircuit as circuit_common::DelegationCircuit<BabyBearField>>::DELEGATION_TYPE_ID;
         let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(blake_round_function_setup.trace_len.trailing_zeros() as usize, security_level);
-        if blake_circuits.is_empty() == false {
+        if !blake_circuits.is_empty() {
             let (proofs, per_tree_set) =
                 prove_delegation_circuit::<Global, Blake2sRoundFunctionAbiDescription, _, _, _, _>(
                     &blake_circuits[..],
                     &external_challenges,
                     &blake_round_function_setup,
                     setups::blake2_with_compression_witness_eval_fn,
-                    delegation_type as u16,
+                    delegation_type,
                     &mut permutation_argument_accumulator,
                     &mut delegation_proofs_count,
                     should_dump_witness,
@@ -762,14 +759,14 @@ pub fn prove_unified_execution_with_replayer<A: GoodAllocator>(
             BabyBearField,
         >>::DELEGATION_TYPE_ID;
         let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(bigint_setup.trace_len.trailing_zeros() as usize, security_level);
-        if bigint_circuits.is_empty() == false {
+        if !bigint_circuits.is_empty() {
             let (proofs, per_tree_set) =
                 prove_delegation_circuit::<Global, BigintAbiDescription, _, _, _, _>(
                     &bigint_circuits[..],
                     &external_challenges,
                     &bigint_setup,
                     setups::bigint_witness_eval_fn,
-                    delegation_type as u16,
+                    delegation_type,
                     &mut permutation_argument_accumulator,
                     &mut delegation_proofs_count,
                     should_dump_witness,
@@ -791,14 +788,14 @@ pub fn prove_unified_execution_with_replayer<A: GoodAllocator>(
                 BabyBearField,
             >>::DELEGATION_TYPE_ID;
         let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(keccak_special5_setup.trace_len.trailing_zeros() as usize, security_level);
-        if keccak_special5_circuits.is_empty() == false {
+        if !keccak_special5_circuits.is_empty() {
             let (proofs, per_tree_set) =
                 prove_delegation_circuit::<Global, KeccakSpecial5AbiDescription, _, _, _, _>(
                     &keccak_special5_circuits[..],
                     &external_challenges,
                     &keccak_special5_setup,
                     setups::keccak_special5_witness_eval_fn,
-                    delegation_type as u16,
+                    delegation_type,
                     &mut permutation_argument_accumulator,
                     &mut delegation_proofs_count,
                     should_dump_witness,
@@ -820,14 +817,14 @@ pub fn prove_unified_execution_with_replayer<A: GoodAllocator>(
                 BabyBearField,
             >>::DELEGATION_TYPE_ID;
         let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(blake_g_function_setup.trace_len.trailing_zeros() as usize, security_level);
-        if blake_g_function_circuits.is_empty() == false {
+        if !blake_g_function_circuits.is_empty() {
             let (proofs, per_tree_set) =
                 prove_delegation_circuit::<Global, Blake2sGFunctionAbiDescription, _, _, _, _>(
                     &blake_g_function_circuits[..],
                     &external_challenges,
                     &blake_g_function_setup,
                     setups::blake2_g_function_witness_eval_fn,
-                    delegation_type as u16,
+                    delegation_type,
                     &mut permutation_argument_accumulator,
                     &mut delegation_proofs_count,
                     should_dump_witness,
@@ -881,9 +878,9 @@ pub(crate) mod test {
 
         let use_caches = true;
         let (_, binary_image) =
-            setups::read_and_pad_binary(&Path::new("../../examples/basic_fibonacci/app.bin"));
+            setups::read_and_pad_binary(Path::new("../../examples/basic_fibonacci/app.bin"));
         let (_, text_section) =
-            setups::read_and_pad_binary(&Path::new("../../examples/basic_fibonacci/app.text"));
+            setups::read_and_pad_binary(Path::new("../../examples/basic_fibonacci/app.text"));
 
         let worker = worker::Worker::new_with_num_threads(8);
         let non_determinism_source = QuasiUARTSource::new_with_reads(vec![15, 1]);
@@ -901,7 +898,7 @@ pub(crate) mod test {
         );
 
         bincode_serialize_to_file(&program_proof, "tmp_unified_proof.bin");
-        let setups: Vec<_> = setups.into_iter().map(|(_, v)| v).collect();
+        let setups: Vec<_> = setups.into_values().collect();
         bincode_serialize_to_file(&setups, "tmp_unified_setup.bin");
     }
 

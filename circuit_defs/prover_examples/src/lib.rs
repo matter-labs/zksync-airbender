@@ -12,6 +12,15 @@ mod recursion;
 
 const DUMP_WITNESS_VAR: &str = "DUMP_WITNESS";
 
+/// The snapshotter instantiation shared by the unified and unrolled replay
+/// helpers: ROM-second-word-bit width fixed by `common_constants`, snapshots
+/// collected into a plain `Vec`.
+pub type ReplaySnapshotter<C> = riscv_transpiler::vm::SimpleSnapshotter<
+    C,
+    { common_constants::ROM_SECOND_WORD_BITS },
+    Vec<(u32, (u32, u32))>,
+>;
+
 #[allow(dead_code)]
 fn serialize_to_file<T: serde::Serialize>(el: &T, filename: &str) {
     let mut dst = std::fs::File::create(filename).unwrap();

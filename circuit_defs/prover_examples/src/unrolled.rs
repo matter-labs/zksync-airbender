@@ -35,14 +35,12 @@ use prover::merkle_trees::DefaultTreeConstructor;
 use prover::tracers::oracles::transpiler_oracles::delegation::DelegationOracle;
 use prover::transcript::Blake2sTranscript;
 use prover::worker;
-use prover::worker::Worker;
 use riscv_transpiler::cycle::MachineConfig;
 use riscv_transpiler::cycle::NUM_REGISTERS;
 use riscv_transpiler::vm::Counters;
 use riscv_transpiler::vm::DelegationsAndFamiliesCounters;
 use riscv_transpiler::vm::RamWithRomRegion;
 use riscv_transpiler::vm::Register;
-use riscv_transpiler::vm::SimpleSnapshotter;
 use riscv_transpiler::vm::SimpleTape;
 use riscv_transpiler::vm::State;
 use riscv_transpiler::witness::delegation::bigint::BigintAbiDescription;
@@ -63,6 +61,11 @@ use trace_and_split::commit_memory_tree_for_unrolled_mem_circuits;
 use trace_and_split::commit_memory_tree_for_unrolled_nonmem_circuits;
 use trace_and_split::fs_transform_unrolled_for_permutation_argument;
 
+// The return tuple hands back the whole post-run VM state (final PC/timestamp,
+// snapshotter, counters, RAM, registers, tape, machine state). Every element has a
+// distinct, already-named type and the tuple is destructured at its single call
+// site, so hoisting it into a `type` alias would only add a layer of indirection.
+#[expect(clippy::type_complexity)]
 pub fn run_unrolled_machine_in_full<M: MachineConfig, C: Counters>(
     cycles_bound: usize,
     binary_image: &[u32],
@@ -72,7 +75,7 @@ pub fn run_unrolled_machine_in_full<M: MachineConfig, C: Counters>(
     mut non_determinism: impl riscv_transpiler::vm::NonDeterminismCSRSource,
 ) -> (
     (u32, TimestampScalar),
-    SimpleSnapshotter<C, { common_constants::ROM_SECOND_WORD_BITS }, Vec<(u32, (u32, u32))>>,
+    crate::ReplaySnapshotter<C>,
     C,
     RamWithRomRegion<{ common_constants::ROM_SECOND_WORD_BITS }>,
     [Register; NUM_REGISTERS],
@@ -83,10 +86,10 @@ pub fn run_unrolled_machine_in_full<M: MachineConfig, C: Counters>(
     use riscv_transpiler::vm::*;
 
     let instructions: Vec<Instruction> =
-        preprocess_bytecode::<M::DecodingOptions, true>(&text_section);
+        preprocess_bytecode::<M::DecodingOptions, true>(text_section);
     let tape = SimpleTape::new(&instructions);
     let mut ram = RamWithRomRegion::<{ common_constants::ROM_SECOND_WORD_BITS }>::from_rom_content(
-        &binary_image,
+        binary_image,
         ram_bound,
     );
 
@@ -149,11 +152,7 @@ pub fn make_tracer_buffers<T: Copy>(
 
 pub fn replay_non_mem_circuit_family<C: Counters, const FAMILY_IDX: u8>(
     initial_counters: C,
-    snapshotter: &SimpleSnapshotter<
-        C,
-        { common_constants::ROM_SECOND_WORD_BITS },
-        Vec<(u32, (u32, u32))>,
-    >,
+    snapshotter: &crate::ReplaySnapshotter<C>,
     tape: &SimpleTape,
     cycles_bound: usize,
     expected_final_state: &State<C>,
@@ -201,11 +200,7 @@ pub fn replay_non_mem_circuit_family<C: Counters, const FAMILY_IDX: u8>(
 
 pub fn replay_mem_circuit_family<C: Counters, const FAMILY_IDX: u8>(
     initial_counters: C,
-    snapshotter: &SimpleSnapshotter<
-        C,
-        { common_constants::ROM_SECOND_WORD_BITS },
-        Vec<(u32, (u32, u32))>,
-    >,
+    snapshotter: &crate::ReplaySnapshotter<C>,
     tape: &SimpleTape,
     cycles_bound: usize,
     expected_final_state: &State<C>,
@@ -251,6 +246,10 @@ pub fn replay_mem_circuit_family<C: Counters, const FAMILY_IDX: u8>(
     buffers
 }
 
+// Replay driver: the arguments are the replay inputs (counters, snapshotter, tape,
+// bounds, expected final state, capacities) that the caller already holds as separate
+// values. Grouping them into a struct would add a type without removing any of them.
+#[expect(clippy::too_many_arguments)]
 pub fn replay_delegation_circuit<
     C: Counters,
     D: DelegationAbiDescription,
@@ -260,11 +259,7 @@ pub fn replay_delegation_circuit<
     const VARIABLE_OFFSETS: usize,
 >(
     initial_counters: C,
-    snapshotter: &SimpleSnapshotter<
-        C,
-        { common_constants::ROM_SECOND_WORD_BITS },
-        Vec<(u32, (u32, u32))>,
-    >,
+    snapshotter: &crate::ReplaySnapshotter<C>,
     tape: &SimpleTape,
     cycles_bound: usize,
     expected_final_state: &State<C>,
@@ -321,6 +316,11 @@ where
     buffers
 }
 
+// End-to-end example driver: the argument list is the full prove configuration
+// (program image, bounds, non-determinism source, worker, security level, ...).
+// Bundling it into a config struct would only move the same fields behind one more
+// type for a single call site.
+#[expect(clippy::too_many_arguments)]
 pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator>(
     cycles_bound: usize,
     binary_image: &[u32],
@@ -423,7 +423,7 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
         final_pc, final_timestamp
     );
 
-    println!("Final usage: {:?}", &counters);
+    println!("Final usage: {:?}", counters);
 
     let should_dump_witness = std::env::var(DUMP_WITNESS_VAR)
         .map(|el| el.parse::<u32>().unwrap_or(0) == 1)
@@ -630,7 +630,7 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
     }
 
     // restructure inits/teardowns
-    let shuffle_ram_touched_addresses = ram.collect_inits_and_teardowns(&worker, Global);
+    let shuffle_ram_touched_addresses = ram.collect_inits_and_teardowns(worker, Global);
 
     let total_unique_teardowns: usize = shuffle_ram_touched_addresses
         .iter()
@@ -658,7 +658,7 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
     }
 
     ram.collect_inits_and_teardowns_into_columns::<BabyBearField, _>(
-        &worker,
+        worker,
         setups::inits_and_teardowns::TRACE_LEN_LOG2 as usize,
         0,
         &mut inits_and_teardowns,
@@ -704,7 +704,7 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
                 Global,
             >(
                 &setup.compiled_circuit,
-                &chunk,
+                chunk,
                 &*twiddles_for_size,
                 &prover_config,
                 *default_pc_value_in_padding,
@@ -743,7 +743,7 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
                 Global,
             >(
                 &setup.compiled_circuit,
-                &chunk,
+                chunk,
                 &*twiddles_for_size,
                 &prover_config,
                 decoder_table,
@@ -788,7 +788,7 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
         let delegation_type = <setups::Blake2sWithCompressionDelegationCircuit as DelegationCircuit<BabyBearField>>::DELEGATION_TYPE_ID;
         let delegation_circuits = &blake_circuits;
         let setup = &blake_round_function_setup;
-        if delegation_circuits.is_empty() == false {
+        if !delegation_circuits.is_empty() {
             let trace_len = setup.trace_len;
             let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
             let twiddles_for_size = twiddles
@@ -827,7 +827,7 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
         >>::DELEGATION_TYPE_ID;
         let delegation_circuits = &bigint_circuits;
         let setup = &bigint_setup;
-        if delegation_circuits.is_empty() == false {
+        if !delegation_circuits.is_empty() {
             let trace_len = setup.trace_len;
             let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
             let twiddles_for_size = twiddles
@@ -866,7 +866,7 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
         >>::DELEGATION_TYPE_ID;
         let delegation_circuits = &keccak_special5_circuits;
         let setup = &keccak_special5_setup;
-        if delegation_circuits.is_empty() == false {
+        if !delegation_circuits.is_empty() {
             let trace_len = setup.trace_len;
             let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
             let twiddles_for_size = twiddles
@@ -906,7 +906,7 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
         >>::DELEGATION_TYPE_ID;
         let delegation_circuits = &blake_g_function_circuits;
         let setup = &blake_g_function_setup;
-        if delegation_circuits.is_empty() == false {
+        if !delegation_circuits.is_empty() {
             let trace_len = setup.trace_len;
             let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
             let twiddles_for_size = twiddles
@@ -1082,7 +1082,7 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
                     prover_config.whir_schedule.whir_steps_schedule[0],
                     prover_config.cap_size,
                     trace_len.trailing_zeros() as usize,
-                    &worker,
+                    worker,
                 );
 
                 risc_v_setup_params.insert(
@@ -1115,7 +1115,7 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
             prover_config.whir_schedule.whir_steps_schedule[0],
             prover_config.cap_size,
             trace_len.trailing_zeros() as usize,
-            &worker,
+            worker,
         );
 
         risc_v_setup_params.insert(
@@ -1172,7 +1172,7 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
                 trace_len,
                 &oracle,
                 &setup.table_driver,
-                &worker,
+                worker,
                 None,
                 Global,
                 Global,
@@ -1211,7 +1211,7 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
                 CommitmentMode::SeparateMemoryAndWitness,
                 vec![],
                 trace_len,
-                &worker,
+                worker,
             );
             println!(
                 "Proving time for unrolled circuit type {} is {:?}",
@@ -1255,7 +1255,7 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
                     prover_config.whir_schedule.whir_steps_schedule[0],
                     prover_config.cap_size,
                     trace_len.trailing_zeros() as usize,
-                    &worker,
+                    worker,
                 );
 
                 risc_v_setup_params.insert(
@@ -1287,7 +1287,7 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
             prover_config.whir_schedule.whir_steps_schedule[0],
             prover_config.cap_size,
             trace_len.trailing_zeros() as usize,
-            &worker,
+            worker,
         );
 
         risc_v_setup_params.insert(
@@ -1342,7 +1342,7 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
                 trace_len,
                 &oracle,
                 &setup.table_driver,
-                &worker,
+                worker,
                 None,
                 Global,
                 Global,
@@ -1381,7 +1381,7 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
                 CommitmentMode::SeparateMemoryAndWitness,
                 vec![],
                 trace_len,
-                &worker,
+                worker,
             );
             println!(
                 "Proving time for unrolled circuit type {} is {:?}",
@@ -1424,7 +1424,7 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
             prover_config.whir_schedule.whir_steps_schedule[0],
             prover_config.cap_size,
             trace_len.trailing_zeros() as usize,
-            &worker,
+            worker,
         );
 
         use prover::gkr::witness_gen::family_circuits::evaluate_init_and_teardown_memory_witness;
@@ -1469,7 +1469,7 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
             CommitmentMode::SeparateMemoryAndWitness,
             inits_and_teardowns_top_bits,
             trace_len,
-            &worker,
+            worker,
         );
 
         program_proof.inits_and_teardown_proofs.push(proof.clone());
@@ -1499,7 +1499,7 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
         let delegation_circuits = blake_circuits;
         let setup = &blake_round_function_setup;
         let witness_eval_fn = setups::blake2_with_compression_witness_eval_fn;
-        if delegation_circuits.is_empty() == false {
+        if !delegation_circuits.is_empty() {
             let trace_len = setup.trace_len;
             let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
             let (proofs, per_tree_set) =
@@ -1508,7 +1508,7 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
                     &external_challenges,
                     setup,
                     witness_eval_fn,
-                    delegation_type as u16,
+                    delegation_type,
                     &mut permutation_argument_accumulator,
                     &mut delegation_proofs_count,
                     should_dump_witness,
@@ -1533,7 +1533,7 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
         let delegation_circuits = bigint_circuits;
         let setup = &bigint_setup;
         let witness_eval_fn = setups::bigint_witness_eval_fn;
-        if delegation_circuits.is_empty() == false {
+        if !delegation_circuits.is_empty() {
             let trace_len = setup.trace_len;
             let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
             let (proofs, per_tree_set) =
@@ -1542,7 +1542,7 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
                     &external_challenges,
                     setup,
                     witness_eval_fn,
-                    delegation_type as u16,
+                    delegation_type,
                     &mut permutation_argument_accumulator,
                     &mut delegation_proofs_count,
                     should_dump_witness,
@@ -1567,7 +1567,7 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
         let delegation_circuits = keccak_special5_circuits;
         let setup = &keccak_special5_setup;
         let witness_eval_fn = setups::keccak_special5_witness_eval_fn;
-        if delegation_circuits.is_empty() == false {
+        if !delegation_circuits.is_empty() {
             let trace_len = setup.trace_len;
             let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
             let (proofs, per_tree_set) =
@@ -1576,7 +1576,7 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
                     &external_challenges,
                     setup,
                     witness_eval_fn,
-                    delegation_type as u16,
+                    delegation_type,
                     &mut permutation_argument_accumulator,
                     &mut delegation_proofs_count,
                     should_dump_witness,
@@ -1601,7 +1601,7 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
         let delegation_circuits = blake_g_function_circuits;
         let setup = &blake_g_function_setup;
         let witness_eval_fn = setups::blake2_g_function_witness_eval_fn;
-        if delegation_circuits.is_empty() == false {
+        if !delegation_circuits.is_empty() {
             let trace_len = setup.trace_len;
             let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
             let (proofs, per_tree_set) =
@@ -1610,7 +1610,7 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
                     &external_challenges,
                     setup,
                     witness_eval_fn,
-                    delegation_type as u16,
+                    delegation_type,
                     &mut permutation_argument_accumulator,
                     &mut delegation_proofs_count,
                     should_dump_witness,
@@ -1658,6 +1658,10 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
     (program_proof, risc_v_setup_params)
 }
 
+// Per-delegation-circuit prove step: takes the witnesses plus the already-derived
+// Fiat-Shamir state (setup, challenges, seeds, twiddles, worker, config) that the
+// caller threads through. A config struct here would just re-wrap the same values.
+#[expect(clippy::too_many_arguments)]
 pub(crate) fn prove_delegation_circuit<
     A: GoodAllocator,
     D: DelegationAbiDescription,
@@ -1716,13 +1720,13 @@ pub(crate) fn prove_delegation_circuit<
         prover_config.whir_schedule.whir_steps_schedule[0],
         prover_config.cap_size,
         trace_len.trailing_zeros() as usize,
-        &worker,
+        worker,
     );
 
     let mut per_tree_set = vec![];
 
     let mut per_delegation_type_proofs = vec![];
-    for (_circuit_idx, el) in witnesses.iter().enumerate() {
+    for el in witnesses.iter() {
         *delegation_proofs_count += 1;
         let oracle = DelegationOracle::<D, _, _, _, _> {
             cycle_data: el,
@@ -1794,7 +1798,7 @@ pub(crate) fn prove_delegation_circuit<
             Blake2sTranscript,
         >(
             &setup.compiled_circuit,
-            &external_challenges,
+            external_challenges,
             witness_trace,
             &setup.setup,
             &setup_commitment,
@@ -1803,7 +1807,7 @@ pub(crate) fn prove_delegation_circuit<
             CommitmentMode::SeparateMemoryAndWitness,
             vec![],
             trace_len,
-            &worker,
+            worker,
         );
         #[cfg(feature = "timing_logs")]
         println!(
@@ -1840,9 +1844,9 @@ pub(crate) mod test {
 
         let use_caches = true;
         let (_, binary_image) =
-            setups::read_and_pad_binary(&Path::new("../../examples/basic_fibonacci/app.bin"));
+            setups::read_and_pad_binary(Path::new("../../examples/basic_fibonacci/app.bin"));
         let (_, text_section) =
-            setups::read_and_pad_binary(&Path::new("../../examples/basic_fibonacci/app.text"));
+            setups::read_and_pad_binary(Path::new("../../examples/basic_fibonacci/app.text"));
 
         // setups::pad_bytecode_for_proving(&mut binary);
 
@@ -1865,7 +1869,7 @@ pub(crate) mod test {
         );
 
         bincode_serialize_to_file(&program_proof, "tmp_proof.bin");
-        let setups: Vec<_> = setups.into_iter().map(|(_, v)| v).collect();
+        let setups: Vec<_> = setups.into_values().collect();
         bincode_serialize_to_file(&setups, "tmp_setup.bin");
     }
 

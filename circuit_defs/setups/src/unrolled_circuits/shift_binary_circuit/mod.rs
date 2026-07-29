@@ -5,7 +5,7 @@ use super::*;
 pub fn shift_binary_circuit_setup<A: GoodAllocator>(
     decoder_table_data: &[Option<ExecutorFamilyDecoderData>],
     use_caches: bool,
-    worker: &Worker,
+    _worker: &Worker,
 ) -> CircuitSetup<A> {
     type C = ::shift_binary::ShiftBinaryCircuit;
 
