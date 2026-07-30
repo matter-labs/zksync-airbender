@@ -4116,7 +4116,18 @@ pub(super) fn render_matrix_csv(rows: &[SegMatrixRow]) -> String {
             ),
             None => ("-".to_owned(), "-".to_owned(), "-".to_owned()),
         };
-        let verdict = row.ratio.verdict();
+        // **A REFERENCE-CLOCK pairing has no inversion question**, so the
+        // machine-readable verdict field must not carry §6(b)'s vocabulary: §4.5 calls
+        // applying §6(b)'s rule to a cross-build ratio a category error, and
+        // `INVERTED` in a frozen artifact is exactly that error in the field a
+        // consumer parses. `FixedBucket` is reachable only from the pin and δ3
+        // runners, which pair a continuation candidate against the flat R0 kernel as a
+        // CLOCK; the label comes from `CarveoutMode` so the two spellings cannot drift.
+        let verdict = if row.carveout_mode == CarveoutMode::FixedBucket(0).label() {
+            "reference-clock"
+        } else {
+            row.ratio.verdict()
+        };
         let (delta, delta_low, delta_high, gate) = match row.ratio.order() {
             Some(order) => (
                 format!("{:.4}", order.delta_order_pct),
@@ -6042,8 +6053,25 @@ fn bwd_seg_freeze_r0_headline() {
         .unwrap_or_else(|_| seg_output_path(SEG_MATRIX_CSV));
     let text = std::fs::read_to_string(&csv)
         .unwrap_or_else(|error| panic!("read discovery's matrix {}: {error}", csv.display()));
-    let rows = parse_matrix_csv_rows(&text);
-    assert!(!rows.is_empty(), "{}: no rows", csv.display());
+    let frozen = r0_headline_freeze_cells(&text, &csv.display().to_string());
+    let path = std::env::var("BWD_SEG_FROZEN_CELLS_OUT")
+        .expect("BWD_SEG_FROZEN_CELLS_OUT must name the freeze to write");
+    write_frozen_cells(Path::new(&path), "r0-headline", &frozen, SEG_SCHEDULE_SEED);
+    for cell in &frozen {
+        eprintln!("[seg-freeze] frozen cell={}", cell.label);
+    }
+}
+
+/// The freeze SELECTION — band, probe intersection and name normalization — separated
+/// from the environment and the file write so a CPU test can drive it end to end.
+///
+/// The test that drives it is what makes the `short_name` normalization below a covered
+/// path rather than a claim: `render_matrix_csv` emits the LONG `..._layout_gkr.json`
+/// form, so a version of this function without the call fails inside
+/// `write_frozen_cells`'s coordinate assertion.
+fn r0_headline_freeze_cells(text: &str, source: &str) -> Vec<SegFrozenCell> {
+    let rows = parse_matrix_csv_rows(text);
+    assert!(!rows.is_empty(), "{source}: no rows");
     // SELECTABLE rows only — the same predicate `SegRatio::selectable` applies, read off
     // the two columns the renderer derives from it. BOTH are required although either
     // alone would do: a renderer that ever emitted a ratio for a failed gate would be
@@ -6058,8 +6086,7 @@ fn bwd_seg_freeze_r0_headline() {
         .collect();
     assert!(
         !candidates.is_empty(),
-        "{}: no row carries a selectable ratio, so there is nothing to freeze",
-        csv.display()
+        "{source}: no row carries a selectable ratio, so there is nothing to freeze"
     );
     let best = candidates
         .iter()
@@ -6118,12 +6145,7 @@ fn bwd_seg_freeze_r0_headline() {
             .map(|row| format!("{} K{}", row["epilogue"], row["k"]))
             .collect::<Vec<String>>(),
     );
-    let path = std::env::var("BWD_SEG_FROZEN_CELLS_OUT")
-        .expect("BWD_SEG_FROZEN_CELLS_OUT must name the freeze to write");
-    write_frozen_cells(Path::new(&path), "r0-headline", &frozen, SEG_SCHEDULE_SEED);
-    for cell in &frozen {
-        eprintln!("[seg-freeze] frozen cell={}", cell.label);
-    }
+    frozen
 }
 
 // ── §4.5's pin-decision and δ3-attribution runners ────────────────────────────
@@ -11145,6 +11167,130 @@ mod tests {
         let solo = render_matrix_csv(&[row_fixture(4, 6, None)]);
         assert!(solo.contains("solo,-,"), "{solo}");
         assert!(render_matrix_table(&[row_fixture(4, 6, None)]).contains("| solo | solo | solo |"));
+        // **A REFERENCE-CLOCK row carries no inversion verdict.** The pin and δ3 runners
+        // pair a continuation candidate against the flat R0 kernel as a CLOCK, and §4.5
+        // calls scoring such a ratio by §6(b)'s rule a category error — so the
+        // machine-readable `verdict` field of a `FixedBucket` row must not spell any of
+        // §6(b)'s tokens. Measured on the live smoke run before this was fixed: the
+        // frozen artifact carried `0.245246,…,INVERTED`.
+        let clock = SegMatrixRow {
+            carveout_mode: CarveoutMode::FixedBucket(SEG_REFERENCE_CLOCK_BUCKET_BYTES).label(),
+            ..row_fixture(
+                4,
+                6,
+                Some(RatioEstimate {
+                    median_ratio: 0.245_246,
+                    ci_low: 0.245_1,
+                    ci_high: 0.245_3,
+                }),
+            )
+        };
+        let clock_csv = render_matrix_csv(&[clock]);
+        assert!(clock_csv.contains(",reference-clock,"), "{clock_csv}");
+        assert!(
+            !clock_csv.contains("INVERTED"),
+            "a reference-clock pairing is not an inversion question: {clock_csv}"
+        );
+        // The ratio columns still render — only the VERDICT vocabulary changes.
+        assert!(clock_csv.contains("0.245246"), "{clock_csv}");
+    }
+
+    /// **The executable freeze path, driven end to end.**
+    ///
+    /// `bwd_seg_freeze_r0_headline` is `#[ignore]`d and environment-driven, so its chain —
+    /// `parse_matrix_csv_rows`, `matrix_row_class`, the band, the probe intersection, the
+    /// `short_name` normalization and `write_frozen_cells`'s own predicate — would
+    /// otherwise first execute during the campaign. The fixture is rendered by the REAL
+    /// `render_matrix_csv`, so `circuit` carries the long `..._layout_gkr.json` form:
+    /// **delete the `short_name` call and this test panics on the first cell**, which is
+    /// the whole point of covering it.
+    #[test]
+    fn the_r0_freeze_selects_the_band_intersects_the_probes_and_normalizes_the_circuit() {
+        let paired = |k: usize, ratio: f64| {
+            row_fixture(
+                k,
+                6,
+                Some(RatioEstimate {
+                    median_ratio: ratio,
+                    ci_low: ratio - 0.001,
+                    ci_high: ratio + 0.001,
+                }),
+            )
+        };
+        // An ORDER-COUPLED row at a probed K, with by far the best raw ratio. It must not
+        // enter the band at all — and it must not become `best` either, which is the
+        // stronger property: a missing selectability filter would set `best = 0.5`, empty
+        // the band, and fire the intersection assertion instead of freezing the wrong cell.
+        let coupled = SegMatrixRow {
+            ratio: SegRatio::OrderInvalid {
+                order: SegOrderInteraction {
+                    delta_order_pct: 4.0,
+                    ci_low_pct: 3.5,
+                    ci_high_pct: 4.5,
+                },
+                conditional_medians: [50.0, 100.0, 52.0, 100.0],
+            },
+            ..paired(24, 0.500)
+        };
+        // K4 and K24 are the two PROBED tuples; K8 is inside the band but UNPROBED; K32 is
+        // probed-shaped but outside it. Band edge: 0.900 * 1.010 = 0.9090.
+        let rows = vec![
+            paired(4, 0.900),
+            paired(8, 0.900_5),
+            paired(24, 0.904_0),
+            paired(32, 1.200),
+            coupled,
+        ];
+        let csv = render_matrix_csv(&rows);
+        assert!(
+            csv.contains("add_sub_lui_auipc_mop_layout_gkr.json"),
+            "the fixture must carry the LONG circuit form, or it proves nothing"
+        );
+        // Discovery's own shortlist, over the same population: three members, unordered,
+        // and the order-coupled row is absent despite being the fastest raw ratio.
+        let shortlist = discovery_shortlist(&rows);
+        assert_eq!(shortlist.len(), 3, "{shortlist:?}");
+        assert!(shortlist.iter().all(|label| !label.starts_with("K32 ")));
+        let mut sorted = shortlist.clone();
+        sorted.sort();
+        assert_eq!(
+            shortlist, sorted,
+            "the band is emitted unordered (sorted by label)"
+        );
+        // The freeze selection.
+        let frozen = r0_headline_freeze_cells(&csv, "fixture");
+        assert_eq!(
+            frozen.len(),
+            2,
+            "K8 is unprobed and K32 is out of band: {frozen:?}"
+        );
+        let mut ks: Vec<usize> = frozen.iter().map(|cell| cell.k).collect();
+        ks.sort_unstable();
+        assert_eq!(ks, vec![4, 24]);
+        for cell in &frozen {
+            // The SHORT form, and the class recovered from `round` / `d2_policy`.
+            assert_eq!(cell.circuit, ADD_SUB_LAYOUT_SHORT);
+            assert_eq!(cell.class, SegRoundClass::R0);
+            assert_eq!(cell.layer, 0);
+            // And the shape round-trips back to the row that produced it.
+            assert_eq!(
+                frozen_cell_shape(cell),
+                SegShape::regs(
+                    cell.k,
+                    CoeffMode::Constant,
+                    ProgramMode::Inline,
+                    BwdSegEpilogue::Plane
+                )
+            );
+        }
+        // The WRITE, which re-asserts the probed-tuple and coordinate predicates — this is
+        // the assertion the long circuit form fails.
+        let dir = std::env::temp_dir().join(format!("seg_freeze_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("freeze dir");
+        let path = dir.join(SEG_FROZEN_CELLS_TSV);
+        write_frozen_cells(&path, "r0-headline", &frozen, SEG_SCHEDULE_SEED);
+        assert_eq!(read_frozen_cells(&path, "r0-headline"), frozen);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// The GATE's own predicate, on CPU: `select_winner(...).ratio.selectable()`
@@ -12030,42 +12176,70 @@ mod tests {
         }
     }
 
-    /// The pin rule is NOT the inversion rule, and it fails closed.
-    #[test]
-    fn the_pin_rule_is_distinct_and_fails_closed() {
-        let cell = |label: &str, role, est: Option<f64>| SegPinCellSummary {
+    /// One cell summary whose three processes all carry `est`.
+    ///
+    /// `Vec<Option<f64>>`: a per-PROCESS `None` is what an order-invalid process looks
+    /// like, and the rule must see it rather than a pre-reduced median.
+    fn pin_cell_fixture(label: &str, role: SegPinRole, est: Option<f64>) -> SegPinCellSummary {
+        SegPinCellSummary {
             label: label.to_owned(),
             role,
             estimate: est,
-            // `Vec<Option<f64>>`: a per-PROCESS `None` is what an order-invalid process
-            // looks like, and the rule must see it rather than a pre-reduced median.
             process_ratios: vec![est, est, est],
-        };
-        // ALL SEVEN predeclared cells, because `summarize_pin_decision` asserts the exact
-        // set per level. `base` drives all six decision cells with a deterministic spread
-        // (`base + i * 0.002`, i = 0..6), so the level median is a genuine median OVER SIX
-        // VALUES and the expectation below is derived from that — not from the first two.
-        // An earlier fixture held four cells flat at `base`, which made the median equal
-        // `base` while the test asserted the mean of the first two; it passed for the
-        // wrong reason and tested only two of the six cells.
-        let level = |name: &str, base: Option<f64>, ctrl: f64| {
-            let at = |i: usize| base.map(|b| b + i as f64 * 0.002);
-            (
-                name.to_owned(),
-                vec![
-                    cell("cont-d1-k4", SegPinRole::Decision, at(0)),
-                    cell("cont-d1-k8", SegPinRole::Decision, at(1)),
-                    cell("cont-d2i-k8", SegPinRole::Decision, at(2)),
-                    cell("cont-d2i-k16", SegPinRole::Decision, at(3)),
-                    cell("cont-d3-k16", SegPinRole::Decision, at(4)),
-                    cell("cont-d3-k24", SegPinRole::Decision, at(5)),
-                    cell("r0-drift-k4", SegPinRole::DriftControl, Some(ctrl)),
-                ],
-            )
-        };
-        // Six values `b, b+.002, …, b+.010`; `median` of an even count averages the two
-        // middle elements, so the level aggregate is `b + 0.005`.
-        let expect_aggregate = |b: f64| b + 0.005;
+        }
+    }
+
+    /// One LEVEL's seven predeclared pin cells.
+    ///
+    /// All seven, because `summarize_pin_decision` asserts the exact set per level. `base`
+    /// drives all six decision cells with a deterministic spread (`base + i * 0.002`,
+    /// i = 0..6), so the level aggregate is a genuine median OVER SIX VALUES and equals
+    /// **`base + 0.005`** (`median` averages the two middle elements of an even count).
+    /// An earlier fixture held four cells flat at `base`, which made the median equal
+    /// `base` while the test asserted the mean of the first two; it passed for the wrong
+    /// reason and tested only two of the six cells.
+    fn pin_level_fixture(
+        name: &str,
+        base: Option<f64>,
+        ctrl: f64,
+    ) -> (String, Vec<SegPinCellSummary>) {
+        let at = |i: usize| base.map(|b| b + i as f64 * 0.002);
+        (
+            name.to_owned(),
+            vec![
+                pin_cell_fixture("cont-d1-k4", SegPinRole::Decision, at(0)),
+                pin_cell_fixture("cont-d1-k8", SegPinRole::Decision, at(1)),
+                pin_cell_fixture("cont-d2i-k8", SegPinRole::Decision, at(2)),
+                pin_cell_fixture("cont-d2i-k16", SegPinRole::Decision, at(3)),
+                pin_cell_fixture("cont-d3-k16", SegPinRole::Decision, at(4)),
+                pin_cell_fixture("cont-d3-k24", SegPinRole::Decision, at(5)),
+                pin_cell_fixture("r0-drift-k4", SegPinRole::DriftControl, Some(ctrl)),
+            ],
+        )
+    }
+
+    /// The level aggregate `pin_level_fixture` produces for a given base.
+    fn pin_expected_aggregate(base: f64) -> f64 {
+        base + 0.005
+    }
+
+    /// The argmin level of a resolved decision's aggregates — what an implementation that
+    /// skipped the tie set would return.
+    fn pin_argmin(aggregates: &[(String, f64)]) -> String {
+        aggregates
+            .iter()
+            .min_by(|a, b| a.1.partial_cmp(&b.1).expect("finite aggregate"))
+            .expect("at least one decision level")
+            .0
+            .clone()
+    }
+
+    /// The pin rule is NOT the inversion rule, and it fails closed.
+    #[test]
+    fn the_pin_rule_is_distinct_and_fails_closed() {
+        let cell = pin_cell_fixture;
+        let level = pin_level_fixture;
+        let expect_aggregate = pin_expected_aggregate;
         // Every fixture carries the MANDATORY natural-repeat, or `summarize_pin_decision`
         // panics on its own exact-set assertion before any rule runs.
         let clean = vec![
@@ -12145,6 +12319,84 @@ mod tests {
                 );
                 assert!(!tie_set.contains(&"natural-repeat".to_owned()));
                 assert_eq!(aggregates.len(), 3, "the repeat is not a decision level");
+            }
+            other => panic!("expected Resolved, got {other:?}"),
+        }
+    }
+
+    /// **The tie-break's DISCRIMINATING cases.** Every fixture in
+    /// `the_pin_rule_is_distinct_and_fails_closed` leaves the tie set a SINGLETON equal to
+    /// the argmin, so an implementation that simply returned the fastest level passes all
+    /// of them and the rule's actual content — "lowest register ceiling **within the tie
+    /// set**" — stays untested. Both cases here make the argmin and the rule's answer
+    /// DIFFERENT levels, so `winner == pin_argmin(..)` fails them.
+    #[test]
+    fn the_pin_tie_break_prefers_the_lowest_ceiling_in_the_tie_set() {
+        let level = pin_level_fixture;
+        // (a) 48 is FASTEST and 40 is inside `SEG_PIN_TIE_FRACTION` of it: the argmin is
+        // 48, the answer is 40. Aggregates are `base + 0.005`, so 0.900 vs 0.905 — a
+        // 0.556% margin, inside the 0.93% band and above the control's zero spread.
+        let tied_with_40 = vec![
+            level("natural", Some(0.995), 1.0),
+            level("48", Some(0.895), 1.0),
+            level("40", Some(0.900), 1.0),
+            level("natural-repeat", Some(0.995), 1.0),
+        ];
+        match summarize_pin_decision(&tied_with_40) {
+            SegPinSummary::Resolved {
+                winner,
+                aggregates,
+                tie_set,
+                ..
+            } => {
+                assert!(
+                    (aggregates.iter().find(|(l, _)| l == "48").expect("48").1
+                        - pin_expected_aggregate(0.895))
+                    .abs()
+                        < 1e-9
+                );
+                assert_eq!(
+                    pin_argmin(&aggregates),
+                    "48",
+                    "48 is the fastest level here"
+                );
+                assert_eq!(
+                    tie_set.len(),
+                    2,
+                    "natural is 11% away and not tied: {tie_set:?}"
+                );
+                assert!(tie_set.contains(&"48".to_owned()) && tie_set.contains(&"40".to_owned()));
+                assert_eq!(
+                    winner, "40",
+                    "the winner is the LOWEST CEILING in the tie set, not the argmin"
+                );
+                assert_ne!(
+                    winner,
+                    pin_argmin(&aggregates),
+                    "an argmin-only selector would answer 48 and pass every other fixture"
+                );
+            }
+            other => panic!("expected Resolved, got {other:?}"),
+        }
+        // (b) The `natural -> 56` arm, equally discriminating: natural is the ARGMIN and
+        // 48 is inside the band, so the rule must prefer the PINNED 48 over natural's 56.
+        let tied_with_natural = vec![
+            level("natural", Some(0.895), 1.0),
+            level("48", Some(0.900), 1.0),
+            level("40", Some(1.095), 1.0),
+            level("natural-repeat", Some(0.895), 1.0),
+        ];
+        match summarize_pin_decision(&tied_with_natural) {
+            SegPinSummary::Resolved {
+                winner,
+                aggregates,
+                tie_set,
+                ..
+            } => {
+                assert_eq!(pin_argmin(&aggregates), "natural");
+                assert_eq!(tie_set.len(), 2, "40 is 22% away and not tied: {tie_set:?}");
+                assert_eq!(winner, "48", "48 < natural's 56, so the pinned level wins");
+                assert_ne!(winner, pin_argmin(&aggregates));
             }
             other => panic!("expected Resolved, got {other:?}"),
         }
