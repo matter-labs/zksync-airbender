@@ -2695,13 +2695,17 @@ impl SegPinSummary {
 ///     after the fact.
 ///   * **Tie set** = every level within [`SEG_PIN_TIE_FRACTION`] of the BEST
 ///     aggregate (defined against the best, so transitive by construction).
-///   * **Winner** = lowest register ceiling in the tie set (40 < 48 < natural/56).
+///   * **Winner** = lowest register ceiling in the tie set. Over the ELIGIBLE set that is
+///     `48 < natural/56`; the full ordering is `40 < 48 < natural/56`, but `40` cannot
+///     enter a tie set (see [`SEG_PIN_REFUSED_LEVELS`]).
 ///   * **Mechanism 3 gate:** if the best-to-second-best margin is smaller than the
 ///     drift control's own cross-level spread, the pin delta is **NOT resolved**.
 ///   * **Mechanism 4 gate:** if `natural-repeat` differs from `natural` by more than
 ///     [`SEG_PIN_TIE_FRACTION`], **UNRESOLVED**.
-///   * A level that spilled is ineligible (§4.2) — the caller must not pass one, and
-///     the level set assertion is what makes an omission visible.
+///   * A level that spilled is ineligible (§4.2). It is named in
+///     [`SEG_PIN_REFUSED_LEVELS`], REFUSED if passed, and REPORTED as a per-level
+///     outcome — so the ineligibility is visible without being mandatory, which is the
+///     contradiction R8 removed.
 pub(super) fn summarize_pin_decision(
     per_level: &[(String, Vec<SegPinCellSummary>)],
 ) -> SegPinSummary {
@@ -2843,9 +2847,14 @@ pub(super) fn summarize_pin_decision(
             .find(|c| c.role == SegPinRole::DriftControl)
             .and_then(|c| c.estimate)
             .expect("validated above");
-        // Mechanism 3's spread is over the THREE DECISION LEVELS only. The repeat is
-        // a different build of `natural`, so folding it in would inflate the spread
-        // with rebuild variance and make the margin gate trivially passable.
+        // Mechanism 3's spread is over the SCORED DECISION LEVELS only
+        // (`SEG_PIN_DECISION_LEVELS`; two since R8, not three). The repeat is a rebuild of
+        // `natural`, so folding it in would inflate the spread and make the margin gate
+        // trivially passable. **Measured caveat on what the repeat can show:** this
+        // toolchain's CUDA build is deterministic, so the repeat reproduced the archive
+        // BYTE-IDENTICALLY — mechanism 4 therefore measures session drift, not rebuild
+        // variance, and the exclusion here is about not diluting the spread rather than
+        // about excluding rebuild noise that does not exist.
         if DECISION_LEVELS.contains(&level.as_str()) {
             drift.push((level.clone(), control));
             let decision: Vec<f64> = cells
@@ -2938,6 +2947,10 @@ pub(super) fn summarize_pin_decision(
     // Lowest register ceiling within the tie set: 40 < 48 < natural/56. NOT "prefers
     // the level that pins a ceiling" — §4.3 ships a 56 pin when natural wins, so
     // every level ends up pinned and that tie-break is vacuous.
+    // `"40"` is DEAD BY ELIGIBILITY, and is kept deliberately rather than deleted: `40` can
+    // never reach a tie set while it is in `SEG_PIN_REFUSED_LEVELS`, but if F2 ever makes the
+    // level launchable, a missing arm would silently score it as `56` and the tie-break would
+    // prefer `48` over a genuinely lower ceiling. A dead arm is cheaper than that latent bug.
     let ceiling = |level: &str| match level {
         "40" => 40u32,
         "48" => 48,
@@ -3591,9 +3604,14 @@ fn bwd_seg_aggregate_r0_headline() {
 /// sees it), calls [`summarize_pin_decision`], and prints the per-cell table, the
 /// aggregates, the drift spread, the reproduction gap, the tie set and the outcome.
 ///
-/// `BWD_SEG_CONFIRM_DIRS` is `<level>=<dir>:<dir>:<dir>;<level>=…`, one group per
-/// level, and the rule itself asserts the level set is exactly
-/// `{natural, 48, 40, natural-repeat}`.
+/// `BWD_SEG_CONFIRM_DIRS` is `<level>=<dir>:<dir>:<dir>;<level>=…`, one group per level.
+/// **The rule asserts the level set is exactly [`SEG_PIN_DECISION_LEVELS`]
+/// (`{natural, 48}`) plus the mandatory `natural-repeat`** — so a three-group spec is what
+/// an operator writes here. **`40` must NOT appear**: it is predeclared ineligible
+/// ([`SEG_PIN_REFUSED_LEVELS`], measured `cudaFuncGetAttributes.localSizeBytes = 16` on
+/// every decision cell), and passing it is refused loudly rather than dropped, so a spec
+/// that names it aborts this test instead of yielding a decision over a level that cannot
+/// launch. The refusal is reported as a per-level outcome regardless of the spec.
 #[test]
 #[ignore = "campaign aggregator; BWD_SEG_CONFIRM_DIRS names the runs"]
 fn bwd_seg_aggregate_pin_decision() {
