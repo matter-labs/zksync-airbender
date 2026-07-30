@@ -92,7 +92,7 @@ use super::seg::{
     bwd_seg_epilogue_smem_bytes, bwd_seg_register_bound_blocks_per_sm, launch_bwd_seg,
     launch_bwd_seg_acc, launch_bwd_seg_build_fold_weights, BwdSegAccPlacement, BwdSegEpilogue,
     CarveoutMode, CarveoutPlan, CarveoutShape, BWD_SEG_ACC_RUNG_EPILOGUE,
-    SEG_REFERENCE_CLOCK_BUCKET_BYTES,
+    BWD_SEG_SMEM_BUCKETS_BYTES, SEG_REFERENCE_CLOCK_BUCKET_BYTES,
 };
 use super::seg_desc::BWD_SEG_MAX_K;
 use super::seg_lower::{
@@ -1905,19 +1905,58 @@ pub(super) enum SegProbeEvidence {
     NotRequired,
     /// Every probe verdict available, from `BWD_SEG_PROBE_VERDICTS`.
     Measured(Vec<SegProbeVerdict>),
+    /// **The freeze will be consumed ONLY by a convergence-independent column** — §7.1.0's
+    /// `off` control, where the driver chooses per kernel and divergence is the expected
+    /// outcome and the DATA. Demanding a converged forced probe there would gate a column
+    /// on a property it does not claim.
+    ///
+    /// This exists because the freeze is written ONCE and consumed by every column, so at
+    /// write time the writer cannot infer which column will read it: applying the primary
+    /// column's precondition to every cell made the production-configuration column
+    /// unconfirmable whenever the forced probes failed — which is exactly the case the
+    /// record needs. The reason travels into the freeze artifact, so an off-only freeze can
+    /// never be mistaken for a forced-converged one.
+    ///
+    /// It does NOT weaken the forced path: `Measured` still requires a converged verdict
+    /// per cell, and a freeze written this way announces itself in its own header.
+    ConvergenceIndependent { why: String },
 }
 
 impl SegProbeEvidence {
+    /// The tag written into the freeze header. Every variant has one, so the artifact always
+    /// states which precondition it was written under rather than leaving it inferred.
+    fn label(&self) -> String {
+        match self {
+            Self::NotRequired => {
+                "not-required (campaign carries no forced-bucket precondition)".to_owned()
+            }
+            Self::Measured(verdicts) => {
+                format!(
+                    "forced-converged (pair_gate.py, {} verdict(s))",
+                    verdicts.len()
+                )
+            }
+            Self::ConvergenceIndependent { why } => {
+                format!("convergence-independent — NOT VALID FOR A FORCED COLUMN: {why}")
+            }
+        }
+    }
+
     /// The verdicts, or a panic naming what the campaign needs. Deliberately not
     /// `Option`: a missing file must not be able to read as "nothing to check".
-    fn require_measured(&self, campaign: &str) -> &[SegProbeVerdict] {
+    fn require_measured(&self, campaign: &str) -> Option<&[SegProbeVerdict]> {
         match self {
-            Self::Measured(verdicts) => verdicts,
+            Self::Measured(verdicts) => Some(verdicts),
+            // The convergence question does not apply; the caller skips the predicate and
+            // the header records why.
+            Self::ConvergenceIndependent { .. } => None,
             Self::NotRequired => panic!(
                 "the {campaign} freeze needs MEASURED probe verdicts: pass \
                  SegProbeEvidence::Measured (the runner reads BWD_SEG_PROBE_VERDICTS, \
-                 written from pair_gate.py's own output). Probe membership alone records \
-                 that a probe RAN, not that it CONVERGED (§9 item 2)."
+                 written from pair_gate.py's own output), or \
+                 SegProbeEvidence::ConvergenceIndependent for an off-column-only freeze. \
+                 Probe membership alone records that a probe RAN, not that it CONVERGED \
+                 (§9 item 2)."
             ),
         }
     }
@@ -2069,7 +2108,13 @@ pub(super) fn write_frozen_cells(
             // taken; this says the two arms actually landed on one partition. Both are
             // required and neither implies the other — measured: `plane K4 const inline`
             // is a member whose `common-bucket` probe DIVERGED (65,536 B vs 32,768 B).
-            let verdicts = probes.require_measured(campaign);
+            //
+            // SKIPPED, and only, for `ConvergenceIndependent`: the `off` column does not
+            // claim equal partitions, so gating it on one would gate a column on a property
+            // it does not assert. The header records that this freeze took that path.
+            let Some(verdicts) = probes.require_measured(campaign) else {
+                continue;
+            };
             let matching: Vec<&SegProbeVerdict> = verdicts
                 .iter()
                 .filter(|verdict| {
@@ -2109,10 +2154,16 @@ pub(super) fn write_frozen_cells(
             );
         }
     }
+    // The probe-evidence tag is a FIELD of the artifact, not a note: an off-column-only
+    // freeze and a forced-converged one are the same eight columns, and a later reader
+    // (or a later task lifting the file) has no other way to tell them apart. It is written
+    // for every campaign so its absence can never be read as "the safe kind".
     let mut out = format!(
         "# campaign = {campaign}\n# seed = {seed:#x}\n\
+         # probe_evidence = {}\n\
          # rule = r0-headline: spec §6(b) stage 3 | pin-decision: spec §4.5 \
-         cross-level | d3-attribution: spec §4.5 loop form, two arms at one pin\n"
+         cross-level | d3-attribution: spec §4.5 loop form, two arms at one pin\n",
+        probes.label(),
     );
     out.push_str(SEG_FROZEN_TSV_HEADER);
     for cell in cells {
@@ -2220,6 +2271,18 @@ pub(super) fn frozen_cell_filter(campaign: &str) -> Option<Vec<SegFrozenCell>> {
     // Echo the path so the shell can `sha256sum` exactly the file this process
     // read and compare it against the one discovery wrote.
     eprintln!("[seg-freeze] consumed {} ({} cells)", path, cells.len());
+    // And echo the PROBE EVIDENCE the freeze was written under, so every confirmation and
+    // every aggregation logs which precondition its cells actually carry. A freeze is
+    // consumed by more processes than write it, and "which kind of freeze was this" must be
+    // answerable from any one of their logs rather than only from the file.
+    if let Ok(text) = std::fs::read_to_string(&path) {
+        if let Some(evidence) = text
+            .lines()
+            .find_map(|line| line.strip_prefix("# probe_evidence = "))
+        {
+            eprintln!("[seg-freeze] probe_evidence = {}", evidence.trim());
+        }
+    }
     Some(cells)
 }
 
@@ -3783,17 +3846,62 @@ pub(super) fn seg_carveout_shape(
 /// The bucket is NOT selectable from the environment: `fixed-bucket` binds to the one
 /// predeclared constant, so an env var can choose the mode and never the partition.
 pub(super) fn carveout_mode() -> CarveoutMode {
-    match std::env::var("BWD_SEG_CARVEOUT")
-        .unwrap_or_else(|_| "fixed-bucket".to_owned())
-        .trim()
-    {
+    parse_carveout_mode(
+        std::env::var("BWD_SEG_CARVEOUT")
+            .unwrap_or_else(|_| "fixed-bucket".to_owned())
+            .trim(),
+    )
+}
+
+/// The mode grammar, separated from the environment so a CPU test can drive the parse and
+/// the bucket validation without a device and without mutating a process-global variable.
+///
+/// **`fixed-bucket[:<bytes>]`.** Bare `fixed-bucket` keeps its meaning —
+/// [`SEG_REFERENCE_CLOCK_BUCKET_BYTES`], the reference clock's predeclared partition — so no
+/// existing caller changes. The explicit form exists because the R0 headline's forced pairs
+/// were measured non-convergent at BOTH 32 KiB and 64 KiB, and the diagnostic that follows
+/// from the floor law needs the pool maximum: `realized = max(driver heuristic, bucket)`, so
+/// the one value the driver cannot exceed is the pool itself. Without this form that
+/// diagnostic is unmeasurable, and "unmeasurable" was being recorded as a finding about the
+/// device when it was a finding about the harness.
+///
+/// **The byte count is validated against [`BWD_SEG_SMEM_BUCKETS_BYTES`], the documented
+/// device partition set**, whose largest member IS this part's pool. A request between
+/// buckets would be silently rounded up by the driver and the emitted `carveout_mode` label
+/// would then name a partition nothing realized — the exact confusion the realized-field
+/// rule exists to prevent. `0` is refused separately: a zero partition cannot hold any
+/// paired demand, so it would fail `CarveoutPlan::for_pair`'s containment assert with a
+/// message about demand rather than about the nonsense value that caused it.
+fn parse_carveout_mode(spec: &str) -> CarveoutMode {
+    if let Some(bytes) = spec.strip_prefix("fixed-bucket:") {
+        let bytes: usize = bytes.trim().parse().unwrap_or_else(|error| {
+            panic!(
+                "BWD_SEG_CARVEOUT=fixed-bucket:<bytes> needs a byte count, got {bytes:?}: {error}"
+            )
+        });
+        assert!(
+            bytes != 0,
+            "a fixed bucket of 0 B holds no paired demand; name a real partition from {:?}",
+            BWD_SEG_SMEM_BUCKETS_BYTES
+        );
+        assert!(
+            BWD_SEG_SMEM_BUCKETS_BYTES.contains(&bytes),
+            "fixed-bucket:{bytes} is not a supported realized partition on this part. The \
+             device set is {:?} (its largest member is the SM pool). A value between buckets \
+             would be rounded up by the driver and the emitted label would name a partition \
+             nothing realized.",
+            BWD_SEG_SMEM_BUCKETS_BYTES
+        );
+        return CarveoutMode::FixedBucket(bytes);
+    }
+    match spec {
         "off" => CarveoutMode::Off,
         "common-bucket" => CarveoutMode::CommonBucket,
         "as-configured" => CarveoutMode::AsConfigured,
         "fixed-bucket" => CarveoutMode::FixedBucket(SEG_REFERENCE_CLOCK_BUCKET_BYTES),
         other => panic!(
-            "BWD_SEG_CARVEOUT must be `off`, `common-bucket`, `as-configured` or \
-             `fixed-bucket`, got {other:?}"
+            "BWD_SEG_CARVEOUT must be `off`, `common-bucket`, `as-configured`, \
+             `fixed-bucket` or `fixed-bucket:<bytes>`, got {other:?}"
         ),
     }
 }
@@ -6352,14 +6460,38 @@ fn bwd_seg_freeze_r0_headline() {
     // The MEASURED probe verdicts, from `pair_gate.py`'s own output. Required, not
     // optional: a freeze written without them would rest on probe MEMBERSHIP, which
     // records that a capture was taken and not that the arms converged (F-9.3).
-    let verdicts = std::env::var("BWD_SEG_PROBE_VERDICTS").expect(
-        "BWD_SEG_PROBE_VERDICTS must name the pair_gate.py convergence verdicts for the \
-         probed tuples; the R0 freeze may not be written without them (§9 item 2, F-9.3)",
-    );
-    let probes = SegProbeEvidence::Measured(parse_probe_verdicts(
-        &std::fs::read_to_string(&verdicts)
-            .unwrap_or_else(|error| panic!("read probe verdicts {verdicts}: {error}")),
-    ));
+    //
+    // `BWD_SEG_OFF_COLUMN_ONLY=<why>` is the ONE alternative: a freeze that will be consumed
+    // only by §7.1.0's `off` control, which does not claim equal partitions. EXACTLY ONE of
+    // the two must be set — both would leave it ambiguous which precondition the artifact
+    // carries, and the artifact is the only place a later reader can look.
+    let verdicts = std::env::var("BWD_SEG_PROBE_VERDICTS").ok();
+    let off_only = std::env::var("BWD_SEG_OFF_COLUMN_ONLY").ok();
+    let probes = match (verdicts, off_only) {
+        (Some(_), Some(_)) => panic!(
+            "BWD_SEG_PROBE_VERDICTS and BWD_SEG_OFF_COLUMN_ONLY are both set: the freeze \
+             would carry two different preconditions. Set exactly one."
+        ),
+        (Some(path), None) => SegProbeEvidence::Measured(parse_probe_verdicts(
+            &std::fs::read_to_string(&path)
+                .unwrap_or_else(|error| panic!("read probe verdicts {path}: {error}")),
+        )),
+        (None, Some(why)) => {
+            assert!(
+                !why.trim().is_empty(),
+                "BWD_SEG_OFF_COLUMN_ONLY must SAY WHY convergence does not apply; the reason \
+                 is written into the freeze header where a later reader will find it"
+            );
+            SegProbeEvidence::ConvergenceIndependent {
+                why: why.trim().to_owned(),
+            }
+        }
+        (None, None) => panic!(
+            "the R0 freeze needs either BWD_SEG_PROBE_VERDICTS (the pair_gate.py convergence \
+             verdicts for the probed tuples) or BWD_SEG_OFF_COLUMN_ONLY=<why> for an \
+             off-column-only freeze; it may not be written without one (§9 item 2, F-9.3)"
+        ),
+    };
     write_frozen_cells(
         Path::new(&path),
         "r0-headline",
@@ -11665,6 +11797,159 @@ mod tests {
                 converged: false,
             }]),
         );
+    }
+
+    /// **R7 item 1: the explicit diagnostic bucket parses and validates.** The bare form
+    /// must keep meaning the reference clock's partition, or every existing caller moves.
+    #[test]
+    fn the_carveout_mode_grammar_accepts_an_explicit_validated_bucket() {
+        assert_eq!(parse_carveout_mode("off"), CarveoutMode::Off);
+        assert_eq!(
+            parse_carveout_mode("common-bucket"),
+            CarveoutMode::CommonBucket
+        );
+        assert_eq!(
+            parse_carveout_mode("as-configured"),
+            CarveoutMode::AsConfigured
+        );
+        assert_eq!(
+            parse_carveout_mode("fixed-bucket"),
+            CarveoutMode::FixedBucket(SEG_REFERENCE_CLOCK_BUCKET_BYTES),
+            "the bare form must still mean the reference clock's predeclared partition"
+        );
+        // The pool maximum — the diagnostic R7 exists to make expressible, and the one
+        // value `realized = max(driver heuristic, bucket)` cannot exceed.
+        assert_eq!(
+            parse_carveout_mode("fixed-bucket:102400"),
+            CarveoutMode::FixedBucket(102_400)
+        );
+        assert_eq!(
+            *BWD_SEG_SMEM_BUCKETS_BYTES
+                .last()
+                .expect("a non-empty bucket set"),
+            102_400,
+            "the largest documented partition IS the pool on this part, which is what makes \
+             the containment check a pool-max check too"
+        );
+        // Every documented bucket except 0 is expressible; whitespace is tolerated.
+        for bucket in BWD_SEG_SMEM_BUCKETS_BYTES.into_iter().filter(|b| *b != 0) {
+            assert_eq!(
+                parse_carveout_mode(&format!("fixed-bucket: {bucket} ")),
+                CarveoutMode::FixedBucket(bucket)
+            );
+        }
+        // The label is mode-only, so an explicit bucket does not invent a new column name.
+        assert_eq!(
+            parse_carveout_mode("fixed-bucket:102400").label(),
+            "fixed-bucket"
+        );
+    }
+
+    /// A partition between buckets would be rounded up by the driver, and the emitted
+    /// `carveout_mode` label would then name something nothing realized.
+    #[test]
+    #[should_panic(expected = "not a supported realized partition")]
+    fn the_carveout_mode_grammar_refuses_a_bucket_off_the_device_set() {
+        let _ = parse_carveout_mode("fixed-bucket:49152");
+    }
+
+    /// Above the pool there is no partition at all — the same containment check catches it,
+    /// because the device set's largest member is the pool.
+    #[test]
+    #[should_panic(expected = "not a supported realized partition")]
+    fn the_carveout_mode_grammar_refuses_a_bucket_above_the_pool() {
+        let _ = parse_carveout_mode("fixed-bucket:131072");
+    }
+
+    #[test]
+    #[should_panic(expected = "holds no paired demand")]
+    fn the_carveout_mode_grammar_refuses_a_zero_bucket() {
+        let _ = parse_carveout_mode("fixed-bucket:0");
+    }
+
+    #[test]
+    #[should_panic(expected = "needs a byte count")]
+    fn the_carveout_mode_grammar_refuses_a_non_numeric_bucket() {
+        let _ = parse_carveout_mode("fixed-bucket:sixtyfour");
+    }
+
+    /// **R7 item 2: an off-column-only freeze is accepted, and SAYS SO in the artifact.**
+    /// The cell here is the one whose forced probes all diverged — the case the variant
+    /// exists for.
+    #[test]
+    fn an_off_column_only_freeze_is_accepted_and_declares_itself() {
+        let cell = SegFrozenCell {
+            label: "r0-plane-k4-const-inline".to_owned(),
+            circuit: ADD_SUB_LAYOUT_SHORT.to_owned(),
+            layer: 0,
+            class: SegRoundClass::R0,
+            k: 4,
+            epilogue: "plane".to_owned(),
+            coeff: "const".to_owned(),
+            program: "inline".to_owned(),
+        };
+        let dir = std::env::temp_dir().join(format!("seg_offcol_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let path = dir.join(SEG_FROZEN_CELLS_TSV);
+        write_frozen_cells(
+            &path,
+            "r0-headline",
+            &[cell.clone()],
+            SEG_SCHEDULE_SEED,
+            &SegProbeEvidence::ConvergenceIndependent {
+                why: "off control: the driver chooses per kernel and divergence is the data"
+                    .to_owned(),
+            },
+        );
+        // The cells still round-trip, so the off column is confirmable at all.
+        assert_eq!(read_frozen_cells(&path, "r0-headline"), vec![cell]);
+        // And the artifact ANNOUNCES which precondition it was written under, so no later
+        // reader can mistake it for a forced-converged freeze.
+        let text = std::fs::read_to_string(&path).expect("read freeze");
+        let evidence = text
+            .lines()
+            .find_map(|line| line.strip_prefix("# probe_evidence = "))
+            .expect("the freeze must state its probe evidence");
+        assert!(
+            evidence.contains("convergence-independent")
+                && evidence.contains("NOT VALID FOR A FORCED COLUMN"),
+            "{evidence}"
+        );
+        assert!(evidence.contains("divergence is the data"), "{evidence}");
+    }
+
+    /// The forced path stays EXACTLY as fail-closed as F-9.3 made it: a forced-converged
+    /// freeze names its evidence, and the diverged cell is still refused (covered by
+    /// `the_r0_freeze_refuses_a_tuple_whose_probe_diverged`). This pins the header tag on
+    /// the forced path so the two artifacts are distinguishable in both directions.
+    #[test]
+    fn a_forced_freeze_declares_forced_converged_evidence() {
+        let dir = std::env::temp_dir().join(format!("seg_forcedcol_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let path = dir.join(SEG_FROZEN_CELLS_TSV);
+        write_frozen_cells(
+            &path,
+            "r0-headline",
+            &[SegFrozenCell {
+                label: "r0-plane-k24-const-inline".to_owned(),
+                circuit: ADD_SUB_LAYOUT_SHORT.to_owned(),
+                layer: 0,
+                class: SegRoundClass::R0,
+                k: 24,
+                epilogue: "plane".to_owned(),
+                coeff: "const".to_owned(),
+                program: "inline".to_owned(),
+            }],
+            SEG_SCHEDULE_SEED,
+            &converged_probes(),
+        );
+        let text = std::fs::read_to_string(&path).expect("read freeze");
+        let evidence = text
+            .lines()
+            .find_map(|line| line.strip_prefix("# probe_evidence = "))
+            .expect("the freeze must state its probe evidence");
+        assert!(evidence.starts_with("forced-converged"), "{evidence}");
+        assert!(!evidence.contains("convergence-independent"), "{evidence}");
     }
 
     /// A verdict for a DIFFERENT probed tuple does not license this one.
