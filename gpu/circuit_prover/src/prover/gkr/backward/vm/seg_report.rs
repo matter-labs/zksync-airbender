@@ -1875,7 +1875,20 @@ pub(super) struct SegProbedTuple {
 /// partition, and therefore the only ones a convergence probe can be about. `off` is the
 /// driver-default control, where divergence is the expected outcome, and `as-configured`
 /// gives the two arms deliberately different preferences.
-pub(super) const SEG_FORCED_CARVEOUT_MODES: [&str; 2] = ["common-bucket", "fixed-bucket"];
+/// Whether a mode KEY (see [`CarveoutMode::mode_key`]) names a configuration that forces
+/// both arms toward one partition, and can therefore be the subject of a convergence probe.
+///
+/// Keyed on the FULL configuration, bucket included: `fixed-bucket:65536` and
+/// `fixed-bucket:102400` are different probes with measured-opposite verdicts, so a bare
+/// `fixed-bucket` is refused as ambiguous rather than accepted as either.
+pub(super) fn is_forced_mode_key(key: &str) -> bool {
+    if key == CarveoutMode::CommonBucket.label() {
+        return true;
+    }
+    key.strip_prefix("fixed-bucket:")
+        .and_then(|bytes| bytes.parse::<usize>().ok())
+        .is_some_and(|bytes| BWD_SEG_SMEM_BUCKETS_BYTES.contains(&bytes))
+}
 
 /// **One MEASURED forced-mode convergence probe** — a `pair_gate.py` verdict, parsed
 /// rather than assumed.
@@ -1884,7 +1897,9 @@ pub(super) struct SegProbeVerdict {
     pub(super) k: usize,
     pub(super) coeff: String,
     pub(super) program: String,
-    /// The forced mode the probe ran in. Must be one of [`SEG_FORCED_CARVEOUT_MODES`].
+    /// The forced configuration KEY the probe ran in — bucket included, so a verdict is
+    /// bound to the partition it was actually measured at. Must satisfy
+    /// [`is_forced_mode_key`].
     pub(super) mode: String,
     /// `true` iff both arms realized the SAME `launch__shared_mem_config_size`.
     pub(super) converged: bool,
@@ -1903,8 +1918,17 @@ pub(super) enum SegProbeEvidence {
     /// `d3-attribution` hardcode their bucket and assert the realized field in their own
     /// runners, so there is no shortlist-vs-probe gap to close.
     NotRequired,
-    /// Every probe verdict available, from `BWD_SEG_PROBE_VERDICTS`.
-    Measured(Vec<SegProbeVerdict>),
+    /// Every probe verdict available, from `BWD_SEG_PROBE_VERDICTS`, plus the ONE forced
+    /// configuration this freeze is being written FOR.
+    ///
+    /// The `mode_key` is not decoration: a converged verdict is evidence about the partition
+    /// it was measured at and about no other. Measured on this device — `fixed-bucket:65536`
+    /// DIVERGED at the R0 headline cell while `fixed-bucket:102400` CONVERGED — so a freeze
+    /// written for one must not be licensed by the other's verdict.
+    Measured {
+        mode_key: String,
+        verdicts: Vec<SegProbeVerdict>,
+    },
     /// **The freeze will be consumed ONLY by a convergence-independent column** — §7.1.0's
     /// `off` control, where the driver chooses per kernel and divergence is the expected
     /// outcome and the DATA. Demanding a converged forced probe there would gate a column
@@ -1930,9 +1954,9 @@ impl SegProbeEvidence {
             Self::NotRequired => {
                 "not-required (campaign carries no forced-bucket precondition)".to_owned()
             }
-            Self::Measured(verdicts) => {
+            Self::Measured { mode_key, verdicts } => {
                 format!(
-                    "forced-converged (pair_gate.py, {} verdict(s))",
+                    "forced-converged at {mode_key} (pair_gate.py, {} verdict(s))",
                     verdicts.len()
                 )
             }
@@ -1944,9 +1968,9 @@ impl SegProbeEvidence {
 
     /// The verdicts, or a panic naming what the campaign needs. Deliberately not
     /// `Option`: a missing file must not be able to read as "nothing to check".
-    fn require_measured(&self, campaign: &str) -> Option<&[SegProbeVerdict]> {
+    fn require_measured(&self, campaign: &str) -> Option<(&str, &[SegProbeVerdict])> {
         match self {
-            Self::Measured(verdicts) => Some(verdicts),
+            Self::Measured { mode_key, verdicts } => Some((mode_key, verdicts)),
             // The convergence question does not apply; the caller skips the predicate and
             // the header records why.
             Self::ConvergenceIndependent { .. } => None,
@@ -1982,10 +2006,10 @@ pub(super) fn parse_probe_verdicts(text: &str) -> Vec<SegProbeVerdict> {
                  <CONVERGED|DIVERGED>; got {line:?}"
             );
             assert!(
-                SEG_FORCED_CARVEOUT_MODES.contains(&field[4]),
-                "a convergence probe is only meaningful in a FORCED mode {:?}; \
-                 {:?} names {:?}",
-                SEG_FORCED_CARVEOUT_MODES,
+                is_forced_mode_key(field[4]),
+                "a convergence probe is only meaningful for a configuration that FORCES one \
+                 partition, named by its FULL key (`common-bucket` or \
+                 `fixed-bucket:<documented-bytes>`); {:?} names {:?}",
                 line,
                 field[4]
             );
@@ -2112,9 +2136,19 @@ pub(super) fn write_frozen_cells(
             // SKIPPED, and only, for `ConvergenceIndependent`: the `off` column does not
             // claim equal partitions, so gating it on one would gate a column on a property
             // it does not assert. The header records that this freeze took that path.
-            let Some(verdicts) = probes.require_measured(campaign) else {
+            let Some((mode_key, verdicts)) = probes.require_measured(campaign) else {
                 continue;
             };
+            assert!(
+                is_forced_mode_key(mode_key),
+                "a freeze can only claim forced-convergence for a configuration that FORCES \
+                 one partition; {mode_key:?} does not (and a bare `fixed-bucket` is ambiguous \
+                 between buckets whose verdicts differ)"
+            );
+            // MATCHED ON THE TUPLE **AND** THE CONFIGURATION KEY. A verdict measured at a
+            // different bucket is evidence about that bucket only: `fixed-bucket:65536`
+            // DIVERGED here where `fixed-bucket:102400` CONVERGED, so accepting either for
+            // the other would reinstate exactly the false-precondition F-9.3 closed.
             let matching: Vec<&SegProbeVerdict> = verdicts
                 .iter()
                 .filter(|verdict| {
@@ -2122,13 +2156,14 @@ pub(super) fn write_frozen_cells(
                         && verdict.k == cell.k
                         && verdict.coeff == cell.coeff
                         && verdict.program == cell.program
+                        && verdict.mode == mode_key
                 })
                 .collect();
             assert!(
                 !matching.is_empty(),
-                "no probe verdict for the frozen tuple ({} K{} {} {}): {} verdict(s) were \
-                 supplied and none names this shape, so its forced-bucket precondition is \
-                 unestablished (§9 item 2, F-9.3)",
+                "no probe verdict for the frozen tuple ({} K{} {} {}) AT {mode_key}: {} \
+                 verdict(s) were supplied and none names this shape at this configuration, so \
+                 its forced-bucket precondition is unestablished (§9 item 2, F-9.3)",
                 cell.epilogue,
                 cell.k,
                 cell.coeff,
@@ -2137,8 +2172,8 @@ pub(super) fn write_frozen_cells(
             );
             assert!(
                 matching.iter().any(|verdict| verdict.converged),
-                "the R0 freeze names ({} K{} {} {}), whose forced-bucket probe DIVERGED in \
-                 every mode it ran in ({}). The arms did not realize one partition, so \
+                "the R0 freeze names ({} K{} {} {}), whose probe at {mode_key} DIVERGED ({}). \
+                 The arms did not realize one partition, so \
                  §7.2.1's primary column has no acceptance gate for this cell: change the \
                  forced mode to one that converges, or drop the shape. Never freeze a \
                  tuple whose probe FAILED — membership records that a probe RAN (F-9.3).",
@@ -2185,6 +2220,47 @@ pub(super) fn write_frozen_cells(
 }
 
 /// Read a freeze and REJECT one belonging to the other campaign.
+/// **A CONVERGENCE-INDEPENDENT FREEZE MAY NOT BE TIMED IN A FORCED CONFIGURATION.**
+///
+/// Such a freeze was written for §7.1.0's `off` control, whose cells were never required to
+/// converge — so timing them under `common-bucket` or a fixed bucket would produce a
+/// forced-column number resting on a precondition nobody established. The freeze declares
+/// itself and the process knows its own mode, so the mismatch is checkable at consume time
+/// rather than left to whoever reads the artifacts later.
+///
+/// Separated from the environment so its test does not mutate a process-global variable that
+/// every other test in the binary shares.
+pub(super) fn assert_freeze_matches_column(evidence: &str, mode: CarveoutMode, path: &str) {
+    assert!(
+        !(evidence.starts_with("convergence-independent") && mode.forces_one_partition()),
+        "{path} is a CONVERGENCE-INDEPENDENT freeze (off-column only) but this process runs \
+         BWD_SEG_CARVEOUT={} ({}), which forces one partition. Its cells carry no \
+         forced-convergence evidence, so a number timed here would have no acceptance gate \
+         behind it. Either run the off column, or write a freeze with measured verdicts for \
+         this configuration.",
+        mode.mode_key(),
+        mode.label(),
+    );
+}
+
+/// The freeze's `# probe_evidence` field, or a PANIC. Never an `Option`: see the call site in
+/// [`read_frozen_cells`] for why a missing field must not be tolerable.
+pub(super) fn frozen_probe_evidence(text: &str, path: &Path) -> String {
+    text.lines()
+        .find_map(|line| line.strip_prefix("# probe_evidence = "))
+        .map(|evidence| evidence.trim().to_owned())
+        .unwrap_or_else(|| {
+            panic!(
+                "{}: no `# probe_evidence` field. A freeze must state the precondition it was \
+                 written under — forced-converged at a named configuration, \
+                 convergence-independent (off-column only), or not-required — because an \
+                 off-column-only freeze and a forced-converged one are otherwise the same \
+                 eight columns and a consumer cannot tell them apart.",
+                path.display()
+            )
+        })
+}
+
 pub(super) fn read_frozen_cells(path: &Path, campaign: &str) -> Vec<SegFrozenCell> {
     let text = std::fs::read_to_string(path)
         .unwrap_or_else(|error| panic!("the freeze must exist before confirmation: {error}"));
@@ -2200,6 +2276,12 @@ pub(super) fn read_frozen_cells(path: &Path, campaign: &str) -> Vec<SegFrozenCel
          §6(b)'s rule for the pin decision is a category error).",
         path.display()
     );
+    // **The probe-evidence field is MANDATORY on read, at parity with the campaign tag.**
+    // A best-effort echo was not enough: a freeze with no field looked exactly like a
+    // forced-converged one to every consumer, so the absence of the strongest claim read as
+    // the safest. Every freeze this code writes carries it, so a missing field means either a
+    // hand-written artifact or one from before the field existed — neither may be timed.
+    frozen_probe_evidence(&text, path);
     let mut cells = Vec::new();
     let mut saw_header = false;
     for line in text.lines() {
@@ -2271,18 +2353,14 @@ pub(super) fn frozen_cell_filter(campaign: &str) -> Option<Vec<SegFrozenCell>> {
     // Echo the path so the shell can `sha256sum` exactly the file this process
     // read and compare it against the one discovery wrote.
     eprintln!("[seg-freeze] consumed {} ({} cells)", path, cells.len());
-    // And echo the PROBE EVIDENCE the freeze was written under, so every confirmation and
-    // every aggregation logs which precondition its cells actually carry. A freeze is
-    // consumed by more processes than write it, and "which kind of freeze was this" must be
-    // answerable from any one of their logs rather than only from the file.
-    if let Ok(text) = std::fs::read_to_string(&path) {
-        if let Some(evidence) = text
-            .lines()
-            .find_map(|line| line.strip_prefix("# probe_evidence = "))
-        {
-            eprintln!("[seg-freeze] probe_evidence = {}", evidence.trim());
-        }
-    }
+    // The PROBE EVIDENCE the freeze was written under — echoed so every confirmation and
+    // every aggregation logs which precondition its cells actually carry, and then GATED
+    // against the configuration this process is actually running.
+    let text = std::fs::read_to_string(&path)
+        .unwrap_or_else(|error| panic!("re-read the freeze {path}: {error}"));
+    let evidence = frozen_probe_evidence(&text, Path::new(&path));
+    eprintln!("[seg-freeze] probe_evidence = {evidence}");
+    assert_freeze_matches_column(&evidence, carveout_mode(), &path);
     Some(cells)
 }
 
@@ -3268,12 +3346,12 @@ fn parse_confirm_columns(spec: &str, fallback: &str) -> Vec<(String, Vec<PathBuf
 /// [`SegConfirmSummary`]. §7.2.1's two columns are aggregated in ONE process — see
 /// [`confirm_columns`] for the grammar and for why it is not `':'`-only.
 ///
-/// The PRIMARY column (`fixed-bucket`, ruling R5) is the acceptance gate and accepts only
-/// `outcome=INVERTED` on every frozen cell; the SECONDARY column (`as-configured`) is
-/// reported and never asserted (M7). This test emits both and gates neither — the gate is
-/// the shell's exact-field match on the primary lines, because an aggregator that aborted
-/// on a non-inverted primary cell would also abort before printing the secondary column
-/// it exists to report.
+/// **Which column is §7.2.1's PRIMARY is UNSETTLED — that column is UNPOPULATED pending RR**,
+/// so this test names no column as the acceptance gate. It emits every column it is given and
+/// **gates none of them**: the gate is the shell's exact-field match on whichever column the
+/// ruling designates, because an aggregator that aborted on a non-inverted cell would also
+/// abort before printing the columns it exists to report. `as-configured` is barred from
+/// gating in any case (M7), and the `off` column is the production-configuration control.
 ///
 /// The verdict is a machine-readable FIELD, not prose, because `NOT INVERTED` contains
 /// the substring ` INVERTED` and a `grep -v` acceptance test therefore passes a
@@ -3837,14 +3915,16 @@ pub(super) fn seg_carveout_shape(
 
 /// §7.1.0 / §7.2.1's mode selector.
 ///
-/// **Default `fixed-bucket` (ruling R5)** — §7.2.1's primary column, both arms forced to
-/// [`SEG_REFERENCE_CLOCK_BUCKET_BYTES`]. It was `common-bucket` until the forced pairs
-/// were measured; that mode is retained because §7.1.0's isolation and the record of WHY
-/// the primary moved both need it, but it is no longer the primary column and no longer
-/// the default. See [`CarveoutMode::FixedBucket`] for the floor law that forced the move.
+/// **No mode here is §7.2.1's primary column: that column is UNPOPULATED pending RR.** The
+/// default is `fixed-bucket`, which is a default and nothing more — it was reached by
+/// elimination (`common-bucket` failed the forced-convergence probe at the R0 headline cell,
+/// and so did `fixed-bucket` at 64 KiB), not by a standing decision that it defines the
+/// gate. Every mode's status is recorded in [`CarveoutMode`]; the measured convergence
+/// results live in the campaign record.
 ///
-/// The bucket is NOT selectable from the environment: `fixed-bucket` binds to the one
-/// predeclared constant, so an env var can choose the mode and never the partition.
+/// The BUCKET is constrained, not free: the bare form binds to
+/// [`SEG_REFERENCE_CLOCK_BUCKET_BYTES`] and `fixed-bucket:<bytes>` must name a documented
+/// partition — see [`parse_carveout_mode`].
 pub(super) fn carveout_mode() -> CarveoutMode {
     parse_carveout_mode(
         std::env::var("BWD_SEG_CARVEOUT")
@@ -4434,11 +4514,12 @@ pub(super) struct SegMatrixRow {
     ///
     /// **Keyed on the CAMPAIGN, never on the carveout mode.** It used to be inferred
     /// from `carveout_mode == "fixed-bucket"`, which was sound only while
-    /// [`CarveoutMode::FixedBucket`] was reachable from the pin and δ3 runners alone.
-    /// Ruling R5 puts §7.2.1's PRIMARY column at the same fixed 64 KiB bucket, and those
-    /// pairs are candidate-vs-incumbent — so a mode-keyed rule would have stamped
-    /// `reference-clock` on the headline itself and erased the very verdict the
-    /// acceptance gate reads.
+    /// [`CarveoutMode::FixedBucket`] was reachable from the pin and δ3 runners alone. Once
+    /// the R0 headline began timing candidate-vs-incumbent pairs at a fixed bucket too, a
+    /// mode-keyed rule would have stamped `reference-clock` on the headline itself and erased
+    /// the very verdict an acceptance gate reads. The headline runs at a fixed bucket
+    /// regardless of which one §7.2.1 ends up designating, so the distinction has to come
+    /// from the campaign and not from the configuration.
     pub(super) pairing: SegPairing,
 }
 
@@ -4447,7 +4528,7 @@ pub(super) struct SegMatrixRow {
 pub(super) enum SegPairing {
     /// The candidate against the evaluator it means to replace. §6(b)'s three-outcome
     /// rule applies and `verdict` carries its vocabulary. Every R0 headline row,
-    /// including R5's fixed-64 primary column, and every Stage-B / corpus row.
+    /// including the R0 headline at any fixed bucket, and every Stage-B / corpus row.
     CandidateVsIncumbent,
     /// The candidate against a launch used only as a CLOCK — §4.5 mechanism 3's
     /// cross-build anchor. Applying §6(b)'s rule to a cross-build ratio is a category
@@ -4520,7 +4601,7 @@ pub(super) fn render_matrix_csv(rows: &[SegMatrixRow]) -> String {
         //
         // **Keyed on the PAIRING, not on the carveout mode.** The mode-keyed form
         // (`carveout_mode == FixedBucket(0).label()`) was correct only while
-        // `FixedBucket` belonged to the pin and δ3 runners alone. Ruling R5 puts
+        // `FixedBucket` belonged to the pin and δ3 runners alone. The R0 headline now puts
         // §7.2.1's primary column at the same bucket with candidate-vs-incumbent arms,
         // so that form would now stamp `reference-clock` over the headline's own
         // verdict — the acceptance gate would read a row that had been told it has no
@@ -6472,10 +6553,16 @@ fn bwd_seg_freeze_r0_headline() {
             "BWD_SEG_PROBE_VERDICTS and BWD_SEG_OFF_COLUMN_ONLY are both set: the freeze \
              would carry two different preconditions. Set exactly one."
         ),
-        (Some(path), None) => SegProbeEvidence::Measured(parse_probe_verdicts(
-            &std::fs::read_to_string(&path)
-                .unwrap_or_else(|error| panic!("read probe verdicts {path}: {error}")),
-        )),
+        (Some(path), None) => SegProbeEvidence::Measured {
+            // The configuration this freeze is FOR, from the environment the confirmations
+            // will run in — so the verdict that licenses it must have been measured at the
+            // same bucket, not merely in some forced mode.
+            mode_key: carveout_mode().mode_key(),
+            verdicts: parse_probe_verdicts(
+                &std::fs::read_to_string(&path)
+                    .unwrap_or_else(|error| panic!("read probe verdicts {path}: {error}")),
+            ),
+        },
         (None, Some(why)) => {
             assert!(
                 !why.trim().is_empty(),
@@ -6736,7 +6823,7 @@ fn run_pin_decision_matrix(wanted: &[&SegPinCell]) -> Vec<SegMatrixRow> {
         // THIS is the reference-clock campaign — the only one. The baseline above is
         // literally labelled `flat-r0-reference-clock`, and §4.5 forbids reading §6(b)'s
         // inversion rule off a cross-build ratio. Set here rather than inferred from the
-        // carveout mode, because R5's headline pairs now share that mode.
+        // carveout mode, because the headline pairs now share that mode.
         row.pairing = SegPairing::ReferenceClock;
         matrix.push(row);
     }
@@ -7017,7 +7104,7 @@ fn measure_shape(
         // the default and never reads it.
         pin_role: SegPinRole::Decision,
         // Candidate-vs-incumbent is the DEFAULT because it is what almost every caller
-        // is: the R0 headline (R5's fixed-64 primary column included), the Stage-B
+        // is: the R0 headline (at any fixed bucket included), the Stage-B
         // ladder and the corpus sweep all pair against something they mean to replace.
         // The pin / δ3 runner overwrites it beside `pin_role`, at the one call site that
         // pairs against a clock.
@@ -11661,9 +11748,9 @@ mod tests {
         // §6(b)'s tokens. Measured on the live smoke run before this was fixed: the
         // frozen artifact carried `0.245246,…,INVERTED`.
         //
-        // **Keyed on the PAIRING, not on the mode** (ruling R5): the mode-keyed form was
-        // sound only while `FixedBucket` was the pin/δ3 runners' alone. R5 puts §7.2.1's
-        // primary column at the SAME bucket with candidate-vs-incumbent arms, so the
+        // **Keyed on the PAIRING, not on the mode.** The mode-keyed form was sound only
+        // while `FixedBucket` was the pin/δ3 runners' alone; the R0 headline now times
+        // candidate-vs-incumbent pairs at the SAME bucket, so the
         // second half of this test pins the other direction — same mode, opposite verdict
         // vocabulary — and a regression to mode-keying fails one half or the other.
         let inverting = || {
@@ -11687,11 +11774,12 @@ mod tests {
         // The ratio columns still render — only the VERDICT vocabulary changes.
         assert!(clock_csv.contains("0.245246"), "{clock_csv}");
 
-        // **R5's PRIMARY column: the same `fixed-bucket` mode, candidate-vs-incumbent
-        // arms, and §6(b)'s vocabulary INTACT.** If this row were stamped
-        // `reference-clock`, the acceptance gate would be reading a field that had been
-        // told the headline has no inversion question — the whole verdict erased by a
-        // configuration change that was supposed to be about cache partitions.
+        // **The R0 HEADLINE at a fixed bucket: same mode as the clock, candidate-vs-incumbent
+        // arms, and §6(b)'s vocabulary INTACT.** If this row were stamped `reference-clock`,
+        // an acceptance gate would be reading a field that had been told the headline has no
+        // inversion question — the whole verdict erased by a configuration change that was
+        // supposed to be about cache partitions. Holds for ANY fixed bucket, so it does not
+        // depend on which one §7.2.1 designates.
         let headline = SegMatrixRow {
             carveout_mode: CarveoutMode::FixedBucket(SEG_REFERENCE_CLOCK_BUCKET_BYTES).label(),
             pairing: SegPairing::CandidateVsIncumbent,
@@ -11704,7 +11792,7 @@ mod tests {
         );
         assert!(
             headline_csv.contains("INVERTED"),
-            "R5's primary column is candidate-vs-incumbent, so §6(b)'s verdict must \
+            "the R0 headline is candidate-vs-incumbent, so §6(b)'s verdict must \
              survive the fixed bucket: {headline_csv}"
         );
         assert!(
@@ -11718,19 +11806,26 @@ mod tests {
     /// primary forced mode — the fixture an `r0-headline` freeze-writer test needs now
     /// that membership alone is not enough (F-9.3).
     fn converged_probes() -> SegProbeEvidence {
-        SegProbeEvidence::Measured(
-            SEG_R0_PROBED_TUPLES
+        converged_probes_at(&CarveoutMode::FixedBucket(SEG_REFERENCE_CLOCK_BUCKET_BYTES).mode_key())
+    }
+
+    /// The same fixture at an explicit configuration key, so a test can prove that evidence
+    /// measured at one bucket does not license a freeze written for another.
+    fn converged_probes_at(mode_key: &str) -> SegProbeEvidence {
+        SegProbeEvidence::Measured {
+            mode_key: mode_key.to_owned(),
+            verdicts: SEG_R0_PROBED_TUPLES
                 .iter()
                 .map(|probed| SegProbeVerdict {
                     epilogue: probed.epilogue.to_owned(),
                     k: probed.k,
                     coeff: probed.coeff.to_owned(),
                     program: probed.program.to_owned(),
-                    mode: "fixed-bucket".to_owned(),
+                    mode: mode_key.to_owned(),
                     converged: true,
                 })
                 .collect(),
-        )
+        }
     }
 
     /// The parser rejects what it cannot mean, rather than defaulting: an unknown verdict
@@ -11740,7 +11835,7 @@ mod tests {
     fn probe_verdicts_parse_and_reject_what_they_cannot_mean() {
         let ok = parse_probe_verdicts(
             "# a comment\n\
-             plane\t4\tconst\tinline\tfixed-bucket\tCONVERGED\n\
+             plane\t4\tconst\tinline\tfixed-bucket:102400\tCONVERGED\n\
              \n\
              plane\t24\tconst\tinline\tcommon-bucket\tDIVERGED\n",
         );
@@ -11748,20 +11843,21 @@ mod tests {
         assert!(ok[0].converged);
         assert_eq!(ok[0].k, 4);
         assert!(!ok[1].converged);
+        assert_eq!(ok[0].mode, "fixed-bucket:102400");
         assert_eq!(ok[1].mode, "common-bucket");
     }
 
     #[test]
     #[should_panic(expected = "CONVERGED or DIVERGED")]
     fn probe_verdicts_reject_an_unknown_token() {
-        let _ = parse_probe_verdicts("plane\t4\tconst\tinline\tfixed-bucket\tok\n");
+        let _ = parse_probe_verdicts("plane\t4\tconst\tinline\tfixed-bucket:102400\tok\n");
     }
 
     /// `off` is the driver-default control, where divergence is the EXPECTED outcome — a
     /// convergence probe in that mode is not evidence of anything and must not be
     /// accepted as such.
     #[test]
-    #[should_panic(expected = "only meaningful in a FORCED mode")]
+    #[should_panic(expected = "FORCES one partition")]
     fn probe_verdicts_reject_an_unforced_mode() {
         let _ = parse_probe_verdicts("plane\t4\tconst\tinline\toff\tCONVERGED\n");
     }
@@ -11770,7 +11866,7 @@ mod tests {
     /// tuple, and its `common-bucket` probe realized 65,536 B against 32,768 B. Membership
     /// passes; the freeze must still be refused.
     #[test]
-    #[should_panic(expected = "probe DIVERGED")]
+    #[should_panic(expected = "DIVERGED")]
     fn the_r0_freeze_refuses_a_tuple_whose_probe_diverged() {
         let dir = std::env::temp_dir().join(format!("seg_probe_div_{}", std::process::id()));
         std::fs::create_dir_all(&dir).expect("temp dir");
@@ -11788,14 +11884,17 @@ mod tests {
                 program: "inline".to_owned(),
             }],
             SEG_SCHEDULE_SEED,
-            &SegProbeEvidence::Measured(vec![SegProbeVerdict {
-                epilogue: "plane".to_owned(),
-                k: 4,
-                coeff: "const".to_owned(),
-                program: "inline".to_owned(),
-                mode: "common-bucket".to_owned(),
-                converged: false,
-            }]),
+            &SegProbeEvidence::Measured {
+                mode_key: "common-bucket".to_owned(),
+                verdicts: vec![SegProbeVerdict {
+                    epilogue: "plane".to_owned(),
+                    k: 4,
+                    coeff: "const".to_owned(),
+                    program: "inline".to_owned(),
+                    mode: "common-bucket".to_owned(),
+                    converged: false,
+                }],
+            },
         );
     }
 
@@ -11952,6 +12051,164 @@ mod tests {
         assert!(!evidence.contains("convergence-independent"), "{evidence}");
     }
 
+    /// **4(c): a verdict measured at one bucket must not license a freeze written for
+    /// another.** Measured on this device: `fixed-bucket:65536` DIVERGED at the R0 headline
+    /// cell while `fixed-bucket:102400` CONVERGED, so keying evidence on the bare mode label
+    /// would let each stand for the other.
+    #[test]
+    #[should_panic(expected = "no probe verdict")]
+    fn a_verdict_from_one_bucket_does_not_license_another_bucket() {
+        let dir = std::env::temp_dir().join(format!("seg_xmode_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        write_frozen_cells(
+            &dir.join(SEG_FROZEN_CELLS_TSV),
+            "r0-headline",
+            &[SegFrozenCell {
+                label: "r0-plane-k24-const-inline".to_owned(),
+                circuit: ADD_SUB_LAYOUT_SHORT.to_owned(),
+                layer: 0,
+                class: SegRoundClass::R0,
+                k: 24,
+                epilogue: "plane".to_owned(),
+                coeff: "const".to_owned(),
+                program: "inline".to_owned(),
+            }],
+            SEG_SCHEDULE_SEED,
+            // Converged — but at the POOL MAX, while the freeze is being written for 64 KiB.
+            &SegProbeEvidence::Measured {
+                mode_key: "fixed-bucket:65536".to_owned(),
+                verdicts: vec![SegProbeVerdict {
+                    epilogue: "plane".to_owned(),
+                    k: 24,
+                    coeff: "const".to_owned(),
+                    program: "inline".to_owned(),
+                    mode: "fixed-bucket:102400".to_owned(),
+                    converged: true,
+                }],
+            },
+        );
+    }
+
+    /// The same evidence at the MATCHING key is accepted, and the header names the bucket —
+    /// so the pass above is about the key, not about some unrelated rejection.
+    #[test]
+    fn a_verdict_at_the_matching_bucket_licenses_the_freeze_and_names_it() {
+        let dir = std::env::temp_dir().join(format!("seg_xmode_ok_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let path = dir.join(SEG_FROZEN_CELLS_TSV);
+        write_frozen_cells(
+            &path,
+            "r0-headline",
+            &[SegFrozenCell {
+                label: "r0-plane-k24-const-inline".to_owned(),
+                circuit: ADD_SUB_LAYOUT_SHORT.to_owned(),
+                layer: 0,
+                class: SegRoundClass::R0,
+                k: 24,
+                epilogue: "plane".to_owned(),
+                coeff: "const".to_owned(),
+                program: "inline".to_owned(),
+            }],
+            SEG_SCHEDULE_SEED,
+            &converged_probes_at("fixed-bucket:102400"),
+        );
+        let text = std::fs::read_to_string(&path).expect("read freeze");
+        let evidence = frozen_probe_evidence(&text, &path);
+        assert!(
+            evidence.starts_with("forced-converged at fixed-bucket:102400"),
+            "{evidence}"
+        );
+    }
+
+    /// A bare `fixed-bucket` is ambiguous between buckets whose verdicts differ, so it is not
+    /// a usable key on either side.
+    #[test]
+    fn a_bare_fixed_bucket_is_not_a_forced_mode_key() {
+        assert!(is_forced_mode_key("common-bucket"));
+        assert!(is_forced_mode_key("fixed-bucket:102400"));
+        assert!(is_forced_mode_key("fixed-bucket:65536"));
+        assert!(!is_forced_mode_key("fixed-bucket"));
+        assert!(
+            !is_forced_mode_key("fixed-bucket:49152"),
+            "undocumented bucket"
+        );
+        assert!(!is_forced_mode_key("off"));
+        assert!(!is_forced_mode_key("as-configured"));
+        // And the two accessors agree with each other.
+        assert_eq!(
+            CarveoutMode::FixedBucket(102_400).mode_key(),
+            "fixed-bucket:102400"
+        );
+        assert_eq!(CarveoutMode::CommonBucket.mode_key(), "common-bucket");
+        assert!(CarveoutMode::CommonBucket.forces_one_partition());
+        assert!(CarveoutMode::FixedBucket(102_400).forces_one_partition());
+        assert!(!CarveoutMode::Off.forces_one_partition());
+        assert!(!CarveoutMode::AsConfigured.forces_one_partition());
+    }
+
+    /// **4(a): a freeze with no `# probe_evidence` field is REFUSED on read**, at parity with
+    /// the campaign tag. Before this, a field-less artifact read exactly like a
+    /// forced-converged one — the absence of the strongest claim read as the safest.
+    #[test]
+    #[should_panic(expected = "no `# probe_evidence` field")]
+    fn a_freeze_without_probe_evidence_is_refused_on_read() {
+        let dir = std::env::temp_dir().join(format!("seg_noev_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let path = dir.join(SEG_FROZEN_CELLS_TSV);
+        // A freeze that is otherwise perfectly well formed — campaign tag, seed, schema
+        // header, one valid probed R0 cell — and carries no evidence field.
+        let mut text = String::from("# campaign = r0-headline\n# seed = 0x1\n");
+        text.push_str(SEG_FROZEN_TSV_HEADER);
+        text.push_str(&format!(
+            "r0-plane-k4-const-inline\t{ADD_SUB_LAYOUT_SHORT}\t0\tR0\t4\tplane\tconst\tinline\n"
+        ));
+        std::fs::write(&path, text).expect("write freeze");
+        let _ = read_frozen_cells(&path, "r0-headline");
+    }
+
+    /// **4(b): an off-column-only freeze timed in a FORCED configuration is refused.** This is
+    /// the consume-side half of the write-side variant: the freeze says convergence does not
+    /// apply to its cells, so a forced column may not quote a number from them.
+    #[test]
+    #[should_panic(expected = "CONVERGENCE-INDEPENDENT freeze")]
+    fn an_off_column_freeze_is_refused_in_a_forced_configuration() {
+        assert_freeze_matches_column(
+            "convergence-independent — NOT VALID FOR A FORCED COLUMN: off control",
+            CarveoutMode::FixedBucket(102_400),
+            "/tmp/seg_frozen_cells.tsv",
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "CONVERGENCE-INDEPENDENT freeze")]
+    fn an_off_column_freeze_is_refused_under_common_bucket_too() {
+        assert_freeze_matches_column(
+            "convergence-independent — NOT VALID FOR A FORCED COLUMN: off control",
+            CarveoutMode::CommonBucket,
+            "/tmp/seg_frozen_cells.tsv",
+        );
+    }
+
+    /// The combinations that ARE legal, so the gate is not simply refusing everything: an
+    /// off-only freeze in a convergence-independent column, and a forced-converged freeze in
+    /// any column.
+    #[test]
+    fn the_column_gate_admits_every_matching_combination() {
+        let off_only = "convergence-independent — NOT VALID FOR A FORCED COLUMN: off control";
+        for mode in [CarveoutMode::Off, CarveoutMode::AsConfigured] {
+            assert_freeze_matches_column(off_only, mode, "p");
+        }
+        let forced = "forced-converged at fixed-bucket:102400 (pair_gate.py, 2 verdict(s))";
+        for mode in [
+            CarveoutMode::Off,
+            CarveoutMode::AsConfigured,
+            CarveoutMode::CommonBucket,
+            CarveoutMode::FixedBucket(102_400),
+        ] {
+            assert_freeze_matches_column(forced, mode, "p");
+        }
+    }
+
     /// A verdict for a DIFFERENT probed tuple does not license this one.
     #[test]
     #[should_panic(expected = "no probe verdict")]
@@ -11973,14 +12230,17 @@ mod tests {
             }],
             SEG_SCHEDULE_SEED,
             // K=24's verdict, for a K=4 cell.
-            &SegProbeEvidence::Measured(vec![SegProbeVerdict {
-                epilogue: "plane".to_owned(),
-                k: 24,
-                coeff: "const".to_owned(),
-                program: "inline".to_owned(),
-                mode: "fixed-bucket".to_owned(),
-                converged: true,
-            }]),
+            &SegProbeEvidence::Measured {
+                mode_key: "fixed-bucket:65536".to_owned(),
+                verdicts: vec![SegProbeVerdict {
+                    epilogue: "plane".to_owned(),
+                    k: 24,
+                    coeff: "const".to_owned(),
+                    program: "inline".to_owned(),
+                    mode: "fixed-bucket:65536".to_owned(),
+                    converged: true,
+                }],
+            },
         );
     }
 

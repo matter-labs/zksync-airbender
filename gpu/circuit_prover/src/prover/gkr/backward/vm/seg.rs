@@ -487,37 +487,57 @@ pub(crate) enum CarveoutMode {
     /// the control half of the same-binary isolation, so the `off`-to-
     /// `CommonBucket` delta IS P1 and nothing else.
     Off,
-    /// BOTH arms forced to ONE realized bucket, from the larger demand. §7.2.1's
-    /// PRIMARY column: the flap is fully removed, one SM partition, no
-    /// reconfiguration at any sample boundary, so the ratio is a statement about
-    /// the two kernels. Also the mode every solo cell uses.
+    /// BOTH arms asked for ONE bucket, derived from the larger demand — the intent being
+    /// one SM partition with no reconfiguration at any sample boundary, so the ratio would
+    /// be a statement about the two kernels. Also the mode every solo cell uses.
     ///
-    /// The request is a FLOOR — across Task 3's captures,
-    /// `realized = max(driver heuristic, bucket)` — so commonality below 64 KiB is
-    /// VERIFIED per capture by `pair_gate.py`, never assumed; a heuristic override
-    /// above the bucket is a recorded protocol failure.
+    /// **It is NOT §7.2.1's primary column, and no mode currently is: that column is
+    /// UNPOPULATED pending RR.** This mode was the primary until the forced pairs were
+    /// actually measured, and it FAILED at the R0 headline cell — asked for 30 % on both
+    /// arms, the pair realized 65,536 B and 32,768 B and `pair_gate.py` recorded
+    /// `PROTOCOL FAILURE` (3 of 4 forced pairs over). It is retained because §7.1.0's
+    /// isolation needs it and because it is the empirical record of why the primary moved.
+    ///
+    /// The request is a FLOOR: `realized = max(driver heuristic, bucket)`, and the overshoot
+    /// is a function of the launch's K-shape rather than of the request, so commonality is
+    /// VERIFIED per capture by `pair_gate.py` and never assumed at ANY bucket — a heuristic
+    /// override above the requested bucket is a recorded protocol failure.
     CommonBucket,
     /// Both arms forced to ONE EXPLICIT bucket, independent of either arm's demand.
     /// §4.5's pin-decision pairs use this so the reference clock's own realized
     /// partition is identical at every pin level — see
     /// [`SEG_REFERENCE_CLOCK_BUCKET_BYTES`].
     ///
-    /// **Ruling R5 (§7.2.1's primary column) also uses it, at the same 64 KiB.** The
-    /// R0 headline's primary column was `CommonBucket` until the forced pairs were
-    /// measured: `realized = max(driver heuristic, bucket)`, and the seg candidate's
-    /// heuristic picks 64 KiB at `K = 4`, so the pair's own `max(demand)` of 30,720 B
-    /// quantized to 32,768 B and the two arms realized 65,536 B and 32,768 B —
-    /// `pair_gate.py` recorded `PROTOCOL FAILURE`, 3 of 4 forced pairs over. 64 KiB is
-    /// the only bucket the driver can never raise, hence the only convergent forced
-    /// pairing available to the headline. So this variant IS reachable from
-    /// `BWD_SEG_CARVEOUT=fixed-bucket`, which binds it to
-    /// [`SEG_REFERENCE_CLOCK_BUCKET_BYTES`] and to nothing else — an environment may
-    /// select the mode but may not invent the bucket.
+    /// **Reachable from `BWD_SEG_CARVEOUT=fixed-bucket[:<bytes>]`** — see
+    /// [`parse_carveout_mode`](super::seg_report) for the grammar and the validation. The
+    /// bare form binds to [`SEG_REFERENCE_CLOCK_BUCKET_BYTES`]; an explicit byte count must
+    /// name a member of [`BWD_SEG_SMEM_BUCKETS_BYTES`], so an environment may select a
+    /// documented partition but may not invent one.
     ///
-    /// The mode alone therefore no longer identifies a reference-clock pairing:
-    /// §4.5's pairs clock a continuation candidate against the flat R0 kernel, while
-    /// R5's pairs are candidate-vs-incumbent and keep §6(b)'s inversion vocabulary.
-    /// That distinction is carried by `SegMatrixRow::pairing`, not by this label.
+    /// **MEASURED, and it corrects what an earlier revision of this comment asserted: 64 KiB
+    /// is NOT a bucket the driver cannot raise.** At the R0 headline shape (`plane K=4`,
+    /// 2,560 B/block, 12 resident blocks) a 64 KiB request realized **102,400 B — the whole
+    /// SM pool** — while the zero-dynamic flat incumbent realized 65,536 B, so
+    /// `pair_gate.py` recorded `PROTOCOL FAILURE` there too. The floor law's fixed point on
+    /// this device is the **102,400 B pool maximum**, which is the only value measured to
+    /// converge both arms **AT THE HEADLINE CELL** (`REALIZED OK` against a predeclared
+    /// `--expect-bucket 102400`). The scoping is load-bearing: the same 64 KiB request DOES
+    /// converge at `K = 24`, so the overshoot is K-shape dependent, not a property of the
+    /// bucket.
+    ///
+    /// **§7.2.1's primary column is UNPOPULATED pending RR**: the pool-max configuration
+    /// converges but costs the flat incumbent 30.53 pp of L1 hit rate against the
+    /// candidate's 13.02 pp, so "equal realized partitions" is reachable at this pair only
+    /// via an asymmetric handicap. That is a judgement, not a measurement, and this type
+    /// takes no position on it.
+    ///
+    /// The mode alone therefore does not identify a reference-clock pairing: §4.5's pairs
+    /// clock a continuation candidate against the flat R0 kernel, while the R0 headline's
+    /// pairs are candidate-vs-incumbent and keep §6(b)'s inversion vocabulary — and both can
+    /// run at a fixed bucket. That distinction is carried by `SegMatrixRow::pairing`, not by
+    /// this label. The label does not carry the BUCKET either, which is why a probe verdict
+    /// is keyed on `CarveoutMode::mode_key` instead: a 64 KiB convergence must not license a
+    /// 100 KiB confirmation.
     FixedBucket(usize),
     /// Each arm at the preference this bench design gives it: the candidate its own
     /// computed pct, the baseline the preference it already carries (the flat R0
@@ -536,6 +556,32 @@ impl CarveoutMode {
             Self::AsConfigured => "as-configured",
             Self::FixedBucket(_) => "fixed-bucket",
         }
+    }
+
+    /// The FULL configuration key, bucket included — what a convergence probe is a verdict
+    /// ABOUT.
+    ///
+    /// [`Self::label`] deliberately collapses every `FixedBucket` to one string, because it
+    /// names the emitted CSV column and two spellings there would drift. That collapse is
+    /// wrong for probe evidence: `fixed-bucket` at 64 KiB DIVERGED at the R0 headline cell
+    /// and `fixed-bucket` at 102,400 B CONVERGED, so a verdict keyed on the label alone would
+    /// let the 64 KiB failure and the 100 KiB success stand for each other. Keying on this
+    /// closes that license.
+    pub(crate) fn mode_key(self) -> String {
+        match self {
+            Self::FixedBucket(bucket) => format!("fixed-bucket:{bucket}"),
+            other => other.label().to_owned(),
+        }
+    }
+
+    /// Whether this configuration FORCES both arms toward one partition, and therefore
+    /// whether a convergence probe of it means anything.
+    ///
+    /// `Off` is the driver-default control, where divergence is the expected outcome and the
+    /// data; `AsConfigured` gives the two arms deliberately different preferences. Neither
+    /// claims equal partitions, so neither can supply — or require — convergence evidence.
+    pub(crate) fn forces_one_partition(self) -> bool {
+        matches!(self, Self::CommonBucket | Self::FixedBucket(_))
     }
 }
 
