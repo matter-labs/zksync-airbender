@@ -88,10 +88,11 @@ use era_cudart_sys::{cudaFuncGetAttributes, CudaFuncAttributes};
 // definition, one file.
 use super::seg::{
     bwd_seg_acc_blocks_per_sm, bwd_seg_acc_dynamic_smem_bytes, bwd_seg_acc_entry_point,
-    bwd_seg_blocks_per_sm, bwd_seg_entry_point, bwd_seg_epilogue_smem_bytes,
-    bwd_seg_register_bound_blocks_per_sm, launch_bwd_seg, launch_bwd_seg_acc,
-    launch_bwd_seg_build_fold_weights, BwdSegAccPlacement, BwdSegEpilogue, CarveoutMode,
-    CarveoutPlan, CarveoutShape, BWD_SEG_ACC_RUNG_EPILOGUE,
+    bwd_seg_blocks_per_sm, bwd_seg_carveout_pct_for_bucket, bwd_seg_entry_point,
+    bwd_seg_epilogue_smem_bytes, bwd_seg_register_bound_blocks_per_sm, launch_bwd_seg,
+    launch_bwd_seg_acc, launch_bwd_seg_build_fold_weights, BwdSegAccPlacement, BwdSegEpilogue,
+    CarveoutMode, CarveoutPlan, CarveoutShape, BWD_SEG_ACC_RUNG_EPILOGUE,
+    SEG_REFERENCE_CLOCK_BUCKET_BYTES,
 };
 use super::seg_desc::BWD_SEG_MAX_K;
 use super::seg_lower::{
@@ -455,8 +456,36 @@ pub(super) fn seg_output_path(file: &str) -> PathBuf {
 }
 
 /// Write `contents` through a process-unique temporary, so a reader never observes
-/// a half-written table.
+/// a half-written table, and MIRROR it into the reservation.
+///
+/// [`SEG_OUTPUT_DIR`] is a FIXED path, so the last process to publish overwrites
+/// every earlier one's table and a campaign of nine processes would keep exactly one
+/// of them. With a reservation active the same bytes are therefore written a second
+/// time into `$BWD_SEG_RUN_DIR`, beside the raw samples they summarize, where no
+/// later process can overwrite them; the fixed path stays the LATEST-VIEW copy.
+/// Every published artifact inherits this because every publisher goes through here.
 pub(super) fn publish(path: &Path, contents: &str) {
+    publish_at(path, contents);
+    let Some(dir) = std::env::var_os("BWD_SEG_RUN_DIR") else {
+        return;
+    };
+    let dir = PathBuf::from(dir);
+    // Only a RESERVED directory is mirrored into. `seg_env` claims it with `mkdir`;
+    // creating it here would defeat the reservation exactly as it would in
+    // `record_raw_samples`.
+    if !dir.is_dir() {
+        return;
+    }
+    let name = path
+        .file_name()
+        .expect("a published artifact has a file name");
+    let mirror = dir.join(name);
+    if mirror != path {
+        publish_at(&mirror, contents);
+    }
+}
+
+fn publish_at(path: &Path, contents: &str) {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)
             .unwrap_or_else(|error| panic!("create {}: {error}", parent.display()));
@@ -2005,6 +2034,32 @@ pub(super) fn read_frozen_cells(path: &Path, campaign: &str) -> Vec<SegFrozenCel
     cells
 }
 
+/// The launch shape a frozen cell names.
+///
+/// The three axis labels round-trip through the same functions that WROTE them
+/// ([`epilogue_label`], [`coeff_label`], [`program_label`]), so a freeze naming an axis
+/// value this harness cannot build fails here rather than silently selecting a
+/// neighbouring shape. `acc` is `None`: every frozen cell is a release-symbol shape.
+pub(super) fn frozen_cell_shape(cell: &SegFrozenCell) -> SegShape {
+    let epilogue = [
+        BwdSegEpilogue::Staged,
+        BwdSegEpilogue::Plane,
+        BwdSegEpilogue::Wide,
+    ]
+    .into_iter()
+    .find(|epilogue| epilogue_label(*epilogue) == cell.epilogue)
+    .unwrap_or_else(|| panic!("a freeze names epilogue {:?}", cell.epilogue));
+    let coeff = [CoeffMode::Constant, CoeffMode::DevPtr]
+        .into_iter()
+        .find(|coeff| coeff_label(*coeff) == cell.coeff)
+        .unwrap_or_else(|| panic!("a freeze names coefficient loader {:?}", cell.coeff));
+    let program = [ProgramMode::Inline, ProgramMode::DevPtr]
+        .into_iter()
+        .find(|program| program_label(*program) == cell.program)
+        .unwrap_or_else(|| panic!("a freeze names program source {:?}", cell.program));
+    SegShape::regs(cell.k, coeff, program, epilogue)
+}
+
 /// The confirmation runs' cell filter: `BWD_SEG_FROZEN_CELLS=<path>` selects the
 /// freeze, and a run with that variable set may time NOTHING else. Absent, the
 /// caller is in discovery and times its own exploration set.
@@ -2015,6 +2070,1230 @@ pub(super) fn frozen_cell_filter(campaign: &str) -> Option<Vec<SegFrozenCell>> {
     // read and compare it against the one discovery wrote.
     eprintln!("[seg-freeze] consumed {} ({} cells)", path, cells.len());
     Some(cells)
+}
+
+// ── §4.5's pin decision set (predeclared, level-independent) ──────────────────
+
+/// What a cell is FOR in the pin decision. The two roles are scored differently
+/// and must never be pooled.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum SegPinRole {
+    /// Contributes to the level aggregate. Continuation shapes only — the swept
+    /// symbols are the only ones the pin touches.
+    Decision,
+    /// §4.5 mechanism 3's cross-build anchor. R0 is PIN-INVARIANT (not on the sweep
+    /// axis; its `plane`/`wide` symbols are permanently pinned at 40), so its
+    /// movement across levels is build and session noise MEASURED. It runs in every
+    /// process and is **excluded from every aggregate**: including it would dilute
+    /// the very effect the aggregate is about.
+    DriftControl,
+}
+
+impl SegPinRole {
+    pub(super) fn label(self) -> &'static str {
+        match self {
+            Self::Decision => "decision",
+            Self::DriftControl => "drift-control",
+        }
+    }
+}
+
+/// One predeclared decision cell.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct SegPinCell {
+    pub(super) label: &'static str,
+    pub(super) role: SegPinRole,
+    pub(super) class: SegRoundClass,
+    pub(super) k: usize,
+}
+
+/// **§4.5's δ3 ATTRIBUTION cell set** — a different question from the pin decision,
+/// so a different set. The pin decision asks "which ceiling is fastest" over cells
+/// chosen to span the K axis; the attribution asks "does the roll form explain the
+/// δ3/K24 penalty", so it is exactly the δ3-BEARING shapes results §2.6 shows moving:
+/// the D3 and D2-materialize classes at K = 16, 24 and 32. Running the pin set here
+/// would time four cells that carry no δ3 at all.
+pub(super) const SEG_D3_ATTRIBUTION_CELLS: [SegPinCell; 7] = [
+    SegPinCell {
+        label: "d3-attr-d3-k16",
+        role: SegPinRole::Decision,
+        class: SegRoundClass::D3,
+        k: 16,
+    },
+    SegPinCell {
+        label: "d3-attr-d3-k24",
+        role: SegPinRole::Decision,
+        class: SegRoundClass::D3,
+        k: 24,
+    },
+    SegPinCell {
+        label: "d3-attr-d3-k32",
+        role: SegPinRole::Decision,
+        class: SegRoundClass::D3,
+        k: 32,
+    },
+    SegPinCell {
+        label: "d3-attr-d2m-k16",
+        role: SegPinRole::Decision,
+        class: SegRoundClass::D2Materialize,
+        k: 16,
+    },
+    SegPinCell {
+        label: "d3-attr-d2m-k24",
+        role: SegPinRole::Decision,
+        class: SegRoundClass::D2Materialize,
+        k: 24,
+    },
+    SegPinCell {
+        label: "d3-attr-d2m-k32",
+        role: SegPinRole::Decision,
+        class: SegRoundClass::D2Materialize,
+        k: 32,
+    },
+    SegPinCell {
+        label: "r0-drift-k4",
+        role: SegPinRole::DriftControl,
+        class: SegRoundClass::R0,
+        k: 4,
+    },
+];
+
+/// **The frozen decision set.** Continuation classes on the production loader pair
+/// (`const` inline `plane`, which is what [`SegShape::regs`] builds below) at the `K`
+/// values results §2.6 shows moving, plus the R0 drift control.
+///
+/// Predeclared HERE, in source, rather than discovered: §4.5 fixes the cell set
+/// before any level is timed, and a discovered set would differ per level and make
+/// the levels incomparable. Changing this array is a spec-level decision, not a
+/// tuning knob — the integration test below pins its shape.
+pub(super) const SEG_PIN_DECISION_CELLS: [SegPinCell; 7] = [
+    SegPinCell {
+        label: "cont-d1-k4",
+        role: SegPinRole::Decision,
+        class: SegRoundClass::D1,
+        k: 4,
+    },
+    SegPinCell {
+        label: "cont-d1-k8",
+        role: SegPinRole::Decision,
+        class: SegRoundClass::D1,
+        k: 8,
+    },
+    SegPinCell {
+        label: "cont-d2i-k8",
+        role: SegPinRole::Decision,
+        class: SegRoundClass::D2Inline,
+        k: 8,
+    },
+    SegPinCell {
+        label: "cont-d2i-k16",
+        role: SegPinRole::Decision,
+        class: SegRoundClass::D2Inline,
+        k: 16,
+    },
+    SegPinCell {
+        label: "cont-d3-k16",
+        role: SegPinRole::Decision,
+        class: SegRoundClass::D3,
+        k: 16,
+    },
+    SegPinCell {
+        label: "cont-d3-k24",
+        role: SegPinRole::Decision,
+        class: SegRoundClass::D3,
+        k: 24,
+    },
+    SegPinCell {
+        label: "r0-drift-k4",
+        role: SegPinRole::DriftControl,
+        class: SegRoundClass::R0,
+        k: 4,
+    },
+];
+
+const _: () = {
+    // Exactly one drift control, and at least four decision cells — an aggregate
+    // over fewer would be a median of too little.
+    let mut controls = 0;
+    let mut decisions = 0;
+    let mut i = 0;
+    while i < SEG_PIN_DECISION_CELLS.len() {
+        match SEG_PIN_DECISION_CELLS[i].role {
+            SegPinRole::DriftControl => controls += 1,
+            SegPinRole::Decision => decisions += 1,
+        }
+        i += 1;
+    }
+    assert!(controls == 1, "exactly one drift control");
+    assert!(
+        decisions >= 4,
+        "the aggregate needs at least four decision cells"
+    );
+};
+
+const _: () = {
+    let mut controls = 0;
+    let mut decisions = 0;
+    let mut i = 0;
+    while i < SEG_D3_ATTRIBUTION_CELLS.len() {
+        match SEG_D3_ATTRIBUTION_CELLS[i].role {
+            SegPinRole::DriftControl => controls += 1,
+            SegPinRole::Decision => decisions += 1,
+        }
+        i += 1;
+    }
+    assert!(controls == 1, "exactly one drift control");
+    assert!(
+        decisions >= 4,
+        "the attribution needs at least four δ3-bearing cells"
+    );
+};
+
+/// One cell's per-level estimate in the pin decision.
+#[derive(Clone, Debug)]
+pub(super) struct SegPinCellSummary {
+    pub(super) label: String,
+    pub(super) role: SegPinRole,
+    /// The median across this level's three processes of the median block ratio.
+    /// `None` when ANY of the three processes' rows was order-invalid — an
+    /// order-coupled cell is never pooled (§6(a) step 6).
+    pub(super) estimate: Option<f64>,
+    /// Per process, in run order. `None` marks a process whose order gate failed;
+    /// [`summarize_pin_decision`] treats ANY `None` as UNRESOLVED rather than
+    /// averaging the survivors.
+    pub(super) process_ratios: Vec<Option<f64>>,
+}
+
+/// The pin decision's result — an ENUM, for the same reason [`SegConfirmSummary`] is:
+/// an unresolved decision must not carry an aggregate, a tie set or a winner. A
+/// struct with those fields plus an `outcome` label computes a **shrunken** aggregate
+/// from whatever cells survived and then marks it unresolved, leaving a publishable
+/// ranking one field access away.
+#[derive(Clone, Debug)]
+pub(super) enum SegPinSummary {
+    Resolved {
+        winner: String,
+        /// Per level, per cell — ALWAYS reported, never only the aggregate.
+        cells: Vec<(String, Vec<SegPinCellSummary>)>,
+        /// Per DECISION level, the median across decision cells.
+        aggregates: Vec<(String, f64)>,
+        tie_set: Vec<String>,
+        drift: Vec<(String, f64)>,
+        drift_spread_pct: f64,
+        reproduction_gap_pct: f64,
+    },
+    Unresolved {
+        reason: String,
+        /// The per-cell table still appears — it is the evidence.
+        cells: Vec<(String, Vec<SegPinCellSummary>)>,
+        drift: Vec<(String, f64)>,
+        /// **No `aggregates`, no `tie_set`, no `winner`.** Nothing pooled exists.
+        per_level_usable: Vec<(String, usize, usize)>,
+    },
+}
+
+impl SegPinSummary {
+    /// One machine-readable token, UNDERSCORED like the R0 verdicts so no outcome is
+    /// a substring of another.
+    pub(super) fn outcome(&self) -> &'static str {
+        match self {
+            Self::Resolved { .. } => "RESOLVED",
+            Self::Unresolved { .. } => "UNRESOLVED",
+        }
+    }
+}
+
+/// **§4.5's rule, applied mechanically. This is NOT §6(b)'s rule.**
+///
+/// Preconditions, all asserted rather than assumed:
+///   * the level set is EXACTLY `{natural, 48, 40}` for the decision, with
+///     `natural-repeat` MANDATORY and used ONLY as the reproduction gate;
+///   * every level contributed exactly [`SEG_CONFIRM_PROCESSES`] processes;
+///   * the drift control ran at every level.
+///
+/// Rules:
+///   * **Aggregate = median over DECISION cells** of the per-cell level estimates.
+///     The drift control is excluded — it is pin-invariant by construction, so
+///     including it would dilute the effect being measured.
+///   * **Any order-invalid cell at any level ⇒ UNRESOLVED.** Not "drop the cell":
+///     the cell set is predeclared, so silently shrinking it changes the estimator
+///     after the fact.
+///   * **Tie set** = every level within [`SEG_PIN_TIE_FRACTION`] of the BEST
+///     aggregate (defined against the best, so transitive by construction).
+///   * **Winner** = lowest register ceiling in the tie set (40 < 48 < natural/56).
+///   * **Mechanism 3 gate:** if the best-to-second-best margin is smaller than the
+///     drift control's own cross-level spread, the pin delta is **NOT resolved**.
+///   * **Mechanism 4 gate:** if `natural-repeat` differs from `natural` by more than
+///     [`SEG_PIN_TIE_FRACTION`], **UNRESOLVED**.
+///   * A level that spilled is ineligible (§4.2) — the caller must not pass one, and
+///     the level set assertion is what makes an omission visible.
+pub(super) fn summarize_pin_decision(
+    per_level: &[(String, Vec<SegPinCellSummary>)],
+) -> SegPinSummary {
+    const DECISION_LEVELS: [&str; 3] = ["natural", "48", "40"];
+    const REPEAT_LEVEL: &str = "natural-repeat";
+    // The set is EXACT and the repeat is MANDATORY. An optional repeat would let
+    // mechanism 4 be skipped by omission, and a missing decision level would let the
+    // aggregate be computed over a shrunken ladder — both fail-open holes.
+    let levels: Vec<&str> = per_level.iter().map(|(l, _)| l.as_str()).collect();
+    let mut expected: Vec<&str> = DECISION_LEVELS.to_vec();
+    expected.push(REPEAT_LEVEL);
+    for want in &expected {
+        assert_eq!(
+            levels.iter().filter(|l| *l == want).count(),
+            1,
+            "the pin decision needs EXACTLY ONE {want} (mechanism 4's repeat is \
+             mandatory, not optional); got levels {levels:?}"
+        );
+    }
+    assert_eq!(
+        levels.len(),
+        expected.len(),
+        "unexpected levels {levels:?}: the set is exactly {expected:?}"
+    );
+    let mut reasons: Vec<String> = Vec::new();
+    let mut aggregates = Vec::new();
+    let mut drift = Vec::new();
+    let mut per_level_usable: Vec<(String, usize, usize)> = Vec::new();
+    for (level, cells) in per_level {
+        // **The cell set is EXACT, per level.** The set is predeclared, so a level
+        // that contributed fewer cells did not measure the same thing — and letting
+        // the aggregate be a median over "whatever arrived" is how a decision set
+        // silently shrinks.
+        assert_eq!(
+            cells.len(),
+            SEG_PIN_DECISION_CELLS.len(),
+            "{level}: {} cells, expected exactly {}",
+            cells.len(),
+            SEG_PIN_DECISION_CELLS.len()
+        );
+        for expected in &SEG_PIN_DECISION_CELLS {
+            let matching: Vec<&SegPinCellSummary> =
+                cells.iter().filter(|c| c.label == expected.label).collect();
+            assert_eq!(
+                matching.len(),
+                1,
+                "{level}: expected EXACTLY ONE cell labelled {}, found {}",
+                expected.label,
+                matching.len()
+            );
+            assert_eq!(
+                matching[0].role, expected.role,
+                "{level} {}: role drifted from the predeclared set",
+                expected.label
+            );
+        }
+        for cell in cells {
+            assert_eq!(
+                cell.process_ratios.len(),
+                SEG_CONFIRM_PROCESSES,
+                "{level} {}: expected {SEG_CONFIRM_PROCESSES} processes",
+                cell.label
+            );
+            // Every PROCESS must have contributed a usable ratio, not just the cell
+            // overall: a cell whose median came from two of three processes is a
+            // different estimator from the one predeclared.
+            if cell.process_ratios.iter().any(Option::is_none) {
+                reasons.push(format!(
+                    "{level} {}: {} of {SEG_CONFIRM_PROCESSES} processes are \
+                     order-invalid",
+                    cell.label,
+                    cell.process_ratios.iter().filter(|r| r.is_none()).count()
+                ));
+            }
+            if cell.estimate.is_none() {
+                reasons.push(format!("{level} {} has no usable estimate", cell.label));
+            }
+        }
+        let decision_total = cells
+            .iter()
+            .filter(|c| c.role == SegPinRole::Decision)
+            .count();
+        let usable = cells
+            .iter()
+            .filter(|c| c.role == SegPinRole::Decision && c.estimate.is_some())
+            .count();
+        per_level_usable.push((level.clone(), usable, decision_total));
+        if usable != decision_total {
+            reasons.push(format!(
+                "{level}: only {usable} of {decision_total} decision cells are \
+                 usable — the aggregate is NOT computed over a shrunken set"
+            ));
+        }
+        if cells
+            .iter()
+            .find(|c| c.role == SegPinRole::DriftControl)
+            .and_then(|c| c.estimate)
+            .is_none()
+        {
+            reasons.push(format!("{level}: the drift control has no usable estimate"));
+        }
+    }
+    // ── EVERYTHING above is validation. Nothing is aggregated, no median is taken,
+    //    and the structured Unresolved returns HERE — before any arithmetic that
+    //    could be computed over an incomplete set. An earlier draft recorded reasons
+    //    and then computed medians anyway, and its `assert_eq!(drift.len(), 3)`
+    //    PANICKED on the very input it was meant to classify. ────────────────────
+    if !reasons.is_empty() {
+        return SegPinSummary::Unresolved {
+            reason: reasons.join("; "),
+            cells: per_level.to_vec(),
+            drift,
+            per_level_usable,
+        };
+    }
+    // From here every value is present by construction: the validation above proved
+    // that every decision cell and every drift control at every level has an
+    // estimate, so no `filter_map` can silently shrink anything.
+    for (level, cells) in per_level {
+        let control = cells
+            .iter()
+            .find(|c| c.role == SegPinRole::DriftControl)
+            .and_then(|c| c.estimate)
+            .expect("validated above");
+        // Mechanism 3's spread is over the THREE DECISION LEVELS only. The repeat is
+        // a different build of `natural`, so folding it in would inflate the spread
+        // with rebuild variance and make the margin gate trivially passable.
+        if DECISION_LEVELS.contains(&level.as_str()) {
+            drift.push((level.clone(), control));
+            let decision: Vec<f64> = cells
+                .iter()
+                .filter(|c| c.role == SegPinRole::Decision)
+                .map(|c| c.estimate.expect("validated above"))
+                .collect();
+            aggregates.push((level.clone(), median(&decision)));
+        }
+    }
+    // Mechanism 4: the repeat compares ONLY to natural, and only as a gate.
+    // `None` only when the level is absent (which the exact-set assertion already
+    // ruled out) or when a decision cell lacks an estimate (a validated reason
+    // above), so this never medians an empty slice.
+    let value_of = |name: &str| -> Option<f64> {
+        let (_, cells) = per_level.iter().find(|(l, _)| l == name)?;
+        let decision: Vec<Option<f64>> = cells
+            .iter()
+            .filter(|c| c.role == SegPinRole::Decision)
+            .map(|c| c.estimate)
+            .collect();
+        if decision.is_empty() || decision.iter().any(Option::is_none) {
+            return None;
+        }
+        Some(median(
+            &decision
+                .into_iter()
+                .map(|e| e.expect("checked"))
+                .collect::<Vec<f64>>(),
+        ))
+    };
+    // The repeat compares ONLY to natural, and only as the reproduction gate — it
+    // never enters an aggregate, a tie set or the drift spread. Both operands are
+    // complete by the validation above, so `value_of` cannot median an empty slice.
+    let reproduction_gap_pct = {
+        let a = value_of("natural").expect("validated above");
+        let b = value_of(REPEAT_LEVEL).expect("validated above");
+        (b / a - 1.0).abs() * 100.0
+    };
+    if reproduction_gap_pct > SEG_PIN_TIE_FRACTION * 100.0 {
+        return SegPinSummary::Unresolved {
+            reason: format!(
+                "natural did not reproduce on rebuild: {reproduction_gap_pct:.3}% > {:.2}%",
+                SEG_PIN_TIE_FRACTION * 100.0
+            ),
+            cells: per_level.to_vec(),
+            drift,
+            per_level_usable,
+        };
+    }
+    // Mechanism 3: the pin margin must exceed the control's own cross-level spread.
+    // Complete by construction: the loop above pushes exactly one control per
+    // decision level, and the validation proved each has an estimate.
+    let drift_values: Vec<f64> = drift.iter().map(|(_, v)| *v).collect();
+    debug_assert_eq!(drift_values.len(), DECISION_LEVELS.len());
+    let drift_spread_pct = if drift_values.len() >= 2 {
+        let lo = drift_values.iter().copied().fold(f64::MAX, f64::min);
+        let hi = drift_values.iter().copied().fold(f64::MIN, f64::max);
+        (hi / lo - 1.0) * 100.0
+    } else {
+        0.0
+    };
+    let mut ranked = aggregates.clone();
+    ranked.sort_by(|a, b| a.1.partial_cmp(&b.1).expect("finite aggregate"));
+    let best = ranked
+        .first()
+        .map(|(_, v)| *v)
+        .expect("three decision levels");
+    if ranked.len() >= 2 {
+        let margin = (ranked[1].1 / best - 1.0) * 100.0;
+        if margin < drift_spread_pct {
+            return SegPinSummary::Unresolved {
+                reason: format!(
+                    "pin margin {margin:.3}% is below the drift control's own \
+                     cross-level spread {drift_spread_pct:.3}%"
+                ),
+                cells: per_level.to_vec(),
+                drift,
+                per_level_usable,
+            };
+        }
+    }
+    let tie_set: Vec<String> = aggregates
+        .iter()
+        .filter(|(_, v)| *v <= best * (1.0 + SEG_PIN_TIE_FRACTION))
+        .map(|(l, _)| l.clone())
+        .collect();
+    // Lowest register ceiling within the tie set: 40 < 48 < natural/56. NOT "prefers
+    // the level that pins a ceiling" — §4.3 ships a 56 pin when natural wins, so
+    // every level ends up pinned and that tie-break is vacuous.
+    let ceiling = |level: &str| match level {
+        "40" => 40u32,
+        "48" => 48,
+        _ => 56,
+    };
+    let winner = tie_set
+        .iter()
+        .min_by_key(|level| ceiling(level))
+        .expect("a non-empty tie set")
+        .clone();
+    SegPinSummary::Resolved {
+        winner,
+        cells: per_level.to_vec(),
+        aggregates,
+        tie_set,
+        drift,
+        drift_spread_pct,
+        reproduction_gap_pct,
+    }
+}
+
+/// The δ3 loop-form attribution (§4.5's fourth build), scored on its own terms.
+///
+/// **This is neither §6(b)'s inversion rule nor §4.5's cross-level rule.** It asks
+/// one question — *does unrolling the δ3 arm change the δ3-bearing cells' time?* — so
+/// it is a two-arm, per-cell comparison at ONE pin, and it deliberately does not
+/// aggregate across cells: the whole point is which cells move.
+#[derive(Clone, Debug)]
+pub(super) enum SegD3Attribution {
+    /// Every cell scored on both arms with a passing order gate.
+    Scored {
+        /// Per cell: `(label, rolled, unrolled, unrolled / rolled)`.
+        cells: Vec<(String, f64, f64, f64)>,
+        /// The drift control's own two values, reported and never pooled with the
+        /// decision cells.
+        drift: (f64, f64),
+    },
+    Unresolved {
+        reason: String,
+        /// Per cell, per arm: `None` where that arm was order-invalid.
+        cells: Vec<(String, Option<f64>, Option<f64>)>,
+    },
+}
+
+/// `rolled` and `unrolled` are each that arm's THREE processes for the same cell.
+pub(super) fn summarize_d3_attribution(
+    rolled: &[(String, Vec<SegPinCellSummary>)],
+    unrolled: &[(String, Vec<SegPinCellSummary>)],
+) -> SegD3Attribution {
+    let mut reasons: Vec<String> = Vec::new();
+    // EXACT membership on both arms, against the attribution set — not the pin set.
+    for (label, cells) in rolled.iter().chain(unrolled.iter()) {
+        assert_eq!(
+            cells.len(),
+            SEG_D3_ATTRIBUTION_CELLS.len(),
+            "{label}: {} cells, expected exactly {}",
+            cells.len(),
+            SEG_D3_ATTRIBUTION_CELLS.len()
+        );
+        for expected in &SEG_D3_ATTRIBUTION_CELLS {
+            let matching: Vec<&SegPinCellSummary> =
+                cells.iter().filter(|c| c.label == expected.label).collect();
+            assert_eq!(
+                matching.len(),
+                1,
+                "{label}: {} appears {} times",
+                expected.label,
+                matching.len()
+            );
+            assert_eq!(
+                matching[0].role, expected.role,
+                "{label} {}: role drifted",
+                expected.label
+            );
+            assert_eq!(
+                matching[0].process_ratios.len(),
+                SEG_CONFIRM_PROCESSES,
+                "{label} {}: expected {SEG_CONFIRM_PROCESSES} processes",
+                expected.label
+            );
+            if matching[0].process_ratios.iter().any(Option::is_none)
+                || matching[0].estimate.is_none()
+            {
+                reasons.push(format!("{label} {} is order-invalid", expected.label));
+            }
+        }
+    }
+    assert_eq!(rolled.len(), 1, "exactly one rolled arm");
+    assert_eq!(unrolled.len(), 1, "exactly one unrolled arm");
+    let pick = |arm: &[(String, Vec<SegPinCellSummary>)], label: &str| {
+        arm[0]
+            .1
+            .iter()
+            .find(|c| c.label == label)
+            .expect("membership asserted")
+            .estimate
+    };
+    let per_cell: Vec<(String, Option<f64>, Option<f64>)> = SEG_D3_ATTRIBUTION_CELLS
+        .iter()
+        .map(|c| {
+            (
+                c.label.to_owned(),
+                pick(rolled, c.label),
+                pick(unrolled, c.label),
+            )
+        })
+        .collect();
+    if !reasons.is_empty() {
+        return SegD3Attribution::Unresolved {
+            reason: reasons.join("; "),
+            cells: per_cell,
+        };
+    }
+    let control = SEG_D3_ATTRIBUTION_CELLS
+        .iter()
+        .find(|c| c.role == SegPinRole::DriftControl)
+        .expect("one control");
+    SegD3Attribution::Scored {
+        cells: per_cell
+            .iter()
+            .filter(|(label, _, _)| label != control.label)
+            .map(|(label, r, u)| {
+                let (r, u) = (r.expect("validated"), u.expect("validated"));
+                (label.clone(), r, u, u / r)
+            })
+            .collect(),
+        drift: (
+            pick(rolled, control.label).expect("validated"),
+            pick(unrolled, control.label).expect("validated"),
+        ),
+    }
+}
+
+/// Split `BWD_SEG_CONFIRM_DIRS` into the (rolled, unrolled) arms by EXACT KEY.
+///
+/// The unrolled arm is keyed exactly `d3unroll`; the rolled arm is keyed exactly the
+/// winning level, which must equal the compiled `pin_level` its own runs recorded.
+/// Anything else — two keys the same, three keys, a rolled key that is not the winner,
+/// a rolled arm whose runs were compiled at a different pin — is a caller error and is
+/// refused here rather than silently inverting the attribution.
+pub(super) fn split_d3_arms(spec: &str, winner: &str) -> (Vec<PathBuf>, Vec<PathBuf>) {
+    let mut groups: Vec<(String, Vec<PathBuf>)> = Vec::new();
+    for group in spec.split(';').filter(|g| !g.trim().is_empty()) {
+        let (key, dirs) = group
+            .split_once('=')
+            .unwrap_or_else(|| panic!("BWD_SEG_CONFIRM_DIRS group {group:?} is not <key>=<dirs>"));
+        groups.push((key.to_owned(), dirs.split(':').map(PathBuf::from).collect()));
+    }
+    assert_eq!(
+        groups.len(),
+        2,
+        "the attribution has exactly two arms; got {}",
+        groups.len()
+    );
+    let unrolled_count = groups.iter().filter(|(k, _)| k == "d3unroll").count();
+    assert_eq!(
+        unrolled_count, 1,
+        "exactly one arm must be keyed `d3unroll`"
+    );
+    let rolled_count = groups.iter().filter(|(k, _)| k == winner).count();
+    assert_eq!(
+        rolled_count, 1,
+        "exactly one arm must be keyed with the winning level {winner:?}"
+    );
+    assert_ne!(winner, "d3unroll", "the winner cannot be the unrolled arm");
+    let unrolled = groups
+        .iter()
+        .find(|(k, _)| k == "d3unroll")
+        .expect("checked")
+        .1
+        .clone();
+    let rolled = groups
+        .iter()
+        .find(|(k, _)| k == winner)
+        .expect("checked")
+        .1
+        .clone();
+    (rolled, unrolled)
+}
+
+/// One arm's aggregated evidence: its per-cell summaries AND the one validated
+/// identity every run in it shares.
+///
+/// [`aggregate_confirmation_runs`] returns only a [`SegConfirmSummary`], which is why
+/// the identity checks below need their own entry point: an aggregator that discards
+/// the provenance it validated cannot then bind a payload to an arm.
+pub(super) struct SegArmEvidence {
+    pub(super) cells: Vec<SegPinCellSummary>,
+    /// **EVERY run's identity, in `dirs` order — not one representative.**
+    /// [`shared_identity`] proves the CONSTANT fields equal, but `run_label` and
+    /// `run_id` differ per run by design, so reducing to a representative loses
+    /// exactly the field the arm binding needs. The accepted counterexample: rolled
+    /// run 1 labelled `d3attr-rolled-1` while runs 2 and 3 are labelled
+    /// `d3attr-d3unroll-*`, all with the rolled expected hashes, the right pin and
+    /// distinct ids — a representative check passes it.
+    pub(super) identities: Vec<SegRunMeta>,
+    pub(super) dirs: Vec<PathBuf>,
+}
+
+impl SegArmEvidence {
+    /// The fields [`shared_identity`] proved constant across the arm's runs. Never use
+    /// it for `run_label` or `run_id`, which are per-run.
+    pub(super) fn constant(&self) -> &SegRunMeta {
+        self.identities
+            .first()
+            .expect("an arm has at least one run")
+    }
+}
+
+/// Read one arm's run directories and build per-cell summaries over `cells`, returning
+/// the shared identity alongside them.
+///
+/// Per cell, per process: build the process's [`SegBlockedSamples`] from its blocks for
+/// that cell and take [`SegRatio::of`]. `process_ratios[i]` is `Some(median block
+/// ratio)` where that process's order gate PASSED and `None` where it failed — the gate
+/// lives in the type, so this cannot accidentally pool an invalid process. The cell's
+/// `estimate` is the median across processes, and `None` if ANY process is `None`: a
+/// cell whose median came from two of three processes is a different estimator from the
+/// one predeclared.
+pub(super) fn aggregate_arm(dirs: &[PathBuf], cells: &[SegPinCell]) -> SegArmEvidence {
+    let mut unique: Vec<&PathBuf> = dirs.iter().collect();
+    unique.sort();
+    unique.dedup();
+    assert_eq!(
+        unique.len(),
+        dirs.len(),
+        "an arm's run directories must be distinct: {dirs:?}"
+    );
+    assert_eq!(
+        dirs.len(),
+        SEG_CONFIRM_PROCESSES,
+        "an arm has exactly {SEG_CONFIRM_PROCESSES} processes; got {}",
+        dirs.len()
+    );
+    let runs: Vec<(SegRunMeta, _)> = dirs.iter().map(|dir| read_run(dir)).collect();
+    // Validates the constant fields; the per-run fields are checked by the caller's
+    // arm binding, which is the only place that knows what each run SHOULD be.
+    shared_identity(&runs.iter().map(|(m, _)| m.clone()).collect::<Vec<_>>());
+    // EXACT per-run cell membership: a missing cell already fails below, and an EXTRA
+    // one must fail too — a run carrying cells the set does not name was produced by a
+    // different freeze, so it is not this arm's evidence.
+    let wanted: std::collections::BTreeSet<&str> = cells.iter().map(|c| c.label).collect();
+    for (dir, (_, by_cell)) in dirs.iter().zip(runs.iter()) {
+        let present: std::collections::BTreeSet<&str> =
+            by_cell.keys().map(String::as_str).collect();
+        assert_eq!(
+            present,
+            wanted,
+            "{}: raw cells {present:?} are not exactly the requested set {wanted:?}",
+            dir.display()
+        );
+    }
+    let summaries = cells
+        .iter()
+        .map(|cell| {
+            let process_ratios: Vec<Option<f64>> = runs
+                .iter()
+                .map(|(meta, by_cell)| {
+                    let blocks = by_cell
+                        .get(cell.label)
+                        .unwrap_or_else(|| panic!("a run has no blocks for cell {}", cell.label));
+                    let samples = SegBlockedSamples {
+                        schedule: seg_schedule(meta.seed),
+                        blocks: blocks.clone(),
+                    };
+                    SegRatio::of(&samples)
+                        .selectable()
+                        .map(|(estimate, _)| estimate.median_ratio)
+                })
+                .collect();
+            let estimate = if process_ratios.iter().all(Option::is_some) {
+                Some(median(
+                    &process_ratios
+                        .iter()
+                        .map(|r| r.expect("checked"))
+                        .collect::<Vec<f64>>(),
+                ))
+            } else {
+                None
+            };
+            SegPinCellSummary {
+                label: cell.label.to_owned(),
+                role: cell.role,
+                estimate,
+                process_ratios,
+            }
+        })
+        .collect();
+    SegArmEvidence {
+        cells: summaries,
+        identities: runs.iter().map(|(m, _)| m.clone()).collect(),
+        dirs: dirs.to_vec(),
+    }
+}
+
+/// What the shell tells the aggregator each arm MUST be. Derived independently of
+/// `BWD_SEG_CONFIRM_DIRS` — from the gated provenance files — so a swapped payload
+/// cannot satisfy it.
+pub(super) struct SegExpectedArm {
+    pub(super) run_label_prefix: &'static str,
+    pub(super) archive_sha256: String,
+    pub(super) test_binary_sha256: String,
+}
+
+/// Bind each payload to its EXPECTED arm, then check the cross-arm invariants.
+pub(super) fn assert_d3_arm_identities(
+    winner: &str,
+    rolled: &SegArmEvidence,
+    unrolled: &SegArmEvidence,
+    expect_rolled: &SegExpectedArm,
+    expect_unrolled: &SegExpectedArm,
+) {
+    // (1) PAYLOAD BINDING. Each arm's actual artifact must be the one the shell read
+    // out of THAT arm's gated provenance file. This is asymmetric, so a swap fails:
+    // the rolled payload would carry the unrolled archive and test-binary hashes.
+    for (what, arm, want) in [
+        ("rolled", rolled, expect_rolled),
+        ("unrolled", unrolled, expect_unrolled),
+    ] {
+        let got = arm.constant();
+        assert_eq!(
+            got.archive_sha256, want.archive_sha256,
+            "the {what} arm's runs name archive {} but the gated {what} build is {} — \
+             the two arms' payloads are swapped or the wrong dirs were passed",
+            got.archive_sha256, want.archive_sha256
+        );
+        assert_eq!(
+            got.test_binary_sha256, want.test_binary_sha256,
+            "the {what} arm's runs name test binary {} but the gated {what} build is {}",
+            got.test_binary_sha256, want.test_binary_sha256
+        );
+        // (2) A SECOND, INDEPENDENT binding: the run label the launcher stamped, checked
+        // on EVERY run against its EXACT expected value. A prefix check on one
+        // representative is not enough — see `SegArmEvidence::identities`.
+        assert_eq!(
+            arm.identities.len(),
+            SEG_CONFIRM_PROCESSES,
+            "the {what} arm has {} runs, expected {SEG_CONFIRM_PROCESSES}",
+            arm.identities.len()
+        );
+        for (index, id) in arm.identities.iter().enumerate() {
+            let expected = format!("{}{}", want.run_label_prefix, index + 1);
+            assert_eq!(
+                id.run_label,
+                expected,
+                "the {what} arm's run {} is labelled {:?}, expected {expected:?} — the \
+                 launcher stamps `<prefix><1..3>`, so a mislabelled or swapped run \
+                 shows up here even when every constant field agrees",
+                index + 1,
+                id.run_label
+            );
+        }
+    }
+    // (3) Constant across the arms — they differ ONLY in the loop form.
+    let (r, u) = (rolled.constant(), unrolled.constant());
+    for (field, a, b) in [
+        ("commit", &r.commit, &u.commit),
+        ("pin_level", &r.pin_level, &u.pin_level),
+        ("feature_set", &r.feature_set, &u.feature_set),
+        ("toolkit", &r.toolkit, &u.toolkit),
+        ("device", &r.device, &u.device),
+    ] {
+        assert_eq!(a, b, "the two attribution arms differ in {field}");
+    }
+    assert_eq!(r.seed, u.seed, "the arms differ in SEED");
+    // (4) The rolled arm's COMPILED pin must be the INDEPENDENTLY derived winner — not
+    // merely its dict key, which the caller chose.
+    assert_eq!(
+        r.pin_level, winner,
+        "the rolled arm was compiled at {}, not at the winning pin {winner}",
+        r.pin_level
+    );
+    // (5) Two DIFFERENT builds, in the archive AND in the executable actually run. An
+    // identical archive means the unroll define never reached nvcc; an identical test
+    // binary means one measurement reported twice, whatever the archives say.
+    assert_ne!(
+        r.archive_sha256, u.archive_sha256,
+        "both arms name the same ARCHIVE: AB_GKR_SEG_D3_UNROLL did not reach nvcc"
+    );
+    assert_ne!(
+        r.test_binary_sha256, u.test_binary_sha256,
+        "both arms name the same TEST BINARY: the executable actually run is identical"
+    );
+}
+
+/// Serialize one predeclared cell set as a freeze, under its own campaign tag.
+///
+/// A *serialisation* of a constant, not a selection — which is what makes both
+/// non-R0 cell sets level-independent by construction. The frozen row's coordinate
+/// is add_sub layer 0 in the SHORT form [`ADD_SUB_LAYOUT_SHORT`], which is the form
+/// every freeze predicate compares against.
+fn write_predeclared_freeze(campaign: &str, cells: &[SegPinCell]) {
+    let path = std::env::var("BWD_SEG_FROZEN_CELLS_OUT")
+        .expect("BWD_SEG_FROZEN_CELLS_OUT must name the freeze to write");
+    let frozen: Vec<SegFrozenCell> = cells
+        .iter()
+        .map(|cell| SegFrozenCell {
+            label: cell.label.to_owned(),
+            circuit: ADD_SUB_LAYOUT_SHORT.to_owned(),
+            layer: 0,
+            class: cell.class,
+            k: cell.k,
+            epilogue: epilogue_label(BwdSegEpilogue::Plane).to_owned(),
+            coeff: coeff_label(CoeffMode::Constant).to_owned(),
+            program: program_label(ProgramMode::Inline).to_owned(),
+        })
+        .collect();
+    write_frozen_cells(Path::new(&path), campaign, &frozen, SEG_SCHEDULE_SEED);
+    eprintln!(
+        "[seg-freeze] wrote {} {campaign} cells to {path}",
+        frozen.len()
+    );
+}
+
+/// Write [`SEG_PIN_DECISION_CELLS`] as the `pin-decision` freeze.
+#[test]
+#[ignore = "campaign freeze writer; BWD_SEG_FROZEN_CELLS_OUT names the output"]
+fn bwd_seg_freeze_pin_decision() {
+    write_predeclared_freeze("pin-decision", &SEG_PIN_DECISION_CELLS);
+}
+
+/// Write [`SEG_D3_ATTRIBUTION_CELLS`] as the `d3-attribution` freeze — its OWN tag,
+/// because it is scored by its own rule ([`summarize_d3_attribution`]) and the pin
+/// runner must refuse it exactly as it refuses the R0 freeze.
+#[test]
+#[ignore = "campaign freeze writer; BWD_SEG_FROZEN_CELLS_OUT names the output"]
+fn bwd_seg_freeze_d3_attribution() {
+    write_predeclared_freeze("d3-attribution", &SEG_D3_ATTRIBUTION_CELLS);
+}
+
+/// The three confirmation run directories, from `BWD_SEG_CONFIRM_DIRS`.
+fn confirm_dirs() -> Vec<PathBuf> {
+    let spec = std::env::var("BWD_SEG_CONFIRM_DIRS")
+        .expect("BWD_SEG_CONFIRM_DIRS must name the confirmation run directories");
+    spec.split(':')
+        .filter(|d| !d.trim().is_empty())
+        .map(PathBuf::from)
+        .collect()
+}
+
+/// **§6(b)'s R0 headline aggregator.** Per frozen shape, feeds the three run
+/// directories to [`aggregate_confirmation_runs`] and prints the [`SegConfirmSummary`].
+///
+/// The verdict is a machine-readable FIELD, not prose, because `NOT INVERTED` contains
+/// the substring ` INVERTED` and a `grep -v` acceptance test therefore passes a
+/// non-inverted cell silently (measured: the count came back 0). Every gated line
+/// carries `outcome=` with exactly one UNDERSCORED token.
+///
+/// It also records the two things §6(b) requires *beside* the rule and never as a
+/// substitute for it: SELECTION STABILITY (whether each process's best frozen cell is
+/// the same cell) and, on any UNRESOLVED cell, the ESCALATION CHOICE — which of the two
+/// predeclared responses was taken and why, read from
+/// `BWD_SEG_ESCALATION_CHOICE` / `BWD_SEG_ESCALATION_WHY` rather than invented here.
+#[test]
+#[ignore = "campaign aggregator; BWD_SEG_CONFIRM_DIRS names the runs"]
+fn bwd_seg_aggregate_r0_headline() {
+    let column = std::env::var("BWD_SEG_CARVEOUT").unwrap_or_else(|_| "common-bucket".to_owned());
+    let dirs = confirm_dirs();
+    let cells = frozen_cell_filter("r0-headline")
+        .expect("BWD_SEG_FROZEN_CELLS must name the r0-headline freeze");
+    // The raw files key cells as `<benchmark>|<shape label>`; the freeze names the
+    // shape axis. Recovering the raw key from the freeze rather than guessing it is
+    // what keeps the aggregator honest about which cell it summarized.
+    let mut out = String::from("campaign,column,cell,outcome,median_ratio,min_ratio,max_ratio\n");
+    let mut unresolved = 0usize;
+    let mut per_process_best: Vec<Vec<(String, f64)>> = vec![Vec::new(); dirs.len()];
+    for cell in &cells {
+        // The raw key `measure_shape` emitted for this cell: the benchmark name the R0
+        // matrix uses, and the shape the FREEZE names — not a hardcoded production
+        // shape, which would silently summarize a different cell than the one frozen.
+        let key = format!("add_sub L0 R0|{}", frozen_cell_shape(cell).label());
+        let summary = aggregate_confirmation_runs(&dirs, &key);
+        let pooled = match &summary {
+            SegConfirmSummary::Resolved {
+                median_ratio,
+                min_ratio,
+                max_ratio,
+                process_ratios,
+                ..
+            } => {
+                for (index, ratio) in process_ratios.iter().enumerate() {
+                    per_process_best[index].push((cell.label.clone(), *ratio));
+                }
+                Some((*median_ratio, *min_ratio, *max_ratio))
+            }
+            SegConfirmSummary::Unresolved { reason, .. } => {
+                unresolved += 1;
+                eprintln!("[seg-r0] cell={} reason={reason}", cell.label);
+                None
+            }
+        };
+        // `outcome=` carries exactly one of INVERTED / NOT_INVERTED / UNRESOLVED —
+        // UNDERSCORED, so no verdict is a substring of another and an exact-field match
+        // is possible. Never print the human phrase "NOT INVERTED" on a gated line.
+        let outcome = match summary.outcome() {
+            SegConfirmOutcome::Inverted => "INVERTED",
+            SegConfirmOutcome::NotInverted => "NOT_INVERTED",
+            SegConfirmOutcome::Unresolved => "UNRESOLVED",
+        };
+        eprintln!(
+            "[seg-r0] column={column} cell={} outcome={outcome} median={} min={} max={}",
+            cell.label,
+            pooled.map_or("-".to_owned(), |(median, _, _)| format!("{median:.6}")),
+            pooled.map_or("-".to_owned(), |(_, min, _)| format!("{min:.6}")),
+            pooled.map_or("-".to_owned(), |(_, _, max)| format!("{max:.6}")),
+        );
+        writeln!(
+            out,
+            "r0-headline,{column},{},{outcome},{},{},{}",
+            cell.label,
+            pooled.map_or("-".to_owned(), |(median, _, _)| format!("{median:.6}")),
+            pooled.map_or("-".to_owned(), |(_, min, _)| format!("{min:.6}")),
+            pooled.map_or("-".to_owned(), |(_, _, max)| format!("{max:.6}")),
+        )
+        .expect("write String");
+    }
+    // SELECTION STABILITY, recorded SEPARATELY and never substituted for the rule
+    // (§6(b)): the argmin frozen cell of each process, and whether the three agree.
+    let argmins: Vec<String> = per_process_best
+        .iter()
+        .map(|ranked| {
+            ranked
+                .iter()
+                .min_by(|a, b| a.1.partial_cmp(&b.1).expect("finite ratio"))
+                .map_or_else(|| "-".to_owned(), |(label, _)| label.clone())
+        })
+        .collect();
+    let stable = argmins
+        .first()
+        .is_some_and(|first| first != "-" && argmins.iter().all(|a| a == first));
+    eprintln!(
+        "[seg-r0] selection_stability={} argmins={}",
+        if stable { "STABLE" } else { "UNSTABLE" },
+        argmins.join("|"),
+    );
+    // The predeclared ESCALATION, when and only when something was unresolved. The
+    // choice is the campaign operator's and is RECORDED, not inferred: §6(b) admits
+    // exactly two responses and requires which was taken and why.
+    if unresolved > 0 {
+        let choice = std::env::var("BWD_SEG_ESCALATION_CHOICE").unwrap_or_else(|_| {
+            panic!(
+                "{unresolved} cell(s) are UNRESOLVED: BWD_SEG_ESCALATION_CHOICE must \
+                 record the predeclared response (`five-processes` or `investigate`) \
+                 and BWD_SEG_ESCALATION_WHY must say why"
+            )
+        });
+        assert!(
+            matches!(choice.as_str(), "five-processes" | "investigate"),
+            "the rule admits exactly two escalations (a predeclared {SEG_ESCALATION_PROCESSES}-process \
+             run, or investigating the disagreement as a defect); got {choice:?}"
+        );
+        let why = std::env::var("BWD_SEG_ESCALATION_WHY")
+            .expect("BWD_SEG_ESCALATION_WHY must record why that escalation was chosen");
+        eprintln!("[seg-r0] escalation={choice} why={why}");
+        writeln!(out, "# escalation = {choice}\n# escalation_why = {why}").expect("write String");
+    }
+    // PERSISTED, not just printed: the fixed path is the latest view and `publish`
+    // mirrors the same bytes into the reservation, where a later process cannot
+    // overwrite them.
+    publish(&seg_output_path("seg_r0_headline_confirmation.csv"), &out);
+}
+
+/// **§4.5's pin-decision aggregator.** Builds [`SegPinCellSummary`] per level per cell
+/// from [`SegRatio::selectable`] (so an order-invalid process yields `None` and the rule
+/// sees it), calls [`summarize_pin_decision`], and prints the per-cell table, the
+/// aggregates, the drift spread, the reproduction gap, the tie set and the outcome.
+///
+/// `BWD_SEG_CONFIRM_DIRS` is `<level>=<dir>:<dir>:<dir>;<level>=…`, one group per
+/// level, and the rule itself asserts the level set is exactly
+/// `{natural, 48, 40, natural-repeat}`.
+#[test]
+#[ignore = "campaign aggregator; BWD_SEG_CONFIRM_DIRS names the runs"]
+fn bwd_seg_aggregate_pin_decision() {
+    let spec = std::env::var("BWD_SEG_CONFIRM_DIRS").expect("BWD_SEG_CONFIRM_DIRS");
+    let mut per_level: Vec<(String, Vec<SegPinCellSummary>)> = Vec::new();
+    for group in spec.split(';').filter(|g| !g.trim().is_empty()) {
+        let (level, dirs) = group.split_once('=').unwrap_or_else(|| {
+            panic!("BWD_SEG_CONFIRM_DIRS group {group:?} is not <level>=<dirs>")
+        });
+        let dirs: Vec<PathBuf> = dirs.split(':').map(PathBuf::from).collect();
+        let arm = aggregate_arm(&dirs, &SEG_PIN_DECISION_CELLS);
+        // The COMPILED pin of every run in a level group must be the level itself:
+        // a group labelled `40` whose runs were built at `48` is the level
+        // comparison silently voided.
+        assert_eq!(
+            arm.constant().pin_level,
+            level_pin(level),
+            "the {level} group's runs were compiled at {}",
+            arm.constant().pin_level
+        );
+        per_level.push((level.to_owned(), arm.cells));
+    }
+    let summary = summarize_pin_decision(&per_level);
+    let cells = match &summary {
+        SegPinSummary::Resolved { cells, .. } | SegPinSummary::Unresolved { cells, .. } => cells,
+    };
+    for (level, level_cells) in cells {
+        for cell in level_cells {
+            let processes: Vec<String> = cell
+                .process_ratios
+                .iter()
+                .map(|r| r.map_or("-".to_owned(), |v| format!("{v:.6}")))
+                .collect();
+            eprintln!(
+                "[seg-pin] level={level} cell={} role={} estimate={} processes={}",
+                cell.label,
+                cell.role.label(),
+                cell.estimate.map_or("-".to_owned(), |v| format!("{v:.6}")),
+                processes.join("|"),
+            );
+        }
+    }
+    match &summary {
+        SegPinSummary::Resolved {
+            winner,
+            aggregates,
+            tie_set,
+            drift,
+            drift_spread_pct,
+            reproduction_gap_pct,
+            ..
+        } => {
+            for (level, value) in aggregates {
+                eprintln!("[seg-pin] aggregate level={level} value={value:.6}");
+            }
+            for (level, value) in drift {
+                eprintln!("[seg-pin] drift level={level} value={value:.6}");
+            }
+            eprintln!(
+                "[seg-pin] drift_spread_pct={drift_spread_pct:.4} \
+                 reproduction_gap_pct={reproduction_gap_pct:.4} tie_set={} winner={winner}",
+                tie_set.join("|"),
+            );
+        }
+        SegPinSummary::Unresolved {
+            reason,
+            drift,
+            per_level_usable,
+            ..
+        } => {
+            for (level, value) in drift {
+                eprintln!("[seg-pin] drift level={level} value={value:.6}");
+            }
+            for (level, usable, total) in per_level_usable {
+                eprintln!("[seg-pin] usable level={level} decision_cells={usable}/{total}");
+            }
+            eprintln!("[seg-pin] reason={reason}");
+        }
+    }
+    eprintln!("[seg-pin] outcome={}", summary.outcome());
+}
+
+/// The COMPILED pin qualifier a level's runs must carry. `natural` and its repeat are
+/// the same build knob, so both record `natural`; the two pinned levels record their
+/// ceiling.
+fn level_pin(level: &str) -> &str {
+    match level {
+        "natural-repeat" => "natural",
+        other => other,
+    }
+}
+
+/// **§4.5's δ3 attribution aggregator** — the flow that actually calls every helper in
+/// this section, so none of them is decoration.
+#[test]
+#[ignore = "campaign aggregator; BWD_SEG_CONFIRM_DIRS names the runs"]
+fn bwd_seg_aggregate_d3_attribution() {
+    // The winner is read from the environment, NOT from the dirs spec: the whole point
+    // is an INDEPENDENT reference the spec cannot satisfy by construction.
+    let winner = std::env::var("BWD_SEG_WINNER_PIN")
+        .expect("BWD_SEG_WINNER_PIN must carry the independently derived winning pin");
+    let spec = std::env::var("BWD_SEG_CONFIRM_DIRS").expect("BWD_SEG_CONFIRM_DIRS");
+    let expect_rolled = SegExpectedArm {
+        run_label_prefix: "d3attr-rolled-",
+        archive_sha256: std::env::var("BWD_SEG_ROLLED_ARCHIVE_SHA256").expect("rolled archive"),
+        test_binary_sha256: std::env::var("BWD_SEG_ROLLED_TEST_BINARY_SHA256")
+            .expect("rolled test binary"),
+    };
+    let expect_unrolled = SegExpectedArm {
+        run_label_prefix: "d3attr-d3unroll-",
+        archive_sha256: std::env::var("BWD_SEG_UNROLLED_ARCHIVE_SHA256").expect("unrolled archive"),
+        test_binary_sha256: std::env::var("BWD_SEG_UNROLLED_TEST_BINARY_SHA256")
+            .expect("unrolled test binary"),
+    };
+    let (rolled_dirs, unrolled_dirs) = split_d3_arms(&spec, &winner);
+    let rolled = aggregate_arm(&rolled_dirs, &SEG_D3_ATTRIBUTION_CELLS);
+    let unrolled = aggregate_arm(&unrolled_dirs, &SEG_D3_ATTRIBUTION_CELLS);
+    // EVERY binding is checked BEFORE the directional call, because after it a swap is
+    // indistinguishable from a real result.
+    assert_d3_arm_identities(
+        &winner,
+        &rolled,
+        &unrolled,
+        &expect_rolled,
+        &expect_unrolled,
+    );
+    let summary = summarize_d3_attribution(
+        &[(winner.clone(), rolled.cells.clone())],
+        &[("d3unroll".to_owned(), unrolled.cells)],
+    );
+    // Per cell, ALWAYS — the table IS the finding, on BOTH variants. Rendering only
+    // the Scored case would make Task 10's "six per-cell lines" gate fail on exactly
+    // the outcome the reader most needs to see.
+    let render = |label: &str, r: Option<f64>, u: Option<f64>| {
+        let f = |v: Option<f64>| v.map_or("-".to_owned(), |v| format!("{v:.6}"));
+        let ratio = match (r, u) {
+            (Some(r), Some(u)) => format!("{:.6}", u / r),
+            _ => "-".to_owned(),
+        };
+        eprintln!(
+            "[seg-d3] cell={label} rolled={} unrolled={} ratio={ratio}",
+            f(r),
+            f(u)
+        );
+    };
+    match &summary {
+        SegD3Attribution::Scored { cells, drift } => {
+            for (label, r, u, ratio) in cells {
+                eprintln!("[seg-d3] cell={label} rolled={r:.6} unrolled={u:.6} ratio={ratio:.6}");
+            }
+            eprintln!(
+                "[seg-d3] control rolled={:.6} unrolled={:.6}",
+                drift.0, drift.1
+            );
+        }
+        SegD3Attribution::Unresolved { reason, cells } => {
+            let control = SEG_D3_ATTRIBUTION_CELLS
+                .iter()
+                .find(|c| c.role == SegPinRole::DriftControl)
+                .expect("one control");
+            for (label, r, u) in cells {
+                if label == control.label {
+                    let f = |v: &Option<f64>| v.map_or("-".to_owned(), |v| format!("{v:.6}"));
+                    eprintln!("[seg-d3] control rolled={} unrolled={}", f(r), f(u));
+                } else {
+                    render(label, *r, *u);
+                }
+            }
+            eprintln!("[seg-d3] reason={reason}");
+        }
+    }
+    // One machine-readable verdict, underscored like the R0 tokens so no outcome is a
+    // substring of another.
+    eprintln!(
+        "[seg-d3] outcome={}",
+        match &summary {
+            SegD3Attribution::Scored { .. } => "SCORED",
+            SegD3Attribution::Unresolved { .. } => "UNRESOLVED",
+        }
+    );
 }
 
 // ── Kernel attributes: the spec's register and spill gate, per instantiation ──
@@ -2773,6 +4052,11 @@ pub(super) struct SegMatrixRow {
     /// WHICH arm's demand the request came from, and — when the two arms quantize to
     /// different buckets — the asymmetry statement that must travel with the number.
     pub(super) carveout_source: String,
+    /// What this row is FOR in the §4.5 pin decision (and in the δ3 attribution, which
+    /// reuses the roles). [`SegPinRole::Decision`] for every other caller, none of
+    /// which reads it: the aggregators separate the two roles from the emitted column
+    /// rather than re-deriving them from the label.
+    pub(super) pin_role: SegPinRole,
 }
 
 impl SegMatrixRow {
@@ -2817,7 +4101,7 @@ max_over_mean_work,parity,protocol,ratio_baseline,candidate_median_us,candidate_
 baseline_median_us,baseline_min_us,median_ratio,ci_low,ci_high,verdict,delta_order_pct,\
 delta_order_ci_low,delta_order_ci_high,order_gate,abba_candidate_us,abba_incumbent_us,\
 baab_candidate_us,baab_incumbent_us,run_id,carveout_mode,carveout_requested_pct,\
-carveout_source,floor_dram_read_bytes,floor_dram_write_bytes\n";
+carveout_source,pin_role,floor_dram_read_bytes,floor_dram_write_bytes\n";
 
 pub(super) fn render_matrix_csv(rows: &[SegMatrixRow]) -> String {
     let mut out = String::from(SEG_CSV_HEADER);
@@ -2860,7 +4144,7 @@ pub(super) fn render_matrix_csv(rows: &[SegMatrixRow]) -> String {
         writeln!(
             out,
             "{},{},{},{:?},{},{},{},{},{},{},{},{},{},{},{},{:.2},{},{},{},{},{},{},{:.3},{:.4},\
-             {},{},{},{:.3},{:.3},{:.3},{:.3},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
+             {},{},{},{:.3},{:.3},{:.3},{:.3},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
             row.benchmark,
             row.circuit,
             row.layer,
@@ -2906,6 +4190,7 @@ pub(super) fn render_matrix_csv(rows: &[SegMatrixRow]) -> String {
             row.carveout_requested_pct
                 .map_or_else(|| "-".to_owned(), |pct| pct.to_string()),
             carveout_source,
+            row.pin_role.label(),
             row.floor.read_bytes,
             row.floor.write_bytes,
         )
@@ -4048,9 +5333,13 @@ fn profile_shape() -> SegShape {
     SegShape::regs(k, CoeffMode::Constant, ProgramMode::Inline, epilogue)
 }
 
-/// **THE GATE benchmark.** `add_sub` layer-0 R0, the whole Stage-A matrix, paired
+/// **The headline benchmark.** `add_sub` layer-0 R0, the whole Stage-A matrix, paired
 /// against the REAL incumbent compact evaluator in one process, one context, one
 /// row count, one eq state and one contribution buffer.
+///
+/// It is one PROCESS of the §6(b) campaign, not a gate on its own: with no freeze set it
+/// is discovery, with the `r0-headline` freeze set it is one of three confirmation
+/// processes, and the verdict is [`bwd_seg_aggregate_r0_headline`]'s over all three.
 ///
 /// Shared with the incumbent, deliberately: the row count (taken from the real
 /// plan), the same `eq_low` pointer and `GkrEqSizes` built by the real factored-eq
@@ -4070,46 +5359,20 @@ fn profile_shape() -> SegShape {
 fn bwd_seg_add_sub_l0_r0_matrix() {
     let rows = run_r0_matrix(None);
     assert!(!rows.is_empty(), "the matrix must record every coordinate");
-
-    // THE GATE, asserted rather than printed. `run_r0_matrix` reports the winner
-    // and its interval to stderr and into the CSV, but until this assertion existed
-    // a regressed kernel re-ran this test GREEN — the only check was that the
-    // matrix was non-empty, which a uniformly slower executor satisfies just as
-    // well as a winning one.
-    //
-    // The claim is the plan's, unweakened: the fastest PRODUCTION-loader
-    // configuration must INVERT the deficit, and `RatioEstimate::inverts` is the
-    // plan's own rule — the whole bootstrap interval below 1.0, not just the
-    // median. An interval spanning 1.0 means the deficit merely CLOSED, which is
-    // not the acceptance criterion.
-    //
-    // Deliberately NOT asserted in `bwd_seg_add_sub_l0_r0_profile`: that test runs
-    // under `ncu`, whose instrumentation dominates the timing, so an inversion
-    // claim there would be measuring the profiler.
-    let winner = select_winner(&rows).expect("at least one launchable production-loader row");
-    // `selectable()` is the ONLY admissible source: it is `None` exactly when the
-    // order gate failed, and §6(a) step 6 forbids asserting a headline for such a
-    // cell — so an order-coupled winner fails the gate instead of being quoted.
-    let (gate, order) = winner.ratio.selectable().expect(
-        "the winning row is paired against the incumbent and passed its order gate, \
-         so it carries a ratio",
-    );
-    assert!(
-        gate.inverts(),
-        "add/sub L0 R0 must INVERT against the incumbent: winner {} regs={} \
-         median={:.3}us ratio={:.4} CI [{:.4}, {:.4}] -> {} (order delta {:+.3}% \
-         [{:+.3}, {:+.3}])",
-        winner.shape.label(),
-        winner.attributes.registers,
-        winner.candidate_median_us,
-        gate.median_ratio,
-        gate.ci_low,
-        gate.ci_high,
-        gate.verdict(),
-        order.delta_order_pct,
-        order.ci_low_pct,
-        order.ci_high_pct,
-    );
+    // **THERE IS NO PER-RUN INVERSION ASSERTION HERE, deliberately.** The acceptance
+    // gate for this benchmark is the CAMPAIGN-level three-outcome verdict on §7.2.1's
+    // primary column — `bwd_seg_aggregate_r0_headline` over three frozen confirmation
+    // runs — and nothing else. A per-process `select_winner(..).ratio.inverts()` aborted
+    // the process on a NOT-INVERTED or UNRESOLVED run, including on the secondary
+    // column where non-inversion is a legitimate finding, so the three-outcome
+    // aggregator would never have seen the runs it exists to classify. It could not be
+    // gated either: gating on "a freeze exists" leaves it live during DISCOVERY, which
+    // is exactly where a non-inverting result must be allowed, and gating on "no
+    // `BWD_SEG_REQUIRE_PROVENANCE`" reserves it for a bare local run that can no longer
+    // happen — `record_raw_samples` requires the reserved directory `seg_env` creates
+    // and `seg_env` always sets that variable, so the guard's true branch is
+    // unreachable. Anyone running this cell by hand calls `seg_env <label> <pin_level>`
+    // first, exactly as every campaign process does.
 }
 
 /// **The live-path integration gate for Task 0.** Runs ONE small paired cell
@@ -4210,8 +5473,61 @@ fn bwd_seg_add_sub_l0_r0_profile() {
 }
 
 #[allow(clippy::too_many_lines)]
-fn run_r0_matrix(profile: Option<SegShape>) -> Vec<SegMatrixRow> {
-    use crate::prover::gkr::backward::compact;
+/// The REAL incumbent plan, its staged coefficient bank, the shared eq and the fitted
+/// candidate row count — the only path in this harness that produces them.
+///
+/// Extracted from [`run_r0_matrix`] so §4.5's pin decision can pair against the SAME
+/// real incumbent launch §6(b)'s headline does, inside ONE context: a reference clock
+/// is only a reference if every campaign's denominator is the same launch, and the
+/// plan-and-bank walk is sixty lines of fixture traversal that cannot be duplicated
+/// honestly.
+///
+/// **Field order is DROP order.** `eq_low`, the plan's round scratch and the layer state
+/// are all pool-backed by `context`, so the context is declared LAST and therefore
+/// dropped last.
+struct SegR0Fixture {
+    host_eq: HostEq,
+    device: SegDeviceFacts,
+    coord: Arc<SegCoordinate>,
+    /// The candidate row count fitted to this coordinate, and whether it reached the
+    /// incumbent's own.
+    rows: usize,
+    saturated: bool,
+    incumbent_rows: usize,
+    /// The incumbent plan's accumulator — both lineages write the same bytes.
+    output_ptr: *mut E4,
+    eq_low: DeviceAllocation<E4>,
+    eq_sizes: EqSizes,
+    plan: crate::prover::gkr::backward::GpuGKRMainLayerSumcheckLayerPlan<E4>,
+    /// A KEEPALIVE: the plan's scratch is owned by this state, so it must outlive the
+    /// plan and be dropped before the context. Never read.
+    _main_state: crate::prover::gkr::backward::GpuGKRMainLayerBackwardState<E4>,
+    context: ProverContext,
+}
+
+impl SegR0Fixture {
+    /// The incumbent launch every paired R0 cell — and every pin-decision reference
+    /// clock — is timed against.
+    fn incumbent_launch(&self, context: &ProverContext) -> CudaResult<()> {
+        use crate::prover::gkr::backward::compact;
+        compact::launch_main_round0_constant::<E4>(
+            &self
+                .plan
+                .flat_round0_template_compact
+                .as_ref()
+                .expect("incumbent round-0 descriptor")
+                .static_desc,
+            self.eq_low.as_ptr(),
+            &self.eq_sizes,
+            self.output_ptr,
+            self.rows as u32,
+            context,
+        )
+    }
+}
+
+#[allow(clippy::too_many_lines)]
+fn seg_r0_fixture() -> SegR0Fixture {
     use crate::prover::gkr::backward::flat::CoefficientRecipe;
     use crate::prover::gkr::backward::{
         GpuGKRMainLayerDeferredChallengeSource, GpuGKRMainLayerSumcheckLayerPlan,
@@ -4342,55 +5658,81 @@ fn run_r0_matrix(profile: Option<SegShape>) -> Vec<SegMatrixRow> {
     }
     .expect("stage the incumbent round-0 bank");
 
-    let incumbent_launch = |context: &ProverContext| {
-        compact::launch_main_round0_constant::<E4>(
-            &plan
-                .flat_round0_template_compact
-                .as_ref()
-                .expect("incumbent round-0 descriptor")
-                .static_desc,
-            eq_low.as_ptr(),
-            &eq_sizes,
-            output_ptr,
-            rows as u32,
-            context,
-        )
+    // The bank is staged and the descriptor validated; the fixture can now hand out its
+    // launch. `staged` is dropped at the end of this function, which is safe because the
+    // correctness launch and its D2H below SYNCHRONIZE the stream the copy was enqueued
+    // on.
+    let built = SegR0Fixture {
+        host_eq,
+        device,
+        coord,
+        rows,
+        saturated,
+        incumbent_rows,
+        output_ptr,
+        eq_low,
+        eq_sizes,
+        plan,
+        _main_state: main_state,
+        context,
     };
     let preflight = super::seg_compile::seg_ext(0x00a1, 0, 0);
-    poison_contributions(output_ptr, rows, preflight, &context)
+    poison_contributions(output_ptr, rows, preflight, &built.context)
         .expect("poison the incumbent preflight");
-    incumbent_launch(&context).expect("incumbent correctness launch");
+    built
+        .incumbent_launch(&built.context)
+        .expect("incumbent correctness launch");
     let sample = SEG_IDENTITY_SAMPLE_ROWS.min(rows);
-    let incumbent_output = download_e4(output_ptr, sample, &context);
+    let incumbent_output = download_e4(output_ptr, sample, &built.context);
     assert!(
         incumbent_output
             .iter()
             .any(|value| e4_bits(*value) != e4_bits(preflight)),
         "the incumbent round-0 launch left every sampled contribution poisoned"
     );
+    built
+}
+
+#[allow(clippy::too_many_lines)]
+fn run_r0_matrix(profile: Option<SegShape>) -> Vec<SegMatrixRow> {
+    let fixture = seg_r0_fixture();
+    let context = &fixture.context;
+    let incumbent_launch = |ctx: &ProverContext| fixture.incumbent_launch(ctx);
+    let (rows, saturated, incumbent_rows) =
+        (fixture.rows, fixture.saturated, fixture.incumbent_rows);
+    let (host_eq, device) = (&fixture.host_eq, &fixture.device);
 
     // ── the candidate's parity twin and timed cell ───────────────────────
     let parity = SegCell::build(
-        Arc::clone(&coord),
+        Arc::clone(&fixture.coord),
         0,
         SEG_PARITY_ROWS,
         true,
         D2Policy::Inline,
-        eq_low.as_ptr(),
-        eq_sizes,
-        &context,
+        fixture.eq_low.as_ptr(),
+        fixture.eq_sizes,
+        context,
     );
     let timed = SegCell::build_into(
-        Arc::clone(&coord),
+        Arc::clone(&fixture.coord),
         0,
         rows,
         saturated,
         D2Policy::Inline,
-        eq_low.as_ptr(),
-        eq_sizes,
-        output_ptr,
-        &context,
+        fixture.eq_low.as_ptr(),
+        fixture.eq_sizes,
+        fixture.output_ptr,
+        context,
     );
+
+    // **DISCOVERY or CONFIRMATION, chosen by the freeze** (spec §6(b)). Absent
+    // `BWD_SEG_FROZEN_CELLS` this is discovery and the whole matrix runs; with the
+    // `r0-headline` freeze set the matrix times ONLY the frozen shapes — a
+    // confirmation process that also timed the other forty cells would be measuring a
+    // different thermal and cache history than the freeze was chosen under. Any OTHER
+    // campaign's freeze is refused by `frozen_cell_filter`, because its cells are
+    // scored by a different rule.
+    let frozen = frozen_cell_filter("r0-headline");
 
     // A PROFILE run measures the one shape it is capturing and nothing else: under
     // `ncu` every launch outside the filter still costs interception, and a
@@ -4410,22 +5752,61 @@ fn run_r0_matrix(profile: Option<SegShape>) -> Vec<SegMatrixRow> {
             all
         }
     };
+    // CONFIRMATION restricts the shape list to the freeze. The circuit, layer and class
+    // are fixed for this benchmark and `write_frozen_cells` already asserted the freeze
+    // names exactly them, so the remaining axis is the SHAPE.
+    let shapes: Vec<SegShape> = match &frozen {
+        None => shapes,
+        Some(cells) => shapes
+            .into_iter()
+            .filter(|shape| cells.iter().any(|cell| frozen_cell_shape(cell) == *shape))
+            .collect(),
+    };
+    if frozen.is_some() {
+        assert!(
+            !shapes.is_empty(),
+            "the r0-headline freeze names no shape this matrix builds: a confirmation \
+             process that times NOTHING exits 0 and would be read as a passing run"
+        );
+    }
     let mut matrix = Vec::new();
     let mut reference: Option<Vec<E4>> = None;
     for shape in shapes {
         matrix.push(measure_shape(
             "add_sub L0 R0",
+            None,
             &timed,
             &parity,
             shape,
-            &host_eq,
-            &device,
+            host_eq,
+            device,
             &mut reference,
             Some(SegBaselineArm::incumbent(&incumbent_launch)),
             carveout_mode(),
             profile == Some(shape),
-            &context,
+            context,
         ));
+    }
+    match &frozen {
+        // DISCOVERY prints the ±1.0% shortlist and NO RANKING INSIDE IT: the band is
+        // wider than the measured repeat noise, so an ordering within it is noise
+        // presented as a result, and freezing on it would make that permanent.
+        None => {
+            let shortlist = discovery_shortlist(&matrix);
+            eprintln!(
+                "[seg-discovery] band=+{:.1}% members={} (unordered)",
+                SEG_DISCOVERY_SHORTLIST_FRACTION * 100.0,
+                shortlist.len(),
+            );
+            for label in &shortlist {
+                eprintln!("[seg-discovery] member={label}");
+            }
+        }
+        Some(cells) => eprintln!(
+            "[seg-confirm] frozen cells timed: {} of {} named",
+            matrix.len(),
+            cells.len()
+        ),
     }
 
     let csv = seg_output_path(if profile.is_some() {
@@ -4564,10 +5945,531 @@ fn run_r0_matrix(profile: Option<SegShape>) -> Vec<SegMatrixRow> {
 
     drop(timed);
     drop(parity);
-    drop(eq_low);
-    drop(plan);
-    drop(main_state);
+    // `fixture` drops last, in field order: the eq allocation, the plan's round scratch,
+    // the layer state, then the context that owns their pool.
     matrix
+}
+
+/// Discovery's ±[`SEG_DISCOVERY_SHORTLIST_FRACTION`] shortlist (spec §6(b) stage 1),
+/// as an UNORDERED set of shape labels.
+///
+/// Only rows with a [`SegRatio::selectable`] ratio are eligible: an order-coupled cell
+/// has no pooled ratio to be shortlisted on. The return is sorted LEXICOGRAPHICALLY, not
+/// by ratio — the band is wider than the measured repeat noise, so a ranking inside it
+/// would present noise as a result and the freeze would make it permanent.
+fn discovery_shortlist(rows: &[SegMatrixRow]) -> Vec<String> {
+    let ratios: Vec<(&SegMatrixRow, f64)> = rows
+        .iter()
+        .filter(|row| row.launchable())
+        .filter_map(|row| {
+            row.ratio
+                .selectable()
+                .map(|(estimate, _)| (row, estimate.median_ratio))
+        })
+        .collect();
+    let Some(best) = ratios.iter().map(|(_, ratio)| *ratio).reduce(f64::min) else {
+        return Vec::new();
+    };
+    let mut shortlist: Vec<String> = ratios
+        .iter()
+        .filter(|(_, ratio)| *ratio <= best * (1.0 + SEG_DISCOVERY_SHORTLIST_FRACTION))
+        .map(|(row, _)| row.shape.label())
+        .collect();
+    shortlist.sort();
+    shortlist
+}
+
+/// Split a published matrix CSV into header-keyed rows.
+///
+/// By NAME, not by position: [`SEG_CSV_HEADER`] has grown three times in this pass and a
+/// positional reader would have silently shifted every field. [`render_matrix_csv`]
+/// neutralizes the one field that can contain a comma, so the arity is exact and a row
+/// that disagrees with the header is corruption rather than something to tolerate.
+fn parse_matrix_csv_rows(text: &str) -> Vec<std::collections::BTreeMap<String, String>> {
+    let mut lines = text.lines().filter(|line| !line.trim().is_empty());
+    let header: Vec<&str> = lines
+        .next()
+        .expect("a matrix CSV has a header")
+        .split(',')
+        .collect();
+    lines
+        .map(|line| {
+            let fields: Vec<&str> = line.split(',').collect();
+            assert_eq!(fields.len(), header.len(), "matrix CSV row arity: {line}");
+            header
+                .iter()
+                .map(|name| (*name).to_owned())
+                .zip(fields.iter().map(|value| (*value).to_owned()))
+                .collect()
+        })
+        .collect()
+}
+
+/// The round class a matrix row belongs to, from the three columns that determine it.
+fn matrix_row_class(row: &std::collections::BTreeMap<String, String>) -> SegRoundClass {
+    let field = |name: &str| -> &str {
+        row.get(name)
+            .unwrap_or_else(|| panic!("the matrix CSV has no {name} column"))
+    };
+    let round: u8 = field("round").parse().expect("round");
+    match (round, field("d2_policy")) {
+        (0, _) => SegRoundClass::R0,
+        (1, _) => SegRoundClass::D1,
+        (2, "materialize") => SegRoundClass::D2Materialize,
+        (2, _) => SegRoundClass::D2Inline,
+        (3, _) => SegRoundClass::D3,
+        (other, _) => panic!("a matrix row names round {other}, which is not a swept class"),
+    }
+}
+
+/// **§6(b) stage 2, EXECUTABLE.** Re-derive discovery's ±1.0% shortlist from the
+/// emitted matrix CSV, intersect it with [`SEG_R0_PROBED_TUPLES`], and write the
+/// `r0-headline` freeze.
+///
+/// Executable rather than hand-written because a hand-written freeze cannot be
+/// re-derived or reviewed: the band, the selectability predicate and the probe
+/// intersection are all rules, and a rule that lives in a shell transcript is not one.
+/// [`write_frozen_cells`] re-asserts probe membership, so the predicate holds even if a
+/// future caller forgets it here.
+///
+/// **An EMPTY intersection is a finding, not a fallback**: extend the probe set, re-probe
+/// the forced-common-bucket precondition, and only then freeze.
+#[test]
+#[ignore = "campaign freeze writer; reads discovery's matrix CSV"]
+fn bwd_seg_freeze_r0_headline() {
+    let csv = std::env::var("BWD_SEG_DISCOVERY_CSV")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| seg_output_path(SEG_MATRIX_CSV));
+    let text = std::fs::read_to_string(&csv)
+        .unwrap_or_else(|error| panic!("read discovery's matrix {}: {error}", csv.display()));
+    let rows = parse_matrix_csv_rows(&text);
+    assert!(!rows.is_empty(), "{}: no rows", csv.display());
+    // SELECTABLE rows only — the same predicate `SegRatio::selectable` applies, read off
+    // the two columns the renderer derives from it. BOTH are required although either
+    // alone would do: a renderer that ever emitted a ratio for a failed gate would be
+    // caught here instead of silently widening the band.
+    let candidates: Vec<(&std::collections::BTreeMap<String, String>, f64)> = rows
+        .iter()
+        .filter(|row| row["launchable"] == "true" && row["order_gate"] == "true")
+        .filter_map(|row| {
+            let ratio = row["median_ratio"].parse::<f64>().ok()?;
+            Some((row, ratio))
+        })
+        .collect();
+    assert!(
+        !candidates.is_empty(),
+        "{}: no row carries a selectable ratio, so there is nothing to freeze",
+        csv.display()
+    );
+    let best = candidates
+        .iter()
+        .map(|(_, ratio)| *ratio)
+        .reduce(f64::min)
+        .expect("a non-empty candidate set");
+    let band: Vec<&std::collections::BTreeMap<String, String>> = candidates
+        .iter()
+        .filter(|(_, ratio)| *ratio <= best * (1.0 + SEG_DISCOVERY_SHORTLIST_FRACTION))
+        .map(|(row, _)| *row)
+        .collect();
+    // The intersection with the PROBED tuples. §9 item 2's forced-common-bucket
+    // precondition is established only on the shapes the NCU probe covered.
+    let frozen: Vec<SegFrozenCell> = band
+        .iter()
+        .filter(|row| {
+            SEG_R0_PROBED_TUPLES.iter().any(|probed| {
+                probed.epilogue == row["epilogue"]
+                    && probed.k.to_string() == row["k"]
+                    && probed.coeff == row["coeff"]
+                    && probed.program == row["program"]
+            })
+        })
+        .map(|row| SegFrozenCell {
+            label: format!(
+                "r0-{}-k{}-{}-{}",
+                row["epilogue"], row["k"], row["coeff"], row["program"]
+            ),
+            // **The SHORT form.** `SegMatrixRow::circuit` carries the coordinate's file
+            // name (`..._layout_gkr.json`) while every freeze predicate — and the
+            // `write_frozen_cells` assertion below — compares against
+            // `ADD_SUB_LAYOUT_SHORT`. Normalizing here is what keeps the two conventions
+            // from meeting for the first time inside an assertion.
+            circuit: short_name(&row["circuit"]).to_owned(),
+            layer: row["layer"].parse().expect("layer"),
+            class: matrix_row_class(row),
+            k: row["k"].parse().expect("k"),
+            epilogue: row["epilogue"].clone(),
+            coeff: row["coeff"].clone(),
+            program: row["program"].clone(),
+        })
+        .collect();
+    eprintln!(
+        "[seg-freeze] discovery band {} of {} selectable rows; {} intersect the probed set",
+        band.len(),
+        candidates.len(),
+        frozen.len(),
+    );
+    assert!(
+        !frozen.is_empty(),
+        "the ±{:.1}% shortlist and the probed tuple set do not intersect: that is a \
+         FINDING — extend SEG_R0_PROBED_TUPLES, re-probe the forced-common-bucket \
+         precondition, and only then freeze (§9 item 2). Band members: {:?}",
+        SEG_DISCOVERY_SHORTLIST_FRACTION * 100.0,
+        band.iter()
+            .map(|row| format!("{} K{}", row["epilogue"], row["k"]))
+            .collect::<Vec<String>>(),
+    );
+    let path = std::env::var("BWD_SEG_FROZEN_CELLS_OUT")
+        .expect("BWD_SEG_FROZEN_CELLS_OUT must name the freeze to write");
+    write_frozen_cells(Path::new(&path), "r0-headline", &frozen, SEG_SCHEDULE_SEED);
+    for cell in &frozen {
+        eprintln!("[seg-freeze] frozen cell={}", cell.label);
+    }
+}
+
+// ── §4.5's pin-decision and δ3-attribution runners ────────────────────────────
+
+/// Device bytes ONE pin-decision cell may spend on synthetic backings.
+///
+/// Deliberately far below [`SEG_BACKING_BUDGET_BYTES`]: this runner holds a timed cell
+/// for every distinct class it was asked for, simultaneously, inside the R0 fixture's own
+/// context — which already holds the real trace and the incumbent plan. The Stage-A
+/// per-cell budget would over-commit the device on the first two classes.
+const SEG_PIN_CELL_BUDGET_BYTES: usize = 4 << 30;
+/// The row target at round 0, halved per round exactly as the real sumcheck halves rows.
+/// A CONSTANT, so every level and every arm times the same geometry: a row count derived
+/// from anything session-dependent would make the levels incomparable.
+const SEG_PIN_TARGET_ROWS: usize = 1 << 22;
+/// The folding-step count the pin runner's shared eq is built at. Covers `2^23` rows, so
+/// [`SEG_PIN_TARGET_ROWS`] is inside it at every round.
+const SEG_PIN_EQ_FOLDING_STEPS: usize = 24;
+const _: () = assert!(SEG_PIN_TARGET_ROWS <= 1 << (SEG_PIN_EQ_FOLDING_STEPS - 1));
+
+/// Steps 1-5 of §4.5's construction contract, and nothing else.
+///
+/// Every row carries `cell.label` in `benchmark` (and as its raw-sample key) and
+/// `cell.role` in [`SegMatrixRow::pin_role`], and the plan for every pair is exactly
+/// `CarveoutPlan::for_pair(CarveoutMode::FixedBucket(SEG_REFERENCE_CLOCK_BUCKET_BYTES),
+/// seg_carveout_shape(regime, shape, "candidate"), incumbent_r0_carveout_shape(),
+/// cell.class.round() >= 1)`, which is what [`measure_shape`] builds from the mode this
+/// function passes — so no cell can reach a demand-derived bucket.
+///
+/// **Cells are built for the distinct classes of `wanted`, not of the whole set.** The
+/// mapping `class -> (regime, round, d2)` is injective over [`SEG_ROUND_CLASSES`], so the
+/// class IS the key; and a `BWD_SEG_PIN_ROLE_ONLY=control` smoke or a one-cell profiling
+/// run must not allocate four class cells it will never time.
+fn run_pin_decision_matrix(wanted: &[&SegPinCell]) -> Vec<SegMatrixRow> {
+    assert!(!wanted.is_empty(), "a decision run times at least one cell");
+    // Step 1: the real incumbent plan and its staged bank, in ONE context — so both arms
+    // share a clock, a thermal state and a memory state at every sample.
+    let fixture = seg_r0_fixture();
+    let context = &fixture.context;
+    let incumbent_launch = |ctx: &ProverContext| fixture.incumbent_launch(ctx);
+    // Step 2: ONE shared eq, and one `(timed, parity)` pair per distinct class.
+    //
+    // This rebuilds the `ab_gkr_eq_high` symbol the fixture's own eq wrote. That is
+    // deliberate and it does not weaken the reference clock: the incumbent's CORRECTNESS
+    // was established inside `seg_r0_fixture` against its own eq, before this call, and
+    // what the clock has to be afterwards is INVARIANT — the same launch, over the same
+    // eq state, at every level and in both δ3 arms, which it is.
+    let (eq_low, eq_sizes) = build_shared_eq(SEG_PIN_EQ_FOLDING_STEPS, context);
+    let host_eq = HostEq::download(eq_low.as_ptr(), eq_sizes, context);
+    let mut built: Vec<(SegRoundClass, SegCell, SegCell)> = Vec::new();
+    for cell in wanted {
+        if built.iter().any(|(class, _, _)| *class == cell.class) {
+            continue;
+        }
+        let regime = if cell.class == SegRoundClass::R0 {
+            DagBwdRegime::R0
+        } else {
+            DagBwdRegime::Ext
+        };
+        let round = cell.class.round();
+        let d2 = cell.class.d2();
+        let coord = lean_coordinate(ADD_SUB_LAYOUT, 0, regime);
+        let per_row = probe_bytes_per_row(&coord, round, d2);
+        let (rows, saturated) = fit_rows(
+            SEG_PIN_TARGET_ROWS >> round,
+            per_row,
+            SEG_PIN_CELL_BUDGET_BYTES,
+            SEG_MIN_TIMED_ROWS,
+        );
+        eprintln!(
+            "[seg-pin] class={} {per_row} B/row -> {rows} rows ({:.2} GiB, \
+             saturated={saturated})",
+            cell.class.label(),
+            (rows * per_row) as f64 / (1u64 << 30) as f64,
+        );
+        let parity = SegCell::build(
+            Arc::clone(&coord),
+            round,
+            SEG_PARITY_ROWS,
+            true,
+            d2,
+            eq_low.as_ptr(),
+            eq_sizes,
+            context,
+        );
+        let timed = SegCell::build(
+            Arc::clone(&coord),
+            round,
+            rows,
+            saturated,
+            d2,
+            eq_low.as_ptr(),
+            eq_sizes,
+            context,
+        );
+        built.push((cell.class, timed, parity));
+    }
+    // The identity reference is PER CLASS: two classes launch different rounds into
+    // different buffers, so a shared reference would compare unrelated contributions.
+    let mut reference: Vec<(SegRoundClass, Option<Vec<E4>>)> =
+        built.iter().map(|(class, _, _)| (*class, None)).collect();
+    // The profiling selector, read here because it decides which launches are
+    // NVTX-WRAPPED; the caller has already asserted that it selects exactly one cell.
+    let profile_cell = std::env::var("BWD_SEG_PIN_PROFILE_CELL").ok();
+    let mut matrix = Vec::with_capacity(wanted.len());
+    // Steps 3-5, in ARRAY ORDER.
+    for cell in wanted {
+        let (_, timed, parity) = built
+            .iter()
+            .find(|(class, _, _)| *class == cell.class)
+            .expect("a cell was built for every class in `wanted`");
+        let shape = SegShape::regs(
+            cell.k,
+            CoeffMode::Constant,
+            ProgramMode::Inline,
+            BwdSegEpilogue::Plane,
+        );
+        let slot = reference
+            .iter_mut()
+            .find(|(class, _)| *class == cell.class)
+            .map(|(_, slot)| slot)
+            .expect("a reference slot per built class");
+        let mut row = measure_shape(
+            cell.label,
+            // The raw key is the predeclared LABEL, because `aggregate_arm` looks a cell
+            // up by exactly that.
+            Some(cell.label),
+            timed,
+            parity,
+            shape,
+            &host_eq,
+            &fixture.device,
+            slot,
+            Some(SegBaselineArm {
+                label: "flat-r0-reference-clock",
+                launch: SegBaselineLaunch::External(&incumbent_launch),
+                shape: incumbent_r0_carveout_shape(),
+            }),
+            CarveoutMode::FixedBucket(SEG_REFERENCE_CLOCK_BUCKET_BYTES),
+            profile_cell.as_deref() == Some(cell.label),
+            context,
+        );
+        // Step 4: the role travels with the row, so the aggregator separates Decision
+        // from DriftControl without re-deriving either.
+        row.pin_role = cell.role;
+        matrix.push(row);
+    }
+    let csv = seg_output_path("seg_pin_decision_matrix.csv");
+    publish(&csv, &render_matrix_csv(&matrix));
+    for (_, timed, parity) in built {
+        drop(timed);
+        drop(parity);
+    }
+    drop(eq_low);
+    matrix
+}
+
+/// **§4.5's pin decision cells.** Candidates are CONTINUATION shapes — the only
+/// symbols the sweep touches — each paired against the flat R0 incumbent as a
+/// **REFERENCE CLOCK**, plus the R0 seg drift control.
+///
+/// **Why an R0 kernel is the right denominator for a continuation candidate.** It
+/// is not a semantic baseline and is never reported as one. §4.5's cross-build
+/// argument is that "the incumbent is not compiled from the seg kernel matrix and
+/// the pin knob does not touch it, so it is invariant across the three level builds
+/// and every level's number is a ratio against the same reference rather than an
+/// absolute time carrying that build's session drift." The flat R0 kernel is the one
+/// such symbol this harness already stages, and Task 8's SASS gate PROVES its
+/// normalized body identical across every level. Every quotation of these ratios
+/// carries the label `cont-vs-flat-r0 reference clock`, never `speedup`.
+///
+/// **The pairs run at `FixedBucket(SEG_REFERENCE_CLOCK_BUCKET_BYTES)`**, not
+/// `CommonBucket`: a demand-derived bucket would put the reference clock at 16 KiB
+/// at the natural band and 32 KiB at a 40-pin, and a denominator whose own cache
+/// configuration moves with the level is not invariant.
+///
+/// `BWD_SEG_PIN_ROLE_ONLY=control` restricts to the drift control, for a cheap smoke
+/// run that proves the plumbing before nine real processes are spent.
+///
+/// **`BWD_SEG_PIN_PROFILE_CELL=<label>` is the PROFILING selector, and it is
+/// required for any NCU capture.** All seven cells launch through the same two entry
+/// points and the same two NVTX range names, so `ncu --launch-count 1` on a full
+/// seven-cell run captures the FIRST wrapped launch every time — the same cell,
+/// relabelled. With this set the runner times **only that one cell** (plus nothing
+/// else) and wraps only its launches, so `--launch-count 1` is unambiguous. It also
+/// makes `BWD_SEG_PROFILE_K` / `BWD_SEG_PROFILE_EPILOGUE` irrelevant here: those are
+/// [`profile_shape`]'s variables and this runner does not read them, which is why an
+/// earlier draft's capture loop was measuring a shape it had not selected.
+#[test]
+#[ignore = "GPU timing; build unlocked and run the executable under with_gpu_lock.sh"]
+#[cfg(not(no_cuda))]
+#[serial_test::serial]
+fn bwd_seg_pin_decision_cells() {
+    let only_control = std::env::var("BWD_SEG_PIN_ROLE_ONLY").as_deref() == Ok("control");
+    // The profiling selector: exactly one cell, by label, and it is the ONLY cell
+    // whose launches are NVTX-wrapped, so `--launch-count 1` is unambiguous.
+    let profile_cell = std::env::var("BWD_SEG_PIN_PROFILE_CELL").ok();
+    if let Some(label) = &profile_cell {
+        assert!(
+            SEG_PIN_DECISION_CELLS.iter().any(|c| c.label == label),
+            "BWD_SEG_PIN_PROFILE_CELL={label:?} is not a predeclared decision cell"
+        );
+    }
+    // Only the PIN freeze. The R0 freeze names shapes this runner does not have, and
+    // the δ3 freeze names cells scored by a different rule — both would silently
+    // change what the decision measures.
+    let frozen = frozen_cell_filter("pin-decision");
+    let wanted: Vec<&SegPinCell> = SEG_PIN_DECISION_CELLS
+        .iter()
+        .filter(|cell| {
+            // The drift control always runs (mechanism 3). Decision cells run when
+            // no freeze is active, or when the freeze names them.
+            // With a profile cell selected, ONLY that cell runs — including instead
+            // of the drift control, because a capture must be unambiguous.
+            if let Some(label) = &profile_cell {
+                return cell.label == label;
+            }
+            cell.role == SegPinRole::DriftControl
+                || (!only_control
+                    && frozen
+                        .as_ref()
+                        .map_or(true, |cells| cells.iter().any(|f| f.label == cell.label)))
+        })
+        .collect();
+    // The drift-control requirement is a TIMING-process requirement. A profiling run
+    // deliberately times ONE cell so `--launch-count 1` is unambiguous, so demanding a
+    // drift control there would fail every capture by construction.
+    match &profile_cell {
+        None => assert!(
+            wanted.iter().any(|c| c.role == SegPinRole::DriftControl),
+            "the drift control must run in EVERY timing process (§4.5 mechanism 3)"
+        ),
+        Some(_) => assert_eq!(wanted.len(), 1, "a profiling run times exactly one cell"),
+    }
+    let rows = run_pin_decision_matrix(&wanted);
+    // The construction contract, asserted rather than described.
+    let observed: Vec<&str> = rows.iter().map(|r| r.benchmark.as_str()).collect();
+    let expected: Vec<&str> = wanted.iter().map(|c| c.label).collect();
+    assert_eq!(
+        observed, expected,
+        "observed cells must equal the contract, in order"
+    );
+    // MODE-AWARE, like the pre-run assertion: a profiling run times exactly one cell,
+    // which is frequently NOT the drift control. An unconditional
+    // `DriftControl == 1` here failed every capture — the same class of defect as the
+    // selector-side assertion, at a second site.
+    match &profile_cell {
+        None => assert_eq!(
+            rows.iter()
+                .filter(|r| r.pin_role == SegPinRole::DriftControl)
+                .count(),
+            1,
+            "a TIMING run carries exactly one drift control, no more and no less"
+        ),
+        Some(label) => {
+            assert_eq!(rows.len(), 1, "a profiling run emits exactly one row");
+            assert_eq!(&rows[0].benchmark, label, "and it is the selected cell");
+        }
+    }
+    for row in &rows {
+        // The fixed bucket is a GATE, not a note: a hint that did not land
+        // invalidates the level comparison.
+        assert_eq!(
+            row.carveout_requested_pct,
+            Some(bwd_seg_carveout_pct_for_bucket(
+                SEG_REFERENCE_CLOCK_BUCKET_BYTES
+            )),
+            "{}: every decision pair runs at the predeclared fixed bucket",
+            row.benchmark
+        );
+    }
+}
+
+/// **§4.5's δ3 loop-form attribution cells.** The pin runner's contract, restated over
+/// [`SEG_D3_ATTRIBUTION_CELLS`] — the δ3-BEARING shapes — and scored by
+/// [`summarize_d3_attribution`], not by the pin rule.
+///
+/// One arm of this runs per loop form at the WINNING pin, so its cells must be identical
+/// across the two builds; that is why the set is a predeclared constant and the freeze
+/// writer serializes it rather than selecting anything.
+#[test]
+#[ignore = "GPU timing; build unlocked and run the executable under with_gpu_lock.sh"]
+#[cfg(not(no_cuda))]
+#[serial_test::serial]
+fn bwd_seg_d3_attribution_cells() {
+    let only_control = std::env::var("BWD_SEG_PIN_ROLE_ONLY").as_deref() == Ok("control");
+    let profile_cell = std::env::var("BWD_SEG_PIN_PROFILE_CELL").ok();
+    if let Some(label) = &profile_cell {
+        assert!(
+            SEG_D3_ATTRIBUTION_CELLS.iter().any(|c| c.label == label),
+            "BWD_SEG_PIN_PROFILE_CELL={label:?} is not a predeclared attribution cell"
+        );
+    }
+    // Only the δ3 freeze: the pin freeze names cells scored by a different rule and the
+    // R0 freeze names shapes this runner does not have.
+    let frozen = frozen_cell_filter("d3-attribution");
+    let wanted: Vec<&SegPinCell> = SEG_D3_ATTRIBUTION_CELLS
+        .iter()
+        .filter(|cell| {
+            if let Some(label) = &profile_cell {
+                return cell.label == label;
+            }
+            cell.role == SegPinRole::DriftControl
+                || (!only_control
+                    && frozen
+                        .as_ref()
+                        .map_or(true, |cells| cells.iter().any(|f| f.label == cell.label)))
+        })
+        .collect();
+    match &profile_cell {
+        None => assert!(
+            wanted.iter().any(|c| c.role == SegPinRole::DriftControl),
+            "the drift control must run in EVERY timing process (§4.5 mechanism 3)"
+        ),
+        Some(_) => assert_eq!(wanted.len(), 1, "a profiling run times exactly one cell"),
+    }
+    let rows = run_pin_decision_matrix(&wanted);
+    let observed: Vec<&str> = rows.iter().map(|r| r.benchmark.as_str()).collect();
+    let expected: Vec<&str> = wanted.iter().map(|c| c.label).collect();
+    assert_eq!(
+        observed, expected,
+        "observed cells must equal the contract, in order"
+    );
+    match &profile_cell {
+        None => assert_eq!(
+            rows.iter()
+                .filter(|r| r.pin_role == SegPinRole::DriftControl)
+                .count(),
+            1,
+            "a TIMING run carries exactly one drift control, no more and no less"
+        ),
+        Some(label) => {
+            assert_eq!(rows.len(), 1, "a profiling run emits exactly one row");
+            assert_eq!(&rows[0].benchmark, label, "and it is the selected cell");
+        }
+    }
+    for row in &rows {
+        assert_eq!(
+            row.carveout_requested_pct,
+            Some(bwd_seg_carveout_pct_for_bucket(
+                SEG_REFERENCE_CLOCK_BUCKET_BYTES
+            )),
+            "{}: every attribution pair runs at the predeclared fixed bucket",
+            row.benchmark
+        );
+    }
 }
 
 /// Probe, certify and time ONE matrix coordinate.
@@ -4578,6 +6480,12 @@ fn run_r0_matrix(profile: Option<SegShape>) -> Vec<SegMatrixRow> {
 #[allow(clippy::too_many_arguments)]
 fn measure_shape(
     benchmark: &str,
+    // The RAW-SAMPLE KEY. `None` keys the emitted samples `{benchmark}|{shape label}`,
+    // which is what a matrix driver needs: one benchmark times many shapes and they must
+    // not collide in one raw file. The pin and δ3 campaigns pass `Some(cell.label)`,
+    // because `aggregate_arm` looks a predeclared cell up by EXACTLY its label — a
+    // composite key would make every cell missing and the arm unreadable.
+    raw_cell_key: Option<&str>,
     timed: &SegCell,
     parity: &SegCell,
     shape: SegShape,
@@ -4636,6 +6544,9 @@ fn measure_shape(
         carveout_mode: "-",
         carveout_requested_pct: None,
         carveout_source: "-".to_owned(),
+        // The pin-decision runner OVERWRITES this per cell; every other caller leaves
+        // the default and never reads it.
+        pin_role: SegPinRole::Decision,
     };
     if blocks_per_sm == 0 {
         // The cell is never staged, so the floor comes from a bare lowering. A lowering
@@ -4782,7 +6693,12 @@ fn measure_shape(
             // block, orientation, incoming class and order id, so every §6 analysis is
             // reproducible after the process has exited.
             let meta = SegRunMeta::current();
-            record_raw_samples(meta, &format!("{benchmark}|{}", shape.label()), &blocked);
+            record_raw_samples(
+                meta,
+                &raw_cell_key
+                    .map_or_else(|| format!("{benchmark}|{}", shape.label()), str::to_owned),
+                &blocked,
+            );
             row.run_id = meta.run_id.as_str();
             row.candidate_median_us = median(&candidate_means);
             row.candidate_min_us = blocked
@@ -4913,6 +6829,7 @@ fn bwd_seg_add_sub_l0_cont_matrix() {
                     let shape = SegShape::regs(k, coeff, program, epilogue);
                     matrix.push(measure_shape(
                         &benchmark,
+                        None,
                         &timed,
                         &parity,
                         shape,
@@ -5371,6 +7288,7 @@ fn bwd_seg_stage_b_acc_ladder() {
             );
             matrix.push(measure_shape(
                 benchmark,
+                None,
                 &timed,
                 &parity,
                 twin_shape,
@@ -5398,6 +7316,7 @@ fn bwd_seg_stage_b_acc_ladder() {
             ] {
                 matrix.push(measure_shape(
                     benchmark,
+                    None,
                     &timed,
                     &parity,
                     SegShape::rung(k, placement),
@@ -5549,6 +7468,7 @@ fn bwd_seg_keccak_l0_monster() {
             let shape = SegShape::regs(k, CoeffMode::Constant, ProgramMode::Inline, epilogue);
             matrix.push(measure_shape(
                 "keccak_special5 L0 R0 monster",
+                None,
                 &timed,
                 &parity,
                 shape,
@@ -7507,6 +9427,7 @@ fn measure_corpus_rung(
         Ok((work, floor)) => {
             let row = measure_shape(
                 &benchmark,
+                None,
                 &timed,
                 parity,
                 baseline_shape,
@@ -7540,6 +9461,7 @@ fn measure_corpus_rung(
         let shape = corpus_shape(k);
         let row = measure_shape(
             &benchmark,
+            None,
             &timed,
             parity,
             shape,
@@ -9190,6 +11112,9 @@ mod tests {
             "carveout_mode",
             "carveout_requested_pct",
             "carveout_source",
+            // The §4.5 role, so the pin aggregator separates Decision from
+            // DriftControl from the emitted column rather than from a label pattern.
+            "pin_role",
             // The per-launch traffic floors ride on EVERY row, launchable or not
             // (spec §7.2.2 Emission).
             "floor_dram_read_bytes",
@@ -9225,8 +11150,9 @@ mod tests {
     /// The GATE's own predicate, on CPU: `select_winner(...).ratio.selectable()`
     /// inverts on an inverting matrix and does not on a regressed one.
     ///
-    /// `bwd_seg_add_sub_l0_r0_matrix` asserts exactly this composition, and that
-    /// test needs a GPU. Proving the composition DISCRIMINATES belongs here, or the
+    /// `run_r0_matrix` reports exactly this composition per process, and
+    /// `bwd_seg_aggregate_r0_headline` is the campaign verdict over three of them;
+    /// both need a GPU. Proving the composition DISCRIMINATES belongs here, or the
     /// gate would rest on "it passed once with the assert in place" — which is
     /// equally true of an assertion that can never fail.
     #[test]
@@ -9409,6 +11335,7 @@ mod tests {
             // Prose WITH a comma in it, so the renderer's separator handling is
             // exercised by the column test rather than assumed.
             carveout_source: "candidate, 30720 B (both arms quantize alike)".to_owned(),
+            pin_role: SegPinRole::Decision,
         }
     }
 
@@ -10038,5 +11965,693 @@ mod tests {
         ] {
             assert_eq!(SegCorpusStatus::parse(status.label()), Some(status));
         }
+    }
+
+    #[test]
+    fn the_pin_decision_set_is_predeclared_and_well_formed() {
+        assert_eq!(SEG_PIN_DECISION_CELLS.len(), 7);
+        assert_eq!(
+            SEG_PIN_DECISION_CELLS
+                .iter()
+                .filter(|c| c.role == SegPinRole::DriftControl)
+                .count(),
+            1
+        );
+        // The drift control MUST be R0 — that is the whole reason it is pin-invariant.
+        let control = SEG_PIN_DECISION_CELLS
+            .iter()
+            .find(|c| c.role == SegPinRole::DriftControl)
+            .unwrap();
+        assert_eq!(control.class, SegRoundClass::R0);
+        // Every decision cell MUST be a continuation class: R0 cannot decide a pin.
+        for cell in SEG_PIN_DECISION_CELLS
+            .iter()
+            .filter(|c| c.role == SegPinRole::Decision)
+        {
+            assert_ne!(cell.class, SegRoundClass::R0, "{} is not swept", cell.label);
+        }
+    }
+
+    #[test]
+    fn the_d3_attribution_set_is_the_delta3_bearing_shapes() {
+        assert_eq!(SEG_D3_ATTRIBUTION_CELLS.len(), 7);
+        assert_eq!(
+            SEG_D3_ATTRIBUTION_CELLS
+                .iter()
+                .filter(|c| c.role == SegPinRole::DriftControl)
+                .count(),
+            1
+        );
+        // Every decision cell is D3 or D2-materialize at K in {16, 24, 32} — the cells
+        // results §2.6 shows moving. A cell outside that set carries no δ3 to attribute.
+        for c in SEG_D3_ATTRIBUTION_CELLS
+            .iter()
+            .filter(|c| c.role == SegPinRole::Decision)
+        {
+            assert!(
+                matches!(c.class, SegRoundClass::D3 | SegRoundClass::D2Materialize),
+                "{} is not a δ3-bearing class",
+                c.label
+            );
+            assert!(
+                matches!(c.k, 16 | 24 | 32),
+                "{} is not at K 16/24/32",
+                c.label
+            );
+        }
+        // And the two sets are disjoint in label, so a freeze cannot be misread.
+        for a in &SEG_D3_ATTRIBUTION_CELLS {
+            for b in &SEG_PIN_DECISION_CELLS {
+                if a.role == SegPinRole::DriftControl && b.role == SegPinRole::DriftControl {
+                    continue; // the shared drift control is deliberate
+                }
+                assert_ne!(a.label, b.label, "label {} is in both sets", a.label);
+            }
+        }
+    }
+
+    /// The pin rule is NOT the inversion rule, and it fails closed.
+    #[test]
+    fn the_pin_rule_is_distinct_and_fails_closed() {
+        let cell = |label: &str, role, est: Option<f64>| SegPinCellSummary {
+            label: label.to_owned(),
+            role,
+            estimate: est,
+            // `Vec<Option<f64>>`: a per-PROCESS `None` is what an order-invalid process
+            // looks like, and the rule must see it rather than a pre-reduced median.
+            process_ratios: vec![est, est, est],
+        };
+        // ALL SEVEN predeclared cells, because `summarize_pin_decision` asserts the exact
+        // set per level. `base` drives all six decision cells with a deterministic spread
+        // (`base + i * 0.002`, i = 0..6), so the level median is a genuine median OVER SIX
+        // VALUES and the expectation below is derived from that — not from the first two.
+        // An earlier fixture held four cells flat at `base`, which made the median equal
+        // `base` while the test asserted the mean of the first two; it passed for the
+        // wrong reason and tested only two of the six cells.
+        let level = |name: &str, base: Option<f64>, ctrl: f64| {
+            let at = |i: usize| base.map(|b| b + i as f64 * 0.002);
+            (
+                name.to_owned(),
+                vec![
+                    cell("cont-d1-k4", SegPinRole::Decision, at(0)),
+                    cell("cont-d1-k8", SegPinRole::Decision, at(1)),
+                    cell("cont-d2i-k8", SegPinRole::Decision, at(2)),
+                    cell("cont-d2i-k16", SegPinRole::Decision, at(3)),
+                    cell("cont-d3-k16", SegPinRole::Decision, at(4)),
+                    cell("cont-d3-k24", SegPinRole::Decision, at(5)),
+                    cell("r0-drift-k4", SegPinRole::DriftControl, Some(ctrl)),
+                ],
+            )
+        };
+        // Six values `b, b+.002, …, b+.010`; `median` of an even count averages the two
+        // middle elements, so the level aggregate is `b + 0.005`.
+        let expect_aggregate = |b: f64| b + 0.005;
+        // Every fixture carries the MANDATORY natural-repeat, or `summarize_pin_decision`
+        // panics on its own exact-set assertion before any rule runs.
+        let clean = vec![
+            level("natural", Some(1.000), 1.0000),
+            level("48", Some(0.960), 1.0001),
+            level("40", Some(0.900), 1.0002),
+            level("natural-repeat", Some(1.001), 1.0000),
+        ];
+        assert!(matches!(
+            summarize_pin_decision(&clean),
+            SegPinSummary::Resolved { ref winner, .. } if winner == "40"
+        ));
+        // Ratios ABOVE 1.0 must not make the decision "not inverted" — that is §6(b)'s
+        // question, not this one. The lowest-ceiling level still wins on aggregate.
+        let above = vec![
+            level("natural", Some(1.400), 1.0),
+            level("48", Some(1.300), 1.0),
+            level("40", Some(1.200), 1.0),
+            level("natural-repeat", Some(1.401), 1.0),
+        ];
+        assert!(
+            matches!(
+                summarize_pin_decision(&above),
+                SegPinSummary::Resolved { ref winner, .. } if winner == "40"
+            ),
+            "the pin decision is relative; 1.0 has no meaning in it"
+        );
+        // An order-invalid cell anywhere ⇒ UNRESOLVED, never a shrunken cell set.
+        let mut invalid = clean.clone();
+        invalid[2].1[0].estimate = None;
+        invalid[2].1[0].process_ratios = vec![None, Some(0.9), Some(0.9)];
+        let s = summarize_pin_decision(&invalid);
+        assert!(matches!(s, SegPinSummary::Unresolved { .. }));
+        // And there is NO aggregate to read — the type has none on this path.
+        if let SegPinSummary::Unresolved {
+            ref per_level_usable,
+            ..
+        } = s
+        {
+            assert!(per_level_usable.iter().any(|(_, ok, total)| ok < total));
+        }
+        // A margin below the control's own drift ⇒ UNRESOLVED.
+        let noisy = vec![
+            level("natural", Some(1.000), 1.000),
+            level("48", Some(0.998), 1.030),
+            level("40", Some(0.997), 1.000),
+            level("natural-repeat", Some(1.000), 1.000),
+        ];
+        assert!(matches!(
+            summarize_pin_decision(&noisy),
+            SegPinSummary::Unresolved { .. }
+        ));
+        // A repeat that does not reproduce ⇒ UNRESOLVED, and it is compared ONLY to
+        // natural (never aggregated, never in the tie set, never in the drift spread).
+        let mut repeat = clean.clone();
+        repeat[3] = level("natural-repeat", Some(1.050), 1.0);
+        assert!(matches!(
+            summarize_pin_decision(&repeat),
+            SegPinSummary::Unresolved { .. }
+        ));
+        // The control is EXCLUDED from the aggregate, and the resolved variant is the
+        // ONLY one carrying aggregates at all.
+        match summarize_pin_decision(&clean) {
+            SegPinSummary::Resolved {
+                winner,
+                aggregates,
+                tie_set,
+                ..
+            } => {
+                assert_eq!(winner, "40");
+                let agg40 = aggregates.iter().find(|(l, _)| l == "40").unwrap().1;
+                assert!(
+                    (agg40 - expect_aggregate(0.900)).abs() < 1e-9,
+                    "the level aggregate is the median over ALL SIX decision cells \
+                     (0.900..0.910), i.e. {}; got {agg40}",
+                    expect_aggregate(0.900)
+                );
+                assert!(!tie_set.contains(&"natural-repeat".to_owned()));
+                assert_eq!(aggregates.len(), 3, "the repeat is not a decision level");
+            }
+            other => panic!("expected Resolved, got {other:?}"),
+        }
+    }
+
+    /// The δ3 rule is NOT the pin rule and NOT the inversion rule, and it fails closed.
+    #[test]
+    fn the_d3_attribution_rule_scores_two_arms_and_fails_closed() {
+        let cell = |label: &str, role, est: Option<f64>| SegPinCellSummary {
+            label: label.to_owned(),
+            role,
+            estimate: est,
+            process_ratios: vec![est, est, est],
+        };
+        // All seven attribution cells, driven from a base so each is distinct.
+        let arm = |name: &str, base: Option<f64>, ctrl: f64| {
+            let at = |i: usize| base.map(|b| b + i as f64 * 0.01);
+            (
+                name.to_owned(),
+                vec![
+                    cell("d3-attr-d3-k16", SegPinRole::Decision, at(0)),
+                    cell("d3-attr-d3-k24", SegPinRole::Decision, at(1)),
+                    cell("d3-attr-d3-k32", SegPinRole::Decision, at(2)),
+                    cell("d3-attr-d2m-k16", SegPinRole::Decision, at(3)),
+                    cell("d3-attr-d2m-k24", SegPinRole::Decision, at(4)),
+                    cell("d3-attr-d2m-k32", SegPinRole::Decision, at(5)),
+                    cell("r0-drift-k4", SegPinRole::DriftControl, Some(ctrl)),
+                ],
+            )
+        };
+        let rolled = vec![arm("40", Some(1.000), 1.0)];
+        let unrolled = vec![arm("d3unroll", Some(0.900), 1.0002)];
+        match summarize_d3_attribution(&rolled, &unrolled) {
+            SegD3Attribution::Scored { ref cells, drift } => {
+                // SIX scored cells: the drift control is reported separately, never pooled.
+                assert_eq!(cells.len(), 6);
+                for (label, r, u, ratio) in cells {
+                    assert!(u < r, "{label}: the unrolled arm is faster in this fixture");
+                    assert!(
+                        (ratio - u / r).abs() < 1e-12,
+                        "{label}: ratio is unrolled/rolled"
+                    );
+                }
+                assert!((drift.0 - 1.0).abs() < 1e-12 && (drift.1 - 1.0002).abs() < 1e-12);
+            }
+            other => panic!("expected Scored, got {other:?}"),
+        }
+        // An order-invalid cell on EITHER arm makes the attribution Unresolved, and the
+        // Unresolved variant carries no ratios.
+        let mut bad = unrolled.clone();
+        bad[0].1[2].estimate = None;
+        bad[0].1[2].process_ratios = vec![None, Some(0.9), Some(0.9)];
+        match summarize_d3_attribution(&rolled, &bad) {
+            SegD3Attribution::Unresolved {
+                ref reason,
+                ref cells,
+            } => {
+                assert!(reason.contains("d3-attr-d3-k32"), "{reason}");
+                assert_eq!(cells.len(), SEG_D3_ATTRIBUTION_CELLS.len());
+                assert!(cells.iter().any(|(_, _, u)| u.is_none()));
+            }
+            other => panic!("expected Unresolved, got {other:?}"),
+        }
+    }
+
+    /// A SWAPPED or mismatched `BWD_SEG_CONFIRM_DIRS` is refused before the directional
+    /// call, because `summarize_d3_attribution` cannot see the swap itself.
+    #[test]
+    fn the_arm_split_refuses_a_swapped_or_mismatched_spec() {
+        let ok = "40=/a:/b:/c;d3unroll=/d:/e:/f";
+        let (rolled, unrolled) = split_d3_arms(ok, "40");
+        assert_eq!(rolled.len(), 3);
+        assert_eq!(unrolled.len(), 3);
+        assert_eq!(rolled[0], PathBuf::from("/a"));
+        // The winner key must be present: a spec naming a DIFFERENT rolled level is not
+        // the attribution the decision licensed.
+        assert!(std::panic::catch_unwind(|| split_d3_arms(ok, "48")).is_err());
+        // Two unrolled arms, no rolled arm.
+        assert!(
+            std::panic::catch_unwind(|| { split_d3_arms("d3unroll=/a;d3unroll=/b", "40") })
+                .is_err()
+        );
+        // A third arm.
+        assert!(
+            std::panic::catch_unwind(|| { split_d3_arms("40=/a;d3unroll=/b;48=/c", "40") })
+                .is_err()
+        );
+        // The winner cannot BE the unrolled arm.
+        assert!(std::panic::catch_unwind(|| {
+            split_d3_arms("d3unroll=/a;d3unroll=/b", "d3unroll")
+        })
+        .is_err());
+        // A single arm.
+        assert!(std::panic::catch_unwind(|| split_d3_arms("40=/a", "40")).is_err());
+    }
+
+    /// Group ORDER in the spec is irrelevant — the mapping is by key, not by position.
+    #[test]
+    fn the_arm_split_is_order_independent() {
+        let (a, b) = split_d3_arms("40=/a:/b:/c;d3unroll=/d:/e:/f", "40");
+        let (c, d) = split_d3_arms("d3unroll=/d:/e:/f;40=/a:/b:/c", "40");
+        assert_eq!(a, c);
+        assert_eq!(b, d);
+        assert_eq!(a[0], PathBuf::from("/a"));
+        assert_eq!(b[0], PathBuf::from("/d"));
+    }
+
+    /// The bindings must catch a full PAYLOAD SWAP, which exact keys alone cannot: swapping
+    /// the two directory lists leaves both keys valid, both arms share `pin_level` by
+    /// design, and "archives differ" is symmetric.
+    #[test]
+    fn the_arm_bindings_catch_a_payload_swap_and_its_neighbours() {
+        // THREE identities per arm, labelled `<prefix><1..3>` exactly as the launcher
+        // stamps them — the binding checks every run, so a one-run fixture would not even
+        // reach the checks it is meant to exercise.
+        let id = |prefix: &str, run: usize, arch: &str, bin: &str, pin: &str| SegRunMeta {
+            run_id: format!("r000{run}-{arch}"),
+            commit: "c".to_owned(),
+            feature_set: "bench".to_owned(),
+            run_label: format!("{prefix}{run}"),
+            pin_level: pin.to_owned(),
+            archive_sha256: arch.repeat(64),
+            test_binary_sha256: bin.repeat(64),
+            toolkit: "13.3".to_owned(),
+            device: "d".to_owned(),
+            seed: SEG_SCHEDULE_SEED,
+        };
+        let ev =
+            |prefix: &'static str, arch: &'static str, bin: &'static str, pin: &'static str| {
+                SegArmEvidence {
+                    cells: Vec::new(),
+                    identities: (1..=SEG_CONFIRM_PROCESSES)
+                        .map(|run| id(prefix, run, arch, bin, pin))
+                        .collect(),
+                    dirs: Vec::new(),
+                }
+            };
+        let want = |prefix: &'static str, arch: &str, bin: &str| SegExpectedArm {
+            run_label_prefix: prefix,
+            archive_sha256: arch.repeat(64),
+            test_binary_sha256: bin.repeat(64),
+        };
+        let er = want("d3attr-rolled-", "a", "b");
+        let eu = want("d3attr-d3unroll-", "c", "d");
+        let rolled = ev("d3attr-rolled-", "a", "b", "40");
+        let unrolled = ev("d3attr-d3unroll-", "c", "d", "40");
+        // Positive: the correct mapping passes.
+        assert_d3_arm_identities("40", &rolled, &unrolled, &er, &eu);
+        // PAYLOAD SWAP: each arm's dirs carry the OTHER build's identity.
+        assert!(std::panic::catch_unwind(|| {
+            assert_d3_arm_identities("40", &unrolled, &rolled, &er, &eu)
+        })
+        .is_err());
+        // Same archive (the define did not reach nvcc).
+        let same = ev("d3attr-d3unroll-", "a", "d", "40");
+        assert!(std::panic::catch_unwind(|| {
+            assert_d3_arm_identities(
+                "40",
+                &rolled,
+                &same,
+                &er,
+                &want("d3attr-d3unroll-", "a", "d"),
+            )
+        })
+        .is_err());
+        // Same TEST BINARY (one measurement twice) though the archives differ.
+        let samebin = ev("d3attr-d3unroll-", "c", "b", "40");
+        assert!(std::panic::catch_unwind(|| {
+            assert_d3_arm_identities(
+                "40",
+                &rolled,
+                &samebin,
+                &er,
+                &want("d3attr-d3unroll-", "c", "b"),
+            )
+        })
+        .is_err());
+        // Pin MISMATCH between the arms.
+        let otherpin = ev("d3attr-d3unroll-", "c", "d", "48");
+        assert!(std::panic::catch_unwind(|| {
+            assert_d3_arm_identities("40", &rolled, &otherpin, &er, &eu)
+        })
+        .is_err());
+        // The rolled arm's COMPILED pin is not the independently derived winner.
+        assert!(std::panic::catch_unwind(|| {
+            assert_d3_arm_identities("48", &rolled, &unrolled, &er, &eu)
+        })
+        .is_err());
+        // A wholly mislabelled arm (the second, independent binding).
+        let mislabelled = ev("d3attr-d3unroll-", "a", "b", "40");
+        assert!(std::panic::catch_unwind(|| {
+            assert_d3_arm_identities("40", &mislabelled, &unrolled, &er, &eu)
+        })
+        .is_err());
+        // And the counterexample that a REPRESENTATIVE check accepts: run 1 correctly
+        // labelled, runs 2 and 3 carrying the other arm's prefix, everything else right.
+        let mut partial = ev("d3attr-rolled-", "a", "b", "40");
+        for run in 2..=SEG_CONFIRM_PROCESSES {
+            partial.identities[run - 1].run_label = format!("d3attr-d3unroll-{run}");
+        }
+        assert_eq!(
+            partial.constant().run_label,
+            "d3attr-rolled-1",
+            "run 1 looks correct"
+        );
+        assert!(
+            std::panic::catch_unwind(|| {
+                assert_d3_arm_identities("40", &partial, &unrolled, &er, &eu)
+            })
+            .is_err(),
+            "a per-run label defect slipped past the binding"
+        );
+        // A short arm (two runs) is refused: three processes are predeclared.
+        let mut short = ev("d3attr-rolled-", "a", "b", "40");
+        short.identities.pop();
+        assert!(std::panic::catch_unwind(|| {
+            assert_d3_arm_identities("40", &short, &unrolled, &er, &eu)
+        })
+        .is_err());
+    }
+
+    /// **`aggregate_arm` is DRIVEN, not merely defined.** None of the identity fixtures
+    /// calls it (they synthesise `SegArmEvidence`), so without this the "executable
+    /// integration" would rest on a function no test ever ran — and its first real call in
+    /// Task 10 would be its first execution ever.
+    #[test]
+    #[serial_test::serial]
+    fn aggregate_arm_returns_identity_and_per_cell_summaries() {
+        let root = std::env::temp_dir().join(format!("seg_arm_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        // Three synthetic run dirs, each a real raw TSV written by the real writer, so the
+        // fixture exercises the actual round trip rather than a hand-rolled file.
+        let cells = &SEG_D3_ATTRIBUTION_CELLS;
+        let mut dirs = Vec::new();
+        // Labels are `-1/-2/-3`, exactly as `for RUN in 1 2 3` stamps them in Task 10 — the
+        // per-run binding compares against `<prefix><index+1>`, so a 0-based fixture would
+        // pass a test the production labels fail.
+        for run in 1..=SEG_CONFIRM_PROCESSES {
+            let dir = root.join(format!("r{run}"));
+            std::fs::create_dir_all(&dir).expect("run dir");
+            let meta = SegRunMeta {
+                run_id: format!("r000{run}-aaaaaaaaaaaa"), // DISTINCT per run
+                commit: "c".to_owned(),
+                feature_set: "bench".to_owned(),
+                run_label: format!("d3attr-rolled-{run}"),
+                pin_level: "40".to_owned(),
+                archive_sha256: "a".repeat(64),
+                test_binary_sha256: "b".repeat(64),
+                toolkit: "13.3".to_owned(),
+                device: "d".to_owned(),
+                seed: SEG_SCHEDULE_SEED,
+            };
+            // Cell 0 is order-INDEPENDENT (its gate passes); cell 1 is order-COUPLED in the
+            // third run only, so the aggregate must report `None` for it and `Some` for the
+            // other SIX (seven cells minus the one invalid).
+            for (index, cell) in cells.iter().enumerate() {
+                let coupled = index == 1 && run == SEG_CONFIRM_PROCESSES;
+                let samples =
+                    blocked_fixture(SEG_SCHEDULE_SEED, move |arm, orientation, _, _| match arm {
+                        SegArm::A => {
+                            if coupled && orientation == SegBlockOrientation::Baab {
+                                104.0
+                            } else {
+                                90.0
+                            }
+                        }
+                        SegArm::B => 100.0,
+                    });
+                // SAFETY-of-contract: `record_raw_samples` reads the reserved directory from
+                // the environment, exactly as a campaign process does.
+                std::env::set_var("BWD_SEG_RUN_DIR", &dir);
+                record_raw_samples(&meta, cell.label, &samples);
+            }
+            dirs.push(dir);
+        }
+        std::env::remove_var("BWD_SEG_RUN_DIR");
+        let arm = aggregate_arm(&dirs, cells);
+        // The identity is RETURNED, validated across the three runs.
+        assert_eq!(arm.constant().archive_sha256, "a".repeat(64));
+        assert_eq!(arm.constant().test_binary_sha256, "b".repeat(64));
+        assert_eq!(arm.constant().pin_level, "40");
+        // ALL identities are preserved, with their per-run labels intact.
+        assert_eq!(arm.identities.len(), SEG_CONFIRM_PROCESSES);
+        for (index, id) in arm.identities.iter().enumerate() {
+            assert_eq!(id.run_label, format!("d3attr-rolled-{}", index + 1));
+        }
+        assert_eq!(arm.dirs.len(), SEG_CONFIRM_PROCESSES);
+        // One summary per predeclared cell, in order, with roles carried.
+        assert_eq!(arm.cells.len(), cells.len());
+        for (got, want) in arm.cells.iter().zip(cells.iter()) {
+            assert_eq!(got.label, want.label);
+            assert_eq!(got.role, want.role);
+            assert_eq!(got.process_ratios.len(), SEG_CONFIRM_PROCESSES);
+        }
+        // Cell 0: every process usable, so the estimate is the median of three 0.9s.
+        assert!((arm.cells[0].estimate.expect("usable") - 0.9).abs() < 1e-9);
+        // Cell 1: the third process is order-coupled, so the CELL has no estimate — and the
+        // per-process vector shows exactly which one failed. The other SIX are usable.
+        assert!(
+            arm.cells[1].estimate.is_none(),
+            "one bad process voids the cell"
+        );
+        assert_eq!(
+            arm.cells.iter().filter(|c| c.estimate.is_some()).count(),
+            SEG_D3_ATTRIBUTION_CELLS.len() - 1
+        );
+        assert_eq!(
+            arm.cells[1]
+                .process_ratios
+                .iter()
+                .filter(|r| r.is_none())
+                .count(),
+            1
+        );
+        // And `summarize_d3_attribution` consumes this shape directly.
+        let other = aggregate_arm(&dirs, cells);
+        assert!(matches!(
+            summarize_d3_attribution(
+                &[("40".to_owned(), arm.cells.clone())],
+                &[("d3unroll".to_owned(), other.cells)],
+            ),
+            SegD3Attribution::Unresolved { .. }
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// **The D3-SPECIFIC negatives.** The generic reader/provenance defects are Task 2's
+    /// (`the_shared_reader_rejects_every_generic_identity_defect`, which drives `read_run`
+    /// and `shared_identity` directly); what is left here is what only the D3 layer can get
+    /// wrong: cell-set membership against `SEG_D3_ATTRIBUTION_CELLS`, and a per-run label
+    /// defect that `shared_identity` correctly ignores and only the arm binding can catch.
+    #[test]
+    #[serial_test::serial]
+    fn the_d3_layer_rejects_membership_and_per_run_label_defects() {
+        let cells = &SEG_D3_ATTRIBUTION_CELLS;
+        let base = |run: usize| SegRunMeta {
+            run_id: format!("r010{run}-aaaaaaaaaaaa"),
+            commit: "c".to_owned(),
+            feature_set: "bench".to_owned(),
+            run_label: format!("d3attr-rolled-{run}"),
+            pin_level: "40".to_owned(),
+            archive_sha256: "a".repeat(64),
+            test_binary_sha256: "b".repeat(64),
+            toolkit: "13.3".to_owned(),
+            device: "d".to_owned(),
+            seed: SEG_SCHEDULE_SEED,
+        };
+        // Write three runs, with `mutate` allowed to damage run 3's metadata and `skip` /
+        // `extra` to damage its cell membership. Returns the three dirs.
+        let build = |tag: &str,
+                     mutate: &dyn Fn(&mut SegRunMeta),
+                     skip: Option<&str>,
+                     extra: Option<&str>| {
+            let root = std::env::temp_dir().join(format!("seg_raw_{tag}_{}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&root);
+            let mut dirs = Vec::new();
+            for run in 1..=SEG_CONFIRM_PROCESSES {
+                let dir = root.join(format!("r{run}"));
+                std::fs::create_dir_all(&dir).expect("run dir");
+                let mut meta = base(run);
+                if run == SEG_CONFIRM_PROCESSES {
+                    mutate(&mut meta);
+                }
+                std::env::set_var("BWD_SEG_RUN_DIR", &dir);
+                for cell in cells.iter() {
+                    if run == SEG_CONFIRM_PROCESSES && skip == Some(cell.label) {
+                        continue;
+                    }
+                    record_raw_samples(
+                        &meta,
+                        cell.label,
+                        &blocked_fixture(SEG_SCHEDULE_SEED, flat_cost(90.0, 100.0)),
+                    );
+                }
+                if run == SEG_CONFIRM_PROCESSES {
+                    if let Some(label) = extra {
+                        record_raw_samples(
+                            &meta,
+                            label,
+                            &blocked_fixture(SEG_SCHEDULE_SEED, flat_cost(90.0, 100.0)),
+                        );
+                    }
+                }
+                dirs.push(dir);
+            }
+            std::env::remove_var("BWD_SEG_RUN_DIR");
+            (root, dirs)
+        };
+        let nop: &dyn Fn(&mut SegRunMeta) = &|_| {};
+        // POSITIVE control: the clean set aggregates.
+        let (root, dirs) = build("ok", nop, None, None);
+        assert_eq!(
+            aggregate_arm(&dirs, cells).identities.len(),
+            SEG_CONFIRM_PROCESSES
+        );
+        let _ = std::fs::remove_dir_all(&root);
+        // Only the MEMBERSHIP defects here; the identity defects are Task 2's, on the
+        // generic helpers, where they belong.
+        let cases: Vec<(
+            &str,
+            Box<dyn Fn(&mut SegRunMeta)>,
+            Option<&str>,
+            Option<&str>,
+        )> = vec![
+            (
+                "missing",
+                Box::new(|_: &mut SegRunMeta| {}),
+                Some("d3-attr-d3-k24"),
+                None,
+            ),
+            (
+                "extra",
+                Box::new(|_: &mut SegRunMeta| {}),
+                None,
+                Some("not-a-decision-cell"),
+            ),
+        ];
+        for (tag, mutate, skip, extra) in cases {
+            let (root, dirs) = build(tag, mutate.as_ref(), skip, extra);
+            let attempt = std::panic::catch_unwind(|| aggregate_arm(&dirs, cells));
+            assert!(attempt.is_err(), "the raw path accepted defect {tag:?}");
+            let _ = std::fs::remove_dir_all(&root);
+        }
+        // A MISLABELLED later run passes `shared_identity` (labels differ by design) and is
+        // caught only by the arm binding — which is why that binding checks every run.
+        let (root, dirs) = build(
+            "mislabel",
+            &|m: &mut SegRunMeta| m.run_label = "d3attr-d3unroll-3".to_owned(),
+            None,
+            None,
+        );
+        let arm = aggregate_arm(&dirs, cells); // aggregation itself is fine
+        let want = SegExpectedArm {
+            run_label_prefix: "d3attr-rolled-",
+            archive_sha256: "a".repeat(64),
+            test_binary_sha256: "b".repeat(64),
+        };
+        let other = SegExpectedArm {
+            run_label_prefix: "d3attr-d3unroll-",
+            archive_sha256: "c".repeat(64),
+            test_binary_sha256: "e".repeat(64),
+        };
+        let fake_unrolled = SegArmEvidence {
+            cells: arm.cells.clone(),
+            identities: (1..=SEG_CONFIRM_PROCESSES)
+                .map(|run| {
+                    let mut m = base(run);
+                    m.run_label = format!("d3attr-d3unroll-{run}");
+                    m.archive_sha256 = "c".repeat(64);
+                    m.test_binary_sha256 = "e".repeat(64);
+                    m
+                })
+                .collect(),
+            dirs: arm.dirs.clone(),
+        };
+        assert!(
+            std::panic::catch_unwind(|| {
+                assert_d3_arm_identities("40", &arm, &fake_unrolled, &want, &other)
+            })
+            .is_err(),
+            "a mislabelled later run slipped past the arm binding"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// An order-invalid row has no selectable ratio, so nothing can select on it.
+    /// `SegRatio::of` takes the SAMPLES (it must, to compute both the estimate and the
+    /// conditional medians), so this drives it through two fixtures: one order-coupled,
+    /// one not. The coupled one would otherwise WIN — it is the fastest ratio here.
+    #[test]
+    fn an_order_invalid_row_is_structurally_unselectable() {
+        // 4% slower whenever the candidate does not lead: a large, real order contrast.
+        let coupled = blocked_fixture(SEG_SCHEDULE_SEED, |arm, orientation, _, _| match arm {
+            SegArm::A => {
+                if orientation == SegBlockOrientation::Baab {
+                    52.0
+                } else {
+                    50.0
+                }
+            }
+            SegArm::B => 100.0,
+        });
+        let clean = blocked_fixture(SEG_SCHEDULE_SEED, flat_cost(90.0, 100.0));
+        let bad = SegRatio::of(&coupled);
+        let good = SegRatio::of(&clean);
+        assert!(matches!(bad, SegRatio::OrderInvalid { .. }));
+        assert!(matches!(good, SegRatio::Valid { .. }));
+        // The coupled cell has the better raw ratio (~0.51 vs 0.90) and STILL cannot be
+        // selected — that is the point of putting the gate in the type.
+        assert!(
+            bad.selectable().is_none(),
+            "an order-coupled cell is not selectable"
+        );
+        assert!(
+            bad.reported_estimate().is_none(),
+            "and carries no pooled estimate"
+        );
+        assert!(bad.order().is_some(), "but its order contrast is published");
+        assert!(
+            bad.conditional_medians().is_some(),
+            "and its conditional medians are"
+        );
+        assert_eq!(bad.verdict(), "ORDER-COUPLED");
+        assert!(good.selectable().is_some());
+        assert!(
+            good.conditional_medians().is_some(),
+            "valid cells carry them too"
+        );
     }
 }
