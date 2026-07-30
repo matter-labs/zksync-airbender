@@ -24,7 +24,27 @@ use verifier_common::cs::definitions::split_timestamp;
 /// `MAX_TOP_BIT`-bounded, strictly-increasing `top_bits` sequence forces the i/t-carrying
 /// instances onto disjoint memory super-blocks. A prover therefore cannot make two
 /// instances cover the same range while reporting distinct `top_bits`.
+///
+/// # Safety
+///
+/// The `MaybeUninit::uninit().assume_init()` scratch buffers below are all plain `[u32; _]`
+/// arrays that the body fully writes before reading (see `#[allow(invalid_value)]`), and the
+/// `transmute` of `registers_buffer` relies on `[u32; 96]` and `[(u32, (u32, u32)); 32]`
+/// having identical layout. Callers must additionally supply verifier closures that match the
+/// circuits whose setup caps they pass, otherwise the accepted statement is meaningless.
 #[allow(invalid_value)]
+#[expect(
+    clippy::uninit_assumed_init,
+    reason = "transpiler-bound hot path; deliberate no-zero-init scratch buffers (a full-buffer memset is a measurable in-VM cycle cost) that are fully written before any read"
+)]
+#[expect(
+    clippy::manual_memcpy,
+    reason = "transpiler-bound hot path; iterator rewrite violates the cost model"
+)]
+#[expect(
+    clippy::needless_range_loop,
+    reason = "transpiler-bound hot path; iterator rewrite violates the cost model"
+)]
 #[inline(never)]
 pub unsafe fn verify_full_statement_for_unified_circuit<
     I: NonDeterminismSource<BabyBearField>,
@@ -247,7 +267,7 @@ where
     // conclude that our memory argument is valid
     let (machine_state_read_set_contribution, machine_state_write_set_contribution) =
         prover::definitions::produce_initial_permutation_product_separate_contributions(
-            core::mem::transmute::<_, &[(u32, (u32, u32)); 32]>(&registers_buffer),
+            core::mem::transmute::<&[u32; 96], &[(u32, (u32, u32)); 32]>(&registers_buffer),
             INITIAL_PC,
             split_timestamp(INITIAL_TIMESTAMP),
             final_pc,

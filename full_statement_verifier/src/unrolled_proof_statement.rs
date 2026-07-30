@@ -12,7 +12,32 @@ use crate::unrolled_circuit_params::*;
 /// If we recurse over user's program -> we must provide expected final PC,
 /// and setup caps (that encode the program itself!),
 /// otherwise we only need to provide final PC
+///
+/// # Safety
+///
+/// The `MaybeUninit::uninit().assume_init()` scratch buffers below are all plain `[u32; _]`
+/// arrays that the body fully writes before reading (see `#[allow(invalid_value)]`), and the
+/// `transmute` of `registers_buffer` relies on `[u32; 96]` and
+/// `[(u32, (u32, u32)); NUM_REGISTERS]` having identical layout. Callers must additionally
+/// supply verifier function pointers that match the setup caps they pass, otherwise the
+/// accepted statement is meaningless.
 #[allow(invalid_value)]
+#[expect(
+    clippy::uninit_assumed_init,
+    reason = "transpiler-bound hot path; deliberate no-zero-init scratch buffers (a full-buffer memset is a measurable in-VM cycle cost) that are fully written before any read"
+)]
+#[expect(
+    clippy::manual_memcpy,
+    reason = "transpiler-bound hot path; iterator rewrite violates the cost model"
+)]
+#[expect(
+    clippy::needless_range_loop,
+    reason = "transpiler-bound hot path; iterator rewrite violates the cost model"
+)]
+#[expect(
+    clippy::type_complexity,
+    reason = "verifier fn-pointer arrays are the stable ABI between the generated per-circuit verifiers and this statement; aliasing them would hide the shape callers must match"
+)]
 #[inline(never)]
 pub unsafe fn verify_full_statement_for_unrolled_circuits<
     I: NonDeterminismSource<BabyBearField>,
@@ -226,7 +251,9 @@ pub unsafe fn verify_full_statement_for_unrolled_circuits<
     // conclude that our memory argument is valid
     let (machine_state_read_set_contribution, machine_state_write_set_contribution) =
         prover::definitions::produce_initial_permutation_product_separate_contributions(
-            core::mem::transmute::<_, &[(u32, (u32, u32)); NUM_REGISTERS]>(&registers_buffer),
+            core::mem::transmute::<&[u32; 96], &[(u32, (u32, u32)); NUM_REGISTERS]>(
+                &registers_buffer,
+            ),
             INITIAL_PC,
             split_timestamp(INITIAL_TIMESTAMP),
             final_pc,

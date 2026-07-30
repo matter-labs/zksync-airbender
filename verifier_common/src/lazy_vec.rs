@@ -56,30 +56,50 @@ impl<V: Copy, const N: usize> LazyVec<V, N> {
         self.len == 0
     }
 
+    /// # Safety
+    ///
+    /// `idx` must be `< N` and slot `idx` must have been initialized (by `push` or
+    /// `set_unchecked`) before this call.
     #[inline(always)]
     pub unsafe fn get_unchecked(&self, idx: usize) -> &V {
         debug_assert!(idx < N);
         self.data.get_unchecked(idx).assume_init_ref()
     }
 
+    /// # Safety
+    ///
+    /// `idx` must be `< N` and slot `idx` must have been initialized (by `push` or
+    /// `set_unchecked`) before this call.
     #[inline(always)]
     pub unsafe fn get_unchecked_mut(&mut self, idx: usize) -> &mut V {
         debug_assert!(idx < N);
         self.data.get_unchecked_mut(idx).assume_init_mut()
     }
 
+    /// # Safety
+    ///
+    /// `idx` must be `< N`. Note this writes the slot without touching `len`, so the
+    /// caller is responsible for keeping `len` consistent (see [`Self::set_len`]).
     #[inline(always)]
     pub unsafe fn set_unchecked(&mut self, idx: usize, val: V) {
         debug_assert!(idx < N);
         self.data.get_unchecked_mut(idx).write(val);
     }
 
+    /// # Safety
+    ///
+    /// `new_len` must be `<= N`, and every slot in `0..new_len` must already have been
+    /// initialized — the `len`-bounded accessors (`get`, `as_slice`, `as_mut_slice`)
+    /// assume initialization up to `len`.
     #[inline(always)]
     pub unsafe fn set_len(&mut self, new_len: usize) {
         debug_assert!(new_len <= N);
         self.len = new_len;
     }
 
+    /// # Safety
+    ///
+    /// All `N` slots must have been initialized (i.e. `len == N`).
     #[inline(always)]
     pub unsafe fn into_array(self) -> [V; N] {
         debug_assert!(self.len == N);
@@ -88,7 +108,10 @@ impl<V: Copy, const N: usize> LazyVec<V, N> {
     }
 
     /// Returns a reference to the first M elements as a fixed-size array.
-    /// The caller must ensure at least M elements have been written.
+    ///
+    /// # Safety
+    ///
+    /// `M` must be `<= N` and at least `M` elements must have been written.
     #[inline(always)]
     pub unsafe fn as_array<const M: usize>(&self) -> &[V; M] {
         debug_assert!(M <= N);
@@ -97,11 +120,21 @@ impl<V: Copy, const N: usize> LazyVec<V, N> {
     }
 
     /// Returns a mutable reference to the first M elements as a fixed-size array.
-    /// The caller must ensure at least M elements have been written.
+    ///
+    /// # Safety
+    ///
+    /// `M` must be `<= N` and at least `M` elements must have been written.
     #[inline(always)]
     pub unsafe fn as_array_mut<const M: usize>(&mut self) -> &mut [V; M] {
         debug_assert!(M <= N);
         debug_assert!(self.len >= M);
         &mut *self.data.as_mut_ptr().cast::<[V; M]>()
+    }
+}
+
+impl<V: Copy, const N: usize> Default for LazyVec<V, N> {
+    #[inline(always)]
+    fn default() -> Self {
+        Self::new()
     }
 }

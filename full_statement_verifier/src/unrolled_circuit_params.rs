@@ -7,6 +7,10 @@ use verifier_common::errors::ErrorCreator;
 use verifier_common::field::baby_bear::base::BabyBearField;
 use verifier_common::field::baby_bear::ext4::BabyBearExt4;
 
+#[expect(
+    clippy::type_complexity,
+    reason = "verifier fn-pointer table is the stable ABI between the generated per-circuit verifiers and the statement verifiers; a type alias would hide the shape callers must match"
+)]
 pub fn unrolled_circuit_verifiers_for_base_layer_sec_80<
     I: NonDeterminismSource<BabyBearField>,
     E: ErrorCreator,
@@ -45,6 +49,10 @@ pub fn unrolled_circuit_verifiers_for_base_layer_sec_80<
     ]
 }
 
+#[expect(
+    clippy::type_complexity,
+    reason = "verifier fn-pointer table is the stable ABI between the generated per-circuit verifiers and the statement verifiers; a type alias would hide the shape callers must match"
+)]
 pub fn unrolled_circuit_verifiers_for_base_layer_sec_100<
     I: NonDeterminismSource<BabyBearField>,
     E: ErrorCreator,
@@ -83,6 +91,10 @@ pub fn unrolled_circuit_verifiers_for_base_layer_sec_100<
     ]
 }
 
+#[expect(
+    clippy::type_complexity,
+    reason = "verifier fn-pointer table is the stable ABI between the generated per-circuit verifiers and the statement verifiers; a type alias would hide the shape callers must match"
+)]
 pub fn unrolled_circuit_verifiers_for_recursion_layer_sec_80<
     I: NonDeterminismSource<BabyBearField>,
     E: ErrorCreator,
@@ -113,6 +125,10 @@ pub fn unrolled_circuit_verifiers_for_recursion_layer_sec_80<
     ]
 }
 
+#[expect(
+    clippy::type_complexity,
+    reason = "verifier fn-pointer table is the stable ABI between the generated per-circuit verifiers and the statement verifiers; a type alias would hide the shape callers must match"
+)]
 pub fn unrolled_circuit_verifiers_for_recursion_layer_sec_100<
     I: NonDeterminismSource<BabyBearField>,
     E: ErrorCreator,
@@ -143,6 +159,10 @@ pub fn unrolled_circuit_verifiers_for_recursion_layer_sec_100<
     ]
 }
 
+#[expect(
+    clippy::type_complexity,
+    reason = "verifier fn-pointer type is the stable ABI between the generated per-circuit verifiers and the statement verifiers; a type alias would hide the shape callers must match"
+)]
 pub fn inits_and_teardowns_verifier_sec_80<
     I: NonDeterminismSource<BabyBearField>,
     E: ErrorCreator,
@@ -153,6 +173,10 @@ pub fn inits_and_teardowns_verifier_sec_80<
     crate::imports::inits_and_teardowns_sec_80::verify::<I, E>
 }
 
+#[expect(
+    clippy::type_complexity,
+    reason = "verifier fn-pointer type is the stable ABI between the generated per-circuit verifiers and the statement verifiers; a type alias would hide the shape callers must match"
+)]
 pub fn inits_and_teardowns_verifier_sec_100<
     I: NonDeterminismSource<BabyBearField>,
     E: ErrorCreator,

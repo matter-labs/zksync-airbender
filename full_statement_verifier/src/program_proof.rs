@@ -15,7 +15,6 @@ use verifier_common::cs::definitions::TimestampScalar;
 use verifier_common::cs::gkr_compiler::GKRCircuitArtifact;
 use verifier_common::cs::utils::split_timestamp;
 use verifier_common::field::baby_bear::{base::BabyBearField, ext4::BabyBearExt4};
-use verifier_common::field::PrimeField;
 use verifier_common::prover::definitions::FinalRegisterValue;
 use verifier_common::prover::{gkr::prover::GKRProof, merkle_trees::DefaultTreeConstructor};
 
@@ -115,14 +114,13 @@ impl ProgramProof {
         }
 
         // then we need external challenges
-        let mut ext_challenges = None;
-        'outer: for (_, proofs) in self.riscv_proofs.iter() {
-            for proof in proofs.iter() {
-                ext_challenges = Some(proof.external_challenges);
-                break 'outer;
-            }
-        }
-        let ext_challenges = ext_challenges.expect("external challenges from one of the proofs");
+        let ext_challenges = self
+            .riscv_proofs
+            .values()
+            .flatten()
+            .next()
+            .expect("external challenges from one of the proofs")
+            .external_challenges;
         ext_challenges.flatten_into_buffer(&mut responses);
 
         const RISC_V_CIRCUIT_TYPES: &[u8] = &[
@@ -157,7 +155,7 @@ impl ProgramProof {
             }
         }
 
-        if self.inits_and_teardown_proofs.len() > 0 {
+        if !self.inits_and_teardown_proofs.is_empty() {
             responses.push(1u32);
             let compiled_circuit = &self
                 .inits_and_teardowns_circuit
@@ -182,7 +180,7 @@ impl ProgramProof {
 
         // delegation proofs - we always flatten ALL of them
         for k in DELEGATION_TYPES.iter() {
-            if let Some(proofs) = self.delegation_proofs.get(&k) {
+            if let Some(proofs) = self.delegation_proofs.get(k) {
                 responses.push(proofs.len() as u32);
                 let compiled_circuit = &self.compiled_delegation_circuits[k];
                 for proof in proofs.iter() {
@@ -276,7 +274,7 @@ impl ProgramProof {
         // proofs that don't carry all delegation circuits.
         for k in DELEGATION_TYPES.iter() {
             if let Some(compiled_circuit) = self.compiled_delegation_circuits.get(k) {
-                if let Some(proofs) = self.delegation_proofs.get(&k) {
+                if let Some(proofs) = self.delegation_proofs.get(k) {
                     responses.push(proofs.len() as u32);
                     for proof in proofs.iter() {
                         responses.extend(

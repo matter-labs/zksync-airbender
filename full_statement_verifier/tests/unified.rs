@@ -223,10 +223,15 @@ fn load_binary_section(path: &str) -> Vec<u32> {
     let bytes = std::fs::read(path).unwrap_or_else(|_| {
         panic!("Missing {path} — run `cd tools/gkr_verifier && ./dump_bin.sh` (or gkr_test.sh `binaries`)")
     });
-    assert!(bytes.len() % 4 == 0, "binary section not word-aligned");
+    assert!(
+        bytes.len().is_multiple_of(4),
+        "binary section not word-aligned"
+    );
     bytes
-        .chunks_exact(4)
-        .map(|c| u32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .map(|c| u32::from_le_bytes(*c))
         .collect()
 }
 
