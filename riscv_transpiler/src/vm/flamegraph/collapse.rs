@@ -69,14 +69,9 @@ fn try_frames_for_pc<'a>(
         return None;
     }
 
-    if !symbol_cache.contains_key(&pc) {
-        let frames = symbolizer.collect_frames(pc);
-        symbol_cache.insert(pc, frames);
-    }
-
     let names = symbol_cache
-        .get(&pc)
-        .expect("symbol cache must contain a value");
+        .entry(pc)
+        .or_insert_with(|| symbolizer.collect_frames(pc));
     if names.is_empty() {
         None
     } else {

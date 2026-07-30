@@ -58,7 +58,6 @@ impl<F: PrimeField> circuit_common::RiscVCycleCircuit<F, true> for LoadStoreWord
 #[allow(clippy::let_unit_value)]
 mod sealed {
     use super::*;
-    use crate::cs::oracle::Placeholder;
     use prover::cs::witness_placer::*;
     use prover::gkr::witness_gen::witness_proxy::*;
 

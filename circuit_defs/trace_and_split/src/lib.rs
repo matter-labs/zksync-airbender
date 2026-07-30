@@ -28,6 +28,11 @@ use worker::Worker;
 
 pub const ENTRY_POINT: u32 = INITIAL_PC;
 
+/// Memory init/teardown columns, one `(init, teardown)` tuple per
+/// init-and-teardown set. Each side holds the two column halves that the
+/// memory argument consumes.
+pub type InitAndTeardownSets<F, A> = Vec<([Vec<F, A>; 2], [Vec<F, A>; 2])>;
+
 pub use prover;
 pub use setups;
 
@@ -62,10 +67,10 @@ where
     };
 
     let memory_trace = evaluate_gkr_memory_witness_for_executor_family::<F, _, A, B>(
-        &circuit,
+        circuit,
         trace_len,
         &oracle,
-        &worker,
+        worker,
         None,
         A::default(),
         B::default(),
@@ -128,10 +133,10 @@ where
     };
 
     let memory_trace = evaluate_gkr_memory_witness_for_executor_family::<F, _, A, B>(
-        &circuit,
+        circuit,
         trace_len,
         &oracle,
-        &worker,
+        worker,
         None,
         A::default(),
         B::default(),
@@ -172,7 +177,7 @@ pub fn commit_memory_tree_for_inits_and_teardowns<
     B: GoodAllocator,
 >(
     circuit: &GKRCircuitArtifact<F>,
-    inits_and_teardowns: Vec<([Vec<F>; 2], [Vec<F>; 2])>,
+    inits_and_teardowns: InitAndTeardownSets<F, Global>,
     twiddles: &Twiddles<F, Global>,
     prover_config: &ProverConfig,
     worker: &Worker,
@@ -195,7 +200,7 @@ where
     let now = std::time::Instant::now();
 
     let witness_inner =
-        evaluate_init_and_teardown_memory_witness(inits_and_teardowns, &circuit, Global, Global);
+        evaluate_init_and_teardown_memory_witness(inits_and_teardowns, circuit, Global, Global);
 
     let mem_inputs: Vec<_> = witness_inner.iter().map(|el| &el[..]).collect();
     let mem = commit_trace_part::<F, T>(
@@ -313,6 +318,11 @@ where
 /// [`UnifiedRiscvCircuitOracle`]) and the i/t columns into a single memory
 /// commitment. Mirrors [`commit_memory_tree_for_unrolled_nonmem_circuits`] but
 /// with the unified oracle and `Some(inits_and_teardowns)`.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "mirrors commit_memory_tree_for_unrolled_nonmem_circuits' parameter list; \
+              the arguments are independent prover inputs with no natural grouping"
+)]
 pub fn commit_memory_tree_for_unified_circuits<
     F: PrimeField + TwoAdicField,
     T: ColumnMajorMerkleTreeConstructor<F>,
@@ -321,8 +331,10 @@ pub fn commit_memory_tree_for_unified_circuits<
 >(
     circuit: &GKRCircuitArtifact<F>,
     witness_chunk: &[riscv_transpiler::witness::data_structs::UnifiedOpcodeTracingDataWithTimestamp],
-    inits_and_teardowns: Vec<([Vec<F, A>; 2], [Vec<F, A>; 2])>,
-    text_section: &[u32],
+    inits_and_teardowns: InitAndTeardownSets<F, A>,
+    // Retained for signature parity with the unrolled variant; the unified
+    // circuit derives its text-section columns from `circuit` instead.
+    _text_section: &[u32],
     twiddles: &Twiddles<F, Global>,
     prover_config: &ProverConfig,
     decoder_data: &[Option<ExecutorFamilyDecoderData>],
@@ -344,10 +356,10 @@ where
     };
 
     let memory_trace = evaluate_gkr_memory_witness_for_executor_family::<F, _, A, B>(
-        &circuit,
+        circuit,
         trace_len,
         &oracle,
-        &worker,
+        worker,
         Some(inits_and_teardowns),
         A::default(),
         B::default(),
@@ -420,7 +432,7 @@ where
         circuit,
         trace_len,
         &oracle,
-        &worker,
+        worker,
         A::default(),
         B::default(),
     );
@@ -500,7 +512,7 @@ pub fn fs_transform_unrolled_for_permutation_argument<const REDUCED_ROUNDS: bool
     // then we commit all main RISC-V circuits
     assert!(circuit_families_memory_caps.is_sorted_by(|a, b| a.0 < b.0));
     for (family, caps) in circuit_families_memory_caps.iter() {
-        if caps.len() > 0 {
+        if !caps.is_empty() {
             let mut buffer = [0u32; BLAKE2S_BLOCK_SIZE_U32_WORDS];
             buffer[0] = *family;
             memory_trace_transcript.absorb(&buffer);
@@ -513,7 +525,7 @@ pub fn fs_transform_unrolled_for_permutation_argument<const REDUCED_ROUNDS: bool
 
     // inits and teardowns
     {
-        if inits_and_teardowns_memory_caps.len() > 0 {
+        if !inits_and_teardowns_memory_caps.is_empty() {
             let mut buffer = [0u32; BLAKE2S_BLOCK_SIZE_U32_WORDS];
             buffer[0] =
                 common_constants::circuit_families::INITS_AND_TEARDOWNS_FORMAL_CIRCUIT_FAMILY_IDX
@@ -537,7 +549,7 @@ pub fn fs_transform_unrolled_for_permutation_argument<const REDUCED_ROUNDS: bool
 
     assert!(delegation_circuits_memory_caps.is_sorted_by(|a, b| a.0 < b.0));
     for (delegation_type, caps) in delegation_circuits_memory_caps.iter() {
-        if caps.len() > 0 {
+        if !caps.is_empty() {
             let mut buffer = [0u32; BLAKE2S_BLOCK_SIZE_U32_WORDS];
             buffer[0] = *delegation_type;
             memory_trace_transcript.absorb(&buffer);
@@ -553,9 +565,7 @@ pub fn fs_transform_unrolled_for_permutation_argument<const REDUCED_ROUNDS: bool
         );
     }
 
-    let memory_challenges_seed = memory_trace_transcript.finalize();
-
-    memory_challenges_seed
+    memory_trace_transcript.finalize()
 }
 
 /// We need to draw a common challenge based on all the values that will contribute to the memory permutation grand product, and
@@ -614,7 +624,7 @@ pub fn fs_transform_unified_for_permutation_argument<const REDUCED_ROUNDS: bool>
 
     assert!(delegation_circuits_memory_caps.is_sorted_by(|a, b| a.0 < b.0));
     for (delegation_type, caps) in delegation_circuits_memory_caps.iter() {
-        if caps.len() > 0 {
+        if !caps.is_empty() {
             let mut buffer = [0u32; BLAKE2S_BLOCK_SIZE_U32_WORDS];
             buffer[0] = *delegation_type;
             memory_trace_transcript.absorb(&buffer);
@@ -630,7 +640,5 @@ pub fn fs_transform_unified_for_permutation_argument<const REDUCED_ROUNDS: bool>
         );
     }
 
-    let memory_challenges_seed = memory_trace_transcript.finalize();
-
-    memory_challenges_seed
+    memory_trace_transcript.finalize()
 }

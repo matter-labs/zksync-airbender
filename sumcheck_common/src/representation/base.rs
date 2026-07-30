@@ -28,7 +28,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> EvaluationRepresentaionBase<F,
     #[inline(always)]
     fn mul_by_base(self, other: &F) -> Self {
         let mut t = self.0;
-        t.sub_assign(&other);
+        t.sub_assign(other);
         Self(t)
     }
     #[inline(always)]
@@ -76,7 +76,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> EvaluationRepresentaionExt<F, 
     #[inline(always)]
     fn mul_by_base(self, other: &F) -> Self {
         let mut t = self.0;
-        t.mul_assign(&other);
+        t.mul_assign(other);
         Self(t)
     }
     #[inline(always)]
