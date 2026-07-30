@@ -7051,9 +7051,30 @@ fn bwd_seg_corpus_sweep() {
 /// Rows every census cell is lowered at.
 ///
 /// The census's two DISTRIBUTIONS (`num_foldable`, `n_coefficients`) are row-INDEPENDENT
-/// lowering properties, and the two floor columns scale linearly in rows, so lowering at
-/// the parity twin's row count keeps the walk cheap while the footprint bound below is
-/// stated at the corpus's own median FITTED row count instead.
+/// lowering properties, so lowering at the parity twin's row count keeps the walk cheap
+/// while the footprint bound below is stated at the corpus's own median FITTED row count
+/// instead.
+///
+/// **THE TWO FLOOR COLUMNS DO NOT RESCALE THE SAME WAY, and a naive rescale of the read
+/// column is badly wrong.** The WRITE floor is row-LINEAR: it is
+/// `(num_foldable * 2 + 2) * rows * 16` and nothing else. The READ floor is AFFINE — a
+/// row-linear source part plus terms that do NOT move with rows:
+///
+///   * the eq slab `min(rows, 1 << eq_sizes.low) * 16`, which SATURATES at
+///     `(1 << low) * 16` once `rows >= 1 << low` and is then a constant; and
+///   * under `CoeffMode::DevPtr` / `ProgramMode::DevPtr`, the coefficient and program
+///     payloads (`n_coefficients * 16` and `program_words * 2`), which are properties of
+///     the program, not of the row count. (The census emits `const`/`inline` only, so its
+///     own rows carry neither — but a rescaler reading this convention elsewhere must.)
+///
+/// Multiplying a census read floor by `N / SEG_CENSUS_ROWS` therefore multiplies the
+/// saturated slab too, and the error is the whole slab scaled: `slab * (N/rows − 1)`. Its
+/// SIZE relative to the floor is what varies — the thinner a coordinate's row-linear part,
+/// or the smaller the row basis, the worse it gets, without bound. **Correct rescaling
+/// subtracts the row-independent terms, scales only the row-linear remainder, and adds them
+/// back**; the emitted census line names the slab's size, so the subtraction is available to
+/// a reader, and reports the worst overstatement a naive rescale of THIS census would
+/// actually produce rather than a hypothetical one.
 const SEG_CENSUS_ROWS: usize = SEG_PARITY_ROWS;
 
 /// **P5(b): the per-launch distribution of `num_foldable` and `n_coefficients`,
@@ -7088,6 +7109,14 @@ fn bwd_seg_lowering_footprint_census() {
     let mut fitted_rows: Vec<usize> = Vec::new();
     let mut rejections: Vec<String> = Vec::new();
     let mut over_budget = 0usize;
+    // The read floor's ROW-INDEPENDENT part, so a reader can subtract it before rescaling.
+    // It is one number for the whole census: every cell shares this eq table and this row
+    // count, and the census emits `const`/`inline` only, so there is no DevPtr payload to
+    // add to it.
+    let mut eq_slab_bytes: Option<u64> = None;
+    // The thinnest read floor the census lowered — the cell where a naive rescale of the
+    // read column is worst, and therefore the one that bounds the warning.
+    let mut min_read: Option<u64> = None;
     let mut out = String::from(
         "circuit,layer,class,k,coeff,program,status,num_foldable,n_coefficients,\
 floor_dram_read_bytes,floor_dram_write_bytes\n",
@@ -7150,15 +7179,40 @@ floor_dram_read_bytes,floor_dram_write_bytes\n",
                             writeln!(out, "{label},lower-rejected,0,0,0,0").expect("write String");
                         }
                         Ok(setup) => {
-                            let (num_foldable, n_coefficients) = match &setup.desc {
-                                BwdSegLaunchDesc::Inline(desc) => {
-                                    (u32::from(desc.num_foldable), desc.n_coefficients)
-                                }
-                                BwdSegLaunchDesc::ProgPtr(desc) => {
-                                    (u32::from(desc.num_foldable), desc.n_coefficients)
-                                }
-                            };
+                            let (num_foldable, n_coefficients, eq_low_bits, logical_rows) =
+                                match &setup.desc {
+                                    BwdSegLaunchDesc::Inline(desc) => (
+                                        u32::from(desc.num_foldable),
+                                        desc.n_coefficients,
+                                        desc.eq_sizes.low,
+                                        u64::from(desc.logical_rows),
+                                    ),
+                                    BwdSegLaunchDesc::ProgPtr(desc) => (
+                                        u32::from(desc.num_foldable),
+                                        desc.n_coefficients,
+                                        desc.eq_sizes.low,
+                                        u64::from(desc.logical_rows),
+                                    ),
+                                };
+                            // The eq slab, by the walk's own rule. Recorded once and
+                            // asserted stable: if it ever differs between two census cells
+                            // the "one row-independent part" statement below is wrong.
+                            let slab = if eq_low_bits >= 63 {
+                                logical_rows
+                            } else {
+                                logical_rows.min(1u64 << eq_low_bits)
+                            } * size_of::<E4>() as u64;
+                            match eq_slab_bytes {
+                                None => eq_slab_bytes = Some(slab),
+                                Some(seen) => assert_eq!(
+                                    seen, slab,
+                                    "{label}: the census assumes ONE eq slab for every cell",
+                                ),
+                            }
                             let floor = bwd_seg_traffic_floor(&setup, shape.coeff, shape.program);
+                            // The THINNEST read floor is where a naive rescale is worst, so
+                            // the warning below quotes a measured bound, not a guess.
+                            min_read = Some(min_read.unwrap_or(u64::MAX).min(floor.read_bytes));
                             foldable.push(num_foldable);
                             coefficients.push(n_coefficients);
                             counted = true;
@@ -7219,12 +7273,35 @@ floor_dram_read_bytes,floor_dram_write_bytes\n",
         endpoint_bytes(fold_max) as f64 / (1u64 << 20) as f64,
         path.display(),
     );
-    // The CSV's own floor basis, stated where a reader of the table will see it: the two
-    // distributions are row-independent, the two floor columns are NOT.
+    // The CSV's own floor basis AND its rescaling rule, stated where a reader of the table
+    // will see it. The two columns do NOT rescale the same way and the read column is the
+    // trap: multiplying it by `fitted_rows / SEG_CENSUS_ROWS` multiplies the eq slab too,
+    // which does not move with rows.
+    let slab = eq_slab_bytes.expect("a non-vacuous census recorded its eq slab");
+    let thinnest = min_read.expect("a non-vacuous census lowered at least one cell");
+    // The worst a naive whole-column rescale to the corpus median would overstate: it is
+    // maximized at the thinnest read floor, because the error is the fixed slab scaled.
+    let factor = median_rows as f64 / SEG_CENSUS_ROWS as f64;
+    let naive = thinnest as f64 * factor;
+    let correct = (thinnest - slab) as f64 * factor + slab as f64;
     eprintln!(
-        "[seg-census] the CSV's floor columns are at {SEG_CENSUS_ROWS} rows (the census's \
-         lowering row count) and scale LINEARLY in rows; the footprint bound above is the \
-         one figure restated at the corpus median"
+        "[seg-census] the CSV's floor columns are at {SEG_CENSUS_ROWS} rows. \
+         floor_dram_write_bytes is row-LINEAR: `(num_foldable * 2 + 2) * rows * 16`. \
+         floor_dram_read_bytes is AFFINE, NOT linear -- a row-linear source part PLUS \
+         row-independent terms: the eq slab, {slab} B here (`min(rows, 1 << eq_sizes.low) \
+         * 16`, saturated at this row count and identical for every census cell), and under \
+         a DevPtr loader the coefficient / program payloads (these rows are const/inline, so \
+         they carry none).\n\
+         [seg-census] TO RESCALE a read floor to N rows: SUBTRACT {slab} B, scale the \
+         remainder by N/{SEG_CENSUS_ROWS}, add {slab} B back. Scaling the WHOLE column \
+         scales the slab too and overstates the floor; on this census's thinnest cell \
+         ({thinnest} B) a naive rescale to the corpus median {median_rows} rows reads \
+         {:.2} MB against the correct {:.2} MB (+{:.1}%), and the gap grows without bound \
+         as the row-linear part thins. The footprint bound above is the one figure already \
+         restated at the corpus median.",
+        naive / 1e6,
+        correct / 1e6,
+        (naive / correct - 1.0) * 100.0,
     );
     for rejection in &rejections {
         eprintln!("[seg-census] LOWER REJECTED {rejection}");
