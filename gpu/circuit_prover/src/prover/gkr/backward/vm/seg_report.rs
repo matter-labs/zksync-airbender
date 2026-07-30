@@ -2241,6 +2241,36 @@ pub(super) fn assert_freeze_matches_column(evidence: &str, mode: CarveoutMode, p
         mode.mode_key(),
         mode.label(),
     );
+    // **A forced-converged freeze is consumable ONLY at its own `mode_key`** (ruling R8).
+    //
+    // The write side already keys each verdict on the configuration it was measured at, but
+    // that binding was not re-checked on consume — so a freeze licensed at
+    // `fixed-bucket:102400` was consumable in a `fixed-bucket:65536` process, and this
+    // device measured those two disagreeing at the R0 headline cell (102,400 CONVERGED,
+    // 65,536 DIVERGED). Keying on the label alone let each stand for the other, which is
+    // exactly the license `CarveoutMode::mode_key` exists to close; closing it at write time
+    // only was half the fix.
+    //
+    // **The reverse direction stays ALLOWED, deliberately.** A freeze carrying converged
+    // evidence may be consumed under `off` or `as-configured`: those columns claim no
+    // equal-partition property, so the evidence is simply unused — not contradicted. Only a
+    // process that FORCES a partition is making a claim the evidence has to back.
+    if let Some(measured_at) = evidence
+        .strip_prefix("forced-converged at ")
+        .and_then(|rest| rest.split_whitespace().next())
+    {
+        assert!(
+            !mode.forces_one_partition() || measured_at == mode.mode_key(),
+            "{path} carries FORCED-CONVERGED evidence measured at {measured_at:?}, but this \
+             process forces {:?}. A convergence verdict is evidence about the partition it \
+             was measured at and about no other — on this device `fixed-bucket:65536` \
+             DIVERGED at the R0 headline cell where `fixed-bucket:102400` CONVERGED, so \
+             accepting a mismatched key would let one stand for the other. Run at \
+             {measured_at:?}, or write a freeze with verdicts for {:?}.",
+            mode.mode_key(),
+            mode.mode_key(),
+        );
+    }
 }
 
 /// The freeze's `# probe_evidence` field, or a PANIC. Never an `Option`: see the call site in
@@ -2573,6 +2603,10 @@ pub(super) enum SegPinSummary {
         drift: Vec<(String, f64)>,
         drift_spread_pct: f64,
         reproduction_gap_pct: f64,
+        /// The PREDECLARED-INELIGIBLE levels and their reasons
+        /// ([`SEG_PIN_REFUSED_LEVELS`]), carried on the summary so no consumer can render a
+        /// level table that silently omits them. A refused level is a per-level OUTCOME.
+        refused: Vec<(String, String)>,
     },
     Unresolved {
         reason: String,
@@ -2581,8 +2615,42 @@ pub(super) enum SegPinSummary {
         drift: Vec<(String, f64)>,
         /// **No `aggregates`, no `tie_set`, no `winner`.** Nothing pooled exists.
         per_level_usable: Vec<(String, usize, usize)>,
+        /// Carried on BOTH variants — see [`SEG_PIN_REFUSED_LEVELS`].
+        refused: Vec<(String, String)>,
     },
 }
+
+/// **Levels the §4.5 decision SCORES.** Ruling R8, predeclared before any timing.
+///
+/// `40` is deliberately absent; see [`SEG_PIN_REFUSED_LEVELS`].
+pub(super) const SEG_PIN_DECISION_LEVELS: [&str; 2] = ["natural", "48"];
+
+/// **Levels PREDECLARED INELIGIBLE, with the measured reason each carries.**
+///
+/// This exists because §4.2's eligibility clause and §4.5's level-set assertion used to
+/// contradict each other: the rule's doc said *"a level that spilled is ineligible — the
+/// caller must not pass one"* while its `DECISION_LEVELS` array made `40` **mandatory**, so
+/// no input satisfied both and the decision was unreachable rather than unresolved. Ruling
+/// R8 reconciles them here: the ineligible level is named in source, with its reason, and
+/// it enters the record as a per-level OUTCOME rather than as a missing row.
+///
+/// **The refusal is a MEASURED fact, not a policy.** `measure_shape` calls
+/// [`SegKernelAttributes::assert_no_spills`] before it will launch anything, and at a
+/// 40-register ceiling the swept continuation executor reports
+/// `cudaFuncGetAttributes.localSizeBytes = 16` — so every one of the six decision cells
+/// (all `cont_const_epi_plane`) aborts pre-launch, and only the R0 drift control
+/// (`localSizeBytes = 0`) would survive. A level that can supply the control and no
+/// decision cell cannot be scored.
+///
+/// **Which spill number is authoritative, since the two disagree at exactly this level.**
+/// `cuobjdump --dump-resource-usage` reports `LOCAL=0, STACK=16` for that symbol, while the
+/// runtime reports `localSizeBytes = 16`. **Launch eligibility keys on the RUNTIME
+/// attribute** — it is what the launch actually pays and what `assert_no_spills` reads. The
+/// `cuobjdump` STACK/LOCAL table stays the per-symbol BUILD-gate record and is recorded
+/// beside it; it is not the eligibility predicate. Both are kept because they answer
+/// different questions.
+pub(super) const SEG_PIN_REFUSED_LEVELS: [(&str, &str); 1] =
+    [("40", "REFUSED (outcome-B spill: localSizeBytes=16)")];
 
 impl SegPinSummary {
     /// One machine-readable token, UNDERSCORED like the R0 verdicts so no outcome is
@@ -2598,10 +2666,25 @@ impl SegPinSummary {
 /// **§4.5's rule, applied mechanically. This is NOT §6(b)'s rule.**
 ///
 /// Preconditions, all asserted rather than assumed:
-///   * the level set is EXACTLY `{natural, 48, 40}` for the decision, with
-///     `natural-repeat` MANDATORY and used ONLY as the reproduction gate;
+///   * the level set is EXACTLY [`SEG_PIN_DECISION_LEVELS`] (`{natural, 48}`) for the
+///     decision, with `natural-repeat` MANDATORY and used ONLY as the reproduction gate,
+///     and every level in [`SEG_PIN_REFUSED_LEVELS`] **absent**;
 ///   * every level contributed exactly [`SEG_CONFIRM_PROCESSES`] processes;
 ///   * the drift control ran at every level.
+///
+/// **Why the set is `{natural, 48}` and not `{natural, 48, 40}` (rulings R4 + R8).** An
+/// earlier form made `40` mandatory *and* documented that a spilled level must not be
+/// passed — a contradiction no input could satisfy, which made the decision UNREACHABLE
+/// rather than unresolved. `40` is now refused with its measured reason
+/// ([`SEG_PIN_REFUSED_LEVELS`]: `cudaFuncGetAttributes.localSizeBytes = 16` on every
+/// decision cell's executor) and is REPORTED as a per-level outcome. Passing it is a
+/// caller error and panics, so an ineligible level can never be silently dropped into the
+/// aggregate either.
+///
+/// **The tie-break consequence, PREDECLARED by R8 before any level was timed:** with `40`
+/// out, `48` is the lowest ELIGIBLE ceiling, so a `natural`-vs-`48` tie resolves to **48**.
+/// That is the same rule as before (lowest ceiling in the tie set), applied to the eligible
+/// set; it is written down here rather than discovered from an outcome.
 ///
 /// Rules:
 ///   * **Aggregate = median over DECISION cells** of the per-cell level estimates.
@@ -2622,12 +2705,28 @@ impl SegPinSummary {
 pub(super) fn summarize_pin_decision(
     per_level: &[(String, Vec<SegPinCellSummary>)],
 ) -> SegPinSummary {
-    const DECISION_LEVELS: [&str; 3] = ["natural", "48", "40"];
+    const DECISION_LEVELS: [&str; SEG_PIN_DECISION_LEVELS.len()] = SEG_PIN_DECISION_LEVELS;
     const REPEAT_LEVEL: &str = "natural-repeat";
+    let refused: Vec<(String, String)> = SEG_PIN_REFUSED_LEVELS
+        .iter()
+        .map(|(level, why)| ((*level).to_owned(), (*why).to_owned()))
+        .collect();
     // The set is EXACT and the repeat is MANDATORY. An optional repeat would let
     // mechanism 4 be skipped by omission, and a missing decision level would let the
     // aggregate be computed over a shrunken ladder — both fail-open holes.
     let levels: Vec<&str> = per_level.iter().map(|(l, _)| l.as_str()).collect();
+    // A PREDECLARED-INELIGIBLE level is REFUSED, never silently dropped. Dropping it
+    // would let a caller hand in a spilled level's numbers and get a decision back that
+    // looks like it scored three levels; panicking makes the ineligibility visible at the
+    // one place that could otherwise launder it.
+    for (level, why) in SEG_PIN_REFUSED_LEVELS {
+        assert!(
+            !levels.contains(&level),
+            "level {level} is PREDECLARED INELIGIBLE — {why} — so it may not be scored \
+             (rulings R4 + R8). It is reported as a per-level outcome instead; remove it \
+             from the dirs spec. Got levels {levels:?}"
+        );
+    }
     let mut expected: Vec<&str> = DECISION_LEVELS.to_vec();
     expected.push(REPEAT_LEVEL);
     for want in &expected {
@@ -2732,6 +2831,7 @@ pub(super) fn summarize_pin_decision(
             cells: per_level.to_vec(),
             drift,
             per_level_usable,
+            refused,
         };
     }
     // From here every value is present by construction: the validation above proved
@@ -2794,6 +2894,7 @@ pub(super) fn summarize_pin_decision(
             cells: per_level.to_vec(),
             drift,
             per_level_usable,
+            refused,
         };
     }
     // Mechanism 3: the pin margin must exceed the control's own cross-level spread.
@@ -2825,6 +2926,7 @@ pub(super) fn summarize_pin_decision(
                 cells: per_level.to_vec(),
                 drift,
                 per_level_usable,
+                refused,
             };
         }
     }
@@ -2854,6 +2956,7 @@ pub(super) fn summarize_pin_decision(
         drift,
         drift_spread_pct,
         reproduction_gap_pct,
+        refused,
     }
 }
 
@@ -3569,6 +3672,16 @@ fn bwd_seg_aggregate_pin_decision() {
             }
             eprintln!("[seg-pin] reason={reason}");
         }
+    }
+    // The REFUSED levels, on both paths: a level table that showed only the scored levels
+    // would read as though the ineligible one had never been considered.
+    let refused = match &summary {
+        SegPinSummary::Resolved { refused, .. } | SegPinSummary::Unresolved { refused, .. } => {
+            refused
+        }
+    };
+    for (level, why) in refused {
+        eprintln!("[seg-pin] level={level} outcome={why}");
     }
     eprintln!("[seg-pin] outcome={}", summary.outcome());
 }
@@ -6940,14 +7053,24 @@ fn bwd_seg_pin_decision_cells() {
         }
     }
     for row in &rows {
-        // The fixed bucket is a GATE, not a note: a hint that did not land
-        // invalidates the level comparison.
+        // **This asserts the REQUEST landed, not the realized partition** (ruling R8) — the
+        // realized field is an `ncu` metric this process cannot observe. It is still a gate
+        // and not a note: a request that silently failed to land would put the two levels on
+        // different configurations for a reason invisible in the raw rows.
+        //
+        // The realized side is verified out of process, per level, and what it asserts is
+        // **per-arm level-invariance, not pair equality**: §4.5's number is a ratio of
+        // ratios, so the partition has to cancel BETWEEN LEVELS, which needs each arm
+        // constant across levels — not the two arms equal to each other (that is §7.2.1's
+        // question). Measured: clock 65,536 B at every level and hash-identical SASS;
+        // candidate 102,400 B (pool max, clamped) at every measurable level, 0.26 pp L1
+        // spread. See `SEG_REFERENCE_CLOCK_BUCKET_BYTES` for the full argument.
         assert_eq!(
             row.carveout_requested_pct,
             Some(bwd_seg_carveout_pct_for_bucket(
                 SEG_REFERENCE_CLOCK_BUCKET_BYTES
             )),
-            "{}: every decision pair runs at the predeclared fixed bucket",
+            "{}: every decision pair REQUESTS the predeclared fixed bucket",
             row.benchmark
         );
     }
@@ -12189,9 +12312,15 @@ mod tests {
         );
     }
 
-    /// The combinations that ARE legal, so the gate is not simply refusing everything: an
-    /// off-only freeze in a convergence-independent column, and a forced-converged freeze in
-    /// any column.
+    /// The combinations that ARE legal, so the gate is not simply refusing everything.
+    ///
+    /// Three rules, and the asymmetry between them is deliberate (ruling R8):
+    ///   * an off-only freeze in a convergence-independent column — the property it declines
+    ///     to claim is a property that column does not need;
+    ///   * a forced-converged freeze at its OWN `mode_key`;
+    ///   * a forced-converged freeze in a NON-forcing column, which is the reverse direction
+    ///     and stays allowed: `off` / `as-configured` claim no equal-partition property, so
+    ///     the evidence is merely unused there, never contradicted.
     #[test]
     fn the_column_gate_admits_every_matching_combination() {
         let off_only = "convergence-independent — NOT VALID FOR A FORCED COLUMN: off control";
@@ -12202,11 +12331,60 @@ mod tests {
         for mode in [
             CarveoutMode::Off,
             CarveoutMode::AsConfigured,
-            CarveoutMode::CommonBucket,
+            // The MATCHING key — this is the acceptance half of the mode-key gate.
             CarveoutMode::FixedBucket(102_400),
         ] {
             assert_freeze_matches_column(forced, mode, "p");
         }
+        // A common-bucket freeze is consumable under common-bucket, so the gate is keyed on
+        // the mode_key and not hardcoded to `fixed-bucket`.
+        assert_freeze_matches_column(
+            "forced-converged at common-bucket (pair_gate.py, 1 verdict(s))",
+            CarveoutMode::CommonBucket,
+            "p",
+        );
+        // `not-required` carries no convergence claim, so no key can mismatch — this is the
+        // pin / δ3 campaigns' evidence class, and it is legal in every column.
+        for mode in [
+            CarveoutMode::Off,
+            CarveoutMode::AsConfigured,
+            CarveoutMode::CommonBucket,
+            CarveoutMode::FixedBucket(SEG_REFERENCE_CLOCK_BUCKET_BYTES),
+        ] {
+            assert_freeze_matches_column(
+                "not-required (campaign carries no forced-bucket precondition)",
+                mode,
+                "p",
+            );
+        }
+    }
+
+    /// **The mode-key fail-open, closed (ruling R8): a CROSS-BUCKET consumption is refused.**
+    ///
+    /// Measured on this device: `fixed-bucket:65536` DIVERGED at the R0 headline cell where
+    /// `fixed-bucket:102400` CONVERGED. The write side already keyed each verdict on its
+    /// configuration, but consume did not re-check it — so the 100 KiB success licensed a
+    /// 64 KiB confirmation and each could stand for the other.
+    #[test]
+    #[should_panic(expected = "FORCED-CONVERGED evidence measured at")]
+    fn a_forced_freeze_is_refused_at_a_different_bucket() {
+        assert_freeze_matches_column(
+            "forced-converged at fixed-bucket:102400 (pair_gate.py, 2 verdict(s))",
+            CarveoutMode::FixedBucket(65_536),
+            "/tmp/seg_frozen_cells.tsv",
+        );
+    }
+
+    /// And across MODES, not just buckets: a common-bucket verdict does not license a
+    /// fixed-bucket confirmation, which is the same license in the other direction.
+    #[test]
+    #[should_panic(expected = "FORCED-CONVERGED evidence measured at")]
+    fn a_common_bucket_freeze_is_refused_under_a_fixed_bucket() {
+        assert_freeze_matches_column(
+            "forced-converged at common-bucket (pair_gate.py, 1 verdict(s))",
+            CarveoutMode::FixedBucket(102_400),
+            "/tmp/seg_frozen_cells.tsv",
+        );
     }
 
     /// A verdict for a DIFFERENT probed tuple does not license this one.
@@ -13356,36 +13534,51 @@ mod tests {
         let level = pin_level_fixture;
         let expect_aggregate = pin_expected_aggregate;
         // Every fixture carries the MANDATORY natural-repeat, or `summarize_pin_decision`
-        // panics on its own exact-set assertion before any rule runs.
+        // panics on its own exact-set assertion before any rule runs. The scored set is
+        // `SEG_PIN_DECISION_LEVELS` = {natural, 48}; `40` is refused (R4 + R8) and its
+        // presence is a caller error, pinned by
+        // `the_pin_rule_refuses_a_predeclared_ineligible_level`.
         let clean = vec![
             level("natural", Some(1.000), 1.0000),
             level("48", Some(0.960), 1.0001),
-            level("40", Some(0.900), 1.0002),
             level("natural-repeat", Some(1.001), 1.0000),
         ];
         assert!(matches!(
             summarize_pin_decision(&clean),
-            SegPinSummary::Resolved { ref winner, .. } if winner == "40"
+            SegPinSummary::Resolved { ref winner, .. } if winner == "48"
         ));
         // Ratios ABOVE 1.0 must not make the decision "not inverted" — that is §6(b)'s
         // question, not this one. The lowest-ceiling level still wins on aggregate.
         let above = vec![
             level("natural", Some(1.400), 1.0),
             level("48", Some(1.300), 1.0),
-            level("40", Some(1.200), 1.0),
             level("natural-repeat", Some(1.401), 1.0),
         ];
         assert!(
             matches!(
                 summarize_pin_decision(&above),
-                SegPinSummary::Resolved { ref winner, .. } if winner == "40"
+                SegPinSummary::Resolved { ref winner, .. } if winner == "48"
             ),
             "the pin decision is relative; 1.0 has no meaning in it"
         );
+        // The REFUSED level is on the summary, on the resolved path too — a consumer cannot
+        // render a level table that omits it.
+        match summarize_pin_decision(&clean) {
+            SegPinSummary::Resolved { ref refused, .. } => {
+                assert_eq!(refused.len(), 1);
+                assert_eq!(refused[0].0, "40");
+                assert!(
+                    refused[0].1.contains("localSizeBytes=16"),
+                    "the refusal carries its MEASURED reason: {:?}",
+                    refused[0].1
+                );
+            }
+            other => panic!("expected Resolved, got {other:?}"),
+        }
         // An order-invalid cell anywhere ⇒ UNRESOLVED, never a shrunken cell set.
         let mut invalid = clean.clone();
-        invalid[2].1[0].estimate = None;
-        invalid[2].1[0].process_ratios = vec![None, Some(0.9), Some(0.9)];
+        invalid[1].1[0].estimate = None;
+        invalid[1].1[0].process_ratios = vec![None, Some(0.9), Some(0.9)];
         let s = summarize_pin_decision(&invalid);
         assert!(matches!(s, SegPinSummary::Unresolved { .. }));
         // And there is NO aggregate to read — the type has none on this path.
@@ -13400,7 +13593,6 @@ mod tests {
         let noisy = vec![
             level("natural", Some(1.000), 1.000),
             level("48", Some(0.998), 1.030),
-            level("40", Some(0.997), 1.000),
             level("natural-repeat", Some(1.000), 1.000),
         ];
         assert!(matches!(
@@ -13410,7 +13602,7 @@ mod tests {
         // A repeat that does not reproduce ⇒ UNRESOLVED, and it is compared ONLY to
         // natural (never aggregated, never in the tie set, never in the drift spread).
         let mut repeat = clean.clone();
-        repeat[3] = level("natural-repeat", Some(1.050), 1.0);
+        repeat[2] = level("natural-repeat", Some(1.050), 1.0);
         assert!(matches!(
             summarize_pin_decision(&repeat),
             SegPinSummary::Unresolved { .. }
@@ -13424,81 +13616,50 @@ mod tests {
                 tie_set,
                 ..
             } => {
-                assert_eq!(winner, "40");
-                let agg40 = aggregates.iter().find(|(l, _)| l == "40").unwrap().1;
+                assert_eq!(winner, "48");
+                let agg48 = aggregates.iter().find(|(l, _)| l == "48").unwrap().1;
                 assert!(
-                    (agg40 - expect_aggregate(0.900)).abs() < 1e-9,
+                    (agg48 - expect_aggregate(0.960)).abs() < 1e-9,
                     "the level aggregate is the median over ALL SIX decision cells \
-                     (0.900..0.910), i.e. {}; got {agg40}",
-                    expect_aggregate(0.900)
+                     (0.960..0.970), i.e. {}; got {agg48}",
+                    expect_aggregate(0.960)
                 );
                 assert!(!tie_set.contains(&"natural-repeat".to_owned()));
-                assert_eq!(aggregates.len(), 3, "the repeat is not a decision level");
+                assert_eq!(
+                    aggregates.len(),
+                    SEG_PIN_DECISION_LEVELS.len(),
+                    "the repeat is not a decision level, and the refused level is not one \
+                     either"
+                );
+                assert!(!aggregates.iter().any(|(l, _)| l == "40"));
             }
             other => panic!("expected Resolved, got {other:?}"),
         }
     }
 
-    /// **The tie-break's DISCRIMINATING cases.** Every fixture in
+    /// **The tie-break's DISCRIMINATING case.** Every fixture in
     /// `the_pin_rule_is_distinct_and_fails_closed` leaves the tie set a SINGLETON equal to
-    /// the argmin, so an implementation that simply returned the fastest level passes all
-    /// of them and the rule's actual content — "lowest register ceiling **within the tie
-    /// set**" — stays untested. Both cases here make the argmin and the rule's answer
-    /// DIFFERENT levels, so `winner == pin_argmin(..)` fails them.
+    /// the argmin, so an implementation that simply returned the fastest level passes all of
+    /// them and the rule's actual content — "lowest register ceiling **within the tie set**"
+    /// — stays untested. The fixture here makes the argmin and the rule's answer DIFFERENT
+    /// levels, so `winner == pin_argmin(..)` fails it.
+    ///
+    /// **Only ONE discriminating case survives ruling R8**, and that is not a gap. With the
+    /// eligible set `{natural, 48}` the ceilings are 56 and 48, so the sole way for the
+    /// argmin to differ from the winner is `natural` fastest with `48` inside the band. The
+    /// old second case (48 fastest, 40 tied ⇒ 40 wins) required a scoreable `40`, which the
+    /// measured refusal removes; the rule it exercised is the same one this case exercises.
     #[test]
     fn the_pin_tie_break_prefers_the_lowest_ceiling_in_the_tie_set() {
         let level = pin_level_fixture;
-        // (a) 48 is FASTEST and 40 is inside `SEG_PIN_TIE_FRACTION` of it: the argmin is
-        // 48, the answer is 40. Aggregates are `base + 0.005`, so 0.900 vs 0.905 — a
-        // 0.556% margin, inside the 0.93% band and above the control's zero spread.
-        let tied_with_40 = vec![
-            level("natural", Some(0.995), 1.0),
-            level("48", Some(0.895), 1.0),
-            level("40", Some(0.900), 1.0),
-            level("natural-repeat", Some(0.995), 1.0),
-        ];
-        match summarize_pin_decision(&tied_with_40) {
-            SegPinSummary::Resolved {
-                winner,
-                aggregates,
-                tie_set,
-                ..
-            } => {
-                assert!(
-                    (aggregates.iter().find(|(l, _)| l == "48").expect("48").1
-                        - pin_expected_aggregate(0.895))
-                    .abs()
-                        < 1e-9
-                );
-                assert_eq!(
-                    pin_argmin(&aggregates),
-                    "48",
-                    "48 is the fastest level here"
-                );
-                assert_eq!(
-                    tie_set.len(),
-                    2,
-                    "natural is 11% away and not tied: {tie_set:?}"
-                );
-                assert!(tie_set.contains(&"48".to_owned()) && tie_set.contains(&"40".to_owned()));
-                assert_eq!(
-                    winner, "40",
-                    "the winner is the LOWEST CEILING in the tie set, not the argmin"
-                );
-                assert_ne!(
-                    winner,
-                    pin_argmin(&aggregates),
-                    "an argmin-only selector would answer 48 and pass every other fixture"
-                );
-            }
-            other => panic!("expected Resolved, got {other:?}"),
-        }
-        // (b) The `natural -> 56` arm, equally discriminating: natural is the ARGMIN and
-        // 48 is inside the band, so the rule must prefer the PINNED 48 over natural's 56.
+        // natural is the ARGMIN and 48 is inside `SEG_PIN_TIE_FRACTION` of it, so the rule
+        // must prefer the PINNED 48 over natural's 56. Aggregates are `base + 0.005`, so
+        // 0.900 vs 0.905 — a 0.556% margin, inside the 0.93% band and above the control's
+        // zero spread. This is R8's predeclared consequence: 48 is the lowest ELIGIBLE
+        // ceiling, so a natural-vs-48 tie resolves to 48.
         let tied_with_natural = vec![
             level("natural", Some(0.895), 1.0),
             level("48", Some(0.900), 1.0),
-            level("40", Some(1.095), 1.0),
             level("natural-repeat", Some(0.895), 1.0),
         ];
         match summarize_pin_decision(&tied_with_natural) {
@@ -13508,13 +13669,70 @@ mod tests {
                 tie_set,
                 ..
             } => {
-                assert_eq!(pin_argmin(&aggregates), "natural");
-                assert_eq!(tie_set.len(), 2, "40 is 22% away and not tied: {tie_set:?}");
-                assert_eq!(winner, "48", "48 < natural's 56, so the pinned level wins");
-                assert_ne!(winner, pin_argmin(&aggregates));
+                assert!(
+                    (aggregates.iter().find(|(l, _)| l == "48").expect("48").1
+                        - pin_expected_aggregate(0.900))
+                    .abs()
+                        < 1e-9
+                );
+                assert_eq!(
+                    pin_argmin(&aggregates),
+                    "natural",
+                    "natural is the fastest level here"
+                );
+                assert_eq!(
+                    tie_set.len(),
+                    2,
+                    "both eligible levels are tied: {tie_set:?}"
+                );
+                assert_eq!(
+                    winner, "48",
+                    "48 < natural's 56, so the pinned level wins (R8: lowest ELIGIBLE ceiling)"
+                );
+                assert_ne!(
+                    winner,
+                    pin_argmin(&aggregates),
+                    "an argmin-only selector would answer natural and pass every other fixture"
+                );
             }
             other => panic!("expected Resolved, got {other:?}"),
         }
+        // And a level genuinely outside the band is NOT tied, so the tie-break cannot reach
+        // it: natural 11% behind leaves 48 alone in the tie set.
+        let untied = vec![
+            level("natural", Some(0.995), 1.0),
+            level("48", Some(0.895), 1.0),
+            level("natural-repeat", Some(0.995), 1.0),
+        ];
+        match summarize_pin_decision(&untied) {
+            SegPinSummary::Resolved {
+                winner, tie_set, ..
+            } => {
+                assert_eq!(tie_set, vec!["48".to_owned()], "natural is 11% away");
+                assert_eq!(winner, "48");
+            }
+            other => panic!("expected Resolved, got {other:?}"),
+        }
+    }
+
+    /// **A PREDECLARED-INELIGIBLE level in the input is REFUSED, not silently dropped.**
+    ///
+    /// This is the eligibility filter itself, and it must fail loudly. Dropping level `40`
+    /// quietly would let a caller hand in a spilled level's numbers and receive a decision
+    /// that looks like it scored three levels — the fail-open that the old
+    /// mandatory-`40` array made impossible only by making the rule unreachable. R8 keeps
+    /// the loudness and removes the unreachability.
+    #[test]
+    #[should_panic(expected = "PREDECLARED INELIGIBLE")]
+    fn the_pin_rule_refuses_a_predeclared_ineligible_level() {
+        let level = pin_level_fixture;
+        let with_40 = vec![
+            level("natural", Some(1.000), 1.0),
+            level("48", Some(0.960), 1.0),
+            level("40", Some(0.900), 1.0),
+            level("natural-repeat", Some(1.001), 1.0),
+        ];
+        let _ = summarize_pin_decision(&with_40);
     }
 
     /// The δ3 rule is NOT the pin rule and NOT the inversion rule, and it fails closed.

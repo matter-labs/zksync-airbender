@@ -475,9 +475,32 @@ pub(crate) fn bwd_seg_query_carveout(entry: *const std::ffi::c_void) -> i32 {
 /// A fixed sub-64 bucket was rejected for the same reason: the observed
 /// same-request divergence (both arms asked for one partition, one realized 64 KiB
 /// and the other 32 KiB) kills commonality below 64 KiB regardless of the demand
-/// arithmetic. **`bwd_seg_pin_decision_cells` asserts the realized field equals this
-/// in every decision process** — a hint that did not land invalidates the level
-/// comparison, so it is a gate, not a note.
+/// arithmetic.
+///
+/// **What is asserted in-process, stated exactly (ruling R8).**
+/// `bwd_seg_pin_decision_cells` asserts `SegMatrixRow::carveout_requested_pct` equals
+/// [`bwd_seg_carveout_pct_for_bucket`] of this constant — i.e. **the REQUEST landed**, not
+/// that a particular partition was realized. An earlier revision of this comment claimed
+/// the assertion checked the realized field; it does not, and it cannot: the realized
+/// partition is an `ncu` metric (`launch__shared_mem_config_size`), not something the
+/// launching process observes. **The realized field is verified out of process, per level,
+/// by `pair_gate.py`** over the campaign's NCU captures.
+///
+/// **And what that out-of-process gate asserts is PER-ARM LEVEL-INVARIANCE, not pair
+/// equality (ruling R8).** §4.5's estimator is a ratio of ratios: each level's number is
+/// candidate/clock from that level's own build. Its validity needs each arm to sit at the
+/// same partition **across levels**, so that the partition cancels between levels — it does
+/// **not** need the two arms to sit at the same partition as each other, which is §7.2.1's
+/// question and a different one. Both per-arm conditions are measured and hold:
+///   * the **clock** arm (flat, zero-dynamic, 1,024 B/block, not on the sweep axis) realizes
+///     **65,536 B** under this request at every level, and its normalized SASS body is
+///     hash-identical across all four builds;
+///   * the **candidate** arm realizes **102,400 B** — the pool maximum, clamped — at every
+///     measurable level, an L1 spread of 0.26 pp, i.e. session noise.
+/// The two differ from each other (102,400 vs 65,536), and that is fine here: it is a
+/// constant offset present identically in every level's ratio. Demanding pair convergence
+/// would fail the gate for a property §4.5 never rests on — and, per the reachability
+/// finding below, is only satisfiable at the pool maximum and only at an asymmetric cost.
 pub(crate) const SEG_REFERENCE_CLOCK_BUCKET_BYTES: usize = 64 * 1024;
 
 /// How a pair is configured (spec §7.1.0, §7.2.1).
