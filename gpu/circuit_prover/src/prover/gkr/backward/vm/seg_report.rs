@@ -1871,6 +1871,107 @@ pub(super) struct SegProbedTuple {
     pub(super) program: &'static str,
 }
 
+/// The FORCED carveout modes — the ones whose whole purpose is that both arms realize one
+/// partition, and therefore the only ones a convergence probe can be about. `off` is the
+/// driver-default control, where divergence is the expected outcome, and `as-configured`
+/// gives the two arms deliberately different preferences.
+pub(super) const SEG_FORCED_CARVEOUT_MODES: [&str; 2] = ["common-bucket", "fixed-bucket"];
+
+/// **One MEASURED forced-mode convergence probe** — a `pair_gate.py` verdict, parsed
+/// rather than assumed.
+pub(super) struct SegProbeVerdict {
+    pub(super) epilogue: String,
+    pub(super) k: usize,
+    pub(super) coeff: String,
+    pub(super) program: String,
+    /// The forced mode the probe ran in. Must be one of [`SEG_FORCED_CARVEOUT_MODES`].
+    pub(super) mode: String,
+    /// `true` iff both arms realized the SAME `launch__shared_mem_config_size`.
+    pub(super) converged: bool,
+}
+
+/// What `write_frozen_cells` is given about the probe, for the campaign it is writing.
+///
+/// **This exists because membership in [`SEG_R0_PROBED_TUPLES`] records that a probe was
+/// TAKEN, never that it SUCCEEDED** — and the two came apart the first time the probe was
+/// really run. `plane K4 const inline` is a probed tuple, its `common-bucket` probe
+/// realized 65,536 B against 32,768 B, `pair_gate.py` printed `PROTOCOL FAILURE`, and the
+/// membership assertion below would still have blessed the freeze. The precondition was
+/// being guarded by an operator reading a log.
+pub(super) enum SegProbeEvidence {
+    /// The campaign carries no forced-bucket precondition. `pin-decision` and
+    /// `d3-attribution` hardcode their bucket and assert the realized field in their own
+    /// runners, so there is no shortlist-vs-probe gap to close.
+    NotRequired,
+    /// Every probe verdict available, from `BWD_SEG_PROBE_VERDICTS`.
+    Measured(Vec<SegProbeVerdict>),
+}
+
+impl SegProbeEvidence {
+    /// The verdicts, or a panic naming what the campaign needs. Deliberately not
+    /// `Option`: a missing file must not be able to read as "nothing to check".
+    fn require_measured(&self, campaign: &str) -> &[SegProbeVerdict] {
+        match self {
+            Self::Measured(verdicts) => verdicts,
+            Self::NotRequired => panic!(
+                "the {campaign} freeze needs MEASURED probe verdicts: pass \
+                 SegProbeEvidence::Measured (the runner reads BWD_SEG_PROBE_VERDICTS, \
+                 written from pair_gate.py's own output). Probe membership alone records \
+                 that a probe RAN, not that it CONVERGED (§9 item 2)."
+            ),
+        }
+    }
+}
+
+/// Parse `BWD_SEG_PROBE_VERDICTS`: TAB-separated
+/// `epilogue<TAB>k<TAB>coeff<TAB>program<TAB>mode<TAB>verdict`, `#` comments skipped,
+/// `verdict` exactly `CONVERGED` or `DIVERGED`.
+///
+/// An unknown verdict token is REJECTED rather than treated as non-convergence: a typo
+/// that silently means "diverged" would block a sound freeze, and a typo that silently
+/// meant "converged" would pass an unsound one. Neither is a reading this file may admit.
+pub(super) fn parse_probe_verdicts(text: &str) -> Vec<SegProbeVerdict> {
+    text.lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+        .map(|line| {
+            let field: Vec<&str> = line.split('\t').map(str::trim).collect();
+            assert_eq!(
+                field.len(),
+                6,
+                "a probe verdict is <epilogue>\\t<k>\\t<coeff>\\t<program>\\t<mode>\\t\
+                 <CONVERGED|DIVERGED>; got {line:?}"
+            );
+            assert!(
+                SEG_FORCED_CARVEOUT_MODES.contains(&field[4]),
+                "a convergence probe is only meaningful in a FORCED mode {:?}; \
+                 {:?} names {:?}",
+                SEG_FORCED_CARVEOUT_MODES,
+                line,
+                field[4]
+            );
+            let converged = match field[5] {
+                "CONVERGED" => true,
+                "DIVERGED" => false,
+                other => panic!(
+                    "a probe verdict is CONVERGED or DIVERGED, never {other:?} \
+                     (line {line:?})"
+                ),
+            };
+            SegProbeVerdict {
+                epilogue: field[0].to_owned(),
+                k: field[1]
+                    .parse()
+                    .unwrap_or_else(|error| panic!("probe verdict K in {line:?}: {error}")),
+                coeff: field[2].to_owned(),
+                program: field[3].to_owned(),
+                mode: field[4].to_owned(),
+                converged,
+            }
+        })
+        .collect()
+}
+
 /// **The shapes §7.1.0's `common-bucket` captures actually cover** (Task 9 step 1):
 /// `plane`, `const`, inline, at `K in {4, 24}`. `K = 4` is results §2.3's measured
 /// winner and `K = 24` is the one-block regime, so the pair spans both occupancy
@@ -1902,7 +2003,16 @@ pub(super) const SEG_R0_PROBED_TUPLES: [SegProbedTuple; 2] = [
 /// low-level state machine and `sha2` is not a dependency — both verified), and
 /// the repo rule forbids dependency churn, so the identity check lives where a
 /// hasher already exists.
-pub(super) fn write_frozen_cells(path: &Path, campaign: &str, cells: &[SegFrozenCell], seed: u64) {
+pub(super) fn write_frozen_cells(
+    path: &Path,
+    campaign: &str,
+    cells: &[SegFrozenCell],
+    seed: u64,
+    // An EXPLICIT parameter, not an env read inside this function: the CPU tests that
+    // drive the r0-headline path run in one process alongside every other test, and a
+    // process-global variable would make them race each other.
+    probes: &SegProbeEvidence,
+) {
     assert!(!cells.is_empty(), "a freeze with no cells freezes nothing");
     // The campaign tag is a GATE, not a comment: the two campaigns have different
     // rules, and a runner handed the other campaign's freeze would silently time the
@@ -1947,14 +2057,55 @@ pub(super) fn write_frozen_cells(path: &Path, campaign: &str, cells: &[SegFrozen
                         && probed.coeff == cell.coeff
                         && probed.program == cell.program
                 }),
-                "the R0 freeze names an UNPROBED tuple ({} K{} {} {}): the forced \
-                 common-bucket precondition was not established for it. Either extend \
-                 the probe set and re-probe, or drop the shape — never freeze an \
-                 unprobed tuple (§9 item 2).",
+                "the R0 freeze names an UNPROBED tuple ({} K{} {} {}): the forced-bucket \
+                 precondition was not established for it. Either extend the probe set and \
+                 re-probe, or drop the shape — never freeze an unprobed tuple (§9 item 2).",
                 cell.epilogue,
                 cell.k,
                 cell.coeff,
                 cell.program
+            );
+            // **AND the probe must have SUCCEEDED.** Membership above says a capture was
+            // taken; this says the two arms actually landed on one partition. Both are
+            // required and neither implies the other — measured: `plane K4 const inline`
+            // is a member whose `common-bucket` probe DIVERGED (65,536 B vs 32,768 B).
+            let verdicts = probes.require_measured(campaign);
+            let matching: Vec<&SegProbeVerdict> = verdicts
+                .iter()
+                .filter(|verdict| {
+                    verdict.epilogue == cell.epilogue
+                        && verdict.k == cell.k
+                        && verdict.coeff == cell.coeff
+                        && verdict.program == cell.program
+                })
+                .collect();
+            assert!(
+                !matching.is_empty(),
+                "no probe verdict for the frozen tuple ({} K{} {} {}): {} verdict(s) were \
+                 supplied and none names this shape, so its forced-bucket precondition is \
+                 unestablished (§9 item 2, F-9.3)",
+                cell.epilogue,
+                cell.k,
+                cell.coeff,
+                cell.program,
+                verdicts.len(),
+            );
+            assert!(
+                matching.iter().any(|verdict| verdict.converged),
+                "the R0 freeze names ({} K{} {} {}), whose forced-bucket probe DIVERGED in \
+                 every mode it ran in ({}). The arms did not realize one partition, so \
+                 §7.2.1's primary column has no acceptance gate for this cell: change the \
+                 forced mode to one that converges, or drop the shape. Never freeze a \
+                 tuple whose probe FAILED — membership records that a probe RAN (F-9.3).",
+                cell.epilogue,
+                cell.k,
+                cell.coeff,
+                cell.program,
+                matching
+                    .iter()
+                    .map(|verdict| verdict.mode.as_str())
+                    .collect::<Vec<&str>>()
+                    .join(", "),
             );
         }
     }
@@ -2951,7 +3102,17 @@ fn write_predeclared_freeze(campaign: &str, cells: &[SegPinCell]) {
             program: program_label(ProgramMode::Inline).to_owned(),
         })
         .collect();
-    write_frozen_cells(Path::new(&path), campaign, &frozen, SEG_SCHEDULE_SEED);
+    // `write_predeclared_freeze` serves `pin-decision` and `d3-attribution` only; both
+    // hardcode `FixedBucket(SEG_REFERENCE_CLOCK_BUCKET_BYTES)` and assert the realized
+    // field in their own runners, so there is no probe-vs-shortlist gap to close here.
+    // `write_frozen_cells` panics if this is ever pointed at `r0-headline`.
+    write_frozen_cells(
+        Path::new(&path),
+        campaign,
+        &frozen,
+        SEG_SCHEDULE_SEED,
+        &SegProbeEvidence::NotRequired,
+    );
     eprintln!(
         "[seg-freeze] wrote {} {campaign} cells to {path}",
         frozen.len()
@@ -2974,18 +3135,82 @@ fn bwd_seg_freeze_d3_attribution() {
     write_predeclared_freeze("d3-attribution", &SEG_D3_ATTRIBUTION_CELLS);
 }
 
-/// The three confirmation run directories, from `BWD_SEG_CONFIRM_DIRS`.
-fn confirm_dirs() -> Vec<PathBuf> {
+/// The confirmation run directories, GROUPED BY COLUMN, from `BWD_SEG_CONFIRM_DIRS`.
+///
+/// **Grammar: `<column>=<dir>:<dir>:<dir>;<column>=…`** — the same shape
+/// `bwd_seg_aggregate_pin_decision` reads, and the shape the plan's step-4 block writes
+/// (`"primary=…;secondary=…"`, one process, both columns, then
+/// `grep 'column=primary'` / `grep 'column=secondary'` over the ONE log it produced).
+///
+/// It used to split on `':'` only, which is why that block could not run: the plan's
+/// string parsed as five directories named `"primary=<d>"`, `"<d>"`,
+/// `"<d>;secondary=<d>"`, `"<d>"`, `"<d>"`, and `aggregate_confirmation_runs` rejects any
+/// count that is not the predeclared 3 or 5 — so the process aborted before classifying
+/// anything, and the two columns could not have been told apart if it hadn't. Two
+/// grammars for one variable across two aggregators in one pass is a defect on its own.
+///
+/// A group with no `=` keeps the single-column form legal and takes its name from
+/// `BWD_SEG_CARVEOUT`, so one column can still be aggregated in isolation.
+fn confirm_columns() -> Vec<(String, Vec<PathBuf>)> {
     let spec = std::env::var("BWD_SEG_CONFIRM_DIRS")
         .expect("BWD_SEG_CONFIRM_DIRS must name the confirmation run directories");
-    spec.split(':')
-        .filter(|d| !d.trim().is_empty())
-        .map(PathBuf::from)
-        .collect()
+    let fallback = std::env::var("BWD_SEG_CARVEOUT").unwrap_or_else(|_| "fixed-bucket".to_owned());
+    parse_confirm_columns(&spec, &fallback)
 }
 
-/// **§6(b)'s R0 headline aggregator.** Per frozen shape, feeds the three run
-/// directories to [`aggregate_confirmation_runs`] and prints the [`SegConfirmSummary`].
+/// The grammar itself, separated from the environment so a CPU test can drive it without
+/// mutating a process-global variable that every other test in the binary shares.
+fn parse_confirm_columns(spec: &str, fallback: &str) -> Vec<(String, Vec<PathBuf>)> {
+    let columns: Vec<(String, Vec<PathBuf>)> = spec
+        .split(';')
+        .filter(|group| !group.trim().is_empty())
+        .map(|group| {
+            let (name, dirs) = match group.split_once('=') {
+                Some((name, dirs)) => (name.trim().to_owned(), dirs),
+                None => (fallback.to_owned(), group),
+            };
+            let dirs: Vec<PathBuf> = dirs
+                .split(':')
+                .filter(|d| !d.trim().is_empty())
+                .map(|d| PathBuf::from(d.trim()))
+                .collect();
+            assert!(
+                !dirs.is_empty(),
+                "BWD_SEG_CONFIRM_DIRS group {group:?} names no run directory"
+            );
+            (name, dirs)
+        })
+        .collect();
+    assert!(
+        !columns.is_empty(),
+        "BWD_SEG_CONFIRM_DIRS names no column: {spec:?}"
+    );
+    // Distinct column names, so `column=primary` in the emitted log identifies exactly
+    // one group. Two groups sharing a name would print two verdicts per cell under one
+    // label and the plan's step-4 count check would pass on double the rows.
+    let mut names: Vec<&String> = columns.iter().map(|(name, _)| name).collect();
+    names.sort();
+    let before = names.len();
+    names.dedup();
+    assert_eq!(
+        before,
+        names.len(),
+        "BWD_SEG_CONFIRM_DIRS repeats a column name: {spec:?}"
+    );
+    columns
+}
+
+/// **§6(b)'s R0 headline aggregator.** Per COLUMN and per frozen shape, feeds that
+/// column's three run directories to [`aggregate_confirmation_runs`] and prints the
+/// [`SegConfirmSummary`]. §7.2.1's two columns are aggregated in ONE process — see
+/// [`confirm_columns`] for the grammar and for why it is not `':'`-only.
+///
+/// The PRIMARY column (`fixed-bucket`, ruling R5) is the acceptance gate and accepts only
+/// `outcome=INVERTED` on every frozen cell; the SECONDARY column (`as-configured`) is
+/// reported and never asserted (M7). This test emits both and gates neither — the gate is
+/// the shell's exact-field match on the primary lines, because an aggregator that aborted
+/// on a non-inverted primary cell would also abort before printing the secondary column
+/// it exists to report.
 ///
 /// The verdict is a machine-readable FIELD, not prose, because `NOT INVERTED` contains
 /// the substring ` INVERTED` and a `grep -v` acceptance test therefore passes a
@@ -3000,8 +3225,7 @@ fn confirm_dirs() -> Vec<PathBuf> {
 #[test]
 #[ignore = "campaign aggregator; BWD_SEG_CONFIRM_DIRS names the runs"]
 fn bwd_seg_aggregate_r0_headline() {
-    let column = std::env::var("BWD_SEG_CARVEOUT").unwrap_or_else(|_| "common-bucket".to_owned());
-    let dirs = confirm_dirs();
+    let columns = confirm_columns();
     let cells = frozen_cell_filter("r0-headline")
         .expect("BWD_SEG_FROZEN_CELLS must name the r0-headline freeze");
     // The raw files key cells as `<benchmark>|<shape label>`; the freeze names the
@@ -3009,76 +3233,88 @@ fn bwd_seg_aggregate_r0_headline() {
     // what keeps the aggregator honest about which cell it summarized.
     let mut out = String::from("campaign,column,cell,outcome,median_ratio,min_ratio,max_ratio\n");
     let mut unresolved = 0usize;
-    let mut per_process_best: Vec<Vec<(String, f64)>> = vec![Vec::new(); dirs.len()];
-    for cell in &cells {
-        // The raw key `measure_shape` emitted for this cell: the benchmark name the R0
-        // matrix uses, and the shape the FREEZE names — not a hardcoded production
-        // shape, which would silently summarize a different cell than the one frozen.
-        let key = format!("add_sub L0 R0|{}", frozen_cell_shape(cell).label());
-        let summary = aggregate_confirmation_runs(&dirs, &key);
-        let pooled = match &summary {
-            SegConfirmSummary::Resolved {
-                median_ratio,
-                min_ratio,
-                max_ratio,
-                process_ratios,
-                ..
-            } => {
-                for (index, ratio) in process_ratios.iter().enumerate() {
-                    per_process_best[index].push((cell.label.clone(), *ratio));
+    // BOTH columns in ONE process, each with its own three run directories and its own
+    // three-outcome verdict per cell. Neither column's rows can dilute the other's: the
+    // summaries are computed per group and the `column=` field separates them in the
+    // emitted log and CSV.
+    for (column, dirs) in &columns {
+        let mut per_process_best: Vec<Vec<(String, f64)>> = vec![Vec::new(); dirs.len()];
+        for cell in &cells {
+            // The raw key `measure_shape` emitted for this cell: the benchmark name the
+            // R0 matrix uses, and the shape the FREEZE names — not a hardcoded production
+            // shape, which would silently summarize a different cell than the one frozen.
+            let key = format!("add_sub L0 R0|{}", frozen_cell_shape(cell).label());
+            let summary = aggregate_confirmation_runs(dirs, &key);
+            let pooled = match &summary {
+                SegConfirmSummary::Resolved {
+                    median_ratio,
+                    min_ratio,
+                    max_ratio,
+                    process_ratios,
+                    ..
+                } => {
+                    for (index, ratio) in process_ratios.iter().enumerate() {
+                        per_process_best[index].push((cell.label.clone(), *ratio));
+                    }
+                    Some((*median_ratio, *min_ratio, *max_ratio))
                 }
-                Some((*median_ratio, *min_ratio, *max_ratio))
-            }
-            SegConfirmSummary::Unresolved { reason, .. } => {
-                unresolved += 1;
-                eprintln!("[seg-r0] cell={} reason={reason}", cell.label);
-                None
-            }
-        };
-        // `outcome=` carries exactly one of INVERTED / NOT_INVERTED / UNRESOLVED —
-        // UNDERSCORED, so no verdict is a substring of another and an exact-field match
-        // is possible. Never print the human phrase "NOT INVERTED" on a gated line.
-        let outcome = match summary.outcome() {
-            SegConfirmOutcome::Inverted => "INVERTED",
-            SegConfirmOutcome::NotInverted => "NOT_INVERTED",
-            SegConfirmOutcome::Unresolved => "UNRESOLVED",
-        };
+                SegConfirmSummary::Unresolved { reason, .. } => {
+                    unresolved += 1;
+                    eprintln!(
+                        "[seg-r0] column={column} cell={} reason={reason}",
+                        cell.label
+                    );
+                    None
+                }
+            };
+            // `outcome=` carries exactly one of INVERTED / NOT_INVERTED / UNRESOLVED —
+            // UNDERSCORED, so no verdict is a substring of another and an exact-field
+            // match is possible. Never print the human phrase "NOT INVERTED" on a gated
+            // line.
+            let outcome = match summary.outcome() {
+                SegConfirmOutcome::Inverted => "INVERTED",
+                SegConfirmOutcome::NotInverted => "NOT_INVERTED",
+                SegConfirmOutcome::Unresolved => "UNRESOLVED",
+            };
+            eprintln!(
+                "[seg-r0] column={column} cell={} outcome={outcome} median={} min={} max={}",
+                cell.label,
+                pooled.map_or("-".to_owned(), |(median, _, _)| format!("{median:.6}")),
+                pooled.map_or("-".to_owned(), |(_, min, _)| format!("{min:.6}")),
+                pooled.map_or("-".to_owned(), |(_, _, max)| format!("{max:.6}")),
+            );
+            writeln!(
+                out,
+                "r0-headline,{column},{},{outcome},{},{},{}",
+                cell.label,
+                pooled.map_or("-".to_owned(), |(median, _, _)| format!("{median:.6}")),
+                pooled.map_or("-".to_owned(), |(_, min, _)| format!("{min:.6}")),
+                pooled.map_or("-".to_owned(), |(_, _, max)| format!("{max:.6}")),
+            )
+            .expect("write String");
+        }
+        // SELECTION STABILITY, recorded SEPARATELY and never substituted for the rule
+        // (§6(b)): the argmin frozen cell of each process, and whether the three agree.
+        // PER COLUMN, because the two columns are two different configurations and a
+        // pooled stability statement would describe neither.
+        let argmins: Vec<String> = per_process_best
+            .iter()
+            .map(|ranked| {
+                ranked
+                    .iter()
+                    .min_by(|a, b| a.1.partial_cmp(&b.1).expect("finite ratio"))
+                    .map_or_else(|| "-".to_owned(), |(label, _)| label.clone())
+            })
+            .collect();
+        let stable = argmins
+            .first()
+            .is_some_and(|first| first != "-" && argmins.iter().all(|a| a == first));
         eprintln!(
-            "[seg-r0] column={column} cell={} outcome={outcome} median={} min={} max={}",
-            cell.label,
-            pooled.map_or("-".to_owned(), |(median, _, _)| format!("{median:.6}")),
-            pooled.map_or("-".to_owned(), |(_, min, _)| format!("{min:.6}")),
-            pooled.map_or("-".to_owned(), |(_, _, max)| format!("{max:.6}")),
+            "[seg-r0] column={column} selection_stability={} argmins={}",
+            if stable { "STABLE" } else { "UNSTABLE" },
+            argmins.join("|"),
         );
-        writeln!(
-            out,
-            "r0-headline,{column},{},{outcome},{},{},{}",
-            cell.label,
-            pooled.map_or("-".to_owned(), |(median, _, _)| format!("{median:.6}")),
-            pooled.map_or("-".to_owned(), |(_, min, _)| format!("{min:.6}")),
-            pooled.map_or("-".to_owned(), |(_, _, max)| format!("{max:.6}")),
-        )
-        .expect("write String");
     }
-    // SELECTION STABILITY, recorded SEPARATELY and never substituted for the rule
-    // (§6(b)): the argmin frozen cell of each process, and whether the three agree.
-    let argmins: Vec<String> = per_process_best
-        .iter()
-        .map(|ranked| {
-            ranked
-                .iter()
-                .min_by(|a, b| a.1.partial_cmp(&b.1).expect("finite ratio"))
-                .map_or_else(|| "-".to_owned(), |(label, _)| label.clone())
-        })
-        .collect();
-    let stable = argmins
-        .first()
-        .is_some_and(|first| first != "-" && argmins.iter().all(|a| a == first));
-    eprintln!(
-        "[seg-r0] selection_stability={} argmins={}",
-        if stable { "STABLE" } else { "UNSTABLE" },
-        argmins.join("|"),
-    );
     // The predeclared ESCALATION, when and only when something was unresolved. The
     // choice is the campaign operator's and is RECORDED, not inferred: §6(b) admits
     // exactly two responses and requires which was taken and why.
@@ -3536,21 +3772,28 @@ pub(super) fn seg_carveout_shape(
     }
 }
 
-/// §7.1.0 / §7.2.1's mode selector. Default `common-bucket`: the primary column's
-/// configuration, and the one every non-R0 cell uses.
+/// §7.1.0 / §7.2.1's mode selector.
+///
+/// **Default `fixed-bucket` (ruling R5)** — §7.2.1's primary column, both arms forced to
+/// [`SEG_REFERENCE_CLOCK_BUCKET_BYTES`]. It was `common-bucket` until the forced pairs
+/// were measured; that mode is retained because §7.1.0's isolation and the record of WHY
+/// the primary moved both need it, but it is no longer the primary column and no longer
+/// the default. See [`CarveoutMode::FixedBucket`] for the floor law that forced the move.
+///
+/// The bucket is NOT selectable from the environment: `fixed-bucket` binds to the one
+/// predeclared constant, so an env var can choose the mode and never the partition.
 pub(super) fn carveout_mode() -> CarveoutMode {
     match std::env::var("BWD_SEG_CARVEOUT")
-        .unwrap_or_else(|_| "common-bucket".to_owned())
+        .unwrap_or_else(|_| "fixed-bucket".to_owned())
         .trim()
     {
         "off" => CarveoutMode::Off,
         "common-bucket" => CarveoutMode::CommonBucket,
         "as-configured" => CarveoutMode::AsConfigured,
-        // The pin decision does not read this variable — it hardcodes
-        // `FixedBucket(SEG_REFERENCE_CLOCK_BUCKET_BYTES)` so no environment can
-        // make the reference clock level-dependent.
+        "fixed-bucket" => CarveoutMode::FixedBucket(SEG_REFERENCE_CLOCK_BUCKET_BYTES),
         other => panic!(
-            "BWD_SEG_CARVEOUT must be `off`, `common-bucket` or `as-configured`, got {other:?}"
+            "BWD_SEG_CARVEOUT must be `off`, `common-bucket`, `as-configured` or \
+             `fixed-bucket`, got {other:?}"
         ),
     }
 }
@@ -3586,9 +3829,17 @@ fn bwd_seg_carveout_demand_table() {
     let mut out = String::from(
         "# blocks_per_sm is register-bound, EXCEPT where the launch geometry caps it: \
 the build_fold_weights prelude is a grid-1 launch, so its row is 1 block.\n\
+# THE BUCKET COLUMNS ARE A DEMAND QUANTIZATION, NOT A REALIZED PARTITION. The requested \
+percentage is a FLOOR: realized = max(driver heuristic, bucket) (measured this pass). So \
+any row whose demand bucket is below 65,536 B can be raised by the driver, and \
+floor_override_risk says which. MEASURED counterexample: both 2,560 B/block rows \
+(r0_const_epi_plane K=4 and cont_const_epi_plane pin 50 K=4) predict a 32,768 B bucket \
+and +50.00% reclaim, and both REALIZE 65,536 B under ncu -- i.e. 0% reclaim against the \
+64 KiB driver baseline. Read reclaim_if_demand_realized_pct as conditional on its own \
+name; the gate is always the realized launch__shared_mem_config_size (spec 3.4).\n\
 symbol,regime,loader,program,epilogue,placement,pin,pin_kind,k,dynamic_bytes,\
-per_block_bytes,blocks_per_sm,sm_demand_bytes,requested_pct,expected_bucket_bytes,\
-expected_l1_bytes,reclaim_vs_baseline_pct\n",
+per_block_bytes,blocks_per_sm,sm_demand_bytes,requested_pct,demand_bucket_bytes,\
+demand_l1_bytes,reclaim_if_demand_realized_pct,floor_override_risk\n",
     );
     let mut rows = 0usize;
     #[allow(clippy::too_many_arguments)]
@@ -3611,10 +3862,23 @@ expected_l1_bytes,reclaim_vs_baseline_pct\n",
         let demand = blocks as usize * per_block;
         let bucket = bwd_seg_expected_smem_bucket_bytes(demand);
         let l1 = UNIFIED_ARRAY_BYTES - bucket;
+        // **The floor law, made a COLUMN rather than a caveat.** `realized = max(driver
+        // heuristic, bucket)`, so a demand that quantizes below the one bucket the driver
+        // can never raise is a PREDICTION the driver may override upward — and when it
+        // does, the reclaim on this row is not the number two fields to the left. The two
+        // K=4 rows are the measured case: predicted 32,768 B, realized 65,536 B, so their
+        // predicted +50.00% reclaim was actually 0%. Emitting the risk per row is what
+        // stops the arithmetic being read as an observation.
+        let floor_override_risk = if bucket < SEG_REFERENCE_CLOCK_BUCKET_BYTES {
+            "yes"
+        } else {
+            "no"
+        };
         writeln!(
             out,
             "{symbol},{regime},{loader},{program},{epi},{placement},{pin},{pin_kind},{k},\
-             {dynamic},{per_block},{blocks},{demand},{},{bucket},{l1},{:+.2}",
+             {dynamic},{per_block},{blocks},{demand},{},{bucket},{l1},{:+.2},\
+             {floor_override_risk}",
             bwd_seg_carveout_pct(blocks, dynamic),
             (l1 as f64 / DRIVER_BASELINE_L1_BYTES as f64 - 1.0) * 100.0,
         )
@@ -4057,6 +4321,30 @@ pub(super) struct SegMatrixRow {
     /// which reads it: the aggregators separate the two roles from the emitted column
     /// rather than re-deriving them from the label.
     pub(super) pin_role: SegPinRole,
+    /// WHAT the two arms are to each other, which decides whether §6(b)'s inversion
+    /// vocabulary applies to this row.
+    ///
+    /// **Keyed on the CAMPAIGN, never on the carveout mode.** It used to be inferred
+    /// from `carveout_mode == "fixed-bucket"`, which was sound only while
+    /// [`CarveoutMode::FixedBucket`] was reachable from the pin and δ3 runners alone.
+    /// Ruling R5 puts §7.2.1's PRIMARY column at the same fixed 64 KiB bucket, and those
+    /// pairs are candidate-vs-incumbent — so a mode-keyed rule would have stamped
+    /// `reference-clock` on the headline itself and erased the very verdict the
+    /// acceptance gate reads.
+    pub(super) pairing: SegPairing,
+}
+
+/// The relationship between a paired row's two arms (see [`SegMatrixRow::pairing`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum SegPairing {
+    /// The candidate against the evaluator it means to replace. §6(b)'s three-outcome
+    /// rule applies and `verdict` carries its vocabulary. Every R0 headline row,
+    /// including R5's fixed-64 primary column, and every Stage-B / corpus row.
+    CandidateVsIncumbent,
+    /// The candidate against a launch used only as a CLOCK — §4.5 mechanism 3's
+    /// cross-build anchor. Applying §6(b)'s rule to a cross-build ratio is a category
+    /// error, so `verdict` must not spell `INVERTED` here.
+    ReferenceClock,
 }
 
 impl SegMatrixRow {
@@ -4120,13 +4408,18 @@ pub(super) fn render_matrix_csv(rows: &[SegMatrixRow]) -> String {
         // machine-readable verdict field must not carry §6(b)'s vocabulary: §4.5 calls
         // applying §6(b)'s rule to a cross-build ratio a category error, and
         // `INVERTED` in a frozen artifact is exactly that error in the field a
-        // consumer parses. `FixedBucket` is reachable only from the pin and δ3
-        // runners, which pair a continuation candidate against the flat R0 kernel as a
-        // CLOCK; the label comes from `CarveoutMode` so the two spellings cannot drift.
-        let verdict = if row.carveout_mode == CarveoutMode::FixedBucket(0).label() {
-            "reference-clock"
-        } else {
-            row.ratio.verdict()
+        // consumer parses.
+        //
+        // **Keyed on the PAIRING, not on the carveout mode.** The mode-keyed form
+        // (`carveout_mode == FixedBucket(0).label()`) was correct only while
+        // `FixedBucket` belonged to the pin and δ3 runners alone. Ruling R5 puts
+        // §7.2.1's primary column at the same bucket with candidate-vs-incumbent arms,
+        // so that form would now stamp `reference-clock` over the headline's own
+        // verdict — the acceptance gate would read a row that had been told it has no
+        // inversion question. See `SegMatrixRow::pairing`.
+        let verdict = match row.pairing {
+            SegPairing::ReferenceClock => "reference-clock",
+            SegPairing::CandidateVsIncumbent => row.ratio.verdict(),
         };
         let (delta, delta_low, delta_high, gate) = match row.ratio.order() {
             Some(order) => (
@@ -6056,7 +6349,24 @@ fn bwd_seg_freeze_r0_headline() {
     let frozen = r0_headline_freeze_cells(&text, &csv.display().to_string());
     let path = std::env::var("BWD_SEG_FROZEN_CELLS_OUT")
         .expect("BWD_SEG_FROZEN_CELLS_OUT must name the freeze to write");
-    write_frozen_cells(Path::new(&path), "r0-headline", &frozen, SEG_SCHEDULE_SEED);
+    // The MEASURED probe verdicts, from `pair_gate.py`'s own output. Required, not
+    // optional: a freeze written without them would rest on probe MEMBERSHIP, which
+    // records that a capture was taken and not that the arms converged (F-9.3).
+    let verdicts = std::env::var("BWD_SEG_PROBE_VERDICTS").expect(
+        "BWD_SEG_PROBE_VERDICTS must name the pair_gate.py convergence verdicts for the \
+         probed tuples; the R0 freeze may not be written without them (§9 item 2, F-9.3)",
+    );
+    let probes = SegProbeEvidence::Measured(parse_probe_verdicts(
+        &std::fs::read_to_string(&verdicts)
+            .unwrap_or_else(|error| panic!("read probe verdicts {verdicts}: {error}")),
+    ));
+    write_frozen_cells(
+        Path::new(&path),
+        "r0-headline",
+        &frozen,
+        SEG_SCHEDULE_SEED,
+        &probes,
+    );
     for cell in &frozen {
         eprintln!("[seg-freeze] frozen cell={}", cell.label);
     }
@@ -6291,6 +6601,11 @@ fn run_pin_decision_matrix(wanted: &[&SegPinCell]) -> Vec<SegMatrixRow> {
         // Step 4: the role travels with the row, so the aggregator separates Decision
         // from DriftControl without re-deriving either.
         row.pin_role = cell.role;
+        // THIS is the reference-clock campaign — the only one. The baseline above is
+        // literally labelled `flat-r0-reference-clock`, and §4.5 forbids reading §6(b)'s
+        // inversion rule off a cross-build ratio. Set here rather than inferred from the
+        // carveout mode, because R5's headline pairs now share that mode.
+        row.pairing = SegPairing::ReferenceClock;
         matrix.push(row);
     }
     let csv = seg_output_path("seg_pin_decision_matrix.csv");
@@ -6569,6 +6884,12 @@ fn measure_shape(
         // The pin-decision runner OVERWRITES this per cell; every other caller leaves
         // the default and never reads it.
         pin_role: SegPinRole::Decision,
+        // Candidate-vs-incumbent is the DEFAULT because it is what almost every caller
+        // is: the R0 headline (R5's fixed-64 primary column included), the Stage-B
+        // ladder and the corpus sweep all pair against something they mean to replace.
+        // The pin / δ3 runner overwrites it beside `pin_role`, at the one call site that
+        // pairs against a clock.
+        pairing: SegPairing::CandidateVsIncumbent,
     };
     if blocks_per_sm == 0 {
         // The cell is never staged, so the floor comes from a bare lowering. A lowering
@@ -10851,7 +11172,13 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("seg_freeze_{}", std::process::id()));
         std::fs::create_dir_all(&dir).expect("temp dir");
         let path = dir.join(SEG_FROZEN_CELLS_TSV);
-        write_frozen_cells(&path, "pin-decision", &cells, SEG_SCHEDULE_SEED);
+        write_frozen_cells(
+            &path,
+            "pin-decision",
+            &cells,
+            SEG_SCHEDULE_SEED,
+            &SegProbeEvidence::NotRequired,
+        );
         assert_eq!(
             read_frozen_cells(&path, "pin-decision"),
             cells,
@@ -10860,7 +11187,13 @@ mod tests {
         // Byte-stability, so the shell's sha256sum comparison is meaningful: writing
         // the same freeze twice must produce identical bytes.
         let first = std::fs::read(&path).expect("read freeze");
-        write_frozen_cells(&path, "pin-decision", &cells, SEG_SCHEDULE_SEED);
+        write_frozen_cells(
+            &path,
+            "pin-decision",
+            &cells,
+            SEG_SCHEDULE_SEED,
+            &SegProbeEvidence::NotRequired,
+        );
         assert_eq!(first, std::fs::read(&path).expect("read freeze"));
     }
 
@@ -10889,6 +11222,9 @@ mod tests {
                 program: "inline".to_owned(),
             }],
             SEG_SCHEDULE_SEED,
+            // Converged evidence deliberately: the CLASS must refuse this cell on its
+            // own, before any probe question is asked.
+            &converged_probes(),
         );
     }
 
@@ -10914,6 +11250,7 @@ mod tests {
             "r0-headline",
             &[cell(4, "plane"), cell(8, "plane")],
             SEG_SCHEDULE_SEED,
+            &converged_probes(),
         );
     }
 
@@ -10934,7 +11271,13 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("seg_probe_ok_{}", std::process::id()));
         std::fs::create_dir_all(&dir).expect("temp dir");
         let path = dir.join(SEG_FROZEN_CELLS_TSV);
-        write_frozen_cells(&path, "r0-headline", &[probed.clone()], SEG_SCHEDULE_SEED);
+        write_frozen_cells(
+            &path,
+            "r0-headline",
+            &[probed.clone()],
+            SEG_SCHEDULE_SEED,
+            &converged_probes(),
+        );
         assert_eq!(read_frozen_cells(&path, "r0-headline"), vec![probed]);
         // The pin campaign's K=8 continuation cell is fine: the predicate is R0-only.
         let pin = SegFrozenCell {
@@ -10947,7 +11290,13 @@ mod tests {
             coeff: "const".to_owned(),
             program: "inline".to_owned(),
         };
-        write_frozen_cells(&path, "pin-decision", &[pin], SEG_SCHEDULE_SEED);
+        write_frozen_cells(
+            &path,
+            "pin-decision",
+            &[pin],
+            SEG_SCHEDULE_SEED,
+            &SegProbeEvidence::NotRequired,
+        );
     }
 
     /// The other campaign's freeze is REFUSED, not silently accepted: a pin runner handed
@@ -10971,7 +11320,13 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("seg_freeze_x_{}", std::process::id()));
         std::fs::create_dir_all(&dir).expect("temp dir");
         let path = dir.join(SEG_FROZEN_CELLS_TSV);
-        write_frozen_cells(&path, "r0-headline", &cells, SEG_SCHEDULE_SEED);
+        write_frozen_cells(
+            &path,
+            "r0-headline",
+            &cells,
+            SEG_SCHEDULE_SEED,
+            &converged_probes(),
+        );
         let _ = read_frozen_cells(&path, "pin-decision");
     }
 
@@ -11173,17 +11528,23 @@ mod tests {
         // machine-readable `verdict` field of a `FixedBucket` row must not spell any of
         // §6(b)'s tokens. Measured on the live smoke run before this was fixed: the
         // frozen artifact carried `0.245246,…,INVERTED`.
+        //
+        // **Keyed on the PAIRING, not on the mode** (ruling R5): the mode-keyed form was
+        // sound only while `FixedBucket` was the pin/δ3 runners' alone. R5 puts §7.2.1's
+        // primary column at the SAME bucket with candidate-vs-incumbent arms, so the
+        // second half of this test pins the other direction — same mode, opposite verdict
+        // vocabulary — and a regression to mode-keying fails one half or the other.
+        let inverting = || {
+            Some(RatioEstimate {
+                median_ratio: 0.245_246,
+                ci_low: 0.245_1,
+                ci_high: 0.245_3,
+            })
+        };
         let clock = SegMatrixRow {
             carveout_mode: CarveoutMode::FixedBucket(SEG_REFERENCE_CLOCK_BUCKET_BYTES).label(),
-            ..row_fixture(
-                4,
-                6,
-                Some(RatioEstimate {
-                    median_ratio: 0.245_246,
-                    ci_low: 0.245_1,
-                    ci_high: 0.245_3,
-                }),
-            )
+            pairing: SegPairing::ReferenceClock,
+            ..row_fixture(4, 6, inverting())
         };
         let clock_csv = render_matrix_csv(&[clock]);
         assert!(clock_csv.contains(",reference-clock,"), "{clock_csv}");
@@ -11193,6 +11554,206 @@ mod tests {
         );
         // The ratio columns still render — only the VERDICT vocabulary changes.
         assert!(clock_csv.contains("0.245246"), "{clock_csv}");
+
+        // **R5's PRIMARY column: the same `fixed-bucket` mode, candidate-vs-incumbent
+        // arms, and §6(b)'s vocabulary INTACT.** If this row were stamped
+        // `reference-clock`, the acceptance gate would be reading a field that had been
+        // told the headline has no inversion question — the whole verdict erased by a
+        // configuration change that was supposed to be about cache partitions.
+        let headline = SegMatrixRow {
+            carveout_mode: CarveoutMode::FixedBucket(SEG_REFERENCE_CLOCK_BUCKET_BYTES).label(),
+            pairing: SegPairing::CandidateVsIncumbent,
+            ..row_fixture(4, 6, inverting())
+        };
+        let headline_csv = render_matrix_csv(&[headline]);
+        assert!(
+            headline_csv.contains("fixed-bucket"),
+            "the primary column runs at the fixed bucket: {headline_csv}"
+        );
+        assert!(
+            headline_csv.contains("INVERTED"),
+            "R5's primary column is candidate-vs-incumbent, so §6(b)'s verdict must \
+             survive the fixed bucket: {headline_csv}"
+        );
+        assert!(
+            !headline_csv.contains("reference-clock"),
+            "the verdict must key on the PAIRING, never on the carveout mode: \
+             {headline_csv}"
+        );
+    }
+
+    /// Probe evidence saying every [`SEG_R0_PROBED_TUPLES`] member CONVERGED under the
+    /// primary forced mode — the fixture an `r0-headline` freeze-writer test needs now
+    /// that membership alone is not enough (F-9.3).
+    fn converged_probes() -> SegProbeEvidence {
+        SegProbeEvidence::Measured(
+            SEG_R0_PROBED_TUPLES
+                .iter()
+                .map(|probed| SegProbeVerdict {
+                    epilogue: probed.epilogue.to_owned(),
+                    k: probed.k,
+                    coeff: probed.coeff.to_owned(),
+                    program: probed.program.to_owned(),
+                    mode: "fixed-bucket".to_owned(),
+                    converged: true,
+                })
+                .collect(),
+        )
+    }
+
+    /// The parser rejects what it cannot mean, rather than defaulting: an unknown verdict
+    /// token silently meaning "diverged" would block a sound freeze and silently meaning
+    /// "converged" would pass an unsound one.
+    #[test]
+    fn probe_verdicts_parse_and_reject_what_they_cannot_mean() {
+        let ok = parse_probe_verdicts(
+            "# a comment\n\
+             plane\t4\tconst\tinline\tfixed-bucket\tCONVERGED\n\
+             \n\
+             plane\t24\tconst\tinline\tcommon-bucket\tDIVERGED\n",
+        );
+        assert_eq!(ok.len(), 2);
+        assert!(ok[0].converged);
+        assert_eq!(ok[0].k, 4);
+        assert!(!ok[1].converged);
+        assert_eq!(ok[1].mode, "common-bucket");
+    }
+
+    #[test]
+    #[should_panic(expected = "CONVERGED or DIVERGED")]
+    fn probe_verdicts_reject_an_unknown_token() {
+        let _ = parse_probe_verdicts("plane\t4\tconst\tinline\tfixed-bucket\tok\n");
+    }
+
+    /// `off` is the driver-default control, where divergence is the EXPECTED outcome — a
+    /// convergence probe in that mode is not evidence of anything and must not be
+    /// accepted as such.
+    #[test]
+    #[should_panic(expected = "only meaningful in a FORCED mode")]
+    fn probe_verdicts_reject_an_unforced_mode() {
+        let _ = parse_probe_verdicts("plane\t4\tconst\tinline\toff\tCONVERGED\n");
+    }
+
+    /// **F-9.3, the case that motivated the guard.** `plane K4 const inline` IS a probed
+    /// tuple, and its `common-bucket` probe realized 65,536 B against 32,768 B. Membership
+    /// passes; the freeze must still be refused.
+    #[test]
+    #[should_panic(expected = "probe DIVERGED")]
+    fn the_r0_freeze_refuses_a_tuple_whose_probe_diverged() {
+        let dir = std::env::temp_dir().join(format!("seg_probe_div_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        write_frozen_cells(
+            &dir.join(SEG_FROZEN_CELLS_TSV),
+            "r0-headline",
+            &[SegFrozenCell {
+                label: "r0-plane-k4-const-inline".to_owned(),
+                circuit: ADD_SUB_LAYOUT_SHORT.to_owned(),
+                layer: 0,
+                class: SegRoundClass::R0,
+                k: 4,
+                epilogue: "plane".to_owned(),
+                coeff: "const".to_owned(),
+                program: "inline".to_owned(),
+            }],
+            SEG_SCHEDULE_SEED,
+            &SegProbeEvidence::Measured(vec![SegProbeVerdict {
+                epilogue: "plane".to_owned(),
+                k: 4,
+                coeff: "const".to_owned(),
+                program: "inline".to_owned(),
+                mode: "common-bucket".to_owned(),
+                converged: false,
+            }]),
+        );
+    }
+
+    /// A verdict for a DIFFERENT probed tuple does not license this one.
+    #[test]
+    #[should_panic(expected = "no probe verdict")]
+    fn the_r0_freeze_refuses_a_tuple_with_no_verdict_of_its_own() {
+        let dir = std::env::temp_dir().join(format!("seg_probe_none_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        write_frozen_cells(
+            &dir.join(SEG_FROZEN_CELLS_TSV),
+            "r0-headline",
+            &[SegFrozenCell {
+                label: "r0-plane-k4-const-inline".to_owned(),
+                circuit: ADD_SUB_LAYOUT_SHORT.to_owned(),
+                layer: 0,
+                class: SegRoundClass::R0,
+                k: 4,
+                epilogue: "plane".to_owned(),
+                coeff: "const".to_owned(),
+                program: "inline".to_owned(),
+            }],
+            SEG_SCHEDULE_SEED,
+            // K=24's verdict, for a K=4 cell.
+            &SegProbeEvidence::Measured(vec![SegProbeVerdict {
+                epilogue: "plane".to_owned(),
+                k: 24,
+                coeff: "const".to_owned(),
+                program: "inline".to_owned(),
+                mode: "fixed-bucket".to_owned(),
+                converged: true,
+            }]),
+        );
+    }
+
+    /// The R0 campaign may not opt OUT of the precondition by declaring it not required.
+    #[test]
+    #[should_panic(expected = "needs MEASURED probe verdicts")]
+    fn the_r0_freeze_refuses_unmeasured_evidence() {
+        let dir = std::env::temp_dir().join(format!("seg_probe_unmeas_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        write_frozen_cells(
+            &dir.join(SEG_FROZEN_CELLS_TSV),
+            "r0-headline",
+            &[SegFrozenCell {
+                label: "r0-plane-k24-const-inline".to_owned(),
+                circuit: ADD_SUB_LAYOUT_SHORT.to_owned(),
+                layer: 0,
+                class: SegRoundClass::R0,
+                k: 24,
+                epilogue: "plane".to_owned(),
+                coeff: "const".to_owned(),
+                program: "inline".to_owned(),
+            }],
+            SEG_SCHEDULE_SEED,
+            &SegProbeEvidence::NotRequired,
+        );
+    }
+
+    /// §7.2.1's two columns in ONE process, which is what the plan's step-4 block writes.
+    /// The `':'`-only reading is what made that block unrunnable — it would have produced
+    /// five directories, two of them named `"primary=<dir>"` and `"<dir>;secondary=<dir>"`.
+    #[test]
+    fn confirm_columns_parses_the_two_column_grammar() {
+        let columns = parse_confirm_columns("primary=a:b:c;secondary=d:e:f", "fixed-bucket");
+        assert_eq!(columns.len(), 2, "{columns:?}");
+        assert_eq!(columns[0].0, "primary");
+        assert_eq!(columns[1].0, "secondary");
+        assert_eq!(
+            columns[0].1,
+            vec![PathBuf::from("a"), PathBuf::from("b"), PathBuf::from("c")]
+        );
+        assert_eq!(
+            columns[1].1,
+            vec![PathBuf::from("d"), PathBuf::from("e"), PathBuf::from("f")]
+        );
+        // The single-column form stays legal, so one column can be aggregated alone, and
+        // it takes its name from the carveout mode.
+        let solo = parse_confirm_columns("a:b:c", "as-configured");
+        assert_eq!(solo.len(), 1);
+        assert_eq!(solo[0].0, "as-configured");
+        assert_eq!(solo[0].1.len(), 3);
+    }
+
+    /// Two groups under one name would print two verdicts per cell under one `column=`
+    /// label, and the plan's step-4 count check would pass on double the rows.
+    #[test]
+    #[should_panic(expected = "repeats a column name")]
+    fn confirm_columns_refuse_a_repeated_column() {
+        let _ = parse_confirm_columns("primary=a:b:c;primary=d:e:f", "fixed-bucket");
     }
 
     /// **The executable freeze path, driven end to end.**
@@ -11288,7 +11849,13 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("seg_freeze_{}", std::process::id()));
         std::fs::create_dir_all(&dir).expect("freeze dir");
         let path = dir.join(SEG_FROZEN_CELLS_TSV);
-        write_frozen_cells(&path, "r0-headline", &frozen, SEG_SCHEDULE_SEED);
+        write_frozen_cells(
+            &path,
+            "r0-headline",
+            &frozen,
+            SEG_SCHEDULE_SEED,
+            &converged_probes(),
+        );
         assert_eq!(read_frozen_cells(&path, "r0-headline"), frozen);
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -11482,6 +12049,9 @@ mod tests {
             // exercised by the column test rather than assumed.
             carveout_source: "candidate, 30720 B (both arms quantize alike)".to_owned(),
             pin_role: SegPinRole::Decision,
+            // The default the R0 headline and every replacement-candidate campaign carry;
+            // the two tests that care about the reference-clock pairing override it.
+            pairing: SegPairing::CandidateVsIncumbent,
         }
     }
 

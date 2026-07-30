@@ -500,8 +500,24 @@ pub(crate) enum CarveoutMode {
     /// Both arms forced to ONE EXPLICIT bucket, independent of either arm's demand.
     /// §4.5's pin-decision pairs use this so the reference clock's own realized
     /// partition is identical at every pin level — see
-    /// [`SEG_REFERENCE_CLOCK_BUCKET_BYTES`]. Not reachable from
-    /// `BWD_SEG_CARVEOUT`: the decision runner hardcodes it.
+    /// [`SEG_REFERENCE_CLOCK_BUCKET_BYTES`].
+    ///
+    /// **Ruling R5 (§7.2.1's primary column) also uses it, at the same 64 KiB.** The
+    /// R0 headline's primary column was `CommonBucket` until the forced pairs were
+    /// measured: `realized = max(driver heuristic, bucket)`, and the seg candidate's
+    /// heuristic picks 64 KiB at `K = 4`, so the pair's own `max(demand)` of 30,720 B
+    /// quantized to 32,768 B and the two arms realized 65,536 B and 32,768 B —
+    /// `pair_gate.py` recorded `PROTOCOL FAILURE`, 3 of 4 forced pairs over. 64 KiB is
+    /// the only bucket the driver can never raise, hence the only convergent forced
+    /// pairing available to the headline. So this variant IS reachable from
+    /// `BWD_SEG_CARVEOUT=fixed-bucket`, which binds it to
+    /// [`SEG_REFERENCE_CLOCK_BUCKET_BYTES`] and to nothing else — an environment may
+    /// select the mode but may not invent the bucket.
+    ///
+    /// The mode alone therefore no longer identifies a reference-clock pairing:
+    /// §4.5's pairs clock a continuation candidate against the flat R0 kernel, while
+    /// R5's pairs are candidate-vs-incumbent and keep §6(b)'s inversion vocabulary.
+    /// That distinction is carried by `SegMatrixRow::pairing`, not by this label.
     FixedBucket(usize),
     /// Each arm at the preference this bench design gives it: the candidate its own
     /// computed pct, the baseline the preference it already carries (the flat R0
