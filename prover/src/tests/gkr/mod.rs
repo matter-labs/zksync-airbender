@@ -458,6 +458,9 @@ pub fn check_satisfied_row<F: PrimeField, A: GoodAllocator, B: GoodAllocator>(
     true
 }
 
+// Generated witness-eval code (see gkr_test.sh `witness_gen`); lint noise is
+// suppressed at the include site so the generated files stay byte-stable.
+#[allow(clippy::let_unit_value)]
 mod add_sub_lui_auipc_mop {
     use crate::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
     use crate::gkr::witness_gen::oracles::NonMemoryCircuitOracle;
@@ -484,6 +487,9 @@ mod add_sub_lui_auipc_mop {
     }
 }
 
+// Generated witness-eval code (see gkr_test.sh `witness_gen`); lint noise is
+// suppressed at the include site so the generated files stay byte-stable.
+#[allow(clippy::let_unit_value)]
 mod jump_branch_slt {
     use crate::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
     use crate::gkr::witness_gen::oracles::NonMemoryCircuitOracle;
@@ -509,6 +515,9 @@ mod jump_branch_slt {
     }
 }
 
+// Generated witness-eval code (see gkr_test.sh `witness_gen`); lint noise is
+// suppressed at the include site so the generated files stay byte-stable.
+#[allow(clippy::let_unit_value)]
 mod shift_binary_ops {
     use crate::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
     use crate::gkr::witness_gen::oracles::NonMemoryCircuitOracle;
@@ -531,6 +540,9 @@ mod shift_binary_ops {
     }
 }
 
+// Generated witness-eval code (see gkr_test.sh `witness_gen`); lint noise is
+// suppressed at the include site so the generated files stay byte-stable.
+#[allow(clippy::let_unit_value)]
 mod unsigned_mul_div {
     use crate::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
     use crate::gkr::witness_gen::oracles::NonMemoryCircuitOracle;
@@ -556,6 +568,9 @@ mod unsigned_mul_div {
     }
 }
 
+// Generated witness-eval code (see gkr_test.sh `witness_gen`); lint noise is
+// suppressed at the include site so the generated files stay byte-stable.
+#[allow(clippy::let_unit_value)]
 mod mem_word_only {
     use crate::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
     use crate::gkr::witness_gen::oracles::MemoryCircuitOracle;
@@ -578,6 +593,9 @@ mod mem_word_only {
     }
 }
 
+// Generated witness-eval code (see gkr_test.sh `witness_gen`); lint noise is
+// suppressed at the include site so the generated files stay byte-stable.
+#[allow(clippy::let_unit_value)]
 mod mem_subword_only {
     use crate::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
     use crate::gkr::witness_gen::oracles::MemoryCircuitOracle;
@@ -603,6 +621,9 @@ mod mem_subword_only {
     }
 }
 
+// Generated witness-eval code (see gkr_test.sh `witness_gen`); lint noise is
+// suppressed at the include site so the generated files stay byte-stable.
+#[allow(clippy::let_unit_value)]
 mod blake2_with_extended_control {
     use crate::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
     use crate::gkr::witness_gen::witness_proxy::WitnessProxy;
@@ -628,6 +649,9 @@ mod blake2_with_extended_control {
     }
 }
 
+// Generated witness-eval code (see gkr_test.sh `witness_gen`); lint noise is
+// suppressed at the include site so the generated files stay byte-stable.
+#[allow(clippy::let_unit_value)]
 mod bigint_with_extended_control {
     use crate::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
     use crate::gkr::witness_gen::witness_proxy::WitnessProxy;
@@ -653,6 +677,9 @@ mod bigint_with_extended_control {
     }
 }
 
+// Generated witness-eval code (see gkr_test.sh `witness_gen`); lint noise is
+// suppressed at the include site so the generated files stay byte-stable.
+#[allow(clippy::let_unit_value)]
 mod keccak_special5 {
     use crate::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
     use crate::gkr::witness_gen::witness_proxy::WitnessProxy;
@@ -678,6 +705,9 @@ mod keccak_special5 {
     }
 }
 
+// Generated witness-eval code (see gkr_test.sh `witness_gen`); lint noise is
+// suppressed at the include site so the generated files stay byte-stable.
+#[allow(clippy::let_unit_value)]
 mod blake2_g_function {
     use crate::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
     use crate::gkr::witness_gen::witness_proxy::WitnessProxy;
@@ -707,6 +737,9 @@ mod blake2_g_function {
     }
 }
 
+// Generated witness-eval code (see gkr_test.sh `witness_gen`); lint noise is
+// suppressed at the include site so the generated files stay byte-stable.
+#[allow(clippy::let_unit_value)]
 mod unified_reduced_machine {
     use crate::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
     use crate::gkr::witness_gen::oracles::UnifiedRiscvCircuitOracle;
@@ -733,6 +766,9 @@ mod unified_reduced_machine {
     }
 }
 
+// Generated witness-eval code (see gkr_test.sh `witness_gen`); lint noise is
+// suppressed at the include site so the generated files stay byte-stable.
+#[allow(clippy::let_unit_value)]
 mod unified_reduced_machine_proth120 {
     use crate::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
     use crate::gkr::witness_gen::oracles::UnifiedRiscvCircuitOracle;

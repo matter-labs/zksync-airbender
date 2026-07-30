@@ -65,11 +65,11 @@ fn try_frames_for_pc<'a>(
 ) -> Option<&'a [String]> {
     // Unaligned PCs are not valid instruction addresses in this VM and are
     // usually artifacts of incomplete stack data.
-    if pc % 4 != 0 {
+    if !pc.is_multiple_of(4) {
         return None;
     }
 
-    if symbol_cache.contains_key(&pc) == false {
+    if !symbol_cache.contains_key(&pc) {
         let frames = symbolizer.collect_frames(pc);
         symbol_cache.insert(pc, frames);
     }

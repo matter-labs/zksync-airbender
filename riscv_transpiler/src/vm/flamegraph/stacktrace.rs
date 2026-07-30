@@ -30,7 +30,7 @@ pub(super) fn collect_stacktrace_raw<C: Counters, R: FlamegraphReadableRam>(
         if fp < 8 {
             break;
         }
-        if fp % 4 != 0 {
+        if !fp.is_multiple_of(4) {
             break;
         }
 

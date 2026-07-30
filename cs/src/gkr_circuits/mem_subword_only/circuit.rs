@@ -542,16 +542,11 @@ mod test {
     use test_utils::skip_if_ci;
 
     use super::*;
-    use crate::cs::circuit_impl::BasicAssembly;
-    use crate::cs::circuit_output::CircuitOutput;
     use crate::gkr_compiler::compile_unrolled_circuit_state_transition_into_unrolled_gkr_without_caches;
     use crate::gkr_compiler::{
         compile_unrolled_circuit_state_transition_into_gkr, dump_ssa_witness_eval_form,
     };
-    use crate::structured_expr::StructuredStatement;
     use crate::utils::serialize_to_file;
-
-    type F = ::field::Mersenne31Field;
 
     // fn named_variable(output: &CircuitOutput<F>, expected_name: &str) -> Variable {
     //     output

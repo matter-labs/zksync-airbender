@@ -602,14 +602,10 @@ mod test {
     use test_utils::skip_if_ci;
 
     use super::*;
-    use crate::cs::circuit_impl::BasicAssembly;
     use crate::gkr_compiler::compile_unrolled_circuit_state_transition_into_gkr;
     use crate::gkr_compiler::compile_unrolled_circuit_state_transition_into_unrolled_gkr_without_caches;
     use crate::gkr_compiler::dump_ssa_witness_eval_form;
-    use crate::structured_expr::StructuredStatement;
     use crate::utils::serialize_to_file;
-
-    type F = ::field::Mersenne31Field;
 
     // fn contains_variable(expr: &Expr<F>, variable: Variable) -> bool {
     //     match expr {

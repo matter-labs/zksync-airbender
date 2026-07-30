@@ -33,6 +33,9 @@ impl<F: PrimeField> circuit_common::DelegationCircuit<F> for Blake2sGFunctionDel
     }
 }
 
+// Generated witness-eval code; lint noise suppressed at the include site so
+// the generated files stay byte-stable.
+#[allow(clippy::let_unit_value)]
 mod sealed {
     use super::*;
     use crate::cs::oracle::Placeholder;

@@ -851,7 +851,7 @@ mod test {
             .as_chunks::<DEGREE>()
             .0
             .iter()
-            .map(|chunk| make_el(chunk.map(|w| Base::from_raw_repr_with_reduction(w))))
+            .map(|chunk| make_el(chunk.map(Base::from_raw_repr_with_reduction)))
             .collect();
         out.truncate(num);
         out

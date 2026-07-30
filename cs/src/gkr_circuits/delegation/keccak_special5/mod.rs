@@ -1750,7 +1750,7 @@ mod test {
         let gkr_compiled = compile_delegation_circuit_into_gkr::<BabyBearField>(
             &|cs| keccak_special5_delegation_circuit_table_addition_fn(cs),
             &|cs| {
-                let _ = define_keccak_special5_delegation_circuit::<_, _, false>(cs);
+                define_keccak_special5_delegation_circuit::<_, _, false>(cs);
             },
             22,
         );
@@ -1769,7 +1769,7 @@ mod test {
         let ssa_forms = dump_ssa_witness_eval_form::<BabyBearField>(
             &|cs| keccak_special5_delegation_circuit_table_addition_fn(cs),
             &|cs| {
-                let _ = define_keccak_special5_delegation_circuit::<_, _, false>(cs);
+                define_keccak_special5_delegation_circuit::<_, _, false>(cs);
             },
         );
         serialize_to_file(&ssa_forms, "compiled_circuits/keccak_special5_ssa_gkr.json");
@@ -1783,7 +1783,7 @@ mod test {
         let gkr_compiled = compile_delegation_circuit_into_gkr_without_caches::<BabyBearField>(
             &|cs| keccak_special5_delegation_circuit_table_addition_fn(cs),
             &|cs| {
-                let _ = define_keccak_special5_delegation_circuit::<_, _, false>(cs);
+                define_keccak_special5_delegation_circuit::<_, _, false>(cs);
             },
             22,
         );

@@ -341,7 +341,7 @@ mod test {
         let binary: Vec<u32> = buffer
             .as_chunks::<4>()
             .0
-            .into_iter()
+            .iter()
             .map(|el| u32::from_le_bytes(*el))
             .collect();
 
