@@ -96,8 +96,9 @@ use super::seg::{
 };
 use super::seg_desc::BWD_SEG_MAX_K;
 use super::seg_lower::{
-    bwd_seg_traffic_floor, lower_bwd_seg, BwdSegLaunchDesc, BwdSegLowerError, BwdSegSetup,
-    BwdSegTrafficFloor, CoeffMode, D2Policy, ListWorkStats, ProgramMode,
+    bwd_seg_floor_backing_census, bwd_seg_traffic_floor, lower_bwd_seg, BwdSegLaunchDesc,
+    BwdSegLowerError, BwdSegSetup, BwdSegTrafficFloor, CoeffMode, D2Policy, ListWorkStats,
+    ProgramMode,
 };
 use crate::primitives::field::E4;
 use crate::primitives::utils::WARP_SIZE;
@@ -9742,7 +9743,7 @@ fn bwd_seg_lowering_footprint_census() {
     let mut min_read: Option<u64> = None;
     let mut out = String::from(
         "circuit,layer,class,k,coeff,program,status,num_foldable,n_coefficients,\
-floor_dram_read_bytes,floor_dram_write_bytes\n",
+floor_dram_read_bytes,floor_dram_write_bytes,sources_priced,dead_sources,distinct_backings\n",
     );
 
     // The coordinates `bwd_seg_corpus_sweep` walks, through its OWN enumeration
@@ -9791,7 +9792,7 @@ floor_dram_read_bytes,floor_dram_write_bytes\n",
                         program_label(shape.program),
                     );
                     let Some(cell) = cell.as_ref() else {
-                        writeln!(out, "{label},over-budget,0,0,0,0").expect("write String");
+                        writeln!(out, "{label},over-budget,0,0,0,0,0,0,0").expect("write String");
                         continue;
                     };
                     // A coordinate host lowering REJECTS is recorded with its rejection;
@@ -9799,7 +9800,8 @@ floor_dram_read_bytes,floor_dram_write_bytes\n",
                     match cell.try_lower(shape) {
                         Err(error) => {
                             rejections.push(format!("{label} -> {error:?}"));
-                            writeln!(out, "{label},lower-rejected,0,0,0,0").expect("write String");
+                            writeln!(out, "{label},lower-rejected,0,0,0,0,0,0,0")
+                                .expect("write String");
                         }
                         Ok(setup) => {
                             let (num_foldable, n_coefficients, eq_low_bits, logical_rows) =
@@ -9836,13 +9838,21 @@ floor_dram_read_bytes,floor_dram_write_bytes\n",
                             // The THINNEST read floor is where a naive rescale is worst, so
                             // the warning below quotes a measured bound, not a guess.
                             min_read = Some(min_read.unwrap_or(u64::MAX).min(floor.read_bytes));
+                            // The §7.3 discriminator columns (R11): dead slots the
+                            // walk must not price, and `(window, column)` keys per
+                            // physical backing.
+                            let backing = bwd_seg_floor_backing_census(&setup);
                             foldable.push(num_foldable);
                             coefficients.push(n_coefficients);
                             counted = true;
                             writeln!(
                                 out,
-                                "{label},lowered,{num_foldable},{n_coefficients},{},{}",
-                                floor.read_bytes, floor.write_bytes,
+                                "{label},lowered,{num_foldable},{n_coefficients},{},{},{},{},{}",
+                                floor.read_bytes,
+                                floor.write_bytes,
+                                backing.priced_sources,
+                                setup.dead_sources.len(),
+                                backing.distinct_backings,
                             )
                             .expect("write String");
                         }

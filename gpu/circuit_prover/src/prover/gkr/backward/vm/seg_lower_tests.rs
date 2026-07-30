@@ -283,9 +283,11 @@ fn inline_desc(setup: &BwdSegSetup) -> &BwdSegDesc {
     }
 }
 
-/// The floor walk is a pure function of the lowered descriptor, so the floor tests
-/// EDIT the descriptor to isolate one property instead of hunting a fixture that
-/// happens to exhibit it.
+/// The floor walk is a function of the lowered SETUP — the descriptor plus the
+/// host-side endpoint spans (`BwdSegSetup::source_endpoints`) — so the floor
+/// tests EDIT the descriptor to isolate one property instead of hunting a
+/// fixture that happens to exhibit it. A slot added past `source_endpoints`
+/// prices both halves (the documented fallback), which is what these edits want.
 fn inline_desc_mut(setup: &mut BwdSegSetup) -> &mut BwdSegDesc {
     match &mut setup.desc {
         BwdSegLaunchDesc::Inline(desc) => desc,
@@ -3046,12 +3048,102 @@ fn procedural_sources_contribute_no_read_traffic() {
     // The procedural launch's whole read floor IS its eq term: no source contributes.
     assert_eq!(floor_of(&virtual_only), eq_term(desc));
     // And the difference against the matrix-backed twin is exactly the raw source's
-    // span at its own fold depth (`bf`, delta 2).
+    // span at its own fold depth (`bf`, delta 2) — ONE endpoint's worth: the only
+    // reference is a `C0Linear` term, and `seg_project` resolves Endpoint0 from
+    // the low halves alone.
     let raw_desc = inline_desc(&raw);
     assert_eq!(eq_term(desc), eq_term(raw_desc), "same round, same eq");
     assert_eq!(
         floor_of(&raw) - floor_of(&virtual_only),
-        u64::from(BF_BYTES) * 4 * 2 * u64::from(raw_desc.logical_rows),
+        u64::from(BF_BYTES) * 4 * u64::from(raw_desc.logical_rows),
+    );
+}
+
+/// **The §7.3 fix, pinned at both promotion edges.** `seg_project` resolves ONLY
+/// the halves a projection needs, so the read floor prices each backing at the
+/// MAX endpoint factor over the slots that share it: the low halves alone while
+/// every reader is a `C0Linear*` term, the full pair set as soon as ONE
+/// `DualProduct`/`C2Product` reference — or the fold-and-publish pass — touches
+/// it. Pricing every backing at both halves is the R0 headline overstatement the
+/// measurement-trust pass caught (331.8 B/row, 4 of 4 captures below the soft
+/// bound).
+#[test]
+fn endpoint0_only_backings_price_one_half() {
+    let floor_of = |setup: &BwdSegSetup| {
+        bwd_seg_traffic_floor(setup, CoeffMode::Constant, ProgramMode::Inline).read_bytes
+    };
+    // Two backings of one raw `bf` window at delta 2; slots 0 and 1 SHARE the
+    // first backing, slot 2 is the second.
+    let lower_with = |records: &[[u16; 4]]| {
+        let shape = artifact(
+            ArtifactRegime::Ext,
+            3,
+            vec![base_witness(&[0, 1])],
+            slots(&[(0, 0), (0, 0), (0, 1)]),
+            program(records),
+        );
+        lower_one(
+            &shape,
+            2,
+            bound(Some(bf_column(0)), 0, 2, false),
+            2,
+            1,
+            D2Policy::Inline,
+        )
+        .expect("a legal inline-d2 round")
+    };
+    // Every reference `C0Linear` -> both backings price ONE endpoint each.
+    let c0_only = lower_with(&[
+        record(0, 0, 0, SOURCE_NONE),
+        record(0, 0, 1, SOURCE_NONE),
+        record(0, 0, 2, SOURCE_NONE),
+    ]);
+    // One `DualProduct` over slots 1 and 2 -> BOTH backings promote to the full
+    // pair set: slot 1 promotes the backing it shares with the still-`C0Linear`
+    // slot 0 (per-backing MAX, not per-slot), slot 2 promotes its own.
+    let mixed = lower_with(&[record(0, 0, 0, SOURCE_NONE), record(1, 0, 1, 2)]);
+    let half_span =
+        |setup: &BwdSegSetup| u64::from(BF_BYTES) * 4 * u64::from(inline_desc(setup).logical_rows);
+    assert_eq!(
+        floor_of(&c0_only) - eq_term(inline_desc(&c0_only)),
+        2 * half_span(&c0_only),
+        "two Endpoint0-only backings, one endpoint each",
+    );
+    assert_eq!(
+        floor_of(&mixed) - floor_of(&c0_only),
+        2 * half_span(&mixed),
+        "one DualProduct reference promotes both backings to the pair set",
+    );
+    // The fold promotes too: `bf_artifact`'s materializing twin publishes, and
+    // `the_materializing_launch_reads_alike_and_writes_more` holds its read floor
+    // equal to the inline twin's BECAUSE that fixture's `DualProduct` already
+    // spans both halves. An Endpoint0-only program under a materializing policy
+    // is the same promotion through `fold_source`, asserted here at delta 2.
+    let single_c0 = |materialize: bool, d2: D2Policy| {
+        let shape = artifact(
+            ArtifactRegime::Ext,
+            3,
+            vec![base_witness(&[0])],
+            slots(&[(0, 0)]),
+            program(&[record(0, 0, 0, SOURCE_NONE)]),
+        );
+        lower_one(
+            &shape,
+            2,
+            bound(Some(bf_column(0)), 0, 2, materialize),
+            1,
+            1,
+            d2,
+        )
+        .expect("a legal d2 round")
+    };
+    let inline = single_c0(false, D2Policy::Inline);
+    let materializing = single_c0(true, D2Policy::Materialize);
+    assert_eq!(inline_desc(&materializing).num_foldable, 1);
+    assert_eq!(
+        floor_of(&materializing) - floor_of(&inline),
+        half_span(&inline),
+        "the fold-and-publish pass reads the halves the Endpoint0 eval never touches",
     );
 }
 

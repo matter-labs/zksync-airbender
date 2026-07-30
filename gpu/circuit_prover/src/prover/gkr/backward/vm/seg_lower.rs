@@ -526,6 +526,24 @@ pub(crate) struct BwdSegSetup {
     /// The reordered lean stream for [`ProgramMode::DevPtr`]; empty inline.
     pub program_words: Vec<u16>,
     pub work: ListWorkStats,
+    /// Source slots NO TERM reads (`first_touch == usize::MAX` over the committed
+    /// order), ascending. Host-side only — the descriptor keeps carrying every
+    /// slot. This is the audit §7.3 "dead-slot pricing" discriminator column the
+    /// footprint census emits; it is NOT the floor's skip criterion, because a
+    /// foldable source no term projects is still read in full by the
+    /// fold-and-publish pass — [`Self::source_endpoints`] is the field the floor
+    /// prices from.
+    pub dead_sources: Vec<u16>,
+    /// Per source slot, how many of the two target-depth endpoint halves the
+    /// launch's DRAM footprint spans: `0` (nothing touches the slot), `1` (every
+    /// reference is a `C0Linear*` term — `seg_project` resolves ONLY the halves a
+    /// projection needs, so an Endpoint0-only slot reads the low half alone), or
+    /// `2` (a `C2Product*`/`DualProduct` reference, or the slot is foldable — the
+    /// fold-and-publish pass reads both halves regardless of what the eval loop
+    /// projects). The read-floor walk prices each backing at the MAX factor over
+    /// the slots that share it; pricing every slot at `2` is the audit §7.3
+    /// overstatement (331.8 B/row on the R0 headline cell).
+    pub source_endpoints: Vec<u8>,
 }
 
 // ── Errors ───────────────────────────────────────────────────────────────────
@@ -1131,6 +1149,9 @@ pub(crate) fn lower_bwd_seg(
             *entry = (*entry).min(position);
         }
     }
+    let dead_sources: Vec<u16> = (0..sources.len() as u16)
+        .filter(|&source| first_touch[usize::from(source)] == usize::MAX)
+        .collect();
     let mut fold_source: Vec<u16> = (0..sources.len())
         .filter(|&source| lowered[usize::from(sources[source].window)].publishes)
         .map(|source| source as u16)
@@ -1141,6 +1162,28 @@ pub(crate) fn lower_bwd_seg(
     fold_source
         .sort_by_key(|&source| (std::cmp::Reverse(first_touch[usize::from(source)]), source));
     let num_foldable = fold_source.len() as u16;
+
+    // ── Endpoint spans (see `BwdSegSetup::source_endpoints`) ─────────────────
+    // `Move*` terms cannot decode from the wire (no lean class row); if one ever
+    // did, pricing it as both halves errs on the side the floor must never
+    // cross.
+    let mut source_endpoints = vec![0u8; sources.len()];
+    for (term, record) in annotated.iter().zip(records.iter()) {
+        let endpoint0_only = matches!(
+            term.category,
+            TermCategory::C0LinearBf | TermCategory::C0LinearE4
+        );
+        for slot in [record.source_a, record.source_b] {
+            if slot == SOURCE_NONE {
+                continue;
+            }
+            let entry = &mut source_endpoints[usize::from(slot)];
+            *entry = (*entry).max(if endpoint0_only { 1 } else { 2 });
+        }
+    }
+    for &source in &fold_source {
+        source_endpoints[usize::from(source)] = 2;
+    }
 
     // ── The K-split ──────────────────────────────────────────────────────────
     // `split_round_robin` over POSITIONS, then the descriptor's stream is those
@@ -1212,6 +1255,8 @@ pub(crate) fn lower_bwd_seg(
         claim_point: binding.claim_point.to_vec(),
         program_words,
         work,
+        dead_sources,
+        source_endpoints,
     })
 }
 
@@ -1708,14 +1753,27 @@ pub(crate) fn bwd_seg_traffic_floor(
     // `read_base + column * read_stride_bytes`, so that pair identifies the backing
     // exactly. `read_stride_bytes` is the COLUMN stride, not the element width, so
     // it is the dedupe input rather than a multiplier.
-    let mut seen: Vec<(u8, u16)> = Vec::with_capacity(view.sources.len());
-    let mut read_bytes = 0u64;
-    for record in view.sources {
-        if seen.contains(&(record.window, record.column)) {
-            continue;
+    //
+    // Each backing carries the MAX endpoint factor over the slots sharing it
+    // (`BwdSegSetup::source_endpoints`): one Endpoint0-only reader prices half
+    // the pair set; any both-halves reader promotes the whole backing. Slots the
+    // setup does not cover (test-edited descriptors) price both halves, which is
+    // the pre-§7.3-fix behavior and never underprices.
+    let endpoints = &setup.source_endpoints;
+    let mut priced: Vec<(u8, u16, u64)> = Vec::with_capacity(view.sources.len());
+    for (slot, record) in view.sources.iter().enumerate() {
+        let factor = u64::from(endpoints.get(slot).copied().unwrap_or(2));
+        match priced
+            .iter_mut()
+            .find(|(window, column, _)| (*window, *column) == (record.window, record.column))
+        {
+            Some((_, _, seen)) => *seen = (*seen).max(factor),
+            None => priced.push((record.window, record.column, factor)),
         }
-        seen.push((record.window, record.column));
-        let window = &view.windows[usize::from(record.window)];
+    }
+    let mut read_bytes = 0u64;
+    for &(window, _column, factor) in &priced {
+        let window = &view.windows[usize::from(window)];
         // Procedural / VirtualSetup sources read NO DRAM: `seg_raw_synthesized`
         // produces the value from the backing INDEX, so there is no raw column at
         // all. Their cost is compute, not traffic — the same rule as the forward
@@ -1728,13 +1786,14 @@ pub(crate) fn bwd_seg_traffic_floor(
         } else {
             FLOOR_BASE_BYTES
         };
-        // Span is the PAIR TOTAL at the source's own fold depth: the fold reads
-        // `raw(row + q*span)` and `raw(rows + row + q*span)` for
-        // `q in [0, 2^delta)` with `span = 2*rows`, so a source's footprint is
-        // `2^delta * 2 * logical_rows` elements — 2, 4, 8 or 16 times `rows` at
-        // delta 0, 1, 2, 3.
+        // Span is the PAIR HALF at the source's own fold depth, per endpoint:
+        // the fold reads `raw(row + q*span)` and `raw(rows + row + q*span)` for
+        // `q in [0, 2^delta)` with `span = 2*rows`, so a backing's footprint is
+        // `2^delta * factor * logical_rows` elements — the full pair set at
+        // `factor == 2`, the low halves alone at `factor == 1`, and nothing for
+        // a backing no term and no fold touches.
         let delta = u32::from(window.target_depth.saturating_sub(window.backing_depth));
-        read_bytes += element * (1u64 << delta) * 2 * view.logical_rows;
+        read_bytes += element * (1u64 << delta) * factor * view.logical_rows;
     }
     // The eq table counts ONCE, and `eq_sizes.low` is a BIT WIDTH, not a length:
     // the kernel indexes with `lo = gid & ((1u << sizes.low) - 1u)` and uses
@@ -1777,6 +1836,64 @@ pub(crate) fn bwd_seg_traffic_floor(
     BwdSegTrafficFloor {
         read_bytes,
         write_bytes,
+    }
+}
+
+/// The R11 read-floor diagnostic counts (audit §7.3). The R0 read floor measured
+/// impossible — 331.8 B/row overpriced, 4 of 4 captures — with TWO arithmetically
+/// indistinguishable mechanisms: dead-slot pricing (the walk charges sources no
+/// term reads) and cross-window aliasing (two `(window, column)` keys resolving to
+/// one physical backing, double-priced). These are the counts that discriminate
+/// them; `dead_sources` is the third and lives on [`BwdSegSetup`], because only
+/// lowering sees the term stream's `first_touch`.
+pub(crate) struct BwdSegFloorBackingCensus {
+    /// `(window, column)`-deduped, non-procedural entries — the set the read
+    /// floor prices.
+    pub priced_sources: u32,
+    /// The priced set deduped by EFFECTIVE ADDRESS
+    /// (`read_base + column * read_stride_bytes`). A deficit against
+    /// `priced_sources` is a cross-window alias. Start-address equality is the
+    /// dedupe the kernel's own addressing justifies — a partial range overlap
+    /// between different strides would need a range walk, and no lowering
+    /// produces one (windows are whole-buffer views).
+    pub distinct_backings: u32,
+}
+
+/// See [`BwdSegFloorBackingCensus`]. A pure function of the lowered descriptor,
+/// like the floor walk itself.
+pub(crate) fn bwd_seg_floor_backing_census(setup: &BwdSegSetup) -> BwdSegFloorBackingCensus {
+    let (sources, windows) = match &setup.desc {
+        BwdSegLaunchDesc::Inline(desc) => (
+            &desc.source[..usize::from(desc.num_sources)],
+            &desc.window[..],
+        ),
+        BwdSegLaunchDesc::ProgPtr(desc) => (
+            &desc.source[..usize::from(desc.num_sources)],
+            &desc.window[..],
+        ),
+    };
+    let mut seen: Vec<(u8, u16)> = Vec::with_capacity(sources.len());
+    let mut addresses: Vec<usize> = Vec::with_capacity(sources.len());
+    let mut priced_sources = 0u32;
+    for record in sources {
+        if seen.contains(&(record.window, record.column)) {
+            continue;
+        }
+        seen.push((record.window, record.column));
+        let window = &windows[usize::from(record.window)];
+        if window.origin == BWD_COEFF_ORIGIN_PROCEDURAL {
+            continue;
+        }
+        priced_sources += 1;
+        let address = window.read_base as usize
+            + usize::from(record.column) * window.read_stride_bytes as usize;
+        if !addresses.contains(&address) {
+            addresses.push(address);
+        }
+    }
+    BwdSegFloorBackingCensus {
+        priced_sources,
+        distinct_backings: addresses.len() as u32,
     }
 }
 
