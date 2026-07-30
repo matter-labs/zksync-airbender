@@ -1599,6 +1599,203 @@ fn list_work_stats(lists: &[Vec<usize>], annotated: &[AnnotatedTerm]) -> ListWor
     }
 }
 
+// ── Per-configuration DRAM traffic floors (measurement-trust pass §7.2.2) ────
+//
+// A floor of bytes read and written per LAUNCH assuming perfect caching, computed
+// analytically host-side, so a realized NCU figure reads as caching effectiveness
+// rather than a guess from wall time. The backward sibling of the forward
+// `dag_traffic_floor` (`gkr_eval_isa/src/schedule_search/floor.rs`): same two
+// rules — dedupe by distinct backing, and non-DRAM sources contribute nothing —
+// over a different cone (the forward floor is output-cone-only over a DAG layer;
+// this one is per-launch over a lowered seg descriptor).
+//
+// CONVENTIONS, stated once so the numbers are comparable:
+//   1. Perfect caching AND perfect sector utilization WITHIN a launch, and NO
+//      cache survival ACROSS launches. So it is a floor on COMPULSORY traffic and
+//      NOT a lower bound on realized DRAM bytes: real L2 retains lines across
+//      launch boundaries, in either direction, at any total size. The validation
+//      hook is therefore a per-direction conservative SOFT bound, not a hard
+//      inequality.
+//   2. Sector-granularity waste (32 B sectors) and write-allocate effects are part
+//      of the measured DISTANCE, not part of the floor. A strided 4-byte `bf`
+//      column read that touches a whole sector per element realizes far above its
+//      floor; that gap is a finding about the access pattern.
+//   3. Per-launch accounting. Bytes published THIS launch are a write HERE; the
+//      read of them NEXT launch is a read THERE. State this wherever a multi-round
+//      sum is quoted.
+//   4. Constant- and parameter-space traffic is OUTSIDE the floor by convention —
+//      the descriptor (parameter space), the `const`-loader coefficient bank, the
+//      claim point and the fold-weight bank. Not because it is invisible to
+//      `dram__bytes_op_*` (a cold constant line does appear) but because its miss
+//      count depends on cache state the walk cannot model. So this is a PARTIAL
+//      lower bound, and a small positive `realized - floor` may be constant misses
+//      rather than inefficiency.
+//
+// POLICY-PATH AWARENESS is automatic and is the point: the walk reads the round's
+// ACTUAL lowered classes and window depths, never a class-agnostic column list. A
+// materialized source appears as its publish backing at the fold depth this round
+// assigns it (an `e4` endpoint pair read as a delta-1 chain step); an inline-folded
+// source appears as its raw backing at its own fold span and is RE-COUNTED in every
+// launch that recomputes the fold — the recompute is not amortized away. So the two
+// D2 policy paths have DIFFERENT floors. This pass emits PER-LAUNCH floors only;
+// the path-aggregate comparison rides with P3, which is what constructs the
+// round-`r+1` state per arm.
+
+/// One launch's compulsory-traffic floor.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct BwdSegTrafficFloor {
+    pub read_bytes: u64,
+    pub write_bytes: u64,
+}
+
+const FLOOR_EXT_BYTES: u64 = 16;
+const FLOOR_BASE_BYTES: u64 = 4;
+
+// The floor's element widths ARE the lowering's column widths; two names for one
+// fact, so the assert is what keeps them one fact.
+const _: () = {
+    assert!(FLOOR_EXT_BYTES == E4_COLUMN_BYTES as u64);
+    assert!(FLOOR_BASE_BYTES == BF_COLUMN_BYTES as u64);
+};
+
+/// The read + write floor of one lowered launch.
+///
+/// `coeff` and `program` are the LOADER, passed explicitly rather than sniffed
+/// from the descriptor's pointers: lowering leaves `desc.coefficients` null and
+/// staging patches it afterwards, so a null test would classify the same cell
+/// differently pre- and post-stage. They are the caller's inputs to `lower_bwd_seg`,
+/// so they are always known.
+pub(crate) fn bwd_seg_traffic_floor(
+    setup: &BwdSegSetup,
+    coeff: CoeffMode,
+    program: ProgramMode,
+) -> BwdSegTrafficFloor {
+    struct View<'a> {
+        sources: &'a [BwdSegSourceRecord],
+        windows: &'a [BwdCoeffSourceWindow],
+        num_foldable: u64,
+        logical_rows: u64,
+        eq_low_bits: u32,
+        n_coefficients: u64,
+        program_words: u64,
+    }
+    let view = match &setup.desc {
+        BwdSegLaunchDesc::Inline(desc) => View {
+            sources: &desc.source[..usize::from(desc.num_sources)],
+            windows: &desc.window[..],
+            num_foldable: u64::from(desc.num_foldable),
+            logical_rows: u64::from(desc.logical_rows),
+            eq_low_bits: desc.eq_sizes.low,
+            n_coefficients: u64::from(desc.n_coefficients),
+            program_words: 0,
+        },
+        BwdSegLaunchDesc::ProgPtr(desc) => View {
+            sources: &desc.source[..usize::from(desc.num_sources)],
+            windows: &desc.window[..],
+            num_foldable: u64::from(desc.num_foldable),
+            logical_rows: u64::from(desc.logical_rows),
+            eq_low_bits: desc.eq_sizes.low,
+            n_coefficients: u64::from(desc.n_coefficients),
+            program_words: u64::from(desc.program_words),
+        },
+    };
+
+    // ── The read floor ──────────────────────────────────────────────────────
+    // Dedupe by BACKING, not by term reference: a byte read by many terms counts
+    // ONCE, because under perfect caching the second reference is a hit. The dedupe
+    // key is `(window, column)` — `desc.source[slot]` is
+    // `{window, source_class, column}` and the address is
+    // `read_base + column * read_stride_bytes`, so that pair identifies the backing
+    // exactly. `read_stride_bytes` is the COLUMN stride, not the element width, so
+    // it is the dedupe input rather than a multiplier.
+    let mut seen: Vec<(u8, u16)> = Vec::with_capacity(view.sources.len());
+    let mut read_bytes = 0u64;
+    for record in view.sources {
+        if seen.contains(&(record.window, record.column)) {
+            continue;
+        }
+        seen.push((record.window, record.column));
+        let window = &view.windows[usize::from(record.window)];
+        // Procedural / VirtualSetup sources read NO DRAM: `seg_raw_synthesized`
+        // produces the value from the backing INDEX, so there is no raw column at
+        // all. Their cost is compute, not traffic — the same rule as the forward
+        // floor's `VirtualSetup` exclusion.
+        if window.origin == BWD_COEFF_ORIGIN_PROCEDURAL {
+            continue;
+        }
+        let element = if window.origin == BWD_COEFF_ORIGIN_READ_EXT {
+            FLOOR_EXT_BYTES
+        } else {
+            FLOOR_BASE_BYTES
+        };
+        // Span is the PAIR TOTAL at the source's own fold depth: the fold reads
+        // `raw(row + q*span)` and `raw(rows + row + q*span)` for
+        // `q in [0, 2^delta)` with `span = 2*rows`, so a source's footprint is
+        // `2^delta * 2 * logical_rows` elements — 2, 4, 8 or 16 times `rows` at
+        // delta 0, 1, 2, 3.
+        let delta = u32::from(window.target_depth.saturating_sub(window.backing_depth));
+        read_bytes += element * (1u64 << delta) * 2 * view.logical_rows;
+    }
+    // The eq table counts ONCE, and `eq_sizes.low` is a BIT WIDTH, not a length:
+    // the kernel indexes with `lo = gid & ((1u << sizes.low) - 1u)` and uses
+    // `sizes.low` as a shift, so the table has `1 << low` entries. The `min` is
+    // because a thread only ever presents `lo < logical_rows`, so a table wider
+    // than the launch is not fully touched.
+    let eq_entries = if view.eq_low_bits >= 63 {
+        view.logical_rows
+    } else {
+        view.logical_rows.min(1u64 << view.eq_low_bits)
+    };
+    read_bytes += eq_entries * FLOOR_EXT_BYTES;
+    // The `ptr` / `progptr` shapes' device-resident payloads are part of the main
+    // definition, not a parenthesis: where the payload is a device buffer it is
+    // real DRAM traffic and belongs in the floor, counted ONCE under perfect
+    // caching. So the floor DIFFERS between loader variants of the same cell, which
+    // is correct — those shapes really do move those bytes through DRAM while their
+    // `const`/inline twins route them through constant space. §9 item 6(b) carries
+    // the open reporting question of whether to normalize that away when comparing
+    // loader variants; the walk leaves it in, because the floor should describe the
+    // shape that actually runs.
+    if coeff == CoeffMode::DevPtr {
+        read_bytes += view.n_coefficients * FLOOR_EXT_BYTES;
+    }
+    if program == ProgramMode::DevPtr {
+        read_bytes += view.program_words * 2;
+    }
+
+    // ── The write floor ─────────────────────────────────────────────────────
+    // Publish: `seg_fold_and_publish` stores exactly two `e4` per live row per
+    // foldable source, at `row` and `rows + row`. The stride is THIS launch's
+    // `logical_rows`, not a next-round row count — `logical_rows` is documented as
+    // "the contribution half-stride and the endpoint half-stride of every
+    // target-depth backing", and the two stores are at `row` and `rows + row` of
+    // the current launch.
+    // Contributions: `seg_store_row` writes two `e4` per live row, from warp 0
+    // only, independent of `K` and of the epilogue.
+    let write_bytes = (view.num_foldable * 2 + 2) * view.logical_rows * FLOOR_EXT_BYTES;
+
+    BwdSegTrafficFloor {
+        read_bytes,
+        write_bytes,
+    }
+}
+
+/// The per-direction CONSERVATIVE soft bound (spec §7.2.2).
+///
+/// The tempting rule — `realized < floor` is impossible — is UNSOUND in both
+/// directions and at any total size, because cache retention is per-LINE, not
+/// per-total: a publish buffer written by one launch and re-read by the next can be
+/// absorbed by L2 and never reach DRAM regardless of how large the launch's other
+/// traffic is. Subtracting the WHOLE L2 assumes the most retention physically
+/// possible for that direction, so the bound is weak by construction — it will
+/// catch a gross floor-walk error and will not catch a subtle one. That is the
+/// correct trade for a validity gate whose alternative fires on legitimate
+/// measurements. §9 item 6(a) records that this replaces the requirement's original
+/// `realized >= floor` wording and wants RR's confirmation.
+pub(crate) fn bwd_seg_floor_soft_bound(floor_bytes: u64, l2_bytes: u64) -> u64 {
+    floor_bytes.saturating_sub(l2_bytes)
+}
+
 #[cfg(test)]
 impl BwdSegLaunchDesc {
     /// The descriptor exactly as a launch copies it — INTERIOR PADDING INCLUDED,

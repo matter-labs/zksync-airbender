@@ -28,17 +28,19 @@ use gkr_eval_isa::bwd::coeff::stats::WindowFamily;
 use gkr_eval_isa::bwd::coeff::ArtifactRegime;
 
 use super::seg_desc::{
-    BwdSegDesc, BWD_COEFF_ORIGIN_PROCEDURAL, BWD_COEFF_ORIGIN_READ_BASE, BWD_COEFF_ORIGIN_READ_EXT,
-    BWD_COEFF_PROCEDURAL_NONE, BWD_SEG_CONST_BANK, BWD_SEG_FOLD_WEIGHT_BASE_D1,
-    BWD_SEG_FOLD_WEIGHT_BASE_D2, BWD_SEG_FOLD_WEIGHT_BASE_D3, BWD_SEG_FOLD_WEIGHT_SLOTS,
-    BWD_SEG_MAX_K, BWD_SEG_MAX_SOURCES,
+    BwdSegDesc, BwdSegSourceRecord, BWD_COEFF_ORIGIN_PROCEDURAL, BWD_COEFF_ORIGIN_READ_BASE,
+    BWD_COEFF_ORIGIN_READ_EXT, BWD_COEFF_PROCEDURAL_NONE, BWD_SEG_CONST_BANK,
+    BWD_SEG_FOLD_WEIGHT_BASE_D1, BWD_SEG_FOLD_WEIGHT_BASE_D2, BWD_SEG_FOLD_WEIGHT_BASE_D3,
+    BWD_SEG_FOLD_WEIGHT_SLOTS, BWD_SEG_MAX_K, BWD_SEG_MAX_SOURCES,
 };
+// The walk and its soft bound live in `seg_lower.rs`; the tests consume them.
 use super::seg_lower::{
-    assign_class, chain_read_column, check_regions_disjoint, e4_limbs, lower_bwd_seg,
-    plan_publish_scratch, static_term_work, window_columns, AnnotatedTerm, BwdSegLaunchDesc,
-    BwdSegLowerError, BwdSegRoundBinding, BwdSegSetup, CoeffMode, D2Policy, ProgramMode,
-    PublishRoundLayout, PublishScratchPlan, ResolvedBwdCoeffSourceWindow, ResolvedPublishScratch,
-    SourceClass, SourceOrigin, PUBLISH_WINDOW_ABSENT,
+    assign_class, bwd_seg_floor_soft_bound, bwd_seg_traffic_floor, chain_read_column,
+    check_regions_disjoint, e4_limbs, lower_bwd_seg, plan_publish_scratch, static_term_work,
+    window_columns, AnnotatedTerm, BwdSegLaunchDesc, BwdSegLowerError, BwdSegRoundBinding,
+    BwdSegSetup, CoeffMode, D2Policy, ProgramMode, PublishRoundLayout, PublishScratchPlan,
+    ResolvedBwdCoeffSourceWindow, ResolvedPublishScratch, SourceClass, SourceOrigin,
+    PUBLISH_WINDOW_ABSENT,
 };
 use crate::primitives::field::E4;
 use crate::prover::gkr::backward::GkrEqSizes;
@@ -279,6 +281,29 @@ fn inline_desc(setup: &BwdSegSetup) -> &BwdSegDesc {
         BwdSegLaunchDesc::Inline(desc) => desc,
         BwdSegLaunchDesc::ProgPtr(_) => panic!("expected the inline-program descriptor"),
     }
+}
+
+/// The floor walk is a pure function of the lowered descriptor, so the floor tests
+/// EDIT the descriptor to isolate one property instead of hunting a fixture that
+/// happens to exhibit it.
+fn inline_desc_mut(setup: &mut BwdSegSetup) -> &mut BwdSegDesc {
+    match &mut setup.desc {
+        BwdSegLaunchDesc::Inline(desc) => desc,
+        BwdSegLaunchDesc::ProgPtr(_) => panic!("expected the inline-program descriptor"),
+    }
+}
+
+/// The floor's eq term, from the descriptor's OWN `eq_sizes.low` and `logical_rows`:
+/// `min(logical_rows, 1 << low) * 16`. Never a hardcoded byte count, which would not
+/// survive a fixture change.
+fn eq_term(desc: &BwdSegDesc) -> u64 {
+    let rows = u64::from(desc.logical_rows);
+    let entries = if desc.eq_sizes.low >= 63 {
+        rows
+    } else {
+        rows.min(1u64 << desc.eq_sizes.low)
+    };
+    entries * u64::from(E4_BYTES)
 }
 
 /// The one-window continuation lowering every simple test reuses:
@@ -2808,4 +2833,458 @@ fn fold_weights_zero_the_deltas_a_round_cannot_reach() {
         );
     }
     assert_ne!(weights[BWD_SEG_FOLD_WEIGHT_BASE_D1], E4::ZERO);
+}
+
+// ── Per-launch DRAM traffic floors (measurement-trust pass §7.2.2) ────────────
+
+/// **Dedupe and span, each pinned EXACTLY — "the read floor rises" would pass on any
+/// monotone bug.** The walk is a pure function of the descriptor, so both properties
+/// are testable by CONSTRUCTING the descriptor rather than hoping a fixture exhibits
+/// them.
+#[test]
+fn the_traffic_floor_dedupes_by_backing_and_scales_with_fold_depth() {
+    let floor_of = |setup: &BwdSegSetup| {
+        bwd_seg_traffic_floor(setup, CoeffMode::Constant, ProgramMode::Inline)
+    };
+    // Two E4 sources of one window, already at target depth: delta 0, no publish.
+    let lower = || {
+        lower_one(
+            &ext_artifact(),
+            2,
+            bound(Some(e4_column(0)), 2, 2, false),
+            2,
+            1,
+            D2Policy::Inline,
+        )
+        .expect("a legal E4 round")
+    };
+
+    // (a) DEDUPE. Two slots naming the SAME `(window, column)` read the same bytes,
+    // and under perfect caching the second reference is a hit.
+    let mut duplicated = lower();
+    {
+        let desc = inline_desc_mut(&mut duplicated);
+        desc.source[1] = desc.source[0];
+        assert_eq!(desc.num_sources, 2, "both slots stay live");
+    }
+    let mut single = lower();
+    {
+        let desc = inline_desc_mut(&mut single);
+        desc.num_sources = 1;
+    }
+    assert_eq!(
+        floor_of(&duplicated).read_bytes,
+        floor_of(&single).read_bytes,
+        "a byte read by two slots of one backing counts ONCE",
+    );
+    // ...and a THIRD, DISTINCT column raises it by exactly that column's span.
+    let mut three = lower();
+    let third_span;
+    {
+        let desc = inline_desc_mut(&mut three);
+        desc.source[1] = desc.source[0];
+        desc.source[2] = BwdSegSourceRecord {
+            window: 0,
+            class: desc.source[0].class,
+            column: 1,
+        };
+        desc.num_sources = 3;
+        // The window is E4 at delta 0: `16 B x 2^0 x 2 x logical_rows`.
+        third_span = u64::from(E4_BYTES) * 2 * u64::from(desc.logical_rows);
+    }
+    assert_eq!(
+        floor_of(&three).read_bytes,
+        floor_of(&duplicated).read_bytes + third_span,
+        "a distinct column adds exactly `element_width * 2^delta * 2 * logical_rows`",
+    );
+
+    // (b) SPAN. One descriptor, delta 0 then delta 3, everything else held fixed.
+    let mut flat = lower();
+    let mut deep = lower();
+    let eq = eq_term(inline_desc(&flat));
+    assert_eq!(eq, eq_term(inline_desc(&deep)), "the eq term is held fixed");
+    {
+        let desc = inline_desc_mut(&mut flat);
+        desc.window[0].backing_depth = 2;
+        desc.window[0].target_depth = 2;
+    }
+    {
+        let desc = inline_desc_mut(&mut deep);
+        desc.window[0].backing_depth = 0;
+        desc.window[0].target_depth = 3;
+    }
+    assert_eq!(
+        floor_of(&deep).read_bytes - eq,
+        8 * (floor_of(&flat).read_bytes - eq),
+        "the source term scales by exactly 2^3 / 2^0 while the eq term does not scale",
+    );
+
+    // (c) The WRITE floor, against the descriptor's own two fields — on a launch that
+    // publishes as well as on one that does not.
+    for setup in [
+        lower(),
+        lower_one(
+            &bf_artifact(),
+            3,
+            bound(Some(bf_column(0)), 0, 3, true),
+            2,
+            1,
+            D2Policy::Inline,
+        )
+        .expect("a legal d3 pyramid round"),
+    ] {
+        let desc = inline_desc(&setup);
+        assert_eq!(
+            floor_of(&setup).write_bytes,
+            (u64::from(desc.num_foldable) * 2 + 2)
+                * u64::from(desc.logical_rows)
+                * u64::from(E4_BYTES),
+            "two published e4 per foldable source plus the two contributions, per row",
+        );
+    }
+    assert_eq!(
+        inline_desc(
+            &lower_one(
+                &bf_artifact(),
+                3,
+                bound(Some(bf_column(0)), 0, 3, true),
+                2,
+                1,
+                D2Policy::Inline,
+            )
+            .expect("a legal d3 pyramid round")
+        )
+        .num_foldable,
+        2,
+        "the publishing case is non-vacuous",
+    );
+}
+
+#[test]
+fn the_eq_term_uses_a_bit_width_not_a_length() {
+    // `eq_sizes.low` is a LOG2 LENGTH. An earlier draft's `eq_sizes.low * 16 B`
+    // understated this term by `(1 << low)/low` — at `low = 16` that is 4,096x,
+    // which would have made the eq term invisible instead of, plausibly, one of the
+    // floor's larger entries. It is also the only non-source DRAM read on the path,
+    // so nothing else absorbed the error.
+    let floor_of = |setup: &BwdSegSetup| {
+        bwd_seg_traffic_floor(setup, CoeffMode::Constant, ProgramMode::Inline).read_bytes
+    };
+    let with_low = |low: u32| {
+        let mut setup = lower_one(
+            &ext_artifact(),
+            2,
+            bound(Some(e4_column(0)), 2, 2, false),
+            2,
+            1,
+            D2Policy::Inline,
+        )
+        .expect("a legal E4 round");
+        inline_desc_mut(&mut setup).eq_sizes.low = low;
+        setup
+    };
+    // `low = 0` is one entry, so it isolates the source term without re-deriving it.
+    let base = with_low(0);
+    let rows = u64::from(inline_desc(&base).logical_rows);
+    let sources = floor_of(&base) - u64::from(E4_BYTES);
+    assert!(rows > 8, "the fixture must straddle both sides of the min");
+    for low in [3u32, 10] {
+        let setup = with_low(low);
+        assert_eq!(
+            floor_of(&setup),
+            sources + rows.min(1u64 << low) * u64::from(E4_BYTES),
+            "the eq term is `min(logical_rows, 1 << low) * 16` at low = {low}",
+        );
+    }
+    // Both directions of the `min` were exercised: a table narrower than the launch
+    // and one wider than it.
+    assert!((1u64 << 3) < rows && (1u64 << 10) > rows);
+}
+
+#[test]
+fn procedural_sources_contribute_no_read_traffic() {
+    // `seg_raw_synthesized` produces the value from the backing INDEX, so a
+    // procedural leaf reads no DRAM at all.
+    let floor_of = |setup: &BwdSegSetup| {
+        bwd_seg_traffic_floor(setup, CoeffMode::Constant, ProgramMode::Inline).read_bytes
+    };
+    let one_source = program(&[record(0, 0, 0, SOURCE_NONE)]);
+    let procedural = artifact(
+        ArtifactRegime::Ext,
+        3,
+        vec![virtual_setup(2, 0)],
+        slots(&[(0, 0)]),
+        one_source.clone(),
+    );
+    let matrix_backed = artifact(
+        ArtifactRegime::Ext,
+        3,
+        vec![base_witness(&[0])],
+        slots(&[(0, 0)]),
+        one_source,
+    );
+    let virtual_only = lower_one(
+        &procedural,
+        2,
+        bound(None, 0, 2, false),
+        1,
+        1,
+        D2Policy::Inline,
+    )
+    .expect("a legal procedural round");
+    let raw = lower_one(
+        &matrix_backed,
+        2,
+        bound(Some(bf_column(0)), 0, 2, false),
+        1,
+        1,
+        D2Policy::Inline,
+    )
+    .expect("a legal inline-d2 round");
+    let desc = inline_desc(&virtual_only);
+    assert_eq!(desc.window[0].origin, BWD_COEFF_ORIGIN_PROCEDURAL);
+    // The procedural launch's whole read floor IS its eq term: no source contributes.
+    assert_eq!(floor_of(&virtual_only), eq_term(desc));
+    // And the difference against the matrix-backed twin is exactly the raw source's
+    // span at its own fold depth (`bf`, delta 2).
+    let raw_desc = inline_desc(&raw);
+    assert_eq!(eq_term(desc), eq_term(raw_desc), "same round, same eq");
+    assert_eq!(
+        floor_of(&raw) - floor_of(&virtual_only),
+        u64::from(BF_BYTES) * 4 * 2 * u64::from(raw_desc.logical_rows),
+    );
+}
+
+/// The two D2 policy paths have DIFFERENT floors — but **the difference is in the
+/// WRITE in the materializing launch, not in that launch's reads.** Spec §7.2.2 is
+/// explicit: "A **prologue materializing fold** counts both: the raw read once, at the
+/// launch that folds it, **and** the publish write", and the delta-1 `e4` read is what
+/// "then ... per later round" refers to. So in the launch that materializes, BOTH
+/// paths read the same raw delta-2 backing; only `Materialize` also publishes.
+///
+/// An earlier draft asserted the delta-1 `e4` read against `Inline`'s raw read *in the
+/// same launch*, which contradicts the frozen formula and would have failed the very
+/// walk it was meant to pin.
+#[test]
+fn the_materializing_launch_reads_alike_and_writes_more() {
+    // The SAME `(circuit, layer, round)` coordinate under both policies: one base
+    // window two folds behind, at round 2. `materialize` is the policy's own ABI
+    // representation, so it moves with the policy and nothing else does.
+    let lower = |d2: D2Policy, materialize: bool| {
+        lower_one(
+            &bf_artifact(),
+            2,
+            bound(Some(bf_column(0)), 0, 2, materialize),
+            2,
+            1,
+            d2,
+        )
+        .unwrap_or_else(|error| panic!("{d2:?}: {error:?}"))
+    };
+    let inline = lower(D2Policy::Inline, false);
+    let materialize = lower(D2Policy::Materialize, true);
+    let floor_of = |setup: &BwdSegSetup| {
+        bwd_seg_traffic_floor(setup, CoeffMode::Constant, ProgramMode::Inline)
+    };
+    let (inline_desc_ref, materialize_desc) = (inline_desc(&inline), inline_desc(&materialize));
+    // The policies really did diverge, and only in the publish.
+    assert_eq!(
+        inline_desc_ref.source[0].class,
+        SourceClass::BfInlineD2.code()
+    );
+    assert_eq!(
+        materialize_desc.source[0].class,
+        SourceClass::E4Direct.code()
+    );
+    assert_eq!(inline_desc_ref.num_foldable, 0);
+    assert_eq!(materialize_desc.num_foldable, 2);
+    // Both walk the same raw delta-2 backing IN THIS LAUNCH: equality, exactly.
+    assert_eq!(
+        floor_of(&inline).read_bytes,
+        floor_of(&materialize).read_bytes,
+        "the materializing launch reads the same raw delta-2 backing",
+    );
+    // The write differs by exactly the publish `Inline` does not perform.
+    assert_eq!(
+        floor_of(&materialize).write_bytes - floor_of(&inline).write_bytes,
+        (u64::from(materialize_desc.num_foldable) - u64::from(inline_desc_ref.num_foldable))
+            * 2
+            * u64::from(materialize_desc.logical_rows)
+            * u64::from(E4_BYTES),
+    );
+}
+
+/// The delta-1 `e4` read belongs to the LATER round, and that is where it must be
+/// asserted — by constructing the materialized state and lowering round `r + 1`.
+#[test]
+fn the_later_round_reads_the_published_pair_rather_than_recomputing() {
+    let single = artifact(
+        ArtifactRegime::Ext,
+        3,
+        vec![base_witness(&[0])],
+        slots(&[(0, 0)]),
+        program(&[record(0, 0, 0, SOURCE_NONE)]),
+    );
+    let claim = claim_point(8);
+    let coeffs = coefficients(4);
+    let read_elements = generous(1);
+    let floor_read = |setup: &BwdSegSetup| {
+        bwd_seg_traffic_floor(setup, CoeffMode::Constant, ProgramMode::Inline).read_bytes
+    };
+
+    // ── The MATERIALIZED arm: round 2 publishes, round 3 chains off it ────────
+    let publishing = [bound(Some(bf_column(0)), 0, 2, true)];
+    let scratch = scratch_for(
+        plan_publish_scratch(
+            &[&[], &[], &publishing[..], &publishing[..]],
+            &[&[], &[], &[1], &[1]],
+            &ROWS[..4],
+        )
+        .expect("a legal two-round plan"),
+    );
+    lower_bwd_seg(
+        &single,
+        &round_binding(2, &publishing, &read_elements, &claim, &coeffs),
+        &scratch,
+        1,
+        D2Policy::Materialize,
+        ProgramMode::Inline,
+        CoeffMode::Constant,
+    )
+    .expect("round 2 materializes");
+    let (chain_ptr, chain_stride) =
+        chain_read_column(&scratch, 3, 0).expect("round 2 published this window");
+    let chained = [bound(
+        Some(column_at(chain_ptr as usize, true, chain_stride)),
+        2,
+        3,
+        true,
+    )];
+    let later = lower_bwd_seg(
+        &single,
+        &round_binding(3, &chained, &read_elements, &claim, &coeffs),
+        &scratch,
+        1,
+        D2Policy::Materialize,
+        ProgramMode::Inline,
+        CoeffMode::Constant,
+    )
+    .expect("round 3 chains off round 2's publish");
+    let later_desc = inline_desc(&later);
+    assert_eq!(later_desc.window[0].origin, BWD_COEFF_ORIGIN_READ_EXT);
+    assert_eq!(
+        later_desc.window[0].target_depth - later_desc.window[0].backing_depth,
+        1,
+        "the chain step is delta 1",
+    );
+    assert_eq!(
+        floor_read(&later) - eq_term(later_desc),
+        u64::from(E4_BYTES) * 2 * 2 * u64::from(later_desc.logical_rows),
+        "a materialized source contributes `16 B x 2^1 x 2 x logical_rows`",
+    );
+
+    // ── The INLINE arm: nothing published, so round 3 refolds the RAW backing ─
+    let raw = [bound(Some(bf_column(0)), 0, 3, true)];
+    let inline_scratch = scratch_for(
+        plan_publish_scratch(
+            &[&[], &[], &[], &raw[..]],
+            &[&[], &[], &[], &[1]],
+            &ROWS[..4],
+        )
+        .expect("a legal plan whose round 2 published nothing"),
+    );
+    let recomputed = lower_bwd_seg(
+        &single,
+        &round_binding(3, &raw, &read_elements, &claim, &coeffs),
+        &inline_scratch,
+        1,
+        D2Policy::Inline,
+        ProgramMode::Inline,
+        CoeffMode::Constant,
+    )
+    .expect("round 3 refolds the raw backing");
+    let recomputed_desc = inline_desc(&recomputed);
+    assert_eq!(recomputed_desc.window[0].origin, BWD_COEFF_ORIGIN_READ_BASE);
+    assert_eq!(
+        floor_read(&recomputed) - eq_term(recomputed_desc),
+        u64::from(BF_BYTES) * 8 * 2 * u64::from(recomputed_desc.logical_rows),
+        "the recompute is RE-COUNTED here at its own fold span, not amortized away",
+    );
+    // **The POLICY-LEVEL comparison — summing these over the affected rounds — stays
+    // with P3** (spec §7.2.2, §8): this pass emits per-launch floors only, and this
+    // test pins the two per-launch shapes, not their aggregate.
+}
+
+#[test]
+fn the_loader_variants_have_different_floors_and_that_is_correct() {
+    // `ptr` carries `n_coefficients * 16 B` and `progptr` `program_words * 2 B` of
+    // real device traffic their `const`/inline twins route through constant space.
+    let artifact = ext_artifact();
+    let bounds = [bound(Some(e4_column(0)), 2, 2, false)];
+    let scratch = scratch_for(plan_for(2, &bounds, &[2]));
+    let claim = claim_point(8);
+    let coeffs = coefficients(4);
+    let read_elements = generous(1);
+    let lower = |prog: ProgramMode, coeff: CoeffMode| {
+        lower_bwd_seg(
+            &artifact,
+            &round_binding(2, &bounds, &read_elements, &claim, &coeffs),
+            &scratch,
+            1,
+            D2Policy::Inline,
+            prog,
+            coeff,
+        )
+        .expect("a legal E4 round in every loader family")
+    };
+
+    let production = lower(ProgramMode::Inline, CoeffMode::Constant);
+    let base = bwd_seg_traffic_floor(&production, CoeffMode::Constant, ProgramMode::Inline);
+    let inline_view = inline_desc(&production);
+    // The loader cannot be sniffed from the descriptor: the pointer is NULL here
+    // because lowering leaves it null and staging patches it later.
+    assert!(inline_view.coefficients.is_null());
+    let coefficient_bytes = u64::from(inline_view.n_coefficients) * u64::from(E4_BYTES);
+    assert!(coefficient_bytes > 0, "the payload is non-vacuous");
+    assert_eq!(
+        bwd_seg_traffic_floor(&production, CoeffMode::DevPtr, ProgramMode::Inline).read_bytes
+            - base.read_bytes,
+        coefficient_bytes,
+        "`ptr` carries the coefficient payload through DRAM",
+    );
+
+    // **ProgPtr needs its OWN lowering.** The inline family's descriptor carries
+    // `program_words = 0`, so asking it for a `ProgramMode::DevPtr` floor would add
+    // `0 x 2 B` and prove nothing.
+    let device_program = lower(ProgramMode::DevPtr, CoeffMode::Constant);
+    let program_bytes = match &device_program.desc {
+        BwdSegLaunchDesc::ProgPtr(desc) => u64::from(desc.program_words) * 2,
+        BwdSegLaunchDesc::Inline(_) => panic!("expected the progptr descriptor"),
+    };
+    assert!(program_bytes > 0, "the stream is non-vacuous");
+    assert_eq!(
+        bwd_seg_traffic_floor(&production, CoeffMode::Constant, ProgramMode::DevPtr).read_bytes,
+        base.read_bytes,
+        "the inline descriptor carries no device stream to read",
+    );
+    assert_eq!(
+        bwd_seg_traffic_floor(&device_program, CoeffMode::Constant, ProgramMode::DevPtr).read_bytes
+            - base.read_bytes,
+        program_bytes,
+        "`progptr` carries the lean stream through DRAM",
+    );
+    // The same `setup` therefore gives three different floors, which is why the
+    // loader is a PARAMETER and not a property the walk could have read off.
+    assert_ne!(coefficient_bytes, 0);
+    assert_eq!(
+        bwd_seg_traffic_floor(&device_program, CoeffMode::DevPtr, ProgramMode::DevPtr).read_bytes
+            - base.read_bytes,
+        coefficient_bytes + program_bytes,
+    );
+}
+
+#[test]
+fn the_soft_bound_saturates_rather_than_underflowing() {
+    assert_eq!(bwd_seg_floor_soft_bound(1_000, 4_000), 0);
+    assert_eq!(bwd_seg_floor_soft_bound(10_000, 4_000), 6_000);
 }

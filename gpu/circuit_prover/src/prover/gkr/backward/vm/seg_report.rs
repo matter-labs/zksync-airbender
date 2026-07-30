@@ -95,8 +95,8 @@ use super::seg::{
 };
 use super::seg_desc::BWD_SEG_MAX_K;
 use super::seg_lower::{
-    lower_bwd_seg, BwdSegLaunchDesc, BwdSegLowerError, BwdSegSetup, CoeffMode, D2Policy,
-    ListWorkStats, ProgramMode,
+    bwd_seg_traffic_floor, lower_bwd_seg, BwdSegLaunchDesc, BwdSegLowerError, BwdSegSetup,
+    BwdSegTrafficFloor, CoeffMode, D2Policy, ListWorkStats, ProgramMode,
 };
 use crate::primitives::field::E4;
 use crate::primitives::utils::WARP_SIZE;
@@ -2759,6 +2759,10 @@ pub(super) struct SegMatrixRow {
     /// number. Naming the baseline in the row is what keeps them distinguishable in
     /// the CSV and in every generated table.
     pub(super) baseline: &'static str,
+    /// The lowering's per-launch compulsory-traffic floor (spec §7.2.2). A property of
+    /// the LOWERING, so it is emitted for cells that never launched too — see
+    /// [`SEG_CSV_HEADER`] for the zero convention.
+    pub(super) floor: BwdSegTrafficFloor,
     /// How the cell's shared-memory carveout was configured (spec §3), or `"-"` when
     /// nothing was configured because the cell could not launch.
     pub(super) carveout_mode: &'static str,
@@ -2797,6 +2801,15 @@ impl SegMatrixRow {
 /// joint-stratified bootstrap, and the four `delta_order_*` / `order_gate` columns plus
 /// the four order-conditional medians are emitted for EVERY paired row — that is how an
 /// order-coupled cell stays visible while its pooled ratio columns render `-`.
+///
+/// **`floor_dram_read_bytes` / `floor_dram_write_bytes` are LOWERING properties, not
+/// measurements** (spec §7.2.2), so they are emitted on every row including rows whose
+/// cell never launched. **ZERO in both is reserved for "no lowering output"** — the
+/// lowering was rejected, or was never attempted — and is distinguishable from a real
+/// floor, which is always positive because the eq term alone is nonzero for any live
+/// launch. That also keeps the v1/v2/v3 schema-tolerance default consistent: an absent
+/// column, a rejected row and an over-budget row all read the same way, which is
+/// correct, because none of them carries a measurement.
 pub(super) const SEG_CSV_HEADER: &str = "benchmark,circuit,layer,regime,round,rows,saturated,k,\
 epilogue,coeff,program,acc_placement,d2_policy,launchable,blocks_per_sm,theoretical_occupancy_percent,registers,\
 local_spill_bytes,static_smem_bytes,max_threads_per_block,dynamic_smem_bytes,grid_blocks,waves,\
@@ -2804,7 +2817,7 @@ max_over_mean_work,parity,protocol,ratio_baseline,candidate_median_us,candidate_
 baseline_median_us,baseline_min_us,median_ratio,ci_low,ci_high,verdict,delta_order_pct,\
 delta_order_ci_low,delta_order_ci_high,order_gate,abba_candidate_us,abba_incumbent_us,\
 baab_candidate_us,baab_incumbent_us,run_id,carveout_mode,carveout_requested_pct,\
-carveout_source\n";
+carveout_source,floor_dram_read_bytes,floor_dram_write_bytes\n";
 
 pub(super) fn render_matrix_csv(rows: &[SegMatrixRow]) -> String {
     let mut out = String::from(SEG_CSV_HEADER);
@@ -2847,7 +2860,7 @@ pub(super) fn render_matrix_csv(rows: &[SegMatrixRow]) -> String {
         writeln!(
             out,
             "{},{},{},{:?},{},{},{},{},{},{},{},{},{},{},{},{:.2},{},{},{},{},{},{},{:.3},{:.4},\
-             {},{},{},{:.3},{:.3},{:.3},{:.3},{},{},{},{},{},{},{},{},{},{},{},{},{}",
+             {},{},{},{:.3},{:.3},{:.3},{:.3},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
             row.benchmark,
             row.circuit,
             row.layer,
@@ -2893,10 +2906,40 @@ pub(super) fn render_matrix_csv(rows: &[SegMatrixRow]) -> String {
             row.carveout_requested_pct
                 .map_or_else(|| "-".to_owned(), |pct| pct.to_string()),
             carveout_source,
+            row.floor.read_bytes,
+            row.floor.write_bytes,
         )
         .expect("write String");
     }
     out
+}
+
+// The bound itself is `seg_lower.rs`'s; the BANDING of it is the report's.
+use super::seg_lower::bwd_seg_floor_soft_bound;
+
+/// How `realized` reads against a direction's floor (spec §7.2.2).
+///
+/// | realized vs bound | reading |
+/// |---|---|
+/// | `realized < soft_bound` | **Bug gate.** Even if L2 absorbed an entire cache's
+/// |   worth of this direction's traffic, this much could not have been avoided.
+/// |   The floor walk is wrong — a wrong span, a missed dedupe, a virtual source
+/// |   counted as DRAM-backed, or the eq term at the old log2 error. A defect to
+/// |   FIX, not a result to publish. |
+/// | `soft_bound <= realized < floor` | **Cache retention, reported as a finding.**
+/// |   Expected at small working sets and in the deep rounds, where the publish set
+/// |   is `num_foldable * 2 * rows * 16 B` and rows halve every round. Not a
+/// |   failure and not asserted against. |
+/// | `realized >= floor` | The ordinary case; `realized / floor` is the
+/// |   caching-effectiveness number. |
+pub(super) fn seg_floor_band(realized: u64, floor: u64, l2: u64) -> &'static str {
+    if realized < bwd_seg_floor_soft_bound(floor, l2) {
+        "BUG-GATE"
+    } else if realized < floor {
+        "cache-retention"
+    } else {
+        "ordinary"
+    }
 }
 
 /// The production loader pair: the `__constant__` bank and the by-value program.
@@ -4584,6 +4627,10 @@ fn measure_shape(
         ratio: SegRatio::Solo,
         run_id: "-",
         baseline: baseline.as_ref().map_or("-", |arm| arm.label),
+        // Filled below from the lowering, on both paths: the floor is a property of the
+        // lowering, so an UNLAUNCHABLE row carries one too. Zero survives only where
+        // there is no lowering output at all to walk.
+        floor: BwdSegTrafficFloor::default(),
         // An unlaunchable cell returns before the plan is built, and `-` is then the
         // truth: nothing was configured.
         carveout_mode: "-",
@@ -4591,6 +4638,11 @@ fn measure_shape(
         carveout_source: "-".to_owned(),
     };
     if blocks_per_sm == 0 {
+        // The cell is never staged, so the floor comes from a bare lowering. A lowering
+        // REJECTION leaves the zero, which is the "no lowering output" reading.
+        if let Ok(setup) = timed.try_lower(shape) {
+            row.floor = bwd_seg_traffic_floor(&setup, shape.coeff, shape.program);
+        }
         eprintln!(
             "[seg-spike] {benchmark} {}: UNLAUNCHABLE (regs {}, max_threads_per_block {})",
             shape.label(),
@@ -4629,6 +4681,7 @@ fn measure_shape(
     // Rung 2: the timed cell's own preflight and prefix identity.
     let launchable = timed.prepare(shape, context);
     row.max_over_mean_work = launchable.setup.work.max_over_mean;
+    row.floor = bwd_seg_traffic_floor(&launchable.setup, shape.coeff, shape.program);
     let prefix = timed.preflight(&launchable, shape, context);
     match reference {
         None => {
@@ -5030,6 +5083,10 @@ fn bwd_seg_fold_weight_prelude_cost() {
         "| cell | rows | shape | prelude (us) | executor (us) | prelude / executor | 95% CI |\n\
          |---|---|---|---|---|---|---|\n",
     );
+    // Round 1's two medians, from the SAME interleaved loop, are what the per-proof
+    // share below is computed from: `T1` is the widest round's executor and the prelude
+    // is flat in round, so nothing here divides two numbers from two processes.
+    let mut round1: Option<(f64, f64)> = None;
     for round in [1u8, 2] {
         let per_row = probe_bytes_per_row(&coord, round, D2Policy::Inline);
         let target = (1usize << 23) >> usize::from(round);
@@ -5087,10 +5144,49 @@ fn bwd_seg_fold_weight_prelude_cost() {
             estimate.ci_high,
         )
         .expect("write String");
+        if round == 1 {
+            round1 = Some((paired.candidate_median(), paired.incumbent_median()));
+        }
         drop(launchable);
         drop(cell);
     }
     drop(eq_low);
+
+    // The per-PROOF share is the decision-relevant number, not the widest round's
+    // ratio: the prelude is one launch per continuation round, so with `R` rounds it
+    // costs `R * prelude` against a proof whose executor time is dominated by the
+    // first two rounds (~`2 * T1`). At the measured 4.32 us flat-in-round prelude and
+    // `T1 = 8,220.9 us`, `R = 23` gives 99 us against ~16.4 ms = **0.60%**, ~12x the
+    // previously published 0.05%; the crossover where the prelude costs more than the
+    // executor it gates is round ~12.
+    //
+    // ENVELOPE, stated rather than claimed: `SEG_MIN_TIMED_ROWS = 1 << 16` is a ROW
+    // floor, so nothing past round ~7 is measured at all, and the entire region where
+    // the prelude dominates is OUTSIDE the measured envelope by construction. This pass
+    // adds no below-floor timing mode.
+    let (prelude_median_us, t1_median_us) =
+        round1.expect("round 1 is the widest measured continuation round");
+    let rounds: u32 = std::env::var("BWD_SEG_PRELUDE_ROUNDS")
+        .ok()
+        .and_then(|value| value.trim().parse().ok())
+        .unwrap_or(23);
+    let per_proof_share = f64::from(rounds) * prelude_median_us / (2.0 * t1_median_us);
+    // The cell's OWN row progression halves rows per round (`target = (1 << 23) >>
+    // round`), so the executor median at round `r` is `T1 / 2^(r - 1)`; the crossover is
+    // the first round whose executor falls below one prelude launch.
+    let mut crossover_round = 1u32;
+    let mut executor_us = t1_median_us;
+    while executor_us >= prelude_median_us && crossover_round < 64 {
+        crossover_round += 1;
+        executor_us /= 2.0;
+    }
+    eprintln!(
+        "[seg-prelude] prelude {prelude_median_us:.3}us x R={rounds} against 2*T1 \
+         {:.1}us -> per-proof share {:.4}%; crossover at round ~{crossover_round}; \
+         rows floor {SEG_MIN_TIMED_ROWS} means nothing past round ~7 is measured",
+        2.0 * t1_median_us,
+        per_proof_share * 100.0,
+    );
 
     record_summary_section(
         "Continuation prelude: the fold-weight build's own per-round cost",
@@ -5108,7 +5204,25 @@ fn bwd_seg_fold_weight_prelude_cost() {
              LEGACY interleaved protocol (fixed arm order, IID bootstrap over pairs), and \
              it emits no raw samples and no order contrast. It answers \"how much of a \
              round is the prelude\", nothing else.\n\n\
-             {paired_body}\n"
+             {paired_body}\n\
+             **The REPORTED quantity is the per-PROOF share, not the widest round's \
+             ratio** (spec §7.2 row 7). The prelude is one launch per continuation round, \
+             so with `R` rounds it costs `R * prelude` against a proof whose executor time \
+             is dominated by the first two rounds (~`2 * T1`): `{rounds} x \
+             {prelude_median_us:.3} us = {:.1} us` against `2 * T1 = {:.1} us` -> \
+             **{:.4}%**, against the widest round's own ratio of {:.4}%. The crossover — \
+             where one prelude launch costs more than the executor it gates — is at round \
+             ~{crossover_round}, taking the executor to halve with the row count as this \
+             cell's own progression does. `R` is `BWD_SEG_PRELUDE_ROUNDS` (default 23).\n\n\
+             **ENVELOPE, stated rather than claimed.** `SEG_MIN_TIMED_ROWS = \
+             {SEG_MIN_TIMED_ROWS}` is a ROW floor, so nothing past round ~7 is measured at \
+             all and the entire region where the prelude dominates sits OUTSIDE the \
+             measured envelope by construction. This pass adds no below-floor timing \
+             mode; the tail rounds are out of scope, not claimed.\n",
+            f64::from(rounds) * prelude_median_us,
+            2.0 * t1_median_us,
+            per_proof_share * 100.0,
+            prelude_median_us / t1_median_us * 100.0,
         ),
     );
 }
@@ -5814,6 +5928,10 @@ pub(super) struct SegCorpusRow {
     /// Against the same cell's `K = 4` twin. `None` on the baseline row itself
     /// (which is timed solo, and says so) and on every untimed row.
     pub(super) ratio_vs_baseline: Option<RatioEstimate>,
+    /// The lowering's per-launch compulsory-traffic floor (spec §7.2.2) — emitted on
+    /// every row, launchable or not. See [`SEG_CORPUS_CSV_HEADER`] for the zero
+    /// convention.
+    pub(super) floor: BwdSegTrafficFloor,
 }
 
 impl SegCorpusRow {
@@ -5834,6 +5952,10 @@ impl SegCorpusRow {
             min_us: None,
             baseline_median_us: None,
             ratio_vs_baseline: None,
+            // A row that produced no launch produced no descriptor either — the sweep
+            // returns `OverBudget` BEFORE `try_lower`, and `LowerRejected` means there
+            // is nothing to walk. Zero is the "no lowering output" reading.
+            floor: BwdSegTrafficFloor::default(),
         }
     }
 
@@ -5871,25 +5993,40 @@ pub(super) const SEG_POLICY_CSV: &str = "seg_k_policy.csv";
 
 /// The chunk table's columns.
 ///
-/// **Schema v2.** v1 was this without `baseline_median_us`, and the reader accepts
-/// both — see [`parse_corpus_csv`]. The column was added because the row already
-/// computed the paired baseline's median and then threw it away, which left
-/// `median_us` carrying two different protocols in one column (a solo median on the
-/// `K = 4` baseline row, an interleaved candidate median on every other row) with
-/// no way to recover the missing half. The `K` policy never saw it — it reads
-/// paired ratios only — but the D2 verdict consumes raw medians, and a reader
-/// cannot tell the two apart from the number.
+/// **Schema v3.** v1 was this without `baseline_median_us`, v2 without the two floor
+/// columns, and the reader accepts all three — see [`parse_corpus_csv`].
+/// `baseline_median_us` was added because the row already computed the paired
+/// baseline's median and then threw it away, which left `median_us` carrying two
+/// different protocols in one column (a solo median on the `K = 4` baseline row, an
+/// interleaved candidate median on every other row) with no way to recover the missing
+/// half. The `K` policy never saw it — it reads paired ratios only — but the D2 verdict
+/// consumes raw medians, and a reader cannot tell the two apart from the number.
+///
+/// **`floor_dram_read_bytes` / `floor_dram_write_bytes` are LOWERING properties, not
+/// measurements** (spec §7.2.2), so they are emitted on every row including rows whose
+/// cell never launched. **ZERO in both is reserved for "no lowering output"** — the
+/// lowering was rejected, or the coordinate was over budget and therefore never lowered
+/// — and is distinguishable from a real floor, which is always positive because the eq
+/// term alone is nonzero for any live launch. An absent column, a rejected row and an
+/// over-budget row therefore all read the same way, which is correct: none of them
+/// carries a measurement.
 pub(super) const SEG_CORPUS_CSV_HEADER: &str = "circuit,layer,class,regime,round,d2_policy,terms,\
 sources,windows,bf_sources,e4_sources,procedural_sources,total_static_work,bytes_per_row,rows,\
 grid_blocks,k,status,blocks_per_sm,theoretical_occupancy_percent,registers,dynamic_smem_bytes,\
 waves,max_over_mean_work,parity,protocol,median_us,min_us,baseline_median_us,ratio_vs_k4,ci_low,\
-ci_high\n";
+ci_high,floor_dram_read_bytes,floor_dram_write_bytes\n";
 
 /// The one column schema v1 lacks. Absent from an on-disk v1 chunk, and its
 /// absence is not an error: the sweeps that produced this workspace's tables ran
 /// before it existed, and regenerating 12 locked chunk runs to add a column that
 /// no conclusion depends on would be a worse trade than reading both schemas.
 pub(super) const SEG_CORPUS_V2_COLUMN: &str = "baseline_median_us";
+
+/// The FIRST of the two columns schema v2 lacks, and the marker for the pair: the
+/// locked chunk runs on disk predate the traffic floors, so their absence defaults both
+/// fields to zero — which is exactly the "no lowering output" reading a v2 row honestly
+/// has. Same precedent, same reason as [`SEG_CORPUS_V2_COLUMN`].
+pub(super) const SEG_CORPUS_V3_COLUMN: &str = "floor_dram_read_bytes";
 
 fn optional(value: Option<f64>) -> String {
     value.map_or_else(|| "-".to_owned(), |value| format!("{value:.3}"))
@@ -5913,7 +6050,7 @@ pub(super) fn render_corpus_csv(rows: &[SegCorpusRow]) -> String {
         writeln!(
             out,
             "{},{},{},{:?},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{:.4},{},{},{:.4},{:.6},\
-             {},{},{},{},{},{ratio},{low},{high}",
+             {},{},{},{},{},{ratio},{low},{high},{},{}",
             row.facts.circuit,
             row.facts.layer,
             row.facts.class.label(),
@@ -5943,13 +6080,15 @@ pub(super) fn render_corpus_csv(rows: &[SegCorpusRow]) -> String {
             optional(row.median_us),
             optional(row.min_us),
             optional(row.baseline_median_us),
+            row.floor.read_bytes,
+            row.floor.write_bytes,
         )
         .expect("write String");
     }
     out
 }
 
-/// Read a corpus CSV back, schema v1 or v2.
+/// Read a corpus CSV back, schema v1, v2 or v3.
 ///
 /// The sweep is CHUNKED — twelve circuits is far more than one locked run should
 /// hold — so the policy is derived in a separate pass over every chunk's table
@@ -5968,9 +6107,15 @@ pub(super) fn parse_corpus_csv(text: &str) -> Vec<SegCorpusRow> {
     let header = lines.next().expect("a corpus CSV has a header");
     let names: Vec<&str> = header.split(',').map(str::trim).collect();
     let index = |column: &str| -> Option<usize> { names.iter().position(|name| *name == column) };
+    // The two floor columns arrived together, so the v3 marker covers both.
+    let optional_column = |column: &str| {
+        column == SEG_CORPUS_V2_COLUMN
+            || column == SEG_CORPUS_V3_COLUMN
+            || column == "floor_dram_write_bytes"
+    };
     for column in SEG_CORPUS_CSV_HEADER.trim_end().split(',') {
         assert!(
-            index(column).is_some() || column == SEG_CORPUS_V2_COLUMN,
+            index(column).is_some() || optional_column(column),
             "the corpus CSV is missing the required column {column:?}; header was {header:?}"
         );
     }
@@ -5988,6 +6133,7 @@ pub(super) fn parse_corpus_csv(text: &str) -> Vec<SegCorpusRow> {
     let (waves, spread, parity) = (at("waves"), at("max_over_mean_work"), at("parity"));
     let (median, min) = (at("median_us"), at("min_us"));
     let baseline = index(SEG_CORPUS_V2_COLUMN);
+    let (floor_read, floor_write) = (index(SEG_CORPUS_V3_COLUMN), index("floor_dram_write_bytes"));
     let (ratio_at, low_at, high_at) = (at("ratio_vs_k4"), at("ci_low"), at("ci_high"));
     lines
         .filter(|line| !line.trim().is_empty())
@@ -6033,6 +6179,13 @@ pub(super) fn parse_corpus_csv(text: &str) -> Vec<SegCorpusRow> {
                 min_us: parse_optional(field[min]),
                 baseline_median_us: baseline.and_then(|at| parse_optional(field[at])),
                 ratio_vs_baseline: ratio,
+                // A v1/v2 chunk has no floor columns; zero is its honest reading.
+                floor: BwdSegTrafficFloor {
+                    read_bytes: floor_read
+                        .map_or(0, |at| field[at].parse().expect("floor read bytes")),
+                    write_bytes: floor_write
+                        .map_or(0, |at| field[at].parse().expect("floor write bytes")),
+                },
             }
         })
         .collect()
@@ -6895,6 +7048,190 @@ fn bwd_seg_corpus_sweep() {
     drop(eq_low);
 }
 
+/// Rows every census cell is lowered at.
+///
+/// The census's two DISTRIBUTIONS (`num_foldable`, `n_coefficients`) are row-INDEPENDENT
+/// lowering properties, and the two floor columns scale linearly in rows, so lowering at
+/// the parity twin's row count keeps the walk cheap while the footprint bound below is
+/// stated at the corpus's own median FITTED row count instead.
+const SEG_CENSUS_ROWS: usize = SEG_PARITY_ROWS;
+
+/// **P5(b): the per-launch distribution of `num_foldable` and `n_coefficients`,
+/// from a lowering walk over the corpus.** No GPU TIMING and no runtime readback —
+/// but it is GPU WORK, because `SegCell::build` allocates device memory and the
+/// round binding carries device pointers, so `try_lower` is not reachable from a
+/// host-only path without a second lowering entry point this pass has no mandate to
+/// add. Runs under the lock; the numbers are still a lowering property.
+///
+/// **What it does and does not do (M6).** It bounds CAPACITY FEASIBILITY; it does
+/// NOT decide residency. `num_foldable KiB x resident_blocks` counts *published
+/// endpoint* bytes only — not raw fold traffic, not program/constant/eq traffic,
+/// not replacement, and not which published sources are actually re-read;
+/// `n_coefficients` likewise omits access frequency and distribution. So these are
+/// FOOTPRINT BOUNDS AND CORRELATES, reported as such. A residency conclusion would
+/// additionally need live fold-source and read-use counts plus a coefficient
+/// working-set/access histogram, which is out of scope here and belongs with the
+/// phase model.
+#[test]
+#[ignore = "corpus lowering walk over device-bound cells; run under with_gpu_lock.sh"]
+#[cfg(not(no_cuda))]
+#[serial_test::serial]
+fn bwd_seg_lowering_footprint_census() {
+    let budget = corpus_budget_bytes();
+    let context = make_seg_spike_context(SEG_CONT_ARENA_BYTES);
+    let (eq_low, eq_sizes) = build_shared_eq(24, &context);
+
+    let mut foldable: Vec<u32> = Vec::new();
+    let mut coefficients: Vec<u32> = Vec::new();
+    // The corpus's own fitted row counts, so the footprint bound below is stated at the
+    // depth the sweep actually measures rather than at the census's cheap one.
+    let mut fitted_rows: Vec<usize> = Vec::new();
+    let mut rejections: Vec<String> = Vec::new();
+    let mut over_budget = 0usize;
+    let mut out = String::from(
+        "circuit,layer,class,k,coeff,program,status,num_foldable,n_coefficients,\
+floor_dram_read_bytes,floor_dram_write_bytes\n",
+    );
+
+    // The coordinates `bwd_seg_corpus_sweep` walks, through its OWN enumeration
+    // (`SEG_CORPUS_LAYOUTS` x `seg_coordinate_layers` x `SEG_ROUND_CLASSES` x
+    // `SEG_CORPUS_K`) rather than a restatement of it.
+    for circuit in SEG_CORPUS_LAYOUTS {
+        for layer in seg_coordinate_layers(circuit) {
+            for class in SEG_ROUND_CLASSES {
+                let regime = class.regime();
+                let coord = lean_coordinate(circuit, layer, regime);
+                let round = class.round();
+                let d2 = class.d2();
+                let probe = probe_geometry(&coord, round, d2);
+                let (top_rows, _) = fit_rows(
+                    SEG_CORPUS_TARGET_ROWS,
+                    probe.bytes_per_row,
+                    budget,
+                    SEG_CORPUS_MIN_ROWS,
+                );
+                // The sweep returns `OverBudget` BEFORE lowering, so the census records
+                // the same verdict rather than inventing a lowering the sweep never did.
+                let budgeted = top_rows.saturating_mul(probe.bytes_per_row) <= budget;
+                if !budgeted {
+                    over_budget += 1;
+                }
+                let cell = budgeted.then(|| {
+                    SegCell::build(
+                        Arc::clone(&coord),
+                        round,
+                        SEG_CENSUS_ROWS,
+                        false,
+                        d2,
+                        eq_low.as_ptr(),
+                        eq_sizes,
+                        &context,
+                    )
+                });
+                let mut counted = false;
+                for k in SEG_CORPUS_K {
+                    let shape = corpus_shape(k);
+                    let label = format!(
+                        "{},{layer},{},{k},{},{}",
+                        short_name(circuit),
+                        class.label(),
+                        coeff_label(shape.coeff),
+                        program_label(shape.program),
+                    );
+                    let Some(cell) = cell.as_ref() else {
+                        writeln!(out, "{label},over-budget,0,0,0,0").expect("write String");
+                        continue;
+                    };
+                    // A coordinate host lowering REJECTS is recorded with its rejection;
+                    // it must not take the chunk with it.
+                    match cell.try_lower(shape) {
+                        Err(error) => {
+                            rejections.push(format!("{label} -> {error:?}"));
+                            writeln!(out, "{label},lower-rejected,0,0,0,0").expect("write String");
+                        }
+                        Ok(setup) => {
+                            let (num_foldable, n_coefficients) = match &setup.desc {
+                                BwdSegLaunchDesc::Inline(desc) => {
+                                    (u32::from(desc.num_foldable), desc.n_coefficients)
+                                }
+                                BwdSegLaunchDesc::ProgPtr(desc) => {
+                                    (u32::from(desc.num_foldable), desc.n_coefficients)
+                                }
+                            };
+                            let floor = bwd_seg_traffic_floor(&setup, shape.coeff, shape.program);
+                            foldable.push(num_foldable);
+                            coefficients.push(n_coefficients);
+                            counted = true;
+                            writeln!(
+                                out,
+                                "{label},lowered,{num_foldable},{n_coefficients},{},{}",
+                                floor.read_bytes, floor.write_bytes,
+                            )
+                            .expect("write String");
+                        }
+                    }
+                }
+                if counted {
+                    fitted_rows.push(top_rows);
+                }
+                drop(cell);
+            }
+        }
+    }
+
+    let path = seg_output_path("seg_lowering_footprint_census.csv");
+    publish(&path, &out);
+    assert!(
+        !foldable.is_empty() && !coefficients.is_empty(),
+        "the census is non-vacuous"
+    );
+
+    let quantiles = |values: &mut Vec<u32>| -> (u32, u32, u32, u32) {
+        values.sort_unstable();
+        let at = |fraction: f64| values[((values.len() - 1) as f64 * fraction) as usize];
+        (values[0], at(0.5), at(0.9), values[values.len() - 1])
+    };
+    let count = foldable.len();
+    let (fold_min, fold_median, fold_p90, fold_max) = quantiles(&mut foldable);
+    let (coeff_min, coeff_median, coeff_p90, coeff_max) = quantiles(&mut coefficients);
+    fitted_rows.sort_unstable();
+    let median_rows = fitted_rows[fitted_rows.len() / 2];
+    // The published-endpoint footprint BOUND, not a residency claim: only the bytes
+    // `seg_fold_and_publish` stores, at the corpus's median fitted row count.
+    let endpoint_bytes = |num_foldable: u32| -> u64 {
+        u64::from(num_foldable) * 2 * median_rows as u64 * size_of::<E4>() as u64
+    };
+    eprintln!(
+        "[seg-census] {count} lowered cells over {} coordinates ({over_budget} over-budget \
+         coordinates, {} lowering rejections)\n\
+         [seg-census] num_foldable:    min {fold_min} median {fold_median} p90 {fold_p90} \
+         max {fold_max}\n\
+         [seg-census] n_coefficients: min {coeff_min} median {coeff_median} p90 {coeff_p90} \
+         max {coeff_max}\n\
+         [seg-census] published-endpoint footprint BOUND at the corpus median {median_rows} \
+         rows (`num_foldable * 2 * rows * 16 B`): median {:.1} MiB, p90 {:.1} MiB, max {:.1} \
+         MiB -- a CAPACITY-FEASIBILITY bound, NOT a residency conclusion\n\
+         [seg-census] -> {}",
+        fitted_rows.len(),
+        rejections.len(),
+        endpoint_bytes(fold_median) as f64 / (1u64 << 20) as f64,
+        endpoint_bytes(fold_p90) as f64 / (1u64 << 20) as f64,
+        endpoint_bytes(fold_max) as f64 / (1u64 << 20) as f64,
+        path.display(),
+    );
+    // The CSV's own floor basis, stated where a reader of the table will see it: the two
+    // distributions are row-independent, the two floor columns are NOT.
+    eprintln!(
+        "[seg-census] the CSV's floor columns are at {SEG_CENSUS_ROWS} rows (the census's \
+         lowering row count) and scale LINEARLY in rows; the footprint bound above is the \
+         one figure restated at the corpus median"
+    );
+    for rejection in &rejections {
+        eprintln!("[seg-census] LOWER REJECTED {rejection}");
+    }
+    drop(eq_low);
+}
+
 /// Sweep ONE `(circuit, layer, round class)` coordinate: the whole `K` axis at
 /// every rung of the row ladder.
 #[allow(clippy::too_many_arguments)]
@@ -7028,20 +7365,27 @@ fn measure_corpus_rung(
         context,
     );
 
-    // Lower every `K` BEFORE launching anything. The work model is a property of
-    // the lowering, so this is also how an unlaunchable or rejected cell still
-    // contributes its `max_over_mean`.
-    let lowered: Vec<Result<ListWorkStats, BwdSegLowerError>> = SEG_CORPUS_K
+    // Lower every `K` BEFORE launching anything. The work model AND the traffic floor
+    // are properties of the lowering, so this is also how an unlaunchable or rejected
+    // cell still contributes its `max_over_mean` and its floor.
+    let lowered: Vec<Result<(ListWorkStats, BwdSegTrafficFloor), BwdSegLowerError>> = SEG_CORPUS_K
         .into_iter()
-        .map(|k| timed.try_lower(corpus_shape(k)).map(|setup| setup.work))
+        .map(|k| {
+            let shape = corpus_shape(k);
+            timed.try_lower(shape).map(|setup| {
+                let floor = bwd_seg_traffic_floor(&setup, shape.coeff, shape.program);
+                (setup.work, floor)
+            })
+        })
         .collect();
     facts.total_static_work = SEG_CORPUS_K
         .into_iter()
         .zip(lowered.iter())
-        .find_map(|(k, work)| {
-            work.as_ref()
+        .find_map(|(k, lowering)| {
+            lowering
+                .as_ref()
                 .ok()
-                .map(|w| (w.mean_work * k as f64).round() as u64)
+                .map(|(work, _)| (work.mean_work * k as f64).round() as u64)
         })
         .unwrap_or(0);
     eprintln!(
@@ -7083,7 +7427,7 @@ fn measure_corpus_rung(
             ));
             None
         }
-        Ok(work) => {
+        Ok((work, floor)) => {
             let row = measure_shape(
                 &benchmark,
                 &timed,
@@ -7098,13 +7442,13 @@ fn measure_corpus_rung(
                 context,
             );
             let launchable = row.launchable();
-            out.push(corpus_row(facts.clone(), *work, &row, below_floor));
+            out.push(corpus_row(facts.clone(), *work, *floor, &row, below_floor));
             launchable.then_some(baseline_shape)
         }
     };
 
     for (index, k) in SEG_CORPUS_K.into_iter().enumerate().skip(1) {
-        let work = match &lowered[index] {
+        let (work, floor) = match &lowered[index] {
             Err(error) => {
                 eprintln!("[seg-corpus] {benchmark} K{k}: LOWER REJECTED {error:?}");
                 out.push(SegCorpusRow::untimed(
@@ -7114,7 +7458,7 @@ fn measure_corpus_rung(
                 ));
                 continue;
             }
-            Ok(work) => *work,
+            Ok((work, floor)) => (*work, *floor),
         };
         let shape = corpus_shape(k);
         let row = measure_shape(
@@ -7132,7 +7476,7 @@ fn measure_corpus_rung(
             profile_k == Some(k),
             context,
         );
-        out.push(corpus_row(facts.clone(), work, &row, below_floor));
+        out.push(corpus_row(facts.clone(), work, floor, &row, below_floor));
     }
 
     drop(timed);
@@ -7143,6 +7487,7 @@ fn measure_corpus_rung(
 fn corpus_row(
     facts: SegCoordFacts,
     work: ListWorkStats,
+    floor: BwdSegTrafficFloor,
     row: &SegMatrixRow,
     below_floor: bool,
 ) -> SegCorpusRow {
@@ -7176,6 +7521,9 @@ fn corpus_row(
             .measured()
             .then(|| row.ratio.selectable().map(|(estimate, _)| estimate))
             .flatten(),
+        // NOT gated on `measured()`: the floor is a lowering property, and this row's
+        // lowering succeeded regardless of whether the cell could be launched or timed.
+        floor,
     }
 }
 
@@ -8765,9 +9113,18 @@ mod tests {
             "carveout_mode",
             "carveout_requested_pct",
             "carveout_source",
+            // The per-launch traffic floors ride on EVERY row, launchable or not
+            // (spec §7.2.2 Emission).
+            "floor_dram_read_bytes",
+            "floor_dram_write_bytes",
         ] {
             assert!(csv.contains(column), "missing column {column}");
         }
+        // The floors are LOWERING properties, so the unlaunchable row carries them too
+        // and the zero convention stays a statement about lowering output, not about
+        // launchability.
+        let dead = render_matrix_csv(&[row_fixture(32, 0, None)]);
+        assert!(dead.ends_with(",1073741824,268435456\n"), "{dead}");
         // The demand-source prose contains a comma; the renderer must neutralize it
         // rather than let it split the row into an extra field.
         assert!(
@@ -8964,6 +9321,12 @@ mod tests {
                 "-"
             },
             baseline: if ratio.is_some() { "incumbent" } else { "-" },
+            // A LOWERING property, so it is present on the unlaunchable fixture too —
+            // that is exactly the row the zero convention must stay distinguishable from.
+            floor: BwdSegTrafficFloor {
+                read_bytes: 1_073_741_824,
+                write_bytes: 268_435_456,
+            },
             carveout_mode: "common-bucket",
             carveout_requested_pct: Some(31),
             // Prose WITH a comma in it, so the renderer's separator handling is
@@ -9081,6 +9444,10 @@ mod tests {
                 ci_low: median_ratio - 0.001,
                 ci_high: median_ratio + 0.001,
             }),
+            floor: BwdSegTrafficFloor {
+                read_bytes: 33_554_432,
+                write_bytes: 8_388_608,
+            },
         }
     }
 
@@ -9117,7 +9484,11 @@ mod tests {
                 got.ratio_vs_baseline.map(|estimate| estimate.median_ratio),
                 want.ratio_vs_baseline.map(|estimate| estimate.median_ratio)
             );
+            assert_eq!(got.floor, want.floor, "the v3 floor columns round-trip");
         }
+        // The zero convention is what an untimed row carries, and it survives the trip.
+        assert_eq!(back[4].floor, BwdSegTrafficFloor::default());
+        assert_eq!(back[5].floor, BwdSegTrafficFloor::default());
     }
 
     /// The corpus twin of `SegMatrixRow::protocol()`'s `SegRatio::Solo` discriminator:
@@ -9183,7 +9554,10 @@ mod tests {
         )]);
         let row = csv.lines().nth(1).expect("one data row");
         assert!(row.contains(",unlaunchable,"), "{row}");
-        assert!(row.ends_with(",-,-,-,-,-"), "{row}");
+        // Six dashes — no median, no min, no baseline median, no interval — then the two
+        // floor columns at the "no lowering output" zero, which is what an untimed row
+        // honestly has.
+        assert!(row.ends_with(",-,-,-,-,-,-,0,0"), "{row}");
     }
 
     /// The parse must not silently accept a table whose columns moved.
@@ -9193,48 +9567,65 @@ mod tests {
         parse_corpus_csv("circuit,layer,class\nadd_sub,0,R0\n");
     }
 
-    /// A schema-v1 chunk — everything measured before `baseline_median_us` existed
-    /// — must still read, and must read the SAME values.
+    /// A schema-v1 chunk — everything measured before `baseline_median_us` existed —
+    /// and a schema-v2 one, measured before the traffic floors existed, must still
+    /// read, and must read the SAME values for every column they DO carry.
     ///
     /// Positional parsing made this impossible: adding one column would have meant
     /// re-running twelve locked GPU chunks. Name resolution is what keeps the
-    /// on-disk record valid across the schema change.
+    /// on-disk record valid across every schema change.
     #[test]
     fn a_schema_v1_chunk_still_reads_and_agrees_with_v2() {
         let rows = vec![
             corpus_fixture(4, SegCorpusStatus::Timed, None),
             corpus_fixture(8, SegCorpusStatus::Timed, Some(0.97)),
         ];
-        let v2 = render_corpus_csv(&rows);
-        // Strip the v2 column from the header and from every row to make a v1 table.
-        let strip = |line: &str, at: usize| {
-            let mut field: Vec<&str> = line.split(',').collect();
-            field.remove(at);
-            field.join(",")
+        let v3 = render_corpus_csv(&rows);
+        // Strip one NAMED column from the header and from every row.
+        let strip = |text: &str, column: &str| -> String {
+            let at = text
+                .lines()
+                .next()
+                .expect("a header")
+                .split(',')
+                .position(|name| name == column)
+                .unwrap_or_else(|| panic!("{column} is in the header"));
+            text.lines()
+                .map(|line| {
+                    let mut field: Vec<&str> = line.split(',').collect();
+                    field.remove(at);
+                    format!("{}\n", field.join(","))
+                })
+                .collect()
         };
-        let at = SEG_CORPUS_CSV_HEADER
-            .trim_end()
-            .split(',')
-            .position(|name| name == SEG_CORPUS_V2_COLUMN)
-            .expect("the v2 column is in the v2 header");
-        let v1: String = v2
-            .lines()
-            .map(|line| format!("{}\n", strip(line, at)))
-            .collect();
-        assert!(!v1.contains(SEG_CORPUS_V2_COLUMN));
+        // v2 = v3 without the two floor columns; v1 = v2 without the baseline median.
+        let v2 = strip(&strip(&v3, "floor_dram_write_bytes"), SEG_CORPUS_V3_COLUMN);
+        let v1 = strip(&v2, SEG_CORPUS_V2_COLUMN);
+        assert!(!v2.contains(SEG_CORPUS_V3_COLUMN) && !v2.contains("floor_dram_write_bytes"));
+        assert!(v2.contains(SEG_CORPUS_V2_COLUMN) && !v1.contains(SEG_CORPUS_V2_COLUMN));
         let from_v1 = parse_corpus_csv(&v1);
         let from_v2 = parse_corpus_csv(&v2);
-        assert_eq!(from_v1.len(), from_v2.len());
-        for (old, new) in from_v1.iter().zip(from_v2.iter()) {
+        let from_v3 = parse_corpus_csv(&v3);
+        assert_eq!(from_v1.len(), from_v3.len());
+        assert_eq!(from_v2.len(), from_v3.len());
+        for ((old, mid), new) in from_v1.iter().zip(from_v2.iter()).zip(from_v3.iter()) {
             assert_eq!(old.facts, new.facts);
             assert_eq!(old.median_us, new.median_us);
             assert_eq!(old.ratio_vs_baseline, new.ratio_vs_baseline);
+            assert_eq!(mid.facts, new.facts);
+            assert_eq!(mid.baseline_median_us, new.baseline_median_us);
             assert_eq!(
                 old.baseline_median_us, None,
                 "a v1 chunk cannot carry the baseline median"
             );
+            // An absent floor column reads as the "no lowering output" zero — the same
+            // way a rejected and an over-budget row read, which is correct: none of the
+            // three carries a floor.
+            assert_eq!(old.floor, BwdSegTrafficFloor::default());
+            assert_eq!(mid.floor, BwdSegTrafficFloor::default());
+            assert_eq!(new.floor, rows[0].floor);
         }
-        assert!(from_v2[1].baseline_median_us.is_some());
+        assert!(from_v3[1].baseline_median_us.is_some());
     }
 
     /// A missing chunk must fail loudly rather than narrow the corpus.
