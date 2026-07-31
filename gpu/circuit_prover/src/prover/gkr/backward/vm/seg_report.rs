@@ -10028,8 +10028,9 @@ fn bwd_seg_fragment_coefficient_census() {
     };
 
     let mut out = String::from(
-        "circuit,layer,terms,t_c0lin,t_c2,t_dual,groups,imm_free,imm_bf,\
-full_term,full_rel,bfe4_rel,saving_pct_karatsuba,saving_pct_schoolbook\n",
+        "circuit,layer,terms,t_c0lin,t_c2,t_dual,t_standalone,groups,group_median,\
+group_p90,group_max,imm_free,imm_bf,full_term,full_rel,bfe4_rel,\
+saving_pct_karatsuba,saving_pct_schoolbook\n",
     );
     let mut corpus_full_term = 0u64;
     let mut corpus_full_rel = 0u64;
@@ -10051,8 +10052,9 @@ full_term,full_rel,bfe4_rel,saving_pct_karatsuba,saving_pct_schoolbook\n",
             // immediates move to the BF x E4 column.
             let mut full_rel = 0u64;
             let mut bfe4_rel = 0u64;
-            // group -> (has_c0_content, has_c2_content)
-            let mut groups: HashMap<NormalizedCoefficientRecipe, (bool, bool)> = HashMap::new();
+            // group -> (has_c0_content, has_c2_content, member terms)
+            let mut groups: HashMap<NormalizedCoefficientRecipe, (bool, bool, u64)> =
+                HashMap::new();
 
             for term in &layer.terms {
                 let (products, coeff_uses, c0, c2, coefficient) = match term {
@@ -10077,17 +10079,37 @@ full_term,full_rel,bfe4_rel,saving_pct_karatsuba,saving_pct_schoolbook\n",
                     bfe4_rel += coeff_uses;
                 }
                 if let Some(core) = core {
-                    let entry = groups.entry(core).or_insert((false, false));
+                    let entry = groups.entry(core).or_insert((false, false, 0));
                     entry.0 |= c0;
                     entry.1 |= c2;
+                    entry.2 += 1;
                 }
             }
             let group_count = groups.len() as u64;
-            for (has_c0, has_c2) in groups.values() {
+            let mut grouped_terms = 0u64;
+            for (has_c0, has_c2, members) in groups.values() {
                 full_rel += u64::from(*has_c0) + u64::from(*has_c2);
+                grouped_terms += members;
             }
+            // The K-split takes GROUPS as its unit (a term-granular stripe would
+            // scatter every ~2-term group across warps and re-pay the core mul
+            // per fragment per warp), so the balance question is the group-size
+            // TAIL: a monster group pins one warp. Standalone terms (bare-scalar
+            // coefficients, no core) stripe freely as today.
+            let mut sizes: Vec<u64> = groups.values().map(|(_, _, members)| *members).collect();
+            sizes.sort_unstable();
+            let at = |fraction: f64| -> u64 {
+                if sizes.is_empty() {
+                    0
+                } else {
+                    sizes[((sizes.len() - 1) as f64 * fraction) as usize]
+                }
+            };
+            let (group_median, group_p90, group_max) =
+                (at(0.5), at(0.9), sizes.last().copied().unwrap_or(0));
 
             let terms = layer.terms.len() as u64;
+            let t_standalone = terms - grouped_terms;
             let saving = |full_weight: f64| -> f64 {
                 let term_units = full_term as f64 * full_weight;
                 let rel_units = full_rel as f64 * full_weight + bfe4_rel as f64 * 4.0;
@@ -10095,8 +10117,9 @@ full_term,full_rel,bfe4_rel,saving_pct_karatsuba,saving_pct_schoolbook\n",
             };
             writeln!(
                 out,
-                "{},{layer_index},{terms},{t_c0lin},{t_c2},{t_dual},{group_count},\
-{imm_free},{imm_bf},{full_term},{full_rel},{bfe4_rel},{:.2},{:.2}",
+                "{},{layer_index},{terms},{t_c0lin},{t_c2},{t_dual},{t_standalone},\
+{group_count},{group_median},{group_p90},{group_max},{imm_free},{imm_bf},\
+{full_term},{full_rel},{bfe4_rel},{:.2},{:.2}",
                 short_name(circuit),
                 saving(9.0),
                 saving(16.0),
