@@ -208,7 +208,7 @@ pub(crate) enum ProgramMode {
 
 /// The lowered descriptor, boxed.
 ///
-/// Boxed on purpose: the inline descriptor is 21 KB of `Copy` data, and moving it
+/// Boxed on purpose: the inline descriptor is 26 KB of `Copy` data, and moving it
 /// through the stack by value both costs a memcpy per move and risks carrying
 /// uninitialized interior padding into the launch. Lowering allocates it
 /// ZEROED and fills named fields, so the launch bytes are deterministic.
@@ -972,9 +972,10 @@ macro_rules! fill_seg_desc {
         let body = &$body;
         desc.list_offset[..body.list_offset.len()].copy_from_slice(&body.list_offset);
         desc.k = body.k;
-        desc.term_count = body.term_count;
+        desc.record_count = body.record_count;
         desc.num_sources = body.num_sources;
         desc.num_foldable = body.num_foldable;
+        desc.num_immediates = body.num_immediates;
         desc.fold_source[..body.fold_source.len()].copy_from_slice(&body.fold_source);
         desc.source[..body.sources.len()].copy_from_slice(&body.sources);
         // Dead window slots carry the ABSENT procedural kind rather than the
@@ -987,6 +988,7 @@ macro_rules! fill_seg_desc {
                 .unwrap_or_else(BwdCoeffSourceWindow::default);
         }
         desc.c_init = body.c_init;
+        desc.immediates[..body.immediates.len()].copy_from_slice(&body.immediates);
         desc.eq_low = body.eq_low;
         desc.contributions = body.contributions;
         desc.eq_sizes = body.eq_sizes;
@@ -1020,13 +1022,17 @@ struct LoweredWindow {
 struct SegDescBody {
     list_offset: Vec<u16>,
     k: u16,
-    term_count: u16,
+    record_count: u16,
     num_sources: u16,
     num_foldable: u16,
+    num_immediates: u16,
     fold_source: Vec<u16>,
     sources: Vec<BwdSegSourceRecord>,
     windows: Vec<BwdCoeffSourceWindow>,
     c_init: [u32; 4],
+    /// The immediate table in the kernel's in-memory (Montgomery) form, already
+    /// capped by the wire validator — see [`BwdSegSetup::immediates`].
+    immediates: Vec<u32>,
     eq_low: *const E4,
     contributions: *mut E4,
     eq_sizes: GkrEqSizes,
@@ -1423,22 +1429,34 @@ pub(crate) fn lower_bwd_seg(
 
     let work = list_work_stats(&lists, &costs);
 
+    // Canonical BF -> the kernel's in-memory (Montgomery) form, ONCE, host-side:
+    // the eval loop reads `immediates[id - 2]` straight into a `bf` register. The
+    // table rides the descriptor BY VALUE in both program families, so it is
+    // computed before the descriptor rather than alongside the setup's other
+    // payloads.
+    let immediates: Vec<u32> = binding
+        .immediates
+        .iter()
+        .map(|&value| BF::from_u32_with_reduction(value).as_u32_raw_repr_reduced())
+        .collect();
+
     // ── The descriptor ───────────────────────────────────────────────────────
     let body = SegDescBody {
         list_offset,
         k: k as u16,
         // RECORDS, not terms: the field's contract is
-        // `list_offset[k] == LEAN_WORDS_PER_TERM * term_count`, and a group header
-        // is a record of its own (spec §4.5 renames the field in Task 8; the value
-        // is a record count from here). Equal to the term count for every
-        // header-free program, which is every R0 and every ungrouped Ext one.
-        term_count: record_count as u16,
+        // `list_offset[k] == LEAN_WORDS_PER_TERM * record_count`, and a group
+        // header is a record of its own (spec §4.5). Equal to the term count for
+        // every header-free program, which is every R0 and every ungrouped Ext one.
+        record_count: record_count as u16,
         num_sources: sources.len() as u16,
         num_foldable,
+        num_immediates: immediates.len() as u16,
         fold_source,
         sources,
         windows: lowered.iter().map(|entry| entry.desc).collect(),
         c_init,
+        immediates: immediates.clone(),
         eq_low: binding.eq_low,
         contributions: binding.contributions,
         eq_sizes: binding.eq_sizes,
@@ -1452,8 +1470,8 @@ pub(crate) fn lower_bwd_seg(
             // `u32`, `repr(C)` plain-data structs and raw pointers — so the
             // all-zero bit pattern is a valid value (null pointers, empty
             // program). Allocating it zeroed rather than moving an `empty()`
-            // through the stack is what makes the 21 KB by-value launch
-            // parameter's INTERIOR PADDING deterministic: the six bytes before
+            // through the stack is what makes the 26 KB by-value launch
+            // parameter's INTERIOR PADDING deterministic: the four bytes before
             // `window` are never read by the kernel but are copied by the launch.
             let mut desc: Box<BwdSegDesc> = unsafe { zeroed_box() };
             fill_seg_desc!(desc, body);
@@ -1471,14 +1489,6 @@ pub(crate) fn lower_bwd_seg(
             (BwdSegLaunchDesc::ProgPtr(desc), stream)
         }
     };
-
-    // Canonical BF -> the kernel's in-memory (Montgomery) form, ONCE, host-side:
-    // the eval loop reads `immediates[id - 2]` straight into a `bf` register.
-    let immediates: Vec<u32> = binding
-        .immediates
-        .iter()
-        .map(|&value| BF::from_u32_with_reduction(value).as_u32_raw_repr_reduced())
-        .collect();
 
     Ok(BwdSegSetup {
         desc,
@@ -2242,7 +2252,7 @@ impl BwdSegLaunchDesc {
 }
 
 /// Test-only, so that `assert_eq!(lower_bwd_seg(...), Err(...))` compiles: the
-/// descriptor is 21 KB of `Copy` plain data that derives no `PartialEq`, so it is
+/// descriptor is 26 KB of `Copy` plain data that derives no `PartialEq`, so it is
 /// compared as the bytes a launch would carry.
 #[cfg(test)]
 impl PartialEq for BwdSegSetup {
@@ -2256,7 +2266,7 @@ impl PartialEq for BwdSegSetup {
     }
 }
 
-/// Test-only, and a SUMMARY on purpose: the derived form would print 21 KB of
+/// Test-only, and a SUMMARY on purpose: the derived form would print 26 KB of
 /// mostly-zero arrays into a failure message.
 #[cfg(test)]
 impl core::fmt::Debug for BwdSegSetup {

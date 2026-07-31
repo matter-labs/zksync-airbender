@@ -520,6 +520,22 @@ pub mod in_scope {
     pub const MAX_PROJECTIONS: usize = 1731;
     /// Largest per-layer term count (`blake2_with_extended_control` L0 `Ext`).
     pub const MAX_TERMS: usize = 1791;
+    /// Largest per-layer lean RECORD count: terms PLUS group headers (spec §4.4,
+    /// §4.5). One header record per group, so a coordinate's record count is
+    /// `terms + groups` and the program is `LEAN_WORDS_PER_TERM * records` words.
+    ///
+    /// A COMPILE-TIME literal standing in for a runtime measurement, which is what
+    /// [`LEAN_MAX_REALIZED_PROGRAM_WORDS`]'s `const` identity needs — a `const _`
+    /// assert cannot call the grouping transform. `grouped_capacity_pin` in
+    /// `tests/bwd_coeff_lean_artifact.rs` is the measurement behind it: it runs
+    /// `group_coeff_layer -> order_atoms -> encode_program_atoms` over every corpus
+    /// coordinate and asserts this literal EXACTLY. Moving it without re-running
+    /// that gate is the one thing this constant is designed to make impossible.
+    ///
+    /// Strictly above [`MAX_TERMS`] because the worst coordinate groups: it is the
+    /// same `blake2_with_extended_control` L0 `Ext` coordinate, whose 1,791 terms
+    /// come with 365 group headers on top.
+    pub const MAX_RECORDS: usize = 2156;
     /// Largest monomial count a single pre-distribution product expanded to
     /// (design §5.4's distribution growth): `inits_and_teardowns` L0 in BOTH
     /// regimes and `unified_reduced_machine` L0 `Ext`.
@@ -569,6 +585,9 @@ pub mod in_scope {
     const _: () = assert!(MAX_SOURCE_WINDOWS_USED <= MAX_SOURCE_WINDOWS);
     const _: () = assert!(MAX_LOWER_BOUND_PROGRAM_BYTES <= KERNEL_ARGUMENT_CEILING_BYTES);
     const _: () = assert!(MAX_UPPER_BOUND_PROGRAM_BYTES <= KERNEL_ARGUMENT_CEILING_BYTES);
+    // Every record is a term or a header, and the worst coordinate really does
+    // group — a corpus that grouped nothing would leave these two equal.
+    const _: () = assert!(MAX_RECORDS > MAX_TERMS);
 }
 
 /// The same census INCLUDING the conditional `blake2_with_compression` attempt
@@ -621,23 +640,29 @@ pub mod with_conditional_blake2 {
 
 // ── The segmented lean VM's measurements (lean design §4) ────────────────────
 //
-// The lean wire is FIXED at `LEAN_WORDS_PER_TERM` words per term, so a lean
-// program's length is `4 * terms` and there is no bound/measurement gap to close:
-// the term population IS the program length. These three numbers therefore replace
+// The lean wire is FIXED at `LEAN_WORDS_PER_TERM` words per RECORD, so a lean
+// program's length is `4 * records` and there is no bound/measurement gap to close:
+// the record population IS the program length. These three numbers therefore replace
 // the whole `lower_bound_program_words` / `upper_bound_program_words` /
 // `in_scope::MAX_REALIZED_PROGRAM_WORDS` triple the cell-era codec needed, and
 // nothing here is a schedule measurement — there is no schedule.
 
 /// The largest lean program over the whole in-scope corpus, in u16 words.
 ///
-/// A MEASUREMENT, pinned by `bwd_lean_program_word_census_sizes_the_descriptor` in
+/// A MEASUREMENT, pinned by `grouped_capacity_pin` in
 /// `tests/bwd_coeff_lean_artifact.rs`, and by construction it is
-/// `LEAN_WORDS_PER_TERM * in_scope::MAX_TERMS`: the fixed-width wire makes the
-/// longest program the one with the most terms
-/// (`blake2_with_extended_control` L0 `Ext`, 1791 terms). The identity is asserted
-/// below rather than assumed, so a codec that stopped being fixed-width would trip
-/// here instead of silently under-sizing the descriptor.
-pub const LEAN_MAX_REALIZED_PROGRAM_WORDS: usize = 7_164;
+/// `LEAN_WORDS_PER_TERM * in_scope::MAX_RECORDS`: the fixed-width wire makes the
+/// longest program the one with the most RECORDS
+/// (`blake2_with_extended_control` L0 `Ext`). The identity is asserted below rather
+/// than assumed, so a codec that stopped being fixed-width would trip here instead
+/// of silently under-sizing the descriptor.
+///
+/// **Records, not terms** (spec §4.4): grouping emits one header record per group
+/// on top of its member terms, so this is `4 * (terms + headers)` and strictly
+/// larger than the `4 * MAX_TERMS` the pre-grouping wire measured. The constant is
+/// stated over [`in_scope::MAX_RECORDS`] precisely so the const identity keeps
+/// working across that change.
+pub const LEAN_MAX_REALIZED_PROGRAM_WORDS: usize = 8_624;
 
 /// The segmented descriptor's program array length, in u16 words:
 /// [`LEAN_MAX_REALIZED_PROGRAM_WORDS`] rounded up to the descriptor's 16-byte ABI
@@ -649,15 +674,15 @@ pub const LEAN_MAX_REALIZED_PROGRAM_WORDS: usize = 7_164;
 /// in every launch, forever. If a future circuit needs more, this constant is
 /// re-measured and moved — a deliberate act with a test behind it, which
 /// speculative headroom would have hidden.
-pub const LEAN_DESCRIPTOR_PROGRAM_WORDS: usize = 7_168;
+pub const LEAN_DESCRIPTOR_PROGRAM_WORDS: usize = 8_624;
 /// [`LEAN_DESCRIPTOR_PROGRAM_WORDS`] in bytes: 16-byte aligned by construction.
-pub const LEAN_DESCRIPTOR_PROGRAM_BYTES: usize = 14_336;
+pub const LEAN_DESCRIPTOR_PROGRAM_BYTES: usize = 17_248;
 
-// The measurement is the fixed-width identity, the array is the measurement
-// rounded up by strictly less than one alignment quantum, and the whole array fits
-// the by-value cap with room for the rest of the descriptor.
+// The measurement is the fixed-width identity over RECORDS, the array is the
+// measurement rounded up by strictly less than one alignment quantum, and the whole
+// array fits the by-value cap with room for the rest of the descriptor.
 const _: () = assert!(
-    LEAN_MAX_REALIZED_PROGRAM_WORDS == super::lean::LEAN_WORDS_PER_TERM * in_scope::MAX_TERMS
+    LEAN_MAX_REALIZED_PROGRAM_WORDS == super::lean::LEAN_WORDS_PER_TERM * in_scope::MAX_RECORDS
 );
 const _: () =
     assert!(LEAN_DESCRIPTOR_PROGRAM_WORDS == align_program_words(LEAN_MAX_REALIZED_PROGRAM_WORDS));

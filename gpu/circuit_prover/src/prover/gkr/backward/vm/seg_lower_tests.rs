@@ -23,8 +23,8 @@ use gkr_eval_isa::bwd::coeff::lean_bind::{
     LeanBoundColumn, LeanBoundWindow, LeanSourceBinding, LeanSourceSlot,
 };
 use gkr_eval_isa::bwd::coeff::limits::{
-    in_scope, TermCategory, LEAN_CONT_GROUP_HEADER_CLASS, LEAN_MAX_IMMEDIATES,
-    SOURCE_WINDOW_COLUMNS,
+    in_scope, TermCategory, LEAN_CONT_GROUP_HEADER_CLASS, LEAN_DESCRIPTOR_PROGRAM_WORDS,
+    LEAN_MAX_IMMEDIATES, SOURCE_WINDOW_COLUMNS,
 };
 use gkr_eval_isa::bwd::coeff::model::CoefficientRecipeId;
 use gkr_eval_isa::bwd::coeff::order::split_round_robin;
@@ -620,7 +620,7 @@ fn k_lists_concatenate_in_round_robin_order() {
         .unwrap_or_else(|error| panic!("k {k}: {error:?}"));
         let desc = inline_desc(&setup);
         assert_eq!(desc.k as usize, k);
-        assert_eq!(desc.term_count as usize, records.len());
+        assert_eq!(desc.record_count as usize, records.len());
 
         let offsets = &desc.list_offset[..=k];
         assert!(
@@ -1803,7 +1803,10 @@ fn an_acc_size_that_is_not_the_row_count_is_rejected() {
 /// is a rejection there and legal under the device-pointer family.
 #[test]
 fn a_program_past_the_inline_array_is_rejected_only_inline() {
-    let records: Vec<[u16; 4]> = (0..2_000).map(|_| record(0, 0, 0, SOURCE_NONE)).collect();
+    // ONE record past what the array holds, derived from the capacity rather than
+    // written out: a literal count stops overflowing the moment the array grows.
+    let over = LEAN_DESCRIPTOR_PROGRAM_WORDS / LEAN_WORDS_PER_TERM + 1;
+    let records: Vec<[u16; 4]> = (0..over).map(|_| record(0, 0, 0, SOURCE_NONE)).collect();
     let artifact = artifact(
         ArtifactRegime::Ext,
         3,
@@ -1829,7 +1832,7 @@ fn a_program_past_the_inline_array_is_rejected_only_inline() {
         ),
         Err(BwdSegLowerError::ProgramOverflow {
             words,
-            cap: gkr_eval_isa::bwd::coeff::limits::LEAN_DESCRIPTOR_PROGRAM_WORDS,
+            cap: LEAN_DESCRIPTOR_PROGRAM_WORDS,
         }),
     );
     let setup = lower_bwd_seg(
@@ -2360,9 +2363,11 @@ fn the_descriptor_stream_decodes_to_the_artifact_terms() {
     .expect("a legal round");
     let desc = inline_desc(&setup);
     let words = usize::from(desc.list_offset[usize::from(desc.k)]);
+    // `decode_program` reads `words` only, and the descriptor carries a RECORD
+    // count rather than a term count, so that is what the reconstruction states.
     let stream = LeanProgram {
         words: desc.program[..words].to_vec(),
-        term_count: usize::from(desc.term_count),
+        term_count: usize::from(desc.record_count),
     };
     let regime = artifact.regime.regime();
     let mut lowered = decode_program(&stream, regime).expect("whole records");
@@ -3502,7 +3507,7 @@ fn deal_is_deterministic_and_whole_atom() {
 
         let desc = inline_desc(&setup);
         // RECORDS, headers included: seven records for six terms.
-        assert_eq!(desc.term_count, 7, "k {k}: the count field is records");
+        assert_eq!(desc.record_count, 7, "k {k}: the count field is records");
         assert_eq!(
             usize::from(desc.list_offset[k]),
             7 * LEAN_WORDS_PER_TERM,
@@ -3660,7 +3665,7 @@ fn r0_stream_is_byte_identical() {
             "k {k}: the R0 stream is round-robin over positions",
         );
         assert_eq!(usize::from(desc.list_offset[k]), expected.len());
-        assert_eq!(desc.term_count as usize, records.len());
+        assert_eq!(desc.record_count as usize, records.len());
         // At `k >= records` every split is one-atom-per-list and the two rules
         // coincide trivially; below that they genuinely disagree on these costs,
         // which is what makes the pin above a statement about the R0 path.
@@ -3728,8 +3733,8 @@ fn grouped_fixture_floor_matches_ungrouped() {
         "the floor is unchanged by grouping",
     );
     // The RECORD count is what does change: one header on top of two terms.
-    assert_eq!(inline_desc(&grouped).term_count, 3);
-    assert_eq!(inline_desc(&ungrouped).term_count, 2);
+    assert_eq!(inline_desc(&grouped).record_count, 3);
+    assert_eq!(inline_desc(&ungrouped).record_count, 2);
 }
 
 /// The one cost rule grouping exists for: a member pays NO coefficient base.

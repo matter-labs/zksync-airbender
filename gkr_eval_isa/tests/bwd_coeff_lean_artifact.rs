@@ -32,7 +32,7 @@ use std::sync::OnceLock;
 
 use common::{CrossFields, FIXTURES, layers_with_bwd_roots};
 use cs::gkr_compiler::dag_ir::{BwdRegime, DagLayer, FieldKind, ReadPlace};
-use gkr_eval_isa::bwd::coeff::lean::LEAN_WORDS_PER_TERM;
+use gkr_eval_isa::bwd::coeff::lean::{LEAN_WORDS_PER_TERM, encode_program_atoms};
 use gkr_eval_isa::bwd::coeff::lean_artifact::{
     LeanCircuitArtifact, LeanCoordinateArtifact, compile_lean_coordinate, lean_artifact_bytes,
     read_lean_circuit_artifact, write_lean_circuit_artifact,
@@ -41,10 +41,11 @@ use gkr_eval_isa::bwd::coeff::limits::{
     DESCRIPTOR_ALIGNMENT_WORDS, KERNEL_ARGUMENT_CEILING_BYTES, LEAN_DESCRIPTOR_PROGRAM_BYTES,
     LEAN_DESCRIPTOR_PROGRAM_WORDS, LEAN_MAX_REALIZED_PROGRAM_WORDS, TermCategory, in_scope,
 };
+use gkr_eval_isa::bwd::coeff::order::order_atoms;
 use gkr_eval_isa::bwd::coeff::stats::neg_one_census;
 use gkr_eval_isa::bwd::coeff::{
     ArtifactRegime, CoeffLayer, CoeffSource, CoeffTerm, CoefficientRecipeId, ProjectionId,
-    SourceId, TermId, lower_coeff_layer,
+    SourceId, TermId, group_coeff_layer, lower_coeff_layer,
 };
 use gkr_eval_isa::bwd::distill::distill;
 use gkr_eval_isa::bwd::source::OriginLeaf;
@@ -244,11 +245,19 @@ fn bwd_lean_program_word_census_sizes_the_descriptor() {
     // makes structural, measured rather than assumed.
     assert_eq!(max_words, LEAN_WORDS_PER_TERM * max_terms);
     assert_eq!(max_terms, in_scope::MAX_TERMS, "the lean corpus is the censused corpus");
-    // The pin the descriptor is sized from.
-    assert_eq!(max_words, LEAN_MAX_REALIZED_PROGRAM_WORDS);
+    // The descriptor's program array holds this — but it is no longer the pin.
+    // `compile_lean_coordinate` is still UNGROUPED, so the production census
+    // measures `4 * terms`, while the array is sized for the GROUPED maximum
+    // (terms PLUS group headers) that `grouped_capacity_pin` measures. The
+    // relation is therefore `<=` until grouped lowering becomes production, at
+    // which point this returns to equality and the manual pin retires.
+    assert!(
+        max_words <= LEAN_MAX_REALIZED_PROGRAM_WORDS,
+        "the ungrouped production maximum must fit the grouped-sized array",
+    );
     assert_eq!(LEAN_DESCRIPTOR_PROGRAM_BYTES, 2 * LEAN_DESCRIPTOR_PROGRAM_WORDS);
     assert!(
-        LEAN_MAX_REALIZED_PROGRAM_WORDS <= LEAN_WORDS_PER_TERM * in_scope::MAX_TERMS,
+        LEAN_MAX_REALIZED_PROGRAM_WORDS <= LEAN_WORDS_PER_TERM * in_scope::MAX_RECORDS,
         "the measurement must sit inside the format bound"
     );
     for (circuit, coordinate) in rows {
@@ -257,6 +266,88 @@ fn bwd_lean_program_word_census_sizes_the_descriptor() {
             "[{circuit} L{}] {} B exceeds the descriptor's program array",
             coordinate.layer,
             coordinate.program.bytes(),
+        );
+    }
+}
+
+/// The GROUPED program-word census: what the descriptor's program array is
+/// actually sized from (spec §4.5, §7.2).
+///
+/// The manual counterpart of
+/// [`bwd_lean_program_word_census_sizes_the_descriptor`], and it exists because
+/// `compile_lean_coordinate` — the production chain that census reads — is still
+/// UNGROUPED. Grouping does not change the term population, but it adds one
+/// fixed-width HEADER record per group, so the longest program is no longer
+/// `4 * terms`: it is `4 * (terms + headers)`. This runs the grouped chain
+/// (`group_coeff_layer -> order_atoms -> encode_program_atoms`) by hand over every
+/// corpus coordinate and pins the maximum that
+/// [`LEAN_MAX_REALIZED_PROGRAM_WORDS`] and [`in_scope::MAX_RECORDS`] state.
+///
+/// R0 coordinates go through the same call chain deliberately rather than being
+/// skipped: `group_coeff_layer` returns an R0 layer unchanged, so an R0
+/// coordinate measures its ungrouped length and the maximum is a claim about the
+/// WHOLE corpus, not about the Ext half of it.
+///
+/// Retires when grouped lowering becomes production and the census above returns
+/// to equality.
+#[test]
+fn grouped_capacity_pin() {
+    let rows = corpus();
+    assert_eq!(rows.len(), in_scope::COORDINATES, "57 layers x 2 regimes");
+
+    let measured: Vec<(usize, usize, usize, String)> = rows
+        .par_iter()
+        .map(|(circuit, coordinate)| {
+            let label = format!("{circuit} L{} {}", coordinate.layer, coordinate.regime.label());
+            let layer = lowered(circuit, coordinate.layer, coordinate.regime.regime());
+            let terms = layer.terms.len();
+            let grouped = group_coeff_layer(layer)
+                .unwrap_or_else(|e| panic!("[{label}] grouping the corpus: {e:?}"));
+            let headers = grouped.groups.len();
+            let atoms = order_atoms(&grouped);
+            let program = encode_program_atoms(&grouped, &atoms)
+                .unwrap_or_else(|e| panic!("[{label}] encoding the grouped atoms: {e:?}"));
+            // The grouped wire is still fixed width; the RECORD population is what
+            // grew. `LeanProgram::term_count` counts terms, so the header records
+            // are exactly the difference.
+            assert_eq!(program.term_count, terms, "[{label}] grouping never adds a term");
+            let records = terms + headers;
+            assert_eq!(
+                program.words.len(),
+                records * LEAN_WORDS_PER_TERM,
+                "[{label}] the grouped wire is fixed width over terms PLUS headers",
+            );
+            (program.words.len(), records, headers, label)
+        })
+        .collect();
+
+    let (max_words, max_records, headers_at_max, max_at) = measured
+        .iter()
+        .max_by_key(|(words, ..)| *words)
+        .expect("the corpus is not empty")
+        .clone();
+
+    println!(
+        "[grouped census] max {max_words} words ({} B) at {max_at}: {max_records} records \
+         ({} terms + {headers_at_max} group headers); ungrouped would be {} words",
+        2 * max_words,
+        max_records - headers_at_max,
+        LEAN_WORDS_PER_TERM * (max_records - headers_at_max),
+    );
+
+    // The two pins this test exists to hold: the word count the array is sized
+    // from, and the record count the compile-time identity is stated over.
+    assert_eq!(max_records, in_scope::MAX_RECORDS, "the pinned record maximum");
+    assert_eq!(max_words, LEAN_MAX_REALIZED_PROGRAM_WORDS, "the pin the descriptor is sized from");
+    // Non-vacuity: headers really are what moved the maximum. A corpus that
+    // produced no groups would satisfy every assertion above while measuring
+    // nothing about grouping.
+    assert!(headers_at_max > 0, "the worst coordinate must carry group headers");
+    for (words, .., label) in &measured {
+        assert!(
+            2 * words <= LEAN_DESCRIPTOR_PROGRAM_BYTES,
+            "[{label}] {} B exceeds the descriptor's program array",
+            2 * words,
         );
     }
 }

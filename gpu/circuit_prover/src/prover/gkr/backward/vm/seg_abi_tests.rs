@@ -62,8 +62,9 @@ use super::seg_desc::{
     BWD_COEFF_PROCEDURAL_RANGE_CHECK_16_BITS, BWD_COEFF_PROCEDURAL_RANGE_CHECK_TIMESTAMP,
     BWD_COEFF_PUBLISH_TARGET_DEPTH, BWD_SEG_CONST_BANK, BWD_SEG_DESC_ALIGN, BWD_SEG_DESC_CAP,
     BWD_SEG_FOLD_WEIGHT_BASE_D1, BWD_SEG_FOLD_WEIGHT_BASE_D2, BWD_SEG_FOLD_WEIGHT_BASE_D3,
-    BWD_SEG_FOLD_WEIGHT_SLOTS, BWD_SEG_INLINE_KERNEL_ARGUMENT_BYTES, BWD_SEG_MAX_K,
-    BWD_SEG_MAX_SOURCES, BWD_SEG_MAX_THREADS_PER_BLOCK, BWD_SEG_PROGPTR_KERNEL_ARGUMENT_BYTES,
+    BWD_SEG_FOLD_WEIGHT_SLOTS, BWD_SEG_INLINE_KERNEL_ARGUMENT_BYTES, BWD_SEG_MAX_IMMEDIATES,
+    BWD_SEG_MAX_K, BWD_SEG_MAX_SOURCES, BWD_SEG_MAX_THREADS_PER_BLOCK,
+    BWD_SEG_PROGPTR_KERNEL_ARGUMENT_BYTES,
 };
 use super::seg_lower::SourceClass;
 use crate::primitives::field::E4;
@@ -77,28 +78,28 @@ const SEG_CUDA_HEADER: &str =
     include_str!("../../../../../native/prover/gkr/backward/segmented_vm.cuh");
 
 /// The pinned size of the inline-program descriptor.
-const INLINE_DESC_BYTES: usize = 21_456;
+const INLINE_DESC_BYTES: usize = 26_416;
 /// The pinned size of the device-program A/B twin.
-const PROGPTR_DESC_BYTES: usize = 7_136;
+const PROGPTR_DESC_BYTES: usize = 9_184;
 /// Implicit padding rustc (and nvcc, by the same C rules) inserts to align the
 /// 8-byte-aligned `window` array after the 4-byte-aligned `source` array. This is
 /// the gap before `window` ONLY — the descriptor's total implicit padding is this
 /// plus [`INLINE_PRE_SOURCE_PAD_BYTES`], and it is the sum that the size pins.
 const INLINE_IMPLICIT_PAD_BYTES: usize = 4;
-/// Padding before the `source` array: `fold_source` ends 2 mod 4 (the whole
-/// descriptor tail from 14,402 on is, because `list_offset` is 33 x u16), and
-/// `BwdSegSourceRecord` is `align(4)`. Two bytes therefore moved here OUT of the
-/// gap before `window` — the total is what does not change, which is why the
-/// descriptor's SIZE does not change either.
-const INLINE_PRE_SOURCE_PAD_BYTES: usize = 2;
+/// Padding before the `source` array: NONE, in both twins. `fold_source` used to
+/// end 2 mod 4 — the whole descriptor tail was, because `list_offset` is 33 x u16 —
+/// and `BwdSegSourceRecord` is `align(4)`, so two bytes of the gap before `window`
+/// moved here. `num_immediates` is the FIFTH u16 of the count block, which brings
+/// `fold_source` back to 0 mod 4 and gives those two bytes back: the count field
+/// pays for itself and the pad is gone on both sides.
+const INLINE_PRE_SOURCE_PAD_BYTES: usize = 0;
 /// The gap before `window` in the progptr twin, whose head is 12 bytes instead of
-/// 14,336: with a 4-byte-aligned record the `source` array ends exactly at
+/// 17,248: with a 4-byte-aligned record the `source` array ends exactly at
 /// `window`, so there is none.
 const PROGPTR_IMPLICIT_PAD_BYTES: usize = 0;
 /// The progptr twin's padding before `source`, by the same rule as the inline
-/// descriptor's: its head is a different size but also 2 mod 4 at `fold_source`'s
-/// end.
-const PROGPTR_PRE_SOURCE_PAD_BYTES: usize = 2;
+/// descriptor's: also none, and for the same reason.
+const PROGPTR_PRE_SOURCE_PAD_BYTES: usize = 0;
 
 // ── The inline-program descriptor ────────────────────────────────────────────
 
@@ -140,22 +141,24 @@ fn seg_descriptor_fits_the_by_value_kernel_argument_cap() {
 #[test]
 fn seg_descriptor_layout_is_pinned_field_for_field() {
     assert_eq!(offset_of!(BwdSegDesc, program), 0);
-    assert_eq!(offset_of!(BwdSegDesc, list_offset), 14_336);
-    assert_eq!(offset_of!(BwdSegDesc, k), 14_402);
-    assert_eq!(offset_of!(BwdSegDesc, term_count), 14_404);
-    assert_eq!(offset_of!(BwdSegDesc, num_sources), 14_406);
-    assert_eq!(offset_of!(BwdSegDesc, num_foldable), 14_408);
-    assert_eq!(offset_of!(BwdSegDesc, fold_source), 14_410);
-    assert_eq!(offset_of!(BwdSegDesc, source), 16_556);
-    assert_eq!(offset_of!(BwdSegDesc, window), 20_848);
-    assert_eq!(offset_of!(BwdSegDesc, c_init), 21_392);
-    assert_eq!(offset_of!(BwdSegDesc, coefficients), 21_408);
-    assert_eq!(offset_of!(BwdSegDesc, eq_low), 21_416);
-    assert_eq!(offset_of!(BwdSegDesc, contributions), 21_424);
-    assert_eq!(offset_of!(BwdSegDesc, eq_sizes), 21_432);
-    assert_eq!(offset_of!(BwdSegDesc, n_coefficients), 21_444);
-    assert_eq!(offset_of!(BwdSegDesc, logical_rows), 21_448);
-    assert_eq!(offset_of!(BwdSegDesc, pad), 21_452);
+    assert_eq!(offset_of!(BwdSegDesc, list_offset), 17_248);
+    assert_eq!(offset_of!(BwdSegDesc, k), 17_314);
+    assert_eq!(offset_of!(BwdSegDesc, record_count), 17_316);
+    assert_eq!(offset_of!(BwdSegDesc, num_sources), 17_318);
+    assert_eq!(offset_of!(BwdSegDesc, num_foldable), 17_320);
+    assert_eq!(offset_of!(BwdSegDesc, num_immediates), 17_322);
+    assert_eq!(offset_of!(BwdSegDesc, fold_source), 17_324);
+    assert_eq!(offset_of!(BwdSegDesc, source), 19_468);
+    assert_eq!(offset_of!(BwdSegDesc, window), 23_760);
+    assert_eq!(offset_of!(BwdSegDesc, c_init), 24_304);
+    assert_eq!(offset_of!(BwdSegDesc, immediates), 24_320);
+    assert_eq!(offset_of!(BwdSegDesc, coefficients), 26_368);
+    assert_eq!(offset_of!(BwdSegDesc, eq_low), 26_376);
+    assert_eq!(offset_of!(BwdSegDesc, contributions), 26_384);
+    assert_eq!(offset_of!(BwdSegDesc, eq_sizes), 26_392);
+    assert_eq!(offset_of!(BwdSegDesc, n_coefficients), 26_404);
+    assert_eq!(offset_of!(BwdSegDesc, logical_rows), 26_408);
+    assert_eq!(offset_of!(BwdSegDesc, pad), 26_412);
 
     // The program is the descriptor's HEAD here (the cell-era desc put it last),
     // so the 16-byte descriptor alignment places it on a 16-byte boundary for
@@ -188,9 +191,10 @@ fn seg_descriptor_has_no_unaccounted_bytes() {
         ("program", LEAN_DESCRIPTOR_PROGRAM_BYTES),
         ("list_offset", (BWD_SEG_MAX_K + 1) * size_of::<u16>()),
         ("k", size_of::<u16>()),
-        ("term_count", size_of::<u16>()),
+        ("record_count", size_of::<u16>()),
         ("num_sources", size_of::<u16>()),
         ("num_foldable", size_of::<u16>()),
+        ("num_immediates", size_of::<u16>()),
         ("fold_source", BWD_SEG_MAX_SOURCES * size_of::<u16>()),
         (
             "source",
@@ -201,6 +205,7 @@ fn seg_descriptor_has_no_unaccounted_bytes() {
             in_scope::MAX_SOURCE_WINDOWS_USED * size_of::<BwdCoeffSourceWindow>(),
         ),
         ("c_init", 4 * size_of::<u32>()),
+        ("immediates", BWD_SEG_MAX_IMMEDIATES * size_of::<u32>()),
         ("coefficients", size_of::<*const E4>()),
         ("eq_low", size_of::<*const E4>()),
         ("contributions", size_of::<*mut E4>()),
@@ -246,20 +251,22 @@ fn seg_progptr_descriptor_layout_is_pinned_field_for_field() {
     assert_eq!(offset_of!(BwdSegProgPtrDesc, program_words), 8);
     assert_eq!(offset_of!(BwdSegProgPtrDesc, list_offset), 12);
     assert_eq!(offset_of!(BwdSegProgPtrDesc, k), 78);
-    assert_eq!(offset_of!(BwdSegProgPtrDesc, term_count), 80);
+    assert_eq!(offset_of!(BwdSegProgPtrDesc, record_count), 80);
     assert_eq!(offset_of!(BwdSegProgPtrDesc, num_sources), 82);
     assert_eq!(offset_of!(BwdSegProgPtrDesc, num_foldable), 84);
-    assert_eq!(offset_of!(BwdSegProgPtrDesc, fold_source), 86);
+    assert_eq!(offset_of!(BwdSegProgPtrDesc, num_immediates), 86);
+    assert_eq!(offset_of!(BwdSegProgPtrDesc, fold_source), 88);
     assert_eq!(offset_of!(BwdSegProgPtrDesc, source), 2_232);
     assert_eq!(offset_of!(BwdSegProgPtrDesc, window), 6_520);
     assert_eq!(offset_of!(BwdSegProgPtrDesc, c_init), 7_064);
-    assert_eq!(offset_of!(BwdSegProgPtrDesc, coefficients), 7_080);
-    assert_eq!(offset_of!(BwdSegProgPtrDesc, eq_low), 7_088);
-    assert_eq!(offset_of!(BwdSegProgPtrDesc, contributions), 7_096);
-    assert_eq!(offset_of!(BwdSegProgPtrDesc, eq_sizes), 7_104);
-    assert_eq!(offset_of!(BwdSegProgPtrDesc, n_coefficients), 7_116);
-    assert_eq!(offset_of!(BwdSegProgPtrDesc, logical_rows), 7_120);
-    assert_eq!(offset_of!(BwdSegProgPtrDesc, pad), 7_124);
+    assert_eq!(offset_of!(BwdSegProgPtrDesc, immediates), 7_080);
+    assert_eq!(offset_of!(BwdSegProgPtrDesc, coefficients), 9_128);
+    assert_eq!(offset_of!(BwdSegProgPtrDesc, eq_low), 9_136);
+    assert_eq!(offset_of!(BwdSegProgPtrDesc, contributions), 9_144);
+    assert_eq!(offset_of!(BwdSegProgPtrDesc, eq_sizes), 9_152);
+    assert_eq!(offset_of!(BwdSegProgPtrDesc, n_coefficients), 9_164);
+    assert_eq!(offset_of!(BwdSegProgPtrDesc, logical_rows), 9_168);
+    assert_eq!(offset_of!(BwdSegProgPtrDesc, pad), 9_172);
     assert_eq!(size % BWD_SEG_DESC_ALIGN, 0);
     assert_eq!(
         offset_of!(BwdSegProgPtrDesc, pad) + 3 * size_of::<u32>(),
@@ -270,7 +277,7 @@ fn seg_progptr_descriptor_layout_is_pinned_field_for_field() {
 #[test]
 fn seg_progptr_descriptor_actually_drops_the_inline_program() {
     // The POINT of the A/B twin is that the param-space program is GONE, not
-    // merely unused: an unused-but-present array would leave the 14,336 bytes
+    // merely unused: an unused-but-present array would leave the 17,248 bytes
     // resident in the launch's parameter space and measure nothing (spec §5).
     let saved = size_of::<BwdSegDesc>() - size_of::<BwdSegProgPtrDesc>();
     eprintln!(
@@ -287,9 +294,10 @@ fn seg_progptr_descriptor_actually_drops_the_inline_program() {
         ("program_words", size_of::<u32>()),
         ("list_offset", (BWD_SEG_MAX_K + 1) * size_of::<u16>()),
         ("k", size_of::<u16>()),
-        ("term_count", size_of::<u16>()),
+        ("record_count", size_of::<u16>()),
         ("num_sources", size_of::<u16>()),
         ("num_foldable", size_of::<u16>()),
+        ("num_immediates", size_of::<u16>()),
         ("fold_source", BWD_SEG_MAX_SOURCES * size_of::<u16>()),
         (
             "source",
@@ -300,6 +308,7 @@ fn seg_progptr_descriptor_actually_drops_the_inline_program() {
             in_scope::MAX_SOURCE_WINDOWS_USED * size_of::<BwdCoeffSourceWindow>(),
         ),
         ("c_init", 4 * size_of::<u32>()),
+        ("immediates", BWD_SEG_MAX_IMMEDIATES * size_of::<u32>()),
         ("coefficients", size_of::<*const E4>()),
         ("eq_low", size_of::<*const E4>()),
         ("contributions", size_of::<*mut E4>()),
@@ -446,25 +455,27 @@ fn seg_k_split_geometry_is_the_thousand_twenty_four_thread_block() {
 
 #[test]
 fn seg_program_array_is_the_lean_census_rounded_to_alignment() {
-    assert_eq!(LEAN_DESCRIPTOR_PROGRAM_WORDS, 7_168);
-    assert_eq!(LEAN_DESCRIPTOR_PROGRAM_BYTES, 14_336);
+    assert_eq!(LEAN_DESCRIPTOR_PROGRAM_WORDS, 8_624);
+    assert_eq!(LEAN_DESCRIPTOR_PROGRAM_BYTES, 17_248);
     assert_eq!(
         LEAN_DESCRIPTOR_PROGRAM_BYTES,
         LEAN_DESCRIPTOR_PROGRAM_WORDS * size_of::<u16>()
     );
-    // The census measurement is the fixed-width identity, and the array is that
-    // measurement rounded up by strictly less than one 16-byte quantum.
+    // The census measurement is the fixed-width identity over RECORDS — terms plus
+    // the one header record per group the grouped wire spends — and the array is
+    // that measurement rounded up by strictly less than one 16-byte quantum.
     assert_eq!(
         LEAN_MAX_REALIZED_PROGRAM_WORDS,
-        LEAN_WORDS_PER_TERM * in_scope::MAX_TERMS
+        LEAN_WORDS_PER_TERM * in_scope::MAX_RECORDS
     );
+    assert!(in_scope::MAX_RECORDS > in_scope::MAX_TERMS);
     assert!(LEAN_DESCRIPTOR_PROGRAM_WORDS >= LEAN_MAX_REALIZED_PROGRAM_WORDS);
     assert!(
         (LEAN_DESCRIPTOR_PROGRAM_WORDS - LEAN_MAX_REALIZED_PROGRAM_WORDS) * size_of::<u16>()
             < BWD_SEG_DESC_ALIGN
     );
-    // `term_count` is a u16, and the census maximum has to fit it.
-    assert!(in_scope::MAX_TERMS <= u16::MAX as usize);
+    // `record_count` is a u16, and the census maximum has to fit it.
+    assert!(in_scope::MAX_RECORDS <= u16::MAX as usize);
 }
 
 #[test]
@@ -508,14 +519,16 @@ fn seg_empty_descriptors_are_inert() {
     assert!(inline.eq_low.is_null());
     assert!(inline.contributions.is_null());
     assert_eq!(inline.k, 0);
-    assert_eq!(inline.term_count, 0);
+    assert_eq!(inline.record_count, 0);
     assert_eq!(inline.num_sources, 0);
     assert_eq!(inline.num_foldable, 0);
+    assert_eq!(inline.num_immediates, 0);
     assert_eq!(inline.n_coefficients, 0);
     assert_eq!(inline.logical_rows, 0);
     assert!(inline.program.iter().all(|word| *word == 0));
     assert!(inline.list_offset.iter().all(|word| *word == 0));
     assert!(inline.fold_source.iter().all(|slot| *slot == 0));
+    assert!(inline.immediates.iter().all(|limb| *limb == 0));
     assert!(inline
         .source
         .iter()
@@ -531,6 +544,8 @@ fn seg_empty_descriptors_are_inert() {
     assert_eq!(progptr.program_words, 0);
     assert!(progptr.coefficients.is_null());
     assert_eq!(progptr.num_foldable, 0);
+    assert_eq!(progptr.num_immediates, 0);
+    assert!(progptr.immediates.iter().all(|limb| *limb == 0));
 }
 
 // ── The CUDA header, as text ─────────────────────────────────────────────────
@@ -678,6 +693,8 @@ fn seg_cuda_constants_match_the_rust_mirror() {
         // The `__constant__` bank the host uploads into. MANDATORY.
         ("BWD_SEG_CONST_BANK", BWD_SEG_CONST_BANK as u64),
         ("BWD_SEG_MAX_SOURCES", BWD_SEG_MAX_SOURCES as u64),
+        // The immediate table capacity, which mirrors the WIRE cap.
+        ("BWD_SEG_MAX_IMMEDIATES", BWD_SEG_MAX_IMMEDIATES as u64),
         (
             "BWD_SEG_PROGRAM_WORD_CAP",
             LEAN_DESCRIPTOR_PROGRAM_WORDS as u64,
@@ -963,13 +980,15 @@ fn seg_cuda_layout_asserts_match_the_rust_layout() {
         ("program", offset_of!(BwdSegDesc, program)),
         ("list_offset", offset_of!(BwdSegDesc, list_offset)),
         ("k", offset_of!(BwdSegDesc, k)),
-        ("term_count", offset_of!(BwdSegDesc, term_count)),
+        ("record_count", offset_of!(BwdSegDesc, record_count)),
         ("num_sources", offset_of!(BwdSegDesc, num_sources)),
         ("num_foldable", offset_of!(BwdSegDesc, num_foldable)),
+        ("num_immediates", offset_of!(BwdSegDesc, num_immediates)),
         ("fold_source", offset_of!(BwdSegDesc, fold_source)),
         ("source", offset_of!(BwdSegDesc, source)),
         ("window", offset_of!(BwdSegDesc, window)),
         ("c_init", offset_of!(BwdSegDesc, c_init)),
+        ("immediates", offset_of!(BwdSegDesc, immediates)),
         ("coefficients", offset_of!(BwdSegDesc, coefficients)),
         ("eq_low", offset_of!(BwdSegDesc, eq_low)),
         ("contributions", offset_of!(BwdSegDesc, contributions)),
@@ -991,13 +1010,18 @@ fn seg_cuda_layout_asserts_match_the_rust_layout() {
         ),
         ("list_offset", offset_of!(BwdSegProgPtrDesc, list_offset)),
         ("k", offset_of!(BwdSegProgPtrDesc, k)),
-        ("term_count", offset_of!(BwdSegProgPtrDesc, term_count)),
+        ("record_count", offset_of!(BwdSegProgPtrDesc, record_count)),
         ("num_sources", offset_of!(BwdSegProgPtrDesc, num_sources)),
         ("num_foldable", offset_of!(BwdSegProgPtrDesc, num_foldable)),
+        (
+            "num_immediates",
+            offset_of!(BwdSegProgPtrDesc, num_immediates),
+        ),
         ("fold_source", offset_of!(BwdSegProgPtrDesc, fold_source)),
         ("source", offset_of!(BwdSegProgPtrDesc, source)),
         ("window", offset_of!(BwdSegProgPtrDesc, window)),
         ("c_init", offset_of!(BwdSegProgPtrDesc, c_init)),
+        ("immediates", offset_of!(BwdSegProgPtrDesc, immediates)),
         ("coefficients", offset_of!(BwdSegProgPtrDesc, coefficients)),
         ("eq_low", offset_of!(BwdSegProgPtrDesc, eq_low)),
         (

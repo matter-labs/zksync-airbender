@@ -51,8 +51,8 @@ use core::mem::{align_of, size_of};
 use gkr_eval_isa::bwd::coeff::lean::SOURCE_NONE;
 use gkr_eval_isa::bwd::coeff::limits::{
     in_scope, DESCRIPTOR_ALIGNMENT_BYTES, KERNEL_ARGUMENT_CEILING_BYTES,
-    LEAN_DESCRIPTOR_PROGRAM_BYTES, LEAN_DESCRIPTOR_PROGRAM_WORDS, MAX_COEFFICIENT_ENCODINGS,
-    PUBLISH_TARGET_DEPTH, SOURCE_WINDOW_COLUMNS,
+    LEAN_DESCRIPTOR_PROGRAM_BYTES, LEAN_DESCRIPTOR_PROGRAM_WORDS, LEAN_MAX_IMMEDIATES,
+    MAX_COEFFICIENT_ENCODINGS, PUBLISH_TARGET_DEPTH, SOURCE_WINDOW_COLUMNS,
 };
 use gkr_eval_isa::bwd::coeff::model::CoefficientRecipeId;
 use gkr_eval_isa::fwd::source::KIND_ORDER;
@@ -113,6 +113,16 @@ const _: () = assert!(BWD_SEG_FOLD_WEIGHT_SLOTS == BWD_SEG_FOLD_WEIGHT_BASE_D3 +
 /// 16-byte lines.
 pub(crate) const BWD_SEG_MAX_SOURCES: usize = 1_072;
 
+/// Inline capacity of [`BwdSegDesc::immediates`] — the per-launch immediate table
+/// grouped coefficients scale their shared core by (spec §4.5).
+///
+/// NOT a measurement: it is the WIRE cap `LEAN_MAX_IMMEDIATES`, mirrored here so
+/// the descriptor can hold any table the encoder will ever emit. The mirror is a
+/// build failure rather than a convention (asserted in the block below), and it
+/// runs in this direction only: the GPU crate imports `gkr_eval_isa`, never the
+/// reverse, so the ISA's constant stays the authority and this one the copy.
+pub(crate) const BWD_SEG_MAX_IMMEDIATES: usize = 512;
+
 const _: () = {
     assert!(BWD_SEG_DESC_CAP == KERNEL_ARGUMENT_CEILING_BYTES);
     assert!(BWD_SEG_DESC_ALIGN == DESCRIPTOR_ALIGNMENT_BYTES);
@@ -124,8 +134,16 @@ const _: () = {
     assert!(BWD_SEG_MAX_K <= u16::MAX as usize);
     assert!(LEAN_DESCRIPTOR_PROGRAM_WORDS <= u16::MAX as usize);
     assert!(LEAN_DESCRIPTOR_PROGRAM_BYTES == LEAN_DESCRIPTOR_PROGRAM_WORDS * size_of::<u16>());
-    // `term_count` is a u16 as well.
-    assert!(in_scope::MAX_TERMS <= u16::MAX as usize);
+    // `record_count` is a u16 as well, and it counts RECORDS — terms plus the group
+    // headers grouping adds — so the census maximum it must hold is `MAX_RECORDS`.
+    assert!(in_scope::MAX_RECORDS <= u16::MAX as usize);
+
+    // The immediate array is the WIRE cap exactly: not a byte more (an unearned
+    // 4-byte slot rides every launch) and not a byte less (a table the encoder can
+    // emit must fit). The mirror direction is GPU-imports-ISA.
+    assert!(BWD_SEG_MAX_IMMEDIATES == LEAN_MAX_IMMEDIATES);
+    // A live count rides the descriptor as a u16.
+    assert!(BWD_SEG_MAX_IMMEDIATES <= u16::MAX as usize);
 
     // The bank covers every reserved-inclusive coefficient id the corpus can
     // name, stays inside the thirteen coefficient bits that name it, and fits the
@@ -278,12 +296,15 @@ impl Default for BwdCoeffSourceWindow {
 /// those discriminants is Task 6's, so it is the authority; this field is the
 /// byte it travels in.
 ///
-/// `align(4)` mirrors the CUDA `alignas(4)`: the array START moves so a slot
-/// address is 0 mod 4 instead of always 2 mod 4, which is the precondition for ever
-/// reading the record as one 32-bit word. `size_of` stays 4; the two bytes come out
-/// of the descriptor's existing implicit padding before `window`, so neither
-/// descriptor's size changes. On CUDA 13.3 the alignment ALONE changes no SASS and
-/// no register count — the CUDA half carries that measurement.
+/// `align(4)` mirrors the CUDA `alignas(4)`: it STATES the record's own requirement
+/// that a slot address be 0 mod 4, the precondition for ever reading the record as
+/// one 32-bit word. It used to also MOVE the array — `list_offset` is 33 u16s, which
+/// left the descriptor tail at 2 mod 4 — but [`BwdSegDesc::num_immediates`] is the
+/// fifth u16 of the count block and brings the tail back to 0 mod 4, so both arrays
+/// are now naturally aligned and the attribute costs nothing. It stays so the
+/// record's alignment is a declared property rather than an accident of whatever
+/// precedes it. On CUDA 13.3 the alignment ALONE changes no SASS and no register
+/// count — the CUDA half carries that measurement.
 #[repr(C, align(4))]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) struct BwdSegSourceRecord {
@@ -329,13 +350,21 @@ pub(crate) struct BwdSegDesc {
     pub list_offset: [u16; BWD_SEG_MAX_K + 1],
     /// Term lists, i.e. warps in the block. `blockDim == 32 * k`.
     pub k: u16,
-    /// Terms across all `k` lists, so
-    /// `list_offset[k] == LEAN_WORDS_PER_TERM * term_count`.
-    pub term_count: u16,
+    /// Lean RECORDS across all `k` lists, so
+    /// `list_offset[k] == LEAN_WORDS_PER_TERM * record_count`.
+    ///
+    /// Records, not terms: the grouped wire (spec §4.4) spends one fixed-width
+    /// HEADER record per group on top of its member terms, so the two counts
+    /// diverge and only the record count multiplies out to the stream length. An
+    /// ungrouped program has no headers and the two coincide, which is why the
+    /// field's VALUE did not change when it was renamed.
+    pub record_count: u16,
     /// Live entries of [`Self::source`].
     pub num_sources: u16,
     /// Leading entries of [`Self::fold_source`] the prologue folds.
     pub num_foldable: u16,
+    /// Live entries of [`Self::immediates`]. Zero for an ungrouped program.
+    pub num_immediates: u16,
     /// Source slots the JAOT prologue folds, in FOLD order: warp `w` takes
     /// `s = w, w + k, w + 2k, …`. The order is a performance contract (§7) — the
     /// sources the eval loop touches EARLIEST are folded LAST, so they are the
@@ -359,6 +388,21 @@ pub(crate) struct BwdSegDesc {
     /// "absent" value here — an additive identity, not a sentinel that could
     /// alias a live index — so no `*_NONE` constant is needed.
     pub c_init: [u32; 4],
+    /// This launch's immediate table (spec §4.5): the BASE-field scalars a grouped
+    /// term multiplies its group's shared core coefficient by, in the encoder's
+    /// ascending-deduplicated order, as raw Montgomery-form limbs — the same
+    /// in-memory representation as [`Self::c_init`], so the device needs no
+    /// conversion.
+    ///
+    /// Indexed by a member record's `ImmediateId`, which rides the wire in the
+    /// member's coefficient field. Entries at and past [`Self::num_immediates`] are
+    /// zero-filled and never read; the `±1` immediates are wire-level reserved ids
+    /// and consume no slot here.
+    ///
+    /// Placed AFTER `c_init` so the descriptor's pointer tail keeps its natural
+    /// alignment: `[u32; 512]` is 2 KiB, a whole number of 16-byte quanta, so every
+    /// following offset shifts by exactly that.
+    pub immediates: [u32; BWD_SEG_MAX_IMMEDIATES],
     /// Evaluated E4 coefficients for the `ptr` loader specialization. The
     /// `const` loader reads this lineage's `__constant__` bank and ignores it.
     /// Reserved-inclusive either way: `[ONE, NEG_ONE, recipes…]`.
@@ -398,13 +442,15 @@ impl BwdSegDesc {
             program: [0; LEAN_DESCRIPTOR_PROGRAM_WORDS],
             list_offset: [0; BWD_SEG_MAX_K + 1],
             k: 0,
-            term_count: 0,
+            record_count: 0,
             num_sources: 0,
             num_foldable: 0,
+            num_immediates: 0,
             fold_source: [0; BWD_SEG_MAX_SOURCES],
             source: [BwdSegSourceRecord::default(); BWD_SEG_MAX_SOURCES],
             window: [BwdCoeffSourceWindow::default(); in_scope::MAX_SOURCE_WINDOWS_USED],
             c_init: [0; 4],
+            immediates: [0; BWD_SEG_MAX_IMMEDIATES],
             coefficients: std::ptr::null(),
             eq_low: std::ptr::null(),
             contributions: std::ptr::null_mut(),
@@ -422,9 +468,9 @@ impl BwdSegDesc {
 /// device pointer and its length.
 ///
 /// Dropping the array is the whole point: keeping it and merely not reading it
-/// would leave 14,336 bytes resident in every launch's parameter space and
+/// would leave 17,248 bytes resident in every launch's parameter space and
 /// measure nothing. Inline fit proves the ABI is feasible, not that `K` warps
-/// streaming a 14 KiB param-space program alongside an 18 KiB `__constant__`
+/// streaming a 17 KiB param-space program alongside an 18 KiB `__constant__`
 /// coefficient bank wins on constant-cache behaviour — this twin is the one
 /// comparison point that answers it.
 ///
@@ -442,13 +488,20 @@ pub(crate) struct BwdSegProgPtrDesc {
     /// See [`BwdSegDesc::list_offset`]; offsets index the DEVICE stream here.
     pub list_offset: [u16; BWD_SEG_MAX_K + 1],
     pub k: u16,
-    pub term_count: u16,
+    /// See [`BwdSegDesc::record_count`]: RECORDS, terms plus group headers.
+    pub record_count: u16,
     pub num_sources: u16,
     pub num_foldable: u16,
+    /// See [`BwdSegDesc::num_immediates`].
+    pub num_immediates: u16,
     pub fold_source: [u16; BWD_SEG_MAX_SOURCES],
     pub source: [BwdSegSourceRecord; BWD_SEG_MAX_SOURCES],
     pub window: [BwdCoeffSourceWindow; in_scope::MAX_SOURCE_WINDOWS_USED],
     pub c_init: [u32; 4],
+    /// See [`BwdSegDesc::immediates`]. Inline in BOTH twins: only the PROGRAM moves
+    /// to device memory in this A/B, so the immediate table stays by value and the
+    /// comparison isolates the program's residency.
+    pub immediates: [u32; BWD_SEG_MAX_IMMEDIATES],
     pub coefficients: *const E4,
     pub eq_low: *const E4,
     pub contributions: *mut E4,
@@ -456,7 +509,7 @@ pub(crate) struct BwdSegProgPtrDesc {
     pub n_coefficients: u32,
     pub logical_rows: u32,
     /// See [`BwdSegDesc::pad`]. Three words rather than one: the head is 12
-    /// bytes here instead of 14,336, so the tail lands elsewhere modulo 16.
+    /// bytes here instead of 17,248, so the tail lands elsewhere modulo 16.
     pub pad: [u32; 3],
 }
 
@@ -470,13 +523,15 @@ impl BwdSegProgPtrDesc {
             program_words: 0,
             list_offset: [0; BWD_SEG_MAX_K + 1],
             k: 0,
-            term_count: 0,
+            record_count: 0,
             num_sources: 0,
             num_foldable: 0,
+            num_immediates: 0,
             fold_source: [0; BWD_SEG_MAX_SOURCES],
             source: [BwdSegSourceRecord::default(); BWD_SEG_MAX_SOURCES],
             window: [BwdCoeffSourceWindow::default(); in_scope::MAX_SOURCE_WINDOWS_USED],
             c_init: [0; 4],
+            immediates: [0; BWD_SEG_MAX_IMMEDIATES],
             coefficients: std::ptr::null(),
             eq_low: std::ptr::null(),
             contributions: std::ptr::null_mut(),
@@ -543,31 +598,33 @@ pub(crate) const BWD_SEG_PROGPTR_KERNEL_ARGUMENT_BYTES: usize = kernel_argument_
 const _: () = {
     use core::mem::offset_of;
 
-    assert!(size_of::<BwdSegDesc>() == 21_456);
+    assert!(size_of::<BwdSegDesc>() == 26_416);
     assert!(align_of::<BwdSegDesc>() == BWD_SEG_DESC_ALIGN);
     // The FINAL authority on the descriptor's shape.
     assert!(size_of::<BwdSegDesc>() <= BWD_SEG_DESC_CAP);
     assert!(offset_of!(BwdSegDesc, program) == 0);
-    assert!(offset_of!(BwdSegDesc, list_offset) == 14_336);
-    assert!(offset_of!(BwdSegDesc, k) == 14_402);
-    assert!(offset_of!(BwdSegDesc, term_count) == 14_404);
-    assert!(offset_of!(BwdSegDesc, num_sources) == 14_406);
-    assert!(offset_of!(BwdSegDesc, num_foldable) == 14_408);
-    assert!(offset_of!(BwdSegDesc, fold_source) == 14_410);
-    assert!(offset_of!(BwdSegDesc, source) == 16_556);
+    assert!(offset_of!(BwdSegDesc, list_offset) == 17_248);
+    assert!(offset_of!(BwdSegDesc, k) == 17_314);
+    assert!(offset_of!(BwdSegDesc, record_count) == 17_316);
+    assert!(offset_of!(BwdSegDesc, num_sources) == 17_318);
+    assert!(offset_of!(BwdSegDesc, num_foldable) == 17_320);
+    assert!(offset_of!(BwdSegDesc, num_immediates) == 17_322);
+    assert!(offset_of!(BwdSegDesc, fold_source) == 17_324);
+    assert!(offset_of!(BwdSegDesc, source) == 19_468);
     // Four bytes of implicit padding precede `window`: the source array is
     // 4-byte-aligned and the window array is 8-byte-aligned. nvcc inserts the
     // same gap by the same rule, and the offsets on both sides are asserted, so
     // it needs no explicit field.
-    assert!(offset_of!(BwdSegDesc, window) == 20_848);
-    assert!(offset_of!(BwdSegDesc, c_init) == 21_392);
-    assert!(offset_of!(BwdSegDesc, coefficients) == 21_408);
-    assert!(offset_of!(BwdSegDesc, eq_low) == 21_416);
-    assert!(offset_of!(BwdSegDesc, contributions) == 21_424);
-    assert!(offset_of!(BwdSegDesc, eq_sizes) == 21_432);
-    assert!(offset_of!(BwdSegDesc, n_coefficients) == 21_444);
-    assert!(offset_of!(BwdSegDesc, logical_rows) == 21_448);
-    assert!(offset_of!(BwdSegDesc, pad) == 21_452);
+    assert!(offset_of!(BwdSegDesc, window) == 23_760);
+    assert!(offset_of!(BwdSegDesc, c_init) == 24_304);
+    assert!(offset_of!(BwdSegDesc, immediates) == 24_320);
+    assert!(offset_of!(BwdSegDesc, coefficients) == 26_368);
+    assert!(offset_of!(BwdSegDesc, eq_low) == 26_376);
+    assert!(offset_of!(BwdSegDesc, contributions) == 26_384);
+    assert!(offset_of!(BwdSegDesc, eq_sizes) == 26_392);
+    assert!(offset_of!(BwdSegDesc, n_coefficients) == 26_404);
+    assert!(offset_of!(BwdSegDesc, logical_rows) == 26_408);
+    assert!(offset_of!(BwdSegDesc, pad) == 26_412);
     // The program stream starts on a 16-byte boundary and can be buffered
     // through wide loads.
     assert!(offset_of!(BwdSegDesc, program) % BWD_SEG_DESC_ALIGN == 0);
@@ -576,29 +633,31 @@ const _: () = {
     assert!(offset_of!(BwdSegDesc, pad) + size_of::<[u32; 1]>() == size_of::<BwdSegDesc>());
     assert!(size_of::<BwdSegDesc>() % BWD_SEG_DESC_ALIGN == 0);
 
-    assert!(size_of::<BwdSegProgPtrDesc>() == 7_136);
+    assert!(size_of::<BwdSegProgPtrDesc>() == 9_184);
     assert!(align_of::<BwdSegProgPtrDesc>() == BWD_SEG_DESC_ALIGN);
     assert!(size_of::<BwdSegProgPtrDesc>() <= BWD_SEG_DESC_CAP);
     assert!(offset_of!(BwdSegProgPtrDesc, program) == 0);
     assert!(offset_of!(BwdSegProgPtrDesc, program_words) == 8);
     assert!(offset_of!(BwdSegProgPtrDesc, list_offset) == 12);
     assert!(offset_of!(BwdSegProgPtrDesc, k) == 78);
-    assert!(offset_of!(BwdSegProgPtrDesc, term_count) == 80);
+    assert!(offset_of!(BwdSegProgPtrDesc, record_count) == 80);
     assert!(offset_of!(BwdSegProgPtrDesc, num_sources) == 82);
     assert!(offset_of!(BwdSegProgPtrDesc, num_foldable) == 84);
-    assert!(offset_of!(BwdSegProgPtrDesc, fold_source) == 86);
+    assert!(offset_of!(BwdSegProgPtrDesc, num_immediates) == 86);
+    assert!(offset_of!(BwdSegProgPtrDesc, fold_source) == 88);
     assert!(offset_of!(BwdSegProgPtrDesc, source) == 2_232);
     // No gap here: with a 4-byte-aligned record the progptr `source` array ends
     // exactly at `window`.
     assert!(offset_of!(BwdSegProgPtrDesc, window) == 6_520);
     assert!(offset_of!(BwdSegProgPtrDesc, c_init) == 7_064);
-    assert!(offset_of!(BwdSegProgPtrDesc, coefficients) == 7_080);
-    assert!(offset_of!(BwdSegProgPtrDesc, eq_low) == 7_088);
-    assert!(offset_of!(BwdSegProgPtrDesc, contributions) == 7_096);
-    assert!(offset_of!(BwdSegProgPtrDesc, eq_sizes) == 7_104);
-    assert!(offset_of!(BwdSegProgPtrDesc, n_coefficients) == 7_116);
-    assert!(offset_of!(BwdSegProgPtrDesc, logical_rows) == 7_120);
-    assert!(offset_of!(BwdSegProgPtrDesc, pad) == 7_124);
+    assert!(offset_of!(BwdSegProgPtrDesc, immediates) == 7_080);
+    assert!(offset_of!(BwdSegProgPtrDesc, coefficients) == 9_128);
+    assert!(offset_of!(BwdSegProgPtrDesc, eq_low) == 9_136);
+    assert!(offset_of!(BwdSegProgPtrDesc, contributions) == 9_144);
+    assert!(offset_of!(BwdSegProgPtrDesc, eq_sizes) == 9_152);
+    assert!(offset_of!(BwdSegProgPtrDesc, n_coefficients) == 9_164);
+    assert!(offset_of!(BwdSegProgPtrDesc, logical_rows) == 9_168);
+    assert!(offset_of!(BwdSegProgPtrDesc, pad) == 9_172);
     assert!(
         offset_of!(BwdSegProgPtrDesc, pad) + size_of::<[u32; 3]>()
             == size_of::<BwdSegProgPtrDesc>()

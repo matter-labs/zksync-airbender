@@ -198,15 +198,21 @@ constexpr u32 BWD_SEG_CONST_BANK = 1152;
 // so both source-indexed arrays are a whole number of 16-byte lines.
 constexpr u32 BWD_SEG_MAX_SOURCES = 1072;
 // `gkr_eval_isa::bwd::coeff::limits::LEAN_DESCRIPTOR_PROGRAM_WORDS` — the
-// measured maximum 7,164 words (4 words x 1,791 terms) rounded up by exactly one
-// 16-byte quantum. Not a headroom allowance.
-constexpr u32 BWD_SEG_PROGRAM_WORD_CAP = 7168;
+// measured maximum 8,624 words (4 words x 2,156 RECORDS: 1,791 terms plus 365
+// group headers, `blake2_with_extended_control` L0 Ext) which is already a whole
+// number of 16-byte quanta. Not a headroom allowance.
+constexpr u32 BWD_SEG_PROGRAM_WORD_CAP = 8624;
 constexpr u32 BWD_SEG_PROGRAM_BYTE_CAP = 2 * BWD_SEG_PROGRAM_WORD_CAP;
 // `in_scope::MAX_SOURCE_WINDOWS_USED`: the EXACT measured corpus maximum,
 // deliberately not the 64 windows the wire could name.
 constexpr u32 BWD_SEG_SOURCE_WINDOW_CAP = 17;
+// `gkr_eval_isa::bwd::coeff::limits::LEAN_MAX_IMMEDIATES` — the WIRE cap on one
+// coordinate's immediate table, not a measurement. The Rust half carries the
+// build-time mirror assert (it may import the ISA crate; this side cannot), and
+// `seg_abi_tests`' header-text matcher compares this literal against it.
+constexpr u32 BWD_SEG_MAX_IMMEDIATES = 512;
 
-static_assert(BWD_SEG_PROGRAM_BYTE_CAP == 14336, "program array byte size drift");
+static_assert(BWD_SEG_PROGRAM_BYTE_CAP == 17248, "program array byte size drift");
 static_assert(BWD_SEG_PROGRAM_BYTE_CAP % BWD_SEG_DESC_ALIGN == 0, "the program array is not a whole number of 16-byte quanta");
 static_assert(BWD_SEG_CONST_BANK * sizeof(e4) == 18 * 1024, "coefficient bank size drift");
 static_assert(BWD_SEG_CONST_BANK * sizeof(e4) <= 64 * 1024, "the coefficient bank exceeds the per-module __constant__ budget");
@@ -215,6 +221,7 @@ static_assert(BWD_SEG_CONST_BANK * sizeof(e4) <= 64 * 1024, "the coefficient ban
 static_assert(BWD_SEG_CONST_BANK <= BWD_COEFF_MAX_COEFFICIENT_ENCODINGS, "a bank slot the wire cannot name");
 static_assert(BWD_SEG_MAX_SOURCES % 16 == 0, "the source arrays are not whole 16-byte lines");
 static_assert(BWD_SEG_SOURCE_WINDOW_CAP == 17, "source window capacity drift");
+static_assert(BWD_SEG_MAX_IMMEDIATES == 512, "immediate table capacity drift");
 
 // ── The lean wire (section 4) ───────────────────────────────────────────────
 //
@@ -337,15 +344,15 @@ static_assert(BWD_SEG_FOLD_WEIGHT_SLOTS == BWD_SEG_FOLD_WEIGHT_BASE_D3 + 7, "D3 
 //
 // `source_class` is Rust's `class` field (C++ cannot spell that name); the
 // offsets are what the ABI pins, not the spelling.
-// `alignas(4)`: without it the array's START is 16,554, which is 2 mod 4, so
-// `&source[slot] = 16554 + 4 * slot` is ALWAYS 2 mod 4 and a 32-bit load of this
-// 4-byte record is misaligned by construction. With it the array starts at 16,556
-// and a slot address is 0 mod 4. `sizeof` stays 4, so only the array's start moves,
-// and the two bytes come out of the descriptor's six bytes of implicit padding, four
-// of which sit before `window` (asserted below) and two of which sit before
-// `source` — the descriptor's SIZE is 21,456 either way. The root cause is upstream
-// of the record: `list_offset[BWD_SEG_MAX_K + 1]` is 33 x u16 = 66 bytes, so the
-// whole descriptor tail from 14,402 on is 2 mod 4.
+// `alignas(4)` STATES the record's own requirement: `&source[slot]` must be 0 mod 4
+// for a 32-bit load of this 4-byte record to be aligned at all. It used to also MOVE
+// the array — `list_offset[BWD_SEG_MAX_K + 1]` is 33 x u16 = 66 bytes, which put the
+// whole descriptor tail at 2 mod 4, so the array start needed two bytes of padding in
+// front of it. `num_immediates` is the FIFTH u16 of the count block and brings the
+// tail back to 0 mod 4, so the array is now naturally aligned and the declaration
+// costs nothing. It stays because the record's alignment must not be an accident of
+// the fields that happen to precede it: the only implicit padding left in the
+// descriptor is the four bytes before `window` (asserted below).
 //
 // WHAT THIS DOES NOT BUY, measured rather than predicted: on CUDA 13.3 the
 // alignment alone does NOT collapse the record read into one 32-bit `LDC`.
@@ -379,8 +386,8 @@ static_assert(__builtin_offsetof(bwd_seg_source_record, column) == 2, "column AB
 //
 // Field order is the ABI. `program` sits at offset 0 — 16-byte aligned by the
 // descriptor's own alignment, at no cost in padding — and the launch tail's
-// pointers land naturally aligned after the arrays. SIX bytes of implicit
-// padding precede `window` (the source array is 2-byte-aligned, the window array
+// pointers land naturally aligned after the arrays. FOUR bytes of implicit
+// padding precede `window` (the source array is 4-byte-aligned, the window array
 // 8-byte-aligned); rustc inserts the same gap by the same rule and both sides
 // assert every offset, so it needs no explicit field.
 struct alignas(BWD_SEG_DESC_ALIGN) bwd_seg_desc {
@@ -392,16 +399,20 @@ struct alignas(BWD_SEG_DESC_ALIGN) bwd_seg_desc {
   u16 list_offset[BWD_SEG_MAX_K + 1];
   // Term lists, i.e. warps in the block. `blockDim == 32 * k`.
   u16 k;
-  // Terms across all `k` lists. Never read by the executor (the list offsets
-  // bound every walk); host lowering keeps it for the validator and the
-  // disassembler.
-  u16 term_count;
+  // Lean RECORDS across all `k` lists — terms PLUS the one header record per
+  // group the grouped wire spends (section 4.4), so
+  // `list_offset[k] == LEAN_WORDS_PER_TERM * record_count`. Never read by the
+  // executor (the list offsets bound every walk); host lowering keeps it for the
+  // validator and the disassembler.
+  u16 record_count;
   // Live entries of `source`. Never read by the executor: every slot a wire
   // record names is bounds-checked host-side
   // (`BwdSegLowerError::SourceSlotOutOfRange`).
   u16 num_sources;
   // Leading entries of `fold_source` the JAOT prologue folds.
   u16 num_foldable;
+  // Live entries of `immediates`; zero for an ungrouped program.
+  u16 num_immediates;
   // Source slots the prologue folds, in FOLD order: warp `w` takes
   // `s = w, w + k, w + 2k, ...`. The order is a performance contract
   // (section 7) — the sources the eval loop touches EARLIEST are folded LAST, so
@@ -418,6 +429,16 @@ struct alignas(BWD_SEG_DESC_ALIGN) bwd_seg_desc {
   // safe "absent" value — an additive identity, not a sentinel — so there is no
   // `*_NONE` constant here and no bank lookup on the seed path.
   u32 c_init[4];
+  // This launch's immediate table (section 4.5): the BASE-field scalars a grouped
+  // member record multiplies its group's shared core coefficient by, in the
+  // encoder's ascending-deduplicated order, as raw limbs in their IN-MEMORY
+  // (Montgomery) representation — the same convention as `c_init`, so no
+  // conversion happens here. Indexed by the `ImmediateId` a member record carries
+  // in its coefficient field; entries at and past `num_immediates` are zero-filled
+  // and never read, and the `±1` immediates are reserved wire ids that consume no
+  // slot. Placed after `c_init` so the pointer tail keeps its natural alignment:
+  // 512 words is 2 KiB, a whole number of 16-byte quanta.
+  u32 immediates[BWD_SEG_MAX_IMMEDIATES];
   // Evaluated E4 coefficients for the `ptr` loader specialization; the `const`
   // loader reads `ab_gkr_bwd_seg_coeff_bank` and ignores this. Reserved-inclusive
   // either way: `[ONE, NEG_ONE, recipes...]`.
@@ -440,28 +461,30 @@ struct alignas(BWD_SEG_DESC_ALIGN) bwd_seg_desc {
   u32 pad[1];
 };
 
-static_assert(sizeof(bwd_seg_desc) == 21456, "bwd_seg_desc/BwdSegDesc ABI size drift");
+static_assert(sizeof(bwd_seg_desc) == 26416, "bwd_seg_desc/BwdSegDesc ABI size drift");
 static_assert(alignof(bwd_seg_desc) == BWD_SEG_DESC_ALIGN, "bwd_seg_desc ABI alignment drift");
 // The final authority on the descriptor's shape. An overflow needs a tighter
 // encoding, never a second storage path.
 static_assert(sizeof(bwd_seg_desc) <= BWD_SEG_DESC_CAP, "bwd_seg_desc exceeds the __grid_constant__ parameter budget");
 static_assert(__builtin_offsetof(bwd_seg_desc, program) == 0, "program ABI offset drift");
-static_assert(__builtin_offsetof(bwd_seg_desc, list_offset) == 14336, "list_offset ABI offset drift");
-static_assert(__builtin_offsetof(bwd_seg_desc, k) == 14402, "k ABI offset drift");
-static_assert(__builtin_offsetof(bwd_seg_desc, term_count) == 14404, "term_count ABI offset drift");
-static_assert(__builtin_offsetof(bwd_seg_desc, num_sources) == 14406, "num_sources ABI offset drift");
-static_assert(__builtin_offsetof(bwd_seg_desc, num_foldable) == 14408, "num_foldable ABI offset drift");
-static_assert(__builtin_offsetof(bwd_seg_desc, fold_source) == 14410, "fold_source ABI offset drift");
-static_assert(__builtin_offsetof(bwd_seg_desc, source) == 16556, "source ABI offset drift");
-static_assert(__builtin_offsetof(bwd_seg_desc, window) == 20848, "window ABI offset drift");
-static_assert(__builtin_offsetof(bwd_seg_desc, c_init) == 21392, "c_init ABI offset drift");
-static_assert(__builtin_offsetof(bwd_seg_desc, coefficients) == 21408, "coefficients ABI offset drift");
-static_assert(__builtin_offsetof(bwd_seg_desc, eq_low) == 21416, "eq_low ABI offset drift");
-static_assert(__builtin_offsetof(bwd_seg_desc, contributions) == 21424, "contributions ABI offset drift");
-static_assert(__builtin_offsetof(bwd_seg_desc, eq_sizes) == 21432, "eq_sizes ABI offset drift");
-static_assert(__builtin_offsetof(bwd_seg_desc, n_coefficients) == 21444, "n_coefficients ABI offset drift");
-static_assert(__builtin_offsetof(bwd_seg_desc, logical_rows) == 21448, "logical_rows ABI offset drift");
-static_assert(__builtin_offsetof(bwd_seg_desc, pad) == 21452, "pad ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_desc, list_offset) == 17248, "list_offset ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_desc, k) == 17314, "k ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_desc, record_count) == 17316, "record_count ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_desc, num_sources) == 17318, "num_sources ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_desc, num_foldable) == 17320, "num_foldable ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_desc, num_immediates) == 17322, "num_immediates ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_desc, fold_source) == 17324, "fold_source ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_desc, source) == 19468, "source ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_desc, window) == 23760, "window ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_desc, c_init) == 24304, "c_init ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_desc, immediates) == 24320, "immediates ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_desc, coefficients) == 26368, "coefficients ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_desc, eq_low) == 26376, "eq_low ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_desc, contributions) == 26384, "contributions ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_desc, eq_sizes) == 26392, "eq_sizes ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_desc, n_coefficients) == 26404, "n_coefficients ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_desc, logical_rows) == 26408, "logical_rows ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_desc, pad) == 26412, "pad ABI offset drift");
 // The program stream starts 16-byte aligned so it can be buffered through wide
 // loads, and `pad` is the tail that makes the size a whole number of quanta.
 static_assert(__builtin_offsetof(bwd_seg_desc, program) % BWD_SEG_DESC_ALIGN == 0, "the program stream must start 16-byte aligned");
@@ -476,7 +499,7 @@ static_assert(__builtin_offsetof(bwd_seg_desc, window) - (__builtin_offsetof(bwd
 
 // `bwd_seg_desc` field-for-field, with the inline `program` array REPLACED by a
 // device pointer and its length. Dropping the array is the whole point: keeping
-// it and merely not reading it would leave 14,336 bytes resident in every
+// it and merely not reading it would leave 17,248 bytes resident in every
 // launch's parameter space and measure nothing.
 struct alignas(BWD_SEG_DESC_ALIGN) bwd_seg_progptr_desc {
   // Device-resident lean term stream, `program_words` u16 words long.
@@ -485,45 +508,51 @@ struct alignas(BWD_SEG_DESC_ALIGN) bwd_seg_progptr_desc {
   // Offsets index the DEVICE stream here; otherwise as `bwd_seg_desc`.
   u16 list_offset[BWD_SEG_MAX_K + 1];
   u16 k;
-  u16 term_count;
+  u16 record_count;
   u16 num_sources;
   u16 num_foldable;
+  u16 num_immediates;
   u16 fold_source[BWD_SEG_MAX_SOURCES];
   bwd_seg_source_record source[BWD_SEG_MAX_SOURCES];
   bwd_coeff_source_window window[BWD_SEG_SOURCE_WINDOW_CAP];
   u32 c_init[4];
+  // Inline in BOTH twins: only the PROGRAM moves to device memory in this A/B, so
+  // the immediate table stays by value and the comparison isolates the program.
+  u32 immediates[BWD_SEG_MAX_IMMEDIATES];
   const e4 *coefficients;
   const e4 *eq_low;
   e4 *contributions;
   gkr_eq_sizes eq_sizes;
   u32 n_coefficients;
   u32 logical_rows;
-  // Three words rather than one: the head is 12 bytes here instead of 14,336, so
+  // Three words rather than one: the head is 12 bytes here instead of 17,248, so
   // the tail lands elsewhere modulo 16.
   u32 pad[3];
 };
 
-static_assert(sizeof(bwd_seg_progptr_desc) == 7136, "bwd_seg_progptr_desc/BwdSegProgPtrDesc ABI size drift");
+static_assert(sizeof(bwd_seg_progptr_desc) == 9184, "bwd_seg_progptr_desc/BwdSegProgPtrDesc ABI size drift");
 static_assert(alignof(bwd_seg_progptr_desc) == BWD_SEG_DESC_ALIGN, "bwd_seg_progptr_desc ABI alignment drift");
 static_assert(sizeof(bwd_seg_progptr_desc) <= BWD_SEG_DESC_CAP, "bwd_seg_progptr_desc exceeds the __grid_constant__ parameter budget");
 static_assert(__builtin_offsetof(bwd_seg_progptr_desc, program) == 0, "progptr program ABI offset drift");
 static_assert(__builtin_offsetof(bwd_seg_progptr_desc, program_words) == 8, "progptr program_words ABI offset drift");
 static_assert(__builtin_offsetof(bwd_seg_progptr_desc, list_offset) == 12, "progptr list_offset ABI offset drift");
 static_assert(__builtin_offsetof(bwd_seg_progptr_desc, k) == 78, "progptr k ABI offset drift");
-static_assert(__builtin_offsetof(bwd_seg_progptr_desc, term_count) == 80, "progptr term_count ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_progptr_desc, record_count) == 80, "progptr record_count ABI offset drift");
 static_assert(__builtin_offsetof(bwd_seg_progptr_desc, num_sources) == 82, "progptr num_sources ABI offset drift");
 static_assert(__builtin_offsetof(bwd_seg_progptr_desc, num_foldable) == 84, "progptr num_foldable ABI offset drift");
-static_assert(__builtin_offsetof(bwd_seg_progptr_desc, fold_source) == 86, "progptr fold_source ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_progptr_desc, num_immediates) == 86, "progptr num_immediates ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_progptr_desc, fold_source) == 88, "progptr fold_source ABI offset drift");
 static_assert(__builtin_offsetof(bwd_seg_progptr_desc, source) == 2232, "progptr source ABI offset drift");
 static_assert(__builtin_offsetof(bwd_seg_progptr_desc, window) == 6520, "progptr window ABI offset drift");
 static_assert(__builtin_offsetof(bwd_seg_progptr_desc, c_init) == 7064, "progptr c_init ABI offset drift");
-static_assert(__builtin_offsetof(bwd_seg_progptr_desc, coefficients) == 7080, "progptr coefficients ABI offset drift");
-static_assert(__builtin_offsetof(bwd_seg_progptr_desc, eq_low) == 7088, "progptr eq_low ABI offset drift");
-static_assert(__builtin_offsetof(bwd_seg_progptr_desc, contributions) == 7096, "progptr contributions ABI offset drift");
-static_assert(__builtin_offsetof(bwd_seg_progptr_desc, eq_sizes) == 7104, "progptr eq_sizes ABI offset drift");
-static_assert(__builtin_offsetof(bwd_seg_progptr_desc, n_coefficients) == 7116, "progptr n_coefficients ABI offset drift");
-static_assert(__builtin_offsetof(bwd_seg_progptr_desc, logical_rows) == 7120, "progptr logical_rows ABI offset drift");
-static_assert(__builtin_offsetof(bwd_seg_progptr_desc, pad) == 7124, "progptr pad ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_progptr_desc, immediates) == 7080, "progptr immediates ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_progptr_desc, coefficients) == 9128, "progptr coefficients ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_progptr_desc, eq_low) == 9136, "progptr eq_low ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_progptr_desc, contributions) == 9144, "progptr contributions ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_progptr_desc, eq_sizes) == 9152, "progptr eq_sizes ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_progptr_desc, n_coefficients) == 9164, "progptr n_coefficients ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_progptr_desc, logical_rows) == 9168, "progptr logical_rows ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_progptr_desc, pad) == 9172, "progptr pad ABI offset drift");
 static_assert(__builtin_offsetof(bwd_seg_progptr_desc, pad) + 3 * sizeof(u32) == sizeof(bwd_seg_progptr_desc), "progptr pad must be the descriptor tail");
 static_assert(sizeof(bwd_seg_progptr_desc) % BWD_SEG_DESC_ALIGN == 0, "the progptr descriptor size must be a whole number of alignment quanta");
 // The A/B twin really drops the array rather than leaving it resident.
