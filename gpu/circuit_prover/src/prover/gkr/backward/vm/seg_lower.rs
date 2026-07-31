@@ -12,8 +12,9 @@
 //!   2. the publish-scratch geometry the JAOT prologue writes through and the
 //!      NEXT round's chain reads from ([`plan_publish_scratch`] plans the whole
 //!      round sequence; [`lower_bwd_seg`] resolves one round of it);
-//!   3. the `K`-split of the committed order into per-warp lists, with its
-//!      per-list work model ([`ListWorkStats`]); and
+//!   3. the `K`-split of the committed order into per-warp lists — whole ATOMS,
+//!      least-loaded for Ext ([`deal_atoms`]) and round-robin for R0 — with its
+//!      per-atom work model ([`atom_work`], [`ListWorkStats`]); and
 //!   4. the validations a release kernel with no error channel cannot make for
 //!      itself.
 //!
@@ -46,16 +47,16 @@
 #![allow(dead_code)]
 
 use gkr_eval_isa::bwd::coeff::lean::{
-    decode_program, LeanCodecError, LeanTerm, LEAN_CONT_OPCODES, LEAN_R0_OPCODES,
+    decode_atoms, LeanAtom, LeanCodecError, LeanTerm, LEAN_CONT_OPCODES, LEAN_R0_OPCODES,
     LEAN_WORDS_PER_TERM, SOURCE_NONE,
 };
 use gkr_eval_isa::bwd::coeff::lean_artifact::LeanCoordinateArtifact;
 use gkr_eval_isa::bwd::coeff::lean_bind::LeanSourceBinding;
 use gkr_eval_isa::bwd::coeff::limits::{
-    category_arity, in_scope, TermCategory, LEAN_DESCRIPTOR_PROGRAM_WORDS,
+    category_arity, in_scope, TermCategory, LEAN_DESCRIPTOR_PROGRAM_WORDS, LEAN_MAX_IMMEDIATES,
     MAX_COEFFICIENT_ENCODINGS, SOURCE_WINDOW_COLUMNS,
 };
-use gkr_eval_isa::bwd::coeff::model::CoefficientRecipeId;
+use gkr_eval_isa::bwd::coeff::model::{CoefficientRecipeId, ImmediateId};
 use gkr_eval_isa::bwd::coeff::order::split_round_robin;
 
 use super::seg_desc::{
@@ -64,10 +65,10 @@ use super::seg_desc::{
     BWD_COEFF_ORIGIN_READ_EXT, BWD_COEFF_PROCEDURAL_KINDS, BWD_COEFF_PROCEDURAL_NONE,
     BWD_COEFF_PUBLISH_TARGET_DEPTH, BWD_SEG_CONST_BANK, BWD_SEG_MAX_K, BWD_SEG_MAX_SOURCES,
 };
-use crate::primitives::field::E4;
+use crate::primitives::field::{BF, E4};
 use crate::prover::gkr::backward::GkrEqSizes;
 use crate::prover::gkr::forward::vm::lower::ResolvedColumn;
-use crate::upstream::BwdRegime;
+use crate::upstream::{BwdRegime, PrimeField};
 
 /// Bytes one column of a backing occupies, by storage field.
 const BF_COLUMN_BYTES: u32 = 4;
@@ -431,8 +432,20 @@ pub(crate) struct AnnotatedTerm {
 ///
 /// Relative, not absolute: it exists to compare LISTS of the same program, and
 /// [`ListWorkStats::max_over_mean`] is the only number read off it.
+///
+/// This is the SINGLETON / plain-record price. A grouped member is priced by
+/// [`member_work`] and a whole group by [`atom_work`], because the coefficient FMA
+/// this model charges every term is exactly what grouping removes (spec §4.5).
 pub(crate) fn static_term_work(term: &AnnotatedTerm) -> u64 {
-    let base = match term.category {
+    static_term_work_base(term.category) + operand_work(term)
+}
+
+/// The CATEGORY half of [`static_term_work`]: the term body, coefficient FMA
+/// included. Split out because a GROUPED member performs no coefficient multiply
+/// of its own (spec §4.5) and therefore wants the operand half alone plus its own
+/// smaller body.
+pub(crate) fn static_term_work_base(category: TermCategory) -> u64 {
+    match category {
         TermCategory::C0LinearBf | TermCategory::C0LinearE4 => 2,
         TermCategory::C2ProductBfBf | TermCategory::C2ProductBfE4 | TermCategory::C2ProductE4E4 => {
             6
@@ -441,9 +454,13 @@ pub(crate) fn static_term_work(term: &AnnotatedTerm) -> u64 {
         // The lean class tables carry no `Move` rows, so no wire record can
         // decode to one.
         TermCategory::MoveBf | TermCategory::MoveE4 => 0,
-    };
-    let operands: u64 = term
-        .operands
+    }
+}
+
+/// The OPERAND half of [`static_term_work`]: what resolving this term's operands
+/// costs, which a grouped member pays in full.
+pub(crate) fn operand_work(term: &AnnotatedTerm) -> u64 {
+    term.operands
         .iter()
         .flatten()
         .map(|class| match class {
@@ -452,11 +469,127 @@ pub(crate) fn static_term_work(term: &AnnotatedTerm) -> u64 {
             SourceClass::ProceduralInline => 3,
             SourceClass::BfDirect | SourceClass::E4Direct => 0,
         })
-        .sum();
-    base + operands
+        .sum()
 }
 
-/// The `K`-split's balance, measured with [`static_term_work`].
+// ── Atoms: the unit the deal places ──────────────────────────────────────────
+
+/// One member of a decoded group atom.
+///
+/// A member's wire coefficient field is an IMMEDIATE id, not a recipe id (spec
+/// §4.4): `0` is `+1`, `1` is `-1`, and `id >= 2` addresses
+/// `immediates[id - 2]` of the grouped layer's table.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct SegMember {
+    /// The member record's category and operand classes — the same annotation a
+    /// plain record carries.
+    pub annotated: AnnotatedTerm,
+    /// The wire immediate id.
+    pub immediate: u16,
+}
+
+impl SegMember {
+    /// How many accumulator sides a NON-`±1` immediate costs a `BF × E4` multiply
+    /// on (spec §4.5): one for a linear member, two for a dual member, which
+    /// applies its immediate to both partial sums. `None` for the two literals,
+    /// which the kernel folds into an add or a subtract.
+    pub(crate) fn immediate_sides(&self) -> Option<u64> {
+        if self.immediate < ImmediateId::RESERVED {
+            return None;
+        }
+        Some(match self.annotated.category {
+            TermCategory::DualProductE4
+            | TermCategory::C2ProductBfBf
+            | TermCategory::C2ProductBfE4
+            | TermCategory::C2ProductE4E4 => 2,
+            TermCategory::C0LinearBf
+            | TermCategory::C0LinearE4
+            | TermCategory::MoveBf
+            | TermCategory::MoveE4 => 1,
+        })
+    }
+}
+
+/// One decoded atom plus the source annotations lowering added: the unit the
+/// committed order places, the deal assigns to a warp, and the stream emits whole.
+///
+/// The wire counterpart is [`LeanAtom`]; this is that value after
+/// [`annotate_atoms`] has resolved every operand's [`SourceClass`] and validated
+/// every coefficient / immediate id.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum SegAtom {
+    /// A plain record: singleton coefficient semantics, wire-unchanged.
+    Term(AnnotatedTerm),
+    /// A group header plus its members. `core` is the header's recipe-bank id.
+    Group {
+        core: u16,
+        has_c0: bool,
+        has_c2: bool,
+        members: Vec<SegMember>,
+    },
+}
+
+/// What ONE grouped member costs (spec §4.5).
+///
+/// Deliberately NOT [`static_term_work`]: that function's base weights price
+/// today's per-term coefficient FMA (`C0Linear` 2 = "one E4 multiply-add against
+/// the coefficient"), and a grouped member no longer performs one — the group's
+/// single core multiply, priced by [`atom_work`], replaced them all.
+pub(crate) fn member_work(member: &SegMember) -> u64 {
+    let body = match member.annotated.category {
+        TermCategory::C0LinearE4 => 1,
+        TermCategory::DualProductE4 => 8,
+        // Ext groups only ever hold the two above (the continuation class table
+        // has no other rows); anything else keeps its full term body.
+        other => static_term_work_base(other),
+    };
+    let imm_surcharge = member.immediate_sides().unwrap_or(0);
+    body + operand_work(&member.annotated) + imm_surcharge
+}
+
+/// The static work of one ATOM: [`static_term_work`] verbatim for a plain record,
+/// and for a group its members plus two per active accumulator side for the core
+/// multiply (spec §4.5).
+pub(crate) fn atom_work(atom: &SegAtom) -> u64 {
+    match atom {
+        SegAtom::Term(term) => static_term_work(term),
+        SegAtom::Group {
+            members,
+            has_c0,
+            has_c2,
+            ..
+        } => {
+            let base: u64 = members.iter().map(member_work).sum();
+            base + 2 * (u64::from(*has_c0) + u64::from(*has_c2))
+        }
+    }
+}
+
+/// The Ext deal (spec §4.5): walk atoms in COMMITTED order and give each to the
+/// currently least-loaded list, ties to the lowest list index.
+///
+/// Deterministic, whole-atom by construction (a list holds atom indices, and the
+/// stream emits an atom's records contiguously), and degenerate to round-robin
+/// when every cost is equal — which is what keeps the uniform-cost case, and R0's
+/// own [`split_round_robin`], one behavior. The `max(1)` floor keeps a zero-cost
+/// atom from being stacked without bound onto one list.
+///
+/// Balance: every atom lands on a list at or below the mean load at the time, so
+/// the final maximum is at most the average plus one max-atom cost.
+pub(crate) fn deal_atoms(costs: &[u64], k: usize) -> Vec<Vec<usize>> {
+    let mut lists = vec![Vec::new(); k];
+    let mut load = vec![0u64; k];
+    for (atom, &cost) in costs.iter().enumerate() {
+        let target = (0..k)
+            .min_by_key(|&list| (load[list], list))
+            .expect("k lists");
+        lists[target].push(atom);
+        load[target] += cost.max(1);
+    }
+    lists
+}
+
+/// The `K`-split's balance, measured with [`atom_work`].
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct ListWorkStats {
     /// The busiest list — the block's critical path, since warps join at the
@@ -505,6 +638,18 @@ pub(crate) struct BwdSegRoundBinding<'a> {
     /// artifact does not carry it: `LeanCoordinateArtifact` is the program plus
     /// the binding, and a seed is neither.
     pub c_init: Option<CoefficientRecipeId>,
+    /// The grouped layer's immediate table, CANONICAL base-field values in
+    /// `ImmediateId::banked` order (`immediates[id - 2]`).
+    ///
+    /// It arrives with the round binding for the same reason
+    /// [`Self::coefficients`] does: [`LeanCoordinateArtifact`] carries the program
+    /// plus its source binding, and the table is neither — it is a property of the
+    /// LAYER the program was lowered from, which only the bridge that built both
+    /// still holds. Unlike the coefficients it is round-INDEPENDENT (a BF scalar,
+    /// not a challenge-evaluated recipe); lowering converts it to the kernel's
+    /// in-memory form once, host-side. Empty for a layer with no groups, which is
+    /// every R0 layer and every ungrouped Ext layer.
+    pub immediates: &'a [u32],
     pub eq_low: *const E4,
     pub eq_sizes: GkrEqSizes,
     pub contributions: *mut E4,
@@ -523,6 +668,12 @@ pub(crate) struct BwdSegSetup {
     pub coefficients: Vec<E4>,
     /// The `ab_gkr_main_layer_claim_point` upload payload.
     pub claim_point: Vec<E4>,
+    /// The immediate table in the kernel's IN-MEMORY base-field form — Montgomery
+    /// representation, exactly the bytes a device load of a `bf` sees — converted
+    /// once here from [`BwdSegRoundBinding::immediates`]' canonical values, because
+    /// the eval loop must never pay a conversion per member. Indexed by
+    /// `id - ImmediateId::RESERVED`.
+    pub immediates: Vec<u32>,
     /// The reordered lean stream for [`ProgramMode::DevPtr`]; empty inline.
     pub program_words: Vec<u16>,
     pub work: ListWorkStats,
@@ -706,6 +857,14 @@ pub(crate) enum BwdSegLowerError {
     CoefficientIndexPastBank { index: usize, entries: usize },
     /// More coefficients than the selected loader holds.
     CoefficientBankOverflow { coefficients: usize, cap: usize },
+    /// The layer's immediate table is longer than one coordinate may carry
+    /// (`LEAN_MAX_IMMEDIATES`, spec §4.5). The descriptor's own inline capacity
+    /// mirror-asserts equal to it, so one bound serves both.
+    ImmediateTableOverflow { len: usize },
+    /// A group MEMBER's coefficient field — an immediate id, not a recipe id
+    /// (spec §4.4) — addresses neither literal nor a table entry. `record` is the
+    /// member's RECORD index in the word stream, headers included.
+    ImmediateOutOfRange { record: usize, id: u16 },
     /// The claim point does not reach the challenge the deepest catch-up needs.
     ClaimPointTooShort { round: u8, entries: usize },
     /// The row count is zero, or past what the span arithmetic can express.
@@ -991,7 +1150,25 @@ pub(crate) fn lower_bwd_seg(
     }
 
     // ── The wire ─────────────────────────────────────────────────────────────
-    let records = decode_program(&artifact.program, regime)?;
+    // Decoded as ATOMS, not as a flat record list: a group is one unit for the
+    // deal (spec §4.5), and its header's member count is what makes the Ext walk
+    // self-delimiting. `atom_spans[i]` is atom `i`'s `(first record, records)`,
+    // which is the whole-atom word span the stream copies.
+    let atoms = decode_atoms(&artifact.program, regime)?;
+    let mut atom_spans = Vec::with_capacity(atoms.len());
+    let mut record_count = 0usize;
+    for atom in &atoms {
+        let span = match atom {
+            LeanAtom::Term(_) => 1,
+            LeanAtom::Group { members, .. } => 1 + members.len(),
+        };
+        atom_spans.push((record_count, span));
+        record_count += span;
+    }
+    // R0 is atoms-are-records by construction (no headers exist there), which is
+    // what keeps its `split_round_robin` over POSITIONS and the shared whole-atom
+    // emission below the same bytes.
+    debug_assert!(regime != BwdRegime::R0 || record_count == atoms.len());
     let words = artifact.program.words.len();
     if prog == ProgramMode::Inline && words > LEAN_DESCRIPTOR_PROGRAM_WORDS {
         return Err(BwdSegLowerError::ProgramOverflow {
@@ -999,7 +1176,7 @@ pub(crate) fn lower_bwd_seg(
             cap: LEAN_DESCRIPTOR_PROGRAM_WORDS,
         });
     }
-    if u16::try_from(words).is_err() || u16::try_from(records.len()).is_err() {
+    if u16::try_from(words).is_err() || u16::try_from(record_count).is_err() {
         return Err(BwdSegLowerError::ProgramOffsetOverflow { words });
     }
 
@@ -1133,14 +1310,44 @@ pub(crate) fn lower_bwd_seg(
     }
 
     // ── The wire, validated and annotated against those sources ──────────────
-    let annotated = annotate_terms(&records, regime, &source_classes, coefficients.len())?;
+    let seg_atoms = annotate_atoms(
+        &atoms,
+        regime,
+        &source_classes,
+        coefficients.len(),
+        binding.immediates.len(),
+    )?;
+    // The flat TERM view of the annotated atoms, in committed order: headers drop
+    // out (they carry no sources and no category), members splice in place. Every
+    // per-source walk below is a statement about terms, so this is the view they
+    // want — and dropping the headers is exactly why the floor is unchanged by
+    // grouping.
+    let mut terms: Vec<(&LeanTerm, AnnotatedTerm)> = Vec::with_capacity(artifact.order.len());
+    for (atom, annotated) in atoms.iter().zip(&seg_atoms) {
+        match (atom, annotated) {
+            (LeanAtom::Term(record), SegAtom::Term(term)) => terms.push((record, *term)),
+            (
+                LeanAtom::Group { members, .. },
+                SegAtom::Group {
+                    members: annotated, ..
+                },
+            ) => terms.extend(
+                members
+                    .iter()
+                    .zip(annotated)
+                    .map(|(record, member)| (record, member.annotated)),
+            ),
+            // `annotate_atoms` maps each atom to its own shape, in order.
+            _ => unreachable!("the annotated atom shape follows the decoded one"),
+        }
+    }
 
     // ── The fold list (§7) ───────────────────────────────────────────────────
     // The sources the eval loop touches EARLIEST are folded LAST, so they are the
     // warmest in L1 when eval starts. First touch is taken over the COMMITTED
     // order, which is the global order the `K` warps advance through together.
     let mut first_touch = vec![usize::MAX; sources.len()];
-    for (position, term) in records.iter().enumerate() {
+    for (position, (term, _)) in terms.iter().enumerate() {
         for slot in [term.source_a, term.source_b] {
             if slot == SOURCE_NONE {
                 continue;
@@ -1168,7 +1375,7 @@ pub(crate) fn lower_bwd_seg(
     // did, pricing it as both halves errs on the side the floor must never
     // cross.
     let mut source_endpoints = vec![0u8; sources.len()];
-    for (term, record) in annotated.iter().zip(records.iter()) {
+    for (record, term) in terms.iter() {
         let endpoint0_only = matches!(
             term.category,
             TermCategory::C0LinearBf | TermCategory::C0LinearE4
@@ -1186,30 +1393,46 @@ pub(crate) fn lower_bwd_seg(
     }
 
     // ── The K-split ──────────────────────────────────────────────────────────
-    // `split_round_robin` over POSITIONS, then the descriptor's stream is those
-    // lists concatenated, so warp `w` walks one contiguous span.
-    let positions: Vec<usize> = (0..records.len()).collect();
-    let lists = split_round_robin(&positions, k);
+    // Both regimes split ATOMS and both emit whole atom spans; only the RULE
+    // differs. R0 keeps `split_round_robin` over positions verbatim — its atoms are
+    // its records, so the emitted bytes are exactly the pre-group stream's. Ext
+    // takes the least-loaded deal (spec §4.5), which needs the per-atom costs and
+    // is what keeps a group off a `list_offset` boundary.
+    let costs: Vec<u64> = seg_atoms.iter().map(atom_work).collect();
+    let lists = if regime == BwdRegime::R0 {
+        let positions: Vec<usize> = (0..atoms.len()).collect();
+        split_round_robin(&positions, k)
+    } else {
+        deal_atoms(&costs, k)
+    };
     let mut stream: Vec<u16> = Vec::with_capacity(artifact.program.words.len());
     let mut list_offset = vec![0u16; k + 1];
-    for (list, list_positions) in lists.iter().enumerate() {
+    for (list, list_atoms) in lists.iter().enumerate() {
         list_offset[list] = u16::try_from(stream.len())
             .map_err(|_| BwdSegLowerError::ProgramOffsetOverflow { words })?;
-        for &position in list_positions {
-            let at = position * LEAN_WORDS_PER_TERM;
-            stream.extend_from_slice(&artifact.program.words[at..at + LEAN_WORDS_PER_TERM]);
+        for &atom in list_atoms {
+            // The WHOLE atom: a header and its members are contiguous on the wire
+            // and stay contiguous in the list, so no group straddles a boundary.
+            let (first, span) = atom_spans[atom];
+            let at = first * LEAN_WORDS_PER_TERM;
+            stream.extend_from_slice(&artifact.program.words[at..at + span * LEAN_WORDS_PER_TERM]);
         }
     }
     list_offset[k] = u16::try_from(stream.len())
         .map_err(|_| BwdSegLowerError::ProgramOffsetOverflow { words })?;
 
-    let work = list_work_stats(&lists, &annotated);
+    let work = list_work_stats(&lists, &costs);
 
     // ── The descriptor ───────────────────────────────────────────────────────
     let body = SegDescBody {
         list_offset,
         k: k as u16,
-        term_count: records.len() as u16,
+        // RECORDS, not terms: the field's contract is
+        // `list_offset[k] == LEAN_WORDS_PER_TERM * term_count`, and a group header
+        // is a record of its own (spec §4.5 renames the field in Task 8; the value
+        // is a record count from here). Equal to the term count for every
+        // header-free program, which is every R0 and every ungrouped Ext one.
+        term_count: record_count as u16,
         num_sources: sources.len() as u16,
         num_foldable,
         fold_source,
@@ -1249,10 +1472,19 @@ pub(crate) fn lower_bwd_seg(
         }
     };
 
+    // Canonical BF -> the kernel's in-memory (Montgomery) form, ONCE, host-side:
+    // the eval loop reads `immediates[id - 2]` straight into a `bf` register.
+    let immediates: Vec<u32> = binding
+        .immediates
+        .iter()
+        .map(|&value| BF::from_u32_with_reduction(value).as_u32_raw_repr_reduced())
+        .collect();
+
     Ok(BwdSegSetup {
         desc,
         coefficients,
         claim_point: binding.claim_point.to_vec(),
+        immediates,
         program_words,
         work,
         dead_sources,
@@ -1568,67 +1800,141 @@ fn lean_category(regime: BwdRegime, class: u8) -> Option<TermCategory> {
         .map(|(_, category)| *category)
 }
 
-/// Validate every record against the regime, the payload and the source table,
-/// and annotate it with its operands' classes.
+/// Validate one TERM record against the regime and the source table, and annotate
+/// it with its operands' classes. The COEFFICIENT field is the caller's, because
+/// its meaning depends on where the record sits: a recipe id for a singleton, a
+/// core id for a header, an immediate id for a member (spec §4.4).
+///
+/// `record` is the record's index in the word stream — headers INCLUDED, so it is
+/// the index every error variant here reports.
+fn annotate_record(
+    record: usize,
+    term: &LeanTerm,
+    regime: BwdRegime,
+    source_classes: &[SourceClass],
+) -> Result<AnnotatedTerm, BwdSegLowerError> {
+    let category = lean_category(regime, term.class).ok_or(LeanCodecError::ClassNotInRegime {
+        term: record,
+        opcode: u16::from(term.class),
+    })?;
+    let class_of = |slot: u16| -> Result<SourceClass, BwdSegLowerError> {
+        source_classes
+            .get(usize::from(slot))
+            .copied()
+            .ok_or(BwdSegLowerError::SourceSlotOutOfRange { term: record, slot })
+    };
+    let first = class_of(term.source_a)?;
+    let second = if category_arity(category) == 1 {
+        if term.source_b != SOURCE_NONE {
+            return Err(LeanCodecError::SourceBMustBeNone { term: record }.into());
+        }
+        None
+    } else {
+        if term.source_b == SOURCE_NONE {
+            return Err(LeanCodecError::SourceBMissing { term: record }.into());
+        }
+        Some(class_of(term.source_b)?)
+    };
+    Ok(AnnotatedTerm {
+        category,
+        operands: [Some(first), second],
+    })
+}
+
+/// Validate every ATOM against the regime, the payloads and the source table, and
+/// annotate every record with its operands' classes.
 ///
 /// This is `lean::validate_program`'s rule set, restated against the objects
 /// lowering has: that function needs a `CoeffLayer`, which the GPU side never
 /// builds. The release kernel trusts these, so they are checked here or nowhere.
-fn annotate_terms(
-    records: &[LeanTerm],
+///
+/// The id spaces split with the atom shape (spec §4.4), which is the one thing
+/// this walk knows that a flat record walk cannot: a SINGLETON's coefficient and a
+/// HEADER's core are recipe-bank ids, a MEMBER's is an immediate id. Headers
+/// contribute no [`AnnotatedTerm`] — they are control records, not terms — while
+/// still consuming a record index, so every error index stays the offending
+/// record's own.
+fn annotate_atoms(
+    atoms: &[LeanAtom],
     regime: BwdRegime,
     source_classes: &[SourceClass],
     coefficients: usize,
-) -> Result<Vec<AnnotatedTerm>, BwdSegLowerError> {
-    let mut annotated = Vec::with_capacity(records.len());
-    for (term, record) in records.iter().enumerate() {
-        let category =
-            lean_category(regime, record.class).ok_or(LeanCodecError::ClassNotInRegime {
-                term,
-                opcode: u16::from(record.class),
-            })?;
-        if usize::from(record.coeff) >= coefficients {
+    immediates: usize,
+) -> Result<Vec<SegAtom>, BwdSegLowerError> {
+    if immediates > LEAN_MAX_IMMEDIATES {
+        return Err(BwdSegLowerError::ImmediateTableOverflow { len: immediates });
+    }
+    // The literals occupy the two ids below the table, so `id` addresses the
+    // table iff `RESERVED <= id < RESERVED + len`.
+    let immediate_ids = usize::from(ImmediateId::RESERVED) + immediates;
+    let bank = |coeff: u16| -> Result<(), BwdSegLowerError> {
+        if usize::from(coeff) >= coefficients {
             return Err(BwdSegLowerError::CoefficientIndexPastBank {
-                index: usize::from(record.coeff),
+                index: usize::from(coeff),
                 entries: coefficients,
             });
         }
-        let class_of = |slot: u16| -> Result<SourceClass, BwdSegLowerError> {
-            source_classes
-                .get(usize::from(slot))
-                .copied()
-                .ok_or(BwdSegLowerError::SourceSlotOutOfRange { term, slot })
-        };
-        let first = class_of(record.source_a)?;
-        let second = if category_arity(category) == 1 {
-            if record.source_b != SOURCE_NONE {
-                return Err(LeanCodecError::SourceBMustBeNone { term }.into());
+        Ok(())
+    };
+    let mut out = Vec::with_capacity(atoms.len());
+    let mut record = 0usize;
+    for atom in atoms {
+        match atom {
+            LeanAtom::Term(term) => {
+                bank(term.coeff)?;
+                out.push(SegAtom::Term(annotate_record(
+                    record,
+                    term,
+                    regime,
+                    source_classes,
+                )?));
+                record += 1;
             }
-            None
-        } else {
-            if record.source_b == SOURCE_NONE {
-                return Err(LeanCodecError::SourceBMissing { term }.into());
+            LeanAtom::Group {
+                core,
+                has_c0,
+                has_c2,
+                members,
+            } => {
+                // R0 has no group headers at all — `decode_atoms` decodes class 2
+                // there as the live `C2ProductBfBf` term class — so a group here
+                // is an Ext-only shape by construction.
+                debug_assert!(regime != BwdRegime::R0, "R0 decodes no group headers");
+                bank(*core)?;
+                let header = record;
+                record += 1;
+                let mut annotated = Vec::with_capacity(members.len());
+                for member in members {
+                    if usize::from(member.coeff) >= immediate_ids {
+                        return Err(BwdSegLowerError::ImmediateOutOfRange {
+                            record,
+                            id: member.coeff,
+                        });
+                    }
+                    annotated.push(SegMember {
+                        annotated: annotate_record(record, member, regime, source_classes)?,
+                        immediate: member.coeff,
+                    });
+                    record += 1;
+                }
+                debug_assert_eq!(record - header, 1 + members.len());
+                out.push(SegAtom::Group {
+                    core: *core,
+                    has_c0: *has_c0,
+                    has_c2: *has_c2,
+                    members: annotated,
+                });
             }
-            Some(class_of(record.source_b)?)
-        };
-        annotated.push(AnnotatedTerm {
-            category,
-            operands: [Some(first), second],
-        });
+        }
     }
-    Ok(annotated)
+    Ok(out)
 }
 
-/// The per-list work of one split.
-fn list_work_stats(lists: &[Vec<usize>], annotated: &[AnnotatedTerm]) -> ListWorkStats {
+/// The per-list work of one split, over the PER-ATOM costs the deal used.
+fn list_work_stats(lists: &[Vec<usize>], costs: &[u64]) -> ListWorkStats {
     let per_list: Vec<u64> = lists
         .iter()
-        .map(|positions| {
-            positions
-                .iter()
-                .map(|&position| static_term_work(&annotated[position]))
-                .sum()
-        })
+        .map(|atoms| atoms.iter().map(|&atom| costs[atom]).sum())
         .collect();
     let max_work = per_list.iter().copied().max().unwrap_or(0);
     let total: u64 = per_list.iter().sum();
@@ -1944,6 +2250,7 @@ impl PartialEq for BwdSegSetup {
         self.desc.launch_bytes() == other.desc.launch_bytes()
             && self.coefficients == other.coefficients
             && self.claim_point == other.claim_point
+            && self.immediates == other.immediates
             && self.program_words == other.program_words
             && self.work == other.work
     }
@@ -1963,6 +2270,7 @@ impl core::fmt::Debug for BwdSegSetup {
             .field("desc", &family)
             .field("coefficients", &self.coefficients.len())
             .field("claim_point", &self.claim_point.len())
+            .field("immediates", &self.immediates.len())
             .field("program_words", &self.program_words.len())
             .field("work", &self.work)
             .finish()

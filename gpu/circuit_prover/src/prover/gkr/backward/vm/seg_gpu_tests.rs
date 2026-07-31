@@ -641,6 +641,7 @@ impl SegFixture {
         let binding = seg_round_binding(
             &self.model,
             &self.storage,
+            &self.coord,
             &self.claim_point,
             &self.model.bank,
             self.c_init,

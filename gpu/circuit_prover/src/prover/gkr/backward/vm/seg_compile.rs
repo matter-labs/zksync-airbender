@@ -1102,12 +1102,15 @@ impl SegScratch {
 ///
 /// Every physical quantity comes from exactly one place: the windows and read
 /// spans from [`SegRoundStorage`], the challenges and coefficients from the host
-/// model, and the runtime pointers from the caller — so there is no second copy of
-/// any of them to disagree with the descriptor.
+/// model, the immediate table from the coordinate's own LAYER (which is where
+/// grouping put it — the artifact deliberately carries no copy), and the runtime
+/// pointers from the caller — so there is no second copy of any of them to
+/// disagree with the descriptor.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn seg_round_binding<'a>(
     model: &'a SegHostModel,
     storage: &'a SegRoundStorage,
+    coordinate: &'a SegCoordinate,
     claim_point: &'a [E4],
     coefficients: &'a [E4],
     c_init: Option<CoefficientRecipeId>,
@@ -1123,6 +1126,7 @@ pub(crate) fn seg_round_binding<'a>(
         claim_point,
         coefficients,
         c_init,
+        immediates: &coordinate.layer.immediates,
         eq_low,
         eq_sizes,
         contributions,

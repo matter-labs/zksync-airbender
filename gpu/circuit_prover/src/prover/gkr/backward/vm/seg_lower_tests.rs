@@ -15,13 +15,17 @@
 //! ```
 
 use gkr_eval_isa::bwd::coeff::lean::{
-    decode_program, LeanProgram, LEAN_WORDS_PER_TERM, SOURCE_NONE,
+    decode_program, LeanProgram, LEAN_GROUP_FLAG_C0, LEAN_GROUP_FLAG_C2, LEAN_WORDS_PER_TERM,
+    SOURCE_NONE,
 };
 use gkr_eval_isa::bwd::coeff::lean_artifact::LeanCoordinateArtifact;
 use gkr_eval_isa::bwd::coeff::lean_bind::{
     LeanBoundColumn, LeanBoundWindow, LeanSourceBinding, LeanSourceSlot,
 };
-use gkr_eval_isa::bwd::coeff::limits::{in_scope, TermCategory, SOURCE_WINDOW_COLUMNS};
+use gkr_eval_isa::bwd::coeff::limits::{
+    in_scope, TermCategory, LEAN_CONT_GROUP_HEADER_CLASS, LEAN_MAX_IMMEDIATES,
+    SOURCE_WINDOW_COLUMNS,
+};
 use gkr_eval_isa::bwd::coeff::model::CoefficientRecipeId;
 use gkr_eval_isa::bwd::coeff::order::split_round_robin;
 use gkr_eval_isa::bwd::coeff::stats::WindowFamily;
@@ -35,17 +39,17 @@ use super::seg_desc::{
 };
 // The walk and its soft bound live in `seg_lower.rs`; the tests consume them.
 use super::seg_lower::{
-    assign_class, bwd_seg_floor_soft_bound, bwd_seg_traffic_floor, chain_read_column,
-    check_regions_disjoint, e4_limbs, lower_bwd_seg, plan_publish_scratch, static_term_work,
-    window_columns, AnnotatedTerm, BwdSegLaunchDesc, BwdSegLowerError, BwdSegRoundBinding,
-    BwdSegSetup, CoeffMode, D2Policy, ProgramMode, PublishRoundLayout, PublishScratchPlan,
-    ResolvedBwdCoeffSourceWindow, ResolvedPublishScratch, SourceClass, SourceOrigin,
-    PUBLISH_WINDOW_ABSENT,
+    assign_class, atom_work, bwd_seg_floor_soft_bound, bwd_seg_traffic_floor, chain_read_column,
+    check_regions_disjoint, deal_atoms, e4_limbs, lower_bwd_seg, member_work, plan_publish_scratch,
+    static_term_work, window_columns, AnnotatedTerm, BwdSegLaunchDesc, BwdSegLowerError,
+    BwdSegRoundBinding, BwdSegSetup, CoeffMode, D2Policy, ProgramMode, PublishRoundLayout,
+    PublishScratchPlan, ResolvedBwdCoeffSourceWindow, ResolvedPublishScratch, SegAtom, SegMember,
+    SourceClass, SourceOrigin, PUBLISH_WINDOW_ABSENT,
 };
-use crate::primitives::field::E4;
+use crate::primitives::field::{BF, E4};
 use crate::prover::gkr::backward::GkrEqSizes;
 use crate::prover::gkr::forward::vm::lower::ResolvedColumn;
-use crate::upstream::Field;
+use crate::upstream::{Field, PrimeField};
 
 // ── Fixture vocabulary ───────────────────────────────────────────────────────
 
@@ -152,6 +156,27 @@ fn program(records: &[[u16; 4]]) -> LeanProgram {
     LeanProgram {
         words: records.iter().flatten().copied().collect(),
         term_count: records.len(),
+    }
+}
+
+/// One GROUP HEADER record (spec §4.4): the continuation control code, the core
+/// recipe id, the member count, and the accumulator-side flags. Spelled
+/// independently of the encoder, exactly like [`record`].
+fn header(core: u16, members: u16, flags: u16) -> [u16; 4] {
+    [
+        (LEAN_CONT_GROUP_HEADER_CLASS << 13) | core,
+        members,
+        flags,
+        0,
+    ]
+}
+
+/// A program whose record list contains headers, so its TERM count is NOT its
+/// record count — the counting invariant `words == 4 * (terms + headers)`.
+fn grouped_program(records: &[[u16; 4]], terms: usize) -> LeanProgram {
+    LeanProgram {
+        words: records.iter().flatten().copied().collect(),
+        term_count: terms,
     }
 }
 
@@ -263,6 +288,9 @@ fn round_binding<'a>(
         claim_point: claim,
         coefficients: coeffs,
         c_init: None,
+        // The grouped-layer table is per-test: the immediates gates below set this
+        // field on the returned binding, and every other fixture is ungrouped.
+        immediates: &[],
         eq_low: RUNTIME as *const E4,
         eq_sizes: GkrEqSizes::zeroed(),
         contributions: (RUNTIME + 0x0100_0000) as *mut E4,
@@ -3380,4 +3408,531 @@ fn the_loader_variants_have_different_floors_and_that_is_correct() {
 fn the_soft_bound_saturates_rather_than_underflowing() {
     assert_eq!(bwd_seg_floor_soft_bound(1_000, 4_000), 0);
     assert_eq!(bwd_seg_floor_soft_bound(10_000, 4_000), 6_000);
+}
+
+// ── The whole-atom deal and the immediates payload (spec §4.5) ────────────────
+
+/// The mixed continuation fixture the deal tests use: two dual singletons, one
+/// three-member group and one linear singleton, over one two-column `Ext` window.
+/// Costs are deliberately UNEQUAL, so a round-robin split and the least-loaded
+/// deal disagree.
+fn grouped_ext_artifact() -> LeanCoordinateArtifact {
+    artifact(
+        ArtifactRegime::Ext,
+        3,
+        vec![ext_output(1, &[0, 1])],
+        slots(&[(0, 0), (0, 1)]),
+        grouped_program(
+            &[
+                record(1, 2, 0, 1),
+                header(3, 3, LEAN_GROUP_FLAG_C0),
+                record(0, 0, 0, SOURCE_NONE),
+                record(0, 1, 1, SOURCE_NONE),
+                record(0, 2, 0, SOURCE_NONE),
+                record(0, 4, 1, SOURCE_NONE),
+                record(1, 5, 0, 1),
+            ],
+            6,
+        ),
+    )
+}
+
+/// [`lower_one`] with an explicit immediate table on the round binding.
+fn lower_with_immediates(
+    artifact: &LeanCoordinateArtifact,
+    round: u32,
+    bound_window: ResolvedBwdCoeffSourceWindow,
+    columns: usize,
+    k: usize,
+    immediates: &[u32],
+) -> Result<BwdSegSetup, BwdSegLowerError> {
+    let bounds = [bound_window];
+    let scratch = scratch_for(plan_for(round as usize, &bounds, &[columns]));
+    let claim = claim_point(8);
+    let coeffs = coefficients(4);
+    let read_elements = generous(1);
+    let mut binding = round_binding(round, &bounds, &read_elements, &claim, &coeffs);
+    binding.immediates = immediates;
+    lower_bwd_seg(
+        artifact,
+        &binding,
+        &scratch,
+        k,
+        D2Policy::Inline,
+        ProgramMode::Inline,
+        CoeffMode::Constant,
+    )
+}
+
+/// Every record of one list span, as `(class, coefficient field)` pairs.
+fn list_records(desc: &BwdSegDesc, list: usize) -> Vec<(u16, u16)> {
+    let lo = usize::from(desc.list_offset[list]);
+    let hi = usize::from(desc.list_offset[list + 1]);
+    desc.program[lo..hi]
+        .chunks_exact(LEAN_WORDS_PER_TERM)
+        .map(|record| (record[0] >> 13, record[0] & 0x1fff))
+        .collect()
+}
+
+/// The deal's two structural promises: it is a deterministic function of the
+/// program (same bytes twice), and it never lets a group straddle a `list_offset`
+/// boundary — a header and its `N` members always land in one list, contiguously.
+#[test]
+fn deal_is_deterministic_and_whole_atom() {
+    let artifact = grouped_ext_artifact();
+    let immediates = [7u32];
+    for k in [1usize, 2, 3, 4, 8] {
+        let lower = || {
+            lower_with_immediates(
+                &artifact,
+                2,
+                bound(Some(e4_column(0)), 2, 2, false),
+                2,
+                k,
+                &immediates,
+            )
+            .unwrap_or_else(|error| panic!("k {k}: {error:?}"))
+        };
+        let setup = lower();
+        assert_eq!(
+            setup.desc.launch_bytes(),
+            lower().desc.launch_bytes(),
+            "k {k}: the deal is a pure function of the program",
+        );
+
+        let desc = inline_desc(&setup);
+        // RECORDS, headers included: seven records for six terms.
+        assert_eq!(desc.term_count, 7, "k {k}: the count field is records");
+        assert_eq!(
+            usize::from(desc.list_offset[k]),
+            7 * LEAN_WORDS_PER_TERM,
+            "k {k}: every record is emitted exactly once",
+        );
+
+        let mut seen_headers = 0;
+        let mut seen_records = 0;
+        for list in 0..k {
+            let records = list_records(desc, list);
+            seen_records += records.len();
+            let mut index = 0;
+            while index < records.len() {
+                let (class, _) = records[index];
+                if class != LEAN_CONT_GROUP_HEADER_CLASS {
+                    index += 1;
+                    continue;
+                }
+                seen_headers += 1;
+                // The header's own word1 is the member count; re-read it from the
+                // stream rather than trusting the fixture.
+                let lo = usize::from(desc.list_offset[list]);
+                let members = usize::from(desc.program[lo + index * LEAN_WORDS_PER_TERM + 1]);
+                assert_eq!(members, 3, "k {k} list {list}: the fixture's group");
+                assert!(
+                    index + members < records.len(),
+                    "k {k} list {list}: the group's members are inside the list",
+                );
+                for member in 1..=members {
+                    assert_ne!(
+                        records[index + member].0,
+                        LEAN_CONT_GROUP_HEADER_CLASS,
+                        "k {k} list {list}: a member is not a header",
+                    );
+                }
+                index += 1 + members;
+            }
+        }
+        assert_eq!(seen_headers, 1, "k {k}: exactly one header, in one list");
+        assert_eq!(seen_records, 7, "k {k}: every record placed once");
+    }
+}
+
+/// The balance property spec §4.5 rests on: because every atom lands on a list at
+/// or below the current mean, the busiest list ends within one MAX-ATOM cost of the
+/// average. Randomized costs, so the bound is tested against shapes no fixture
+/// spells out.
+#[test]
+fn deal_balance_bound() {
+    // A deterministic LCG: randomized inputs, reproducible failures.
+    let mut state = 0x2545_F491_4F6C_DD1Du64;
+    let mut next = |bound: u64| {
+        state = state
+            .wrapping_mul(6_364_136_223_846_793_005)
+            .wrapping_add(1_442_695_040_888_963_407);
+        (state >> 33) % bound
+    };
+    for case in 0..200 {
+        let atoms = 1 + (case % 37);
+        let k = 1 + (case % 8);
+        let costs: Vec<u64> = (0..atoms).map(|_| next(140)).collect();
+        let lists = deal_atoms(&costs, k);
+
+        // A partition: every atom exactly once, and lists in ascending order.
+        let mut placed: Vec<usize> = lists.iter().flatten().copied().collect();
+        placed.sort_unstable();
+        assert_eq!(placed, (0..atoms).collect::<Vec<_>>(), "case {case}");
+        for list in &lists {
+            assert!(list.windows(2).all(|pair| pair[0] < pair[1]), "case {case}");
+        }
+
+        // The deal's own currency is `cost.max(1)`, so the bound is stated in it.
+        let charged = |atom: usize| costs[atom].max(1);
+        let loads: Vec<u64> = lists
+            .iter()
+            .map(|list| list.iter().copied().map(charged).sum())
+            .collect();
+        let total: u64 = (0..atoms).map(charged).sum();
+        let max_atom = (0..atoms).map(charged).max().unwrap_or(0);
+        let max_load = loads.iter().copied().max().unwrap_or(0);
+        let average = total as f64 / k as f64;
+        assert!(
+            max_load as f64 <= average + max_atom as f64 + 1e-9,
+            "case {case}: k {k} max {max_load} > avg {average} + max atom {max_atom}: {loads:?}",
+        );
+    }
+}
+
+/// The deal is a GENERALIZATION of the incumbent split, not a different policy:
+/// with equal costs, least-loaded-with-lowest-index-ties IS round-robin. That is
+/// what keeps a uniform-cost program's stream (and the R0 regime, which uses
+/// `split_round_robin` directly) unchanged.
+#[test]
+fn deal_uniform_costs_degenerate_to_round_robin() {
+    for atoms in 0..12usize {
+        let positions: Vec<usize> = (0..atoms).collect();
+        for k in 1..6usize {
+            for cost in [0u64, 1, 7, 1_000] {
+                assert_eq!(
+                    deal_atoms(&vec![cost; atoms], k),
+                    split_round_robin(&positions, k),
+                    "atoms {atoms} k {k} cost {cost}",
+                );
+            }
+        }
+    }
+}
+
+/// **R0 is untouched.** Its split is `split_round_robin` over positions, and this
+/// pins the emitted stream against that rule directly — over a program whose costs
+/// are UNEQUAL, so a stream produced by the Ext deal would differ and the pin has
+/// teeth.
+#[test]
+fn r0_stream_is_byte_identical() {
+    let records = [
+        record(0, 0, 0, SOURCE_NONE),
+        record(2, 1, 0, 1),
+        record(0, 2, 1, SOURCE_NONE),
+        record(2, 3, 0, 1),
+        record(0, 4, 0, SOURCE_NONE),
+    ];
+    let artifact = artifact(
+        ArtifactRegime::R0,
+        0,
+        vec![base_witness(&[0, 1])],
+        slots(&[(0, 0), (0, 1)]),
+        program(&records),
+    );
+    // `C0LinearBf` costs 2, `C2ProductBfBf` costs 6 — the deal and round-robin
+    // genuinely disagree on this program.
+    let costs = [2u64, 6, 2, 6, 2];
+    let positions: Vec<usize> = (0..records.len()).collect();
+    for k in [1usize, 2, 3, 5] {
+        let setup = lower_one(
+            &artifact,
+            0,
+            bound(Some(bf_column(0)), 0, 0, false),
+            2,
+            k,
+            D2Policy::Inline,
+        )
+        .unwrap_or_else(|error| panic!("k {k}: {error:?}"));
+        let desc = inline_desc(&setup);
+
+        let lists = split_round_robin(&positions, k);
+        let mut expected: Vec<u16> = Vec::new();
+        for list in &lists {
+            for &position in list {
+                expected.extend_from_slice(&records[position]);
+            }
+        }
+        assert_eq!(
+            &desc.program[..expected.len()],
+            &expected[..],
+            "k {k}: the R0 stream is round-robin over positions",
+        );
+        assert_eq!(usize::from(desc.list_offset[k]), expected.len());
+        assert_eq!(desc.term_count as usize, records.len());
+        // At `k >= records` every split is one-atom-per-list and the two rules
+        // coincide trivially; below that they genuinely disagree on these costs,
+        // which is what makes the pin above a statement about the R0 path.
+        if k > 1 && k < records.len() {
+            assert_ne!(
+                deal_atoms(&costs, k),
+                lists,
+                "k {k}: the deal would have produced a different stream",
+            );
+        }
+    }
+}
+
+/// Grouping moves no bytes: a header carries no sources, so the read floor, the
+/// endpoint spans and the write floor of a grouped coordinate are those of the same
+/// terms ungrouped — by construction, and pinned here.
+#[test]
+fn grouped_fixture_floor_matches_ungrouped() {
+    let windows = vec![ext_output(1, &[0, 1])];
+    let source_slots = slots(&[(0, 0), (0, 1)]);
+    let grouped = artifact(
+        ArtifactRegime::Ext,
+        3,
+        windows.clone(),
+        source_slots.clone(),
+        grouped_program(
+            &[
+                header(2, 2, LEAN_GROUP_FLAG_C0),
+                record(0, 0, 0, SOURCE_NONE),
+                record(0, 1, 1, SOURCE_NONE),
+            ],
+            2,
+        ),
+    );
+    let ungrouped = artifact(
+        ArtifactRegime::Ext,
+        3,
+        windows,
+        source_slots,
+        program(&[record(0, 2, 0, SOURCE_NONE), record(0, 2, 1, SOURCE_NONE)]),
+    );
+
+    let lower = |shape: &LeanCoordinateArtifact| {
+        lower_one(
+            shape,
+            2,
+            bound(Some(e4_column(0)), 2, 2, false),
+            2,
+            2,
+            D2Policy::Inline,
+        )
+        .expect("a legal round")
+    };
+    let grouped = lower(&grouped);
+    let ungrouped = lower(&ungrouped);
+
+    assert_eq!(
+        grouped.source_endpoints, ungrouped.source_endpoints,
+        "a header projects nothing, so no slot changes its endpoint span",
+    );
+    assert_eq!(grouped.dead_sources, ungrouped.dead_sources);
+    assert_eq!(
+        bwd_seg_traffic_floor(&grouped, CoeffMode::Constant, ProgramMode::Inline),
+        bwd_seg_traffic_floor(&ungrouped, CoeffMode::Constant, ProgramMode::Inline),
+        "the floor is unchanged by grouping",
+    );
+    // The RECORD count is what does change: one header on top of two terms.
+    assert_eq!(inline_desc(&grouped).term_count, 3);
+    assert_eq!(inline_desc(&ungrouped).term_count, 2);
+}
+
+/// The one cost rule grouping exists for: a member pays NO coefficient base.
+/// `static_term_work`'s `C0Linear` 2 is "one E4 multiply-add against the
+/// coefficient" — work a grouped member does not do, because the group's single
+/// core multiply (priced per active side on the atom) replaced every member's.
+#[test]
+fn atom_work_prices_members_without_coefficient_base() {
+    let annotated = |category, operands| AnnotatedTerm { category, operands };
+    let member = |category, operands, immediate| SegMember {
+        annotated: annotated(category, operands),
+        immediate,
+    };
+
+    let linear = member(
+        TermCategory::C0LinearE4,
+        [Some(SourceClass::E4Direct), None],
+        0,
+    );
+    assert_eq!(member_work(&linear), 1, "a +1 C0 member over a direct read");
+    assert_eq!(
+        static_term_work(&linear.annotated),
+        2,
+        "the same record as a SINGLETON keeps its coefficient FMA",
+    );
+    // `-1` is the other literal, and just as free.
+    assert_eq!(
+        member_work(&member(
+            TermCategory::C0LinearE4,
+            [Some(SourceClass::E4Direct), None],
+            1,
+        )),
+        1,
+    );
+    // A non-±1 immediate costs one BF x E4 per active side: one linear, two dual.
+    assert_eq!(
+        member_work(&member(
+            TermCategory::C0LinearE4,
+            [Some(SourceClass::E4Direct), None],
+            2,
+        )),
+        1 + 1,
+    );
+    let dual = member(
+        TermCategory::DualProductE4,
+        [Some(SourceClass::E4Direct), Some(SourceClass::E4Direct)],
+        1,
+    );
+    assert_eq!(member_work(&dual), 8, "a dual member keeps both products");
+    assert_eq!(
+        member_work(&member(
+            TermCategory::DualProductE4,
+            [Some(SourceClass::E4Direct), Some(SourceClass::E4Direct)],
+            5,
+        )),
+        8 + 2,
+    );
+    // Operand resolution is the member's in full — it reads the same sources.
+    assert_eq!(
+        member_work(&member(
+            TermCategory::C0LinearE4,
+            [Some(SourceClass::BfInlineD1), None],
+            0,
+        )),
+        1 + 4,
+    );
+
+    // The atom adds two per ACTIVE side for the core multiply, and nothing else.
+    let group = |has_c0, has_c2| SegAtom::Group {
+        core: 2,
+        has_c0,
+        has_c2,
+        members: vec![linear, dual],
+    };
+    assert_eq!(atom_work(&group(true, false)), 1 + 8 + 2);
+    assert_eq!(atom_work(&group(false, true)), 1 + 8 + 2);
+    assert_eq!(atom_work(&group(true, true)), 1 + 8 + 4);
+    // A plain record's cost is `static_term_work` verbatim.
+    assert_eq!(
+        atom_work(&SegAtom::Term(linear.annotated)),
+        static_term_work(&linear.annotated),
+    );
+}
+
+/// A table past the wire cap is rejected HERE, where the walk sees it — the
+/// descriptor's inline capacity (Task 8) only mirror-asserts the same bound.
+#[test]
+fn immediate_table_overflow_rejected() {
+    let over = vec![1u32; LEAN_MAX_IMMEDIATES + 1];
+    assert_eq!(
+        lower_with_immediates(
+            &ext_artifact(),
+            2,
+            bound(Some(e4_column(0)), 2, 2, false),
+            2,
+            2,
+            &over,
+        ),
+        Err(BwdSegLowerError::ImmediateTableOverflow {
+            len: LEAN_MAX_IMMEDIATES + 1,
+        }),
+    );
+    // The cap itself is legal.
+    assert!(lower_with_immediates(
+        &ext_artifact(),
+        2,
+        bound(Some(e4_column(0)), 2, 2, false),
+        2,
+        2,
+        &over[..LEAN_MAX_IMMEDIATES],
+    )
+    .is_ok());
+}
+
+/// A member id the table cannot answer is a rejection, not a device-side read past
+/// the array. `record` is the member's own RECORD index, headers included.
+#[test]
+fn immediate_out_of_range_rejected() {
+    let shape = artifact(
+        ArtifactRegime::Ext,
+        3,
+        vec![ext_output(1, &[0, 1])],
+        slots(&[(0, 0), (0, 1)]),
+        grouped_program(
+            &[
+                header(2, 2, LEAN_GROUP_FLAG_C0),
+                record(0, 2, 0, SOURCE_NONE),
+                record(0, 3, 1, SOURCE_NONE),
+            ],
+            2,
+        ),
+    );
+    // One entry: ids 0 and 1 are the literals, id 2 is the entry, id 3 is past it.
+    let one = [11u32];
+    assert_eq!(
+        lower_with_immediates(
+            &shape,
+            2,
+            bound(Some(e4_column(0)), 2, 2, false),
+            2,
+            2,
+            &one,
+        ),
+        Err(BwdSegLowerError::ImmediateOutOfRange { record: 2, id: 3 }),
+    );
+    // Two entries and the same program is legal, so the reject is about the BOUND.
+    assert!(lower_with_immediates(
+        &shape,
+        2,
+        bound(Some(e4_column(0)), 2, 2, false),
+        2,
+        2,
+        &[11u32, 13],
+    )
+    .is_ok());
+}
+
+/// **The conversion the kernel will trust (Task 9).** The immediate table travels
+/// as canonical base-field integers and is converted ONCE, host-side, into the
+/// in-memory (Montgomery) representation a device `bf` load sees — never in the
+/// eval loop. Pinned against the Montgomery definition computed independently
+/// (`value * 2^32 mod p`), not against the conversion under test.
+#[test]
+fn immediate_montgomery_conversion_pin() {
+    let montgomery =
+        |value: u32| -> u32 { (((u64::from(value)) << 32) % u64::from(BF::ORDER)) as u32 };
+    // The literal for canonical one is `2^32 mod p`, spelled out so a change of
+    // representation cannot pass as a change of formula.
+    assert_eq!(montgomery(1), 0x0fff_fffe);
+    assert_eq!(
+        BF::from_u32_with_reduction(1).as_u32_raw_repr_reduced(),
+        montgomery(1)
+    );
+
+    let canonical = [1u32, 0x1234_5678, BF::ORDER - 1, 0];
+    let expected: Vec<u32> = canonical.iter().copied().map(montgomery).collect();
+    // Round-trip: the stored form still reads back as the canonical value.
+    for &value in &canonical {
+        assert_eq!(BF::from_u32_with_reduction(value).as_u32_reduced(), value);
+    }
+
+    let setup = lower_with_immediates(
+        &ext_artifact(),
+        2,
+        bound(Some(e4_column(0)), 2, 2, false),
+        2,
+        2,
+        &canonical,
+    )
+    .expect("a legal round");
+    assert_eq!(
+        setup.immediates, expected,
+        "lowering stores the kernel-ready form, in table order",
+    );
+    // An ungrouped coordinate carries none.
+    let bare = lower_one(
+        &ext_artifact(),
+        2,
+        bound(Some(e4_column(0)), 2, 2, false),
+        2,
+        2,
+        D2Policy::Inline,
+    )
+    .expect("a legal round");
+    assert!(bare.immediates.is_empty());
 }
