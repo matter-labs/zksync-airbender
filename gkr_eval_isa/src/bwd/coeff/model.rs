@@ -634,6 +634,15 @@ pub enum CoeffError {
     /// `blake2_with_compression` scope it triggers §3.1's whole-circuit exclusion;
     /// for any mandatory circuit it fails the build.
     CoefficientBankOverflow { recipes: usize, reserved: usize, limit: usize },
+    /// One coordinate needs more distinct non-`±1` coefficient-group immediates
+    /// than the wire's immediate table holds
+    /// ([`limits::LEAN_MAX_IMMEDIATES`](super::limits::LEAN_MAX_IMMEDIATES)).
+    ///
+    /// Raised by the grouping transform after it builds the deduplicated table,
+    /// and — like [`CoefficientBankOverflow`](Self::CoefficientBankOverflow) — a
+    /// COMPILER ERROR by design: `ImmediateId` is a fixed u16 id space with no
+    /// extended encoding.
+    ImmediateTableOverflow { len: usize },
     /// A coefficient recipe factor that is not scalar-pure.
     NonScalarCoefficientFactor { expr: ExprId },
     /// A distilled leaf that cannot be a backward source (a `LookupValue` leaf

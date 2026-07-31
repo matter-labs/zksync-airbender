@@ -11,6 +11,8 @@
 //!     segmented interpreter stated against it;
 //!   * [`stats`] — the per-`(circuit, layer, regime)` census and the two
 //!     schedule-independent stream bounds; and
+//!   * [`group`] — the coefficient GROUPING transform: terms whose recipes differ
+//!     only by a base-field scale collapse onto one shared challenge core;
 //!   * [`limits`] — the FROZEN wire-format bounds, the regime opcode tables and
 //!     the term-category classification, plus the exact corpus maxima the census
 //!     measured.
@@ -28,6 +30,7 @@
 //! placement, u16 cell codec, cell interpreter and budget artifacts — was retired
 //! wholesale in favour of the segmented lean VM; nothing of it is kept disabled.
 
+pub mod group;
 pub mod interp;
 pub mod lean;
 pub mod lean_artifact;
@@ -38,6 +41,7 @@ pub mod model;
 pub mod order;
 pub mod stats;
 
+pub use group::{factor, group_coeff_layer, immediate_value, rescale};
 pub use interp::{CoeffResolver, LeanInterpError, interpret_coeff_layer, interpret_lean_program};
 pub use lean::{
     LEAN_BYTES_PER_TERM, LEAN_CLASS_MASK, LEAN_CLASS_SHIFT, LEAN_COEFFICIENT_MASK,

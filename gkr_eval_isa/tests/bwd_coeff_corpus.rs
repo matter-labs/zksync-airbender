@@ -38,10 +38,13 @@ use cs::gkr_compiler::dag_ir::{
     VirtualSetupKind, VirtualSetupResolver, eval_layer_expr,
 };
 use field::{Field, FieldExtension, PrimeField};
-use gkr_eval_isa::bwd::coeff::limits::{in_scope, with_conditional_blake2};
+use gkr_eval_isa::bwd::coeff::limits::{
+    GROUP_SPLIT_MAX_MEMBERS, LEAN_MAX_IMMEDIATES, in_scope, with_conditional_blake2,
+};
 use gkr_eval_isa::bwd::coeff::{
-    CoeffCensus, CoeffLayer, CoeffResolver, CoeffTerm, CoefficientRecipeId, SourceId,
-    interpret_coeff_layer, lower_coeff_layer,
+    CoeffCensus, CoeffLayer, CoeffResolver, CoeffTerm, CoefficientRecipeId,
+    NormalizedCoefficientRecipe, SourceId, TermId, factor, group_coeff_layer, immediate_value,
+    interpret_coeff_layer, lower_coeff_layer, rescale,
 };
 use gkr_eval_isa::bwd::distill::distill;
 use gkr_eval_isa::bwd::source::OriginLeaf;
@@ -816,5 +819,277 @@ fn coefficient_products_never_repeat_a_power_honouring_key() {
         ]),
         "repeated factors live only on keys whose resolver ignores ChallengePower, where \
          merging them into an exponent would silently drop a factor"
+    );
+}
+
+// ── The grouping transform on real banks ──────────────────────────────────────
+
+/// Design §6.1 on real cones: the coefficient GROUPING transform is
+/// structure-preserving on every `Ext` coordinate of the pinned corpus.
+///
+/// Structural, not numeric, and deliberately so — `imm x core == recipe` is checked
+/// as an equality of NORMALIZED RECIPES, which is strictly stronger than equality
+/// of their evaluations at one challenge assignment: it holds for every resolver at
+/// once and needs none. `field::inverse` and `from_terms`'s re-canonicalization are
+/// the only arithmetic involved, so a mismatch is a real bug in the factoring, never
+/// a tolerance.
+///
+/// Three claims:
+///
+///   (a) EVERY original bank recipe — not just the ones that end up realized as
+///       group members — either factors with an exact structural rescale back to
+///       itself, or is a bare scalar (the one shape §4.1 excludes from grouping).
+///   (b) Every realized group member's ORIGINAL recipe, captured before the
+///       transform, equals its group's core rescaled by the member's immediate.
+///   (c) The transform's own invariants: chop bound, ascending disjoint members,
+///       member coefficients rewritten to the core, non-members and `c_init` left
+///       with their own recipes, and both tables sorted and within their caps.
+#[test]
+fn grouped_corpus_layers_factor_exactly() {
+    #[derive(Default)]
+    struct Tally {
+        coordinates: usize,
+        recipes: usize,
+        factored: usize,
+        bare: usize,
+        groups: usize,
+        members: usize,
+        with_groups: usize,
+        l0_without_groups: Vec<String>,
+        max_members: usize,
+        max_immediates: usize,
+        bank_before: usize,
+        bank_after: usize,
+        /// Cores the §4.2 chop actually split — one core, two or more atoms.
+        chopped_cores: usize,
+    }
+
+    let tallies: Vec<Tally> = FIXTURES
+        .par_iter()
+        .map(|name| {
+            let mut t = Tally::default();
+            for (li, layer, cross) in layers_with_bwd_roots(name) {
+                let where_ = format!("{name} L{li} Ext");
+                let d = distill(&layer, BwdRegime::Ext, &cross, None);
+                let lowered =
+                    lower_coeff_layer(&layer, &d).unwrap_or_else(|e| panic!("[{where_}] {e:?}"));
+                t.coordinates += 1;
+                t.bank_before += lowered.coefficients.len();
+
+                // (a) Every ORIGINAL bank recipe, realized as a group member or not.
+                for recipe in &lowered.coefficients {
+                    t.recipes += 1;
+                    match factor(recipe) {
+                        Some((immediate, core)) => {
+                            assert_eq!(
+                                core.terms[0].scalar, 1,
+                                "[{where_}] a core's leading scalar must be one"
+                            );
+                            assert_eq!(
+                                &rescale(&core, immediate),
+                                recipe,
+                                "[{where_}] immediate x core must be the recipe exactly"
+                            );
+                            t.factored += 1;
+                        }
+                        None => {
+                            assert_eq!(
+                                recipe.terms.len(),
+                                1,
+                                "[{where_}] only a bare scalar may refuse to factor: {recipe:?}"
+                            );
+                            assert!(
+                                recipe.terms[0].challenges.is_empty(),
+                                "[{where_}] only a bare scalar may refuse to factor: {recipe:?}"
+                            );
+                            t.bare += 1;
+                        }
+                    }
+                }
+
+                // Captured BEFORE the transform rewrites any coefficient id.
+                let originals: BTreeMap<TermId, NormalizedCoefficientRecipe> = lowered
+                    .terms
+                    .iter()
+                    .filter_map(|term| {
+                        lowered.banked_recipe(term.coefficient()).map(|r| (term.id(), r.clone()))
+                    })
+                    .collect();
+                let literals: BTreeMap<TermId, CoefficientRecipeId> = lowered
+                    .terms
+                    .iter()
+                    .filter(|term| term.coefficient().bank_index().is_none())
+                    .map(|term| (term.id(), term.coefficient()))
+                    .collect();
+                let c_init_recipe =
+                    lowered.c_init.and_then(|id| lowered.banked_recipe(id).cloned());
+                let ids_before: Vec<TermId> = lowered.terms.iter().map(|t| t.id()).collect();
+                let sources_before = lowered.sources.clone();
+
+                let grouped =
+                    group_coeff_layer(lowered).unwrap_or_else(|e| panic!("[{where_}] {e:?}"));
+
+                // (c) Shape preserved: same terms, same ids, same sources.
+                assert_eq!(
+                    grouped.terms.iter().map(|t| t.id()).collect::<Vec<_>>(),
+                    ids_before,
+                    "[{where_}] grouping never adds, drops or reorders a term"
+                );
+                assert_eq!(grouped.sources, sources_before, "[{where_}] sources are untouched");
+                assert_eq!(grouped.regime, BwdRegime::Ext);
+                assert!(
+                    grouped.coefficients.windows(2).all(|w| w[0] < w[1]),
+                    "[{where_}] the rebuilt bank must stay sorted and deduplicated"
+                );
+                assert!(
+                    grouped.immediates.windows(2).all(|w| w[0] < w[1]),
+                    "[{where_}] the immediate table must be ascending and deduplicated"
+                );
+                assert!(
+                    grouped.immediates.len() <= LEAN_MAX_IMMEDIATES,
+                    "[{where_}] immediate table over the wire cap"
+                );
+                assert!(
+                    grouped.coefficients.len() + CoefficientRecipeId::RESERVED as usize
+                        <= gkr_eval_isa::bwd::coeff::MAX_COEFFICIENT_ENCODINGS,
+                    "[{where_}] rebuilt bank over the 13-bit coefficient field"
+                );
+                t.bank_after += grouped.coefficients.len();
+                t.max_immediates = t.max_immediates.max(grouped.immediates.len());
+
+                // (b) + (c) per group.
+                let mut member_terms: BTreeMap<TermId, usize> = BTreeMap::new();
+                for (index, group) in grouped.groups.iter().enumerate() {
+                    assert!(
+                        (2..=GROUP_SPLIT_MAX_MEMBERS).contains(&group.members.len()),
+                        "[{where_}] group {index} has {} members, outside \
+                         2..={GROUP_SPLIT_MAX_MEMBERS}",
+                        group.members.len()
+                    );
+                    assert!(
+                        group.members.windows(2).all(|w| w[0].term < w[1].term),
+                        "[{where_}] group {index} members must be ascending by TermId"
+                    );
+                    assert!(group.has_c0 || group.has_c2, "[{where_}] group {index} feeds no side");
+                    let core = grouped
+                        .banked_recipe(group.core)
+                        .unwrap_or_else(|| panic!("[{where_}] group {index} core id dangles"));
+                    for member in &group.members {
+                        assert!(
+                            member_terms.insert(member.term, index).is_none(),
+                            "[{where_}] {:?} is a member of two groups",
+                            member.term
+                        );
+                        let term = grouped
+                            .terms
+                            .iter()
+                            .find(|t| t.id() == member.term)
+                            .unwrap_or_else(|| panic!("[{where_}] {:?} not in terms", member.term));
+                        assert_eq!(
+                            term.coefficient(),
+                            group.core,
+                            "[{where_}] a member's coefficient must be its group's core id"
+                        );
+                        let immediate = immediate_value(&grouped, member.immediate)
+                            .unwrap_or_else(|| panic!("[{where_}] immediate id out of range"));
+                        let original = originals
+                            .get(&member.term)
+                            .unwrap_or_else(|| panic!("[{where_}] a member had no bank recipe"));
+                        assert_eq!(
+                            &rescale(core, immediate),
+                            original,
+                            "[{where_}] core x immediate must reproduce {:?}'s original recipe",
+                            member.term
+                        );
+                        // Group members are exactly the terms whose recipe was NOT
+                        // a bare scalar and NOT a literal.
+                        assert!(
+                            factor(original).is_some(),
+                            "[{where_}] a bare scalar must never become a member"
+                        );
+                    }
+                    t.members += group.members.len();
+                    t.max_members = t.max_members.max(group.members.len());
+                }
+                t.groups += grouped.groups.len();
+                let mut atoms_per_core: BTreeMap<CoefficientRecipeId, usize> = BTreeMap::new();
+                for group in &grouped.groups {
+                    *atoms_per_core.entry(group.core).or_default() += 1;
+                }
+                t.chopped_cores += atoms_per_core.values().filter(|atoms| **atoms > 1).count();
+                if grouped.groups.is_empty() {
+                    if li == 0 {
+                        t.l0_without_groups.push(where_.clone());
+                    }
+                } else {
+                    t.with_groups += 1;
+                }
+
+                // (c) Non-members keep their OWN recipe; literals stay literals.
+                for term in &grouped.terms {
+                    if member_terms.contains_key(&term.id()) {
+                        continue;
+                    }
+                    match literals.get(&term.id()) {
+                        Some(literal) => assert_eq!(
+                            term.coefficient(),
+                            *literal,
+                            "[{where_}] a literal coefficient must not be rewritten"
+                        ),
+                        None => assert_eq!(
+                            grouped.banked_recipe(term.coefficient()),
+                            originals.get(&term.id()),
+                            "[{where_}] a singleton must keep its own recipe"
+                        ),
+                    }
+                }
+                // §4.1: c_init is excluded from grouping, so its recipe survives.
+                assert_eq!(
+                    grouped.c_init.and_then(|id| grouped.banked_recipe(id).cloned()),
+                    c_init_recipe,
+                    "[{where_}] c_init must keep its own recipe"
+                );
+            }
+            t
+        })
+        .collect();
+
+    let sum = |f: fn(&Tally) -> usize| tallies.iter().map(f).sum::<usize>();
+    let coordinates = sum(|t| t.coordinates);
+    let groups = sum(|t| t.groups);
+    let members = sum(|t| t.members);
+    let max_members = tallies.iter().map(|t| t.max_members).max().unwrap_or(0);
+    let max_immediates = tallies.iter().map(|t| t.max_immediates).max().unwrap_or(0);
+    let l0_without_groups: Vec<String> =
+        tallies.iter().flat_map(|t| t.l0_without_groups.clone()).collect();
+    println!(
+        "grouping: {coordinates} Ext coordinates, {} bank recipes ({} factored / {} bare), \
+         {groups} groups over {members} members (max {max_members} members, max \
+         {max_immediates} immediates), bank {} -> {}, {} coordinates group, {} cores chopped",
+        sum(|t| t.recipes),
+        sum(|t| t.factored),
+        sum(|t| t.bare),
+        sum(|t| t.bank_before),
+        sum(|t| t.bank_after),
+        sum(|t| t.with_groups),
+        sum(|t| t.chopped_cores),
+    );
+
+    // Non-vacuity: the walk really ran, really factored, and really grouped.
+    assert_eq!(coordinates, in_scope::LAYERS, "every layer with backward roots, Ext regime");
+    assert!(sum(|t| t.recipes) > 0, "the corpus must yield bank recipes to factor");
+    assert!(sum(|t| t.factored) > 0, "recipes with a non-trivial core must exist");
+    assert!(groups > 0, "the corpus must realize coefficient groups");
+    assert!(members >= 2 * groups, "every group has at least two members");
+    assert_eq!(l0_without_groups, Vec::<String>::new(), "every L0 coordinate groups");
+    assert!(max_members <= GROUP_SPLIT_MAX_MEMBERS, "the chop bound holds corpus-wide");
+    assert!(
+        sum(|t| t.chopped_cores) > 0,
+        "the corpus's boulder cores must exercise the §4.2 chop, not just the bound"
+    );
+    assert!(max_immediates <= LEAN_MAX_IMMEDIATES, "the immediate cap holds corpus-wide");
+    assert!(
+        sum(|t| t.bank_after) < sum(|t| t.bank_before),
+        "grouping collapses member recipes onto shared cores"
     );
 }
