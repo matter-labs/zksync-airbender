@@ -737,6 +737,8 @@ impl Lowering<'_> {
             coefficients,
             sources,
             terms,
+            groups: Vec::new(),
+            immediates: Vec::new(),
         })
     }
 }

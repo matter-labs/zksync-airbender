@@ -503,6 +503,8 @@ mod tests {
             coefficients: Vec::new(),
             sources,
             terms,
+            groups: Vec::new(),
+            immediates: Vec::new(),
         }
     }
 

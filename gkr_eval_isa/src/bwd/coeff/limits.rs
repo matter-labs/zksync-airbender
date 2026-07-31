@@ -47,6 +47,21 @@ const _: () = assert!(MAX_COEFFICIENT_ENCODINGS == 8_192);
 pub const MAX_OPCODES_PER_REGIME: usize = 1 << HEADER_OPCODE_BITS;
 const _: () = assert!(MAX_OPCODES_PER_REGIME == 8);
 
+/// The Ext-regime GROUP HEADER control code (spec §4.4). NOT a term class: the
+/// frozen class tables stay term-only, and decoders branch on this value at
+/// continuation before category lookup. At R0 the same number is a live term
+/// class (`C2ProductBfBf`), which is why decode needs regime context.
+pub const LEAN_CONT_GROUP_HEADER_CLASS: u16 = 2;
+
+/// Wire-level cap on one coordinate's immediate table (spec §4.5). The GPU
+/// descriptor capacity `BWD_SEG_MAX_IMMEDIATES` mirror-asserts EQUAL to this —
+/// the crates never import each other's constant.
+pub const LEAN_MAX_IMMEDIATES: usize = 512;
+
+/// Threshold split (spec §4.2): a group with more members is chopped into even
+/// chunks of whole members BEFORE the order search. K-independent.
+pub const GROUP_SPLIT_MAX_MEMBERS: usize = 16;
+
 /// `source_window:6` of the input word (§9.4).
 pub const MAX_SOURCE_WINDOWS: usize = 64;
 /// `column:7` of the input word: a window covers at most this many contiguous

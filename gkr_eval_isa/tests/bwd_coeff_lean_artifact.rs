@@ -407,6 +407,8 @@ fn neg_one_census_counts_negative_coefficients_per_category() {
                 field: FieldKind::Base,
             },
         ],
+        groups: Vec::new(),
+        immediates: Vec::new(),
     };
 
     let census = neg_one_census(&layer);

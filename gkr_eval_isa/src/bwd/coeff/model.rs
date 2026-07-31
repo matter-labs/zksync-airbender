@@ -91,6 +91,41 @@ impl CoefficientRecipeId {
     }
 }
 
+/// A member's immediate on the wire: `0` = +1, `1` = −1, `id ≥ 2` indexes
+/// `CoeffLayer::immediates[id - 2]` (spec §4.4).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct ImmediateId(pub u16);
+
+impl ImmediateId {
+    pub const ONE: Self = ImmediateId(0);
+    pub const NEG_ONE: Self = ImmediateId(1);
+    pub const RESERVED: u16 = 2;
+    pub fn banked(index: usize) -> Self {
+        ImmediateId(Self::RESERVED + index as u16)
+    }
+    pub fn bank_index(self) -> Option<usize> {
+        (self.0 >= Self::RESERVED).then(|| usize::from(self.0 - Self::RESERVED))
+    }
+}
+
+/// One grouped term: which term, and the BF immediate its recipe factors into.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct CoeffGroupMember {
+    pub term: TermId,
+    pub immediate: ImmediateId,
+}
+
+/// One coefficient group (spec §4.1): terms sharing a challenge core. Members
+/// are ascending by `TermId`; `has_c0`/`has_c2` say which accumulator sides the
+/// group's core multiplies into.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CoeffGroup {
+    pub core: CoefficientRecipeId,
+    pub members: Vec<CoeffGroupMember>,
+    pub has_c0: bool,
+    pub has_c2: bool,
+}
+
 /// The only two named source projections (§4). There is no "delta endpoint".
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Projection {
@@ -536,6 +571,13 @@ pub struct CoeffLayer {
     pub coefficients: Vec<NormalizedCoefficientRecipe>,
     pub sources: Vec<CoeffSource>,
     pub terms: Vec<CoeffTerm>,
+    /// Coefficient groups (spec §4.1). Empty until the grouping transform runs;
+    /// ALWAYS empty at R0. Every member's `CoeffTerm::coefficient` is rewritten
+    /// to the group's `core` id.
+    pub groups: Vec<CoeffGroup>,
+    /// Canonical BF values addressed by `ImmediateId::banked` ids. Deduplicated,
+    /// ascending. Capped by `limits::LEAN_MAX_IMMEDIATES`.
+    pub immediates: Vec<u32>,
 }
 
 impl CoeffLayer {

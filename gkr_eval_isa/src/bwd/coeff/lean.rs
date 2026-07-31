@@ -476,6 +476,8 @@ mod tests {
                 })
                 .collect(),
             terms,
+            groups: Vec::new(),
+            immediates: Vec::new(),
         }
     }
 
