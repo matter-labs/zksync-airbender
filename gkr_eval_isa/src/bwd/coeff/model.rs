@@ -657,6 +657,13 @@ pub enum CoeffError {
     /// The interpreter was handed a coefficient id whose recipe is the additive
     /// identity — an encoded zero is a compiler error, not a representable value.
     EncodedZeroCoefficient { id: CoefficientRecipeId },
+    /// The interpreter was handed a coefficient-group member whose immediate id
+    /// lies past [`CoeffLayer::immediates`] (§4.4's id space: `0` and `1` are the
+    /// reserved `±1` literals and are therefore always in range).
+    ///
+    /// The `UnknownCoefficient` of the immediate table: a well-formed id the LAYER
+    /// cannot serve.
+    UnknownImmediate { id: ImmediateId },
     /// The interpreter was handed a source id outside `CoeffLayer::sources`.
     UnknownSource { id: SourceId },
     /// A term projects a role its opcode cannot consume (`C0Linear` over `Delta`,

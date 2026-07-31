@@ -15,16 +15,17 @@
 //! The semantic reference is the ORACLE of the whole backward pipeline: every
 //! parity ladder — lean CPU, and the CUDA executor — is stated against it.
 
-use cs::gkr_compiler::dag_ir::{BwdRegime, Ext};
-use field::Field;
+use cs::gkr_compiler::dag_ir::{Bf, BwdRegime, Ext};
+use field::{Field, FieldExtension, PrimeField};
 
+use super::group;
 use super::lean::{
     self, LEAN_CONT_OPCODES, LEAN_R0_OPCODES, LeanCodecError, LeanProgram, LeanTerm, SOURCE_NONE,
 };
 use super::limits::TermCategory;
 use super::model::{
-    CoeffError, CoeffLayer, CoeffTerm, CoefficientRecipeId, Projection, ProjectionId, SourceId,
-    TermId,
+    CoeffError, CoeffLayer, CoeffTerm, CoefficientRecipeId, ImmediateId, Projection, ProjectionId,
+    SourceId, TermId,
 };
 use super::order::split_round_robin;
 
@@ -53,6 +54,31 @@ pub trait CoeffResolver {
 /// C2Product(k, da, db)   acc_c2 += k * da * db
 /// DualProduct(k, A, B)   acc_c0 += k * A.s0 * B.s0 ; acc_c2 += k * A.ds * B.ds
 /// ```
+///
+/// A GROUPED layer (§4.1) changes the SHAPE of that sum, never its value. A
+/// group's members carry the group's CORE as their coefficient id plus their own
+/// base-field immediate, so the members are summed FIRST and the core multiplies
+/// each accumulator side once:
+///
+/// ```text
+/// group(core, members)   acc_c0 += core * SUM imm_m * <member m's c0 part>
+///                        acc_c2 += core * SUM imm_m * <member m's c2 part>
+/// ```
+///
+/// where a member's parts are exactly the products its own term kind contributes
+/// above, with the per-term coefficient factored out. `has_c0` / `has_c2` say which
+/// sides the group feeds; the other sum is zero, and its core multiplication is
+/// skipped rather than performed against zero.
+///
+/// This is the same field element the ungrouped layer produces — `SUM_m (imm_m *
+/// core) * v_m == core * SUM_m imm_m * v_m` is distributivity, and field
+/// arithmetic is exact, so there is no tolerance in which a dropped immediate or a
+/// double-served member could hide. The corpus gate
+/// (`bwd_coeff_corpus.rs::grouped_semantics_match_ungrouped_bit_for_bit`) asserts
+/// it limb for limb on every `Ext` coordinate.
+///
+/// An UNGROUPED layer takes exactly the path it always did: `layer.groups` is
+/// empty, every term is plain, and the group loop does not run.
 pub fn interpret_coeff_layer(
     layer: &CoeffLayer,
     row: usize,
@@ -64,7 +90,22 @@ pub fn interpret_coeff_layer(
     };
     let mut acc_c2 = Ext::ZERO;
 
+    // A grouped member is NOT a plain term: its `coefficient()` is its group's
+    // core, so evaluating it here would silently drop its immediate. The mask is
+    // built over `TermId` — which is the term's own index, `layer.terms` being
+    // dense (`terms[i].id() == TermId(i)`) — and the group loop below serves every
+    // masked term exactly once, since a term belongs to at most one group.
+    let mut grouped = vec![false; layer.terms.len()];
+    for group in &layer.groups {
+        for member in &group.members {
+            grouped[member.term.0 as usize] = true;
+        }
+    }
+
     for term in &layer.terms {
+        if grouped[term.id().0 as usize] {
+            continue;
+        }
         let k = coefficient(layer, term.coefficient(), resolver)?;
         match term {
             CoeffTerm::C0Linear { id, value, .. } => {
@@ -95,7 +136,89 @@ pub fn interpret_coeff_layer(
             }
         }
     }
+
+    // ONE core multiplication per side per group, instead of one per member. The
+    // order the members are summed in is irrelevant — the field is exact — so this
+    // loop's position after the plain terms is a readability choice, not a semantic
+    // one.
+    for group in &layer.groups {
+        let core = coefficient(layer, group.core, resolver)?;
+        let mut s_c0 = Ext::ZERO;
+        let mut s_c2 = Ext::ZERO;
+        for member in &group.members {
+            let imm = immediate_value(layer, member.immediate)?;
+            let term = &layer.terms[member.term.0 as usize];
+            match term {
+                CoeffTerm::C0Linear { id, value, .. } => {
+                    let (e0, _) =
+                        projection(layer, *id, *value, Projection::Endpoint0, row, resolver)?;
+                    accumulate_imm(&mut s_c0, member.immediate, imm, e0);
+                }
+                CoeffTerm::C2Product { id, lhs, rhs, .. } => {
+                    let (_, dl) = projection(layer, *id, *lhs, Projection::Delta, row, resolver)?;
+                    let (_, dr) = projection(layer, *id, *rhs, Projection::Delta, row, resolver)?;
+                    let mut v = dl;
+                    v.mul_assign(&dr);
+                    accumulate_imm(&mut s_c2, member.immediate, imm, v);
+                }
+                CoeffTerm::DualProduct { lhs, rhs, .. } => {
+                    let (l0, ld) = source_pair(layer, *lhs, row, resolver)?;
+                    let (r0, rd) = source_pair(layer, *rhs, row, resolver)?;
+                    let mut c0 = l0;
+                    c0.mul_assign(&r0);
+                    accumulate_imm(&mut s_c0, member.immediate, imm, c0);
+                    let mut c2 = ld;
+                    c2.mul_assign(&rd);
+                    accumulate_imm(&mut s_c2, member.immediate, imm, c2);
+                }
+            }
+        }
+        if group.has_c0 {
+            let mut v = core;
+            v.mul_assign(&s_c0);
+            acc_c0.add_assign(&v);
+        }
+        if group.has_c2 {
+            let mut v = core;
+            v.mul_assign(&s_c2);
+            acc_c2.add_assign(&v);
+        }
+    }
     Ok((acc_c0, acc_c2))
+}
+
+/// The `Ext`-lifted base-field value a member's [`ImmediateId`] denotes.
+///
+/// The id space itself is decoded by [`group::immediate_value`] — the crate's ONE
+/// decoder of it — so the interpreter cannot disagree with the transform that
+/// minted the id, and an id past the layer's table is rejected here exactly as
+/// [`coefficient`] rejects an unbanked coefficient.
+///
+/// The lift is unconditional, including for the two reserved literals: what `±1`
+/// saves is a MULTIPLICATION, and that saving lives in [`accumulate_imm`].
+fn immediate_value(layer: &CoeffLayer, id: ImmediateId) -> Result<Ext, CoeffError> {
+    let value = group::immediate_value(layer, id).ok_or(CoeffError::UnknownImmediate { id })?;
+    Ok(<Ext as FieldExtension<Bf>>::from_base(Bf::from_u32_with_reduction(value)))
+}
+
+/// Add `imm * v` to a group's per-side sum, spending NO multiplication on the two
+/// reserved immediates: `+1` is an addition and `-1` a subtraction (§4.4 — a
+/// member's immediate is meant to be cheaper than the `Ext` coefficient it
+/// replaced, and for `±1` it is free).
+///
+/// `imm` is ignored on both fast paths, so a wrong lift of a reserved id cannot
+/// change a value; the SIGN comes from the id, which is the only thing that carries
+/// it.
+fn accumulate_imm(acc: &mut Ext, id: ImmediateId, imm: Ext, v: Ext) {
+    if id == ImmediateId::ONE {
+        acc.add_assign(&v);
+    } else if id == ImmediateId::NEG_ONE {
+        acc.sub_assign(&v);
+    } else {
+        let mut scaled = imm;
+        scaled.mul_assign(&v);
+        acc.add_assign(&scaled);
+    }
 }
 
 /// Reserved literals resolve internally (no bank entry, no resolver call); every
@@ -356,7 +479,9 @@ mod tests {
     use super::*;
     use crate::bwd::coeff::limits::in_scope;
     use crate::bwd::coeff::lower::lower_coeff_layer;
-    use crate::bwd::coeff::model::{CoeffSource, NormalizedCoefficientRecipe};
+    use crate::bwd::coeff::model::{
+        CoeffGroup, CoeffGroupMember, CoeffSource, NormalizedCoefficientRecipe,
+    };
     use crate::bwd::coeff::order::order_terms;
     use crate::bwd::distill::distill;
     use crate::bwd::source::OriginLeaf;
@@ -772,6 +897,64 @@ mod tests {
         let program = lean::encode_program(&layer, &order_terms(&layer)).expect("a legal layer");
         let resolver = Pseudo { layer: &layer, seed: 0xaa };
         let _ = interpret_lean_program(&program, &layer, 0, &resolver, 0);
+    }
+
+    // ── Grouped members ──────────────────────────────────────────────────────
+
+    /// A two-member group over two `C0Linear` terms, with `immediates` left EMPTY —
+    /// so every member immediate is either reserved or out of range.
+    fn grouped_pair(a: ImmediateId, b: ImmediateId) -> CoeffLayer {
+        let terms = vec![c0(0, 2, 0, FieldKind::Ext), c0(1, 2, 1, FieldKind::Ext)];
+        CoeffLayer {
+            groups: vec![CoeffGroup {
+                core: CoefficientRecipeId(2),
+                members: vec![
+                    CoeffGroupMember { term: TermId(0), immediate: a },
+                    CoeffGroupMember { term: TermId(1), immediate: b },
+                ],
+                has_c0: true,
+                has_c2: false,
+            }],
+            ..layer(BwdRegime::Ext, &[FieldKind::Ext; 2], 1, terms)
+        }
+    }
+
+    /// The two reserved immediates are SIGNS, not merely cheap multiplications:
+    /// `+1` adds a member's value into the group sum and `-1` subtracts it. The
+    /// corpus gate proves grouping is value-neutral on whatever immediate mix the
+    /// compiler happens to emit; this pins the sign of both reserved ids
+    /// unconditionally, on the path that never multiplies by the immediate at all.
+    #[test]
+    fn reserved_group_immediates_add_and_subtract() {
+        let row = 5;
+        let grouped = grouped_pair(ImmediateId::ONE, ImmediateId::NEG_ONE);
+        let resolver = Pseudo { layer: &grouped, seed: 0xb1 };
+        let (got_c0, got_c2) = interpret_coeff_layer(&grouped, row, &resolver).expect("grouped");
+
+        let core = resolver.coefficient(CoefficientRecipeId(2));
+        let (first, _) = resolver.source_pair(SourceId(0), row);
+        let (second, _) = resolver.source_pair(SourceId(1), row);
+        assert_ne!(first, second, "the fixture must make the sign observable");
+        let mut want = first;
+        want.sub_assign(&second);
+        want.mul_assign(&core);
+        assert_eq!(got_c0, want, "the group sum is (+1)*first + (-1)*second, times the core");
+        assert_eq!(got_c2, Ext::ZERO, "`C0Linear` members feed no c2 side");
+    }
+
+    /// A member immediate past the layer's table is the immediate-side
+    /// [`CoeffError::UnknownCoefficient`]: a well-formed id the LAYER cannot serve.
+    /// It is REPORTED, not indexed — the transform never mints one, but the
+    /// interpreter is handed layers it did not build.
+    #[test]
+    fn an_out_of_range_group_immediate_is_rejected() {
+        let past = ImmediateId::banked(0); // `immediates` is empty
+        let grouped = grouped_pair(ImmediateId::ONE, past);
+        let resolver = Pseudo { layer: &grouped, seed: 0xb2 };
+        assert_eq!(
+            interpret_coeff_layer(&grouped, 0, &resolver),
+            Err(CoeffError::UnknownImmediate { id: past }),
+        );
     }
 
     /// The encoder normalizes a mixed `C2Product` to BF-FIRST, so for a transposed

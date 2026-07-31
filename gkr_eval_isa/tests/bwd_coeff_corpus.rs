@@ -1093,3 +1093,143 @@ fn grouped_corpus_layers_factor_exactly() {
         "grouping collapses member recipes onto shared cores"
     );
 }
+
+// ── Grouped semantics ─────────────────────────────────────────────────────────
+
+/// The four raw base-field limbs of an `Ext`, canonically reduced — what
+/// "bit-identical" means for this field. Compared instead of the `Ext` values
+/// themselves so a failure prints the diverging COORDINATE rather than an opaque
+/// `Ext`, and so the claim is visibly about the representation and not about some
+/// tolerance.
+fn limbs(v: Ext) -> [u32; 4] {
+    <Ext as FieldExtension<Bf>>::into_coeffs(v).map(|c| c.as_u32_reduced())
+}
+
+/// Design §4.6 on real cones: GROUPING IS VALUE-NEUTRAL. On every `Ext` coordinate
+/// of the pinned corpus the group-aware interpreter reproduces the ungrouped
+/// interpreter's `(acc_c0, acc_c2)` limb for limb.
+///
+/// This is the whole point of the grouped form. A group replaces one `Ext`
+/// coefficient multiplication per member with one per GROUP plus a base-field
+/// immediate per member — `k_m * v_m` summed becomes `core * Σ imm_m * v_m` — which
+/// is the same field element only because field arithmetic is exact and
+/// distributive. There is no rounding to absorb a mistake here: a dropped
+/// immediate, a member evaluated twice (once plain, once in its group), a member
+/// skipped without being served, or an accumulator side gated off by a wrong
+/// `has_c0` / `has_c2` all show up as a different limb.
+///
+/// Both sides run the SAME resolver construction (`Pairs`): it evaluates whatever
+/// recipe the layer's bank holds at the id it is asked for, and the grouped layer's
+/// bank IS the rebuilt one, so the core ids resolve to their core recipes with no
+/// special-casing. The recipes changed; the resolver contract did not.
+///
+/// Non-vacuity is asserted explicitly: the corpus must really produce groups, must
+/// exercise BOTH immediate paths (the `±1` fast path and the banked-multiply path),
+/// and must produce non-zero accumulators — `(0, 0) == (0, 0)` would prove nothing.
+#[test]
+fn grouped_semantics_match_ungrouped_bit_for_bit() {
+    /// Rows sampled per coordinate: the two rows an affine source model treats as
+    /// boundaries, plus one that is neither. `read_pair` is a pure function of
+    /// `(place, row)` with no row bound, so the last row of a 2^20 trace is just
+    /// another sample — what matters is that it is a different one.
+    const SAMPLED: [usize; 3] = [0, 1, (1 << 20) - 1];
+
+    #[derive(Default)]
+    struct Tally {
+        coordinates: usize,
+        rows: usize,
+        groups: usize,
+        members: usize,
+        /// Members whose immediate is `±1` — the add/sub fast path.
+        literal_members: usize,
+        /// Members whose immediate is a banked table entry — the multiply path.
+        banked_members: usize,
+        nonzero_c0: usize,
+        nonzero_c2: usize,
+    }
+
+    let tallies: Vec<Tally> = FIXTURES
+        .par_iter()
+        .map(|name| {
+            let mut t = Tally::default();
+            for (li, layer, cross) in layers_with_bwd_roots(name) {
+                let where_ = format!("{name} L{li} Ext");
+                let d = distill(&layer, BwdRegime::Ext, &cross, None);
+                let plain =
+                    lower_coeff_layer(&layer, &d).unwrap_or_else(|e| panic!("[{where_}] {e:?}"));
+                let grouped = group_coeff_layer(plain.clone())
+                    .unwrap_or_else(|e| panic!("[{where_}] grouping: {e:?}"));
+                t.coordinates += 1;
+                t.groups += grouped.groups.len();
+                for group in &grouped.groups {
+                    t.members += group.members.len();
+                    for member in &group.members {
+                        match member.immediate.bank_index() {
+                            None => t.literal_members += 1,
+                            Some(_) => t.banked_members += 1,
+                        }
+                    }
+                }
+
+                let plain_pairs = Pairs { layer: &plain };
+                let grouped_pairs = Pairs { layer: &grouped };
+                for row in SAMPLED {
+                    let (want_c0, want_c2) = interpret_coeff_layer(&plain, row, &plain_pairs)
+                        .unwrap_or_else(|e| panic!("[{where_} row {row}] ungrouped: {e:?}"));
+                    let (got_c0, got_c2) = interpret_coeff_layer(&grouped, row, &grouped_pairs)
+                        .unwrap_or_else(|e| panic!("[{where_} row {row}] grouped: {e:?}"));
+                    assert_eq!(
+                        limbs(got_c0),
+                        limbs(want_c0),
+                        "[{where_} row {row}] acc_c0 diverges from the ungrouped layer"
+                    );
+                    assert_eq!(
+                        limbs(got_c2),
+                        limbs(want_c2),
+                        "[{where_} row {row}] acc_c2 diverges from the ungrouped layer"
+                    );
+                    t.rows += 1;
+                    t.nonzero_c0 += usize::from(want_c0 != Ext::ZERO);
+                    t.nonzero_c2 += usize::from(want_c2 != Ext::ZERO);
+                }
+            }
+            t
+        })
+        .collect();
+
+    let sum = |f: fn(&Tally) -> usize| tallies.iter().map(f).sum::<usize>();
+    let coordinates = sum(|t| t.coordinates);
+    println!(
+        "grouped semantics: {coordinates} Ext coordinates x {} rows, {} groups over {} members \
+         ({} +-1 / {} banked immediates), non-zero acc_c0 on {} rows, acc_c2 on {}",
+        SAMPLED.len(),
+        sum(|t| t.groups),
+        sum(|t| t.members),
+        sum(|t| t.literal_members),
+        sum(|t| t.banked_members),
+        sum(|t| t.nonzero_c0),
+        sum(|t| t.nonzero_c2),
+    );
+
+    assert_eq!(coordinates, in_scope::LAYERS, "every layer with backward roots, Ext regime");
+    assert_eq!(sum(|t| t.rows), coordinates * SAMPLED.len(), "every coordinate x row compared");
+    assert!(sum(|t| t.groups) > 0, "the corpus must realize groups, or this proves nothing");
+    assert!(
+        sum(|t| t.literal_members) > 0,
+        "the +-1 immediate fast path must be exercised by the corpus"
+    );
+    assert!(
+        sum(|t| t.banked_members) > 0,
+        "the banked-immediate multiply path must be exercised by the corpus"
+    );
+    assert_eq!(
+        sum(|t| t.nonzero_c0),
+        sum(|t| t.rows),
+        "every sampled Ext row must carry a non-zero acc_c0"
+    );
+    assert_eq!(
+        sum(|t| t.nonzero_c2),
+        sum(|t| t.rows),
+        "every sampled Ext row must carry a non-zero acc_c2"
+    );
+}
