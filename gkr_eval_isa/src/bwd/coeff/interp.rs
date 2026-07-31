@@ -338,7 +338,7 @@ pub fn interpret_lean_program(
     resolver: &impl CoeffResolver,
     k: usize,
 ) -> Result<(Ext, Ext), LeanInterpError> {
-    let records = lean::decode_program(program)?;
+    let records = lean::decode_program(program, layer.regime)?;
     let seed = match layer.c_init {
         Some(id) if layer.regime == BwdRegime::R0 => return Err(LeanInterpError::CInitAtR0 { id }),
         Some(id) => coefficient(layer, id, resolver)?,
@@ -849,10 +849,11 @@ mod tests {
             interpret_lean_program(program, &layer, 0, &resolver, k)
         };
 
-        // Class 2 is dead in the continuation regime.
+        // Class 3 is dead in the continuation regime (2 is the group header, not a
+        // class at all there — `lean::decode_atoms` reads it as one).
         assert_eq!(
-            run(&record(2, 0, 0, SOURCE_NONE), 1),
-            Err(LeanInterpError::Codec(LeanCodecError::ClassNotInRegime { term: 0, opcode: 2 })),
+            run(&record(3, 0, 0, SOURCE_NONE), 1),
+            Err(LeanInterpError::Codec(LeanCodecError::ClassNotInRegime { term: 0, opcode: 3 })),
         );
         // A two-source class with no second source cannot execute.
         assert_eq!(
@@ -882,10 +883,10 @@ mod tests {
         // position inside the list the split put it in.
         let mut words = record(0, 0, 0, SOURCE_NONE).words;
         words.extend(record(0, 0, 0, SOURCE_NONE).words);
-        words.extend(record(2, 0, 0, SOURCE_NONE).words);
+        words.extend(record(3, 0, 0, SOURCE_NONE).words);
         assert_eq!(
             run(&LeanProgram { words, term_count: 3 }, 2),
-            Err(LeanInterpError::Codec(LeanCodecError::ClassNotInRegime { term: 2, opcode: 2 })),
+            Err(LeanInterpError::Codec(LeanCodecError::ClassNotInRegime { term: 2, opcode: 3 })),
         );
     }
 

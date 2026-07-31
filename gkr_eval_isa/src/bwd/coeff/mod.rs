@@ -45,7 +45,8 @@ pub use group::{factor, group_coeff_layer, immediate_value, rescale};
 pub use interp::{CoeffResolver, LeanInterpError, interpret_coeff_layer, interpret_lean_program};
 pub use lean::{
     LEAN_BYTES_PER_TERM, LEAN_CLASS_MASK, LEAN_CLASS_SHIFT, LEAN_COEFFICIENT_MASK,
-    LEAN_COEFFICIENT_SHIFT, LEAN_CONT_OPCODES, LEAN_R0_OPCODES, LEAN_WORDS_PER_TERM,
+    LEAN_COEFFICIENT_SHIFT, LEAN_CONT_OPCODES, LEAN_GROUP_FLAG_C0, LEAN_GROUP_FLAG_C2,
+    LEAN_GROUP_FLAG_MASK, LEAN_R0_OPCODES, LEAN_WORDS_PER_TERM, LeanAtom, LeanAtomRef,
     LeanCodecError, LeanProgram, LeanTerm, SOURCE_NONE,
 };
 // The lean artifact helpers keep their `lean_` prefix — `lean_artifact_bytes`,

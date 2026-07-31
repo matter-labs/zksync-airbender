@@ -1222,7 +1222,7 @@ mod tests {
                     BwdRegime::R0 => LEAN_R0_OPCODES,
                     BwdRegime::Ext => LEAN_CONT_OPCODES,
                 };
-                for record in decode_program(&coord.artifact.program).expect("decode") {
+                for record in decode_program(&coord.artifact.program, regime).expect("decode") {
                     let category = table
                         .iter()
                         .find(|(class, _)| *class == u16::from(record.class))

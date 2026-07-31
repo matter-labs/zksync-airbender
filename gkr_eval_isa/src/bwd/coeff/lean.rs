@@ -37,6 +37,38 @@
 //! `source_a == source_b` is simply legal: with no resident state there is no
 //! double-write hazard for a squared product.
 //!
+//! # Group header records (`Ext` only, design §4.4)
+//!
+//! A coefficient GROUP ([`CoeffGroup`]) travels as one CONTROL record followed by
+//! its member term records:
+//!
+//! ```text
+//! word0 = [class = LEAN_CONT_GROUP_HEADER_CLASS (2) @13 | core coeff_idx:13 @0]
+//! word1 = member count N (>= 2)
+//! word2 = flags: bit0 = has_c0, bit1 = has_c2 (at least one set)
+//! word3 = 0                  (reserved, decoder-enforced)
+//! ```
+//!
+//! The header is a CONTROL code, not a term class: the frozen class tables above
+//! stay term-only, and a decoder branches on `class == 2` BEFORE any category
+//! lookup. The N records that follow are ordinary term records except that their
+//! thirteen coefficient bits are an [`ImmediateId`] (`0` -> `+1`, `1` -> `-1`,
+//! `id >= 2` -> `CoeffLayer::immediates[id - 2]`) instead of a recipe id. Outside a
+//! group the field keeps its recipe meaning, so a SINGLETON record is byte-identical
+//! to what this codec emitted before groups existed.
+//!
+//! Two consequences the whole module is shaped by:
+//!
+//!   * **Decode needs the regime.** Class `2` is a LIVE R0 term class
+//!     (`C2ProductBfBf`) and an `Ext` control code, and the words cannot tell them
+//!     apart — [`decode_atoms`] / [`decode_program`] take a [`BwdRegime`], and the
+//!     R0 path is behaviourally identical to the regime-free one it replaced.
+//!   * **`term_count` stays SEMANTIC.** It counts TERMS (`order.len()`), never
+//!     records, so R0 keeps its one legal stream length while `Ext` becomes a
+//!     self-delimiting walk that checks `Σ members + singletons == term_count`;
+//!     `words.len() == 4 · (term_count + headers)` then follows from the walk having
+//!     consumed the stream exactly.
+//!
 //! # What is deliberately NOT here
 //!
 //! No cells, lanes, windows, columns, residency modes, fill or plan words, no
@@ -52,10 +84,13 @@ use cs::gkr_compiler::dag_ir::{BwdRegime, FieldKind};
 use serde::{Deserialize, Serialize};
 
 use super::limits::{
-    CONTINUATION_OPCODE_TABLE, HEADER_COEFFICIENT_BITS, HEADER_OPCODE_BITS, MAX_OPCODES_PER_REGIME,
-    R0_OPCODE_TABLE, TermCategory, category_arity, is_move, term_category,
+    CONTINUATION_OPCODE_TABLE, HEADER_COEFFICIENT_BITS, HEADER_OPCODE_BITS,
+    LEAN_CONT_GROUP_HEADER_CLASS, MAX_OPCODES_PER_REGIME, R0_OPCODE_TABLE, TermCategory,
+    category_arity, is_move, term_category,
 };
-use super::model::{CoeffLayer, CoeffTerm, CoefficientRecipeId, SourceId, TermId};
+use super::model::{
+    CoeffGroup, CoeffLayer, CoeffTerm, CoefficientRecipeId, ImmediateId, SourceId, TermId,
+};
 
 // ── Wire geometry ────────────────────────────────────────────────────────────
 
@@ -78,7 +113,15 @@ pub const LEAN_CLASS_MASK: u16 = (1 << HEADER_OPCODE_BITS) - 1;
 /// (the corpus maximum is 1,062 sources).
 pub const SOURCE_NONE: u16 = 0xFFFF;
 
+/// A group header's `word2` bit 0: the group's core multiplies into `acc_c0`.
+pub const LEAN_GROUP_FLAG_C0: u16 = 1;
+/// A group header's `word2` bit 1: the group's core multiplies into `acc_c2`.
+pub const LEAN_GROUP_FLAG_C2: u16 = 2;
+/// The only bits `word2` admits — anything else is a malformed header.
+pub const LEAN_GROUP_FLAG_MASK: u16 = LEAN_GROUP_FLAG_C0 | LEAN_GROUP_FLAG_C2;
+
 const _: () = assert!(LEAN_CLASS_SHIFT == 13);
+const _: () = assert!(LEAN_CONT_GROUP_HEADER_CLASS <= LEAN_CLASS_MASK);
 const _: () = assert!(LEAN_COEFFICIENT_MASK == 0x1fff);
 const _: () = assert!(LEAN_CLASS_MASK as usize == MAX_OPCODES_PER_REGIME - 1);
 const _: () = assert!(LEAN_BYTES_PER_TERM == 8);
@@ -156,6 +199,25 @@ const _: () = assert!(table_is_canonical(LEAN_CONT_OPCODES));
 const _: () = assert!(is_densified_frozen_table(LEAN_R0_OPCODES, R0_OPCODE_TABLE));
 const _: () = assert!(is_densified_frozen_table(LEAN_CONT_OPCODES, CONTINUATION_OPCODE_TABLE));
 
+/// No row of `table` numbers `class`.
+const fn class_is_free(table: &[(u16, TermCategory)], class: u16) -> bool {
+    let mut i = 0;
+    while i < table.len() {
+        if table[i].0 == class {
+            return false;
+        }
+        i += 1;
+    }
+    true
+}
+
+// The group header is a CONTROL code, so it may not collide with a live
+// continuation TERM class — the one fence that keeps `decode_atoms`' `class == 2`
+// branch unambiguous in the `Ext` regime. At R0 the same number IS a live class,
+// which is exactly why decode takes a regime.
+const _: () = assert!(class_is_free(LEAN_CONT_OPCODES, LEAN_CONT_GROUP_HEADER_CLASS));
+const _: () = assert!(!class_is_free(LEAN_R0_OPCODES, LEAN_CONT_GROUP_HEADER_CLASS));
+
 /// The lean class table of one regime.
 const fn lean_table(regime: BwdRegime) -> &'static [(u16, TermCategory)] {
     match regime {
@@ -201,9 +263,45 @@ pub struct LeanTerm {
     pub source_b: u16,
 }
 
+/// One ATOM of a committed order: a plain term, or one group of `layer.groups`.
+///
+/// The unit the order search ([`order`](super::order)) places and the descriptor
+/// deal assigns to a warp — a group never straddles either boundary, which is why
+/// the order is stated over atoms and only FLATTENED to a term permutation for the
+/// artifact.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum LeanAtomRef {
+    Term(TermId),
+    /// Index into [`CoeffLayer::groups`].
+    Group(usize),
+}
+
+/// One DECODED atom, exactly as the words spell it — the group counterpart of
+/// [`LeanTerm`]: no class table, no bank and no immediate table are consulted, so a
+/// decoded atom is not yet a valid one ([`validate_program`] decides that).
+///
+/// A member's [`LeanTerm::coeff`] is an [`ImmediateId`], NOT a
+/// [`CoefficientRecipeId`] — the group's single recipe id is the header's `core`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum LeanAtom {
+    Term(LeanTerm),
+    Group {
+        /// The core recipe id, thirteen bits — never a reserved literal.
+        core: u16,
+        has_c0: bool,
+        has_c2: bool,
+        members: Vec<LeanTerm>,
+    },
+}
+
 /// Everything the lean codec and its validator can reject. Every variant is
-/// derivable from the inputs, and the codec's only run-time panic is
-/// [`encode_program`]'s documented one.
+/// derivable from the inputs, and the codec's only run-time panics are
+/// [`encode_program`]'s and [`encode_program_atoms`]' documented ones.
+///
+/// Every index a variant carries is a RECORD index in the word stream — headers
+/// included, so `4 · index` is the offending record's word offset — with the one
+/// documented exception of [`LeanCodecError::MemberCoefficientNotCore`], an
+/// encode-side statement about the LAYER.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LeanCodecError {
     /// The class is not live in the layer's regime.
@@ -216,6 +314,9 @@ pub enum LeanCodecError {
     /// The coefficient id addresses neither a reserved literal nor a bank entry
     /// (encoder side: or does not fit the thirteen coefficient bits, in which
     /// case an id too wide for `coeff` reports `u16::MAX`).
+    ///
+    /// Raised for a group header's CORE id too — the core is a bank id in exactly
+    /// the same id space, so the same statement covers it.
     CoefficientOutOfRange { term: usize, coeff: u16 },
     /// The slot is past `CoeffLayer::sources`.
     SourceOutOfRange { term: usize, slot: u16 },
@@ -225,10 +326,53 @@ pub enum LeanCodecError {
     SourceBMissing { term: usize },
     /// `word3` is not the canonical zero.
     ReservedWordNonZero { term: usize },
-    /// The stream is not exactly `term_count` fixed-width records. A fixed-width
-    /// stream has ONE legal length, so a long stream is the same defect as a
-    /// short one.
+    /// The stream is not whole fixed-width records: at R0, not exactly
+    /// `term_count` of them (a fixed-width stream has ONE legal length, so a long
+    /// stream is the same defect as a short one); in `Ext`, a word count that is
+    /// not a multiple of [`LEAN_WORDS_PER_TERM`] at all, since there the RECORD
+    /// count is derived by the walk and only the term total is declared
+    /// ([`LeanCodecError::TermCountMismatch`] is the `Ext` counting reject).
     TruncatedStream { words: usize },
+    /// A group header claims `members` records but the stream ends first (`Ext`).
+    TruncatedGroup { atom: usize, members: usize },
+    /// A group header claims fewer than two members. A one-member group is not a
+    /// group: it would spend a core multiply to save nothing, and the transform
+    /// never mints one (spec §4.4 `N >= 2`).
+    GroupMemberCountInvalid { atom: usize, members: usize },
+    /// A group header's `word2` is zero (a core that multiplies into neither
+    /// accumulator) or sets a bit outside [`LEAN_GROUP_FLAG_MASK`]. Words-only, so
+    /// the DECODER rejects it; the cross-check against the members is
+    /// [`LeanCodecError::GroupFlagsMismatch`].
+    GroupFlagsInvalid { atom: usize, flags: u16 },
+    /// A group header's flags disagree with the accumulator sides its member
+    /// classes actually touch. Needs the class table, so the VALIDATOR rejects it.
+    GroupFlagsMismatch { atom: usize, flags: u16, expected: u16 },
+    /// A member record carries the group-header control code. Groups do not nest:
+    /// a group is one flat run of member records (spec §4.4).
+    NestedGroupHeader { atom: usize, member: usize },
+    /// A group header's core id is a reserved literal. `±1` is not a challenge
+    /// core — such a term does not group at all (spec §4.1), and a literal core
+    /// would mean a group whose "shared multiply" is free.
+    GroupCoreIsLiteral { atom: usize },
+    /// A member's immediate id addresses neither `±1` nor a
+    /// `CoeffLayer::immediates` entry.
+    ImmediateOutOfRange { term: usize, id: u16 },
+    /// The records the `Ext` walk found carry `terms` terms, which is not the
+    /// `LeanProgram::term_count` the program declares. This is the `Ext` counting
+    /// invariant: `term_count` is SEMANTIC (`order.len()`), and headers are the
+    /// only records it does not count.
+    TermCountMismatch { terms: usize, declared: usize },
+    /// A group member's own [`CoeffTerm::coefficient`] is not the group's core id
+    /// (spec §4.1: the grouping transform REWRITES it, so a mismatch is a broken
+    /// layer, not a broken stream).
+    ///
+    /// Encode-side only, and the only variant whose indices are not both record
+    /// indices: `atom` is the header's record index, `term` the member's
+    /// [`TermId`] — the index that addresses `layer.terms`, which is where the
+    /// defect is. A decoded member record cannot be checked against this at all
+    /// (no `TermId` travels on the wire), so the transform that SETS the field and
+    /// the encoder that CHECKS it are the two pin points.
+    MemberCoefficientNotCore { atom: usize, term: usize },
 }
 
 // ── Encoding ─────────────────────────────────────────────────────────────────
@@ -242,19 +386,129 @@ pub fn encode_program(layer: &CoeffLayer, order: &[TermId]) -> Result<LeanProgra
     let mut words = Vec::with_capacity(order.len() * LEAN_WORDS_PER_TERM);
     for (index, id) in order.iter().enumerate() {
         let term = &layer.terms[id.0 as usize];
-        let category = term_category(term);
-        let class = lean_class(layer.regime, category).ok_or(LeanCodecError::ClassNotInRegime {
-            term: index,
-            opcode: u16::from(category.tag()),
-        })?;
-        let coeff = coefficient_field(index, term.coefficient())?;
-        let (source_a, source_b) = source_slots(index, term, layer.sources.len())?;
-        words.push((class << LEAN_CLASS_SHIFT) | coeff);
-        words.push(source_a);
-        words.push(source_b);
-        words.push(0);
+        let coeff = CoeffField::Recipe(term.coefficient());
+        encode_term(&mut words, layer, index, term, coeff)?;
     }
     Ok(LeanProgram { words, term_count: order.len() })
+}
+
+/// Encode `layer`'s committed ATOM order — plain records for singletons, a header
+/// record plus its members for each group (spec §4.4).
+///
+/// The group path is `Ext`-only in production, but the function does not gate on the
+/// regime: a group atom in an R0 layer would emit a header whose class collides with
+/// `C2ProductBfBf`, and the transform never produces one, so there is nothing to
+/// gate — R0 layers carry `groups` empty and every atom is a `Term`.
+///
+/// Encode-side invariants it enforces, which no decode of the words could
+/// (spec §4.1): a member's own coefficient id IS its group's core, the core is not a
+/// reserved literal, every member immediate addresses `layer.immediates` or `±1`, and
+/// the header is one a [`decode_atoms`] of the emitted stream accepts (`N >= 2`,
+/// flags non-empty).
+///
+/// # Panics
+///
+/// If an atom names a term outside `layer.terms` or a group outside `layer.groups`.
+pub fn encode_program_atoms(
+    layer: &CoeffLayer,
+    atoms: &[LeanAtomRef],
+) -> Result<LeanProgram, LeanCodecError> {
+    let mut words = Vec::with_capacity(atoms.len() * LEAN_WORDS_PER_TERM);
+    let mut record = 0usize;
+    let mut term_count = 0usize;
+    for atom in atoms {
+        match atom {
+            LeanAtomRef::Term(id) => {
+                let term = &layer.terms[id.0 as usize];
+                let coeff = CoeffField::Recipe(term.coefficient());
+                encode_term(&mut words, layer, record, term, coeff)?;
+                record += 1;
+                term_count += 1;
+            }
+            LeanAtomRef::Group(index) => {
+                let group = &layer.groups[*index];
+                encode_group(&mut words, layer, record, group)?;
+                record += 1 + group.members.len();
+                term_count += group.members.len();
+            }
+        }
+    }
+    Ok(LeanProgram { words, term_count })
+}
+
+/// Append one group: the header record, then its members in the order the group
+/// lists them — ascending `TermId`, which is the wire's member order (spec §4.2).
+fn encode_group(
+    words: &mut Vec<u16>,
+    layer: &CoeffLayer,
+    record: usize,
+    group: &CoeffGroup,
+) -> Result<(), LeanCodecError> {
+    let core = coefficient_field(record, group.core)?;
+    if CoefficientRecipeId(u32::from(core)).literal().is_some() {
+        return Err(LeanCodecError::GroupCoreIsLiteral { atom: record });
+    }
+    let members = group.members.len();
+    if members < 2 {
+        return Err(LeanCodecError::GroupMemberCountInvalid { atom: record, members });
+    }
+    let flags = u16::from(group.has_c0) | (u16::from(group.has_c2) << 1);
+    if flags == 0 {
+        return Err(LeanCodecError::GroupFlagsInvalid { atom: record, flags });
+    }
+    words.push((LEAN_CONT_GROUP_HEADER_CLASS << LEAN_CLASS_SHIFT) | core);
+    // The chop caps a group at `GROUP_SPLIT_MAX_MEMBERS`, three orders of magnitude
+    // inside a u16, so a member count that does not fit is a broken transform.
+    words.push(u16::try_from(members).expect("the chop caps a group's member count"));
+    words.push(flags);
+    words.push(0);
+    for (offset, member) in group.members.iter().enumerate() {
+        let position = record + 1 + offset;
+        let term = &layer.terms[member.term.0 as usize];
+        if term.coefficient() != group.core {
+            return Err(LeanCodecError::MemberCoefficientNotCore {
+                atom: record,
+                term: member.term.0 as usize,
+            });
+        }
+        encode_term(words, layer, position, term, CoeffField::Immediate(member.immediate))?;
+    }
+    Ok(())
+}
+
+/// What a record's thirteen coefficient bits MEAN — the only difference between a
+/// plain record and a group member record.
+#[derive(Clone, Copy)]
+enum CoeffField {
+    Recipe(CoefficientRecipeId),
+    Immediate(ImmediateId),
+}
+
+/// Append one four-word TERM record, checking exactly what the pre-group encoder
+/// checked and in the same order: the class is live in the regime, the coefficient
+/// field is in range, the slots are inside the source table.
+fn encode_term(
+    words: &mut Vec<u16>,
+    layer: &CoeffLayer,
+    record: usize,
+    term: &CoeffTerm,
+    field: CoeffField,
+) -> Result<(), LeanCodecError> {
+    let category = term_category(term);
+    let class = lean_class(layer.regime, category).ok_or(LeanCodecError::ClassNotInRegime {
+        term: record,
+        opcode: u16::from(category.tag()),
+    })?;
+    let coeff = match field {
+        CoeffField::Recipe(id) => coefficient_field(record, id)?,
+        CoeffField::Immediate(id) => immediate_field(record, layer, id)?,
+    };
+    let (source_a, source_b) = source_slots(record, term, layer.sources.len())?;
+    words.push((class << LEAN_CLASS_SHIFT) | coeff);
+    words.push(source_a);
+    words.push(source_b);
+    words.push(0);
+    Ok(())
 }
 
 /// The header's coefficient field: the recipe id itself, thirteen bits wide.
@@ -264,6 +518,21 @@ fn coefficient_field(term: usize, id: CoefficientRecipeId) -> Result<u16, LeanCo
         return Err(LeanCodecError::CoefficientOutOfRange { term, coeff });
     }
     Ok(coeff)
+}
+
+/// A member record's coefficient field: the [`ImmediateId`], checked against the
+/// two reserved literals plus `layer.immediates` — and against the thirteen bits,
+/// which the id space shares with a recipe id.
+fn immediate_field(
+    term: usize,
+    layer: &CoeffLayer,
+    id: ImmediateId,
+) -> Result<u16, LeanCodecError> {
+    let limit = usize::from(ImmediateId::RESERVED) + layer.immediates.len();
+    if usize::from(id.0) >= limit || id.0 > LEAN_COEFFICIENT_MASK {
+        return Err(LeanCodecError::ImmediateOutOfRange { term, id: id.0 });
+    }
+    Ok(id.0)
 }
 
 /// The two source words of one term.
@@ -300,10 +569,27 @@ fn source_slots(
 
 // ── Decoding and validation ──────────────────────────────────────────────────
 
-/// Unpack the whole stream. Regime-free: it checks the stream's LENGTH and its
-/// reserved words and reads the fields, which is everything the words alone
-/// determine. [`validate_program`] is what decides legality.
-pub fn decode_program(program: &LeanProgram) -> Result<Vec<LeanTerm>, LeanCodecError> {
+/// Unpack the whole stream into ATOMS. Bank-free and table-free: it checks the
+/// stream's STRUCTURE — the lengths, the reserved words, and in `Ext` everything a
+/// self-delimiting walk needs to be unambiguous (`N >= 2`, well-formed flags, no
+/// nesting, no truncated group, the declared term total) — and reads the fields.
+/// [`validate_program`] is what decides legality against a layer.
+///
+/// `regime` is not a preference: class `2` is a live R0 term class and the `Ext`
+/// group-header control code, and no property of the words distinguishes them.
+pub fn decode_atoms(
+    program: &LeanProgram,
+    regime: BwdRegime,
+) -> Result<Vec<LeanAtom>, LeanCodecError> {
+    match regime {
+        BwdRegime::R0 => decode_r0_atoms(program),
+        BwdRegime::Ext => decode_ext_atoms(program),
+    }
+}
+
+/// R0: no headers exist, so the stream is exactly `term_count` fixed-width records
+/// and every record is a term — the pre-group decoder, unchanged.
+fn decode_r0_atoms(program: &LeanProgram) -> Result<Vec<LeanAtom>, LeanCodecError> {
     let expected = program.term_count.saturating_mul(LEAN_WORDS_PER_TERM);
     if program.words.len() != expected {
         return Err(LeanCodecError::TruncatedStream { words: program.words.len() });
@@ -313,22 +599,145 @@ pub fn decode_program(program: &LeanProgram) -> Result<Vec<LeanTerm>, LeanCodecE
         if record[3] != 0 {
             return Err(LeanCodecError::ReservedWordNonZero { term });
         }
-        out.push(LeanTerm {
-            class: ((record[0] >> LEAN_CLASS_SHIFT) & LEAN_CLASS_MASK) as u8,
-            coeff: (record[0] >> LEAN_COEFFICIENT_SHIFT) & LEAN_COEFFICIENT_MASK,
-            source_a: record[1],
-            source_b: record[2],
-        });
+        out.push(LeanAtom::Term(term_record(record)));
     }
     Ok(out)
 }
 
-/// Check the stream against `layer`. Exactly six rules, one per
-/// [`LeanCodecError`] variant: the length and the reserved words
-/// ([`decode_program`]), then per record the class is live in `layer.regime`, the
-/// coefficient id addresses a reserved literal or a bank entry, every slot is
+/// `Ext`: a self-delimiting walk, because a header's `N` is what fixes the record
+/// count and `term_count` counts only terms (spec §4.4).
+fn decode_ext_atoms(program: &LeanProgram) -> Result<Vec<LeanAtom>, LeanCodecError> {
+    let words = &program.words;
+    if !words.len().is_multiple_of(LEAN_WORDS_PER_TERM) {
+        return Err(LeanCodecError::TruncatedStream { words: words.len() });
+    }
+    let records = words.len() / LEAN_WORDS_PER_TERM;
+    let at = |record: usize| -> &[u16] {
+        &words[record * LEAN_WORDS_PER_TERM..(record + 1) * LEAN_WORDS_PER_TERM]
+    };
+    let mut atoms = Vec::new();
+    let mut terms = 0usize;
+    let mut index = 0usize;
+    while index < records {
+        let record = at(index);
+        if record[3] != 0 {
+            return Err(LeanCodecError::ReservedWordNonZero { term: index });
+        }
+        if record_class(record) != LEAN_CONT_GROUP_HEADER_CLASS {
+            atoms.push(LeanAtom::Term(term_record(record)));
+            terms += 1;
+            index += 1;
+            continue;
+        }
+        let core = record_coefficient(record);
+        let members = usize::from(record[1]);
+        let flags = record[2];
+        if members < 2 {
+            return Err(LeanCodecError::GroupMemberCountInvalid { atom: index, members });
+        }
+        if flags == 0 || flags & !LEAN_GROUP_FLAG_MASK != 0 {
+            return Err(LeanCodecError::GroupFlagsInvalid { atom: index, flags });
+        }
+        if records - index - 1 < members {
+            return Err(LeanCodecError::TruncatedGroup { atom: index, members });
+        }
+        let mut decoded = Vec::with_capacity(members);
+        for offset in 1..=members {
+            let member = at(index + offset);
+            if member[3] != 0 {
+                return Err(LeanCodecError::ReservedWordNonZero { term: index + offset });
+            }
+            if record_class(member) == LEAN_CONT_GROUP_HEADER_CLASS {
+                return Err(LeanCodecError::NestedGroupHeader {
+                    atom: index,
+                    member: index + offset,
+                });
+            }
+            decoded.push(term_record(member));
+        }
+        atoms.push(LeanAtom::Group {
+            core,
+            has_c0: flags & LEAN_GROUP_FLAG_C0 != 0,
+            has_c2: flags & LEAN_GROUP_FLAG_C2 != 0,
+            members: decoded,
+        });
+        terms += members;
+        index += 1 + members;
+    }
+    if terms != program.term_count {
+        return Err(LeanCodecError::TermCountMismatch { terms, declared: program.term_count });
+    }
+    // The walk consumed the stream record by record and `terms + headers` is the
+    // record count, so §4.4's `words == 4 * (term_count + headers)` holds by
+    // construction rather than by a check.
+    debug_assert!(words.len() >= terms * LEAN_WORDS_PER_TERM);
+    Ok(atoms)
+}
+
+/// The class field of one record.
+fn record_class(record: &[u16]) -> u16 {
+    (record[0] >> LEAN_CLASS_SHIFT) & LEAN_CLASS_MASK
+}
+
+/// The thirteen-bit coefficient field of one record — a recipe id, or a member's
+/// immediate id, or a header's core id, all in the same bits.
+fn record_coefficient(record: &[u16]) -> u16 {
+    (record[0] >> LEAN_COEFFICIENT_SHIFT) & LEAN_COEFFICIENT_MASK
+}
+
+/// Read one record as a term. Field-level only — the reserved word is the caller's
+/// check, since only the caller knows whether the record is a term at all.
+fn term_record(record: &[u16]) -> LeanTerm {
+    LeanTerm {
+        class: record_class(record) as u8,
+        coeff: record_coefficient(record),
+        source_a: record[1],
+        source_b: record[2],
+    }
+}
+
+/// Unpack the whole stream as a flat TERM list — [`decode_atoms`] with the group
+/// headers dropped and their members spliced in place, which is exactly the
+/// pre-group decoder's output for an R0 or group-free stream.
+///
+/// A member's [`LeanTerm::coeff`] is an [`ImmediateId`] and its group's core is not
+/// in the returned list, so this is the right view for a consumer that cares about
+/// CLASSES and SOURCES (the class-coverage walks, the deal's record census) and the
+/// wrong one for a consumer that must evaluate coefficients — that one wants
+/// [`decode_atoms`].
+pub fn decode_program(
+    program: &LeanProgram,
+    regime: BwdRegime,
+) -> Result<Vec<LeanTerm>, LeanCodecError> {
+    let atoms = decode_atoms(program, regime)?;
+    let mut out = Vec::with_capacity(program.term_count);
+    for atom in atoms {
+        match atom {
+            LeanAtom::Term(term) => out.push(term),
+            LeanAtom::Group { members, .. } => out.extend(members),
+        }
+    }
+    Ok(out)
+}
+
+/// Check the stream against `layer`. The structural rules are
+/// [`decode_atoms`]' (the lengths, the reserved words, and in `Ext` the group walk's
+/// own rules); on top of them, per TERM record the class is live in `layer.regime`,
+/// the coefficient id addresses a reserved literal or a bank entry, every slot is
 /// inside `layer.sources`, and `source_b` is [`SOURCE_NONE`] exactly for the
 /// one-source classes.
+///
+/// Per GROUP additionally: the core id addresses a BANK entry and never a literal,
+/// every member's immediate id addresses `±1` or `layer.immediates`, and the
+/// header's flags equal the accumulator sides its members' classes actually touch.
+/// What it does NOT check is that a member's own `CoeffTerm::coefficient` is the
+/// core — no `TermId` travels on the wire, so that invariant is
+/// [`encode_program_atoms`]' (spec §4.1) and inventing a wire-side member↔term
+/// mapping to re-check it here is exactly what this codec must not grow.
+///
+/// An R0 program cannot contain a header at all — [`decode_atoms`] reads class `2`
+/// there as the live `C2ProductBfBf` class — so the group arm below is structurally
+/// `Ext`-only, asserted rather than branched on.
 ///
 /// What it does NOT check: that each slot's [`CoeffSource::field`] is the width
 /// its class implies. A class-3 (`C2ProductBF_E4`) record whose `source_a`
@@ -342,32 +751,120 @@ pub fn decode_program(program: &LeanProgram) -> Result<Vec<LeanTerm>, LeanCodecE
 ///
 /// [`CoeffSource::field`]: super::model::CoeffSource::field
 pub fn validate_program(program: &LeanProgram, layer: &CoeffLayer) -> Result<(), LeanCodecError> {
-    let terms = decode_program(program)?;
+    let atoms = decode_atoms(program, layer.regime)?;
     let coefficients = CoefficientRecipeId::RESERVED as usize + layer.coefficients.len();
-    for (term, decoded) in terms.iter().enumerate() {
-        let class = u16::from(decoded.class);
-        let category = lean_category(layer.regime, class)
-            .ok_or(LeanCodecError::ClassNotInRegime { term, opcode: class })?;
-        if usize::from(decoded.coeff) >= coefficients {
-            return Err(LeanCodecError::CoefficientOutOfRange { term, coeff: decoded.coeff });
-        }
-        if usize::from(decoded.source_a) >= layer.sources.len() {
-            return Err(LeanCodecError::SourceOutOfRange { term, slot: decoded.source_a });
-        }
-        if category_arity(category) == 1 {
-            if decoded.source_b != SOURCE_NONE {
-                return Err(LeanCodecError::SourceBMustBeNone { term });
+    let immediates = usize::from(ImmediateId::RESERVED) + layer.immediates.len();
+    let mut record = 0usize;
+    for atom in &atoms {
+        match atom {
+            LeanAtom::Term(decoded) => {
+                let category = validate_class(layer, record, decoded)?;
+                if usize::from(decoded.coeff) >= coefficients {
+                    return Err(LeanCodecError::CoefficientOutOfRange {
+                        term: record,
+                        coeff: decoded.coeff,
+                    });
+                }
+                validate_sources(layer, record, decoded, category)?;
+                record += 1;
             }
-        } else {
-            if decoded.source_b == SOURCE_NONE {
-                return Err(LeanCodecError::SourceBMissing { term });
-            }
-            if usize::from(decoded.source_b) >= layer.sources.len() {
-                return Err(LeanCodecError::SourceOutOfRange { term, slot: decoded.source_b });
+            LeanAtom::Group { core, has_c0, has_c2, members } => {
+                debug_assert_eq!(
+                    layer.regime,
+                    BwdRegime::Ext,
+                    "an R0 stream decodes class 2 as a term, so it yields no group atom"
+                );
+                if CoefficientRecipeId(u32::from(*core)).literal().is_some() {
+                    return Err(LeanCodecError::GroupCoreIsLiteral { atom: record });
+                }
+                if usize::from(*core) >= coefficients {
+                    return Err(LeanCodecError::CoefficientOutOfRange {
+                        term: record,
+                        coeff: *core,
+                    });
+                }
+                let mut expected = 0u16;
+                for (offset, member) in members.iter().enumerate() {
+                    let position = record + 1 + offset;
+                    let category = validate_class(layer, position, member)?;
+                    if usize::from(member.coeff) >= immediates {
+                        return Err(LeanCodecError::ImmediateOutOfRange {
+                            term: position,
+                            id: member.coeff,
+                        });
+                    }
+                    validate_sources(layer, position, member, category)?;
+                    expected |= category_flags(category);
+                }
+                let flags = u16::from(*has_c0) | (u16::from(*has_c2) << 1);
+                if flags != expected {
+                    return Err(LeanCodecError::GroupFlagsMismatch {
+                        atom: record,
+                        flags,
+                        expected,
+                    });
+                }
+                record += 1 + members.len();
             }
         }
     }
     Ok(())
+}
+
+/// The category one record's class names in `layer.regime`, or the dead-class reject.
+fn validate_class(
+    layer: &CoeffLayer,
+    record: usize,
+    decoded: &LeanTerm,
+) -> Result<TermCategory, LeanCodecError> {
+    let class = u16::from(decoded.class);
+    lean_category(layer.regime, class)
+        .ok_or(LeanCodecError::ClassNotInRegime { term: record, opcode: class })
+}
+
+/// The slot rules of one record: inside the source table, and [`SOURCE_NONE`] in
+/// `source_b` exactly for the one-source classes. Identical for a plain record and a
+/// group member — a member's sources are an ordinary term's.
+fn validate_sources(
+    layer: &CoeffLayer,
+    record: usize,
+    decoded: &LeanTerm,
+    category: TermCategory,
+) -> Result<(), LeanCodecError> {
+    if usize::from(decoded.source_a) >= layer.sources.len() {
+        return Err(LeanCodecError::SourceOutOfRange { term: record, slot: decoded.source_a });
+    }
+    if category_arity(category) == 1 {
+        if decoded.source_b != SOURCE_NONE {
+            return Err(LeanCodecError::SourceBMustBeNone { term: record });
+        }
+    } else {
+        if decoded.source_b == SOURCE_NONE {
+            return Err(LeanCodecError::SourceBMissing { term: record });
+        }
+        if usize::from(decoded.source_b) >= layer.sources.len() {
+            return Err(LeanCodecError::SourceOutOfRange { term: record, slot: decoded.source_b });
+        }
+    }
+    Ok(())
+}
+
+/// The header flag bits one member category contributes — the wire spelling of the
+/// grouping transform's own `term_sides`, which is what makes the flags a CHECKABLE
+/// field rather than a hint.
+fn category_flags(category: TermCategory) -> u16 {
+    match category {
+        TermCategory::C0LinearBf | TermCategory::C0LinearE4 => LEAN_GROUP_FLAG_C0,
+        TermCategory::C2ProductBfBf
+        | TermCategory::C2ProductBfE4
+        | TermCategory::C2ProductE4E4 => LEAN_GROUP_FLAG_C2,
+        TermCategory::DualProductE4 => LEAN_GROUP_FLAG_C0 | LEAN_GROUP_FLAG_C2,
+        // The lean class tables carry no `Move` row (`is_densified_frozen_table`
+        // proves it at compile time), so `lean_category` cannot return one.
+        TermCategory::MoveBf | TermCategory::MoveE4 => {
+            unreachable!("the lean class tables have no move rows")
+        }
+    }
 }
 
 // ── Disassembly ──────────────────────────────────────────────────────────────
@@ -376,9 +873,16 @@ pub fn validate_program(program: &LeanProgram, layer: &CoeffLayer) -> Result<(),
 /// `word offset`, mnemonic, coefficient (`+1` / `-1` / `#bank`), then each
 /// source as `s{slot}:{width}`.
 ///
+/// A group renders as its own `group #{ordinal}  core=…  n=…  [c0|c2]` line with the
+/// member records INDENTED beneath it, their coefficient column spelled `imm=`
+/// because a member's thirteen bits are an [`ImmediateId`] and printing it as `k=`
+/// would be a lie in exactly the place a reader is checking the format. `Ext` only:
+/// at R0 class `2` is `C2ProductBfBf` and renders as the term it is.
+///
 /// Infallible on purpose, since a malformed program is exactly when this is
 /// read: a dead class prints as `class{n}?`, a slot past the source table as
-/// `s{n}:?`, and a length disagreement shows in the header's `terms` versus
+/// `s{n}:?`, a header claiming more members than the stream holds simply runs out of
+/// member lines, and a length disagreement shows in the header's `terms` versus
 /// `words`. The format is pinned by a test, so it cannot drift silently.
 pub fn disassemble(program: &LeanProgram, layer: &CoeffLayer) -> String {
     let regime = match layer.regime {
@@ -393,9 +897,36 @@ pub fn disassemble(program: &LeanProgram, layer: &CoeffLayer) -> String {
         program.words.len(),
         program.bytes(),
     );
-    let records = program.words.chunks_exact(LEAN_WORDS_PER_TERM).take(program.term_count);
-    for (index, record) in records.enumerate() {
-        let class = (record[0] >> LEAN_CLASS_SHIFT) & LEAN_CLASS_MASK;
+    // At R0 the record count IS the term count. In `Ext` it is the term count plus
+    // the headers, and a malformed stream may not agree with either, so every whole
+    // record is rendered and the count disagreement is left to the line above.
+    let ext = layer.regime == BwdRegime::Ext;
+    let records = program.words.chunks_exact(LEAN_WORDS_PER_TERM);
+    let limit = if ext { usize::MAX } else { program.term_count };
+    let mut groups = 0usize;
+    let mut members_left = 0usize;
+    for (index, record) in records.take(limit).enumerate() {
+        let offset = index * LEAN_WORDS_PER_TERM;
+        let class = record_class(record);
+        if ext && members_left == 0 && class == LEAN_CONT_GROUP_HEADER_CLASS {
+            let flags = record[2];
+            let sides = match (flags & LEAN_GROUP_FLAG_C0 != 0, flags & LEAN_GROUP_FLAG_C2 != 0) {
+                (true, true) => "[c0|c2]",
+                (true, false) => "[c0]",
+                (false, true) => "[c2]",
+                (false, false) => "[?]",
+            };
+            let _ = writeln!(
+                out,
+                "{offset:04}  {:<14}  core={:<5} n={}  {sides}",
+                format!("group #{groups}"),
+                coefficient_tag(record_coefficient(record)),
+                record[1],
+            );
+            groups += 1;
+            members_left = usize::from(record[1]);
+            continue;
+        }
         let category = lean_category(layer.regime, class);
         let mnemonic = match category {
             Some(category) => category.label().to_string(),
@@ -407,13 +938,26 @@ pub fn disassemble(program: &LeanProgram, layer: &CoeffLayer) -> String {
         };
         let operands: Vec<String> =
             record[1..=sources].iter().map(|&slot| source_tag(layer, slot)).collect();
-        let _ = writeln!(
-            out,
-            "{:04}  {mnemonic:<14}  k={:<5}  {}",
-            index * LEAN_WORDS_PER_TERM,
-            coefficient_tag((record[0] >> LEAN_COEFFICIENT_SHIFT) & LEAN_COEFFICIENT_MASK),
-            operands.join("  |  "),
-        );
+        let coeff = record_coefficient(record);
+        if members_left > 0 {
+            members_left -= 1;
+            // Indent three, mnemonic thirteen: the widest lean mnemonic is exactly
+            // thirteen characters, so a member line's own columns stay aligned and
+            // the operand column still lands where a plain record's does.
+            let _ = writeln!(
+                out,
+                "{offset:04}   {mnemonic:<13}  imm={:<5} {}",
+                immediate_tag(coeff),
+                operands.join("  |  "),
+            );
+        } else {
+            let _ = writeln!(
+                out,
+                "{offset:04}  {mnemonic:<14}  k={:<5}  {}",
+                coefficient_tag(coeff),
+                operands.join("  |  "),
+            );
+        }
     }
     out
 }
@@ -421,6 +965,15 @@ pub fn disassemble(program: &LeanProgram, layer: &CoeffLayer) -> String {
 fn coefficient_tag(coeff: u16) -> String {
     match CoefficientRecipeId(u32::from(coeff)).bank_index() {
         None if coeff == CoefficientRecipeId::ONE.0 as u16 => "+1".to_string(),
+        None => "-1".to_string(),
+        Some(index) => format!("#{index}"),
+    }
+}
+
+/// A member's coefficient field, in the id space §4.4 gives it.
+fn immediate_tag(id: u16) -> String {
+    match ImmediateId(id).bank_index() {
+        None if id == ImmediateId::ONE.0 => "+1".to_string(),
         None => "-1".to_string(),
         Some(index) => format!("#{index}"),
     }
@@ -447,7 +1000,9 @@ mod tests {
     use cs::gkr_compiler::dag_ir::ReadPlace;
 
     use super::*;
-    use crate::bwd::coeff::model::{CoeffSource, NormalizedCoefficientRecipe, ProjectionId};
+    use crate::bwd::coeff::model::{
+        CoeffGroupMember, CoeffSource, NormalizedCoefficientRecipe, ProjectionId,
+    };
     use crate::bwd::coeff::order::order_terms;
     use crate::bwd::source::OriginLeaf;
 
@@ -551,7 +1106,7 @@ mod tests {
         assert_eq!(program.bytes(), 4 * LEAN_BYTES_PER_TERM);
         assert_eq!(validate_program(&program, &layer), Ok(()));
         assert_eq!(
-            decode_program(&program).expect("the encoder emits whole records"),
+            decode_program(&program, BwdRegime::Ext).expect("the encoder emits whole records"),
             vec![
                 LeanTerm { class: 1, coeff: 3, source_a: 0, source_b: 2 },
                 LeanTerm { class: 0, coeff: 0, source_a: 2, source_b: SOURCE_NONE },
@@ -569,7 +1124,7 @@ mod tests {
         let order = order_terms(&layer);
         let program = encode_program(&layer, &order).expect("a legal R0 layer");
         assert_eq!(validate_program(&program, &layer), Ok(()));
-        let decoded = decode_program(&program).expect("whole records");
+        let decoded = decode_program(&program, BwdRegime::R0).expect("whole records");
         let mut classes: Vec<u8> = decoded.iter().map(|term| term.class).collect();
         classes.sort_unstable();
         assert_eq!(classes, vec![0, 1, 2, 3, 4], "all five live R0 classes");
@@ -606,7 +1161,7 @@ mod tests {
         let program = encode_program(&layer, &[]).expect("an empty order");
         assert_eq!(program, LeanProgram { words: Vec::new(), term_count: 0 });
         assert_eq!(validate_program(&program, &layer), Ok(()));
-        assert_eq!(decode_program(&program), Ok(Vec::new()));
+        assert_eq!(decode_program(&program, BwdRegime::Ext), Ok(Vec::new()));
         assert_eq!(
             disassemble(&program, &layer),
             "; lean program regime=Ext terms=0 words=0 bytes=0\n",
@@ -715,14 +1270,22 @@ mod tests {
 
     // ── Validator rejections ─────────────────────────────────────────────────
 
-    /// Class 2 is dead in the continuation regime.
+    /// Classes 3..7 are dead in the continuation regime — 2 is not one of them: it
+    /// is the group-header control code, and rejecting it as a dead class is exactly
+    /// the confusion `decode_atoms`' header branch exists to prevent.
     #[test]
     fn validate_rejects_a_dead_class() {
         let layer = ext_layer();
-        let program = LeanProgram { words: record(2, 0, 0, SOURCE_NONE).to_vec(), term_count: 1 };
+        let program = LeanProgram { words: record(3, 0, 0, SOURCE_NONE).to_vec(), term_count: 1 };
         assert_eq!(
             validate_program(&program, &layer),
-            Err(LeanCodecError::ClassNotInRegime { term: 0, opcode: 2 }),
+            Err(LeanCodecError::ClassNotInRegime { term: 0, opcode: 3 }),
+        );
+        let header = LeanProgram { words: record(2, 0, 0, SOURCE_NONE).to_vec(), term_count: 1 };
+        assert_eq!(
+            validate_program(&header, &layer),
+            Err(LeanCodecError::GroupMemberCountInvalid { atom: 0, members: 0 }),
+            "class 2 in Ext is read as a header, malformed or not",
         );
     }
 
@@ -790,15 +1353,20 @@ mod tests {
         words.extend(record(0, 0, 2, SOURCE_NONE));
         words[7] = 1;
         let program = LeanProgram { words, term_count: 2 };
-        assert_eq!(decode_program(&program), Err(LeanCodecError::ReservedWordNonZero { term: 1 }));
+        assert_eq!(
+            decode_program(&program, BwdRegime::Ext),
+            Err(LeanCodecError::ReservedWordNonZero { term: 1 }),
+        );
         assert_eq!(
             validate_program(&program, &layer),
             Err(LeanCodecError::ReservedWordNonZero { term: 1 }),
         );
     }
 
-    /// A fixed-width stream has ONE legal length: a partial record and a
-    /// trailing word are the same defect.
+    /// A partial record and a trailing word are the same defect in either regime.
+    /// A `term_count` that disagrees with a WHOLE-record stream is one length
+    /// reject at R0 (where the record count is the term count) and the counting
+    /// reject in `Ext` (where headers make the two differ by construction).
     #[test]
     fn decode_rejects_a_stream_that_is_not_whole_records() {
         let layer = ext_layer();
@@ -808,7 +1376,7 @@ mod tests {
             short.resize(length, 0);
             let program = LeanProgram { words: short, term_count: 1 };
             assert_eq!(
-                decode_program(&program),
+                decode_program(&program, BwdRegime::Ext),
                 Err(LeanCodecError::TruncatedStream { words: length }),
             );
             assert_eq!(
@@ -818,10 +1386,457 @@ mod tests {
         }
         let two_records = LeanProgram { words: words.clone(), term_count: 2 };
         assert_eq!(
-            decode_program(&two_records),
+            decode_program(&two_records, BwdRegime::R0),
             Err(LeanCodecError::TruncatedStream { words: 4 }),
-            "term_count disagreeing with the stream is the same defect",
+            "at R0 term_count disagreeing with the stream is the same length defect",
         );
+        assert_eq!(
+            decode_program(&two_records, BwdRegime::Ext),
+            Err(LeanCodecError::TermCountMismatch { terms: 1, declared: 2 }),
+            "in Ext the walk counts the terms it found",
+        );
+    }
+
+    // ── Group atoms (spec §4.4, §6.2) ────────────────────────────────────────
+
+    /// A group header's four words, spelled out independently of the encoder.
+    fn header(core: u16, members: u16, flags: u16) -> [u16; 4] {
+        [(LEAN_CONT_GROUP_HEADER_CLASS << 13) | core, members, flags, 0]
+    }
+
+    /// Two groups and two singletons, hand-built the way the grouping transform
+    /// builds one: every member's own coefficient IS its group's core (§4.1),
+    /// members ascending by `TermId`, non-`±1` immediates in the layer's table.
+    fn grouped_ext_layer() -> CoeffLayer {
+        let core_a = CoefficientRecipeId::from_bank_index(0);
+        let core_b = CoefficientRecipeId::from_bank_index(1);
+        let plain = CoefficientRecipeId::from_bank_index(2);
+        let terms = vec![
+            c0(0, core_a.0, 0, FieldKind::Ext),
+            dual(1, core_a.0, 1, 2),
+            c0(2, core_b.0, 2, FieldKind::Ext),
+            c0(3, core_b.0, 1, FieldKind::Ext),
+            c0(4, CoefficientRecipeId::ONE.0, 0, FieldKind::Ext),
+            dual(5, plain.0, 0, 1),
+        ];
+        let mut layer = layer(BwdRegime::Ext, &[FieldKind::Ext; 3], 3, terms);
+        layer.immediates = vec![7, 9];
+        layer.groups = vec![
+            CoeffGroup {
+                core: core_a,
+                members: vec![
+                    CoeffGroupMember { term: TermId(0), immediate: ImmediateId::ONE },
+                    CoeffGroupMember { term: TermId(1), immediate: ImmediateId::banked(0) },
+                ],
+                has_c0: true,
+                has_c2: true,
+            },
+            CoeffGroup {
+                core: core_b,
+                members: vec![
+                    CoeffGroupMember { term: TermId(2), immediate: ImmediateId::NEG_ONE },
+                    CoeffGroupMember { term: TermId(3), immediate: ImmediateId::banked(1) },
+                ],
+                has_c0: true,
+                has_c2: false,
+            },
+        ];
+        layer
+    }
+
+    /// The committed atom order of [`grouped_ext_layer`]: group, singleton, group,
+    /// singleton — so a header is neither first nor last in the stream.
+    fn grouped_atoms() -> Vec<LeanAtomRef> {
+        vec![
+            LeanAtomRef::Group(0),
+            LeanAtomRef::Term(TermId(4)),
+            LeanAtomRef::Group(1),
+            LeanAtomRef::Term(TermId(5)),
+        ]
+    }
+
+    fn grouped_program() -> LeanProgram {
+        encode_program_atoms(&grouped_ext_layer(), &grouped_atoms())
+            .expect("a legal grouped Ext layer")
+    }
+
+    /// One word of a program, replaced — how every reject below is built, so each
+    /// pin has exactly ONE defect.
+    fn with_word(program: &LeanProgram, word: usize, value: u16) -> LeanProgram {
+        let mut mutated = program.clone();
+        mutated.words[word] = value;
+        mutated
+    }
+
+    /// The whole atom round trip: the encoder's words are the spelled-out wire, the
+    /// decoder reproduces the atoms field for field, the validator accepts them, and
+    /// `term_count` counts TERMS while the stream carries terms PLUS headers.
+    #[test]
+    fn atom_round_trip() {
+        let layer = grouped_ext_layer();
+        let program = grouped_program();
+        let expected: Vec<u16> = [
+            header(2, 2, LEAN_GROUP_FLAG_C0 | LEAN_GROUP_FLAG_C2),
+            record(0, ImmediateId::ONE.0, 0, SOURCE_NONE),
+            record(1, ImmediateId::banked(0).0, 1, 2),
+            record(0, CoefficientRecipeId::ONE.0 as u16, 0, SOURCE_NONE),
+            header(3, 2, LEAN_GROUP_FLAG_C0),
+            record(0, ImmediateId::NEG_ONE.0, 2, SOURCE_NONE),
+            record(0, ImmediateId::banked(1).0, 1, SOURCE_NONE),
+            record(1, 4, 0, 1),
+        ]
+        .concat();
+        assert_eq!(program.words, expected);
+        assert_eq!(program.term_count, 6, "term_count is semantic: six terms");
+        assert_eq!(program.words.len(), (6 + 2) * LEAN_WORDS_PER_TERM, "six terms, two headers");
+        assert_eq!(validate_program(&program, &layer), Ok(()));
+
+        let members_a = vec![
+            LeanTerm { class: 0, coeff: ImmediateId::ONE.0, source_a: 0, source_b: SOURCE_NONE },
+            LeanTerm { class: 1, coeff: ImmediateId::banked(0).0, source_a: 1, source_b: 2 },
+        ];
+        let members_b = vec![
+            LeanTerm {
+                class: 0,
+                coeff: ImmediateId::NEG_ONE.0,
+                source_a: 2,
+                source_b: SOURCE_NONE,
+            },
+            LeanTerm {
+                class: 0,
+                coeff: ImmediateId::banked(1).0,
+                source_a: 1,
+                source_b: SOURCE_NONE,
+            },
+        ];
+        assert_eq!(
+            decode_atoms(&program, BwdRegime::Ext),
+            Ok(vec![
+                LeanAtom::Group {
+                    core: 2,
+                    has_c0: true,
+                    has_c2: true,
+                    members: members_a.clone(),
+                },
+                LeanAtom::Term(LeanTerm {
+                    class: 0,
+                    coeff: 0,
+                    source_a: 0,
+                    source_b: SOURCE_NONE,
+                }),
+                LeanAtom::Group {
+                    core: 3,
+                    has_c0: true,
+                    has_c2: false,
+                    members: members_b.clone(),
+                },
+                LeanAtom::Term(LeanTerm { class: 1, coeff: 4, source_a: 0, source_b: 1 }),
+            ]),
+        );
+        // The flat view splices the members in place and drops the headers, which is
+        // what every class/source consumer of the wire reads.
+        let mut flat = members_a;
+        flat.push(LeanTerm { class: 0, coeff: 0, source_a: 0, source_b: SOURCE_NONE });
+        flat.extend(members_b);
+        flat.push(LeanTerm { class: 1, coeff: 4, source_a: 0, source_b: 1 });
+        assert_eq!(decode_program(&program, BwdRegime::Ext), Ok(flat));
+    }
+
+    /// A group-free atom order and the term order it flattens to encode to the SAME
+    /// bytes — the property that keeps every ungrouped program on the wire it is on
+    /// today.
+    #[test]
+    fn a_group_free_atom_order_encodes_byte_identically() {
+        let layer = ext_layer();
+        let order = vec![TermId(3), TermId(0), TermId(2), TermId(1)];
+        let atoms: Vec<LeanAtomRef> = order.iter().copied().map(LeanAtomRef::Term).collect();
+        assert_eq!(encode_program_atoms(&layer, &atoms), encode_program(&layer, &order));
+    }
+
+    /// R0 decode is the pre-group decode, pinned against a hand-built stream — and
+    /// class 2 there is the live `C2ProductBfBf` TERM class, which is the whole
+    /// reason decode takes a regime: the same words read as a group header in `Ext`.
+    #[test]
+    fn r0_decode_is_byte_identical() {
+        let layer = r0_layer();
+        let words: Vec<u16> = [
+            record(0, CoefficientRecipeId::ONE.0 as u16, 0, SOURCE_NONE),
+            record(2, 2, 0, 0),
+            record(4, 3, 1, 1),
+        ]
+        .concat();
+        let program = LeanProgram { words, term_count: 3 };
+        assert_eq!(
+            decode_program(&program, BwdRegime::R0),
+            Ok(vec![
+                LeanTerm { class: 0, coeff: 0, source_a: 0, source_b: SOURCE_NONE },
+                LeanTerm { class: 2, coeff: 2, source_a: 0, source_b: 0 },
+                LeanTerm { class: 4, coeff: 3, source_a: 1, source_b: 1 },
+            ]),
+        );
+        assert_eq!(validate_program(&program, &layer), Ok(()));
+        let atoms = decode_atoms(&program, BwdRegime::R0).expect("three R0 records");
+        assert!(
+            atoms.iter().all(|atom| matches!(atom, LeanAtom::Term(_))),
+            "an R0 stream has no group atom, whatever its classes",
+        );
+        assert_eq!(
+            decode_atoms(&program, BwdRegime::Ext),
+            Err(LeanCodecError::GroupMemberCountInvalid { atom: 1, members: 0 }),
+            "the SAME words read as a header in Ext",
+        );
+    }
+
+    /// A header claiming members the stream does not hold.
+    #[test]
+    fn truncated_group_rejected() {
+        let words: Vec<u16> = [
+            header(2, 2, LEAN_GROUP_FLAG_C0),
+            record(0, ImmediateId::ONE.0, 0, SOURCE_NONE),
+        ]
+        .concat();
+        let program = LeanProgram { words, term_count: 2 };
+        assert_eq!(
+            decode_atoms(&program, BwdRegime::Ext),
+            Err(LeanCodecError::TruncatedGroup { atom: 0, members: 2 }),
+        );
+    }
+
+    /// Groups do not nest: a member record carrying the control code is a defect,
+    /// not an inner group.
+    #[test]
+    fn nested_header_rejected() {
+        let words: Vec<u16> = [
+            header(2, 2, LEAN_GROUP_FLAG_C0),
+            header(3, 2, LEAN_GROUP_FLAG_C0),
+            record(0, ImmediateId::ONE.0, 0, SOURCE_NONE),
+        ]
+        .concat();
+        let program = LeanProgram { words, term_count: 2 };
+        assert_eq!(
+            decode_atoms(&program, BwdRegime::Ext),
+            Err(LeanCodecError::NestedGroupHeader { atom: 0, member: 1 }),
+        );
+    }
+
+    /// `±1` is not a challenge core, so a literal core id is rejected by BOTH sides:
+    /// the validator on the words, and the encoder before it ever emits them.
+    #[test]
+    fn core_literal_rejected() {
+        let layer = grouped_ext_layer();
+        let program = with_word(
+            &grouped_program(),
+            0,
+            (LEAN_CONT_GROUP_HEADER_CLASS << LEAN_CLASS_SHIFT) | CoefficientRecipeId::ONE.0 as u16,
+        );
+        assert_eq!(
+            decode_atoms(&program, BwdRegime::Ext).map(|atoms| atoms.len()),
+            Ok(4),
+            "a literal core is well-formed on the wire",
+        );
+        assert_eq!(
+            validate_program(&program, &layer),
+            Err(LeanCodecError::GroupCoreIsLiteral { atom: 0 }),
+        );
+
+        let mut literal_core = grouped_ext_layer();
+        literal_core.groups[0].core = CoefficientRecipeId::NEG_ONE;
+        assert_eq!(
+            encode_program_atoms(&literal_core, &grouped_atoms()),
+            Err(LeanCodecError::GroupCoreIsLiteral { atom: 0 }),
+        );
+    }
+
+    /// The core is a bank id in the same id space a plain record's coefficient is,
+    /// so one past the bank is the same statement about it.
+    #[test]
+    fn core_id_past_bank_rejected() {
+        let layer = grouped_ext_layer();
+        let past = CoefficientRecipeId::RESERVED as u16 + layer.coefficients.len() as u16;
+        let program = with_word(
+            &grouped_program(),
+            0,
+            (LEAN_CONT_GROUP_HEADER_CLASS << LEAN_CLASS_SHIFT) | past,
+        );
+        assert_eq!(
+            validate_program(&program, &layer),
+            Err(LeanCodecError::CoefficientOutOfRange { term: 0, coeff: past }),
+        );
+    }
+
+    /// A member's thirteen bits address `±1` plus `layer.immediates`, and one past
+    /// them is out of range — reported at the MEMBER's record index.
+    #[test]
+    fn immediate_out_of_range_rejected() {
+        let layer = grouped_ext_layer();
+        let past = ImmediateId::RESERVED + layer.immediates.len() as u16;
+        // Record 2 is the second member of the first group (class 1, a dual).
+        let program = with_word(&grouped_program(), 2 * LEAN_WORDS_PER_TERM, (1 << 13) | past);
+        assert_eq!(
+            validate_program(&program, &layer),
+            Err(LeanCodecError::ImmediateOutOfRange { term: 2, id: past }),
+        );
+        let last = with_word(&grouped_program(), 2 * LEAN_WORDS_PER_TERM, (1 << 13) | (past - 1));
+        assert_eq!(
+            validate_program(&last, &layer),
+            Ok(()),
+            "the last immediate table entry is legal",
+        );
+        // The encoder rejects the same id before it reaches the wire.
+        let mut wide = grouped_ext_layer();
+        wide.groups[0].members[1].immediate = ImmediateId(past);
+        assert_eq!(
+            encode_program_atoms(&wide, &grouped_atoms()),
+            Err(LeanCodecError::ImmediateOutOfRange { term: 2, id: past }),
+        );
+    }
+
+    /// `term_count` counts TERMS, so a stream whose walk finds a different total is
+    /// rejected — the `Ext` replacement for the fixed-length rule.
+    #[test]
+    fn term_count_mismatch_rejected() {
+        let mut program = grouped_program();
+        program.term_count = 5;
+        assert_eq!(
+            decode_atoms(&program, BwdRegime::Ext),
+            Err(LeanCodecError::TermCountMismatch { terms: 6, declared: 5 }),
+        );
+    }
+
+    /// A one-member group would spend a core multiply to save nothing.
+    #[test]
+    fn single_member_group_rejected() {
+        let words: Vec<u16> = [
+            header(2, 1, LEAN_GROUP_FLAG_C0),
+            record(0, ImmediateId::ONE.0, 0, SOURCE_NONE),
+        ]
+        .concat();
+        let program = LeanProgram { words, term_count: 1 };
+        assert_eq!(
+            decode_atoms(&program, BwdRegime::Ext),
+            Err(LeanCodecError::GroupMemberCountInvalid { atom: 0, members: 1 }),
+        );
+        let mut single = grouped_ext_layer();
+        single.groups[0].members.truncate(1);
+        assert_eq!(
+            encode_program_atoms(&single, &grouped_atoms()),
+            Err(LeanCodecError::GroupMemberCountInvalid { atom: 0, members: 1 }),
+        );
+    }
+
+    /// A core multiplying into neither accumulator, and a flag bit the format does
+    /// not define, are the same words-level defect.
+    #[test]
+    fn flags_zero_rejected() {
+        let program = with_word(&grouped_program(), 2, 0);
+        assert_eq!(
+            decode_atoms(&program, BwdRegime::Ext),
+            Err(LeanCodecError::GroupFlagsInvalid { atom: 0, flags: 0 }),
+        );
+        let reserved = with_word(&grouped_program(), 2, LEAN_GROUP_FLAG_MASK + 1);
+        assert_eq!(
+            decode_atoms(&reserved, BwdRegime::Ext),
+            Err(LeanCodecError::GroupFlagsInvalid { atom: 0, flags: LEAN_GROUP_FLAG_MASK + 1 }),
+        );
+        let mut sideless = grouped_ext_layer();
+        sideless.groups[0].has_c0 = false;
+        sideless.groups[0].has_c2 = false;
+        assert_eq!(
+            encode_program_atoms(&sideless, &grouped_atoms()),
+            Err(LeanCodecError::GroupFlagsInvalid { atom: 0, flags: 0 }),
+        );
+    }
+
+    /// Well-formed flags that do not match the sides the members' classes touch:
+    /// group 0 holds a dual, so `c2` is not optional.
+    #[test]
+    fn flags_mismatch_members_rejected() {
+        let layer = grouped_ext_layer();
+        let program = with_word(&grouped_program(), 2, LEAN_GROUP_FLAG_C0);
+        assert_eq!(
+            decode_atoms(&program, BwdRegime::Ext).map(|atoms| atoms.len()),
+            Ok(4),
+            "the flags are well-formed; only the layer's classes contradict them",
+        );
+        assert_eq!(
+            validate_program(&program, &layer),
+            Err(LeanCodecError::GroupFlagsMismatch {
+                atom: 0,
+                flags: LEAN_GROUP_FLAG_C0,
+                expected: LEAN_GROUP_FLAG_C0 | LEAN_GROUP_FLAG_C2,
+            }),
+        );
+    }
+
+    /// The grouping transform REWRITES a member's coefficient to the core, so a
+    /// member that kept its own recipe id is a broken layer. No `TermId` travels on
+    /// the wire, so the encoder is the only side that can say this — and it does,
+    /// naming the member's `TermId` rather than a record index.
+    #[test]
+    fn member_coefficient_not_core_rejected() {
+        let mut layer = grouped_ext_layer();
+        layer.terms[1] = dual(1, CoefficientRecipeId::from_bank_index(2).0, 1, 2);
+        assert_eq!(
+            encode_program_atoms(&layer, &grouped_atoms()),
+            Err(LeanCodecError::MemberCoefficientNotCore { atom: 0, term: 1 }),
+        );
+    }
+
+    /// Every single-bit mutation of a canonical GROUPED program is rejected with a
+    /// classified error, or still valid and still a consistent atom set. Never a
+    /// panic and never an out-of-bounds read: the `Ext` walk does index arithmetic
+    /// over a self-delimiting stream, so a header's `N` is attacker-controlled in
+    /// exactly the way the R0 sweep's fixed-width records never were.
+    #[test]
+    fn every_single_bit_mutation_of_a_grouped_program_is_rejected_or_consistently_valid() {
+        let layer = grouped_ext_layer();
+        let canonical = grouped_program();
+        validate_program(&canonical, &layer).expect("the canonical grouped program validates");
+
+        let mut rejected = 0usize;
+        let mut still_valid = 0usize;
+        for word in 0..canonical.words.len() {
+            for bit in 0..16u32 {
+                let mut mutated = canonical.clone();
+                mutated.words[word] ^= 1u16 << bit;
+                let where_ = format!("word {word} bit {bit}");
+                match validate_program(&mutated, &layer) {
+                    Err(_) => {
+                        rejected += 1;
+                        let _ = decode_atoms(&mutated, BwdRegime::Ext);
+                        let _ = decode_program(&mutated, BwdRegime::Ext);
+                    }
+                    Ok(()) => {
+                        still_valid += 1;
+                        let atoms = decode_atoms(&mutated, BwdRegime::Ext)
+                            .unwrap_or_else(|e| panic!("{where_}: valid but undecodable: {e:?}"));
+                        let terms: usize = atoms
+                            .iter()
+                            .map(|atom| match atom {
+                                LeanAtom::Term(_) => 1,
+                                LeanAtom::Group { members, .. } => members.len(),
+                            })
+                            .sum();
+                        assert_eq!(terms, mutated.term_count, "{where_}: term total");
+                        assert_eq!(
+                            decode_program(&mutated, BwdRegime::Ext).map(|flat| flat.len()),
+                            Ok(terms),
+                            "{where_}: the flat view drops headers and nothing else",
+                        );
+                    }
+                }
+                // The disassembler is read exactly when a program is malformed.
+                let _ = disassemble(&mutated, &layer);
+            }
+        }
+
+        assert_eq!(rejected + still_valid, canonical.words.len() * 16);
+        eprintln!(
+            "[lean-group-mutation] {} words x 16 bits: {rejected} rejected, {still_valid} still valid",
+            canonical.words.len()
+        );
+        assert!(rejected > 0, "no mutation was rejected");
+        assert!(still_valid > 0, "no mutation stayed valid");
     }
 
     // ── Disassembly and serde ────────────────────────────────────────────────
@@ -850,19 +1865,42 @@ mod tests {
         );
     }
 
+    /// The pinned group format: one header line per group, members indented beneath
+    /// it with their coefficient column spelled `imm=`.
+    #[test]
+    fn disassembles_a_grouped_program() {
+        let layer = grouped_ext_layer();
+        let program = grouped_program();
+        assert_eq!(
+            disassemble(&program, &layer),
+            "\
+; lean program regime=Ext terms=6 words=32 bytes=64
+0000  group #0        core=#0    n=2  [c0|c2]
+0004   C0LinearE4     imm=+1    s0:e4
+0008   DualProductE4  imm=#0    s1:e4  |  s2:e4
+0012  C0LinearE4      k=+1     s0:e4
+0016  group #1        core=#1    n=2  [c0]
+0020   C0LinearE4     imm=-1    s2:e4
+0024   C0LinearE4     imm=#1    s1:e4
+0028  DualProductE4   k=#2     s0:e4  |  s1:e4
+",
+        );
+    }
+
     /// A dead class and a slot past the source table still render, because a
-    /// malformed program is exactly what gets disassembled.
+    /// malformed program is exactly what gets disassembled. Class `3` for the dead
+    /// one: in `Ext`, class `2` is the group header and renders as one.
     #[test]
     fn disassembles_a_malformed_program() {
         let layer = ext_layer();
-        let mut words = record(2, 0, 0, 1).to_vec();
+        let mut words = record(3, 0, 0, 1).to_vec();
         words.extend(record(1, 0, 9, 1));
         let program = LeanProgram { words, term_count: 2 };
         assert_eq!(
             disassemble(&program, &layer),
             "\
 ; lean program regime=Ext terms=2 words=8 bytes=16
-0000  class2?         k=+1     s0:e4  |  s1:e4
+0000  class3?         k=+1     s0:e4  |  s1:e4
 0004  DualProductE4   k=+1     s9:?  |  s1:e4
 ",
         );
@@ -906,7 +1944,7 @@ mod tests {
                         rejected += 1;
                         // Decoding a rejected stream must still be panic-free: the
                         // disassembler is read exactly when a program is malformed.
-                        let _ = decode_program(&mutated);
+                        let _ = decode_program(&mutated, BwdRegime::R0);
                         let _ = disassemble(&mutated, &layer);
                     }
                     // (b) Still valid. Then the decode must succeed and every
@@ -915,7 +1953,7 @@ mod tests {
                     // would mis-read.
                     Ok(()) => {
                         still_valid += 1;
-                        let terms = decode_program(&mutated)
+                        let terms = decode_program(&mutated, BwdRegime::R0)
                             .unwrap_or_else(|e| panic!("{where_}: valid but undecodable: {e:?}"));
                         assert_eq!(terms.len(), layer.terms.len(), "{where_}: record count");
                         for (index, decoded) in terms.iter().enumerate() {

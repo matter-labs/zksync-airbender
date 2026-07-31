@@ -1164,7 +1164,7 @@ fn bwd_seg_r0_parity_over_k_and_banks() {
     let mut classes = BTreeSet::new();
     for circuit in SEG_LAYOUTS {
         let coord = lean_coordinate(circuit, 0, BwdRegime::R0);
-        for record in decode_program(&coord.artifact.program).expect("decode") {
+        for record in decode_program(&coord.artifact.program, BwdRegime::R0).expect("decode") {
             classes.insert(record.class);
         }
         let mut fixture = SegFixture::build(coord, 0, SEG_ROWS, D2Policy::Inline, None, &context);

@@ -991,7 +991,7 @@ pub(crate) fn lower_bwd_seg(
     }
 
     // ── The wire ─────────────────────────────────────────────────────────────
-    let records = decode_program(&artifact.program)?;
+    let records = decode_program(&artifact.program, regime)?;
     let words = artifact.program.words.len();
     if prog == ProgramMode::Inline && words > LEAN_DESCRIPTOR_PROGRAM_WORDS {
         return Err(BwdSegLowerError::ProgramOverflow {

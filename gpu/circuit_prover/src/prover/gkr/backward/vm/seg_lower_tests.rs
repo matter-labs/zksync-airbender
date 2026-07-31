@@ -2336,8 +2336,9 @@ fn the_descriptor_stream_decodes_to_the_artifact_terms() {
         words: desc.program[..words].to_vec(),
         term_count: usize::from(desc.term_count),
     };
-    let mut lowered = decode_program(&stream).expect("whole records");
-    let mut committed = decode_program(&artifact.program).expect("whole records");
+    let regime = artifact.regime.regime();
+    let mut lowered = decode_program(&stream, regime).expect("whole records");
+    let mut committed = decode_program(&artifact.program, regime).expect("whole records");
     lowered.sort_by_key(|term| (term.class, term.coeff, term.source_a, term.source_b));
     committed.sort_by_key(|term| (term.class, term.coeff, term.source_a, term.source_b));
     assert_eq!(lowered, committed, "the split permutes, never rewrites");
