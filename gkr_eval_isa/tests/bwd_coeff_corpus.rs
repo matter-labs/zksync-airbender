@@ -41,10 +41,13 @@ use field::{Field, FieldExtension, PrimeField};
 use gkr_eval_isa::bwd::coeff::limits::{
     GROUP_SPLIT_MAX_MEMBERS, LEAN_MAX_IMMEDIATES, in_scope, with_conditional_blake2,
 };
+use gkr_eval_isa::bwd::coeff::lean::decode_atoms;
+use gkr_eval_isa::bwd::coeff::model::ImmediateId;
 use gkr_eval_isa::bwd::coeff::{
-    CoeffCensus, CoeffLayer, CoeffResolver, CoeffTerm, CoefficientRecipeId,
-    NormalizedCoefficientRecipe, SourceId, TermId, factor, group_coeff_layer, immediate_value,
-    interpret_coeff_layer, lower_coeff_layer, rescale,
+    CoeffCensus, CoeffLayer, CoeffResolver, CoeffTerm, CoefficientRecipeId, LeanAtom, LeanProgram,
+    NormalizedCoefficientRecipe, SourceId, TermId, compile_lean_coordinate, factor,
+    group_coeff_layer, immediate_value, interpret_coeff_layer, lower_coeff_layer, lower_lean_layer,
+    rescale,
 };
 use gkr_eval_isa::bwd::distill::distill;
 use gkr_eval_isa::bwd::source::OriginLeaf;
@@ -1232,4 +1235,282 @@ fn grouped_semantics_match_ungrouped_bit_for_bit() {
         sum(|t| t.rows),
         "every sampled Ext row must carry a non-zero acc_c2"
     );
+}
+
+// ── The structural mul-count cross-check ──────────────────────────────────────
+
+/// The two coefficient multiplications the eval loop pays, per `Ext` coordinate:
+/// FULL `E4 x E4` and `BF x E4`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct MulCounts {
+    full: u64,
+    bf_imm: u64,
+}
+
+/// Full `E4 x E4` muls a SINGLETON record of `class` pays: its source products plus
+/// its own coefficient mul, one per accumulator side it feeds (`C0LinearE4` 0 + 1,
+/// `DualProductE4` 2 + 2). This is also the TERM-form cost of a grouped member, so
+/// it is the denominator the grouping saving is measured against.
+fn singleton_full_muls(class: u8) -> u64 {
+    match class {
+        0 => 1, // C0LinearE4: no product, one coefficient mul
+        1 => 4, // DualProductE4: two products, two coefficient muls
+        other => panic!("class {other} is not a live continuation term class"),
+    }
+}
+
+/// Accumulator sides a member's immediate multiplies into — one `BF x E4` each,
+/// and also the number of source products the member still pays in FULL width
+/// minus one for `C0Linear`. Kept as its own function because the two counts read
+/// it for different reasons.
+fn active_sides(class: u8) -> u64 {
+    match class {
+        0 => 1, // C0LinearE4 feeds acc_c0 only
+        1 => 2, // DualProductE4 feeds both
+        other => panic!("class {other} is not a live continuation term class"),
+    }
+}
+
+/// Full `E4 x E4` muls a grouped MEMBER record still pays: its source products
+/// only — the coefficient mul moved to the group's header.
+fn member_full_muls(class: u8) -> u64 {
+    match class {
+        0 => 0, // C0LinearE4 reads one projection, no product
+        1 => 2, // DualProductE4 multiplies two projections, twice
+        other => panic!("class {other} is not a live continuation term class"),
+    }
+}
+
+/// Count the two mul columns off the WIRE: the committed program, walked by
+/// [`decode_atoms`] exactly as the kernel's decoder walks it.
+///
+/// Header-driven, and deliberately so — this reads the same words the GPU reads,
+/// so it cannot agree with the model by sharing a bug with it. A member's thirteen
+/// coefficient bits are an [`ImmediateId`], and `±1` is the two reserved ids, which
+/// is the only thing that decides whether a member pays a `BF x E4` at all.
+fn wire_mul_counts(program: &LeanProgram) -> MulCounts {
+    let atoms = decode_atoms(program, BwdRegime::Ext).expect("the committed program decodes");
+    let mut counts = MulCounts::default();
+    for atom in &atoms {
+        match atom {
+            LeanAtom::Term(term) => counts.full += singleton_full_muls(term.class),
+            LeanAtom::Group { has_c0, has_c2, members, .. } => {
+                counts.full += u64::from(*has_c0) + u64::from(*has_c2);
+                for member in members {
+                    counts.full += member_full_muls(member.class);
+                    if ImmediateId(member.coeff).bank_index().is_some() {
+                        counts.bf_imm += active_sides(member.class);
+                    }
+                }
+            }
+        }
+    }
+    counts
+}
+
+/// The same two numbers from the MODEL: `layer.groups` plus the terms no group
+/// claims. Independent of the wire — no encode, no decode, no class numbering; it
+/// reads `CoeffTerm` variants and `CoeffGroupMember::immediate` directly.
+fn model_mul_counts(layer: &CoeffLayer) -> MulCounts {
+    let class_of = |term: &CoeffTerm| -> u8 {
+        match term {
+            CoeffTerm::C0Linear { .. } => 0,
+            CoeffTerm::DualProduct { .. } => 1,
+            CoeffTerm::C2Product { .. } => {
+                panic!("C2Product has no live continuation class, so an Ext layer has none")
+            }
+        }
+    };
+    let mut grouped = vec![false; layer.terms.len()];
+    let mut counts = MulCounts::default();
+    for group in &layer.groups {
+        counts.full += u64::from(group.has_c0) + u64::from(group.has_c2);
+        for member in &group.members {
+            grouped[member.term.0 as usize] = true;
+            let class = class_of(&layer.terms[member.term.0 as usize]);
+            counts.full += member_full_muls(class);
+            if member.immediate.bank_index().is_some() {
+                counts.bf_imm += active_sides(class);
+            }
+        }
+    }
+    for term in &layer.terms {
+        if !grouped[term.id().0 as usize] {
+            counts.full += singleton_full_muls(class_of(term));
+        }
+    }
+    counts
+}
+
+/// The TERM-form cost of the same layer: every term pays its products plus its own
+/// coefficient mul, which is what the pre-grouping wire encoded. The denominator of
+/// the saving, and the reason the ratio below is a magnitude check rather than a
+/// tautology.
+fn term_form_full_muls(layer: &CoeffLayer) -> u64 {
+    layer
+        .terms
+        .iter()
+        .map(|term| match term {
+            CoeffTerm::C0Linear { .. } => 1,
+            CoeffTerm::DualProduct { .. } => 4,
+            CoeffTerm::C2Product { .. } => {
+                panic!("C2Product has no live continuation class, so an Ext layer has none")
+            }
+        })
+        .sum()
+}
+
+/// Design §6.5: the STRUCTURAL census cross-check. The mul work the committed
+/// `Ext` wire realizes is the mul work the production grouping pass predicts, per
+/// coordinate, and the numbers are golden-pinned.
+///
+/// Two independent counts of the same two quantities:
+///
+///   * [`wire_mul_counts`] walks the committed program with [`decode_atoms`] — the
+///     bytes the GPU kernel decodes, header records and reinterpreted member
+///     coefficient fields included; and
+///   * [`model_mul_counts`] reads the grouped [`CoeffLayer`]'s `groups` and terms.
+///
+/// They agree only if the encoder placed every atom the transform formed, gave each
+/// header the accumulator flags its members' classes imply, and reinterpreted
+/// exactly the member records' coefficient fields — the three things a "the wire
+/// says what the model meant" claim consists of. The golden pins then make it a
+/// DRIFT detector: a lowering change that moves a coordinate's mul work shows up as
+/// a specific coordinate and a specific delta rather than as a silent perf shift.
+///
+/// The archived fragment CSV (`seg_report.rs`'s `bwd_seg_fragment_coefficient_census`)
+/// is motivation, NOT the oracle: it modeled neither the singleton rule (a
+/// one-member core does not group) nor the §4.2 chop (a core over `T` members
+/// becomes several atoms, each paying its own core mul), so its numbers are
+/// optimistic. The corpus ratio asserted below is a band, not an equality, for
+/// exactly that reason — it is a same-magnitude sanity check on the census that
+/// motivated the work, and a wild ratio is a defect signal.
+#[test]
+fn grouped_wire_realizes_predicted_mul_counts() {
+    /// `(circuit, layer, full E4xE4, BF x E4)` for every `Ext` coordinate, in
+    /// `(circuit, layer)` order. Golden — from one instrumented run.
+    ///
+    /// The shape to read off it: `BF x E4` is concentrated at L0 and is ZERO on
+    /// every deeper layer of every circuit but `unsigned_mul_div` L1. That is a
+    /// measurement, and what it says is that outside L0 every member's immediate
+    /// factors out as `±1` — the reserved-literal path (§4.4), which costs no
+    /// multiply at all, so those coordinates' grouping is pure saving.
+    #[rustfmt::skip]
+    const GOLDEN: &[(&str, usize, u64, u64)] = &[
+        ("add_sub_lui_auipc_mop_layout_gkr.json", 0, 338, 56),
+        ("add_sub_lui_auipc_mop_layout_gkr.json", 1, 53, 0),
+        ("add_sub_lui_auipc_mop_layout_gkr.json", 2, 33, 0),
+        ("add_sub_lui_auipc_mop_layout_gkr.json", 3, 18, 0),
+        ("bigint_with_extended_control_layout_gkr.json", 0, 3761, 568),
+        ("bigint_with_extended_control_layout_gkr.json", 1, 385, 0),
+        ("bigint_with_extended_control_layout_gkr.json", 2, 213, 0),
+        ("bigint_with_extended_control_layout_gkr.json", 3, 113, 0),
+        ("bigint_with_extended_control_layout_gkr.json", 4, 61, 0),
+        ("bigint_with_extended_control_layout_gkr.json", 5, 39, 0),
+        ("blake2_g_function_layout_gkr.json", 0, 266, 10),
+        ("blake2_g_function_layout_gkr.json", 1, 121, 0),
+        ("blake2_g_function_layout_gkr.json", 2, 63, 0),
+        ("blake2_g_function_layout_gkr.json", 3, 33, 0),
+        ("blake2_g_function_layout_gkr.json", 4, 29, 0),
+        ("blake2_with_extended_control_layout_gkr.json", 0, 3200, 111),
+        ("blake2_with_extended_control_layout_gkr.json", 1, 833, 0),
+        ("blake2_with_extended_control_layout_gkr.json", 2, 417, 0),
+        ("blake2_with_extended_control_layout_gkr.json", 3, 217, 0),
+        ("blake2_with_extended_control_layout_gkr.json", 4, 111, 0),
+        ("blake2_with_extended_control_layout_gkr.json", 5, 53, 0),
+        ("blake2_with_extended_control_layout_gkr.json", 6, 39, 0),
+        ("blake2_with_extended_control_layout_gkr.json", 7, 16, 0),
+        ("inits_and_teardowns_preprocessed_layout_gkr.json", 0, 878, 0),
+        ("inits_and_teardowns_preprocessed_layout_gkr.json", 1, 32, 0),
+        ("inits_and_teardowns_preprocessed_layout_gkr.json", 2, 16, 0),
+        ("inits_and_teardowns_preprocessed_layout_gkr.json", 3, 8, 0),
+        ("jump_branch_slt_layout_gkr.json", 0, 316, 38),
+        ("jump_branch_slt_layout_gkr.json", 1, 55, 0),
+        ("jump_branch_slt_layout_gkr.json", 2, 41, 0),
+        ("jump_branch_slt_layout_gkr.json", 3, 18, 0),
+        ("keccak_special5_layout_gkr.json", 0, 3410, 718),
+        ("keccak_special5_layout_gkr.json", 1, 215, 0),
+        ("keccak_special5_layout_gkr.json", 2, 109, 0),
+        ("keccak_special5_layout_gkr.json", 3, 59, 0),
+        ("keccak_special5_layout_gkr.json", 4, 31, 0),
+        ("keccak_special5_layout_gkr.json", 5, 16, 0),
+        ("mem_subword_only_layout_gkr.json", 0, 202, 24),
+        ("mem_subword_only_layout_gkr.json", 1, 92, 0),
+        ("mem_subword_only_layout_gkr.json", 2, 41, 0),
+        ("mem_subword_only_layout_gkr.json", 3, 18, 0),
+        ("mem_word_only_layout_gkr.json", 0, 149, 24),
+        ("mem_word_only_layout_gkr.json", 1, 62, 0),
+        ("mem_word_only_layout_gkr.json", 2, 41, 0),
+        ("mem_word_only_layout_gkr.json", 3, 18, 0),
+        ("shift_binop_layout_gkr.json", 0, 271, 12),
+        ("shift_binop_layout_gkr.json", 1, 61, 0),
+        ("shift_binop_layout_gkr.json", 2, 35, 0),
+        ("shift_binop_layout_gkr.json", 3, 26, 0),
+        ("unified_reduced_machine_layout_gkr.json", 0, 1326, 136),
+        ("unified_reduced_machine_layout_gkr.json", 1, 93, 0),
+        ("unified_reduced_machine_layout_gkr.json", 2, 55, 0),
+        ("unified_reduced_machine_layout_gkr.json", 3, 36, 0),
+        ("unsigned_mul_div_layout_gkr.json", 0, 252, 12),
+        ("unsigned_mul_div_layout_gkr.json", 1, 175, 34),
+        ("unsigned_mul_div_layout_gkr.json", 2, 45, 0),
+        ("unsigned_mul_div_layout_gkr.json", 3, 34, 0),
+    ];
+
+    let measured: Vec<(&str, usize, u64, u64, u64)> = FIXTURES
+        .par_iter()
+        .flat_map_iter(|name| {
+            layers_with_bwd_roots(name).map(move |(li, canonical, cross)| {
+                let where_ = format!("{name} L{li} Ext");
+                // The PRODUCTION chain, both sides: the artifact's program is the
+                // committed wire, and `lower_lean_layer` is the grouped model it
+                // was encoded from.
+                let artifact =
+                    compile_lean_coordinate(name, li, &canonical, &cross, BwdRegime::Ext)
+                        .unwrap_or_else(|e| panic!("[{where_}] compile: {e:?}"));
+                let (layer, _) = lower_lean_layer(&canonical, &cross, BwdRegime::Ext)
+                    .unwrap_or_else(|e| panic!("[{where_}] lower: {e:?}"));
+
+                let wire = wire_mul_counts(&artifact.program);
+                let model = model_mul_counts(&layer);
+                assert_eq!(
+                    wire, model,
+                    "[{where_}] the committed wire's mul work is not the grouped model's",
+                );
+                assert!(
+                    !layer.groups.is_empty() || wire.bf_imm == 0,
+                    "[{where_}] a group-free coordinate cannot pay a BF immediate",
+                );
+                (*name, li, wire.full, wire.bf_imm, term_form_full_muls(&layer))
+            })
+        })
+        .collect();
+
+    let mut rows = measured.clone();
+    rows.sort_by_key(|(name, layer, ..)| (*name, *layer));
+    let corpus_full: u64 = rows.iter().map(|(.., full, _, _)| full).sum();
+    let corpus_bf: u64 = rows.iter().map(|(.., bf, _)| bf).sum();
+    let corpus_term: u64 = rows.iter().map(|(.., term)| term).sum();
+    let ratio = corpus_full as f64 / corpus_term as f64;
+    println!(
+        "[mul cross-check] {} Ext coordinates: full E4xE4 {corpus_term} (term form) -> \
+         {corpus_full} grouped ({:.4} of term form) plus {corpus_bf} BFxE4",
+        rows.len(),
+        ratio,
+    );
+
+    assert_eq!(rows.len(), in_scope::LAYERS, "every layer with backward roots, Ext regime");
+    assert_eq!(
+        rows.iter().map(|(n, l, f, b, _)| (*n, *l, *f, *b)).collect::<Vec<_>>(),
+        GOLDEN.to_vec(),
+        "a coordinate's realized mul work drifted from its pin",
+    );
+    // Census-magnitude sanity (§6.5): the grouped form's full-mul count lands where
+    // the motivating census said it would. A band, not an equality — the singleton
+    // rule and the chop both cost muls the archived CSV did not model.
+    assert!(
+        (0.72..=0.76).contains(&ratio),
+        "corpus full-mul ratio {ratio:.4} is outside the censused 0.72-0.76 band; investigate \
+         before re-pinning",
+    );
+    assert!(corpus_bf > 0, "the BF-immediate column must be live, or the grouping saved nothing");
 }

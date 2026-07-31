@@ -7,9 +7,17 @@
 //! pipeline produces —
 //!
 //! ```text
-//! lower_coeff_layer -> order_terms -> encode_program -> bind_lean_sources
-//!                                   \-> validate_program
+//! R0:  lower_coeff_layer                     -> order_terms -> encode_program
+//! Ext: lower_coeff_layer -> group_coeff_layer -> order_atoms -> encode_program_atoms
+//!                                                            \-> flatten_atoms
+//!   both: -> bind_lean_sources -> validate_program
 //! ```
+//!
+//! `Ext` coordinates are GROUPED (grouped-coefficient design §4.1-§4.4): the
+//! coefficient grouping transform is part of production lowering, so a continuation
+//! program is a stream of ATOMS — a group header record plus its member records, or
+//! one plain record — while the committed `order` stays a flat `TermId` permutation.
+//! R0 has no atoms and takes the term-granular passes verbatim.
 //!
 //! the committed term order, the fixed-width term program, and the placement-free
 //! source binding. There is no budget dimension, no paging plan, no cell file and
@@ -36,11 +44,14 @@ use std::path::{Path, PathBuf};
 use cs::gkr_compiler::dag_ir::{BwdRegime, DagLayer, FieldKind, ReadPlace};
 use serde::{Deserialize, Serialize};
 
-use super::lean::{LeanCodecError, LeanProgram, encode_program, validate_program};
+use super::group::group_coeff_layer;
+use super::lean::{
+    LeanCodecError, LeanProgram, encode_program, encode_program_atoms, validate_program,
+};
 use super::lean_bind::{LeanBindError, LeanSourceBinding, bind_lean_sources};
 use super::lower::lower_coeff_layer;
 use super::model::{CoeffError, CoeffLayer, TermId};
-use super::order::order_terms;
+use super::order::{flatten_atoms, order_atoms, order_terms};
 use crate::bwd::distill::distill;
 use crate::bwd::source::VIRTUAL_SETUP_MATERIALIZE_DEPTH;
 
@@ -221,6 +232,14 @@ pub fn order_covers_layer(order: &[TermId], terms: usize) -> bool {
 
 /// Lower one canonical layer in one regime, into the lean IR.
 ///
+/// `Ext` layers come back GROUPED (grouped-coefficient design §4.1): the
+/// coefficient grouping transform is part of production lowering, so every
+/// consumer of a continuation layer — the interpreter, the descriptor deal, the
+/// artifact encoder — sees the same grouped model. R0 layers are returned
+/// verbatim; grouping is `Ext`-only, and [`group_coeff_layer`] would pass an R0
+/// layer through untouched anyway, so the match here is a statement of intent
+/// rather than the only guard.
+///
 /// Nothing in this pipeline is priced: the per-list work model needs the
 /// round-binding dependent source classes, which do not exist at the
 /// [`CoeffLayer`] layer.
@@ -231,6 +250,10 @@ pub fn lower_lean_layer(
 ) -> Result<(CoeffLayer, u8), LeanArtifactError> {
     let distilled = distill(canonical, regime, cross_fields, None);
     let layer = lower_coeff_layer(canonical, &distilled)?;
+    let layer = match regime {
+        BwdRegime::R0 => layer,
+        BwdRegime::Ext => group_coeff_layer(layer)?,
+    };
     Ok((layer, lean_target_depth(regime)))
 }
 
@@ -240,10 +263,18 @@ pub fn lower_lean_layer(
 /// failure. Nothing is written from here — the caller writes one circuit's
 /// artifact once its coordinates have all succeeded.
 ///
+/// The two regimes take different ordering and encoding passes, because only `Ext`
+/// has atoms: R0 orders TERMS and encodes one record each, `Ext` orders ATOMS
+/// ([`order_atoms`]) and encodes each as a group header plus its members or as one
+/// plain record ([`encode_program_atoms`]). The artifact's `order` field is a
+/// `TermId` permutation in both cases — [`flatten_atoms`] is what turns the `Ext`
+/// atom order back into one — so the coverage check and the source binder are the
+/// same call on both paths.
+///
 /// # Panics
 ///
-/// If [`order_terms`] does not return a permutation of the layer's terms. That is a
-/// compiler bug in the ordering pass, not a property of the input DAG, and it is
+/// If the ordering pass does not return a permutation of the layer's terms. That is
+/// a compiler bug in the ordering pass, not a property of the input DAG, and it is
 /// checked here because it is the one defect the codec's validator cannot see: a
 /// partial order encodes a program that is well-formed and wrong.
 pub fn compile_lean_coordinate(
@@ -254,7 +285,18 @@ pub fn compile_lean_coordinate(
     regime: BwdRegime,
 ) -> Result<LeanCoordinateArtifact, LeanArtifactError> {
     let (layer, target_depth) = lower_lean_layer(canonical, cross_fields, regime)?;
-    let order = order_terms(&layer);
+    // The committed order: over TERMS at R0, over ATOMS in `Ext`. `order` is the
+    // FLATTENED term permutation either way, and it is checked BEFORE anything is
+    // encoded — an encoder handed a malformed order would panic on a term index
+    // instead of reporting which coordinate's ordering pass is broken.
+    let atoms = match regime {
+        BwdRegime::R0 => None,
+        BwdRegime::Ext => Some(order_atoms(&layer)),
+    };
+    let order = match &atoms {
+        None => order_terms(&layer),
+        Some(atoms) => flatten_atoms(&layer, atoms),
+    };
     assert!(
         order_covers_layer(&order, layer.terms.len()),
         "[{circuit} L{layer_index} {regime:?}] the committed order is not a permutation of the \
@@ -263,7 +305,10 @@ pub fn compile_lean_coordinate(
         order.len(),
     );
 
-    let program = encode_program(&layer, &order)?;
+    let program = match &atoms {
+        None => encode_program(&layer, &order)?,
+        Some(atoms) => encode_program_atoms(&layer, atoms)?,
+    };
     let binding = bind_lean_sources(&layer, cross_fields, &order, target_depth)?;
     validate_program(&program, &layer)?;
 
