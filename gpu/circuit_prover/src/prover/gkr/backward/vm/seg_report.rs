@@ -9942,6 +9942,198 @@ floor_dram_read_bytes,floor_dram_write_bytes,sources_priced,dead_sources,distinc
     drop(eq_low);
 }
 
+/// **The fragment-vs-term coefficient-mul census (RR, 2026-07-30).** The NCU
+/// stall capture put the continuation bottleneck on the FMA-heavy pipe, and the
+/// eval loop's full `E4 x E4` muls are what feeds it. Distribution folded
+/// `challenge_core x bf_immediate` into one opaque per-term bank coefficient, so
+/// every term pays a FULL coefficient mul per projection; an undistributed
+/// (fragment/relation) evaluation on the SAME thread-owns-row executor would pay
+/// a `BF x E4` immediate mul per term plus ONE full core mul per group instead.
+/// This census reconstructs the grouping post-hoc from the symbolic recipes —
+/// two terms share a group iff their `NormalizedCoefficientRecipe`s are equal
+/// after dividing out the leading scalar (the scalar IS the BF immediate; the
+/// quotient is the challenge core, and an internal challenge factor lands in the
+/// core, splitting the group, which prices it correctly) — and counts the mul
+/// work of both forms.
+///
+/// Ext regime only (per RR: R0's semantics differ and it is DRAM-bound anyway).
+/// What is IDENTICAL in both forms and therefore excluded: the source-product
+/// muls per term are COUNTED but do not move; fold/resolve work; the eq factor;
+/// `c_init`; the epilogue; e4 adds (a group adds one extra accumulate per term
+/// and one per group, against the fma-folded adds of the term form — mul-pipe
+/// pressure is the question, and adds are not muls). Weightings: a full
+/// `E4 x E4` at 9 bf-mul units (Karatsuba, charitable to the current form) and
+/// 16 (schoolbook); `BF x E4` is exactly 4.
+///
+/// Pure lowering walk — no GPU, no timing, no context.
+#[test]
+fn bwd_seg_fragment_coefficient_census() {
+    use std::collections::HashMap;
+
+    use gkr_eval_isa::bwd::coeff::model::{
+        CoeffProduct, CoeffTerm, CoefficientRecipeId, NormalizedCoefficientRecipe,
+    };
+
+    use crate::primitives::field::BF;
+    use crate::upstream::PrimeField;
+
+    let bf = BF::from_u32_with_reduction;
+    let neg_one = {
+        let mut v = BF::ONE;
+        v.negate();
+        v.as_u32_reduced()
+    };
+
+    // (core, immediate): the challenge core with its leading scalar divided out
+    // (`None` = trivial core, i.e. the recipe is a bare scalar), and the reduced
+    // immediate.
+    let split = |layer: &gkr_eval_isa::bwd::coeff::model::CoeffLayer,
+                 id: CoefficientRecipeId|
+     -> (Option<NormalizedCoefficientRecipe>, u32) {
+        if id == CoefficientRecipeId::ONE {
+            return (None, 1);
+        }
+        if id == CoefficientRecipeId::NEG_ONE {
+            return (None, neg_one);
+        }
+        let recipe = layer
+            .banked_recipe(id)
+            .expect("a committed layer banks every non-reserved coefficient id");
+        assert!(
+            !recipe.terms.is_empty(),
+            "a zero coefficient is never encoded"
+        );
+        let immediate = recipe.terms[0].scalar;
+        if recipe.terms.len() == 1 && recipe.terms[0].challenges.is_empty() {
+            return (None, immediate);
+        }
+        let inverse = bf(immediate)
+            .inverse()
+            .expect("a banked scalar is nonzero and BF is a field");
+        let core = NormalizedCoefficientRecipe::from_terms(
+            recipe
+                .terms
+                .iter()
+                .map(|product| {
+                    let mut scaled = bf(product.scalar);
+                    scaled.mul_assign(&inverse);
+                    CoeffProduct {
+                        scalar: scaled.as_u32_reduced(),
+                        challenges: product.challenges.clone(),
+                    }
+                })
+                .collect(),
+        );
+        (Some(core), immediate)
+    };
+
+    let mut out = String::from(
+        "circuit,layer,terms,t_c0lin,t_c2,t_dual,groups,imm_free,imm_bf,\
+full_term,full_rel,bfe4_rel,saving_pct_karatsuba,saving_pct_schoolbook\n",
+    );
+    let mut corpus_full_term = 0u64;
+    let mut corpus_full_rel = 0u64;
+    let mut corpus_bfe4_rel = 0u64;
+    let mut corpus_terms = 0u64;
+    let mut corpus_groups = 0u64;
+
+    for circuit in SEG_CORPUS_LAYOUTS {
+        for layer_index in seg_coordinate_layers(circuit) {
+            let coord = lean_coordinate(circuit, layer_index, BwdRegime::Ext);
+            let layer = &coord.layer;
+
+            let (mut t_c0lin, mut t_c2, mut t_dual) = (0u64, 0u64, 0u64);
+            let (mut imm_free, mut imm_bf) = (0u64, 0u64);
+            // Full muls the CURRENT form pays: per-projection coefficient muls
+            // plus the (representation-invariant) source products.
+            let mut full_term = 0u64;
+            // The relation form: unchanged products + per-group core muls; the
+            // immediates move to the BF x E4 column.
+            let mut full_rel = 0u64;
+            let mut bfe4_rel = 0u64;
+            // group -> (has_c0_content, has_c2_content)
+            let mut groups: HashMap<NormalizedCoefficientRecipe, (bool, bool)> = HashMap::new();
+
+            for term in &layer.terms {
+                let (products, coeff_uses, c0, c2, coefficient) = match term {
+                    CoeffTerm::C0Linear { coefficient, .. } => {
+                        (0u64, 1u64, true, false, coefficient)
+                    }
+                    CoeffTerm::C2Product { coefficient, .. } => (1, 1, false, true, coefficient),
+                    CoeffTerm::DualProduct { coefficient, .. } => (2, 2, true, true, coefficient),
+                };
+                match term {
+                    CoeffTerm::C0Linear { .. } => t_c0lin += 1,
+                    CoeffTerm::C2Product { .. } => t_c2 += 1,
+                    CoeffTerm::DualProduct { .. } => t_dual += 1,
+                }
+                full_term += products + coeff_uses;
+                full_rel += products;
+                let (core, immediate) = split(layer, *coefficient);
+                if immediate == 1 || immediate == neg_one {
+                    imm_free += 1;
+                } else {
+                    imm_bf += 1;
+                    bfe4_rel += coeff_uses;
+                }
+                if let Some(core) = core {
+                    let entry = groups.entry(core).or_insert((false, false));
+                    entry.0 |= c0;
+                    entry.1 |= c2;
+                }
+            }
+            let group_count = groups.len() as u64;
+            for (has_c0, has_c2) in groups.values() {
+                full_rel += u64::from(*has_c0) + u64::from(*has_c2);
+            }
+
+            let terms = layer.terms.len() as u64;
+            let saving = |full_weight: f64| -> f64 {
+                let term_units = full_term as f64 * full_weight;
+                let rel_units = full_rel as f64 * full_weight + bfe4_rel as f64 * 4.0;
+                (1.0 - rel_units / term_units) * 100.0
+            };
+            writeln!(
+                out,
+                "{},{layer_index},{terms},{t_c0lin},{t_c2},{t_dual},{group_count},\
+{imm_free},{imm_bf},{full_term},{full_rel},{bfe4_rel},{:.2},{:.2}",
+                short_name(circuit),
+                saving(9.0),
+                saving(16.0),
+            )
+            .expect("write String");
+
+            corpus_full_term += full_term;
+            corpus_full_rel += full_rel;
+            corpus_bfe4_rel += bfe4_rel;
+            corpus_terms += terms;
+            corpus_groups += group_count;
+        }
+    }
+
+    let path = seg_output_path("seg_fragment_coeff_census.csv");
+    publish(&path, &out);
+    assert!(corpus_terms > 0, "the census is non-vacuous");
+    let total = |weight: f64| -> (f64, f64) {
+        let term_units = corpus_full_term as f64 * weight;
+        let rel_units = corpus_full_rel as f64 * weight + corpus_bfe4_rel as f64 * 4.0;
+        (term_units, rel_units)
+    };
+    let (term9, rel9) = total(9.0);
+    let (term16, rel16) = total(16.0);
+    eprintln!(
+        "[seg-frag-census] Ext corpus: {corpus_terms} terms -> {corpus_groups} nontrivial \
+         challenge-core groups; full E4xE4 muls {corpus_full_term} (term form) vs \
+         {corpus_full_rel} + {corpus_bfe4_rel} BFxE4 (relation form)\n\
+         [seg-frag-census] eval-loop mul-work saving: {:.2}% at 9:4 (Karatsuba), {:.2}% at \
+         16:4 (schoolbook) -- products, folds, eq, adds identical in both forms and excluded\n\
+         [seg-frag-census] -> {}",
+        (1.0 - rel9 / term9) * 100.0,
+        (1.0 - rel16 / term16) * 100.0,
+        path.display(),
+    );
+}
+
 /// Sweep ONE `(circuit, layer, round class)` coordinate: the whole `K` axis at
 /// every rung of the row ladder.
 #[allow(clippy::too_many_arguments)]
