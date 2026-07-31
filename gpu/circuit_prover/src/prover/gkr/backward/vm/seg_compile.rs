@@ -52,7 +52,9 @@ use gkr_eval_isa::bwd::coeff::interp::CoeffResolver;
 use gkr_eval_isa::bwd::coeff::lean_artifact::{
     compile_lean_coordinate, lower_lean_layer, LeanCoordinateArtifact,
 };
+use gkr_eval_isa::bwd::coeff::lower::lower_coeff_layer;
 use gkr_eval_isa::bwd::coeff::model::{CoeffLayer, CoefficientRecipeId, SourceId};
+use gkr_eval_isa::bwd::distill::distill;
 use gkr_eval_isa::fwd::compile::build_cross_layer_field_map;
 use rayon::prelude::*;
 
@@ -277,6 +279,43 @@ pub(crate) fn lean_coordinate(
         .expect("coordinate cache")
         .insert(key, Arc::clone(&entry));
     entry
+}
+
+/// The UNGROUPED lowering of one coordinate: `distill -> lower_coeff_layer`, and
+/// nothing after it.
+///
+/// [`lean_coordinate`]'s [`SegCoordinate::layer`] comes from `lower_lean_layer`,
+/// which for `Ext` now includes the coefficient GROUPING transform — so it is the
+/// realized production form and NOT the term-granular one. A consumer that must
+/// reason about the pre-grouping shape (the fragment-vs-term mul census, whose
+/// whole point is comparing the two forms) cannot get it from there, and
+/// reconstructing it by ungrouping is not possible: the transform drops the member
+/// recipes from the bank.
+///
+/// Deliberately NOT cached and NOT wrapped in a `SegCoordinate`: it is a census
+/// input, not a fixture, and nothing launches from it.
+pub(crate) fn ungrouped_lean_layer(
+    circuit: &'static str,
+    layer_index: usize,
+    regime: BwdRegime,
+) -> CoeffLayer {
+    let dag = lowered_dag(circuit);
+    let canonical = dag
+        .0
+        .get(layer_index)
+        .unwrap_or_else(|| panic!("{circuit} has no canonical layer {layer_index}"));
+    let distilled = distill(canonical, regime, &dag.1, None);
+    let layer = lower_coeff_layer(canonical, &distilled).unwrap_or_else(|error| {
+        panic!(
+            "lower {} L{layer_index} {regime:?} ungrouped: {error:?}",
+            short_name(circuit)
+        )
+    });
+    debug_assert!(
+        layer.groups.is_empty() && layer.immediates.is_empty(),
+        "lower_coeff_layer never groups — grouping is a separate pass"
+    );
+    layer
 }
 
 // ── Deterministic values ─────────────────────────────────────────────────────

@@ -5708,7 +5708,8 @@ impl SegCell {
 use cs::gkr_compiler::dag_ir::BwdRegime as DagBwdRegime;
 
 use super::seg_compile::{
-    lean_coordinate, seg_coordinate_layers, ADD_SUB_LAYOUT, SEG_CORPUS_LAYOUTS, SEG_LAYOUTS,
+    lean_coordinate, seg_coordinate_layers, ungrouped_lean_layer, ADD_SUB_LAYOUT,
+    SEG_CORPUS_LAYOUTS, SEG_LAYOUTS,
 };
 use crate::prover::test_utils::make_test_context;
 
@@ -9967,6 +9968,39 @@ floor_dram_read_bytes,floor_dram_write_bytes,sources_priced,dead_sources,distinc
 /// `E4 x E4` at 9 bf-mul units (Karatsuba, charitable to the current form) and
 /// 16 (schoolbook); `BF x E4` is exactly 4.
 ///
+/// # This is the IDEALIZED bound, not the realized form
+///
+/// Grouping is now production lowering, so this census is no longer a forecast of a
+/// hypothetical — but its `full_rel` / `bfe4_rel` columns are still NOT what the
+/// shipped wire pays. The post-hoc reconstruction below models neither of the two
+/// rules the real transform has:
+///
+///   * the SINGLETON rule — a core with one member does not group at all, and pays
+///     a full coefficient mul like any plain term; this census groups it anyway; and
+///   * the §4.2 CHOP — a core over `GROUP_SPLIT_MAX_MEMBERS` members becomes several
+///     atoms, each paying its own core mul; this census pays one.
+///
+/// Both make it OPTIMISTIC. It is kept as the motivating measurement it was
+/// (design §6.5 calls it "motivation, NOT the oracle"), and the realized counts —
+/// read off the committed wire and cross-checked against the production grouping
+/// pass, golden-pinned per coordinate — live in `gkr_eval_isa`'s
+/// `bwd_coeff_corpus.rs::grouped_wire_realizes_predicted_mul_counts`. Read that one
+/// for what the flip actually bought; read this one for why it was attempted.
+///
+/// It therefore takes its input from [`ungrouped_lean_layer`] and not from
+/// `lean_coordinate`'s [`SegCoordinate::layer`], which is now the GROUPED production
+/// form. That distinction is not cosmetic and it is not self-announcing: on a
+/// grouped layer most term coefficients are already cores with leading scalar one,
+/// so `split` returns immediate `1` for them and their `BF x E4` work vanishes from
+/// the relation column — but the bank still holds the SINGLETON originals, so the
+/// column does not go to zero and no assertion trips. Measured on this corpus, the
+/// grouped input yields `2,070 -> 327` BFxE4 and reports the saving as **27.49%
+/// instead of 24.47%** at 9:4: a plausible CSV, overstated by three points. The
+/// per-coordinate `groups.is_empty() && immediates.is_empty()` assertion in the walk
+/// is what makes the input a checked precondition rather than an assumption; the
+/// corpus-level non-vacuity checks below cannot do it, because a grouped layer
+/// passes them all.
+///
 /// Pure lowering walk — no GPU, no timing, no context.
 #[test]
 fn bwd_seg_fragment_coefficient_census() {
@@ -10042,8 +10076,23 @@ saving_pct_karatsuba,saving_pct_schoolbook\n",
 
     for circuit in SEG_CORPUS_LAYOUTS {
         for layer_index in seg_coordinate_layers(circuit) {
-            let coord = lean_coordinate(circuit, layer_index, BwdRegime::Ext);
-            let layer = &coord.layer;
+            // The UNGROUPED lowering, deliberately: `lean_coordinate`'s layer is the
+            // grouped production form, on which this census's comparison is not the
+            // one it documents (see the doc above).
+            let owned = ungrouped_lean_layer(circuit, layer_index, BwdRegime::Ext);
+            let layer = &owned;
+            // The guard that makes the choice of input CHECKED rather than merely
+            // intended. It has to be structural: feeding this walk a grouped layer
+            // does NOT visibly break it — the bank still holds the singleton
+            // originals, so a plausible-looking CSV comes out with the saving
+            // OVERSTATED (measured: 27.49% instead of 24.47% at 9:4). Only the
+            // absence of `groups` / `immediates` distinguishes the two inputs.
+            assert!(
+                layer.groups.is_empty() && layer.immediates.is_empty(),
+                "[{} L{layer_index} Ext] this census must be handed the TERM-granular \
+                 lowering; a grouped layer silently overstates the saving",
+                short_name(circuit),
+            );
 
             let (mut t_c0lin, mut t_c2, mut t_dual) = (0u64, 0u64, 0u64);
             let (mut imm_free, mut imm_bf) = (0u64, 0u64);
@@ -10139,6 +10188,18 @@ saving_pct_karatsuba,saving_pct_schoolbook\n",
     let path = seg_output_path("seg_fragment_coeff_census.csv");
     publish(&path, &out);
     assert!(corpus_terms > 0, "the census is non-vacuous");
+    // Non-vacuity. Necessary but NOT sufficient to catch a grouped input — that is
+    // the per-coordinate structural assertion in the walk above, because a grouped
+    // layer satisfies all three of these.
+    assert!(
+        corpus_bfe4_rel > 0,
+        "the BF-immediate column must be live, or the relation form is not being priced"
+    );
+    assert!(
+        corpus_groups > 0 && corpus_full_rel < corpus_full_term,
+        "the relation form must group something and cost strictly fewer full muls, or there \
+         is nothing for this census to be about"
+    );
     let total = |weight: f64| -> (f64, f64) {
         let term_units = corpus_full_term as f64 * weight;
         let rel_units = corpus_full_rel as f64 * weight + corpus_bfe4_rel as f64 * 4.0;
