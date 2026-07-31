@@ -20,7 +20,8 @@ use field::{Field, FieldExtension, PrimeField};
 
 use super::group;
 use super::lean::{
-    self, LEAN_CONT_OPCODES, LEAN_R0_OPCODES, LeanCodecError, LeanProgram, LeanTerm, SOURCE_NONE,
+    self, LEAN_CONT_OPCODES, LEAN_R0_OPCODES, LeanAtom, LeanCodecError, LeanProgram, LeanTerm,
+    SOURCE_NONE,
 };
 use super::limits::TermCategory;
 use super::model::{
@@ -311,17 +312,26 @@ impl From<CoeffError> for LeanInterpError {
 /// Interpret one row of a LEAN program under the `k`-way segmentation the launch
 /// performs, returning `(acc_c0, acc_c2)`.
 ///
-/// `k` is the number of per-warp term lists:
-/// [`split_round_robin`](super::order::split_round_robin) over the decoded record
-/// POSITIONS gives list `w` positions `w, w+k, w+2k, …` (§3), each list
-/// accumulates its own partial pair in isolation, and the result is the sum of the
-/// `k` partials. Field addition is exact, so the value is the same for every `k` —
-/// segmentation is invisible to parity, which is what lets this be the oracle a
-/// kernel must match bit-for-bit at whatever `K` it launches.
+/// `k` is the number of per-warp lists:
+/// [`split_round_robin`](super::order::split_round_robin) over the decoded ATOM
+/// indices gives list `w` atoms `w, w+k, w+2k, …` (§3), each list accumulates its
+/// own partial pair in isolation, and the result is the sum of the `k` partials.
+/// Field addition is exact, so the value is the same for every `k` — segmentation
+/// is invisible to parity, which is what lets this be the oracle a kernel must
+/// match bit-for-bit at whatever `K` it launches.
+///
+/// The unit of the split is the ATOM ([`LeanAtom`]), not the record: a GROUP is one
+/// indivisible unit of work, since its `core * SUM imm_m * v_m` shape only exists
+/// while its members share a partial. That is also why this round-robin is not the
+/// deal a kernel performs — §6: ANY whole-atom partition yields the same field
+/// element, so list IDENTITY is deliberately not part of the contract and is never
+/// compared against the GPU's descriptor deal. A group-free program (every R0
+/// program, and every continuation program the ungrouped pipeline emits) has one
+/// atom per record, so the split is position-identical to the pre-group one.
 ///
 /// `c_init` seeds EXACTLY ONE partial — list 0's `acc_c0` (§5.3). Seeding each
 /// list would reduce to `K * c_init`; list 0 is seeded even when it is empty
-/// (`k` above the term count), so the seed lands exactly once for every `k`.
+/// (`k` above the atom count), so the seed lands exactly once for every `k`.
 ///
 /// SEMANTIC layer only: every operand resolves through
 /// [`CoeffResolver::source_pair`] at the projection its CLASS implies, since no
@@ -338,32 +348,55 @@ pub fn interpret_lean_program(
     resolver: &impl CoeffResolver,
     k: usize,
 ) -> Result<(Ext, Ext), LeanInterpError> {
-    let records = lean::decode_program(program, layer.regime)?;
+    let atoms = lean::decode_atoms(program, layer.regime)?;
     let seed = match layer.c_init {
         Some(id) if layer.regime == BwdRegime::R0 => return Err(LeanInterpError::CInitAtR0 { id }),
         Some(id) => coefficient(layer, id, resolver)?,
         None => Ext::ZERO,
     };
-    // Split the POSITIONS, not the records: an error then names a record by its
-    // position in the program, which is the only index a reader can act on.
-    let positions: Vec<usize> = (0..records.len()).collect();
+    // The RECORD index each atom starts at, which is the index the codec's errors
+    // speak in (a header counts as a record, exactly as `LeanCodecError` documents)
+    // — so a reject names the offending record's offset in the program, the only
+    // index a reader can act on. Atom `i` is not record `i` once a header exists.
+    let mut records = Vec::with_capacity(atoms.len());
+    let mut record = 0usize;
+    for atom in &atoms {
+        records.push(record);
+        record += match atom {
+            LeanAtom::Term(_) => 1,
+            LeanAtom::Group { members, .. } => 1 + members.len(),
+        };
+    }
+    let indices: Vec<usize> = (0..atoms.len()).collect();
     let mut acc_c0 = Ext::ZERO;
     let mut acc_c2 = Ext::ZERO;
-    for (list, list_positions) in split_round_robin(&positions, k).iter().enumerate() {
+    for (list, list_atoms) in split_round_robin(&indices, k).iter().enumerate() {
         // §5.3: ONE partial carries the seed. `k` seeded partials would reduce to
         // `k * c_init`.
         let mut partial_c0 = if list == 0 { seed } else { Ext::ZERO };
         let mut partial_c2 = Ext::ZERO;
-        for &position in list_positions {
-            lean_record(
-                layer,
-                position,
-                &records[position],
-                row,
-                resolver,
-                &mut partial_c0,
-                &mut partial_c2,
-            )?;
+        for &index in list_atoms {
+            match &atoms[index] {
+                LeanAtom::Term(term) => lean_record(
+                    layer,
+                    records[index],
+                    term,
+                    row,
+                    resolver,
+                    &mut partial_c0,
+                    &mut partial_c2,
+                )?,
+                LeanAtom::Group { core, has_c0, has_c2, members } => lean_group(
+                    layer,
+                    records[index],
+                    GroupHeader { core: *core, has_c0: *has_c0, has_c2: *has_c2 },
+                    members,
+                    row,
+                    resolver,
+                    &mut partial_c0,
+                    &mut partial_c2,
+                )?,
+            }
         }
         acc_c0.add_assign(&partial_c0);
         acc_c2.add_assign(&partial_c2);
@@ -371,7 +404,20 @@ pub fn interpret_lean_program(
     Ok((acc_c0, acc_c2))
 }
 
-/// Add one decoded record's contribution to its list's partial pair.
+/// The per-side products one record's CLASS contributes, with its COEFFICIENT
+/// factored out — the one place the wire's projection paths are spelled, so a plain
+/// record and a group member cannot read their operands differently (§4.1: grouping
+/// changes which factor multiplies the products, never the products).
+enum LeanParts {
+    /// `acc_c0 += <coefficient> * v`.
+    C0(Ext),
+    /// `acc_c2 += <coefficient> * v`.
+    C2(Ext),
+    /// Both sides, from one source-pair resolution per operand.
+    Dual { c0: Ext, c2: Ext },
+}
+
+/// The projections `category` consumes at `row`, resolved.
 ///
 /// The per-kind algebra is [`interpret_coeff_layer`]'s, term for term and
 /// multiplication for multiplication: a `C0Linear` class consumes its source's
@@ -382,6 +428,68 @@ pub fn interpret_lean_program(
 /// is the same element either way. A squared product resolves its source twice,
 /// exactly as the semantic interpreter does; that a kernel loads it once is a
 /// physical property of the kernel and not of the value.
+fn lean_parts(
+    layer: &CoeffLayer,
+    category: TermCategory,
+    position: usize,
+    record: &LeanTerm,
+    row: usize,
+    resolver: &impl CoeffResolver,
+) -> Result<LeanParts, LeanInterpError> {
+    let a = SourceId(u32::from(record.source_a));
+    match category {
+        TermCategory::C0LinearBf | TermCategory::C0LinearE4 => {
+            let (e0, _) = source_pair(layer, a, row, resolver)?;
+            Ok(LeanParts::C0(e0))
+        }
+        TermCategory::C2ProductBfBf
+        | TermCategory::C2ProductBfE4
+        | TermCategory::C2ProductE4E4 => {
+            let b = second_source(position, record)?;
+            let (_, da) = source_pair(layer, a, row, resolver)?;
+            let (_, db) = source_pair(layer, b, row, resolver)?;
+            let mut v = da;
+            v.mul_assign(&db);
+            Ok(LeanParts::C2(v))
+        }
+        TermCategory::DualProductE4 => {
+            let b = second_source(position, record)?;
+            let (a0, ad) = source_pair(layer, a, row, resolver)?;
+            let (b0, bd) = source_pair(layer, b, row, resolver)?;
+            let mut c0 = a0;
+            c0.mul_assign(&b0);
+            let mut c2 = ad;
+            c2.mul_assign(&bd);
+            Ok(LeanParts::Dual { c0, c2 })
+        }
+        // The lean class tables carry no `Move` row — `lean.rs`'s
+        // `is_densified_frozen_table` proves it when the crate compiles — so
+        // `lean_category` cannot return one.
+        TermCategory::MoveBf | TermCategory::MoveE4 => {
+            unreachable!("the lean class tables have no move rows")
+        }
+    }
+}
+
+/// The category `record`'s class names in `regime`, rejecting a dead class by the
+/// record's POSITION in the program.
+fn record_category(
+    regime: BwdRegime,
+    position: usize,
+    record: &LeanTerm,
+) -> Result<TermCategory, LeanCodecError> {
+    let class = u16::from(record.class);
+    lean_category(regime, class)
+        .ok_or(LeanCodecError::ClassNotInRegime { term: position, opcode: class })
+}
+
+/// Add one decoded PLAIN record's contribution to its list's partial pair: its own
+/// coefficient times the products its class contributes.
+///
+/// A grouped member never comes here — its `coeff` field is an [`ImmediateId`], not
+/// a [`CoefficientRecipeId`], so resolving it as a recipe would read the wrong id
+/// space entirely. Members go through [`lean_group`], which is the only caller that
+/// decodes that field as an immediate.
 fn lean_record(
     layer: &CoeffLayer,
     position: usize,
@@ -391,48 +499,92 @@ fn lean_record(
     acc_c0: &mut Ext,
     acc_c2: &mut Ext,
 ) -> Result<(), LeanInterpError> {
-    let class = u16::from(record.class);
-    let category = lean_category(layer.regime, class)
-        .ok_or(LeanCodecError::ClassNotInRegime { term: position, opcode: class })?;
+    let category = record_category(layer.regime, position, record)?;
     let k = coefficient(layer, CoefficientRecipeId(u32::from(record.coeff)), resolver)?;
-    let a = SourceId(u32::from(record.source_a));
-    match category {
-        TermCategory::C0LinearBf | TermCategory::C0LinearE4 => {
-            let (e0, _) = source_pair(layer, a, row, resolver)?;
-            let mut v = k;
-            v.mul_assign(&e0);
-            acc_c0.add_assign(&v);
+    match lean_parts(layer, category, position, record, row, resolver)? {
+        LeanParts::C0(v) => {
+            let mut t = k;
+            t.mul_assign(&v);
+            acc_c0.add_assign(&t);
         }
-        TermCategory::C2ProductBfBf
-        | TermCategory::C2ProductBfE4
-        | TermCategory::C2ProductE4E4 => {
-            let b = second_source(position, record)?;
-            let (_, da) = source_pair(layer, a, row, resolver)?;
-            let (_, db) = source_pair(layer, b, row, resolver)?;
-            let mut v = k;
-            v.mul_assign(&da);
-            v.mul_assign(&db);
-            acc_c2.add_assign(&v);
+        LeanParts::C2(v) => {
+            let mut t = k;
+            t.mul_assign(&v);
+            acc_c2.add_assign(&t);
         }
-        TermCategory::DualProductE4 => {
-            let b = second_source(position, record)?;
-            let (a0, ad) = source_pair(layer, a, row, resolver)?;
-            let (b0, bd) = source_pair(layer, b, row, resolver)?;
-            let mut c0 = k;
-            c0.mul_assign(&a0);
-            c0.mul_assign(&b0);
-            acc_c0.add_assign(&c0);
-            let mut c2 = k;
-            c2.mul_assign(&ad);
-            c2.mul_assign(&bd);
-            acc_c2.add_assign(&c2);
+        LeanParts::Dual { c0, c2 } => {
+            let mut t0 = k;
+            t0.mul_assign(&c0);
+            acc_c0.add_assign(&t0);
+            let mut t2 = k;
+            t2.mul_assign(&c2);
+            acc_c2.add_assign(&t2);
         }
-        // The lean class tables carry no `Move` row — `lean.rs`'s
-        // `is_densified_frozen_table` proves it when the crate compiles — so
-        // `lean_category` cannot return one.
-        TermCategory::MoveBf | TermCategory::MoveE4 => {
-            unreachable!("the lean class tables have no move rows")
+    }
+    Ok(())
+}
+
+/// A decoded group header's three scalar fields, so [`lean_group`] does not take
+/// three positional arguments that are all `u16`/`bool`.
+struct GroupHeader {
+    core: u16,
+    has_c0: bool,
+    has_c2: bool,
+}
+
+/// Add one decoded GROUP atom's contribution to its list's partial pair:
+/// `core * SUM_m imm_m * v_m`, per side (§4.1).
+///
+/// This is [`interpret_coeff_layer`]'s group loop over wire records instead of
+/// `CoeffTerm`s: the members' products come from the SAME [`lean_parts`] a plain
+/// record uses, the per-member immediate goes through the SAME
+/// [`immediate_value`] / [`accumulate_imm`] pair the semantic interpreter uses (so
+/// `±1` costs no multiplication there either), and the core multiplies each side
+/// exactly once — and is skipped outright on a side the flags say the group does
+/// not feed, rather than multiplied against zero.
+///
+/// The header's `core` is read as a bank id in the ordinary recipe id space, so a
+/// core that is a reserved literal would evaluate as that literal instead of being
+/// rejected: `GroupCoreIsLiteral` is [`lean::validate_program`]'s statement about a
+/// stream, not a step this evaluation needs (the value would still be the layer's).
+fn lean_group(
+    layer: &CoeffLayer,
+    header: usize,
+    group: GroupHeader,
+    members: &[LeanTerm],
+    row: usize,
+    resolver: &impl CoeffResolver,
+    acc_c0: &mut Ext,
+    acc_c2: &mut Ext,
+) -> Result<(), LeanInterpError> {
+    let core = coefficient(layer, CoefficientRecipeId(u32::from(group.core)), resolver)?;
+    let mut s_c0 = Ext::ZERO;
+    let mut s_c2 = Ext::ZERO;
+    for (offset, member) in members.iter().enumerate() {
+        // Members occupy the records right after their header, so this is the
+        // member's own position in the program.
+        let position = header + 1 + offset;
+        let category = record_category(layer.regime, position, member)?;
+        let id = ImmediateId(member.coeff);
+        let imm = immediate_value(layer, id)?;
+        match lean_parts(layer, category, position, member, row, resolver)? {
+            LeanParts::C0(v) => accumulate_imm(&mut s_c0, id, imm, v),
+            LeanParts::C2(v) => accumulate_imm(&mut s_c2, id, imm, v),
+            LeanParts::Dual { c0, c2 } => {
+                accumulate_imm(&mut s_c0, id, imm, c0);
+                accumulate_imm(&mut s_c2, id, imm, c2);
+            }
         }
+    }
+    if group.has_c0 {
+        let mut v = core;
+        v.mul_assign(&s_c0);
+        acc_c0.add_assign(&v);
+    }
+    if group.has_c2 {
+        let mut v = core;
+        v.mul_assign(&s_c2);
+        acc_c2.add_assign(&v);
     }
     Ok(())
 }
@@ -482,7 +634,7 @@ mod tests {
     use crate::bwd::coeff::model::{
         CoeffGroup, CoeffGroupMember, CoeffSource, NormalizedCoefficientRecipe,
     };
-    use crate::bwd::coeff::order::order_terms;
+    use crate::bwd::coeff::order::{order_atoms, order_terms};
     use crate::bwd::distill::distill;
     use crate::bwd::source::OriginLeaf;
     use crate::fwd::compile::build_cross_layer_field_map;
@@ -941,6 +1093,112 @@ mod tests {
         want.mul_assign(&core);
         assert_eq!(got_c0, want, "the group sum is (+1)*first + (-1)*second, times the core");
         assert_eq!(got_c2, Ext::ZERO, "`C0Linear` members feed no c2 side");
+    }
+
+    /// Two groups and two singletons in an `Ext` layer that also carries a
+    /// `c_init`, hand-built the way the grouping transform builds one (§4.1): every
+    /// member's own coefficient IS its group's core, members ascend by `TermId`, and
+    /// the non-`±1` immediates address the layer's table.
+    ///
+    /// The mix is deliberate: group `A` feeds BOTH sides (a `C0Linear` member and a
+    /// native dual member), group `B` only `c0`; the immediates cover `+1`, `-1` and
+    /// two distinct banked values, so a dropped immediate, a swapped sign or a
+    /// member evaluated with the core as its own coefficient all change the value.
+    /// The two singletons keep a plain record on either side of a header.
+    fn grouped_ext_layer() -> CoeffLayer {
+        let core_a = CoefficientRecipeId::from_bank_index(0);
+        let core_b = CoefficientRecipeId::from_bank_index(1);
+        let plain = CoefficientRecipeId::from_bank_index(2);
+        let seed = CoefficientRecipeId::from_bank_index(3);
+        let terms = vec![
+            c0(0, core_a.0, 0, FieldKind::Ext),
+            dual(1, core_a.0, 1, 2),
+            c0(2, core_b.0, 2, FieldKind::Ext),
+            c0(3, core_b.0, 1, FieldKind::Ext),
+            c0(4, CoefficientRecipeId::ONE.0, 0, FieldKind::Ext),
+            dual(5, plain.0, 0, 1),
+        ];
+        let mut layer = layer(BwdRegime::Ext, &[FieldKind::Ext; 3], 4, terms);
+        layer.c_init = Some(seed);
+        layer.immediates = vec![7, 9];
+        layer.groups = vec![
+            CoeffGroup {
+                core: core_a,
+                members: vec![
+                    CoeffGroupMember { term: TermId(0), immediate: ImmediateId::ONE },
+                    CoeffGroupMember { term: TermId(1), immediate: ImmediateId::banked(0) },
+                ],
+                has_c0: true,
+                has_c2: true,
+            },
+            CoeffGroup {
+                core: core_b,
+                members: vec![
+                    CoeffGroupMember { term: TermId(2), immediate: ImmediateId::NEG_ONE },
+                    CoeffGroupMember { term: TermId(3), immediate: ImmediateId::banked(1) },
+                ],
+                has_c0: true,
+                has_c2: false,
+            },
+        ];
+        layer
+    }
+
+    /// The four raw base-field limbs of an `Ext`, canonically reduced — what
+    /// "bit-identical" means for a pair of accumulators (`bwd_coeff_corpus.rs`
+    /// states the corpus-wide grouping claim in exactly these terms).
+    fn limbs(v: Ext) -> [u32; 4] {
+        <Ext as FieldExtension<Bf>>::into_coeffs(v).map(|c| c.as_u32_reduced())
+    }
+
+    /// The gate of the atom walk: on a GROUPED program — headers and all, in the
+    /// committed ATOM order — the lean interpreter reproduces the semantic
+    /// interpreter limb for limb, at every `k`.
+    ///
+    /// The teeth are in the last assertion: encoding the same layer as a FLAT term
+    /// stream re-reads every member's immediate id as a recipe id and its group's
+    /// core as its own coefficient, which is precisely the pre-atom walk's defect,
+    /// and it lands on a different field element. A test that only compared the
+    /// grouped program against itself could not tell the two walks apart.
+    #[test]
+    fn lean_interp_matches_semantic_on_grouped_programs() {
+        const GROUPED_KS: [usize; 3] = [1, 2, 5];
+        const GROUPED_ROWS: [usize; 3] = [0, 1, 2];
+
+        let layer = grouped_ext_layer();
+        let atoms = order_atoms(&layer);
+        assert_eq!(atoms.len(), 4, "two groups and two singletons are four atoms");
+        let program = lean::encode_program_atoms(&layer, &atoms).expect("a legal grouped layer");
+        assert_eq!(lean::validate_program(&program, &layer), Ok(()));
+        assert_eq!(program.term_count, 6);
+        assert_eq!(
+            program.words.len(),
+            (6 + 2) * lean::LEAN_WORDS_PER_TERM,
+            "six terms plus two headers",
+        );
+
+        let resolver = Pseudo { layer: &layer, seed: 0xc7 };
+        let flat = lean::encode_program(&layer, &order_terms(&layer)).expect("a legal flat stream");
+        for row in GROUPED_ROWS {
+            let semantic = interpret_coeff_layer(&layer, row, &resolver).expect("semantic");
+            assert_ne!(semantic.0, Ext::ZERO, "row {row}: the fixture must be observable");
+            assert_ne!(semantic.1, Ext::ZERO, "row {row}: the fixture must feed c2");
+            for k in GROUPED_KS {
+                let lean =
+                    interpret_lean_program(&program, &layer, row, &resolver, k).expect("lean");
+                assert_eq!(
+                    (limbs(lean.0), limbs(lean.1)),
+                    (limbs(semantic.0), limbs(semantic.1)),
+                    "row {row} k={k}: the atom walk must be bit-identical to the semantic \
+                     interpreter",
+                );
+                // Reading a member's immediate as a recipe id — what a FLAT walk of
+                // the same layer does — is a different element.
+                let ungrouped =
+                    interpret_lean_program(&flat, &layer, row, &resolver, k).expect("flat");
+                assert_ne!(ungrouped, lean, "row {row} k={k}: the flat walk must NOT agree");
+            }
+        }
     }
 
     /// A member immediate past the layer's table is the immediate-side
