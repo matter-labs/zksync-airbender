@@ -7855,9 +7855,10 @@ fn bwd_seg_fold_weight_prelude_cost() {
 /// 40-register target, and the task's condition for building rungs (b) and (c) is
 /// that the winner records more than 40 registers. On this device the GATE
 /// benchmark's winner does NOT — the R0 `plane` executor is exactly 40 — but the
-/// nine CONTINUATION symbols are 50-56, so the ladder is measured where the
-/// register count is actually the binding occupancy limiter as well as on the R0
-/// winner, which gives the rungs a same-family reference point.
+/// nine CONTINUATION symbols are 62-64 (50-56 before the grouped-eval branch), so
+/// the ladder is measured where the register count is actually the binding occupancy
+/// limiter as well as on the R0 winner, which gives the rungs a same-family
+/// reference point.
 ///
 /// Both rungs are parity-checked against BOTH CPU oracles on a Task-8-shaped
 /// ladder cell before either is timed, and both are timed against their own

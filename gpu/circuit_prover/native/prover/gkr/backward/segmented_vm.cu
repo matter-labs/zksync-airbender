@@ -754,6 +754,84 @@ DEVICE_FORCEINLINE void seg_execute_term(const Desc &desc, const Bank &bank, con
   }
 }
 
+// ── One grouped member (grouped-coefficient-eval spec section 4.4) ──────────
+
+// Add `imm * value` to one of a group's per-side sums.
+//
+// The two RESERVED immediate ids cost no multiplication at all — `+1` is an add and
+// `-1` a sub — and a banked id costs the `e4::fma(e4, bf, e4)` a base-field factor
+// gets, four fused `bf::fma`s with no lift. That is the whole cost claim of the
+// grouped wire: a member's immediate is cheaper than the `Ext` coefficient it
+// replaced. `interp.rs`'s `accumulate_imm` is the host twin of these three cases.
+//
+// The table is read as raw limbs, not converted: `lower_bwd_seg` writes it in the
+// kernel's IN-MEMORY (Montgomery) form once, host-side (pinned by
+// `seg_lower_tests::immediate_montgomery_conversion_pin`), exactly as it does for
+// `c_init`.
+template <typename Desc> DEVICE_FORCEINLINE void seg_apply_immediate(const Desc &desc, const u16 immediate_id, const e4 &value, e4 &sum) {
+  if (immediate_id == BWD_SEG_IMMEDIATE_ONE) {
+    sum = e4::add(sum, value);
+  } else if (immediate_id == BWD_SEG_IMMEDIATE_NEG_ONE) {
+    sum = e4::sub(sum, value);
+  } else {
+    sum = e4::fma(value, bf::from_reduced_raw_repr(desc.immediates[immediate_id - BWD_SEG_IMMEDIATE_RESERVED]), sum);
+  }
+}
+
+// One MEMBER record: the two continuation term classes with the per-term
+// coefficient multiply replaced by the member's immediate, accumulating into the
+// group's per-side sums rather than into the accumulators.
+//
+// Continuation-only, so there is no `IS_R0` axis and no base-field class here — a
+// header cannot appear in an R0 program at all (`BWD_SEG_EXT_CLASS_GROUP_HEADER` is
+// a live R0 class). The operands are read through the SAME resolvers at the SAME
+// projections `seg_execute_term` uses: grouping changes which factor multiplies the
+// products, never the products (spec section 4.1).
+//
+// A group that feeds only one accumulator side still evaluates a dual member's
+// other side into the sum its flags then never apply the core to. Skipping it would
+// need a per-member branch on the header's flags for a value nothing reads, and the
+// two products come out of the ONE pair resolution either way; the CPU oracle does
+// the same (`interp.rs`'s `lean_group`).
+template <u32 MAX_DEPTH, typename Desc>
+DEVICE_FORCEINLINE void seg_execute_group_member(const Desc &desc, const u16 member_class, const u16 immediate_id, const u16 source_a, const u16 source_b,
+                                                 const u32 row, const u32 rows, e4 &s_c0, e4 &s_c2) {
+  switch (member_class) {
+  case BWD_SEG_EXT_CLASS_C0_LINEAR_E4: {
+    const e4 a = seg_resolve_e4<SEG_PROJ_ENDPOINT0, MAX_DEPTH>(desc, source_a, row, rows).endpoint0;
+    seg_apply_immediate(desc, immediate_id, a, s_c0);
+    break;
+  }
+  case BWD_SEG_EXT_CLASS_DUAL_PRODUCT_E4: {
+    const seg_value<e4> a = seg_resolve_e4<SEG_PROJ_PAIR, MAX_DEPTH>(desc, source_a, row, rows);
+    const seg_value<e4> b = seg_resolve_e4<SEG_PROJ_PAIR, MAX_DEPTH>(desc, source_b, row, rows);
+    seg_apply_immediate(desc, immediate_id, e4::mul(a.endpoint0, b.endpoint0), s_c0);
+    seg_apply_immediate(desc, immediate_id, e4::mul(a.delta, b.delta), s_c2);
+    break;
+  }
+  default:
+    // As in `seg_execute_term`: a validated program has no member at a dead class
+    // (`lean::validate_program`'s `ClassNotInRegime`, and `NestedGroupHeader` for
+    // the control code itself), and a release kernel has no error channel — so an
+    // invalid record contributes nothing rather than resolving an undefined operand
+    // shape.
+    break;
+  }
+}
+
+// A group's CORE multiply: one `e4 x e4` per accumulator side the header's flags
+// name, against the per-side sums its members built (spec section 4.1).
+//
+// Placement-BLIND exactly as `seg_execute_term` is — the caller wraps the
+// AccPlacement ladder around this and nothing else, so the two core FMAs are the
+// only thing one shared-memory round trip has to cover per group.
+DEVICE_FORCEINLINE void seg_apply_group_core(const e4 &core, const u16 flags, const e4 &s_c0, const e4 &s_c2, e4 &acc_c0, e4 &acc_c2) {
+  if ((flags & BWD_SEG_GROUP_FLAG_C0) != 0)
+    acc_c0 = e4::fma(core, s_c0, acc_c0);
+  if ((flags & BWD_SEG_GROUP_FLAG_C2) != 0)
+    acc_c2 = e4::fma(core, s_c2, acc_c2);
+}
+
 // ── AccPlacement: one accumulator in shared memory (section 6's ladder) ─────
 
 // A per-thread accumulator slot in the dynamic shared-memory carveout, in the
@@ -883,6 +961,64 @@ DEVICE_FORCEINLINE void seg_body(const Desc &desc, const Bank &bank, const Progr
     const u16 coefficient_index = (header >> BWD_SEG_COEFFICIENT_SHIFT) & BWD_SEG_COEFFICIENT_MASK;
     const u16 source_a = program.word(pc + 1);
     const u16 source_b = program.word(pc + 2);
+    if constexpr (!IS_R0) {
+      // A GROUP HEADER is not a term: its word1/word2 are the member count and the
+      // accumulator-side flags rather than two source slots, and the `N` records
+      // that FOLLOW it are its members. Continuation-only, because the control code
+      // is a live R0 class — so an R0 executor compiles no header branch at all.
+      //
+      // The kernel TRUSTS the header, exactly as the dispatch below trusts a term's
+      // class and source slots: `lean::validate_program` and `lower_bwd_seg`'s
+      // `annotate_atoms` are where a bad `N`, an empty or out-of-mask flag word, a
+      // nested header and a flag/member-side disagreement are rejected, and this
+      // lineage puts no validation in a release kernel.
+      if (term_class == BWD_SEG_EXT_CLASS_GROUP_HEADER) {
+        const u16 n_members = source_a;
+        const u16 flags = source_b;
+        // The two per-side sums live in REGISTERS under every rung of the
+        // AccPlacement ladder: they are born and die inside this one atom, so there
+        // is nothing for a shared slot to hold across terms — which is the only
+        // thing the ladder is about.
+        e4 s_c0 = e4::ZERO();
+        e4 s_c2 = e4::ZERO();
+        // Not unrolled, for the reason the outer walk is not: duplicating the member
+        // class switch would raise the register peak this design is measured against
+        // and hoist nothing, since consecutive members share no load.
+#pragma unroll 1
+        for (u16 member = 0; member < n_members; member++) {
+          // Members are contiguous after the header (host lowering deals whole
+          // atoms), so the sub-loop advances the WALK's own `pc`: it ends on the
+          // LAST member and the outer loop's `pc += BWD_SEG_WORDS_PER_TERM` steps to
+          // the record after the group. Nothing else adjusts `pc`.
+          pc += BWD_SEG_WORDS_PER_TERM;
+          const u16 member_header = program.word(pc);
+          const u16 member_class = (member_header >> BWD_SEG_CLASS_SHIFT) & BWD_SEG_CLASS_MASK;
+          // The same thirteen bits a plain record spends on a recipe id are the
+          // member's IMMEDIATE id.
+          const u16 immediate_id = (member_header >> BWD_SEG_COEFFICIENT_SHIFT) & BWD_SEG_COEFFICIENT_MASK;
+          seg_execute_group_member<MAX_DEPTH>(desc, member_class, immediate_id, program.word(pc + 1), program.word(pc + 2), row, rows, s_c0, s_c2);
+        }
+        // ONE uniform bank load for the whole group, the header's core id indexed
+        // raw exactly as a term's coefficient id is.
+        const e4 core = bank[coefficient_index];
+        // The ladder wraps the CORE application only: one load and one store per
+        // group, not per member.
+        if constexpr (ACC == BWD_SEG_ACC_IN_REGISTERS) {
+          seg_apply_group_core(core, flags, s_c0, s_c2, acc_c0, acc_c2);
+        } else if constexpr (ACC == BWD_SEG_ACC_C2_SMEM) {
+          e4 live_c2 = slot_c2.load();
+          seg_apply_group_core(core, flags, s_c0, s_c2, acc_c0, live_c2);
+          slot_c2.store(live_c2);
+        } else {
+          e4 live_c0 = slot_c0.load();
+          e4 live_c2 = slot_c2.load();
+          seg_apply_group_core(core, flags, s_c0, s_c2, live_c0, live_c2);
+          slot_c0.store(live_c0);
+          slot_c2.store(live_c2);
+        }
+        continue;
+      }
+    }
     // `seg_execute_term` is placement-BLIND on purpose: the ladder is about where
     // the accumulator LIVES between terms, and wrapping it here keeps the register
     // placement's instruction stream byte-identical to what the fifteen release
@@ -989,12 +1125,21 @@ template <bool IS_R0> DEVICE_FORCEINLINE void seg_body_const_inline_accbothsmem(
 #define AB_GKR_SEG_CONT_PIN __maxnreg__(AB_GKR_SEG_CONT_MAXNREG)
 #else
 // `natural`: the allocator is unconstrained on the swept nine. If this level wins
-// the sweep, the SHIPPED form is `AB_GKR_SEG_PIN(56)` — the natural band's
-// ceiling, for a family whose counts are 50 (`cont_const_*`) and 56
-// (`cont_ptr_*`, `cont_const_progptr_*`), both inside 49-56 — because a bare "no
-// qualifier" would leave the winning family the ONLY unguarded one in the matrix.
-// A win for `natural` is a win for not constraining the allocator, not for having
-// no guard.
+// the sweep, the SHIPPED form is `AB_GKR_SEG_PIN(<the natural band's ceiling>)`,
+// because a bare "no qualifier" would leave the winning family the ONLY unguarded
+// one in the matrix. A win for `natural` is a win for not constraining the
+// allocator, not for having no guard.
+//
+// WHICH ceiling that is MOVED with the group branch, so the number is measured and
+// never carried forward. Before it the counts were 50 (`cont_const_*`) and 56
+// (`cont_ptr_*`, `cont_const_progptr_*`), both inside band 49-56, so the shipped
+// form would have been `AB_GKR_SEG_PIN(56)`. With the branch compiled in they are
+// 64 / 62 / 64 — band 57-64, i.e. 32 warps instead of 36 — so the ceiling is now
+// 64. That is also the HARD 1024-thread launch limit (65536 / 1024), so
+// `cont_const_*` and `cont_const_progptr_*` sit at it with ZERO slack: one more
+// register there takes `K = 32` away from those symbols entirely
+// (CUDA_ERROR_LAUNCH_OUT_OF_RESOURCES), not just occupancy. Re-measure before
+// shipping any pin.
 #define AB_GKR_SEG_CONT_PIN
 #endif
 #endif
@@ -1049,15 +1194,19 @@ AB_GKR_BWD_SEG_KERNEL(ab_gkr_bwd_seg_cont_const_progptr_epi_wide_kernel, bwd_seg
 // regression. Both R0 rungs allocate 48 — band top of 41-48.
 AB_GKR_BWD_SEG_ACC_KERNEL(ab_gkr_bwd_seg_r0_const_epi_plane_acc2smem_kernel, seg_body_const_inline_acc2smem, true, AB_GKR_SEG_PIN(48))
 AB_GKR_BWD_SEG_ACC_KERNEL(ab_gkr_bwd_seg_r0_const_epi_plane_accbothsmem_kernel, seg_body_const_inline_accbothsmem, true, AB_GKR_SEG_PIN(48))
-// M3/M10: the cont acc2 rung allocates 54, so ITS OWN ceiling is 56, not the rung
-// ceiling. A 64 pin would permit silent growth through 57-64, which crosses into
-// the 32-warp band and loses occupancy while still passing the pin — precisely the
+// M3/M10: the cont acc2 rung allocates 56 (54 before the group branch), so ITS OWN
+// ceiling is 56, not the rung ceiling — it now sits exactly AT its pin, with the
+// `STACK:0 LOCAL:0` gate as the thing that catches the first register past it. A 64
+// pin would instead permit silent growth through 57-64, which crosses into the
+// 32-warp band and loses occupancy while still passing the pin — precisely the
 // cliff the uniform rule exists to stop.
 AB_GKR_BWD_SEG_ACC_KERNEL(ab_gkr_bwd_seg_cont_const_epi_plane_acc2smem_kernel, seg_body_const_inline_acc2smem, false, AB_GKR_SEG_PIN(56))
 // 64 here is the HARD BLOCK CEILING, not a band top: a 1024-thread block may use
-// at most 65536/1024 = 64 registers and this symbol allocates EXACTLY 64, so at 65
-// the K=32 launch fails with CUDA_ERROR_LAUNCH_OUT_OF_RESOURCES. Here 64 is both
-// the band top (57-64) and the launch limit, so one number serves. The existing
+// at most 65536/1024 = 64 registers, and past it the K=32 launch fails with
+// CUDA_ERROR_LAUNCH_OUT_OF_RESOURCES. Here 64 is both the band top (57-64) and the
+// launch limit, so one number serves. This symbol allocates 61 (it was exactly 64
+// before the group branch, which moved the rung DOWN while moving its
+// register-placement twin up). The existing
 // guard `bwd_seg_k_ceiling_is_measured_not_assumed` probes the NON-placement
 // matrix only, so this symbol sits outside it — the pin is the guard that test
 // cannot be.

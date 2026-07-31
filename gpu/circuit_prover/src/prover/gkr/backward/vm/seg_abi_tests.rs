@@ -43,16 +43,17 @@ use std::mem::{align_of, offset_of, size_of};
 
 use gkr_eval_isa::bwd::coeff::lean::{
     LEAN_CLASS_MASK, LEAN_CLASS_SHIFT, LEAN_COEFFICIENT_MASK, LEAN_COEFFICIENT_SHIFT,
-    LEAN_CONT_OPCODES, LEAN_R0_OPCODES, LEAN_WORDS_PER_TERM, SOURCE_NONE,
+    LEAN_CONT_OPCODES, LEAN_GROUP_FLAG_C0, LEAN_GROUP_FLAG_C2, LEAN_GROUP_FLAG_MASK,
+    LEAN_R0_OPCODES, LEAN_WORDS_PER_TERM, SOURCE_NONE,
 };
 use gkr_eval_isa::bwd::coeff::limits::{
     continuation_opcode, in_scope, r0_opcode, TermCategory, CONTINUATION_LIVE_OPCODES,
     DESCRIPTOR_ALIGNMENT_BYTES, HEADER_COEFFICIENT_BITS, HEADER_OPCODE_BITS,
-    KERNEL_ARGUMENT_CEILING_BYTES, LEAN_DESCRIPTOR_PROGRAM_BYTES, LEAN_DESCRIPTOR_PROGRAM_WORDS,
-    LEAN_MAX_REALIZED_PROGRAM_WORDS, MAX_COEFFICIENT_ENCODINGS, PUBLISH_TARGET_DEPTH,
-    R0_LIVE_OPCODES,
+    KERNEL_ARGUMENT_CEILING_BYTES, LEAN_CONT_GROUP_HEADER_CLASS, LEAN_DESCRIPTOR_PROGRAM_BYTES,
+    LEAN_DESCRIPTOR_PROGRAM_WORDS, LEAN_MAX_REALIZED_PROGRAM_WORDS, MAX_COEFFICIENT_ENCODINGS,
+    PUBLISH_TARGET_DEPTH, R0_LIVE_OPCODES,
 };
-use gkr_eval_isa::bwd::coeff::model::CoefficientRecipeId;
+use gkr_eval_isa::bwd::coeff::model::{CoefficientRecipeId, ImmediateId};
 
 use super::seg_desc::{
     BwdCoeffSourceWindow, BwdSegDesc, BwdSegProgPtrDesc, BwdSegSourceRecord,
@@ -922,9 +923,40 @@ fn seg_cuda_constants_match_the_rust_mirror() {
             cont_class(TermCategory::DualProductE4),
         ),
         ("BWD_SEG_EXT_LIVE_CLASSES", LEAN_CONT_OPCODES.len() as u64),
+        // The grouped wire (spec §4.4). MANDATORY for the same reason the source
+        // classes are: the walk in `segmented_vm.cu` branches on the control code to
+        // decide whether word1/word2 are two source slots or a member count plus the
+        // accumulator-side flags, and reads the flag bits to decide which
+        // accumulator the core multiplies into — so a CUDA-only edit here is a
+        // wrong answer at every grouped coordinate, not a build error.
+        (
+            "BWD_SEG_EXT_CLASS_GROUP_HEADER",
+            u64::from(LEAN_CONT_GROUP_HEADER_CLASS),
+        ),
+        ("BWD_SEG_GROUP_FLAG_C0", u64::from(LEAN_GROUP_FLAG_C0)),
+        ("BWD_SEG_GROUP_FLAG_C2", u64::from(LEAN_GROUP_FLAG_C2)),
+        // The immediate id space. `RESERVED` is the offset the kernel subtracts
+        // before indexing `bwd_seg_desc::immediates`, and the two literal ids are
+        // what select the add / sub fast paths — an off-by-one here reads the wrong
+        // table slot with the right sign, or the right slot with the wrong one.
+        ("BWD_SEG_IMMEDIATE_ONE", u64::from(ImmediateId::ONE.0)),
+        (
+            "BWD_SEG_IMMEDIATE_NEG_ONE",
+            u64::from(ImmediateId::NEG_ONE.0),
+        ),
+        (
+            "BWD_SEG_IMMEDIATE_RESERVED",
+            u64::from(ImmediateId::RESERVED),
+        ),
     ] {
         assert_eq!(seg_cuda_literal(name), value, "CUDA {name}");
     }
+    // Expression-valued, so it is pinned through the header's own `static_assert`
+    // with the expected number built from the Rust mirror.
+    assert_seg_header_asserts(&format!(
+        "BWD_SEG_GROUP_FLAG_MASK == {}",
+        LEAN_GROUP_FLAG_MASK
+    ));
 
     // The expression-valued constants cannot be parsed as literals, so they are
     // pinned by the header's own `static_assert`s — with the expected number built

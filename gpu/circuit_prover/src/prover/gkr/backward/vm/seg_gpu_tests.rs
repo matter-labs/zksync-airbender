@@ -63,12 +63,25 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::rc::Rc;
 use std::sync::Arc;
 
-use cs::gkr_compiler::dag_ir::{BwdRegime, FieldKind};
+use cs::gkr_compiler::dag_ir::{BwdRegime, FieldKind, ReadPlace};
 use era_cudart::memory::{memory_copy, memory_copy_async};
 use era_cudart::slice::DeviceSlice;
 use gkr_eval_isa::bwd::coeff::interp::{interpret_coeff_layer, interpret_lean_program};
-use gkr_eval_isa::bwd::coeff::lean::decode_program;
-use gkr_eval_isa::bwd::coeff::model::{CoeffLayer, CoefficientRecipeId};
+use gkr_eval_isa::bwd::coeff::lean::{
+    decode_program, encode_program_atoms, validate_program, LeanAtomRef, LEAN_CLASS_MASK,
+    LEAN_CLASS_SHIFT, LEAN_WORDS_PER_TERM,
+};
+use gkr_eval_isa::bwd::coeff::lean_artifact::{ArtifactRegime, LeanCoordinateArtifact};
+use gkr_eval_isa::bwd::coeff::lean_bind::{
+    LeanBoundColumn, LeanBoundWindow, LeanSourceBinding, LeanSourceSlot,
+};
+use gkr_eval_isa::bwd::coeff::limits::LEAN_CONT_GROUP_HEADER_CLASS;
+use gkr_eval_isa::bwd::coeff::model::{
+    CoeffGroup, CoeffGroupMember, CoeffLayer, CoeffSource, CoeffTerm, CoefficientRecipeId,
+    ImmediateId, NormalizedCoefficientRecipe, ProjectionId, SourceId, TermId,
+};
+use gkr_eval_isa::bwd::coeff::stats::WindowFamily;
+use gkr_eval_isa::bwd::source::OriginLeaf;
 
 use super::seg::{
     bwd_seg_blocks_per_sm, bwd_seg_claim_point_device_ptr, bwd_seg_coeff_bank_device_ptr,
@@ -102,7 +115,7 @@ use crate::prover::gkr::backward::{
 };
 use crate::prover::test_utils::make_test_context;
 use crate::prover::ProverContext;
-use crate::upstream::{Field, Seed};
+use crate::upstream::{Field, PrimeField, Seed};
 
 /// Rows every cell of the main matrix evaluates.
 ///
@@ -122,8 +135,17 @@ const SEG_K: [usize; 5] = [1, 2, 4, 16, 32];
 /// The continuation family now reaches the GEOMETRY cap, so this equals
 /// [`BWD_SEG_MAX_K`] and the axis has no launchability hole left above it: a
 /// 1024-thread block gets 65,536 registers, i.e. 64 per thread, and every symbol
-/// this pin MEASURES allocates at most 56 of them (`segmented_vm.cu` still sets no
+/// this pin MEASURES allocates at most 64 of them (`segmented_vm.cu` still sets no
 /// `__launch_bounds__` — spec §15: the natural register count is the measurement).
+///
+/// **The slack is now ZERO, and that is new.** The grouped-eval branch took the
+/// continuation counts from 50 / 56 to 64 / 62 / 64 (`cont_const_*`, `cont_ptr_*`,
+/// `cont_const_progptr_*`), so two of the three families allocate EXACTLY the
+/// 1024-thread limit. `K = 32` is still hostable, but one more register in the
+/// continuation body removes it from those symbols outright
+/// (`ErrorLaunchOutOfResources`) rather than costing occupancy — which is what
+/// [`bwd_seg_k_ceiling_is_measured_not_assumed`] is here to turn into a failure that
+/// has to be read.
 ///
 /// It was 16 while the fold was the recursive pyramid and while the unrolled flat
 /// fold kept every leaf load live at once (continuation peak 76 and 72 registers
@@ -1849,4 +1871,319 @@ fn bwd_seg_fold_weight_bank_matches_the_truth_tables() {
     }
     // Leave the bank zeroed, mirroring the claim-point restore discipline.
     memory_copy(bank(), &[E4::ZERO; BWD_SEG_FOLD_WEIGHT_SLOTS]).expect("weight bank restore");
+}
+
+// ── The grouped wire (grouped-coefficient-eval spec §4.4) ────────────────────
+//
+// The one cell in this file whose coordinate is NOT compiled from a committed
+// layout. It has to be: production lowering still emits UNGROUPED programs (the
+// grouping transform is not yet switched on), so no corpus coordinate reaches the
+// kernel's group branch at all, and a gate that waited for the switch would land the
+// branch untested. The LAYER and its atom order are hand-written; everything
+// downstream of them is production code — `encode_program_atoms` emits the wire,
+// `validate_program` accepts it, `lower_bwd_seg` deals it, and both CPU oracles
+// interpret it.
+
+/// The round the synthetic grouped cell is bound at.
+///
+/// Past round zero, so the fold-weight prelude runs and the continuation seeding
+/// rule applies; its single window sits AT target depth, which keeps the prologue out
+/// of a gate whose subject is the eval loop's group branch. Both fold paths are
+/// already covered at every depth by the corpus rungs above, and grouping does not
+/// touch operand resolution — a member reads through the same resolver at the same
+/// projection its class always implied.
+const GROUPED_SYNTHETIC_ROUND: u8 = 2;
+
+/// Rows the grouped cell evaluates: [`SEG_ROWS`], so the partial last tile's
+/// dead-lane clamp runs across the group branch too.
+const GROUPED_SYNTHETIC_ROWS: usize = SEG_ROWS;
+
+/// The immediate table the synthetic layer's members draw from — TWO banked values,
+/// deliberately.
+///
+/// With one entry, a member that indexed `immediates[0]` where it should have
+/// indexed `immediates[1]` — the `- RESERVED` offset off by one, the sharpest
+/// arithmetic on this wire — would read the same slot and pass. With two, it reads
+/// the wrong scalar and every row diverges.
+const GROUPED_SYNTHETIC_IMMEDIATES: [u32; 2] = [7, 40_507];
+
+/// Records the synthetic program encodes: nine terms plus the two group headers.
+const GROUPED_SYNTHETIC_RECORDS: u16 = 11;
+
+/// The synthetic GROUPED continuation layer: two plain singletons, a four-member
+/// group over a banked core, a two-member all-`±1` group over a second core, and one
+/// more singleton AFTER both groups.
+///
+/// Every property the kernel's group branch has a distinct path for is present:
+///
+///   * a member with a BANKED immediate (`immediates[0]` and `immediates[1]`, so the
+///     table offset is checked rather than assumed) and members with both reserved
+///     ids, whose add / sub fast paths touch the table not at all;
+///   * a `DualProductE4` member, which applies its immediate to BOTH per-side sums
+///     out of one pair resolution, and a `C0LinearE4` member, which applies it to
+///     one — including a SQUARED dual (`s1 * s1`), the shape the resolver reads
+///     twice;
+///   * a group whose flags name both accumulator sides and one that names only
+///     `acc_c0` — so the header's flag bits decide whether a core multiply happens
+///     at all, rather than being multiplied against a zero sum;
+///   * a singleton BETWEEN the two groups and a singleton AFTER the last one, which
+///     is what makes the sub-loop's `pc` bookkeeping observable: a walk that
+///     over- or under-advanced past a group would decode a member as a term (or a
+///     term twice) and diverge.
+fn grouped_synthetic_layer() -> CoeffLayer {
+    let scalar =
+        |value: u32| NormalizedCoefficientRecipe::scalar(BF::from_u32_with_reduction(value));
+    let banked = CoefficientRecipeId::from_bank_index;
+    // The two group cores. Neither may be a reserved literal — a `±1` core would mean
+    // a group whose shared multiply is free, which `encode_program_atoms` rejects
+    // (`GroupCoreIsLiteral`).
+    let core_a = banked(2);
+    let core_b = banked(3);
+    let linear = |id: u32, coefficient, source: u32| CoeffTerm::C0Linear {
+        id: TermId(id),
+        coefficient,
+        value: ProjectionId::endpoint0(SourceId(source)),
+        field: FieldKind::Ext,
+    };
+    let dual = |id: u32, coefficient, lhs: u32, rhs: u32| CoeffTerm::DualProduct {
+        id: TermId(id),
+        coefficient,
+        lhs: SourceId(lhs),
+        rhs: SourceId(rhs),
+    };
+    let member = |term: u32, immediate| CoeffGroupMember {
+        term: TermId(term),
+        immediate,
+    };
+    // One two-column `Ext` layer output behind both sources, which is what makes
+    // every source resolve as `E4Direct` at this round.
+    let source = |offset: usize| CoeffSource {
+        origin: OriginLeaf::Read(ReadPlace::LayerOutput { layer: 1, offset }),
+        field: FieldKind::Ext,
+    };
+    CoeffLayer {
+        regime: BwdRegime::Ext,
+        c_init: None,
+        // Distinct nonzero recipes: `interpret_coeff_layer` rejects an encoded zero,
+        // and the VALUES never reach the device — `seg_bank` evaluates the bank per
+        // round, and only the COUNT is read from here.
+        coefficients: vec![scalar(3), scalar(5), scalar(11), scalar(13)],
+        sources: vec![source(0), source(1)],
+        terms: vec![
+            linear(0, banked(0), 0),
+            dual(1, banked(1), 0, 1),
+            // Group A's four members. Their own coefficient IS the group's core —
+            // the grouping transform rewrites it, and `encode_group` rejects a
+            // member whose coefficient is anything else.
+            dual(2, core_a, 0, 1),
+            linear(3, core_a, 1),
+            dual(4, core_a, 1, 1),
+            linear(5, core_a, 0),
+            // Group B's two members.
+            linear(6, core_b, 0),
+            linear(7, core_b, 1),
+            linear(8, banked(0), 1),
+        ],
+        groups: vec![
+            CoeffGroup {
+                core: core_a,
+                members: vec![
+                    member(2, ImmediateId::banked(0)),
+                    member(3, ImmediateId::banked(1)),
+                    member(4, ImmediateId::ONE),
+                    member(5, ImmediateId::NEG_ONE),
+                ],
+                // A dual member feeds both sides, so the flags name both. They must
+                // EQUAL the union of the members' sides — `validate_program` rejects
+                // any other combination.
+                has_c0: true,
+                has_c2: true,
+            },
+            CoeffGroup {
+                core: core_b,
+                members: vec![member(6, ImmediateId::ONE), member(7, ImmediateId::NEG_ONE)],
+                has_c0: true,
+                has_c2: false,
+            },
+        ],
+        immediates: GROUPED_SYNTHETIC_IMMEDIATES.to_vec(),
+    }
+}
+
+/// The synthetic coordinate: [`grouped_synthetic_layer`] encoded by the PRODUCTION
+/// codec, plus the one bound window its two sources live in.
+///
+/// The committed order interleaves the atoms — singleton, group, singleton, group,
+/// singleton — and `order` is derived from it rather than restated, so the artifact's
+/// term permutation cannot disagree with the words.
+fn grouped_synthetic_coordinate() -> Arc<SegCoordinate> {
+    let layer = grouped_synthetic_layer();
+    let atoms = [
+        LeanAtomRef::Term(TermId(0)),
+        LeanAtomRef::Group(0),
+        LeanAtomRef::Term(TermId(1)),
+        LeanAtomRef::Group(1),
+        LeanAtomRef::Term(TermId(8)),
+    ];
+    let program = encode_program_atoms(&layer, &atoms).expect("the synthetic atoms encode");
+    // The wire is accepted by the codec's OWN validator before anything launches: a
+    // hand-written fixture is exactly where a malformed header would otherwise reach
+    // a kernel that trusts it.
+    validate_program(&program, &layer).expect("the synthetic wire is well-formed");
+    assert_eq!(
+        program.words.len(),
+        usize::from(GROUPED_SYNTHETIC_RECORDS) * LEAN_WORDS_PER_TERM,
+        "nine terms plus two headers"
+    );
+    assert_eq!(program.term_count, layer.terms.len());
+    let mut order = Vec::with_capacity(layer.terms.len());
+    for atom in &atoms {
+        match atom {
+            LeanAtomRef::Term(id) => order.push(id.0),
+            LeanAtomRef::Group(index) => {
+                order.extend(layer.groups[*index].members.iter().map(|m| m.term.0))
+            }
+        }
+    }
+    let binding = LeanSourceBinding {
+        windows: vec![LeanBoundWindow {
+            family: WindowFamily::LayerOutput {
+                layer: 1,
+                ext: true,
+            },
+            first_column: 0,
+            columns: (0..layer.sources.len())
+                .map(|source| LeanBoundColumn {
+                    column: source,
+                    source: source as u32,
+                })
+                .collect(),
+        }],
+        source_slots: (0..layer.sources.len())
+            .map(|source| LeanSourceSlot {
+                window: 0,
+                column: source as u16,
+            })
+            .collect(),
+    };
+    Arc::new(SegCoordinate {
+        circuit: "grouped_synthetic",
+        layer_index: 0,
+        regime: BwdRegime::Ext,
+        artifact: LeanCoordinateArtifact {
+            layer: 0,
+            regime: ArtifactRegime::Ext,
+            target_depth: GROUPED_SYNTHETIC_ROUND,
+            order,
+            program,
+            binding,
+        },
+        layer,
+    })
+}
+
+/// The GPU's grouped evaluation against both CPU oracles, over `K` and both program
+/// families.
+///
+/// This is the differential for the kernel's group sub-loop. The value a group
+/// produces — `core * SUM_m imm_m * v_m` per side — is the same field element the
+/// same terms produce ungrouped, and field arithmetic is exact, so there is no
+/// tolerance in which a dropped immediate, a double-served member or a `pc` that
+/// mis-advanced past a header could hide: every row is compared limb for limb
+/// against `interpret_lean_program` at the launch's own `K` and against
+/// `interpret_coeff_layer`, which knows nothing about the wire.
+///
+/// The axes are the ones the group branch itself has paths for:
+///
+///   * `K` ∈ {1, 4, 16} — `K = 1` bypasses shared memory entirely, and above it the
+///     least-loaded ATOM deal has to keep every header with its own members in one
+///     list (a group that straddled a `list_offset` would decode as a truncated
+///     header on one warp and as loose terms on another);
+///   * both program families — the group sub-loop reads its member words through the
+///     SAME accessor the walk uses, so parameter space and a device pointer must
+///     produce identical bytes.
+#[test]
+#[cfg(not(no_cuda))]
+#[ignore = "GPU; build unlocked and run the executable under with_gpu_lock.sh"]
+#[serial_test::serial]
+fn bwd_seg_grouped_synthetic_matches_the_cpu_oracles() {
+    let context = make_seg_context();
+    let eq = stage_eq(&context);
+    let _claim = StagedClaimPoint;
+    let coord = grouped_synthetic_coordinate();
+    let mut fixture = SegFixture::build(
+        coord,
+        GROUPED_SYNTHETIC_ROUND,
+        GROUPED_SYNTHETIC_ROWS,
+        D2Policy::Inline,
+        None,
+        &context,
+    );
+
+    // NON-VACUITY, first and separately: the lowered descriptor really carries two
+    // group headers with four and two members, and the immediate table they index.
+    // A descriptor that had come out ungrouped would satisfy every parity assertion
+    // below without the kernel's group branch ever executing, which is the one
+    // failure this gate cannot detect from a value.
+    let setup = fixture.lower_with(SegShape::inline(4, CoeffMode::Constant), &eq);
+    let desc = SegFixture::inline_desc(&setup);
+    assert_eq!(
+        desc.record_count, GROUPED_SYNTHETIC_RECORDS,
+        "the descriptor's record count is terms PLUS headers"
+    );
+    assert_eq!(
+        usize::from(desc.num_immediates),
+        GROUPED_SYNTHETIC_IMMEDIATES.len(),
+        "the immediate table must ride the descriptor"
+    );
+    let mut headers = Vec::new();
+    for record in desc.program[..usize::from(desc.list_offset[4])].chunks_exact(LEAN_WORDS_PER_TERM)
+    {
+        if (record[0] >> LEAN_CLASS_SHIFT) & LEAN_CLASS_MASK == LEAN_CONT_GROUP_HEADER_CLASS {
+            headers.push(record[1]);
+        }
+    }
+    headers.sort_unstable();
+    assert_eq!(
+        headers,
+        vec![2u16, 4],
+        "the dealt stream must carry both headers, with their own member counts"
+    );
+    drop(setup);
+
+    let mut launched = 0usize;
+    for k in [1usize, 4, 16] {
+        let mut reference: Option<Vec<E4>> = None;
+        for prog in [ProgramMode::Inline, ProgramMode::DevPtr] {
+            let shape = SegShape {
+                k,
+                coeff: CoeffMode::Constant,
+                prog,
+                epilogue: BwdSegEpilogue::Plane,
+            };
+            let run = fixture.assert_shape(shape, &eq, &context);
+            match &reference {
+                None => reference = Some(run.contributions),
+                Some(first) => assert!(
+                    first
+                        .iter()
+                        .zip(&run.contributions)
+                        .all(|(a, b)| e4_bits(*a) == e4_bits(*b)),
+                    "{}: the device-program family diverged from the inline one at K{k}",
+                    fixture.label()
+                ),
+            }
+            launched += 1;
+        }
+    }
+    // Reported and asserted: libtest is as green for a loop that ran nothing as for
+    // one that ran everything.
+    assert_eq!(launched, 6, "three K values times two program families");
+    eprintln!(
+        "[seg-ladder] grouped synthetic: {launched} launches, {} records ({} terms, 2 headers), \
+         {} immediates",
+        GROUPED_SYNTHETIC_RECORDS,
+        fixture.layer.terms.len(),
+        GROUPED_SYNTHETIC_IMMEDIATES.len(),
+    );
 }

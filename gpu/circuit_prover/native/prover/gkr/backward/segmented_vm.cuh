@@ -288,6 +288,55 @@ static_assert(BWD_SEG_EXT_CLASS_DUAL_PRODUCT_E4 == BWD_COEFF_EXT_OP_DUAL_PRODUCT
 static_assert(BWD_SEG_R0_LIVE_CLASSES + 2 == BWD_COEFF_R0_LIVE_OPCODES, "R0 lean table is not the frozen table minus its two moves");
 static_assert(BWD_SEG_EXT_LIVE_CLASSES + 1 == BWD_COEFF_EXT_LIVE_OPCODES, "continuation lean table is not the frozen table minus its move");
 
+// ── The grouped wire (grouped-coefficient-eval spec section 4.4) ─────────────
+//
+// A coefficient GROUP is one CONTROL record followed by its `N` member records,
+// contiguous, inside ONE warp's list (host lowering deals whole atoms). The header
+// is NOT a term:
+//
+// ```text
+// word0 = [class = BWD_SEG_EXT_CLASS_GROUP_HEADER @13 | core coeff_idx:13 @0]
+// word1 = N, the member count (>= 2)
+// word2 = flags: bit 0 = the core multiplies into acc_c0, bit 1 = into acc_c2
+// word3 = 0
+// ```
+//
+// Each member is an ordinary term record whose thirteen coefficient bits carry an
+// IMMEDIATE id instead of a recipe id, so the group spends ONE `e4 x e4` core
+// multiply per accumulator side for its whole run instead of one per member.
+//
+// Mirrors `gkr_eval_isa::bwd::coeff::lean::{LEAN_CONT_GROUP_HEADER_CLASS,
+// LEAN_GROUP_FLAG_C0, LEAN_GROUP_FLAG_C2}`.
+constexpr u16 BWD_SEG_EXT_CLASS_GROUP_HEADER = 2;
+constexpr u16 BWD_SEG_GROUP_FLAG_C0 = 1;
+constexpr u16 BWD_SEG_GROUP_FLAG_C2 = 2;
+constexpr u16 BWD_SEG_GROUP_FLAG_MASK = BWD_SEG_GROUP_FLAG_C0 | BWD_SEG_GROUP_FLAG_C2;
+
+// The two properties that make the control code decodable, restating `lean.rs`'s
+// own const asserts: it is FREE in the continuation table (nothing else can be read
+// as a header), and it is TAKEN in the R0 table (which is why groups are
+// continuation-only and why the R0 executor has no header branch at all).
+static_assert(BWD_SEG_EXT_CLASS_GROUP_HEADER >= BWD_SEG_EXT_LIVE_CLASSES, "the group control code collides with a live continuation class");
+static_assert(BWD_SEG_EXT_CLASS_GROUP_HEADER < BWD_SEG_R0_LIVE_CLASSES,
+              "the group control code is a dead R0 class, so nothing would stop an R0 program from carrying a header");
+static_assert(BWD_SEG_EXT_CLASS_GROUP_HEADER <= BWD_SEG_CLASS_MASK, "the group control code does not fit the three class bits");
+static_assert(BWD_SEG_GROUP_FLAG_MASK == 3, "group flag mask drift");
+
+// The two RESERVED immediate ids (`model::ImmediateId`): a member's coefficient
+// field is an immediate id, `0` is `+1`, `1` is `-1`, and `id >= RESERVED` indexes
+// `bwd_seg_desc::immediates[id - RESERVED]`. The two literals consume no table slot
+// and cost no multiplication — an add and a sub respectively.
+constexpr u16 BWD_SEG_IMMEDIATE_ONE = 0;
+constexpr u16 BWD_SEG_IMMEDIATE_NEG_ONE = 1;
+constexpr u16 BWD_SEG_IMMEDIATE_RESERVED = 2;
+
+static_assert(BWD_SEG_IMMEDIATE_NEG_ONE == BWD_SEG_IMMEDIATE_ONE + 1, "the reserved immediate ids must be adjacent");
+static_assert(BWD_SEG_IMMEDIATE_RESERVED == BWD_SEG_IMMEDIATE_NEG_ONE + 1, "the reserved immediate ids must be the head of the id space");
+// Every immediate id a member can carry must be nameable by the thirteen
+// coefficient bits, reserved literals included — the same bound the coefficient
+// bank is held to.
+static_assert(BWD_SEG_IMMEDIATE_RESERVED + BWD_SEG_MAX_IMMEDIATES <= BWD_COEFF_MAX_COEFFICIENT_ENCODINGS, "an immediate id the wire cannot name");
+
 // ── Source classes (section 4) ──────────────────────────────────────────────
 //
 // How the operand behind ONE wire source slot is produced at ONE round. This is
