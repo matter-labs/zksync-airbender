@@ -90,9 +90,9 @@ use super::seg::{
     bwd_seg_acc_blocks_per_sm, bwd_seg_acc_dynamic_smem_bytes, bwd_seg_acc_entry_point,
     bwd_seg_blocks_per_sm, bwd_seg_carveout_pct_for_bucket, bwd_seg_entry_point,
     bwd_seg_epilogue_smem_bytes, bwd_seg_register_bound_blocks_per_sm, launch_bwd_seg,
-    launch_bwd_seg_acc, launch_bwd_seg_build_fold_weights, stage_bwd_seg_fold_weights,
-    BwdSegAccPlacement, BwdSegEpilogue, CarveoutMode, CarveoutPlan, CarveoutShape,
-    BWD_SEG_ACC_RUNG_EPILOGUE, BWD_SEG_SMEM_BUCKETS_BYTES, SEG_REFERENCE_CLOCK_BUCKET_BYTES,
+    launch_bwd_seg_acc, launch_bwd_seg_build_fold_weights, BwdSegAccPlacement, BwdSegEpilogue,
+    CarveoutMode, CarveoutPlan, CarveoutShape, BWD_SEG_ACC_RUNG_EPILOGUE,
+    BWD_SEG_SMEM_BUCKETS_BYTES, SEG_REFERENCE_CLOCK_BUCKET_BYTES,
 };
 use super::seg_desc::BWD_SEG_MAX_K;
 use super::seg_lower::{
@@ -5504,13 +5504,12 @@ impl SegCell {
         context: &ProverContext,
     ) -> SegLaunchable {
         stage_claim_point(&setup.claim_point, context);
-        // Fold weights are continuation-only — round 0 has no challenges to fold —
-        // and HOST-computed from the same claim-point slice (perf review P5): one
-        // 176-byte upload on the same stream, no prelude launch. Staging, so
-        // outside every timed region by construction.
+        // The prelude is continuation-only — round 0 has no challenges to fold — and
+        // it must be enqueued AFTER the claim point it reads, on the same stream.
+        // Staging, so outside every timed region by construction.
         if self.model.round >= 1 {
-            stage_bwd_seg_fold_weights(&setup.claim_point, u32::from(self.model.round), context)
-                .expect("fold-weight staging");
+            launch_bwd_seg_build_fold_weights(u32::from(self.model.round), context)
+                .expect("fold-weight prelude");
         }
         let coefficients = match shape.coeff {
             CoeffMode::Constant => {
@@ -7630,15 +7629,16 @@ fn bwd_seg_add_sub_l0_cont_matrix() {
 /// enqueued.
 const SEG_PRELUDE_BATCH: usize = 32;
 
-/// **The prelude's own cost — the launch boundary perf review P5 removed from
-/// the round path.**
+/// **The prelude's own cost — the term every continuation median in this module
+/// omits.**
 ///
-/// [`SegCell::stage`] now uploads HOST-computed weights
-/// (`stage_bwd_seg_fold_weights`), so a production continuation round no longer
-/// pays this launch at all; the kernel stays compiled as the fold-weight truth
-/// table. This cell keeps measuring the boundary it used to cost — the record of
-/// what the host-side move saves per round, and a regression tripwire should the
-/// launch ever return to the staging path.
+/// [`SegCell::stage`] enqueues `ab_gkr_bwd_seg_build_fold_weights_kernel` once per
+/// shape and staging is outside every timed loop by construction ("Never called from
+/// inside a timed loop"), so every continuation number this module publishes is
+/// EXECUTOR-ONLY while a production continuation round pays one prelude launch per
+/// round on top of it. Reporting a total without measuring this term would be a
+/// guess, and reporting the executor alone as the round's cost would be wrong; this
+/// cell measures it so both columns exist.
 ///
 /// Three things are measured, none of them assumed:
 /// - the prelude alone, serialized (upper bound) and amortized over

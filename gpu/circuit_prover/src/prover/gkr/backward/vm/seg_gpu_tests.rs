@@ -85,8 +85,8 @@ use gkr_eval_isa::bwd::source::OriginLeaf;
 
 use super::seg::{
     bwd_seg_blocks_per_sm, bwd_seg_claim_point_device_ptr, bwd_seg_coeff_bank_device_ptr,
-    bwd_seg_epilogue_smem_bytes, bwd_seg_fold_weights, bwd_seg_fold_weights_device_ptr,
-    launch_bwd_seg, launch_bwd_seg_build_fold_weights, stage_bwd_seg_fold_weights, BwdSegEpilogue,
+    bwd_seg_epilogue_smem_bytes, bwd_seg_fold_weights_device_ptr, launch_bwd_seg,
+    launch_bwd_seg_build_fold_weights, BwdSegEpilogue,
 };
 use super::seg_compile::{
     chained_round_storage, download_e4, lean_coordinate, seg_chained_model, seg_claim_point,
@@ -711,12 +711,11 @@ impl SegFixture {
         self.assert_write_parity_is_poison(context);
 
         stage_claim_point(&setup.claim_point, context);
-        // Fold weights are continuation-only — round 0 has no challenges to fold —
-        // and HOST-computed from the same claim-point slice (perf review P5): one
-        // 176-byte upload on the same stream, no prelude launch.
+        // The prelude is continuation-only — round 0 has no challenges to fold — and
+        // it must be enqueued AFTER the claim point it reads, on the same stream.
         if self.model.round >= 1 {
-            stage_bwd_seg_fold_weights(&setup.claim_point, u32::from(self.model.round), context)
-                .expect("fold-weight staging");
+            launch_bwd_seg_build_fold_weights(u32::from(self.model.round), context)
+                .expect("fold-weight prelude");
         }
 
         // Everything a launch needs beyond the by-value descriptor is the CALLER's
@@ -1813,17 +1812,13 @@ fn bwd_seg_d3_to_d4_chain_ping_pongs() {
 
 /// The device truth tables against the host algebra, slot for slot.
 ///
-/// The bank has TWO writers since perf review P5: production staging uploads the
-/// host-computed [`bwd_seg_fold_weights`] (no prelude launch), and the prelude
-/// kernel stays compiled as the device truth table this test holds it to. The
+/// The prelude kernel is the ONE producer of `ab_gkr_bwd_seg_fold_weights`, and the
 /// flat fold reads that bank instead of walking the pyramid — so every fold value
 /// the segmented VM will produce is downstream of these eleven slots. The host side
 /// [`expected_fold_weights`] is pinned to the live pyramid's own recursion by
 /// `seg_lower_tests`, which makes this the link that carries that proof onto the
-/// device — and the production host fn is asserted against the SAME expectation
-/// in the same loop, so kernel, production staging, and truth table stay one:
-/// nothing else compares the `q`-bit-to-challenge pairing, the per-delta bases,
-/// or the `delta > round` zeroing against anything.
+/// device: nothing else compares the kernel's `q`-bit-to-challenge pairing, its
+/// per-delta bases, or its `delta > round` zeroing against anything.
 #[test]
 #[cfg(not(no_cuda))]
 #[ignore = "GPU; build unlocked and run the executable under with_gpu_lock.sh"]
@@ -1870,16 +1865,6 @@ fn bwd_seg_fold_weight_bank_matches_the_truth_tables() {
             assert_e4(
                 &format!("weight slot {slot} mismatch at round {round}"),
                 readback[slot],
-                expected[slot],
-            );
-        }
-        // The PRODUCTION staging path (host-computed, perf review P5) against the
-        // same truth table the kernel just passed.
-        let host = bwd_seg_fold_weights(&claim_point, u32::from(round));
-        for slot in 0..BWD_SEG_FOLD_WEIGHT_SLOTS {
-            assert_e4(
-                &format!("host weight slot {slot} mismatch at round {round}"),
-                host[slot],
                 expected[slot],
             );
         }
