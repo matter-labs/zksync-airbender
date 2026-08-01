@@ -3698,23 +3698,27 @@ fn chop_splits_a_dominant_group_into_even_whole_member_chunks() {
     ];
     let spans = chop_spans(&atoms);
     // total 24, k 3: threshold 2, the group costs 14 -> ceil(14 / 2) = 7 chunks,
-    // clamped to 12 / 2 = 6 of two members each.
+    // amortized to 12 / (2 * 2) = 3 of four members each.
     let units = chop_atoms(&atoms, &spans, 3, CHOP_RECORD_CAPACITY);
-    assert_eq!(units.len(), 6 + 1);
-    for (chunk, unit) in units[..6].iter().enumerate() {
+    assert_eq!(units.len(), 3 + 1);
+    for (chunk, unit) in units[..3].iter().enumerate() {
         assert_eq!(
             unit.emit,
             SegUnitEmit::GroupChunk {
                 header: 0,
-                first_member: 1 + 2 * chunk,
-                members: 2,
+                first_member: 1 + 4 * chunk,
+                members: 4,
             },
             "chunk {chunk}: consecutive whole members after the header",
         );
-        assert_eq!(unit.cost, 2 + 2, "chunk {chunk}: two members plus the core");
+        assert_eq!(
+            unit.cost,
+            4 + 2,
+            "chunk {chunk}: four members plus the core"
+        );
     }
-    assert_eq!(units[6].emit, SegUnitEmit::Atom { first: 13, span: 1 });
-    assert_eq!(units[6].cost, 10);
+    assert_eq!(units[3].emit, SegUnitEmit::Atom { first: 13, span: 1 });
+    assert_eq!(units[3].cost, 10);
 }
 
 /// Chunk costs are computed over the chunk's OWN members — heterogeneous members
@@ -3734,20 +3738,21 @@ fn chop_prices_each_chunk_by_its_own_members() {
         has_c0: true,
         has_c2: true,
         members: vec![
+            dual_member.clone(),
             dual_member,
-            chop_linear_member(),
             chop_linear_member(),
             chop_linear_member(),
         ],
     };
     let group_work = atom_work(&group);
-    assert_eq!(group_work, 8 + 3 + 4, "the fixture's arithmetic");
+    assert_eq!(group_work, 8 + 8 + 2 + 4, "the fixture's arithmetic");
     let atoms = vec![group, chop_dual_term()];
     let spans = chop_spans(&atoms);
-    // total 25, k 2: threshold 3, ceil(15 / 3) = 5 clamped to 4 / 2 = 2 chunks.
+    // total 32, k 2: threshold 4, ceil(22 / 4) = 6 amortized to
+    // 18 / (2 * 4) = 2 chunks.
     let units = chop_atoms(&atoms, &spans, 2, CHOP_RECORD_CAPACITY);
     assert_eq!(units.len(), 2 + 1);
-    assert_eq!(units[0].cost, 8 + 1 + 4, "the dual-heavy front chunk");
+    assert_eq!(units[0].cost, 8 + 8 + 4, "the dual-heavy front chunk");
     assert_eq!(units[1].cost, 1 + 1 + 4, "the linear tail chunk");
     assert_eq!(
         units[0].cost + units[1].cost,
@@ -3756,11 +3761,13 @@ fn chop_prices_each_chunk_by_its_own_members() {
     );
 }
 
-/// No chunk falls below two members (a one-member group is not a group — the
-/// wire's own `N >= 2` rule), so a group under four members never chops at all
-/// and a five-member group tops out at two chunks.
+/// The chop's floor is AMORTIZATION, not a member count: at most one chunk per
+/// `2 * core_work` of member work, so the repaid cores never inflate a group's
+/// work by more than half its members'. Light members bundle up to reach that
+/// bar; a group whose members cannot amortize even one extra core stays whole
+/// no matter what the threshold wants.
 #[test]
-fn chop_floors_chunks_at_two_members() {
+fn chop_amortizes_headers_against_member_work() {
     let group = |members: usize| SegAtom::Group {
         core: 2,
         has_c0: true,
@@ -3768,34 +3775,74 @@ fn chop_floors_chunks_at_two_members() {
         members: vec![chop_linear_member(); members],
     };
 
-    // Five members, threshold 1: ceil(7 / 1) = 7 wants 7 chunks, the floor
-    // allows two — three members then two.
+    // Five light members against a core of 2: member work 5 affords
+    // 5 / 4 = 1 chunk — no chop at all, though threshold 1 wants seven.
     let atoms = vec![group(5)];
     let units = chop_atoms(&atoms, &chop_spans(&atoms), 8, CHOP_RECORD_CAPACITY);
-    assert_eq!(units.len(), 2);
-    assert_eq!(
-        units[0].emit,
-        SegUnitEmit::GroupChunk {
-            header: 0,
-            first_member: 1,
-            members: 3,
-        },
-    );
-    assert_eq!(
-        units[1].emit,
-        SegUnitEmit::GroupChunk {
-            header: 0,
-            first_member: 4,
-            members: 2,
-        },
-    );
-
-    // Three members can only ever make ONE chunk, which is no chop at all.
-    let atoms = vec![group(3)];
-    let units = chop_atoms(&atoms, &chop_spans(&atoms), 8, CHOP_RECORD_CAPACITY);
     assert_eq!(units.len(), 1);
-    assert_eq!(units[0].emit, SegUnitEmit::Atom { first: 0, span: 4 });
-    assert_eq!(units[0].cost, 3 + 2);
+    assert_eq!(units[0].emit, SegUnitEmit::Atom { first: 0, span: 6 });
+    assert_eq!(units[0].cost, 5 + 2);
+
+    // Sixteen light members afford 16 / 4 = 4 chunks of four — each chunk's
+    // members outweigh its repaid core two to one.
+    let atoms = vec![group(16)];
+    let units = chop_atoms(&atoms, &chop_spans(&atoms), 8, CHOP_RECORD_CAPACITY);
+    assert_eq!(units.len(), 4);
+    for (chunk, unit) in units.iter().enumerate() {
+        assert_eq!(
+            unit.emit,
+            SegUnitEmit::GroupChunk {
+                header: 0,
+                first_member: 1 + 4 * chunk,
+                members: 4,
+            },
+            "chunk {chunk}",
+        );
+        assert_eq!(unit.cost, 4 + 2, "chunk {chunk}");
+    }
+}
+
+/// A two-member group of HEAVY members chops to single-member chunks: the floor
+/// is work amortization, not a member count. A dual pair is the corpus's worst
+/// deal spike (a thin layer's whole imbalance in one atom), and each dual repays
+/// its own core many times over — so the pair splits.
+#[test]
+fn chop_splits_a_heavy_pair_into_single_member_chunks() {
+    let dual_member = SegMember {
+        annotated: AnnotatedTerm {
+            category: TermCategory::DualProductE4,
+            operands: [Some(SourceClass::E4Direct), Some(SourceClass::E4Direct)],
+        },
+        immediate: 0,
+    };
+    let atoms = vec![
+        SegAtom::Group {
+            core: 2,
+            has_c0: true,
+            has_c2: false,
+            members: vec![dual_member; 2],
+        },
+        chop_dual_term(),
+    ];
+    let spans = chop_spans(&atoms);
+    // total 28, k 8: threshold 1; the pair costs 18, member work 16 against a
+    // core of 2 -> the amortization cap 16 / 4 = 4 allows every member its own
+    // chunk, clamped to the two members there are.
+    let units = chop_atoms(&atoms, &spans, 8, CHOP_RECORD_CAPACITY);
+    assert_eq!(units.len(), 2 + 1);
+    for (chunk, unit) in units[..2].iter().enumerate() {
+        assert_eq!(
+            unit.emit,
+            SegUnitEmit::GroupChunk {
+                header: 0,
+                first_member: 1 + chunk,
+                members: 1,
+            },
+            "chunk {chunk}: one heavy member each",
+        );
+        assert_eq!(unit.cost, 8 + 2, "chunk {chunk}: its dual plus the core");
+    }
+    assert_eq!(units[2].emit, SegUnitEmit::Atom { first: 3, span: 1 });
 }
 
 /// Every chunk header the chop adds is a record the descriptor must hold, so the
@@ -3805,20 +3852,28 @@ fn chop_floors_chunks_at_two_members() {
 /// before.
 #[test]
 fn chop_spends_the_record_budget_in_committed_order() {
+    let dual_member = SegMember {
+        annotated: AnnotatedTerm {
+            category: TermCategory::DualProductE4,
+            operands: [Some(SourceClass::E4Direct), Some(SourceClass::E4Direct)],
+        },
+        immediate: 0,
+    };
     let group = |members: usize| SegAtom::Group {
         core: 2,
         has_c0: true,
         has_c2: false,
-        members: vec![chop_linear_member(); members],
+        members: vec![dual_member.clone(); members],
     };
-    // Two eight-member groups: 18 records, and at k 8 (threshold 1) each wants
-    // ceil(10 / 1) = 10 chunks, clamped by the member floor to 4 — three extra
-    // headers apiece.
+    // Two eight-dual groups: 18 records, and at k 8 (threshold 4) each wants
+    // ceil(66 / 4) = 17 chunks, member-clamped to 8 — seven extra headers
+    // apiece if the budget allowed them.
     let atoms = vec![group(8), group(8)];
     let spans = chop_spans(&atoms);
 
-    // Budget 4: the first group takes its full 4 chunks (3 headers), the second
-    // is degraded to the 2 chunks the last header allows.
+    // Budget 4: the first group takes the 5 chunks four headers buy — the even
+    // split hands the remainder forward, three pairs then two singles — and the
+    // second group's chop is dropped entirely.
     let units = chop_atoms(&atoms, &spans, 8, 18 + 4);
     let shapes: Vec<_> = units.iter().map(|unit| unit.emit).collect();
     assert_eq!(
@@ -3842,18 +3897,14 @@ fn chop_spends_the_record_budget_in_committed_order() {
             SegUnitEmit::GroupChunk {
                 header: 0,
                 first_member: 7,
-                members: 2,
+                members: 1,
             },
             SegUnitEmit::GroupChunk {
-                header: 9,
-                first_member: 10,
-                members: 4,
+                header: 0,
+                first_member: 8,
+                members: 1,
             },
-            SegUnitEmit::GroupChunk {
-                header: 9,
-                first_member: 14,
-                members: 4,
-            },
+            SegUnitEmit::Atom { first: 9, span: 9 },
         ],
     );
 
@@ -3875,7 +3926,7 @@ fn chop_spends_the_record_budget_in_committed_order() {
 #[test]
 fn a_dominant_group_chops_across_lists_and_rebalances() {
     // One eight-member group (work 10) and two dual singletons (work 10 each):
-    // whole atoms at k 2 deal 20 against 10; chopped, both lists load 18.
+    // whole atoms at k 2 deal 20 against 10; chopped, both lists load 16.
     let members: Vec<[u16; 4]> = (0..8)
         .map(|index| record(0, index % 2, index % 2, SOURCE_NONE))
         .collect();
@@ -3902,13 +3953,14 @@ fn a_dominant_group_chops_across_lists_and_rebalances() {
     .expect("a legal round");
     let desc = inline_desc(&setup);
 
-    // total 30, k 2: threshold 3, the group (10) chops into ceil(10 / 3) = 4
-    // chunks of two members — four headers on top of the original's one.
+    // total 30, k 2: threshold 3, the group (10) wants ceil(10 / 3) = 4 chunks,
+    // amortized to 8 / (2 * 2) = 2 of four members — two headers where the
+    // original had one.
     assert_eq!(
-        desc.record_count, 14,
-        "8 members + 4 headers + 2 singletons"
+        desc.record_count, 12,
+        "8 members + 2 headers + 2 singletons"
     );
-    assert_eq!(usize::from(desc.list_offset[k]), 14 * LEAN_WORDS_PER_TERM);
+    assert_eq!(usize::from(desc.list_offset[k]), 12 * LEAN_WORDS_PER_TERM);
 
     let mut seen_headers = 0usize;
     let mut seen_members: Vec<[u16; 4]> = Vec::new();
@@ -3934,7 +3986,7 @@ fn a_dominant_group_chops_across_lists_and_rebalances() {
                 "list {list}: a chunk header keeps the original core",
             );
             let count = usize::from(records[index][1]);
-            assert_eq!(count, 2, "list {list}: even two-member chunks");
+            assert_eq!(count, 4, "list {list}: even four-member chunks");
             assert_eq!(records[index][2], LEAN_GROUP_FLAG_C0, "list {list}: flags");
             assert_eq!(records[index][3], 0, "list {list}: the reserved zero");
             assert!(index + count < records.len(), "list {list}: members inside");
@@ -3944,7 +3996,7 @@ fn a_dominant_group_chops_across_lists_and_rebalances() {
             index += 1 + count;
         }
     }
-    assert_eq!(seen_headers, 4);
+    assert_eq!(seen_headers, 2);
     assert_eq!(singletons, 2);
     let mut expected = members;
     expected.sort_unstable();
@@ -3954,7 +4006,7 @@ fn a_dominant_group_chops_across_lists_and_rebalances() {
         "every member exactly once, verbatim"
     );
 
-    // Chunk costs 4 each, duals 10: the deal loads both lists to 18.
+    // Chunk costs 6 each, duals 10: the deal loads both lists to 16.
     assert!(
         (setup.work.max_over_mean - 1.0).abs() < 1e-9,
         "the chopped deal is balanced: {:?}",

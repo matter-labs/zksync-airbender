@@ -603,7 +603,7 @@ pub(crate) enum SegUnitEmit {
         header: usize,
         /// The chunk's first MEMBER record index.
         first_member: usize,
-        /// The chunk's member count, at least two.
+        /// The chunk's member count, at least one.
         members: usize,
     },
 }
@@ -631,9 +631,13 @@ const SEG_CHOP_DIVISOR: u64 = 4;
 ///
 /// Any GROUP atom whose [`atom_work`] exceeds `total / (SEG_CHOP_DIVISOR * k)`
 /// splits into `ceil(work / threshold)` even whole-member chunks — first chunks
-/// take the remainder — clamped so no chunk falls below two members (the wire's
-/// own `N >= 2` group rule). Every other atom, and every group under four
-/// members, passes through whole.
+/// take the remainder — clamped by AMORTIZATION: at most one chunk per
+/// `2 * core_work` of member work, so the repaid cores never inflate a group's
+/// work by more than half its members'. A chunk may hold a SINGLE member when
+/// that member is heavy enough to carry its own header (a dual pair is the
+/// corpus's worst deal spike, and a two-member floor would strand it whole);
+/// the `N >= 2` rule is the ARTIFACT encoder's, and the dealt stream never
+/// re-enters that codec — the kernel's member walk takes any `N >= 1`.
 ///
 /// Every chunk header is a record the emitted stream must hold, so the chop
 /// additionally spends a RECORD BUDGET — `record_capacity` minus the artifact's
@@ -678,9 +682,12 @@ pub(crate) fn chop_atoms(
             units.push(whole);
             continue;
         };
+        let core_work = 2 * (u64::from(*has_c0) + u64::from(*has_c2));
+        let member_total: u64 = members.iter().map(member_work).sum();
         let chunks = if cost > threshold {
             cost.div_ceil(threshold)
-                .min(members.len() as u64 / 2)
+                .min(members.len() as u64)
+                .min((member_total / (2 * core_work).max(1)).max(1))
                 .min(1 + budget)
         } else {
             1
@@ -691,7 +698,6 @@ pub(crate) fn chop_atoms(
         }
         budget -= chunks - 1;
         let chunks = chunks as usize;
-        let core_work = 2 * (u64::from(*has_c0) + u64::from(*has_c2));
         let base = members.len() / chunks;
         let extra = members.len() % chunks;
         let mut member = 0usize;
