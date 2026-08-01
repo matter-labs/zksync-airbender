@@ -28,26 +28,24 @@
 
 mod common;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
 
-use common::{FIXTURES, layers_with_bwd_roots};
+use common::{layers_with_bwd_roots, FIXTURES};
 use cs::gkr_compiler::dag_ir::{
-    Bf, BwdRegime, ChallengeKey, ChallengePower, ChallengeRef, ChallengeResolver, DagLayer, Ext,
-    FieldKind, LookupResolver, LookupValueKind, ReadPlace, ReadResolver, Resolvers, SinkKind,
-    VirtualSetupKind, VirtualSetupResolver, eval_layer_expr,
+    eval_layer_expr, Bf, BwdRegime, ChallengeKey, ChallengePower, ChallengeRef, ChallengeResolver,
+    DagLayer, Ext, FieldKind, LookupResolver, LookupValueKind, ReadPlace, ReadResolver, Resolvers,
+    SinkKind, VirtualSetupKind, VirtualSetupResolver,
 };
 use field::{Field, FieldExtension, PrimeField};
-use gkr_eval_isa::bwd::coeff::limits::{
-    GROUP_SPLIT_MAX_MEMBERS, LEAN_MAX_IMMEDIATES, in_scope, with_conditional_blake2,
-};
 use gkr_eval_isa::bwd::coeff::lean::decode_atoms;
+use gkr_eval_isa::bwd::coeff::limits::{in_scope, with_conditional_blake2, LEAN_MAX_IMMEDIATES};
 use gkr_eval_isa::bwd::coeff::model::ImmediateId;
 use gkr_eval_isa::bwd::coeff::{
-    CoeffCensus, CoeffLayer, CoeffResolver, CoeffTerm, CoefficientRecipeId, LeanAtom, LeanProgram,
-    NormalizedCoefficientRecipe, SourceId, TermId, compile_lean_coordinate, factor,
-    group_coeff_layer, immediate_value, interpret_coeff_layer, lower_coeff_layer, lower_lean_layer,
-    rescale,
+    compile_lean_coordinate, factor, group_coeff_layer, immediate_value, interpret_coeff_layer,
+    lower_coeff_layer, lower_lean_layer, rescale, CoeffCensus, CoeffLayer, CoeffResolver,
+    CoeffTerm, CoefficientRecipeId, LeanAtom, LeanProgram, NormalizedCoefficientRecipe, SourceId,
+    TermId,
 };
 use gkr_eval_isa::bwd::distill::distill;
 use gkr_eval_isa::bwd::source::OriginLeaf;
@@ -103,13 +101,19 @@ fn vs_tag(k: &VirtualSetupKind) -> u32 {
 /// `(Endpoint0, Delta)` of a read place.
 fn read_pair(p: &ReadPlace, row: usize) -> (Ext, Ext) {
     let (a, b, c) = place_tag(p);
-    (lift(bf(fnv(&[0xe0, a, b, c, row as u32]))), lift(bf(fnv(&[0xd1, a, b, c, row as u32]))))
+    (
+        lift(bf(fnv(&[0xe0, a, b, c, row as u32]))),
+        lift(bf(fnv(&[0xd1, a, b, c, row as u32]))),
+    )
 }
 
 /// `(Endpoint0, Delta)` of a virtual-setup source, in the BASE field —
 /// `VirtualSetupResolver` serves `Bf`, so both sides must agree there.
 fn vs_pair(k: &VirtualSetupKind, row: usize) -> (Bf, Bf) {
-    (bf(fnv(&[0xb0, vs_tag(k), row as u32])), bf(fnv(&[0xb1, vs_tag(k), row as u32])))
+    (
+        bf(fnv(&[0xb0, vs_tag(k), row as u32])),
+        bf(fnv(&[0xb1, vs_tag(k), row as u32])),
+    )
 }
 
 /// Deliberately NOT power-consistent: `challenge(Static(2)) != challenge(One)^2`.
@@ -205,7 +209,12 @@ impl CoeffResolver for Pairs<'_> {
 fn spine_at(distilled: &DagLayer, row: usize, x: u32) -> Ext {
     let leaves = Leaves { x };
     let ch = Chal;
-    let r = Resolvers { read: &leaves, lookup: &leaves, virtual_setup: &leaves, challenge: &ch };
+    let r = Resolvers {
+        read: &leaves,
+        lookup: &leaves,
+        virtual_setup: &leaves,
+        challenge: &ch,
+    };
     eval_layer_expr(distilled, distilled.roots[0].expr, row, &r)
 }
 
@@ -335,7 +344,11 @@ fn collect(c: &mut Census, tag: &'static str, lowered: &CoeffLayer) {
             OriginLeaf::VirtualSetup { .. } => "VirtualSetup",
         };
         *c.source_families.entry((tag, family)).or_default() += 1;
-        let field = if s.field == FieldKind::Ext { "Ext" } else { "Base" };
+        let field = if s.field == FieldKind::Ext {
+            "Ext"
+        } else {
+            "Base"
+        };
         *c.source_fields.entry((tag, field)).or_default() += 1;
     }
     if lowered.c_init.is_some() {
@@ -349,9 +362,15 @@ fn collect(c: &mut Census, tag: &'static str, lowered: &CoeffLayer) {
 
     for recipe in &lowered.coefficients {
         assert!(!recipe.is_zero(), "an encoded zero must never be banked");
-        assert!(recipe.reserved_id().is_none(), "a reserved literal must never be banked");
+        assert!(
+            recipe.reserved_id().is_none(),
+            "a reserved literal must never be banked"
+        );
         for product in &recipe.terms {
-            assert_ne!(product.scalar, 0, "a zero scalar must never survive normalization");
+            assert_ne!(
+                product.scalar, 0,
+                "a zero scalar must never survive normalization"
+            );
             let mut per_key: BTreeMap<String, usize> = BTreeMap::new();
             for challenge in &product.challenges {
                 match challenge.0.power {
@@ -370,7 +389,9 @@ fn collect(c: &mut Census, tag: &'static str, lowered: &CoeffLayer) {
                 if honours_power {
                     c.products_repeating_power_key += 1;
                 } else {
-                    *c.products_repeating_other_key.entry(format!("{key} x{n}")).or_default() += 1;
+                    *c.products_repeating_other_key
+                        .entry(format!("{key} x{n}"))
+                        .or_default() += 1;
                 }
             }
         }
@@ -398,13 +419,15 @@ fn check_parity(
         if got_c2 == want_c2 {
             c.parity_c2_ok += 1;
         } else {
-            c.parity_failures.push(format!("{name} L{li} {tag} row{row} acc_c2"));
+            c.parity_failures
+                .push(format!("{name} L{li} {tag} row{row} acc_c2"));
         }
         if regime == BwdRegime::Ext {
             if got_c0 == want_c0 {
                 c.parity_c0_ok_ext += 1;
             } else {
-                c.parity_failures.push(format!("{name} L{li} {tag} row{row} acc_c0"));
+                c.parity_failures
+                    .push(format!("{name} L{li} {tag} row{row} acc_c0"));
             }
         } else if got_c0 != Ext::ZERO {
             c.r0_acc_c0_nonzero_rows += 1;
@@ -442,14 +465,33 @@ fn check_parity(
 fn corpus_lowers_and_matches_the_distilled_spine_with_a_pinned_census() {
     let c = census();
 
-    assert_eq!(c.lowering_errors, Vec::<String>::new(), "every corpus layer must lower");
-    assert_eq!(c.layers, 57, "layers with backward roots across the 12 pinned fixtures");
+    assert_eq!(
+        c.lowering_errors,
+        Vec::<String>::new(),
+        "every corpus layer must lower"
+    );
+    assert_eq!(
+        c.layers, 57,
+        "layers with backward roots across the 12 pinned fixtures"
+    );
     assert_eq!(c.lowerings, 114, "57 layers x 2 regimes");
 
     // Parity against the distilled-spine oracle.
-    assert_eq!(c.parity_failures, Vec::<String>::new(), "coefficient parity");
-    assert_eq!(c.parity_c2_ok, 114 * ROWS, "acc_c2 checked on every layer x regime x row");
-    assert_eq!(c.parity_c0_ok_ext, 57 * ROWS, "acc_c0 checked on every Ext layer x row");
+    assert_eq!(
+        c.parity_failures,
+        Vec::<String>::new(),
+        "coefficient parity"
+    );
+    assert_eq!(
+        c.parity_c2_ok,
+        114 * ROWS,
+        "acc_c2 checked on every layer x regime x row"
+    );
+    assert_eq!(
+        c.parity_c0_ok_ext,
+        57 * ROWS,
+        "acc_c0 checked on every Ext layer x row"
+    );
     // NOT a value comparison — see the doc comment. This only proves R0's `acc_c0`
     // is live on every layer, i.e. the output shortcut is not silently zero.
     assert_eq!(
@@ -470,12 +512,17 @@ fn corpus_lowers_and_matches_the_distilled_spine_with_a_pinned_census() {
             (("R0", "C2Product"), 5872),
         ])
     );
-    assert_eq!(c.duals_with_identical_factors, 402, "A*A duals are still native duals");
+    assert_eq!(
+        c.duals_with_identical_factors, 402,
+        "A*A duals are still native duals"
+    );
 
     // Zero degree-three rejections corpus-wide (the `lowering_errors` assertion
     // above covers it; this states the intent).
     assert!(
-        !c.lowering_errors.iter().any(|e| e.contains("DegreeTooHigh")),
+        !c.lowering_errors
+            .iter()
+            .any(|e| e.contains("DegreeTooHigh")),
         "no fragment exceeds degree two on the corpus"
     );
 
@@ -519,7 +566,11 @@ fn corpus_lowers_and_matches_the_distilled_spine_with_a_pinned_census() {
             (("R0", "Ext"), 3869),
         ])
     );
-    assert_eq!(c.source_fields[&("Ext", "Ext")], 4159, "no Ext-regime source stays Base");
+    assert_eq!(
+        c.source_fields[&("Ext", "Ext")],
+        4159,
+        "no Ext-regime source stays Base"
+    );
     assert!(!c.source_fields.contains_key(&("Ext", "Base")));
 
     // c_init: R0 always drops it, even though 26 of the 57 R0 layers have a
@@ -527,7 +578,10 @@ fn corpus_lowers_and_matches_the_distilled_spine_with_a_pinned_census() {
     // have rejected all 26 — see `lower_c_init` for the parity explanation).
     assert_eq!(c.r0_layers_with_spine_c_init, 26);
     assert_eq!(c.c_init_layers, BTreeMap::from([("Ext", 27)]));
-    assert!(!c.c_init_layers.contains_key("R0"), "R0 never emits a c_init");
+    assert!(
+        !c.c_init_layers.contains_key("R0"),
+        "R0 never emits a c_init"
+    );
 
     // Bank / source volume, and the per-layer ceilings Task 3 checks against the
     // 13-bit coefficient field (`bank + 2 <= 8192`).
@@ -542,7 +596,10 @@ fn corpus_lowers_and_matches_the_distilled_spine_with_a_pinned_census() {
     );
 
     // Normalization leaves no non-canonical challenge spelling behind.
-    assert_eq!(c.static_one_spellings, 0, "Static(1) is canonicalized to One");
+    assert_eq!(
+        c.static_one_spellings, 0,
+        "Static(1) is canonicalized to One"
+    );
     assert_eq!(c.static_zero_spellings, 0);
 }
 
@@ -617,8 +674,14 @@ fn bwd_coeff_committed_layout_census() {
     assert_eq!(max.max_expansion_factor, in_scope::MAX_EXPANSION_FACTOR);
     assert_eq!(max.max_fragment_atoms, in_scope::MAX_FRAGMENT_ATOMS);
     assert_eq!(max.source_windows, in_scope::MAX_SOURCE_WINDOWS_USED);
-    assert_eq!(max.lower_bound_program_bytes, in_scope::MAX_LOWER_BOUND_PROGRAM_BYTES);
-    assert_eq!(max.upper_bound_program_bytes, in_scope::MAX_UPPER_BOUND_PROGRAM_BYTES);
+    assert_eq!(
+        max.lower_bound_program_bytes,
+        in_scope::MAX_LOWER_BOUND_PROGRAM_BYTES
+    );
+    assert_eq!(
+        max.upper_bound_program_bytes,
+        in_scope::MAX_UPPER_BOUND_PROGRAM_BYTES
+    );
     assert_eq!(
         max.cont_standalone_product,
         in_scope::MAX_CONTINUATION_STANDALONE_PRODUCTS,
@@ -637,15 +700,21 @@ fn bwd_coeff_committed_layout_census() {
     );
 
     // ── the lower bound is the only unrepairable one ──────────────────────
-    let overflowing: Vec<_> =
-        rows.iter().filter(|row| !row.census.lower_bound_fits()).map(|r| r.sort_key()).collect();
+    let overflowing: Vec<_> = rows
+        .iter()
+        .filter(|row| !row.census.lower_bound_fits())
+        .map(|r| r.sort_key())
+        .collect();
     assert_eq!(
         overflowing,
         Vec::new(),
         "a lower-bound overflow cannot be repaired by any later codec"
     );
-    let inconclusive: Vec<_> =
-        rows.iter().filter(|row| row.census.inconclusive()).map(|r| r.sort_key()).collect();
+    let inconclusive: Vec<_> = rows
+        .iter()
+        .filter(|row| row.census.inconclusive())
+        .map(|r| r.sort_key())
+        .collect();
     println!(
         "proven to fit: {}/{}; inconclusive (Task 8 decides): {:?}",
         rows.len() - inconclusive.len(),
@@ -667,7 +736,11 @@ fn bwd_coeff_committed_layout_census() {
     let mut live_r0: BTreeMap<&'static str, usize> = BTreeMap::new();
     let mut live_ext: BTreeMap<&'static str, usize> = BTreeMap::new();
     for row in rows {
-        let sink = if row.regime == BwdRegime::R0 { &mut live_r0 } else { &mut live_ext };
+        let sink = if row.regime == BwdRegime::R0 {
+            &mut live_r0
+        } else {
+            &mut live_ext
+        };
         for category in &row.live_categories {
             *sink.entry(category.label()).or_default() += 1;
             let opcode = if row.regime == BwdRegime::R0 {
@@ -680,7 +753,11 @@ fn bwd_coeff_committed_layout_census() {
                 "{:?} emitted {} which the {} opcode table does not encode",
                 row.sort_key(),
                 category.label(),
-                if row.regime == BwdRegime::R0 { "R0" } else { "continuation" }
+                if row.regime == BwdRegime::R0 {
+                    "R0"
+                } else {
+                    "continuation"
+                }
             );
         }
     }
@@ -701,14 +778,20 @@ fn bwd_coeff_committed_layout_census() {
     assert_eq!(sum(|c| c.cont_dual_product), 5872);
     assert_eq!(sum(|c| c.coefficient_recipes), 8320);
     assert_eq!(sum(|c| c.sources), 9654);
-    assert_eq!(sum(|c| c.cont_c0_linear_bf), 0, "every continuation source is an Ext fold leaf");
+    assert_eq!(
+        sum(|c| c.cont_c0_linear_bf),
+        0,
+        "every continuation source is an Ext fold leaf"
+    );
     assert_eq!(
         rows.iter().filter(|r| r.census.has_c_init).count(),
         27,
         "only the Ext regime emits a c_init"
     );
     assert!(
-        rows.iter().filter(|r| r.regime == BwdRegime::R0).all(|r| !r.census.has_c_init),
+        rows.iter()
+            .filter(|r| r.regime == BwdRegime::R0)
+            .all(|r| !r.census.has_c_init),
         "R0 drops the spine c_init (design §5.3)"
     );
 
@@ -719,7 +802,10 @@ fn bwd_coeff_committed_layout_census() {
     assert_eq!(r0().map(|r| r.census.sinks_cache).sum::<usize>(), 0);
     assert_eq!(r0().map(|r| r.census.sinks_scratch).sum::<usize>(), 0);
     assert_eq!(r0().map(|r| r.census.sinks_export).sum::<usize>(), 0);
-    assert_eq!(r0().map(|r| r.census.constraint_only_roots).sum::<usize>(), 901);
+    assert_eq!(
+        r0().map(|r| r.census.constraint_only_roots).sum::<usize>(),
+        901
+    );
 }
 
 /// The conditional-scope bookkeeping this crate can state on its own (design
@@ -754,7 +840,10 @@ fn conditional_blake2_scope_is_recorded_separately() {
     // between the two sets.
     assert_eq!(with_conditional_blake2::CIRCUITS, in_scope::CIRCUITS + 1);
     assert_eq!(with_conditional_blake2::LAYERS, in_scope::LAYERS + 8);
-    assert_eq!(with_conditional_blake2::COORDINATES, in_scope::COORDINATES + 16);
+    assert_eq!(
+        with_conditional_blake2::COORDINATES,
+        in_scope::COORDINATES + 16
+    );
     assert_eq!(
         with_conditional_blake2::COORDINATES,
         2 * with_conditional_blake2::LAYERS,
@@ -768,10 +857,16 @@ fn conditional_blake2_scope_is_recorded_separately() {
     // generated the committed `blake2_with_extended_control_layout_gkr.json`, so
     // the conditional circuit is the SAME GKR circuit as an already-mandatory one.
     // No format is sized from these, which is why equality is allowed at all.
-    assert_eq!(with_conditional_blake2::MAX_COEFFICIENT_RECIPES, measured.coefficient_recipes);
+    assert_eq!(
+        with_conditional_blake2::MAX_COEFFICIENT_RECIPES,
+        measured.coefficient_recipes
+    );
     assert_eq!(with_conditional_blake2::MAX_TERMS, measured.terms);
     assert_eq!(with_conditional_blake2::MAX_SOURCES, measured.sources);
-    assert_eq!(with_conditional_blake2::MAX_PROJECTIONS, measured.projections);
+    assert_eq!(
+        with_conditional_blake2::MAX_PROJECTIONS,
+        measured.projections
+    );
     assert_eq!(
         with_conditional_blake2::MAX_LOWER_BOUND_PROGRAM_BYTES,
         measured.lower_bound_program_bytes
@@ -863,8 +958,6 @@ fn grouped_corpus_layers_factor_exactly() {
         max_immediates: usize,
         bank_before: usize,
         bank_after: usize,
-        /// Cores the §4.2 chop actually split — one core, two or more atoms.
-        chopped_cores: usize,
     }
 
     let tallies: Vec<Tally> = FIXTURES
@@ -915,7 +1008,9 @@ fn grouped_corpus_layers_factor_exactly() {
                     .terms
                     .iter()
                     .filter_map(|term| {
-                        lowered.banked_recipe(term.coefficient()).map(|r| (term.id(), r.clone()))
+                        lowered
+                            .banked_recipe(term.coefficient())
+                            .map(|r| (term.id(), r.clone()))
                     })
                     .collect();
                 let literals: BTreeMap<TermId, CoefficientRecipeId> = lowered
@@ -924,8 +1019,9 @@ fn grouped_corpus_layers_factor_exactly() {
                     .filter(|term| term.coefficient().bank_index().is_none())
                     .map(|term| (term.id(), term.coefficient()))
                     .collect();
-                let c_init_recipe =
-                    lowered.c_init.and_then(|id| lowered.banked_recipe(id).cloned());
+                let c_init_recipe = lowered
+                    .c_init
+                    .and_then(|id| lowered.banked_recipe(id).cloned());
                 let ids_before: Vec<TermId> = lowered.terms.iter().map(|t| t.id()).collect();
                 let sources_before = lowered.sources.clone();
 
@@ -938,7 +1034,10 @@ fn grouped_corpus_layers_factor_exactly() {
                     ids_before,
                     "[{where_}] grouping never adds, drops or reorders a term"
                 );
-                assert_eq!(grouped.sources, sources_before, "[{where_}] sources are untouched");
+                assert_eq!(
+                    grouped.sources, sources_before,
+                    "[{where_}] sources are untouched"
+                );
                 assert_eq!(grouped.regime, BwdRegime::Ext);
                 assert!(
                     grouped.coefficients.windows(2).all(|w| w[0] < w[1]),
@@ -964,16 +1063,19 @@ fn grouped_corpus_layers_factor_exactly() {
                 let mut member_terms: BTreeMap<TermId, usize> = BTreeMap::new();
                 for (index, group) in grouped.groups.iter().enumerate() {
                     assert!(
-                        (2..=GROUP_SPLIT_MAX_MEMBERS).contains(&group.members.len()),
-                        "[{where_}] group {index} has {} members, outside \
-                         2..={GROUP_SPLIT_MAX_MEMBERS}",
+                        group.members.len() >= 2,
+                        "[{where_}] group {index} has {} members, below the \
+                         two-member floor",
                         group.members.len()
                     );
                     assert!(
                         group.members.windows(2).all(|w| w[0].term < w[1].term),
                         "[{where_}] group {index} members must be ascending by TermId"
                     );
-                    assert!(group.has_c0 || group.has_c2, "[{where_}] group {index} feeds no side");
+                    assert!(
+                        group.has_c0 || group.has_c2,
+                        "[{where_}] group {index} feeds no side"
+                    );
                     let core = grouped
                         .banked_recipe(group.core)
                         .unwrap_or_else(|| panic!("[{where_}] group {index} core id dangles"));
@@ -1015,11 +1117,15 @@ fn grouped_corpus_layers_factor_exactly() {
                     t.max_members = t.max_members.max(group.members.len());
                 }
                 t.groups += grouped.groups.len();
-                let mut atoms_per_core: BTreeMap<CoefficientRecipeId, usize> = BTreeMap::new();
+                // Groups are MAXIMAL: one core is one group, never several atoms.
+                let mut cores_seen: BTreeSet<CoefficientRecipeId> = BTreeSet::new();
                 for group in &grouped.groups {
-                    *atoms_per_core.entry(group.core).or_default() += 1;
+                    assert!(
+                        cores_seen.insert(group.core),
+                        "[{where_}] core {:?} appears in two groups — groups must be maximal",
+                        group.core
+                    );
                 }
-                t.chopped_cores += atoms_per_core.values().filter(|atoms| **atoms > 1).count();
                 if grouped.groups.is_empty() {
                     if li == 0 {
                         t.l0_without_groups.push(where_.clone());
@@ -1048,7 +1154,9 @@ fn grouped_corpus_layers_factor_exactly() {
                 }
                 // §4.1: c_init is excluded from grouping, so its recipe survives.
                 assert_eq!(
-                    grouped.c_init.and_then(|id| grouped.banked_recipe(id).cloned()),
+                    grouped
+                        .c_init
+                        .and_then(|id| grouped.banked_recipe(id).cloned()),
                     c_init_recipe,
                     "[{where_}] c_init must keep its own recipe"
                 );
@@ -1063,34 +1171,50 @@ fn grouped_corpus_layers_factor_exactly() {
     let members = sum(|t| t.members);
     let max_members = tallies.iter().map(|t| t.max_members).max().unwrap_or(0);
     let max_immediates = tallies.iter().map(|t| t.max_immediates).max().unwrap_or(0);
-    let l0_without_groups: Vec<String> =
-        tallies.iter().flat_map(|t| t.l0_without_groups.clone()).collect();
+    let l0_without_groups: Vec<String> = tallies
+        .iter()
+        .flat_map(|t| t.l0_without_groups.clone())
+        .collect();
     println!(
         "grouping: {coordinates} Ext coordinates, {} bank recipes ({} factored / {} bare), \
          {groups} groups over {members} members (max {max_members} members, max \
-         {max_immediates} immediates), bank {} -> {}, {} coordinates group, {} cores chopped",
+         {max_immediates} immediates), bank {} -> {}, {} coordinates group",
         sum(|t| t.recipes),
         sum(|t| t.factored),
         sum(|t| t.bare),
         sum(|t| t.bank_before),
         sum(|t| t.bank_after),
         sum(|t| t.with_groups),
-        sum(|t| t.chopped_cores),
     );
 
     // Non-vacuity: the walk really ran, really factored, and really grouped.
-    assert_eq!(coordinates, in_scope::LAYERS, "every layer with backward roots, Ext regime");
-    assert!(sum(|t| t.recipes) > 0, "the corpus must yield bank recipes to factor");
-    assert!(sum(|t| t.factored) > 0, "recipes with a non-trivial core must exist");
-    assert!(groups > 0, "the corpus must realize coefficient groups");
-    assert!(members >= 2 * groups, "every group has at least two members");
-    assert_eq!(l0_without_groups, Vec::<String>::new(), "every L0 coordinate groups");
-    assert!(max_members <= GROUP_SPLIT_MAX_MEMBERS, "the chop bound holds corpus-wide");
-    assert!(
-        sum(|t| t.chopped_cores) > 0,
-        "the corpus's boulder cores must exercise the §4.2 chop, not just the bound"
+    assert_eq!(
+        coordinates,
+        in_scope::LAYERS,
+        "every layer with backward roots, Ext regime"
     );
-    assert!(max_immediates <= LEAN_MAX_IMMEDIATES, "the immediate cap holds corpus-wide");
+    assert!(
+        sum(|t| t.recipes) > 0,
+        "the corpus must yield bank recipes to factor"
+    );
+    assert!(
+        sum(|t| t.factored) > 0,
+        "recipes with a non-trivial core must exist"
+    );
+    assert!(groups > 0, "the corpus must realize coefficient groups");
+    assert!(
+        members >= 2 * groups,
+        "every group has at least two members"
+    );
+    assert_eq!(
+        l0_without_groups,
+        Vec::<String>::new(),
+        "every L0 coordinate groups"
+    );
+    assert!(
+        max_immediates <= LEAN_MAX_IMMEDIATES,
+        "the immediate cap holds corpus-wide"
+    );
     assert!(
         sum(|t| t.bank_after) < sum(|t| t.bank_before),
         "grouping collapses member recipes onto shared cores"
@@ -1214,9 +1338,20 @@ fn grouped_semantics_match_ungrouped_bit_for_bit() {
         sum(|t| t.nonzero_c2),
     );
 
-    assert_eq!(coordinates, in_scope::LAYERS, "every layer with backward roots, Ext regime");
-    assert_eq!(sum(|t| t.rows), coordinates * SAMPLED.len(), "every coordinate x row compared");
-    assert!(sum(|t| t.groups) > 0, "the corpus must realize groups, or this proves nothing");
+    assert_eq!(
+        coordinates,
+        in_scope::LAYERS,
+        "every layer with backward roots, Ext regime"
+    );
+    assert_eq!(
+        sum(|t| t.rows),
+        coordinates * SAMPLED.len(),
+        "every coordinate x row compared"
+    );
+    assert!(
+        sum(|t| t.groups) > 0,
+        "the corpus must realize groups, or this proves nothing"
+    );
     assert!(
         sum(|t| t.literal_members) > 0,
         "the +-1 immediate fast path must be exercised by the corpus"
@@ -1294,7 +1429,12 @@ fn wire_mul_counts(program: &LeanProgram) -> MulCounts {
     for atom in &atoms {
         match atom {
             LeanAtom::Term(term) => counts.full += singleton_full_muls(term.class),
-            LeanAtom::Group { has_c0, has_c2, members, .. } => {
+            LeanAtom::Group {
+                has_c0,
+                has_c2,
+                members,
+                ..
+            } => {
                 counts.full += u64::from(*has_c0) + u64::from(*has_c2);
                 for member in members {
                     counts.full += member_full_muls(member.class);
@@ -1379,12 +1519,13 @@ fn term_form_full_muls(layer: &CoeffLayer) -> u64 {
 /// a specific coordinate and a specific delta rather than as a silent perf shift.
 ///
 /// The archived fragment CSV (`seg_report.rs`'s `bwd_seg_fragment_coefficient_census`)
-/// is motivation, NOT the oracle: it modeled neither the singleton rule (a
-/// one-member core does not group) nor the §4.2 chop (a core over `T` members
-/// becomes several atoms, each paying its own core mul), so its numbers are
-/// optimistic. The corpus ratio asserted below is a band, not an equality, for
-/// exactly that reason — it is a same-magnitude sanity check on the census that
-/// motivated the work, and a wild ratio is a defect signal.
+/// is motivation, NOT the oracle: it did not model the singleton rule (a
+/// one-member core does not group), so its numbers are optimistic. The corpus
+/// ratio asserted below is a band, not an equality, for exactly that reason — it
+/// is a same-magnitude sanity check on the census that motivated the work, and a
+/// wild ratio is a defect signal. (The wire censused here is the ARTIFACT's:
+/// groups are maximal, one per core; `seg_lower`'s deal-time chop repays cores
+/// per chunk at launch time and is deliberately outside this census.)
 #[test]
 fn grouped_wire_realizes_predicted_mul_counts() {
     /// `(circuit, layer, full E4xE4, BF x E4)` for every `Ext` coordinate, in
@@ -1397,11 +1538,11 @@ fn grouped_wire_realizes_predicted_mul_counts() {
     /// multiply at all, so those coordinates' grouping is pure saving.
     #[rustfmt::skip]
     const GOLDEN: &[(&str, usize, u64, u64)] = &[
-        ("add_sub_lui_auipc_mop_layout_gkr.json", 0, 338, 56),
+        ("add_sub_lui_auipc_mop_layout_gkr.json", 0, 336, 56),
         ("add_sub_lui_auipc_mop_layout_gkr.json", 1, 53, 0),
         ("add_sub_lui_auipc_mop_layout_gkr.json", 2, 33, 0),
         ("add_sub_lui_auipc_mop_layout_gkr.json", 3, 18, 0),
-        ("bigint_with_extended_control_layout_gkr.json", 0, 3761, 568),
+        ("bigint_with_extended_control_layout_gkr.json", 0, 3691, 568),
         ("bigint_with_extended_control_layout_gkr.json", 1, 385, 0),
         ("bigint_with_extended_control_layout_gkr.json", 2, 213, 0),
         ("bigint_with_extended_control_layout_gkr.json", 3, 113, 0),
@@ -1428,7 +1569,7 @@ fn grouped_wire_realizes_predicted_mul_counts() {
         ("jump_branch_slt_layout_gkr.json", 1, 55, 0),
         ("jump_branch_slt_layout_gkr.json", 2, 41, 0),
         ("jump_branch_slt_layout_gkr.json", 3, 18, 0),
-        ("keccak_special5_layout_gkr.json", 0, 3410, 718),
+        ("keccak_special5_layout_gkr.json", 0, 3378, 718),
         ("keccak_special5_layout_gkr.json", 1, 215, 0),
         ("keccak_special5_layout_gkr.json", 2, 109, 0),
         ("keccak_special5_layout_gkr.json", 3, 59, 0),
@@ -1446,7 +1587,7 @@ fn grouped_wire_realizes_predicted_mul_counts() {
         ("shift_binop_layout_gkr.json", 1, 61, 0),
         ("shift_binop_layout_gkr.json", 2, 35, 0),
         ("shift_binop_layout_gkr.json", 3, 26, 0),
-        ("unified_reduced_machine_layout_gkr.json", 0, 1326, 136),
+        ("unified_reduced_machine_layout_gkr.json", 0, 1324, 136),
         ("unified_reduced_machine_layout_gkr.json", 1, 93, 0),
         ("unified_reduced_machine_layout_gkr.json", 2, 55, 0),
         ("unified_reduced_machine_layout_gkr.json", 3, 36, 0),
@@ -1480,7 +1621,13 @@ fn grouped_wire_realizes_predicted_mul_counts() {
                     !layer.groups.is_empty() || wire.bf_imm == 0,
                     "[{where_}] a group-free coordinate cannot pay a BF immediate",
                 );
-                (*name, li, wire.full, wire.bf_imm, term_form_full_muls(&layer))
+                (
+                    *name,
+                    li,
+                    wire.full,
+                    wire.bf_imm,
+                    term_form_full_muls(&layer),
+                )
             })
         })
         .collect();
@@ -1498,19 +1645,28 @@ fn grouped_wire_realizes_predicted_mul_counts() {
         ratio,
     );
 
-    assert_eq!(rows.len(), in_scope::LAYERS, "every layer with backward roots, Ext regime");
     assert_eq!(
-        rows.iter().map(|(n, l, f, b, _)| (*n, *l, *f, *b)).collect::<Vec<_>>(),
+        rows.len(),
+        in_scope::LAYERS,
+        "every layer with backward roots, Ext regime"
+    );
+    assert_eq!(
+        rows.iter()
+            .map(|(n, l, f, b, _)| (*n, *l, *f, *b))
+            .collect::<Vec<_>>(),
         GOLDEN.to_vec(),
         "a coordinate's realized mul work drifted from its pin",
     );
     // Census-magnitude sanity (§6.5): the grouped form's full-mul count lands where
     // the motivating census said it would. A band, not an equality — the singleton
-    // rule and the chop both cost muls the archived CSV did not model.
+    // rule costs muls the archived CSV did not model.
     assert!(
         (0.72..=0.76).contains(&ratio),
         "corpus full-mul ratio {ratio:.4} is outside the censused 0.72-0.76 band; investigate \
          before re-pinning",
     );
-    assert!(corpus_bf > 0, "the BF-immediate column must be live, or the grouping saved nothing");
+    assert!(
+        corpus_bf > 0,
+        "the BF-immediate column must be live, or the grouping saved nothing"
+    );
 }

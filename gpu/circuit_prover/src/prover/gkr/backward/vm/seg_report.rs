@@ -9977,8 +9977,8 @@ floor_dram_read_bytes,floor_dram_write_bytes,sources_priced,dead_sources,distinc
 ///
 ///   * the SINGLETON rule — a core with one member does not group at all, and pays
 ///     a full coefficient mul like any plain term; this census groups it anyway; and
-///   * the §4.2 CHOP — a core over `GROUP_SPLIT_MAX_MEMBERS` members becomes several
-///     atoms, each paying its own core mul; this census pays one.
+///   * the deal-time CHOP — `seg_lower`'s `K`-aware chop can split a heavy group
+///     into several chunks, each repaying the core mul; this census pays one.
 ///
 /// Both make it OPTIMISTIC. It is kept as the motivating measurement it was
 /// (design §6.5 calls it "motivation, NOT the oracle"), and the realized counts —

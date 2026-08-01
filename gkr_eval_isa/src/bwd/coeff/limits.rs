@@ -58,10 +58,6 @@ pub const LEAN_CONT_GROUP_HEADER_CLASS: u16 = 2;
 /// the crates never import each other's constant.
 pub const LEAN_MAX_IMMEDIATES: usize = 512;
 
-/// Threshold split (spec §4.2): a group with more members is chopped into even
-/// chunks of whole members BEFORE the order search. K-independent.
-pub const GROUP_SPLIT_MAX_MEMBERS: usize = 16;
-
 /// `source_window:6` of the input word (§9.4).
 pub const MAX_SOURCE_WINDOWS: usize = 64;
 /// `column:7` of the input word: a window covers at most this many contiguous
@@ -163,7 +159,11 @@ impl TermCategory {
     }
 
     pub fn is_legal_in(self, r0: bool) -> bool {
-        if r0 { r0_opcode(self).is_some() } else { continuation_opcode(self).is_some() }
+        if r0 {
+            r0_opcode(self).is_some()
+        } else {
+            continuation_opcode(self).is_some()
+        }
     }
 
     pub fn label(self) -> &'static str {
@@ -187,9 +187,19 @@ impl TermCategory {
 /// [`TermCategory`] rather than with any one codec.
 pub fn term_category(term: &CoeffTerm) -> TermCategory {
     match term {
-        CoeffTerm::C0Linear { field: FieldKind::Base, .. } => TermCategory::C0LinearBf,
-        CoeffTerm::C0Linear { field: FieldKind::Ext, .. } => TermCategory::C0LinearE4,
-        CoeffTerm::C2Product { lhs_field, rhs_field, .. } => match (lhs_field, rhs_field) {
+        CoeffTerm::C0Linear {
+            field: FieldKind::Base,
+            ..
+        } => TermCategory::C0LinearBf,
+        CoeffTerm::C0Linear {
+            field: FieldKind::Ext,
+            ..
+        } => TermCategory::C0LinearE4,
+        CoeffTerm::C2Product {
+            lhs_field,
+            rhs_field,
+            ..
+        } => match (lhs_field, rhs_field) {
             (FieldKind::Base, FieldKind::Base) => TermCategory::C2ProductBfBf,
             (FieldKind::Ext, FieldKind::Ext) => TermCategory::C2ProductE4E4,
             _ => TermCategory::C2ProductBfE4,
@@ -338,7 +348,11 @@ const fn table_matches_encoder(table: &[(u16, TermCategory)], r0: bool) -> bool 
     let mut i = 0;
     while i < table.len() {
         let (opcode, category) = table[i];
-        let encoded = if r0 { r0_opcode(category) } else { continuation_opcode(category) };
+        let encoded = if r0 {
+            r0_opcode(category)
+        } else {
+            continuation_opcode(category)
+        };
         let Some(encoded) = encoded else { return false };
         if encoded != opcode {
             return false;
@@ -367,7 +381,11 @@ const fn encoder_matches_table(table: &[(u16, TermCategory)], r0: bool) -> bool 
     let mut i = 0;
     while i < TermCategory::ALL.len() {
         let category = TermCategory::ALL[i];
-        let encoded = if r0 { r0_opcode(category) } else { continuation_opcode(category) };
+        let encoded = if r0 {
+            r0_opcode(category)
+        } else {
+            continuation_opcode(category)
+        };
         if encoded.is_some() && !table_contains(table, category) {
             return false;
         }
@@ -410,8 +428,14 @@ const _: () = assert!(matches!(r0_opcode(TermCategory::C2ProductE4E4), Some(4)))
 const _: () = assert!(matches!(r0_opcode(TermCategory::MoveBf), Some(5)));
 const _: () = assert!(matches!(r0_opcode(TermCategory::MoveE4), Some(6)));
 const _: () = assert!(r0_opcode(TermCategory::DualProductE4).is_none());
-const _: () = assert!(matches!(continuation_opcode(TermCategory::C0LinearE4), Some(0)));
-const _: () = assert!(matches!(continuation_opcode(TermCategory::DualProductE4), Some(1)));
+const _: () = assert!(matches!(
+    continuation_opcode(TermCategory::C0LinearE4),
+    Some(0)
+));
+const _: () = assert!(matches!(
+    continuation_opcode(TermCategory::DualProductE4),
+    Some(1)
+));
 const _: () = assert!(matches!(continuation_opcode(TermCategory::MoveE4), Some(2)));
 const _: () = assert!(continuation_opcode(TermCategory::C0LinearBf).is_none());
 const _: () = assert!(continuation_opcode(TermCategory::C2ProductBfBf).is_none());

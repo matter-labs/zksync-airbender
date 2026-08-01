@@ -46,7 +46,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use cs::gkr_compiler::dag_ir::{Bf, BwdRegime};
 use field::{Field, PrimeField};
 
-use super::limits::{GROUP_SPLIT_MAX_MEMBERS, LEAN_MAX_IMMEDIATES, MAX_COEFFICIENT_ENCODINGS};
+use super::limits::{LEAN_MAX_IMMEDIATES, MAX_COEFFICIENT_ENCODINGS};
 use super::model::{
     CoeffError, CoeffGroup, CoeffGroupMember, CoeffLayer, CoeffProduct, CoeffTerm,
     CoefficientRecipeId, ImmediateId, NormalizedCoefficientRecipe, TermId,
@@ -75,7 +75,10 @@ fn scale_by(recipe: &NormalizedCoefficientRecipe, scale: Bf) -> NormalizedCoeffi
                 let mut scaled = bf(product.scalar);
                 scaled.mul_assign(&scale);
                 let challenges = product.challenges.clone();
-                CoeffProduct { scalar: scaled.as_u32_reduced(), challenges }
+                CoeffProduct {
+                    scalar: scaled.as_u32_reduced(),
+                    challenges,
+                }
             })
             .collect(),
     )
@@ -127,7 +130,11 @@ pub fn factor(recipe: &NormalizedCoefficientRecipe) -> Option<(u32, NormalizedCo
 /// and the tests cannot disagree with the transform that minted the ids.
 pub fn immediate_value(layer: &CoeffLayer, id: ImmediateId) -> Option<u32> {
     match id.bank_index() {
-        None => Some(if id == ImmediateId::NEG_ONE { neg_one() } else { Bf::ONE.as_u32_reduced() }),
+        None => Some(if id == ImmediateId::NEG_ONE {
+            neg_one()
+        } else {
+            Bf::ONE.as_u32_reduced()
+        }),
         Some(index) => layer.immediates.get(index).copied(),
     }
 }
@@ -175,32 +182,35 @@ pub fn group_coeff_layer(layer: CoeffLayer) -> Result<CoeffLayer, CoeffError> {
     //    literal ids (`ONE`/`NEG_ONE`) and bare-scalar recipes never group.
     let mut by_core: BTreeMap<NormalizedCoefficientRecipe, Vec<(TermId, u32)>> = BTreeMap::new();
     for term in &layer.terms {
-        let Some(bank_index) = term.coefficient().bank_index() else { continue };
-        let Some(recipe) = layer.coefficients.get(bank_index) else { continue };
-        let Some((immediate, core)) = factor(recipe) else { continue };
-        by_core.entry(core).or_default().push((term.id(), immediate));
+        let Some(bank_index) = term.coefficient().bank_index() else {
+            continue;
+        };
+        let Some(recipe) = layer.coefficients.get(bank_index) else {
+            continue;
+        };
+        let Some((immediate, core)) = factor(recipe) else {
+            continue;
+        };
+        by_core
+            .entry(core)
+            .or_default()
+            .push((term.id(), immediate));
     }
 
-    // 2. Keep only multi-member cores; chop at `GROUP_SPLIT_MAX_MEMBERS` into even
-    //    chunks of whole members, ascending `TermId` (§4.2).
+    // 2. Keep only multi-member cores, ascending `TermId` (§4.2). One core is ONE
+    //    MAXIMAL group: execution-time granularity is the consumer's decision (the
+    //    segmented deal's `K`-aware chop), and a pre-chopped artifact would only
+    //    put a floor under the consumer's header overhead.
     let mut proto_groups: Vec<(NormalizedCoefficientRecipe, Vec<(TermId, u32)>)> = Vec::new();
     for (core, mut members) in by_core {
         if members.len() < 2 {
             continue;
         }
         members.sort_unstable_by_key(|(term, _)| *term);
-        let chunks = members.len().div_ceil(GROUP_SPLIT_MAX_MEMBERS);
-        let base = members.len() / chunks;
-        let extra = members.len() % chunks; // the first `extra` chunks get base+1
-        let mut start = 0;
-        for chunk in 0..chunks {
-            let len = base + usize::from(chunk < extra);
-            proto_groups.push((core.clone(), members[start..start + len].to_vec()));
-            start += len;
-        }
+        proto_groups.push((core, members));
     }
     // Deterministic atom-key order: ascending minimum member `TermId`, which is
-    // unique because the chunks partition the terms.
+    // unique because the groups partition the terms.
     proto_groups.sort_by_key(|(_, members)| members[0].0);
 
     // Which group each grouped term belongs to. Every other term stays PLAIN and
@@ -269,7 +279,9 @@ pub fn group_coeff_layer(layer: CoeffLayer) -> Result<CoeffLayer, CoeffError> {
     // 6b. The wire-level cap (§4.5). Checked BEFORE any `ImmediateId` is minted,
     //     because the id is a u16 and would wrap silently.
     if immediates.len() > LEAN_MAX_IMMEDIATES {
-        return Err(CoeffError::ImmediateTableOverflow { len: immediates.len() });
+        return Err(CoeffError::ImmediateTableOverflow {
+            len: immediates.len(),
+        });
     }
     let immediate_id = |value: u32| -> ImmediateId {
         if value == one {
@@ -279,7 +291,9 @@ pub fn group_coeff_layer(layer: CoeffLayer) -> Result<CoeffLayer, CoeffError> {
             return ImmediateId::NEG_ONE;
         }
         ImmediateId::banked(
-            immediates.binary_search(&value).expect("every member immediate is in the table"),
+            immediates
+                .binary_search(&value)
+                .expect("every member immediate is in the table"),
         )
     };
 
@@ -386,7 +400,11 @@ mod tests {
         assert_eq!(imm, 3, "the immediate is the leading product's scalar");
         assert_eq!(core.terms[0].scalar, 1, "the core's leading scalar is one");
         assert_eq!(core, two_product(1, 2));
-        assert_eq!(rescale(&core, imm), recipe, "imm * core is the original recipe");
+        assert_eq!(
+            rescale(&core, imm),
+            recipe,
+            "imm * core is the original recipe"
+        );
     }
 
     #[test]
@@ -419,7 +437,10 @@ mod tests {
         let recipe = NormalizedCoefficientRecipe::from_terms(vec![product(5, vec![gamma()])]);
         let (imm, core) = factor(&recipe).expect("a challenge monomial factors");
         assert_eq!(imm, 5);
-        assert_eq!(core, NormalizedCoefficientRecipe::from_terms(vec![product(1, vec![gamma()])]));
+        assert_eq!(
+            core,
+            NormalizedCoefficientRecipe::from_terms(vec![product(1, vec![gamma()])])
+        );
         assert_eq!(rescale(&core, imm), recipe);
     }
 
@@ -443,8 +464,12 @@ mod tests {
         recipes: &[NormalizedCoefficientRecipe],
         spec: &[(Option<usize>, Kind)],
     ) -> CoeffLayer {
-        let bank: Vec<NormalizedCoefficientRecipe> =
-            recipes.iter().cloned().collect::<BTreeSet<_>>().into_iter().collect();
+        let bank: Vec<NormalizedCoefficientRecipe> = recipes
+            .iter()
+            .cloned()
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect();
         let terms = spec
             .iter()
             .enumerate()
@@ -453,7 +478,8 @@ mod tests {
                 let coefficient = match recipe {
                     None => CoefficientRecipeId::ONE,
                     Some(which) => CoefficientRecipeId::from_bank_index(
-                        bank.binary_search(&recipes[*which]).expect("the bank holds every recipe"),
+                        bank.binary_search(&recipes[*which])
+                            .expect("the bank holds every recipe"),
                     ),
                 };
                 let a = SourceId((index % SOURCES) as u32);
@@ -473,7 +499,12 @@ mod tests {
                         lhs_field: FieldKind::Ext,
                         rhs_field: FieldKind::Ext,
                     },
-                    Kind::Dual => CoeffTerm::DualProduct { id, coefficient, lhs: a, rhs: b },
+                    Kind::Dual => CoeffTerm::DualProduct {
+                        id,
+                        coefficient,
+                        lhs: a,
+                        rhs: b,
+                    },
                 }
             })
             .collect();
@@ -495,12 +526,20 @@ mod tests {
 
     fn bank_id(layer: &CoeffLayer, recipe: &NormalizedCoefficientRecipe) -> CoefficientRecipeId {
         CoefficientRecipeId::from_bank_index(
-            layer.coefficients.binary_search(recipe).expect("the bank holds the recipe"),
+            layer
+                .coefficients
+                .binary_search(recipe)
+                .expect("the bank holds the recipe"),
         )
     }
 
     fn sorted(recipes: &[NormalizedCoefficientRecipe]) -> Vec<NormalizedCoefficientRecipe> {
-        recipes.iter().cloned().collect::<BTreeSet<_>>().into_iter().collect()
+        recipes
+            .iter()
+            .cloned()
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect()
     }
 
     /// `scalar * gamma + 2 * scalar * gamma * delta` — one family whose whole
@@ -542,12 +581,26 @@ mod tests {
         assert_eq!(
             group.members,
             vec![
-                CoeffGroupMember { term: TermId(0), immediate: ImmediateId::banked(0) },
-                CoeffGroupMember { term: TermId(1), immediate: ImmediateId::banked(1) },
+                CoeffGroupMember {
+                    term: TermId(0),
+                    immediate: ImmediateId::banked(0)
+                },
+                CoeffGroupMember {
+                    term: TermId(1),
+                    immediate: ImmediateId::banked(1)
+                },
             ]
         );
-        assert_eq!((group.has_c0, group.has_c2), (true, false), "C0Linear members only");
-        assert_eq!(grouped.immediates, vec![3, 5], "deduped, ascending, no ±1 entry");
+        assert_eq!(
+            (group.has_c0, group.has_c2),
+            (true, false),
+            "C0Linear members only"
+        );
+        assert_eq!(
+            grouped.immediates,
+            vec![3, 5],
+            "deduped, ascending, no ±1 entry"
+        );
         assert_eq!(grouped.banked_recipe(group.core), Some(&core_of_family()));
 
         // The three non-members keep their own coefficients, and the two member
@@ -557,8 +610,14 @@ mod tests {
             sorted(&[core_of_family(), other.clone(), bare.clone()]),
             "member recipes are dropped; core + singletons remain"
         );
-        assert_eq!(grouped.banked_recipe(grouped.terms[2].coefficient()), Some(&other));
-        assert_eq!(grouped.banked_recipe(grouped.terms[3].coefficient()), Some(&bare));
+        assert_eq!(
+            grouped.banked_recipe(grouped.terms[2].coefficient()),
+            Some(&other)
+        );
+        assert_eq!(
+            grouped.banked_recipe(grouped.terms[3].coefficient()),
+            Some(&bare)
+        );
         assert_eq!(
             grouped.terms[4].coefficient(),
             CoefficientRecipeId::ONE,
@@ -582,39 +641,56 @@ mod tests {
         let recipes = [family(3), family(5), family(7)];
         let all_kinds = ext_layer(
             &recipes,
-            &[(Some(0), Kind::C0), (Some(1), Kind::C2), (Some(2), Kind::Dual)],
+            &[
+                (Some(0), Kind::C0),
+                (Some(1), Kind::C2),
+                (Some(2), Kind::Dual),
+            ],
         );
         let grouped = group_coeff_layer(all_kinds).expect("grouping succeeds");
         assert_eq!(grouped.groups.len(), 1);
-        assert_eq!((grouped.groups[0].has_c0, grouped.groups[0].has_c2), (true, true));
+        assert_eq!(
+            (grouped.groups[0].has_c0, grouped.groups[0].has_c2),
+            (true, true)
+        );
 
-        let c2_only =
-            ext_layer(&recipes[..2], &[(Some(0), Kind::C2), (Some(1), Kind::C2)]);
+        let c2_only = ext_layer(&recipes[..2], &[(Some(0), Kind::C2), (Some(1), Kind::C2)]);
         let grouped = group_coeff_layer(c2_only).expect("grouping succeeds");
-        assert_eq!((grouped.groups[0].has_c0, grouped.groups[0].has_c2), (false, true));
+        assert_eq!(
+            (grouped.groups[0].has_c0, grouped.groups[0].has_c2),
+            (false, true)
+        );
     }
 
+    /// The artifact carries MAXIMAL groups: one core, one group, however many
+    /// members — execution-time granularity (the deal's `K`-aware chop) is the
+    /// consumer's decision, not the transform's, and a pre-chopped artifact would
+    /// only put a floor under the consumer's header overhead.
     #[test]
-    fn chop_splits_seventeen_members_into_nine_and_eight() {
+    fn a_core_makes_one_maximal_group() {
         let recipes: Vec<NormalizedCoefficientRecipe> = (2..19).map(family).collect();
         assert_eq!(recipes.len(), 17);
         let spec: Vec<(Option<usize>, Kind)> =
             (0..17).map(|index| (Some(index), Kind::C0)).collect();
         let grouped = group_coeff_layer(ext_layer(&recipes, &spec)).expect("grouping succeeds");
 
-        assert_eq!(grouped.groups.len(), 2, "17 > GROUP_SPLIT_MAX_MEMBERS chops in two");
         assert_eq!(
-            grouped.groups.iter().map(|g| g.members.len()).collect::<Vec<_>>(),
-            vec![9, 8],
-            "even chunks of whole members, the first taking the remainder"
+            grouped.groups.len(),
+            1,
+            "one core is ONE group, whatever its size"
         );
         // Ascending TermId, contiguous, no member lost or duplicated.
-        let members: Vec<TermId> =
-            grouped.groups.iter().flat_map(|g| g.members.iter().map(|m| m.term)).collect();
+        let members: Vec<TermId> = grouped
+            .groups
+            .iter()
+            .flat_map(|g| g.members.iter().map(|m| m.term))
+            .collect();
         assert_eq!(members, (0..17).map(TermId).collect::<Vec<_>>());
-        // Both chunks are the SAME core — one bank entry, two atoms.
-        assert_eq!(grouped.groups[0].core, grouped.groups[1].core);
-        assert_eq!(grouped.coefficients, vec![core_of_family()], "every original collapses");
+        assert_eq!(
+            grouped.coefficients,
+            vec![core_of_family()],
+            "every original collapses"
+        );
         assert_eq!(grouped.immediates, (2..19).collect::<Vec<u32>>());
     }
 
@@ -627,13 +703,20 @@ mod tests {
         let originals: Vec<NormalizedCoefficientRecipe> = layer
             .terms
             .iter()
-            .map(|t| layer.banked_recipe(t.coefficient()).expect("banked").clone())
+            .map(|t| {
+                layer
+                    .banked_recipe(t.coefficient())
+                    .expect("banked")
+                    .clone()
+            })
             .collect();
         let grouped = group_coeff_layer(layer).expect("grouping succeeds");
 
         let mut seen = 0;
         for group in &grouped.groups {
-            let core = grouped.banked_recipe(group.core).expect("a core is a live bank entry");
+            let core = grouped
+                .banked_recipe(group.core)
+                .expect("a core is a live bank entry");
             for member in &group.members {
                 let term = &grouped.terms[member.term.0 as usize];
                 assert_eq!(term.coefficient(), group.core, "member points at its core");
@@ -667,8 +750,15 @@ mod tests {
             "family(3) is retained for c_init, family(5) is dropped"
         );
         let c_init = grouped.c_init.expect("c_init survives");
-        assert_eq!(grouped.banked_recipe(c_init), Some(&family(3)), "c_init keeps its own recipe");
-        assert_ne!(c_init, grouped.groups[0].core, "c_init is not rewritten to a core");
+        assert_eq!(
+            grouped.banked_recipe(c_init),
+            Some(&family(3)),
+            "c_init keeps its own recipe"
+        );
+        assert_ne!(
+            c_init, grouped.groups[0].core,
+            "c_init is not rewritten to a core"
+        );
     }
 
     #[test]
@@ -701,10 +791,15 @@ mod tests {
                 Some(_) => assert!(grouped.banked_recipe(id).is_some(), "{id:?} dangles"),
             }
         }
-        assert!(grouped.banked_recipe(grouped.c_init.expect("c_init")).is_some());
+        assert!(grouped
+            .banked_recipe(grouped.c_init.expect("c_init"))
+            .is_some());
         assert!(!grouped.groups.is_empty(), "this layer really does group");
         for group in &grouped.groups {
-            assert!(group.core.bank_index().is_some(), "a core is never a literal id");
+            assert!(
+                group.core.bank_index().is_some(),
+                "a core is never a literal id"
+            );
             assert!(grouped.banked_recipe(group.core).is_some());
             for member in &group.members {
                 assert!(immediate_value(&grouped, member.immediate).is_some());
@@ -725,7 +820,11 @@ mod tests {
         let grouped = group_coeff_layer(ext_layer(&recipes, &spec)).expect("grouping succeeds");
         assert_eq!(grouped.immediates, vec![3, 7], "deduplicated and ascending");
         assert_eq!(
-            grouped.groups[0].members.iter().map(|m| m.immediate).collect::<Vec<_>>(),
+            grouped.groups[0]
+                .members
+                .iter()
+                .map(|m| m.immediate)
+                .collect::<Vec<_>>(),
             vec![
                 ImmediateId::banked(1),
                 ImmediateId::banked(0),
@@ -752,15 +851,34 @@ mod tests {
     #[test]
     fn plus_and_minus_one_immediates_consume_no_table_entry() {
         let recipes = [family(1), family(neg_one()), family(5)];
-        let spec = [(Some(0), Kind::C0), (Some(1), Kind::C0), (Some(2), Kind::C0)];
+        let spec = [
+            (Some(0), Kind::C0),
+            (Some(1), Kind::C0),
+            (Some(2), Kind::C0),
+        ];
         let grouped = group_coeff_layer(ext_layer(&recipes, &spec)).expect("grouping succeeds");
-        assert_eq!(grouped.immediates, vec![5], "only the non-±1 immediate is banked");
         assert_eq!(
-            grouped.groups[0].members.iter().map(|m| m.immediate).collect::<Vec<_>>(),
-            vec![ImmediateId::ONE, ImmediateId::NEG_ONE, ImmediateId::banked(0)]
+            grouped.immediates,
+            vec![5],
+            "only the non-±1 immediate is banked"
+        );
+        assert_eq!(
+            grouped.groups[0]
+                .members
+                .iter()
+                .map(|m| m.immediate)
+                .collect::<Vec<_>>(),
+            vec![
+                ImmediateId::ONE,
+                ImmediateId::NEG_ONE,
+                ImmediateId::banked(0)
+            ]
         );
         assert_eq!(immediate_value(&grouped, ImmediateId::ONE), Some(1));
-        assert_eq!(immediate_value(&grouped, ImmediateId::NEG_ONE), Some(neg_one()));
+        assert_eq!(
+            immediate_value(&grouped, ImmediateId::NEG_ONE),
+            Some(neg_one())
+        );
     }
 
     #[test]
@@ -769,13 +887,19 @@ mod tests {
         let mut layer = ext_layer(&recipes, &[(Some(0), Kind::C0), (Some(1), Kind::C0)]);
         layer.regime = BwdRegime::R0;
         let before = layer.clone();
-        assert_eq!(group_coeff_layer(layer), Ok(before), "R0 never groups (§4.1)");
+        assert_eq!(
+            group_coeff_layer(layer),
+            Ok(before),
+            "R0 never groups (§4.1)"
+        );
     }
 
     #[test]
     fn transform_is_deterministic() {
-        let recipes: Vec<NormalizedCoefficientRecipe> =
-            (2..40).map(family).chain([two_product(7, 7), two_product(11, 11)]).collect();
+        let recipes: Vec<NormalizedCoefficientRecipe> = (2..40)
+            .map(family)
+            .chain([two_product(7, 7), two_product(11, 11)])
+            .collect();
         let spec: Vec<(Option<usize>, Kind)> = (0..recipes.len())
             .map(|index| {
                 let kind = match index % 3 {
@@ -790,6 +914,18 @@ mod tests {
         let first = group_coeff_layer(layer.clone()).expect("grouping succeeds");
         let second = group_coeff_layer(layer).expect("grouping succeeds");
         assert_eq!(first, second, "grouping is a pure function of the layer");
-        assert!(first.groups.len() >= 3, "this layer exercises the chop and two singletons");
+        assert_eq!(
+            first.groups.len(),
+            2,
+            "one maximal group per core: the 38 family members and the two-product pair"
+        );
+        assert_eq!(
+            first
+                .groups
+                .iter()
+                .map(|g| g.members.len())
+                .collect::<Vec<_>>(),
+            vec![38, 2]
+        );
     }
 }

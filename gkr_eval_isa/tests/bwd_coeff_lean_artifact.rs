@@ -32,24 +32,22 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
-use common::{CrossFields, FIXTURES, layers_with_bwd_roots};
+use common::{layers_with_bwd_roots, CrossFields, FIXTURES};
 use cs::gkr_compiler::dag_ir::{BwdRegime, DagLayer, FieldKind, ReadPlace};
-use gkr_eval_isa::bwd::coeff::lean::{
-    LEAN_WORDS_PER_TERM, LeanAtom, decode_atoms, encode_program,
-};
+use gkr_eval_isa::bwd::coeff::lean::{decode_atoms, encode_program, LeanAtom, LEAN_WORDS_PER_TERM};
 use gkr_eval_isa::bwd::coeff::lean_artifact::{
-    LeanCircuitArtifact, LeanCoordinateArtifact, compile_lean_coordinate, lean_artifact_bytes,
-    read_lean_circuit_artifact, write_lean_circuit_artifact,
+    compile_lean_coordinate, lean_artifact_bytes, read_lean_circuit_artifact,
+    write_lean_circuit_artifact, LeanCircuitArtifact, LeanCoordinateArtifact,
 };
 use gkr_eval_isa::bwd::coeff::limits::{
-    DESCRIPTOR_ALIGNMENT_WORDS, KERNEL_ARGUMENT_CEILING_BYTES, LEAN_DESCRIPTOR_PROGRAM_BYTES,
-    LEAN_DESCRIPTOR_PROGRAM_WORDS, LEAN_MAX_REALIZED_PROGRAM_WORDS, TermCategory, in_scope,
+    in_scope, TermCategory, DESCRIPTOR_ALIGNMENT_WORDS, KERNEL_ARGUMENT_CEILING_BYTES,
+    LEAN_DESCRIPTOR_PROGRAM_BYTES, LEAN_DESCRIPTOR_PROGRAM_WORDS, LEAN_MAX_REALIZED_PROGRAM_WORDS,
 };
 use gkr_eval_isa::bwd::coeff::order::order_terms;
 use gkr_eval_isa::bwd::coeff::stats::neg_one_census;
 use gkr_eval_isa::bwd::coeff::{
-    ArtifactRegime, CoeffLayer, CoeffSource, CoeffTerm, CoefficientRecipeId, ProjectionId,
-    SourceId, TermId, group_coeff_layer, lower_coeff_layer,
+    group_coeff_layer, lower_coeff_layer, ArtifactRegime, CoeffLayer, CoeffSource, CoeffTerm,
+    CoefficientRecipeId, ProjectionId, SourceId, TermId,
 };
 use gkr_eval_isa::bwd::distill::distill;
 use gkr_eval_isa::bwd::source::OriginLeaf;
@@ -109,7 +107,11 @@ fn read_all(paths: &[PathBuf]) -> Vec<(String, Vec<u8>)> {
     paths
         .iter()
         .map(|path| {
-            let name = path.file_name().expect("named").to_string_lossy().into_owned();
+            let name = path
+                .file_name()
+                .expect("named")
+                .to_string_lossy()
+                .into_owned();
             (name, std::fs::read(path).expect("read back"))
         })
         .collect()
@@ -162,7 +164,11 @@ const CHILD_ROOT: &str = "GKR_LEAN_ARTIFACT_CHILD_ROOT";
 fn bwd_lean_artifacts_are_byte_identical_across_processes() {
     if let Some(root) = std::env::var_os(CHILD_ROOT) {
         let paths = generate(Path::new(&root));
-        assert_eq!(paths.len(), in_scope::CIRCUITS, "the child wrote a partial corpus");
+        assert_eq!(
+            paths.len(),
+            in_scope::CIRCUITS,
+            "the child wrote a partial corpus"
+        );
         return;
     }
 
@@ -176,21 +182,34 @@ fn bwd_lean_artifacts_are_byte_identical_across_processes() {
         .expect("re-exec the test binary");
     assert!(status.success(), "the child generation failed");
 
-    let mut subprocess: Vec<PathBuf> =
-        std::fs::read_dir(&child_root).expect("child root").map(|e| e.unwrap().path()).collect();
+    let mut subprocess: Vec<PathBuf> = std::fs::read_dir(&child_root)
+        .expect("child root")
+        .map(|e| e.unwrap().path())
+        .collect();
     subprocess.sort();
 
     let a = read_all(&in_process);
     let b = read_all(&subprocess);
-    assert_eq!(a.len(), in_scope::CIRCUITS, "one artifact per committed layout");
+    assert_eq!(
+        a.len(),
+        in_scope::CIRCUITS,
+        "one artifact per committed layout"
+    );
     assert_eq!(
         a.iter().map(|(n, _)| n.clone()).collect::<Vec<_>>(),
         b.iter().map(|(n, _)| n.clone()).collect::<Vec<_>>(),
         "the two generations disagree on the file set"
     );
     for ((name, x), (_, y)) in a.iter().zip(&b) {
-        assert_eq!(x.len(), y.len(), "[{name}] the two processes disagree on artifact length");
-        assert!(x == y, "[{name}] the two processes produced different artifact bytes");
+        assert_eq!(
+            x.len(),
+            y.len(),
+            "[{name}] the two processes disagree on artifact length"
+        );
+        assert!(
+            x == y,
+            "[{name}] the two processes produced different artifact bytes"
+        );
     }
     println!(
         "[determinism] {} artifacts, {} bytes, byte-identical in-process vs subprocess",
@@ -226,7 +245,11 @@ fn bwd_lean_program_word_census_sizes_the_descriptor() {
     let mut total_headers = 0usize;
     let mut ext_with_headers = 0usize;
     for (circuit, coordinate) in rows {
-        let label = format!("{circuit} L{} {}", coordinate.layer, coordinate.regime.label());
+        let label = format!(
+            "{circuit} L{} {}",
+            coordinate.layer,
+            coordinate.regime.label()
+        );
         let words = coordinate.program.words.len();
         let terms = coordinate.program.term_count;
         // The one authority on how many RECORDS a program holds: the walk that the
@@ -234,7 +257,10 @@ fn bwd_lean_program_word_census_sizes_the_descriptor() {
         // exactly the records it does not count.
         let atoms = decode_atoms(&coordinate.program, coordinate.regime.regime())
             .unwrap_or_else(|e| panic!("[{label}] the committed program must decode: {e:?}"));
-        let headers = atoms.iter().filter(|atom| matches!(atom, LeanAtom::Group { .. })).count();
+        let headers = atoms
+            .iter()
+            .filter(|atom| matches!(atom, LeanAtom::Group { .. }))
+            .count();
         let decoded_terms: usize = atoms
             .iter()
             .map(|atom| match atom {
@@ -242,7 +268,10 @@ fn bwd_lean_program_word_census_sizes_the_descriptor() {
                 LeanAtom::Group { members, .. } => members.len(),
             })
             .sum();
-        assert_eq!(decoded_terms, terms, "[{label}] the walk's term total is the declared one");
+        assert_eq!(
+            decoded_terms, terms,
+            "[{label}] the walk's term total is the declared one"
+        );
         match coordinate.regime {
             // Grouping is Ext-only (§4.1), so an R0 program is header-free and its
             // records ARE its terms.
@@ -256,7 +285,11 @@ fn bwd_lean_program_word_census_sizes_the_descriptor() {
             records * LEAN_WORDS_PER_TERM,
             "[{label}] the lean wire is fixed width over terms PLUS group headers",
         );
-        assert_eq!(coordinate.order.len(), terms, "the committed order covers every term");
+        assert_eq!(
+            coordinate.order.len(),
+            terms,
+            "the committed order covers every term"
+        );
         if words > max_words {
             max_words = words;
             max_records = records;
@@ -279,8 +312,16 @@ fn bwd_lean_program_word_census_sizes_the_descriptor() {
     // The corpus maximum IS `4 * max records` — the identity the fixed-width wire
     // makes structural, measured rather than assumed.
     assert_eq!(max_words, LEAN_WORDS_PER_TERM * max_records);
-    assert_eq!(max_records, in_scope::MAX_RECORDS, "the pinned record maximum");
-    assert_eq!(max_terms, in_scope::MAX_TERMS, "the lean corpus is the censused corpus");
+    assert_eq!(
+        max_records,
+        in_scope::MAX_RECORDS,
+        "the pinned record maximum"
+    );
+    assert_eq!(
+        max_terms,
+        in_scope::MAX_TERMS,
+        "the lean corpus is the censused corpus"
+    );
     // The descriptor's program array is sized from THIS measurement, and production
     // lowering now measures the grouped form the array was sized for — so the
     // relation is equality again (it was relaxed to `<=` only while the transform
@@ -289,7 +330,10 @@ fn bwd_lean_program_word_census_sizes_the_descriptor() {
         max_words, LEAN_MAX_REALIZED_PROGRAM_WORDS,
         "the pin the descriptor is sized from",
     );
-    assert_eq!(LEAN_DESCRIPTOR_PROGRAM_BYTES, 2 * LEAN_DESCRIPTOR_PROGRAM_WORDS);
+    assert_eq!(
+        LEAN_DESCRIPTOR_PROGRAM_BYTES,
+        2 * LEAN_DESCRIPTOR_PROGRAM_WORDS
+    );
     assert_eq!(
         LEAN_MAX_REALIZED_PROGRAM_WORDS,
         LEAN_WORDS_PER_TERM * in_scope::MAX_RECORDS,
@@ -298,11 +342,16 @@ fn bwd_lean_program_word_census_sizes_the_descriptor() {
     // Non-vacuity: headers really are what moved the maximum. A corpus that
     // produced no groups would satisfy every assertion above while measuring
     // nothing about grouping.
-    assert!(headers_at_max > 0, "the worst coordinate must carry group headers");
+    assert!(
+        headers_at_max > 0,
+        "the worst coordinate must carry group headers"
+    );
     assert_eq!(
-        total_headers, 1_551,
+        total_headers, 1_498,
         "the corpus-wide header population, and therefore the whole grouped-vs-ungrouped word \
-         delta (`grouping_adds_exactly_one_record_per_group` states the identity)",
+         delta (`grouping_adds_exactly_one_record_per_group` states the identity); 53 fewer \
+         than the pre-maximal-group census — groups are one per core, so the old artifact \
+         chop's extra atoms are gone",
     );
     assert_eq!(
         ext_with_headers, 48,
@@ -340,7 +389,11 @@ fn grouping_adds_exactly_one_record_per_group() {
     let measured: Vec<(usize, usize, usize)> = rows
         .par_iter()
         .map(|(circuit, coordinate)| {
-            let label = format!("{circuit} L{} {}", coordinate.layer, coordinate.regime.label());
+            let label = format!(
+                "{circuit} L{} {}",
+                coordinate.layer,
+                coordinate.regime.label()
+            );
             let regime = coordinate.regime.regime();
             let plain = lowered(circuit, coordinate.layer, regime);
             let terms = plain.terms.len();
@@ -371,7 +424,11 @@ fn grouping_adds_exactly_one_record_per_group() {
                 ungrouped.words.len() + groups * LEAN_WORDS_PER_TERM,
                 "[{label}] the grouped program is the ungrouped one plus one record per group",
             );
-            (ungrouped.words.len(), coordinate.program.words.len(), groups)
+            (
+                ungrouped.words.len(),
+                coordinate.program.words.len(),
+                groups,
+            )
         })
         .collect();
 
@@ -383,8 +440,15 @@ fn grouping_adds_exactly_one_record_per_group() {
         grouped - ungrouped,
         100.0 * (grouped - ungrouped) as f64 / ungrouped as f64,
     );
-    assert!(groups > 0, "the corpus must realize groups, or the delta proves nothing");
-    assert_eq!(grouped - ungrouped, groups * LEAN_WORDS_PER_TERM, "corpus-wide, the same identity");
+    assert!(
+        groups > 0,
+        "the corpus must realize groups, or the delta proves nothing"
+    );
+    assert_eq!(
+        grouped - ungrouped,
+        groups * LEAN_WORDS_PER_TERM,
+        "corpus-wide, the same identity"
+    );
 }
 
 /// The binding is dense over the source table and inside the frozen window
@@ -394,12 +458,25 @@ fn bwd_lean_bindings_cover_every_source_within_the_window_geometry() {
     let rows = corpus();
     let mut max_windows = 0usize;
     for (circuit, coordinate) in rows {
-        let label = format!("{circuit} L{} {}", coordinate.layer, coordinate.regime.label());
+        let label = format!(
+            "{circuit} L{} {}",
+            coordinate.layer,
+            coordinate.regime.label()
+        );
         let binding = &coordinate.binding;
-        let sources = lowered(circuit, coordinate.layer, coordinate.regime.regime()).sources.len();
-        assert_eq!(binding.source_slots.len(), sources, "[{label}] one slot per source");
+        let sources = lowered(circuit, coordinate.layer, coordinate.regime.regime())
+            .sources
+            .len();
+        assert_eq!(
+            binding.source_slots.len(),
+            sources,
+            "[{label}] one slot per source"
+        );
         for slot in &binding.source_slots {
-            assert!((slot.window as usize) < binding.windows.len(), "[{label}] window in range");
+            assert!(
+                (slot.window as usize) < binding.windows.len(),
+                "[{label}] window in range"
+            );
             let window = &binding.windows[slot.window as usize];
             let absolute = window.first_column + slot.column as usize;
             assert!(
@@ -448,10 +525,17 @@ fn bwd_lean_neg_one_census_is_zero_on_the_corpus() {
     for (circuit, coordinate) in corpus() {
         let layer = lowered(circuit, coordinate.layer, coordinate.regime.regime());
         let census = neg_one_census(&layer);
-        assert_eq!(census.total_terms, layer.terms.len() as u64, "the denominator is every term");
+        assert_eq!(
+            census.total_terms,
+            layer.terms.len() as u64,
+            "the denominator is every term"
+        );
         total_terms += census.total_terms;
         for (category, count) in &census.per_category {
-            assert_ne!(*count, 0, "a censused category carries at least one NEG_ONE term");
+            assert_ne!(
+                *count, 0,
+                "a censused category carries at least one NEG_ONE term"
+            );
             *per_category.entry(*category).or_default() += count;
             neg_one_terms += count;
         }
@@ -470,10 +554,24 @@ fn bwd_lean_neg_one_census_is_zero_on_the_corpus() {
         100.0 * neg_one_terms as f64 / total_terms as f64,
     );
 
-    assert_eq!(total_terms, 15_860, "R0 + Ext terms over the 114 coordinates");
-    assert_eq!(neg_one_terms + one_terms + banked_terms, total_terms, "every term is accounted");
-    assert_eq!(per_category, BTreeMap::new(), "no corpus term carries a bare -1");
-    assert_eq!(neg_one_terms, 0, "the fnma opportunity at the coefficient level is empty");
+    assert_eq!(
+        total_terms, 15_860,
+        "R0 + Ext terms over the 114 coordinates"
+    );
+    assert_eq!(
+        neg_one_terms + one_terms + banked_terms,
+        total_terms,
+        "every term is accounted"
+    );
+    assert_eq!(
+        per_category,
+        BTreeMap::new(),
+        "no corpus term carries a bare -1"
+    );
+    assert_eq!(
+        neg_one_terms, 0,
+        "the fnma opportunity at the coefficient level is empty"
+    );
     assert_eq!(
         one_terms, 149,
         "the reserved-literal path IS live, which is what makes the -1 zero a measurement",
@@ -540,10 +638,16 @@ fn neg_one_census_counts_negative_coefficients_per_category() {
     let census = neg_one_census(&layer);
     assert_eq!(
         census.per_category,
-        vec![(TermCategory::C0LinearE4, 1), (TermCategory::DualProductE4, 2)],
+        vec![
+            (TermCategory::C0LinearE4, 1),
+            (TermCategory::DualProductE4, 2)
+        ],
         "ascending by category, and only the NEG_ONE terms",
     );
-    assert_eq!(census.total_terms, 5, "the denominator is EVERY term, not the counted ones");
+    assert_eq!(
+        census.total_terms, 5,
+        "the denominator is EVERY term, not the counted ones"
+    );
     assert_eq!(census.per_category.iter().map(|(_, n)| n).sum::<u64>(), 3);
 }
 
@@ -561,8 +665,14 @@ fn neg_one_census_of_a_layer_without_negative_coefficients_reports_its_denominat
 /// The regime label the artifact serializes is the regime it was compiled at.
 #[test]
 fn bwd_lean_coordinates_are_labelled_by_regime() {
-    let r0 = corpus().iter().filter(|(_, c)| c.regime == ArtifactRegime::R0).count();
-    let ext = corpus().iter().filter(|(_, c)| c.regime == ArtifactRegime::Ext).count();
+    let r0 = corpus()
+        .iter()
+        .filter(|(_, c)| c.regime == ArtifactRegime::R0)
+        .count();
+    let ext = corpus()
+        .iter()
+        .filter(|(_, c)| c.regime == ArtifactRegime::Ext)
+        .count();
     assert_eq!(r0, in_scope::LAYERS);
     assert_eq!(ext, in_scope::LAYERS);
     for (_, coordinate) in corpus() {
@@ -570,6 +680,9 @@ fn bwd_lean_coordinates_are_labelled_by_regime() {
             ArtifactRegime::R0 => 0,
             ArtifactRegime::Ext => 3,
         };
-        assert_eq!(coordinate.target_depth, expected, "the depth a regime's program is bound at");
+        assert_eq!(
+            coordinate.target_depth, expected,
+            "the depth a regime's program is bound at"
+        );
     }
 }
