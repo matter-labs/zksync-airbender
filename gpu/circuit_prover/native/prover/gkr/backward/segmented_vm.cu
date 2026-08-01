@@ -716,7 +716,15 @@ DEVICE_FORCEINLINE void seg_execute_term(const Desc &desc, const Bank &bank, con
       // `a_mixed_product_puts_the_bf_factor_first`).
       const bf a = seg_resolve_bf<SEG_PROJ_DELTA>(desc, source_a, row, rows).delta;
       const e4 b = seg_resolve_e4<SEG_PROJ_DELTA, MAX_DEPTH>(desc, source_b, row, rows).delta;
-      acc_c2 = e4::fma(coefficient, e4::mul(b, a), acc_c2);
+      // Reassociated so the BASE-FIELD factor lands on the fma: `e4::fma(e4, e4,
+      // e4)` is unfused sugar (a full mul then four base adds) while
+      // `e4::fma(e4, bf, e4)` is four FUSED `bf::fma`s, so multiplying the
+      // coefficient into the e4 factor first and keeping `a` for the accumulate
+      // saves the four adds. Reassociation is exact here — Montgomery `mul`
+      // reduces to the canonical representative at every step — so this stays
+      // bit-identical to `fma(coefficient, mul(b, a), acc)` and to the oracle's
+      // `coefficient * (delta_a * delta_b)` (`interp.rs`'s `lean_parts`).
+      acc_c2 = e4::fma(e4::mul(coefficient, b), a, acc_c2);
       break;
     }
     case BWD_SEG_R0_CLASS_C2_PRODUCT_E4_E4: {
