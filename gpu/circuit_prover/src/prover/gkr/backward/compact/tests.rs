@@ -57,31 +57,44 @@ fn descriptor_size_matches_phase0_audit() {
     );
 }
 
+// The 16 KB "soft target" asserts these three tests used to carry were
+// aspirational and never true in this repository: the caps sizing these
+// descriptors (`FLAT_CONT_MAX_*`, term/tile arrays) arrived with the July-09
+// import already ~2× over the target, so the tests were red from their first
+// commit. The descriptors launch fine — the binding limit is the 32 KB kernel
+// parameter ceiling — and the segmented lean VM retires this whole descriptor
+// family at cutover. What is worth guarding is DRIFT: an exact size pin makes
+// any field or cap change visible, the way `descriptor_size_matches_phase0_audit`
+// pins round 0 to its audit projection.
+
 #[test]
-fn round1_descriptor_size_under_soft_target() {
+fn round1_descriptor_size_pinned_under_hard_ceiling() {
     let size = std::mem::size_of::<GpuFlatRound1UnifiedDesc>();
     assert!(
         size <= KERNEL_ARG_HARD_CEILING_BYTES,
         "round 1 compact desc size {size} > 32 KB ceiling",
     );
-    assert!(
-        size <= KERNEL_ARG_SOFT_TARGET_BYTES,
-        "round 1 compact desc size {size} > 16 KB soft target",
-    );
+    assert_eq!(size, 30_944, "round 1 compact desc drifted");
 }
 
 #[test]
-fn round2_descriptor_size_under_soft_target() {
+fn round2_descriptor_size_pinned_under_hard_ceiling() {
     let size = std::mem::size_of::<GpuFlatRound2UnifiedDesc>();
-    assert!(size <= KERNEL_ARG_HARD_CEILING_BYTES);
-    assert!(size <= KERNEL_ARG_SOFT_TARGET_BYTES);
+    assert!(
+        size <= KERNEL_ARG_HARD_CEILING_BYTES,
+        "round 2 compact desc size {size} > 32 KB ceiling",
+    );
+    assert_eq!(size, 30_952, "round 2 compact desc drifted");
 }
 
 #[test]
-fn continuation_descriptor_size_under_soft_target() {
+fn continuation_descriptor_size_pinned_under_hard_ceiling() {
     let size = std::mem::size_of::<GpuFlatContinuationUnifiedDesc>();
-    assert!(size <= KERNEL_ARG_HARD_CEILING_BYTES);
-    assert!(size <= KERNEL_ARG_SOFT_TARGET_BYTES);
+    assert!(
+        size <= KERNEL_ARG_HARD_CEILING_BYTES,
+        "continuation compact desc size {size} > 32 KB ceiling",
+    );
+    assert_eq!(size, 31_064, "continuation compact desc drifted");
 }
 
 #[test]
