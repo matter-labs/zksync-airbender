@@ -61,6 +61,7 @@ use super::seg_coeff_eval::{
     BWD_SEG_CHALLENGE_LOOKUP_MULTIPLICATIVE, BWD_SEG_CHALLENGE_PERM_ADDITIVE,
     BWD_SEG_CHALLENGE_PERM_LINEARIZATION_BASE, BWD_SEG_CHALLENGE_SLOTS,
 };
+use super::seg_desc::BWD_SEG_C_INIT_NONE;
 use super::seg_desc::{
     BwdCoeffSourceWindow, BwdSegDesc, BwdSegProgPtrDesc, BwdSegSourceRecord,
     BWD_COEFF_MAX_FOLD_DEPTH, BWD_COEFF_ORIGIN_PROCEDURAL, BWD_COEFF_ORIGIN_READ_BASE,
@@ -162,7 +163,7 @@ fn seg_descriptor_layout_is_pinned_field_for_field() {
     assert_eq!(offset_of!(BwdSegDesc, fold_source), 17_324);
     assert_eq!(offset_of!(BwdSegDesc, source), 19_468);
     assert_eq!(offset_of!(BwdSegDesc, window), 23_760);
-    assert_eq!(offset_of!(BwdSegDesc, c_init), 24_304);
+    assert_eq!(offset_of!(BwdSegDesc, c_init_coeff), 24_304);
     assert_eq!(offset_of!(BwdSegDesc, immediates), 24_320);
     assert_eq!(offset_of!(BwdSegDesc, coefficients), 26_368);
     assert_eq!(offset_of!(BwdSegDesc, eq_low), 26_376);
@@ -216,7 +217,9 @@ fn seg_descriptor_has_no_unaccounted_bytes() {
             "window",
             in_scope::MAX_SOURCE_WINDOWS_USED * size_of::<BwdCoeffSourceWindow>(),
         ),
-        ("c_init", 4 * size_of::<u32>()),
+        // The seed's id plus the padding that preserves its 16-byte footprint.
+        ("c_init_coeff", size_of::<u32>()),
+        ("c_init_pad", 3 * size_of::<u32>()),
         ("immediates", BWD_SEG_MAX_IMMEDIATES * size_of::<u32>()),
         ("coefficients", size_of::<*const E4>()),
         ("eq_low", size_of::<*const E4>()),
@@ -270,7 +273,7 @@ fn seg_progptr_descriptor_layout_is_pinned_field_for_field() {
     assert_eq!(offset_of!(BwdSegProgPtrDesc, fold_source), 88);
     assert_eq!(offset_of!(BwdSegProgPtrDesc, source), 2_232);
     assert_eq!(offset_of!(BwdSegProgPtrDesc, window), 6_520);
-    assert_eq!(offset_of!(BwdSegProgPtrDesc, c_init), 7_064);
+    assert_eq!(offset_of!(BwdSegProgPtrDesc, c_init_coeff), 7_064);
     assert_eq!(offset_of!(BwdSegProgPtrDesc, immediates), 7_080);
     assert_eq!(offset_of!(BwdSegProgPtrDesc, coefficients), 9_128);
     assert_eq!(offset_of!(BwdSegProgPtrDesc, eq_low), 9_136);
@@ -319,7 +322,9 @@ fn seg_progptr_descriptor_actually_drops_the_inline_program() {
             "window",
             in_scope::MAX_SOURCE_WINDOWS_USED * size_of::<BwdCoeffSourceWindow>(),
         ),
-        ("c_init", 4 * size_of::<u32>()),
+        // The seed's id plus the padding that preserves its 16-byte footprint.
+        ("c_init_coeff", size_of::<u32>()),
+        ("c_init_pad", 3 * size_of::<u32>()),
         ("immediates", BWD_SEG_MAX_IMMEDIATES * size_of::<u32>()),
         ("coefficients", size_of::<*const E4>()),
         ("eq_low", size_of::<*const E4>()),
@@ -491,17 +496,38 @@ fn seg_program_array_is_the_lean_census_rounded_to_alignment() {
 }
 
 #[test]
-fn seg_c_init_is_resolved_limbs_not_a_recipe_index() {
-    // The cell-era descriptor carried `c_init: u16`, a coefficient RECIPE INDEX
-    // the kernel had to resolve through the bank. This lineage carries the
-    // resolved E4 limbs instead: the seed path needs no bank lookup, and a
-    // reserved-literal id resolves host-side like any other.
-    assert_eq!(size_of::<E4>(), 16);
-    assert_eq!(4 * size_of::<u32>(), size_of::<E4>());
+fn seg_c_init_is_a_sentinel_bearing_coefficient_id() {
+    // This lineage carried the seed as RESOLVED E4 limbs until production wiring
+    // showed the host has no value to resolve: the bank is filled on the device
+    // from challenges squeezed there, and the descriptor is built at scheduling
+    // time. So the id travels and the device resolves it through the same bank
+    // accessor as every other coefficient.
+    //
+    // Which makes the sentinel load-bearing: `0` is `CoefficientRecipeId::ONE`, a
+    // legal seed, so absence cannot be spelled as a zeroed field the way the limbs
+    // could. An `empty()` descriptor defaulting to `0` would seed EVERY layer with
+    // `+1` — a wrong proof with no error channel.
     let empty = BwdSegDesc::empty();
     assert_eq!(
-        empty.c_init, [0; 4],
-        "absent c_init is zero, not a sentinel"
+        empty.c_init_coeff, BWD_SEG_C_INIT_NONE,
+        "absent c_init is the sentinel, and must not be the live id 0"
+    );
+    assert_eq!(BwdSegProgPtrDesc::empty().c_init_coeff, BWD_SEG_C_INIT_NONE);
+    assert_ne!(
+        BWD_SEG_C_INIT_NONE,
+        CoefficientRecipeId::ONE.0,
+        "the sentinel must not alias a coefficient id"
+    );
+    assert!(
+        BWD_SEG_C_INIT_NONE as usize >= MAX_COEFFICIENT_ENCODINGS,
+        "the sentinel must sit outside everything thirteen coefficient bits can name"
+    );
+    // The 16-byte footprint the descriptor's tail alignment depends on survived the
+    // move: one id plus three padding words.
+    assert_eq!(
+        size_of::<u32>() + 3 * size_of::<u32>(),
+        size_of::<E4>(),
+        "the seed block must still occupy exactly what the limbs did"
     );
 }
 
@@ -706,6 +732,10 @@ fn seg_cuda_constants_match_the_rust_mirror() {
         ("BWD_SEG_WARP_LANES", WARP_SIZE as u64),
         // The `__constant__` bank the host uploads into. MANDATORY.
         ("BWD_SEG_CONST_BANK", BWD_SEG_CONST_BANK as u64),
+        // The seed's absent marker. Neither compiler can see a one-sided edit here,
+        // and a disagreement seeds every continuation layer with `bank[huge]` or with
+        // `+1` — see `seg_c_init_is_a_sentinel_bearing_coefficient_id`.
+        ("BWD_SEG_C_INIT_NONE", u64::from(BWD_SEG_C_INIT_NONE)),
         ("BWD_SEG_MAX_SOURCES", BWD_SEG_MAX_SOURCES as u64),
         // The immediate table capacity, which mirrors the WIRE cap.
         ("BWD_SEG_MAX_IMMEDIATES", BWD_SEG_MAX_IMMEDIATES as u64),
@@ -1032,7 +1062,8 @@ fn seg_cuda_layout_asserts_match_the_rust_layout() {
         ("fold_source", offset_of!(BwdSegDesc, fold_source)),
         ("source", offset_of!(BwdSegDesc, source)),
         ("window", offset_of!(BwdSegDesc, window)),
-        ("c_init", offset_of!(BwdSegDesc, c_init)),
+        ("c_init_coeff", offset_of!(BwdSegDesc, c_init_coeff)),
+        ("c_init_pad", offset_of!(BwdSegDesc, c_init_pad)),
         ("immediates", offset_of!(BwdSegDesc, immediates)),
         ("coefficients", offset_of!(BwdSegDesc, coefficients)),
         ("eq_low", offset_of!(BwdSegDesc, eq_low)),
@@ -1065,7 +1096,8 @@ fn seg_cuda_layout_asserts_match_the_rust_layout() {
         ("fold_source", offset_of!(BwdSegProgPtrDesc, fold_source)),
         ("source", offset_of!(BwdSegProgPtrDesc, source)),
         ("window", offset_of!(BwdSegProgPtrDesc, window)),
-        ("c_init", offset_of!(BwdSegProgPtrDesc, c_init)),
+        ("c_init_coeff", offset_of!(BwdSegProgPtrDesc, c_init_coeff)),
+        ("c_init_pad", offset_of!(BwdSegProgPtrDesc, c_init_pad)),
         ("immediates", offset_of!(BwdSegProgPtrDesc, immediates)),
         ("coefficients", offset_of!(BwdSegProgPtrDesc, coefficients)),
         ("eq_low", offset_of!(BwdSegProgPtrDesc, eq_low)),

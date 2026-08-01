@@ -33,14 +33,14 @@ use gkr_eval_isa::bwd::coeff::ArtifactRegime;
 
 use super::seg_desc::{
     BwdSegDesc, BwdSegSourceRecord, BWD_COEFF_ORIGIN_PROCEDURAL, BWD_COEFF_ORIGIN_READ_BASE,
-    BWD_COEFF_ORIGIN_READ_EXT, BWD_COEFF_PROCEDURAL_NONE, BWD_SEG_CONST_BANK,
+    BWD_COEFF_ORIGIN_READ_EXT, BWD_COEFF_PROCEDURAL_NONE, BWD_SEG_CONST_BANK, BWD_SEG_C_INIT_NONE,
     BWD_SEG_FOLD_WEIGHT_BASE_D1, BWD_SEG_FOLD_WEIGHT_BASE_D2, BWD_SEG_FOLD_WEIGHT_BASE_D3,
     BWD_SEG_FOLD_WEIGHT_SLOTS, BWD_SEG_MAX_K, BWD_SEG_MAX_SOURCES,
 };
 // The walk and its soft bound live in `seg_lower.rs`; the tests consume them.
 use super::seg_lower::{
     assign_class, atom_work, bwd_seg_floor_soft_bound, bwd_seg_traffic_floor, chain_read_column,
-    check_regions_disjoint, chop_atoms, deal_atoms, e4_limbs, lower_bwd_seg, member_work,
+    check_regions_disjoint, chop_atoms, deal_atoms, lower_bwd_seg, member_work,
     plan_publish_scratch, static_term_work, window_columns, AnnotatedTerm, BwdSegLaunchDesc,
     BwdSegLowerError, BwdSegRoundBinding, BwdSegSetup, CoeffMode, D2Policy, ProgramMode,
     PublishRoundLayout, PublishScratchPlan, ResolvedBwdCoeffSourceWindow, ResolvedPublishScratch,
@@ -1263,10 +1263,10 @@ fn an_r0_program_carrying_a_c_init_is_rejected() {
     );
 }
 
-/// A `c_init` resolves against the RESERVED-INCLUSIVE payload, and lands in the
-/// descriptor as E4 limbs rather than a recipe index.
+/// A `c_init` is BOUNDS-CHECKED against the reserved-inclusive payload and lands in
+/// the descriptor as the coefficient id, for the device to resolve.
 #[test]
-fn c_init_resolves_to_e4_limbs() {
+fn c_init_travels_as_a_bounds_checked_coefficient_id() {
     let artifact = ext_artifact();
     let bounds = [bound(Some(e4_column(0)), 2, 2, false)];
     let scratch = scratch_for(plan_for(2, &bounds, &[2]));
@@ -1274,7 +1274,7 @@ fn c_init_resolves_to_e4_limbs() {
     let coeffs = coefficients(4);
     let read_elements = generous(1);
 
-    // Absent: the seed is the additive identity, all-zero limbs.
+    // Absent: the sentinel, not a zero id — `0` is the live `ONE`.
     let plain = lower_bwd_seg(
         &artifact,
         &round_binding(2, &bounds, &read_elements, &claim, &coeffs),
@@ -1285,7 +1285,7 @@ fn c_init_resolves_to_e4_limbs() {
         CoeffMode::Constant,
     )
     .expect("a legal round");
-    assert_eq!(inline_desc(&plain).c_init, [0; 4]);
+    assert_eq!(inline_desc(&plain).c_init_coeff, BWD_SEG_C_INIT_NONE);
 
     // The reserved `-1` literal is materialized at the bank head, so it
     // resolves exactly like a banked id.
@@ -1301,10 +1301,14 @@ fn c_init_resolves_to_e4_limbs() {
         CoeffMode::Constant,
     )
     .expect("a legal round");
-    let limbs = inline_desc(&setup).c_init;
-    assert_eq!(limbs, e4_limbs(E4::MINUS_ONE));
-    assert_eq!(limbs, e4_limbs(setup.coefficients[1]));
-    assert_ne!(limbs, [0; 4], "the seed must be observable");
+    let id = inline_desc(&setup).c_init_coeff;
+    assert_eq!(id, CoefficientRecipeId::NEG_ONE.0);
+    assert_eq!(
+        setup.coefficients[id as usize],
+        E4::MINUS_ONE,
+        "the id must address the payload entry the device will read"
+    );
+    assert_ne!(id, BWD_SEG_C_INIT_NONE, "the seed must be observable");
 
     // An id past the payload has no value to resolve to.
     let mut past = round_binding(2, &bounds, &read_elements, &claim, &coeffs);

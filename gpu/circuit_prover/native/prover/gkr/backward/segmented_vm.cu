@@ -543,16 +543,22 @@ template <typename Desc> DEVICE_FORCEINLINE void seg_fold_and_publish(const Desc
 
 // ── The seed and the contribution store (section 3) ─────────────────────────
 
-// The `acc_c0` seed, reinterpreted rather than converted: the descriptor carries
-// the value's IN-MEMORY (Montgomery) limbs, i.e. exactly the bytes a device load
-// of an `e4` would have seen, so the seed path needs no bank lookup.
+// The `acc_c0` seed, resolved through the launch's own coefficient bank.
 //
-// Spelled limb by limb rather than as a 16-byte reinterpret_cast because `c_init`
-// is only 8-byte aligned in the progptr twin, where a vector load would be
-// misaligned.
-template <typename Desc> DEVICE_FORCEINLINE e4 seg_c_init(const Desc &desc) {
-  return e4(e2(bf::from_reduced_raw_repr(desc.c_init[0]), bf::from_reduced_raw_repr(desc.c_init[1])),
-            e2(bf::from_reduced_raw_repr(desc.c_init[2]), bf::from_reduced_raw_repr(desc.c_init[3])));
+// The descriptor used to carry the seed's IN-MEMORY limbs, which needed no lookup
+// at all — and could not survive production wiring: the value is `bank[id]`, the
+// bank is filled ON THE DEVICE from challenges the transcript squeezes there, and
+// the descriptor is a by-value argument the host builds at scheduling time. So the
+// id travels and this resolves it, through the same `Bank` accessor the eval loop
+// uses for every other coefficient.
+//
+// Cost is one constant-cache read by ONE warp of the block (the seed is warp 0's,
+// section 3), on a value every lane of that warp shares — a broadcast, off the
+// per-record path entirely.
+template <typename Desc, typename Bank> DEVICE_FORCEINLINE e4 seg_c_init(const Desc &desc, const Bank &bank) {
+  if (desc.c_init_coeff == BWD_SEG_C_INIT_NONE)
+    return e4::ZERO();
+  return bank[static_cast<u16>(desc.c_init_coeff)];
 }
 
 // Warp 0's one write per row: eq applied ONCE to the consolidated pair, then the
@@ -940,7 +946,7 @@ DEVICE_FORCEINLINE void seg_body(const Desc &desc, const Bank &bank, const Progr
   }
   if constexpr (!IS_R0) {
     if (warp_id == 0)
-      acc_c0 = seg_c_init(desc);
+      acc_c0 = seg_c_init(desc, bank);
   }
   if constexpr (ACC != BWD_SEG_ACC_IN_REGISTERS)
     slot_c2.store(acc_c2);

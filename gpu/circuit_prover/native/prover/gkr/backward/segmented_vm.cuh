@@ -23,9 +23,10 @@
 //
 // No challenge pointer (fold challenges have exactly ONE authority, the
 // `ab_gkr_main_layer_claim_point` `__constant__` symbol), no cell budget (there
-// is no cell file and no residency), no program length (`list_offset[k]` IS the
-// end of the stream) and no coefficient index on the seed path (`c_init` is
-// resolved E4 limbs).
+// is no cell file and no residency) and no program length (`list_offset[k]` IS
+// the end of the stream). The seed path DOES carry a coefficient index
+// (`c_init_coeff`): it held resolved limbs until production wiring showed the
+// host cannot resolve them, since the bank is filled on the device.
 //
 // # What it inherited from the retired cell-era lineage
 //
@@ -194,6 +195,11 @@ static_assert(BWD_SEG_LANE_INDEX_MASK == 31, "warp lane index mask drift");
 // Sized from the census (1,138 recipes + 2 literals = 1,140), rounded up so the
 // bank is exactly 18 KiB of the 64 KB per-module `__constant__` budget.
 constexpr u32 BWD_SEG_CONST_BANK = 1152;
+
+// `bwd_seg_desc::c_init_coeff` for a layer with no `acc_c0` seed. A sentinel is
+// unavoidable: `0` is `ONE`, a perfectly legal seed id. `u32` max rather than the
+// first unused thirteen-bit id, so a truncation cannot turn absence into a live id.
+constexpr u32 BWD_SEG_C_INIT_NONE = 0xffffffffu;
 // Source-table slots: the census maximum of 1,062 rounded up to a multiple of 16
 // so both source-indexed arrays are a whole number of 16-byte lines.
 constexpr u32 BWD_SEG_MAX_SOURCES = 1072;
@@ -473,20 +479,25 @@ struct alignas(BWD_SEG_DESC_ALIGN) bwd_seg_desc {
   // Live source windows, IMPORTED from the cell-era descriptor rather than
   // forked, so both lineages share one window layout and one publication policy.
   bwd_coeff_source_window window[BWD_SEG_SOURCE_WINDOW_CAP];
-  // The per-thread `acc_c0` seed as RESOLVED E4 limbs in their IN-MEMORY
-  // (Montgomery) representation, all-zero when the layer has none. Zero is a
-  // safe "absent" value — an additive identity, not a sentinel — so there is no
-  // `*_NONE` constant here and no bank lookup on the seed path.
-  u32 c_init[4];
+  // The per-thread `acc_c0` seed as a COEFFICIENT ID, or `BWD_SEG_C_INIT_NONE`
+  // when the layer has none. Resolved through the launch's own coefficient bank,
+  // like every other coefficient: it held resolved limbs until production wiring
+  // showed the host has no value to resolve, because the bank is filled ON THE
+  // DEVICE from challenges the transcript squeezes there. `0` is the LIVE id
+  // `ONE`, hence a sentinel rather than an all-zero "absent".
+  u32 c_init_coeff;
+  // Keeps the seed field's 16-byte footprint, and with it every following offset,
+  // unchanged across the limbs-to-id move. Never read.
+  u32 c_init_pad[3];
   // This launch's immediate table (section 4.5): the BASE-field scalars a grouped
   // member record multiplies its group's shared core coefficient by, in the
   // encoder's ascending-deduplicated order, as raw limbs in their IN-MEMORY
-  // (Montgomery) representation — the same convention as `c_init`, so no
-  // conversion happens here. Indexed by the `ImmediateId` a member record carries
-  // in its coefficient field; entries at and past `num_immediates` are zero-filled
-  // and never read, and the `±1` immediates are reserved wire ids that consume no
-  // slot. Placed after `c_init` so the pointer tail keeps its natural alignment:
-  // 512 words is 2 KiB, a whole number of 16-byte quanta.
+  // (Montgomery) representation, so no conversion happens here. Indexed by the
+  // `ImmediateId` a member record carries in its coefficient field; entries at and
+  // past `num_immediates` are zero-filled and never read, and the `±1` immediates
+  // are reserved wire ids that consume no slot. Placed after the 16-byte seed block
+  // so the pointer tail keeps its natural alignment: 512 words is 2 KiB, a whole
+  // number of 16-byte quanta.
   u32 immediates[BWD_SEG_MAX_IMMEDIATES];
   // Evaluated E4 coefficients for the `ptr` loader specialization; the `const`
   // loader reads `ab_gkr_bwd_seg_coeff_bank` and ignores this. Reserved-inclusive
@@ -525,7 +536,8 @@ static_assert(__builtin_offsetof(bwd_seg_desc, num_immediates) == 17322, "num_im
 static_assert(__builtin_offsetof(bwd_seg_desc, fold_source) == 17324, "fold_source ABI offset drift");
 static_assert(__builtin_offsetof(bwd_seg_desc, source) == 19468, "source ABI offset drift");
 static_assert(__builtin_offsetof(bwd_seg_desc, window) == 23760, "window ABI offset drift");
-static_assert(__builtin_offsetof(bwd_seg_desc, c_init) == 24304, "c_init ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_desc, c_init_coeff) == 24304, "c_init_coeff ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_desc, c_init_pad) == 24308, "c_init_pad ABI offset drift");
 static_assert(__builtin_offsetof(bwd_seg_desc, immediates) == 24320, "immediates ABI offset drift");
 static_assert(__builtin_offsetof(bwd_seg_desc, coefficients) == 26368, "coefficients ABI offset drift");
 static_assert(__builtin_offsetof(bwd_seg_desc, eq_low) == 26376, "eq_low ABI offset drift");
@@ -564,7 +576,8 @@ struct alignas(BWD_SEG_DESC_ALIGN) bwd_seg_progptr_desc {
   u16 fold_source[BWD_SEG_MAX_SOURCES];
   bwd_seg_source_record source[BWD_SEG_MAX_SOURCES];
   bwd_coeff_source_window window[BWD_SEG_SOURCE_WINDOW_CAP];
-  u32 c_init[4];
+  u32 c_init_coeff;
+  u32 c_init_pad[3];
   // Inline in BOTH twins: only the PROGRAM moves to device memory in this A/B, so
   // the immediate table stays by value and the comparison isolates the program.
   u32 immediates[BWD_SEG_MAX_IMMEDIATES];
@@ -593,7 +606,8 @@ static_assert(__builtin_offsetof(bwd_seg_progptr_desc, num_immediates) == 86, "p
 static_assert(__builtin_offsetof(bwd_seg_progptr_desc, fold_source) == 88, "progptr fold_source ABI offset drift");
 static_assert(__builtin_offsetof(bwd_seg_progptr_desc, source) == 2232, "progptr source ABI offset drift");
 static_assert(__builtin_offsetof(bwd_seg_progptr_desc, window) == 6520, "progptr window ABI offset drift");
-static_assert(__builtin_offsetof(bwd_seg_progptr_desc, c_init) == 7064, "progptr c_init ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_progptr_desc, c_init_coeff) == 7064, "progptr c_init_coeff ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_progptr_desc, c_init_pad) == 7068, "progptr c_init_pad ABI offset drift");
 static_assert(__builtin_offsetof(bwd_seg_progptr_desc, immediates) == 7080, "progptr immediates ABI offset drift");
 static_assert(__builtin_offsetof(bwd_seg_progptr_desc, coefficients) == 9128, "progptr coefficients ABI offset drift");
 static_assert(__builtin_offsetof(bwd_seg_progptr_desc, eq_low) == 9136, "progptr eq_low ABI offset drift");

@@ -99,8 +99,7 @@ use super::seg_desc::{
     BWD_COEFF_PROCEDURAL_NONE, BWD_SEG_CONST_BANK, BWD_SEG_FOLD_WEIGHT_SLOTS, BWD_SEG_MAX_K,
 };
 use super::seg_lower::{
-    e4_limbs, lower_bwd_seg, BwdSegLaunchDesc, BwdSegSetup, CoeffMode, D2Policy, ProgramMode,
-    SourceClass,
+    lower_bwd_seg, BwdSegLaunchDesc, BwdSegSetup, CoeffMode, D2Policy, ProgramMode, SourceClass,
 };
 use super::seg_lower_tests::expected_fold_weights;
 use crate::allocator::tracker::AllocationPlacement;
@@ -657,7 +656,7 @@ impl SegFixture {
     /// Lower this cell at one shape against live runtime pointers.
     ///
     /// Separate from [`Self::launch`] so a test can inspect what lowering STAMPED —
-    /// the source classes, the resolved seed limbs, the null program pointer — with
+    /// the source classes, the seed's coefficient id, the null program pointer — with
     /// no launch in between to blame.
     fn lower_with(&self, shape: SegShape, eq: &StagedEq) -> BwdSegSetup {
         let binding = seg_round_binding(
@@ -1459,9 +1458,12 @@ fn bwd_seg_epilogues_are_bit_identical() {
 /// The `K` triangle passes vacuously at `c_init = 0`: a zero seed lands correctly
 /// however many partials carry it. With a nonzero one, list 0 must carry it EXACTLY
 /// ONCE — `K` seeded partials would reduce to `K * c_init` — so `K`-invariance on
-/// this cell is what proves the seeding rule rather than assuming it. The seed also
-/// travels as Montgomery LIMBS rather than a recipe index, so this is the only gate
-/// that exercises the reinterpret.
+/// this cell is what proves the seeding rule rather than assuming it.
+///
+/// The seed travels as a coefficient ID and the DEVICE resolves it through the bank,
+/// so this is also the only gate that exercises that resolution — and it covers both
+/// bank accessors, since [`assert_k_axis`] alternates the `const` and `ptr` loaders
+/// across the `K` axis.
 ///
 /// Both id forms are covered because they resolve through different halves of one
 /// payload: a reserved literal is materialized at the bank HEAD by lowering, a
@@ -1525,9 +1527,10 @@ fn bwd_seg_nonzero_c_init_parity() {
         let expected = setup.coefficients[id.0 as usize];
         assert_ne!(expected, E4::ZERO, "a zero seed proves nothing");
         assert_eq!(
-            SegFixture::inline_desc(&setup).c_init,
-            e4_limbs(expected),
-            "the descriptor must carry the RESOLVED seed as in-memory limbs"
+            SegFixture::inline_desc(&setup).c_init_coeff,
+            id.0,
+            "the descriptor must carry the seed's coefficient ID; the device resolves it \
+             through the bank, so the staged payload entry at that id is what the kernel adds"
         );
         assert_k_axis(&mut fixture, &eq, &context);
     }

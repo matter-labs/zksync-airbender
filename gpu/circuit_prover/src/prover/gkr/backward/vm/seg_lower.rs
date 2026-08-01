@@ -63,7 +63,8 @@ use super::seg_desc::{
     BwdCoeffSourceWindow, BwdSegDesc, BwdSegProgPtrDesc, BwdSegSourceRecord,
     BWD_COEFF_MAX_FOLD_DEPTH, BWD_COEFF_ORIGIN_PROCEDURAL, BWD_COEFF_ORIGIN_READ_BASE,
     BWD_COEFF_ORIGIN_READ_EXT, BWD_COEFF_PROCEDURAL_KINDS, BWD_COEFF_PROCEDURAL_NONE,
-    BWD_COEFF_PUBLISH_TARGET_DEPTH, BWD_SEG_CONST_BANK, BWD_SEG_MAX_K, BWD_SEG_MAX_SOURCES,
+    BWD_COEFF_PUBLISH_TARGET_DEPTH, BWD_SEG_CONST_BANK, BWD_SEG_C_INIT_NONE, BWD_SEG_MAX_K,
+    BWD_SEG_MAX_SOURCES,
 };
 use crate::primitives::field::{BF, E4};
 use crate::prover::gkr::backward::GkrEqSizes;
@@ -1081,21 +1082,6 @@ pub(crate) fn window_columns(binding: &LeanSourceBinding) -> Result<Vec<usize>, 
     Ok(columns)
 }
 
-/// One E4 value as the descriptor's `[u32; 4]` limbs.
-///
-/// The limbs are the value's IN-MEMORY representation — Montgomery form, exactly
-/// the bytes a device load of an `e4` sees — NOT canonical integers. The
-/// descriptor field exists so the seed path needs no bank lookup, which only
-/// works if the bytes are already what the kernel would have loaded.
-pub(crate) fn e4_limbs(value: E4) -> [u32; 4] {
-    const _: () = assert!(core::mem::size_of::<E4>() == core::mem::size_of::<[u32; 4]>());
-    // SAFETY: `E4` is `repr(C, align(16))` over four base-field limbs, each a
-    // `repr(transparent)`-shaped `u32` wrapper, so the two types have identical
-    // size and a compatible layout. A by-value transmute copies the bytes; the
-    // weaker alignment of the target is irrelevant.
-    unsafe { core::mem::transmute::<E4, [u32; 4]>(value) }
-}
-
 /// Fill every field both descriptor families share.
 ///
 /// A macro rather than a function: the two structs are field-for-field identical
@@ -1121,7 +1107,7 @@ macro_rules! fill_seg_desc {
                 .copied()
                 .unwrap_or_else(BwdCoeffSourceWindow::default);
         }
-        desc.c_init = body.c_init;
+        desc.c_init_coeff = body.c_init_coeff;
         desc.immediates[..body.immediates.len()].copy_from_slice(&body.immediates);
         desc.eq_low = body.eq_low;
         desc.contributions = body.contributions;
@@ -1163,7 +1149,7 @@ struct SegDescBody {
     fold_source: Vec<u16>,
     sources: Vec<BwdSegSourceRecord>,
     windows: Vec<BwdCoeffSourceWindow>,
-    c_init: [u32; 4],
+    c_init_coeff: u32,
     /// The immediate table in the kernel's in-memory (Montgomery) form, already
     /// capped by the wire validator — see [`BwdSegSetup::immediates`].
     immediates: Vec<u32>,
@@ -1235,20 +1221,25 @@ pub(crate) fn lower_bwd_seg(
         });
     }
 
-    let c_init = match binding.c_init {
-        None => [0u32; 4],
+    let c_init_coeff = match binding.c_init {
+        None => BWD_SEG_C_INIT_NONE,
         Some(id) if regime == BwdRegime::R0 => return Err(BwdSegLowerError::R0CarriesCInit { id }),
-        // The same rule the CPU oracle applies (`interp.rs`'s
-        // `coefficient(layer, id, resolver)`), resolved here against the
-        // reserved-inclusive payload instead of a resolver: a reserved literal
-        // and a banked recipe are one indexing.
+        // The id travels; the DEVICE resolves it, through the same bank accessor
+        // the eval loop uses for every other coefficient. The bounds check stays
+        // here — a release kernel has no error channel, and an id past the payload
+        // would be an out-of-bounds constant read — and it is the same indexing the
+        // CPU oracle applies (`interp.rs`'s `coefficient(layer, id, resolver)`): a
+        // reserved literal and a banked recipe are one lookup.
+        //
+        // Resolving to limbs here is what this used to do, and it cannot survive
+        // production: the bank is filled on the device from challenges squeezed
+        // there, so at descriptor-build time the host has no value to write.
         Some(id) => {
             let index = usize::try_from(id.0).ok();
-            let value = index
-                .and_then(|index| coefficients.get(index))
-                .copied()
+            index
+                .filter(|index| *index < coefficients.len())
                 .ok_or(BwdSegLowerError::InvalidCInit { index: id.0 })?;
-            e4_limbs(value)
+            id.0
         }
     };
 
@@ -1647,7 +1638,7 @@ pub(crate) fn lower_bwd_seg(
         fold_source,
         sources,
         windows: lowered.iter().map(|entry| entry.desc).collect(),
-        c_init,
+        c_init_coeff,
         immediates: immediates.clone(),
         eq_low: binding.eq_low,
         contributions: binding.contributions,

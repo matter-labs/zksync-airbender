@@ -28,8 +28,10 @@
 //!     prologue folds sources into registers, the eval loop reads them.
 //!   * **No `num_words`.** [`BwdSegDesc::list_offset`] carries the program
 //!     length: `list_offset[k]` IS the end of the stream.
-//!   * **No coefficient recipe index on the seed path** — see
-//!     [`BwdSegDesc::c_init`].
+//!   * **The seed path DOES carry a coefficient recipe index** — see
+//!     [`BwdSegDesc::c_init_coeff`]. It carried resolved limbs until production
+//!     wiring showed the host has no value to resolve: the bank is filled on the
+//!     device.
 //!
 //! [`BwdCoeffSourceWindow`] and the origin / procedural-kind / publication
 //! constants below are the ONE thing the retired cell-era descriptor left behind:
@@ -96,6 +98,13 @@ pub(crate) const BWD_SEG_MAX_THREADS_PER_BLOCK: usize = 1_024;
 /// so the bank is exactly 18 KiB of the 64 KB per-module `__constant__` budget —
 /// 12 slots of slack, which [`seg_abi_tests`](super::seg_abi_tests) prints.
 pub(crate) const BWD_SEG_CONST_BANK: usize = 1_152;
+
+/// [`BwdSegDesc::c_init_coeff`] for a layer with no `acc_c0` seed.
+///
+/// A sentinel is unavoidable here: `0` is `CoefficientRecipeId::ONE`, a perfectly
+/// legal seed. `u32::MAX` is chosen over the thirteen-bit id space's first unused
+/// value so that a byte-level truncation cannot turn absence into a live id.
+pub(crate) const BWD_SEG_C_INIT_NONE: u32 = u32::MAX;
 
 /// Fold-weight bank shape (spec §4.1): slots hold only q >= 1 (the q = 0
 /// coefficient is the difference form's implicit 1), packed per delta.
@@ -378,30 +387,36 @@ pub(crate) struct BwdSegDesc {
     /// one window layout and one publication policy
     /// ([`BWD_COEFF_PUBLISH_TARGET_DEPTH`]).
     pub window: [BwdCoeffSourceWindow; in_scope::MAX_SOURCE_WINDOWS_USED],
-    /// The per-thread `acc_c0` seed as RESOLVED E4 limbs, all-zero when the
-    /// layer has none.
+    /// The per-thread `acc_c0` seed as a COEFFICIENT ID, or
+    /// [`BWD_SEG_C_INIT_NONE`] when the layer has none.
     ///
-    /// A deliberate divergence from the cell-era `c_init: u16`, which was a
-    /// coefficient RECIPE INDEX the kernel had to resolve through the bank: with
-    /// limbs the seed path needs no bank lookup at all, and a reserved-literal id
-    /// resolves host-side exactly like a banked one. Zero is also a safe
-    /// "absent" value here — an additive identity, not a sentinel that could
-    /// alias a live index — so no `*_NONE` constant is needed.
-    pub c_init: [u32; 4],
+    /// It used to be resolved E4 limbs, and that could not survive production. The
+    /// seed's value is `bank[id]`, the bank is filled ON THE DEVICE from challenges
+    /// the transcript squeezes there ([`super::seg_coeff_eval`]), and this
+    /// descriptor is a by-value kernel argument built on the host at scheduling
+    /// time — so the host has no value to put here. The id it does have, and the
+    /// device already holds the bank the executors index for every other
+    /// coefficient, so the seed resolves through the same accessor.
+    ///
+    /// Zero is a LIVE id (`CoefficientRecipeId::ONE`), which is why absence needs a
+    /// sentinel rather than the old all-zero limbs.
+    pub c_init_coeff: u32,
+    /// Padding that keeps this field's 16-byte footprint, and with it the
+    /// descriptor's whole tail layout, unchanged across the limbs-to-id move: the
+    /// note on [`Self::immediates`] is what depends on it. Never read by the kernel.
+    pub c_init_pad: [u32; 3],
     /// This launch's immediate table (spec §4.5): the BASE-field scalars a grouped
     /// term multiplies its group's shared core coefficient by, in the encoder's
-    /// ascending-deduplicated order, as raw Montgomery-form limbs — the same
-    /// in-memory representation as [`Self::c_init`], so the device needs no
-    /// conversion.
+    /// ascending-deduplicated order, as raw Montgomery-form limbs.
     ///
     /// Indexed by a member record's `ImmediateId`, which rides the wire in the
     /// member's coefficient field. Entries at and past [`Self::num_immediates`] are
     /// zero-filled and never read; the `±1` immediates are wire-level reserved ids
     /// and consume no slot here.
     ///
-    /// Placed AFTER `c_init` so the descriptor's pointer tail keeps its natural
-    /// alignment: `[u32; 512]` is 2 KiB, a whole number of 16-byte quanta, so every
-    /// following offset shifts by exactly that.
+    /// Placed after the 16-byte `c_init` block so the descriptor's pointer tail
+    /// keeps its natural alignment: `[u32; 512]` is 2 KiB, a whole number of
+    /// 16-byte quanta, so every following offset shifts by exactly that.
     pub immediates: [u32; BWD_SEG_MAX_IMMEDIATES],
     /// Evaluated E4 coefficients for the `ptr` loader specialization. The
     /// `const` loader reads this lineage's `__constant__` bank and ignores it.
@@ -449,7 +464,8 @@ impl BwdSegDesc {
             fold_source: [0; BWD_SEG_MAX_SOURCES],
             source: [BwdSegSourceRecord::default(); BWD_SEG_MAX_SOURCES],
             window: [BwdCoeffSourceWindow::default(); in_scope::MAX_SOURCE_WINDOWS_USED],
-            c_init: [0; 4],
+            c_init_coeff: BWD_SEG_C_INIT_NONE,
+            c_init_pad: [0; 3],
             immediates: [0; BWD_SEG_MAX_IMMEDIATES],
             coefficients: std::ptr::null(),
             eq_low: std::ptr::null(),
@@ -497,7 +513,10 @@ pub(crate) struct BwdSegProgPtrDesc {
     pub fold_source: [u16; BWD_SEG_MAX_SOURCES],
     pub source: [BwdSegSourceRecord; BWD_SEG_MAX_SOURCES],
     pub window: [BwdCoeffSourceWindow; in_scope::MAX_SOURCE_WINDOWS_USED],
-    pub c_init: [u32; 4],
+    /// See [`BwdSegDesc::c_init_coeff`].
+    pub c_init_coeff: u32,
+    /// See [`BwdSegDesc::c_init_pad`].
+    pub c_init_pad: [u32; 3],
     /// See [`BwdSegDesc::immediates`]. Inline in BOTH twins: only the PROGRAM moves
     /// to device memory in this A/B, so the immediate table stays by value and the
     /// comparison isolates the program's residency.
@@ -530,7 +549,8 @@ impl BwdSegProgPtrDesc {
             fold_source: [0; BWD_SEG_MAX_SOURCES],
             source: [BwdSegSourceRecord::default(); BWD_SEG_MAX_SOURCES],
             window: [BwdCoeffSourceWindow::default(); in_scope::MAX_SOURCE_WINDOWS_USED],
-            c_init: [0; 4],
+            c_init_coeff: BWD_SEG_C_INIT_NONE,
+            c_init_pad: [0; 3],
             immediates: [0; BWD_SEG_MAX_IMMEDIATES],
             coefficients: std::ptr::null(),
             eq_low: std::ptr::null(),
@@ -616,7 +636,7 @@ const _: () = {
     // same gap by the same rule, and the offsets on both sides are asserted, so
     // it needs no explicit field.
     assert!(offset_of!(BwdSegDesc, window) == 23_760);
-    assert!(offset_of!(BwdSegDesc, c_init) == 24_304);
+    assert!(offset_of!(BwdSegDesc, c_init_coeff) == 24_304);
     assert!(offset_of!(BwdSegDesc, immediates) == 24_320);
     assert!(offset_of!(BwdSegDesc, coefficients) == 26_368);
     assert!(offset_of!(BwdSegDesc, eq_low) == 26_376);
@@ -649,7 +669,7 @@ const _: () = {
     // No gap here: with a 4-byte-aligned record the progptr `source` array ends
     // exactly at `window`.
     assert!(offset_of!(BwdSegProgPtrDesc, window) == 6_520);
-    assert!(offset_of!(BwdSegProgPtrDesc, c_init) == 7_064);
+    assert!(offset_of!(BwdSegProgPtrDesc, c_init_coeff) == 7_064);
     assert!(offset_of!(BwdSegProgPtrDesc, immediates) == 7_080);
     assert!(offset_of!(BwdSegProgPtrDesc, coefficients) == 9_128);
     assert!(offset_of!(BwdSegProgPtrDesc, eq_low) == 9_136);
