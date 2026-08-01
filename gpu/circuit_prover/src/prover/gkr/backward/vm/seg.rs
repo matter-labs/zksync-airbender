@@ -425,6 +425,105 @@ pub(crate) fn bwd_seg_set_minimal_carveout(
     pct
 }
 
+/// Registers per thread the compiled entry point uses, cached per symbol.
+///
+/// A property of the BINARY, so one query per symbol per process is exact — and the
+/// launch path needs it on every launch to size the carveout, which is why it is
+/// cached rather than queried each time.
+fn bwd_seg_entry_registers(entry: *const std::ffi::c_void) -> u32 {
+    use era_cudart_sys::{cudaFuncGetAttributes, CudaFuncAttributes};
+    static CACHE: OnceLock<std::sync::Mutex<std::collections::HashMap<usize, u32>>> =
+        OnceLock::new();
+    let cache = CACHE.get_or_init(Default::default);
+    if let Some(hit) = cache.lock().expect("register cache").get(&(entry as usize)) {
+        return *hit;
+    }
+    let mut attributes = std::mem::MaybeUninit::<CudaFuncAttributes>::zeroed();
+    // SAFETY: `CudaFuncAttributes` is plain data and `entry` is a valid `__global__`
+    // entry point from one of this module's accessors.
+    unsafe { cudaFuncGetAttributes(attributes.as_mut_ptr(), entry) }
+        .wrap()
+        .expect("cudaFuncGetAttributes for a register query");
+    // SAFETY: initialized by the call above.
+    let registers = u32::try_from(unsafe { attributes.assume_init() }.numRegs)
+        .expect("a non-negative register count");
+    cache
+        .lock()
+        .expect("register cache")
+        .insert(entry as usize, registers);
+    registers
+}
+
+/// How many [`CarveoutPlan`]s are alive. Nonzero means a MEASUREMENT caller owns the
+/// preference and the launch path must not touch it.
+static SEG_CARVEOUT_PLANS_ALIVE: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
+
+/// The percentage the LAUNCH PATH last requested per entry point, so a repeat launch
+/// of the same shape costs no driver call.
+///
+/// It is a cache of what this module set, not of what the driver holds — anything
+/// else that writes a preference must invalidate it
+/// ([`seg_forget_launch_carveout`]), or the next launch would skip a set it needs.
+static SEG_LAUNCH_CARVEOUT: OnceLock<std::sync::Mutex<std::collections::HashMap<usize, i32>>> =
+    OnceLock::new();
+
+fn seg_launch_carveout_cache() -> &'static std::sync::Mutex<std::collections::HashMap<usize, i32>> {
+    SEG_LAUNCH_CARVEOUT.get_or_init(Default::default)
+}
+
+/// Drop this entry point's cached request, because someone else just wrote the
+/// preference and the cache no longer describes the driver's state.
+fn seg_forget_launch_carveout(entry: *const std::ffi::c_void) {
+    seg_launch_carveout_cache()
+        .lock()
+        .expect("carveout cache")
+        .remove(&(entry as usize));
+}
+
+/// Set the launch's own minimal carveout, unless a [`CarveoutPlan`] owns the
+/// preference.
+///
+/// **Why the launch path owns this at all.** The preference is worth +1.23 % of
+/// summed continuation time at the committed policy's `K = 16` and +2.82 % at
+/// `K = 32`, measured against setting none at all
+/// (`.agents/bench/2026-08-01-decode-fold`, the `carveout-off` point). The loss
+/// scales with per-block demand and its mechanism is block RESIDENCY: at `K = 16`
+/// this executor is two blocks/SM by registers, and a driver-default split that
+/// hosts one 7,680-byte block instead of two halves occupancy — which no amount of
+/// extra L1 pays back. A caller that forgets to ask therefore pays, silently, and
+/// nothing in a release build says so. So it is not a caller's obligation any more.
+///
+/// The block count is the REGISTER-BOUND one at this binary's pin level, not
+/// [`bwd_seg_blocks_per_sm`]'s answer — that one models shared memory against the
+/// device's full pool rather than any realized configuration (audit II-4), and
+/// sizing the request from it would ask for the wrong partition.
+///
+/// Idempotent per `(entry, pct)`: one symbol serves every `K`, so the requested
+/// percentage moves with `K`, the epilogue and the placement; the cache suppresses
+/// only the repeats, which is what makes this free on the hot path.
+fn seg_apply_launch_carveout(
+    entry: *const std::ffi::c_void,
+    k: u32,
+    dynamic_smem_bytes: usize,
+) -> Option<i32> {
+    if SEG_CARVEOUT_PLANS_ALIVE.load(std::sync::atomic::Ordering::Acquire) != 0 {
+        // A measurement caller is in charge — including `CarveoutMode::Off`, whose
+        // whole point is that NO preference is set anywhere. Setting one here would
+        // silently defeat the control arm.
+        return None;
+    }
+    let blocks = bwd_seg_register_bound_blocks_per_sm(bwd_seg_entry_registers(entry), k);
+    let pct = bwd_seg_carveout_pct(blocks, dynamic_smem_bytes);
+    let mut cache = seg_launch_carveout_cache().lock().expect("carveout cache");
+    if cache.get(&(entry as usize)) == Some(&pct) {
+        return Some(pct);
+    }
+    set_shared_carveout(entry, pct);
+    cache.insert(entry as usize, pct);
+    Some(pct)
+}
+
 /// The entry point's CURRENT preference, so a restore can write back the exact
 /// prior value rather than the driver default.
 pub(crate) fn bwd_seg_query_carveout(entry: *const std::ffi::c_void) -> i32 {
@@ -678,10 +777,24 @@ struct CarveoutEntry {
 /// prelude — applying after staging would run the prelude at whatever preference
 /// the previous cell left behind, silently, on every continuation cell, and would
 /// leave a twin baseline staged under the wrong preference too.
+/// While one of these is alive the launch path does NOT set a preference of its own
+/// ([`seg_apply_launch_carveout`]). That is what keeps a measurement's control arms
+/// honest: `CarveoutMode::Off` means no preference is set anywhere, and a launcher
+/// quietly asking for one would turn the column into a measurement of itself.
 pub(crate) struct CarveoutPlan {
     mode: CarveoutMode,
     entries: Vec<CarveoutEntry>,
     demand_source: String,
+}
+
+impl CarveoutPlan {
+    /// Registers this plan as the preference's owner. Every constructor ends here, and
+    /// [`Drop`] releases it — so the launch path defers for exactly the plan's
+    /// lifetime, whether or not [`Self::apply`] was reached.
+    fn own_the_preference(self) -> Self {
+        SEG_CARVEOUT_PLANS_ALIVE.fetch_add(1, std::sync::atomic::Ordering::AcqRel);
+        self
+    }
 }
 
 impl CarveoutPlan {
@@ -777,6 +890,7 @@ impl CarveoutPlan {
             entries,
             demand_source,
         }
+        .own_the_preference()
     }
 
     /// One arm, for a solo-timed cell.
@@ -811,6 +925,7 @@ impl CarveoutPlan {
             entries,
             demand_source: format!("{} only, {demand} B", shape.label),
         }
+        .own_the_preference()
     }
 
     /// Query each entry point's current preference, then set it. Called OUTSIDE
@@ -874,7 +989,16 @@ impl Drop for CarveoutPlan {
             if let Some(prior) = slot.prior_pct {
                 set_shared_carveout(slot.entry, prior);
             }
+            // The restore wrote a preference this module did not choose, so the launch
+            // path's memory of what it last requested is stale for this symbol. Left
+            // in place it would suppress the very `set` a later production launch
+            // needs — the same silent occupancy loss the launch-path request exists to
+            // prevent, reintroduced by a cache.
+            seg_forget_launch_carveout(slot.entry);
         }
+        // Released AFTER the restores, so the launch path cannot observe a window in
+        // which nobody owns the preference and the priors are not yet back.
+        SEG_CARVEOUT_PLANS_ALIVE.fetch_sub(1, std::sync::atomic::Ordering::AcqRel);
     }
 }
 
@@ -1032,6 +1156,7 @@ pub(crate) fn launch_bwd_seg(
 ) -> CudaResult<()> {
     let geometry = seg_geometry(&setup.desc);
     let config = seg_launch_config(&geometry, epilogue, context);
+    let dynamic = bwd_seg_epilogue_smem_bytes(epilogue, geometry.k);
     match &setup.desc {
         BwdSegLaunchDesc::Inline(desc) => {
             if coeff == CoeffMode::DevPtr {
@@ -1042,6 +1167,7 @@ pub(crate) fn launch_bwd_seg(
                 );
             }
             let function = GkrBwdSegInlineFunction(seg_inline_symbol(regime, coeff, epilogue));
+            seg_apply_launch_carveout(function.as_ptr(), geometry.k, dynamic);
             function.launch(&config, &GkrBwdSegInlineArguments::new(**desc))
         }
         BwdSegLaunchDesc::ProgPtr(desc) => {
@@ -1053,6 +1179,7 @@ pub(crate) fn launch_bwd_seg(
                  it null and records the word count"
             );
             let function = GkrBwdSegProgPtrFunction(seg_progptr_symbol(epilogue));
+            seg_apply_launch_carveout(function.as_ptr(), geometry.k, dynamic);
             function.launch(&config, &GkrBwdSegProgPtrArguments::new(**desc))
         }
     }
@@ -1101,7 +1228,10 @@ pub(crate) fn bwd_seg_blocks_per_sm(
 // above: the fifteen release symbols have exactly one placement, and widening
 // their signatures would make every call site state a constant.
 
-declare_bwd_seg_kernel!(ab_gkr_bwd_seg_r0_const_epi_plane_acc2smem_kernel, BwdSegDesc);
+declare_bwd_seg_kernel!(
+    ab_gkr_bwd_seg_r0_const_epi_plane_acc2smem_kernel,
+    BwdSegDesc
+);
 declare_bwd_seg_kernel!(
     ab_gkr_bwd_seg_r0_const_epi_plane_accbothsmem_kernel,
     BwdSegDesc
@@ -1189,14 +1319,18 @@ pub(crate) fn launch_bwd_seg_acc(
         panic!("the AccPlacement rungs are compiled on the by-value program only")
     };
     let geometry = seg_geometry(&setup.desc);
+    let dynamic = bwd_seg_acc_dynamic_smem_bytes(placement, geometry.k);
     let config = CudaLaunchConfig::builder()
         .grid_dim(geometry.logical_rows.div_ceil(WARP_SIZE))
         .block_dim(geometry.k * WARP_SIZE)
-        .dynamic_smem_bytes(bwd_seg_acc_dynamic_smem_bytes(placement, geometry.k))
+        .dynamic_smem_bytes(dynamic)
         .stream(context.get_exec_stream())
         .build();
-    GkrBwdSegInlineFunction(seg_acc_symbol(regime, placement))
-        .launch(&config, &GkrBwdSegInlineArguments::new(**desc))
+    let function = GkrBwdSegInlineFunction(seg_acc_symbol(regime, placement));
+    // The rungs carry the accumulator carveout on TOP of the epilogue's planes, so
+    // their demand is the larger of the family — the arm that most needs the request.
+    seg_apply_launch_carveout(function.as_ptr(), geometry.k, dynamic);
+    function.launch(&config, &GkrBwdSegInlineArguments::new(**desc))
 }
 
 /// Blocks per SM of one AccPlacement rung, at its own total carveout.
@@ -1517,6 +1651,10 @@ mod tests {
     /// One symbol serves every `K`, so a pair's two arms can be the SAME pointer. The
     /// plan must hold ONE entry for it, or the restore reinstalls the override.
     #[test]
+    // Shares the process-global carveout state (the preference itself and the
+    // plans-alive counter `the_launch_path_owns_the_carveout_unless_a_plan_does`
+    // reads), so it cannot run beside another test that touches either.
+    #[serial_test::serial]
     fn a_same_symbol_pair_yields_one_deduped_entry() {
         let entry = bwd_seg_entry_point(
             BwdRegime::Ext,
@@ -1572,6 +1710,10 @@ mod tests {
     /// [`a_same_symbol_pair_yields_one_deduped_entry`] over one preference when the
     /// suite runs multi-threaded.
     #[test]
+    // Shares the process-global carveout state (the preference itself and the
+    // plans-alive counter `the_launch_path_owns_the_carveout_unless_a_plan_does`
+    // reads), so it cannot run beside another test that touches either.
+    #[serial_test::serial]
     fn a_mid_apply_unwind_restores_the_queried_prefix_and_nothing_else() {
         static NOT_A_KERNEL: u8 = 0;
         let good = bwd_seg_entry_point(
@@ -1638,11 +1780,118 @@ mod tests {
         let _ = era_cudart::error::get_last_error();
     }
 
+    /// The launch path asks for its own carveout, and a live [`CarveoutPlan`] takes
+    /// that away from it.
+    ///
+    /// Both halves matter and for opposite reasons. Without the request, a production
+    /// launch pays +1.23 % at the committed policy's `K = 16` for a preference nobody
+    /// set. Without the deferral, `CarveoutMode::Off` — the control arm whose whole
+    /// definition is "no preference set anywhere" — would silently acquire one from
+    /// the launcher, and every carveout column measured against it would be measuring
+    /// this function.
+    #[test]
+    #[serial_test::serial]
+    fn the_launch_path_owns_the_carveout_unless_a_plan_does() {
+        // The staged R0 symbol: no other test in this module touches it, so the
+        // process-global preference cannot be raced.
+        let entry = bwd_seg_entry_point(
+            BwdRegime::R0,
+            ProgramMode::Inline,
+            CoeffMode::Constant,
+            BwdSegEpilogue::Staged,
+        );
+        let k = 8;
+        let dynamic = bwd_seg_epilogue_smem_bytes(BwdSegEpilogue::Staged, k);
+        let expected = bwd_seg_carveout_pct(
+            bwd_seg_register_bound_blocks_per_sm(bwd_seg_entry_registers(entry), k),
+            dynamic,
+        );
+
+        seg_forget_launch_carveout(entry);
+        assert_eq!(
+            seg_apply_launch_carveout(entry, k, dynamic),
+            Some(expected),
+            "with no plan alive the launch path requests the register-bound partition"
+        );
+        assert_eq!(bwd_seg_query_carveout(entry), expected);
+
+        // An `Off` plan writes no preference at all, and the launch path must still
+        // stand down: that mode's definition is "nothing set anywhere".
+        {
+            let _plan = CarveoutPlan::for_solo(
+                CarveoutMode::Off,
+                CarveoutShape {
+                    entry,
+                    dynamic_smem_bytes: dynamic,
+                    target_blocks_per_sm: 1,
+                    label: "deferral-probe",
+                },
+                false,
+            );
+            assert_eq!(
+                seg_apply_launch_carveout(entry, k, dynamic),
+                None,
+                "a live plan owns the preference — even `Off`, which sets none at all"
+            );
+        }
+        assert!(
+            seg_launch_carveout_cache()
+                .lock()
+                .expect("carveout cache")
+                .contains_key(&(entry as usize)),
+            "an `Off` plan touched no preference, so the cache still describes the driver"
+        );
+
+        // A plan that DOES write one must invalidate the cache when it restores: the
+        // restored value is not what the launch path asked for, so a surviving cache
+        // entry would suppress the next request and reintroduce exactly the occupancy
+        // loss the request exists to prevent.
+        {
+            let mut plan = CarveoutPlan::for_solo(
+                CarveoutMode::FixedBucket(64 * 1024),
+                CarveoutShape {
+                    entry,
+                    dynamic_smem_bytes: dynamic,
+                    target_blocks_per_sm: 1,
+                    label: "invalidation-probe",
+                },
+                false,
+            );
+            plan.apply();
+            assert_ne!(
+                bwd_seg_query_carveout(entry),
+                expected,
+                "the probe must actually move the preference, or it proves nothing"
+            );
+        }
+        assert_eq!(
+            bwd_seg_query_carveout(entry),
+            expected,
+            "the plan restored the prior it found, which is the launch path's request"
+        );
+        assert!(
+            !seg_launch_carveout_cache()
+                .lock()
+                .expect("carveout cache")
+                .contains_key(&(entry as usize)),
+            "a plan's drop must invalidate the launch path's cache for every entry it touched"
+        );
+        assert_eq!(
+            seg_apply_launch_carveout(entry, k, dynamic),
+            Some(expected),
+            "and the launch path takes the preference back afterwards"
+        );
+    }
+
     /// `for_solo` must carry `for_pair`'s containment gate. The pin-decision set has
     /// SOLO cells, the requested pct is never itself a gate, and a solo cell over the
     /// fixed bucket would therefore under-request the reference clock's partition with
     /// nothing anywhere to say so.
     #[test]
+    // Shares the process-global carveout state (the preference itself and the
+    // plans-alive counter `the_launch_path_owns_the_carveout_unless_a_plan_does`
+    // reads), so it cannot run beside another test that touches either.
+    #[serial_test::serial]
     fn solo_fixed_bucket_gates_the_demand_against_the_bucket() {
         const BUCKET: usize = 8 * 1024;
         let reserve = bwd_seg_reserved_smem_bytes_per_block();
