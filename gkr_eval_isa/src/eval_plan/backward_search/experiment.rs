@@ -3017,7 +3017,12 @@ mod tests {
     fn search_is_thread_deterministic() {
         let result = run_synthetic_instance().unwrap();
         let digest = result.deterministic_digest();
-        assert_eq!(digest, 0x5efc_d9ff_4fc3_3c46);
+        // The pinned value moves when the search's inputs deliberately change —
+        // it last moved with the fold-read repricing (553a85f3). Re-pin only
+        // after confirming the new digest is stable across reruns AND
+        // `RAYON_NUM_THREADS=1`; a value that varies is the bug this test exists
+        // to catch.
+        assert_eq!(digest, 0x8963_43f6_dff3_5d3b);
         println!("PLAN3-SEARCH-DIGEST {digest:016x}");
     }
 
