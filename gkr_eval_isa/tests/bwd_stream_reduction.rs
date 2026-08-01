@@ -154,21 +154,27 @@ fn streamed_searched_admission_is_value_exact() {
 /// landed the classifier fix (`may_attempt_admit` / `is_compound_or_may_admit`) that makes it
 /// safe; this is the coverage proof on a real, cache-bearing, wide circuit layer — the
 /// admission must both preserve the value (no acc clobber) AND non-vacuously fire.
+///
+/// The budget is 20, not the synthetic test's 16: pinning classified-direct
+/// compounds against eviction (8a518b6e) deliberately raised this fixture's
+/// mandatory-residency floor under the admitting decisions to 20 lanes, and a
+/// budget below the floor is `BudgetBelowFloor` by design, not a searched path.
 #[test]
 fn streamed_searched_path_real_fixture_value_exact() {
     let (layer, cross) = common::load_layer("bigint_with_extended_control_layout_gkr.json", 0);
     let d = distill(&layer, BwdRegime::Ext, &cross, None);
     let dec = common::decisions_admitting_a_shared_leaf(&d);
-    let c = compile_distilled(&d, 16, Some(&dec)).expect("feasible");
+    let c = compile_distilled(&d, 20, Some(&dec)).expect("feasible");
     // Searched-path value parity: the streamed lowering under admitting decisions must match
     // the oracle exactly — the may-admit source leaf takes the stash path, never clobbering acc.
     common::assert_bwd_value_parity(&c, &d, &layer);
     // Non-vacuous: pinning the shared read leaf's priority makes admission cache it to cells,
-    // strictly reducing its fold-source gathers vs the no-decisions baseline (95 -> 60 on
-    // bigint L0 Ext) with resident Smem reads present. The synthetic exact-1 collapse
-    // (`program_admits_shared_leaf`) does not apply here: b16 budget pressure keeps only some
-    // of the leaf's ~60 uses resident.
-    let c_none = compile_distilled(&d, 16, None).expect("feasible (baseline)");
+    // strictly reducing its fold-source gathers vs the no-decisions baseline with resident
+    // Smem reads present. The synthetic exact-1 collapse (`program_admits_shared_leaf`)
+    // does not apply here: budget pressure keeps only some of the leaf's uses resident.
+    // The baseline compiles at the SAME 20-lane budget, so the gather drop below is the
+    // decisions' doing and not the budget's.
+    let c_none = compile_distilled(&d, 20, None).expect("feasible (baseline)");
     assert!(
         common::program_admits_shared_leaf_vs_baseline(&c, &c_none),
         "searched-path admission must fire non-vacuously on bigint: gathers must drop vs baseline \
