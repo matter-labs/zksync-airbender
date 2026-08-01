@@ -281,6 +281,36 @@ pub(crate) fn lean_coordinate(
     entry
 }
 
+/// The PRODUCTION lowering of one coordinate's semantic layer, WITHOUT compiling
+/// the artifact.
+///
+/// [`lean_coordinate`] yields the identical [`CoeffLayer`] — same
+/// `lower_lean_layer`, grouping transform included — but also runs the encoder, the
+/// order commit and the source binder. A census whose subject is the coefficient
+/// BANK needs none of that: the bank is a property of the lowering alone. Over the
+/// twelve-layout corpus that is the difference between a census and a compile.
+///
+/// Deliberately uncached for the same reason [`ungrouped_lean_layer`] is: it is a
+/// census input, and nothing launches from it.
+pub(crate) fn lean_layer(
+    circuit: &'static str,
+    layer_index: usize,
+    regime: BwdRegime,
+) -> CoeffLayer {
+    let dag = lowered_dag(circuit);
+    let canonical = dag
+        .0
+        .get(layer_index)
+        .unwrap_or_else(|| panic!("{circuit} has no canonical layer {layer_index}"));
+    let (layer, _) = lower_lean_layer(canonical, &dag.1, regime).unwrap_or_else(|error| {
+        panic!(
+            "lower {} L{layer_index} {regime:?}: {error:?}",
+            short_name(circuit)
+        )
+    });
+    layer
+}
+
 /// The UNGROUPED lowering of one coordinate: `distill -> lower_coeff_layer`, and
 /// nothing after it.
 ///

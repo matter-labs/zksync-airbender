@@ -14,7 +14,7 @@ pub(crate) const FLAT_IMMEDIATE_MAX_MONOMIALS: usize = 384;
 
 /// Mirrors `gpu_recipe_header` in `backward/coeff.cuh`.
 #[repr(C)]
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct GpuRecipeHeader {
     pub batch_power: u16,
     pub group_count_0: u8,

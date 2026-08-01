@@ -55,6 +55,12 @@ use gkr_eval_isa::bwd::coeff::limits::{
 };
 use gkr_eval_isa::bwd::coeff::model::{CoefficientRecipeId, ImmediateId};
 
+use super::seg_coeff_eval::{
+    SegCoeffMonomial, SegCoeffRecipe, BWD_SEG_CHALLENGE_ABSENT, BWD_SEG_CHALLENGE_CLAIM_BATCHING,
+    BWD_SEG_CHALLENGE_CONSTRAINT_AGGREGATION, BWD_SEG_CHALLENGE_LOOKUP_ADDITIVE,
+    BWD_SEG_CHALLENGE_LOOKUP_MULTIPLICATIVE, BWD_SEG_CHALLENGE_PERM_ADDITIVE,
+    BWD_SEG_CHALLENGE_PERM_LINEARIZATION_BASE, BWD_SEG_CHALLENGE_SLOTS,
+};
 use super::seg_desc::{
     BwdCoeffSourceWindow, BwdSegDesc, BwdSegProgPtrDesc, BwdSegSourceRecord,
     BWD_COEFF_MAX_FOLD_DEPTH, BWD_COEFF_ORIGIN_PROCEDURAL, BWD_COEFF_ORIGIN_READ_BASE,
@@ -77,6 +83,11 @@ use crate::prover::gkr::backward::GkrEqSizes;
 /// against Rust.
 const SEG_CUDA_HEADER: &str =
     include_str!("../../../../../native/prover/gkr/backward/segmented_vm.cuh");
+
+/// The coefficient-evaluator half of this lineage's ABI, read as text for the same
+/// third drift direction [`SEG_CUDA_HEADER`] covers.
+const SEG_COEFF_EVAL_CUDA_HEADER: &str =
+    include_str!("../../../../../native/prover/gkr/backward/seg_coeff_eval.cuh");
 
 /// The pinned size of the inline-program descriptor.
 const INLINE_DESC_BYTES: usize = 26_416;
@@ -639,7 +650,9 @@ fn the_seg_static_assert_matcher_rejects_a_numeric_prefix() {
     )));
     assert!(seg_header_asserts("BWD_SEG_SOURCE_WINDOW_CAP == 17"));
     assert!(!seg_header_asserts("BWD_SEG_SOURCE_WINDOW_CAP == 1"));
-    assert!(!seg_header_asserts("__builtin_offsetof(bwd_seg_desc, no_such_field) == 0"));
+    assert!(!seg_header_asserts(
+        "__builtin_offsetof(bwd_seg_desc, no_such_field) == 0"
+    ));
 }
 
 /// Every numeric constant this lineage mirrors is present in the CUDA header with
@@ -1156,6 +1169,108 @@ fn seg_cuda_layout_asserts_match_the_rust_layout() {
     ));
 }
 
+/// The coefficient evaluator's ABI: the challenge-slab layout and the two struct
+/// layouts, pinned in the same three directions as the descriptor's.
+///
+/// The slab constants are the interesting half. They are `u8` slot numbers with no
+/// layout consequence at all, so nvcc and `cargo check` are both blind to a
+/// one-sided edit — and a slot mismatch does not fail, it silently evaluates a
+/// coefficient against the WRONG challenge. That is a wrong proof with no error
+/// channel, which is exactly the class of drift this file exists for.
+#[test]
+fn seg_coeff_eval_cuda_abi_matches_the_rust_mirror() {
+    let literal = |name: &str| -> u64 {
+        let needle = format!(" {name} = ");
+        let start = SEG_COEFF_EVAL_CUDA_HEADER
+            .find(&needle)
+            .unwrap_or_else(|| panic!("seg_coeff_eval.cuh does not define {name}"))
+            + needle.len();
+        let rest = &SEG_COEFF_EVAL_CUDA_HEADER[start..];
+        let end = rest
+            .find(';')
+            .unwrap_or_else(|| panic!("{name} has no terminated definition"));
+        let raw = rest[..end].trim().trim_end_matches(['u', 'U']);
+        if let Some(hex) = raw.strip_prefix("0x") {
+            u64::from_str_radix(hex, 16)
+        } else {
+            raw.parse::<u64>()
+        }
+        .unwrap_or_else(|_| {
+            panic!("{name} is defined as the expression `{raw}`; pin it with a static_assert")
+        })
+    };
+    for (name, value) in [
+        (
+            "BWD_SEG_CHALLENGE_PERM_LINEARIZATION_BASE",
+            u64::from(BWD_SEG_CHALLENGE_PERM_LINEARIZATION_BASE),
+        ),
+        (
+            "BWD_SEG_CHALLENGE_PERM_ADDITIVE",
+            u64::from(BWD_SEG_CHALLENGE_PERM_ADDITIVE),
+        ),
+        (
+            "BWD_SEG_CHALLENGE_LOOKUP_MULTIPLICATIVE",
+            u64::from(BWD_SEG_CHALLENGE_LOOKUP_MULTIPLICATIVE),
+        ),
+        (
+            "BWD_SEG_CHALLENGE_LOOKUP_ADDITIVE",
+            u64::from(BWD_SEG_CHALLENGE_LOOKUP_ADDITIVE),
+        ),
+        (
+            "BWD_SEG_CHALLENGE_CONSTRAINT_AGGREGATION",
+            u64::from(BWD_SEG_CHALLENGE_CONSTRAINT_AGGREGATION),
+        ),
+        (
+            "BWD_SEG_CHALLENGE_CLAIM_BATCHING",
+            u64::from(BWD_SEG_CHALLENGE_CLAIM_BATCHING),
+        ),
+        ("BWD_SEG_CHALLENGE_SLOTS", BWD_SEG_CHALLENGE_SLOTS as u64),
+        (
+            "BWD_SEG_CHALLENGE_ABSENT",
+            u64::from(BWD_SEG_CHALLENGE_ABSENT),
+        ),
+    ] {
+        assert_eq!(literal(name), value, "CUDA {name}");
+    }
+
+    // The struct layouts, built from `offset_of!` so no number is hand-maintained.
+    for claim in [
+        format!(
+            "sizeof(bwd_seg_coeff_recipe) == {}",
+            size_of::<SegCoeffRecipe>()
+        ),
+        format!(
+            "sizeof(bwd_seg_coeff_monomial) == {}",
+            size_of::<SegCoeffMonomial>()
+        ),
+        format!(
+            "__builtin_offsetof(bwd_seg_coeff_monomial, batch_power) == {}",
+            offset_of!(SegCoeffMonomial, batch_power)
+        ),
+        format!(
+            "__builtin_offsetof(bwd_seg_coeff_monomial, challenge_idx_0) == {}",
+            offset_of!(SegCoeffMonomial, challenge_idx_0)
+        ),
+        format!(
+            "__builtin_offsetof(bwd_seg_coeff_monomial, power_0) == {}",
+            offset_of!(SegCoeffMonomial, power_0)
+        ),
+    ] {
+        assert!(
+            seg_asserts_in(SEG_COEFF_EVAL_CUDA_HEADER, &claim),
+            "seg_coeff_eval.cuh does not static_assert `{claim}`"
+        );
+    }
+
+    // The one launched symbol, with the formal list the Rust launcher passes.
+    let symbol = "ab_gkr_bwd_seg_eval_coefficients_kernel(const e4 *challenges, const bwd_seg_coeff_recipe *recipes";
+    assert!(
+        include_str!("../../../../../native/prover/gkr/backward/seg_coeff_eval.cu")
+            .contains(symbol),
+        "seg_coeff_eval.cu does not define `{symbol}`"
+    );
+}
+
 /// Every kernel symbol the Rust launcher declares is DECLARED in the header, and
 /// with the formal list the launcher passes — the descriptor type for the fifteen
 /// matrix cells, the weight-bank alias and the round for the prelude.
@@ -1199,8 +1314,10 @@ fn seg_cuda_header_declares_every_launched_kernel() {
         .contains("ab_gkr_bwd_seg_build_fold_weights_kernel(e4 *fold_weights, u32 round)"));
     // The three `__constant__` symbols a launch stages into, named rather than
     // matched numerically.
-    assert!(SEG_CUDA_HEADER.contains("ab_gkr_bwd_seg_coeff_bank[airbender::prover::gkr::BWD_SEG_CONST_BANK]"));
-    assert!(SEG_CUDA_HEADER.contains("ab_gkr_main_layer_claim_point["));
     assert!(SEG_CUDA_HEADER
-        .contains("ab_gkr_bwd_seg_fold_weights[airbender::prover::gkr::BWD_SEG_FOLD_WEIGHT_SLOTS]"));
+        .contains("ab_gkr_bwd_seg_coeff_bank[airbender::prover::gkr::BWD_SEG_CONST_BANK]"));
+    assert!(SEG_CUDA_HEADER.contains("ab_gkr_main_layer_claim_point["));
+    assert!(SEG_CUDA_HEADER.contains(
+        "ab_gkr_bwd_seg_fold_weights[airbender::prover::gkr::BWD_SEG_FOLD_WEIGHT_SLOTS]"
+    ));
 }
