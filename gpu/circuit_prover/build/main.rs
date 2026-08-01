@@ -19,10 +19,16 @@ fn main() {
     //
     // THE SHIPPED DEFAULT LIVES HERE, not in the CMake cache: this script
     // forwards a value on every build, so a `CACHE STRING` default would always
-    // be overridden and an env-free build could never carry a pin. `0` means "no
-    // qualifier on the nine swept continuation executors" — the natural band —
-    // and the pass's final ship decision changes THIS constant.
-    const SHIPPED_CONT_MAXNREG: &str = "0";
+    // be overridden and an env-free build could never carry a pin.
+    //
+    // `64` is the continuation band's HARD ceiling: the executors launch up to
+    // K=32 warps (1,024 threads), and 1,024 × 65 registers no longer fits an SM,
+    // so the first register past 64 is a runtime `LAUNCH_OUT_OF_RESOURCES` at
+    // K=32 — caught today only by a bench-feature-gated test. Pinning turns that
+    // into a build-time ptxas failure. A no-op for allocation as shipped: the
+    // natural counts are 64/62/64, already at the ceiling. `0` (= natural, no
+    // qualifier) remains available through the env override for sweeps.
+    const SHIPPED_CONT_MAXNREG: &str = "64";
     println!("cargo:rerun-if-env-changed=AB_GKR_SEG_CONT_MAXNREG");
     println!("cargo:rerun-if-env-changed=AB_GKR_SEG_NO_MAXNREG");
     let cont_maxnreg = std::env::var("AB_GKR_SEG_CONT_MAXNREG")
