@@ -8244,14 +8244,22 @@ fn bwd_seg_keccak_l0_monster() {
 //     all of them, because a corpus sweep that quietly measured 60% of the corpus
 //     would look identical to one that measured all of it.
 
-/// The `K` axis the corpus sweep ranks: the plan's set, unextended.
+/// The `K` axis the corpus sweep ranks: the plan's set, minus `K = 24`.
 ///
 /// Stage A extended its own axis DOWN to `{1, 2}` after the gate coordinate's
 /// winner landed at the bottom of the named set. That is not repeated here and
 /// the omission is a measurement, not an oversight: `K = 1` ran 4% behind the
 /// incumbent on the gate coordinate (50% occupancy, no cross-warp amortization)
 /// and `K = 2` lost to `K = 4` on every Stage-A cell it was launchable in.
-pub(super) const SEG_CORPUS_K: [usize; 5] = [4, 8, 16, 24, 32];
+///
+/// `K = 24` is PRUNED (perf review P2): at the shipped 64-register band,
+/// 768 threads × 64 regs = 49,152 keeps a second block (98,304) out of the 64K
+/// register file, so K=24 runs 24 of 48 warp slots — 50% occupancy against 32
+/// warps for each of its neighbors (2×16, 4×8, 1×32) — and every K=24 bench row
+/// confirmed the 50% limit. The hole is geometric, not workload-dependent; the
+/// entry returns only if the continuation band drops to ≤42 registers, where
+/// two 768-thread blocks fit.
+pub(super) const SEG_CORPUS_K: [usize; 4] = [4, 8, 16, 32];
 
 /// The member of [`SEG_CORPUS_K`] every other `K` of a coordinate is paired
 /// against: the Task-9 winner, so a corpus ratio reads directly as "against the
@@ -8870,14 +8878,19 @@ const _: () = assert!(SEG_POLICY_NARROW_BYTES_PER_ROW < SEG_POLICY_WIDE_BYTES_PE
 /// compute it at setup from the binding it is about to lower.
 ///
 /// `ceiling` is the largest `K` the compiled family can host — a register fact, not
-/// a choice: 32 for R0, 24 for the continuation families (Task 9's enumeration).
+/// a choice: the probe reports 32 for BOTH families at the shipped 64-register
+/// band (`SegKCeilings::probe`; an earlier revision of this comment carried Task
+/// 9's 24, measured at the pre-group band).
 ///
-/// The result is always a member of [`SEG_CORPUS_K`] at or below `ceiling`, and
-/// never `K = 16`: on the continuation family `K = 16` and `K = 24` are both one
-/// block per SM, so 16 is strictly dominated (33% occupancy against 50%), and on R0
-/// no band of the corpus preferred it by enough to earn one. It is deliberately not
-/// interpolated either — `K` is a block geometry, and a launcher choosing `K = 11`
-/// would be choosing a shape nothing was measured at.
+/// The result is always a member of [`SEG_CORPUS_K`] at or below `ceiling`. The
+/// wide arm is `K = 16`, which INVERTS what an earlier band fitted: at 64
+/// registers two 512-thread blocks co-reside (2 × 16 = 32 warps) while `K = 24`
+/// and `K = 32` are both single-block shapes, and the 2026-08-01 chop-point
+/// corpus scores the wide population summed at `K16 +0.0% / K24 +6.2% /
+/// K32 +3.1%` (9 of 10 wide cells win at 16). `K = 24` is pruned from the axis
+/// outright — see [`SEG_CORPUS_K`]. `K` is deliberately not interpolated either:
+/// it is a block geometry, and a launcher choosing `K = 11` would be choosing a
+/// shape nothing was measured at.
 pub(super) fn seg_policy_k(bytes_per_row: usize, ceiling: usize) -> usize {
     seg_policy_k_with(
         bytes_per_row,
@@ -8903,7 +8916,7 @@ pub(super) fn seg_policy_k_with(
     } else if bytes_per_row < wide {
         8
     } else {
-        24
+        16
     };
     // `want` is at least the axis minimum and so is `ceiling`, so the filter is
     // never empty; the `unwrap_or` is a total function, not a guess.
@@ -13440,10 +13453,10 @@ mod tests {
         // A ceiling below the whole axis still yields the axis minimum rather than
         // nothing: every compiled family hosts K=4.
         assert_eq!(seg_policy_k(usize::MAX, 4), 4);
-        // The continuation ceiling is 24, so the widest band lands there and never
-        // on the R0-only K=32.
-        assert_eq!(seg_policy_k(usize::MAX, 24), 24);
-        assert_eq!(seg_policy_k(usize::MAX, 32), 24, "K=32 is never selected");
+        // The wide arm is K=16 — the widest two-block shape at the 64-register
+        // band — so no ceiling ever pushes the policy onto a single-block K.
+        assert_eq!(seg_policy_k(usize::MAX, 16), 16);
+        assert_eq!(seg_policy_k(usize::MAX, 32), 16, "K=32 is never selected");
     }
 
     /// The closed form is monotone in its one argument, and its two thresholds are
@@ -13462,7 +13475,7 @@ mod tests {
         assert_eq!(seg_policy_k(SEG_POLICY_NARROW_BYTES_PER_ROW - 1, 32), 4);
         assert_eq!(seg_policy_k(SEG_POLICY_NARROW_BYTES_PER_ROW, 32), 8);
         assert_eq!(seg_policy_k(SEG_POLICY_WIDE_BYTES_PER_ROW - 1, 32), 8);
-        assert_eq!(seg_policy_k(SEG_POLICY_WIDE_BYTES_PER_ROW, 32), 24);
+        assert_eq!(seg_policy_k(SEG_POLICY_WIDE_BYTES_PER_ROW, 32), 16);
     }
 
     /// **The Task-9 gate coordinate, pinned as a DISAGREEMENT.**
@@ -13596,7 +13609,7 @@ mod tests {
     /// K8 and a heavy one that wants K24.
     fn policy_fixture() -> Vec<SegCorpusRow> {
         let mut rows = Vec::new();
-        for (bytes, best) in [(512usize, 4usize), (4_096, 8), (40_960, 24)] {
+        for (bytes, best) in [(512usize, 4usize), (4_096, 8), (40_960, 16)] {
             for k in SEG_CORPUS_K {
                 let ratio = if k == best { Some(0.5) } else { Some(1.5) };
                 let mut row = corpus_fixture(
