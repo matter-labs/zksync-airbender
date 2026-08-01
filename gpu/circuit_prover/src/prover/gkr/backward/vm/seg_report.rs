@@ -94,7 +94,7 @@ use super::seg::{
     CarveoutMode, CarveoutPlan, CarveoutShape, BWD_SEG_ACC_RUNG_EPILOGUE,
     BWD_SEG_SMEM_BUCKETS_BYTES, SEG_REFERENCE_CLOCK_BUCKET_BYTES,
 };
-use super::seg_desc::BWD_SEG_MAX_K;
+use super::seg_desc::{BwdSegDesc, BWD_SEG_DESC_CAP, BWD_SEG_MAX_K};
 use super::seg_lower::{
     bwd_seg_floor_backing_census, bwd_seg_traffic_floor, lower_bwd_seg, BwdSegLaunchDesc,
     BwdSegLowerError, BwdSegSetup, BwdSegTrafficFloor, CoeffMode, D2Policy, ListWorkStats,
@@ -5234,6 +5234,8 @@ pub(super) fn render_matrix_table(rows: &[SegMatrixRow]) -> String {
 // ── Benchmark cells ──────────────────────────────────────────────────────────
 
 use gkr_eval_isa::bwd::coeff::interp::{interpret_coeff_layer, interpret_lean_program};
+use gkr_eval_isa::bwd::coeff::lean::LEAN_WORDS_PER_TERM;
+use gkr_eval_isa::bwd::coeff::limits::LEAN_DESCRIPTOR_PROGRAM_WORDS;
 use gkr_eval_isa::bwd::coeff::model::{CoeffLayer, CoefficientRecipeId};
 
 use super::seg_compile::{
@@ -9733,6 +9735,12 @@ const SEG_CENSUS_ROWS: usize = SEG_PARITY_ROWS;
 /// additionally need live fold-source and read-use counts plus a coefficient
 /// working-set/access histogram, which is out of scope here and belongs with the
 /// phase model.
+
+/// The chop's record budget ceiling: the INLINE program array in records, which is the
+/// number `lower_bwd_seg` passes `chop_atoms` — the same expression, not a restatement,
+/// so the census cannot report a capacity lowering does not use.
+const SEG_RECORD_CAPACITY: usize = LEAN_DESCRIPTOR_PROGRAM_WORDS / LEAN_WORDS_PER_TERM;
+
 #[test]
 #[ignore = "corpus lowering walk over device-bound cells; run under with_gpu_lock.sh"]
 #[cfg(not(no_cuda))]
@@ -9744,6 +9752,9 @@ fn bwd_seg_lowering_footprint_census() {
 
     let mut foldable: Vec<u32> = Vec::new();
     let mut coefficients: Vec<u32> = Vec::new();
+    let mut records_used: Vec<(u32, String)> = Vec::new();
+    // The chop's OBJECTIVE, so a clipped cell can be quoted with the imbalance it kept.
+    let mut clipped_balance: Vec<(String, f64)> = Vec::new();
     // The corpus's own fitted row counts, so the footprint bound below is stated at the
     // depth the sweep actually measures rather than at the census's cheap one.
     let mut fitted_rows: Vec<usize> = Vec::new();
@@ -9759,7 +9770,8 @@ fn bwd_seg_lowering_footprint_census() {
     let mut min_read: Option<u64> = None;
     let mut out = String::from(
         "circuit,layer,class,k,coeff,program,status,num_foldable,n_coefficients,\
-floor_dram_read_bytes,floor_dram_write_bytes,sources_priced,dead_sources,distinct_backings\n",
+floor_dram_read_bytes,floor_dram_write_bytes,sources_priced,dead_sources,distinct_backings,\
+records,record_capacity,max_over_mean_work\n",
     );
 
     // The coordinates `bwd_seg_corpus_sweep` walks, through its OWN enumeration
@@ -9808,7 +9820,8 @@ floor_dram_read_bytes,floor_dram_write_bytes,sources_priced,dead_sources,distinc
                         program_label(shape.program),
                     );
                     let Some(cell) = cell.as_ref() else {
-                        writeln!(out, "{label},over-budget,0,0,0,0,0,0,0").expect("write String");
+                        writeln!(out, "{label},over-budget,0,0,0,0,0,0,0,0,0,0")
+                            .expect("write String");
                         continue;
                     };
                     // A coordinate host lowering REJECTS is recorded with its rejection;
@@ -9816,23 +9829,25 @@ floor_dram_read_bytes,floor_dram_write_bytes,sources_priced,dead_sources,distinc
                     match cell.try_lower(shape) {
                         Err(error) => {
                             rejections.push(format!("{label} -> {error:?}"));
-                            writeln!(out, "{label},lower-rejected,0,0,0,0,0,0,0")
+                            writeln!(out, "{label},lower-rejected,0,0,0,0,0,0,0,0,0,0")
                                 .expect("write String");
                         }
                         Ok(setup) => {
-                            let (num_foldable, n_coefficients, eq_low_bits, logical_rows) =
+                            let (num_foldable, n_coefficients, eq_low_bits, logical_rows, records) =
                                 match &setup.desc {
                                     BwdSegLaunchDesc::Inline(desc) => (
                                         u32::from(desc.num_foldable),
                                         desc.n_coefficients,
                                         desc.eq_sizes.low,
                                         u64::from(desc.logical_rows),
+                                        u32::from(desc.record_count),
                                     ),
                                     BwdSegLaunchDesc::ProgPtr(desc) => (
                                         u32::from(desc.num_foldable),
                                         desc.n_coefficients,
                                         desc.eq_sizes.low,
                                         u64::from(desc.logical_rows),
+                                        u32::from(desc.record_count),
                                     ),
                                 };
                             // The eq slab, by the walk's own rule. Recorded once and
@@ -9860,15 +9875,28 @@ floor_dram_read_bytes,floor_dram_write_bytes,sources_priced,dead_sources,distinc
                             let backing = bwd_seg_floor_backing_census(&setup);
                             foldable.push(num_foldable);
                             coefficients.push(n_coefficients);
+                            // The chop's RECORD BUDGET, realized. Every chunk the
+                            // K-aware chop spends costs one header record, and the
+                            // budget is the INLINE program cap minus the artifact's own
+                            // records — a cap frozen from a PRE-chop census. So this is
+                            // the column that says whether the balance work is being
+                            // clipped by a constant nobody re-derived: `records` at
+                            // capacity means the chop was degraded or dropped.
+                            records_used.push((records, label.clone()));
+                            if records as usize >= SEG_RECORD_CAPACITY {
+                                clipped_balance.push((label.clone(), setup.work.max_over_mean));
+                            }
                             counted = true;
                             writeln!(
                                 out,
-                                "{label},lowered,{num_foldable},{n_coefficients},{},{},{},{},{}",
+                                "{label},lowered,{num_foldable},{n_coefficients},{},{},{},{},{},{records},{},{:.4}",
                                 floor.read_bytes,
                                 floor.write_bytes,
                                 backing.priced_sources,
                                 setup.dead_sources.len(),
                                 backing.distinct_backings,
+                                SEG_RECORD_CAPACITY,
+                                setup.work.max_over_mean,
                             )
                             .expect("write String");
                         }
@@ -9926,6 +9954,55 @@ floor_dram_read_bytes,floor_dram_write_bytes,sources_priced,dead_sources,distinc
     // will see it. The two columns do NOT rescale the same way and the read column is the
     // trap: multiplying it by `fitted_rows / SEG_CENSUS_ROWS` multiplies the eq slab too,
     // which does not move with rows.
+    // The chop-inclusive descriptor re-census. The frozen program-word cap was
+    // measured BEFORE the K-aware chop existed, and every chunk the chop spends is a
+    // header record inside that cap — so the question this answers is not safety
+    // (`chop_atoms` clamps to the budget by construction) but HEADROOM: a cell at
+    // capacity had its chop degraded or dropped, and the balance win is being clipped
+    // by a constant nobody re-derived.
+    records_used.sort_unstable();
+    let (worst_records, worst_cell) = records_used
+        .last()
+        .cloned()
+        .expect("a non-vacuous census lowered at least one cell");
+    let saturated: Vec<&String> = records_used
+        .iter()
+        .filter(|(records, _)| *records as usize >= SEG_RECORD_CAPACITY)
+        .map(|(_, label)| label)
+        .collect();
+    eprintln!(
+        "[seg-census] RECORD BUDGET (chop-inclusive): capacity {SEG_RECORD_CAPACITY} records          ({LEAN_DESCRIPTOR_PROGRAM_WORDS} program words / {LEAN_WORDS_PER_TERM} per record) |          worst realized {worst_records} at {worst_cell} | headroom {} records          ({:.1}%) | cells at capacity: {}",
+        SEG_RECORD_CAPACITY.saturating_sub(worst_records as usize),
+        100.0 * (SEG_RECORD_CAPACITY as f64 - worst_records as f64) / SEG_RECORD_CAPACITY as f64,
+        if saturated.is_empty() {
+            "none — the chop is never clipped by the cap".to_owned()
+        } else {
+            format!("{} ({saturated:?})", saturated.len())
+        },
+    );
+    if !clipped_balance.is_empty() {
+        // What the clip costs, in the chop's own currency: a list's work over the mean
+        // is exactly what the chop shrinks, and a block's time is the MAX list.
+        let worst = clipped_balance
+            .iter()
+            .max_by(|a, b| a.1.total_cmp(&b.1))
+            .expect("non-empty");
+        eprintln!(
+            "[seg-census] the clipped cells kept their imbalance: max_over_mean_work up to \
+             {:.3} at {} ({} cells clipped). A block's time is its MAX list, so the CEILING on \
+             what the clip costs is {:.1}% of the eval phase on those cells — what perfect \
+             balance would reclaim, which the chop could not reach anyway. Raising the program \
+             array to buy the chop a budget there is therefore worth at most that, against a \
+             descriptor already at {} B of the {} B kernel-argument cap.",
+            worst.1,
+            worst.0,
+            clipped_balance.len(),
+            100.0 * (worst.1 - 1.0),
+            size_of::<BwdSegDesc>(),
+            BWD_SEG_DESC_CAP,
+        );
+    }
+
     let slab = eq_slab_bytes.expect("a non-vacuous census recorded its eq slab");
     let thinnest = min_read.expect("a non-vacuous census lowered at least one cell");
     // The worst a naive whole-column rescale to the corpus median would overstate: it is
