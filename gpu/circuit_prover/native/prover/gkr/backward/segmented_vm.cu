@@ -969,9 +969,10 @@ DEVICE_FORCEINLINE void seg_body(const Desc &desc, const Bank &bank, const Progr
       //
       // The kernel TRUSTS the header, exactly as the dispatch below trusts a term's
       // class and source slots: `lean::validate_program` and `lower_bwd_seg`'s
-      // `annotate_atoms` are where a bad `N`, an empty or out-of-mask flag word, a
-      // nested header and a flag/member-side disagreement are rejected, and this
-      // lineage puts no validation in a release kernel.
+      // `annotate_atoms` are where a bad `N`, an empty or out-of-mask flag word and a
+      // nested header are rejected; a flag/member-side disagreement is rejected by
+      // `lean::validate_program` alone (ISA-side only). This lineage puts no
+      // validation in a release kernel.
       if (term_class == BWD_SEG_EXT_CLASS_GROUP_HEADER) {
         const u16 n_members = source_a;
         const u16 flags = source_b;

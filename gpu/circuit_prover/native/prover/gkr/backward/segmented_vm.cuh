@@ -305,8 +305,8 @@ static_assert(BWD_SEG_EXT_LIVE_CLASSES + 1 == BWD_COEFF_EXT_LIVE_OPCODES, "conti
 // IMMEDIATE id instead of a recipe id, so the group spends ONE `e4 x e4` core
 // multiply per accumulator side for its whole run instead of one per member.
 //
-// Mirrors `gkr_eval_isa::bwd::coeff::lean::{LEAN_CONT_GROUP_HEADER_CLASS,
-// LEAN_GROUP_FLAG_C0, LEAN_GROUP_FLAG_C2}`.
+// Mirrors `gkr_eval_isa::bwd::coeff::limits::LEAN_CONT_GROUP_HEADER_CLASS` and
+// `gkr_eval_isa::bwd::coeff::lean::{LEAN_GROUP_FLAG_C0, LEAN_GROUP_FLAG_C2}`.
 constexpr u16 BWD_SEG_EXT_CLASS_GROUP_HEADER = 2;
 constexpr u16 BWD_SEG_GROUP_FLAG_C0 = 1;
 constexpr u16 BWD_SEG_GROUP_FLAG_C2 = 2;

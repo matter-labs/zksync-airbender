@@ -1854,9 +1854,12 @@ fn annotate_record(
 /// Validate every ATOM against the regime, the payloads and the source table, and
 /// annotate every record with its operands' classes.
 ///
-/// This is `lean::validate_program`'s rule set, restated against the objects
+/// This restates most of `lean::validate_program`'s rule set against the objects
 /// lowering has: that function needs a `CoeffLayer`, which the GPU side never
-/// builds. The release kernel trusts these, so they are checked here or nowhere.
+/// builds. One rule is NOT restated here: a group header's flags-vs-member-union
+/// disagreement (`LeanCodecError::GroupFlagsMismatch`) is validated ISA-side only,
+/// by `lean::validate_program` itself. Everything else the release kernel trusts
+/// is checked here or nowhere.
 ///
 /// The id spaces split with the atom shape (spec §4.4), which is the one thing
 /// this walk knows that a flat record walk cannot: a SINGLETON's coefficient and a

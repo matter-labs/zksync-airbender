@@ -526,7 +526,8 @@ pub mod in_scope {
     ///
     /// A COMPILE-TIME literal standing in for a runtime measurement, which is what
     /// [`LEAN_MAX_REALIZED_PROGRAM_WORDS`]'s `const` identity needs — a `const _`
-    /// assert cannot call the grouping transform. `grouped_capacity_pin` in
+    /// assert cannot call the grouping transform.
+    /// `bwd_lean_program_word_census_sizes_the_descriptor` in
     /// `tests/bwd_coeff_lean_artifact.rs` is the measurement behind it: it runs
     /// `group_coeff_layer -> order_atoms -> encode_program_atoms` over every corpus
     /// coordinate and asserts this literal EXACTLY. Moving it without re-running
@@ -649,7 +650,7 @@ pub mod with_conditional_blake2 {
 
 /// The largest lean program over the whole in-scope corpus, in u16 words.
 ///
-/// A MEASUREMENT, pinned by `grouped_capacity_pin` in
+/// A MEASUREMENT, pinned by `bwd_lean_program_word_census_sizes_the_descriptor` in
 /// `tests/bwd_coeff_lean_artifact.rs`, and by construction it is
 /// `LEAN_WORDS_PER_TERM * in_scope::MAX_RECORDS`: the fixed-width wire makes the
 /// longest program the one with the most RECORDS
