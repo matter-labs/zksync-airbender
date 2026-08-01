@@ -27,18 +27,23 @@
 //!      ([`BwdSegSetup::program_words`]) → a device buffer whose pointer the
 //!      caller patches into the descriptor;
 //!   4. in a CONTINUATION round (round ≥ 1), that round's fold weights →
-//!      [`launch_bwd_seg_build_fold_weights`], enqueued AFTER the claim point and
-//!      BEFORE the round's segment launches; R0 folds nothing and must NOT call
-//!      it. Skipping it is UNDETECTABLE at runtime: a stale or zeroed bank makes
-//!      every fold collapse to its `leaf0`, and a release kernel carries no error
-//!      channel, no assert, and no validation to say so.
+//!      [`stage_bwd_seg_fold_weights`], HOST-computed from the same claim-point
+//!      slice and enqueued BEFORE the round's segment launches (perf review P5 —
+//!      the per-round prelude launch this replaced survives as
+//!      [`launch_bwd_seg_build_fold_weights`], the differential oracle); R0
+//!      folds nothing and must NOT call it. Skipping it is UNDETECTABLE at
+//!      runtime: a stale or zeroed bank makes every fold collapse to its
+//!      `leaf0`, and a release kernel carries no error channel, no assert, and
+//!      no validation to say so.
 //!
 //! Every EXECUTOR launch here stages nothing, allocates nothing, and reads no
 //! device memory, so it adds no obligations to the GPU scheduling contract beyond
 //! "everything above is enqueued on `exec_stream` before the launch".
 //!
 //! One launch here is not an executor: [`launch_bwd_seg_build_fold_weights`] is
-//! the per-round fold-weight prelude, which still stages and allocates nothing
+//! the fold-weight prelude — no longer on any staging path (production uploads
+//! the host-computed bank), kept compiled as the device truth table — which
+//! still stages and allocates nothing
 //! but WRITES the [`bwd_seg_fold_weights_device_ptr`] `__constant__` bank through
 //! that symbol's own address. So the bank is round-mutable shared state, exactly
 //! like the claim point: `exec_stream` order is what makes a round's weights
@@ -79,15 +84,20 @@ use std::ffi::c_void;
 use std::ptr::null_mut;
 use std::sync::OnceLock;
 
+use era_cudart::memory::memory_copy_async;
+use era_cudart::slice::DeviceSlice;
+
 use super::seg_desc::{
-    BwdSegDesc, BwdSegProgPtrDesc, BWD_SEG_CONST_BANK, BWD_SEG_FOLD_WEIGHT_SLOTS, BWD_SEG_MAX_K,
+    BwdSegDesc, BwdSegProgPtrDesc, BWD_SEG_CONST_BANK, BWD_SEG_FOLD_WEIGHT_BASE_D1,
+    BWD_SEG_FOLD_WEIGHT_BASE_D2, BWD_SEG_FOLD_WEIGHT_BASE_D3, BWD_SEG_FOLD_WEIGHT_SLOTS,
+    BWD_SEG_MAX_K,
 };
 use super::seg_lower::{BwdSegLaunchDesc, BwdSegSetup, CoeffMode, ProgramMode};
 use crate::primitives::field::E4;
 use crate::primitives::utils::{set_shared_carveout, smem_pool_bytes_per_sm, WARP_SIZE};
 use crate::prover::gkr::backward::compact::get_main_layer_claim_point_device_ptr;
 use crate::prover::ProverContext;
-use crate::upstream::BwdRegime;
+use crate::upstream::{BwdRegime, Field};
 
 cuda_struct_and_stub! {
     static ab_gkr_bwd_seg_coeff_bank: [E4; BWD_SEG_CONST_BANK];
@@ -241,6 +251,78 @@ pub(crate) fn launch_bwd_seg_build_fold_weights(
         &config,
         &GkrBwdSegBuildFoldWeightsArguments::new(bwd_seg_fold_weights_device_ptr(), round),
     )
+}
+
+/// The round's 11 fold weights, HOST-computed (perf review P5): the mirror of
+/// `seg_build_fold_weights` in `segmented_vm.cu`, slot permutation included —
+/// slot `base(delta) + q - 1` holds `prod_{j < delta} (bit_j(q) ? c_j : 1 - c_j)`
+/// over challenges `c_j = claim_point[round - delta + j]`, with the bit order
+/// baked so the fold's PHYSICAL-offset indexing reads weights without a reversal.
+/// Slots whose `delta > round` are unreachable by lowering and zeroed, exactly as
+/// the kernel zeroes them. The kernel stays compiled as the differential oracle
+/// (`bwd_seg_host_fold_weights_match_the_device_prelude`).
+pub(crate) fn bwd_seg_fold_weights(
+    claim_point: &[E4],
+    round: u32,
+) -> [E4; BWD_SEG_FOLD_WEIGHT_SLOTS] {
+    assert!(round >= 1, "the fold weights are continuation-only");
+    let round = round as usize;
+    let mut weights = [E4::ZERO; BWD_SEG_FOLD_WEIGHT_SLOTS];
+    for (slot, weight) in weights.iter_mut().enumerate() {
+        let delta = if slot < BWD_SEG_FOLD_WEIGHT_BASE_D2 {
+            1
+        } else if slot < BWD_SEG_FOLD_WEIGHT_BASE_D3 {
+            2
+        } else {
+            3
+        };
+        if delta > round {
+            continue;
+        }
+        let base = match delta {
+            1 => BWD_SEG_FOLD_WEIGHT_BASE_D1,
+            2 => BWD_SEG_FOLD_WEIGHT_BASE_D2,
+            _ => BWD_SEG_FOLD_WEIGHT_BASE_D3,
+        };
+        let q = slot - base + 1;
+        let mut w = E4::ONE;
+        for j in 0..delta {
+            let c = claim_point[round - delta + j];
+            let factor = if (q >> (delta - 1 - j)) & 1 != 0 {
+                c
+            } else {
+                let mut one = E4::ONE;
+                one.sub_assign(&c);
+                one
+            };
+            w.mul_assign(&factor);
+        }
+        *weight = w;
+    }
+    weights
+}
+
+/// Stage the round's fold weights from the HOST: compute [`bwd_seg_fold_weights`]
+/// and enqueue the 176-byte upload on `exec_stream`, replacing the per-round
+/// prelude launch. Order per continuation round is unchanged — claim-point
+/// update → this → segment kernels — and R0 rounds must not call it. The
+/// pageable source is consumed before `memory_copy_async` returns (H2D staging
+/// copy), so the stack array's lifetime is sufficient.
+pub(crate) fn stage_bwd_seg_fold_weights(
+    claim_point: &[E4],
+    round: u32,
+    context: &ProverContext,
+) -> CudaResult<()> {
+    let weights = bwd_seg_fold_weights(claim_point, round);
+    // SAFETY: the pointer is the fold-weight symbol's own address with exactly
+    // BWD_SEG_FOLD_WEIGHT_SLOTS slots; the slice is used for one enqueued copy.
+    let slab = unsafe {
+        DeviceSlice::from_raw_parts_mut(
+            bwd_seg_fold_weights_device_ptr(),
+            BWD_SEG_FOLD_WEIGHT_SLOTS,
+        )
+    };
+    memory_copy_async(slab, &weights[..], context.get_exec_stream())
 }
 
 /// The cross-warp reduction shape a launch is specialized for (§3).
@@ -1101,7 +1183,10 @@ pub(crate) fn bwd_seg_blocks_per_sm(
 // above: the fifteen release symbols have exactly one placement, and widening
 // their signatures would make every call site state a constant.
 
-declare_bwd_seg_kernel!(ab_gkr_bwd_seg_r0_const_epi_plane_acc2smem_kernel, BwdSegDesc);
+declare_bwd_seg_kernel!(
+    ab_gkr_bwd_seg_r0_const_epi_plane_acc2smem_kernel,
+    BwdSegDesc
+);
 declare_bwd_seg_kernel!(
     ab_gkr_bwd_seg_r0_const_epi_plane_accbothsmem_kernel,
     BwdSegDesc
