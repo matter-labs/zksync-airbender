@@ -40,11 +40,11 @@ use super::seg_desc::{
 // The walk and its soft bound live in `seg_lower.rs`; the tests consume them.
 use super::seg_lower::{
     assign_class, atom_work, bwd_seg_floor_soft_bound, bwd_seg_traffic_floor, chain_read_column,
-    check_regions_disjoint, deal_atoms, e4_limbs, lower_bwd_seg, member_work, plan_publish_scratch,
-    static_term_work, window_columns, AnnotatedTerm, BwdSegLaunchDesc, BwdSegLowerError,
-    BwdSegRoundBinding, BwdSegSetup, CoeffMode, D2Policy, ProgramMode, PublishRoundLayout,
-    PublishScratchPlan, ResolvedBwdCoeffSourceWindow, ResolvedPublishScratch, SegAtom, SegMember,
-    SourceClass, SourceOrigin, PUBLISH_WINDOW_ABSENT,
+    check_regions_disjoint, chop_atoms, deal_atoms, e4_limbs, lower_bwd_seg, member_work,
+    plan_publish_scratch, static_term_work, window_columns, AnnotatedTerm, BwdSegLaunchDesc,
+    BwdSegLowerError, BwdSegRoundBinding, BwdSegSetup, CoeffMode, D2Policy, ProgramMode,
+    PublishRoundLayout, PublishScratchPlan, ResolvedBwdCoeffSourceWindow, ResolvedPublishScratch,
+    SegAtom, SegMember, SegUnitEmit, SourceClass, SourceOrigin, PUBLISH_WINDOW_ABSENT,
 };
 use crate::primitives::field::{BF, E4};
 use crate::prover::gkr::backward::GkrEqSizes;
@@ -3614,6 +3614,393 @@ fn deal_uniform_costs_degenerate_to_round_robin() {
             }
         }
     }
+}
+
+// ── The K-aware group chop ────────────────────────────────────────────────────
+
+/// The record capacity production hands the chop: the inline descriptor's.
+const CHOP_RECORD_CAPACITY: usize = LEAN_DESCRIPTOR_PROGRAM_WORDS / LEAN_WORDS_PER_TERM;
+
+/// A `+1` linear member over a direct read: `member_work` 1, the chop tests'
+/// unit currency.
+fn chop_linear_member() -> SegMember {
+    SegMember {
+        annotated: AnnotatedTerm {
+            category: TermCategory::C0LinearE4,
+            operands: [Some(SourceClass::E4Direct), None],
+        },
+        immediate: 0,
+    }
+}
+
+/// A dual singleton over direct reads: `static_term_work` 10.
+fn chop_dual_term() -> SegAtom {
+    SegAtom::Term(AnnotatedTerm {
+        category: TermCategory::DualProductE4,
+        operands: [Some(SourceClass::E4Direct), Some(SourceClass::E4Direct)],
+    })
+}
+
+/// `(first record, records)` spans in committed order, the shape
+/// `lower_bwd_seg` computes for its atoms.
+fn chop_spans(atoms: &[SegAtom]) -> Vec<(usize, usize)> {
+    let mut spans = Vec::with_capacity(atoms.len());
+    let mut record = 0usize;
+    for atom in atoms {
+        let span = match atom {
+            SegAtom::Term(_) => 1,
+            SegAtom::Group { members, .. } => 1 + members.len(),
+        };
+        spans.push((record, span));
+        record += span;
+    }
+    spans
+}
+
+/// An atom at or below the chop threshold passes through whole — the units are
+/// the atoms one-for-one, groups included, and nothing about the deal changes.
+#[test]
+fn chop_leaves_light_atoms_whole() {
+    let atoms = vec![
+        chop_dual_term(),
+        SegAtom::Group {
+            core: 2,
+            has_c0: true,
+            has_c2: false,
+            members: vec![chop_linear_member(); 4],
+        },
+        chop_dual_term(),
+        chop_dual_term(),
+    ];
+    let spans = chop_spans(&atoms);
+    // total 36, k 1: the threshold is 9 and the group costs 6.
+    let units = chop_atoms(&atoms, &spans, 1, CHOP_RECORD_CAPACITY);
+    assert_eq!(units.len(), atoms.len(), "one unit per atom");
+    for ((unit, atom), &(first, span)) in units.iter().zip(&atoms).zip(&spans) {
+        assert_eq!(unit.cost, atom_work(atom), "a whole atom keeps its cost");
+        assert_eq!(unit.emit, SegUnitEmit::Atom { first, span });
+    }
+}
+
+/// The chop rule itself: a group above `total / (4 k)` splits into
+/// `ceil(work / threshold)` even whole-member chunks, first chunks taking the
+/// remainder, every chunk sharing the header's core and flags by construction.
+#[test]
+fn chop_splits_a_dominant_group_into_even_whole_member_chunks() {
+    let atoms = vec![
+        SegAtom::Group {
+            core: 2,
+            has_c0: true,
+            has_c2: false,
+            members: vec![chop_linear_member(); 12],
+        },
+        chop_dual_term(),
+    ];
+    let spans = chop_spans(&atoms);
+    // total 24, k 3: threshold 2, the group costs 14 -> ceil(14 / 2) = 7 chunks,
+    // clamped to 12 / 2 = 6 of two members each.
+    let units = chop_atoms(&atoms, &spans, 3, CHOP_RECORD_CAPACITY);
+    assert_eq!(units.len(), 6 + 1);
+    for (chunk, unit) in units[..6].iter().enumerate() {
+        assert_eq!(
+            unit.emit,
+            SegUnitEmit::GroupChunk {
+                header: 0,
+                first_member: 1 + 2 * chunk,
+                members: 2,
+            },
+            "chunk {chunk}: consecutive whole members after the header",
+        );
+        assert_eq!(unit.cost, 2 + 2, "chunk {chunk}: two members plus the core");
+    }
+    assert_eq!(units[6].emit, SegUnitEmit::Atom { first: 13, span: 1 });
+    assert_eq!(units[6].cost, 10);
+}
+
+/// Chunk costs are computed over the chunk's OWN members — heterogeneous members
+/// land where they land — and each chunk repays the core multiply in full, which
+/// is the only work the chop adds.
+#[test]
+fn chop_prices_each_chunk_by_its_own_members() {
+    let dual_member = SegMember {
+        annotated: AnnotatedTerm {
+            category: TermCategory::DualProductE4,
+            operands: [Some(SourceClass::E4Direct), Some(SourceClass::E4Direct)],
+        },
+        immediate: 1,
+    };
+    let group = SegAtom::Group {
+        core: 3,
+        has_c0: true,
+        has_c2: true,
+        members: vec![
+            dual_member,
+            chop_linear_member(),
+            chop_linear_member(),
+            chop_linear_member(),
+        ],
+    };
+    let group_work = atom_work(&group);
+    assert_eq!(group_work, 8 + 3 + 4, "the fixture's arithmetic");
+    let atoms = vec![group, chop_dual_term()];
+    let spans = chop_spans(&atoms);
+    // total 25, k 2: threshold 3, ceil(15 / 3) = 5 clamped to 4 / 2 = 2 chunks.
+    let units = chop_atoms(&atoms, &spans, 2, CHOP_RECORD_CAPACITY);
+    assert_eq!(units.len(), 2 + 1);
+    assert_eq!(units[0].cost, 8 + 1 + 4, "the dual-heavy front chunk");
+    assert_eq!(units[1].cost, 1 + 1 + 4, "the linear tail chunk");
+    assert_eq!(
+        units[0].cost + units[1].cost,
+        group_work + 4,
+        "the chop's whole overhead is one repaid core",
+    );
+}
+
+/// No chunk falls below two members (a one-member group is not a group — the
+/// wire's own `N >= 2` rule), so a group under four members never chops at all
+/// and a five-member group tops out at two chunks.
+#[test]
+fn chop_floors_chunks_at_two_members() {
+    let group = |members: usize| SegAtom::Group {
+        core: 2,
+        has_c0: true,
+        has_c2: false,
+        members: vec![chop_linear_member(); members],
+    };
+
+    // Five members, threshold 1: ceil(7 / 1) = 7 wants 7 chunks, the floor
+    // allows two — three members then two.
+    let atoms = vec![group(5)];
+    let units = chop_atoms(&atoms, &chop_spans(&atoms), 8, CHOP_RECORD_CAPACITY);
+    assert_eq!(units.len(), 2);
+    assert_eq!(
+        units[0].emit,
+        SegUnitEmit::GroupChunk {
+            header: 0,
+            first_member: 1,
+            members: 3,
+        },
+    );
+    assert_eq!(
+        units[1].emit,
+        SegUnitEmit::GroupChunk {
+            header: 0,
+            first_member: 4,
+            members: 2,
+        },
+    );
+
+    // Three members can only ever make ONE chunk, which is no chop at all.
+    let atoms = vec![group(3)];
+    let units = chop_atoms(&atoms, &chop_spans(&atoms), 8, CHOP_RECORD_CAPACITY);
+    assert_eq!(units.len(), 1);
+    assert_eq!(units[0].emit, SegUnitEmit::Atom { first: 0, span: 4 });
+    assert_eq!(units[0].cost, 3 + 2);
+}
+
+/// Every chunk header the chop adds is a record the descriptor must hold, so the
+/// chop spends a RECORD BUDGET — capacity minus the artifact's own records — in
+/// committed order, degrading each group's chunk count before dropping the chop
+/// entirely. A program already at capacity chops nothing and lowers exactly as
+/// before.
+#[test]
+fn chop_spends_the_record_budget_in_committed_order() {
+    let group = |members: usize| SegAtom::Group {
+        core: 2,
+        has_c0: true,
+        has_c2: false,
+        members: vec![chop_linear_member(); members],
+    };
+    // Two eight-member groups: 18 records, and at k 8 (threshold 1) each wants
+    // ceil(10 / 1) = 10 chunks, clamped by the member floor to 4 — three extra
+    // headers apiece.
+    let atoms = vec![group(8), group(8)];
+    let spans = chop_spans(&atoms);
+
+    // Budget 4: the first group takes its full 4 chunks (3 headers), the second
+    // is degraded to the 2 chunks the last header allows.
+    let units = chop_atoms(&atoms, &spans, 8, 18 + 4);
+    let shapes: Vec<_> = units.iter().map(|unit| unit.emit).collect();
+    assert_eq!(
+        shapes,
+        vec![
+            SegUnitEmit::GroupChunk {
+                header: 0,
+                first_member: 1,
+                members: 2,
+            },
+            SegUnitEmit::GroupChunk {
+                header: 0,
+                first_member: 3,
+                members: 2,
+            },
+            SegUnitEmit::GroupChunk {
+                header: 0,
+                first_member: 5,
+                members: 2,
+            },
+            SegUnitEmit::GroupChunk {
+                header: 0,
+                first_member: 7,
+                members: 2,
+            },
+            SegUnitEmit::GroupChunk {
+                header: 9,
+                first_member: 10,
+                members: 4,
+            },
+            SegUnitEmit::GroupChunk {
+                header: 9,
+                first_member: 14,
+                members: 4,
+            },
+        ],
+    );
+
+    // Budget 0: no chop at all — the whole atoms, verbatim.
+    let units = chop_atoms(&atoms, &spans, 8, 18);
+    let shapes: Vec<_> = units.iter().map(|unit| unit.emit).collect();
+    assert_eq!(
+        shapes,
+        vec![
+            SegUnitEmit::Atom { first: 0, span: 9 },
+            SegUnitEmit::Atom { first: 9, span: 9 },
+        ],
+    );
+}
+
+/// The chop end to end: a group that dominates its program is emitted as SEVERAL
+/// headers sharing the original's core and flags, every member exactly once, and
+/// the lists it used to unbalance come out even.
+#[test]
+fn a_dominant_group_chops_across_lists_and_rebalances() {
+    // One eight-member group (work 10) and two dual singletons (work 10 each):
+    // whole atoms at k 2 deal 20 against 10; chopped, both lists load 18.
+    let members: Vec<[u16; 4]> = (0..8)
+        .map(|index| record(0, index % 2, index % 2, SOURCE_NONE))
+        .collect();
+    let mut records = vec![header(3, 8, LEAN_GROUP_FLAG_C0)];
+    records.extend(&members);
+    records.push(record(1, 2, 0, 1));
+    records.push(record(1, 4, 0, 1));
+    let artifact = artifact(
+        ArtifactRegime::Ext,
+        3,
+        vec![ext_output(1, &[0, 1])],
+        slots(&[(0, 0), (0, 1)]),
+        grouped_program(&records, 10),
+    );
+    let k = 2;
+    let setup = lower_with_immediates(
+        &artifact,
+        2,
+        bound(Some(e4_column(0)), 2, 2, false),
+        2,
+        k,
+        &[],
+    )
+    .expect("a legal round");
+    let desc = inline_desc(&setup);
+
+    // total 30, k 2: threshold 3, the group (10) chops into ceil(10 / 3) = 4
+    // chunks of two members — four headers on top of the original's one.
+    assert_eq!(
+        desc.record_count, 14,
+        "8 members + 4 headers + 2 singletons"
+    );
+    assert_eq!(usize::from(desc.list_offset[k]), 14 * LEAN_WORDS_PER_TERM);
+
+    let mut seen_headers = 0usize;
+    let mut seen_members: Vec<[u16; 4]> = Vec::new();
+    let mut singletons = 0usize;
+    for list in 0..k {
+        let lo = usize::from(desc.list_offset[list]);
+        let hi = usize::from(desc.list_offset[list + 1]);
+        let records: Vec<&[u16]> = desc.program[lo..hi]
+            .chunks_exact(LEAN_WORDS_PER_TERM)
+            .collect();
+        let mut index = 0usize;
+        while index < records.len() {
+            let word0 = records[index][0];
+            if (word0 >> 13) != LEAN_CONT_GROUP_HEADER_CLASS {
+                singletons += 1;
+                index += 1;
+                continue;
+            }
+            seen_headers += 1;
+            assert_eq!(
+                word0,
+                (LEAN_CONT_GROUP_HEADER_CLASS << 13) | 3,
+                "list {list}: a chunk header keeps the original core",
+            );
+            let count = usize::from(records[index][1]);
+            assert_eq!(count, 2, "list {list}: even two-member chunks");
+            assert_eq!(records[index][2], LEAN_GROUP_FLAG_C0, "list {list}: flags");
+            assert_eq!(records[index][3], 0, "list {list}: the reserved zero");
+            assert!(index + count < records.len(), "list {list}: members inside");
+            for member in &records[index + 1..=index + count] {
+                seen_members.push([member[0], member[1], member[2], member[3]]);
+            }
+            index += 1 + count;
+        }
+    }
+    assert_eq!(seen_headers, 4);
+    assert_eq!(singletons, 2);
+    let mut expected = members;
+    expected.sort_unstable();
+    seen_members.sort_unstable();
+    assert_eq!(
+        seen_members, expected,
+        "every member exactly once, verbatim"
+    );
+
+    // Chunk costs 4 each, duals 10: the deal loads both lists to 18.
+    assert!(
+        (setup.work.max_over_mean - 1.0).abs() < 1e-9,
+        "the chopped deal is balanced: {:?}",
+        setup.work,
+    );
+}
+
+/// The chop never grows a stream past the inline descriptor: a program one record
+/// short of the 8,624-word capacity gets exactly one extra header's worth of
+/// chop — two chunks — and lowers AT capacity, never over it.
+#[test]
+fn chop_clamps_to_the_descriptor_capacity() {
+    // 2155 records = 8620 words; at k 8 the threshold alone would want 33
+    // chunks, but the budget is ONE record.
+    let mut records = vec![header(2, 2154, LEAN_GROUP_FLAG_C0)];
+    records.extend(std::iter::repeat_n(record(0, 0, 0, SOURCE_NONE), 2154));
+    let artifact = artifact(
+        ArtifactRegime::Ext,
+        3,
+        vec![ext_output(1, &[0, 1])],
+        slots(&[(0, 0), (0, 1)]),
+        grouped_program(&records, 2154),
+    );
+    assert_eq!(artifact.program.words.len(), 8620, "the fixture's premise");
+    let setup = lower_with_immediates(
+        &artifact,
+        2,
+        bound(Some(e4_column(0)), 2, 2, false),
+        2,
+        8,
+        &[],
+    )
+    .expect("the chop clamps instead of overflowing");
+    let desc = inline_desc(&setup);
+    assert_eq!(
+        usize::from(desc.list_offset[8]),
+        LEAN_DESCRIPTOR_PROGRAM_WORDS,
+        "the emitted stream lands exactly at capacity",
+    );
+    assert_eq!(usize::from(desc.record_count), 2156);
+    let headers: Vec<u16> = desc.program[..LEAN_DESCRIPTOR_PROGRAM_WORDS]
+        .chunks_exact(LEAN_WORDS_PER_TERM)
+        .filter(|record| (record[0] >> 13) == LEAN_CONT_GROUP_HEADER_CLASS)
+        .map(|record| record[1])
+        .collect();
+    assert_eq!(headers, vec![1077, 1077], "two even chunks from one header");
 }
 
 /// **R0 is untouched.** Its split is `split_round_robin` over positions, and this

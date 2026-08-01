@@ -2120,17 +2120,15 @@ fn bwd_seg_grouped_synthetic_matches_the_cpu_oracles() {
         &context,
     );
 
-    // NON-VACUITY, first and separately: the lowered descriptor really carries two
-    // group headers with four and two members, and the immediate table they index.
-    // A descriptor that had come out ungrouped would satisfy every parity assertion
-    // below without the kernel's group branch ever executing, which is the one
-    // failure this gate cannot detect from a value.
+    // NON-VACUITY, first and separately: the lowered descriptor really carries
+    // group headers covering all six grouped members, and the immediate table they
+    // index. A descriptor that had come out ungrouped would satisfy every parity
+    // assertion below without the kernel's group branch ever executing, which is
+    // the one failure this gate cannot detect from a value. The deal may CHOP the
+    // four-member group into whole-member chunks, so the pin is stated over the
+    // emitted headers rather than the artifact's two.
     let setup = fixture.lower_with(SegShape::inline(4, CoeffMode::Constant), &eq);
     let desc = SegFixture::inline_desc(&setup);
-    assert_eq!(
-        desc.record_count, GROUPED_SYNTHETIC_RECORDS,
-        "the descriptor's record count is terms PLUS headers"
-    );
     assert_eq!(
         usize::from(desc.num_immediates),
         GROUPED_SYNTHETIC_IMMEDIATES.len(),
@@ -2143,11 +2141,19 @@ fn bwd_seg_grouped_synthetic_matches_the_cpu_oracles() {
             headers.push(record[1]);
         }
     }
-    headers.sort_unstable();
     assert_eq!(
-        headers,
-        vec![2u16, 4],
-        "the dealt stream must carry both headers, with their own member counts"
+        usize::from(desc.record_count),
+        usize::from(GROUPED_SYNTHETIC_RECORDS) - 2 + headers.len(),
+        "the descriptor's record count is terms PLUS emitted headers"
+    );
+    assert_eq!(
+        headers.iter().map(|&count| u32::from(count)).sum::<u32>(),
+        6,
+        "every grouped member rides under a header"
+    );
+    assert!(
+        headers.len() >= 2 && headers.iter().all(|&count| count >= 2),
+        "grouped headers, none below the wire's two-member floor: {headers:?}"
     );
     drop(setup);
 

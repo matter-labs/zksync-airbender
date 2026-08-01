@@ -589,6 +589,134 @@ pub(crate) fn deal_atoms(costs: &[u64], k: usize) -> Vec<Vec<usize>> {
     lists
 }
 
+/// How the stream emits one deal unit.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum SegUnitEmit {
+    /// One whole atom's records, copied verbatim: `(first record, records)`.
+    Atom { first: usize, span: usize },
+    /// One chunk of a chopped group: a SYNTHESIZED header — the original's
+    /// `word0` (class | core) and `word2` (flags) with the member count replaced
+    /// and the reserved `word3` zero — followed by `members` member records
+    /// copied verbatim from record `first_member`.
+    GroupChunk {
+        /// The original header's record index.
+        header: usize,
+        /// The chunk's first MEMBER record index.
+        first_member: usize,
+        /// The chunk's member count, at least two.
+        members: usize,
+    },
+}
+
+/// One unit the Ext deal places after [`chop_atoms`]: a whole atom, or one chunk
+/// of a group too heavy for a `K`-way balance.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct SegDealUnit {
+    /// The unit's static work: [`atom_work`] for a whole atom; for a chunk, its
+    /// own members' [`member_work`] plus the core multiply, which every chunk
+    /// repays in full.
+    pub cost: u64,
+    pub emit: SegUnitEmit,
+}
+
+/// The chop threshold's denominator: an atom heavier than `total / (4 K)` chops.
+///
+/// A quarter of a list's fair share bounds the deal's imbalance at
+/// `max <= mean + max_unit <= 1.25 x mean` while capping the repaid cores at
+/// `4 K` extra headers per program — both small against `total` for any program
+/// heavy enough to matter.
+const SEG_CHOP_DIVISOR: u64 = 4;
+
+/// Chop the committed atoms into the Ext deal's units.
+///
+/// Any GROUP atom whose [`atom_work`] exceeds `total / (SEG_CHOP_DIVISOR * k)`
+/// splits into `ceil(work / threshold)` even whole-member chunks — first chunks
+/// take the remainder — clamped so no chunk falls below two members (the wire's
+/// own `N >= 2` group rule). Every other atom, and every group under four
+/// members, passes through whole.
+///
+/// Every chunk header is a record the emitted stream must hold, so the chop
+/// additionally spends a RECORD BUDGET — `record_capacity` minus the artifact's
+/// own records — in committed order, degrading a group's chunk count to what the
+/// remaining budget allows before dropping its chop entirely. A program already
+/// at capacity chops nothing and lowers byte-identically to the unchopped deal;
+/// the capacity is the INLINE descriptor's in both program families, so the two
+/// families keep one stream.
+///
+/// Chunks keep the group's committed position and stay adjacent, so the deal's
+/// cross-warp temporal alignment is untouched: the chop only refines the deal's
+/// GRANULARITY, never its order. Value-exactness is field distributivity —
+/// `core * (A + B) = core * A + core * B` holds exactly in the extension field,
+/// so a chopped group accumulates the same value its whole form does.
+pub(crate) fn chop_atoms(
+    seg_atoms: &[SegAtom],
+    atom_spans: &[(usize, usize)],
+    k: usize,
+    record_capacity: usize,
+) -> Vec<SegDealUnit> {
+    let total: u64 = seg_atoms.iter().map(atom_work).sum();
+    let threshold = (total / (SEG_CHOP_DIVISOR * k as u64)).max(1);
+    let records = atom_spans
+        .last()
+        .map(|&(first, span)| first + span)
+        .unwrap_or(0);
+    let mut budget = record_capacity.saturating_sub(records) as u64;
+    let mut units = Vec::with_capacity(seg_atoms.len());
+    for (atom, &(first, span)) in seg_atoms.iter().zip(atom_spans) {
+        let cost = atom_work(atom);
+        let whole = SegDealUnit {
+            cost,
+            emit: SegUnitEmit::Atom { first, span },
+        };
+        let SegAtom::Group {
+            has_c0,
+            has_c2,
+            members,
+            ..
+        } = atom
+        else {
+            units.push(whole);
+            continue;
+        };
+        let chunks = if cost > threshold {
+            cost.div_ceil(threshold)
+                .min(members.len() as u64 / 2)
+                .min(1 + budget)
+        } else {
+            1
+        };
+        if chunks <= 1 {
+            units.push(whole);
+            continue;
+        }
+        budget -= chunks - 1;
+        let chunks = chunks as usize;
+        let core_work = 2 * (u64::from(*has_c0) + u64::from(*has_c2));
+        let base = members.len() / chunks;
+        let extra = members.len() % chunks;
+        let mut member = 0usize;
+        for chunk in 0..chunks {
+            let count = base + usize::from(chunk < extra);
+            let cost: u64 = members[member..member + count]
+                .iter()
+                .map(member_work)
+                .sum::<u64>()
+                + core_work;
+            units.push(SegDealUnit {
+                cost,
+                emit: SegUnitEmit::GroupChunk {
+                    header: first,
+                    first_member: first + 1 + member,
+                    members: count,
+                },
+            });
+            member += count;
+        }
+        debug_assert_eq!(member, members.len(), "every member lands in one chunk");
+    }
+    units
+}
+
 /// The `K`-split's balance, measured with [`atom_work`].
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct ListWorkStats {
@@ -1159,7 +1287,9 @@ pub(crate) fn lower_bwd_seg(
     // Decoded as ATOMS, not as a flat record list: a group is one unit for the
     // deal (spec §4.5), and its header's member count is what makes the Ext walk
     // self-delimiting. `atom_spans[i]` is atom `i`'s `(first record, records)`,
-    // which is the whole-atom word span the stream copies.
+    // the whole-atom word span the stream copies — or, for a group
+    // [`chop_atoms`] splits, the span its chunk headers and member copies are
+    // addressed within.
     let atoms = decode_atoms(&artifact.program, regime)?;
     let mut atom_spans = Vec::with_capacity(atoms.len());
     let mut record_count = 0usize;
@@ -1399,33 +1529,89 @@ pub(crate) fn lower_bwd_seg(
     }
 
     // ── The K-split ──────────────────────────────────────────────────────────
-    // Both regimes split ATOMS and both emit whole atom spans; only the RULE
-    // differs. R0 keeps `split_round_robin` over positions verbatim — its atoms are
-    // its records, so the emitted bytes are exactly the pre-group stream's. Ext
-    // takes the least-loaded deal (spec §4.5), which needs the per-atom costs and
-    // is what keeps a group off a `list_offset` boundary.
-    let costs: Vec<u64> = seg_atoms.iter().map(atom_work).collect();
+    // Both regimes split UNITS and both emit whole unit spans; only the RULE
+    // differs. R0 keeps `split_round_robin` over positions verbatim — its atoms
+    // are its records, no group exists to chop, so the emitted bytes are exactly
+    // the pre-group stream's. Ext first chops over-heavy groups into whole-member
+    // chunks (the deal is whole-unit, so an unchopped dominant group would pin one
+    // list at its own cost), then takes the least-loaded deal (spec §4.5) over the
+    // units, which is what keeps a group — or a chunk — off a `list_offset`
+    // boundary.
+    let units: Vec<SegDealUnit> = if regime == BwdRegime::R0 {
+        seg_atoms
+            .iter()
+            .zip(&atom_spans)
+            .map(|(atom, &(first, span))| SegDealUnit {
+                cost: atom_work(atom),
+                emit: SegUnitEmit::Atom { first, span },
+            })
+            .collect()
+    } else {
+        chop_atoms(
+            &seg_atoms,
+            &atom_spans,
+            k,
+            LEAN_DESCRIPTOR_PROGRAM_WORDS / LEAN_WORDS_PER_TERM,
+        )
+    };
+    let costs: Vec<u64> = units.iter().map(|unit| unit.cost).collect();
     let lists = if regime == BwdRegime::R0 {
-        let positions: Vec<usize> = (0..atoms.len()).collect();
+        let positions: Vec<usize> = (0..units.len()).collect();
         split_round_robin(&positions, k)
     } else {
         deal_atoms(&costs, k)
     };
     let mut stream: Vec<u16> = Vec::with_capacity(artifact.program.words.len());
     let mut list_offset = vec![0u16; k + 1];
-    for (list, list_atoms) in lists.iter().enumerate() {
+    for (list, list_units) in lists.iter().enumerate() {
         list_offset[list] = u16::try_from(stream.len())
             .map_err(|_| BwdSegLowerError::ProgramOffsetOverflow { words })?;
-        for &atom in list_atoms {
-            // The WHOLE atom: a header and its members are contiguous on the wire
-            // and stay contiguous in the list, so no group straddles a boundary.
-            let (first, span) = atom_spans[atom];
-            let at = first * LEAN_WORDS_PER_TERM;
-            stream.extend_from_slice(&artifact.program.words[at..at + span * LEAN_WORDS_PER_TERM]);
+        for &unit in list_units {
+            match units[unit].emit {
+                // The WHOLE unit: a header and its members are contiguous on the
+                // wire and stay contiguous in the list, so no group straddles a
+                // boundary.
+                SegUnitEmit::Atom { first, span } => {
+                    let at = first * LEAN_WORDS_PER_TERM;
+                    stream.extend_from_slice(
+                        &artifact.program.words[at..at + span * LEAN_WORDS_PER_TERM],
+                    );
+                }
+                // One chunk of a chopped group: the original header with the member
+                // count replaced (`word0` is class | core, `word2` the flags,
+                // `word3` the canonical zero), then the chunk's members verbatim —
+                // contiguous for the same reason.
+                SegUnitEmit::GroupChunk {
+                    header,
+                    first_member,
+                    members,
+                } => {
+                    let at = header * LEAN_WORDS_PER_TERM;
+                    stream.push(artifact.program.words[at]);
+                    stream.push(members as u16);
+                    stream.push(artifact.program.words[at + 2]);
+                    stream.push(0);
+                    let at = first_member * LEAN_WORDS_PER_TERM;
+                    stream.extend_from_slice(
+                        &artifact.program.words[at..at + members * LEAN_WORDS_PER_TERM],
+                    );
+                }
+            }
         }
     }
     list_offset[k] = u16::try_from(stream.len())
         .map_err(|_| BwdSegLowerError::ProgramOffsetOverflow { words })?;
+    // The chop only ever ADDS records, so the inline capacity re-checks the
+    // EMITTED stream — the cap is a statement about what the descriptor carries
+    // and the kernel walks, not about the artifact. The record count follows the
+    // same authority.
+    if prog == ProgramMode::Inline && stream.len() > LEAN_DESCRIPTOR_PROGRAM_WORDS {
+        return Err(BwdSegLowerError::ProgramOverflow {
+            words: stream.len(),
+            cap: LEAN_DESCRIPTOR_PROGRAM_WORDS,
+        });
+    }
+    let record_count = stream.len() / LEAN_WORDS_PER_TERM;
 
     let work = list_work_stats(&lists, &costs);
 
