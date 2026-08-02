@@ -10,7 +10,6 @@
 //! layer, and an overlap is an error rather than a precedence rule.
 
 use std::fmt;
-use std::sync::OnceLock;
 
 /// Env var naming the layers the forward interpreter VM runs: a comma-separated
 /// list of layer indices (`AB_GKR_FWD_VM_LAYERS=0`). Unset means no VM layers.
@@ -134,16 +133,22 @@ pub(crate) fn plan_forward_paths(
     Ok(ForwardPaths { paths })
 }
 
-/// The VM layer selection from the environment. Read once, like
-/// [`super::generated_layer0::generated_layer0_enabled`]; a malformed value
-/// panics rather than degrading to an empty selection, so a typo cannot look
-/// like "the VM was not asked for".
-pub(crate) fn vm_layers_from_env() -> &'static [usize] {
-    static LAYERS: OnceLock<Vec<usize>> = OnceLock::new();
-    LAYERS.get_or_init(|| match std::env::var(AB_GKR_FWD_VM_LAYERS_ENV) {
+/// The VM layer selection from the environment.
+///
+/// Read fresh on every forward pass, NOT cached in a `OnceLock` the way
+/// [`super::generated_layer0::generated_layer0_enabled`] is. The A/B harness
+/// alternates VM-on and VM-off proofs inside one process, and a cached read
+/// would freeze whichever arm happened to run first — silently turning the
+/// comparison into the same arm twice. Parsing a short string once per proof
+/// is free against a ~200 ms pass.
+///
+/// A malformed value panics rather than degrading to an empty selection, so a
+/// typo cannot look like "the VM was not asked for".
+pub(crate) fn vm_layers_from_env() -> Vec<usize> {
+    match std::env::var(AB_GKR_FWD_VM_LAYERS_ENV) {
         Ok(value) => parse_vm_layers(&value).unwrap_or_else(|err| panic!("{err}")),
         Err(_) => Vec::new(),
-    })
+    }
 }
 
 fn parse_vm_layers(value: &str) -> Result<Vec<usize>, ForwardPathError> {

@@ -272,6 +272,10 @@ where
     Sub: BinaryOp<E, BF, E>,
     Sub: BinaryOp<BF, BF, BF>,
 {
+    // The forward VM's committed schedule was searched against the DAG lowered
+    // from the RAW artifact, so its program must be compiled from that, not
+    // from the scratch-rewritten one the storage layout wants.
+    let raw_compiled_circuit = compiled_circuit;
     let compiled_circuit = normalize_compiled_circuit_for_gpu(compiled_circuit.clone());
     let trace_len = compiled_circuit.trace_len;
     let stream = context.get_exec_stream();
@@ -349,12 +353,32 @@ where
             );
         }
     }
+    assert!(
+        vm_layers.iter().all(|&l| l == 0),
+        "{} currently wires only layer 0; got {vm_layers:?}",
+        path::AB_GKR_FWD_VM_LAYERS_ENV,
+    );
     let forward_paths = path::plan_forward_paths(
         compiled_circuit.layers.len(),
         use_generated_layer0 && is_add_sub_cached,
-        vm_layers,
+        &vm_layers,
     )
     .unwrap_or_else(|err| panic!("forward path selection is invalid: {err}"));
+
+    // Compile the VM program once, before the loop: a stale or mismatched
+    // schedule must stop the proof here, not mid-pass with layers already
+    // scheduled on the stream.
+    let vm_program = (!vm_layers.is_empty()).then(|| {
+        let program = vm::program::compiled_program(raw_compiled_circuit)
+            .unwrap_or_else(|err| panic!("forward VM program: {err}"));
+        assert_eq!(
+            program.budget, vm::FWD_VM_S4_BUDGET_LANES as usize,
+            "the forward VM release kernel is instantiated for a \
+             {}-lane cell budget",
+            vm::FWD_VM_S4_BUDGET_LANES,
+        );
+        program
+    });
 
     for (layer_idx, layer) in compiled_circuit.layers.iter().enumerate() {
         let layer_range = Range::new(format!("gkr.forward.layer.{layer_idx}"))?;
@@ -373,6 +397,7 @@ where
             decoder_predicate_address,
             trace_len,
             forward_paths.path(layer_idx),
+            vm_program,
             context,
         )?;
         layer_range.end(stream)?;
@@ -445,6 +470,7 @@ fn schedule_layer<E>(
     decoder_predicate_address: Option<GKRAddress>,
     trace_len: usize,
     forward_path: ForwardPath,
+    vm_program: Option<&'static vm::program::CompiledCircuit>,
     context: &ProverContext,
 ) -> CudaResult<()>
 where
@@ -486,7 +512,25 @@ where
             tracing_ranges.push(generated_range);
             return Ok(());
         }
-        ForwardPath::Vm => unreachable!("the forward VM launch is wired in Task 4"),
+        ForwardPath::Vm => {
+            let vm_range = Range::new(format!("gkr.forward.layer.{layer_idx}.vm"))?;
+            vm_range.start(stream)?;
+            assert_forward_layer_invariants(layer_idx, total_layers, layer);
+            let program = vm_program.expect("a Vm path implies a compiled VM program");
+            vm::production_bind::schedule_vm_layer0(
+                &program.layers[layer_idx],
+                program.budget as u32,
+                storage,
+                stage1,
+                forward_setup,
+                external_challenges,
+                trace_len,
+                context,
+            )?;
+            vm_range.end(stream)?;
+            tracing_ranges.push(vm_range);
+            return Ok(());
+        }
     }
 
     let cached_relations_ref = &layer.cached_relations;
