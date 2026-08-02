@@ -41,11 +41,20 @@ namespace airbender::prover::gkr {
 
 // One bank slot's recipe: a span of monomials in the layer's monomial table.
 //
-// Both fields are `u32`, where `immediate_factor_recipe_header` gets away with a
-// `u16` offset and a `u8` count. That is the same measurement talking: a grouped
-// Ext core coefficient is a POLYNOMIAL in the batching challenge — blake2 L0's
-// widest is **297 monomials**, past a `u8` — and a bank of those runs the table
-// past `u16` as well.
+// `immediate_factor_recipe_header` gets away with a `u16` offset and a `u8` count.
+// The two fields here are wider for DIFFERENT reasons, and only one of them is a
+// measurement:
+//
+//   * the COUNT is measured: a grouped Ext core coefficient is a POLYNOMIAL in the
+//     batching challenge and blake2 L0's widest holds **297 monomials**, past a `u8`;
+//   * the OFFSET is a CAPACITY bound, not a census result. The corpus's largest
+//     monomial table is 1,662 entries — far inside `u16` — but the format permits
+//     `BWD_SEG_CONST_BANK` (1,152) recipes of up to 297 monomials, i.e. 342,144
+//     entries, which does not fit. `u32` is chosen over a `u16` plus a typed
+//     rejection because the rejection would refuse a layer the format allows.
+//
+// `u32` for both keeps the struct 8 bytes with natural alignment, so the count's
+// spare range costs nothing over a `u16` plus padding.
 struct bwd_seg_coeff_recipe {
   u32 monomial_offset;
   u32 monomial_count;

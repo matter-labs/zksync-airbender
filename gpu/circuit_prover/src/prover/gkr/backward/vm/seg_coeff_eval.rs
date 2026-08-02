@@ -226,9 +226,16 @@ fn perm_slot_index(slot: &PermutationSlot) -> u8 {
 
 /// CUDA mirror: `bwd_seg_coeff_recipe`. One bank slot's span of monomials.
 ///
-/// Both fields are `u32` where the flat lineage's header gets away with `u16` + `u8`:
-/// a grouped Ext core coefficient is a polynomial in the batching challenge, and
-/// blake2 L0's widest holds 297 monomials.
+/// The flat lineage's header gets away with a `u16` offset and a `u8` count; these
+/// are wider for different reasons, and only the count's is a measurement.
+///
+/// The COUNT is measured: a grouped Ext core coefficient is a polynomial in the
+/// batching challenge, and blake2 L0's widest holds **297** monomials — past a `u8`.
+/// The OFFSET is a capacity bound: the corpus's largest table is 1,662 entries, well
+/// inside a `u16`, but the format permits [`BWD_SEG_CONST_BANK`] recipes of up to 297
+/// monomials (342,144 entries), which does not fit — and a `u16` plus a typed
+/// rejection would refuse a layer the format allows. `u32` for both keeps the struct
+/// 8 bytes with natural alignment, so the count's spare range is free.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) struct SegCoeffRecipe {
