@@ -88,6 +88,10 @@ use super::seg::{
     bwd_seg_epilogue_smem_bytes, bwd_seg_fold_weights_device_ptr, launch_bwd_seg,
     launch_bwd_seg_build_fold_weights, BwdSegEpilogue,
 };
+use super::seg_coeff_eval::{
+    build_seg_coeff_eval_tables, schedule_bwd_seg_coeff_bank_fill, SegChallengeSlab,
+    SegCoeffEvalTables, BWD_SEG_CHALLENGE_SLOTS,
+};
 use super::seg_compile::{
     chained_round_storage, download_e4, lean_coordinate, seg_chained_model, seg_claim_point,
     seg_ext, seg_host_model, seg_publish_poison, seg_round_binding, short_name,
@@ -539,6 +543,23 @@ struct SegRun {
 /// speed choice: reusing one uploaded storage and one publish scratch across `K` is
 /// what makes "every `K` produces bit-identical sums" a statement about the KERNEL
 /// rather than about two independently generated inputs.
+/// Where a `Constant`-loader launch's coefficient bank comes from.
+///
+/// The ladder's own cells use [`Self::HostStaged`] because their bank values are
+/// synthetic — the point there is the VM, not the coefficients. The production path
+/// is the other arm, and it is a DIFFERENT claim: that a kernel's `__constant__`
+/// reads observe a write another kernel made through the symbol's address.
+enum SegBankSource {
+    /// The harness memcpy's the payload lowering produced.
+    HostStaged,
+    /// `seg_coeff_eval`'s kernel computes the payload on the device from the layer's
+    /// RECIPES and the round's challenge slab.
+    DeviceEvaluated {
+        tables: SegCoeffEvalTables,
+        slab: DeviceAllocation<E4>,
+    },
+}
+
 struct SegFixture {
     coord: Arc<SegCoordinate>,
     /// The semantic layer, with this cell's `c_init` applied.
@@ -559,6 +580,9 @@ struct SegFixture {
     /// `2 * rows` slots, reused by every launch of this cell and re-poisoned before
     /// each one.
     contributions: DeviceAllocation<E4>,
+    /// [`SegBankSource::HostStaged`] unless a cell is specifically testing the
+    /// device fill.
+    bank_source: SegBankSource,
 }
 
 impl SegFixture {
@@ -624,6 +648,7 @@ impl SegFixture {
             lean: HashMap::new(),
             claim_point,
             contributions,
+            bank_source: SegBankSource::HostStaged,
         }
     }
 
@@ -721,7 +746,28 @@ impl SegFixture {
         // to stage, on the same stream, before the launch.
         let coefficients = match shape.coeff {
             CoeffMode::Constant => {
-                stage_coefficient_bank(&setup.coefficients, context);
+                match &self.bank_source {
+                    SegBankSource::HostStaged => {
+                        stage_coefficient_bank(&setup.coefficients, context)
+                    }
+                    SegBankSource::DeviceEvaluated { tables, slab } => {
+                        // POISON FIRST. Without it a fill that wrote nothing — or one
+                        // whose write the reading kernel's constant cache never saw —
+                        // would be masked by whatever the previous launch left in the
+                        // bank, and every downstream assertion would go on passing.
+                        stage_coefficient_bank(
+                            &vec![seg_ext(0xdead, 2, 0); setup.coefficients.len()],
+                            context,
+                        );
+                        schedule_bwd_seg_coeff_bank_fill(
+                            tables,
+                            slab.as_ptr(),
+                            bwd_seg_coeff_bank_device_ptr(),
+                            context.get_exec_stream(),
+                        )
+                        .expect("device coefficient-bank fill");
+                    }
+                }
                 None
             }
             CoeffMode::DevPtr => Some(upload(&setup.coefficients, context)),
@@ -1451,6 +1497,123 @@ fn bwd_seg_epilogues_are_bit_identical() {
             &context,
         );
     }
+}
+
+/// The production coefficient path, COMPOSED with the VM: a bank the DEVICE computed
+/// from the layer's recipes, consumed by a real executor launch.
+///
+/// Both halves were verified in isolation and never together, and the gap between
+/// them was not academic. `seg_coeff_eval_matches_the_host_oracle` reads the filled
+/// bank back with a `memcpy` — a HOST read — so it says nothing about whether a
+/// kernel's `__constant__` loads observe a write another kernel made through the
+/// symbol's address. That coherence is the whole mechanism the fill depends on (and
+/// the one the incumbent's `eval_recipes` depends on too), and until this cell it was
+/// asserted only in a comment.
+///
+/// It is also the first time the ladder runs on REAL coefficient values. Every other
+/// cell uses `seg_bank`'s synthetic ones, which are arbitrary-but-consistent: fine for
+/// exercising the VM, and unable to notice that a recipe evaluates to anything in
+/// particular. Here the CPU oracles resolve through the same values the device
+/// computes, so the recipes, the translation, the fill and the executor are one chain.
+///
+/// The bank is POISONED between the two arms (`SegBankSource::DeviceEvaluated` does
+/// it), so arm B cannot pass on arm A's leftovers.
+#[test]
+#[cfg(not(no_cuda))]
+#[ignore = "GPU; build unlocked and run the executable under with_gpu_lock.sh"]
+#[serial_test::serial]
+fn bwd_seg_device_filled_bank_drives_the_executor() {
+    let context = make_seg_context();
+    let eq = stage_eq(&context);
+    let _claim = StagedClaimPoint;
+    let coord = lean_coordinate(ADD_SUB_LAYOUT, 0, BwdRegime::Ext);
+    assert!(
+        !coord.layer.coefficients.is_empty(),
+        "a device-filled bank needs recipes to fill it from"
+    );
+
+    // The round's challenges. Deterministic, and non-degenerate in every slot so a
+    // slot confusion cannot pass by coincidence.
+    let mut slab = SegChallengeSlab::default();
+    for (index, value) in slab.values.iter_mut().enumerate() {
+        *value = seg_ext(0xc0a1, index as u32, 0);
+    }
+    let mut device_slab = context
+        .alloc::<E4>(BWD_SEG_CHALLENGE_SLOTS, AllocationPlacement::BestFit)
+        .expect("challenge slab");
+    memory_copy_async(
+        &mut device_slab[..],
+        slab.as_slice(),
+        context.get_exec_stream(),
+    )
+    .expect("slab H2D");
+
+    // The REAL bank: the layer's own recipes, evaluated in this challenge context by
+    // the model's own `evaluate`. Reserved-EXCLUSIVE, which is what the round binding
+    // takes — lowering materializes the two literals at the payload head.
+    let bank: Vec<E4> = coord
+        .layer
+        .coefficients
+        .iter()
+        .map(|recipe| recipe.evaluate(&slab))
+        .collect();
+    assert!(
+        bank.iter().any(|value| *value != E4::ZERO),
+        "a bank of zeros would make every downstream comparison vacuous"
+    );
+    let tables =
+        build_seg_coeff_eval_tables(&coord.layer.coefficients).expect("the corpus census passed");
+
+    let round = 3u8;
+    let mut model = seg_host_model(
+        &coord,
+        round,
+        SEG_ROWS,
+        D2Policy::Inline,
+        E4Deltas::Supported,
+    );
+    // The one substitution: the CPU oracles now resolve through the values the device
+    // will compute, rather than through `seg_bank`'s synthetic stand-ins.
+    model.bank = bank;
+    let storage = upload_round_storage(&model, &context);
+    let scratch = Rc::new(SegScratch::new(&[&model], &context));
+    let mut fixture =
+        SegFixture::finish(Arc::clone(&coord), model, storage, scratch, None, &context);
+
+    let shape = SegShape::inline(4, CoeffMode::Constant);
+    // Arm A: the ladder's own path, on real coefficients. Everything it already
+    // asserts — publish handshake, both CPU oracles, the eq-weighted pair — holds.
+    let host_staged = fixture.assert_shape(shape, &eq, &context);
+
+    // Arm B: the same cell, with the bank computed on the device from the recipes.
+    fixture.bank_source = SegBankSource::DeviceEvaluated {
+        tables,
+        slab: device_slab,
+    };
+    let device_filled = fixture.assert_shape(shape, &eq, &context);
+
+    assert_eq!(
+        host_staged.contributions.len(),
+        device_filled.contributions.len()
+    );
+    for (row, (staged, filled)) in host_staged
+        .contributions
+        .iter()
+        .zip(&device_filled.contributions)
+        .enumerate()
+    {
+        assert_e4(
+            &format!("device-filled vs host-staged bank, contribution {row}"),
+            *filled,
+            *staged,
+        );
+    }
+    eprintln!(
+        "[seg-ladder] device-filled bank drove {} contributions bit-identically to the \
+         host-staged one, over {} recipes",
+        device_filled.contributions.len(),
+        coord.layer.coefficients.len()
+    );
 }
 
 /// A continuation layer with a NONZERO `acc_c0` seed, banked and reserved.
