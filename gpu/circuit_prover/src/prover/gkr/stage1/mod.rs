@@ -55,17 +55,14 @@ pub(crate) struct GpuGKRLookupMappings {
 }
 
 impl GpuGKRLookupMappings {
-    #[cfg(test)]
     pub(crate) fn has_generic_family(&self) -> bool {
         self.generic_family.is_some()
     }
 
-    #[cfg(test)]
     pub(crate) fn has_range_check_16(&self) -> bool {
         self.range_check_16.is_some()
     }
 
-    #[cfg(test)]
     pub(crate) fn has_timestamp(&self) -> bool {
         self.timestamp.is_some()
     }

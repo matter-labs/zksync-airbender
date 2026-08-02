@@ -13,6 +13,8 @@ pub(crate) mod desc;
 #[allow(dead_code)]
 pub(crate) mod lower;
 #[allow(dead_code)]
+pub(crate) mod production_bind;
+#[allow(dead_code)]
 pub(crate) mod program;
 #[cfg(test)]
 mod tests;

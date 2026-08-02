@@ -22,7 +22,8 @@
 
 use std::sync::OnceLock;
 
-use gkr_eval_isa::fwd::compile::{compile_circuit, parse_committed_schedule, CompiledCircuit};
+use gkr_eval_isa::fwd::compile::{compile_circuit, parse_committed_schedule};
+pub(crate) use gkr_eval_isa::fwd::compile::CompiledCircuit;
 
 use crate::primitives::field::BF;
 use crate::upstream::{lower_dag, validate_dag, GKRCircuitArtifact};

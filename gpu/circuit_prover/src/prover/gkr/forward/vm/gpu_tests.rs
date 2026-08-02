@@ -441,3 +441,121 @@ fn fwd_vm_v2_parity_bigint() {
 fn fwd_vm_v2_parity_blake2() {
     run_vm_parity("blake2_with_extended_control");
 }
+
+// ── production binding gates ─────────────────────────────────────────────────
+
+/// The `ConstDerivedE4` values add_sub L0 needs are device-resident and never
+/// reach the host, so production fills the `__constant__` bank by D2D copy
+/// ([`production_bind::stage_const_derived_e4_bank`]) rather than by upload.
+/// This is the one comparison that is not a tautology: two independent
+/// producers of the same numbers — the device copy and the bench host resolver.
+/// A mismatch writes the right slot with the wrong value, which whole-proof
+/// parity would catch only by luck.
+///
+/// The bank is poisoned first, so a fill that silently does nothing fails here
+/// instead of passing on whatever the previous test left behind.
+#[test]
+#[ignore] // GPU; run via .agents/bin/with_gpu_lock.sh
+#[cfg(not(no_cuda))]
+#[serial_test::serial]
+fn the_device_filled_bank_matches_the_bench_resolver_for_every_l0_slot() {
+    use super::production_bind::{
+        production_header, read_const_derived_e4_bank, resolve_storage_column,
+        stage_const_derived_e4_bank,
+    };
+
+    let stem = "add_sub_lui_auipc_mop";
+    let fixture = CircuitFixture::build(stem);
+    let c: FwdVmCircuit = load_fwd_vm_circuit(stem);
+    let context = fixture.context();
+    let forward_setup = fixture.keepalive.forward_setup();
+    let cl = &c.compiled.layers[0];
+
+    // Lower through the PRODUCTION header + column resolver, not the harness'.
+    let header = production_header(fixture_stage1(&fixture), forward_setup, fixture.trace_len);
+    let resolve = |addr: GKRAddress| resolve_storage_column(&fixture.storage, addr);
+    let challenge = |r: &_| challenge_value(&fixture, r);
+    let setup = lower_layer_desc(cl, &header, &resolve, &challenge, None)
+        .unwrap_or_else(|e| panic!("L0 lower_layer_desc failed: {e:?}"));
+
+    let n = setup.desc.n_const_derived_e4 as usize;
+    assert_eq!(n, 2, "add_sub L0: LookupAdditive + the appended decoder fill");
+    assert_ne!(
+        setup.desc.fill_bank_idx, FILL_BANK_NONE,
+        "add_sub L0 has a PeekDecoder special, so a fill slot must be reserved"
+    );
+
+    let poison = E4::from_array_of_base([BF::new(POISON_U32 & 0x7FFF_FFFF); 4]);
+    upload_const_derived_e4(&vec![poison; CONST_DERIVED_E4_CAP], context).unwrap();
+
+    stage_const_derived_e4_bank(cl, &setup, forward_setup, context)
+        .unwrap_or_else(|e| panic!("device bank fill failed: {e}"));
+
+    let device = read_const_derived_e4_bank(n, context);
+    let expected = const_derived_e4_values(&fixture, cl);
+    assert_eq!(expected.len(), n, "harness bank length != desc length");
+    for i in 0..n {
+        assert_ne!(device[i], poison, "slot {i} was never written by the fill");
+        assert_eq!(device[i], expected[i], "slot {i} value mismatch");
+    }
+}
+
+/// Production has no flat plan to allocate L0's destinations: the VM replaces
+/// that scheduling wholesale, and at the top of the pass nothing else has run.
+/// [`production_bind::prepare_layer0_destinations`] materializes the same four
+/// (storage layer, class, field) slots `generated_layer0` does — so every
+/// address the compiled L0 program writes must fall inside them.
+///
+/// Asserting "L0 lowers against the fixture's storage" would prove nothing:
+/// the fixture's post-capture state makes every column resident. Coverage of
+/// the destination set is what production actually depends on.
+#[test]
+#[ignore] // GPU; run via .agents/bin/with_gpu_lock.sh
+#[cfg(not(no_cuda))]
+#[serial_test::serial]
+fn every_l0_destination_is_covered_by_the_layer0_materialization() {
+    use super::production_bind::LAYER0_MATERIALIZED_SLOTS;
+
+    let stem = "add_sub_lui_auipc_mop";
+    let fixture = CircuitFixture::build(stem);
+    let c: FwdVmCircuit = load_fwd_vm_circuit(stem);
+    let cl = &c.compiled.layers[0];
+    let layout = fixture
+        .storage
+        .layout
+        .as_ref()
+        .expect("fixture storage carries a layout");
+
+    let mut dsts: BTreeSet<(u8, u16)> = BTreeSet::new();
+    for instr in &cl.program.instrs {
+        if let Instr::Mov {
+            dst: Some(DstLine::GlobalMaterialize { slot, col }),
+            ..
+        } = instr
+        {
+            dsts.insert((*slot, *col));
+        }
+    }
+    assert!(!dsts.is_empty(), "L0 materializes nothing — vacuous");
+
+    for (slot, col) in dsts {
+        let place = cl
+            .ctx
+            .backings
+            .slot_col_to_read_place(slot, col)
+            .unwrap_or_else(|| panic!("materialized (slot {slot}, col {col}) has no reverse map"));
+        let addr = read_place_to_gkr_address(&place);
+        let found = layout
+            .layers
+            .iter()
+            .enumerate()
+            .find_map(|(li, ll)| ll.index.get(&addr).map(|(class, _, _)| (li, *class)));
+        let (li, class) = found
+            .unwrap_or_else(|| panic!("{addr:?} is written by the VM but absent from the layout"));
+        assert!(
+            LAYER0_MATERIALIZED_SLOTS.contains(&(li, class)),
+            "{addr:?} is written by the VM at (layer {li}, {class:?}), which \
+             prepare_layer0_destinations does not materialize"
+        );
+    }
+}

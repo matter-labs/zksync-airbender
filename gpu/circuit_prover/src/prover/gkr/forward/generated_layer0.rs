@@ -139,7 +139,7 @@ where
 /// `poly_idx`), and the generated kernel writes column `poly_idx`, so passing
 /// this base pointer makes the kernel write directly into the backing the rest
 /// of the pipeline reads — no scratch, no scatter.
-fn materialize_ext_output_slot<E>(
+pub(super) fn materialize_ext_output_slot<E>(
     storage: &mut GpuGKRStorage<BF, E>,
     storage_layer: usize,
     class: AddressClass,
@@ -183,7 +183,7 @@ where
 
 /// Base-field analogue of [`materialize_ext_output_slot`] (e.g. base caches and
 /// base inner outputs). Returns the `cache_base` / `out_base` proxy pointer.
-fn materialize_base_output_slot<E>(
+pub(super) fn materialize_base_output_slot<E>(
     storage: &mut GpuGKRStorage<BF, E>,
     storage_layer: usize,
     class: AddressClass,
