@@ -205,9 +205,11 @@ mod dimension_reducing;
 mod flat_plan;
 pub(crate) mod generated_layer0;
 mod materialize_helpers;
+mod path;
 pub(crate) mod vm;
 
 use cache_relation::{lower_cache_relation, LoweredCacheRelationOutput};
+use path::ForwardPath;
 
 #[cfg(test)]
 use crate::upstream::{
@@ -323,23 +325,36 @@ where
         context,
     )?;
 
-    // Resolve the layer-0 A/B switch once. The generated fused kernel is
-    // specific to the add_sub_lui_auipc_mop circuit with a cached layout; if the
-    // env is set for any other circuit we must panic loudly rather than emit a
+    // Resolve the per-layer path selection once. Both non-flat paths are built
+    // for the add_sub_lui_auipc_mop circuit with a cached layout; if either env
+    // is set for any other circuit we must panic loudly rather than emit a
     // wrong proof.
     let use_generated_layer0 = generated_layer0::generated_layer0_enabled();
+    let vm_layers = path::vm_layers_from_env();
     let is_add_sub_cached =
         generated_layer0::is_add_sub_cached_layout(is_add_sub, &compiled_circuit);
-    if use_generated_layer0 && !is_add_sub_cached {
-        panic!(
-            "{} is enabled but the circuit is not add_sub_lui_auipc_mop with a cached layout \
-             (is_add_sub={is_add_sub}, has_decoder_lookup={}); the generated layer-0 kernel is \
-             add_sub-cached-specific",
+    for (env, requested) in [
+        (
             generated_layer0::AB_GKR_FWD_GENERATED_LAYER0_ENV,
-            compiled_circuit.has_decoder_lookup,
-        );
+            use_generated_layer0,
+        ),
+        (path::AB_GKR_FWD_VM_LAYERS_ENV, !vm_layers.is_empty()),
+    ] {
+        if requested && !is_add_sub_cached {
+            panic!(
+                "{env} is enabled but the circuit is not add_sub_lui_auipc_mop with a cached \
+                 layout (is_add_sub={is_add_sub}, has_decoder_lookup={}); the generated layer-0 \
+                 kernel and the forward VM program are both add_sub-cached-specific",
+                compiled_circuit.has_decoder_lookup,
+            );
+        }
     }
-    let generated_layer0_active = use_generated_layer0 && is_add_sub_cached;
+    let forward_paths = path::plan_forward_paths(
+        compiled_circuit.layers.len(),
+        use_generated_layer0 && is_add_sub_cached,
+        vm_layers,
+    )
+    .unwrap_or_else(|err| panic!("forward path selection is invalid: {err}"));
 
     for (layer_idx, layer) in compiled_circuit.layers.iter().enumerate() {
         let layer_range = Range::new(format!("gkr.forward.layer.{layer_idx}"))?;
@@ -357,7 +372,7 @@ where
             inits_and_teardowns_top_bits,
             decoder_predicate_address,
             trace_len,
-            generated_layer0_active,
+            forward_paths.path(layer_idx),
             context,
         )?;
         layer_range.end(stream)?;
@@ -429,7 +444,7 @@ fn schedule_layer<E>(
     inits_and_teardowns_top_bits: &[u32],
     decoder_predicate_address: Option<GKRAddress>,
     trace_len: usize,
-    generated_layer0_active: bool,
+    forward_path: ForwardPath,
     context: &ProverContext,
 ) -> CudaResult<()>
 where
@@ -447,25 +462,31 @@ where
     let stream = context.get_exec_stream();
     hydrate_scratch_space_layer(layer_idx, compiled_circuit, stage1, storage);
 
-    // A/B switch: for layer 0 of the add_sub-cached circuit, the pre-generated
-    // fused kernel produces the COMPLETE layer-0 output (all caches + all inner
-    // gate outputs) in one launch, replacing the normal cache-relation /
-    // materialized-lookup-input / flat-forward-plan scheduling below.
-    if generated_layer0_active && layer_idx == 0 {
-        let generated_range = Range::new("gkr.forward.layer.0.generated")?;
-        generated_range.start(stream)?;
-        assert_forward_layer_invariants(layer_idx, total_layers, layer);
-        generated_layer0::schedule_generated_layer0(
-            layer,
-            storage,
-            forward_setup,
-            external_challenges,
-            trace_len,
-            context,
-        )?;
-        generated_range.end(stream)?;
-        tracing_ranges.push(generated_range);
-        return Ok(());
+    // A/B switch: a non-flat path produces the COMPLETE layer output (all
+    // caches + all inner gate outputs) itself, replacing the normal
+    // cache-relation / materialized-lookup-input / flat-forward-plan
+    // scheduling below. `plan_forward_paths` guarantees at most one path
+    // claims any given layer, and that `GeneratedLayer0` only ever claims
+    // layer 0.
+    match forward_path {
+        ForwardPath::Flat => {}
+        ForwardPath::GeneratedLayer0 => {
+            let generated_range = Range::new("gkr.forward.layer.0.generated")?;
+            generated_range.start(stream)?;
+            assert_forward_layer_invariants(layer_idx, total_layers, layer);
+            generated_layer0::schedule_generated_layer0(
+                layer,
+                storage,
+                forward_setup,
+                external_challenges,
+                trace_len,
+                context,
+            )?;
+            generated_range.end(stream)?;
+            tracing_ranges.push(generated_range);
+            return Ok(());
+        }
+        ForwardPath::Vm => unreachable!("the forward VM launch is wired in Task 4"),
     }
 
     let cached_relations_ref = &layer.cached_relations;
