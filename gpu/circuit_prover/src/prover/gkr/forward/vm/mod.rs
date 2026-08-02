@@ -12,6 +12,8 @@
 pub(crate) mod desc;
 #[allow(dead_code)]
 pub(crate) mod lower;
+#[allow(dead_code)]
+pub(crate) mod program;
 #[cfg(test)]
 mod tests;
 // GPU parity gate (Task 10). Bench-gated ONLY because its harness (the

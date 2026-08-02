@@ -1076,8 +1076,19 @@ pub fn layer_needs_compile(order_is_empty: bool, layer: &DagLayer) -> bool {
 pub fn load_committed_schedule(path: &std::path::Path) -> Result<CircuitSchedule, CompileError> {
     let bytes = std::fs::read(path)
         .map_err(|e| CompileError::InvalidSchedule(format!("read {}: {e}", path.display())))?;
-    serde_json::from_slice(&bytes)
-        .map_err(|e| CompileError::InvalidSchedule(format!("parse {}: {e}", path.display())))
+    parse_committed_schedule(&bytes, &path.display().to_string())
+}
+
+/// Parse a committed `*_schedule_b16_gkr.json` already in memory.
+/// [`load_committed_schedule`] is this plus the file read; a consumer that
+/// embeds the schedule in its binary has no path to read at runtime and calls
+/// this directly. `origin` only names the source in the error message.
+pub fn parse_committed_schedule(
+    bytes: &[u8],
+    origin: &str,
+) -> Result<CircuitSchedule, CompileError> {
+    serde_json::from_slice(bytes)
+        .map_err(|e| CompileError::InvalidSchedule(format!("parse {origin}: {e}")))
 }
 
 /// Compile a whole circuit from its committed `CircuitSchedule` (OP-3): the single
