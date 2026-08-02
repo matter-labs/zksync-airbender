@@ -56,10 +56,11 @@ use gkr_eval_isa::bwd::coeff::limits::{
 use gkr_eval_isa::bwd::coeff::model::{CoefficientRecipeId, ImmediateId};
 
 use super::seg_coeff_eval::{
-    SegCoeffMonomial, SegCoeffRecipe, BWD_SEG_CHALLENGE_ABSENT, BWD_SEG_CHALLENGE_CLAIM_BATCHING,
-    BWD_SEG_CHALLENGE_CONSTRAINT_AGGREGATION, BWD_SEG_CHALLENGE_LOOKUP_ADDITIVE,
-    BWD_SEG_CHALLENGE_LOOKUP_MULTIPLICATIVE, BWD_SEG_CHALLENGE_PERM_ADDITIVE,
-    BWD_SEG_CHALLENGE_PERM_LINEARIZATION_BASE, BWD_SEG_CHALLENGE_SLOTS,
+    SegCoeffEvalDesc, SegCoeffMonomial, SegCoeffRecipe, BWD_SEG_CHALLENGE_ABSENT,
+    BWD_SEG_CHALLENGE_CLAIM_BATCHING, BWD_SEG_CHALLENGE_CONSTRAINT_AGGREGATION,
+    BWD_SEG_CHALLENGE_LOOKUP_ADDITIVE, BWD_SEG_CHALLENGE_LOOKUP_MULTIPLICATIVE,
+    BWD_SEG_CHALLENGE_PERM_ADDITIVE, BWD_SEG_CHALLENGE_PERM_LINEARIZATION_BASE,
+    BWD_SEG_CHALLENGE_SLOTS, BWD_SEG_COEFF_MAX_MONOMIALS,
 };
 use super::seg_desc::BWD_SEG_C_INIT_NONE;
 use super::seg_desc::{
@@ -1261,12 +1262,33 @@ fn seg_coeff_eval_cuda_abi_matches_the_rust_mirror() {
             "BWD_SEG_CHALLENGE_ABSENT",
             u64::from(BWD_SEG_CHALLENGE_ABSENT),
         ),
+        // The inline monomial array's capacity. Not decoration: it is what makes the
+        // recipe header's `u16` offset exact, and the census is gated against it.
+        (
+            "BWD_SEG_COEFF_MAX_MONOMIALS",
+            BWD_SEG_COEFF_MAX_MONOMIALS as u64,
+        ),
     ] {
         assert_eq!(literal(name), value, "CUDA {name}");
     }
 
     // The struct layouts, built from `offset_of!` so no number is hand-maintained.
+    // The DESCRIPTOR is here too: it rides the kernel's parameter space by value, so
+    // its size is an ABI surface exactly like `bwd_seg_desc`'s — and its two capacity
+    // constants are what the corpus census is gated against.
     for claim in [
+        format!(
+            "sizeof(bwd_seg_coeff_eval_desc) == {}",
+            size_of::<SegCoeffEvalDesc>()
+        ),
+        format!(
+            "__builtin_offsetof(bwd_seg_coeff_eval_desc, monomials) == {}",
+            offset_of!(SegCoeffEvalDesc, monomials)
+        ),
+        format!(
+            "__builtin_offsetof(bwd_seg_coeff_eval_desc, num_coefficients) == {}",
+            offset_of!(SegCoeffEvalDesc, num_coefficients)
+        ),
         format!(
             "sizeof(bwd_seg_coeff_recipe) == {}",
             size_of::<SegCoeffRecipe>()
@@ -1294,8 +1316,9 @@ fn seg_coeff_eval_cuda_abi_matches_the_rust_mirror() {
         );
     }
 
-    // The one launched symbol, with the formal list the Rust launcher passes.
-    let symbol = "ab_gkr_bwd_seg_eval_coefficients_kernel(const e4 *challenges, const bwd_seg_coeff_recipe *recipes";
+    // The one launched symbol, with the formal list the Rust launcher passes — the
+    // descriptor BY VALUE, then the two device pointers.
+    let symbol = "ab_gkr_bwd_seg_eval_coefficients_kernel(__grid_constant__ const bwd_seg_coeff_eval_desc desc, const e4 *challenges, e4 *coefficients)";
     assert!(
         include_str!("../../../../../native/prover/gkr/backward/seg_coeff_eval.cu")
             .contains(symbol),

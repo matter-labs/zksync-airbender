@@ -34,30 +34,28 @@
 // rejected: it is 8 bytes today, `gpu_flat_recipe_eval_desc` is 31,232 of its
 // 32,768-byte inline ceiling, and 384 monomials times 4 more bytes lands exactly
 // on the limit — no headroom, for a lineage that does not need the field.
+//
+// Like the flat one, and like this lineage's own executor descriptor, the tables
+// ride the kernel's parameter space BY VALUE (see `bwd_seg_coeff_eval_desc`).
 
-#include "../support/descriptors.cuh"
+// The seg lineage's own header: `BWD_SEG_CONST_BANK` is the bank this evaluator
+// fills, so the recipe array's size has one definition rather than two. No cycle —
+// `segmented_vm.cuh` does not know this file exists.
+#include "segmented_vm.cuh"
 
 namespace airbender::prover::gkr {
 
 // One bank slot's recipe: a span of monomials in the layer's monomial table.
 //
-// `immediate_factor_recipe_header` gets away with a `u16` offset and a `u8` count.
-// The two fields here are wider for DIFFERENT reasons, and only one of them is a
-// measurement:
-//
-//   * the COUNT is measured: a grouped Ext core coefficient is a POLYNOMIAL in the
-//     batching challenge and blake2 L0's widest holds **297 monomials**, past a `u8`;
-//   * the OFFSET is a CAPACITY bound, not a census result. The corpus's largest
-//     monomial table is 1,662 entries — far inside `u16` — but the format permits
-//     `BWD_SEG_CONST_BANK` (1,152) recipes of up to 297 monomials, i.e. 342,144
-//     entries, which does not fit. `u32` is chosen over a `u16` plus a typed
-//     rejection because the rejection would refuse a layer the format allows.
-//
-// `u32` for both keeps the struct 8 bytes with natural alignment, so the count's
-// spare range costs nothing over a `u16` plus padding.
+// `u16` for both, which the INLINE descriptor below makes exact rather than
+// merely sufficient: the monomial array is capped at
+// `BWD_SEG_COEFF_MAX_MONOMIALS`, so an offset into it and a count within it both
+// fit a `u16` by construction. (`immediate_factor_recipe_header` gets away with a
+// `u8` count; this one cannot — a grouped Ext core coefficient is a POLYNOMIAL in
+// the batching challenge and blake2 L0's widest holds **297** monomials.)
 struct bwd_seg_coeff_recipe {
-  u32 monomial_offset;
-  u32 monomial_count;
+  u16 monomial_offset;
+  u16 monomial_count;
 };
 
 // `coeff * beta^batch_power * challenge[idx_0]^power_0 * challenge[idx_1]^power_1`,
@@ -89,11 +87,53 @@ constexpr u8 BWD_SEG_CHALLENGE_CLAIM_BATCHING = 10;
 constexpr unsigned BWD_SEG_CHALLENGE_SLOTS = 11;
 constexpr u8 BWD_SEG_CHALLENGE_ABSENT = 0xff;
 
-static_assert(sizeof(bwd_seg_coeff_recipe) == 8, "bwd_seg_coeff_recipe must be 8 bytes");
+// The monomial table's inline capacity.
+//
+// Chosen against the by-value kernel-argument budget, not against the census: with
+// the recipe array fixed at the constant bank's size, this is the largest round
+// number the 32,764-byte parameter cap admits. The corpus's widest coordinate needs
+// 1,662 (blake2 L0 Ext), so it carries 38% headroom — `seg_coeff_eval_covers_the_
+// corpus` reports the realized maximum against it.
+constexpr unsigned BWD_SEG_COEFF_MAX_MONOMIALS = 2304;
+
+// The whole evaluator input, BY VALUE.
+//
+// The tables are a pure function of the compiled layer, so they are known at
+// SCHEDULING time — which is the same standing `bwd_seg_desc` has, and it rides the
+// parameter space for the same reason: no device allocation to own, no H2D to
+// order, and no pinned-host staging obligation. Only the CHALLENGES are round-state
+// and device-derived, so they stay a pointer.
+//
+// Sized for the CONSTANT bank. A `ptr`-loader bank may legally exceed
+// `BWD_SEG_CONST_BANK`, and such a layer would need the device-pointer companion the
+// flat lineage carries (`gpu_flat_recipe_eval_desc_devptr`); the host builder
+// rejects it rather than truncating, and no corpus coordinate comes close (913 of
+// 1,152 at the widest).
+struct bwd_seg_coeff_eval_desc {
+  bwd_seg_coeff_recipe recipes[BWD_SEG_CONST_BANK];
+  bwd_seg_coeff_monomial monomials[BWD_SEG_COEFF_MAX_MONOMIALS];
+  // Bank slots to fill, reserved literals included. Entries at and past it are
+  // zero-filled and never read.
+  u32 num_coefficients;
+  u32 _pad;
+};
+
+static_assert(sizeof(bwd_seg_coeff_recipe) == 4, "bwd_seg_coeff_recipe must be 4 bytes");
 static_assert(sizeof(bwd_seg_coeff_monomial) == 12, "bwd_seg_coeff_monomial must be 12 bytes");
 static_assert(__builtin_offsetof(bwd_seg_coeff_monomial, batch_power) == 4, "monomial batch_power ABI offset drift");
 static_assert(__builtin_offsetof(bwd_seg_coeff_monomial, challenge_idx_0) == 6, "monomial challenge_idx_0 ABI offset drift");
 static_assert(__builtin_offsetof(bwd_seg_coeff_monomial, power_0) == 8, "monomial power_0 ABI offset drift");
+static_assert(sizeof(bwd_seg_coeff_eval_desc) == 32264, "bwd_seg_coeff_eval_desc ABI size drift");
+static_assert(__builtin_offsetof(bwd_seg_coeff_eval_desc, monomials) == 4608, "desc monomials ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_coeff_eval_desc, num_coefficients) == 32256, "desc num_coefficients ABI offset drift");
+// The descriptor plus the two device pointers the kernel also takes. This is the
+// gate on the capacities above: the whole parameter list has to fit.
+static_assert(sizeof(bwd_seg_coeff_eval_desc) + 2 * sizeof(void *) <= 32764,
+              "the coefficient evaluator's parameter list must fit the by-value kernel-argument cap");
+
+// An offset into the monomial array must be addressable by the recipe's `u16`, which
+// is what makes the narrow header exact rather than a gamble on the census.
+static_assert(BWD_SEG_COEFF_MAX_MONOMIALS <= 0xffffu, "the monomial cap must stay inside the recipe header's u16 offset");
 
 // Evaluate one bank slot.
 //
@@ -103,11 +143,12 @@ static_assert(__builtin_offsetof(bwd_seg_coeff_monomial, power_0) == 8, "monomia
 // (`NormalizedCoefficientRecipe::evaluate`) even though neither the factor order
 // nor the exponentiation shape matches. `seg_coeff_eval_matches_the_host_oracle`
 // is what proves that rather than assumes it.
-DEVICE_FORCEINLINE e4 bwd_seg_eval_coefficient(const bwd_seg_coeff_recipe &recipe, const bwd_seg_coeff_monomial *all_monomials, const e4 *challenges) {
+DEVICE_FORCEINLINE e4 bwd_seg_eval_coefficient(const bwd_seg_coeff_eval_desc &desc, const unsigned slot, const e4 *challenges) {
+  const bwd_seg_coeff_recipe &recipe = desc.recipes[slot];
   const e4 batch_base = challenges[BWD_SEG_CHALLENGE_CLAIM_BATCHING];
   e4 acc = e4::ZERO();
-  for (u32 i = 0; i < recipe.monomial_count; i++) {
-    const bwd_seg_coeff_monomial &mon = all_monomials[recipe.monomial_offset + i];
+  for (unsigned i = 0; i < recipe.monomial_count; i++) {
+    const bwd_seg_coeff_monomial &mon = desc.monomials[recipe.monomial_offset + i];
     e4 term = e4::from_scalar(mon.coeff);
     if (mon.batch_power != 0)
       term = e4::mul(term, e4::pow(batch_base, mon.batch_power));

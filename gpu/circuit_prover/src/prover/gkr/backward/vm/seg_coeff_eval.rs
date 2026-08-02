@@ -90,7 +90,6 @@
 use std::collections::BTreeMap;
 
 use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
-use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
 use era_cudart::stream::CudaStream;
 use era_cudart::{cuda_kernel_declaration, cuda_kernel_signature_arguments_and_function};
@@ -98,12 +97,11 @@ use gkr_eval_isa::bwd::coeff::model::{
     CoeffProduct, CoefficientRecipeId, NormalizedCoefficientRecipe,
 };
 
-use crate::allocator::tracker::AllocationPlacement;
-use crate::primitives::context::DeviceAllocation;
+use super::seg_desc::BWD_SEG_CONST_BANK;
+use super::seg_lower::zeroed_box;
 use crate::primitives::field::{BF, E4};
 use crate::primitives::utils::{get_grid_block_dims_for_threads_count, WARP_SIZE};
 use crate::prover::gkr::immediate_factors::IMMEDIATE_FACTOR_ADDITIVE_PART_IDX;
-use crate::prover::ProverContext;
 use crate::upstream::{
     ChallengeKey, ChallengePower, ChallengeRef, Field, FieldExtension, PermutationSlot, PrimeField,
 };
@@ -226,21 +224,17 @@ fn perm_slot_index(slot: &PermutationSlot) -> u8 {
 
 /// CUDA mirror: `bwd_seg_coeff_recipe`. One bank slot's span of monomials.
 ///
-/// The flat lineage's header gets away with a `u16` offset and a `u8` count; these
-/// are wider for different reasons, and only the count's is a measurement.
-///
-/// The COUNT is measured: a grouped Ext core coefficient is a polynomial in the
-/// batching challenge, and blake2 L0's widest holds **297** monomials — past a `u8`.
-/// The OFFSET is a capacity bound: the corpus's largest table is 1,662 entries, well
-/// inside a `u16`, but the format permits [`BWD_SEG_CONST_BANK`] recipes of up to 297
-/// monomials (342,144 entries), which does not fit — and a `u16` plus a typed
-/// rejection would refuse a layer the format allows. `u32` for both keeps the struct
-/// 8 bytes with natural alignment, so the count's spare range is free.
+/// `u16` for both, which the inline descriptor makes EXACT rather than merely
+/// sufficient: [`SegCoeffEvalDesc::monomials`] is capped at
+/// [`BWD_SEG_COEFF_MAX_MONOMIALS`], so an offset into it and a count within it both
+/// fit by construction rather than by census. (The flat lineage's header gets away
+/// with a `u8` count; this one cannot — blake2 L0's widest batching polynomial holds
+/// **297** monomials.)
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) struct SegCoeffRecipe {
-    pub monomial_offset: u32,
-    pub monomial_count: u32,
+    pub monomial_offset: u16,
+    pub monomial_count: u16,
 }
 
 /// CUDA mirror: `bwd_seg_coeff_monomial`.
@@ -276,7 +270,7 @@ impl Default for SegCoeffMonomial {
 
 const _: () = {
     // The CUDA half asserts the same two sizes and the same three offsets.
-    assert!(std::mem::size_of::<SegCoeffRecipe>() == 8);
+    assert!(std::mem::size_of::<SegCoeffRecipe>() == 4);
     assert!(std::mem::size_of::<SegCoeffMonomial>() == 12);
     assert!(std::mem::offset_of!(SegCoeffMonomial, batch_power) == 4);
     assert!(std::mem::offset_of!(SegCoeffMonomial, challenge_idx_0) == 6);
@@ -333,11 +327,17 @@ pub(crate) enum SegCoeffEvalError {
     /// `Static(p >= 2)` on a key whose resolvers disagree about whether `power` is an
     /// exponent at all.
     AmbiguousPower { key: String, power: u32 },
-    /// One recipe has more monomials than the recipe header's `u32` count, or the
-    /// whole monomial table overflows its `u32` offset. Both are far past anything a
-    /// compiled layer produces; they exist because a table the device indexes must
-    /// never be addressed by a truncated offset.
-    MonomialTableOverflow { monomials: usize },
+    /// The bank's monomials do not fit the inline descriptor's array.
+    ///
+    /// Reachable in principle — the format permits more monomials than the by-value
+    /// parameter space can carry — and the answer if it ever fires is the
+    /// device-pointer companion the flat lineage already has, not a bigger array.
+    /// No corpus coordinate comes close: 1,662 against a 2,304 cap.
+    MonomialTableOverflow { monomials: usize, cap: usize },
+    /// More bank slots than the `__constant__` bank the inline descriptor is sized
+    /// for. A `ptr`-loader bank may legally exceed it; such a layer needs the
+    /// device-pointer companion. The corpus's widest is 913 of 1,152.
+    BankOverflow { coefficients: usize, cap: usize },
 }
 
 // ── Translation ──────────────────────────────────────────────────────────────
@@ -425,9 +425,10 @@ pub(crate) fn translate_recipe(
             },
         )
         .collect::<Vec<_>>();
-    if u32::try_from(monomials.len()).is_err() {
+    if monomials.len() > BWD_SEG_COEFF_MAX_MONOMIALS {
         return Err(SegCoeffEvalError::MonomialTableOverflow {
             monomials: monomials.len(),
+            cap: BWD_SEG_COEFF_MAX_MONOMIALS,
         });
     }
     stats.referenced_slots = slots.into_keys().collect();
@@ -527,16 +528,79 @@ pub(crate) struct SegCoeffEvalCensus {
     pub referenced_slots: Vec<u8>,
 }
 
-/// The device evaluator's input tables for one bank, plus the census.
-#[derive(Clone, Debug)]
+/// The monomial table's inline capacity.
+///
+/// Chosen against the by-value kernel-argument budget, not against the census: with
+/// the recipe array fixed at the constant bank's size, this is the largest round
+/// number the 32,764-byte parameter cap admits. The corpus's widest coordinate needs
+/// 1,662 (blake2 L0 Ext), so it carries 38% headroom, and
+/// `seg_coeff_eval_covers_the_corpus` reports the realized maximum against it.
+pub(crate) const BWD_SEG_COEFF_MAX_MONOMIALS: usize = 2_304;
+
+/// CUDA mirror: `bwd_seg_coeff_eval_desc`. The whole evaluator input, BY VALUE.
+///
+/// The tables are a pure function of the compiled layer, so they are known at
+/// SCHEDULING time — the same standing [`BwdSegDesc`](super::seg_desc::BwdSegDesc)
+/// has, and they ride the parameter space for the same reason: no device allocation
+/// to own, no H2D to order, and no pinned-host staging obligation. Only the
+/// CHALLENGES are round state the transcript squeezed on the device, so only they
+/// stay a pointer.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub(crate) struct SegCoeffEvalDesc {
+    /// One per bank slot, in bank order. Entries at and past
+    /// [`Self::num_coefficients`] are zero-filled and never read.
+    pub recipes: [SegCoeffRecipe; BWD_SEG_CONST_BANK],
+    pub monomials: [SegCoeffMonomial; BWD_SEG_COEFF_MAX_MONOMIALS],
+    /// Bank slots to fill, reserved literals included.
+    pub num_coefficients: u32,
+    /// Explicit, so the size is a whole number of 4-byte quanta with no implicit
+    /// trailing padding the two languages would have to agree on. Never read.
+    pub pad: u32,
+}
+
+const _: () = {
+    // The CUDA half asserts the same size and the same two offsets, and the same
+    // parameter-list bound — which is what makes the capacities above a gate rather
+    // than a hope.
+    assert!(std::mem::size_of::<SegCoeffEvalDesc>() == 32_264);
+    assert!(std::mem::offset_of!(SegCoeffEvalDesc, monomials) == 4_608);
+    assert!(std::mem::offset_of!(SegCoeffEvalDesc, num_coefficients) == 32_256);
+    assert!(
+        std::mem::size_of::<SegCoeffEvalDesc>() + 2 * std::mem::size_of::<*const E4>() <= 32_764
+    );
+    // What makes the recipe header's `u16` offset exact rather than a census bet.
+    assert!(BWD_SEG_COEFF_MAX_MONOMIALS <= u16::MAX as usize);
+};
+
+/// The device evaluator's input for one bank, plus the census.
+///
+/// Boxed: the descriptor is 32 KiB and a by-value local would put it on the stack.
 pub(crate) struct SegCoeffEvalTables {
-    /// One per bank slot, in bank order.
-    pub recipes: Vec<SegCoeffRecipe>,
-    pub monomials: Vec<SegCoeffMonomial>,
+    pub desc: Box<SegCoeffEvalDesc>,
     pub census: SegCoeffEvalCensus,
 }
 
-/// Translate a lean layer's coefficient bank into the device evaluator's tables.
+impl std::fmt::Debug for SegCoeffEvalTables {
+    /// The arrays are 32 KiB of mostly-zero padding; the census is what a reader
+    /// wants and the only part worth printing.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SegCoeffEvalTables")
+            .field("census", &self.census)
+            .finish_non_exhaustive()
+    }
+}
+
+impl SegCoeffEvalTables {
+    /// The monomials of bank slot `index`, as the device would read them.
+    pub(crate) fn monomials_of(&self, index: usize) -> &[SegCoeffMonomial] {
+        let recipe = self.desc.recipes[index];
+        let start = usize::from(recipe.monomial_offset);
+        &self.desc.monomials[start..start + usize::from(recipe.monomial_count)]
+    }
+}
+
+/// Translate a lean layer's coefficient bank into the device evaluator's descriptor.
 ///
 /// `recipes` is RESERVED-EXCLUSIVE — `CoeffLayer::coefficients`, exactly as
 /// `BwdSegRoundBinding::coefficients` takes it. The reserved literals are emitted
@@ -546,34 +610,52 @@ pub(crate) struct SegCoeffEvalTables {
 pub(crate) fn build_seg_coeff_eval_tables(
     recipes: &[NormalizedCoefficientRecipe],
 ) -> Result<SegCoeffEvalTables, SegCoeffEvalError> {
-    let mut out = Vec::with_capacity(CoefficientRecipeId::RESERVED as usize + recipes.len());
-    let mut monomials = Vec::new();
-    let mut census = SegCoeffEvalCensus::default();
-    let mut slots: BTreeMap<u8, ()> = BTreeMap::new();
-
-    let mut push = |translated: Vec<SegCoeffMonomial>,
-                    out: &mut Vec<SegCoeffRecipe>,
-                    monomials: &mut Vec<SegCoeffMonomial>|
-     -> Result<(), SegCoeffEvalError> {
-        let offset = u32::try_from(monomials.len()).map_err(|_| {
-            SegCoeffEvalError::MonomialTableOverflow {
-                monomials: monomials.len(),
-            }
-        })?;
-        out.push(SegCoeffRecipe {
-            monomial_offset: offset,
-            monomial_count: translated.len() as u32,
+    let slots = CoefficientRecipeId::RESERVED as usize + recipes.len();
+    if slots > BWD_SEG_CONST_BANK {
+        return Err(SegCoeffEvalError::BankOverflow {
+            coefficients: slots,
+            cap: BWD_SEG_CONST_BANK,
         });
-        monomials.extend_from_slice(&translated);
+    }
+    // SAFETY: every field is a `Copy` POD of integers and base-field limbs, for which
+    // the all-zero bit pattern is a valid value — an empty recipe span and a zero
+    // coefficient. The same helper and the same reasoning `lower_bwd_seg` uses for
+    // the executor descriptor.
+    let mut desc: Box<SegCoeffEvalDesc> = unsafe { zeroed_box() };
+    let mut census = SegCoeffEvalCensus::default();
+    let mut referenced: BTreeMap<u8, ()> = BTreeMap::new();
+    let mut filled = 0usize;
+
+    let mut push = |translated: &[SegCoeffMonomial],
+                    desc: &mut SegCoeffEvalDesc,
+                    filled: &mut usize,
+                    slot: usize|
+     -> Result<(), SegCoeffEvalError> {
+        let end = *filled + translated.len();
+        if end > BWD_SEG_COEFF_MAX_MONOMIALS {
+            return Err(SegCoeffEvalError::MonomialTableOverflow {
+                monomials: end,
+                cap: BWD_SEG_COEFF_MAX_MONOMIALS,
+            });
+        }
+        desc.recipes[slot] = SegCoeffRecipe {
+            monomial_offset: *filled as u16,
+            monomial_count: translated.len() as u16,
+        };
+        desc.monomials[*filled..end].copy_from_slice(translated);
+        *filled = end;
         Ok(())
     };
 
     // The reserved literals are ordinary constant recipes to the device evaluator,
     // which is why one launch fills the whole payload and the caller stages nothing
     // by hand.
-    for literal in [CoefficientRecipeId::ONE, CoefficientRecipeId::NEG_ONE] {
+    for (slot, literal) in [CoefficientRecipeId::ONE, CoefficientRecipeId::NEG_ONE]
+        .into_iter()
+        .enumerate()
+    {
         let value = literal.literal().expect("a reserved literal id");
-        push(vec![literal_monomial(value)], &mut out, &mut monomials)?;
+        push(&[literal_monomial(value)], &mut desc, &mut filled, slot)?;
     }
 
     for (recipe_index, recipe) in recipes.iter().enumerate() {
@@ -587,29 +669,27 @@ pub(crate) fn build_seg_coeff_eval_tables(
         census.max_exponent = census.max_exponent.max(translated.stats.max_exponent);
         census.max_batch_power = census.max_batch_power.max(translated.stats.max_batch_power);
         for slot in &translated.stats.referenced_slots {
-            slots.insert(*slot, ());
+            referenced.insert(*slot, ());
         }
-        push(translated.monomials, &mut out, &mut monomials)?;
+        let slot = CoefficientRecipeId::RESERVED as usize + recipe_index;
+        push(&translated.monomials, &mut desc, &mut filled, slot)?;
     }
 
     // The one invariant the format's two spellings of `beta` could break.
     debug_assert!(
-        monomials.iter().all(|monomial| {
+        desc.monomials[..filled].iter().all(|monomial| {
             monomial.challenge_idx_0 != BWD_SEG_CHALLENGE_CLAIM_BATCHING
                 && monomial.challenge_idx_1 != BWD_SEG_CHALLENGE_CLAIM_BATCHING
         }),
         "the batching challenge must ride `batch_power`, never a factor slot"
     );
 
-    census.coefficients = out.len();
-    census.monomials = monomials.len();
-    census.referenced_slots = slots.into_keys().collect();
+    desc.num_coefficients = slots as u32;
+    census.coefficients = slots;
+    census.monomials = filled;
+    census.referenced_slots = referenced.into_keys().collect();
 
-    Ok(SegCoeffEvalTables {
-        recipes: out,
-        monomials,
-        census,
-    })
+    Ok(SegCoeffEvalTables { desc, census })
 }
 
 /// A challenge-free monomial holding one field value.
@@ -635,80 +715,26 @@ fn literal_monomial(value: E4) -> SegCoeffMonomial {
 
 cuda_kernel_signature_arguments_and_function!(
     pub(crate) GkrBwdSegEvalCoefficients,
+    desc: SegCoeffEvalDesc,
     challenges: *const E4,
-    recipes: *const SegCoeffRecipe,
-    monomials: *const SegCoeffMonomial,
     coefficients: *mut E4,
-    num_coefficients: u32,
 );
 cuda_kernel_declaration!(
     pub(crate) ab_gkr_bwd_seg_eval_coefficients_kernel(
+        desc: SegCoeffEvalDesc,
         challenges: *const E4,
-        recipes: *const SegCoeffRecipe,
-        monomials: *const SegCoeffMonomial,
         coefficients: *mut E4,
-        num_coefficients: u32,
     )
 );
-
-/// Device-resident tables, owned for as long as any launch that reads them is
-/// outstanding.
-///
-/// Uploaded ONCE per coordinate at setup: the tables are a pure function of the
-/// compiled layer. Only the SLAB's contents change per round, and they are written
-/// by whoever squeezes the challenges, not here.
-pub(crate) struct SegCoeffEvalDeviceTables {
-    recipes: DeviceAllocation<SegCoeffRecipe>,
-    monomials: DeviceAllocation<SegCoeffMonomial>,
-    num_coefficients: usize,
-}
-
-impl SegCoeffEvalDeviceTables {
-    /// H2D the tables on `stream`.
-    ///
-    /// A production caller owes the `SchedulerHostAllocator` treatment here (audit
-    /// I-18): the tables are immutable, scheduling-time-known H2D sources, so their
-    /// host side belongs in that pinned pool rather than in a `Vec` the copy reads
-    /// directly. The copy is correct either way — the source outlives the enqueue —
-    /// but the pinned pool is what makes it a single DMA.
-    pub(crate) fn upload(
-        tables: &SegCoeffEvalTables,
-        context: &ProverContext,
-        stream: &CudaStream,
-    ) -> CudaResult<Self> {
-        let mut recipes = context
-            .alloc::<SegCoeffRecipe>(tables.recipes.len().max(1), AllocationPlacement::BestFit)?;
-        let mut monomials = context.alloc::<SegCoeffMonomial>(
-            tables.monomials.len().max(1),
-            AllocationPlacement::BestFit,
-        )?;
-        if !tables.recipes.is_empty() {
-            memory_copy_async(
-                &mut recipes[..tables.recipes.len()],
-                &tables.recipes,
-                stream,
-            )?;
-        }
-        if !tables.monomials.is_empty() {
-            memory_copy_async(
-                &mut monomials[..tables.monomials.len()],
-                &tables.monomials,
-                stream,
-            )?;
-        }
-        Ok(Self {
-            recipes,
-            monomials,
-            num_coefficients: tables.recipes.len(),
-        })
-    }
-}
 
 /// Fill a coefficient bank from the round's challenges, on `stream`.
 ///
 /// `slab` is a device pointer to [`BWD_SEG_CHALLENGE_SLOTS`] E4 values in slot order;
 /// `bank` is the write target — `super::seg::bwd_seg_coeff_bank_device_ptr()` under
 /// the `const` loader, or the descriptor's own device buffer under the `ptr` loader.
+///
+/// Stages nothing and allocates nothing: the tables ride the parameter space, so this
+/// adds no obligation to the GPU scheduling contract beyond the ordering below.
 ///
 /// Enqueue-only, and stream-ordered against everything else: the bank is shared
 /// round-mutable state exactly like the claim point and the fold weights, so this
@@ -718,27 +744,21 @@ impl SegCoeffEvalDeviceTables {
 /// `schedule_flat_continuation_eval_recipes` observes for its own bank, and for the
 /// same reason.
 pub(crate) fn schedule_bwd_seg_coeff_bank_fill(
-    tables: &SegCoeffEvalDeviceTables,
+    tables: &SegCoeffEvalTables,
     slab: *const E4,
     bank: *mut E4,
     stream: &CudaStream,
 ) -> CudaResult<()> {
-    if tables.num_coefficients == 0 {
+    let count = tables.desc.num_coefficients;
+    if count == 0 {
         return Ok(());
     }
-    let count = u32::try_from(tables.num_coefficients).expect("a bank fits u32");
     let (grid_dim, block_dim) = get_grid_block_dims_for_threads_count(WARP_SIZE * 4, count);
     let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
     let function = GkrBwdSegEvalCoefficientsFunction(ab_gkr_bwd_seg_eval_coefficients_kernel);
     function.launch(
         &config,
-        &GkrBwdSegEvalCoefficientsArguments::new(
-            slab,
-            tables.recipes.as_ptr(),
-            tables.monomials.as_ptr(),
-            bank,
-            count,
-        ),
+        &GkrBwdSegEvalCoefficientsArguments::new(*tables.desc, slab, bank),
     )
 }
 
@@ -761,9 +781,7 @@ mod tests {
 
     /// The monomials of bank slot `index` (reserved literals occupy 0 and 1).
     fn bank_monomials(tables: &SegCoeffEvalTables, index: usize) -> &[SegCoeffMonomial] {
-        let recipe = tables.recipes[index];
-        let start = recipe.monomial_offset as usize;
-        &tables.monomials[start..start + recipe.monomial_count as usize]
+        tables.monomials_of(index)
     }
 
     /// The slab layout the module's prefix claim rests on, spelled out once against
@@ -1003,7 +1021,10 @@ mod tests {
             vec![challenge(ChallengeKey::ClaimBatching, ChallengePower::One)],
         )])])
         .expect("a one-factor product fits");
-        assert_eq!(tables.recipes.len(), 3, "two literals plus the recipe");
+        assert_eq!(
+            tables.desc.num_coefficients, 3,
+            "two literals plus the recipe"
+        );
         for (slot, expected) in [
             (0usize, CoefficientRecipeId::ONE),
             (1, CoefficientRecipeId::NEG_ONE),
@@ -1025,5 +1046,63 @@ mod tests {
                 "bank slot {slot} must hold the reserved literal's own value"
             );
         }
+    }
+
+    /// The inline arrays are the format now, so overflowing one is a typed rejection
+    /// rather than a truncated table. The corpus is nowhere near either cap
+    /// (`seg_coeff_eval_covers_the_corpus` reports the margin), but the format permits
+    /// more than the by-value parameter space can carry, and that boundary must be a
+    /// refusal the caller can read.
+    #[test]
+    fn seg_coeff_eval_rejects_a_bank_past_the_inline_arrays() {
+        let scalar = |v: u32| recipe(vec![product(v, Vec::new())]);
+        let over_bank: Vec<NormalizedCoefficientRecipe> =
+            (1..=BWD_SEG_CONST_BANK as u32 + 1).map(scalar).collect();
+        assert!(
+            matches!(
+                build_seg_coeff_eval_tables(&over_bank),
+                Err(SegCoeffEvalError::BankOverflow { cap, .. }) if cap == BWD_SEG_CONST_BANK
+            ),
+            "a bank past the constant bank must be refused, not truncated"
+        );
+
+        // Monomials overflow on WIDTH rather than count, and the two caps are close
+        // enough that it takes three terms: a full bank of TWO-term recipes needs
+        // 2 + 2 * 1,150 = 2,302 monomials and fits the 2,304 array with two to spare.
+        // Three-term recipes do not.
+        let three_term = |v: u32| {
+            recipe(vec![
+                product(
+                    v,
+                    vec![challenge(ChallengeKey::ClaimBatching, ChallengePower::One)],
+                ),
+                product(
+                    v + 1,
+                    vec![challenge(
+                        ChallengeKey::ClaimBatching,
+                        ChallengePower::Static(2),
+                    )],
+                ),
+                product(
+                    v + 2,
+                    vec![challenge(
+                        ChallengeKey::ClaimBatching,
+                        ChallengePower::Static(3),
+                    )],
+                ),
+            ])
+        };
+        let wide: Vec<NormalizedCoefficientRecipe> = (1..=BWD_SEG_CONST_BANK as u32 - 2)
+            .map(three_term)
+            .collect();
+        assert!(
+            matches!(
+                build_seg_coeff_eval_tables(&wide),
+                Err(SegCoeffEvalError::MonomialTableOverflow { cap, .. })
+                    if cap == BWD_SEG_COEFF_MAX_MONOMIALS
+            ),
+            "a monomial table past the inline array must be refused; a full bank of \
+             three-term recipes needs more than {BWD_SEG_COEFF_MAX_MONOMIALS}"
+        );
     }
 }

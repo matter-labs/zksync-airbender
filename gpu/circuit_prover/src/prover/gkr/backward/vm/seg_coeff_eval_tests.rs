@@ -24,7 +24,7 @@ use gkr_eval_isa::bwd::coeff::model::{CoefficientRecipeId, NormalizedCoefficient
 use super::seg::bwd_seg_coeff_bank_device_ptr;
 use super::seg_coeff_eval::{
     build_seg_coeff_eval_tables, schedule_bwd_seg_coeff_bank_fill, SegChallengeSlab,
-    SegCoeffEvalDeviceTables, BWD_SEG_CHALLENGE_SLOTS,
+    BWD_SEG_CHALLENGE_SLOTS, BWD_SEG_COEFF_MAX_MONOMIALS,
 };
 use super::seg_compile::{
     lean_layer, seg_coordinate_layers, seg_ext, short_name, SEG_CORPUS_LAYOUTS,
@@ -141,16 +141,25 @@ fn seg_coeff_eval_covers_the_corpus() {
         "the batching power is u16; the corpus needs {max_batch_power}"
     );
     assert!(
-        u32::try_from(max_monomials_per_recipe).is_ok(),
-        "a recipe's monomial count is u32; the corpus needs {max_monomials_per_recipe}"
+        max_monomials_per_recipe <= usize::from(u16::MAX),
+        "a recipe's monomial count is u16; the corpus needs {max_monomials_per_recipe}"
     );
     assert!(
         max_bank <= BWD_SEG_CONST_BANK,
         "the constant bank holds {BWD_SEG_CONST_BANK} slots; the corpus needs {max_bank}"
     );
     assert!(
-        u32::try_from(max_monomial_table).is_ok(),
-        "monomial offsets are u32; the corpus needs a {max_monomial_table}-entry table"
+        max_monomial_table <= BWD_SEG_COEFF_MAX_MONOMIALS,
+        "the inline descriptor's monomial array holds {BWD_SEG_COEFF_MAX_MONOMIALS}; the \
+         corpus needs {max_monomial_table}. The tables ride the by-value parameter space, so \
+         the array cannot simply grow — the answer would be the device-pointer companion."
+    );
+    eprintln!(
+        "[seg-coeff-eval census] inline capacity: {max_monomial_table} of \
+         {BWD_SEG_COEFF_MAX_MONOMIALS} monomials ({:.0}% headroom), {max_bank} of \
+         {BWD_SEG_CONST_BANK} bank slots",
+        100.0 * (BWD_SEG_COEFF_MAX_MONOMIALS - max_monomial_table) as f64
+            / BWD_SEG_COEFF_MAX_MONOMIALS as f64,
     );
 }
 
@@ -292,10 +301,9 @@ fn seg_coeff_eval_matches_the_host_oracle() {
             "{label}: {payload} bank slots exceed the constant bank"
         );
 
-        let device_tables =
-            SegCoeffEvalDeviceTables::upload(&tables, &context, stream).expect("recipe tables H2D");
+        // No upload and no device allocation: the tables ride the parameter space.
         schedule_bwd_seg_coeff_bank_fill(
-            &device_tables,
+            &tables,
             device_slab.as_ptr(),
             bwd_seg_coeff_bank_device_ptr(),
             stream,
@@ -328,7 +336,6 @@ fn seg_coeff_eval_matches_the_host_oracle() {
             "[seg-coeff-eval] {label}: {payload} bank slots bit-identical ({} monomials)",
             tables.census.monomials
         );
-        drop(device_tables);
     }
 }
 
