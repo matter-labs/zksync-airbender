@@ -1078,3 +1078,180 @@ fn run_inits_and_teardowns_multi_schedule_test() {
 fn run_inits_and_teardowns_profile_test() {
     run_profile(prepare_inits_and_teardowns_matrix_profiling_fixture());
 }
+
+// ---------------------------------------------------------------------------
+// Forward VM layer-0 gate
+// ---------------------------------------------------------------------------
+
+/// Sets an env var for the duration of a test and restores the previous value.
+struct EnvGuard {
+    key: &'static str,
+    previous: Option<String>,
+}
+
+impl EnvGuard {
+    fn set(key: &'static str, value: &str) -> Self {
+        let previous = std::env::var(key).ok();
+        std::env::set_var(key, value);
+        Self { key, previous }
+    }
+}
+
+impl Drop for EnvGuard {
+    fn drop(&mut self) {
+        match &self.previous {
+            Some(value) => std::env::set_var(self.key, value),
+            None => std::env::remove_var(self.key),
+        }
+    }
+}
+
+/// The forward VM computing add_sub layer 0 inside the real prover must
+/// produce the same proof as the CPU reference, and must actually have run.
+///
+/// Both halves are load-bearing:
+///
+/// - Parity alone can pass vacuously. These tests are `#[serial]` in one
+///   process, so by the time this runs the pool has already held — and freed —
+///   blocks containing correct layer-0 outputs from earlier proofs. A VM that
+///   launches but writes nothing could reproduce the right proof from recycled
+///   values. `prepare_layer0_destinations` poisons every materialized
+///   destination in test builds precisely so that cannot happen.
+/// - The launch count alone proves nothing about values. It is asserted
+///   EXACTLY, not `> 0`: one launch would not prove that every selected layer
+///   ran, and the count must move with the selection rather than merely be
+///   nonzero.
+#[test]
+#[serial]
+#[ignore]
+fn run_add_sub_vm_layer0_proof_parity_test() {
+    use crate::prover::gkr::forward::path::AB_GKR_FWD_VM_LAYERS_ENV;
+    use crate::prover::gkr::forward::vm::count_fwd_vm_s4_launches;
+
+    let fixture = prepare_basic_unrolled_proof_fixture();
+    let counter = count_fwd_vm_s4_launches();
+    assert_eq!(
+        counter.launches(),
+        0,
+        "counter must start at zero for the count below to mean anything"
+    );
+
+    let selected_layers = 1;
+    let (gpu_proof, launches) = {
+        let _env = EnvGuard::set(AB_GKR_FWD_VM_LAYERS_ENV, "0");
+        let job = fixture.schedule_prove().unwrap();
+        let (proof, _ms) = job.finish().unwrap();
+        (proof, counter.launches())
+    };
+
+    assert_gkr_proof_eq_for_test(&gpu_proof, &fixture.expected_cpu_proof);
+    assert_eq!(
+        launches, selected_layers,
+        "the VM must have launched exactly once per selected layer"
+    );
+}
+
+/// With the switch unset the VM must not run at all — the guard that the env
+/// var, and nothing else, is what selects the path.
+#[test]
+#[serial]
+#[ignore]
+fn run_add_sub_without_the_vm_switch_launches_no_vm_kernel() {
+    use crate::prover::gkr::forward::vm::count_fwd_vm_s4_launches;
+
+    let fixture = prepare_basic_unrolled_proof_fixture();
+    let counter = count_fwd_vm_s4_launches();
+    let job = fixture.schedule_prove().unwrap();
+    let (gpu_proof, _ms) = job.finish().unwrap();
+    assert_gkr_proof_eq_for_test(&gpu_proof, &fixture.expected_cpu_proof);
+    assert_eq!(counter.launches(), 0);
+}
+
+/// A/B the forward VM on add_sub layer 0: N interleaved pairs of whole proofs
+/// in one process, VM-on against VM-off, reporting per-pair deltas plus the
+/// median, min, max and both peak-memory figures.
+///
+/// Interleaved and order-alternated because the two arms share a device, an
+/// allocator and a thermal envelope; running all of one arm then all of the
+/// other would let drift masquerade as effect.
+///
+/// A timing number from an arm that produced a different proof is not a
+/// number, so every pair asserts the two proofs are byte-equal. This uses the
+/// profiling fixture (no CPU reference), which is exactly right here: the
+/// question is whether the VM changes the proof, and the two GPU arms answer
+/// that against each other. Parity against the CPU is
+/// `run_add_sub_vm_layer0_proof_parity_test`.
+#[test]
+#[serial]
+#[ignore]
+fn run_add_sub_fwd_vm_l0_ab_test() {
+    use crate::prover::gkr::forward::path::AB_GKR_FWD_VM_LAYERS_ENV;
+
+    const PAIRS: usize = 20;
+
+    let fixture = prepare_basic_unrolled_profiling_fixture();
+
+    // Warm up both arms before measuring: first-touch allocation, the
+    // OnceLock'd VM program compile, and module load all land here.
+    for layers in ["", "0"] {
+        let _env = EnvGuard::set(AB_GKR_FWD_VM_LAYERS_ENV, layers);
+        let t = fixture.schedule_transfers().unwrap();
+        fixture.context.get_h2d_stream().synchronize().unwrap();
+        let (proof, ms) = fixture.prove(t).unwrap().finish().unwrap();
+        eprintln!("[fwd-vm-ab] warmup vm={layers:?}: {ms} ms");
+        drop(proof);
+    }
+
+    let mut run = |layers: &str| {
+        let _env = EnvGuard::set(AB_GKR_FWD_VM_LAYERS_ENV, layers);
+        let t = fixture.schedule_transfers().unwrap();
+        fixture.context.get_h2d_stream().synchronize().unwrap();
+        fixture.context.reset_used_mem_peak();
+        let (proof, ms) = fixture.prove(t).unwrap().finish().unwrap();
+        (proof, ms, fixture.context.get_used_mem_peak())
+    };
+
+    let mut deltas = Vec::with_capacity(PAIRS);
+    let mut on_peak = 0usize;
+    let mut off_peak = 0usize;
+    eprintln!("[fwd-vm-ab] pair  vm_on_ms  vm_off_ms  delta_ms");
+    for pair in 0..PAIRS {
+        // Alternate which arm goes first so a systematic first-slot cost
+        // (allocator state, clocks) cannot be attributed to one arm.
+        let (on, off) = if pair % 2 == 0 {
+            let on = run("0");
+            let off = run("");
+            (on, off)
+        } else {
+            let off = run("");
+            let on = run("0");
+            (on, off)
+        };
+        // Field-by-field: GKRProof has no PartialEq. A timing number from an
+        // arm that produced a different proof is not a number.
+        assert_gkr_proof_eq_for_test(&on.0, &off.0);
+        let delta = on.1 - off.1;
+        eprintln!(
+            "[fwd-vm-ab] {pair:>4}  {:>8.3}  {:>9.3}  {:>8.3}",
+            on.1, off.1, delta
+        );
+        deltas.push(delta);
+        on_peak = on_peak.max(on.2);
+        off_peak = off_peak.max(off.2);
+    }
+
+    deltas.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    let median = deltas[deltas.len() / 2];
+    eprintln!(
+        "[fwd-vm-ab] delta_ms (vm_on - vm_off) over {PAIRS} pairs: median {median:.3}, \
+         min {:.3}, max {:.3}",
+        deltas[0],
+        deltas[deltas.len() - 1],
+    );
+    eprintln!(
+        "[fwd-vm-ab] peak device memory: vm_on {:.4} GiB, vm_off {:.4} GiB, delta {} B",
+        on_peak as f64 / (1u64 << 30) as f64,
+        off_peak as f64 / (1u64 << 30) as f64,
+        on_peak as i64 - off_peak as i64,
+    );
+}

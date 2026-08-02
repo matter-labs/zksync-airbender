@@ -149,7 +149,7 @@ impl<B, E> GpuGKRStorage<B, E> {
 
     pub(crate) fn get_ext_poly(&self, address: GKRAddress) -> &GpuExtensionFieldPoly<E> {
         self.get_ext_poly_for_address(address)
-            .expect("extension poly must exist")
+            .unwrap_or_else(|| panic!("extension poly must exist for {address:?}"))
     }
 
     pub(crate) fn insert_base_field_at_layer(

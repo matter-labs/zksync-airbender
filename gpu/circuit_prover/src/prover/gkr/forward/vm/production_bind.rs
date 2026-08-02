@@ -48,18 +48,18 @@ use super::desc::{CONST_DERIVED_E4_CAP, FILL_BANK_NONE};
 use super::lower::{FwdVmHeaderInputs, FwdVmLayerSetup, ResolvedColumn};
 use super::{ab_gkr_fwd_vm_const_derived_e4, lower::lower_layer_desc};
 use crate::prover::gkr::forward::generated_layer0::{
-    materialize_base_output_slot, materialize_ext_output_slot,
+    materialize_base_output_slot, materialize_ext_output_slot, register_layer0_copy_aliases,
 };
 use crate::prover::gkr::gkr_address_audit::AddressClass;
 use crate::prover::gkr::setup::GpuGKRForwardSetup;
 use crate::prover::gkr::stage1::GpuGKRStage1Output;
 use crate::prover::gkr::GpuGKRStorage;
-use crate::ops::simple::{SetByRef, SetByVal};
+use crate::ops::simple::{set_by_val, SetByRef, SetByVal};
 use crate::primitives::field::{BF, E4};
 use crate::prover::ProverContext;
 use crate::upstream::{
     ChallengeKey, ChallengePower, ChallengeRef, Field, FieldExtension, GKRAddress,
-    GKRExternalChallenges, PermutationSlot,
+    GKRExternalChallenges, GKRLayerDescription, PermutationSlot,
     PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX,
     PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX,
     PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX,
@@ -357,19 +357,46 @@ pub(crate) fn prepare_layer0_destinations<E>(
 where
     E: Field + FieldExtension<BF> + SetByRef + SetByVal + 'static,
 {
-    for (layer, class) in [
-        (CACHE_STORAGE_LAYER, AddressClass::ThisLayerCachedWrite),
-        (INNER_STORAGE_LAYER, AddressClass::ThisLayerInnerLayerWrite),
-    ] {
-        materialize_ext_output_slot(storage, layer, class, trace_len, context)?;
-        materialize_base_output_slot(storage, layer, class, trace_len, context)?;
+    for (layer, class) in LAYER0_MATERIALIZED_SLOTS {
+        let ext_base = materialize_ext_output_slot(storage, layer, class, trace_len, context)?;
+        let base_base = materialize_base_output_slot(storage, layer, class, trace_len, context)?;
+
+        // In test builds, poison every freshly materialized destination. The
+        // whole-proof parity gate runs in a process where earlier `#[serial]`
+        // proofs have already filled and freed these very pool blocks, so a VM
+        // that launches but writes nothing could reproduce the right proof from
+        // recycled correct values. Poison makes that failure loud. `set_by_val`
+        // is a stream-ordered launch on `exec_stream`, ahead of the VM launch —
+        // no scheduling-thread dereference.
+        #[cfg(test)]
+        {
+            const POISON: u32 = 0x5EED_DEAD & 0x7FFF_FFFF;
+            let stream = context.get_exec_stream();
+            if let Some(base) = ext_base {
+                let len = storage.layers[layer].ext_class_backings[&class].len();
+                // SAFETY: `base` is the consolidated ext backing's column-0
+                // pointer and `len` is that same allocation's length.
+                let dst = unsafe { DeviceSlice::from_raw_parts_mut(base as *mut E, len) };
+                set_by_val(E::from_base(BF::new(POISON)), dst, stream)?;
+            }
+            if let Some(base) = base_base {
+                let len = storage.layers[layer].base_class_backings[&class].len();
+                // SAFETY: as above, for the base-field backing.
+                let dst = unsafe { DeviceSlice::from_raw_parts_mut(base, len) };
+                set_by_val(BF::new(POISON), dst, stream)?;
+            }
+        }
+        #[cfg(not(test))]
+        {
+            let _ = (ext_base, base_base);
+        }
     }
     Ok(())
 }
 
 /// The set of (storage layer, class) slots [`prepare_layer0_destinations`]
-/// materializes — the authority the destination-coverage test checks against.
-#[cfg(test)]
+/// materializes — also the authority the destination-coverage test checks
+/// against.
 pub(crate) const LAYER0_MATERIALIZED_SLOTS: [(usize, AddressClass); 2] = [
     (CACHE_STORAGE_LAYER, AddressClass::ThisLayerCachedWrite),
     (INNER_STORAGE_LAYER, AddressClass::ThisLayerInnerLayerWrite),
@@ -412,6 +439,7 @@ where
 /// until the launch has been *scheduled* — which is all the contract asks.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn schedule_vm_layer0<E>(
+    layer: &GKRLayerDescription,
     cl: &CompiledLayer,
     budget_lanes: u32,
     storage: &mut GpuGKRStorage<BF, E>,
@@ -454,7 +482,16 @@ where
     stage_const_derived_e4_bank(cl, &setup, forward_setup, context)
         .unwrap_or_else(|e| panic!("forward VM layer 0: {e}"));
 
-    super::launch_fwd_vm_s4(&setup, budget_lanes, context)
+    super::launch_fwd_vm_s4(&setup, budget_lanes, context)?;
+
+    // The VM emits no `GlobalMaterialize` for a pure copy gate — its output
+    // aliases its input — so, exactly as `generated_layer0` must, register
+    // those aliases here. Without this, layer 1 resolves nothing for
+    // `InnerLayer{1, 0}`. After the launch, mirroring generated_layer0's
+    // ordering: the aliases are host-side bookkeeping over already-registered
+    // caches, not device work.
+    register_layer0_copy_aliases(layer, storage);
+    Ok(())
 }
 
 #[cfg(test)]

@@ -133,7 +133,32 @@ pub(crate) fn launch_fwd_vm_s4(
         .stream(context.get_exec_stream())
         .build();
     let args = GkrFwdVmReleaseArguments::new(setup.desc);
+    #[cfg(test)]
+    S4_LAUNCHES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     GkrFwdVmReleaseFunction(ab_gkr_fwd_vm_s4_kernel).launch(&config, &args)
+}
+
+/// Release-kernel launch count, for gates that must prove the VM actually ran.
+/// An exact count, not `> 0`: one launch does not prove that every selected
+/// layer ran, and a proof can match for reasons other than the VM working.
+#[cfg(test)]
+static S4_LAUNCHES: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+/// Zero the launch counter and return a handle that reads it back.
+#[cfg(test)]
+pub(crate) fn count_fwd_vm_s4_launches() -> FwdVmLaunchCounter {
+    S4_LAUNCHES.store(0, std::sync::atomic::Ordering::Relaxed);
+    FwdVmLaunchCounter
+}
+
+#[cfg(test)]
+pub(crate) struct FwdVmLaunchCounter;
+
+#[cfg(test)]
+impl FwdVmLaunchCounter {
+    pub(crate) fn launches(&self) -> usize {
+        S4_LAUNCHES.load(std::sync::atomic::Ordering::Relaxed)
+    }
 }
 
 /// Static blocks-per-SM of the release s4 kernel at its committed launch shape

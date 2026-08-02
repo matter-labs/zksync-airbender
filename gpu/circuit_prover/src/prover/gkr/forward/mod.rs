@@ -205,7 +205,7 @@ mod dimension_reducing;
 mod flat_plan;
 pub(crate) mod generated_layer0;
 mod materialize_helpers;
-mod path;
+pub(crate) mod path;
 pub(crate) mod vm;
 
 use cache_relation::{lower_cache_relation, LoweredCacheRelationOutput};
@@ -518,6 +518,7 @@ where
             assert_forward_layer_invariants(layer_idx, total_layers, layer);
             let program = vm_program.expect("a Vm path implies a compiled VM program");
             vm::production_bind::schedule_vm_layer0(
+                layer,
                 &program.layers[layer_idx],
                 program.budget as u32,
                 storage,

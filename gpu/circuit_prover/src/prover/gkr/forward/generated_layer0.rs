@@ -139,6 +139,58 @@ where
 /// `poly_idx`), and the generated kernel writes column `poly_idx`, so passing
 /// this base pointer makes the kernel write directly into the backing the rest
 /// of the pipeline reads — no scratch, no scatter.
+/// Register the pure copy-aliases of a layer-0 gate set.
+///
+/// `CopyInBaseField` / `CopyInExtensionField` gates do no arithmetic — the
+/// output `InnerLayer{1, off}` simply aliases its input poly (a memory column
+/// or a layer-0 cache), so no kernel writes it and it carries no entry in the
+/// storage layout (which is why layer 1's `ThisLayerInnerLayerWrite` offsets
+/// start at 1). The flat path registers these as `aliased_*_outputs` in
+/// `commit_flat_forward_plan`; any path that REPLACES layer 0's flat
+/// scheduling must do the same registration itself, or downstream layers hit
+/// an unresolved address.
+///
+/// Shared by the generated-layer0 kernel and the forward VM, which have the
+/// identical gap for the identical reason.
+pub(super) fn register_layer0_copy_aliases<B, E>(
+    layer: &GKRLayerDescription,
+    storage: &mut GpuGKRStorage<B, E>,
+) where
+    B: Clone,
+    E: Clone,
+{
+    for gate in layer
+        .gates
+        .iter()
+        .chain(layer.gates_with_external_connections.iter())
+    {
+        match &gate.enforced_relation {
+            NoFieldGKRRelation::CopyInBaseField { input, output }
+            | NoFieldGKRRelation::CopyInExtensionField { input, output } => {
+                assert_eq!(
+                    gate.output_layer, 1,
+                    "layer-0 copy gate must output to layer 1"
+                );
+                let GKRAddress::InnerLayer {
+                    layer: out_layer,
+                    offset: _,
+                } = *output
+                else {
+                    panic!("copy gate output must be an InnerLayer address, got {output:?}");
+                };
+                let base_source = storage.try_get_base_poly(*input).map(|p| p.clone_shared());
+                if let Some(source) = base_source {
+                    storage.insert_base_field_at_layer(out_layer, *output, source);
+                } else {
+                    let ext_source = storage.get_ext_poly(*input).clone_shared();
+                    storage.insert_extension_at_layer(out_layer, *output, ext_source);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
 pub(super) fn materialize_ext_output_slot<E>(
     storage: &mut GpuGKRStorage<BF, E>,
     storage_layer: usize,
@@ -352,43 +404,10 @@ where
     //    its `poly_idx` column directly into the consolidated backing above.
     launch_generated_add_sub_layer0(proxy, trace_len, context)?;
 
-    // 5. Replicate the pure copy-aliases that the generated kernel does NOT
-    //     produce. `CopyInBaseField` / `CopyInExtensionField` gates do no
-    //     arithmetic — the output `InnerLayer{1, off}` simply aliases its input
-    //     poly (a memory column or a layer-0 cache). The normal path handles
-    //     these as `aliased_*_outputs` in `commit_flat_forward_plan`; here we do
-    //     the same registration so downstream resolves them. Must run AFTER the
-    //     caches above are registered (offset 20 aliases `Cached{0,13}`).
-    for gate in layer
-        .gates
-        .iter()
-        .chain(layer.gates_with_external_connections.iter())
-    {
-        match &gate.enforced_relation {
-            NoFieldGKRRelation::CopyInBaseField { input, output }
-            | NoFieldGKRRelation::CopyInExtensionField { input, output } => {
-                assert_eq!(
-                    gate.output_layer, 1,
-                    "layer-0 copy gate must output to layer 1"
-                );
-                let GKRAddress::InnerLayer {
-                    layer: out_layer,
-                    offset: _,
-                } = *output
-                else {
-                    panic!("copy gate output must be an InnerLayer address, got {output:?}");
-                };
-                let base_source = storage.try_get_base_poly(*input).map(|p| p.clone_shared());
-                if let Some(source) = base_source {
-                    storage.insert_base_field_at_layer(out_layer, *output, source);
-                } else {
-                    let ext_source = storage.get_ext_poly(*input).clone_shared();
-                    storage.insert_extension_at_layer(out_layer, *output, ext_source);
-                }
-            }
-            _ => {}
-        }
-    }
+    // 5. Replicate the pure copy-aliases the generated kernel does NOT produce.
+    //     Must run AFTER the caches above are registered (offset 20 aliases
+    //     `Cached{0,13}`).
+    register_layer0_copy_aliases(layer, storage);
 
     // 6. Drop the absent-slot placeholders on exec_stream. The kernel launch
     //    (which embedded their raw pointers in the proxy) has already been
