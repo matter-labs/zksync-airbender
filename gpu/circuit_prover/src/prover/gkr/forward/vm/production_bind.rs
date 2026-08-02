@@ -361,15 +361,20 @@ where
         let ext_base = materialize_ext_output_slot(storage, layer, class, trace_len, context)?;
         let base_base = materialize_base_output_slot(storage, layer, class, trace_len, context)?;
 
-        // In test builds, poison every freshly materialized destination. The
-        // whole-proof parity gate runs in a process where earlier `#[serial]`
+        // Poison every freshly materialized destination when the parity gate
+        // asks for it. That gate runs in a process where earlier `#[serial]`
         // proofs have already filled and freed these very pool blocks, so a VM
         // that launches but writes nothing could reproduce the right proof from
         // recycled correct values. Poison makes that failure loud. `set_by_val`
         // is a stream-ordered launch on `exec_stream`, ahead of the VM launch —
         // no scheduling-thread dereference.
+        //
+        // Opt-in rather than automatic in test builds: it is ~36 full-length
+        // column writes, which showed up as a ~3 ms per-proof cost charged to
+        // the VM arm alone and silently inverted the first A/B result. A
+        // correctness aid must not be inside the thing being measured.
         #[cfg(test)]
-        {
+        if poison_destinations_enabled() {
             const POISON: u32 = 0x5EED_DEAD & 0x7FFF_FFFF;
             let stream = context.get_exec_stream();
             if let Some(base) = ext_base {
@@ -393,6 +398,21 @@ where
     }
     Ok(())
 }
+
+/// Whether [`prepare_layer0_destinations`] poisons what it materializes.
+/// Off unless [`AB_GKR_FWD_VM_POISON_DESTINATIONS_ENV`] is truthy, so timing
+/// runs do not pay for a correctness aid. Read fresh, like the layer switch.
+#[cfg(test)]
+pub(crate) fn poison_destinations_enabled() -> bool {
+    std::env::var(AB_GKR_FWD_VM_POISON_DESTINATIONS_ENV)
+        .map(|v| { let v = v.trim().to_ascii_lowercase(); v == "1" || v == "true" })
+        .unwrap_or(false)
+}
+
+/// Env var enabling the destination poison (parity gates only, never timing).
+#[cfg(test)]
+pub(crate) const AB_GKR_FWD_VM_POISON_DESTINATIONS_ENV: &str =
+    "AB_GKR_FWD_VM_POISON_DESTINATIONS";
 
 /// The set of (storage layer, class) slots [`prepare_layer0_destinations`]
 /// materializes — also the authority the destination-coverage test checks

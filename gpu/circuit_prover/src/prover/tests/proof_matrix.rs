@@ -1127,8 +1127,12 @@ impl Drop for EnvGuard {
 fn run_add_sub_vm_layer0_proof_parity_test() {
     use crate::prover::gkr::forward::path::AB_GKR_FWD_VM_LAYERS_ENV;
     use crate::prover::gkr::forward::vm::count_fwd_vm_s4_launches;
+    use crate::prover::gkr::forward::vm::production_bind::AB_GKR_FWD_VM_POISON_DESTINATIONS_ENV;
 
     let fixture = prepare_basic_unrolled_proof_fixture();
+    // Opt into the destination poison: this gate, not the timing harness, is
+    // where it belongs.
+    let _poison = EnvGuard::set(AB_GKR_FWD_VM_POISON_DESTINATIONS_ENV, "1");
     let counter = count_fwd_vm_s4_launches();
     assert_eq!(
         counter.launches(),
@@ -1190,6 +1194,11 @@ fn run_add_sub_fwd_vm_l0_ab_test() {
     const PAIRS: usize = 20;
 
     let fixture = prepare_basic_unrolled_profiling_fixture();
+    assert!(
+        !crate::prover::gkr::forward::vm::production_bind::poison_destinations_enabled(),
+        "the destination poison is ~36 full-length column writes charged to the VM arm alone; \
+         leaving it on inverts this measurement"
+    );
 
     // Warm up both arms before measuring: first-touch allocation, the
     // OnceLock'd VM program compile, and module load all land here.
