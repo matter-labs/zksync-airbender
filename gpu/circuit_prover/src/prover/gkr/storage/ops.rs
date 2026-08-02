@@ -269,11 +269,16 @@ impl<B: 'static, E: Field> GpuGKRStorage<B, E> {
 
         let layer_storage = self.layers.get_mut(layer).expect("checked above");
 
-        // Real-poly backings: one Arc per class, sized to the layout's class
-        // count. poly_idx within the Arc matches the layout's per-class
-        // poly_idx (mirrors `base_class_backings`), so the kernel-side
-        // resolver can recover both the read source and the cache view
-        // through the same index value.
+        // Real-poly backings: one Arc per class, sized to the count of THIS
+        // layer's selected addresses in that class — not the layout's class
+        // count. The index into the Arc is a dense layer-local cache index
+        // assigned by the enumeration below, and it is NOT the layout's
+        // per-class `poly_idx`: the two coincide only when a layer selects a
+        // class's full address set in layout order. `allocate_base_view`'s
+        // consolidated path reflects this — it takes only the CLASS from the
+        // layout lookup, discards `_poly_idx_in_class`, and offsets by
+        // `real_index[addr]`. Read source and cache view are resolved through
+        // two different index spaces, deliberately.
         let mut per_class = BTreeMap::new();
         let mut real_index = BTreeMap::new();
         for (class, addrs) in addrs_by_class {
