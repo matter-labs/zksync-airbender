@@ -22,13 +22,14 @@ pub use common_constants::ROM_WORD_SIZE;
 
 // `prover` — CPU prover types the GPU orchestrator interoperates with.
 pub use prover::definitions::{
-    FinalRegisterValue, GKRExternalChallenges, SecurityLevel, Transcript,
+    FinalRegisterValue, GKRExternalChallenges, SecurityLevel, USE_REDUCED_BLAKE2_ROUNDS,
 };
 pub use prover::gkr::prover::setup::GKRSetup as CpuGKRSetup;
 pub use prover::gkr::prover::GKRProof;
 pub use prover::gkr::witness_gen::family_circuits::build_unified_table_driver;
 pub use prover::merkle_trees::{DefaultTreeConstructor, MerkleTreeCapVarLength};
 pub use prover::transcript::Seed;
+pub type Blake2sTranscript = prover::transcript::Blake2sTranscript<{ USE_REDUCED_BLAKE2_ROUNDS }>;
 
 // `setups` — compiled-circuit binary loading + per-circuit setup constructors.
 pub use setups::circuits::{
