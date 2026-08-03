@@ -59,8 +59,8 @@ use gkr_eval_isa::fwd::compile::build_cross_layer_field_map;
 use rayon::prelude::*;
 
 use super::seg_lower::{
-    assign_class, bwd_coeff_fold_depth, chain_read_column, plan_publish_scratch, window_columns,
-    BwdSegRoundBinding, D2Policy, PublishScratchPlan, ResolvedBwdCoeffSourceWindow,
+    assign_class, bwd_coeff_fold_depth, chain_read_column, plan_publish_scratch,
+    BwdSegRoundBinding, D2Policy, PublishScratchPlan, ResolvedAddrSlot, ResolvedSourceAddr,
     ResolvedPublishScratch, SourceOrigin,
 };
 use crate::allocator::tracker::AllocationPlacement;
@@ -224,7 +224,18 @@ impl SegCoordinate {
     /// the artifact — the same function lowering derives it with, so a fixture and
     /// the descriptor cannot disagree about a window's span.
     pub fn columns(&self) -> Vec<usize> {
-        window_columns(&self.artifact.binding).expect("a committed artifact binds legal windows")
+        self.artifact
+            .binding
+            .windows
+            .iter()
+            .map(|window| {
+                window
+                    .columns
+                    .last()
+                    .map(|column| column.column.saturating_sub(window.first_column) + 1)
+                    .unwrap_or(1)
+            })
+            .collect()
     }
 }
 
@@ -880,13 +891,56 @@ pub(crate) struct SegBackings {
     ext: Vec<DeviceAllocation<E4>>,
 }
 
+/// One host-model window's resolved read side, before it becomes an address slot.
+struct HostWindow {
+    read: Option<ResolvedColumn>,
+    backing_depth: u8,
+    publishes: bool,
+}
+
+/// One slot per host-model window, and one lane pair per wire source. The bench's
+/// destinations are always the scratch plan's, so no source carries an explicit
+/// publish and `lower_bwd_seg` interns the plan's region for it.
+fn host_addresses(
+    model: &SegHostModel,
+    windows: &[HostWindow],
+    read_elements: &[u32],
+) -> (Vec<ResolvedAddrSlot>, Vec<ResolvedSourceAddr>) {
+    let slots = windows
+        .iter()
+        .enumerate()
+        .map(|(index, window)| ResolvedAddrSlot {
+            base: window.read,
+            procedural_kind: match &model.windows[index].backing {
+                SegBacking::Procedural(kind) => Some(*kind),
+                _ => None,
+            },
+            read_elements: read_elements[index],
+            columns: model.columns[index],
+        })
+        .collect();
+    let sources = model
+        .slots
+        .iter()
+        .map(|&(window, column)| ResolvedSourceAddr {
+            read_slot: window,
+            read_column: column,
+            publish: None,
+            backing_depth: windows[window].backing_depth,
+        })
+        .collect();
+    (slots, sources)
+}
+
 /// One round's device geometry: the uploaded backings plus the per-window round
 /// binding `lower_bwd_seg` takes.
 pub(crate) struct SegRoundStorage {
     /// Held for RAII only; the descriptor carries raw pointers into it.
     _backings: SegBackings,
-    pub windows: Vec<ResolvedBwdCoeffSourceWindow>,
-    pub read_elements: Vec<u32>,
+    /// One address slot per host-model window, in wire order.
+    pub slots: Vec<ResolvedAddrSlot>,
+    /// One entry per wire source; every source of a window addresses its slot.
+    pub sources: Vec<ResolvedSourceAddr>,
 }
 
 /// Upload one round's raw backings.
@@ -929,21 +983,17 @@ pub(crate) fn upload_round_storage(
         } else {
             0
         });
-        windows.push(ResolvedBwdCoeffSourceWindow {
+        windows.push(HostWindow {
             read,
-            // Publish geometry is the scratch plan's, never the caller's:
-            // `lower_bwd_seg` rejects a caller-supplied one outright
-            // (`UnexpectedPublishBacking`).
-            publish: None,
             backing_depth: host.backing_depth,
-            target_depth: host.target_depth,
-            materialize: host.publishes,
+            publishes: host.publishes,
         });
     }
+    let (slots, sources) = host_addresses(model, &windows, &read_elements);
     SegRoundStorage {
         _backings: backings,
-        windows,
-        read_elements,
+        slots,
+        sources,
     }
 }
 
@@ -972,23 +1022,22 @@ pub(crate) fn chained_round_storage(
             "the chain read stride must be the previous round's publish stride"
         );
         read_elements.push(host.column_len as u32);
-        windows.push(ResolvedBwdCoeffSourceWindow {
+        windows.push(HostWindow {
             read: Some(ResolvedColumn {
                 is_e4: true,
                 ptr,
                 matrix_base: ptr as *mut u8,
                 stride_bytes,
             }),
-            publish: None,
             backing_depth: host.backing_depth,
-            target_depth: host.target_depth,
-            materialize: host.publishes,
+            publishes: host.publishes,
         });
     }
+    let (slots, sources) = host_addresses(model, &windows, &read_elements);
     SegRoundStorage {
         _backings: SegBackings::default(),
-        windows,
-        read_elements,
+        slots,
+        sources,
     }
 }
 
@@ -1030,26 +1079,14 @@ impl SegScratch {
 
         // One declaration-only window per model window: `materialize` is the only
         // field `plan_publish_scratch` reads.
-        let declared: Vec<Vec<ResolvedBwdCoeffSourceWindow>> = models
+        let declared: Vec<Vec<bool>> = models
             .iter()
-            .map(|model| {
-                model
-                    .windows
-                    .iter()
-                    .map(|window| ResolvedBwdCoeffSourceWindow {
-                        read: None,
-                        publish: None,
-                        backing_depth: window.backing_depth,
-                        target_depth: window.target_depth,
-                        materialize: window.publishes,
-                    })
-                    .collect()
-            })
+            .map(|model| model.windows.iter().map(|window| window.publishes).collect())
             .collect();
 
-        let empty_windows: Vec<ResolvedBwdCoeffSourceWindow> = Vec::new();
+        let empty_windows: Vec<bool> = Vec::new();
         let empty_columns: Vec<usize> = Vec::new();
-        let mut window_sets: Vec<&[ResolvedBwdCoeffSourceWindow]> = Vec::new();
+        let mut window_sets: Vec<&[bool]> = Vec::new();
         let mut column_sets: Vec<&[usize]> = Vec::new();
         let mut rows_per_round: Vec<usize> = Vec::new();
         for round in 0..=last {
@@ -1190,8 +1227,8 @@ pub(crate) fn seg_round_binding<'a>(
     BwdSegRoundBinding {
         round: u32::from(model.round),
         rows: model.rows,
-        windows: &storage.windows,
-        window_read_elements: &storage.read_elements,
+        slots: &storage.slots,
+        sources: &storage.sources,
         claim_point,
         coefficients,
         c_init,
