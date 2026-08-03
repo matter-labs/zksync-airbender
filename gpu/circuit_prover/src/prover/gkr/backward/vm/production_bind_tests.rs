@@ -388,7 +388,7 @@ struct PreparedL0 {
     /// handoff normalizes it.
     coord: gkr_eval_isa::bwd::coeff::lean_artifact::LeanCoordinateArtifact,
     main_state:
-        crate::prover::gkr::backward::GpuGKRMainLayerBackwardState<crate::primitives::field::E4>,
+        crate::prover::gkr::backward::GpuGKRMainLayerBackwardState<'static, crate::primitives::field::E4>,
     plan: crate::prover::gkr::backward::GpuGKRMainLayerSumcheckLayerPlan<
         crate::primitives::field::E4,
     >,
@@ -884,17 +884,18 @@ fn the_ext_sequence_builds_one_setup_per_round() {
 
     let prepared = prepared_l0_ext();
     let folding_steps = prepared.plan.folding_steps;
-    let slice = super::production_program::compiled_slice(
-        crate::witness::circuit_type::CircuitType::Unrolled(
-            crate::witness::circuit_type::UnrolledCircuitType::NonMemory(
-                crate::witness::circuit_type::UnrolledNonMemoryCircuitType::AddSubLuiAuipcMop,
-            ),
-        ),
+    // Compiled straight from the artifact: this test drives the launch by hand
+    // rather than through `prove()`, so no `GkrVmPrograms` is in play.
+    let slices = super::production_program::compile_all_slices(
+        "add_sub_lui_auipc_mop",
         &add_sub_artifact(),
-        0,
-        BwdRegime::Ext,
     )
     .expect("the Ext slice compiles");
+    let slice = &slices
+        .iter()
+        .find(|(coord, _)| coord.layer == 0 && coord.regime == BwdRegime::Ext)
+        .expect("layer 0 Ext must be compiled")
+        .1;
 
     let launch = build_bwd_vm_ext_rounds(
         prepared.main_state.storage(),

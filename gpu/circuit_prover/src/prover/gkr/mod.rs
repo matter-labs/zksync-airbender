@@ -29,86 +29,146 @@ pub(crate) use support::initial_inner_products as gkr_initial_inner_products;
 use std::ptr::null;
 use std::sync::Arc;
 
-/// The VM programs a proof will run, compiled before any work is enqueued.
+/// A circuit's VM programs: per-circuit precomputation, owned by the caller.
 ///
-/// Empty unless a switch selects a coordinate. Held by value and handed to the
-/// passes that need it — see [`compile_selected_vm_programs`] for why neither is
-/// looked up again downstream.
-pub(crate) struct GkrVmPrograms {
-    /// The forward interpreter program, when `AB_GKR_FWD_VM_LAYERS` names layers.
-    pub(crate) forward: Option<&'static forward::vm::program::CompiledCircuit>,
-    /// One compiled slice per selected `(layer, regime)`, in selection order.
-    pub(crate) backward: Vec<(
+/// # Why this is a plain owned structure
+///
+/// Compiling is the intensive part of running the VM — `lower_dag` + `validate`
+/// over a layout that can be tens of megabytes, then one coordinate compile per
+/// `(layer, regime)`. `report_the_compile_time_projection_over_the_corpus`
+/// measures add_sub at ~2.7 ms and blake2_with_extended_control at ~143 ms. That
+/// belongs where a circuit's other precomputations are built: once, off any
+/// proving path, held by the caller. Not in a process-global cache behind a lock,
+/// which would put the work on whichever thread happened to arrive first and give
+/// `prove()` no way to know when it had been paid.
+///
+/// So `prove()` takes one of these by reference and hands borrows to the passes.
+/// Nothing downstream compiles, looks anything up, or locks.
+///
+/// # Why it ignores the switches
+///
+/// The programs a circuit HAS are a property of the circuit; which ones a PROOF
+/// runs is a property of `AB_GKR_FWD_VM_LAYERS` / `AB_GKR_BWD_VM_COORDS`, read at
+/// plan build. Building them switch-independently is what lets one process
+/// alternate arms — the A/B does exactly that — against a single compiled set.
+#[derive(Default)]
+pub struct GkrVmPrograms {
+    /// The forward interpreter program, when this circuit has an embedded
+    /// schedule (`forward::vm::program::embedded_schedule`).
+    forward: Option<forward::vm::program::CompiledCircuit>,
+    /// Every `(layer, regime)` coordinate of the circuit's main layers.
+    backward: Vec<(
         backward::vm::coords::BwdVmCoord,
-        &'static backward::vm::production_program::CompiledSlice,
+        backward::vm::production_program::CompiledSlice,
     )>,
 }
 
-/// Compile every SELECTED VM program up front, and stop a selection the programs
-/// cannot serve.
+/// The empty set, for paths that run no VM: test harnesses that drive the
+/// backward state directly, and any circuit `vm_circuit_name` does not admit.
+/// A `static` rather than a `Default::default()` per caller so those paths can
+/// borrow for `'static` and keep the state's lifetime parameter trivial.
+static EMPTY_VM_PROGRAMS: GkrVmPrograms = GkrVmPrograms {
+    forward: None,
+    backward: Vec::new(),
+};
+
+impl GkrVmPrograms {
+    pub(crate) fn empty() -> &'static Self {
+        &EMPTY_VM_PROGRAMS
+    }
+
+    /// Compile everything the VM can run for this circuit. Empty for a circuit the
+    /// VM does not support, which costs nothing.
+    ///
+    /// `artifact` must be the RAW one, before
+    /// `transform::normalize_compiled_circuit_for_gpu` — see
+    /// `backward::vm::production_program::compile_all_slices`.
+    pub fn compile(
+        circuit_type: crate::witness::circuit_type::CircuitType,
+        artifact: &crate::upstream::GKRCircuitArtifact<crate::primitives::field::BF>,
+    ) -> Self {
+        let Some(circuit_name) = vm_circuit_name(circuit_type) else {
+            return Self::default();
+        };
+        let forward = forward::vm::program::compile_program(circuit_type, artifact)
+            .map(|result| result.unwrap_or_else(|error| panic!("forward VM program: {error}")));
+        let backward = backward::vm::production_program::compile_all_slices(circuit_name, artifact)
+            .unwrap_or_else(|error| panic!("backward VM coordinates: {error}"));
+        Self { forward, backward }
+    }
+
+    pub(crate) fn forward(&self) -> Option<&forward::vm::program::CompiledCircuit> {
+        self.forward.as_ref()
+    }
+
+    /// The compiled slice for one coordinate, or `None` if this circuit has none.
+    pub(crate) fn backward_slice(
+        &self,
+        coord: backward::vm::coords::BwdVmCoord,
+    ) -> Option<&backward::vm::production_program::CompiledSlice> {
+        self.backward
+            .iter()
+            .find_map(|(selected, slice)| (*selected == coord).then_some(slice))
+    }
+
+    pub(crate) fn is_empty(&self) -> bool {
+        self.forward.is_none() && self.backward.is_empty()
+    }
+}
+
+/// The name the VM's lean compiler records for a circuit, and the VM's allowlist:
+/// `None` means no VM path exists for it and none may be selected.
 ///
-/// Called at the TOP of `prove()` for two reasons, both structural.
-///
-/// **Timing.** Compilation used to happen lazily inside the passes, and the
-/// backward side's first hit was inside `into_main_layer_backward_state` — after
-/// the forward pass and the dimension-reducing layers were already on the stream.
-/// A cold compile there blocks the scheduling thread while the device drains,
-/// which is the one thing `prove()` must never do (see
-/// `docs/gpu_scheduling_contract.md`: it is enqueue-only, and the host's job is to
-/// stay ahead). add_sub's coordinates are ~1.4 ms in release, but the corpus
-/// projection (`report_the_compile_time_projection_over_the_corpus`) measures
-/// blake2_with_extended_control's at 131 ms — most of a proof. Here nothing is
-/// enqueued and the device is idle by definition.
-///
-/// **Ownership.** The programs are RETURNED, not left in a cache for the passes to
-/// find. A pass that looks a program up needs the circuit identity to look it up
-/// BY, and it does not have one; handing the compiled programs down instead means
-/// no downstream code can pick up a program compiled for a different circuit. The
-/// caches behind this function are keyed by [`CircuitType`] as well, so both the
-/// producer and the store are safe for a process that proves more than one
-/// circuit.
-///
-/// A wrong-circuit selection stops here. The forward pass has its own loud check;
-/// the backward side had none, and would have bound a coordinate lowered from
-/// another circuit's DAG.
-pub(crate) fn compile_selected_vm_programs(
+/// Deliberately a hard match rather than a structural predicate — a circuit the VM
+/// has never been measured on must be added here on purpose.
+pub(crate) fn vm_circuit_name(
     circuit_type: crate::witness::circuit_type::CircuitType,
-    artifact: &crate::upstream::GKRCircuitArtifact<crate::primitives::field::BF>,
-    is_add_sub: bool,
-) -> GkrVmPrograms {
+) -> Option<&'static str> {
+    use crate::witness::circuit_type::{
+        CircuitType, UnrolledCircuitType, UnrolledNonMemoryCircuitType,
+    };
+    match circuit_type {
+        CircuitType::Unrolled(UnrolledCircuitType::NonMemory(
+            UnrolledNonMemoryCircuitType::AddSubLuiAuipcMop,
+        )) => Some("add_sub_lui_auipc_mop"),
+        _ => None,
+    }
+}
+
+/// Reject a VM selection this circuit's compiled programs cannot serve.
+///
+/// Called by `prove()` before the first enqueue, so a switch set for the wrong
+/// circuit stops there rather than reaching a binder built for another layout.
+pub(crate) fn check_vm_selection_is_servable(
+    programs: &GkrVmPrograms,
+    circuit_type: crate::witness::circuit_type::CircuitType,
+) {
     let forward_layers = forward::path::vm_layers_from_env();
     let backward_coords = backward::vm::coords::coords_from_env();
     if forward_layers.is_empty() && backward_coords.is_empty() {
-        return GkrVmPrograms {
-            forward: None,
-            backward: Vec::new(),
-        };
+        return;
     }
     assert!(
-        is_add_sub,
-        "{} / {} select a VM path but the circuit is not add_sub_lui_auipc_mop; both the \
-         forward program and the backward coordinates are add_sub-specific",
+        !programs.is_empty(),
+        "{} / {} select a VM path but {circuit_type:?} has no compiled VM programs; \
+         `gkr::vm_circuit_name` is the allowlist",
         forward::path::AB_GKR_FWD_VM_LAYERS_ENV,
         backward::vm::coords::AB_GKR_BWD_VM_COORDS_ENV,
     );
-    let forward = (!forward_layers.is_empty()).then(|| {
-        forward::vm::program::compiled_program(circuit_type, artifact)
-            .unwrap_or_else(|error| panic!("forward VM program: {error}"))
-    });
-    let backward = backward_coords
-        .into_iter()
-        .map(|coord| {
-            let slice = backward::vm::production_program::compiled_slice(
-                circuit_type,
-                artifact,
-                coord.layer,
-                coord.regime,
-            )
-            .unwrap_or_else(|error| panic!("backward VM coordinate compile for {coord}: {error}"));
-            (coord, slice)
-        })
-        .collect();
-    GkrVmPrograms { forward, backward }
+    if !forward_layers.is_empty() {
+        assert!(
+            programs.forward.is_some(),
+            "{} selects layers but {circuit_type:?} has no embedded forward schedule",
+            forward::path::AB_GKR_FWD_VM_LAYERS_ENV,
+        );
+    }
+    for coord in backward_coords {
+        assert!(
+            programs.backward_slice(coord).is_some(),
+            "{} selects {coord}, which {circuit_type:?} has no compiled coordinate for",
+            backward::vm::coords::AB_GKR_BWD_VM_COORDS_ENV,
+        );
+    }
 }
 
 use crate::prover::gkr::storage_layout::GpuGKRStorageLayout;

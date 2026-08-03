@@ -199,12 +199,10 @@ where
         initial_claim_layout: ClaimBufferLayout,
         device_lookup_and_constraint: DeviceAllocation<E>,
         mirror_layers_to_host: bool,
-        // One compiled slice per selected backward-VM coordinate, compiled by
-        // `prove()` before the first enqueue (`gkr::compile_selected_vm_programs`).
-        bwd_vm_slices: Vec<(
-            vm::coords::BwdVmCoord,
-            &'static vm::production_program::CompiledSlice,
-        )>,
+        // Per-circuit precomputation the caller owns; see `GkrVmPrograms`. Borrowed
+        // for the whole of scheduling — the coordinates are read at plan build,
+        // which is where the descriptors that outlive them get built.
+        vm_programs: &crate::prover::gkr::GkrVmPrograms,
         // The proof slab and its layout thread through from prove().
         // Per-layer schedulers D2D-copy slab-bound fields
         // (`internal_round_coefficients`, `final_step_evaluations`) into slab
@@ -304,7 +302,7 @@ where
             external_challenges,
             inits_and_teardowns_top_bits,
             false,
-            bwd_vm_slices,
+            vm_programs,
         );
         let mut main_layers = Vec::new();
         let main_layers_range = Range::new("gkr.backward.main_layers")?;
@@ -502,10 +500,9 @@ where
             initial_claim_layout,
             device_lookup_and_constraint,
             true,
-            // This test-only entry does not go through `prove()`, so nothing
-            // compiled a VM program for it; `into_main_layer_backward_state_inner`
-            // then selects no VM-owned round.
-            Vec::new(),
+            // This test-only entry does not go through `prove()`, so no VM
+            // programs were compiled for it and no VM-owned round can be selected.
+            crate::prover::gkr::GkrVmPrograms::empty(),
             proof_slab,
             proof_layout,
             context,

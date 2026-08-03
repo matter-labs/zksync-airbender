@@ -334,7 +334,7 @@ pub(crate) struct GpuGKRMainLayerSumcheckLayerPlan<E> {
 unsafe impl<E> Send for GpuGKRMainLayerSumcheckLayerPlan<E> where E: Send {}
 unsafe impl<E> Sync for GpuGKRMainLayerSumcheckLayerPlan<E> where E: Sync {}
 
-pub(crate) struct GpuGKRMainLayerBackwardState<E: FieldExtension<BF> + Field> {
+pub(crate) struct GpuGKRMainLayerBackwardState<'p, E: FieldExtension<BF> + Field> {
     #[allow(dead_code)]
     pub(crate) forward_tracing_ranges: Vec<Range>,
     pub(crate) storage: GpuGKRStorage<BF, E>,
@@ -348,20 +348,10 @@ pub(crate) struct GpuGKRMainLayerBackwardState<E: FieldExtension<BF> + Field> {
     pub(crate) num_base_layer_memory_polys: usize,
     pub(crate) num_base_layer_witness_polys: usize,
     pub(crate) is_delegation: bool,
-    /// The backward VM's compiled slice for every coordinate
-    /// `AB_GKR_BWD_VM_COORDS` selects, captured from the RAW artifact (before
-    /// the normalize). Keyed by coordinate because each `(layer, regime)` is its
-    /// own program, and the state spans every main layer while a plan sees one.
-    /// Read once per proof at state build so the plan builder and the launcher
-    /// cannot see different selections.
-    ///
-    /// A `Vec` rather than a map: `BwdRegime` is an upstream enum without `Ord`,
-    /// and the list is bounded by layers x regimes, so a scan through it costs
-    /// less than inventing an ordering for a foreign type.
-    pub(crate) bwd_vm_slices: Vec<(
-        super::super::vm::coords::BwdVmCoord,
-        &'static super::super::vm::production_program::CompiledSlice,
-    )>,
+    /// This circuit's compiled VM programs, borrowed for the whole of scheduling.
+    /// The coordinates are read at plan build — where the descriptors that outlive
+    /// them are built — so nothing here needs to own them.
+    pub(crate) vm_programs: &'p crate::prover::gkr::GkrVmPrograms,
 }
 
 pub(crate) struct ScheduledMainLayerExecutionState<E: FieldExtension<BF> + Field> {

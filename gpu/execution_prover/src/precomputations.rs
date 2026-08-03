@@ -1,4 +1,5 @@
 use gpu_circuit_prover::prover::gkr::setup::GpuGKRSetupHost;
+use gpu_circuit_prover::prover::gkr::GkrVmPrograms;
 use gpu_circuit_prover::prover::ProverContext;
 use gpu_circuit_prover::witness::circuit_type::CircuitType;
 use gpu_circuit_prover::witness::circuit_type::UnrolledCircuitType::InitsAndTeardowns;
@@ -102,6 +103,13 @@ pub(crate) struct CircuitPrecomputations {
     pub compiled_circuit: Arc<GKRCircuitArtifact<BF>>,
     pub setup_host: Arc<LazyGpuGKRSetupHost>,
     pub decoder_host: Option<Arc<StaticPinnedBox<ExecutorFamilyDecoderData>>>,
+    /// This circuit's GKR VM programs, compiled HERE rather than inside `prove()`:
+    /// it is `lower_dag` over a layout that can be tens of megabytes plus one
+    /// coordinate compile per `(layer, regime)` — up to ~143 ms for
+    /// blake2_with_extended_control — which belongs with the circuit's other
+    /// precomputations, built once, off every proving path. Empty for a circuit the
+    /// VM does not support, which costs nothing.
+    pub vm_programs: Arc<GkrVmPrograms>,
 }
 
 impl CircuitPrecomputations {
@@ -139,8 +147,12 @@ impl CircuitPrecomputations {
             }
             _ => None,
         };
+        // Built from the RAW artifact, before any GPU normalization — see
+        // `GkrVmPrograms::compile`.
+        let vm_programs = Arc::new(GkrVmPrograms::compile(circuit_type, &compiled_circuit));
         Ok(Self {
             compiled_circuit: Arc::new(compiled_circuit),
+            vm_programs,
             setup_host,
             decoder_host,
         })

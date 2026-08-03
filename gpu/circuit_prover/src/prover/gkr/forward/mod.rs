@@ -258,7 +258,7 @@ pub(crate) fn schedule_forward_pass<E>(
     is_add_sub: bool,
     // Compiled by `prove()` before the first enqueue when `AB_GKR_FWD_VM_LAYERS`
     // selects layers, `None` otherwise — see `gkr::compile_selected_vm_programs`.
-    vm_program: Option<&'static vm::program::CompiledCircuit>,
+    vm_program: Option<&vm::program::CompiledCircuit>,
     context: &ProverContext,
 ) -> CudaResult<GpuGKRForwardOutput<BF, E>>
 where
@@ -363,28 +363,29 @@ where
     )
     .unwrap_or_else(|err| panic!("forward path selection is invalid: {err}"));
 
-    // The program is COMPILED BY `prove()` and handed in, not looked up here: a
-    // lookup would need the circuit identity to key on, and compiling here would
-    // put `lower_dag` on the scheduling thread with stage-1 work already on the
-    // stream. See `gkr::compile_selected_vm_programs`.
-    let vm_program = vm_program.inspect(|program| {
-        assert!(
-            !vm_layers.is_empty(),
-            "a forward VM program was handed in but no layer selects the VM"
-        );
+    // The program is COMPILED BY the caller and handed in, never looked up here:
+    // compiling here would put `lower_dag` on the scheduling thread with stage-1
+    // work already on the stream, and a lookup would need a circuit identity this
+    // function does not have. See `GkrVmPrograms`.
+    //
+    // It is present whenever the CIRCUIT has one, independently of what the switch
+    // selects — that is what lets one process alternate arms against a single
+    // compiled set — so only the one-directional implication holds: a selection
+    // requires a program, not the reverse.
+    let vm_program = vm_program.filter(|_| !vm_layers.is_empty());
+    assert!(
+        vm_layers.is_empty() || vm_program.is_some(),
+        "{} selects layers but no compiled forward VM program was handed in",
+        path::AB_GKR_FWD_VM_LAYERS_ENV,
+    );
+    if let Some(program) = vm_program {
         assert_eq!(
             program.budget, vm::FWD_VM_S4_BUDGET_LANES as usize,
             "the forward VM release kernel is instantiated for a \
              {}-lane cell budget",
             vm::FWD_VM_S4_BUDGET_LANES,
         );
-    });
-    assert_eq!(
-        vm_program.is_some(),
-        !vm_layers.is_empty(),
-        "the VM layer selection and the compiled program must agree; \
-         `compile_selected_vm_programs` reads the same switch"
-    );
+    }
 
     for (layer_idx, layer) in compiled_circuit.layers.iter().enumerate() {
         let layer_range = Range::new(format!("gkr.forward.layer.{layer_idx}"))?;
@@ -476,7 +477,7 @@ fn schedule_layer<E>(
     decoder_predicate_address: Option<GKRAddress>,
     trace_len: usize,
     forward_path: ForwardPath,
-    vm_program: Option<&'static vm::program::CompiledCircuit>,
+    vm_program: Option<&vm::program::CompiledCircuit>,
     context: &ProverContext,
 ) -> CudaResult<()>
 where

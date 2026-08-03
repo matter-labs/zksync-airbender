@@ -20,9 +20,6 @@
 //! bench chain makes the same split — `load_fwd_vm_circuit` compiles from the
 //! raw artifact while `CircuitFixture` normalizes for storage.
 
-use std::collections::BTreeMap;
-use std::sync::Mutex;
-
 use gkr_eval_isa::fwd::compile::{compile_circuit, parse_committed_schedule};
 pub(crate) use gkr_eval_isa::fwd::compile::CompiledCircuit;
 
@@ -31,44 +28,41 @@ use crate::witness::circuit_type::CircuitType;
 use crate::upstream::{lower_dag, validate_dag, GKRCircuitArtifact};
 
 /// The committed b16 schedule for `add_sub_lui_auipc_mop`, embedded so no
-/// source-tree path is read at runtime. add_sub is the only circuit in scope
-/// for the forward VM; the caller's structural predicate
-/// (`generated_layer0::is_add_sub_cached_layout`) is what keeps another
-/// circuit from reaching here.
+/// source-tree path is read at runtime.
 pub(crate) const EMBEDDED_ADD_SUB_SCHEDULE: &[u8] = include_bytes!(
     "../../../../../../../cs/compiled_circuits/add_sub_lui_auipc_mop_schedule_b16_gkr.json"
 );
 
-/// Compile the embedded program for `circuit_type`, once per process.
+/// The embedded schedule for a circuit, or `None` if the forward VM has none.
 ///
-/// Keyed by circuit, not merely cached: a process may prove several circuits, and
-/// an unkeyed cache would hand the second one the first one's program. The error
-/// is stringified so the cache can hand out the same failure to every later
-/// caller instead of retrying a compile that cannot start succeeding.
+/// A schedule is SEARCH output — the b16 schedules were searched against each
+/// circuit's DAG and cannot be recomputed — so unlike the backward coordinates
+/// these must travel inside the executable. This table is therefore the forward
+/// VM's real allowlist: a circuit absent here cannot run on it at all.
+pub(crate) fn embedded_schedule(circuit_type: CircuitType) -> Option<&'static [u8]> {
+    use crate::witness::circuit_type::{UnrolledCircuitType, UnrolledNonMemoryCircuitType};
+    match circuit_type {
+        CircuitType::Unrolled(UnrolledCircuitType::NonMemory(
+            UnrolledNonMemoryCircuitType::AddSubLuiAuipcMop,
+        )) => Some(EMBEDDED_ADD_SUB_SCHEDULE),
+        // Blake2WithCompression (`blake2_with_extended_control`) is the next
+        // entry; its schedule is committed at 760 KB.
+        _ => None,
+    }
+}
+
+/// Compile the embedded program for `circuit_type`.
 ///
-/// Entries are leaked deliberately — the cache is process-lifetime by
-/// construction, and callers hold `&'static`.
-///
-/// Call this from `gkr::compile_selected_vm_programs` only. It runs before the
-/// first enqueue, and the program it returns is handed to the forward pass rather
-/// than looked up again there: `lower_dag` over a multi-megabyte layout must not
-/// run on the scheduling thread once the device has work.
-pub(crate) fn compiled_program(
+/// No cache and no lock: this is per-circuit precomputation, built once by the
+/// caller (`GkrVmPrograms::compile`) and owned by whatever holds the circuit's
+/// other precomputations. `lower_dag` over a multi-megabyte layout has no business
+/// running behind a lock on a proving thread.
+pub(crate) fn compile_program(
     circuit_type: CircuitType,
     artifact: &GKRCircuitArtifact<BF>,
-) -> Result<&'static CompiledCircuit, String> {
-    static PROGRAMS: Mutex<BTreeMap<CircuitType, Result<&'static CompiledCircuit, String>>> =
-        Mutex::new(BTreeMap::new());
-    let mut programs = PROGRAMS
-        .lock()
-        .expect("the forward VM program cache mutex is never poisoned");
-    programs
-        .entry(circuit_type)
-        .or_insert_with(|| {
-            compile_program_from_bytes(EMBEDDED_ADD_SUB_SCHEDULE, artifact)
-                .map(|program| &*Box::leak(Box::new(program)))
-        })
-        .clone()
+) -> Option<Result<CompiledCircuit, String>> {
+    let schedule = embedded_schedule(circuit_type)?;
+    Some(compile_program_from_bytes(schedule, artifact))
 }
 
 /// The compile chain itself, over an explicit schedule so the negative cases

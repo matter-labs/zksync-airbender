@@ -33,10 +33,7 @@
 //! relations, and the DAG the coordinate is compiled against must be the one the
 //! source binder's `ReadPlace`s refer to.
 
-use std::collections::{BTreeMap, HashMap};
-#[cfg(test)]
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Mutex;
+use std::collections::HashMap;
 
 use gkr_eval_isa::bwd::coeff::lean_artifact::{
     compile_lean_coordinate, lower_lean_layer, LeanCoordinateArtifact,
@@ -45,7 +42,7 @@ use gkr_eval_isa::bwd::coeff::model::CoeffLayer;
 use gkr_eval_isa::fwd::compile::build_cross_layer_field_map;
 
 use crate::primitives::field::BF;
-use crate::witness::circuit_type::CircuitType;
+use super::coords::BwdVmCoord;
 use crate::upstream::{
     lower_dag, validate_dag, BwdRegime, DagLayer, FieldKind, GKRCircuitArtifact, ReadPlace,
 };
@@ -71,103 +68,73 @@ pub(crate) struct CompiledSlice {
     pub(crate) layer: CoeffLayer,
 }
 
-/// Index a regime for the cache key. An explicit match, so an upstream regime
-/// added later fails to compile here rather than colliding with an existing key.
-fn regime_key(regime: BwdRegime) -> u8 {
-    match regime {
-        BwdRegime::R0 => 0,
-        BwdRegime::Ext => 1,
-    }
-}
-
-/// The circuit's lowered DAG, once per process.
-///
-/// Separate from the slice cache because the lowering is a per-CIRCUIT cost that
-/// every `(layer, regime)` coordinate shares: `report_the_compile_time_
-/// projection_over_the_corpus` measures 34.5 ms of lowering across the corpus
-/// against 232.0 ms of coordinate compiles, and lowering per slice instead would
-/// multiply the first figure by the number of slices.
-///
-/// Keyed by circuit like the slices are: a process may prove several, and an
-/// unkeyed lowering would hand the second circuit the first one's DAG — the
-/// binder would then resolve addresses against the wrong layout.
-fn lowered_circuit(
-    circuit_type: CircuitType,
-    artifact: &GKRCircuitArtifact<BF>,
-) -> Result<&'static LoweredCircuit, String> {
-    static LOWERED: Mutex<BTreeMap<CircuitType, Result<&'static LoweredCircuit, String>>> =
-        Mutex::new(BTreeMap::new());
-    let mut lowered = LOWERED
-        .lock()
-        .expect("the lowering cache mutex is never poisoned");
-    lowered
-        .entry(circuit_type)
-        .or_insert_with(|| {
-            #[cfg(test)]
-            LOWERINGS.fetch_add(1, Ordering::Relaxed);
-            lower_and_validate(artifact).map(|lowered| &*Box::leak(Box::new(lowered)))
-        })
-        .clone()
-}
-
-/// Counts lowerings so `the_lowering_is_shared_by_every_slice_of_the_circuit`
-/// can assert the sharing rather than infer it from a timing.
+/// Counts lowerings so `the_lowering_is_shared_by_every_slice_of_the_circuit` can
+/// assert the sharing rather than infer it from a timing.
 #[cfg(test)]
-static LOWERINGS: AtomicUsize = AtomicUsize::new(0);
+static LOWERINGS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
 #[cfg(test)]
 pub(crate) fn lowerings_for_test() -> usize {
-    LOWERINGS.load(Ordering::Relaxed)
+    LOWERINGS.load(std::sync::atomic::Ordering::Relaxed)
 }
 
-/// One `(layer, regime)` coordinate and its layer, compiled once per process.
+/// Compile every `(layer, regime)` coordinate of a circuit's main layers.
 ///
-/// Cached like the forward VM's program, but keyed — R0 and Ext are different
-/// programs over one layer, and each main layer has its own pair. Deliberately
-/// a SEPARATE cache from `forward::vm::program`'s: caches of the same lowering
-/// are cheaper than a cross-module dependency, and each entry is only populated
-/// when its coordinate is selected.
+/// ONE lowering feeds all of them — it is the per-circuit half of the cost
+/// (`report_the_compile_time_projection_over_the_corpus`: 34.5 ms of lowering
+/// against 232.0 ms of coordinates, across the corpus) — and it is dropped when
+/// this returns, because only the coordinates are needed afterwards.
 ///
-/// Entries are leaked deliberately: the cache is process-lifetime by
-/// construction (bounded by layers x regimes) and callers hold `&'static`, the
-/// same contract the previous `OnceLock` pair gave them. A compile FAILURE is
-/// cached too, so a coordinate that cannot compile is not retried on every
-/// proof.
-pub(crate) fn compiled_slice(
-    circuit_type: CircuitType,
+/// No cache and no lock. This is per-circuit precomputation the caller owns and
+/// keeps; nothing here runs on a proving thread. Compiled INDEPENDENTLY of the
+/// coordinate switch on purpose: a process can flip the switch between proofs (the
+/// A/B does exactly that, alternating arms), so the programs a circuit HAS must not
+/// depend on which ones a given proof selects.
+///
+/// The artifact must be the RAW one, before
+/// `transform::normalize_compiled_circuit_for_gpu`: normalization rewrites
+/// scratch-backed addresses in gate relations, and the DAG a coordinate is
+/// compiled against must be the one the source binder's `ReadPlace`s refer to.
+pub(crate) fn compile_all_slices(
+    circuit_name: &str,
     artifact: &GKRCircuitArtifact<BF>,
-    layer_index: usize,
-    regime: BwdRegime,
-) -> Result<&'static CompiledSlice, String> {
-    static SLICES: Mutex<
-        BTreeMap<(CircuitType, usize, u8), Result<&'static CompiledSlice, String>>,
-    > = Mutex::new(BTreeMap::new());
-
-    let key = (circuit_type, layer_index, regime_key(regime));
-    // Held across the compile on purpose: two threads racing the same
-    // coordinate would otherwise both compile it and leak the loser. Plan build
-    // is single-threaded, so this never contends in production.
-    let mut slices = SLICES.lock().expect("the slice cache mutex is never poisoned");
-    slices
-        .entry(key)
-        .or_insert_with(|| {
-            let lowered = lowered_circuit(circuit_type, artifact)?;
-            let coord = compile_from_dag(lowered, layer_index, regime)?;
+) -> Result<Vec<(BwdVmCoord, CompiledSlice)>, String> {
+    let lowered = lower_and_validate(artifact)?;
+    let mut slices = Vec::with_capacity(lowered.layers.len() * 2);
+    for layer in 0..lowered.layers.len() {
+        for regime in [BwdRegime::R0, BwdRegime::Ext] {
+            let coord = compile_lean_coordinate(
+                circuit_name,
+                layer,
+                &lowered.layers[layer],
+                &lowered.cross_fields,
+                regime,
+            )
+            .map_err(|e| format!("compile_lean_coordinate({circuit_name}, {layer}, {regime:?}): {e:?}"))?;
             // The same lowering `compile_lean_coordinate` runs internally —
             // deterministic (`compiling_the_same_coordinate_twice_gives_the_same_
             // program`), so the layer here IS the one the coordinate came from.
-            let canonical = &lowered.layers[layer_index];
-            let (layer, _) = lower_lean_layer(canonical, &lowered.cross_fields, regime)
-                .map_err(|e| format!("lower_lean_layer: {e:?}"))?;
-            Ok(&*Box::leak(Box::new(CompiledSlice { coord, layer })))
-        })
-        .clone()
+            let (coeff_layer, _) =
+                lower_lean_layer(&lowered.layers[layer], &lowered.cross_fields, regime)
+                    .map_err(|e| format!("lower_lean_layer({layer}, {regime:?}): {e:?}"))?;
+            slices.push((
+                BwdVmCoord { layer, regime },
+                CompiledSlice {
+                    coord,
+                    layer: coeff_layer,
+                },
+            ));
+        }
+    }
+    Ok(slices)
 }
 
 /// `lower_dag` -> `validate` -> the cross-layer field map, over the RAW artifact.
 pub(crate) fn lower_and_validate(
     artifact: &GKRCircuitArtifact<BF>,
 ) -> Result<LoweredCircuit, String> {
+    #[cfg(test)]
+    LOWERINGS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let dag = lower_dag(artifact).map_err(|e| format!("lower_dag: {e}"))?;
     validate_dag(&dag).map_err(|e| format!("validate: {e}"))?;
     let cross_fields = build_cross_layer_field_map(&dag);
@@ -214,12 +181,7 @@ pub(crate) fn compile_coordinate(
 mod tests {
     use super::*;
 
-    /// The cache key every test here uses — the circuit the artifact belongs to.
-    const ADD_SUB: CircuitType = CircuitType::Unrolled(
-        crate::witness::circuit_type::UnrolledCircuitType::NonMemory(
-            crate::witness::circuit_type::UnrolledNonMemoryCircuitType::AddSubLuiAuipcMop,
-        ),
-    );
+    const ADD_SUB_NAME: &str = "add_sub_lui_auipc_mop";
 
     fn add_sub_artifact() -> GKRCircuitArtifact<BF> {
         crate::prover::tests::deserialize_json_for_test(
@@ -268,73 +230,47 @@ mod tests {
         assert_ne!(r0.program, ext.program);
     }
 
-    /// The process-wide cache is keyed by `(layer, regime)`: repeated calls
-    /// return the same `&'static` slice, and each key carries its own program.
-    /// The launcher needs both regimes when `0:R0,0:Ext` is selected together,
-    /// and one entry per layer once more than one layer is selected.
+    /// `compile_all_slices` covers every main layer in both regimes, and each
+    /// slice carries the coordinate it was asked for — the property that a
+    /// per-layer cutover depends on.
     #[test]
-    fn compiled_slices_are_cached_per_layer_and_regime() {
+    fn compile_all_slices_covers_every_layer_in_both_regimes() {
         let artifact = add_sub_artifact();
-        let r0 = compiled_slice(ADD_SUB, &artifact, 0, BwdRegime::R0).unwrap();
-        let ext = compiled_slice(ADD_SUB, &artifact, 0, BwdRegime::Ext).unwrap();
-        assert!(std::ptr::eq(
-            r0,
-            compiled_slice(ADD_SUB, &artifact, 0, BwdRegime::R0).unwrap()
-        ));
-        assert!(std::ptr::eq(
-            ext,
-            compiled_slice(ADD_SUB, &artifact, 0, BwdRegime::Ext).unwrap()
-        ));
-        assert_eq!(r0.coord.regime.regime(), BwdRegime::R0);
-        assert_eq!(ext.coord.regime.regime(), BwdRegime::Ext);
-        assert_ne!(r0.coord.program, ext.coord.program);
-        // The layer rides beside the coordinate for the bank fill and, in Ext,
-        // for `c_init` pass-through.
-        assert_eq!(ext.layer.regime, BwdRegime::Ext);
-    }
-
-    /// The layer is part of the cache KEY, not a constant: asking for layer 1
-    /// must not hand back layer 0's program. Before the re-key both regimes'
-    /// caches compiled layer 0 unconditionally, so this is the assertion that
-    /// distinguishes a per-layer cache from a per-regime one.
-    #[test]
-    fn a_slice_carries_the_layer_it_was_asked_for() {
-        let artifact = add_sub_artifact();
-        for layer in 0..artifact.layers.len().min(4) {
-            for regime in [BwdRegime::R0, BwdRegime::Ext] {
-                let slice = compiled_slice(ADD_SUB, &artifact, layer, regime)
-                    .unwrap_or_else(|e| panic!("layer {layer} {regime:?} must compile: {e}"));
-                assert_eq!(slice.coord.layer, layer, "coordinate layer");
-                assert_eq!(slice.coord.regime.regime(), regime, "coordinate regime");
-                assert!(std::ptr::eq(
-                    slice,
-                    compiled_slice(ADD_SUB, &artifact, layer, regime).unwrap()
-                ));
-            }
+        let slices = compile_all_slices(ADD_SUB_NAME, &artifact).expect("add_sub must compile");
+        assert_eq!(slices.len(), artifact.layers.len() * 2);
+        for (coord, slice) in &slices {
+            assert_eq!(slice.coord.layer, coord.layer, "coordinate layer");
+            assert_eq!(slice.coord.regime.regime(), coord.regime, "coordinate regime");
+            // The layer rides beside the coordinate for the bank fill and, in Ext,
+            // for `c_init` pass-through.
+            assert_eq!(slice.layer.regime, coord.regime);
         }
+        // R0 and Ext are different programs over the same layer.
+        let r0 = &slices
+            .iter()
+            .find(|(c, _)| c.layer == 0 && c.regime == BwdRegime::R0)
+            .unwrap()
+            .1;
+        let ext = &slices
+            .iter()
+            .find(|(c, _)| c.layer == 0 && c.regime == BwdRegime::Ext)
+            .unwrap()
+            .1;
+        assert_ne!(r0.coord.program, ext.coord.program);
     }
 
-    /// `lower_dag` is a per-CIRCUIT cost that every one of its `(layer, regime)`
-    /// coordinates shares. Keyed per slice instead, the corpus projection's
-    /// 34.5 ms of lowering would become ~324 ms of duplicated work — more than
-    /// the coordinate compiles it exists to feed.
-    ///
-    /// Asserted as a DELTA because the cache is process-wide and another test
-    /// may already have populated it: N slice requests must trigger at most one
-    /// lowering, whatever ran first.
+    /// One lowering feeds every coordinate. Asserted as a DELTA because other
+    /// tests in the process may already have lowered this circuit.
     #[test]
     fn the_lowering_is_shared_by_every_slice_of_the_circuit() {
         let artifact = add_sub_artifact();
         let before = lowerings_for_test();
-        for layer in 0..artifact.layers.len().min(4) {
-            for regime in [BwdRegime::R0, BwdRegime::Ext] {
-                compiled_slice(ADD_SUB, &artifact, layer, regime).unwrap();
-            }
-        }
+        let slices = compile_all_slices(ADD_SUB_NAME, &artifact).unwrap();
         let lowerings = lowerings_for_test() - before;
         assert!(
             lowerings <= 1,
-            "8 slice requests triggered {lowerings} lowerings; the lowering must be shared"
+            "{} slices triggered {lowerings} lowerings; the lowering must be shared",
+            slices.len()
         );
     }
 

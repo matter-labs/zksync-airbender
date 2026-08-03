@@ -364,6 +364,13 @@ pub(super) fn finish_proof_fixture(
         BasicUnrolledFixture {
             context,
             circuit_type: fixture_circuit_type,
+            // Compiled once with the fixture, as `CircuitPrecomputations` does in
+            // production: an A/B that flips the switches between proofs must not
+            // change which programs exist.
+            vm_programs: crate::prover::gkr::GkrVmPrograms::compile(
+                fixture_circuit_type,
+                &compiled_circuit,
+            ),
             compiled_circuit,
             external_challenges,
             prover_config,
@@ -771,6 +778,13 @@ pub(super) fn finish_proof_fixture_memory(
         BasicUnrolledFixture {
             context,
             circuit_type: fixture_circuit_type,
+            // Compiled once with the fixture, as `CircuitPrecomputations` does in
+            // production: an A/B that flips the switches between proofs must not
+            // change which programs exist.
+            vm_programs: crate::prover::gkr::GkrVmPrograms::compile(
+                fixture_circuit_type,
+                &compiled_circuit,
+            ),
             compiled_circuit,
             external_challenges,
             prover_config,

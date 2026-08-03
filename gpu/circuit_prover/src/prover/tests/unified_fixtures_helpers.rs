@@ -695,6 +695,11 @@ where
     let base = BasicUnrolledFixture {
         context,
         circuit_type: fixture_circuit_type,
+        // Compiled once with the fixture; see `BasicUnrolledFixture::vm_programs`.
+        vm_programs: crate::prover::gkr::GkrVmPrograms::compile(
+            fixture_circuit_type,
+            &compiled_circuit,
+        ),
         compiled_circuit,
         external_challenges,
         prover_config,
@@ -804,6 +809,11 @@ where
     BasicUnrolledFixture {
         context,
         circuit_type: fixture_circuit_type,
+        // Compiled once with the fixture; see `BasicUnrolledFixture::vm_programs`.
+        vm_programs: crate::prover::gkr::GkrVmPrograms::compile(
+            fixture_circuit_type,
+            &compiled_circuit,
+        ),
         compiled_circuit,
         external_challenges,
         prover_config,
@@ -1084,6 +1094,11 @@ fn prepare_unified_fixture(
         BasicUnrolledFixture {
             context,
             circuit_type: fixture_circuit_type,
+            // Compiled once with the fixture; see `BasicUnrolledFixture::vm_programs`.
+            vm_programs: crate::prover::gkr::GkrVmPrograms::compile(
+                fixture_circuit_type,
+                &compiled_circuit,
+            ),
             compiled_circuit,
             external_challenges,
             prover_config,

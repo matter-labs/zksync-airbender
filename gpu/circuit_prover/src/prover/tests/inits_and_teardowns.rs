@@ -309,6 +309,12 @@ pub(super) fn prepare_inits_and_teardowns_proof_fixture(
         BasicUnrolledFixture {
             context,
             circuit_type: CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns),
+            // Compiled once with the fixture, as `CircuitPrecomputations` does in
+            // production. Empty for this circuit — the VM has no program for it.
+            vm_programs: crate::prover::gkr::GkrVmPrograms::compile(
+                CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns),
+                &compiled_circuit,
+            ),
             compiled_circuit,
             external_challenges,
             prover_config,
@@ -759,6 +765,8 @@ fn standalone_inits_and_teardowns_gpu_workflow_matches_cpu() {
         &prover_config,
         FINAL_TRACE_SIZE_LOG_2,
         bundle,
+        // The VM has no program for this circuit.
+        crate::prover::gkr::GkrVmPrograms::empty(),
         &context,
     )
     .unwrap();

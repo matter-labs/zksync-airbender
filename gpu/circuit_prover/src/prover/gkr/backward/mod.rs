@@ -113,7 +113,7 @@ impl<E: Field + FieldExtension<BF>> GpuGKRDimensionReducingBackwardState<BF, E> 
         lookup_multiplicative_challenge: E,
         lookup_additive_challenge: E,
         is_delegation: bool,
-    ) -> GpuGKRMainLayerBackwardState<E> {
+    ) -> GpuGKRMainLayerBackwardState<'static, E> {
         // Test-only dynamic-challenge path: fixtures always carry real i&t
         // data, so the canonical top bits are the actual ones.
         let inits_and_teardowns_top_bits = canonical_inits_and_teardowns_top_bits(
@@ -135,21 +135,18 @@ impl<E: Field + FieldExtension<BF>> GpuGKRDimensionReducingBackwardState<BF, E> 
             lookup_multiplicative_challenge,
             lookup_additive_challenge,
             is_delegation,
-            Vec::new(),
+            crate::prover::gkr::GkrVmPrograms::empty(),
         )
     }
 
-    pub(crate) fn into_main_layer_backward_state_static(
+    pub(crate) fn into_main_layer_backward_state_static<'p>(
         self,
         compiled_circuit: GKRCircuitArtifact<BF>,
         external_challenges: GKRExternalChallenges<BF, E>,
         inits_and_teardowns_top_bits: Vec<u32>,
         is_delegation: bool,
-        bwd_vm_slices: Vec<(
-            vm::coords::BwdVmCoord,
-            &'static vm::production_program::CompiledSlice,
-        )>,
-    ) -> GpuGKRMainLayerBackwardState<E> {
+        vm_programs: &'p crate::prover::gkr::GkrVmPrograms,
+    ) -> GpuGKRMainLayerBackwardState<'p, E> {
         self.into_main_layer_backward_state_inner(
             compiled_circuit,
             external_challenges,
@@ -157,11 +154,11 @@ impl<E: Field + FieldExtension<BF>> GpuGKRDimensionReducingBackwardState<BF, E> 
             E::ZERO,
             E::ZERO,
             is_delegation,
-            bwd_vm_slices,
+            vm_programs,
         )
     }
 
-    fn into_main_layer_backward_state_inner(
+    fn into_main_layer_backward_state_inner<'p>(
         self,
         compiled_circuit: GKRCircuitArtifact<BF>,
         external_challenges: GKRExternalChallenges<BF, E>,
@@ -171,11 +168,8 @@ impl<E: Field + FieldExtension<BF>> GpuGKRDimensionReducingBackwardState<BF, E> 
         lookup_multiplicative_challenge: E,
         lookup_additive_challenge: E,
         is_delegation: bool,
-        bwd_vm_slices: Vec<(
-            vm::coords::BwdVmCoord,
-            &'static vm::production_program::CompiledSlice,
-        )>,
-    ) -> GpuGKRMainLayerBackwardState<E> {
+        vm_programs: &'p crate::prover::gkr::GkrVmPrograms,
+    ) -> GpuGKRMainLayerBackwardState<'p, E> {
         // The slices are COMPILED BY `prove()` and handed in — one per selected
         // coordinate, in selection order. Compiling here would need the circuit
         // identity to key the cache by, and would put `lower_dag` on the
@@ -220,7 +214,7 @@ impl<E: Field + FieldExtension<BF>> GpuGKRDimensionReducingBackwardState<BF, E> 
             num_base_layer_memory_polys: compiled_circuit.memory_layout.total_width,
             num_base_layer_witness_polys: compiled_circuit.witness_layout.total_width,
             is_delegation,
-            bwd_vm_slices,
+            vm_programs,
         }
     }
 }

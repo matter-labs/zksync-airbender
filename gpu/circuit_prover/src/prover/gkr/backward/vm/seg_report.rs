@@ -6134,7 +6134,7 @@ struct SegR0Fixture {
     plan: crate::prover::gkr::backward::GpuGKRMainLayerSumcheckLayerPlan<E4>,
     /// A KEEPALIVE: the plan's scratch is owned by this state, so it must outlive the
     /// plan and be dropped before the context. Never read.
-    _main_state: crate::prover::gkr::backward::GpuGKRMainLayerBackwardState<E4>,
+    _main_state: crate::prover::gkr::backward::GpuGKRMainLayerBackwardState<'static, E4>,
     context: ProverContext,
 }
 

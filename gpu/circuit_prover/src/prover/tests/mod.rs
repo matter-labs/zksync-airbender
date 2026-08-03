@@ -505,6 +505,10 @@ pub(crate) struct BasicUnrolledFixture {
     pub(crate) context: ProverContext,
     pub(crate) circuit_type: CircuitType,
     pub(crate) compiled_circuit: GKRCircuitArtifact<BF>,
+    /// This circuit's VM programs, compiled ONCE with the fixture — the same
+    /// placement `CircuitPrecomputations` uses in production, and what lets an
+    /// A/B alternate switch settings across proofs against one compiled set.
+    pub(crate) vm_programs: crate::prover::gkr::GkrVmPrograms,
     pub(crate) external_challenges: GKRExternalChallenges<BF, E4>,
     pub(crate) prover_config: ProverConfig,
     pub(crate) final_trace_size_log_2: usize,
@@ -625,6 +629,7 @@ impl BasicUnrolledFixture {
             &self.prover_config,
             self.final_trace_size_log_2,
             transfers,
+            &self.vm_programs,
             &self.context,
         )
     }
@@ -650,6 +655,7 @@ impl BasicUnrolledFixture {
             &self.prover_config,
             self.final_trace_size_log_2,
             transfers,
+            &self.vm_programs,
             &self.context,
         )?;
         let mem_after_prove = self.context.get_used_mem_current();

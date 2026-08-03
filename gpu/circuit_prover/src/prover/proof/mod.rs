@@ -18,6 +18,7 @@ use crate::prover::gkr::forward::{schedule_forward_pass, ForwardOutputSlabTarget
 use crate::prover::proof::inputs::GpuGKRProofTransfer;
 use crate::prover::ProverContext;
 use crate::upstream::{GKRCircuitArtifact, ProverConfig};
+use crate::prover::gkr::GkrVmPrograms;
 use crate::witness::circuit_type::CircuitType;
 
 #[cfg(test)]
@@ -46,6 +47,10 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
     prover_config: &ProverConfig,
     final_trace_size_log_2: usize,
     inputs: GpuGKRProofTransfer<'a, A>,
+    // This circuit's compiled VM programs — per-circuit precomputation the caller
+    // builds once (`GkrVmPrograms::compile`) and keeps. `prove()` only borrows:
+    // see the type's doc for why the intensive work is not done here.
+    vm_programs: &GkrVmPrograms,
     context: &ProverContext,
 ) -> CudaResult<GpuGKRProofJob<'a, A>> {
     assert_eq!(
@@ -62,13 +67,9 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
             )
         )
     );
-    // Compiled before the first enqueue and handed to the passes, never looked up
-    // downstream: see `gkr::compile_selected_vm_programs`.
-    let vm_programs = crate::prover::gkr::compile_selected_vm_programs(
-        circuit_type,
-        &compiled_circuit,
-        is_add_sub,
-    );
+    // A switch set for a circuit whose programs were never compiled stops here,
+    // before the first enqueue, rather than at a binder built for another layout.
+    crate::prover::gkr::check_vm_selection_is_servable(vm_programs, circuit_type);
 
     let GpuGKRProofTransfer {
         transfer,
@@ -163,7 +164,7 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
         final_trace_size_log_2,
         output_evaluations_slab,
         is_add_sub,
-        vm_programs.forward,
+        vm_programs.forward(),
         context,
     )?;
     let ForwardToBackwardHandoff {
@@ -207,7 +208,7 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
         initial_d_claims,
         top_layer_claim_layout,
         d_lookup_challenges_for_backward,
-        vm_programs.backward,
+        vm_programs,
         &proof_slab,
         &proof_layout,
         context,

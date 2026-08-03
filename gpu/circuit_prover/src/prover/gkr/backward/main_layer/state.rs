@@ -159,7 +159,7 @@ fn upload_recipe_eval_arrays(
     })
 }
 
-impl<E: Field + FieldExtension<BF>> GpuGKRMainLayerBackwardState<E> {
+impl<E: Field + FieldExtension<BF>> GpuGKRMainLayerBackwardState<'_, E> {
     pub(crate) fn storage(&self) -> &GpuGKRStorage<BF, E> {
         &self.storage
     }
@@ -223,19 +223,32 @@ impl FlatContinuationSizeCheck {
     }
 }
 
-impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
+impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<'_, E> {
     /// The compiled slice for one coordinate, or `None` if it was not selected.
     ///
     /// The selection is read ONCE at state build (`bwd_vm_slices`), never
     /// re-read here: an A/B alternating arms inside one process must not have a
     /// plan built against one selection and launched against another.
+    /// The compiled slice for `coord` if this proof SELECTED it, else `None`.
+    ///
+    /// Both halves are load-bearing and neither implies the other. The programs
+    /// hold every coordinate the circuit has, compiled switch-independently so one
+    /// process can alternate A/B arms — so availability is NOT selection, and
+    /// testing only `backward_slice(..).is_some()` would run the VM on every layer
+    /// of both arms. The selection is read here, at plan build, because that is
+    /// where the launcher's own reads happen; a selected coordinate with no
+    /// compiled program is impossible by then (`check_vm_selection_is_servable`
+    /// runs before the first enqueue), so it is an assert rather than a fallback.
     fn bwd_vm_slice(
         &self,
         coord: super::super::vm::coords::BwdVmCoord,
-    ) -> Option<&'static super::super::vm::production_program::CompiledSlice> {
-        self.bwd_vm_slices
-            .iter()
-            .find_map(|&(selected, slice)| (selected == coord).then_some(slice))
+    ) -> Option<&super::super::vm::production_program::CompiledSlice> {
+        if !super::super::vm::coords::coords_from_env().contains(&coord) {
+            return None;
+        }
+        Some(self.vm_programs.backward_slice(coord).unwrap_or_else(|| {
+            panic!("{coord} is selected but this circuit has no compiled coordinate for it")
+        }))
     }
 
     fn prepare_layer_from_blueprints(

@@ -373,6 +373,7 @@ fn enqueue_phase_two<'a>(
                 &prover_config,
                 final_trace_size_log_2,
                 bundle,
+                &state.precomputations.vm_programs,
                 context,
             )?;
             JobType::Proof(job)
