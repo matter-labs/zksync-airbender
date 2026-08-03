@@ -1475,21 +1475,22 @@ fn run_add_sub_fwd_vm_all_layers_ab_test() {
     );
 }
 
-/// A/B everything the VM currently owns, in one arm: the forward VM on all four
-/// non-dimension-reducing layers PLUS the backward VM on the whole of L0.
+/// A/B the configuration worth shipping: the forward VM on all four
+/// non-dimension-reducing layers plus the backward VM on L0's round 0 and
+/// continuation rounds.
 ///
-/// The two passes were only ever measured separately (−2.418 ms forward,
-/// −3.710 ms backward), and separate measurements do not establish that they
-/// compose — they touch different phases of the proof, and if either arm is
-/// bounded by something they share (the allocator's peak, clocks, an
-/// enqueue-rate ceiling on the scheduling thread) the pair would land short of
-/// the sum. This measures the pair.
+/// This is the DAG-derived path's e2e number for add_sub, and it also settled
+/// additivity — median −6.067 ms against a predicted sum of −6.128 (forward
+/// −2.418 alone, backward L0 −3.710 alone). The two passes compose.
 ///
-/// Coverage caveat, because the number should not be read as "the DAG path's
-/// verdict": the backward side owns exactly ONE of add_sub's four main layers,
-/// and the dimension-reducing sumcheck (~12% of e2e) is permanently incumbent.
-/// This is the sum of what is switched on TODAY, not of what the cutover will
-/// eventually be.
+/// The backward arm stops at L0 on EVIDENCE, not for lack of machinery: every
+/// main layer is wired and bit-exact (see
+/// `run_add_sub_bwd_vm_all_main_layers_proof_parity_test`), but
+/// `run_add_sub_bwd_vm_per_main_layer_ab_test` measures L1 as a wash (+0.060)
+/// and L2/L3 as consistent losses (+0.536, +0.520, 0/20 pairs winning). Adding
+/// them takes this number from −6.067 to −4.871. The remaining incumbent GKR
+/// work is those three layers plus the dimension-reducing sumcheck (22.3 ms
+/// GPU-projected), the latter permanently.
 #[test]
 #[serial]
 #[ignore]
@@ -1500,7 +1501,8 @@ fn run_add_sub_both_vms_ab_test() {
     const PAIRS: usize = 20;
     /// Every non-dimension-reducing forward layer.
     const FWD_VM_AB_LAYERS: &str = "0,1,2,3";
-    /// The whole of backward L0 — round 0 and every continuation round.
+    /// L0's whole main-layer sumcheck. Layers 1..=3 are wired and verified but
+    /// deliberately NOT selected — they do not pay (see this test's doc).
     const BWD_VM_AB_COORDS: &str = "0:R0,0:Ext";
 
     let fixture = prepare_basic_unrolled_profiling_fixture();
@@ -1576,14 +1578,101 @@ fn run_add_sub_both_vms_ab_test() {
         deltas[deltas.len() - 1],
     );
     eprintln!(
-        "[both-vms-ab] additivity check: forward alone measured -2.418, backward L0 alone \
-         -3.710, sum -6.128"
+        "[both-vms-ab] reference points: forward alone -2.418, backward L0 alone -3.710 (sum \
+         -6.128, so additive); all four backward main layers instead of L0 gives -4.871"
     );
     eprintln!(
         "[both-vms-ab] peak device memory: on {:.4} GiB, off {:.4} GiB, delta {} B",
         on_peak as f64 / (1u64 << 30) as f64,
         off_peak as f64 / (1u64 << 30) as f64,
         on_peak as i64 - off_peak as i64,
+    );
+}
+
+/// A/B the backward VM ONE MAIN LAYER AT A TIME, so each layer's contribution is
+/// its own number instead of a share of a lump.
+///
+/// Needed because the lumped measurement inverted: the whole main-layer sumcheck
+/// on the VM is −4.871 ms, but forward + backward L0 alone was −6.067, so layers
+/// 1..=3 together cost about +1.2 ms rather than the −3.9 their GPU-projected
+/// 35.0 ms would suggest at L0's rate. The mechanism is visible in the R0 slice's
+/// own result (+0.196 ms): the incumbent runs the FUSED warp-partial path, the VM
+/// pays an unfused reduction + round-update tail, and that fixed cost is
+/// amortized by L0's big rounds but not by the smaller layers'.
+///
+/// A cutover decision is per layer, so the evidence has to be per layer. The
+/// forward arm stays OFF throughout — this isolates the backward layers.
+#[test]
+#[serial]
+#[ignore]
+fn run_add_sub_bwd_vm_per_main_layer_ab_test() {
+    use crate::prover::gkr::backward::vm::coords::{AB_GKR_BWD_VM_COORDS_ENV, WIRED_LAYERS};
+
+    const PAIRS: usize = 20;
+
+    let fixture = prepare_basic_unrolled_profiling_fixture();
+    assert!(
+        !crate::prover::gkr::backward::vm::production_bind::poison_accumulator_enabled(),
+        "the accumulator poison is charged to the VM arm alone; leaving it on inverts this"
+    );
+    assert!(
+        !crate::prover::gkr::backward::vm::production_bind::cascade_poison_enabled(),
+        "the cascade poison adds noise this measurement cannot absorb"
+    );
+
+    let mut run = |coords: &str| {
+        let _env = EnvGuard::set(AB_GKR_BWD_VM_COORDS_ENV, coords);
+        let t = fixture.schedule_transfers().unwrap();
+        fixture.context.get_h2d_stream().synchronize().unwrap();
+        let (proof, ms) = fixture.prove(t).unwrap().finish().unwrap();
+        (proof, ms)
+    };
+
+    // One warmup per arm: the per-layer coordinate compiles are OnceLock'd, and
+    // a first-call compile inside a measured arm would be charged to the VM.
+    let all_coords = (0..WIRED_LAYERS)
+        .map(|layer| format!("{layer}:R0,{layer}:Ext"))
+        .collect::<Vec<_>>()
+        .join(",");
+    for coords in ["", all_coords.as_str()] {
+        let (proof, ms) = run(coords);
+        eprintln!("[bwd-vm-layer-ab] warmup bwd={coords:?}: {ms} ms");
+        drop(proof);
+    }
+
+    eprintln!("[bwd-vm-layer-ab] layer  median_ms  min_ms  max_ms  pairs_winning");
+    let mut medians = Vec::with_capacity(WIRED_LAYERS);
+    for layer in 0..WIRED_LAYERS {
+        let coords = format!("{layer}:R0,{layer}:Ext");
+        let mut deltas = Vec::with_capacity(PAIRS);
+        for pair in 0..PAIRS {
+            let (on, off) = if pair % 2 == 0 {
+                let on = run(&coords);
+                let off = run("");
+                (on, off)
+            } else {
+                let off = run("");
+                let on = run(&coords);
+                (on, off)
+            };
+            assert_gkr_proof_eq_for_test(&on.0, &off.0);
+            deltas.push(on.1 - off.1);
+        }
+        deltas.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let median = deltas[deltas.len() / 2];
+        let winning = deltas.iter().filter(|d| **d < 0.0).count();
+        eprintln!(
+            "[bwd-vm-layer-ab] {layer:>5}  {median:>9.3}  {:>6.3}  {:>6.3}  {winning:>13}",
+            deltas[0],
+            deltas[deltas.len() - 1],
+        );
+        medians.push(median);
+    }
+
+    let sum: f32 = medians.iter().sum();
+    eprintln!(
+        "[bwd-vm-layer-ab] per-layer medians sum to {sum:.3} ms; the whole-sumcheck lump measured \
+         -4.871 with the forward arm also on (-2.418 alone)"
     );
 }
 
