@@ -36,6 +36,7 @@ pub(super) fn compile_mem_word_only_circuit_for_test(binary: &[u32]) -> GKRCircu
         &|cs| mem_word_only_circuit_with_preprocessed_bytecode_for_gkr(cs),
         1 << 20,
         UnrolledMemoryCircuitType::LoadStoreWordOnly.get_domain_size_log2() as usize,
+        0,
     )
 }
 
@@ -52,6 +53,7 @@ pub(super) fn compile_mem_subword_only_circuit_for_test(binary: &[u32]) -> GKRCi
         &|cs| mem_subword_only_circuit_with_preprocessed_bytecode_for_gkr(cs),
         1 << 20,
         UnrolledMemoryCircuitType::LoadStoreSubwordOnly.get_domain_size_log2() as usize,
+        0,
     )
 }
 
@@ -283,15 +285,16 @@ pub(super) fn run_memory_workflow_input_parity_test<const FAMILY_IDX: u8>(
     .finish()
     .unwrap();
 
-    let (mem_oracle, wit_oracle) = stage1::stage1::<BF, DefaultTreeConstructor>(
-        &full_trace,
-        &twiddles,
-        whir_schedule.base_lde_factor,
-        whir_schedule.whir_steps_schedule[0],
-        whir_schedule.cap_size,
-        trace_len.trailing_zeros() as usize,
-        &worker,
-    );
+    let (mem_oracle, wit_oracle) =
+        commit_separate_memory_and_witness_subtrees::<BF, DefaultTreeConstructor>(
+            &full_trace,
+            &twiddles,
+            whir_schedule.base_lde_factor,
+            whir_schedule.whir_steps_schedule[0],
+            whir_schedule.cap_size,
+            trace_len.trailing_zeros() as usize,
+            &worker,
+        );
     let cpu_memory_caps = stage1_caps_from_tree(&mem_oracle.tree, subcap_size);
     if gpu_memory_caps != cpu_memory_caps {
         let first_mismatch = describe_first_trace_holder_column_mismatch(

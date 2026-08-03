@@ -272,15 +272,16 @@ pub(super) fn prepare_inits_and_teardowns_proof_fixture(
             })
             .collect::<Vec<_>>()
     } else {
-        let (mem_oracle, _wit_oracle) = stage1::stage1::<BF, DefaultTreeConstructor>(
-            &make_full_trace(),
-            &twiddles,
-            whir_schedule.base_lde_factor,
-            whir_schedule.whir_steps_schedule[0],
-            whir_schedule.cap_size,
-            trace_len.trailing_zeros() as usize,
-            &worker,
-        );
+        let (mem_oracle, _wit_oracle) =
+            commit_separate_memory_and_witness_subtrees::<BF, DefaultTreeConstructor>(
+                &make_full_trace(),
+                &twiddles,
+                whir_schedule.base_lde_factor,
+                whir_schedule.whir_steps_schedule[0],
+                whir_schedule.cap_size,
+                trace_len.trailing_zeros() as usize,
+                &worker,
+            );
         stage1_caps_from_tree(
             &mem_oracle.tree,
             whir_schedule.cap_size / whir_schedule.base_lde_factor,
@@ -480,15 +481,16 @@ fn standalone_inits_and_teardowns_gpu_workflow_matches_cpu() {
             trace_len,
             &worker,
         );
-    let (mem_oracle, _wit_oracle) = stage1::stage1::<BF, DefaultTreeConstructor>(
-        &cpu_full_trace_for_stagewise,
-        &twiddles,
-        whir_schedule.base_lde_factor,
-        whir_schedule.whir_steps_schedule[0],
-        whir_schedule.cap_size,
-        trace_len.trailing_zeros() as usize,
-        &worker,
-    );
+    let (mem_oracle, _wit_oracle) =
+        commit_separate_memory_and_witness_subtrees::<BF, DefaultTreeConstructor>(
+            &cpu_full_trace_for_stagewise,
+            &twiddles,
+            whir_schedule.base_lde_factor,
+            whir_schedule.whir_steps_schedule[0],
+            whir_schedule.cap_size,
+            trace_len.trailing_zeros() as usize,
+            &worker,
+        );
     let cpu_memory_caps = stage1_caps_from_tree(
         &mem_oracle.tree,
         whir_schedule.cap_size / whir_schedule.base_lde_factor,
@@ -570,7 +572,8 @@ fn standalone_inits_and_teardowns_gpu_workflow_matches_cpu() {
             .into_iter(),
             &mut cpu_transcript_input,
         );
-        let mut cpu_seed = Transcript::commit_initial(&cpu_transcript_input);
+        let mut cpu_seed =
+            <Blake2sTranscript as Transcript<BF, E4>>::commit_initial_u32(&cpu_transcript_input);
         let cpu_lookup_challenges: [E4; 3] =
             draw_random_field_els::<BF, E4, Blake2sTranscript>(&mut cpu_seed, 3)
                 .try_into()
@@ -589,7 +592,8 @@ fn standalone_inits_and_teardowns_gpu_workflow_matches_cpu() {
                 gpu_transcript_input.extend_from_slice(digest);
             }
         }
-        let mut gpu_seed = Transcript::commit_initial(&gpu_transcript_input);
+        let mut gpu_seed =
+            <Blake2sTranscript as Transcript<BF, E4>>::commit_initial_u32(&gpu_transcript_input);
         let gpu_lookup_challenges: [E4; 3] =
             draw_random_field_els::<BF, E4, Blake2sTranscript>(&mut gpu_seed, 3)
                 .try_into()

@@ -140,6 +140,7 @@ fn run_basic_unrolled_stagewise_parity_test() {
         &|cs| add_sub_lui_auipc_mop_circuit_with_preprocessed_bytecode_for_gkr(cs),
         1 << 20,
         TRACE_LEN_LOG2 as usize,
+        0,
     );
 
     let num_calls =
@@ -262,15 +263,16 @@ fn run_basic_unrolled_stagewise_parity_test() {
     assert_eq!(add_sub_circuit.trace_len, trace_len);
     assert_eq!(full_trace.column_major_memory_trace[0].len(), trace_len);
 
-    let (mem_oracle, wit_oracle) = stage1::stage1::<BF, DefaultTreeConstructor>(
-        &full_trace,
-        &twiddles,
-        whir_schedule.base_lde_factor,
-        whir_schedule.whir_steps_schedule[0],
-        whir_schedule.cap_size,
-        trace_len.trailing_zeros() as usize,
-        &worker,
-    );
+    let (mem_oracle, wit_oracle) =
+        commit_separate_memory_and_witness_subtrees::<BF, DefaultTreeConstructor>(
+            &full_trace,
+            &twiddles,
+            whir_schedule.base_lde_factor,
+            whir_schedule.whir_steps_schedule[0],
+            whir_schedule.cap_size,
+            trace_len.trailing_zeros() as usize,
+            &worker,
+        );
 
     let trace_holder_caps = gpu_setup_transfer
         .trace_holder
@@ -368,8 +370,8 @@ fn run_basic_unrolled_stagewise_parity_test() {
         &mut transcript_input,
     );
 
-    let mut seed = Transcript::commit_initial(&transcript_input);
-    let challenges: Vec<E4> = draw_random_field_els::<BF, E4>(&mut seed, 3);
+    let mut seed = <Blake2sTranscript as Transcript<BF, E4>>::commit_initial_u32(&transcript_input);
+    let challenges: Vec<E4> = draw_random_field_els::<BF, E4, Blake2sTranscript>(&mut seed, 3);
     let [lookup_alpha, lookup_additive_part, constraints_batch_challenge] =
         challenges.try_into().unwrap();
 
@@ -518,17 +520,19 @@ fn run_basic_unrolled_stagewise_parity_test() {
     }
 
     let seed_before_explicit_commit = seed;
-    commit_field_els::<BF, E4>(&mut seed, &evals_flattened);
+    commit_field_els::<BF, E4, Blake2sTranscript>(&mut seed, &evals_flattened);
     let seed_after_cpu_explicit_commit = seed;
 
     let mut gpu_seed = seed_before_explicit_commit;
-    commit_field_els::<BF, E4>(&mut gpu_seed, &gpu_evals_flattened);
+    commit_field_els::<BF, E4, Blake2sTranscript>(&mut gpu_seed, &gpu_evals_flattened);
     assert_eq!(gpu_seed, seed_after_cpu_explicit_commit);
 
     let num_challenges = (final_trace_size_log_2 + 1) as usize;
-    let mut challenges = draw_random_field_els::<BF, E4>(&mut seed, num_challenges);
+    let mut challenges =
+        draw_random_field_els::<BF, E4, Blake2sTranscript>(&mut seed, num_challenges);
     let expected_challenges = challenges.clone();
-    let mut gpu_challenges = draw_random_field_els::<BF, E4>(&mut gpu_seed, num_challenges);
+    let mut gpu_challenges =
+        draw_random_field_els::<BF, E4, Blake2sTranscript>(&mut gpu_seed, num_challenges);
     assert_eq!(gpu_challenges, expected_challenges);
     let batching_challenge = challenges.pop().unwrap();
     let gpu_batching_challenge = gpu_challenges.pop().unwrap();
@@ -888,7 +892,7 @@ fn run_basic_unrolled_stagewise_parity_test() {
         .copied()
         .collect();
     if !extras_values_for_seed.is_empty() {
-        commit_field_els::<BF, E4>(
+        commit_field_els::<BF, E4, Blake2sTranscript>(
             &mut gpu_seed_after_base_layer_claims,
             &extras_values_for_seed,
         );
@@ -916,7 +920,8 @@ fn run_basic_unrolled_stagewise_parity_test() {
 
     drop(gkr_storage);
 
-    let whir_batching_challenge = draw_random_field_els::<BF, E4>(&mut seed, 1)[0];
+    let whir_batching_challenge =
+        draw_random_field_els::<BF, E4, Blake2sTranscript>(&mut seed, 1)[0];
     let whir_schedule = whir_schedule.clone();
     stage1_output
         .memory_trace_holder
@@ -998,6 +1003,8 @@ fn run_basic_unrolled_stagewise_parity_test() {
             seed,
             whir_schedule.cap_size,
             trace_len.trailing_zeros() as usize,
+            None,
+            WhirIntermediateOracleMode::Monolithic,
             &worker,
         )
     };

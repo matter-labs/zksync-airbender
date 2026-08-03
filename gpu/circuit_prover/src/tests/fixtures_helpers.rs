@@ -1007,7 +1007,7 @@ pub(super) fn build_basic_unrolled_async_backward_fixture_from_base(
             .into_iter(),
         &mut transcript_input,
     );
-    let mut seed = Transcript::commit_initial(&transcript_input);
+    let mut seed = <Blake2sTranscript as Transcript<BF, E4>>::commit_initial_u32(&transcript_input);
     let challenges: Vec<E4> = draw_random_field_els::<BF, E4, Blake2sTranscript>(&mut seed, 3);
     let [lookup_alpha, lookup_additive_part, constraints_batch_challenge] =
         challenges.try_into().unwrap();

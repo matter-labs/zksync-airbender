@@ -258,8 +258,9 @@ pub(super) fn assert_recursive_whir_oracle_parity_for_supported_path(
         let coeffs = special_lagrange_interpolate_for_test(f0, f1, f_half, E4::from_base(two_inv));
         initial_round_sumcheck_polys.push(coeffs);
         cpu_sumcheck_polys.push(coeffs);
-        commit_field_els::<BF, E4>(&mut transcript_seed, &coeffs);
-        let folding_challenge = draw_random_field_els::<BF, E4>(&mut transcript_seed, 1)[0];
+        commit_field_els::<BF, E4, Blake2sTranscript>(&mut transcript_seed, &coeffs);
+        let folding_challenge =
+            draw_random_field_els::<BF, E4, Blake2sTranscript>(&mut transcript_seed, 1)[0];
         folding_challenges_in_round.push(folding_challenge);
         claim = evaluate_small_univariate_poly::<BF, E4, 3>(&coeffs, &folding_challenge);
         fold_monomial_form_for_test(&mut sumchecked_poly_monomial_form, folding_challenge);
@@ -335,7 +336,7 @@ pub(super) fn assert_recursive_whir_oracle_parity_for_supported_path(
         context,
     )
     .unwrap();
-    add_whir_commitment_to_transcript(
+    add_whir_commitment_to_transcript::<BF, E4, Blake2sTranscript, DefaultTreeConstructor>(
         &mut transcript_seed,
         &WhirCommitment::<BF, DefaultTreeConstructor> {
             cap: <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<BF>>::get_cap(
@@ -345,10 +346,10 @@ pub(super) fn assert_recursive_whir_oracle_parity_for_supported_path(
         },
     );
 
-    let ood_point = draw_random_field_els::<BF, E4>(&mut transcript_seed, 1)[0];
+    let ood_point = draw_random_field_els::<BF, E4, Blake2sTranscript>(&mut transcript_seed, 1)[0];
     let ood_value = evaluate_monomial_form_for_test(&sumchecked_poly_monomial_form, ood_point);
     cpu_ood_samples.push(ood_value);
-    commit_field_els::<BF, E4>(&mut transcript_seed, &[ood_value]);
+    commit_field_els::<BF, E4, Blake2sTranscript>(&mut transcript_seed, &[ood_value]);
     assert_eq!(
         gpu_initial_round_checkpoint.sumcheck_polys, initial_round_sumcheck_polys,
         "initial WHIR sumcheck polys diverged before PoW",
@@ -419,14 +420,15 @@ pub(super) fn assert_recursive_whir_oracle_parity_for_supported_path(
     );
     bitreverse_enumeration_inplace(&mut high_powers_offsets);
     let query_index_bits = query_domain_size.trailing_zeros() as usize;
-    let (initial_nonce, mut bit_source) = draw_query_bits(
+    let (initial_nonce, mut bit_source) = draw_query_bits::<BF, E4, Blake2sTranscript>(
         &mut transcript_seed,
         initial_queries * query_index_bits,
         initial_pow_bits,
         worker,
     );
     cpu_pow_nonces.push(initial_nonce);
-    let delinearization_challenge = draw_random_field_els::<BF, E4>(&mut transcript_seed, 1)[0];
+    let delinearization_challenge =
+        draw_random_field_els::<BF, E4, Blake2sTranscript>(&mut transcript_seed, 1)[0];
     let mut claim_correction = {
         let mut t = ood_value;
         t.mul_assign(&delinearization_challenge);
@@ -491,8 +493,9 @@ pub(super) fn assert_recursive_whir_oracle_parity_for_supported_path(
             let coeffs =
                 special_lagrange_interpolate_for_test(f0, f1, f_half, E4::from_base(two_inv));
             cpu_sumcheck_polys.push(coeffs);
-            commit_field_els::<BF, E4>(&mut transcript_seed, &coeffs);
-            let folding_challenge = draw_random_field_els::<BF, E4>(&mut transcript_seed, 1)[0];
+            commit_field_els::<BF, E4, Blake2sTranscript>(&mut transcript_seed, &coeffs);
+            let folding_challenge =
+                draw_random_field_els::<BF, E4, Blake2sTranscript>(&mut transcript_seed, 1)[0];
             folding_challenges_in_round.push(folding_challenge);
             claim = evaluate_small_univariate_poly::<BF, E4, 3>(&coeffs, &folding_challenge);
             fold_monomial_form_for_test(&mut sumchecked_poly_monomial_form, folding_challenge);
@@ -532,7 +535,7 @@ pub(super) fn assert_recursive_whir_oracle_parity_for_supported_path(
         cpu_recursive_caps.push(next_cpu_oracle_cap.clone());
         // Upstream folds the recursive oracle cap into the transcript before drawing
         // the next OOD point (see prover/src/gkr/whir/mod.rs).
-        add_whir_commitment_to_transcript(
+        add_whir_commitment_to_transcript::<BF, E4, Blake2sTranscript, DefaultTreeConstructor>(
             &mut transcript_seed,
             &WhirCommitment::<BF, DefaultTreeConstructor> {
                 cap: next_cpu_oracle_cap,
@@ -540,12 +543,13 @@ pub(super) fn assert_recursive_whir_oracle_parity_for_supported_path(
             },
         );
 
-        let ood_point = draw_random_field_els::<BF, E4>(&mut transcript_seed, 1)[0];
+        let ood_point =
+            draw_random_field_els::<BF, E4, Blake2sTranscript>(&mut transcript_seed, 1)[0];
         let ood_value = evaluate_monomial_form_for_test(&sumchecked_poly_monomial_form, ood_point);
         cpu_ood_samples.push(ood_value);
         // Upstream commits the OOD value to the transcript in the recursive round
         // (see prover/src/gkr/whir/mod.rs).
-        commit_field_els::<BF, E4>(&mut transcript_seed, &[ood_value]);
+        commit_field_els::<BF, E4, Blake2sTranscript>(&mut transcript_seed, &[ood_value]);
         let query_domain_size = 1u64 << query_domain_log2;
         let query_domain_generator = domain_generator_for_size::<BF>(query_domain_size);
         let _extended_generator = domain_generator_for_size::<BF>(1u64 << rs_domain_log2);
@@ -557,14 +561,15 @@ pub(super) fn assert_recursive_whir_oracle_parity_for_supported_path(
         );
         bitreverse_enumeration_inplace(&mut high_powers_offsets);
         let query_index_bits = query_domain_size.trailing_zeros() as usize;
-        let (nonce, mut bit_source) = draw_query_bits(
+        let (nonce, mut bit_source) = draw_query_bits::<BF, E4, Blake2sTranscript>(
             &mut transcript_seed,
             num_queries * query_index_bits,
             pow_bits,
             worker,
         );
         cpu_pow_nonces.push(nonce);
-        let delinearization_challenge = draw_random_field_els::<BF, E4>(&mut transcript_seed, 1)[0];
+        let delinearization_challenge =
+            draw_random_field_els::<BF, E4, Blake2sTranscript>(&mut transcript_seed, 1)[0];
         let mut claim_correction = {
             let mut t = ood_value;
             t.mul_assign(&delinearization_challenge);
@@ -623,8 +628,9 @@ pub(super) fn assert_recursive_whir_oracle_parity_for_supported_path(
             special_three_point_eval_for_test(&sumchecked_poly_evaluation_form, &eq_poly);
         let coeffs = special_lagrange_interpolate_for_test(f0, f1, f_half, E4::from_base(two_inv));
         cpu_sumcheck_polys.push(coeffs);
-        commit_field_els::<BF, E4>(&mut transcript_seed, &coeffs);
-        let folding_challenge = draw_random_field_els::<BF, E4>(&mut transcript_seed, 1)[0];
+        commit_field_els::<BF, E4, Blake2sTranscript>(&mut transcript_seed, &coeffs);
+        let folding_challenge =
+            draw_random_field_els::<BF, E4, Blake2sTranscript>(&mut transcript_seed, 1)[0];
         folding_challenges_in_round.push(folding_challenge);
         claim = evaluate_small_univariate_poly::<BF, E4, 3>(&coeffs, &folding_challenge);
         fold_monomial_form_for_test(&mut sumchecked_poly_monomial_form, folding_challenge);
@@ -633,7 +639,10 @@ pub(super) fn assert_recursive_whir_oracle_parity_for_supported_path(
     }
     // Upstream commits the final monomial-form coefficients into the transcript before
     // drawing the final query PoW (see prover/src/gkr/whir/mod.rs).
-    commit_field_els::<BF, E4>(&mut transcript_seed, &sumchecked_poly_monomial_form);
+    commit_field_els::<BF, E4, Blake2sTranscript>(
+        &mut transcript_seed,
+        &sumchecked_poly_monomial_form,
+    );
     let query_domain_size = 1u64 << query_domain_log2;
     let query_domain_generator = domain_generator_for_size::<BF>(query_domain_size);
     let _extended_generator = domain_generator_for_size::<BF>(1u64 << rs_domain_log2);
@@ -645,7 +654,7 @@ pub(super) fn assert_recursive_whir_oracle_parity_for_supported_path(
     );
     bitreverse_enumeration_inplace(&mut high_powers_offsets);
     let query_index_bits = query_domain_size.trailing_zeros() as usize;
-    let (final_nonce, mut bit_source) = draw_query_bits(
+    let (final_nonce, mut bit_source) = draw_query_bits::<BF, E4, Blake2sTranscript>(
         &mut transcript_seed,
         final_queries * query_index_bits,
         final_pow_bits,

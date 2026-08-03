@@ -8,6 +8,7 @@ fn test_commit_memory_matches_cpu() {
         &|cs| add_sub_lui_auipc_mop_circuit_with_preprocessed_bytecode_for_gkr(cs),
         1 << 20,
         UnrolledNonMemoryCircuitType::AddSubLuiAuipcMop.get_domain_size_log2() as usize,
+        0,
     );
     assert_non_memory_commit_memory_matches_cpu_for_test::<ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX>(
         "examples/basic_fibonacci/app.bin",
@@ -27,6 +28,7 @@ fn test_jump_branch_slt_commit_memory_matches_cpu() {
         &|cs| jump_branch_slt_circuit_with_preprocessed_bytecode_for_gkr(cs),
         1 << 20,
         UnrolledNonMemoryCircuitType::JumpBranchSlt.get_domain_size_log2() as usize,
+        0,
     );
     assert_non_memory_commit_memory_matches_cpu_for_test::<JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX>(
         "examples/hashed_fibonacci/app.bin",
@@ -46,6 +48,7 @@ fn test_shift_binop_commit_memory_matches_cpu() {
         &|cs| shift_binop_circuit_with_preprocessed_bytecode_for_gkr(cs),
         1 << 20,
         UnrolledNonMemoryCircuitType::ShiftBinary.get_domain_size_log2() as usize,
+        0,
     );
     assert_non_memory_commit_memory_matches_cpu_for_test::<SHIFT_BINARY_CIRCUIT_FAMILY_IDX>(
         "examples/hashed_fibonacci/app.bin",
@@ -196,8 +199,8 @@ fn assert_non_memory_commit_memory_matches_cpu_for_test<const FAMILY_IDX: u8>(
     circuit_type: UnrolledNonMemoryCircuitType,
     compiled_circuit: &GKRCircuitArtifact<BF>,
 ) {
+    use crate::upstream::commit_trace_part;
     use gpu_trace::trace::memory::commit_memory;
-    use prover::gkr::prover::stages::stage1::commit_trace_part;
     use prover::gkr::witness_gen::family_circuits::evaluate_gkr_memory_witness_for_executor_family;
 
     const DEVICE_ALLOCATOR_ARENA_BYTES: usize = 64usize << 30;
@@ -390,8 +393,8 @@ fn assert_memory_commit_memory_matches_cpu_for_test<const FAMILY_IDX: u8>(
     circuit_type: UnrolledMemoryCircuitType,
     compiled_circuit: &GKRCircuitArtifact<BF>,
 ) {
+    use crate::upstream::commit_trace_part;
     use gpu_trace::trace::memory::commit_memory;
-    use prover::gkr::prover::stages::stage1::commit_trace_part;
     use prover::gkr::witness_gen::family_circuits::evaluate_gkr_memory_witness_for_executor_family;
 
     const DEVICE_ALLOCATOR_ARENA_BYTES: usize = 64usize << 30;

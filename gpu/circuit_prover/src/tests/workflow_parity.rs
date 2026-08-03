@@ -97,6 +97,7 @@ fn run_jump_branch_slt_workflow_input_parity_test() {
         &|cs| jump_branch_slt_circuit_with_preprocessed_bytecode_for_gkr(cs),
         1 << 20,
         TRACE_LEN_LOG2 as usize,
+        0,
     );
     let num_calls = counters.get_calls_to_circuit_family::<JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX>();
     assert!(
@@ -256,15 +257,16 @@ fn run_jump_branch_slt_workflow_input_parity_test() {
     .finish()
     .unwrap();
 
-    let (mem_oracle, wit_oracle) = stage1::stage1::<BF, DefaultTreeConstructor>(
-        &full_trace,
-        &twiddles,
-        whir_schedule.base_lde_factor,
-        whir_schedule.whir_steps_schedule[0],
-        whir_schedule.cap_size,
-        trace_len.trailing_zeros() as usize,
-        &worker,
-    );
+    let (mem_oracle, wit_oracle) =
+        commit_separate_memory_and_witness_subtrees::<BF, DefaultTreeConstructor>(
+            &full_trace,
+            &twiddles,
+            whir_schedule.base_lde_factor,
+            whir_schedule.whir_steps_schedule[0],
+            whir_schedule.cap_size,
+            trace_len.trailing_zeros() as usize,
+            &worker,
+        );
     let cpu_memory_caps = stage1_caps_from_tree(&mem_oracle.tree, subcap_size);
     if gpu_memory_caps != cpu_memory_caps {
         let first_mismatch = describe_first_trace_holder_column_mismatch(
@@ -367,12 +369,16 @@ fn run_jump_branch_slt_workflow_input_parity_test() {
         "initial transcript input diverged",
     );
 
-    let mut cpu_seed = Transcript::commit_initial(&cpu_transcript_input);
-    let mut gpu_seed = Transcript::commit_initial(&gpu_transcript_input);
+    let mut cpu_seed =
+        <Blake2sTranscript as Transcript<BF, E4>>::commit_initial_u32(&cpu_transcript_input);
+    let mut gpu_seed =
+        <Blake2sTranscript as Transcript<BF, E4>>::commit_initial_u32(&gpu_transcript_input);
     assert_eq!(gpu_seed, cpu_seed, "initial transcript seed diverged");
 
-    let cpu_lookup_challenges = draw_random_field_els::<BF, E4>(&mut cpu_seed, 3);
-    let gpu_lookup_challenges = draw_random_field_els::<BF, E4>(&mut gpu_seed, 3);
+    let cpu_lookup_challenges =
+        draw_random_field_els::<BF, E4, Blake2sTranscript>(&mut cpu_seed, 3);
+    let gpu_lookup_challenges =
+        draw_random_field_els::<BF, E4, Blake2sTranscript>(&mut gpu_seed, 3);
     assert_eq!(
         gpu_lookup_challenges, cpu_lookup_challenges,
         "lookup challenges diverged after matching transcript inputs",
@@ -698,6 +704,7 @@ fn run_shift_binop_cached_lookup_parity_test() {
         &|cs| shift_binop_circuit_with_preprocessed_bytecode_for_gkr(cs),
         1 << 20,
         TRACE_LEN_LOG2 as usize,
+        0,
     );
     let num_calls = counters.get_calls_to_circuit_family::<SHIFT_BINARY_CIRCUIT_FAMILY_IDX>();
     assert!(

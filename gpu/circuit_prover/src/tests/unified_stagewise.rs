@@ -272,12 +272,12 @@ fn run_unified_stagewise_parity_test() {
                 transcript_input.extend_from_slice(digest);
             }
         }
-        Transcript::commit_initial(&transcript_input)
+        <Blake2sTranscript as Transcript<BF, E4>>::commit_initial_u32(&transcript_input)
     };
 
     // Draw lookup challenges from the seed.
     let mut seed = seed;
-    let challenges: Vec<E4> = draw_random_field_els::<BF, E4>(&mut seed, 3);
+    let challenges: Vec<E4> = draw_random_field_els::<BF, E4, Blake2sTranscript>(&mut seed, 3);
     let [lookup_alpha, lookup_additive_part, constraints_batch_challenge] =
         challenges.try_into().unwrap();
 
@@ -400,17 +400,19 @@ fn run_unified_stagewise_parity_test() {
     // --- Step 3: CPU transcript draw + initial claims ---
 
     let seed_before_explicit_commit = seed;
-    commit_field_els::<BF, E4>(&mut seed, &evals_flattened);
+    commit_field_els::<BF, E4, Blake2sTranscript>(&mut seed, &evals_flattened);
     let seed_after_cpu_explicit_commit = seed;
 
     let mut gpu_seed = seed_before_explicit_commit;
-    commit_field_els::<BF, E4>(&mut gpu_seed, &gpu_evals_flattened);
+    commit_field_els::<BF, E4, Blake2sTranscript>(&mut gpu_seed, &gpu_evals_flattened);
     assert_eq!(gpu_seed, seed_after_cpu_explicit_commit);
 
     let num_challenges = (final_trace_size_log_2 + 1) as usize;
-    let mut challenges = draw_random_field_els::<BF, E4>(&mut seed, num_challenges);
+    let mut challenges =
+        draw_random_field_els::<BF, E4, Blake2sTranscript>(&mut seed, num_challenges);
     let expected_challenges = challenges.clone();
-    let mut gpu_challenges = draw_random_field_els::<BF, E4>(&mut gpu_seed, num_challenges);
+    let mut gpu_challenges =
+        draw_random_field_els::<BF, E4, Blake2sTranscript>(&mut gpu_seed, num_challenges);
     assert_eq!(gpu_challenges, expected_challenges);
     let batching_challenge = challenges.pop().unwrap();
     let gpu_batching_challenge = gpu_challenges.pop().unwrap();
@@ -505,7 +507,11 @@ fn run_unified_stagewise_parity_test() {
                 None,
                 &format!("test.cpu.sumcheck.dimension_reduction.layer.{layer_idx}"),
             );
-            let proof = sumcheck_loop::evaluate_dimension_reducing_sumcheck_for_layer(
+            let proof = sumcheck_loop::evaluate_dimension_reducing_sumcheck_for_layer::<
+                BF,
+                E4,
+                Blake2sTranscript,
+            >(
                 layer_idx,
                 &layer,
                 &mut points_for_claims_at_layer,
@@ -539,7 +545,7 @@ fn run_unified_stagewise_parity_test() {
                 &format!("test.cpu.sumcheck.main_layers.layer.{layer_idx}"),
             );
 
-            let proof = sumcheck_loop::evaluate_sumcheck_for_layer(
+            let proof = sumcheck_loop::evaluate_sumcheck_for_layer::<BF, E4, Blake2sTranscript>(
                 layer_idx,
                 layer,
                 &mut points_for_claims_at_layer,
