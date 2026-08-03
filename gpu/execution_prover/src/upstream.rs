@@ -17,6 +17,9 @@ pub use cs::gkr_circuits::{
 };
 pub use cs::gkr_compiler::{GKRCircuitArtifact, OutputType};
 
+// `common_constants` — ROM geometry for unified decoder preprocessing.
+pub use common_constants::ROM_WORD_SIZE;
+
 // `prover` — CPU prover types the GPU orchestrator interoperates with.
 pub use prover::definitions::{
     FinalRegisterValue, GKRExternalChallenges, SecurityLevel, Transcript,
