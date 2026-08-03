@@ -60,22 +60,57 @@ impl fmt::Display for BwdVmCoordError {
             BwdVmCoordError::NotWired { coord } => write!(
                 f,
                 "{AB_GKR_BWD_VM_COORDS_ENV} selects {coord}, which has no production binder; \
-                 only 0:R0 and 0:Ext are wired"
+                 wired coordinates are layers 0..={} in both regimes",
+                WIRED_LAYERS - 1
             ),
         }
     }
 }
 
+/// The number of add_sub main layers the backward VM has a binder for — every
+/// main layer of the circuit. Layer 0 is the largest (33.4 ms GPU-projected of
+/// the 68.4 ms main-layer span); 1..=3 are 16.6, 11.1 and 7.3 ms.
+pub(crate) const WIRED_LAYERS: usize = 4;
+
 /// The coordinates this slice can actually run. Deliberately a hard list rather
 /// than a predicate over the artifact: a coordinate reaching a binder that was
 /// never built for it must stop the proof, not launch something shaped wrong.
-const WIRED_COORDS: [BwdVmCoord; 2] = [
+///
+/// Every main layer in both regimes. The layer index is not a free parameter of
+/// the binder — each `(layer, regime)` has its own compiled coordinate and its
+/// own window census — so a layer beyond this circuit's main layers is an
+/// operator error, caught here rather than at a device launch.
+const WIRED_COORDS: [BwdVmCoord; 2 * WIRED_LAYERS] = [
     BwdVmCoord {
         layer: 0,
         regime: BwdRegime::R0,
     },
     BwdVmCoord {
         layer: 0,
+        regime: BwdRegime::Ext,
+    },
+    BwdVmCoord {
+        layer: 1,
+        regime: BwdRegime::R0,
+    },
+    BwdVmCoord {
+        layer: 1,
+        regime: BwdRegime::Ext,
+    },
+    BwdVmCoord {
+        layer: 2,
+        regime: BwdRegime::R0,
+    },
+    BwdVmCoord {
+        layer: 2,
+        regime: BwdRegime::Ext,
+    },
+    BwdVmCoord {
+        layer: 3,
+        regime: BwdRegime::R0,
+    },
+    BwdVmCoord {
+        layer: 3,
         regime: BwdRegime::Ext,
     },
 ];
@@ -200,8 +235,23 @@ mod tests {
 
     #[test]
     fn an_unwired_coordinate_is_rejected_with_the_coordinate_named() {
-        let err = check_selection(&[r0(1)]).unwrap_err();
-        assert!(format!("{err}").contains("1:R0"), "got: {err}");
+        let err = check_selection(&[r0(WIRED_LAYERS)]).unwrap_err();
+        assert!(
+            format!("{err}").contains(&format!("{}:R0", WIRED_LAYERS)),
+            "got: {err}"
+        );
+    }
+
+    /// Every main layer is wired in both regimes, so a per-layer cutover needs
+    /// no allowlist edit — only the coordinate list in the switch.
+    #[test]
+    fn every_main_layer_is_wired_in_both_regimes() {
+        for layer in 0..WIRED_LAYERS {
+            assert!(coord_is_wired(r0(layer)), "layer {layer} R0");
+            assert!(coord_is_wired(ext(layer)), "layer {layer} Ext");
+        }
+        assert!(!coord_is_wired(r0(WIRED_LAYERS)));
+        assert!(!coord_is_wired(ext(WIRED_LAYERS)));
     }
 
     #[test]

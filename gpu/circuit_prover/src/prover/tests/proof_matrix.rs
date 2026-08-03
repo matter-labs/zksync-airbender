@@ -1323,6 +1323,62 @@ fn run_add_sub_bwd_vm_l0_full_proof_parity_test() {
     );
 }
 
+/// Every main layer, both regimes: the VM owns the ENTIRE main-layer backward
+/// sumcheck of add_sub, and the proof stays bit-equal.
+///
+/// Only the dimension-reducing sumcheck is left on the incumbent, which is a
+/// permanent decision, not a gap. Each main layer folds over the same trace, so
+/// every layer runs the same `folding_steps` — the expected counts are one R0
+/// launch per layer and `folding_steps - 1` continuation launches per layer.
+#[test]
+#[serial]
+#[ignore]
+fn run_add_sub_bwd_vm_all_main_layers_proof_parity_test() {
+    use crate::prover::gkr::backward::vm::coords::{AB_GKR_BWD_VM_COORDS_ENV, WIRED_LAYERS};
+    use crate::prover::gkr::backward::vm::production_bind::{
+        count_bwd_vm_r0_launches, AB_GKR_BWD_VM_POISON_ACCUMULATOR_ENV,
+        AB_GKR_BWD_VM_POISON_CASCADE_ENV,
+    };
+
+    let fixture = prepare_basic_unrolled_proof_fixture();
+    let _poison = EnvGuard::set(AB_GKR_BWD_VM_POISON_ACCUMULATOR_ENV, "1");
+    let _cascade_poison = EnvGuard::set(AB_GKR_BWD_VM_POISON_CASCADE_ENV, "1");
+    let counter = count_bwd_vm_r0_launches();
+    assert_eq!(
+        (counter.launches(), counter.ext_launches()),
+        (0, 0),
+        "counters must start at zero for the counts below to mean anything"
+    );
+
+    let coords = (0..WIRED_LAYERS)
+        .map(|layer| format!("{layer}:R0,{layer}:Ext"))
+        .collect::<Vec<_>>()
+        .join(",");
+
+    let (gpu_proof, r0_launches, ext_launches) = {
+        let _env = EnvGuard::set(AB_GKR_BWD_VM_COORDS_ENV, &coords);
+        let job = fixture.schedule_prove().unwrap();
+        let (proof, _ms) = job.finish().unwrap();
+        (proof, counter.launches(), counter.ext_launches())
+    };
+
+    assert_gkr_proof_eq_for_test(&gpu_proof, &fixture.expected_cpu_proof);
+    assert_eq!(
+        r0_launches, WIRED_LAYERS,
+        "exactly one VM-owned R0 launch per main layer"
+    );
+    assert_eq!(
+        ext_launches,
+        WIRED_LAYERS * (ADD_SUB_FIXTURE_FOLDING_STEPS - 1),
+        "exactly one VM launch per continuation round of every main layer"
+    );
+    eprintln!(
+        "[bwd-vm-parity] all {WIRED_LAYERS} main layers on the VM ({} launches), proof bit-equal \
+         to the CPU reference",
+        r0_launches + ext_launches
+    );
+}
+
 /// A/B the forward VM on every non-dimension-reducing add_sub layer: N interleaved pairs of whole proofs
 /// in one process, VM-on against VM-off, reporting per-pair deltas plus the
 /// median, min, max and both peak-memory figures.
