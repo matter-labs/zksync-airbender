@@ -1419,6 +1419,118 @@ fn run_add_sub_fwd_vm_all_layers_ab_test() {
     );
 }
 
+/// A/B everything the VM currently owns, in one arm: the forward VM on all four
+/// non-dimension-reducing layers PLUS the backward VM on the whole of L0.
+///
+/// The two passes were only ever measured separately (−2.418 ms forward,
+/// −3.710 ms backward), and separate measurements do not establish that they
+/// compose — they touch different phases of the proof, and if either arm is
+/// bounded by something they share (the allocator's peak, clocks, an
+/// enqueue-rate ceiling on the scheduling thread) the pair would land short of
+/// the sum. This measures the pair.
+///
+/// Coverage caveat, because the number should not be read as "the DAG path's
+/// verdict": the backward side owns exactly ONE of add_sub's four main layers,
+/// and the dimension-reducing sumcheck (~12% of e2e) is permanently incumbent.
+/// This is the sum of what is switched on TODAY, not of what the cutover will
+/// eventually be.
+#[test]
+#[serial]
+#[ignore]
+fn run_add_sub_both_vms_ab_test() {
+    use crate::prover::gkr::backward::vm::coords::AB_GKR_BWD_VM_COORDS_ENV;
+    use crate::prover::gkr::forward::path::AB_GKR_FWD_VM_LAYERS_ENV;
+
+    const PAIRS: usize = 20;
+    /// Every non-dimension-reducing forward layer.
+    const FWD_VM_AB_LAYERS: &str = "0,1,2,3";
+    /// The whole of backward L0 — round 0 and every continuation round.
+    const BWD_VM_AB_COORDS: &str = "0:R0,0:Ext";
+
+    let fixture = prepare_basic_unrolled_profiling_fixture();
+    assert!(
+        !crate::prover::gkr::forward::vm::production_bind::poison_destinations_enabled(),
+        "the destination poison is charged to the VM arm alone; leaving it on inverts this \
+         measurement"
+    );
+    assert!(
+        !crate::prover::gkr::backward::vm::production_bind::poison_accumulator_enabled(),
+        "the accumulator poison is charged to the VM arm alone; leaving it on inverts this \
+         measurement"
+    );
+    assert!(
+        !crate::prover::gkr::backward::vm::production_bind::cascade_poison_enabled(),
+        "the cascade poison fills every fold backing on both arms; leaving it on adds noise \
+         this measurement cannot absorb"
+    );
+
+    // Warm up both arms: first-touch allocation, both OnceLock'd compiles
+    // (forward program and backward coordinates), and module load.
+    for (layers, coords) in [("", ""), (FWD_VM_AB_LAYERS, BWD_VM_AB_COORDS)] {
+        let _fwd = EnvGuard::set(AB_GKR_FWD_VM_LAYERS_ENV, layers);
+        let _bwd = EnvGuard::set(AB_GKR_BWD_VM_COORDS_ENV, coords);
+        let t = fixture.schedule_transfers().unwrap();
+        fixture.context.get_h2d_stream().synchronize().unwrap();
+        let (proof, ms) = fixture.prove(t).unwrap().finish().unwrap();
+        eprintln!("[both-vms-ab] warmup fwd={layers:?} bwd={coords:?}: {ms} ms");
+        drop(proof);
+    }
+
+    let mut run = |layers: &str, coords: &str| {
+        let _fwd = EnvGuard::set(AB_GKR_FWD_VM_LAYERS_ENV, layers);
+        let _bwd = EnvGuard::set(AB_GKR_BWD_VM_COORDS_ENV, coords);
+        let t = fixture.schedule_transfers().unwrap();
+        fixture.context.get_h2d_stream().synchronize().unwrap();
+        fixture.context.reset_used_mem_peak();
+        let (proof, ms) = fixture.prove(t).unwrap().finish().unwrap();
+        (proof, ms, fixture.context.get_used_mem_peak())
+    };
+
+    let mut deltas = Vec::with_capacity(PAIRS);
+    let mut on_peak = 0usize;
+    let mut off_peak = 0usize;
+    eprintln!("[both-vms-ab] pair  vm_on_ms  vm_off_ms  delta_ms");
+    for pair in 0..PAIRS {
+        let (on, off) = if pair % 2 == 0 {
+            let on = run(FWD_VM_AB_LAYERS, BWD_VM_AB_COORDS);
+            let off = run("", "");
+            (on, off)
+        } else {
+            let off = run("", "");
+            let on = run(FWD_VM_AB_LAYERS, BWD_VM_AB_COORDS);
+            (on, off)
+        };
+        assert_gkr_proof_eq_for_test(&on.0, &off.0);
+        let delta = on.1 - off.1;
+        eprintln!(
+            "[both-vms-ab] {pair:>4}  {:>8.3}  {:>9.3}  {:>8.3}",
+            on.1, off.1, delta
+        );
+        deltas.push(delta);
+        on_peak = on_peak.max(on.2);
+        off_peak = off_peak.max(off.2);
+    }
+
+    deltas.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    let median = deltas[deltas.len() / 2];
+    eprintln!(
+        "[both-vms-ab] delta_ms (both on - both off) over {PAIRS} pairs: median {median:.3}, \
+         min {:.3}, max {:.3}",
+        deltas[0],
+        deltas[deltas.len() - 1],
+    );
+    eprintln!(
+        "[both-vms-ab] additivity check: forward alone measured -2.418, backward L0 alone \
+         -3.710, sum -6.128"
+    );
+    eprintln!(
+        "[both-vms-ab] peak device memory: on {:.4} GiB, off {:.4} GiB, delta {} B",
+        on_peak as f64 / (1u64 << 30) as f64,
+        off_peak as f64 / (1u64 << 30) as f64,
+        on_peak as i64 - off_peak as i64,
+    );
+}
+
 /// A/B the backward VM on add_sub L0 R0: N interleaved order-alternated pairs
 /// of whole proofs in one process, VM-on against VM-off, per-pair byte-equal.
 ///
