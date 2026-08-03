@@ -37,14 +37,20 @@
 /// Launchers for the segmented lean VM: its own `__constant__` coefficient bank,
 /// the `32 * k`-thread tile geometry, and the three epilogue specializations.
 pub(crate) mod seg;
+/// Which `(layer, regime)` coordinates the backward VM computes
+/// (`AB_GKR_BWD_VM_COORDS`).
+pub(crate) mod coords;
+/// Production source binding for the VM's R0 launch: window resolution against
+/// `GpuGKRStorage`, plus the closed-form `K` policy moved out of the bench.
+#[allow(dead_code)]
+pub(crate) mod production_bind;
+#[allow(dead_code)]
+pub(crate) mod production_program;
 /// Cutover blocker 4: the lean coefficient bank evaluated ON DEVICE, by
 /// translating each `NormalizedCoefficientRecipe` into the immediate-factor recipe
 /// format the production `eval_recipes` kernel already evaluates. Production
 /// challenges are GPU-derived, so the host cannot pre-evaluate the bank the way the
 /// harness does.
-pub(crate) mod coords;
-#[allow(dead_code)]
-pub(crate) mod production_program;
 pub(crate) mod seg_coeff_eval;
 /// The corpus coverage proof for [`seg_coeff_eval`] — no recipe needs more than the
 /// device monomial's two challenge factors — and the device-vs-CPU-oracle gate on
@@ -74,6 +80,8 @@ pub(crate) mod seg_lower;
 #[cfg(all(test, feature = "bench"))]
 mod seg_report;
 
+#[cfg(test)]
+mod production_bind_tests;
 #[cfg(test)]
 mod seg_abi_tests;
 #[cfg(test)]

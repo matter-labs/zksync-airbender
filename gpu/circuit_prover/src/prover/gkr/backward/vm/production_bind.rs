@@ -1,0 +1,544 @@
+//! Binding the backward VM's R0 sources to the production prover state.
+//!
+//! Every `ResolvedBwdCoeffSourceWindow` measured by the bench is synthetic:
+//! [`seg_compile`]'s harness resolves windows against its own host storage
+//! model (`upload_round_storage`). This module is the production half — the
+//! same window geometry resolved against [`GpuGKRStorage`], through the SAME
+//! accessors the flat path reads with (`try_get_base_poly` /
+//! `try_get_ext_poly`, via the forward VM's
+//! [`resolve_storage_column`]).
+//!
+//! # The add_sub L0 R0 source census
+//!
+//! Read off the compiled coordinate (`report_the_r0_source_census`): 8 windows,
+//! 79 source slots over 79 referenced columns.
+//!
+//! | Family | windows | columns = slots |
+//! |---|---|---|
+//! | `BaseLayerWitness` | 1 | 22 |
+//! | `BaseLayerMemory` | 1 | 17 |
+//! | `LayerOutput` (ext) | 1 | 20 |
+//! | `LayerOutput` (base) | 1 | 3 |
+//! | `CacheOutput` (ext) | 1 | 10 |
+//! | `CacheOutput` (base) | 1 | 5 |
+//! | `VirtualSetup` (RangeCheck16Bits) | 1 | 1 |
+//! | `VirtualSetup` (RangeCheckTimestamp) | 1 | 1 |
+//!
+//! `Setup` and `Scratch` do not occur — consistent with the corpus census
+//! (`seg_publish_backing_census`: zero across all 114 coordinates), so
+//! [`family_read_place`] maps them for totality but no binder behavior rests
+//! on them. The two procedural windows are the corpus's usual pair; they bind
+//! with no read pointer and the resolver synthesizes them from the row index.
+//!
+//! # Production storage is NOT window-contiguous — windows re-partition here
+//!
+//! The bench's host model backed each window with one contiguous allocation,
+//! so window addressing (`base + column * stride`) held by construction.
+//! Production storage breaks it two ways, both observed on the real add_sub
+//! fixture:
+//!
+//!   * **Copy aliases.** A pure copy gate aliases its input:
+//!     `InnerLayer { layer: 1, offset: 0 }` and `{ offset: 11 }` resolve INTO
+//!     the base-layer memory matrix, while `{ offset: 20 }` is a real
+//!     inner-layer write — one artifact window, three different matrices.
+//!   * **Rank packing.** A consolidated per-(layer, class, field) matrix packs
+//!     only the polys that exist in it, densely: `Cached { 0, offset: 7 }` and
+//!     `{ offset: 14 }` sit ONE stride apart, so absolute-offset arithmetic
+//!     breaks at every offset gap. The base-layer arenas are the exception —
+//!     absolute-indexed, holes physically present.
+//!
+//! So [`bind_r0_sources`] re-partitions: every referenced column resolves
+//! independently, and each artifact window splits into maximal runs where the
+//! production pointers advance by exactly `gap * stride` at the original
+//! column numbers. add_sub L0 R0's 8 artifact windows become 13 bound windows.
+//! The program and its source SLOTS are untouched — the design spec's contract
+//! is the source table ("slot ids into a per-launch source table; no
+//! windows"), and the window partition was always a compression of it, so
+//! re-forming windows against real geometry is a binder-local move with no ABI
+//! or artifact-format change. The rebound coordinate
+//! ([`BoundR0Sources::coord`]) is what `lower_bwd_seg` must be handed; the
+//! original's windows no longer describe the bound pointers.
+//!
+//! One consequence to watch: `lower_bwd_seg` caps windows at the corpus's
+//! observed ARTIFACT-level maximum (`in_scope::MAX_SOURCE_WINDOWS_USED = 17`).
+//! Splitting can exceed it for heavier circuits even though the format holds
+//! 64; add_sub L0 R0's 13 fits, so widening coordinates later may need that
+//! cap revisited against post-split counts.
+//!
+//! # R0 publishes nothing
+//!
+//! At round 0 every window is at delta 0: [`assign_class`] gives
+//! `(Bf, 0) -> BfDirect` and `(E4, 0) -> E4Direct`, both without a publish, and
+//! a procedural window at delta 0 is `ProceduralInline`. So the publish plan is
+//! structurally EMPTY, and [`bind_r0_sources`] asserts that
+//! ([`BwdVmBindError::PublishPlanNotEmpty`]) rather than allocating a backing —
+//! a non-empty plan at R0 means the depth wiring is wrong and must stop the
+//! proof.
+//!
+//! # The closed-form `K` policy (moved from the bench)
+//!
+//! [`seg_policy_k`] and its two thresholds were `bench`-gated in `seg_report`;
+//! the launcher needs them in production, so they moved here UNCHANGED. The
+//! fit, the leave-one-circuit-out validation and every measured number backing
+//! them stay in `seg_report` (bench-gated), which now imports the policy from
+//! here so the fit and the shipped rule cannot drift apart.
+//!
+//! [`seg_compile`]: super::seg_compile
+//! [`resolve_storage_column`]: crate::prover::gkr::forward::vm::production_bind::resolve_storage_column
+//! [`assign_class`]: super::seg_lower::assign_class
+
+use era_cudart::result::CudaResult;
+use gkr_eval_isa::bwd::coeff::lean_artifact::LeanCoordinateArtifact;
+use gkr_eval_isa::bwd::coeff::lean_bind::{
+    LeanBoundColumn, LeanBoundWindow, LeanSourceBinding, LeanSourceSlot,
+};
+use gkr_eval_isa::bwd::coeff::limits::MAX_SOURCE_WINDOWS;
+use gkr_eval_isa::bwd::coeff::stats::WindowFamily;
+
+use super::seg::{bwd_seg_blocks_per_sm, BwdSegEpilogue};
+use super::seg_desc::BWD_SEG_MAX_K;
+use super::seg_lower::{
+    assign_class, plan_publish_scratch, window_columns, BwdSegLowerError, CoeffMode, D2Policy,
+    ProgramMode, ResolvedBwdCoeffSourceWindow, SourceClass, SourceOrigin,
+};
+use crate::primitives::field::{BF, E4};
+use crate::prover::gkr::forward::vm::lower::{read_place_to_gkr_address, ResolvedColumn};
+use crate::prover::gkr::forward::vm::production_bind::resolve_storage_column;
+use crate::prover::gkr::GpuGKRStorage;
+use crate::upstream::{BwdRegime, FieldKind, GKRAddress, ReadPlace};
+
+// ── The closed-form `K` policy (spec §12) ────────────────────────────────────
+
+/// The `K` axis the corpus sweep ranked: the plan's set, minus `K = 24`.
+///
+/// Stage A extended its own axis DOWN to `{1, 2}` after the gate coordinate's
+/// winner landed at the bottom of the named set. That is not repeated here and
+/// the omission is a measurement, not an oversight: `K = 1` ran 4% behind the
+/// incumbent on the gate coordinate (50% occupancy, no cross-warp amortization)
+/// and `K = 2` lost to `K = 4` on every Stage-A cell it was launchable in.
+///
+/// `K = 24` is PRUNED (perf review P2): at the shipped 64-register band,
+/// 768 threads × 64 regs = 49,152 keeps a second block (98,304) out of the 64K
+/// register file, so K=24 runs 24 of 48 warp slots — 50% occupancy against 32
+/// warps for each of its neighbors (2×16, 4×8, 1×32) — and every K=24 bench row
+/// confirmed the 50% limit. The hole is geometric, not workload-dependent; the
+/// entry returns only if the continuation band drops to ≤42 registers, where
+/// two 768-thread blocks fit.
+pub(crate) const SEG_CORPUS_K: [usize; 4] = [4, 8, 16, 32];
+
+/// Below this per-row source footprint a coordinate takes the NARROW block.
+///
+/// 1,280 B/row is exactly 40 KiB per 32-row tile. **This is the scan optimum
+/// ROUNDED, not the scan optimum.** `fit_policy_thresholds` (bench-gated, in
+/// `seg_report`) over the corpus returns 1,248 B/row, which scores 78 points
+/// over threshold at mean +0.6478% against this constant's 83 at +0.6784%. The
+/// rounding is deliberate — a whole tile size is a number a reader can hold and
+/// a launcher can justify, and the difference is five points out of 782, inside
+/// the leave-one-circuit-out spread (`loco_validation`) — but it IS a
+/// difference and the audit states it.
+///
+/// The neighbourhood is broad but not flat: 1,216–1,472 B/row all score 81–84.
+pub(crate) const SEG_POLICY_NARROW_BYTES_PER_ROW: usize = 1_280;
+
+/// Above this per-row source footprint a coordinate takes the WIDEST block its
+/// family can host. 18,432 B/row is exactly 576 KiB per tile.
+///
+/// Same story: the scan optimum is 19,200 B/row, and it is a THREE-POINT SPIKE
+/// rather than a plateau — the neighbouring candidates score worse. Rounding down
+/// to a whole tile size trades those three points for a constant that is not
+/// balanced on a spike in one dataset.
+pub(crate) const SEG_POLICY_WIDE_BYTES_PER_ROW: usize = 18_432;
+
+const _: () = assert!(SEG_POLICY_NARROW_BYTES_PER_ROW < SEG_POLICY_WIDE_BYTES_PER_ROW);
+
+/// The closed form (spec §12), and what the corpus says its arguments are.
+///
+/// Spec §12 expected `k = f(sources, rows, width mix)`. The corpus says **`k` is a
+/// function of the per-row source footprint alone**, and the two other candidates
+/// were tested and dropped rather than assumed away:
+///
+///   * **rows do not enter.** The first pass measured one row count per coordinate
+///     and produced a convincing "deeper grid wants a narrower block" rule — which
+///     was an ARTIFACT: under one memory budget the row count is a deterministic
+///     function of the footprint, so depth and weight moved together. Re-measuring
+///     every coordinate at three depths, and the heavy circuits again at a six-times
+///     larger budget, separates them: a LIGHT coordinate still wants `K = 4` at the
+///     shallowest grid swept, and a HEAVY one still wants a wide block at the
+///     deepest. Grid depth as a single feature scores no better than the constant
+///     `K = 4`.
+///   * **static work does not add.** `ListWorkStats`'s per-list work, the term
+///     count and the source count were each fitted as the step feature; all three
+///     score measurably worse than the footprint, and adding a work term on top of
+///     the footprint moves nothing.
+///
+/// `bytes_per_row` is the round's own window geometry (`probe_geometry`,
+/// bench-gated): `sum over windows of columns * (2 << delta) * width`, plus two
+/// E4 per published column. That is exactly "sources and width mix" as one
+/// number, and a launcher can compute it at setup from the binding it is about
+/// to lower.
+///
+/// `ceiling` is the largest `K` the compiled family can host — a register fact,
+/// not a choice ([`seg_k_ceiling`] probes it; the probe reports 32 for BOTH
+/// families at the shipped 64-register band).
+///
+/// The result is always a member of [`SEG_CORPUS_K`] at or below `ceiling`. The
+/// wide arm is `K = 16`, which INVERTS what an earlier band fitted: at 64
+/// registers two 512-thread blocks co-reside (2 × 16 = 32 warps) while `K = 24`
+/// and `K = 32` are both single-block shapes, and the 2026-08-01 chop-point
+/// corpus scores the wide population summed at `K16 +0.0% / K24 +6.2% /
+/// K32 +3.1%` (9 of 10 wide cells win at 16). `K = 24` is pruned from the axis
+/// outright — see [`SEG_CORPUS_K`]. `K` is deliberately not interpolated either:
+/// it is a block geometry, and a launcher choosing `K = 11` would be choosing a
+/// shape nothing was measured at.
+pub(crate) fn seg_policy_k(bytes_per_row: usize, ceiling: usize) -> usize {
+    seg_policy_k_with(
+        bytes_per_row,
+        ceiling,
+        SEG_POLICY_NARROW_BYTES_PER_ROW,
+        SEG_POLICY_WIDE_BYTES_PER_ROW,
+    )
+}
+
+/// [`seg_policy_k`] with the two thresholds supplied rather than committed.
+///
+/// The fit and the leave-one-circuit-out validation both need to evaluate the
+/// policy at thresholds that are NOT the committed ones; sharing this function is
+/// what stops the validation from silently scoring a differently-shaped rule.
+pub(crate) fn seg_policy_k_with(
+    bytes_per_row: usize,
+    ceiling: usize,
+    narrow: usize,
+    wide: usize,
+) -> usize {
+    let want = if bytes_per_row < narrow {
+        4
+    } else if bytes_per_row < wide {
+        8
+    } else {
+        16
+    };
+    // `want` is at least the axis minimum and so is `ceiling`, so the filter is
+    // never empty; the `unwrap_or` is a total function, not a guess.
+    let cap = want.min(ceiling);
+    SEG_CORPUS_K
+        .into_iter()
+        .filter(|k| *k <= cap)
+        .max()
+        .unwrap_or(SEG_CORPUS_K[0])
+}
+
+/// The largest launchable `K` of one regime's PRODUCTION family (`Inline`
+/// program, `Constant` bank, `Plane` epilogue), probed from the driver.
+///
+/// ENUMERATED over the whole axis rather than bisected, for the same reason the
+/// bench's `seg_launchable_k_axis` is: the register limit interacts with the
+/// epilogue's shared-memory footprint, so monotonicity in `k` is exactly what a
+/// probe should measure rather than assume. `BWD_SEG_MAX_K` driver queries cost
+/// microseconds, once per launch site.
+pub(crate) fn seg_k_ceiling(regime: BwdRegime) -> CudaResult<usize> {
+    let mut ceiling = 0usize;
+    for k in 1..=BWD_SEG_MAX_K as u32 {
+        let blocks = bwd_seg_blocks_per_sm(
+            regime,
+            ProgramMode::Inline,
+            CoeffMode::Constant,
+            BwdSegEpilogue::Plane,
+            k,
+        )?;
+        if blocks > 0 {
+            ceiling = k as usize;
+        }
+    }
+    assert!(ceiling > 0, "a production family hosts at least one K");
+    Ok(ceiling)
+}
+
+// ── Window shapes (CPU) ──────────────────────────────────────────────────────
+
+/// One binding window's production identity, before any pointer exists: where
+/// it reads (or that it is procedural), what field backs it, and how round 0
+/// classifies it. Everything here is derivable on the CPU from the compiled
+/// coordinate alone, which is what makes the shape phase testable without a
+/// device.
+#[derive(Debug)]
+pub(crate) struct R0WindowShape {
+    /// The window's base column as a production address, or `None` for a
+    /// procedural window (the resolver synthesizes from the row index).
+    pub(crate) address: Option<GKRAddress>,
+    /// The backing matrix's own field width.
+    pub(crate) is_e4: bool,
+    pub(crate) class: SourceClass,
+    /// Always `false` at R0; carried so the publish plan is derived from the
+    /// same declaration [`super::seg_lower::lower_bwd_seg`] checks.
+    pub(crate) materialize: bool,
+    /// The backing's own referenced columns, ascending; `first_column` is
+    /// always the first entry (the lean binder never bases a window on a
+    /// hole).
+    pub(crate) referenced_columns: Vec<usize>,
+    pub(crate) first_column: usize,
+}
+
+/// Why a coordinate cannot be bound against production storage. Every variant
+/// is a wiring defect, not a runtime condition.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum BwdVmBindError {
+    /// The coordinate is not an R0 program.
+    NotR0 { layer: usize, regime: BwdRegime },
+    /// The artifact's own window geometry is malformed.
+    WindowShape(BwdSegLowerError),
+    /// Round 0 classified a window as publishing — the depth wiring is wrong.
+    UnexpectedPublish { window: u8 },
+    /// A window's base column has no poly in production storage. Binding it
+    /// anyway would hand the kernel a null read pointer.
+    UnresolvedWindow { window: u8, address: GKRAddress },
+    /// Storage resolved a column of the window in the wrong field.
+    WindowFieldMismatch { window: u8, expect_e4: bool },
+    /// Re-windowing against production geometry needs more windows than the
+    /// descriptor format holds.
+    TooManyWindows { windows: usize },
+    /// R0 must plan no publish scratch; a non-empty plan means the depth
+    /// wiring is wrong.
+    PublishPlanNotEmpty { bytes: usize },
+}
+
+/// The read place of one window column, or `None` for a procedural window.
+pub(super) fn family_read_place(family: WindowFamily, column: usize) -> Option<ReadPlace> {
+    match family {
+        WindowFamily::BaseLayerMemory => Some(ReadPlace::BaseLayerMemory { column }),
+        WindowFamily::BaseLayerWitness => Some(ReadPlace::BaseLayerWitness { column }),
+        WindowFamily::Setup => Some(ReadPlace::Setup { column }),
+        WindowFamily::Scratch => Some(ReadPlace::Scratch { slot: column }),
+        WindowFamily::LayerOutput { layer, .. } => {
+            Some(ReadPlace::LayerOutput { layer, offset: column })
+        }
+        WindowFamily::CacheOutput { layer, .. } => {
+            Some(ReadPlace::CacheOutput { layer, offset: column })
+        }
+        WindowFamily::VirtualSetup { .. } => None,
+    }
+}
+
+/// The CPU half of the binder: every window's address, field, class and publish
+/// flag, from the compiled coordinate alone.
+pub(crate) fn r0_window_shapes(
+    coord: &LeanCoordinateArtifact,
+) -> Result<Vec<R0WindowShape>, BwdVmBindError> {
+    if coord.regime.regime() != BwdRegime::R0 {
+        return Err(BwdVmBindError::NotR0 {
+            layer: coord.layer,
+            regime: coord.regime.regime(),
+        });
+    }
+    // A compile invariant (`the_lean_r0_coordinate_compiles_from_the_production_
+    // artifact` pins it), not an input condition: R0 reads unfolded polynomials.
+    assert_eq!(coord.target_depth, 0, "an R0 coordinate is bound at depth 0");
+
+    let mut shapes = Vec::with_capacity(coord.binding.windows.len());
+    for (index, window) in coord.binding.windows.iter().enumerate() {
+        let address = family_read_place(window.family, window.first_column)
+            .map(|place| read_place_to_gkr_address(&place));
+        let origin = if address.is_none() {
+            SourceOrigin::Procedural
+        } else if window.backing_field() == FieldKind::Ext {
+            SourceOrigin::E4
+        } else {
+            SourceOrigin::Bf
+        };
+        // Round 0 IS depth 0, so every window's catch-up delta is 0; the D2
+        // policy only matters at delta 2 and cannot change the answer here.
+        let (class, publishes) = assign_class(origin, 0, D2Policy::Inline);
+        if publishes {
+            return Err(BwdVmBindError::UnexpectedPublish { window: index as u8 });
+        }
+        shapes.push(R0WindowShape {
+            address,
+            is_e4: window.backing_field() == FieldKind::Ext,
+            class,
+            materialize: publishes,
+            referenced_columns: window.columns.iter().map(|c| c.column).collect(),
+            first_column: window.first_column,
+        });
+    }
+    Ok(shapes)
+}
+
+// ── Pointer resolution (production) ──────────────────────────────────────────
+
+/// One round-0 binding, resolved against production storage.
+pub(crate) struct BoundR0Sources {
+    /// The coordinate REBOUND to production window geometry: same program,
+    /// same order, same source-slot count — only the window partition and
+    /// each slot's `(window, column)` changed. This is the artifact
+    /// [`super::seg_lower::lower_bwd_seg`] must be handed; the original's
+    /// windows no longer describe the pointers below.
+    pub(crate) coord: LeanCoordinateArtifact,
+    /// One entry per REBOUND window, positionally — exactly the slice
+    /// [`super::seg_lower::BwdSegRoundBinding`] takes.
+    pub(crate) windows: Vec<ResolvedBwdCoeffSourceWindow>,
+    /// Per rebound window: elements readable per addressed column (the poly
+    /// length).
+    pub(crate) window_read_elements: Vec<u32>,
+    /// Per rebound window: addressable column count, for the publish plan and
+    /// the policy footprint.
+    pub(crate) window_columns: Vec<usize>,
+}
+
+/// One re-windowing run under construction: a maximal stretch of one artifact
+/// window that production storage backs contiguously.
+struct BindRun {
+    /// Resolved base of the run's FIRST column; `None` for procedural.
+    read: Option<ResolvedColumn>,
+    /// The run's columns, at their ORIGINAL absolute numbers.
+    columns: Vec<LeanBoundColumn>,
+    /// Resolved pointer of the LAST column added (0 for procedural).
+    prev_ptr: usize,
+}
+
+/// Resolve one R0 coordinate's windows against production storage,
+/// re-partitioning them to production geometry.
+///
+/// The device resolves `(window, column)` as `base + column * stride`, so a
+/// window must be CONTIGUOUS in the matrix it points into. The artifact's
+/// windows are contiguous in the DAG's address space, not in storage (see the
+/// module doc); this walks every referenced column, resolves it independently,
+/// and splits each artifact window into maximal runs where consecutive
+/// referenced columns satisfy `ptr(next) == ptr(prev) + gap * stride` at their
+/// ORIGINAL column numbers. Keeping absolute numbering (rather than densely
+/// renumbering) is what lets an absolute-indexed matrix — the base-layer
+/// arenas, where a hole is a physically present column — stay ONE window
+/// across holes, while a rank-packed matrix splits exactly at its gaps.
+///
+/// `rows` is the launch's logical row count; it enters only the (asserted
+/// empty) publish plan.
+pub(crate) fn bind_r0_sources<E: Copy>(
+    storage: &GpuGKRStorage<BF, E>,
+    coord: &LeanCoordinateArtifact,
+    rows: usize,
+) -> Result<BoundR0Sources, BwdVmBindError> {
+    let shapes = r0_window_shapes(coord)?;
+
+    let mut new_windows: Vec<LeanBoundWindow> = Vec::new();
+    let mut bound: Vec<ResolvedBwdCoeffSourceWindow> = Vec::new();
+    let mut read_elements: Vec<u32> = Vec::new();
+    // Source slot -> rebound (window, column), filled as runs are flushed.
+    let mut new_slots: Vec<Option<LeanSourceSlot>> =
+        vec![None; coord.binding.source_slots.len()];
+
+    for (index, (shape, artifact_window)) in
+        shapes.iter().zip(&coord.binding.windows).enumerate()
+    {
+        let window = index as u8;
+        let mut runs: Vec<BindRun> = Vec::new();
+        for entry in &artifact_window.columns {
+            let resolved = match family_read_place(artifact_window.family, entry.column) {
+                // Procedural: no matrix at all — one run per artifact window.
+                None => None,
+                Some(place) => {
+                    let address = read_place_to_gkr_address(&place);
+                    let column = resolve_storage_column(storage, address)
+                        .ok_or(BwdVmBindError::UnresolvedWindow { window, address })?;
+                    if column.is_e4 != shape.is_e4 {
+                        return Err(BwdVmBindError::WindowFieldMismatch {
+                            window,
+                            expect_e4: shape.is_e4,
+                        });
+                    }
+                    Some(column)
+                }
+            };
+            let continues = match (runs.last(), &resolved) {
+                (None, _) => false,
+                // A procedural window is one synthetic backing; it never splits.
+                (Some(run), None) => run.read.is_none(),
+                (Some(run), Some(next)) => run.read.is_some_and(|base| {
+                    let prev = run.columns.last().expect("a run is never empty");
+                    let gap = entry.column - prev.column;
+                    next.stride_bytes == base.stride_bytes
+                        && next.ptr as usize
+                            == run.prev_ptr + gap * base.stride_bytes as usize
+                }),
+            };
+            if !continues {
+                runs.push(BindRun {
+                    read: resolved,
+                    columns: Vec::new(),
+                    prev_ptr: 0,
+                });
+            }
+            let run = runs.last_mut().expect("just started");
+            run.columns.push(LeanBoundColumn {
+                column: entry.column,
+                source: entry.source,
+            });
+            run.prev_ptr = resolved.map_or(0, |r| r.ptr as usize);
+        }
+
+        for run in runs {
+            if new_windows.len() >= MAX_SOURCE_WINDOWS {
+                return Err(BwdVmBindError::TooManyWindows {
+                    windows: new_windows.len() + 1,
+                });
+            }
+            let nw = new_windows.len() as u8;
+            let first_column = run.columns[0].column;
+            for entry in &run.columns {
+                new_slots[entry.source as usize] = Some(LeanSourceSlot {
+                    window: nw,
+                    column: (entry.column - first_column) as u16,
+                });
+            }
+            let width = if shape.is_e4 {
+                size_of::<E4>()
+            } else {
+                size_of::<BF>()
+            } as u32;
+            read_elements.push(run.read.map_or(0, |r| r.stride_bytes / width));
+            bound.push(ResolvedBwdCoeffSourceWindow {
+                read: run.read,
+                publish: None,
+                backing_depth: 0,
+                target_depth: 0,
+                materialize: shape.materialize,
+            });
+            new_windows.push(LeanBoundWindow {
+                family: artifact_window.family,
+                first_column,
+                columns: run.columns,
+            });
+        }
+    }
+
+    let source_slots = new_slots
+        .into_iter()
+        .collect::<Option<Vec<_>>>()
+        .expect("every source slot belongs to exactly one artifact window column");
+    let coord = LeanCoordinateArtifact {
+        layer: coord.layer,
+        regime: coord.regime,
+        target_depth: coord.target_depth,
+        order: coord.order.clone(),
+        program: coord.program.clone(),
+        binding: LeanSourceBinding {
+            windows: new_windows,
+            source_slots,
+        },
+    };
+    let window_columns = window_columns(&coord.binding).map_err(BwdVmBindError::WindowShape)?;
+
+    // R0 publishes nothing; a plan that wants bytes means the depth wiring is
+    // wrong and must stop the proof before anything is allocated for it.
+    let plan = plan_publish_scratch(&[&bound], &[&window_columns], &[rows])
+        .map_err(BwdVmBindError::WindowShape)?;
+    if plan.total_bytes != 0 {
+        return Err(BwdVmBindError::PublishPlanNotEmpty {
+            bytes: plan.total_bytes,
+        });
+    }
+
+    Ok(BoundR0Sources {
+        coord,
+        windows: bound,
+        window_read_elements: read_elements,
+        window_columns,
+    })
+}

@@ -94,6 +94,10 @@ use super::seg::{
     CarveoutMode, CarveoutPlan, CarveoutShape, BWD_SEG_ACC_RUNG_EPILOGUE,
     BWD_SEG_SMEM_BUCKETS_BYTES, SEG_REFERENCE_CLOCK_BUCKET_BYTES,
 };
+use super::production_bind::{
+    seg_policy_k, seg_policy_k_with, SEG_CORPUS_K, SEG_POLICY_NARROW_BYTES_PER_ROW,
+    SEG_POLICY_WIDE_BYTES_PER_ROW,
+};
 use super::seg_desc::{BwdSegDesc, BWD_SEG_DESC_CAP, BWD_SEG_MAX_K};
 use super::seg_lower::{
     bwd_seg_floor_backing_census, bwd_seg_traffic_floor, lower_bwd_seg, BwdSegLaunchDesc,
@@ -8246,23 +8250,6 @@ fn bwd_seg_keccak_l0_monster() {
 //     all of them, because a corpus sweep that quietly measured 60% of the corpus
 //     would look identical to one that measured all of it.
 
-/// The `K` axis the corpus sweep ranks: the plan's set, minus `K = 24`.
-///
-/// Stage A extended its own axis DOWN to `{1, 2}` after the gate coordinate's
-/// winner landed at the bottom of the named set. That is not repeated here and
-/// the omission is a measurement, not an oversight: `K = 1` ran 4% behind the
-/// incumbent on the gate coordinate (50% occupancy, no cross-warp amortization)
-/// and `K = 2` lost to `K = 4` on every Stage-A cell it was launchable in.
-///
-/// `K = 24` is PRUNED (perf review P2): at the shipped 64-register band,
-/// 768 threads × 64 regs = 49,152 keeps a second block (98,304) out of the 64K
-/// register file, so K=24 runs 24 of 48 warp slots — 50% occupancy against 32
-/// warps for each of its neighbors (2×16, 4×8, 1×32) — and every K=24 bench row
-/// confirmed the 50% limit. The hole is geometric, not workload-dependent; the
-/// entry returns only if the continuation band drops to ≤42 registers, where
-/// two 768-thread blocks fit.
-pub(super) const SEG_CORPUS_K: [usize; 4] = [4, 8, 16, 32];
-
 /// The member of [`SEG_CORPUS_K`] every other `K` of a coordinate is paired
 /// against: the Task-9 winner, so a corpus ratio reads directly as "against the
 /// configuration the gate was won at".
@@ -8829,106 +8816,10 @@ pub(super) fn parse_corpus_csv(text: &str) -> Vec<SegCorpusRow> {
 }
 
 // ── The closed-form `K` policy (spec §12) ────────────────────────────────────
-
-/// Below this per-row source footprint a coordinate takes the NARROW block.
-///
-/// 1,280 B/row is exactly 40 KiB per 32-row tile. **This is the scan optimum
-/// ROUNDED, not the scan optimum.** [`fit_policy_thresholds`] over the corpus
-/// returns 1,248 B/row, which scores 78 points over threshold at mean +0.6478%
-/// against this constant's 83 at +0.6784%. The rounding is deliberate — a whole
-/// tile size is a number a reader can hold and a launcher can justify, and the
-/// difference is five points out of 782, inside the leave-one-circuit-out spread
-/// ([`loco_validation`]) — but it IS a difference and the audit states it.
-///
-/// The neighbourhood is broad but not flat: 1,216–1,472 B/row all score 81–84.
-pub(super) const SEG_POLICY_NARROW_BYTES_PER_ROW: usize = 1_280;
-
-/// Above this per-row source footprint a coordinate takes the WIDEST block its
-/// family can host. 18,432 B/row is exactly 576 KiB per tile.
-///
-/// Same story: the scan optimum is 19,200 B/row, and it is a THREE-POINT SPIKE
-/// rather than a plateau — the neighbouring candidates score worse. Rounding down
-/// to a whole tile size trades those three points for a constant that is not
-/// balanced on a spike in one dataset.
-pub(super) const SEG_POLICY_WIDE_BYTES_PER_ROW: usize = 18_432;
-
-const _: () = assert!(SEG_POLICY_NARROW_BYTES_PER_ROW < SEG_POLICY_WIDE_BYTES_PER_ROW);
-
-/// The closed form (spec §12), and what the corpus says its arguments are.
-///
-/// Spec §12 expected `k = f(sources, rows, width mix)`. The corpus says **`k` is a
-/// function of the per-row source footprint alone**, and the two other candidates
-/// were tested and dropped rather than assumed away:
-///
-///   * **rows do not enter.** The first pass measured one row count per coordinate
-///     and produced a convincing "deeper grid wants a narrower block" rule — which
-///     was an ARTIFACT: under one memory budget the row count is a deterministic
-///     function of the footprint, so depth and weight moved together. Re-measuring
-///     every coordinate at three depths, and the heavy circuits again at a six-times
-///     larger budget, separates them: a LIGHT coordinate still wants `K = 4` at the
-///     shallowest grid swept, and a HEAVY one still wants a wide block at the
-///     deepest. Grid depth as a single feature scores no better than the constant
-///     `K = 4`.
-///   * **static work does not add.** `ListWorkStats`'s per-list work, the term
-///     count and the source count were each fitted as the step feature; all three
-///     score measurably worse than the footprint, and adding a work term on top of
-///     the footprint moves nothing.
-///
-/// `bytes_per_row` is [`probe_geometry`]'s, i.e. the round's own window geometry:
-/// `sum over windows of columns * (2 << delta) * width`, plus two E4 per published
-/// column. That is exactly "sources and width mix" as one number, and a launcher can
-/// compute it at setup from the binding it is about to lower.
-///
-/// `ceiling` is the largest `K` the compiled family can host — a register fact, not
-/// a choice: the probe reports 32 for BOTH families at the shipped 64-register
-/// band (`SegKCeilings::probe`; an earlier revision of this comment carried Task
-/// 9's 24, measured at the pre-group band).
-///
-/// The result is always a member of [`SEG_CORPUS_K`] at or below `ceiling`. The
-/// wide arm is `K = 16`, which INVERTS what an earlier band fitted: at 64
-/// registers two 512-thread blocks co-reside (2 × 16 = 32 warps) while `K = 24`
-/// and `K = 32` are both single-block shapes, and the 2026-08-01 chop-point
-/// corpus scores the wide population summed at `K16 +0.0% / K24 +6.2% /
-/// K32 +3.1%` (9 of 10 wide cells win at 16). `K = 24` is pruned from the axis
-/// outright — see [`SEG_CORPUS_K`]. `K` is deliberately not interpolated either:
-/// it is a block geometry, and a launcher choosing `K = 11` would be choosing a
-/// shape nothing was measured at.
-pub(super) fn seg_policy_k(bytes_per_row: usize, ceiling: usize) -> usize {
-    seg_policy_k_with(
-        bytes_per_row,
-        ceiling,
-        SEG_POLICY_NARROW_BYTES_PER_ROW,
-        SEG_POLICY_WIDE_BYTES_PER_ROW,
-    )
-}
-
-/// [`seg_policy_k`] with the two thresholds supplied rather than committed.
-///
-/// The fit and the leave-one-circuit-out validation both need to evaluate the
-/// policy at thresholds that are NOT the committed ones; sharing this function is
-/// what stops the validation from silently scoring a differently-shaped rule.
-pub(super) fn seg_policy_k_with(
-    bytes_per_row: usize,
-    ceiling: usize,
-    narrow: usize,
-    wide: usize,
-) -> usize {
-    let want = if bytes_per_row < narrow {
-        4
-    } else if bytes_per_row < wide {
-        8
-    } else {
-        16
-    };
-    // `want` is at least the axis minimum and so is `ceiling`, so the filter is
-    // never empty; the `unwrap_or` is a total function, not a guess.
-    let cap = want.min(ceiling);
-    SEG_CORPUS_K
-        .into_iter()
-        .filter(|k| *k <= cap)
-        .max()
-        .unwrap_or(SEG_CORPUS_K[0])
-}
+//
+// MOVED to production (`super::production_bind`): `SEG_CORPUS_K`,
+// `seg_policy_k`, `seg_policy_k_with` and the two thresholds now ship with the
+// launcher, imported above so the fit below and the shipped rule cannot drift.
 
 /// One coordinate's verdict: what measured best, what the formula picks, and what
 /// the difference costs.
