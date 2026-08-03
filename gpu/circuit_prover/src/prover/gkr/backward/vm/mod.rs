@@ -43,6 +43,8 @@ pub(crate) mod seg;
 /// challenges are GPU-derived, so the host cannot pre-evaluate the bank the way the
 /// harness does.
 pub(crate) mod coords;
+#[allow(dead_code)]
+pub(crate) mod production_program;
 pub(crate) mod seg_coeff_eval;
 /// The corpus coverage proof for [`seg_coeff_eval`] — no recipe needs more than the
 /// device monomial's two challenge factors — and the device-vs-CPU-oracle gate on

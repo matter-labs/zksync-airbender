@@ -82,7 +82,7 @@ pub(crate) use cs::gkr_circuits::{
 pub(crate) use cs::gkr_compiler::dag_ir::VirtualSetupKind;
 pub(crate) use cs::gkr_compiler::dag_ir::{
     lower_dag, validate as validate_dag, BwdRegime, ChallengeKey, ChallengePower, ChallengeRef,
-    ChallengeResolver, PermutationSlot, RangeWidth, ReadPlace,
+    ChallengeResolver, DagLayer, FieldKind, PermutationSlot, RangeWidth, ReadPlace,
 };
 pub(crate) use cs::gkr_compiler::{
     compile_unrolled_circuit_state_transition_into_gkr, CompiledAddressSpaceRelationStrict,
