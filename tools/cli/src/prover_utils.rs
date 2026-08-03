@@ -901,9 +901,9 @@ impl CarriedChainCombiner {
             ));
         }
 
-        // Chain validation is cheap and independent of the cached state, so bad inputs
-        // fail before a cold combiner pays for its warm-up.
-        let (hash_chain, preimage) = validate_shared_carried_chain(artifacts)?;
+        // Per-artifact chain validation is cheap and independent of the cached state,
+        // so malformed inputs fail before a cold combiner pays for its warm-up.
+        let stored_chains = validate_carried_chains(artifacts)?;
         let expected_keccaks = (
             artifacts[0].program_bin_keccak,
             artifacts[0].program_text_keccak,
@@ -914,6 +914,26 @@ impl CarriedChainCombiner {
             .unified_setup_and_layouts
             .as_ref()
             .expect("warmed up above");
+
+        // A proof's stored chain pair is the chain state carried in its registers, and
+        // the unified verifier still continues that chain with the unified program's
+        // end params unless it already ends there (a unified proof that converges on
+        // its first pass carries the unrolled-level chain in its registers). Apply the
+        // same carry-or-continue rule to derive the chain each proof's verification
+        // outputs, and require every input to prove the same one.
+        let mut output_chains = stored_chains.iter().map(|(hash_chain, preimage)| {
+            UnrolledProgramSetup::continue_recursion_chain(&setup.end_params, hash_chain, preimage)
+        });
+        let (hash_chain, preimage) = output_chains.next().expect("at least two artifacts");
+        for (idx, chain) in output_chains.enumerate() {
+            if chain != (hash_chain, preimage) {
+                return Err(format!(
+                    "input proof {} proves a different recursion chain than input proof 0",
+                    idx + 1
+                ));
+            }
+        }
+
         let unified_level = RecursionLevelData {
             setup: setup.clone(),
             layouts: layouts.clone(),
@@ -1221,26 +1241,27 @@ fn run_combine(
     Ok(artifact)
 }
 
-/// Checks that every artifact carries the same, internally consistent recursion chain
-/// and returns it as `(hash_chain, preimage)`.
-fn validate_shared_carried_chain(
+/// Checks that every artifact carries an internally consistent recursion chain and
+/// returns each artifact's stored `(hash_chain, preimage)` pair. The stored pair is
+/// the chain state carried in the proof's registers, which is not necessarily the
+/// chain its verification outputs; see [`CarriedChainCombiner::combine`] for the
+/// carry-or-continue rule that maps one to the other.
+fn validate_carried_chains(
     artifacts: &[ProofArtifact],
-) -> Result<([u32; 8], [u32; 16]), String> {
-    let preimage = validate_recursion_chain(&artifacts[0].proof)
-        .map_err(|e| format!("input proof 0: {}", e))?;
-    let hash_chain = artifacts[0]
-        .proof
-        .recursion_chain_hash
-        .expect("chain validated above, so the hash is present");
-    for (idx, artifact) in artifacts.iter().enumerate().skip(1) {
-        if artifact.proof.recursion_chain_hash != Some(hash_chain) {
-            return Err(format!(
-                "input proof {} carries a different recursion chain than input proof 0",
-                idx
-            ));
-        }
-    }
-    Ok((hash_chain, preimage))
+) -> Result<Vec<([u32; 8], [u32; 16])>, String> {
+    artifacts
+        .iter()
+        .enumerate()
+        .map(|(idx, artifact)| {
+            let preimage = validate_recursion_chain(&artifact.proof)
+                .map_err(|e| format!("input proof {}: {}", idx, e))?;
+            let hash_chain = artifact
+                .proof
+                .recursion_chain_hash
+                .expect("chain validated above, so the hash is present");
+            Ok((hash_chain, preimage))
+        })
+        .collect()
 }
 
 /// Verify one proof artifact of a combine (an input, or the combined result) against
@@ -1909,6 +1930,30 @@ mod recursion_binding_tests {
 
         let unrolled_output = verifier_output_with_chain(unrolled_chain);
         assert!(ensure_unrolled_target_binds_program(&unrolled_output, &unrolled_chain).is_ok());
+    }
+
+    /// The carried-chain combiner relies on `continue_recursion_chain` mirroring the
+    /// in-circuit rule: continuing a chain with end params it already ends with must
+    /// carry it through unchanged rather than extend it again.
+    #[test]
+    fn continue_recursion_chain_carries_when_chain_already_ends_with_end_params() {
+        let base_end_params = [41, 42, 43, 44, 45, 46, 47, 48];
+        let unified_end_params = [51, 52, 53, 54, 55, 56, 57, 58];
+        let (base_chain, base_preimage) =
+            UnrolledProgramSetup::begin_recursion_chain(&base_end_params);
+        let (chain, preimage) = UnrolledProgramSetup::continue_recursion_chain(
+            &unified_end_params,
+            &base_chain,
+            &base_preimage,
+        );
+        assert_ne!((chain, preimage), (base_chain, base_preimage));
+
+        let carried = UnrolledProgramSetup::continue_recursion_chain(
+            &unified_end_params,
+            &chain,
+            &preimage,
+        );
+        assert_eq!(carried, (chain, preimage));
     }
 
     fn minimal_artifact(security_level: SecurityLevel, target: ProofTarget) -> ProofArtifact {
