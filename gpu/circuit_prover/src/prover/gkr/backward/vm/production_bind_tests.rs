@@ -886,6 +886,7 @@ fn the_ext_sequence_builds_one_setup_per_round() {
     let folding_steps = prepared.plan.folding_steps;
     let slice = super::production_program::compiled_slice(
         &add_sub_artifact(),
+        0,
         BwdRegime::Ext,
     )
     .expect("the Ext slice compiles");

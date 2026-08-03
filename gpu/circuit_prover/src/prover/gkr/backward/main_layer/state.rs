@@ -224,6 +224,20 @@ impl FlatContinuationSizeCheck {
 }
 
 impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
+    /// The compiled slice for one coordinate, or `None` if it was not selected.
+    ///
+    /// The selection is read ONCE at state build (`bwd_vm_slices`), never
+    /// re-read here: an A/B alternating arms inside one process must not have a
+    /// plan built against one selection and launched against another.
+    fn bwd_vm_slice(
+        &self,
+        coord: super::super::vm::coords::BwdVmCoord,
+    ) -> Option<&'static super::super::vm::production_program::CompiledSlice> {
+        self.bwd_vm_slices
+            .iter()
+            .find_map(|&(selected, slice)| (selected == coord).then_some(slice))
+    }
+
     fn prepare_layer_from_blueprints(
         &mut self,
         layer_idx: usize,
@@ -488,16 +502,12 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
         // flat path resolves its own — and the descriptor needs
         // `round_scratch`'s eq/accumulator pointers.
         let bwd_vm_round0 = {
-            use super::super::vm::coords::{coords_from_env, BwdVmCoord};
-            let vm_owns_round0 = coords_from_env().contains(&BwdVmCoord {
+            use super::super::vm::coords::BwdVmCoord;
+            let slice_for_round0 = self.bwd_vm_slice(BwdVmCoord {
                 layer: layer_idx,
                 regime: crate::upstream::BwdRegime::R0,
             });
-            if vm_owns_round0 {
-                let slice = self.bwd_vm_r0.expect(
-                    "the VM selection is read once at backward-state build, so a selected \
-                     coordinate implies a captured compiled slice",
-                );
+            if let Some(slice) = slice_for_round0 {
                 // Step 0's logical row count — the contribution half-stride.
                 let rows = 1usize << (folding_steps - 1);
                 // SAFETY: every instantiation uses `E = E4`, so these
@@ -525,16 +535,12 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
         // entries those prepares created, which is why this block sits after
         // them.
         let bwd_vm_ext = {
-            use super::super::vm::coords::{coords_from_env, BwdVmCoord};
-            let vm_owns_continuation = coords_from_env().contains(&BwdVmCoord {
+            use super::super::vm::coords::BwdVmCoord;
+            let slice_for_continuation = self.bwd_vm_slice(BwdVmCoord {
                 layer: layer_idx,
                 regime: crate::upstream::BwdRegime::Ext,
             });
-            if vm_owns_continuation {
-                let slice = self.bwd_vm_ext.expect(
-                    "the VM selection is read once at backward-state build, so a selected \
-                     coordinate implies a captured compiled slice",
-                );
+            if let Some(slice) = slice_for_continuation {
                 // SAFETY: every instantiation uses `E = E4` (same argument as
                 // the `bwd_vm_round0` block above).
                 Some(super::super::vm::production_bind::build_bwd_vm_ext_rounds(

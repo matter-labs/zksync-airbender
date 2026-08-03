@@ -161,20 +161,23 @@ impl<E: Field + FieldExtension<BF>> GpuGKRDimensionReducingBackwardState<BF, E> 
         // the normalize below rewrites scratch-backed addresses, and the DAG
         // the coordinate is compiled against must be the one the source
         // binder's `ReadPlace`s refer to (same capture the forward VM makes).
-        let (bwd_vm_r0, bwd_vm_ext) = {
-            let coords = vm::coords::coords_from_env();
-            let mut slice_for = |regime: BwdRegime| {
-                coords
-                    .contains(&vm::coords::BwdVmCoord { layer: 0, regime })
-                    .then(|| {
-                        vm::production_program::compiled_slice(&compiled_circuit, regime)
-                            .unwrap_or_else(|error| {
-                                panic!("backward VM coordinate compile: {error}")
-                            })
-                    })
-            };
-            (slice_for(BwdRegime::R0), slice_for(BwdRegime::Ext))
-        };
+        // One slice per SELECTED coordinate — the state spans every main layer,
+        // so the capture is keyed by coordinate rather than by regime alone.
+        // Nothing is compiled for a coordinate that was not asked for.
+        let bwd_vm_slices: Vec<_> = vm::coords::coords_from_env()
+            .into_iter()
+            .map(|coord| {
+                let slice = vm::production_program::compiled_slice(
+                    &compiled_circuit,
+                    coord.layer,
+                    coord.regime,
+                )
+                .unwrap_or_else(|error| {
+                    panic!("backward VM coordinate compile for {coord}: {error}")
+                });
+                (coord, slice)
+            })
+            .collect();
         let compiled_circuit = normalize_compiled_circuit_for_gpu(compiled_circuit);
         assert!(
             self.pending_layers.is_empty(),
@@ -213,8 +216,7 @@ impl<E: Field + FieldExtension<BF>> GpuGKRDimensionReducingBackwardState<BF, E> 
             num_base_layer_memory_polys: compiled_circuit.memory_layout.total_width,
             num_base_layer_witness_polys: compiled_circuit.witness_layout.total_width,
             is_delegation,
-            bwd_vm_r0,
-            bwd_vm_ext,
+            bwd_vm_slices,
         }
     }
 }

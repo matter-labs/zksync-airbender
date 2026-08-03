@@ -348,14 +348,20 @@ pub(crate) struct GpuGKRMainLayerBackwardState<E: FieldExtension<BF> + Field> {
     pub(crate) num_base_layer_memory_polys: usize,
     pub(crate) num_base_layer_witness_polys: usize,
     pub(crate) is_delegation: bool,
-    /// The backward VM's compiled R0 slice, captured from the RAW artifact
-    /// (before the normalize) when `AB_GKR_BWD_VM_COORDS` selects the
-    /// `0:R0` coordinate; `None` otherwise. Read once per proof at state
-    /// build so the plan builder and the launcher cannot see different
-    /// selections.
-    pub(crate) bwd_vm_r0: Option<&'static super::super::vm::production_program::CompiledSlice>,
-    /// Same capture for the `0:Ext` coordinate (the continuation rounds).
-    pub(crate) bwd_vm_ext: Option<&'static super::super::vm::production_program::CompiledSlice>,
+    /// The backward VM's compiled slice for every coordinate
+    /// `AB_GKR_BWD_VM_COORDS` selects, captured from the RAW artifact (before
+    /// the normalize). Keyed by coordinate because each `(layer, regime)` is its
+    /// own program, and the state spans every main layer while a plan sees one.
+    /// Read once per proof at state build so the plan builder and the launcher
+    /// cannot see different selections.
+    ///
+    /// A `Vec` rather than a map: `BwdRegime` is an upstream enum without `Ord`,
+    /// and the list is bounded by layers x regimes, so a scan through it costs
+    /// less than inventing an ordering for a foreign type.
+    pub(crate) bwd_vm_slices: Vec<(
+        super::super::vm::coords::BwdVmCoord,
+        &'static super::super::vm::production_program::CompiledSlice,
+    )>,
 }
 
 pub(crate) struct ScheduledMainLayerExecutionState<E: FieldExtension<BF> + Field> {
