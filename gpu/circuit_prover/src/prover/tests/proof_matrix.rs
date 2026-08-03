@@ -1510,3 +1510,101 @@ fn run_add_sub_bwd_vm_l0_r0_ab_test() {
         on_peak as i64 - off_peak as i64,
     );
 }
+
+/// A/B the backward VM on the WHOLE of add_sub L0 — round 0 plus all 23
+/// continuation rounds: N interleaved order-alternated pairs of whole proofs in
+/// one process, VM-on against VM-off, per-pair byte-equal.
+///
+/// Unlike the R0-only A/B, this arm is not a rounding error: L0's backward
+/// sumcheck is the bulk of a backward pass that is itself ~44% of the ~204 ms
+/// proof, so the whole-proof instrument resolves the question it is asked. The
+/// arms still differ by more than the eval kernels — the incumbent runs the
+/// FUSED warp-partial path on every continuation round, the VM runs the
+/// segmented kernel plus the unfused reduction + round-update tail — so the
+/// delta is the cutover's true cost, not a per-kernel ratio.
+#[test]
+#[serial]
+#[ignore]
+fn run_add_sub_bwd_vm_l0_full_ab_test() {
+    use crate::prover::gkr::backward::vm::coords::AB_GKR_BWD_VM_COORDS_ENV;
+
+    const PAIRS: usize = 20;
+    /// The whole layer: round 0 and every continuation round.
+    const BWD_VM_AB_COORDS: &str = "0:R0,0:Ext";
+
+    let fixture = prepare_basic_unrolled_profiling_fixture();
+    assert!(
+        !crate::prover::gkr::backward::vm::production_bind::poison_accumulator_enabled(),
+        "the accumulator poison is a full-length device write per VM round charged to the VM arm \
+         alone; leaving it on inverts this measurement"
+    );
+    assert!(
+        !crate::prover::gkr::backward::vm::production_bind::cascade_poison_enabled(),
+        "the cascade poison fills every fold backing on both arms' layer prepares; leaving it on \
+         adds noise this measurement cannot absorb"
+    );
+
+    // Warm up both arms before measuring: first-touch allocation, the
+    // OnceLock'd coordinate compile, and module load all land here.
+    for coords in ["", BWD_VM_AB_COORDS] {
+        let _env = EnvGuard::set(AB_GKR_BWD_VM_COORDS_ENV, coords);
+        let t = fixture.schedule_transfers().unwrap();
+        fixture.context.get_h2d_stream().synchronize().unwrap();
+        let (proof, ms) = fixture.prove(t).unwrap().finish().unwrap();
+        eprintln!("[bwd-vm-full-ab] warmup vm={coords:?}: {ms} ms");
+        drop(proof);
+    }
+
+    let mut run = |coords: &str| {
+        let _env = EnvGuard::set(AB_GKR_BWD_VM_COORDS_ENV, coords);
+        let t = fixture.schedule_transfers().unwrap();
+        fixture.context.get_h2d_stream().synchronize().unwrap();
+        fixture.context.reset_used_mem_peak();
+        let (proof, ms) = fixture.prove(t).unwrap().finish().unwrap();
+        (proof, ms, fixture.context.get_used_mem_peak())
+    };
+
+    let mut deltas = Vec::with_capacity(PAIRS);
+    let mut on_peak = 0usize;
+    let mut off_peak = 0usize;
+    eprintln!("[bwd-vm-full-ab] pair  vm_on_ms  vm_off_ms  delta_ms");
+    for pair in 0..PAIRS {
+        // Alternate which arm goes first so a systematic first-slot cost
+        // (allocator state, clocks) cannot be attributed to one arm.
+        let (on, off) = if pair % 2 == 0 {
+            let on = run(BWD_VM_AB_COORDS);
+            let off = run("");
+            (on, off)
+        } else {
+            let off = run("");
+            let on = run(BWD_VM_AB_COORDS);
+            (on, off)
+        };
+        // A timing number from an arm that produced a different proof is not
+        // a number.
+        assert_gkr_proof_eq_for_test(&on.0, &off.0);
+        let delta = on.1 - off.1;
+        eprintln!(
+            "[bwd-vm-full-ab] {pair:>4}  {:>8.3}  {:>9.3}  {:>8.3}",
+            on.1, off.1, delta
+        );
+        deltas.push(delta);
+        on_peak = on_peak.max(on.2);
+        off_peak = off_peak.max(off.2);
+    }
+
+    deltas.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    let median = deltas[deltas.len() / 2];
+    eprintln!(
+        "[bwd-vm-full-ab] delta_ms (vm_on - vm_off) over {PAIRS} pairs: median {median:.3}, \
+         min {:.3}, max {:.3}",
+        deltas[0],
+        deltas[deltas.len() - 1],
+    );
+    eprintln!(
+        "[bwd-vm-full-ab] peak device memory: vm_on {:.4} GiB, vm_off {:.4} GiB, delta {} B",
+        on_peak as f64 / (1u64 << 30) as f64,
+        off_peak as f64 / (1u64 << 30) as f64,
+        on_peak as i64 - off_peak as i64,
+    );
+}
