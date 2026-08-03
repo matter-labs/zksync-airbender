@@ -98,7 +98,7 @@ use gkr_eval_isa::bwd::coeff::lean_artifact::LeanCoordinateArtifact;
 use gkr_eval_isa::bwd::coeff::lean_bind::{
     LeanBoundColumn, LeanBoundWindow, LeanSourceBinding, LeanSourceSlot,
 };
-use gkr_eval_isa::bwd::coeff::limits::{MAX_SOURCE_WINDOWS, SOURCE_WINDOW_COLUMNS};
+use gkr_eval_isa::bwd::coeff::limits::SOURCE_WINDOW_COLUMNS;
 use gkr_eval_isa::bwd::coeff::stats::WindowFamily;
 use gkr_eval_isa::fwd::source::KIND_ORDER;
 
@@ -115,6 +115,7 @@ use super::seg_coeff_eval::{
 };
 use super::seg_desc::{
     BWD_COEFF_PUBLISH_TARGET_DEPTH, BWD_SEG_MAX_K, BWD_SEG_OUTPUT_PARTIALS, BWD_SEG_OUTPUT_ROWS,
+    BWD_SEG_SOURCE_WINDOW_CAP,
 };
 use super::seg_lower::{
     assign_class, lower_bwd_seg, plan_publish_scratch, window_columns, BwdSegLowerError,
@@ -789,7 +790,7 @@ pub(crate) fn bind_r0_sources<E: Copy>(
         }
 
         for run in runs {
-            if new_windows.len() >= MAX_SOURCE_WINDOWS {
+            if new_windows.len() >= BWD_SEG_SOURCE_WINDOW_CAP {
                 return Err(BwdVmBindError::TooManyWindows {
                     windows: new_windows.len() + 1,
                     parents: shapes.len(),
@@ -922,26 +923,18 @@ struct ExtBindRun {
 /// genuinely different orders. Frozen once: the same partition serves every
 /// round, raw and chained alike.
 ///
-/// # The two sides genuinely disagree, and one index cannot fix it
+/// How many pieces that takes is a property of STORAGE, and the descriptor is
+/// sized for it. Measured on blake2 L0 Ext (13 artifact windows, 999 column
+/// transitions): the raw backings are absolute-indexed arenas whose pointers
+/// advance by the artifact's own gap — 1 for 897 transitions, 2/3/4/7 for the
+/// other 102 — while the fold backings advance one region per referenced column
+/// throughout. Each is perfectly strided; they just aren't strided the SAME way,
+/// so a window that must address both ends where they diverge: 13 artifact
+/// windows, 115 production windows. That is fine. A window is a pointer and a
+/// stride, so [`BWD_SEG_SOURCE_WINDOW_CAP`] is 128 and every one of those 115
+/// gets a slot.
 ///
-/// Measured on blake2 L0 Ext (13 artifact windows, 999 column transitions): the
-/// raw side is an ABSOLUTE-indexed base-layer arena, so its pointer advances by
-/// the artifact's own column gap — step 1 for 897 transitions, but 2, 3, 4 or 7
-/// for the other 102. The cascade side is RANK-PACKED, so it advances by
-/// exactly one region per referenced column — `cas_delta == region_bytes` in
-/// all 999. No renumbering reconciles those: a single index times two constant
-/// strides cannot be both 3 apart on one side and 1 apart on the other. So this
-/// binder splits at each of the 102 disagreements and reports 115 windows.
-///
-/// The fix is two indices — a raw column and a cascade column per source, which
-/// is what the incumbent flat path already does (it resolves each source
-/// through `tables.bases` / `tables.log2_stride` rather than through a strided
-/// window). [`BwdSegSourceRecord`] has room for it at no cost: `column` is
-/// bounded by `SOURCE_WINDOW_COLUMNS = 128`, so the record's `u16` holds both
-/// sides as bytes. Until that lands, Ext binds only where the two sides agree —
-/// every add_sub main layer does; blake2 L0 does not.
-///
-/// [`BwdSegSourceRecord`]: super::seg_desc::BwdSegSourceRecord
+/// [`BWD_SEG_SOURCE_WINDOW_CAP`]: super::seg_desc::BWD_SEG_SOURCE_WINDOW_CAP
 pub(crate) fn bind_ext_round_sources<E: Copy>(
     storage: &GpuGKRStorage<BF, E>,
     coord: &LeanCoordinateArtifact,
@@ -1032,7 +1025,7 @@ pub(crate) fn bind_ext_round_sources<E: Copy>(
             run.prev_offset = offset;
         }
     }
-    if runs.len() > MAX_SOURCE_WINDOWS {
+    if runs.len() > BWD_SEG_SOURCE_WINDOW_CAP {
         return Err(BwdVmBindError::TooManyWindows {
             windows: runs.len(),
             parents: coord.binding.windows.len(),

@@ -117,12 +117,23 @@ pub(crate) const BWD_SEG_C_INIT_NONE: u32 = u32::MAX;
 /// the format has room for four times over. An observed number belongs in a
 /// census; a capacity belongs here.
 ///
-/// Sized generously because a window is cheap: 32 bytes, so this array is 1 KiB of
-/// a descriptor that has ~6 KiB of headroom under
-/// [`BWD_SEG_DESC_CAP`]. The real ceiling is the wire's `source_window:6` field
-/// ([`MAX_SOURCE_WINDOWS`] `== 64`), asserted below.
-pub(crate) const BWD_SEG_SOURCE_WINDOW_CAP: usize = 32;
-const _: () = assert!(BWD_SEG_SOURCE_WINDOW_CAP <= MAX_SOURCE_WINDOWS);
+/// Sized generously because a window is cheap: 32 bytes, so 128 of them are 4 KiB
+/// of a descriptor with ~6 KiB of headroom under [`BWD_SEG_DESC_CAP`], which stays
+/// the final authority.
+///
+/// [`MAX_SOURCE_WINDOWS`] `== 64` is NOT the ceiling here, and treating it as one
+/// was the same conflation one level down. That constant is the WIRE's
+/// `source_window:6` field, which bounds the windows an ARTIFACT may name; these
+/// windows are the binder's re-partition of those, they live only in this
+/// descriptor, and the program stream never re-encodes them. Their real ceiling is
+/// [`BwdSegSourceRecord::window`], a byte.
+///
+/// 128 because production storage splits one artifact window into as many pieces
+/// as it has differently-strided backings, and that is a property of storage, not
+/// of the artifact: blake2 L0 Ext's 13 artifact windows need 115. The split itself
+/// is free — each piece is a pointer and a stride — so the only thing that ever
+/// had to grow is this number.
+pub(crate) const BWD_SEG_SOURCE_WINDOW_CAP: usize = 128;
 const _: () = assert!(BWD_SEG_SOURCE_WINDOW_CAP >= in_scope::MAX_SOURCE_WINDOWS_USED);
 
 /// [`BwdSegDesc::output`]: the incumbent per-row ACCUMULATOR layout — `2 *
@@ -656,7 +667,7 @@ pub(crate) const BWD_SEG_PROGPTR_KERNEL_ARGUMENT_BYTES: usize = kernel_argument_
 const _: () = {
     use core::mem::offset_of;
 
-    assert!(size_of::<BwdSegDesc>() == 26_896);
+    assert!(size_of::<BwdSegDesc>() == 29_968);
     assert!(align_of::<BwdSegDesc>() == BWD_SEG_DESC_ALIGN);
     // The FINAL authority on the descriptor's shape.
     assert!(size_of::<BwdSegDesc>() <= BWD_SEG_DESC_CAP);
@@ -674,15 +685,15 @@ const _: () = {
     // same gap by the same rule, and the offsets on both sides are asserted, so
     // it needs no explicit field.
     assert!(offset_of!(BwdSegDesc, window) == 23_760);
-    assert!(offset_of!(BwdSegDesc, c_init_coeff) == 24_784);
-    assert!(offset_of!(BwdSegDesc, immediates) == 24_800);
-    assert!(offset_of!(BwdSegDesc, coefficients) == 26_848);
-    assert!(offset_of!(BwdSegDesc, eq_low) == 26_856);
-    assert!(offset_of!(BwdSegDesc, contributions) == 26_864);
-    assert!(offset_of!(BwdSegDesc, eq_sizes) == 26_872);
-    assert!(offset_of!(BwdSegDesc, n_coefficients) == 26_884);
-    assert!(offset_of!(BwdSegDesc, logical_rows) == 26_888);
-    assert!(offset_of!(BwdSegDesc, output) == 26_892);
+    assert!(offset_of!(BwdSegDesc, c_init_coeff) == 27_856);
+    assert!(offset_of!(BwdSegDesc, immediates) == 27_872);
+    assert!(offset_of!(BwdSegDesc, coefficients) == 29_920);
+    assert!(offset_of!(BwdSegDesc, eq_low) == 29_928);
+    assert!(offset_of!(BwdSegDesc, contributions) == 29_936);
+    assert!(offset_of!(BwdSegDesc, eq_sizes) == 29_944);
+    assert!(offset_of!(BwdSegDesc, n_coefficients) == 29_956);
+    assert!(offset_of!(BwdSegDesc, logical_rows) == 29_960);
+    assert!(offset_of!(BwdSegDesc, output) == 29_964);
     // The program stream starts on a 16-byte boundary and can be buffered
     // through wide loads.
     assert!(offset_of!(BwdSegDesc, program) % BWD_SEG_DESC_ALIGN == 0);
@@ -691,7 +702,7 @@ const _: () = {
     assert!(offset_of!(BwdSegDesc, output) + size_of::<u32>() == size_of::<BwdSegDesc>());
     assert!(size_of::<BwdSegDesc>() % BWD_SEG_DESC_ALIGN == 0);
 
-    assert!(size_of::<BwdSegProgPtrDesc>() == 9_664);
+    assert!(size_of::<BwdSegProgPtrDesc>() == 12_736);
     assert!(align_of::<BwdSegProgPtrDesc>() == BWD_SEG_DESC_ALIGN);
     assert!(size_of::<BwdSegProgPtrDesc>() <= BWD_SEG_DESC_CAP);
     assert!(offset_of!(BwdSegProgPtrDesc, program) == 0);
@@ -707,16 +718,16 @@ const _: () = {
     // No gap here: with a 4-byte-aligned record the progptr `source` array ends
     // exactly at `window`.
     assert!(offset_of!(BwdSegProgPtrDesc, window) == 6_520);
-    assert!(offset_of!(BwdSegProgPtrDesc, c_init_coeff) == 7_544);
-    assert!(offset_of!(BwdSegProgPtrDesc, immediates) == 7_560);
-    assert!(offset_of!(BwdSegProgPtrDesc, coefficients) == 9_608);
-    assert!(offset_of!(BwdSegProgPtrDesc, eq_low) == 9_616);
-    assert!(offset_of!(BwdSegProgPtrDesc, contributions) == 9_624);
-    assert!(offset_of!(BwdSegProgPtrDesc, eq_sizes) == 9_632);
-    assert!(offset_of!(BwdSegProgPtrDesc, n_coefficients) == 9_644);
-    assert!(offset_of!(BwdSegProgPtrDesc, logical_rows) == 9_648);
-    assert!(offset_of!(BwdSegProgPtrDesc, output) == 9_652);
-    assert!(offset_of!(BwdSegProgPtrDesc, pad) == 9_656);
+    assert!(offset_of!(BwdSegProgPtrDesc, c_init_coeff) == 10_616);
+    assert!(offset_of!(BwdSegProgPtrDesc, immediates) == 10_632);
+    assert!(offset_of!(BwdSegProgPtrDesc, coefficients) == 12_680);
+    assert!(offset_of!(BwdSegProgPtrDesc, eq_low) == 12_688);
+    assert!(offset_of!(BwdSegProgPtrDesc, contributions) == 12_696);
+    assert!(offset_of!(BwdSegProgPtrDesc, eq_sizes) == 12_704);
+    assert!(offset_of!(BwdSegProgPtrDesc, n_coefficients) == 12_716);
+    assert!(offset_of!(BwdSegProgPtrDesc, logical_rows) == 12_720);
+    assert!(offset_of!(BwdSegProgPtrDesc, output) == 12_724);
+    assert!(offset_of!(BwdSegProgPtrDesc, pad) == 12_728);
     assert!(
         offset_of!(BwdSegProgPtrDesc, pad) + size_of::<[u32; 2]>()
             == size_of::<BwdSegProgPtrDesc>()

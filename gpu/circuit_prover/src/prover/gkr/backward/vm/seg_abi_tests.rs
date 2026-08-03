@@ -93,9 +93,9 @@ const SEG_COEFF_EVAL_CUDA_HEADER: &str =
     include_str!("../../../../../native/prover/gkr/backward/seg_coeff_eval.cuh");
 
 /// The pinned size of the inline-program descriptor.
-const INLINE_DESC_BYTES: usize = 26_896;
+const INLINE_DESC_BYTES: usize = 29_968;
 /// The pinned size of the device-program A/B twin.
-const PROGPTR_DESC_BYTES: usize = 9_664;
+const PROGPTR_DESC_BYTES: usize = 12_736;
 /// Implicit padding rustc (and nvcc, by the same C rules) inserts to align the
 /// 8-byte-aligned `window` array after the 4-byte-aligned `source` array. This is
 /// the gap before `window` ONLY — the descriptor's total implicit padding is this
@@ -165,15 +165,15 @@ fn seg_descriptor_layout_is_pinned_field_for_field() {
     assert_eq!(offset_of!(BwdSegDesc, fold_source), 17_324);
     assert_eq!(offset_of!(BwdSegDesc, source), 19_468);
     assert_eq!(offset_of!(BwdSegDesc, window), 23_760);
-    assert_eq!(offset_of!(BwdSegDesc, c_init_coeff), 24_784);
-    assert_eq!(offset_of!(BwdSegDesc, immediates), 24_800);
-    assert_eq!(offset_of!(BwdSegDesc, coefficients), 26_848);
-    assert_eq!(offset_of!(BwdSegDesc, eq_low), 26_856);
-    assert_eq!(offset_of!(BwdSegDesc, contributions), 26_864);
-    assert_eq!(offset_of!(BwdSegDesc, eq_sizes), 26_872);
-    assert_eq!(offset_of!(BwdSegDesc, n_coefficients), 26_884);
-    assert_eq!(offset_of!(BwdSegDesc, logical_rows), 26_888);
-    assert_eq!(offset_of!(BwdSegDesc, output), 26_892);
+    assert_eq!(offset_of!(BwdSegDesc, c_init_coeff), 27_856);
+    assert_eq!(offset_of!(BwdSegDesc, immediates), 27_872);
+    assert_eq!(offset_of!(BwdSegDesc, coefficients), 29_920);
+    assert_eq!(offset_of!(BwdSegDesc, eq_low), 29_928);
+    assert_eq!(offset_of!(BwdSegDesc, contributions), 29_936);
+    assert_eq!(offset_of!(BwdSegDesc, eq_sizes), 29_944);
+    assert_eq!(offset_of!(BwdSegDesc, n_coefficients), 29_956);
+    assert_eq!(offset_of!(BwdSegDesc, logical_rows), 29_960);
+    assert_eq!(offset_of!(BwdSegDesc, output), 29_964);
 
     // The program is the descriptor's HEAD here (the cell-era desc put it last),
     // so the 16-byte descriptor alignment places it on a 16-byte boundary for
@@ -275,16 +275,16 @@ fn seg_progptr_descriptor_layout_is_pinned_field_for_field() {
     assert_eq!(offset_of!(BwdSegProgPtrDesc, fold_source), 88);
     assert_eq!(offset_of!(BwdSegProgPtrDesc, source), 2_232);
     assert_eq!(offset_of!(BwdSegProgPtrDesc, window), 6_520);
-    assert_eq!(offset_of!(BwdSegProgPtrDesc, c_init_coeff), 7_544);
-    assert_eq!(offset_of!(BwdSegProgPtrDesc, immediates), 7_560);
-    assert_eq!(offset_of!(BwdSegProgPtrDesc, coefficients), 9_608);
-    assert_eq!(offset_of!(BwdSegProgPtrDesc, eq_low), 9_616);
-    assert_eq!(offset_of!(BwdSegProgPtrDesc, contributions), 9_624);
-    assert_eq!(offset_of!(BwdSegProgPtrDesc, eq_sizes), 9_632);
-    assert_eq!(offset_of!(BwdSegProgPtrDesc, n_coefficients), 9_644);
-    assert_eq!(offset_of!(BwdSegProgPtrDesc, logical_rows), 9_648);
-    assert_eq!(offset_of!(BwdSegProgPtrDesc, output), 9_652);
-    assert_eq!(offset_of!(BwdSegProgPtrDesc, pad), 9_656);
+    assert_eq!(offset_of!(BwdSegProgPtrDesc, c_init_coeff), 10_616);
+    assert_eq!(offset_of!(BwdSegProgPtrDesc, immediates), 10_632);
+    assert_eq!(offset_of!(BwdSegProgPtrDesc, coefficients), 12_680);
+    assert_eq!(offset_of!(BwdSegProgPtrDesc, eq_low), 12_688);
+    assert_eq!(offset_of!(BwdSegProgPtrDesc, contributions), 12_696);
+    assert_eq!(offset_of!(BwdSegProgPtrDesc, eq_sizes), 12_704);
+    assert_eq!(offset_of!(BwdSegProgPtrDesc, n_coefficients), 12_716);
+    assert_eq!(offset_of!(BwdSegProgPtrDesc, logical_rows), 12_720);
+    assert_eq!(offset_of!(BwdSegProgPtrDesc, output), 12_724);
+    assert_eq!(offset_of!(BwdSegProgPtrDesc, pad), 12_728);
     assert_eq!(size % BWD_SEG_DESC_ALIGN, 0);
     assert_eq!(
         offset_of!(BwdSegProgPtrDesc, pad) + 2 * size_of::<u32>(),
@@ -544,11 +544,11 @@ fn seg_descriptor_reuses_the_window_struct_unforked() {
     assert_eq!(align_of::<BwdCoeffSourceWindow>(), 8);
     assert_eq!(offset_of!(BwdCoeffSourceWindow, procedural_kind), 28);
     assert_eq!(BWD_COEFF_PROCEDURAL_NONE, 0xff);
-    // 32 windows x 32 B: the array is a CAPACITY, so this pins what it costs
-    // (1 KiB of a ~27 KB descriptor) rather than what any circuit has used.
+    // 128 windows x 32 B: the array is a CAPACITY, so this pins what it costs
+    // (4 KiB of a ~30 KB descriptor) rather than what any circuit has used.
     assert_eq!(
         BWD_SEG_SOURCE_WINDOW_CAP * size_of::<BwdCoeffSourceWindow>(),
-        1_024
+        4_096
     );
     // The publication threshold is imported, never duplicated.
     assert_eq!(BWD_COEFF_PUBLISH_TARGET_DEPTH, 3);
@@ -679,7 +679,7 @@ fn the_seg_static_assert_matcher_rejects_a_numeric_prefix() {
         "sizeof(bwd_seg_desc) == {}",
         size_of::<BwdSegDesc>()
     )));
-    assert!(seg_header_asserts("BWD_SEG_SOURCE_WINDOW_CAP == 32"));
+    assert!(seg_header_asserts("BWD_SEG_SOURCE_WINDOW_CAP == 128"));
     assert!(!seg_header_asserts("BWD_SEG_SOURCE_WINDOW_CAP == 1"));
     assert!(!seg_header_asserts(
         "__builtin_offsetof(bwd_seg_desc, no_such_field) == 0"

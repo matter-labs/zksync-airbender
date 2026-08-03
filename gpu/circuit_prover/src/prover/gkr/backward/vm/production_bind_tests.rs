@@ -685,8 +685,9 @@ fn every_prepared_fold_pointer_is_the_cascade_slot() {
 fn every_ext_source_binds_through_the_cascade() {
     use std::collections::{BTreeMap, BTreeSet};
 
-    use gkr_eval_isa::bwd::coeff::limits::MAX_SOURCE_WINDOWS;
     use gkr_eval_isa::bwd::coeff::stats::WindowFamily;
+
+    use super::seg_desc::BWD_SEG_SOURCE_WINDOW_CAP;
 
     use super::production_bind::family_read_place;
     use super::seg_lower::D2Policy;
@@ -705,7 +706,7 @@ fn every_ext_source_binds_through_the_cascade() {
 
     assert_eq!(bound.rounds.len(), folding_steps - 1);
     assert!(
-        bound.coord.binding.windows.len() <= MAX_SOURCE_WINDOWS,
+        bound.coord.binding.windows.len() <= BWD_SEG_SOURCE_WINDOW_CAP,
         "{} rebound windows exceed the descriptor format",
         bound.coord.binding.windows.len()
     );

@@ -211,7 +211,7 @@ constexpr u32 BWD_SEG_PROGRAM_WORD_CAP = 8624;
 constexpr u32 BWD_SEG_PROGRAM_BYTE_CAP = 2 * BWD_SEG_PROGRAM_WORD_CAP;
 // `in_scope::MAX_SOURCE_WINDOWS_USED`: the EXACT measured corpus maximum,
 // deliberately not the 64 windows the wire could name.
-constexpr u32 BWD_SEG_SOURCE_WINDOW_CAP = 32;
+constexpr u32 BWD_SEG_SOURCE_WINDOW_CAP = 128;
 // `gkr_eval_isa::bwd::coeff::limits::LEAN_MAX_IMMEDIATES` — the WIRE cap on one
 // coordinate's immediate table, not a measurement. The Rust half carries the
 // build-time mirror assert (it may import the ISA crate; this side cannot), and
@@ -226,7 +226,7 @@ static_assert(BWD_SEG_CONST_BANK * sizeof(e4) <= 64 * 1024, "the coefficient ban
 // header, reserved literals included.
 static_assert(BWD_SEG_CONST_BANK <= BWD_COEFF_MAX_COEFFICIENT_ENCODINGS, "a bank slot the wire cannot name");
 static_assert(BWD_SEG_MAX_SOURCES % 16 == 0, "the source arrays are not whole 16-byte lines");
-static_assert(BWD_SEG_SOURCE_WINDOW_CAP == 32, "source window capacity drift");
+static_assert(BWD_SEG_SOURCE_WINDOW_CAP == 128, "source window capacity drift");
 static_assert(BWD_SEG_MAX_IMMEDIATES == 512, "immediate table capacity drift");
 
 // ── The lean wire (section 4) ───────────────────────────────────────────────
@@ -523,7 +523,7 @@ struct alignas(BWD_SEG_DESC_ALIGN) bwd_seg_desc {
   u32 output;
 };
 
-static_assert(sizeof(bwd_seg_desc) == 26896, "bwd_seg_desc/BwdSegDesc ABI size drift");
+static_assert(sizeof(bwd_seg_desc) == 29968, "bwd_seg_desc/BwdSegDesc ABI size drift");
 static_assert(alignof(bwd_seg_desc) == BWD_SEG_DESC_ALIGN, "bwd_seg_desc ABI alignment drift");
 // The final authority on the descriptor's shape. An overflow needs a tighter
 // encoding, never a second storage path.
@@ -538,16 +538,16 @@ static_assert(__builtin_offsetof(bwd_seg_desc, num_immediates) == 17322, "num_im
 static_assert(__builtin_offsetof(bwd_seg_desc, fold_source) == 17324, "fold_source ABI offset drift");
 static_assert(__builtin_offsetof(bwd_seg_desc, source) == 19468, "source ABI offset drift");
 static_assert(__builtin_offsetof(bwd_seg_desc, window) == 23760, "window ABI offset drift");
-static_assert(__builtin_offsetof(bwd_seg_desc, c_init_coeff) == 24784, "c_init_coeff ABI offset drift");
-static_assert(__builtin_offsetof(bwd_seg_desc, c_init_pad) == 24788, "c_init_pad ABI offset drift");
-static_assert(__builtin_offsetof(bwd_seg_desc, immediates) == 24800, "immediates ABI offset drift");
-static_assert(__builtin_offsetof(bwd_seg_desc, coefficients) == 26848, "coefficients ABI offset drift");
-static_assert(__builtin_offsetof(bwd_seg_desc, eq_low) == 26856, "eq_low ABI offset drift");
-static_assert(__builtin_offsetof(bwd_seg_desc, contributions) == 26864, "contributions ABI offset drift");
-static_assert(__builtin_offsetof(bwd_seg_desc, eq_sizes) == 26872, "eq_sizes ABI offset drift");
-static_assert(__builtin_offsetof(bwd_seg_desc, n_coefficients) == 26884, "n_coefficients ABI offset drift");
-static_assert(__builtin_offsetof(bwd_seg_desc, logical_rows) == 26888, "logical_rows ABI offset drift");
-static_assert(__builtin_offsetof(bwd_seg_desc, output) == 26892, "output ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_desc, c_init_coeff) == 27856, "c_init_coeff ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_desc, c_init_pad) == 27860, "c_init_pad ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_desc, immediates) == 27872, "immediates ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_desc, coefficients) == 29920, "coefficients ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_desc, eq_low) == 29928, "eq_low ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_desc, contributions) == 29936, "contributions ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_desc, eq_sizes) == 29944, "eq_sizes ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_desc, n_coefficients) == 29956, "n_coefficients ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_desc, logical_rows) == 29960, "logical_rows ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_desc, output) == 29964, "output ABI offset drift");
 // The program stream starts 16-byte aligned so it can be buffered through wide
 // loads, and `pad` is the tail that makes the size a whole number of quanta.
 static_assert(__builtin_offsetof(bwd_seg_desc, program) % BWD_SEG_DESC_ALIGN == 0, "the program stream must start 16-byte aligned");
@@ -597,7 +597,7 @@ struct alignas(BWD_SEG_DESC_ALIGN) bwd_seg_progptr_desc {
   u32 pad[2];
 };
 
-static_assert(sizeof(bwd_seg_progptr_desc) == 9664, "bwd_seg_progptr_desc/BwdSegProgPtrDesc ABI size drift");
+static_assert(sizeof(bwd_seg_progptr_desc) == 12736, "bwd_seg_progptr_desc/BwdSegProgPtrDesc ABI size drift");
 static_assert(alignof(bwd_seg_progptr_desc) == BWD_SEG_DESC_ALIGN, "bwd_seg_progptr_desc ABI alignment drift");
 static_assert(sizeof(bwd_seg_progptr_desc) <= BWD_SEG_DESC_CAP, "bwd_seg_progptr_desc exceeds the __grid_constant__ parameter budget");
 static_assert(__builtin_offsetof(bwd_seg_progptr_desc, program) == 0, "progptr program ABI offset drift");
@@ -611,17 +611,17 @@ static_assert(__builtin_offsetof(bwd_seg_progptr_desc, num_immediates) == 86, "p
 static_assert(__builtin_offsetof(bwd_seg_progptr_desc, fold_source) == 88, "progptr fold_source ABI offset drift");
 static_assert(__builtin_offsetof(bwd_seg_progptr_desc, source) == 2232, "progptr source ABI offset drift");
 static_assert(__builtin_offsetof(bwd_seg_progptr_desc, window) == 6520, "progptr window ABI offset drift");
-static_assert(__builtin_offsetof(bwd_seg_progptr_desc, c_init_coeff) == 7544, "progptr c_init_coeff ABI offset drift");
-static_assert(__builtin_offsetof(bwd_seg_progptr_desc, c_init_pad) == 7548, "progptr c_init_pad ABI offset drift");
-static_assert(__builtin_offsetof(bwd_seg_progptr_desc, immediates) == 7560, "progptr immediates ABI offset drift");
-static_assert(__builtin_offsetof(bwd_seg_progptr_desc, coefficients) == 9608, "progptr coefficients ABI offset drift");
-static_assert(__builtin_offsetof(bwd_seg_progptr_desc, eq_low) == 9616, "progptr eq_low ABI offset drift");
-static_assert(__builtin_offsetof(bwd_seg_progptr_desc, contributions) == 9624, "progptr contributions ABI offset drift");
-static_assert(__builtin_offsetof(bwd_seg_progptr_desc, eq_sizes) == 9632, "progptr eq_sizes ABI offset drift");
-static_assert(__builtin_offsetof(bwd_seg_progptr_desc, n_coefficients) == 9644, "progptr n_coefficients ABI offset drift");
-static_assert(__builtin_offsetof(bwd_seg_progptr_desc, logical_rows) == 9648, "progptr logical_rows ABI offset drift");
-static_assert(__builtin_offsetof(bwd_seg_progptr_desc, output) == 9652, "progptr output ABI offset drift");
-static_assert(__builtin_offsetof(bwd_seg_progptr_desc, pad) == 9656, "progptr pad ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_progptr_desc, c_init_coeff) == 10616, "progptr c_init_coeff ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_progptr_desc, c_init_pad) == 10620, "progptr c_init_pad ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_progptr_desc, immediates) == 10632, "progptr immediates ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_progptr_desc, coefficients) == 12680, "progptr coefficients ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_progptr_desc, eq_low) == 12688, "progptr eq_low ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_progptr_desc, contributions) == 12696, "progptr contributions ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_progptr_desc, eq_sizes) == 12704, "progptr eq_sizes ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_progptr_desc, n_coefficients) == 12716, "progptr n_coefficients ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_progptr_desc, logical_rows) == 12720, "progptr logical_rows ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_progptr_desc, output) == 12724, "progptr output ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_progptr_desc, pad) == 12728, "progptr pad ABI offset drift");
 static_assert(__builtin_offsetof(bwd_seg_progptr_desc, pad) + 2 * sizeof(u32) == sizeof(bwd_seg_progptr_desc), "progptr pad must be the descriptor tail");
 static_assert(sizeof(bwd_seg_progptr_desc) % BWD_SEG_DESC_ALIGN == 0, "the progptr descriptor size must be a whole number of alignment quanta");
 // The A/B twin really drops the array rather than leaving it resident.
