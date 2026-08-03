@@ -1,7 +1,8 @@
 use super::*;
 
 use super::inits_and_teardowns::{
-    build_inits_and_teardowns_pages_for_test, build_inits_and_teardowns_trace_host_for_test,
+    build_inits_and_teardowns_pages_for_selected_sets_for_test,
+    build_inits_and_teardowns_trace_host_for_test,
 };
 
 #[test]
@@ -44,21 +45,27 @@ fn run_unified_stagewise_parity_test() {
     let num_unified_teardown_sets = compiled_circuit.memory_layout.teardown_sets.len();
     let num_calls = counters.get_calls_to_circuit_family::<REDUCED_MACHINE_CIRCUIT_FAMILY_IDX>();
 
-    let (full_trace, unified_table_driver, buffer, witness_gen_data, sparse_inits_and_teardowns) =
-        build_unified_full_trace_for_test(
-            &binary,
-            &text_section,
-            &compiled_circuit,
-            &snapshotter,
-            &ram,
-            &expected_final_state,
-            &tape,
-            cycles_bound,
-            num_unified_teardown_sets,
-            num_calls,
-            true,
-            &worker,
-        );
+    let (
+        full_trace,
+        unified_table_driver,
+        buffer,
+        witness_gen_data,
+        sparse_inits_and_teardowns,
+        selected_set_top_bits,
+    ) = build_unified_full_trace_for_test(
+        &binary,
+        &text_section,
+        &compiled_circuit,
+        &snapshotter,
+        &ram,
+        &expected_final_state,
+        &tape,
+        cycles_bound,
+        num_unified_teardown_sets,
+        num_calls,
+        true,
+        &worker,
+    );
 
     // Reconstruct the Option decoder table from the oracle (CpuGKRSetup::construct
     // takes &[Option<ExecutorFamilyDecoderData>] to preserve None fill semantics).
@@ -115,11 +122,12 @@ fn run_unified_stagewise_parity_test() {
     ));
 
     // Build inits-and-teardowns device and transfer.
-    let (page_indices, values_packed, timestamps_packed) = build_inits_and_teardowns_pages_for_test(
-        &sparse_inits_and_teardowns,
-        TRACE_LEN_LOG2,
-        num_unified_teardown_sets as u32,
-    );
+    let (page_indices, values_packed, timestamps_packed) =
+        build_inits_and_teardowns_pages_for_selected_sets_for_test(
+            &sparse_inits_and_teardowns,
+            TRACE_LEN_LOG2,
+            &selected_set_top_bits,
+        );
     let it_host = build_inits_and_teardowns_trace_host_for_test(
         &page_indices,
         &values_packed,
@@ -231,9 +239,9 @@ fn run_unified_stagewise_parity_test() {
         _marker: std::marker::PhantomData,
     };
 
-    // Canonical top-bits for the unified circuit (teardown-set indices).
-    let canonical_top_bits =
-        crate::proof::canonical_inits_and_teardowns_top_bits(&compiled_circuit);
+    // Actual global RAM-set top bits selected for the unified circuit's local
+    // teardown slots.
+    let canonical_top_bits = selected_set_top_bits;
 
     // Build transcript seed from GPU-committed caps (same ordering as proof/tests.rs:
     // canonical_top_bits, external_challenges, setup caps, memory caps, witness caps).
@@ -359,13 +367,16 @@ fn run_unified_stagewise_parity_test() {
     // GPU forward pass + transcript handoff.
     let (gpu_forward_output, gpu_transcript_handoff) = {
         let _range = scoped_range(None, "test.gpu.forward.schedule");
-        let gpu_forward_output = schedule_forward_pass(
-            &gpu_setup_transfer,
+        let gpu_forward_output = schedule_forward_pass_impl(
+            Some(&gpu_setup_transfer.trace_holder),
+            None,
             &mut stage1_output,
             &mut gpu_forward_setup,
             &compiled_circuit,
             &external_challenges,
+            &canonical_top_bits,
             final_trace_size_log_2,
+            None,
             &context,
         )
         .unwrap();

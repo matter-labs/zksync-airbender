@@ -371,6 +371,7 @@ pub(super) fn finish_proof_fixture(
             // Per-family fixtures have no inits-and-teardowns layer and no
             // unified-closure metadata; the unified fixture populates these.
             inits_and_teardowns_host: None,
+            inits_and_teardowns_top_bits: None,
             unified_register_final_state: [(0u32, (0u32, 0u32)); 32],
             unified_final_pc: 0,
             unified_final_timestamp: 0,
@@ -772,6 +773,7 @@ pub(super) fn finish_proof_fixture_memory(
             tracing_data_host,
             memory_tree_caps,
             inits_and_teardowns_host: None,
+            inits_and_teardowns_top_bits: None,
             unified_register_final_state: [(0u32, (0u32, 0u32)); 32],
             unified_final_pc: 0,
             unified_final_timestamp: 0,
