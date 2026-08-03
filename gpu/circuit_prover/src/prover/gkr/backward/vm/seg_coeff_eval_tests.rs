@@ -350,3 +350,96 @@ fn host_bank(recipes: &[NormalizedCoefficientRecipe], slab: &SegChallengeSlab) -
     out.extend(recipes.iter().map(|recipe| recipe.evaluate(slab)));
     out
 }
+
+// ── publish-backing census (cutover blocker 3) ───────────────────────────────
+
+/// Which sources the seg VM PUBLISHES, and whether production storage already
+/// has fold backing for each — the measurement cutover blocker 3 needs.
+///
+/// `assign_class` (`seg_lower.rs`) is the policy: a `Bf` origin publishes at
+/// delta >= 3 (or at 2 under `D2Policy::Materialize`), an `E4` origin at any
+/// delta > 0, and a `Procedural` origin at delta >= `BWD_COEFF_PUBLISH_TARGET_DEPTH`
+/// — the same depth as the BF folds, which is what makes "publish procedural
+/// alongside BF" already true rather than a change.
+///
+/// The census question is therefore not *whether* procedural sources publish
+/// (they do) but whether production has somewhere to put them. It does, and by
+/// the same mechanism as for real columns: `storage/ops.rs`'s
+/// `plan_base_source_for_round_{1,2}` allocate a fold buffer keyed by the
+/// address for `GKRAddress::VirtualSetup` too, with a NULL read pointer and a
+/// `GpuBaseFieldSourceKind` tag telling the kernel to synthesize. So this
+/// counts what has to be bound, per origin family, rather than what is missing.
+#[test]
+fn seg_publish_backing_census() {
+    use gkr_eval_isa::bwd::source::OriginLeaf;
+    use crate::upstream::ReadPlace;
+
+    let coordinates = corpus_coordinates();
+    assert!(
+        coordinates.len() >= 100,
+        "must walk the whole corpus: {} coordinates",
+        coordinates.len()
+    );
+
+    let mut virtual_sources = 0usize;
+    let mut real_sources = 0usize;
+    let mut by_place = std::collections::BTreeMap::<&str, usize>::new();
+    let mut by_vs_kind = std::collections::BTreeMap::<String, usize>::new();
+    let mut max_virtual_in_one = 0usize;
+    let mut coords_with_virtual = 0usize;
+    let mut widest_virtual = String::new();
+
+    for (circuit, layer, regime) in &coordinates {
+        let compiled = lean_layer(circuit, *layer, *regime);
+        let label = format!("{} L{layer} {regime:?}", short_name(circuit));
+        let mut virtual_here = 0usize;
+        for source in &compiled.sources {
+            match &source.origin {
+                OriginLeaf::VirtualSetup { kind } => {
+                    virtual_sources += 1;
+                    virtual_here += 1;
+                    *by_vs_kind.entry(format!("{kind:?}")).or_default() += 1;
+                }
+                OriginLeaf::Read(place) => {
+                    real_sources += 1;
+                    let name = match place {
+                        ReadPlace::BaseLayerMemory { .. } => "BaseLayerMemory",
+                        ReadPlace::BaseLayerWitness { .. } => "BaseLayerWitness",
+                        ReadPlace::Setup { .. } => "Setup",
+                        ReadPlace::Scratch { .. } => "Scratch",
+                        ReadPlace::LayerOutput { .. } => "LayerOutput",
+                        ReadPlace::CacheOutput { .. } => "CacheOutput",
+                    };
+                    *by_place.entry(name).or_default() += 1;
+                }
+            }
+        }
+        if virtual_here > 0 {
+            coords_with_virtual += 1;
+        }
+        if virtual_here > max_virtual_in_one {
+            max_virtual_in_one = virtual_here;
+            widest_virtual = label;
+        }
+    }
+
+    eprintln!(
+        "[publish-census] {} coordinates: {real_sources} real + {virtual_sources} virtual sources",
+        coordinates.len()
+    );
+    eprintln!("[publish-census] real by ReadPlace: {by_place:?}");
+    eprintln!("[publish-census] virtual by kind:   {by_vs_kind:?}");
+    eprintln!(
+        "[publish-census] coordinates with >=1 virtual source: {coords_with_virtual} of {}; \
+         widest = {widest_virtual} ({max_virtual_in_one})",
+        coordinates.len()
+    );
+
+    // The policy constant this census is about. If the publish depth ever moves,
+    // the census's framing moves with it.
+    assert_eq!(
+        gkr_eval_isa::bwd::source::VIRTUAL_SETUP_MATERIALIZE_DEPTH,
+        super::seg_desc::BWD_COEFF_PUBLISH_TARGET_DEPTH,
+        "procedural and BF-origin publishes must share one depth"
+    );
+}
