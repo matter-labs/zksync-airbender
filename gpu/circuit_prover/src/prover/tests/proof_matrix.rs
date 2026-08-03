@@ -1242,12 +1242,17 @@ fn run_add_sub_bwd_vm_l0_ext_proof_parity_test() {
     use crate::prover::gkr::backward::vm::coords::AB_GKR_BWD_VM_COORDS_ENV;
     use crate::prover::gkr::backward::vm::production_bind::{
         count_bwd_vm_r0_launches, AB_GKR_BWD_VM_POISON_ACCUMULATOR_ENV,
+        AB_GKR_BWD_VM_POISON_CASCADE_ENV,
     };
 
     let fixture = prepare_basic_unrolled_proof_fixture();
     // Opt into the per-round accumulator poison: 23 VM rounds each rewrite the
     // halves they own, so a round that silently launched nothing fails parity.
+    // The cascade poison closes the other vacuity hole: every fold slot the
+    // gather or a chain read consumes must first be VM-written, and the slots
+    // the Inline policy never writes must never be read.
     let _poison = EnvGuard::set(AB_GKR_BWD_VM_POISON_ACCUMULATOR_ENV, "1");
+    let _cascade_poison = EnvGuard::set(AB_GKR_BWD_VM_POISON_CASCADE_ENV, "1");
     let counter = count_bwd_vm_r0_launches();
     assert_eq!(
         (counter.launches(), counter.ext_launches()),
@@ -1284,10 +1289,12 @@ fn run_add_sub_bwd_vm_l0_full_proof_parity_test() {
     use crate::prover::gkr::backward::vm::coords::AB_GKR_BWD_VM_COORDS_ENV;
     use crate::prover::gkr::backward::vm::production_bind::{
         count_bwd_vm_r0_launches, AB_GKR_BWD_VM_POISON_ACCUMULATOR_ENV,
+        AB_GKR_BWD_VM_POISON_CASCADE_ENV,
     };
 
     let fixture = prepare_basic_unrolled_proof_fixture();
     let _poison = EnvGuard::set(AB_GKR_BWD_VM_POISON_ACCUMULATOR_ENV, "1");
+    let _cascade_poison = EnvGuard::set(AB_GKR_BWD_VM_POISON_CASCADE_ENV, "1");
     let counter = count_bwd_vm_r0_launches();
     assert_eq!(
         (counter.launches(), counter.ext_launches()),

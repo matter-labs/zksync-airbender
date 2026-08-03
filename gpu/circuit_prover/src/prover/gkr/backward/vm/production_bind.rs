@@ -1552,6 +1552,66 @@ pub(crate) fn schedule_bwd_vm_ext_round(
 pub(crate) const AB_GKR_BWD_VM_POISON_ACCUMULATOR_ENV: &str =
     "AB_GKR_BWD_VM_POISON_ACCUMULATOR";
 
+/// Env var opting the parity gate's CASCADE poison in: sentinel-fill every
+/// consolidated fold backing at layer prepare, so a proof that READS a slot
+/// nothing wrote — a VM round that silently skipped a publish, a gather over
+/// an unpublished address — fails loudly instead of reproducing recycled
+/// values. Also proves the inverse: slots the Inline policy never writes
+/// (base slot 2) are never read, or the poison would surface. Same off-by-
+/// default doctrine as the accumulator poison.
+pub(crate) const AB_GKR_BWD_VM_POISON_CASCADE_ENV: &str = "AB_GKR_BWD_VM_POISON_CASCADE";
+
+/// Read fresh, like the coordinate switch.
+#[cfg(test)]
+pub(crate) fn cascade_poison_enabled() -> bool {
+    std::env::var(AB_GKR_BWD_VM_POISON_CASCADE_ENV)
+        .map(|v| {
+            let v = v.trim().to_ascii_lowercase();
+            v == "1" || v == "true"
+        })
+        .unwrap_or(false)
+}
+
+/// Schedule a sentinel fill over EVERY consolidated fold backing currently
+/// registered in `storage` — every cascade slot a later read must first be
+/// written over. Scheduled on `exec_stream` at the calling layer's prepare,
+/// i.e. after every earlier layer's scheduled work and before this layer's
+/// rounds.
+#[cfg(test)]
+pub(crate) fn schedule_cascade_poison<E: Copy>(
+    storage: &GpuGKRStorage<BF, E>,
+    context: &ProverContext,
+) -> CudaResult<()> {
+    const POISON: u32 = 0x5EED_DEAD & 0x7FFF_FFFF;
+    assert_eq!(size_of::<E>(), size_of::<E4>(), "the cascade is E4-wide");
+    let stream = context.get_exec_stream();
+    let value = E4::from_array_of_base([BF::new(POISON); 4]);
+    let mut fill = |arc: &std::sync::Arc<DeviceAllocation<E>>| -> CudaResult<()> {
+        // SAFETY: a live consolidated backing, owned by storage (which
+        // outlives scheduling); the fill covers exactly its length.
+        let dst =
+            unsafe { DeviceSlice::from_raw_parts_mut(arc.as_ptr().cast_mut().cast::<E4>(), arc.len()) };
+        crate::ops::simple::set_by_val(value, dst, stream)
+    };
+    for layer in &storage.layers {
+        if let Some(consolidated) = layer.intermediate_folding_consolidated.as_ref() {
+            for arc in consolidated.per_class.values() {
+                fill(arc)?;
+            }
+        }
+        if let Some(consolidated) = layer.intermediate_base_folding_consolidated.as_ref() {
+            for arc in consolidated
+                .per_class
+                .values()
+                .chain(consolidated.virtual_per_class.values())
+            {
+                fill(arc)?;
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Read fresh, like the coordinate switch.
 #[cfg(test)]
 pub(crate) fn poison_accumulator_enabled() -> bool {

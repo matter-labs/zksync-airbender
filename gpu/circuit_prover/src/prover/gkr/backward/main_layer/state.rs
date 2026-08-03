@@ -277,6 +277,15 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
             )?;
         }
 
+        // The parity gates' cascade poison (opt-in): sentinel-fill every
+        // consolidated fold backing right after this layer's registration, so
+        // a read of a slot nothing wrote fails the proof loudly. See
+        // `AB_GKR_BWD_VM_POISON_CASCADE_ENV`.
+        #[cfg(test)]
+        if super::super::vm::production_bind::cascade_poison_enabled() {
+            super::super::vm::production_bind::schedule_cascade_poison(&self.storage, context)?;
+        }
+
         let mut round1_prepared_all = Vec::with_capacity(blueprints.len());
         for blueprint in blueprints.iter() {
             round1_prepared_all.push(self.storage.prepare_for_sumcheck_round_1(
