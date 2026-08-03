@@ -211,8 +211,7 @@ fn run_gather_leaves_for_queries_from_ntt_matches_packed(
     };
 
     const EXT4_DEGREE: usize = 4;
-    const LOG_SRC_COLS_PER_COSET: u32 = 2; // log2(EXT4_DEGREE)
-    assert_eq!(1u32 << LOG_SRC_COLS_PER_COSET, EXT4_DEGREE as u32);
+    assert_eq!(1u32 << crate::LOG_SRC_COLS_PER_COSET, EXT4_DEGREE as u32);
     let trace_len = 1usize << log_trace_len;
     let lde_factor = 1usize << log_lde_factor;
     let values_per_leaf = 1usize << log_values_per_leaf;
@@ -304,7 +303,7 @@ fn run_gather_leaves_for_queries_from_ntt_matches_packed(
         log_lde_factor as u32,
         (log_trace_len - log_values_per_leaf) as u32,
         log_values_per_leaf as u32,
-        LOG_SRC_COLS_PER_COSET,
+        crate::LOG_SRC_COLS_PER_COSET,
         trace_len as u32,
         &d_queries[..],
         &stream,
