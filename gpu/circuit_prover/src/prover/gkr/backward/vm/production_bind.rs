@@ -699,15 +699,44 @@ pub(crate) fn schedule_bwd_vm_round0(
 ) -> CudaResult<()> {
     // The descriptor was lowered at plan build for step 0's row count; a loop
     // handing it a different `acc_size` would compute garbage silently.
-    let lowered_rows = match &launch.setup.desc {
-        super::seg_lower::BwdSegLaunchDesc::Inline(desc) => desc.logical_rows,
-        super::seg_lower::BwdSegLaunchDesc::ProgPtr(desc) => desc.logical_rows,
+    let (lowered_rows, contributions) = match &launch.setup.desc {
+        super::seg_lower::BwdSegLaunchDesc::Inline(desc) => {
+            (desc.logical_rows, desc.contributions)
+        }
+        super::seg_lower::BwdSegLaunchDesc::ProgPtr(desc) => {
+            (desc.logical_rows, desc.contributions)
+        }
     };
     assert_eq!(
         lowered_rows, acc_size,
         "the R0 descriptor was lowered for {lowered_rows} rows but round 0 runs at {acc_size}"
     );
     let stream = context.get_exec_stream();
+
+    // The parity gate's anti-vacuity aid: these tests run `#[serial]` in one
+    // process, so the pool has already held — and freed — blocks containing a
+    // correct accumulator from earlier proofs. A VM that launches but writes
+    // nothing (or half) could reproduce the right proof from recycled values;
+    // poisoning both halves first makes that impossible. Opt-in, because it is
+    // a full-length device write charged to the VM arm alone — the exact
+    // confound that inverted the first forward A/B.
+    #[cfg(test)]
+    if poison_accumulator_enabled() {
+        const POISON: u32 = 0x5EED_DEAD & 0x7FFF_FFFF;
+        // SAFETY: `contributions` is `round_scratch.accumulator`'s live device
+        // pointer and the allocation holds `2 * max_acc_size >= 2 * acc_size`
+        // elements; the poison writes exactly the two halves this launch owns.
+        let dst = unsafe {
+            DeviceSlice::from_raw_parts_mut(contributions, 2 * acc_size as usize)
+        };
+        crate::ops::simple::set_by_val(
+            E4::from_array_of_base([BF::new(POISON); 4]),
+            dst,
+            stream,
+        )?;
+    }
+    #[cfg(not(test))]
+    let _ = contributions;
     let prefix = BWD_SEG_CHALLENGE_LOOKUP_MULTIPLICATIVE as usize;
     debug_assert_eq!(BWD_SEG_CHALLENGE_PERM_LINEARIZATION_BASE, 0);
     // SAFETY: each source is a live device buffer of at least the copied
@@ -733,6 +762,8 @@ pub(crate) fn schedule_bwd_vm_round0(
         bwd_seg_coeff_bank_device_ptr(),
         stream,
     )?;
+    #[cfg(test)]
+    BWD_VM_R0_LAUNCHES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     launch_bwd_seg(
         &launch.setup,
         BwdRegime::R0,
@@ -740,4 +771,44 @@ pub(crate) fn schedule_bwd_vm_round0(
         BwdSegEpilogue::Plane,
         context,
     )
+}
+
+/// Env var opting the parity gate's accumulator poison in. Off by default so
+/// timing runs never pay for a correctness aid — the forward A/B's first
+/// inversion came from exactly this kind of aid left inside the measured arm.
+pub(crate) const AB_GKR_BWD_VM_POISON_ACCUMULATOR_ENV: &str =
+    "AB_GKR_BWD_VM_POISON_ACCUMULATOR";
+
+/// Read fresh, like the coordinate switch.
+#[cfg(test)]
+pub(crate) fn poison_accumulator_enabled() -> bool {
+    std::env::var(AB_GKR_BWD_VM_POISON_ACCUMULATOR_ENV)
+        .map(|v| {
+            let v = v.trim().to_ascii_lowercase();
+            v == "1" || v == "true"
+        })
+        .unwrap_or(false)
+}
+
+/// VM-owned R0 launch count, for gates that must prove the VM actually ran.
+/// Counts PRODUCTION schedules only — the bench harness launches the same
+/// kernel through its own path and must not inflate a gate's count.
+#[cfg(test)]
+static BWD_VM_R0_LAUNCHES: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+/// Zero the launch counter and return a handle that reads it back.
+#[cfg(test)]
+pub(crate) fn count_bwd_vm_r0_launches() -> BwdVmLaunchCounter {
+    BWD_VM_R0_LAUNCHES.store(0, std::sync::atomic::Ordering::Relaxed);
+    BwdVmLaunchCounter
+}
+
+#[cfg(test)]
+pub(crate) struct BwdVmLaunchCounter;
+
+#[cfg(test)]
+impl BwdVmLaunchCounter {
+    pub(crate) fn launches(&self) -> usize {
+        BWD_VM_R0_LAUNCHES.load(std::sync::atomic::Ordering::Relaxed)
+    }
 }

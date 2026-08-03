@@ -1160,20 +1160,65 @@ fn run_add_sub_vm_all_layers_proof_parity_test() {
     eprintln!("[fwd-vm-parity] {selected_layers} layers on the VM, proof bit-equal to the CPU reference");
 }
 
-/// With the switch unset the VM must not run at all — the guard that the env
-/// var, and nothing else, is what selects the path.
+/// With the switches unset neither VM must run at all — the guard that the
+/// env vars, and nothing else, are what select the paths.
 #[test]
 #[serial]
 #[ignore]
 fn run_add_sub_without_the_vm_switch_launches_no_vm_kernel() {
+    use crate::prover::gkr::backward::vm::production_bind::count_bwd_vm_r0_launches;
     use crate::prover::gkr::forward::vm::count_fwd_vm_s4_launches;
 
     let fixture = prepare_basic_unrolled_proof_fixture();
-    let counter = count_fwd_vm_s4_launches();
+    let fwd_counter = count_fwd_vm_s4_launches();
+    let bwd_counter = count_bwd_vm_r0_launches();
     let job = fixture.schedule_prove().unwrap();
     let (gpu_proof, _ms) = job.finish().unwrap();
     assert_gkr_proof_eq_for_test(&gpu_proof, &fixture.expected_cpu_proof);
-    assert_eq!(counter.launches(), 0);
+    assert_eq!(fwd_counter.launches(), 0);
+    assert_eq!(bwd_counter.launches(), 0);
+}
+
+/// The backward VM computing add_sub L0's round 0 inside the real prover must
+/// produce the same proof as the CPU reference, and must actually have run —
+/// exactly once.
+///
+/// Both halves are load-bearing, for the same reasons as the forward gate
+/// above: parity alone can pass vacuously (the accumulator poison closes the
+/// recycled-pool hole), and a count alone proves nothing about values.
+#[test]
+#[serial]
+#[ignore]
+fn run_add_sub_bwd_vm_l0_r0_proof_parity_test() {
+    use crate::prover::gkr::backward::vm::coords::AB_GKR_BWD_VM_COORDS_ENV;
+    use crate::prover::gkr::backward::vm::production_bind::{
+        count_bwd_vm_r0_launches, AB_GKR_BWD_VM_POISON_ACCUMULATOR_ENV,
+    };
+
+    let fixture = prepare_basic_unrolled_proof_fixture();
+    // Opt into the accumulator poison: this gate, not the timing harness, is
+    // where it belongs.
+    let _poison = EnvGuard::set(AB_GKR_BWD_VM_POISON_ACCUMULATOR_ENV, "1");
+    let counter = count_bwd_vm_r0_launches();
+    assert_eq!(
+        counter.launches(),
+        0,
+        "counter must start at zero for the count below to mean anything"
+    );
+
+    let (gpu_proof, launches) = {
+        let _env = EnvGuard::set(AB_GKR_BWD_VM_COORDS_ENV, "0:R0");
+        let job = fixture.schedule_prove().unwrap();
+        let (proof, _ms) = job.finish().unwrap();
+        (proof, counter.launches())
+    };
+
+    assert_gkr_proof_eq_for_test(&gpu_proof, &fixture.expected_cpu_proof);
+    assert_eq!(
+        launches, 1,
+        "exactly one VM-owned R0 launch: L0's round 0 and nothing else"
+    );
+    eprintln!("[bwd-vm-parity] L0 R0 on the VM, proof bit-equal to the CPU reference");
 }
 
 /// A/B the forward VM on every non-dimension-reducing add_sub layer: N interleaved pairs of whole proofs
