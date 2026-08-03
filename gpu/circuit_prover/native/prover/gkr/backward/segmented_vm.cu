@@ -105,24 +105,26 @@ struct seg_program_devptr {
   DEVICE_FORCEINLINE u16 word(const u32 pc) const { return words[pc]; }
 };
 
-// ── Window addressing ───────────────────────────────────────────────────────
+// ── Lane addressing ─────────────────────────────────────────────────────────
 //
-// A bound coordinate resolves to `base + column * stride_bytes`; `*_base` already
-// points at the window's first column. `bwd_coeff_source_window` keeps its name
-// from the retired cell-era lineage it was rehomed out of; there is one backward
-// coefficient-ISA executor now, and these helpers are its only window addressing.
-// (The incumbent FLAT lineage is a separate thing entirely and does not use them.)
+// A source record carries two LANES — a read and a destination — into ONE table
+// of `(base, log2_stride)` slots. A slot is keyed by BACKING, so two sources
+// reading the same matrix share it, and a source whose fold buffer is packed
+// differently from its matrix simply names a different slot on its other lane.
+// This is the incumbent flat path's `tables.bases` / `log2_stride` structure
+// (`support/descriptors.cuh`), which is why it needs no window geometry at all.
 
-DEVICE_FORCEINLINE const bf *seg_read_bf_column(const bwd_coeff_source_window &window, const u32 column) {
-  return reinterpret_cast<const bf *>(window.read_base + static_cast<size_t>(column) * window.read_stride_bytes);
+// One lane resolves exactly as the incumbent's compact path does
+// (`flat_load_bf_value_compact`): pick the slot, then step `column` polys at the
+// slot's log2 stride, in ELEMENT units of the type being read.
+template <typename T, typename Desc> DEVICE_FORCEINLINE const T *seg_lane_column(const Desc &desc, const u16 lane) {
+  const bwd_seg_addr_slot &slot = desc.slot[bwd_seg_lane_slot(lane)];
+  const T *base = reinterpret_cast<const T *>(slot.base);
+  return base + (static_cast<size_t>(bwd_seg_lane_column(lane)) << slot.log2_stride);
 }
 
-DEVICE_FORCEINLINE const e4 *seg_read_e4_column(const bwd_coeff_source_window &window, const u32 column) {
-  return reinterpret_cast<const e4 *>(window.read_base + static_cast<size_t>(column) * window.read_stride_bytes);
-}
-
-DEVICE_FORCEINLINE e4 *seg_publish_column(const bwd_coeff_source_window &window, const u32 column) {
-  return reinterpret_cast<e4 *>(window.publish_base + static_cast<size_t>(column) * window.publish_stride_bytes);
+template <typename Desc> DEVICE_FORCEINLINE e4 *seg_lane_column_mut(const Desc &desc, const u16 lane) {
+  return const_cast<e4 *>(seg_lane_column<e4>(desc, lane));
 }
 
 // ── Raw leaf sources ────────────────────────────────────────────────────────
@@ -447,10 +449,11 @@ DEVICE_FORCEINLINE seg_value<e4> seg_project_folded(const Raw &raw, const u32 ro
 // `a_mixed_product_puts_the_bf_factor_first`). This resolver trusts it.
 template <seg_projection P, typename Desc> DEVICE_FORCEINLINE seg_value<bf> seg_resolve_bf(const Desc &desc, const u16 slot, const u32 row, const u32 rows) {
   const bwd_seg_source_record record = desc.source[slot];
-  const bwd_coeff_source_window &window = desc.window[record.window];
-  if (record.source_class == BWD_SEG_SOURCE_CLASS_PROCEDURAL_INLINE)
-    return seg_project<P>(seg_raw_synthesized{bwd_coeff_procedural_source_kind(window.procedural_kind)}, row, rows);
-  return seg_project<P>(seg_raw_bf_column<ld_modifier::ca>{seg_read_bf_column(window, record.column)}, row, rows);
+  if (record.source_class == BWD_SEG_SOURCE_CLASS_PROCEDURAL_INLINE) {
+    const bwd_seg_addr_slot &addr = desc.slot[bwd_seg_lane_slot(record.src)];
+    return seg_project<P>(seg_raw_synthesized{bwd_coeff_procedural_source_kind(addr.procedural_kind)}, row, rows);
+  }
+  return seg_project<P>(seg_raw_bf_column<ld_modifier::ca>{seg_lane_column<bf>(desc, record.src)}, row, rows);
 }
 
 // An EXTENSION-FIELD operand, at the projection its class implies.
@@ -479,18 +482,20 @@ template <seg_projection P, typename Desc> DEVICE_FORCEINLINE seg_value<bf> seg_
 template <seg_projection P, u32 MAX_DEPTH, typename Desc>
 DEVICE_FORCEINLINE seg_value<e4> seg_resolve_e4(const Desc &desc, const u16 slot, const u32 row, const u32 rows) {
   const bwd_seg_source_record record = desc.source[slot];
-  const bwd_coeff_source_window &window = desc.window[record.window];
   if (record.source_class == BWD_SEG_SOURCE_CLASS_E4_DIRECT) {
-    const e4 *column = window.materialize != 0 ? seg_publish_column(window, record.column) : seg_read_e4_column(window, record.column);
-    return seg_project<P>(seg_raw_e4_column<ld_modifier::ca>{column}, row, rows);
+    // `src` already names whatever this round reads — the raw matrix on a raw
+    // round, the previous fold slot on a chained one. The binder resolved that;
+    // the kernel no longer picks between two bases.
+    return seg_project<P>(seg_raw_e4_column<ld_modifier::ca>{seg_lane_column<e4>(desc, record.src)}, row, rows);
   }
   const u32 span = rows << 1;
-  const u32 delta = u32{window.target_depth} - u32{window.backing_depth};
+  const u32 delta = u32{record.delta};
   if (record.source_class == BWD_SEG_SOURCE_CLASS_PROCEDURAL_INLINE) {
-    const seg_raw_synthesized raw{bwd_coeff_procedural_source_kind(window.procedural_kind)};
+    const bwd_seg_addr_slot &addr = desc.slot[bwd_seg_lane_slot(record.src)];
+    const seg_raw_synthesized raw{bwd_coeff_procedural_source_kind(addr.procedural_kind)};
     return seg_project_folded<P, MAX_DEPTH>(raw, row, rows, span, delta);
   }
-  const seg_raw_bf_column<ld_modifier::ca> raw{seg_read_bf_column(window, record.column)};
+  const seg_raw_bf_column<ld_modifier::ca> raw{seg_lane_column<bf>(desc, record.src)};
   return seg_project_folded<P, MAX_DEPTH>(raw, row, rows, span, delta);
 }
 
@@ -511,20 +516,20 @@ DEVICE_FORCEINLINE seg_value<e4> seg_resolve_e4(const Desc &desc, const u16 slot
 // `D2Policy::Materialize` is the depth-2 `4xBF -> E4` case.
 template <typename Desc> DEVICE_FORCEINLINE void seg_fold_and_publish(const Desc &desc, const u16 slot, const u32 row, const u32 rows, const bool active) {
   const bwd_seg_source_record record = desc.source[slot];
-  const bwd_coeff_source_window &window = desc.window[record.window];
+  const bwd_seg_addr_slot &addr = desc.slot[bwd_seg_lane_slot(record.src)];
   const u32 span = rows << 1;
-  const u32 delta = u32{window.target_depth} - u32{window.backing_depth};
+  const u32 delta = u32{record.delta};
 
   e4 s0;
   e4 s1;
-  if (window.origin == BWD_COEFF_ORIGIN_READ_EXT) {
-    const seg_raw_e4_column<ld_modifier::cs> raw{seg_read_e4_column(window, record.column)};
+  if (addr.origin == BWD_COEFF_ORIGIN_READ_EXT) {
+    const seg_raw_e4_column<ld_modifier::cs> raw{seg_lane_column<e4>(desc, record.src)};
     seg_fold_endpoints<BWD_SEG_MAX_FOLD_DEPTH>(raw, row, rows, span, delta, s0, s1);
-  } else if (window.origin == BWD_COEFF_ORIGIN_PROCEDURAL) {
-    const seg_raw_synthesized raw{bwd_coeff_procedural_source_kind(window.procedural_kind)};
+  } else if (addr.origin == BWD_COEFF_ORIGIN_PROCEDURAL) {
+    const seg_raw_synthesized raw{bwd_coeff_procedural_source_kind(addr.procedural_kind)};
     seg_fold_endpoints<BWD_SEG_MAX_FOLD_DEPTH>(raw, row, rows, span, delta, s0, s1);
   } else {
-    const seg_raw_bf_column<ld_modifier::cs> raw{seg_read_bf_column(window, record.column)};
+    const seg_raw_bf_column<ld_modifier::cs> raw{seg_lane_column<bf>(desc, record.src)};
     seg_fold_endpoints<BWD_SEG_MAX_FOLD_DEPTH>(raw, row, rows, span, delta, s0, s1);
   }
 
@@ -533,7 +538,9 @@ template <typename Desc> DEVICE_FORCEINLINE void seg_fold_and_publish(const Desc
   // lane's value.
   if (!active)
     return;
-  e4 *publish = seg_publish_column(window, record.column);
+  // A foldable source always has a destination; `cache` naming no slot would be
+  // a host bug, so this is the one place the absence is worth asserting.
+  e4 *publish = seg_lane_column_mut(desc, record.cache);
   // Blocks own disjoint row ranges and exactly one warp folds a given source, so
   // both stores have a single writer. `wb` keeps them in L1 for the eval loop's
   // same-block `ld.ca` re-reads.
