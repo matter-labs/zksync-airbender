@@ -279,7 +279,8 @@ impl<F: PrimeField + TwoAdicField> RSQueriable<F> for OnDiskRsCodewords<F> {
         for col in 0..self.num_columns {
             let col_base = col * coset_len;
             for (j, &off) in offsets.iter().enumerate() {
-                result[j].push(self.element_at(coset_in_natural_enumeration, col_base + off + index));
+                result[j]
+                    .push(self.element_at(coset_in_natural_enumeration, col_base + off + index));
             }
         }
         result
@@ -367,12 +368,8 @@ mod test {
             let leaves = coset_len / vpl;
             for coset in 0..num_cosets {
                 for index in 0..leaves {
-                    let expected = RSQueriable::values_for_coset_and_index(
-                        &materialized,
-                        coset,
-                        index,
-                        vpl,
-                    );
+                    let expected =
+                        RSQueriable::values_for_coset_and_index(&materialized, coset, index, vpl);
                     let got = RSQueriable::values_for_coset_and_index(&reader, coset, index, vpl);
                     assert_eq!(got, expected, "vpl={vpl} coset={coset} index={index}");
                 }

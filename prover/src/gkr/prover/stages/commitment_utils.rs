@@ -501,9 +501,10 @@ where
         }
         return ColumnMajorBaseOracleForLDE {
             cosets: Box::new(MaterializedCosets { cosets }),
-            tree: T::dummy(),
+            tree: Box::new(T::dummy()),
             values_per_leaf: 1 << whir_first_fold_step_log2,
             coset_size_log2: trace_len_log2,
+            _marker: core::marker::PhantomData,
         };
     }
 
@@ -543,7 +544,7 @@ where
         .collect();
     let source_ref: Vec<_> = source.iter().map(|el| &el[..]).collect();
 
-    let tree = T::construct_from_cosets::<F, Global>(
+    let tree = T::construct_from_cosets::<F>(
         &source_ref[..],
         values_per_leaf,
         tree_cap_size,
@@ -555,9 +556,10 @@ where
 
     ColumnMajorBaseOracleForLDE {
         cosets: Box::new(MaterializedCosets { cosets }),
-        tree,
+        tree: Box::new(tree),
         values_per_leaf,
         coset_size_log2: trace_len_log2,
+        _marker: core::marker::PhantomData,
     }
 }
 
@@ -609,9 +611,10 @@ where
         }
         return ColumnMajorBaseOracleForLDE {
             cosets: Box::new(MaterializedCosets { cosets }),
-            tree: T::dummy(),
+            tree: Box::new(T::dummy()),
             values_per_leaf,
             coset_size_log2: packed_trace_len_log2,
+            _marker: core::marker::PhantomData,
         };
     }
 
@@ -675,7 +678,7 @@ where
         .collect();
     let source_ref: Vec<_> = source.iter().map(|el| &el[..]).collect();
 
-    let tree = T::construct_from_cosets::<F, Global>(
+    let tree = T::construct_from_cosets::<F>(
         &source_ref[..],
         values_per_leaf,
         tree_cap_size,
@@ -687,9 +690,10 @@ where
 
     ColumnMajorBaseOracleForLDE {
         cosets: Box::new(MaterializedCosets { cosets }),
-        tree,
+        tree: Box::new(tree),
         values_per_leaf,
         coset_size_log2: packed_trace_len_log2,
+        _marker: core::marker::PhantomData,
     }
 }
 

@@ -31,7 +31,8 @@ use crate::gkr::whir::{
 };
 use crate::gkr::witness_gen::family_circuits::GKRFullWitnessTrace;
 use crate::merkle_trees::{
-    ColumnMajorMerkleTreeConstructor, MerkleTreeCapVarLength, PathQueriable, RSQueriable,
+    ColumnMajorMerkleTreeConstructor, MainDomainColumn, MerkleTreeCapVarLength, PathQueriable,
+    RSQueriable,
 };
 use crate::worker::Worker;
 use common_constants::{TimestampScalar, TIMESTAMP_COLUMNS_NUM_BITS};
@@ -81,95 +82,91 @@ pub enum RsCodewordSource {
 /// stored from the prover configuration. `InMemory` is the representation used
 /// today (RS codewords + tree both in RAM). `OnDisk` anticipates serving RS
 /// codewords from a [`RSQueriable`] source and Merkle paths from an mmap'd on-disk
-/// tree ([`ColumnMajorMerkleTreeConstructor::DiskPath`]); there is no on-disk
+/// tree (`ColumnMajorMerkleTreeConstructor::open_disk_artifacts`); there is no on-disk
 /// `RSQueriable` implementation yet, so that variant is not yet usable end-to-end.
-pub enum SetupCommitment<'a, F: PrimeField + TwoAdicField, T: ColumnMajorMerkleTreeConstructor<F>> {
-    /// RS codewords + Merkle tree both in memory (borrowed from the caller).
-    InMemory(&'a ColumnMajorBaseOracleForLDE<F, T>),
+pub enum SetupCommitment<F: PrimeField + TwoAdicField, T: ColumnMajorMerkleTreeConstructor<F>> {
+    /// RS codewords + Merkle tree both in memory (owned).
+    InMemory(ColumnMajorBaseOracleForLDE<F, T>),
     /// RS codewords served by a queryable source; Merkle paths served from an
     /// mmap'd on-disk tree — either a single monolithic tree file or per-coset
     /// subtree files ([`OnDiskTree`](crate::merkle_trees::on_disk::OnDiskTree)).
     OnDisk {
         rs: Box<dyn RSQueriable<F>>,
-        tree: crate::merkle_trees::on_disk::OnDiskTree<'a>,
+        tree: crate::merkle_trees::on_disk::OnDiskTree<T>,
         values_per_leaf: usize,
         coset_size_log2: usize,
     },
 }
 
-impl<'a, F: PrimeField + TwoAdicField, T: ColumnMajorMerkleTreeConstructor<F>>
-    SetupCommitment<'a, F, T>
-{
+impl<F: PrimeField + TwoAdicField, T: ColumnMajorMerkleTreeConstructor<F>> SetupCommitment<F, T> {
     /// The commitment cap (goes into the transcript).
     pub fn get_cap(&self) -> MerkleTreeCapVarLength {
         match self {
             SetupCommitment::InMemory(oracle) => oracle.tree.get_cap(),
-            SetupCommitment::OnDisk { tree, .. } => PathQueriable::<F>::get_cap(tree),
+            SetupCommitment::OnDisk { tree, .. } => PathQueriable::get_cap(tree),
         }
     }
 
     #[inline]
-    fn is_on_disk(&self) -> bool {
+    pub(crate) fn is_on_disk(&self) -> bool {
         matches!(self, SetupCommitment::OnDisk { .. })
     }
 
-    /// The borrowed in-memory setup oracle. Only valid for the `InMemory` variant;
-    /// for `OnDisk`, whir_fold reads a slim oracle built by
-    /// [`Self::build_whir_setup_oracle`] instead.
-    fn as_in_memory_oracle(&self) -> &ColumnMajorBaseOracleForLDE<F, T> {
+    /// The borrowed in-memory setup oracle. Only valid for the `InMemory` variant; for
+    /// `OnDisk`, whir_fold builds a slim oracle view from the accessors below instead.
+    pub(crate) fn as_in_memory_oracle(&self) -> &ColumnMajorBaseOracleForLDE<F, T> {
         match self {
             SetupCommitment::InMemory(oracle) => oracle,
             SetupCommitment::OnDisk { .. } => {
-                unreachable!("on-disk setup uses a slim oracle, not as_in_memory_oracle")
+                unreachable!("on-disk setup uses a slim oracle view, not as_in_memory_oracle")
             }
         }
     }
 
-    /// For `OnDisk`, materialize the "slim" setup oracle whir_fold reads for batching
-    /// (main-domain columns from the on-disk RS source + a cap tree from the on-disk
-    /// tree's cap); `None` for `InMemory` (use the borrowed oracle directly). Round-0
-    /// setup queries are served separately by [`Self::hook_query`] against the
-    /// on-disk tree, so this slim oracle's tree only needs to reproduce the cap.
-    fn build_whir_setup_oracle(&self, worker: &Worker) -> Option<ColumnMajorBaseOracleForLDE<F, T>>
-    where
-        [(); F::DEGREE]: Sized,
-    {
+    /// Number of committed setup columns (RS-source columns).
+    pub(crate) fn num_columns(&self) -> usize {
         match self {
-            SetupCommitment::InMemory(_) => None,
+            SetupCommitment::InMemory(oracle) => oracle.num_columns(),
+            SetupCommitment::OnDisk { rs, .. } => rs.num_columns(),
+        }
+    }
+
+    /// Setup column `c` on the main evaluation domain (the only coset whir_fold reads
+    /// in full, for the batched proximity poly).
+    pub(crate) fn main_domain_column(&self, c: usize) -> MainDomainColumn<'_, F> {
+        match self {
+            SetupCommitment::InMemory(oracle) => oracle.cosets.main_domain_column(c),
+            SetupCommitment::OnDisk { rs, .. } => rs.main_domain_column(c),
+        }
+    }
+
+    /// Packed values per Merkle leaf.
+    pub(crate) fn values_per_leaf(&self) -> usize {
+        match self {
+            SetupCommitment::InMemory(oracle) => oracle.values_per_leaf,
             SetupCommitment::OnDisk {
-                rs,
-                tree,
-                values_per_leaf,
-                coset_size_log2,
-            } => {
-                let num_columns = rs.num_columns();
-                let coset0: Vec<ColumnMajorCosetBoundTracePart<F, F>> = (0..num_columns)
-                    .map(|c| ColumnMajorCosetBoundTracePart {
-                        column: Arc::new(rs.main_domain_column(c).into_owned().into_boxed_slice()),
-                        offset: F::ONE,
-                    })
-                    .collect();
-                let cap = PathQueriable::<F>::get_cap(tree);
-                Some(ColumnMajorBaseOracleForLDE {
-                    cosets: Box::new(MaterializedCosets {
-                        cosets: vec![ColumnMajorBaseOracleForCoset {
-                            original_values_normal_order: coset0,
-                            offset: F::ONE,
-                            coset_size_log2: *coset_size_log2,
-                        }],
-                    }),
-                    tree: T::build_over_leaf_hashes(cap.cap.clone(), cap.cap.len(), worker),
-                    values_per_leaf: *values_per_leaf,
-                    coset_size_log2: *coset_size_log2,
-                })
-            }
+                values_per_leaf, ..
+            } => *values_per_leaf,
+        }
+    }
+
+    /// log2 of a single LDE coset (per-coset polynomial length).
+    pub(crate) fn coset_size_log2(&self) -> usize {
+        match self {
+            SetupCommitment::InMemory(oracle) => oracle.coset_size_log2,
+            SetupCommitment::OnDisk {
+                coset_size_log2, ..
+            } => *coset_size_log2,
         }
     }
 
     /// For `OnDisk`, the round-0 setup query for `query_index`: offset-major leaf
     /// values from the on-disk RS source and the Merkle path from the on-disk tree.
     /// `None` for `InMemory` (whir_fold falls back to the materialized setup oracle).
-    fn hook_query(&self, query_index: usize) -> Option<(Vec<Vec<F>>, BaseFieldQuery<F, T>)> {
+    pub(crate) fn hook_query(
+        &self,
+        query_index: usize,
+    ) -> Option<(Vec<Vec<F>>, BaseFieldQuery<F, T>)> {
         match self {
             SetupCommitment::InMemory(_) => None,
             SetupCommitment::OnDisk {
@@ -188,7 +185,7 @@ impl<'a, F: PrimeField + TwoAdicField, T: ColumnMajorMerkleTreeConstructor<F>>
                 let coset_dest_index =
                     crate::fft::bitreverse_index(coset_index, num_cosets.trailing_zeros());
                 let tree_index = coset_dest_index * coset_tree_size + internal_index;
-                let (_leaf_hash, path) = PathQueriable::<F>::get_proof::<Global>(tree, tree_index);
+                let (_leaf_hash, path) = PathQueriable::get_proof(tree, tree_index);
                 let leaf_values_concatenated = values.iter().flatten().copied().collect();
                 let query = BaseFieldQuery::<F, T> {
                     index: tree_index,
@@ -242,9 +239,10 @@ where
         cosets: Box::new(MaterializedCosets {
             cosets: vec![coset0],
         }),
-        tree: T::build_over_leaf_hashes(cap.cap.clone(), cap.cap.len(), worker),
+        tree: Box::new(crate::merkle_trees::CapOnlyTree::new(cap)),
         values_per_leaf: commitment.values_per_leaf,
         coset_size_log2: commitment.trace_len_log2,
+        _marker: core::marker::PhantomData,
     }
 }
 
@@ -415,7 +413,7 @@ pub fn prove_configured_with_gkr<
     external_challenges: &GKRExternalChallenges<F, E>,
     witness_eval_data: GKRFullWitnessTrace<F, Global, Global>,
     setup: &GKRSetup<F>,
-    setup_commitment: &ColumnMajorBaseOracleForLDE<F, T>,
+    setup_commitment: &SetupCommitment<F, T>,
     twiddles: &Twiddles<F, Global>,
     prover_config: &ProverConfig,
     commitment_mode: CommitmentMode,
@@ -439,7 +437,7 @@ where
         external_challenges,
         witness_eval_data,
         setup,
-        &SetupCommitment::InMemory(setup_commitment),
+        setup_commitment,
         twiddles,
         prover_config,
         commitment_mode,
@@ -1369,23 +1367,14 @@ where
         );
     let whir_batching_challenge = whir_batching_challenges[0];
 
-    // Setup oracle whir_fold reads for batching: for an on-disk setup, a slim oracle
-    // materialized from the on-disk RS source + tree cap; for in-memory, the passed
-    // oracle. (Kept in a local so the borrow lives across the whir_fold call.)
-    let setup_slim_owned = setup_commitment.build_whir_setup_oracle(worker);
-    let setup_oracle: &ColumnMajorBaseOracleForLDE<F, T> = match &setup_slim_owned {
-        Some(slim) => slim,
-        None => setup_commitment.as_in_memory_oracle(),
-    };
-
     // A per-set base query hook is needed when the memory/witness RS codewords are
-    // recomputed (slim base oracles) OR the setup is on-disk. The hook returns `None`
-    // for a set it doesn't own, so whir_fold falls back to that set's materialized
-    // oracle. `set_idx`: 0 = memory (or merged mem+witness), 1 = witness (separate
-    // mode), 2 = setup. The intermediate (folded) oracle policy follows the
-    // memory/witness RS policy only — the setup's storage does not affect it.
+    // recomputed (slim base oracles). The hook returns `None` for a set it doesn't own,
+    // so whir_fold falls back to that set's materialized oracle. `set_idx`: 0 = memory
+    // (or merged mem+witness), 1 = witness (separate mode). The setup set (2) is served
+    // by whir_fold directly from the passed `SetupCommitment`. The intermediate (folded)
+    // oracle policy follows the memory/witness RS policy only.
     let use_recompute_intermediates = base_recompute.is_some();
-    let need_hook = base_recompute.is_some() || setup_commitment.is_on_disk();
+    let need_hook = base_recompute.is_some();
     let query_hook = if need_hook {
         let hook = move |set_idx: usize,
                          query_index: usize|
@@ -1399,7 +1388,6 @@ where
                     .as_ref()
                     .and_then(|s| s.wit.as_ref())
                     .map(|c| c.query_structured(query_index, twiddles, worker)),
-                2 => setup_commitment.hook_query(query_index),
                 _ => None,
             }
         };
@@ -1443,7 +1431,7 @@ where
         mem_polys_claims,
         wit_oracle,
         wit_polys_claims,
-        setup_oracle,
+        setup_commitment,
         setup_polys_claims,
         base_layer_z.clone(),
         whir_batching_challenge,

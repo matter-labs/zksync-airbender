@@ -143,6 +143,64 @@ pub fn parallel_multivariate_hypercube_evals_into_coeffs<F: Field>(
     }
 }
 
+/// Multicore version of [`multivariate_coeffs_into_hypercube_evals`] (the forward
+/// transform), structured exactly like [`parallel_multivariate_hypercube_evals_into_coeffs`]
+/// but with `+=` instead of `-=`: a butterfly network of `size_log2` stages (one per
+/// variable), each a `worker.scope` over the `n/2` independent butterflies.
+///
+/// In a stage of stride `S` each butterfly does `input[j + S] += input[j]` for the `j`
+/// whose bit `log2(S)` is zero. The per-variable stages commute, so the stride order is
+/// irrelevant for correctness; we run `S = 1, 2, ..., n/2` to mirror the serial routine.
+pub fn parallel_multivariate_coeffs_into_hypercube_evals<F: Field>(
+    input: &mut [F],
+    size_log2: u32,
+    worker: &Worker,
+) {
+    assert_eq!(input.len(), 1 << size_log2);
+    let n = input.len();
+    if n <= 1 {
+        return;
+    }
+
+    // Small transforms: per-stage scope overhead dominates, so stay serial.
+    const PAR_THRESHOLD: usize = 1 << 12;
+    let elem_ratio = (core::mem::size_of::<F>() / core::mem::size_of::<u32>()).max(1);
+    let eff_threshold = PAR_THRESHOLD / elem_ratio;
+    if n < eff_threshold {
+        multivariate_coeffs_into_hypercube_evals(input, size_log2);
+        return;
+    }
+
+    // Each butterfly writes a disjoint element, so threads can share the buffer via the
+    // base-address-as-`usize` trick (same as the parallel NTT / inverse transform).
+    let base_addr = input.as_mut_ptr() as usize;
+    let half = n / 2;
+
+    for round in 0..size_log2 {
+        let s = 1usize << round;
+        let s_log = round;
+        worker.scope(half, |scope, geometry| {
+            for thread_idx in 0..geometry.len() {
+                let start = geometry.get_chunk_start_pos(thread_idx);
+                let size = geometry.get_chunk_size(thread_idx);
+                Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| {
+                    let base = base_addr as *mut F;
+                    for b in start..(start + size) {
+                        // flat butterfly index -> (group k, in-group offset jj) -> j
+                        let k = b >> s_log;
+                        let jj = b & (s - 1);
+                        let j = k * (s << 1) + jj;
+                        unsafe {
+                            let lhs = *base.add(j);
+                            (*base.add(j + s)).add_assign(&lhs);
+                        }
+                    }
+                });
+            }
+        });
+    }
+}
+
 #[cfg(test)]
 mod test {
     use field::baby_bear::base::BabyBearField;
@@ -222,6 +280,25 @@ mod test {
 
             let mut parallel = evals.clone();
             parallel_multivariate_hypercube_evals_into_coeffs(&mut parallel, size_log2, &worker);
+
+            assert_eq!(serial, parallel, "mismatch at size_log2 = {size_log2}");
+        }
+    }
+
+    #[test]
+    fn test_parallel_forward_matches_serial() {
+        let worker = Worker::new_with_num_threads(4);
+        for size_log2 in [1u32, 4, 10, 16, 18] {
+            let size = 1usize << size_log2;
+            let coeffs: Vec<F> = (0..size)
+                .map(|el| F::from_u32_with_reduction((el as u32).wrapping_mul(2654435761)))
+                .collect();
+
+            let mut serial = coeffs.clone();
+            multivariate_coeffs_into_hypercube_evals(&mut serial, size_log2);
+
+            let mut parallel = coeffs.clone();
+            parallel_multivariate_coeffs_into_hypercube_evals(&mut parallel, size_log2, &worker);
 
             assert_eq!(serial, parallel, "mismatch at size_log2 = {size_log2}");
         }

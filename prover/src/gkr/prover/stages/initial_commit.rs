@@ -184,7 +184,7 @@ where
         .collect();
     let source_ref: Vec<_> = source.iter().map(|el| &el[..]).collect();
 
-    let tree = T::construct_from_cosets::<F, Global>(
+    let tree = T::construct_from_cosets::<F>(
         &source_ref[..],
         values_per_leaf,
         tree_cap_size,
@@ -196,8 +196,9 @@ where
 
     ColumnMajorBaseOracleForLDE {
         cosets: Box::new(MaterializedCosets { cosets }),
-        tree,
+        tree: Box::new(tree),
         values_per_leaf,
         coset_size_log2: new_coset_size_log2,
+        _marker: core::marker::PhantomData,
     }
 }

@@ -126,42 +126,113 @@ pub trait RSQueriable<T: 'static + Sized + Clone>: core::fmt::Debug + Send + Syn
 /// The Merkle-tree side of an oracle: the cap and inclusion paths, decoupled from
 /// where the tree lives (fully in RAM, a top-tree over recomputed subtrees, or an
 /// mmap'd on-disk file — see [`on_disk`]).
-pub trait PathQueriable<F: PrimeField> {
+/// A single Merkle digest (`DIGEST_SIZE_U32_WORDS` u32 words).
+pub type Digest = [u32; DIGEST_SIZE_U32_WORDS];
+
+pub trait PathQueriable: core::fmt::Debug + Send + Sync {
     fn get_cap(&self) -> MerkleTreeCapVarLength;
-    fn get_proof<C: GoodAllocator>(
-        &self,
-        idx: usize,
-    ) -> (
-        [u32; DIGEST_SIZE_U32_WORDS],
-        Vec<[u32; DIGEST_SIZE_U32_WORDS], C>,
-    );
+    fn get_proof(&self, idx: usize) -> (Digest, Vec<Digest>);
 }
 
+/// A [`PathQueriable`] that only carries a Merkle cap. `get_cap` returns it;
+/// `get_proof` is unreachable. Used for "slim" base oracles whose round-0 inclusion
+/// paths are served out-of-band (a base query hook, or the on-disk setup tree), so the
+/// oracle itself only needs to reproduce the commitment cap for the transcript.
+#[derive(Debug)]
+pub struct CapOnlyTree {
+    cap: MerkleTreeCapVarLength,
+}
+
+impl CapOnlyTree {
+    pub fn new(cap: MerkleTreeCapVarLength) -> Self {
+        Self { cap }
+    }
+}
+
+impl PathQueriable for CapOnlyTree {
+    fn get_cap(&self) -> MerkleTreeCapVarLength {
+        self.cap.clone()
+    }
+    fn get_proof(
+        &self,
+        _idx: usize,
+    ) -> (
+        [u32; DIGEST_SIZE_U32_WORDS],
+        Vec<[u32; DIGEST_SIZE_U32_WORDS]>,
+    ) {
+        unreachable!("CapOnlyTree serves only the commitment cap; round-0 paths come from the base query hook")
+    }
+}
+
+/// A producer of one LDE coset's columns, driving the closure-based constructors on
+/// [`ColumnMajorMerkleTreeConstructor`]. `producer(coset_index)` returns that
+/// coset's columns — each borrowed (when the coset is materialized) or owned (when
+/// recomputed). The lifetime `'a` ties any borrowed column data; owned columns
+/// (`Cow::Owned`) let a recomputing producer keep only one coset alive at a time.
+pub type CosetColumnsProducer<'a, E>
+    = Box<dyn FnMut(usize) -> Vec<Cow<'a, [E]>> + 'a>
+where
+    E: Clone;
+
 pub trait ColumnMajorMerkleTreeConstructor<F: PrimeField>:
-    Sized + Send + Sync + core::fmt::Debug
+    Sized + Send + Sync + core::fmt::Debug + PathQueriable + 'static
 {
     type Verifier: LeafInclusionVerifier;
 
-    /// Disk/mmap-backed [`PathQueriable`] view of a serialized instance of this
-    /// tree. Constructed by [`Self::disk_path`] over bytes previously produced by
-    /// [`Self::serialize_to_disk_format`]. Serving inclusion proofs from an mmap'd
-    /// file lets the prover keep only the compact RS-codeword form in RAM.
-    type DiskPath<'a>: PathQueriable<F>;
-
     fn dummy() -> Self;
 
-    /// Serialize the built tree into the simple on-disk format consumed by
-    /// [`Self::disk_path`] (a small header followed by the cap digests, the leaf
-    /// hashes, and the internal layer hashes — see [`on_disk`]), streaming it into
-    /// any [`std::io::Write`] sink (a file, a `Vec<u8>`, …).
-    fn serialize_to_disk_format<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()>;
+    /// Build a tree whose leaves ARE the given digests (e.g. per-coset subtree roots),
+    /// up to `cap_size` top nodes. Lets the coset-by-coset commitment assemble its top
+    /// tree over per-coset roots without re-hashing field data.
+    fn build_over_leaf_hashes(
+        leaf_hashes: Vec<[u32; DIGEST_SIZE_U32_WORDS]>,
+        cap_size: usize,
+        worker: &Worker,
+    ) -> Self;
 
-    /// Build a [`PathQueriable`] over mmap'd (or otherwise borrowed) bytes that were
-    /// produced by [`Self::serialize_to_disk_format`].
-    fn disk_path<'a>(bytes: &'a [u8]) -> Self::DiskPath<'a>;
-
-    fn construct_from_cosets<E: FieldExtension<F>, A: GoodAllocator>(
+    /// Materialized sibling of [`Self::construct_from_coset_producer`]: wraps the
+    /// fully-materialized `trace` in a borrowing [`CosetColumnsProducer`] and
+    /// delegates to the producer-driven primitive, hence byte-identical. This is the
+    /// convenience entry for callers that already hold every coset in memory.
+    fn construct_from_cosets<E: FieldExtension<F>>(
         trace: &[&[&[E]]], // slice of cosets, each coset - is a slice of column evaluations
+        combine_by: usize,
+        cap_size: usize,
+        bitreverse_evaluations: bool,
+        bitreverse_cosets: bool,
+        bitreverse_leaf_hashes: bool,
+        worker: &Worker,
+    ) -> Self
+    where
+        [(); E::DEGREE]: Sized,
+    {
+        let num_cosets = trace.len();
+        let producer: CosetColumnsProducer<'_, E> = Box::new(move |coset_index| {
+            trace[coset_index]
+                .iter()
+                .map(|column| Cow::Borrowed(*column))
+                .collect()
+        });
+        Self::construct_from_coset_producer::<E>(
+            num_cosets,
+            producer,
+            combine_by,
+            cap_size,
+            bitreverse_evaluations,
+            bitreverse_cosets,
+            bitreverse_leaf_hashes,
+            worker,
+        )
+    }
+
+    /// Closure-driven primitive: builds the tree from a [`CosetColumnsProducer`],
+    /// calling the producer once per coset in order; each coset's columns are used and
+    /// then dropped, so a recomputing producer keeps only one coset in memory. Each
+    /// concrete tree implements this (the per-field leaf hashing lives here);
+    /// [`Self::construct_from_cosets`] is a materialized-input wrapper over it.
+    fn construct_from_coset_producer<'a, E: FieldExtension<F> + 'a>(
+        num_cosets: usize,
+        producer: CosetColumnsProducer<'a, E>,
         combine_by: usize,
         cap_size: usize,
         bitreverse_evaluations: bool,
@@ -172,22 +243,41 @@ pub trait ColumnMajorMerkleTreeConstructor<F: PrimeField>:
     where
         [(); E::DEGREE]: Sized;
 
-    fn get_cap(&self) -> MerkleTreeCapVarLength;
-
-    fn get_proof<C: GoodAllocator>(
-        &self,
-        idx: usize,
-    ) -> (
-        [u32; DIGEST_SIZE_U32_WORDS],
-        Vec<[u32; DIGEST_SIZE_U32_WORDS], C>,
-    );
-
-    /// Build a tree whose leaves ARE the given digests (e.g. per-coset subtree
-    /// roots), up to `cap_size` top nodes. Lets the coset-by-coset commitment
-    /// assemble the top tree over per-coset roots without re-hashing field data.
-    fn build_over_leaf_hashes(
-        leaf_hashes: Vec<[u32; DIGEST_SIZE_U32_WORDS]>,
+    /// Produce on-disk tree artifacts for the given `layout`, driven by the coset
+    /// `producer` (the RS-codeword source). [`OnDiskTreeLayout::Monolithic`](on_disk::OnDiskTreeLayout::Monolithic)
+    /// writes one tree file (`<base_path>.tree`);
+    /// [`OnDiskTreeLayout::CosetSubtrees`](on_disk::OnDiskTreeLayout::CosetSubtrees)
+    /// writes one cap-size-1 subtree file per coset (`<base_path>.subtree_NNNN.tree`)
+    /// plus a top-tree (`<base_path>.toptree.tree`), processing ONE coset at a time
+    /// (memory-light). Read back with [`Self::open_disk_artifacts`].
+    ///
+    /// Implementations delegate to [`on_disk::write_disk_artifacts`], supplying an
+    /// accessor for their concrete [`SerializableTreeLayers`](on_disk::SerializableTreeLayers);
+    /// that free function holds the shared layout orchestration.
+    fn write_disk_artifacts<'a, E: FieldExtension<F> + 'a>(
+        base_path: &str,
+        layout: on_disk::OnDiskTreeLayout,
+        num_cosets: usize,
+        producer: CosetColumnsProducer<'a, E>,
+        combine_by: usize,
         cap_size: usize,
+        bitreverse_evaluations: bool,
+        bitreverse_cosets: bool,
+        bitreverse_leaf_hashes: bool,
         worker: &Worker,
-    ) -> Self;
+    ) -> std::io::Result<()>
+    where
+        [(); E::DEGREE]: Sized;
+
+    /// Memory-map the on-disk tree artifacts previously written by
+    /// [`Self::write_disk_artifacts`] at `base_path`, producing an
+    /// [`OnDiskTree`](on_disk::OnDiskTree). `layout` is the layout the caller
+    /// expects; this PANICS if the artifacts on disk are of a different layout.
+    /// `num_cosets` is used only for the split layout. Implementations delegate to
+    /// [`on_disk::open_disk_artifacts`].
+    fn open_disk_artifacts(
+        base_path: &str,
+        layout: on_disk::OnDiskTreeLayout,
+        num_cosets: usize,
+    ) -> on_disk::OnDiskTree<Self>;
 }

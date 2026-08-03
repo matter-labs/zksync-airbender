@@ -121,7 +121,7 @@ pub fn prove_built_family_trace(
 /// build the setup in memory via the old `commit`, write its RS codewords (one file
 /// per coset, shared prefix) and its Merkle tree to disk, then prove reading the RS
 /// codewords back through [`OnDiskRsCodewords`] and the tree through
-/// [`ColumnMajorMerkleTreeConstructor::disk_path`] (`SetupCommitment::OnDisk`). The
+/// `ColumnMajorMerkleTreeConstructor::open_disk_artifacts` (`SetupCommitment::OnDisk`). The
 /// memory/witness commitments stay in memory. `disk_prefix` is a filesystem path
 /// prefix the test owns.
 #[allow(clippy::too_many_arguments)]
@@ -147,19 +147,25 @@ pub fn prove_built_family_trace_on_disk_setup(
     let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, worker);
     let setup = GKRSetup::construct(table_driver, decoder_table_data, trace_len, circuit);
 
-    // 1) Commit the setup in memory (RS codewords + tree), the standard way.
-    let setup_oracle = setup.commit::<DefaultTreeConstructor>(
+    // 1) Commit the setup in memory (RS codewords + tree), the standard way. Unwrap the
+    //    owned `SetupCommitment::InMemory` to reach the oracle for on-disk serialization.
+    let SetupCommitment::InMemory(setup_oracle) = setup.commit::<DefaultTreeConstructor>(
         &twiddles,
         prover_config.lde_factor,
         prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
         prover_config.cap_size,
         trace_len.trailing_zeros() as usize,
         worker,
-    );
+    ) else {
+        unreachable!("GKRSetup::commit always returns the InMemory variant")
+    };
     let values_per_leaf = setup_oracle.values_per_leaf;
     let coset_size_log2 = setup_oracle.coset_size_log2;
 
-    // 2) Write the RS codewords (one file per coset) and the tree to disk.
+    // 2) Write the RS codewords (one file per coset) and the monolithic tree to disk.
+    //    The tree goes out through `write_disk_artifacts` (the only disk serializer):
+    //    it rebuilds the tree from the materialized cosets — byte-identical to
+    //    `setup.commit`'s tree since the coset order + bitreverse flags match.
     let materialized = setup_oracle
         .cosets
         .as_any()
@@ -169,29 +175,41 @@ pub fn prove_built_family_trace_on_disk_setup(
         .serialize_to_disk(disk_prefix)
         .expect("write setup RS codewords to disk");
 
-    let tree_path = format!("{disk_prefix}.tree");
-    {
-        let mut tree_file = std::fs::File::create(&tree_path).expect("create tree file");
-        setup_oracle
-            .tree
-            .serialize_to_disk_format(&mut tree_file)
-            .expect("write setup tree to disk");
-    }
+    let num_cosets = materialized.cosets.len();
+    let producer: crate::merkle_trees::CosetColumnsProducer<BabyBearField> =
+        Box::new(|coset: usize| {
+            materialized.cosets[coset]
+                .original_values_normal_order
+                .iter()
+                .map(|c| std::borrow::Cow::Borrowed(&c.column[..]))
+                .collect()
+        });
+    <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<BabyBearField>>::write_disk_artifacts::<
+        BabyBearField,
+    >(
+        disk_prefix,
+        crate::merkle_trees::on_disk::OnDiskTreeLayout::Monolithic,
+        num_cosets,
+        producer,
+        values_per_leaf,
+        prover_config.cap_size,
+        true,
+        true,
+        false,
+        worker,
+    )
+    .expect("write setup tree to disk");
+    let tree_path = crate::merkle_trees::on_disk::monolithic_tree_file_path(disk_prefix);
 
     // Drop the in-memory setup oracle: from here the setup lives only on disk.
+    drop(materialized);
     drop(setup_oracle);
 
     // 3) Read them back: RS codewords + (monolithic) tree both served lazily via mmap.
     let rs = OnDiskRsCodewords::<BabyBearField>::open(coset_paths)
         .expect("open on-disk setup RS codewords");
-    let tree_mmap = mmap_io::MemoryMappedFile::open_ro(&tree_path).expect("mmap tree file");
-    let tree_bytes = tree_mmap
-        .as_slice_bytes(0, tree_mmap.len())
-        .expect("mmap tree slice");
-    let disk_tree = crate::merkle_trees::on_disk::OnDiskTree::Monolithic(
-        <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<BabyBearField>>::disk_path(
-            tree_bytes,
-        ),
+    let disk_tree = crate::merkle_trees::on_disk::OnDiskTree::monolithic(
+        crate::merkle_trees::on_disk::MmapMerkleTree::open(&tree_path).expect("mmap tree file"),
     );
 
     let setup_commitment = SetupCommitment::OnDisk {
@@ -239,11 +257,10 @@ pub fn prove_built_family_trace_with_rs_source(
     rs_codeword_source: RsCodewordSource,
     worker: &Worker,
 ) -> GKRProof<BabyBearField, BabyBearExt4, DefaultTreeConstructor> {
-    let mut prover_config =
-        example_configs::config_for_security_level_under_pessimistic_conjecture(
-            trace_len.trailing_zeros() as usize,
-            level,
-        );
+    let mut prover_config = example_configs::config_for_security_level_under_pessimistic_conjecture(
+        trace_len.trailing_zeros() as usize,
+        level,
+    );
     // `RsCodewordSource::Recompute` (coset-by-coset) requires `cap_size <= lde_factor`
     // (the cap must sit at or above the per-coset subtree roots). The default family
     // config has cap_size (16) > lde_factor (2), so clamp the cap for this parity
@@ -255,7 +272,7 @@ pub fn prove_built_family_trace_with_rs_source(
     }
     let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, worker);
     let setup = GKRSetup::construct(table_driver, decoder_table_data, trace_len, circuit);
-    let setup_oracle = setup.commit(
+    let setup_commitment = setup.commit(
         &twiddles,
         prover_config.lde_factor,
         prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
@@ -263,7 +280,6 @@ pub fn prove_built_family_trace_with_rs_source(
         trace_len.trailing_zeros() as usize,
         worker,
     );
-    let setup_commitment = SetupCommitment::InMemory(&setup_oracle);
 
     prove_configured_with_gkr_with_storage::<
         BabyBearField,

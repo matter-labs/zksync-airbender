@@ -145,7 +145,6 @@ where
 pub fn blake2s_leaf_hashes_from_cosets<
     F: PrimeField,
     E: FieldExtension<F>,
-    A: GoodAllocator,
     B: GoodAllocator,
     const USE_REDUCED_BLAKE2_ROUNDS: bool,
 >(

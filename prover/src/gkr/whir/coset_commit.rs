@@ -30,7 +30,9 @@ use crate::gkr::prover::stages::commitment_utils::{
 };
 use crate::merkle_trees::keccak256_for_everything_tree::{Digest32, Keccak256MerkleTreeWithCap};
 use crate::merkle_trees::keccak256_hash_leafs::keccak256_leaf_hashes_from_cosets;
-use crate::merkle_trees::{ColumnMajorMerkleTreeConstructor, MerkleTreeCapVarLength};
+use crate::merkle_trees::{
+    ColumnMajorMerkleTreeConstructor, MerkleTreeCapVarLength, PathQueriable,
+};
 use core::marker::PhantomData;
 use fft::{
     bitreverse_enumeration_inplace, bitreverse_index, domain_generator_for_size,
@@ -370,7 +372,7 @@ where
             let col_refs: Vec<&[F]> = coset_columns.iter().map(|c| &c[..]).collect();
             let coset_refs: &[&[F]] = &col_refs[..];
             let trace: &[&[&[F]]] = std::slice::from_ref(&coset_refs);
-            let subtree = T::construct_from_cosets::<F, Global>(
+            let subtree = T::construct_from_cosets::<F>(
                 trace,
                 self.values_per_leaf,
                 1,
@@ -381,7 +383,7 @@ where
             );
 
             let physical_slot = bitreverse_index(coset_index, cosets_log2);
-            let (_root, top_path) = self.top_tree.get_proof::<Global>(physical_slot);
+            let (_root, top_path) = self.top_tree.get_proof(physical_slot);
 
             for pos in positions {
                 let internal_index = query_indices[pos] >> cosets_log2;
@@ -398,7 +400,7 @@ where
                     }
                 }
 
-                let (_leaf_hash, mut path) = subtree.get_proof::<Global>(internal_index);
+                let (_leaf_hash, mut path) = subtree.get_proof(internal_index);
                 path.extend_from_slice(&top_path);
 
                 out[pos] = Some(BaseFieldQuery {
@@ -434,15 +436,8 @@ where
     let coset_refs: &[&[F]] = &col_refs[..];
     let trace: &[&[&[F]]] = std::slice::from_ref(&coset_refs);
 
-    let subtree = T::construct_from_cosets::<F, Global>(
-        trace,
-        values_per_leaf,
-        1,
-        true,
-        false,
-        false,
-        worker,
-    );
+    let subtree =
+        T::construct_from_cosets::<F>(trace, values_per_leaf, 1, true, false, false, worker);
     subtree.get_cap().cap[0]
 }
 
@@ -457,7 +452,7 @@ where
 ///
 /// The RS-codeword files match [`OnDiskRsCodewords`](crate::gkr::whir::rs_on_disk::OnDiskRsCodewords)
 /// and the tree files match
-/// [`OnDiskCosetTreePath`](crate::merkle_trees::on_disk::OnDiskCosetTreePath); the
+/// [`OnDiskCosetTree`](crate::merkle_trees::on_disk::OnDiskCosetTree); the
 /// resulting commitment is byte-identical to the monolithic packed commitment
 /// (`commit_packed`), so proofs are unchanged.
 pub fn serialize_packed_base_commitment_split_to_disk<F, T>(
@@ -477,8 +472,9 @@ where
     [(); F::DEGREE]: Sized,
 {
     use crate::gkr::whir::rs_on_disk::{coset_file_path, serialize_coset_columns};
-    use crate::merkle_trees::on_disk::{subtree_file_path, top_tree_file_path};
-    use std::fs::File;
+    use crate::merkle_trees::on_disk::OnDiskTreeLayout;
+    use crate::merkle_trees::CosetColumnsProducer;
+    use std::borrow::Cow;
     use std::io::{BufWriter, Write};
 
     assert!(lde_factor.is_power_of_two());
@@ -486,7 +482,6 @@ where
     assert!(cap_size <= lde_factor);
     let packed_trace_len_log2 = trace_len_log2 + pack_log2;
     let values_per_leaf = 1usize << whir_first_fold_step_log2;
-    let cosets_log2 = lde_factor.trailing_zeros();
 
     // Pack + monomialize once (message-sized); every coset LDEs from this.
     let monomial_forms =
@@ -494,54 +489,49 @@ where
 
     let verbose = packed_trace_len_log2 >= 20;
     let t0 = std::time::Instant::now();
-    let mut natural_roots: Vec<[u32; DIGEST_SIZE_U32_WORDS]> = Vec::with_capacity(lde_factor);
-    for coset_index in 0..lde_factor {
+    // The coset producer computes one coset's LDE, writes its RS codewords to disk as
+    // a side effect, and hands the columns to `write_disk_artifacts` (which builds the
+    // per-coset subtree + top-tree). One LDE per coset drives both RS and tree.
+    let producer: CosetColumnsProducer<F> = Box::new(move |coset_index: usize| {
         let coset_cols = coset_columns(&monomial_forms, twiddles, lde_factor, coset_index, worker);
-        let col_refs: Vec<&[F]> = coset_cols.iter().map(|c| &c[..]).collect();
-
-        // RS codewords for this coset.
         {
-            let mut rs = BufWriter::new(File::create(coset_file_path(path_prefix, coset_index))?);
-            serialize_coset_columns(&mut rs, packed_trace_len_log2, &col_refs)?;
-            rs.flush()?;
+            let col_refs: Vec<&[F]> = coset_cols.iter().map(|c| &c[..]).collect();
+            let mut rs = BufWriter::new(
+                std::fs::File::create(coset_file_path(path_prefix, coset_index))
+                    .expect("create RS codeword file"),
+            );
+            serialize_coset_columns(&mut rs, packed_trace_len_log2, &col_refs)
+                .expect("write RS codewords");
+            rs.flush().expect("flush RS codewords");
         }
-
-        // This coset's subtree (cap_size 1) — same construction the top-tree/monolithic
-        // tree agree with.
-        let coset_refs: &[&[F]] = &col_refs[..];
-        let trace: &[&[&[F]]] = std::slice::from_ref(&coset_refs);
-        let subtree =
-            T::construct_from_cosets::<F, Global>(trace, values_per_leaf, 1, true, false, false, worker);
-        {
-            let mut st = BufWriter::new(File::create(subtree_file_path(path_prefix, coset_index))?);
-            subtree.serialize_to_disk_format(&mut st)?;
-            st.flush()?;
-        }
-        natural_roots.push(subtree.get_cap().cap[0]);
-
         if verbose {
             println!(
-                "[split-setup +{:6.1}s] coset {}/{} written ({} cols of 2^{})",
+                "[split-setup +{:6.1}s] coset {}/{} RS+subtree written",
                 t0.elapsed().as_secs_f64(),
                 coset_index + 1,
                 lde_factor,
-                monomial_forms.len(),
-                packed_trace_len_log2,
             );
         }
-    }
+        coset_cols
+            .into_iter()
+            .map(|c| Cow::Owned(c.into_vec()))
+            .collect()
+    });
 
-    // Top tree over the per-coset roots (physical, i.e. bit-reversed-coset, order).
-    let physical_roots: Vec<[u32; DIGEST_SIZE_U32_WORDS]> = (0..lde_factor)
-        .map(|k| natural_roots[bitreverse_index(k, cosets_log2)])
-        .collect();
-    let top_tree = T::build_over_leaf_hashes(physical_roots, cap_size, worker);
-    {
-        let mut tt = BufWriter::new(File::create(top_tree_file_path(path_prefix))?);
-        top_tree.serialize_to_disk_format(&mut tt)?;
-        tt.flush()?;
-    }
-    Ok(())
+    // Write the per-coset subtree files + top-tree (bit-reversed coset order, matching
+    // the monolithic packed tree).
+    T::write_disk_artifacts::<F>(
+        path_prefix,
+        OnDiskTreeLayout::CosetSubtrees,
+        lde_factor,
+        producer,
+        values_per_leaf,
+        cap_size,
+        true,
+        true,
+        false,
+        worker,
+    )
 }
 
 // ============================================================================
@@ -686,15 +676,8 @@ where
     let per_coset: Vec<[&[E]; 1]> = columns.iter().map(|c| [&c[..]]).collect();
     let coset_slices: Vec<&[&[E]]> = per_coset.iter().map(|a| &a[..]).collect();
     let trace: &[&[&[E]]] = &coset_slices;
-    let subtree = T::construct_from_cosets::<E, Global>(
-        trace,
-        values_per_leaf,
-        1,
-        true,
-        false,
-        false,
-        worker,
-    );
+    let subtree =
+        T::construct_from_cosets::<E>(trace, values_per_leaf, 1, true, false, false, worker);
     subtree.get_cap().cap[0]
 }
 
@@ -881,7 +864,7 @@ where
         let per_coset: Vec<[&[E]; 1]> = columns.iter().map(|c| [&c[..]]).collect();
         let coset_slices: Vec<&[&[E]]> = per_coset.iter().map(|a| &a[..]).collect();
         let trace: &[&[&[E]]] = &coset_slices;
-        let subtree = T::construct_from_cosets::<E, Global>(
+        let subtree = T::construct_from_cosets::<E>(
             trace,
             self.values_per_leaf,
             1,
@@ -891,10 +874,10 @@ where
             worker,
         );
         let group_leaf_index = slot_in_group * coset_tree_size + internal_index;
-        let (_leaf, mut path) = subtree.get_proof::<Global>(group_leaf_index);
+        let (_leaf, mut path) = subtree.get_proof(group_leaf_index);
 
         // top-tree path (group root -> cap)
-        let (_root, top_path) = self.top_tree.get_proof::<Global>(group_index);
+        let (_root, top_path) = self.top_tree.get_proof(group_index);
         path.extend_from_slice(&top_path);
 
         let query = ExtensionFieldQuery {
@@ -931,10 +914,9 @@ mod test {
         use crate::gkr::prover::stages::commitment_utils::commit_trace_part_packed;
         use crate::gkr::whir::rs_on_disk::{coset_file_path, OnDiskRsCodewords};
         use crate::merkle_trees::on_disk::{
-            subtree_file_path, top_tree_file_path, OnDiskCosetTreePath,
+            subtree_file_path, top_tree_file_path, OnDiskTreeLayout,
         };
-        use crate::merkle_trees::{PathQueriable, RSQueriable};
-        use mmap_io::MemoryMappedFile;
+        use crate::merkle_trees::{ColumnMajorMerkleTreeConstructor, PathQueriable, RSQueriable};
 
         let worker = Worker::new_with_num_threads(4);
         // 16 columns, base 2^4, pack by 2 -> packed 2^5; LDE 8 cosets, cap 2, vpl 2.
@@ -978,38 +960,34 @@ mod test {
         )
         .expect("write split setup");
 
-        // Open the split tree + RS.
-        let coset_paths: Vec<_> = (0..lde_factor).map(|i| coset_file_path(&prefix, i)).collect();
-        let subtree_paths: Vec<_> = (0..lde_factor).map(|i| subtree_file_path(&prefix, i)).collect();
+        // Open the split tree (via the parse method) + RS.
+        let coset_paths: Vec<_> = (0..lde_factor)
+            .map(|i| coset_file_path(&prefix, i))
+            .collect();
+        let subtree_paths: Vec<_> = (0..lde_factor)
+            .map(|i| subtree_file_path(&prefix, i))
+            .collect();
         let toptree_path = top_tree_file_path(&prefix);
 
         let rs = OnDiskRsCodewords::<Proth120>::open(coset_paths.clone()).expect("open rs");
         let coset_tree_size = (1usize << packed_trace_len_log2) / vpl;
-        let subtree_maps: Vec<MemoryMappedFile> = subtree_paths
-            .iter()
-            .map(|p| MemoryMappedFile::open_ro(p).unwrap())
-            .collect();
-        let toptree_map = MemoryMappedFile::open_ro(&toptree_path).unwrap();
-        let subtree_slices: Vec<&[u8]> = subtree_maps
-            .iter()
-            .map(|m| m.as_slice_bytes(0, m.len()).unwrap())
-            .collect();
-        let toptree_slice = toptree_map.as_slice_bytes(0, toptree_map.len()).unwrap();
-        let split_tree =
-            OnDiskCosetTreePath::from_parts(subtree_slices, toptree_slice, coset_tree_size);
+        let split_tree = <Tree as ColumnMajorMerkleTreeConstructor<Proth120>>::open_disk_artifacts(
+            &prefix,
+            OnDiskTreeLayout::CosetSubtrees,
+            lde_factor,
+        );
 
         // Cap must match.
         assert_eq!(
-            PathQueriable::<Proth120>::get_cap(&split_tree),
+            PathQueriable::get_cap(&split_tree),
             mono.tree.get_cap(),
             "split cap != monolithic cap"
         );
 
         let tree_size = lde_factor * coset_tree_size;
         for idx in 0..tree_size {
-            let (mono_leaf, mono_path) = mono.tree.get_proof::<Global>(idx);
-            let (split_leaf, split_path) =
-                PathQueriable::<Proth120>::get_proof::<Global>(&split_tree, idx);
+            let (mono_leaf, mono_path) = mono.tree.get_proof(idx);
+            let (split_leaf, split_path) = PathQueriable::get_proof(&split_tree, idx);
             assert_eq!(split_leaf, mono_leaf, "leaf @ idx={idx}");
             assert_eq!(split_path, mono_path, "path @ idx={idx}");
         }
@@ -1022,7 +1000,11 @@ mod test {
             assert_eq!(got, mono_vals, "rs values @ q={qi}");
         }
 
-        for p in coset_paths.into_iter().chain(subtree_paths).chain([toptree_path]) {
+        for p in coset_paths
+            .into_iter()
+            .chain(subtree_paths)
+            .chain([toptree_path])
+        {
             let _ = std::fs::remove_file(p);
         }
     }
@@ -1179,7 +1161,7 @@ mod test {
         let tree_size = lde_factor * (trace_len / vpl);
         for qi in 0..tree_size {
             let q = coset.query(qi, &twiddles, &worker);
-            let (leaf_h, expected_path) = mono.tree.get_proof::<Global>(q.index);
+            let (leaf_h, expected_path) = mono.tree.get_proof(q.index);
             assert_eq!(q.path, expected_path, "path @ q={qi}");
             assert_eq!(
                 leaf_hash(&q.leaf_values_concatenated),

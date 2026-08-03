@@ -5,7 +5,7 @@
 //! Both trees share the same shape — a leaf-hash layer plus internal node layers
 //! of `[u32; DIGEST_SIZE_U32_WORDS]` digests — and their [`PathQueriable`] logic
 //! only ever *reads* stored digests (it never re-hashes). So one field-agnostic
-//! reader, [`MmapMerkleTreePath`], serves inclusion proofs for either tree.
+//! reader, [`MmapMerkleTree`], serves inclusion proofs for either tree.
 //!
 //! ## Format
 //!
@@ -30,12 +30,34 @@
 //! The layout is intentionally minimal; a richer, self-describing variant can be
 //! added later without touching the trait surface.
 
-use super::{MerkleTreeCapVarLength, PathQueriable};
+use super::{
+    ColumnMajorMerkleTreeConstructor, CosetColumnsProducer, MerkleTreeCapVarLength, PathQueriable,
+};
 use crate::definitions::DIGEST_SIZE_U32_WORDS;
-use fft::{bitreverse_index, GoodAllocator};
-use field::PrimeField;
+use fft::bitreverse_index;
+use field::{FieldExtension, PrimeField};
+use mmap_io::MemoryMappedFile;
 use std::io::Write;
-use std::path::PathBuf;
+use std::marker::PhantomData;
+use std::path::{Path, PathBuf};
+use worker::Worker;
+
+fn mmap_io_err(e: impl core::fmt::Debug) -> std::io::Error {
+    std::io::Error::new(std::io::ErrorKind::Other, format!("mmap-io: {e:?}"))
+}
+
+/// Which on-disk tree layout an artifact uses: a single monolithic tree file, or
+/// per-coset subtree files plus a top-tree.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum OnDiskTreeLayout {
+    Monolithic,
+    CosetSubtrees,
+}
+
+/// Path of the single monolithic tree file under a shared prefix.
+pub fn monolithic_tree_file_path(prefix: &str) -> PathBuf {
+    PathBuf::from(format!("{prefix}.tree"))
+}
 
 /// Magic marker ("MTR1") identifying the format.
 pub const MERKLE_DISK_MAGIC: u32 = u32::from_le_bytes(*b"MTR1");
@@ -123,84 +145,98 @@ pub fn serialize_layers<W: Write>(
     Ok(())
 }
 
-/// Byte length of the serialized image for a tree of the given dimensions (header
-/// + cap + leaves + internal layers). Handy for pre-sizing a `Vec<u8>` sink.
-pub fn serialized_len(num_leaves: usize, cap_size: usize) -> usize {
-    let internal: usize = (1..=num_internal_layers(num_leaves, cap_size))
-        .map(|i| num_leaves >> i)
-        .sum();
-    HEADER_BYTES + (cap_size + num_leaves + internal) * DIGEST_BYTES
+/// A built tree's digest layers, borrowed and ready for on-disk serialization —
+/// the value a [`ColumnMajorMerkleTreeConstructor`](super::ColumnMajorMerkleTreeConstructor)
+/// exposes to the (crate-internal) writer used by `write_disk_artifacts`. It is a
+/// pure data view: `leaf_hashes` and `internal_layers` borrow the tree, only the
+/// small `cap` is owned. There is no standalone public serializer — writing a tree
+/// to disk happens only through `write_disk_artifacts`.
+pub struct SerializableTreeLayers<'a> {
+    num_leaves: usize,
+    cap_size: usize,
+    cap: Vec<Digest>,
+    leaf_hashes: &'a [Digest],
+    internal_layers: Vec<&'a [Digest]>,
 }
 
-/// Serialize a tree from its in-memory fields (as held by both
-/// `Blake2sU32MerkleTreeWithCap` and `Keccak256MerkleTreeWithCap`) into `out`:
-/// `node_layers` is `node_hashes_enumerated_from_leafs` (bottom-up, last layer =
-/// cap). Handles the cap-only tree (`node_layers` empty ⇒ cap == leaves).
-pub fn serialize_tree<A: GoodAllocator, W: Write>(
-    out: &mut W,
+impl<'a> SerializableTreeLayers<'a> {
+    /// Write these layers into `out` in the on-disk format. Crate-internal on
+    /// purpose: `write_disk_artifacts` is the only intended caller.
+    pub(crate) fn write_to<W: Write>(&self, out: &mut W) -> std::io::Result<()> {
+        serialize_layers(
+            out,
+            self.num_leaves,
+            self.cap_size,
+            &self.cap,
+            self.leaf_hashes,
+            &self.internal_layers,
+        )
+    }
+}
+
+/// Build a [`SerializableTreeLayers`] from a tree's in-memory fields (as held by
+/// both `Blake2sU32MerkleTreeWithCap` and `Keccak256MerkleTreeWithCap`):
+/// `node_layers` is `node_hashes_enumerated_from_leafs` as allocator-erased slices
+/// (bottom-up, last layer = cap). Handles the cap-only tree (`node_layers` empty ⇒
+/// cap == leaves). Taking `&[&[Digest]]` keeps any tree allocator out of the trait
+/// surface without this helper being generic over it.
+pub fn tree_layers<'a>(
     cap_size: usize,
-    leaf_hashes: &[Digest],
-    node_layers: &[Vec<Digest, A>],
-) -> std::io::Result<()> {
-    let num_leaves = leaf_hashes.len();
+    leaf_hashes: &'a [Digest],
+    node_layers: &[&'a [Digest]],
+) -> SerializableTreeLayers<'a> {
     let cap: Vec<Digest> = match node_layers.last() {
         Some(last) => last.to_vec(),
         None => leaf_hashes.to_vec(),
     };
-    let internal: Vec<&[Digest]> = if node_layers.is_empty() {
+    let internal_layers: Vec<&'a [Digest]> = if node_layers.is_empty() {
         Vec::new()
     } else {
-        node_layers[..node_layers.len() - 1]
-            .iter()
-            .map(|v| &v[..])
-            .collect()
+        node_layers[..node_layers.len() - 1].to_vec()
     };
-    serialize_layers(out, num_leaves, cap_size, &cap, leaf_hashes, &internal)
+    SerializableTreeLayers {
+        num_leaves: leaf_hashes.len(),
+        cap_size,
+        cap,
+        leaf_hashes,
+        internal_layers,
+    }
 }
 
-/// A [`PathQueriable`] backed by an mmap'd (or otherwise borrowed) byte image in the
-/// [`serialize_layers`] format. Reads digests directly out of `bytes`; holds no
-/// owned digest data of its own.
+/// Byte-offset layout of a serialized single-tree image (see module docs), parsed
+/// from the 24-byte header. Kept separate from the mapping so a reader can own its
+/// `MemoryMappedFile` and re-derive a zero-copy view per access.
 #[derive(Clone, Debug)]
-pub struct MmapMerkleTreePath<'a> {
-    bytes: &'a [u8],
+struct TreeLayout {
     num_leaves: usize,
     cap_size: usize,
-    /// Tree depth `k = log2(num_leaves) - log2(cap_size)`.
     depth: usize,
-    /// Byte offset of the cap block.
     cap_offset: usize,
-    /// Byte offset of the leaf-hash block.
     leaf_offset: usize,
     /// Byte offset of each internal layer `L1 .. L_{depth-1}` (index `i` = `L_{i+1}`).
     internal_offsets: Vec<usize>,
 }
 
-impl<'a> MmapMerkleTreePath<'a> {
-    /// Parse the header and index the digest blocks. Panics if the header is
-    /// malformed, the digest width differs, or `bytes` is too short for the
-    /// declared dimensions.
-    pub fn from_bytes(bytes: &'a [u8]) -> Self {
+impl TreeLayout {
+    fn parse(header: &[u8]) -> Self {
         assert!(
-            bytes.len() >= HEADER_BYTES,
+            header.len() >= HEADER_BYTES,
             "on-disk merkle image shorter than header"
         );
-        let magic = u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
+        let magic = u32::from_le_bytes([header[0], header[1], header[2], header[3]]);
         assert_eq!(magic, MERKLE_DISK_MAGIC, "bad on-disk merkle magic");
-        let digest_words = u32::from_le_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]) as usize;
+        let digest_words =
+            u32::from_le_bytes([header[4], header[5], header[6], header[7]]) as usize;
         assert_eq!(
             digest_words, DIGEST_SIZE_U32_WORDS,
             "on-disk digest width mismatch"
         );
-        let num_leaves =
-            u64::from_le_bytes(bytes[8..16].try_into().unwrap()) as usize;
-        let cap_size = u64::from_le_bytes(bytes[16..24].try_into().unwrap()) as usize;
+        let num_leaves = u64::from_le_bytes(header[8..16].try_into().unwrap()) as usize;
+        let cap_size = u64::from_le_bytes(header[16..24].try_into().unwrap()) as usize;
         assert!(num_leaves.is_power_of_two());
         assert!(cap_size.is_power_of_two());
         assert!(cap_size <= num_leaves);
-
         let depth = (num_leaves.trailing_zeros() - cap_size.trailing_zeros()) as usize;
-
         let cap_offset = HEADER_BYTES;
         let leaf_offset = cap_offset + cap_size * DIGEST_BYTES;
         let mut internal_offsets = Vec::with_capacity(num_internal_layers(num_leaves, cap_size));
@@ -209,14 +245,7 @@ impl<'a> MmapMerkleTreePath<'a> {
             internal_offsets.push(off);
             off += (num_leaves >> (i + 1)) * DIGEST_BYTES;
         }
-        assert!(
-            bytes.len() >= off,
-            "on-disk merkle image truncated: need {off} bytes, have {}",
-            bytes.len()
-        );
-
         Self {
-            bytes,
             num_leaves,
             cap_size,
             depth,
@@ -227,69 +256,95 @@ impl<'a> MmapMerkleTreePath<'a> {
     }
 
     #[inline]
-    fn digest_at(&self, block_offset: usize, index: usize) -> Digest {
-        let start = block_offset + index * DIGEST_BYTES;
-        digest_from_le_bytes(&self.bytes[start..start + DIGEST_BYTES])
+    fn digest_at(bytes: &[u8], byte_offset: usize) -> Digest {
+        digest_from_le_bytes(&bytes[byte_offset..byte_offset + DIGEST_BYTES])
     }
 
-    #[inline]
-    fn leaf(&self, index: usize) -> Digest {
-        debug_assert!(index < self.num_leaves);
-        self.digest_at(self.leaf_offset, index)
-    }
-
-    /// Sibling on internal layer `L_{layer+1}` (0-based `layer` in `[0, depth-2]`).
-    #[inline]
-    fn internal(&self, layer: usize, index: usize) -> Digest {
-        self.digest_at(self.internal_offsets[layer], index)
-    }
-}
-
-impl<'a> MmapMerkleTreePath<'a> {
-    /// The borrowed byte image this reader was built over.
-    #[inline]
-    pub fn as_bytes(&self) -> &'a [u8] {
-        self.bytes
-    }
-}
-
-impl<'a, F: PrimeField> PathQueriable<F> for MmapMerkleTreePath<'a> {
-    fn get_cap(&self) -> MerkleTreeCapVarLength {
+    fn get_cap(&self, bytes: &[u8]) -> MerkleTreeCapVarLength {
         let cap = (0..self.cap_size)
-            .map(|i| self.digest_at(self.cap_offset, i))
+            .map(|i| Self::digest_at(bytes, self.cap_offset + i * DIGEST_BYTES))
             .collect();
         MerkleTreeCapVarLength { cap }
     }
 
-    fn get_proof<C: GoodAllocator>(
+    fn get_proof(&self, bytes: &[u8], idx: usize) -> (Digest, Vec<Digest>) {
+        // Mirrors the in-memory trees' `get_proof`: level 0 sibling from the leaf
+        // layer, level `i > 0` from internal layer `L_i`.
+        let mut result = Vec::with_capacity(self.depth);
+        let mut idx = idx;
+        let this_leaf = Self::digest_at(bytes, self.leaf_offset + idx * DIGEST_BYTES);
+        for i in 0..self.depth {
+            let pair = idx ^ 1;
+            let el = if i == 0 {
+                Self::digest_at(bytes, self.leaf_offset + pair * DIGEST_BYTES)
+            } else {
+                Self::digest_at(bytes, self.internal_offsets[i - 1] + pair * DIGEST_BYTES)
+            };
+            result.push(el);
+            idx >>= 1;
+        }
+        (this_leaf, result)
+    }
+}
+
+/// A single serialized merkle tree, memory-mapped and OWNING its mapping — a
+/// self-contained [`PathQueriable`] (no borrows). Digests are read lazily through
+/// the OS page cache; nothing is loaded eagerly.
+pub struct MmapMerkleTree {
+    mmap: MemoryMappedFile,
+    layout: TreeLayout,
+}
+
+impl MmapMerkleTree {
+    /// Memory-map a serialized tree file (as written by `write_disk_artifacts`).
+    pub fn open<P: AsRef<Path>>(path: P) -> std::io::Result<Self> {
+        let mmap = MemoryMappedFile::open_ro(path).map_err(mmap_io_err)?;
+        let header = mmap
+            .as_slice_bytes(0, HEADER_BYTES as u64)
+            .map_err(mmap_io_err)?;
+        let layout = TreeLayout::parse(header);
+        Ok(Self { mmap, layout })
+    }
+
+    /// Number of leaves in this tree.
+    #[inline]
+    pub fn num_leaves(&self) -> usize {
+        self.layout.num_leaves
+    }
+
+    /// Zero-copy whole-file view (lazily paged; no allocation).
+    #[inline]
+    fn bytes(&self) -> &[u8] {
+        self.mmap
+            .as_slice_bytes(0, self.mmap.len())
+            .expect("merkle tree mmap slice")
+    }
+}
+
+impl core::fmt::Debug for MmapMerkleTree {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("MmapMerkleTree")
+            .field("num_leaves", &self.layout.num_leaves)
+            .field("cap_size", &self.layout.cap_size)
+            .finish()
+    }
+}
+
+impl PathQueriable for MmapMerkleTree {
+    fn get_cap(&self) -> MerkleTreeCapVarLength {
+        self.layout.get_cap(self.bytes())
+    }
+
+    fn get_proof(
         &self,
         idx: usize,
     ) -> (
         [u32; DIGEST_SIZE_U32_WORDS],
-        Vec<[u32; DIGEST_SIZE_U32_WORDS], C>,
+        Vec<[u32; DIGEST_SIZE_U32_WORDS]>,
     ) {
-        // Mirrors the in-memory trees' `get_proof`: for level 0 the sibling comes
-        // from the leaf layer, for level `i > 0` from internal layer `L_i`.
-        let mut result = Vec::with_capacity_in(self.depth, C::default());
-        let mut idx = idx;
-        let this_el_leaf_hash = self.leaf(idx);
-        for i in 0..self.depth {
-            let pair_idx = idx ^ 1;
-            let proof_element = if i == 0 {
-                self.leaf(pair_idx)
-            } else {
-                self.internal(i - 1, pair_idx)
-            };
-            result.push(proof_element);
-            idx >>= 1;
-        }
-        (this_el_leaf_hash, result)
+        self.layout.get_proof(self.bytes(), idx)
     }
 }
-
-// ============================================================================
-// Second on-disk tree layout: per-coset subtrees + a top-tree over their roots.
-// ============================================================================
 
 /// File path for the per-coset subtree of NATURAL coset `i` (coset 0 = main domain).
 pub fn subtree_file_path(prefix: &str, coset_index: usize) -> PathBuf {
@@ -301,102 +356,282 @@ pub fn top_tree_file_path(prefix: &str) -> PathBuf {
     PathBuf::from(format!("{prefix}.toptree.tree"))
 }
 
-/// A [`PathQueriable`] assembled from one subtree file per coset plus a small
-/// top-tree over their roots — the "second" on-disk tree layout. It serves an
-/// inclusion path as the within-coset subtree path stitched to the top-tree path,
-/// which is byte-identical to the monolithic tree's `get_proof` (the same
-/// equivalence the coset-by-coset commitment relies on), but the subtrees can be
-/// prepared and stored one coset at a time, so a large packed setup's tree never
-/// has to be materialized whole.
-pub struct OnDiskCosetTreePath<'a> {
+/// A [`PathQueriable`] assembled from one memory-mapped subtree file per coset plus
+/// a small top-tree over their roots (the "second" on-disk tree layout). Owns all
+/// its mappings. It serves an inclusion path as the within-coset subtree path
+/// stitched to the top-tree path, which is byte-identical to a monolithic tree's
+/// `get_proof` — but the subtrees can be prepared and stored one coset at a time.
+pub struct OnDiskCosetTree {
     /// One subtree per NATURAL coset (each built with cap_size 1).
-    subtrees: Vec<MmapMerkleTreePath<'a>>,
+    subtrees: Vec<MmapMerkleTree>,
     /// Top tree over the per-coset roots (leaves in physical, bit-reversed order).
-    top_tree: MmapMerkleTreePath<'a>,
-    /// Leaves per coset subtree (`2^coset_size_log2 / values_per_leaf`).
+    top_tree: MmapMerkleTree,
+    /// Leaves per coset subtree.
     coset_tree_size: usize,
     cosets_log2: u32,
 }
 
-impl<'a> OnDiskCosetTreePath<'a> {
-    /// Assemble from already-mapped subtree images (NATURAL coset order) and the
-    /// top-tree image. `coset_tree_size` is the number of leaves in each subtree.
-    pub fn from_parts(
-        subtree_bytes: Vec<&'a [u8]>,
-        top_tree_bytes: &'a [u8],
-        coset_tree_size: usize,
-    ) -> Self {
-        assert!(!subtree_bytes.is_empty());
-        assert!(subtree_bytes.len().is_power_of_two());
-        let cosets_log2 = subtree_bytes.len().trailing_zeros();
-        let subtrees = subtree_bytes
-            .into_iter()
-            .map(MmapMerkleTreePath::from_bytes)
-            .collect();
-        let top_tree = MmapMerkleTreePath::from_bytes(top_tree_bytes);
-        Self {
+impl OnDiskCosetTree {
+    /// Open `num_cosets` subtree files (NATURAL coset order) + the top-tree file
+    /// under a shared `prefix`.
+    pub fn open(prefix: &str, num_cosets: usize) -> std::io::Result<Self> {
+        assert!(num_cosets.is_power_of_two());
+        let mut subtrees = Vec::with_capacity(num_cosets);
+        for i in 0..num_cosets {
+            subtrees.push(MmapMerkleTree::open(subtree_file_path(prefix, i))?);
+        }
+        let top_tree = MmapMerkleTree::open(top_tree_file_path(prefix))?;
+        let coset_tree_size = subtrees[0].num_leaves();
+        Ok(Self {
             subtrees,
             top_tree,
             coset_tree_size,
-            cosets_log2,
-        }
+            cosets_log2: num_cosets.trailing_zeros(),
+        })
     }
 }
 
-impl<'a, F: PrimeField> PathQueriable<F> for OnDiskCosetTreePath<'a> {
+impl core::fmt::Debug for OnDiskCosetTree {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("OnDiskCosetTree")
+            .field("num_cosets", &self.subtrees.len())
+            .field("coset_tree_size", &self.coset_tree_size)
+            .finish()
+    }
+}
+
+impl PathQueriable for OnDiskCosetTree {
     fn get_cap(&self) -> MerkleTreeCapVarLength {
-        PathQueriable::<F>::get_cap(&self.top_tree)
+        PathQueriable::get_cap(&self.top_tree)
     }
 
-    fn get_proof<C: GoodAllocator>(
+    fn get_proof(
         &self,
         idx: usize,
     ) -> (
         [u32; DIGEST_SIZE_U32_WORDS],
-        Vec<[u32; DIGEST_SIZE_U32_WORDS], C>,
+        Vec<[u32; DIGEST_SIZE_U32_WORDS]>,
     ) {
-        // The monolithic tree lays cosets out in physical (bit-reversed) order; a
-        // leaf index decomposes into (physical coset slot, index within the coset).
+        // Monolithic layout puts cosets in physical (bit-reversed) order; a leaf
+        // index decomposes into (physical coset slot, index within the coset).
         let physical_slot = idx / self.coset_tree_size;
         let internal_index = idx % self.coset_tree_size;
         let natural_coset = bitreverse_index(physical_slot, self.cosets_log2);
-        // within-coset path (leaf -> coset root) from that coset's subtree,
         let (leaf, mut path) =
-            PathQueriable::<F>::get_proof::<C>(&self.subtrees[natural_coset], internal_index);
-        // then coset root -> cap from the top tree.
-        let (_root, top_path) = PathQueriable::<F>::get_proof::<C>(&self.top_tree, physical_slot);
+            PathQueriable::get_proof(&self.subtrees[natural_coset], internal_index);
+        let (_root, top_path) = PathQueriable::get_proof(&self.top_tree, physical_slot);
         path.extend_from_slice(&top_path);
         (leaf, path)
     }
 }
 
-/// The on-disk tree layout backing an on-disk setup commitment: either one
-/// monolithic tree file ([`MmapMerkleTreePath`]) or per-coset subtree files plus a
-/// top-tree ([`OnDiskCosetTreePath`]). Both serve identical inclusion paths.
-pub enum OnDiskTree<'a> {
-    Monolithic(MmapMerkleTreePath<'a>),
-    CosetSubtrees(OnDiskCosetTreePath<'a>),
+/// The on-disk tree layout backing an on-disk commitment: either one monolithic
+/// tree file ([`MmapMerkleTree`]) or per-coset subtree files plus a top-tree
+/// ([`OnDiskCosetTree`]). Owns all its mappings and is a self-contained
+/// [`PathQueriable`]. Covariant over the tree constructor `T` it was produced by.
+pub enum OnDiskTree<T> {
+    Monolithic {
+        tree: MmapMerkleTree,
+        _marker: PhantomData<fn() -> T>,
+    },
+    CosetSubtrees {
+        tree: OnDiskCosetTree,
+        _marker: PhantomData<fn() -> T>,
+    },
 }
 
-impl<'a, F: PrimeField> PathQueriable<F> for OnDiskTree<'a> {
-    fn get_cap(&self) -> MerkleTreeCapVarLength {
-        match self {
-            OnDiskTree::Monolithic(t) => PathQueriable::<F>::get_cap(t),
-            OnDiskTree::CosetSubtrees(t) => PathQueriable::<F>::get_cap(t),
+impl<T> OnDiskTree<T> {
+    #[inline]
+    pub fn monolithic(tree: MmapMerkleTree) -> Self {
+        OnDiskTree::Monolithic {
+            tree,
+            _marker: PhantomData,
         }
     }
 
-    fn get_proof<C: GoodAllocator>(
+    #[inline]
+    pub fn coset_subtrees(tree: OnDiskCosetTree) -> Self {
+        OnDiskTree::CosetSubtrees {
+            tree,
+            _marker: PhantomData,
+        }
+    }
+
+    #[inline]
+    pub fn layout(&self) -> OnDiskTreeLayout {
+        match self {
+            OnDiskTree::Monolithic { .. } => OnDiskTreeLayout::Monolithic,
+            OnDiskTree::CosetSubtrees { .. } => OnDiskTreeLayout::CosetSubtrees,
+        }
+    }
+}
+
+impl<T> core::fmt::Debug for OnDiskTree<T> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            OnDiskTree::Monolithic { tree, .. } => {
+                f.debug_tuple("OnDiskTree::Monolithic").field(tree).finish()
+            }
+            OnDiskTree::CosetSubtrees { tree, .. } => f
+                .debug_tuple("OnDiskTree::CosetSubtrees")
+                .field(tree)
+                .finish(),
+        }
+    }
+}
+
+impl<T> PathQueriable for OnDiskTree<T> {
+    fn get_cap(&self) -> MerkleTreeCapVarLength {
+        match self {
+            OnDiskTree::Monolithic { tree, .. } => PathQueriable::get_cap(tree),
+            OnDiskTree::CosetSubtrees { tree, .. } => PathQueriable::get_cap(tree),
+        }
+    }
+
+    fn get_proof(
         &self,
         idx: usize,
     ) -> (
         [u32; DIGEST_SIZE_U32_WORDS],
-        Vec<[u32; DIGEST_SIZE_U32_WORDS], C>,
+        Vec<[u32; DIGEST_SIZE_U32_WORDS]>,
     ) {
         match self {
-            OnDiskTree::Monolithic(t) => PathQueriable::<F>::get_proof::<C>(t, idx),
-            OnDiskTree::CosetSubtrees(t) => PathQueriable::<F>::get_proof::<C>(t, idx),
+            OnDiskTree::Monolithic { tree, .. } => PathQueriable::get_proof(tree, idx),
+            OnDiskTree::CosetSubtrees { tree, .. } => PathQueriable::get_proof(tree, idx),
         }
+    }
+}
+
+/// Shared orchestration for `ColumnMajorMerkleTreeConstructor::write_disk_artifacts`.
+///
+/// Concrete tree types delegate here, passing `layers_of` — an accessor that
+/// exposes a built tree's [`SerializableTreeLayers`] (the one piece that needs the
+/// concrete type's fields). This keeps the Monolithic/CosetSubtrees layout logic in
+/// one place instead of duplicating it across each tree impl.
+///
+/// [`OnDiskTreeLayout::Monolithic`] writes one tree file (`<base_path>.tree`);
+/// [`OnDiskTreeLayout::CosetSubtrees`] writes one cap-size-1 subtree file per coset
+/// (`<base_path>.subtree_NNNN.tree`) plus a top-tree (`<base_path>.toptree.tree`),
+/// processing ONE coset at a time (memory-light). Read back with [`open_disk_artifacts`].
+#[allow(clippy::too_many_arguments)]
+pub fn write_disk_artifacts<'a, F, T, E, LayersFn>(
+    base_path: &str,
+    layout: OnDiskTreeLayout,
+    num_cosets: usize,
+    mut producer: CosetColumnsProducer<'a, E>,
+    combine_by: usize,
+    cap_size: usize,
+    bitreverse_evaluations: bool,
+    bitreverse_cosets: bool,
+    bitreverse_leaf_hashes: bool,
+    worker: &Worker,
+    layers_of: LayersFn,
+) -> std::io::Result<()>
+where
+    F: PrimeField,
+    T: ColumnMajorMerkleTreeConstructor<F>,
+    E: FieldExtension<F> + 'a,
+    LayersFn: for<'b> Fn(&'b T) -> SerializableTreeLayers<'b>,
+    [(); E::DEGREE]: Sized,
+{
+    use std::io::BufWriter;
+    match layout {
+        OnDiskTreeLayout::Monolithic => {
+            let tree = T::construct_from_coset_producer::<E>(
+                num_cosets,
+                producer,
+                combine_by,
+                cap_size,
+                bitreverse_evaluations,
+                bitreverse_cosets,
+                bitreverse_leaf_hashes,
+                worker,
+            );
+            let mut f =
+                BufWriter::new(std::fs::File::create(monolithic_tree_file_path(base_path))?);
+            layers_of(&tree).write_to(&mut f)?;
+            f.flush()?;
+        }
+        OnDiskTreeLayout::CosetSubtrees => {
+            assert!(num_cosets.is_power_of_two());
+            assert!(
+                cap_size <= num_cosets,
+                "split layout requires cap_size ({cap_size}) <= num_cosets ({num_cosets})"
+            );
+            let cosets_log2 = num_cosets.trailing_zeros();
+            let mut natural_roots: Vec<[u32; DIGEST_SIZE_U32_WORDS]> =
+                Vec::with_capacity(num_cosets);
+            for coset_index in 0..num_cosets {
+                let columns = producer(coset_index);
+                let col_refs: Vec<&[E]> = columns.iter().map(|c| c.as_ref()).collect();
+                let coset_refs: &[&[E]] = &col_refs[..];
+                let trace: &[&[&[E]]] = std::slice::from_ref(&coset_refs);
+                // cap-1 subtree over just this coset (bitreverse_cosets is a no-op
+                // for a single coset; the top-tree carries the coset ordering).
+                let subtree = T::construct_from_cosets::<E>(
+                    trace,
+                    combine_by,
+                    1,
+                    bitreverse_evaluations,
+                    false,
+                    bitreverse_leaf_hashes,
+                    worker,
+                );
+                let mut f = BufWriter::new(std::fs::File::create(subtree_file_path(
+                    base_path,
+                    coset_index,
+                ))?);
+                layers_of(&subtree).write_to(&mut f)?;
+                f.flush()?;
+                natural_roots.push(subtree.get_cap().cap[0]);
+            }
+            let physical_roots: Vec<[u32; DIGEST_SIZE_U32_WORDS]> = (0..num_cosets)
+                .map(|k| natural_roots[bitreverse_index(k, cosets_log2)])
+                .collect();
+            let top_tree = T::build_over_leaf_hashes(physical_roots, cap_size, worker);
+            let mut f = BufWriter::new(std::fs::File::create(top_tree_file_path(base_path))?);
+            layers_of(&top_tree).write_to(&mut f)?;
+            f.flush()?;
+        }
+    }
+    Ok(())
+}
+
+/// Shared orchestration for `ColumnMajorMerkleTreeConstructor::open_disk_artifacts`.
+///
+/// Memory-maps the on-disk tree artifacts previously written by
+/// [`write_disk_artifacts`] at `base_path`, producing an [`OnDiskTree`]. `layout` is
+/// the layout the caller expects; this PANICS if the artifacts on disk are of a
+/// different layout. `num_cosets` is used only for the split layout. Needs no
+/// concrete-tree accessor — the reader types are field-agnostic.
+pub fn open_disk_artifacts<T>(
+    base_path: &str,
+    layout: OnDiskTreeLayout,
+    num_cosets: usize,
+) -> OnDiskTree<T> {
+    let mono_present = monolithic_tree_file_path(base_path).exists();
+    let split_present =
+        top_tree_file_path(base_path).exists() && subtree_file_path(base_path, 0).exists();
+    let on_disk_layout = match (mono_present, split_present) {
+        (true, false) => OnDiskTreeLayout::Monolithic,
+        (false, true) => OnDiskTreeLayout::CosetSubtrees,
+        (true, true) => {
+            panic!("both monolithic and split tree artifacts present at {base_path}")
+        }
+        (false, false) => panic!("no tree artifacts present at {base_path}"),
+    };
+    assert_eq!(
+        on_disk_layout, layout,
+        "on-disk tree layout ({on_disk_layout:?}) != caller-provided layout ({layout:?})"
+    );
+    match layout {
+        OnDiskTreeLayout::Monolithic => OnDiskTree::monolithic(
+            MmapMerkleTree::open(monolithic_tree_file_path(base_path))
+                .expect("open monolithic tree artifact"),
+        ),
+        OnDiskTreeLayout::CosetSubtrees => OnDiskTree::coset_subtrees(
+            OnDiskCosetTree::open(base_path, num_cosets).expect("open split tree artifacts"),
+        ),
     }
 }
 
@@ -419,7 +654,9 @@ mod test {
         let cols: Vec<Vec<Proth120>> = (0..num_columns)
             .map(|c| {
                 (0..trace_len)
-                    .map(|r| Proth120::new(((7 * (c * trace_len + r) + 1) as u128) % Proth120::ORDER))
+                    .map(|r| {
+                        Proth120::new(((7 * (c * trace_len + r) + 1) as u128) % Proth120::ORDER)
+                    })
                     .collect()
             })
             .collect();
@@ -427,32 +664,60 @@ mod test {
         let coset: &[&[Proth120]] = &col_refs;
         let trace: &[&[&[Proth120]]] = &[coset];
 
+        // Reference tree built in memory.
         let tree = <Keccak256MerkleTreeWithCap<Global> as ColumnMajorMerkleTreeConstructor<
             Proth120,
-        >>::construct_from_cosets::<Proth120, Global>(
-            trace, 1, cap_size, true, false, false, &worker,
+        >>::construct_from_cosets::<Proth120>(
+            trace, 1, cap_size, true, false, false, &worker
         );
 
-        let mut bytes = Vec::new();
-        tree.serialize_to_disk_format(&mut bytes).unwrap();
+        // Write + read back the monolithic artifact through the public disk API.
+        let prefix = format!(
+            "{}/on_disk_mono_roundtrip_{num_columns}_{trace_len_log2}_{cap_size}",
+            std::env::temp_dir().display()
+        );
+        let producer: crate::merkle_trees::CosetColumnsProducer<Proth120> = {
+            let col_refs = col_refs.clone();
+            Box::new(move |_coset: usize| {
+                col_refs
+                    .iter()
+                    .map(|c| std::borrow::Cow::Borrowed(*c))
+                    .collect()
+            })
+        };
+        <Keccak256MerkleTreeWithCap<Global> as ColumnMajorMerkleTreeConstructor<Proth120>>::write_disk_artifacts::<
+            Proth120,
+        >(
+            &prefix,
+            OnDiskTreeLayout::Monolithic,
+            1,
+            producer,
+            1,
+            cap_size,
+            true,
+            false,
+            false,
+            &worker,
+        )
+        .unwrap();
         let disk = <Keccak256MerkleTreeWithCap<Global> as ColumnMajorMerkleTreeConstructor<
             Proth120,
-        >>::disk_path(&bytes);
+        >>::open_disk_artifacts(&prefix, OnDiskTreeLayout::Monolithic, 1);
 
         assert_eq!(
-            PathQueriable::<Proth120>::get_cap(&disk),
-            ColumnMajorMerkleTreeConstructor::<Proth120>::get_cap(&tree),
+            PathQueriable::get_cap(&disk),
+            PathQueriable::get_cap(&tree),
             "cap mismatch (cols={num_columns}, tl={trace_len_log2}, cap={cap_size})"
         );
 
         for idx in 0..trace_len {
-            let (want_leaf, want_path) =
-                ColumnMajorMerkleTreeConstructor::<Proth120>::get_proof::<Global>(&tree, idx);
-            let (got_leaf, got_path) =
-                PathQueriable::<Proth120>::get_proof::<Global>(&disk, idx);
+            let (want_leaf, want_path) = PathQueriable::get_proof(&tree, idx);
+            let (got_leaf, got_path) = PathQueriable::get_proof(&disk, idx);
             assert_eq!(got_leaf, want_leaf, "leaf hash @ {idx}");
             assert_eq!(got_path, want_path, "path @ {idx}");
         }
+        drop(disk);
+        let _ = std::fs::remove_file(monolithic_tree_file_path(&prefix));
     }
 
     #[test]

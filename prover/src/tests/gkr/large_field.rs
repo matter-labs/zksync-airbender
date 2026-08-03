@@ -320,11 +320,8 @@ fn gkr_unified_packed_commitment_basic_fibonacci() {
     };
     use crate::gkr::whir::coset_commit::serialize_packed_base_commitment_split_to_disk;
     use crate::gkr::whir::rs_on_disk::{coset_file_path, OnDiskRsCodewords};
-    use crate::merkle_trees::on_disk::{
-        subtree_file_path, top_tree_file_path, OnDiskCosetTreePath, OnDiskTree,
-    };
-    use crate::merkle_trees::RSQueriable;
-    use mmap_io::MemoryMappedFile;
+    use crate::merkle_trees::on_disk::{top_tree_file_path, OnDiskTreeLayout};
+    use crate::merkle_trees::{ColumnMajorMerkleTreeConstructor, RSQueriable};
 
     let setup = GKRSetup::construct(&table_driver, &decoder_table, trace_len, &unified_circuit);
 
@@ -339,13 +336,8 @@ fn gkr_unified_packed_commitment_basic_fibonacci() {
     let setup_coset_paths: Vec<_> = (0..lde_factor)
         .map(|i| coset_file_path(setup_disk_prefix, i))
         .collect();
-    let setup_subtree_paths: Vec<_> = (0..lde_factor)
-        .map(|i| subtree_file_path(setup_disk_prefix, i))
-        .collect();
-    let setup_toptree_path = top_tree_file_path(setup_disk_prefix);
-    let setup_on_disk_present = setup_toptree_path.exists()
-        && setup_coset_paths.iter().all(|p| p.exists())
-        && setup_subtree_paths.iter().all(|p| p.exists());
+    let setup_on_disk_present = top_tree_file_path(setup_disk_prefix).exists()
+        && setup_coset_paths.iter().all(|p| p.exists());
 
     if !setup_on_disk_present {
         println!("On-disk setup not present; preparing coset-by-coset (split tree) and caching");
@@ -366,31 +358,18 @@ fn gkr_unified_packed_commitment_basic_fibonacci() {
         println!("Reusing cached on-disk setup at prefix {setup_disk_prefix}");
     }
 
-    // Open the on-disk setup: RS codewords + per-coset subtree files + top-tree, all
+    // Open the on-disk setup: RS codewords + the split (per-coset subtree) tree, all
     // memory-mapped and read lazily.
     let setup_rs =
         OnDiskRsCodewords::<Proth120>::open(setup_coset_paths).expect("open on-disk setup RS");
     let setup_coset_size_log2 = RSQueriable::coset_size_log2(&setup_rs);
-    let coset_tree_size = (1usize << setup_coset_size_log2) / values_per_leaf;
-
-    let setup_subtree_mmaps: Vec<MemoryMappedFile> = setup_subtree_paths
-        .iter()
-        .map(|p| MemoryMappedFile::open_ro(p).expect("mmap setup subtree"))
-        .collect();
-    let setup_toptree_mmap =
-        MemoryMappedFile::open_ro(&setup_toptree_path).expect("mmap setup top-tree");
-    let subtree_slices: Vec<&[u8]> = setup_subtree_mmaps
-        .iter()
-        .map(|m| m.as_slice_bytes(0, m.len()).expect("subtree slice"))
-        .collect();
-    let toptree_slice = setup_toptree_mmap
-        .as_slice_bytes(0, setup_toptree_mmap.len())
-        .expect("top-tree slice");
-    let setup_disk_tree = OnDiskTree::CosetSubtrees(OnDiskCosetTreePath::from_parts(
-        subtree_slices,
-        toptree_slice,
-        coset_tree_size,
-    ));
+    let setup_disk_tree = <Keccak256MerkleTreeWithCap as ColumnMajorMerkleTreeConstructor<
+        Proth120,
+    >>::open_disk_artifacts(
+        setup_disk_prefix,
+        OnDiskTreeLayout::CosetSubtrees,
+        lde_factor,
+    );
 
     let setup_commitment = SetupCommitment::OnDisk {
         rs: Box::new(setup_rs),

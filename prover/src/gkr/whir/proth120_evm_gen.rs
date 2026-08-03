@@ -167,14 +167,14 @@ fn run_generation(cfg: &GenConfig, worker: &Worker) {
                 coset_size_log2: n,
             };
             let cap = c.get_cap();
-            let cap_tree = Tree::continue_from_leaf_hashes(cap.cap.clone(), cap.cap.len(), worker);
             ColumnMajorBaseOracleForLDE {
                 cosets: Box::new(MaterializedCosets {
                     cosets: vec![coset0],
                 }),
-                tree: cap_tree,
+                tree: Box::new(crate::merkle_trees::CapOnlyTree::new(cap)),
                 values_per_leaf: c.values_per_leaf,
                 coset_size_log2: n,
+                _marker: core::marker::PhantomData,
             }
         };
     log("building slim base oracles (coset 0 + cap)");
@@ -218,12 +218,13 @@ fn run_generation(cfg: &GenConfig, worker: &Worker) {
     let seed = Keccak256Seed(seed_bytes);
 
     log("running whir_fold (folding rounds + PoW grinding)");
+    let setup_commitment = crate::gkr::prover::SetupCommitment::InMemory(setup_oracle);
     let proof = whir_fold::<Proth120, Proth120, Tree, Keccak256Transcript>(
         mem_oracle,
         mem_claims.clone(),
         wit_oracle,
         wit_claims.clone(),
-        &setup_oracle,
+        &setup_commitment,
         vec![],
         z.clone(),
         batching_challenge,

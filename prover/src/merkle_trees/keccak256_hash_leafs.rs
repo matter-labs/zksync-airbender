@@ -56,7 +56,7 @@ pub(crate) fn encode_proth120_be_into(el: &Proth120, dst: &mut Vec<u8>) {
     dst.extend_from_slice(&el.to_u128().to_be_bytes());
 }
 
-pub fn keccak256_leaf_hashes_from_cosets<E, A, B>(
+pub fn keccak256_leaf_hashes_from_cosets<E, B>(
     trace: &[&[&[E]]],
     combine_by: usize,
     bitreverse_evaluations: bool,
@@ -66,7 +66,6 @@ pub fn keccak256_leaf_hashes_from_cosets<E, A, B>(
 ) -> Vec<[u32; KECCAK256_DIGEST_SIZE_U32_WORDS], B>
 where
     E: FieldExtension<Proth120>,
-    A: GoodAllocator,
     B: GoodAllocator,
     [(); E::DEGREE]: Sized,
 {

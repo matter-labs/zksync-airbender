@@ -71,23 +71,25 @@ use crate::gkr::prover::transcript_utils::{
 use crate::gkr::prover::WhirSchedule;
 use crate::gkr::sumcheck::eq_poly::{make_domain_eq_poly_in_full, make_eq_poly_in_full};
 use crate::gkr::sumcheck::*;
-use crate::gkr::whir::hypercube_to_monomial::multivariate_coeffs_into_hypercube_evals;
+use crate::gkr::whir::hypercube_to_monomial::{
+    multivariate_coeffs_into_hypercube_evals, parallel_multivariate_coeffs_into_hypercube_evals,
+};
 use crate::gkr::PAR_THRESHOLD;
 use crate::query_utils::assemble_query_index;
 use crate::{
     gkr::prover::apply_row_wise,
     merkle_trees::{
-        ColumnMajorMerkleTreeConstructor, MainDomainColumn, MerkleTreeCapVarLength, RSQueriable,
-        SingleCosetRSQueriable,
+        ColumnMajorMerkleTreeConstructor, MainDomainColumn, MerkleTreeCapVarLength, PathQueriable,
+        RSQueriable, SingleCosetRSQueriable,
     },
 };
-use std::borrow::Cow;
 use fft::{
     batch_inverse_inplace, bitreverse_enumeration_inplace, bitreverse_index,
     domain_generator_for_size, materialize_powers_serial_starting_with_one, Twiddles,
 };
 use field::{Field, FieldExtension, PrimeField, TwoAdicField};
 use std::alloc::Global;
+use std::borrow::Cow;
 use std::sync::Arc;
 use transcript::Transcript;
 use worker::{IterableWithGeometry, Worker};
@@ -243,9 +245,12 @@ pub struct ColumnMajorBaseOracleForLDE<
     /// commitment). Kept behind a trait object so the storage policy is decoupled
     /// from the query logic.
     pub cosets: BoxedBaseRSSource<F>,
-    pub tree: T,
+    /// Merkle cap + inclusion paths, behind a trait object so the oracle is decoupled
+    /// from the concrete tree type (which now only appears in `BaseFieldQuery<F, T>`).
+    pub tree: Box<dyn PathQueriable>,
     pub values_per_leaf: usize,
     pub coset_size_log2: usize,
+    pub _marker: core::marker::PhantomData<T>,
 }
 
 impl<F: PrimeField + TwoAdicField, T: ColumnMajorMerkleTreeConstructor<F>>
@@ -269,9 +274,10 @@ impl<F: PrimeField + TwoAdicField, T: ColumnMajorMerkleTreeConstructor<F>>
 
         Self {
             cosets: Box::new(MaterializedCosets { cosets }),
-            tree: T::dummy(),
+            tree: Box::new(T::dummy()),
             values_per_leaf,
             coset_size_log2,
+            _marker: core::marker::PhantomData,
         }
     }
 
@@ -309,8 +315,7 @@ impl<F: PrimeField + TwoAdicField, T: ColumnMajorMerkleTreeConstructor<F>>
             // the coset-by-coset tests already validate that leaf hashing against the
             // monolithic tree.
             if core::mem::size_of::<F>() <= core::mem::size_of::<u32>() {
-                let recomputed =
-                    Self::compute_base_field_leaf_hash(&values, self.values_per_leaf);
+                let recomputed = Self::compute_base_field_leaf_hash(&values, self.values_per_leaf);
                 assert_eq!(
                     recomputed, _leaf_hash,
                     "Leaf hash mismatch at query_index={index}, tree_index={tree_index}"
@@ -605,7 +610,7 @@ pub fn whir_fold<
     mem_polys_claims: Vec<E>,
     wit_oracle: ColumnMajorBaseOracleForLDE<F, T>,
     wit_polys_claims: Vec<E>,
-    setup_oracle: &ColumnMajorBaseOracleForLDE<F, T>,
+    setup: &crate::gkr::prover::SetupCommitment<F, T>,
     setup_polys_claims: Vec<E>,
     original_evaluation_point: Vec<E>,
     batching_challenge: E,
@@ -630,6 +635,52 @@ where
     [(); E::DEGREE]: Sized,
 {
     let two_inv = F::TWO.inverse().unwrap();
+
+    // The setup oracle view whir_fold reads for batching + cap. `InMemory`: the
+    // borrowed oracle (with its real tree). `OnDisk`: a slim oracle — main-domain
+    // columns from the on-disk RS source + a cap-only tree; its round-0 inclusion
+    // paths come from `setup.hook_query` (set 2 in the query loop below), never from
+    // the cap-only tree.
+    let setup_slim_owned: Option<ColumnMajorBaseOracleForLDE<F, T>> = if setup.is_on_disk() {
+        let num_columns = setup.num_columns();
+        let coset0: Vec<ColumnMajorCosetBoundTracePart<F, F>> = (0..num_columns)
+            .map(|c| ColumnMajorCosetBoundTracePart {
+                column: Arc::new(setup.main_domain_column(c).into_owned().into_boxed_slice()),
+                offset: F::ONE,
+            })
+            .collect();
+        Some(ColumnMajorBaseOracleForLDE {
+            cosets: Box::new(MaterializedCosets {
+                cosets: vec![ColumnMajorBaseOracleForCoset {
+                    original_values_normal_order: coset0,
+                    offset: F::ONE,
+                    coset_size_log2: setup.coset_size_log2(),
+                }],
+            }),
+            tree: Box::new(crate::merkle_trees::CapOnlyTree::new(setup.get_cap())),
+            values_per_leaf: setup.values_per_leaf(),
+            coset_size_log2: setup.coset_size_log2(),
+            _marker: core::marker::PhantomData,
+        })
+    } else {
+        None
+    };
+    let setup_oracle: &ColumnMajorBaseOracleForLDE<F, T> = match &setup_slim_owned {
+        Some(slim) => slim,
+        None => setup.as_in_memory_oracle(),
+    };
+
+    // Round-0 base query source. Sets 0 (memory) and 1 (witness) come from the passed
+    // hook (present when those RS codewords are recomputed); set 2 (setup) comes from
+    // `setup.hook_query` for the on-disk setup, else falls back to `setup_oracle`.
+    let combined_query_hook =
+        |set_idx: usize, query_index: usize| -> Option<(Vec<Vec<F>>, BaseFieldQuery<F, T>)> {
+            if set_idx == 2 {
+                setup.hook_query(query_index)
+            } else {
+                base_query_hook.and_then(|hook| hook(set_idx, query_index))
+            }
+        };
 
     let oracle_refs = [&mem_oracle, &wit_oracle, setup_oracle];
     let evals_refs = [&mem_polys_claims, &wit_polys_claims, &setup_polys_claims];
@@ -837,16 +888,33 @@ where
     } else {
         compute_column_major_monomial_form_from_main_domain_owned(batched_evals, twiddles)
     };
-    for (m, d) in monomial_form.iter_mut().zip(batched_monomials_direct.iter()) {
-        m.add_assign(d);
-    }
+    // `monomial_form += batched_monomials_direct` (both are `1 << trace_len_log2`
+    // long — `batch_columns` always returns a full zero-filled buffer), parallelized
+    // over disjoint row chunks.
+    worker.scope(monomial_form.len(), |scope, geometry| {
+        let mut m_rest = &mut monomial_form[..];
+        let mut d_rest = &batched_monomials_direct[..];
+        for thread_idx in 0..geometry.len() {
+            let chunk_size = geometry.get_chunk_size(thread_idx);
+            let (m_chunk, m_tail) = m_rest.split_at_mut(chunk_size);
+            m_rest = m_tail;
+            let (d_chunk, d_tail) = d_rest.split_at(chunk_size);
+            d_rest = d_tail;
+            Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| {
+                for (m, d) in m_chunk.iter_mut().zip(d_chunk.iter()) {
+                    m.add_assign(d);
+                }
+            });
+        }
+    });
 
     assert_eq!(monomial_form.len(), 1 << trace_len_log2);
 
     let mut sumcheck_evals = monomial_form.clone();
-    multivariate_coeffs_into_hypercube_evals(
+    parallel_multivariate_coeffs_into_hypercube_evals(
         &mut sumcheck_evals,
         monomial_form.len().trailing_zeros(),
+        worker,
     );
     bitreverse_enumeration_inplace(&mut sumcheck_evals);
 
@@ -1159,8 +1227,7 @@ where
                     // `None` for sets it doesn't own, which fall back to the
                     // materialized oracle. This lets e.g. an on-disk setup set be
                     // hooked while in-memory memory/witness sets are not.
-                    let (leaf, query) = match base_query_hook.and_then(|hook| hook(set_idx, query_index))
-                    {
+                    let (leaf, query) = match combined_query_hook(set_idx, query_index) {
                         Some(pair) => pair,
                         None => {
                             let (_idx, leaf, query) = oracle.query_for_folded_index(query_index);
@@ -1972,7 +2039,7 @@ where
         .collect();
     let source_ref: Vec<_> = source.iter().map(|el| &el[..]).collect();
 
-    let tree = T::construct_from_cosets::<E, Global>(
+    let tree = T::construct_from_cosets::<E>(
         &source_ref[..],
         values_per_leaf,
         tree_cap_size,
@@ -2025,7 +2092,7 @@ where
         .collect();
     let source_ref: Vec<_> = source.iter().map(|el| &el[..]).collect();
 
-    let tree = T::construct_from_cosets::<E, Global>(
+    let tree = T::construct_from_cosets::<E>(
         &source_ref[..],
         values_per_leaf,
         tree_cap_size,
@@ -2104,7 +2171,7 @@ where
         .collect();
     let source_ref: Vec<_> = source.iter().map(|el| &el[..]).collect();
 
-    let tree = T::construct_from_cosets::<E, Global>(
+    let tree = T::construct_from_cosets::<E>(
         &source_ref[..],
         values_per_leaf,
         tree_cap_size,
@@ -2228,7 +2295,7 @@ where
         .collect();
     let source_ref: Vec<_> = source.iter().map(|el| &el[..]).collect();
 
-    let tree = T::construct_from_cosets::<E, Global>(
+    let tree = T::construct_from_cosets::<E>(
         &source_ref[..],
         values_per_leaf,
         tree_cap_size,
@@ -3603,12 +3670,13 @@ mod test {
             whir_pow_schedule: vec![10, 10, 10],
         };
 
+        let setup_commitment = crate::gkr::prover::SetupCommitment::InMemory(setup);
         let proof = whir_fold::<F, E, _, ::transcript::Blake2sTranscript>(
             mem,
             a,
             wit,
             b,
-            &setup,
+            &setup_commitment,
             c,
             original_evaluation_point,
             E::from_base(F::from_u32_with_reduction(7)),
