@@ -171,7 +171,7 @@ impl ProverContext {
             let _ = era_cudart::error::get_last_error();
         }
         slack.free()?;
-        log::info!(
+        log::debug!(
             "GPU device memory pool created: {} bytes ({} blocks of 2^{} bytes) on device {device_id}",
             arena_bytes,
             arena_bytes >> allocator_block_log_size,
