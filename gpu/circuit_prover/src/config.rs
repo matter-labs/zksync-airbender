@@ -54,20 +54,8 @@ fn config_for_supported_level(
     circuit_type: CircuitType,
     security_level: SecurityLevel,
 ) -> ProverConfig {
-    let domain_size_log_2 = circuit_type.get_domain_size_log2();
-    // CPU's `example_configs` only defines schedules for {20, 22, 24}; collapse
-    // 23 onto 24 to match the previous GPU mapping.
-    let schedule_log_2 = match domain_size_log_2 {
-        20 | 22 | 24 => domain_size_log_2,
-        23 => 24,
-        other => {
-            panic!(
-                "no ProverConfig for circuit {circuit_type:?} at {security_level:?} \
-                 (domain_size_log_2 = {other})"
-            )
-        }
-    };
-    config_for_security_level_under_pessimistic_conjecture(schedule_log_2 as usize, security_level)
+    let domain_size_log_2 = circuit_type.get_domain_size_log2() as usize;
+    config_for_security_level_under_pessimistic_conjecture(domain_size_log_2, security_level)
 }
 
 /// PoW bit count for the lookup challenges (`lookup_alpha`, `lookup_additive`),
@@ -112,6 +100,16 @@ mod tests {
         for &level in GPU_SUPPORTED_SECURITY_LEVELS.iter() {
             let cfg = prover_config(circuit_type, level).unwrap();
             assert_eq!(cfg.security_level, level);
+        }
+    }
+
+    #[test]
+    fn unified_uses_its_canonical_schedule() {
+        let circuit = CircuitType::Unrolled(UnrolledCircuitType::Unified);
+        for &level in GPU_SUPPORTED_SECURITY_LEVELS.iter() {
+            let actual = prover_config(circuit, level).unwrap();
+            let expected = config_for_security_level_under_pessimistic_conjecture(23, level);
+            assert_eq!(actual.whir_schedule, expected.whir_schedule);
         }
     }
 }

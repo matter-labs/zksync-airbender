@@ -81,5 +81,6 @@ pub(crate) use setups::{
     inits_and_teardowns, AddSubLuiAuipcMopCircuit, BigIntDelegationCircuit,
     Blake2sGFunctionDelegationCircuit, Blake2sWithCompressionDelegationCircuit,
     JumpBranchSltCircuit, KeccakSpecial5DelegationCircuit, LoadStoreSubwordOnlyCircuit,
-    LoadStoreWordOnlyCircuit, ShiftBinaryCircuit, UnsignedMulDivCircuit,
+    LoadStoreWordOnlyCircuit, ShiftBinaryCircuit, UnifiedReducedMachineCircuit,
+    UnsignedMulDivCircuit,
 };
