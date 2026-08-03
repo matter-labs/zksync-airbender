@@ -12,7 +12,7 @@ where
 use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::field::E4;
 
-use crate::upstream::NoFieldMaxQuadraticConstraintsGKRRelation;
+use crate::upstream::{NoFieldMaxQuadraticConstraintsGKRRelation, NoFieldVectorLookupRelation};
 use era_cudart::memory::memory_copy_async;
 
 pub(super) fn sample_ext(seed: u32) -> E4 {
@@ -314,10 +314,8 @@ pub(super) fn expected_lookup_pair_reduction(num: &[E4], den: &[E4]) -> (Vec<E4>
     (reduced_num, reduced_den)
 }
 
-pub(super) fn vector_lookup_relation(
-    lookup_set_index: usize,
-) -> cs::definitions::gkr::NoFieldVectorLookupRelation {
-    cs::definitions::gkr::NoFieldVectorLookupRelation {
+pub(super) fn vector_lookup_relation(lookup_set_index: usize) -> NoFieldVectorLookupRelation {
+    NoFieldVectorLookupRelation {
         columns: Box::new([]),
         lookup_set_index,
     }

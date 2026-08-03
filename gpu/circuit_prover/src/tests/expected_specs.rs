@@ -32,7 +32,7 @@ fn remap_expected_constraint_input(
 }
 
 fn expected_single_max_quadratic_constraint_inputs_and_metadata<E: Field + FieldExtension<BF>>(
-    relation: &NoFieldMaxQuadraticGKRRelation,
+    relation: &NoFieldMaxQuadraticGKRRelation<BF>,
 ) -> (GKRInputs, ExpectedMainLayerConstraintMetadata<E>) {
     let mut mapping = BTreeMap::new();
     let mut inputs = Vec::new();
@@ -42,7 +42,7 @@ fn expected_single_max_quadratic_constraint_inputs_and_metadata<E: Field + Field
     for (lhs, rhs_terms) in relation.quadratic_terms.iter() {
         let lhs_idx = remap_expected_constraint_input(&mut mapping, &mut inputs, *lhs);
         for (coeff, rhs) in rhs_terms.iter() {
-            let coeff_bf = BF::from_u32_with_reduction(*coeff);
+            let coeff_bf = *coeff;
             let rhs_idx = if *lhs == *rhs {
                 lhs_idx
             } else {
@@ -63,7 +63,7 @@ fn expected_single_max_quadratic_constraint_inputs_and_metadata<E: Field + Field
     }
 
     for (coeff, input) in relation.linear_terms.iter() {
-        let coeff_bf = BF::from_u32_with_reduction(*coeff);
+        let coeff_bf = *coeff;
         let input_idx = remap_expected_constraint_input(&mut mapping, &mut inputs, *input);
         linear_terms.push(gpu_gkr::backward::GpuGKRMainLayerConstraintLinearTerm {
             input: input_idx as u32,
@@ -83,13 +83,13 @@ fn expected_single_max_quadratic_constraint_inputs_and_metadata<E: Field + Field
         ExpectedMainLayerConstraintMetadata {
             quadratic_terms,
             linear_terms,
-            constant_offset: E::from_base(BF::from_u32_with_reduction(relation.constant)),
+            constant_offset: E::from_base(relation.constant),
         },
     )
 }
 
 fn expected_linear_base_kernel_inputs_and_metadata<E: Field + FieldExtension<BF>>(
-    relation: &cs::definitions::gkr::NoFieldLinearRelation,
+    relation: &cs::definitions::gkr::NoFieldLinearRelation<BF>,
     output: GKRAddress,
 ) -> (GKRInputs, ExpectedMainLayerConstraintMetadata<E>) {
     let mut mapping = BTreeMap::new();
@@ -97,7 +97,7 @@ fn expected_linear_base_kernel_inputs_and_metadata<E: Field + FieldExtension<BF>
     let mut linear_terms = Vec::new();
 
     for (coeff, input) in relation.linear_terms.iter() {
-        let coeff_bf = BF::from_u32_with_reduction(*coeff);
+        let coeff_bf = *coeff;
         let input_idx = remap_expected_constraint_input(&mut mapping, &mut inputs, *input);
         linear_terms.push(gpu_gkr::backward::GpuGKRMainLayerConstraintLinearTerm {
             input: input_idx as u32,
@@ -117,13 +117,13 @@ fn expected_linear_base_kernel_inputs_and_metadata<E: Field + FieldExtension<BF>
         ExpectedMainLayerConstraintMetadata {
             quadratic_terms: Vec::new(),
             linear_terms,
-            constant_offset: E::from_base(BF::from_u32_with_reduction(relation.constant)),
+            constant_offset: E::from_base(relation.constant),
         },
     )
 }
 
 pub(crate) fn expected_main_layer_kernel_specs_for_test<E: Field + FieldExtension<BF>>(
-    layer: &GKRLayerDescription,
+    layer: &GKRLayerDescription<BF>,
     layer_idx: usize,
     storage: &GpuGKRStorage<BF, E>,
     external_challenges: &GKRExternalChallenges<BF, E>,
@@ -445,7 +445,7 @@ pub(crate) fn expected_main_layer_kernel_specs_for_test<E: Field + FieldExtensio
                     "batched max-quadratic constraints not supported on GPU; cs/ must emit EnforceSingleMaxQuadraticConstraint (USE_BATCHING=false)"
                 );
             }
-            NoFieldGKRRelation::EnforceSingleMaxQuadraticConstraint { input } => {
+            NoFieldGKRRelation::EnforceSingleMaxQuadraticConstraint { input, .. } => {
                 let (inputs, constraint_metadata) =
                     expected_single_max_quadratic_constraint_inputs_and_metadata::<E>(input);
                 specs.push(ExpectedMainLayerKernelSpec {

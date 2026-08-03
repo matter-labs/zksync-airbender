@@ -236,7 +236,12 @@ pub(super) fn prepare_inits_and_teardowns_proof_fixture(
             trace_len.trailing_zeros() as usize,
             &worker,
         );
-        Some(prove_configured_with_gkr::<BF, E4, DefaultTreeConstructor>(
+        Some(prove_configured_with_gkr::<
+            BF,
+            E4,
+            DefaultTreeConstructor,
+            Blake2sTranscript,
+        >(
             &compiled_circuit,
             &external_challenges,
             make_full_trace(),
@@ -244,6 +249,7 @@ pub(super) fn prepare_inits_and_teardowns_proof_fixture(
             &setup_commitment,
             &twiddles,
             &prover_config,
+            CommitmentMode::SeparateMemoryAndWitness,
             canonical_top_bits.clone(),
             trace_len,
             &worker,
@@ -460,18 +466,20 @@ fn standalone_inits_and_teardowns_gpu_workflow_matches_cpu() {
         trace_len.trailing_zeros() as usize,
         &worker,
     );
-    let expected_cpu_proof = prove_configured_with_gkr::<BF, E4, DefaultTreeConstructor>(
-        &compiled_circuit,
-        &external_challenges,
-        cpu_full_trace_for_proof,
-        &setup,
-        &setup_commitment,
-        &twiddles,
-        &prover_config,
-        canonical_top_bits.clone(),
-        trace_len,
-        &worker,
-    );
+    let expected_cpu_proof =
+        prove_configured_with_gkr::<BF, E4, DefaultTreeConstructor, Blake2sTranscript>(
+            &compiled_circuit,
+            &external_challenges,
+            cpu_full_trace_for_proof,
+            &setup,
+            &setup_commitment,
+            &twiddles,
+            &prover_config,
+            CommitmentMode::SeparateMemoryAndWitness,
+            canonical_top_bits.clone(),
+            trace_len,
+            &worker,
+        );
     let (mem_oracle, _wit_oracle) = stage1::stage1::<BF, DefaultTreeConstructor>(
         &cpu_full_trace_for_stagewise,
         &twiddles,
@@ -563,9 +571,10 @@ fn standalone_inits_and_teardowns_gpu_workflow_matches_cpu() {
             &mut cpu_transcript_input,
         );
         let mut cpu_seed = Transcript::commit_initial(&cpu_transcript_input);
-        let cpu_lookup_challenges: [E4; 3] = draw_random_field_els::<BF, E4>(&mut cpu_seed, 3)
-            .try_into()
-            .unwrap();
+        let cpu_lookup_challenges: [E4; 3] =
+            draw_random_field_els::<BF, E4, Blake2sTranscript>(&mut cpu_seed, 3)
+                .try_into()
+                .unwrap();
 
         let mut gpu_transcript_input = Vec::new();
         gpu_transcript_input.extend_from_slice(&canonical_top_bits);
@@ -581,9 +590,10 @@ fn standalone_inits_and_teardowns_gpu_workflow_matches_cpu() {
             }
         }
         let mut gpu_seed = Transcript::commit_initial(&gpu_transcript_input);
-        let gpu_lookup_challenges: [E4; 3] = draw_random_field_els::<BF, E4>(&mut gpu_seed, 3)
-            .try_into()
-            .unwrap();
+        let gpu_lookup_challenges: [E4; 3] =
+            draw_random_field_els::<BF, E4, Blake2sTranscript>(&mut gpu_seed, 3)
+                .try_into()
+                .unwrap();
         assert_eq!(
             gpu_seed, cpu_seed,
             "transcript seed initialization diverged"

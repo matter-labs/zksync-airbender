@@ -7,8 +7,39 @@ use super::{build_main_layer_kernel_blueprints, sample_ext, sample_external_chal
 use crate::upstream::{
     high_bits_offset_for_inits_and_teardowns, Field, GKRAddress, GKRLayerDescription,
     GateArtifacts, InitsOrTeardownsTimestampAndValue, NoFieldGKRRelation,
-    NoFieldMaxQuadraticGKRRelation, VirtualSetupPoly,
+    NoFieldMaxQuadraticGKRRelation, NoFieldStructuredExpression, PrimeField, VirtualSetupPoly,
 };
+
+fn max_quadratic_expression() -> NoFieldStructuredExpression<BF> {
+    use NoFieldStructuredExpression::{Constant, Place, Product, Sum};
+
+    Sum(vec![
+        Constant(BF::from_u32_unchecked(13)),
+        Product(vec![
+            Constant(BF::from_u32_unchecked(2)),
+            Place(GKRAddress::BaseLayerMemory(0)),
+            Place(GKRAddress::BaseLayerWitness(1)),
+        ]),
+        Product(vec![
+            Constant(BF::from_u32_unchecked(3)),
+            Place(GKRAddress::BaseLayerMemory(0)),
+            Place(GKRAddress::BaseLayerMemory(0)),
+        ]),
+        Product(vec![
+            Constant(BF::from_u32_unchecked(5)),
+            Place(GKRAddress::BaseLayerWitness(2)),
+            Place(GKRAddress::BaseLayerWitness(1)),
+        ]),
+        Product(vec![
+            Constant(BF::from_u32_unchecked(7)),
+            Place(GKRAddress::BaseLayerMemory(3)),
+        ]),
+        Product(vec![
+            Constant(BF::from_u32_unchecked(11)),
+            Place(GKRAddress::BaseLayerWitness(2)),
+        ]),
+    ])
+}
 
 #[test]
 fn single_max_quadratic_constraint_uses_direct_metadata_and_no_outputs() {
@@ -21,23 +52,24 @@ fn single_max_quadratic_constraint_uses_direct_metadata_and_no_outputs() {
             (
                 GKRAddress::BaseLayerMemory(0),
                 vec![
-                    (2u32, GKRAddress::BaseLayerWitness(1)),
-                    (3u32, GKRAddress::BaseLayerMemory(0)),
+                    (BF::from_u32_unchecked(2), GKRAddress::BaseLayerWitness(1)),
+                    (BF::from_u32_unchecked(3), GKRAddress::BaseLayerMemory(0)),
                 ]
                 .into_boxed_slice(),
             ),
             (
                 GKRAddress::BaseLayerWitness(2),
-                vec![(5u32, GKRAddress::BaseLayerWitness(1))].into_boxed_slice(),
+                vec![(BF::from_u32_unchecked(5), GKRAddress::BaseLayerWitness(1))]
+                    .into_boxed_slice(),
             ),
         ]
         .into_boxed_slice(),
         linear_terms: vec![
-            (7u32, GKRAddress::BaseLayerMemory(3)),
-            (11u32, GKRAddress::BaseLayerWitness(2)),
+            (BF::from_u32_unchecked(7), GKRAddress::BaseLayerMemory(3)),
+            (BF::from_u32_unchecked(11), GKRAddress::BaseLayerWitness(2)),
         ]
         .into_boxed_slice(),
-        constant: 13,
+        constant: BF::from_u32_unchecked(13),
     };
     let layer = GKRLayerDescription {
         layer: 0,
@@ -48,6 +80,7 @@ fn single_max_quadratic_constraint_uses_direct_metadata_and_no_outputs() {
             output_layer: 1,
             enforced_relation: NoFieldGKRRelation::EnforceSingleMaxQuadraticConstraint {
                 input: constraint_input.clone(),
+                expression: max_quadratic_expression(),
             },
         }],
     };
@@ -102,23 +135,24 @@ fn max_quadratic_relation_dispatches_with_base_output() {
             (
                 GKRAddress::BaseLayerMemory(0),
                 vec![
-                    (2u32, GKRAddress::BaseLayerWitness(1)),
-                    (3u32, GKRAddress::BaseLayerMemory(0)),
+                    (BF::from_u32_unchecked(2), GKRAddress::BaseLayerWitness(1)),
+                    (BF::from_u32_unchecked(3), GKRAddress::BaseLayerMemory(0)),
                 ]
                 .into_boxed_slice(),
             ),
             (
                 GKRAddress::BaseLayerWitness(2),
-                vec![(5u32, GKRAddress::BaseLayerWitness(1))].into_boxed_slice(),
+                vec![(BF::from_u32_unchecked(5), GKRAddress::BaseLayerWitness(1))]
+                    .into_boxed_slice(),
             ),
         ]
         .into_boxed_slice(),
         linear_terms: vec![
-            (7u32, GKRAddress::BaseLayerMemory(3)),
-            (11u32, GKRAddress::BaseLayerWitness(2)),
+            (BF::from_u32_unchecked(7), GKRAddress::BaseLayerMemory(3)),
+            (BF::from_u32_unchecked(11), GKRAddress::BaseLayerWitness(2)),
         ]
         .into_boxed_slice(),
-        constant: 13,
+        constant: BF::from_u32_unchecked(13),
     };
     let output_address = GKRAddress::ScratchSpace(0);
     let layer = GKRLayerDescription {
@@ -130,6 +164,7 @@ fn max_quadratic_relation_dispatches_with_base_output() {
             output_layer: 1,
             enforced_relation: NoFieldGKRRelation::MaxQuadratic {
                 input: constraint_input.clone(),
+                expression: max_quadratic_expression(),
                 output: output_address,
             },
         }],

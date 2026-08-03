@@ -255,7 +255,7 @@ where
         num_delegation_cycles.trailing_zeros() as usize,
         worker,
     );
-    prove_configured_with_gkr::<BF, E4, DefaultTreeConstructor>(
+    prove_configured_with_gkr::<BF, E4, DefaultTreeConstructor, Blake2sTranscript>(
         circuit,
         external_challenges,
         full_trace,
@@ -263,6 +263,7 @@ where
         &setup_commitment,
         &twiddles,
         &prover_config,
+        CommitmentMode::SeparateMemoryAndWitness,
         Vec::new(),
         num_delegation_cycles,
         worker,
@@ -971,18 +972,20 @@ fn prepare_unified_fixture(
             trace_len.trailing_zeros() as usize,
             &worker,
         );
-        let expected_cpu_proof = prove_configured_with_gkr::<BF, E4, DefaultTreeConstructor>(
-            &compiled_circuit,
-            &external_challenges,
-            full_trace,
-            &setup,
-            &setup_commitment,
-            &twiddles,
-            &prover_config,
-            (0..num_unified_teardown_sets as u32).collect::<Vec<u32>>(),
-            trace_len,
-            &worker,
-        );
+        let expected_cpu_proof =
+            prove_configured_with_gkr::<BF, E4, DefaultTreeConstructor, Blake2sTranscript>(
+                &compiled_circuit,
+                &external_challenges,
+                full_trace,
+                &setup,
+                &setup_commitment,
+                &twiddles,
+                &prover_config,
+                CommitmentMode::SeparateMemoryAndWitness,
+                (0..num_unified_teardown_sets as u32).collect::<Vec<u32>>(),
+                trace_len,
+                &worker,
+            );
 
         // Prove the active delegations so the no-filter grand-product
         // accumulator can close to ONE.

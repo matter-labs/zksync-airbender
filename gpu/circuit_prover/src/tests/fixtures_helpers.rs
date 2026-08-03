@@ -270,18 +270,20 @@ pub(super) fn finish_proof_fixture(
             trace_len.trailing_zeros() as usize,
             &worker,
         );
-        let expected_cpu_proof = prove_configured_with_gkr::<BF, E4, DefaultTreeConstructor>(
-            &compiled_circuit,
-            &external_challenges,
-            full_trace,
-            &setup,
-            &setup_commitment,
-            &twiddles,
-            &prover_config,
-            vec![],
-            trace_len,
-            &worker,
-        );
+        let expected_cpu_proof =
+            prove_configured_with_gkr::<BF, E4, DefaultTreeConstructor, Blake2sTranscript>(
+                &compiled_circuit,
+                &external_challenges,
+                full_trace,
+                &setup,
+                &setup_commitment,
+                &twiddles,
+                &prover_config,
+                CommitmentMode::SeparateMemoryAndWitness,
+                vec![],
+                trace_len,
+                &worker,
+            );
         eprintln!("fixture: cpu proof ready");
         Some(expected_cpu_proof)
     } else {
@@ -675,18 +677,20 @@ pub(super) fn finish_proof_fixture_memory(
             trace_len.trailing_zeros() as usize,
             &worker,
         );
-        let expected_cpu_proof = prove_configured_with_gkr::<BF, E4, DefaultTreeConstructor>(
-            &compiled_circuit,
-            &external_challenges,
-            full_trace,
-            &setup,
-            &setup_commitment,
-            &twiddles,
-            &prover_config,
-            vec![],
-            trace_len,
-            &worker,
-        );
+        let expected_cpu_proof =
+            prove_configured_with_gkr::<BF, E4, DefaultTreeConstructor, Blake2sTranscript>(
+                &compiled_circuit,
+                &external_challenges,
+                full_trace,
+                &setup,
+                &setup_commitment,
+                &twiddles,
+                &prover_config,
+                CommitmentMode::SeparateMemoryAndWitness,
+                vec![],
+                trace_len,
+                &worker,
+            );
         eprintln!("fixture(memory): cpu proof ready");
         Some(expected_cpu_proof)
     } else {
@@ -1004,7 +1008,7 @@ pub(super) fn build_basic_unrolled_async_backward_fixture_from_base(
         &mut transcript_input,
     );
     let mut seed = Transcript::commit_initial(&transcript_input);
-    let challenges: Vec<E4> = draw_random_field_els::<BF, E4>(&mut seed, 3);
+    let challenges: Vec<E4> = draw_random_field_els::<BF, E4, Blake2sTranscript>(&mut seed, 3);
     let [lookup_alpha, lookup_additive_part, constraints_batch_challenge] =
         challenges.try_into().unwrap();
     unsafe {
@@ -1046,9 +1050,11 @@ pub(super) fn build_basic_unrolled_async_backward_fixture_from_base(
     let gpu_final_explicit_evaluations = gpu_transcript_handoff.final_explicit_evaluations();
     let gpu_evals_flattened = gpu_transcript_handoff.flattened_transcript_evaluations();
 
-    commit_field_els::<BF, E4>(&mut seed, &gpu_evals_flattened);
-    let mut challenges =
-        draw_random_field_els::<BF, E4>(&mut seed, (base.final_trace_size_log_2 + 1) as usize);
+    commit_field_els::<BF, E4, Blake2sTranscript>(&mut seed, &gpu_evals_flattened);
+    let mut challenges = draw_random_field_els::<BF, E4, Blake2sTranscript>(
+        &mut seed,
+        (base.final_trace_size_log_2 + 1) as usize,
+    );
     let batching_challenge = challenges.pop().unwrap();
     let evaluation_point = challenges;
 

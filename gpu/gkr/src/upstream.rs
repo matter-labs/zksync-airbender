@@ -28,10 +28,27 @@ pub(crate) use cs::definitions::{
 };
 pub(crate) use cs::gkr_compiler::{
     CompiledAddressSpaceRelationStrict, CompiledAddressStrict, CompiledMemoryTimestamp,
-    GKRCircuitArtifact, GKRLayerDescription, GateArtifacts, InitsOrTeardownsTimestampAndValue,
-    NoFieldGKRCacheRelation, NoFieldGKRRelation, NoFieldMaxQuadraticConstraintsGKRRelation,
-    NoFieldMaxQuadraticGKRRelation, NoFieldSpecialMemoryContributionRelation, OutputType,
+    GKRCircuitArtifact, InitsOrTeardownsTimestampAndValue,
+    NoFieldSpecialMemoryContributionRelation, OutputType,
 };
+pub(crate) type GKRLayerDescription = cs::gkr_compiler::GKRLayerDescription<BabyBearField>;
+pub(crate) type GateArtifacts = cs::gkr_compiler::GateArtifacts<BabyBearField>;
+pub(crate) use cs::gkr_compiler::{
+    GKRLayerDescription as CSGKRLayerDescription, GateArtifacts as CSGateArtifacts,
+};
+pub(crate) type NoFieldGKRCacheRelation = cs::gkr_compiler::NoFieldGKRCacheRelation<BabyBearField>;
+pub(crate) type NoFieldGKRRelation = cs::gkr_compiler::NoFieldGKRRelation<BabyBearField>;
+pub(crate) use cs::gkr_compiler::NoFieldGKRRelation as CSNoFieldGKRRelation;
+pub(crate) type NoFieldMaxQuadraticConstraintsGKRRelation =
+    cs::gkr_compiler::NoFieldMaxQuadraticConstraintsGKRRelation<BabyBearField>;
+pub(crate) type NoFieldMaxQuadraticGKRRelation =
+    cs::gkr_compiler::NoFieldMaxQuadraticGKRRelation<BabyBearField>;
+pub(crate) use cs::gkr_compiler::NoFieldStructuredExpression;
+pub(crate) type NoFieldLinearRelation = cs::definitions::gkr::NoFieldLinearRelation<BabyBearField>;
+pub(crate) type NoFieldSingleColumnLookupRelation =
+    cs::definitions::gkr::NoFieldSingleColumnLookupRelation<BabyBearField>;
+pub(crate) type NoFieldVectorLookupRelation =
+    cs::definitions::gkr::NoFieldVectorLookupRelation<BabyBearField>;
 pub(crate) use cs::tables::TableType;
 
 // -----------------------------------------------------------------------

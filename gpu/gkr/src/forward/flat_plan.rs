@@ -13,7 +13,8 @@ use super::{
 };
 use crate::upstream::{
     high_bits_offset_for_inits_and_teardowns, Field, FieldExtension, GKRAddress,
-    GKRCircuitArtifact, GKRExternalChallenges, NoFieldGKRCacheRelation, NoFieldGKRRelation,
+    GKRCircuitArtifact, GKRExternalChallenges, GateArtifacts, NoFieldGKRCacheRelation,
+    NoFieldGKRRelation,
 };
 use gpu_core::primitives::field::BF;
 use gpu_ops::simple::{Add, BinaryOp, Mul, SetByVal};
@@ -100,8 +101,8 @@ fn encode_virtual_source(kind: GpuBaseFieldSourceKind) -> *const u8 {
 
 pub(super) fn build_flat_forward_plan<E>(
     layer_idx: usize,
-    gates: &[cs::gkr_compiler::GateArtifacts],
-    gates_with_external_connections: &[cs::gkr_compiler::GateArtifacts],
+    gates: &[GateArtifacts],
+    gates_with_external_connections: &[GateArtifacts],
     stage1: &GpuGKRStage1Output,
     forward_setup: &GpuGKRForwardSetup<E>,
     decoder_predicate_address: Option<GKRAddress>,

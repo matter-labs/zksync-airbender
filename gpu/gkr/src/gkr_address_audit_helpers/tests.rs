@@ -363,12 +363,12 @@ fn project_circuit_flat_recipe_audit(
     let make_e4 = |seed: u32| -> BabyBearExt4 {
         BabyBearExt4 {
             c0: BabyBearExt2 {
-                c0: BabyBearField::from_u64_with_reduction((seed as u64) * 1_000_003 + 17),
-                c1: BabyBearField::from_u64_with_reduction((seed as u64) * 1_000_003 + 23),
+                c0: BabyBearField::from_u128_with_reduction((seed as u128) * 1_000_003 + 17),
+                c1: BabyBearField::from_u128_with_reduction((seed as u128) * 1_000_003 + 23),
             },
             c1: BabyBearExt2 {
-                c0: BabyBearField::from_u64_with_reduction((seed as u64) * 1_000_003 + 31),
-                c1: BabyBearField::from_u64_with_reduction((seed as u64) * 1_000_003 + 41),
+                c0: BabyBearField::from_u128_with_reduction((seed as u128) * 1_000_003 + 31),
+                c1: BabyBearField::from_u128_with_reduction((seed as u128) * 1_000_003 + 41),
             },
         }
     };
@@ -549,7 +549,9 @@ fn project_circuit_main_gather_num_addresses_max(
 /// static blueprint builder panics on these via `unimplemented!()`, and
 /// production callers can't process them either — so they're transparent
 /// holes in our term-count projection.
-fn layer_has_unsupported_relations(layer: &cs::gkr_compiler::GKRLayerDescription) -> bool {
+fn layer_has_unsupported_relations(
+    layer: &cs::gkr_compiler::GKRLayerDescription<BabyBearField>,
+) -> bool {
     use cs::gkr_compiler::NoFieldGKRRelation as R;
     layer
         .gates

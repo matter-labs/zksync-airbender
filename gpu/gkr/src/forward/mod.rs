@@ -206,9 +206,9 @@ use crate::upstream::{
 use crate::upstream::{
     AddressSpaceType, DimensionReducingInputOutput, Field, FieldExtension, GKRAddress,
     GKRCircuitArtifact, GKRExternalChallenges, GKRLayerDescription,
-    InitsOrTeardownsTimestampAndValue, NoFieldGKRCacheRelation, NoFieldGKRRelation, OutputType,
-    PrimeField, DECODER_LOOKUP_FORMAL_SET_INDEX,
-    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX,
+    InitsOrTeardownsTimestampAndValue, NoFieldGKRCacheRelation, NoFieldGKRRelation,
+    NoFieldSingleColumnLookupRelation, NoFieldVectorLookupRelation, OutputType, PrimeField,
+    DECODER_LOOKUP_FORMAL_SET_INDEX, PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX,
     PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX,
     PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX,
     PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX,
@@ -639,16 +639,12 @@ where
         // no other clone of this view is scheduled to write before this loop's
         // ops (set_by_val + scale_and_add) complete.
         let mut dst_chunk = unsafe { dst_view.as_mut_chunk_unchecked() };
-        set_by_val(
-            BF::from_u32_unchecked(input.constant),
-            &mut dst_chunk,
-            context.get_exec_stream(),
-        )?;
+        set_by_val(input.constant, &mut dst_chunk, context.get_exec_stream())?;
         for (coeff, address) in input.linear_terms.iter() {
             scale_and_add_base_column_in_place(
                 &mut dst_chunk,
                 storage.get_base_layer(*address),
-                BF::from_u32_unchecked(*coeff),
+                *coeff,
                 context,
             )?;
         }
@@ -756,7 +752,7 @@ fn assert_forward_layer_invariants(
 
 pub(super) fn vector_lookup_mapping_ptr(
     stage1: &GpuGKRStage1Output,
-    relation: &cs::definitions::gkr::NoFieldVectorLookupRelation,
+    relation: &NoFieldVectorLookupRelation,
 ) -> *const u32 {
     if relation.lookup_set_index == DECODER_LOOKUP_FORMAL_SET_INDEX {
         stage1
@@ -774,7 +770,7 @@ pub(super) fn vector_lookup_mapping_ptr(
 
 pub(super) fn single_column_lookup_mapping_ptr(
     stage1: &GpuGKRStage1Output,
-    relation: &cs::definitions::gkr::NoFieldSingleColumnLookupRelation,
+    relation: &NoFieldSingleColumnLookupRelation,
     range_check_width: u32,
 ) -> *const u32 {
     if range_check_width == 16 {

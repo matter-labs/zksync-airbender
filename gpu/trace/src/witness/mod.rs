@@ -217,14 +217,14 @@ impl From<&crate::upstream::NoFieldLinearRelation> for NoFieldLinearRelation {
         let mut linear_terms = [NoFieldLinearTerm::default(); MAX_LINEAR_TERMS_COUNT];
         for (&src, dst) in terms.iter().zip(linear_terms.iter_mut()) {
             *dst = NoFieldLinearTerm {
-                coefficient: src.0,
+                coefficient: src.0.to_u32(),
                 address: src.1.into(),
             };
         }
         Self {
             linear_terms_count: len as u32,
             linear_terms,
-            constant: value.constant,
+            constant: value.constant.to_u32(),
         }
     }
 }

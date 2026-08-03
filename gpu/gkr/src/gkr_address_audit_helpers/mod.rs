@@ -11,7 +11,7 @@ use super::gkr_address_audit::{
     GKR_MAX_POLYS_PER_SLOT, GKR_MAX_SLOTS,
 };
 use crate::upstream::{
-    GKRAddress, GKRCircuitArtifact, GKRLayerDescription, GateArtifacts, NoFieldGKRRelation,
+    CSGKRLayerDescription, CSGateArtifacts, CSNoFieldGKRRelation, GKRAddress, GKRCircuitArtifact,
     PrimeField,
 };
 
@@ -70,8 +70,8 @@ pub(crate) struct CircuitAudit {
     pub(crate) layers: Vec<LayerAudit>,
 }
 
-fn variant_name(rel: &NoFieldGKRRelation) -> &'static str {
-    use NoFieldGKRRelation::*;
+fn variant_name<F: PrimeField>(rel: &CSNoFieldGKRRelation<F>) -> &'static str {
+    use CSNoFieldGKRRelation::*;
     match rel {
         LinearBaseFieldRelation { .. } => "LinearBaseFieldRelation",
         MaxQuadratic { .. } => "MaxQuadratic",
@@ -113,7 +113,7 @@ fn variant_name(rel: &NoFieldGKRRelation) -> &'static str {
     }
 }
 
-fn audit_layer(layer_idx: usize, layer: &GKRLayerDescription) -> LayerAudit {
+fn audit_layer<F: PrimeField>(layer_idx: usize, layer: &CSGKRLayerDescription<F>) -> LayerAudit {
     let output_layer = layer.layer;
 
     let mut audit = LayerAudit {
@@ -128,7 +128,7 @@ fn audit_layer(layer_idx: usize, layer: &GKRLayerDescription) -> LayerAudit {
         cache_reads: BTreeSet::new(),
     };
 
-    let all_gates: Vec<&GateArtifacts> = layer
+    let all_gates: Vec<&CSGateArtifacts<F>> = layer
         .gates
         .iter()
         .chain(layer.gates_with_external_connections.iter())

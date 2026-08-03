@@ -10,8 +10,8 @@ use gpu_core::primitives::static_host::{
 };
 
 use crate::kernels::{accumulate_whir_base_columns, serialize_whir_e4_columns};
-use crate::upstream::DefaultTreeConstructor;
 use crate::upstream::PrimeField;
+use crate::upstream::{Blake2sTranscript, DefaultTreeConstructor};
 // Only consumed by the `#[cfg(test)]` query-parity helpers below.
 #[cfg(test)]
 use crate::upstream::BaseFieldQuery;
@@ -803,8 +803,9 @@ pub fn debug_initial_round_checkpoint_for_test(
         let (f0, f1, f_half) = special_three_point_eval_device(&mut state, context)?;
         let coeffs = special_lagrange_interpolate(f0, f1, f_half, E4::from_base(two_inv));
         sumcheck_polys.push(coeffs);
-        commit_field_els::<BF, E4>(&mut transcript_seed, &coeffs);
-        let folding_challenge = draw_random_field_els::<BF, E4>(&mut transcript_seed, 1)[0];
+        commit_field_els::<BF, E4, Blake2sTranscript>(&mut transcript_seed, &coeffs);
+        let folding_challenge =
+            draw_random_field_els::<BF, E4, Blake2sTranscript>(&mut transcript_seed, 1)[0];
         folding_challenges.push(folding_challenge);
         fold_monomial_form_in_place_device(&mut state, folding_challenge, context)?;
         fold_evaluation_form_in_place_device(&mut state, folding_challenge, context)?;
@@ -837,7 +838,7 @@ pub fn debug_initial_round_checkpoint_for_test(
         context,
     )?;
     let recursive_cap = oracle.get_tree_cap(context)?;
-    add_whir_commitment_to_transcript(
+    add_whir_commitment_to_transcript::<BF, E4, Blake2sTranscript, DefaultTreeConstructor>(
         &mut transcript_seed,
         &WhirCommitment::<BF, DefaultTreeConstructor> {
             cap: recursive_cap.clone(),
@@ -848,9 +849,9 @@ pub fn debug_initial_round_checkpoint_for_test(
     let _rs_domain_log2 = trace_len.trailing_zeros() as usize
         + original_lde_factor.trailing_zeros() as usize
         - num_initial_folding_rounds;
-    let ood_point = draw_random_field_els::<BF, E4>(&mut transcript_seed, 1)[0];
+    let ood_point = draw_random_field_els::<BF, E4, Blake2sTranscript>(&mut transcript_seed, 1)[0];
     let ood_value = evaluate_monomial_form_device(&mut state, ood_point, context)?;
-    commit_field_els::<BF, E4>(&mut transcript_seed, &[ood_value]);
+    commit_field_els::<BF, E4, Blake2sTranscript>(&mut transcript_seed, &[ood_value]);
 
     Ok(DebugInitialWhirRoundCheckpoint {
         sumcheck_polys,

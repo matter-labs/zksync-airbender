@@ -14,9 +14,10 @@
 // `cs` — circuit description, GKR layout, and compilation artifacts
 // -----------------------------------------------------------------------
 
-pub(crate) use cs::definitions::gkr::{
-    GKRMachineState, GKRMemoryLayout, NoFieldLinearRelation, NoFieldSingleColumnLookupRelation,
-};
+pub(crate) use cs::definitions::gkr::{GKRMachineState, GKRMemoryLayout};
+pub(crate) type NoFieldLinearRelation = cs::definitions::gkr::NoFieldLinearRelation<BabyBearField>;
+pub(crate) type NoFieldSingleColumnLookupRelation =
+    cs::definitions::gkr::NoFieldSingleColumnLookupRelation<BabyBearField>;
 // Aliased to avoid collision with crate-local types of the same name.
 pub(crate) use cs::definitions::gkr::DecoderPlacementDescription as CSDecoderPlacementDescription;
 pub(crate) use cs::definitions::gkr::IndirectRamAccessAddress as CSIndirectRamAccessAddress;

@@ -110,6 +110,8 @@ pub(crate) use prover::gkr::prover::transcript_utils::{
 #[cfg(test)]
 pub(crate) use prover::gkr::prover::utils::flatten_merkle_caps_iter_into;
 #[cfg(test)]
+pub(crate) use prover::gkr::prover::CommitmentMode;
+#[cfg(test)]
 pub(crate) use prover::gkr::prover::{
     dimension_reduction, forward_loop, prove_configured_with_gkr, sumcheck_loop,
 };
@@ -161,4 +163,4 @@ pub(crate) use prover::tracers::oracles::transpiler_oracles::delegation::{
     BigintDelegationOracle, Blake2sDelegationOracle, KeccakDelegationOracle,
 };
 #[cfg(test)]
-pub(crate) use prover::transcript::Seed;
+pub(crate) use prover::transcript::{Blake2sTranscript, Seed};
