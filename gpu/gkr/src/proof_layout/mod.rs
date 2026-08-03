@@ -49,7 +49,7 @@ use gpu_core::primitives::field::{BF, E4};
 pub(crate) const FIELD_ALIGN: usize = 32;
 
 /// Number of `u32` words per Merkle digest (Blake2s cap entry size).
-pub(crate) const DIGEST_U32_WORDS: usize = 8;
+pub(crate) const DIGEST_U32_WORDS: usize = gpu_hash::blake2s::STATE_SIZE;
 
 #[inline]
 fn align_up(offset: usize, align: usize) -> usize {
@@ -492,3 +492,13 @@ impl ProofLayout {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod cpu_constant_tests {
+    use super::*;
+
+    #[test]
+    fn cpu_digest_u32_words_matches_blake2s_state_size() {
+        assert_eq!(DIGEST_U32_WORDS, gpu_hash::blake2s::STATE_SIZE);
+    }
+}

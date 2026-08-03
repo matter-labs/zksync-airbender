@@ -51,6 +51,18 @@ use gpu_core::primitives::{
 use gpu_hash::blake2s::Digest;
 
 const EXT4_DEGREE: usize = <E4 as FieldExtension<BF>>::DEGREE;
+const LOG_SRC_COLS_PER_COSET: u32 = EXT4_DEGREE.trailing_zeros();
+const _: () = assert!(EXT4_DEGREE.is_power_of_two());
+
+#[cfg(test)]
+mod cpu_constant_tests {
+    use super::*;
+
+    #[test]
+    fn cpu_log_src_cols_per_coset_matches_extension_degree() {
+        assert_eq!(1usize << LOG_SRC_COLS_PER_COSET, EXT4_DEGREE);
+    }
+}
 
 /// Where the WHIR oracle's unified Merkle cap should land after its per-coset
 /// trees are committed.
@@ -311,7 +323,6 @@ impl GpuWhirExtensionOracle {
         // query into that single coset (lde_mask == 0).
         let log_values_per_leaf = self.values_per_leaf.trailing_zeros();
         let natural_log_lde_factor = log_lde_factor;
-        const LOG_SRC_COLS_PER_COSET: u32 = 2; // log2(EXT4_DEGREE)
         self.trace_holder.schedule_query_leaves_into_from_ntt(
             slab_indices_view,
             slab_leaves_dst_bf,
@@ -373,7 +384,6 @@ impl GpuWhirExtensionOracle {
         {
             let natural_log_lde_factor = self.lde_factor.trailing_zeros();
             let log_values_per_leaf = self.values_per_leaf.trailing_zeros();
-            const LOG_SRC_COLS_PER_COSET: u32 = 2; // log2(EXT4_DEGREE)
             self.trace_holder.schedule_query_leaves_into_from_ntt(
                 &device_tree_index,
                 &mut d_leafs[..],
@@ -390,7 +400,6 @@ impl GpuWhirExtensionOracle {
         let path_query = {
             let natural_log_lde_factor = self.lde_factor.trailing_zeros();
             let log_values_per_leaf = self.values_per_leaf.trailing_zeros();
-            const LOG_SRC_COLS_PER_COSET: u32 = 2;
             self.trace_holder.get_query_merkle_paths_from_ntt(
                 &device_tree_index,
                 self.trace_len_log2,
@@ -593,7 +602,6 @@ impl GpuWhirExtensionOracle {
         {
             let natural_log_lde_factor = self.lde_factor.trailing_zeros();
             let log_values_per_leaf = self.values_per_leaf.trailing_zeros();
-            const LOG_SRC_COLS_PER_COSET: u32 = 2; // log2(EXT4_DEGREE)
             self.trace_holder.schedule_query_leaves_into_from_ntt(
                 &device_tree_index,
                 &mut d_leafs[..],
@@ -610,7 +618,6 @@ impl GpuWhirExtensionOracle {
         let path_query = {
             let natural_log_lde_factor = self.lde_factor.trailing_zeros();
             let log_values_per_leaf = self.values_per_leaf.trailing_zeros();
-            const LOG_SRC_COLS_PER_COSET: u32 = 2;
             self.trace_holder.get_query_merkle_paths_from_ntt(
                 &device_tree_index,
                 self.trace_len_log2,

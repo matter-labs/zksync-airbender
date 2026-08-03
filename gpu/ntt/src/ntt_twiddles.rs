@@ -8,11 +8,13 @@ use crate::ntt::dit::DitTriangles;
 
 use crate::upstream::{
     bitreverse_enumeration_inplace, distribute_powers_serial, domain_generator_for_size, Field,
+    TwoAdicField,
 };
 use gpu_core::primitives::field::BF;
 use gpu_core::primitives::utils::memcpy_to_symbol;
 
-pub const OMEGA_LOG_ORDER: u32 = 27;
+pub const OMEGA_LOG_ORDER: u32 = <BF as TwoAdicField>::TWO_ADICITY as u32;
+const _: () = assert!(OMEGA_LOG_ORDER == 27); // native/context.cuh literal
 pub(crate) const LOG_MAX_NTT_SIZE: usize = 24;
 pub(crate) const CMEM_LOG_ORDER: usize = 19;
 pub(crate) const CMEM_COARSE_LOG_COUNT: usize = 10;
@@ -387,5 +389,16 @@ impl DeviceContext {
     /// Panics if the config is not in the fixed set built at `create`.
     pub fn coupled_triangle(&self, log_n: u32, log_vpt: u32) -> &DeviceSlice<BF> {
         self.dit_triangles.coupled(log_n, log_vpt)
+    }
+}
+
+#[cfg(test)]
+mod cpu_constant_tests {
+    use super::*;
+    use field::TwoAdicField;
+
+    #[test]
+    fn cpu_omega_log_order_matches_baby_bear_two_adicity() {
+        assert_eq!(OMEGA_LOG_ORDER as usize, <BF as TwoAdicField>::TWO_ADICITY);
     }
 }
