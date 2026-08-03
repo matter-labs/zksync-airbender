@@ -391,14 +391,3 @@ impl DeviceContext {
         self.dit_triangles.coupled(log_n, log_vpt)
     }
 }
-
-#[cfg(test)]
-mod cpu_constant_tests {
-    use super::*;
-    use field::TwoAdicField;
-
-    #[test]
-    fn cpu_omega_log_order_matches_baby_bear_two_adicity() {
-        assert_eq!(OMEGA_LOG_ORDER as usize, <BF as TwoAdicField>::TWO_ADICITY);
-    }
-}

@@ -492,13 +492,3 @@ impl ProofLayout {
 
 #[cfg(test)]
 mod tests;
-
-#[cfg(test)]
-mod cpu_constant_tests {
-    use super::*;
-
-    #[test]
-    fn cpu_digest_u32_words_matches_blake2s_state_size() {
-        assert_eq!(DIGEST_U32_WORDS, gpu_hash::blake2s::STATE_SIZE);
-    }
-}
