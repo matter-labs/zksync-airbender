@@ -109,7 +109,7 @@ use super::seg_coeff_eval::{
     BWD_SEG_CHALLENGE_LOOKUP_MULTIPLICATIVE, BWD_SEG_CHALLENGE_PERM_LINEARIZATION_BASE,
     BWD_SEG_CHALLENGE_SLOTS,
 };
-use super::seg_desc::BWD_SEG_MAX_K;
+use super::seg_desc::{BWD_COEFF_PUBLISH_TARGET_DEPTH, BWD_SEG_MAX_K};
 use super::seg_lower::{
     assign_class, lower_bwd_seg, plan_publish_scratch, window_columns, BwdSegLowerError,
     BwdSegRoundBinding, BwdSegSetup, CoeffMode, D2Policy, ProgramMode, PublishScratchPlan,
@@ -317,6 +317,10 @@ pub(crate) enum BwdVmBindError {
     /// R0 must plan no publish scratch; a non-empty plan means the depth
     /// wiring is wrong.
     PublishPlanNotEmpty { bytes: usize },
+    /// The coordinate is not an Ext program.
+    NotExt { layer: usize, regime: BwdRegime },
+    /// The Ext shape pass was asked about round 0, which the R0 program owns.
+    NotAContinuationRound { round: u8 },
 }
 
 /// The read place of one window column, or `None` for a procedural window.
@@ -373,6 +377,100 @@ pub(crate) fn r0_window_shapes(
             is_e4: window.backing_field() == FieldKind::Ext,
             class,
             materialize: publishes,
+            referenced_columns: window.columns.iter().map(|c| c.column).collect(),
+            first_column: window.first_column,
+        });
+    }
+    Ok(shapes)
+}
+
+// ── The Ext shape phase (CPU) ────────────────────────────────────────────────
+
+/// One window's shape at ONE continuation round.
+///
+/// Unlike [`R0WindowShape`], the class ladder here is round-dependent: the
+/// window's ORIGIN is a family property, but what the round reads (raw matrix,
+/// synthesis, or the previous round's cascade slot) and whether it publishes
+/// follow the materialization ladder — E4-origin from round 1, BF-origin at
+/// [`BWD_COEFF_PUBLISH_TARGET_DEPTH`] under `D2Policy::Inline` (round 2 under
+/// `Materialize`), procedural at [`BWD_COEFF_PUBLISH_TARGET_DEPTH`]. From its
+/// materialization round on, a window publishes cascade slot `round` EVERY
+/// round, and reads chained from `round + 1` on.
+#[derive(Debug)]
+pub(crate) struct ExtWindowShape {
+    /// The window's base column as a production address, or `None` for a
+    /// procedural window.
+    pub(crate) address: Option<GKRAddress>,
+    /// The RAW backing matrix's field width (a cascade slot is always E4).
+    pub(crate) is_e4_backing: bool,
+    pub(crate) class: SourceClass,
+    /// This round publishes cascade slot `round`.
+    pub(crate) materialize: bool,
+    /// This round reads the previous round's cascade slot instead of the raw
+    /// matrix or synthesis.
+    pub(crate) chained: bool,
+    /// `round - 1` when chained, 0 otherwise.
+    pub(crate) backing_depth: u8,
+    /// The backing's own referenced columns, ascending.
+    pub(crate) referenced_columns: Vec<usize>,
+    pub(crate) first_column: usize,
+}
+
+/// The round `origin` first writes a cascade slot, under `d2`.
+fn ext_materialization_round(origin: SourceOrigin, d2: D2Policy) -> u8 {
+    match (origin, d2) {
+        (SourceOrigin::E4, _) => 1,
+        (SourceOrigin::Bf, D2Policy::Materialize) => 2,
+        (SourceOrigin::Bf, D2Policy::Inline) => BWD_COEFF_PUBLISH_TARGET_DEPTH,
+        (SourceOrigin::Procedural, _) => BWD_COEFF_PUBLISH_TARGET_DEPTH,
+    }
+}
+
+/// The CPU half of the Ext binder: every window's address, field, class,
+/// publish flag and chain state at round `round`, from the compiled coordinate
+/// alone.
+pub(crate) fn ext_round_window_shapes(
+    coord: &LeanCoordinateArtifact,
+    round: u8,
+    d2: D2Policy,
+) -> Result<Vec<ExtWindowShape>, BwdVmBindError> {
+    if coord.regime.regime() != BwdRegime::Ext {
+        return Err(BwdVmBindError::NotExt {
+            layer: coord.layer,
+            regime: coord.regime.regime(),
+        });
+    }
+    if round == 0 {
+        return Err(BwdVmBindError::NotAContinuationRound { round });
+    }
+
+    let mut shapes = Vec::with_capacity(coord.binding.windows.len());
+    for window in coord.binding.windows.iter() {
+        let address = family_read_place(window.family, window.first_column)
+            .map(|place| read_place_to_gkr_address(&place));
+        let is_e4_backing = window.backing_field() == FieldKind::Ext;
+        let raw_origin = if address.is_none() {
+            SourceOrigin::Procedural
+        } else if is_e4_backing {
+            SourceOrigin::E4
+        } else {
+            SourceOrigin::Bf
+        };
+        let chained = round > ext_materialization_round(raw_origin, d2);
+        let backing_depth = if chained { round - 1 } else { 0 };
+        let delta = round - backing_depth;
+        // A chained window reads E4 whatever its family produced — the origin
+        // is the ROUND's, not the family's (`lower_window` derives the same
+        // answer from the bound read's field).
+        let origin = if chained { SourceOrigin::E4 } else { raw_origin };
+        let (class, materialize) = assign_class(origin, delta, d2);
+        shapes.push(ExtWindowShape {
+            address,
+            is_e4_backing,
+            class,
+            materialize,
+            chained,
+            backing_depth,
             referenced_columns: window.columns.iter().map(|c| c.column).collect(),
             first_column: window.first_column,
         });

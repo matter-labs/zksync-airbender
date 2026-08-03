@@ -152,6 +152,117 @@ fn report_the_r0_source_census() {
     eprintln!("[bwd-vm-census] slots by family:    {slots_by_family:?}");
 }
 
+// ── The Ext shape phase (CPU, real coordinate) ───────────────────────────────
+
+/// The per-round class ladder over the real Ext coordinate, as the corpus
+/// census pins it: round 1 = BfInlineD1 / publishing-E4 / ProceduralInline,
+/// round 2 = BfInlineD2, round 3 = everything E4Direct+publish (BF and
+/// procedural materialize their slot-3), round 4 = everything chained
+/// E4Direct+publish at backing depth 3.
+#[test]
+fn the_ext_ladder_classifies_every_window_per_round() {
+    use super::seg_lower::{D2Policy, SourceClass};
+
+    let artifact = add_sub_artifact();
+    let coord = compile_coordinate(&artifact, 0, BwdRegime::Ext).unwrap();
+
+    let (mut saw_bf, mut saw_e4, mut saw_procedural) = (false, false, false);
+    for round in 1..=4u8 {
+        let shapes = ext_round_window_shapes(&coord, round, D2Policy::Inline).unwrap();
+        assert_eq!(shapes.len(), coord.binding.windows.len());
+        for (index, shape) in shapes.iter().enumerate() {
+            assert_eq!(
+                shape.chained,
+                shape.backing_depth != 0,
+                "window {index} round {round}"
+            );
+            if shape.chained {
+                assert_eq!(shape.backing_depth, round - 1, "window {index}");
+            }
+            match (shape.address.is_some(), shape.is_e4_backing, round) {
+                // E4-origin: raw at round 1, chained from round 2; publishes
+                // its slot every round.
+                (true, true, r) => {
+                    saw_e4 = true;
+                    assert_eq!(shape.class, SourceClass::E4Direct, "window {index}");
+                    assert!(shape.materialize, "window {index}");
+                    assert_eq!(shape.chained, r >= 2, "window {index}");
+                }
+                // BF-origin: inline folds through round 2, materializes at 3,
+                // chained from 4.
+                (true, false, 1) => {
+                    saw_bf = true;
+                    assert_eq!(shape.class, SourceClass::BfInlineD1, "window {index}");
+                    assert!(!shape.materialize, "window {index}");
+                }
+                (true, false, 2) => {
+                    assert_eq!(shape.class, SourceClass::BfInlineD2, "window {index}");
+                    assert!(!shape.materialize, "window {index}");
+                }
+                (true, false, 3) => {
+                    assert_eq!(shape.class, SourceClass::E4Direct, "window {index}");
+                    assert!(shape.materialize && !shape.chained, "window {index}");
+                }
+                (true, false, _) => {
+                    assert_eq!(shape.class, SourceClass::E4Direct, "window {index}");
+                    assert!(shape.materialize && shape.chained, "window {index}");
+                }
+                // Procedural: synthesized through round 3 (publishing there),
+                // chained from 4.
+                (false, _, 1 | 2) => {
+                    saw_procedural = true;
+                    assert_eq!(shape.class, SourceClass::ProceduralInline, "window {index}");
+                    assert!(!shape.materialize, "window {index}");
+                }
+                (false, _, 3) => {
+                    assert_eq!(shape.class, SourceClass::E4Direct, "window {index}");
+                    assert!(shape.materialize && !shape.chained, "window {index}");
+                }
+                (false, _, _) => {
+                    assert_eq!(shape.class, SourceClass::E4Direct, "window {index}");
+                    assert!(shape.materialize && shape.chained, "window {index}");
+                }
+            }
+        }
+    }
+    assert!(
+        saw_bf && saw_e4 && saw_procedural,
+        "the census says add_sub L0 carries all three origins \
+         (bf={saw_bf}, e4={saw_e4}, procedural={saw_procedural})"
+    );
+}
+
+/// An R0 coordinate handed to the Ext shape pass is a wiring defect, mirroring
+/// `a_non_r0_coordinate_is_rejected`.
+#[test]
+fn a_non_ext_coordinate_is_rejected_by_the_ext_shapes() {
+    use super::seg_lower::D2Policy;
+
+    let artifact = add_sub_artifact();
+    let coord = compile_coordinate(&artifact, 0, BwdRegime::R0).unwrap();
+    assert_eq!(
+        ext_round_window_shapes(&coord, 1, D2Policy::Inline).unwrap_err(),
+        BwdVmBindError::NotExt {
+            layer: 0,
+            regime: BwdRegime::R0
+        }
+    );
+}
+
+/// Round 0 is not a continuation round — rejecting it here keeps the R0/Ext
+/// seam explicit rather than fabricating a negative backing depth.
+#[test]
+fn round_zero_is_rejected_by_the_ext_shapes() {
+    use super::seg_lower::D2Policy;
+
+    let artifact = add_sub_artifact();
+    let coord = compile_coordinate(&artifact, 0, BwdRegime::Ext).unwrap();
+    assert_eq!(
+        ext_round_window_shapes(&coord, 0, D2Policy::Inline).unwrap_err(),
+        BwdVmBindError::NotAContinuationRound { round: 0 }
+    );
+}
+
 // ── The pointer phase (GPU) ──────────────────────────────────────────────────
 
 /// The binder's job, stated as a total function over the coordinate's SOURCES:
