@@ -500,62 +500,77 @@ fn the_device_filled_bank_matches_the_bench_resolver_for_every_l0_slot() {
     }
 }
 
-/// Production has no flat plan to allocate L0's destinations: the VM replaces
-/// that scheduling wholesale, and at the top of the pass nothing else has run.
-/// [`production_bind::prepare_layer0_destinations`] materializes the same four
-/// (storage layer, class, field) slots `generated_layer0` does — so every
-/// address the compiled L0 program writes must fall inside them.
+/// Production has no flat plan to allocate a VM layer's destinations: the VM
+/// replaces that scheduling wholesale, and nothing else has run for that layer.
+/// [`production_bind::prepare_layer_destinations`] materializes the same
+/// (storage layer, class, field) slots `generated_layer0` does for layer 0,
+/// generalized to layer L — so every address the compiled program writes must
+/// fall inside them, for EVERY layer, not just layer 0.
 ///
-/// Asserting "L0 lowers against the fixture's storage" would prove nothing:
-/// the fixture's post-capture state makes every column resident. Coverage of
-/// the destination set is what production actually depends on.
+/// Asserting "the layer lowers against the fixture's storage" would prove
+/// nothing: the fixture's post-capture state makes every column resident.
+/// Coverage of the destination set is what production actually depends on.
 #[test]
 #[ignore] // GPU; run via .agents/bin/with_gpu_lock.sh
 #[cfg(not(no_cuda))]
 #[serial_test::serial]
-fn every_l0_destination_is_covered_by_the_layer0_materialization() {
-    use super::production_bind::LAYER0_MATERIALIZED_SLOTS;
+fn every_destination_of_every_layer_is_covered_by_its_materialization() {
+    use super::production_bind::materialized_slots;
 
     let stem = "add_sub_lui_auipc_mop";
     let fixture = CircuitFixture::build(stem);
     let c: FwdVmCircuit = load_fwd_vm_circuit(stem);
-    let cl = &c.compiled.layers[0];
     let layout = fixture
         .storage
         .layout
         .as_ref()
         .expect("fixture storage carries a layout");
 
-    let mut dsts: BTreeSet<(u8, u16)> = BTreeSet::new();
-    for instr in &cl.program.instrs {
-        if let Instr::Mov {
-            dst: Some(DstLine::GlobalMaterialize { slot, col }),
-            ..
-        } = instr
-        {
-            dsts.insert((*slot, *col));
+    let mut checked = 0usize;
+    for (layer_idx, cl) in c.compiled.layers.iter().enumerate() {
+        let mut dsts: BTreeSet<(u8, u16)> = BTreeSet::new();
+        for instr in &cl.program.instrs {
+            if let Instr::Mov {
+                dst: Some(DstLine::GlobalMaterialize { slot, col }),
+                ..
+            } = instr
+            {
+                dsts.insert((*slot, *col));
+            }
+        }
+        assert!(
+            !dsts.is_empty(),
+            "L{layer_idx} materializes nothing — vacuous"
+        );
+        let slots = materialized_slots(layer_idx);
+        for (slot, col) in dsts {
+            let place = cl
+                .ctx
+                .backings
+                .slot_col_to_read_place(slot, col)
+                .unwrap_or_else(|| {
+                    panic!("L{layer_idx} materialized (slot {slot}, col {col}) has no reverse map")
+                });
+            let addr = read_place_to_gkr_address(&place);
+            let found = layout
+                .layers
+                .iter()
+                .enumerate()
+                .find_map(|(li, ll)| ll.index.get(&addr).map(|(class, _, _)| (li, *class)));
+            let (li, class) = found.unwrap_or_else(|| {
+                panic!("L{layer_idx}: {addr:?} is written by the VM but absent from the layout")
+            });
+            assert!(
+                slots.contains(&(li, class)),
+                "L{layer_idx}: {addr:?} is written at (storage layer {li}, {class:?}), which \
+                 prepare_layer_destinations({layer_idx}) does not materialize"
+            );
+            checked += 1;
         }
     }
-    assert!(!dsts.is_empty(), "L0 materializes nothing — vacuous");
-
-    for (slot, col) in dsts {
-        let place = cl
-            .ctx
-            .backings
-            .slot_col_to_read_place(slot, col)
-            .unwrap_or_else(|| panic!("materialized (slot {slot}, col {col}) has no reverse map"));
-        let addr = read_place_to_gkr_address(&place);
-        let found = layout
-            .layers
-            .iter()
-            .enumerate()
-            .find_map(|(li, ll)| ll.index.get(&addr).map(|(class, _, _)| (li, *class)));
-        let (li, class) = found
-            .unwrap_or_else(|| panic!("{addr:?} is written by the VM but absent from the layout"));
-        assert!(
-            LAYER0_MATERIALIZED_SLOTS.contains(&(li, class)),
-            "{addr:?} is written by the VM at (layer {li}, {class:?}), which \
-             prepare_layer0_destinations does not materialize"
-        );
-    }
+    assert!(checked > 0);
+    eprintln!(
+        "[fwdvm-dst-coverage] {} layers, {checked} destinations all inside their layer's slots",
+        c.compiled.layers.len()
+    );
 }

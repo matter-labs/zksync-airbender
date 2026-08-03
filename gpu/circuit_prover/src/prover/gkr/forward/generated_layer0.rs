@@ -139,10 +139,10 @@ where
 /// `poly_idx`), and the generated kernel writes column `poly_idx`, so passing
 /// this base pointer makes the kernel write directly into the backing the rest
 /// of the pipeline reads — no scratch, no scatter.
-/// Register the pure copy-aliases of a layer-0 gate set.
+/// Register the pure copy-aliases of one layer's gate set.
 ///
 /// `CopyInBaseField` / `CopyInExtensionField` gates do no arithmetic — the
-/// output `InnerLayer{1, off}` simply aliases its input poly (a memory column
+/// output `InnerLayer{L+1, off}` simply aliases its input poly (a memory column
 /// or a layer-0 cache), so no kernel writes it and it carries no entry in the
 /// storage layout (which is why layer 1's `ThisLayerInnerLayerWrite` offsets
 /// start at 1). The flat path registers these as `aliased_*_outputs` in
@@ -152,7 +152,8 @@ where
 ///
 /// Shared by the generated-layer0 kernel and the forward VM, which have the
 /// identical gap for the identical reason.
-pub(super) fn register_layer0_copy_aliases<B, E>(
+pub(super) fn register_layer_copy_aliases<B, E>(
+    layer_idx: usize,
     layer: &GKRLayerDescription,
     storage: &mut GpuGKRStorage<B, E>,
 ) where
@@ -168,8 +169,10 @@ pub(super) fn register_layer0_copy_aliases<B, E>(
             NoFieldGKRRelation::CopyInBaseField { input, output }
             | NoFieldGKRRelation::CopyInExtensionField { input, output } => {
                 assert_eq!(
-                    gate.output_layer, 1,
-                    "layer-0 copy gate must output to layer 1"
+                    gate.output_layer,
+                    layer_idx + 1,
+                    "a layer-{layer_idx} copy gate must output to layer {}",
+                    layer_idx + 1
                 );
                 let GKRAddress::InnerLayer {
                     layer: out_layer,
@@ -407,7 +410,7 @@ where
     // 5. Replicate the pure copy-aliases the generated kernel does NOT produce.
     //     Must run AFTER the caches above are registered (offset 20 aliases
     //     `Cached{0,13}`).
-    register_layer0_copy_aliases(layer, storage);
+    register_layer_copy_aliases(0, layer, storage);
 
     // 6. Drop the absent-slot placeholders on exec_stream. The kernel launch
     //    (which embedded their raw pointers in the proxy) has already been

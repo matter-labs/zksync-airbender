@@ -1106,8 +1106,9 @@ impl Drop for EnvGuard {
     }
 }
 
-/// The forward VM computing add_sub layer 0 inside the real prover must
-/// produce the same proof as the CPU reference, and must actually have run.
+/// The forward VM computing EVERY non-dimension-reducing layer of add_sub inside
+/// the real prover must produce the same proof as the CPU reference, and must
+/// actually have run — once per selected layer.
 ///
 /// Both halves are load-bearing:
 ///
@@ -1124,7 +1125,7 @@ impl Drop for EnvGuard {
 #[test]
 #[serial]
 #[ignore]
-fn run_add_sub_vm_layer0_proof_parity_test() {
+fn run_add_sub_vm_all_layers_proof_parity_test() {
     use crate::prover::gkr::forward::path::AB_GKR_FWD_VM_LAYERS_ENV;
     use crate::prover::gkr::forward::vm::count_fwd_vm_s4_launches;
     use crate::prover::gkr::forward::vm::production_bind::AB_GKR_FWD_VM_POISON_DESTINATIONS_ENV;
@@ -1140,9 +1141,12 @@ fn run_add_sub_vm_layer0_proof_parity_test() {
         "counter must start at zero for the count below to mean anything"
     );
 
-    let selected_layers = 1;
+    // Every non-dimension-reducing layer of add_sub. Dimension reduction runs
+    // after the layer loop and is not a VM layer.
+    const SELECTED: &str = "0,1,2,3";
+    let selected_layers = SELECTED.split(',').count();
     let (gpu_proof, launches) = {
-        let _env = EnvGuard::set(AB_GKR_FWD_VM_LAYERS_ENV, "0");
+        let _env = EnvGuard::set(AB_GKR_FWD_VM_LAYERS_ENV, SELECTED);
         let job = fixture.schedule_prove().unwrap();
         let (proof, _ms) = job.finish().unwrap();
         (proof, counter.launches())
@@ -1153,6 +1157,7 @@ fn run_add_sub_vm_layer0_proof_parity_test() {
         launches, selected_layers,
         "the VM must have launched exactly once per selected layer"
     );
+    eprintln!("[fwd-vm-parity] {selected_layers} layers on the VM, proof bit-equal to the CPU reference");
 }
 
 /// With the switch unset the VM must not run at all — the guard that the env
@@ -1171,7 +1176,7 @@ fn run_add_sub_without_the_vm_switch_launches_no_vm_kernel() {
     assert_eq!(counter.launches(), 0);
 }
 
-/// A/B the forward VM on add_sub layer 0: N interleaved pairs of whole proofs
+/// A/B the forward VM on every non-dimension-reducing add_sub layer: N interleaved pairs of whole proofs
 /// in one process, VM-on against VM-off, reporting per-pair deltas plus the
 /// median, min, max and both peak-memory figures.
 ///
@@ -1188,10 +1193,12 @@ fn run_add_sub_without_the_vm_switch_launches_no_vm_kernel() {
 #[test]
 #[serial]
 #[ignore]
-fn run_add_sub_fwd_vm_l0_ab_test() {
+fn run_add_sub_fwd_vm_all_layers_ab_test() {
     use crate::prover::gkr::forward::path::AB_GKR_FWD_VM_LAYERS_ENV;
 
     const PAIRS: usize = 20;
+    /// Every non-dimension-reducing layer of add_sub.
+    const FWD_VM_AB_LAYERS: &str = "0,1,2,3";
 
     let fixture = prepare_basic_unrolled_profiling_fixture();
     assert!(
@@ -1202,7 +1209,7 @@ fn run_add_sub_fwd_vm_l0_ab_test() {
 
     // Warm up both arms before measuring: first-touch allocation, the
     // OnceLock'd VM program compile, and module load all land here.
-    for layers in ["", "0"] {
+    for layers in ["", FWD_VM_AB_LAYERS] {
         let _env = EnvGuard::set(AB_GKR_FWD_VM_LAYERS_ENV, layers);
         let t = fixture.schedule_transfers().unwrap();
         fixture.context.get_h2d_stream().synchronize().unwrap();
@@ -1228,12 +1235,12 @@ fn run_add_sub_fwd_vm_l0_ab_test() {
         // Alternate which arm goes first so a systematic first-slot cost
         // (allocator state, clocks) cannot be attributed to one arm.
         let (on, off) = if pair % 2 == 0 {
-            let on = run("0");
+            let on = run(FWD_VM_AB_LAYERS);
             let off = run("");
             (on, off)
         } else {
             let off = run("");
-            let on = run("0");
+            let on = run(FWD_VM_AB_LAYERS);
             (on, off)
         };
         // Field-by-field: GKRProof has no PartialEq. A timing number from an

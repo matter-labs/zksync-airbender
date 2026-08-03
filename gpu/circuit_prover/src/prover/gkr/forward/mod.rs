@@ -353,11 +353,6 @@ where
             );
         }
     }
-    assert!(
-        vm_layers.iter().all(|&l| l == 0),
-        "{} currently wires only layer 0; got {vm_layers:?}",
-        path::AB_GKR_FWD_VM_LAYERS_ENV,
-    );
     let forward_paths = path::plan_forward_paths(
         compiled_circuit.layers.len(),
         use_generated_layer0 && is_add_sub_cached,
@@ -517,7 +512,8 @@ where
             vm_range.start(stream)?;
             assert_forward_layer_invariants(layer_idx, total_layers, layer);
             let program = vm_program.expect("a Vm path implies a compiled VM program");
-            vm::production_bind::schedule_vm_layer0(
+            vm::production_bind::schedule_vm_layer(
+                layer_idx,
                 layer,
                 &program.layers[layer_idx],
                 program.budget as u32,

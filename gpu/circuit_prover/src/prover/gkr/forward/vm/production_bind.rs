@@ -48,7 +48,7 @@ use super::desc::{CONST_DERIVED_E4_CAP, FILL_BANK_NONE};
 use super::lower::{FwdVmHeaderInputs, FwdVmLayerSetup, ResolvedColumn};
 use super::{ab_gkr_fwd_vm_const_derived_e4, lower::lower_layer_desc};
 use crate::prover::gkr::forward::generated_layer0::{
-    materialize_base_output_slot, materialize_ext_output_slot, register_layer0_copy_aliases,
+    materialize_base_output_slot, materialize_ext_output_slot, register_layer_copy_aliases,
 };
 use crate::prover::gkr::gkr_address_audit::AddressClass;
 use crate::prover::gkr::setup::GpuGKRForwardSetup;
@@ -68,11 +68,20 @@ use crate::upstream::{
     PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX,
 };
 
-/// Storage layer holding layer-0 caches (`Cached{0,..}`).
-const CACHE_STORAGE_LAYER: usize = 0;
-/// Storage layer holding layer-0 gate outputs (`InnerLayer{1,..}`): a layer-0
-/// gate writes its output to layer 1.
-const INNER_STORAGE_LAYER: usize = 1;
+/// The (storage layer, class) slots a VM layer writes.
+///
+/// Layer `L`'s caches are `Cached{L,..}` at storage layer `L`, and its gate
+/// outputs are `InnerLayer{L+1,..}` at storage layer `L+1` — a gate writes its
+/// output to the NEXT layer. Both fields of both slots, so a layer that has no
+/// caches (add_sub L1-L3) or no base outputs (every layer above 0) simply
+/// materializes nothing for that slot; `materialize_*_output_slot` returns
+/// `None` for an empty address set.
+pub(crate) fn materialized_slots(layer_idx: usize) -> [(usize, AddressClass); 2] {
+    [
+        (layer_idx, AddressClass::ThisLayerCachedWrite),
+        (layer_idx + 1, AddressClass::ThisLayerInnerLayerWrite),
+    ]
+}
 
 /// Which device scalar a `ConstDerivedE4` slot is a copy of.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -343,13 +352,14 @@ pub(crate) fn production_header<E>(
     }
 }
 
-/// Allocate and register every layer-0 destination the VM writes.
+/// Allocate and register every destination the VM writes for `layer_idx`.
 ///
 /// The flat plan normally does this while building the layer; the VM replaces
 /// that scheduling entirely, so nothing else would. Reuses
-/// `generated_layer0`'s helpers — the same four (storage layer, class, field)
-/// slots that path materializes for the same layer.
-pub(crate) fn prepare_layer0_destinations<E>(
+/// `generated_layer0`'s helpers over [`materialized_slots`] — the same slots
+/// that path materializes for layer 0, generalized to layer L.
+pub(crate) fn prepare_layer_destinations<E>(
+    layer_idx: usize,
     storage: &mut GpuGKRStorage<BF, E>,
     trace_len: usize,
     context: &ProverContext,
@@ -357,7 +367,7 @@ pub(crate) fn prepare_layer0_destinations<E>(
 where
     E: Field + FieldExtension<BF> + SetByRef + SetByVal + 'static,
 {
-    for (layer, class) in LAYER0_MATERIALIZED_SLOTS {
+    for (layer, class) in materialized_slots(layer_idx) {
         let ext_base = materialize_ext_output_slot(storage, layer, class, trace_len, context)?;
         let base_base = materialize_base_output_slot(storage, layer, class, trace_len, context)?;
 
@@ -414,14 +424,6 @@ pub(crate) fn poison_destinations_enabled() -> bool {
 pub(crate) const AB_GKR_FWD_VM_POISON_DESTINATIONS_ENV: &str =
     "AB_GKR_FWD_VM_POISON_DESTINATIONS";
 
-/// The set of (storage layer, class) slots [`prepare_layer0_destinations`]
-/// materializes — also the authority the destination-coverage test checks
-/// against.
-pub(crate) const LAYER0_MATERIALIZED_SLOTS: [(usize, AddressClass); 2] = [
-    (CACHE_STORAGE_LAYER, AddressClass::ThisLayerCachedWrite),
-    (INNER_STORAGE_LAYER, AddressClass::ThisLayerInnerLayerWrite),
-];
-
 /// Lower one layer against the production prover state.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn bind_layer<E>(
@@ -449,7 +451,7 @@ where
         .map_err(|e| format!("lower_layer_desc: {e:?}"))
 }
 
-/// Schedule layer 0 on the forward VM: materialize its destinations, lower
+/// Schedule one layer on the forward VM: materialize its destinations, lower
 /// against production storage, fill the derived-E4 bank from device memory,
 /// and launch — all on `exec_stream`, in that order.
 ///
@@ -458,7 +460,8 @@ where
 /// `program_ldg` fallback the by-value descriptor points into and stays alive
 /// until the launch has been *scheduled* — which is all the contract asks.
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn schedule_vm_layer0<E>(
+pub(crate) fn schedule_vm_layer<E>(
+    layer_idx: usize,
     layer: &GKRLayerDescription,
     cl: &CompiledLayer,
     budget_lanes: u32,
@@ -486,7 +489,7 @@ where
     let external_challenges: &GKRExternalChallenges<BF, E4> =
         unsafe { &*(external_challenges as *const _ as *const GKRExternalChallenges<BF, E4>) };
 
-    prepare_layer0_destinations(storage, trace_len, context)?;
+    prepare_layer_destinations(layer_idx, storage, trace_len, context)?;
 
     let setup = bind_layer(
         cl,
@@ -497,20 +500,20 @@ where
         trace_len,
         context,
     )
-    .unwrap_or_else(|e| panic!("forward VM layer 0: {e}"));
+    .unwrap_or_else(|e| panic!("forward VM layer {layer_idx}: {e}"));
 
     stage_const_derived_e4_bank(cl, &setup, forward_setup, context)
-        .unwrap_or_else(|e| panic!("forward VM layer 0: {e}"));
+        .unwrap_or_else(|e| panic!("forward VM layer {layer_idx}: {e}"));
 
     super::launch_fwd_vm_s4(&setup, budget_lanes, context)?;
 
     // The VM emits no `GlobalMaterialize` for a pure copy gate — its output
     // aliases its input — so, exactly as `generated_layer0` must, register
     // those aliases here. Without this, layer 1 resolves nothing for
-    // `InnerLayer{1, 0}`. After the launch, mirroring generated_layer0's
+    // `InnerLayer{L+1, 0}`. After the launch, mirroring generated_layer0's
     // ordering: the aliases are host-side bookkeeping over already-registered
     // caches, not device work.
-    register_layer0_copy_aliases(layer, storage);
+    register_layer_copy_aliases(layer_idx, layer, storage);
     Ok(())
 }
 
