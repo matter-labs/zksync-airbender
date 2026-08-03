@@ -378,6 +378,58 @@ fn a_round_below_the_first_slot_has_no_cascade_slot() {
 
 // ── The pointer phase (GPU) ──────────────────────────────────────────────────
 
+/// The production add_sub fixture, driven through every flat prepare down to
+/// main layer 0 — the state the binder sees in production, where plan build
+/// runs after the prepares have resolved storage. Prepare-only: no layer is
+/// executed; every assertion downstream is pointer arithmetic.
+struct PreparedL0 {
+    context: crate::prover::ProverContext,
+    /// The layer-0 Ext coordinate, compiled from the RAW artifact before the
+    /// handoff normalizes it.
+    coord: gkr_eval_isa::bwd::coeff::lean_artifact::LeanCoordinateArtifact,
+    main_state:
+        crate::prover::gkr::backward::GpuGKRMainLayerBackwardState<crate::primitives::field::E4>,
+    plan: crate::prover::gkr::backward::GpuGKRMainLayerSumcheckLayerPlan<
+        crate::primitives::field::E4,
+    >,
+}
+
+fn prepared_l0_ext() -> PreparedL0 {
+    use crate::primitives::field::E4;
+    use crate::upstream::Field;
+
+    let fixture = crate::prover::tests::prepare_basic_unrolled_async_backward_fixture(8);
+    let coord = compile_coordinate(&fixture.compiled_circuit, 0, BwdRegime::Ext).unwrap();
+    let mut backward_state = fixture.gpu_backward_state;
+    while backward_state
+        .prepare_next_layer_static(&fixture.context)
+        .unwrap()
+        .is_some()
+    {}
+    let mut main_state = backward_state.into_main_layer_backward_state(
+        fixture.compiled_circuit,
+        fixture.external_challenges,
+        fixture.lookup_multiplicative_part,
+        E4::ZERO,
+        false,
+    );
+    let plan = loop {
+        let plan = main_state
+            .prepare_next_layer_static(&fixture.context)
+            .unwrap()
+            .expect("the main-layer walk must reach layer 0");
+        if plan.layer_idx == 0 {
+            break plan;
+        }
+    };
+    PreparedL0 {
+        context: fixture.context,
+        coord,
+        main_state,
+        plan,
+    }
+}
+
 /// The binder's job, stated as a total function over the coordinate's SOURCES:
 /// for every source slot, the device's window arithmetic
 /// (`base + column * stride`) must land on exactly the poly that the source's
@@ -482,40 +534,11 @@ fn every_prepared_fold_pointer_is_the_cascade_slot() {
     use gkr_eval_isa::bwd::coeff::stats::WindowFamily;
 
     use super::seg_lower::D2Policy;
-    use crate::primitives::field::E4;
-    use crate::upstream::{Field, GKRAddress};
+    use crate::upstream::GKRAddress;
 
-    let fixture = crate::prover::tests::prepare_basic_unrolled_async_backward_fixture(8);
-    let context = &fixture.context;
-    let coord = compile_coordinate(&fixture.compiled_circuit, 0, BwdRegime::Ext).unwrap();
-
-    // Drain the dimension-reducing layers (prepare only — the maps this test
-    // reads are geometry; no layer is executed), then hand off and prepare
-    // main layers down to layer 0. This is the same ordering production
-    // guarantees the binder: every flat prepare has run when the VM builds.
-    let mut backward_state = fixture.gpu_backward_state;
-    while backward_state
-        .prepare_next_layer_static(context)
-        .unwrap()
-        .is_some()
-    {}
-    let mut main_state = backward_state.into_main_layer_backward_state(
-        fixture.compiled_circuit,
-        fixture.external_challenges,
-        fixture.lookup_multiplicative_part,
-        E4::ZERO,
-        false,
-    );
-    let plan = loop {
-        let plan = main_state
-            .prepare_next_layer_static(context)
-            .unwrap()
-            .expect("the main-layer walk must reach layer 0");
-        if plan.layer_idx == 0 {
-            break plan;
-        }
-    };
-    let storage = main_state.storage();
+    let prepared = prepared_l0_ext();
+    let (coord, plan) = (&prepared.coord, &prepared.plan);
+    let storage = prepared.main_state.storage();
     let request_layer = 0usize;
     let folding_steps = plan.folding_steps;
 
@@ -623,7 +646,7 @@ fn every_prepared_fold_pointer_is_the_cascade_slot() {
 
     // Every lean window resolves through the SAME lookup the binder will use —
     // round 3 is where all three origins publish, so coverage there is total.
-    let shapes = ext_round_window_shapes(&coord, 3, D2Policy::Inline).unwrap();
+    let shapes = ext_round_window_shapes(coord, 3, D2Policy::Inline).unwrap();
     for ((index, window), shape) in coord.binding.windows.iter().enumerate().zip(&shapes) {
         assert!(shape.materialize, "window {index} must publish at round 3");
         let addr = match (shape.address, window.family) {
@@ -665,42 +688,17 @@ fn every_ext_source_binds_through_the_cascade() {
 
     use super::production_bind::family_read_place;
     use super::seg_lower::D2Policy;
-    use crate::primitives::field::E4;
     use crate::prover::gkr::forward::vm::lower::read_place_to_gkr_address;
     use crate::prover::gkr::forward::vm::production_bind::resolve_storage_column;
-    use crate::upstream::{Field, FieldKind, GKRAddress};
+    use crate::upstream::{FieldKind, GKRAddress};
 
-    let fixture = crate::prover::tests::prepare_basic_unrolled_async_backward_fixture(8);
-    let context = &fixture.context;
-    let coord = compile_coordinate(&fixture.compiled_circuit, 0, BwdRegime::Ext).unwrap();
-
-    let mut backward_state = fixture.gpu_backward_state;
-    while backward_state
-        .prepare_next_layer_static(context)
-        .unwrap()
-        .is_some()
-    {}
-    let mut main_state = backward_state.into_main_layer_backward_state(
-        fixture.compiled_circuit,
-        fixture.external_challenges,
-        fixture.lookup_multiplicative_part,
-        E4::ZERO,
-        false,
-    );
-    let plan = loop {
-        let plan = main_state
-            .prepare_next_layer_static(context)
-            .unwrap()
-            .expect("the main-layer walk must reach layer 0");
-        if plan.layer_idx == 0 {
-            break plan;
-        }
-    };
-    let storage = main_state.storage();
+    let prepared = prepared_l0_ext();
+    let (coord, plan) = (&prepared.coord, &prepared.plan);
+    let storage = prepared.main_state.storage();
     let folding_steps = plan.folding_steps;
     let last_step = (folding_steps - 1) as u8;
 
-    let bound = bind_ext_round_sources(storage, &coord, 0, folding_steps, D2Policy::Inline)
+    let bound = bind_ext_round_sources(storage, coord, 0, folding_steps, D2Policy::Inline)
         .expect("every add_sub L0 Ext window must bind against production storage");
 
     assert_eq!(bound.rounds.len(), folding_steps - 1);
@@ -738,7 +736,7 @@ fn every_ext_source_binds_through_the_cascade() {
         let relative = new_slot.column as usize;
 
         for round in 1..=last_step {
-            let shapes = ext_round_window_shapes(&coord, round, D2Policy::Inline).unwrap();
+            let shapes = ext_round_window_shapes(coord, round, D2Policy::Inline).unwrap();
             let shape = &shapes[old_slot.window as usize];
             let window = &bound.rounds[round as usize - 1].windows[new_slot.window as usize];
             assert_eq!(window.target_depth, round, "source {source}");
@@ -840,3 +838,118 @@ fn every_ext_source_binds_through_the_cascade() {
     );
 }
 
+
+// ── The Ext launch sequence ──────────────────────────────────────────────────
+
+/// Round r's factored-eq sizes are the incumbent drain
+/// (`fold_factored_eq_one_round`: `high[0]` to zero, then `high[1]`, then
+/// `low`) replayed r times — and the sizes are fully consumed at the last
+/// round, where the factored eq must be the identity.
+#[test]
+fn the_eq_size_drain_replays_the_incumbent_fold_order() {
+    use crate::prover::gkr::backward::make_eq_sizes;
+
+    for challenge_count in [3usize, 11, 23] {
+        let initial = make_eq_sizes(challenge_count);
+        let mut reference = initial;
+        for round in 0..=challenge_count as u8 {
+            let drained = drained_eq_sizes(initial, round);
+            assert_eq!(drained.high, reference.high, "{challenge_count} at {round}");
+            assert_eq!(drained.low, reference.low, "{challenge_count} at {round}");
+            // The incumbent's in-place drain, transcribed.
+            if reference.high[0] > 0 {
+                reference.high[0] -= 1;
+            } else if reference.high[1] > 0 {
+                reference.high[1] -= 1;
+            } else if reference.low > 0 {
+                reference.low -= 1;
+            }
+        }
+        let consumed = drained_eq_sizes(initial, challenge_count as u8);
+        assert_eq!(
+            (consumed.high, consumed.low),
+            ([0, 0], 0),
+            "{challenge_count} challenges must drain to the identity"
+        );
+    }
+}
+
+/// The whole continuation sequence, built once at plan-build time: one lowered
+/// setup per round with the round's own rows, eq sizes and K — and no parity
+/// allocation anywhere (the publishes live in storage the layer already owns).
+#[test]
+#[serial]
+fn the_ext_sequence_builds_one_setup_per_round() {
+    use crate::prover::gkr::backward::make_eq_sizes;
+
+    let prepared = prepared_l0_ext();
+    let folding_steps = prepared.plan.folding_steps;
+    let slice = super::production_program::compiled_slice(
+        &add_sub_artifact(),
+        BwdRegime::Ext,
+    )
+    .expect("the Ext slice compiles");
+
+    let launch = build_bwd_vm_ext_rounds(
+        prepared.main_state.storage(),
+        slice,
+        folding_steps,
+        prepared.plan.round_scratch.eq_low_group.as_ptr()
+            as *const crate::primitives::field::E4,
+        prepared.plan.round_scratch.accumulator.as_ptr().cast_mut()
+            as *mut crate::primitives::field::E4,
+        &prepared.context,
+    )
+    .expect("the Ext sequence builds");
+
+    let setups = launch.setups();
+    assert_eq!(setups.len(), folding_steps - 1);
+    let mut publishing_at_round = Vec::new();
+    for (index, setup) in setups.iter().enumerate() {
+        let round = (index + 1) as u8;
+        let desc = match &setup.desc {
+            super::seg_lower::BwdSegLaunchDesc::Inline(desc) => desc,
+            super::seg_lower::BwdSegLaunchDesc::ProgPtr(_) => {
+                panic!("add_sub fits the inline program family")
+            }
+        };
+        assert_eq!(
+            desc.logical_rows,
+            1u32 << (folding_steps - usize::from(round) - 1),
+            "round {round}: rows halve per round, down to 1"
+        );
+        let expected = drained_eq_sizes(make_eq_sizes(folding_steps - 1), round);
+        assert_eq!(desc.eq_sizes.high, expected.high, "round {round}");
+        assert_eq!(desc.eq_sizes.low, expected.low, "round {round}");
+        assert!(
+            SEG_CORPUS_K.contains(&(desc.k as usize)),
+            "round {round}: K{} is off the measured axis",
+            desc.k
+        );
+        assert_eq!(
+            setup.claim_point.len(),
+            folding_steps,
+            "round {round}: the claim-point payload is bounds-check-only"
+        );
+        publishing_at_round
+            .push(desc.window.iter().filter(|window| window.materialize == 1).count());
+    }
+    // The materialization ladder in window counts: E4-origin publishes from
+    // round 1; everything publishes from round 3 on.
+    assert!(publishing_at_round[0] > 0, "round 1 publishes the E4-origin slots");
+    assert!(
+        publishing_at_round[2] > publishing_at_round[0],
+        "round 3 materializes the BF and procedural slots too"
+    );
+    assert!(
+        publishing_at_round[2..]
+            .iter()
+            .all(|&count| count == publishing_at_round[2]),
+        "from round 3 on, every window publishes its slot every round"
+    );
+    eprintln!(
+        "[bwd-vm-ext-launch] add_sub L0 Ext: {} setups; publishing windows per round: {:?}",
+        setups.len(),
+        publishing_at_round
+    );
+}

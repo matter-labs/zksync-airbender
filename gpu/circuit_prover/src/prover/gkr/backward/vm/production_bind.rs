@@ -102,7 +102,8 @@ use gkr_eval_isa::fwd::source::KIND_ORDER;
 
 use super::production_program::CompiledSlice;
 use super::seg::{
-    bwd_seg_blocks_per_sm, bwd_seg_coeff_bank_device_ptr, launch_bwd_seg, BwdSegEpilogue,
+    bwd_seg_blocks_per_sm, bwd_seg_coeff_bank_device_ptr, launch_bwd_seg,
+    launch_bwd_seg_build_fold_weights, BwdSegEpilogue,
 };
 use super::seg_coeff_eval::{
     build_seg_coeff_eval_tables, schedule_bwd_seg_coeff_bank_fill, SegCoeffEvalTables,
@@ -119,7 +120,7 @@ use super::seg_lower::{
 use crate::allocator::tracker::AllocationPlacement;
 use crate::primitives::context::DeviceAllocation;
 use crate::primitives::field::{BF, E4};
-use crate::prover::gkr::backward::GkrEqSizes;
+use crate::prover::gkr::backward::{make_eq_sizes, GkrEqSizes};
 use crate::prover::gkr::forward::vm::lower::{read_place_to_gkr_address, ResolvedColumn};
 use crate::prover::gkr::forward::vm::production_bind::resolve_storage_column;
 use crate::prover::gkr::GpuGKRStorage;
@@ -1249,25 +1250,14 @@ pub(crate) fn schedule_bwd_vm_round0(
     }
     #[cfg(not(test))]
     let _ = contributions;
-    let prefix = BWD_SEG_CHALLENGE_LOOKUP_MULTIPLICATIVE as usize;
-    debug_assert_eq!(BWD_SEG_CHALLENGE_PERM_LINEARIZATION_BASE, 0);
-    // SAFETY: each source is a live device buffer of at least the copied
-    // length, owned by the orchestrator for the whole layer (the same
-    // lifetime argument `schedule_flat_eval_recipes` makes for the same
-    // pointers); the slab is this launch's own allocation.
-    unsafe {
-        let external = DeviceSlice::from_raw_parts(external_challenges, prefix);
-        memory_copy_async(&mut launch.slab[..prefix], external, stream)?;
-        for (slot, source) in [
-            (BWD_SEG_CHALLENGE_LOOKUP_MULTIPLICATIVE, lookup_multiplicative),
-            (BWD_SEG_CHALLENGE_LOOKUP_ADDITIVE, lookup_additive),
-            (BWD_SEG_CHALLENGE_CLAIM_BATCHING, claim_batching),
-        ] {
-            let slot = slot as usize;
-            let source = DeviceSlice::from_raw_parts(source, 1);
-            memory_copy_async(&mut launch.slab[slot..slot + 1], source, stream)?;
-        }
-    }
+    schedule_seg_challenge_slab(
+        &mut launch.slab,
+        external_challenges,
+        lookup_multiplicative,
+        lookup_additive,
+        claim_batching,
+        context,
+    )?;
     schedule_bwd_seg_coeff_bank_fill(
         &launch.tables,
         launch.slab.as_ptr(),
@@ -1279,6 +1269,277 @@ pub(crate) fn schedule_bwd_vm_round0(
     launch_bwd_seg(
         &launch.setup,
         BwdRegime::R0,
+        CoeffMode::Constant,
+        BwdSegEpilogue::Plane,
+        context,
+    )
+}
+
+/// Assemble the device challenge slab, all D2D: the external-challenges buffer
+/// is the slab's 7-slot prefix verbatim (asserted at the slab's definition),
+/// plus the three single-value slots. Every source pointer is a live device
+/// buffer owned by the orchestrator for the whole layer — the same lifetime
+/// argument `schedule_flat_eval_recipes` makes for the same pointers.
+fn schedule_seg_challenge_slab(
+    slab: &mut DeviceAllocation<E4>,
+    external_challenges: *const E4,
+    lookup_multiplicative: *const E4,
+    lookup_additive: *const E4,
+    claim_batching: *const E4,
+    context: &ProverContext,
+) -> CudaResult<()> {
+    let stream = context.get_exec_stream();
+    let prefix = BWD_SEG_CHALLENGE_LOOKUP_MULTIPLICATIVE as usize;
+    debug_assert_eq!(BWD_SEG_CHALLENGE_PERM_LINEARIZATION_BASE, 0);
+    // SAFETY: see the doc comment — device sources of at least the copied
+    // length; the slab is the launch's own allocation.
+    unsafe {
+        let external = DeviceSlice::from_raw_parts(external_challenges, prefix);
+        memory_copy_async(&mut slab[..prefix], external, stream)?;
+        for (slot, source) in [
+            (BWD_SEG_CHALLENGE_LOOKUP_MULTIPLICATIVE, lookup_multiplicative),
+            (BWD_SEG_CHALLENGE_LOOKUP_ADDITIVE, lookup_additive),
+            (BWD_SEG_CHALLENGE_CLAIM_BATCHING, claim_batching),
+        ] {
+            let slot = slot as usize;
+            let source = DeviceSlice::from_raw_parts(source, 1);
+            memory_copy_async(&mut slab[slot..slot + 1], source, stream)?;
+        }
+    }
+    Ok(())
+}
+
+// ── The Ext launch sequence ──────────────────────────────────────────────────
+
+/// Round `rounds`'s factored-eq sizes at plan build: the drain
+/// [`fold_factored_eq_one_round`] applies once per completed round — `high[0]`
+/// to zero, then `high[1]`, then `low` — replayed over the layer's initial
+/// sizes. Pure host arithmetic: the device STATE it describes (the in-place
+/// folded `eq_low` table and the `ab_gkr_eq_high` groups) is produced by the
+/// eq folds the round loop schedules between rounds; only the SIZES enter the
+/// descriptor, and they are deterministic at plan build.
+///
+/// [`fold_factored_eq_one_round`]: crate::prover::gkr::backward::kernels::fold_factored_eq_one_round
+pub(crate) fn drained_eq_sizes(mut eq_sizes: GkrEqSizes, rounds: u8) -> GkrEqSizes {
+    for _ in 0..rounds {
+        if eq_sizes.high[0] > 0 {
+            eq_sizes.high[0] -= 1;
+        } else if eq_sizes.high[1] > 0 {
+            eq_sizes.high[1] -= 1;
+        } else {
+            debug_assert!(eq_sizes.low >= 1, "the factored eq drained past empty");
+            eq_sizes.low -= 1;
+        }
+    }
+    eq_sizes
+}
+
+/// The per-row device footprint of one bound continuation round — the `K`
+/// policy's input. The bench's `probe_geometry` restated over the BOUND
+/// geometry: per window, `columns * (2 << delta) * element` (each output pair
+/// consumes `2^delta` inputs per half at this round's catch-up delta;
+/// procedural windows synthesize and read nothing), plus two E4 per published
+/// column, plus the two contribution halves.
+pub(crate) fn seg_ext_bytes_per_row(
+    windows: &[ResolvedBwdCoeffSourceWindow],
+    columns: &[usize],
+) -> usize {
+    let mut bytes = 2 * size_of::<E4>();
+    for (window, &columns) in windows.iter().zip(columns) {
+        let element = match window.read {
+            None => 0,
+            Some(read) if read.is_e4 => size_of::<E4>(),
+            Some(_) => size_of::<BF>(),
+        };
+        let delta = window.target_depth - window.backing_depth;
+        bytes += columns * (2usize << delta) * element;
+        if window.materialize {
+            bytes += columns * 2 * size_of::<E4>();
+        }
+    }
+    bytes
+}
+
+/// Everything the VM-owned continuation rounds of one layer need at schedule
+/// time, built once at plan-build time. `setups[r - 1]` is round `r`'s.
+///
+/// No parity allocations exist: every publish lands in a cascade slot of fold
+/// storage the layer already owns (kept alive by the storage struct, which
+/// outlives scheduling). The slab and bank fill mirror the R0 launch's; ONE
+/// fill before round 1 serves every round, because the bank's recipes are
+/// challenge-functions of the LAYER, not of the round.
+pub(crate) struct BwdVmExtLaunch {
+    setups: Vec<BwdSegSetup>,
+    tables: SegCoeffEvalTables,
+    slab: DeviceAllocation<E4>,
+    /// Bank fill scheduled — the round scheduler's call-order tripwire.
+    filled: bool,
+}
+
+impl BwdVmExtLaunch {
+    #[cfg(test)]
+    pub(crate) fn setups(&self) -> &[BwdSegSetup] {
+        &self.setups
+    }
+}
+
+/// Build every VM-owned continuation round against production storage.
+///
+/// Panics on any binding or lowering rejection, exactly as
+/// [`build_bwd_vm_round0`] does: every failure here is a wiring defect and a
+/// proof must stop on it rather than fall back somewhere unmeasured.
+pub(crate) fn build_bwd_vm_ext_rounds<E: Copy>(
+    storage: &GpuGKRStorage<BF, E>,
+    slice: &CompiledSlice,
+    folding_steps: usize,
+    eq_low: *const E4,
+    contributions: *mut E4,
+    context: &ProverContext,
+) -> CudaResult<BwdVmExtLaunch> {
+    let bound = bind_ext_round_sources(
+        storage,
+        &slice.coord,
+        slice.coord.layer,
+        folding_steps,
+        D2Policy::Inline,
+    )
+    .unwrap_or_else(|error| panic!("backward VM Ext source binding: {error:?}"));
+    let tables = build_seg_coeff_eval_tables(&slice.layer.coefficients)
+        .unwrap_or_else(|error| panic!("backward VM Ext bank translation: {error:?}"));
+
+    // Dead values with a live LENGTH, as at R0: lowering sizes the bank and
+    // validates ids; the device fill supplies the real values. The claim-point
+    // payload is bounds-check-only — `ab_gkr_main_layer_claim_point` is
+    // production-owned, written in place by the round-update kernels, and the
+    // VM must NEVER upload over it.
+    let coefficients = vec![E4::ZERO; slice.layer.coefficients.len()];
+    let claim_point = vec![E4::ZERO; folding_steps];
+    let scratch = ResolvedPublishScratch {
+        parity_base: [null_mut(), null_mut()],
+        plan: bound.publish_plan.clone(),
+    };
+    let ceiling = seg_k_ceiling(BwdRegime::Ext)?;
+    let mut setups = Vec::with_capacity(bound.rounds.len());
+    for round in &bound.rounds {
+        let bytes_per_row = seg_ext_bytes_per_row(&round.windows, &bound.window_columns);
+        let k = seg_policy_k(bytes_per_row, ceiling);
+        let binding = BwdSegRoundBinding {
+            round: u32::from(round.round),
+            rows: round.rows,
+            windows: &round.windows,
+            window_read_elements: &round.window_read_elements,
+            claim_point: &claim_point,
+            coefficients: &coefficients,
+            c_init: slice.layer.c_init,
+            immediates: &slice.layer.immediates,
+            eq_low,
+            eq_sizes: drained_eq_sizes(make_eq_sizes(folding_steps - 1), round.round),
+            contributions,
+            acc_size: round.rows as u32,
+        };
+        setups.push(
+            lower_bwd_seg(
+                &bound.coord,
+                &binding,
+                &scratch,
+                k,
+                D2Policy::Inline,
+                ProgramMode::Inline,
+                CoeffMode::Constant,
+            )
+            .unwrap_or_else(|error| {
+                panic!(
+                    "backward VM Ext lowering (round {}, K = {k}): {error:?}",
+                    round.round
+                )
+            }),
+        );
+    }
+    let slab = context.alloc(BWD_SEG_CHALLENGE_SLOTS, AllocationPlacement::BestFit)?;
+    Ok(BwdVmExtLaunch {
+        setups,
+        tables,
+        slab,
+        filled: false,
+    })
+}
+
+/// Schedule the ONE bank fill the continuation rounds share, before round 1:
+/// assemble the challenge slab (all D2D) and evaluate the bank on device —
+/// the same fill [`schedule_bwd_vm_round0`] performs, against the same
+/// challenge pointers. When R0 is also VM-owned the two fills write identical
+/// values to the same `__constant__` symbol, stream-ordered after round 0's
+/// reads — redundant but harmless.
+pub(crate) fn schedule_bwd_vm_ext_bank_fill(
+    launch: &mut BwdVmExtLaunch,
+    external_challenges: *const E4,
+    lookup_multiplicative: *const E4,
+    lookup_additive: *const E4,
+    claim_batching: *const E4,
+    context: &ProverContext,
+) -> CudaResult<()> {
+    schedule_seg_challenge_slab(
+        &mut launch.slab,
+        external_challenges,
+        lookup_multiplicative,
+        lookup_additive,
+        claim_batching,
+        context,
+    )?;
+    schedule_bwd_seg_coeff_bank_fill(
+        &launch.tables,
+        launch.slab.as_ptr(),
+        bwd_seg_coeff_bank_device_ptr(),
+        context.get_exec_stream(),
+    )?;
+    launch.filled = true;
+    Ok(())
+}
+
+/// Schedule one VM-owned continuation round on `exec_stream`: the fold-weight
+/// prelude (reads the claim-point symbol slot `round - 1`, which the previous
+/// round's update kernel wrote — stream order IS the data dependency), then
+/// the segmented kernel.
+pub(crate) fn schedule_bwd_vm_ext_round(
+    launch: &BwdVmExtLaunch,
+    round: u32,
+    acc_size: u32,
+    context: &ProverContext,
+) -> CudaResult<()> {
+    assert!(
+        launch.filled,
+        "the Ext bank fill must be scheduled before any round launch"
+    );
+    let setup = &launch.setups[round as usize - 1];
+    let (lowered_rows, contributions) = match &setup.desc {
+        super::seg_lower::BwdSegLaunchDesc::Inline(desc) => (desc.logical_rows, desc.contributions),
+        super::seg_lower::BwdSegLaunchDesc::ProgPtr(desc) => {
+            (desc.logical_rows, desc.contributions)
+        }
+    };
+    assert_eq!(
+        lowered_rows, acc_size,
+        "the Ext descriptor for round {round} was lowered for {lowered_rows} rows but runs at {acc_size}"
+    );
+    let stream = context.get_exec_stream();
+    // The same anti-vacuity aid as round 0's, per VM round. Opt-in; see
+    // `schedule_bwd_vm_round0`.
+    #[cfg(test)]
+    if poison_accumulator_enabled() {
+        const POISON: u32 = 0x5EED_DEAD & 0x7FFF_FFFF;
+        // SAFETY: `contributions` is the accumulator's live device pointer and
+        // the allocation holds `2 * max_acc_size >= 2 * acc_size` elements.
+        let dst = unsafe { DeviceSlice::from_raw_parts_mut(contributions, 2 * acc_size as usize) };
+        crate::ops::simple::set_by_val(E4::from_array_of_base([BF::new(POISON); 4]), dst, stream)?;
+    }
+    #[cfg(not(test))]
+    let _ = contributions;
+    launch_bwd_seg_build_fold_weights(round, context)?;
+    #[cfg(test)]
+    BWD_VM_EXT_LAUNCHES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    launch_bwd_seg(
+        setup,
+        BwdRegime::Ext,
         CoeffMode::Constant,
         BwdSegEpilogue::Plane,
         context,
@@ -1308,10 +1569,16 @@ pub(crate) fn poison_accumulator_enabled() -> bool {
 #[cfg(test)]
 static BWD_VM_R0_LAUNCHES: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
-/// Zero the launch counter and return a handle that reads it back.
+/// VM-owned Ext (continuation) launch count, same doctrine.
+#[cfg(test)]
+static BWD_VM_EXT_LAUNCHES: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
+
+/// Zero BOTH launch counters and return a handle that reads them back.
 #[cfg(test)]
 pub(crate) fn count_bwd_vm_r0_launches() -> BwdVmLaunchCounter {
     BWD_VM_R0_LAUNCHES.store(0, std::sync::atomic::Ordering::Relaxed);
+    BWD_VM_EXT_LAUNCHES.store(0, std::sync::atomic::Ordering::Relaxed);
     BwdVmLaunchCounter
 }
 
@@ -1322,5 +1589,9 @@ pub(crate) struct BwdVmLaunchCounter;
 impl BwdVmLaunchCounter {
     pub(crate) fn launches(&self) -> usize {
         BWD_VM_R0_LAUNCHES.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    pub(crate) fn ext_launches(&self) -> usize {
+        BWD_VM_EXT_LAUNCHES.load(std::sync::atomic::Ordering::Relaxed)
     }
 }
