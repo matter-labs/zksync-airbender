@@ -509,21 +509,37 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
             }
         };
 
-        // TRIPWIRE until the Ext launch path exists (its plan's Task 4): a
-        // selected coordinate that would silently fall through to the flat
-        // continuation kernels must stop the proof instead — same doctrine as
-        // `check_selection`, enforced at the moment it would be violated.
-        {
+        // The backward VM's continuation sequence, when this layer's
+        // `(layer_idx, Ext)` coordinate is VM-selected: one lowered setup per
+        // round 1..=folding_steps-1, bound against the SAME storage the flat
+        // prepares above just resolved — the binder reads the fold-storage
+        // entries those prepares created, which is why this block sits after
+        // them.
+        let bwd_vm_ext = {
             use super::super::vm::coords::{coords_from_env, BwdVmCoord};
-            assert!(
-                !coords_from_env().contains(&BwdVmCoord {
-                    layer: layer_idx,
-                    regime: crate::upstream::BwdRegime::Ext,
-                }),
-                "backward VM coordinate {layer_idx}:Ext is selected, but the Ext launch path \
-                 is not built yet — the flat continuation kernels would silently run instead",
-            );
-        }
+            let vm_owns_continuation = coords_from_env().contains(&BwdVmCoord {
+                layer: layer_idx,
+                regime: crate::upstream::BwdRegime::Ext,
+            });
+            if vm_owns_continuation {
+                let slice = self.bwd_vm_ext.expect(
+                    "the VM selection is read once at backward-state build, so a selected \
+                     coordinate implies a captured compiled slice",
+                );
+                // SAFETY: every instantiation uses `E = E4` (same argument as
+                // the `bwd_vm_round0` block above).
+                Some(super::super::vm::production_bind::build_bwd_vm_ext_rounds(
+                    &self.storage,
+                    slice,
+                    folding_steps,
+                    round_scratch.eq_low_group.as_ptr() as *const E4,
+                    round_scratch.accumulator.as_mut_ptr() as *mut E4,
+                    context,
+                )?)
+            } else {
+                None
+            }
+        };
 
         // --- Build flat continuation plan for rounds 1+ ---
         let (
@@ -709,6 +725,7 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
             flat_continuation_terms_device,
             round_scratch,
             bwd_vm_round0,
+            bwd_vm_ext,
             recipe_upload_callbacks: recipe_callbacks,
             batch_challenge_base_override_ptr: None,
             eq_sizes: GkrEqSizes::zeroed(),

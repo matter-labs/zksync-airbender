@@ -154,6 +154,10 @@ where
         context: &ProverContext,
     ) -> CudaResult<()> {
         assert!(
+            self.bwd_vm_ext.is_none(),
+            "a VM-owned continuation round must not reach the flat launch"
+        );
+        assert!(
             self.flat_cont_recipe_desc.is_some() || self.flat_cont_recipe_desc_device.is_some(),
             "flat continuation recipe descriptor must be scheduled"
         );
@@ -213,6 +217,10 @@ where
         acc_size: usize,
         context: &ProverContext,
     ) -> CudaResult<()> {
+        assert!(
+            self.bwd_vm_ext.is_none(),
+            "a VM-owned continuation round must not reach the flat launch"
+        );
         assert!(
             self.flat_cont_recipe_desc.is_some() || self.flat_cont_recipe_desc_device.is_some(),
             "flat continuation recipe descriptor must be scheduled"
@@ -275,6 +283,10 @@ where
         explicit_form: bool,
         context: &ProverContext,
     ) -> CudaResult<()> {
+        assert!(
+            self.bwd_vm_ext.is_none(),
+            "a VM-owned continuation round must not reach the flat launch"
+        );
         assert!(
             self.flat_cont_recipe_desc.is_some() || self.flat_cont_recipe_desc_device.is_some(),
             "flat continuation recipe descriptor must be scheduled"
@@ -1032,14 +1044,16 @@ where
             // kernel's output contract is the incumbent's ACCUMULATOR
             // (`acc_c0`/`acc_c2` halves), which the separate reduction +
             // round-update tail consumes — the fused warp-partial tail has no
-            // seam to hand it to.
+            // seam to hand it to. VM-owned continuation rounds take it for the
+            // same reason.
             let use_warp_partial = acc_size >= 32
-                && !(step == 0 && (!self.flat_use_constant || self.bwd_vm_round0.is_some()));
+                && !(step == 0 && (!self.flat_use_constant || self.bwd_vm_round0.is_some()))
+                && !(step >= 1 && self.bwd_vm_ext.is_some());
 
             // Round-kernel launch.
             if use_warp_partial {
                 self.launch_round_kernel_warp_partial(step, acc_size, context)?;
-                if step == 0 {
+                if step == 0 && self.bwd_vm_ext.is_none() {
                     self.schedule_flat_continuation_eval_recipes(
                         cont_batch_base_ptr,
                         cont_lookup_mul_ptr,
@@ -1071,11 +1085,37 @@ where
                 // `exec_stream`; the continuation eval_recipes write can
                 // safely target the shared `ab_gkr_flat_coefficients`
                 // __constant__ symbol without clobbering round-0's input.
-                self.schedule_flat_continuation_eval_recipes(
-                    cont_batch_base_ptr,
-                    cont_lookup_mul_ptr,
-                    cont_lookup_add_ptr,
-                    device_external_challenges_ptr as *const E4,
+                // Skipped entirely when the VM owns the continuation rounds —
+                // no flat continuation kernel runs to read it.
+                if self.bwd_vm_ext.is_none() {
+                    self.schedule_flat_continuation_eval_recipes(
+                        cont_batch_base_ptr,
+                        cont_lookup_mul_ptr,
+                        cont_lookup_add_ptr,
+                        device_external_challenges_ptr as *const E4,
+                        context,
+                    )?;
+                }
+            } else if let Some(ext) = self.bwd_vm_ext.as_mut() {
+                // VM-owned continuation round. The bank fill runs ONCE, at the
+                // first continuation round — stream-ordered after round 0's
+                // own bank reads (identical values when 0:R0 is also selected;
+                // the seg bank is its own __constant__ symbol either way) and
+                // before every launch that reads it.
+                if step == 1 {
+                    super::super::vm::production_bind::schedule_bwd_vm_ext_bank_fill(
+                        ext,
+                        device_external_challenges_ptr as *const E4,
+                        cont_lookup_mul_ptr,
+                        cont_lookup_add_ptr,
+                        cont_batch_base_ptr,
+                        context,
+                    )?;
+                }
+                super::super::vm::production_bind::schedule_bwd_vm_ext_round(
+                    ext,
+                    step as u32,
+                    acc_size as u32,
                     context,
                 )?;
             } else {
@@ -1138,8 +1178,20 @@ where
         // into `device_claim_point_out[last_step]`, WITHOUT folding eq again
         // (skip `fold_eq_values_for_next_round`). The `[E;2]` last-round line is
         // still read from the round storage by
-        // `final_evaluation_sources_for_last_step(last_step)` below.
-        self.launch_round3_kernels_from_symbol(last_step, 1, false, context)?;
+        // `final_evaluation_sources_for_last_step(last_step)` below —
+        // cascade slot `last_step`, which a VM-owned final round publishes
+        // through the same pointers, so the gather block below is untouched
+        // either way.
+        if let Some(ext) = self.bwd_vm_ext.as_ref() {
+            super::super::vm::production_bind::schedule_bwd_vm_ext_round(
+                ext,
+                last_step as u32,
+                1,
+                context,
+            )?;
+        } else {
+            self.launch_round3_kernels_from_symbol(last_step, 1, false, context)?;
+        }
         {
             // SAFETY: `last_step == folding_steps - 1`, so this input claim-point
             // coordinate (`z_{last_step}`) exists.

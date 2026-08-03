@@ -304,6 +304,13 @@ pub(crate) struct GpuGKRMainLayerSumcheckLayerPlan<E> {
     /// authority the round loop dispatches on: round 0 takes the UNFUSED
     /// branch and launches the segmented kernel instead of the flat one.
     pub(crate) bwd_vm_round0: Option<super::super::vm::production_bind::BwdVmRound0Launch>,
+    /// The backward VM's continuation sequence, built at plan-build time when
+    /// the layer's `(layer, Ext)` coordinate is VM-selected. `Some` is the
+    /// ownership authority for EVERY round past 0, the final one included:
+    /// each takes the unfused branch and launches the segmented kernel; the
+    /// publishes land in the layer's own fold storage, so the final gather
+    /// runs untouched.
+    pub(crate) bwd_vm_ext: Option<super::super::vm::production_bind::BwdVmExtLaunch>,
     /// Keepalive slot for scheduling callbacks unrelated to inline recipe descriptors.
     pub(crate) recipe_upload_callbacks: Callbacks<'static>,
     /// When set, `batch_challenge_base_ptr()` returns this raw pointer instead
