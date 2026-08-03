@@ -250,7 +250,7 @@ fn build_layer_layout_from_writes(
     layout
 }
 
-fn cache_relation_output_type(rel: &NoFieldGKRCacheRelation) -> FieldType {
+fn cache_relation_output_type<F: PrimeField>(rel: &NoFieldGKRCacheRelation<F>) -> FieldType {
     use NoFieldGKRCacheRelation::*;
     match rel {
         SingleColumnLookup { .. } => FieldType::Base,
@@ -282,7 +282,9 @@ fn column_index_for_layer0(addr: &GKRAddress) -> u32 {
 /// `forward.rs`: relations that emit base-typed polys (`LinearBaseFieldRelation`,
 /// `MaterializeSingleLookupInput`, `CopyInBaseField`, `MaxQuadratic`) versus
 /// extension-typed polys (everything else with outputs).
-pub(super) fn relation_outputs(rel: &NoFieldGKRRelation) -> Vec<(GKRAddress, FieldType)> {
+pub(super) fn relation_outputs<F: PrimeField>(
+    rel: &NoFieldGKRRelation<F>,
+) -> Vec<(GKRAddress, FieldType)> {
     use NoFieldGKRRelation::*;
     let mut out = Vec::new();
     match rel {
