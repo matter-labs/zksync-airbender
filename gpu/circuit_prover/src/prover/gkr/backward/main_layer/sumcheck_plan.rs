@@ -1113,9 +1113,8 @@ where
             // Which EVAL kernel: the incumbent's warp-partial twin exists for a
             // constant-coefficient round 0 and every continuation round, and needs
             // at least one whole warp of rows.
-            let incumbent_warp_partial = acc_size >= 32
-                && !vm_owns_step
-                && !(step == 0 && !self.flat_use_constant);
+            let incumbent_warp_partial =
+                acc_size >= 32 && !vm_owns_step && !(step == 0 && !self.flat_use_constant);
             // Which TAIL: the fused one, which reduces interleaved warp partials,
             // runs the round update and folds eq in a single kernel. The VM's
             // epilogue emits the SAME partial layout

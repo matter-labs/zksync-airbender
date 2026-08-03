@@ -54,6 +54,17 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
     );
     let whir_schedule = &prover_config.whir_schedule;
 
+    let is_add_sub = matches!(
+        circuit_type,
+        CircuitType::Unrolled(
+            crate::witness::circuit_type::UnrolledCircuitType::NonMemory(
+                crate::witness::circuit_type::UnrolledNonMemoryCircuitType::AddSubLuiAuipcMop
+            )
+        )
+    );
+    // Before the first enqueue, on purpose: see `warm_vm_program_caches`.
+    crate::prover::gkr::warm_vm_program_caches(&compiled_circuit, is_add_sub);
+
     let GpuGKRProofTransfer {
         transfer,
         mut setup,
@@ -136,14 +147,6 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
                 }
             },
         );
-    let is_add_sub = matches!(
-        circuit_type,
-        CircuitType::Unrolled(
-            crate::witness::circuit_type::UnrolledCircuitType::NonMemory(
-                crate::witness::circuit_type::UnrolledNonMemoryCircuitType::AddSubLuiAuipcMop
-            )
-        )
-    );
     let forward_output = schedule_forward_pass(
         setup.as_ref().map(|setup| &setup.trace_holder),
         synthetic_setup_trace_holder.as_ref(),

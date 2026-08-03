@@ -223,14 +223,14 @@ mod tests {
         assert!(parse_coords("0:R0,0:R0").is_err());
     }
 
-    /// Both regimes of layer 0 are wired — and nothing else. Anything else must
-    /// fail loudly rather than reach a binder that does not exist for it.
+    /// Both regimes of layer 0 are wired. The bound — that a layer past the
+    /// circuit's main layers is NOT wired, so it fails loudly rather than
+    /// reaching a binder that does not exist for it — is
+    /// `every_main_layer_is_wired_in_both_regimes`.
     #[test]
     fn both_regimes_of_layer_zero_are_wired() {
         assert!(coord_is_wired(r0(0)));
         assert!(coord_is_wired(ext(0)));
-        assert!(!coord_is_wired(r0(1)));
-        assert!(!coord_is_wired(ext(1)));
     }
 
     #[test]

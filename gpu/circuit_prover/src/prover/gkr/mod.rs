@@ -29,6 +29,56 @@ pub(crate) use support::initial_inner_products as gkr_initial_inner_products;
 use std::ptr::null;
 use std::sync::Arc;
 
+/// Compile every SELECTED VM program before any work is enqueued, and stop a
+/// selection the programs cannot serve.
+///
+/// Both program caches are lazy, and the backward one is first hit inside
+/// `into_main_layer_backward_state` — which runs AFTER the forward pass and the
+/// dimension-reducing layers are already on the stream. A cold compile there
+/// blocks the scheduling thread while the device drains its queue, which is the
+/// one thing `prove()` must never do (see `docs/gpu_scheduling_contract.md`: it
+/// is enqueue-only, and the host's job is to stay ahead). add_sub's coordinates
+/// are ~1.4 ms in release, but the corpus projection
+/// (`report_the_compile_time_projection_over_the_corpus`) measures
+/// blake2_with_extended_control's at 131 ms — most of a proof.
+///
+/// Called at the TOP of `prove()`, where nothing is enqueued and the device is
+/// idle by definition, so the same host time costs the first proof some latency
+/// and no proof its overlap. Later proofs in the process hit warm caches.
+///
+/// It is also where a wrong-circuit selection stops. The forward pass has its own
+/// loud check; the backward side had none, and its compile would have bound a
+/// coordinate lowered from a different circuit's DAG. Neither program cache is
+/// keyed by circuit, so this check is what keeps that from mattering while
+/// add_sub is the only allowlisted circuit — a second one needs the key, not just
+/// the check.
+pub(crate) fn warm_vm_program_caches(
+    artifact: &crate::upstream::GKRCircuitArtifact<crate::primitives::field::BF>,
+    is_add_sub: bool,
+) {
+    let forward_layers = forward::path::vm_layers_from_env();
+    let backward_coords = backward::vm::coords::coords_from_env();
+    if forward_layers.is_empty() && backward_coords.is_empty() {
+        return;
+    }
+    assert!(
+        is_add_sub,
+        "{} / {} select a VM path but the circuit is not add_sub_lui_auipc_mop; both the \
+         forward program and the backward coordinates are add_sub-specific",
+        forward::path::AB_GKR_FWD_VM_LAYERS_ENV,
+        backward::vm::coords::AB_GKR_BWD_VM_COORDS_ENV,
+    );
+    // Errors are deliberately dropped: they are CACHED, so the real call site
+    // still fails with the same message. Warming changes when the work happens,
+    // never whether it succeeds.
+    if !forward_layers.is_empty() {
+        let _ = forward::vm::program::compiled_program(artifact);
+    }
+    for coord in backward_coords {
+        let _ = backward::vm::production_program::compiled_slice(artifact, coord.layer, coord.regime);
+    }
+}
+
 use crate::prover::gkr::storage_layout::GpuGKRStorageLayout;
 use crate::upstream::GKRAddress;
 
