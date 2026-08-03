@@ -299,6 +299,11 @@ pub(crate) struct GpuGKRMainLayerSumcheckLayerPlan<E> {
         FlatTermDeviceBuffers,
     )>,
     pub(crate) round_scratch: GpuGKRMainLayerRoundScratch<E>,
+    /// The backward VM's R0 launch, built at plan-build time when the layer's
+    /// `(layer, R0)` coordinate is VM-selected. `Some` here is the ownership
+    /// authority the round loop dispatches on: round 0 takes the UNFUSED
+    /// branch and launches the segmented kernel instead of the flat one.
+    pub(crate) bwd_vm_round0: Option<super::super::vm::production_bind::BwdVmRound0Launch>,
     /// Keepalive slot for scheduling callbacks unrelated to inline recipe descriptors.
     pub(crate) recipe_upload_callbacks: Callbacks<'static>,
     /// When set, `batch_challenge_base_ptr()` returns this raw pointer instead
@@ -336,6 +341,11 @@ pub(crate) struct GpuGKRMainLayerBackwardState<E: FieldExtension<BF> + Field> {
     pub(crate) num_base_layer_memory_polys: usize,
     pub(crate) num_base_layer_witness_polys: usize,
     pub(crate) is_delegation: bool,
+    /// The backward VM's compiled R0 slice, captured from the RAW artifact
+    /// (before the normalize) when `AB_GKR_BWD_VM_COORDS` selects a
+    /// coordinate; `None` otherwise. Read once per proof at state build so
+    /// the plan builder and the launcher cannot see different selections.
+    pub(crate) bwd_vm_r0: Option<&'static super::super::vm::production_program::CompiledR0Slice>,
 }
 
 pub(crate) struct ScheduledMainLayerExecutionState<E: FieldExtension<BF> + Field> {

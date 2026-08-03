@@ -110,15 +110,14 @@ where
     ) -> CudaResult<()> {
         // The segmented lean VM is an alternative implementation of this round;
         // `flat_use_constant` below is an orthogonal axis (where the incumbent's
-        // coefficients come from), not a competing path.
-        let vm_owns_round0 = super::super::vm::coords::coords_from_env()
-            .contains(&super::super::vm::coords::BwdVmCoord {
-                layer: self.layer_idx,
-                regime: crate::upstream::BwdRegime::R0,
-            });
-        if vm_owns_round0 {
-            unreachable!("the backward VM launch is wired in Task 4");
-        }
+        // coefficients come from), not a competing path. Ownership is decided
+        // at plan build (`bwd_vm_round0`), and the round loop dispatches on it
+        // BEFORE reaching here — this assert is the guard against branch
+        // drift, not the dispatch.
+        assert!(
+            self.bwd_vm_round0.is_none(),
+            "a VM-owned round 0 must not reach the flat launch"
+        );
         assert!(
             self.flat_recipe_desc.is_some() || self.flat_recipe_desc_device.is_some(),
             "flat round 0 recipe descriptor must be scheduled"
@@ -1028,7 +1027,14 @@ where
             // back to the unfused round-0 path (`launch_round0_kernels`), which
             // supports the device-buffer coeff loader. Fast-path circuits keep
             // the warp-partial path (their round-0 fits `__constant__`).
-            let use_warp_partial = acc_size >= 32 && !(step == 0 && !self.flat_use_constant);
+            //
+            // A VM-owned round 0 also takes the unfused branch: the segmented
+            // kernel's output contract is the incumbent's ACCUMULATOR
+            // (`acc_c0`/`acc_c2` halves), which the separate reduction +
+            // round-update tail consumes — the fused warp-partial tail has no
+            // seam to hand it to.
+            let use_warp_partial = acc_size >= 32
+                && !(step == 0 && (!self.flat_use_constant || self.bwd_vm_round0.is_some()));
 
             // Round-kernel launch.
             if use_warp_partial {
@@ -1043,7 +1049,24 @@ where
                     )?;
                 }
             } else if step == 0 {
-                self.launch_round0_kernels(acc_size, context)?;
+                if let Some(vm) = self.bwd_vm_round0.as_mut() {
+                    // Fill the seg bank from the challenge slab, then launch.
+                    // The slab reads through the SAME device pointers the flat
+                    // eval-recipes launch uses; the seg bank is its own
+                    // `__constant__` symbol, so no ordering interaction with
+                    // `ab_gkr_flat_coefficients` exists in either direction.
+                    super::super::vm::production_bind::schedule_bwd_vm_round0(
+                        vm,
+                        device_external_challenges_ptr as *const E4,
+                        cont_lookup_mul_ptr,
+                        cont_lookup_add_ptr,
+                        cont_batch_base_ptr,
+                        acc_size as u32,
+                        context,
+                    )?;
+                } else {
+                    self.launch_round0_kernels(acc_size, context)?;
+                }
                 // Round-0 kernel reads are now ordered before this point on
                 // `exec_stream`; the continuation eval_recipes write can
                 // safely target the shared `ab_gkr_flat_coefficients`

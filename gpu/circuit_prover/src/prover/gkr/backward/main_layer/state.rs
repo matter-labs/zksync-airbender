@@ -17,7 +17,7 @@ use crate::ops::cub::device_reduce::{get_reduce_temp_storage_bytes, Reduce, Redu
 use crate::ops::cub::CUB_TEMP_STORAGE_EXTRA_ALIGNMENT_LOG2;
 use crate::primitives::callbacks::Callbacks;
 use crate::primitives::context::DeviceAllocation;
-use crate::primitives::field::BF;
+use crate::primitives::field::{BF, E4};
 use crate::primitives::static_host::{alloc_static_pinned_box_uninit, StaticPinnedBox};
 use crate::prover::ProverContext;
 use crate::upstream::{Field, FieldExtension, GKRAddress};
@@ -460,7 +460,7 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
             get_reduce_temp_storage_bytes::<E>(ReduceOperation::Sum, max_acc_size as i32)?;
         let partials_len = super::super::kernels::max_partials_len(max_acc_size);
         let partials = context.alloc(partials_len, AllocationPlacement::Top)?;
-        let round_scratch = GpuGKRMainLayerRoundScratch {
+        let mut round_scratch = GpuGKRMainLayerRoundScratch {
             claim_point: context.alloc(folding_steps + 1, AllocationPlacement::Top)?,
             eq_low_group: context.alloc(GKR_EQ_GROUP_TABLE_LEN, AllocationPlacement::Top)?,
             accumulator: context.alloc(max_acc_size * 2, AllocationPlacement::Top)?,
@@ -471,6 +471,42 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
                     AllocationPlacement::Top,
                 )?,
             partials,
+        };
+
+        // The backward VM's R0 launch, when this layer's `(layer_idx, R0)`
+        // coordinate is VM-selected. Built HERE because plan build is where
+        // storage pointers get resolved into descriptors — the same moment the
+        // flat path resolves its own — and the descriptor needs
+        // `round_scratch`'s eq/accumulator pointers.
+        let bwd_vm_round0 = {
+            use super::super::vm::coords::{coords_from_env, BwdVmCoord};
+            let vm_owns_round0 = coords_from_env().contains(&BwdVmCoord {
+                layer: layer_idx,
+                regime: crate::upstream::BwdRegime::R0,
+            });
+            if vm_owns_round0 {
+                let slice = self.bwd_vm_r0.expect(
+                    "the VM selection is read once at backward-state build, so a selected \
+                     coordinate implies a captured compiled slice",
+                );
+                // Step 0's logical row count — the contribution half-stride.
+                let rows = 1usize << (folding_steps - 1);
+                // SAFETY: every instantiation uses `E = E4`, so these
+                // reinterprets are byte-for-byte views over live device
+                // buffers with identical ext-field layout (same argument as
+                // the claims-buffer transmutes in the round loop).
+                Some(super::super::vm::production_bind::build_bwd_vm_round0(
+                    &self.storage,
+                    slice,
+                    rows,
+                    round_scratch.eq_low_group.as_ptr() as *const E4,
+                    make_eq_sizes(folding_steps.saturating_sub(1)),
+                    round_scratch.accumulator.as_mut_ptr() as *mut E4,
+                    context,
+                )?)
+            } else {
+                None
+            }
         };
 
         // --- Build flat continuation plan for rounds 1+ ---
@@ -656,6 +692,7 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
             flat_round2_terms_device,
             flat_continuation_terms_device,
             round_scratch,
+            bwd_vm_round0,
             recipe_upload_callbacks: recipe_callbacks,
             batch_challenge_base_override_ptr: None,
             eq_sizes: GkrEqSizes::zeroed(),

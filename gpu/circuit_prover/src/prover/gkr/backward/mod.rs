@@ -157,6 +157,18 @@ impl<E: Field + FieldExtension<BF>> GpuGKRDimensionReducingBackwardState<BF, E> 
         lookup_additive_challenge: E,
         is_delegation: bool,
     ) -> GpuGKRMainLayerBackwardState<E> {
+        // The backward VM's coordinate must compile from the RAW artifact —
+        // the normalize below rewrites scratch-backed addresses, and the DAG
+        // the coordinate is compiled against must be the one the source
+        // binder's `ReadPlace`s refer to (same capture the forward VM makes).
+        let bwd_vm_r0 = {
+            let coords = vm::coords::coords_from_env();
+            (!coords.is_empty()).then(|| {
+                vm::production_program::compiled_r0_slice(&compiled_circuit).unwrap_or_else(
+                    |error| panic!("backward VM R0 coordinate compile: {error}"),
+                )
+            })
+        };
         let compiled_circuit = normalize_compiled_circuit_for_gpu(compiled_circuit);
         assert!(
             self.pending_layers.is_empty(),
@@ -195,6 +207,7 @@ impl<E: Field + FieldExtension<BF>> GpuGKRDimensionReducingBackwardState<BF, E> 
             num_base_layer_memory_polys: compiled_circuit.memory_layout.total_width,
             num_base_layer_witness_polys: compiled_circuit.witness_layout.total_width,
             is_delegation,
+            bwd_vm_r0,
         }
     }
 }

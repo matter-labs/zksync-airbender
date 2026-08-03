@@ -87,7 +87,11 @@
 //! [`resolve_storage_column`]: crate::prover::gkr::forward::vm::production_bind::resolve_storage_column
 //! [`assign_class`]: super::seg_lower::assign_class
 
+use std::ptr::null_mut;
+
+use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
+use era_cudart::slice::DeviceSlice;
 use gkr_eval_isa::bwd::coeff::lean_artifact::LeanCoordinateArtifact;
 use gkr_eval_isa::bwd::coeff::lean_bind::{
     LeanBoundColumn, LeanBoundWindow, LeanSourceBinding, LeanSourceSlot,
@@ -95,17 +99,31 @@ use gkr_eval_isa::bwd::coeff::lean_bind::{
 use gkr_eval_isa::bwd::coeff::limits::MAX_SOURCE_WINDOWS;
 use gkr_eval_isa::bwd::coeff::stats::WindowFamily;
 
-use super::seg::{bwd_seg_blocks_per_sm, BwdSegEpilogue};
+use super::production_program::CompiledR0Slice;
+use super::seg::{
+    bwd_seg_blocks_per_sm, bwd_seg_coeff_bank_device_ptr, launch_bwd_seg, BwdSegEpilogue,
+};
+use super::seg_coeff_eval::{
+    build_seg_coeff_eval_tables, schedule_bwd_seg_coeff_bank_fill, SegCoeffEvalTables,
+    BWD_SEG_CHALLENGE_CLAIM_BATCHING, BWD_SEG_CHALLENGE_LOOKUP_ADDITIVE,
+    BWD_SEG_CHALLENGE_LOOKUP_MULTIPLICATIVE, BWD_SEG_CHALLENGE_PERM_LINEARIZATION_BASE,
+    BWD_SEG_CHALLENGE_SLOTS,
+};
 use super::seg_desc::BWD_SEG_MAX_K;
 use super::seg_lower::{
-    assign_class, plan_publish_scratch, window_columns, BwdSegLowerError, CoeffMode, D2Policy,
-    ProgramMode, ResolvedBwdCoeffSourceWindow, SourceClass, SourceOrigin,
+    assign_class, lower_bwd_seg, plan_publish_scratch, window_columns, BwdSegLowerError,
+    BwdSegRoundBinding, BwdSegSetup, CoeffMode, D2Policy, ProgramMode, PublishScratchPlan,
+    ResolvedBwdCoeffSourceWindow, ResolvedPublishScratch, SourceClass, SourceOrigin,
 };
+use crate::allocator::tracker::AllocationPlacement;
+use crate::primitives::context::DeviceAllocation;
 use crate::primitives::field::{BF, E4};
+use crate::prover::gkr::backward::GkrEqSizes;
 use crate::prover::gkr::forward::vm::lower::{read_place_to_gkr_address, ResolvedColumn};
 use crate::prover::gkr::forward::vm::production_bind::resolve_storage_column;
 use crate::prover::gkr::GpuGKRStorage;
-use crate::upstream::{BwdRegime, FieldKind, GKRAddress, ReadPlace};
+use crate::prover::ProverContext;
+use crate::upstream::{BwdRegime, Field, FieldKind, GKRAddress, ReadPlace};
 
 // ── The closed-form `K` policy (spec §12) ────────────────────────────────────
 
@@ -381,6 +399,10 @@ pub(crate) struct BoundR0Sources {
     /// Per rebound window: addressable column count, for the publish plan and
     /// the policy footprint.
     pub(crate) window_columns: Vec<usize>,
+    /// The (empty — asserted) R0 publish plan, kept so the lowering's
+    /// [`ResolvedPublishScratch`] is the SAME plan the bind checked rather
+    /// than a re-derivation that could disagree.
+    pub(crate) publish_plan: PublishScratchPlan,
 }
 
 /// One re-windowing run under construction: a maximal stretch of one artifact
@@ -540,5 +562,182 @@ pub(crate) fn bind_r0_sources<E: Copy>(
         windows: bound,
         window_read_elements: read_elements,
         window_columns,
+        publish_plan: plan,
     })
+}
+
+// ── The R0 launch ────────────────────────────────────────────────────────────
+
+/// The per-row device footprint of one bound R0 launch — the `K` policy's
+/// input.
+///
+/// The bench probes this off its host model (`probe_geometry`, bench-gated);
+/// this is the same formula stated over the BOUND geometry, at R0's fixed
+/// shape: the two contribution halves, plus `columns * 2 * width` per real
+/// window (delta 0 reads one endpoint pair per column per logical row), plus
+/// nothing procedural (synthesized, no DRAM) and nothing published (asserted
+/// empty at R0).
+pub(crate) fn seg_r0_bytes_per_row(
+    windows: &[ResolvedBwdCoeffSourceWindow],
+    columns: &[usize],
+) -> usize {
+    let mut bytes = 2 * size_of::<E4>();
+    for (window, &columns) in windows.iter().zip(columns) {
+        debug_assert!(!window.materialize, "R0 publishes nothing");
+        let element = match window.read {
+            None => 0,
+            Some(read) if read.is_e4 => size_of::<E4>(),
+            Some(_) => size_of::<BF>(),
+        };
+        bytes += columns * 2 * element;
+    }
+    bytes
+}
+
+/// Everything one VM-owned R0 launch needs at schedule time, built once at
+/// plan-build time (which is where the storage pointers are resolved, exactly
+/// like the flat path's own descriptors).
+///
+/// [`BwdSegSetup::coefficients`] is deliberately NOT uploaded: its values are
+/// zeros (the host cannot evaluate a recipe — production challenges are
+/// GPU-derived), and the bank is filled ON DEVICE by
+/// [`schedule_bwd_seg_coeff_bank_fill`] from the challenge slab instead.
+/// `claim_point` and `immediates` are empty at R0 and stay wherever lowering
+/// left them.
+pub(crate) struct BwdVmRound0Launch {
+    setup: BwdSegSetup,
+    tables: SegCoeffEvalTables,
+    /// The device challenge slab ([`BWD_SEG_CHALLENGE_SLOTS`] E4 values in
+    /// slot order), assembled by D2D at schedule time.
+    slab: DeviceAllocation<E4>,
+}
+
+/// Build one VM-owned R0 launch against production storage.
+///
+/// Panics on any binding or lowering rejection: every failure here is a wiring
+/// defect (a source that does not resolve, a publish at depth 0, a program
+/// past its caps), and a proof must stop on it rather than fall back
+/// somewhere unmeasured.
+pub(crate) fn build_bwd_vm_round0<E: Copy>(
+    storage: &GpuGKRStorage<BF, E>,
+    slice: &CompiledR0Slice,
+    rows: usize,
+    eq_low: *const E4,
+    eq_sizes: GkrEqSizes,
+    contributions: *mut E4,
+    context: &ProverContext,
+) -> CudaResult<BwdVmRound0Launch> {
+    let bound = bind_r0_sources(storage, &slice.coord, rows)
+        .unwrap_or_else(|error| panic!("backward VM R0 source binding: {error:?}"));
+    assert!(
+        slice.layer.immediates.is_empty(),
+        "an R0 layer has no groups, so no immediate table"
+    );
+    let tables = build_seg_coeff_eval_tables(&slice.layer.coefficients)
+        .unwrap_or_else(|error| panic!("backward VM R0 bank translation: {error:?}"));
+
+    // Dead values with a live LENGTH: lowering sizes the bank and validates the
+    // wire's coefficient ids off this slice; the device fill above supplies the
+    // real values.
+    let coefficients = vec![E4::ZERO; slice.layer.coefficients.len()];
+    let scratch = ResolvedPublishScratch {
+        parity_base: [null_mut(), null_mut()],
+        plan: bound.publish_plan.clone(),
+    };
+    let bytes_per_row = seg_r0_bytes_per_row(&bound.windows, &bound.window_columns);
+    let k = seg_policy_k(bytes_per_row, seg_k_ceiling(BwdRegime::R0)?);
+    let binding = BwdSegRoundBinding {
+        round: 0,
+        rows,
+        windows: &bound.windows,
+        window_read_elements: &bound.window_read_elements,
+        claim_point: &[],
+        coefficients: &coefficients,
+        c_init: None,
+        immediates: &[],
+        eq_low,
+        eq_sizes,
+        contributions,
+        acc_size: rows as u32,
+    };
+    let setup = lower_bwd_seg(
+        &bound.coord,
+        &binding,
+        &scratch,
+        k,
+        D2Policy::Inline,
+        ProgramMode::Inline,
+        CoeffMode::Constant,
+    )
+    .unwrap_or_else(|error| panic!("backward VM R0 lowering (K = {k}): {error:?}"));
+
+    let slab = context.alloc(BWD_SEG_CHALLENGE_SLOTS, AllocationPlacement::BestFit)?;
+    Ok(BwdVmRound0Launch {
+        setup,
+        tables,
+        slab,
+    })
+}
+
+/// Schedule one VM-owned R0 round on `exec_stream`: assemble the challenge
+/// slab (all D2D — every source pointer is already device-resident), fill the
+/// coefficient bank on device, launch the segmented kernel.
+///
+/// The four pointers are the SAME ones the incumbent's `eval_recipes` launch
+/// reads its challenges through (`schedule_flat_eval_recipes`): the
+/// external-challenges buffer is the slab's 7-slot prefix verbatim (asserted
+/// at the slab's definition), and the constraint-aggregation slot is left
+/// unwritten — no corpus recipe references it (census-pinned).
+pub(crate) fn schedule_bwd_vm_round0(
+    launch: &mut BwdVmRound0Launch,
+    external_challenges: *const E4,
+    lookup_multiplicative: *const E4,
+    lookup_additive: *const E4,
+    claim_batching: *const E4,
+    acc_size: u32,
+    context: &ProverContext,
+) -> CudaResult<()> {
+    // The descriptor was lowered at plan build for step 0's row count; a loop
+    // handing it a different `acc_size` would compute garbage silently.
+    let lowered_rows = match &launch.setup.desc {
+        super::seg_lower::BwdSegLaunchDesc::Inline(desc) => desc.logical_rows,
+        super::seg_lower::BwdSegLaunchDesc::ProgPtr(desc) => desc.logical_rows,
+    };
+    assert_eq!(
+        lowered_rows, acc_size,
+        "the R0 descriptor was lowered for {lowered_rows} rows but round 0 runs at {acc_size}"
+    );
+    let stream = context.get_exec_stream();
+    let prefix = BWD_SEG_CHALLENGE_LOOKUP_MULTIPLICATIVE as usize;
+    debug_assert_eq!(BWD_SEG_CHALLENGE_PERM_LINEARIZATION_BASE, 0);
+    // SAFETY: each source is a live device buffer of at least the copied
+    // length, owned by the orchestrator for the whole layer (the same
+    // lifetime argument `schedule_flat_eval_recipes` makes for the same
+    // pointers); the slab is this launch's own allocation.
+    unsafe {
+        let external = DeviceSlice::from_raw_parts(external_challenges, prefix);
+        memory_copy_async(&mut launch.slab[..prefix], external, stream)?;
+        for (slot, source) in [
+            (BWD_SEG_CHALLENGE_LOOKUP_MULTIPLICATIVE, lookup_multiplicative),
+            (BWD_SEG_CHALLENGE_LOOKUP_ADDITIVE, lookup_additive),
+            (BWD_SEG_CHALLENGE_CLAIM_BATCHING, claim_batching),
+        ] {
+            let slot = slot as usize;
+            let source = DeviceSlice::from_raw_parts(source, 1);
+            memory_copy_async(&mut launch.slab[slot..slot + 1], source, stream)?;
+        }
+    }
+    schedule_bwd_seg_coeff_bank_fill(
+        &launch.tables,
+        launch.slab.as_ptr(),
+        bwd_seg_coeff_bank_device_ptr(),
+        stream,
+    )?;
+    launch_bwd_seg(
+        &launch.setup,
+        BwdRegime::R0,
+        CoeffMode::Constant,
+        BwdSegEpilogue::Plane,
+        context,
+    )
 }

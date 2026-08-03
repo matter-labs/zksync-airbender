@@ -36,7 +36,10 @@
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
-use gkr_eval_isa::bwd::coeff::lean_artifact::{compile_lean_coordinate, LeanCoordinateArtifact};
+use gkr_eval_isa::bwd::coeff::lean_artifact::{
+    compile_lean_coordinate, lower_lean_layer, LeanCoordinateArtifact,
+};
+use gkr_eval_isa::bwd::coeff::model::CoeffLayer;
 use gkr_eval_isa::fwd::compile::build_cross_layer_field_map;
 
 use crate::primitives::field::BF;
@@ -51,18 +54,42 @@ pub(crate) struct LoweredCircuit {
     pub(crate) cross_fields: HashMap<ReadPlace, FieldKind>,
 }
 
-/// The add_sub L0 R0 coordinate, compiled once per process.
+/// One coordinate plus the `CoeffLayer` it was lowered from.
+///
+/// The artifact deliberately carries neither the coefficient RECIPES (the bank's
+/// content, a layer property) nor the immediate table — in the bench only the
+/// bridge that built both still holds them ([`BwdSegRoundBinding::immediates`]'s
+/// doc). Production's launcher needs the recipes to build the device bank fill,
+/// so the compiled slice keeps the layer beside the coordinate.
+///
+/// [`BwdSegRoundBinding::immediates`]: super::seg_lower::BwdSegRoundBinding::immediates
+pub(crate) struct CompiledR0Slice {
+    pub(crate) coord: LeanCoordinateArtifact,
+    pub(crate) layer: CoeffLayer,
+}
+
+/// The add_sub L0 R0 coordinate and its layer, compiled once per process.
 ///
 /// Cached like the forward VM's program. Deliberately a SEPARATE `OnceLock` from
 /// `forward::vm::program`'s: two caches of the same lowering are cheaper than a
 /// cross-module dependency, and the forward one is only populated when the
 /// forward switch is on.
-pub(crate) fn compiled_r0_coordinate(
+pub(crate) fn compiled_r0_slice(
     artifact: &GKRCircuitArtifact<BF>,
-) -> Result<&'static LeanCoordinateArtifact, String> {
-    static COORD: OnceLock<Result<LeanCoordinateArtifact, String>> = OnceLock::new();
-    COORD
-        .get_or_init(|| compile_coordinate(artifact, 0, BwdRegime::R0))
+) -> Result<&'static CompiledR0Slice, String> {
+    static SLICE: OnceLock<Result<CompiledR0Slice, String>> = OnceLock::new();
+    SLICE
+        .get_or_init(|| {
+            let lowered = lower_and_validate(artifact)?;
+            let coord = compile_from_dag(&lowered, 0, BwdRegime::R0)?;
+            // The same lowering `compile_lean_coordinate` runs internally —
+            // deterministic (`compiling_the_same_coordinate_twice_gives_the_same_
+            // program`), so the layer here IS the one the coordinate came from.
+            let canonical = &lowered.layers[0];
+            let (layer, _) = lower_lean_layer(canonical, &lowered.cross_fields, BwdRegime::R0)
+                .map_err(|e| format!("lower_lean_layer: {e:?}"))?;
+            Ok(CompiledR0Slice { coord, layer })
+        })
         .as_ref()
         .map_err(Clone::clone)
 }
