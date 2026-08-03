@@ -62,8 +62,13 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
             )
         )
     );
-    // Before the first enqueue, on purpose: see `warm_vm_program_caches`.
-    crate::prover::gkr::warm_vm_program_caches(&compiled_circuit, is_add_sub);
+    // Compiled before the first enqueue and handed to the passes, never looked up
+    // downstream: see `gkr::compile_selected_vm_programs`.
+    let vm_programs = crate::prover::gkr::compile_selected_vm_programs(
+        circuit_type,
+        &compiled_circuit,
+        is_add_sub,
+    );
 
     let GpuGKRProofTransfer {
         transfer,
@@ -158,6 +163,7 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
         final_trace_size_log_2,
         output_evaluations_slab,
         is_add_sub,
+        vm_programs.forward,
         context,
     )?;
     let ForwardToBackwardHandoff {
@@ -201,6 +207,7 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
         initial_d_claims,
         top_layer_claim_layout,
         d_lookup_challenges_for_backward,
+        vm_programs.backward,
         &proof_slab,
         &proof_layout,
         context,

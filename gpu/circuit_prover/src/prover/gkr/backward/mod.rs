@@ -119,6 +119,15 @@ impl<E: Field + FieldExtension<BF>> GpuGKRDimensionReducingBackwardState<BF, E> 
         let inits_and_teardowns_top_bits = canonical_inits_and_teardowns_top_bits(
             compiled_circuit.memory_layout.teardown_sets.len(),
         );
+        // This form does not go through `prove()`, so nothing compiled a VM
+        // program for it. A test that selects a coordinate and takes this path
+        // would silently run the incumbent, so stop instead.
+        assert!(
+            vm::coords::coords_from_env().is_empty(),
+            "{} selects a backward VM coordinate, but this test-only handoff has no compiled \
+             slice to run it with; drive the proof through `prove()` instead",
+            vm::coords::AB_GKR_BWD_VM_COORDS_ENV,
+        );
         self.into_main_layer_backward_state_inner(
             compiled_circuit,
             external_challenges,
@@ -126,6 +135,7 @@ impl<E: Field + FieldExtension<BF>> GpuGKRDimensionReducingBackwardState<BF, E> 
             lookup_multiplicative_challenge,
             lookup_additive_challenge,
             is_delegation,
+            Vec::new(),
         )
     }
 
@@ -135,6 +145,10 @@ impl<E: Field + FieldExtension<BF>> GpuGKRDimensionReducingBackwardState<BF, E> 
         external_challenges: GKRExternalChallenges<BF, E>,
         inits_and_teardowns_top_bits: Vec<u32>,
         is_delegation: bool,
+        bwd_vm_slices: Vec<(
+            vm::coords::BwdVmCoord,
+            &'static vm::production_program::CompiledSlice,
+        )>,
     ) -> GpuGKRMainLayerBackwardState<E> {
         self.into_main_layer_backward_state_inner(
             compiled_circuit,
@@ -143,6 +157,7 @@ impl<E: Field + FieldExtension<BF>> GpuGKRDimensionReducingBackwardState<BF, E> 
             E::ZERO,
             E::ZERO,
             is_delegation,
+            bwd_vm_slices,
         )
     }
 
@@ -156,28 +171,17 @@ impl<E: Field + FieldExtension<BF>> GpuGKRDimensionReducingBackwardState<BF, E> 
         lookup_multiplicative_challenge: E,
         lookup_additive_challenge: E,
         is_delegation: bool,
+        bwd_vm_slices: Vec<(
+            vm::coords::BwdVmCoord,
+            &'static vm::production_program::CompiledSlice,
+        )>,
     ) -> GpuGKRMainLayerBackwardState<E> {
-        // The backward VM's coordinate must compile from the RAW artifact —
-        // the normalize below rewrites scratch-backed addresses, and the DAG
-        // the coordinate is compiled against must be the one the source
-        // binder's `ReadPlace`s refer to (same capture the forward VM makes).
-        // One slice per SELECTED coordinate — the state spans every main layer,
-        // so the capture is keyed by coordinate rather than by regime alone.
-        // Nothing is compiled for a coordinate that was not asked for.
-        let bwd_vm_slices: Vec<_> = vm::coords::coords_from_env()
-            .into_iter()
-            .map(|coord| {
-                let slice = vm::production_program::compiled_slice(
-                    &compiled_circuit,
-                    coord.layer,
-                    coord.regime,
-                )
-                .unwrap_or_else(|error| {
-                    panic!("backward VM coordinate compile for {coord}: {error}")
-                });
-                (coord, slice)
-            })
-            .collect();
+        // The slices are COMPILED BY `prove()` and handed in — one per selected
+        // coordinate, in selection order. Compiling here would need the circuit
+        // identity to key the cache by, and would put `lower_dag` on the
+        // scheduling thread with the whole forward pass and every
+        // dimension-reducing layer already enqueued. See
+        // `gkr::compile_selected_vm_programs`.
         let compiled_circuit = normalize_compiled_circuit_for_gpu(compiled_circuit);
         assert!(
             self.pending_layers.is_empty(),

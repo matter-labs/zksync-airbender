@@ -495,6 +495,8 @@ where
         // generated layer-0 A/B switch is validated end-to-end through `prove()`
         // (the multi_schedule smoke test), so it stays off here.
         false,
+        // Same reason: no VM program, because only `prove()` compiles one.
+        None,
         context,
     )
 }

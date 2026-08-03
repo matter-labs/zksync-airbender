@@ -885,6 +885,11 @@ fn the_ext_sequence_builds_one_setup_per_round() {
     let prepared = prepared_l0_ext();
     let folding_steps = prepared.plan.folding_steps;
     let slice = super::production_program::compiled_slice(
+        crate::witness::circuit_type::CircuitType::Unrolled(
+            crate::witness::circuit_type::UnrolledCircuitType::NonMemory(
+                crate::witness::circuit_type::UnrolledNonMemoryCircuitType::AddSubLuiAuipcMop,
+            ),
+        ),
         &add_sub_artifact(),
         0,
         BwdRegime::Ext,

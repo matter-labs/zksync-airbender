@@ -178,6 +178,12 @@ pub(in crate::prover::proof) fn schedule_backward_phase(
     initial_d_claims: DeviceAllocation<E4>,
     top_layer_claim_layout: ClaimBufferLayout,
     d_lookup_challenges_for_backward: DeviceAllocation<E4>,
+    // Compiled by `prove()` before the first enqueue; see
+    // `gkr::compile_selected_vm_programs`.
+    bwd_vm_slices: Vec<(
+        crate::prover::gkr::backward::vm::coords::BwdVmCoord,
+        &'static crate::prover::gkr::backward::vm::production_program::CompiledSlice,
+    )>,
     proof_slab: &DeviceAllocation<E4>,
     proof_layout: &ProofLayout,
     context: &ProverContext,
@@ -195,6 +201,7 @@ pub(in crate::prover::proof) fn schedule_backward_phase(
             top_layer_claim_layout,
             d_lookup_challenges_for_backward,
             false,
+            bwd_vm_slices,
             proof_slab,
             proof_layout,
             context,

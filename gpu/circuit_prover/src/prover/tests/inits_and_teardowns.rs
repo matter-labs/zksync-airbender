@@ -691,6 +691,7 @@ fn standalone_inits_and_teardowns_gpu_workflow_matches_cpu() {
             None,
             // inits_and_teardowns circuit: not add_sub, normal forward path.
             false,
+            None,
             &context,
         )
         .unwrap();

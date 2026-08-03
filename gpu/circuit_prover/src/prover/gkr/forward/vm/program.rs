@@ -20,12 +20,14 @@
 //! bench chain makes the same split — `load_fwd_vm_circuit` compiles from the
 //! raw artifact while `CircuitFixture` normalizes for storage.
 
-use std::sync::OnceLock;
+use std::collections::BTreeMap;
+use std::sync::Mutex;
 
 use gkr_eval_isa::fwd::compile::{compile_circuit, parse_committed_schedule};
 pub(crate) use gkr_eval_isa::fwd::compile::CompiledCircuit;
 
 use crate::primitives::field::BF;
+use crate::witness::circuit_type::CircuitType;
 use crate::upstream::{lower_dag, validate_dag, GKRCircuitArtifact};
 
 /// The committed b16 schedule for `add_sub_lui_auipc_mop`, embedded so no
@@ -37,21 +39,36 @@ pub(crate) const EMBEDDED_ADD_SUB_SCHEDULE: &[u8] = include_bytes!(
     "../../../../../../../cs/compiled_circuits/add_sub_lui_auipc_mop_schedule_b16_gkr.json"
 );
 
-/// Compile the embedded program for `artifact`, once per process.
+/// Compile the embedded program for `circuit_type`, once per process.
 ///
-/// Cached in a `OnceLock` like
-/// [`super::super::generated_layer0::generated_layer0_enabled`]: one circuit,
-/// one program. The error is stringified so the cache can hand out the same
-/// failure to every later caller instead of retrying a compile that cannot
-/// start succeeding.
+/// Keyed by circuit, not merely cached: a process may prove several circuits, and
+/// an unkeyed cache would hand the second one the first one's program. The error
+/// is stringified so the cache can hand out the same failure to every later
+/// caller instead of retrying a compile that cannot start succeeding.
+///
+/// Entries are leaked deliberately — the cache is process-lifetime by
+/// construction, and callers hold `&'static`.
+///
+/// Call this from `gkr::compile_selected_vm_programs` only. It runs before the
+/// first enqueue, and the program it returns is handed to the forward pass rather
+/// than looked up again there: `lower_dag` over a multi-megabyte layout must not
+/// run on the scheduling thread once the device has work.
 pub(crate) fn compiled_program(
+    circuit_type: CircuitType,
     artifact: &GKRCircuitArtifact<BF>,
 ) -> Result<&'static CompiledCircuit, String> {
-    static PROGRAM: OnceLock<Result<CompiledCircuit, String>> = OnceLock::new();
-    PROGRAM
-        .get_or_init(|| compile_program_from_bytes(EMBEDDED_ADD_SUB_SCHEDULE, artifact))
-        .as_ref()
-        .map_err(Clone::clone)
+    static PROGRAMS: Mutex<BTreeMap<CircuitType, Result<&'static CompiledCircuit, String>>> =
+        Mutex::new(BTreeMap::new());
+    let mut programs = PROGRAMS
+        .lock()
+        .expect("the forward VM program cache mutex is never poisoned");
+    programs
+        .entry(circuit_type)
+        .or_insert_with(|| {
+            compile_program_from_bytes(EMBEDDED_ADD_SUB_SCHEDULE, artifact)
+                .map(|program| &*Box::leak(Box::new(program)))
+        })
+        .clone()
 }
 
 /// The compile chain itself, over an explicit schedule so the negative cases

@@ -256,6 +256,9 @@ pub(crate) fn schedule_forward_pass<E>(
     final_trace_size_log_2: usize,
     output_evaluations_slab: Option<ForwardOutputSlabTarget<E>>,
     is_add_sub: bool,
+    // Compiled by `prove()` before the first enqueue when `AB_GKR_FWD_VM_LAYERS`
+    // selects layers, `None` otherwise — see `gkr::compile_selected_vm_programs`.
+    vm_program: Option<&'static vm::program::CompiledCircuit>,
     context: &ProverContext,
 ) -> CudaResult<GpuGKRForwardOutput<BF, E>>
 where
@@ -360,20 +363,28 @@ where
     )
     .unwrap_or_else(|err| panic!("forward path selection is invalid: {err}"));
 
-    // Compile the VM program once, before the loop: a stale or mismatched
-    // schedule must stop the proof here, not mid-pass with layers already
-    // scheduled on the stream.
-    let vm_program = (!vm_layers.is_empty()).then(|| {
-        let program = vm::program::compiled_program(raw_compiled_circuit)
-            .unwrap_or_else(|err| panic!("forward VM program: {err}"));
+    // The program is COMPILED BY `prove()` and handed in, not looked up here: a
+    // lookup would need the circuit identity to key on, and compiling here would
+    // put `lower_dag` on the scheduling thread with stage-1 work already on the
+    // stream. See `gkr::compile_selected_vm_programs`.
+    let vm_program = vm_program.inspect(|program| {
+        assert!(
+            !vm_layers.is_empty(),
+            "a forward VM program was handed in but no layer selects the VM"
+        );
         assert_eq!(
             program.budget, vm::FWD_VM_S4_BUDGET_LANES as usize,
             "the forward VM release kernel is instantiated for a \
              {}-lane cell budget",
             vm::FWD_VM_S4_BUDGET_LANES,
         );
-        program
     });
+    assert_eq!(
+        vm_program.is_some(),
+        !vm_layers.is_empty(),
+        "the VM layer selection and the compiled program must agree; \
+         `compile_selected_vm_programs` reads the same switch"
+    );
 
     for (layer_idx, layer) in compiled_circuit.layers.iter().enumerate() {
         let layer_range = Range::new(format!("gkr.forward.layer.{layer_idx}"))?;

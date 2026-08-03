@@ -36,7 +36,7 @@
 use std::collections::{BTreeMap, HashMap};
 #[cfg(test)]
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Mutex, OnceLock};
+use std::sync::Mutex;
 
 use gkr_eval_isa::bwd::coeff::lean_artifact::{
     compile_lean_coordinate, lower_lean_layer, LeanCoordinateArtifact,
@@ -45,6 +45,7 @@ use gkr_eval_isa::bwd::coeff::model::CoeffLayer;
 use gkr_eval_isa::fwd::compile::build_cross_layer_field_map;
 
 use crate::primitives::field::BF;
+use crate::witness::circuit_type::CircuitType;
 use crate::upstream::{
     lower_dag, validate_dag, BwdRegime, DagLayer, FieldKind, GKRCircuitArtifact, ReadPlace,
 };
@@ -87,19 +88,26 @@ fn regime_key(regime: BwdRegime) -> u8 {
 /// against 232.0 ms of coordinate compiles, and lowering per slice instead would
 /// multiply the first figure by the number of slices.
 ///
-/// One circuit is in scope (the caller's allowlist predicate is what enforces
-/// that), so the circuit is not part of the key; it becomes the third key
-/// component when the VM covers more than add_sub.
-fn lowered_circuit(artifact: &GKRCircuitArtifact<BF>) -> Result<&'static LoweredCircuit, String> {
-    static LOWERED: OnceLock<Result<LoweredCircuit, String>> = OnceLock::new();
-    LOWERED
-        .get_or_init(|| {
+/// Keyed by circuit like the slices are: a process may prove several, and an
+/// unkeyed lowering would hand the second circuit the first one's DAG — the
+/// binder would then resolve addresses against the wrong layout.
+fn lowered_circuit(
+    circuit_type: CircuitType,
+    artifact: &GKRCircuitArtifact<BF>,
+) -> Result<&'static LoweredCircuit, String> {
+    static LOWERED: Mutex<BTreeMap<CircuitType, Result<&'static LoweredCircuit, String>>> =
+        Mutex::new(BTreeMap::new());
+    let mut lowered = LOWERED
+        .lock()
+        .expect("the lowering cache mutex is never poisoned");
+    lowered
+        .entry(circuit_type)
+        .or_insert_with(|| {
             #[cfg(test)]
             LOWERINGS.fetch_add(1, Ordering::Relaxed);
-            lower_and_validate(artifact)
+            lower_and_validate(artifact).map(|lowered| &*Box::leak(Box::new(lowered)))
         })
-        .as_ref()
-        .map_err(Clone::clone)
+        .clone()
 }
 
 /// Counts lowerings so `the_lowering_is_shared_by_every_slice_of_the_circuit`
@@ -126,14 +134,16 @@ pub(crate) fn lowerings_for_test() -> usize {
 /// cached too, so a coordinate that cannot compile is not retried on every
 /// proof.
 pub(crate) fn compiled_slice(
+    circuit_type: CircuitType,
     artifact: &GKRCircuitArtifact<BF>,
     layer_index: usize,
     regime: BwdRegime,
 ) -> Result<&'static CompiledSlice, String> {
-    static SLICES: Mutex<BTreeMap<(usize, u8), Result<&'static CompiledSlice, String>>> =
-        Mutex::new(BTreeMap::new());
+    static SLICES: Mutex<
+        BTreeMap<(CircuitType, usize, u8), Result<&'static CompiledSlice, String>>,
+    > = Mutex::new(BTreeMap::new());
 
-    let key = (layer_index, regime_key(regime));
+    let key = (circuit_type, layer_index, regime_key(regime));
     // Held across the compile on purpose: two threads racing the same
     // coordinate would otherwise both compile it and leak the loser. Plan build
     // is single-threaded, so this never contends in production.
@@ -141,7 +151,7 @@ pub(crate) fn compiled_slice(
     slices
         .entry(key)
         .or_insert_with(|| {
-            let lowered = lowered_circuit(artifact)?;
+            let lowered = lowered_circuit(circuit_type, artifact)?;
             let coord = compile_from_dag(lowered, layer_index, regime)?;
             // The same lowering `compile_lean_coordinate` runs internally —
             // deterministic (`compiling_the_same_coordinate_twice_gives_the_same_
@@ -204,6 +214,13 @@ pub(crate) fn compile_coordinate(
 mod tests {
     use super::*;
 
+    /// The cache key every test here uses — the circuit the artifact belongs to.
+    const ADD_SUB: CircuitType = CircuitType::Unrolled(
+        crate::witness::circuit_type::UnrolledCircuitType::NonMemory(
+            crate::witness::circuit_type::UnrolledNonMemoryCircuitType::AddSubLuiAuipcMop,
+        ),
+    );
+
     fn add_sub_artifact() -> GKRCircuitArtifact<BF> {
         crate::prover::tests::deserialize_json_for_test(
             "cs/compiled_circuits/add_sub_lui_auipc_mop_layout_gkr.json",
@@ -258,15 +275,15 @@ mod tests {
     #[test]
     fn compiled_slices_are_cached_per_layer_and_regime() {
         let artifact = add_sub_artifact();
-        let r0 = compiled_slice(&artifact, 0, BwdRegime::R0).unwrap();
-        let ext = compiled_slice(&artifact, 0, BwdRegime::Ext).unwrap();
+        let r0 = compiled_slice(ADD_SUB, &artifact, 0, BwdRegime::R0).unwrap();
+        let ext = compiled_slice(ADD_SUB, &artifact, 0, BwdRegime::Ext).unwrap();
         assert!(std::ptr::eq(
             r0,
-            compiled_slice(&artifact, 0, BwdRegime::R0).unwrap()
+            compiled_slice(ADD_SUB, &artifact, 0, BwdRegime::R0).unwrap()
         ));
         assert!(std::ptr::eq(
             ext,
-            compiled_slice(&artifact, 0, BwdRegime::Ext).unwrap()
+            compiled_slice(ADD_SUB, &artifact, 0, BwdRegime::Ext).unwrap()
         ));
         assert_eq!(r0.coord.regime.regime(), BwdRegime::R0);
         assert_eq!(ext.coord.regime.regime(), BwdRegime::Ext);
@@ -285,13 +302,13 @@ mod tests {
         let artifact = add_sub_artifact();
         for layer in 0..artifact.layers.len().min(4) {
             for regime in [BwdRegime::R0, BwdRegime::Ext] {
-                let slice = compiled_slice(&artifact, layer, regime)
+                let slice = compiled_slice(ADD_SUB, &artifact, layer, regime)
                     .unwrap_or_else(|e| panic!("layer {layer} {regime:?} must compile: {e}"));
                 assert_eq!(slice.coord.layer, layer, "coordinate layer");
                 assert_eq!(slice.coord.regime.regime(), regime, "coordinate regime");
                 assert!(std::ptr::eq(
                     slice,
-                    compiled_slice(&artifact, layer, regime).unwrap()
+                    compiled_slice(ADD_SUB, &artifact, layer, regime).unwrap()
                 ));
             }
         }
@@ -311,7 +328,7 @@ mod tests {
         let before = lowerings_for_test();
         for layer in 0..artifact.layers.len().min(4) {
             for regime in [BwdRegime::R0, BwdRegime::Ext] {
-                compiled_slice(&artifact, layer, regime).unwrap();
+                compiled_slice(ADD_SUB, &artifact, layer, regime).unwrap();
             }
         }
         let lowerings = lowerings_for_test() - before;
