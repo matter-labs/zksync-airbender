@@ -96,6 +96,47 @@ mod tests {
         );
     }
 
+    /// How much of the per-process compile is the schedule VALIDATION that
+    /// rejects a stale schedule, as opposed to the compile it guards.
+    ///
+    /// The guard is unconditional, so its cost is worth knowing before the VM
+    /// covers more circuits: `validate_circuit_schedule` rebuilds each layer's
+    /// canonical relation-unit decomposition and site domain, so it scales with
+    /// the circuit, not with the schedule file. The backward side's
+    /// `report_the_compile_time_projection_over_the_corpus` projects the other
+    /// half of the same bill.
+    #[test]
+    fn report_the_schedule_validation_time() {
+        use cs::gkr_compiler::dag_ir::schedule::validate_circuit_schedule;
+
+        let artifact = add_sub_artifact();
+
+        let start = std::time::Instant::now();
+        let schedule =
+            parse_committed_schedule(EMBEDDED_ADD_SUB_SCHEDULE, "compile-time report").unwrap();
+        let parse_ms = start.elapsed().as_secs_f64() * 1e3;
+
+        let start = std::time::Instant::now();
+        let dag = lower_dag(&artifact).unwrap();
+        validate_dag(&dag).unwrap();
+        let lower_ms = start.elapsed().as_secs_f64() * 1e3;
+
+        let start = std::time::Instant::now();
+        validate_circuit_schedule(&dag, &schedule).unwrap();
+        let validate_ms = start.elapsed().as_secs_f64() * 1e3;
+
+        let start = std::time::Instant::now();
+        compile_program_from_bytes(EMBEDDED_ADD_SUB_SCHEDULE, &artifact).unwrap();
+        let whole_chain_ms = start.elapsed().as_secs_f64() * 1e3;
+
+        eprintln!(
+            "[fwd-vm-compile] add_sub, {} layers: parse_schedule {parse_ms:.1} ms, \
+             lower_dag+validate {lower_ms:.1} ms, validate_circuit_schedule {validate_ms:.1} ms, \
+             whole chain {whole_chain_ms:.1} ms",
+            dag.layers.len(),
+        );
+    }
+
     /// The launcher asserts its own capacity against the budget it is handed
     /// (`vm/mod.rs`), so a program compiled at any other budget cannot be
     /// launched by the s4 kernel. Pin the committed corpus at b16 here rather

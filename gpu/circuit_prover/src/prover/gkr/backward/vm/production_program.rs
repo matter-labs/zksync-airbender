@@ -250,4 +250,111 @@ mod tests {
             coord.order.len()
         );
     }
+
+    /// What the runtime-compile decision costs at CORPUS scale, which is the
+    /// only scale at which it can stop being free.
+    ///
+    /// The single-layer report above says nothing about the shape that matters:
+    /// the cost is paid per circuit for `lower_dag` and per `(layer, regime)`
+    /// for the coordinate, so it grows with the product, and the heavy layouts
+    /// are ~17x add_sub's. This walks every layer of every circuit that has a
+    /// committed GKR layout, both regimes, and prints the per-circuit and total
+    /// host time a process would pay if the VM owned everything.
+    ///
+    /// Deserialization is reported SEPARATELY and excluded from the totals:
+    /// production is handed the artifact, it does not parse JSON. `#[ignore]`d
+    /// because it reads every layout in the corpus (~13 MB of JSON) and takes
+    /// far longer than a unit test should.
+    #[test]
+    #[ignore]
+    fn report_the_compile_time_projection_over_the_corpus() {
+        /// Every circuit with a committed GKR layout, heaviest layouts last.
+        const CIRCUITS: &[&str] = &[
+            "inits_and_teardowns",
+            "inits_and_teardowns_preprocessed",
+            "mem_word_only",
+            "mem_subword_only",
+            "add_sub_lui_auipc_mop",
+            "jump_branch_slt",
+            "shift_binop",
+            "unsigned_mul_div",
+            "blake2_g_function",
+            "unified_reduced_machine",
+            "keccak_special5",
+            "blake2_with_extended_control",
+            "bigint_with_extended_control",
+        ];
+
+        let mut total_lower_ms = 0.0f64;
+        let mut total_coord_ms = 0.0f64;
+        let mut total_layers = 0usize;
+        eprintln!(
+            "[bwd-vm-compile-projection] circuit  layers  lower_ms  coord_ms  \
+             per_layer_ms  (deserialize_ms)"
+        );
+        for name in CIRCUITS {
+            let start = std::time::Instant::now();
+            let artifact: GKRCircuitArtifact<BF> = crate::prover::tests::deserialize_json_for_test(
+                &format!("cs/compiled_circuits/{name}_layout_gkr.json"),
+            );
+            let deserialize_ms = start.elapsed().as_secs_f64() * 1e3;
+
+            let start = std::time::Instant::now();
+            let lowered = match lower_and_validate(&artifact) {
+                Ok(lowered) => lowered,
+                Err(e) => {
+                    eprintln!("[bwd-vm-compile-projection] {name}: lower failed: {e}");
+                    continue;
+                }
+            };
+            let lower_ms = start.elapsed().as_secs_f64() * 1e3;
+
+            // Both regimes of every layer: the full bill if the VM owned the
+            // whole circuit. A layer the compiler rejects is counted as free
+            // and named, not silently skipped.
+            let layers = lowered.layers.len();
+            let start = std::time::Instant::now();
+            let mut rejected = 0usize;
+            for layer in 0..layers {
+                for regime in [BwdRegime::R0, BwdRegime::Ext] {
+                    if compile_from_dag(&lowered, layer, regime).is_err() {
+                        rejected += 1;
+                    }
+                }
+            }
+            let coord_ms = start.elapsed().as_secs_f64() * 1e3;
+
+            eprintln!(
+                "[bwd-vm-compile-projection] {name:>32}  {layers:>6}  {lower_ms:>8.1}  \
+                 {coord_ms:>8.1}  {:>12.2}  ({deserialize_ms:.0})",
+                coord_ms / (layers as f64).max(1.0),
+            );
+            if rejected != 0 {
+                eprintln!(
+                    "[bwd-vm-compile-projection] {name}: {rejected} of {} (layer, regime) pairs \
+                     did not compile",
+                    layers * 2
+                );
+            }
+            total_lower_ms += lower_ms;
+            total_coord_ms += coord_ms;
+            total_layers += layers;
+        }
+
+        eprintln!(
+            "[bwd-vm-compile-projection] TOTAL over {} circuits, {total_layers} layers, both \
+             regimes: lower {total_lower_ms:.1} ms + coordinates {total_coord_ms:.1} ms = \
+             {:.1} ms of host time",
+            CIRCUITS.len(),
+            total_lower_ms + total_coord_ms,
+        );
+        eprintln!(
+            "[bwd-vm-compile-projection] note: one `lower_dag` per circuit is shared by all its \
+             layers and regimes ONLY if the cache is keyed that way — today each regime's \
+             `OnceLock` re-lowers, so a naive per-(layer, regime) cache would pay lower_dag \
+             {} times instead of {}",
+            total_layers * 2,
+            CIRCUITS.len(),
+        );
+    }
 }
