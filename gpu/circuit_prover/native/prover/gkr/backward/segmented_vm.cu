@@ -483,10 +483,12 @@ template <seg_projection P, u32 MAX_DEPTH, typename Desc>
 DEVICE_FORCEINLINE seg_value<e4> seg_resolve_e4(const Desc &desc, const u16 slot, const u32 row, const u32 rows) {
   const bwd_seg_source_record record = desc.source[slot];
   if (record.source_class == BWD_SEG_SOURCE_CLASS_E4_DIRECT) {
-    // `src` already names whatever this round reads — the raw matrix on a raw
-    // round, the previous fold slot on a chained one. The binder resolved that;
-    // the kernel no longer picks between two bases.
-    return seg_project<P>(seg_raw_e4_column<ld_modifier::ca>{seg_lane_column<e4>(desc, record.src)}, row, rows);
+    // A source that publishes this round is read back from where the prologue
+    // PUT it, not from the leaves it folded: `seg_fold_and_publish` has already
+    // written `cache` for this row. Reading `src` instead would re-read the raw
+    // backing the fold consumed, which is a round behind.
+    const u16 lane = record.cache != BWD_SEG_ADDR_NONE ? record.cache : record.src;
+    return seg_project<P>(seg_raw_e4_column<ld_modifier::ca>{seg_lane_column<e4>(desc, lane)}, row, rows);
   }
   const u32 span = rows << 1;
   const u32 delta = u32{record.delta};

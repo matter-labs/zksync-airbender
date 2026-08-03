@@ -992,6 +992,20 @@ pub(crate) fn bind_ext_round_sources<E: Copy>(
                 parents: coord.binding.windows.len(),
             });
         }
+        if std::env::var_os("AB_BWD_VM_BIND_CENSUS").is_some() {
+            let reads: std::collections::BTreeSet<usize> =
+                sources.iter().map(|addr| addr.read_slot).collect();
+            eprintln!(
+                "[bwd-vm-census] L{} Ext round {round}: {} sources, \
+                 {} artifact windows, {} address slots ({} read + {} destination)",
+                coord.layer,
+                sources.len(),
+                coord.binding.windows.len(),
+                slots.len(),
+                reads.len(),
+                slots.len() - reads.len(),
+            );
+        }
         rounds.push(BoundExtRound {
             round,
             rows,
