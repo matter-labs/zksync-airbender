@@ -71,6 +71,7 @@ fn build_whir_only_proof_layout_inputs(
     let total_folding_steps = whir_schedule.whir_steps_schedule.iter().sum::<usize>();
     let final_monomials_len = 1usize << (initial_trace_size_log_2 - total_folding_steps as u32);
     let whir = WhirDims {
+        original_evaluation_point_len: initial_trace_size_log_2 as usize,
         setup: base_layer_dims(setup_holder),
         memory: base_layer_dims(memory_holder),
         witness: base_layer_dims(witness_holder),

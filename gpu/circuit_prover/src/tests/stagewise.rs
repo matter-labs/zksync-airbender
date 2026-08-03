@@ -609,7 +609,11 @@ fn run_basic_unrolled_stagewise_parity_test() {
                 None,
                 &format!("test.cpu.sumcheck.dimension_reduction.layer.{layer_idx}"),
             );
-            let proof = sumcheck_loop::evaluate_dimension_reducing_sumcheck_for_layer(
+            let proof = sumcheck_loop::evaluate_dimension_reducing_sumcheck_for_layer::<
+                BF,
+                E4,
+                Blake2sTranscript,
+            >(
                 layer_idx,
                 &layer,
                 &mut points_for_claims_at_layer,
@@ -635,7 +639,7 @@ fn run_basic_unrolled_stagewise_parity_test() {
                 &format!("test.cpu.sumcheck.main_layers.layer.{layer_idx}"),
             );
 
-            let proof = sumcheck_loop::evaluate_sumcheck_for_layer(
+            let proof = sumcheck_loop::evaluate_sumcheck_for_layer::<BF, E4, Blake2sTranscript>(
                 layer_idx,
                 layer,
                 &mut points_for_claims_at_layer,
@@ -989,7 +993,7 @@ fn run_basic_unrolled_stagewise_parity_test() {
     };
     let cpu_whir_proof = {
         let _range = scoped_range(None, "test.cpu.whir_fold");
-        whir_fold(
+        whir_fold::<BF, E4, DefaultTreeConstructor, Blake2sTranscript>(
             mem_oracle,
             cpu_mem_polys_claims.clone(),
             wit_oracle,
@@ -1034,6 +1038,7 @@ fn run_basic_unrolled_stagewise_parity_test() {
         grand_product_accumulator_computed,
         inits_and_teardowns_top_bits: (0..add_sub_circuit.memory_layout.teardown_sets.len() as u32)
             .collect(),
+        intermediate_transcript_seed: None,
         lookup_challenges_pow_nonce: 0,
         batched_proximity_check_pow_nonce: 0,
     };

@@ -1,5 +1,9 @@
 use super::*;
-use crate::upstream::{FieldExtension, PrimeField};
+use crate::upstream::{Field, FieldExtension, PrimeField};
+
+fn sample_e4(value: u32) -> E4 {
+    E4::from_base(BF::from_u32_unchecked(value))
+}
 
 fn sample_inputs() -> ProofLayoutInputs {
     let backward_layers = vec![
@@ -34,6 +38,7 @@ fn sample_inputs() -> ProofLayoutInputs {
     ];
 
     let whir = WhirDims {
+        original_evaluation_point_len: 2,
         setup: WhirBaseLayerDims {
             num_columns: 4,
             cap_digest_count: 8,
@@ -112,6 +117,14 @@ fn layout_is_32_byte_aligned_and_nonoverlapping() {
             ));
         }
     }
+    ranges.push((
+        "whir.original_evaluation_point".to_string(),
+        layout.whir.original_evaluation_point.clone(),
+    ));
+    ranges.push((
+        "whir.batching_challenge".to_string(),
+        layout.whir.batching_challenge.clone(),
+    ));
     // Shared base-oracle `query_indices` range (single copy across the three
     // base oracles).
     ranges.push((
@@ -215,6 +228,15 @@ fn whir_range_sizes_match_inputs() {
     let inputs = sample_inputs();
     let layout = ProofLayout::new(&inputs);
 
+    assert_eq!(
+        layout.whir.original_evaluation_point.end - layout.whir.original_evaluation_point.start,
+        inputs.whir.original_evaluation_point_len * size_of::<E4>()
+    );
+    assert_eq!(
+        layout.whir.batching_challenge.end - layout.whir.batching_challenge.start,
+        size_of::<E4>()
+    );
+
     // Shared base-oracle `query_indices` slab range — sized by the common
     // `query_count` across setup/memory/witness.
     assert_eq!(
@@ -306,6 +328,25 @@ fn typed_accessors_match_ranges() {
 
     // Round-trip: write via device pointer view, read via host slice view.
     let slab_ptr = slab.as_mut_ptr();
+    unsafe {
+        let (point_ptr, point_len) = layout.whir_original_evaluation_point_device_mut(slab_ptr);
+        assert_eq!(point_len, inputs.whir.original_evaluation_point_len);
+        assert_eq!(
+            point_ptr as *const u8 as usize,
+            slab_ptr as usize + layout.whir.original_evaluation_point.start
+        );
+        let (batching_ptr, batching_len) = layout.whir_batching_challenge_device_mut(slab_ptr);
+        assert_eq!(batching_len, 1);
+        assert_eq!(
+            batching_ptr as *const u8 as usize,
+            slab_ptr as usize + layout.whir.batching_challenge.start
+        );
+    }
+    assert_eq!(
+        layout.whir_original_evaluation_point_host(&slab).len(),
+        inputs.whir.original_evaluation_point_len,
+    );
+    assert_eq!(layout.whir_batching_challenge_host(&slab).len(), 1);
     for (i, bw_layout) in layout.backward.iter().enumerate() {
         unsafe {
             let (ptr, len) = layout.backward_final_step_evals_device_mut(slab_ptr, i);
@@ -395,4 +436,38 @@ fn parser_round_trips_extra_evaluations() {
     // ScratchSpace(7). The map preserves those associations.
     assert_eq!(*by_addr[0].1, E4::from_base(BF::from_u32_unchecked(1)));
     assert_eq!(*by_addr[1].1, E4::from_base(BF::from_u32_unchecked(2)));
+}
+
+#[test]
+fn cpu_parser_preserves_whir_handoff_fields() {
+    let inputs = sample_inputs();
+    let layout = ProofLayout::new(&inputs);
+    let mut slab = vec![0u8; layout.total_bytes];
+    let point = vec![sample_e4(10), sample_e4(20)];
+    let batching = sample_e4(30);
+    let first_poly = [sample_e4(1), sample_e4(2), sample_e4(3)];
+    let mut p_at_one = first_poly[0];
+    p_at_one.add_assign(&first_poly[1]);
+    p_at_one.add_assign(&first_poly[2]);
+    let mut expected_batched_opening = first_poly[0];
+    expected_batched_opening.add_assign(&p_at_one);
+
+    unsafe {
+        let (point_ptr, point_len) =
+            layout.whir_original_evaluation_point_device_mut(slab.as_mut_ptr());
+        assert_eq!(point_len, point.len());
+        std::ptr::copy_nonoverlapping(point.as_ptr(), point_ptr, point.len());
+        let (batching_ptr, batching_len) =
+            layout.whir_batching_challenge_device_mut(slab.as_mut_ptr());
+        assert_eq!(batching_len, 1);
+        std::ptr::copy_nonoverlapping(&batching, batching_ptr, 1);
+        let (ptr, len) = layout.whir_sumcheck_polys_device_mut(slab.as_mut_ptr());
+        assert!(len >= first_poly.len());
+        std::ptr::copy_nonoverlapping(first_poly.as_ptr(), ptr, first_poly.len());
+    }
+
+    let proof = layout.parse_whir_proof(&slab);
+    assert_eq!(proof.original_evaluation_point, Some(point));
+    assert_eq!(proof.batching_challenge, Some(batching));
+    assert_eq!(proof.batched_opening, Some(expected_batched_opening));
 }

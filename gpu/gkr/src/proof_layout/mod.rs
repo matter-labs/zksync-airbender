@@ -124,6 +124,8 @@ pub struct WhirIntermediateDims {
 /// WHIR-side dimensions for the proof image.
 #[derive(Debug, Clone)]
 pub struct WhirDims {
+    /// Length of the GKR final claim point handed to WHIR.
+    pub original_evaluation_point_len: usize,
     pub setup: WhirBaseLayerDims,
     pub memory: WhirBaseLayerDims,
     pub witness: WhirBaseLayerDims,
@@ -220,6 +222,10 @@ pub(crate) struct WhirIntermediateByteLayout {
 
 #[derive(Debug, Clone)]
 pub(crate) struct WhirLayout {
+    /// GKR final claim point copied device-to-device into the proof slab.
+    pub original_evaluation_point: Range<usize>,
+    /// WHIR base batching challenge copied device-to-device into the proof slab.
+    pub batching_challenge: Range<usize>,
     /// Shared `query_indices` range used by all three base oracles. The three
     /// base oracles (setup/memory/witness) sample tree-space indices from the
     /// same verifier-derived list. Allocated once at the start of `lay_whir`,
@@ -438,6 +444,10 @@ impl ProofLayout {
                 }
             };
 
+        let original_evaluation_point =
+            alloc(cur, dims.original_evaluation_point_len, size_of::<E4>());
+        let batching_challenge = alloc(cur, 1, size_of::<E4>());
+
         // Shared base-oracle query indices. The three base oracles
         // (setup/memory/witness) sample the same verifier-supplied
         // tree-space indices, so we allocate one range up front and have all
@@ -461,6 +471,8 @@ impl ProofLayout {
         let final_monomials = alloc(cur, dims.final_monomials_len, size_of::<E4>());
 
         WhirLayout {
+            original_evaluation_point,
+            batching_challenge,
             base_query_indices,
             setup,
             memory,

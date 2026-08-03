@@ -213,6 +213,7 @@ where
     );
     let final_monomials_len = 1usize << (initial_trace_size_log_2 as usize - total_folding_steps);
     let whir = WhirDims {
+        original_evaluation_point_len: compiled_circuit.trace_len.trailing_zeros() as usize,
         setup: base_layer_dims(setup_geometry),
         memory: base_layer_dims(memory_geometry),
         witness: base_layer_dims(witness_geometry),

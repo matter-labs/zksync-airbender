@@ -297,6 +297,18 @@ pub(super) fn assert_whir_proof_eq_for_test(
         actual.final_monomials, expected.final_monomials,
         "WHIR final monomials diverged",
     );
+    assert_eq!(
+        actual.batching_challenge, expected.batching_challenge,
+        "WHIR batching challenge diverged",
+    );
+    assert_eq!(
+        actual.original_evaluation_point, expected.original_evaluation_point,
+        "WHIR original evaluation point diverged",
+    );
+    assert_eq!(
+        actual.batched_opening, expected.batched_opening,
+        "WHIR batched opening diverged",
+    );
 
     for (actual_commitment, expected_commitment) in [
         (&actual.memory_commitment, &expected.memory_commitment),
@@ -375,6 +387,18 @@ pub(super) fn assert_gkr_proof_eq_for_test(
         );
     }
     assert_whir_proof_eq_for_test(&actual.whir_proof, &expected.whir_proof);
+    assert_eq!(
+        actual.intermediate_transcript_seed, expected.intermediate_transcript_seed,
+        "intermediate transcript seed diverged",
+    );
+    assert_eq!(
+        actual.lookup_challenges_pow_nonce, expected.lookup_challenges_pow_nonce,
+        "lookup-challenges PoW nonce diverged",
+    );
+    assert_eq!(
+        actual.batched_proximity_check_pow_nonce, expected.batched_proximity_check_pow_nonce,
+        "batched-proximity-check PoW nonce diverged",
+    );
 }
 
 pub(super) fn assert_gkr_proof_structure_for_test(

@@ -1,4 +1,6 @@
+use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
+use era_cudart::slice::DeviceSlice;
 
 use crate::upstream::{GKRCircuitArtifact, WhirSchedule};
 use gpu_core::allocator::tracker::AllocationPlacement;
@@ -164,6 +166,28 @@ pub(in crate::proof) fn schedule_whir_phase<'a>(
         batching_nonce_dst,
         context,
     )?;
+    {
+        let (_final_device_seed, claim_point) =
+            backward_scheduled.final_device_seed_and_claim_point_mut();
+        // SAFETY: both ranges are live, aligned E4 regions inside the proof
+        // slab. These are device-to-device copies scheduled on exec_stream;
+        // neither pool-backed source nor destination is host-dereferenced.
+        let (point_slab_ptr, point_slab_len) = unsafe {
+            proof_layout.whir_original_evaluation_point_device_mut(proof_slab.as_ptr() as *mut u8)
+        };
+        debug_assert_eq!(point_slab_len, claim_point.len());
+        let point_slab_dst =
+            unsafe { DeviceSlice::from_raw_parts_mut(point_slab_ptr, point_slab_len) };
+        memory_copy_async(point_slab_dst, claim_point, stream)?;
+
+        let (batching_slab_ptr, batching_slab_len) = unsafe {
+            proof_layout.whir_batching_challenge_device_mut(proof_slab.as_ptr() as *mut u8)
+        };
+        debug_assert_eq!(batching_slab_len, 1);
+        let batching_slab_dst =
+            unsafe { DeviceSlice::from_raw_parts_mut(batching_slab_ptr, batching_slab_len) };
+        memory_copy_async(batching_slab_dst, &batching_challenge_device[..], stream)?;
+    }
     let whir_scheduled = {
         let setup_trace_holder = if let Some(setup_transfer) = setup_transfer.as_mut() {
             &mut setup_transfer.trace_holder

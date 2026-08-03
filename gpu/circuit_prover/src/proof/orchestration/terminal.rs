@@ -91,6 +91,9 @@ pub(in crate::proof) fn schedule_terminal_proof_assembly(
                     whir_proof,
                     grand_product_accumulator_computed,
                     inits_and_teardowns_top_bits: inits_and_teardowns_top_bits.clone(),
+                    // The GPU prover follows the CPU Blake2sTranscript path,
+                    // which does not synthesize an intermediate Keccak seed.
+                    intermediate_transcript_seed: None,
                     // Ground on device by the pow-aware challenge draws (0 at
                     // Sec80, non-zero at Sec100) and read back from the slab.
                     lookup_challenges_pow_nonce: proof_layout_for_parse

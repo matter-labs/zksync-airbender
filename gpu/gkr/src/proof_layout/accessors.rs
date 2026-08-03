@@ -4,6 +4,7 @@ use std::mem::size_of;
 use std::ops::Range;
 
 use super::*;
+use crate::upstream::Field;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WhirBaseLayerKind {
@@ -94,6 +95,28 @@ impl ProofLayout {
     ) -> Option<(*mut E4, usize)> {
         let block = self.output_evaluations_block()?;
         Some(Self::device_typed::<E4>(slab_base, &block))
+    }
+
+    /// # Safety
+    /// `slab_base` must point into a live device allocation big enough for
+    /// this layout (see the module-level safety note above); the returned
+    /// pointer must not be dereferenced from host code.
+    pub unsafe fn whir_original_evaluation_point_device_mut(
+        &self,
+        slab_base: *mut u8,
+    ) -> (*mut E4, usize) {
+        Self::device_typed::<E4>(slab_base, &self.whir.original_evaluation_point)
+    }
+
+    /// # Safety
+    /// `slab_base` must point into a live device allocation big enough for
+    /// this layout (see the module-level safety note above); the returned
+    /// pointer must not be dereferenced from host code.
+    pub unsafe fn whir_batching_challenge_device_mut(
+        &self,
+        slab_base: *mut u8,
+    ) -> (*mut E4, usize) {
+        Self::device_typed::<E4>(slab_base, &self.whir.batching_challenge)
     }
 
     /// # Safety
@@ -491,6 +514,14 @@ impl ProofLayout {
             .chunks_exact(3)
             .map(|c| [c[0], c[1], c[2]])
             .collect();
+        let original_evaluation_point = self.whir_original_evaluation_point_host(slab).to_vec();
+        let batching_challenge = self.whir_batching_challenge_host(slab)[0];
+        let [c0, c1, c2] = sumcheck_polys[0];
+        let mut p_at_one = c0;
+        p_at_one.add_assign(&c1);
+        p_at_one.add_assign(&c2);
+        let mut batched_opening = c0;
+        batched_opening.add_assign(&p_at_one);
         let pow_nonces = self.whir_pow_nonces_host(slab).to_vec();
         let final_monomials = self.whir_final_monomials_host(slab).to_vec();
         WhirPolyCommitProof {
@@ -503,10 +534,9 @@ impl ProofLayout {
             pow_nonces,
             final_monomials,
             whir_schedule: WhirSchedule::default(),
-            // EVM GKR->WHIR handoff values are not reconstructed by the GPU proof-layout path.
-            batching_challenge: None,
-            original_evaluation_point: None,
-            batched_opening: None,
+            batching_challenge: Some(batching_challenge),
+            original_evaluation_point: Some(original_evaluation_point),
+            batched_opening: Some(batched_opening),
         }
     }
 
@@ -584,6 +614,14 @@ impl ProofLayout {
             );
         }
         result
+    }
+
+    pub fn whir_original_evaluation_point_host<'a>(&self, slab: &'a [u8]) -> &'a [E4] {
+        Self::host_typed::<E4>(slab, &self.whir.original_evaluation_point)
+    }
+
+    pub fn whir_batching_challenge_host<'a>(&self, slab: &'a [u8]) -> &'a [E4] {
+        Self::host_typed::<E4>(slab, &self.whir.batching_challenge)
     }
 
     pub fn whir_base_cap_host<'a>(&self, slab: &'a [u8], which: WhirBaseLayerKind) -> &'a [u32] {
