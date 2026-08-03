@@ -314,6 +314,7 @@ fn the_cascade_slot_walk_matches_the_incumbent_fold_buffer_walks() {
             base: base_ptr,
             region_elems: n,
             first_slot: 1,
+            backing: base_ptr,
         };
         assert_eq!(ext.slot_elem_offset(1), 0, "N={n}: slot 1 heads the region");
         assert_eq!(ext.slot_elems(1), n / 2);
@@ -332,6 +333,7 @@ fn the_cascade_slot_walk_matches_the_incumbent_fold_buffer_walks() {
             base: base_ptr,
             region_elems: n / 2,
             first_slot: 2,
+            backing: base_ptr,
         };
         assert_eq!(base.slot_elem_offset(2), 0, "N={n}: slot 2 heads the region");
         for step in 3..folding_steps {
@@ -372,6 +374,7 @@ fn a_round_below_the_first_slot_has_no_cascade_slot() {
         base: core::ptr::null_mut(),
         region_elems: 128,
         first_slot: 2,
+        backing: core::ptr::null_mut(),
     };
     let _ = region.slot_elem_offset(1);
 }
@@ -453,59 +456,64 @@ fn every_r0_source_resolves_against_production_storage() {
     let bound = bind_r0_sources(storage, &coord, rows)
         .expect("every add_sub L0 R0 window must bind against production storage");
 
-    // The observed re-partition, pinned like the census: 8 artifact windows,
-    // 9 production runs. A change here is a storage-geometry change and
-    // deserves a look, not a silent pass. Columns are renumbered to the dense
-    // offsets their pointers imply, so the ONE extra run is a genuinely
-    // separate backing — sparse artifact numbering costs nothing.
+    // The observed table, pinned like the census: 8 artifact windows collapse to
+    // the backings they actually reference. A change here is a storage-geometry
+    // change and deserves a look, not a silent pass.
+    // FEWER slots than artifact windows: two of the eight resolve into one
+    // backing, so they share an address slot. That is the point of keying slots
+    // by backing — the count follows storage, not the artifact.
     assert_eq!(coord.binding.windows.len(), 8);
-    assert_eq!(bound.windows.len(), 9);
-    assert_eq!(bound.coord.binding.windows.len(), bound.windows.len());
-    assert_eq!(bound.window_read_elements.len(), bound.windows.len());
-    assert_eq!(bound.window_columns.len(), bound.windows.len());
-    assert_eq!(
-        bound.coord.binding.source_slots.len(),
-        coord.binding.source_slots.len()
-    );
-    assert_eq!(bound.coord.program, coord.program, "the program never changes");
-    assert_eq!(bound.coord.order, coord.order, "the order never changes");
+    assert_eq!(bound.slots.len(), 7);
+    assert_eq!(bound.sources.len(), coord.binding.source_slots.len());
 
-    for (index, window) in bound.windows.iter().enumerate() {
-        assert!(window.publish.is_none(), "window {index} carries a publish at R0");
-        assert_eq!((window.backing_depth, window.target_depth), (0, 0));
-        assert!(!window.materialize);
-        match window.read {
+    for (index, slot) in bound.slots.iter().enumerate() {
+        assert!(
+            slot.columns <= gkr_eval_isa::bwd::coeff::limits::SOURCE_WINDOW_COLUMNS,
+            "slot {index} addresses {} columns",
+            slot.columns
+        );
+        match slot.base {
             Some(_) => assert!(
-                bound.window_read_elements[index] as usize >= rows,
-                "window {index} is backed by {} elements for {rows} rows",
-                bound.window_read_elements[index]
+                slot.read_elements as usize >= rows,
+                "slot {index} is backed by {} elements for {rows} rows",
+                slot.read_elements
             ),
-            None => assert_eq!(bound.window_read_elements[index], 0),
+            None => assert!(slot.procedural_kind.is_some()),
         }
     }
+    // R0 reads at depth 0 and publishes nothing.
+    for (source, addr) in bound.sources.iter().enumerate() {
+        assert_eq!(addr.backing_depth, 0, "source {source}");
+        assert!(addr.publish.is_none(), "source {source} publishes at R0");
+    }
 
-    // The end-to-end property, per source.
+    // The end-to-end property, per source: the device's own arithmetic —
+    // `slot.base + column * stride` — must land on exactly the poly that the
+    // source's address independently resolves to.
     let mut real = 0usize;
     let mut procedural = 0usize;
     for (source, old_slot) in coord.binding.source_slots.iter().enumerate() {
         let old_window = &coord.binding.windows[old_slot.window as usize];
         let absolute = old_window.first_column + old_slot.column as usize;
-        let new_slot = &bound.coord.binding.source_slots[source];
-        let window = &bound.windows[new_slot.window as usize];
+        let addr = &bound.sources[source];
+        let slot = &bound.slots[addr.read_slot];
         match family_read_place(old_window.family, absolute) {
             None => {
                 procedural += 1;
-                assert!(window.read.is_none(), "source {source} lost its procedural window");
+                assert!(
+                    slot.base.is_none() && slot.procedural_kind.is_some(),
+                    "source {source} lost its procedural slot"
+                );
             }
             Some(place) => {
                 real += 1;
                 let expect = resolve_storage_column(storage, read_place_to_gkr_address(&place))
                     .expect("the binder resolved this address already");
-                let base = window.read.expect("an addressed source binds a read");
+                let base = slot.base.expect("an addressed source binds a read");
                 assert_eq!(
-                    base.ptr as usize + new_slot.column as usize * base.stride_bytes as usize,
+                    base.ptr as usize + addr.read_column * base.stride_bytes as usize,
                     expect.ptr as usize,
-                    "source {source} ({place:?}): window arithmetic lands on the wrong poly"
+                    "source {source} ({place:?}): lane arithmetic lands on the wrong poly"
                 );
                 assert_eq!(base.stride_bytes, expect.stride_bytes, "source {source}");
                 assert_eq!(base.is_e4, expect.is_e4, "source {source}");
@@ -513,10 +521,10 @@ fn every_r0_source_resolves_against_production_storage() {
         }
     }
     eprintln!(
-        "[bwd-vm-bind] add_sub L0 R0: {} -> {} windows; {real} real + {procedural} procedural \
-         sources land where their addresses resolve",
+        "[bwd-vm-bind] add_sub L0 R0: {} artifact windows -> {} address slots; \
+         {real} real + {procedural} procedural sources land where their addresses resolve",
         coord.binding.windows.len(),
-        bound.windows.len()
+        bound.slots.len()
     );
 }
 
@@ -687,7 +695,7 @@ fn every_ext_source_binds_through_the_cascade() {
 
     use gkr_eval_isa::bwd::coeff::stats::WindowFamily;
 
-    use super::seg_desc::BWD_SEG_SOURCE_WINDOW_CAP;
+    use super::seg_desc::BWD_SEG_ADDR_SLOTS;
 
     use super::production_bind::family_read_place;
     use super::seg_lower::D2Policy;
@@ -705,18 +713,16 @@ fn every_ext_source_binds_through_the_cascade() {
         .expect("every add_sub L0 Ext window must bind against production storage");
 
     assert_eq!(bound.rounds.len(), folding_steps - 1);
-    assert!(
-        bound.coord.binding.windows.len() <= BWD_SEG_SOURCE_WINDOW_CAP,
-        "{} rebound windows exceed the descriptor format",
-        bound.coord.binding.windows.len()
-    );
+    for round in &bound.rounds {
+        assert!(
+            round.slots.len() <= BWD_SEG_ADDR_SLOTS,
+            "round {}: {} address slots exceed the table",
+            round.round,
+            round.slots.len()
+        );
+        assert_eq!(round.sources.len(), coord.binding.source_slots.len());
+    }
     assert_eq!(bound.publish_plan.total_bytes, 0, "publishes are explicitly backed");
-    assert_eq!(bound.coord.program, coord.program, "the program never changes");
-    assert_eq!(bound.coord.order, coord.order, "the order never changes");
-    assert_eq!(
-        bound.coord.binding.source_slots.len(),
-        coord.binding.source_slots.len()
-    );
 
     // The per-source identity, at every round.
     let mut published_at_last: BTreeSet<GKRAddress> = BTreeSet::new();
@@ -735,23 +741,22 @@ fn every_ext_source_binds_through_the_cascade() {
         let region = resolve_cascade_region(storage, 0, addr, e4_origin)
             .unwrap_or_else(|| panic!("source {source} ({addr:?}) has no cascade region"));
         origins.insert(addr, e4_origin);
-        let new_slot = &bound.coord.binding.source_slots[source];
-        let relative = new_slot.column as usize;
-
         for round in 1..=last_step {
             let shapes = ext_round_window_shapes(coord, round, D2Policy::Inline).unwrap();
             let shape = &shapes[old_slot.window as usize];
-            let window = &bound.rounds[round as usize - 1].windows[new_slot.window as usize];
-            assert_eq!(window.target_depth, round, "source {source}");
-            assert_eq!(window.backing_depth, shape.backing_depth, "source {source}");
-            assert_eq!(window.materialize, shape.materialize, "source {source}");
+            let bound_round = &bound.rounds[round as usize - 1];
+            let entry = &bound_round.sources[source];
+            assert_eq!(entry.backing_depth, shape.backing_depth, "source {source}");
 
             if shape.materialize {
-                let publish = window.publish.unwrap_or_else(|| {
-                    panic!("source {source} round {round}: materializing window without publish")
+                let (slot, column) = entry.publish.unwrap_or_else(|| {
+                    panic!("source {source} round {round}: materializing source without publish")
                 });
+                let publish = bound_round.slots[slot]
+                    .base
+                    .expect("a destination slot has a backing");
                 assert_eq!(
-                    publish.ptr as usize + relative * publish.stride_bytes as usize,
+                    publish.ptr as usize + column * publish.stride_bytes as usize,
                     region.slot_ptr(round) as usize,
                     "source {source} ({addr:?}) round {round}: publish is not cascade slot {round}"
                 );
@@ -759,12 +764,14 @@ fn every_ext_source_binds_through_the_cascade() {
                     published_at_last.insert(addr);
                 }
             } else {
-                assert!(window.publish.is_none(), "source {source} round {round}");
+                assert!(entry.publish.is_none(), "source {source} round {round}");
             }
 
+            let slot = &bound_round.slots[entry.read_slot];
+            let relative = entry.read_column;
             if shape.chained {
-                let read = window.read.unwrap_or_else(|| {
-                    panic!("source {source} round {round}: chained window without read")
+                let read = slot.base.unwrap_or_else(|| {
+                    panic!("source {source} round {round}: chained source without read")
                 });
                 assert!(read.is_e4, "source {source} round {round}");
                 assert_eq!(
@@ -777,14 +784,14 @@ fn every_ext_source_binds_through_the_cascade() {
                 let expect =
                     resolve_storage_column(storage, read_place_to_gkr_address(&place))
                         .expect("the binder resolved this address already");
-                let read = window.read.expect("a raw round binds a read");
+                let read = slot.base.expect("a raw round binds a read");
                 assert_eq!(
                     read.ptr as usize + relative * read.stride_bytes as usize,
                     expect.ptr as usize,
                     "source {source} ({addr:?}) round {round}: raw read is off"
                 );
             } else {
-                assert!(window.read.is_none(), "source {source} round {round}");
+                assert!(slot.base.is_none(), "source {source} round {round}");
             }
         }
     }
@@ -832,10 +839,10 @@ fn every_ext_source_binds_through_the_cascade() {
         );
     }
     eprintln!(
-        "[bwd-vm-ext-bind] add_sub L0 Ext: {} -> {} windows; {} sources bound over rounds 1..={last_step}; \
-         {} gather addresses all published",
+        "[bwd-vm-ext-bind] add_sub L0 Ext: {} artifact windows -> {} address slots at round 1; \
+         {} sources bound over rounds 1..={last_step}; {} gather addresses all published",
         coord.binding.windows.len(),
-        bound.coord.binding.windows.len(),
+        bound.rounds[0].slots.len(),
         coord.binding.source_slots.len(),
         gather.len()
     );
@@ -941,8 +948,13 @@ fn the_ext_sequence_builds_one_setup_per_round() {
             folding_steps,
             "round {round}: the claim-point payload is bounds-check-only"
         );
-        publishing_at_round
-            .push(desc.window.iter().filter(|window| window.materialize == 1).count());
+        use super::seg_desc::BWD_SEG_ADDR_NONE;
+        publishing_at_round.push(
+            desc.source[..usize::from(desc.num_sources)]
+                .iter()
+                .filter(|record| record.cache != BWD_SEG_ADDR_NONE)
+                .count(),
+        );
     }
     // The materialization ladder in window counts: E4-origin publishes from
     // round 1; everything publishes from round 3 on.

@@ -1901,10 +1901,10 @@ fn bwd_seg_d3_to_d4_chain_ping_pongs() {
     // read at all). Read off the LOWERED windows rather than the families, since the
     // origin is a per-round statement.
     let d3_origins: BTreeSet<u8> = d3_storage
-        .windows
+        .slots
         .iter()
         .zip(&d3_model.windows)
-        .map(|(bound, host)| match (bound.read, host.publishes) {
+        .map(|(bound, host)| match (bound.base, host.publishes) {
             (None, _) => BWD_COEFF_ORIGIN_PROCEDURAL,
             (Some(column), _) if column.is_e4 => BWD_COEFF_ORIGIN_READ_EXT,
             (Some(_), _) => BWD_COEFF_ORIGIN_READ_BASE,
@@ -1946,12 +1946,12 @@ fn bwd_seg_d3_to_d4_chain_ping_pongs() {
     let mut cleared = 0usize;
     for (index, bound) in coord.artifact.binding.windows.iter().enumerate() {
         assert_eq!(
-            desc.window[index].origin, BWD_COEFF_ORIGIN_READ_EXT,
+            desc.slot[index].origin, BWD_COEFF_ORIGIN_READ_EXT,
             "window {index} must read the previous round's E4 publication at D4"
         );
         if bound.is_procedural() {
             assert_eq!(
-                desc.window[index].procedural_kind, BWD_COEFF_PROCEDURAL_NONE,
+                desc.slot[index].procedural_kind, BWD_COEFF_PROCEDURAL_NONE,
                 "window {index} is a virtual setup, but at D4 it resolves from the scratch \
                  region and must not also look synthesizable"
             );

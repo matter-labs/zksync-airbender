@@ -32,18 +32,20 @@ use gkr_eval_isa::bwd::coeff::stats::WindowFamily;
 use gkr_eval_isa::bwd::coeff::ArtifactRegime;
 
 use super::seg_desc::{
+    BWD_SEG_ADDR_NONE,
     BwdSegDesc, BwdSegSourceRecord, BWD_COEFF_ORIGIN_PROCEDURAL, BWD_COEFF_ORIGIN_READ_BASE,
     BWD_COEFF_ORIGIN_READ_EXT, BWD_COEFF_PROCEDURAL_NONE, BWD_SEG_CONST_BANK, BWD_SEG_C_INIT_NONE,
     BWD_SEG_FOLD_WEIGHT_BASE_D1, BWD_SEG_FOLD_WEIGHT_BASE_D2, BWD_SEG_FOLD_WEIGHT_BASE_D3,
-    BWD_SEG_FOLD_WEIGHT_SLOTS, BWD_SEG_MAX_K, BWD_SEG_MAX_SOURCES, BWD_SEG_SOURCE_WINDOW_CAP,
+    BWD_SEG_FOLD_WEIGHT_SLOTS, BWD_SEG_MAX_K, BWD_SEG_MAX_SOURCES, BWD_SEG_ADDR_SLOTS,
 };
 // The walk and its soft bound live in `seg_lower.rs`; the tests consume them.
 use super::seg_lower::{
     assign_class, atom_work, bwd_seg_floor_soft_bound, bwd_seg_traffic_floor, chain_read_column,
     check_regions_disjoint, chop_atoms, deal_atoms, lower_bwd_seg, member_work,
-    plan_publish_scratch, static_term_work, window_columns, AnnotatedTerm, BwdSegLaunchDesc,
+    plan_publish_scratch, static_term_work, AnnotatedTerm, BwdSegLaunchDesc,
     BwdSegLowerError, BwdSegRoundBinding, BwdSegSetup, CoeffMode, D2Policy, ProgramMode,
-    PublishRoundLayout, PublishScratchPlan, ResolvedBwdCoeffSourceWindow, ResolvedPublishScratch,
+    PublishRoundLayout, PublishScratchPlan, ResolvedAddrSlot, ResolvedPublishScratch,
+    ResolvedSourceAddr,
     SegAtom, SegMember, SegUnitEmit, SourceClass, SourceOrigin, PUBLISH_WINDOW_ABSENT,
 };
 use crate::primitives::field::{BF, E4};
@@ -95,19 +97,130 @@ fn column_at(address: usize, is_e4: bool, stride_bytes: u32) -> ResolvedColumn {
     }
 }
 
+/// The per-WINDOW bound these fixtures describe, which is how an ARTIFACT
+/// describes its binding — one entry per artifact window, carrying both sides.
+///
+/// The descriptor's own shape is flatter (an address table keyed by backing, two
+/// lanes per source), so [`addresses`] converts. Keeping the fixture shape means
+/// a test still says "this window reads here at this depth" rather than spelling
+/// out a slot table, and the conversion is the same one-slot-per-window mapping
+/// the old lowering did implicitly.
+#[derive(Clone, Copy, Debug)]
+struct FixtureWindow {
+    read: Option<ResolvedColumn>,
+    publish: Option<ResolvedColumn>,
+    backing_depth: u8,
+    target_depth: u8,
+    materialize: bool,
+}
+
 fn bound(
     read: Option<ResolvedColumn>,
     backing_depth: u8,
     target_depth: u8,
     materialize: bool,
-) -> ResolvedBwdCoeffSourceWindow {
-    ResolvedBwdCoeffSourceWindow {
+) -> FixtureWindow {
+    FixtureWindow {
         read,
         publish: None,
         backing_depth,
         target_depth,
         materialize,
     }
+}
+
+/// The byte stride a slot addresses its columns at.
+fn slot_stride(slot: &super::seg_desc::BwdSegAddrSlot) -> usize {
+    let element = if slot.origin == BWD_COEFF_ORIGIN_READ_EXT { 16 } else { 4 };
+    element << slot.log2_stride
+}
+
+/// Source `source`'s READ slot.
+fn read_slot_of(desc: &BwdSegDesc, source: usize) -> &super::seg_desc::BwdSegAddrSlot {
+    &desc.slot[super::seg_desc::bwd_seg_lane_slot(desc.source[source].src)]
+}
+
+/// Source `source`'s DESTINATION slot, or `None` when it publishes nothing.
+fn destination_of(desc: &BwdSegDesc, source: usize) -> Option<&super::seg_desc::BwdSegAddrSlot> {
+    let cache = desc.source[source].cache;
+    (cache != BWD_SEG_ADDR_NONE).then(|| &desc.slot[super::seg_desc::bwd_seg_lane_slot(cache)])
+}
+
+/// Per-window addressable column counts, from the artifact's own binding — the
+/// count the lowering used to derive itself.
+fn fixture_columns(binding: &LeanSourceBinding) -> Vec<usize> {
+    binding
+        .windows
+        .iter()
+        .map(|window| {
+            window
+                .columns
+                .last()
+                .map(|column| column.column.saturating_sub(window.first_column) + 1)
+                .unwrap_or(1)
+        })
+        .collect()
+}
+
+/// Convert per-window fixture bounds into the descriptor's slots and lanes: one
+/// slot per window, each source addressing its own window's slot at its own
+/// column, and a publishing window's destination as a slot of its own.
+fn addresses(
+    artifact: &LeanCoordinateArtifact,
+    bounds: &[FixtureWindow],
+    read_elements: &[u32],
+) -> (Vec<ResolvedAddrSlot>, Vec<ResolvedSourceAddr>) {
+    let columns = fixture_columns(&artifact.binding);
+    let mut slots: Vec<ResolvedAddrSlot> = bounds
+        .iter()
+        .enumerate()
+        .map(|(index, bound)| ResolvedAddrSlot {
+            base: bound.read,
+            procedural_kind: artifact
+                .binding
+                .windows
+                .get(index)
+                .and_then(|window| window.procedural_kind()),
+            read_elements: read_elements.get(index).copied().unwrap_or(0),
+            columns: columns.get(index).copied().unwrap_or(1),
+        })
+        .collect();
+    // Explicitly backed destinations become their own slots, appended so the read
+    // slots keep their fixture indices.
+    let mut publish_slot: Vec<Option<usize>> = vec![None; bounds.len()];
+    for (index, bound) in bounds.iter().enumerate() {
+        if let Some(publish) = bound.publish {
+            slots.push(ResolvedAddrSlot {
+                base: Some(publish),
+                procedural_kind: None,
+                read_elements: u32::MAX,
+                columns: columns.get(index).copied().unwrap_or(1),
+            });
+            publish_slot[index] = Some(slots.len() - 1);
+        }
+    }
+    let sources = artifact
+        .binding
+        .source_slots
+        .iter()
+        .map(|slot| {
+            let window = usize::from(slot.window);
+            ResolvedSourceAddr {
+                read_slot: window,
+                read_column: usize::from(slot.column),
+                publish: publish_slot
+                    .get(window)
+                    .copied()
+                    .flatten()
+                    .map(|target| (target, usize::from(slot.column))),
+                backing_depth: bounds
+                    .get(window)
+                    .map(|bound| bound.backing_depth)
+                    .unwrap_or(0),
+            }
+        })
+        .collect();
+    (slots, sources)
 }
 
 /// One window over `columns` contiguous columns of `family`, whose columns are
@@ -234,20 +347,80 @@ fn r0_artifact() -> LeanCoordinateArtifact {
     )
 }
 
+/// [`plan_publish_scratch`] over fixture windows: it takes the "publishes into
+/// scratch" flag per slot, which for a fixture is `materialize` without an
+/// explicit backing.
+fn plan_scratch(
+    window_sets: &[&[FixtureWindow]],
+    columns: &[&[usize]],
+    rows: &[usize],
+) -> Result<PublishScratchPlan, BwdSegLowerError> {
+    let owned: Vec<Vec<bool>> = window_sets
+        .iter()
+        .map(|set| {
+            set.iter()
+                .map(|window| window.materialize && window.publish.is_none())
+                .chain(set.iter().filter(|window| window.publish.is_some()).map(|_| false))
+                .collect()
+        })
+        .collect();
+    let flags: Vec<&[bool]> = owned.iter().map(|set| set.as_slice()).collect();
+    // Columns for the appended destination slots mirror their read slot's.
+    let owned_columns: Vec<Vec<usize>> = window_sets
+        .iter()
+        .zip(columns)
+        .map(|(set, columns)| {
+            columns
+                .iter()
+                .copied()
+                .chain(
+                    set.iter()
+                        .enumerate()
+                        .filter(|(_, window)| window.publish.is_some())
+                        .map(|(index, _)| columns.get(index).copied().unwrap_or(1)),
+                )
+                .collect()
+        })
+        .collect();
+    let columns: Vec<&[usize]> = owned_columns.iter().map(|set| set.as_slice()).collect();
+    plan_publish_scratch(&flags, &columns, rows)
+}
+
 /// A plan whose only round is `round`, built from one window set.
 fn plan_for(
     round: usize,
-    windows: &[ResolvedBwdCoeffSourceWindow],
+    windows: &[FixtureWindow],
     columns: &[usize],
 ) -> PublishScratchPlan {
-    let empty_windows: Vec<ResolvedBwdCoeffSourceWindow> = Vec::new();
+    // The plan reserves for windows that publish WITHOUT an explicit backing;
+    // `plan_publish_scratch` takes exactly that flag now. It must cover the whole
+    // slot table, which `addresses` extends with one slot per explicit
+    // destination — those reserve nothing.
+    let flags: Vec<bool> = windows
+        .iter()
+        .map(|window| window.materialize && window.publish.is_none())
+        .chain(windows.iter().filter(|window| window.publish.is_some()).map(|_| false))
+        .collect();
+    let extended_columns: Vec<usize> = columns
+        .iter()
+        .copied()
+        .chain(
+            windows
+                .iter()
+                .enumerate()
+                .filter(|(_, window)| window.publish.is_some())
+                .map(|(index, _)| columns.get(index).copied().unwrap_or(1)),
+        )
+        .collect();
+    let windows = &flags[..];
+    let empty_windows: Vec<bool> = Vec::new();
     let empty_columns: Vec<usize> = Vec::new();
-    let mut window_sets: Vec<&[ResolvedBwdCoeffSourceWindow]> = Vec::new();
+    let mut window_sets: Vec<&[bool]> = Vec::new();
     let mut column_sets: Vec<&[usize]> = Vec::new();
     for index in 0..=round {
         if index == round {
             window_sets.push(windows);
-            column_sets.push(columns);
+            column_sets.push(&extended_columns);
         } else {
             window_sets.push(&empty_windows);
             column_sets.push(&empty_columns);
@@ -275,16 +448,22 @@ fn coefficients(entries: usize) -> Vec<E4> {
 /// read span generous.
 fn round_binding<'a>(
     round: u32,
-    bounds: &'a [ResolvedBwdCoeffSourceWindow],
-    read_elements: &'a [u32],
+    artifact: &LeanCoordinateArtifact,
+    bounds: &[FixtureWindow],
+    read_elements: &[u32],
     claim: &'a [E4],
     coeffs: &'a [E4],
 ) -> BwdSegRoundBinding<'a> {
+    let (slots, sources) = addresses(artifact, bounds, read_elements);
+    // Test-only leak: the converted tables must outlive this call so a fixture
+    // can keep describing per-window bounds inline at the call site.
+    let slots: &'static [ResolvedAddrSlot] = Box::leak(slots.into_boxed_slice());
+    let sources: &'static [ResolvedSourceAddr] = Box::leak(sources.into_boxed_slice());
     BwdSegRoundBinding {
         round,
         rows: ROWS[round as usize],
-        windows: bounds,
-        window_read_elements: read_elements,
+        slots,
+        sources,
         claim_point: claim,
         coefficients: coeffs,
         c_init: None,
@@ -342,7 +521,7 @@ fn eq_term(desc: &BwdSegDesc) -> u64 {
 fn lower_one(
     artifact: &LeanCoordinateArtifact,
     round: u32,
-    bound_window: ResolvedBwdCoeffSourceWindow,
+    bound_window: FixtureWindow,
     columns: usize,
     k: usize,
     d2: D2Policy,
@@ -352,7 +531,7 @@ fn lower_one(
     let claim = claim_point(8);
     let coeffs = coefficients(4);
     let read_elements = generous(1);
-    let binding = round_binding(round, &bounds, &read_elements, &claim, &coeffs);
+    let binding = round_binding(round, artifact, &bounds, &read_elements, &claim, &coeffs);
     lower_bwd_seg(
         artifact,
         &binding,
@@ -455,7 +634,7 @@ fn lowering_stamps_the_assigned_class_on_every_source() {
             );
         }
         assert_eq!(
-            desc.window[0].materialize,
+            u8::from(desc.source[0].cache != BWD_SEG_ADDR_NONE),
             u8::from(foldable),
             "round {round} {d2:?} materialize",
         );
@@ -464,7 +643,7 @@ fn lowering_stamps_the_assigned_class_on_every_source() {
             if foldable { 2 } else { 0 },
             "round {round} {d2:?} foldable sources",
         );
-        assert_eq!(desc.window[0].origin, BWD_COEFF_ORIGIN_READ_BASE);
+        assert_eq!(desc.slot[0].origin, BWD_COEFF_ORIGIN_READ_BASE);
     }
 }
 
@@ -484,7 +663,7 @@ fn lowering_stamps_the_e4_and_procedural_classes() {
     let desc = inline_desc(&setup);
     assert_eq!(desc.source[0].class, SourceClass::E4Direct.code());
     assert_eq!(desc.num_foldable, 0);
-    assert_eq!(desc.window[0].origin, BWD_COEFF_ORIGIN_READ_EXT);
+    assert_eq!(desc.slot[0].origin, BWD_COEFF_ORIGIN_READ_EXT);
 
     // A procedural window below the publish depth: inline, no read backing.
     let procedural = artifact(
@@ -505,9 +684,9 @@ fn lowering_stamps_the_e4_and_procedural_classes() {
     .expect("a legal procedural round");
     let desc = inline_desc(&setup);
     assert_eq!(desc.source[0].class, SourceClass::ProceduralInline.code());
-    assert_eq!(desc.window[0].origin, BWD_COEFF_ORIGIN_PROCEDURAL);
-    assert_eq!(desc.window[0].procedural_kind, 2);
-    assert!(desc.window[0].read_base.is_null());
+    assert_eq!(desc.slot[0].origin, BWD_COEFF_ORIGIN_PROCEDURAL);
+    assert_eq!(desc.slot[0].procedural_kind, 2);
+    assert!(desc.slot[0].base.is_null());
     assert_eq!(desc.num_foldable, 0);
 
     // At the publish depth it becomes an E4 source the prologue materializes.
@@ -522,10 +701,10 @@ fn lowering_stamps_the_e4_and_procedural_classes() {
     .expect("a legal procedural publish round");
     let desc = inline_desc(&setup);
     assert_eq!(desc.source[0].class, SourceClass::E4Direct.code());
-    assert_eq!(desc.window[0].origin, BWD_COEFF_ORIGIN_PROCEDURAL);
+    assert_eq!(desc.slot[0].origin, BWD_COEFF_ORIGIN_PROCEDURAL);
     assert_eq!(desc.num_foldable, 1);
     assert_eq!(desc.fold_source[0], 0);
-    assert_eq!(desc.window[0].materialize, 1);
+    assert!(desc.source[0].cache != BWD_SEG_ADDR_NONE);
 }
 
 /// **The landmine.** The old lowering read the ORIGIN off the compile-time
@@ -548,7 +727,7 @@ fn origin_comes_from_the_round_binding_not_the_compiled_family() {
     )
     .expect("a materialized base-family window is legal");
     let desc = inline_desc(&setup);
-    assert_eq!(desc.window[0].origin, BWD_COEFF_ORIGIN_READ_EXT);
+    assert_eq!(desc.slot[0].origin, BWD_COEFF_ORIGIN_READ_EXT);
     assert_eq!(desc.source[0].class, SourceClass::E4Direct.code());
 
     // Family says VIRTUAL SETUP, the round binding supplies an E4 backing (the
@@ -571,8 +750,8 @@ fn origin_comes_from_the_round_binding_not_the_compiled_family() {
     )
     .expect("a materialized virtual-setup window is legal");
     let desc = inline_desc(&setup);
-    assert_eq!(desc.window[0].origin, BWD_COEFF_ORIGIN_READ_EXT);
-    assert_eq!(desc.window[0].procedural_kind, BWD_COEFF_PROCEDURAL_NONE);
+    assert_eq!(desc.slot[0].origin, BWD_COEFF_ORIGIN_READ_EXT);
+    assert_eq!(desc.slot[0].procedural_kind, BWD_COEFF_PROCEDURAL_NONE);
     assert_eq!(desc.source[0].class, SourceClass::E4Direct.code());
 
     // ...and the reverse mistake is rejected outright: a virtual-setup family
@@ -689,7 +868,7 @@ fn the_plan_sizes_two_parity_buffers_by_their_worst_round() {
     let round3 = [publishing, quiet];
     let round4 = [bound(Some(e4_column(1)), 3, 4, true)];
 
-    let plan = plan_publish_scratch(
+    let plan = plan_scratch(
         &[&[], &[], &[], &round3, &round4],
         &[&[], &[], &[], &[3, 1], &[2]],
         &ROWS[..5],
@@ -735,7 +914,7 @@ fn one_round_packs_its_publishing_windows_disjointly() {
 fn the_plan_rejects_a_shape_that_does_not_line_up() {
     let windows = [bound(Some(bf_column(0)), 0, 3, true)];
     assert_eq!(
-        plan_publish_scratch(&[&windows], &[&[1, 2]], &[ROWS[3]]),
+        plan_scratch(&[&windows], &[&[1, 2]], &[ROWS[3]]),
         Err(BwdSegLowerError::PlanShapeMismatch {
             round: 0,
             windows: 1,
@@ -743,7 +922,7 @@ fn the_plan_rejects_a_shape_that_does_not_line_up() {
         }),
     );
     assert_eq!(
-        plan_publish_scratch(&[&windows], &[&[1]], &[]),
+        plan_scratch(&[&windows], &[&[1]], &[]),
         Err(BwdSegLowerError::PlanRoundCountMismatch {
             windows: 1,
             columns: 1,
@@ -799,7 +978,7 @@ fn a_publish_region_overlapping_a_raw_input_is_rejected() {
     assert_eq!(
         lower_bwd_seg(
             &artifact,
-            &round_binding(3, &bounds, &read_elements, &claim, &coeffs),
+            &round_binding(3, &artifact, &bounds, &read_elements, &claim, &coeffs),
             &scratch,
             1,
             D2Policy::Inline,
@@ -807,7 +986,7 @@ fn a_publish_region_overlapping_a_raw_input_is_rejected() {
             CoeffMode::Constant,
         ),
         Err(BwdSegLowerError::UnsafePublishAlias {
-            window: 0,
+            window: 2,
             other: 1,
         }),
     );
@@ -827,7 +1006,7 @@ fn a_read_inside_the_write_parity_buffer_is_rejected() {
         bound(Some(bf_column(0)), 0, 3, true),
         bound(Some(column_at(PARITY1 + 1024, true, E4_BYTES)), 3, 3, false),
     ];
-    let plan = plan_publish_scratch(
+    let plan = plan_scratch(
         &[&[], &round1[..], &[], &round3[..]],
         &[&[], &[1], &[], &[1, 1]],
         &ROWS[..4],
@@ -848,7 +1027,7 @@ fn a_read_inside_the_write_parity_buffer_is_rejected() {
     assert_eq!(
         lower_bwd_seg(
             &artifact,
-            &round_binding(3, &round3, &read_elements, &claim, &coeffs),
+            &round_binding(3, &artifact, &round3, &read_elements, &claim, &coeffs),
             &scratch,
             1,
             D2Policy::Inline,
@@ -870,7 +1049,7 @@ fn parity_buffers_that_overlap_are_rejected() {
     let claim = claim_point(8);
     let coeffs = coefficients(4);
     let read_elements = generous(1);
-    let binding = round_binding(3, &bounds, &read_elements, &claim, &coeffs);
+    let binding = round_binding(3, &bf_artifact(), &bounds, &read_elements, &claim, &coeffs);
     assert_eq!(
         lower_bwd_seg(
             &bf_artifact(),
@@ -915,7 +1094,7 @@ fn a_read_span_one_element_short_is_rejected() {
         let artifact = if is_e4 { ext_artifact() } else { bf_artifact() };
 
         let short = [needed - 1];
-        let binding = round_binding(round, &bounds, &short, &claim, &coeffs);
+        let binding = round_binding(round, &artifact, &bounds, &short, &claim, &coeffs);
         assert_eq!(
             lower_bwd_seg(
                 &artifact,
@@ -935,7 +1114,7 @@ fn a_read_span_one_element_short_is_rejected() {
         );
 
         let exact = [needed];
-        let binding = round_binding(round, &bounds, &exact, &claim, &coeffs);
+        let binding = round_binding(round, &artifact, &bounds, &exact, &claim, &coeffs);
         assert!(
             lower_bwd_seg(
                 &artifact,
@@ -987,7 +1166,7 @@ fn the_d3_to_d4_chain_reads_the_previous_round_publish() {
 
         // ONE plan covering both rounds — the planner owns the whole sequence.
         let round3 = [bound(family_read, 0, 3, true)];
-        let plan = plan_publish_scratch(
+        let plan = plan_scratch(
             &[&[], &[], &[], &round3[..], &round3[..]],
             &[&[], &[], &[], &[1], &[1]],
             &ROWS[..5],
@@ -1000,7 +1179,7 @@ fn the_d3_to_d4_chain_reads_the_previous_round_publish() {
 
         let third = lower_bwd_seg(
             &artifact,
-            &round_binding(3, &round3, &read_elements, &claim, &coeffs),
+            &round_binding(3, &artifact, &round3, &read_elements, &claim, &coeffs),
             &scratch,
             1,
             D2Policy::Inline,
@@ -1009,13 +1188,15 @@ fn the_d3_to_d4_chain_reads_the_previous_round_publish() {
         )
         .unwrap_or_else(|error| panic!("procedural {procedural}: round 3: {error:?}"));
         let third_desc = inline_desc(&third);
-        let published = third_desc.window[0].publish_base;
+        let published = destination_of(third_desc, 0)
+            .expect("round 3 publishes")
+            .base;
         assert_eq!(
             published as usize, PARITY1,
             "procedural {procedural}: round 3 publishes into parity 1",
         );
         assert_eq!(
-            third_desc.window[0].publish_stride_bytes as usize,
+            slot_stride(destination_of(third_desc, 0).expect("round 3 publishes")),
             2 * ROWS[3] * 16,
         );
         assert_eq!(third_desc.num_foldable, 1);
@@ -1033,7 +1214,7 @@ fn the_d3_to_d4_chain_reads_the_previous_round_publish() {
         )];
         let fourth = lower_bwd_seg(
             &artifact,
-            &round_binding(4, &round4, &read_elements, &claim, &coeffs),
+            &round_binding(4, &artifact, &round4, &read_elements, &claim, &coeffs),
             &scratch,
             1,
             D2Policy::Inline,
@@ -1043,25 +1224,26 @@ fn the_d3_to_d4_chain_reads_the_previous_round_publish() {
         .unwrap_or_else(|error| panic!("procedural {procedural}: round 4: {error:?}"));
         let fourth_desc = inline_desc(&fourth);
         assert_eq!(
-            fourth_desc.window[0].read_base as usize, published as usize,
+            fourth_desc.slot[0].base as usize, published as usize,
             "procedural {procedural}: round 4 chains off round 3's publish",
         );
         assert_eq!(
-            fourth_desc.window[0].read_stride_bytes as usize,
+            slot_stride(read_slot_of(fourth_desc, 0)),
             2 * ROWS[3] * 16,
             "the READ stride is the PREVIOUS round's",
         );
         assert_eq!(
-            fourth_desc.window[0].publish_base as usize, PARITY0,
+            destination_of(fourth_desc, 0).expect("round 4 publishes").base as usize,
+            PARITY0,
             "procedural {procedural}: round 4 publishes into the other parity",
         );
         assert_eq!(
-            fourth_desc.window[0].publish_stride_bytes as usize,
+            slot_stride(destination_of(fourth_desc, 0).expect("round 4 publishes")),
             2 * ROWS[4] * 16,
             "the WRITE stride is THIS round's",
         );
         assert_eq!(fourth_desc.source[0].class, SourceClass::E4Direct.code());
-        assert_eq!(fourth_desc.window[0].origin, BWD_COEFF_ORIGIN_READ_EXT);
+        assert_eq!(fourth_desc.slot[0].origin, BWD_COEFF_ORIGIN_READ_EXT);
     }
 }
 
@@ -1070,7 +1252,7 @@ fn the_d3_to_d4_chain_reads_the_previous_round_publish() {
 #[test]
 fn a_chain_read_off_the_previous_publish_region_is_rejected() {
     let round3 = [bound(Some(bf_column(0)), 0, 3, true)];
-    let plan = plan_publish_scratch(
+    let plan = plan_scratch(
         &[&[], &[], &[], &round3[..], &round3[..]],
         &[&[], &[], &[], &[1], &[1]],
         &ROWS[..5],
@@ -1090,7 +1272,7 @@ fn a_chain_read_off_the_previous_publish_region_is_rejected() {
     assert_eq!(
         lower_bwd_seg(
             &bf_artifact(),
-            &round_binding(4, &round4, &read_elements, &claim, &coeffs),
+            &round_binding(4, &bf_artifact(), &round4, &read_elements, &claim, &coeffs),
             &scratch,
             1,
             D2Policy::Inline,
@@ -1120,7 +1302,7 @@ fn an_r0_program_lowered_off_round_zero_is_rejected() {
 
 /// One past the descriptor's window CAPACITY is rejected.
 ///
-/// `BWD_SEG_SOURCE_WINDOW_CAP` sizes `BwdSegDesc::window`, a FIXED-length array, so
+/// `BWD_SEG_ADDR_SLOTS` sizes `BwdSegDesc::window`, a FIXED-length array, so
 /// this rejection is what stands between a wider layer and a descriptor write past
 /// its end. It is deliberately NOT the corpus measurement
 /// (`in_scope::MAX_SOURCE_WINDOWS_USED`): sizing the array by the largest count
@@ -1130,7 +1312,7 @@ fn an_r0_program_lowered_off_round_zero_is_rejected() {
 /// deleted with it; this is that coverage restored against the seg lowering.
 #[test]
 fn more_windows_than_the_capacity_are_rejected() {
-    let cap = BWD_SEG_SOURCE_WINDOW_CAP;
+    let cap = BWD_SEG_ADDR_SLOTS;
     // One window per source, one column each, one past the cap. Distinct layers so
     // no two windows share a backing.
     let windows: Vec<LeanBoundWindow> = (0..=cap)
@@ -1145,7 +1327,7 @@ fn more_windows_than_the_capacity_are_rejected() {
         program(&[record(0, 0, 0, SOURCE_NONE)]),
     );
 
-    let bounds: Vec<ResolvedBwdCoeffSourceWindow> = (0..=cap)
+    let bounds: Vec<FixtureWindow> = (0..=cap)
         .map(|_| bound(Some(e4_column(0)), 2, 2, false))
         .collect();
     let columns = vec![1usize; cap + 1];
@@ -1153,7 +1335,7 @@ fn more_windows_than_the_capacity_are_rejected() {
     let claim = claim_point(8);
     let coeffs = coefficients(4);
     let read_elements = generous(cap + 1);
-    let binding = round_binding(2, &bounds, &read_elements, &claim, &coeffs);
+    let binding = round_binding(2, &artifact, &bounds, &read_elements, &claim, &coeffs);
 
     assert_eq!(
         lower_bwd_seg(
@@ -1210,7 +1392,7 @@ fn more_sources_than_the_table_capacity_are_rejected() {
         program(&[record(0, 0, 0, SOURCE_NONE)]),
     );
 
-    let bounds: Vec<ResolvedBwdCoeffSourceWindow> = (0..window_count)
+    let bounds: Vec<FixtureWindow> = (0..window_count)
         .map(|_| bound(Some(e4_column(0)), 2, 2, false))
         .collect();
     let columns: Vec<usize> = (0..window_count)
@@ -1220,7 +1402,7 @@ fn more_sources_than_the_table_capacity_are_rejected() {
     let claim = claim_point(8);
     let coeffs = coefficients(4);
     let read_elements = generous(window_count);
-    let binding = round_binding(2, &bounds, &read_elements, &claim, &coeffs);
+    let binding = round_binding(2, &artifact, &bounds, &read_elements, &claim, &coeffs);
 
     assert_eq!(
         lower_bwd_seg(
@@ -1249,7 +1431,7 @@ fn an_r0_program_carrying_a_c_init_is_rejected() {
     let claim = claim_point(8);
     let coeffs = coefficients(4);
     let read_elements = generous(1);
-    let mut binding = round_binding(0, &bounds, &read_elements, &claim, &coeffs);
+    let mut binding = round_binding(0, &artifact, &bounds, &read_elements, &claim, &coeffs);
     binding.c_init = Some(CoefficientRecipeId::ONE);
     assert_eq!(
         lower_bwd_seg(
@@ -1281,7 +1463,7 @@ fn c_init_travels_as_a_bounds_checked_coefficient_id() {
     // Absent: the sentinel, not a zero id — `0` is the live `ONE`.
     let plain = lower_bwd_seg(
         &artifact,
-        &round_binding(2, &bounds, &read_elements, &claim, &coeffs),
+        &round_binding(2, &artifact, &bounds, &read_elements, &claim, &coeffs),
         &scratch,
         1,
         D2Policy::Inline,
@@ -1293,7 +1475,7 @@ fn c_init_travels_as_a_bounds_checked_coefficient_id() {
 
     // The reserved `-1` literal is materialized at the bank head, so it
     // resolves exactly like a banked id.
-    let mut seeded = round_binding(2, &bounds, &read_elements, &claim, &coeffs);
+    let mut seeded = round_binding(2, &artifact, &bounds, &read_elements, &claim, &coeffs);
     seeded.c_init = Some(CoefficientRecipeId::NEG_ONE);
     let setup = lower_bwd_seg(
         &artifact,
@@ -1315,7 +1497,7 @@ fn c_init_travels_as_a_bounds_checked_coefficient_id() {
     assert_ne!(id, BWD_SEG_C_INIT_NONE, "the seed must be observable");
 
     // An id past the payload has no value to resolve to.
-    let mut past = round_binding(2, &bounds, &read_elements, &claim, &coeffs);
+    let mut past = round_binding(2, &artifact, &bounds, &read_elements, &claim, &coeffs);
     let index = (CoefficientRecipeId::RESERVED + coeffs.len() as u32) as u32;
     past.c_init = Some(CoefficientRecipeId(index));
     assert_eq!(
@@ -1332,24 +1514,6 @@ fn c_init_travels_as_a_bounds_checked_coefficient_id() {
     );
 }
 
-#[test]
-fn a_window_target_depth_that_is_not_the_round_is_rejected() {
-    assert_eq!(
-        lower_one(
-            &ext_artifact(),
-            2,
-            bound(Some(e4_column(0)), 1, 1, false),
-            2,
-            1,
-            D2Policy::Inline,
-        ),
-        Err(BwdSegLowerError::WindowTargetDepthMismatch {
-            window: 0,
-            round: 2,
-            target_depth: 1,
-        }),
-    );
-}
 
 /// The runtime factor bank holds the depth-one pair and ONE depth-`fold_depth`
 /// table, so a catch-up of two at round three has no weights.
@@ -1388,42 +1552,6 @@ fn a_catch_up_the_factor_bank_cannot_weight_is_rejected() {
     );
 }
 
-/// The publish policy is lowering's, and a round binding that disagrees with it
-/// has a scratch plan that does not match the classes — so it is a rejection,
-/// never a silent override.
-#[test]
-fn a_materialize_flag_that_disagrees_with_the_policy_is_rejected() {
-    assert_eq!(
-        lower_one(
-            &bf_artifact(),
-            3,
-            bound(Some(bf_column(0)), 0, 3, false),
-            2,
-            1,
-            D2Policy::Inline,
-        ),
-        Err(BwdSegLowerError::MaterializePolicyMismatch {
-            window: 0,
-            declared: false,
-            derived: true,
-        }),
-    );
-    assert_eq!(
-        lower_one(
-            &bf_artifact(),
-            1,
-            bound(Some(bf_column(0)), 0, 1, true),
-            2,
-            1,
-            D2Policy::Inline,
-        ),
-        Err(BwdSegLowerError::MaterializePolicyMismatch {
-            window: 0,
-            declared: true,
-            derived: false,
-        }),
-    );
-}
 
 /// A publish backing on a window that does not publish would be silently
 /// ignored, so it is refused instead.
@@ -1456,11 +1584,11 @@ fn an_explicitly_backed_publish_lowers_at_the_backing_stride() {
     bound_window.publish = Some(column_at(E4_BACKING, true, 4096));
     let setup = lower_one(&bf_artifact(), 3, bound_window, 2, 1, D2Policy::Inline)
         .expect("an explicitly backed publish must lower");
-    let window = &inline_desc(&setup).window[0];
-    assert_eq!(window.publish_base as usize, E4_BACKING);
-    assert_eq!(window.publish_stride_bytes, 4096);
-    assert_eq!(window.materialize, 1);
-    assert_eq!(window.read_base as usize, BF_BACKING);
+    let desc = inline_desc(&setup);
+    let publish = destination_of(desc, 0).expect("an explicit backing publishes");
+    assert_eq!(publish.base as usize, E4_BACKING);
+    assert_eq!(slot_stride(publish), 4096);
+    assert_eq!(read_slot_of(desc, 0).base as usize, BF_BACKING);
 }
 
 /// The cascade's normal state at a chained round: the window READS slot
@@ -1477,10 +1605,11 @@ fn a_cascade_shaped_round_lowers_with_interleaved_read_and_publish() {
     bound_window.publish = Some(column_at(E4_BACKING + 3072, true, 4096));
     let setup = lower_one(&ext_artifact(), 3, bound_window, 2, 1, D2Policy::Inline)
         .expect("the cascade's read/publish interleave is not an alias");
-    let window = &inline_desc(&setup).window[0];
-    assert_eq!(window.read_base as usize, E4_BACKING + 2048);
-    assert_eq!(window.publish_base as usize, E4_BACKING + 3072);
-    assert_eq!(window.publish_stride_bytes, 4096);
+    let desc = inline_desc(&setup);
+    assert_eq!(read_slot_of(desc, 0).base as usize, E4_BACKING + 2048);
+    let publish = destination_of(desc, 0).expect("the cascade round publishes");
+    assert_eq!(publish.base as usize, E4_BACKING + 3072);
+    assert_eq!(slot_stride(publish), 4096);
 }
 
 /// An explicit backing AND a planned parity region for the same window is a
@@ -1496,7 +1625,7 @@ fn an_explicit_publish_with_a_planned_region_is_ambiguous() {
     let claim = claim_point(8);
     let coeffs = coefficients(4);
     let read_elements = generous(1);
-    let binding = round_binding(3, &bounds, &read_elements, &claim, &coeffs);
+    let binding = round_binding(3, &bf_artifact(), &bounds, &read_elements, &claim, &coeffs);
     assert_eq!(
         lower_bwd_seg(
             &bf_artifact(),
@@ -1527,7 +1656,11 @@ fn a_non_e4_or_narrow_explicit_publish_region_is_rejected() {
         }),
     );
 
-    let narrow = ROUND3_PUBLISH_EXTENT - 16;
+    // Half the extent: still a power of two in E4 elements (a lane indexes
+    // `column << log2_stride`, so a non-power-of-two stride is rejected earlier as
+    // `StrideNotPowerOfTwo`), and still too narrow for the round's per-column
+    // write.
+    let narrow = ROUND3_PUBLISH_EXTENT / 2;
     let mut bound_window = bound(Some(bf_column(0)), 0, 3, true);
     bound_window.publish = Some(column_at(E4_BACKING, true, narrow));
     assert_eq!(
@@ -1536,6 +1669,17 @@ fn a_non_e4_or_narrow_explicit_publish_region_is_rejected() {
             window: 0,
             is_e4: true,
             stride_bytes: narrow,
+        }),
+    );
+
+    // And a stride that is not a whole power of two cannot be indexed at all.
+    let mut bound_window = bound(Some(bf_column(0)), 0, 3, true);
+    bound_window.publish = Some(column_at(E4_BACKING, true, ROUND3_PUBLISH_EXTENT - 16));
+    assert_eq!(
+        lower_one(&bf_artifact(), 3, bound_window, 2, 1, D2Policy::Inline),
+        Err(BwdSegLowerError::StrideNotPowerOfTwo {
+            window: 1,
+            stride_bytes: ROUND3_PUBLISH_EXTENT - 16,
         }),
     );
 }
@@ -1564,7 +1708,7 @@ fn overlapping_explicit_publish_regions_are_rejected() {
     let claim = claim_point(8);
     let coeffs = coefficients(4);
     let read_elements = generous(2);
-    let binding = round_binding(3, &bounds, &read_elements, &claim, &coeffs);
+    let binding = round_binding(3, &two_windows, &bounds, &read_elements, &claim, &coeffs);
     assert_eq!(
         lower_bwd_seg(
             &two_windows,
@@ -1577,8 +1721,8 @@ fn overlapping_explicit_publish_regions_are_rejected() {
         )
         .err(),
         Some(BwdSegLowerError::UnsafePublishAlias {
-            window: 0,
-            other: 1,
+            window: 2,
+            other: 3,
         }),
     );
 }
@@ -1705,66 +1849,29 @@ fn a_window_wider_than_its_coordinate_is_rejected() {
         slots(&[(0, 0), (0, 1)]),
         program(&[record(1, 2, 0, 1)]),
     );
+    // The span is computable; the LOWERING is what refuses a slot wider than a
+    // lane's seven-bit column field.
     assert_eq!(
-        window_columns(&artifact.binding),
+        fixture_columns(&artifact.binding),
+        vec![SOURCE_WINDOW_COLUMNS + 1]
+    );
+    assert_eq!(
+        lower_one(
+            &artifact,
+            3,
+            bound(Some(bf_column(0)), 0, 3, false),
+            SOURCE_WINDOW_COLUMNS + 1,
+            1,
+            D2Policy::Inline
+        ),
         Err(BwdSegLowerError::WindowColumnOverflow {
             window: 0,
-            offset: SOURCE_WINDOW_COLUMNS,
+            offset: SOURCE_WINDOW_COLUMNS + 1,
         }),
     );
 }
 
-#[test]
-fn a_bound_window_count_that_is_not_the_compiled_one_is_rejected() {
-    let artifact = ext_artifact();
-    let bounds: [ResolvedBwdCoeffSourceWindow; 2] = [
-        bound(Some(e4_column(0)), 2, 2, false),
-        bound(Some(e4_column(1)), 2, 2, false),
-    ];
-    let scratch = scratch_for(plan_for(2, &bounds, &[2, 2]));
-    let claim = claim_point(8);
-    let coeffs = coefficients(4);
-    let read_elements = generous(2);
-    assert_eq!(
-        lower_bwd_seg(
-            &artifact,
-            &round_binding(2, &bounds, &read_elements, &claim, &coeffs),
-            &scratch,
-            1,
-            D2Policy::Inline,
-            ProgramMode::Inline,
-            CoeffMode::Constant,
-        ),
-        Err(BwdSegLowerError::SourceWindowCountMismatch {
-            compiled: 1,
-            bound: 2,
-        }),
-    );
-}
 
-#[test]
-fn a_read_element_count_that_does_not_cover_every_window_is_rejected() {
-    let artifact = ext_artifact();
-    let bounds = [bound(Some(e4_column(0)), 2, 2, false)];
-    let scratch = scratch_for(plan_for(2, &bounds, &[2]));
-    let claim = claim_point(8);
-    let coeffs = coefficients(4);
-    assert_eq!(
-        lower_bwd_seg(
-            &artifact,
-            &round_binding(2, &bounds, &[], &claim, &coeffs),
-            &scratch,
-            1,
-            D2Policy::Inline,
-            ProgramMode::Inline,
-            CoeffMode::Constant,
-        ),
-        Err(BwdSegLowerError::ReadElementCountMismatch {
-            compiled: 1,
-            bound: 0,
-        }),
-    );
-}
 
 /// The kernel indexes the bank with no bound of its own, so the payload must
 /// COVER the largest id the stream names.
@@ -1785,7 +1892,7 @@ fn a_coefficient_id_past_the_payload_is_rejected() {
     assert_eq!(
         lower_bwd_seg(
             &artifact,
-            &round_binding(2, &bounds, &read_elements, &claim, &coeffs),
+            &round_binding(2, &artifact, &bounds, &read_elements, &claim, &coeffs),
             &scratch,
             1,
             D2Policy::Inline,
@@ -1877,7 +1984,7 @@ fn a_null_runtime_pointer_is_rejected() {
     let coeffs = coefficients(4);
     let read_elements = generous(1);
     for what in ["eq_low", "contributions"] {
-        let mut binding = round_binding(2, &bounds, &read_elements, &claim, &coeffs);
+        let mut binding = round_binding(2, &artifact, &bounds, &read_elements, &claim, &coeffs);
         match what {
             "eq_low" => binding.eq_low = std::ptr::null(),
             _ => binding.contributions = std::ptr::null_mut(),
@@ -1910,7 +2017,7 @@ fn a_claim_point_shorter_than_the_round_is_rejected() {
     assert_eq!(
         lower_bwd_seg(
             &artifact,
-            &round_binding(2, &bounds, &read_elements, &short, &coeffs),
+            &round_binding(2, &artifact, &bounds, &read_elements, &short, &coeffs),
             &scratch,
             1,
             D2Policy::Inline,
@@ -1934,7 +2041,7 @@ fn an_acc_size_that_is_not_the_row_count_is_rejected() {
     let claim = claim_point(8);
     let coeffs = coefficients(4);
     let read_elements = generous(1);
-    let mut binding = round_binding(2, &bounds, &read_elements, &claim, &coeffs);
+    let mut binding = round_binding(2, &artifact, &bounds, &read_elements, &claim, &coeffs);
     binding.acc_size = ROWS[2] as u32 + 1;
     assert_eq!(
         lower_bwd_seg(
@@ -1977,7 +2084,7 @@ fn a_program_past_the_inline_array_is_rejected_only_inline() {
     assert_eq!(
         lower_bwd_seg(
             &artifact,
-            &round_binding(2, &bounds, &read_elements, &claim, &coeffs),
+            &round_binding(2, &artifact, &bounds, &read_elements, &claim, &coeffs),
             &scratch,
             1,
             D2Policy::Inline,
@@ -1991,7 +2098,7 @@ fn a_program_past_the_inline_array_is_rejected_only_inline() {
     );
     let setup = lower_bwd_seg(
         &artifact,
-        &round_binding(2, &bounds, &read_elements, &claim, &coeffs),
+        &round_binding(2, &artifact, &bounds, &read_elements, &claim, &coeffs),
         &scratch,
         1,
         D2Policy::Inline,
@@ -2024,7 +2131,7 @@ fn the_coefficient_payload_materializes_the_reserved_literals() {
     let read_elements = generous(1);
     let setup = lower_bwd_seg(
         &artifact,
-        &round_binding(2, &bounds, &read_elements, &claim, &recipes),
+        &round_binding(2, &artifact, &bounds, &read_elements, &claim, &recipes),
         &scratch,
         1,
         D2Policy::Inline,
@@ -2070,7 +2177,7 @@ fn a_payload_past_the_constant_bank_is_rejected() {
     assert_eq!(
         lower_bwd_seg(
             &artifact,
-            &round_binding(2, &bounds, &read_elements, &claim, &recipes),
+            &round_binding(2, &artifact, &bounds, &read_elements, &claim, &recipes),
             &scratch,
             1,
             D2Policy::Inline,
@@ -2086,7 +2193,7 @@ fn a_payload_past_the_constant_bank_is_rejected() {
     let census = coefficients(in_scope::MAX_COEFFICIENT_RECIPES);
     assert!(lower_bwd_seg(
         &artifact,
-        &round_binding(2, &bounds, &read_elements, &claim, &census),
+        &round_binding(2, &artifact, &bounds, &read_elements, &claim, &census),
         &scratch,
         1,
         D2Policy::Inline,
@@ -2275,15 +2382,16 @@ fn the_descriptor_bytes_are_deterministic() {
     );
     // Dead window slots carry the ABSENT procedural kind, never a live zero.
     let desc = inline_desc(&first);
-    for window in &desc.window[1..] {
-        assert_eq!(window.procedural_kind, BWD_COEFF_PROCEDURAL_NONE);
-        assert!(window.read_base.is_null());
+    for slot in &desc.slot[1..] {
+        assert_eq!(slot.procedural_kind, BWD_COEFF_PROCEDURAL_NONE);
+        assert!(slot.base.is_null());
     }
     // Dead source records stay zero.
     for source in &desc.source[usize::from(desc.num_sources)..] {
-        assert_eq!(source.window, 0);
+        assert_eq!(source.src, BWD_SEG_ADDR_NONE);
+        assert_eq!(source.cache, BWD_SEG_ADDR_NONE);
         assert_eq!(source.class, 0);
-        assert_eq!(source.column, 0);
+        assert_eq!(source.delta, 0);
     }
     assert_eq!(desc.output, super::seg_desc::BWD_SEG_OUTPUT_ROWS);
 }
@@ -2298,7 +2406,7 @@ fn the_launch_tail_is_filled_from_the_round_binding() {
     let claim = claim_point(8);
     let coeffs = coefficients(4);
     let read_elements = generous(1);
-    let mut round = round_binding(2, &bounds, &read_elements, &claim, &coeffs);
+    let mut round = round_binding(2, &artifact, &bounds, &read_elements, &claim, &coeffs);
     round.eq_sizes = GkrEqSizes {
         high: [8, 3],
         low: 5,
@@ -2320,15 +2428,21 @@ fn the_launch_tail_is_filled_from_the_round_binding() {
     assert_eq!(desc.eq_sizes.low, 5);
     assert_eq!(desc.logical_rows as usize, ROWS[2]);
     assert_eq!(desc.num_sources, 2);
-    assert_eq!(desc.window[0].read_base as usize, E4_BACKING);
-    assert_eq!(desc.window[0].read_stride_bytes, 1 << 20);
-    assert_eq!(desc.window[0].backing_depth, 2);
-    assert_eq!(desc.window[0].target_depth, 2);
-    assert_eq!(desc.window[0].reserved, [0; 3]);
+    assert_eq!(desc.slot[0].base as usize, E4_BACKING);
+    assert_eq!(slot_stride(read_slot_of(desc, 0)), 1 << 20);
+    assert_eq!(desc.source[0].delta, 0);
+    assert_eq!(desc.slot[0].reserved, [0; 5]);
     // The source table is the binding's, slot for slot.
     for (slot, expected) in artifact.binding.source_slots.iter().enumerate() {
-        assert_eq!(desc.source[slot].window, expected.window);
-        assert_eq!(desc.source[slot].column, expected.column);
+        let lane = desc.source[slot].src;
+        assert_eq!(
+            super::seg_desc::bwd_seg_lane_slot(lane),
+            usize::from(expected.window)
+        );
+        assert_eq!(
+            super::seg_desc::bwd_seg_lane_column(lane),
+            usize::from(expected.column)
+        );
     }
 }
 
@@ -2345,7 +2459,7 @@ fn the_device_pointer_mode_leaves_the_pointer_null() {
         let read_elements = generous(1);
         lower_bwd_seg(
             &artifact,
-            &round_binding(2, &bounds, &read_elements, &claim, &coeffs),
+            &round_binding(2, &artifact, &bounds, &read_elements, &claim, &coeffs),
             &scratch,
             1,
             D2Policy::Inline,
@@ -2368,7 +2482,7 @@ fn window_columns_counts_the_addressable_span() {
         windows: vec![sparse, ext_output(1, &[2])],
         source_slots: slots(&[(0, 0), (0, 5), (1, 0)]),
     };
-    assert_eq!(window_columns(&binding), Ok(vec![6, 1]));
+    assert_eq!(fixture_columns(&binding), vec![6, 1]);
 }
 
 /// The decoded program is the source of the wire's own slot references, so a
@@ -2398,7 +2512,7 @@ fn a_round_the_plan_does_not_cover_is_rejected() {
     let claim = claim_point(8);
     let coeffs = coefficients(4);
     let read_elements = generous(1);
-    let mut round = round_binding(2, &bounds, &read_elements, &claim, &coeffs);
+    let mut round = round_binding(2, &artifact, &bounds, &read_elements, &claim, &coeffs);
     round.round = 5;
     round.rows = ROWS[5];
     round.acc_size = ROWS[5] as u32;
@@ -2428,7 +2542,7 @@ fn a_plan_stride_that_is_not_this_round_rows_is_rejected() {
     let claim = claim_point(8);
     let coeffs = coefficients(4);
     let read_elements = generous(1);
-    let mut round = round_binding(3, &bounds, &read_elements, &claim, &coeffs);
+    let mut round = round_binding(3, &bf_artifact(), &bounds, &read_elements, &claim, &coeffs);
     round.rows = ROWS[3] / 2;
     round.acc_size = round.rows as u32;
     assert_eq!(
@@ -2478,7 +2592,7 @@ fn chain_read_column_answers_only_for_a_published_window() {
         bound(Some(bf_column(0)), 0, 3, true),
         bound(Some(e4_column(0)), 3, 3, false),
     ];
-    let plan = plan_publish_scratch(
+    let plan = plan_scratch(
         &[&[], &[], &[], &round3[..], &[]],
         &[&[], &[], &[], &[1, 1], &[]],
         &ROWS[..5],
@@ -2549,7 +2663,7 @@ fn a_plan_that_disagrees_with_the_policy_about_publishing_is_rejected() {
     assert_eq!(
         lower_bwd_seg(
             &bf_artifact(),
-            &round_binding(3, &publishing, &read_elements, &claim, &coeffs),
+            &round_binding(3, &bf_artifact(), &publishing, &read_elements, &claim, &coeffs),
             &scratch,
             1,
             D2Policy::Inline,
@@ -2567,7 +2681,7 @@ fn a_plan_that_disagrees_with_the_policy_about_publishing_is_rejected() {
     assert_eq!(
         lower_bwd_seg(
             &bf_artifact(),
-            &round_binding(3, &direct, &read_elements, &claim, &coeffs),
+            &round_binding(3, &bf_artifact(), &direct, &read_elements, &claim, &coeffs),
             &scratch,
             1,
             D2Policy::Inline,
@@ -2590,7 +2704,7 @@ fn an_unallocated_parity_buffer_is_rejected() {
     assert_eq!(
         lower_bwd_seg(
             &bf_artifact(),
-            &round_binding(3, &bounds, &read_elements, &claim, &coeffs),
+            &round_binding(3, &bf_artifact(), &bounds, &read_elements, &claim, &coeffs),
             &scratch,
             1,
             D2Policy::Inline,
@@ -2610,7 +2724,7 @@ fn a_row_count_of_zero_is_rejected() {
     let claim = claim_point(8);
     let coeffs = coefficients(4);
     let read_elements = generous(1);
-    let mut round = round_binding(2, &bounds, &read_elements, &claim, &coeffs);
+    let mut round = round_binding(2, &ext_artifact(), &bounds, &read_elements, &claim, &coeffs);
     round.rows = 0;
     round.acc_size = 0;
     assert_eq!(
@@ -2703,7 +2817,7 @@ fn a_procedural_window_at_a_folded_depth_is_rejected() {
     // scratch region as E4 and so is exempt from the depth guard by taking its E4
     // arm rather than by an exemption.
     let round3 = [bound(None, 0, 3, true)];
-    let plan = plan_publish_scratch(
+    let plan = plan_scratch(
         &[&[], &[], &[], &round3[..], &round3[..]],
         &[&[], &[], &[], &[1], &[1]],
         &ROWS[..5],
@@ -2715,7 +2829,7 @@ fn a_procedural_window_at_a_folded_depth_is_rejected() {
     let read_elements = generous(1);
     assert!(lower_bwd_seg(
         &procedural,
-        &round_binding(3, &round3, &read_elements, &claim, &coeffs),
+        &round_binding(3, &procedural, &round3, &read_elements, &claim, &coeffs),
         &scratch,
         1,
         D2Policy::Inline,
@@ -2733,7 +2847,7 @@ fn a_procedural_window_at_a_folded_depth_is_rejected() {
     )];
     assert!(lower_bwd_seg(
         &procedural,
-        &round_binding(4, &round4, &read_elements, &claim, &coeffs),
+        &round_binding(4, &procedural, &round4, &read_elements, &claim, &coeffs),
         &scratch,
         1,
         D2Policy::Inline,
@@ -2755,7 +2869,7 @@ fn a_raw_read_where_the_previous_round_published_is_rejected() {
     // Round 2 materialized window 0 (the D2 policy's other arm), so round 3's
     // folded values live in parity 0.
     let round2 = [bound(Some(bf_column(0)), 0, 2, true)];
-    let plan = plan_publish_scratch(
+    let plan = plan_scratch(
         &[&[], &[], &round2[..], &round2[..]],
         &[&[], &[], &[2], &[2]],
         &ROWS[..4],
@@ -2768,7 +2882,7 @@ fn a_raw_read_where_the_previous_round_published_is_rejected() {
     assert_eq!(
         lower_bwd_seg(
             &bf_artifact(),
-            &round_binding(3, &raw, &read_elements, &claim, &coeffs),
+            &round_binding(3, &bf_artifact(), &raw, &read_elements, &claim, &coeffs),
             &scratch,
             1,
             D2Policy::Inline,
@@ -2787,7 +2901,7 @@ fn a_raw_read_where_the_previous_round_published_is_rejected() {
         program(&[record(0, 0, 0, SOURCE_NONE)]),
     );
     let synthesized = [bound(None, 0, 3, true)];
-    let plan = plan_publish_scratch(
+    let plan = plan_scratch(
         &[&[], &[], &synthesized[..], &synthesized[..]],
         &[&[], &[], &[1], &[1]],
         &ROWS[..4],
@@ -2797,7 +2911,7 @@ fn a_raw_read_where_the_previous_round_published_is_rejected() {
     assert_eq!(
         lower_bwd_seg(
             &procedural,
-            &round_binding(3, &synthesized, &read_elements, &claim, &coeffs),
+            &round_binding(3, &procedural, &synthesized, &read_elements, &claim, &coeffs),
             &scratch,
             1,
             D2Policy::Inline,
@@ -2818,7 +2932,7 @@ fn a_raw_read_where_the_previous_round_published_is_rejected() {
     )];
     assert!(lower_bwd_seg(
         &procedural,
-        &round_binding(3, &chained, &read_elements, &claim, &coeffs),
+        &round_binding(3, &procedural, &chained, &read_elements, &claim, &coeffs),
         &scratch,
         1,
         D2Policy::Inline,
@@ -2840,7 +2954,7 @@ fn a_previous_round_planned_for_fewer_windows_is_rejected() {
         bound(Some(e4_column(0)), 3, 4, true),
         bound(Some(e4_column(1)), 3, 4, true),
     ];
-    let plan = plan_publish_scratch(
+    let plan = plan_scratch(
         &[&[], &[], &[], &narrow[..], &wide[..]],
         &[&[], &[], &[], &[1], &[1, 1]],
         &ROWS[..5],
@@ -2860,7 +2974,7 @@ fn a_previous_round_planned_for_fewer_windows_is_rejected() {
     assert_eq!(
         lower_bwd_seg(
             &artifact,
-            &round_binding(4, &wide, &read_elements, &claim, &coeffs),
+            &round_binding(4, &artifact, &wide, &read_elements, &claim, &coeffs),
             &scratch,
             1,
             D2Policy::Inline,
@@ -3074,9 +3188,10 @@ fn the_traffic_floor_dedupes_by_backing_and_scales_with_fold_depth() {
         let desc = inline_desc_mut(&mut three);
         desc.source[1] = desc.source[0];
         desc.source[2] = BwdSegSourceRecord {
-            window: 0,
+            src: super::seg_desc::bwd_seg_lane(0, 1).expect("slot 0 column 1"),
+            cache: BWD_SEG_ADDR_NONE,
             class: desc.source[0].class,
-            column: 1,
+            delta: desc.source[0].delta,
         };
         desc.num_sources = 3;
         // The window is E4 at delta 0: `16 B x 2^0 x 2 x logical_rows`.
@@ -3095,13 +3210,15 @@ fn the_traffic_floor_dedupes_by_backing_and_scales_with_fold_depth() {
     assert_eq!(eq, eq_term(inline_desc(&deep)), "the eq term is held fixed");
     {
         let desc = inline_desc_mut(&mut flat);
-        desc.window[0].backing_depth = 2;
-        desc.window[0].target_depth = 2;
+        for record in desc.source.iter_mut() {
+            record.delta = 0;
+        }
     }
     {
         let desc = inline_desc_mut(&mut deep);
-        desc.window[0].backing_depth = 0;
-        desc.window[0].target_depth = 3;
+        for record in desc.source.iter_mut() {
+            record.delta = 3;
+        }
     }
     assert_eq!(
         floor_of(&deep).read_bytes - eq,
@@ -3232,7 +3349,7 @@ fn procedural_sources_contribute_no_read_traffic() {
     )
     .expect("a legal inline-d2 round");
     let desc = inline_desc(&virtual_only);
-    assert_eq!(desc.window[0].origin, BWD_COEFF_ORIGIN_PROCEDURAL);
+    assert_eq!(desc.slot[0].origin, BWD_COEFF_ORIGIN_PROCEDURAL);
     // The procedural launch's whole read floor IS its eq term: no source contributes.
     assert_eq!(floor_of(&virtual_only), eq_term(desc));
     // And the difference against the matrix-backed twin is exactly the raw source's
@@ -3415,7 +3532,7 @@ fn the_later_round_reads_the_published_pair_rather_than_recomputing() {
     // ── The MATERIALIZED arm: round 2 publishes, round 3 chains off it ────────
     let publishing = [bound(Some(bf_column(0)), 0, 2, true)];
     let scratch = scratch_for(
-        plan_publish_scratch(
+        plan_scratch(
             &[&[], &[], &publishing[..], &publishing[..]],
             &[&[], &[], &[1], &[1]],
             &ROWS[..4],
@@ -3424,7 +3541,7 @@ fn the_later_round_reads_the_published_pair_rather_than_recomputing() {
     );
     lower_bwd_seg(
         &single,
-        &round_binding(2, &publishing, &read_elements, &claim, &coeffs),
+        &round_binding(2, &single, &publishing, &read_elements, &claim, &coeffs),
         &scratch,
         1,
         D2Policy::Materialize,
@@ -3442,7 +3559,7 @@ fn the_later_round_reads_the_published_pair_rather_than_recomputing() {
     )];
     let later = lower_bwd_seg(
         &single,
-        &round_binding(3, &chained, &read_elements, &claim, &coeffs),
+        &round_binding(3, &single, &chained, &read_elements, &claim, &coeffs),
         &scratch,
         1,
         D2Policy::Materialize,
@@ -3451,9 +3568,9 @@ fn the_later_round_reads_the_published_pair_rather_than_recomputing() {
     )
     .expect("round 3 chains off round 2's publish");
     let later_desc = inline_desc(&later);
-    assert_eq!(later_desc.window[0].origin, BWD_COEFF_ORIGIN_READ_EXT);
+    assert_eq!(later_desc.slot[0].origin, BWD_COEFF_ORIGIN_READ_EXT);
     assert_eq!(
-        later_desc.window[0].target_depth - later_desc.window[0].backing_depth,
+        later_desc.source[0].delta,
         1,
         "the chain step is delta 1",
     );
@@ -3466,7 +3583,7 @@ fn the_later_round_reads_the_published_pair_rather_than_recomputing() {
     // ── The INLINE arm: nothing published, so round 3 refolds the RAW backing ─
     let raw = [bound(Some(bf_column(0)), 0, 3, true)];
     let inline_scratch = scratch_for(
-        plan_publish_scratch(
+        plan_scratch(
             &[&[], &[], &[], &raw[..]],
             &[&[], &[], &[], &[1]],
             &ROWS[..4],
@@ -3475,7 +3592,7 @@ fn the_later_round_reads_the_published_pair_rather_than_recomputing() {
     );
     let recomputed = lower_bwd_seg(
         &single,
-        &round_binding(3, &raw, &read_elements, &claim, &coeffs),
+        &round_binding(3, &single, &raw, &read_elements, &claim, &coeffs),
         &inline_scratch,
         1,
         D2Policy::Inline,
@@ -3484,7 +3601,7 @@ fn the_later_round_reads_the_published_pair_rather_than_recomputing() {
     )
     .expect("round 3 refolds the raw backing");
     let recomputed_desc = inline_desc(&recomputed);
-    assert_eq!(recomputed_desc.window[0].origin, BWD_COEFF_ORIGIN_READ_BASE);
+    assert_eq!(recomputed_desc.slot[0].origin, BWD_COEFF_ORIGIN_READ_BASE);
     assert_eq!(
         floor_read(&recomputed) - eq_term(recomputed_desc),
         u64::from(BF_BYTES) * 8 * 2 * u64::from(recomputed_desc.logical_rows),
@@ -3508,7 +3625,7 @@ fn the_loader_variants_have_different_floors_and_that_is_correct() {
     let lower = |prog: ProgramMode, coeff: CoeffMode| {
         lower_bwd_seg(
             &artifact,
-            &round_binding(2, &bounds, &read_elements, &claim, &coeffs),
+            &round_binding(2, &artifact, &bounds, &read_elements, &claim, &coeffs),
             &scratch,
             1,
             D2Policy::Inline,
@@ -3600,7 +3717,7 @@ fn grouped_ext_artifact() -> LeanCoordinateArtifact {
 fn lower_with_immediates(
     artifact: &LeanCoordinateArtifact,
     round: u32,
-    bound_window: ResolvedBwdCoeffSourceWindow,
+    bound_window: FixtureWindow,
     columns: usize,
     k: usize,
     immediates: &[u32],
@@ -3610,7 +3727,7 @@ fn lower_with_immediates(
     let claim = claim_point(8);
     let coeffs = coefficients(4);
     let read_elements = generous(1);
-    let mut binding = round_binding(round, &bounds, &read_elements, &claim, &coeffs);
+    let mut binding = round_binding(round, &artifact, &bounds, &read_elements, &claim, &coeffs);
     binding.immediates = immediates;
     lower_bwd_seg(
         artifact,

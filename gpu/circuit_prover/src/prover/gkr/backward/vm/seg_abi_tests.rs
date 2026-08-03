@@ -64,13 +64,13 @@ use super::seg_coeff_eval::{
 };
 use super::seg_desc::BWD_SEG_C_INIT_NONE;
 use super::seg_desc::{
-    BwdCoeffSourceWindow, BwdSegDesc, BwdSegProgPtrDesc, BwdSegSourceRecord,
+    BwdSegAddrSlot, BwdSegDesc, BwdSegProgPtrDesc, BwdSegSourceRecord,
     BWD_COEFF_MAX_FOLD_DEPTH, BWD_COEFF_ORIGIN_PROCEDURAL, BWD_COEFF_ORIGIN_READ_BASE,
     BWD_COEFF_ORIGIN_READ_EXT, BWD_COEFF_PROCEDURAL_INITS_AND_TEARDOWNS_HIGH,
     BWD_COEFF_PROCEDURAL_INITS_AND_TEARDOWNS_LOW, BWD_COEFF_PROCEDURAL_NONE,
     BWD_COEFF_PROCEDURAL_RANGE_CHECK_16_BITS, BWD_COEFF_PROCEDURAL_RANGE_CHECK_TIMESTAMP,
     BWD_COEFF_PUBLISH_TARGET_DEPTH, BWD_SEG_CONST_BANK, BWD_SEG_DESC_ALIGN, BWD_SEG_DESC_CAP,
-    BWD_SEG_SOURCE_WINDOW_CAP,
+    BWD_SEG_ADDR_SLOTS,
     BWD_SEG_FOLD_WEIGHT_BASE_D1, BWD_SEG_FOLD_WEIGHT_BASE_D2, BWD_SEG_FOLD_WEIGHT_BASE_D3,
     BWD_SEG_FOLD_WEIGHT_SLOTS, BWD_SEG_INLINE_KERNEL_ARGUMENT_BYTES, BWD_SEG_MAX_IMMEDIATES,
     BWD_SEG_MAX_K, BWD_SEG_MAX_SOURCES, BWD_SEG_MAX_THREADS_PER_BLOCK,
@@ -93,9 +93,9 @@ const SEG_COEFF_EVAL_CUDA_HEADER: &str =
     include_str!("../../../../../native/prover/gkr/backward/seg_coeff_eval.cuh");
 
 /// The pinned size of the inline-program descriptor.
-const INLINE_DESC_BYTES: usize = 29_968;
+const INLINE_DESC_BYTES: usize = 29_040;
 /// The pinned size of the device-program A/B twin.
-const PROGPTR_DESC_BYTES: usize = 12_736;
+const PROGPTR_DESC_BYTES: usize = 11_808;
 /// Implicit padding rustc (and nvcc, by the same C rules) inserts to align the
 /// 8-byte-aligned `window` array after the 4-byte-aligned `source` array. This is
 /// the gap before `window` ONLY — the descriptor's total implicit padding is this
@@ -142,9 +142,9 @@ fn seg_descriptor_fits_the_by_value_kernel_argument_cap() {
     );
     eprintln!(
         "  window[{}] = {} B at offset {}",
-        BWD_SEG_SOURCE_WINDOW_CAP,
-        BWD_SEG_SOURCE_WINDOW_CAP * size_of::<BwdCoeffSourceWindow>(),
-        offset_of!(BwdSegDesc, window)
+        BWD_SEG_ADDR_SLOTS,
+        BWD_SEG_ADDR_SLOTS * size_of::<BwdSegAddrSlot>(),
+        offset_of!(BwdSegDesc, slot)
     );
     assert_eq!(size, INLINE_DESC_BYTES);
     assert_eq!(align_of::<BwdSegDesc>(), BWD_SEG_DESC_ALIGN);
@@ -164,16 +164,16 @@ fn seg_descriptor_layout_is_pinned_field_for_field() {
     assert_eq!(offset_of!(BwdSegDesc, num_immediates), 17_322);
     assert_eq!(offset_of!(BwdSegDesc, fold_source), 17_324);
     assert_eq!(offset_of!(BwdSegDesc, source), 19_468);
-    assert_eq!(offset_of!(BwdSegDesc, window), 23_760);
-    assert_eq!(offset_of!(BwdSegDesc, c_init_coeff), 27_856);
-    assert_eq!(offset_of!(BwdSegDesc, immediates), 27_872);
-    assert_eq!(offset_of!(BwdSegDesc, coefficients), 29_920);
-    assert_eq!(offset_of!(BwdSegDesc, eq_low), 29_928);
-    assert_eq!(offset_of!(BwdSegDesc, contributions), 29_936);
-    assert_eq!(offset_of!(BwdSegDesc, eq_sizes), 29_944);
-    assert_eq!(offset_of!(BwdSegDesc, n_coefficients), 29_956);
-    assert_eq!(offset_of!(BwdSegDesc, logical_rows), 29_960);
-    assert_eq!(offset_of!(BwdSegDesc, output), 29_964);
+    assert_eq!(offset_of!(BwdSegDesc, slot), 25_904);
+    assert_eq!(offset_of!(BwdSegDesc, c_init_coeff), 26_928);
+    assert_eq!(offset_of!(BwdSegDesc, immediates), 26_944);
+    assert_eq!(offset_of!(BwdSegDesc, coefficients), 28_992);
+    assert_eq!(offset_of!(BwdSegDesc, eq_low), 29_000);
+    assert_eq!(offset_of!(BwdSegDesc, contributions), 29_008);
+    assert_eq!(offset_of!(BwdSegDesc, eq_sizes), 29_016);
+    assert_eq!(offset_of!(BwdSegDesc, n_coefficients), 29_028);
+    assert_eq!(offset_of!(BwdSegDesc, logical_rows), 29_032);
+    assert_eq!(offset_of!(BwdSegDesc, output), 29_036);
 
     // The program is the descriptor's HEAD here (the cell-era desc put it last),
     // so the 16-byte descriptor alignment places it on a 16-byte boundary for
@@ -183,7 +183,7 @@ fn seg_descriptor_layout_is_pinned_field_for_field() {
     // The eight-byte-aligned window array is the only field that needs implicit
     // padding in front of it; everything after it is naturally aligned.
     assert_eq!(
-        offset_of!(BwdSegDesc, window) % align_of::<BwdCoeffSourceWindow>(),
+        offset_of!(BwdSegDesc, slot) % align_of::<BwdSegAddrSlot>(),
         0
     );
     assert_eq!(
@@ -217,7 +217,7 @@ fn seg_descriptor_has_no_unaccounted_bytes() {
         ),
         (
             "window",
-            BWD_SEG_SOURCE_WINDOW_CAP * size_of::<BwdCoeffSourceWindow>(),
+            BWD_SEG_ADDR_SLOTS * size_of::<BwdSegAddrSlot>(),
         ),
         // The seed's id plus the padding that preserves its 16-byte footprint.
         ("c_init_coeff", size_of::<u32>()),
@@ -274,17 +274,17 @@ fn seg_progptr_descriptor_layout_is_pinned_field_for_field() {
     assert_eq!(offset_of!(BwdSegProgPtrDesc, num_immediates), 86);
     assert_eq!(offset_of!(BwdSegProgPtrDesc, fold_source), 88);
     assert_eq!(offset_of!(BwdSegProgPtrDesc, source), 2_232);
-    assert_eq!(offset_of!(BwdSegProgPtrDesc, window), 6_520);
-    assert_eq!(offset_of!(BwdSegProgPtrDesc, c_init_coeff), 10_616);
-    assert_eq!(offset_of!(BwdSegProgPtrDesc, immediates), 10_632);
-    assert_eq!(offset_of!(BwdSegProgPtrDesc, coefficients), 12_680);
-    assert_eq!(offset_of!(BwdSegProgPtrDesc, eq_low), 12_688);
-    assert_eq!(offset_of!(BwdSegProgPtrDesc, contributions), 12_696);
-    assert_eq!(offset_of!(BwdSegProgPtrDesc, eq_sizes), 12_704);
-    assert_eq!(offset_of!(BwdSegProgPtrDesc, n_coefficients), 12_716);
-    assert_eq!(offset_of!(BwdSegProgPtrDesc, logical_rows), 12_720);
-    assert_eq!(offset_of!(BwdSegProgPtrDesc, output), 12_724);
-    assert_eq!(offset_of!(BwdSegProgPtrDesc, pad), 12_728);
+    assert_eq!(offset_of!(BwdSegProgPtrDesc, slot), 8_664);
+    assert_eq!(offset_of!(BwdSegProgPtrDesc, c_init_coeff), 9_688);
+    assert_eq!(offset_of!(BwdSegProgPtrDesc, immediates), 9_704);
+    assert_eq!(offset_of!(BwdSegProgPtrDesc, coefficients), 11_752);
+    assert_eq!(offset_of!(BwdSegProgPtrDesc, eq_low), 11_760);
+    assert_eq!(offset_of!(BwdSegProgPtrDesc, contributions), 11_768);
+    assert_eq!(offset_of!(BwdSegProgPtrDesc, eq_sizes), 11_776);
+    assert_eq!(offset_of!(BwdSegProgPtrDesc, n_coefficients), 11_788);
+    assert_eq!(offset_of!(BwdSegProgPtrDesc, logical_rows), 11_792);
+    assert_eq!(offset_of!(BwdSegProgPtrDesc, output), 11_796);
+    assert_eq!(offset_of!(BwdSegProgPtrDesc, pad), 11_800);
     assert_eq!(size % BWD_SEG_DESC_ALIGN, 0);
     assert_eq!(
         offset_of!(BwdSegProgPtrDesc, pad) + 2 * size_of::<u32>(),
@@ -323,7 +323,7 @@ fn seg_progptr_descriptor_actually_drops_the_inline_program() {
         ),
         (
             "window",
-            BWD_SEG_SOURCE_WINDOW_CAP * size_of::<BwdCoeffSourceWindow>(),
+            BWD_SEG_ADDR_SLOTS * size_of::<BwdSegAddrSlot>(),
         ),
         // The seed's id plus the padding that preserves its 16-byte footprint.
         ("c_init_coeff", size_of::<u32>()),
@@ -439,17 +439,18 @@ fn seg_source_capacity_covers_the_census() {
 }
 
 #[test]
-fn seg_source_record_is_a_four_byte_triple() {
-    assert_eq!(size_of::<BwdSegSourceRecord>(), 4);
-    assert_eq!(align_of::<BwdSegSourceRecord>(), 4);
-    assert_eq!(offset_of!(BwdSegSourceRecord, window), 0);
-    assert_eq!(offset_of!(BwdSegSourceRecord, class), 1);
-    assert_eq!(offset_of!(BwdSegSourceRecord, column), 2);
+fn seg_source_record_is_a_six_byte_two_lane_record() {
+    assert_eq!(size_of::<BwdSegSourceRecord>(), 6);
+    assert_eq!(align_of::<BwdSegSourceRecord>(), 2);
+    assert_eq!(offset_of!(BwdSegSourceRecord, src), 0);
+    assert_eq!(offset_of!(BwdSegSourceRecord, cache), 2);
+    assert_eq!(offset_of!(BwdSegSourceRecord, class), 4);
+    assert_eq!(offset_of!(BwdSegSourceRecord, delta), 5);
     // `window` is a u8 index into the descriptor's window array, and `class` is
     // the per-round source class Task 6 assigns (BfDirect=0, BfInlineD1=1,
     // BfInlineD2=2, E4Direct=3, ProceduralInline=4) — five values, so both fit a
     // byte with room to spare.
-    assert!(BWD_SEG_SOURCE_WINDOW_CAP <= u8::MAX as usize);
+    assert!(BWD_SEG_ADDR_SLOTS <= u8::MAX as usize);
     // `column` is window-relative, and a window covers at most 128 columns.
     assert!(gkr_eval_isa::bwd::coeff::limits::SOURCE_WINDOW_COLUMNS <= u16::MAX as usize + 1);
 }
@@ -540,16 +541,14 @@ fn seg_descriptor_reuses_the_window_struct_unforked() {
     // the segmented lineage inherits its layout and its publication policy
     // verbatim — including `procedural_kind` at offset 28, whose absent marker is
     // 0xff because zero is a live kind.
-    assert_eq!(size_of::<BwdCoeffSourceWindow>(), 32);
-    assert_eq!(align_of::<BwdCoeffSourceWindow>(), 8);
-    assert_eq!(offset_of!(BwdCoeffSourceWindow, procedural_kind), 28);
+    assert_eq!(size_of::<BwdSegAddrSlot>(), 16);
+    assert_eq!(align_of::<BwdSegAddrSlot>(), 8);
+    assert_eq!(offset_of!(BwdSegAddrSlot, procedural_kind), 10);
     assert_eq!(BWD_COEFF_PROCEDURAL_NONE, 0xff);
-    // 128 windows x 32 B: the array is a CAPACITY, so this pins what it costs
-    // (4 KiB of a ~30 KB descriptor) rather than what any circuit has used.
-    assert_eq!(
-        BWD_SEG_SOURCE_WINDOW_CAP * size_of::<BwdCoeffSourceWindow>(),
-        4_096
-    );
+    // 64 slots x 16 B: the table is a CAPACITY — exactly what a lane's six-bit
+    // slot field addresses — so this pins what it costs (1 KiB of a ~29 KB
+    // descriptor) rather than what any circuit has used.
+    assert_eq!(BWD_SEG_ADDR_SLOTS * size_of::<BwdSegAddrSlot>(), 1_024);
     // The publication threshold is imported, never duplicated.
     assert_eq!(BWD_COEFF_PUBLISH_TARGET_DEPTH, 3);
     assert_eq!(BWD_COEFF_PUBLISH_TARGET_DEPTH, PUBLISH_TARGET_DEPTH);
@@ -576,11 +575,11 @@ fn seg_empty_descriptors_are_inert() {
         .source
         .iter()
         .all(|record| *record == BwdSegSourceRecord::default()));
-    // A dead window slot must NOT claim procedural kind zero.
+    // A dead address slot must NOT claim procedural kind zero.
     assert!(inline
-        .window
+        .slot
         .iter()
-        .all(|window| window.procedural_kind == BWD_COEFF_PROCEDURAL_NONE));
+        .all(|slot| slot.procedural_kind == BWD_COEFF_PROCEDURAL_NONE));
 
     let progptr = BwdSegProgPtrDesc::empty();
     assert!(progptr.program.is_null());
@@ -679,8 +678,8 @@ fn the_seg_static_assert_matcher_rejects_a_numeric_prefix() {
         "sizeof(bwd_seg_desc) == {}",
         size_of::<BwdSegDesc>()
     )));
-    assert!(seg_header_asserts("BWD_SEG_SOURCE_WINDOW_CAP == 128"));
-    assert!(!seg_header_asserts("BWD_SEG_SOURCE_WINDOW_CAP == 1"));
+    assert!(seg_header_asserts("BWD_SEG_ADDR_SLOTS == 64"));
+    assert!(!seg_header_asserts("BWD_SEG_ADDR_SLOTS == 1"));
     assert!(!seg_header_asserts(
         "__builtin_offsetof(bwd_seg_desc, no_such_field) == 0"
     ));
@@ -1027,7 +1026,7 @@ fn seg_cuda_constants_match_the_rust_mirror() {
         format!("BWD_SEG_COEFFICIENT_MASK == {LEAN_COEFFICIENT_MASK:#x}u"),
         format!("BWD_SEG_CLASS_MASK == {LEAN_CLASS_MASK:#x}u"),
         format!("BWD_SEG_PROGRAM_BYTE_CAP == {LEAN_DESCRIPTOR_PROGRAM_BYTES}"),
-        format!("BWD_SEG_SOURCE_WINDOW_CAP == {BWD_SEG_SOURCE_WINDOW_CAP}"),
+        format!("BWD_SEG_ADDR_SLOTS == {BWD_SEG_ADDR_SLOTS}"),
         format!("BWD_SEG_MAX_FOLD_DEPTH == {BWD_COEFF_PUBLISH_TARGET_DEPTH}"),
         format!("BWD_SEG_LANE_INDEX_MASK == {}", WARP_SIZE - 1),
         // Rehomed and expression-valued: `1u << BWD_COEFF_HEADER_COEFFICIENT_BITS`.
@@ -1076,7 +1075,7 @@ fn seg_cuda_layout_asserts_match_the_rust_layout() {
         ("num_immediates", offset_of!(BwdSegDesc, num_immediates)),
         ("fold_source", offset_of!(BwdSegDesc, fold_source)),
         ("source", offset_of!(BwdSegDesc, source)),
-        ("window", offset_of!(BwdSegDesc, window)),
+        ("slot", offset_of!(BwdSegDesc, slot)),
         ("c_init_coeff", offset_of!(BwdSegDesc, c_init_coeff)),
         ("c_init_pad", offset_of!(BwdSegDesc, c_init_pad)),
         ("immediates", offset_of!(BwdSegDesc, immediates)),
@@ -1110,7 +1109,7 @@ fn seg_cuda_layout_asserts_match_the_rust_layout() {
         ),
         ("fold_source", offset_of!(BwdSegProgPtrDesc, fold_source)),
         ("source", offset_of!(BwdSegProgPtrDesc, source)),
-        ("window", offset_of!(BwdSegProgPtrDesc, window)),
+        ("slot", offset_of!(BwdSegProgPtrDesc, slot)),
         ("c_init_coeff", offset_of!(BwdSegProgPtrDesc, c_init_coeff)),
         ("c_init_pad", offset_of!(BwdSegProgPtrDesc, c_init_pad)),
         ("immediates", offset_of!(BwdSegProgPtrDesc, immediates)),
@@ -1144,11 +1143,12 @@ fn seg_cuda_layout_asserts_match_the_rust_layout() {
     ] {
         assert_seg_header_asserts(&claim);
     }
-    // The source record, whose three offsets are the descriptor's per-source ABI.
+    // The source record: two lanes plus the per-round class and depth.
     for (field, offset) in [
-        ("window", offset_of!(BwdSegSourceRecord, window)),
+        ("src", offset_of!(BwdSegSourceRecord, src)),
+        ("cache", offset_of!(BwdSegSourceRecord, cache)),
         ("source_class", offset_of!(BwdSegSourceRecord, class)),
-        ("column", offset_of!(BwdSegSourceRecord, column)),
+        ("delta", offset_of!(BwdSegSourceRecord, delta)),
     ] {
         assert_seg_header_asserts(&format!(
             "__builtin_offsetof(bwd_seg_source_record, {field}) == {offset}"
@@ -1163,57 +1163,47 @@ fn seg_cuda_layout_asserts_match_the_rust_layout() {
     // `static_assert` in the header while transposing what a publish writes and a
     // read loads. Built from `offset_of!`, so no number is maintained by hand.
     for (field, offset) in [
-        ("read_base", offset_of!(BwdCoeffSourceWindow, read_base)),
-        (
-            "publish_base",
-            offset_of!(BwdCoeffSourceWindow, publish_base),
-        ),
-        (
-            "read_stride_bytes",
-            offset_of!(BwdCoeffSourceWindow, read_stride_bytes),
-        ),
-        (
-            "publish_stride_bytes",
-            offset_of!(BwdCoeffSourceWindow, publish_stride_bytes),
-        ),
-        (
-            "backing_depth",
-            offset_of!(BwdCoeffSourceWindow, backing_depth),
-        ),
-        (
-            "target_depth",
-            offset_of!(BwdCoeffSourceWindow, target_depth),
-        ),
-        ("origin", offset_of!(BwdCoeffSourceWindow, origin)),
-        ("materialize", offset_of!(BwdCoeffSourceWindow, materialize)),
+        ("base", offset_of!(BwdSegAddrSlot, base)),
+        ("log2_stride", offset_of!(BwdSegAddrSlot, log2_stride)),
+        ("origin", offset_of!(BwdSegAddrSlot, origin)),
         (
             "procedural_kind",
-            offset_of!(BwdCoeffSourceWindow, procedural_kind),
+            offset_of!(BwdSegAddrSlot, procedural_kind),
         ),
-        ("reserved", offset_of!(BwdCoeffSourceWindow, reserved)),
+        ("reserved", offset_of!(BwdSegAddrSlot, reserved)),
     ] {
         assert_seg_header_asserts(&format!(
-            "__builtin_offsetof(bwd_coeff_source_window, {field}) == {offset}"
+            "__builtin_offsetof(bwd_seg_addr_slot, {field}) == {offset}"
+        ));
+    }
+    for (field, offset) in [
+        ("src", offset_of!(BwdSegSourceRecord, src)),
+        ("cache", offset_of!(BwdSegSourceRecord, cache)),
+        ("source_class", offset_of!(BwdSegSourceRecord, class)),
+        ("delta", offset_of!(BwdSegSourceRecord, delta)),
+    ] {
+        assert_seg_header_asserts(&format!(
+            "__builtin_offsetof(bwd_seg_source_record, {field}) == {offset}"
         ));
     }
     for claim in [
         format!(
-            "sizeof(bwd_coeff_source_window) == {}",
-            size_of::<BwdCoeffSourceWindow>()
+            "sizeof(bwd_seg_addr_slot) == {}",
+            size_of::<BwdSegAddrSlot>()
         ),
         format!(
-            "alignof(bwd_coeff_source_window) == {}",
-            align_of::<BwdCoeffSourceWindow>()
+            "alignof(bwd_seg_addr_slot) == {}",
+            align_of::<BwdSegAddrSlot>()
         ),
     ] {
         assert_seg_header_asserts(&claim);
     }
     // The two implicit gaps before `window`, which neither language spells.
     assert_seg_header_asserts(&format!(
-        "__builtin_offsetof(bwd_seg_desc, window) - (__builtin_offsetof(bwd_seg_desc, source) + sizeof(bwd_seg_desc::source)) == {INLINE_IMPLICIT_PAD_BYTES}"
+        "__builtin_offsetof(bwd_seg_desc, slot) - (__builtin_offsetof(bwd_seg_desc, source) + sizeof(bwd_seg_desc::source)) == {INLINE_IMPLICIT_PAD_BYTES}"
     ));
     assert_seg_header_asserts(&format!(
-        "__builtin_offsetof(bwd_seg_progptr_desc, window) - (__builtin_offsetof(bwd_seg_progptr_desc, source) + sizeof(bwd_seg_progptr_desc::source)) == {PROGPTR_IMPLICIT_PAD_BYTES}"
+        "__builtin_offsetof(bwd_seg_progptr_desc, slot) - (__builtin_offsetof(bwd_seg_progptr_desc, source) + sizeof(bwd_seg_progptr_desc::source)) == {PROGPTR_IMPLICIT_PAD_BYTES}"
     ));
 }
 

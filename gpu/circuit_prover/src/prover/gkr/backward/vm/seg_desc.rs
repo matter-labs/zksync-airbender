@@ -33,7 +33,7 @@
 //!     wiring showed the host has no value to resolve: the bank is filled on the
 //!     device.
 //!
-//! [`BwdCoeffSourceWindow`] and the origin / procedural-kind / publication
+//! [`BwdSegAddrSlot`] and the origin / procedural-kind / publication
 //! constants below are the ONE thing the retired cell-era descriptor left behind:
 //! they were shared by both lineages and were rehomed here verbatim — same field
 //! order, same offsets (`procedural_kind` at 28), same numbering — when that
@@ -133,8 +133,8 @@ pub(crate) const BWD_SEG_C_INIT_NONE: u32 = u32::MAX;
 /// of the artifact: blake2 L0 Ext's 13 artifact windows need 115. The split itself
 /// is free — each piece is a pointer and a stride — so the only thing that ever
 /// had to grow is this number.
-pub(crate) const BWD_SEG_SOURCE_WINDOW_CAP: usize = 128;
-const _: () = assert!(BWD_SEG_SOURCE_WINDOW_CAP >= in_scope::MAX_SOURCE_WINDOWS_USED);
+pub(crate) const BWD_SEG_ADDR_SLOTS: usize = 64;
+const _: () = assert!(BWD_SEG_ADDR_SLOTS == MAX_SOURCE_WINDOWS);
 
 /// [`BwdSegDesc::output`]: the incumbent per-row ACCUMULATOR layout — `2 *
 /// logical_rows` entries, consumed by the separate reduction + round-update tail.
@@ -229,7 +229,7 @@ const _: () = {
 // ── Source-window origin (§10.2) ─────────────────────────────────────────────
 //
 // Rehomed verbatim from the retired cell-era descriptor, together with
-// [`BwdCoeffSourceWindow`] below: the two lineages shared this struct and these
+// [`BwdSegAddrSlot`] below: the two lineages shared this struct and these
 // numbers, and the segmented executor still resolves a window through them.
 
 /// Window origin: a base-field matrix backing.
@@ -246,7 +246,7 @@ pub(crate) const BWD_COEFF_PROCEDURAL_INITS_AND_TEARDOWNS_LOW: u8 = 2;
 pub(crate) const BWD_COEFF_PROCEDURAL_INITS_AND_TEARDOWNS_HIGH: u8 = 3;
 /// A window whose origin is a real matrix carries no procedural kind. Zero would
 /// alias [`BWD_COEFF_PROCEDURAL_RANGE_CHECK_16_BITS`], so the absent marker is
-/// `0xff` and [`BwdCoeffSourceWindow::default`] uses it.
+/// `0xff` and [`BwdSegAddrSlot::default`] uses it.
 pub(crate) const BWD_COEFF_PROCEDURAL_NONE: u8 = 0xff;
 /// Procedural kinds the format admits.
 pub(crate) const BWD_COEFF_PROCEDURAL_KINDS: usize = 4;
@@ -287,53 +287,106 @@ const _: () = {
     assert!(BWD_COEFF_MAX_FOLD_DEPTH == BWD_COEFF_PUBLISH_TARGET_DEPTH);
 };
 
-// ── Source window ────────────────────────────────────────────────────────────
+// ── Address table ────────────────────────────────────────────────────────────
 
-/// One live source window (§10.2): read backing and stride, publish backing and
-/// stride, backing depth, target depth, origin field, materialize flag, and the
-/// procedural source kind where applicable.
+/// One addressing slot: a backing's base pointer and its column stride, plus the
+/// two facts that belong to the BACKING rather than to a source — which kind of
+/// leaves it holds and, when it holds none, the procedural kind that synthesizes
+/// them.
 ///
-/// A window covers at most [`SOURCE_WINDOW_COLUMNS`] contiguous referenced
-/// columns of ONE logical backing. `read_base` / `publish_base` already point at
-/// the window's FIRST column, so a bound coordinate resolves to
-/// `read_base + column * read_stride_bytes`.
+/// Sources and destinations index the SAME table, exactly as the incumbent flat
+/// path's `tables.bases` / `tables.log2_stride` do (`support/descriptors.cuh`): a
+/// fold buffer is a base and a stride like any other backing. A destination
+/// slot's `base` includes the round's slot offset within its region, which is why
+/// a slot is per `(backing, round)` and the table is rebuilt per launch.
+///
+/// A slot is keyed by BACKING, never by a run of referenced columns. That is what
+/// keeps the count proportional to how many matrices a layer touches rather than
+/// to how the artifact groups its columns: two sources reading the same matrix
+/// share a slot whatever their column numbers, and a source whose fold buffer is
+/// packed differently from its matrix just names a different slot on its other
+/// lane.
+///
+/// `log2_stride` is in ELEMENT units of whatever type the lane is read as — the
+/// incumbent's convention. Every production stride is a power of two: a raw
+/// column stride is the poly length and a fold region stride is `2 *
+/// size_after_one_fold`.
 ///
 /// `origin` is the BACKING field, not the width of the values read through the
-/// window: a continuation program folds a base matrix into E4, and operand width
+/// slot: a continuation program folds a base matrix into E4, and operand width
 /// comes from the term class.
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct BwdCoeffSourceWindow {
-    pub read_base: *const u8,
-    pub publish_base: *mut u8,
-    pub read_stride_bytes: u32,
-    pub publish_stride_bytes: u32,
-    pub backing_depth: u8,
-    pub target_depth: u8,
+pub(crate) struct BwdSegAddrSlot {
+    pub base: *const u8,
+    pub log2_stride: u8,
     pub origin: u8,
-    pub materialize: u8,
     pub procedural_kind: u8,
-    pub reserved: [u8; 3],
+    pub reserved: [u8; 5],
 }
 
-impl Default for BwdCoeffSourceWindow {
+impl Default for BwdSegAddrSlot {
     /// A dead slot. `procedural_kind` is [`BWD_COEFF_PROCEDURAL_NONE`], NOT
     /// zero — zero is a live kind.
     fn default() -> Self {
         Self {
-            read_base: std::ptr::null(),
-            publish_base: std::ptr::null_mut(),
-            read_stride_bytes: 0,
-            publish_stride_bytes: 0,
-            backing_depth: 0,
-            target_depth: 0,
+            base: std::ptr::null(),
+            log2_stride: 0,
             origin: BWD_COEFF_ORIGIN_READ_BASE,
-            materialize: 0,
             procedural_kind: BWD_COEFF_PROCEDURAL_NONE,
-            reserved: [0; 3],
+            reserved: [0; 5],
         }
     }
 }
+
+const _: () = {
+    use core::mem::offset_of;
+
+    assert!(size_of::<BwdSegAddrSlot>() == 16);
+    assert!(align_of::<BwdSegAddrSlot>() == 8);
+    assert!(offset_of!(BwdSegAddrSlot, base) == 0);
+    assert!(offset_of!(BwdSegAddrSlot, log2_stride) == 8);
+    assert!(offset_of!(BwdSegAddrSlot, origin) == 9);
+    assert!(offset_of!(BwdSegAddrSlot, procedural_kind) == 10);
+    assert!(offset_of!(BwdSegAddrSlot, reserved) == 11);
+};
+
+/// One addressing LANE: `slot:6 << 7 | column:7`.
+///
+/// The split is the WIRE's own ([`MAX_SOURCE_WINDOWS`] `= 64` slots,
+/// [`SOURCE_WINDOW_COLUMNS`] `= 128` columns), so the descriptor table holds
+/// exactly what six bits address and a slot covers exactly what seven bits do —
+/// 64 x 128 = 8,192 addressable columns, against the 1,012 blake2's widest
+/// backward layer references.
+pub(crate) const BWD_SEG_ADDR_COLUMN_BITS: u32 = 7;
+/// "This source has no destination this round."
+pub(crate) const BWD_SEG_ADDR_NONE: u16 = u16::MAX;
+
+/// Pack a `(slot, column)` pair into a lane, or `None` if either is out of range.
+pub(crate) fn bwd_seg_lane(slot: usize, column: usize) -> Option<u16> {
+    if slot >= BWD_SEG_ADDR_SLOTS || column >= SOURCE_WINDOW_COLUMNS {
+        return None;
+    }
+    Some(((slot << BWD_SEG_ADDR_COLUMN_BITS) | column) as u16)
+}
+
+/// The slot a lane names. Callers must not pass [`BWD_SEG_ADDR_NONE`].
+pub(crate) fn bwd_seg_lane_slot(lane: u16) -> usize {
+    debug_assert_ne!(lane, BWD_SEG_ADDR_NONE);
+    usize::from(lane >> BWD_SEG_ADDR_COLUMN_BITS)
+}
+
+/// The column a lane names. Callers must not pass [`BWD_SEG_ADDR_NONE`].
+pub(crate) fn bwd_seg_lane_column(lane: u16) -> usize {
+    debug_assert_ne!(lane, BWD_SEG_ADDR_NONE);
+    usize::from(lane) & (SOURCE_WINDOW_COLUMNS - 1)
+}
+
+const _: () = {
+    assert!(SOURCE_WINDOW_COLUMNS == 1 << BWD_SEG_ADDR_COLUMN_BITS);
+    // A live lane can never collide with the absence sentinel.
+    assert!((BWD_SEG_ADDR_SLOTS << BWD_SEG_ADDR_COLUMN_BITS) <= BWD_SEG_ADDR_NONE as usize);
+};
 
 // ── Source table ─────────────────────────────────────────────────────────────
 
@@ -358,29 +411,50 @@ impl Default for BwdCoeffSourceWindow {
 /// record's alignment is a declared property rather than an accident of whatever
 /// precedes it. On CUDA 13.3 the alignment ALONE changes no SASS and no register
 /// count — the CUDA half carries that measurement.
-#[repr(C, align(4))]
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[repr(C, align(2))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct BwdSegSourceRecord {
-    /// Slot in [`BwdSegDesc::window`].
-    pub window: u8,
+    /// READ address, as a lane into [`BwdSegDesc::slot`].
+    pub src: u16,
+    /// DESTINATION address, same table and same encoding, or
+    /// [`BWD_SEG_ADDR_NONE`] when this source publishes nothing this round.
+    /// "Does this source publish" is this field, which is why no `materialize`
+    /// flag survives.
+    pub cache: u16,
     /// This round's source class (see the struct doc).
     pub class: u8,
-    /// Column WITHIN the window: the address is
-    /// `window.read_base + column * window.read_stride_bytes`.
-    pub column: u16,
+    /// This round's fold depth for this source (`target_depth - backing_depth`).
+    /// Per SOURCE, not per slot: two artifact windows may read the same matrix at
+    /// different depths.
+    pub delta: u8,
+}
+
+impl Default for BwdSegSourceRecord {
+    /// A dead record: both lanes absent, so a reader past `num_sources` cannot
+    /// resolve an address at all. `src` is the sentinel rather than zero, which
+    /// would name slot 0 column 0 — a live address.
+    fn default() -> Self {
+        Self {
+            src: BWD_SEG_ADDR_NONE,
+            cache: BWD_SEG_ADDR_NONE,
+            class: 0,
+            delta: 0,
+        }
+    }
 }
 
 const _: () = {
     use core::mem::offset_of;
 
-    assert!(size_of::<BwdSegSourceRecord>() == 4);
-    assert!(align_of::<BwdSegSourceRecord>() == 4);
-    assert!(offset_of!(BwdSegSourceRecord, window) == 0);
-    assert!(offset_of!(BwdSegSourceRecord, class) == 1);
-    assert!(offset_of!(BwdSegSourceRecord, column) == 2);
-    // The window slot is a byte, and a column is window-relative.
-    assert!(BWD_SEG_SOURCE_WINDOW_CAP <= u8::MAX as usize);
-    assert!(SOURCE_WINDOW_COLUMNS <= u16::MAX as usize + 1);
+    assert!(size_of::<BwdSegSourceRecord>() == 6);
+    assert!(align_of::<BwdSegSourceRecord>() == 2);
+    assert!(offset_of!(BwdSegSourceRecord, src) == 0);
+    assert!(offset_of!(BwdSegSourceRecord, cache) == 2);
+    assert!(offset_of!(BwdSegSourceRecord, class) == 4);
+    assert!(offset_of!(BwdSegSourceRecord, delta) == 5);
+    // Both lanes are 13 bits of a u16, so both halves of the split must fit.
+    assert!(BWD_SEG_ADDR_SLOTS <= MAX_SOURCE_WINDOWS);
+    assert!(SOURCE_WINDOW_COLUMNS <= u8::MAX as usize + 1);
 };
 
 // ── The inline-program descriptor ────────────────────────────────────────────
@@ -430,7 +504,7 @@ pub(crate) struct BwdSegDesc {
     /// forked (`procedural_kind` at offset 28 included), so both lineages share
     /// one window layout and one publication policy
     /// ([`BWD_COEFF_PUBLISH_TARGET_DEPTH`]).
-    pub window: [BwdCoeffSourceWindow; BWD_SEG_SOURCE_WINDOW_CAP],
+    pub slot: [BwdSegAddrSlot; BWD_SEG_ADDR_SLOTS],
     /// The per-thread `acc_c0` seed as a COEFFICIENT ID, or
     /// [`BWD_SEG_C_INIT_NONE`] when the layer has none.
     ///
@@ -508,7 +582,7 @@ impl BwdSegDesc {
             num_immediates: 0,
             fold_source: [0; BWD_SEG_MAX_SOURCES],
             source: [BwdSegSourceRecord::default(); BWD_SEG_MAX_SOURCES],
-            window: [BwdCoeffSourceWindow::default(); BWD_SEG_SOURCE_WINDOW_CAP],
+            slot: [BwdSegAddrSlot::default(); BWD_SEG_ADDR_SLOTS],
             c_init_coeff: BWD_SEG_C_INIT_NONE,
             c_init_pad: [0; 3],
             immediates: [0; BWD_SEG_MAX_IMMEDIATES],
@@ -557,7 +631,7 @@ pub(crate) struct BwdSegProgPtrDesc {
     pub num_immediates: u16,
     pub fold_source: [u16; BWD_SEG_MAX_SOURCES],
     pub source: [BwdSegSourceRecord; BWD_SEG_MAX_SOURCES],
-    pub window: [BwdCoeffSourceWindow; BWD_SEG_SOURCE_WINDOW_CAP],
+    pub slot: [BwdSegAddrSlot; BWD_SEG_ADDR_SLOTS],
     /// See [`BwdSegDesc::c_init_coeff`].
     pub c_init_coeff: u32,
     /// See [`BwdSegDesc::c_init_pad`].
@@ -596,7 +670,7 @@ impl BwdSegProgPtrDesc {
             num_immediates: 0,
             fold_source: [0; BWD_SEG_MAX_SOURCES],
             source: [BwdSegSourceRecord::default(); BWD_SEG_MAX_SOURCES],
-            window: [BwdCoeffSourceWindow::default(); BWD_SEG_SOURCE_WINDOW_CAP],
+            slot: [BwdSegAddrSlot::default(); BWD_SEG_ADDR_SLOTS],
             c_init_coeff: BWD_SEG_C_INIT_NONE,
             c_init_pad: [0; 3],
             immediates: [0; BWD_SEG_MAX_IMMEDIATES],
@@ -667,7 +741,7 @@ pub(crate) const BWD_SEG_PROGPTR_KERNEL_ARGUMENT_BYTES: usize = kernel_argument_
 const _: () = {
     use core::mem::offset_of;
 
-    assert!(size_of::<BwdSegDesc>() == 29_968);
+    assert!(size_of::<BwdSegDesc>() == 29_040);
     assert!(align_of::<BwdSegDesc>() == BWD_SEG_DESC_ALIGN);
     // The FINAL authority on the descriptor's shape.
     assert!(size_of::<BwdSegDesc>() <= BWD_SEG_DESC_CAP);
@@ -684,16 +758,16 @@ const _: () = {
     // 4-byte-aligned and the window array is 8-byte-aligned. nvcc inserts the
     // same gap by the same rule, and the offsets on both sides are asserted, so
     // it needs no explicit field.
-    assert!(offset_of!(BwdSegDesc, window) == 23_760);
-    assert!(offset_of!(BwdSegDesc, c_init_coeff) == 27_856);
-    assert!(offset_of!(BwdSegDesc, immediates) == 27_872);
-    assert!(offset_of!(BwdSegDesc, coefficients) == 29_920);
-    assert!(offset_of!(BwdSegDesc, eq_low) == 29_928);
-    assert!(offset_of!(BwdSegDesc, contributions) == 29_936);
-    assert!(offset_of!(BwdSegDesc, eq_sizes) == 29_944);
-    assert!(offset_of!(BwdSegDesc, n_coefficients) == 29_956);
-    assert!(offset_of!(BwdSegDesc, logical_rows) == 29_960);
-    assert!(offset_of!(BwdSegDesc, output) == 29_964);
+    assert!(offset_of!(BwdSegDesc, slot) == 25_904);
+    assert!(offset_of!(BwdSegDesc, c_init_coeff) == 26_928);
+    assert!(offset_of!(BwdSegDesc, immediates) == 26_944);
+    assert!(offset_of!(BwdSegDesc, coefficients) == 28_992);
+    assert!(offset_of!(BwdSegDesc, eq_low) == 29_000);
+    assert!(offset_of!(BwdSegDesc, contributions) == 29_008);
+    assert!(offset_of!(BwdSegDesc, eq_sizes) == 29_016);
+    assert!(offset_of!(BwdSegDesc, n_coefficients) == 29_028);
+    assert!(offset_of!(BwdSegDesc, logical_rows) == 29_032);
+    assert!(offset_of!(BwdSegDesc, output) == 29_036);
     // The program stream starts on a 16-byte boundary and can be buffered
     // through wide loads.
     assert!(offset_of!(BwdSegDesc, program) % BWD_SEG_DESC_ALIGN == 0);
@@ -702,7 +776,7 @@ const _: () = {
     assert!(offset_of!(BwdSegDesc, output) + size_of::<u32>() == size_of::<BwdSegDesc>());
     assert!(size_of::<BwdSegDesc>() % BWD_SEG_DESC_ALIGN == 0);
 
-    assert!(size_of::<BwdSegProgPtrDesc>() == 12_736);
+    assert!(size_of::<BwdSegProgPtrDesc>() == 11_808);
     assert!(align_of::<BwdSegProgPtrDesc>() == BWD_SEG_DESC_ALIGN);
     assert!(size_of::<BwdSegProgPtrDesc>() <= BWD_SEG_DESC_CAP);
     assert!(offset_of!(BwdSegProgPtrDesc, program) == 0);
@@ -717,17 +791,17 @@ const _: () = {
     assert!(offset_of!(BwdSegProgPtrDesc, source) == 2_232);
     // No gap here: with a 4-byte-aligned record the progptr `source` array ends
     // exactly at `window`.
-    assert!(offset_of!(BwdSegProgPtrDesc, window) == 6_520);
-    assert!(offset_of!(BwdSegProgPtrDesc, c_init_coeff) == 10_616);
-    assert!(offset_of!(BwdSegProgPtrDesc, immediates) == 10_632);
-    assert!(offset_of!(BwdSegProgPtrDesc, coefficients) == 12_680);
-    assert!(offset_of!(BwdSegProgPtrDesc, eq_low) == 12_688);
-    assert!(offset_of!(BwdSegProgPtrDesc, contributions) == 12_696);
-    assert!(offset_of!(BwdSegProgPtrDesc, eq_sizes) == 12_704);
-    assert!(offset_of!(BwdSegProgPtrDesc, n_coefficients) == 12_716);
-    assert!(offset_of!(BwdSegProgPtrDesc, logical_rows) == 12_720);
-    assert!(offset_of!(BwdSegProgPtrDesc, output) == 12_724);
-    assert!(offset_of!(BwdSegProgPtrDesc, pad) == 12_728);
+    assert!(offset_of!(BwdSegProgPtrDesc, slot) == 8_664);
+    assert!(offset_of!(BwdSegProgPtrDesc, c_init_coeff) == 9_688);
+    assert!(offset_of!(BwdSegProgPtrDesc, immediates) == 9_704);
+    assert!(offset_of!(BwdSegProgPtrDesc, coefficients) == 11_752);
+    assert!(offset_of!(BwdSegProgPtrDesc, eq_low) == 11_760);
+    assert!(offset_of!(BwdSegProgPtrDesc, contributions) == 11_768);
+    assert!(offset_of!(BwdSegProgPtrDesc, eq_sizes) == 11_776);
+    assert!(offset_of!(BwdSegProgPtrDesc, n_coefficients) == 11_788);
+    assert!(offset_of!(BwdSegProgPtrDesc, logical_rows) == 11_792);
+    assert!(offset_of!(BwdSegProgPtrDesc, output) == 11_796);
+    assert!(offset_of!(BwdSegProgPtrDesc, pad) == 11_800);
     assert!(
         offset_of!(BwdSegProgPtrDesc, pad) + size_of::<[u32; 2]>()
             == size_of::<BwdSegProgPtrDesc>()
