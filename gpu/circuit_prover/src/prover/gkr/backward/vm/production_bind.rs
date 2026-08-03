@@ -324,6 +324,10 @@ pub(crate) enum BwdVmBindError {
     NotExt { layer: usize, regime: BwdRegime },
     /// The Ext shape pass was asked about round 0, which the R0 program owns.
     NotAContinuationRound { round: u8 },
+    /// A window column has no cascade region: the flat prepare has not run for
+    /// this layer, or the address never folds here. Binding it anyway would
+    /// publish through a null pointer.
+    UnresolvedCascade { window: u8, address: GKRAddress },
 }
 
 /// The read place of one window column, or `None` for a procedural window.
@@ -801,6 +805,274 @@ pub(crate) fn bind_r0_sources<E: Copy>(
         coord,
         windows: bound,
         window_read_elements: read_elements,
+        window_columns,
+        publish_plan: plan,
+    })
+}
+
+// ── The Ext binding ──────────────────────────────────────────────────────────
+
+/// One Ext binding: the coordinate rebound to production geometry — ONE
+/// partition frozen across the whole round sequence, because the program's
+/// source slots index windows positionally — plus per-round resolved windows.
+pub(crate) struct BoundExtSources {
+    /// The rebound coordinate, exactly as [`BoundR0Sources::coord`]: same
+    /// program, same order, same slot count; only the window partition and
+    /// each slot's `(window, column)` changed.
+    pub(crate) coord: LeanCoordinateArtifact,
+    /// `rounds[r - 1]` is round `r`'s resolution, `r` in `1..=folding_steps-1`.
+    pub(crate) rounds: Vec<BoundExtRound>,
+    /// Per rebound window: addressable column count (round-invariant).
+    pub(crate) window_columns: Vec<usize>,
+    /// The whole sequence's publish plan, absolute-round indexed. Structurally
+    /// EMPTY — every publish is explicitly backed by a cascade slot — and
+    /// asserted so; a nonzero plan means a window lost its backing.
+    pub(crate) publish_plan: PublishScratchPlan,
+}
+
+/// One round's resolution over the frozen window partition.
+pub(crate) struct BoundExtRound {
+    pub(crate) round: u8,
+    pub(crate) rows: usize,
+    pub(crate) windows: Vec<ResolvedBwdCoeffSourceWindow>,
+    /// Per window: elements readable per addressed column — the raw poly
+    /// length on raw rounds, the previous slot's length on chained rounds.
+    pub(crate) window_read_elements: Vec<u32>,
+}
+
+/// One frozen run under construction: a maximal stretch of one artifact window
+/// that production backs contiguously on BOTH sides the sequence will address
+/// through it — the depth-0 matrix (raw rounds) AND the cascade regions
+/// (publishes and chain reads).
+struct ExtBindRun {
+    /// The parent ARTIFACT window — the per-round shape is its.
+    parent: usize,
+    /// First column's raw backing; `None` for procedural.
+    raw: Option<ResolvedColumn>,
+    /// First column's cascade region.
+    cascade: CascadeRegion,
+    columns: Vec<LeanBoundColumn>,
+    prev_raw_ptr: usize,
+    prev_cascade_base: usize,
+}
+
+/// Resolve one Ext coordinate's windows against production storage for the
+/// whole continuation sequence, re-partitioning them to production geometry.
+///
+/// The split rule is the UNION of the R0 binder's raw-read contiguity and
+/// cascade contiguity: a run continues over a column gap `g` iff the raw
+/// pointers advance by exactly `g * stride` (holes physically present — the
+/// base-layer arenas) AND the cascade regions advance by exactly
+/// `g * region_bytes` (the consolidated backings pack REGISTERED addresses
+/// densely, so an arena hole with no cache slot splits the run — the publish
+/// side cannot address across it). Frozen once: the same partition serves
+/// every round, raw and chained alike.
+pub(crate) fn bind_ext_round_sources<E: Copy>(
+    storage: &GpuGKRStorage<BF, E>,
+    coord: &LeanCoordinateArtifact,
+    request_layer: usize,
+    folding_steps: usize,
+    d2: D2Policy,
+) -> Result<BoundExtSources, BwdVmBindError> {
+    // Regime/round validity and the ladder both live in the shape pass; round 1
+    // exists for every continuation sequence, so it validates the coordinate.
+    ext_round_window_shapes(coord, 1, d2)?;
+    assert!(folding_steps >= 2, "a continuation sequence needs rounds");
+
+    // ── Freeze the partition ─────────────────────────────────────────────────
+    let mut runs: Vec<ExtBindRun> = Vec::new();
+    for (parent, artifact_window) in coord.binding.windows.iter().enumerate() {
+        let window = parent as u8;
+        let e4_origin = artifact_window.backing_field() == FieldKind::Ext;
+        let mut parent_runs = 0usize;
+        for entry in &artifact_window.columns {
+            let (raw, address) = match family_read_place(artifact_window.family, entry.column) {
+                Some(place) => {
+                    let address = read_place_to_gkr_address(&place);
+                    let column = resolve_storage_column(storage, address)
+                        .ok_or(BwdVmBindError::UnresolvedWindow { window, address })?;
+                    if column.is_e4 != e4_origin {
+                        return Err(BwdVmBindError::WindowFieldMismatch {
+                            window,
+                            expect_e4: e4_origin,
+                        });
+                    }
+                    (Some(column), address)
+                }
+                None => match artifact_window.family {
+                    WindowFamily::VirtualSetup { kind } => (None, virtual_setup_address(kind)),
+                    // `family_read_place` is total over the other families.
+                    _ => unreachable!("an addressless window is procedural"),
+                },
+            };
+            let cascade = resolve_cascade_region(storage, request_layer, address, e4_origin)
+                .ok_or(BwdVmBindError::UnresolvedCascade { window, address })?;
+
+            let continues = parent_runs > 0 && {
+                let run = runs.last().expect("parent_runs > 0");
+                let prev = run.columns.last().expect("a run is never empty");
+                let gap = entry.column - prev.column;
+                let raw_continues = match (&run.raw, &raw) {
+                    (None, None) => true,
+                    (Some(base), Some(next)) => {
+                        next.stride_bytes == base.stride_bytes
+                            && next.ptr as usize
+                                == run.prev_raw_ptr + gap * base.stride_bytes as usize
+                    }
+                    _ => false,
+                };
+                let region_bytes = run.cascade.region_elems * size_of::<E4>();
+                raw_continues
+                    && cascade.region_elems == run.cascade.region_elems
+                    && cascade.first_slot == run.cascade.first_slot
+                    && cascade.base as usize == run.prev_cascade_base + gap * region_bytes
+            };
+            if !continues {
+                runs.push(ExtBindRun {
+                    parent,
+                    raw,
+                    cascade,
+                    columns: Vec::new(),
+                    prev_raw_ptr: 0,
+                    prev_cascade_base: 0,
+                });
+                parent_runs += 1;
+            }
+            let run = runs.last_mut().expect("just started");
+            run.columns.push(LeanBoundColumn {
+                column: entry.column,
+                source: entry.source,
+            });
+            run.prev_raw_ptr = raw.map_or(0, |column| column.ptr as usize);
+            run.prev_cascade_base = cascade.base as usize;
+        }
+    }
+    if runs.len() > MAX_SOURCE_WINDOWS {
+        return Err(BwdVmBindError::TooManyWindows {
+            windows: runs.len(),
+        });
+    }
+
+    // ── Rebuild the coordinate over the frozen partition ─────────────────────
+    let mut new_windows: Vec<LeanBoundWindow> = Vec::with_capacity(runs.len());
+    let mut new_slots: Vec<Option<LeanSourceSlot>> =
+        vec![None; coord.binding.source_slots.len()];
+    for (index, run) in runs.iter().enumerate() {
+        let first_column = run.columns[0].column;
+        for entry in &run.columns {
+            new_slots[entry.source as usize] = Some(LeanSourceSlot {
+                window: index as u8,
+                column: (entry.column - first_column) as u16,
+            });
+        }
+        new_windows.push(LeanBoundWindow {
+            family: coord.binding.windows[run.parent].family,
+            first_column,
+            columns: run.columns.clone(),
+        });
+    }
+    let source_slots = new_slots
+        .into_iter()
+        .collect::<Option<Vec<_>>>()
+        .expect("every source slot belongs to exactly one artifact window column");
+    let coord_rebound = LeanCoordinateArtifact {
+        layer: coord.layer,
+        regime: coord.regime,
+        target_depth: coord.target_depth,
+        order: coord.order.clone(),
+        program: coord.program.clone(),
+        binding: LeanSourceBinding {
+            windows: new_windows,
+            source_slots,
+        },
+    };
+    let window_columns =
+        window_columns(&coord_rebound.binding).map_err(BwdVmBindError::WindowShape)?;
+
+    // ── Resolve every round over the frozen partition ────────────────────────
+    let mut rounds = Vec::with_capacity(folding_steps - 1);
+    for round in 1..folding_steps {
+        let rows = 1usize << (folding_steps - round - 1);
+        let round = round as u8;
+        let shapes = ext_round_window_shapes(coord, round, d2)?;
+        let mut windows = Vec::with_capacity(runs.len());
+        let mut read_elements = Vec::with_capacity(runs.len());
+        for run in &runs {
+            let shape = &shapes[run.parent];
+            let region_stride =
+                u32::try_from(run.cascade.region_elems * size_of::<E4>()).expect("region stride");
+            let read = if shape.chained {
+                // The chain read IS the previous round's publish: the same
+                // cascade lookup, one slot back — the invariant the parity
+                // model enforced with `ChainReadNotPriorPublish` holds here
+                // by construction.
+                Some(ResolvedColumn {
+                    is_e4: true,
+                    ptr: run.cascade.slot_ptr(round - 1).cast_const(),
+                    matrix_base: run.cascade.base,
+                    stride_bytes: region_stride,
+                })
+            } else {
+                run.raw
+            };
+            let publish = shape.materialize.then(|| ResolvedColumn {
+                is_e4: true,
+                ptr: run.cascade.slot_ptr(round).cast_const(),
+                matrix_base: run.cascade.base,
+                stride_bytes: region_stride,
+            });
+            read_elements.push(match &read {
+                _ if shape.chained => run.cascade.slot_elems(round - 1) as u32,
+                Some(column) => {
+                    let width = if column.is_e4 {
+                        size_of::<E4>()
+                    } else {
+                        size_of::<BF>()
+                    } as u32;
+                    column.stride_bytes / width
+                }
+                None => 0,
+            });
+            windows.push(ResolvedBwdCoeffSourceWindow {
+                read,
+                publish,
+                backing_depth: shape.backing_depth,
+                target_depth: round,
+                materialize: shape.materialize,
+            });
+        }
+        rounds.push(BoundExtRound {
+            round,
+            rows,
+            windows,
+            window_read_elements: read_elements,
+        });
+    }
+
+    // ── The (empty) plan for the whole sequence ──────────────────────────────
+    // Round 0 belongs to the R0 program and plans nothing here; every window
+    // of rounds 1+ is explicitly backed, so the plan must reserve nothing.
+    let empty_windows: Vec<ResolvedBwdCoeffSourceWindow> = Vec::new();
+    let empty_columns: Vec<usize> = Vec::new();
+    let mut windows_per_round: Vec<&[ResolvedBwdCoeffSourceWindow]> = vec![&empty_windows];
+    let mut columns_per_round: Vec<&[usize]> = vec![&empty_columns];
+    let mut rows_per_round: Vec<usize> = vec![1 << (folding_steps - 1)];
+    for bound in &rounds {
+        windows_per_round.push(&bound.windows);
+        columns_per_round.push(&window_columns);
+        rows_per_round.push(bound.rows);
+    }
+    let plan = plan_publish_scratch(&windows_per_round, &columns_per_round, &rows_per_round)
+        .map_err(BwdVmBindError::WindowShape)?;
+    if plan.total_bytes != 0 {
+        return Err(BwdVmBindError::PublishPlanNotEmpty {
+            bytes: plan.total_bytes,
+        });
+    }
+
+    Ok(BoundExtSources {
+        coord: coord_rebound,
+        rounds,
         window_columns,
         publish_plan: plan,
     })

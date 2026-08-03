@@ -647,3 +647,196 @@ fn every_prepared_fold_pointer_is_the_cascade_slot() {
     );
 }
 
+/// The Ext binder, gated end to end on production storage: for EVERY source
+/// slot at EVERY continuation round, the device's window arithmetic must land
+/// each publish on the source's own cascade slot `r`, each chain read on slot
+/// `r - 1`, and each raw read on the poly the address independently resolves
+/// to. At the last round the publishes must be exactly what the final gather
+/// reads (the prepared plans' `this_layer_start`), and every gather-keyed
+/// address must be published — the two facts that let the VM own the final
+/// round with the gather untouched.
+#[test]
+#[serial]
+fn every_ext_source_binds_through_the_cascade() {
+    use std::collections::{BTreeMap, BTreeSet};
+
+    use gkr_eval_isa::bwd::coeff::limits::MAX_SOURCE_WINDOWS;
+    use gkr_eval_isa::bwd::coeff::stats::WindowFamily;
+
+    use super::production_bind::family_read_place;
+    use super::seg_lower::D2Policy;
+    use crate::primitives::field::E4;
+    use crate::prover::gkr::forward::vm::lower::read_place_to_gkr_address;
+    use crate::prover::gkr::forward::vm::production_bind::resolve_storage_column;
+    use crate::upstream::{Field, FieldKind, GKRAddress};
+
+    let fixture = crate::prover::tests::prepare_basic_unrolled_async_backward_fixture(8);
+    let context = &fixture.context;
+    let coord = compile_coordinate(&fixture.compiled_circuit, 0, BwdRegime::Ext).unwrap();
+
+    let mut backward_state = fixture.gpu_backward_state;
+    while backward_state
+        .prepare_next_layer_static(context)
+        .unwrap()
+        .is_some()
+    {}
+    let mut main_state = backward_state.into_main_layer_backward_state(
+        fixture.compiled_circuit,
+        fixture.external_challenges,
+        fixture.lookup_multiplicative_part,
+        E4::ZERO,
+        false,
+    );
+    let plan = loop {
+        let plan = main_state
+            .prepare_next_layer_static(context)
+            .unwrap()
+            .expect("the main-layer walk must reach layer 0");
+        if plan.layer_idx == 0 {
+            break plan;
+        }
+    };
+    let storage = main_state.storage();
+    let folding_steps = plan.folding_steps;
+    let last_step = (folding_steps - 1) as u8;
+
+    let bound = bind_ext_round_sources(storage, &coord, 0, folding_steps, D2Policy::Inline)
+        .expect("every add_sub L0 Ext window must bind against production storage");
+
+    assert_eq!(bound.rounds.len(), folding_steps - 1);
+    assert!(
+        bound.coord.binding.windows.len() <= MAX_SOURCE_WINDOWS,
+        "{} rebound windows exceed the descriptor format",
+        bound.coord.binding.windows.len()
+    );
+    assert_eq!(bound.publish_plan.total_bytes, 0, "publishes are explicitly backed");
+    assert_eq!(bound.coord.program, coord.program, "the program never changes");
+    assert_eq!(bound.coord.order, coord.order, "the order never changes");
+    assert_eq!(
+        bound.coord.binding.source_slots.len(),
+        coord.binding.source_slots.len()
+    );
+
+    // The per-source identity, at every round.
+    let mut published_at_last: BTreeSet<GKRAddress> = BTreeSet::new();
+    let mut origins: BTreeMap<GKRAddress, bool> = BTreeMap::new();
+    for (source, old_slot) in coord.binding.source_slots.iter().enumerate() {
+        let old_window = &coord.binding.windows[old_slot.window as usize];
+        let absolute = old_window.first_column + old_slot.column as usize;
+        let e4_origin = old_window.backing_field() == FieldKind::Ext;
+        let addr = match family_read_place(old_window.family, absolute) {
+            Some(place) => read_place_to_gkr_address(&place),
+            None => match old_window.family {
+                WindowFamily::VirtualSetup { kind } => virtual_setup_address(kind),
+                family => panic!("addressless non-procedural window {family:?}"),
+            },
+        };
+        let region = resolve_cascade_region(storage, 0, addr, e4_origin)
+            .unwrap_or_else(|| panic!("source {source} ({addr:?}) has no cascade region"));
+        origins.insert(addr, e4_origin);
+        let new_slot = &bound.coord.binding.source_slots[source];
+        let relative = new_slot.column as usize;
+
+        for round in 1..=last_step {
+            let shapes = ext_round_window_shapes(&coord, round, D2Policy::Inline).unwrap();
+            let shape = &shapes[old_slot.window as usize];
+            let window = &bound.rounds[round as usize - 1].windows[new_slot.window as usize];
+            assert_eq!(window.target_depth, round, "source {source}");
+            assert_eq!(window.backing_depth, shape.backing_depth, "source {source}");
+            assert_eq!(window.materialize, shape.materialize, "source {source}");
+
+            if shape.materialize {
+                let publish = window.publish.unwrap_or_else(|| {
+                    panic!("source {source} round {round}: materializing window without publish")
+                });
+                assert_eq!(
+                    publish.ptr as usize + relative * publish.stride_bytes as usize,
+                    region.slot_ptr(round) as usize,
+                    "source {source} ({addr:?}) round {round}: publish is not cascade slot {round}"
+                );
+                if round == last_step {
+                    published_at_last.insert(addr);
+                }
+            } else {
+                assert!(window.publish.is_none(), "source {source} round {round}");
+            }
+
+            if shape.chained {
+                let read = window.read.unwrap_or_else(|| {
+                    panic!("source {source} round {round}: chained window without read")
+                });
+                assert!(read.is_e4, "source {source} round {round}");
+                assert_eq!(
+                    read.ptr as usize + relative * read.stride_bytes as usize,
+                    region.slot_ptr(round - 1) as usize,
+                    "source {source} ({addr:?}) round {round}: chain read is not slot {}",
+                    round - 1
+                );
+            } else if let Some(place) = family_read_place(old_window.family, absolute) {
+                let expect =
+                    resolve_storage_column(storage, read_place_to_gkr_address(&place))
+                        .expect("the binder resolved this address already");
+                let read = window.read.expect("a raw round binds a read");
+                assert_eq!(
+                    read.ptr as usize + relative * read.stride_bytes as usize,
+                    expect.ptr as usize,
+                    "source {source} ({addr:?}) round {round}: raw read is off"
+                );
+            } else {
+                assert!(window.read.is_none(), "source {source} round {round}");
+            }
+        }
+    }
+
+    // The final round feeds the gather: the VM's last publishes are exactly
+    // the prepared plans' `this_layer_start`, and every gather-keyed address
+    // is published.
+    let mut gather: BTreeMap<GKRAddress, usize> = BTreeMap::new();
+    for kernel in plan.kernel_plans.iter() {
+        let prepared = &kernel
+            .round3_and_beyond_prepared
+            .iter()
+            .find(|prepared| prepared.step == folding_steps - 1)
+            .expect("the last step is prepared")
+            .prepared;
+        for (address, source) in kernel
+            .inputs
+            .inputs_in_base
+            .iter()
+            .zip(prepared.base_field_inputs.iter())
+            .chain(
+                kernel
+                    .inputs
+                    .inputs_in_extension
+                    .iter()
+                    .zip(prepared.extension_field_inputs.iter()),
+            )
+        {
+            if *address != GKRAddress::placeholder() {
+                gather.entry(*address).or_insert(source.this_layer_start as usize);
+            }
+        }
+    }
+    for (address, expected) in gather.iter() {
+        assert!(
+            published_at_last.contains(address),
+            "gather-keyed address {address:?} is never published at round {last_step}"
+        );
+        let region = resolve_cascade_region(storage, 0, *address, origins[address])
+            .expect("resolved above through the binder");
+        assert_eq!(
+            region.slot_ptr(last_step) as usize,
+            *expected,
+            "{address:?}: the VM's final publish is not what the gather reads"
+        );
+    }
+    eprintln!(
+        "[bwd-vm-ext-bind] add_sub L0 Ext: {} -> {} windows; {} sources bound over rounds 1..={last_step}; \
+         {} gather addresses all published",
+        coord.binding.windows.len(),
+        bound.coord.binding.windows.len(),
+        coord.binding.source_slots.len(),
+        gather.len()
+    );
+}
+
