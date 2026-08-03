@@ -87,10 +87,11 @@ pub enum SetupCommitment<'a, F: PrimeField + TwoAdicField, T: ColumnMajorMerkleT
     /// RS codewords + Merkle tree both in memory (borrowed from the caller).
     InMemory(&'a ColumnMajorBaseOracleForLDE<F, T>),
     /// RS codewords served by a queryable source; Merkle paths served from an
-    /// mmap'd on-disk tree. Not yet wired end-to-end (no on-disk `RSQueriable`).
+    /// mmap'd on-disk tree — either a single monolithic tree file or per-coset
+    /// subtree files ([`OnDiskTree`](crate::merkle_trees::on_disk::OnDiskTree)).
     OnDisk {
         rs: Box<dyn RSQueriable<F>>,
-        tree: T::DiskPath<'a>,
+        tree: crate::merkle_trees::on_disk::OnDiskTree<'a>,
         values_per_leaf: usize,
         coset_size_log2: usize,
     },

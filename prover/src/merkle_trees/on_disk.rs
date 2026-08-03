@@ -32,9 +32,10 @@
 
 use super::{MerkleTreeCapVarLength, PathQueriable};
 use crate::definitions::DIGEST_SIZE_U32_WORDS;
+use fft::{bitreverse_index, GoodAllocator};
 use field::PrimeField;
-use fft::GoodAllocator;
 use std::io::Write;
+use std::path::PathBuf;
 
 /// Magic marker ("MTR1") identifying the format.
 pub const MERKLE_DISK_MAGIC: u32 = u32::from_le_bytes(*b"MTR1");
@@ -283,6 +284,119 @@ impl<'a, F: PrimeField> PathQueriable<F> for MmapMerkleTreePath<'a> {
             idx >>= 1;
         }
         (this_el_leaf_hash, result)
+    }
+}
+
+// ============================================================================
+// Second on-disk tree layout: per-coset subtrees + a top-tree over their roots.
+// ============================================================================
+
+/// File path for the per-coset subtree of NATURAL coset `i` (coset 0 = main domain).
+pub fn subtree_file_path(prefix: &str, coset_index: usize) -> PathBuf {
+    PathBuf::from(format!("{prefix}.subtree_{coset_index:04}.tree"))
+}
+
+/// File path for the top-tree over the per-coset subtree roots.
+pub fn top_tree_file_path(prefix: &str) -> PathBuf {
+    PathBuf::from(format!("{prefix}.toptree.tree"))
+}
+
+/// A [`PathQueriable`] assembled from one subtree file per coset plus a small
+/// top-tree over their roots — the "second" on-disk tree layout. It serves an
+/// inclusion path as the within-coset subtree path stitched to the top-tree path,
+/// which is byte-identical to the monolithic tree's `get_proof` (the same
+/// equivalence the coset-by-coset commitment relies on), but the subtrees can be
+/// prepared and stored one coset at a time, so a large packed setup's tree never
+/// has to be materialized whole.
+pub struct OnDiskCosetTreePath<'a> {
+    /// One subtree per NATURAL coset (each built with cap_size 1).
+    subtrees: Vec<MmapMerkleTreePath<'a>>,
+    /// Top tree over the per-coset roots (leaves in physical, bit-reversed order).
+    top_tree: MmapMerkleTreePath<'a>,
+    /// Leaves per coset subtree (`2^coset_size_log2 / values_per_leaf`).
+    coset_tree_size: usize,
+    cosets_log2: u32,
+}
+
+impl<'a> OnDiskCosetTreePath<'a> {
+    /// Assemble from already-mapped subtree images (NATURAL coset order) and the
+    /// top-tree image. `coset_tree_size` is the number of leaves in each subtree.
+    pub fn from_parts(
+        subtree_bytes: Vec<&'a [u8]>,
+        top_tree_bytes: &'a [u8],
+        coset_tree_size: usize,
+    ) -> Self {
+        assert!(!subtree_bytes.is_empty());
+        assert!(subtree_bytes.len().is_power_of_two());
+        let cosets_log2 = subtree_bytes.len().trailing_zeros();
+        let subtrees = subtree_bytes
+            .into_iter()
+            .map(MmapMerkleTreePath::from_bytes)
+            .collect();
+        let top_tree = MmapMerkleTreePath::from_bytes(top_tree_bytes);
+        Self {
+            subtrees,
+            top_tree,
+            coset_tree_size,
+            cosets_log2,
+        }
+    }
+}
+
+impl<'a, F: PrimeField> PathQueriable<F> for OnDiskCosetTreePath<'a> {
+    fn get_cap(&self) -> MerkleTreeCapVarLength {
+        PathQueriable::<F>::get_cap(&self.top_tree)
+    }
+
+    fn get_proof<C: GoodAllocator>(
+        &self,
+        idx: usize,
+    ) -> (
+        [u32; DIGEST_SIZE_U32_WORDS],
+        Vec<[u32; DIGEST_SIZE_U32_WORDS], C>,
+    ) {
+        // The monolithic tree lays cosets out in physical (bit-reversed) order; a
+        // leaf index decomposes into (physical coset slot, index within the coset).
+        let physical_slot = idx / self.coset_tree_size;
+        let internal_index = idx % self.coset_tree_size;
+        let natural_coset = bitreverse_index(physical_slot, self.cosets_log2);
+        // within-coset path (leaf -> coset root) from that coset's subtree,
+        let (leaf, mut path) =
+            PathQueriable::<F>::get_proof::<C>(&self.subtrees[natural_coset], internal_index);
+        // then coset root -> cap from the top tree.
+        let (_root, top_path) = PathQueriable::<F>::get_proof::<C>(&self.top_tree, physical_slot);
+        path.extend_from_slice(&top_path);
+        (leaf, path)
+    }
+}
+
+/// The on-disk tree layout backing an on-disk setup commitment: either one
+/// monolithic tree file ([`MmapMerkleTreePath`]) or per-coset subtree files plus a
+/// top-tree ([`OnDiskCosetTreePath`]). Both serve identical inclusion paths.
+pub enum OnDiskTree<'a> {
+    Monolithic(MmapMerkleTreePath<'a>),
+    CosetSubtrees(OnDiskCosetTreePath<'a>),
+}
+
+impl<'a, F: PrimeField> PathQueriable<F> for OnDiskTree<'a> {
+    fn get_cap(&self) -> MerkleTreeCapVarLength {
+        match self {
+            OnDiskTree::Monolithic(t) => PathQueriable::<F>::get_cap(t),
+            OnDiskTree::CosetSubtrees(t) => PathQueriable::<F>::get_cap(t),
+        }
+    }
+
+    fn get_proof<C: GoodAllocator>(
+        &self,
+        idx: usize,
+    ) -> (
+        [u32; DIGEST_SIZE_U32_WORDS],
+        Vec<[u32; DIGEST_SIZE_U32_WORDS], C>,
+    ) {
+        match self {
+            OnDiskTree::Monolithic(t) => PathQueriable::<F>::get_proof::<C>(t, idx),
+            OnDiskTree::CosetSubtrees(t) => PathQueriable::<F>::get_proof::<C>(t, idx),
+        }
     }
 }
 

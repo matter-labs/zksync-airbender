@@ -2,64 +2,121 @@
 //! commitment, mirroring the tree-side [`on_disk`](crate::merkle_trees::on_disk)).
 //!
 //! A single LDE coset serializes to a small header plus its columns concatenated
-//! column-major as raw field-element bytes:
+//! column-major as field-element bytes:
 //!
 //! ```text
-//! [ header: magic(4) field_size(4) num_columns(8) coset_size_log2(8) ]
-//! [ column 0: 2^coset_size_log2 field elements (raw bytes) ]
+//! [ header: magic(4) elem_bytes(4) num_columns(8) coset_size_log2(8) ]
+//! [ column 0: 2^coset_size_log2 field elements ]
 //! [ column 1: ... ]  ...
 //! ```
 //!
-//! A full [`MaterializedCosets`] writes one such file per coset, sharing a common
-//! path prefix. [`OnDiskRsCodewords`] reads them back lazily (positioned file
-//! reads, no full load) as a [`RSQueriable`], so a base/setup oracle's RS codewords
-//! can live on disk instead of in RAM. The values are laid out to serve
-//! [`RSQueriable::values_for_coset_and_index`] with the same offset-major
-//! `[offset][column]` shape as [`ColumnMajorBaseOracleForCoset`].
+//! Each field element is written with the cheapest exact little-endian
+//! representation (close to a byte cast): `as_u32_raw_repr` (4 bytes) for small
+//! fields (`CHAR_BITS < 32`), and `as_u128_reduced` (16 bytes) for larger ones —
+//! reconstructed with `from_raw_repr_with_reduction` / `from_u128_with_reduction`.
 //!
-//! Field elements are written in their in-memory representation (little-endian on
-//! the host); these are local scratch files read back on the same build, so no
-//! cross-host canonicalization is applied (consistent with the leaf-hash bytes in
-//! the tree format only being meaningful locally).
+//! A full [`MaterializedCosets`] writes one such file per coset, sharing a common
+//! path prefix. [`OnDiskRsCodewords`] reads them back through memory-mapped files
+//! ([`tiverse_mmap`]): reads are lazy and positioned — only the queried leaf
+//! elements (or, for `main_domain_column`, the one coset-0 column) are touched, so
+//! the full codeword never has to be loaded into RAM. Coset 0 is the main domain.
 
 use super::offsets_vec_for_leaf_construction;
 use super::{ColumnMajorBaseOracleForCoset, MaterializedCosets};
 use crate::merkle_trees::{MainDomainColumn, RSQueriable};
 use field::{PrimeField, TwoAdicField};
+use mmap_io::MemoryMappedFile;
 use std::borrow::Cow;
 use std::fs::File;
-use std::io::{Read, Seek, SeekFrom, Write};
+use std::io::Write;
 use std::marker::PhantomData;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
-/// Magic marker ("RSC1") identifying a coset RS-codeword file.
-pub const RS_CODEWORD_MAGIC: u32 = u32::from_le_bytes(*b"RSC1");
+/// Magic marker ("RSC2") identifying a coset RS-codeword file.
+pub const RS_CODEWORD_MAGIC: u32 = u32::from_le_bytes(*b"RSC2");
 
-/// Header size in bytes: magic(4) + field_size(4) + num_columns(8) + coset_size_log2(8).
+/// Header size in bytes: magic(4) + elem_bytes(4) + num_columns(8) + coset_size_log2(8).
 pub const RS_HEADER_BYTES: usize = 4 + 4 + 8 + 8;
 
-/// Write a field slice as its raw in-memory bytes.
-fn write_field_slice<F: Copy, W: Write>(writer: &mut W, data: &[F]) -> std::io::Result<()> {
-    // SAFETY: `F` is `Copy` (a POD field element); we serialize its raw representation
-    // and read it back with `read_unaligned` on the same build.
-    let bytes = unsafe {
-        core::slice::from_raw_parts(
-            data.as_ptr() as *const u8,
-            core::mem::size_of_val(data),
-        )
-    };
-    writer.write_all(bytes)
-}
+/// File extension for a serialized coset RS-codeword file (RS CodeWord).
+pub const RS_CODEWORD_FILE_EXT: &str = "rscw";
 
-/// Read one field element from a byte buffer at `byte_offset` (unaligned-safe).
+/// Serialized byte width of one field element: the raw `u32` repr (4 bytes) for
+/// small fields (`CHAR_BITS < 32`), the reduced-`u128` form (16 bytes) otherwise.
 #[inline]
-fn read_field<F: Copy>(buf: &[u8], byte_offset: usize) -> F {
-    debug_assert!(byte_offset + core::mem::size_of::<F>() <= buf.len());
-    // SAFETY: bounds checked above; `read_unaligned` tolerates arbitrary alignment.
-    unsafe { core::ptr::read_unaligned(buf.as_ptr().add(byte_offset) as *const F) }
+pub fn field_serialized_bytes<F: PrimeField>() -> usize {
+    if F::CHAR_BITS < 32 {
+        4
+    } else {
+        16
+    }
 }
 
-/// Serialize a single coset's RS codewords (header + column-major raw bytes) into
+/// Append one field element's little-endian bytes to `buf` (cheapest exact repr).
+#[inline]
+fn push_field_le<F: PrimeField>(buf: &mut Vec<u8>, x: F) {
+    if F::CHAR_BITS < 32 {
+        buf.extend_from_slice(&x.as_u32_raw_repr().to_le_bytes());
+    } else {
+        buf.extend_from_slice(&x.as_u128_reduced().to_le_bytes());
+    }
+}
+
+/// Reconstruct one field element from its little-endian bytes (inverse of
+/// [`push_field_le`]).
+#[inline]
+fn read_field_le<F: PrimeField>(bytes: &[u8]) -> F {
+    if F::CHAR_BITS < 32 {
+        F::from_raw_repr_with_reduction(u32::from_le_bytes(bytes[..4].try_into().unwrap()))
+    } else {
+        F::from_u128_with_reduction(u128::from_le_bytes(bytes[..16].try_into().unwrap()))
+    }
+}
+
+fn mmap_io_err(e: impl core::fmt::Debug) -> std::io::Error {
+    std::io::Error::new(std::io::ErrorKind::Other, format!("mmap-io: {e:?}"))
+}
+
+/// Serialize a coset's RS codewords straight from its column slices (header +
+/// column-major field bytes) into `writer`. Each column is converted into a
+/// contiguous byte buffer and written in one bulk `write_all` (efficient; close to
+/// a byte cast). Used both by [`serialize_coset`] and by the memory-light
+/// coset-by-coset setup serializer.
+pub fn serialize_coset_columns<F, W>(
+    writer: &mut W,
+    coset_size_log2: usize,
+    columns: &[&[F]],
+) -> std::io::Result<()>
+where
+    F: PrimeField + TwoAdicField,
+    W: Write,
+{
+    let num_columns = columns.len();
+    let coset_len = 1usize << coset_size_log2;
+    let elem_bytes = field_serialized_bytes::<F>();
+
+    writer.write_all(&RS_CODEWORD_MAGIC.to_le_bytes())?;
+    writer.write_all(&(elem_bytes as u32).to_le_bytes())?;
+    writer.write_all(&(num_columns as u64).to_le_bytes())?;
+    writer.write_all(&(coset_size_log2 as u64).to_le_bytes())?;
+
+    let mut buf = Vec::with_capacity(coset_len * elem_bytes);
+    for col in columns.iter() {
+        assert_eq!(
+            col.len(),
+            coset_len,
+            "coset column length must be 2^coset_size_log2"
+        );
+        buf.clear();
+        for &x in col.iter() {
+            push_field_le(&mut buf, x);
+        }
+        writer.write_all(&buf)?;
+    }
+    Ok(())
+}
+
+/// Serialize one coset's RS codewords (header + column-major field bytes) into
 /// `writer`.
 pub fn serialize_coset<F, W>(
     coset: &ColumnMajorBaseOracleForCoset<F>,
@@ -69,24 +126,12 @@ where
     F: PrimeField + TwoAdicField,
     W: Write,
 {
-    let num_columns = coset.original_values_normal_order.len();
-    let coset_size_log2 = coset.coset_size_log2;
-    let coset_len = 1usize << coset_size_log2;
-
-    writer.write_all(&RS_CODEWORD_MAGIC.to_le_bytes())?;
-    writer.write_all(&(core::mem::size_of::<F>() as u32).to_le_bytes())?;
-    writer.write_all(&(num_columns as u64).to_le_bytes())?;
-    writer.write_all(&(coset_size_log2 as u64).to_le_bytes())?;
-
-    for col in coset.original_values_normal_order.iter() {
-        assert_eq!(
-            col.column.len(),
-            coset_len,
-            "coset column length must be 2^coset_size_log2"
-        );
-        write_field_slice(writer, &col.column[..])?;
-    }
-    Ok(())
+    let columns: Vec<&[F]> = coset
+        .original_values_normal_order
+        .iter()
+        .map(|c| &c.column[..])
+        .collect();
+    serialize_coset_columns(writer, coset.coset_size_log2, &columns)
 }
 
 impl<F: PrimeField + TwoAdicField> ColumnMajorBaseOracleForCoset<F> {
@@ -96,9 +141,6 @@ impl<F: PrimeField + TwoAdicField> ColumnMajorBaseOracleForCoset<F> {
         serialize_coset(self, writer)
     }
 }
-
-/// File extension for a serialized coset RS-codeword file (RS CodeWord).
-pub const RS_CODEWORD_FILE_EXT: &str = "rscw";
 
 /// The on-disk file path for coset `i` under a shared prefix, e.g.
 /// `"<prefix>.coset_0003.rscw"`.
@@ -116,7 +158,7 @@ impl<F: PrimeField + TwoAdicField> MaterializedCosets<F> {
         let mut paths = Vec::with_capacity(self.cosets.len());
         for (i, coset) in self.cosets.iter().enumerate() {
             let path = coset_file_path(path_prefix, i);
-            let mut file = File::create(&path)?;
+            let mut file = std::io::BufWriter::new(File::create(&path)?);
             serialize_coset(coset, &mut file)?;
             file.flush()?;
             paths.push(path);
@@ -125,82 +167,87 @@ impl<F: PrimeField + TwoAdicField> MaterializedCosets<F> {
     }
 }
 
-/// A [`RSQueriable`] backed by per-coset files on disk (as written by
-/// [`MaterializedCosets::serialize_to_disk`]). Reads are lazy and positioned — only
-/// the queried leaf elements (or, for `main_domain_column`, the one coset-0 column)
-/// are read — so the full codeword never has to reside in RAM. Coset 0 is the main
-/// evaluation domain.
-#[derive(Debug)]
+/// A [`RSQueriable`] backed by per-coset memory-mapped files ([`mmap_io`], as
+/// written by [`MaterializedCosets::serialize_to_disk`]). Reads are lazy and
+/// positioned via the OS page cache — only the queried leaf elements (or the one
+/// coset-0 column for `main_domain_column`) are ever touched, so the full codeword
+/// never has to reside in RAM. Coset 0 is the main evaluation domain.
 pub struct OnDiskRsCodewords<F: PrimeField + TwoAdicField> {
-    coset_paths: Vec<PathBuf>,
+    coset_maps: Vec<MemoryMappedFile>,
     num_columns: usize,
     coset_size_log2: usize,
+    elem_bytes: usize,
     _marker: PhantomData<fn() -> F>,
 }
 
+impl<F: PrimeField + TwoAdicField> core::fmt::Debug for OnDiskRsCodewords<F> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("OnDiskRsCodewords")
+            .field("num_cosets", &self.coset_maps.len())
+            .field("num_columns", &self.num_columns)
+            .field("coset_size_log2", &self.coset_size_log2)
+            .finish()
+    }
+}
+
 impl<F: PrimeField + TwoAdicField> OnDiskRsCodewords<F> {
-    /// Open a set of coset files (in coset order; coset 0 = main domain) previously
-    /// written for this field. Reads and validates each file's header.
+    /// Memory-map a set of coset files (in coset order; coset 0 = main domain)
+    /// previously written for this field, validating each file's header.
     pub fn open(coset_paths: Vec<PathBuf>) -> std::io::Result<Self> {
         assert!(!coset_paths.is_empty(), "need at least one coset file");
-        let mut num_columns = None;
-        let mut coset_size_log2 = None;
+        let mut coset_maps: Vec<MemoryMappedFile> = Vec::with_capacity(coset_paths.len());
+        let mut dims: Option<(usize, usize, usize)> = None;
         for path in coset_paths.iter() {
-            let (nc, cs) = Self::read_header(path)?;
-            match (num_columns, coset_size_log2) {
-                (None, None) => {
-                    num_columns = Some(nc);
-                    coset_size_log2 = Some(cs);
-                }
-                (Some(pnc), Some(pcs)) => {
-                    assert_eq!(pnc, nc, "coset files disagree on num_columns");
-                    assert_eq!(pcs, cs, "coset files disagree on coset_size_log2");
-                }
-                _ => unreachable!(),
+            let mmap = MemoryMappedFile::open_ro(path).map_err(mmap_io_err)?;
+            let header = Self::parse_header(&mmap)?;
+            match dims {
+                None => dims = Some(header),
+                Some(prev) => assert_eq!(prev, header, "coset files disagree on header ({path:?})"),
             }
+            coset_maps.push(mmap);
         }
+        let (num_columns, coset_size_log2, elem_bytes) = dims.unwrap();
+        assert_eq!(
+            elem_bytes,
+            field_serialized_bytes::<F>(),
+            "on-disk element width does not match this field"
+        );
         Ok(Self {
-            coset_paths,
-            num_columns: num_columns.unwrap(),
-            coset_size_log2: coset_size_log2.unwrap(),
+            coset_maps,
+            num_columns,
+            coset_size_log2,
+            elem_bytes,
             _marker: PhantomData,
         })
     }
 
-    fn read_header(path: &Path) -> std::io::Result<(usize, usize)> {
-        let mut file = File::open(path)?;
-        let mut header = [0u8; RS_HEADER_BYTES];
-        file.read_exact(&mut header)?;
-        let magic = u32::from_le_bytes(header[0..4].try_into().unwrap());
-        assert_eq!(magic, RS_CODEWORD_MAGIC, "bad RS-codeword magic in {path:?}");
-        let field_size = u32::from_le_bytes(header[4..8].try_into().unwrap()) as usize;
-        assert_eq!(
-            field_size,
-            core::mem::size_of::<F>(),
-            "RS-codeword field size mismatch in {path:?}"
-        );
-        let num_columns = u64::from_le_bytes(header[8..16].try_into().unwrap()) as usize;
-        let coset_size_log2 = u64::from_le_bytes(header[16..24].try_into().unwrap()) as usize;
-        Ok((num_columns, coset_size_log2))
+    fn parse_header(mmap: &MemoryMappedFile) -> std::io::Result<(usize, usize, usize)> {
+        let b = mmap
+            .as_slice_bytes(0, RS_HEADER_BYTES as u64)
+            .map_err(mmap_io_err)?;
+        let magic = u32::from_le_bytes(b[0..4].try_into().unwrap());
+        assert_eq!(magic, RS_CODEWORD_MAGIC, "bad RS-codeword magic");
+        let elem_bytes = u32::from_le_bytes(b[4..8].try_into().unwrap()) as usize;
+        let num_columns = u64::from_le_bytes(b[8..16].try_into().unwrap()) as usize;
+        let coset_size_log2 = u64::from_le_bytes(b[16..24].try_into().unwrap()) as usize;
+        Ok((num_columns, coset_size_log2, elem_bytes))
     }
 
-    /// Byte offset of element `element_index` within a coset file.
+    /// Zero-copy byte view of `count` contiguous elements starting at
+    /// `element_index` within coset `coset`'s mapping.
     #[inline]
-    fn element_byte_offset(&self, element_index: usize) -> u64 {
-        (RS_HEADER_BYTES + element_index * core::mem::size_of::<F>()) as u64
+    fn element_bytes_run(&self, coset: usize, element_index: usize, count: usize) -> &[u8] {
+        let start = (RS_HEADER_BYTES + element_index * self.elem_bytes) as u64;
+        let len = (count * self.elem_bytes) as u64;
+        self.coset_maps[coset]
+            .as_slice_bytes(start, len)
+            .expect("RS-codeword mmap access out of bounds")
     }
 
-    /// Read `count` contiguous elements starting at `element_index` from coset
-    /// `coset` into a `Vec<F>`.
-    fn read_run(&self, coset: usize, element_index: usize, count: usize) -> Vec<F> {
-        let fsize = core::mem::size_of::<F>();
-        let mut file = File::open(&self.coset_paths[coset])
-            .unwrap_or_else(|e| panic!("open coset {coset}: {e}"));
-        file.seek(SeekFrom::Start(self.element_byte_offset(element_index)))
-            .expect("seek");
-        let mut buf = vec![0u8; count * fsize];
-        file.read_exact(&mut buf).expect("read coset run");
-        (0..count).map(|i| read_field::<F>(&buf, i * fsize)).collect()
+    /// Read a single element straight from the mmap.
+    #[inline]
+    fn element_at(&self, coset: usize, element_index: usize) -> F {
+        read_field_le::<F>(self.element_bytes_run(coset, element_index, 1))
     }
 }
 
@@ -210,7 +257,7 @@ impl<F: PrimeField + TwoAdicField> RSQueriable<F> for OnDiskRsCodewords<F> {
     }
 
     fn num_cosets(&self) -> usize {
-        self.coset_paths.len()
+        self.coset_maps.len()
     }
 
     fn coset_size_log2(&self) -> usize {
@@ -225,33 +272,29 @@ impl<F: PrimeField + TwoAdicField> RSQueriable<F> for OnDiskRsCodewords<F> {
     ) -> Vec<Vec<F>> {
         let coset_len = 1usize << self.coset_size_log2;
         let offsets = offsets_vec_for_leaf_construction(coset_len, values_per_leaf);
-
-        // Read all needed elements once per file, then reshape offset-major
-        // `[offset][column]` (matching `ColumnMajorBaseOracleForCoset`).
+        // Offset-major `[offset][column]`, matching `ColumnMajorBaseOracleForCoset`.
         let mut result: Vec<Vec<F>> = (0..values_per_leaf)
             .map(|_| Vec::with_capacity(self.num_columns))
             .collect();
-        let fsize = core::mem::size_of::<F>();
-        let mut file = File::open(&self.coset_paths[coset_in_natural_enumeration])
-            .unwrap_or_else(|e| panic!("open coset {coset_in_natural_enumeration}: {e}"));
         for col in 0..self.num_columns {
             let col_base = col * coset_len;
             for (j, &off) in offsets.iter().enumerate() {
-                let element_index = col_base + off + index;
-                file.seek(SeekFrom::Start(self.element_byte_offset(element_index)))
-                    .expect("seek");
-                let mut buf = vec![0u8; fsize];
-                file.read_exact(&mut buf).expect("read leaf element");
-                result[j].push(read_field::<F>(&buf, 0));
+                result[j].push(self.element_at(coset_in_natural_enumeration, col_base + off + index));
             }
         }
         result
     }
 
     fn main_domain_column(&self, column_index: usize) -> MainDomainColumn<'_, F> {
-        // Coset 0 is the main evaluation domain; its columns are EVALUATIONS.
+        // Coset 0 is the main evaluation domain; its columns are EVALUATIONS. This is
+        // the one full-column read (needed for batching); the bytes page in lazily
+        // from the mmap and are converted in one contiguous pass.
         let coset_len = 1usize << self.coset_size_log2;
-        let column = self.read_run(0, column_index * coset_len, coset_len);
+        let bytes = self.element_bytes_run(0, column_index * coset_len, coset_len);
+        let column = bytes
+            .chunks_exact(self.elem_bytes)
+            .map(read_field_le::<F>)
+            .collect();
         MainDomainColumn::Evals(Cow::Owned(column))
     }
 
@@ -272,7 +315,7 @@ mod test {
         BabyBearField::from_raw_repr_with_reduction(v)
     }
 
-    /// Serialize a `MaterializedCosets` to disk, read it back with
+    /// Serialize a `MaterializedCosets` to disk, memory-map it back with
     /// `OnDiskRsCodewords`, and require identical `values_for_coset_and_index`,
     /// `main_domain_column`, and dimensions.
     #[test]
@@ -282,7 +325,6 @@ mod test {
         let coset_size_log2 = 5usize;
         let coset_len = 1usize << coset_size_log2;
 
-        // Distinct value per (coset, column, position) so mismatches are visible.
         let cosets: Vec<ColumnMajorBaseOracleForCoset<BabyBearField>> = (0..num_cosets)
             .map(|c| {
                 let columns: Vec<ColumnMajorCosetBoundTracePart<BabyBearField, BabyBearField>> = (0
@@ -343,6 +385,8 @@ mod test {
             assert_eq!(got, expected, "main_domain_column col={col}");
         }
 
+        // Drop the mmaps before removing the files.
+        drop(reader);
         for p in paths {
             let _ = std::fs::remove_file(p);
         }

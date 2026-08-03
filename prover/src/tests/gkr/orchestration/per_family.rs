@@ -139,7 +139,6 @@ pub fn prove_built_family_trace_on_disk_setup(
     use crate::gkr::whir::rs_on_disk::OnDiskRsCodewords;
     use crate::gkr::whir::MaterializedCosets;
     use crate::merkle_trees::ColumnMajorMerkleTreeConstructor;
-    use std::io::Read;
 
     let prover_config = example_configs::config_for_security_level_under_pessimistic_conjecture(
         trace_len.trailing_zeros() as usize,
@@ -182,17 +181,18 @@ pub fn prove_built_family_trace_on_disk_setup(
     // Drop the in-memory setup oracle: from here the setup lives only on disk.
     drop(setup_oracle);
 
-    // 3) Read them back: RS codewords lazily, the tree via a borrowed byte image.
+    // 3) Read them back: RS codewords + (monolithic) tree both served lazily via mmap.
     let rs = OnDiskRsCodewords::<BabyBearField>::open(coset_paths)
         .expect("open on-disk setup RS codewords");
-    let mut tree_bytes = Vec::new();
-    std::fs::File::open(&tree_path)
-        .expect("open tree file")
-        .read_to_end(&mut tree_bytes)
-        .expect("read tree file");
-    let disk_tree = <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<
-        BabyBearField,
-    >>::disk_path(&tree_bytes);
+    let tree_mmap = mmap_io::MemoryMappedFile::open_ro(&tree_path).expect("mmap tree file");
+    let tree_bytes = tree_mmap
+        .as_slice_bytes(0, tree_mmap.len())
+        .expect("mmap tree slice");
+    let disk_tree = crate::merkle_trees::on_disk::OnDiskTree::Monolithic(
+        <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<BabyBearField>>::disk_path(
+            tree_bytes,
+        ),
+    );
 
     let setup_commitment = SetupCommitment::OnDisk {
         rs: Box::new(rs),
