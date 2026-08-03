@@ -509,6 +509,22 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
             }
         };
 
+        // TRIPWIRE until the Ext launch path exists (its plan's Task 4): a
+        // selected coordinate that would silently fall through to the flat
+        // continuation kernels must stop the proof instead — same doctrine as
+        // `check_selection`, enforced at the moment it would be violated.
+        {
+            use super::super::vm::coords::{coords_from_env, BwdVmCoord};
+            assert!(
+                !coords_from_env().contains(&BwdVmCoord {
+                    layer: layer_idx,
+                    regime: crate::upstream::BwdRegime::Ext,
+                }),
+                "backward VM coordinate {layer_idx}:Ext is selected, but the Ext launch path \
+                 is not built yet — the flat continuation kernels would silently run instead",
+            );
+        }
+
         // --- Build flat continuation plan for rounds 1+ ---
         let (
             flat_continuation_plan,

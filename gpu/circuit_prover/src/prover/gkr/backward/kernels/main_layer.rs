@@ -342,10 +342,13 @@ pub(crate) struct GpuGKRMainLayerBackwardState<E: FieldExtension<BF> + Field> {
     pub(crate) num_base_layer_witness_polys: usize,
     pub(crate) is_delegation: bool,
     /// The backward VM's compiled R0 slice, captured from the RAW artifact
-    /// (before the normalize) when `AB_GKR_BWD_VM_COORDS` selects a
-    /// coordinate; `None` otherwise. Read once per proof at state build so
-    /// the plan builder and the launcher cannot see different selections.
-    pub(crate) bwd_vm_r0: Option<&'static super::super::vm::production_program::CompiledR0Slice>,
+    /// (before the normalize) when `AB_GKR_BWD_VM_COORDS` selects the
+    /// `0:R0` coordinate; `None` otherwise. Read once per proof at state
+    /// build so the plan builder and the launcher cannot see different
+    /// selections.
+    pub(crate) bwd_vm_r0: Option<&'static super::super::vm::production_program::CompiledSlice>,
+    /// Same capture for the `0:Ext` coordinate (the continuation rounds).
+    pub(crate) bwd_vm_ext: Option<&'static super::super::vm::production_program::CompiledSlice>,
 }
 
 pub(crate) struct ScheduledMainLayerExecutionState<E: FieldExtension<BF> + Field> {

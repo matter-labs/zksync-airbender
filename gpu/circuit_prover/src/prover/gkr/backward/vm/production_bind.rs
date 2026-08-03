@@ -99,7 +99,7 @@ use gkr_eval_isa::bwd::coeff::lean_bind::{
 use gkr_eval_isa::bwd::coeff::limits::MAX_SOURCE_WINDOWS;
 use gkr_eval_isa::bwd::coeff::stats::WindowFamily;
 
-use super::production_program::CompiledR0Slice;
+use super::production_program::CompiledSlice;
 use super::seg::{
     bwd_seg_blocks_per_sm, bwd_seg_coeff_bank_device_ptr, launch_bwd_seg, BwdSegEpilogue,
 };
@@ -620,7 +620,7 @@ pub(crate) struct BwdVmRound0Launch {
 /// somewhere unmeasured.
 pub(crate) fn build_bwd_vm_round0<E: Copy>(
     storage: &GpuGKRStorage<BF, E>,
-    slice: &CompiledR0Slice,
+    slice: &CompiledSlice,
     rows: usize,
     eq_low: *const E4,
     eq_sizes: GkrEqSizes,

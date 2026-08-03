@@ -63,35 +63,41 @@ pub(crate) struct LoweredCircuit {
 /// so the compiled slice keeps the layer beside the coordinate.
 ///
 /// [`BwdSegRoundBinding::immediates`]: super::seg_lower::BwdSegRoundBinding::immediates
-pub(crate) struct CompiledR0Slice {
+pub(crate) struct CompiledSlice {
     pub(crate) coord: LeanCoordinateArtifact,
     pub(crate) layer: CoeffLayer,
 }
 
-/// The add_sub L0 R0 coordinate and its layer, compiled once per process.
+/// The add_sub L0 coordinate and its layer for one regime, compiled once per
+/// process.
 ///
-/// Cached like the forward VM's program. Deliberately a SEPARATE `OnceLock` from
-/// `forward::vm::program`'s: two caches of the same lowering are cheaper than a
-/// cross-module dependency, and the forward one is only populated when the
-/// forward switch is on.
-pub(crate) fn compiled_r0_slice(
+/// Cached like the forward VM's program, one `OnceLock` per regime (R0 and Ext
+/// are different programs over the same layer). Deliberately SEPARATE locks from
+/// `forward::vm::program`'s: caches of the same lowering are cheaper than a
+/// cross-module dependency, and each is only populated when its switch is on.
+pub(crate) fn compiled_slice(
     artifact: &GKRCircuitArtifact<BF>,
-) -> Result<&'static CompiledR0Slice, String> {
-    static SLICE: OnceLock<Result<CompiledR0Slice, String>> = OnceLock::new();
-    SLICE
-        .get_or_init(|| {
-            let lowered = lower_and_validate(artifact)?;
-            let coord = compile_from_dag(&lowered, 0, BwdRegime::R0)?;
-            // The same lowering `compile_lean_coordinate` runs internally —
-            // deterministic (`compiling_the_same_coordinate_twice_gives_the_same_
-            // program`), so the layer here IS the one the coordinate came from.
-            let canonical = &lowered.layers[0];
-            let (layer, _) = lower_lean_layer(canonical, &lowered.cross_fields, BwdRegime::R0)
-                .map_err(|e| format!("lower_lean_layer: {e:?}"))?;
-            Ok(CompiledR0Slice { coord, layer })
-        })
-        .as_ref()
-        .map_err(Clone::clone)
+    regime: BwdRegime,
+) -> Result<&'static CompiledSlice, String> {
+    static R0_SLICE: OnceLock<Result<CompiledSlice, String>> = OnceLock::new();
+    static EXT_SLICE: OnceLock<Result<CompiledSlice, String>> = OnceLock::new();
+    let lock = match regime {
+        BwdRegime::R0 => &R0_SLICE,
+        BwdRegime::Ext => &EXT_SLICE,
+    };
+    lock.get_or_init(|| {
+        let lowered = lower_and_validate(artifact)?;
+        let coord = compile_from_dag(&lowered, 0, regime)?;
+        // The same lowering `compile_lean_coordinate` runs internally —
+        // deterministic (`compiling_the_same_coordinate_twice_gives_the_same_
+        // program`), so the layer here IS the one the coordinate came from.
+        let canonical = &lowered.layers[0];
+        let (layer, _) = lower_lean_layer(canonical, &lowered.cross_fields, regime)
+            .map_err(|e| format!("lower_lean_layer: {e:?}"))?;
+        Ok(CompiledSlice { coord, layer })
+    })
+    .as_ref()
+    .map_err(Clone::clone)
 }
 
 /// `lower_dag` -> `validate` -> the cross-layer field map, over the RAW artifact.
@@ -189,6 +195,30 @@ mod tests {
         let ext = compile_coordinate(&artifact, 0, BwdRegime::Ext).unwrap();
         assert_ne!(r0.target_depth, ext.target_depth);
         assert_ne!(r0.program, ext.program);
+    }
+
+    /// The process-wide cache is PER REGIME: repeated calls return the same
+    /// `&'static` slice, and each regime's slice carries its own program. The
+    /// launcher needs both when `0:R0,0:Ext` is selected together.
+    #[test]
+    fn compiled_slices_are_cached_per_regime() {
+        let artifact = add_sub_artifact();
+        let r0 = compiled_slice(&artifact, BwdRegime::R0).unwrap();
+        let ext = compiled_slice(&artifact, BwdRegime::Ext).unwrap();
+        assert!(std::ptr::eq(
+            r0,
+            compiled_slice(&artifact, BwdRegime::R0).unwrap()
+        ));
+        assert!(std::ptr::eq(
+            ext,
+            compiled_slice(&artifact, BwdRegime::Ext).unwrap()
+        ));
+        assert_eq!(r0.coord.regime.regime(), BwdRegime::R0);
+        assert_eq!(ext.coord.regime.regime(), BwdRegime::Ext);
+        assert_ne!(r0.coord.program, ext.coord.program);
+        // The layer rides beside the coordinate for the bank fill and, in Ext,
+        // for `c_init` pass-through.
+        assert_eq!(ext.layer.regime, BwdRegime::Ext);
     }
 
     #[test]

@@ -60,7 +60,7 @@ impl fmt::Display for BwdVmCoordError {
             BwdVmCoordError::NotWired { coord } => write!(
                 f,
                 "{AB_GKR_BWD_VM_COORDS_ENV} selects {coord}, which has no production binder; \
-                 only 0:R0 is wired"
+                 only 0:R0 and 0:Ext are wired"
             ),
         }
     }
@@ -69,10 +69,16 @@ impl fmt::Display for BwdVmCoordError {
 /// The coordinates this slice can actually run. Deliberately a hard list rather
 /// than a predicate over the artifact: a coordinate reaching a binder that was
 /// never built for it must stop the proof, not launch something shaped wrong.
-const WIRED_COORDS: [BwdVmCoord; 1] = [BwdVmCoord {
-    layer: 0,
-    regime: BwdRegime::R0,
-}];
+const WIRED_COORDS: [BwdVmCoord; 2] = [
+    BwdVmCoord {
+        layer: 0,
+        regime: BwdRegime::R0,
+    },
+    BwdVmCoord {
+        layer: 0,
+        regime: BwdRegime::Ext,
+    },
+];
 
 pub(crate) fn coord_is_wired(coord: BwdVmCoord) -> bool {
     WIRED_COORDS.contains(&coord)
@@ -140,6 +146,13 @@ mod tests {
         }
     }
 
+    fn ext(layer: usize) -> BwdVmCoord {
+        BwdVmCoord {
+            layer,
+            regime: BwdRegime::Ext,
+        }
+    }
+
     #[test]
     fn a_coord_list_parses_layer_and_regime() {
         assert_eq!(parse_coords("0:R0"), Ok(vec![r0(0)]));
@@ -175,16 +188,14 @@ mod tests {
         assert!(parse_coords("0:R0,0:R0").is_err());
     }
 
-    /// This slice wires exactly one coordinate. Anything else must fail loudly
-    /// rather than reach a binder that does not exist for it.
+    /// Both regimes of layer 0 are wired — and nothing else. Anything else must
+    /// fail loudly rather than reach a binder that does not exist for it.
     #[test]
-    fn only_layer_zero_r0_is_wired() {
+    fn both_regimes_of_layer_zero_are_wired() {
         assert!(coord_is_wired(r0(0)));
-        assert!(!coord_is_wired(BwdVmCoord {
-            layer: 0,
-            regime: BwdRegime::Ext
-        }));
+        assert!(coord_is_wired(ext(0)));
         assert!(!coord_is_wired(r0(1)));
+        assert!(!coord_is_wired(ext(1)));
     }
 
     #[test]
@@ -197,5 +208,14 @@ mod tests {
     fn a_wired_selection_is_accepted() {
         assert!(check_selection(&[]).is_ok());
         assert!(check_selection(&[r0(0)]).is_ok());
+        assert!(check_selection(&[r0(0), ext(0)]).is_ok());
+    }
+
+    /// The full-layer selection the Ext parity gates run under.
+    #[test]
+    fn the_combined_r0_and_ext_selection_parses_and_is_wired() {
+        let coords = parse_coords("0:R0,0:Ext").unwrap();
+        assert_eq!(coords, vec![r0(0), ext(0)]);
+        assert!(check_selection(&coords).is_ok());
     }
 }
