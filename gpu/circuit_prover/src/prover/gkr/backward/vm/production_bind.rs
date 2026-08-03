@@ -99,6 +99,7 @@ use gkr_eval_isa::bwd::coeff::lean_bind::{
     LeanBoundColumn, LeanBoundWindow, LeanSourceBinding, LeanSourceSlot,
 };
 use gkr_eval_isa::bwd::coeff::limits::SOURCE_WINDOW_COLUMNS;
+use std::collections::BTreeMap;
 use gkr_eval_isa::bwd::coeff::stats::WindowFamily;
 use gkr_eval_isa::fwd::source::KIND_ORDER;
 
@@ -115,12 +116,12 @@ use super::seg_coeff_eval::{
 };
 use super::seg_desc::{
     BWD_COEFF_PUBLISH_TARGET_DEPTH, BWD_SEG_MAX_K, BWD_SEG_OUTPUT_PARTIALS, BWD_SEG_OUTPUT_ROWS,
-    BWD_SEG_SOURCE_WINDOW_CAP,
+    BWD_SEG_ADDR_SLOTS,
 };
 use super::seg_lower::{
-    assign_class, lower_bwd_seg, plan_publish_scratch, window_columns, BwdSegLowerError,
+    assign_class, lower_bwd_seg, plan_publish_scratch, BwdSegLowerError,
     BwdSegRoundBinding, BwdSegSetup, CoeffMode, D2Policy, ProgramMode, PublishScratchPlan,
-    ResolvedBwdCoeffSourceWindow, ResolvedPublishScratch, SourceClass, SourceOrigin,
+    ResolvedAddrSlot, ResolvedPublishScratch, ResolvedSourceAddr, SourceClass, SourceOrigin,
 };
 use crate::allocator::tracker::AllocationPlacement;
 use crate::primitives::utils::WARP_SIZE;
@@ -321,8 +322,11 @@ pub(crate) enum BwdVmBindError {
     UnresolvedWindow { window: u8, address: GKRAddress },
     /// Storage resolved a column of the window in the wrong field.
     WindowFieldMismatch { window: u8, expect_e4: bool },
-    /// Re-windowing against production geometry needs more windows than the
-    /// descriptor format holds.
+    /// A resolved column does not sit a whole number of strides into its own
+    /// backing, so it has no rank and cannot be addressed as a column of it.
+    UnresolvableRank { window: u8 },
+    /// Interning production backings needs more address slots than the
+    /// descriptor table holds.
     ///
     /// Columns are renumbered to the dense offsets their pointers imply
     /// ([`dense_step`]), so `windows > parents` here means storage genuinely
@@ -530,6 +534,11 @@ pub(crate) struct CascadeRegion {
     pub(crate) region_elems: usize,
     /// The first round that owns a slot here: 1 for ext-origin, 2 for base.
     pub(crate) first_slot: u8,
+    /// Base of the CONSOLIDATED allocation this region is a slice of. Regions of
+    /// one backing are equal-sized and packed, so `(base - backing) /
+    /// region_bytes` is the poly's rank in it — which is what lets every poly of
+    /// a backing share one address slot.
+    pub(crate) backing: *mut u8,
 }
 
 impl CascadeRegion {
@@ -560,6 +569,24 @@ impl CascadeRegion {
         // construction and the region is one poly's slice of a live
         // `DeviceAllocation` (the resolver read it from production storage).
         unsafe { self.base.add(offset * size_of::<E4>()) }
+    }
+
+    /// Cascade slot `round` as a resolvable COLUMN of its consolidated backing.
+    ///
+    /// The matrix base carries the round's own offset, so a slot interned from
+    /// this addresses `region_base + rank * region_bytes + slot_offset(round)` —
+    /// the flat path's pointer for that poly at that round, by construction. The
+    /// stride is the region stride, which is what makes consecutive polys of one
+    /// backing consecutive columns of one slot.
+    pub(crate) fn slot_column(&self, round: u8) -> ResolvedColumn {
+        let region_bytes = self.region_elems * size_of::<E4>();
+        let offset = self.slot_elem_offset(round) * size_of::<E4>();
+        ResolvedColumn {
+            is_e4: true,
+            ptr: self.base.cast_const().wrapping_add(offset),
+            matrix_base: self.backing.wrapping_add(offset),
+            stride_bytes: region_bytes as u32,
+        }
     }
 }
 
@@ -618,6 +645,7 @@ pub(crate) fn resolve_cascade_region<E: Copy>(
                 .cast::<u8>(),
             region_elems: 2 * buffer.size_after_one_fold,
             first_slot: 1,
+            backing: buffer.backing.as_ptr().cast_mut().cast::<u8>(),
         })
     } else {
         let (_, buffer) = storage
@@ -632,6 +660,7 @@ pub(crate) fn resolve_cascade_region<E: Copy>(
                 .cast::<u8>(),
             region_elems: 2 * buffer.size_after_two_folds,
             first_slot: 2,
+            backing: buffer.backing.as_ptr().cast_mut().cast::<u8>(),
         })
     }
 }
@@ -639,214 +668,189 @@ pub(crate) fn resolve_cascade_region<E: Copy>(
 // ── Pointer resolution (production) ──────────────────────────────────────────
 
 /// One round-0 binding, resolved against production storage.
+///
+/// The coordinate is NOT rebound: the lowering reads the artifact's program, its
+/// order and its source COUNT, and nothing else about its windows. Addresses are
+/// these two vectors, so the artifact's own window geometry — a fact about the
+/// DAG's address space — never has to be reconciled with storage at all.
 pub(crate) struct BoundR0Sources {
-    /// The coordinate REBOUND to production window geometry: same program,
-    /// same order, same source-slot count — only the window partition and
-    /// each slot's `(window, column)` changed. This is the artifact
-    /// [`super::seg_lower::lower_bwd_seg`] must be handed; the original's
-    /// windows no longer describe the pointers below.
-    pub(crate) coord: LeanCoordinateArtifact,
-    /// One entry per REBOUND window, positionally — exactly the slice
-    /// [`super::seg_lower::BwdSegRoundBinding`] takes.
-    pub(crate) windows: Vec<ResolvedBwdCoeffSourceWindow>,
-    /// Per rebound window: elements readable per addressed column (the poly
-    /// length).
-    pub(crate) window_read_elements: Vec<u32>,
-    /// Per rebound window: addressable column count, for the publish plan and
-    /// the policy footprint.
-    pub(crate) window_columns: Vec<usize>,
+    /// The round's address table, positionally the descriptor's slot array.
+    pub(crate) slots: Vec<ResolvedAddrSlot>,
+    /// One entry per wire source, in source-slot order.
+    pub(crate) sources: Vec<ResolvedSourceAddr>,
     /// The (empty — asserted) R0 publish plan, kept so the lowering's
     /// [`ResolvedPublishScratch`] is the SAME plan the bind checked rather
     /// than a re-derivation that could disagree.
     pub(crate) publish_plan: PublishScratchPlan,
 }
 
-/// One re-windowing run under construction: a maximal stretch of one artifact
-/// window that production storage backs at a UNIFORM stride.
-struct BindRun {
-    /// Resolved base of the run's FIRST column; `None` for procedural.
-    read: Option<ResolvedColumn>,
-    /// The run's columns, at DENSE offsets derived from the resolved pointers —
-    /// offset 0 is the run's own first column, NOT the artifact's numbering.
-    columns: Vec<LeanBoundColumn>,
-    /// Resolved pointer of the LAST column added (0 for procedural).
-    prev_ptr: usize,
-    /// Dense offset of the LAST column added.
-    prev_offset: usize,
+/// Interns production backings into address slots.
+///
+/// A slot is keyed by `(chunk base, stride)`, where the chunk is the column's
+/// rank within its backing divided by [`SOURCE_WINDOW_COLUMNS`]. So every source
+/// reading a matrix shares one slot per 128 columns of it, whatever the
+/// artifact's numbering, whatever the gaps, and whether the backing is
+/// absolute-indexed (an arena, holes physically present) or rank-packed (a
+/// consolidated matrix, only what it holds). The rank comes from the POINTER, so
+/// the two layouts need no distinction: it is whatever `(ptr - base) / stride`
+/// says.
+///
+/// A backing wider than 128 columns simply takes more slots at offset bases —
+/// "just compute the offsetted pointer", which is arithmetic, not a split of
+/// anything. That is why the slot count tracks how many matrices a layer touches
+/// rather than how its columns are grouped.
+#[derive(Default)]
+struct SlotTable {
+    slots: Vec<ResolvedAddrSlot>,
+    /// `(chunk base, stride bytes)` -> slot index.
+    index: BTreeMap<(usize, u32), usize>,
 }
 
-/// The dense column step from `prev_ptr` to `next_ptr` at `stride_bytes`, or
-/// `None` if the second pointer is not a whole number of strides past the
-/// first.
-///
-/// This is the entire re-windowing rule. The device reads a window as
-/// `read_base + column * read_stride_bytes`, so what a window needs is a
-/// uniform stride — not any particular column numbering. Deriving the step
-/// from the POINTERS makes the rebound index the storage's own dense rank, and
-/// the two layouts that used to disagree now both hold: an absolute-indexed
-/// arena (where a hole is a physically present column) yields a step of `g`
-/// across a gap of `g`, and a rank-packed backing (which registers only the
-/// columns it holds) yields a step of 1 across the same gap. Neither splits.
-///
-/// A step of 0 is legal and means two sources resolved to the SAME column — a
-/// copy gate aliasing its input. They share one window column; the slot table
-/// is what distinguishes them.
-fn dense_step(prev_ptr: usize, next_ptr: usize, stride_bytes: u32) -> Option<usize> {
-    let stride = stride_bytes as usize;
-    let delta = next_ptr.checked_sub(prev_ptr)?;
-    if delta != 0 && (stride == 0 || delta % stride != 0) {
-        return None;
+impl SlotTable {
+    /// Intern the backing `column` lives in and answer `(slot, column in slot)`.
+    ///
+    /// `read_elements` is the readable span per addressed column; a slot keeps
+    /// the SMALLEST any of its columns reports, so the lowering's span guard sees
+    /// the tightest bound rather than an optimistic one.
+    fn intern(
+        &mut self,
+        window: u8,
+        column: ResolvedColumn,
+        read_elements: u32,
+    ) -> Result<(usize, usize), BwdVmBindError> {
+        let stride = column.stride_bytes as usize;
+        let ptr = column.ptr as usize;
+        let base = column.matrix_base as usize;
+        // A backing whose stride cannot index it, or a column that does not sit a
+        // whole number of strides into its own matrix, is a resolver defect.
+        if stride == 0 || ptr < base || (ptr - base) % stride != 0 {
+            return Err(BwdVmBindError::UnresolvableRank { window });
+        }
+        let rank = (ptr - base) / stride;
+        let chunk = rank / SOURCE_WINDOW_COLUMNS;
+        let within = rank % SOURCE_WINDOW_COLUMNS;
+        let chunk_base = base + chunk * SOURCE_WINDOW_COLUMNS * stride;
+        let key = (chunk_base, column.stride_bytes);
+        let slot = match self.index.get(&key) {
+            Some(&slot) => {
+                let entry = &mut self.slots[slot];
+                entry.columns = entry.columns.max(within + 1);
+                entry.read_elements = entry.read_elements.min(read_elements);
+                slot
+            }
+            None => {
+                self.slots.push(ResolvedAddrSlot {
+                    base: Some(ResolvedColumn {
+                        is_e4: column.is_e4,
+                        ptr: chunk_base as *const u8,
+                        matrix_base: column.matrix_base,
+                        stride_bytes: column.stride_bytes,
+                    }),
+                    procedural_kind: None,
+                    read_elements,
+                    columns: within + 1,
+                });
+                let slot = self.slots.len() - 1;
+                self.index.insert(key, slot);
+                slot
+            }
+        };
+        Ok((slot, within))
     }
-    Some(if delta == 0 { 0 } else { delta / stride })
+
+    /// Intern a procedural backing. Keyed by kind, and it addresses no columns,
+    /// so every procedural source of one kind shares a single slot.
+    fn intern_procedural(&mut self, kind: u8) -> (usize, usize) {
+        let key = (usize::MAX, u32::from(kind));
+        if let Some(&slot) = self.index.get(&key) {
+            return (slot, 0);
+        }
+        self.slots.push(ResolvedAddrSlot {
+            base: None,
+            procedural_kind: Some(kind),
+            read_elements: 0,
+            columns: 1,
+        });
+        let slot = self.slots.len() - 1;
+        self.index.insert(key, slot);
+        (slot, 0)
+    }
 }
 
-/// Resolve one R0 coordinate's windows against production storage,
-/// re-partitioning them to production geometry.
+/// Resolve one R0 coordinate's sources against production storage.
 ///
-/// The device resolves `(window, column)` as `base + column * stride`, so a
-/// window must be UNIFORMLY STRIDED in the matrix it points into. The
-/// artifact's windows are contiguous in the DAG's address space, not in storage
-/// (see the module doc); this walks every referenced column, resolves it
-/// independently, and renumbers it to the dense offset its own POINTER implies
-/// (see [`dense_step`]). A run therefore breaks only where storage genuinely
-/// stops being uniformly strided — a different backing, a different stride, or
-/// a pointer that moves backwards — and never merely because the artifact
-/// numbers its columns sparsely.
+/// Every referenced column resolves independently and is interned into the slot
+/// its own pointer implies ([`SlotTable`]). There is no re-partitioning of the
+/// artifact's windows and no renumbering of its columns: the artifact's geometry
+/// is simply not consulted, because a source's address is a fact about storage.
 ///
-/// `rows` is the launch's logical row count; it enters only the (asserted
-/// empty) publish plan.
+/// `rows` is the launch's logical row count; it enters only the (asserted empty)
+/// publish plan.
 pub(crate) fn bind_r0_sources<E: Copy>(
     storage: &GpuGKRStorage<BF, E>,
     coord: &LeanCoordinateArtifact,
     rows: usize,
 ) -> Result<BoundR0Sources, BwdVmBindError> {
     let shapes = r0_window_shapes(coord)?;
-
-    let mut new_windows: Vec<LeanBoundWindow> = Vec::new();
-    let mut bound: Vec<ResolvedBwdCoeffSourceWindow> = Vec::new();
-    let mut read_elements: Vec<u32> = Vec::new();
-    // Source slot -> rebound (window, column), filled as runs are flushed.
-    let mut new_slots: Vec<Option<LeanSourceSlot>> =
+    let mut table = SlotTable::default();
+    let mut sources: Vec<Option<ResolvedSourceAddr>> =
         vec![None; coord.binding.source_slots.len()];
 
     for (index, (shape, artifact_window)) in
         shapes.iter().zip(&coord.binding.windows).enumerate()
     {
         let window = index as u8;
-        let mut runs: Vec<BindRun> = Vec::new();
         for entry in &artifact_window.columns {
-            let resolved = match family_read_place(artifact_window.family, entry.column) {
-                // Procedural: no matrix at all — one run per artifact window.
-                None => None,
+            let (slot, column) = match family_read_place(artifact_window.family, entry.column) {
+                None => match artifact_window.family {
+                    WindowFamily::VirtualSetup { kind } => table.intern_procedural(kind),
+                    _ => unreachable!("an addressless window is procedural"),
+                },
                 Some(place) => {
                     let address = read_place_to_gkr_address(&place);
-                    let column = resolve_storage_column(storage, address)
+                    let resolved = resolve_storage_column(storage, address)
                         .ok_or(BwdVmBindError::UnresolvedWindow { window, address })?;
-                    if column.is_e4 != shape.is_e4 {
+                    if resolved.is_e4 != shape.is_e4 {
                         return Err(BwdVmBindError::WindowFieldMismatch {
                             window,
                             expect_e4: shape.is_e4,
                         });
                     }
-                    Some(column)
+                    let width = if shape.is_e4 {
+                        size_of::<E4>()
+                    } else {
+                        size_of::<BF>()
+                    } as u32;
+                    table.intern(window, resolved, resolved.stride_bytes / width)?
                 }
             };
-            // The dense offset this column takes if it joins the open run, or
-            // `None` to start a new one.
-            let offset = match (runs.last(), &resolved) {
-                (None, _) => None,
-                // A procedural window is one synthetic backing and reads no
-                // memory at all (`seg_raw_synthesized` derives the value from
-                // the row), so its columns just number themselves.
-                (Some(run), None) => run.read.is_none().then(|| run.prev_offset + 1),
-                (Some(run), Some(next)) => run
-                    .read
-                    .filter(|base| next.stride_bytes == base.stride_bytes)
-                    .and_then(|base| {
-                        dense_step(run.prev_ptr, next.ptr as usize, base.stride_bytes)
-                    })
-                    .map(|step| run.prev_offset + step)
-                    .filter(|offset| *offset < SOURCE_WINDOW_COLUMNS),
-            };
-            let offset = match offset {
-                Some(offset) => offset,
-                None => {
-                    runs.push(BindRun {
-                        read: resolved,
-                        columns: Vec::new(),
-                        prev_ptr: resolved.map_or(0, |r| r.ptr as usize),
-                        prev_offset: 0,
-                    });
-                    0
-                }
-            };
-            let run = runs.last_mut().expect("just started");
-            run.columns.push(LeanBoundColumn {
-                column: offset,
-                source: entry.source,
-            });
-            run.prev_ptr = resolved.map_or(0, |r| r.ptr as usize);
-            run.prev_offset = offset;
-        }
-
-        for run in runs {
-            if new_windows.len() >= BWD_SEG_SOURCE_WINDOW_CAP {
-                return Err(BwdVmBindError::TooManyWindows {
-                    windows: new_windows.len() + 1,
-                    parents: shapes.len(),
-                });
-            }
-            let nw = new_windows.len() as u8;
-            // Columns carry dense offsets already, so the rebound window's
-            // `first_column` is 0 by construction and a slot's column IS the
-            // offset.
-            for entry in &run.columns {
-                new_slots[entry.source as usize] = Some(LeanSourceSlot {
-                    window: nw,
-                    column: entry.column as u16,
-                });
-            }
-            let width = if shape.is_e4 {
-                size_of::<E4>()
-            } else {
-                size_of::<BF>()
-            } as u32;
-            read_elements.push(run.read.map_or(0, |r| r.stride_bytes / width));
-            bound.push(ResolvedBwdCoeffSourceWindow {
-                read: run.read,
+            sources[entry.source as usize] = Some(ResolvedSourceAddr {
+                read_slot: slot,
+                read_column: column,
+                // R0 reads every backing at depth 0 and publishes nothing.
                 publish: None,
                 backing_depth: 0,
-                target_depth: 0,
-                materialize: shape.materialize,
-            });
-            new_windows.push(LeanBoundWindow {
-                family: artifact_window.family,
-                first_column: 0,
-                columns: run.columns,
             });
         }
     }
 
-    let source_slots = new_slots
+    let sources = sources
         .into_iter()
         .collect::<Option<Vec<_>>>()
         .expect("every source slot belongs to exactly one artifact window column");
-    let coord = LeanCoordinateArtifact {
-        layer: coord.layer,
-        regime: coord.regime,
-        target_depth: coord.target_depth,
-        order: coord.order.clone(),
-        program: coord.program.clone(),
-        binding: LeanSourceBinding {
-            windows: new_windows,
-            source_slots,
-        },
-    };
-    let window_columns = window_columns(&coord.binding).map_err(BwdVmBindError::WindowShape)?;
+    let slots = table.slots;
+    if slots.len() > BWD_SEG_ADDR_SLOTS {
+        return Err(BwdVmBindError::TooManyWindows {
+            windows: slots.len(),
+            parents: coord.binding.windows.len(),
+        });
+    }
 
     // R0 publishes nothing; a plan that wants bytes means the depth wiring is
     // wrong and must stop the proof before anything is allocated for it.
-    let plan = plan_publish_scratch(&[&bound], &[&window_columns], &[rows])
+    let publishes = vec![false; slots.len()];
+    let columns: Vec<usize> = slots.iter().map(|slot| slot.columns).collect();
+    let plan = plan_publish_scratch(&[&publishes], &[&columns], &[rows])
         .map_err(BwdVmBindError::WindowShape)?;
     if plan.total_bytes != 0 {
         return Err(BwdVmBindError::PublishPlanNotEmpty {
@@ -855,86 +859,42 @@ pub(crate) fn bind_r0_sources<E: Copy>(
     }
 
     Ok(BoundR0Sources {
-        coord,
-        windows: bound,
-        window_read_elements: read_elements,
-        window_columns,
+        slots,
+        sources,
         publish_plan: plan,
     })
 }
 
 // ── The Ext binding ──────────────────────────────────────────────────────────
 
-/// One Ext binding: the coordinate rebound to production geometry — ONE
-/// partition frozen across the whole round sequence, because the program's
-/// source slots index windows positionally — plus per-round resolved windows.
+/// One Ext binding: per-round address tables and source lanes for the whole
+/// continuation sequence.
 pub(crate) struct BoundExtSources {
-    /// The rebound coordinate, exactly as [`BoundR0Sources::coord`]: same
-    /// program, same order, same slot count; only the window partition and
-    /// each slot's `(window, column)` changed.
-    pub(crate) coord: LeanCoordinateArtifact,
     /// `rounds[r - 1]` is round `r`'s resolution, `r` in `1..=folding_steps-1`.
     pub(crate) rounds: Vec<BoundExtRound>,
-    /// Per rebound window: addressable column count (round-invariant).
-    pub(crate) window_columns: Vec<usize>,
     /// The whole sequence's publish plan, absolute-round indexed. Structurally
     /// EMPTY — every publish is explicitly backed by a cascade slot — and
-    /// asserted so; a nonzero plan means a window lost its backing.
+    /// asserted so; a nonzero plan means a destination lost its backing.
     pub(crate) publish_plan: PublishScratchPlan,
 }
 
-/// One round's resolution over the frozen window partition.
+/// One round's addresses. Unlike the old frozen window partition, each round
+/// interns its own table: a destination slot's base includes that round's offset
+/// inside its cascade region, so the table is a per-round fact and pretending
+/// otherwise is what forced reads and destinations to share an index.
 pub(crate) struct BoundExtRound {
     pub(crate) round: u8,
     pub(crate) rows: usize,
-    pub(crate) windows: Vec<ResolvedBwdCoeffSourceWindow>,
-    /// Per window: elements readable per addressed column — the raw poly
-    /// length on raw rounds, the previous slot's length on chained rounds.
-    pub(crate) window_read_elements: Vec<u32>,
+    pub(crate) slots: Vec<ResolvedAddrSlot>,
+    pub(crate) sources: Vec<ResolvedSourceAddr>,
 }
 
-/// One frozen run under construction: a maximal stretch of one artifact window
-/// that production backs at a uniform stride on BOTH sides the sequence will
-/// address through it — the depth-0 matrix (raw rounds) AND the cascade regions
-/// (publishes and chain reads).
-struct ExtBindRun {
-    /// The parent ARTIFACT window — the per-round shape is its.
-    parent: usize,
-    /// First column's raw backing; `None` for procedural.
-    raw: Option<ResolvedColumn>,
-    /// First column's cascade region.
-    cascade: CascadeRegion,
-    /// Dense offsets, as [`BindRun::columns`].
-    columns: Vec<LeanBoundColumn>,
-    prev_raw_ptr: usize,
-    prev_cascade_base: usize,
-    /// Dense offset of the LAST column added.
-    prev_offset: usize,
-}
-
-/// Resolve one Ext coordinate's windows against production storage for the
-/// whole continuation sequence, re-partitioning them to production geometry.
+/// Resolve one Ext coordinate's sources against production storage, per round.
 ///
-/// One `column` index addresses both sides, so both must agree on it: the
-/// dense step comes from the RAW pointers (see [`dense_step`]), and the run
-/// continues only if the cascade regions advance by that same step. A gap in
-/// the artifact's numbering costs nothing on either side — what splits a run is
-/// the two sides disagreeing about the step, which means storage packs them in
-/// genuinely different orders. Frozen once: the same partition serves every
-/// round, raw and chained alike.
-///
-/// How many pieces that takes is a property of STORAGE, and the descriptor is
-/// sized for it. Measured on blake2 L0 Ext (13 artifact windows, 999 column
-/// transitions): the raw backings are absolute-indexed arenas whose pointers
-/// advance by the artifact's own gap — 1 for 897 transitions, 2/3/4/7 for the
-/// other 102 — while the fold backings advance one region per referenced column
-/// throughout. Each is perfectly strided; they just aren't strided the SAME way,
-/// so a window that must address both ends where they diverge: 13 artifact
-/// windows, 115 production windows. That is fine. A window is a pointer and a
-/// stride, so [`BWD_SEG_SOURCE_WINDOW_CAP`] is 128 and every one of those 115
-/// gets a slot.
-///
-/// [`BWD_SEG_SOURCE_WINDOW_CAP`]: super::seg_desc::BWD_SEG_SOURCE_WINDOW_CAP
+/// Read and destination are interned INDEPENDENTLY, which is the whole point: a
+/// raw matrix is absolute-indexed and its fold backing rank-packed, so the same
+/// column has two different ranks and one index cannot serve both. Two lanes per
+/// source, two slots, no reconciliation, nothing splits.
 pub(crate) fn bind_ext_round_sources<E: Copy>(
     storage: &GpuGKRStorage<BF, E>,
     coord: &LeanCoordinateArtifact,
@@ -947,225 +907,125 @@ pub(crate) fn bind_ext_round_sources<E: Copy>(
     ext_round_window_shapes(coord, 1, d2)?;
     assert!(folding_steps >= 2, "a continuation sequence needs rounds");
 
-    // ── Freeze the partition ─────────────────────────────────────────────────
-    let mut runs: Vec<ExtBindRun> = Vec::new();
-    for (parent, artifact_window) in coord.binding.windows.iter().enumerate() {
-        let window = parent as u8;
-        let e4_origin = artifact_window.backing_field() == FieldKind::Ext;
-        let mut parent_runs = 0usize;
-        for entry in &artifact_window.columns {
-            let (raw, address) = match family_read_place(artifact_window.family, entry.column) {
-                Some(place) => {
-                    let address = read_place_to_gkr_address(&place);
-                    let column = resolve_storage_column(storage, address)
-                        .ok_or(BwdVmBindError::UnresolvedWindow { window, address })?;
-                    if column.is_e4 != e4_origin {
-                        return Err(BwdVmBindError::WindowFieldMismatch {
-                            window,
-                            expect_e4: e4_origin,
-                        });
-                    }
-                    (Some(column), address)
-                }
-                None => match artifact_window.family {
-                    WindowFamily::VirtualSetup { kind } => (None, virtual_setup_address(kind)),
-                    // `family_read_place` is total over the other families.
-                    _ => unreachable!("an addressless window is procedural"),
-                },
-            };
-            let cascade = resolve_cascade_region(storage, request_layer, address, e4_origin)
-                .ok_or(BwdVmBindError::UnresolvedCascade { window, address })?;
-
-            let offset = (parent_runs > 0)
-                .then(|| runs.last().expect("parent_runs > 0"))
-                .and_then(|run| {
-                    let region_bytes = run.cascade.region_elems * size_of::<E4>();
-                    // The raw side owns the step; a procedural window has no raw
-                    // side, so its cascade does.
-                    let step = match (&run.raw, &raw) {
-                        (None, None) => dense_step(
-                            run.prev_cascade_base,
-                            cascade.base as usize,
-                            u32::try_from(region_bytes).expect("region stride"),
-                        ),
-                        (Some(base), Some(next)) if next.stride_bytes == base.stride_bytes => {
-                            dense_step(run.prev_raw_ptr, next.ptr as usize, base.stride_bytes)
-                        }
-                        _ => None,
-                    }?;
-                    let agrees = cascade.region_elems == run.cascade.region_elems
-                        && cascade.first_slot == run.cascade.first_slot
-                        && cascade.base as usize == run.prev_cascade_base + step * region_bytes;
-                    (agrees && run.prev_offset + step < SOURCE_WINDOW_COLUMNS)
-                        .then_some(run.prev_offset + step)
-                });
-            let offset = match offset {
-                Some(offset) => offset,
-                None => {
-                    runs.push(ExtBindRun {
-                        parent,
-                        raw,
-                        cascade,
-                        columns: Vec::new(),
-                        prev_raw_ptr: raw.map_or(0, |column| column.ptr as usize),
-                        prev_cascade_base: cascade.base as usize,
-                        prev_offset: 0,
-                    });
-                    parent_runs += 1;
-                    0
-                }
-            };
-            let run = runs.last_mut().expect("just started");
-            run.columns.push(LeanBoundColumn {
-                column: offset,
-                source: entry.source,
-            });
-            run.prev_raw_ptr = raw.map_or(0, |column| column.ptr as usize);
-            run.prev_cascade_base = cascade.base as usize;
-            run.prev_offset = offset;
-        }
-    }
-    if runs.len() > BWD_SEG_SOURCE_WINDOW_CAP {
-        return Err(BwdVmBindError::TooManyWindows {
-            windows: runs.len(),
-            parents: coord.binding.windows.len(),
-        });
-    }
-    if std::env::var_os("AB_BWD_VM_BIND_CENSUS").is_some() {
-        use std::collections::BTreeSet;
-        let columns: usize = runs.iter().map(|run| run.columns.len()).sum();
-        let matrices: BTreeSet<usize> = runs
-            .iter()
-            .filter_map(|run| run.raw.map(|c| c.matrix_base as usize))
-            .collect();
-        let backings: BTreeSet<(usize, u32)> = runs
-            .iter()
-            .filter_map(|run| run.raw.map(|c| (c.matrix_base as usize, c.stride_bytes)))
-            .collect();
-        eprintln!(
-            "[bwd-vm-census] L{} Ext: {columns} referenced columns, \
-             {} artifact windows, {} bound windows, \
-             {} distinct raw matrices ({} incl. stride), {} sources",
-            coord.layer,
-            coord.binding.windows.len(),
-            runs.len(),
-            matrices.len(),
-            backings.len(),
-            coord.binding.source_slots.len(),
-        );
-    }
-
-    // ── Rebuild the coordinate over the frozen partition ─────────────────────
-    let mut new_windows: Vec<LeanBoundWindow> = Vec::with_capacity(runs.len());
-    let mut new_slots: Vec<Option<LeanSourceSlot>> =
-        vec![None; coord.binding.source_slots.len()];
-    for (index, run) in runs.iter().enumerate() {
-        // Dense offsets already, so `first_column` is 0 and a slot's column IS
-        // the offset — as in [`bind_r0_sources`].
-        for entry in &run.columns {
-            new_slots[entry.source as usize] = Some(LeanSourceSlot {
-                window: index as u8,
-                column: entry.column as u16,
-            });
-        }
-        new_windows.push(LeanBoundWindow {
-            family: coord.binding.windows[run.parent].family,
-            first_column: 0,
-            columns: run.columns.clone(),
-        });
-    }
-    let source_slots = new_slots
-        .into_iter()
-        .collect::<Option<Vec<_>>>()
-        .expect("every source slot belongs to exactly one artifact window column");
-    let coord_rebound = LeanCoordinateArtifact {
-        layer: coord.layer,
-        regime: coord.regime,
-        target_depth: coord.target_depth,
-        order: coord.order.clone(),
-        program: coord.program.clone(),
-        binding: LeanSourceBinding {
-            windows: new_windows,
-            source_slots,
-        },
-    };
-    let window_columns =
-        window_columns(&coord_rebound.binding).map_err(BwdVmBindError::WindowShape)?;
-
-    // ── Resolve every round over the frozen partition ────────────────────────
     let mut rounds = Vec::with_capacity(folding_steps - 1);
     for round in 1..folding_steps {
         let rows = 1usize << (folding_steps - round - 1);
         let round = round as u8;
         let shapes = ext_round_window_shapes(coord, round, d2)?;
-        let mut windows = Vec::with_capacity(runs.len());
-        let mut read_elements = Vec::with_capacity(runs.len());
-        for run in &runs {
-            let shape = &shapes[run.parent];
-            let region_stride =
-                u32::try_from(run.cascade.region_elems * size_of::<E4>()).expect("region stride");
-            let read = if shape.chained {
-                // The chain read IS the previous round's publish: the same
-                // cascade lookup, one slot back — the invariant the parity
-                // model enforced with `ChainReadNotPriorPublish` holds here
-                // by construction.
-                Some(ResolvedColumn {
-                    is_e4: true,
-                    ptr: run.cascade.slot_ptr(round - 1).cast_const(),
-                    matrix_base: run.cascade.base,
-                    stride_bytes: region_stride,
-                })
-            } else {
-                run.raw
-            };
-            let publish = shape.materialize.then(|| ResolvedColumn {
-                is_e4: true,
-                ptr: run.cascade.slot_ptr(round).cast_const(),
-                matrix_base: run.cascade.base,
-                stride_bytes: region_stride,
-            });
-            read_elements.push(match &read {
-                _ if shape.chained => run.cascade.slot_elems(round - 1) as u32,
-                Some(column) => {
-                    let width = if column.is_e4 {
-                        size_of::<E4>()
-                    } else {
-                        size_of::<BF>()
-                    } as u32;
-                    column.stride_bytes / width
-                }
-                None => 0,
-            });
-            windows.push(ResolvedBwdCoeffSourceWindow {
-                read,
-                publish,
-                backing_depth: shape.backing_depth,
-                target_depth: round,
-                materialize: shape.materialize,
+        let mut table = SlotTable::default();
+        let mut sources: Vec<Option<ResolvedSourceAddr>> =
+            vec![None; coord.binding.source_slots.len()];
+
+        for (parent, artifact_window) in coord.binding.windows.iter().enumerate() {
+            let window = parent as u8;
+            let shape = &shapes[parent];
+            let e4_origin = artifact_window.backing_field() == FieldKind::Ext;
+            for entry in &artifact_window.columns {
+                let (raw, address) = match family_read_place(artifact_window.family, entry.column) {
+                    Some(place) => {
+                        let address = read_place_to_gkr_address(&place);
+                        let resolved = resolve_storage_column(storage, address)
+                            .ok_or(BwdVmBindError::UnresolvedWindow { window, address })?;
+                        if resolved.is_e4 != e4_origin {
+                            return Err(BwdVmBindError::WindowFieldMismatch {
+                                window,
+                                expect_e4: e4_origin,
+                            });
+                        }
+                        (Some(resolved), address)
+                    }
+                    None => match artifact_window.family {
+                        WindowFamily::VirtualSetup { kind } => (None, virtual_setup_address(kind)),
+                        _ => unreachable!("an addressless window is procedural"),
+                    },
+                };
+                let cascade = resolve_cascade_region(storage, request_layer, address, e4_origin)
+                    .ok_or(BwdVmBindError::UnresolvedCascade { window, address })?;
+
+                // The READ lane. A chained round reads the previous round's
+                // publish — the same cascade region, one slot back — which is
+                // exactly the invariant the parity model enforced with
+                // `ChainReadNotPriorPublish`, here by construction.
+                let (read_slot, read_column) = if shape.chained {
+                    let slot = cascade.slot_column(round - 1);
+                    table.intern(window, slot, cascade.slot_elems(round - 1) as u32)?
+                } else {
+                    match raw {
+                        Some(resolved) => {
+                            let width = if resolved.is_e4 {
+                                size_of::<E4>()
+                            } else {
+                                size_of::<BF>()
+                            } as u32;
+                            table.intern(window, resolved, resolved.stride_bytes / width)?
+                        }
+                        None => match artifact_window.family {
+                            WindowFamily::VirtualSetup { kind } => table.intern_procedural(kind),
+                            _ => unreachable!("an addressless window is procedural"),
+                        },
+                    }
+                };
+                // The DESTINATION lane, interned in its own right.
+                let publish = if shape.materialize {
+                    let slot = cascade.slot_column(round);
+                    Some(table.intern(window, slot, cascade.slot_elems(round) as u32)?)
+                } else {
+                    None
+                };
+                sources[entry.source as usize] = Some(ResolvedSourceAddr {
+                    read_slot,
+                    read_column,
+                    publish,
+                    backing_depth: shape.backing_depth,
+                });
+            }
+        }
+
+        let sources = sources
+            .into_iter()
+            .collect::<Option<Vec<_>>>()
+            .expect("every source slot belongs to exactly one artifact window column");
+        let slots = table.slots;
+        if slots.len() > BWD_SEG_ADDR_SLOTS {
+            return Err(BwdVmBindError::TooManyWindows {
+                windows: slots.len(),
+                parents: coord.binding.windows.len(),
             });
         }
         rounds.push(BoundExtRound {
             round,
             rows,
-            windows,
-            window_read_elements: read_elements,
+            slots,
+            sources,
         });
     }
 
     // ── The (empty) plan for the whole sequence ──────────────────────────────
-    // Round 0 belongs to the R0 program and plans nothing here; every window
-    // of rounds 1+ is explicitly backed, so the plan must reserve nothing.
-    let empty_windows: Vec<ResolvedBwdCoeffSourceWindow> = Vec::new();
-    let empty_columns: Vec<usize> = Vec::new();
-    let mut windows_per_round: Vec<&[ResolvedBwdCoeffSourceWindow]> = vec![&empty_windows];
-    let mut columns_per_round: Vec<&[usize]> = vec![&empty_columns];
+    // Round 0 belongs to the R0 program and plans nothing here; every
+    // destination of rounds 1+ is an explicit cascade slot, so the plan must
+    // reserve nothing.
+    let no_publishes: Vec<bool> = Vec::new();
+    let no_columns: Vec<usize> = Vec::new();
+    let mut publishes_per_round: Vec<&[bool]> = vec![&no_publishes];
+    let mut columns_per_round: Vec<&[usize]> = vec![&no_columns];
     let mut rows_per_round: Vec<usize> = vec![1 << (folding_steps - 1)];
-    for bound in &rounds {
-        windows_per_round.push(&bound.windows);
-        columns_per_round.push(&window_columns);
+    let per_round_columns: Vec<Vec<usize>> = rounds
+        .iter()
+        .map(|bound| bound.slots.iter().map(|slot| slot.columns).collect())
+        .collect();
+    let per_round_publishes: Vec<Vec<bool>> = rounds
+        .iter()
+        .map(|bound| vec![false; bound.slots.len()])
+        .collect();
+    for (bound, (columns, publishes)) in rounds
+        .iter()
+        .zip(per_round_columns.iter().zip(&per_round_publishes))
+    {
+        publishes_per_round.push(publishes);
+        columns_per_round.push(columns);
         rows_per_round.push(bound.rows);
     }
-    let plan = plan_publish_scratch(&windows_per_round, &columns_per_round, &rows_per_round)
+    let plan = plan_publish_scratch(&publishes_per_round, &columns_per_round, &rows_per_round)
         .map_err(BwdVmBindError::WindowShape)?;
     if plan.total_bytes != 0 {
         return Err(BwdVmBindError::PublishPlanNotEmpty {
@@ -1174,9 +1034,7 @@ pub(crate) fn bind_ext_round_sources<E: Copy>(
     }
 
     Ok(BoundExtSources {
-        coord: coord_rebound,
         rounds,
-        window_columns,
         publish_plan: plan,
     })
 }
@@ -1192,19 +1050,15 @@ pub(crate) fn bind_ext_round_sources<E: Copy>(
 /// window (delta 0 reads one endpoint pair per column per logical row), plus
 /// nothing procedural (synthesized, no DRAM) and nothing published (asserted
 /// empty at R0).
-pub(crate) fn seg_r0_bytes_per_row(
-    windows: &[ResolvedBwdCoeffSourceWindow],
-    columns: &[usize],
-) -> usize {
+pub(crate) fn seg_r0_bytes_per_row(slots: &[ResolvedAddrSlot]) -> usize {
     let mut bytes = 2 * size_of::<E4>();
-    for (window, &columns) in windows.iter().zip(columns) {
-        debug_assert!(!window.materialize, "R0 publishes nothing");
-        let element = match window.read {
+    for slot in slots {
+        let element = match slot.base {
             None => 0,
-            Some(read) if read.is_e4 => size_of::<E4>(),
+            Some(base) if base.is_e4 => size_of::<E4>(),
             Some(_) => size_of::<BF>(),
         };
-        bytes += columns * 2 * element;
+        bytes += slot.columns * 2 * element;
     }
     bytes
 }
@@ -1259,13 +1113,13 @@ pub(crate) fn build_bwd_vm_round0<E: Copy>(
         parity_base: [null_mut(), null_mut()],
         plan: bound.publish_plan.clone(),
     };
-    let bytes_per_row = seg_r0_bytes_per_row(&bound.windows, &bound.window_columns);
+    let bytes_per_row = seg_r0_bytes_per_row(&bound.slots);
     let k = seg_policy_k(bytes_per_row, seg_k_ceiling(BwdRegime::R0)?);
     let binding = BwdSegRoundBinding {
         round: 0,
         rows,
-        windows: &bound.windows,
-        window_read_elements: &bound.window_read_elements,
+        slots: &bound.slots,
+        sources: &bound.sources,
         claim_point: &[],
         coefficients: &coefficients,
         c_init: None,
@@ -1279,7 +1133,7 @@ pub(crate) fn build_bwd_vm_round0<E: Copy>(
         output: BWD_SEG_OUTPUT_PARTIALS,
     };
     let setup = lower_bwd_seg(
-        &bound.coord,
+        &slice.coord,
         &binding,
         &scratch,
         k,
@@ -1445,22 +1299,18 @@ pub(crate) fn drained_eq_sizes(mut eq_sizes: GkrEqSizes, rounds: u8) -> GkrEqSiz
 /// consumes `2^delta` inputs per half at this round's catch-up delta;
 /// procedural windows synthesize and read nothing), plus two E4 per published
 /// column, plus the two contribution halves.
-pub(crate) fn seg_ext_bytes_per_row(
-    windows: &[ResolvedBwdCoeffSourceWindow],
-    columns: &[usize],
-) -> usize {
+pub(crate) fn seg_ext_bytes_per_row(slots: &[ResolvedAddrSlot]) -> usize {
+    // Per slot, not per source: a slot IS a backing, so its columns are counted
+    // once however many sources read them. A destination slot is an E4 backing
+    // with no reader, which prices its own write extent through the same term.
     let mut bytes = 2 * size_of::<E4>();
-    for (window, &columns) in windows.iter().zip(columns) {
-        let element = match window.read {
+    for slot in slots {
+        let element = match slot.base {
             None => 0,
-            Some(read) if read.is_e4 => size_of::<E4>(),
+            Some(base) if base.is_e4 => size_of::<E4>(),
             Some(_) => size_of::<BF>(),
         };
-        let delta = window.target_depth - window.backing_depth;
-        bytes += columns * (2usize << delta) * element;
-        if window.materialize {
-            bytes += columns * 2 * size_of::<E4>();
-        }
+        bytes += slot.columns * 2 * element;
     }
     bytes
 }
@@ -1526,13 +1376,13 @@ pub(crate) fn build_bwd_vm_ext_rounds<E: Copy>(
     let ceiling = seg_k_ceiling(BwdRegime::Ext)?;
     let mut setups = Vec::with_capacity(bound.rounds.len());
     for round in &bound.rounds {
-        let bytes_per_row = seg_ext_bytes_per_row(&round.windows, &bound.window_columns);
+        let bytes_per_row = seg_ext_bytes_per_row(&round.slots);
         let k = seg_policy_k(bytes_per_row, ceiling);
         let binding = BwdSegRoundBinding {
             round: u32::from(round.round),
             rows: round.rows,
-            windows: &round.windows,
-            window_read_elements: &round.window_read_elements,
+            slots: &round.slots,
+            sources: &round.sources,
             claim_point: &claim_point,
             coefficients: &coefficients,
             c_init: slice.layer.c_init,
@@ -1550,7 +1400,7 @@ pub(crate) fn build_bwd_vm_ext_rounds<E: Copy>(
         };
         setups.push(
             lower_bwd_seg(
-                &bound.coord,
+                &slice.coord,
                 &binding,
                 &scratch,
                 k,

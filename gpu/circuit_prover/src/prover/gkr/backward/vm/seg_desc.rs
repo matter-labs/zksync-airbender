@@ -429,6 +429,20 @@ pub(crate) struct BwdSegSourceRecord {
     pub delta: u8,
 }
 
+impl Default for BwdSegSourceRecord {
+    /// A dead record: both lanes absent, so a reader past `num_sources` cannot
+    /// resolve an address at all. `src` is the sentinel rather than zero, which
+    /// would name slot 0 column 0 — a live address.
+    fn default() -> Self {
+        Self {
+            src: BWD_SEG_ADDR_NONE,
+            cache: BWD_SEG_ADDR_NONE,
+            class: 0,
+            delta: 0,
+        }
+    }
+}
+
 const _: () = {
     use core::mem::offset_of;
 

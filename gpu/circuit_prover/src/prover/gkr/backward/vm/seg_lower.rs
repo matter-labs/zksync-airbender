@@ -60,11 +60,11 @@ use gkr_eval_isa::bwd::coeff::model::{CoefficientRecipeId, ImmediateId};
 use gkr_eval_isa::bwd::coeff::order::split_round_robin;
 
 use super::seg_desc::{
-    BwdCoeffSourceWindow, BwdSegDesc, BwdSegProgPtrDesc, BwdSegSourceRecord,
+    bwd_seg_lane, bwd_seg_lane_column, bwd_seg_lane_slot, BwdSegAddrSlot, BwdSegDesc, BwdSegProgPtrDesc, BwdSegSourceRecord,
     BWD_COEFF_MAX_FOLD_DEPTH, BWD_COEFF_ORIGIN_PROCEDURAL, BWD_COEFF_ORIGIN_READ_BASE,
     BWD_COEFF_ORIGIN_READ_EXT, BWD_COEFF_PROCEDURAL_KINDS, BWD_COEFF_PROCEDURAL_NONE,
     BWD_COEFF_PUBLISH_TARGET_DEPTH, BWD_SEG_CONST_BANK, BWD_SEG_C_INIT_NONE, BWD_SEG_MAX_K,
-    BWD_SEG_MAX_SOURCES, BWD_SEG_SOURCE_WINDOW_CAP,
+    BWD_SEG_ADDR_NONE, BWD_SEG_ADDR_SLOTS, BWD_SEG_MAX_SOURCES,
 };
 use crate::primitives::field::{BF, E4};
 use crate::prover::gkr::backward::GkrEqSizes;
@@ -98,20 +98,40 @@ pub(crate) fn bwd_coeff_fold_depth(round: u8) -> u8 {
 /// column, so the device resolves a bound coordinate as
 /// `read_base + column * read_stride_bytes`.
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct ResolvedBwdCoeffSourceWindow {
-    /// The matrix column the window is based at. `None` only for a procedural
-    /// window whose values are produced from the row rather than read.
-    pub read: Option<ResolvedColumn>,
-    /// Where a first access publishes both raw target-depth endpoints. Required
-    /// whenever `materialize` is set.
-    pub publish: Option<ResolvedColumn>,
-    /// Depth the read backing is currently at.
+pub(crate) struct ResolvedAddrSlot {
+    /// The backing's base column. `None` only for a procedural slot, whose
+    /// values are produced from the row rather than read.
+    pub base: Option<ResolvedColumn>,
+    /// The procedural kind when this slot synthesizes, else `None`.
+    pub procedural_kind: Option<u8>,
+    /// Elements readable at the base, per addressed column — the span length
+    /// `ResolvedColumn` has no field for, and the reason a short backing is a
+    /// rejection here instead of an out-of-bounds read on the device.
+    pub read_elements: u32,
+    /// Addressable columns. A slot covers at most [`SOURCE_WINDOW_COLUMNS`] of
+    /// its backing; a wider backing takes several slots at offset bases.
+    pub columns: usize,
+}
+
+/// One wire source's ADDRESSES for one round: which slot and column it reads,
+/// and where its fold publishes.
+///
+/// Read and destination are independent by construction, which is the whole
+/// point of the two-lane record: a matrix and the fold buffer its columns
+/// materialize into are packed differently, so one index cannot serve both.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct ResolvedSourceAddr {
+    /// Slot index into the round's table, and the column within it.
+    pub read_slot: usize,
+    pub read_column: usize,
+    /// Where this source's fold publishes, when the caller backs it explicitly
+    /// (production: a cascade slot of the layer's own fold storage). `None`
+    /// leaves the destination to the publish-scratch plan, which is what the
+    /// bench's host model uses.
+    pub publish: Option<(usize, usize)>,
+    /// Depth this source's read backing is currently at. Per source, not per
+    /// slot: two artifact windows may read one matrix at different depths.
     pub backing_depth: u8,
-    /// Depth a use of this window must observe.
-    pub target_depth: u8,
-    /// §10.2's static policy: publish on first physical access. Layer-wide, but
-    /// carried per entry so the device never has to consult two places.
-    pub materialize: bool,
 }
 
 // ── Source classes ───────────────────────────────────────────────────────────
@@ -289,7 +309,7 @@ pub(crate) struct ResolvedPublishScratch {
 /// Validates STRUCTURAL non-overlap within each parity buffer. It cannot validate
 /// anything about POINTERS: there are none yet.
 pub(crate) fn plan_publish_scratch(
-    windows_per_round: &[&[ResolvedBwdCoeffSourceWindow]],
+    windows_per_round: &[&[bool]],
     columns_per_round: &[&[usize]],
     rows_per_round: &[usize],
 ) -> Result<PublishScratchPlan, BwdSegLowerError> {
@@ -325,11 +345,11 @@ pub(crate) fn plan_publish_scratch(
         let mut regions: Vec<(u8, usize, usize)> = Vec::new();
         let mut cursor = 0usize;
         for (index, bound) in windows.iter().enumerate() {
-            // An explicitly backed window publishes into its caller-supplied
-            // region (production: the layer's own fold storage) and needs no
-            // parity reservation — `lower_window` takes its explicit arm on
-            // the ABSENT entry this leaves behind.
-            if !bound.materialize || bound.publish.is_some() {
+            // A slot whose sources publish into a caller-supplied region
+            // (production: the layer's own fold storage) needs no parity
+            // reservation — `lower_source` takes its explicit arm on the ABSENT
+            // entry this leaves behind.
+            if !*bound {
                 continue;
             }
             let span = columns[index]
@@ -750,14 +770,12 @@ pub(crate) struct BwdSegRoundBinding<'a> {
     /// Logical rows this launch evaluates: one per thread, and the contribution
     /// half-stride.
     pub rows: usize,
-    /// One entry per artifact binding window, in wire order.
-    pub windows: &'a [ResolvedBwdCoeffSourceWindow],
-    /// Per window: elements readable at its read base, per addressed column.
-    ///
-    /// The span length the cell-era `ResolvedColumn` had no field for, and the
-    /// reason a short backing is a rejection here instead of an out-of-bounds
-    /// read on the device.
-    pub window_read_elements: &'a [u32],
+    /// The round's address table, positionally the descriptor's slot array.
+    /// Keyed by BACKING: two sources reading one matrix share a slot whatever
+    /// their columns, and a source publishes through a slot of its own.
+    pub slots: &'a [ResolvedAddrSlot],
+    /// One entry per wire source, in source-slot order.
+    pub sources: &'a [ResolvedSourceAddr],
     /// The main-layer claim point, as a HOST slice. It becomes
     /// [`BwdSegSetup::claim_point`] (the caller uploads it to the
     /// `ab_gkr_main_layer_claim_point` symbol, which is the ONE challenge
@@ -1083,30 +1101,6 @@ pub(crate) fn assign_class(origin: SourceOrigin, delta: u8, d2: D2Policy) -> (So
 
 // ── Lowering ─────────────────────────────────────────────────────────────────
 
-/// Per-window addressable column counts, from the artifact's own binding.
-///
-/// A window's span is `[first_column, first_column + SOURCE_WINDOW_COLUMNS)` and
-/// an unreferenced column inside it is a hole, so the count is the WIDEST
-/// referenced offset plus one — not the number of referenced columns.
-pub(crate) fn window_columns(binding: &LeanSourceBinding) -> Result<Vec<usize>, BwdSegLowerError> {
-    let mut columns = Vec::with_capacity(binding.windows.len());
-    for (index, window) in binding.windows.iter().enumerate() {
-        let widest = window
-            .columns
-            .last()
-            .map(|column| column.column.saturating_sub(window.first_column))
-            .unwrap_or(0);
-        if widest >= SOURCE_WINDOW_COLUMNS {
-            return Err(BwdSegLowerError::WindowColumnOverflow {
-                window: index as u8,
-                offset: widest,
-            });
-        }
-        columns.push(widest + 1);
-    }
-    Ok(columns)
-}
-
 /// Fill every field both descriptor families share.
 ///
 /// A macro rather than a function: the two structs are field-for-field identical
@@ -1123,14 +1117,14 @@ macro_rules! fill_seg_desc {
         desc.num_immediates = body.num_immediates;
         desc.fold_source[..body.fold_source.len()].copy_from_slice(&body.fold_source);
         desc.source[..body.sources.len()].copy_from_slice(&body.sources);
-        // Dead window slots carry the ABSENT procedural kind rather than the
-        // zeroed `0`, which is a LIVE kind.
-        for (index, slot) in desc.window.iter_mut().enumerate() {
-            *slot = body
-                .windows
+        // Dead slots carry the ABSENT procedural kind rather than the zeroed
+        // `0`, which is a LIVE kind.
+        for (index, entry) in desc.slot.iter_mut().enumerate() {
+            *entry = body
+                .slots
                 .get(index)
                 .copied()
-                .unwrap_or_else(BwdCoeffSourceWindow::default);
+                .unwrap_or_else(BwdSegAddrSlot::default);
         }
         desc.c_init_coeff = body.c_init_coeff;
         desc.immediates[..body.immediates.len()].copy_from_slice(&body.immediates);
@@ -1158,8 +1152,8 @@ pub(crate) unsafe fn zeroed_box<T>() -> Box<T> {
 }
 
 /// What one window resolved to at this round.
-struct LoweredWindow {
-    desc: BwdCoeffSourceWindow,
+struct LoweredSource {
+    record: BwdSegSourceRecord,
     class: SourceClass,
     publishes: bool,
 }
@@ -1174,7 +1168,7 @@ struct SegDescBody {
     num_immediates: u16,
     fold_source: Vec<u16>,
     sources: Vec<BwdSegSourceRecord>,
-    windows: Vec<BwdCoeffSourceWindow>,
+    slots: Vec<BwdSegAddrSlot>,
     c_init_coeff: u32,
     /// The immediate table in the kernel's in-memory (Montgomery) form, already
     /// capped by the wire validator — see [`BwdSegSetup::immediates`].
@@ -1340,30 +1334,31 @@ pub(crate) fn lower_bwd_seg(
         return Err(BwdSegLowerError::ProgramOffsetOverflow { words });
     }
 
-    // ── Windows ──────────────────────────────────────────────────────────────
-    let compiled = &artifact.binding.windows;
-    // Against the descriptor's CAPACITY, not the corpus measurement: a circuit
-    // whose re-windowing produces more windows than anything measured so far is a
-    // fact about that circuit, not an error, up to what the array holds.
-    if compiled.len() > BWD_SEG_SOURCE_WINDOW_CAP {
+    // ── The address table ────────────────────────────────────────────────────
+    // A slot is a BACKING, so the count is bounded by how many matrices and fold
+    // buffers a layer touches — never by how the artifact groups its columns.
+    // Scratch-backed destinations are interned below and share the same budget.
+    if binding.slots.len() > BWD_SEG_ADDR_SLOTS {
         return Err(BwdSegLowerError::SourceWindowOverflow {
-            windows: compiled.len(),
-            cap: BWD_SEG_SOURCE_WINDOW_CAP,
+            windows: binding.slots.len(),
+            cap: BWD_SEG_ADDR_SLOTS,
         });
     }
-    if compiled.len() != binding.windows.len() {
+    if binding.sources.len() != artifact.binding.source_slots.len() {
         return Err(BwdSegLowerError::SourceWindowCountMismatch {
-            compiled: compiled.len(),
-            bound: binding.windows.len(),
+            compiled: artifact.binding.source_slots.len(),
+            bound: binding.sources.len(),
         });
     }
-    if compiled.len() != binding.window_read_elements.len() {
-        return Err(BwdSegLowerError::ReadElementCountMismatch {
-            compiled: compiled.len(),
-            bound: binding.window_read_elements.len(),
-        });
+    let columns: Vec<usize> = binding.slots.iter().map(|slot| slot.columns).collect();
+    for (index, count) in columns.iter().enumerate() {
+        if *count == 0 || *count > SOURCE_WINDOW_COLUMNS {
+            return Err(BwdSegLowerError::WindowColumnOverflow {
+                window: index as u8,
+                offset: *count,
+            });
+        }
     }
-    let columns = window_columns(&artifact.binding)?;
 
     let rounds = scratch.plan.per_round.len();
     let layout = scratch
@@ -1371,10 +1366,10 @@ pub(crate) fn lower_bwd_seg(
         .per_round
         .get(usize::from(round))
         .ok_or(BwdSegLowerError::PlanMissingRound { round, rounds })?;
-    if layout.window_base.len() != compiled.len() {
+    if layout.window_base.len() != binding.slots.len() {
         return Err(BwdSegLowerError::PlanShapeMismatch {
             round: usize::from(round),
-            windows: compiled.len(),
+            windows: binding.slots.len(),
             entries: layout.window_base.len(),
         });
     }
@@ -1390,10 +1385,10 @@ pub(crate) fn lower_bwd_seg(
         .and_then(|index| scratch.plan.per_round.get(index))
     {
         let entries = previous.window_base.len();
-        if entries != 0 && entries < compiled.len() {
+        if entries != 0 && entries < binding.slots.len() {
             return Err(BwdSegLowerError::PlanShapeMismatch {
                 round: usize::from(round) - 1,
-                windows: compiled.len(),
+                windows: binding.slots.len(),
                 entries,
             });
         }
@@ -1421,63 +1416,76 @@ pub(crate) fn lower_bwd_seg(
         }
     }
 
-    let mut lowered = Vec::with_capacity(compiled.len());
-    for (index, (window, bound)) in compiled.iter().zip(binding.windows).enumerate() {
-        lowered.push(lower_window(
-            index as u8,
-            window.procedural_kind(),
-            columns[index],
-            bound,
+    // The table the descriptor carries: one entry per supplied slot, plus one per
+    // scratch-backed destination interned while lowering the sources.
+    let mut table: Vec<BwdSegAddrSlot> = Vec::with_capacity(binding.slots.len());
+    for (index, slot) in binding.slots.iter().enumerate() {
+        table.push(lower_slot(index as u8, slot)?);
+    }
+
+    // ── Sources ──────────────────────────────────────────────────────────────
+    if binding.sources.len() > BWD_SEG_MAX_SOURCES {
+        return Err(BwdSegLowerError::SourceOverflow {
+            sources: binding.sources.len(),
+            cap: BWD_SEG_MAX_SOURCES,
+        });
+    }
+    // Scratch-backed destinations, interned by the READ slot they belong to. This
+    // is the publish-scratch plan's own keying (`layout.window_base[i]` is slot
+    // `i`'s region), so a caller that supplies no explicit destination gets
+    // exactly the region the plan sized for it.
+    let mut scratch_slot: Vec<Option<usize>> = vec![None; binding.slots.len()];
+    let mut slot_columns: Vec<usize> = columns.clone();
+    let mut sources = Vec::with_capacity(binding.sources.len());
+    let mut source_classes = Vec::with_capacity(binding.sources.len());
+    let mut publishing = Vec::with_capacity(binding.sources.len());
+    for (source, addr) in binding.sources.iter().enumerate() {
+        let lowered = lower_source(
+            source,
+            addr,
             binding,
+            &mut table,
+            &mut slot_columns,
+            &mut scratch_slot,
             scratch,
             layout,
             publish_stride,
             round,
             fold_depth,
             d2,
-        )?);
+        )?;
+        sources.push(lowered.record);
+        source_classes.push(lowered.class);
+        publishing.push(lowered.publishes);
+    }
+    // Per-slot alias inputs, read off the RECORDS: a slot is a read source with
+    // the widest extent any source demands of it, and a publish target if any
+    // source names it on the destination lane.
+    let mut slot_read_extent = vec![0usize; table.len()];
+    let mut slot_publishes = vec![false; table.len()];
+    for record in &sources {
+        let read_slot = bwd_seg_lane_slot(record.src);
+        let width = if table[read_slot].origin == BWD_COEFF_ORIGIN_READ_EXT {
+            E4_COLUMN_BYTES
+        } else {
+            BF_COLUMN_BYTES
+        } as usize;
+        let extent = 2 * binding.rows * (1usize << record.delta) * width;
+        slot_read_extent[read_slot] = slot_read_extent[read_slot].max(extent);
+        if record.cache != BWD_SEG_ADDR_NONE {
+            slot_publishes[bwd_seg_lane_slot(record.cache)] = true;
+        }
     }
     check_alias(
-        &lowered,
-        &columns,
+        &table,
+        &slot_columns,
+        &slot_read_extent,
+        &slot_publishes,
         scratch,
         write_parity,
         read_parity,
         binding.rows,
     )?;
-
-    // ── Sources ──────────────────────────────────────────────────────────────
-    let slots = &artifact.binding.source_slots;
-    if slots.len() > BWD_SEG_MAX_SOURCES {
-        return Err(BwdSegLowerError::SourceOverflow {
-            sources: slots.len(),
-            cap: BWD_SEG_MAX_SOURCES,
-        });
-    }
-    let mut sources = Vec::with_capacity(slots.len());
-    let mut source_classes = Vec::with_capacity(slots.len());
-    for (source, slot) in slots.iter().enumerate() {
-        let window = usize::from(slot.window);
-        let entry = lowered
-            .get(window)
-            .ok_or(BwdSegLowerError::SourceWindowOutOfRange {
-                source,
-                window: slot.window,
-            })?;
-        if usize::from(slot.column) >= columns[window] {
-            return Err(BwdSegLowerError::SourceColumnOutOfWindow {
-                source,
-                window: slot.window,
-                column: slot.column,
-            });
-        }
-        sources.push(BwdSegSourceRecord {
-            window: slot.window,
-            class: entry.class.code(),
-            column: slot.column,
-        });
-        source_classes.push(entry.class);
-    }
 
     // ── The wire, validated and annotated against those sources ──────────────
     let seg_atoms = annotate_atoms(
@@ -1530,7 +1538,7 @@ pub(crate) fn lower_bwd_seg(
         .filter(|&source| first_touch[usize::from(source)] == usize::MAX)
         .collect();
     let mut fold_source: Vec<u16> = (0..sources.len())
-        .filter(|&source| lowered[usize::from(sources[source].window)].publishes)
+        .filter(|&source| publishing[source])
         .map(|source| source as u16)
         .collect();
     // Descending first touch; ties by ascending slot, so the order is total. A
@@ -1674,7 +1682,7 @@ pub(crate) fn lower_bwd_seg(
         num_immediates: immediates.len() as u16,
         fold_source,
         sources,
-        windows: lowered.iter().map(|entry| entry.desc).collect(),
+        slots: table,
         c_init_coeff,
         immediates: immediates.clone(),
         eq_low: binding.eq_low,
@@ -1723,48 +1731,129 @@ pub(crate) fn lower_bwd_seg(
     })
 }
 
-/// Resolve ONE window's class, geometry and publish region.
+/// Resolve ONE address slot into its descriptor entry.
+///
+/// A slot is pure addressing plus the two facts that belong to a BACKING rather
+/// than to a source, so this checks only geometry: the base must be a legal
+/// column, the far end of the addressed span must still be representable, and a
+/// procedural slot must not also claim a matrix.
+fn lower_slot(index: u8, slot: &ResolvedAddrSlot) -> Result<BwdSegAddrSlot, BwdSegLowerError> {
+    if let Some(kind) = slot.procedural_kind {
+        if usize::from(kind) >= BWD_COEFF_PROCEDURAL_KINDS {
+            return Err(BwdSegLowerError::UnknownProceduralKind {
+                window: index,
+                kind,
+            });
+        }
+        if slot.base.is_some() {
+            return Err(BwdSegLowerError::ProceduralWindowWithMatrixRead { window: index });
+        }
+        // A procedural value comes from the row, so the column coordinate is
+        // meaningless and a multi-column procedural slot is a lowering bug.
+        if slot.columns > 1 {
+            return Err(BwdSegLowerError::MultiColumnProceduralWindow {
+                window: index,
+                columns: slot.columns,
+            });
+        }
+    }
+    let Some(column) = slot.base else {
+        return Ok(BwdSegAddrSlot {
+            base: std::ptr::null(),
+            log2_stride: 0,
+            origin: BWD_COEFF_ORIGIN_PROCEDURAL,
+            procedural_kind: slot.procedural_kind.ok_or(
+                BwdSegLowerError::MissingReadBacking { window: index },
+            )?,
+            reserved: [0; 5],
+        });
+    };
+    check_column_geometry(index, &column)?;
+    let element = if column.is_e4 {
+        E4_COLUMN_BYTES
+    } else {
+        BF_COLUMN_BYTES
+    };
+    // The kernel steps `column << log2_stride` in ELEMENT units, so a stride that
+    // is not a whole power of two in those units is unrepresentable. Every
+    // production stride is one — a raw column stride is the poly length, a fold
+    // region stride is `2 * size_after_one_fold` — so this is a wiring check, not
+    // a limitation.
+    if column.stride_bytes % element != 0 {
+        return Err(BwdSegLowerError::NullWindowGeometry { window: index });
+    }
+    let elements = column.stride_bytes / element;
+    if !elements.is_power_of_two() {
+        return Err(BwdSegLowerError::NullWindowGeometry { window: index });
+    }
+    let base = column.ptr as usize;
+    if base
+        .checked_add(slot.columns * column.stride_bytes as usize)
+        .is_none()
+    {
+        return Err(BwdSegLowerError::NullWindowGeometry { window: index });
+    }
+    Ok(BwdSegAddrSlot {
+        base: column.ptr,
+        log2_stride: elements.trailing_zeros() as u8,
+        origin: if column.is_e4 {
+            BWD_COEFF_ORIGIN_READ_EXT
+        } else {
+            BWD_COEFF_ORIGIN_READ_BASE
+        },
+        procedural_kind: BWD_COEFF_PROCEDURAL_NONE,
+        reserved: [0; 5],
+    })
+}
+
+/// Resolve ONE wire source's class, depth and two lanes.
+///
+/// This is where the old per-window lowering's checks live, restated per source
+/// because that is where the facts now are: a slot is shared by every source
+/// reading its backing, while depth, class and destination are the source's own.
+/// Interns a scratch-backed destination slot on first use when the caller
+/// supplied none.
 #[allow(clippy::too_many_arguments)]
-fn lower_window(
-    window: u8,
-    family_kind: Option<u8>,
-    columns: usize,
-    bound: &ResolvedBwdCoeffSourceWindow,
+fn lower_source(
+    source: usize,
+    addr: &ResolvedSourceAddr,
     binding: &BwdSegRoundBinding<'_>,
+    table: &mut Vec<BwdSegAddrSlot>,
+    slot_columns: &mut Vec<usize>,
+    scratch_slot: &mut [Option<usize>],
     scratch: &ResolvedPublishScratch,
     layout: &PublishRoundLayout,
     publish_stride: u32,
     round: u8,
     fold_depth: u8,
     d2: D2Policy,
-) -> Result<LoweredWindow, BwdSegLowerError> {
-    if let Some(kind) = family_kind {
-        if usize::from(kind) >= BWD_COEFF_PROCEDURAL_KINDS {
-            return Err(BwdSegLowerError::UnknownProceduralKind { window, kind });
-        }
-        // A procedural value comes from the backing INDEX, so the resolver has no
-        // use for the column coordinate.
-        if columns > 1 {
-            return Err(BwdSegLowerError::MultiColumnProceduralWindow { window, columns });
-        }
-    }
-    if bound.target_depth != round {
-        return Err(BwdSegLowerError::WindowTargetDepthMismatch {
+) -> Result<LoweredSource, BwdSegLowerError> {
+    let read_slot = addr.read_slot;
+    let slot = binding
+        .slots
+        .get(read_slot)
+        .ok_or(BwdSegLowerError::SourceWindowOutOfRange {
+            source,
+            window: read_slot.min(u8::MAX as usize) as u8,
+        })?;
+    let window = read_slot as u8;
+    if addr.read_column >= slot_columns[read_slot] {
+        return Err(BwdSegLowerError::SourceColumnOutOfWindow {
+            source,
             window,
-            round,
-            target_depth: bound.target_depth,
+            column: addr.read_column as u16,
         });
     }
-    if bound.backing_depth > bound.target_depth
-        || bound.target_depth - bound.backing_depth > BWD_COEFF_MAX_FOLD_DEPTH
-    {
+
+    // Target depth IS the round; only the backing depth is the source's to carry.
+    if addr.backing_depth > round || round - addr.backing_depth > BWD_COEFF_MAX_FOLD_DEPTH {
         return Err(BwdSegLowerError::InvalidDepths {
             window,
-            backing_depth: bound.backing_depth,
-            target_depth: bound.target_depth,
+            backing_depth: addr.backing_depth,
+            target_depth: round,
         });
     }
-    let delta = bound.target_depth - bound.backing_depth;
+    let delta = round - addr.backing_depth;
     if delta > fold_depth || !(delta == 0 || delta == 1 || delta == fold_depth) {
         return Err(BwdSegLowerError::UnsupportedFoldDelta {
             window,
@@ -1774,7 +1863,7 @@ fn lower_window(
     }
 
     // THE ORIGIN IS THE ROUND'S, NOT THE FAMILY'S. See the module doc.
-    let origin = match (family_kind, bound.read) {
+    let origin = match (slot.procedural_kind, slot.base) {
         (_, Some(column)) if column.is_e4 => SourceOrigin::E4,
         (Some(_), Some(_)) => {
             return Err(BwdSegLowerError::ProceduralWindowWithMatrixRead { window })
@@ -1795,148 +1884,151 @@ fn lower_window(
     //      predicate is "the read backing is not E4", `None` INCLUDED. A nonzero
     //      depth on either is a claim that raw data was folded in place, and it
     //      silently shortens the catch-up.
-    //   2. a raw backing for a window the PREVIOUS round PUBLISHED. The folded
+    //   2. a raw backing for a slot the PREVIOUS round PUBLISHED. The folded
     //      values live in the scratch region; refolding the raw source instead
     //      reads data the chain has already moved past.
     //
     // Both are exactly the "silent raw refold" the module doc says this file
     // exists to prevent, arrived at from the binding side instead of the family
-    // side. Neither can false-reject a chained window: once a round publishes, the
-    // next round's read IS the scratch region — an E4 column, built by
-    // `chain_read_column` and required to be E4 by guard 2 — so a chained
-    // procedural window takes the E4 arm of (1) rather than needing an exemption
-    // from it. Both guards sit AFTER the origin match on purpose, so a read-less
-    // NON-procedural window still reports `MissingReadBacking`.
-    if bound.read.is_none_or(|column| !column.is_e4) && bound.backing_depth != 0 {
+    // side.
+    if slot.base.is_none_or(|column| !column.is_e4) && addr.backing_depth != 0 {
         return Err(BwdSegLowerError::BaseReadAtFoldedDepth {
             window,
-            backing_depth: bound.backing_depth,
+            backing_depth: addr.backing_depth,
         });
     }
     if origin != SourceOrigin::E4
-        && chain_read_column(scratch, u32::from(round), usize::from(window)).is_some()
+        && chain_read_column(scratch, u32::from(round), read_slot).is_some()
     {
         return Err(BwdSegLowerError::RawReadOverPriorPublish { window });
     }
     let (class, publishes) = assign_class(origin, delta, d2);
 
-    // The plan was built from the DECLARED flag, so a disagreement is a plan that
-    // does not match the classes.
-    if bound.materialize != publishes {
-        return Err(BwdSegLowerError::MaterializePolicyMismatch {
-            window,
-            declared: bound.materialize,
-            derived: publishes,
-        });
-    }
-    let (read_base, read_stride_bytes) = match bound.read {
-        Some(column) => {
-            check_column_geometry(window, &column)?;
-            // The PAIR total: the backing carries both endpoint halves
-            // (`2 * rows` outputs), and each output consumes its own `2^delta`
-            // inputs. In `u32` because the row guard bounds `2 * rows * 2^3`.
-            let needed = (2 * binding.rows * (1usize << delta)) as u32;
-            let have = binding.window_read_elements[usize::from(window)];
-            if have < needed {
-                return Err(BwdSegLowerError::ReadSpanOverflow {
-                    window,
-                    needed,
-                    have,
-                });
-            }
-            (column.ptr, column.stride_bytes)
+    // The read span, per addressed column: the PAIR total, since the backing
+    // carries both endpoint halves (`2 * rows` outputs) and each output consumes
+    // its own `2^delta` inputs.
+    if slot.base.is_some() {
+        let needed = (2 * binding.rows * (1usize << delta)) as u32;
+        if slot.read_elements < needed {
+            return Err(BwdSegLowerError::ReadSpanOverflow {
+                window,
+                needed,
+                have: slot.read_elements,
+            });
         }
-        None => (std::ptr::null(), 0),
-    };
+    }
 
-    let (publish_base, publish_stride_bytes) = if publishes {
-        let offset = layout.window_base[usize::from(window)];
-        match (bound.publish, offset == PUBLISH_WINDOW_ABSENT) {
-            // The caller supplied the region (production: a cascade slot of
-            // the layer's own fold storage), and the plan — built by
-            // `plan_publish_scratch`, which reserves nothing for explicitly
-            // backed windows — left the entry ABSENT. The stride is the
-            // backing's own (a per-poly region stride, usually WIDER than
-            // this round's extent); the write extent per column stays
-            // `2 * rows * 16`, which the stride must at least cover or
-            // consecutive columns would overwrite each other.
-            (Some(column), true) => {
-                check_column_geometry(window, &column)?;
-                if !column.is_e4 || column.stride_bytes < publish_stride {
+    let cache = if publishes {
+        let offset = layout.window_base[read_slot];
+        match (addr.publish, offset == PUBLISH_WINDOW_ABSENT) {
+            // The caller supplied the region (production: a cascade slot of the
+            // layer's own fold storage), and the plan — built by
+            // `plan_publish_scratch`, which reserves nothing for explicitly backed
+            // slots — left the entry ABSENT.
+            (Some((slot_index, column)), true) => {
+                let target = binding.slots.get(slot_index).ok_or(
+                    BwdSegLowerError::SourceWindowOutOfRange {
+                        source,
+                        window: slot_index.min(u8::MAX as usize) as u8,
+                    },
+                )?;
+                let backing =
+                    target
+                        .base
+                        .ok_or(BwdSegLowerError::PlanMissingPublishRegion { window })?;
+                // The write extent per column is `2 * rows * 16`, which the
+                // destination stride must at least cover or consecutive columns
+                // would overwrite each other.
+                if !backing.is_e4 || backing.stride_bytes < publish_stride {
                     return Err(BwdSegLowerError::ExplicitPublishGeometry {
                         window,
-                        is_e4: column.is_e4,
-                        stride_bytes: column.stride_bytes,
+                        is_e4: backing.is_e4,
+                        stride_bytes: backing.stride_bytes,
                     });
                 }
-                (column.ptr.cast_mut(), column.stride_bytes)
+                if column >= target.columns {
+                    return Err(BwdSegLowerError::SourceColumnOutOfWindow {
+                        source,
+                        window: slot_index.min(u8::MAX as usize) as u8,
+                        column: column as u16,
+                    });
+                }
+                bwd_seg_lane(slot_index, column)
+                    .ok_or(BwdSegLowerError::NullWindowGeometry { window })?
             }
-            (Some(_), false) => {
-                return Err(BwdSegLowerError::AmbiguousPublishBacking { window })
-            }
+            (Some(_), false) => return Err(BwdSegLowerError::AmbiguousPublishBacking { window }),
             (None, true) => return Err(BwdSegLowerError::PlanMissingPublishRegion { window }),
             (None, false) => {
-                // SAFETY: the offset is inside the parity buffer this plan
-                // sized and the caller allocated; this computes an address and
-                // never reads it.
-                let base = unsafe { scratch.parity_base[usize::from(round & 1)].add(offset) };
-                (base, publish_stride)
+                // The plan's region for this read slot, interned as a table slot
+                // on first use so every source of the slot publishes through one
+                // entry.
+                let index = match scratch_slot[read_slot] {
+                    Some(index) => index,
+                    None => {
+                        if table.len() >= BWD_SEG_ADDR_SLOTS {
+                            return Err(BwdSegLowerError::SourceWindowOverflow {
+                                windows: table.len() + 1,
+                                cap: BWD_SEG_ADDR_SLOTS,
+                            });
+                        }
+                        // SAFETY: the offset is inside the parity buffer this plan
+                        // sized and the caller allocated; this computes an address
+                        // and never reads it.
+                        let base = unsafe {
+                            scratch.parity_base[usize::from(round & 1)].add(offset)
+                        };
+                        let elements = publish_stride / E4_COLUMN_BYTES;
+                        debug_assert!(elements.is_power_of_two());
+                        table.push(BwdSegAddrSlot {
+                            base: base.cast_const(),
+                            log2_stride: elements.trailing_zeros() as u8,
+                            origin: BWD_COEFF_ORIGIN_READ_EXT,
+                            procedural_kind: BWD_COEFF_PROCEDURAL_NONE,
+                            reserved: [0; 5],
+                        });
+                        slot_columns.push(slot_columns[read_slot]);
+                        let index = table.len() - 1;
+                        scratch_slot[read_slot] = Some(index);
+                        index
+                    }
+                };
+                bwd_seg_lane(index, addr.read_column)
+                    .ok_or(BwdSegLowerError::NullWindowGeometry { window })?
             }
         }
     } else {
-        if bound.publish.is_some() {
+        if addr.publish.is_some() {
             return Err(BwdSegLowerError::UnexpectedPublishBacking { window });
         }
-        if layout.window_base[usize::from(window)] != PUBLISH_WINDOW_ABSENT {
+        if layout.window_base[read_slot] != PUBLISH_WINDOW_ABSENT {
             return Err(BwdSegLowerError::PlanPublishRegionUnused { window });
         }
-        (std::ptr::null_mut(), 0)
+        BWD_SEG_ADDR_NONE
     };
 
-    // The chain: when the PREVIOUS round published for this window, this round's
-    // E4 read must be exactly that region, at that round's stride.
+    // The chain: when the PREVIOUS round published for this slot, this round's E4
+    // read must be exactly that region, at that round's stride.
     if origin == SourceOrigin::E4 && delta >= 1 {
         if let Some((expected_base, expected_stride)) =
-            chain_read_column(scratch, u32::from(round), usize::from(window))
+            chain_read_column(scratch, u32::from(round), read_slot)
         {
-            if read_base != expected_base || read_stride_bytes != expected_stride {
+            let base = slot.base.expect("an E4 origin has a backing");
+            if base.ptr as usize != expected_base as usize
+                || base.stride_bytes != expected_stride
+            {
                 return Err(BwdSegLowerError::ChainReadNotPriorPublish { window });
             }
         }
     }
 
-    // A window addresses `columns` contiguous columns of each backing; the far end
-    // must still be a representable address.
-    for (base, stride) in [
-        (read_base as usize, read_stride_bytes),
-        (publish_base as usize, publish_stride_bytes),
-    ] {
-        if base != 0 && base.checked_add(columns * stride as usize).is_none() {
-            return Err(BwdSegLowerError::NullWindowGeometry { window });
-        }
-    }
-
-    Ok(LoweredWindow {
-        desc: BwdCoeffSourceWindow {
-            read_base,
-            publish_base,
-            read_stride_bytes,
-            publish_stride_bytes,
-            backing_depth: bound.backing_depth,
-            target_depth: bound.target_depth,
-            origin: match origin {
-                SourceOrigin::Bf => BWD_COEFF_ORIGIN_READ_BASE,
-                SourceOrigin::E4 => BWD_COEFF_ORIGIN_READ_EXT,
-                SourceOrigin::Procedural => BWD_COEFF_ORIGIN_PROCEDURAL,
-            },
-            materialize: u8::from(publishes),
-            // PER-ROUND, not the family's: a virtual setup this round resolves
-            // from DRAM must not also look synthesizable.
-            procedural_kind: match (origin, family_kind) {
-                (SourceOrigin::Procedural, Some(kind)) => kind,
-                _ => BWD_COEFF_PROCEDURAL_NONE,
-            },
-            reserved: [0; 3],
+    let src = bwd_seg_lane(read_slot, addr.read_column)
+        .ok_or(BwdSegLowerError::NullWindowGeometry { window })?;
+    Ok(LoweredSource {
+        record: BwdSegSourceRecord {
+            src,
+            cache,
+            class: class.code(),
+            delta,
         },
         class,
         publishes,
@@ -2023,9 +2115,12 @@ impl StridedColumns {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn check_alias(
-    lowered: &[LoweredWindow],
+    table: &[BwdSegAddrSlot],
     columns: &[usize],
+    read_extent: &[usize],
+    publishes: &[bool],
     scratch: &ResolvedPublishScratch,
     write_parity: usize,
     read_parity: usize,
@@ -2046,35 +2141,36 @@ fn check_alias(
     // pair total at the window's delta, in the backing's own width — the same
     // count `lower_window`'s span guard bounded against the backing.
     let publish_extent = 2 * rows * E4_COLUMN_BYTES as usize;
+    let stride_of = |index: usize| -> usize {
+        let slot = &table[index];
+        let element = if slot.origin == BWD_COEFF_ORIGIN_READ_EXT {
+            E4_COLUMN_BYTES
+        } else {
+            BF_COLUMN_BYTES
+        } as usize;
+        element << slot.log2_stride
+    };
     let publish_of = |index: usize| -> Option<StridedColumns> {
-        let desc = &lowered[index].desc;
-        (!desc.publish_base.is_null()).then_some(StridedColumns {
-            base: desc.publish_base as usize,
-            stride: desc.publish_stride_bytes as usize,
+        (publishes[index] && !table[index].base.is_null()).then_some(StridedColumns {
+            base: table[index].base as usize,
+            stride: stride_of(index),
             count: columns[index],
             extent: publish_extent,
         })
     };
     let read_of = |index: usize| -> Option<StridedColumns> {
-        let desc = &lowered[index].desc;
-        let width = if desc.origin == BWD_COEFF_ORIGIN_READ_EXT {
-            E4_COLUMN_BYTES
-        } else {
-            BF_COLUMN_BYTES
-        } as usize;
-        let delta = usize::from(desc.target_depth - desc.backing_depth);
-        (!desc.read_base.is_null()).then_some(StridedColumns {
-            base: desc.read_base as usize,
-            stride: desc.read_stride_bytes as usize,
+        (read_extent[index] != 0 && !table[index].base.is_null()).then_some(StridedColumns {
+            base: table[index].base as usize,
+            stride: stride_of(index),
             count: columns[index],
-            extent: 2 * rows * (1 << delta) * width,
+            extent: read_extent[index],
         })
     };
-    for index in 0..lowered.len() {
+    for index in 0..table.len() {
         let Some(publish) = publish_of(index) else {
             continue;
         };
-        for other_index in 0..lowered.len() {
+        for other_index in 0..table.len() {
             let mut aliases = read_of(other_index).is_some_and(|read| publish.overlaps(&read));
             if other_index != index {
                 aliases = aliases
@@ -2090,7 +2186,7 @@ fn check_alias(
     }
 
     if let Some(write) = buffer(write_parity) {
-        for (index, _) in lowered.iter().enumerate() {
+        for index in 0..table.len() {
             let Some(read) = read_of(index) else {
                 continue;
             };
@@ -2343,7 +2439,7 @@ pub(crate) fn bwd_seg_traffic_floor(
 ) -> BwdSegTrafficFloor {
     struct View<'a> {
         sources: &'a [BwdSegSourceRecord],
-        windows: &'a [BwdCoeffSourceWindow],
+        slots: &'a [BwdSegAddrSlot],
         num_foldable: u64,
         logical_rows: u64,
         eq_low_bits: u32,
@@ -2353,7 +2449,7 @@ pub(crate) fn bwd_seg_traffic_floor(
     let view = match &setup.desc {
         BwdSegLaunchDesc::Inline(desc) => View {
             sources: &desc.source[..usize::from(desc.num_sources)],
-            windows: &desc.window[..],
+            slots: &desc.slot[..],
             num_foldable: u64::from(desc.num_foldable),
             logical_rows: u64::from(desc.logical_rows),
             eq_low_bits: desc.eq_sizes.low,
@@ -2362,7 +2458,7 @@ pub(crate) fn bwd_seg_traffic_floor(
         },
         BwdSegLaunchDesc::ProgPtr(desc) => View {
             sources: &desc.source[..usize::from(desc.num_sources)],
-            windows: &desc.window[..],
+            slots: &desc.slot[..],
             num_foldable: u64::from(desc.num_foldable),
             logical_rows: u64::from(desc.logical_rows),
             eq_low_bits: desc.eq_sizes.low,
@@ -2386,20 +2482,17 @@ pub(crate) fn bwd_seg_traffic_floor(
     // setup does not cover (test-edited descriptors) price both halves, which is
     // the pre-§7.3-fix behavior and never underprices.
     let endpoints = &setup.source_endpoints;
-    let mut priced: Vec<(u8, u16, u64)> = Vec::with_capacity(view.sources.len());
+    let mut priced: Vec<(u16, u64)> = Vec::with_capacity(view.sources.len());
     for (slot, record) in view.sources.iter().enumerate() {
         let factor = u64::from(endpoints.get(slot).copied().unwrap_or(2));
-        match priced
-            .iter_mut()
-            .find(|(window, column, _)| (*window, *column) == (record.window, record.column))
-        {
-            Some((_, _, seen)) => *seen = (*seen).max(factor),
-            None => priced.push((record.window, record.column, factor)),
+        match priced.iter_mut().find(|(lane, _)| *lane == record.src) {
+            Some((_, seen)) => *seen = (*seen).max(factor),
+            None => priced.push((record.src, factor)),
         }
     }
     let mut read_bytes = 0u64;
-    for &(window, _column, factor) in &priced {
-        let window = &view.windows[usize::from(window)];
+    for &(lane, factor) in &priced {
+        let window = &view.slots[bwd_seg_lane_slot(lane)];
         // Procedural / VirtualSetup sources read NO DRAM: `seg_raw_synthesized`
         // produces the value from the backing INDEX, so there is no raw column at
         // all. Their cost is compute, not traffic — the same rule as the forward
@@ -2418,7 +2511,15 @@ pub(crate) fn bwd_seg_traffic_floor(
         // `2^delta * factor * logical_rows` elements — the full pair set at
         // `factor == 2`, the low halves alone at `factor == 1`, and nothing for
         // a backing no term and no fold touches.
-        let delta = u32::from(window.target_depth.saturating_sub(window.backing_depth));
+        // The delta is the SOURCE's, so take the widest any source of this lane
+        // demands — the same "max over sharers" rule as the endpoint factor.
+        let delta = view
+            .sources
+            .iter()
+            .filter(|record| record.src == lane)
+            .map(|record| u32::from(record.delta))
+            .max()
+            .unwrap_or(0);
         read_bytes += element * (1u64 << delta) * factor * view.logical_rows;
     }
     // The eq table counts ONCE, and `eq_sizes.low` is a BIT WIDTH, not a length:
@@ -2488,31 +2589,36 @@ pub(crate) struct BwdSegFloorBackingCensus {
 /// See [`BwdSegFloorBackingCensus`]. A pure function of the lowered descriptor,
 /// like the floor walk itself.
 pub(crate) fn bwd_seg_floor_backing_census(setup: &BwdSegSetup) -> BwdSegFloorBackingCensus {
-    let (sources, windows) = match &setup.desc {
+    let (sources, slots): (&[BwdSegSourceRecord], &[BwdSegAddrSlot]) = match &setup.desc {
         BwdSegLaunchDesc::Inline(desc) => (
             &desc.source[..usize::from(desc.num_sources)],
-            &desc.window[..],
+            &desc.slot[..],
         ),
         BwdSegLaunchDesc::ProgPtr(desc) => (
             &desc.source[..usize::from(desc.num_sources)],
-            &desc.window[..],
+            &desc.slot[..],
         ),
     };
-    let mut seen: Vec<(u8, u16)> = Vec::with_capacity(sources.len());
+    let mut seen: Vec<u16> = Vec::with_capacity(sources.len());
     let mut addresses: Vec<usize> = Vec::with_capacity(sources.len());
     let mut priced_sources = 0u32;
     for record in sources {
-        if seen.contains(&(record.window, record.column)) {
+        if seen.contains(&record.src) {
             continue;
         }
-        seen.push((record.window, record.column));
-        let window = &windows[usize::from(record.window)];
+        seen.push(record.src);
+        let window = &slots[bwd_seg_lane_slot(record.src)];
         if window.origin == BWD_COEFF_ORIGIN_PROCEDURAL {
             continue;
         }
         priced_sources += 1;
-        let address = window.read_base as usize
-            + usize::from(record.column) * window.read_stride_bytes as usize;
+        let element = if window.origin == BWD_COEFF_ORIGIN_READ_EXT {
+            E4_COLUMN_BYTES
+        } else {
+            BF_COLUMN_BYTES
+        } as usize;
+        let address = window.base as usize
+            + (bwd_seg_lane_column(record.src) << window.log2_stride) * element;
         if !addresses.contains(&address) {
             addresses.push(address);
         }
