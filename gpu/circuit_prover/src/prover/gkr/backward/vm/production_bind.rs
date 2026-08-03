@@ -1400,7 +1400,6 @@ pub(crate) fn build_bwd_vm_ext_rounds<E: Copy>(
     folding_steps: usize,
     eq_low: *const E4,
     partials: *mut E4,
-    accumulator: *mut E4,
     context: &ProverContext,
 ) -> CudaResult<BwdVmExtLaunch> {
     let bound = bind_ext_round_sources(
@@ -1428,7 +1427,6 @@ pub(crate) fn build_bwd_vm_ext_rounds<E: Copy>(
     let ceiling = seg_k_ceiling(BwdRegime::Ext)?;
     let mut setups = Vec::with_capacity(bound.rounds.len());
     for round in &bound.rounds {
-        let is_last_round = usize::from(round.round) == folding_steps - 1;
         let bytes_per_row = seg_ext_bytes_per_row(&round.windows, &bound.window_columns);
         let k = seg_policy_k(bytes_per_row, ceiling);
         let binding = BwdSegRoundBinding {
@@ -1442,22 +1440,14 @@ pub(crate) fn build_bwd_vm_ext_rounds<E: Copy>(
             immediates: &slice.layer.immediates,
             eq_low,
             eq_sizes: drained_eq_sizes(make_eq_sizes(folding_steps - 1), round.round),
-            // The final round keeps the per-row shape and the accumulator: it is
-            // dispatched outside the round loop, on a tail that reads the
-            // accumulator and does NOT fold eq, and at `acc_size == 1` the
-            // partial shape would save two field elements. Every other round
-            // publishes partials for the fused tail.
-            contributions: if is_last_round {
-                accumulator
-            } else {
-                partials
-            },
+            // EVERY round publishes partials, the final one included: its tail is
+            // the same fused kernel with the eq fold suppressed
+            // (`dispatch_warp_partial_tail_final_round`), so no round needs the
+            // per-row shape and the accumulator is not read on a VM-owned layer
+            // at all.
+            contributions: partials,
             acc_size: round.rows as u32,
-            output: if is_last_round {
-                BWD_SEG_OUTPUT_ROWS
-            } else {
-                BWD_SEG_OUTPUT_PARTIALS
-            },
+            output: BWD_SEG_OUTPUT_PARTIALS,
         };
         setups.push(
             lower_bwd_seg(

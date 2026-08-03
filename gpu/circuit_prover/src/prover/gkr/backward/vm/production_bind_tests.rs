@@ -899,8 +899,6 @@ fn the_ext_sequence_builds_one_setup_per_round() {
             as *const crate::primitives::field::E4,
         prepared.plan.round_scratch.partials.as_ptr().cast_mut()
             as *mut crate::primitives::field::E4,
-        prepared.plan.round_scratch.accumulator.as_ptr().cast_mut()
-            as *mut crate::primitives::field::E4,
         &prepared.context,
     )
     .expect("the Ext sequence builds");

@@ -549,7 +549,6 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
                     folding_steps,
                     round_scratch.eq_low_group.as_ptr() as *const E4,
                     round_scratch.partials.as_mut_ptr() as *mut E4,
-                    round_scratch.accumulator.as_mut_ptr() as *mut E4,
                     context,
                 )?)
             } else {

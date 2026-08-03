@@ -573,31 +573,85 @@ where
         challenge_out: *mut E,
         context: &ProverContext,
     ) -> CudaResult<()> {
-        let prev_e4 = prev_claim_coord as *const E4;
-        let claim_e4 = claim as *mut E4;
-        let eq_pref_e4 = eq_prefactor as *mut E4;
-        let coeffs_e4 = coeffs_out as *mut E4;
-        let chal_e4 = challenge_out as *mut E4;
         let eq_low_ptr_mut = self.round_scratch.eq_low_group.as_mut_ptr() as *mut E4;
-        let partials_ptr = self.round_scratch.partials.as_mut_ptr() as *mut E4;
-        let num_partials = super::super::kernels::warp_partial_count(acc_size);
         let (slot_base, slot_size_before_fold) =
             super::super::kernels::resolve_active_eq_slot(&self.eq_sizes, eq_low_ptr_mut);
-        super::super::kernels::launch_backward_dual_finalize_from_partials(
-            partials_ptr as *const E4,
-            num_partials,
-            prev_e4,
+        self.dispatch_warp_partial_tail_inner(
+            acc_size,
+            (slot_base, slot_size_before_fold),
+            prev_claim_coord,
             seed,
-            claim_e4,
-            eq_pref_e4,
-            coeffs_e4,
-            chal_e4,
-            slot_base,
-            slot_size_before_fold,
+            claim,
+            eq_prefactor,
+            coeffs_out,
+            challenge_out,
             context,
         )?;
         super::super::kernels::record_active_eq_slot_fold(&mut self.eq_sizes);
         Ok(())
+    }
+
+    /// The fused tail for the FINAL round: same kernel, no eq fold.
+    ///
+    /// The factored eq is fully consumed by then (the identity), so there is
+    /// nothing to fold and nothing to record. Passing `0` as the pre-fold size is
+    /// what expresses that — `mega_finalize`'s fold is guarded on `>= 1`, and
+    /// `resolve_active_eq_slot` must not be consulted at all, since a consumed eq
+    /// trips its `low >= 1` debug assert.
+    #[allow(clippy::too_many_arguments)]
+    fn dispatch_warp_partial_tail_final_round(
+        &mut self,
+        prev_claim_coord: *const E,
+        seed: *mut u32,
+        claim: *mut E,
+        eq_prefactor: *mut E,
+        coeffs_out: *mut E,
+        challenge_out: *mut E,
+        context: &ProverContext,
+    ) -> CudaResult<()> {
+        let eq_low_ptr_mut = self.round_scratch.eq_low_group.as_mut_ptr() as *mut E4;
+        self.dispatch_warp_partial_tail_inner(
+            1,
+            (eq_low_ptr_mut, 0),
+            prev_claim_coord,
+            seed,
+            claim,
+            eq_prefactor,
+            coeffs_out,
+            challenge_out,
+            context,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn dispatch_warp_partial_tail_inner(
+        &mut self,
+        acc_size: usize,
+        eq_slot: (*mut E4, u32),
+        prev_claim_coord: *const E,
+        seed: *mut u32,
+        claim: *mut E,
+        eq_prefactor: *mut E,
+        coeffs_out: *mut E,
+        challenge_out: *mut E,
+        context: &ProverContext,
+    ) -> CudaResult<()> {
+        let partials_ptr = self.round_scratch.partials.as_mut_ptr() as *mut E4;
+        let num_partials = super::super::kernels::warp_partial_count(acc_size);
+        let (slot_base, slot_size_before_fold) = eq_slot;
+        super::super::kernels::launch_backward_dual_finalize_from_partials(
+            partials_ptr as *const E4,
+            num_partials,
+            prev_claim_coord as *const E4,
+            seed,
+            claim as *mut E4,
+            eq_prefactor as *mut E4,
+            coeffs_out as *mut E4,
+            challenge_out as *mut E4,
+            slot_base,
+            slot_size_before_fold,
+            context,
+        )
     }
 
     /// Main-layer variant of the device-only sumcheck accumulator reduction.
@@ -1225,19 +1279,37 @@ where
             // slot `last_step = folding_steps - 1` (= `last_r`) is in bounds and
             // uniquely written here.
             let challenge_slot = unsafe { device_claim_point_out.slice_mut(last_step, 1) };
-            // No `fold_eq_values_for_next_round`: there is no next round and the
-            // factored eq is the identity at `acc_size == 1`.
-            self.run_round_coefficients_reduction_device(last_step, 1, context)?;
-            E::launch_backward_sumcheck_round_update(
-                &self.round_scratch.reduction_output,
-                prev_coord_slice,
-                &mut device_seed,
-                &mut device_claim,
-                &mut device_eq_prefactor,
-                coeffs_round_slice,
-                challenge_slot,
-                stream,
-            )?;
+            // No eq fold either way: there is no next round and the factored eq
+            // is the identity at `acc_size == 1`. A VM-owned final round takes
+            // the fused tail like every other VM round — its descriptor also
+            // publishes partials, so there is no shape special case left in the
+            // loop. The incumbent's final round keeps the unfused tail: its
+            // round-3 kernel writes per-row contributions, and its warp-partial
+            // twin cannot run at `acc_size == 1` (a sub-warp `blockDim` would
+            // name lanes the full `shfl_xor` mask does not have).
+            if self.bwd_vm_ext.is_some() {
+                self.dispatch_warp_partial_tail_final_round(
+                    prev_coord_slice.as_ptr(),
+                    device_seed.as_mut_ptr(),
+                    device_claim.as_mut_ptr(),
+                    device_eq_prefactor.as_mut_ptr(),
+                    coeffs_round_slice.as_mut_ptr(),
+                    challenge_slot.as_mut_ptr(),
+                    context,
+                )?;
+            } else {
+                self.run_round_coefficients_reduction_device(last_step, 1, context)?;
+                E::launch_backward_sumcheck_round_update(
+                    &self.round_scratch.reduction_output,
+                    prev_coord_slice,
+                    &mut device_seed,
+                    &mut device_claim,
+                    &mut device_eq_prefactor,
+                    coeffs_round_slice,
+                    challenge_slot,
+                    stream,
+                )?;
+            }
         }
 
         // B1: coeffs already landed in the slab via the per-round kernels
