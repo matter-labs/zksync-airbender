@@ -5,6 +5,36 @@ fn sample_e4(value: u32) -> E4 {
     E4::from_base(BF::from_u32_unchecked(value))
 }
 
+#[repr(C, align(32))]
+#[derive(Clone, Copy)]
+struct AlignedSlabBlock([u8; FIELD_ALIGN]);
+
+const _: () = {
+    assert!(FIELD_ALIGN == 32);
+    assert!(size_of::<AlignedSlabBlock>() == FIELD_ALIGN);
+    assert!(std::mem::align_of::<AlignedSlabBlock>() >= std::mem::align_of::<E4>());
+};
+
+struct AlignedSlab {
+    blocks: Vec<AlignedSlabBlock>,
+}
+
+impl AlignedSlab {
+    fn zeroed(byte_len: usize) -> Self {
+        assert_eq!(byte_len % FIELD_ALIGN, 0);
+        Self {
+            blocks: vec![AlignedSlabBlock([0; FIELD_ALIGN]); byte_len / FIELD_ALIGN],
+        }
+    }
+
+    fn as_bytes_mut(&mut self) -> &mut [u8] {
+        let byte_len = self.blocks.len() * FIELD_ALIGN;
+        // SAFETY: `AlignedSlabBlock` is a contiguous, initialized byte block;
+        // its 32-byte alignment satisfies every typed proof-slab accessor.
+        unsafe { std::slice::from_raw_parts_mut(self.blocks.as_mut_ptr().cast(), byte_len) }
+    }
+}
+
 fn sample_inputs() -> ProofLayoutInputs {
     let backward_layers = vec![
         BackwardLayerDims {
@@ -320,11 +350,9 @@ fn whir_range_sizes_match_inputs() {
 fn typed_accessors_match_ranges() {
     let inputs = sample_inputs();
     let layout = ProofLayout::new(&inputs);
-    let mut slab = vec![0u8; layout.total_bytes];
-    // align the test buffer to 16B by taking the offset into a larger Vec —
-    // in production the device allocator guarantees alignment.
-    let (_, typed, _) = unsafe { slab.align_to::<u128>() };
-    assert!(!typed.is_empty(), "test buffer must be 16-byte aligned");
+    let mut slab_storage = AlignedSlab::zeroed(layout.total_bytes);
+    let slab = slab_storage.as_bytes_mut();
+    assert_eq!(slab.as_ptr() as usize % FIELD_ALIGN, 0);
 
     // Round-trip: write via device pointer view, read via host slice view.
     let slab_ptr = slab.as_mut_ptr();
@@ -392,7 +420,8 @@ fn parser_round_trips_extra_evaluations() {
     // for layer-slot 1 (= main layer, the second slot here), then
     // run the parser and assert the BTreeMap has the expected keys
     // and values.
-    let mut slab = vec![0u8; layout.total_bytes];
+    let mut slab_storage = AlignedSlab::zeroed(layout.total_bytes);
+    let slab = slab_storage.as_bytes_mut();
     let layer_slot = 1usize;
     let bw = &layout.backward[layer_slot];
     assert_eq!(bw.extra_evaluations_addresses.len(), 2);
@@ -442,7 +471,8 @@ fn parser_round_trips_extra_evaluations() {
 fn cpu_parser_preserves_whir_handoff_fields() {
     let inputs = sample_inputs();
     let layout = ProofLayout::new(&inputs);
-    let mut slab = vec![0u8; layout.total_bytes];
+    let mut slab_storage = AlignedSlab::zeroed(layout.total_bytes);
+    let slab = slab_storage.as_bytes_mut();
     let point = vec![sample_e4(10), sample_e4(20)];
     let batching = sample_e4(30);
     let first_poly = [sample_e4(1), sample_e4(2), sample_e4(3)];
