@@ -1421,15 +1421,161 @@ fn a_materialize_flag_that_disagrees_with_the_policy_is_rejected() {
     );
 }
 
-/// Publish geometry belongs to the scratch plan: a caller-supplied publish
-/// backing would be silently ignored, so it is refused instead.
+/// A publish backing on a window that does not publish would be silently
+/// ignored, so it is refused instead.
 #[test]
-fn a_caller_supplied_publish_backing_is_rejected() {
-    let mut bound_window = bound(Some(bf_column(0)), 0, 3, true);
+fn a_publish_backing_on_a_non_publishing_window_is_rejected() {
+    let mut bound_window = bound(Some(bf_column(0)), 0, 1, false);
     bound_window.publish = Some(e4_column(3));
     assert_eq!(
-        lower_one(&bf_artifact(), 3, bound_window, 2, 1, D2Policy::Inline),
+        lower_one(&bf_artifact(), 1, bound_window, 2, 1, D2Policy::Inline),
         Err(BwdSegLowerError::UnexpectedPublishBacking { window: 0 }),
+    );
+}
+
+// ── Explicit publish backings ────────────────────────────────────────────────
+//
+// Production publishes into the layer's OWN fold storage (the cascade — see
+// `production_bind::CascadeRegion`), not into a parity buffer: the binder
+// supplies the region per window and the plan reserves nothing for it. The
+// stride is the backing's per-poly stride, usually WIDER than the round's
+// per-column extent.
+
+/// The publish extent per column at `ROWS[3]`: both endpoint halves, as E4.
+const ROUND3_PUBLISH_EXTENT: u32 = (2 * ROWS[3] * 16) as u32;
+
+/// An explicitly backed publish lowers at the BACKING's stride, and the plan —
+/// built from the same bound windows — reserves no parity region for it.
+#[test]
+fn an_explicitly_backed_publish_lowers_at_the_backing_stride() {
+    let mut bound_window = bound(Some(bf_column(0)), 0, 3, true);
+    bound_window.publish = Some(column_at(E4_BACKING, true, 4096));
+    let setup = lower_one(&bf_artifact(), 3, bound_window, 2, 1, D2Policy::Inline)
+        .expect("an explicitly backed publish must lower");
+    let window = &inline_desc(&setup).window[0];
+    assert_eq!(window.publish_base as usize, E4_BACKING);
+    assert_eq!(window.publish_stride_bytes, 4096);
+    assert_eq!(window.materialize, 1);
+    assert_eq!(window.read_base as usize, BF_BACKING);
+}
+
+/// The cascade's normal state at a chained round: the window READS slot
+/// `r - 1` and PUBLISHES slot `r` of the SAME per-poly regions, so the two
+/// strided column sets interleave — their hulls overlap while their actual
+/// per-column extents are disjoint. The alias check must judge extents, not
+/// hulls.
+#[test]
+fn a_cascade_shaped_round_lowers_with_interleaved_read_and_publish() {
+    // Two columns of an ext-origin poly, folded from N = 256: per-poly region
+    // 4096 B; at round 3 the chain reads slot 2 (1024 B at +2048) and
+    // publishes slot 3 (512 B at +3072).
+    let mut bound_window = bound(Some(column_at(E4_BACKING + 2048, true, 4096)), 2, 3, true);
+    bound_window.publish = Some(column_at(E4_BACKING + 3072, true, 4096));
+    let setup = lower_one(&ext_artifact(), 3, bound_window, 2, 1, D2Policy::Inline)
+        .expect("the cascade's read/publish interleave is not an alias");
+    let window = &inline_desc(&setup).window[0];
+    assert_eq!(window.read_base as usize, E4_BACKING + 2048);
+    assert_eq!(window.publish_base as usize, E4_BACKING + 3072);
+    assert_eq!(window.publish_stride_bytes, 4096);
+}
+
+/// An explicit backing AND a planned parity region for the same window is a
+/// plan built from different windows than the lowering was handed — ambiguous,
+/// so refused rather than picking one.
+#[test]
+fn an_explicit_publish_with_a_planned_region_is_ambiguous() {
+    let mut bound_window = bound(Some(bf_column(0)), 0, 3, true);
+    let planned = plan_for(3, std::slice::from_ref(&bound_window), &[2]);
+    bound_window.publish = Some(column_at(E4_BACKING, true, 4096));
+    let bounds = [bound_window];
+    let scratch = scratch_for(planned);
+    let claim = claim_point(8);
+    let coeffs = coefficients(4);
+    let read_elements = generous(1);
+    let binding = round_binding(3, &bounds, &read_elements, &claim, &coeffs);
+    assert_eq!(
+        lower_bwd_seg(
+            &bf_artifact(),
+            &binding,
+            &scratch,
+            1,
+            D2Policy::Inline,
+            ProgramMode::Inline,
+            CoeffMode::Constant,
+        )
+        .err(),
+        Some(BwdSegLowerError::AmbiguousPublishBacking { window: 0 }),
+    );
+}
+
+/// A publish is always E4, and a stride narrower than the round's per-column
+/// extent would make consecutive columns overwrite each other.
+#[test]
+fn a_non_e4_or_narrow_explicit_publish_region_is_rejected() {
+    let mut bound_window = bound(Some(bf_column(0)), 0, 3, true);
+    bound_window.publish = Some(column_at(E4_BACKING, false, 4096));
+    assert_eq!(
+        lower_one(&bf_artifact(), 3, bound_window, 2, 1, D2Policy::Inline),
+        Err(BwdSegLowerError::ExplicitPublishGeometry {
+            window: 0,
+            is_e4: false,
+            stride_bytes: 4096,
+        }),
+    );
+
+    let narrow = ROUND3_PUBLISH_EXTENT - 16;
+    let mut bound_window = bound(Some(bf_column(0)), 0, 3, true);
+    bound_window.publish = Some(column_at(E4_BACKING, true, narrow));
+    assert_eq!(
+        lower_one(&bf_artifact(), 3, bound_window, 2, 1, D2Policy::Inline),
+        Err(BwdSegLowerError::ExplicitPublishGeometry {
+            window: 0,
+            is_e4: true,
+            stride_bytes: narrow,
+        }),
+    );
+}
+
+/// The extent-aware alias check still rejects a REAL overlap: two windows
+/// explicitly publishing into ranges that collide.
+#[test]
+fn overlapping_explicit_publish_regions_are_rejected() {
+    let two_windows = artifact(
+        ArtifactRegime::Ext,
+        3,
+        vec![ext_output(1, &[0]), ext_output(2, &[1])],
+        slots(&[(0, 0), (1, 0)]),
+        program(&[record(1, 2, 0, 1), record(0, 0, 1, SOURCE_NONE)]),
+    );
+    let mut first = bound(Some(column_at(E4_BACKING + 0x0100_0000, true, 4096)), 2, 3, true);
+    first.publish = Some(column_at(E4_BACKING, true, 4096));
+    let mut second = bound(Some(column_at(E4_BACKING + 0x0200_0000, true, 4096)), 2, 3, true);
+    second.publish = Some(column_at(
+        E4_BACKING + (ROUND3_PUBLISH_EXTENT / 2) as usize,
+        true,
+        4096,
+    ));
+    let bounds = [first, second];
+    let scratch = scratch_for(plan_for(3, &bounds, &[1, 1]));
+    let claim = claim_point(8);
+    let coeffs = coefficients(4);
+    let read_elements = generous(2);
+    let binding = round_binding(3, &bounds, &read_elements, &claim, &coeffs);
+    assert_eq!(
+        lower_bwd_seg(
+            &two_windows,
+            &binding,
+            &scratch,
+            1,
+            D2Policy::Inline,
+            ProgramMode::Inline,
+            CoeffMode::Constant,
+        )
+        .err(),
+        Some(BwdSegLowerError::UnsafePublishAlias {
+            window: 0,
+            other: 1,
+        }),
     );
 }
 

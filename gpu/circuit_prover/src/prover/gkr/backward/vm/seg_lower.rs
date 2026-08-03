@@ -325,7 +325,11 @@ pub(crate) fn plan_publish_scratch(
         let mut regions: Vec<(u8, usize, usize)> = Vec::new();
         let mut cursor = 0usize;
         for (index, bound) in windows.iter().enumerate() {
-            if !bound.materialize {
+            // An explicitly backed window publishes into its caller-supplied
+            // region (production: the layer's own fold storage) and needs no
+            // parity reservation — `lower_window` takes its explicit arm on
+            // the ABSENT entry this leaves behind.
+            if !bound.materialize || bound.publish.is_some() {
                 continue;
             }
             let span = columns[index]
@@ -918,9 +922,21 @@ pub(crate) enum BwdSegLowerError {
         declared: bool,
         derived: bool,
     },
-    /// A caller-supplied publish backing. Publish geometry comes from the scratch
-    /// plan, so this one would be silently ignored.
+    /// A caller-supplied publish backing on a window that does not publish —
+    /// it would be silently ignored.
     UnexpectedPublishBacking { window: u8 },
+    /// A caller-supplied publish backing AND a planned parity region for the
+    /// same window: the plan was built from different windows than the
+    /// lowering was handed.
+    AmbiguousPublishBacking { window: u8 },
+    /// An explicit publish backing that is not E4, or whose stride is narrower
+    /// than the round's per-column extent (`2 * rows * 16`) — consecutive
+    /// columns would overwrite each other.
+    ExplicitPublishGeometry {
+        window: u8,
+        is_e4: bool,
+        stride_bytes: u32,
+    },
     /// A read is shorter than the PAIR total the round needs: both endpoint
     /// halves, each consuming its own `2^delta` inputs.
     ReadSpanOverflow { window: u8, needed: u32, have: u32 },
@@ -1407,7 +1423,14 @@ pub(crate) fn lower_bwd_seg(
             d2,
         )?);
     }
-    check_alias(&lowered, &columns, scratch, write_parity, read_parity)?;
+    check_alias(
+        &lowered,
+        &columns,
+        scratch,
+        write_parity,
+        read_parity,
+        binding.rows,
+    )?;
 
     // ── Sources ──────────────────────────────────────────────────────────────
     let slots = &artifact.binding.source_slots;
@@ -1791,10 +1814,6 @@ fn lower_window(
             derived: publishes,
         });
     }
-    if bound.publish.is_some() {
-        return Err(BwdSegLowerError::UnexpectedPublishBacking { window });
-    }
-
     let (read_base, read_stride_bytes) = match bound.read {
         Some(column) => {
             check_column_geometry(window, &column)?;
@@ -1817,14 +1836,42 @@ fn lower_window(
 
     let (publish_base, publish_stride_bytes) = if publishes {
         let offset = layout.window_base[usize::from(window)];
-        if offset == PUBLISH_WINDOW_ABSENT {
-            return Err(BwdSegLowerError::PlanMissingPublishRegion { window });
+        match (bound.publish, offset == PUBLISH_WINDOW_ABSENT) {
+            // The caller supplied the region (production: a cascade slot of
+            // the layer's own fold storage), and the plan — built by
+            // `plan_publish_scratch`, which reserves nothing for explicitly
+            // backed windows — left the entry ABSENT. The stride is the
+            // backing's own (a per-poly region stride, usually WIDER than
+            // this round's extent); the write extent per column stays
+            // `2 * rows * 16`, which the stride must at least cover or
+            // consecutive columns would overwrite each other.
+            (Some(column), true) => {
+                check_column_geometry(window, &column)?;
+                if !column.is_e4 || column.stride_bytes < publish_stride {
+                    return Err(BwdSegLowerError::ExplicitPublishGeometry {
+                        window,
+                        is_e4: column.is_e4,
+                        stride_bytes: column.stride_bytes,
+                    });
+                }
+                (column.ptr.cast_mut(), column.stride_bytes)
+            }
+            (Some(_), false) => {
+                return Err(BwdSegLowerError::AmbiguousPublishBacking { window })
+            }
+            (None, true) => return Err(BwdSegLowerError::PlanMissingPublishRegion { window }),
+            (None, false) => {
+                // SAFETY: the offset is inside the parity buffer this plan
+                // sized and the caller allocated; this computes an address and
+                // never reads it.
+                let base = unsafe { scratch.parity_base[usize::from(round & 1)].add(offset) };
+                (base, publish_stride)
+            }
         }
-        // SAFETY: the offset is inside the parity buffer this plan sized and the
-        // caller allocated; this computes an address and never reads it.
-        let base = unsafe { scratch.parity_base[usize::from(round & 1)].add(offset) };
-        (base, publish_stride)
     } else {
+        if bound.publish.is_some() {
+            return Err(BwdSegLowerError::UnexpectedPublishBacking { window });
+        }
         if layout.window_base[usize::from(window)] != PUBLISH_WINDOW_ABSENT {
             return Err(BwdSegLowerError::PlanPublishRegionUnused { window });
         }
@@ -1908,12 +1955,66 @@ fn check_column_geometry(window: u8, column: &ResolvedColumn) -> Result<(), BwdS
 ///   3. no read range lies inside the parity buffer this round publishes into.
 ///      Stricter than (2) on purpose: the whole buffer is the prologue's for the
 ///      launch, and its stale tail belongs to an earlier same-parity round.
+/// A strided column set: `count` per-column intervals of `extent` bytes,
+/// `stride` bytes apart. The window HULL `base + count * stride` and the
+/// touched bytes coincide when the stride is the extent — the parity plan's
+/// shape — but an explicitly backed publish strides at its backing's per-poly
+/// stride, and the same-region chain read sits INSIDE that stride: hull
+/// overlap is the cascade's normal state, so aliasing is judged per column.
+#[derive(Clone, Copy)]
+struct StridedColumns {
+    base: usize,
+    stride: usize,
+    count: usize,
+    extent: usize,
+}
+
+impl StridedColumns {
+    fn hull(&self) -> (usize, usize) {
+        (
+            self.base,
+            self.base + (self.count - 1) * self.stride + self.extent,
+        )
+    }
+
+    fn overlaps(&self, other: &StridedColumns) -> bool {
+        if self.count == 0 || other.count == 0 {
+            return false;
+        }
+        // Hull fast path: disjoint hulls cannot alias, and the hulls only
+        // over-approximate when a stride exceeds its extent.
+        let (a_lo, a_hi) = self.hull();
+        let (b_lo, b_hi) = other.hull();
+        if a_hi <= b_lo || b_hi <= a_lo {
+            return false;
+        }
+        if self.stride == self.extent && other.stride == other.extent {
+            return true;
+        }
+        // Interleaved hulls: judge the actual per-column extents. Quadratic,
+        // but host-side, once per lowering, and only for hull-overlapping
+        // pairs (in practice: column sets of one per-poly region family).
+        for i in 0..self.count {
+            let lo = self.base + i * self.stride;
+            let hi = lo + self.extent;
+            for j in 0..other.count {
+                let other_lo = other.base + j * other.stride;
+                if lo < other_lo + other.extent && other_lo < hi {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+}
+
 fn check_alias(
     lowered: &[LoweredWindow],
     columns: &[usize],
     scratch: &ResolvedPublishScratch,
     write_parity: usize,
     read_parity: usize,
+    rows: usize,
 ) -> Result<(), BwdSegLowerError> {
     let buffer = |parity: usize| -> Option<(usize, usize)> {
         let base = scratch.parity_base[parity] as usize;
@@ -1926,52 +2027,60 @@ fn check_alias(
         }
     }
 
-    let span = |base: usize, stride: u32, count: usize| -> Option<(usize, usize)> {
-        (base != 0).then(|| (base, base + count * stride as usize))
+    // Per-column write extent: both endpoint halves, as E4. Read extent: the
+    // pair total at the window's delta, in the backing's own width — the same
+    // count `lower_window`'s span guard bounded against the backing.
+    let publish_extent = 2 * rows * E4_COLUMN_BYTES as usize;
+    let publish_of = |index: usize| -> Option<StridedColumns> {
+        let desc = &lowered[index].desc;
+        (!desc.publish_base.is_null()).then_some(StridedColumns {
+            base: desc.publish_base as usize,
+            stride: desc.publish_stride_bytes as usize,
+            count: columns[index],
+            extent: publish_extent,
+        })
     };
-    for (index, entry) in lowered.iter().enumerate() {
-        let Some(publish) = span(
-            entry.desc.publish_base as usize,
-            entry.desc.publish_stride_bytes,
-            columns[index],
-        ) else {
+    let read_of = |index: usize| -> Option<StridedColumns> {
+        let desc = &lowered[index].desc;
+        let width = if desc.origin == BWD_COEFF_ORIGIN_READ_EXT {
+            E4_COLUMN_BYTES
+        } else {
+            BF_COLUMN_BYTES
+        } as usize;
+        let delta = usize::from(desc.target_depth - desc.backing_depth);
+        (!desc.read_base.is_null()).then_some(StridedColumns {
+            base: desc.read_base as usize,
+            stride: desc.read_stride_bytes as usize,
+            count: columns[index],
+            extent: 2 * rows * (1 << delta) * width,
+        })
+    };
+    for index in 0..lowered.len() {
+        let Some(publish) = publish_of(index) else {
             continue;
         };
-        for (other_index, other) in lowered.iter().enumerate() {
-            let mut ranges = Vec::with_capacity(2);
-            ranges.extend(span(
-                other.desc.read_base as usize,
-                other.desc.read_stride_bytes,
-                columns[other_index],
-            ));
+        for other_index in 0..lowered.len() {
+            let mut aliases = read_of(other_index).is_some_and(|read| publish.overlaps(&read));
             if other_index != index {
-                ranges.extend(span(
-                    other.desc.publish_base as usize,
-                    other.desc.publish_stride_bytes,
-                    columns[other_index],
-                ));
+                aliases = aliases
+                    || publish_of(other_index).is_some_and(|other| publish.overlaps(&other));
             }
-            for (lo, hi) in ranges {
-                if publish.0 < hi && lo < publish.1 {
-                    return Err(BwdSegLowerError::UnsafePublishAlias {
-                        window: index as u8,
-                        other: other_index as u8,
-                    });
-                }
+            if aliases {
+                return Err(BwdSegLowerError::UnsafePublishAlias {
+                    window: index as u8,
+                    other: other_index as u8,
+                });
             }
         }
     }
 
     if let Some(write) = buffer(write_parity) {
-        for (index, entry) in lowered.iter().enumerate() {
-            let Some(read) = span(
-                entry.desc.read_base as usize,
-                entry.desc.read_stride_bytes,
-                columns[index],
-            ) else {
+        for (index, _) in lowered.iter().enumerate() {
+            let Some(read) = read_of(index) else {
                 continue;
             };
-            if read.0 < write.1 && write.0 < read.1 {
+            let (read_lo, read_hi) = read.hull();
+            if read_lo < write.1 && write.0 < read_hi {
                 return Err(BwdSegLowerError::ReadAliasesPublishBuffer {
                     window: index as u8,
                 });
