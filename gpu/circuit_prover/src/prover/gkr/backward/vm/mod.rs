@@ -42,6 +42,7 @@ pub(crate) mod seg;
 /// format the production `eval_recipes` kernel already evaluates. Production
 /// challenges are GPU-derived, so the host cannot pre-evaluate the bank the way the
 /// harness does.
+pub(crate) mod coords;
 pub(crate) mod seg_coeff_eval;
 /// The corpus coverage proof for [`seg_coeff_eval`] — no recipe needs more than the
 /// device monomial's two challenge factors — and the device-vs-CPU-oracle gate on

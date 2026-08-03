@@ -108,6 +108,17 @@ where
         acc_size: usize,
         context: &ProverContext,
     ) -> CudaResult<()> {
+        // The segmented lean VM is an alternative implementation of this round;
+        // `flat_use_constant` below is an orthogonal axis (where the incumbent's
+        // coefficients come from), not a competing path.
+        let vm_owns_round0 = super::super::vm::coords::coords_from_env()
+            .contains(&super::super::vm::coords::BwdVmCoord {
+                layer: self.layer_idx,
+                regime: crate::upstream::BwdRegime::R0,
+            });
+        if vm_owns_round0 {
+            unreachable!("the backward VM launch is wired in Task 4");
+        }
         assert!(
             self.flat_recipe_desc.is_some() || self.flat_recipe_desc_device.is_some(),
             "flat round 0 recipe descriptor must be scheduled"
