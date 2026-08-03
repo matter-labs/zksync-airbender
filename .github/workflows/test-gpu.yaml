@@ -51,22 +51,27 @@ jobs:
         run: |
           nvcc --version
 
-      - name: Build CLI and copy binary to a separate dir
+      - name: Build CLI and copy binaries to a separate dir
         shell: bash
         run: |
           mkdir artifacts
-          # Build one CLI binary with GPU support, then exercise each runtime
-          # security level in the test matrix below.
+          # Build one CLI binary with GPU support (plus the carried-chain combine
+          # smoke binary), then exercise each runtime security level in the test
+          # matrix below.
           # Build for A100 (sm_80), L4 (sm_89), and H100 (sm_90).
           CUDAARCHS="80;89;90" \
-          cargo +$RUST_TOOLCHAIN build -p cli --features "gpu" --release --target x86_64-unknown-linux-gnu
+          cargo +$RUST_TOOLCHAIN build -p cli --features "gpu" --release --target x86_64-unknown-linux-gnu \
+            --bin cli --example gpu_combine_smoke
           cp target/x86_64-unknown-linux-gnu/release/cli artifacts/cli
+          cp target/x86_64-unknown-linux-gnu/release/examples/gpu_combine_smoke artifacts/gpu_combine_smoke
 
-      - name: Upload CLI binary
+      - name: Upload CLI binaries
         uses: actions/upload-artifact@v4
         with:
           name: zksync-airbender-${{ matrix.cuda }}-cli
-          path: artifacts/cli
+          path: |
+            artifacts/cli
+            artifacts/gpu_combine_smoke
           if-no-files-found: error
 
   zksync-airbender-test:
@@ -133,6 +138,66 @@ jobs:
               --target recursion-unified)"
             echo "$verify_output"
             echo "$verify_output" | grep -F "output=[1330660171, 0, 0, 42, 2374183677, 305419896, 524296, 0"
+          done
+
+      - name: Combine recursion unified proofs on GPU
+        shell: bash
+        run: |
+          set -euo pipefail
+          BIN="$PWD/examples/opcode_smoke/app.bin"
+          TEXT="$PWD/examples/opcode_smoke/app.text"
+          # The low- and auto-preset runs above proved the same program and input
+          # twice, so their artifacts are valid inputs for a combine.
+          zksync-airbender-cli/cli combine \
+            --proofs output-low/proof.json output-auto/proof.json \
+            --bin "$BIN" \
+            --text "$TEXT" \
+            --security-level ${{ matrix.security_level }} \
+            --backend gpu \
+            --output-dir output-combined \
+            --output-file proof.json
+
+      - name: Verify combined proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          BIN="$PWD/examples/opcode_smoke/app.bin"
+          TEXT="$PWD/examples/opcode_smoke/app.text"
+          verify_output="$(zksync-airbender-cli/cli verify \
+            --proof output-combined/proof.json \
+            --bin "$BIN" \
+            --text "$TEXT" \
+            --security-level ${{ matrix.security_level }} \
+            --target recursion-combined)"
+          echo "$verify_output"
+          # Words 0..8 are the keccak rolling hash of the two combined proofs'
+          # outputs; both inputs have the output checked above, so the hash is the
+          # same value the CPU combine step in ci.yml expects.
+          echo "$verify_output" | grep -F "output=[3905229877, 2075736390, 654440390, 3518657005, 36029780, 78097385, 328053251, 983946315"
+
+      - name: Combine twice through one carried-chain combiner on GPU
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x zksync-airbender-cli/gpu_combine_smoke
+          BIN="$PWD/examples/opcode_smoke/app.bin"
+          TEXT="$PWD/examples/opcode_smoke/app.text"
+          # Two sequential combines through one CarriedChainCombiner: the second
+          # round reuses the cached host state while re-creating the CUDA contexts
+          # and the fixed-size device memory pool.
+          zksync-airbender-cli/gpu_combine_smoke \
+            --proofs output-low/proof.json output-auto/proof.json \
+            --security-level ${{ matrix.security_level }} \
+            --output-dir output-carried
+          for round in 1 2; do
+            verify_output="$(zksync-airbender-cli/cli verify \
+              --proof "output-carried/combined_round_${round}.json" \
+              --bin "$BIN" \
+              --text "$TEXT" \
+              --security-level ${{ matrix.security_level }} \
+              --target recursion-combined)"
+            echo "$verify_output"
+            echo "$verify_output" | grep -F "output=[3905229877, 2075736390, 654440390, 3518657005, 36029780, 78097385, 328053251, 983946315"
           done
 
   # Keep branch protection tied to one stable GPU check name even if we

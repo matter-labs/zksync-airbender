@@ -17,6 +17,12 @@ path = "src/lib.rs"
 name = "cli"
 path = "src/main.rs"
 
+# CI smoke test for the GPU carried-chain combine flow; see the module docs.
+[[example]]
+name = "gpu_combine_smoke"
+path = "examples/gpu_combine_smoke.rs"
+required-features = ["gpu"]
+
 [dependencies]
 prover = { workspace = true, features = ["prover"] }
 trace_and_split = { workspace = true }
