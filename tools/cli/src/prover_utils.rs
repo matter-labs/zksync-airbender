@@ -1948,11 +1948,8 @@ mod recursion_binding_tests {
         );
         assert_ne!((chain, preimage), (base_chain, base_preimage));
 
-        let carried = UnrolledProgramSetup::continue_recursion_chain(
-            &unified_end_params,
-            &chain,
-            &preimage,
-        );
+        let carried =
+            UnrolledProgramSetup::continue_recursion_chain(&unified_end_params, &chain, &preimage);
         assert_eq!(carried, (chain, preimage));
     }
 
