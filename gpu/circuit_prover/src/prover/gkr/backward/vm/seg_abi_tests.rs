@@ -439,12 +439,13 @@ fn seg_source_capacity_covers_the_census() {
 }
 
 #[test]
-fn seg_source_record_is_a_four_byte_triple() {
-    assert_eq!(size_of::<BwdSegSourceRecord>(), 4);
-    assert_eq!(align_of::<BwdSegSourceRecord>(), 4);
+fn seg_source_record_is_a_six_byte_two_lane_record() {
+    assert_eq!(size_of::<BwdSegSourceRecord>(), 6);
+    assert_eq!(align_of::<BwdSegSourceRecord>(), 2);
     assert_eq!(offset_of!(BwdSegSourceRecord, src), 0);
-    assert_eq!(offset_of!(BwdSegSourceRecord, class), 1);
     assert_eq!(offset_of!(BwdSegSourceRecord, cache), 2);
+    assert_eq!(offset_of!(BwdSegSourceRecord, class), 4);
+    assert_eq!(offset_of!(BwdSegSourceRecord, delta), 5);
     // `window` is a u8 index into the descriptor's window array, and `class` is
     // the per-round source class Task 6 assigns (BfDirect=0, BfInlineD1=1,
     // BfInlineD2=2, E4Direct=3, ProceduralInline=4) — five values, so both fit a
@@ -677,7 +678,7 @@ fn the_seg_static_assert_matcher_rejects_a_numeric_prefix() {
         "sizeof(bwd_seg_desc) == {}",
         size_of::<BwdSegDesc>()
     )));
-    assert!(seg_header_asserts("BWD_SEG_ADDR_SLOTS == 128"));
+    assert!(seg_header_asserts("BWD_SEG_ADDR_SLOTS == 64"));
     assert!(!seg_header_asserts("BWD_SEG_ADDR_SLOTS == 1"));
     assert!(!seg_header_asserts(
         "__builtin_offsetof(bwd_seg_desc, no_such_field) == 0"
@@ -1142,11 +1143,12 @@ fn seg_cuda_layout_asserts_match_the_rust_layout() {
     ] {
         assert_seg_header_asserts(&claim);
     }
-    // The source record, whose three offsets are the descriptor's per-source ABI.
+    // The source record: two lanes plus the per-round class and depth.
     for (field, offset) in [
-        ("slot", offset_of!(BwdSegSourceRecord, src)),
+        ("src", offset_of!(BwdSegSourceRecord, src)),
+        ("cache", offset_of!(BwdSegSourceRecord, cache)),
         ("source_class", offset_of!(BwdSegSourceRecord, class)),
-        ("column", offset_of!(BwdSegSourceRecord, cache)),
+        ("delta", offset_of!(BwdSegSourceRecord, delta)),
     ] {
         assert_seg_header_asserts(&format!(
             "__builtin_offsetof(bwd_seg_source_record, {field}) == {offset}"
@@ -1186,11 +1188,11 @@ fn seg_cuda_layout_asserts_match_the_rust_layout() {
     }
     for claim in [
         format!(
-            "sizeof(bwd_coeff_source_window) == {}",
+            "sizeof(bwd_seg_addr_slot) == {}",
             size_of::<BwdSegAddrSlot>()
         ),
         format!(
-            "alignof(bwd_coeff_source_window) == {}",
+            "alignof(bwd_seg_addr_slot) == {}",
             align_of::<BwdSegAddrSlot>()
         ),
     ] {
@@ -1198,10 +1200,10 @@ fn seg_cuda_layout_asserts_match_the_rust_layout() {
     }
     // The two implicit gaps before `window`, which neither language spells.
     assert_seg_header_asserts(&format!(
-        "__builtin_offsetof(bwd_seg_desc, window) - (__builtin_offsetof(bwd_seg_desc, source) + sizeof(bwd_seg_desc::source)) == {INLINE_IMPLICIT_PAD_BYTES}"
+        "__builtin_offsetof(bwd_seg_desc, slot) - (__builtin_offsetof(bwd_seg_desc, source) + sizeof(bwd_seg_desc::source)) == {INLINE_IMPLICIT_PAD_BYTES}"
     ));
     assert_seg_header_asserts(&format!(
-        "__builtin_offsetof(bwd_seg_progptr_desc, window) - (__builtin_offsetof(bwd_seg_progptr_desc, source) + sizeof(bwd_seg_progptr_desc::source)) == {PROGPTR_IMPLICIT_PAD_BYTES}"
+        "__builtin_offsetof(bwd_seg_progptr_desc, slot) - (__builtin_offsetof(bwd_seg_progptr_desc, source) + sizeof(bwd_seg_progptr_desc::source)) == {PROGPTR_IMPLICIT_PAD_BYTES}"
     ));
 }
 

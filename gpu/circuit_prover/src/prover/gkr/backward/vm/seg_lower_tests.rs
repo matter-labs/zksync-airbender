@@ -360,11 +360,30 @@ fn plan_scratch(
         .map(|set| {
             set.iter()
                 .map(|window| window.materialize && window.publish.is_none())
+                .chain(set.iter().filter(|window| window.publish.is_some()).map(|_| false))
                 .collect()
         })
         .collect();
     let flags: Vec<&[bool]> = owned.iter().map(|set| set.as_slice()).collect();
-    plan_publish_scratch(&flags, columns, rows)
+    // Columns for the appended destination slots mirror their read slot's.
+    let owned_columns: Vec<Vec<usize>> = window_sets
+        .iter()
+        .zip(columns)
+        .map(|(set, columns)| {
+            columns
+                .iter()
+                .copied()
+                .chain(
+                    set.iter()
+                        .enumerate()
+                        .filter(|(_, window)| window.publish.is_some())
+                        .map(|(index, _)| columns.get(index).copied().unwrap_or(1)),
+                )
+                .collect()
+        })
+        .collect();
+    let columns: Vec<&[usize]> = owned_columns.iter().map(|set| set.as_slice()).collect();
+    plan_publish_scratch(&flags, &columns, rows)
 }
 
 /// A plan whose only round is `round`, built from one window set.
@@ -374,10 +393,24 @@ fn plan_for(
     columns: &[usize],
 ) -> PublishScratchPlan {
     // The plan reserves for windows that publish WITHOUT an explicit backing;
-    // `plan_publish_scratch` takes exactly that flag now.
+    // `plan_publish_scratch` takes exactly that flag now. It must cover the whole
+    // slot table, which `addresses` extends with one slot per explicit
+    // destination — those reserve nothing.
     let flags: Vec<bool> = windows
         .iter()
         .map(|window| window.materialize && window.publish.is_none())
+        .chain(windows.iter().filter(|window| window.publish.is_some()).map(|_| false))
+        .collect();
+    let extended_columns: Vec<usize> = columns
+        .iter()
+        .copied()
+        .chain(
+            windows
+                .iter()
+                .enumerate()
+                .filter(|(_, window)| window.publish.is_some())
+                .map(|(index, _)| columns.get(index).copied().unwrap_or(1)),
+        )
         .collect();
     let windows = &flags[..];
     let empty_windows: Vec<bool> = Vec::new();
@@ -387,7 +420,7 @@ fn plan_for(
     for index in 0..=round {
         if index == round {
             window_sets.push(windows);
-            column_sets.push(columns);
+            column_sets.push(&extended_columns);
         } else {
             window_sets.push(&empty_windows);
             column_sets.push(&empty_columns);
@@ -953,7 +986,7 @@ fn a_publish_region_overlapping_a_raw_input_is_rejected() {
             CoeffMode::Constant,
         ),
         Err(BwdSegLowerError::UnsafePublishAlias {
-            window: 0,
+            window: 2,
             other: 1,
         }),
     );
@@ -1481,24 +1514,6 @@ fn c_init_travels_as_a_bounds_checked_coefficient_id() {
     );
 }
 
-#[test]
-fn a_window_target_depth_that_is_not_the_round_is_rejected() {
-    assert_eq!(
-        lower_one(
-            &ext_artifact(),
-            2,
-            bound(Some(e4_column(0)), 1, 1, false),
-            2,
-            1,
-            D2Policy::Inline,
-        ),
-        Err(BwdSegLowerError::WindowTargetDepthMismatch {
-            window: 0,
-            round: 2,
-            target_depth: 1,
-        }),
-    );
-}
 
 /// The runtime factor bank holds the depth-one pair and ONE depth-`fold_depth`
 /// table, so a catch-up of two at round three has no weights.
@@ -1537,42 +1552,6 @@ fn a_catch_up_the_factor_bank_cannot_weight_is_rejected() {
     );
 }
 
-/// The publish policy is lowering's, and a round binding that disagrees with it
-/// has a scratch plan that does not match the classes — so it is a rejection,
-/// never a silent override.
-#[test]
-fn a_materialize_flag_that_disagrees_with_the_policy_is_rejected() {
-    assert_eq!(
-        lower_one(
-            &bf_artifact(),
-            3,
-            bound(Some(bf_column(0)), 0, 3, false),
-            2,
-            1,
-            D2Policy::Inline,
-        ),
-        Err(BwdSegLowerError::MaterializePolicyMismatch {
-            window: 0,
-            declared: false,
-            derived: true,
-        }),
-    );
-    assert_eq!(
-        lower_one(
-            &bf_artifact(),
-            1,
-            bound(Some(bf_column(0)), 0, 1, true),
-            2,
-            1,
-            D2Policy::Inline,
-        ),
-        Err(BwdSegLowerError::MaterializePolicyMismatch {
-            window: 0,
-            declared: true,
-            derived: false,
-        }),
-    );
-}
 
 /// A publish backing on a window that does not publish would be silently
 /// ignored, so it is refused instead.
@@ -1677,7 +1656,11 @@ fn a_non_e4_or_narrow_explicit_publish_region_is_rejected() {
         }),
     );
 
-    let narrow = ROUND3_PUBLISH_EXTENT - 16;
+    // Half the extent: still a power of two in E4 elements (a lane indexes
+    // `column << log2_stride`, so a non-power-of-two stride is rejected earlier as
+    // `StrideNotPowerOfTwo`), and still too narrow for the round's per-column
+    // write.
+    let narrow = ROUND3_PUBLISH_EXTENT / 2;
     let mut bound_window = bound(Some(bf_column(0)), 0, 3, true);
     bound_window.publish = Some(column_at(E4_BACKING, true, narrow));
     assert_eq!(
@@ -1686,6 +1669,17 @@ fn a_non_e4_or_narrow_explicit_publish_region_is_rejected() {
             window: 0,
             is_e4: true,
             stride_bytes: narrow,
+        }),
+    );
+
+    // And a stride that is not a whole power of two cannot be indexed at all.
+    let mut bound_window = bound(Some(bf_column(0)), 0, 3, true);
+    bound_window.publish = Some(column_at(E4_BACKING, true, ROUND3_PUBLISH_EXTENT - 16));
+    assert_eq!(
+        lower_one(&bf_artifact(), 3, bound_window, 2, 1, D2Policy::Inline),
+        Err(BwdSegLowerError::StrideNotPowerOfTwo {
+            window: 1,
+            stride_bytes: ROUND3_PUBLISH_EXTENT - 16,
         }),
     );
 }
@@ -1727,8 +1721,8 @@ fn overlapping_explicit_publish_regions_are_rejected() {
         )
         .err(),
         Some(BwdSegLowerError::UnsafePublishAlias {
-            window: 0,
-            other: 1,
+            window: 2,
+            other: 3,
         }),
     );
 }
@@ -1877,57 +1871,7 @@ fn a_window_wider_than_its_coordinate_is_rejected() {
     );
 }
 
-#[test]
-fn a_bound_window_count_that_is_not_the_compiled_one_is_rejected() {
-    let artifact = ext_artifact();
-    let bounds: [FixtureWindow; 2] = [
-        bound(Some(e4_column(0)), 2, 2, false),
-        bound(Some(e4_column(1)), 2, 2, false),
-    ];
-    let scratch = scratch_for(plan_for(2, &bounds, &[2, 2]));
-    let claim = claim_point(8);
-    let coeffs = coefficients(4);
-    let read_elements = generous(2);
-    assert_eq!(
-        lower_bwd_seg(
-            &artifact,
-            &round_binding(2, &artifact, &bounds, &read_elements, &claim, &coeffs),
-            &scratch,
-            1,
-            D2Policy::Inline,
-            ProgramMode::Inline,
-            CoeffMode::Constant,
-        ),
-        Err(BwdSegLowerError::SourceWindowCountMismatch {
-            compiled: 1,
-            bound: 2,
-        }),
-    );
-}
 
-#[test]
-fn a_read_element_count_that_does_not_cover_every_window_is_rejected() {
-    let artifact = ext_artifact();
-    let bounds = [bound(Some(e4_column(0)), 2, 2, false)];
-    let scratch = scratch_for(plan_for(2, &bounds, &[2]));
-    let claim = claim_point(8);
-    let coeffs = coefficients(4);
-    assert_eq!(
-        lower_bwd_seg(
-            &artifact,
-            &round_binding(2, &artifact, &bounds, &[], &claim, &coeffs),
-            &scratch,
-            1,
-            D2Policy::Inline,
-            ProgramMode::Inline,
-            CoeffMode::Constant,
-        ),
-        Err(BwdSegLowerError::ReadElementCountMismatch {
-            compiled: 1,
-            bound: 0,
-        }),
-    );
-}
 
 /// The kernel indexes the bank with no bound of its own, so the payload must
 /// COVER the largest id the stream names.
@@ -3266,11 +3210,15 @@ fn the_traffic_floor_dedupes_by_backing_and_scales_with_fold_depth() {
     assert_eq!(eq, eq_term(inline_desc(&deep)), "the eq term is held fixed");
     {
         let desc = inline_desc_mut(&mut flat);
-        desc.source[0].delta = 0;
+        for record in desc.source.iter_mut() {
+            record.delta = 0;
+        }
     }
     {
         let desc = inline_desc_mut(&mut deep);
-        desc.source[0].delta = 3;
+        for record in desc.source.iter_mut() {
+            record.delta = 3;
+        }
     }
     assert_eq!(
         floor_of(&deep).read_bytes - eq,

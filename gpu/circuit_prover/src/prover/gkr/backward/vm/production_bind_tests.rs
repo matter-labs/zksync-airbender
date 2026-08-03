@@ -459,8 +459,11 @@ fn every_r0_source_resolves_against_production_storage() {
     // The observed table, pinned like the census: 8 artifact windows collapse to
     // the backings they actually reference. A change here is a storage-geometry
     // change and deserves a look, not a silent pass.
+    // FEWER slots than artifact windows: two of the eight resolve into one
+    // backing, so they share an address slot. That is the point of keying slots
+    // by backing — the count follows storage, not the artifact.
     assert_eq!(coord.binding.windows.len(), 8);
-    assert_eq!(bound.slots.len(), 8);
+    assert_eq!(bound.slots.len(), 7);
     assert_eq!(bound.sources.len(), coord.binding.source_slots.len());
 
     for (index, slot) in bound.slots.iter().enumerate() {

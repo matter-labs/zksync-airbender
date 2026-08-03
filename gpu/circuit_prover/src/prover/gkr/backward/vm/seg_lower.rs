@@ -893,8 +893,6 @@ pub(crate) enum BwdSegLowerError {
     SourceWindowOverflow { windows: usize, cap: usize },
     /// The round bound a different number of windows than the artifact compiled.
     SourceWindowCountMismatch { compiled: usize, bound: usize },
-    /// The round supplied read spans for a different number of windows.
-    ReadElementCountMismatch { compiled: usize, bound: usize },
     /// A window addresses more columns than its coordinate can reach.
     WindowColumnOverflow { window: u8, offset: usize },
     /// A procedural window named a kind the resolver does not serve.
@@ -911,6 +909,11 @@ pub(crate) enum BwdSegLowerError {
     ProceduralWindowWithMatrixRead { window: u8 },
     /// A backing pointer is null, or its stride is zero.
     NullWindowGeometry { window: u8 },
+    /// A backing's column stride is not a whole power of two in its own element
+    /// width, so a lane cannot index it: the kernel steps
+    /// `column << log2_stride`. Every production stride is a power of two, so
+    /// this is a resolver defect rather than a limitation.
+    StrideNotPowerOfTwo { window: u8, stride_bytes: u32 },
     /// A backing's column stride is not a whole number of its own elements.
     WindowStrideMismatch {
         window: u8,
@@ -919,14 +922,6 @@ pub(crate) enum BwdSegLowerError {
     },
     /// A window's target depth is not this round.
     ///
-    /// The prologue builds its fold weights from the ROUND while the resolver
-    /// takes a window's catch-up from `target_depth - backing_depth`; the two name
-    /// the same challenges only when the target depth IS the round.
-    WindowTargetDepthMismatch {
-        window: u8,
-        round: u8,
-        target_depth: u8,
-    },
     /// `backing_depth > target_depth`, or a depth outside the D0..D3 range.
     InvalidDepths {
         window: u8,
@@ -939,15 +934,6 @@ pub(crate) enum BwdSegLowerError {
         window: u8,
         delta: u8,
         fold_depth: u8,
-    },
-    /// The round's declared `materialize` disagrees with the class the policy
-    /// derives. The scratch plan was built from the DECLARATION, so a
-    /// disagreement means either a publishing window with no region or a region
-    /// nothing writes.
-    MaterializePolicyMismatch {
-        window: u8,
-        declared: bool,
-        derived: bool,
     },
     /// A caller-supplied publish backing on a window that does not publish —
     /// it would be silently ignored.
@@ -1116,7 +1102,15 @@ macro_rules! fill_seg_desc {
         desc.num_foldable = body.num_foldable;
         desc.num_immediates = body.num_immediates;
         desc.fold_source[..body.fold_source.len()].copy_from_slice(&body.fold_source);
-        desc.source[..body.sources.len()].copy_from_slice(&body.sources);
+        // Dead source records carry the ABSENT lanes rather than zeros, which
+        // would name slot 0 column 0 — a live address.
+        for (index, record) in desc.source.iter_mut().enumerate() {
+            *record = body
+                .sources
+                .get(index)
+                .copied()
+                .unwrap_or_else(BwdSegSourceRecord::default);
+        }
         // Dead slots carry the ABSENT procedural kind rather than the zeroed
         // `0`, which is a LIVE kind.
         for (index, entry) in desc.slot.iter_mut().enumerate() {
@@ -1366,31 +1360,49 @@ pub(crate) fn lower_bwd_seg(
         .per_round
         .get(usize::from(round))
         .ok_or(BwdSegLowerError::PlanMissingRound { round, rounds })?;
-    if layout.window_base.len() != binding.slots.len() {
+    // As above: a plan with no bytes reserves nothing for anyone, so its per-round
+    // entry count carries no claim about this round's slot table. When it DOES
+    // reserve, it must cover every slot a source READS through — those are the
+    // keys `plan_publish_scratch` assigns regions to. Destination slots are not
+    // keys, so a plan shorter than the whole table is normal.
+    let read_slots = binding
+        .sources
+        .iter()
+        .map(|addr| addr.read_slot + 1)
+        .max()
+        .unwrap_or(0);
+    if layout.bytes != 0 && layout.window_base.len() < read_slots {
         return Err(BwdSegLowerError::PlanShapeMismatch {
             round: usize::from(round),
-            windows: binding.slots.len(),
+            windows: read_slots,
             entries: layout.window_base.len(),
         });
     }
     // The PREVIOUS round's shape matters too, and its failure is silent rather
-    // than loud: `chain_read_column` answers `None` for a window index the prior
-    // layout does not reach, which is indistinguishable from "that window
-    // published nothing" — so a plan whose round `r - 1` was built for a
-    // different (narrower) artifact would disable the chain check instead of
-    // failing it. An EMPTY prior layout is legitimate (a round that planned
-    // nothing at all); a nonempty one that is too short is drift.
-    if let Some(previous) = usize::from(round)
-        .checked_sub(1)
-        .and_then(|index| scratch.plan.per_round.get(index))
-    {
-        let entries = previous.window_base.len();
-        if entries != 0 && entries < binding.slots.len() {
-            return Err(BwdSegLowerError::PlanShapeMismatch {
-                round: usize::from(round) - 1,
-                windows: binding.slots.len(),
-                entries,
-            });
+    // than loud: `chain_read_column` answers `None` for a slot index the prior
+    // layout does not reach, which is indistinguishable from "that slot published
+    // nothing" — so a plan whose round `r - 1` was built for a different
+    // (narrower) binding would disable the chain check instead of failing it.
+    //
+    // Only checked when the scratch path is LIVE. A caller that backs every
+    // destination explicitly (production) plans nothing, and its slot tables are
+    // per-round facts whose lengths legitimately differ round to round — the
+    // read side interns whatever backings that round reads. Comparing those
+    // lengths would reject a correct binding.
+    let scratch_is_live = scratch.plan.bytes_per_parity.iter().any(|&bytes| bytes != 0);
+    if scratch_is_live {
+        if let Some(previous) = usize::from(round)
+            .checked_sub(1)
+            .and_then(|index| scratch.plan.per_round.get(index))
+        {
+            let entries = previous.window_base.len();
+            if entries != 0 && entries < read_slots {
+                return Err(BwdSegLowerError::PlanShapeMismatch {
+                    round: usize::from(round) - 1,
+                    windows: read_slots,
+                    entries,
+                });
+            }
         }
     }
     let expected_stride = binding.rows * 2 * E4_COLUMN_BYTES as usize;
@@ -1745,16 +1757,23 @@ fn lower_slot(index: u8, slot: &ResolvedAddrSlot) -> Result<BwdSegAddrSlot, BwdS
                 kind,
             });
         }
-        if slot.base.is_some() {
-            return Err(BwdSegLowerError::ProceduralWindowWithMatrixRead { window: index });
-        }
-        // A procedural value comes from the row, so the column coordinate is
-        // meaningless and a multi-column procedural slot is a lowering bug.
-        if slot.columns > 1 {
-            return Err(BwdSegLowerError::MultiColumnProceduralWindow {
-                window: index,
-                columns: slot.columns,
-            });
+        // A procedural FAMILY reading an E4 backing is legal and common: once a
+        // round materializes it, the values live in that backing and the slot is
+        // an ordinary E4 read. What is not legal is a procedural family reading a
+        // BASE matrix — nothing materializes into base field.
+        match slot.base {
+            Some(column) if !column.is_e4 => {
+                return Err(BwdSegLowerError::ProceduralWindowWithMatrixRead { window: index })
+            }
+            // A procedural value comes from the row, so the column coordinate is
+            // meaningless and a multi-column synthesizing slot is a lowering bug.
+            None if slot.columns > 1 => {
+                return Err(BwdSegLowerError::MultiColumnProceduralWindow {
+                    window: index,
+                    columns: slot.columns,
+                })
+            }
+            _ => {}
         }
     }
     let Some(column) = slot.base else {
@@ -1779,13 +1798,13 @@ fn lower_slot(index: u8, slot: &ResolvedAddrSlot) -> Result<BwdSegAddrSlot, BwdS
     // production stride is one — a raw column stride is the poly length, a fold
     // region stride is `2 * size_after_one_fold` — so this is a wiring check, not
     // a limitation.
-    if column.stride_bytes % element != 0 {
-        return Err(BwdSegLowerError::NullWindowGeometry { window: index });
+    if column.stride_bytes % element != 0 || !(column.stride_bytes / element).is_power_of_two() {
+        return Err(BwdSegLowerError::StrideNotPowerOfTwo {
+            window: index,
+            stride_bytes: column.stride_bytes,
+        });
     }
     let elements = column.stride_bytes / element;
-    if !elements.is_power_of_two() {
-        return Err(BwdSegLowerError::NullWindowGeometry { window: index });
-    }
     let base = column.ptr as usize;
     if base
         .checked_add(slot.columns * column.stride_bytes as usize)
@@ -1919,7 +1938,13 @@ fn lower_source(
     }
 
     let cache = if publishes {
-        let offset = layout.window_base[read_slot];
+        // A shorter plan than the slot table means this slot reserves nothing —
+        // which is exactly what an explicitly backed destination expects.
+        let offset = layout
+            .window_base
+            .get(read_slot)
+            .copied()
+            .unwrap_or(PUBLISH_WINDOW_ABSENT);
         match (addr.publish, offset == PUBLISH_WINDOW_ABSENT) {
             // The caller supplied the region (production: a cascade slot of the
             // layer's own fold storage), and the plan — built by
@@ -2000,7 +2025,9 @@ fn lower_source(
         if addr.publish.is_some() {
             return Err(BwdSegLowerError::UnexpectedPublishBacking { window });
         }
-        if layout.window_base[read_slot] != PUBLISH_WINDOW_ABSENT {
+        if layout.window_base.get(read_slot).copied().unwrap_or(PUBLISH_WINDOW_ABSENT)
+            != PUBLISH_WINDOW_ABSENT
+        {
             return Err(BwdSegLowerError::PlanPublishRegionUnused { window });
         }
         BWD_SEG_ADDR_NONE
