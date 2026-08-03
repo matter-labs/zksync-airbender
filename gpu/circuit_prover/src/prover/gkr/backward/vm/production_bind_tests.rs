@@ -436,7 +436,7 @@ fn prepared_l0_ext() -> PreparedL0 {
 /// own production address independently resolves to. This is what the
 /// re-windowing exists to guarantee — production storage is not
 /// window-contiguous (copy aliases, rank packing; see the module doc), so the
-/// artifact's 8 windows must come back as 13 production runs.
+/// artifact's 8 windows come back as 9 production runs.
 #[test]
 #[serial]
 fn every_r0_source_resolves_against_production_storage() {
@@ -454,10 +454,12 @@ fn every_r0_source_resolves_against_production_storage() {
         .expect("every add_sub L0 R0 window must bind against production storage");
 
     // The observed re-partition, pinned like the census: 8 artifact windows,
-    // 13 production runs. A change here is a storage-geometry change and
-    // deserves a look, not a silent pass.
+    // 9 production runs. A change here is a storage-geometry change and
+    // deserves a look, not a silent pass. Columns are renumbered to the dense
+    // offsets their pointers imply, so the ONE extra run is a genuinely
+    // separate backing — sparse artifact numbering costs nothing.
     assert_eq!(coord.binding.windows.len(), 8);
-    assert_eq!(bound.windows.len(), 13);
+    assert_eq!(bound.windows.len(), 9);
     assert_eq!(bound.coord.binding.windows.len(), bound.windows.len());
     assert_eq!(bound.window_read_elements.len(), bound.windows.len());
     assert_eq!(bound.window_columns.len(), bound.windows.len());

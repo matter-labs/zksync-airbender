@@ -43,27 +43,29 @@
 //!     inner-layer write — one artifact window, three different matrices.
 //!   * **Rank packing.** A consolidated per-(layer, class, field) matrix packs
 //!     only the polys that exist in it, densely: `Cached { 0, offset: 7 }` and
-//!     `{ offset: 14 }` sit ONE stride apart, so absolute-offset arithmetic
-//!     breaks at every offset gap. The base-layer arenas are the exception —
-//!     absolute-indexed, holes physically present.
+//!     `{ offset: 14 }` sit ONE stride apart. The base-layer arenas are the
+//!     opposite — absolute-indexed, holes physically present — so the SAME
+//!     offset gap means a different pointer distance in each.
 //!
-//! So [`bind_r0_sources`] re-partitions: every referenced column resolves
-//! independently, and each artifact window splits into maximal runs where the
-//! production pointers advance by exactly `gap * stride` at the original
-//! column numbers. add_sub L0 R0's 8 artifact windows become 13 bound windows.
+//! So [`bind_r0_sources`] re-partitions and RENUMBERS: every referenced column
+//! resolves independently, and each is assigned the dense offset its own
+//! pointer implies ([`dense_step`]) rather than keeping the artifact's
+//! numbering. A window needs a uniform stride, not a particular numbering, and
+//! both layouts above are uniformly strided once the index comes from the
+//! pointer — a rank-packed backing advances one offset per referenced column, an
+//! arena advances by the physical gap, and neither has to split. add_sub L0 R0's
+//! 8 artifact windows become 9 bound windows, the one extra being a genuinely
+//! separate backing (a copy alias reading out of a different matrix).
+//!
 //! The program and its source SLOTS are untouched — the design spec's contract
 //! is the source table ("slot ids into a per-launch source table; no
 //! windows"), and the window partition was always a compression of it, so
 //! re-forming windows against real geometry is a binder-local move with no ABI
 //! or artifact-format change. The rebound coordinate
 //! ([`BoundR0Sources::coord`]) is what `lower_bwd_seg` must be handed; the
-//! original's windows no longer describe the bound pointers.
-//!
-//! One consequence to watch: `lower_bwd_seg` caps windows at the corpus's
-//! observed ARTIFACT-level maximum (`in_scope::MAX_SOURCE_WINDOWS_USED = 17`).
-//! Splitting can exceed it for heavier circuits even though the format holds
-//! 64; add_sub L0 R0's 13 fits, so widening coordinates later may need that
-//! cap revisited against post-split counts.
+//! original's windows no longer describe the bound pointers, and its columns are
+//! dense offsets, not addresses — do not feed them back through
+//! [`family_read_place`].
 //!
 //! # R0 publishes nothing
 //!
@@ -96,7 +98,7 @@ use gkr_eval_isa::bwd::coeff::lean_artifact::LeanCoordinateArtifact;
 use gkr_eval_isa::bwd::coeff::lean_bind::{
     LeanBoundColumn, LeanBoundWindow, LeanSourceBinding, LeanSourceSlot,
 };
-use gkr_eval_isa::bwd::coeff::limits::MAX_SOURCE_WINDOWS;
+use gkr_eval_isa::bwd::coeff::limits::{MAX_SOURCE_WINDOWS, SOURCE_WINDOW_COLUMNS};
 use gkr_eval_isa::bwd::coeff::stats::WindowFamily;
 use gkr_eval_isa::fwd::source::KIND_ORDER;
 
@@ -320,7 +322,12 @@ pub(crate) enum BwdVmBindError {
     WindowFieldMismatch { window: u8, expect_e4: bool },
     /// Re-windowing against production geometry needs more windows than the
     /// descriptor format holds.
-    TooManyWindows { windows: usize },
+    ///
+    /// Columns are renumbered to the dense offsets their pointers imply
+    /// ([`dense_step`]), so `windows > parents` here means storage genuinely
+    /// backs one artifact window through several differently-strided pieces —
+    /// not that the artifact numbers its columns sparsely.
+    TooManyWindows { windows: usize, parents: usize },
     /// R0 must plan no publish scratch; a non-empty plan means the depth
     /// wiring is wrong.
     PublishPlanNotEmpty { bytes: usize },
@@ -654,29 +661,56 @@ pub(crate) struct BoundR0Sources {
 }
 
 /// One re-windowing run under construction: a maximal stretch of one artifact
-/// window that production storage backs contiguously.
+/// window that production storage backs at a UNIFORM stride.
 struct BindRun {
     /// Resolved base of the run's FIRST column; `None` for procedural.
     read: Option<ResolvedColumn>,
-    /// The run's columns, at their ORIGINAL absolute numbers.
+    /// The run's columns, at DENSE offsets derived from the resolved pointers —
+    /// offset 0 is the run's own first column, NOT the artifact's numbering.
     columns: Vec<LeanBoundColumn>,
     /// Resolved pointer of the LAST column added (0 for procedural).
     prev_ptr: usize,
+    /// Dense offset of the LAST column added.
+    prev_offset: usize,
+}
+
+/// The dense column step from `prev_ptr` to `next_ptr` at `stride_bytes`, or
+/// `None` if the second pointer is not a whole number of strides past the
+/// first.
+///
+/// This is the entire re-windowing rule. The device reads a window as
+/// `read_base + column * read_stride_bytes`, so what a window needs is a
+/// uniform stride — not any particular column numbering. Deriving the step
+/// from the POINTERS makes the rebound index the storage's own dense rank, and
+/// the two layouts that used to disagree now both hold: an absolute-indexed
+/// arena (where a hole is a physically present column) yields a step of `g`
+/// across a gap of `g`, and a rank-packed backing (which registers only the
+/// columns it holds) yields a step of 1 across the same gap. Neither splits.
+///
+/// A step of 0 is legal and means two sources resolved to the SAME column — a
+/// copy gate aliasing its input. They share one window column; the slot table
+/// is what distinguishes them.
+fn dense_step(prev_ptr: usize, next_ptr: usize, stride_bytes: u32) -> Option<usize> {
+    let stride = stride_bytes as usize;
+    let delta = next_ptr.checked_sub(prev_ptr)?;
+    if delta != 0 && (stride == 0 || delta % stride != 0) {
+        return None;
+    }
+    Some(if delta == 0 { 0 } else { delta / stride })
 }
 
 /// Resolve one R0 coordinate's windows against production storage,
 /// re-partitioning them to production geometry.
 ///
 /// The device resolves `(window, column)` as `base + column * stride`, so a
-/// window must be CONTIGUOUS in the matrix it points into. The artifact's
-/// windows are contiguous in the DAG's address space, not in storage (see the
-/// module doc); this walks every referenced column, resolves it independently,
-/// and splits each artifact window into maximal runs where consecutive
-/// referenced columns satisfy `ptr(next) == ptr(prev) + gap * stride` at their
-/// ORIGINAL column numbers. Keeping absolute numbering (rather than densely
-/// renumbering) is what lets an absolute-indexed matrix — the base-layer
-/// arenas, where a hole is a physically present column — stay ONE window
-/// across holes, while a rank-packed matrix splits exactly at its gaps.
+/// window must be UNIFORMLY STRIDED in the matrix it points into. The
+/// artifact's windows are contiguous in the DAG's address space, not in storage
+/// (see the module doc); this walks every referenced column, resolves it
+/// independently, and renumbers it to the dense offset its own POINTER implies
+/// (see [`dense_step`]). A run therefore breaks only where storage genuinely
+/// stops being uniformly strided — a different backing, a different stride, or
+/// a pointer that moves backwards — and never merely because the artifact
+/// numbers its columns sparsely.
 ///
 /// `rows` is the launch's logical row count; it enters only the (asserted
 /// empty) publish plan.
@@ -716,45 +750,59 @@ pub(crate) fn bind_r0_sources<E: Copy>(
                     Some(column)
                 }
             };
-            let continues = match (runs.last(), &resolved) {
-                (None, _) => false,
-                // A procedural window is one synthetic backing; it never splits.
-                (Some(run), None) => run.read.is_none(),
-                (Some(run), Some(next)) => run.read.is_some_and(|base| {
-                    let prev = run.columns.last().expect("a run is never empty");
-                    let gap = entry.column - prev.column;
-                    next.stride_bytes == base.stride_bytes
-                        && next.ptr as usize
-                            == run.prev_ptr + gap * base.stride_bytes as usize
-                }),
+            // The dense offset this column takes if it joins the open run, or
+            // `None` to start a new one.
+            let offset = match (runs.last(), &resolved) {
+                (None, _) => None,
+                // A procedural window is one synthetic backing and reads no
+                // memory at all (`seg_raw_synthesized` derives the value from
+                // the row), so its columns just number themselves.
+                (Some(run), None) => run.read.is_none().then(|| run.prev_offset + 1),
+                (Some(run), Some(next)) => run
+                    .read
+                    .filter(|base| next.stride_bytes == base.stride_bytes)
+                    .and_then(|base| {
+                        dense_step(run.prev_ptr, next.ptr as usize, base.stride_bytes)
+                    })
+                    .map(|step| run.prev_offset + step)
+                    .filter(|offset| *offset < SOURCE_WINDOW_COLUMNS),
             };
-            if !continues {
-                runs.push(BindRun {
-                    read: resolved,
-                    columns: Vec::new(),
-                    prev_ptr: 0,
-                });
-            }
+            let offset = match offset {
+                Some(offset) => offset,
+                None => {
+                    runs.push(BindRun {
+                        read: resolved,
+                        columns: Vec::new(),
+                        prev_ptr: resolved.map_or(0, |r| r.ptr as usize),
+                        prev_offset: 0,
+                    });
+                    0
+                }
+            };
             let run = runs.last_mut().expect("just started");
             run.columns.push(LeanBoundColumn {
-                column: entry.column,
+                column: offset,
                 source: entry.source,
             });
             run.prev_ptr = resolved.map_or(0, |r| r.ptr as usize);
+            run.prev_offset = offset;
         }
 
         for run in runs {
             if new_windows.len() >= MAX_SOURCE_WINDOWS {
                 return Err(BwdVmBindError::TooManyWindows {
                     windows: new_windows.len() + 1,
+                    parents: shapes.len(),
                 });
             }
             let nw = new_windows.len() as u8;
-            let first_column = run.columns[0].column;
+            // Columns carry dense offsets already, so the rebound window's
+            // `first_column` is 0 by construction and a slot's column IS the
+            // offset.
             for entry in &run.columns {
                 new_slots[entry.source as usize] = Some(LeanSourceSlot {
                     window: nw,
-                    column: (entry.column - first_column) as u16,
+                    column: entry.column as u16,
                 });
             }
             let width = if shape.is_e4 {
@@ -772,7 +820,7 @@ pub(crate) fn bind_r0_sources<E: Copy>(
             });
             new_windows.push(LeanBoundWindow {
                 family: artifact_window.family,
-                first_column,
+                first_column: 0,
                 columns: run.columns,
             });
         }
@@ -845,8 +893,8 @@ pub(crate) struct BoundExtRound {
 }
 
 /// One frozen run under construction: a maximal stretch of one artifact window
-/// that production backs contiguously on BOTH sides the sequence will address
-/// through it — the depth-0 matrix (raw rounds) AND the cascade regions
+/// that production backs at a uniform stride on BOTH sides the sequence will
+/// address through it — the depth-0 matrix (raw rounds) AND the cascade regions
 /// (publishes and chain reads).
 struct ExtBindRun {
     /// The parent ARTIFACT window — the per-round shape is its.
@@ -855,22 +903,45 @@ struct ExtBindRun {
     raw: Option<ResolvedColumn>,
     /// First column's cascade region.
     cascade: CascadeRegion,
+    /// Dense offsets, as [`BindRun::columns`].
     columns: Vec<LeanBoundColumn>,
     prev_raw_ptr: usize,
     prev_cascade_base: usize,
+    /// Dense offset of the LAST column added.
+    prev_offset: usize,
 }
 
 /// Resolve one Ext coordinate's windows against production storage for the
 /// whole continuation sequence, re-partitioning them to production geometry.
 ///
-/// The split rule is the UNION of the R0 binder's raw-read contiguity and
-/// cascade contiguity: a run continues over a column gap `g` iff the raw
-/// pointers advance by exactly `g * stride` (holes physically present — the
-/// base-layer arenas) AND the cascade regions advance by exactly
-/// `g * region_bytes` (the consolidated backings pack REGISTERED addresses
-/// densely, so an arena hole with no cache slot splits the run — the publish
-/// side cannot address across it). Frozen once: the same partition serves
-/// every round, raw and chained alike.
+/// One `column` index addresses both sides, so both must agree on it: the
+/// dense step comes from the RAW pointers (see [`dense_step`]), and the run
+/// continues only if the cascade regions advance by that same step. A gap in
+/// the artifact's numbering costs nothing on either side — what splits a run is
+/// the two sides disagreeing about the step, which means storage packs them in
+/// genuinely different orders. Frozen once: the same partition serves every
+/// round, raw and chained alike.
+///
+/// # The two sides genuinely disagree, and one index cannot fix it
+///
+/// Measured on blake2 L0 Ext (13 artifact windows, 999 column transitions): the
+/// raw side is an ABSOLUTE-indexed base-layer arena, so its pointer advances by
+/// the artifact's own column gap — step 1 for 897 transitions, but 2, 3, 4 or 7
+/// for the other 102. The cascade side is RANK-PACKED, so it advances by
+/// exactly one region per referenced column — `cas_delta == region_bytes` in
+/// all 999. No renumbering reconciles those: a single index times two constant
+/// strides cannot be both 3 apart on one side and 1 apart on the other. So this
+/// binder splits at each of the 102 disagreements and reports 115 windows.
+///
+/// The fix is two indices — a raw column and a cascade column per source, which
+/// is what the incumbent flat path already does (it resolves each source
+/// through `tables.bases` / `tables.log2_stride` rather than through a strided
+/// window). [`BwdSegSourceRecord`] has room for it at no cost: `column` is
+/// bounded by `SOURCE_WINDOW_COLUMNS = 128`, so the record's `u16` holds both
+/// sides as bytes. Until that lands, Ext binds only where the two sides agree —
+/// every add_sub main layer does; blake2 L0 does not.
+///
+/// [`BwdSegSourceRecord`]: super::seg_desc::BwdSegSourceRecord
 pub(crate) fn bind_ext_round_sources<E: Copy>(
     storage: &GpuGKRStorage<BF, E>,
     coord: &LeanCoordinateArtifact,
@@ -912,48 +983,59 @@ pub(crate) fn bind_ext_round_sources<E: Copy>(
             let cascade = resolve_cascade_region(storage, request_layer, address, e4_origin)
                 .ok_or(BwdVmBindError::UnresolvedCascade { window, address })?;
 
-            let continues = parent_runs > 0 && {
-                let run = runs.last().expect("parent_runs > 0");
-                let prev = run.columns.last().expect("a run is never empty");
-                let gap = entry.column - prev.column;
-                let raw_continues = match (&run.raw, &raw) {
-                    (None, None) => true,
-                    (Some(base), Some(next)) => {
-                        next.stride_bytes == base.stride_bytes
-                            && next.ptr as usize
-                                == run.prev_raw_ptr + gap * base.stride_bytes as usize
-                    }
-                    _ => false,
-                };
-                let region_bytes = run.cascade.region_elems * size_of::<E4>();
-                raw_continues
-                    && cascade.region_elems == run.cascade.region_elems
-                    && cascade.first_slot == run.cascade.first_slot
-                    && cascade.base as usize == run.prev_cascade_base + gap * region_bytes
-            };
-            if !continues {
-                runs.push(ExtBindRun {
-                    parent,
-                    raw,
-                    cascade,
-                    columns: Vec::new(),
-                    prev_raw_ptr: 0,
-                    prev_cascade_base: 0,
+            let offset = (parent_runs > 0)
+                .then(|| runs.last().expect("parent_runs > 0"))
+                .and_then(|run| {
+                    let region_bytes = run.cascade.region_elems * size_of::<E4>();
+                    // The raw side owns the step; a procedural window has no raw
+                    // side, so its cascade does.
+                    let step = match (&run.raw, &raw) {
+                        (None, None) => dense_step(
+                            run.prev_cascade_base,
+                            cascade.base as usize,
+                            u32::try_from(region_bytes).expect("region stride"),
+                        ),
+                        (Some(base), Some(next)) if next.stride_bytes == base.stride_bytes => {
+                            dense_step(run.prev_raw_ptr, next.ptr as usize, base.stride_bytes)
+                        }
+                        _ => None,
+                    }?;
+                    let agrees = cascade.region_elems == run.cascade.region_elems
+                        && cascade.first_slot == run.cascade.first_slot
+                        && cascade.base as usize == run.prev_cascade_base + step * region_bytes;
+                    (agrees && run.prev_offset + step < SOURCE_WINDOW_COLUMNS)
+                        .then_some(run.prev_offset + step)
                 });
-                parent_runs += 1;
-            }
+            let offset = match offset {
+                Some(offset) => offset,
+                None => {
+                    runs.push(ExtBindRun {
+                        parent,
+                        raw,
+                        cascade,
+                        columns: Vec::new(),
+                        prev_raw_ptr: raw.map_or(0, |column| column.ptr as usize),
+                        prev_cascade_base: cascade.base as usize,
+                        prev_offset: 0,
+                    });
+                    parent_runs += 1;
+                    0
+                }
+            };
             let run = runs.last_mut().expect("just started");
             run.columns.push(LeanBoundColumn {
-                column: entry.column,
+                column: offset,
                 source: entry.source,
             });
             run.prev_raw_ptr = raw.map_or(0, |column| column.ptr as usize);
             run.prev_cascade_base = cascade.base as usize;
+            run.prev_offset = offset;
         }
     }
     if runs.len() > MAX_SOURCE_WINDOWS {
         return Err(BwdVmBindError::TooManyWindows {
             windows: runs.len(),
+            parents: coord.binding.windows.len(),
         });
     }
 
@@ -962,16 +1044,17 @@ pub(crate) fn bind_ext_round_sources<E: Copy>(
     let mut new_slots: Vec<Option<LeanSourceSlot>> =
         vec![None; coord.binding.source_slots.len()];
     for (index, run) in runs.iter().enumerate() {
-        let first_column = run.columns[0].column;
+        // Dense offsets already, so `first_column` is 0 and a slot's column IS
+        // the offset — as in [`bind_r0_sources`].
         for entry in &run.columns {
             new_slots[entry.source as usize] = Some(LeanSourceSlot {
                 window: index as u8,
-                column: (entry.column - first_column) as u16,
+                column: entry.column as u16,
             });
         }
         new_windows.push(LeanBoundWindow {
             family: coord.binding.windows[run.parent].family,
-            first_column,
+            first_column: 0,
             columns: run.columns.clone(),
         });
     }
