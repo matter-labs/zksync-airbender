@@ -106,6 +106,20 @@ pub(crate) const BWD_SEG_CONST_BANK: usize = 1_152;
 /// value so that a byte-level truncation cannot turn absence into a live id.
 pub(crate) const BWD_SEG_C_INIT_NONE: u32 = u32::MAX;
 
+/// [`BwdSegDesc::output`]: the incumbent per-row ACCUMULATOR layout — `2 *
+/// logical_rows` entries, consumed by the separate reduction + round-update tail.
+/// The default, and what the bench's per-row CPU oracle compares against.
+pub(crate) const BWD_SEG_OUTPUT_ROWS: u32 = 0;
+/// [`BwdSegDesc::output`]: ONE `(c0, c2)` pair per block — per 32-row tile — at
+/// the incumbent warp-partial layout (`partials[i * 2]`, `[i * 2 + 1]`), consumed
+/// directly by `ab_gkr_backward_dual_finalize_from_partials_e4_kernel`.
+///
+/// The kernel keeps the row-axis reduction instead of handing 32x the bytes to a
+/// separate one: it costs one 5-step `shfl_xor` per accumulator in warp 0 only,
+/// and no shared memory. Values are unchanged — field addition is exact and
+/// associative, so the pair is the bit-identical sum of the rows it replaces.
+pub(crate) const BWD_SEG_OUTPUT_PARTIALS: u32 = 1;
+
 /// Fold-weight bank shape (spec §4.1): slots hold only q >= 1 (the q = 0
 /// coefficient is the difference form's implicit 1), packed per delta.
 pub(crate) const BWD_SEG_FOLD_WEIGHT_SLOTS: usize = 11;
@@ -433,10 +447,11 @@ pub(crate) struct BwdSegDesc {
     /// Rows this launch evaluates. Also the contribution half-stride: the
     /// incumbent `acc_size`.
     pub logical_rows: u32,
-    /// Explicit: makes the SIZE a multiple of [`BWD_SEG_DESC_ALIGN`] without
-    /// implicit trailing padding the two languages would have to agree on.
-    /// Never read by the kernel.
-    pub pad: [u32; 1],
+    /// What the epilogue writes: [`BWD_SEG_OUTPUT_ROWS`] (per-row contributions)
+    /// or [`BWD_SEG_OUTPUT_PARTIALS`] (one warp-partial pair per 32-row tile).
+    /// Occupies the word that used to be explicit trailing padding, so the
+    /// descriptor's size and every field offset are unchanged.
+    pub output: u32,
 }
 
 impl BwdSegDesc {
@@ -473,7 +488,7 @@ impl BwdSegDesc {
             eq_sizes: GkrEqSizes::zeroed(),
             n_coefficients: 0,
             logical_rows: 0,
-            pad: [0; 1],
+            output: BWD_SEG_OUTPUT_ROWS,
         }
     }
 }
@@ -527,9 +542,12 @@ pub(crate) struct BwdSegProgPtrDesc {
     pub eq_sizes: GkrEqSizes,
     pub n_coefficients: u32,
     pub logical_rows: u32,
-    /// See [`BwdSegDesc::pad`]. Three words rather than one: the head is 12
+    /// See [`BwdSegDesc::output`].
+    pub output: u32,
+    /// Two words rather than three now that `output` took one: the head is 12
     /// bytes here instead of 17,248, so the tail lands elsewhere modulo 16.
-    pub pad: [u32; 3],
+    /// Never read by the kernel.
+    pub pad: [u32; 2],
 }
 
 impl BwdSegProgPtrDesc {
@@ -558,7 +576,8 @@ impl BwdSegProgPtrDesc {
             eq_sizes: GkrEqSizes::zeroed(),
             n_coefficients: 0,
             logical_rows: 0,
-            pad: [0; 3],
+            output: BWD_SEG_OUTPUT_ROWS,
+            pad: [0; 2],
         }
     }
 }
@@ -644,13 +663,13 @@ const _: () = {
     assert!(offset_of!(BwdSegDesc, eq_sizes) == 26_392);
     assert!(offset_of!(BwdSegDesc, n_coefficients) == 26_404);
     assert!(offset_of!(BwdSegDesc, logical_rows) == 26_408);
-    assert!(offset_of!(BwdSegDesc, pad) == 26_412);
+    assert!(offset_of!(BwdSegDesc, output) == 26_412);
     // The program stream starts on a 16-byte boundary and can be buffered
     // through wide loads.
     assert!(offset_of!(BwdSegDesc, program) % BWD_SEG_DESC_ALIGN == 0);
     // `pad` is the tail, and it is what makes the size a whole number of
     // alignment quanta.
-    assert!(offset_of!(BwdSegDesc, pad) + size_of::<[u32; 1]>() == size_of::<BwdSegDesc>());
+    assert!(offset_of!(BwdSegDesc, output) + size_of::<u32>() == size_of::<BwdSegDesc>());
     assert!(size_of::<BwdSegDesc>() % BWD_SEG_DESC_ALIGN == 0);
 
     assert!(size_of::<BwdSegProgPtrDesc>() == 9_184);
@@ -677,9 +696,10 @@ const _: () = {
     assert!(offset_of!(BwdSegProgPtrDesc, eq_sizes) == 9_152);
     assert!(offset_of!(BwdSegProgPtrDesc, n_coefficients) == 9_164);
     assert!(offset_of!(BwdSegProgPtrDesc, logical_rows) == 9_168);
-    assert!(offset_of!(BwdSegProgPtrDesc, pad) == 9_172);
+    assert!(offset_of!(BwdSegProgPtrDesc, output) == 9_172);
+    assert!(offset_of!(BwdSegProgPtrDesc, pad) == 9_176);
     assert!(
-        offset_of!(BwdSegProgPtrDesc, pad) + size_of::<[u32; 3]>()
+        offset_of!(BwdSegProgPtrDesc, pad) + size_of::<[u32; 2]>()
             == size_of::<BwdSegProgPtrDesc>()
     );
     assert!(size_of::<BwdSegProgPtrDesc>() % BWD_SEG_DESC_ALIGN == 0);

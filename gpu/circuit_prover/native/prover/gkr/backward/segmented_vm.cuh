@@ -516,9 +516,11 @@ struct alignas(BWD_SEG_DESC_ALIGN) bwd_seg_desc {
   // Rows this launch evaluates. Also the contribution half-stride and the
   // endpoint half-stride of every target-depth backing.
   u32 logical_rows;
-  // Explicit: makes the SIZE a multiple of the alignment without implicit
-  // trailing padding the two languages would have to agree on. Never read.
-  u32 pad[1];
+  // What the epilogue writes: per-row contributions, or one warp-partial pair
+  // per 32-row tile (`bwd_seg_output`). Occupies the word that used to be
+  // explicit trailing padding, so the descriptor's size and every field offset
+  // are unchanged by the addition.
+  u32 output;
 };
 
 static_assert(sizeof(bwd_seg_desc) == 26416, "bwd_seg_desc/BwdSegDesc ABI size drift");
@@ -545,11 +547,11 @@ static_assert(__builtin_offsetof(bwd_seg_desc, contributions) == 26384, "contrib
 static_assert(__builtin_offsetof(bwd_seg_desc, eq_sizes) == 26392, "eq_sizes ABI offset drift");
 static_assert(__builtin_offsetof(bwd_seg_desc, n_coefficients) == 26404, "n_coefficients ABI offset drift");
 static_assert(__builtin_offsetof(bwd_seg_desc, logical_rows) == 26408, "logical_rows ABI offset drift");
-static_assert(__builtin_offsetof(bwd_seg_desc, pad) == 26412, "pad ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_desc, output) == 26412, "output ABI offset drift");
 // The program stream starts 16-byte aligned so it can be buffered through wide
 // loads, and `pad` is the tail that makes the size a whole number of quanta.
 static_assert(__builtin_offsetof(bwd_seg_desc, program) % BWD_SEG_DESC_ALIGN == 0, "the program stream must start 16-byte aligned");
-static_assert(__builtin_offsetof(bwd_seg_desc, pad) + sizeof(u32) == sizeof(bwd_seg_desc), "pad must be the descriptor tail");
+static_assert(__builtin_offsetof(bwd_seg_desc, output) + sizeof(u32) == sizeof(bwd_seg_desc), "output must be the descriptor tail");
 static_assert(sizeof(bwd_seg_desc) % BWD_SEG_DESC_ALIGN == 0, "the descriptor size must be a whole number of alignment quanta");
 // The four-byte gap is implicit on BOTH sides, so it is asserted rather than
 // spelled: this is the arithmetic that proves it is exactly four.
@@ -587,9 +589,12 @@ struct alignas(BWD_SEG_DESC_ALIGN) bwd_seg_progptr_desc {
   gkr_eq_sizes eq_sizes;
   u32 n_coefficients;
   u32 logical_rows;
-  // Three words rather than one: the head is 12 bytes here instead of 17,248, so
-  // the tail lands elsewhere modulo 16.
-  u32 pad[3];
+  // Same meaning as the by-value twin's (`bwd_seg_output`), taken from the pad so
+  // both descriptors carry the field at no size change.
+  u32 output;
+  // Two words rather than three now that `output` took one: the head is 12 bytes
+  // here instead of 17,248, so the tail lands elsewhere modulo 16.
+  u32 pad[2];
 };
 
 static_assert(sizeof(bwd_seg_progptr_desc) == 9184, "bwd_seg_progptr_desc/BwdSegProgPtrDesc ABI size drift");
@@ -615,8 +620,9 @@ static_assert(__builtin_offsetof(bwd_seg_progptr_desc, contributions) == 9144, "
 static_assert(__builtin_offsetof(bwd_seg_progptr_desc, eq_sizes) == 9152, "progptr eq_sizes ABI offset drift");
 static_assert(__builtin_offsetof(bwd_seg_progptr_desc, n_coefficients) == 9164, "progptr n_coefficients ABI offset drift");
 static_assert(__builtin_offsetof(bwd_seg_progptr_desc, logical_rows) == 9168, "progptr logical_rows ABI offset drift");
-static_assert(__builtin_offsetof(bwd_seg_progptr_desc, pad) == 9172, "progptr pad ABI offset drift");
-static_assert(__builtin_offsetof(bwd_seg_progptr_desc, pad) + 3 * sizeof(u32) == sizeof(bwd_seg_progptr_desc), "progptr pad must be the descriptor tail");
+static_assert(__builtin_offsetof(bwd_seg_progptr_desc, output) == 9172, "progptr output ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_progptr_desc, pad) == 9176, "progptr pad ABI offset drift");
+static_assert(__builtin_offsetof(bwd_seg_progptr_desc, pad) + 2 * sizeof(u32) == sizeof(bwd_seg_progptr_desc), "progptr pad must be the descriptor tail");
 static_assert(sizeof(bwd_seg_progptr_desc) % BWD_SEG_DESC_ALIGN == 0, "the progptr descriptor size must be a whole number of alignment quanta");
 // The A/B twin really drops the array rather than leaving it resident.
 static_assert(sizeof(bwd_seg_desc) - sizeof(bwd_seg_progptr_desc) >= BWD_SEG_PROGRAM_BYTE_CAP - BWD_SEG_DESC_ALIGN,
@@ -624,6 +630,30 @@ static_assert(sizeof(bwd_seg_desc) - sizeof(bwd_seg_progptr_desc) >= BWD_SEG_PRO
 // No gap here: the progptr `source` array ends exactly at `window`.
 static_assert(__builtin_offsetof(bwd_seg_progptr_desc, window) - (__builtin_offsetof(bwd_seg_progptr_desc, source) + sizeof(bwd_seg_progptr_desc::source)) == 0,
               "the progptr `source` array must end exactly at `window`, with no gap");
+
+// ── Output shape ────────────────────────────────────────────────────────────
+//
+// What the epilogue writes once the cross-warp reduction has consolidated a
+// row. The two shapes differ ONLY in how much of the reduction the kernel keeps
+// for itself, never in the values: field addition is exact and associative, so
+// the partial pair is the bit-identical sum of the rows it replaces.
+enum bwd_seg_output : u32 {
+  // `2 * logical_rows` per-row entries, the incumbent ACCUMULATOR layout. The
+  // separate CUB reduction + round-update tail consumes it. This is what the
+  // bench's per-row CPU oracle compares against, so it stays the default.
+  BWD_SEG_OUTPUT_ROWS = 0,
+  // ONE `(c0, c2)` pair per block — per 32-row tile — at the incumbent's
+  // interleaved warp-partial layout (`partials[i * 2]`, `partials[i * 2 + 1]`),
+  // which `ab_gkr_backward_dual_finalize_from_partials_e4_kernel` reads
+  // directly. A block IS a 32-row tile (`tile_row = blockIdx.x * 32 + lane`),
+  // so `gridDim.x` pairs is exactly the `acc_size / 32` the tail expects.
+  //
+  // Costs one 5-step `shfl_xor` reduction per accumulator, in warp 0 only, once
+  // per block — and NO shared memory, which is why this is not a new point on
+  // the `bwd_seg_epilogue` smem-vs-barriers ladder but a step past its end.
+  // Saves 31/32 of the contribution store AND the reduction's read-back of it.
+  BWD_SEG_OUTPUT_PARTIALS = 1,
+};
 
 // ── Epilogue specialization (section 3) ─────────────────────────────────────
 //

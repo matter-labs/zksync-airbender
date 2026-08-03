@@ -111,13 +111,16 @@ use super::seg_coeff_eval::{
     BWD_SEG_CHALLENGE_LOOKUP_MULTIPLICATIVE, BWD_SEG_CHALLENGE_PERM_LINEARIZATION_BASE,
     BWD_SEG_CHALLENGE_SLOTS,
 };
-use super::seg_desc::{BWD_COEFF_PUBLISH_TARGET_DEPTH, BWD_SEG_MAX_K};
+use super::seg_desc::{
+    BWD_COEFF_PUBLISH_TARGET_DEPTH, BWD_SEG_MAX_K, BWD_SEG_OUTPUT_PARTIALS, BWD_SEG_OUTPUT_ROWS,
+};
 use super::seg_lower::{
     assign_class, lower_bwd_seg, plan_publish_scratch, window_columns, BwdSegLowerError,
     BwdSegRoundBinding, BwdSegSetup, CoeffMode, D2Policy, ProgramMode, PublishScratchPlan,
     ResolvedBwdCoeffSourceWindow, ResolvedPublishScratch, SourceClass, SourceOrigin,
 };
 use crate::allocator::tracker::AllocationPlacement;
+use crate::primitives::utils::WARP_SIZE;
 use crate::primitives::context::DeviceAllocation;
 use crate::primitives::field::{BF, E4};
 use crate::prover::gkr::backward::{make_eq_sizes, GkrEqSizes};
@@ -1172,6 +1175,9 @@ pub(crate) fn build_bwd_vm_round0<E: Copy>(
         eq_sizes,
         contributions,
         acc_size: rows as u32,
+        // Round 0 is never the last round (`last_step >= 3`), so it always runs
+        // in the loop and its tail is the fused one.
+        output: BWD_SEG_OUTPUT_PARTIALS,
     };
     let setup = lower_bwd_seg(
         &bound.coord,
@@ -1236,12 +1242,12 @@ pub(crate) fn schedule_bwd_vm_round0(
     #[cfg(test)]
     if poison_accumulator_enabled() {
         const POISON: u32 = 0x5EED_DEAD & 0x7FFF_FFFF;
-        // SAFETY: `contributions` is `round_scratch.accumulator`'s live device
-        // pointer and the allocation holds `2 * max_acc_size >= 2 * acc_size`
-        // elements; the poison writes exactly the two halves this launch owns.
-        let dst = unsafe {
-            DeviceSlice::from_raw_parts_mut(contributions, 2 * acc_size as usize)
-        };
+        // See the Ext twin: the length follows the output shape, and round 0
+        // always publishes partials.
+        let elements = poisoned_output_elements(BWD_SEG_OUTPUT_PARTIALS, acc_size);
+        // SAFETY: `contributions` is `round_scratch.partials`' live device
+        // pointer, allocated for the worst-case partial count.
+        let dst = unsafe { DeviceSlice::from_raw_parts_mut(contributions, elements) };
         crate::ops::simple::set_by_val(
             E4::from_array_of_base([BF::new(POISON); 4]),
             dst,
@@ -1393,7 +1399,8 @@ pub(crate) fn build_bwd_vm_ext_rounds<E: Copy>(
     slice: &CompiledSlice,
     folding_steps: usize,
     eq_low: *const E4,
-    contributions: *mut E4,
+    partials: *mut E4,
+    accumulator: *mut E4,
     context: &ProverContext,
 ) -> CudaResult<BwdVmExtLaunch> {
     let bound = bind_ext_round_sources(
@@ -1421,6 +1428,7 @@ pub(crate) fn build_bwd_vm_ext_rounds<E: Copy>(
     let ceiling = seg_k_ceiling(BwdRegime::Ext)?;
     let mut setups = Vec::with_capacity(bound.rounds.len());
     for round in &bound.rounds {
+        let is_last_round = usize::from(round.round) == folding_steps - 1;
         let bytes_per_row = seg_ext_bytes_per_row(&round.windows, &bound.window_columns);
         let k = seg_policy_k(bytes_per_row, ceiling);
         let binding = BwdSegRoundBinding {
@@ -1434,8 +1442,22 @@ pub(crate) fn build_bwd_vm_ext_rounds<E: Copy>(
             immediates: &slice.layer.immediates,
             eq_low,
             eq_sizes: drained_eq_sizes(make_eq_sizes(folding_steps - 1), round.round),
-            contributions,
+            // The final round keeps the per-row shape and the accumulator: it is
+            // dispatched outside the round loop, on a tail that reads the
+            // accumulator and does NOT fold eq, and at `acc_size == 1` the
+            // partial shape would save two field elements. Every other round
+            // publishes partials for the fused tail.
+            contributions: if is_last_round {
+                accumulator
+            } else {
+                partials
+            },
             acc_size: round.rows as u32,
+            output: if is_last_round {
+                BWD_SEG_OUTPUT_ROWS
+            } else {
+                BWD_SEG_OUTPUT_PARTIALS
+            },
         };
         setups.push(
             lower_bwd_seg(
@@ -1500,6 +1522,16 @@ pub(crate) fn schedule_bwd_vm_ext_bank_fill(
 /// prelude (reads the claim-point symbol slot `round - 1`, which the previous
 /// round's update kernel wrote — stream order IS the data dependency), then
 /// the segmented kernel.
+/// Elements a launch of `output` shape writes at `acc_size` rows — the poison's
+/// length, and the only place the two shapes' extents are spelled.
+#[cfg(test)]
+fn poisoned_output_elements(output: u32, acc_size: u32) -> usize {
+    match output {
+        BWD_SEG_OUTPUT_PARTIALS => 2 * (acc_size as usize).div_ceil(WARP_SIZE as usize).max(1),
+        _ => 2 * acc_size as usize,
+    }
+}
+
 pub(crate) fn schedule_bwd_vm_ext_round(
     launch: &BwdVmExtLaunch,
     round: u32,
@@ -1511,10 +1543,12 @@ pub(crate) fn schedule_bwd_vm_ext_round(
         "the Ext bank fill must be scheduled before any round launch"
     );
     let setup = &launch.setups[round as usize - 1];
-    let (lowered_rows, contributions) = match &setup.desc {
-        super::seg_lower::BwdSegLaunchDesc::Inline(desc) => (desc.logical_rows, desc.contributions),
+    let (lowered_rows, contributions, output) = match &setup.desc {
+        super::seg_lower::BwdSegLaunchDesc::Inline(desc) => {
+            (desc.logical_rows, desc.contributions, desc.output)
+        }
         super::seg_lower::BwdSegLaunchDesc::ProgPtr(desc) => {
-            (desc.logical_rows, desc.contributions)
+            (desc.logical_rows, desc.contributions, desc.output)
         }
     };
     assert_eq!(
@@ -1527,9 +1561,16 @@ pub(crate) fn schedule_bwd_vm_ext_round(
     #[cfg(test)]
     if poison_accumulator_enabled() {
         const POISON: u32 = 0x5EED_DEAD & 0x7FFF_FFFF;
-        // SAFETY: `contributions` is the accumulator's live device pointer and
-        // the allocation holds `2 * max_acc_size >= 2 * acc_size` elements.
-        let dst = unsafe { DeviceSlice::from_raw_parts_mut(contributions, 2 * acc_size as usize) };
+        // The poison must cover EXACTLY what this launch overwrites, which
+        // depends on the output shape: `2 * acc_size` per-row entries in the
+        // accumulator, or one interleaved pair per 32-row tile in the partials
+        // buffer. Writing the row length into the partials buffer would run off
+        // the end of an allocation sized for the partial shape.
+        let elements = poisoned_output_elements(output, acc_size);
+        // SAFETY: `contributions` is the live device pointer of whichever buffer
+        // this round's shape names, and both are allocated for the worst-case
+        // `acc_size` in that shape.
+        let dst = unsafe { DeviceSlice::from_raw_parts_mut(contributions, elements) };
         crate::ops::simple::set_by_val(E4::from_array_of_base([BF::new(POISON); 4]), dst, stream)?;
     }
     #[cfg(not(test))]

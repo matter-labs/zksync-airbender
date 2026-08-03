@@ -1040,18 +1040,39 @@ where
             // supports the device-buffer coeff loader. Fast-path circuits keep
             // the warp-partial path (their round-0 fits `__constant__`).
             //
-            // A VM-owned round 0 also takes the unfused branch: the segmented
-            // kernel's output contract is the incumbent's ACCUMULATOR
-            // (`acc_c0`/`acc_c2` halves), which the separate reduction +
-            // round-update tail consumes — the fused warp-partial tail has no
-            // seam to hand it to. VM-owned continuation rounds take it for the
-            // same reason.
-            let use_warp_partial = acc_size >= 32
-                && !(step == 0 && (!self.flat_use_constant || self.bwd_vm_round0.is_some()))
-                && !(step >= 1 && self.bwd_vm_ext.is_some());
+            // A VM-owned round takes its OWN eval kernel but the SAME fused
+            // tail: the segmented epilogue emits the incumbent's interleaved
+            // warp-partial pairs (`BWD_SEG_OUTPUT_PARTIALS`), one per 32-row
+            // tile, and its grid is `rows.div_ceil(32)` — exactly the
+            // `num_partials` the tail expects. It has no `acc_size >= 32` floor
+            // either, because a seg block is always `k * 32` whole lanes with the
+            // out-of-range ones clamped and contributing zero, so the full-mask
+            // `shfl_xor` has every lane it names. The incumbent's kernel cannot
+            // say that: its `blockDim` tracks `acc_size`.
+            //
+            // The one exception is the FINAL round, dispatched after this loop on
+            // a tail that reads the accumulator and must not fold eq; that
+            // round's descriptor keeps `BWD_SEG_OUTPUT_ROWS`, which at
+            // `acc_size == 1` costs two field elements.
+            let vm_owns_step = (step == 0 && self.bwd_vm_round0.is_some())
+                || (step >= 1 && self.bwd_vm_ext.is_some());
+            // Which EVAL kernel: the incumbent's warp-partial twin exists for a
+            // constant-coefficient round 0 and every continuation round, and needs
+            // at least one whole warp of rows.
+            let incumbent_warp_partial = acc_size >= 32
+                && !vm_owns_step
+                && !(step == 0 && !self.flat_use_constant);
+            // Which TAIL: the fused one, which reduces interleaved warp partials,
+            // runs the round update and folds eq in a single kernel. The VM's
+            // epilogue emits the SAME partial layout
+            // (`BWD_SEG_OUTPUT_PARTIALS`), so the tail does not care which
+            // producer filled the buffer — it works at any `acc_size`, because
+            // the seg grid is `rows.div_ceil(32)` blocks and that is exactly the
+            // `num_partials` the tail is handed.
+            let use_partials_tail = incumbent_warp_partial || vm_owns_step;
 
             // Round-kernel launch.
-            if use_warp_partial {
+            if incumbent_warp_partial {
                 self.launch_round_kernel_warp_partial(step, acc_size, context)?;
                 if step == 0 && self.bwd_vm_ext.is_none() {
                     self.schedule_flat_continuation_eval_recipes(
@@ -1144,7 +1165,7 @@ where
             // this iteration.
             let challenge_slot = unsafe { device_claim_point_out.slice_mut(step, 1) };
 
-            if use_warp_partial {
+            if use_partials_tail {
                 self.dispatch_warp_partial_tail(
                     acc_size,
                     prev_coord_slice.as_ptr(),

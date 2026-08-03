@@ -1200,6 +1200,10 @@ pub(crate) fn seg_round_binding<'a>(
         eq_sizes,
         contributions,
         acc_size: model.rows as u32,
+        // The bench's oracle compares PER ROW, so the bench lineage keeps the
+        // per-row shape. Production requests partials; see
+        // `BWD_SEG_OUTPUT_PARTIALS`.
+        output: super::seg_desc::BWD_SEG_OUTPUT_ROWS,
     }
 }
 

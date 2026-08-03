@@ -561,22 +561,54 @@ template <typename Desc, typename Bank> DEVICE_FORCEINLINE e4 seg_c_init(const D
   return bank[static_cast<u16>(desc.c_init_coeff)];
 }
 
-// Warp 0's one write per row: eq applied ONCE to the consolidated pair, then the
-// incumbent contribution layout — `acc_c0 * eq` in `[0, rows)` and `acc_c2 * eq`
-// in `[rows, 2 * rows)`.
-template <typename Desc> DEVICE_FORCEINLINE void seg_store_row(const Desc &desc, const u32 row, const bool active, const e4 &sum_c0, const e4 &sum_c2) {
-  if (!active)
-    return;
+// Warp 0's write once the cross-warp reduction has consolidated this lane's row:
+// eq applied ONCE to the pair, then whichever shape `desc.output` asks for.
+//
+// `BWD_SEG_OUTPUT_ROWS` is the incumbent contribution layout — `acc_c0 * eq` in
+// `[0, rows)` and `acc_c2 * eq` in `[rows, 2 * rows)`.
+//
+// `BWD_SEG_OUTPUT_PARTIALS` collapses the block's 32 rows into ONE pair with a
+// `shfl_xor` reduction and writes it at the incumbent warp-partial layout, so the
+// fused `mega_finalize` tail consumes it directly. A dead lane must reach the
+// reduction contributing ZERO rather than returning early — its clamped row is a
+// duplicate of another lane's and must not enter the sum.
+template <typename Desc>
+DEVICE_FORCEINLINE void seg_store_row(const Desc &desc, const u32 row, const u32 lane, const bool active, const e4 &sum_c0, const e4 &sum_c2) {
   // `lower_bwd_seg` rejects a null `contributions` or `eq_low`
   // (`BwdSegLowerError::NullRuntimePointer`), so this is defence in depth against
   // a hand-built descriptor, NOT a supported "evaluate but do not store" mode.
   // Silently producing nothing is the safest response a release kernel can give:
-  // it has no error channel.
+  // it has no error channel. Block-uniform, so no lane diverges from the
+  // reduction below.
   if (desc.contributions == nullptr || desc.eq_low == nullptr)
     return;
-  const e4 eq = gkr_compute_eq_inline<e4>(desc.eq_low, desc.eq_sizes, row);
-  store<e4, st_modifier::cs>(desc.contributions, e4::mul(sum_c0, eq), row);
-  store<e4, st_modifier::cs>(desc.contributions + desc.logical_rows, e4::mul(sum_c2, eq), row);
+
+  e4 row_c0 = e4::ZERO();
+  e4 row_c2 = e4::ZERO();
+  if (active) {
+    const e4 eq = gkr_compute_eq_inline<e4>(desc.eq_low, desc.eq_sizes, row);
+    row_c0 = e4::mul(sum_c0, eq);
+    row_c2 = e4::mul(sum_c2, eq);
+  }
+
+  if (desc.output == BWD_SEG_OUTPUT_PARTIALS) {
+    // Every lane of warp 0 participates: `shfl_xor` needs the full mask, and an
+    // inactive lane's zero is what keeps the clamped row out of the sum.
+    const e4 tile_c0 = ::airbender::prover::gkr::gkr_trace_holder_partials_warp_reduce_sum<e4>(row_c0);
+    const e4 tile_c2 = ::airbender::prover::gkr::gkr_trace_holder_partials_warp_reduce_sum<e4>(row_c2);
+    if (lane == 0) {
+      // A block IS one 32-row tile, so `blockIdx.x` indexes the tail's pairs and
+      // `gridDim.x` is its `num_partials`.
+      store<e4, st_modifier::cs>(desc.contributions, tile_c0, blockIdx.x * 2u + 0u);
+      store<e4, st_modifier::cs>(desc.contributions, tile_c2, blockIdx.x * 2u + 1u);
+    }
+    return;
+  }
+
+  if (!active)
+    return;
+  store<e4, st_modifier::cs>(desc.contributions, row_c0, row);
+  store<e4, st_modifier::cs>(desc.contributions + desc.logical_rows, row_c2, row);
 }
 
 // ── Epilogues (section 3) ───────────────────────────────────────────────────
@@ -598,7 +630,7 @@ DEVICE_FORCEINLINE void seg_epilogue(const Desc &desc, const u32 k, const u32 la
   // `k` is descriptor metadata, so this is block-uniform: at K == 1 warp 0's
   // register partials ARE the block result — no shared memory and no barrier.
   if (k == 1) {
-    seg_store_row(desc, row, active, part_c0, part_c2);
+    seg_store_row(desc, row, lane, active, part_c0, part_c2);
     return;
   }
 
@@ -625,7 +657,7 @@ DEVICE_FORCEINLINE void seg_epilogue(const Desc &desc, const u32 k, const u32 la
       __syncthreads();
     }
     if (warp_id == 0)
-      seg_store_row(desc, row, active, e4::add(part_c0, plane_c0[lane]), e4::add(part_c2, plane_c2[lane]));
+      seg_store_row(desc, row, lane, active, e4::add(part_c0, plane_c0[lane]), e4::add(part_c2, plane_c2[lane]));
     return;
   }
 
@@ -654,7 +686,7 @@ DEVICE_FORCEINLINE void seg_epilogue(const Desc &desc, const u32 k, const u32 la
       e4 sum_c2 = part_c2;
       for (u32 w = 0; w < k - 1; w++)
         sum_c2 = e4::add(sum_c2, plane[w * BWD_SEG_WARP_LANES + lane]);
-      seg_store_row(desc, row, active, sum_c0, sum_c2);
+      seg_store_row(desc, row, lane, active, sum_c0, sum_c2);
     }
     return;
   }
@@ -678,7 +710,7 @@ DEVICE_FORCEINLINE void seg_epilogue(const Desc &desc, const u32 k, const u32 la
       sum_c0 = e4::add(sum_c0, plane_c0[read]);
       sum_c2 = e4::add(sum_c2, plane_c2[read]);
     }
-    seg_store_row(desc, row, active, sum_c0, sum_c2);
+    seg_store_row(desc, row, lane, active, sum_c0, sum_c2);
   }
 }
 

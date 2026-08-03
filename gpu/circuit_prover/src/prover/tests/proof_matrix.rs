@@ -1475,22 +1475,25 @@ fn run_add_sub_fwd_vm_all_layers_ab_test() {
     );
 }
 
-/// A/B the configuration worth shipping: the forward VM on all four
-/// non-dimension-reducing layers plus the backward VM on L0's round 0 and
-/// continuation rounds.
+/// A/B everything the DAG-derived path owns: the forward VM on all four
+/// non-dimension-reducing layers plus the backward VM on every main layer's
+/// round 0 and continuation rounds.
 ///
-/// This is the DAG-derived path's e2e number for add_sub, and it also settled
-/// additivity — median −6.067 ms against a predicted sum of −6.128 (forward
-/// −2.418 alone, backward L0 −3.710 alone). The two passes compose.
+/// This is the e2e number for add_sub. It also settled additivity — forward
+/// −2.418 alone plus backward L0 −3.710 alone came to −6.067 measured against
+/// −6.128 predicted, so the two passes compose.
 ///
-/// The backward arm stops at L0 on EVIDENCE, not for lack of machinery: every
-/// main layer is wired and bit-exact (see
-/// `run_add_sub_bwd_vm_all_main_layers_proof_parity_test`), but
-/// `run_add_sub_bwd_vm_per_main_layer_ab_test` measures L1 as a wash (+0.060)
-/// and L2/L3 as consistent losses (+0.536, +0.520, 0/20 pairs winning). Adding
-/// them takes this number from −6.067 to −4.871. The remaining incumbent GKR
-/// work is those three layers plus the dimension-reducing sumcheck (22.3 ms
-/// GPU-projected), the latter permanently.
+/// The backward arm covers all four main layers because they all pay now. They
+/// did not before `BWD_SEG_OUTPUT_PARTIALS`: the VM used to hand the tail
+/// full-length per-row contributions, and the ~0.5 ms of extra DRAM traffic and
+/// launches that cost is INDEPENDENT of layer size (every main layer folds the
+/// same 24 rounds over the same rows), so it swamped the smaller layers. Per
+/// `run_add_sub_bwd_vm_per_main_layer_ab_test`, moving the row-axis reduction
+/// into the kernel moved every layer by about that much: L0 −3.741 to −4.212,
+/// L1 +0.060 to −0.600, L2 +0.536 to −0.024, L3 +0.520 to +0.016.
+///
+/// The only GKR work left on the incumbent is the backward dimension-reducing
+/// sumcheck (22.3 ms GPU-projected, ~11% of the proof), permanently.
 #[test]
 #[serial]
 #[ignore]
@@ -1501,9 +1504,8 @@ fn run_add_sub_both_vms_ab_test() {
     const PAIRS: usize = 20;
     /// Every non-dimension-reducing forward layer.
     const FWD_VM_AB_LAYERS: &str = "0,1,2,3";
-    /// L0's whole main-layer sumcheck. Layers 1..=3 are wired and verified but
-    /// deliberately NOT selected — they do not pay (see this test's doc).
-    const BWD_VM_AB_COORDS: &str = "0:R0,0:Ext";
+    /// Every main layer's whole sumcheck, both regimes.
+    const BWD_VM_AB_COORDS: &str = "0:R0,0:Ext,1:R0,1:Ext,2:R0,2:Ext,3:R0,3:Ext";
 
     let fixture = prepare_basic_unrolled_profiling_fixture();
     assert!(
@@ -1578,8 +1580,8 @@ fn run_add_sub_both_vms_ab_test() {
         deltas[deltas.len() - 1],
     );
     eprintln!(
-        "[both-vms-ab] reference points: forward alone -2.418, backward L0 alone -3.710 (sum \
-         -6.128, so additive); all four backward main layers instead of L0 gives -4.871"
+        "[both-vms-ab] reference points: forward alone -2.418, backward main layers -4.820 \
+         (per-layer sum), so the additive prediction is about -7.24"
     );
     eprintln!(
         "[both-vms-ab] peak device memory: on {:.4} GiB, off {:.4} GiB, delta {} B",

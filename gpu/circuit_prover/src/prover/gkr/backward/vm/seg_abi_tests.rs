@@ -172,7 +172,7 @@ fn seg_descriptor_layout_is_pinned_field_for_field() {
     assert_eq!(offset_of!(BwdSegDesc, eq_sizes), 26_392);
     assert_eq!(offset_of!(BwdSegDesc, n_coefficients), 26_404);
     assert_eq!(offset_of!(BwdSegDesc, logical_rows), 26_408);
-    assert_eq!(offset_of!(BwdSegDesc, pad), 26_412);
+    assert_eq!(offset_of!(BwdSegDesc, output), 26_412);
 
     // The program is the descriptor's HEAD here (the cell-era desc put it last),
     // so the 16-byte descriptor alignment places it on a 16-byte boundary for
@@ -228,7 +228,7 @@ fn seg_descriptor_has_no_unaccounted_bytes() {
         ("eq_sizes", size_of::<GkrEqSizes>()),
         ("n_coefficients", size_of::<u32>()),
         ("logical_rows", size_of::<u32>()),
-        ("pad", size_of::<u32>()),
+        ("output", size_of::<u32>()),
     ];
     let payload: usize = fields.iter().map(|(_, bytes)| bytes).sum();
     let implicit_pad = INLINE_PRE_SOURCE_PAD_BYTES + INLINE_IMPLICIT_PAD_BYTES;
@@ -238,12 +238,12 @@ fn seg_descriptor_has_no_unaccounted_bytes() {
     );
     assert_eq!(payload + implicit_pad, INLINE_DESC_BYTES);
     assert_eq!(payload, size_of::<BwdSegDesc>() - implicit_pad);
-    // The explicit `pad` is what makes the SIZE a multiple of the alignment
-    // without trailing padding the two languages would have to agree on
-    // implicitly.
+    // `output` occupies the word that used to be explicit trailing pad, so it
+    // is what makes the SIZE a multiple of the alignment without trailing
+    // padding the two languages would have to agree on implicitly.
     assert_eq!(size_of::<BwdSegDesc>() % BWD_SEG_DESC_ALIGN, 0);
     assert_eq!(
-        offset_of!(BwdSegDesc, pad) + size_of::<u32>(),
+        offset_of!(BwdSegDesc, output) + size_of::<u32>(),
         size_of::<BwdSegDesc>()
     );
 }
@@ -282,10 +282,11 @@ fn seg_progptr_descriptor_layout_is_pinned_field_for_field() {
     assert_eq!(offset_of!(BwdSegProgPtrDesc, eq_sizes), 9_152);
     assert_eq!(offset_of!(BwdSegProgPtrDesc, n_coefficients), 9_164);
     assert_eq!(offset_of!(BwdSegProgPtrDesc, logical_rows), 9_168);
-    assert_eq!(offset_of!(BwdSegProgPtrDesc, pad), 9_172);
+    assert_eq!(offset_of!(BwdSegProgPtrDesc, output), 9_172);
+    assert_eq!(offset_of!(BwdSegProgPtrDesc, pad), 9_176);
     assert_eq!(size % BWD_SEG_DESC_ALIGN, 0);
     assert_eq!(
-        offset_of!(BwdSegProgPtrDesc, pad) + 3 * size_of::<u32>(),
+        offset_of!(BwdSegProgPtrDesc, pad) + 2 * size_of::<u32>(),
         size
     );
 }
@@ -921,6 +922,19 @@ fn seg_cuda_constants_match_the_rust_mirror() {
         assert_eq!(seg_cuda_enumerator(name), value, "CUDA {name}");
     }
 
+    // The output-shape enumerators. These DO travel in the descriptor, so a
+    // renumbering silently swaps per-row contributions for warp partials — a
+    // wrong-shaped write into a buffer sized for the other shape.
+    for (name, value) in [
+        ("BWD_SEG_OUTPUT_ROWS", u64::from(super::seg_desc::BWD_SEG_OUTPUT_ROWS)),
+        (
+            "BWD_SEG_OUTPUT_PARTIALS",
+            u64::from(super::seg_desc::BWD_SEG_OUTPUT_PARTIALS),
+        ),
+    ] {
+        assert_eq!(seg_cuda_enumerator(name), value, "CUDA {name}");
+    }
+
     // The lean class tables, against the wire tables `gkr_eval_isa` owns.
     let r0_class = |category| {
         LEAN_R0_OPCODES
@@ -1072,7 +1086,7 @@ fn seg_cuda_layout_asserts_match_the_rust_layout() {
         ("eq_sizes", offset_of!(BwdSegDesc, eq_sizes)),
         ("n_coefficients", offset_of!(BwdSegDesc, n_coefficients)),
         ("logical_rows", offset_of!(BwdSegDesc, logical_rows)),
-        ("pad", offset_of!(BwdSegDesc, pad)),
+        ("output", offset_of!(BwdSegDesc, output)),
     ];
     for (field, offset) in inline {
         assert_seg_header_asserts(&format!(
@@ -1112,6 +1126,7 @@ fn seg_cuda_layout_asserts_match_the_rust_layout() {
             offset_of!(BwdSegProgPtrDesc, n_coefficients),
         ),
         ("logical_rows", offset_of!(BwdSegProgPtrDesc, logical_rows)),
+        ("output", offset_of!(BwdSegProgPtrDesc, output)),
         ("pad", offset_of!(BwdSegProgPtrDesc, pad)),
     ];
     for (field, offset) in progptr {

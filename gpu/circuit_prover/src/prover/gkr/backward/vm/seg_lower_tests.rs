@@ -295,6 +295,7 @@ fn round_binding<'a>(
         eq_sizes: GkrEqSizes::zeroed(),
         contributions: (RUNTIME + 0x0100_0000) as *mut E4,
         acc_size: ROWS[round as usize] as u32,
+        output: super::seg_desc::BWD_SEG_OUTPUT_ROWS,
     }
 }
 
@@ -2281,7 +2282,7 @@ fn the_descriptor_bytes_are_deterministic() {
         assert_eq!(source.class, 0);
         assert_eq!(source.column, 0);
     }
-    assert_eq!(desc.pad, [0]);
+    assert_eq!(desc.output, super::seg_desc::BWD_SEG_OUTPUT_ROWS);
 }
 
 /// The whole launch tail, in one place: what lowering copies through and what it

@@ -796,6 +796,15 @@ pub(crate) struct BwdSegRoundBinding<'a> {
     /// [`Self::rows`]; the descriptor carries ONE field, so lowering requires
     /// them equal rather than picking one.
     pub acc_size: u32,
+    /// What the epilogue writes into [`Self::contributions`]:
+    /// [`BWD_SEG_OUTPUT_ROWS`] (`2 * rows` per-row entries) or
+    /// [`BWD_SEG_OUTPUT_PARTIALS`] (`2 * rows.div_ceil(32)` entries — one
+    /// interleaved pair per 32-row tile, for the fused tail).
+    ///
+    /// The buffer must be sized for the shape requested: a partials-shaped buffer
+    /// handed to a rows-shaped launch is an out-of-bounds write, which is why this
+    /// travels WITH the pointer rather than being a launch-site argument.
+    pub output: u32,
 }
 
 /// A lowered launch: the descriptor plus every payload the caller must upload.
@@ -1130,6 +1139,7 @@ macro_rules! fill_seg_desc {
         desc.eq_sizes = body.eq_sizes;
         desc.n_coefficients = body.n_coefficients;
         desc.logical_rows = body.logical_rows;
+        desc.output = body.output;
     }};
 }
 
@@ -1174,6 +1184,7 @@ struct SegDescBody {
     eq_sizes: GkrEqSizes,
     n_coefficients: u32,
     logical_rows: u32,
+    output: u32,
 }
 
 /// Build the complete launch setup for one `(artifact, round)` pair.
@@ -1668,6 +1679,7 @@ pub(crate) fn lower_bwd_seg(
         eq_sizes: binding.eq_sizes,
         n_coefficients: coefficients.len() as u32,
         logical_rows,
+        output: binding.output,
     };
 
     let (desc, program_words) = match prog {
