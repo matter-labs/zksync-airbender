@@ -1031,6 +1031,29 @@ pub(crate) fn bind_ext_round_sources<E: Copy>(
             parents: coord.binding.windows.len(),
         });
     }
+    if std::env::var_os("AB_BWD_VM_BIND_CENSUS").is_some() {
+        use std::collections::BTreeSet;
+        let columns: usize = runs.iter().map(|run| run.columns.len()).sum();
+        let matrices: BTreeSet<usize> = runs
+            .iter()
+            .filter_map(|run| run.raw.map(|c| c.matrix_base as usize))
+            .collect();
+        let backings: BTreeSet<(usize, u32)> = runs
+            .iter()
+            .filter_map(|run| run.raw.map(|c| (c.matrix_base as usize, c.stride_bytes)))
+            .collect();
+        eprintln!(
+            "[bwd-vm-census] L{} Ext: {columns} referenced columns, \
+             {} artifact windows, {} bound windows, \
+             {} distinct raw matrices ({} incl. stride), {} sources",
+            coord.layer,
+            coord.binding.windows.len(),
+            runs.len(),
+            matrices.len(),
+            backings.len(),
+            coord.binding.source_slots.len(),
+        );
+    }
 
     // ── Rebuild the coordinate over the frozen partition ─────────────────────
     let mut new_windows: Vec<LeanBoundWindow> = Vec::with_capacity(runs.len());
