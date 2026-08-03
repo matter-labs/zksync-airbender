@@ -59,64 +59,26 @@ impl fmt::Display for BwdVmCoordError {
             ),
             BwdVmCoordError::NotWired { coord } => write!(
                 f,
-                "{AB_GKR_BWD_VM_COORDS_ENV} selects {coord}, which has no production binder; \
-                 wired coordinates are layers 0..={} in both regimes",
-                WIRED_LAYERS - 1
+                "{AB_GKR_BWD_VM_COORDS_ENV} selects {coord}, whose layer index is not a main \
+                 layer of any circuit the VM supports"
             ),
         }
     }
 }
 
-/// The number of add_sub main layers the backward VM has a binder for — every
-/// main layer of the circuit. Layer 0 is the largest (33.4 ms GPU-projected of
-/// the 68.4 ms main-layer span); 1..=3 are 16.6, 11.1 and 7.3 ms.
-pub(crate) const WIRED_LAYERS: usize = 4;
-
-/// The coordinates this slice can actually run. Deliberately a hard list rather
-/// than a predicate over the artifact: a coordinate reaching a binder that was
-/// never built for it must stop the proof, not launch something shaped wrong.
+/// The largest main-layer count of any circuit the VM supports — add_sub has 4,
+/// blake2_with_extended_control has 8. A parse-time bound only: whether a layer is
+/// actually runnable is per circuit, and
+/// [`check_vm_selection_is_servable`](crate::prover::gkr::check_vm_selection_is_servable)
+/// decides it against the programs that circuit actually compiled, before anything
+/// is enqueued.
 ///
-/// Every main layer in both regimes. The layer index is not a free parameter of
-/// the binder — each `(layer, regime)` has its own compiled coordinate and its
-/// own window census — so a layer beyond this circuit's main layers is an
-/// operator error, caught here rather than at a device launch.
-const WIRED_COORDS: [BwdVmCoord; 2 * WIRED_LAYERS] = [
-    BwdVmCoord {
-        layer: 0,
-        regime: BwdRegime::R0,
-    },
-    BwdVmCoord {
-        layer: 0,
-        regime: BwdRegime::Ext,
-    },
-    BwdVmCoord {
-        layer: 1,
-        regime: BwdRegime::R0,
-    },
-    BwdVmCoord {
-        layer: 1,
-        regime: BwdRegime::Ext,
-    },
-    BwdVmCoord {
-        layer: 2,
-        regime: BwdRegime::R0,
-    },
-    BwdVmCoord {
-        layer: 2,
-        regime: BwdRegime::Ext,
-    },
-    BwdVmCoord {
-        layer: 3,
-        regime: BwdRegime::R0,
-    },
-    BwdVmCoord {
-        layer: 3,
-        regime: BwdRegime::Ext,
-    },
-];
+/// This exists so a typo like `9:R0` fails when the switch is parsed rather than
+/// later; it deliberately does NOT claim every layer below it runs everywhere.
+pub(crate) const MAX_WIRED_LAYERS: usize = 8;
 
 pub(crate) fn coord_is_wired(coord: BwdVmCoord) -> bool {
-    WIRED_COORDS.contains(&coord)
+    coord.layer < MAX_WIRED_LAYERS
 }
 
 /// Reject a selection naming anything this slice cannot run.
@@ -235,23 +197,24 @@ mod tests {
 
     #[test]
     fn an_unwired_coordinate_is_rejected_with_the_coordinate_named() {
-        let err = check_selection(&[r0(WIRED_LAYERS)]).unwrap_err();
+        let err = check_selection(&[r0(MAX_WIRED_LAYERS)]).unwrap_err();
         assert!(
-            format!("{err}").contains(&format!("{}:R0", WIRED_LAYERS)),
+            format!("{err}").contains(&format!("{}:R0", MAX_WIRED_LAYERS)),
             "got: {err}"
         );
     }
 
-    /// Every main layer is wired in both regimes, so a per-layer cutover needs
-    /// no allowlist edit — only the coordinate list in the switch.
+    /// Every layer index inside the parse-time bound is accepted in both regimes;
+    /// whether a given circuit can actually RUN one is decided per circuit by
+    /// `check_vm_selection_is_servable`.
     #[test]
     fn every_main_layer_is_wired_in_both_regimes() {
-        for layer in 0..WIRED_LAYERS {
+        for layer in 0..MAX_WIRED_LAYERS {
             assert!(coord_is_wired(r0(layer)), "layer {layer} R0");
             assert!(coord_is_wired(ext(layer)), "layer {layer} Ext");
         }
-        assert!(!coord_is_wired(r0(WIRED_LAYERS)));
-        assert!(!coord_is_wired(ext(WIRED_LAYERS)));
+        assert!(!coord_is_wired(r0(MAX_WIRED_LAYERS)));
+        assert!(!coord_is_wired(ext(MAX_WIRED_LAYERS)));
     }
 
     #[test]

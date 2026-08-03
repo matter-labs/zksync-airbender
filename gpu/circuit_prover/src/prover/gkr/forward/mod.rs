@@ -340,21 +340,18 @@ where
     let vm_layers = path::vm_layers_from_env();
     let is_add_sub_cached =
         generated_layer0::is_add_sub_cached_layout(is_add_sub, &compiled_circuit);
-    for (env, requested) in [
-        (
+    // The GENERATED layer-0 kernel is add_sub-cached-specific and stays gated on
+    // the structural predicate. The VM is not: its allowlist is the embedded
+    // schedule table, and a selection with no compiled program already stopped in
+    // `prove()` (`check_vm_selection_is_servable`) before anything was enqueued.
+    if use_generated_layer0 && !is_add_sub_cached {
+        panic!(
+            "{} is enabled but the circuit is not add_sub_lui_auipc_mop with a cached layout \
+             (is_add_sub={is_add_sub}, has_decoder_lookup={}); the generated layer-0 kernel is \
+             add_sub-cached-specific",
             generated_layer0::AB_GKR_FWD_GENERATED_LAYER0_ENV,
-            use_generated_layer0,
-        ),
-        (path::AB_GKR_FWD_VM_LAYERS_ENV, !vm_layers.is_empty()),
-    ] {
-        if requested && !is_add_sub_cached {
-            panic!(
-                "{env} is enabled but the circuit is not add_sub_lui_auipc_mop with a cached \
-                 layout (is_add_sub={is_add_sub}, has_decoder_lookup={}); the generated layer-0 \
-                 kernel and the forward VM program are both add_sub-cached-specific",
-                compiled_circuit.has_decoder_lookup,
-            );
-        }
+            compiled_circuit.has_decoder_lookup,
+        );
     }
     let forward_paths = path::plan_forward_paths(
         compiled_circuit.layers.len(),

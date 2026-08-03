@@ -1225,6 +1225,11 @@ fn run_add_sub_bwd_vm_l0_r0_proof_parity_test() {
 /// the Ext gates assert their launch counts EXACTLY, and the expected count is
 /// `folding_steps - 1` continuation rounds. A fixture trace-size change fails
 /// these gates loudly and updates this constant deliberately.
+/// add_sub's main-layer count — the layers its backward VM coordinates cover.
+/// Pinned here rather than read from the artifact so a layer-count change shows up
+/// as a test failure with a name on it.
+const ADD_SUB_MAIN_LAYERS: usize = 4;
+
 const ADD_SUB_FIXTURE_FOLDING_STEPS: usize = 24;
 
 /// The backward VM owning ALL of add_sub L0's continuation rounds (1..=23,
@@ -1334,7 +1339,7 @@ fn run_add_sub_bwd_vm_l0_full_proof_parity_test() {
 #[serial]
 #[ignore]
 fn run_add_sub_bwd_vm_all_main_layers_proof_parity_test() {
-    use crate::prover::gkr::backward::vm::coords::{AB_GKR_BWD_VM_COORDS_ENV, WIRED_LAYERS};
+    use crate::prover::gkr::backward::vm::coords::AB_GKR_BWD_VM_COORDS_ENV;
     use crate::prover::gkr::backward::vm::production_bind::{
         count_bwd_vm_r0_launches, AB_GKR_BWD_VM_POISON_ACCUMULATOR_ENV,
         AB_GKR_BWD_VM_POISON_CASCADE_ENV,
@@ -1350,7 +1355,7 @@ fn run_add_sub_bwd_vm_all_main_layers_proof_parity_test() {
         "counters must start at zero for the counts below to mean anything"
     );
 
-    let coords = (0..WIRED_LAYERS)
+    let coords = (0..ADD_SUB_MAIN_LAYERS)
         .map(|layer| format!("{layer}:R0,{layer}:Ext"))
         .collect::<Vec<_>>()
         .join(",");
@@ -1364,16 +1369,16 @@ fn run_add_sub_bwd_vm_all_main_layers_proof_parity_test() {
 
     assert_gkr_proof_eq_for_test(&gpu_proof, &fixture.expected_cpu_proof);
     assert_eq!(
-        r0_launches, WIRED_LAYERS,
+        r0_launches, ADD_SUB_MAIN_LAYERS,
         "exactly one VM-owned R0 launch per main layer"
     );
     assert_eq!(
         ext_launches,
-        WIRED_LAYERS * (ADD_SUB_FIXTURE_FOLDING_STEPS - 1),
+        ADD_SUB_MAIN_LAYERS * (ADD_SUB_FIXTURE_FOLDING_STEPS - 1),
         "exactly one VM launch per continuation round of every main layer"
     );
     eprintln!(
-        "[bwd-vm-parity] all {WIRED_LAYERS} main layers on the VM ({} launches), proof bit-equal \
+        "[bwd-vm-parity] all {ADD_SUB_MAIN_LAYERS} main layers on the VM ({} launches), proof bit-equal \
          to the CPU reference",
         r0_launches + ext_launches
     );
@@ -1608,7 +1613,7 @@ fn run_add_sub_both_vms_ab_test() {
 #[serial]
 #[ignore]
 fn run_add_sub_bwd_vm_per_main_layer_ab_test() {
-    use crate::prover::gkr::backward::vm::coords::{AB_GKR_BWD_VM_COORDS_ENV, WIRED_LAYERS};
+    use crate::prover::gkr::backward::vm::coords::AB_GKR_BWD_VM_COORDS_ENV;
 
     const PAIRS: usize = 20;
 
@@ -1632,7 +1637,7 @@ fn run_add_sub_bwd_vm_per_main_layer_ab_test() {
 
     // One warmup per arm: the per-layer coordinate compiles are OnceLock'd, and
     // a first-call compile inside a measured arm would be charged to the VM.
-    let all_coords = (0..WIRED_LAYERS)
+    let all_coords = (0..ADD_SUB_MAIN_LAYERS)
         .map(|layer| format!("{layer}:R0,{layer}:Ext"))
         .collect::<Vec<_>>()
         .join(",");
@@ -1643,8 +1648,8 @@ fn run_add_sub_bwd_vm_per_main_layer_ab_test() {
     }
 
     eprintln!("[bwd-vm-layer-ab] layer  median_ms  min_ms  max_ms  pairs_winning");
-    let mut medians = Vec::with_capacity(WIRED_LAYERS);
-    for layer in 0..WIRED_LAYERS {
+    let mut medians = Vec::with_capacity(ADD_SUB_MAIN_LAYERS);
+    for layer in 0..ADD_SUB_MAIN_LAYERS {
         let coords = format!("{layer}:R0,{layer}:Ext");
         let mut deltas = Vec::with_capacity(PAIRS);
         for pair in 0..PAIRS {

@@ -125,12 +125,17 @@ pub(crate) fn vm_circuit_name(
     circuit_type: crate::witness::circuit_type::CircuitType,
 ) -> Option<&'static str> {
     use crate::witness::circuit_type::{
-        CircuitType, UnrolledCircuitType, UnrolledNonMemoryCircuitType,
+        CircuitType, DelegationCircuitType, UnrolledCircuitType, UnrolledNonMemoryCircuitType,
     };
     match circuit_type {
         CircuitType::Unrolled(UnrolledCircuitType::NonMemory(
             UnrolledNonMemoryCircuitType::AddSubLuiAuipcMop,
         )) => Some("add_sub_lui_auipc_mop"),
+        // The layout `Blake2WithCompression` proves is
+        // `blake2_with_extended_control` — see the fixture that loads it.
+        CircuitType::Delegation(DelegationCircuitType::Blake2WithCompression) => {
+            Some("blake2_with_extended_control")
+        }
         _ => None,
     }
 }

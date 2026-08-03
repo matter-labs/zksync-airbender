@@ -33,6 +33,12 @@ pub(crate) const EMBEDDED_ADD_SUB_SCHEDULE: &[u8] = include_bytes!(
     "../../../../../../../cs/compiled_circuits/add_sub_lui_auipc_mop_schedule_b16_gkr.json"
 );
 
+/// The committed b16 schedule for `blake2_with_extended_control`, the layout
+/// `CircuitType::Delegation(Blake2WithCompression)` proves.
+pub(crate) const EMBEDDED_BLAKE2_SCHEDULE: &[u8] = include_bytes!(
+    "../../../../../../../cs/compiled_circuits/blake2_with_extended_control_schedule_b16_gkr.json"
+);
+
 /// The embedded schedule for a circuit, or `None` if the forward VM has none.
 ///
 /// A schedule is SEARCH output — the b16 schedules were searched against each
@@ -40,13 +46,16 @@ pub(crate) const EMBEDDED_ADD_SUB_SCHEDULE: &[u8] = include_bytes!(
 /// these must travel inside the executable. This table is therefore the forward
 /// VM's real allowlist: a circuit absent here cannot run on it at all.
 pub(crate) fn embedded_schedule(circuit_type: CircuitType) -> Option<&'static [u8]> {
-    use crate::witness::circuit_type::{UnrolledCircuitType, UnrolledNonMemoryCircuitType};
+    use crate::witness::circuit_type::{
+        DelegationCircuitType, UnrolledCircuitType, UnrolledNonMemoryCircuitType,
+    };
     match circuit_type {
         CircuitType::Unrolled(UnrolledCircuitType::NonMemory(
             UnrolledNonMemoryCircuitType::AddSubLuiAuipcMop,
         )) => Some(EMBEDDED_ADD_SUB_SCHEDULE),
-        // Blake2WithCompression (`blake2_with_extended_control`) is the next
-        // entry; its schedule is committed at 760 KB.
+        CircuitType::Delegation(DelegationCircuitType::Blake2WithCompression) => {
+            Some(EMBEDDED_BLAKE2_SCHEDULE)
+        }
         _ => None,
     }
 }
