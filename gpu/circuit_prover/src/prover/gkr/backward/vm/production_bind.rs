@@ -98,6 +98,7 @@ use gkr_eval_isa::bwd::coeff::lean_bind::{
 };
 use gkr_eval_isa::bwd::coeff::limits::MAX_SOURCE_WINDOWS;
 use gkr_eval_isa::bwd::coeff::stats::WindowFamily;
+use gkr_eval_isa::fwd::source::KIND_ORDER;
 
 use super::production_program::CompiledSlice;
 use super::seg::{
@@ -123,7 +124,9 @@ use crate::prover::gkr::forward::vm::lower::{read_place_to_gkr_address, Resolved
 use crate::prover::gkr::forward::vm::production_bind::resolve_storage_column;
 use crate::prover::gkr::GpuGKRStorage;
 use crate::prover::ProverContext;
-use crate::upstream::{BwdRegime, Field, FieldKind, GKRAddress, ReadPlace};
+use crate::upstream::{
+    BwdRegime, Field, FieldKind, GKRAddress, ReadPlace, VirtualSetupKind, VirtualSetupPoly,
+};
 
 // ── The closed-form `K` policy (spec §12) ────────────────────────────────────
 
@@ -476,6 +479,145 @@ pub(crate) fn ext_round_window_shapes(
         });
     }
     Ok(shapes)
+}
+
+// ── The cascade resolver ─────────────────────────────────────────────────────
+
+/// One address's cascade region: the per-poly intermediate folding buffer the
+/// flat path folds into (`intermediate_storage_for_folder_*` in production
+/// storage), reduced to the facts the Ext binder needs. The region is an
+/// append-only cascade of per-round slots — slot r holds the round-r layer
+/// (`N/2^r` E4 values, `N` the raw poly length) at a fixed offset, written by
+/// round r's kernel. The VM's round-r publish IS slot r; its round-r chain
+/// read IS slot r-1.
+///
+/// Two shapes exist:
+///
+///   * ext-origin: region = `N` elements, first slot 1 at offset 0
+///     (`GpuExtensionFieldPolyIntermediateFoldingStorage`);
+///   * base-origin, real and virtual alike: region = `N/2` elements, first
+///     slot 2 (`GpuBaseFieldPolyIntermediateFoldingStorage`) — under
+///     `D2Policy::Inline` the VM never writes slot 2; its first write is
+///     slot 3, and the slot-2 range simply stays unused.
+///
+/// Both incumbent walks (`pointer_for_sumcheck_continuation` /
+/// `pointers_for_sumcheck_accessor_step`, storage_types/views.rs) close to
+/// `offset(r) = R - R/2^(r - first_slot)` over the region length `R`. The
+/// closed form exists because those walks take `&mut` storage the binder does
+/// not have; the CPU test pins it against transcriptions of the walks and the
+/// GPU test against the real prepared plans, pointer for pointer.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct CascadeRegion {
+    /// Device byte address of the region's first element.
+    pub(crate) base: *mut u8,
+    /// Region length in E4 elements: `N` for ext-origin, `N/2` for base.
+    pub(crate) region_elems: usize,
+    /// The first round that owns a slot here: 1 for ext-origin, 2 for base.
+    pub(crate) first_slot: u8,
+}
+
+impl CascadeRegion {
+    /// Element offset of cascade slot `round` within the region.
+    pub(crate) fn slot_elem_offset(&self, round: u8) -> usize {
+        assert!(
+            round >= self.first_slot,
+            "round {round} has no cascade slot in a region whose first slot is {}",
+            self.first_slot
+        );
+        self.region_elems - (self.region_elems >> (round - self.first_slot))
+    }
+
+    /// The slot's length in elements: the round-`round` layer, `2 * rows`.
+    pub(crate) fn slot_elems(&self, round: u8) -> usize {
+        assert!(
+            round >= self.first_slot,
+            "round {round} has no cascade slot in a region whose first slot is {}",
+            self.first_slot
+        );
+        self.region_elems >> (round - self.first_slot + 1)
+    }
+
+    /// Device byte address of cascade slot `round`.
+    pub(crate) fn slot_ptr(&self, round: u8) -> *mut u8 {
+        let offset = self.slot_elem_offset(round);
+        // SAFETY: pointer arithmetic only — `offset < region_elems` by
+        // construction and the region is one poly's slice of a live
+        // `DeviceAllocation` (the resolver read it from production storage).
+        unsafe { self.base.add(offset * size_of::<E4>()) }
+    }
+}
+
+/// The production address of a procedural window's virtual poly: the inverse
+/// of the lowering chain (`VirtualSetupPoly -> VirtualSetupKind -> kind tag`,
+/// dag_ir lower's `map_virtual_setup` composed with [`KIND_ORDER`]). The
+/// procedural windows synthesize their VALUES from the row index, but their
+/// cascade slots — where rounds `>= BWD_COEFF_PUBLISH_TARGET_DEPTH` publish —
+/// are the flat path's virtual folding buffers, keyed by this address.
+/// Explicit match so an upstream variant addition fails to compile here.
+pub(crate) fn virtual_setup_address(kind: u8) -> GKRAddress {
+    GKRAddress::VirtualSetup(match KIND_ORDER[kind as usize] {
+        VirtualSetupKind::RangeCheck16Bits => VirtualSetupPoly::RangeCheck16Bits,
+        VirtualSetupKind::RangeCheckTimestamp => VirtualSetupPoly::RangeCheckTimestamp,
+        VirtualSetupKind::InitsAndTeardownsLow => VirtualSetupPoly::InitsAndTeardownsLow,
+        VirtualSetupKind::InitsAndTeardownsHigh => VirtualSetupPoly::InitsAndTeardownsHigh,
+    })
+}
+
+/// Resolve `addr`'s cascade region from the folding-storage entry the flat
+/// prepare created (`intermediate_storage_for_folder_*`). Production orders
+/// prepare before the VM build (state.rs), so the entries exist — and reading
+/// them, rather than re-deriving the consolidated-Arc offsets, makes the
+/// binder agree with the flat path's pointers BY CONSTRUCTION, on the
+/// consolidated and per-poly allocation paths alike.
+///
+/// `e4_origin` is the window's RAW backing field and picks the map, mirroring
+/// the incumbents' cache-layer rule exactly: ext-origin entries live at the
+/// poly's canonical layer (`plan_ext_source_for_rounds_1_and_beyond` keys
+/// `ext_poly_layer`), base-origin entries — real, trace-holder and virtual
+/// alike — at the REQUESTING layer (`plan_base_source_*`'s
+/// `cache_layer = request_layer`).
+///
+/// `None` is a bind-stopping answer for a window that publishes or chains: it
+/// means prepare has not run for this layer (call-order defect) or the
+/// address never folds here.
+pub(crate) fn resolve_cascade_region<E: Copy>(
+    storage: &GpuGKRStorage<BF, E>,
+    request_layer: usize,
+    addr: GKRAddress,
+    e4_origin: bool,
+) -> Option<CascadeRegion> {
+    assert_eq!(size_of::<E>(), size_of::<E4>(), "the cascade is E4-wide");
+    if e4_origin {
+        let layer = GpuGKRStorage::<BF, E>::ext_poly_layer(addr)?;
+        let (_, buffer) = storage
+            .layers
+            .get(layer)?
+            .intermediate_storage_for_folder_extension_field_inputs
+            .get(&addr)?;
+        Some(CascadeRegion {
+            // SAFETY: pointer arithmetic within `buffer.backing` — the
+            // constructor asserted `offset_in_backing` in bounds.
+            base: unsafe { buffer.backing.as_ptr().add(buffer.offset_in_backing) }
+                .cast_mut()
+                .cast::<u8>(),
+            region_elems: 2 * buffer.size_after_one_fold,
+            first_slot: 1,
+        })
+    } else {
+        let (_, buffer) = storage
+            .layers
+            .get(request_layer)?
+            .intermediate_storage_for_folder_base_field_inputs
+            .get(&addr)?;
+        Some(CascadeRegion {
+            // SAFETY: as above.
+            base: unsafe { buffer.backing.as_ptr().add(buffer.offset_in_backing) }
+                .cast_mut()
+                .cast::<u8>(),
+            region_elems: 2 * buffer.size_after_two_folds,
+            first_slot: 2,
+        })
+    }
 }
 
 // ── Pointer resolution (production) ──────────────────────────────────────────

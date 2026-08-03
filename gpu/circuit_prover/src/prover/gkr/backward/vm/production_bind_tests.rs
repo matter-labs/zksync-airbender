@@ -263,6 +263,119 @@ fn round_zero_is_rejected_by_the_ext_shapes() {
     );
 }
 
+// ── The cascade resolver (CPU walk) ──────────────────────────────────────────
+
+/// The incumbent ext fold-buffer walk, transcribed from
+/// `GpuExtensionFieldPolyIntermediateFoldingStorage::pointer_for_sumcheck_continuation`
+/// (element offsets instead of pointers). Returns (slot step-1, slot step).
+fn ext_walk(size_after_one_fold: usize, step: usize) -> (usize, usize) {
+    assert!(step >= 2);
+    let mut input_offset = 0usize;
+    let mut input_size = size_after_one_fold;
+    let mut next_offset = input_size;
+    for _ in 2..step {
+        input_offset = next_offset;
+        input_size /= 2;
+        next_offset += input_size;
+    }
+    (input_offset, next_offset)
+}
+
+/// The incumbent base fold-buffer walk, transcribed from
+/// `GpuBaseFieldPolyIntermediateFoldingStorage::pointers_for_sumcheck_accessor_step`.
+fn base_walk(size_after_two_folds: usize, step: usize) -> (usize, usize) {
+    assert!(step > 2);
+    let mut input_offset = 0usize;
+    let mut input_size = size_after_two_folds;
+    let mut next_offset = input_size;
+    for _ in 3..step {
+        input_offset = next_offset;
+        input_size /= 2;
+        next_offset += input_size;
+    }
+    (input_offset, next_offset)
+}
+
+/// The resolver's closed-form slot walk IS the incumbents' iterative
+/// fold-buffer walk, across both region shapes and every continuation round.
+/// The GPU test pins the same identity against the real prepared plans; this
+/// pins the arithmetic alone, so a formula regression fails in milliseconds
+/// rather than after a fixture build.
+#[test]
+fn the_cascade_slot_walk_matches_the_incumbent_fold_buffer_walks() {
+    for folding_steps in 4..=10usize {
+        let n = 1usize << folding_steps;
+        let backing = vec![0u8; n * 16];
+        let base_ptr = backing.as_ptr().cast_mut();
+
+        // Ext-origin: region = the whole per-poly buffer (2 * size_after_one_fold
+        // = N elements); round 1 writes the first slot at offset 0.
+        let ext = CascadeRegion {
+            base: base_ptr,
+            region_elems: n,
+            first_slot: 1,
+        };
+        assert_eq!(ext.slot_elem_offset(1), 0, "N={n}: slot 1 heads the region");
+        assert_eq!(ext.slot_elems(1), n / 2);
+        for step in 2..folding_steps {
+            let (prev, this) = ext_walk(n / 2, step);
+            assert_eq!(ext.slot_elem_offset(step as u8 - 1), prev, "N={n} step {step}");
+            assert_eq!(ext.slot_elem_offset(step as u8), this, "N={n} step {step}");
+            // `this_layer_size = size_after_one_fold >> (step - 1)`.
+            assert_eq!(ext.slot_elems(step as u8), (n / 2) >> (step - 1));
+        }
+
+        // Base-origin: region = 2 * size_after_two_folds = N/2 elements; the
+        // first slot belongs to round 2 (`initial_pointer`); the VM's first
+        // write is round 3 under `D2Policy::Inline`.
+        let base = CascadeRegion {
+            base: base_ptr,
+            region_elems: n / 2,
+            first_slot: 2,
+        };
+        assert_eq!(base.slot_elem_offset(2), 0, "N={n}: slot 2 heads the region");
+        for step in 3..folding_steps {
+            let (prev, this) = base_walk(n / 4, step);
+            assert_eq!(base.slot_elem_offset(step as u8 - 1), prev, "N={n} step {step}");
+            assert_eq!(base.slot_elem_offset(step as u8), this, "N={n} step {step}");
+            // `this_layer_size = size_after_two_folds >> (step - 2)`.
+            assert_eq!(base.slot_elems(step as u8), (n / 4) >> (step - 2));
+        }
+
+        // The VM identity that makes the publish ABI line up: slot r holds the
+        // round-r layer, `2 * rows_r` values at `rows_r = 1 << (folding_steps - r - 1)`.
+        for region in [&ext, &base] {
+            for round in region.first_slot as usize..folding_steps {
+                assert_eq!(
+                    region.slot_elems(round as u8),
+                    2 * (1usize << (folding_steps - round - 1)),
+                    "N={n} round {round}"
+                );
+            }
+        }
+
+        // Byte pointers: base + elem offset * 16 (the cascade is E4-wide).
+        assert_eq!(
+            ext.slot_ptr(2) as usize,
+            base_ptr as usize + (n / 2) * 16,
+            "N={n}: slot 2 sits one half-region in"
+        );
+    }
+}
+
+/// A round below the region's first slot has no cascade slot — asking for one
+/// is a binder wiring bug and must stop the proof, not alias slot data.
+#[test]
+#[should_panic(expected = "no cascade slot")]
+fn a_round_below_the_first_slot_has_no_cascade_slot() {
+    let region = CascadeRegion {
+        base: core::ptr::null_mut(),
+        region_elems: 128,
+        first_slot: 2,
+    };
+    let _ = region.slot_elem_offset(1);
+}
+
 // ── The pointer phase (GPU) ──────────────────────────────────────────────────
 
 /// The binder's job, stated as a total function over the coordinate's SOURCES:
@@ -350,6 +463,187 @@ fn every_r0_source_resolves_against_production_storage() {
          sources land where their addresses resolve",
         coord.binding.windows.len(),
         bound.windows.len()
+    );
+}
+
+/// The Ext binder's storage contract, pinned pointer-for-pointer: for every
+/// (address, continuation round) the flat prepare planned at layer 0, the
+/// cascade resolver lands on EXACTLY the prepared plan's pointers — the
+/// written slot (`this_layer_start`, which the VM's round-r publish must
+/// alias), the read slot (`previous_layer_start`, the VM's chain read), and
+/// the layer size. At the last prepared step, `this_layer_start` is what the
+/// final gather consumes (`final_evaluation_sources_for_last_step` is the same
+/// zip) — so this is also the proof that the VM's final-round publish feeds
+/// the gather with no re-pointing. The lean-window sweep at the end proves the
+/// SAME lookup serves every window the binder will bind, procedurals included.
+#[test]
+#[serial]
+fn every_prepared_fold_pointer_is_the_cascade_slot() {
+    use gkr_eval_isa::bwd::coeff::stats::WindowFamily;
+
+    use super::seg_lower::D2Policy;
+    use crate::primitives::field::E4;
+    use crate::upstream::{Field, GKRAddress};
+
+    let fixture = crate::prover::tests::prepare_basic_unrolled_async_backward_fixture(8);
+    let context = &fixture.context;
+    let coord = compile_coordinate(&fixture.compiled_circuit, 0, BwdRegime::Ext).unwrap();
+
+    // Drain the dimension-reducing layers (prepare only — the maps this test
+    // reads are geometry; no layer is executed), then hand off and prepare
+    // main layers down to layer 0. This is the same ordering production
+    // guarantees the binder: every flat prepare has run when the VM builds.
+    let mut backward_state = fixture.gpu_backward_state;
+    while backward_state
+        .prepare_next_layer_static(context)
+        .unwrap()
+        .is_some()
+    {}
+    let mut main_state = backward_state.into_main_layer_backward_state(
+        fixture.compiled_circuit,
+        fixture.external_challenges,
+        fixture.lookup_multiplicative_part,
+        E4::ZERO,
+        false,
+    );
+    let plan = loop {
+        let plan = main_state
+            .prepare_next_layer_static(context)
+            .unwrap()
+            .expect("the main-layer walk must reach layer 0");
+        if plan.layer_idx == 0 {
+            break plan;
+        }
+    };
+    let storage = main_state.storage();
+    let request_layer = 0usize;
+    let folding_steps = plan.folding_steps;
+
+    let (mut checked_ext, mut checked_base) = (0usize, 0usize);
+    for (kernel, kp) in plan.kernel_plans.iter().enumerate() {
+        let steps: Vec<usize> = kp
+            .round3_and_beyond_prepared
+            .iter()
+            .map(|prepared| prepared.step)
+            .collect();
+        assert_eq!(
+            steps,
+            (3..folding_steps).collect::<Vec<_>>(),
+            "kernel {kernel}: every continuation step is prepared exactly once"
+        );
+
+        // Ext-origin: slot 1 at round 1, then the continuation walk.
+        for (index, addr) in kp.inputs.inputs_in_extension.iter().enumerate() {
+            if *addr == GKRAddress::placeholder() {
+                continue;
+            }
+            let region = resolve_cascade_region(storage, request_layer, *addr, true)
+                .unwrap_or_else(|| panic!("no cascade region for ext input {addr:?}"));
+            assert_eq!(region.first_slot, 1, "{addr:?}");
+            let round1 = &kp.round1_prepared.extension_field_inputs[index];
+            assert_eq!(
+                round1.this_layer_start as usize,
+                region.slot_ptr(1) as usize,
+                "{addr:?} round 1"
+            );
+            assert_eq!(round1.this_layer_size, region.slot_elems(1), "{addr:?} round 1");
+            let round2 = &kp.round2_prepared.extension_field_inputs[index];
+            assert_eq!(
+                round2.this_layer_start as usize,
+                region.slot_ptr(2) as usize,
+                "{addr:?} round 2"
+            );
+            assert_eq!(
+                round2.previous_layer_start as usize,
+                region.slot_ptr(1) as usize,
+                "{addr:?} round 2 reads slot 1"
+            );
+            assert_eq!(round2.this_layer_size, region.slot_elems(2), "{addr:?} round 2");
+            for prepared in kp.round3_and_beyond_prepared.iter() {
+                let step = prepared.step as u8;
+                let source = &prepared.prepared.extension_field_inputs[index];
+                assert_eq!(
+                    source.this_layer_start as usize,
+                    region.slot_ptr(step) as usize,
+                    "{addr:?} round {step}"
+                );
+                assert_eq!(
+                    source.previous_layer_start as usize,
+                    region.slot_ptr(step - 1) as usize,
+                    "{addr:?} round {step} reads slot {}",
+                    step - 1
+                );
+                assert_eq!(
+                    source.this_layer_size,
+                    region.slot_elems(step),
+                    "{addr:?} round {step}"
+                );
+            }
+            checked_ext += 1;
+        }
+
+        // Base-origin (virtuals included): rounds 3+ walk the cascade; the
+        // round-3 `previous_layer_start` is slot 2 at the region head, which
+        // the Inline-policy VM never writes — its first write is slot 3.
+        for (index, addr) in kp.inputs.inputs_in_base.iter().enumerate() {
+            if *addr == GKRAddress::placeholder() {
+                continue;
+            }
+            let region = resolve_cascade_region(storage, request_layer, *addr, false)
+                .unwrap_or_else(|| panic!("no cascade region for base input {addr:?}"));
+            assert_eq!(region.first_slot, 2, "{addr:?}");
+            for prepared in kp.round3_and_beyond_prepared.iter() {
+                let step = prepared.step as u8;
+                let source = &prepared.prepared.base_field_inputs[index];
+                assert_eq!(
+                    source.this_layer_start as usize,
+                    region.slot_ptr(step) as usize,
+                    "{addr:?} round {step}"
+                );
+                assert_eq!(
+                    source.previous_layer_start as usize,
+                    region.slot_ptr(step - 1) as usize,
+                    "{addr:?} round {step} reads slot {}",
+                    step - 1
+                );
+                assert_eq!(
+                    source.this_layer_size,
+                    region.slot_elems(step),
+                    "{addr:?} round {step}"
+                );
+            }
+            checked_base += 1;
+        }
+    }
+    assert!(
+        checked_ext > 0 && checked_base > 0,
+        "the identity must be pinned on both region shapes \
+         (ext {checked_ext}, base {checked_base})"
+    );
+
+    // Every lean window resolves through the SAME lookup the binder will use —
+    // round 3 is where all three origins publish, so coverage there is total.
+    let shapes = ext_round_window_shapes(&coord, 3, D2Policy::Inline).unwrap();
+    for ((index, window), shape) in coord.binding.windows.iter().enumerate().zip(&shapes) {
+        assert!(shape.materialize, "window {index} must publish at round 3");
+        let addr = match (shape.address, window.family) {
+            (Some(addr), _) => addr,
+            (None, WindowFamily::VirtualSetup { kind }) => virtual_setup_address(kind),
+            (None, family) => panic!("addressless non-procedural window {family:?}"),
+        };
+        let region = resolve_cascade_region(storage, request_layer, addr, shape.is_e4_backing)
+            .unwrap_or_else(|| panic!("lean window {index} ({addr:?}) has no cascade region"));
+        assert_eq!(
+            region.first_slot,
+            if shape.is_e4_backing { 1 } else { 2 },
+            "window {index} ({addr:?})"
+        );
+    }
+    eprintln!(
+        "[bwd-vm-cascade] add_sub L0: {checked_ext} ext + {checked_base} base fold pointers \
+         match the cascade resolver across rounds 1..{}; all {} lean windows resolve",
+        folding_steps - 1,
+        coord.binding.windows.len()
     );
 }
 
