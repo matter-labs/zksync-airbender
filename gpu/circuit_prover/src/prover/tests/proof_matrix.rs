@@ -1316,3 +1316,95 @@ fn run_add_sub_fwd_vm_all_layers_ab_test() {
         on_peak as i64 - off_peak as i64,
     );
 }
+
+/// A/B the backward VM on add_sub L0 R0: N interleaved order-alternated pairs
+/// of whole proofs in one process, VM-on against VM-off, per-pair byte-equal.
+///
+/// Sizing caveat, stated up front so a null result reads correctly: L0's
+/// round 0 is ~5.8 ms of a ~204 ms proof (nsys, 2026-07-30) — under 3% — and
+/// the arms differ by more than the eval kernel (the incumbent runs the FUSED
+/// warp-partial round 0; the VM runs the segmented kernel plus the unfused
+/// reduction + round-update tail). A sub-millisecond median here is expected;
+/// the cutover-relevant claim this test can settle is "no regression at the
+/// whole-proof scale", not a precise per-kernel ratio (that number is the
+/// bench's calibrated 0.9588 against `main_round0_constant`).
+#[test]
+#[serial]
+#[ignore]
+fn run_add_sub_bwd_vm_l0_r0_ab_test() {
+    use crate::prover::gkr::backward::vm::coords::AB_GKR_BWD_VM_COORDS_ENV;
+
+    const PAIRS: usize = 20;
+    const BWD_VM_AB_COORDS: &str = "0:R0";
+
+    let fixture = prepare_basic_unrolled_profiling_fixture();
+    assert!(
+        !crate::prover::gkr::backward::vm::production_bind::poison_accumulator_enabled(),
+        "the accumulator poison is a full-length device write charged to the VM arm alone; \
+         leaving it on inverts this measurement"
+    );
+
+    // Warm up both arms before measuring: first-touch allocation, the
+    // OnceLock'd coordinate compile, and module load all land here.
+    for coords in ["", BWD_VM_AB_COORDS] {
+        let _env = EnvGuard::set(AB_GKR_BWD_VM_COORDS_ENV, coords);
+        let t = fixture.schedule_transfers().unwrap();
+        fixture.context.get_h2d_stream().synchronize().unwrap();
+        let (proof, ms) = fixture.prove(t).unwrap().finish().unwrap();
+        eprintln!("[bwd-vm-ab] warmup vm={coords:?}: {ms} ms");
+        drop(proof);
+    }
+
+    let mut run = |coords: &str| {
+        let _env = EnvGuard::set(AB_GKR_BWD_VM_COORDS_ENV, coords);
+        let t = fixture.schedule_transfers().unwrap();
+        fixture.context.get_h2d_stream().synchronize().unwrap();
+        fixture.context.reset_used_mem_peak();
+        let (proof, ms) = fixture.prove(t).unwrap().finish().unwrap();
+        (proof, ms, fixture.context.get_used_mem_peak())
+    };
+
+    let mut deltas = Vec::with_capacity(PAIRS);
+    let mut on_peak = 0usize;
+    let mut off_peak = 0usize;
+    eprintln!("[bwd-vm-ab] pair  vm_on_ms  vm_off_ms  delta_ms");
+    for pair in 0..PAIRS {
+        // Alternate which arm goes first so a systematic first-slot cost
+        // (allocator state, clocks) cannot be attributed to one arm.
+        let (on, off) = if pair % 2 == 0 {
+            let on = run(BWD_VM_AB_COORDS);
+            let off = run("");
+            (on, off)
+        } else {
+            let off = run("");
+            let on = run(BWD_VM_AB_COORDS);
+            (on, off)
+        };
+        // A timing number from an arm that produced a different proof is not
+        // a number.
+        assert_gkr_proof_eq_for_test(&on.0, &off.0);
+        let delta = on.1 - off.1;
+        eprintln!(
+            "[bwd-vm-ab] {pair:>4}  {:>8.3}  {:>9.3}  {:>8.3}",
+            on.1, off.1, delta
+        );
+        deltas.push(delta);
+        on_peak = on_peak.max(on.2);
+        off_peak = off_peak.max(off.2);
+    }
+
+    deltas.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    let median = deltas[deltas.len() / 2];
+    eprintln!(
+        "[bwd-vm-ab] delta_ms (vm_on - vm_off) over {PAIRS} pairs: median {median:.3}, \
+         min {:.3}, max {:.3}",
+        deltas[0],
+        deltas[deltas.len() - 1],
+    );
+    eprintln!(
+        "[bwd-vm-ab] peak device memory: vm_on {:.4} GiB, vm_off {:.4} GiB, delta {} B",
+        on_peak as f64 / (1u64 << 30) as f64,
+        off_peak as f64 / (1u64 << 30) as f64,
+        on_peak as i64 - off_peak as i64,
+    );
+}
