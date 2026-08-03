@@ -54,7 +54,8 @@ use gkr_eval_isa::bwd::coeff::lean::SOURCE_NONE;
 use gkr_eval_isa::bwd::coeff::limits::{
     in_scope, DESCRIPTOR_ALIGNMENT_BYTES, KERNEL_ARGUMENT_CEILING_BYTES,
     LEAN_DESCRIPTOR_PROGRAM_BYTES, LEAN_DESCRIPTOR_PROGRAM_WORDS, LEAN_MAX_IMMEDIATES,
-    MAX_COEFFICIENT_ENCODINGS, PUBLISH_TARGET_DEPTH, SOURCE_WINDOW_COLUMNS,
+    MAX_COEFFICIENT_ENCODINGS, MAX_SOURCE_WINDOWS, PUBLISH_TARGET_DEPTH,
+    SOURCE_WINDOW_COLUMNS,
 };
 use gkr_eval_isa::bwd::coeff::model::CoefficientRecipeId;
 use gkr_eval_isa::fwd::source::KIND_ORDER;
@@ -105,6 +106,24 @@ pub(crate) const BWD_SEG_CONST_BANK: usize = 1_152;
 /// legal seed. `u32::MAX` is chosen over the thirteen-bit id space's first unused
 /// value so that a byte-level truncation cannot turn absence into a live id.
 pub(crate) const BWD_SEG_C_INIT_NONE: u32 = u32::MAX;
+
+/// Descriptor CAPACITY for source windows — deliberately NOT
+/// [`in_scope::MAX_SOURCE_WINDOWS_USED`], which is a corpus MEASUREMENT.
+///
+/// The two are different kinds of fact and conflating them cost a circuit: the
+/// array used to be sized by the measurement (17, the observed artifact-level max
+/// for blake2 L0 R0), so when the binder's re-windowing split that layer's 17
+/// artifact windows into 18 production windows, lowering REJECTED a circuit that
+/// the format has room for four times over. An observed number belongs in a
+/// census; a capacity belongs here.
+///
+/// Sized generously because a window is cheap: 32 bytes, so this array is 1 KiB of
+/// a descriptor that has ~6 KiB of headroom under
+/// [`BWD_SEG_DESC_CAP`]. The real ceiling is the wire's `source_window:6` field
+/// ([`MAX_SOURCE_WINDOWS`] `== 64`), asserted below.
+pub(crate) const BWD_SEG_SOURCE_WINDOW_CAP: usize = 32;
+const _: () = assert!(BWD_SEG_SOURCE_WINDOW_CAP <= MAX_SOURCE_WINDOWS);
+const _: () = assert!(BWD_SEG_SOURCE_WINDOW_CAP >= in_scope::MAX_SOURCE_WINDOWS_USED);
 
 /// [`BwdSegDesc::output`]: the incumbent per-row ACCUMULATOR layout — `2 *
 /// logical_rows` entries, consumed by the separate reduction + round-update tail.
@@ -349,7 +368,7 @@ const _: () = {
     assert!(offset_of!(BwdSegSourceRecord, class) == 1);
     assert!(offset_of!(BwdSegSourceRecord, column) == 2);
     // The window slot is a byte, and a column is window-relative.
-    assert!(in_scope::MAX_SOURCE_WINDOWS_USED <= u8::MAX as usize);
+    assert!(BWD_SEG_SOURCE_WINDOW_CAP <= u8::MAX as usize);
     assert!(SOURCE_WINDOW_COLUMNS <= u16::MAX as usize + 1);
 };
 
@@ -400,7 +419,7 @@ pub(crate) struct BwdSegDesc {
     /// forked (`procedural_kind` at offset 28 included), so both lineages share
     /// one window layout and one publication policy
     /// ([`BWD_COEFF_PUBLISH_TARGET_DEPTH`]).
-    pub window: [BwdCoeffSourceWindow; in_scope::MAX_SOURCE_WINDOWS_USED],
+    pub window: [BwdCoeffSourceWindow; BWD_SEG_SOURCE_WINDOW_CAP],
     /// The per-thread `acc_c0` seed as a COEFFICIENT ID, or
     /// [`BWD_SEG_C_INIT_NONE`] when the layer has none.
     ///
@@ -478,7 +497,7 @@ impl BwdSegDesc {
             num_immediates: 0,
             fold_source: [0; BWD_SEG_MAX_SOURCES],
             source: [BwdSegSourceRecord::default(); BWD_SEG_MAX_SOURCES],
-            window: [BwdCoeffSourceWindow::default(); in_scope::MAX_SOURCE_WINDOWS_USED],
+            window: [BwdCoeffSourceWindow::default(); BWD_SEG_SOURCE_WINDOW_CAP],
             c_init_coeff: BWD_SEG_C_INIT_NONE,
             c_init_pad: [0; 3],
             immediates: [0; BWD_SEG_MAX_IMMEDIATES],
@@ -527,7 +546,7 @@ pub(crate) struct BwdSegProgPtrDesc {
     pub num_immediates: u16,
     pub fold_source: [u16; BWD_SEG_MAX_SOURCES],
     pub source: [BwdSegSourceRecord; BWD_SEG_MAX_SOURCES],
-    pub window: [BwdCoeffSourceWindow; in_scope::MAX_SOURCE_WINDOWS_USED],
+    pub window: [BwdCoeffSourceWindow; BWD_SEG_SOURCE_WINDOW_CAP],
     /// See [`BwdSegDesc::c_init_coeff`].
     pub c_init_coeff: u32,
     /// See [`BwdSegDesc::c_init_pad`].
@@ -566,7 +585,7 @@ impl BwdSegProgPtrDesc {
             num_immediates: 0,
             fold_source: [0; BWD_SEG_MAX_SOURCES],
             source: [BwdSegSourceRecord::default(); BWD_SEG_MAX_SOURCES],
-            window: [BwdCoeffSourceWindow::default(); in_scope::MAX_SOURCE_WINDOWS_USED],
+            window: [BwdCoeffSourceWindow::default(); BWD_SEG_SOURCE_WINDOW_CAP],
             c_init_coeff: BWD_SEG_C_INIT_NONE,
             c_init_pad: [0; 3],
             immediates: [0; BWD_SEG_MAX_IMMEDIATES],
@@ -637,7 +656,7 @@ pub(crate) const BWD_SEG_PROGPTR_KERNEL_ARGUMENT_BYTES: usize = kernel_argument_
 const _: () = {
     use core::mem::offset_of;
 
-    assert!(size_of::<BwdSegDesc>() == 26_416);
+    assert!(size_of::<BwdSegDesc>() == 26_896);
     assert!(align_of::<BwdSegDesc>() == BWD_SEG_DESC_ALIGN);
     // The FINAL authority on the descriptor's shape.
     assert!(size_of::<BwdSegDesc>() <= BWD_SEG_DESC_CAP);
@@ -655,15 +674,15 @@ const _: () = {
     // same gap by the same rule, and the offsets on both sides are asserted, so
     // it needs no explicit field.
     assert!(offset_of!(BwdSegDesc, window) == 23_760);
-    assert!(offset_of!(BwdSegDesc, c_init_coeff) == 24_304);
-    assert!(offset_of!(BwdSegDesc, immediates) == 24_320);
-    assert!(offset_of!(BwdSegDesc, coefficients) == 26_368);
-    assert!(offset_of!(BwdSegDesc, eq_low) == 26_376);
-    assert!(offset_of!(BwdSegDesc, contributions) == 26_384);
-    assert!(offset_of!(BwdSegDesc, eq_sizes) == 26_392);
-    assert!(offset_of!(BwdSegDesc, n_coefficients) == 26_404);
-    assert!(offset_of!(BwdSegDesc, logical_rows) == 26_408);
-    assert!(offset_of!(BwdSegDesc, output) == 26_412);
+    assert!(offset_of!(BwdSegDesc, c_init_coeff) == 24_784);
+    assert!(offset_of!(BwdSegDesc, immediates) == 24_800);
+    assert!(offset_of!(BwdSegDesc, coefficients) == 26_848);
+    assert!(offset_of!(BwdSegDesc, eq_low) == 26_856);
+    assert!(offset_of!(BwdSegDesc, contributions) == 26_864);
+    assert!(offset_of!(BwdSegDesc, eq_sizes) == 26_872);
+    assert!(offset_of!(BwdSegDesc, n_coefficients) == 26_884);
+    assert!(offset_of!(BwdSegDesc, logical_rows) == 26_888);
+    assert!(offset_of!(BwdSegDesc, output) == 26_892);
     // The program stream starts on a 16-byte boundary and can be buffered
     // through wide loads.
     assert!(offset_of!(BwdSegDesc, program) % BWD_SEG_DESC_ALIGN == 0);
@@ -672,7 +691,7 @@ const _: () = {
     assert!(offset_of!(BwdSegDesc, output) + size_of::<u32>() == size_of::<BwdSegDesc>());
     assert!(size_of::<BwdSegDesc>() % BWD_SEG_DESC_ALIGN == 0);
 
-    assert!(size_of::<BwdSegProgPtrDesc>() == 9_184);
+    assert!(size_of::<BwdSegProgPtrDesc>() == 9_664);
     assert!(align_of::<BwdSegProgPtrDesc>() == BWD_SEG_DESC_ALIGN);
     assert!(size_of::<BwdSegProgPtrDesc>() <= BWD_SEG_DESC_CAP);
     assert!(offset_of!(BwdSegProgPtrDesc, program) == 0);
@@ -688,16 +707,16 @@ const _: () = {
     // No gap here: with a 4-byte-aligned record the progptr `source` array ends
     // exactly at `window`.
     assert!(offset_of!(BwdSegProgPtrDesc, window) == 6_520);
-    assert!(offset_of!(BwdSegProgPtrDesc, c_init_coeff) == 7_064);
-    assert!(offset_of!(BwdSegProgPtrDesc, immediates) == 7_080);
-    assert!(offset_of!(BwdSegProgPtrDesc, coefficients) == 9_128);
-    assert!(offset_of!(BwdSegProgPtrDesc, eq_low) == 9_136);
-    assert!(offset_of!(BwdSegProgPtrDesc, contributions) == 9_144);
-    assert!(offset_of!(BwdSegProgPtrDesc, eq_sizes) == 9_152);
-    assert!(offset_of!(BwdSegProgPtrDesc, n_coefficients) == 9_164);
-    assert!(offset_of!(BwdSegProgPtrDesc, logical_rows) == 9_168);
-    assert!(offset_of!(BwdSegProgPtrDesc, output) == 9_172);
-    assert!(offset_of!(BwdSegProgPtrDesc, pad) == 9_176);
+    assert!(offset_of!(BwdSegProgPtrDesc, c_init_coeff) == 7_544);
+    assert!(offset_of!(BwdSegProgPtrDesc, immediates) == 7_560);
+    assert!(offset_of!(BwdSegProgPtrDesc, coefficients) == 9_608);
+    assert!(offset_of!(BwdSegProgPtrDesc, eq_low) == 9_616);
+    assert!(offset_of!(BwdSegProgPtrDesc, contributions) == 9_624);
+    assert!(offset_of!(BwdSegProgPtrDesc, eq_sizes) == 9_632);
+    assert!(offset_of!(BwdSegProgPtrDesc, n_coefficients) == 9_644);
+    assert!(offset_of!(BwdSegProgPtrDesc, logical_rows) == 9_648);
+    assert!(offset_of!(BwdSegProgPtrDesc, output) == 9_652);
+    assert!(offset_of!(BwdSegProgPtrDesc, pad) == 9_656);
     assert!(
         offset_of!(BwdSegProgPtrDesc, pad) + size_of::<[u32; 2]>()
             == size_of::<BwdSegProgPtrDesc>()

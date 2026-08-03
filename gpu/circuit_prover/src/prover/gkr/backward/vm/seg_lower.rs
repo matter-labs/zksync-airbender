@@ -64,7 +64,7 @@ use super::seg_desc::{
     BWD_COEFF_MAX_FOLD_DEPTH, BWD_COEFF_ORIGIN_PROCEDURAL, BWD_COEFF_ORIGIN_READ_BASE,
     BWD_COEFF_ORIGIN_READ_EXT, BWD_COEFF_PROCEDURAL_KINDS, BWD_COEFF_PROCEDURAL_NONE,
     BWD_COEFF_PUBLISH_TARGET_DEPTH, BWD_SEG_CONST_BANK, BWD_SEG_C_INIT_NONE, BWD_SEG_MAX_K,
-    BWD_SEG_MAX_SOURCES,
+    BWD_SEG_MAX_SOURCES, BWD_SEG_SOURCE_WINDOW_CAP,
 };
 use crate::primitives::field::{BF, E4};
 use crate::prover::gkr::backward::GkrEqSizes;
@@ -1342,10 +1342,13 @@ pub(crate) fn lower_bwd_seg(
 
     // ── Windows ──────────────────────────────────────────────────────────────
     let compiled = &artifact.binding.windows;
-    if compiled.len() > in_scope::MAX_SOURCE_WINDOWS_USED {
+    // Against the descriptor's CAPACITY, not the corpus measurement: a circuit
+    // whose re-windowing produces more windows than anything measured so far is a
+    // fact about that circuit, not an error, up to what the array holds.
+    if compiled.len() > BWD_SEG_SOURCE_WINDOW_CAP {
         return Err(BwdSegLowerError::SourceWindowOverflow {
             windows: compiled.len(),
-            cap: in_scope::MAX_SOURCE_WINDOWS_USED,
+            cap: BWD_SEG_SOURCE_WINDOW_CAP,
         });
     }
     if compiled.len() != binding.windows.len() {

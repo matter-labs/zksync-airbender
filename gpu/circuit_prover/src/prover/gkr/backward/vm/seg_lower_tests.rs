@@ -35,7 +35,7 @@ use super::seg_desc::{
     BwdSegDesc, BwdSegSourceRecord, BWD_COEFF_ORIGIN_PROCEDURAL, BWD_COEFF_ORIGIN_READ_BASE,
     BWD_COEFF_ORIGIN_READ_EXT, BWD_COEFF_PROCEDURAL_NONE, BWD_SEG_CONST_BANK, BWD_SEG_C_INIT_NONE,
     BWD_SEG_FOLD_WEIGHT_BASE_D1, BWD_SEG_FOLD_WEIGHT_BASE_D2, BWD_SEG_FOLD_WEIGHT_BASE_D3,
-    BWD_SEG_FOLD_WEIGHT_SLOTS, BWD_SEG_MAX_K, BWD_SEG_MAX_SOURCES,
+    BWD_SEG_FOLD_WEIGHT_SLOTS, BWD_SEG_MAX_K, BWD_SEG_MAX_SOURCES, BWD_SEG_SOURCE_WINDOW_CAP,
 };
 // The walk and its soft bound live in `seg_lower.rs`; the tests consume them.
 use super::seg_lower::{
@@ -1118,16 +1118,19 @@ fn an_r0_program_lowered_off_round_zero_is_rejected() {
     );
 }
 
-/// One past the MEASURED window maximum is rejected.
+/// One past the descriptor's window CAPACITY is rejected.
 ///
-/// `in_scope::MAX_SOURCE_WINDOWS_USED` sizes `BwdSegDesc::window`, a FIXED-length
-/// array, so this rejection is what stands between a wider layer and a descriptor
-/// write past its end. The cell-era lineage covered exactly this in
+/// `BWD_SEG_SOURCE_WINDOW_CAP` sizes `BwdSegDesc::window`, a FIXED-length array, so
+/// this rejection is what stands between a wider layer and a descriptor write past
+/// its end. It is deliberately NOT the corpus measurement
+/// (`in_scope::MAX_SOURCE_WINDOWS_USED`): sizing the array by the largest count
+/// anyone had observed is what made blake2's 18th window a rejection instead of a
+/// fact. The cell-era lineage covered exactly this in
 /// `abi_tests::more_windows_than_the_measured_maximum_are_rejected`, which was
 /// deleted with it; this is that coverage restored against the seg lowering.
 #[test]
-fn more_windows_than_the_measured_maximum_are_rejected() {
-    let cap = in_scope::MAX_SOURCE_WINDOWS_USED;
+fn more_windows_than_the_capacity_are_rejected() {
+    let cap = BWD_SEG_SOURCE_WINDOW_CAP;
     // One window per source, one column each, one past the cap. Distinct layers so
     // no two windows share a backing.
     let windows: Vec<LeanBoundWindow> = (0..=cap)

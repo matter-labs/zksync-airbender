@@ -70,6 +70,7 @@ use super::seg_desc::{
     BWD_COEFF_PROCEDURAL_INITS_AND_TEARDOWNS_LOW, BWD_COEFF_PROCEDURAL_NONE,
     BWD_COEFF_PROCEDURAL_RANGE_CHECK_16_BITS, BWD_COEFF_PROCEDURAL_RANGE_CHECK_TIMESTAMP,
     BWD_COEFF_PUBLISH_TARGET_DEPTH, BWD_SEG_CONST_BANK, BWD_SEG_DESC_ALIGN, BWD_SEG_DESC_CAP,
+    BWD_SEG_SOURCE_WINDOW_CAP,
     BWD_SEG_FOLD_WEIGHT_BASE_D1, BWD_SEG_FOLD_WEIGHT_BASE_D2, BWD_SEG_FOLD_WEIGHT_BASE_D3,
     BWD_SEG_FOLD_WEIGHT_SLOTS, BWD_SEG_INLINE_KERNEL_ARGUMENT_BYTES, BWD_SEG_MAX_IMMEDIATES,
     BWD_SEG_MAX_K, BWD_SEG_MAX_SOURCES, BWD_SEG_MAX_THREADS_PER_BLOCK,
@@ -92,9 +93,9 @@ const SEG_COEFF_EVAL_CUDA_HEADER: &str =
     include_str!("../../../../../native/prover/gkr/backward/seg_coeff_eval.cuh");
 
 /// The pinned size of the inline-program descriptor.
-const INLINE_DESC_BYTES: usize = 26_416;
+const INLINE_DESC_BYTES: usize = 26_896;
 /// The pinned size of the device-program A/B twin.
-const PROGPTR_DESC_BYTES: usize = 9_184;
+const PROGPTR_DESC_BYTES: usize = 9_664;
 /// Implicit padding rustc (and nvcc, by the same C rules) inserts to align the
 /// 8-byte-aligned `window` array after the 4-byte-aligned `source` array. This is
 /// the gap before `window` ONLY — the descriptor's total implicit padding is this
@@ -141,8 +142,8 @@ fn seg_descriptor_fits_the_by_value_kernel_argument_cap() {
     );
     eprintln!(
         "  window[{}] = {} B at offset {}",
-        in_scope::MAX_SOURCE_WINDOWS_USED,
-        in_scope::MAX_SOURCE_WINDOWS_USED * size_of::<BwdCoeffSourceWindow>(),
+        BWD_SEG_SOURCE_WINDOW_CAP,
+        BWD_SEG_SOURCE_WINDOW_CAP * size_of::<BwdCoeffSourceWindow>(),
         offset_of!(BwdSegDesc, window)
     );
     assert_eq!(size, INLINE_DESC_BYTES);
@@ -164,15 +165,15 @@ fn seg_descriptor_layout_is_pinned_field_for_field() {
     assert_eq!(offset_of!(BwdSegDesc, fold_source), 17_324);
     assert_eq!(offset_of!(BwdSegDesc, source), 19_468);
     assert_eq!(offset_of!(BwdSegDesc, window), 23_760);
-    assert_eq!(offset_of!(BwdSegDesc, c_init_coeff), 24_304);
-    assert_eq!(offset_of!(BwdSegDesc, immediates), 24_320);
-    assert_eq!(offset_of!(BwdSegDesc, coefficients), 26_368);
-    assert_eq!(offset_of!(BwdSegDesc, eq_low), 26_376);
-    assert_eq!(offset_of!(BwdSegDesc, contributions), 26_384);
-    assert_eq!(offset_of!(BwdSegDesc, eq_sizes), 26_392);
-    assert_eq!(offset_of!(BwdSegDesc, n_coefficients), 26_404);
-    assert_eq!(offset_of!(BwdSegDesc, logical_rows), 26_408);
-    assert_eq!(offset_of!(BwdSegDesc, output), 26_412);
+    assert_eq!(offset_of!(BwdSegDesc, c_init_coeff), 24_784);
+    assert_eq!(offset_of!(BwdSegDesc, immediates), 24_800);
+    assert_eq!(offset_of!(BwdSegDesc, coefficients), 26_848);
+    assert_eq!(offset_of!(BwdSegDesc, eq_low), 26_856);
+    assert_eq!(offset_of!(BwdSegDesc, contributions), 26_864);
+    assert_eq!(offset_of!(BwdSegDesc, eq_sizes), 26_872);
+    assert_eq!(offset_of!(BwdSegDesc, n_coefficients), 26_884);
+    assert_eq!(offset_of!(BwdSegDesc, logical_rows), 26_888);
+    assert_eq!(offset_of!(BwdSegDesc, output), 26_892);
 
     // The program is the descriptor's HEAD here (the cell-era desc put it last),
     // so the 16-byte descriptor alignment places it on a 16-byte boundary for
@@ -216,7 +217,7 @@ fn seg_descriptor_has_no_unaccounted_bytes() {
         ),
         (
             "window",
-            in_scope::MAX_SOURCE_WINDOWS_USED * size_of::<BwdCoeffSourceWindow>(),
+            BWD_SEG_SOURCE_WINDOW_CAP * size_of::<BwdCoeffSourceWindow>(),
         ),
         // The seed's id plus the padding that preserves its 16-byte footprint.
         ("c_init_coeff", size_of::<u32>()),
@@ -274,16 +275,16 @@ fn seg_progptr_descriptor_layout_is_pinned_field_for_field() {
     assert_eq!(offset_of!(BwdSegProgPtrDesc, fold_source), 88);
     assert_eq!(offset_of!(BwdSegProgPtrDesc, source), 2_232);
     assert_eq!(offset_of!(BwdSegProgPtrDesc, window), 6_520);
-    assert_eq!(offset_of!(BwdSegProgPtrDesc, c_init_coeff), 7_064);
-    assert_eq!(offset_of!(BwdSegProgPtrDesc, immediates), 7_080);
-    assert_eq!(offset_of!(BwdSegProgPtrDesc, coefficients), 9_128);
-    assert_eq!(offset_of!(BwdSegProgPtrDesc, eq_low), 9_136);
-    assert_eq!(offset_of!(BwdSegProgPtrDesc, contributions), 9_144);
-    assert_eq!(offset_of!(BwdSegProgPtrDesc, eq_sizes), 9_152);
-    assert_eq!(offset_of!(BwdSegProgPtrDesc, n_coefficients), 9_164);
-    assert_eq!(offset_of!(BwdSegProgPtrDesc, logical_rows), 9_168);
-    assert_eq!(offset_of!(BwdSegProgPtrDesc, output), 9_172);
-    assert_eq!(offset_of!(BwdSegProgPtrDesc, pad), 9_176);
+    assert_eq!(offset_of!(BwdSegProgPtrDesc, c_init_coeff), 7_544);
+    assert_eq!(offset_of!(BwdSegProgPtrDesc, immediates), 7_560);
+    assert_eq!(offset_of!(BwdSegProgPtrDesc, coefficients), 9_608);
+    assert_eq!(offset_of!(BwdSegProgPtrDesc, eq_low), 9_616);
+    assert_eq!(offset_of!(BwdSegProgPtrDesc, contributions), 9_624);
+    assert_eq!(offset_of!(BwdSegProgPtrDesc, eq_sizes), 9_632);
+    assert_eq!(offset_of!(BwdSegProgPtrDesc, n_coefficients), 9_644);
+    assert_eq!(offset_of!(BwdSegProgPtrDesc, logical_rows), 9_648);
+    assert_eq!(offset_of!(BwdSegProgPtrDesc, output), 9_652);
+    assert_eq!(offset_of!(BwdSegProgPtrDesc, pad), 9_656);
     assert_eq!(size % BWD_SEG_DESC_ALIGN, 0);
     assert_eq!(
         offset_of!(BwdSegProgPtrDesc, pad) + 2 * size_of::<u32>(),
@@ -322,7 +323,7 @@ fn seg_progptr_descriptor_actually_drops_the_inline_program() {
         ),
         (
             "window",
-            in_scope::MAX_SOURCE_WINDOWS_USED * size_of::<BwdCoeffSourceWindow>(),
+            BWD_SEG_SOURCE_WINDOW_CAP * size_of::<BwdCoeffSourceWindow>(),
         ),
         // The seed's id plus the padding that preserves its 16-byte footprint.
         ("c_init_coeff", size_of::<u32>()),
@@ -448,7 +449,7 @@ fn seg_source_record_is_a_four_byte_triple() {
     // the per-round source class Task 6 assigns (BfDirect=0, BfInlineD1=1,
     // BfInlineD2=2, E4Direct=3, ProceduralInline=4) — five values, so both fit a
     // byte with room to spare.
-    assert!(in_scope::MAX_SOURCE_WINDOWS_USED <= u8::MAX as usize);
+    assert!(BWD_SEG_SOURCE_WINDOW_CAP <= u8::MAX as usize);
     // `column` is window-relative, and a window covers at most 128 columns.
     assert!(gkr_eval_isa::bwd::coeff::limits::SOURCE_WINDOW_COLUMNS <= u16::MAX as usize + 1);
 }
@@ -543,9 +544,11 @@ fn seg_descriptor_reuses_the_window_struct_unforked() {
     assert_eq!(align_of::<BwdCoeffSourceWindow>(), 8);
     assert_eq!(offset_of!(BwdCoeffSourceWindow, procedural_kind), 28);
     assert_eq!(BWD_COEFF_PROCEDURAL_NONE, 0xff);
+    // 32 windows x 32 B: the array is a CAPACITY, so this pins what it costs
+    // (1 KiB of a ~27 KB descriptor) rather than what any circuit has used.
     assert_eq!(
-        in_scope::MAX_SOURCE_WINDOWS_USED * size_of::<BwdCoeffSourceWindow>(),
-        544
+        BWD_SEG_SOURCE_WINDOW_CAP * size_of::<BwdCoeffSourceWindow>(),
+        1_024
     );
     // The publication threshold is imported, never duplicated.
     assert_eq!(BWD_COEFF_PUBLISH_TARGET_DEPTH, 3);
@@ -676,7 +679,7 @@ fn the_seg_static_assert_matcher_rejects_a_numeric_prefix() {
         "sizeof(bwd_seg_desc) == {}",
         size_of::<BwdSegDesc>()
     )));
-    assert!(seg_header_asserts("BWD_SEG_SOURCE_WINDOW_CAP == 17"));
+    assert!(seg_header_asserts("BWD_SEG_SOURCE_WINDOW_CAP == 32"));
     assert!(!seg_header_asserts("BWD_SEG_SOURCE_WINDOW_CAP == 1"));
     assert!(!seg_header_asserts(
         "__builtin_offsetof(bwd_seg_desc, no_such_field) == 0"
@@ -1024,10 +1027,7 @@ fn seg_cuda_constants_match_the_rust_mirror() {
         format!("BWD_SEG_COEFFICIENT_MASK == {LEAN_COEFFICIENT_MASK:#x}u"),
         format!("BWD_SEG_CLASS_MASK == {LEAN_CLASS_MASK:#x}u"),
         format!("BWD_SEG_PROGRAM_BYTE_CAP == {LEAN_DESCRIPTOR_PROGRAM_BYTES}"),
-        format!(
-            "BWD_SEG_SOURCE_WINDOW_CAP == {}",
-            in_scope::MAX_SOURCE_WINDOWS_USED
-        ),
+        format!("BWD_SEG_SOURCE_WINDOW_CAP == {BWD_SEG_SOURCE_WINDOW_CAP}"),
         format!("BWD_SEG_MAX_FOLD_DEPTH == {BWD_COEFF_PUBLISH_TARGET_DEPTH}"),
         format!("BWD_SEG_LANE_INDEX_MASK == {}", WARP_SIZE - 1),
         // Rehomed and expression-valued: `1u << BWD_COEFF_HEADER_COEFFICIENT_BITS`.
