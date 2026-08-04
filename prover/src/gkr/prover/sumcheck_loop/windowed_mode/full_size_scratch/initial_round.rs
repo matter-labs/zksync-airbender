@@ -194,11 +194,7 @@ pub fn evaluate_initial_with_full_sized_scratch<F: PrimeField, E: FieldExtension
             }
         }
 
-        for i in 0..27 {
-            let mut t = eval_scratch[i];
-            t.mul_assign(eq_prefactor);
-            accumulator[i].add_assign(&t);
-        }
+        accumulate_scaled(&mut accumulator, &eval_scratch, eq_prefactor);
     }
 
     accumulator

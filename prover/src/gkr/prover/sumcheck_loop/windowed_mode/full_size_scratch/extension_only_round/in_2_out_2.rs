@@ -9,6 +9,18 @@ fn read_ext_and_fold_4<F: Field>(
     stride: usize,
     row: usize,
 ) -> F {
+    #[cfg(target_arch = "aarch64")]
+    if crate::gkr::prover::sumcheck_loop::windowed_mode::neon::is_bb4::<F>() {
+        unsafe {
+            let result = crate::gkr::prover::sumcheck_loop::windowed_mode::neon::fold4_ext(
+                src.ptr as *const _,
+                &*(precomputed_eq_prefix as *const [F; 4] as *const _),
+                stride,
+                row,
+            );
+            return *(&result as *const _ as *const F);
+        }
+    }
     let mut offset = row;
     let mut result = precomputed_eq_prefix[0];
     result.mul_assign(&src.read(offset));
@@ -181,10 +193,6 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> ExtensionOnlyRoundImplementati
         src: &Self::EvaluationScratch,
         suffix: &E,
     ) {
-        for i in 0..9 {
-            let mut t = src[i];
-            t.mul_assign(suffix);
-            dst[i].add_assign(&t);
-        }
+        accumulate_scaled(dst, src, suffix);
     }
 }

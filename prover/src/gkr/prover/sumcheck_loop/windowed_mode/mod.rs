@@ -5,6 +5,8 @@ use crate::gkr::prover::sumcheck::access_and_fold::*;
 pub(crate) mod bench;
 pub(crate) mod bounded_scratch;
 pub(crate) mod full_size_scratch;
+#[cfg(target_arch = "aarch64")]
+pub(crate) mod neon;
 pub(crate) mod sumcheck_loop;
 
 #[inline(always)]
@@ -98,6 +100,18 @@ fn evaluate_quadratic_base<F: PrimeField, E: FieldExtension<F> + Field>(
     b: &[F; 27],
     prefactor: &E,
 ) {
+    #[cfg(target_arch = "aarch64")]
+    if neon::is_bb_pair::<F, E>() {
+        unsafe {
+            neon::quad_base_cells::<27>(
+                dst.as_mut_ptr() as *mut _,
+                a.as_ptr() as *const _,
+                b.as_ptr() as *const _,
+                &*(prefactor as *const E as *const _),
+            );
+        }
+        return;
+    }
     for i in 0..27 {
         let mut t = a[i];
         t.mul_assign(&b[i]);
@@ -114,6 +128,18 @@ fn evaluate_quadratic_mixed<F: PrimeField, E: FieldExtension<F> + Field>(
     b: &[F; 27],
     prefactor: &E,
 ) {
+    #[cfg(target_arch = "aarch64")]
+    if neon::is_bb_pair::<F, E>() {
+        unsafe {
+            neon::quad_mixed_cells::<27>(
+                dst.as_mut_ptr() as *mut _,
+                a.as_ptr() as *const _,
+                b.as_ptr() as *const _,
+                &*(prefactor as *const E as *const _),
+            );
+        }
+        return;
+    }
     for i in 0..27 {
         let mut t = a[i];
         t.mul_assign_by_base(&b[i]);
@@ -130,6 +156,18 @@ fn evaluate_quadratic_ext<F: Field, const N: usize>(
     b: &[F; N],
     prefactor: &F,
 ) {
+    #[cfg(target_arch = "aarch64")]
+    if neon::is_bb4::<F>() {
+        unsafe {
+            neon::quad_ext_cells::<N>(
+                dst.as_mut_ptr() as *mut _,
+                a.as_ptr() as *const _,
+                b.as_ptr() as *const _,
+                &*(prefactor as *const F as *const _),
+            );
+        }
+        return;
+    }
     for i in 0..N {
         let mut t = a[i];
         t.mul_assign(&b[i]);
@@ -145,6 +183,17 @@ fn evaluate_linear_base<F: PrimeField, E: FieldExtension<F> + Field>(
     a: &[F; 27],
     prefactor: &E,
 ) {
+    #[cfg(target_arch = "aarch64")]
+    if neon::is_bb_pair::<F, E>() {
+        unsafe {
+            neon::linear_base_27(
+                dst.as_mut_ptr() as *mut _,
+                a.as_ptr() as *const _,
+                &*(prefactor as *const E as *const _),
+            );
+        }
+        return;
+    }
     // we only need a limited set of terms
     for i in 0..2 {
         let offset = 9 * i;
@@ -162,6 +211,17 @@ fn evaluate_linear_base<F: PrimeField, E: FieldExtension<F> + Field>(
 
 #[inline(always)]
 fn evaluate_linear_ext<F: Field>(dst: &mut [F; 27], a: &[F; 27], prefactor: &F) {
+    #[cfg(target_arch = "aarch64")]
+    if neon::is_bb4::<F>() {
+        unsafe {
+            neon::linear_ext_27(
+                dst.as_mut_ptr() as *mut _,
+                a.as_ptr() as *const _,
+                &*(prefactor as *const F as *const _),
+            );
+        }
+        return;
+    }
     // we only need a limited set of terms
     for i in 0..2 {
         let offset = 9 * i;
@@ -184,6 +244,18 @@ fn read_base_and_fold<F: PrimeField, E: FieldExtension<F> + Field>(
     stride: usize,
     row: usize,
 ) -> E {
+    #[cfg(target_arch = "aarch64")]
+    if neon::is_bb_pair::<F, E>() {
+        unsafe {
+            let result = neon::fold8_base(
+                src.ptr as *const _,
+                &*(precomputed_eq_prefix as *const [E; 8] as *const _),
+                stride,
+                row,
+            );
+            return *(&result as *const _ as *const E);
+        }
+    }
     let mut offset = row;
     let mut result = precomputed_eq_prefix[0];
     result.mul_assign_by_base(&src.read(offset));
@@ -305,6 +377,18 @@ fn read_ext_and_fold<F: Field>(
     stride: usize,
     row: usize,
 ) -> F {
+    #[cfg(target_arch = "aarch64")]
+    if neon::is_bb4::<F>() {
+        unsafe {
+            let result = neon::fold8_ext(
+                src.ptr as *const _,
+                &*(precomputed_eq_prefix as *const [F; 8] as *const _),
+                stride,
+                row,
+            );
+            return *(&result as *const _ as *const F);
+        }
+    }
     let mut offset = row;
     let mut result = precomputed_eq_prefix[0];
     result.mul_assign(&src.read(offset));
@@ -530,6 +614,32 @@ fn read_ext_then_fold_without_interpolation_inplace<F: PrimeField, E: FieldExten
             }
             // here we filled all options of (x0, x1, 0/1/inf)
         }
+    }
+}
+
+/// `acc[i] += evals[i] * eq` over N cells: the per-row eq-suffix application
+/// shared by the initial / transition / ext-only executors.
+#[inline(always)]
+pub(crate) fn accumulate_scaled<E: Field, const N: usize>(
+    acc: &mut [E; N],
+    evals: &[E; N],
+    eq: &E,
+) {
+    #[cfg(target_arch = "aarch64")]
+    if neon::is_bb4::<E>() {
+        unsafe {
+            neon::accumulate_times_eq::<N>(
+                acc.as_mut_ptr() as *mut _,
+                evals.as_ptr() as *const _,
+                &*(eq as *const E as *const _),
+            );
+        }
+        return;
+    }
+    for i in 0..N {
+        let mut t = evals[i];
+        t.mul_assign(eq);
+        acc[i].add_assign(&t);
     }
 }
 

@@ -153,10 +153,6 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> TransitionRoundImplementation<
         src: &Self::EvaluationScratch,
         suffix: &E,
     ) {
-        for i in 0..27 {
-            let mut t = src[i];
-            t.mul_assign(suffix);
-            dst[i].add_assign(&t);
-        }
+        accumulate_scaled(dst, src, suffix);
     }
 }
