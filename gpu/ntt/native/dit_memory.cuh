@@ -41,11 +41,19 @@ DEVICE_FORCEINLINE void st_cg_v4(bf *p, bf a, bf b, bf c, bf d) {
 
 // Vec8 cg load — single LDG.E.128 fused with another, or LDG.E.ENL2.256 on
 // sm_100+. Matches the st.global.cg.v8.b32 store side.
+// Pre-sm_100 has no 256-bit access: fall back to two 16 B-aligned v4 loads with
+// the same cache modifier (same bytes, same order — the SASS fuser may still
+// pair them). Guard mirrors gpu_core's AB_PTX_LD_V8 in primitives/ptx.cuh.
 DEVICE_FORCEINLINE void ld_cg_v8(const bf *p, bf &a0, bf &a1, bf &a2, bf &a3, bf &a4, bf &a5, bf &a6, bf &a7) {
   u32 v0, v1, v2, v3, v4, v5, v6, v7;
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 1000
   asm volatile("ld.global.cg.v8.b32 {%0, %1, %2, %3, %4, %5, %6, %7}, [%8];"
                : "=r"(v0), "=r"(v1), "=r"(v2), "=r"(v3), "=r"(v4), "=r"(v5), "=r"(v6), "=r"(v7)
                : "l"(p));
+#else
+  asm volatile("ld.global.cg.v4.u32 {%0, %1, %2, %3}, [%4];" : "=r"(v0), "=r"(v1), "=r"(v2), "=r"(v3) : "l"(p));
+  asm volatile("ld.global.cg.v4.u32 {%0, %1, %2, %3}, [%4];" : "=r"(v4), "=r"(v5), "=r"(v6), "=r"(v7) : "l"(p + 4));
+#endif
   a0 = bf::from_reduced_raw_repr(v0);
   a1 = bf::from_reduced_raw_repr(v1);
   a2 = bf::from_reduced_raw_repr(v2);
@@ -96,10 +104,16 @@ DEVICE_FORCEINLINE void st_wt_v4(bf *p, bf a, bf b, bf c, bf d) {
 DEVICE_FORCEINLINE void st_wt_v2(bf *p, bf a, bf b) {
   asm volatile("st.global.wt.v2.u32 [%0], {%1, %2};" ::"l"(p), "r"(bf::into_raw_u32(a)), "r"(bf::into_raw_u32(b)));
 }
+// 256-bit form on sm_100+; two v4 wt stores below that (see ld_cg_v8).
 DEVICE_FORCEINLINE void st_v8_aligned_wt(bf *p, bf a0, bf a1, bf a2, bf a3, bf a4, bf a5, bf a6, bf a7) {
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 1000
   asm volatile("st.global.wt.v8.b32 [%0], {%1, %2, %3, %4, %5, %6, %7, %8};" ::"l"(p), "r"(bf::into_raw_u32(a0)), "r"(bf::into_raw_u32(a1)),
                "r"(bf::into_raw_u32(a2)), "r"(bf::into_raw_u32(a3)), "r"(bf::into_raw_u32(a4)), "r"(bf::into_raw_u32(a5)), "r"(bf::into_raw_u32(a6)),
                "r"(bf::into_raw_u32(a7)));
+#else
+  st_wt_v4(p, a0, a1, a2, a3);
+  st_wt_v4(p + 4, a4, a5, a6, a7);
+#endif
 }
 
 // 32-byte aligned packed-8 struct. When both source struct and destination
@@ -122,11 +136,16 @@ DEVICE_FORCEINLINE void st_v8_aligned(bf *p, bf a0, bf a1, bf a2, bf a3, bf a4, 
 // matches production's `st.global.cs` modifier so writes drain past L2 quickly
 // and don't pollute the cache with output the kernel will not read back.
 // PTX 8.8 `st.global.cs.v8.b32` → SASS `STG.E.EF.ENL2.256` on sm_100+ (fused
-// 256-bit). Targets sm_100+ only.
+// 256-bit). Pre-sm_100 falls back to two v4 cs stores (see ld_cg_v8).
 DEVICE_FORCEINLINE void st_v8_aligned_cs(bf *p, bf a0, bf a1, bf a2, bf a3, bf a4, bf a5, bf a6, bf a7) {
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 1000
   asm volatile("st.global.cs.v8.b32 [%0], {%1, %2, %3, %4, %5, %6, %7, %8};" ::"l"(p), "r"(bf::into_raw_u32(a0)), "r"(bf::into_raw_u32(a1)),
                "r"(bf::into_raw_u32(a2)), "r"(bf::into_raw_u32(a3)), "r"(bf::into_raw_u32(a4)), "r"(bf::into_raw_u32(a5)), "r"(bf::into_raw_u32(a6)),
                "r"(bf::into_raw_u32(a7)));
+#else
+  st_cs_v4(p, a0, a1, a2, a3);
+  st_cs_v4(p + 4, a4, a5, a6, a7);
+#endif
 }
 
 // 16-byte aligned packed-4 struct → single STG.E.128 on all archs. Used by the
