@@ -43,6 +43,12 @@ pub(crate) enum BwdVmCoordError {
     Duplicate { coord: BwdVmCoord },
     /// The coordinate parses but has no binder in this slice.
     NotWired { coord: BwdVmCoord },
+    /// Only one regime of a layer was selected. A VM-owned layer must be owned
+    /// whole; see [`check_selection`].
+    HalfLayer {
+        coord: BwdVmCoord,
+        missing: BwdVmCoord,
+    },
 }
 
 impl fmt::Display for BwdVmCoordError {
@@ -61,6 +67,12 @@ impl fmt::Display for BwdVmCoordError {
                 f,
                 "{AB_GKR_BWD_VM_COORDS_ENV} selects {coord}, whose layer index is not a main \
                  layer of any circuit the VM supports"
+            ),
+            BwdVmCoordError::HalfLayer { coord, missing } => write!(
+                f,
+                "{AB_GKR_BWD_VM_COORDS_ENV} selects {coord} without {missing}: a VM-owned layer \
+                 must be owned whole, because the VM owns its own fold buffers and a flat round \
+                 of the same layer would have nowhere agreed to write them"
             ),
         }
     }
@@ -81,11 +93,35 @@ pub(crate) fn coord_is_wired(coord: BwdVmCoord) -> bool {
     coord.layer < MAX_WIRED_LAYERS
 }
 
-/// Reject a selection naming anything this slice cannot run.
+/// Reject a selection naming anything this slice cannot run, or naming only one
+/// regime of a layer.
+///
+/// A selected layer must be VM-owned WHOLE — both `R0` and `Ext`. The two used to
+/// select independently, and that flexibility is what forced the VM to bind its
+/// fold buffers out of the flat path's per-layer map: with round 0 flat and round 1
+/// on the VM, the flat kernel writes the buffer the VM's first continuation round
+/// reads, so both arms have to name the same allocation.
+///
+/// Owning the layer outright lets the VM own those buffers instead — created just
+/// before the round whose prologue writes them and dropped once the next fold has
+/// consumed them — which is both a smaller live set and the reason a source the
+/// flat path never folds at this layer is no longer unbindable.
 pub(crate) fn check_selection(coords: &[BwdVmCoord]) -> Result<(), BwdVmCoordError> {
     for &coord in coords {
         if !coord_is_wired(coord) {
             return Err(BwdVmCoordError::NotWired { coord });
+        }
+    }
+    for &coord in coords {
+        let mate = BwdVmCoord {
+            layer: coord.layer,
+            regime: match coord.regime {
+                BwdRegime::R0 => BwdRegime::Ext,
+                BwdRegime::Ext => BwdRegime::R0,
+            },
+        };
+        if !coords.contains(&mate) {
+            return Err(BwdVmCoordError::HalfLayer { coord, missing: mate });
         }
     }
     Ok(())
@@ -220,8 +256,29 @@ mod tests {
     #[test]
     fn a_wired_selection_is_accepted() {
         assert!(check_selection(&[]).is_ok());
-        assert!(check_selection(&[r0(0)]).is_ok());
         assert!(check_selection(&[r0(0), ext(0)]).is_ok());
+        assert!(check_selection(&[r0(0), ext(0), r0(1), ext(1)]).is_ok());
+    }
+
+    /// Half a layer is not a selection. `r0(0)` alone used to be accepted — the two
+    /// regimes selected independently — and is now rejected because a VM-owned layer
+    /// owns its own fold buffers, which a flat round of the same layer could not
+    /// share.
+    #[test]
+    fn a_half_owned_layer_is_rejected() {
+        assert!(matches!(
+            check_selection(&[r0(0)]),
+            Err(BwdVmCoordError::HalfLayer { .. })
+        ));
+        assert!(matches!(
+            check_selection(&[ext(0)]),
+            Err(BwdVmCoordError::HalfLayer { .. })
+        ));
+        // One whole layer plus half of another is still a rejection.
+        assert!(matches!(
+            check_selection(&[r0(0), ext(0), ext(1)]),
+            Err(BwdVmCoordError::HalfLayer { .. })
+        ));
     }
 
     /// The full-layer selection the Ext parity gates run under.

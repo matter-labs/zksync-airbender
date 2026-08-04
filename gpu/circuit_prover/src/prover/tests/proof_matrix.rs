@@ -1179,47 +1179,6 @@ fn run_add_sub_without_the_vm_switch_launches_no_vm_kernel() {
     assert_eq!(bwd_counter.launches(), 0);
 }
 
-/// The backward VM computing add_sub L0's round 0 inside the real prover must
-/// produce the same proof as the CPU reference, and must actually have run —
-/// exactly once.
-///
-/// Both halves are load-bearing, for the same reasons as the forward gate
-/// above: parity alone can pass vacuously (the accumulator poison closes the
-/// recycled-pool hole), and a count alone proves nothing about values.
-#[test]
-#[serial]
-#[ignore]
-fn run_add_sub_bwd_vm_l0_r0_proof_parity_test() {
-    use crate::prover::gkr::backward::vm::coords::AB_GKR_BWD_VM_COORDS_ENV;
-    use crate::prover::gkr::backward::vm::production_bind::{
-        count_bwd_vm_r0_launches, AB_GKR_BWD_VM_POISON_ACCUMULATOR_ENV,
-    };
-
-    let fixture = prepare_basic_unrolled_proof_fixture();
-    // Opt into the accumulator poison: this gate, not the timing harness, is
-    // where it belongs.
-    let _poison = EnvGuard::set(AB_GKR_BWD_VM_POISON_ACCUMULATOR_ENV, "1");
-    let counter = count_bwd_vm_r0_launches();
-    assert_eq!(
-        counter.launches(),
-        0,
-        "counter must start at zero for the count below to mean anything"
-    );
-
-    let (gpu_proof, launches) = {
-        let _env = EnvGuard::set(AB_GKR_BWD_VM_COORDS_ENV, "0:R0");
-        let job = fixture.schedule_prove().unwrap();
-        let (proof, _ms) = job.finish().unwrap();
-        (proof, counter.launches())
-    };
-
-    assert_gkr_proof_eq_for_test(&gpu_proof, &fixture.expected_cpu_proof);
-    assert_eq!(
-        launches, 1,
-        "exactly one VM-owned R0 launch: L0's round 0 and nothing else"
-    );
-    eprintln!("[bwd-vm-parity] L0 R0 on the VM, proof bit-equal to the CPU reference");
-}
 
 /// The add_sub fixture's main-layer folding steps (trace_len = 2^24), pinned:
 /// the Ext gates assert their launch counts EXACTLY, and the expected count is
@@ -1232,61 +1191,14 @@ const ADD_SUB_MAIN_LAYERS: usize = 4;
 
 const ADD_SUB_FIXTURE_FOLDING_STEPS: usize = 24;
 
-/// The backward VM owning ALL of add_sub L0's continuation rounds (1..=23,
-/// the final round included) inside the real prover must produce the same
-/// proof as the CPU reference — with the final gather untouched, reading the
-/// cascade slots the VM published — and must have launched exactly once per
-/// continuation round.
-///
-/// Round 0 stays flat here (`0:Ext` alone), so the R0 counter must stay zero:
-/// the two coordinates select independently.
-#[test]
-#[serial]
-#[ignore]
-fn run_add_sub_bwd_vm_l0_ext_proof_parity_test() {
-    use crate::prover::gkr::backward::vm::coords::AB_GKR_BWD_VM_COORDS_ENV;
-    use crate::prover::gkr::backward::vm::production_bind::{
-        count_bwd_vm_r0_launches, AB_GKR_BWD_VM_POISON_ACCUMULATOR_ENV,
-        AB_GKR_BWD_VM_POISON_CASCADE_ENV,
-    };
-
-    let fixture = prepare_basic_unrolled_proof_fixture();
-    // Opt into the per-round accumulator poison: 23 VM rounds each rewrite the
-    // halves they own, so a round that silently launched nothing fails parity.
-    // The cascade poison closes the other vacuity hole: every fold slot the
-    // gather or a chain read consumes must first be VM-written, and the slots
-    // the Inline policy never writes must never be read.
-    let _poison = EnvGuard::set(AB_GKR_BWD_VM_POISON_ACCUMULATOR_ENV, "1");
-    let _cascade_poison = EnvGuard::set(AB_GKR_BWD_VM_POISON_CASCADE_ENV, "1");
-    let counter = count_bwd_vm_r0_launches();
-    assert_eq!(
-        (counter.launches(), counter.ext_launches()),
-        (0, 0),
-        "counters must start at zero for the counts below to mean anything"
-    );
-
-    let (gpu_proof, r0_launches, ext_launches) = {
-        let _env = EnvGuard::set(AB_GKR_BWD_VM_COORDS_ENV, "0:Ext");
-        let job = fixture.schedule_prove().unwrap();
-        let (proof, _ms) = job.finish().unwrap();
-        (proof, counter.launches(), counter.ext_launches())
-    };
-
-    assert_gkr_proof_eq_for_test(&gpu_proof, &fixture.expected_cpu_proof);
-    assert_eq!(r0_launches, 0, "0:Ext must not select round 0");
-    assert_eq!(
-        ext_launches,
-        ADD_SUB_FIXTURE_FOLDING_STEPS - 1,
-        "exactly one VM launch per continuation round of L0, the final round included"
-    );
-    eprintln!(
-        "[bwd-vm-parity] L0 rounds 1..={ext_launches} on the VM, proof bit-equal to the CPU \
-         reference"
-    );
-}
 
 /// Both coordinates together: the VM owns L0's round 0 AND every continuation
 /// round — the whole layer — and the proof stays bit-equal.
+///
+/// This is also L0 round 0's isolated gate. There used to be a separate `0:R0`
+/// one, but a half-owned layer is rejected now, and its content survives here:
+/// the R0 launch count is asserted to be exactly one, so a round 0 that ran the
+/// wrong number of times still fails.
 #[test]
 #[serial]
 #[ignore]
