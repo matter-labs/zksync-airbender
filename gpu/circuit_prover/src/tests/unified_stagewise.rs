@@ -639,6 +639,7 @@ fn run_unified_stagewise_parity_test() {
             .schedule_execute_backward_workflow(
                 compiled_circuit.clone(),
                 external_challenges,
+                canonical_top_bits,
                 initial_layer_for_sumcheck + 1,
                 top_layer_claims.clone(),
                 evaluation_point.clone(),

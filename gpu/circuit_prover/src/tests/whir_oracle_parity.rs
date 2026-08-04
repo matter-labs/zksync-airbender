@@ -811,6 +811,37 @@ pub(super) fn assert_recursive_whir_oracle_parity_for_supported_path(
         context.get_exec_stream(),
     )
     .unwrap();
+    {
+        // SAFETY: `ProofLayout` returns live, aligned E4 ranges inside
+        // `proof_slab`. The D2D copies are ordered after the source H2Ds and
+        // before WHIR scheduling on `exec_stream`, matching production.
+        let (point_slab_ptr, point_slab_len) = unsafe {
+            whir_proof_layout
+                .whir_original_evaluation_point_device_mut(proof_slab.as_ptr() as *mut u8)
+        };
+        assert_eq!(point_slab_len, original_evaluation_point.len());
+        let point_slab_dst =
+            unsafe { DeviceSlice::from_raw_parts_mut(point_slab_ptr, point_slab_len) };
+        memory_copy_async(
+            point_slab_dst,
+            &base_layer_point_device[..original_evaluation_point.len()],
+            context.get_exec_stream(),
+        )
+        .unwrap();
+
+        let (batching_slab_ptr, batching_slab_len) = unsafe {
+            whir_proof_layout.whir_batching_challenge_device_mut(proof_slab.as_ptr() as *mut u8)
+        };
+        assert_eq!(batching_slab_len, 1);
+        let batching_slab_dst =
+            unsafe { DeviceSlice::from_raw_parts_mut(batching_slab_ptr, batching_slab_len) };
+        memory_copy_async(
+            batching_slab_dst,
+            &batching_challenge_device_test[..],
+            context.get_exec_stream(),
+        )
+        .unwrap();
+    }
     let scheduled_gpu_whir = schedule_gpu_whir_fold_with_sources(
         gpu_mem_trace_holder,
         gpu_wit_trace_holder,
@@ -849,6 +880,18 @@ pub(super) fn assert_recursive_whir_oracle_parity_for_supported_path(
     let slab_mirror_accessor = slab_mirror.get_accessor();
     let mut scheduled_gpu_whir_proof =
         whir_proof_layout.parse_whir_proof(unsafe { slab_mirror_accessor.get() });
+    assert_eq!(
+        scheduled_gpu_whir_proof.batching_challenge,
+        Some(batching_challenge),
+        "parsed WHIR proof slab must contain the supplied batching challenge",
+    );
+    assert_eq!(
+        scheduled_gpu_whir_proof
+            .original_evaluation_point
+            .as_deref(),
+        Some(original_evaluation_point),
+        "parsed WHIR proof slab must contain the supplied original evaluation point",
+    );
     drop(scheduled_gpu_whir);
     let scheduled_recursive_caps = scheduled_gpu_whir_proof
         .intermediate_whir_oracles

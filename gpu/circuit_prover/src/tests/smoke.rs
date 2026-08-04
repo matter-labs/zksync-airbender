@@ -18,11 +18,14 @@ fn run_basic_unrolled_async_scheduler_smoke_test() {
         proof_layout,
         proof_slab,
     } = prepare_basic_unrolled_async_backward_fixture();
+    let inits_and_teardowns_top_bits =
+        (0..compiled_circuit.memory_layout.teardown_sets.len() as u32).collect();
 
     let scheduled = gpu_backward_state
         .schedule_execute_backward_workflow(
             compiled_circuit,
             external_challenges,
+            inits_and_teardowns_top_bits,
             initial_output_layer_idx,
             top_layer_claims,
             evaluation_point,
@@ -387,6 +390,8 @@ fn run_basic_unrolled_async_allocator_regression_test() {
         proof_layout,
         proof_slab,
     } = prepare_basic_unrolled_async_backward_fixture();
+    let inits_and_teardowns_top_bits =
+        (0..compiled_circuit.memory_layout.teardown_sets.len() as u32).collect();
 
     let host_before = context.get_host_used_mem_current();
     context.reset_host_used_mem_peak();
@@ -394,6 +399,7 @@ fn run_basic_unrolled_async_allocator_regression_test() {
         .schedule_execute_backward_workflow(
             compiled_circuit,
             external_challenges,
+            inits_and_teardowns_top_bits,
             initial_output_layer_idx,
             top_layer_claims,
             evaluation_point,

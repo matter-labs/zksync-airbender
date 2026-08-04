@@ -723,6 +723,7 @@ fn run_basic_unrolled_stagewise_parity_test() {
             .schedule_execute_backward_workflow(
                 add_sub_circuit.clone(),
                 external_challenges,
+                (0..add_sub_circuit.memory_layout.teardown_sets.len() as u32).collect(),
                 initial_layer_for_sumcheck + 1,
                 top_layer_claims.clone(),
                 evaluation_point.clone(),
