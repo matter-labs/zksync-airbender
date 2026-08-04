@@ -11,7 +11,7 @@ use crate::upstream::{
     TwoAdicField,
 };
 use gpu_core::primitives::field::BF;
-use gpu_core::primitives::utils::memcpy_to_symbol;
+use gpu_core::primitives::utils::{memcpy_to_symbol, ConstPtrSymbol};
 
 pub const OMEGA_LOG_ORDER: u32 = <BF as TwoAdicField>::TWO_ADICITY as u32;
 const _: () = assert!(OMEGA_LOG_ORDER == 27); // native/context.cuh literal
@@ -103,9 +103,9 @@ cuda_struct_and_stub! { static ab_fwd_cmem_twiddles_finest_10: [BF; 1 << 10]; }
 cuda_struct_and_stub! { static ab_inv_cmem_twiddles_finest_10: [BF; 1 << 10]; }
 cuda_struct_and_stub! { static ab_fwd_cmem_twiddles_finest_11: [BF; 1 << 11]; }
 cuda_struct_and_stub! { static ab_inv_cmem_twiddles_finest_11: [BF; 1 << 11]; }
-cuda_struct_and_stub! { static ab_fwd_gmem_twiddles_coarse: *const BF; }
-cuda_struct_and_stub! { static ab_inv_gmem_twiddles_coarse: *const BF; }
-cuda_struct_and_stub! { static ab_fully_precomputed_bitrev_twiddles: *const BF; }
+cuda_struct_and_stub! { static ab_fwd_gmem_twiddles_coarse: ConstPtrSymbol<BF>; }
+cuda_struct_and_stub! { static ab_inv_gmem_twiddles_coarse: ConstPtrSymbol<BF>; }
+cuda_struct_and_stub! { static ab_fully_precomputed_bitrev_twiddles: ConstPtrSymbol<BF>; }
 
 unsafe fn copy_to_symbols(
     powers_of_w_fine: *const BF,
@@ -146,11 +146,17 @@ unsafe fn copy_to_symbols(
         ),
     )?;
     memcpy_to_symbol(&ab_inv_sizes, &inv_sizes_host)?;
-    memcpy_to_symbol(&ab_fwd_gmem_twiddles_coarse, &fwd_gmem_twiddles_coarse)?;
-    memcpy_to_symbol(&ab_inv_gmem_twiddles_coarse, &inv_gmem_twiddles_coarse)?;
+    memcpy_to_symbol(
+        &ab_fwd_gmem_twiddles_coarse,
+        &ConstPtrSymbol(fwd_gmem_twiddles_coarse),
+    )?;
+    memcpy_to_symbol(
+        &ab_inv_gmem_twiddles_coarse,
+        &ConstPtrSymbol(inv_gmem_twiddles_coarse),
+    )?;
     memcpy_to_symbol(
         &ab_fully_precomputed_bitrev_twiddles,
-        &fully_precomputed_bitrev_twiddles,
+        &ConstPtrSymbol(fully_precomputed_bitrev_twiddles),
     )?;
     memcpy_to_symbol(&ab_fwd_cmem_twiddles_coarse, &fwd_cmem_twiddles_coarse)?;
     memcpy_to_symbol(&ab_inv_cmem_twiddles_coarse, &inv_cmem_twiddles_coarse)?;

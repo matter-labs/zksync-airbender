@@ -4,7 +4,7 @@ use std::ptr::null_mut;
 
 use era_cudart::result::{CudaResult, CudaResultWrap};
 use era_cudart::slice::{DeviceSlice, DeviceVariable};
-use era_cudart_sys::cudaGetSymbolAddress;
+use era_cudart_sys::{cudaGetSymbolAddress, cuda_struct_and_stub};
 
 use super::super::super::{
     GpuGKRStorage, GpuSumcheckRound1PreparedStorage, GpuSumcheckRound2PreparedStorage,
@@ -63,9 +63,11 @@ pub(crate) const GKR_DIM_REDUCING_BATCH_CHALLENGE_TABLE_LEN: usize = 10;
 pub(crate) const MAX_DIM_REDUCING_LAYER_CLAIM_POINT_LEN: usize =
     GKR_BACKWARD_MAX_TRACE_LEN_LOG2 + 2;
 
-extern "C" {
+cuda_struct_and_stub! {
     static ab_gkr_dim_reducing_batch_challenge_table:
         [E4; GKR_DIM_REDUCING_BATCH_CHALLENGE_TABLE_LEN];
+}
+cuda_struct_and_stub! {
     static ab_gkr_dim_reducing_layer_claim_point: [E4; MAX_DIM_REDUCING_LAYER_CLAIM_POINT_LEN];
 }
 

@@ -9,7 +9,7 @@ use std::sync::OnceLock;
 use era_cudart::cuda_kernel_declaration;
 use era_cudart::execution::KernelFunction;
 use era_cudart::result::{CudaResult, CudaResultWrap};
-use era_cudart_sys::cudaGetSymbolAddress;
+use era_cudart_sys::{cudaGetSymbolAddress, cuda_struct_and_stub};
 
 use super::super::kernels::gkr_dim_reducing_launch_config;
 use super::super::kernels::GkrEqSizes;
@@ -117,8 +117,10 @@ pub(crate) fn launch_main_round0_constant<E: crate::BackwardKernels>(
 // Main-layer constants and __constant__ symbol addresses
 // ---------------------------------------------------------------------------
 
-extern "C" {
+cuda_struct_and_stub! {
     static ab_gkr_round2_challenges: [E4; 3];
+}
+cuda_struct_and_stub! {
     static ab_gkr_main_layer_claim_point: [E4; MAX_MAIN_LAYER_CLAIM_POINT_LEN];
 }
 

@@ -5,7 +5,7 @@ use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
 use era_cudart::result::{CudaResult, CudaResultWrap};
 use era_cudart::stream::CudaStream;
 use era_cudart::{cuda_kernel_declaration, cuda_kernel_signature_arguments_and_function};
-use era_cudart_sys::cudaGetSymbolAddress;
+use era_cudart_sys::{cudaGetSymbolAddress, cuda_struct_and_stub};
 
 use super::super::{GpuBaseFieldPoly, GpuBaseFieldSourceKind, GpuExtensionFieldPoly};
 use crate::upstream::{Field, GKRAddress};
@@ -248,7 +248,7 @@ cuda_kernel_declaration!(pub(crate)
     )
 );
 
-extern "C" {
+cuda_struct_and_stub! {
     static ab_gkr_lookup_gamma_consts: [E4; 3];
 }
 

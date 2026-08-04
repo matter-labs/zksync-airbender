@@ -5,7 +5,7 @@ use era_cudart::result::{CudaResult, CudaResultWrap};
 use era_cudart::slice::DeviceSlice;
 use era_cudart::stream::CudaStream;
 use era_cudart::{cuda_kernel_declaration, cuda_kernel_signature_arguments_and_function};
-use era_cudart_sys::cudaGetSymbolAddress;
+use era_cudart_sys::{cudaGetSymbolAddress, cuda_struct_and_stub};
 
 use super::super::super::{
     GpuExtensionFieldPolyContinuingLaunchDescriptor, GpuExtensionFieldPolyInitialSource,
@@ -80,7 +80,7 @@ pub fn make_eq_sizes(challenge_count: usize) -> GkrEqSizes {
     GkrEqSizes { high, low }
 }
 
-extern "C" {
+cuda_struct_and_stub! {
     static ab_gkr_eq_high: [[E4; GKR_EQ_GROUP_TABLE_LEN]; GKR_EQ_HIGH_SLOTS];
 }
 

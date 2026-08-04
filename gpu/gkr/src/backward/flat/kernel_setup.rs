@@ -5,7 +5,7 @@
 use std::ffi::c_void;
 
 use era_cudart::result::CudaResultWrap;
-use era_cudart_sys::cudaGetSymbolAddress;
+use era_cudart_sys::{cudaGetSymbolAddress, cuda_struct_and_stub};
 
 use super::types::FLAT_CONST_MAX;
 use gpu_core::primitives::field::E4;
@@ -61,7 +61,7 @@ pub(crate) fn configure_flat_kernel_cache_preference() {
 // __constant__ symbol address
 // ---------------------------------------------------------------------------
 
-extern "C" {
+cuda_struct_and_stub! {
     static ab_gkr_flat_coefficients: [E4; FLAT_CONST_MAX];
 }
 
