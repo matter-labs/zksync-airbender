@@ -24,7 +24,7 @@ jobs:
     container:
       image: nvidia/cuda:${{ matrix.cuda }}
     env:
-      RUST_TOOLCHAIN: nightly-2026-07-17
+      RUST_TOOLCHAIN: nightly
     steps:
       - name: Prepare environment
         env:
