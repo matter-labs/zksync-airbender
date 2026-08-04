@@ -1252,11 +1252,12 @@ where
         // into `device_claim_point_out[last_step]`, WITHOUT folding eq again
         // (skip `fold_eq_values_for_next_round`). The `[E;2]` last-round line is
         // still read from the round storage by
-        // `final_evaluation_sources_for_last_step(last_step)` below —
-        // cascade slot `last_step`, which a VM-owned final round publishes
-        // through the same pointers, so the gather block below is untouched
-        // either way.
-        if let Some(ext) = self.bwd_vm_ext.as_ref() {
+        // `final_evaluation_sources_for_last_step(last_step)` below — the slot
+        // this round writes. A VM-owned final round writes it into the VM's own
+        // last folding buffer instead, so the gather block below is re-pointed
+        // at that buffer; the ADDRESSES, and therefore the transcript order, are
+        // the same either way.
+        if let Some(ext) = self.bwd_vm_ext.as_mut() {
             super::super::vm::production_bind::schedule_bwd_vm_ext_round(
                 ext,
                 last_step as u32,
@@ -1322,7 +1323,13 @@ where
         // next-layer claim and the degree-1 `final_step_evaluations` (written to
         // the slab, committed, and sent in the proof). We then squeeze the 1
         // remaining challenge `[next_batching_challenge]`.
-        let transcript_input_sources = self.final_evaluation_sources_for_last_step(last_step);
+        let mut transcript_input_sources = self.final_evaluation_sources_for_last_step(last_step);
+        // A VM-owned layer folds into its own just-in-time buffers, so the last
+        // round's `[E; 2]` lines are in the VM's final buffer rather than the
+        // incumbent's fold storage. Same keys, same order, different medium.
+        if let Some(ext) = self.bwd_vm_ext.as_ref() {
+            ext.repoint_final_evaluations(&mut transcript_input_sources);
+        }
         let num_addresses = transcript_input_sources.len();
         let last_evals_len = num_addresses * 2;
         let transcript_input_addresses: Vec<GKRAddress> =

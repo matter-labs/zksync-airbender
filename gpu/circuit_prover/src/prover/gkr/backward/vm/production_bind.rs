@@ -131,6 +131,7 @@ use crate::primitives::field::{BF, E4};
 use crate::prover::gkr::backward::{make_eq_sizes, GkrEqSizes};
 use crate::prover::gkr::forward::vm::lower::{read_place_to_gkr_address, ResolvedColumn};
 use crate::prover::gkr::forward::vm::production_bind::resolve_storage_column;
+use crate::prover::gkr::transform::logical_protocol_address;
 use crate::prover::gkr::GpuGKRStorage;
 use crate::prover::ProverContext;
 use crate::upstream::{
@@ -379,21 +380,12 @@ pub(crate) enum BwdVmBindError {
     NotExt { layer: usize, regime: BwdRegime },
     /// The Ext shape pass was asked about round 0, which the R0 program owns.
     NotAContinuationRound { round: u8 },
-    /// A window column has no cascade region: the flat prepare has not run for
-    /// this layer, or the address never folds here. Binding it anyway would
-    /// publish through a null pointer.
-    UnresolvedCascade {
-        window: u8,
-        address: GKRAddress,
-        /// The window's RAW backing field, which picks WHICH folding map was
-        /// consulted, and the layer it was consulted at. Both are needed to read
-        /// this failure at all: the same address can be absent from the base map
-        /// while present in the ext one, and that difference is what separates
-        /// "never folds" from "the entry is created lazily by a round this VM
-        /// owns, so nothing created it".
-        e4_origin: bool,
-        looked_in: usize,
-    },
+    /// A window chain-reads at this round but was assigned no column in the
+    /// PREVIOUS round's folding buffer — i.e. the materialization ladder says it
+    /// folded there and the column assignment says it did not. The two are the
+    /// same predicate ([`ExtWindowShape::materialize`]) read one round apart, so
+    /// this is unreachable by construction and exists to keep it that way.
+    ChainWithoutPriorFold { window: u8, source: u32 },
 }
 
 /// The read place of one window column, or `None` for a procedural window.
@@ -463,23 +455,23 @@ pub(crate) fn r0_window_shapes(
 ///
 /// Unlike [`R0WindowShape`], the class ladder here is round-dependent: the
 /// window's ORIGIN is a family property, but what the round reads (raw matrix,
-/// synthesis, or the previous round's cascade slot) and whether it publishes
+/// synthesis, or the previous round's folding buffer) and whether it folds
 /// follow the materialization ladder — E4-origin from round 1, BF-origin at
 /// [`BWD_COEFF_PUBLISH_TARGET_DEPTH`] under `D2Policy::Inline` (round 2 under
 /// `Materialize`), procedural at [`BWD_COEFF_PUBLISH_TARGET_DEPTH`]. From its
-/// materialization round on, a window publishes cascade slot `round` EVERY
-/// round, and reads chained from `round + 1` on.
+/// materialization round on, a window folds at EVERY round, and reads chained
+/// from `round + 1` on.
 #[derive(Debug)]
 pub(crate) struct ExtWindowShape {
     /// The window's base column as a production address, or `None` for a
     /// procedural window.
     pub(crate) address: Option<GKRAddress>,
-    /// The RAW backing matrix's field width (a cascade slot is always E4).
+    /// The RAW backing matrix's field width (a folded value is always E4).
     pub(crate) is_e4_backing: bool,
     pub(crate) class: SourceClass,
-    /// This round publishes cascade slot `round`.
+    /// This round folds: it writes its round-`round` values to a destination.
     pub(crate) materialize: bool,
-    /// This round reads the previous round's cascade slot instead of the raw
+    /// This round reads the previous round's folded values instead of the raw
     /// matrix or synthesis.
     pub(crate) chained: bool,
     /// `round - 1` when chained, 0 otherwise.
@@ -489,7 +481,7 @@ pub(crate) struct ExtWindowShape {
     pub(crate) first_column: usize,
 }
 
-/// The round `origin` first writes a cascade slot, under `d2`.
+/// The round `origin` first folds, under `d2`.
 fn ext_materialization_round(origin: SourceOrigin, d2: D2Policy) -> u8 {
     match (origin, d2) {
         (SourceOrigin::E4, _) => 1,
@@ -551,101 +543,85 @@ pub(crate) fn ext_round_window_shapes(
     Ok(shapes)
 }
 
-// ── The cascade resolver ─────────────────────────────────────────────────────
+// ── The VM's own folding buffers ─────────────────────────────────────────────
 
-/// One address's cascade region: the per-poly intermediate folding buffer the
-/// flat path folds into (`intermediate_storage_for_folder_*` in production
-/// storage), reduced to the facts the Ext binder needs. The region is an
-/// append-only cascade of per-round slots — slot r holds the round-r layer
-/// (`N/2^r` E4 values, `N` the raw poly length) at a fixed offset, written by
-/// round r's kernel. The VM's round-r publish IS slot r; its round-r chain
-/// read IS slot r-1.
+/// One round's folding buffer: where every window that folds at round `r`
+/// writes its round-`r` values, and the only thing round `r + 1` reads them
+/// from.
 ///
-/// Two shapes exist:
+/// The incumbent's `intermediate_storage_for_folder_*` region holds ONE poly's
+/// whole descending cascade for the whole layer — every round's slot at a fixed
+/// offset, alive from the layer's prepare to the proof's end. A VM-owned layer
+/// needs two rounds at a time, so it owns one tight matrix per round instead:
+/// `columns` columns of `2 * rows(r)` E4, created just before round `r`'s
+/// kernel — whose prologue writes it — and dropped as soon as round `r + 1`,
+/// its only reader, is scheduled.
 ///
-///   * ext-origin: region = `N` elements, first slot 1 at offset 0
-///     (`GpuExtensionFieldPolyIntermediateFoldingStorage`);
-///   * base-origin, real and virtual alike: region = `N/2` elements, first
-///     slot 2 (`GpuBaseFieldPolyIntermediateFoldingStorage`) — under
-///     `D2Policy::Inline` the VM never writes slot 2; its first write is
-///     slot 3, and the slot-2 range simply stays unused.
-///
-/// Both incumbent walks (`pointer_for_sumcheck_continuation` /
-/// `pointers_for_sumcheck_accessor_step`, storage_types/views.rs) close to
-/// `offset(r) = R - R/2^(r - first_slot)` over the region length `R`. The
-/// closed form exists because those walks take `&mut` storage the binder does
-/// not have; the CPU test pins it against transcriptions of the walks and the
-/// GPU test against the real prepared plans, pointer for pointer.
+/// The materialization ladder is what makes the two sets line up: a window
+/// publishes at every round from its materialization round on, and chain-reads
+/// from the round after that, so *the set that folds at `r` is exactly the set
+/// that chain-reads at `r + 1`*. One column assignment per round therefore
+/// serves round `r`'s destinations and round `r + 1`'s reads, and neither round
+/// has to be told anything about the other.
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct CascadeRegion {
-    /// Device byte address of the region's first element.
-    pub(crate) base: *mut u8,
-    /// Region length in E4 elements: `N` for ext-origin, `N/2` for base.
-    pub(crate) region_elems: usize,
-    /// The first round that owns a slot here: 1 for ext-origin, 2 for base.
-    pub(crate) first_slot: u8,
-    /// Base of the CONSOLIDATED allocation this region is a slice of. Regions of
-    /// one backing are equal-sized and packed, so `(base - backing) /
-    /// region_bytes` is the poly's rank in it — which is what lets every poly of
-    /// a backing share one address slot.
-    pub(crate) backing: *mut u8,
+pub(crate) struct FoldingBufferShape {
+    /// One column per window column that folds at this round.
+    pub(crate) columns: usize,
+    /// Elements per column: `2 * rows`, the round's own layer — the same extent
+    /// the lowering derives for a publish (`publish_stride`), so a column is
+    /// exactly filled and consecutive columns cannot overlap.
+    pub(crate) column_elems: usize,
 }
 
-impl CascadeRegion {
-    /// Element offset of cascade slot `round` within the region.
-    pub(crate) fn slot_elem_offset(&self, round: u8) -> usize {
-        assert!(
-            round >= self.first_slot,
-            "round {round} has no cascade slot in a region whose first slot is {}",
-            self.first_slot
-        );
-        self.region_elems - (self.region_elems >> (round - self.first_slot))
+impl FoldingBufferShape {
+    pub(crate) fn stride_bytes(&self) -> u32 {
+        (self.column_elems * size_of::<E4>()) as u32
     }
 
-    /// The slot's length in elements: the round-`round` layer, `2 * rows`.
-    pub(crate) fn slot_elems(&self, round: u8) -> usize {
-        assert!(
-            round >= self.first_slot,
-            "round {round} has no cascade slot in a region whose first slot is {}",
-            self.first_slot
-        );
-        self.region_elems >> (round - self.first_slot + 1)
+    pub(crate) fn elems(&self) -> usize {
+        self.columns * self.column_elems
     }
 
-    /// Device byte address of cascade slot `round`.
-    pub(crate) fn slot_ptr(&self, round: u8) -> *mut u8 {
-        let offset = self.slot_elem_offset(round);
-        // SAFETY: pointer arithmetic only — `offset < region_elems` by
-        // construction and the region is one poly's slice of a live
-        // `DeviceAllocation` (the resolver read it from production storage).
-        unsafe { self.base.add(offset * size_of::<E4>()) }
-    }
-
-    /// Cascade slot `round` as a resolvable COLUMN of its consolidated backing.
+    /// Column `column` of the buffer, as the slot table resolves it.
     ///
-    /// The matrix base carries the round's own offset, so a slot interned from
-    /// this addresses `region_base + rank * region_bytes + slot_offset(round)` —
-    /// the flat path's pointer for that poly at that round, by construction. The
-    /// stride is the region stride, which is what makes consecutive polys of one
-    /// backing consecutive columns of one slot.
-    pub(crate) fn slot_column(&self, round: u8) -> ResolvedColumn {
-        let region_bytes = self.region_elems * size_of::<E4>();
-        let offset = self.slot_elem_offset(round) * size_of::<E4>();
+    /// The buffer does not exist yet, so this is a DEFERRED column: base null
+    /// and the "pointer" a byte offset from the eventual allocation. Everything
+    /// the lowering validates — field, stride, span — is a fact about the shape
+    /// and is final here; only the address arrives later, through the patch the
+    /// round scheduler applies once it has created the buffer.
+    pub(crate) fn column(&self, column: usize) -> ResolvedColumn {
+        let stride_bytes = self.stride_bytes();
         ResolvedColumn {
             is_e4: true,
-            ptr: self.base.cast_const().wrapping_add(offset),
-            matrix_base: self.backing.wrapping_add(offset),
-            stride_bytes: region_bytes as u32,
+            ptr: (column * stride_bytes as usize) as *const u8,
+            matrix_base: null_mut(),
+            stride_bytes,
         }
     }
+}
+
+/// A slot whose base is a folding buffer, and where in that buffer it starts.
+///
+/// The offset is the slot's own, not a column's: a buffer wider than
+/// [`SOURCE_WINDOW_COLUMNS`] takes several slots at chunk bases, and the patch
+/// has to restore exactly the base the intern computed.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct FoldingBufferSlot {
+    /// Index into the round's address table.
+    pub(crate) slot: usize,
+    /// Which round's buffer: `round` for a destination, `round - 1` for a
+    /// chain read.
+    pub(crate) buffer_round: u8,
+    /// Byte offset of the slot's base within that buffer.
+    pub(crate) byte_offset: usize,
 }
 
 /// The production address of a procedural window's virtual poly: the inverse
 /// of the lowering chain (`VirtualSetupPoly -> VirtualSetupKind -> kind tag`,
 /// dag_ir lower's `map_virtual_setup` composed with [`KIND_ORDER`]). The
-/// procedural windows synthesize their VALUES from the row index, but their
-/// cascade slots — where rounds `>= BWD_COEFF_PUBLISH_TARGET_DEPTH` publish —
-/// are the flat path's virtual folding buffers, keyed by this address.
+/// procedural windows synthesize their VALUES from the row index, but from
+/// [`BWD_COEFF_PUBLISH_TARGET_DEPTH`] on they fold like anything else, and the
+/// folded values need an identity for the final gather to name — this is it.
 /// Explicit match so an upstream variant addition fails to compile here.
 pub(crate) fn virtual_setup_address(kind: u8) -> GKRAddress {
     GKRAddress::VirtualSetup(match KIND_ORDER[kind as usize] {
@@ -656,63 +632,35 @@ pub(crate) fn virtual_setup_address(kind: u8) -> GKRAddress {
     })
 }
 
-/// Resolve `addr`'s cascade region from the folding-storage entry the flat
-/// prepare created (`intermediate_storage_for_folder_*`). Production orders
-/// prepare before the VM build (state.rs), so the entries exist — and reading
-/// them, rather than re-deriving the consolidated-Arc offsets, makes the
-/// binder agree with the flat path's pointers BY CONSTRUCTION, on the
-/// consolidated and per-poly allocation paths alike.
+/// Round `round`'s folding-buffer column for every source that folds there,
+/// keyed by wire source slot, plus the buffer's shape.
 ///
-/// `e4_origin` is the window's RAW backing field and picks the map, mirroring
-/// the incumbents' cache-layer rule exactly: ext-origin entries live at the
-/// poly's canonical layer (`plan_ext_source_for_rounds_1_and_beyond` keys
-/// `ext_poly_layer`), base-origin entries — real, trace-holder and virtual
-/// alike — at the REQUESTING layer (`plan_base_source_*`'s
-/// `cache_layer = request_layer`).
-///
-/// `None` is a bind-stopping answer for a window that publishes or chains: it
-/// means prepare has not run for this layer (call-order defect) or the
-/// address never folds here.
-pub(crate) fn resolve_cascade_region<E: Copy>(
-    storage: &GpuGKRStorage<BF, E>,
-    request_layer: usize,
-    addr: GKRAddress,
-    e4_origin: bool,
-) -> Option<CascadeRegion> {
-    assert_eq!(size_of::<E>(), size_of::<E4>(), "the cascade is E4-wide");
-    if e4_origin {
-        let layer = GpuGKRStorage::<BF, E>::ext_poly_layer(addr)?;
-        let (_, buffer) = storage
-            .layers
-            .get(layer)?
-            .intermediate_storage_for_folder_extension_field_inputs
-            .get(&addr)?;
-        Some(CascadeRegion {
-            // SAFETY: pointer arithmetic within `buffer.backing` — the
-            // constructor asserted `offset_in_backing` in bounds.
-            base: unsafe { buffer.backing.as_ptr().add(buffer.offset_in_backing) }
-                .cast_mut()
-                .cast::<u8>(),
-            region_elems: 2 * buffer.size_after_one_fold,
-            first_slot: 1,
-            backing: buffer.backing.as_ptr().cast_mut().cast::<u8>(),
-        })
-    } else {
-        let (_, buffer) = storage
-            .layers
-            .get(request_layer)?
-            .intermediate_storage_for_folder_base_field_inputs
-            .get(&addr)?;
-        Some(CascadeRegion {
-            // SAFETY: as above.
-            base: unsafe { buffer.backing.as_ptr().add(buffer.offset_in_backing) }
-                .cast_mut()
-                .cast::<u8>(),
-            region_elems: 2 * buffer.size_after_two_folds,
-            first_slot: 2,
-            backing: buffer.backing.as_ptr().cast_mut().cast::<u8>(),
-        })
+/// A pure function of the coordinate, the round and the D2 policy — which is
+/// the whole reason round `r + 1` can name round `r`'s columns without anything
+/// being threaded through the round loop. The order is the artifact's own
+/// (window, then column), so it is stable across the two calls that must agree.
+pub(super) fn folding_buffer_columns(
+    coord: &LeanCoordinateArtifact,
+    round: u8,
+    rows: usize,
+    d2: D2Policy,
+) -> Result<(FoldingBufferShape, BTreeMap<u32, usize>), BwdVmBindError> {
+    let shapes = ext_round_window_shapes(coord, round, d2)?;
+    let mut columns: BTreeMap<u32, usize> = BTreeMap::new();
+    for (window, artifact_window) in coord.binding.windows.iter().enumerate() {
+        if !shapes[window].materialize {
+            continue;
+        }
+        for entry in &artifact_window.columns {
+            let next = columns.len();
+            columns.insert(entry.source, next);
+        }
     }
+    let shape = FoldingBufferShape {
+        columns: columns.len(),
+        column_elems: 2 * rows,
+    };
+    Ok((shape, columns))
 }
 
 // ── Pointer resolution (production) ──────────────────────────────────────────
@@ -799,6 +747,11 @@ impl SlotTable {
                     procedural_kind: None,
                     read_elements,
                     columns: within + 1,
+                    // A column whose matrix base is null is an OFFSET into a
+                    // backing that does not exist yet — the only way to reach
+                    // this table with a null base, since a resolved production
+                    // column always has one.
+                    deferred_base: column.matrix_base.is_null(),
                 });
                 let slot = self.slots.len() - 1;
                 self.index.insert(key, slot);
@@ -820,6 +773,7 @@ impl SlotTable {
             procedural_kind: Some(kind),
             read_elements: 0,
             columns: 1,
+            deferred_base: false,
         });
         let slot = self.slots.len() - 1;
         self.index.insert(key, slot);
@@ -923,32 +877,82 @@ pub(crate) struct BoundExtSources {
     /// `rounds[r - 1]` is round `r`'s resolution, `r` in `1..=folding_steps-1`.
     pub(crate) rounds: Vec<BoundExtRound>,
     /// The whole sequence's publish plan, absolute-round indexed. Structurally
-    /// EMPTY — every publish is explicitly backed by a cascade slot — and
-    /// asserted so; a nonzero plan means a destination lost its backing.
+    /// EMPTY — every publish is explicitly backed by a folding-buffer column —
+    /// and asserted so; a nonzero plan means a destination lost its backing.
     pub(crate) publish_plan: PublishScratchPlan,
+    /// What the layer's final gather must read, per logical address: the byte
+    /// offset of that poly's column in the LAST round's folding buffer.
+    ///
+    /// The incumbent reads the same values out of its own fold storage
+    /// (`final_evaluation_sources_for_last_step` zips the kernel plan's inputs
+    /// against the last prepared step's `this_layer_start`, which is the slot
+    /// the last round writes). A VM-owned layer writes them into its own buffer
+    /// instead, so the gather is re-pointed at these offsets — same addresses,
+    /// same values, same transcript order, different medium.
+    ///
+    /// Keyed by LOGICAL address (`logical_protocol_address`), because that is
+    /// what the gather's keys are by the time it runs.
+    pub(crate) final_evaluations: BTreeMap<GKRAddress, usize>,
 }
 
-/// One round's addresses. Unlike the old frozen window partition, each round
-/// interns its own table: a destination slot's base includes that round's offset
-/// inside its cascade region, so the table is a per-round fact and pretending
-/// otherwise is what forced reads and destinations to share an index.
+/// One round's addresses. Each round interns its own table: a destination slot
+/// is a column of THIS round's folding buffer and a chain read a column of the
+/// previous round's, so the table is a per-round fact and pretending otherwise
+/// is what forced reads and destinations to share an index.
 pub(crate) struct BoundExtRound {
     pub(crate) round: u8,
     pub(crate) rows: usize,
     pub(crate) slots: Vec<ResolvedAddrSlot>,
     pub(crate) sources: Vec<ResolvedSourceAddr>,
+    /// This round's folding buffer, which the round's kernel prologue fills.
+    pub(crate) folding_buffer: FoldingBufferShape,
+    /// Every slot of `slots` whose base is a folding buffer — this round's or
+    /// the previous round's — and where in it that slot starts. Ascending by
+    /// slot, and the ONLY slots whose base is not final at lowering.
+    pub(crate) folding_buffer_slots: Vec<FoldingBufferSlot>,
+}
+
+/// Record (or re-confirm) that `slot`'s base is a chunk of round
+/// `buffer_round`'s folding buffer.
+///
+/// Slots are interned per [`SOURCE_WINDOW_COLUMNS`]-column chunk, so many
+/// columns legitimately land on one slot; they must agree on the chunk, and a
+/// disagreement is a resolver defect rather than something to keep the first of.
+fn note_folding_buffer_slot(
+    patches: &mut BTreeMap<usize, FoldingBufferSlot>,
+    slot: usize,
+    buffer_round: u8,
+    shape: &FoldingBufferShape,
+    column: usize,
+) {
+    let chunk = column / SOURCE_WINDOW_COLUMNS;
+    let entry = FoldingBufferSlot {
+        slot,
+        buffer_round,
+        byte_offset: chunk * SOURCE_WINDOW_COLUMNS * shape.stride_bytes() as usize,
+    };
+    let previous = patches.insert(slot, entry);
+    assert!(
+        previous.is_none_or(|previous| previous == entry),
+        "folding-buffer slot {slot} interned two different chunks: \
+         {previous:?} then {entry:?}"
+    );
 }
 
 /// Resolve one Ext coordinate's sources against production storage, per round.
 ///
 /// Read and destination are interned INDEPENDENTLY, which is the whole point: a
-/// raw matrix is absolute-indexed and its fold backing rank-packed, so the same
-/// column has two different ranks and one index cannot serve both. Two lanes per
-/// source, two slots, no reconciliation, nothing splits.
+/// raw matrix is absolute-indexed and a folding buffer packed by fold order, so
+/// the same column has two different ranks and one index cannot serve both. Two
+/// lanes per source, two slots, no reconciliation, nothing splits.
+///
+/// Only RAW reads touch production storage. Every folded value the sequence
+/// produces or consumes lives in the VM's own per-round folding buffers, so
+/// there is no lookup into the incumbent's fold storage to fail, and no round
+/// depends on the layer's flat prepares having run.
 pub(crate) fn bind_ext_round_sources<E: Copy>(
     storage: &GpuGKRStorage<BF, E>,
     coord: &LeanCoordinateArtifact,
-    request_layer: usize,
     folding_steps: usize,
     d2: D2Policy,
 ) -> Result<BoundExtSources, BwdVmBindError> {
@@ -957,12 +961,28 @@ pub(crate) fn bind_ext_round_sources<E: Copy>(
     ext_round_window_shapes(coord, 1, d2)?;
     assert!(folding_steps >= 2, "a continuation sequence needs rounds");
 
+    let logical = storage
+        .layout
+        .as_ref()
+        .map(|layout| &layout.scratch_space_mapping_rev);
+    let last_round = (folding_steps - 1) as u8;
     let mut rounds = Vec::with_capacity(folding_steps - 1);
+    let mut final_evaluations: BTreeMap<GKRAddress, usize> = BTreeMap::new();
     for round in 1..folding_steps {
         let rows = 1usize << (folding_steps - round - 1);
         let round = round as u8;
         let shapes = ext_round_window_shapes(coord, round, d2)?;
+        // This round's destination columns, and the PREVIOUS round's — which is
+        // what a chained read names. Round 1 chains nothing (no window
+        // materializes before its own materialization round), so no round-0
+        // buffer is ever asked for.
+        let (folding_buffer, destinations) = folding_buffer_columns(coord, round, rows, d2)?;
+        let chained_buffer = match round {
+            1 => None,
+            _ => Some(folding_buffer_columns(coord, round - 1, 2 * rows, d2)?),
+        };
         let mut table = SlotTable::default();
+        let mut patches: BTreeMap<usize, FoldingBufferSlot> = BTreeMap::new();
         let mut sources: Vec<Option<ResolvedSourceAddr>> =
             vec![None; coord.binding.source_slots.len()];
 
@@ -971,46 +991,48 @@ pub(crate) fn bind_ext_round_sources<E: Copy>(
             let shape = &shapes[parent];
             let e4_origin = artifact_window.backing_field() == FieldKind::Ext;
             for entry in &artifact_window.columns {
-                let (raw, address) = match family_read_place(artifact_window.family, entry.column) {
-                    Some(place) => {
-                        let address = read_place_to_gkr_address(&place);
-                        let resolved = resolve_storage_column(storage, address)
-                            .ok_or(BwdVmBindError::UnresolvedWindow { window, address })?;
-                        if resolved.is_e4 != e4_origin {
-                            return Err(BwdVmBindError::WindowFieldMismatch {
-                                window,
-                                expect_e4: e4_origin,
-                            });
-                        }
-                        (Some(resolved), address)
-                    }
+                let place = family_read_place(artifact_window.family, entry.column);
+                let address = match &place {
+                    Some(place) => read_place_to_gkr_address(place),
                     None => match artifact_window.family {
-                        WindowFamily::VirtualSetup { kind } => (None, virtual_setup_address(kind)),
+                        WindowFamily::VirtualSetup { kind } => virtual_setup_address(kind),
                         _ => unreachable!("an addressless window is procedural"),
                     },
                 };
-                let cascade = resolve_cascade_region(storage, request_layer, address, e4_origin)
-                    .ok_or_else(|| BwdVmBindError::UnresolvedCascade {
-                        window,
-                        address,
-                        e4_origin,
-                        looked_in: if e4_origin {
-                            GpuGKRStorage::<BF, E>::ext_poly_layer(address).unwrap_or(usize::MAX)
-                        } else {
-                            request_layer
-                        },
-                    })?;
 
                 // The READ lane. A chained round reads the previous round's
-                // publish — the same cascade region, one slot back — which is
-                // exactly the invariant the parity model enforced with
-                // `ChainReadNotPriorPublish`, here by construction.
+                // folding buffer — the invariant the parity model enforced with
+                // `ChainReadNotPriorPublish`, here by construction, because the
+                // column comes from that round's OWN destination assignment.
                 let (read_slot, read_column) = if shape.chained {
-                    let slot = cascade.slot_column(round - 1);
-                    table.intern(window, slot, cascade.slot_elems(round - 1) as u32)?
+                    let (buffer, columns) = chained_buffer
+                        .as_ref()
+                        .expect("a round-1 window cannot chain");
+                    let column = *columns.get(&entry.source).ok_or(
+                        BwdVmBindError::ChainWithoutPriorFold {
+                            window,
+                            source: entry.source,
+                        },
+                    )?;
+                    let resolved = buffer.column(column);
+                    let interned =
+                        table.intern(window, resolved, buffer.column_elems as u32)?;
+                    note_folding_buffer_slot(&mut patches, interned.0, round - 1, buffer, column);
+                    interned
                 } else {
-                    match raw {
-                        Some(resolved) => {
+                    match &place {
+                        Some(place) => {
+                            let resolved = resolve_storage_column(
+                                storage,
+                                read_place_to_gkr_address(place),
+                            )
+                            .ok_or(BwdVmBindError::UnresolvedWindow { window, address })?;
+                            if resolved.is_e4 != e4_origin {
+                                return Err(BwdVmBindError::WindowFieldMismatch {
+                                    window,
+                                    expect_e4: e4_origin,
+                                });
+                            }
                             let width = if resolved.is_e4 {
                                 size_of::<E4>()
                             } else {
@@ -1026,8 +1048,31 @@ pub(crate) fn bind_ext_round_sources<E: Copy>(
                 };
                 // The DESTINATION lane, interned in its own right.
                 let publish = if shape.materialize {
-                    let slot = cascade.slot_column(round);
-                    Some(table.intern(window, slot, cascade.slot_elems(round) as u32)?)
+                    let column = *destinations
+                        .get(&entry.source)
+                        .expect("a materializing source is assigned a column");
+                    let resolved = folding_buffer.column(column);
+                    let interned =
+                        table.intern(window, resolved, folding_buffer.column_elems as u32)?;
+                    note_folding_buffer_slot(
+                        &mut patches,
+                        interned.0,
+                        round,
+                        &folding_buffer,
+                        column,
+                    );
+                    if round == last_round {
+                        let address = match logical {
+                            Some(rev) => logical_protocol_address(address, rev),
+                            None => address,
+                        };
+                        // The COLUMN's offset, not the slot's chunk base: the
+                        // gather reads this poly's own two elements.
+                        final_evaluations
+                            .entry(address)
+                            .or_insert(column * folding_buffer.stride_bytes() as usize);
+                    }
+                    Some(interned)
                 } else {
                     None
                 };
@@ -1057,7 +1102,7 @@ pub(crate) fn bind_ext_round_sources<E: Copy>(
             eprintln!(
                 "[bwd-vm-census] L{} Ext round {round}: {} sources, \
                  {} artifact windows, {} address slots ({} read + {} destination), \
-                 {} bytes/row",
+                 {} bytes/row, folding buffer {} columns x {} KiB = {} MiB",
                 coord.layer,
                 sources.len(),
                 coord.binding.windows.len(),
@@ -1065,6 +1110,9 @@ pub(crate) fn bind_ext_round_sources<E: Copy>(
                 reads.len(),
                 slots.len() - reads.len(),
                 seg_ext_bytes_per_row(&slots, &sources, round),
+                folding_buffer.columns,
+                folding_buffer.stride_bytes() / 1024,
+                folding_buffer.elems() * size_of::<E4>() / (1024 * 1024),
             );
         }
         rounds.push(BoundExtRound {
@@ -1072,13 +1120,15 @@ pub(crate) fn bind_ext_round_sources<E: Copy>(
             rows,
             slots,
             sources,
+            folding_buffer,
+            folding_buffer_slots: patches.into_values().collect(),
         });
     }
 
     // ── The (empty) plan for the whole sequence ──────────────────────────────
     // Round 0 belongs to the R0 program and plans nothing here; every
-    // destination of rounds 1+ is an explicit cascade slot, so the plan must
-    // reserve nothing.
+    // destination of rounds 1+ is an explicit folding-buffer column, so the plan
+    // must reserve nothing.
     let no_publishes: Vec<bool> = Vec::new();
     let no_columns: Vec<usize> = Vec::new();
     let mut publishes_per_round: Vec<&[bool]> = vec![&no_publishes];
@@ -1111,6 +1161,7 @@ pub(crate) fn bind_ext_round_sources<E: Copy>(
     Ok(BoundExtSources {
         rounds,
         publish_plan: plan,
+        final_evaluations,
     })
 }
 
@@ -1448,23 +1499,79 @@ pub(crate) fn seg_ext_bytes_per_row(
 /// Everything the VM-owned continuation rounds of one layer need at schedule
 /// time, built once at plan-build time. `setups[r - 1]` is round `r`'s.
 ///
-/// No parity allocations exist: every publish lands in a cascade slot of fold
-/// storage the layer already owns (kept alive by the storage struct, which
-/// outlives scheduling). The slab and bank fill mirror the R0 launch's; ONE
-/// fill before round 1 serves every round, because the bank's recipes are
-/// challenge-functions of the LAYER, not of the round.
+/// No parity allocations exist, and no fold storage of the incumbent's is read
+/// or written: every publish lands in a column of THIS launch's own folding
+/// buffer for that round, created just before the round that writes it and
+/// dropped as soon as the round that reads it is scheduled. The slab and bank
+/// fill mirror the R0 launch's; ONE fill before round 1 serves every round,
+/// because the bank's recipes are challenge-functions of the LAYER, not of the
+/// round.
 pub(crate) struct BwdVmExtLaunch {
     setups: Vec<BwdSegSetup>,
+    /// Per round `r - 1`, the folding buffer to create before it and the slots
+    /// whose base the creation fills in.
+    rounds: Vec<ExtRoundBuffers>,
+    /// The folding buffers currently alive, by the round that WROTE them. At
+    /// most two: the round being scheduled and the one before it. The last
+    /// round's stays until this launch drops, because the layer's final gather
+    /// reads it.
+    live: BTreeMap<u8, DeviceAllocation<E4>>,
+    /// Byte offset per logical address in the LAST round's folding buffer — see
+    /// [`BoundExtSources::final_evaluations`].
+    final_evaluations: BTreeMap<GKRAddress, usize>,
+    /// `folding_steps - 1`.
+    last_round: u8,
     tables: SegCoeffEvalTables,
     slab: DeviceAllocation<E4>,
     /// Bank fill scheduled — the round scheduler's call-order tripwire.
     filled: bool,
 }
 
+/// One round's folding-buffer facts, carried from bind to schedule.
+struct ExtRoundBuffers {
+    /// Elements to allocate for this round's buffer.
+    elems: usize,
+    /// The slots this round's launch reads or writes through a folding buffer.
+    slots: Vec<FoldingBufferSlot>,
+}
+
 impl BwdVmExtLaunch {
     #[cfg(test)]
     pub(crate) fn setups(&self) -> &[BwdSegSetup] {
         &self.setups
+    }
+
+    /// Re-point the layer's final gather at this launch's last folding buffer.
+    ///
+    /// The KEYS are the incumbent's — `final_evaluation_sources_for_last_step`
+    /// derives them from the kernel plans, and they fix the transcript order, so
+    /// they must not move. Only the medium does: on a VM-owned layer the last
+    /// round wrote its `[E; 2]` lines into this buffer instead of the
+    /// incumbent's fold storage, which no VM round touches at all.
+    ///
+    /// Every key must resolve. A gather address the VM never folds would mean
+    /// the lean coordinate is missing a source the layer's claim depends on —
+    /// a wiring defect, and the proof must stop on it.
+    pub(crate) fn repoint_final_evaluations<E>(
+        &self,
+        sources: &mut BTreeMap<GKRAddress, *const E>,
+    ) {
+        let buffer = self
+            .live
+            .get(&self.last_round)
+            .expect("the last round's folding buffer must outlive the final gather");
+        for (address, pointer) in sources.iter_mut() {
+            let offset = self.final_evaluations.get(address).unwrap_or_else(|| {
+                panic!(
+                    "the final gather reads {address:?}, which no VM-owned round folds \
+                     (the layer's lean coordinate is missing a source)"
+                )
+            });
+            // SAFETY: the offset is a column base inside `buffer`, which the
+            // binder sized for every column it assigned; this computes an
+            // address the gather then reads on `exec_stream`.
+            *pointer = unsafe { buffer.as_ptr().cast::<u8>().add(*offset) }.cast::<E>();
+        }
     }
 }
 
@@ -1481,14 +1588,8 @@ pub(crate) fn build_bwd_vm_ext_rounds<E: Copy>(
     partials: *mut E4,
     context: &ProverContext,
 ) -> CudaResult<BwdVmExtLaunch> {
-    let bound = bind_ext_round_sources(
-        storage,
-        &slice.coord,
-        slice.coord.layer,
-        folding_steps,
-        D2Policy::Inline,
-    )
-    .unwrap_or_else(|error| panic!("backward VM Ext source binding: {error:?}"));
+    let bound = bind_ext_round_sources(storage, &slice.coord, folding_steps, D2Policy::Inline)
+        .unwrap_or_else(|error| panic!("backward VM Ext source binding: {error:?}"));
     let tables = build_seg_coeff_eval_tables(&slice.layer.coefficients)
         .unwrap_or_else(|error| panic!("backward VM Ext bank translation: {error:?}"));
 
@@ -1505,7 +1606,12 @@ pub(crate) fn build_bwd_vm_ext_rounds<E: Copy>(
     };
     let ceiling = seg_k_ceiling(BwdRegime::Ext)?;
     let mut setups = Vec::with_capacity(bound.rounds.len());
+    let mut buffers = Vec::with_capacity(bound.rounds.len());
     for round in &bound.rounds {
+        buffers.push(ExtRoundBuffers {
+            elems: round.folding_buffer.elems(),
+            slots: round.folding_buffer_slots.clone(),
+        });
         let bytes_per_row = seg_ext_bytes_per_row(&round.slots, &round.sources, round.round);
         let k = seg_policy_k(bytes_per_row, ceiling);
         let binding = BwdSegRoundBinding {
@@ -1549,6 +1655,10 @@ pub(crate) fn build_bwd_vm_ext_rounds<E: Copy>(
     let slab = context.alloc(BWD_SEG_CHALLENGE_SLOTS, AllocationPlacement::BestFit)?;
     Ok(BwdVmExtLaunch {
         setups,
+        rounds: buffers,
+        live: BTreeMap::new(),
+        final_evaluations: bound.final_evaluations,
+        last_round: (folding_steps - 1) as u8,
         tables,
         slab,
         filled: false,
@@ -1602,7 +1712,7 @@ fn poisoned_output_elements(output: u32, acc_size: u32) -> usize {
 }
 
 pub(crate) fn schedule_bwd_vm_ext_round(
-    launch: &BwdVmExtLaunch,
+    launch: &mut BwdVmExtLaunch,
     round: u32,
     acc_size: u32,
     context: &ProverContext,
@@ -1611,7 +1721,69 @@ pub(crate) fn schedule_bwd_vm_ext_round(
         launch.filled,
         "the Ext bank fill must be scheduled before any round launch"
     );
-    let setup = &launch.setups[round as usize - 1];
+    // Disjoint field borrows: the patch writes into `setups` while reading the
+    // buffers it just created out of `live`.
+    let BwdVmExtLaunch {
+        setups,
+        rounds,
+        live,
+        ..
+    } = launch;
+    let round_index = round as usize - 1;
+
+    // ── This round's folding buffer, created JUST IN TIME ────────────────────
+    // The round's own kernel prologue is what fills it, and round `round + 1` is
+    // the only thing that ever reads it.
+    //
+    // The pool WILL hand back a range a previous round just released — the sizes
+    // halve every round, so it fits — while that round's kernel may still be
+    // executing. That is safe for exactly the reason the contract names: every
+    // allocation, free and launch here is on `exec_stream`, so the reuse is
+    // stream-ordered behind the reader that released it. It would NOT be safe
+    // from another stream.
+    let buffer: DeviceAllocation<E4> =
+        context.alloc(rounds[round_index].elems.max(1), AllocationPlacement::Top)?;
+    // A fresh pool allocation holds whatever the previous owner left, which is
+    // already a working anti-vacuity aid: a round that reads a column nothing
+    // wrote reproduces garbage, not a plausible earlier value. The poison makes
+    // that deterministic rather than incidental.
+    #[cfg(test)]
+    if fold_storage_poison_enabled() {
+        const POISON: u32 = 0x5EED_DEAD & 0x7FFF_FFFF;
+        // SAFETY: the allocation above, in full, before anything is scheduled
+        // against it.
+        let dst = unsafe {
+            DeviceSlice::from_raw_parts_mut(buffer.as_ptr().cast_mut(), buffer.len())
+        };
+        crate::ops::simple::set_by_val(
+            E4::from_array_of_base([BF::new(POISON); 4]),
+            dst,
+            context.get_exec_stream(),
+        )?;
+    }
+    live.insert(round as u8, buffer);
+
+    // ── Fill in the addresses lowering deferred ──────────────────────────────
+    let setup = &mut setups[round_index];
+    for patch in &rounds[round_index].slots {
+        let buffer = live.get(&patch.buffer_round).unwrap_or_else(|| {
+            panic!(
+                "round {round} reads round {}'s folding buffer, which is no longer alive",
+                patch.buffer_round
+            )
+        });
+        let slot = &mut setup.desc.slots_mut()[patch.slot];
+        assert!(
+            slot.base.is_null(),
+            "round {round} slot {}: a deferred base was already resolved",
+            patch.slot
+        );
+        // SAFETY: `byte_offset` is a chunk base the binder computed inside a
+        // buffer it sized; this computes an address the launch then reads.
+        slot.base = unsafe { buffer.as_ptr().cast::<u8>().add(patch.byte_offset) };
+    }
+
+    let setup = &setups[round_index];
     let (lowered_rows, contributions, output) = match &setup.desc {
         super::seg_lower::BwdSegLaunchDesc::Inline(desc) => {
             (desc.logical_rows, desc.contributions, desc.output)
@@ -1653,7 +1825,17 @@ pub(crate) fn schedule_bwd_vm_ext_round(
         CoeffMode::Constant,
         BwdSegEpilogue::Plane,
         context,
-    )
+    )?;
+
+    // ── Retire the buffer this launch just consumed ──────────────────────────
+    // Round `round - 1`'s buffer had exactly one reader and it is now SCHEDULED,
+    // which is all the contract requires of a handle's lifetime. The last
+    // round's own buffer is the exception the loop cannot see: the layer's final
+    // gather reads it, so it stays until this launch drops.
+    if round > 1 {
+        live.remove(&(round as u8 - 1));
+    }
+    Ok(())
 }
 
 /// Env var opting the parity gate's accumulator poison in. Off by default so
@@ -1662,19 +1844,23 @@ pub(crate) fn schedule_bwd_vm_ext_round(
 pub(crate) const AB_GKR_BWD_VM_POISON_ACCUMULATOR_ENV: &str =
     "AB_GKR_BWD_VM_POISON_ACCUMULATOR";
 
-/// Env var opting the parity gate's CASCADE poison in: sentinel-fill every
-/// consolidated fold backing at layer prepare, so a proof that READS a slot
-/// nothing wrote — a VM round that silently skipped a publish, a gather over
-/// an unpublished address — fails loudly instead of reproducing recycled
-/// values. Also proves the inverse: slots the Inline policy never writes
-/// (base slot 2) are never read, or the poison would surface. Same off-by-
-/// default doctrine as the accumulator poison.
-pub(crate) const AB_GKR_BWD_VM_POISON_CASCADE_ENV: &str = "AB_GKR_BWD_VM_POISON_CASCADE";
+/// Env var opting the parity gate's FOLD-STORAGE poison in: sentinel-fill every
+/// consolidated fold backing at layer prepare, AND every folding buffer the VM
+/// creates, so a proof that reads folded values nothing wrote fails loudly
+/// instead of reproducing recycled ones.
+///
+/// It carries the whole VM-owned-medium claim on a wholly VM-owned layer: the
+/// incumbent's fold storage is written by no VM round, so if any read of it
+/// survives — a chain read that never moved, a gather that was not re-pointed —
+/// the poison surfaces in the proof. The VM's own buffers get the same fill for
+/// the complementary direction: round `r + 1` must read only what round `r`
+/// wrote. Same off-by-default doctrine as the accumulator poison.
+pub(crate) const AB_GKR_BWD_VM_POISON_FOLD_STORAGE_ENV: &str = "AB_GKR_BWD_VM_POISON_FOLD_STORAGE";
 
 /// Read fresh, like the coordinate switch.
 #[cfg(test)]
-pub(crate) fn cascade_poison_enabled() -> bool {
-    std::env::var(AB_GKR_BWD_VM_POISON_CASCADE_ENV)
+pub(crate) fn fold_storage_poison_enabled() -> bool {
+    std::env::var(AB_GKR_BWD_VM_POISON_FOLD_STORAGE_ENV)
         .map(|v| {
             let v = v.trim().to_ascii_lowercase();
             v == "1" || v == "true"
@@ -1683,17 +1869,17 @@ pub(crate) fn cascade_poison_enabled() -> bool {
 }
 
 /// Schedule a sentinel fill over EVERY consolidated fold backing currently
-/// registered in `storage` — every cascade slot a later read must first be
+/// registered in `storage` — every fold destination a later read must first be
 /// written over. Scheduled on `exec_stream` at the calling layer's prepare,
 /// i.e. after every earlier layer's scheduled work and before this layer's
 /// rounds.
 #[cfg(test)]
-pub(crate) fn schedule_cascade_poison<E: Copy>(
+pub(crate) fn schedule_fold_storage_poison<E: Copy>(
     storage: &GpuGKRStorage<BF, E>,
     context: &ProverContext,
 ) -> CudaResult<()> {
     const POISON: u32 = 0x5EED_DEAD & 0x7FFF_FFFF;
-    assert_eq!(size_of::<E>(), size_of::<E4>(), "the cascade is E4-wide");
+    assert_eq!(size_of::<E>(), size_of::<E4>(), "folded values are E4-wide");
     let stream = context.get_exec_stream();
     let value = E4::from_array_of_base([BF::new(POISON); 4]);
     let mut fill = |arc: &std::sync::Arc<DeviceAllocation<E>>| -> CudaResult<()> {

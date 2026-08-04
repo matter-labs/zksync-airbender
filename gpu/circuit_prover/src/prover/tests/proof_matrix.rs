@@ -1206,12 +1206,12 @@ fn run_add_sub_bwd_vm_l0_full_proof_parity_test() {
     use crate::prover::gkr::backward::vm::coords::AB_GKR_BWD_VM_COORDS_ENV;
     use crate::prover::gkr::backward::vm::production_bind::{
         count_bwd_vm_r0_launches, AB_GKR_BWD_VM_POISON_ACCUMULATOR_ENV,
-        AB_GKR_BWD_VM_POISON_CASCADE_ENV,
+        AB_GKR_BWD_VM_POISON_FOLD_STORAGE_ENV,
     };
 
     let fixture = prepare_basic_unrolled_proof_fixture();
     let _poison = EnvGuard::set(AB_GKR_BWD_VM_POISON_ACCUMULATOR_ENV, "1");
-    let _cascade_poison = EnvGuard::set(AB_GKR_BWD_VM_POISON_CASCADE_ENV, "1");
+    let _fold_storage_poison = EnvGuard::set(AB_GKR_BWD_VM_POISON_FOLD_STORAGE_ENV, "1");
     let counter = count_bwd_vm_r0_launches();
     assert_eq!(
         (counter.launches(), counter.ext_launches()),
@@ -1254,12 +1254,12 @@ fn run_add_sub_bwd_vm_all_main_layers_proof_parity_test() {
     use crate::prover::gkr::backward::vm::coords::AB_GKR_BWD_VM_COORDS_ENV;
     use crate::prover::gkr::backward::vm::production_bind::{
         count_bwd_vm_r0_launches, AB_GKR_BWD_VM_POISON_ACCUMULATOR_ENV,
-        AB_GKR_BWD_VM_POISON_CASCADE_ENV,
+        AB_GKR_BWD_VM_POISON_FOLD_STORAGE_ENV,
     };
 
     let fixture = prepare_basic_unrolled_proof_fixture();
     let _poison = EnvGuard::set(AB_GKR_BWD_VM_POISON_ACCUMULATOR_ENV, "1");
-    let _cascade_poison = EnvGuard::set(AB_GKR_BWD_VM_POISON_CASCADE_ENV, "1");
+    let _fold_storage_poison = EnvGuard::set(AB_GKR_BWD_VM_POISON_FOLD_STORAGE_ENV, "1");
     let counter = count_bwd_vm_r0_launches();
     assert_eq!(
         (counter.launches(), counter.ext_launches()),
@@ -1324,12 +1324,12 @@ fn run_blake2_bwd_vm_all_main_layers_proof_parity_test() {
     use crate::prover::gkr::backward::vm::coords::AB_GKR_BWD_VM_COORDS_ENV;
     use crate::prover::gkr::backward::vm::production_bind::{
         count_bwd_vm_r0_launches, AB_GKR_BWD_VM_POISON_ACCUMULATOR_ENV,
-        AB_GKR_BWD_VM_POISON_CASCADE_ENV,
+        AB_GKR_BWD_VM_POISON_FOLD_STORAGE_ENV,
     };
 
     let fixture = prepare_blake2_with_compression_proof_fixture();
     let _poison = EnvGuard::set(AB_GKR_BWD_VM_POISON_ACCUMULATOR_ENV, "1");
-    let _cascade_poison = EnvGuard::set(AB_GKR_BWD_VM_POISON_CASCADE_ENV, "1");
+    let _fold_storage_poison = EnvGuard::set(AB_GKR_BWD_VM_POISON_FOLD_STORAGE_ENV, "1");
     let counter = count_bwd_vm_r0_launches();
     assert_eq!(
         (counter.launches(), counter.ext_launches()),
@@ -1380,7 +1380,7 @@ fn run_blake2_both_vms_proof_parity_test() {
     use crate::prover::gkr::backward::vm::coords::AB_GKR_BWD_VM_COORDS_ENV;
     use crate::prover::gkr::backward::vm::production_bind::{
         count_bwd_vm_r0_launches, AB_GKR_BWD_VM_POISON_ACCUMULATOR_ENV,
-        AB_GKR_BWD_VM_POISON_CASCADE_ENV,
+        AB_GKR_BWD_VM_POISON_FOLD_STORAGE_ENV,
     };
     use crate::prover::gkr::forward::path::AB_GKR_FWD_VM_LAYERS_ENV;
     use crate::prover::gkr::forward::vm::count_fwd_vm_s4_launches;
@@ -1389,7 +1389,7 @@ fn run_blake2_both_vms_proof_parity_test() {
     let fixture = prepare_blake2_with_compression_proof_fixture();
     let _fwd_poison = EnvGuard::set(AB_GKR_FWD_VM_POISON_DESTINATIONS_ENV, "1");
     let _poison = EnvGuard::set(AB_GKR_BWD_VM_POISON_ACCUMULATOR_ENV, "1");
-    let _cascade_poison = EnvGuard::set(AB_GKR_BWD_VM_POISON_CASCADE_ENV, "1");
+    let _fold_storage_poison = EnvGuard::set(AB_GKR_BWD_VM_POISON_FOLD_STORAGE_ENV, "1");
 
     let fwd_counter = count_fwd_vm_s4_launches();
     let bwd_counter = count_bwd_vm_r0_launches();
@@ -1466,7 +1466,7 @@ fn assert_vm_coverage_matches_cpu(
     use crate::prover::gkr::backward::vm::coords::AB_GKR_BWD_VM_COORDS_ENV;
     use crate::prover::gkr::backward::vm::production_bind::{
         count_bwd_vm_r0_launches, AB_GKR_BWD_VM_POISON_ACCUMULATOR_ENV,
-        AB_GKR_BWD_VM_POISON_CASCADE_ENV,
+        AB_GKR_BWD_VM_POISON_FOLD_STORAGE_ENV,
     };
     use crate::prover::gkr::forward::path::AB_GKR_FWD_VM_LAYERS_ENV;
     use crate::prover::gkr::forward::vm::count_fwd_vm_s4_launches;
@@ -1474,7 +1474,7 @@ fn assert_vm_coverage_matches_cpu(
 
     let _fwd_poison = EnvGuard::set(AB_GKR_FWD_VM_POISON_DESTINATIONS_ENV, "1");
     let _poison = EnvGuard::set(AB_GKR_BWD_VM_POISON_ACCUMULATOR_ENV, "1");
-    let _cascade_poison = EnvGuard::set(AB_GKR_BWD_VM_POISON_CASCADE_ENV, "1");
+    let _fold_storage_poison = EnvGuard::set(AB_GKR_BWD_VM_POISON_FOLD_STORAGE_ENV, "1");
 
     let fwd_counter = count_fwd_vm_s4_launches();
     let bwd_counter = count_bwd_vm_r0_launches();
@@ -1538,12 +1538,30 @@ macro_rules! vm_coverage_gate {
     };
 }
 
-// ── Circuits with full VM coverage ───────────────────────────────────────────
+// ── Every corpus layout, VM-owned and bit-equal ──────────────────────────────
 //
-// These pass today. Together with add_sub and blake2_with_extended_control (whose
-// gates are hand-written above, since they also pin their launch counts) that is
-// 7 of the 12 corpus layouts proving bit-equal to the CPU reference with every VM
-// path they have turned on.
+// Together with add_sub and blake2_with_extended_control (whose gates are
+// hand-written above, since they also pin their launch counts) this is all 12
+// corpus layouts proving bit-equal to the CPU reference with every VM path they
+// have turned on.
+//
+// Five of them — unsigned_mul_div, mem_word_only, mem_subword_only,
+// bigint_with_extended_control and unified_reduced_machine — were blocked until
+// the VM stopped folding through the incumbent's storage. They all failed the
+// same way, in `bind_ext_round_sources`: an unresolved fold destination for a
+// BASE-backed source at the requesting layer. Its folding buffer belonged in
+// `intermediate_storage_for_folder_base_field_inputs` — but unlike the ext ones,
+// which `register_dim_reducing_inputs_for_layer` pre-allocates for the whole
+// layer, base buffers are created on demand by
+// `GpuGKRStorage::plan_base_source_for_round_1` while planning round 1. When the
+// VM owns round 1 that planning never runs, so nothing ever created the entry
+// the binder was looking for.
+//
+// The VM's own just-in-time folding buffers removed the lookup rather than
+// filling it in: only RAW reads touch production storage now, and a round's
+// folded values live in a buffer the VM created for that round. Capacity was
+// never the issue — keccak_special5, the heaviest layout in the corpus, was
+// already in the passing set.
 
 vm_coverage_gate!(
     run_jump_branch_slt_vm_coverage_test,
@@ -1580,37 +1598,6 @@ vm_coverage_gate!(
     VmArms::Both,
     "keccak_special5"
 );
-
-// ── Circuits blocked on ONE backward binder gap ──────────────────────────────
-//
-// These five FAIL today, all with the same error from `bind_ext_round_sources`:
-//
-//     UnresolvedCascade { .., e4_origin: false, looked_in: 1 }
-//
-// They are committed failing on purpose. `#[ignore]` keeps them out of every
-// default run, so they break no suite; what they buy is an executable statement of
-// the remaining coverage gap that goes green by itself when the gap closes, instead
-// of a prose TODO that rots.
-//
-// ROOT CAUSE — a lifecycle gap, not a layout or capacity one. `e4_origin: false`
-// says the source is BASE-backed, so its folding buffer lives in
-// `intermediate_storage_for_folder_base_field_inputs`. Ext buffers are pre-allocated
-// for the whole layer by `register_dim_reducing_inputs_for_layer`, but base ones are
-// NOT: `GpuGKRStorage::plan_base_source_for_round_1` creates each on demand
-// (`if !contains_key { materialize_base_folding_buffer(..) }`) while planning round
-// 1. When the VM owns round 1 that planning never runs, so the entry never exists,
-// and the binder — which only READS the map — finds nothing.
-//
-// So the fix is get-or-create against the incumbent's own path rather than a new
-// rule, which needs the bind path to hold storage mutably; it takes `&GpuGKRStorage`
-// today. The seven passing circuits are the ones whose VM-owned layers have only
-// ext-backed windows, which the eager registration already covered.
-//
-// Not a capacity problem, and not the 12,288-lane program cap: keccak_special5, the
-// heaviest layout in the corpus, is in the passing set. Not the copy-alias redirect
-// either — `GpuGKRStorageLayout::aliases` exists and `lookup` consults it, but only
-// as a FALLBACK after the address itself hits, and every address here either has its
-// own entry already or is not an alias at all.
 
 vm_coverage_gate!(
     run_unsigned_mul_div_vm_coverage_test,
@@ -1788,9 +1775,9 @@ fn run_add_sub_both_vms_ab_test() {
          measurement"
     );
     assert!(
-        !crate::prover::gkr::backward::vm::production_bind::cascade_poison_enabled(),
-        "the cascade poison fills every fold backing on both arms; leaving it on adds noise \
-         this measurement cannot absorb"
+        !crate::prover::gkr::backward::vm::production_bind::fold_storage_poison_enabled(),
+        "the fold-storage poison fills every fold backing on both arms; leaving \
+         it on adds noise this measurement cannot absorb"
     );
 
     // Warm up both arms: first-touch allocation, both OnceLock'd compiles
@@ -1887,8 +1874,8 @@ fn run_add_sub_bwd_vm_per_main_layer_ab_test() {
         "the accumulator poison is charged to the VM arm alone; leaving it on inverts this"
     );
     assert!(
-        !crate::prover::gkr::backward::vm::production_bind::cascade_poison_enabled(),
-        "the cascade poison adds noise this measurement cannot absorb"
+        !crate::prover::gkr::backward::vm::production_bind::fold_storage_poison_enabled(),
+        "the fold-storage poison adds noise this measurement cannot absorb"
     );
 
     let mut run = |coords: &str| {
@@ -2067,9 +2054,9 @@ fn run_add_sub_bwd_vm_l0_full_ab_test() {
          alone; leaving it on inverts this measurement"
     );
     assert!(
-        !crate::prover::gkr::backward::vm::production_bind::cascade_poison_enabled(),
-        "the cascade poison fills every fold backing on both arms' layer prepares; leaving it on \
-         adds noise this measurement cannot absorb"
+        !crate::prover::gkr::backward::vm::production_bind::fold_storage_poison_enabled(),
+        "the fold-storage poison fills every fold backing on both arms' layer \
+         prepares; leaving it on adds noise this measurement cannot absorb"
     );
 
     // Warm up both arms before measuring: first-touch allocation, the

@@ -183,6 +183,7 @@ fn addresses(
                 .and_then(|window| window.procedural_kind()),
             read_elements: read_elements.get(index).copied().unwrap_or(0),
             columns: columns.get(index).copied().unwrap_or(1),
+            deferred_base: false,
         })
         .collect();
     // Explicitly backed destinations become their own slots, appended so the read
@@ -195,6 +196,7 @@ fn addresses(
                 procedural_kind: None,
                 read_elements: u32::MAX,
                 columns: columns.get(index).copied().unwrap_or(1),
+                deferred_base: false,
             });
             publish_slot[index] = Some(slots.len() - 1);
         }

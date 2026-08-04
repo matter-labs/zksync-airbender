@@ -111,6 +111,20 @@ pub(crate) struct ResolvedAddrSlot {
     /// Addressable columns. A slot covers at most [`SOURCE_WINDOW_COLUMNS`] of
     /// its backing; a wider backing takes several slots at offset bases.
     pub columns: usize,
+    /// This slot's backing does not exist yet: its ADDRESS arrives between
+    /// lowering and launch (the production Ext launch's just-in-time folding
+    /// buffers), and `base`'s pointer is a byte OFFSET from the eventual
+    /// allocation rather than a device address — which is exactly what makes the
+    /// offset-from-null arithmetic resolve to the right column.
+    ///
+    /// Lowering validates everything the shape carries (field, stride, columns,
+    /// span) and emits a NULL base for the caller to fill in with
+    /// [`BwdSegLaunchDesc::slots_mut`]. Two obligations move to the caller with
+    /// the address: patching every deferred slot before the launch, and the
+    /// aliasing proof [`check_alias`] cannot make without addresses — for the
+    /// folding buffers that proof is structural, since a round's destination and
+    /// its reads are different allocations of the pool.
+    pub deferred_base: bool,
 }
 
 /// One wire source's ADDRESSES for one round: which slot and column it reads,
@@ -125,7 +139,7 @@ pub(crate) struct ResolvedSourceAddr {
     pub read_slot: usize,
     pub read_column: usize,
     /// Where this source's fold publishes, when the caller backs it explicitly
-    /// (production: a cascade slot of the layer's own fold storage). `None`
+    /// (production: a column of the round's own folding buffer). `None`
     /// leaves the destination to the publish-scratch plan, which is what the
     /// bench's host model uses.
     pub publish: Option<(usize, usize)>,
@@ -236,6 +250,23 @@ pub(crate) enum ProgramMode {
 pub(crate) enum BwdSegLaunchDesc {
     Inline(Box<BwdSegDesc>),
     ProgPtr(Box<BwdSegProgPtrDesc>),
+}
+
+impl BwdSegLaunchDesc {
+    /// The address table, mutable.
+    ///
+    /// Exists for ONE caller: a destination whose backing is created at
+    /// schedule time rather than at lowering (the production Ext launch's
+    /// just-in-time folding buffers). Lowering validates the slot's SHAPE —
+    /// field, stride, column count, span — none of which the base pointer
+    /// carries, so filling the base in later is a pointer substitution, not a
+    /// second lowering. Nothing else may reach into a lowered descriptor.
+    pub(crate) fn slots_mut(&mut self) -> &mut [BwdSegAddrSlot] {
+        match self {
+            Self::Inline(desc) => &mut desc.slot,
+            Self::ProgPtr(desc) => &mut desc.slot,
+        }
+    }
 }
 
 // ── Publish scratch planning ─────────────────────────────────────────────────
@@ -1787,7 +1818,16 @@ fn lower_slot(index: u8, slot: &ResolvedAddrSlot) -> Result<BwdSegAddrSlot, BwdS
             reserved: [0; 5],
         });
     };
-    check_column_geometry(index, &column)?;
+    if slot.deferred_base {
+        // A deferred slot carries an OFFSET, not an address: a non-null base
+        // here would mean the caller resolved it after all and the patch would
+        // then double-add it.
+        if !column.matrix_base.is_null() {
+            return Err(BwdSegLowerError::NullWindowGeometry { window: index });
+        }
+    } else {
+        check_column_geometry(index, &column)?;
+    }
     let element = if column.is_e4 {
         E4_COLUMN_BYTES
     } else {
@@ -1813,7 +1853,14 @@ fn lower_slot(index: u8, slot: &ResolvedAddrSlot) -> Result<BwdSegAddrSlot, BwdS
         return Err(BwdSegLowerError::NullWindowGeometry { window: index });
     }
     Ok(BwdSegAddrSlot {
-        base: column.ptr,
+        // A deferred slot leaves the launch UNRESOLVED unless the caller patches
+        // it, and a null base faults on first access rather than reading
+        // whatever lives at a plausible address.
+        base: if slot.deferred_base {
+            std::ptr::null()
+        } else {
+            column.ptr
+        },
         log2_stride: elements.trailing_zeros() as u8,
         origin: if column.is_e4 {
             BWD_COEFF_ORIGIN_READ_EXT
@@ -1946,8 +1993,8 @@ fn lower_source(
             .copied()
             .unwrap_or(PUBLISH_WINDOW_ABSENT);
         match (addr.publish, offset == PUBLISH_WINDOW_ABSENT) {
-            // The caller supplied the region (production: a cascade slot of the
-            // layer's own fold storage), and the plan — built by
+            // The caller supplied the region (production: a column of the
+            // round's own folding buffer), and the plan — built by
             // `plan_publish_scratch`, which reserves nothing for explicitly backed
             // slots — left the entry ABSENT.
             (Some((slot_index, column)), true) => {
@@ -2093,8 +2140,8 @@ fn check_column_geometry(window: u8, column: &ResolvedColumn) -> Result<(), BwdS
 /// `stride` bytes apart. The window HULL `base + count * stride` and the
 /// touched bytes coincide when the stride is the extent — the parity plan's
 /// shape — but an explicitly backed publish strides at its backing's per-poly
-/// stride, and the same-region chain read sits INSIDE that stride: hull
-/// overlap is the cascade's normal state, so aliasing is judged per column.
+/// stride, and a chain read of the same backing sits INSIDE that stride: hull
+/// overlap is then normal, so aliasing is judged per column.
 #[derive(Clone, Copy)]
 struct StridedColumns {
     base: usize,
@@ -2142,6 +2189,14 @@ impl StridedColumns {
     }
 }
 
+/// Reject a launch whose publishes would clobber something it also reads.
+///
+/// Works on ADDRESSES, so a slot whose base is still null — a procedural slot,
+/// or one whose backing is deferred to schedule time
+/// ([`ResolvedAddrSlot::deferred_base`]) — is outside what this can decide and is
+/// skipped. For the deferred kind that is the caller's obligation, and for the
+/// production folding buffers it is structural: a round's destination buffer and
+/// everything it reads are different allocations.
 #[allow(clippy::too_many_arguments)]
 fn check_alias(
     table: &[BwdSegAddrSlot],

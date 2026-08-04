@@ -917,6 +917,7 @@ fn host_addresses(
             },
             read_elements: read_elements[index],
             columns: model.columns[index],
+            deferred_base: false,
         })
         .collect();
     let sources = model

@@ -263,120 +263,98 @@ fn round_zero_is_rejected_by_the_ext_shapes() {
     );
 }
 
-// ── The cascade resolver (CPU walk) ──────────────────────────────────────────
+// ── The folding-buffer ladder (CPU) ──────────────────────────────────────────
 
-/// The incumbent ext fold-buffer walk, transcribed from
-/// `GpuExtensionFieldPolyIntermediateFoldingStorage::pointer_for_sumcheck_continuation`
-/// (element offsets instead of pointers). Returns (slot step-1, slot step).
-fn ext_walk(size_after_one_fold: usize, step: usize) -> (usize, usize) {
-    assert!(step >= 2);
-    let mut input_offset = 0usize;
-    let mut input_size = size_after_one_fold;
-    let mut next_offset = input_size;
-    for _ in 2..step {
-        input_offset = next_offset;
-        input_size /= 2;
-        next_offset += input_size;
-    }
-    (input_offset, next_offset)
-}
-
-/// The incumbent base fold-buffer walk, transcribed from
-/// `GpuBaseFieldPolyIntermediateFoldingStorage::pointers_for_sumcheck_accessor_step`.
-fn base_walk(size_after_two_folds: usize, step: usize) -> (usize, usize) {
-    assert!(step > 2);
-    let mut input_offset = 0usize;
-    let mut input_size = size_after_two_folds;
-    let mut next_offset = input_size;
-    for _ in 3..step {
-        input_offset = next_offset;
-        input_size /= 2;
-        next_offset += input_size;
-    }
-    (input_offset, next_offset)
-}
-
-/// The resolver's closed-form slot walk IS the incumbents' iterative
-/// fold-buffer walk, across both region shapes and every continuation round.
-/// The GPU test pins the same identity against the real prepared plans; this
-/// pins the arithmetic alone, so a formula regression fails in milliseconds
-/// rather than after a fixture build.
+/// THE identity the VM's own folding buffers rest on: the set of sources that
+/// fold at round `r` is exactly the set that chain-reads at round `r + 1`, and
+/// each keeps the same column. That is what lets round `r + 1` name round `r`'s
+/// columns from the coordinate alone, with nothing threaded through the round
+/// loop and no per-poly region to look up.
+///
+/// Pinned on the real add_sub L0 Ext coordinate, over every round, on the CPU:
+/// a ladder regression fails in milliseconds instead of after a fixture build.
 #[test]
-fn the_cascade_slot_walk_matches_the_incumbent_fold_buffer_walks() {
-    for folding_steps in 4..=10usize {
-        let n = 1usize << folding_steps;
-        let backing = vec![0u8; n * 16];
-        let base_ptr = backing.as_ptr().cast_mut();
+fn each_rounds_folded_columns_are_the_next_rounds_chain_reads() {
+    use super::production_bind::folding_buffer_columns;
+    use super::seg_lower::D2Policy;
 
-        // Ext-origin: region = the whole per-poly buffer (2 * size_after_one_fold
-        // = N elements); round 1 writes the first slot at offset 0.
-        let ext = CascadeRegion {
-            base: base_ptr,
-            region_elems: n,
-            first_slot: 1,
-            backing: base_ptr,
-        };
-        assert_eq!(ext.slot_elem_offset(1), 0, "N={n}: slot 1 heads the region");
-        assert_eq!(ext.slot_elems(1), n / 2);
-        for step in 2..folding_steps {
-            let (prev, this) = ext_walk(n / 2, step);
-            assert_eq!(ext.slot_elem_offset(step as u8 - 1), prev, "N={n} step {step}");
-            assert_eq!(ext.slot_elem_offset(step as u8), this, "N={n} step {step}");
-            // `this_layer_size = size_after_one_fold >> (step - 1)`.
-            assert_eq!(ext.slot_elems(step as u8), (n / 2) >> (step - 1));
-        }
+    let artifact = add_sub_artifact();
+    let coord = compile_coordinate(&artifact, 0, BwdRegime::Ext).unwrap();
+    // Any folding_steps wide enough to hold the ladder: the SHAPES do not
+    // depend on it, only the row counts the buffers are sized for.
+    let folding_steps = 8usize;
+    let mut ladder: Vec<(u8, std::collections::BTreeMap<u32, usize>)> = Vec::new();
+    for round in 1..folding_steps - 1 {
+        let rows = 1usize << (folding_steps - round - 1);
+        let round = round as u8;
+        let (shape, columns) =
+            folding_buffer_columns(&coord, round, rows, D2Policy::Inline).unwrap();
+        assert_eq!(
+            shape.column_elems,
+            2 * rows,
+            "round {round}: a column holds the round's own layer"
+        );
+        assert_eq!(shape.columns, columns.len());
+        assert_eq!(shape.elems(), columns.len() * 2 * rows);
 
-        // Base-origin: region = 2 * size_after_two_folds = N/2 elements; the
-        // first slot belongs to round 2 (`initial_pointer`); the VM's first
-        // write is round 3 under `D2Policy::Inline`.
-        let base = CascadeRegion {
-            base: base_ptr,
-            region_elems: n / 2,
-            first_slot: 2,
-            backing: base_ptr,
-        };
-        assert_eq!(base.slot_elem_offset(2), 0, "N={n}: slot 2 heads the region");
-        for step in 3..folding_steps {
-            let (prev, this) = base_walk(n / 4, step);
-            assert_eq!(base.slot_elem_offset(step as u8 - 1), prev, "N={n} step {step}");
-            assert_eq!(base.slot_elem_offset(step as u8), this, "N={n} step {step}");
-            // `this_layer_size = size_after_two_folds >> (step - 2)`.
-            assert_eq!(base.slot_elems(step as u8), (n / 4) >> (step - 2));
-        }
-
-        // The VM identity that makes the publish ABI line up: slot r holds the
-        // round-r layer, `2 * rows_r` values at `rows_r = 1 << (folding_steps - r - 1)`.
-        for region in [&ext, &base] {
-            for round in region.first_slot as usize..folding_steps {
-                assert_eq!(
-                    region.slot_elems(round as u8),
-                    2 * (1usize << (folding_steps - round - 1)),
-                    "N={n} round {round}"
-                );
+        // Every source that chain-reads at the NEXT round folded at this one,
+        // and nothing else did.
+        let next = ext_round_window_shapes(&coord, round + 1, D2Policy::Inline).unwrap();
+        let mut chaining: Vec<u32> = Vec::new();
+        for (window, artifact_window) in coord.binding.windows.iter().enumerate() {
+            if next[window].chained {
+                chaining.extend(artifact_window.columns.iter().map(|entry| entry.source));
             }
         }
-
-        // Byte pointers: base + elem offset * 16 (the cascade is E4-wide).
+        chaining.sort_unstable();
+        let mut folded: Vec<u32> = columns.keys().copied().collect();
+        folded.sort_unstable();
         assert_eq!(
-            ext.slot_ptr(2) as usize,
-            base_ptr as usize + (n / 2) * 16,
-            "N={n}: slot 2 sits one half-region in"
+            folded, chaining,
+            "round {round}: what folds here is not what round {} reads",
+            round + 1
         );
+        ladder.push((round, columns));
     }
+
+    // The assignment is a pure function of the round, so the two calls that
+    // must agree — round r's destinations and round r+1's reads — cannot drift.
+    for (round, columns) in &ladder {
+        let rows = 1usize << (folding_steps - *round as usize - 1);
+        let (_, again) = folding_buffer_columns(&coord, *round, rows, D2Policy::Inline).unwrap();
+        assert_eq!(&again, columns, "round {round} assigned different columns twice");
+    }
+    assert!(
+        ladder.iter().any(|(_, columns)| !columns.is_empty()),
+        "the ladder never folds anything"
+    );
 }
 
-/// A round below the region's first slot has no cascade slot — asking for one
-/// is a binder wiring bug and must stop the proof, not alias slot data.
+/// A folding-buffer column is DEFERRED: the lowering must see a null backing
+/// base and an offset-carrying pointer, because the allocation does not exist
+/// when the descriptor is built. A non-null base here would be double-added by
+/// the schedule-time patch.
 #[test]
-#[should_panic(expected = "no cascade slot")]
-fn a_round_below_the_first_slot_has_no_cascade_slot() {
-    let region = CascadeRegion {
-        base: core::ptr::null_mut(),
-        region_elems: 128,
-        first_slot: 2,
-        backing: core::ptr::null_mut(),
-    };
-    let _ = region.slot_elem_offset(1);
+fn a_folding_buffer_column_is_deferred_with_a_null_backing() {
+    use super::production_bind::folding_buffer_columns;
+    use super::seg_lower::D2Policy;
+
+    let artifact = add_sub_artifact();
+    let coord = compile_coordinate(&artifact, 0, BwdRegime::Ext).unwrap();
+    let rows = 64usize;
+    let (shape, columns) = folding_buffer_columns(&coord, 3, rows, D2Policy::Inline).unwrap();
+    assert!(!columns.is_empty(), "round 3 folds every window");
+    for column in columns.values() {
+        let resolved = shape.column(*column);
+        assert!(resolved.matrix_base.is_null(), "column {column}");
+        assert!(resolved.is_e4, "a folded value is E4 whatever produced it");
+        assert_eq!(
+            resolved.ptr as usize,
+            column * 2 * rows * size_of::<crate::primitives::field::E4>(),
+            "column {column}: the pointer must be the column's own offset"
+        );
+        assert_eq!(resolved.stride_bytes, shape.stride_bytes());
+    }
 }
 
 // ── The pointer phase (GPU) ──────────────────────────────────────────────────
@@ -528,169 +506,24 @@ fn every_r0_source_resolves_against_production_storage() {
     );
 }
 
-/// The Ext binder's storage contract, pinned pointer-for-pointer: for every
-/// (address, continuation round) the flat prepare planned at layer 0, the
-/// cascade resolver lands on EXACTLY the prepared plan's pointers — the
-/// written slot (`this_layer_start`, which the VM's round-r publish must
-/// alias), the read slot (`previous_layer_start`, the VM's chain read), and
-/// the layer size. At the last prepared step, `this_layer_start` is what the
-/// final gather consumes (`final_evaluation_sources_for_last_step` is the same
-/// zip) — so this is also the proof that the VM's final-round publish feeds
-/// the gather with no re-pointing. The lean-window sweep at the end proves the
-/// SAME lookup serves every window the binder will bind, procedurals included.
-#[test]
-#[serial]
-fn every_prepared_fold_pointer_is_the_cascade_slot() {
-    use gkr_eval_isa::bwd::coeff::stats::WindowFamily;
-
-    use super::seg_lower::D2Policy;
-    use crate::upstream::GKRAddress;
-
-    let prepared = prepared_l0_ext();
-    let (coord, plan) = (&prepared.coord, &prepared.plan);
-    let storage = prepared.main_state.storage();
-    let request_layer = 0usize;
-    let folding_steps = plan.folding_steps;
-
-    let (mut checked_ext, mut checked_base) = (0usize, 0usize);
-    for (kernel, kp) in plan.kernel_plans.iter().enumerate() {
-        let steps: Vec<usize> = kp
-            .round3_and_beyond_prepared
-            .iter()
-            .map(|prepared| prepared.step)
-            .collect();
-        assert_eq!(
-            steps,
-            (3..folding_steps).collect::<Vec<_>>(),
-            "kernel {kernel}: every continuation step is prepared exactly once"
-        );
-
-        // Ext-origin: slot 1 at round 1, then the continuation walk.
-        for (index, addr) in kp.inputs.inputs_in_extension.iter().enumerate() {
-            if *addr == GKRAddress::placeholder() {
-                continue;
-            }
-            let region = resolve_cascade_region(storage, request_layer, *addr, true)
-                .unwrap_or_else(|| panic!("no cascade region for ext input {addr:?}"));
-            assert_eq!(region.first_slot, 1, "{addr:?}");
-            let round1 = &kp.round1_prepared.extension_field_inputs[index];
-            assert_eq!(
-                round1.this_layer_start as usize,
-                region.slot_ptr(1) as usize,
-                "{addr:?} round 1"
-            );
-            assert_eq!(round1.this_layer_size, region.slot_elems(1), "{addr:?} round 1");
-            let round2 = &kp.round2_prepared.extension_field_inputs[index];
-            assert_eq!(
-                round2.this_layer_start as usize,
-                region.slot_ptr(2) as usize,
-                "{addr:?} round 2"
-            );
-            assert_eq!(
-                round2.previous_layer_start as usize,
-                region.slot_ptr(1) as usize,
-                "{addr:?} round 2 reads slot 1"
-            );
-            assert_eq!(round2.this_layer_size, region.slot_elems(2), "{addr:?} round 2");
-            for prepared in kp.round3_and_beyond_prepared.iter() {
-                let step = prepared.step as u8;
-                let source = &prepared.prepared.extension_field_inputs[index];
-                assert_eq!(
-                    source.this_layer_start as usize,
-                    region.slot_ptr(step) as usize,
-                    "{addr:?} round {step}"
-                );
-                assert_eq!(
-                    source.previous_layer_start as usize,
-                    region.slot_ptr(step - 1) as usize,
-                    "{addr:?} round {step} reads slot {}",
-                    step - 1
-                );
-                assert_eq!(
-                    source.this_layer_size,
-                    region.slot_elems(step),
-                    "{addr:?} round {step}"
-                );
-            }
-            checked_ext += 1;
-        }
-
-        // Base-origin (virtuals included): rounds 3+ walk the cascade; the
-        // round-3 `previous_layer_start` is slot 2 at the region head, which
-        // the Inline-policy VM never writes — its first write is slot 3.
-        for (index, addr) in kp.inputs.inputs_in_base.iter().enumerate() {
-            if *addr == GKRAddress::placeholder() {
-                continue;
-            }
-            let region = resolve_cascade_region(storage, request_layer, *addr, false)
-                .unwrap_or_else(|| panic!("no cascade region for base input {addr:?}"));
-            assert_eq!(region.first_slot, 2, "{addr:?}");
-            for prepared in kp.round3_and_beyond_prepared.iter() {
-                let step = prepared.step as u8;
-                let source = &prepared.prepared.base_field_inputs[index];
-                assert_eq!(
-                    source.this_layer_start as usize,
-                    region.slot_ptr(step) as usize,
-                    "{addr:?} round {step}"
-                );
-                assert_eq!(
-                    source.previous_layer_start as usize,
-                    region.slot_ptr(step - 1) as usize,
-                    "{addr:?} round {step} reads slot {}",
-                    step - 1
-                );
-                assert_eq!(
-                    source.this_layer_size,
-                    region.slot_elems(step),
-                    "{addr:?} round {step}"
-                );
-            }
-            checked_base += 1;
-        }
-    }
-    assert!(
-        checked_ext > 0 && checked_base > 0,
-        "the identity must be pinned on both region shapes \
-         (ext {checked_ext}, base {checked_base})"
-    );
-
-    // Every lean window resolves through the SAME lookup the binder will use —
-    // round 3 is where all three origins publish, so coverage there is total.
-    let shapes = ext_round_window_shapes(coord, 3, D2Policy::Inline).unwrap();
-    for ((index, window), shape) in coord.binding.windows.iter().enumerate().zip(&shapes) {
-        assert!(shape.materialize, "window {index} must publish at round 3");
-        let addr = match (shape.address, window.family) {
-            (Some(addr), _) => addr,
-            (None, WindowFamily::VirtualSetup { kind }) => virtual_setup_address(kind),
-            (None, family) => panic!("addressless non-procedural window {family:?}"),
-        };
-        let region = resolve_cascade_region(storage, request_layer, addr, shape.is_e4_backing)
-            .unwrap_or_else(|| panic!("lean window {index} ({addr:?}) has no cascade region"));
-        assert_eq!(
-            region.first_slot,
-            if shape.is_e4_backing { 1 } else { 2 },
-            "window {index} ({addr:?})"
-        );
-    }
-    eprintln!(
-        "[bwd-vm-cascade] add_sub L0: {checked_ext} ext + {checked_base} base fold pointers \
-         match the cascade resolver across rounds 1..{}; all {} lean windows resolve",
-        folding_steps - 1,
-        coord.binding.windows.len()
-    );
-}
-
 /// The Ext binder, gated end to end on production storage: for EVERY source
-/// slot at EVERY continuation round, the device's window arithmetic must land
-/// each publish on the source's own cascade slot `r`, each chain read on slot
-/// `r - 1`, and each raw read on the poly the address independently resolves
-/// to. At the last round the publishes must be exactly what the final gather
-/// reads (the prepared plans' `this_layer_start`), and every gather-keyed
-/// address must be published — the two facts that let the VM own the final
-/// round with the gather untouched.
+/// slot at EVERY continuation round, the device's slot arithmetic must land
+///
+///   * each publish on this round's folding buffer, at the source's own column;
+///   * each chain read on EXACTLY the address the previous round published to —
+///     the fold chain's whole correctness argument, and now expressible without
+///     naming a medium at all;
+///   * each raw read on the poly the address independently resolves to;
+///   * every gather-keyed address in `final_evaluations`, at that address's own
+///     last-round publish offset — the re-pointing the VM-owned final round
+///     needs, and the proof that no gather key is left unfolded.
+///
+/// Also pins the patch list: a slot is recorded as folding-buffer-backed iff a
+/// publish or a chain read named it. A missed entry would reach a launch with
+/// the placeholder base still in it.
 #[test]
 #[serial]
-fn every_ext_source_binds_through_the_cascade() {
+fn every_ext_source_binds_through_its_own_folding_buffer() {
     use std::collections::{BTreeMap, BTreeSet};
 
     use gkr_eval_isa::bwd::coeff::stats::WindowFamily;
@@ -701,7 +534,7 @@ fn every_ext_source_binds_through_the_cascade() {
     use super::seg_lower::D2Policy;
     use crate::prover::gkr::forward::vm::lower::read_place_to_gkr_address;
     use crate::prover::gkr::forward::vm::production_bind::resolve_storage_column;
-    use crate::upstream::{FieldKind, GKRAddress};
+    use crate::upstream::GKRAddress;
 
     let prepared = prepared_l0_ext();
     let (coord, plan) = (&prepared.coord, &prepared.plan);
@@ -709,7 +542,7 @@ fn every_ext_source_binds_through_the_cascade() {
     let folding_steps = plan.folding_steps;
     let last_step = (folding_steps - 1) as u8;
 
-    let bound = bind_ext_round_sources(storage, coord, 0, folding_steps, D2Policy::Inline)
+    let bound = bind_ext_round_sources(storage, coord, folding_steps, D2Policy::Inline)
         .expect("every add_sub L0 Ext window must bind against production storage");
 
     assert_eq!(bound.rounds.len(), folding_steps - 1);
@@ -724,13 +557,20 @@ fn every_ext_source_binds_through_the_cascade() {
     }
     assert_eq!(bound.publish_plan.total_bytes, 0, "publishes are explicitly backed");
 
+    /// A lane's absolute device address: base plus the column's stride step.
+    fn lane(round: &BoundExtRound, slot: usize, column: usize) -> usize {
+        let backing = round.slots[slot]
+            .base
+            .expect("a folded or raw lane has a backing");
+        backing.ptr as usize + column * backing.stride_bytes as usize
+    }
+
     // The per-source identity, at every round.
-    let mut published_at_last: BTreeSet<GKRAddress> = BTreeSet::new();
-    let mut origins: BTreeMap<GKRAddress, bool> = BTreeMap::new();
+    let mut published_at_last: BTreeMap<GKRAddress, usize> = BTreeMap::new();
+    let mut chain_checks = 0usize;
     for (source, old_slot) in coord.binding.source_slots.iter().enumerate() {
         let old_window = &coord.binding.windows[old_slot.window as usize];
         let absolute = old_window.first_column + old_slot.column as usize;
-        let e4_origin = old_window.backing_field() == FieldKind::Ext;
         let addr = match family_read_place(old_window.family, absolute) {
             Some(place) => read_place_to_gkr_address(&place),
             None => match old_window.family {
@@ -738,9 +578,7 @@ fn every_ext_source_binds_through_the_cascade() {
                 family => panic!("addressless non-procedural window {family:?}"),
             },
         };
-        let region = resolve_cascade_region(storage, 0, addr, e4_origin)
-            .unwrap_or_else(|| panic!("source {source} ({addr:?}) has no cascade region"));
-        origins.insert(addr, e4_origin);
+        let mut published: Option<usize> = None;
         for round in 1..=last_step {
             let shapes = ext_round_window_shapes(coord, round, D2Policy::Inline).unwrap();
             let shape = &shapes[old_slot.window as usize];
@@ -748,103 +586,150 @@ fn every_ext_source_binds_through_the_cascade() {
             let entry = &bound_round.sources[source];
             assert_eq!(entry.backing_depth, shape.backing_depth, "source {source}");
 
-            if shape.materialize {
-                let (slot, column) = entry.publish.unwrap_or_else(|| {
-                    panic!("source {source} round {round}: materializing source without publish")
-                });
-                let publish = bound_round.slots[slot]
-                    .base
-                    .expect("a destination slot has a backing");
-                assert_eq!(
-                    publish.ptr as usize + column * publish.stride_bytes as usize,
-                    region.slot_ptr(round) as usize,
-                    "source {source} ({addr:?}) round {round}: publish is not cascade slot {round}"
-                );
-                if round == last_step {
-                    published_at_last.insert(addr);
-                }
-            } else {
-                assert!(entry.publish.is_none(), "source {source} round {round}");
-            }
-
-            let slot = &bound_round.slots[entry.read_slot];
-            let relative = entry.read_column;
+            // The chain read IS the previous round's publish. Nothing in this
+            // assertion mentions where either lives.
             if shape.chained {
-                let read = slot.base.unwrap_or_else(|| {
-                    panic!("source {source} round {round}: chained source without read")
-                });
+                let read = bound_round.slots[entry.read_slot]
+                    .base
+                    .expect("a chained source binds a read");
                 assert!(read.is_e4, "source {source} round {round}");
                 assert_eq!(
-                    read.ptr as usize + relative * read.stride_bytes as usize,
-                    region.slot_ptr(round - 1) as usize,
-                    "source {source} ({addr:?}) round {round}: chain read is not slot {}",
+                    lane(bound_round, entry.read_slot, entry.read_column),
+                    published.unwrap_or_else(|| panic!(
+                        "source {source} chains at round {round} having published nothing"
+                    )),
+                    "source {source} ({addr:?}) round {round}: \
+                     the chain read is not round {}'s publish",
                     round - 1
                 );
+                chain_checks += 1;
             } else if let Some(place) = family_read_place(old_window.family, absolute) {
-                let expect =
-                    resolve_storage_column(storage, read_place_to_gkr_address(&place))
-                        .expect("the binder resolved this address already");
-                let read = slot.base.expect("a raw round binds a read");
+                let expect = resolve_storage_column(storage, read_place_to_gkr_address(&place))
+                    .expect("the binder resolved this address already");
                 assert_eq!(
-                    read.ptr as usize + relative * read.stride_bytes as usize,
+                    lane(bound_round, entry.read_slot, entry.read_column),
                     expect.ptr as usize,
                     "source {source} ({addr:?}) round {round}: raw read is off"
                 );
             } else {
-                assert!(slot.base.is_none(), "source {source} round {round}");
+                assert!(
+                    bound_round.slots[entry.read_slot].base.is_none(),
+                    "source {source} round {round}"
+                );
+            }
+
+            published = match (shape.materialize, entry.publish) {
+                (true, Some((slot, column))) => {
+                    let stride = bound_round.slots[slot]
+                        .base
+                        .expect("a destination slot has a backing")
+                        .stride_bytes as usize;
+                    assert_eq!(
+                        stride,
+                        2 * bound_round.rows * size_of::<crate::primitives::field::E4>(),
+                        "source {source} round {round}: a column must hold `2 * rows`"
+                    );
+                    // A deferred lane's "address" IS its byte offset in the
+                    // buffer the patch will supply, which is what the gather's
+                    // `final_evaluations` offset must equal.
+                    let address = lane(bound_round, slot, column);
+                    if round == last_step {
+                        published_at_last.entry(addr).or_insert(address);
+                    }
+                    Some(address)
+                }
+                (true, None) => panic!(
+                    "source {source} round {round}: materializing source without publish"
+                ),
+                (false, publish) => {
+                    assert!(publish.is_none(), "source {source} round {round}");
+                    None
+                }
+            };
+        }
+    }
+    assert!(chain_checks > 0, "no round chained — the ladder is not exercised");
+
+    // The patch list is exactly the folding-buffer-backed slots.
+    for bound_round in &bound.rounds {
+        let recorded: BTreeSet<usize> = bound_round
+            .folding_buffer_slots
+            .iter()
+            .map(|patch| patch.slot)
+            .collect();
+        let mut expected: BTreeSet<usize> = BTreeSet::new();
+        let shapes =
+            ext_round_window_shapes(coord, bound_round.round, D2Policy::Inline).unwrap();
+        for (source, old_slot) in coord.binding.source_slots.iter().enumerate() {
+            let entry = &bound_round.sources[source];
+            if shapes[old_slot.window as usize].chained {
+                expected.insert(entry.read_slot);
+            }
+            if let Some((slot, _)) = entry.publish {
+                expected.insert(slot);
+            }
+        }
+        assert_eq!(
+            recorded, expected,
+            "round {}: the patch list is not the folding-buffer-backed slots",
+            bound_round.round
+        );
+        // Every recorded slot names a buffer this round or the one before it,
+        // and a chunk base inside a buffer of that size.
+        for patch in &bound_round.folding_buffer_slots {
+            assert!(
+                patch.buffer_round == bound_round.round
+                    || patch.buffer_round + 1 == bound_round.round,
+                "round {}: patch names round {}'s buffer",
+                bound_round.round,
+                patch.buffer_round
+            );
+            if patch.buffer_round == bound_round.round {
+                assert!(
+                    patch.byte_offset
+                        < bound_round.folding_buffer.elems()
+                            * size_of::<crate::primitives::field::E4>(),
+                    "round {}: patch offset is outside the buffer",
+                    bound_round.round
+                );
             }
         }
     }
 
-    // The final round feeds the gather: the VM's last publishes are exactly
-    // the prepared plans' `this_layer_start`, and every gather-keyed address
-    // is published.
-    let mut gather: BTreeMap<GKRAddress, usize> = BTreeMap::new();
+    // The final gather: every address it keys is in `final_evaluations`, at that
+    // address's own last-round publish offset.
+    let mut gather: BTreeSet<GKRAddress> = BTreeSet::new();
     for kernel in plan.kernel_plans.iter() {
-        let prepared = &kernel
-            .round3_and_beyond_prepared
-            .iter()
-            .find(|prepared| prepared.step == folding_steps - 1)
-            .expect("the last step is prepared")
-            .prepared;
-        for (address, source) in kernel
+        for address in kernel
             .inputs
             .inputs_in_base
             .iter()
-            .zip(prepared.base_field_inputs.iter())
-            .chain(
-                kernel
-                    .inputs
-                    .inputs_in_extension
-                    .iter()
-                    .zip(prepared.extension_field_inputs.iter()),
-            )
+            .chain(kernel.inputs.inputs_in_extension.iter())
         {
             if *address != GKRAddress::placeholder() {
-                gather.entry(*address).or_insert(source.this_layer_start as usize);
+                gather.insert(*address);
             }
         }
     }
-    for (address, expected) in gather.iter() {
-        assert!(
-            published_at_last.contains(address),
-            "gather-keyed address {address:?} is never published at round {last_step}"
-        );
-        let region = resolve_cascade_region(storage, 0, *address, origins[address])
-            .expect("resolved above through the binder");
+    for address in gather.iter() {
+        let offset = bound.final_evaluations.get(address).unwrap_or_else(|| {
+            panic!("gather-keyed address {address:?} is never folded at round {last_step}")
+        });
         assert_eq!(
-            region.slot_ptr(last_step) as usize,
-            *expected,
-            "{address:?}: the VM's final publish is not what the gather reads"
+            Some(offset),
+            published_at_last.get(address),
+            "{address:?}: the gather offset is not this address's last publish"
         );
     }
     eprintln!(
         "[bwd-vm-ext-bind] add_sub L0 Ext: {} artifact windows -> {} address slots at round 1; \
-         {} sources bound over rounds 1..={last_step}; {} gather addresses all published",
+         {} sources bound over rounds 1..={last_step} ({chain_checks} chain reads); \
+         {} gather addresses all folded; last buffer {} columns",
         coord.binding.windows.len(),
         bound.rounds[0].slots.len(),
         coord.binding.source_slots.len(),
-        gather.len()
+        gather.len(),
+        bound.rounds[last_step as usize - 1].folding_buffer.columns,
     );
 }
 
