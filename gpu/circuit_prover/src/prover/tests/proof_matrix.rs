@@ -1384,6 +1384,138 @@ fn run_add_sub_bwd_vm_all_main_layers_proof_parity_test() {
     );
 }
 
+/// blake2_with_extended_control's main-layer count. The second (and only other)
+/// entry in `gkr::vm_circuit_name`'s allowlist, and the widest circuit the VM has
+/// a path for: 8 main layers against add_sub's 4.
+const BLAKE2_MAIN_LAYERS: usize = 8;
+
+/// The backward VM owning every main layer of blake2_with_extended_control, both
+/// regimes, inside the real prover — the second circuit of the coverage gate.
+///
+/// This is the coordinate set the pre-address-table descriptor could not express.
+/// `MAX_SOURCE_WINDOWS_USED = 17` bounded windows BEFORE splitting while blake2
+/// L0 R0 needed 18 after, so the circuit was blocked on a cap that counted the
+/// wrong thing. The combined source/destination address table removed splitting
+/// altogether — slots are keyed by BACKING, and blake2 L0 Ext peaks at 24 of 64 —
+/// so the bound this test exists to check is no longer the one that failed.
+///
+/// Launch counts are REPORTED, not pinned. add_sub's gates pin theirs against
+/// `ADD_SUB_FIXTURE_FOLDING_STEPS`; blake2's fold depth has no constant in this
+/// file yet, and inventing one from a first green run would pin whatever this run
+/// happened to do rather than a fact about the circuit. Bit-equality against the
+/// CPU reference is the claim; the counts are there to prove the VM ran at all,
+/// which a silently-empty selection would otherwise fake.
+#[test]
+#[serial]
+#[ignore]
+fn run_blake2_bwd_vm_all_main_layers_proof_parity_test() {
+    use crate::prover::gkr::backward::vm::coords::AB_GKR_BWD_VM_COORDS_ENV;
+    use crate::prover::gkr::backward::vm::production_bind::{
+        count_bwd_vm_r0_launches, AB_GKR_BWD_VM_POISON_ACCUMULATOR_ENV,
+        AB_GKR_BWD_VM_POISON_CASCADE_ENV,
+    };
+
+    let fixture = prepare_blake2_with_compression_proof_fixture();
+    let _poison = EnvGuard::set(AB_GKR_BWD_VM_POISON_ACCUMULATOR_ENV, "1");
+    let _cascade_poison = EnvGuard::set(AB_GKR_BWD_VM_POISON_CASCADE_ENV, "1");
+    let counter = count_bwd_vm_r0_launches();
+    assert_eq!(
+        (counter.launches(), counter.ext_launches()),
+        (0, 0),
+        "counters must start at zero for the counts below to mean anything"
+    );
+
+    let coords = (0..BLAKE2_MAIN_LAYERS)
+        .map(|layer| format!("{layer}:R0,{layer}:Ext"))
+        .collect::<Vec<_>>()
+        .join(",");
+
+    let (gpu_proof, r0_launches, ext_launches) = {
+        let _env = EnvGuard::set(AB_GKR_BWD_VM_COORDS_ENV, &coords);
+        let job = fixture.schedule_prove().unwrap();
+        let (proof, _ms) = job.finish().unwrap();
+        (proof, counter.launches(), counter.ext_launches())
+    };
+
+    assert_gkr_proof_eq_for_test(&gpu_proof, &fixture.expected_cpu_proof);
+    assert_eq!(
+        r0_launches, BLAKE2_MAIN_LAYERS,
+        "exactly one VM-owned R0 launch per main layer"
+    );
+    assert!(
+        ext_launches >= BLAKE2_MAIN_LAYERS,
+        "every main layer must have run at least one continuation round; got {ext_launches}"
+    );
+    eprintln!(
+        "[bwd-vm-parity] blake2: all {BLAKE2_MAIN_LAYERS} main layers on the VM \
+         ({r0_launches} R0 + {ext_launches} Ext launches), proof bit-equal to the CPU reference"
+    );
+}
+
+/// blake2 with BOTH VMs owning everything they have a path for — every forward
+/// layer and every main layer's whole backward sumcheck, in one proof, against the
+/// CPU reference.
+///
+/// This is the coverage claim for the second allowlisted circuit, and it is not
+/// implied by the two single-arm gates: the arms share storage, and a forward layer
+/// that publishes where a backward binder expects raw data would pass both alone
+/// and fail here. Both poisons are on, so an arm that reads a destination it did
+/// not write reads deliberate garbage rather than a plausible stale value.
+#[test]
+#[serial]
+#[ignore]
+fn run_blake2_both_vms_proof_parity_test() {
+    use crate::prover::gkr::backward::vm::coords::AB_GKR_BWD_VM_COORDS_ENV;
+    use crate::prover::gkr::backward::vm::production_bind::{
+        count_bwd_vm_r0_launches, AB_GKR_BWD_VM_POISON_ACCUMULATOR_ENV,
+        AB_GKR_BWD_VM_POISON_CASCADE_ENV,
+    };
+    use crate::prover::gkr::forward::path::AB_GKR_FWD_VM_LAYERS_ENV;
+    use crate::prover::gkr::forward::vm::count_fwd_vm_s4_launches;
+    use crate::prover::gkr::forward::vm::production_bind::AB_GKR_FWD_VM_POISON_DESTINATIONS_ENV;
+
+    let fixture = prepare_blake2_with_compression_proof_fixture();
+    let _fwd_poison = EnvGuard::set(AB_GKR_FWD_VM_POISON_DESTINATIONS_ENV, "1");
+    let _poison = EnvGuard::set(AB_GKR_BWD_VM_POISON_ACCUMULATOR_ENV, "1");
+    let _cascade_poison = EnvGuard::set(AB_GKR_BWD_VM_POISON_CASCADE_ENV, "1");
+
+    let fwd_counter = count_fwd_vm_s4_launches();
+    let bwd_counter = count_bwd_vm_r0_launches();
+
+    let layers = (0..BLAKE2_MAIN_LAYERS)
+        .map(|layer| layer.to_string())
+        .collect::<Vec<_>>()
+        .join(",");
+    let coords = (0..BLAKE2_MAIN_LAYERS)
+        .map(|layer| format!("{layer}:R0,{layer}:Ext"))
+        .collect::<Vec<_>>()
+        .join(",");
+
+    let gpu_proof = {
+        let _fwd = EnvGuard::set(AB_GKR_FWD_VM_LAYERS_ENV, &layers);
+        let _bwd = EnvGuard::set(AB_GKR_BWD_VM_COORDS_ENV, &coords);
+        let job = fixture.schedule_prove().unwrap();
+        let (proof, _ms) = job.finish().unwrap();
+        proof
+    };
+
+    assert_gkr_proof_eq_for_test(&gpu_proof, &fixture.expected_cpu_proof);
+    let (fwd, r0, ext) = (
+        fwd_counter.launches(),
+        bwd_counter.launches(),
+        bwd_counter.ext_launches(),
+    );
+    assert!(
+        fwd > 0 && r0 > 0 && ext > 0,
+        "both arms must have run; got fwd={fwd} r0={r0} ext={ext}"
+    );
+    eprintln!(
+        "[both-vms-parity] blake2: {BLAKE2_MAIN_LAYERS} forward layers + \
+         {BLAKE2_MAIN_LAYERS} backward main layers ({fwd} fwd + {r0} R0 + {ext} Ext launches), \
+         proof bit-equal to the CPU reference"
+    );
+}
+
 /// A/B the forward VM on every non-dimension-reducing add_sub layer: N interleaved pairs of whole proofs
 /// in one process, VM-on against VM-off, reporting per-pair deltas plus the
 /// median, min, max and both peak-memory figures.
