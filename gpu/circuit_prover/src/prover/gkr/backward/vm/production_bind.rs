@@ -99,7 +99,8 @@ use gkr_eval_isa::bwd::coeff::lean_bind::{
     LeanBoundColumn, LeanBoundWindow, LeanSourceBinding, LeanSourceSlot,
 };
 use gkr_eval_isa::bwd::coeff::limits::SOURCE_WINDOW_COLUMNS;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
+use std::sync::OnceLock;
 use gkr_eval_isa::bwd::coeff::stats::WindowFamily;
 use gkr_eval_isa::fwd::source::KIND_ORDER;
 
@@ -220,12 +221,50 @@ const _: () = assert!(SEG_POLICY_NARROW_BYTES_PER_ROW < SEG_POLICY_WIDE_BYTES_PE
 /// it is a block geometry, and a launcher choosing `K = 11` would be choosing a
 /// shape nothing was measured at.
 pub(crate) fn seg_policy_k(bytes_per_row: usize, ceiling: usize) -> usize {
+    if let Some(forced) = seg_forced_k() {
+        // Still filtered through the ceiling: a `K` the compiled family cannot
+        // host is not launchable, so honouring the override literally would turn
+        // a diagnostic into a launch failure.
+        return forced.min(ceiling);
+    }
     seg_policy_k_with(
         bytes_per_row,
         ceiling,
         SEG_POLICY_NARROW_BYTES_PER_ROW,
         SEG_POLICY_WIDE_BYTES_PER_ROW,
     )
+}
+
+/// `AB_BWD_VM_SEG_K`: force every VM-owned round to one `K`, bypassing
+/// [`seg_policy_k`]'s thresholds.
+///
+/// The instrument the threshold fit needs against PRODUCTION bindings. The
+/// committed thresholds were fitted over the bench's synthetic corpus cells, and
+/// a bound production round is not one of those cells — so "is this round's `K`
+/// the best `K` for it" was, until this override, unanswerable outside the
+/// corpus. Sweeping it against the per-layer A/B answers it directly.
+///
+/// `K` is a pure performance axis (the partial pair is the bit-identical sum of
+/// the rows it replaces), so a forced `K` cannot change a proof — which is what
+/// makes a sweep safe to run against the parity gates.
+fn seg_forced_k() -> Option<usize> {
+    static FORCED: OnceLock<Option<usize>> = OnceLock::new();
+    *FORCED.get_or_init(|| {
+        let raw = std::env::var("AB_BWD_VM_SEG_K").ok()?;
+        let raw = raw.trim();
+        if raw.is_empty() {
+            return None;
+        }
+        let k: usize = raw
+            .parse()
+            .unwrap_or_else(|_| panic!("AB_BWD_VM_SEG_K={raw:?} is not a number"));
+        assert!(
+            SEG_CORPUS_K.contains(&k),
+            "AB_BWD_VM_SEG_K={k} is off the measured axis {SEG_CORPUS_K:?}; a block geometry \
+             nothing was measured at is not a data point",
+        );
+        Some(k)
+    })
 }
 
 /// [`seg_policy_k`] with the two thresholds supplied rather than committed.
@@ -997,13 +1036,15 @@ pub(crate) fn bind_ext_round_sources<E: Copy>(
                 sources.iter().map(|addr| addr.read_slot).collect();
             eprintln!(
                 "[bwd-vm-census] L{} Ext round {round}: {} sources, \
-                 {} artifact windows, {} address slots ({} read + {} destination)",
+                 {} artifact windows, {} address slots ({} read + {} destination), \
+                 {} bytes/row",
                 coord.layer,
                 sources.len(),
                 coord.binding.windows.len(),
                 slots.len(),
                 reads.len(),
                 slots.len() - reads.len(),
+                seg_ext_bytes_per_row(&slots, &sources, round),
             );
         }
         rounds.push(BoundExtRound {
@@ -1060,21 +1101,59 @@ pub(crate) fn bind_ext_round_sources<E: Copy>(
 ///
 /// The bench probes this off its host model (`probe_geometry`, bench-gated);
 /// this is the same formula stated over the BOUND geometry, at R0's fixed
-/// shape: the two contribution halves, plus `columns * 2 * width` per real
-/// window (delta 0 reads one endpoint pair per column per logical row), plus
-/// nothing procedural (synthesized, no DRAM) and nothing published (asserted
-/// empty at R0).
-pub(crate) fn seg_r0_bytes_per_row(slots: &[ResolvedAddrSlot]) -> usize {
+/// shape: the two contribution halves, plus `2 * width` per addressed column
+/// (delta 0 reads one endpoint pair per column per logical row), plus nothing
+/// procedural (synthesized, no DRAM) and nothing published (empty at R0).
+///
+/// Counted over COLUMNS ADDRESSED BY SOURCES, not over slot extents. A slot's
+/// `columns` is the highest column index it addresses plus one — an extent that
+/// can exceed what is read (two sources 100 columns apart address a 101-column
+/// extent) and, when two artifact windows share a backing, no longer decomposes
+/// per window. The host model's `probe.columns[w]` is the count of columns the
+/// window actually addresses, so that is the quantity to restate.
+pub(crate) fn seg_r0_bytes_per_row(
+    slots: &[ResolvedAddrSlot],
+    sources: &[ResolvedSourceAddr],
+) -> usize {
     let mut bytes = 2 * size_of::<E4>();
-    for slot in slots {
+    for (slot, columns) in addressed_columns(slots, sources) {
         let element = match slot.base {
             None => 0,
             Some(base) if base.is_e4 => size_of::<E4>(),
             Some(_) => size_of::<BF>(),
         };
-        bytes += slot.columns * 2 * element;
+        // R0 publishes nothing, so no `materialize` term and no catch-up delta:
+        // every backing is at the round's own depth.
+        bytes += columns.len() * 2 * element;
     }
     bytes
+}
+
+/// The distinct columns each slot is addressed at, with the deepest catch-up
+/// delta any source reads each of them through.
+///
+/// One `(slot, column)` pair is ONE column of the host model's window whatever
+/// number of wire sources read it, which is what makes this a restatement of
+/// `probe_geometry` rather than a count of wire slots. Where several sources
+/// read one column at different BACKING depths the SHALLOWEST backing wins,
+/// because `delta` is `round - backing_depth`: that source has the furthest to
+/// catch up, pulls `2^delta` endpoint pairs, and the others read inside its span.
+/// The map therefore stores backing depths, and the caller turns each into a
+/// delta against the round it is pricing.
+fn addressed_columns<'a>(
+    slots: &'a [ResolvedAddrSlot],
+    sources: &[ResolvedSourceAddr],
+) -> Vec<(&'a ResolvedAddrSlot, BTreeMap<usize, u8>)> {
+    let mut addressed: Vec<(&ResolvedAddrSlot, BTreeMap<usize, u8>)> =
+        slots.iter().map(|slot| (slot, BTreeMap::new())).collect();
+    for source in sources {
+        let depth = addressed[source.read_slot]
+            .1
+            .entry(source.read_column)
+            .or_insert(source.backing_depth);
+        *depth = (*depth).min(source.backing_depth);
+    }
+    addressed
 }
 
 /// Everything one VM-owned R0 launch needs at schedule time, built once at
@@ -1127,7 +1206,7 @@ pub(crate) fn build_bwd_vm_round0<E: Copy>(
         parity_base: [null_mut(), null_mut()],
         plan: bound.publish_plan.clone(),
     };
-    let bytes_per_row = seg_r0_bytes_per_row(&bound.slots);
+    let bytes_per_row = seg_r0_bytes_per_row(&bound.slots, &bound.sources);
     let k = seg_policy_k(bytes_per_row, seg_k_ceiling(BwdRegime::R0)?);
     let binding = BwdSegRoundBinding {
         round: 0,
@@ -1313,19 +1392,36 @@ pub(crate) fn drained_eq_sizes(mut eq_sizes: GkrEqSizes, rounds: u8) -> GkrEqSiz
 /// consumes `2^delta` inputs per half at this round's catch-up delta;
 /// procedural windows synthesize and read nothing), plus two E4 per published
 /// column, plus the two contribution halves.
-pub(crate) fn seg_ext_bytes_per_row(slots: &[ResolvedAddrSlot]) -> usize {
-    // Per slot, not per source: a slot IS a backing, so its columns are counted
-    // once however many sources read them. A destination slot is an E4 backing
-    // with no reader, which prices its own write extent through the same term.
+///
+/// Counted over the columns SOURCES address (see [`addressed_columns`]) rather
+/// than over slot extents, and the two shape-carrying terms are per source, not
+/// per slot: `delta` is a source's own catch-up (two artifact windows may read
+/// one backing at different depths) and publishing is a per-source fact (the
+/// destination lane, `materialize` in the pre-table descriptor). A slot-wise
+/// count can express neither, and dropping them under-prices exactly the deep
+/// and the publishing rounds — which is what the fitted thresholds separate.
+pub(crate) fn seg_ext_bytes_per_row(
+    slots: &[ResolvedAddrSlot],
+    sources: &[ResolvedSourceAddr],
+    round: u8,
+) -> usize {
     let mut bytes = 2 * size_of::<E4>();
-    for slot in slots {
+    for (slot, columns) in addressed_columns(slots, sources) {
         let element = match slot.base {
             None => 0,
             Some(base) if base.is_e4 => size_of::<E4>(),
             Some(_) => size_of::<BF>(),
         };
-        bytes += slot.columns * 2 * element;
+        for backing_depth in columns.into_values() {
+            let delta = round.saturating_sub(backing_depth);
+            bytes += (2usize << delta) * element;
+        }
     }
+    // Two raw target-depth endpoints per published column. Counted over distinct
+    // destination columns for the same reason the reads are: one column written
+    // once is one column however many sources name it.
+    let published: BTreeSet<(usize, usize)> = sources.iter().filter_map(|s| s.publish).collect();
+    bytes += published.len() * 2 * size_of::<E4>();
     bytes
 }
 
@@ -1390,7 +1486,7 @@ pub(crate) fn build_bwd_vm_ext_rounds<E: Copy>(
     let ceiling = seg_k_ceiling(BwdRegime::Ext)?;
     let mut setups = Vec::with_capacity(bound.rounds.len());
     for round in &bound.rounds {
-        let bytes_per_row = seg_ext_bytes_per_row(&round.slots);
+        let bytes_per_row = seg_ext_bytes_per_row(&round.slots, &round.sources, round.round);
         let k = seg_policy_k(bytes_per_row, ceiling);
         let binding = BwdSegRoundBinding {
             round: u32::from(round.round),
