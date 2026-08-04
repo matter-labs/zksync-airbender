@@ -3,7 +3,6 @@ use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
 
 use crate::upstream::{GKRCircuitArtifact, WhirSchedule};
-use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::callbacks::Callbacks;
 use gpu_core::primitives::context::{DeviceAllocation, UnsafeMutAccessor};
 use gpu_core::primitives::device_tracing::Range;
@@ -30,10 +29,6 @@ pub(in crate::proof) struct WhirPhaseResult {
     pub(in crate::proof) base_layer_claims_shared_state:
         UnsafeMutAccessor<ScheduledBaseLayerClaimsState<E4>>,
     pub(in crate::proof) whir_scheduled: GpuWhirFoldScheduledExecution,
-    // Device-resident batching-challenge buffer drawn from the rolling
-    // backward seed before WHIR fold. Held here so it outlives every kernel
-    // reading from it during WHIR scheduling.
-    pub(in crate::proof) batching_challenge_device: DeviceAllocation<E4>,
 }
 
 fn materialize_pre_whir_trace_inputs<'a>(
@@ -147,8 +142,14 @@ pub(in crate::proof) fn schedule_whir_phase<'a>(
     // seed. Pow-aware (`draw_random_field_els_with_pow(seed, 1, bits)`): grinds
     // the batched-proximity PoW (0 bits at Sec80), advances the seed, honors the
     // skip-first-word convention. The nonce lands in its slab slot.
-    let mut batching_challenge_device: DeviceAllocation<E4> =
-        context.alloc(1, AllocationPlacement::BestFit)?;
+    // SAFETY: `ProofLayout` computes a live, aligned, non-overlapping E4 region
+    // inside `proof_slab`. The draw and every WHIR consumer are ordered on the
+    // exec stream, and the slab outlives the scheduled work.
+    let (batching_challenge_ptr, batching_challenge_len) =
+        unsafe { proof_layout.whir_batching_challenge_device_mut(proof_slab.as_ptr() as *mut u8) };
+    assert_eq!(batching_challenge_len, 1);
+    let batching_challenge_device =
+        unsafe { DeviceSlice::from_raw_parts_mut(batching_challenge_ptr, batching_challenge_len) };
     // SAFETY: `ProofLayout` computes a live, non-overlapping single-`u64` region
     // for the batching pow nonce inside the slab; the kernel write here and the
     // terminal readback are both exec-stream-ordered.
@@ -161,7 +162,7 @@ pub(in crate::proof) fn schedule_whir_phase<'a>(
         backward_scheduled.final_device_seed_and_claim_point_mut();
     gpu_whir::pow::schedule_draw_e4_challenges_with_pow(
         final_device_seed_mut,
-        &mut batching_challenge_device,
+        &mut *batching_challenge_device,
         batching_pow_bits,
         batching_nonce_dst,
         context,
@@ -169,9 +170,9 @@ pub(in crate::proof) fn schedule_whir_phase<'a>(
     {
         let (_final_device_seed, claim_point) =
             backward_scheduled.final_device_seed_and_claim_point_mut();
-        // SAFETY: both ranges are live, aligned E4 regions inside the proof
-        // slab. These are device-to-device copies scheduled on exec_stream;
-        // neither pool-backed source nor destination is host-dereferenced.
+        // SAFETY: the destination is a live, aligned E4 region inside the proof
+        // slab. This device-to-device copy is scheduled on exec_stream; neither
+        // the constant-symbol source nor destination is host-dereferenced.
         let (point_slab_ptr, point_slab_len) = unsafe {
             proof_layout.whir_original_evaluation_point_device_mut(proof_slab.as_ptr() as *mut u8)
         };
@@ -179,14 +180,6 @@ pub(in crate::proof) fn schedule_whir_phase<'a>(
         let point_slab_dst =
             unsafe { DeviceSlice::from_raw_parts_mut(point_slab_ptr, point_slab_len) };
         memory_copy_async(point_slab_dst, claim_point, stream)?;
-
-        let (batching_slab_ptr, batching_slab_len) = unsafe {
-            proof_layout.whir_batching_challenge_device_mut(proof_slab.as_ptr() as *mut u8)
-        };
-        debug_assert_eq!(batching_slab_len, 1);
-        let batching_slab_dst =
-            unsafe { DeviceSlice::from_raw_parts_mut(batching_slab_ptr, batching_slab_len) };
-        memory_copy_async(batching_slab_dst, &batching_challenge_device[..], stream)?;
     }
     let whir_scheduled = {
         let setup_trace_holder = if let Some(setup_transfer) = setup_transfer.as_mut() {
@@ -205,7 +198,7 @@ pub(in crate::proof) fn schedule_whir_phase<'a>(
             setup_trace_holder,
             claim_point,
             final_device_seed_mut,
-            &batching_challenge_device[..],
+            &*batching_challenge_device,
             whir_schedule.base_lde_factor,
             whir_schedule.whir_steps_schedule.clone(),
             whir_schedule.whir_queries_schedule.clone(),
@@ -226,6 +219,5 @@ pub(in crate::proof) fn schedule_whir_phase<'a>(
         base_layer_claims_scheduled,
         base_layer_claims_shared_state,
         whir_scheduled,
-        batching_challenge_device,
     })
 }
