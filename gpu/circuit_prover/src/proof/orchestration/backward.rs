@@ -124,7 +124,7 @@ pub(in crate::proof) fn prepare_backward_handoff(
     {
         let device_flat_evaluations = transcript_handoff.device_flat_evaluations();
         let mut poly_idx = 0usize;
-        for (_output_type, reduced_io) in output_layer_for_sumcheck.iter() {
+        for reduced_io in output_layer_for_sumcheck.values() {
             for half in 0..2 {
                 let address = reduced_io.output[half];
                 let slot = top_layer_claim_layout.claim_idx(&address) as usize;

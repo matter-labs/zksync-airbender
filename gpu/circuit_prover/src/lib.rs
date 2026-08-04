@@ -1,5 +1,5 @@
 #![allow(incomplete_features)]
-#![feature(allocator_api)]
+#![cfg_attr(test, feature(allocator_api))]
 // The e2e test suite normalizes prover's const-generic merkle/permutation types
 // (e.g. `produce_initial_permutation_product_contribution`); without this the
 // test build hits an E0391 predicate-normalization cycle (cf. gpu_whir, Task 10).

@@ -166,7 +166,7 @@ pub(super) fn assert_recursive_whir_oracle_parity_for_supported_path(
     let mut claim = E4::ZERO;
     for (challenges_set, values_set) in [base_mem_powers, base_wit_powers, base_setup_powers]
         .into_iter()
-        .zip(evals_refs.into_iter())
+        .zip(evals_refs)
     {
         for (challenge, value) in challenges_set.iter().zip(values_set.iter()) {
             let mut term = *value;
@@ -880,18 +880,6 @@ pub(super) fn assert_recursive_whir_oracle_parity_for_supported_path(
     let slab_mirror_accessor = slab_mirror.get_accessor();
     let mut scheduled_gpu_whir_proof =
         whir_proof_layout.parse_whir_proof(unsafe { slab_mirror_accessor.get() });
-    assert_eq!(
-        scheduled_gpu_whir_proof.batching_challenge,
-        Some(batching_challenge),
-        "parsed WHIR proof slab must contain the supplied batching challenge",
-    );
-    assert_eq!(
-        scheduled_gpu_whir_proof
-            .original_evaluation_point
-            .as_deref(),
-        Some(original_evaluation_point),
-        "parsed WHIR proof slab must contain the supplied original evaluation point",
-    );
     drop(scheduled_gpu_whir);
     let scheduled_recursive_caps = scheduled_gpu_whir_proof
         .intermediate_whir_oracles

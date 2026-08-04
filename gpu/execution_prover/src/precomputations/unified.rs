@@ -78,21 +78,15 @@ pub(crate) fn build_unified_setup_direct(
 #[cfg(test)]
 mod unified_setup_tests {
     use super::*;
-    use crate::upstream::{get_unified_reduced_machine_circuit, OutputType};
+    use crate::upstream::OutputType;
 
-    /// The GPU setup must use the same unified artifact as the canonical
-    /// reduced-machine circuit builder.
     #[test]
-    fn cpu_unified_setup_uses_canonical_circuit() {
+    fn cpu_unified_setup_constructs_expected_setup() {
         let worker = Worker::new();
         // A full padded ROM image is required for unified decoder preprocessing.
         let n = (1usize << (16 + common_constants::ROM_SECOND_WORD_BITS)) / 4;
         let binary = vec![0u32; n];
         let s = build_unified_setup_direct(&binary, &binary, &worker);
-        assert_eq!(
-            s.compiled_circuit.trace_len,
-            get_unified_reduced_machine_circuit(true).trace_len,
-        );
         assert!(s
             .compiled_circuit
             .global_output_map

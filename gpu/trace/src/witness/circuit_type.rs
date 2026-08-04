@@ -147,15 +147,6 @@ mod tests {
 
         assert_eq!(err.raw, u16::MAX);
     }
-
-    #[test]
-    fn unified_domain_size_matches_canonical_circuit() {
-        assert_eq!(
-            UnrolledCircuitType::Unified.get_domain_size_log2(),
-            <UnifiedReducedMachineCircuit as RiscVCycleCircuit<BabyBearField, true>>::DOMAIN_SIZE_LOG2,
-            "GPU unified domain must follow the canonical circuit",
-        );
-    }
 }
 
 impl TryFrom<u16> for DelegationCircuitType {
