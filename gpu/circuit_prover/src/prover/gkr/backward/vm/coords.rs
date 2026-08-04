@@ -13,7 +13,8 @@ use std::fmt;
 use crate::upstream::BwdRegime;
 
 /// Env var naming the coordinates the backward VM runs, as a comma-separated
-/// `layer:regime` list (`AB_GKR_BWD_VM_COORDS="0:R0"`). Unset means none.
+/// `layer:regime` list (`AB_GKR_BWD_VM_COORDS="0:R0"`). UNSET means every
+/// coordinate this circuit compiled; an explicit EMPTY value means none.
 pub(crate) const AB_GKR_BWD_VM_COORDS_ENV: &str = "AB_GKR_BWD_VM_COORDS";
 
 /// One `(layer, regime)` coordinate.
@@ -136,13 +137,23 @@ pub(crate) fn check_selection(coords: &[BwdVmCoord]) -> Result<(), BwdVmCoordErr
 ///
 /// A malformed or unwired value panics rather than degrading to an empty
 /// selection, so a typo cannot look like "the VM was not asked for".
-pub(crate) fn coords_from_env() -> Vec<BwdVmCoord> {
-    let coords = match std::env::var(AB_GKR_BWD_VM_COORDS_ENV) {
-        Ok(value) => parse_coords(&value).unwrap_or_else(|err| panic!("{err}")),
-        Err(_) => Vec::new(),
-    };
+///
+/// `None` means the variable is UNSET, which is not "no VM" — it is "whatever
+/// this circuit can serve", resolved against the compiled programs by
+/// `bwd_vm_slice`. Turning the VM off is an explicit EMPTY value, which is what
+/// the A/B harness sets for its off arm; the distinction is the whole reason
+/// this returns an `Option` rather than a possibly-empty `Vec`.
+pub(crate) fn coords_from_env() -> Option<Vec<BwdVmCoord>> {
+    selection_from_value(std::env::var(AB_GKR_BWD_VM_COORDS_ENV).ok().as_deref())
+}
+
+/// The env read, factored out so the UNSET/EMPTY distinction is testable without
+/// mutating the process environment — which the VM gates read on every pass, so a
+/// test that set it would race them.
+fn selection_from_value(value: Option<&str>) -> Option<Vec<BwdVmCoord>> {
+    let coords = parse_coords(value?).unwrap_or_else(|err| panic!("{err}"));
     check_selection(&coords).unwrap_or_else(|err| panic!("{err}"));
-    coords
+    Some(coords)
 }
 
 fn parse_coords(value: &str) -> Result<Vec<BwdVmCoord>, BwdVmCoordError> {
@@ -171,6 +182,29 @@ fn parse_coords(value: &str) -> Result<Vec<BwdVmCoord>, BwdVmCoordError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// UNSET and EMPTY are different answers, and the whole default-on switch
+    /// rests on it: unset means "everything this circuit compiled", empty means
+    /// "nothing", which is how the A/B harness runs its off arm.
+    #[test]
+    fn unset_is_the_default_and_empty_is_off() {
+        assert_eq!(selection_from_value(None), None, "unset defers to availability");
+        assert_eq!(
+            selection_from_value(Some("")),
+            Some(Vec::new()),
+            "an explicit empty value selects nothing"
+        );
+        assert_eq!(
+            selection_from_value(Some("   ")),
+            Some(Vec::new()),
+            "whitespace is still an explicit nothing"
+        );
+        assert_eq!(
+            selection_from_value(Some("1:R0,1:Ext")),
+            Some(vec![r0(1), ext(1)]),
+            "an explicit selection is taken verbatim"
+        );
+    }
 
     fn r0(layer: usize) -> BwdVmCoord {
         BwdVmCoord {

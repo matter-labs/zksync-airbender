@@ -12,7 +12,8 @@
 use std::fmt;
 
 /// Env var naming the layers the forward interpreter VM runs: a comma-separated
-/// list of layer indices (`AB_GKR_FWD_VM_LAYERS=0`). Unset means no VM layers.
+/// list of layer indices (`AB_GKR_FWD_VM_LAYERS=0`). UNSET means every layer the
+/// circuit's compiled program covers; an explicit EMPTY value means none.
 pub(crate) const AB_GKR_FWD_VM_LAYERS_ENV: &str = "AB_GKR_FWD_VM_LAYERS";
 
 /// The implementation that computes one forward layer.
@@ -144,11 +145,19 @@ pub(crate) fn plan_forward_paths(
 ///
 /// A malformed value panics rather than degrading to an empty selection, so a
 /// typo cannot look like "the VM was not asked for".
-pub(crate) fn vm_layers_from_env() -> Vec<usize> {
-    match std::env::var(AB_GKR_FWD_VM_LAYERS_ENV) {
-        Ok(value) => parse_vm_layers(&value).unwrap_or_else(|err| panic!("{err}")),
-        Err(_) => Vec::new(),
-    }
+///
+/// `None` means UNSET, which is not "no layers" — it is "every layer this
+/// circuit's compiled program covers", resolved at the call site, which is the
+/// only place that holds the program. An explicit EMPTY value is how the A/B
+/// harness turns the VM off.
+pub(crate) fn vm_layers_from_env() -> Option<Vec<usize>> {
+    selection_from_value(std::env::var(AB_GKR_FWD_VM_LAYERS_ENV).ok().as_deref())
+}
+
+/// The env read, factored out so the UNSET/EMPTY distinction is testable without
+/// mutating the process environment — which every forward pass reads.
+fn selection_from_value(value: Option<&str>) -> Option<Vec<usize>> {
+    Some(parse_vm_layers(value?).unwrap_or_else(|err| panic!("{err}")))
 }
 
 fn parse_vm_layers(value: &str) -> Result<Vec<usize>, ForwardPathError> {
@@ -170,6 +179,15 @@ fn parse_vm_layers(value: &str) -> Result<Vec<usize>, ForwardPathError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// UNSET and EMPTY are different answers: unset defers to the layers the
+    /// circuit's compiled program covers, empty selects none (the A/B off arm).
+    #[test]
+    fn unset_is_the_default_and_empty_is_off() {
+        assert_eq!(selection_from_value(None), None);
+        assert_eq!(selection_from_value(Some("")), Some(Vec::new()));
+        assert_eq!(selection_from_value(Some("0,2")), Some(vec![0, 2]));
+    }
 
     /// The reason this module exists: two switches both naming layer 0 must
     /// fail loudly rather than letting one silently win.

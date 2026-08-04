@@ -245,12 +245,30 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<'_, E>
         &self,
         coord: super::super::vm::coords::BwdVmCoord,
     ) -> Option<&super::super::vm::production_program::CompiledSlice> {
-        if !super::super::vm::coords::coords_from_env().contains(&coord) {
-            return None;
+        match super::super::vm::coords::coords_from_env() {
+            // EXPLICIT: a named coordinate with no compiled program is a wiring
+            // defect, so it panics rather than quietly running the incumbent.
+            Some(coords) => coords.contains(&coord).then(|| {
+                self.vm_programs.backward_slice(coord).unwrap_or_else(|| {
+                    panic!("{coord} is selected but this circuit has no compiled coordinate for it")
+                })
+            }),
+            // DEFAULT (unset): availability IS selection — but only for a layer
+            // whose BOTH regimes compiled, or the default would hand itself the
+            // half-owned layer `check_selection` exists to reject.
+            None => {
+                let mate = super::super::vm::coords::BwdVmCoord {
+                    layer: coord.layer,
+                    regime: match coord.regime {
+                        crate::upstream::BwdRegime::R0 => crate::upstream::BwdRegime::Ext,
+                        crate::upstream::BwdRegime::Ext => crate::upstream::BwdRegime::R0,
+                    },
+                };
+                self.vm_programs
+                    .backward_slice(mate)
+                    .and_then(|_| self.vm_programs.backward_slice(coord))
+            }
         }
-        Some(self.vm_programs.backward_slice(coord).unwrap_or_else(|| {
-            panic!("{coord} is selected but this circuit has no compiled coordinate for it")
-        }))
     }
 
     fn prepare_layer_from_blueprints(

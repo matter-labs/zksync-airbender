@@ -337,9 +337,31 @@ where
     // is set for any other circuit we must panic loudly rather than emit a
     // wrong proof.
     let use_generated_layer0 = generated_layer0::generated_layer0_enabled();
-    let vm_layers = path::vm_layers_from_env();
     let is_add_sub_cached =
         generated_layer0::is_add_sub_cached_layout(is_add_sub, &compiled_circuit);
+    // UNSET means "every layer the handed-in program covers", which is resolved
+    // here because this is the only place that holds the program. A circuit with
+    // no embedded schedule has no program and so defaults to no VM layers — that
+    // is how `unified_reduced_machine` falls back to flat without a special case.
+    //
+    // The generated layer-0 kernel is skipped rather than fought over:
+    // `plan_forward_paths` ERRORS on two paths claiming one layer, so a default
+    // that did not skip it would turn that kernel's switch into a panic. An
+    // EXPLICIT selection still conflicts, which is the operator being told they
+    // asked for two things at once.
+    let vm_layers = match path::vm_layers_from_env() {
+        Some(layers) => layers,
+        None => {
+            let claims_layer0 = use_generated_layer0 && is_add_sub_cached;
+            let covered = vm_program
+                .map(|program| program.layers.len())
+                .unwrap_or(0)
+                .min(compiled_circuit.layers.len());
+            (0..covered)
+                .filter(|layer| !(claims_layer0 && *layer == 0))
+                .collect()
+        }
+    };
     // The GENERATED layer-0 kernel is add_sub-cached-specific and stays gated on
     // the structural predicate. The VM is not: its allowlist is the embedded
     // schedule table, and a selection with no compiled program already stopped in

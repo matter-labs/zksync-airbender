@@ -186,8 +186,12 @@ pub(crate) fn check_vm_selection_is_servable(
     programs: &GkrVmPrograms,
     circuit_type: crate::witness::circuit_type::CircuitType,
 ) {
-    let forward_layers = forward::path::vm_layers_from_env();
-    let backward_coords = backward::vm::coords::coords_from_env();
+    // EXPLICIT selections only. An unset switch now means "whatever this circuit
+    // compiled", which is servable by construction and needs no check; what this
+    // function exists to catch is an operator naming something the circuit cannot
+    // run, and only an explicit value can do that.
+    let forward_layers = forward::path::vm_layers_from_env().unwrap_or_default();
+    let backward_coords = backward::vm::coords::coords_from_env().unwrap_or_default();
     if forward_layers.is_empty() && backward_coords.is_empty() {
         return;
     }

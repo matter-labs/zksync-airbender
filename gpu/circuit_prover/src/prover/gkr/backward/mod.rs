@@ -123,7 +123,7 @@ impl<E: Field + FieldExtension<BF>> GpuGKRDimensionReducingBackwardState<BF, E> 
         // program for it. A test that selects a coordinate and takes this path
         // would silently run the incumbent, so stop instead.
         assert!(
-            vm::coords::coords_from_env().is_empty(),
+            vm::coords::coords_from_env().is_none_or(|coords| coords.is_empty()),
             "{} selects a backward VM coordinate, but this test-only handoff has no compiled \
              slice to run it with; drive the proof through `prove()` instead",
             vm::coords::AB_GKR_BWD_VM_COORDS_ENV,
