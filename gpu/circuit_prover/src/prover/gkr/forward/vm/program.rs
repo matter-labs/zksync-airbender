@@ -39,11 +39,7 @@ pub(crate) const EMBEDDED_BLAKE2_SCHEDULE: &[u8] = include_bytes!(
     "../../../../../../../cs/compiled_circuits/blake2_with_extended_control_schedule_b16_gkr.json"
 );
 
-/// The remaining committed b16 schedules, one per corpus layout that has one.
-///
-/// `unified_reduced_machine` is absent and is the ONLY corpus layout with no
-/// searched schedule, so it is the one circuit the forward VM cannot run even
-/// though its backward coordinates compile.
+/// The remaining committed b16 schedules — one per corpus layout, all 12 of them.
 pub(crate) const EMBEDDED_JUMP_BRANCH_SLT_SCHEDULE: &[u8] =
     include_bytes!("../../../../../../../cs/compiled_circuits/jump_branch_slt_schedule_b16_gkr.json");
 pub(crate) const EMBEDDED_UNSIGNED_MUL_DIV_SCHEDULE: &[u8] = include_bytes!(
@@ -69,13 +65,21 @@ pub(crate) const EMBEDDED_BLAKE2_G_FUNCTION_SCHEDULE: &[u8] = include_bytes!(
 );
 pub(crate) const EMBEDDED_KECCAK_SPECIAL5_SCHEDULE: &[u8] =
     include_bytes!("../../../../../../../cs/compiled_circuits/keccak_special5_schedule_b16_gkr.json");
+pub(crate) const EMBEDDED_UNIFIED_SCHEDULE: &[u8] = include_bytes!(
+    "../../../../../../../cs/compiled_circuits/unified_reduced_machine_schedule_b16_gkr.json"
+);
 
-/// The embedded schedule for a circuit, or `None` if the forward VM has none.
+/// The embedded schedule for a circuit. Every corpus circuit has one now, so no
+/// arm answers `None` — the `Option` stays because the SHAPE "a circuit may have
+/// no schedule" is what the callers are built around, not because any circuit
+/// currently lacks one.
 ///
 /// A schedule is SEARCH output — the b16 schedules were searched against each
-/// circuit's DAG and cannot be recomputed — so unlike the backward coordinates
-/// these must travel inside the executable. This table is therefore the forward
-/// VM's real allowlist: a circuit absent here cannot run on it at all.
+/// circuit's DAG and are not recomputed at runtime — so unlike the backward
+/// coordinates these must travel inside the executable. This table is therefore
+/// the forward VM's real allowlist. The match has no wildcard, so a new
+/// `CircuitType` variant fails to compile here rather than silently falling back
+/// to flat.
 pub(crate) fn embedded_schedule(circuit_type: CircuitType) -> Option<&'static [u8]> {
     use crate::witness::circuit_type::{
         DelegationCircuitType, UnrolledCircuitType, UnrolledNonMemoryCircuitType,
@@ -103,8 +107,7 @@ pub(crate) fn embedded_schedule(circuit_type: CircuitType) -> Option<&'static [u
         CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns) => {
             Some(EMBEDDED_INITS_AND_TEARDOWNS_SCHEDULE)
         }
-        // The one corpus layout with no searched schedule.
-        CircuitType::Unrolled(UnrolledCircuitType::Unified) => None,
+        CircuitType::Unrolled(UnrolledCircuitType::Unified) => Some(EMBEDDED_UNIFIED_SCHEDULE),
         CircuitType::Delegation(DelegationCircuitType::BigIntWithControl) => {
             Some(EMBEDDED_BIGINT_SCHEDULE)
         }

@@ -60,6 +60,7 @@ const ALL_FIXTURES: &[&str] = &[
     "mem_subword_only_layout_gkr.json",
     "mem_word_only_layout_gkr.json",
     "shift_binop_layout_gkr.json",
+    "unified_reduced_machine_layout_gkr.json",
     "unsigned_mul_div_layout_gkr.json",
 ];
 

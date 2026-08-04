@@ -1428,17 +1428,6 @@ fn run_blake2_both_vms_proof_parity_test() {
     );
 }
 
-/// Which arms a coverage gate turns on.
-///
-/// `BackwardOnly` has exactly one user: `unified_reduced_machine` is the only corpus
-/// layout with no searched b16 schedule, so `embedded_schedule` returns `None` and
-/// the forward VM cannot run it however the switch is set.
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum VmArms {
-    BackwardOnly,
-    Both,
-}
-
 /// The per-circuit coverage gate: put everything this circuit has a VM path for on
 /// the VM, in one proof, and require the proof to be bit-equal to the CPU reference.
 ///
@@ -1460,7 +1449,6 @@ enum VmArms {
 fn assert_vm_coverage_matches_cpu(
     fixture: BasicUnrolledProofFixture,
     main_layers: usize,
-    arms: VmArms,
     label: &str,
 ) {
     use crate::prover::gkr::backward::vm::coords::AB_GKR_BWD_VM_COORDS_ENV;
@@ -1481,13 +1469,10 @@ fn assert_vm_coverage_matches_cpu(
     let fwd_before = fwd_counter.launches();
     let (r0_before, ext_before) = (bwd_counter.launches(), bwd_counter.ext_launches());
 
-    let layers = match arms {
-        VmArms::BackwardOnly => String::new(),
-        VmArms::Both => (0..main_layers)
-            .map(|layer| layer.to_string())
-            .collect::<Vec<_>>()
-            .join(","),
-    };
+    let layers = (0..main_layers)
+        .map(|layer| layer.to_string())
+        .collect::<Vec<_>>()
+        .join(",");
     let coords = (0..main_layers)
         .map(|layer| format!("{layer}:R0,{layer}:Ext"))
         .collect::<Vec<_>>()
@@ -1517,23 +1502,20 @@ fn assert_vm_coverage_matches_cpu(
         ext >= main_layers,
         "{label}: every main layer must have run at least one continuation round; got {ext}"
     );
-    if arms == VmArms::Both {
-        assert!(fwd > 0, "{label}: the forward arm must have run");
-    }
+    assert!(fwd > 0, "{label}: the forward arm must have run");
     eprintln!(
-        "[vm-coverage] {label}: {main_layers} main layers, arms={} \
-         ({fwd} fwd + {r0} R0 + {ext} Ext launches), proof bit-equal to the CPU reference",
-        if arms == VmArms::Both { "fwd+bwd" } else { "bwd" },
+        "[vm-coverage] {label}: {main_layers} main layers, fwd+bwd \
+         ({fwd} fwd + {r0} R0 + {ext} Ext launches), proof bit-equal to the CPU reference"
     );
 }
 
 macro_rules! vm_coverage_gate {
-    ($name:ident, $fixture:expr, $layers:expr, $arms:expr, $label:literal) => {
+    ($name:ident, $fixture:expr, $layers:expr, $label:literal) => {
         #[test]
         #[serial]
         #[ignore]
         fn $name() {
-            assert_vm_coverage_matches_cpu($fixture, $layers, $arms, $label);
+            assert_vm_coverage_matches_cpu($fixture, $layers, $label);
         }
     };
 }
@@ -1544,6 +1526,11 @@ macro_rules! vm_coverage_gate {
 // hand-written above, since they also pin their launch counts) this is all 12
 // corpus layouts proving bit-equal to the CPU reference with every VM path they
 // have turned on.
+//
+// Every layout runs BOTH arms now: `unified_reduced_machine` was the last one with
+// no searched b16 schedule, and one was produced for it
+// (`cs/compiled_circuits/unified_reduced_machine_schedule_b16_gkr.json`), so the
+// helper requires a nonzero forward launch count unconditionally.
 //
 // Five of them — unsigned_mul_div, mem_word_only, mem_subword_only,
 // bigint_with_extended_control and unified_reduced_machine — were blocked until
@@ -1567,35 +1554,30 @@ vm_coverage_gate!(
     run_jump_branch_slt_vm_coverage_test,
     prepare_jump_branch_slt_proof_fixture(),
     4,
-    VmArms::Both,
     "jump_branch_slt"
 );
 vm_coverage_gate!(
     run_shift_binop_vm_coverage_test,
     prepare_shift_binop_proof_fixture(),
     4,
-    VmArms::Both,
     "shift_binop"
 );
 vm_coverage_gate!(
     run_inits_and_teardowns_vm_coverage_test,
     prepare_inits_and_teardowns_matrix_proof_fixture(),
     4,
-    VmArms::Both,
     "inits_and_teardowns_preprocessed"
 );
 vm_coverage_gate!(
     run_blake2_g_function_vm_coverage_test,
     prepare_blake2_g_function_proof_fixture(),
     5,
-    VmArms::Both,
     "blake2_g_function"
 );
 vm_coverage_gate!(
     run_keccak_special5_vm_coverage_test,
     prepare_keccak_special5_proof_fixture(),
     6,
-    VmArms::Both,
     "keccak_special5"
 );
 
@@ -1603,35 +1585,30 @@ vm_coverage_gate!(
     run_unsigned_mul_div_vm_coverage_test,
     prepare_mul_div_proof_fixture(),
     4,
-    VmArms::Both,
     "unsigned_mul_div"
 );
 vm_coverage_gate!(
     run_mem_word_only_vm_coverage_test,
     prepare_load_store_word_only_proof_fixture(),
     4,
-    VmArms::Both,
     "mem_word_only"
 );
 vm_coverage_gate!(
     run_mem_subword_only_vm_coverage_test,
     prepare_load_store_subword_only_proof_fixture(),
     4,
-    VmArms::Both,
     "mem_subword_only"
 );
 vm_coverage_gate!(
     run_bigint_vm_coverage_test,
     prepare_bigint_proof_fixture(),
     6,
-    VmArms::Both,
     "bigint_with_extended_control"
 );
 vm_coverage_gate!(
     run_unified_vm_coverage_test,
     super::unified_fixtures_helpers::prepare_unified_proof_fixture(),
     4,
-    VmArms::BackwardOnly,
     "unified_reduced_machine"
 );
 
