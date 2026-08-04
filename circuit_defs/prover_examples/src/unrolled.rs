@@ -23,6 +23,7 @@ use prover::fft::*;
 use prover::field::baby_bear::base::BabyBearField;
 use prover::field::baby_bear::ext4::BabyBearExt4;
 use prover::field::*;
+use prover::gkr::prover::CommitmentMode;
 use prover::gkr::prover::GKRExternalChallenges;
 use prover::gkr::prover::GKRProof;
 use prover::gkr::prover_config::ProverConfig;
@@ -32,7 +33,9 @@ use prover::gkr::witness_gen::oracles::*;
 use prover::merkle_trees::ColumnMajorMerkleTreeConstructor;
 use prover::merkle_trees::DefaultTreeConstructor;
 use prover::tracers::oracles::transpiler_oracles::delegation::DelegationOracle;
+use prover::transcript::Blake2sTranscript;
 use prover::worker;
+use prover::worker::Worker;
 use riscv_transpiler::cycle::MachineConfig;
 use riscv_transpiler::cycle::NUM_REGISTERS;
 use riscv_transpiler::vm::Counters;
@@ -58,7 +61,7 @@ use trace_and_split::commit_memory_tree_for_delegation_circuit;
 use trace_and_split::commit_memory_tree_for_inits_and_teardowns;
 use trace_and_split::commit_memory_tree_for_unrolled_mem_circuits;
 use trace_and_split::commit_memory_tree_for_unrolled_nonmem_circuits;
-use trace_and_split::fs_transform_for_permutation_argument;
+use trace_and_split::fs_transform_unrolled_for_permutation_argument;
 
 pub fn run_unrolled_machine_in_full<M: MachineConfig, C: Counters>(
     cycles_bound: usize,
@@ -346,6 +349,7 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
         recursion_chain_hash: None,
         recursion_chain_preimage: None,
         pow_challenge: 0,
+        num_it_circuits: None,
     };
 
     let mut risc_v_setup_params = BTreeMap::new();
@@ -407,8 +411,8 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
         expected_final_state,
     ) = run_unrolled_machine_in_full::<C, DelegationsAndFamiliesCounters>(
         cycles_bound,
-        text_section,
         binary_image,
+        text_section,
         ram_bound,
         DelegationsAndFamiliesCounters::default(),
         non_determinism,
@@ -955,7 +959,7 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
             .collect();
 
     // commit memory challenges
-    let all_challenges_seed = fs_transform_for_permutation_argument::<true>(
+    let all_challenges_seed = fs_transform_unrolled_for_permutation_argument::<true>(
         &register_final_state,
         final_pc,
         final_timestamp,
@@ -975,8 +979,12 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
         );
         #[cfg(feature = "timing_logs")]
         let now = std::time::Instant::now();
-        let pow_challenge =
-            Transcript::search_pow(&all_challenges_seed, permutation_argument_pow_bits, worker).1;
+        let pow_challenge = Blake2sTranscript::<true>::search_pow(
+            &all_challenges_seed,
+            permutation_argument_pow_bits,
+            worker,
+        )
+        .1;
         #[cfg(feature = "timing_logs")]
         println!(
             "PoW for {} took {:?}",
@@ -990,7 +998,7 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
     program_proof.pow_challenge = pow_challenge;
 
     let external_challenges =
-        GKRExternalChallenges::<BabyBearField, BabyBearExt4>::draw_from_transcript_seed(
+        GKRExternalChallenges::<BabyBearField, BabyBearExt4>::draw_from_blake_transcript_seed(
             all_challenges_seed,
             permutation_argument_pow_bits as usize,
             pow_challenge,
@@ -1058,39 +1066,35 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
     let mut main_proofs = BTreeMap::new();
     for (family_idx, witness_chunks) in non_mem_circuits.into_iter() {
         if witness_chunks.is_empty() {
-            // for consistency
-            main_proofs.insert(family_idx, vec![]);
+            if let Some(setup) = setups.get(&family_idx) {
+                // for consistency
+                main_proofs.insert(family_idx, vec![]);
 
-            let setup = &setups[&family_idx];
-            let trace_len = setup.trace_len;
-            let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
-            let twiddles_for_size = twiddles
-                .entry(trace_len)
-                .or_insert_with(|| Twiddles::new(trace_len, worker));
-            let setup_commitment = setup.setup.commit::<DefaultTreeConstructor>(
-                &*twiddles_for_size,
-                prover_config.lde_factor,
-                prover_config.whir_schedule.whir_steps_schedule[0],
-                prover_config.cap_size,
-                trace_len.trailing_zeros() as usize,
-                &worker,
-            );
+                // dump setup if it's present for existing machine
+                let trace_len = setup.trace_len;
+                let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
+                let twiddles_for_size = twiddles
+                    .entry(trace_len)
+                    .or_insert_with(|| Twiddles::new(trace_len, worker));
+                let setup_commitment = setup.setup.commit::<DefaultTreeConstructor>(
+                    &*twiddles_for_size,
+                    prover_config.lde_factor,
+                    prover_config.whir_schedule.whir_steps_schedule[0],
+                    prover_config.cap_size,
+                    trace_len.trailing_zeros() as usize,
+                    &worker,
+                );
 
-            risc_v_setup_params.insert(
-                family_idx as u32,
-                UnrolledCircuitSetupParams {
-                    family_idx: family_idx as u32,
-                    capacity: trace_len as u32,
-                    setup_caps: MerkleTreeCap {
-                        cap: <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<
-                            BabyBearField,
-                        >>::get_cap(&setup_commitment.tree)
-                        .cap
-                        .try_into()
-                        .unwrap(),
-                    },
-                },
-            );
+                risc_v_setup_params.insert(
+                    family_idx as u32,
+                    UnrolledCircuitSetupParams::from_setup_tree_cap(
+                        family_idx as u32,
+                        trace_len as u32,
+                        setup_commitment.get_cap(),
+                    ),
+                );
+            }
+
             continue;
         }
 
@@ -1114,18 +1118,11 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
 
         risc_v_setup_params.insert(
             family_idx as u32,
-            UnrolledCircuitSetupParams {
-                family_idx: family_idx as u32,
-                capacity: trace_len as u32,
-                setup_caps: MerkleTreeCap {
-                    cap: <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<
-                        BabyBearField,
-                    >>::get_cap(&setup_commitment.tree)
-                    .cap
-                    .try_into()
-                    .unwrap(),
-                },
-            },
+            UnrolledCircuitSetupParams::from_setup_tree_cap(
+                family_idx as u32,
+                trace_len as u32,
+                setup_commitment.get_cap(),
+            ),
         );
 
         let UnrolledCircuitWitnessEvalFn::NonMemory {
@@ -1172,6 +1169,7 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
                 &oracle,
                 &setup.table_driver,
                 &worker,
+                None,
                 Global,
                 Global,
             );
@@ -1193,19 +1191,24 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
             // }
 
             let now = std::time::Instant::now();
-            let proof =
-                prove_configured_with_gkr::<BabyBearField, BabyBearExt4, DefaultTreeConstructor>(
-                    &setup.compiled_circuit,
-                    &external_challenges,
-                    witness_trace,
-                    &setup.setup,
-                    &setup_commitment,
-                    &*twiddles_for_size,
-                    &prover_config,
-                    vec![],
-                    trace_len,
-                    &worker,
-                );
+            let proof = prove_configured_with_gkr::<
+                BabyBearField,
+                BabyBearExt4,
+                DefaultTreeConstructor,
+                Blake2sTranscript,
+            >(
+                &setup.compiled_circuit,
+                &external_challenges,
+                witness_trace,
+                &setup.setup,
+                &setup_commitment,
+                &*twiddles_for_size,
+                &prover_config,
+                CommitmentMode::SeparateMemoryAndWitness,
+                vec![],
+                trace_len,
+                &worker,
+            );
             println!(
                 "Proving time for unrolled circuit type {} is {:?}",
                 family_idx,
@@ -1233,39 +1236,33 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
 
     for (family_idx, witness_chunks) in mem_circuits.into_iter() {
         if witness_chunks.is_empty() {
-            // for consistency
-            main_proofs.insert(family_idx, vec![]);
+            if let Some(setup) = setups.get(&family_idx) {
+                // for consistency
+                main_proofs.insert(family_idx, vec![]);
 
-            let setup = &setups[&family_idx];
-            let trace_len = setup.trace_len;
-            let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
-            let twiddles_for_size = twiddles
-                .entry(trace_len)
-                .or_insert_with(|| Twiddles::new(trace_len, worker));
-            let setup_commitment = setup.setup.commit::<DefaultTreeConstructor>(
-                &*twiddles_for_size,
-                prover_config.lde_factor,
-                prover_config.whir_schedule.whir_steps_schedule[0],
-                prover_config.cap_size,
-                trace_len.trailing_zeros() as usize,
-                &worker,
-            );
+                let trace_len = setup.trace_len;
+                let prover_config = prover::gkr::prover_config::example_configs::config_for_security_level_under_pessimistic_conjecture(trace_len.trailing_zeros() as usize, security_level);
+                let twiddles_for_size = twiddles
+                    .entry(trace_len)
+                    .or_insert_with(|| Twiddles::new(trace_len, worker));
+                let setup_commitment = setup.setup.commit::<DefaultTreeConstructor>(
+                    &*twiddles_for_size,
+                    prover_config.lde_factor,
+                    prover_config.whir_schedule.whir_steps_schedule[0],
+                    prover_config.cap_size,
+                    trace_len.trailing_zeros() as usize,
+                    &worker,
+                );
 
-            risc_v_setup_params.insert(
-                family_idx as u32,
-                UnrolledCircuitSetupParams {
-                    family_idx: family_idx as u32,
-                    capacity: trace_len as u32,
-                    setup_caps: MerkleTreeCap {
-                        cap: <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<
-                            BabyBearField,
-                        >>::get_cap(&setup_commitment.tree)
-                        .cap
-                        .try_into()
-                        .unwrap(),
-                    },
-                },
-            );
+                risc_v_setup_params.insert(
+                    family_idx as u32,
+                    UnrolledCircuitSetupParams::from_setup_tree_cap(
+                        family_idx as u32,
+                        trace_len as u32,
+                        setup_commitment.get_cap(),
+                    ),
+                );
+            }
             continue;
         }
 
@@ -1289,18 +1286,11 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
 
         risc_v_setup_params.insert(
             family_idx as u32,
-            UnrolledCircuitSetupParams {
-                family_idx: family_idx as u32,
-                capacity: trace_len as u32,
-                setup_caps: MerkleTreeCap {
-                    cap: <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<
-                        BabyBearField,
-                    >>::get_cap(&setup_commitment.tree)
-                    .cap
-                    .try_into()
-                    .unwrap(),
-                },
-            },
+            UnrolledCircuitSetupParams::from_setup_tree_cap(
+                family_idx as u32,
+                trace_len as u32,
+                setup_commitment.get_cap(),
+            ),
         );
 
         let UnrolledCircuitWitnessEvalFn::Memory {
@@ -1345,6 +1335,7 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
                 &oracle,
                 &setup.table_driver,
                 &worker,
+                None,
                 Global,
                 Global,
             );
@@ -1366,19 +1357,24 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
             // }
 
             let now = std::time::Instant::now();
-            let proof =
-                prove_configured_with_gkr::<BabyBearField, BabyBearExt4, DefaultTreeConstructor>(
-                    &setup.compiled_circuit,
-                    &external_challenges,
-                    witness_trace,
-                    &setup.setup,
-                    &setup_commitment,
-                    &*twiddles_for_size,
-                    &prover_config,
-                    vec![],
-                    trace_len,
-                    &worker,
-                );
+            let proof = prove_configured_with_gkr::<
+                BabyBearField,
+                BabyBearExt4,
+                DefaultTreeConstructor,
+                Blake2sTranscript,
+            >(
+                &setup.compiled_circuit,
+                &external_challenges,
+                witness_trace,
+                &setup.setup,
+                &setup_commitment,
+                &*twiddles_for_size,
+                &prover_config,
+                CommitmentMode::SeparateMemoryAndWitness,
+                vec![],
+                trace_len,
+                &worker,
+            );
             println!(
                 "Proving time for unrolled circuit type {} is {:?}",
                 family_idx,
@@ -1449,7 +1445,12 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
 
         #[cfg(feature = "timing_logs")]
         let now = std::time::Instant::now();
-        let proof = prove_configured_with_gkr::<BabyBearField, BabyBearExt4, DefaultTreeConstructor>(
+        let proof = prove_configured_with_gkr::<
+            BabyBearField,
+            BabyBearExt4,
+            DefaultTreeConstructor,
+            Blake2sTranscript,
+        >(
             &setup.compiled_circuit,
             &external_challenges,
             witness_trace,
@@ -1457,6 +1458,7 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
             &setup_commitment,
             &*twiddles_for_size,
             &prover_config,
+            CommitmentMode::SeparateMemoryAndWitness,
             inits_and_teardowns_top_bits,
             trace_len,
             &worker,
@@ -1632,7 +1634,7 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
     assert_eq!(&aux_delegation_memory_trees, &delegation_memory_trees_vec);
 
     // compare challenge
-    let aux_all_challenges_seed = fs_transform_for_permutation_argument::<true>(
+    let aux_all_challenges_seed = fs_transform_unrolled_for_permutation_argument::<true>(
         &register_final_state,
         final_pc,
         final_timestamp,
@@ -1648,7 +1650,7 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
     (program_proof, risc_v_setup_params)
 }
 
-fn prove_delegation_circuit<
+pub(crate) fn prove_delegation_circuit<
     A: GoodAllocator,
     D: DelegationAbiDescription,
     const REG_ACCESSES: usize,
@@ -1777,7 +1779,12 @@ fn prove_delegation_circuit<
         #[cfg(feature = "timing_logs")]
         let now = std::time::Instant::now();
         assert!(delegation_type < 1 << 12);
-        let proof = prove_configured_with_gkr::<BabyBearField, BabyBearExt4, DefaultTreeConstructor>(
+        let proof = prove_configured_with_gkr::<
+            BabyBearField,
+            BabyBearExt4,
+            DefaultTreeConstructor,
+            Blake2sTranscript,
+        >(
             &setup.compiled_circuit,
             &external_challenges,
             witness_trace,
@@ -1785,6 +1792,7 @@ fn prove_delegation_circuit<
             &setup_commitment,
             &*twiddles_for_size,
             prover_config,
+            CommitmentMode::SeparateMemoryAndWitness,
             vec![],
             trace_len,
             &worker,
@@ -1885,11 +1893,11 @@ pub(crate) mod test {
                 // prover::nd_source_std::set_iterator(it);
 
                 let verification_result =
-                    full_statement_verifier::unrolled_proof_statement::verify_unrolled_base_layer::<
+                    full_statement_verifier::unrolled_proof_statement::verify_unrolled_base_layer_sec_80::<
                         _,
                         DebugErrorCreator,
                         true,
-                    >(&mut i);
+                    >(&mut it);
                 dbg!(&verification_result);
                 assert!(verification_result.is_ok());
             })
@@ -1926,7 +1934,7 @@ pub(crate) mod test {
                 // prover::nd_source_std::set_iterator(it);
 
                 let (family, verifier_fn) =
-                    full_statement_verifier::unrolled_circuit_params::unrolled_circuit_verifiers_for_base_layer::<
+                    full_statement_verifier::unrolled_circuit_params::unrolled_circuit_verifiers_for_base_layer_sec_80::<
                         _,
                         DebugErrorCreator,
                     >()[verifier_idx];

@@ -29,7 +29,6 @@ pub struct BasicAssembly<
     const ASSUME_MEMORY_VALUES_ASSIGNED: bool = true,
 > {
     no_index_assigned: u64,
-    constraint_storage: Vec<(Constraint<F>, bool)>,
     structured_statements: Vec<StructuredStatement<F>>,
     lookup_storage: Vec<LookupQuery<F>>,
     pub memory_queries: Vec<MemoryAccess>,
@@ -47,7 +46,7 @@ pub struct BasicAssembly<
     witness_graph: WitnessResolutionGraph<F, W>,
 
     pub variable_names: HashMap<Variable, String>,
-    variables_from_constraints: BTreeMap<Variable, Constraint<F>>,
+    variables_from_constraints: BTreeMap<Variable, usize>, // index into structured expression
     circuit_family_bitmask: Vec<Variable>,
 }
 
@@ -60,7 +59,6 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
     fn new() -> Self {
         Self {
             no_index_assigned: 0,
-            constraint_storage: vec![],
             structured_statements: vec![],
             lookup_storage: vec![],
             memory_queries: vec![],
@@ -88,16 +86,13 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
 
     #[track_caller]
     fn add_variable(&mut self) -> Variable {
-        // if self.no_index_assigned == 11 {
-        //     panic!("debug");
-        // }
         let location = std::panic::Location::caller();
         let name = format!("Variable at {}::{}", location.file(), location.line());
         self.add_named_variable(&name)
     }
 
     fn add_named_variable(&mut self, name: &str) -> Variable {
-        // if self.no_index_assigned == 11 {
+        // if self.no_index_assigned == 88 {
         //     panic!("debug on named variable {}", name);
         // }
         let variable = Variable(self.no_index_assigned);
@@ -130,169 +125,24 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
         self.variable_names.insert(var, name.to_string());
     }
 
-    fn add_named_variable_from_constraint(
-        &mut self,
-        mut constraint: Constraint<F>,
-        name: &str,
-    ) -> Variable {
-        assert!(constraint.degree() <= 2);
-        assert!(constraint.is_empty() == false);
-        assert!(constraint.terms.iter().all(|x| x.is_constant()) == false);
-        constraint.normalize();
-        let new_var = self.add_named_variable(name);
-        // self.variables_from_constraints
-        //     .insert(new_var, constraint.clone());
+    // #[track_caller]
+    // fn add_variable_from_constraint_allow_explicit_linear_without_witness_evaluation(
+    //     &mut self,
+    //     mut constraint: Constraint<F>,
+    // ) -> Variable {
+    //     assert!(constraint.degree() <= 2);
+    //     assert!(constraint.is_empty() == false);
+    //     assert!(constraint.terms.iter().all(|x| x.is_constant()) == false);
+    //     constraint.normalize();
+    //     let new_var = self.add_variable();
+    //     // self.variables_from_constraints
+    //     //     .insert(new_var, constraint.clone());
 
-        use crate::cs::utils::collapse_max_quadratic_constraint_into;
-        collapse_max_quadratic_constraint_into(self, constraint.clone(), new_var);
+    //     constraint -= Term::from(new_var);
+    //     self.add_constraint_allow_explicit_linear(constraint);
 
-        constraint -= Term::from(new_var);
-        self.add_constraint(constraint);
-
-        new_var
-    }
-
-    #[track_caller]
-    fn add_variable_from_expr(&mut self, expr: Expr<F>) -> Variable {
-        let location = std::panic::Location::caller();
-        let name = format!("Variable at {}::{}", location.file(), location.line());
-        self.add_named_variable_from_expr(expr, &name)
-    }
-
-    fn add_named_variable_from_expr(&mut self, expr: Expr<F>, name: &str) -> Variable {
-        let expr = expr.canonicalize();
-        expr.validate_degree_at_most(4);
-        let constraint = expr.to_max_quadratic_constraint();
-        let new_var = self.add_named_variable_from_constraint(constraint, name);
-        self.structured_statements
-            .push(StructuredStatement::Define { dst: new_var, expr });
-
-        new_var
-    }
-
-    fn add_intermediate_named_variable_from_constraint(
-        &mut self,
-        mut constraint: Constraint<F>,
-        name: &str,
-    ) -> Variable {
-        assert!(constraint.degree() <= 2);
-        assert!(constraint.is_empty() == false);
-        assert!(constraint.terms.iter().all(|x| x.is_constant()) == false);
-        constraint.normalize();
-        let mut max_input_layer = isize::MIN;
-        let mut all_vars = HashSet::new();
-        constraint.dump_variables(&mut all_vars);
-        for var in all_vars.into_iter() {
-            let layer = *self
-                .layers_mapping
-                .get(&var)
-                .expect("must have layer assigned") as isize;
-            if max_input_layer != isize::MIN {
-                assert_eq!(
-                    layer, max_input_layer,
-                    "variable {:?} comes from layer {}, but we need everything to be at layer {}",
-                    var, layer, max_input_layer
-                );
-            }
-            max_input_layer = core::cmp::max(max_input_layer, layer);
-        }
-        assert_ne!(max_input_layer, isize::MIN);
-        let new_var = self.add_intermediate_named_variable(name, (max_input_layer as usize) + 1);
-        self.variables_from_constraints
-            .insert(new_var, constraint.clone());
-
-        // NOTE: even though we did push variable into intermediate layer,
-        // we still need to resolve it's witness because it may be a dependency for something else,
-        // that can also involve lookups and multiplicity counting
-
-        use crate::cs::utils::collapse_max_quadratic_constraint_into;
-        collapse_max_quadratic_constraint_into(self, constraint.clone(), new_var);
-
-        new_var
-    }
-
-    fn add_intermediate_named_variable_from_expr(&mut self, expr: Expr<F>, name: &str) -> Variable {
-        let expr = expr.canonicalize();
-        expr.validate_degree_at_most(4);
-        let constraint = expr.to_max_quadratic_constraint();
-        let new_var = self.add_intermediate_named_variable_from_constraint(constraint, name);
-        self.structured_statements
-            .push(StructuredStatement::Define { dst: new_var, expr });
-
-        new_var
-    }
-
-    #[track_caller]
-    fn add_variable_from_constraint_without_witness_evaluation(
-        &mut self,
-        mut constraint: Constraint<F>,
-    ) -> Variable {
-        assert!(constraint.degree() <= 2);
-        assert!(constraint.is_empty() == false);
-        assert!(constraint.terms.iter().all(|x| x.is_constant()) == false);
-        constraint.normalize();
-        let new_var = self.add_variable();
-        // self.variables_from_constraints
-        //     .insert(new_var, constraint.clone());
-
-        constraint -= Term::from(new_var);
-        self.add_constraint(constraint);
-
-        new_var
-    }
-
-    #[track_caller]
-    fn add_variable_from_constraint_allow_explicit_linear(
-        &mut self,
-        mut constraint: Constraint<F>,
-    ) -> Variable {
-        assert!(constraint.degree() <= 2);
-        assert!(constraint.is_empty() == false);
-        assert!(constraint.terms.iter().all(|x| x.is_constant()) == false);
-        constraint.normalize();
-        let new_var = self.add_variable();
-        // self.variables_from_constraints
-        //     .insert(new_var, constraint.clone());
-
-        use crate::cs::utils::collapse_max_quadratic_constraint_into;
-        collapse_max_quadratic_constraint_into(self, constraint.clone(), new_var);
-
-        constraint -= Term::from(new_var);
-        self.add_constraint_allow_explicit_linear(constraint);
-
-        new_var
-    }
-
-    #[track_caller]
-    fn add_variable_from_expr_allow_explicit_linear(&mut self, expr: Expr<F>) -> Variable {
-        let expr = expr.canonicalize();
-        expr.validate_degree_at_most(4);
-        let constraint = expr.to_max_quadratic_constraint();
-        let new_var = self.add_variable_from_constraint_allow_explicit_linear(constraint);
-        self.structured_statements
-            .push(StructuredStatement::Define { dst: new_var, expr });
-
-        new_var
-    }
-
-    #[track_caller]
-    fn add_variable_from_constraint_allow_explicit_linear_without_witness_evaluation(
-        &mut self,
-        mut constraint: Constraint<F>,
-    ) -> Variable {
-        assert!(constraint.degree() <= 2);
-        assert!(constraint.is_empty() == false);
-        assert!(constraint.terms.iter().all(|x| x.is_constant()) == false);
-        constraint.normalize();
-        let new_var = self.add_variable();
-        // self.variables_from_constraints
-        //     .insert(new_var, constraint.clone());
-
-        constraint -= Term::from(new_var);
-        self.add_constraint_allow_explicit_linear(constraint);
-
-        new_var
-    }
+    //     new_var
+    // }
 
     #[track_caller]
     fn set_values(&mut self, node: impl WitnessResolutionDescription<F, W>) {
@@ -358,70 +208,122 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
     }
 
     #[track_caller]
-    fn add_constraint(&mut self, mut constraint: Constraint<F>) {
+    fn add_constraint_expr(&mut self, expr: Expr<F>) {
+        let expr = expr.canonicalize();
+        expr.validate_degree_at_most(4);
+        let mut constraint = expr.to_max_quadratic_constraint();
         assert!(constraint.degree() == 2, "use `add_constraint_allow_explicit_linear` if you need to make a variable arising from linear constraint");
         assert!(constraint.degree() <= 2);
         constraint.normalize();
         self.try_check_constraint(&constraint);
-        self.constraint_storage.push((constraint, false));
+        self.structured_statements
+            .push(StructuredStatement::AssertZero {
+                expr,
+                compiled_constraint: constraint,
+                prevent_optimizations: false,
+            });
     }
 
     #[track_caller]
-    fn add_constraint_allow_explicit_linear(&mut self, mut constraint: Constraint<F>) {
+    fn add_constraint_expr_allow_explicit_linear(&mut self, expr: Expr<F>) {
+        let expr = expr.canonicalize();
+        expr.validate_degree_at_most(4);
+        let mut constraint = expr.to_max_quadratic_constraint();
         assert!(constraint.degree() == 1);
         constraint.normalize();
         self.try_check_constraint(&constraint);
-        self.constraint_storage.push((constraint, false));
+        self.structured_statements
+            .push(StructuredStatement::AssertZero {
+                expr,
+                compiled_constraint: constraint,
+                prevent_optimizations: false,
+            });
     }
 
     #[track_caller]
-    fn add_constraint_allow_explicit_linear_prevent_optimizations(
+    fn add_constraint_expr_allow_explicit_linear_prevent_optimizations_expr(
         &mut self,
-        mut constraint: Constraint<F>,
+        expr: Expr<F>,
     ) {
+        let expr = expr.canonicalize();
+        expr.validate_degree_at_most(4);
+        let mut constraint = expr.to_max_quadratic_constraint();
         assert!(constraint.degree() == 1);
         constraint.normalize();
         self.try_check_constraint(&constraint);
-        self.constraint_storage.push((constraint, true));
-    }
-
-    #[track_caller]
-    fn add_constraint_expr(&mut self, expr: Expr<F>) {
-        let expr = expr.canonicalize();
-        expr.validate_degree_at_most(4);
-        let constraint = expr.to_max_quadratic_constraint();
-        self.add_constraint(constraint);
         self.structured_statements
             .push(StructuredStatement::AssertZero {
                 expr,
-                prevent_optimizations: false,
-            });
-    }
-
-    #[track_caller]
-    fn add_constraint_allow_explicit_linear_expr(&mut self, expr: Expr<F>) {
-        let expr = expr.canonicalize();
-        expr.validate_degree_at_most(4);
-        let constraint = expr.to_max_quadratic_constraint();
-        self.add_constraint_allow_explicit_linear(constraint);
-        self.structured_statements
-            .push(StructuredStatement::AssertZero {
-                expr,
-                prevent_optimizations: false,
-            });
-    }
-
-    #[track_caller]
-    fn add_constraint_allow_explicit_linear_prevent_optimizations_expr(&mut self, expr: Expr<F>) {
-        let expr = expr.canonicalize();
-        expr.validate_degree_at_most(4);
-        let constraint = expr.to_max_quadratic_constraint();
-        self.add_constraint_allow_explicit_linear_prevent_optimizations(constraint);
-        self.structured_statements
-            .push(StructuredStatement::AssertZero {
-                expr,
+                compiled_constraint: constraint,
                 prevent_optimizations: true,
             });
+    }
+
+    #[track_caller]
+    fn add_variable_from_expr(&mut self, expr: Expr<F>) -> Variable {
+        let location = std::panic::Location::caller();
+        let name = format!("Variable at {}::{}", location.file(), location.line());
+        self.add_named_variable_from_expr(expr, &name)
+    }
+
+    fn add_named_variable_from_expr(&mut self, expr: Expr<F>, name: &str) -> Variable {
+        let new_var = self.add_named_variable(name);
+        let expr = expr.canonicalize();
+        expr.validate_degree_at_most(4);
+        let mut constraint = expr.clone().to_max_quadratic_constraint();
+        assert!(constraint.degree() <= 2);
+        assert!(constraint.is_empty() == false);
+        assert!(constraint.terms.iter().all(|x| x.is_constant()) == false);
+        constraint.normalize();
+
+        // let idx = self.structured_statements.len();
+        // self.variables_from_constraints.insert(new_var, idx);
+
+        use crate::cs::utils::collapse_max_quadratic_constraint_into;
+        collapse_max_quadratic_constraint_into(self, constraint.clone(), new_var);
+
+        let expr = expr - Expr::from(new_var);
+        constraint -= Term::from(new_var);
+
+        self.structured_statements
+            .push(StructuredStatement::AssertZero {
+                expr,
+                compiled_constraint: constraint,
+                prevent_optimizations: false,
+            });
+
+        new_var
+    }
+
+    #[track_caller]
+    fn add_variable_from_expr_allow_explicit_linear(&mut self, expr: Expr<F>) -> Variable {
+        let expr = expr.canonicalize();
+        expr.validate_degree_at_most(4);
+        let mut constraint = expr.to_max_quadratic_constraint();
+        assert!(constraint.degree() <= 2);
+        assert!(constraint.is_empty() == false);
+        assert!(constraint.terms.iter().all(|x| x.is_constant()) == false);
+        constraint.normalize();
+        let new_var = self.add_variable();
+
+        // let idx = self.structured_statements.len();
+        // self.variables_from_constraints.insert(new_var, idx);
+
+        let expr = expr - Expr::from(new_var);
+
+        use crate::cs::utils::collapse_max_quadratic_constraint_into;
+        collapse_max_quadratic_constraint_into(self, constraint.clone(), new_var);
+
+        constraint = constraint - Term::from(new_var);
+
+        self.structured_statements
+            .push(StructuredStatement::AssertZero {
+                prevent_optimizations: false,
+                compiled_constraint: constraint,
+                expr,
+            });
+
+        new_var
     }
 
     #[track_caller]
@@ -429,22 +331,86 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
         let expr = expr.canonicalize();
         expr.validate_degree_at_most(4);
         let mut constraint = expr.to_max_quadratic_constraint();
+        assert!(constraint.degree() <= 2);
+        assert!(constraint.is_empty() == false);
+        constraint.normalize();
         constraint -= Term::from(dst);
         constraint.normalize();
 
-        match constraint.degree() {
-            1 => self.add_constraint_allow_explicit_linear(constraint),
-            2 => self.add_constraint(constraint),
-            degree => panic!("variable definition constraint has unsupported degree {degree}"),
-        }
+        // match constraint.degree() {
+        //     1 => {
+
+        //     }
+        //     2 => {
+        //         constraint -= Term::from(dst);
+        //         constraint.normalize();
+
+        //     }
+        //     degree => panic!("variable definition constraint has unsupported degree {degree}"),
+        // }
+
+        let expr = expr - Expr::from(dst);
 
         self.structured_statements
-            .push(StructuredStatement::Define { dst, expr });
+            .push(StructuredStatement::AssertZero {
+                compiled_constraint: constraint,
+                expr,
+                prevent_optimizations: false,
+            });
     }
 
-    fn add_constraint_into_intermediate_variable(
+    fn add_intermediate_named_variable_from_expr(&mut self, expr: Expr<F>, name: &str) -> Variable {
+        let expr = expr.canonicalize();
+        expr.validate_degree_at_most(4);
+        let mut constraint = expr.to_max_quadratic_constraint();
+        assert!(constraint.degree() <= 2);
+        assert!(constraint.is_empty() == false);
+        assert!(constraint.terms.iter().all(|x| x.is_constant()) == false);
+        constraint.normalize();
+        let mut max_input_layer = isize::MIN;
+        let mut all_vars = HashSet::new();
+        constraint.dump_variables(&mut all_vars);
+        for var in all_vars.into_iter() {
+            let layer = *self
+                .layers_mapping
+                .get(&var)
+                .expect("must have layer assigned") as isize;
+            if max_input_layer != isize::MIN {
+                assert_eq!(
+                    layer, max_input_layer,
+                    "variable {:?} comes from layer {}, but we need everything to be at layer {}",
+                    var, layer, max_input_layer
+                );
+            }
+            max_input_layer = core::cmp::max(max_input_layer, layer);
+        }
+        assert_ne!(max_input_layer, isize::MIN);
+        let output_layer = (max_input_layer as usize) + 1;
+        let new_var = self.add_intermediate_named_variable(name, output_layer);
+        let idx = self.structured_statements.len();
+        self.variables_from_constraints.insert(new_var, idx);
+
+        // NOTE: even though we did push variable into intermediate layer,
+        // we still need to resolve it's witness because it may be a dependency for something else,
+        // that can also involve lookups and multiplicity counting
+
+        use crate::cs::utils::collapse_max_quadratic_constraint_into;
+        collapse_max_quadratic_constraint_into(self, constraint.clone(), new_var);
+
+        self.structured_statements
+            .push(StructuredStatement::Define {
+                dst: new_var,
+                compiled_constraint: constraint,
+                expr,
+                output_layer,
+            });
+
+        new_var
+    }
+
+    fn add_constraint_expr_into_intermediate_variable(
         &mut self,
-        _constraint: Constraint<F>,
+        _expr: Expr<F>,
         _intermediate_var: Variable,
     ) {
         todo!();
@@ -467,10 +433,10 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
                         self.add_named_variable(&format!("{} read_timestamp[{}]", name, i))
                     });
 
-                    println!(
-                        "Created variables {:?} for mem access {} read timestamp",
-                        vars, name
-                    );
+                    // println!(
+                    //     "Created variables {:?} for mem access {} read timestamp",
+                    //     vars, name
+                    // );
 
                     // timestamps always assumed assigned
                     let value_fn = move |placer: &mut Self::WitnessPlacer| {
@@ -511,10 +477,10 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
                         &format!("{name} read_value"),
                     );
                     let read_value = read_value.0.map(|el| el.get_variable());
-                    println!(
-                        "Created variables {:?} for mem access {} read value",
-                        read_value, name
-                    );
+                    // println!(
+                    //     "Created variables {:?} for mem access {} read value",
+                    //     read_value, name
+                    // );
                     let read_value = WordRepresentation::U16Limbs(read_value);
 
                     let access = MemoryAccess::RegisterOnly(RegisterAccess {
@@ -532,10 +498,10 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
                     let read_value: [Variable; 4] = std::array::from_fn(|i| {
                         self.add_named_variable(&format!("{} read_value_u8[{}]", name, i))
                     });
-                    println!(
-                        "Created variables {:?} for mem access {} read value",
-                        read_value, name
-                    );
+                    // println!(
+                    //     "Created variables {:?} for mem access {} read value",
+                    //     read_value, name
+                    // );
                     if Self::ASSUME_MEMORY_VALUES_ASSIGNED {
                         let value_fn = move |placer: &mut Self::WitnessPlacer| {
                             for el in read_value.iter() {
@@ -658,9 +624,10 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
                 split_as_u8,
             } => {
                 let read_timestamp = {
-                    let vars = std::array::from_fn(|i| {
-                        self.add_named_variable(&format!("ts: {} read_timestamp[{}]", name, i))
-                    });
+                    let vars: [Variable; NUM_TIMESTAMP_COLUMNS_FOR_RAM] =
+                        std::array::from_fn(|i| {
+                            self.add_named_variable(&format!("ts: {} read_timestamp[{}]", name, i))
+                        });
 
                     if Self::ASSUME_MEMORY_VALUES_ASSIGNED {
                         let value_fn = move |placer: &mut Self::WitnessPlacer| {
@@ -670,13 +637,18 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
                         };
                         self.set_values(value_fn);
                     } else {
+                        // Timestamps are 19-bit columns (wider than u16) — use the
+                        // typed timestamp query + per-column field assignment, NOT
+                        // get_oracle_u32/assign_u32_from_u16_parts (16-bit split).
                         let value_fn = move |placer: &mut Self::WitnessPlacer| {
-                            let value =
-                                placer.get_oracle_u32(Placeholder::ShuffleRamReadTimestamp(
+                            let columns = placer.get_oracle_timestamp_columns(
+                                Placeholder::ShuffleRamReadTimestamp(
                                     local_timestamp_in_cycle as usize,
-                                ));
-
-                            placer.assign_u32_from_u16_parts(vars, &value);
+                                ),
+                            );
+                            for (var, col) in vars.iter().zip(columns.iter()) {
+                                placer.assign_field(*var, col);
+                            }
                         };
                         self.set_values(value_fn);
                     }
@@ -694,7 +666,7 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
                     let vars: [Variable; 4] = core::array::from_fn(|i| {
                         self.add_named_variable(&format!("{name} read_value_u8[{i}]"))
                     });
-                    println!("created variables {vars:?} for mem access {name} read value");
+                    // println!("created variables {vars:?} for mem access {name} read value");
                     let value_fn = move |placer: &mut Self::WitnessPlacer| {
                         if Self::ASSUME_MEMORY_VALUES_ASSIGNED {
                             for el in vars {
@@ -731,9 +703,10 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
                 split_write_as_u8,
             } => {
                 let read_timestamp = {
-                    let vars = std::array::from_fn(|i| {
-                        self.add_named_variable(&format!("{name} read_timestamp[{i}]"))
-                    });
+                    let vars: [Variable; NUM_TIMESTAMP_COLUMNS_FOR_RAM] =
+                        std::array::from_fn(|i| {
+                            self.add_named_variable(&format!("{name} read_timestamp[{i}]"))
+                        });
 
                     if Self::ASSUME_MEMORY_VALUES_ASSIGNED {
                         let value_fn = move |placer: &mut Self::WitnessPlacer| {
@@ -743,13 +716,18 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
                         };
                         self.set_values(value_fn);
                     } else {
+                        // Timestamps are 19-bit columns (wider than u16) — use the
+                        // typed timestamp query + per-column field assignment, NOT
+                        // get_oracle_u32/assign_u32_from_u16_parts (16-bit split).
                         let value_fn = move |placer: &mut Self::WitnessPlacer| {
-                            let value =
-                                placer.get_oracle_u32(Placeholder::ShuffleRamReadTimestamp(
+                            let columns = placer.get_oracle_timestamp_columns(
+                                Placeholder::ShuffleRamReadTimestamp(
                                     local_timestamp_in_cycle as usize,
-                                ));
-
-                            placer.assign_u32_from_u16_parts(vars, &value);
+                                ),
+                            );
+                            for (var, col) in vars.iter().zip(columns.iter()) {
+                                placer.assign_field(*var, col);
+                            }
                         };
                         self.set_values(value_fn);
                     }
@@ -767,7 +745,7 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
                     let vars: [Variable; 4] = core::array::from_fn(|i| {
                         self.add_named_variable(&format!("{name} read_value_u8[{i}]"))
                     });
-                    println!("created variables {vars:?} for mem access {name} read value");
+                    // println!("created variables {vars:?} for mem access {name} read value");
                     let value_fn = move |placer: &mut Self::WitnessPlacer| {
                         if Self::ASSUME_MEMORY_VALUES_ASSIGNED {
                             for el in vars {
@@ -795,7 +773,7 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
                     let vars: [Variable; 4] = core::array::from_fn(|i| {
                         self.add_named_variable(&format!("{name} write_value_u8[{i}]"))
                     });
-                    println!("created variables {vars:?} for mem access {name} write value");
+                    // println!("created variables {vars:?} for mem access {name} write value");
                     let value_fn = move |placer: &mut Self::WitnessPlacer| {
                         if Self::ASSUME_MEMORY_VALUES_ASSIGNED {
                             for el in vars {
@@ -1404,8 +1382,9 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
             };
             self.set_values(value_fn);
         }
-        use crate::constraint::Term;
-        self.add_constraint((Term::from(execute) - Term::from(1u32)) * Term::from(execute));
+        self.add_constraint_expr(
+            (Expr::from(execute) - Expr::from(1u32)).mask(Boolean::Is(execute)),
+        );
 
         let mut decoder_data: DecoderData<F> = DecoderData {
             rs1_index: self.add_named_variable("rs1 index from decoder"),
@@ -1550,8 +1529,9 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
             execute,
             Invariant::Substituted((Placeholder::ExecuteDelegation, 0)),
         );
-        use crate::constraint::Term;
-        self.add_constraint((Term::from(execute) - Term::from(1u32)) * Term::from(execute));
+        self.add_constraint_expr(
+            (Expr::from(execute) - Expr::from(1u32)).mask(Boolean::Is(execute)),
+        );
 
         let invocation_timestamp: [Variable; NUM_TIMESTAMP_COLUMNS_FOR_RAM] =
             std::array::from_fn(|i| {
@@ -1626,7 +1606,6 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
 
         let BasicAssembly {
             no_index_assigned,
-            constraint_storage,
             structured_statements,
             lookup_storage,
             boolean_variables,
@@ -1648,7 +1627,6 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
             memory_queries,
             table_driver,
             num_of_variables: no_index_assigned as usize,
-            constraints: constraint_storage,
             structured_statements,
             layers_mapping,
             lookups: lookup_storage,
@@ -1667,64 +1645,55 @@ impl<F: PrimeField, W: WitnessPlacer<F>, const ASSUME_MEMORY_VALUES_ASSIGNED: bo
     }
 
     fn is_satisfied(&mut self) -> bool {
+        // Restored after the expr-migration stubbed this out. Constraints now live in
+        // `structured_statements` as `AssertZero { compiled_constraint, .. }` (the ≤-quadratic
+        // compiled form); evaluate each against the resolved debug witness and fail on the first
+        // nonzero. Same per-constraint evaluation as `try_check_constraint`.
+        //
+        // Unresolved variables are treated as 0: on a single active row the inactive opcode
+        // families never assign their columns, yet every such constraint is multiplied by a
+        // resolved activity mask of 0, so the product still vanishes (the pre-migration contract —
+        // "assume all unresolved are 0s"). Only the debug evaluator carries values; other placers
+        // vacuously pass, matching the prior behaviour.
         if let Some(witness_placer) = self.witness_placer.as_ref() {
             if std::any::TypeId::of::<W>() == std::any::TypeId::of::<CSDebugWitnessEvaluator<F>>() {
-                unsafe {
-                    let resolver = (witness_placer as *const W)
+                let resolver = unsafe {
+                    (witness_placer as *const W)
                         .cast::<CSDebugWitnessEvaluator<F>>()
-                        .as_ref_unchecked();
-
-                    // there could be cases when conditional branches were not taken,
-                    // and our routines above just would not mark variable as resolved for that reason,
-                    // so we can still assume that all unresolved are 0s below
-
-                    for (constraint, _) in self.constraint_storage.iter() {
-                        let (quad, linear, constant) = constraint.clone().split_max_quadratic();
-                        let mut value = constant;
-                        for (coeff, a, b) in quad.into_iter() {
-                            let mut t = coeff;
-
-                            // let a_value = resolver.get_value(a).unwrap_or(F::ZERO);
-                            // t.mul_assign(&a_value);
-                            // let b_value = resolver.get_value(b).unwrap_or(F::ZERO);
-                            // t.mul_assign(&b_value);
-
-                            let Some(a_value) = resolver.get_value(a) else {
-                                panic!("Variable {:?} left unresolved", a);
-                            };
-                            t.mul_assign(&a_value);
-                            let Some(b_value) = resolver.get_value(b) else {
-                                panic!("Variable {:?} left unresolved", b);
-                            };
-                            t.mul_assign(&b_value);
-
-                            value.add_assign(&t);
-                        }
-                        for (coeff, a) in linear.into_iter() {
-                            let mut t = coeff;
-
-                            // let a_value = resolver.get_value(a).unwrap_or(F::ZERO);
-                            // t.mul_assign(&a_value);
-
-                            let Some(a_value) = resolver.get_value(a) else {
-                                panic!("Variable {:?} left unresolved", a);
-                            };
-                            t.mul_assign(&a_value);
-
-                            value.add_assign(&t);
-                        }
-
-                        if value != F::ZERO {
-                            println!(
-                                "[{}:{}] unsatisfied at constraint {constraint:?} with value {value:?}",
-                                file!(), line!()
-                            );
-                            return false;
-                        }
+                        .as_ref_unchecked()
+                };
+                for stmt in self.structured_statements.iter() {
+                    let StructuredStatement::AssertZero {
+                        compiled_constraint,
+                        ..
+                    } = stmt
+                    else {
+                        continue;
+                    };
+                    let (quad, linear, constant) =
+                        compiled_constraint.clone().split_max_quadratic();
+                    let mut value = constant;
+                    for (coeff, a, b) in quad.into_iter() {
+                        let mut t = coeff;
+                        t.mul_assign(&resolver.get_value(a).unwrap_or(F::ZERO));
+                        t.mul_assign(&resolver.get_value(b).unwrap_or(F::ZERO));
+                        value.add_assign(&t);
                     }
-
-                    return true;
+                    for (coeff, a) in linear.into_iter() {
+                        let mut t = coeff;
+                        t.mul_assign(&resolver.get_value(a).unwrap_or(F::ZERO));
+                        value.add_assign(&t);
+                    }
+                    if value != F::ZERO {
+                        println!(
+                            "[{}:{}] unsatisfied at constraint {compiled_constraint:?} with value {value:?}",
+                            file!(),
+                            line!()
+                        );
+                        return false;
+                    }
                 }
+                return true;
             }
         }
 

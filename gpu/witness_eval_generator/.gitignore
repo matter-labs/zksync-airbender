@@ -1,0 +1,3 @@
+# Local scratch if the `generate` bin is pointed at this dir; the committed
+# artifacts live in circuit_defs/**/generated/.
+*.cuh

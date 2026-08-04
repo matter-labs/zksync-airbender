@@ -27,6 +27,7 @@ pub use ::load_store_subword_only::LoadStoreSubwordOnlyCircuit;
 pub use ::load_store_word_only::LoadStoreWordOnlyCircuit;
 pub use ::mul_div_unsigned::UnsignedMulDivCircuit;
 pub use ::shift_binary::ShiftBinaryCircuit;
+pub use ::unified_reduced_machine::UnifiedReducedMachineCircuit;
 
 pub use ::bigint_with_control::BigIntDelegationCircuit;
 pub use ::blake2_g_function::Blake2sGFunctionDelegationCircuit;
@@ -42,6 +43,7 @@ pub use keccak_special5;
 pub use prover;
 
 pub mod circuits;
+pub mod program_setups;
 pub mod unrolled_circuits;
 pub use self::circuits::*;
 pub use self::unrolled_circuits::*;
@@ -76,17 +78,18 @@ pub enum UnrolledCircuitWitnessEvalFn<A: GoodAllocator> {
     NonMemory {
         witness_fn:
             fn(&'_ mut ColumnMajorWitnessProxy<'_, NonMemoryCircuitOracle<'_>, BabyBearField>),
-        decoder_table: Vec<ExecutorFamilyDecoderData, A>,
+        decoder_table: Vec<Option<ExecutorFamilyDecoderData>, A>,
         default_pc_value_in_padding: u32,
     },
     Memory {
         witness_fn: fn(&'_ mut ColumnMajorWitnessProxy<'_, MemoryCircuitOracle<'_>, BabyBearField>),
-        decoder_table: Vec<ExecutorFamilyDecoderData, A>,
+        decoder_table: Vec<Option<ExecutorFamilyDecoderData>, A>,
     },
-    // Unified {
-    //     witness_fn: fn(&'_ mut ColumnMajorWitnessProxy<'_, UnifiedRiscvCircuitOracle<'_>>),
-    //     decoder_table: Vec<ExecutorFamilyDecoderData, A>,
-    // },
+    Unified {
+        witness_fn:
+            fn(&'_ mut ColumnMajorWitnessProxy<'_, UnifiedRiscvCircuitOracle<'_>, BabyBearField>),
+        decoder_table: Vec<Option<ExecutorFamilyDecoderData>, A>,
+    },
 }
 
 pub struct CircuitSetup<A: GoodAllocator = Global> {
@@ -126,7 +129,7 @@ pub fn make_setup_for_non_mem_circuit<
 
     let witness_eval_fn = witness_eval_fn.map(|el| UnrolledCircuitWitnessEvalFn::NonMemory {
         witness_fn: el,
-        decoder_table: witness_gen_data,
+        decoder_table: decoder_table_data.to_vec_in(A::default()),
         default_pc_value_in_padding,
     });
 
@@ -170,7 +173,7 @@ pub fn make_setup_for_with_mem_circuit<
 
     let witness_eval_fn = witness_eval_fn.map(|el| UnrolledCircuitWitnessEvalFn::Memory {
         witness_fn: el,
-        decoder_table: witness_gen_data,
+        decoder_table: decoder_table_data.to_vec_in(A::default()),
     });
 
     CircuitSetup {
@@ -183,12 +186,12 @@ pub fn make_setup_for_with_mem_circuit<
     }
 }
 
-// pub mod all_parameters {
-//     use super::*;
-//     include!("../generated/all_delegation_circuits_params.rs");
-// }
-
 use prover::definitions::DEFAULT_CAP_SIZE;
+
+/// Per-program setup-params map, keyed by circuit family index. The recursion
+/// drivers and the full-statement verifier both consume the caps in this
+/// (ascending-key) order.
+pub type Setups = std::collections::BTreeMap<u32, UnrolledCircuitSetupParams>;
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct UnrolledCircuitSetupParams {
@@ -198,6 +201,31 @@ pub struct UnrolledCircuitSetupParams {
     // #[serde(bound(deserialize = "MerkleTreeCap<DEFAULT_CAP_SIZE>: serde::Deserialize<'de>"))]
     // #[serde(bound(serialize = "MerkleTreeCap<DEFAULT_CAP_SIZE>: serde::Serialize"))]
     pub setup_caps: MerkleTreeCap<DEFAULT_CAP_SIZE>,
+}
+
+impl UnrolledCircuitSetupParams {
+    /// Build the params from a committed setup tree's cap, converting the
+    /// var-length cap into the fixed [`DEFAULT_CAP_SIZE`] one.
+    ///
+    /// # Panics
+    /// If the cap does not have exactly [`DEFAULT_CAP_SIZE`] leafs.
+    #[must_use]
+    pub fn from_setup_tree_cap(
+        family_idx: u32,
+        capacity: u32,
+        cap: prover::merkle_trees::MerkleTreeCapVarLength,
+    ) -> Self {
+        let num_leafs = cap.cap.len();
+        Self {
+            family_idx,
+            capacity,
+            setup_caps: MerkleTreeCap {
+                cap: cap.cap.try_into().unwrap_or_else(|_| {
+                    panic!("setup tree cap has {num_leafs} leafs, expected {DEFAULT_CAP_SIZE}")
+                }),
+            },
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -210,94 +238,6 @@ pub struct DelegationCircuitSetupParams {
     pub setup_caps: MerkleTreeCap<DEFAULT_CAP_SIZE>,
 }
 
-// pub fn compute_unrolled_circuits_params_for_machine_configuration<C: MachineConfig>(
-//     binary_image: &[u32],
-//     bytecode: &[u32],
-// ) -> Vec<UnrolledCircuitSetupParams> {
-//     if is_default_machine_configuration::<C>() {
-//         compute_unrolled_circuits_params_base_layer(binary_image, bytecode)
-//     } else if is_machine_without_signed_mul_div_configuration::<C>() {
-//         compute_unrolled_circuits_params_base_layer_unsigned_only(binary_image, bytecode)
-//     } else if is_reduced_machine_configuration::<C>() {
-//         compute_unrolled_circuits_params_recursion_layer(binary_image, bytecode)
-//     } else {
-//         panic!("Unknown configuration {:?}", std::any::type_name::<C>());
-//     }
-// }
-
-// pub fn compute_unified_circuit_params_for_machine_configuration<C: MachineConfig>(
-//     binary_image: &[u32],
-//     bytecode: &[u32],
-// ) -> Vec<UnrolledCircuitSetupParams> {
-//     if is_default_machine_configuration::<C>() {
-//         panic!(
-//             "Configuration {:?} is not supported",
-//             std::any::type_name::<C>()
-//         );
-//     } else if is_machine_without_signed_mul_div_configuration::<C>() {
-//         panic!(
-//             "Configuration {:?} is not supported",
-//             std::any::type_name::<C>()
-//         );
-//     } else if is_reduced_machine_configuration::<C>() {
-//         compute_unified_circuit_params_recursion_layer(binary_image, bytecode)
-//     } else {
-//         panic!("Unknown configuration {:?}", std::any::type_name::<C>());
-//     }
-// }
-
-// pub fn compute_unrolled_circuits_params_base_layer(
-//     binary_image: &[u32],
-//     bytecode: &[u32],
-// ) -> Vec<UnrolledCircuitSetupParams> {
-//     let eval_fns = vec![
-//         add_sub_lui_auipc_mop_circuit_setup,
-//         jump_branch_slt_circuit_setup,
-//         shift_binary_csr_circuit_setup,
-//         // mul_div_circuit_setup,
-//         load_store_word_only_circuit_setup,
-//         load_store_subword_only_circuit_setup,
-//     ];
-//     compute_unrolled_circuits_params_impl(binary_image, bytecode, &eval_fns)
-// }
-
-// pub fn compute_unrolled_circuits_params_base_layer_unsigned_only(
-//     binary_image: &[u32],
-//     bytecode: &[u32],
-// ) -> Vec<UnrolledCircuitSetupParams> {
-//     let eval_fns = vec![
-//         add_sub_lui_auipc_mop_circuit_setup,
-//         jump_branch_slt_circuit_setup,
-//         shift_binary_csr_circuit_setup,
-//         mul_div_unsigned_circuit_setup,
-//         load_store_word_only_circuit_setup,
-//         load_store_subword_only_circuit_setup,
-//     ];
-//     compute_unrolled_circuits_params_impl(binary_image, bytecode, &eval_fns)
-// }
-
-// pub fn compute_unrolled_circuits_params_recursion_layer(
-//     binary_image: &[u32],
-//     bytecode: &[u32],
-// ) -> Vec<UnrolledCircuitSetupParams> {
-//     let eval_fns = vec![
-//         add_sub_lui_auipc_mop_circuit_setup,
-//         jump_branch_slt_circuit_setup,
-//         shift_binary_csr_circuit_setup,
-//         load_store_word_only_circuit_setup,
-//     ];
-//     compute_unrolled_circuits_params_impl(binary_image, bytecode, &eval_fns)
-// }
-
-// pub fn compute_unified_circuit_params_recursion_layer(
-//     binary_image: &[u32],
-//     bytecode: &[u32],
-// ) -> Vec<UnrolledCircuitSetupParams> {
-//     let eval_fns: Vec<fn(&[u32], &[u32], &Worker) -> UnrolledCircuitPrecomputations<Global>> =
-//         vec![unified_reduced_machine_circuit_setup::<Global, Global>];
-//     compute_unrolled_circuits_params_impl(binary_image, bytecode, &eval_fns)
-// }
-
 pub fn compute_setup_commitment(
     setup: GKRSetup<BabyBearField>,
     cap_size: usize,
@@ -308,104 +248,6 @@ pub fn compute_setup_commitment(
 
     todo!();
 }
-
-// fn compute_unrolled_circuits_params_impl(
-//     binary_image: &[u32],
-//     bytecode: &[u32],
-//     circuits: &[fn(&[u32], &[u32], &Worker) -> UnrolledCircuitPrecomputations<Global, Global>],
-// ) -> Vec<UnrolledCircuitSetupParams> {
-//     assert!(binary_image.len() >= bytecode.len());
-//     let worker = prover::worker::Worker::new();
-//     use prover::merkle_trees::MerkleTreeConstructor;
-
-//     let mut results = Vec::with_capacity(circuits.len());
-//     for eval_fn in circuits.iter() {
-//         let precomp = (eval_fn)(binary_image, bytecode, &worker);
-//         let num_cycles = (precomp.trace_len - 1) as u32;
-//         let setup = DefaultTreeConstructor::dump_caps(&precomp.setup.trees);
-//         let setup: [MerkleTreeCap<CAP_SIZE>; NUM_COSETS] = setup
-//             .into_iter()
-//             .map(|el| MerkleTreeCap {
-//                 cap: el.cap.try_into().unwrap(),
-//             })
-//             .collect::<Vec<_>>()
-//             .try_into()
-//             .unwrap();
-
-//         results.push(UnrolledCircuitSetupParams {
-//             family_idx: precomp.family_idx as u32,
-//             capacity: num_cycles,
-//             setup_caps: setup,
-//         });
-//     }
-//     // sort by family index
-//     results.sort_by(|a, b| a.family_idx.cmp(&b.family_idx));
-
-//     results
-// }
-
-// pub fn compute_delegation_circuits_params() -> Vec<DelegationCircuitSetupParams> {
-//     let worker = prover::worker::Worker::new();
-//     use prover::merkle_trees::MerkleTreeConstructor;
-//     let all_circuits = all_delegation_circuits_precomputations::<Global, Global>(&worker);
-//     let mut results = Vec::with_capacity(all_circuits.len());
-//     for (delegation_type, prec) in all_circuits.into_iter() {
-//         let delegation_type = delegation_type as u32;
-//         let num_delegation_requests = (prec.trace_len - 1) as u32;
-//         let setup = DefaultTreeConstructor::dump_caps(&prec.setup.trees);
-//         let setup: [MerkleTreeCap<CAP_SIZE>; NUM_COSETS] = setup
-//             .into_iter()
-//             .map(|el| MerkleTreeCap {
-//                 cap: el.cap.try_into().unwrap(),
-//             })
-//             .collect::<Vec<_>>()
-//             .try_into()
-//             .unwrap();
-//         results.push((delegation_type, num_delegation_requests, setup));
-//     }
-
-//     results
-// }
-
-// pub fn generate_delegation_circuits_artifacts() -> String {
-//     use prover::cap_holder::array_to_tokens;
-//     use quote::quote;
-
-//     let all_params = compute_delegation_circuits_params();
-
-//     let mut streams = Vec::with_capacity(all_params.len());
-
-//     for (delegation_type, num_delegation_requests, setup) in all_params.into_iter() {
-//         let caps_stream = array_to_tokens(&setup);
-//         let t = quote! {
-//             (
-//                 #delegation_type,
-//                 #num_delegation_requests,
-//                 #caps_stream
-//             )
-//         };
-//         streams.push(t);
-//     }
-
-//     use quote::TokenStreamExt;
-
-//     let mut full_stream = proc_macro2::TokenStream::new();
-//     full_stream.append_separated(
-//         streams.into_iter().map(|el| {
-//             quote! { #el }
-//         }),
-//         quote! {,},
-//     );
-
-//     let cap_size = CAP_SIZE;
-//     let num_cosets = NUM_COSETS;
-
-//     let description = quote! {
-//         pub const ALL_DELEGATION_CIRCUITS_PARAMS: &[(u32, u32, [MerkleTreeCap<#cap_size>; #num_cosets])] = & [#full_stream];
-//     }.to_string();
-
-//     description
-// }
 
 pub fn binary_u8_to_u32(binary_u8: &[u8]) -> Vec<u32> {
     assert_eq!(binary_u8.len() % core::mem::size_of::<u32>(), 0);
@@ -437,55 +279,4 @@ pub fn pad_binary(mut buffer: Vec<u8>) -> (Vec<u8>, Vec<u32>) {
     pad_bytecode_bytes_for_proving(&mut buffer);
     pad_bytecode_for_proving(&mut binary);
     (buffer, binary)
-}
-
-// pub fn compute_and_save_params(
-//     binary_image_path: &Path,
-//     bytecode_path: &Path,
-//     destination: &Path,
-//     gen_fn: fn(&[u32], &[u32]) -> Vec<UnrolledCircuitSetupParams>,
-// ) {
-//     use sha3::Digest;
-//     let (raw_binary_image, binary_image) = read_and_pad_binary(binary_image_path);
-//     let (raw_bytecode, bytecode) = read_and_pad_binary(bytecode_path);
-//     let setups = (gen_fn)(&binary_image, &bytecode);
-//     let binary_image_hash = sha3::Keccak256::digest(&raw_binary_image);
-//     let bytecode_hash = sha3::Keccak256::digest(&raw_bytecode);
-//     let path = destination.join(format!(
-//         "{}_{}.json",
-//         hex::encode(binary_image_hash),
-//         hex::encode(bytecode_hash)
-//     ));
-//     let file = std::fs::File::create(path).expect("create result file");
-//     serde_json::to_writer(file, &(setups, inits_setup)).expect("must serialize");
-// }
-
-#[cfg(test)]
-mod test {
-    use test_utils::skip_if_ci;
-
-    use super::*;
-
-    // #[cfg(test)]
-    // #[test]
-    // fn generate_all() {
-    //     skip_if_ci!();
-    //     let description = generate_delegation_circuits_artifacts();
-
-    //     let mut dst = std::fs::File::create("generated/all_delegation_circuits_params.rs").unwrap();
-    //     use std::io::Write;
-    //     dst.write_all(&description.as_bytes()).unwrap();
-    // }
-
-    // #[cfg(test)]
-    // #[test]
-    // fn test_generate_unrolled_base() {
-    //     skip_if_ci!();
-    //     compute_and_save_params(
-    //         Path::new("../../examples/basic_fibonacci/app.bin"),
-    //         Path::new("../../examples/basic_fibonacci/app.text"),
-    //         Path::new("./"),
-    //         compute_unrolled_circuits_params_base_layer_unsigned_only,
-    //     );
-    // }
 }

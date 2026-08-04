@@ -1,0 +1,71 @@
+[package]
+name = "gpu_circuit_prover"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+license.workspace = true
+keywords.workspace = true
+categories.workspace = true
+build = "build.rs"
+
+[dependencies]
+# Upstream crates the production proof/ + config surface references (through
+# `crate::upstream`, except the few pre-existing direct generic-bound uses).
+blake2s_u32 = { workspace = true }
+cs = { workspace = true, features = ["compiler"] }
+fft = { workspace = true }
+field = { workspace = true }
+prover = { workspace = true, features = ["prover"] }
+# Feature-only dependency: security_80 / security_100 forward to it.
+verifier_common = { workspace = true }
+
+# The split GPU crates the apex orchestrates over (+ gpu_core substrate and the
+# pure-CPU GKR layout model consumed directly by proof/layout/build_inputs.rs).
+gpu_core = { workspace = true }
+gpu_hash = { workspace = true }
+gpu_prover_context = { workspace = true }
+gpu_trace = { workspace = true }
+gpu_gkr = { workspace = true }
+gpu_whir = { workspace = true }
+gpu_gkr_model = { workspace = true }
+
+era_cudart = "=0.156.0"
+era_cudart_sys = "=0.156.0"
+
+[features]
+default = ["security_80", "deterministic_pow"]
+# gpu_whir owns both PoW-determinism legs: gpu_whir/deterministic_pow enables
+# prover/deterministic_pow (host) + gpu_hash/deterministic_pow (GPU search
+# kernel). Same two upstream features end up enabled as before the split.
+deterministic_pow = ["gpu_whir/deterministic_pow"]
+security_80 = ["verifier_common/security_80"]
+security_100 = ["verifier_common/security_100"]
+test_no_inline = ["field/no_inline"]
+# Commit recursive WHIR oracle leaves in evaluation form instead of the default
+# coefficient form (#279). PROTOCOL-level: the generated verifier must be built
+# with the matching encoding (verifier_generator `eval_leaves`). The single cfg
+# site lives in gpu_whir (Task 10); the apex forwards the feature down.
+eval_leaves = ["gpu_whir/eval_leaves"]
+
+[build-dependencies]
+gpu_native_build = { workspace = true }
+
+[dev-dependencies]
+# The e2e suite (tests/) needs more upstream surface than production: it drives
+# fixtures through cs/prover/riscv_transpiler and hashes via gpu_ops.
+prover = { workspace = true, features = ["test-utils"] }
+# Enables gpu_whir's WHIR-oracle parity/query + fold::debug test-support surface
+# (gated `#[cfg(any(test, feature = "test-utils"))]`) for this crate's e2e/parity
+# suite. gpu_whir stays a normal [dependencies] entry WITHOUT the feature, so the
+# production library never compiles that surface; Cargo unions the two only when
+# building this crate's own tests. Mirrors the `prover` test-utils precedent.
+gpu_whir = { workspace = true, features = ["test-utils"] }
+common_constants = { workspace = true }
+riscv_transpiler = { workspace = true, features = ["jit"] }
+worker = { workspace = true }
+gpu_ops = { workspace = true }
+itertools = "0.14"
+serde = { workspace = true }
+serde_json = "*"

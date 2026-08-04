@@ -12,6 +12,7 @@ pub use rounds::{
 };
 
 pub fn generate_whir_verify<MW: FieldWrapper>(whir_hash_buf_size: usize) -> TokenStream {
+    let field_struct = MW::field_struct();
     let quartic_struct = MW::quartic_struct();
     let quartic_one = MW::quartic_one();
 
@@ -33,7 +34,7 @@ pub fn generate_whir_verify<MW: FieldWrapper>(whir_hash_buf_size: usize) -> Toke
 
         pub const WHIR_HASH_BUF_SIZE: usize = #whir_hash_buf_size;
 
-        pub fn verify_whir<I: NonDeterminismSource, E: ErrorCreator>(
+        pub fn verify_whir<I: NonDeterminismSource<#field_struct>, E: ErrorCreator>(
             initial_transcript: &ConcreteInitialTranscript,
             ts: &mut TranscriptState,
             batching_challenge: #quartic_struct,

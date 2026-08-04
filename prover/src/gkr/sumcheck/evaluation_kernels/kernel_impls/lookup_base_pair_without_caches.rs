@@ -6,7 +6,7 @@ use super::*;
 
 #[derive(Debug)]
 pub struct LookupBasePairWithoutCachesGKRRelation<F: PrimeField, E: FieldExtension<F> + Field> {
-    pub inputs: [NoFieldSingleColumnLookupRelation; 2],
+    pub inputs: [NoFieldSingleColumnLookupRelation<F>; 2],
     pub outputs: [GKRAddress; 2],
     pub lookup_additive_challenge: E,
     pub _marker: core::marker::PhantomData<F>,

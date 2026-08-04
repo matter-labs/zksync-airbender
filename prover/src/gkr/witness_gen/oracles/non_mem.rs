@@ -7,7 +7,7 @@ use riscv_transpiler::witness::NonMemoryOpcodeTracingDataWithTimestamp;
 
 pub struct NonMemoryCircuitOracle<'a> {
     pub inner: &'a [NonMemoryOpcodeTracingDataWithTimestamp],
-    pub decoder_table: &'a [ExecutorFamilyDecoderData],
+    pub decoder_table: &'a [Option<ExecutorFamilyDecoderData>],
     pub default_pc_value_in_padding: u32,
 }
 
@@ -180,6 +180,12 @@ impl<'a, F: PrimeField> Oracle<F> for NonMemoryCircuitOracle<'a> {
             return Default::default();
         };
         let pc = cycle_data.opcode_data.initial_pc;
-        self.decoder_table[(pc as usize) / 4]
+        self.decoder_table[(pc as usize) / 4].unwrap_or_else(|| {
+            panic!(
+                "no decoder entry for PC {pc:#010x} (index {}): this family's oracle was \
+                 queried for a captured cycle whose opcode it does not decode",
+                (pc as usize) / 4
+            )
+        })
     }
 }

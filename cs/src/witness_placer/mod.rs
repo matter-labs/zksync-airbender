@@ -269,6 +269,10 @@ pub trait WitnessPlacer<F: PrimeField>: WitnessTypeSet<F> {
     fn get_oracle_u16(&mut self, placeholder: Placeholder) -> Self::U16;
     fn get_oracle_u8(&mut self, placeholder: Placeholder) -> Self::U8;
     fn get_oracle_boolean(&mut self, placeholder: Placeholder) -> Self::Mask;
+    fn get_oracle_timestamp_columns(
+        &mut self,
+        placeholder: Placeholder,
+    ) -> [Self::Field; NUM_TIMESTAMP_COLUMNS_FOR_RAM];
 
     fn get_field(&mut self, variable: Variable) -> Self::Field;
     fn get_boolean(&mut self, variable: Variable) -> Self::Mask;
@@ -465,6 +469,14 @@ pub trait WitnessComputationalField<F: PrimeField>: 'static + Sized + Clone + De
     fn inverse_or_zero(&self) -> Self;
     fn as_integer(self) -> Self::IntegerRepresentation;
     fn from_integer(value: Self::IntegerRepresentation) -> Self;
+
+    /// Decode an integer that holds the field's *raw* representation into a field element.
+    /// For a Montgomery field (`F::IS_MONT_REPR`) this is the raw Montgomery repr; for a
+    /// non-Montgomery field it is the identity. Inverse of [`Self::into_raw_repr_reduced`].
+    fn from_raw_repr_with_reduction(value: Self::IntegerRepresentation) -> Self;
+
+    /// Encode a field element into the integer holding its *raw* representation. Inverse of [`Self::from_raw_repr`]
+    fn into_raw_repr_reduced(self) -> Self::IntegerRepresentation;
 }
 
 pub trait WitnessComputationalInteger<T: 'static + Sized>: WitnessComputationCore {
@@ -666,13 +678,50 @@ impl<F: PrimeField> WitnessComputationalField<F> for F {
     }
 
     #[inline(always)]
+    #[track_caller]
     fn as_integer(self) -> Self::IntegerRepresentation {
-        self.as_u32_reduced() as u32
+        if F::CHAR_BITS > 32 {
+            let as_u128 = self.as_u128_reduced();
+            if as_u128.bit_width() > 32 {
+                0
+            } else {
+                as_u128 as u32
+            }
+        } else {
+            self.as_u32_reduced()
+        }
     }
 
     #[inline(always)]
+    #[track_caller]
     fn from_integer(value: Self::IntegerRepresentation) -> Self {
-        Self::from_u64_with_reduction(value as u64)
+        if F::CHAR_BITS > 32 {
+            Self::from_u32_with_reduction(value)
+        } else {
+            Self::from_u32_with_reduction(value)
+        }
+    }
+
+    #[inline(always)]
+    #[track_caller]
+    fn from_raw_repr_with_reduction(value: Self::IntegerRepresentation) -> Self {
+        if F::CHAR_BITS > 32 {
+            // assume canonical
+            Self::from_integer(value)
+        } else {
+            F::from_raw_repr_with_reduction(value)
+        }
+    }
+
+    #[inline(always)]
+    #[track_caller]
+    fn into_raw_repr_reduced(self) -> Self::IntegerRepresentation {
+        if F::CHAR_BITS > 32 {
+            // go via canonical
+            self.as_integer()
+        } else {
+            self.as_u32_raw_repr_reduced()
+        }
     }
 }
 

@@ -14,10 +14,7 @@ pub fn generate_whir_common<MW: FieldWrapper>(max_fold_steps: usize) -> TokenStr
     let field_struct = MW::field_struct();
 
     // read_and_batch_leaf ops
-    let from_raw = MW::field_from_reduced_raw_repr(quote! { raw });
-    // let mul_term_base = MW::mul_assign_by_base(quote! { term }, quote! { base_val });
-    // let add_acc0_term = MW::add_assign(quote! { *acc0 }, quote! { term });
-    // let add_acc1_term = MW::add_assign(quote! { *acc1 }, quote! { term });
+    // let from_raw = MW::field_from_reduced_raw_repr(quote! { raw });
 
     let fma_into_acc_0 =
         MW::add_assign_product_with_base(quote! { *acc0 }, quote! { gamma }, quote! { base_val });
@@ -32,30 +29,25 @@ pub fn generate_whir_common<MW: FieldWrapper>(max_fold_steps: usize) -> TokenStr
     let add_claim_c1 = MW::add_assign(quote! { new_claim }, quote! { c1 });
     let add_claim_c0 = MW::add_assign(quote! { new_claim }, quote! { c0 });
 
-    // gamma power / fold coset ops
+    // gamma power ops (shared by both encodings: used by materialize_gamma_powers
+    // and compute_high_powers_offsets).
     let mul_pow_gen = MW::mul_assign(quote! { pow }, quote! { set_gen_inv });
     let mul_gamma_pow = MW::mul_assign(quote! { gamma_pow }, quote! { gamma });
-    let sub_t_b = MW::sub_assign(quote! { t }, quote! { b });
-    let mul_t_challenge = MW::mul_assign(quote! { t }, quote! { challenge });
-    let mul_t_root = MW::mul_assign_by_base(quote! { t }, quote! { root });
-    let add_t_a = MW::add_assign(quote! { t }, quote! { a });
-    let add_t_b = MW::add_assign(quote! { t }, quote! { b });
-    let mul_t_half = MW::mul_assign_by_base(quote! { t }, quote! { #field_struct::HALF });
-    let mul_root_offset = MW::mul_assign(quote! { root }, quote! { high_powers_offset });
-    let square_root_inv = MW::square(quote! { root_inv });
 
+    // The per-leaf fold helpers differ between coefficient and evaluation form.
+    // Exactly one branch is emitted (compile-time `eval_leaves`), so the generated
+    // verifier carries a single fold implementation with no runtime branching.
+    let fold_helpers = build_fold_helpers::<MW>();
+
+    // eq(z, α) = (1-α) + (2α-1)·z. Precompute (1-α) and the coefficient (2α-1) once per fold
+    // call, then evaluate each inner `eq` with a single fused multiply-add. This removes the
+    // per-entry extension-field add and sub that the explicit `(1-α) + 2α·z - z` form needed.
     let sub_oma_alpha = MW::sub_assign(quote! { one_minus_alpha }, quote! { alpha });
-    let double_two_alpha = MW::double(quote! { two_alpha });
-    let mul_two_a_zi_zi = MW::mul_assign(quote! { two_a_zi }, quote! { zi });
-    let add_eq_two_a_zi = MW::add_assign(quote! { eq }, quote! { two_a_zi });
-    let eq_add_two_a_zi =
-        MW::add_assign_product(quote! { eq }, quote! { two_alpha }, quote! { zi });
-    let sub_eq_zi = MW::sub_assign(quote! { eq }, quote! { zi });
+    let double_alpha_coeff = MW::double(quote! { alpha_coeff });
+    let sub_coeff_one = MW::sub_assign_base(quote! { alpha_coeff }, MW::field_one());
+    let fma_eq_zi = MW::add_assign_product(quote! { eq }, quote! { alpha_coeff }, quote! { zi });
     let mul_prefactor_eq = MW::mul_assign(quote! { acc.z_initial_prefactor }, quote! { eq });
-    let mul_two_a_s_s = MW::mul_assign(quote! { two_a_s }, quote! { s });
-    let add_eq_two_a_s = MW::add_assign(quote! { eq }, quote! { two_a_s });
-    let sub_eq_s = MW::sub_assign(quote! { eq }, quote! { s });
-    let eq_add_two_a_s = MW::add_assign_product(quote! { eq }, quote! { two_alpha }, quote! { s });
+    let fma_eq_s = MW::add_assign_product(quote! { eq }, quote! { alpha_coeff }, quote! { s });
     let mul_entry_prefactor_eq = MW::mul_assign(quote! { entry.prefactor }, quote! { eq });
     let square_current_scalar = MW::square(quote! { entry.current_scalar });
 
@@ -79,7 +71,7 @@ pub fn generate_whir_common<MW: FieldWrapper>(max_fold_steps: usize) -> TokenStr
         }
 
         #[inline(always)]
-        pub fn verify_whir_sumcheck_step<I: NonDeterminismSource, E: ErrorCreator>(
+        pub fn verify_whir_sumcheck_step<I: NonDeterminismSource<#field_struct>, E: ErrorCreator>(
             ts: &mut TranscriptState,
             claim: #quartic_struct,
             round: usize,
@@ -97,7 +89,7 @@ pub fn generate_whir_common<MW: FieldWrapper>(max_fold_steps: usize) -> TokenStr
             {
                 let mut i = 0;
                 while i < WHIR_SC_DATA_WORDS {
-                    buf.data_write(i, read_reduced_field_el::<I>(nd_source));
+                    buf.data_write(i, read_reduced_field_el::<I>(nd_source).as_u32_raw_repr());
                     i += 1;
                 }
             }
@@ -150,6 +142,200 @@ pub fn generate_whir_common<MW: FieldWrapper>(max_fold_steps: usize) -> TokenStr
             unsafe { powers.into_array() }
         }
 
+        #fold_helpers
+
+        pub const MAX_HIGH_POWERS: usize = #max_high_powers;
+
+        #[inline(always)]
+        pub fn bitreverse_inplace<T: Copy>(arr: &mut [T]) {
+            let n = arr.len();
+            if n <= 1 {
+                return;
+            }
+            let log_n = n.trailing_zeros();
+            let mut i = 0;
+            while i < n {
+                let j = (i as u32).reverse_bits().wrapping_shr(32 - log_n) as usize;
+                if i < j {
+                    unsafe {
+                        let tmp = *arr.get_unchecked(i);
+                        *arr.get_unchecked_mut(i) = *arr.get_unchecked(j);
+                        *arr.get_unchecked_mut(j) = tmp;
+                    }
+                }
+                i += 1;
+            }
+        }
+
+        /// Compute bit-reversed high powers of the set-generator inverse for fold_coset.
+        #[inline(always)]
+        pub fn compute_high_powers_offsets(
+            fold_steps: usize,
+            dst: &mut LazyVec<#field_struct, MAX_HIGH_POWERS>,
+        ) {
+            let count = 1usize << (fold_steps - 1);
+            dst.push(#field_struct::ONE);
+            let set_gen_inv = #field_struct::TWO_ADICITY_GENERATORS_INVERSED[fold_steps];
+            let mut pow = set_gen_inv;
+            let mut i = 1;
+            while i < count {
+                dst.push(pow);
+                #mul_pow_gen;
+                i += 1;
+            }
+            bitreverse_inplace(&mut dst.as_mut_slice()[..count]);
+        }
+
+        #[inline(always)]
+        pub fn ext_from_raw_word_slice(words: &[u32]) -> #quartic_struct {
+            debug_assert!(words.len() >= EXT_DEGREE);
+            let raw = unsafe { (words.as_ptr() as *const [u32; EXT_DEGREE]).as_ref_unchecked() };
+            ext_from_raw_words::<#field_struct, #quartic_struct, EXT_DEGREE>(raw)
+        }
+
+        #[inline(always)]
+        #[allow(clippy::too_many_arguments)]
+        pub unsafe fn read_and_batch_leaf<I: NonDeterminismSource<#field_struct>>(
+            hash_buf: &mut [u32],
+            num_columns: usize,
+            gamma_powers: &[#quartic_struct],
+            gamma_offset: usize,
+            acc0: &mut #quartic_struct,
+            acc1: &mut #quartic_struct,
+            nd_source: &mut I,
+        ) {
+            let mut col = 0;
+            while col < num_columns {
+                let gamma = *gamma_powers.get_unchecked(gamma_offset + col);
+                let idx = col * 2;
+
+                let raw = read_reduced_field_el::<I>(nd_source);
+                *hash_buf.get_unchecked_mut(idx) = raw.as_u32_raw_repr();
+                let base_val = raw;
+                #fma_into_acc_0;
+
+                let raw = read_reduced_field_el::<I>(nd_source);
+                *hash_buf.get_unchecked_mut(idx + 1) = raw.as_u32_raw_repr();
+                let base_val = raw;
+                #fma_into_acc_1;
+
+                col += 1;
+            }
+        }
+
+        #[inline(always)]
+        pub fn fold_whir_accumulator<const MAX_POW: usize>(
+            acc: &mut ::verifier_common::whir::WhirAccumulator<#quartic_struct, MAX_POW>,
+            alpha: #quartic_struct,
+            z_initial: &[#quartic_struct],
+        ) {
+            // eq(z, α) = (1-z)(1-α) + zα = (1-α) + (2α-1)·z.
+            // Precompute (1-α) and (2α-1) once; each inner eq eval is then a single fused
+            // multiply-add `eq = (1-α); eq += (2α-1)·z`, i.e. one extension multiply with the
+            // accumulate fused in - no separate add/sub per entry.
+            let mut one_minus_alpha = #quartic_one;
+            #sub_oma_alpha;
+            let mut alpha_coeff = alpha;
+            #double_alpha_coeff;
+            #sub_coeff_one;
+
+            unsafe {
+                let zi = *z_initial.get_unchecked(acc.z_initial_idx);
+                let mut eq = one_minus_alpha;
+                #fma_eq_zi;
+                #mul_prefactor_eq;
+                acc.z_initial_idx += 1;
+            }
+
+            let n = acc.pow_entries.len();
+            let mut i = 0;
+            while i < n {
+                unsafe {
+                    let entry = acc.pow_entries.get_unchecked_mut(i);
+                    let s = entry.current_scalar;
+                    let mut eq = one_minus_alpha;
+                    #fma_eq_s;
+                    #mul_entry_prefactor_eq;
+                    #square_current_scalar;
+                }
+                i += 1;
+            }
+        }
+
+        #[inline(always)]
+        pub fn push_whir_pow_entry<const MAX_POW: usize>(
+            acc: &mut ::verifier_common::whir::WhirAccumulator<#quartic_struct, MAX_POW>,
+            current_scalar: #quartic_struct,
+            coefficient: #quartic_struct,
+        ) {
+            acc.pow_entries.push(::verifier_common::whir::WhirPowEntry {
+                current_scalar,
+                prefactor: #quartic_one,
+                coefficient,
+            });
+        }
+
+        #[inline(always)]
+        #[allow(clippy::too_many_arguments)]
+        pub unsafe fn process_oracle_query<I: NonDeterminismSource<#field_struct>, E: ErrorCreator, const BUF_SIZE: usize, const LEAF_WORDS: usize>(
+            hasher: &mut DelegatedBlake2sState,
+            hash_buf: &mut ::verifier_common::blake2s_u32::AlignedArray64<core::mem::MaybeUninit<u32>, BUF_SIZE>,
+            num_columns: usize,
+            query_index: usize,
+            depth: usize,
+            cap: &[u32],
+            gamma_powers: &[#quartic_struct],
+            gamma_offset: usize,
+            acc0: &mut #quartic_struct,
+            acc1: &mut #quartic_struct,
+            query: usize,
+            nd_source: &mut I,
+        ) -> Result<(), E::Error> {
+            use ::verifier_common::whir::{hash_leaf_data_into_state, verify_merkle_path};
+
+            let buf = hash_buf.assume_init_subarray_mut::<BUF_SIZE>();
+            read_and_batch_leaf::<I>(
+                &mut buf[..LEAF_WORDS], num_columns,
+                gamma_powers, gamma_offset, acc0, acc1, nd_source,
+            );
+
+            let block_end = LEAF_WORDS.next_multiple_of(
+                ::verifier_common::blake2s_u32::BLAKE2S_BLOCK_SIZE_U32_WORDS,
+            );
+            if block_end > LEAF_WORDS {
+                hash_buf.zero_range(LEAF_WORDS, block_end);
+            }
+            let buf = hash_buf.assume_init_subarray::<BUF_SIZE>();
+            hash_leaf_data_into_state(hasher, buf, LEAF_WORDS);
+            if !verify_merkle_path::<I>(hasher, query_index, depth, cap, nd_source) {
+                return Err(E::whir_merkle_path_failed(query));
+            }
+            Ok(())
+        }
+    }
+}
+
+/// Emits the per-leaf fold helper(s) for the active leaf encoding. The whole
+/// generator is compiled either with or without `eval_leaves`, so exactly one
+/// branch contributes to the generated verifier — there is no runtime dispatch
+/// and the generated fold path is identical to the hand-written reference for
+/// that encoding.
+fn build_fold_helpers<MW: FieldWrapper>() -> TokenStream {
+    let quartic_struct = MW::quartic_struct();
+    let field_struct = MW::field_struct();
+    if cfg!(feature = "eval_leaves") {
+        // ---- evaluation form: fold_coset butterfly ----
+        // fold_coset butterfly: t = (a - b)*challenge*root, then t = (t + a + b)/2
+        let sub_t_b = MW::sub_assign(quote! { t }, quote! { b });
+        let mul_t_challenge = MW::mul_assign(quote! { t }, quote! { challenge });
+        let mul_t_root = MW::mul_assign_by_base(quote! { t }, quote! { root });
+        let add_t_a = MW::add_assign(quote! { t }, quote! { a });
+        let add_t_b = MW::add_assign(quote! { t }, quote! { b });
+        let mul_t_half = MW::mul_assign_by_base(quote! { t }, quote! { #field_struct::HALF });
+        let mul_root_offset = MW::mul_assign(quote! { root }, quote! { high_powers_offset });
+        let square_root_inv = MW::square(quote! { root_inv });
+        let _ = &field_struct;
+        quote! {
         #[inline(always)]
         #[allow(clippy::too_many_arguments)]
         pub fn fold_coset(
@@ -215,197 +401,62 @@ pub fn generate_whir_common<MW: FieldWrapper>(max_fold_steps: usize) -> TokenStr
                 unsafe { *buf_b.get_unchecked(0) }
             }
         }
-
-        pub const MAX_HIGH_POWERS: usize = #max_high_powers;
-
+        }
+    } else {
+        // ---- coefficient form (default): evals -> multilinear coeffs, then
+        // evaluate with the monomial tensor of the folding challenges ----
+        let quartic_one = MW::quartic_one();
+        // eval_multilinear_with_monomial_tensor: result += c * w
+        let term_mul_weight = MW::mul_assign(quote! { term }, quote! { w });
+        let result_add_term = MW::add_assign(quote! { result }, quote! { term });
+        // precompute_monomial_tensor: w_alpha = w * alpha
+        let walpha_mul_alpha = MW::mul_assign(quote! { w_alpha }, quote! { alpha });
+        quote! {
         #[inline(always)]
-        pub fn bitreverse_inplace<T: Copy>(arr: &mut [T]) {
-            let n = arr.len();
-            if n <= 1 {
-                return;
-            }
-            let log_n = n.trailing_zeros();
-            let mut i = 0;
-            while i < n {
-                let j = (i as u32).reverse_bits().wrapping_shr(32 - log_n) as usize;
-                if i < j {
-                    unsafe {
-                        let tmp = *arr.get_unchecked(i);
-                        *arr.get_unchecked_mut(i) = *arr.get_unchecked(j);
-                        *arr.get_unchecked_mut(j) = tmp;
-                    }
+        pub fn precompute_monomial_tensor<const N: usize>(
+            challenges: &[#quartic_struct],
+            weights: &mut LazyVec<#quartic_struct, N>,
+        ) {
+            let k = challenges.len();
+            let len = 1usize << k;
+            debug_assert!(len <= N);
+            unsafe { weights.set_unchecked(0, #quartic_one); }
+            let mut j = 0;
+            while j < k {
+                let alpha = unsafe { *challenges.get_unchecked(j) };
+                let bit = 1usize << j;
+                let mut i = bit;
+                while i > 0 {
+                    i -= 1;
+                    let w = unsafe { *weights.get_unchecked(i) };
+                    let mut w_alpha = w;
+                    #walpha_mul_alpha;
+                    unsafe { weights.set_unchecked(i + bit, w_alpha); }
                 }
-                i += 1;
+                j += 1;
             }
+            unsafe { weights.set_len(len); }
         }
 
-        /// Compute bit-reversed high powers of the set-generator inverse for fold_coset.
         #[inline(always)]
-        pub fn compute_high_powers_offsets(
-            fold_steps: usize,
-            dst: &mut LazyVec<#field_struct, MAX_HIGH_POWERS>,
-        ) {
-            let count = 1usize << (fold_steps - 1);
-            dst.push(#field_struct::ONE);
-            let set_gen_inv = #field_struct::TWO_ADICITY_GENERATORS_INVERSED[fold_steps];
-            let mut pow = set_gen_inv;
+        pub fn eval_multilinear_with_monomial_tensor(
+            coeffs: &[#quartic_struct],
+            weights: &[#quartic_struct],
+        ) -> #quartic_struct {
+            debug_assert_eq!(coeffs.len(), weights.len());
+            debug_assert!(unsafe { *weights.get_unchecked(0) } == #quartic_one);
+            let n = coeffs.len();
+            let mut result = unsafe { *coeffs.get_unchecked(0) };
             let mut i = 1;
-            while i < count {
-                dst.push(pow);
-                #mul_pow_gen;
-                i += 1;
-            }
-            bitreverse_inplace(&mut dst.as_mut_slice()[..count]);
-        }
-
-        #[inline(always)]
-        pub fn ext_from_raw_word_slice(words: &[u32]) -> #quartic_struct {
-            debug_assert!(words.len() >= EXT_DEGREE);
-            let raw = unsafe { (words.as_ptr() as *const [u32; EXT_DEGREE]).as_ref_unchecked() };
-            ext_from_raw_words::<#field_struct, #quartic_struct, EXT_DEGREE>(raw)
-        }
-
-        #[inline(always)]
-        #[allow(clippy::too_many_arguments)]
-        pub unsafe fn read_and_batch_leaf<I: NonDeterminismSource>(
-            hash_buf: &mut [u32],
-            num_columns: usize,
-            gamma_powers: &[#quartic_struct],
-            gamma_offset: usize,
-            acc0: &mut #quartic_struct,
-            acc1: &mut #quartic_struct,
-            nd_source: &mut I,
-        ) {
-            let mut col = 0;
-            while col < num_columns {
-                let gamma = *gamma_powers.get_unchecked(gamma_offset + col);
-                let idx = col * 2;
-
-                let raw = read_reduced_field_el::<I>(nd_source);
-                *hash_buf.get_unchecked_mut(idx) = raw;
-                let base_val = #from_raw;
-                #fma_into_acc_0;
-
-                // let mut term = gamma;
-                // #mul_term_base;
-                // #add_acc0_term;
-
-                let raw = read_reduced_field_el::<I>(nd_source);
-                *hash_buf.get_unchecked_mut(idx + 1) = raw;
-                let base_val = #from_raw;
-                #fma_into_acc_1;
-
-                // let mut term = gamma;
-                // #mul_term_base;
-                // #add_acc1_term;
-
-                col += 1;
-            }
-        }
-
-        #[inline(always)]
-        pub fn fold_whir_accumulator<const MAX_POW: usize>(
-            acc: &mut ::verifier_common::whir::WhirAccumulator<#quartic_struct, MAX_POW>,
-            alpha: #quartic_struct,
-            z_initial: &[#quartic_struct],
-        ) {
-            // eq(z, α) = (1-z)(1-α) + zα = (1-α) - z + 2αz
-            // precompute (1-α) and 2α; each inner eq eval is 1 mul + 1 add + 1 sub.
-            let mut one_minus_alpha = #quartic_one;
-            #sub_oma_alpha;
-            let mut two_alpha = alpha;
-            #double_two_alpha;
-
-            unsafe {
-                let zi = *z_initial.get_unchecked(acc.z_initial_idx);
-                let mut eq = one_minus_alpha;
-                // eq += 2 * alpha * zi
-
-                // #eq_add_two_a_zi; // not beneficial
-
-                let mut two_a_zi = two_alpha;
-                #mul_two_a_zi_zi;
-                #add_eq_two_a_zi;
-
-                // eq -= zi
-                #sub_eq_zi;
-                #mul_prefactor_eq;
-                acc.z_initial_idx += 1;
-            }
-
-            let n = acc.pow_entries.len();
-            let mut i = 0;
             while i < n {
-                unsafe {
-                    let entry = acc.pow_entries.get_unchecked_mut(i);
-                    let s = entry.current_scalar;
-                    let mut eq = one_minus_alpha;
-                    // eq += two_alpha * s
-
-                    // #eq_add_two_a_s; // not beneficial
-
-                    let mut two_a_s = two_alpha;
-                    #mul_two_a_s_s;
-                    #add_eq_two_a_s;
-
-                    // eq -= s
-                    #sub_eq_s;
-                    #mul_entry_prefactor_eq;
-                    #square_current_scalar;
-                }
+                let mut term = unsafe { *coeffs.get_unchecked(i) };
+                let w = unsafe { *weights.get_unchecked(i) };
+                #term_mul_weight;
+                #result_add_term;
                 i += 1;
             }
+            result
         }
-
-        #[inline(always)]
-        pub fn push_whir_pow_entry<const MAX_POW: usize>(
-            acc: &mut ::verifier_common::whir::WhirAccumulator<#quartic_struct, MAX_POW>,
-            current_scalar: #quartic_struct,
-            coefficient: #quartic_struct,
-        ) {
-            acc.pow_entries.push(::verifier_common::whir::WhirPowEntry {
-                current_scalar,
-                prefactor: #quartic_one,
-                coefficient,
-            });
-        }
-
-        #[inline(always)]
-        #[allow(clippy::too_many_arguments)]
-        pub unsafe fn process_oracle_query<I: NonDeterminismSource, E: ErrorCreator, const BUF_SIZE: usize, const LEAF_WORDS: usize>(
-            hasher: &mut DelegatedBlake2sState,
-            hash_buf: &mut ::verifier_common::blake2s_u32::AlignedArray64<core::mem::MaybeUninit<u32>, BUF_SIZE>,
-            num_columns: usize,
-            query_index: usize,
-            depth: usize,
-            cap: &[u32],
-            gamma_powers: &[#quartic_struct],
-            gamma_offset: usize,
-            acc0: &mut #quartic_struct,
-            acc1: &mut #quartic_struct,
-            query: usize,
-            nd_source: &mut I,
-        ) -> Result<(), E::Error> {
-            use ::verifier_common::whir::{hash_leaf_data_into_state, verify_merkle_path};
-
-            let buf = hash_buf.assume_init_subarray_mut::<BUF_SIZE>();
-            read_and_batch_leaf::<I>(
-                &mut buf[..LEAF_WORDS], num_columns,
-                gamma_powers, gamma_offset, acc0, acc1, nd_source,
-            );
-
-            let block_end = LEAF_WORDS.next_multiple_of(
-                ::verifier_common::blake2s_u32::BLAKE2S_BLOCK_SIZE_U32_WORDS,
-            );
-            if block_end > LEAF_WORDS {
-                hash_buf.zero_range(LEAF_WORDS, block_end);
-            }
-            let buf = hash_buf.assume_init_subarray::<BUF_SIZE>();
-            hash_leaf_data_into_state(hasher, buf, LEAF_WORDS);
-            if !verify_merkle_path::<I>(hasher, query_index, depth, cap, nd_source) {
-                return Err(E::whir_merkle_path_failed(query));
-            }
-            Ok(())
         }
     }
 }

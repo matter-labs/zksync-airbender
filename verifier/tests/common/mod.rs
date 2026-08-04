@@ -11,7 +11,7 @@ use verifier_common::gkr::flatten::flatten_gkr_proof_for_nds;
 pub const VERIFIER_STACK_SIZE: usize = 1 << 27;
 
 macro_rules! define_dispatch {
-    ($($name:ident; $trace_len_log_2:expr; $layout_suffix:expr),* $(,)?) => {
+    ($($name:ident; $prod_path:expr),* $(,)?) => {
         macro_rules! with_circuit {
             ($circuit_name:expr, $level:expr, |$m:ident| $body:expr) => {
                 match ($circuit_name, $level) {
@@ -364,6 +364,22 @@ pub fn assert_rejects_via_panic(
                 name, label, e
             );
         }
+    }
+}
+
+/// Assert the proof is rejected, accepting *either* a panic or a structured error.
+/// Useful for corruptions whose rejection path depends on the security level — e.g.
+/// a tampered PoW nonce is caught directly by `verify_pow` when the bit-count is
+/// non-zero, but only downstream (via seed divergence) when the bit-count is zero.
+pub fn assert_rejects_any(
+    name: &str,
+    level: SecurityLevel,
+    label: &str,
+    proof: &GKRProof<BabyBearField, BabyBearExt4, DefaultTreeConstructor>,
+) {
+    let (nds, external_challenges) = proof_to_nds(name, level, proof);
+    if verify_nds(name, level, &external_challenges, nds).is_ok() {
+        panic!("{}: should reject {}", name, label);
     }
 }
 

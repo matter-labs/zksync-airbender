@@ -102,58 +102,12 @@ pub(crate) fn check_logup_identity_after_dimension_reduction<
     true
 }
 
-/// Generate mock output claims by evaluating the global output polynomials at a fixed point.
-/// Returns (readset, writeset, rangechecknum, rangecheckden, timechecknum, timecheckden, lookupnum, lookupden, evaluation_point).
-pub(crate) fn mock_output_claims<F: PrimeField, E: FieldExtension<F> + Field>(
-    compiled_circuit: &GKRCircuitArtifact<F>,
-    gkr_storage: &GKRStorage<F, E>,
-    trace_len: usize,
-    worker: &Worker,
-) -> ((E, E, E, E, E, E, E, E), Vec<E>) {
-    let challenges =
-        vec![E::from_base(F::from_u32_unchecked(42)); trace_len.trailing_zeros() as usize];
-    let eq_precomputed = make_eq_poly_in_full::<E>(&challenges, worker);
-    let eq = eq_precomputed.last().unwrap();
-
-    let mut evals = vec![];
-    for key in [
-        OutputType::PermutationProduct,
-        OutputType::Lookup16Bits,
-        OutputType::LookupTimestamps,
-        OutputType::GenericLookup,
-    ] {
-        let addresses = &compiled_circuit.global_output_map[&key];
-        for address in addresses.iter() {
-            let poly = gkr_storage.get_ext_poly(*address);
-            let evaluation = evaluate_with_precomputed_eq_ext::<E>(poly, &eq[..]);
-            evals.push(evaluation);
-        }
-    }
-
-    let [claim_readset, claim_writeset, claim_rangechecknum, claim_rangecheckden, claim_timechecknum, claim_timecheckden, claim_lookupnum, claim_lookupden] =
-        evals.try_into().unwrap();
-
-    (
-        (
-            claim_readset,
-            claim_writeset,
-            claim_rangechecknum,
-            claim_rangecheckden,
-            claim_timechecknum,
-            claim_timecheckden,
-            claim_lookupnum,
-            claim_lookupden,
-        ),
-        challenges,
-    )
-}
-
 pub(crate) fn compute_initial_sumcheck_claims<F: PrimeField, E: FieldExtension<F> + Field>(
     gkr_storage: &GKRStorage<F, E>,
     eval_point: &[E],
     output_layer: &BTreeMap<OutputType, DimensionReducingInputOutput>,
     worker: &Worker,
-) -> (E, E, E, E, E, E, E, E) {
+) -> (E, E, E, E, E, E, E, E, E, E) {
     let eq_precomputed = make_eq_poly_in_full::<E>(&eval_point, worker);
     let eq = eq_precomputed.last().unwrap();
 
@@ -163,6 +117,7 @@ pub(crate) fn compute_initial_sumcheck_claims<F: PrimeField, E: FieldExtension<F
         OutputType::Lookup16Bits,
         OutputType::LookupTimestamps,
         OutputType::GenericLookup,
+        OutputType::InitsAndTeardownsProduct,
     ] {
         if let Some(addresses) = &output_layer.get(&key) {
             for address in addresses.output.iter() {
@@ -176,8 +131,18 @@ pub(crate) fn compute_initial_sumcheck_claims<F: PrimeField, E: FieldExtension<F
         }
     }
 
-    let [claim_readset, claim_writeset, claim_rangechecknum, claim_rangecheckden, claim_timechecknum, claim_timecheckden, claim_lookupnum, claim_lookupden] =
-        evals.try_into().unwrap();
+    // The loop above iterates over 5 OutputType variants, pushing exactly 2 evals per variant
+    // (either the two stored evaluations, or two ZERO placeholders for absent keys).
+    // Pin the count explicitly so a future addition/removal of an OutputType variant produces
+    // a clear assertion failure rather than a confusing destructure panic.
+    assert_eq!(
+        evals.len(),
+        10,
+        "expected 5 OutputType variants × 2 evals each = 10, got {}",
+        evals.len()
+    );
+    let [claim_readset, claim_writeset, claim_rangechecknum, claim_rangecheckden, claim_timechecknum, claim_timecheckden, claim_lookupnum, claim_lookupden, claim_initset, claim_teardownset] =
+        evals.try_into().expect("length checked above");
 
     (
         claim_readset,
@@ -188,11 +153,13 @@ pub(crate) fn compute_initial_sumcheck_claims<F: PrimeField, E: FieldExtension<F
         claim_timecheckden,
         claim_lookupnum,
         claim_lookupden,
+        claim_initset,
+        claim_teardownset,
     )
 }
 
 pub(crate) fn verify_cache_relations<F: PrimeField, E: FieldExtension<F> + Field>(
-    layer_desc: &GKRLayerDescription,
+    layer_desc: &GKRLayerDescription<F>,
     claims: &BTreeMap<GKRAddress, E>,
     external_challenges: &GKRExternalChallenges<F, E>,
     lookup_alpha: E,
@@ -269,20 +236,20 @@ pub(crate) fn verify_cache_relations<F: PrimeField, E: FieldExtension<F> + Field
 }
 
 fn evaluate_linear_relation_from_claims<F: PrimeField, E: FieldExtension<F> + Field>(
-    rel: &cs::definitions::gkr::NoFieldLinearRelation,
+    rel: &cs::definitions::gkr::NoFieldLinearRelation<F>,
     claims: &BTreeMap<GKRAddress, E>,
 ) -> E {
-    let mut result = E::from_base(F::from_u32_unchecked(rel.constant));
+    let mut result = E::from_base(rel.constant);
     for &(coeff, addr) in rel.linear_terms.iter() {
         let mut t = claims[&addr];
-        t.mul_assign_by_base(&F::from_u32_unchecked(coeff));
+        t.mul_assign_by_base(&coeff);
         result.add_assign(&t);
     }
     result
 }
 
 fn evaluate_vectorized_lookup_from_claims<F: PrimeField, E: FieldExtension<F> + Field>(
-    rel: &cs::definitions::gkr::NoFieldVectorLookupRelation,
+    rel: &cs::definitions::gkr::NoFieldVectorLookupRelation<F>,
     claims: &BTreeMap<GKRAddress, E>,
     lookup_alpha: E,
 ) -> E {
@@ -449,13 +416,13 @@ fn evaluate_memory_tuple_from_claims<F: PrimeField, E: FieldExtension<F> + Field
 }
 
 fn evaluate_linear_relation<F: PrimeField, E: FieldExtension<F> + Field>(
-    rel: &NoFieldLinearRelation,
+    rel: &NoFieldLinearRelation<F>,
     claims: &BTreeMap<GKRAddress, E>,
 ) -> E {
-    let mut result = E::from_base(F::from_u32_unchecked(rel.constant));
+    let mut result = E::from_base(rel.constant);
     for (c, address) in rel.linear_terms.iter() {
         let mut t = claims[address];
-        t.mul_assign_by_base(&F::from_u32_unchecked(*c));
+        t.mul_assign_by_base(&*c);
         result.add_assign(&t);
     }
 

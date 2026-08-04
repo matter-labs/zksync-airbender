@@ -144,6 +144,13 @@ impl<F: PrimeField + ToTokens> SSAGenerator<F> {
                     let #new_ident = #var_ident.as_integer();
                 }
             }
+            FixedWidthIntegerNodeExpression::U32RawReprReducedFromField(expr) => {
+                let var_ident = self.field_expr_into_var(expr);
+                let new_ident = self.create_var();
+                quote! {
+                    let #new_ident = #var_ident.into_raw_repr_reduced();
+                }
+            }
 
             FixedWidthIntegerNodeExpression::WidenFromU8(expr)
             | FixedWidthIntegerNodeExpression::WidenFromU16(expr) => {

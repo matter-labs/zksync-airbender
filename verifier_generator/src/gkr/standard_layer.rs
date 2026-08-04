@@ -1,4 +1,5 @@
 use proc_macro2::TokenStream;
+use prover::field::PrimeField;
 use quote::quote;
 
 use crate::field_wrapper::FieldWrapper;
@@ -72,7 +73,7 @@ pub fn generate_eval_helpers<MW: FieldWrapper>() -> TokenStream {
         #[inline(always)]
         #[allow(unused_variables)]
         pub unsafe fn eval_linear_relation(
-            evals: &[[#quartic_struct; 2]],
+            evals: &[[#quartic_struct; 1]],
             terms: &[(usize, usize)],
             constant: usize,
             j: usize,
@@ -92,7 +93,7 @@ pub fn generate_eval_helpers<MW: FieldWrapper>() -> TokenStream {
         #[inline(always)]
         #[allow(unused_variables)]
         pub unsafe fn eval_vector_lookup(
-            evals: &[[#quartic_struct; 2]],
+            evals: &[[#quartic_struct; 1]],
             alpha: #quartic_struct,
             col_descs: &[(usize, usize)],
             terms: &[(usize, usize)],
@@ -123,7 +124,7 @@ pub fn generate_eval_helpers<MW: FieldWrapper>() -> TokenStream {
         #[inline(always)]
         #[allow(unused_variables)]
         pub unsafe fn eval_max_quadratic(
-            evals: &[[#quartic_struct; 2]],
+            evals: &[[#quartic_struct; 1]],
             quad_outer: &[(usize, usize)],
             quad_inner: &[(usize, usize)],
             linear: &[(usize, usize)],
@@ -173,7 +174,7 @@ pub fn generate_eval_helpers<MW: FieldWrapper>() -> TokenStream {
         #[inline(always)]
         #[allow(unused_variables)]
         pub unsafe fn eval_memory_expr(
-            evals: &[[#quartic_struct; 2]],
+            evals: &[[#quartic_struct; 1]],
             challenges: &[#quartic_struct],
             additive_part: #quartic_struct,
             ops: &[[usize; 6]],
@@ -241,8 +242,8 @@ pub fn generate_eval_helpers<MW: FieldWrapper>() -> TokenStream {
     }
 }
 
-fn emit_linear_relation_eval<MW: FieldWrapper>(
-    rel: &prover::cs::definitions::gkr::NoFieldLinearRelation,
+fn emit_linear_relation_eval<MW: FieldWrapper, F: PrimeField>(
+    rel: &prover::cs::definitions::gkr::NoFieldLinearRelation<F>,
     var_name: &str,
     input_sorted_addrs: &[GKRAddress],
 ) -> TokenStream {
@@ -252,12 +253,12 @@ fn emit_linear_relation_eval<MW: FieldWrapper>(
         proc_macro2::Span::call_site(),
     );
 
-    let const_mont = MW::coeff_to_internal_repr(rel.constant) as usize;
+    let const_mont = MW::coeff_to_internal_repr(rel.constant.as_u32_reduced()) as usize;
     let mut term_idx = Vec::new();
     let mut term_coeff = Vec::new();
     for &(coeff, ref addr) in rel.linear_terms.iter() {
         term_idx.push(addr_to_idx(addr, input_sorted_addrs));
-        term_coeff.push(MW::coeff_to_internal_repr(coeff) as usize);
+        term_coeff.push(MW::coeff_to_internal_repr(coeff.as_u32_reduced()) as usize);
     }
     let num_terms = term_idx.len();
 
@@ -269,8 +270,8 @@ fn emit_linear_relation_eval<MW: FieldWrapper>(
     }
 }
 
-fn emit_vector_lookup_eval<MW: FieldWrapper>(
-    rel: &NoFieldVectorLookupRelation,
+fn emit_vector_lookup_eval<MW: FieldWrapper, F: PrimeField>(
+    rel: &NoFieldVectorLookupRelation<F>,
     var_name: &str,
     input_sorted_addrs: &[GKRAddress],
 ) -> TokenStream {
@@ -290,11 +291,11 @@ fn emit_vector_lookup_eval<MW: FieldWrapper>(
     let mut all_term_coeff = Vec::new();
 
     for col in rel.columns.iter().rev() {
-        col_consts.push(MW::coeff_to_internal_repr(col.constant) as usize);
+        col_consts.push(MW::coeff_to_internal_repr(col.constant.as_u32_reduced()) as usize);
         col_counts.push(col.linear_terms.len());
         for &(coeff, ref addr) in col.linear_terms.iter() {
             all_term_idx.push(addr_to_idx(addr, input_sorted_addrs));
-            all_term_coeff.push(MW::coeff_to_internal_repr(coeff) as usize);
+            all_term_coeff.push(MW::coeff_to_internal_repr(coeff.as_u32_reduced()) as usize);
         }
     }
     let num_cols = col_consts.len();
@@ -322,7 +323,7 @@ fn emit_single_output_gate<MW: FieldWrapper>(
         {
             let bc = current_batch;
             #mul_batch;
-            for j in 0..2 {
+            for j in 0..1 {
                 #val_computation
                 let mut contrib = bc;
                 #mul_contrib;
@@ -373,8 +374,8 @@ fn emit_setup_horner_eval<MW: FieldWrapper>(
     }
 }
 
-fn emit_max_quadratic_eval<MW: FieldWrapper>(
-    input: &prover::cs::gkr_compiler::NoFieldMaxQuadraticGKRRelation,
+fn emit_max_quadratic_eval<MW: FieldWrapper, F: PrimeField>(
+    input: &prover::cs::gkr_compiler::NoFieldMaxQuadraticGKRRelation<F>,
     var_name: &str,
     input_sorted_addrs: &[GKRAddress],
 ) -> TokenStream {
@@ -384,7 +385,7 @@ fn emit_max_quadratic_eval<MW: FieldWrapper>(
     let qi_name = syn::Ident::new(&format!("{}_QI", prefix), proc_macro2::Span::call_site());
     let ln_name = syn::Ident::new(&format!("{}_LN", prefix), proc_macro2::Span::call_site());
 
-    let constant = MW::coeff_to_internal_repr(input.constant) as usize;
+    let constant = MW::coeff_to_internal_repr(input.constant.as_u32_reduced()) as usize;
 
     let mut quad_outer_idx = Vec::new();
     let mut quad_outer_count = Vec::new();
@@ -396,7 +397,7 @@ fn emit_max_quadratic_eval<MW: FieldWrapper>(
         quad_outer_count.push(inner_terms.len());
         for &(coeff, ref addr_b) in inner_terms.iter() {
             quad_inner_idx.push(addr_to_idx(addr_b, input_sorted_addrs));
-            quad_inner_coeff.push(MW::coeff_to_internal_repr(coeff) as usize);
+            quad_inner_coeff.push(MW::coeff_to_internal_repr(coeff.as_u32_reduced()) as usize);
         }
     }
 
@@ -404,7 +405,7 @@ fn emit_max_quadratic_eval<MW: FieldWrapper>(
     let mut lin_coeff = Vec::new();
     for &(coeff, ref addr) in input.linear_terms.iter() {
         lin_idx.push(addr_to_idx(addr, input_sorted_addrs));
-        lin_coeff.push(MW::coeff_to_internal_repr(coeff) as usize);
+        lin_coeff.push(MW::coeff_to_internal_repr(coeff.as_u32_reduced()) as usize);
     }
 
     let nqo = quad_outer_idx.len();
@@ -639,8 +640,8 @@ fn emit_memory_expression_eval<MW: FieldWrapper>(
     }
 }
 
-pub fn generate_layer_compute_claim<MW: FieldWrapper>(
-    layer: &GKRLayerDescription,
+pub fn generate_layer_compute_claim<MW: FieldWrapper, F: PrimeField>(
+    layer: &GKRLayerDescription<F>,
     layer_idx: usize,
     output_sorted_addrs: &[GKRAddress],
 ) -> TokenStream {
@@ -739,8 +740,8 @@ pub fn generate_layer_compute_claim<MW: FieldWrapper>(
 // const GT_AGGREGATE_PAIR: usize = 8;
 // const GT_LOOKUP_CACHED_DENS: usize = 9;
 
-fn emit_simple_gate(
-    gate: &prover::cs::gkr_compiler::GateArtifacts,
+fn emit_simple_gate<F: PrimeField>(
+    gate: &prover::cs::gkr_compiler::GateArtifacts<F>,
     input_sorted_addrs: &[GKRAddress],
     simple_group: &mut Vec<(SimpleGateType, [usize; 4])>,
 ) {
@@ -899,7 +900,7 @@ fn generate_simple_gate_loop<MW: FieldWrapper>(
                     SimpleGateType::Copy => {
                         let bc = current_batch;
                         #mul_batch;
-                        for j in 0..2 {
+                        for j in 0..1 {
                             let val = evals.get_unchecked(idx[0])[j];
                             let mut contrib = bc;
                             #mul_contrib;
@@ -909,7 +910,7 @@ fn generate_simple_gate_loop<MW: FieldWrapper>(
                     SimpleGateType::Product => {
                         let bc = current_batch;
                         #mul_batch;
-                        for j in 0..2 {
+                        for j in 0..1 {
                             let mut val = evals.get_unchecked(idx[0])[j];
                             let vb = evals.get_unchecked(idx[1])[j];
                             #mul_ab;
@@ -921,7 +922,7 @@ fn generate_simple_gate_loop<MW: FieldWrapper>(
                     SimpleGateType::MaskToIdentity => {
                         let bc = current_batch;
                         #mul_batch;
-                        for j in 0..2 {
+                        for j in 0..1 {
                             let mut val = evals.get_unchecked(idx[0])[j];
                             let mask_val = evals.get_unchecked(idx[1])[j];
                             #sub_one;
@@ -935,7 +936,7 @@ fn generate_simple_gate_loop<MW: FieldWrapper>(
                     SimpleGateType::UnbalancedProduct => {
                         let bc = current_batch;
                         #mul_batch;
-                        for j in 0..2 {
+                        for j in 0..1 {
                             let mut val = evals.get_unchecked(idx[0])[j];
                             let vi = evals.get_unchecked(idx[1])[j];
                             #mul_si;
@@ -949,7 +950,7 @@ fn generate_simple_gate_loop<MW: FieldWrapper>(
                         #mul_batch;
                         let bc1 = current_batch;
                         #mul_batch;
-                        for j in 0..2 {
+                        for j in 0..1 {
                             let mut bg = evals.get_unchecked(idx[0])[j];
                             let mut dg = evals.get_unchecked(idx[1])[j];
                             #add_gamma_bg;
@@ -969,7 +970,7 @@ fn generate_simple_gate_loop<MW: FieldWrapper>(
                         #mul_batch;
                         let bc1 = current_batch;
                         #mul_batch;
-                        for j in 0..2 {
+                        for j in 0..1 {
                             let mut bg = evals.get_unchecked(idx[0])[j];
                             let mut dg = evals.get_unchecked(idx[2])[j];
                             let mut cb = evals.get_unchecked(idx[1])[j];
@@ -991,7 +992,7 @@ fn generate_simple_gate_loop<MW: FieldWrapper>(
                         #mul_batch;
                         let bc1 = current_batch;
                         #mul_batch;
-                        for j in 0..2 {
+                        for j in 0..1 {
                             let a_val = evals.get_unchecked(idx[0])[j];
                             let b_val = evals.get_unchecked(idx[1])[j];
                             let mut r_g = evals.get_unchecked(idx[2])[j];
@@ -1012,7 +1013,7 @@ fn generate_simple_gate_loop<MW: FieldWrapper>(
                         #mul_batch;
                         let bc1 = current_batch;
                         #mul_batch;
-                        for j in 0..2 {
+                        for j in 0..1 {
                             let a_val = evals.get_unchecked(idx[0])[j];
                             let b_val = evals.get_unchecked(idx[1])[j];
                             let c_val = evals.get_unchecked(idx[2])[j];
@@ -1035,7 +1036,7 @@ fn generate_simple_gate_loop<MW: FieldWrapper>(
                         #mul_batch;
                         let bc1 = current_batch;
                         #mul_batch;
-                        for j in 0..2 {
+                        for j in 0..1 {
                             let a_val = evals.get_unchecked(idx[0])[j];
                             let mut b_cd = evals.get_unchecked(idx[1])[j];
                             let c_val = evals.get_unchecked(idx[2])[j];
@@ -1062,38 +1063,40 @@ fn generate_simple_gate_loop<MW: FieldWrapper>(
     }
 }
 
-fn emit_single_output_value<MW: FieldWrapper>(
-    gate: &prover::cs::gkr_compiler::GateArtifacts,
+fn emit_single_output_value<MW: FieldWrapper, F: PrimeField>(
+    gate: &prover::cs::gkr_compiler::GateArtifacts<F>,
     input_sorted_addrs: &[GKRAddress],
 ) -> Option<TokenStream> {
     use NoFieldGKRRelation as R;
     match &gate.enforced_relation {
-        R::EnforceSingleMaxQuadraticConstraint { input } => Some(emit_max_quadratic_eval::<MW>(
-            input,
-            "val",
-            input_sorted_addrs,
-        )),
+        R::EnforceSingleMaxQuadraticConstraint { input, .. } => {
+            Some(emit_max_quadratic_eval::<MW, _>(
+                input,
+                "val",
+                input_sorted_addrs,
+            ))
+        }
         R::EnforceConstraintsMaxQuadratic { .. } => {
             unimplemented!(
                 "EnforceConstraintsMaxQuadratic is not supported; use individual EnforceSingleMaxQuadraticConstraint gates"
             );
         }
-        R::LinearBaseFieldRelation { input, .. } => Some(emit_linear_relation_eval::<MW>(
+        R::LinearBaseFieldRelation { input, .. } => Some(emit_linear_relation_eval::<MW, _>(
             input,
             "val",
             input_sorted_addrs,
         )),
-        R::MaxQuadratic { input, .. } => Some(emit_max_quadratic_eval::<MW>(
+        R::MaxQuadratic { input, .. } => Some(emit_max_quadratic_eval::<MW, _>(
             input,
             "val",
             input_sorted_addrs,
         )),
-        R::MaterializeSingleLookupInput { input, .. } => Some(emit_linear_relation_eval::<MW>(
+        R::MaterializeSingleLookupInput { input, .. } => Some(emit_linear_relation_eval::<MW, _>(
             &input.input,
             "val",
             input_sorted_addrs,
         )),
-        R::MaterializedVectorLookupInput { input, .. } => Some(emit_vector_lookup_eval::<MW>(
+        R::MaterializedVectorLookupInput { input, .. } => Some(emit_vector_lookup_eval::<MW, _>(
             input,
             "val",
             input_sorted_addrs,
@@ -1111,10 +1114,10 @@ fn emit_single_output_value<MW: FieldWrapper>(
     }
 }
 
-fn emit_dual_output_for_relation<MW: FieldWrapper>(
+fn emit_dual_output_for_relation<MW: FieldWrapper, F: PrimeField>(
     body: &mut TokenStream,
     mul_batch: &TokenStream,
-    gate: &prover::cs::gkr_compiler::GateArtifacts,
+    gate: &prover::cs::gkr_compiler::GateArtifacts<F>,
     input_sorted_addrs: &[GKRAddress],
 ) -> bool {
     use NoFieldGKRRelation as R;
@@ -1141,22 +1144,22 @@ fn emit_dual_output_for_relation<MW: FieldWrapper>(
     match &gate.enforced_relation {
         R::LookupPairFromBaseInputs { input, .. } => {
             let comp_a =
-                emit_linear_relation_eval::<MW>(&input[0].input, "a_val", input_sorted_addrs);
+                emit_linear_relation_eval::<MW, _>(&input[0].input, "a_val", input_sorted_addrs);
             let comp_b =
-                emit_linear_relation_eval::<MW>(&input[1].input, "b_val", input_sorted_addrs);
+                emit_linear_relation_eval::<MW, _>(&input[1].input, "b_val", input_sorted_addrs);
             standard_lookup_pair(body, comp_a, comp_b);
             true
         }
         R::LookupPairFromVectorInputs { input, .. } => {
-            let comp_a = emit_vector_lookup_eval::<MW>(&input[0], "a_val", input_sorted_addrs);
-            let comp_b = emit_vector_lookup_eval::<MW>(&input[1], "b_val", input_sorted_addrs);
+            let comp_a = emit_vector_lookup_eval::<MW, _>(&input[0], "a_val", input_sorted_addrs);
+            let comp_b = emit_vector_lookup_eval::<MW, _>(&input[1], "b_val", input_sorted_addrs);
             standard_lookup_pair(body, comp_a, comp_b);
             true
         }
         R::LookupWithDensAndSetupExpressions { input, setup, .. } => {
             let a_idx = addr_to_idx(&input.0, input_sorted_addrs);
             let c_idx = addr_to_idx(&setup.0, input_sorted_addrs);
-            let comp_b = emit_vector_lookup_eval::<MW>(&input.1, "b_val", input_sorted_addrs);
+            let comp_b = emit_vector_lookup_eval::<MW, _>(&input.1, "b_val", input_sorted_addrs);
             let comp_d = emit_setup_horner_eval::<MW>(&setup.1, "d_val", input_sorted_addrs);
             let add_gamma_b =
                 MW::add_assign(quote! { b_val }, quote! { lookup_additive_challenge });
@@ -1193,7 +1196,7 @@ fn emit_dual_output_for_relation<MW: FieldWrapper>(
         } => {
             let a_idx = addr_to_idx(&input[0], input_sorted_addrs);
             let b_idx = addr_to_idx(&input[1], input_sorted_addrs);
-            let comp_c = emit_vector_lookup_eval::<MW>(remainder, "c_val", input_sorted_addrs);
+            let comp_c = emit_vector_lookup_eval::<MW, _>(remainder, "c_val", input_sorted_addrs);
             let add_gamma_c =
                 MW::add_assign(quote! { c_val }, quote! { lookup_additive_challenge });
             generate_two_output_body::<MW>(
@@ -1217,7 +1220,7 @@ fn emit_dual_output_for_relation<MW: FieldWrapper>(
             true
         }
         R::LookupFromVectorInputWithSetup { input, setup, .. } => {
-            let comp_a = emit_vector_lookup_eval::<MW>(input, "a_val", input_sorted_addrs);
+            let comp_a = emit_vector_lookup_eval::<MW, _>(input, "a_val", input_sorted_addrs);
             let c_idx = addr_to_idx(&setup.0, input_sorted_addrs);
             let comp_d = emit_setup_horner_eval::<MW>(&setup.1, "d_val", input_sorted_addrs);
             let add_gamma_a =
@@ -1252,10 +1255,10 @@ fn emit_dual_output_for_relation<MW: FieldWrapper>(
     }
 }
 
-fn emit_inits_teardowns<MW: FieldWrapper>(
+fn emit_inits_teardowns<MW: FieldWrapper, F: PrimeField>(
     body: &mut TokenStream,
     mul_batch: &TokenStream,
-    gate: &prover::cs::gkr_compiler::GateArtifacts,
+    gate: &prover::cs::gkr_compiler::GateArtifacts<F>,
     input_sorted_addrs: &[GKRAddress],
 ) {
     use NoFieldGKRRelation as R;
@@ -1352,7 +1355,13 @@ fn emit_inits_teardowns<MW: FieldWrapper>(
                 {
                     let mut t = linearization_challenges[#PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX];
                     let mut addr_hi = evals.get_unchecked(#setup_hi_idx)[j];
-                    let set_bits = (#set_idx_val as u32) << address_high_bits_shift;
+                    // The init/teardown address window is bound to the runtime, FS-committed
+                    // `top_bits[set_idx]` (mirrors the prover at
+                    // `prover/src/gkr/prover/sumcheck_loop/kernel_collector.rs:518`), NOT the
+                    // compile-time `set_idx`. For single-instance proofs `top_bits` is the
+                    // identity (`top_bits[set_idx] == set_idx`) so this is behaviourally
+                    // unchanged; for multi-instance it enforces the disjoint per-instance window.
+                    let set_bits = inits_and_teardowns_top_bits[#set_idx_val] << address_high_bits_shift;
                     if set_bits != 0 {
                         let set_field = #field_struct_local::from_u32_unchecked(set_bits);
                         #add_addr_set;
@@ -1371,8 +1380,8 @@ fn emit_inits_teardowns<MW: FieldWrapper>(
     emit_single_output_gate::<MW>(body, mul_batch, val_comp);
 }
 
-pub fn generate_layer_final_step_accumulator<MW: FieldWrapper>(
-    layer: &GKRLayerDescription,
+pub fn generate_layer_final_step_accumulator<MW: FieldWrapper, F: PrimeField>(
+    layer: &GKRLayerDescription<F>,
     layer_idx: usize,
     input_sorted_addrs: &[GKRAddress],
 ) -> TokenStream {
@@ -1433,7 +1442,7 @@ pub fn generate_layer_final_step_accumulator<MW: FieldWrapper>(
             | R::InitialGrandProductWithoutCaches { .. }
             | R::MaterializeGrandProductTermExpression { .. } => {
                 flush_simple(&mut body, &mut simple_group);
-                let val = emit_single_output_value::<MW>(gate, input_sorted_addrs)
+                let val = emit_single_output_value::<MW, _>(gate, input_sorted_addrs)
                     .expect("matched single-output gate must produce value");
                 emit_single_output_gate::<MW>(&mut body, &mul_batch, val);
             }
@@ -1445,7 +1454,7 @@ pub fn generate_layer_final_step_accumulator<MW: FieldWrapper>(
             | R::LookupUnbalancedPairWithVectorInputs { .. }
             | R::LookupFromVectorInputWithSetup { .. } => {
                 flush_simple(&mut body, &mut simple_group);
-                emit_dual_output_for_relation::<MW>(
+                emit_dual_output_for_relation::<MW, _>(
                     &mut body,
                     &mul_batch,
                     gate,
@@ -1456,7 +1465,7 @@ pub fn generate_layer_final_step_accumulator<MW: FieldWrapper>(
             // Init/teardown — unique structure
             R::InitsOrTeardownsInitialPair { .. } => {
                 flush_simple(&mut body, &mut simple_group);
-                emit_inits_teardowns::<MW>(&mut body, &mul_batch, gate, input_sorted_addrs);
+                emit_inits_teardowns::<MW, _>(&mut body, &mul_batch, gate, input_sorted_addrs);
             }
 
             _ => {
@@ -1478,13 +1487,14 @@ pub fn generate_layer_final_step_accumulator<MW: FieldWrapper>(
         #[inline(always)]
         #[allow(unused_variables, unused_mut, unused_unsafe)]
         unsafe fn #fn_name(
-            evals: &[[#quartic_struct; 2]],
+            evals: &[[#quartic_struct; 1]],
             batch_base: #quartic_struct,
             lookup_additive_challenge: #quartic_struct,
             lookup_alpha: #quartic_struct,
             linearization_challenges: &[#quartic_struct],
             permutation_argument_additive_part: #quartic_struct,
             address_high_bits_shift: u32,
+            inits_and_teardowns_top_bits: &[u32],
         ) -> [#quartic_struct; 2] {
             #body
         }
@@ -1516,7 +1526,7 @@ fn generate_two_output_body<MW: FieldWrapper>(
             #mul_batch;
             let bc1 = current_batch;
             #mul_batch;
-            for j in 0..2 {
+            for j in 0..1 {
                 #setup_vars
                 let out0 = { #num_expr };
                 let out1 = { #den_expr };

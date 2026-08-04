@@ -2,7 +2,7 @@ use crate::definitions::MerkleTreeCap;
 use crate::definitions::USE_REDUCED_BLAKE2_ROUNDS;
 use blake2s_u32::AlignedSlice64;
 use core::fmt::Debug;
-use non_determinism_source::NonDeterminismSource;
+use non_determinism_source::U32WordNonDeterminismSource;
 
 mod blake2s_for_everything;
 pub use self::blake2s_for_everything::Blake2sForEverythingVerifier;
@@ -13,7 +13,7 @@ pub use self::blake2s_for_everything_with_alternative_compression::Blake2sForEve
 pub trait LeafInclusionVerifier: 'static + Send + Sync + Debug {
     fn new() -> Self;
     unsafe fn verify_leaf_inclusion<
-        I: NonDeterminismSource,
+        I: U32WordNonDeterminismSource,
         const CAP_SIZE: usize,
         const NUM_COSETS: usize,
     >(

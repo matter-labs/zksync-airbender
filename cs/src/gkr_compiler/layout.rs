@@ -10,19 +10,19 @@ pub struct GKRAuxLayoutData {
 
 #[serde_with::serde_as]
 #[derive(Clone, Hash, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct GKRLayerDescription {
+pub struct GKRLayerDescription<F: PrimeField> {
     pub layer: usize,
     // our point of convergence is batched sumchecks for lookup and grand product reduction,
     // but as we move to GKR stage where polynomial sizes are not changing, it'll reflect which random evaluation point to use
     // for the sumcheck like f(r) = \sum_x eq(r, x) a(x) b(x)
-    pub gates_with_external_connections: Vec<GateArtifacts>,
+    pub gates_with_external_connections: Vec<GateArtifacts<F>>,
     #[serde_as(as = "Vec<(_, _)>")]
-    pub cached_relations: BTreeMap<GKRAddress, NoFieldGKRCacheRelation>,
-    pub gates: Vec<GateArtifacts>,
+    pub cached_relations: BTreeMap<GKRAddress, NoFieldGKRCacheRelation<F>>,
+    pub gates: Vec<GateArtifacts<F>>,
     pub intermediate_layer_width: Option<usize>, // number of polys in intermediate layers. None for the base one
 }
 
-impl GKRLayerDescription {
+impl<F: PrimeField> GKRLayerDescription<F> {
     pub fn inputs(&self) -> BTreeSet<GKRAddress> {
         let mut result = BTreeSet::new();
         for gate in self
@@ -51,15 +51,15 @@ impl GKRLayerDescription {
 }
 
 #[derive(Clone, Debug)]
-pub(crate) enum LookupOutput {
-    Direct(NoFieldGKRRelation),
+pub(crate) enum LookupOutput<F: PrimeField> {
+    Direct(NoFieldGKRRelation<F>),
     Copied {
-        num: NoFieldGKRRelation,
-        den: NoFieldGKRRelation,
+        num: NoFieldGKRRelation<F>,
+        den: NoFieldGKRRelation<F>,
     },
 }
 
-impl GKRGraph {
+impl<F: PrimeField> GKRGraph<F> {
     // fn dump_base_layer_set(&self) -> BTreeSet<GKRAddress> {
     //     let mut result = BTreeSet::new();
     //     result.extend(self.base_layer_memory_rev.keys().copied());
@@ -71,10 +71,11 @@ impl GKRGraph {
 
     pub(crate) fn layout_layers(
         &mut self,
-        mut grand_product_outputs: [(GKRAddress, NoFieldGKRRelation); 2],
-        mut lookup_outputs: BTreeMap<LookupType, ([GKRAddress; 2], LookupOutput)>,
+        mut grand_product_outputs: [(GKRAddress, NoFieldGKRRelation<F>); 2],
+        mut lookup_outputs: BTreeMap<LookupType, ([GKRAddress; 2], LookupOutput<F>)>,
+        mut inits_teardowns_outputs: Option<[(GKRAddress, NoFieldGKRRelation<F>); 2]>,
     ) -> (
-        Vec<GKRLayerDescription>,
+        Vec<GKRLayerDescription<F>>,
         BTreeMap<OutputType, Vec<GKRAddress>>,
     ) {
         assert!(self.enforced_relations.len() > 0);
@@ -93,6 +94,13 @@ impl GKRGraph {
                     if rel == &grand_product_outputs[0].1 || rel == &grand_product_outputs[1].1 {
                         output_layers.insert(OutputType::PermutationProduct, output_layer);
                         continue 'outer;
+                    }
+                    if let Some(it) = inits_teardowns_outputs.as_ref() {
+                        if rel == &it[0].1 || rel == &it[1].1 {
+                            output_layers
+                                .insert(OutputType::InitsAndTeardownsProduct, output_layer);
+                            continue 'outer;
+                        }
                     }
                     for (k, (_, el)) in lookup_outputs.iter() {
                         let LookupOutput::Direct(el) = el else {
@@ -118,7 +126,7 @@ impl GKRGraph {
             }
 
             let max_output_layer = output_layers.iter().map(|(_k, v)| *v).max().unwrap();
-            assert!(output_layers.len() <= 4);
+            assert!(output_layers.len() <= 5);
 
             for (k, output_layer_idx) in output_layers.into_iter() {
                 if output_layer_idx != max_output_layer {
@@ -135,8 +143,24 @@ impl GKRGraph {
                                     });
                             }
                         }
-                        a @ _ => {
-                            let current_output = match a {
+                        OutputType::InitsAndTeardownsProduct => {
+                            let current_output = inits_teardowns_outputs
+                                .as_mut()
+                                .expect("inits/teardowns output present");
+                            for next_layer in (output_layer_idx + 1)..=max_output_layer {
+                                // copy
+                                *current_output =
+                                    current_output.each_ref().map(|(addr, _relation)| {
+                                        let copy_node =
+                                            CopyNode::FromIntermediateInExtension(*addr);
+                                        copy_node.add_at_layer(self, next_layer)
+                                    });
+                            }
+                        }
+                        OutputType::Lookup16Bits
+                        | OutputType::LookupTimestamps
+                        | OutputType::GenericLookup => {
+                            let current_output = match k {
                                 OutputType::Lookup16Bits => {
                                     lookup_outputs.get_mut(&LookupType::RangeCheck16).unwrap()
                                 }
@@ -146,9 +170,10 @@ impl GKRGraph {
                                 OutputType::GenericLookup => {
                                     lookup_outputs.get_mut(&LookupType::Generic).unwrap()
                                 }
-                                _ => {
-                                    todo!()
-                                }
+                                OutputType::PermutationProduct
+                                | OutputType::InitsAndTeardownsProduct => unreachable!(
+                                    "outer arm matched lookup variants; can't see {k:?} here"
+                                ),
                             };
                             for next_layer in (output_layer_idx + 1)..=max_output_layer {
                                 // copy
@@ -183,6 +208,12 @@ impl GKRGraph {
                 .map(|(addr, _)| *addr)
                 .collect(),
         );
+        if let Some(it) = inits_teardowns_outputs.as_ref() {
+            global_output_map.insert(
+                OutputType::InitsAndTeardownsProduct,
+                it.iter().map(|(addr, _)| *addr).collect(),
+            );
+        }
         for (lookup_type, (addrs, _)) in lookup_outputs.iter() {
             let output_type = match lookup_type {
                 LookupType::RangeCheck16 => OutputType::Lookup16Bits,
@@ -233,6 +264,17 @@ impl GKRGraph {
                     };
                     descr.gates_with_external_connections.push(artifact);
                     continue 'outer;
+                }
+                if let Some(it) = inits_teardowns_outputs.as_ref() {
+                    if rel == &it[0].1 || rel == &it[1].1 {
+                        assert!(rel.cached_addresses().is_empty());
+                        let artifact = GateArtifacts {
+                            output_layer,
+                            enforced_relation: rel.clone(),
+                        };
+                        descr.gates_with_external_connections.push(artifact);
+                        continue 'outer;
+                    }
                 }
                 for (k, (_, el)) in lookup_outputs.iter() {
                     match el {

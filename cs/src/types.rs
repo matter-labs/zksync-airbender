@@ -103,6 +103,15 @@ impl Boolean {
     }
 
     #[track_caller]
+    pub fn expect_variable(&self) -> Variable {
+        match *self {
+            Boolean::Is(v) => v,
+            Boolean::Not(_) => panic!("expected Boolean::Is, got Boolean::Not"),
+            Boolean::Constant(_) => panic!("expected Boolean::Is, got Boolean::Constant"),
+        }
+    }
+
+    #[track_caller]
     pub fn new<F: PrimeField, C: Circuit<F>>(circuit: &mut C) -> Self {
         circuit.add_boolean_variable()
     }
@@ -178,7 +187,7 @@ impl Boolean {
                 .map(|(idx, &bit)| Expr::from(bit) * Expr::from(1u32 << idx))
                 .collect(),
         ) - Expr::from(full_bitmask);
-        circuit.add_constraint_allow_explicit_linear_expr(constraint);
+        circuit.add_constraint_expr_allow_explicit_linear(constraint);
 
         type_bitmask
     }

@@ -4,7 +4,7 @@ use super::*;
 use crate::gkr::prover::sumcheck_loop::batch_evaluation::BatchedGKRDescription;
 use cs::definitions::gkr::NoFieldLinearRelation;
 use cs::definitions::NUM_PERMUTATION_ARGUMENT_LINEARIZATION_CHALLENGES;
-use cs::gkr_compiler::{NoFieldGKRRelation, NoFieldMaxQuadraticGKRRelation};
+use cs::gkr_compiler::{GKRCircuitArtifact, NoFieldGKRRelation, NoFieldMaxQuadraticGKRRelation};
 
 impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
     pub(crate) fn analyze_terms(&self) {
@@ -423,7 +423,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
     ///   and any native integer-coefficient scaling), counted as a separate kind.
     pub(crate) fn compare_gate_vs_batched_cost(
         &self,
-        layer: &GKRLayerDescription,
+        layer: &GKRLayerDescription<F>,
     ) -> CostComparison {
         let challenge_constants = BatchedGKRTermDescriptionConstants {
             external_challenges: GKRExternalChallenges {
@@ -439,7 +439,6 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
         let description = self.make_batched_description(&challenge_constants, self.layer);
         let batched = batched_form_cost(&description);
 
-        let p = F::CHARACTERISTICS;
         let mut gate_native = EvalCost::default();
         let mut gate_native_cse = EvalCost::default();
         let mut gate_batching_mults = 0usize;
@@ -447,7 +446,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
         let mut unmodeled_gates = 0usize;
         // Inner linear combinations already materialized, shared across all max-quadratic gates so a
         // common sub-expression is built once and then reused.
-        let mut materialized: BTreeSet<Vec<(u32, GKRAddress)>> = BTreeSet::new();
+        let mut materialized: BTreeSet<Vec<(u128, GKRAddress)>> = BTreeSet::new();
         for gate in layer
             .gates_with_external_connections
             .iter()
@@ -455,18 +454,18 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
         {
             num_gates += 1;
             let rel = &gate.enforced_relation;
-            match native_gate_cost(rel, p) {
+            match native_gate_cost(rel) {
                 Some(cost) => gate_native += cost,
                 None => unmodeled_gates += 1,
             }
             // CSE variant: max-quadratic constraints share inner-linear-form construction.
             match rel {
-                NoFieldGKRRelation::EnforceSingleMaxQuadraticConstraint { input }
+                NoFieldGKRRelation::EnforceSingleMaxQuadraticConstraint { input, .. }
                 | NoFieldGKRRelation::MaxQuadratic { input, .. } => {
-                    gate_native_cse += max_quadratic_cse_cost(input, p, &mut materialized);
+                    gate_native_cse += max_quadratic_cse_cost(input, &mut materialized);
                 }
                 other => {
-                    if let Some(cost) = native_gate_cost(other, p) {
+                    if let Some(cost) = native_gate_cost(other) {
                         gate_native_cse += cost;
                     }
                 }
@@ -588,22 +587,22 @@ fn batched_form_cost<F: PrimeField, E: FieldExtension<F> + Field>(
     cost
 }
 
-/// Whether a `u32` coefficient is non-trivial (costs a multiply): anything but `0`, `1`, `p-1`.
-fn u32_coeff_is_mult(coeff: u32, p: u32) -> bool {
-    coeff != 0 && coeff != 1 && coeff != p - 1
+/// Whether a field coefficient is non-trivial (costs a multiply): anything but `0`, `1`, `-1`.
+fn coeff_is_mult<F: PrimeField>(coeff: &F) -> bool {
+    !coeff.is_zero() && !coeff.is_one() && *coeff != F::MINUS_ONE
 }
 
 /// Native (bracket-preserving) cost of a max-quadratic relation `Σ a*(Σ c_j b_j) + Σ c_k v_k + c`.
-fn max_quadratic_native_cost(rel: &NoFieldMaxQuadraticGKRRelation, p: u32) -> EvalCost {
+fn max_quadratic_native_cost<F: PrimeField>(rel: &NoFieldMaxQuadraticGKRRelation<F>) -> EvalCost {
     let mut cost = EvalCost::default();
     for (_a, inner) in rel.quadratic_terms.iter() {
         let mut nonzero = 0usize;
         for (coeff, _b) in inner.iter() {
-            if *coeff == 0 {
+            if coeff.is_zero() {
                 continue;
             }
             nonzero += 1;
-            if u32_coeff_is_mult(*coeff, p) {
+            if coeff_is_mult(coeff) {
                 cost.coeff_mults += 1;
             }
         }
@@ -613,15 +612,15 @@ fn max_quadratic_native_cost(rel: &NoFieldMaxQuadraticGKRRelation, p: u32) -> Ev
         }
     }
     for (coeff, _v) in rel.linear_terms.iter() {
-        if *coeff == 0 {
+        if coeff.is_zero() {
             continue;
         }
-        if u32_coeff_is_mult(*coeff, p) {
+        if coeff_is_mult(coeff) {
             cost.coeff_mults += 1;
         }
         cost.adds += 1;
     }
-    if rel.constant != 0 {
+    if !rel.constant.is_zero() {
         cost.adds += 1;
     }
     cost
@@ -631,16 +630,18 @@ fn max_quadratic_native_cost(rel: &NoFieldMaxQuadraticGKRRelation, p: u32) -> Ev
 /// combinations. `materialized` records the canonical inner forms already built (shared across
 /// gates): each distinct form pays its construction (coefficient scaling + additions) only once,
 /// after which every quadratic term that uses it just multiplies (`a * L`) and accumulates.
-fn max_quadratic_cse_cost(
-    rel: &NoFieldMaxQuadraticGKRRelation,
-    p: u32,
-    materialized: &mut BTreeSet<Vec<(u32, GKRAddress)>>,
+fn max_quadratic_cse_cost<F: PrimeField>(
+    rel: &NoFieldMaxQuadraticGKRRelation<F>,
+    materialized: &mut BTreeSet<Vec<(u128, GKRAddress)>>,
 ) -> EvalCost {
     let mut cost = EvalCost::default();
     for (_a, inner) in rel.quadratic_terms.iter() {
         // Canonical key for the inner linear form (drop zero coefficients, sort).
-        let mut key: Vec<(u32, GKRAddress)> =
-            inner.iter().filter(|(c, _)| *c != 0).copied().collect();
+        let mut key: Vec<(u128, GKRAddress)> = inner
+            .iter()
+            .filter(|(c, _)| !c.is_zero())
+            .map(|(c, b)| (c.as_u128_reduced(), *b))
+            .collect();
         if key.is_empty() {
             continue;
         }
@@ -648,7 +649,7 @@ fn max_quadratic_cse_cost(
         // Build the inner sum only the first time we ever see this exact linear form.
         if materialized.insert(key.clone()) {
             for (coeff, _b) in key.iter() {
-                if u32_coeff_is_mult(*coeff, p) {
+                if coeff_is_mult(&F::from_u128_with_reduction(*coeff)) {
                     cost.coeff_mults += 1;
                 }
             }
@@ -658,33 +659,33 @@ fn max_quadratic_cse_cost(
         cost.adds += 1; // accumulate into the result
     }
     for (coeff, _v) in rel.linear_terms.iter() {
-        if *coeff == 0 {
+        if coeff.is_zero() {
             continue;
         }
-        if u32_coeff_is_mult(*coeff, p) {
+        if coeff_is_mult(coeff) {
             cost.coeff_mults += 1;
         }
         cost.adds += 1;
     }
-    if rel.constant != 0 {
+    if !rel.constant.is_zero() {
         cost.adds += 1;
     }
     cost
 }
 
 /// Native cost of a linear relation `Σ c_k v_k + c`.
-fn linear_native_cost(rel: &NoFieldLinearRelation, p: u32) -> EvalCost {
+fn linear_native_cost<F: PrimeField>(rel: &NoFieldLinearRelation<F>) -> EvalCost {
     let mut cost = EvalCost::default();
     for (coeff, _v) in rel.linear_terms.iter() {
-        if *coeff == 0 {
+        if coeff.is_zero() {
             continue;
         }
-        if u32_coeff_is_mult(*coeff, p) {
+        if coeff_is_mult(coeff) {
             cost.coeff_mults += 1;
         }
         cost.adds += 1;
     }
-    if rel.constant != 0 {
+    if !rel.constant.is_zero() {
         cost.adds += 1;
     }
     cost
@@ -692,13 +693,13 @@ fn linear_native_cost(rel: &NoFieldLinearRelation, p: u32) -> EvalCost {
 
 /// Native arithmetic cost of one gate, before the batching fold. `None` for gate kinds we do not
 /// model (so the caller can report coverage). Lookup gates use small, documented closed-form costs.
-fn native_gate_cost(rel: &NoFieldGKRRelation, p: u32) -> Option<EvalCost> {
+fn native_gate_cost<F: PrimeField>(rel: &NoFieldGKRRelation<F>) -> Option<EvalCost> {
     let cost = match rel {
-        NoFieldGKRRelation::EnforceSingleMaxQuadraticConstraint { input } => {
-            max_quadratic_native_cost(input, p)
+        NoFieldGKRRelation::EnforceSingleMaxQuadraticConstraint { input, .. } => {
+            max_quadratic_native_cost(input)
         }
-        NoFieldGKRRelation::MaxQuadratic { input, .. } => max_quadratic_native_cost(input, p),
-        NoFieldGKRRelation::LinearBaseFieldRelation { input, .. } => linear_native_cost(input, p),
+        NoFieldGKRRelation::MaxQuadratic { input, .. } => max_quadratic_native_cost(input),
+        NoFieldGKRRelation::LinearBaseFieldRelation { input, .. } => linear_native_cost(input),
         // A copy a(x) = Σ eq(x,y) a(y) carries no arithmetic of its own here.
         NoFieldGKRRelation::CopyInBaseField { .. }
         | NoFieldGKRRelation::CopyInExtensionField { .. } => EvalCost::default(),
@@ -735,7 +736,7 @@ fn native_gate_cost(rel: &NoFieldGKRRelation, p: u32) -> Option<EvalCost> {
 
 /// Number of outputs a gate writes (used for the batching-fold charge). Output-less enforced
 /// constraints return 0 (the caller then charges a single fold).
-fn num_outputs(rel: &NoFieldGKRRelation) -> usize {
+fn num_outputs<F: PrimeField>(rel: &NoFieldGKRRelation<F>) -> usize {
     let mut outputs = BTreeSet::new();
     rel.dump_outputs(&mut outputs);
     outputs.len()
@@ -1340,6 +1341,324 @@ impl<E: Field> AddressGraph<E> {
 
 }
 
+pub fn liveness_analysis<F: PrimeField>(circuit: &GKRCircuitArtifact<F>, layer_idx: usize) {
+    let layer = &circuit.layers[layer_idx];
+    if layer.gates_with_external_connections.len() > 0 {
+        panic!("Last layer is usually not interesting");
+    }
+
+    let mut occurance_matrix: BTreeMap<usize, BTreeSet<GKRAddress>> = BTreeMap::new();
+    let mut inv_occurance_matrix: BTreeMap<GKRAddress, BTreeSet<usize>> = BTreeMap::new();
+
+    for (idx, gate) in layer.gates.iter().enumerate() {
+        let mut set = BTreeSet::new();
+        gate.enforced_relation.dump_inputs(&mut set);
+        for el in set.iter() {
+            inv_occurance_matrix
+                .entry(*el)
+                .or_insert(BTreeSet::new())
+                .insert(idx);
+        }
+
+        occurance_matrix.insert(idx, set);
+    }
+
+    let mut matrix = vec![];
+    for (a, inputs) in occurance_matrix.iter() {
+        for (b, other_inputs) in occurance_matrix.iter() {
+            if *a >= *b {
+                continue;
+            }
+            let common = inputs.intersection(&other_inputs);
+            let num_common = common.count();
+            matrix.push((*a, *b, num_common));
+        }
+    }
+
+    matrix.sort_by(|a, b| a.2.cmp(&b.2).reverse());
+
+    for (a, b, common_els) in matrix.iter() {
+        if *common_els == 0 {
+            continue;
+        }
+        println!("{} / {}: {} common inputs", a, b, common_els);
+    }
+
+    // In general we need to reduce the scope of initial search branches, so let's do it by ones
+    // that have at least N inputs
+
+    let max_reuses = matrix.iter().map(|(_, _, t)| *t).max().unwrap_or(1);
+    if max_reuses == 0 {
+        println!("Order is not important, there are no reuses");
+        return;
+    }
+    let min_common_inputs = 4;
+    let cutoff = std::cmp::min(max_reuses, min_common_inputs);
+
+    dbg!(cutoff);
+
+    let mut starting_points = BTreeSet::new();
+    for (a, b, common_els) in matrix.iter() {
+        if *common_els >= cutoff {
+            starting_points.insert(*a);
+            starting_points.insert(*b);
+        }
+    }
+    assert!(starting_points.len() > 0);
+
+    // now we should do greedy search (speed is not an issue) to find a sequence of gate evaluations
+    // that would use as much cache as possible. For that we will want liveness analysis, and we will use a simple one
+    // for a start - basically assuming that value is "life" until there are no other expressions that may use it
+
+    let mut reports = BTreeMap::new();
+    let all_gates: BTreeSet<usize> = (0..layer.gates.len()).collect();
+
+    println!("Starting points are {:?}", &starting_points);
+
+    for gate_idx in starting_points.into_iter().skip(0) {
+        println!("Starting from {}", gate_idx);
+
+        let mut remaining_gates = all_gates.clone();
+        remaining_gates.remove(&gate_idx);
+
+        let mut alive_set = BTreeMap::new();
+        let mut t = BTreeSet::new();
+        layer.gates[gate_idx].enforced_relation.dump_inputs(&mut t);
+        for t in t.into_iter() {
+            alive_set.insert(t, 0);
+        }
+
+        alive_set.retain(|k, _| {
+            let occurance_in_gates = inv_occurance_matrix
+                .get(k)
+                .expect("exists in occurance matrix");
+            let mut still_alive = false;
+            for gate_idx in remaining_gates.iter() {
+                if occurance_in_gates.contains(gate_idx) {
+                    still_alive = true;
+                    break;
+                }
+            }
+            still_alive
+        });
+
+        search_step::<F, 8>(
+            layer,
+            0,
+            vec![gate_idx],
+            alive_set,
+            remaining_gates,
+            0,
+            &mut reports,
+            &inv_occurance_matrix,
+        );
+    }
+
+    dbg!(&reports);
+}
+
+fn search_step<F: PrimeField, const MAX_CANDIDATES: usize>(
+    layer: &GKRLayerDescription<F>,
+    epoch: usize,
+    chain: Vec<usize>, // chain of gates
+    all_live_variables: BTreeMap<GKRAddress, usize>,
+    remaining_gates: BTreeSet<usize>,
+    max_cache_size: usize,
+    reports: &mut BTreeMap<Vec<usize>, usize>,
+    // reports: &mut BTreeMap<Vec<usize>, BTreeMap<GKRAddress, Range<usize>>>,
+    // mut stats: BTreeMap<GKRAddress, Range<usize>>,
+    // occurange_matrix: &BTreeMap<usize, BTreeSet<GKRAddress>>,
+    inv_occurance_matrix: &BTreeMap<GKRAddress, BTreeSet<usize>>,
+) {
+    let epoch = epoch + 1;
+
+    let worst_case = reports.values().max().copied().unwrap_or(usize::MAX);
+    if max_cache_size >= worst_case {
+        // do not try to update
+        return;
+    }
+
+    if remaining_gates.is_empty() {
+        let num_alive = all_live_variables.len();
+        let final_report = std::cmp::max(num_alive, max_cache_size);
+        if final_report < worst_case {
+            println!(
+                "Inserting chain {:?} with {} max live variables",
+                &chain, final_report
+            );
+            reports.insert(chain, final_report);
+            if reports.len() > 10 {
+                reports.retain(|_, v| *v < worst_case);
+            }
+        }
+
+        return;
+    }
+
+    // // cleanup dead variables
+    // let mut remaining_live_variables = BTreeMap::new();
+    // for (variable, life_at_epoch) in all_live_variables.into_iter() {
+    //     let mut alive = false;
+    //     for &gate_idx in remaining_gates.iter() {
+    //         let mut set = BTreeSet::new();
+    //         layer.gates[gate_idx].enforced_relation.dump_inputs(&mut set);
+    //         if set.contains(&variable) {
+    //             alive = true;
+    //             break;
+    //         }
+    //     }
+    //     if alive {
+    //         remaining_live_variables.insert(variable, life_at_epoch);
+    //     }
+    //     //  else {
+    //     //     stats.insert(variable, life_at_epoch..epoch);
+    //     // }
+    // }
+
+    // try to find a gates with max overlaps with max alive variables
+    let mut reuse_stats = BTreeMap::new();
+    for &gate_idx in remaining_gates.iter() {
+        let mut num_reuses = 0;
+        let mut set = BTreeSet::new();
+        layer.gates[gate_idx]
+            .enforced_relation
+            .dump_inputs(&mut set);
+        for var in set.into_iter() {
+            if all_live_variables.contains_key(&var) {
+                num_reuses += 1usize;
+            }
+        }
+        if num_reuses > 0 {
+            reuse_stats.insert(gate_idx, num_reuses);
+        }
+    }
+    assert!(
+        reuse_stats.is_empty() == false,
+        "disjoint set if we do {:?} chain",
+        &chain
+    ); // we do not consider disjoint sequences yet
+
+    let mut candidates_via_reuse: Vec<_> = reuse_stats.into_iter().collect();
+    candidates_via_reuse.sort_by(|(a_gate, a_reuses), (b_gate, b_reuses)| {
+        let t = a_reuses.cmp(b_reuses).reverse();
+        if t == std::cmp::Ordering::Equal {
+            a_gate.cmp(b_gate)
+        } else {
+            t
+        }
+    });
+    candidates_via_reuse.truncate(MAX_CANDIDATES);
+
+    // we also consider some gates that immediately reduce the number of alive variables in the most aggressive manner
+    let mut elimination_stats = BTreeMap::new();
+    for &gate_idx in remaining_gates.iter() {
+        assert!(
+            remaining_gates.contains(&gate_idx),
+            "gates set is {:?}, but gate {} is missing",
+            &remaining_gates,
+            gate_idx
+        );
+
+        let mut alive_set = all_live_variables.clone();
+        let mut t = BTreeSet::new();
+        layer.gates[gate_idx].enforced_relation.dump_inputs(&mut t);
+        for el in t.into_iter() {
+            alive_set.insert(el, epoch);
+        }
+        // maybe some variables die after we do this gate
+        alive_set.retain(|k, _| {
+            let occurance_in_gates = inv_occurance_matrix
+                .get(k)
+                .expect("exists in occurance matrix");
+            let mut still_alive = false;
+            for other_gate_idx in remaining_gates.iter() {
+                if gate_idx == *other_gate_idx {
+                    continue;
+                }
+                if occurance_in_gates.contains(other_gate_idx) {
+                    still_alive = true;
+                    break;
+                }
+            }
+            still_alive
+        });
+        let num_alive = alive_set.len();
+        if num_alive < all_live_variables.len() {
+            // only consider paths that immediatelly eliminate live set
+            elimination_stats.insert(gate_idx, num_alive);
+        }
+    }
+
+    let mut candidates_from_elimination: Vec<_> = elimination_stats.into_iter().collect();
+    candidates_from_elimination.sort_by(|(a_gate, a_left_alive), (b_gate, b_left_alive)| {
+        let t = a_left_alive.cmp(b_left_alive);
+        if t == std::cmp::Ordering::Equal {
+            a_gate.cmp(b_gate)
+        } else {
+            t
+        }
+    });
+    candidates_from_elimination.truncate(MAX_CANDIDATES);
+
+    let mut all_candidates = BTreeSet::new();
+    all_candidates.extend(candidates_via_reuse.into_iter().map(|(a, _)| a));
+    all_candidates.extend(candidates_from_elimination.into_iter().map(|(a, _)| a));
+
+    // now we descend
+    for gate_idx in all_candidates.into_iter() {
+        assert!(
+            remaining_gates.contains(&gate_idx),
+            "gates set is {:?}, but gate {} is missing",
+            &remaining_gates,
+            gate_idx
+        );
+
+        let mut new_chain = chain.clone();
+        new_chain.push(gate_idx);
+
+        let mut new_remaining_gates = remaining_gates.clone();
+        new_remaining_gates.remove(&gate_idx);
+        assert!(new_remaining_gates.len() < remaining_gates.len());
+
+        let mut alive_set = all_live_variables.clone();
+        let mut t = BTreeSet::new();
+        layer.gates[gate_idx].enforced_relation.dump_inputs(&mut t);
+        for el in t.into_iter() {
+            alive_set.insert(el, epoch);
+        }
+        // maybe some variables die after we do this gate
+        alive_set.retain(|k, _| {
+            let occurance_in_gates = inv_occurance_matrix
+                .get(k)
+                .expect("exists in occurance matrix");
+            let mut still_alive = false;
+            for gate_idx in new_remaining_gates.iter() {
+                if occurance_in_gates.contains(gate_idx) {
+                    still_alive = true;
+                    break;
+                }
+            }
+            still_alive
+        });
+        let num_alive = alive_set.len();
+        let new_max_cache_size = std::cmp::max(num_alive, max_cache_size);
+        if new_max_cache_size >= worst_case {
+            continue;
+        }
+
+        search_step::<F, MAX_CANDIDATES>(
+            layer,
+            epoch,
+            new_chain,
+            alive_set,
+            new_remaining_gates,
+            new_max_cache_size,
+            reports,
+            inv_occurance_matrix,
+        );
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -1416,14 +1735,16 @@ mod test {
     #[test]
     fn analyze_terms_in_circuit() {
         let circuit: GKRCircuitArtifact<BabyBearField> = if USE_GKR_WITH_CACHES {
-            deserialize_from_file(
-                "../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_gkr.json",
-            )
+            deserialize_from_file("../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_gkr.json")
         } else {
             deserialize_from_file(
                 "../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_no_caches_gkr.json",
             )
         };
+
+        // let circuit: GKRCircuitArtifact<BabyBearField> = deserialize_from_file(
+        //     "../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_no_caches_gkr.json",
+        // );
 
         let layer_idx = 0;
         let layer = &circuit.layers[layer_idx];

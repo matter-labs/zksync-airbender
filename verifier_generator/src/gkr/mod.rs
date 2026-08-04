@@ -1,4 +1,5 @@
 use proc_macro2::TokenStream;
+use prover::field::PrimeField;
 use quote::quote;
 use std::collections::BTreeMap;
 
@@ -8,11 +9,22 @@ pub use crate::utils::{
     BATCHING_CHALLENGE_EXTRA, DIM_REDUCE_EVAL_POINTS, STANDARD_EVAL_POINTS, SUMCHECK_POLY_COEFFS,
 };
 use prover::common_constants::TIMESTAMP_COLUMNS_NUM_BITS;
-use prover::cs::definitions::{GKRAddress, VirtualSetupPoly};
+use prover::cs::definitions::gkr::{AddressSpaceType, RamWordRepresentation};
+use prover::cs::definitions::{
+    GKRAddress, VirtualSetupPoly, PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX,
+    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX,
+    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX,
+    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX,
+    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX,
+    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX,
+};
 use prover::cs::gkr_compiler::{
-    GKRCircuitArtifact, GKRLayerDescription, NoFieldGKRCacheRelation, OutputType,
+    CompiledAddressSpaceRelationStrict, CompiledAddressStrict, CompiledMemoryTimestamp,
+    GKRCircuitArtifact, GKRLayerDescription, NoFieldGKRCacheRelation,
+    NoFieldSpecialMemoryContributionRelation, OutputType,
 };
 use prover::gkr::prover::WhirSchedule;
+use prover::gkr::prover_config::pow_bits;
 
 pub mod dim_reducing_layer;
 pub mod standard_layer;
@@ -89,21 +101,12 @@ pub fn generate_gkr_common<MW: FieldWrapper>() -> TokenStream {
     let add_t_rp = MW::add_assign(quote! { t }, quote! { rp });
 
     // final step check operations
-    let sub_eq0_lpp = MW::sub_assign(quote! { eq0 }, quote! { last_prev_point });
-    let mul_rhs_f0 = MW::mul_assign(quote! { rhs }, quote! { f[0] });
-    let mul_t_f1 = MW::mul_assign(quote! { t }, quote! { f[1] });
-    let add_rhs_t = MW::add_assign(quote! { rhs }, quote! { t });
     let mul_rhs_eq = MW::mul_assign(quote! { rhs }, quote! { final_eq_prefactor });
-
-    // fold claims operations
-    let sub_diff_f0 = MW::sub_assign(quote! { diff }, quote! { f0 });
-    let mul_diff_lr = MW::mul_assign(quote! { diff }, quote! { last_r });
-    let add_diff_f0 = MW::add_assign(quote! { diff }, quote! { f0 });
 
     let common_fns = quote! {
         #[inline(always)]
         pub fn verify_sumcheck_rounds<
-            I: NonDeterminismSource,
+            I: NonDeterminismSource<#field_struct>,
             E: ErrorCreator,
             const NUM_ROUNDS: usize,
             const COMMIT_BUF: usize,
@@ -127,7 +130,7 @@ pub fn generate_gkr_common<MW: FieldWrapper>() -> TokenStream {
                 {
                     let mut i = 0;
                     while i < coeff_data_words {
-                        commit_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
+                        commit_buf.data_write(i, read_reduced_field_el::<I>(nd_source).as_u32_raw_repr());
                         i += 1;
                     }
                 }
@@ -189,21 +192,19 @@ pub fn generate_gkr_common<MW: FieldWrapper>() -> TokenStream {
             Ok((claim, eq_prefactor))
         }
 
+        // New last-round form: the last sumcheck round is now a regular univariate verified
+        // inside `verify_sumcheck_rounds`, so `final_claim` already equals `s_last(r_last)` and
+        // `final_eq_prefactor == eq(r_last, last_output_coord)`. The prover sends a single
+        // at-point evaluation per input poly, from which the verifier evaluates the GKR kernels
+        // ONCE to obtain `g = G(point)`. Consistency is then just `final_claim == g * eq`.
         #[inline(always)]
         pub fn verify_final_step_check<E: ErrorCreator>(
-            f: [#quartic_struct; 2],
-            last_prev_point: #quartic_struct,
+            g: #quartic_struct,
             final_eq_prefactor: #quartic_struct,
             final_claim: #quartic_struct,
             layer_idx: usize,
         ) -> Result<(), E::Error> {
-            let mut eq0 = #quartic_one;
-            #sub_eq0_lpp;
-            let mut rhs = eq0;
-            #mul_rhs_f0;
-            let mut t = last_prev_point;
-            #mul_t_f1;
-            #add_rhs_t;
+            let mut rhs = g;
             #mul_rhs_eq;
             if rhs != final_claim {
                 return Err(E::gkr_final_step_check_failed(layer_idx));
@@ -211,6 +212,9 @@ pub fn generate_gkr_common<MW: FieldWrapper>() -> TokenStream {
             Ok(())
         }
 
+        // The prover now sends the at-point evaluations directly (the polys already folded at
+        // the last challenge), so the next-layer claims are exactly those values - no linear
+        // interpolation needed.
         #[inline(always)]
         pub fn fold_standard_claims<
             const NUM_ADDRS: usize,
@@ -218,20 +222,14 @@ pub fn generate_gkr_common<MW: FieldWrapper>() -> TokenStream {
             const BUF: usize,
         >(
             eval_buf: &CommitBuf<BUF>,
-            last_r: #quartic_struct,
             claims: &mut LazyVec<#quartic_struct, ADDRS>,
         ) {
-            let final_step_evals: &[[#quartic_struct; 2]] =
+            let final_step_evals: &[[#quartic_struct; 1]] =
                 unsafe { eval_buf.data_as(NUM_ADDRS) };
             claims.clear();
             for i in 0..NUM_ADDRS {
                 let evals = unsafe { final_step_evals.get_unchecked(i) };
-                let f0 = evals[0];
-                let mut diff = evals[1];
-                #sub_diff_f0;
-                #mul_diff_lr;
-                #add_diff_f0;
-                claims.push(diff);
+                claims.push(evals[0]);
             }
         }
     };
@@ -506,8 +504,8 @@ fn emit_inits_and_teardowns_eval_check<MW: FieldWrapper>(
     (helper, call)
 }
 
-fn generate_cache_relation_checks<MW: FieldWrapper>(
-    layer: &GKRLayerDescription,
+fn generate_cache_relation_checks<MW: FieldWrapper, F: PrimeField>(
+    layer: &GKRLayerDescription<F>,
     target_addrs: &[GKRAddress],
     layer_idx: usize,
 ) -> TokenStream {
@@ -525,6 +523,12 @@ fn generate_cache_relation_checks<MW: FieldWrapper>(
 
     let mut vsetup_descs: Vec<(usize, usize, usize)> = Vec::new();
     let mut vsetup_deps: Vec<usize> = Vec::new();
+
+    // MemoryTuple caches: (cached_idx, relation). Bound below by an unrolled per-relation
+    // block that reproduces `evaluate_memory_tuple_from_claims` exactly. Without this, the
+    // memory-permutation grand product certifies nothing about the committed base columns
+    let mut memtuple_relations: Vec<(usize, &NoFieldSpecialMemoryContributionRelation)> =
+        Vec::new();
 
     let find_idx = |addr: &GKRAddress| -> usize {
         target_addrs
@@ -548,11 +552,14 @@ fn generate_cache_relation_checks<MW: FieldWrapper>(
             } => {
                 let term_start = single_terms.len();
                 for &(coeff, ref addr) in rel.input.linear_terms.iter() {
-                    single_terms.push((MW::coeff_to_internal_repr(coeff), find_idx(addr)));
+                    single_terms.push((
+                        MW::coeff_to_internal_repr(coeff.as_u32_reduced()),
+                        find_idx(addr),
+                    ));
                 }
                 single_descs.push((
                     cached_idx,
-                    MW::coeff_to_internal_repr(rel.input.constant),
+                    MW::coeff_to_internal_repr(rel.input.constant.as_u32_reduced()),
                     term_start,
                     rel.input.linear_terms.len(),
                 ));
@@ -562,10 +569,13 @@ fn generate_cache_relation_checks<MW: FieldWrapper>(
                 for column in rel.columns.iter() {
                     let t_start = vector_terms.len();
                     for &(coeff, ref addr) in column.linear_terms.iter() {
-                        vector_terms.push((MW::coeff_to_internal_repr(coeff), find_idx(addr)));
+                        vector_terms.push((
+                            MW::coeff_to_internal_repr(coeff.as_u32_reduced()),
+                            find_idx(addr),
+                        ));
                     }
                     vector_cols.push((
-                        MW::coeff_to_internal_repr(column.constant),
+                        MW::coeff_to_internal_repr(column.constant.as_u32_reduced()),
                         t_start,
                         column.linear_terms.len(),
                     ));
@@ -579,7 +589,9 @@ fn generate_cache_relation_checks<MW: FieldWrapper>(
                 }
                 vsetup_descs.push((cached_idx, dep_start, setup_addrs.len()));
             }
-            NoFieldGKRCacheRelation::MemoryTuple(_) => {}
+            NoFieldGKRCacheRelation::MemoryTuple(rel) => {
+                memtuple_relations.push((cached_idx, rel));
+            }
         }
     }
 
@@ -748,7 +760,301 @@ fn generate_cache_relation_checks<MW: FieldWrapper>(
         });
     }
 
+    let vsetup_count = vsetup_descs.len();
+    for (mt_idx, (cached_idx, rel)) in memtuple_relations.iter().enumerate() {
+        let relation_idx = vsetup_count + mt_idx;
+        let block =
+            emit_memory_tuple_check::<MW>(rel, *cached_idx, layer_idx, relation_idx, &find_idx);
+        checks.extend(block);
+    }
+
     checks
+}
+
+/// Emit a straight-line check binding a single MemoryTuple cache to the committed base columns
+fn emit_memory_tuple_check<MW: FieldWrapper>(
+    rel: &NoFieldSpecialMemoryContributionRelation,
+    cached_idx: usize,
+    layer_idx: usize,
+    relation_idx: usize,
+    dep: &impl Fn(&GKRAddress) -> usize,
+) -> TokenStream {
+    let quartic_struct = MW::quartic_struct();
+    let field_struct = MW::field_struct();
+
+    // Resolve a base-layer memory column offset to its claim index in prev_claims.
+    let claim = |offset: usize| -> TokenStream {
+        let idx = dep(&GKRAddress::BaseLayerMemory(offset));
+        quote! { *state.prev_claims.get_unchecked(#idx) }
+    };
+
+    let challenge = |idx: usize| -> TokenStream {
+        quote! { external_challenges.permutation_argument_linearization_challenges[#idx] }
+    };
+
+    let base_const = |value: u32| -> TokenStream {
+        let repr = MW::coeff_to_internal_repr(value);
+        quote! { #field_struct::from_reduced_raw_repr(#repr) }
+    };
+
+    let mut body = TokenStream::new();
+
+    // result = permutation_argument_additive_part
+    body.extend(quote! {
+        let mut expected: #quartic_struct =
+            external_challenges.permutation_argument_additive_part;
+    });
+
+    match rel.address_space {
+        CompiledAddressSpaceRelationStrict::Constant(c) => {
+            let bc = base_const(c);
+            let add = MW::add_assign_base(quote! { expected }, quote! { c_addr_space });
+            body.extend(quote! {
+                let c_addr_space = #bc;
+                #add;
+            });
+        }
+        CompiledAddressSpaceRelationStrict::IsRam(offset) => {
+            assert_eq!(AddressSpaceType::RAM as u8, 1);
+            let cl = claim(offset);
+            let add = MW::add_assign(quote! { expected }, quote! { as_claim });
+            body.extend(quote! {
+                let as_claim = #cl;
+                #add;
+            });
+        }
+        CompiledAddressSpaceRelationStrict::IsRegister(offset) => {
+            assert_eq!(AddressSpaceType::Register as u8, 0);
+            let cl = claim(offset);
+            let one = MW::quartic_from_base(MW::field_one());
+            let sub = MW::sub_assign(quote! { as_term }, quote! { as_claim });
+            let add = MW::add_assign(quote! { expected }, quote! { as_term });
+            body.extend(quote! {
+                let as_claim = #cl;
+                let mut as_term: #quartic_struct = #one;
+                #sub;
+                #add;
+            });
+        }
+    }
+
+    match &rel.address {
+        &CompiledAddressStrict::ConstantU16(c) => {
+            let ch = challenge(PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX);
+            let bc = base_const(c as u32);
+            let mul = MW::mul_assign_by_base(quote! { t_addr }, quote! { #bc });
+            let add = MW::add_assign(quote! { expected }, quote! { t_addr });
+            body.extend(quote! {
+                let mut t_addr: #quartic_struct = #ch;
+                #mul;
+                #add;
+            });
+        }
+        &CompiledAddressStrict::Constant(c) => {
+            let ch = challenge(PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX);
+            let bc = base_const(c);
+            let mul = MW::mul_assign_by_base(quote! { t_addr }, quote! { #bc });
+            let add = MW::add_assign(quote! { expected }, quote! { t_addr });
+            body.extend(quote! {
+                let mut t_addr: #quartic_struct = #ch;
+                #mul;
+                #add;
+            });
+        }
+        &CompiledAddressStrict::U16Space(offset) => {
+            let ch = challenge(PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX);
+            let cl = claim(offset);
+            let mul = MW::mul_assign(quote! { t_addr }, quote! { addr_claim });
+            let add = MW::add_assign(quote! { expected }, quote! { t_addr });
+            body.extend(quote! {
+                let mut t_addr: #quartic_struct = #ch;
+                let addr_claim = #cl;
+                #mul;
+                #add;
+            });
+        }
+        &CompiledAddressStrict::U32Space([low, high]) => {
+            for (ch_idx, offset) in [
+                (PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX, low),
+                (PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX, high),
+            ] {
+                let ch = challenge(ch_idx);
+                let cl = claim(offset);
+                let mul = MW::mul_assign(quote! { t_addr }, quote! { addr_claim });
+                let add = MW::add_assign(quote! { expected }, quote! { t_addr });
+                body.extend(quote! {
+                    {
+                        let mut t_addr: #quartic_struct = #ch;
+                        let addr_claim = #cl;
+                        #mul;
+                        #add;
+                    }
+                });
+            }
+        }
+        CompiledAddressStrict::U32SpaceSpecialIndirect {
+            low_base,
+            low_dynamic_offset,
+            low_offset,
+            high,
+        } => {
+            let ch_low = challenge(PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX);
+            let base_cl = claim(*low_base);
+            let off_bc = base_const(*low_offset);
+            let add_off = MW::add_assign_base(quote! { low }, quote! { #off_bc });
+            let mut dyn_block = TokenStream::new();
+            if let Some((c, offset)) = *low_dynamic_offset {
+                let dyn_cl = claim(offset);
+                let c_bc = base_const(c as u32);
+                let mul = MW::mul_assign_by_base(quote! { var_offset }, quote! { #c_bc });
+                let add = MW::add_assign(quote! { low }, quote! { var_offset });
+                dyn_block.extend(quote! {
+                    let mut var_offset = #dyn_cl;
+                    #mul;
+                    #add;
+                });
+            }
+            let mul_low = MW::mul_assign(quote! { t_low }, quote! { low });
+            let add_low = MW::add_assign(quote! { expected }, quote! { t_low });
+
+            let ch_high = challenge(PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX);
+            let high_cl = claim(*high);
+            let mul_high = MW::mul_assign(quote! { t_high }, quote! { high });
+            let add_high = MW::add_assign(quote! { expected }, quote! { t_high });
+
+            body.extend(quote! {
+                {
+                    let mut t_low: #quartic_struct = #ch_low;
+                    let mut low = #base_cl;
+                    #add_off;
+                    #dyn_block
+                    #mul_low;
+                    #add_low;
+                }
+                {
+                    let mut t_high: #quartic_struct = #ch_high;
+                    let high = #high_cl;
+                    #mul_high;
+                    #add_high;
+                }
+            });
+        }
+        CompiledAddressStrict::U32SpaceGeneric(..) => {
+            // The prover leaves this variant as `todo!()`. Fail closed at generation time so a
+            // silently-unbound cache can never be emitted.
+            unimplemented!(
+                "MemoryTuple cache binding for CompiledAddressStrict::U32SpaceGeneric is not \
+                 implemented (prover reference is `todo!()`); emitting a verifier for a circuit \
+                 that uses it would leave the cache unbound"
+            );
+        }
+    }
+
+    match rel.timestamp {
+        CompiledMemoryTimestamp::Zero => {}
+        CompiledMemoryTimestamp::Normal(ts) => {
+            let ch_low = challenge(PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX);
+            let ts_low_cl = claim(ts[0]);
+            let off_bc = base_const(rel.timestamp_offset);
+            let add_off = MW::add_assign_base(quote! { ts_low }, quote! { #off_bc });
+            let mul_low = MW::mul_assign(quote! { t_ts }, quote! { ts_low });
+            let add_low = MW::add_assign(quote! { expected }, quote! { t_ts });
+
+            let ch_high = challenge(PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX);
+            let ts_high_cl = claim(ts[1]);
+            let mul_high = MW::mul_assign(quote! { t_ts }, quote! { ts_high });
+            let add_high = MW::add_assign(quote! { expected }, quote! { t_ts });
+
+            body.extend(quote! {
+                {
+                    let mut t_ts: #quartic_struct = #ch_low;
+                    let mut ts_low = #ts_low_cl;
+                    #add_off;
+                    #mul_low;
+                    #add_low;
+                }
+                {
+                    let mut t_ts: #quartic_struct = #ch_high;
+                    let ts_high = #ts_high_cl;
+                    #mul_high;
+                    #add_high;
+                }
+            });
+        }
+    }
+
+    match rel.value {
+        RamWordRepresentation::Zero => {}
+        RamWordRepresentation::U16Limbs(read_value) => {
+            for (ch_idx, offset) in [
+                (
+                    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX,
+                    read_value[0],
+                ),
+                (
+                    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX,
+                    read_value[1],
+                ),
+            ] {
+                let ch = challenge(ch_idx);
+                let cl = claim(offset);
+                let mul = MW::mul_assign(quote! { t_val }, quote! { val_claim });
+                let add = MW::add_assign(quote! { expected }, quote! { t_val });
+                body.extend(quote! {
+                    {
+                        let mut t_val: #quartic_struct = #ch;
+                        let val_claim = #cl;
+                        #mul;
+                        #add;
+                    }
+                });
+            }
+        }
+        RamWordRepresentation::U8Limbs(read_value) => {
+            let shift = base_const(1u32 << 8);
+            for (ch_idx, offset_low, offset_high) in [
+                (
+                    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX,
+                    read_value[0],
+                    read_value[1],
+                ),
+                (
+                    PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX,
+                    read_value[2],
+                    read_value[3],
+                ),
+            ] {
+                let ch = challenge(ch_idx);
+                let low_cl = claim(offset_low);
+                let high_cl = claim(offset_high);
+                let mul_shift = MW::mul_assign_by_base(quote! { combined }, quote! { #shift });
+                let add_low = MW::add_assign(quote! { combined }, quote! { low });
+                let mul = MW::mul_assign(quote! { t_val }, quote! { combined });
+                let add = MW::add_assign(quote! { expected }, quote! { t_val });
+                body.extend(quote! {
+                    {
+                        let low = #low_cl;
+                        let mut combined = #high_cl;
+                        #mul_shift;
+                        #add_low;
+                        let mut t_val: #quartic_struct = #ch;
+                        #mul;
+                        #add;
+                    }
+                });
+            }
+        }
+    }
+
+    quote! {
+        {
+            #body
+            let cached = *state.prev_claims.get_unchecked(#cached_idx);
+            if expected != cached {
+                return Err(E::gkr_permutation_cache_relation_failed(#layer_idx, #relation_idx));
+            }
+        }
+    }
 }
 
 #[allow(clippy::needless_range_loop)]
@@ -756,6 +1062,7 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
     compiled_circuit: &GKRCircuitArtifact<MW::BaseField>,
     sumcheck_output_size_log_2: usize,
     whir_schedule: &WhirSchedule,
+    security_bits: u32,
 ) -> GKRGeneratedFiles {
     let num_standard_layers = compiled_circuit.layers.len();
     let trace_len = compiled_circuit.trace_len;
@@ -782,7 +1089,7 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
             let mut off = 0;
             for (output_type, group_addrs) in compiled_circuit.global_output_map.iter() {
                 match output_type {
-                    OutputType::PermutationProduct => {
+                    OutputType::PermutationProduct | OutputType::InitsAndTeardownsProduct => {
                         for i in 0..group_addrs.len() {
                             addrs.push(GKRAddress::InnerLayer {
                                 layer: layer_idx,
@@ -922,16 +1229,18 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
     let mut layer_functions = TokenStream::new();
 
     for layer_idx in 0..num_standard_layers {
-        layer_functions.extend(standard_layer::generate_layer_compute_claim::<MW>(
+        layer_functions.extend(standard_layer::generate_layer_compute_claim::<MW, _>(
             &compiled_circuit.layers[layer_idx],
             layer_idx,
             get_output_sorted_addrs(layer_idx),
         ));
-        layer_functions.extend(standard_layer::generate_layer_final_step_accumulator::<MW>(
-            &compiled_circuit.layers[layer_idx],
-            layer_idx,
-            &standard_sorted_addrs[layer_idx],
-        ));
+        layer_functions.extend(
+            standard_layer::generate_layer_final_step_accumulator::<MW, _>(
+                &compiled_circuit.layers[layer_idx],
+                layer_idx,
+                &standard_sorted_addrs[layer_idx],
+            ),
+        );
     }
 
     if num_standard_layers <= initial_layer_for_sumcheck {
@@ -967,7 +1276,8 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
     main_body.extend(quote! {
         let mut init_challenges = LazyVec::<#quartic_struct, 2>::new();
         unsafe { init_challenges.set_len(2); }
-        draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, init_challenges.as_mut_slice());
+        read_and_verify_pow::<I>(ts, LOOKUP_CHALLENGES_POW_BITS, nd_source);
+        draw_field_els_into_after_pow::<DRAW_BUF_CAPACITY>(ts, init_challenges.as_mut_slice());
         let lookup_alpha = *init_challenges.get(0);
         let lookup_additive_challenge = *init_challenges.get(1);
         let address_high_bits_shift: u32 = #address_high_bits_shift_val;
@@ -983,6 +1293,7 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
     for group in &output_groups {
         let count = match group.output_type {
             OutputType::PermutationProduct => group.num_addresses,
+            OutputType::InitsAndTeardownsProduct => group.num_addresses,
             _ => 2,
         };
         for _ in 0..count {
@@ -1008,7 +1319,7 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
         {
             let mut i = 0;
             while i < evals_data_words {
-                evals_commit_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
+                evals_commit_buf.data_write(i, read_reduced_field_el::<I>(nd_source).as_u32_raw_repr());
                 i += 1;
             }
         }
@@ -1059,7 +1370,10 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
         let dim_idx = config_idx - num_standard_layers;
         let num_input_addrs = dim_reducing_sorted_addrs[dim_idx].len();
         let indices_name = quote::format_ident!("DIM_REDUCE_INDICES_{}", config_idx);
-        let num_regular_rounds = num_sumcheck_rounds - 1;
+        // New last-round form: the last *output* coordinate is folded by a univariate round
+        // inside `verify_sumcheck_rounds` (drawing `r_before_last`). Only the pairwise/LSB
+        // coordinate remains to be fixed in the open via `r_last`.
+        let num_regular_rounds = num_sumcheck_rounds;
 
         let label = &format!("GKR COMPRESSION LAYER {config_idx}");
         main_body.extend(quote! {
@@ -1069,43 +1383,41 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
                     verify_sumcheck_rounds::<I, E, #num_regular_rounds, GKR_COMMIT_BUF>(
                         ts, initial_claim, &mut state.prev_point, #config_idx, nd_source)?;
                 let mut fc_len = #num_regular_rounds;
-                let data_words = #num_input_addrs * 4 * EXT_DEGREE;
+                // Half the data: the [E;2] line in the remaining LSB coordinate (was [E;4]).
+                let data_words = #num_input_addrs * 2 * EXT_DEGREE;
                 {
                     let mut i = 0;
                     while i < data_words {
-                        eval_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
+                        eval_buf.data_write(i, read_reduced_field_el::<I>(nd_source).as_u32_raw_repr());
                         i += 1;
                     }
                 }
                 {
-                    let evals: &[[#quartic_struct; 4]] = eval_buf.data_as(#num_input_addrs);
+                    let evals: &[[#quartic_struct; 2]] = eval_buf.data_as(#num_input_addrs);
+                    // Half the work: evaluate the dimension-reducing kernels over a single LSB pair.
                     let f = dim_reducing_final_step_accumulator(evals, state.batching_challenge, &#indices_name);
                     verify_final_step_check::<E>(f,
-                        *state.prev_point.get_unchecked(state.prev_point_len - 1),
                         final_eq_prefactor, final_claim, #config_idx)?;
                 }
                 ts.commit(&mut eval_buf, data_words);
-                let mut draw_buf = LazyVec::<#quartic_struct, 3>::new();
-                unsafe { draw_buf.set_len(3); }
+                let mut draw_buf = LazyVec::<#quartic_struct, 2>::new();
+                unsafe { draw_buf.set_len(2); }
                 draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
-                let r_before_last = *draw_buf.get(0);
-                let r_last = *draw_buf.get(1);
-                let next_batching = *draw_buf.get(2);
-                *state.prev_point.get_unchecked_mut(fc_len) = r_before_last;
-                fc_len += 1;
+                let r_last = *draw_buf.get(0);
+                let next_batching = *draw_buf.get(1);
                 *state.prev_point.get_unchecked_mut(fc_len) = r_last;
                 fc_len += 1;
-                const DIM_REDUCING_EXTRA_CHALLENGES: usize = 2;
+                const DIM_REDUCING_EXTRA_CHALLENGES: usize = 1;
                 const DIM_REDUCING_EQ_SIZE: usize = 1 << DIM_REDUCING_EXTRA_CHALLENGES;
-                let mut eq4 = LazyVec::<#quartic_struct, DIM_REDUCING_EQ_SIZE>::new();
-                make_eq_poly(&[r_before_last, r_last], &mut eq4);
+                let mut eq2 = LazyVec::<#quartic_struct, DIM_REDUCING_EQ_SIZE>::new();
+                make_eq_poly(&[r_last], &mut eq2);
                 let evals: &[[#quartic_struct; DIM_REDUCING_EQ_SIZE]] = eval_buf.data_as(#num_input_addrs);
-                let eq4_arr: &[#quartic_struct; DIM_REDUCING_EQ_SIZE] =
-                    eq4.as_slice().try_into().unwrap_unchecked();
+                let eq2_arr: &[#quartic_struct; DIM_REDUCING_EQ_SIZE] =
+                    eq2.as_slice().try_into().unwrap_unchecked();
                 state.prev_claims.clear();
                 for i in 0..#num_input_addrs {
                     let e = evals.get_unchecked(i);
-                    state.prev_claims.push(dot_eq(e, eq4_arr));
+                    state.prev_claims.push(dot_eq(e, eq2_arr));
                 }
                 state.batching_challenge = next_batching;
                 state.prev_point_len = fc_len;
@@ -1248,7 +1560,9 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
         let num_output_addrs = get_output_sorted_addrs(config_idx).len();
         let compute_claim_fn = quote::format_ident!("layer_{}_compute_claim", config_idx);
         let final_step_fn = quote::format_ident!("layer_{}_final_step_accumulator", config_idx);
-        let num_regular_rounds = num_sumcheck_rounds - 1;
+        // New last-round form: every coordinate (including the last) is folded by a univariate
+        // round inside `verify_sumcheck_rounds`, so the number of rounds there is the full count.
+        let num_regular_rounds = num_sumcheck_rounds;
 
         let is_layer_0 = config_idx == 0;
 
@@ -1268,193 +1582,222 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
             addrs.into_iter().collect()
         };
 
-        let sub = MW::sub_assign(quote! { diff }, quote! { f0 });
-        let mul_r = MW::mul_assign(quote! { diff }, quote! { last_r });
-        let add_f0 = MW::add_assign(quote! { diff }, quote! { f0 });
+        // Soundness (matches the prover committing new_claims ++ extra_evals in ONE shot before
+        // drawing the batching challenge): the extra cached-relation evals must be absorbed into
+        // the transcript BEFORE `draw_single_field_el`. So the per-layer code is split into a
+        // `pre_draw` piece (read + commit the extra evals) emitted before the draw and a
+        // `post_draw` piece (fold the claims for the next layer) emitted after it.
+        let (pre_draw_extra_code, post_draw_fold_code, cache_check_code, virtual_setup_calls_emit) =
+            if is_layer_0 {
+                let n_total = layer_0_layout.len();
+                let n_extra = layer_0_n_extra;
+                let layout_kind: Vec<usize> = layer_0_src_kind.clone();
+                let layout_pos: Vec<usize> = layer_0_src_pos.clone();
 
-        let (fold_and_extras_code, cache_check_code, virtual_setup_calls_emit) = if is_layer_0 {
-            let n_total = layer_0_layout.len();
-            let n_extra = layer_0_n_extra;
-            let layout_kind: Vec<usize> = layer_0_src_kind.clone();
-            let layout_pos: Vec<usize> = layer_0_src_pos.clone();
-
-            let read_extras = if n_extra > 0 {
-                quote! {
-                    const EXTRA_COMMIT_BUF: usize = {
-                        let total = BLAKE2S_DIGEST_SIZE_U32_WORDS + #n_extra * EXT_DEGREE;
-                        total.div_ceil(BLAKE2S_BLOCK_SIZE_U32_WORDS) * BLAKE2S_BLOCK_SIZE_U32_WORDS
-                    };
-                    let mut extra_buf = CommitBuf::<EXTRA_COMMIT_BUF>::new();
-                    let extra_data_words = #n_extra * EXT_DEGREE;
-                    {
-                        let mut i = 0;
-                        while i < extra_data_words {
-                            extra_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
-                            i += 1;
+                let read_extras = if n_extra > 0 {
+                    quote! {
+                        // Number of extra cached-relation evals for this layer. They are appended into
+                        // `eval_buf` right after the `NUM_AT_POINT_EVALS` at-point evals, so a SINGLE
+                        // commit below covers `new_claims ++ extra` (the prover commits them together
+                        // before drawing the batching challenge).
+                        const NUM_EXTRA_EVALS: usize = #n_extra;
+                        {
+                            let mut i = 0;
+                            while i < NUM_EXTRA_EVALS * EXT_DEGREE {
+                                eval_buf.data_write(data_words + i, read_reduced_field_el::<I>(nd_source).as_u32_raw_repr());
+                                i += 1;
+                            }
                         }
-                    }
-                    let mut extra_evals = LazyVec::<#quartic_struct, #n_extra>::new();
-                    {
-                        let slice: &[#quartic_struct] = unsafe { extra_buf.data_as(#n_extra) };
-                        for el in slice {
-                            extra_evals.push(*el);
+                        let mut extra_evals = LazyVec::<#quartic_struct, NUM_EXTRA_EVALS>::new();
+                        {
+                            let slice: &[#quartic_struct] =
+                                unsafe { eval_buf.data_as(NUM_AT_POINT_EVALS + NUM_EXTRA_EVALS) };
+                            let mut k = NUM_AT_POINT_EVALS;
+                            while k < NUM_AT_POINT_EVALS + NUM_EXTRA_EVALS {
+                                extra_evals.push(unsafe { *slice.get_unchecked(k) });
+                                k += 1;
+                            }
                         }
+                        // one commit of new_claims ++ extra, then (in main body) the draw.
+                        ts.commit(&mut eval_buf, data_words + NUM_EXTRA_EVALS * EXT_DEGREE);
                     }
-                    ts.commit(&mut extra_buf, extra_data_words);
-                }
-            } else {
-                quote! {
-                    let extra_evals = LazyVec::<#quartic_struct, 0usize>::new();
-                }
-            };
+                } else {
+                    quote! {
+                        let extra_evals = LazyVec::<#quartic_struct, 0usize>::new();
+                        // no extras: commit just the at-point evals, then draw.
+                        ts.commit(&mut eval_buf, data_words);
+                    }
+                };
 
-            let fold = quote! {
-                #read_extras
-                let final_step_evals: &[[#quartic_struct; 2]] = unsafe { eval_buf.data_as(#num_dedup_addrs) };
-                state.prev_claims.clear();
-                {
-                    const LAYOUT_KIND: [usize; #n_total] = [#( #layout_kind ),*];
-                    const LAYOUT_POS:  [usize; #n_total] = [#( #layout_pos  ),*];
-                    let mut i = 0usize;
-                    while i < #n_total {
-                        let kind = unsafe { *LAYOUT_KIND.get_unchecked(i) };
-                        let pos = unsafe { *LAYOUT_POS.get_unchecked(i)  };
-                        let claim: #quartic_struct = if kind == 0usize {
-                            let ev = unsafe { final_step_evals.get_unchecked(pos) };
-                            let f0 = ev[0];
-                            let mut diff = ev[1];
-                            #sub; #mul_r; #add_f0;
-                            diff
-                        } else {
-                            *extra_evals.get(pos)
-                        };
-                        state.prev_claims.push(claim);
-                        i += 1;
-                    }
-                }
-            };
-
-            let cache_check = generate_cache_relation_checks::<MW>(
-                &compiled_circuit.layers[0],
-                &layer_0_layout,
-                0,
-            );
-
-            (fold, cache_check, virtual_setup_calls.clone())
-        } else {
-            let fold = if num_extra > 0 {
-                let mut extra_positions: Vec<(usize, usize)> = Vec::new();
-                let mut extra_idx = 0usize;
-                for (merged_idx, addr) in target_addrs.iter().enumerate() {
-                    if !regular_set.contains(addr) {
-                        extra_positions.push((merged_idx, extra_idx));
-                        extra_idx += 1;
-                    }
-                }
-                let num_merged = target_addrs.len();
-                let num_extra_pos = extra_positions.len();
-                let ep_merged: Vec<usize> = extra_positions.iter().map(|p| p.0).collect();
-                let ep_extra: Vec<usize> = extra_positions.iter().map(|p| p.1).collect();
-
-                quote! {
-                    const EXTRA_COMMIT_BUF: usize = {
-                        let total = BLAKE2S_DIGEST_SIZE_U32_WORDS + #num_extra * EXT_DEGREE;
-                        total.div_ceil(BLAKE2S_BLOCK_SIZE_U32_WORDS) * BLAKE2S_BLOCK_SIZE_U32_WORDS
-                    };
-                    let mut extra_buf = CommitBuf::<EXTRA_COMMIT_BUF>::new();
-                    let extra_data_words = #num_extra * EXT_DEGREE;
-                    {
-                        let mut i = 0;
-                        while i < extra_data_words {
-                            extra_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
-                            i += 1;
-                        }
-                    }
-                    let mut extra_evals = LazyVec::<#quartic_struct, #num_extra>::new();
-                    {
-                        let slice: &[#quartic_struct] = unsafe { extra_buf.data_as(#num_extra) };
-                        for el in slice {
-                            extra_evals.push(*el);
-                        }
-                    }
-                    ts.commit(&mut extra_buf, extra_data_words);
-                    let final_step_evals: &[[#quartic_struct; 2]] = unsafe { eval_buf.data_as(#num_dedup_addrs) };
+                // `read_extras` (read the extra evals + commit them) runs BEFORE the draw; it also
+                // declares `extra_evals`, which the post-draw fold consumes (same enclosing block).
+                let post_draw_fold = quote! {
+                    let final_step_evals: &[[#quartic_struct; 1]] = unsafe { eval_buf.data_as(NUM_AT_POINT_EVALS) };
                     state.prev_claims.clear();
                     {
-                        const EXTRA_POS: [(usize, usize); #num_extra_pos] = [
-                            #( (#ep_merged, #ep_extra), )*
-                        ];
-                        let mut regular_idx: usize = 0;
-                        let mut ep_idx: usize = 0;
-                        let mut merged_idx: usize = 0;
-                        while merged_idx < #num_merged {
-                            if ep_idx < #num_extra_pos && EXTRA_POS[ep_idx].0 == merged_idx {
-                                state.prev_claims.push(*extra_evals.get(EXTRA_POS[ep_idx].1));
-                                ep_idx += 1;
+                        const LAYOUT_KIND: [usize; #n_total] = [#( #layout_kind ),*];
+                        const LAYOUT_POS:  [usize; #n_total] = [#( #layout_pos  ),*];
+                        let mut i = 0usize;
+                        while i < #n_total {
+                            let kind = unsafe { *LAYOUT_KIND.get_unchecked(i) };
+                            let pos = unsafe { *LAYOUT_POS.get_unchecked(i)  };
+                            let claim: #quartic_struct = if kind == 0usize {
+                                // At-point evaluation sent directly by the prover.
+                                unsafe { final_step_evals.get_unchecked(pos)[0] }
                             } else {
-                                let ev = final_step_evals.get_unchecked(regular_idx);
-                                let f0 = ev[0];
-                                let mut diff = ev[1];
-                                #sub; #mul_r; #add_f0;
-                                state.prev_claims.push(diff);
-                                regular_idx += 1;
-                            }
-                            merged_idx += 1;
+                                *extra_evals.get(pos)
+                            };
+                            state.prev_claims.push(claim);
+                            i += 1;
                         }
                     }
-                }
+                };
+
+                let cache_check = generate_cache_relation_checks::<MW, _>(
+                    &compiled_circuit.layers[0],
+                    &layer_0_layout,
+                    0,
+                );
+
+                (
+                    read_extras,
+                    post_draw_fold,
+                    cache_check,
+                    virtual_setup_calls.clone(),
+                )
             } else {
-                quote! {
-                    fold_standard_claims::<#num_dedup_addrs, GKR_ADDRS, GKR_EVAL_BUF>(
-                        &eval_buf, last_r, &mut state.prev_claims);
-                }
+                let (pre_draw, post_draw) = if num_extra > 0 {
+                    let mut extra_positions: Vec<(usize, usize)> = Vec::new();
+                    let mut extra_idx = 0usize;
+                    for (merged_idx, addr) in target_addrs.iter().enumerate() {
+                        if !regular_set.contains(addr) {
+                            extra_positions.push((merged_idx, extra_idx));
+                            extra_idx += 1;
+                        }
+                    }
+                    let num_merged = target_addrs.len();
+                    let num_extra_pos = extra_positions.len();
+                    let ep_merged: Vec<usize> = extra_positions.iter().map(|p| p.0).collect();
+                    let ep_extra: Vec<usize> = extra_positions.iter().map(|p| p.1).collect();
+
+                    // pre-draw: append the extra evals into `eval_buf` (right after the num_dedup
+                    // at-point evals) and commit `new_claims ++ extra` in ONE shot (matching the
+                    // prover). Declares `extra_evals`, consumed by the post-draw fold in the same block.
+                    let pre_draw = quote! {
+                        // Number of extra cached-relation evals; appended after the at-point evals in
+                        // `eval_buf` so the single commit below covers `new_claims ++ extra`.
+                        const NUM_EXTRA_EVALS: usize = #num_extra;
+                        {
+                            let mut i = 0;
+                            while i < NUM_EXTRA_EVALS * EXT_DEGREE {
+                                eval_buf.data_write(data_words + i, read_reduced_field_el::<I>(nd_source).as_u32_raw_repr());
+                                i += 1;
+                            }
+                        }
+                        let mut extra_evals = LazyVec::<#quartic_struct, NUM_EXTRA_EVALS>::new();
+                        {
+                            let slice: &[#quartic_struct] =
+                                unsafe { eval_buf.data_as(NUM_AT_POINT_EVALS + NUM_EXTRA_EVALS) };
+                            let mut k = NUM_AT_POINT_EVALS;
+                            while k < NUM_AT_POINT_EVALS + NUM_EXTRA_EVALS {
+                                extra_evals.push(unsafe { *slice.get_unchecked(k) });
+                                k += 1;
+                            }
+                        }
+                        ts.commit(&mut eval_buf, data_words + NUM_EXTRA_EVALS * EXT_DEGREE);
+                    };
+                    // post-draw: fold the claims for the next layer (no transcript interaction).
+                    let post_draw = quote! {
+                        let final_step_evals: &[[#quartic_struct; 1]] = unsafe { eval_buf.data_as(NUM_AT_POINT_EVALS) };
+                        state.prev_claims.clear();
+                        {
+                            const EXTRA_POS: [(usize, usize); #num_extra_pos] = [
+                                #( (#ep_merged, #ep_extra), )*
+                            ];
+                            let mut regular_idx: usize = 0;
+                            let mut ep_idx: usize = 0;
+                            let mut merged_idx: usize = 0;
+                            while merged_idx < #num_merged {
+                                if ep_idx < #num_extra_pos && EXTRA_POS[ep_idx].0 == merged_idx {
+                                    state.prev_claims.push(*extra_evals.get(EXTRA_POS[ep_idx].1));
+                                    ep_idx += 1;
+                                } else {
+                                    // At-point evaluation sent directly by the prover.
+                                    state.prev_claims.push(final_step_evals.get_unchecked(regular_idx)[0]);
+                                    regular_idx += 1;
+                                }
+                                merged_idx += 1;
+                            }
+                        }
+                    };
+                    (pre_draw, post_draw)
+                } else {
+                    // No extras: commit just the at-point evals before the draw, fold after it.
+                    (
+                        quote! {
+                            ts.commit(&mut eval_buf, data_words);
+                        },
+                        quote! {
+                            fold_standard_claims::<#num_dedup_addrs, GKR_ADDRS, GKR_EVAL_BUF>(
+                                &eval_buf, &mut state.prev_claims);
+                        },
+                    )
+                };
+
+                let cache_check = generate_cache_relation_checks::<MW, _>(
+                    &compiled_circuit.layers[config_idx],
+                    &target_addrs,
+                    config_idx,
+                );
+
+                (pre_draw, post_draw, cache_check, TokenStream::new())
             };
-
-            let cache_check = generate_cache_relation_checks::<MW>(
-                &compiled_circuit.layers[config_idx],
-                &target_addrs,
-                config_idx,
-            );
-
-            (fold, cache_check, TokenStream::new())
-        };
 
         let label = &format!("GKR MAIN LAYER {config_idx}");
         main_body.extend(quote! {
             {
                 let initial_claim = #compute_claim_fn(state.prev_claims.as_array::<#num_output_addrs>(), state.batching_challenge);
+                // All folding rounds (incl. the last) are verified here; `final_claim` is the
+                // running claim after the last challenge and `state.prev_point` holds the full
+                // folding point.
                 let (final_claim, final_eq_prefactor) =
                     verify_sumcheck_rounds::<I, E, #num_regular_rounds, GKR_COMMIT_BUF>(
                         ts, initial_claim, &mut state.prev_point, #config_idx, nd_source)?;
-                let mut fc_len = #num_regular_rounds;
-                let data_words = #num_dedup_addrs * 2 * EXT_DEGREE;
+                let fc_len = #num_regular_rounds;
+                // Number of at-point evaluations the prover sends for this layer (one per output
+                // poly). Named for readability; the extra cached-relation evals (if any) are
+                // appended right after these `NUM_AT_POINT_EVALS` in `eval_buf`.
+                const NUM_AT_POINT_EVALS: usize = #num_dedup_addrs;
+                // Half the data: one at-point evaluation per input poly (was two endpoints).
+                let data_words = NUM_AT_POINT_EVALS * EXT_DEGREE;
                 {
                     let mut i = 0;
                     while i < data_words {
-                        eval_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
+                        eval_buf.data_write(i, read_reduced_field_el::<I>(nd_source).as_u32_raw_repr());
                         i += 1;
                     }
                 }
                 {
-                    let evals: &[[#quartic_struct; 2]] = eval_buf.data_as(#num_dedup_addrs);
+                    let evals: &[[#quartic_struct; 1]] = eval_buf.data_as(NUM_AT_POINT_EVALS);
+                    // Half the work: evaluate the GKR kernels at a single set of inputs.
                     let f = #final_step_fn(evals, state.batching_challenge,
                         lookup_additive_challenge, lookup_alpha,
                         &external_challenges.permutation_argument_linearization_challenges,
                         external_challenges.permutation_argument_additive_part,
-                        address_high_bits_shift);
-                    verify_final_step_check::<E>(f,
-                        *state.prev_point.get_unchecked(state.prev_point_len - 1),
+                        address_high_bits_shift,
+                        &initial_transcript.inits_and_teardowns_top_bits);
+                    verify_final_step_check::<E>(f[0],
                         final_eq_prefactor, final_claim, #config_idx)?;
                 }
-                ts.commit(&mut eval_buf, data_words);
-                let mut draw_buf = LazyVec::<#quartic_struct, 2>::new();
-                unsafe { draw_buf.set_len(2); }
-                draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
-                let last_r = *draw_buf.get(0);
-                let next_batching = *draw_buf.get(1);
-                *state.prev_point.get_unchecked_mut(fc_len) = last_r;
-                fc_len += 1;
-                #fold_and_extras_code
+                // Commit the at-point evals TOGETHER with the extra cached-relation evals in a
+                // SINGLE transcript commit, BEFORE drawing the batching challenge — mirroring the
+                // prover (`commit_field_els(new_claims ++ extra_evals)` then draw). `CommitBuf`
+                // hashes `seed || data` per call, so two separate commits would diverge from the
+                // prover's one; instead the extra evals are appended into `eval_buf` and the single
+                // commit below (inside `pre_draw_extra_code`) covers `data_words + extra`.
+                #pre_draw_extra_code
+                let next_batching = draw_single_field_el(ts);
+                #post_draw_fold_code
                 #cache_check_code
                 #virtual_setup_calls_emit
                 state.batching_challenge = next_batching;
@@ -1473,6 +1816,7 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
 
         let mut eval_offset = 0usize;
         let mut lookup_type_idx = 0usize;
+        let mut permutation_product_emitted = false;
         for group in &output_groups {
             match group.output_type {
                 OutputType::PermutationProduct => {
@@ -1497,6 +1841,33 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
                             }
                             permutation_read_product = read_product;
                             permutation_write_product = write_product;
+                        }
+                    });
+                    permutation_product_emitted = true;
+                }
+                OutputType::InitsAndTeardownsProduct => {
+                    assert!(permutation_product_emitted);
+                    assert_eq!(group.num_addresses, 2);
+                    let read_off = eval_offset;
+                    let write_off = eval_offset + evals_per_poly;
+                    eval_offset += 2 * evals_per_poly;
+
+                    let mul_rp = mul(quote! { it_read }, quote! { eval });
+                    let mul_wp = mul(quote! { it_write }, quote! { eval });
+                    output_checks.extend(quote! {
+                        {
+                            let mut it_read = #quartic_one;
+                            for i in 0..#evals_per_poly {
+                                let eval = *evals_slice.get_unchecked(#read_off + i);
+                                #mul_rp;
+                            }
+                            let mut it_write = #quartic_one;
+                            for i in 0..#evals_per_poly {
+                                let eval = *evals_slice.get_unchecked(#write_off + i);
+                                #mul_wp;
+                            }
+                            inits_and_teardowns_read_product = it_read;
+                            inits_and_teardowns_write_product = it_write;
                         }
                     });
                 }
@@ -1539,10 +1910,15 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
     }
 
     main_body.extend(quote! {
-        state.batching_challenge = draw_single_field_el(ts);
+        read_and_verify_pow::<I>(ts, BATCHED_PROXIMITY_POW_BITS, nd_source);
+        state.batching_challenge = draw_single_field_el_after_pow(ts);
 
         let mut permutation_read_product: #quartic_struct = #quartic_one;
         let mut permutation_write_product: #quartic_struct = #quartic_one;
+        #[allow(unused_mut)]
+        let mut inits_and_teardowns_read_product: #quartic_struct = #quartic_one;
+        #[allow(unused_mut)]
+        let mut inits_and_teardowns_write_product: #quartic_struct = #quartic_one;
 
         #output_checks
 
@@ -1555,6 +1931,8 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
             evaluation_point_len: state.prev_point_len,
             permutation_read_product,
             permutation_write_product,
+            inits_and_teardowns_read_product,
+            inits_and_teardowns_write_product,
             whir_batching_challenge: state.batching_challenge,
         })
     });
@@ -1567,6 +1945,18 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
     let whir_pow_bits = &whir_schedule.whir_pow_schedule;
     let whir_lde_factors = &whir_schedule.whir_steps_lde_factors;
     let whir_base_lde_factor = whir_schedule.base_lde_factor;
+    let batched_proximity_pow_bits = pow_bits::batched_proximity_check_pow_bits(
+        security_bits as usize,
+        trace_len_log_2,
+        whir_base_lde_factor.trailing_zeros() as usize,
+        pow_bits::total_base_oracle_columns(compiled_circuit),
+    );
+    // Derived per-circuit from `security_bits` (same as the batched-proximity bits
+    // above), so prover grind and this baked const cannot diverge.
+    let lookup_challenges_pow_bits = pow_bits::lookup_challenges_pow_bits(
+        security_bits as usize,
+        pow_bits::lookup_identity_degree(compiled_circuit),
+    );
     let whir_cap_size = whir_schedule.cap_size;
     let whir_cap_size_log2 = whir_cap_size.trailing_zeros() as usize;
 
@@ -1699,11 +2089,21 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
             let total = BLAKE2S_DIGEST_SIZE_U32_WORDS + #max_evals * EXT_DEGREE;
             total.div_ceil(BLAKE2S_BLOCK_SIZE_U32_WORDS) * BLAKE2S_BLOCK_SIZE_U32_WORDS
         };
-        pub const DRAW_BUF_CAPACITY: usize =
-            (#num_challenges * EXT_DEGREE).next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS);
+        // Sized for the larger of the two draws that share this buffer: the
+        // sumcheck/batching draw of `num_challenges` elements, and the post-PoW
+        // lookup draw (`draw_field_els_into_after_pow`) of 2 elements plus the
+        // skipped PoW word. Taking the max keeps the buffer valid for both even
+        // if a future circuit has a small `num_challenges`.
+        pub const DRAW_BUF_CAPACITY: usize = {
+            let sumcheck = (#num_challenges * EXT_DEGREE).next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS);
+            let lookup_after_pow = (2 * EXT_DEGREE + 1).next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS);
+            if sumcheck > lookup_after_pow { sumcheck } else { lookup_after_pow }
+        };
         pub const WHIR_FOLD_STEPS: [usize; #whir_rounds] = [#(#whir_fold_steps),*];
         pub const WHIR_QUERIES: [usize; #whir_rounds] = [#(#whir_queries),*];
         pub const WHIR_POW_BITS: [u32; #whir_rounds] = [#(#whir_pow_bits),*];
+        pub const LOOKUP_CHALLENGES_POW_BITS: u32 = #lookup_challenges_pow_bits;
+        pub const BATCHED_PROXIMITY_POW_BITS: u32 = #batched_proximity_pow_bits;
         pub const MAX_POW_ENTRIES: usize = #max_pow_entries;
         pub const FINAL_MONOMIALS_LEN: usize = #final_monomials_len;
         pub const NUM_ORACLES: usize = #num_oracles;
@@ -1744,10 +2144,12 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
         use super::common::{
             verify_sumcheck_rounds, verify_final_step_check, fold_standard_claims,
             make_eq_poly, dot_eq, draw_field_els_into, draw_single_field_el,
+            draw_field_els_into_after_pow, draw_single_field_el_after_pow,
             read_field_el, read_reduced_field_el,
             ext_from_nds, ext_from_raw_words,
             EXT_DEGREE,
         };
+        use ::verifier_common::whir::read_and_verify_pow;
         use ::verifier_common::field_ops;
         use ::verifier_common::field::{Field, FieldExtension, PrimeField};
         use ::verifier_common::non_determinism_source::NonDeterminismSource;
@@ -1758,7 +2160,7 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
         #layer_functions
 
         #[allow(unused_variables, unused_mut, unused_unsafe)]
-        pub(crate) fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
+        pub(crate) fn verify_gkr<I: NonDeterminismSource<#field_struct>, E: ErrorCreator>(
             external_challenges: &GKRExternalChallenges<#field_struct, #quartic_struct>,
             initial_transcript: &ConcreteInitialTranscript,
             ts: &mut ::verifier_common::structs::TranscriptState,
@@ -1783,7 +2185,7 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
             GKR_ADDRS,
         > for VerifierImplementation {
             #[inline(always)]
-            fn verify_gkr<I: NonDeterminismSource, E: ErrorCreator>(
+            fn verify_gkr<I: NonDeterminismSource<#field_struct>, E: ErrorCreator>(
                 external_challenges: &GKRExternalChallenges<#field_struct, #quartic_struct>,
                 initial_transcript: &ConcreteInitialTranscript,
                 transcript_state: &mut ::verifier_common::structs::TranscriptState,
@@ -1797,7 +2199,7 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
                 )
             }
             #[inline(always)]
-            fn verify_whir<I: NonDeterminismSource, E: ErrorCreator>(
+            fn verify_whir<I: NonDeterminismSource<#field_struct>, E: ErrorCreator>(
                 initial_transcript: &ConcreteInitialTranscript,
                 transcript_state: &mut ::verifier_common::structs::TranscriptState,
                 whir_batching_challenge: #quartic_struct,

@@ -11,15 +11,20 @@ use verifier_common::structs::{CommitBuf, TranscriptState};
 pub use verifier_common::SUMCHECK_POLY_COEFFS;
 pub const EXT_DEGREE: usize = <BabyBearExt4 as FieldExtension<BabyBearField>>::DEGREE;
 #[inline(always)]
-pub fn read_reduced_field_el<I: NonDeterminismSource>(nd_source: &mut I) -> u32 {
-    nd_source.read_reduced_field_element(BabyBearField::ORDER)
+pub fn read_reduced_field_el<I: NonDeterminismSource<BabyBearField>>(
+    nd_source: &mut I,
+) -> BabyBearField {
+    nd_source.read_field_element()
 }
 #[inline(always)]
-pub fn read_field_el<I: NonDeterminismSource>(nd_source: &mut I) -> BabyBearExt4 {
+pub fn read_field_el<I: NonDeterminismSource<BabyBearField>>(nd_source: &mut I) -> BabyBearExt4 {
     ext_from_nds::<BabyBearField, BabyBearExt4, I>(nd_source)
 }
 #[inline(always)]
-pub fn read_field_els<I: NonDeterminismSource>(dst: &mut [BabyBearExt4], nd_source: &mut I) {
+pub fn read_field_els<I: NonDeterminismSource<BabyBearField>>(
+    dst: &mut [BabyBearExt4],
+    nd_source: &mut I,
+) {
     let mut i = 0;
     while i < dst.len() {
         dst[i] = read_field_el::<I>(nd_source);
@@ -33,7 +38,7 @@ pub fn draw_field_els_into<const BUF_CAP: usize>(
 ) {
     let n = dst.len();
     let padded = (n * EXT_DEGREE).next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS);
-    debug_assert!(padded <= BUF_CAP, "draw buffer too small");
+    assert!(padded <= BUF_CAP, "draw buffer too small");
     let mut words = LazyVec::<u32, BUF_CAP>::new();
     unsafe {
         words.set_len(padded);
@@ -60,6 +65,50 @@ pub fn draw_single_field_el(ts: &mut TranscriptState) -> BabyBearExt4 {
         ts.draw_raw(words.as_mut_slice());
     }
     let raw = unsafe { words.as_array::<EXT_DEGREE>() };
+    ext_from_raw_words::<BabyBearField, BabyBearExt4, EXT_DEGREE>(raw)
+}
+#[doc = r" Variant of [`draw_field_els_into`] used immediately after a `read_and_verify_pow`:"]
+#[doc = r" the first drawn word was consumed by the PoW, so we draw one extra word and skip it."]
+#[doc = r" The drawn word count matches the prover's `draw_random_field_els_with_pow` exactly."]
+#[inline(always)]
+pub fn draw_field_els_into_after_pow<const BUF_CAP: usize>(
+    ts: &mut TranscriptState,
+    dst: &mut [BabyBearExt4],
+) {
+    let n = dst.len();
+    let padded = (n * EXT_DEGREE + 1).next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS);
+    assert!(padded <= BUF_CAP, "draw buffer too small");
+    let mut words = LazyVec::<u32, BUF_CAP>::new();
+    unsafe {
+        words.set_len(padded);
+        ts.draw_raw(words.as_mut_slice());
+    }
+    let mut i = 0;
+    while i < n {
+        let base = 1 + i * EXT_DEGREE;
+        let raw = unsafe {
+            (words.as_slice().as_ptr().add(base) as *const [u32; EXT_DEGREE]).as_ref_unchecked()
+        };
+        unsafe {
+            *dst.get_unchecked_mut(i) =
+                ext_from_raw_words::<BabyBearField, BabyBearExt4, EXT_DEGREE>(raw);
+        }
+        i += 1;
+    }
+}
+#[doc = r" Variant of [`draw_single_field_el`] used immediately after a `read_and_verify_pow`:"]
+#[doc = r" the first drawn word was consumed by the PoW and is skipped. One digest worth of words"]
+#[doc = r" (8) covers the skipped word plus a single EXT_DEGREE=4 element."]
+#[inline(always)]
+pub fn draw_single_field_el_after_pow(ts: &mut TranscriptState) -> BabyBearExt4 {
+    let mut words = LazyVec::<u32, BLAKE2S_DIGEST_SIZE_U32_WORDS>::new();
+    unsafe {
+        words.set_len(BLAKE2S_DIGEST_SIZE_U32_WORDS);
+        ts.draw_raw(words.as_mut_slice());
+    }
+    let raw = unsafe {
+        (words.as_slice().as_ptr().add(1) as *const [u32; EXT_DEGREE]).as_ref_unchecked()
+    };
     ext_from_raw_words::<BabyBearField, BabyBearExt4, EXT_DEGREE>(raw)
 }
 #[inline(always)]
@@ -105,7 +154,7 @@ pub fn make_eq_poly<const M: usize, const N: usize>(
 }
 #[inline(always)]
 pub fn verify_sumcheck_rounds<
-    I: NonDeterminismSource,
+    I: NonDeterminismSource<BabyBearField>,
     E: ErrorCreator,
     const NUM_ROUNDS: usize,
     const COMMIT_BUF: usize,
@@ -128,7 +177,7 @@ pub fn verify_sumcheck_rounds<
         {
             let mut i = 0;
             while i < coeff_data_words {
-                commit_buf.data_write(i, read_reduced_field_el::<I>(nd_source));
+                commit_buf.data_write(i, read_reduced_field_el::<I>(nd_source).as_u32_raw_repr());
                 i += 1;
             }
         }
@@ -182,19 +231,12 @@ pub fn verify_sumcheck_rounds<
 }
 #[inline(always)]
 pub fn verify_final_step_check<E: ErrorCreator>(
-    f: [BabyBearExt4; 2],
-    last_prev_point: BabyBearExt4,
+    g: BabyBearExt4,
     final_eq_prefactor: BabyBearExt4,
     final_claim: BabyBearExt4,
     layer_idx: usize,
 ) -> Result<(), E::Error> {
-    let mut eq0 = BabyBearExt4::ONE;
-    field_ops::sub_assign(&mut eq0, &last_prev_point);
-    let mut rhs = eq0;
-    field_ops::mul_assign(&mut rhs, &f[0]);
-    let mut t = last_prev_point;
-    field_ops::mul_assign(&mut t, &f[1]);
-    field_ops::add_assign(&mut rhs, &t);
+    let mut rhs = g;
     field_ops::mul_assign(&mut rhs, &final_eq_prefactor);
     if rhs != final_claim {
         return Err(E::gkr_final_step_check_failed(layer_idx));
@@ -204,25 +246,19 @@ pub fn verify_final_step_check<E: ErrorCreator>(
 #[inline(always)]
 pub fn fold_standard_claims<const NUM_ADDRS: usize, const ADDRS: usize, const BUF: usize>(
     eval_buf: &CommitBuf<BUF>,
-    last_r: BabyBearExt4,
     claims: &mut LazyVec<BabyBearExt4, ADDRS>,
 ) {
-    let final_step_evals: &[[BabyBearExt4; 2]] = unsafe { eval_buf.data_as(NUM_ADDRS) };
+    let final_step_evals: &[[BabyBearExt4; 1]] = unsafe { eval_buf.data_as(NUM_ADDRS) };
     claims.clear();
     for i in 0..NUM_ADDRS {
         let evals = unsafe { final_step_evals.get_unchecked(i) };
-        let f0 = evals[0];
-        let mut diff = evals[1];
-        field_ops::sub_assign(&mut diff, &f0);
-        field_ops::mul_assign(&mut diff, &last_r);
-        field_ops::add_assign(&mut diff, &f0);
-        claims.push(diff);
+        claims.push(evals[0]);
     }
 }
 #[inline(always)]
 #[allow(unused_variables)]
 pub unsafe fn eval_linear_relation(
-    evals: &[[BabyBearExt4; 2]],
+    evals: &[[BabyBearExt4; 1]],
     terms: &[(usize, usize)],
     constant: usize,
     j: usize,
@@ -241,7 +277,7 @@ pub unsafe fn eval_linear_relation(
 #[inline(always)]
 #[allow(unused_variables)]
 pub unsafe fn eval_vector_lookup(
-    evals: &[[BabyBearExt4; 2]],
+    evals: &[[BabyBearExt4; 1]],
     alpha: BabyBearExt4,
     col_descs: &[(usize, usize)],
     terms: &[(usize, usize)],
@@ -275,7 +311,7 @@ pub unsafe fn eval_vector_lookup(
 #[inline(always)]
 #[allow(unused_variables)]
 pub unsafe fn eval_max_quadratic(
-    evals: &[[BabyBearExt4; 2]],
+    evals: &[[BabyBearExt4; 1]],
     quad_outer: &[(usize, usize)],
     quad_inner: &[(usize, usize)],
     linear: &[(usize, usize)],
@@ -326,7 +362,7 @@ pub const ME_OP_BYTE_VALUE_PAIR: usize = 7;
 #[inline(always)]
 #[allow(unused_variables)]
 pub unsafe fn eval_memory_expr(
-    evals: &[[BabyBearExt4; 2]],
+    evals: &[[BabyBearExt4; 1]],
     challenges: &[BabyBearExt4],
     additive_part: BabyBearExt4,
     ops: &[[usize; 6]],
@@ -462,7 +498,7 @@ pub fn compute_tree_index(
     }
 }
 #[inline(always)]
-pub fn verify_whir_sumcheck_step<I: NonDeterminismSource, E: ErrorCreator>(
+pub fn verify_whir_sumcheck_step<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator>(
     ts: &mut TranscriptState,
     claim: BabyBearExt4,
     round: usize,
@@ -479,7 +515,7 @@ pub fn verify_whir_sumcheck_step<I: NonDeterminismSource, E: ErrorCreator>(
     {
         let mut i = 0;
         while i < WHIR_SC_DATA_WORDS {
-            buf.data_write(i, read_reduced_field_el::<I>(nd_source));
+            buf.data_write(i, read_reduced_field_el::<I>(nd_source).as_u32_raw_repr());
             i += 1;
         }
     }
@@ -519,63 +555,54 @@ pub fn materialize_gamma_powers<const N: usize>(gamma: BabyBearExt4) -> [BabyBea
     unsafe { powers.into_array() }
 }
 #[inline(always)]
-#[allow(clippy::too_many_arguments)]
-pub fn fold_coset(
-    evals: &[BabyBearExt4],
-    num_rounds: usize,
-    folding_challenges: &[BabyBearExt4],
-    mut root_inv: BabyBearField,
-    high_powers_offsets: &[BabyBearField],
-    buf_a: &mut [BabyBearExt4],
-    buf_b: &mut [BabyBearExt4],
-) -> BabyBearExt4 {
-    debug_assert!(num_rounds == 0 || high_powers_offsets.len() >= 1 << (num_rounds - 1));
-    let mut round = 0;
-    while round < num_rounds {
-        let half = 1 << (num_rounds - round - 1);
-        let challenge = unsafe { *folding_challenges.get_unchecked(round) };
-        let src: &[BabyBearExt4] = if round == 0 {
-            evals
-        } else if round % 2 == 1 {
-            unsafe { core::slice::from_raw_parts(buf_a.as_ptr(), half * 2) }
-        } else {
-            unsafe { core::slice::from_raw_parts(buf_b.as_ptr(), half * 2) }
-        };
-        let dst: &mut [BabyBearExt4] = if round % 2 == 0 {
-            unsafe { core::slice::from_raw_parts_mut(buf_a.as_mut_ptr(), half) }
-        } else {
-            unsafe { core::slice::from_raw_parts_mut(buf_b.as_mut_ptr(), half) }
-        };
-        let mut pair_idx = 0;
-        while pair_idx < half {
-            let src_idx = pair_idx * 2;
-            let a = unsafe { *src.get_unchecked(src_idx) };
-            let b = unsafe { *src.get_unchecked(src_idx + 1) };
-            let mut t = a;
-            field_ops::sub_assign(&mut t, &b);
-            field_ops::mul_assign(&mut t, &challenge);
-            let mut root = root_inv;
-            let high_powers_offset = unsafe { *high_powers_offsets.get_unchecked(pair_idx) };
-            field_ops::mul_assign(&mut root, &high_powers_offset);
-            field_ops::mul_assign_by_base(&mut t, &root);
-            field_ops::add_assign(&mut t, &a);
-            field_ops::add_assign(&mut t, &b);
-            field_ops::mul_assign_by_base(&mut t, &BabyBearField::HALF);
+pub fn precompute_monomial_tensor<const N: usize>(
+    challenges: &[BabyBearExt4],
+    weights: &mut LazyVec<BabyBearExt4, N>,
+) {
+    let k = challenges.len();
+    let len = 1usize << k;
+    debug_assert!(len <= N);
+    unsafe {
+        weights.set_unchecked(0, BabyBearExt4::ONE);
+    }
+    let mut j = 0;
+    while j < k {
+        let alpha = unsafe { *challenges.get_unchecked(j) };
+        let bit = 1usize << j;
+        let mut i = bit;
+        while i > 0 {
+            i -= 1;
+            let w = unsafe { *weights.get_unchecked(i) };
+            let mut w_alpha = w;
+            field_ops::mul_assign(&mut w_alpha, &alpha);
             unsafe {
-                *dst.get_unchecked_mut(pair_idx) = t;
+                weights.set_unchecked(i + bit, w_alpha);
             }
-            pair_idx += 1;
         }
-        field_ops::square(&mut root_inv);
-        round += 1;
+        j += 1;
     }
-    if num_rounds == 0 {
-        unsafe { *evals.get_unchecked(0) }
-    } else if num_rounds % 2 == 1 {
-        unsafe { *buf_a.get_unchecked(0) }
-    } else {
-        unsafe { *buf_b.get_unchecked(0) }
+    unsafe {
+        weights.set_len(len);
     }
+}
+#[inline(always)]
+pub fn eval_multilinear_with_monomial_tensor(
+    coeffs: &[BabyBearExt4],
+    weights: &[BabyBearExt4],
+) -> BabyBearExt4 {
+    debug_assert_eq!(coeffs.len(), weights.len());
+    debug_assert!(unsafe { *weights.get_unchecked(0) } == BabyBearExt4::ONE);
+    let n = coeffs.len();
+    let mut result = unsafe { *coeffs.get_unchecked(0) };
+    let mut i = 1;
+    while i < n {
+        let mut term = unsafe { *coeffs.get_unchecked(i) };
+        let w = unsafe { *weights.get_unchecked(i) };
+        field_ops::mul_assign(&mut term, &w);
+        field_ops::add_assign(&mut result, &term);
+        i += 1;
+    }
+    result
 }
 pub const MAX_HIGH_POWERS: usize = 16usize;
 #[inline(always)]
@@ -624,7 +651,7 @@ pub fn ext_from_raw_word_slice(words: &[u32]) -> BabyBearExt4 {
 }
 #[inline(always)]
 #[allow(clippy::too_many_arguments)]
-pub unsafe fn read_and_batch_leaf<I: NonDeterminismSource>(
+pub unsafe fn read_and_batch_leaf<I: NonDeterminismSource<BabyBearField>>(
     hash_buf: &mut [u32],
     num_columns: usize,
     gamma_powers: &[BabyBearExt4],
@@ -638,12 +665,12 @@ pub unsafe fn read_and_batch_leaf<I: NonDeterminismSource>(
         let gamma = *gamma_powers.get_unchecked(gamma_offset + col);
         let idx = col * 2;
         let raw = read_reduced_field_el::<I>(nd_source);
-        *hash_buf.get_unchecked_mut(idx) = raw;
-        let base_val = BabyBearField::from_reduced_raw_repr(raw);
+        *hash_buf.get_unchecked_mut(idx) = raw.as_u32_raw_repr();
+        let base_val = raw;
         field_ops::add_assign_product_with_base(&mut *acc0, &gamma, &base_val);
         let raw = read_reduced_field_el::<I>(nd_source);
-        *hash_buf.get_unchecked_mut(idx + 1) = raw;
-        let base_val = BabyBearField::from_reduced_raw_repr(raw);
+        *hash_buf.get_unchecked_mut(idx + 1) = raw.as_u32_raw_repr();
+        let base_val = raw;
         field_ops::add_assign_product_with_base(&mut *acc1, &gamma, &base_val);
         col += 1;
     }
@@ -656,15 +683,13 @@ pub fn fold_whir_accumulator<const MAX_POW: usize>(
 ) {
     let mut one_minus_alpha = BabyBearExt4::ONE;
     field_ops::sub_assign(&mut one_minus_alpha, &alpha);
-    let mut two_alpha = alpha;
-    field_ops::double(&mut two_alpha);
+    let mut alpha_coeff = alpha;
+    field_ops::double(&mut alpha_coeff);
+    field_ops::sub_assign_base(&mut alpha_coeff, &BabyBearField::ONE);
     unsafe {
         let zi = *z_initial.get_unchecked(acc.z_initial_idx);
         let mut eq = one_minus_alpha;
-        let mut two_a_zi = two_alpha;
-        field_ops::mul_assign(&mut two_a_zi, &zi);
-        field_ops::add_assign(&mut eq, &two_a_zi);
-        field_ops::sub_assign(&mut eq, &zi);
+        field_ops::add_assign_product(&mut eq, &alpha_coeff, &zi);
         field_ops::mul_assign(&mut acc.z_initial_prefactor, &eq);
         acc.z_initial_idx += 1;
     }
@@ -675,10 +700,7 @@ pub fn fold_whir_accumulator<const MAX_POW: usize>(
             let entry = acc.pow_entries.get_unchecked_mut(i);
             let s = entry.current_scalar;
             let mut eq = one_minus_alpha;
-            let mut two_a_s = two_alpha;
-            field_ops::mul_assign(&mut two_a_s, &s);
-            field_ops::add_assign(&mut eq, &two_a_s);
-            field_ops::sub_assign(&mut eq, &s);
+            field_ops::add_assign_product(&mut eq, &alpha_coeff, &s);
             field_ops::mul_assign(&mut entry.prefactor, &eq);
             field_ops::square(&mut entry.current_scalar);
         }
@@ -700,7 +722,7 @@ pub fn push_whir_pow_entry<const MAX_POW: usize>(
 #[inline(always)]
 #[allow(clippy::too_many_arguments)]
 pub unsafe fn process_oracle_query<
-    I: NonDeterminismSource,
+    I: NonDeterminismSource<BabyBearField>,
     E: ErrorCreator,
     const BUF_SIZE: usize,
     const LEAF_WORDS: usize,

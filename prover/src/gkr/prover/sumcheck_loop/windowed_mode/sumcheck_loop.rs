@@ -10,7 +10,12 @@ use crate::gkr::prover::sumcheck_loop::windowed_mode::full_size_scratch::transit
 use crate::gkr::prover::sumcheck_loop::windowed_mode::full_size_scratch::extension_only_round::in_1_out_1::ExtensionOnlyRoundWindowIn1Out1;
 use crate::gkr::prover::sumcheck_loop::windowed_mode::full_size_scratch::extension_only_round::evaluate_extension_only_rounds_with_full_sized_scratch_parallel;
 
-pub(crate) fn windowed_sumcheck_loop<F: PrimeField, E: FieldExtension<F> + Field, const N: usize>(
+pub(crate) fn windowed_sumcheck_loop<
+    F: PrimeField,
+    E: FieldExtension<F> + Field,
+    TR: Transcript<F, E>,
+    const N: usize,
+>(
     collector: &KernelCollector<F, E>,
     initial_claim: E,
     prev_challenges: &[E],
@@ -19,7 +24,7 @@ pub(crate) fn windowed_sumcheck_loop<F: PrimeField, E: FieldExtension<F> + Field
     challenge_constants: &BatchedGKRTermDescriptionConstants<F, E>,
     folding_steps: usize,
     worker: &Worker,
-    seed: &mut Seed,
+    seed: &mut TR::Seed,
     // ) -> (Vec<E>, Vec<[E; 4]>, BTreeMap<GKRAddress, [E; N]>, [E; 2])
 ) where
     [(); E::DEGREE]: Sized,

@@ -36,7 +36,7 @@ impl GrandProductAccumulationStep {
     }
 }
 
-impl GKRGate for GrandProductAccumulationStep {
+impl<F: PrimeField> GKRGate<F> for GrandProductAccumulationStep {
     type Output = GKRAddress;
 
     fn short_name(&self) -> String {
@@ -69,9 +69,9 @@ impl GKRGate for GrandProductAccumulationStep {
     #[track_caller]
     fn add_at_layer(
         &self,
-        graph: &mut impl GraphHolder,
+        graph: &mut impl GraphHolder<F>,
         output_layer: usize,
-    ) -> (Self::Output, NoFieldGKRRelation) {
+    ) -> (Self::Output, NoFieldGKRRelation<F>) {
         let output = graph.add_intermediate_variable_at_layer(output_layer);
         // create caches
         match self {
@@ -103,10 +103,10 @@ impl GKRGate for GrandProductAccumulationStep {
                 assert_ne!(lhs, rhs);
                 let input = [*lhs, *rhs];
                 let relation = NoFieldGKRRelation::TrivialProduct { input, output };
-                println!(
-                    "Adding memory grand product pairwise accumulation relation {:?}",
-                    relation
-                );
+                // println!(
+                //     "Adding memory grand product pairwise accumulation relation {:?}",
+                //     relation
+                // );
                 graph.add_enforced_relation(relation.clone(), output_layer);
 
                 (output, relation)
@@ -143,7 +143,7 @@ pub struct GrandProductAccumulationMaskingNode {
     pub is_write: bool,
 }
 
-impl GKRGate for GrandProductAccumulationMaskingNode {
+impl<F: PrimeField> GKRGate<F> for GrandProductAccumulationMaskingNode {
     type Output = GKRAddress;
 
     fn short_name(&self) -> String {
@@ -156,9 +156,9 @@ impl GKRGate for GrandProductAccumulationMaskingNode {
 
     fn add_at_layer(
         &self,
-        graph: &mut impl GraphHolder,
+        graph: &mut impl GraphHolder<F>,
         output_layer: usize,
-    ) -> (Self::Output, NoFieldGKRRelation) {
+    ) -> (Self::Output, NoFieldGKRRelation<F>) {
         let output = graph.add_intermediate_variable_at_layer(output_layer);
         let relation = NoFieldGKRRelation::MaskIntoIdentityProduct {
             input: self.lhs,
@@ -191,8 +191,8 @@ fn reg_boolean_into_address_space_raw(is_register: Boolean) -> AddressSpaceIsReg
     }
 }
 
-pub(crate) fn layout_initial_grand_product_accumulation(
-    graph: &mut impl GraphHolder,
+pub(crate) fn layout_initial_grand_product_accumulation<F: PrimeField>(
+    graph: &mut impl GraphHolder<F>,
     predicate: Variable,
     ram_augmented_sets: &[(MemoryAccess, ShuffleRamTimestampComparisonPartialData)],
     pc_permutation: Option<(
@@ -204,12 +204,12 @@ pub(crate) fn layout_initial_grand_product_accumulation(
 ) -> ((Vec<GKRAddress>, Vec<GKRAddress>), GKRAddress) {
     const PLACEMENT_LAYER: usize = 1;
 
-    println!(
-        "Starting a grand product accumulation for in total of {} read/write pairs",
-        ram_augmented_sets.len()
-            + pc_permutation.is_some() as usize
-            + delegation_permutation.is_some() as usize
-    );
+    // println!(
+    //     "Starting a grand product accumulation for in total of {} read/write pairs",
+    //     ram_augmented_sets.len()
+    //         + pc_permutation.is_some() as usize
+    //         + delegation_permutation.is_some() as usize
+    // );
 
     let mut grand_product_read_accumulation_nodes = vec![];
     let mut grand_product_write_accumulation_nodes = vec![];
@@ -570,22 +570,22 @@ pub(crate) fn layout_initial_grand_product_accumulation(
     )
 }
 
-pub(crate) fn accumulate_memory_like_grand_product(
-    graph: &mut impl GraphHolder,
+pub(crate) fn accumulate_memory_like_grand_product<F: PrimeField>(
+    graph: &mut impl GraphHolder<F>,
     mut copied_predicate_for_grand_product_masking: GKRAddress,
     grand_product_read_accumulation_nodes: Vec<GKRAddress>,
     grand_product_write_accumulation_nodes: Vec<GKRAddress>,
 ) -> (
-    (GKRAddress, NoFieldGKRRelation),
-    (GKRAddress, NoFieldGKRRelation),
+    (GKRAddress, NoFieldGKRRelation<F>),
+    (GKRAddress, NoFieldGKRRelation<F>),
 ) {
     let mut output_layer = 2;
 
-    println!(
-        "Continuing grand product accumulation at layer {} for {} read/write contribution pairs",
-        output_layer - 1,
-        grand_product_read_accumulation_nodes.len()
-    );
+    // println!(
+    //     "Continuing grand product accumulation at layer {} for {} read/write contribution pairs",
+    //     output_layer - 1,
+    //     grand_product_read_accumulation_nodes.len()
+    // );
 
     let mut next_read_set = vec![];
     let mut next_write_set = vec![];
@@ -629,10 +629,10 @@ pub(crate) fn accumulate_memory_like_grand_product(
             [remainder] => {
                 // copy to the next one
                 remainder.assert_as_dependency_for_layer(output_layer);
-                println!(
-                    "Copying remaining contribution {:?} to the next layer",
-                    &remainder
-                );
+                // println!(
+                //     "Copying remaining contribution {:?} to the next layer",
+                //     &remainder
+                // );
                 let copied_remainder =
                     graph.copy_intermediate_layer_extension_field_variable(*remainder);
                 dst.push(copied_remainder);
@@ -669,11 +669,11 @@ pub(crate) fn accumulate_memory_like_grand_product(
                 );
             copied_predicate_for_grand_product_masking.assert_as_layer(output_layer);
 
-            println!(
-                "Continuing grand product accumulation at layer {} for {} read/write contribution pairs",
-                output_layer - 1,
-                current_read_set.len(),
-            );
+            // println!(
+            //     "Continuing grand product accumulation at layer {} for {} read/write contribution pairs",
+            //     output_layer - 1,
+            //     current_read_set.len(),
+            // );
 
             for (is_write, source, dst) in [
                 (false, &current_read_set, &mut next_read_set),
@@ -696,10 +696,10 @@ pub(crate) fn accumulate_memory_like_grand_product(
                     [remainder] => {
                         // copy to the next one
                         remainder.assert_as_dependency_for_layer(output_layer);
-                        println!(
-                            "Copying remaining contribution {:?} to the next layer",
-                            &remainder
-                        );
+                        // println!(
+                        //     "Copying remaining contribution {:?} to the next layer",
+                        //     &remainder
+                        // );
                         let copied_remainder =
                             graph.copy_intermediate_layer_extension_field_variable(*remainder);
                         dst.push(copied_remainder);
@@ -738,13 +738,13 @@ pub(crate) fn accumulate_memory_like_grand_product(
     read_node.assert_as_dependency_for_layer(output_layer);
     write_node.assert_as_dependency_for_layer(output_layer);
 
-    println!(
-        "Finishing grand product accumulation at layer {} for {:?} as final read contribution, {:?} as final write contribution, and {:?} as mask",
-        output_layer - 1,
-        read_node,
-        write_node,
-        copied_predicate_for_grand_product_masking,
-    );
+    // println!(
+    //     "Finishing grand product accumulation at layer {} for {:?} as final read contribution, {:?} as final write contribution, and {:?} as mask",
+    //     output_layer - 1,
+    //     read_node,
+    //     write_node,
+    //     copied_predicate_for_grand_product_masking,
+    // );
 
     let read_mask = GrandProductAccumulationMaskingNode {
         lhs: read_node,

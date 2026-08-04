@@ -393,7 +393,8 @@ impl Sub for BabyBearField {
 impl PrimeField for BabyBearField {
     const NUM_BYTES_IN_REPR: usize = 4;
     const CHAR_BITS: usize = 31;
-    const CHARACTERISTICS: u32 = Self::ORDER;
+    const CHARACTERISTICS_U32: u32 = Self::ORDER;
+    const CHARACTERISTICS_U128: u128 = Self::CHARACTERISTICS_U32 as u128;
 
     const IS_MONT_REPR: bool = true;
     const MONT_K: u32 = BabyBearField::MONT_K;
@@ -405,6 +406,10 @@ impl PrimeField for BabyBearField {
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn as_u32_reduced(self) -> u32 {
         self.to_u32()
+    }
+    #[cfg_attr(not(feature = "no_inline"), inline(always))]
+    fn as_u32_raw_repr(self) -> u32 {
+        self.0
     }
     #[cfg_attr(not(feature = "no_inline"), inline(always))]
     fn as_u32_raw_repr_reduced(self) -> u32 {
@@ -459,10 +464,6 @@ impl PrimeField for BabyBearField {
     fn from_boolean(flag: bool) -> Self {
         Self(if flag { Self::MONT_R } else { 0 })
     }
-
-    fn increment_unchecked(&'_ mut self) {
-        self.0 += 1;
-    }
 }
 
 impl crate::BaseField<2> for BabyBearField {
@@ -512,10 +513,6 @@ impl crate::TwoAdicField for BabyBearField {
         Self::TWO_ADIC_GENERATOR
     }
 
-    fn two_adic_group_order() -> usize {
-        1 << 27
-    }
-
     const TWO_ADICITY_GENERATORS: &[Self] = &Self::TWO_ADICITY_GENERATORS;
 
     const TWO_ADICITY_GENERATORS_INVERSED: &[Self] = &Self::TWO_ADICITY_GENERATORS_INVERSED;
@@ -534,7 +531,7 @@ mod test {
     #[test]
     fn test_inversion_chain() {
         let el = BabyBearField::new(42);
-        let pow = BabyBearField::CHARACTERISTICS - 2;
+        let pow = BabyBearField::CHARACTERISTICS_U32 - 2;
         let naive_inverse = el.pow(pow);
         let faster_inverse = el.inverse_impl().unwrap();
         assert_eq!(naive_inverse, faster_inverse);
@@ -622,7 +619,7 @@ mod test {
         fn inverse_matches_fermat(a in 1..BabyBearField::ORDER) {
             let fa = BabyBearField::new(a);
             let chain = fa.inverse().unwrap();
-            let fermat = fa.pow(BabyBearField::CHARACTERISTICS - 2);
+            let fermat = fa.pow(BabyBearField::CHARACTERISTICS_U32 - 2);
             prop_assert_eq!(chain, fermat);
         }
 

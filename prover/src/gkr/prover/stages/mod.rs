@@ -1,3 +1,4 @@
 use super::*;
 
-pub mod stage1;
+pub mod commitment_utils;
+pub mod initial_commit;

@@ -1,8 +1,10 @@
 use criterion::{criterion_group, criterion_main, Criterion};
 
-use prover::definitions::Transcript;
-use transcript::Seed;
+use prover::definitions::USE_REDUCED_BLAKE2_ROUNDS;
+use transcript::{Blake2sTranscript, Seed};
 use worker::Worker;
+
+type Transcript = Blake2sTranscript<USE_REDUCED_BLAKE2_ROUNDS>;
 
 fn get_random_seed() -> Seed {
     use rand::Rng;

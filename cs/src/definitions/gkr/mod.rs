@@ -12,7 +12,7 @@ use crate::definitions::GKRAddress;
 use crate::definitions::REGISTER_SIZE;
 use common_constants::NUM_TIMESTAMP_COLUMNS_FOR_RAM;
 
-#[derive(Clone, Hash, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Hash, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct CompiledDelegationCircuitState {
     pub execute: usize,
     pub invocation_timestamp: [usize; NUM_TIMESTAMP_COLUMNS_FOR_RAM],
@@ -26,20 +26,20 @@ pub enum AddressSpaceType {
     PC = 2,
 }
 
-#[derive(Clone, Copy, Hash, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, Hash, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct GKRMachineState {
     pub pc: [usize; REGISTER_SIZE],
     pub timestamp: [usize; NUM_TIMESTAMP_COLUMNS_FOR_RAM],
 }
 
-#[derive(Clone, Copy, Hash, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, Hash, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct MachineStatePermutationDescription {
     pub execute: usize,
     pub initial_state: GKRMachineState,
     pub final_state: GKRMachineState,
 }
 
-#[derive(Clone, Hash, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Hash, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct DecoderPlacementDescription {
     // rs1 is always in memory
     pub rs1_index: usize,
@@ -54,7 +54,7 @@ pub struct DecoderPlacementDescription {
     pub funct3: Option<usize>,
 }
 
-#[derive(Clone, Debug, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct GKRMemoryLayout {
     pub ram_access_sets: Vec<RamQuery>,
     pub machine_state: Option<MachineStatePermutationDescription>,
@@ -67,7 +67,7 @@ pub struct GKRMemoryLayout {
     pub inits_and_teardowns_word_bits: Option<u32>,
 }
 
-#[derive(Clone, Debug, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct GKRWitnessLayout {
     // we use separate multiplicities columns for tables of width 1 for an optimization
     // in the prover

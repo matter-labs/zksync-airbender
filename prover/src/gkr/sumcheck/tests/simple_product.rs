@@ -44,11 +44,11 @@ fn test_simple_product() {
     let worker = Worker::new_with_num_threads(1);
 
     let a: Vec<E> = (0..POLY_SIZE)
-        .map(|el| E::from_base(F::from_u64_with_reduction(el as u64)))
+        .map(|el| E::from_base(F::from_u32_with_reduction(el as u32)))
         .collect();
 
     let b: Vec<E> = (0..POLY_SIZE)
-        .map(|el| E::from_base(F::from_u64_with_reduction(el as u64)))
+        .map(|el| E::from_base(F::from_u32_with_reduction(el as u32)))
         .collect();
 
     let output: Vec<E> = a
@@ -111,7 +111,7 @@ fn test_simple_product() {
     };
 
     let previous_round_challenges: Vec<E> = (0..FOLDING_STEPS)
-        .map(|el| E::from_base(F::from_u64_with_reduction(1u64 << (el + 1))))
+        .map(|el| E::from_base(F::from_u32_with_reduction(1u32 << (el + 1))))
         .collect();
     // dbg!(&previous_round_challenges);
 
@@ -134,7 +134,7 @@ fn test_simple_product() {
     let mut expected_random_evals = BTreeMap::new();
     {
         let folding_challenges: Vec<E> = (0..FOLDING_STEPS)
-            .map(|el| E::from_base(F::from_u64_with_reduction(2 * (el as u64) + 1)))
+            .map(|el| E::from_base(F::from_u32_with_reduction(2 * (el as u32) + 1)))
             .collect();
         let eq_precomputed = make_eq_poly_in_full::<E>(&folding_challenges, &worker);
         let a = &storage.layers[0]
@@ -278,7 +278,7 @@ fn test_simple_product() {
                 assert_eq!(v, claim);
             }
 
-            let folding_challenge = E::from_base(F::from_u64_with_reduction(2 * (step as u64) + 1));
+            let folding_challenge = E::from_base(F::from_u32_with_reduction(2 * (step as u32) + 1));
             folding_challenges.push(folding_challenge);
             let next_claim = evaluate_small_univariate_poly::<F, E, 4>(&coeffs, &folding_challenge);
 
@@ -338,7 +338,7 @@ fn test_simple_product() {
             recomputed_claim.mul_assign(&last_eq_poly_prefactor_contribution);
             assert_eq!(claim, recomputed_claim);
 
-            let folding_challenge = E::from_base(F::from_u64_with_reduction(2 * (step as u64) + 1));
+            let folding_challenge = E::from_base(F::from_u32_with_reduction(2 * (step as u32) + 1));
             folding_challenges.push(folding_challenge);
             // derive new claims
             for poly in [
@@ -381,11 +381,11 @@ fn test_windowed_product() {
     let worker = Worker::new_with_num_threads(8);
 
     let a: Vec<E> = (0..POLY_SIZE)
-        .map(|el| E::from_base(F::from_u64_with_reduction(el as u64)))
+        .map(|el| E::from_base(F::from_u128_with_reduction(el as u128)))
         .collect();
 
     let b: Vec<E> = (0..POLY_SIZE)
-        .map(|el| E::from_base(F::from_u64_with_reduction(el as u64)))
+        .map(|el| E::from_base(F::from_u128_with_reduction(el as u128)))
         .collect();
 
     let output: Vec<E> = a
@@ -431,7 +431,7 @@ fn test_windowed_product() {
     storage.layers.push(layer_1);
 
     let previous_round_challenges: Vec<E> = (0..FOLDING_STEPS)
-        .map(|el| E::from_base(F::from_u64_with_reduction(1u64 << (el + 1))))
+        .map(|el| E::from_base(F::from_u128_with_reduction(1u128 << (el + 1))))
         .collect();
     // dbg!(&previous_round_challenges);
     let eq_precomputed = make_eq_poly_in_full::<E>(&previous_round_challenges, &worker);
@@ -509,7 +509,7 @@ fn test_windowed_product() {
     }
 
     let folding_challenges: Vec<E> = (0..FOLDING_STEPS)
-        .map(|el| E::from_base(F::from_u64_with_reduction(2 * (el as u64) + 1)))
+        .map(|el| E::from_base(F::from_u128_with_reduction(2 * (el as u128) + 1)))
         .collect();
 
     let mut expected_random_evals = BTreeMap::new();

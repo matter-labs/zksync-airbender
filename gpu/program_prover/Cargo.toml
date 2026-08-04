@@ -1,0 +1,63 @@
+[package]
+name = "gpu_program_prover"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+license.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+# The GPU proving stack this crate sits on top of.
+gpu_execution_prover = { workspace = true, default-features = false }
+gpu_circuit_prover = { workspace = true, default-features = false }
+gpu_core = { workspace = true }
+
+# Upstream crates, reached exclusively through the local `upstream` shim
+# (same audit-point convention as gpu_circuit_prover / gpu_execution_prover).
+# `full_statement_verifier` stays without the heavy `verifiers` feature in the
+# base build; native verification is gated behind our own `verifiers` feature.
+full_statement_verifier = { workspace = true, default-features = false, features = [
+    "proof_utils",
+    "host_utils",
+] }
+prover = { workspace = true, features = ["prover"] }
+setups = { workspace = true }
+trace_and_split = { workspace = true }
+
+common_constants = { workspace = true }
+riscv_transpiler = { workspace = true, features = ["jit"] }
+verifier_common = { workspace = true }
+transcript = { workspace = true }
+worker = { workspace = true }
+
+itertools = "0.14"
+log = "0.4.29"
+
+[features]
+default = ["security_80", "deterministic_pow"]
+security_80 = ["gpu_execution_prover/security_80", "gpu_circuit_prover/security_80"]
+security_100 = ["gpu_execution_prover/security_100", "gpu_circuit_prover/security_100"]
+deterministic_pow = ["gpu_execution_prover/deterministic_pow"]
+eval_leaves = ["gpu_execution_prover/eval_leaves", "gpu_circuit_prover/eval_leaves"]
+# Pulls in the embedded verifier circuits so proofs can be verified natively.
+# Non-default: mirrors prover_examples' gating — the verifier build is heavy.
+verifiers = [
+    "verifier_common/no_inline",
+    "full_statement_verifier/verifiers",
+    "full_statement_verifier/security_80",
+]
+
+[dev-dependencies]
+env_logger = "0.11"
+serde_json = "*"
+# CPU reference prover, used only by the GPU-vs-CPU proof-diff test.
+prover_examples = { workspace = true }
+
+[lints.rust]
+# `no_cuda` is set by gpu_circuit_prover's build script; gpu_program_prover has no
+# build script of its own, so declare the cfg here to satisfy `unexpected_cfgs`
+# for the `#[cfg(not(no_cuda))]`-gated GPU tests.
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(no_cuda)'] }

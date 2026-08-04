@@ -7,6 +7,7 @@ pub enum OutputType {
     Lookup16Bits,
     LookupTimestamps,
     GenericLookup,
+    InitsAndTeardownsProduct,
 }
 
 #[derive(

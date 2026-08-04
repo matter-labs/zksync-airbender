@@ -1,12 +1,23 @@
 #!/bin/sh
 set -euo pipefail
 
+# These verifier binaries build on STABLE Rust (pinned to 1.97.1 by the local
+# rust-toolchain.toml), but still need a few unstable build options:
+#   -Z build-std=core,alloc, -Z panic-immediate-abort (cargo flags below), and
+#   the [unstable] section in .cargo/config.toml.
+# RUSTC_BOOTSTRAP=1 makes both cargo and rustc treat the stable toolchain as
+# nightly for the purpose of gating these options (cargo's release channel
+# reads as "nightly" when this is set), so no nightly toolchain is required.
+export RUSTC_BOOTSTRAP=1
+
 usage() {
     echo "Usage: $0 [options] [circuits...]"
     echo ""
     echo "Options:"
     echo "  --blake MODE    blake2_with_compression (default), blake2_g_function, mop_extension"
     echo "  --variant VAR   no_caches (default) or caches"
+    echo "  --sec LEVEL     80, 100, or both (default) — selects the security level of the"
+    echo "                  default circuit set (ignored when circuits are named explicitly)"
     echo "  --warnings      show compiler warnings (suppressed by default)"
     echo "  -h, --help      show this message"
     echo ""
@@ -14,7 +25,9 @@ usage() {
     ls src/bin/*.rs 2>/dev/null | sed 's|.*/||;s|\.rs||;s|^|  |'
     echo ""
     echo "Examples:"
-    echo "  $0                                                # all circuits, defaults"
+    echo "  $0                                                # all circuits (80+100), defaults"
+    echo "  $0 --sec 100                                       # only the 100-bit circuits"
+    echo "  $0 --sec 80                                        # only the 80-bit circuits"
     echo "  $0 --blake mop_extension                          # all circuits, mop_extension"
     echo "  $0 --blake mop_extension blake2_with_extended_control  # single circuit"
     echo "  $0 --variant caches                               # all circuits, cached variant"
@@ -23,6 +36,7 @@ usage() {
 
 BLAKE_MODE="blake2_with_compression"
 VARIANT="no_caches"
+SEC="both"
 SHOW_WARNINGS=false
 
 while [ $# -gt 0 ]; do
@@ -30,16 +44,27 @@ while [ $# -gt 0 ]; do
         -h|--help) usage ;;
         --blake) BLAKE_MODE="$2"; shift 2 ;;
         --variant) VARIANT="$2"; shift 2 ;;
+        --sec) SEC="$2"; shift 2 ;;
         --warnings) SHOW_WARNINGS=true; shift ;;
         *) break ;;
     esac
 done
 
-# Remaining args are circuits, or default to all
+case "$SEC" in
+    80|100|both) ;;
+    *) echo "ERROR: --sec must be 80, 100, or both (got '$SEC')" >&2; exit 1 ;;
+esac
+
+# Remaining args are circuits, or default to all (filtered by --sec).
 if [ $# -gt 0 ]; then
     CIRCUITS="$@"
 else
-    CIRCUITS=$(ls src/bin/*.rs | sed 's|.*/||;s|\.rs||')
+    ALL=$(ls src/bin/*.rs | sed 's|.*/||;s|\.rs||')
+    case "$SEC" in
+        80)   CIRCUITS=$(echo "$ALL" | grep '_sec_80$') ;;
+        100)  CIRCUITS=$(echo "$ALL" | grep '_sec_100$') ;;
+        both) CIRCUITS="$ALL" ;;
+    esac
 fi
 
 FEATURES="${BLAKE_MODE}"
@@ -54,7 +79,7 @@ COMMON_FLAGS="--release -Z panic-immediate-abort -Z build-std=core,alloc --no-de
 if ! $SHOW_WARNINGS; then
     sed -i.bak '/"-C", "force-frame-pointers",/a\
   "-A", "warnings",' .cargo/config.toml
-    trap 'mv .cargo/config.toml.bak .cargo/config.toml' EXIT
+    trap 'if [ -f .cargo/config.toml.bak ]; then mv .cargo/config.toml.bak .cargo/config.toml; fi' EXIT
 fi
 
 echo "==> Building RISC-V binaries (blake: ${BLAKE_MODE}, variant: ${VARIANT})"
@@ -66,14 +91,35 @@ cargo build $COMMON_FLAGS $BIN_FLAGS
 
 # Extract .bin / .elf / .text in parallel
 echo "==> Extracting binaries"
+log_dir=$(mktemp -d)
+pids=""
 for circuit in $CIRCUITS; do
     (
         rm -f ${circuit}.bin ${circuit}.elf ${circuit}.text
         cargo objcopy $COMMON_FLAGS --bin "$circuit" -- -O binary ${circuit}.bin
         cargo objcopy $COMMON_FLAGS --bin "$circuit" -- -R .text ${circuit}.elf
         cargo objcopy $COMMON_FLAGS --bin "$circuit" -- -O binary --only-section=.text ${circuit}.text
-    ) > /dev/null 2>&1 &
+    ) > "${log_dir}/${circuit}.log" 2>&1 &
+    pids="${pids} $!"
 done
-wait
+
+rc=0
+for pid in $pids; do
+    wait "$pid" || rc=1
+done
+
+if [ "$rc" -ne 0 ]; then
+    echo "ERROR: binary extraction failed." >&2
+    for circuit in $CIRCUITS; do
+        if [ ! -s "${circuit}.bin" ] || [ ! -s "${circuit}.elf" ] || [ ! -s "${circuit}.text" ]; then
+            echo "  --- ${circuit} ---" >&2
+            tail -n 10 "${log_dir}/${circuit}.log" >&2
+        fi
+    done
+    echo "Hint: \"Could not find tool: objcopy\" means the llvm-tools component is missing — run: rustup component add llvm-tools" >&2
+    rm -rf "$log_dir"
+    exit 1
+fi
+rm -rf "$log_dir"
 
 echo "==> Done: $CIRCUITS"

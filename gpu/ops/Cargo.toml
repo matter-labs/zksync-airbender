@@ -1,0 +1,26 @@
+[package]
+name = "gpu_ops"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+license.workspace = true
+keywords.workspace = true
+categories.workspace = true
+build = "build.rs"
+links = "gpu_ops_native"
+
+[dependencies]
+gpu_core = { workspace = true }
+era_cudart = "=0.156.0"
+era_cudart_sys = "=0.156.0"
+
+[dev-dependencies]
+field = { workspace = true }
+fft = { workspace = true }
+itertools = { workspace = true }
+rand = { workspace = true, features = ["thread_rng"] }
+
+[build-dependencies]
+gpu_native_build = { workspace = true }
