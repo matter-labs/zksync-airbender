@@ -1090,9 +1090,7 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
                     UnrolledCircuitSetupParams::from_setup_tree_cap(
                         family_idx as u32,
                         trace_len as u32,
-                        <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<
-                            BabyBearField,
-                        >>::get_cap(&setup_commitment.tree),
+                        setup_commitment.get_cap(),
                     ),
                 );
             }
@@ -1123,9 +1121,7 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
             UnrolledCircuitSetupParams::from_setup_tree_cap(
                 family_idx as u32,
                 trace_len as u32,
-                <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<BabyBearField>>::get_cap(
-                    &setup_commitment.tree,
-                ),
+                setup_commitment.get_cap(),
             ),
         );
 
@@ -1263,9 +1259,7 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
                     UnrolledCircuitSetupParams::from_setup_tree_cap(
                         family_idx as u32,
                         trace_len as u32,
-                        <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<
-                            BabyBearField,
-                        >>::get_cap(&setup_commitment.tree),
+                        setup_commitment.get_cap(),
                     ),
                 );
             }
@@ -1295,9 +1289,7 @@ pub fn prove_unrolled_execution_with_replayer<C: MachineConfig, A: GoodAllocator
             UnrolledCircuitSetupParams::from_setup_tree_cap(
                 family_idx as u32,
                 trace_len as u32,
-                <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<BabyBearField>>::get_cap(
-                    &setup_commitment.tree,
-                ),
+                setup_commitment.get_cap(),
             ),
         );
 

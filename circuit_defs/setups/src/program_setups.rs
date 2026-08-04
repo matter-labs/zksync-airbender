@@ -124,9 +124,7 @@ fn commit_setup_params(
             UnrolledCircuitSetupParams::from_setup_tree_cap(
                 family_idx,
                 trace_len as u32,
-                <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<BabyBearField>>::get_cap(
-                    &setup_commitment.tree,
-                ),
+                setup_commitment.get_cap(),
             ),
         );
     }
