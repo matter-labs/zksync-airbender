@@ -359,7 +359,10 @@ fn main_layer_blueprints_for_inits_and_teardowns_initial_pair_use_canonical_top_
 
 #[test]
 fn cpu_main_layer_extra_evaluations_pick_missing_cached_dependencies() {
-    let layer0_inputs = vec![GKRAddress::BaseLayerWitness(0)];
+    let layer0_inputs = vec![
+        GKRAddress::BaseLayerWitness(0),
+        GKRAddress::BaseLayerMemory(0),
+    ];
     let layer1_inputs = vec![GKRAddress::BaseLayerWitness(1)];
     let layer2_inputs = vec![
         GKRAddress::ScratchSpace(7),
@@ -374,6 +377,10 @@ fn cpu_main_layer_extra_evaluations_pick_missing_cached_dependencies() {
         vec![
             GKRAddress::BaseLayerWitness(0),
             GKRAddress::BaseLayerMemory(2),
+            GKRAddress::Setup(2),
+            GKRAddress::BaseLayerMemory(0),
+            GKRAddress::BaseLayerMemory(4),
+            GKRAddress::Setup(2),
         ],
         vec![
             GKRAddress::BaseLayerWitness(1),
@@ -396,7 +403,14 @@ fn cpu_main_layer_extra_evaluations_pick_missing_cached_dependencies() {
         &cached_dependencies_per_layer,
     );
 
-    assert_eq!(extras[0], vec![GKRAddress::BaseLayerMemory(2)]);
+    assert_eq!(
+        extras[0],
+        vec![
+            GKRAddress::BaseLayerMemory(2),
+            GKRAddress::BaseLayerMemory(4),
+            GKRAddress::Setup(2),
+        ],
+    );
     assert_eq!(
         extras[1],
         vec![GKRAddress::InnerLayer {
@@ -411,21 +425,4 @@ fn cpu_main_layer_extra_evaluations_pick_missing_cached_dependencies() {
 fn cpu_main_layer_extra_evaluation_addresses_handle_empty() {
     let extras = super::compute_main_layer_extra_evaluation_addresses_per_layer(&[], &[]);
     assert!(extras.is_empty());
-}
-
-#[test]
-fn cpu_main_layer_extras_include_layer_zero_cached_dependencies() {
-    let cached_value = GKRAddress::BaseLayerMemory(0);
-    let dependency_a = GKRAddress::BaseLayerMemory(4);
-    let dependency_b = GKRAddress::Setup(2);
-    let inputs_per_layer = vec![vec![cached_value]];
-    let cached_dependencies_per_layer =
-        vec![vec![dependency_b, cached_value, dependency_a, dependency_b]];
-
-    let extras = super::compute_main_layer_extra_evaluation_addresses_per_layer(
-        &inputs_per_layer,
-        &cached_dependencies_per_layer,
-    );
-
-    assert_eq!(extras, vec![vec![dependency_a, dependency_b]]);
 }

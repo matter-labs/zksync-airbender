@@ -39,8 +39,6 @@ pub(crate) use cs::gkr_compiler::{
 pub(crate) type NoFieldGKRCacheRelation = cs::gkr_compiler::NoFieldGKRCacheRelation<BabyBearField>;
 pub(crate) type NoFieldGKRRelation = cs::gkr_compiler::NoFieldGKRRelation<BabyBearField>;
 pub(crate) use cs::gkr_compiler::NoFieldGKRRelation as CSNoFieldGKRRelation;
-pub(crate) type NoFieldMaxQuadraticConstraintsGKRRelation =
-    cs::gkr_compiler::NoFieldMaxQuadraticConstraintsGKRRelation<BabyBearField>;
 pub(crate) type NoFieldMaxQuadraticGKRRelation =
     cs::gkr_compiler::NoFieldMaxQuadraticGKRRelation<BabyBearField>;
 pub(crate) use cs::gkr_compiler::NoFieldStructuredExpression;

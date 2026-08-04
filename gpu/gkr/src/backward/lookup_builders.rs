@@ -245,7 +245,7 @@ use super::builders::{
 };
 use super::kernels::*;
 use crate::immediate_factors::ImmediateFactorRecipeStructural;
-use crate::upstream::{Field, FieldExtension, PrimeField};
+use crate::upstream::{Field, FieldExtension};
 use gpu_core::primitives::field::BF;
 
 fn single_column_lookup_as_flattened_relation<

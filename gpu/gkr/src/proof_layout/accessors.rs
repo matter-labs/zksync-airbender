@@ -400,14 +400,7 @@ impl ProofLayout {
         slab: &[u8],
     ) -> WhirPolyCommitProof<BF, E4, DefaultTreeConstructor> {
         let digest_bytes_of = |bytes: &[u32]| -> Vec<[u32; DIGEST_U32_WORDS]> {
-            bytes
-                .chunks_exact(DIGEST_U32_WORDS)
-                .map(|c| {
-                    let mut d = [0u32; DIGEST_U32_WORDS];
-                    d.copy_from_slice(c);
-                    d
-                })
-                .collect()
+            bytes.as_chunks::<DIGEST_U32_WORDS>().0.to_vec()
         };
         // Shared across all three base oracles — the setup/memory/witness
         // oracles sample the same tree-space indices, so the slab stores one
@@ -511,9 +504,9 @@ impl ProofLayout {
         let ood_samples = self.whir_ood_samples_host(slab).to_vec();
         let sumcheck_polys: Vec<[E4; 3]> = self
             .whir_sumcheck_polys_host(slab)
-            .chunks_exact(3)
-            .map(|c| [c[0], c[1], c[2]])
-            .collect();
+            .as_chunks::<3>()
+            .0
+            .to_vec();
         let original_evaluation_point = self.whir_original_evaluation_point_host(slab).to_vec();
         let batching_challenge = self.whir_batching_challenge_host(slab)[0];
         let [c0, c1, c2] = sumcheck_polys[0];
@@ -561,10 +554,7 @@ impl ProofLayout {
             let coeffs_flat = self.backward_internal_coeffs_host(slab, layer_slot);
             // `sumcheck_num_rounds` monomials.
             debug_assert_eq!(coeffs_flat.len(), bw.sumcheck_num_rounds * 4);
-            let internal_round_coefficients: Vec<[E4; 4]> = coeffs_flat
-                .chunks_exact(4)
-                .map(|c| [c[0], c[1], c[2], c[3]])
-                .collect();
+            let internal_round_coefficients: Vec<[E4; 4]> = coeffs_flat.as_chunks::<4>().0.to_vec();
             let finals_flat = self.backward_final_step_evals_host(slab, layer_slot);
             debug_assert_eq!(
                 finals_flat.len(),

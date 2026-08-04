@@ -244,10 +244,10 @@ pub fn derive_dimension_reducing_inputs(
     if total_rounds == 0 {
         return result;
     }
-    let mut current_layer_idx = initial_layer_idx;
     let mut layer_inputs: BTreeMap<OutputType, Vec<GKRAddress>> = initial_output_map.clone();
 
-    for _round in 0..total_rounds {
+    for (layer_offset, _) in (0..total_rounds).enumerate() {
+        let current_layer_idx = initial_layer_idx + layer_offset;
         let output_layer = current_layer_idx + 1;
         let mut output_idx = 0usize;
         let mut layer_description: BTreeMap<OutputType, DimensionReducingInputOutput> =
@@ -285,7 +285,6 @@ pub fn derive_dimension_reducing_inputs(
             .collect();
 
         result.insert(current_layer_idx, layer_description);
-        current_layer_idx += 1;
     }
     result
 }

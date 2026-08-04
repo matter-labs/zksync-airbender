@@ -12,7 +12,8 @@ where
 use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::field::E4;
 
-use crate::upstream::{NoFieldMaxQuadraticConstraintsGKRRelation, NoFieldVectorLookupRelation};
+use crate::upstream::NoFieldVectorLookupRelation;
+use cs::gkr_compiler::NoFieldMaxQuadraticConstraintsGKRRelation;
 use era_cudart::memory::memory_copy_async;
 
 pub(super) fn sample_ext(seed: u32) -> E4 {
@@ -168,8 +169,8 @@ pub(super) fn attach_test_dim_reducing_tower_layout(
 
     // Build per-tower-round layouts. Mirrors `append_tower_layers` exactly.
     let mut layer_inputs: BTreeMap<OutputType, Vec<GKRAddress>> = initial_output_map.clone();
-    let mut current_layer_idx = initial_layer_idx;
-    for round in 0..total_rounds {
+    for (layer_offset, round) in (0..total_rounds).enumerate() {
+        let current_layer_idx = initial_layer_idx + layer_offset;
         let output_layer = current_layer_idx + 1;
         let input_size_log_2 = initial_trace_log_2 - round;
         let output_log2_stride = input_size_log_2 - 1;
@@ -229,7 +230,6 @@ pub(super) fn attach_test_dim_reducing_tower_layout(
         }
         layers[output_layer] = new_layer_layout;
         layer_inputs = next_inputs;
-        current_layer_idx += 1;
     }
 
     storage.set_layout(Arc::new(GpuGKRStorageLayout {
@@ -241,7 +241,7 @@ pub(super) fn attach_test_dim_reducing_tower_layout(
     }));
 }
 
-pub(super) fn empty_constraints() -> NoFieldMaxQuadraticConstraintsGKRRelation {
+pub(super) fn empty_constraints() -> NoFieldMaxQuadraticConstraintsGKRRelation<BF> {
     NoFieldMaxQuadraticConstraintsGKRRelation {
         quadratic_terms: Vec::new().into_boxed_slice(),
         linear_terms: Vec::new().into_boxed_slice(),
@@ -285,7 +285,9 @@ pub(super) fn make_empty_forward_setup(
 
 pub(super) fn expected_pairwise_reduction(values: &[E4]) -> Vec<E4> {
     values
-        .chunks_exact(2)
+        .as_chunks::<2>()
+        .0
+        .iter()
         .map(|chunk| {
             let mut value = chunk[0];
             value.mul_assign(&chunk[1]);
@@ -298,7 +300,12 @@ pub(super) fn expected_lookup_pair_reduction(num: &[E4], den: &[E4]) -> (Vec<E4>
     let mut reduced_num = Vec::with_capacity(num.len() / 2);
     let mut reduced_den = Vec::with_capacity(den.len() / 2);
 
-    for (num_pair, den_pair) in num.chunks_exact(2).zip(den.chunks_exact(2)) {
+    for (num_pair, den_pair) in num
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .zip(den.as_chunks::<2>().0.iter())
+    {
         let mut left_term = num_pair[0];
         left_term.mul_assign(&den_pair[1]);
         let mut right_term = num_pair[1];

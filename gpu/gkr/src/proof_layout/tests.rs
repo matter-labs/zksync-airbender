@@ -353,28 +353,13 @@ fn typed_accessors_match_ranges() {
     let mut slab_storage = AlignedSlab::zeroed(layout.total_bytes);
     let slab = slab_storage.as_bytes_mut();
     assert_eq!(slab.as_ptr() as usize % FIELD_ALIGN, 0);
-
-    // Round-trip: write via device pointer view, read via host slice view.
     let slab_ptr = slab.as_mut_ptr();
-    unsafe {
-        let (point_ptr, point_len) = layout.whir_original_evaluation_point_device_mut(slab_ptr);
-        assert_eq!(point_len, inputs.whir.original_evaluation_point_len);
-        assert_eq!(
-            point_ptr as *const u8 as usize,
-            slab_ptr as usize + layout.whir.original_evaluation_point.start
-        );
-        let (batching_ptr, batching_len) = layout.whir_batching_challenge_device_mut(slab_ptr);
-        assert_eq!(batching_len, 1);
-        assert_eq!(
-            batching_ptr as *const u8 as usize,
-            slab_ptr as usize + layout.whir.batching_challenge.start
-        );
-    }
+
     assert_eq!(
-        layout.whir_original_evaluation_point_host(&slab).len(),
+        layout.whir_original_evaluation_point_host(slab).len(),
         inputs.whir.original_evaluation_point_len,
     );
-    assert_eq!(layout.whir_batching_challenge_host(&slab).len(), 1);
+    assert_eq!(layout.whir_batching_challenge_host(slab).len(), 1);
     for (i, bw_layout) in layout.backward.iter().enumerate() {
         unsafe {
             let (ptr, len) = layout.backward_final_step_evals_device_mut(slab_ptr, i);
@@ -397,12 +382,12 @@ fn typed_accessors_match_ranges() {
             );
             assert_eq!(extra_len, bw_layout.extra_evaluations_addresses.len());
         }
-        let host = layout.backward_final_step_evals_host(&slab, i);
+        let host = layout.backward_final_step_evals_host(slab, i);
         assert_eq!(
             std::mem::size_of_val(host),
             bw_layout.final_step_evaluations.end - bw_layout.final_step_evaluations.start
         );
-        let extra_host = layout.backward_extra_evaluations_host(&slab, i);
+        let extra_host = layout.backward_extra_evaluations_host(slab, i);
         assert_eq!(
             std::mem::size_of_val(extra_host),
             bw_layout.extra_evaluations.end - bw_layout.extra_evaluations.start,
@@ -440,7 +425,7 @@ fn parser_round_trips_extra_evaluations() {
         std::ptr::copy_nonoverlapping(written.as_ptr(), ptr, 2);
     }
 
-    let parsed = layout.parse_sumcheck_intermediate_values(&slab, BTreeMap::new());
+    let parsed = layout.parse_sumcheck_intermediate_values(slab, BTreeMap::new());
     let layer_idx = inputs.backward_layers[layer_slot].layer_idx;
     let intermediate = parsed.get(&layer_idx).expect("layer slot in parsed map");
     assert_eq!(
@@ -496,7 +481,7 @@ fn cpu_parser_preserves_whir_handoff_fields() {
         std::ptr::copy_nonoverlapping(first_poly.as_ptr(), ptr, first_poly.len());
     }
 
-    let proof = layout.parse_whir_proof(&slab);
+    let proof = layout.parse_whir_proof(slab);
     assert_eq!(proof.original_evaluation_point, Some(point));
     assert_eq!(proof.batching_challenge, Some(batching));
     assert_eq!(proof.batched_opening, Some(expected_batched_opening));

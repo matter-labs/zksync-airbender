@@ -340,7 +340,7 @@ where
         main_layers_range.end(stream)?;
         tracing_ranges.push(main_layers_range);
 
-        let GpuGKRMainLayerBackwardState { storage: _, .. } = main_backward_state;
+        drop(main_backward_state);
         // Remaining main-layer storage drops here after all exec-stream work has been scheduled.
         // The shared device buffers now hold the final backward handoff. The hot proof path
         // materializes them once, outside `gkr.backward.*`, before base-layer/WHIR host setup.
