@@ -1,7 +1,8 @@
 use super::*;
 
 use super::inits_and_teardowns::{
-    build_inits_and_teardowns_pages_for_test, build_inits_and_teardowns_trace_host_for_test,
+    build_inits_and_teardowns_pages_for_selected_sets_for_test,
+    build_inits_and_teardowns_trace_host_for_test,
 };
 use prover::tracers::oracles::transpiler_oracles::delegation::Blake2sGFunctionDelegationOracle;
 use riscv_transpiler::witness::{BlakeGFunctionDelegationDestinationHolder, DelegationWitness};
@@ -66,13 +67,15 @@ pub(super) fn build_unified_decoder_table(
 /// against the **non-test** prover surface (the test module is gated behind
 /// `prover/test`, which gpu_circuit_prover does not enable), and also returns the
 /// sparse RAM init/teardown triples the GPU page builder consumes.
-/// `(full_trace, table_driver, buffer, witness_gen_data, sparse_inits_and_teardowns)`.
+/// `(full_trace, table_driver, buffer, witness_gen_data, sparse_inits_and_teardowns,
+/// selected_set_top_bits)`.
 pub(super) type UnifiedFullTraceForTest = (
     GKRFullWitnessTrace<BF, Global, Global>,
     TableDriver<BF>,
     Vec<UnifiedOpcodeTracingDataWithTimestamp>,
     Vec<cs::gkr_circuits::ExecutorFamilyDecoderData>,
     Vec<Vec<(u32, (common_constants::TimestampScalar, u32))>>,
+    Vec<u32>,
 );
 
 pub(super) fn build_unified_full_trace_for_test(
@@ -120,20 +123,20 @@ pub(super) fn build_unified_full_trace_for_test(
 
     // Sparse triples for the GPU page builder, AND the per-set column form for CPU witness gen.
     let sparse_inits_and_teardowns = ram.collect_inits_and_teardowns(worker, Global);
-    let mut unified_inits_and_teardowns = Vec::with_capacity(num_unified_teardown_sets);
-    for _ in 0..num_unified_teardown_sets {
-        let a = Vec::with_capacity(1 << TRACE_LEN_LOG2);
-        let b = Vec::with_capacity(1 << TRACE_LEN_LOG2);
-        let c = Vec::with_capacity(1 << TRACE_LEN_LOG2);
-        let d = Vec::with_capacity(1 << TRACE_LEN_LOG2);
-        unified_inits_and_teardowns.push(([a, b], [c, d]));
-    }
-    ram.collect_inits_and_teardowns_into_columns::<BF, _>(
+    let mut selected_inits_and_teardowns = ram.collect_inits_and_teardowns_sets::<BF, Global>(
         worker,
         TRACE_LEN_LOG2 as usize,
-        0,
-        &mut unified_inits_and_teardowns,
+        num_unified_teardown_sets,
+        None,
     );
+    assert_eq!(
+        selected_inits_and_teardowns.len(),
+        1,
+        "unified test fixture must fit its RAM touches into one circuit's teardown sets",
+    );
+    let (selected_set_top_bits, unified_inits_and_teardowns) =
+        selected_inits_and_teardowns.pop().unwrap();
+    assert_eq!(selected_set_top_bits.len(), num_unified_teardown_sets);
 
     if run_memory_consistency_check {
         let memory_trace = evaluate_gkr_memory_witness_for_executor_family::<BF, _, _, _>(
@@ -167,6 +170,7 @@ pub(super) fn build_unified_full_trace_for_test(
             buffer,
             witness_gen_data,
             sparse_inits_and_teardowns,
+            selected_set_top_bits,
         );
     }
 
@@ -191,6 +195,7 @@ pub(super) fn build_unified_full_trace_for_test(
         buffer,
         witness_gen_data,
         sparse_inits_and_teardowns,
+        selected_set_top_bits,
     )
 }
 
@@ -255,7 +260,7 @@ where
         num_delegation_cycles.trailing_zeros() as usize,
         worker,
     );
-    prove_configured_with_gkr::<BF, E4, DefaultTreeConstructor>(
+    prove_configured_with_gkr::<BF, E4, DefaultTreeConstructor, Blake2sTranscript>(
         circuit,
         external_challenges,
         full_trace,
@@ -263,6 +268,7 @@ where
         &setup_commitment,
         &twiddles,
         &prover_config,
+        CommitmentMode::SeparateMemoryAndWitness,
         Vec::new(),
         num_delegation_cycles,
         worker,
@@ -693,6 +699,7 @@ where
         // Delegations prove no inits-and-teardowns layer and carry no
         // unified-closure metadata.
         inits_and_teardowns_host: None,
+        inits_and_teardowns_top_bits: None,
         unified_register_final_state: [(0u32, (0u32, 0u32)); 32],
         unified_final_pc: 0,
         unified_final_timestamp: 0,
@@ -793,6 +800,7 @@ where
         tracing_data_host,
         memory_tree_caps,
         inits_and_teardowns_host: None,
+        inits_and_teardowns_top_bits: None,
         unified_register_final_state: [(0u32, (0u32, 0u32)); 32],
         unified_final_pc: 0,
         unified_final_timestamp: 0,
@@ -881,21 +889,27 @@ fn prepare_unified_fixture(
     let num_unified_teardown_sets = compiled_circuit.memory_layout.teardown_sets.len();
     let num_calls = counters.get_calls_to_circuit_family::<REDUCED_MACHINE_CIRCUIT_FAMILY_IDX>();
 
-    let (full_trace, unified_table_driver, buffer, witness_gen_data, sparse_inits_and_teardowns) =
-        build_unified_full_trace_for_test(
-            &binary,
-            &text_section,
-            &compiled_circuit,
-            &snapshotter,
-            &ram,
-            &expected_final_state,
-            &tape,
-            cycles_bound,
-            num_unified_teardown_sets,
-            num_calls,
-            compute_cpu_reference,
-            &worker,
-        );
+    let (
+        full_trace,
+        unified_table_driver,
+        buffer,
+        witness_gen_data,
+        sparse_inits_and_teardowns,
+        selected_set_top_bits,
+    ) = build_unified_full_trace_for_test(
+        &binary,
+        &text_section,
+        &compiled_circuit,
+        &snapshotter,
+        &ram,
+        &expected_final_state,
+        &tape,
+        cycles_bound,
+        num_unified_teardown_sets,
+        num_calls,
+        compute_cpu_reference,
+        &worker,
+    );
 
     let memory_argument_alpha =
         E4::from_array_of_base([BF::new(2), BF::new(5), BF::new(42), BF::new(123)]);
@@ -950,11 +964,12 @@ fn prepare_unified_fixture(
     let decoder_table_host = make_decoder_table_host_for_test(&witness_gen_data);
 
     // Sparse i/t triples -> page-based GPU wire format -> transfer host.
-    let (page_indices, values_packed, timestamps_packed) = build_inits_and_teardowns_pages_for_test(
-        &sparse_inits_and_teardowns,
-        TRACE_LEN_LOG2,
-        num_unified_teardown_sets as u32,
-    );
+    let (page_indices, values_packed, timestamps_packed) =
+        build_inits_and_teardowns_pages_for_selected_sets_for_test(
+            &sparse_inits_and_teardowns,
+            TRACE_LEN_LOG2,
+            &selected_set_top_bits,
+        );
     let inits_and_teardowns_host = build_inits_and_teardowns_trace_host_for_test(
         &page_indices,
         &values_packed,
@@ -971,18 +986,20 @@ fn prepare_unified_fixture(
             trace_len.trailing_zeros() as usize,
             &worker,
         );
-        let expected_cpu_proof = prove_configured_with_gkr::<BF, E4, DefaultTreeConstructor>(
-            &compiled_circuit,
-            &external_challenges,
-            full_trace,
-            &setup,
-            &setup_commitment,
-            &twiddles,
-            &prover_config,
-            (0..num_unified_teardown_sets as u32).collect::<Vec<u32>>(),
-            trace_len,
-            &worker,
-        );
+        let expected_cpu_proof =
+            prove_configured_with_gkr::<BF, E4, DefaultTreeConstructor, Blake2sTranscript>(
+                &compiled_circuit,
+                &external_challenges,
+                full_trace,
+                &setup,
+                &setup_commitment,
+                &twiddles,
+                &prover_config,
+                CommitmentMode::SeparateMemoryAndWitness,
+                selected_set_top_bits.clone(),
+                trace_len,
+                &worker,
+            );
 
         // Prove the active delegations so the no-filter grand-product
         // accumulator can close to ONE.
@@ -1067,6 +1084,7 @@ fn prepare_unified_fixture(
             tracing_data_host,
             memory_tree_caps,
             inits_and_teardowns_host: Some(inits_and_teardowns_host),
+            inits_and_teardowns_top_bits: Some(selected_set_top_bits),
             unified_register_final_state,
             unified_final_pc,
             unified_final_timestamp,

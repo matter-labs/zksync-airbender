@@ -12,14 +12,16 @@ fn fill_round0_eq_pair_values<E: Field>(dst: &mut [E], claim_point: &[E]) {
         round0_eq_pair_values_len(claim_point.len()),
         "round-0 eq pair buffer must match the claim-point suffix length"
     );
-    for (pair, challenge) in dst
-        .chunks_exact_mut(2)
+    for ([one_minus_slot, pair_challenge], challenge) in dst
+        .as_chunks_mut::<2>()
+        .0
+        .iter_mut()
         .zip(claim_point.iter().skip(1).copied())
     {
         let mut one_minus = E::ONE;
         one_minus.sub_assign(&challenge);
-        pair[0] = one_minus;
-        pair[1] = challenge;
+        *one_minus_slot = one_minus;
+        *pair_challenge = challenge;
     }
 }
 

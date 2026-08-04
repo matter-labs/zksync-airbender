@@ -7,24 +7,44 @@ pub(super) fn build_inits_and_teardowns_pages_for_test(
     trace_len_log2: u32,
     num_sets: u32,
 ) -> (Vec<u32>, Vec<u32>, Vec<common_constants::TimestampScalar>) {
+    let selected_set_top_bits = (0..num_sets).collect::<Vec<_>>();
+    build_inits_and_teardowns_pages_for_selected_sets_for_test(
+        sparse,
+        trace_len_log2,
+        &selected_set_top_bits,
+    )
+}
+
+pub(super) fn build_inits_and_teardowns_pages_for_selected_sets_for_test(
+    sparse: &[Vec<(u32, (common_constants::TimestampScalar, u32))>],
+    trace_len_log2: u32,
+    selected_set_top_bits: &[u32],
+) -> (Vec<u32>, Vec<u32>, Vec<common_constants::TimestampScalar>) {
     use std::collections::BTreeMap;
 
     assert!(PAGE_SIZE_LOG2 < trace_len_log2);
     let page_size = 1usize << PAGE_SIZE_LOG2;
     let pages_per_set_log2 = trace_len_log2 - PAGE_SIZE_LOG2;
-    let max_page_idx = (num_sets as u64) << pages_per_set_log2;
+    let pages_per_set_mask = (1u32 << pages_per_set_log2) - 1;
 
     let mut pages: BTreeMap<u32, (Vec<u32>, Vec<common_constants::TimestampScalar>)> =
         BTreeMap::new();
     for chunk in sparse {
         for &(address, (timestamp, value)) in chunk {
             let word_idx = address >> 2;
-            let page_idx = word_idx >> PAGE_SIZE_LOG2;
+            let global_page_idx = word_idx >> PAGE_SIZE_LOG2;
+            let global_set_top_bits = global_page_idx >> pages_per_set_log2;
+            let local_set_idx = selected_set_top_bits
+                .iter()
+                .position(|&top_bits| top_bits == global_set_top_bits)
+                .unwrap_or_else(|| {
+                    panic!(
+                        "test producer emitted page_idx {global_page_idx} from global set {global_set_top_bits}, which is absent from selected set top bits {selected_set_top_bits:?}",
+                    )
+                }) as u32;
+            let page_idx =
+                (local_set_idx << pages_per_set_log2) | (global_page_idx & pages_per_set_mask);
             let word_in_page = (word_idx & ((1u32 << PAGE_SIZE_LOG2) - 1)) as usize;
-            assert!(
-                (page_idx as u64) < max_page_idx,
-                "test producer emitted page_idx {page_idx} that decodes to set_idx >= num_sets ({num_sets})",
-            );
             let entry = pages
                 .entry(page_idx)
                 .or_insert_with(|| (vec![0u32; page_size], vec![0u64; page_size]));
@@ -43,6 +63,33 @@ pub(super) fn build_inits_and_teardowns_pages_for_test(
         timestamps_packed.extend_from_slice(&tss);
     }
     (page_indices, values_packed, timestamps_packed)
+}
+
+#[test]
+fn cpu_selected_noncontiguous_sets_are_rebased_into_local_page_geometry() {
+    let trace_len_log2 = PAGE_SIZE_LOG2 + 2;
+    let selected_set_top_bits = [0, 2];
+    let global_page_in_selected_set = 3u32;
+    let word_in_page = 7u32;
+    let global_word_idx = (selected_set_top_bits[1] << trace_len_log2)
+        | (global_page_in_selected_set << PAGE_SIZE_LOG2)
+        | word_in_page;
+    let timestamp = 11;
+    let value = 13;
+    let sparse = vec![vec![(global_word_idx << 2, (timestamp, value))]];
+
+    let (page_indices, values_packed, timestamps_packed) =
+        build_inits_and_teardowns_pages_for_selected_sets_for_test(
+            &sparse,
+            trace_len_log2,
+            &selected_set_top_bits,
+        );
+
+    let pages_per_set_log2 = trace_len_log2 - PAGE_SIZE_LOG2;
+    let expected_local_page = (1 << pages_per_set_log2) | global_page_in_selected_set;
+    assert_eq!(page_indices, [expected_local_page]);
+    assert_eq!(values_packed[word_in_page as usize], value);
+    assert_eq!(timestamps_packed[word_in_page as usize], timestamp);
 }
 
 pub(super) fn build_inits_and_teardowns_trace_host_for_test(
@@ -236,7 +283,12 @@ pub(super) fn prepare_inits_and_teardowns_proof_fixture(
             trace_len.trailing_zeros() as usize,
             &worker,
         );
-        Some(prove_configured_with_gkr::<BF, E4, DefaultTreeConstructor>(
+        Some(prove_configured_with_gkr::<
+            BF,
+            E4,
+            DefaultTreeConstructor,
+            Blake2sTranscript,
+        >(
             &compiled_circuit,
             &external_challenges,
             make_full_trace(),
@@ -244,6 +296,7 @@ pub(super) fn prepare_inits_and_teardowns_proof_fixture(
             &setup_commitment,
             &twiddles,
             &prover_config,
+            CommitmentMode::SeparateMemoryAndWitness,
             canonical_top_bits.clone(),
             trace_len,
             &worker,
@@ -266,15 +319,16 @@ pub(super) fn prepare_inits_and_teardowns_proof_fixture(
             })
             .collect::<Vec<_>>()
     } else {
-        let (mem_oracle, _wit_oracle) = stage1::stage1::<BF, DefaultTreeConstructor>(
-            &make_full_trace(),
-            &twiddles,
-            whir_schedule.base_lde_factor,
-            whir_schedule.whir_steps_schedule[0],
-            whir_schedule.cap_size,
-            trace_len.trailing_zeros() as usize,
-            &worker,
-        );
+        let (mem_oracle, _wit_oracle) =
+            commit_separate_memory_and_witness_subtrees::<BF, DefaultTreeConstructor>(
+                &make_full_trace(),
+                &twiddles,
+                whir_schedule.base_lde_factor,
+                whir_schedule.whir_steps_schedule[0],
+                whir_schedule.cap_size,
+                trace_len.trailing_zeros() as usize,
+                &worker,
+            );
         stage1_caps_from_tree(
             &mem_oracle.tree,
             whir_schedule.cap_size / whir_schedule.base_lde_factor,
@@ -317,6 +371,7 @@ pub(super) fn prepare_inits_and_teardowns_proof_fixture(
             tracing_data_host,
             memory_tree_caps,
             inits_and_teardowns_host: Some(inits_and_teardowns_host),
+            inits_and_teardowns_top_bits: None,
             unified_register_final_state: [(0u32, (0u32, 0u32)); 32],
             unified_final_pc: 0,
             unified_final_timestamp: 0,
@@ -460,27 +515,30 @@ fn standalone_inits_and_teardowns_gpu_workflow_matches_cpu() {
         trace_len.trailing_zeros() as usize,
         &worker,
     );
-    let expected_cpu_proof = prove_configured_with_gkr::<BF, E4, DefaultTreeConstructor>(
-        &compiled_circuit,
-        &external_challenges,
-        cpu_full_trace_for_proof,
-        &setup,
-        &setup_commitment,
-        &twiddles,
-        &prover_config,
-        canonical_top_bits.clone(),
-        trace_len,
-        &worker,
-    );
-    let (mem_oracle, _wit_oracle) = stage1::stage1::<BF, DefaultTreeConstructor>(
-        &cpu_full_trace_for_stagewise,
-        &twiddles,
-        whir_schedule.base_lde_factor,
-        whir_schedule.whir_steps_schedule[0],
-        whir_schedule.cap_size,
-        trace_len.trailing_zeros() as usize,
-        &worker,
-    );
+    let expected_cpu_proof =
+        prove_configured_with_gkr::<BF, E4, DefaultTreeConstructor, Blake2sTranscript>(
+            &compiled_circuit,
+            &external_challenges,
+            cpu_full_trace_for_proof,
+            &setup,
+            &setup_commitment,
+            &twiddles,
+            &prover_config,
+            CommitmentMode::SeparateMemoryAndWitness,
+            canonical_top_bits.clone(),
+            trace_len,
+            &worker,
+        );
+    let (mem_oracle, _wit_oracle) =
+        commit_separate_memory_and_witness_subtrees::<BF, DefaultTreeConstructor>(
+            &cpu_full_trace_for_stagewise,
+            &twiddles,
+            whir_schedule.base_lde_factor,
+            whir_schedule.whir_steps_schedule[0],
+            whir_schedule.cap_size,
+            trace_len.trailing_zeros() as usize,
+            &worker,
+        );
     let cpu_memory_caps = stage1_caps_from_tree(
         &mem_oracle.tree,
         whir_schedule.cap_size / whir_schedule.base_lde_factor,
@@ -562,10 +620,12 @@ fn standalone_inits_and_teardowns_gpu_workflow_matches_cpu() {
             .into_iter(),
             &mut cpu_transcript_input,
         );
-        let mut cpu_seed = Transcript::commit_initial(&cpu_transcript_input);
-        let cpu_lookup_challenges: [E4; 3] = draw_random_field_els::<BF, E4>(&mut cpu_seed, 3)
-            .try_into()
-            .unwrap();
+        let mut cpu_seed =
+            <Blake2sTranscript as Transcript<BF, E4>>::commit_initial_u32(&cpu_transcript_input);
+        let cpu_lookup_challenges: [E4; 3] =
+            draw_random_field_els::<BF, E4, Blake2sTranscript>(&mut cpu_seed, 3)
+                .try_into()
+                .unwrap();
 
         let mut gpu_transcript_input = Vec::new();
         gpu_transcript_input.extend_from_slice(&canonical_top_bits);
@@ -580,10 +640,12 @@ fn standalone_inits_and_teardowns_gpu_workflow_matches_cpu() {
                 gpu_transcript_input.extend_from_slice(digest);
             }
         }
-        let mut gpu_seed = Transcript::commit_initial(&gpu_transcript_input);
-        let gpu_lookup_challenges: [E4; 3] = draw_random_field_els::<BF, E4>(&mut gpu_seed, 3)
-            .try_into()
-            .unwrap();
+        let mut gpu_seed =
+            <Blake2sTranscript as Transcript<BF, E4>>::commit_initial_u32(&gpu_transcript_input);
+        let gpu_lookup_challenges: [E4; 3] =
+            draw_random_field_els::<BF, E4, Blake2sTranscript>(&mut gpu_seed, 3)
+                .try_into()
+                .unwrap();
         assert_eq!(
             gpu_seed, cpu_seed,
             "transcript seed initialization diverged"

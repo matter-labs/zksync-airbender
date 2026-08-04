@@ -538,7 +538,7 @@ pub(in crate::backward) fn build_main_layer_kernel_blueprints<E: Field + FieldEx
                     "batched max-quadratic constraints not supported on GPU; cs/ must emit EnforceSingleMaxQuadraticConstraint (USE_BATCHING=false)"
                 );
             }
-            NoFieldGKRRelation::EnforceSingleMaxQuadraticConstraint { input } => {
+            NoFieldGKRRelation::EnforceSingleMaxQuadraticConstraint { input, .. } => {
                 let (inputs, constraint_metadata) =
                     build_single_max_quadratic_constraint_inputs_and_metadata::<E>(input);
                 blueprints.push(GpuGKRMainLayerKernelBlueprint {
@@ -684,7 +684,7 @@ pub(in crate::backward) fn build_main_layer_kernel_blueprints<E: Field + FieldEx
                     ),
                 });
             }
-            NoFieldGKRRelation::MaxQuadratic { input, output } => {
+            NoFieldGKRRelation::MaxQuadratic { input, output, .. } => {
                 let (inputs, constraint_metadata) =
                     build_max_quadratic_relation_inputs_and_metadata::<E>(input, *output);
                 blueprints.push(GpuGKRMainLayerKernelBlueprint {

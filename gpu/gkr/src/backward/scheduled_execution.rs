@@ -193,8 +193,9 @@ where
         // Per-layer schedulers D2D-copy slab-bound fields
         // (`internal_round_coefficients`, `final_step_evaluations`) into slab
         // offsets via `ProofLayout` accessors. `extra_evaluations_from_caching_relations`
-        // is represented as sparse references into the slab-resident WHIR base
-        // eval ranges and merged at parse time.
+        // uses dedicated per-layer main-layer ranges. Only the base-layer
+        // fallback is represented as sparse references into slab-resident WHIR
+        // base eval ranges and merged at parse time.
         proof_slab: &DeviceAllocation<E4>,
         proof_layout: &ProofLayout,
         context: &ProverContext,
@@ -339,7 +340,7 @@ where
         main_layers_range.end(stream)?;
         tracing_ranges.push(main_layers_range);
 
-        let GpuGKRMainLayerBackwardState { storage: _, .. } = main_backward_state;
+        drop(main_backward_state);
         // Remaining main-layer storage drops here after all exec-stream work has been scheduled.
         // The shared device buffers now hold the final backward handoff. The hot proof path
         // materializes them once, outside `gkr.backward.*`, before base-layer/WHIR host setup.
@@ -389,6 +390,9 @@ where
         self,
         compiled_circuit: GKRCircuitArtifact<BF>,
         external_challenges: GKRExternalChallenges<BF, E>,
+        // Test fixtures must pass the same selected global top bits used by
+        // their CPU and forward paths, in canonical selected-set order.
+        inits_and_teardowns_top_bits: Vec<u32>,
         initial_output_layer_idx: usize,
         top_layer_claims: BTreeMap<GKRAddress, E>,
         evaluation_point: Vec<E>,
@@ -466,12 +470,6 @@ where
         )?;
         drop(external_challenges_host);
 
-        // Test-only dynamic entry: fixtures always carry real i&t data, so
-        // the canonical top bits are the actual ones.
-        let inits_and_teardowns_top_bits =
-            crate::backward::builders::canonical_inits_and_teardowns_top_bits(
-                compiled_circuit.memory_layout.teardown_sets.len(),
-            );
         let mut execution = self.schedule_execute_backward_workflow_from_shared_state(
             compiled_circuit,
             external_challenges,

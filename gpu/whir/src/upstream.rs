@@ -47,6 +47,6 @@ pub(crate) use prover::merkle_trees::ColumnMajorMerkleTreeConstructor;
 #[cfg(any(test, feature = "test-utils"))]
 pub(crate) use prover::merkle_trees::{DefaultTreeConstructor, MerkleTreeCapVarLength};
 #[cfg(any(test, feature = "test-utils"))]
-pub(crate) use prover::transcript::Seed;
+pub(crate) use prover::transcript::{Blake2sTranscript, Seed};
 #[cfg(any(test, feature = "test-utils"))]
 pub(crate) use prover::utils::extension_field_from_base_coeffs;

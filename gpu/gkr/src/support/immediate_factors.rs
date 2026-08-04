@@ -347,10 +347,10 @@ mod tests {
 
     fn sample_ext(seed: u32) -> E4 {
         E4::from_array_of_base([
-            BF::from_u64_with_reduction(seed as u64),
-            BF::from_u64_with_reduction(seed as u64 + 1),
-            BF::from_u64_with_reduction(seed as u64 + 2),
-            BF::from_u64_with_reduction(seed as u64 + 3),
+            BF::from_u128_with_reduction(seed as u128),
+            BF::from_u128_with_reduction(seed as u128 + 1),
+            BF::from_u128_with_reduction(seed as u128 + 2),
+            BF::from_u128_with_reduction(seed as u128 + 3),
         ])
     }
 

@@ -453,10 +453,10 @@ fn device_squeeze_e4(seed: &[u32; STATE_SIZE], count: usize) -> (Vec<E4>, [u32; 
     (h_output, h_seed)
 }
 
-/// Helper: host `draw_random_field_els::<BF, E4>` returning challenges + final seed.
+/// Helper: host `draw_random_field_els::<BF, E4, Blake2sTranscript>` returning challenges + final seed.
 fn host_draw_e4(seed: &[u32; STATE_SIZE], count: usize) -> (Vec<E4>, [u32; STATE_SIZE]) {
     let mut s = Seed(*seed);
-    let challenges = draw_random_field_els::<BF, E4>(&mut s, count);
+    let challenges = draw_random_field_els::<BF, E4, Blake2sTranscript>(&mut s, count);
     (challenges, s.0)
 }
 

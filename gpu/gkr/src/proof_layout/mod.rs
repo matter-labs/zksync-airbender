@@ -49,7 +49,7 @@ use gpu_core::primitives::field::{BF, E4};
 pub(crate) const FIELD_ALIGN: usize = 32;
 
 /// Number of `u32` words per Merkle digest (Blake2s cap entry size).
-pub(crate) const DIGEST_U32_WORDS: usize = 8;
+pub(crate) const DIGEST_U32_WORDS: usize = gpu_hash::blake2s::STATE_SIZE;
 
 #[inline]
 fn align_up(offset: usize, align: usize) -> usize {
@@ -83,12 +83,11 @@ pub struct BackwardLayerDims {
     /// extension-field degree of the reduced output polynomial). Kept per-layer
     /// because it may vary between dim-reducing and main layers.
     pub final_step_eval_degree: usize,
-    /// Addresses for `extra_evaluations_from_caching_relations` — the per-layer
-    /// orphan kernel outputs that are not consumed as inputs by any parent-layer
-    /// kernel and therefore not part of `final_step_evaluations`. Each entry
-    /// contributes a single `E4` (the explicit evaluation at the random folding
-    /// point). Empty for dim-reducing slots and for main layers without
-    /// orphans. Mirrors the CPU proof's
+    /// Addresses for `extra_evaluations_from_caching_relations` — cached-relation
+    /// dependencies absent from `final_step_evaluations`. Each entry contributes
+    /// one `E4` (the explicit evaluation at the random folding point). Empty for
+    /// dim-reducing slots and main layers without missing dependencies. Mirrors
+    /// the CPU proof's
     /// `SumcheckIntermediateProofValues::extra_evaluations_from_caching_relations`
     /// field.
     pub extra_evaluations_addresses: Vec<GKRAddress>,
@@ -124,6 +123,8 @@ pub struct WhirIntermediateDims {
 /// WHIR-side dimensions for the proof image.
 #[derive(Debug, Clone)]
 pub struct WhirDims {
+    /// Length of the GKR final claim point handed to WHIR.
+    pub original_evaluation_point_len: usize,
     pub setup: WhirBaseLayerDims,
     pub memory: WhirBaseLayerDims,
     pub witness: WhirBaseLayerDims,
@@ -178,10 +179,10 @@ pub(crate) struct BackwardLayerLayout {
     /// reconstruction.
     pub final_step_eval_addresses: Vec<GKRAddress>,
     /// `extra_evaluations_from_caching_relations` flat array — one `E4` per
-    /// orphan address, in `extra_evaluations_addresses` order. Empty for
-    /// dim-reducing slots and main layers without orphans.
+    /// missing dependency, in `extra_evaluations_addresses` order. Empty for
+    /// dim-reducing slots and main layers without extras.
     pub extra_evaluations: Range<usize>,
-    /// Copy of the orphan address ordering, retained for parse-time
+    /// Copy of the extra-evaluation address ordering, retained for parse-time
     /// `BTreeMap` reconstruction.
     pub extra_evaluations_addresses: Vec<GKRAddress>,
     pub sumcheck_num_rounds: usize,
@@ -220,6 +221,10 @@ pub(crate) struct WhirIntermediateByteLayout {
 
 #[derive(Debug, Clone)]
 pub(crate) struct WhirLayout {
+    /// GKR final claim point copied device-to-device into the proof slab.
+    pub original_evaluation_point: Range<usize>,
+    /// WHIR base batching challenge copied device-to-device into the proof slab.
+    pub batching_challenge: Range<usize>,
     /// Shared `query_indices` range used by all three base oracles. The three
     /// base oracles (setup/memory/witness) sample tree-space indices from the
     /// same verifier-derived list. Allocated once at the start of `lay_whir`,
@@ -325,10 +330,10 @@ impl ProofLayout {
             let final_evals_count =
                 layer.final_step_eval_addresses.len() * layer.final_step_eval_degree;
             let final_step_evaluations = alloc(&mut cur, final_evals_count, size_of::<E4>());
-            // One `E4` per orphan address — single explicit evaluation at
-            // the layer's random folding point. Empty range when there are
-            // no orphans (zero-width allocations are fine; the start offset
-            // remains aligned).
+            // One `E4` per missing cached dependency — a single explicit
+            // evaluation at the layer's random folding point. Empty range when
+            // there are no extras (zero-width allocations are fine; the start
+            // offset remains aligned).
             let extra_evaluations = alloc(
                 &mut cur,
                 layer.extra_evaluations_addresses.len(),
@@ -438,6 +443,10 @@ impl ProofLayout {
                 }
             };
 
+        let original_evaluation_point =
+            alloc(cur, dims.original_evaluation_point_len, size_of::<E4>());
+        let batching_challenge = alloc(cur, 1, size_of::<E4>());
+
         // Shared base-oracle query indices. The three base oracles
         // (setup/memory/witness) sample the same verifier-supplied
         // tree-space indices, so we allocate one range up front and have all
@@ -461,6 +470,8 @@ impl ProofLayout {
         let final_monomials = alloc(cur, dims.final_monomials_len, size_of::<E4>());
 
         WhirLayout {
+            original_evaluation_point,
+            batching_challenge,
             base_query_indices,
             setup,
             memory,

@@ -90,9 +90,7 @@ pub(crate) use field::baby_bear::ext4::BabyBearExt4;
 #[cfg(test)]
 pub(crate) use field::{FieldExtension, PrimeField};
 #[cfg(test)]
-pub(crate) use prover::definitions::{
-    produce_initial_permutation_product_contribution, Transcript,
-};
+pub(crate) use prover::definitions::produce_initial_permutation_product_contribution;
 #[cfg(test)]
 pub(crate) use prover::gkr::high_bits_offset_for_inits_and_teardowns;
 #[cfg(test)]
@@ -100,15 +98,17 @@ pub(crate) use prover::gkr::prover::dimension_reduction::forward::DimensionReduc
 #[cfg(test)]
 pub(crate) use prover::gkr::prover::setup::GKRSetup as CpuGKRSetup;
 #[cfg(test)]
-pub(crate) use prover::gkr::prover::stages::stage1;
+pub(crate) use prover::gkr::prover::stages::commitment_utils::commit_trace_part;
 #[cfg(test)]
-pub(crate) use prover::gkr::prover::stages::stage1::commit_trace_part;
+pub(crate) use prover::gkr::prover::stages::initial_commit::commit_separate_memory_and_witness_subtrees;
 #[cfg(test)]
 pub(crate) use prover::gkr::prover::transcript_utils::{
     add_whir_commitment_to_transcript, commit_field_els, draw_query_bits, draw_random_field_els,
 };
 #[cfg(test)]
 pub(crate) use prover::gkr::prover::utils::flatten_merkle_caps_iter_into;
+#[cfg(test)]
+pub(crate) use prover::gkr::prover::CommitmentMode;
 #[cfg(test)]
 pub(crate) use prover::gkr::prover::{
     dimension_reduction, forward_loop, prove_configured_with_gkr, sumcheck_loop,
@@ -136,7 +136,7 @@ pub(crate) use prover::gkr::virtual_polys::range_check::materialize_virtual_rang
 #[cfg(test)]
 pub(crate) use prover::gkr::whir::{
     whir_fold, ColumnMajorBaseOracleForLDE, ColumnMajorExtensionOracleForLDE, WhirCommitment,
-    WhirPolyCommitProof,
+    WhirIntermediateOracleMode, WhirPolyCommitProof,
 };
 #[cfg(test)]
 pub(crate) use prover::gkr::witness_gen::delegation_circuits::{
@@ -161,4 +161,4 @@ pub(crate) use prover::tracers::oracles::transpiler_oracles::delegation::{
     BigintDelegationOracle, Blake2sDelegationOracle, KeccakDelegationOracle,
 };
 #[cfg(test)]
-pub(crate) use prover::transcript::Seed;
+pub(crate) use prover::transcript::{Blake2sTranscript, Seed, Transcript};

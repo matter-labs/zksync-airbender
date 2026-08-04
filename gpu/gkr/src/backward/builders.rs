@@ -5,8 +5,11 @@ use crate::immediate_factors::{
     ImmediateFactorRecipeStructural, IMMEDIATE_FACTOR_ADDITIVE_PART_IDX,
 };
 use crate::upstream::{
-    AddressSpaceType, Field, FieldExtension, GKRAddress, GKRExternalChallenges, GKRInputs,
-    InitsOrTeardownsTimestampAndValue, NoFieldMaxQuadraticGKRRelation, PrimeField,
+    AddressSpaceType, CompiledAddressSpaceRelationStrict, CompiledAddressStrict,
+    CompiledMemoryTimestamp, Field, FieldExtension, GKRAddress, GKRExternalChallenges, GKRInputs,
+    InitsOrTeardownsTimestampAndValue, NoFieldLinearRelation, NoFieldMaxQuadraticGKRRelation,
+    NoFieldSingleColumnLookupRelation, NoFieldSpecialMemoryContributionRelation,
+    NoFieldVectorLookupRelation, PrimeField, RamWordRepresentation,
     PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX,
     PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX,
     PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX,
@@ -81,7 +84,7 @@ pub(crate) fn canonical_inits_and_teardowns_top_bits(sets_count: usize) -> Vec<u
 }
 
 fn memory_query_as_flattened_relation<E: Field + FieldExtension<BF>>(
-    rel: &cs::gkr_compiler::NoFieldSpecialMemoryContributionRelation,
+    rel: &NoFieldSpecialMemoryContributionRelation,
     external_challenges: &GKRExternalChallenges<BF, E>,
 ) -> (BTreeMap<GKRAddress, ImmediateCoeff<E>>, ImmediateCoeff<E>) {
     let mut result = BTreeMap::new();
@@ -91,11 +94,11 @@ fn memory_query_as_flattened_relation<E: Field + FieldExtension<BF>>(
     };
 
     match rel.address_space {
-        cs::gkr_compiler::CompiledAddressSpaceRelationStrict::Constant(c) => {
+        CompiledAddressSpaceRelationStrict::Constant(c) => {
             assert!(c < (1u32 << 16));
             constant_term.add_assign(&ImmediateCoeff::from_base(BF::from_u32_unchecked(c)));
         }
-        cs::gkr_compiler::CompiledAddressSpaceRelationStrict::IsRam(offset) => {
+        CompiledAddressSpaceRelationStrict::IsRam(offset) => {
             assert_eq!(AddressSpaceType::RAM as u8, 1);
             assert!(result
                 .insert(
@@ -104,7 +107,7 @@ fn memory_query_as_flattened_relation<E: Field + FieldExtension<BF>>(
                 )
                 .is_none());
         }
-        cs::gkr_compiler::CompiledAddressSpaceRelationStrict::IsRegister(offset) => {
+        CompiledAddressSpaceRelationStrict::IsRegister(offset) => {
             assert_eq!(AddressSpaceType::Register as u8, 0);
             assert!(result
                 .insert(
@@ -117,7 +120,7 @@ fn memory_query_as_flattened_relation<E: Field + FieldExtension<BF>>(
     }
 
     match &rel.address {
-        cs::gkr_compiler::CompiledAddressStrict::ConstantU16(c) => {
+        CompiledAddressStrict::ConstantU16(c) => {
             let idx = PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX;
             let challenge = ImmediateCoeff::challenge_scaled(
                 idx as u8,
@@ -126,7 +129,7 @@ fn memory_query_as_flattened_relation<E: Field + FieldExtension<BF>>(
             );
             constant_term.add_assign(&challenge);
         }
-        cs::gkr_compiler::CompiledAddressStrict::Constant(c) => {
+        CompiledAddressStrict::Constant(c) => {
             assert!(*c < (1u32 << 16));
             let idx = PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX;
             let challenge = ImmediateCoeff::challenge_scaled(
@@ -136,7 +139,7 @@ fn memory_query_as_flattened_relation<E: Field + FieldExtension<BF>>(
             );
             constant_term.add_assign(&challenge);
         }
-        cs::gkr_compiler::CompiledAddressStrict::U16Space(offset) => {
+        CompiledAddressStrict::U16Space(offset) => {
             let idx = PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX;
             let challenge = ImmediateCoeff::challenge(
                 idx as u8,
@@ -146,7 +149,7 @@ fn memory_query_as_flattened_relation<E: Field + FieldExtension<BF>>(
                 .insert(GKRAddress::BaseLayerMemory(*offset), challenge)
                 .is_none());
         }
-        cs::gkr_compiler::CompiledAddressStrict::U32Space([low, high]) => {
+        CompiledAddressStrict::U32Space([low, high]) => {
             for (idx, offset) in [
                 (PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX, *low),
                 (
@@ -163,10 +166,10 @@ fn memory_query_as_flattened_relation<E: Field + FieldExtension<BF>>(
                     .is_none());
             }
         }
-        cs::gkr_compiler::CompiledAddressStrict::U32SpaceGeneric(..) => {
+        CompiledAddressStrict::U32SpaceGeneric(..) => {
             todo!();
         }
-        cs::gkr_compiler::CompiledAddressStrict::U32SpaceSpecialIndirect {
+        CompiledAddressStrict::U32SpaceSpecialIndirect {
             low_base,
             low_dynamic_offset,
             low_offset,
@@ -213,8 +216,8 @@ fn memory_query_as_flattened_relation<E: Field + FieldExtension<BF>>(
     }
 
     match rel.timestamp {
-        cs::gkr_compiler::CompiledMemoryTimestamp::Zero => {}
-        cs::gkr_compiler::CompiledMemoryTimestamp::Normal(ts) => {
+        CompiledMemoryTimestamp::Zero => {}
+        CompiledMemoryTimestamp::Normal(ts) => {
             {
                 let idx = PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX;
                 let challenge = ImmediateCoeff::challenge(
@@ -245,8 +248,8 @@ fn memory_query_as_flattened_relation<E: Field + FieldExtension<BF>>(
     }
 
     match rel.value {
-        cs::definitions::gkr::RamWordRepresentation::Zero => {}
-        cs::definitions::gkr::RamWordRepresentation::U16Limbs(read_value) => {
+        RamWordRepresentation::Zero => {}
+        RamWordRepresentation::U16Limbs(read_value) => {
             for (idx, offset) in [
                 (
                     PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX,
@@ -266,7 +269,7 @@ fn memory_query_as_flattened_relation<E: Field + FieldExtension<BF>>(
                     .is_none());
             }
         }
-        cs::definitions::gkr::RamWordRepresentation::U8Limbs(read_value_bytes) => {
+        RamWordRepresentation::U8Limbs(read_value_bytes) => {
             let byte_shift = BF::from_u32_unchecked(1u32 << 8);
             for (idx, offset_low, offset_high) in [
                 (
@@ -317,7 +320,7 @@ pub(super) fn lookup_constraint_term(
 pub(super) fn single_column_lookup_as_flattened_relation_template<
     const WITH_ADDITIVE_PART: bool,
 >(
-    rel: &cs::definitions::gkr::NoFieldSingleColumnLookupRelation,
+    rel: &NoFieldSingleColumnLookupRelation,
 ) -> (
     BTreeMap<GKRAddress, Vec<GpuGKRMainLayerConstraintChallengeTerm>>,
     Vec<GpuGKRMainLayerConstraintChallengeTerm>,
@@ -331,9 +334,9 @@ pub(super) fn single_column_lookup_as_flattened_relation_template<
             1,
         ));
     }
-    if rel.input.constant != 0 {
+    if rel.input.constant != BF::ZERO {
         constant_terms.push(lookup_constraint_term(
-            rel.input.constant,
+            rel.input.constant.to_u32(),
             GpuGKRMainLayerDeferredChallengeSource::LookupAdditive,
             0,
         ));
@@ -344,7 +347,7 @@ pub(super) fn single_column_lookup_as_flattened_relation_template<
             .insert(
                 *address,
                 vec![lookup_constraint_term(
-                    *coeff,
+                    coeff.to_u32(),
                     GpuGKRMainLayerDeferredChallengeSource::LookupAdditive,
                     0,
                 )],
@@ -356,7 +359,7 @@ pub(super) fn single_column_lookup_as_flattened_relation_template<
 }
 
 pub(super) fn vector_lookup_as_flattened_relation_template<const WITH_ADDITIVE_PART: bool>(
-    rel: &cs::definitions::gkr::NoFieldVectorLookupRelation,
+    rel: &NoFieldVectorLookupRelation,
 ) -> (
     BTreeMap<GKRAddress, Vec<GpuGKRMainLayerConstraintChallengeTerm>>,
     Vec<GpuGKRMainLayerConstraintChallengeTerm>,
@@ -378,16 +381,16 @@ pub(super) fn vector_lookup_as_flattened_relation_template<const WITH_ADDITIVE_P
                 .insert(
                     *address,
                     vec![lookup_constraint_term(
-                        *coeff,
+                        coeff.to_u32(),
                         GpuGKRMainLayerDeferredChallengeSource::LookupMultiplicative,
                         power,
                     )],
                 )
                 .is_none());
         }
-        if column.constant != 0 {
+        if column.constant != BF::ZERO {
             constant_terms.push(lookup_constraint_term(
-                column.constant,
+                column.constant.to_u32(),
                 GpuGKRMainLayerDeferredChallengeSource::LookupMultiplicative,
                 power,
             ));
@@ -589,7 +592,7 @@ pub(crate) fn build_single_max_quadratic_constraint_inputs_and_metadata<
     for (lhs, rhs_terms) in relation.quadratic_terms.iter() {
         let lhs_idx = remap_constraint_input(&mut mapping, &mut inputs, *lhs);
         for (coeff, rhs) in rhs_terms.iter() {
-            let coeff = BF::from_u32_with_reduction(*coeff);
+            let coeff = *coeff;
             let rhs_idx = if *lhs == *rhs {
                 lhs_idx
             } else {
@@ -605,7 +608,7 @@ pub(crate) fn build_single_max_quadratic_constraint_inputs_and_metadata<
     }
 
     for (coeff, input) in relation.linear_terms.iter() {
-        let coeff = BF::from_u32_with_reduction(*coeff);
+        let coeff = *coeff;
         let input_idx = remap_constraint_input(&mut mapping, &mut inputs, *input);
         linear_terms.push(GpuGKRMainLayerConstraintLinearTerm {
             input: input_idx as u32,
@@ -613,7 +616,7 @@ pub(crate) fn build_single_max_quadratic_constraint_inputs_and_metadata<
             immediate_recipe: ImmediateFactorRecipeStructural::from_base(coeff),
         });
     }
-    let constant = BF::from_u32_with_reduction(relation.constant);
+    let constant = relation.constant;
 
     (
         GKRInputs {
@@ -648,7 +651,7 @@ pub(crate) fn build_max_quadratic_relation_inputs_and_metadata<E: Field + FieldE
 }
 
 pub(super) fn build_linear_base_kernel_inputs_and_metadata<E: Field + FieldExtension<BF>>(
-    relation: &cs::definitions::gkr::NoFieldLinearRelation,
+    relation: &NoFieldLinearRelation,
     output: GKRAddress,
 ) -> (GKRInputs, GpuGKRMainLayerConstraintHostMetadata<E>) {
     let mut mapping = BTreeMap::new();
@@ -656,7 +659,7 @@ pub(super) fn build_linear_base_kernel_inputs_and_metadata<E: Field + FieldExten
     let mut linear_terms = Vec::new();
 
     for (coeff, input) in relation.linear_terms.iter() {
-        let coeff = BF::from_u32_with_reduction(*coeff);
+        let coeff = *coeff;
         let input_idx = remap_constraint_input(&mut mapping, &mut inputs, *input);
         linear_terms.push(GpuGKRMainLayerConstraintLinearTerm {
             input: input_idx as u32,
@@ -664,7 +667,7 @@ pub(super) fn build_linear_base_kernel_inputs_and_metadata<E: Field + FieldExten
             immediate_recipe: ImmediateFactorRecipeStructural::from_base(coeff),
         });
     }
-    let constant = BF::from_u32_with_reduction(relation.constant);
+    let constant = relation.constant;
 
     (
         GKRInputs {
@@ -850,7 +853,7 @@ pub(super) fn validate_no_cache_linear_form_metadata<E: Field>(
 pub fn build_initial_grand_product_without_caches_inputs_and_metadata<
     E: Field + FieldExtension<BF>,
 >(
-    input: &[cs::gkr_compiler::NoFieldSpecialMemoryContributionRelation; 2],
+    input: &[NoFieldSpecialMemoryContributionRelation; 2],
     output: GKRAddress,
     external_challenges: &GKRExternalChallenges<BF, E>,
 ) -> (GKRInputs, GpuGKRMainLayerConstraintHostMetadata<E>) {
@@ -890,7 +893,7 @@ pub fn build_initial_grand_product_without_caches_inputs_and_metadata<
 pub fn build_materialize_grand_product_term_expression_inputs_and_metadata<
     E: Field + FieldExtension<BF>,
 >(
-    relation: &cs::gkr_compiler::NoFieldSpecialMemoryContributionRelation,
+    relation: &NoFieldSpecialMemoryContributionRelation,
     output: GKRAddress,
     external_challenges: &GKRExternalChallenges<BF, E>,
 ) -> (GKRInputs, GpuGKRMainLayerConstraintHostMetadata<E>) {

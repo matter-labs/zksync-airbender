@@ -7,8 +7,39 @@ use super::{build_main_layer_kernel_blueprints, sample_ext, sample_external_chal
 use crate::upstream::{
     high_bits_offset_for_inits_and_teardowns, Field, GKRAddress, GKRLayerDescription,
     GateArtifacts, InitsOrTeardownsTimestampAndValue, NoFieldGKRRelation,
-    NoFieldMaxQuadraticGKRRelation, VirtualSetupPoly,
+    NoFieldMaxQuadraticGKRRelation, NoFieldStructuredExpression, PrimeField, VirtualSetupPoly,
 };
+
+fn max_quadratic_expression() -> NoFieldStructuredExpression<BF> {
+    use NoFieldStructuredExpression::{Constant, Place, Product, Sum};
+
+    Sum(vec![
+        Constant(BF::from_u32_unchecked(13)),
+        Product(vec![
+            Constant(BF::from_u32_unchecked(2)),
+            Place(GKRAddress::BaseLayerMemory(0)),
+            Place(GKRAddress::BaseLayerWitness(1)),
+        ]),
+        Product(vec![
+            Constant(BF::from_u32_unchecked(3)),
+            Place(GKRAddress::BaseLayerMemory(0)),
+            Place(GKRAddress::BaseLayerMemory(0)),
+        ]),
+        Product(vec![
+            Constant(BF::from_u32_unchecked(5)),
+            Place(GKRAddress::BaseLayerWitness(2)),
+            Place(GKRAddress::BaseLayerWitness(1)),
+        ]),
+        Product(vec![
+            Constant(BF::from_u32_unchecked(7)),
+            Place(GKRAddress::BaseLayerMemory(3)),
+        ]),
+        Product(vec![
+            Constant(BF::from_u32_unchecked(11)),
+            Place(GKRAddress::BaseLayerWitness(2)),
+        ]),
+    ])
+}
 
 #[test]
 fn single_max_quadratic_constraint_uses_direct_metadata_and_no_outputs() {
@@ -21,23 +52,24 @@ fn single_max_quadratic_constraint_uses_direct_metadata_and_no_outputs() {
             (
                 GKRAddress::BaseLayerMemory(0),
                 vec![
-                    (2u32, GKRAddress::BaseLayerWitness(1)),
-                    (3u32, GKRAddress::BaseLayerMemory(0)),
+                    (BF::from_u32_unchecked(2), GKRAddress::BaseLayerWitness(1)),
+                    (BF::from_u32_unchecked(3), GKRAddress::BaseLayerMemory(0)),
                 ]
                 .into_boxed_slice(),
             ),
             (
                 GKRAddress::BaseLayerWitness(2),
-                vec![(5u32, GKRAddress::BaseLayerWitness(1))].into_boxed_slice(),
+                vec![(BF::from_u32_unchecked(5), GKRAddress::BaseLayerWitness(1))]
+                    .into_boxed_slice(),
             ),
         ]
         .into_boxed_slice(),
         linear_terms: vec![
-            (7u32, GKRAddress::BaseLayerMemory(3)),
-            (11u32, GKRAddress::BaseLayerWitness(2)),
+            (BF::from_u32_unchecked(7), GKRAddress::BaseLayerMemory(3)),
+            (BF::from_u32_unchecked(11), GKRAddress::BaseLayerWitness(2)),
         ]
         .into_boxed_slice(),
-        constant: 13,
+        constant: BF::from_u32_unchecked(13),
     };
     let layer = GKRLayerDescription {
         layer: 0,
@@ -48,6 +80,7 @@ fn single_max_quadratic_constraint_uses_direct_metadata_and_no_outputs() {
             output_layer: 1,
             enforced_relation: NoFieldGKRRelation::EnforceSingleMaxQuadraticConstraint {
                 input: constraint_input.clone(),
+                expression: max_quadratic_expression(),
             },
         }],
     };
@@ -102,23 +135,24 @@ fn max_quadratic_relation_dispatches_with_base_output() {
             (
                 GKRAddress::BaseLayerMemory(0),
                 vec![
-                    (2u32, GKRAddress::BaseLayerWitness(1)),
-                    (3u32, GKRAddress::BaseLayerMemory(0)),
+                    (BF::from_u32_unchecked(2), GKRAddress::BaseLayerWitness(1)),
+                    (BF::from_u32_unchecked(3), GKRAddress::BaseLayerMemory(0)),
                 ]
                 .into_boxed_slice(),
             ),
             (
                 GKRAddress::BaseLayerWitness(2),
-                vec![(5u32, GKRAddress::BaseLayerWitness(1))].into_boxed_slice(),
+                vec![(BF::from_u32_unchecked(5), GKRAddress::BaseLayerWitness(1))]
+                    .into_boxed_slice(),
             ),
         ]
         .into_boxed_slice(),
         linear_terms: vec![
-            (7u32, GKRAddress::BaseLayerMemory(3)),
-            (11u32, GKRAddress::BaseLayerWitness(2)),
+            (BF::from_u32_unchecked(7), GKRAddress::BaseLayerMemory(3)),
+            (BF::from_u32_unchecked(11), GKRAddress::BaseLayerWitness(2)),
         ]
         .into_boxed_slice(),
-        constant: 13,
+        constant: BF::from_u32_unchecked(13),
     };
     let output_address = GKRAddress::ScratchSpace(0);
     let layer = GKRLayerDescription {
@@ -130,6 +164,7 @@ fn max_quadratic_relation_dispatches_with_base_output() {
             output_layer: 1,
             enforced_relation: NoFieldGKRRelation::MaxQuadratic {
                 input: constraint_input.clone(),
+                expression: max_quadratic_expression(),
                 output: output_address,
             },
         }],
@@ -323,14 +358,11 @@ fn main_layer_blueprints_for_inits_and_teardowns_initial_pair_use_canonical_top_
 }
 
 #[test]
-fn compute_main_layer_orphan_output_addresses_picks_unconsumed_outputs() {
-    // Three layers; layer 0 produces an InnerLayer{1,0} output that
-    // layer-1's kernels do not read — exactly the MaxQuadratic-with-
-    // higher-layer-consumer case. Bottom
-    // layer (layer_idx == 0) is always empty (no layer below). Top
-    // layer's slot lists orphans of the layer below it (here:
-    // layer-1 outputs that layer 2 doesn't consume).
-    let layer0_inputs = vec![GKRAddress::BaseLayerWitness(0)];
+fn cpu_main_layer_extra_evaluations_pick_missing_cached_dependencies() {
+    let layer0_inputs = vec![
+        GKRAddress::BaseLayerWitness(0),
+        GKRAddress::BaseLayerMemory(0),
+    ];
     let layer1_inputs = vec![GKRAddress::BaseLayerWitness(1)];
     let layer2_inputs = vec![
         GKRAddress::ScratchSpace(7),
@@ -341,49 +373,56 @@ fn compute_main_layer_orphan_output_addresses_picks_unconsumed_outputs() {
     ];
     let inputs_per_layer = vec![layer0_inputs, layer1_inputs, layer2_inputs];
 
-    let layer0_outputs = vec![GKRAddress::InnerLayer {
-        layer: 1,
-        offset: 0,
-    }];
-    let layer1_outputs = vec![
-        GKRAddress::ScratchSpace(7),
-        GKRAddress::InnerLayer {
-            layer: 2,
-            offset: 0,
-        },
+    let cached_dependencies_per_layer = vec![
+        vec![
+            GKRAddress::BaseLayerWitness(0),
+            GKRAddress::BaseLayerMemory(2),
+            GKRAddress::Setup(2),
+            GKRAddress::BaseLayerMemory(0),
+            GKRAddress::BaseLayerMemory(4),
+            GKRAddress::Setup(2),
+        ],
+        vec![
+            GKRAddress::BaseLayerWitness(1),
+            GKRAddress::InnerLayer {
+                layer: 1,
+                offset: 0,
+            },
+        ],
+        vec![
+            GKRAddress::ScratchSpace(7),
+            GKRAddress::InnerLayer {
+                layer: 2,
+                offset: 0,
+            },
+        ],
     ];
-    let layer2_outputs = vec![GKRAddress::InnerLayer {
-        layer: 3,
-        offset: 0,
-    }];
-    let outputs_per_layer = vec![layer0_outputs, layer1_outputs, layer2_outputs];
 
-    let orphans = super::compute_main_layer_orphan_output_addresses_per_layer::<E4>(
+    let extras = super::compute_main_layer_extra_evaluation_addresses_per_layer(
         &inputs_per_layer,
-        &outputs_per_layer,
+        &cached_dependencies_per_layer,
     );
 
-    // Bottom layer (layer 0): nothing below it — always empty.
-    assert!(orphans[0].is_empty());
-    // Layer 1's orphan list = layer-0 outputs not consumed by layer 1.
-    // layer 0's output InnerLayer{1,0} is NOT in layer 1's inputs
-    // (which is BaseLayerWitness(1)) — so it IS an orphan emitted at
-    // scheduler 1.
     assert_eq!(
-        orphans[1],
+        extras[0],
+        vec![
+            GKRAddress::BaseLayerMemory(2),
+            GKRAddress::BaseLayerMemory(4),
+            GKRAddress::Setup(2),
+        ],
+    );
+    assert_eq!(
+        extras[1],
         vec![GKRAddress::InnerLayer {
             layer: 1,
             offset: 0,
         }],
     );
-    // Layer 2's orphan list = layer-1 outputs not consumed by layer 2.
-    // both ScratchSpace(7) and InnerLayer{2,0} ARE in layer 2's
-    // inputs, so neither is an orphan.
-    assert!(orphans[2].is_empty());
+    assert!(extras[2].is_empty());
 }
 
 #[test]
-fn compute_main_layer_orphan_output_addresses_handles_empty() {
-    let orphans = super::compute_main_layer_orphan_output_addresses_per_layer::<E4>(&[], &[]);
-    assert!(orphans.is_empty());
+fn cpu_main_layer_extra_evaluation_addresses_handle_empty() {
+    let extras = super::compute_main_layer_extra_evaluation_addresses_per_layer(&[], &[]);
+    assert!(extras.is_empty());
 }

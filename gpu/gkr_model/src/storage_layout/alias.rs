@@ -5,7 +5,7 @@
 
 use std::collections::BTreeMap;
 
-use crate::upstream::{GKRAddress, GKRCircuitArtifact, PrimeField};
+use crate::upstream::{GKRAddress, GKRCircuitArtifact, NoFieldGKRRelation, PrimeField};
 
 use super::construct::address_storage_layer;
 use super::types::GpuGKRStorageLayout;
@@ -35,8 +35,6 @@ impl GpuGKRStorageLayout {
 pub(super) fn build_alias_redirects<F: PrimeField>(
     artifact: &GKRCircuitArtifact<F>,
 ) -> BTreeMap<GKRAddress, GKRAddress> {
-    use cs::gkr_compiler::NoFieldGKRRelation;
-
     fn find(parent: &mut BTreeMap<GKRAddress, GKRAddress>, addr: GKRAddress) -> GKRAddress {
         let p = parent.get(&addr).copied().unwrap_or(addr);
         if p == addr {

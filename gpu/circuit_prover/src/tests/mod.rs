@@ -502,6 +502,10 @@ pub(crate) struct BasicUnrolledFixture {
     /// (their memory is fully covered by the per-row shuffle); `Some` for the
     /// unified fixture, which proves the inits-and-teardowns layer.
     pub(crate) inits_and_teardowns_host: Option<InitsAndTeardownsTraceHost>,
+    /// Actual global RAM-set top bits assigned to the fixture's local teardown
+    /// slots. `None` uses the canonical contiguous selection for fixtures that
+    /// do not need noncontiguous RAM-set rebasing.
+    pub(crate) inits_and_teardowns_top_bits: Option<Vec<u32>>,
     /// Closure-assembly metadata captured from the same VM run, consumed by the
     /// unified e2e test to drive the no-filter grand-product
     /// accumulator to ONE. Empty/`None`/default for per-family fixtures.
@@ -575,8 +579,12 @@ impl BasicUnrolledFixture {
             .map(|host| InitsAndTeardownsTransfer::new(host, context))
             .transpose()?;
 
-        let canonical_top_bits =
-            crate::proof::canonical_inits_and_teardowns_top_bits(&self.compiled_circuit);
+        let canonical_top_bits = self
+            .inits_and_teardowns_top_bits
+            .clone()
+            .unwrap_or_else(|| {
+                crate::proof::canonical_inits_and_teardowns_top_bits(&self.compiled_circuit)
+            });
         BasicUnrolledTransfers::new(
             setup_transfer,
             decoder_transfer,

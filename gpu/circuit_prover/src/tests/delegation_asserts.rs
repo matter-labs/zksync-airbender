@@ -111,15 +111,16 @@ pub(super) fn assert_delegation_workflow_matches_cpu<W, O, F>(
     .finish()
     .unwrap();
 
-    let (mem_oracle, wit_oracle) = stage1::stage1::<BF, DefaultTreeConstructor>(
-        &full_trace,
-        &twiddles,
-        whir_schedule.base_lde_factor,
-        whir_schedule.whir_steps_schedule[0],
-        whir_schedule.cap_size,
-        trace_len.trailing_zeros() as usize,
-        &worker,
-    );
+    let (mem_oracle, wit_oracle) =
+        commit_separate_memory_and_witness_subtrees::<BF, DefaultTreeConstructor>(
+            &full_trace,
+            &twiddles,
+            whir_schedule.base_lde_factor,
+            whir_schedule.whir_steps_schedule[0],
+            whir_schedule.cap_size,
+            trace_len.trailing_zeros() as usize,
+            &worker,
+        );
     let cpu_memory_caps = stage1_caps_from_tree(&mem_oracle.tree, subcap_size);
     if gpu_memory_caps != cpu_memory_caps {
         let first_mismatch = describe_first_trace_holder_column_mismatch(
@@ -237,15 +238,19 @@ pub(super) fn assert_delegation_workflow_matches_cpu<W, O, F>(
         "{label}: initial transcript input diverged",
     );
 
-    let mut cpu_seed = Transcript::commit_initial(&cpu_transcript_input);
-    let mut gpu_seed = Transcript::commit_initial(&gpu_transcript_input);
+    let mut cpu_seed =
+        <Blake2sTranscript as Transcript<BF, E4>>::commit_initial_u32(&cpu_transcript_input);
+    let mut gpu_seed =
+        <Blake2sTranscript as Transcript<BF, E4>>::commit_initial_u32(&gpu_transcript_input);
     assert_eq!(
         gpu_seed, cpu_seed,
         "{label}: initial transcript seed diverged"
     );
 
-    let cpu_lookup_challenges = draw_random_field_els::<BF, E4>(&mut cpu_seed, 3);
-    let gpu_lookup_challenges = draw_random_field_els::<BF, E4>(&mut gpu_seed, 3);
+    let cpu_lookup_challenges =
+        draw_random_field_els::<BF, E4, Blake2sTranscript>(&mut cpu_seed, 3);
+    let gpu_lookup_challenges =
+        draw_random_field_els::<BF, E4, Blake2sTranscript>(&mut gpu_seed, 3);
     assert_eq!(
         gpu_lookup_challenges, cpu_lookup_challenges,
         "{label}: lookup challenges diverged after matching transcript inputs",

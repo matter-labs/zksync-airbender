@@ -2,7 +2,8 @@ use crate::upstream::{
     inits_and_teardowns, AddSubLuiAuipcMopCircuit, BabyBearField, BigIntDelegationCircuit,
     Blake2sGFunctionDelegationCircuit, Blake2sWithCompressionDelegationCircuit,
     JumpBranchSltCircuit, KeccakSpecial5DelegationCircuit, LoadStoreSubwordOnlyCircuit,
-    LoadStoreWordOnlyCircuit, ShiftBinaryCircuit, UnsignedMulDivCircuit,
+    LoadStoreWordOnlyCircuit, ShiftBinaryCircuit, UnifiedReducedMachineCircuit,
+    UnsignedMulDivCircuit,
 };
 use circuit_common::{DelegationCircuit, RiscVCycleCircuit};
 use common_constants::circuit_families::{
@@ -30,10 +31,8 @@ const KECCAK_DOMAIN_SIZE_LOG2: u32 =
 
 const ADD_SUB_DOMAIN_SIZE_LOG2: u32 =
     <AddSubLuiAuipcMopCircuit as RiscVCycleCircuit<BabyBearField, false>>::DOMAIN_SIZE_LOG2;
-// No live upstream DOMAIN_SIZE_LOG2 trait const exists for the unified
-// reduced-machine circuit, so hard-code 24 to match the CPU trace_len_log2
-// (pinned by tests::unified_domain_size_is_two_pow_24).
-const UNIFIED_REDUCED_MACHINE_DOMAIN_SIZE_LOG2: u32 = 24;
+const UNIFIED_REDUCED_MACHINE_DOMAIN_SIZE_LOG2: u32 =
+    <UnifiedReducedMachineCircuit as RiscVCycleCircuit<BabyBearField, true>>::DOMAIN_SIZE_LOG2;
 const JUMP_BRANCH_DOMAIN_SIZE_LOG2: u32 =
     <JumpBranchSltCircuit as RiscVCycleCircuit<BabyBearField, false>>::DOMAIN_SIZE_LOG2;
 const SHIFT_BINARY_DOMAIN_SIZE_LOG2: u32 =
@@ -147,15 +146,6 @@ mod tests {
         let err = DelegationCircuitType::try_from(u16::MAX).unwrap_err();
 
         assert_eq!(err.raw, u16::MAX);
-    }
-
-    #[test]
-    fn unified_domain_size_is_two_pow_24() {
-        assert_eq!(
-            UnrolledCircuitType::Unified.get_domain_size(),
-            1 << 24,
-            "unified reduced-machine domain size must match the CPU trace_len_log2 = 24"
-        );
     }
 }
 

@@ -9,8 +9,8 @@ pub(crate) use cs::definitions::gkr::{
 pub(crate) use cs::definitions::GKRAddress;
 pub(crate) use cs::gkr_compiler::{
     CompiledAddressSpaceRelationStrict, CompiledAddressStrict, CompiledMemoryTimestamp,
-    GKRCircuitArtifact, NoFieldGKRCacheRelation, NoFieldGKRRelation,
-    NoFieldMaxQuadraticConstraintsGKRRelation, NoFieldMaxQuadraticGKRRelation,
+    GKRCircuitArtifact, InitsOrTeardownsTimestampAndValue, NoFieldGKRCacheRelation,
+    NoFieldGKRRelation, NoFieldMaxQuadraticConstraintsGKRRelation, NoFieldMaxQuadraticGKRRelation,
     NoFieldSpecialMemoryContributionRelation, OutputType,
 };
 pub(crate) use field::PrimeField;

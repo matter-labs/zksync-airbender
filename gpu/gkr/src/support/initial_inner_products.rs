@@ -68,10 +68,10 @@ mod tests {
 
     fn random_e4<R: Rng>(rng: &mut R) -> E4 {
         E4::from_array_of_base([
-            BaseField::from_u64_with_reduction(rng.random()),
-            BaseField::from_u64_with_reduction(rng.random()),
-            BaseField::from_u64_with_reduction(rng.random()),
-            BaseField::from_u64_with_reduction(rng.random()),
+            BaseField::from_u128_with_reduction(rng.random()),
+            BaseField::from_u128_with_reduction(rng.random()),
+            BaseField::from_u128_with_reduction(rng.random()),
+            BaseField::from_u128_with_reduction(rng.random()),
         ])
     }
 

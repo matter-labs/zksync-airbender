@@ -570,7 +570,7 @@ pub(crate) fn build_main_layer_kernel_blueprints_static<E: Field + FieldExtensio
                     "batched max-quadratic constraints not supported on GPU; cs/ must emit EnforceSingleMaxQuadraticConstraint (USE_BATCHING=false)"
                 );
             }
-            NoFieldGKRRelation::EnforceSingleMaxQuadraticConstraint { input } => {
+            NoFieldGKRRelation::EnforceSingleMaxQuadraticConstraint { input, .. } => {
                 let (inputs, constraint_metadata) =
                     build_single_max_quadratic_constraint_inputs_and_metadata::<E>(input);
                 let (batch_challenge_offset, batch_challenge_count) =
@@ -706,7 +706,7 @@ pub(crate) fn build_main_layer_kernel_blueprints_static<E: Field + FieldExtensio
                     ),
                 });
             }
-            NoFieldGKRRelation::MaxQuadratic { input, output } => {
+            NoFieldGKRRelation::MaxQuadratic { input, output, .. } => {
                 let (inputs, constraint_metadata) =
                     build_max_quadratic_relation_inputs_and_metadata::<E>(input, *output);
                 let (batch_challenge_offset, batch_challenge_count) =
@@ -817,138 +817,69 @@ where
     per_layer
 }
 
-/// Sibling of [`collect_main_layer_input_addresses_per_layer`] that
-/// collects the deduplicated `outputs_in_base ∪ outputs_in_extension` per
-/// layer. These are the addresses that each layer's kernels claim about — i.e.,
-/// the addresses looked up via `claim_layout.claim_idx` in the desc_pairs build
-/// inside `schedule_execute_main_layer_from_workflow_state`.
+/// Computes the cached-relation dependency evaluations that each main layer
+/// must append to its final-step evaluations before drawing the next batching
+/// challenge.
 ///
-/// Walks `compiled_circuit` directly without consulting `GpuGKRStorage`; the
-/// `storage`-derived branch in `build_main_layer_kernel_blueprints_static`
-/// only affects BaseCopy/ExtCopy classification, which preserves the
-/// `outputs_in_*` set.
-///
-/// Result is indexed by natural `layer_idx` (0-based position in
-/// `compiled_circuit.layers`), matching the inputs-side helper.
-pub fn collect_main_layer_kernel_output_addresses_per_layer<E>(
-    compiled_circuit: &GKRCircuitArtifact<BF>,
-    external_challenges: &GKRExternalChallenges<BF, E>,
-) -> Vec<Vec<GKRAddress>>
-where
-    E: Field + FieldExtension<BF>,
-{
-    let inits_and_teardowns_top_bits =
-        canonical_inits_and_teardowns_top_bits(compiled_circuit.memory_layout.teardown_sets.len());
-    let inits_and_teardowns_address_high_bits_shift =
-        if compiled_circuit.memory_layout.teardown_sets.is_empty() {
-            0
-        } else {
-            high_bits_offset_for_inits_and_teardowns::<2>(compiled_circuit.trace_len)
-        };
-    let mut per_layer = Vec::with_capacity(compiled_circuit.layers.len());
-    for layer in compiled_circuit.layers.iter() {
-        let blueprints = build_main_layer_kernel_blueprints_static::<E>(
-            layer,
-            &|addr| {
-                matches!(
-                    addr,
-                    GKRAddress::BaseLayerWitness(_)
-                        | GKRAddress::BaseLayerMemory(_)
-                        | GKRAddress::Setup(_)
-                        | GKRAddress::ScratchSpace(_)
-                )
-            },
-            external_challenges,
-            &inits_and_teardowns_top_bits,
-            inits_and_teardowns_address_high_bits_shift,
-        );
-        let mut addresses: std::collections::BTreeSet<GKRAddress> =
-            std::collections::BTreeSet::new();
-        for kernel in blueprints.iter() {
-            for addr in kernel
-                .inputs
-                .outputs_in_base
-                .iter()
-                .chain(kernel.inputs.outputs_in_extension.iter())
-            {
-                if *addr == GKRAddress::placeholder() {
-                    continue;
-                }
-                // Protocol/claim identity, not storage: map any scratch alias
-                // back to its logical `InnerLayer` address so the per-layer
-                // claim layout (`claim_idx`) matches the CPU verifier and the
-                // sibling input-address collector. See
-                // `transform::logical_protocol_address`.
-                addresses.insert(crate::transform::logical_protocol_address(
-                    *addr,
-                    &compiled_circuit.scratch_space_mapping_rev,
-                ));
-            }
-        }
-        per_layer.push(addresses.into_iter().collect());
-    }
-    per_layer
-}
-
-/// Computes per-layer "orphan" output addresses, indexed by the layer at
-/// which the prover **evaluates** them (= the main-layer scheduler that
-/// emits them into its slot's `extra_evaluations` slab range).
-///
-/// Concretely: at scheduler for main layer `L`, we have just folded down
-/// to a single random point and produced `last_evaluations[L]` (= layer
-/// `L`'s last-round kernel inputs). The next layer scheduled is `L - 1`,
-/// whose `desc_pairs` build looks up each of its kernels' output
-/// addresses in the IN claim layout. Any layer-`(L - 1)` kernel output
-/// address that is not in `last_evaluations[L]` is an "orphan" — its
-/// claim must be computed explicitly at `L`'s folding point and inserted
-/// into `L`'s next claim layout (and its slot's slab `extra_evaluations`
-/// range) so that `L - 1`'s scheduler sees it.
-///
-/// Returned vector layout: `per_layer[L]` =
-/// `outputs_per_layer[L - 1] − inputs_per_layer[L]`, sorted by
-/// `BTreeSet`. `per_layer[0]` is always empty (no main layer below 0
-/// produces outputs that need bridging into 0's IN claim layout).
-///
-/// On CPU this is bridged by
-/// `extra_evaluations_from_caching_relations` ([sumcheck_loop/mod.rs:293-395](prover/src/gkr/prover/sumcheck_loop/mod.rs#L293-L395));
-/// the GPU port mirrors this via on-device explicit evaluation at the
-/// random folding point and a dedicated per-layer-slot proof-slab range.
-pub fn compute_main_layer_orphan_output_addresses_per_layer<E>(
+/// This is the address-only form of the CPU prover's
+/// `extra_evaluations_from_caching_relations`: for every layer, take the
+/// cached-relation dependencies that are absent from that layer's initial
+/// `new_claims` set. Both inputs are already expressed in logical protocol
+/// address space. The result is sorted and deduplicated to match the CPU
+/// `BTreeMap` transcript order, including for layer 0.
+pub fn compute_main_layer_extra_evaluation_addresses_per_layer(
     inputs_per_layer: &[Vec<GKRAddress>],
-    outputs_per_layer: &[Vec<GKRAddress>],
-) -> Vec<Vec<GKRAddress>>
-where
-    E: Field + FieldExtension<BF>,
-{
+    cached_dependencies_per_layer: &[Vec<GKRAddress>],
+) -> Vec<Vec<GKRAddress>> {
     assert_eq!(
         inputs_per_layer.len(),
-        outputs_per_layer.len(),
-        "inputs and outputs per-layer arrays must have matching length",
+        cached_dependencies_per_layer.len(),
+        "inputs and cached dependencies must have matching layer counts",
     );
-    let num_layers = inputs_per_layer.len();
-    let mut per_layer: Vec<Vec<GKRAddress>> = Vec::with_capacity(num_layers);
-    for (layer_idx, layer_inputs) in inputs_per_layer.iter().enumerate() {
-        // Bottom main layer (layer_idx == 0) has no layer-(-1) below to
-        // produce orphan outputs; its IN claim layout is fully populated
-        // from layer 1's transcript inputs and there is nothing to bridge.
-        if layer_idx == 0 {
-            per_layer.push(Vec::new());
-            continue;
-        }
-        let child_layer_idx = layer_idx - 1;
-        let this_inputs: std::collections::BTreeSet<GKRAddress> =
-            layer_inputs.iter().copied().collect();
-        // BTreeSet keeps deterministic ordering and dedupes simultaneously;
-        // downstream code relies on `BTreeMap::keys()`-equivalent iteration
-        // order on the addresses produced here.
-        let orphans: std::collections::BTreeSet<GKRAddress> = outputs_per_layer[child_layer_idx]
-            .iter()
-            .copied()
-            .filter(|addr| !this_inputs.contains(addr))
-            .collect();
-        per_layer.push(orphans.into_iter().collect());
-    }
-    per_layer
+    inputs_per_layer
+        .iter()
+        .zip(cached_dependencies_per_layer)
+        .map(|(layer_inputs, cached_dependencies)| {
+            let layer_inputs: std::collections::BTreeSet<GKRAddress> =
+                layer_inputs.iter().copied().collect();
+            cached_dependencies
+                .iter()
+                .copied()
+                .filter(|addr| !layer_inputs.contains(addr))
+                .collect::<std::collections::BTreeSet<_>>()
+                .into_iter()
+                .collect()
+        })
+        .collect()
+}
+
+/// Collects each layer's cached-relation dependencies in logical protocol
+/// address space. Iteration through `BTreeMap` plus the final `BTreeSet` keeps
+/// the exact deterministic ordering consumed by the transcript payload. The
+/// cache-relation compiler currently restricts dependencies to base-field
+/// polynomials; the execution-side resolver enforces that invariant.
+pub fn collect_main_layer_cached_dependencies_per_layer(
+    compiled_circuit: &GKRCircuitArtifact<BF>,
+) -> Vec<Vec<GKRAddress>> {
+    compiled_circuit
+        .layers
+        .iter()
+        .map(|layer| {
+            layer
+                .cached_relations
+                .values()
+                .flat_map(|relation| relation.dependencies())
+                .map(|address| {
+                    crate::transform::logical_protocol_address(
+                        address,
+                        &compiled_circuit.scratch_space_mapping_rev,
+                    )
+                })
+                .collect::<std::collections::BTreeSet<_>>()
+                .into_iter()
+                .collect()
+        })
+        .collect()
 }
 
 #[cfg(test)]

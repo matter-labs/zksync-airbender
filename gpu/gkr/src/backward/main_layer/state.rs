@@ -315,9 +315,9 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
         ) in blueprints
             .into_iter()
             .zip(round0_descriptors.iter().cloned())
-            .zip(round1_prepared_all.into_iter())
-            .zip(round2_prepared_all.into_iter())
-            .zip(round3_prepared_all.into_iter())
+            .zip(round1_prepared_all)
+            .zip(round2_prepared_all)
+            .zip(round3_prepared_all)
         {
             let constraint_metadata_summary = summarize_main_layer_constraint_metadata_source(
                 blueprint.constraint_metadata_source.as_ref(),

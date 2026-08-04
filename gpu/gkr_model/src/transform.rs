@@ -5,11 +5,11 @@ use crate::upstream::{
 use std::collections::BTreeMap;
 
 /// Element type of `NoFieldMaxQuadraticGKRRelation::quadratic_terms`.
-type MaxQuadraticTerm = (GKRAddress, Box<[(u32, GKRAddress)]>);
+type MaxQuadraticTerm<F> = (GKRAddress, Box<[(F, GKRAddress)]>);
 /// Element type of `NoFieldMaxQuadraticConstraintsGKRRelation::quadratic_terms`.
-type ConstraintsQuadraticTerm = ((GKRAddress, GKRAddress), Box<[(u32, usize)]>);
+type ConstraintsQuadraticTerm<F> = ((GKRAddress, GKRAddress), Box<[(F, usize)]>);
 /// Element type of `NoFieldMaxQuadraticConstraintsGKRRelation::linear_terms`.
-type ConstraintsLinearTerm = (GKRAddress, Box<[(u32, usize)]>);
+type ConstraintsLinearTerm<F> = (GKRAddress, Box<[(F, usize)]>);
 
 pub fn normalize_compiled_circuit_for_gpu<F: PrimeField>(
     mut compiled_circuit: GKRCircuitArtifact<F>,
@@ -79,8 +79,11 @@ pub fn logical_protocol_address(
     addr
 }
 
-fn rewrite_linear_relation(rel: &mut NoFieldLinearRelation, mapping: &BTreeMap<GKRAddress, usize>) {
-    let mut rewritten: Vec<(u32, GKRAddress)> = Vec::with_capacity(rel.linear_terms.len());
+fn rewrite_linear_relation<F: PrimeField>(
+    rel: &mut NoFieldLinearRelation<F>,
+    mapping: &BTreeMap<GKRAddress, usize>,
+) {
+    let mut rewritten: Vec<(F, GKRAddress)> = Vec::with_capacity(rel.linear_terms.len());
     for (coeff, addr) in rel.linear_terms.iter() {
         let mut new_addr = *addr;
         rewrite_addr(&mut new_addr, mapping);
@@ -89,8 +92,8 @@ fn rewrite_linear_relation(rel: &mut NoFieldLinearRelation, mapping: &BTreeMap<G
     rel.linear_terms = rewritten.into_boxed_slice();
 }
 
-fn rewrite_vector_lookup(
-    rel: &mut NoFieldVectorLookupRelation,
+fn rewrite_vector_lookup<F: PrimeField>(
+    rel: &mut NoFieldVectorLookupRelation<F>,
     mapping: &BTreeMap<GKRAddress, usize>,
 ) {
     for col in rel.columns.iter_mut() {
@@ -98,16 +101,16 @@ fn rewrite_vector_lookup(
     }
 }
 
-fn rewrite_max_quadratic(
-    rel: &mut NoFieldMaxQuadraticGKRRelation,
+fn rewrite_max_quadratic<F: PrimeField>(
+    rel: &mut NoFieldMaxQuadraticGKRRelation<F>,
     mapping: &BTreeMap<GKRAddress, usize>,
 ) {
-    let mut rewritten_quadratic: Vec<MaxQuadraticTerm> =
+    let mut rewritten_quadratic: Vec<MaxQuadraticTerm<F>> =
         Vec::with_capacity(rel.quadratic_terms.len());
     for (lhs, rhs_terms) in rel.quadratic_terms.iter() {
         let mut new_lhs = *lhs;
         rewrite_addr(&mut new_lhs, mapping);
-        let mut new_rhs_terms: Vec<(u32, GKRAddress)> = Vec::with_capacity(rhs_terms.len());
+        let mut new_rhs_terms: Vec<(F, GKRAddress)> = Vec::with_capacity(rhs_terms.len());
         for (coeff, rhs) in rhs_terms.iter() {
             let mut new_rhs = *rhs;
             rewrite_addr(&mut new_rhs, mapping);
@@ -117,7 +120,7 @@ fn rewrite_max_quadratic(
     }
     rel.quadratic_terms = rewritten_quadratic.into_boxed_slice();
 
-    let mut rewritten_linear: Vec<(u32, GKRAddress)> = Vec::with_capacity(rel.linear_terms.len());
+    let mut rewritten_linear: Vec<(F, GKRAddress)> = Vec::with_capacity(rel.linear_terms.len());
     for (coeff, addr) in rel.linear_terms.iter() {
         let mut new_addr = *addr;
         rewrite_addr(&mut new_addr, mapping);
@@ -126,21 +129,21 @@ fn rewrite_max_quadratic(
     rel.linear_terms = rewritten_linear.into_boxed_slice();
 }
 
-fn rewrite_relation_scratch_addresses(
-    rel: &mut NoFieldGKRRelation,
+fn rewrite_relation_scratch_addresses<F: PrimeField>(
+    rel: &mut NoFieldGKRRelation<F>,
     mapping: &BTreeMap<GKRAddress, usize>,
 ) {
     use NoFieldGKRRelation::*;
     match rel {
-        MaxQuadratic { input, output } => {
+        MaxQuadratic { input, output, .. } => {
             rewrite_max_quadratic(input, mapping);
             rewrite_addr(output, mapping);
         }
-        EnforceSingleMaxQuadraticConstraint { input } => {
+        EnforceSingleMaxQuadraticConstraint { input, .. } => {
             rewrite_max_quadratic(input, mapping);
         }
         EnforceConstraintsMaxQuadratic { input } => {
-            let mut rewritten_quadratic: Vec<ConstraintsQuadraticTerm> =
+            let mut rewritten_quadratic: Vec<ConstraintsQuadraticTerm<F>> =
                 Vec::with_capacity(input.quadratic_terms.len());
             for ((a, b), coeffs) in input.quadratic_terms.iter() {
                 let mut new_a = *a;
@@ -150,7 +153,7 @@ fn rewrite_relation_scratch_addresses(
                 rewritten_quadratic.push(((new_a, new_b), coeffs.clone()));
             }
             input.quadratic_terms = rewritten_quadratic.into_boxed_slice();
-            let mut rewritten_linear: Vec<ConstraintsLinearTerm> =
+            let mut rewritten_linear: Vec<ConstraintsLinearTerm<F>> =
                 Vec::with_capacity(input.linear_terms.len());
             for (addr, coeffs) in input.linear_terms.iter() {
                 let mut new_addr = *addr;

@@ -1,4 +1,6 @@
-use crate::upstream::{GKRAddress, GKRInputs};
+use crate::upstream::{
+    GKRAddress, GKRInputs, NoFieldSingleColumnLookupRelation, NoFieldVectorLookupRelation,
+};
 use std::collections::BTreeMap;
 
 use super::builders::{
@@ -42,7 +44,7 @@ fn flatten_lookup_setup_relation_template(
 }
 
 pub(crate) fn build_lookup_pair_from_base_inputs_inputs_and_template(
-    input: &[cs::definitions::gkr::NoFieldSingleColumnLookupRelation; 2],
+    input: &[NoFieldSingleColumnLookupRelation; 2],
     output: [GKRAddress; 2],
 ) -> (GKRInputs, GpuGKRMainLayerConstraintTemplate) {
     let (lhs_terms, lhs_constant_terms) =
@@ -75,7 +77,7 @@ pub(crate) fn build_lookup_pair_from_base_inputs_inputs_and_template(
 }
 
 pub(crate) fn build_lookup_pair_from_vector_inputs_inputs_and_template(
-    input: &[cs::definitions::gkr::NoFieldVectorLookupRelation; 2],
+    input: &[NoFieldVectorLookupRelation; 2],
     output: [GKRAddress; 2],
 ) -> (GKRInputs, GpuGKRMainLayerConstraintTemplate) {
     let (lhs_terms, lhs_constant_terms) =
@@ -108,7 +110,7 @@ pub(crate) fn build_lookup_pair_from_vector_inputs_inputs_and_template(
 }
 
 pub(crate) fn build_materialized_vector_lookup_input_inputs_and_template(
-    input: &cs::definitions::gkr::NoFieldVectorLookupRelation,
+    input: &NoFieldVectorLookupRelation,
     output: GKRAddress,
 ) -> (GKRInputs, GpuGKRMainLayerConstraintTemplate) {
     let (terms, constant_terms) = vector_lookup_as_flattened_relation_template::<false>(input);
@@ -130,10 +132,7 @@ pub(crate) fn build_materialized_vector_lookup_input_inputs_and_template(
 }
 
 pub(crate) fn build_lookup_with_dens_and_setup_expressions_inputs_and_template(
-    input: &(
-        GKRAddress,
-        cs::definitions::gkr::NoFieldVectorLookupRelation,
-    ),
+    input: &(GKRAddress, NoFieldVectorLookupRelation),
     setup: &(GKRAddress, Box<[GKRAddress]>),
     output: [GKRAddress; 2],
 ) -> (GKRInputs, GpuGKRMainLayerConstraintTemplate) {
@@ -172,7 +171,7 @@ pub(crate) fn build_lookup_with_dens_and_setup_expressions_inputs_and_template(
 }
 
 pub(crate) fn build_lookup_from_vector_input_with_setup_inputs_and_template(
-    input: &cs::definitions::gkr::NoFieldVectorLookupRelation,
+    input: &NoFieldVectorLookupRelation,
     setup: &(GKRAddress, Box<[GKRAddress]>),
     output: [GKRAddress; 2],
 ) -> (GKRInputs, GpuGKRMainLayerConstraintTemplate) {
@@ -211,7 +210,7 @@ pub(crate) fn build_lookup_from_vector_input_with_setup_inputs_and_template(
 
 pub(crate) fn build_lookup_unbalanced_pair_with_vector_inputs_inputs_and_template(
     input: [GKRAddress; 2],
-    remainder: &cs::definitions::gkr::NoFieldVectorLookupRelation,
+    remainder: &NoFieldVectorLookupRelation,
     output: [GKRAddress; 2],
 ) -> (GKRInputs, GpuGKRMainLayerConstraintTemplate) {
     let (remainder_terms, remainder_constant_terms) =
@@ -246,14 +245,14 @@ use super::builders::{
 };
 use super::kernels::*;
 use crate::immediate_factors::ImmediateFactorRecipeStructural;
-use crate::upstream::{Field, FieldExtension, PrimeField};
+use crate::upstream::{Field, FieldExtension};
 use gpu_core::primitives::field::BF;
 
 fn single_column_lookup_as_flattened_relation<
     E: Field + FieldExtension<BF>,
     const WITH_ADDITIVE_PART: bool,
 >(
-    rel: &cs::definitions::gkr::NoFieldSingleColumnLookupRelation,
+    rel: &NoFieldSingleColumnLookupRelation,
     lookup_challenges_additive_part: E,
 ) -> (BTreeMap<GKRAddress, E>, E) {
     let mut result = BTreeMap::new();
@@ -264,11 +263,9 @@ fn single_column_lookup_as_flattened_relation<
     };
 
     for (coeff, address) in rel.input.linear_terms.iter() {
-        assert!(result
-            .insert(*address, E::from_base(BF::from_u32_unchecked(*coeff)))
-            .is_none());
+        assert!(result.insert(*address, E::from_base(*coeff)).is_none());
     }
-    constant_term.add_assign_base(&BF::from_u32_unchecked(rel.input.constant));
+    constant_term.add_assign_base(&rel.input.constant);
 
     (result, constant_term)
 }
@@ -277,7 +274,7 @@ fn vector_lookup_as_flattened_relation<
     E: Field + FieldExtension<BF>,
     const WITH_ADDITIVE_PART: bool,
 >(
-    rel: &cs::definitions::gkr::NoFieldVectorLookupRelation,
+    rel: &NoFieldVectorLookupRelation,
     lookup_challenges_multiplicative_part: E,
     lookup_challenges_additive_part: E,
 ) -> (BTreeMap<GKRAddress, E>, E) {
@@ -292,11 +289,11 @@ fn vector_lookup_as_flattened_relation<
     for column in rel.columns.iter() {
         for (coeff, address) in column.linear_terms.iter() {
             let mut t = challenge;
-            t.mul_assign_by_base(&BF::from_u32_unchecked(*coeff));
+            t.mul_assign_by_base(coeff);
             assert!(result.insert(*address, t).is_none());
         }
         let mut t = challenge;
-        t.mul_assign_by_base(&BF::from_u32_unchecked(column.constant));
+        t.mul_assign_by_base(&column.constant);
         constant_term.add_assign(&t);
         challenge.mul_assign(&lookup_challenges_multiplicative_part);
     }
@@ -370,7 +367,7 @@ fn flatten_lookup_setup_relation<E: Field>(
 
 #[doc(hidden)]
 pub fn build_lookup_pair_from_base_inputs_inputs_and_metadata<E: Field + FieldExtension<BF>>(
-    input: &[cs::definitions::gkr::NoFieldSingleColumnLookupRelation; 2],
+    input: &[NoFieldSingleColumnLookupRelation; 2],
     output: [GKRAddress; 2],
     lookup_additive_challenge: E,
 ) -> (GKRInputs, GpuGKRMainLayerConstraintHostMetadata<E>) {
@@ -401,7 +398,7 @@ pub fn build_lookup_pair_from_base_inputs_inputs_and_metadata<E: Field + FieldEx
 
 #[doc(hidden)]
 pub fn build_lookup_pair_from_vector_inputs_inputs_and_metadata<E: Field + FieldExtension<BF>>(
-    input: &[cs::definitions::gkr::NoFieldVectorLookupRelation; 2],
+    input: &[NoFieldVectorLookupRelation; 2],
     output: [GKRAddress; 2],
     lookup_multiplicative_challenge: E,
     lookup_additive_challenge: E,
@@ -440,7 +437,7 @@ pub fn build_lookup_pair_from_vector_inputs_inputs_and_metadata<E: Field + Field
 pub(crate) fn build_materialized_vector_lookup_input_inputs_and_metadata<
     E: Field + FieldExtension<BF>,
 >(
-    input: &cs::definitions::gkr::NoFieldVectorLookupRelation,
+    input: &NoFieldVectorLookupRelation,
     output: GKRAddress,
     lookup_multiplicative_challenge: E,
 ) -> (GKRInputs, GpuGKRMainLayerConstraintHostMetadata<E>) {
@@ -473,10 +470,7 @@ pub(crate) fn build_materialized_vector_lookup_input_inputs_and_metadata<
 pub fn build_lookup_with_dens_and_setup_expressions_inputs_and_metadata<
     E: Field + FieldExtension<BF>,
 >(
-    input: &(
-        GKRAddress,
-        cs::definitions::gkr::NoFieldVectorLookupRelation,
-    ),
+    input: &(GKRAddress, NoFieldVectorLookupRelation),
     setup: &(GKRAddress, Box<[GKRAddress]>),
     output: [GKRAddress; 2],
     lookup_multiplicative_challenge: E,
@@ -530,7 +524,7 @@ pub fn build_lookup_with_dens_and_setup_expressions_inputs_and_metadata<
 pub fn build_lookup_from_vector_input_with_setup_inputs_and_metadata<
     E: Field + FieldExtension<BF>,
 >(
-    input: &cs::definitions::gkr::NoFieldVectorLookupRelation,
+    input: &NoFieldVectorLookupRelation,
     setup: &(GKRAddress, Box<[GKRAddress]>),
     output: [GKRAddress; 2],
     lookup_multiplicative_challenge: E,
@@ -584,7 +578,7 @@ pub fn build_lookup_unbalanced_pair_with_vector_inputs_inputs_and_metadata<
     E: Field + FieldExtension<BF>,
 >(
     input: [GKRAddress; 2],
-    remainder: &cs::definitions::gkr::NoFieldVectorLookupRelation,
+    remainder: &NoFieldVectorLookupRelation,
     output: [GKRAddress; 2],
     lookup_multiplicative_challenge: E,
     lookup_additive_challenge: E,

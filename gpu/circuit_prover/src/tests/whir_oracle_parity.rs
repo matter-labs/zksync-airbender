@@ -71,6 +71,7 @@ fn build_whir_only_proof_layout_inputs(
     let total_folding_steps = whir_schedule.whir_steps_schedule.iter().sum::<usize>();
     let final_monomials_len = 1usize << (initial_trace_size_log_2 - total_folding_steps as u32);
     let whir = WhirDims {
+        original_evaluation_point_len: initial_trace_size_log_2 as usize,
         setup: base_layer_dims(setup_holder),
         memory: base_layer_dims(memory_holder),
         witness: base_layer_dims(witness_holder),
@@ -165,7 +166,7 @@ pub(super) fn assert_recursive_whir_oracle_parity_for_supported_path(
     let mut claim = E4::ZERO;
     for (challenges_set, values_set) in [base_mem_powers, base_wit_powers, base_setup_powers]
         .into_iter()
-        .zip(evals_refs.into_iter())
+        .zip(evals_refs)
     {
         for (challenge, value) in challenges_set.iter().zip(values_set.iter()) {
             let mut term = *value;
@@ -258,8 +259,9 @@ pub(super) fn assert_recursive_whir_oracle_parity_for_supported_path(
         let coeffs = special_lagrange_interpolate_for_test(f0, f1, f_half, E4::from_base(two_inv));
         initial_round_sumcheck_polys.push(coeffs);
         cpu_sumcheck_polys.push(coeffs);
-        commit_field_els::<BF, E4>(&mut transcript_seed, &coeffs);
-        let folding_challenge = draw_random_field_els::<BF, E4>(&mut transcript_seed, 1)[0];
+        commit_field_els::<BF, E4, Blake2sTranscript>(&mut transcript_seed, &coeffs);
+        let folding_challenge =
+            draw_random_field_els::<BF, E4, Blake2sTranscript>(&mut transcript_seed, 1)[0];
         folding_challenges_in_round.push(folding_challenge);
         claim = evaluate_small_univariate_poly::<BF, E4, 3>(&coeffs, &folding_challenge);
         fold_monomial_form_for_test(&mut sumchecked_poly_monomial_form, folding_challenge);
@@ -335,7 +337,7 @@ pub(super) fn assert_recursive_whir_oracle_parity_for_supported_path(
         context,
     )
     .unwrap();
-    add_whir_commitment_to_transcript(
+    add_whir_commitment_to_transcript::<BF, E4, Blake2sTranscript, DefaultTreeConstructor>(
         &mut transcript_seed,
         &WhirCommitment::<BF, DefaultTreeConstructor> {
             cap: <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<BF>>::get_cap(
@@ -345,10 +347,10 @@ pub(super) fn assert_recursive_whir_oracle_parity_for_supported_path(
         },
     );
 
-    let ood_point = draw_random_field_els::<BF, E4>(&mut transcript_seed, 1)[0];
+    let ood_point = draw_random_field_els::<BF, E4, Blake2sTranscript>(&mut transcript_seed, 1)[0];
     let ood_value = evaluate_monomial_form_for_test(&sumchecked_poly_monomial_form, ood_point);
     cpu_ood_samples.push(ood_value);
-    commit_field_els::<BF, E4>(&mut transcript_seed, &[ood_value]);
+    commit_field_els::<BF, E4, Blake2sTranscript>(&mut transcript_seed, &[ood_value]);
     assert_eq!(
         gpu_initial_round_checkpoint.sumcheck_polys, initial_round_sumcheck_polys,
         "initial WHIR sumcheck polys diverged before PoW",
@@ -419,14 +421,15 @@ pub(super) fn assert_recursive_whir_oracle_parity_for_supported_path(
     );
     bitreverse_enumeration_inplace(&mut high_powers_offsets);
     let query_index_bits = query_domain_size.trailing_zeros() as usize;
-    let (initial_nonce, mut bit_source) = draw_query_bits(
+    let (initial_nonce, mut bit_source) = draw_query_bits::<BF, E4, Blake2sTranscript>(
         &mut transcript_seed,
         initial_queries * query_index_bits,
         initial_pow_bits,
         worker,
     );
     cpu_pow_nonces.push(initial_nonce);
-    let delinearization_challenge = draw_random_field_els::<BF, E4>(&mut transcript_seed, 1)[0];
+    let delinearization_challenge =
+        draw_random_field_els::<BF, E4, Blake2sTranscript>(&mut transcript_seed, 1)[0];
     let mut claim_correction = {
         let mut t = ood_value;
         t.mul_assign(&delinearization_challenge);
@@ -491,8 +494,9 @@ pub(super) fn assert_recursive_whir_oracle_parity_for_supported_path(
             let coeffs =
                 special_lagrange_interpolate_for_test(f0, f1, f_half, E4::from_base(two_inv));
             cpu_sumcheck_polys.push(coeffs);
-            commit_field_els::<BF, E4>(&mut transcript_seed, &coeffs);
-            let folding_challenge = draw_random_field_els::<BF, E4>(&mut transcript_seed, 1)[0];
+            commit_field_els::<BF, E4, Blake2sTranscript>(&mut transcript_seed, &coeffs);
+            let folding_challenge =
+                draw_random_field_els::<BF, E4, Blake2sTranscript>(&mut transcript_seed, 1)[0];
             folding_challenges_in_round.push(folding_challenge);
             claim = evaluate_small_univariate_poly::<BF, E4, 3>(&coeffs, &folding_challenge);
             fold_monomial_form_for_test(&mut sumchecked_poly_monomial_form, folding_challenge);
@@ -532,7 +536,7 @@ pub(super) fn assert_recursive_whir_oracle_parity_for_supported_path(
         cpu_recursive_caps.push(next_cpu_oracle_cap.clone());
         // Upstream folds the recursive oracle cap into the transcript before drawing
         // the next OOD point (see prover/src/gkr/whir/mod.rs).
-        add_whir_commitment_to_transcript(
+        add_whir_commitment_to_transcript::<BF, E4, Blake2sTranscript, DefaultTreeConstructor>(
             &mut transcript_seed,
             &WhirCommitment::<BF, DefaultTreeConstructor> {
                 cap: next_cpu_oracle_cap,
@@ -540,12 +544,13 @@ pub(super) fn assert_recursive_whir_oracle_parity_for_supported_path(
             },
         );
 
-        let ood_point = draw_random_field_els::<BF, E4>(&mut transcript_seed, 1)[0];
+        let ood_point =
+            draw_random_field_els::<BF, E4, Blake2sTranscript>(&mut transcript_seed, 1)[0];
         let ood_value = evaluate_monomial_form_for_test(&sumchecked_poly_monomial_form, ood_point);
         cpu_ood_samples.push(ood_value);
         // Upstream commits the OOD value to the transcript in the recursive round
         // (see prover/src/gkr/whir/mod.rs).
-        commit_field_els::<BF, E4>(&mut transcript_seed, &[ood_value]);
+        commit_field_els::<BF, E4, Blake2sTranscript>(&mut transcript_seed, &[ood_value]);
         let query_domain_size = 1u64 << query_domain_log2;
         let query_domain_generator = domain_generator_for_size::<BF>(query_domain_size);
         let _extended_generator = domain_generator_for_size::<BF>(1u64 << rs_domain_log2);
@@ -557,14 +562,15 @@ pub(super) fn assert_recursive_whir_oracle_parity_for_supported_path(
         );
         bitreverse_enumeration_inplace(&mut high_powers_offsets);
         let query_index_bits = query_domain_size.trailing_zeros() as usize;
-        let (nonce, mut bit_source) = draw_query_bits(
+        let (nonce, mut bit_source) = draw_query_bits::<BF, E4, Blake2sTranscript>(
             &mut transcript_seed,
             num_queries * query_index_bits,
             pow_bits,
             worker,
         );
         cpu_pow_nonces.push(nonce);
-        let delinearization_challenge = draw_random_field_els::<BF, E4>(&mut transcript_seed, 1)[0];
+        let delinearization_challenge =
+            draw_random_field_els::<BF, E4, Blake2sTranscript>(&mut transcript_seed, 1)[0];
         let mut claim_correction = {
             let mut t = ood_value;
             t.mul_assign(&delinearization_challenge);
@@ -623,8 +629,9 @@ pub(super) fn assert_recursive_whir_oracle_parity_for_supported_path(
             special_three_point_eval_for_test(&sumchecked_poly_evaluation_form, &eq_poly);
         let coeffs = special_lagrange_interpolate_for_test(f0, f1, f_half, E4::from_base(two_inv));
         cpu_sumcheck_polys.push(coeffs);
-        commit_field_els::<BF, E4>(&mut transcript_seed, &coeffs);
-        let folding_challenge = draw_random_field_els::<BF, E4>(&mut transcript_seed, 1)[0];
+        commit_field_els::<BF, E4, Blake2sTranscript>(&mut transcript_seed, &coeffs);
+        let folding_challenge =
+            draw_random_field_els::<BF, E4, Blake2sTranscript>(&mut transcript_seed, 1)[0];
         folding_challenges_in_round.push(folding_challenge);
         claim = evaluate_small_univariate_poly::<BF, E4, 3>(&coeffs, &folding_challenge);
         fold_monomial_form_for_test(&mut sumchecked_poly_monomial_form, folding_challenge);
@@ -633,7 +640,10 @@ pub(super) fn assert_recursive_whir_oracle_parity_for_supported_path(
     }
     // Upstream commits the final monomial-form coefficients into the transcript before
     // drawing the final query PoW (see prover/src/gkr/whir/mod.rs).
-    commit_field_els::<BF, E4>(&mut transcript_seed, &sumchecked_poly_monomial_form);
+    commit_field_els::<BF, E4, Blake2sTranscript>(
+        &mut transcript_seed,
+        &sumchecked_poly_monomial_form,
+    );
     let query_domain_size = 1u64 << query_domain_log2;
     let query_domain_generator = domain_generator_for_size::<BF>(query_domain_size);
     let _extended_generator = domain_generator_for_size::<BF>(1u64 << rs_domain_log2);
@@ -645,7 +655,7 @@ pub(super) fn assert_recursive_whir_oracle_parity_for_supported_path(
     );
     bitreverse_enumeration_inplace(&mut high_powers_offsets);
     let query_index_bits = query_domain_size.trailing_zeros() as usize;
-    let (final_nonce, mut bit_source) = draw_query_bits(
+    let (final_nonce, mut bit_source) = draw_query_bits::<BF, E4, Blake2sTranscript>(
         &mut transcript_seed,
         final_queries * query_index_bits,
         final_pow_bits,
@@ -706,7 +716,7 @@ pub(super) fn assert_recursive_whir_oracle_parity_for_supported_path(
         "proof slab size must be E4-aligned",
     );
     let proof_slab: DeviceAllocation<E4> = context
-        .alloc_with_extra_alignment::<E4, 4>(
+        .alloc_with_extra_alignment::<E4, 5>(
             whir_proof_layout.total_bytes / core::mem::size_of::<E4>(),
             AllocationPlacement::BestFit,
         )
@@ -801,6 +811,37 @@ pub(super) fn assert_recursive_whir_oracle_parity_for_supported_path(
         context.get_exec_stream(),
     )
     .unwrap();
+    {
+        // SAFETY: `ProofLayout` returns live, aligned E4 ranges inside
+        // `proof_slab`. The D2D copies are ordered after the source H2Ds and
+        // before WHIR scheduling on `exec_stream`, matching production.
+        let (point_slab_ptr, point_slab_len) = unsafe {
+            whir_proof_layout
+                .whir_original_evaluation_point_device_mut(proof_slab.as_ptr() as *mut u8)
+        };
+        assert_eq!(point_slab_len, original_evaluation_point.len());
+        let point_slab_dst =
+            unsafe { DeviceSlice::from_raw_parts_mut(point_slab_ptr, point_slab_len) };
+        memory_copy_async(
+            point_slab_dst,
+            &base_layer_point_device[..original_evaluation_point.len()],
+            context.get_exec_stream(),
+        )
+        .unwrap();
+
+        let (batching_slab_ptr, batching_slab_len) = unsafe {
+            whir_proof_layout.whir_batching_challenge_device_mut(proof_slab.as_ptr() as *mut u8)
+        };
+        assert_eq!(batching_slab_len, 1);
+        let batching_slab_dst =
+            unsafe { DeviceSlice::from_raw_parts_mut(batching_slab_ptr, batching_slab_len) };
+        memory_copy_async(
+            batching_slab_dst,
+            &batching_challenge_device_test[..],
+            context.get_exec_stream(),
+        )
+        .unwrap();
+    }
     let scheduled_gpu_whir = schedule_gpu_whir_fold_with_sources(
         gpu_mem_trace_holder,
         gpu_wit_trace_holder,

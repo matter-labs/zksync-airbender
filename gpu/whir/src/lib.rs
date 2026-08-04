@@ -1,5 +1,5 @@
 #![allow(incomplete_features)]
-#![feature(allocator_api)]
+#![cfg_attr(any(test, feature = "test-utils"), feature(allocator_api))]
 #![feature(generic_const_exprs)]
 #![warn(clippy::manual_div_ceil)]
 #![warn(clippy::needless_pass_by_value)]
@@ -51,6 +51,8 @@ use gpu_core::primitives::{
 use gpu_hash::blake2s::Digest;
 
 const EXT4_DEGREE: usize = <E4 as FieldExtension<BF>>::DEGREE;
+const LOG_SRC_COLS_PER_COSET: u32 = EXT4_DEGREE.trailing_zeros();
+const _: () = assert!(EXT4_DEGREE.is_power_of_two());
 
 /// Where the WHIR oracle's unified Merkle cap should land after its per-coset
 /// trees are committed.
@@ -311,7 +313,6 @@ impl GpuWhirExtensionOracle {
         // query into that single coset (lde_mask == 0).
         let log_values_per_leaf = self.values_per_leaf.trailing_zeros();
         let natural_log_lde_factor = log_lde_factor;
-        const LOG_SRC_COLS_PER_COSET: u32 = 2; // log2(EXT4_DEGREE)
         self.trace_holder.schedule_query_leaves_into_from_ntt(
             slab_indices_view,
             slab_leaves_dst_bf,
@@ -373,7 +374,6 @@ impl GpuWhirExtensionOracle {
         {
             let natural_log_lde_factor = self.lde_factor.trailing_zeros();
             let log_values_per_leaf = self.values_per_leaf.trailing_zeros();
-            const LOG_SRC_COLS_PER_COSET: u32 = 2; // log2(EXT4_DEGREE)
             self.trace_holder.schedule_query_leaves_into_from_ntt(
                 &device_tree_index,
                 &mut d_leafs[..],
@@ -390,7 +390,6 @@ impl GpuWhirExtensionOracle {
         let path_query = {
             let natural_log_lde_factor = self.lde_factor.trailing_zeros();
             let log_values_per_leaf = self.values_per_leaf.trailing_zeros();
-            const LOG_SRC_COLS_PER_COSET: u32 = 2;
             self.trace_holder.get_query_merkle_paths_from_ntt(
                 &device_tree_index,
                 self.trace_len_log2,
@@ -593,7 +592,6 @@ impl GpuWhirExtensionOracle {
         {
             let natural_log_lde_factor = self.lde_factor.trailing_zeros();
             let log_values_per_leaf = self.values_per_leaf.trailing_zeros();
-            const LOG_SRC_COLS_PER_COSET: u32 = 2; // log2(EXT4_DEGREE)
             self.trace_holder.schedule_query_leaves_into_from_ntt(
                 &device_tree_index,
                 &mut d_leafs[..],
@@ -610,7 +608,6 @@ impl GpuWhirExtensionOracle {
         let path_query = {
             let natural_log_lde_factor = self.lde_factor.trailing_zeros();
             let log_values_per_leaf = self.values_per_leaf.trailing_zeros();
-            const LOG_SRC_COLS_PER_COSET: u32 = 2;
             self.trace_holder.get_query_merkle_paths_from_ntt(
                 &device_tree_index,
                 self.trace_len_log2,
@@ -1140,7 +1137,7 @@ pub(crate) mod tests {
             let coset_index = query_index & (oracle.lde_factor - 1);
             let internal_index = query_index / oracle.lde_factor;
             let stage1_coset_index =
-                super::bitreverse_index(coset_index, oracle.lde_factor.trailing_zeros() as u32);
+                super::bitreverse_index(coset_index, oracle.lde_factor.trailing_zeros());
             let logical_row_index = stage1_coset_index * oracle.packed_leaf_count + internal_index;
 
             let mut value_index = context

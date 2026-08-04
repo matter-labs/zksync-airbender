@@ -208,7 +208,6 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
         mut base_layer_claims_scheduled,
         base_layer_claims_shared_state,
         mut whir_scheduled,
-        batching_challenge_device: _batching_challenge_device,
     } = schedule_whir_phase(
         &compiled_circuit,
         whir_schedule,
@@ -290,8 +289,6 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
     backward_keepalive.release_device_buffers();
     base_layer_claims_scheduled.release_device_buffers();
     whir_scheduled.release_device_buffers();
-    // WHIR base batching-challenge buffer: consumed on-device by WHIR fold.
-    drop(_batching_challenge_device);
     // Proof slab: last scheduled use is the terminal D2H on exec_stream.
     drop(proof_slab);
 

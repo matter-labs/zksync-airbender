@@ -175,7 +175,7 @@ fn run_single_pass_stream_parity(log_n: u32, log_vpt: u32) {
     let n: usize = 1 << log_n;
     let num_cosets = single_pass_num_cosets(log_n, log_vpt);
     // log_lde_factor satisfies num_cosets = 2^log_lde_factor.
-    let log_lde_factor = num_cosets.trailing_zeros() as u32;
+    let log_lde_factor = num_cosets.trailing_zeros();
     assert_eq!(1usize << log_lde_factor, num_cosets);
 
     // coset_step = 2^(OMEGA_LOG_ORDER - log_n - log_lde_factor)

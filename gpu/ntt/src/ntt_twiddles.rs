@@ -8,11 +8,13 @@ use crate::ntt::dit::DitTriangles;
 
 use crate::upstream::{
     bitreverse_enumeration_inplace, distribute_powers_serial, domain_generator_for_size, Field,
+    TwoAdicField,
 };
 use gpu_core::primitives::field::BF;
 use gpu_core::primitives::utils::memcpy_to_symbol;
 
-pub const OMEGA_LOG_ORDER: u32 = 27;
+pub const OMEGA_LOG_ORDER: u32 = <BF as TwoAdicField>::TWO_ADICITY as u32;
+const _: () = assert!(OMEGA_LOG_ORDER == 27); // native/context.cuh literal
 pub(crate) const LOG_MAX_NTT_SIZE: usize = 24;
 pub(crate) const CMEM_LOG_ORDER: usize = 19;
 pub(crate) const CMEM_COARSE_LOG_COUNT: usize = 10;

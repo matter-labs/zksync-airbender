@@ -87,14 +87,14 @@ impl ExecutionProver {
         let pow_challenge = if MEMORY_DELEGATION_POW_BITS == 0 {
             0
         } else {
-            Transcript::search_pow(
+            Blake2sTranscript::search_pow(
                 &all_challenges_seed,
                 MEMORY_DELEGATION_POW_BITS as u32,
                 &self.worker,
             )
             .1
         };
-        let external_challenges = GKRExternalChallenges::<BF, E4>::draw_from_transcript_seed(
+        let external_challenges = GKRExternalChallenges::<BF, E4>::draw_from_blake_transcript_seed(
             all_challenges_seed,
             MEMORY_DELEGATION_POW_BITS,
             pow_challenge,

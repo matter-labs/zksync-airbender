@@ -43,8 +43,9 @@ fn host_backward_round_update(
         e_partial,
         c_partial,
     );
-    commit_field_els::<BF, E4>(&mut seed, &coeffs);
-    let challenge = draw_random_field_els::<BF, E4>(&mut seed, 1)[0];
+    commit_field_els::<BF, E4, prover::transcript::Blake2sTranscript>(&mut seed, &coeffs);
+    let challenge =
+        draw_random_field_els::<BF, E4, prover::transcript::Blake2sTranscript>(&mut seed, 1)[0];
     claim = evaluate_small_univariate_poly::<BF, E4, 4>(&coeffs, &challenge);
     eq_prefactor = evaluate_eq_poly::<BF, E4>(&challenge, &prev_coord);
     (seed, claim, eq_prefactor, coeffs, challenge)
@@ -231,7 +232,7 @@ fn special_lagrange_interpolate_host(
         (eval_at_1, dens[1], coeffs_for_1),
         (eval_at_random, dens[2], coeffs_for_random),
     ] {
-        for (dst, coeff) in result.iter_mut().zip(coeffs.into_iter()) {
+        for (dst, coeff) in result.iter_mut().zip(coeffs) {
             let mut term = coeff;
             term.mul_assign(&den);
             term.mul_assign(&eval);
@@ -258,8 +259,9 @@ fn host_whir_fold_round_update(
     f_half.mul_assign_by_base(&quart);
 
     let coeffs = special_lagrange_interpolate_host(f_at_0, f_at_1, f_half, E4::from_base(two_inv));
-    commit_field_els::<BF, E4>(&mut seed, &coeffs);
-    let challenge = draw_random_field_els::<BF, E4>(&mut seed, 1)[0];
+    commit_field_els::<BF, E4, prover::transcript::Blake2sTranscript>(&mut seed, &coeffs);
+    let challenge =
+        draw_random_field_els::<BF, E4, prover::transcript::Blake2sTranscript>(&mut seed, 1)[0];
     (seed, coeffs, challenge)
 }
 

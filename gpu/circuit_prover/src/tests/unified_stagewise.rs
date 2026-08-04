@@ -1,7 +1,8 @@
 use super::*;
 
 use super::inits_and_teardowns::{
-    build_inits_and_teardowns_pages_for_test, build_inits_and_teardowns_trace_host_for_test,
+    build_inits_and_teardowns_pages_for_selected_sets_for_test,
+    build_inits_and_teardowns_trace_host_for_test,
 };
 
 #[test]
@@ -44,21 +45,27 @@ fn run_unified_stagewise_parity_test() {
     let num_unified_teardown_sets = compiled_circuit.memory_layout.teardown_sets.len();
     let num_calls = counters.get_calls_to_circuit_family::<REDUCED_MACHINE_CIRCUIT_FAMILY_IDX>();
 
-    let (full_trace, unified_table_driver, buffer, witness_gen_data, sparse_inits_and_teardowns) =
-        build_unified_full_trace_for_test(
-            &binary,
-            &text_section,
-            &compiled_circuit,
-            &snapshotter,
-            &ram,
-            &expected_final_state,
-            &tape,
-            cycles_bound,
-            num_unified_teardown_sets,
-            num_calls,
-            true,
-            &worker,
-        );
+    let (
+        full_trace,
+        unified_table_driver,
+        buffer,
+        witness_gen_data,
+        sparse_inits_and_teardowns,
+        selected_set_top_bits,
+    ) = build_unified_full_trace_for_test(
+        &binary,
+        &text_section,
+        &compiled_circuit,
+        &snapshotter,
+        &ram,
+        &expected_final_state,
+        &tape,
+        cycles_bound,
+        num_unified_teardown_sets,
+        num_calls,
+        true,
+        &worker,
+    );
 
     // Reconstruct the Option decoder table from the oracle (CpuGKRSetup::construct
     // takes &[Option<ExecutorFamilyDecoderData>] to preserve None fill semantics).
@@ -115,11 +122,12 @@ fn run_unified_stagewise_parity_test() {
     ));
 
     // Build inits-and-teardowns device and transfer.
-    let (page_indices, values_packed, timestamps_packed) = build_inits_and_teardowns_pages_for_test(
-        &sparse_inits_and_teardowns,
-        TRACE_LEN_LOG2,
-        num_unified_teardown_sets as u32,
-    );
+    let (page_indices, values_packed, timestamps_packed) =
+        build_inits_and_teardowns_pages_for_selected_sets_for_test(
+            &sparse_inits_and_teardowns,
+            TRACE_LEN_LOG2,
+            &selected_set_top_bits,
+        );
     let it_host = build_inits_and_teardowns_trace_host_for_test(
         &page_indices,
         &values_packed,
@@ -231,9 +239,9 @@ fn run_unified_stagewise_parity_test() {
         _marker: std::marker::PhantomData,
     };
 
-    // Canonical top-bits for the unified circuit (teardown-set indices).
-    let canonical_top_bits =
-        crate::proof::canonical_inits_and_teardowns_top_bits(&compiled_circuit);
+    // Actual global RAM-set top bits selected for the unified circuit's local
+    // teardown slots.
+    let canonical_top_bits = selected_set_top_bits;
 
     // Build transcript seed from GPU-committed caps (same ordering as proof/tests.rs:
     // canonical_top_bits, external_challenges, setup caps, memory caps, witness caps).
@@ -272,12 +280,12 @@ fn run_unified_stagewise_parity_test() {
                 transcript_input.extend_from_slice(digest);
             }
         }
-        Transcript::commit_initial(&transcript_input)
+        <Blake2sTranscript as Transcript<BF, E4>>::commit_initial_u32(&transcript_input)
     };
 
     // Draw lookup challenges from the seed.
     let mut seed = seed;
-    let challenges: Vec<E4> = draw_random_field_els::<BF, E4>(&mut seed, 3);
+    let challenges: Vec<E4> = draw_random_field_els::<BF, E4, Blake2sTranscript>(&mut seed, 3);
     let [lookup_alpha, lookup_additive_part, constraints_batch_challenge] =
         challenges.try_into().unwrap();
 
@@ -359,13 +367,16 @@ fn run_unified_stagewise_parity_test() {
     // GPU forward pass + transcript handoff.
     let (gpu_forward_output, gpu_transcript_handoff) = {
         let _range = scoped_range(None, "test.gpu.forward.schedule");
-        let gpu_forward_output = schedule_forward_pass(
-            &gpu_setup_transfer,
+        let gpu_forward_output = schedule_forward_pass_impl(
+            Some(&gpu_setup_transfer.trace_holder),
+            None,
             &mut stage1_output,
             &mut gpu_forward_setup,
             &compiled_circuit,
             &external_challenges,
+            &canonical_top_bits,
             final_trace_size_log_2,
+            None,
             &context,
         )
         .unwrap();
@@ -400,17 +411,19 @@ fn run_unified_stagewise_parity_test() {
     // --- Step 3: CPU transcript draw + initial claims ---
 
     let seed_before_explicit_commit = seed;
-    commit_field_els::<BF, E4>(&mut seed, &evals_flattened);
+    commit_field_els::<BF, E4, Blake2sTranscript>(&mut seed, &evals_flattened);
     let seed_after_cpu_explicit_commit = seed;
 
     let mut gpu_seed = seed_before_explicit_commit;
-    commit_field_els::<BF, E4>(&mut gpu_seed, &gpu_evals_flattened);
+    commit_field_els::<BF, E4, Blake2sTranscript>(&mut gpu_seed, &gpu_evals_flattened);
     assert_eq!(gpu_seed, seed_after_cpu_explicit_commit);
 
     let num_challenges = (final_trace_size_log_2 + 1) as usize;
-    let mut challenges = draw_random_field_els::<BF, E4>(&mut seed, num_challenges);
+    let mut challenges =
+        draw_random_field_els::<BF, E4, Blake2sTranscript>(&mut seed, num_challenges);
     let expected_challenges = challenges.clone();
-    let mut gpu_challenges = draw_random_field_els::<BF, E4>(&mut gpu_seed, num_challenges);
+    let mut gpu_challenges =
+        draw_random_field_els::<BF, E4, Blake2sTranscript>(&mut gpu_seed, num_challenges);
     assert_eq!(gpu_challenges, expected_challenges);
     let batching_challenge = challenges.pop().unwrap();
     let gpu_batching_challenge = gpu_challenges.pop().unwrap();
@@ -505,7 +518,11 @@ fn run_unified_stagewise_parity_test() {
                 None,
                 &format!("test.cpu.sumcheck.dimension_reduction.layer.{layer_idx}"),
             );
-            let proof = sumcheck_loop::evaluate_dimension_reducing_sumcheck_for_layer(
+            let proof = sumcheck_loop::evaluate_dimension_reducing_sumcheck_for_layer::<
+                BF,
+                E4,
+                Blake2sTranscript,
+            >(
                 layer_idx,
                 &layer,
                 &mut points_for_claims_at_layer,
@@ -539,7 +556,7 @@ fn run_unified_stagewise_parity_test() {
                 &format!("test.cpu.sumcheck.main_layers.layer.{layer_idx}"),
             );
 
-            let proof = sumcheck_loop::evaluate_sumcheck_for_layer(
+            let proof = sumcheck_loop::evaluate_sumcheck_for_layer::<BF, E4, Blake2sTranscript>(
                 layer_idx,
                 layer,
                 &mut points_for_claims_at_layer,
@@ -611,7 +628,7 @@ fn run_unified_stagewise_parity_test() {
         "proof slab size must be E4-aligned",
     );
     let proof_slab: gpu_core::primitives::context::DeviceAllocation<E4> = context
-        .alloc_with_extra_alignment::<E4, 4>(
+        .alloc_with_extra_alignment::<E4, 5>(
             proof_layout.total_bytes / std::mem::size_of::<E4>(),
             gpu_core::allocator::tracker::AllocationPlacement::Bottom,
         )
@@ -622,6 +639,7 @@ fn run_unified_stagewise_parity_test() {
             .schedule_execute_backward_workflow(
                 compiled_circuit.clone(),
                 external_challenges,
+                canonical_top_bits,
                 initial_layer_for_sumcheck + 1,
                 top_layer_claims.clone(),
                 evaluation_point.clone(),

@@ -745,10 +745,10 @@ fn fold_eq_values_in_place_matches_cpu() {
 fn random_e4<R: rand::Rng>(rng: &mut R) -> E4 {
     use field::PrimeField;
     E4::from_array_of_base([
-        BF::from_u64_with_reduction(rng.random()),
-        BF::from_u64_with_reduction(rng.random()),
-        BF::from_u64_with_reduction(rng.random()),
-        BF::from_u64_with_reduction(rng.random()),
+        BF::from_u128_with_reduction(rng.random()),
+        BF::from_u128_with_reduction(rng.random()),
+        BF::from_u128_with_reduction(rng.random()),
+        BF::from_u128_with_reduction(rng.random()),
     ])
 }
 

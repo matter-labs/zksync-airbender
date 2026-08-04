@@ -82,9 +82,8 @@ use main_layer::blueprints::build_dimension_reducing_kernel_blueprints_static;
 pub(crate) use main_layer::blueprints::build_main_layer_kernel_blueprints_static;
 // `pub` (not `pub(crate)`): apex proof layout builder reads these address sets.
 pub use main_layer::blueprints::{
-    collect_main_layer_input_addresses_per_layer,
-    collect_main_layer_kernel_output_addresses_per_layer,
-    compute_main_layer_orphan_output_addresses_per_layer,
+    collect_main_layer_cached_dependencies_per_layer, collect_main_layer_input_addresses_per_layer,
+    compute_main_layer_extra_evaluation_addresses_per_layer,
 };
 
 impl<B, E> GpuGKRDimensionReducingBackwardState<B, E> {

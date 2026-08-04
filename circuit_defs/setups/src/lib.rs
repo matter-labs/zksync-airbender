@@ -27,6 +27,7 @@ pub use ::load_store_subword_only::LoadStoreSubwordOnlyCircuit;
 pub use ::load_store_word_only::LoadStoreWordOnlyCircuit;
 pub use ::mul_div_unsigned::UnsignedMulDivCircuit;
 pub use ::shift_binary::ShiftBinaryCircuit;
+pub use ::unified_reduced_machine::UnifiedReducedMachineCircuit;
 
 pub use ::bigint_with_control::BigIntDelegationCircuit;
 pub use ::blake2_g_function::Blake2sGFunctionDelegationCircuit;
