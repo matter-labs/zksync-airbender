@@ -292,8 +292,29 @@ pub(crate) struct PublishRoundLayout {
     /// resolving a window needs no second computation of which windows fold —
     /// the one place that decision is made is [`assign_class`].
     pub window_base: Vec<usize>,
-    /// `2 * rows_r * 16`: both endpoint halves of every row, as E4.
+    /// The stride from one published column to the next: `2 * rows_r` E4 rounded
+    /// UP to a power of two ([`publish_column_stride_bytes`]).
+    ///
+    /// The bytes a column actually carries are the tight `2 * rows_r * 16` — both
+    /// endpoint halves of every row — and that is what [`check_alias`] treats as
+    /// the extent. The stride is padded because [`BwdSegAddrSlot`] encodes it as
+    /// `log2_stride` and steps `column << log2_stride`, so a stride that is not a
+    /// power of two in element units is UNREPRESENTABLE. Production never pads
+    /// (its row counts are powers of two); a caller that picks an awkward row
+    /// count to exercise a partial tile does, and gets a column layout that still
+    /// fits the descriptor.
     pub column_stride_bytes: usize,
+}
+
+/// The publish column stride for a round of `rows` logical rows.
+///
+/// `2 * rows` because a row is an endpoint PAIR, then up to a power of two
+/// because the descriptor encodes the stride as a shift. The two coincide for
+/// every production row count.
+pub(crate) fn publish_column_stride_bytes(rows: usize) -> Option<usize> {
+    (2 * rows)
+        .checked_next_power_of_two()?
+        .checked_mul(E4_COLUMN_BYTES as usize)
 }
 
 /// The publish geometry of a WHOLE round sequence.
@@ -368,8 +389,7 @@ pub(crate) fn plan_publish_scratch(
                 entries: columns.len(),
             });
         }
-        let column_stride_bytes = rows
-            .checked_mul(2 * E4_COLUMN_BYTES as usize)
+        let column_stride_bytes = publish_column_stride_bytes(rows)
             .ok_or(BwdSegLowerError::PublishScratchOverflow { round })?;
 
         let mut window_base = vec![PUBLISH_WINDOW_ABSENT; windows.len()];
@@ -1436,7 +1456,10 @@ pub(crate) fn lower_bwd_seg(
             }
         }
     }
-    let expected_stride = binding.rows * 2 * E4_COLUMN_BYTES as usize;
+    let expected_stride = publish_column_stride_bytes(binding.rows)
+        .ok_or(BwdSegLowerError::PublishScratchOverflow {
+            round: usize::from(round),
+        })?;
     if layout.column_stride_bytes != expected_stride {
         return Err(BwdSegLowerError::PublishStrideMismatch {
             round,
@@ -1444,8 +1467,11 @@ pub(crate) fn lower_bwd_seg(
             actual: layout.column_stride_bytes,
         });
     }
-    // In `u32` because the row guard above bounds `2 * rows * 16`.
-    let publish_stride = expected_stride as u32;
+    // The row guard above bounds the TIGHT `2 * rows * 16` in `u32`; rounding the
+    // stride up to a power of two can double it, so this conversion is checked
+    // rather than assumed.
+    let publish_stride = u32::try_from(expected_stride)
+        .map_err(|_| BwdSegLowerError::RowsOutOfRange { rows: binding.rows })?;
     let write_parity = usize::from(round & 1);
     let read_parity = write_parity ^ 1;
     // A parity buffer with bytes must exist. `layout.bytes` is checked as well as
@@ -2010,8 +2036,12 @@ fn lower_source(
                         .ok_or(BwdSegLowerError::PlanMissingPublishRegion { window })?;
                 // The write extent per column is `2 * rows * 16`, which the
                 // destination stride must at least cover or consecutive columns
-                // would overwrite each other.
-                if !backing.is_e4 || backing.stride_bytes < publish_stride {
+                // would overwrite each other. Compared against the EXTENT, not
+                // the padded plan stride: an explicitly backed destination
+                // (production's folding buffers) is packed tight, and tight is
+                // exactly enough.
+                let extent = 2 * binding.rows * E4_COLUMN_BYTES as usize;
+                if !backing.is_e4 || (backing.stride_bytes as usize) < extent {
                     return Err(BwdSegLowerError::ExplicitPublishGeometry {
                         window,
                         is_e4: backing.is_e4,

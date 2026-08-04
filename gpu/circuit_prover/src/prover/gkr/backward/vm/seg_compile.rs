@@ -453,7 +453,7 @@ fn lift(value: BF) -> E4 {
 /// What sits behind one synthetic window.
 #[derive(Clone, Debug)]
 pub(crate) enum SegBacking {
-    /// Column-major base field: `values[column * column_len + index]`.
+    /// Column-major base field: `values[column * column_stride + index]`.
     Bf(Vec<BF>),
     /// Column-major extension field.
     Ext(Vec<E4>),
@@ -475,7 +475,9 @@ pub(crate) struct SegHostWindow {
     /// of [`assign_class`]'s answer, kept here so the plan, the descriptor and the
     /// oracle all read ONE decision.
     pub publishes: bool,
-    /// Elements per column, in the backing's own width: `2 * rows << delta`.
+    /// READABLE elements per column, in the backing's own width:
+    /// `2 * rows << delta`. The span, not the stride — see
+    /// [`Self::column_stride`].
     pub column_len: usize,
     pub backing: SegBacking,
 }
@@ -510,11 +512,28 @@ impl SegHostWindow {
         self.target_depth - self.backing_depth
     }
 
+    /// Elements from one column's start to the next: [`Self::column_len`] rounded
+    /// UP to a power of two.
+    ///
+    /// The descriptor encodes a stride as `log2_stride` and steps
+    /// `column << log2_stride`, so a stride that is not a power of two in element
+    /// units cannot be expressed at all. Production is never asked to: a raw
+    /// column stride is the poly length and a folding buffer's is `2 * rows`,
+    /// both powers of two. This harness deliberately picks row counts that are
+    /// NOT ([`SEG_ROWS`] = 200 exists to leave a partial 32-row tile in every
+    /// launch), so its columns are padded — which also makes the model MORE like
+    /// production, where a backing's stride exceeds the span a round reads.
+    ///
+    /// [`SEG_ROWS`]: super::seg_gpu_tests::SEG_ROWS
+    pub fn column_stride(&self) -> usize {
+        self.column_len.next_power_of_two()
+    }
+
     /// One raw backing element, lifted into E4.
     fn element(&self, column: usize, index: usize) -> E4 {
         match &self.backing {
-            SegBacking::Bf(values) => lift(values[column * self.column_len + index]),
-            SegBacking::Ext(values) => values[column * self.column_len + index],
+            SegBacking::Bf(values) => lift(values[column * self.column_stride() + index]),
+            SegBacking::Ext(values) => values[column * self.column_stride() + index],
             SegBacking::Procedural(kind) => lift(procedural_value(*kind, index)),
         }
     }
@@ -654,6 +673,10 @@ pub(crate) fn seg_host_model(
             (None, FieldKind::Ext) => (SourceOrigin::E4, deltas[index % deltas.len()]),
         };
         let column_len = (2 * rows) << usize::from(delta);
+        // Allocate at the STRIDE, read the span: the tail of a padded column is
+        // never addressed, and filling it with the same seeded digits keeps a
+        // stray read visibly wrong rather than zero.
+        let column_stride = column_len.next_power_of_two();
         // Widely separated seeds, so a window that read another window's backing
         // produces visibly wrong values rather than plausible ones.
         let seed = 0x0100_0000u32 + ((index as u32) << 20);
@@ -662,12 +685,12 @@ pub(crate) fn seg_host_model(
                 SegBacking::Procedural(bound.procedural_kind().expect("a procedural family"))
             }
             SourceOrigin::Bf => SegBacking::Bf(
-                (0..count * column_len)
+                (0..count * column_stride)
                     .map(|slot| seg_digit(seed, slot as u32, u32::from(round)))
                     .collect(),
             ),
             SourceOrigin::E4 => SegBacking::Ext(
-                (0..count * column_len)
+                (0..count * column_stride)
                     .map(|slot| seg_ext(seed, slot as u32, u32::from(round)))
                     .collect(),
             ),
@@ -714,9 +737,16 @@ pub(crate) fn seg_chained_model(
              from",
             previous.round
         );
-        let mut values = Vec::with_capacity(count * 2 * previous.rows);
+        // One column per STRIDE, not per span: the previous round published
+        // `2 * previous.rows` values and the padding after them is never read.
+        let column_len = 2 * previous.rows;
+        let column_stride = column_len.next_power_of_two();
+        let mut values = Vec::with_capacity(count * column_stride);
         for column in 0..count {
+            let before = values.len();
             values.extend(previous.published(index, column));
+            assert_eq!(values.len() - before, column_len, "a publish is `2 * rows`");
+            values.resize(before + column_stride, E4::ZERO);
         }
         windows.push(SegHostWindow {
             index,
@@ -724,7 +754,7 @@ pub(crate) fn seg_chained_model(
             target_depth: round,
             // An E4 window one fold behind publishes: that is the chain step.
             publishes: true,
-            column_len: 2 * previous.rows,
+            column_len,
             backing: SegBacking::Ext(values),
         });
     }
@@ -960,7 +990,7 @@ pub(crate) fn upload_round_storage(
                     is_e4: false,
                     ptr: device.as_ptr().cast(),
                     matrix_base: device.as_ptr() as *mut u8,
-                    stride_bytes: (host.column_len * BF_BYTES) as u32,
+                    stride_bytes: (host.column_stride() * BF_BYTES) as u32,
                 };
                 backings.bf.push(device);
                 Some(column)
@@ -971,7 +1001,7 @@ pub(crate) fn upload_round_storage(
                     is_e4: true,
                     ptr: device.as_ptr().cast(),
                     matrix_base: device.as_ptr() as *mut u8,
-                    stride_bytes: (host.column_len * E4_BYTES) as u32,
+                    stride_bytes: (host.column_stride() * E4_BYTES) as u32,
                 };
                 backings.ext.push(device);
                 Some(column)
@@ -1019,7 +1049,7 @@ pub(crate) fn chained_round_storage(
             });
         assert_eq!(
             stride_bytes as usize,
-            host.column_len * E4_BYTES,
+            host.column_stride() * E4_BYTES,
             "the chain read stride must be the previous round's publish stride"
         );
         read_elements.push(host.column_len as u32);
