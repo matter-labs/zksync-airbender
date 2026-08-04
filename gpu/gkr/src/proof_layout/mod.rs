@@ -83,12 +83,11 @@ pub struct BackwardLayerDims {
     /// extension-field degree of the reduced output polynomial). Kept per-layer
     /// because it may vary between dim-reducing and main layers.
     pub final_step_eval_degree: usize,
-    /// Addresses for `extra_evaluations_from_caching_relations` — the per-layer
-    /// orphan kernel outputs that are not consumed as inputs by any parent-layer
-    /// kernel and therefore not part of `final_step_evaluations`. Each entry
-    /// contributes a single `E4` (the explicit evaluation at the random folding
-    /// point). Empty for dim-reducing slots and for main layers without
-    /// orphans. Mirrors the CPU proof's
+    /// Addresses for `extra_evaluations_from_caching_relations` — cached-relation
+    /// dependencies absent from `final_step_evaluations`. Each entry contributes
+    /// one `E4` (the explicit evaluation at the random folding point). Empty for
+    /// dim-reducing slots and main layers without missing dependencies. Mirrors
+    /// the CPU proof's
     /// `SumcheckIntermediateProofValues::extra_evaluations_from_caching_relations`
     /// field.
     pub extra_evaluations_addresses: Vec<GKRAddress>,
@@ -180,10 +179,10 @@ pub(crate) struct BackwardLayerLayout {
     /// reconstruction.
     pub final_step_eval_addresses: Vec<GKRAddress>,
     /// `extra_evaluations_from_caching_relations` flat array — one `E4` per
-    /// orphan address, in `extra_evaluations_addresses` order. Empty for
-    /// dim-reducing slots and main layers without orphans.
+    /// missing dependency, in `extra_evaluations_addresses` order. Empty for
+    /// dim-reducing slots and main layers without extras.
     pub extra_evaluations: Range<usize>,
-    /// Copy of the orphan address ordering, retained for parse-time
+    /// Copy of the extra-evaluation address ordering, retained for parse-time
     /// `BTreeMap` reconstruction.
     pub extra_evaluations_addresses: Vec<GKRAddress>,
     pub sumcheck_num_rounds: usize,
@@ -331,10 +330,10 @@ impl ProofLayout {
             let final_evals_count =
                 layer.final_step_eval_addresses.len() * layer.final_step_eval_degree;
             let final_step_evaluations = alloc(&mut cur, final_evals_count, size_of::<E4>());
-            // One `E4` per orphan address — single explicit evaluation at
-            // the layer's random folding point. Empty range when there are
-            // no orphans (zero-width allocations are fine; the start offset
-            // remains aligned).
+            // One `E4` per missing cached dependency — a single explicit
+            // evaluation at the layer's random folding point. Empty range when
+            // there are no extras (zero-width allocations are fine; the start
+            // offset remains aligned).
             let extra_evaluations = alloc(
                 &mut cur,
                 layer.extra_evaluations_addresses.len(),

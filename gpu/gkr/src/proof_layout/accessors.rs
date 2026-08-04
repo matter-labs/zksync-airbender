@@ -70,8 +70,8 @@ impl ProofLayout {
     }
 
     /// Per-layer-slot `extra_evaluations` range. Returns `(ptr, addresses_len)`
-    /// — one `E4` per orphan address. Length is 0 for dim-reducing slots and
-    /// for main layers without orphan outputs.
+    /// — one `E4` per missing cached dependency. Length is 0 for
+    /// dim-reducing slots and main layers without extras.
     ///
     /// # Safety
     /// `slab_base` must point into a live device allocation big enough for
@@ -543,14 +543,14 @@ impl ProofLayout {
     /// Parse `sumcheck_intermediate_values: BTreeMap<layer_idx, _>`
     /// from the D2H'd slab.
     ///
-    /// `extra_evaluations_by_layer` is the caller-provided sparse map for
-    /// layer 0 only — its values are sparse references into the slab-resident
-    /// WHIR base eval ranges (`DenseSource::read_from_slab`). For every other
-    /// layer-slot we read the dedicated `extra_evaluations` slab range
-    /// directly: each entry is one `E4` per orphan address, in
-    /// `extra_evaluations_addresses` order. Both sources are merged into the
-    /// same `extra_evaluations_from_caching_relations` BTreeMap on the
-    /// resulting `SumcheckIntermediateProofValues`.
+    /// `extra_evaluations_by_layer` is a legacy/fallback sparse source whose
+    /// values may come from slab-resident WHIR base-evaluation ranges
+    /// (`DenseSource::read_from_slab`). For every layer-slot, the dedicated
+    /// `extra_evaluations` slab range is also read when present: each entry is
+    /// one `E4` per address, in `extra_evaluations_addresses` order. Both
+    /// sources are merged into the same
+    /// `extra_evaluations_from_caching_relations` BTreeMap on the resulting
+    /// `SumcheckIntermediateProofValues`.
     pub fn parse_sumcheck_intermediate_values(
         &self,
         slab: &[u8],

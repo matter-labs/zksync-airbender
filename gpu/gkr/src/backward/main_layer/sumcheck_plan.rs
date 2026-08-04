@@ -812,8 +812,8 @@ where
         layer_slot: usize,
         mirror_layer_to_host: bool,
         // Read-only handle to the consolidated GKR storage. Used by the
-        // main-layer extras eval path to resolve orphan output addresses
-        // (`outputs[layer-1] − inputs[layer]`) to their backing
+        // main-layer extras eval path to resolve missing cached-relation
+        // dependencies to their backing
         // pointers without forcing additional allocations. Test paths
         // that don't exercise extras can pass `None` to skip extras work
         // entirely; production callers always pass `Some`.
@@ -1212,17 +1212,74 @@ where
             )?;
         }
 
-        // Commit the degree-1 final_step_evaluations (matches host
-        // `commit_field_els::<BF, E4>` over the at-point evals).
-        // SAFETY: slab final-step region is alive through the launch; E = E4 so
-        // the u32 view matches the host byte layout. Empty when 0 addresses.
-        let final_step_evals_e_slice = unsafe {
-            DeviceSlice::from_raw_parts(final_step_evals_buffer_ptr as *const E, num_addresses)
+        // The CPU transcript commits one logical payload containing the
+        // degree-1 final-step evaluations followed by every missing
+        // cached-relation dependency, then squeezes the next batching
+        // challenge. The proof layout carries the schedule-time address set in
+        // that same BTreeMap order, including layer-0 base dependencies.
+        let extra_addresses: Vec<GKRAddress> = proof_layout.backward[layer_slot]
+            .extra_evaluations_addresses
+            .clone();
+        let extra_count = extra_addresses.len();
+        if extra_count > 0 {
+            assert!(
+                storage.is_some(),
+                "main-layer extras eval requires a storage handle; production callers must pass Some(&storage)"
+            );
+        }
+        let total_new_claims_len = num_addresses + extra_count;
+
+        // Device-side per-address `new_claims`: final-step evaluations first,
+        // then cached-relation extras. Besides feeding the next layer, this
+        // contiguous buffer is the exact logical transcript payload.
+        let mut device_new_claims: DeviceAllocation<E> =
+            context.alloc(total_new_claims_len.max(1), AllocationPlacement::Top)?;
+        if num_addresses > 0 {
+            // SAFETY: slab final-step region holds `num_addresses` live E evals.
+            let final_step_src = unsafe {
+                DeviceSlice::from_raw_parts(final_step_evals_buffer_ptr as *const E, num_addresses)
+            };
+            memory_copy_async(
+                &mut device_new_claims[..num_addresses],
+                final_step_src,
+                stream,
+            )?;
+        }
+
+        // Evaluate every missing cached-relation dependency at the full
+        // folding point. The helper also writes the proof-slab extras range in
+        // the same deterministic address order.
+        let extras_keepalive: Option<MainLayerExtrasKeepalive<BF, E>> = if extra_count > 0 {
+            // SAFETY: device_claim_point_out is `MAX_MAIN_LAYER_CLAIM_POINT_LEN`
+            // long; `[0..folding_steps]` is in-bounds. The extras tail starts
+            // at `device_new_claims[num_addresses]` and has `extra_count`
+            // slots.
+            let folding_point_ptr = device_claim_point_out.as_ptr();
+            let trace_len = 1usize << self.folding_steps;
+            let extras_dst_ptr = unsafe { device_new_claims.as_mut_ptr().add(num_addresses) };
+            Some(schedule_main_layer_extras_eval::<E>(
+                self.layer_idx,
+                &extra_addresses,
+                storage.expect("extras eval requires storage handle"),
+                folding_point_ptr,
+                self.folding_steps,
+                trace_len,
+                extras_dst_ptr,
+                proof_slab,
+                proof_layout,
+                layer_slot,
+                context,
+            )?)
+        } else {
+            None
         };
-        // SAFETY: `E = E4`, so the slice is byte-identical to the `u32` view
-        // that `transcript_commit` expects.
-        let d_final_step_evals_u32 = unsafe { final_step_evals_e_slice.transmute::<u32>() };
-        gpu_hash::blake2s::transcript_commit(&mut device_seed, d_final_step_evals_u32, stream)?;
+
+        // SAFETY: E = E4 in every instantiation; the contiguous claim buffer
+        // is byte-identical to the host `Vec<E4>` payload passed to
+        // `commit_field_els`.
+        let transcript_inputs_e = &device_new_claims[..total_new_claims_len];
+        let transcript_inputs_u32 = unsafe { transcript_inputs_e.transmute::<u32>() };
+        gpu_hash::blake2s::transcript_commit(&mut device_seed, transcript_inputs_u32, stream)?;
 
         // Squeeze the 1 remaining challenge `[next_batching_challenge]` into
         // `device_claim_point_out[folding_steps]`. `last_r` was drawn in-loop at
@@ -1241,130 +1298,16 @@ where
             )?;
         }
 
-        // Look up orphan addresses for this layer's slot. These are
-        // `outputs[layer_idx - 1] − inputs[layer_idx]` (i.e., layer-(L-1)
-        // kernel outputs that L's kernels do NOT consume) and must be
-        // explicitly evaluated at the just-produced folding point so
-        // L-1's `desc_pairs` build can resolve them in its IN claim
-        // layout. See [backward.rs] `compute_main_layer_orphan_output_addresses_per_layer`
-        // for the producer side. Empty for `layer_idx == 0` and for
-        // any layer that consumes every immediate-child output.
-        let orphan_addresses: Vec<GKRAddress> = proof_layout.backward[layer_slot]
-            .extra_evaluations_addresses
-            .clone();
-        let orphan_count = orphan_addresses.len();
-        if orphan_count > 0 {
-            assert!(
-                storage.is_some(),
-                "main-layer extras eval requires a storage handle; production callers must pass Some(&storage)"
-            );
-        }
-        let total_new_claims_len = num_addresses + orphan_count;
-
-        // Device-side per-address `new_claims` (main-layer: the at-point
-        // evaluation is BOTH the next-layer claim and the degree-1
-        // `final_step_evaluations`, already computed into the slab above).
-        // Copy the slab at-point evals into the head of `device_new_claims`;
-        // the allocation extends by `orphan_count` so the on-device extras
-        // kernel can write extras into the tail.
-        let mut device_new_claims: DeviceAllocation<E> =
-            context.alloc(total_new_claims_len.max(1), AllocationPlacement::Top)?;
-        if num_addresses > 0 {
-            // SAFETY: slab final-step region holds `num_addresses` live E evals.
-            let final_step_src = unsafe {
-                DeviceSlice::from_raw_parts(final_step_evals_buffer_ptr as *const E, num_addresses)
-            };
-            memory_copy_async(
-                &mut device_new_claims[..num_addresses],
-                final_step_src,
-                stream,
-            )?;
-        }
-
-        // Schedule on-device evaluation of orphan output polys at the
-        // full folding point `[r_0..r_{last_step-1}, last_r]`
-        // (= `device_claim_point_out[0..self.folding_steps]`). Each
-        // orphan's claim is written into:
-        //   - `device_new_claims[num_addresses..num_addresses + orphan_count]`
-        //     (tail) so the next layer's IN claim buffer carries it; and
-        //   - `proof_layout.backward[layer_slot].extra_evaluations` slab
-        //     range so the verifier can read the explicit at-point evals.
-        // Returns a keepalive that holds eq_values, block_partials,
-        // reduction_temp, and the orphan poly views (Arc-clones of the
-        // consolidated backings) until exec_stream has finished every
-        // kernel reading them. Drop happens at end of scheduler.
-        let extras_keepalive: Option<MainLayerExtrasKeepalive<BF, E>> = if orphan_count > 0 {
-            // SAFETY: device_claim_point_out is `MAX_MAIN_LAYER_CLAIM_POINT_LEN`
-            // long; `[0..folding_steps]` is in-bounds. The orphan eval
-            // tail starts at `device_new_claims[num_addresses]`.
-            let folding_point_ptr = device_claim_point_out.as_ptr();
-            let trace_len = 1usize << self.folding_steps;
-            // SAFETY: `device_new_claims` was allocated with
-            // `num_addresses + orphan_count` slots, so the orphan tail starts
-            // at `num_addresses` and has capacity for exactly `orphan_count`
-            // outputs.
-            let extras_dst_ptr = unsafe { device_new_claims.as_mut_ptr().add(num_addresses) };
-            Some(schedule_main_layer_extras_eval::<E>(
-                self.layer_idx,
-                &orphan_addresses,
-                storage.expect("extras eval requires storage handle"),
-                folding_point_ptr,
-                self.folding_steps,
-                trace_len,
-                extras_dst_ptr,
-                proof_slab,
-                proof_layout,
-                layer_slot,
-                context,
-            )?)
-        } else {
-            None
-        };
-
-        // Commit the orphan/extra at-point evaluations to the transcript,
-        // mirroring the CPU's
-        // `commit_field_els(seed, extra_evaluations_from_caching_relations.values())`
-        // (`sumcheck_loop/mod.rs:439-445`), which runs AFTER the
-        // next-batching-challenge squeeze. These extras advance the running seed
-        // entering the next (lower) main layer. Omitting this commit left the
-        // next layer's round-0 seed at the pre-extras state (the β-state), so any
-        // layer whose child layer produces orphan outputs (e.g. a layer with
-        // `cached_relations`, like the unified circuit's layer 1) diverged from
-        // the CPU at the child's round-0 folding challenge while β itself still
-        // matched. The orphan set + sorted order mirror the CPU BTreeMap (see
-        // `compute_main_layer_orphan_output_addresses_per_layer`).
-        if orphan_count > 0 {
-            // SAFETY: the orphan eval scheduled above wrote `orphan_count` E4
-            // values into this slot's `extra_evaluations` slab range on
-            // `exec_stream`; this commit is stream-ordered after it. E4 matches
-            // the host flatten byte layout (4 u32 limbs per element).
-            let (extra_ptr, extra_len) = unsafe {
-                proof_layout.backward_extra_evaluations_device_mut(
-                    proof_slab.as_ptr() as *mut u8,
-                    layer_slot,
-                )
-            };
-            debug_assert_eq!(
-                extra_len, orphan_count,
-                "extra_evaluations slab len must match orphan_count",
-            );
-            let extra_e4_slice =
-                unsafe { DeviceSlice::from_raw_parts(extra_ptr as *const E4, extra_len) };
-            let d_extra_u32 = unsafe { extra_e4_slice.transmute::<u32>() };
-            gpu_hash::blake2s::transcript_commit(&mut device_seed, d_extra_u32, stream)?;
-        }
-
         // `device_claim_point_out` is already populated in place — slots
         // `[0..last_step]` by the per-round update kernels (folding challenges)
         // and slots `[last_step..last_step + 2]` by the transcript squeeze
         // (`last_r`, `next_batching_challenge`). No post-loop pack copies.
 
-        // Combined claim layout = transcript inputs (in BTreeMap key order)
-        // followed by orphans (in BTreeSet order). Orphans are disjoint from
-        // transcript inputs by construction (orphan = layer-(L-1) output not
-        // consumed by L), so the combined Vec has no duplicates.
+        // Combined claim layout matches the transcript payload: final-step
+        // inputs followed by missing cached-relation dependencies. The sets
+        // are disjoint by construction.
         let mut combined_addresses = transcript_input_addresses.clone();
-        combined_addresses.extend(orphan_addresses.iter().copied());
+        combined_addresses.extend(extra_addresses.iter().copied());
         let next_claim_layout = ClaimBufferLayout::from_addresses(combined_addresses);
         let callback_addresses = next_claim_layout.addresses.clone();
         let mut final_readback_callbacks = Callbacks::new();
@@ -1416,9 +1359,9 @@ where
                         d2h_stream,
                     )?;
 
-                    // Single D2H of device-computed new_claims, including any orphan
-                    // extras the on-device extras kernel appended at
-                    // `[num_addresses..num_addresses + orphan_count]`.
+                    // Single D2H of device-computed new_claims, including any
+                    // cached-relation extras appended after the final-step
+                    // evaluations.
                     if total_new_claims_len > 0 {
                         memory_copy_async(
                             &mut new_claims_host,
@@ -1513,7 +1456,7 @@ where
         // Stream-ordered drop: every scheduled extras-eval kernel +
         // memcpy has been issued by this point, so the temporary
         // device buffers (eq_values, block_partials, reduction_temp)
-        // and the orphan view Arc-clones can release here. The pool
+        // and the extra-polynomial view Arc-clones can release here. The pool
         // defers the underlying free until exec_stream has progressed
         // past the writes.
         drop(extras_keepalive);

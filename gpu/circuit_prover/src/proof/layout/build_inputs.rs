@@ -21,12 +21,9 @@ where
 {
     // Normalize-once for the address-derivation helpers so they see the
     // same `(MaxQuadratic { output: ScratchSpace(K) })` shape that the
-    // backward main-layer scheduler operates on. Without this, orphan
-    // addresses derived structurally would still carry `InnerLayer { ..
-    // }` for scratch-mapped MaxQuadratic outputs, while runtime kernel
-    // outputs (post-normalize) carry `ScratchSpace(K)` — and the
-    // resulting `next_claim_layout` augmentation would never match
-    // L-1's `claim_idx` lookup. The clone is paid once per proof.
+    // backward main-layer scheduler operates on. Without this, cached
+    // dependencies derived structurally could disagree with the runtime
+    // storage aliases used to evaluate them. The clone is paid once per proof.
     let compiled_circuit =
         gpu_gkr_model::transform::normalize_compiled_circuit_for_gpu(compiled_circuit.clone());
     let initial_trace_size_log_2 = compiled_circuit.trace_len.trailing_zeros();
@@ -41,15 +38,12 @@ where
             &compiled_circuit,
             external_challenges,
         );
-    let main_layer_outputs =
-        gpu_gkr::backward::collect_main_layer_kernel_output_addresses_per_layer::<E>(
-            &compiled_circuit,
-            external_challenges,
-        );
-    let main_layer_orphan_output_addresses_per_layer =
-        gpu_gkr::backward::compute_main_layer_orphan_output_addresses_per_layer::<E>(
+    let main_layer_cached_dependencies_per_layer =
+        gpu_gkr::backward::collect_main_layer_cached_dependencies_per_layer(&compiled_circuit);
+    let main_layer_extra_evaluation_addresses_per_layer =
+        gpu_gkr::backward::compute_main_layer_extra_evaluation_addresses_per_layer(
             &main_layer_input_addresses_per_layer,
-            &main_layer_outputs,
+            &main_layer_cached_dependencies_per_layer,
         );
     assert!(initial_trace_size_log_2 >= final_trace_size_log_2);
     let num_dim_reducing_layers = (initial_trace_size_log_2 - final_trace_size_log_2) as usize;
@@ -65,9 +59,9 @@ where
         "main_layer_input_addresses_per_layer must have one entry per main layer",
     );
     assert_eq!(
-        main_layer_orphan_output_addresses_per_layer.len(),
+        main_layer_extra_evaluation_addresses_per_layer.len(),
         num_main_layers,
-        "main_layer_orphan_output_addresses_per_layer must have one entry per main layer",
+        "main-layer extra evaluations must have one entry per main layer",
     );
 
     // ------------------------------------------------------------------
@@ -121,10 +115,9 @@ where
             // Dim-reducing final step sends the `[E;2]` LSB line; the last
             // output coord is fixed in-loop at `r_before_last`.
             final_step_eval_degree: 2,
-            // Dim-reducing layers don't host the kind of orphan-output
-            // pattern that main-layer `MaxQuadratic` produces; the
-            // forward dim-reduction pass wires every output from one
-            // round directly into the next round's inputs.
+            // Dim-reducing layers have no cached-relation extras; the forward
+            // dim-reduction pass wires every output directly into the next
+            // round's inputs.
             extra_evaluations_addresses: Vec::new(),
         });
     }
@@ -136,7 +129,7 @@ where
             // Main-layer final step sends the single at-point evaluation; the
             // last coord is fixed in-loop at `last_r`.
             final_step_eval_degree: 1,
-            extra_evaluations_addresses: main_layer_orphan_output_addresses_per_layer[layer_idx]
+            extra_evaluations_addresses: main_layer_extra_evaluation_addresses_per_layer[layer_idx]
                 .clone(),
         });
     }

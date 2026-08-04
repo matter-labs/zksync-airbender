@@ -42,7 +42,7 @@ fn sample_inputs() -> ProofLayoutInputs {
             sumcheck_num_rounds: 3,
             final_step_eval_addresses: vec![GKRAddress::BaseLayerWitness(0); 2],
             final_step_eval_degree: 4,
-            // Dim-reducing slot: never has orphans.
+            // Dim-reducing slot: never has cached-relation extras.
             extra_evaluations_addresses: Vec::new(),
         },
         BackwardLayerDims {
@@ -50,10 +50,10 @@ fn sample_inputs() -> ProofLayoutInputs {
             sumcheck_num_rounds: 5,
             final_step_eval_addresses: vec![GKRAddress::BaseLayerWitness(0); 3],
             final_step_eval_degree: 2,
-            // Exercise non-empty orphans to validate the extra
+            // Exercise non-empty cached-relation extras to validate the extra
             // range's sizing + parser round-trip in this slot.
             // Production code derives this list via a BTreeSet
-            // (`compute_main_layer_orphan_output_addresses_per_layer`),
+            // (`compute_main_layer_extra_evaluation_addresses_per_layer`),
             // so the ordering matches `GKRAddress`'s `Ord` impl —
             // `InnerLayer` < `ScratchSpace` per the enum-variant
             // declaration order.
@@ -240,7 +240,7 @@ fn backward_range_sizes_match_inputs() {
             laid.final_step_evaluations.end - laid.final_step_evaluations.start,
             final_len * size_of::<E4>()
         );
-        // 1 E4 per orphan address.
+        // 1 E4 per extra-evaluation address.
         let extra_len = dims.extra_evaluations_addresses.len();
         assert_eq!(
             laid.extra_evaluations.end - laid.extra_evaluations.start,
@@ -415,7 +415,7 @@ fn parser_round_trips_extra_evaluations() {
     let inputs = sample_inputs();
     let layout = ProofLayout::new(&inputs);
 
-    // Layer 0 has 2 orphan addresses (per `sample_inputs`). Write
+    // Layer 0 has 2 extra-evaluation addresses (per `sample_inputs`). Write
     // recognizable values into the slab's `extra_evaluations` range
     // for layer-slot 1 (= main layer, the second slot here), then
     // run the parser and assert the BTreeMap has the expected keys

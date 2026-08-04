@@ -358,13 +358,7 @@ fn main_layer_blueprints_for_inits_and_teardowns_initial_pair_use_canonical_top_
 }
 
 #[test]
-fn compute_main_layer_orphan_output_addresses_picks_unconsumed_outputs() {
-    // Three layers; layer 0 produces an InnerLayer{1,0} output that
-    // layer-1's kernels do not read — exactly the MaxQuadratic-with-
-    // higher-layer-consumer case. Bottom
-    // layer (layer_idx == 0) is always empty (no layer below). Top
-    // layer's slot lists orphans of the layer below it (here:
-    // layer-1 outputs that layer 2 doesn't consume).
+fn cpu_main_layer_extra_evaluations_pick_missing_cached_dependencies() {
     let layer0_inputs = vec![GKRAddress::BaseLayerWitness(0)];
     let layer1_inputs = vec![GKRAddress::BaseLayerWitness(1)];
     let layer2_inputs = vec![
@@ -376,49 +370,62 @@ fn compute_main_layer_orphan_output_addresses_picks_unconsumed_outputs() {
     ];
     let inputs_per_layer = vec![layer0_inputs, layer1_inputs, layer2_inputs];
 
-    let layer0_outputs = vec![GKRAddress::InnerLayer {
-        layer: 1,
-        offset: 0,
-    }];
-    let layer1_outputs = vec![
-        GKRAddress::ScratchSpace(7),
-        GKRAddress::InnerLayer {
-            layer: 2,
-            offset: 0,
-        },
+    let cached_dependencies_per_layer = vec![
+        vec![
+            GKRAddress::BaseLayerWitness(0),
+            GKRAddress::BaseLayerMemory(2),
+        ],
+        vec![
+            GKRAddress::BaseLayerWitness(1),
+            GKRAddress::InnerLayer {
+                layer: 1,
+                offset: 0,
+            },
+        ],
+        vec![
+            GKRAddress::ScratchSpace(7),
+            GKRAddress::InnerLayer {
+                layer: 2,
+                offset: 0,
+            },
+        ],
     ];
-    let layer2_outputs = vec![GKRAddress::InnerLayer {
-        layer: 3,
-        offset: 0,
-    }];
-    let outputs_per_layer = vec![layer0_outputs, layer1_outputs, layer2_outputs];
 
-    let orphans = super::compute_main_layer_orphan_output_addresses_per_layer::<E4>(
+    let extras = super::compute_main_layer_extra_evaluation_addresses_per_layer(
         &inputs_per_layer,
-        &outputs_per_layer,
+        &cached_dependencies_per_layer,
     );
 
-    // Bottom layer (layer 0): nothing below it — always empty.
-    assert!(orphans[0].is_empty());
-    // Layer 1's orphan list = layer-0 outputs not consumed by layer 1.
-    // layer 0's output InnerLayer{1,0} is NOT in layer 1's inputs
-    // (which is BaseLayerWitness(1)) — so it IS an orphan emitted at
-    // scheduler 1.
+    assert_eq!(extras[0], vec![GKRAddress::BaseLayerMemory(2)]);
     assert_eq!(
-        orphans[1],
+        extras[1],
         vec![GKRAddress::InnerLayer {
             layer: 1,
             offset: 0,
         }],
     );
-    // Layer 2's orphan list = layer-1 outputs not consumed by layer 2.
-    // both ScratchSpace(7) and InnerLayer{2,0} ARE in layer 2's
-    // inputs, so neither is an orphan.
-    assert!(orphans[2].is_empty());
+    assert!(extras[2].is_empty());
 }
 
 #[test]
-fn compute_main_layer_orphan_output_addresses_handles_empty() {
-    let orphans = super::compute_main_layer_orphan_output_addresses_per_layer::<E4>(&[], &[]);
-    assert!(orphans.is_empty());
+fn cpu_main_layer_extra_evaluation_addresses_handle_empty() {
+    let extras = super::compute_main_layer_extra_evaluation_addresses_per_layer(&[], &[]);
+    assert!(extras.is_empty());
+}
+
+#[test]
+fn cpu_main_layer_extras_include_layer_zero_cached_dependencies() {
+    let cached_value = GKRAddress::BaseLayerMemory(0);
+    let dependency_a = GKRAddress::BaseLayerMemory(4);
+    let dependency_b = GKRAddress::Setup(2);
+    let inputs_per_layer = vec![vec![cached_value]];
+    let cached_dependencies_per_layer =
+        vec![vec![dependency_b, cached_value, dependency_a, dependency_b]];
+
+    let extras = super::compute_main_layer_extra_evaluation_addresses_per_layer(
+        &inputs_per_layer,
+        &cached_dependencies_per_layer,
+    );
+
+    assert_eq!(extras, vec![vec![dependency_a, dependency_b]]);
 }
