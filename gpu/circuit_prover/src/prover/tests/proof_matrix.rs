@@ -2302,3 +2302,158 @@ fn run_corpus_default_vs_incumbent_ab_test() {
         rows.iter().map(|r| r.median).sum::<f32>(),
     );
 }
+
+/// Whole-proof time per circuit at every forced `K`, plus the policy's own choice.
+///
+/// The corpus sweep (`seg_report::bwd_seg_corpus_sweep`) times the seg kernel in
+/// ISOLATION against synthetic storage, which is what the thresholds were fitted
+/// from. It cannot say whether a threshold change is worth shipping, because a
+/// kernel-time regret of a few percent lands on a phase that is itself a slice of
+/// the proof. This is the other half: `AB_BWD_VM_SEG_K` forces every VM-owned
+/// round to one `K` against PRODUCTION bindings, so the curve here is in
+/// whole-proof milliseconds.
+///
+/// Arms are interleaved round-robin rather than run in blocks — `seg_forced_k`
+/// reads fresh precisely so one process can alternate — and each arm's proof is
+/// asserted identical to the policy arm's, which `K` cannot change (the partial
+/// pair is the bit-identical sum of the rows it replaces).
+///
+/// `GKR_K_REPEATS` overrides the repeat count (default 5).
+#[test]
+#[serial]
+#[ignore]
+fn run_corpus_forced_k_sweep_test() {
+    const FORCED_K_ENV: &str = "AB_BWD_VM_SEG_K";
+
+    let repeats: usize = std::env::var("GKR_K_REPEATS")
+        .ok()
+        .and_then(|v| v.trim().parse().ok())
+        .unwrap_or(5);
+    assert!(repeats >= 1, "GKR_K_REPEATS must be positive");
+    assert!(
+        !crate::prover::gkr::forward::vm::production_bind::poison_destinations_enabled()
+            && !crate::prover::gkr::backward::vm::production_bind::poison_accumulator_enabled()
+            && !crate::prover::gkr::backward::vm::production_bind::fold_storage_poison_enabled(),
+        "a poison left on is noise this measurement cannot absorb"
+    );
+
+    // The axis the policy is allowed to pick from, plus the policy itself. `None`
+    // is the policy arm: the switch UNSET leaves `seg_policy_k` in charge.
+    let arms: [Option<usize>; 7] = [
+        None,
+        Some(1),
+        Some(2),
+        Some(4),
+        Some(8),
+        Some(16),
+        Some(32),
+    ];
+
+    type Build = fn() -> BasicUnrolledFixture;
+    let corpus: &[(&str, Build)] = &[
+        ("add_sub_lui_auipc_mop", prepare_basic_unrolled_profiling_fixture),
+        ("jump_branch_slt", prepare_jump_branch_slt_profiling_fixture),
+        ("shift_binop", prepare_shift_binop_profiling_fixture),
+        ("unsigned_mul_div", prepare_mul_div_profiling_fixture),
+        ("mem_word_only", prepare_load_store_word_only_profiling_fixture),
+        ("mem_subword_only", prepare_load_store_subword_only_profiling_fixture),
+        ("inits_and_teardowns", prepare_inits_and_teardowns_matrix_profiling_fixture),
+        ("unified_reduced_machine", prepare_unified_profiling_fixture),
+        ("bigint_with_extended_control", prepare_bigint_profiling_fixture),
+        ("blake2_with_extended_control", prepare_blake2_with_compression_profiling_fixture),
+        ("blake2_g_function", prepare_blake2_g_function_profiling_fixture),
+        ("keccak_special5", prepare_keccak_special5_profiling_fixture),
+    ];
+
+    eprintln!(
+        "[k-sweep] whole-proof ms per forced K, {repeats} repeats, arms interleaved; \
+         policy = switch unset"
+    );
+    eprintln!(
+        "[k-sweep] {:<30} {:>9} {:>9} {:>9} {:>9} {:>9} {:>9} {:>9}  {}",
+        "circuit", "policy", "K1", "K2", "K4", "K8", "K16", "K32", "policy_at_min"
+    );
+    let mut mismatched: Vec<String> = Vec::new();
+    for (label, build) in corpus {
+        let fixture = build();
+        let mut samples: Vec<Vec<f32>> = vec![Vec::with_capacity(repeats); arms.len()];
+        let mut reference: Option<_> = None;
+
+        // Warm both the policy arm and one forced arm before measuring: the
+        // OnceLock'd VM compiles and the module load land in whichever runs first.
+        for warm in [None, Some(4usize)] {
+            let _k = match warm {
+                Some(k) => EnvGuard::set(FORCED_K_ENV, &k.to_string()),
+                None => EnvGuard::unset(FORCED_K_ENV),
+            };
+            let t = fixture.schedule_transfers().unwrap();
+            fixture.context.get_h2d_stream().synchronize().unwrap();
+            drop(fixture.prove(t).unwrap().finish().unwrap().0);
+        }
+
+        for repeat in 0..repeats {
+            // Rotate the arm order every repeat so no arm keeps the same position
+            // in the drift.
+            for offset in 0..arms.len() {
+                let index = (repeat + offset) % arms.len();
+                let _k = match arms[index] {
+                    Some(k) => EnvGuard::set(FORCED_K_ENV, &k.to_string()),
+                    None => EnvGuard::unset(FORCED_K_ENV),
+                };
+                let t = fixture.schedule_transfers().unwrap();
+                fixture.context.get_h2d_stream().synchronize().unwrap();
+                let (proof, ms) = fixture.prove(t).unwrap().finish().unwrap();
+                match &reference {
+                    None => reference = Some(proof),
+                    Some(expected) => {
+                        // K is a pure performance axis; a differing proof means the
+                        // partial reduction is not the sum it claims to be.
+                        assert_gkr_proof_eq_for_test(&proof, expected);
+                    }
+                }
+                samples[index].push(ms);
+            }
+        }
+
+        let median = |v: &Vec<f32>| {
+            let mut v = v.clone();
+            v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            v[v.len() / 2]
+        };
+        let medians: Vec<f32> = samples.iter().map(median).collect();
+        // Is the policy sitting at the minimum of the forced curve? That, not the
+        // absolute times, is what the policy is accountable for.
+        let best_forced = medians[1..]
+            .iter()
+            .copied()
+            .fold(f32::INFINITY, f32::min);
+        let at_min = medians[0] <= best_forced + 0.5;
+        if !at_min {
+            mismatched.push(format!(
+                "{label} (policy {:.3} ms vs best forced {:.3} ms)",
+                medians[0], best_forced
+            ));
+        }
+        eprintln!(
+            "[k-sweep] {:<30} {:>9.3} {:>9.3} {:>9.3} {:>9.3} {:>9.3} {:>9.3} {:>9.3}  {}",
+            label,
+            medians[0],
+            medians[1],
+            medians[2],
+            medians[3],
+            medians[4],
+            medians[5],
+            medians[6],
+            if at_min { "yes" } else { "NO" },
+        );
+        drop(fixture);
+    }
+    if mismatched.is_empty() {
+        eprintln!("[k-sweep] the policy is within 0.5 ms of the best forced K on every circuit");
+    } else {
+        eprintln!(
+            "[k-sweep] the policy is NOT at the minimum for: {}",
+            mismatched.join("; ")
+        );
+    }
+}

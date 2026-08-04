@@ -20,28 +20,68 @@ fn add_sub_artifact() -> GKRCircuitArtifact<BF> {
 /// A launcher choosing K=11 would be choosing a shape nothing was measured at.
 #[test]
 fn the_policy_k_is_a_member_of_the_measured_axis_and_within_the_ceiling() {
+    use crate::upstream::BwdRegime;
+    for regime in [BwdRegime::R0, BwdRegime::Ext] {
     for bytes_per_row in [0, 1_279, 1_280, 18_431, 18_432, 1 << 20] {
         for ceiling in SEG_CORPUS_K {
-            let k = seg_policy_k(bytes_per_row, ceiling);
+            let k = seg_policy_k(regime, bytes_per_row, ceiling);
             assert!(SEG_CORPUS_K.contains(&k), "K{k} is off the measured axis");
             assert!(k <= ceiling, "K{k} exceeds the register ceiling {ceiling}");
         }
     }
+    }
 }
 
-/// The three arms and the snap-down, at the committed thresholds. The VALUES
-/// are the corpus fit's; this pins the shipped rule to them so a threshold
-/// edit cannot pass silently.
+/// Each regime's arms and the snap-down, at the committed thresholds. The VALUES
+/// are the corpus fit's; this pins the shipped rule to them so a threshold edit
+/// cannot pass silently.
 #[test]
-fn the_policy_arms_are_the_fitted_ones() {
-    assert_eq!(seg_policy_k(0, 32), 4);
-    assert_eq!(seg_policy_k(SEG_POLICY_NARROW_BYTES_PER_ROW - 1, 32), 4);
-    assert_eq!(seg_policy_k(SEG_POLICY_NARROW_BYTES_PER_ROW, 32), 8);
-    assert_eq!(seg_policy_k(SEG_POLICY_WIDE_BYTES_PER_ROW - 1, 32), 8);
-    assert_eq!(seg_policy_k(SEG_POLICY_WIDE_BYTES_PER_ROW, 32), 16);
-    // The ceiling caps by snapping DOWN to an axis member, never interpolating.
-    assert_eq!(seg_policy_k(SEG_POLICY_WIDE_BYTES_PER_ROW, 8), 8);
-    assert_eq!(seg_policy_k(SEG_POLICY_WIDE_BYTES_PER_ROW, 4), 4);
+fn each_regimes_policy_arms_are_the_fitted_ones() {
+    use crate::upstream::BwdRegime;
+
+    let (r0_mid, r0_wide) = SEG_POLICY_THRESHOLDS.r0;
+    let (ext_narrow, ext_wide) = SEG_POLICY_THRESHOLDS.ext;
+
+    // The continuation: monotone {4, 8, 16}.
+    assert_eq!(seg_policy_k(BwdRegime::Ext, 0, 32), 4);
+    assert_eq!(seg_policy_k(BwdRegime::Ext, ext_narrow - 1, 32), 4);
+    assert_eq!(seg_policy_k(BwdRegime::Ext, ext_narrow, 32), 8);
+    assert_eq!(seg_policy_k(BwdRegime::Ext, ext_wide - 1, 32), 8);
+    assert_eq!(seg_policy_k(BwdRegime::Ext, ext_wide, 32), 16);
+
+    // R0: NON-MONOTONE {4, 2, 16}. The middle arm is smaller than the first, and
+    // that is the fit, not a typo — see `SEG_POLICY_R0_ARMS`.
+    assert_eq!(seg_policy_k(BwdRegime::R0, 0, 32), 4);
+    assert_eq!(seg_policy_k(BwdRegime::R0, r0_mid - 1, 32), 4);
+    assert_eq!(seg_policy_k(BwdRegime::R0, r0_mid, 32), 2);
+    assert_eq!(seg_policy_k(BwdRegime::R0, r0_wide - 1, 32), 2);
+    assert_eq!(seg_policy_k(BwdRegime::R0, r0_wide, 32), 16);
+
+    // The ceiling caps by snapping DOWN to an axis member, never interpolating —
+    // and the axis floor is 1 now, so even a ceiling of 1 is servable.
+    assert_eq!(seg_policy_k(BwdRegime::Ext, ext_wide, 8), 8);
+    assert_eq!(seg_policy_k(BwdRegime::Ext, ext_wide, 4), 4);
+    assert_eq!(seg_policy_k(BwdRegime::Ext, ext_wide, 2), 2);
+    assert_eq!(seg_policy_k(BwdRegime::Ext, ext_wide, 1), 1);
+    // A ceiling above R0's middle arm cannot RAISE it: the arm is the fit.
+    assert_eq!(seg_policy_k(BwdRegime::R0, r0_mid, 32), 2);
+}
+
+/// The two regimes must disagree somewhere, or the split is decoration.
+#[test]
+fn the_two_regimes_pick_different_k() {
+    use crate::upstream::BwdRegime;
+
+    let disagreements = (0..40_000usize)
+        .step_by(16)
+        .filter(|bytes| {
+            seg_policy_k(BwdRegime::R0, *bytes, 32) != seg_policy_k(BwdRegime::Ext, *bytes, 32)
+        })
+        .count();
+    assert!(
+        disagreements > 0,
+        "R0 and Ext resolve to the same K everywhere, so the split buys nothing"
+    );
 }
 
 // ── The shape phase (CPU, real coordinate) ───────────────────────────────────

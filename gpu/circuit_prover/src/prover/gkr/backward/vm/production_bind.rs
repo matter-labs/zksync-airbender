@@ -100,7 +100,6 @@ use gkr_eval_isa::bwd::coeff::lean_bind::{
 };
 use gkr_eval_isa::bwd::coeff::limits::SOURCE_WINDOW_COLUMNS;
 use std::collections::{BTreeMap, BTreeSet};
-use std::sync::OnceLock;
 use gkr_eval_isa::bwd::coeff::stats::WindowFamily;
 use gkr_eval_isa::fwd::source::KIND_ORDER;
 
@@ -140,13 +139,26 @@ use crate::upstream::{
 
 // ── The closed-form `K` policy (spec §12) ────────────────────────────────────
 
-/// The `K` axis the corpus sweep ranked: the plan's set, minus `K = 24`.
+/// The `K` axis the corpus sweep ranks: the plan's set, minus `K = 24`, plus the
+/// two shapes below it.
 ///
-/// Stage A extended its own axis DOWN to `{1, 2}` after the gate coordinate's
-/// winner landed at the bottom of the named set. That is not repeated here and
-/// the omission is a measurement, not an oversight: `K = 1` ran 4% behind the
+/// **Ordered by PROTOCOL ROLE, not by magnitude.** Index 0 is
+/// [`SEG_CORPUS_BASELINE_K`]: the corpus sweep measures it solo and pairs every
+/// other `K` of a cell against it, and [`seg_policy_k_with`]'s snap-down falls
+/// back to it. So `4` stays first and `{2, 1}` are appended — a reorder would
+/// silently move both the pairing anchor and the policy's fallback.
+///
+/// `{2, 1}` are BACK, and the reason the earlier axis stopped at 4 is worth
+/// keeping: Stage A measured them and they lost — `K = 1` ran 4% behind the
 /// incumbent on the gate coordinate (50% occupancy, no cross-warp amortization)
-/// and `K = 2` lost to `K = 4` on every Stage-A cell it was launchable in.
+/// and `K = 2` lost to `K = 4` on every Stage-A cell it was launchable in. That
+/// was a measurement, not an oversight. It is also NARROWER than the question the
+/// corpus now asks: it covered the gate coordinate and the Stage-A cells, while
+/// the corpus is 285 coordinates over 646 depth points, and the kernel has since
+/// changed shape (combined address table, warp-partial output, VM-owned folding
+/// buffers). With 106 of 275 corpus cells picking the axis FLOOR — the signature
+/// of a truncated axis — re-measuring costs one sweep and settles whether the
+/// Stage-A conclusion still holds.
 ///
 /// `K = 24` is PRUNED (perf review P2): at the shipped 64-register band,
 /// 768 threads × 64 regs = 49,152 keeps a second block (98,304) out of the 64K
@@ -155,32 +167,62 @@ use crate::upstream::{
 /// confirmed the 50% limit. The hole is geometric, not workload-dependent; the
 /// entry returns only if the continuation band drops to ≤42 registers, where
 /// two 768-thread blocks fit.
-pub(crate) const SEG_CORPUS_K: [usize; 4] = [4, 8, 16, 32];
+pub(crate) const SEG_CORPUS_K: [usize; 6] = [4, 8, 16, 32, 2, 1];
 
-/// Below this per-row source footprint a coordinate takes the NARROW block.
+/// The `K` rule's step thresholds, PER REGIME.
 ///
-/// 1,280 B/row is exactly 40 KiB per 32-row tile. **This is the scan optimum
-/// ROUNDED, not the scan optimum.** `fit_policy_thresholds` (bench-gated, in
-/// `seg_report`) over the corpus returns 1,248 B/row, which scores 78 points
-/// over threshold at mean +0.6478% against this constant's 83 at +0.6784%. The
-/// rounding is deliberate — a whole tile size is a number a reader can hold and
-/// a launcher can justify, and the difference is five points out of 782, inside
-/// the leave-one-circuit-out spread (`loco_validation`) — but it IS a
-/// difference and the audit states it.
+/// R0 and the continuation are different shapes and want different rules — the
+/// split is not a refinement of one rule, it is the finding. Fitted over the
+/// 2026-08-04 corpus (285 coordinates, 646 depth points, axis `{1,2,4,8,16,32}`),
+/// leave-one-circuit-out validated:
 ///
-/// The neighbourhood is broad but not flat: 1,216–1,472 B/row all score 81–84.
-pub(crate) const SEG_POLICY_NARROW_BYTES_PER_ROW: usize = 1_280;
+/// | regime | arms | thresholds | LOO regret | shipped-before |
+/// |---|---|---|---|---|
+/// | `R0`  | `{4, 2, 16}` | 2,056 / 4,240 | 0.83% | 4.80% |
+/// | `Ext` | `{4, 8, 16}` | 1,008 / 6,976 | 0.52% | 1.06% |
+///
+/// Regret is measured against a PER-CELL oracle and is the metric that matters:
+/// winner-hit-rate is misleading because most cells are nearly flat in `K`, so
+/// missing the winner usually costs nothing. 10 of 12 LOO folds pick R0's exact
+/// pair and 11 of 12 pick Ext's, so neither is balanced on one circuit.
+pub(crate) struct SegPolicyThresholds {
+    /// `(mid, wide)` for [`SEG_POLICY_R0_ARMS`].
+    pub(crate) r0: (usize, usize),
+    /// `(narrow, wide)` for [`SEG_POLICY_EXT_ARMS`].
+    pub(crate) ext: (usize, usize),
+}
 
-/// Above this per-row source footprint a coordinate takes the WIDEST block its
-/// family can host. 18,432 B/row is exactly 576 KiB per tile.
-///
-/// Same story: the scan optimum is 19,200 B/row, and it is a THREE-POINT SPIKE
-/// rather than a plateau — the neighbouring candidates score worse. Rounding down
-/// to a whole tile size trades those three points for a constant that is not
-/// balanced on a spike in one dataset.
-pub(crate) const SEG_POLICY_WIDE_BYTES_PER_ROW: usize = 18_432;
+pub(crate) const SEG_POLICY_THRESHOLDS: SegPolicyThresholds = SegPolicyThresholds {
+    r0: (2_056, 4_240),
+    ext: (1_008, 6_976),
+};
 
-const _: () = assert!(SEG_POLICY_NARROW_BYTES_PER_ROW < SEG_POLICY_WIDE_BYTES_PER_ROW);
+/// R0's arm sequence, and it is NOT MONOTONE in the footprint: `K = 4` narrow,
+/// `K = 2` in a middle band, `K = 16` wide.
+///
+/// Stated as the measurement it is, because the mechanism is unexplained. Every
+/// monotone form was fitted and every one is far worse out-of-sample — the best
+/// (`{2, 16}` at 4,240) scores 2.23% against this 0.83% — and 10 of 12
+/// leave-one-circuit-out folds pick this exact threshold pair, so it is not one
+/// circuit's artifact. A reader looking for "why would two warps win a middle
+/// band" will not find an answer here; what is here is that it does, repeatedly,
+/// on data that has never seen the held-out circuit.
+///
+/// `K = 2` is only reachable at all because the measurement axis was extended
+/// down to `{2, 1}` — see [`SEG_CORPUS_K`]. With the old axis floor of 4 this arm
+/// was unrepresentable, which is why R0 carried 4.80% regret.
+pub(crate) const SEG_POLICY_R0_ARMS: [usize; 3] = [4, 2, 16];
+
+/// The continuation's arm sequence: monotone, and the same SHAPE the single
+/// pre-split rule had. Its defect was the wide threshold — 18,432 B/row, against
+/// the 6,976 the corpus fits — which put `K = 16` effectively out of reach even
+/// though `K = 16` wins 99 of 275 cells.
+pub(crate) const SEG_POLICY_EXT_ARMS: [usize; 3] = [4, 8, 16];
+
+const _: () = {
+    assert!(SEG_POLICY_THRESHOLDS.r0.0 < SEG_POLICY_THRESHOLDS.r0.1);
+    assert!(SEG_POLICY_THRESHOLDS.ext.0 < SEG_POLICY_THRESHOLDS.ext.1);
+};
 
 /// The closed form (spec §12), and what the corpus says its arguments are.
 ///
@@ -221,19 +263,26 @@ const _: () = assert!(SEG_POLICY_NARROW_BYTES_PER_ROW < SEG_POLICY_WIDE_BYTES_PE
 /// outright — see [`SEG_CORPUS_K`]. `K` is deliberately not interpolated either:
 /// it is a block geometry, and a launcher choosing `K = 11` would be choosing a
 /// shape nothing was measured at.
-pub(crate) fn seg_policy_k(bytes_per_row: usize, ceiling: usize) -> usize {
+pub(crate) fn seg_policy_k(regime: BwdRegime, bytes_per_row: usize, ceiling: usize) -> usize {
     if let Some(forced) = seg_forced_k() {
         // Still filtered through the ceiling: a `K` the compiled family cannot
         // host is not launchable, so honouring the override literally would turn
         // a diagnostic into a launch failure.
         return forced.min(ceiling);
     }
-    seg_policy_k_with(
-        bytes_per_row,
-        ceiling,
-        SEG_POLICY_NARROW_BYTES_PER_ROW,
-        SEG_POLICY_WIDE_BYTES_PER_ROW,
-    )
+    let (lo, hi) = match regime {
+        BwdRegime::R0 => SEG_POLICY_THRESHOLDS.r0,
+        BwdRegime::Ext => SEG_POLICY_THRESHOLDS.ext,
+    };
+    seg_policy_k_with(regime, bytes_per_row, ceiling, lo, hi)
+}
+
+/// The arm sequence `regime` steps through, ascending in the footprint.
+pub(crate) fn seg_policy_arms(regime: BwdRegime) -> [usize; 3] {
+    match regime {
+        BwdRegime::R0 => SEG_POLICY_R0_ARMS,
+        BwdRegime::Ext => SEG_POLICY_EXT_ARMS,
+    }
 }
 
 /// `AB_BWD_VM_SEG_K`: force every VM-owned round to one `K`, bypassing
@@ -248,24 +297,28 @@ pub(crate) fn seg_policy_k(bytes_per_row: usize, ceiling: usize) -> usize {
 /// `K` is a pure performance axis (the partial pair is the bit-identical sum of
 /// the rows it replaces), so a forced `K` cannot change a proof — which is what
 /// makes a sweep safe to run against the parity gates.
+///
+/// Read FRESH on every call, NOT cached in a `OnceLock`: a K sweep alternates
+/// arms inside one process, and a cached read would freeze whichever arm ran
+/// first — silently comparing an arm against itself. Same reason
+/// `coords_from_env` and `forward::path::vm_layers_from_env` are uncached. (This
+/// function did cache, which is why the first per-layer K curve had to spend a
+/// process per K.)
 fn seg_forced_k() -> Option<usize> {
-    static FORCED: OnceLock<Option<usize>> = OnceLock::new();
-    *FORCED.get_or_init(|| {
-        let raw = std::env::var("AB_BWD_VM_SEG_K").ok()?;
-        let raw = raw.trim();
-        if raw.is_empty() {
-            return None;
-        }
-        let k: usize = raw
-            .parse()
-            .unwrap_or_else(|_| panic!("AB_BWD_VM_SEG_K={raw:?} is not a number"));
-        assert!(
-            SEG_CORPUS_K.contains(&k),
-            "AB_BWD_VM_SEG_K={k} is off the measured axis {SEG_CORPUS_K:?}; a block geometry \
-             nothing was measured at is not a data point",
-        );
-        Some(k)
-    })
+    let raw = std::env::var("AB_BWD_VM_SEG_K").ok()?;
+    let raw = raw.trim();
+    if raw.is_empty() {
+        return None;
+    }
+    let k: usize = raw
+        .parse()
+        .unwrap_or_else(|_| panic!("AB_BWD_VM_SEG_K={raw:?} is not a number"));
+    assert!(
+        SEG_CORPUS_K.contains(&k),
+        "AB_BWD_VM_SEG_K={k} is off the measured axis {SEG_CORPUS_K:?}; a block geometry \
+         nothing was measured at is not a data point",
+    );
+    Some(k)
 }
 
 /// [`seg_policy_k`] with the two thresholds supplied rather than committed.
@@ -274,26 +327,29 @@ fn seg_forced_k() -> Option<usize> {
 /// policy at thresholds that are NOT the committed ones; sharing this function is
 /// what stops the validation from silently scoring a differently-shaped rule.
 pub(crate) fn seg_policy_k_with(
+    regime: BwdRegime,
     bytes_per_row: usize,
     ceiling: usize,
-    narrow: usize,
-    wide: usize,
+    lo: usize,
+    hi: usize,
 ) -> usize {
-    let want = if bytes_per_row < narrow {
-        4
-    } else if bytes_per_row < wide {
-        8
+    let arms = seg_policy_arms(regime);
+    let want = if bytes_per_row < lo {
+        arms[0]
+    } else if bytes_per_row < hi {
+        arms[1]
     } else {
-        16
+        arms[2]
     };
-    // `want` is at least the axis minimum and so is `ceiling`, so the filter is
-    // never empty; the `unwrap_or` is a total function, not a guess.
+    // Snap DOWN to an axis member the family can host. `want` is itself an axis
+    // member, so this only ever moves when `ceiling` bites — and the axis floor is
+    // 1, below every ceiling the probe can report, so the filter is never empty.
     let cap = want.min(ceiling);
     SEG_CORPUS_K
         .into_iter()
         .filter(|k| *k <= cap)
         .max()
-        .unwrap_or(SEG_CORPUS_K[0])
+        .expect("the axis floor is below every ceiling, so some K always fits")
 }
 
 /// The largest launchable `K` of one regime's PRODUCTION family (`Inline`
@@ -1278,7 +1334,7 @@ pub(crate) fn build_bwd_vm_round0<E: Copy>(
         plan: bound.publish_plan.clone(),
     };
     let bytes_per_row = seg_r0_bytes_per_row(&bound.slots, &bound.sources);
-    let k = seg_policy_k(bytes_per_row, seg_k_ceiling(BwdRegime::R0)?);
+    let k = seg_policy_k(BwdRegime::R0, bytes_per_row, seg_k_ceiling(BwdRegime::R0)?);
     let binding = BwdSegRoundBinding {
         round: 0,
         rows,
@@ -1613,7 +1669,7 @@ pub(crate) fn build_bwd_vm_ext_rounds<E: Copy>(
             slots: round.folding_buffer_slots.clone(),
         });
         let bytes_per_row = seg_ext_bytes_per_row(&round.slots, &round.sources, round.round);
-        let k = seg_policy_k(bytes_per_row, ceiling);
+        let k = seg_policy_k(BwdRegime::Ext, bytes_per_row, ceiling);
         let binding = BwdSegRoundBinding {
             round: u32::from(round.round),
             rows: round.rows,
