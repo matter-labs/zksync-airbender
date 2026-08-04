@@ -657,7 +657,7 @@ pub unsafe fn verify_full_statement_for_unrolled_circuits<
                 )
             };
 
-            // check that addresses are sorted at juctions
+            // check that addresses are sorted at junctions
             for i in 0..NUM_INIT_AND_TEARDOWN_SETS {
                 cells_initialized += INITS_AND_TEARDOWNS_CAPACITY_PER_SET;
                 let first_current_address = parse_field_els_as_u32_from_u16_limbs_checked(

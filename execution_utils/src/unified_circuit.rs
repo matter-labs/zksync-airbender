@@ -148,6 +148,110 @@ pub fn verify_proof_in_unified_layer(
     }
 }
 
+/// A single input into the combined verification: a proof together with the
+/// setup and compiled layouts of the program it proves, plus whether it is an
+/// unrolled recursion layer proof (`true`) or a unified layer proof (`false`).
+pub struct CombinedRecursionInput<'a> {
+    pub proof: &'a UnrolledProgramProof,
+    pub setup: &'a UnrolledProgramSetup,
+    pub compiled_layouts: &'a CompiledCircuitsSet,
+    pub input_is_unrolled: bool,
+}
+
+/// Create oracle data for combining multiple recursion layer proofs into one
+/// statement (see `verify_combined_recursion_layers`). All proofs must belong
+/// to the same recursion chain.
+pub fn flatten_proofs_into_responses_for_combined_unified_recursion(
+    inputs: &[CombinedRecursionInput],
+) -> Vec<u32> {
+    assert!(
+        inputs.len() >= 2,
+        "combining requires at least two proofs, got {}",
+        inputs.len()
+    );
+
+    let mut responses = vec![
+        full_statement_verifier::definitions::OP_VERIFY_COMBINED_RECURSION_LAYERS_IN_UNIFIED_CIRCUIT,
+        inputs.len() as u32,
+    ];
+    for input in inputs {
+        responses.extend(flatten_proof_into_responses_for_unified_recursion(
+            input.proof,
+            input.setup,
+            input.compiled_layouts,
+            input.input_is_unrolled,
+        ));
+    }
+
+    responses
+}
+
+/// Host-side mirror of the guest's combined output computation: the keccak
+/// rolling hash of the proofs' outputs in words 0..8, with the shared recursion
+/// chain carried through in words 8..16.
+pub fn compute_combined_recursion_layers_output(outputs: &[[u32; 16]]) -> [u32; 16] {
+    assert!(outputs.len() >= 2);
+    let chain = &outputs[0][8..16];
+    for output in outputs.iter() {
+        assert_eq!(&output[8..16], chain, "Proving chains must be equal");
+    }
+
+    let mut hasher = reduced_keccak::Keccak32::new();
+    for output in outputs.iter() {
+        hasher.update(&output[0..8]);
+    }
+
+    let mut result = [0u32; 16];
+    result[0..8].copy_from_slice(&hasher.finalize());
+    result[8..16].copy_from_slice(chain);
+    result
+}
+
+/// Verify multiple recursion layer proofs from the same recursion chain as one
+/// combined statement, natively on the host. Returns the combined output
+/// (keccak rolling hash of the outputs || shared recursion chain).
+pub fn verify_combined_proofs_in_unified_layer(
+    inputs: &[CombinedRecursionInput],
+    security: verifier_common::SecurityModel,
+) -> Result<[u32; 16], ()> {
+    let responses = flatten_proofs_into_responses_for_combined_unified_recursion(inputs);
+
+    println!("Running the verifier for {} combined proofs", inputs.len());
+
+    #[cfg(target_arch = "wasm32")]
+    {
+        let result = std::panic::catch_unwind(move || {
+            let it = responses.into_iter();
+            prover::nd_source_std::set_iterator(it);
+
+            let regs = full_statement_verifier::unified_circuit_statement::verify_unrolled_or_unified_circuit_recursion_layer(security);
+
+            regs
+        }).map_err(|_| ());
+
+        result
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let result = std::thread::Builder::new()
+            .name("verifier thread".to_string())
+            .stack_size(1 << 27)
+            .spawn(move || {
+                let it = responses.into_iter();
+                prover::nd_source_std::set_iterator(it);
+
+                let regs = full_statement_verifier::unified_circuit_statement::verify_unrolled_or_unified_circuit_recursion_layer(security);
+
+                regs
+            })
+            .expect("must spawn verifier thread")
+            .join();
+
+        result.map_err(|_| ())
+    }
+}
+
 use common_constants::rom::ROM_SECOND_WORD_BITS;
 
 #[cfg(feature = "prover")]
@@ -279,6 +383,50 @@ pub fn prove_unified_with_replayer_for_machine_configuration<C: MachineConfig>(
 mod test {
     use crate::{recursion_artifact_path, RecursionArtifact, RecursionLayer};
     use test_utils::skip_if_ci;
+
+    #[test]
+    fn test_compute_combined_recursion_layers_output_matches_keccak256() {
+        use sha3::Digest;
+
+        // Two 16-word outputs from the same recursion chain (words 8..16 equal).
+        let chain: [u32; 8] = [11, 22, 33, 44, 55, 66, 77, 88];
+        let mut output_1 = [0u32; 16];
+        let mut output_2 = [0u32; 16];
+        output_1[..8].copy_from_slice(&[1, 2, 3, 4, 5, 6, 7, 0]);
+        output_2[..8].copy_from_slice(&[9, 10, 11, 12, 13, 14, 15, 0]);
+        output_1[8..].copy_from_slice(&chain);
+        output_2[8..].copy_from_slice(&chain);
+
+        let combined = super::compute_combined_recursion_layers_output(&[output_1, output_2]);
+
+        // Reference: keccak256 over the little-endian byte serialization of
+        // out[0..8] per proof (see `verify_combined_recursion_layers`).
+        let mut reference_input = Vec::new();
+        for output in [output_1, output_2] {
+            for val in &output[0..8] {
+                reference_input.extend_from_slice(&val.to_le_bytes());
+            }
+        }
+        let reference_hash = sha3::Keccak256::digest(&reference_input);
+        let reference_words: Vec<u32> = reference_hash
+            .chunks_exact(4)
+            .map(|chunk| u32::from_le_bytes(chunk.try_into().unwrap()))
+            .collect();
+
+        assert_eq!(&combined[0..8], reference_words.as_slice());
+        assert_eq!(&combined[8..16], &chain);
+    }
+
+    #[test]
+    #[should_panic(expected = "Proving chains must be equal")]
+    fn test_compute_combined_recursion_layers_output_rejects_chain_mismatch() {
+        let mut output_1 = [1u32; 16];
+        let mut output_2 = [1u32; 16];
+        output_1[8] = 42;
+        output_2[8] = 43;
+
+        super::compute_combined_recursion_layers_output(&[output_1, output_2]);
+    }
 
     fn read_recursion_binary_u32(security: verifier_common::SecurityModel) -> Vec<u32> {
         let (_, binary_u32) = crate::setups::read_and_pad_binary(std::path::Path::new(

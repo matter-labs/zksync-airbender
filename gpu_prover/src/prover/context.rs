@@ -171,6 +171,12 @@ impl ProverContext {
             let _ = era_cudart::error::get_last_error();
         }
         slack.free()?;
+        log::debug!(
+            "GPU device memory pool created: {} bytes ({} blocks of 2^{} bytes) on device {device_id}",
+            arena_bytes,
+            arena_bytes >> allocator_block_log_size,
+            allocator_block_log_size,
+        );
         let device_allocation_backend =
             StaticDeviceAllocationBackend::DeviceAllocation(device_allocation);
         let device_allocator = NonConcurrentStaticDeviceAllocator::new_with_small_allocator(
@@ -245,10 +251,13 @@ impl ProverContext {
         let result = self.device_allocator.alloc(size, placement);
         if result.is_err() {
             error!(
-                "failed to allocate {} bytes from GPU memory allocator of device ID {}, currently allocated {} bytes",
+                "failed to allocate {} bytes from GPU memory allocator of device ID {}, currently allocated {} bytes (pool capacity {} bytes, peak used {} bytes, largest free range {} bytes)",
                 size * size_of::<T>(),
                 self.device_id,
-                self.get_used_mem_current()
+                self.get_used_mem_current(),
+                self.device_allocator.get_capacity(),
+                self.get_used_mem_peak(),
+                self.device_allocator.get_largest_free_range(),
             );
         }
         result

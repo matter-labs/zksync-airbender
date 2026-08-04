@@ -462,6 +462,28 @@ pub fn verify_unrolled_or_unified_circuit_recursion_layer(
     let op_type = DefaultNonDeterminismSource::read_word();
     use crate::definitions::*;
     match op_type {
+        OP_VERIFY_COMBINED_RECURSION_LAYERS_IN_UNIFIED_CIRCUIT => {
+            verify_combined_recursion_layers(security)
+        }
+        OP_VERIFY_UNROLLED_RECURSION_LAYER_IN_UNIFIED_CIRCUIT
+        | OP_VERIFY_UNIFIED_RECURSION_LAYER_IN_UNIFIED_CIRCUIT => {
+            verify_single_recursion_layer_op(op_type, security)
+        }
+        _ => {
+            panic!("Unknown op");
+        }
+    }
+}
+
+/// Dispatch of a single recursion layer proof verification by op type.
+/// Combining ops are intentionally not allowed here, so proofs of combined
+/// statements cannot be nested inside another combined statement.
+fn verify_single_recursion_layer_op(
+    op_type: u32,
+    security: verifier_common::SecurityModel,
+) -> [u32; 16] {
+    use crate::definitions::*;
+    match op_type {
         OP_VERIFY_UNROLLED_RECURSION_LAYER_IN_UNIFIED_CIRCUIT => {
             #[cfg(feature = "verifiers")]
             {
@@ -479,4 +501,54 @@ pub fn verify_unrolled_or_unified_circuit_recursion_layer(
             panic!("Unknown op");
         }
     }
+}
+
+/// Verify multiple recursion layer proofs (each prefixed with its own op word)
+/// and combine them into a single statement. All proofs must belong to the same
+/// recursion chain (words 8..16 of their outputs must be equal). The result is
+/// the keccak rolling hash of the proofs' outputs in words 0..8, with the shared
+/// chain carried through unchanged in words 8..16.
+// This is the unrolled-design port of `CombinedMultipleRecursionLayers` from the
+// old universal verifier. It is used to combine multiple batch proofs into a
+// single proof before SNARKing.
+pub fn verify_combined_recursion_layers(security: verifier_common::SecurityModel) -> [u32; 16] {
+    let num_proofs = DefaultNonDeterminismSource::read_word();
+    assert!(num_proofs >= 2, "Requires at least two proofs to combine");
+
+    // The first 8 words of the result are the rolling hash of the proofs' outputs.
+    // This way, to verify the combined proof, one can check that it matches
+    // the rolling hash of the public inputs.
+    let mut hasher = reduced_keccak::Keccak32::new();
+
+    // verify first proof & keep its output to ensure all proofs come from the same chain
+    let op_type = DefaultNonDeterminismSource::read_word();
+    let first_output = verify_single_recursion_layer_op(op_type, security);
+    update_from_recursive_circuit_output(&mut hasher, &first_output);
+
+    for _ in 1..num_proofs {
+        let op_type = DefaultNonDeterminismSource::read_word();
+        let output = verify_single_recursion_layer_op(op_type, security);
+
+        // Proving chains must be equal.
+        for i in 8..16 {
+            assert_eq!(first_output[i], output[i], "Proving chains must be equal");
+        }
+
+        update_from_recursive_circuit_output(&mut hasher, &output);
+    }
+
+    let mut result = [0u32; 16];
+    result[0..8].copy_from_slice(&hasher.finalize());
+    // chain remains the same
+    result[8..16].copy_from_slice(&first_output[8..16]);
+
+    result
+}
+
+/// Used in hashing proofs for combining.
+/// First 8 [0 -> 8) words of `output` are the actual output of the circuit, which is what we hash.
+/// Last 8 [8 -> 16) words are the recursion chain, the same across all combined proofs
+/// (checked by the caller) and carried through unchanged.
+fn update_from_recursive_circuit_output(hasher: &mut reduced_keccak::Keccak32, output: &[u32; 16]) {
+    hasher.update(&output[0..8]);
 }

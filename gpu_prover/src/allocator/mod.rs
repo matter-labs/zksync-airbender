@@ -303,6 +303,15 @@ impl<B: StaticAllocationBackend, W: InnerStaticAllocatorWrapper<B>> StaticAlloca
             .execute(|inner| inner.tracker.get_used_mem_current())
     }
 
+    pub fn get_capacity(&self) -> usize {
+        self.inner.execute(|inner| inner.tracker.capacity())
+    }
+
+    pub fn get_largest_free_range(&self) -> usize {
+        self.inner
+            .execute(|inner| inner.tracker.get_largest_free_range())
+    }
+
     pub(crate) fn get_used_mem_peak(&self) -> usize {
         self.inner
             .execute(|inner| inner.tracker.get_used_mem_peak())

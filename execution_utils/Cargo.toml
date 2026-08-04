@@ -21,6 +21,7 @@ serde = { workspace = true }
 sha3 = { workspace = true }
 serde_json = "*"
 full_statement_verifier = { path = "../full_statement_verifier", default-features = false, features = ["verifiers", "replace_csr", "security_80", "security_100"] }
+reduced_keccak = { path = "../reduced_keccak" }
 prover_examples = { path = "../circuit_defs/prover_examples", default-features = false, optional = true }
 
 prover = { workspace = true, optional = true, features = ["prover"] }

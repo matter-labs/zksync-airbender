@@ -89,6 +89,9 @@ checksum = "9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801"
 [[package]]
 name = "common_constants"
 version = "0.1.0"
+dependencies = [
+ "seq-macro",
+]
 
 [[package]]
 name = "cs"
@@ -129,6 +132,7 @@ dependencies = [
  "load_store_word_only_verifier",
  "mul_div_unsigned_verifier",
  "mul_div_verifier",
+ "reduced_keccak",
  "shift_binary_csr_verifier",
  "unified_reduced_machine_verifier",
  "verifier_common",

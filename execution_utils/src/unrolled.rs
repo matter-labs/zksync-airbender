@@ -101,7 +101,9 @@ impl UnrolledProgramSetup {
             let t = result_hasher.finalize().0;
             assert_eq!(&t, previous_step_hash_chain);
         }
-        if &previous_step_hash_chain[8..] == &end_params[..] {
+        // Mirror the in-circuit rule: if the chain already ends with these end params
+        // (the preimage's second half), carry it through instead of extending it.
+        if &previous_step_chain_preimage[8..] == &end_params[..] {
             // do not repeat
             assert!(&previous_step_hash_chain[..8] != &[0u32; 8]);
             (*previous_step_hash_chain, *previous_step_chain_preimage)
