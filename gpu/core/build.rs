@@ -1,8 +1,9 @@
 /// Build script for gpu_core.
 ///
-/// Always compiles the NVTX C wrapper (`native/nvtx.c`) so that the
+/// Compiles the NVTX C wrapper (`native/nvtx.c`) so that the
 /// `#[link(name = "gpu_core_nvtx")]` directive in `primitives/nvtx.rs` resolves
-/// when gpu_core is tested or used standalone — plain C, no CUDA.
+/// when gpu_core is tested or used standalone. Plain C, but not CUDA-free: it
+/// includes `nvtx3/nvToolsExt.h` from the Toolkit, hence the `no_cuda` skip.
 ///
 /// Under the `bench` feature it additionally builds the field micro-benchmark
 /// CUDA archive (`native/bench/field.cu` → `gpu_core_bench_native`). gpu_core
@@ -11,15 +12,23 @@
 fn main() {
     use std::env;
 
-    // NVTX headers live in the CUDA include tree.
-    let cuda_include = env::var("CUDA_PATH")
-        .map(|p| format!("{p}/include"))
-        .unwrap_or_else(|_| "/usr/local/cuda/include".to_owned());
+    // Build-script cfgs do not propagate from dependencies, so `primitives/nvtx.rs`
+    // needs this crate to declare/set `no_cuda` itself.
+    gpu_native_build::emit_no_cuda_cfg();
 
-    cc::Build::new()
-        .file("native/nvtx.c")
-        .include(&cuda_include)
-        .compile("gpu_core_nvtx");
+    // Toolkit absent → the wrapper cannot compile; `primitives/nvtx.rs` swaps the
+    // `#[link]`ed externs for stubs, so nothing references the archive.
+    if !gpu_native_build::is_no_cuda() {
+        // NVTX headers live in the CUDA include tree.
+        let cuda_include = env::var("CUDA_PATH")
+            .map(|p| format!("{p}/include"))
+            .unwrap_or_else(|_| "/usr/local/cuda/include".to_owned());
+
+        cc::Build::new()
+            .file("native/nvtx.c")
+            .include(&cuda_include)
+            .compile("gpu_core_nvtx");
+    }
 
     println!("cargo:rerun-if-changed=native/nvtx.c");
 

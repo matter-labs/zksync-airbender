@@ -15,6 +15,7 @@ struct NvtxStringRegistration {
 type NvtxDomainHandle = *mut NvtxDomainRegistration;
 type NvtxStringHandle = *mut NvtxStringRegistration;
 
+#[cfg(not(no_cuda))]
 #[link(name = "gpu_core_nvtx")]
 unsafe extern "C" {
     fn gpu_core_nvtx_domain_create(name: *const c_char) -> NvtxDomainHandle;
@@ -33,6 +34,62 @@ unsafe extern "C" {
     fn gpu_core_nvtx_ascii_range_start(message: *const c_char) -> u64;
     fn gpu_core_nvtx_range_end(id: u64);
 }
+
+// Without the CUDA Toolkit there is no `nvtx3/nvToolsExt.h`, so `build.rs` skips
+// `native/nvtx.c` and there is no `gpu_core_nvtx` to link. No-ops rather than
+// era_cudart_sys's `unimplemented!()`: NVTX only annotates, and real NVTX is
+// inert with no profiler attached. Null handles and a zero id flow correctly
+// through the callers below.
+#[cfg(no_cuda)]
+mod stubs {
+    use super::{c_char, NvtxDomainHandle, NvtxStringHandle};
+    use std::ptr;
+
+    pub(super) unsafe extern "C" fn gpu_core_nvtx_domain_create(
+        _name: *const c_char,
+    ) -> NvtxDomainHandle {
+        ptr::null_mut()
+    }
+
+    #[allow(unused)]
+    pub(super) unsafe extern "C" fn gpu_core_nvtx_register_string(
+        _domain: NvtxDomainHandle,
+        _string: *const c_char,
+    ) -> NvtxStringHandle {
+        ptr::null_mut()
+    }
+
+    #[allow(unused)]
+    pub(super) unsafe extern "C" fn gpu_core_nvtx_domain_ascii_range_start(
+        _domain: NvtxDomainHandle,
+        _message: *const c_char,
+    ) -> u64 {
+        0
+    }
+
+    #[allow(unused)]
+    pub(super) unsafe extern "C" fn gpu_core_nvtx_registered_range_start(
+        _domain: NvtxDomainHandle,
+        _string: NvtxStringHandle,
+    ) -> u64 {
+        0
+    }
+
+    pub(super) unsafe extern "C" fn gpu_core_nvtx_ascii_range_start(
+        _message: *const c_char,
+    ) -> u64 {
+        0
+    }
+
+    pub(super) unsafe extern "C" fn gpu_core_nvtx_range_end(_id: u64) {}
+}
+
+#[cfg(no_cuda)]
+use stubs::{
+    gpu_core_nvtx_ascii_range_start, gpu_core_nvtx_domain_ascii_range_start,
+    gpu_core_nvtx_domain_create, gpu_core_nvtx_range_end, gpu_core_nvtx_register_string,
+    gpu_core_nvtx_registered_range_start,
+};
 
 #[derive(Clone, Copy)]
 pub struct RangeId(u64);

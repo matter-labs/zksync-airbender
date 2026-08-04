@@ -5,7 +5,7 @@ use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
 use era_cudart::result::{CudaResult, CudaResultWrap};
 use era_cudart::slice::{CudaSlice, DeviceSlice, DeviceVariable};
 use era_cudart::{cuda_kernel_declaration, cuda_kernel_signature_arguments_and_function};
-use era_cudart_sys::cudaGetSymbolAddress;
+use era_cudart_sys::{cudaGetSymbolAddress, cuda_struct_and_stub};
 
 use super::super::{GpuBaseFieldPoly, GpuGKRStorage};
 use super::{flatten_setup_columns_into_pinned_buffer, precompute_partial_tree_cache};
@@ -22,7 +22,7 @@ use gpu_trace::trace::holder::TraceHolder;
 pub(super) const GKR_FORWARD_SETUP_GENERIC_LOOKUP_MAX_COLUMNS: usize = 10;
 pub(super) const GKR_FORWARD_SETUP_THREADS_PER_BLOCK: u32 = WARP_SIZE * 4;
 
-extern "C" {
+cuda_struct_and_stub! {
     static ab_gkr_lookup_alpha_powers: [E4; GKR_FORWARD_SETUP_GENERIC_LOOKUP_MAX_COLUMNS];
 }
 
