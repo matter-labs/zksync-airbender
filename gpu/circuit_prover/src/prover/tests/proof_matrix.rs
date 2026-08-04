@@ -2457,3 +2457,154 @@ fn run_corpus_forced_k_sweep_test() {
         );
     }
 }
+
+/// Per-LAYER `K` curves at WHOLE-PROOF scale.
+///
+/// The per-circuit sweep asks "what does this circuit want overall" and the corpus
+/// sweep asks "what does this cell want in isolation". Neither can answer "what
+/// does layer 2 want inside a real proof", and that is the question a fine-grained
+/// table needs answered — the corpus sweep cannot stand in for it, because two
+/// thirds of its cells do not even hold their winning `K` across depth, and
+/// because it disagrees with the proof on blake2 (cells say K16, the proof says
+/// K32).
+///
+/// One layer is forced at a time and its neighbours stay on the policy, so each
+/// delta is that layer's own contribution rather than a whole-proof shape change.
+/// Both regimes of the layer are forced together: `check_selection` requires a
+/// VM-owned layer to be owned whole, and the R0/Ext split is already measured.
+///
+/// `GKR_K_REPEATS` sets the repeat count (default 3 — this sweep is
+/// circuits x layers x axis, so it is the one that pays for depth).
+#[test]
+#[serial]
+#[ignore]
+fn run_per_layer_k_sweep_test() {
+    const FORCED_K_ENV: &str = "AB_BWD_VM_SEG_K";
+    const AXIS: [usize; 6] = [1, 2, 4, 8, 16, 32];
+
+    let repeats: usize = std::env::var("GKR_K_REPEATS")
+        .ok()
+        .and_then(|v| v.trim().parse().ok())
+        .unwrap_or(3);
+    assert!(repeats >= 1, "GKR_K_REPEATS must be positive");
+    assert!(
+        !crate::prover::gkr::forward::vm::production_bind::poison_destinations_enabled()
+            && !crate::prover::gkr::backward::vm::production_bind::poison_accumulator_enabled()
+            && !crate::prover::gkr::backward::vm::production_bind::fold_storage_poison_enabled(),
+        "a poison left on is noise this measurement cannot absorb"
+    );
+
+    type Build = fn() -> BasicUnrolledFixture;
+    // (label, fixture, main layers)
+    let corpus: &[(&str, Build, usize)] = &[
+        ("add_sub_lui_auipc_mop", prepare_basic_unrolled_profiling_fixture, 4),
+        ("jump_branch_slt", prepare_jump_branch_slt_profiling_fixture, 4),
+        ("shift_binop", prepare_shift_binop_profiling_fixture, 4),
+        ("unsigned_mul_div", prepare_mul_div_profiling_fixture, 4),
+        ("mem_word_only", prepare_load_store_word_only_profiling_fixture, 4),
+        ("mem_subword_only", prepare_load_store_subword_only_profiling_fixture, 4),
+        ("inits_and_teardowns", prepare_inits_and_teardowns_matrix_profiling_fixture, 4),
+        ("unified_reduced_machine", prepare_unified_profiling_fixture, 4),
+        ("bigint_with_extended_control", prepare_bigint_profiling_fixture, 6),
+        ("blake2_with_extended_control", prepare_blake2_with_compression_profiling_fixture, 8),
+        ("blake2_g_function", prepare_blake2_g_function_profiling_fixture, 5),
+        ("keccak_special5", prepare_keccak_special5_profiling_fixture, 6),
+    ];
+
+    eprintln!(
+        "[layer-k] whole-proof ms, ONE LAYER forced at a time (others on policy), \
+         {repeats} repeats; `policy` is every layer on the policy"
+    );
+    for (label, build, main_layers) in corpus {
+        let fixture = build();
+
+        // Warm the policy arm and one forced arm outside the measurement.
+        for warm in [None, Some("0:R0=4,0:Ext=4")] {
+            let _k = match warm {
+                Some(spec) => EnvGuard::set(FORCED_K_ENV, spec),
+                None => EnvGuard::unset(FORCED_K_ENV),
+            };
+            let t = fixture.schedule_transfers().unwrap();
+            fixture.context.get_h2d_stream().synchronize().unwrap();
+            drop(fixture.prove(t).unwrap().finish().unwrap().0);
+        }
+
+        let mut run = |spec: Option<&str>| {
+            let _k = match spec {
+                Some(spec) => EnvGuard::set(FORCED_K_ENV, spec),
+                None => EnvGuard::unset(FORCED_K_ENV),
+            };
+            let t = fixture.schedule_transfers().unwrap();
+            fixture.context.get_h2d_stream().synchronize().unwrap();
+            let (proof, ms) = fixture.prove(t).unwrap().finish().unwrap();
+            (proof, ms)
+        };
+        let median = |mut v: Vec<f32>| {
+            v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            v[v.len() / 2]
+        };
+
+        // EVERY arm, including the policy, in ONE round-robin. The first draft of
+        // this test measured the policy baseline up front and each forced arm in a
+        // block after it, and that alone produced a spurious ~3.5 ms "layer effect"
+        // on add_sub: the baseline absorbed the early-run drift, so every arm
+        // measured later looked faster — including the K the policy already picks,
+        // which is what gave it away. The other sweeps here interleave for this
+        // reason and so does this one now.
+        let mut arms: Vec<Option<String>> = vec![None];
+        for layer in 0..*main_layers {
+            for k in AXIS {
+                arms.push(Some(format!("{layer}:R0={k},{layer}:Ext={k}")));
+            }
+        }
+        let mut samples: Vec<Vec<f32>> = vec![Vec::with_capacity(repeats); arms.len()];
+        let mut reference = None;
+        for repeat in 0..repeats {
+            for offset in 0..arms.len() {
+                let index = (repeat + offset) % arms.len();
+                let (proof, ms) = run(arms[index].as_deref());
+                match &reference {
+                    None => reference = Some(proof),
+                    // K cannot change a proof: the partial pair is the
+                    // bit-identical sum of the rows it replaces.
+                    Some(expected) => assert_gkr_proof_eq_for_test(&proof, expected),
+                }
+                samples[index].push(ms);
+            }
+        }
+        let medians: Vec<f32> = samples.iter().map(|v| median(v.clone())).collect();
+        let policy_ms = medians[0];
+
+        let header: String = AXIS
+            .iter()
+            .map(|k| format!("{:>9}", format!("K{k}")))
+            .collect();
+        eprintln!("[layer-k] {label:<30} policy {policy_ms:>8.3} ms");
+        eprintln!("[layer-k] {:<30} {:>5}  {header}", "", "layer");
+        for layer in 0..*main_layers {
+            let cells: Vec<f32> = (0..AXIS.len())
+                .map(|i| medians[1 + layer * AXIS.len() + i] - policy_ms)
+                .collect();
+            let best = cells
+                .iter()
+                .copied()
+                .enumerate()
+                .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
+                .expect("the axis is not empty");
+            eprintln!(
+                "[layer-k] {:<30} {:>5}  {}  best K{} ({:+.3})",
+                "",
+                layer,
+                cells
+                    .iter()
+                    .map(|d| format!("{:>+9.3}", d))
+                    .collect::<Vec<_>>()
+                    .join(""),
+                AXIS[best.0],
+                best.1,
+            );
+        }
+        drop(fixture);
+    }
+    eprintln!("[layer-k] deltas are against the policy baseline; negative = that layer wants that K");
+}

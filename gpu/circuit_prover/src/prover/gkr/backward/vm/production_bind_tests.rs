@@ -32,39 +32,69 @@ fn the_policy_k_is_a_member_of_the_measured_axis_and_within_the_ceiling() {
     }
 }
 
-/// Each regime's arms and the snap-down, at the committed thresholds. The VALUES
-/// are the corpus fit's; this pins the shipped rule to them so a threshold edit
-/// cannot pass silently.
+/// Each regime's committed rule, evaluated at the footprints its documentation
+/// names. The VALUES are the corpus fit's; this pins the shipped rules to them so
+/// a coefficient or threshold edit cannot pass silently.
 #[test]
-fn each_regimes_policy_arms_are_the_fitted_ones() {
+fn each_regimes_committed_rule_is_the_fitted_one() {
     use crate::upstream::BwdRegime;
 
-    let (r0_mid, r0_wide) = SEG_POLICY_THRESHOLDS.r0;
-    let (ext_narrow, ext_wide) = SEG_POLICY_THRESHOLDS.ext;
+    // The continuation: logarithmic, spanning K2..K16 over the corpus's range.
+    for (bytes, want) in [
+        (160usize, 2usize),
+        (352, 4),
+        (1_008, 4),
+        (2_056, 8),
+        (4_240, 8),
+        (6_976, 16),
+        (30_656, 16),
+    ] {
+        assert_eq!(
+            seg_policy_k(BwdRegime::Ext, bytes, 32),
+            want,
+            "the continuation rule moved at {bytes} B/row"
+        );
+    }
 
-    // The continuation: monotone {4, 8, 16}.
-    assert_eq!(seg_policy_k(BwdRegime::Ext, 0, 32), 4);
-    assert_eq!(seg_policy_k(BwdRegime::Ext, ext_narrow - 1, 32), 4);
-    assert_eq!(seg_policy_k(BwdRegime::Ext, ext_narrow, 32), 8);
-    assert_eq!(seg_policy_k(BwdRegime::Ext, ext_wide - 1, 32), 8);
-    assert_eq!(seg_policy_k(BwdRegime::Ext, ext_wide, 32), 16);
-
-    // R0: NON-MONOTONE {4, 2, 16}. The middle arm is smaller than the first, and
-    // that is the fit, not a typo — see `SEG_POLICY_R0_ARMS`.
+    // R0: NON-MONOTONE steps. The middle arm is smaller than the first, and that
+    // is the fit, not a typo — see `SEG_POLICY_R0_RULE`.
     assert_eq!(seg_policy_k(BwdRegime::R0, 0, 32), 4);
-    assert_eq!(seg_policy_k(BwdRegime::R0, r0_mid - 1, 32), 4);
-    assert_eq!(seg_policy_k(BwdRegime::R0, r0_mid, 32), 2);
-    assert_eq!(seg_policy_k(BwdRegime::R0, r0_wide - 1, 32), 2);
-    assert_eq!(seg_policy_k(BwdRegime::R0, r0_wide, 32), 16);
+    assert_eq!(seg_policy_k(BwdRegime::R0, 2_055, 32), 4);
+    assert_eq!(seg_policy_k(BwdRegime::R0, 2_056, 32), 2);
+    assert_eq!(seg_policy_k(BwdRegime::R0, 4_239, 32), 2);
+    assert_eq!(seg_policy_k(BwdRegime::R0, 4_240, 32), 16);
 
     // The ceiling caps by snapping DOWN to an axis member, never interpolating —
     // and the axis floor is 1 now, so even a ceiling of 1 is servable.
-    assert_eq!(seg_policy_k(BwdRegime::Ext, ext_wide, 8), 8);
-    assert_eq!(seg_policy_k(BwdRegime::Ext, ext_wide, 4), 4);
-    assert_eq!(seg_policy_k(BwdRegime::Ext, ext_wide, 2), 2);
-    assert_eq!(seg_policy_k(BwdRegime::Ext, ext_wide, 1), 1);
-    // A ceiling above R0's middle arm cannot RAISE it: the arm is the fit.
-    assert_eq!(seg_policy_k(BwdRegime::R0, r0_mid, 32), 2);
+    for ceiling in [1usize, 2, 4, 8, 16] {
+        for regime in [BwdRegime::R0, BwdRegime::Ext] {
+            assert!(seg_policy_k(regime, 30_656, ceiling) <= ceiling);
+        }
+    }
+}
+
+/// **The continuation rule must not turn back down inside a reachable footprint.**
+///
+/// Its quadratic term is negative, so the curve has a maximum; the fit puts the
+/// vertex at 1 GiB per row, far outside any geometry that can occur. This asserts
+/// the consequence rather than the algebra: `K` never decreases as the footprint
+/// grows, over the whole 64-bit range.
+#[test]
+fn the_continuation_rule_never_turns_back_down() {
+    use crate::upstream::BwdRegime;
+
+    let mut previous = 0;
+    let mut bytes = 16usize;
+    while bytes < (1usize << 40) {
+        let k = seg_policy_k(BwdRegime::Ext, bytes, 32);
+        assert!(
+            k >= previous,
+            "{bytes} B/row lowered the continuation rule from K{previous} to K{k}"
+        );
+        previous = k;
+        bytes = bytes * 3 / 2;
+    }
+    assert_eq!(previous, 16, "the corpus never asks the continuation for K32");
 }
 
 /// The two regimes must disagree somewhere, or the split is decoration.

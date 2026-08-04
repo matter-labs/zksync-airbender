@@ -169,59 +169,102 @@ use crate::upstream::{
 /// two 768-thread blocks fit.
 pub(crate) const SEG_CORPUS_K: [usize; 6] = [4, 8, 16, 32, 2, 1];
 
-/// The `K` rule's step thresholds, PER REGIME.
+/// How a regime maps its per-row footprint to `K`.
 ///
-/// R0 and the continuation are different shapes and want different rules — the
-/// split is not a refinement of one rule, it is the finding. Fitted over the
-/// 2026-08-04 corpus (285 coordinates, 646 depth points, axis `{1,2,4,8,16,32}`),
-/// leave-one-circuit-out validated:
-///
-/// | regime | arms | thresholds | LOO regret | shipped-before |
-/// |---|---|---|---|---|
-/// | `R0`  | `{4, 2, 16}` | 2,056 / 4,240 | 0.83% | 4.80% |
-/// | `Ext` | `{4, 8, 16}` | 1,008 / 6,976 | 0.52% | 1.06% |
-///
-/// Regret is measured against a PER-CELL oracle and is the metric that matters:
-/// winner-hit-rate is misleading because most cells are nearly flat in `K`, so
-/// missing the winner usually costs nothing. 10 of 12 LOO folds pick R0's exact
-/// pair and 11 of 12 pick Ext's, so neither is balanced on one circuit.
-pub(crate) struct SegPolicyThresholds {
-    /// `(mid, wide)` for [`SEG_POLICY_R0_ARMS`].
-    pub(crate) r0: (usize, usize),
-    /// `(narrow, wide)` for [`SEG_POLICY_EXT_ARMS`].
-    pub(crate) ext: (usize, usize),
+/// Two FORMS, because the two regimes are not the same shape and one form fits
+/// each. Both are closed forms over one feature; neither is a per-circuit table.
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum SegKRule {
+    /// Piecewise-constant: `arms[0]` below `lo`, `arms[1]` below `hi`, else
+    /// `arms[2]`. The arms need not ascend — R0's do not.
+    Steps {
+        arms: [usize; 3],
+        lo: usize,
+        hi: usize,
+    },
+    /// `K = 2^round(a + b*x + d*x*x)` over `x = log2(bytes_per_row)`.
+    ///
+    /// The axis is log-spaced, so the natural parameterisation is linear in the
+    /// EXPONENT rather than in `K`. The quadratic term is what lets one formula
+    /// span the whole axis — including the `K = 1` and `K = 2` shapes a
+    /// three-arm rule structurally cannot name.
+    LogQuadratic {
+        a: f64,
+        b: f64,
+        d: f64,
+        cap: usize,
+    },
 }
 
-pub(crate) const SEG_POLICY_THRESHOLDS: SegPolicyThresholds = SegPolicyThresholds {
-    r0: (2_056, 4_240),
-    ext: (1_008, 6_976),
+/// R0's rule: a NON-MONOTONE step rule, `K = 4` narrow, `K = 2` in a middle band,
+/// `K = 16` wide. Fitted over the 2026-08-04 corpus (285 coordinates, 646 depth
+/// points, axis `{1,2,4,8,16,32}`), leave-one-circuit-out **0.83%** regret against
+/// a per-cell oracle, against 4.80% for the single pre-split rule.
+///
+/// Stated as the measurement it is, because the mechanism is unexplained, and
+/// pinned by a test so it cannot be "fixed" into a monotone rule. Every smooth
+/// form was fitted and every one is far worse out-of-sample:
+///
+/// | form | LOO regret |
+/// |---|---|
+/// | this step rule | 0.83% |
+/// | linear in `log2(work)` | 3.20% |
+/// | quadratic in `log2(bytes/row)` | 3.63% |
+/// | linear in `log2(bytes/row)` | 3.91% |
+///
+/// The fitted quadratic does not even bend inside the data's range — its
+/// curvature is too weak — so it reproduces a monotone curve and pays the same
+/// penalty. 10 of 12 LOO folds pick this exact threshold pair.
+///
+/// `K = 2` is reachable at all only because the measurement axis was extended
+/// down to `{2, 1}`; see [`SEG_CORPUS_K`].
+pub(crate) const SEG_POLICY_R0_RULE: SegKRule = SegKRule::Steps {
+    arms: [4, 2, 16],
+    lo: 2_056,
+    hi: 4_240,
 };
 
-/// R0's arm sequence, and it is NOT MONOTONE in the footprint: `K = 4` narrow,
-/// `K = 2` in a middle band, `K = 16` wide.
+/// The continuation's rule: logarithmic, because the `K` axis is.
 ///
-/// Stated as the measurement it is, because the mechanism is unexplained. Every
-/// monotone form was fitted and every one is far worse out-of-sample — the best
-/// (`{2, 16}` at 4,240) scores 2.23% against this 0.83% — and 10 of 12
-/// leave-one-circuit-out folds pick this exact threshold pair, so it is not one
-/// circuit's artifact. A reader looking for "why would two warps win a middle
-/// band" will not find an answer here; what is here is that it does, repeatedly,
-/// on data that has never seen the held-out circuit.
+/// LOO regret **0.51%**, identical to in-sample, and all 12 folds picked these
+/// exact coefficients — the most stable fit in the corpus. It ties the best
+/// two-threshold step rule (0.52% at 1,008 / 6,976) and beats a linear-in-log form
+/// (0.54%), and it earns its place on shape rather than on that margin: a
+/// three-arm rule cannot emit `K = 2` for the narrowest cells, and the corpus says
+/// 20 of them want it.
 ///
-/// `K = 2` is only reachable at all because the measurement axis was extended
-/// down to `{2, 1}` — see [`SEG_CORPUS_K`]. With the old axis floor of 4 this arm
-/// was unrepresentable, which is why R0 carried 4.80% regret.
-pub(crate) const SEG_POLICY_R0_ARMS: [usize; 3] = [4, 2, 16];
-
-/// The continuation's arm sequence: monotone, and the same SHAPE the single
-/// pre-split rule had. Its defect was the wide threshold — 18,432 B/row, against
-/// the 6,976 the corpus fits — which put `K = 16` effectively out of reach even
-/// though `K = 16` wins 99 of 275 cells.
-pub(crate) const SEG_POLICY_EXT_ARMS: [usize; 3] = [4, 8, 16];
+/// What it emits across the corpus's footprint range:
+///
+/// ```text
+///   160:K2   352:K4  1008:K4  2056:K8  4240:K8  6976:K16  30656:K16
+/// ```
+///
+/// **It does not turn back down inside any reachable footprint.** The vertex of
+/// `a + b*x + d*x*x` sits at `x = -b / (2*d) = 30`, i.e. 1 GiB per row, so the
+/// curve rises monotonically over every geometry that can physically occur; below
+/// the range it degrades to `K = 1` rather than to something wild. That is the
+/// obvious hazard of a negative quadratic term and it is checked by a test.
+///
+/// The `cap` is doing real work at the top: unbounded, the curve would cross into
+/// `K = 32` above ~59.6 KB/row, which is past every cell the corpus contains. The
+/// two corpus cells that DO win at `K = 32` sit at 7,584 and 19,200 B/row, where
+/// this formula says 16 — and the whole-proof sweep agrees that only
+/// `blake2_with_extended_control` wants 32, at its layers 0 and 1. That is a
+/// per-circuit fact no formula over this feature carries, and the cap keeps the
+/// formula from pretending otherwise.
+pub(crate) const SEG_POLICY_EXT_RULE: SegKRule = SegKRule::LogQuadratic {
+    a: -2.50,
+    b: 0.60,
+    d: -0.010,
+    cap: 16,
+};
 
 const _: () = {
-    assert!(SEG_POLICY_THRESHOLDS.r0.0 < SEG_POLICY_THRESHOLDS.r0.1);
-    assert!(SEG_POLICY_THRESHOLDS.ext.0 < SEG_POLICY_THRESHOLDS.ext.1);
+    // R0's bands must be ordered, or the middle arm is unreachable.
+    match SEG_POLICY_R0_RULE {
+        SegKRule::Steps { lo, hi, .. } => assert!(lo < hi),
+        SegKRule::LogQuadratic { .. } => panic!("R0 ships a step rule"),
+    }
 };
 
 /// The closed form (spec §12), and what the corpus says its arguments are.
@@ -264,24 +307,46 @@ const _: () = {
 /// it is a block geometry, and a launcher choosing `K = 11` would be choosing a
 /// shape nothing was measured at.
 pub(crate) fn seg_policy_k(regime: BwdRegime, bytes_per_row: usize, ceiling: usize) -> usize {
-    if let Some(forced) = seg_forced_k() {
+    seg_policy_k_with(seg_policy_rule(regime), bytes_per_row, ceiling)
+}
+
+/// The rule `regime` ships.
+pub(crate) fn seg_policy_rule(regime: BwdRegime) -> SegKRule {
+    match regime {
+        BwdRegime::R0 => SEG_POLICY_R0_RULE,
+        BwdRegime::Ext => SEG_POLICY_EXT_RULE,
+    }
+}
+
+/// The `K` a launch actually runs: [`seg_policy_k`], unless `AB_BWD_VM_SEG_K`
+/// names this `(layer, regime)`.
+///
+/// The override lives HERE rather than inside the policy so the policy stays a
+/// pure function of its documented arguments — the bench fits and scores it
+/// directly, and a diagnostic reaching into it would make every one of those
+/// calls depend on an environment variable.
+pub(crate) fn seg_k_for_launch(
+    regime: BwdRegime,
+    layer: usize,
+    bytes_per_row: usize,
+    ceiling: usize,
+) -> usize {
+    if let Some(forced) = seg_forced_k(regime, layer) {
         // Still filtered through the ceiling: a `K` the compiled family cannot
         // host is not launchable, so honouring the override literally would turn
         // a diagnostic into a launch failure.
         return forced.min(ceiling);
     }
-    let (lo, hi) = match regime {
-        BwdRegime::R0 => SEG_POLICY_THRESHOLDS.r0,
-        BwdRegime::Ext => SEG_POLICY_THRESHOLDS.ext,
-    };
-    seg_policy_k_with(regime, bytes_per_row, ceiling, lo, hi)
+    seg_policy_k(regime, bytes_per_row, ceiling)
 }
 
-/// The arm sequence `regime` steps through, ascending in the footprint.
-pub(crate) fn seg_policy_arms(regime: BwdRegime) -> [usize; 3] {
-    match regime {
-        BwdRegime::R0 => SEG_POLICY_R0_ARMS,
-        BwdRegime::Ext => SEG_POLICY_EXT_ARMS,
+/// The arm sequence a STEP rule steps through, or `None` for a rule that has no
+/// arms. The bench's threshold scan needs it to build candidate step rules; a
+/// logarithmic rule answers `None` because its shape is coefficients, not arms.
+pub(crate) fn seg_policy_arms(regime: BwdRegime) -> Option<[usize; 3]> {
+    match seg_policy_rule(regime) {
+        SegKRule::Steps { arms, .. } => Some(arms),
+        SegKRule::LogQuadratic { .. } => None,
     }
 }
 
@@ -304,21 +369,53 @@ pub(crate) fn seg_policy_arms(regime: BwdRegime) -> [usize; 3] {
 /// `coords_from_env` and `forward::path::vm_layers_from_env` are uncached. (This
 /// function did cache, which is why the first per-layer K curve had to spend a
 /// process per K.)
-fn seg_forced_k() -> Option<usize> {
+fn seg_forced_k(regime: BwdRegime, layer: usize) -> Option<usize> {
     let raw = std::env::var("AB_BWD_VM_SEG_K").ok()?;
     let raw = raw.trim();
     if raw.is_empty() {
         return None;
     }
-    let k: usize = raw
-        .parse()
-        .unwrap_or_else(|_| panic!("AB_BWD_VM_SEG_K={raw:?} is not a number"));
-    assert!(
-        SEG_CORPUS_K.contains(&k),
-        "AB_BWD_VM_SEG_K={k} is off the measured axis {SEG_CORPUS_K:?}; a block geometry \
-         nothing was measured at is not a data point",
-    );
-    Some(k)
+    // Two spellings. A bare `K` forces every VM-owned round, which is what a
+    // per-circuit curve wants. A comma-separated list of `layer:regime=K` forces
+    // only the cells it names and leaves the rest on the policy, which is what a
+    // per-LAYER curve wants: the layer under test moves while its neighbours stay
+    // exactly as they ship, so the delta is that layer's own.
+    let check = |k: usize| {
+        assert!(
+            SEG_CORPUS_K.contains(&k),
+            "AB_BWD_VM_SEG_K={k} is off the measured axis {SEG_CORPUS_K:?}; a block geometry \
+             nothing was measured at is not a data point",
+        );
+        k
+    };
+    if !raw.contains(':') {
+        return Some(check(raw.parse().unwrap_or_else(|_| {
+            panic!("AB_BWD_VM_SEG_K={raw:?} is neither a K nor a `layer:regime=K` list")
+        })));
+    }
+    for entry in raw.split(',').map(str::trim).filter(|e| !e.is_empty()) {
+        let Some((scope, k)) = entry.split_once('=') else {
+            panic!("AB_BWD_VM_SEG_K entry {entry:?} is not `layer:regime=K`");
+        };
+        let Some((want_layer, want_regime)) = scope.split_once(':') else {
+            panic!("AB_BWD_VM_SEG_K entry {entry:?} is not `layer:regime=K`");
+        };
+        let Ok(want_layer) = want_layer.trim().parse::<usize>() else {
+            panic!("AB_BWD_VM_SEG_K entry {entry:?} has no layer index");
+        };
+        let want_regime = match want_regime.trim() {
+            "R0" => BwdRegime::R0,
+            "Ext" => BwdRegime::Ext,
+            other => panic!("AB_BWD_VM_SEG_K entry {entry:?}: {other:?} is not a regime"),
+        };
+        if want_layer == layer && want_regime == regime {
+            let Ok(k) = k.trim().parse::<usize>() else {
+                panic!("AB_BWD_VM_SEG_K entry {entry:?} has no K");
+            };
+            return Some(check(k));
+        }
+    }
+    None
 }
 
 /// [`seg_policy_k`] with the two thresholds supplied rather than committed.
@@ -326,24 +423,42 @@ fn seg_forced_k() -> Option<usize> {
 /// The fit and the leave-one-circuit-out validation both need to evaluate the
 /// policy at thresholds that are NOT the committed ones; sharing this function is
 /// what stops the validation from silently scoring a differently-shaped rule.
-pub(crate) fn seg_policy_k_with(
-    regime: BwdRegime,
-    bytes_per_row: usize,
-    ceiling: usize,
-    lo: usize,
-    hi: usize,
-) -> usize {
-    let arms = seg_policy_arms(regime);
-    let want = if bytes_per_row < lo {
-        arms[0]
-    } else if bytes_per_row < hi {
-        arms[1]
-    } else {
-        arms[2]
+pub(crate) fn seg_policy_k_with(rule: SegKRule, bytes_per_row: usize, ceiling: usize) -> usize {
+    let want = match rule {
+        SegKRule::Steps { arms, lo, hi } => {
+            if bytes_per_row < lo {
+                arms[0]
+            } else if bytes_per_row < hi {
+                arms[1]
+            } else {
+                arms[2]
+            }
+        }
+        SegKRule::LogQuadratic { a, b, d, cap } => {
+            // A zero footprint has no logarithm; it also means a round that reads
+            // nothing, which the narrowest shape serves.
+            let x = f64::from(u32::try_from(bytes_per_row.max(1)).unwrap_or(u32::MAX)).log2();
+            let exponent = a + b * x + d * x * x;
+            // FLOATING POINT, deliberately, and it is a performance-only decision:
+            // `K` cannot change a proof (the partial pair is the bit-identical sum
+            // of the rows it replaces), so a platform whose `log2` rounds a hair
+            // differently gets a different block shape and the same proof. The snap
+            // below also means only six outcomes exist, so a difference has to land
+            // exactly on a half-integer boundary to change anything.
+            let exponent = exponent.round();
+            let unbounded = if exponent <= 0.0 {
+                1
+            } else if exponent >= 5.0 {
+                32
+            } else {
+                1usize << (exponent as u32)
+            };
+            unbounded.min(cap)
+        }
     };
     // Snap DOWN to an axis member the family can host. `want` is itself an axis
-    // member, so this only ever moves when `ceiling` bites — and the axis floor is
-    // 1, below every ceiling the probe can report, so the filter is never empty.
+    // member, so this only moves when `ceiling` bites — and the axis floor is 1,
+    // below every ceiling the probe can report, so the filter is never empty.
     let cap = want.min(ceiling);
     SEG_CORPUS_K
         .into_iter()
@@ -1334,7 +1449,12 @@ pub(crate) fn build_bwd_vm_round0<E: Copy>(
         plan: bound.publish_plan.clone(),
     };
     let bytes_per_row = seg_r0_bytes_per_row(&bound.slots, &bound.sources);
-    let k = seg_policy_k(BwdRegime::R0, bytes_per_row, seg_k_ceiling(BwdRegime::R0)?);
+    let k = seg_k_for_launch(
+        BwdRegime::R0,
+        slice.coord.layer,
+        bytes_per_row,
+        seg_k_ceiling(BwdRegime::R0)?,
+    );
     let binding = BwdSegRoundBinding {
         round: 0,
         rows,
@@ -1669,7 +1789,7 @@ pub(crate) fn build_bwd_vm_ext_rounds<E: Copy>(
             slots: round.folding_buffer_slots.clone(),
         });
         let bytes_per_row = seg_ext_bytes_per_row(&round.slots, &round.sources, round.round);
-        let k = seg_policy_k(BwdRegime::Ext, bytes_per_row, ceiling);
+        let k = seg_k_for_launch(BwdRegime::Ext, slice.coord.layer, bytes_per_row, ceiling);
         let binding = BwdSegRoundBinding {
             round: u32::from(round.round),
             rows: round.rows,
