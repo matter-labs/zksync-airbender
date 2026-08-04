@@ -1095,6 +1095,15 @@ impl EnvGuard {
         std::env::set_var(key, value);
         Self { key, previous }
     }
+
+    /// UNSET for the duration, which is not the same as setting it empty: unset
+    /// is what selects the shipped default ("every coordinate this circuit
+    /// compiled"), empty is what asks for the incumbent.
+    fn unset(key: &'static str) -> Self {
+        let previous = std::env::var(key).ok();
+        std::env::remove_var(key);
+        Self { key, previous }
+    }
 }
 
 impl Drop for EnvGuard {
@@ -2098,5 +2107,198 @@ fn run_add_sub_bwd_vm_l0_full_ab_test() {
         on_peak as f64 / (1u64 << 30) as f64,
         off_peak as f64 / (1u64 << 30) as f64,
         on_peak as i64 - off_peak as i64,
+    );
+}
+
+/// The whole corpus, shipped DEFAULT against the incumbent, one A/B per circuit.
+///
+/// The other A/Bs each name a hand-picked layer list, which was the only way to
+/// ask for the VM when it was opt-in. It is the default now, so the ON arm here
+/// sets NOTHING — that is what a caller actually gets, including per-circuit
+/// facts a fixed list cannot express (`unified_reduced_machine` picking up its
+/// forward arm, a circuit with more main layers getting all of them). The OFF arm
+/// sets both switches EMPTY, which is now the only way to ask for the incumbent.
+///
+/// Interleaved and order-alternating per pair, like every other A/B here: the two
+/// arms share a process and a warm cache, and a block of one followed by a block
+/// of the other measures drift as much as it measures the change. Each pair also
+/// asserts the two proofs are identical, so the sweep is a correctness check that
+/// happens to be timed rather than a timing run that hopes for correctness.
+///
+/// `GKR_AB_PAIRS` overrides the pair count (default 20, the count the add_sub
+/// numbers were taken at).
+#[test]
+#[serial]
+#[ignore]
+fn run_corpus_default_vs_incumbent_ab_test() {
+    use crate::prover::gkr::backward::vm::coords::AB_GKR_BWD_VM_COORDS_ENV;
+    use crate::prover::gkr::forward::path::AB_GKR_FWD_VM_LAYERS_ENV;
+
+    let pairs: usize = std::env::var("GKR_AB_PAIRS")
+        .ok()
+        .and_then(|v| v.trim().parse().ok())
+        .unwrap_or(20);
+    assert!(pairs >= 1, "GKR_AB_PAIRS must be positive");
+
+    // Every poison must be off on both arms: they are charged to the VM arm alone
+    // (destinations, accumulator) or to both layer prepares (fold storage), and
+    // either way they are noise this measurement cannot absorb.
+    assert!(
+        !crate::prover::gkr::forward::vm::production_bind::poison_destinations_enabled(),
+        "the forward destination poison inverts this measurement"
+    );
+    assert!(
+        !crate::prover::gkr::backward::vm::production_bind::poison_accumulator_enabled(),
+        "the accumulator poison is charged to the VM arm alone"
+    );
+    assert!(
+        !crate::prover::gkr::backward::vm::production_bind::fold_storage_poison_enabled(),
+        "the fold-storage poison fills every fold backing on both arms"
+    );
+
+    type Build = fn() -> BasicUnrolledFixture;
+    let corpus: &[(&str, Build)] = &[
+        ("add_sub_lui_auipc_mop", prepare_basic_unrolled_profiling_fixture),
+        ("jump_branch_slt", prepare_jump_branch_slt_profiling_fixture),
+        ("shift_binop", prepare_shift_binop_profiling_fixture),
+        ("unsigned_mul_div", prepare_mul_div_profiling_fixture),
+        ("mem_word_only", prepare_load_store_word_only_profiling_fixture),
+        ("mem_subword_only", prepare_load_store_subword_only_profiling_fixture),
+        ("inits_and_teardowns", prepare_inits_and_teardowns_matrix_profiling_fixture),
+        ("unified_reduced_machine", prepare_unified_profiling_fixture),
+        ("bigint_with_extended_control", prepare_bigint_profiling_fixture),
+        ("blake2_with_extended_control", prepare_blake2_with_compression_profiling_fixture),
+        ("blake2_g_function", prepare_blake2_g_function_profiling_fixture),
+        ("keccak_special5", prepare_keccak_special5_profiling_fixture),
+    ];
+
+    struct Row {
+        label: &'static str,
+        on_median: f32,
+        off_median: f32,
+        median: f32,
+        min: f32,
+        max: f32,
+        winning: usize,
+        on_peak: usize,
+        off_peak: usize,
+    }
+    let mut rows: Vec<Row> = Vec::with_capacity(corpus.len());
+
+    for (label, build) in corpus {
+        let fixture = build();
+        // One warmup per arm, OUTSIDE the measurement: first-touch allocation, the
+        // OnceLock'd forward-program and backward-coordinate compiles, and module
+        // load all land in whichever proof runs first.
+        for warm_default in [true, false] {
+            let _fwd;
+            let _bwd;
+            if warm_default {
+                _fwd = EnvGuard::unset(AB_GKR_FWD_VM_LAYERS_ENV);
+                _bwd = EnvGuard::unset(AB_GKR_BWD_VM_COORDS_ENV);
+            } else {
+                _fwd = EnvGuard::set(AB_GKR_FWD_VM_LAYERS_ENV, "");
+                _bwd = EnvGuard::set(AB_GKR_BWD_VM_COORDS_ENV, "");
+            }
+            let t = fixture.schedule_transfers().unwrap();
+            fixture.context.get_h2d_stream().synchronize().unwrap();
+            let (proof, _ms) = fixture.prove(t).unwrap().finish().unwrap();
+            drop(proof);
+        }
+
+        let mut run = |vm_on: bool| {
+            let _fwd;
+            let _bwd;
+            if vm_on {
+                _fwd = EnvGuard::unset(AB_GKR_FWD_VM_LAYERS_ENV);
+                _bwd = EnvGuard::unset(AB_GKR_BWD_VM_COORDS_ENV);
+            } else {
+                _fwd = EnvGuard::set(AB_GKR_FWD_VM_LAYERS_ENV, "");
+                _bwd = EnvGuard::set(AB_GKR_BWD_VM_COORDS_ENV, "");
+            }
+            let t = fixture.schedule_transfers().unwrap();
+            fixture.context.get_h2d_stream().synchronize().unwrap();
+            fixture.context.reset_used_mem_peak();
+            let (proof, ms) = fixture.prove(t).unwrap().finish().unwrap();
+            (proof, ms, fixture.context.get_used_mem_peak())
+        };
+
+        let mut deltas = Vec::with_capacity(pairs);
+        let mut on_ms = Vec::with_capacity(pairs);
+        let mut off_ms = Vec::with_capacity(pairs);
+        let (mut on_peak, mut off_peak) = (0usize, 0usize);
+        for pair in 0..pairs {
+            let (on, off) = if pair % 2 == 0 {
+                let on = run(true);
+                let off = run(false);
+                (on, off)
+            } else {
+                let off = run(false);
+                let on = run(true);
+                (on, off)
+            };
+            assert_gkr_proof_eq_for_test(&on.0, &off.0);
+            deltas.push(on.1 - off.1);
+            on_ms.push(on.1);
+            off_ms.push(off.1);
+            on_peak = on_peak.max(on.2);
+            off_peak = off_peak.max(off.2);
+        }
+        let median = |mut v: Vec<f32>| {
+            v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            v[v.len() / 2]
+        };
+        let winning = deltas.iter().filter(|d| **d < 0.0).count();
+        let mut sorted = deltas.clone();
+        sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let row = Row {
+            label,
+            on_median: median(on_ms),
+            off_median: median(off_ms),
+            median: sorted[sorted.len() / 2],
+            min: sorted[0],
+            max: sorted[sorted.len() - 1],
+            winning,
+            on_peak,
+            off_peak,
+        };
+        eprintln!(
+            "[corpus-ab] {:<30} default {:>9.3} ms  incumbent {:>9.3} ms  delta {:>8.3} ms              ({:>6.2}%)  min {:>8.3}  max {:>8.3}  {}/{} pairs faster  peak {:>+6} MiB",
+            row.label,
+            row.on_median,
+            row.off_median,
+            row.median,
+            100.0 * row.median / row.off_median,
+            row.min,
+            row.max,
+            row.winning,
+            pairs,
+            (row.on_peak as i64 - row.off_peak as i64) / (1 << 20),
+        );
+        rows.push(row);
+        drop(fixture);
+    }
+
+    eprintln!("\n[corpus-ab] SUMMARY over {pairs} pairs per circuit (negative = VM faster)");
+    eprintln!(
+        "[corpus-ab] {:<30} {:>11} {:>11} {:>10} {:>8} {:>10}",
+        "circuit", "default_ms", "incumbent_ms", "delta_ms", "pct", "peak_MiB"
+    );
+    for row in &rows {
+        eprintln!(
+            "[corpus-ab] {:<30} {:>11.3} {:>11.3} {:>10.3} {:>7.2}% {:>+10}",
+            row.label,
+            row.on_median,
+            row.off_median,
+            row.median,
+            100.0 * row.median / row.off_median,
+            (row.on_peak as i64 - row.off_peak as i64) / (1 << 20),
+        );
+    }
+    let faster = rows.iter().filter(|r| r.median < 0.0).count();
+    eprintln!(
+        "[corpus-ab] {faster} of {} circuits faster on the default; total delta {:.3} ms",
+        rows.len(),
+        rows.iter().map(|r| r.median).sum::<f32>(),
     );
 }
