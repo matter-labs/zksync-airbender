@@ -167,12 +167,14 @@ fn run_generation(cfg: &GenConfig, worker: &Worker) {
                 coset_size_log2: n,
             };
             let cap = c.get_cap();
-            let cap_tree = Tree::continue_from_leaf_hashes(cap.cap.clone(), cap.cap.len(), worker);
             ColumnMajorBaseOracleForLDE {
-                cosets: vec![coset0],
-                tree: cap_tree,
+                cosets: Box::new(MaterializedCosets {
+                    cosets: vec![coset0],
+                }),
+                tree: Box::new(crate::merkle_trees::CapOnlyTree::new(cap)),
                 values_per_leaf: c.values_per_leaf,
                 coset_size_log2: n,
+                _marker: core::marker::PhantomData,
             }
         };
     log("building slim base oracles (coset 0 + cap)");
@@ -189,14 +191,15 @@ fn run_generation(cfg: &GenConfig, worker: &Worker) {
         worker,
     );
 
-    // set_idx: 0 = memory (8 cols), 1 = witness (1 col); setup (2) is empty.
+    // set_idx: 0 = memory (8 cols), 1 = witness (1 col); setup (2) is empty. The hook
+    // returns `None` for sets it doesn't own (whir_fold falls back to the oracle).
     let base_query_hook = |set_idx: usize,
                            query_index: usize|
-     -> (Vec<Vec<Proth120>>, BaseFieldQuery<Proth120, Tree>) {
+     -> Option<(Vec<Vec<Proth120>>, BaseFieldQuery<Proth120, Tree>)> {
         match set_idx {
-            0 => mem_commitment.query_structured(query_index, &twiddles, worker),
-            1 => wit_commitment.query_structured(query_index, &twiddles, worker),
-            _ => unreachable!("only memory(0)/witness(1) base sets carry columns"),
+            0 => Some(mem_commitment.query_structured(query_index, &twiddles, worker)),
+            1 => Some(wit_commitment.query_structured(query_index, &twiddles, worker)),
+            _ => None,
         }
     };
 
@@ -215,12 +218,13 @@ fn run_generation(cfg: &GenConfig, worker: &Worker) {
     let seed = Keccak256Seed(seed_bytes);
 
     log("running whir_fold (folding rounds + PoW grinding)");
+    let setup_commitment = crate::gkr::prover::SetupCommitment::InMemory(setup_oracle);
     let proof = whir_fold::<Proth120, Proth120, Tree, Keccak256Transcript>(
         mem_oracle,
         mem_claims.clone(),
         wit_oracle,
         wit_claims.clone(),
-        &setup_oracle,
+        &setup_commitment,
         vec![],
         z.clone(),
         batching_challenge,

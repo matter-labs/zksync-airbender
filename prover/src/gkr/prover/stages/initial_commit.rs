@@ -127,7 +127,7 @@ where
     assert_eq!(root_powers[0], F::ONE);
 
     let values_per_leaf = 1 << whir_first_fold_step_log2;
-    use crate::gkr::whir::ColumnMajorBaseOracleForCoset;
+    use crate::gkr::whir::{ColumnMajorBaseOracleForCoset, MaterializedCosets};
     let mut cosets = Vec::with_capacity(lde_factor);
     let new_coset_size_log2 = trace_len_log2 + pack_log2;
 
@@ -184,7 +184,7 @@ where
         .collect();
     let source_ref: Vec<_> = source.iter().map(|el| &el[..]).collect();
 
-    let tree = T::construct_from_cosets::<F, Global>(
+    let tree = T::construct_from_cosets::<F>(
         &source_ref[..],
         values_per_leaf,
         tree_cap_size,
@@ -195,9 +195,10 @@ where
     );
 
     ColumnMajorBaseOracleForLDE {
-        cosets,
-        tree,
+        cosets: Box::new(MaterializedCosets { cosets }),
+        tree: Box::new(tree),
         values_per_leaf,
         coset_size_log2: new_coset_size_log2,
+        _marker: core::marker::PhantomData,
     }
 }

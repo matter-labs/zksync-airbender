@@ -1,5 +1,5 @@
 use super::*;
-use crate::gkr::whir::{hypercube_to_monomial, ColumnMajorBaseOracleForLDE};
+use crate::gkr::whir::{hypercube_to_monomial, ColumnMajorBaseOracleForLDE, MaterializedCosets};
 use fft::Twiddles;
 use fft::{
     bitreverse_enumeration_inplace, distribute_powers_parallel, distribute_powers_serial,
@@ -500,10 +500,11 @@ where
             cosets.push(trace_part);
         }
         return ColumnMajorBaseOracleForLDE {
-            cosets,
-            tree: T::dummy(),
+            cosets: Box::new(MaterializedCosets { cosets }),
+            tree: Box::new(T::dummy()),
             values_per_leaf: 1 << whir_first_fold_step_log2,
             coset_size_log2: trace_len_log2,
+            _marker: core::marker::PhantomData,
         };
     }
 
@@ -543,7 +544,7 @@ where
         .collect();
     let source_ref: Vec<_> = source.iter().map(|el| &el[..]).collect();
 
-    let tree = T::construct_from_cosets::<F, Global>(
+    let tree = T::construct_from_cosets::<F>(
         &source_ref[..],
         values_per_leaf,
         tree_cap_size,
@@ -554,10 +555,11 @@ where
     );
 
     ColumnMajorBaseOracleForLDE {
-        cosets,
-        tree,
+        cosets: Box::new(MaterializedCosets { cosets }),
+        tree: Box::new(tree),
         values_per_leaf,
         coset_size_log2: trace_len_log2,
+        _marker: core::marker::PhantomData,
     }
 }
 
@@ -608,10 +610,11 @@ where
             });
         }
         return ColumnMajorBaseOracleForLDE {
-            cosets,
-            tree: T::dummy(),
+            cosets: Box::new(MaterializedCosets { cosets }),
+            tree: Box::new(T::dummy()),
             values_per_leaf,
             coset_size_log2: packed_trace_len_log2,
+            _marker: core::marker::PhantomData,
         };
     }
 
@@ -675,7 +678,7 @@ where
         .collect();
     let source_ref: Vec<_> = source.iter().map(|el| &el[..]).collect();
 
-    let tree = T::construct_from_cosets::<F, Global>(
+    let tree = T::construct_from_cosets::<F>(
         &source_ref[..],
         values_per_leaf,
         tree_cap_size,
@@ -686,10 +689,11 @@ where
     );
 
     ColumnMajorBaseOracleForLDE {
-        cosets,
-        tree,
+        cosets: Box::new(MaterializedCosets { cosets }),
+        tree: Box::new(tree),
         values_per_leaf,
         coset_size_log2: packed_trace_len_log2,
+        _marker: core::marker::PhantomData,
     }
 }
 

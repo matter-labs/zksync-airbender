@@ -26,10 +26,14 @@ use crate::gkr::virtual_polys::range_check::materialize_virtual_range_check_setu
 use crate::gkr::whir::coset_commit::CosetByCosetBaseCommitment;
 use crate::gkr::whir::queries::BaseFieldQuery;
 use crate::gkr::whir::{
-    whir_fold, ColumnMajorBaseOracleForCoset, ColumnMajorBaseOracleForLDE, WhirPolyCommitProof,
+    whir_fold, ColumnMajorBaseOracleForCoset, ColumnMajorBaseOracleForLDE, MaterializedCosets,
+    WhirPolyCommitProof,
 };
 use crate::gkr::witness_gen::family_circuits::GKRFullWitnessTrace;
-use crate::merkle_trees::ColumnMajorMerkleTreeConstructor;
+use crate::merkle_trees::{
+    ColumnMajorMerkleTreeConstructor, MainDomainColumn, MerkleTreeCapVarLength, PathQueriable,
+    RSQueriable,
+};
 use crate::worker::Worker;
 use common_constants::{TimestampScalar, TIMESTAMP_COLUMNS_NUM_BITS};
 use cs::definitions::{GKRAddress, VirtualSetupPoly};
@@ -57,6 +61,189 @@ pub enum CommitmentMode {
         final_pc: u32,
         final_timestamp: TimestampScalar,
     }, // this mode assumes that external challenges are not "external" anymore
+}
+
+/// How the RS codewords of the memory/witness base commitments are physically
+/// stored/served during proving. Orthogonal to [`CommitmentMode`] (which fixes the
+/// logical commitment structure and thus the transcript layout): both policies
+/// produce a byte-identical proof for the same [`CommitmentMode`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum RsCodewordSource {
+    /// Materialize every LDE coset in RAM; intermediate (folded) oracles built
+    /// monolithically. The historical default for the non-packed modes.
+    InMemory,
+    /// Keep only the compact monomial form and recompute the queried coset on
+    /// demand (coset-by-coset); intermediate oracles built coset-by-coset. Memory
+    /// light; the historical behavior of the packed mode.
+    Recompute,
+}
+
+/// Wraps the setup commitment, decoupling how its RS codewords and Merkle tree are
+/// stored from the prover configuration. `InMemory` is the representation used
+/// today (RS codewords + tree both in RAM). `OnDisk` anticipates serving RS
+/// codewords from a [`RSQueriable`] source and Merkle paths from an mmap'd on-disk
+/// tree (`ColumnMajorMerkleTreeConstructor::open_disk_artifacts`); there is no on-disk
+/// `RSQueriable` implementation yet, so that variant is not yet usable end-to-end.
+pub enum SetupCommitment<F: PrimeField + TwoAdicField, T: ColumnMajorMerkleTreeConstructor<F>> {
+    /// RS codewords + Merkle tree both in memory (owned).
+    InMemory(ColumnMajorBaseOracleForLDE<F, T>),
+    /// RS codewords served by a queryable source; Merkle paths served from an
+    /// mmap'd on-disk tree — either a single monolithic tree file or per-coset
+    /// subtree files ([`OnDiskTree`](crate::merkle_trees::on_disk::OnDiskTree)).
+    OnDisk {
+        rs: Box<dyn RSQueriable<F>>,
+        tree: crate::merkle_trees::on_disk::OnDiskTree<T>,
+        values_per_leaf: usize,
+        coset_size_log2: usize,
+    },
+}
+
+impl<F: PrimeField + TwoAdicField, T: ColumnMajorMerkleTreeConstructor<F>> SetupCommitment<F, T> {
+    /// The commitment cap (goes into the transcript).
+    pub fn get_cap(&self) -> MerkleTreeCapVarLength {
+        match self {
+            SetupCommitment::InMemory(oracle) => oracle.tree.get_cap(),
+            SetupCommitment::OnDisk { tree, .. } => PathQueriable::get_cap(tree),
+        }
+    }
+
+    #[inline]
+    pub(crate) fn is_on_disk(&self) -> bool {
+        matches!(self, SetupCommitment::OnDisk { .. })
+    }
+
+    /// The borrowed in-memory setup oracle. Only valid for the `InMemory` variant; for
+    /// `OnDisk`, whir_fold builds a slim oracle view from the accessors below instead.
+    pub(crate) fn as_in_memory_oracle(&self) -> &ColumnMajorBaseOracleForLDE<F, T> {
+        match self {
+            SetupCommitment::InMemory(oracle) => oracle,
+            SetupCommitment::OnDisk { .. } => {
+                unreachable!("on-disk setup uses a slim oracle view, not as_in_memory_oracle")
+            }
+        }
+    }
+
+    /// Number of committed setup columns (RS-source columns).
+    pub(crate) fn num_columns(&self) -> usize {
+        match self {
+            SetupCommitment::InMemory(oracle) => oracle.num_columns(),
+            SetupCommitment::OnDisk { rs, .. } => rs.num_columns(),
+        }
+    }
+
+    /// Setup column `c` on the main evaluation domain (the only coset whir_fold reads
+    /// in full, for the batched proximity poly).
+    pub(crate) fn main_domain_column(&self, c: usize) -> MainDomainColumn<'_, F> {
+        match self {
+            SetupCommitment::InMemory(oracle) => oracle.cosets.main_domain_column(c),
+            SetupCommitment::OnDisk { rs, .. } => rs.main_domain_column(c),
+        }
+    }
+
+    /// Packed values per Merkle leaf.
+    pub(crate) fn values_per_leaf(&self) -> usize {
+        match self {
+            SetupCommitment::InMemory(oracle) => oracle.values_per_leaf,
+            SetupCommitment::OnDisk {
+                values_per_leaf, ..
+            } => *values_per_leaf,
+        }
+    }
+
+    /// log2 of a single LDE coset (per-coset polynomial length).
+    pub(crate) fn coset_size_log2(&self) -> usize {
+        match self {
+            SetupCommitment::InMemory(oracle) => oracle.coset_size_log2,
+            SetupCommitment::OnDisk {
+                coset_size_log2, ..
+            } => *coset_size_log2,
+        }
+    }
+
+    /// For `OnDisk`, the round-0 setup query for `query_index`: offset-major leaf
+    /// values from the on-disk RS source and the Merkle path from the on-disk tree.
+    /// `None` for `InMemory` (whir_fold falls back to the materialized setup oracle).
+    pub(crate) fn hook_query(
+        &self,
+        query_index: usize,
+    ) -> Option<(Vec<Vec<F>>, BaseFieldQuery<F, T>)> {
+        match self {
+            SetupCommitment::InMemory(_) => None,
+            SetupCommitment::OnDisk {
+                rs,
+                tree,
+                values_per_leaf,
+                coset_size_log2,
+            } => {
+                let num_cosets = rs.num_cosets();
+                let coset_index = query_index & (num_cosets - 1);
+                let internal_index = query_index / num_cosets;
+                let coset_tree_size = (1usize << coset_size_log2) / values_per_leaf;
+                assert!(internal_index < coset_tree_size);
+                let values =
+                    rs.values_for_coset_and_index(coset_index, internal_index, *values_per_leaf);
+                let coset_dest_index =
+                    crate::fft::bitreverse_index(coset_index, num_cosets.trailing_zeros());
+                let tree_index = coset_dest_index * coset_tree_size + internal_index;
+                let (_leaf_hash, path) = PathQueriable::get_proof(tree, tree_index);
+                let leaf_values_concatenated = values.iter().flatten().copied().collect();
+                let query = BaseFieldQuery::<F, T> {
+                    index: tree_index,
+                    leaf_values_concatenated,
+                    path,
+                    _marker: core::marker::PhantomData,
+                };
+                Some((values, query))
+            }
+        }
+    }
+}
+
+/// Per-set recompute (coset-by-coset) sources for the memory/witness base
+/// commitments, installed when [`RsCodewordSource::Recompute`] is active. `set_idx`
+/// 0 = memory (or the merged mem+witness oracle in the merged/packed modes), 1 =
+/// witness (separate mode only). `None` for a set means that set has no columns.
+struct BaseRecomputeSources<F: PrimeField + TwoAdicField, T: ColumnMajorMerkleTreeConstructor<F>> {
+    mem: Option<CosetByCosetBaseCommitment<F, T>>,
+    wit: Option<CosetByCosetBaseCommitment<F, T>>,
+}
+
+/// Build the "slim" base oracle (only the main evaluation domain columns + the
+/// commitment cap tree) that whir_fold reads for batching, from a coset-by-coset
+/// base commitment. Round-0 queries for this oracle are served on demand by the
+/// commitment via the base query hook.
+fn slim_oracle_from_base_commitment<F, T>(
+    commitment: &CosetByCosetBaseCommitment<F, T>,
+    twiddles: &Twiddles<F, Global>,
+    worker: &Worker,
+) -> ColumnMajorBaseOracleForLDE<F, T>
+where
+    F: PrimeField + TwoAdicField,
+    T: ColumnMajorMerkleTreeConstructor<F>,
+    [(); F::DEGREE]: Sized,
+{
+    let cap = commitment.get_cap();
+    let coset0 = ColumnMajorBaseOracleForCoset {
+        original_values_normal_order: commitment
+            .main_domain_columns(twiddles, worker)
+            .into_iter()
+            .map(|col| ColumnMajorCosetBoundTracePart {
+                column: Arc::new(col),
+                offset: F::ONE,
+            })
+            .collect(),
+        offset: F::ONE,
+        coset_size_log2: commitment.trace_len_log2,
+    };
+    ColumnMajorBaseOracleForLDE {
+        cosets: Box::new(MaterializedCosets {
+            cosets: vec![coset0],
+        }),
+        tree: Box::new(crate::merkle_trees::CapOnlyTree::new(cap)),
+        values_per_leaf: commitment.values_per_leaf,
+        coset_size_log2: commitment.trace_len_log2,
+        _marker: core::marker::PhantomData,
+    }
 }
 
 pub(crate) struct SendPtr<T: Sized>(*mut T);
@@ -212,6 +399,10 @@ pub(crate) fn apply_row_wise<'a, A: 'static + Send + Sync, B: 'static + Send + S
     });
 }
 
+/// Backward-compatible entry point: takes the in-memory setup commitment directly
+/// and selects the RS-codeword storage policy that reproduces the historical,
+/// mode-dependent behavior (packed mode recomputes; the others materialize). Use
+/// [`prove_configured_with_gkr_with_storage`] to override the storage policy.
 pub fn prove_configured_with_gkr<
     F: PrimeField + TwoAdicField,
     E: FieldExtension<F> + Field,
@@ -222,10 +413,101 @@ pub fn prove_configured_with_gkr<
     external_challenges: &GKRExternalChallenges<F, E>,
     witness_eval_data: GKRFullWitnessTrace<F, Global, Global>,
     setup: &GKRSetup<F>,
-    setup_commitment: &ColumnMajorBaseOracleForLDE<F, T>,
+    setup_commitment: &SetupCommitment<F, T>,
     twiddles: &Twiddles<F, Global>,
     prover_config: &ProverConfig,
     commitment_mode: CommitmentMode,
+    inits_and_teardowns_top_bits: Vec<u32>,
+    trace_len: usize,
+    worker: &Worker,
+) -> GKRProof<F, E, T>
+where
+    [(); F::DEGREE]: Sized,
+    [(); E::DEGREE]: Sized,
+{
+    // Preserve the historical, mode-dependent storage policy for existing callers.
+    let rs_codeword_source = match commitment_mode {
+        CommitmentMode::MergedAndPackedMemoryAndWitness { .. } => RsCodewordSource::Recompute,
+        CommitmentMode::SeparateMemoryAndWitness | CommitmentMode::MergedMemoryAndWitness => {
+            RsCodewordSource::InMemory
+        }
+    };
+    prove_configured_with_gkr_impl::<F, E, T, TR>(
+        compiled_circuit,
+        external_challenges,
+        witness_eval_data,
+        setup,
+        setup_commitment,
+        twiddles,
+        prover_config,
+        commitment_mode,
+        rs_codeword_source,
+        inits_and_teardowns_top_bits,
+        trace_len,
+        worker,
+    )
+}
+
+/// Config-aware entry point: the caller chooses how the memory/witness RS
+/// codewords are stored ([`RsCodewordSource`]) and wraps the setup commitment in
+/// [`SetupCommitment`] (in-memory or on-disk). For a given [`CommitmentMode`] the
+/// resulting proof is independent of these storage choices.
+#[allow(clippy::too_many_arguments)]
+pub fn prove_configured_with_gkr_with_storage<
+    F: PrimeField + TwoAdicField,
+    E: FieldExtension<F> + Field,
+    T: ColumnMajorMerkleTreeConstructor<F>,
+    TR: ::transcript::Transcript<F, E>,
+>(
+    compiled_circuit: &GKRCircuitArtifact<F>,
+    external_challenges: &GKRExternalChallenges<F, E>,
+    witness_eval_data: GKRFullWitnessTrace<F, Global, Global>,
+    setup: &GKRSetup<F>,
+    setup_commitment: &SetupCommitment<F, T>,
+    twiddles: &Twiddles<F, Global>,
+    prover_config: &ProverConfig,
+    commitment_mode: CommitmentMode,
+    rs_codeword_source: RsCodewordSource,
+    inits_and_teardowns_top_bits: Vec<u32>,
+    trace_len: usize,
+    worker: &Worker,
+) -> GKRProof<F, E, T>
+where
+    [(); F::DEGREE]: Sized,
+    [(); E::DEGREE]: Sized,
+{
+    prove_configured_with_gkr_impl::<F, E, T, TR>(
+        compiled_circuit,
+        external_challenges,
+        witness_eval_data,
+        setup,
+        setup_commitment,
+        twiddles,
+        prover_config,
+        commitment_mode,
+        rs_codeword_source,
+        inits_and_teardowns_top_bits,
+        trace_len,
+        worker,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn prove_configured_with_gkr_impl<
+    F: PrimeField + TwoAdicField,
+    E: FieldExtension<F> + Field,
+    T: ColumnMajorMerkleTreeConstructor<F>,
+    TR: ::transcript::Transcript<F, E>,
+>(
+    compiled_circuit: &GKRCircuitArtifact<F>,
+    external_challenges: &GKRExternalChallenges<F, E>,
+    witness_eval_data: GKRFullWitnessTrace<F, Global, Global>,
+    setup: &GKRSetup<F>,
+    setup_commitment: &SetupCommitment<F, T>,
+    twiddles: &Twiddles<F, Global>,
+    prover_config: &ProverConfig,
+    commitment_mode: CommitmentMode,
+    rs_codeword_source: RsCodewordSource,
     inits_and_teardowns_top_bits: Vec<u32>,
     trace_len: usize,
     worker: &Worker,
@@ -266,22 +548,71 @@ where
         wit_oracle,
         lookup_challenges_pow_nonce,
         [lookup_alpha, lookup_additive_part],
-        // Present only in the packed mode: the lazy (coset-by-coset) base commitment
-        // whose query hook serves round-0 base queries in `whir_fold`.
-        packed_base_commitment,
+        // Present only under `RsCodewordSource::Recompute`: the lazy (coset-by-coset)
+        // base commitment(s) whose query hook serves round-0 base queries in
+        // `whir_fold`. `None` means the base oracles are fully materialized.
+        base_recompute,
     ) = match commitment_mode {
         CommitmentMode::SeparateMemoryAndWitness => {
             // first we would commit to the witness - WHIR commitment itself is just the same as FRI commitment
-            let (mem_oracle, wit_oracle) =
-                stages::initial_commit::commit_separate_memory_and_witness_subtrees::<F, T>(
-                    &witness_eval_data,
-                    twiddles,
-                    prover_config.lde_factor,
-                    prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
-                    prover_config.cap_size,
-                    trace_len.trailing_zeros() as usize,
-                    worker,
-                );
+            let (mem_oracle, wit_oracle, base_recompute) = match rs_codeword_source {
+                RsCodewordSource::InMemory => {
+                    let (mem_oracle, wit_oracle) =
+                        stages::initial_commit::commit_separate_memory_and_witness_subtrees::<F, T>(
+                            &witness_eval_data,
+                            twiddles,
+                            prover_config.lde_factor,
+                            prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
+                            prover_config.cap_size,
+                            trace_len.trailing_zeros() as usize,
+                            worker,
+                        );
+                    (mem_oracle, wit_oracle, None)
+                }
+                RsCodewordSource::Recompute => {
+                    // Commit memory and witness separately, each coset-by-coset; keep
+                    // only the compact commitment + a slim oracle (main domain + cap).
+                    let whir_first_fold_step_log2 =
+                        prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize;
+                    let commit_set =
+                        |columns: &[Vec<F>]| -> Option<CosetByCosetBaseCommitment<F, T>> {
+                            if columns.is_empty() {
+                                return None;
+                            }
+                            let inputs: Vec<&[F]> = columns.iter().map(|c| &c[..]).collect();
+                            Some(CosetByCosetBaseCommitment::<F, T>::commit(
+                                &inputs,
+                                twiddles,
+                                prover_config.lde_factor,
+                                whir_first_fold_step_log2,
+                                prover_config.cap_size,
+                                trace_len.trailing_zeros() as usize,
+                                worker,
+                            ))
+                        };
+                    let mem_commitment = commit_set(&witness_eval_data.column_major_memory_trace);
+                    let wit_commitment = commit_set(&witness_eval_data.column_major_witness_trace);
+                    let build_oracle =
+                        |commitment: &Option<CosetByCosetBaseCommitment<F, T>>| match commitment {
+                            Some(c) => slim_oracle_from_base_commitment(c, twiddles, worker),
+                            None => ColumnMajorBaseOracleForLDE::empty(
+                                prover_config.base_oracles_values_per_leaf,
+                                trace_len.trailing_zeros() as usize,
+                                prover_config.lde_factor,
+                            ),
+                        };
+                    let mem_oracle = build_oracle(&mem_commitment);
+                    let wit_oracle = build_oracle(&wit_commitment);
+                    (
+                        mem_oracle,
+                        wit_oracle,
+                        Some(BaseRecomputeSources {
+                            mem: mem_commitment,
+                            wit: wit_commitment,
+                        }),
+                    )
+                }
+            };
 
             let mut transcript_input = vec![];
             // we should commit all "external" variables,
@@ -295,7 +626,7 @@ where
             // commit our setup
             if setup.hypercube_evals.len() > 0 {
                 flatten_merkle_caps_iter_into(
-                    Some(setup_commitment.tree.get_cap()).into_iter(),
+                    Some(setup_commitment.get_cap()).into_iter(),
                     &mut transcript_input,
                 );
             }
@@ -341,20 +672,57 @@ where
                 wit_oracle,
                 lookup_challenges_pow_nonce,
                 [lookup_alpha, lookup_additive_part],
-                None,
+                base_recompute,
             )
         }
         CommitmentMode::MergedMemoryAndWitness => {
-            let merged_oracle =
-                stages::initial_commit::commit_merged_memory_and_witness_subtrees::<F, T>(
-                    &witness_eval_data,
-                    twiddles,
-                    prover_config.lde_factor,
-                    prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
-                    prover_config.cap_size,
-                    trace_len.trailing_zeros() as usize,
-                    worker,
-                );
+            let (merged_oracle, base_recompute) = match rs_codeword_source {
+                RsCodewordSource::InMemory => {
+                    let merged_oracle =
+                        stages::initial_commit::commit_merged_memory_and_witness_subtrees::<F, T>(
+                            &witness_eval_data,
+                            twiddles,
+                            prover_config.lde_factor,
+                            prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
+                            prover_config.cap_size,
+                            trace_len.trailing_zeros() as usize,
+                            worker,
+                        );
+                    (merged_oracle, None)
+                }
+                RsCodewordSource::Recompute => {
+                    // Commit the union of memory+witness columns coset-by-coset (no
+                    // packing), byte-identical to the materialized merged oracle.
+                    let merged_inputs: Vec<&[F]> = witness_eval_data
+                        .column_major_memory_trace
+                        .iter()
+                        .chain(witness_eval_data.column_major_witness_trace.iter())
+                        .map(|el| &el[..])
+                        .collect();
+                    assert!(
+                        !merged_inputs.is_empty(),
+                        "merged memory+witness commitment requires at least one column"
+                    );
+                    let commitment = CosetByCosetBaseCommitment::<F, T>::commit(
+                        &merged_inputs,
+                        twiddles,
+                        prover_config.lde_factor,
+                        prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
+                        prover_config.cap_size,
+                        trace_len.trailing_zeros() as usize,
+                        worker,
+                    );
+                    let merged_oracle =
+                        slim_oracle_from_base_commitment(&commitment, twiddles, worker);
+                    (
+                        merged_oracle,
+                        Some(BaseRecomputeSources {
+                            mem: Some(commitment),
+                            wit: None,
+                        }),
+                    )
+                }
+            };
 
             let mut transcript_input = vec![];
             // we should commit all "external" variables,
@@ -368,7 +736,7 @@ where
             // commit our setup
             if setup.hypercube_evals.len() > 0 {
                 flatten_merkle_caps_iter_into(
-                    Some(setup_commitment.tree.get_cap()).into_iter(),
+                    Some(setup_commitment.get_cap()).into_iter(),
                     &mut transcript_input,
                 );
             }
@@ -404,7 +772,7 @@ where
                 ),
                 lookup_challenges_pow_nonce,
                 [lookup_alpha, lookup_additive_part],
-                None,
+                base_recompute,
             )
         }
         CommitmentMode::MergedAndPackedMemoryAndWitness {
@@ -416,48 +784,57 @@ where
         } => {
             // in this mode we will re-derive external challenges.
             //
-            // Lazy (coset-by-coset) commitment: the packed polynomials are
-            // 2^(N + pack_log2) and their LDE codeword (x base_lde_factor) is far too
-            // large to materialize monolithically. We build a coset-by-coset commitment
-            // (keeps only the packed monomial forms + the small top tree) and hand
-            // `whir_fold` a "slim" base oracle that carries only the main-domain (coset 0)
-            // columns and the commitment cap; round-0 base queries are served on demand by
-            // the query hook installed at the `whir_fold` call.
+            // The packed polynomials are 2^(N + pack_log2) and their LDE codeword (x
+            // base_lde_factor) is very large. `Recompute` builds a coset-by-coset
+            // commitment (keeps only the packed monomial forms + the small top tree)
+            // and hands `whir_fold` a "slim" base oracle (main domain + cap); round-0
+            // base queries are served on demand by the query hook. `InMemory`
+            // materializes the whole packed codeword; both yield the same proof.
             let merged_inputs: Vec<&[F]> = witness_eval_data
                 .column_major_memory_trace
                 .iter()
                 .chain(witness_eval_data.column_major_witness_trace.iter())
                 .map(|el| &el[..])
                 .collect();
-            let commitment = CosetByCosetBaseCommitment::<F, T>::commit_packed(
-                &merged_inputs,
-                twiddles,
-                prover_config.lde_factor,
-                prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
-                prover_config.cap_size,
-                trace_len.trailing_zeros() as usize,
-                pack_log2,
-                worker,
-            );
-            let packed_size_log2 = trace_len.trailing_zeros() as usize + pack_log2;
-            let cap = commitment.get_cap();
-            // Slim base oracle: only coset 0 (main domain, read for batching) + the cap.
-            let merged_oracle = ColumnMajorBaseOracleForLDE::<F, T> {
-                cosets: vec![ColumnMajorBaseOracleForCoset {
-                    original_values_normal_order: commitment
-                        .main_domain_columns(twiddles, worker)
-                        .into_iter()
-                        .map(|col| ColumnMajorCosetBoundTracePart {
-                            column: Arc::new(col),
-                            offset: F::ONE,
-                        })
-                        .collect(),
-                    offset: F::ONE,
-                    coset_size_log2: packed_size_log2,
-                }],
-                tree: T::build_over_leaf_hashes(cap.cap.clone(), cap.cap.len(), worker),
-                values_per_leaf: commitment.values_per_leaf,
-                coset_size_log2: packed_size_log2,
+            let (merged_oracle, base_recompute) = match rs_codeword_source {
+                RsCodewordSource::InMemory => {
+                    let merged_oracle =
+                        stages::initial_commit::commit_packed_merged_memory_and_witness_subtrees::<
+                            F,
+                            T,
+                        >(
+                            &witness_eval_data,
+                            twiddles,
+                            prover_config.lde_factor,
+                            prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
+                            prover_config.cap_size,
+                            trace_len.trailing_zeros() as usize,
+                            pack_log2,
+                            worker,
+                        );
+                    (merged_oracle, None)
+                }
+                RsCodewordSource::Recompute => {
+                    let commitment = CosetByCosetBaseCommitment::<F, T>::commit_packed(
+                        &merged_inputs,
+                        twiddles,
+                        prover_config.lde_factor,
+                        prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
+                        prover_config.cap_size,
+                        trace_len.trailing_zeros() as usize,
+                        pack_log2,
+                        worker,
+                    );
+                    let merged_oracle =
+                        slim_oracle_from_base_commitment(&commitment, twiddles, worker);
+                    (
+                        merged_oracle,
+                        Some(BaseRecomputeSources {
+                            mem: Some(commitment),
+                            wit: None,
+                        }),
+                    )
+                }
             };
 
             let mut transcript_input = vec![];
@@ -490,7 +867,7 @@ where
             // commit our setup
             if setup.hypercube_evals.len() > 0 {
                 flatten_merkle_caps_iter_into(
-                    Some(setup_commitment.tree.get_cap()).into_iter(),
+                    Some(setup_commitment.get_cap()).into_iter(),
                     &mut transcript_input,
                 );
             }
@@ -537,7 +914,7 @@ where
                 ),
                 lookup_challenges_pow_nonce,
                 [lookup_alpha, lookup_additive_part],
-                Some(commitment),
+                base_recompute,
             )
         }
     };
@@ -940,26 +1317,25 @@ where
                 // FIRST coset (offset == 1, i.e. the base evaluation domain), invert
                 // its NTT to recover the packed poly's monomial coefficients, turn
                 // those into hypercube evaluations, and evaluate at `base_layer_z`.
-                let coset0 = &mem_oracle.cosets[0];
-                debug_assert_eq!(coset0.offset, F::ONE, "coset 0 must be the base domain");
                 assert_eq!(
-                    coset0.original_values_normal_order.len(),
+                    mem_oracle.cosets.num_columns(),
                     merged_claims.len(),
                     "one committed packed column per merged claim"
                 );
                 let eq_at_point = make_eq_poly_in_full::<E>(&base_layer_z, worker);
                 let eq_at_point = eq_at_point.last().expect("eq poly has a full layer");
-                for (column, expected_claim) in coset0
-                    .original_values_normal_order
-                    .iter()
-                    .zip(merged_claims.iter())
-                {
-                    // coset 0 evaluations -> IFFT -> natural monomial coefficients
-                    let mut hypercube_evals = compute_column_major_monomial_form_from_main_domain::<
-                        F,
-                        F,
-                        Global,
-                    >(&column.column[..], twiddles);
+                for (column_index, expected_claim) in merged_claims.iter().enumerate() {
+                    // Reduce the base-domain column to monomial coefficients: evals
+                    // need IFFT, monomials are already there.
+                    let column = mem_oracle.cosets.main_domain_column(column_index);
+                    let mut hypercube_evals = if column.is_monomials() {
+                        column.into_owned()
+                    } else {
+                        compute_column_major_monomial_form_from_main_domain::<F, F, Global>(
+                            column.as_slice(),
+                            twiddles,
+                        )
+                    };
                     // monomials -> hypercube evaluations of the packed multilinear,
                     // then bit-reverse (the packing committed `evals_into_coeffs(bitrev(H))`,
                     // so the inverse is `coeffs_into_hypercube_evals` then `bitreverse`;
@@ -991,30 +1367,40 @@ where
         );
     let whir_batching_challenge = whir_batching_challenges[0];
 
-    // In the packed mode the base (memory+witness) oracle was committed
-    // coset-by-coset, so it does not hold every LDE coset. Install a query hook that
-    // recomputes the queried coset on demand from `packed_base_commitment`, and switch
-    // the intermediate (folded) RS oracles to the coset-by-coset mode too. `set_idx`:
-    // 0 = merged memory+witness (the lazy commitment), 2 = setup (still the passed
-    // monolithic oracle); witness (1) carries no columns in this mode.
-    let packed_hook = packed_base_commitment.as_ref().map(|commitment| {
-        move |set_idx: usize, query_index: usize| -> (Vec<Vec<F>>, BaseFieldQuery<F, T>) {
+    // A per-set base query hook is needed when the memory/witness RS codewords are
+    // recomputed (slim base oracles). The hook returns `None` for a set it doesn't own,
+    // so whir_fold falls back to that set's materialized oracle. `set_idx`: 0 = memory
+    // (or merged mem+witness), 1 = witness (separate mode). The setup set (2) is served
+    // by whir_fold directly from the passed `SetupCommitment`. The intermediate (folded)
+    // oracle policy follows the memory/witness RS policy only.
+    let use_recompute_intermediates = base_recompute.is_some();
+    let need_hook = base_recompute.is_some();
+    let query_hook = if need_hook {
+        let hook = move |set_idx: usize,
+                         query_index: usize|
+              -> Option<(Vec<Vec<F>>, BaseFieldQuery<F, T>)> {
             match set_idx {
-                0 => commitment.query_structured(query_index, twiddles, worker),
-                2 => {
-                    let (_coset, leaf, query) =
-                        setup_commitment.query_for_folded_index(query_index);
-                    (leaf, query)
-                }
-                _ => unreachable!("packed mode: only merged(0)/setup(2) base sets carry columns"),
+                0 => base_recompute
+                    .as_ref()
+                    .and_then(|s| s.mem.as_ref())
+                    .map(|c| c.query_structured(query_index, twiddles, worker)),
+                1 => base_recompute
+                    .as_ref()
+                    .and_then(|s| s.wit.as_ref())
+                    .map(|c| c.query_structured(query_index, twiddles, worker)),
+                _ => None,
             }
-        }
-    });
-    let base_query_hook: Option<&dyn Fn(usize, usize) -> (Vec<Vec<F>>, BaseFieldQuery<F, T>)> =
-        packed_hook
-            .as_ref()
-            .map(|h| h as &dyn Fn(usize, usize) -> (Vec<Vec<F>>, BaseFieldQuery<F, T>));
-    let intermediate_oracle_mode = if packed_base_commitment.is_some() {
+        };
+        Some(hook)
+    } else {
+        None
+    };
+    let base_query_hook: Option<
+        &dyn Fn(usize, usize) -> Option<(Vec<Vec<F>>, BaseFieldQuery<F, T>)>,
+    > = query_hook
+        .as_ref()
+        .map(|h| h as &dyn Fn(usize, usize) -> Option<(Vec<Vec<F>>, BaseFieldQuery<F, T>)>);
+    let intermediate_oracle_mode = if use_recompute_intermediates {
         crate::gkr::whir::WhirIntermediateOracleMode::CosetByCoset
     } else {
         crate::gkr::whir::WhirIntermediateOracleMode::Monolithic

@@ -4,7 +4,10 @@ use crate::cs::gkr_compiler::GKRCircuitArtifact;
 use crate::cs::tables::TableDriver;
 use crate::definitions::SecurityLevel;
 use crate::gkr::prover::setup::GKRSetup;
-use crate::gkr::prover::{prove_configured_with_gkr, CommitmentMode};
+use crate::gkr::prover::{
+    prove_configured_with_gkr, prove_configured_with_gkr_with_storage, CommitmentMode,
+    RsCodewordSource, SetupCommitment,
+};
 use crate::gkr::prover::{GKRExternalChallenges, GKRProof};
 use crate::gkr::prover_config::example_configs;
 use crate::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
@@ -112,6 +115,191 @@ pub fn prove_built_family_trace(
     println!("Proving time is {:?}", now.elapsed());
 
     proof
+}
+
+/// Like [`prove_built_family_trace`] but serves the SETUP commitment from disk:
+/// build the setup in memory via the old `commit`, write its RS codewords (one file
+/// per coset, shared prefix) and its Merkle tree to disk, then prove reading the RS
+/// codewords back through [`OnDiskRsCodewords`] and the tree through
+/// `ColumnMajorMerkleTreeConstructor::open_disk_artifacts` (`SetupCommitment::OnDisk`). The
+/// memory/witness commitments stay in memory. `disk_prefix` is a filesystem path
+/// prefix the test owns.
+#[allow(clippy::too_many_arguments)]
+pub fn prove_built_family_trace_on_disk_setup(
+    circuit: &GKRCircuitArtifact<BabyBearField>,
+    table_driver: &TableDriver<BabyBearField>,
+    decoder_table_data: &[Option<ExecutorFamilyDecoderData>],
+    full_trace: GKRFullWitnessTrace<BabyBearField, Global, Global>,
+    trace_len: usize,
+    external_challenges: &GKRExternalChallenges<BabyBearField, BabyBearExt4>,
+    level: SecurityLevel,
+    disk_prefix: &str,
+    worker: &Worker,
+) -> GKRProof<BabyBearField, BabyBearExt4, DefaultTreeConstructor> {
+    use crate::gkr::whir::rs_on_disk::OnDiskRsCodewords;
+    use crate::gkr::whir::MaterializedCosets;
+    use crate::merkle_trees::ColumnMajorMerkleTreeConstructor;
+
+    let prover_config = example_configs::config_for_security_level_under_pessimistic_conjecture(
+        trace_len.trailing_zeros() as usize,
+        level,
+    );
+    let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, worker);
+    let setup = GKRSetup::construct(table_driver, decoder_table_data, trace_len, circuit);
+
+    // 1) Commit the setup in memory (RS codewords + tree), the standard way. Unwrap the
+    //    owned `SetupCommitment::InMemory` to reach the oracle for on-disk serialization.
+    let SetupCommitment::InMemory(setup_oracle) = setup.commit::<DefaultTreeConstructor>(
+        &twiddles,
+        prover_config.lde_factor,
+        prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
+        prover_config.cap_size,
+        trace_len.trailing_zeros() as usize,
+        worker,
+    ) else {
+        unreachable!("GKRSetup::commit always returns the InMemory variant")
+    };
+    let values_per_leaf = setup_oracle.values_per_leaf;
+    let coset_size_log2 = setup_oracle.coset_size_log2;
+
+    // 2) Write the RS codewords (one file per coset) and the monolithic tree to disk.
+    //    The tree goes out through `write_disk_artifacts` (the only disk serializer):
+    //    it rebuilds the tree from the materialized cosets — byte-identical to
+    //    `setup.commit`'s tree since the coset order + bitreverse flags match.
+    let materialized = setup_oracle
+        .cosets
+        .as_any()
+        .downcast_ref::<MaterializedCosets<BabyBearField>>()
+        .expect("setup.commit produces materialized cosets");
+    let coset_paths = materialized
+        .serialize_to_disk(disk_prefix)
+        .expect("write setup RS codewords to disk");
+
+    let num_cosets = materialized.cosets.len();
+    let producer: crate::merkle_trees::CosetColumnsProducer<BabyBearField> =
+        Box::new(|coset: usize| {
+            materialized.cosets[coset]
+                .original_values_normal_order
+                .iter()
+                .map(|c| std::borrow::Cow::Borrowed(&c.column[..]))
+                .collect()
+        });
+    <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<BabyBearField>>::write_disk_artifacts::<
+        BabyBearField,
+    >(
+        disk_prefix,
+        crate::merkle_trees::on_disk::OnDiskTreeLayout::Monolithic,
+        num_cosets,
+        producer,
+        values_per_leaf,
+        prover_config.cap_size,
+        true,
+        true,
+        false,
+        worker,
+    )
+    .expect("write setup tree to disk");
+    let tree_path = crate::merkle_trees::on_disk::monolithic_tree_file_path(disk_prefix);
+
+    // Drop the in-memory setup oracle: from here the setup lives only on disk.
+    drop(materialized);
+    drop(setup_oracle);
+
+    // 3) Read them back: RS codewords + (monolithic) tree both served lazily via mmap.
+    let rs = OnDiskRsCodewords::<BabyBearField>::open(coset_paths)
+        .expect("open on-disk setup RS codewords");
+    let disk_tree = crate::merkle_trees::on_disk::OnDiskTree::monolithic(
+        crate::merkle_trees::on_disk::MmapMerkleTree::open(&tree_path).expect("mmap tree file"),
+    );
+
+    let setup_commitment = SetupCommitment::OnDisk {
+        rs: Box::new(rs),
+        tree: disk_tree,
+        values_per_leaf,
+        coset_size_log2,
+    };
+
+    prove_configured_with_gkr_with_storage::<
+        BabyBearField,
+        BabyBearExt4,
+        DefaultTreeConstructor,
+        Blake2sTranscript,
+    >(
+        circuit,
+        external_challenges,
+        full_trace,
+        &setup,
+        &setup_commitment,
+        &twiddles,
+        &prover_config,
+        CommitmentMode::SeparateMemoryAndWitness,
+        RsCodewordSource::InMemory,
+        Vec::new(),
+        trace_len,
+        worker,
+    )
+}
+
+/// Like [`prove_built_family_trace`] but lets the caller pick the RS-codeword
+/// storage policy ([`RsCodewordSource`]) via the config-aware prover entry point.
+/// The setup commitment is always in-memory. For a fixed [`CommitmentMode`] the
+/// resulting proof must be identical across storage policies — see
+/// `add_sub_family_rs_codeword_source_parity`.
+#[allow(clippy::too_many_arguments)]
+pub fn prove_built_family_trace_with_rs_source(
+    circuit: &GKRCircuitArtifact<BabyBearField>,
+    table_driver: &TableDriver<BabyBearField>,
+    decoder_table_data: &[Option<ExecutorFamilyDecoderData>],
+    full_trace: GKRFullWitnessTrace<BabyBearField, Global, Global>,
+    trace_len: usize,
+    external_challenges: &GKRExternalChallenges<BabyBearField, BabyBearExt4>,
+    level: SecurityLevel,
+    rs_codeword_source: RsCodewordSource,
+    worker: &Worker,
+) -> GKRProof<BabyBearField, BabyBearExt4, DefaultTreeConstructor> {
+    let mut prover_config = example_configs::config_for_security_level_under_pessimistic_conjecture(
+        trace_len.trailing_zeros() as usize,
+        level,
+    );
+    // `RsCodewordSource::Recompute` (coset-by-coset) requires `cap_size <= lde_factor`
+    // (the cap must sit at or above the per-coset subtree roots). The default family
+    // config has cap_size (16) > lde_factor (2), so clamp the cap for this parity
+    // path — applied identically to both storage policies, so the comparison stays
+    // apples-to-apples.
+    if prover_config.cap_size > prover_config.lde_factor {
+        prover_config.cap_size = prover_config.lde_factor;
+        prover_config.whir_schedule.cap_size = prover_config.lde_factor;
+    }
+    let twiddles: Twiddles<_, Global> = Twiddles::new(trace_len, worker);
+    let setup = GKRSetup::construct(table_driver, decoder_table_data, trace_len, circuit);
+    let setup_commitment = setup.commit(
+        &twiddles,
+        prover_config.lde_factor,
+        prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
+        prover_config.cap_size,
+        trace_len.trailing_zeros() as usize,
+        worker,
+    );
+
+    prove_configured_with_gkr_with_storage::<
+        BabyBearField,
+        BabyBearExt4,
+        DefaultTreeConstructor,
+        Blake2sTranscript,
+    >(
+        circuit,
+        external_challenges,
+        full_trace,
+        &setup,
+        &setup_commitment,
+        &twiddles,
+        &prover_config,
+        CommitmentMode::SeparateMemoryAndWitness,
+        rs_codeword_source,
+        Vec::new(),
+        trace_len,
+        worker,
+    )
 }
 
 /// Per-variant compiled-circuit JSON path

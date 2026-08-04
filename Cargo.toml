@@ -194,6 +194,7 @@ log = "0.4"
 sha3 = { version = "*", default-features = false }
 insta = "1.47.2"
 tempfile = "3.27.0"
+mmap-io = "1.0"
 
 [profile.dev]
 debug-assertions = true

@@ -20,7 +20,6 @@ use super::orchestration::common::{
 use crate::cs::gkr_compiler::GKRCircuitArtifact;
 use crate::definitions::FinalRegisterValue;
 use crate::definitions::SecurityLevel;
-use crate::gkr::prover::prove_configured_with_gkr;
 use crate::gkr::prover::setup::GKRSetup;
 use crate::gkr::prover::CommitmentMode;
 use crate::gkr::prover::WhirSchedule;
@@ -311,18 +310,73 @@ fn gkr_unified_packed_commitment_basic_fibonacci() {
     let packed_twiddles: Twiddles<Proth120, Global> =
         Twiddles::new(trace_len << pack_log2, &worker);
 
-    // 5. Construct & commit the setup.
+    // 5. Construct the setup and obtain an ON-DISK commitment for it: the packed
+    //    RS codewords + Merkle tree are computed once via `commit_packed` and cached
+    //    on disk; this and subsequent runs read them back lazily through
+    //    `SetupCommitment::OnDisk` (so the setup never has to sit in RAM while
+    //    proving). Delete the `*.rscw`/`*.tree` cache files to force a recompute.
+    use crate::gkr::prover::{
+        prove_configured_with_gkr_with_storage, RsCodewordSource, SetupCommitment,
+    };
+    use crate::gkr::whir::coset_commit::serialize_packed_base_commitment_split_to_disk;
+    use crate::gkr::whir::rs_on_disk::{coset_file_path, OnDiskRsCodewords};
+    use crate::merkle_trees::on_disk::{top_tree_file_path, OnDiskTreeLayout};
+    use crate::merkle_trees::{ColumnMajorMerkleTreeConstructor, RSQueriable};
+
     let setup = GKRSetup::construct(&table_driver, &decoder_table, trace_len, &unified_circuit);
-    println!("Computing setup commitment");
-    let setup_commitment = setup.commit_packed::<Keccak256MerkleTreeWithCap>(
-        &packed_twiddles,
-        prover_config.lde_factor,
-        prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
-        prover_config.cap_size,
-        TRACE_LEN_LOG2,
-        pack_log2,
-        &worker,
+
+    // On-disk setup with the "second" (per-coset subtree) tree layout: the packed
+    // setup is prepared coset-by-coset — each coset's RS codewords and its cap-size-1
+    // subtree are streamed to disk, then a small top-tree over the subtree roots — so
+    // the ~2^31 codeword and its tree never have to be materialized whole. This and
+    // later runs read them back lazily via mmap. Delete the cache files to recompute.
+    let setup_disk_prefix = "test_proofs/unified_setup_proth120_ondisk";
+    let lde_factor = prover_config.lde_factor;
+    let values_per_leaf = prover_config.base_oracles_values_per_leaf;
+    let setup_coset_paths: Vec<_> = (0..lde_factor)
+        .map(|i| coset_file_path(setup_disk_prefix, i))
+        .collect();
+    let setup_on_disk_present = top_tree_file_path(setup_disk_prefix).exists()
+        && setup_coset_paths.iter().all(|p| p.exists());
+
+    if !setup_on_disk_present {
+        println!("On-disk setup not present; preparing coset-by-coset (split tree) and caching");
+        let inputs: Vec<&[Proth120]> = setup.hypercube_evals.iter().map(|el| &el[..]).collect();
+        serialize_packed_base_commitment_split_to_disk::<Proth120, Keccak256MerkleTreeWithCap>(
+            &inputs,
+            &packed_twiddles,
+            lde_factor,
+            values_per_leaf.trailing_zeros() as usize,
+            prover_config.cap_size,
+            TRACE_LEN_LOG2,
+            pack_log2,
+            setup_disk_prefix,
+            &worker,
+        )
+        .expect("cache split setup to disk");
+    } else {
+        println!("Reusing cached on-disk setup at prefix {setup_disk_prefix}");
+    }
+
+    // Open the on-disk setup: RS codewords + the split (per-coset subtree) tree, all
+    // memory-mapped and read lazily.
+    let setup_rs =
+        OnDiskRsCodewords::<Proth120>::open(setup_coset_paths).expect("open on-disk setup RS");
+    let setup_coset_size_log2 = RSQueriable::coset_size_log2(&setup_rs);
+    let setup_disk_tree = <Keccak256MerkleTreeWithCap as ColumnMajorMerkleTreeConstructor<
+        Proth120,
+    >>::open_disk_artifacts(
+        setup_disk_prefix,
+        OnDiskTreeLayout::CosetSubtrees,
+        lde_factor,
     );
+
+    let setup_commitment = SetupCommitment::OnDisk {
+        rs: Box::new(setup_rs),
+        tree: setup_disk_tree,
+        values_per_leaf,
+        coset_size_log2: setup_coset_size_log2,
+    };
 
     // 6. Prove one unified circuit instance with the packed commitment mode.
     let external_challenges = dummy_external_challenges::<Proth120, Proth120>();
@@ -339,8 +393,9 @@ fn gkr_unified_packed_commitment_basic_fibonacci() {
     };
 
     println!("Trying to prove (unified, packed commitment, pack_log2 = {pack_log2})");
+    println!("  memory/witness RS codewords: Recompute; setup: on-disk");
     let now = std::time::Instant::now();
-    let proof = prove_configured_with_gkr::<
+    let proof = prove_configured_with_gkr_with_storage::<
         Proth120,
         Proth120,
         Keccak256MerkleTreeWithCap,
@@ -354,6 +409,7 @@ fn gkr_unified_packed_commitment_basic_fibonacci() {
         &packed_twiddles,
         &prover_config,
         commitment_mode,
+        RsCodewordSource::Recompute,
         top_bits,
         trace_len,
         &worker,
