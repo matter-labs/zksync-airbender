@@ -841,6 +841,26 @@ where
     ) -> BTreeMap<GKRAddress, *const E> {
         assert!(last_step >= 3, "main-layer final step must be in round 3+");
         let mut result = BTreeMap::new();
+        // A VM-owned layer built no prepared plans to walk — and needs none: the
+        // ADDRESSES are what this map is for, and they come from the kernel plans
+        // either way (the flat arm's zip is positional over these same vectors, so
+        // the key set is identical). `repoint_final_evaluations` then supplies the
+        // pointers out of the VM's last folding buffer.
+        if self.bwd_vm_ext.is_some() {
+            for kernel in self.kernel_plans.iter() {
+                for address in kernel
+                    .inputs
+                    .inputs_in_base
+                    .iter()
+                    .chain(kernel.inputs.inputs_in_extension.iter())
+                {
+                    if *address != GKRAddress::placeholder() {
+                        result.entry(*address).or_insert(null());
+                    }
+                }
+            }
+            return result;
+        }
         for kernel in self.kernel_plans.iter() {
             let prepared = &kernel
                 .round3_and_beyond_prepared

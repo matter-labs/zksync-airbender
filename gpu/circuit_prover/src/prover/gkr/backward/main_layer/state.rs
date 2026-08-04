@@ -3,7 +3,9 @@ use std::sync::Arc;
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
 
-use crate::prover::gkr::GpuGKRStorage;
+use crate::prover::gkr::{
+    GpuGKRStorage, GpuSumcheckRound1PreparedStorage, GpuSumcheckRound2PreparedStorage,
+};
 
 use super::super::kernels::*;
 use super::super::{compact, flat};
@@ -266,6 +268,31 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<'_, E>
             blueprints.len()
         );
 
+        // Does the VM own this layer WHOLE? `check_selection` rejects a
+        // half-owned layer, so a selected layer is owned end to end, and then the
+        // incumbent's fold storage has no reader left: no flat continuation
+        // kernel runs, and the layer's final gather reads the VM's own last
+        // folding buffer (`repoint_final_evaluations`). Everything that exists
+        // only to serve those kernels is therefore skipped below — the
+        // registration that ALLOCATES the per-poly fold backings, the prepares
+        // that slice them, and the flat continuation descriptors built off them.
+        //
+        // The VM's buffers replace them at a fraction of the footprint: the
+        // incumbent holds one poly's whole descending cascade for the whole proof
+        // (`N` per ext poly, `N/2` per base), while the VM holds two rounds of
+        // one round's width.
+        let vm_owns_layer = {
+            use super::super::vm::coords::BwdVmCoord;
+            let owns = |regime| {
+                self.bwd_vm_slice(BwdVmCoord {
+                    layer: layer_idx,
+                    regime,
+                })
+                .is_some()
+            };
+            owns(crate::upstream::BwdRegime::R0) && owns(crate::upstream::BwdRegime::Ext)
+        };
+
         let mut round0_descriptors = Vec::with_capacity(blueprints.len());
         for blueprint in blueprints.iter() {
             round0_descriptors.push(self.storage.get_for_sumcheck_round_0(&blueprint.inputs));
@@ -284,24 +311,26 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<'_, E>
         // - Ext inputs route through `register_dim_reducing_inputs_for_layer`
         //   (same consolidation shape used by the dim-reducing path; the
         //   function name carries over for main-layer artifact layers).
-        let flat_base_inputs: std::collections::BTreeSet<GKRAddress> = blueprints
-            .iter()
-            .flat_map(|bp| bp.inputs.inputs_in_base.iter().copied())
-            .filter(|addr| *addr != GKRAddress::placeholder())
-            .collect();
-        self.storage
-            .register_flat_base_folding_for_layer(layer_idx, &flat_base_inputs, context)?;
-        let flat_ext_inputs: std::collections::BTreeSet<GKRAddress> = blueprints
-            .iter()
-            .flat_map(|bp| bp.inputs.inputs_in_extension.iter().copied())
-            .filter(|addr| *addr != GKRAddress::placeholder())
-            .collect();
-        if !flat_ext_inputs.is_empty() {
-            self.storage.register_dim_reducing_inputs_for_layer(
-                layer_idx,
-                &flat_ext_inputs,
-                context,
-            )?;
+        if !vm_owns_layer {
+            let flat_base_inputs: std::collections::BTreeSet<GKRAddress> = blueprints
+                .iter()
+                .flat_map(|bp| bp.inputs.inputs_in_base.iter().copied())
+                .filter(|addr| *addr != GKRAddress::placeholder())
+                .collect();
+            self.storage
+                .register_flat_base_folding_for_layer(layer_idx, &flat_base_inputs, context)?;
+            let flat_ext_inputs: std::collections::BTreeSet<GKRAddress> = blueprints
+                .iter()
+                .flat_map(|bp| bp.inputs.inputs_in_extension.iter().copied())
+                .filter(|addr| *addr != GKRAddress::placeholder())
+                .collect();
+            if !flat_ext_inputs.is_empty() {
+                self.storage.register_dim_reducing_inputs_for_layer(
+                    layer_idx,
+                    &flat_ext_inputs,
+                    context,
+                )?;
+            }
         }
 
         // The parity gates' fold-storage poison (opt-in): sentinel-fill every
@@ -316,37 +345,55 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<'_, E>
             )?;
         }
 
+        // A prepare SLICES the registered backings — and `prepare_for_sumcheck_round_1`
+        // also lazily materializes the base ones — so on a VM-owned layer there is
+        // nothing to prepare and every consumer of these plans is skipped below.
+        // EMPTY rather than `Option`: the only reader left that walks them is the
+        // final gather, and it takes its VM branch on the addresses instead.
         let mut round1_prepared_all = Vec::with_capacity(blueprints.len());
-        for blueprint in blueprints.iter() {
-            round1_prepared_all.push(self.storage.prepare_for_sumcheck_round_1(
-                &blueprint.inputs,
-                layer_idx,
-                context,
-            )?);
-        }
-
         let mut round2_prepared_all = Vec::with_capacity(blueprints.len());
-        for blueprint in blueprints.iter() {
-            round2_prepared_all.push(self.storage.prepare_for_sumcheck_round_2(
-                &blueprint.inputs,
-                layer_idx,
-                context,
-            )?);
-        }
-
         let mut round3_prepared_all = Vec::with_capacity(blueprints.len());
         round3_prepared_all.resize_with(blueprints.len(), Vec::new);
-        for step in 3..folding_steps {
-            for (prepared_for_kernel, blueprint) in
-                round3_prepared_all.iter_mut().zip(blueprints.iter())
-            {
-                let prepared = self.storage.prepare_for_sumcheck_round_3_and_beyond(
+        if vm_owns_layer {
+            for _ in blueprints.iter() {
+                round1_prepared_all.push(GpuSumcheckRound1PreparedStorage {
+                    base_field_inputs: Vec::new(),
+                    extension_field_inputs: Vec::new(),
+                });
+                round2_prepared_all.push(GpuSumcheckRound2PreparedStorage {
+                    base_field_inputs: Vec::new(),
+                    extension_field_inputs: Vec::new(),
+                });
+            }
+        } else {
+            for blueprint in blueprints.iter() {
+                round1_prepared_all.push(self.storage.prepare_for_sumcheck_round_1(
                     &blueprint.inputs,
                     layer_idx,
-                    step,
                     context,
-                )?;
-                prepared_for_kernel.push(GpuGKRMainLayerRound3Prepared { step, prepared });
+                )?);
+            }
+
+            for blueprint in blueprints.iter() {
+                round2_prepared_all.push(self.storage.prepare_for_sumcheck_round_2(
+                    &blueprint.inputs,
+                    layer_idx,
+                    context,
+                )?);
+            }
+
+            for step in 3..folding_steps {
+                for (prepared_for_kernel, blueprint) in
+                    round3_prepared_all.iter_mut().zip(blueprints.iter())
+                {
+                    let prepared = self.storage.prepare_for_sumcheck_round_3_and_beyond(
+                        &blueprint.inputs,
+                        layer_idx,
+                        step,
+                        context,
+                    )?;
+                    prepared_for_kernel.push(GpuGKRMainLayerRound3Prepared { step, prepared });
+                }
             }
         }
 
@@ -582,13 +629,21 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<'_, E>
             cont_recipe_callbacks,
             flat_cont_coeff_device_buf,
             flat_cont_use_constant,
-        ) = self.build_flat_continuation_artifacts(
-            &static_data,
-            &kernel_plans,
-            folding_steps,
-            layer_idx,
-            context,
-        )?;
+        ) = if vm_owns_layer {
+            // Every one of these describes a flat continuation kernel this layer
+            // will not launch, and the builder reads the prepared plans that were
+            // not built. `None` here is what makes the compact-descriptor blocks
+            // below no-op: each is conditioned on the continuation plan.
+            (None, Vec::new(), None, None, 0, Callbacks::new(), None, true)
+        } else {
+            self.build_flat_continuation_artifacts(
+                &static_data,
+                &kernel_plans,
+                folding_steps,
+                layer_idx,
+                context,
+            )?
+        };
         recipe_callbacks.extend(cont_recipe_callbacks);
 
         let flat_round1_desc =
