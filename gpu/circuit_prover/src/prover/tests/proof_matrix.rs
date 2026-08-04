@@ -1673,22 +1673,32 @@ vm_coverage_gate!(
 //
 // These five FAIL today, all with the same error from `bind_ext_round_sources`:
 //
-//     UnresolvedCascade { window: 0, address: InnerLayer { layer: 1, offset: N } }
+//     UnresolvedCascade { .., e4_origin: false, looked_in: 1 }
 //
 // They are committed failing on purpose. `#[ignore]` keeps them out of every
 // default run, so they break no suite; what they buy is an executable statement of
 // the remaining coverage gap that goes green by itself when the gap closes, instead
 // of a prose TODO that rots.
 //
-// The shape of the gap: layer 1 is where `register_layer_copy_aliases` registers
-// copy-gate outputs, and a copy alias has no storage-layout entry and no fold
-// backing of its own — it aliases a layer-0 cache or a memory column. The Ext
-// binder's cascade resolution expects every layer-1 source to have a cascade slot,
-// so it rejects exactly the circuits that alias into layer 1. The five here do;
-// the seven that pass do not.
+// ROOT CAUSE — a lifecycle gap, not a layout or capacity one. `e4_origin: false`
+// says the source is BASE-backed, so its folding buffer lives in
+// `intermediate_storage_for_folder_base_field_inputs`. Ext buffers are pre-allocated
+// for the whole layer by `register_dim_reducing_inputs_for_layer`, but base ones are
+// NOT: `GpuGKRStorage::plan_base_source_for_round_1` creates each on demand
+// (`if !contains_key { materialize_base_folding_buffer(..) }`) while planning round
+// 1. When the VM owns round 1 that planning never runs, so the entry never exists,
+// and the binder — which only READS the map — finds nothing.
+//
+// So the fix is get-or-create against the incumbent's own path rather than a new
+// rule, which needs the bind path to hold storage mutably; it takes `&GpuGKRStorage`
+// today. The seven passing circuits are the ones whose VM-owned layers have only
+// ext-backed windows, which the eager registration already covered.
 //
 // Not a capacity problem, and not the 12,288-lane program cap: keccak_special5, the
-// heaviest layout in the corpus, is in the passing set.
+// heaviest layout in the corpus, is in the passing set. Not the copy-alias redirect
+// either — `GpuGKRStorageLayout::aliases` exists and `lookup` consults it, but only
+// as a FALLBACK after the address itself hits, and every address here either has its
+// own entry already or is not an alias at all.
 
 vm_coverage_gate!(
     run_unsigned_mul_div_vm_coverage_test,

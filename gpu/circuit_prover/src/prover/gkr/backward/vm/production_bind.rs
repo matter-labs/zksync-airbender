@@ -382,7 +382,18 @@ pub(crate) enum BwdVmBindError {
     /// A window column has no cascade region: the flat prepare has not run for
     /// this layer, or the address never folds here. Binding it anyway would
     /// publish through a null pointer.
-    UnresolvedCascade { window: u8, address: GKRAddress },
+    UnresolvedCascade {
+        window: u8,
+        address: GKRAddress,
+        /// The window's RAW backing field, which picks WHICH folding map was
+        /// consulted, and the layer it was consulted at. Both are needed to read
+        /// this failure at all: the same address can be absent from the base map
+        /// while present in the ext one, and that difference is what separates
+        /// "never folds" from "the entry is created lazily by a round this VM
+        /// owns, so nothing created it".
+        e4_origin: bool,
+        looked_in: usize,
+    },
 }
 
 /// The read place of one window column, or `None` for a procedural window.
@@ -979,7 +990,16 @@ pub(crate) fn bind_ext_round_sources<E: Copy>(
                     },
                 };
                 let cascade = resolve_cascade_region(storage, request_layer, address, e4_origin)
-                    .ok_or(BwdVmBindError::UnresolvedCascade { window, address })?;
+                    .ok_or_else(|| BwdVmBindError::UnresolvedCascade {
+                        window,
+                        address,
+                        e4_origin,
+                        looked_in: if e4_origin {
+                            GpuGKRStorage::<BF, E>::ext_poly_layer(address).unwrap_or(usize::MAX)
+                        } else {
+                            request_layer
+                        },
+                    })?;
 
                 // The READ lane. A chained round reads the previous round's
                 // publish — the same cascade region, one slot back — which is
