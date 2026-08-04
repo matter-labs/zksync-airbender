@@ -284,7 +284,7 @@ pub fn produce_descriptions_from_batched_description<
                 coeff_idx: coeff_idx as u32,
             });
             folded_evaluation_steps.push(FoldedEvaluationStep::Quadratic {
-                scratch_idx_a: a_idx as u8,
+                scratch_idx_a: (a_idx + ext_offset_for_folded_stages) as u8,
                 scratch_idx_b: (b_idx + ext_offset_for_folded_stages) as u8,
                 coeff_idx: coeff_idx as u32,
             });

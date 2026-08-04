@@ -24,7 +24,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> ExtensionOnlyRoundImplementati
     }
 
     fn work_size_for_unfolded_input_size(input_size_log2: usize) -> usize {
-        (1 << input_size_log2) / 2
+        (1 << input_size_log2) / 2 / 2
     }
 
     fn make_prefix_from_all_folding_challenges(
@@ -81,7 +81,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> ExtensionOnlyRoundImplementati
         src.write(src_0_idx, folded_0);
         dst[0] = folded_0;
 
-        let folded_1 = read_ext_and_fold_2(src, prefix, unfolded_input_stride, src_0_idx);
+        let folded_1 = read_ext_and_fold_2(src, prefix, unfolded_input_stride, src_1_idx);
         src.write(src_1_idx, folded_1);
 
         dst[1] = interpolate_at_inf_from_0_1_basis(folded_0, folded_1);
@@ -105,7 +105,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> ExtensionOnlyRoundImplementati
         src.write(src_0_idx, folded_0);
         dst[0] = folded_0;
 
-        let folded_1 = read_ext_and_fold_2(src, prefix, unfolded_input_stride, src_0_idx);
+        let folded_1 = read_ext_and_fold_2(src, prefix, unfolded_input_stride, src_1_idx);
         src.write(src_1_idx, folded_1);
     }
 
@@ -123,7 +123,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> ExtensionOnlyRoundImplementati
     fn evaluate_linear(dst: &mut Self::EvaluationScratch, a: &Self::PerPolyScratch, coeff: &E) {
         // we avoid point of infinity
         let mut acc = *coeff;
-        acc.add_assign(&a[0]);
+        acc.mul_assign(&a[0]);
         dst[0].add_assign(&acc);
     }
 

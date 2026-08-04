@@ -3,6 +3,8 @@ use crate::gkr::PAR_THRESHOLD;
 use super::*;
 
 pub mod in_1_out_1;
+pub mod in_1_out_3;
+pub mod in_2_out_2;
 pub mod in_3_out_1;
 pub mod in_3_out_3;
 
@@ -77,8 +79,8 @@ pub fn evaluate_extension_only_rounds_with_full_sized_scratch_parallel<
     unfolded_input_size_log2: usize,
     worker: &Worker,
 ) -> I::AccumulatorOutput {
-    assert!(unfolded_input_size_log2 >= 4);
     let work_size = I::work_size_for_unfolded_input_size(unfolded_input_size_log2);
+    assert!(work_size >= 1);
     assert_eq!(precomputed_eq_suffix.len(), work_size);
 
     let geometry = worker.get_geometry_with_threshold(work_size, PAR_THRESHOLD);

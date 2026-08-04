@@ -36,6 +36,7 @@ mod large_field;
 mod malicious_proofs;
 mod unified_circuit;
 mod unified_negative_tests;
+mod windowed_bench;
 
 pub(crate) fn ensure_memory_trace_consistency<F: PrimeField>(
     memory_trace: &GKRMemoryOnlyWitnessTrace<F, impl Allocator + Clone, impl Allocator + Clone>,

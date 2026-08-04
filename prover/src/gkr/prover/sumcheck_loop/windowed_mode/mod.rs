@@ -2,6 +2,8 @@ use super::*;
 
 use crate::gkr::prover::sumcheck::access_and_fold::*;
 
+pub(crate) mod bench;
+pub(crate) mod bounded_scratch;
 pub(crate) mod full_size_scratch;
 pub(crate) mod sumcheck_loop;
 
@@ -226,7 +228,7 @@ fn read_base_then_fold_and_interpolate<F: PrimeField, E: FieldExtension<F> + Fie
                 dst[dst_offset] = folded_0;
 
                 let folded_1 =
-                    read_base_and_fold(src, precomputed_eq_prefix, base_input_stride, src_0_idx);
+                    read_base_and_fold(src, precomputed_eq_prefix, base_input_stride, src_1_idx);
                 buffer.write(src_1_idx, folded_1);
                 dst[dst_offset + 1] = folded_1;
 
@@ -287,7 +289,7 @@ fn read_base_then_fold_without_interpolation<F: PrimeField, E: FieldExtension<F>
                 dst[dst_offset] = folded_0;
 
                 let folded_1 =
-                    read_base_and_fold(src, precomputed_eq_prefix, base_input_stride, src_0_idx);
+                    read_base_and_fold(src, precomputed_eq_prefix, base_input_stride, src_1_idx);
                 buffer.write(src_1_idx, folded_1);
                 dst[dst_offset + 1] = folded_1;
             }
@@ -347,7 +349,7 @@ fn read_ext_then_fold_and_interpolate<F: PrimeField, E: FieldExtension<F> + Fiel
                 dst[dst_offset] = folded_0;
 
                 let folded_1 =
-                    read_ext_and_fold(src, precomputed_eq_prefix, base_input_stride, src_0_idx);
+                    read_ext_and_fold(src, precomputed_eq_prefix, base_input_stride, src_1_idx);
                 buffer.write(src_1_idx, folded_1);
                 dst[dst_offset + 1] = folded_1;
 
@@ -408,7 +410,7 @@ fn read_ext_then_fold_without_interpolation<F: PrimeField, E: FieldExtension<F> 
                 dst[dst_offset] = folded_0;
 
                 let folded_1 =
-                    read_ext_and_fold(src, precomputed_eq_prefix, base_input_stride, src_0_idx);
+                    read_ext_and_fold(src, precomputed_eq_prefix, base_input_stride, src_1_idx);
                 buffer.write(src_1_idx, folded_1);
                 dst[dst_offset + 1] = folded_1;
             }
@@ -453,7 +455,7 @@ fn read_ext_then_fold_and_interpolate_inplace<F: PrimeField, E: FieldExtension<F
                     buffer,
                     precomputed_eq_prefix,
                     unfolded_input_stride,
-                    src_0_idx,
+                    src_1_idx,
                 );
                 buffer.write(src_1_idx, folded_1);
                 dst[dst_offset + 1] = folded_1;
@@ -521,7 +523,7 @@ fn read_ext_then_fold_without_interpolation_inplace<F: PrimeField, E: FieldExten
                     buffer,
                     precomputed_eq_prefix,
                     unfolded_input_stride,
-                    src_0_idx,
+                    src_1_idx,
                 );
                 buffer.write(src_1_idx, folded_1);
                 dst[dst_offset + 1] = folded_1;

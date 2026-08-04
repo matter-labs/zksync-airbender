@@ -175,7 +175,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> TransitionRoundImplementation<
     fn evaluate_linear(dst: &mut Self::EvaluationScratch, a: &Self::PerPolyScratch, coeff: &E) {
         // we avoid point of infinity
         let mut acc = *coeff;
-        acc.add_assign(&a[0]);
+        acc.mul_assign(&a[0]);
         dst[0].add_assign(&acc);
     }
 
