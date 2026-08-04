@@ -74,7 +74,9 @@ fn verify_nodes(values: &[Digest], results: &[Digest]) {
     let values_len = values.len();
     assert_eq!(values_len, results_len * 2);
     values
-        .chunks_exact(2)
+        .as_chunks::<2>()
+        .0
+        .iter()
         .zip(results)
         .for_each(|(input, &actual)| {
             let state = input

@@ -210,7 +210,7 @@ pub(super) fn special_lagrange_interpolate(
         (eval_at_1, dens[1], coeffs_for_1),
         (eval_at_random, dens[2], coeffs_for_random),
     ] {
-        for (dst, coeff) in result.iter_mut().zip(coeffs.into_iter()) {
+        for (dst, coeff) in result.iter_mut().zip(coeffs) {
             let mut term = coeff;
             term.mul_assign(&den);
             term.mul_assign(&eval);

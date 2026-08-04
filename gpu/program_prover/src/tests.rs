@@ -12,14 +12,6 @@ use gpu_execution_prover::{
 use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
 use setups::read_binary;
 
-fn test_artifact(relative_path: &str) -> std::path::PathBuf {
-    // Workspace-root-relative paths; crate is at gpu/program_prover/, so two "..".
-    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..")
-        .join(relative_path)
-}
-
 /// Idempotent `env_logger` init shared by every e2e below.
 #[cfg(all(not(no_cuda), feature = "verifiers"))]
 fn init_test_logger() {
@@ -33,12 +25,15 @@ fn init_test_logger() {
 /// `(binary_image, text_section)`.
 #[cfg(all(not(no_cuda), feature = "verifiers"))]
 fn load_workload(name: &str) -> (Vec<u32>, Vec<u32>) {
-    let (_, binary_image) = read_binary(&test_artifact(&format!(
-        "examples/{name}/app_blake2_with_compression.bin"
-    )));
-    let (_, text_section) = read_binary(&test_artifact(&format!(
-        "examples/{name}/app_blake2_with_compression.text"
-    )));
+    let artifact_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..");
+    let (_, binary_image) = read_binary(
+        &artifact_root.join(format!("examples/{name}/app_blake2_with_compression.bin")),
+    );
+    let (_, text_section) = read_binary(
+        &artifact_root.join(format!("examples/{name}/app_blake2_with_compression.text")),
+    );
     (binary_image, text_section)
 }
 
@@ -167,12 +162,15 @@ fn test_program_prover_unified_base_layer_verify() {
 fn test_program_prover_unified_cpu_gpu_proof_diff() {
     init_test_logger();
     let (binary_image, text_section) = load_workload("multi_family_smoke");
-    let (_, padded_binary_image) = setups::read_and_pad_binary(&test_artifact(
-        "examples/multi_family_smoke/app_blake2_with_compression.bin",
-    ));
-    let (_, padded_text_section) = setups::read_and_pad_binary(&test_artifact(
-        "examples/multi_family_smoke/app_blake2_with_compression.text",
-    ));
+    let artifact_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..");
+    let (_, padded_binary_image) = setups::read_and_pad_binary(
+        &artifact_root.join("examples/multi_family_smoke/app_blake2_with_compression.bin"),
+    );
+    let (_, padded_text_section) = setups::read_and_pad_binary(
+        &artifact_root.join("examples/multi_family_smoke/app_blake2_with_compression.text"),
+    );
     let worker = worker::Worker::new_with_num_threads(8);
     let configuration = ExecutionProverConfiguration::default();
     let security_level = configuration.security_level;

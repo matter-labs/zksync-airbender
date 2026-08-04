@@ -1,5 +1,5 @@
 #![allow(incomplete_features)]
-#![feature(allocator_api)]
+#![cfg_attr(test, feature(allocator_api))]
 #![feature(generic_const_exprs)]
 #![warn(clippy::manual_div_ceil)]
 #![warn(clippy::needless_pass_by_value)]
@@ -53,16 +53,6 @@ use gpu_hash::blake2s::Digest;
 const EXT4_DEGREE: usize = <E4 as FieldExtension<BF>>::DEGREE;
 const LOG_SRC_COLS_PER_COSET: u32 = EXT4_DEGREE.trailing_zeros();
 const _: () = assert!(EXT4_DEGREE.is_power_of_two());
-
-#[cfg(test)]
-mod cpu_constant_tests {
-    use super::*;
-
-    #[test]
-    fn cpu_log_src_cols_per_coset_matches_extension_degree() {
-        assert_eq!(1usize << LOG_SRC_COLS_PER_COSET, EXT4_DEGREE);
-    }
-}
 
 /// Where the WHIR oracle's unified Merkle cap should land after its per-coset
 /// trees are committed.
@@ -1147,7 +1137,7 @@ pub(crate) mod tests {
             let coset_index = query_index & (oracle.lde_factor - 1);
             let internal_index = query_index / oracle.lde_factor;
             let stage1_coset_index =
-                super::bitreverse_index(coset_index, oracle.lde_factor.trailing_zeros() as u32);
+                super::bitreverse_index(coset_index, oracle.lde_factor.trailing_zeros());
             let logical_row_index = stage1_coset_index * oracle.packed_leaf_count + internal_index;
 
             let mut value_index = context
