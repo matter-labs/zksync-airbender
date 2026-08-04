@@ -37,12 +37,13 @@ pub use setups::circuits::{
     get_blake2_with_compression_circuit_setup, get_keccak_special5_circuit_setup,
 };
 pub use setups::pad_bytecode_for_proving;
+pub use setups::unified_reduced_machine::get_circuit as get_unified_reduced_machine_circuit;
 pub use setups::unrolled_circuits::{
     add_sub_lui_auipc_mop_circuit_setup, inits_and_teardowns_circuit_setup,
     jump_branch_slt_circuit_setup, load_store_subword_only_circuit_setup,
     load_store_word_only_circuit_setup, mul_div_unsigned_circuit_setup, shift_binary_circuit_setup,
 };
-pub use setups::{get_unified_reduced_machine_circuit, inits_and_teardowns, read_binary};
+pub use setups::{inits_and_teardowns, read_binary};
 
 // `trace_and_split` — Fiat-Shamir transforms for the permutation argument.
 // The transform is split per execution kind: the unrolled one absorbs

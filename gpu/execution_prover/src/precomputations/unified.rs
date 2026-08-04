@@ -78,7 +78,7 @@ pub(crate) fn build_unified_setup_direct(
 #[cfg(test)]
 mod unified_setup_tests {
     use super::*;
-    use crate::upstream::OutputType;
+    use crate::upstream::{get_unified_reduced_machine_circuit, OutputType};
 
     /// The GPU setup must use the same unified artifact as the canonical
     /// reduced-machine circuit builder.
@@ -91,7 +91,7 @@ mod unified_setup_tests {
         let s = build_unified_setup_direct(&binary, &binary, &worker);
         assert_eq!(
             s.compiled_circuit.trace_len,
-            setups::get_unified_reduced_machine_circuit(true).trace_len,
+            get_unified_reduced_machine_circuit(true).trace_len,
         );
         assert!(s
             .compiled_circuit
