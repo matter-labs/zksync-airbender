@@ -628,7 +628,7 @@ fn run_unified_stagewise_parity_test() {
         "proof slab size must be E4-aligned",
     );
     let proof_slab: gpu_core::primitives::context::DeviceAllocation<E4> = context
-        .alloc_with_extra_alignment::<E4, 4>(
+        .alloc_with_extra_alignment::<E4, 5>(
             proof_layout.total_bytes / std::mem::size_of::<E4>(),
             gpu_core::allocator::tracker::AllocationPlacement::Bottom,
         )

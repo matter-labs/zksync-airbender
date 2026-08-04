@@ -9,19 +9,81 @@ use crate::upstream::GKRAddress;
 // Scalar mirrors in `gpu/trace/native/witness/{common,trace}.cuh`.
 const _: () = assert!(crate::upstream::NON_DETERMINISM_CSR == 0x7c0);
 // `native/witness/tables.cuh` mirrors the upstream `TableType` enum by ordinal.
-// Guard the tail (last pre-existing entry + every entry after it) so an
-// upstream insertion that shifts ordinals fails `cargo check` instead of
-// silently mis-dispatching device lookups.
-const _: () = assert!(crate::upstream::TableType::Decoder as u16 == 46);
-const _: () = assert!(crate::upstream::TableType::XorRotate16 as u16 == 47);
-const _: () = assert!(crate::upstream::TableType::XorRotate12 as u16 == 48);
-const _: () = assert!(crate::upstream::TableType::XorRotate8 as u16 == 49);
-const _: () = assert!(crate::upstream::TableType::XorRotate7 as u16 == 50);
-const _: () = assert!(crate::upstream::TableType::ConditionalJmpBranchSltUnified as u16 == 51);
-const _: () = assert!(crate::upstream::TableType::WideXor as u16 == 52);
-const _: () = assert!(crate::upstream::TableType::WideOr as u16 == 53);
-const _: () = assert!(crate::upstream::TableType::WideAnd as u16 == 54);
-const _: () = assert!(crate::upstream::TableType::DynamicPlaceholder as u16 == 55);
+// The literal list below is the native contract: per-variant assertions catch
+// reorders/renumbering, while the exhaustive match catches a newly-added Rust
+// variant that has no native mirror.
+macro_rules! assert_native_table_type_ordinals {
+    ($($variant:ident = $ordinal:literal),+ $(,)?) => {
+        const _: () = {
+            use crate::upstream::TableType;
+
+            $(assert!(TableType::$variant as u32 == $ordinal);)+
+
+            match TableType::ZeroEntry {
+                $(TableType::$variant => (),)+
+            }
+        };
+    };
+}
+
+assert_native_table_type_ordinals! {
+    ZeroEntry = 0,
+    RegIsZero = 1,
+    JumpCleanupOffset = 2,
+    GetSignExtensionByte = 3,
+    Xor = 4,
+    U16GetSign = 5,
+    Or = 6,
+    And = 7,
+    TruncateShiftAmountAndRangeCheck8 = 8,
+    ShiftImplementationOverBytes = 9,
+    RangeCheck8x8 = 10,
+    AndNot = 11,
+    U16GetSignAndHighByte = 12,
+    MemoryOffsetGetBits = 13,
+    MemoryLoadGetSigns = 14,
+    RomAddressSpaceSeparator = 15,
+    RomRead = 16,
+    Xor3 = 17,
+    Xor4 = 18,
+    Xor7 = 19,
+    Xor9 = 20,
+    Xor12 = 21,
+    RangeCheck9x9 = 22,
+    RangeCheck10x10 = 23,
+    RangeCheck11 = 24,
+    RangeCheck12 = 25,
+    RangeCheck13 = 26,
+    U16SelectByteAndGetByteSign = 27,
+    BlakeGFunctionControlLookup = 28,
+    StoreByteSourceContribution = 29,
+    StoreByteExistingContribution = 30,
+    ConditionalJmpBranchSlt = 31,
+    MemoryGetOffsetAndMaskWithTrap = 32,
+    MemoryLoadHalfwordOrByte = 33,
+    AlignedRomRead = 34,
+    MemStoreClearOriginalRamValueLimb = 35,
+    MemStoreClearWrittenValueLimb = 36,
+    KeccakPermutationIndices = 37,
+    XorSpecialIota = 38,
+    AndN = 39,
+    RotL = 40,
+    U16GetLowByte = 41,
+    LoadHalfwordSignextend = 42,
+    LoadByteSignextend = 43,
+    LoadHalfwordRomRead = 44,
+    LoadByteRomRead = 45,
+    Decoder = 46,
+    XorRotate16 = 47,
+    XorRotate12 = 48,
+    XorRotate8 = 49,
+    XorRotate7 = 50,
+    ConditionalJmpBranchSltUnified = 51,
+    WideXor = 52,
+    WideOr = 53,
+    WideAnd = 54,
+    DynamicPlaceholder = 55,
+}
 const _: () = assert!(crate::upstream::REGISTER_SIZE == 2);
 const _: () = assert!(crate::upstream::NUM_TIMESTAMP_COLUMNS_FOR_RAM == 2);
 const _: () = assert!(crate::upstream::NUM_TIMESTAMP_DATA_LIMBS == 3);

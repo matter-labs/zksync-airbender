@@ -48,6 +48,22 @@ pub(in crate::proof) struct BundleDeviceRefs<'b, 'a> {
     pub external_challenges_device: &'b DeviceAllocation<E4>,
 }
 
+fn allocate_proof_slab(
+    context: &ProverContext,
+    total_bytes: usize,
+) -> CudaResult<DeviceAllocation<E4>> {
+    let slab = context.alloc_with_extra_alignment::<E4, 5>(
+        total_bytes / std::mem::size_of::<E4>(),
+        AllocationPlacement::Bottom,
+    )?;
+    assert_eq!(
+        slab.as_ptr() as usize & 0x1f,
+        0,
+        "proof slab base pointer must be 32-byte aligned for ProofLayout typed casts",
+    );
+    Ok(slab)
+}
+
 pub(in crate::proof) fn prepare_stage1_and_forward_setup<'a, A: GoodAllocator + 'a>(
     circuit_type: CircuitType,
     compiled_circuit: &GKRCircuitArtifact<BF>,
@@ -152,15 +168,7 @@ pub(in crate::proof) fn prepare_stage1_and_forward_setup<'a, A: GoodAllocator + 
         "proof slab size must be E4-aligned",
     );
     let proof_slab = {
-        let slab = context.alloc_with_extra_alignment::<E4, 4>(
-            proof_layout.total_bytes / std::mem::size_of::<E4>(),
-            AllocationPlacement::Bottom,
-        )?;
-        debug_assert_eq!(
-            slab.as_ptr() as usize & 0x1F,
-            0,
-            "proof slab base pointer must be 32-byte aligned for ProofLayout typed casts",
-        );
+        let slab = allocate_proof_slab(context, proof_layout.total_bytes)?;
         // `DeviceAllocation` is `!Send + !Sync` (raw device pointer); `Arc`
         // here is pure shared-ownership refcounting (the slab outlives this
         // function in the proof job's keepalive) within the single
@@ -332,4 +340,44 @@ pub(in crate::proof) fn prepare_stage1_and_forward_setup<'a, A: GoodAllocator + 
         forward_setup,
         d_seed,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gpu_prover_context::ProverContextConfig;
+
+    #[test]
+    fn proof_slab_allocation_is_32_byte_aligned_with_16_byte_allocator_chunks() {
+        let config = ProverContextConfig {
+            allocator_block_log_size: 10,
+            device_slack_static_bytes: 1,
+            device_slack_per_thread_bytes: 0,
+            max_device_allocation_blocks_count: Some(4),
+            host_allocator_block_log_size: 5,
+            host_allocator_blocks_count: 1,
+            small_allocator_log_chunk_size: Some(4),
+            small_allocator_pool_blocks: 1,
+            ..Default::default()
+        };
+        let context = ProverContext::new(&config).unwrap();
+
+        // CUDA allocations start at a 32-byte-aligned address. Occupying one
+        // 16-byte small-allocator slot makes the next unconstrained slot
+        // deliberately 16 mod 32, so default 256-byte chunks cannot mask the
+        // proof slab's requested alignment.
+        let leading_slot = context.alloc::<E4>(1, AllocationPlacement::Bottom).unwrap();
+        assert_eq!(
+            leading_slot.as_ptr() as usize & 0x1f,
+            0,
+            "test requires a 32-byte-aligned small-pool base",
+        );
+
+        let slab = allocate_proof_slab(&context, 2 * std::mem::size_of::<E4>()).unwrap();
+        assert_eq!(
+            slab.as_ptr() as usize & 0x1f,
+            0,
+            "proof slab allocation must request 32-byte alignment",
+        );
+    }
 }

@@ -716,7 +716,7 @@ pub(super) fn assert_recursive_whir_oracle_parity_for_supported_path(
         "proof slab size must be E4-aligned",
     );
     let proof_slab: DeviceAllocation<E4> = context
-        .alloc_with_extra_alignment::<E4, 4>(
+        .alloc_with_extra_alignment::<E4, 5>(
             whir_proof_layout.total_bytes / core::mem::size_of::<E4>(),
             AllocationPlacement::BestFit,
         )

@@ -1150,7 +1150,7 @@ pub(super) fn build_basic_unrolled_async_backward_fixture_from_base(
     let proof_layout = gpu_gkr::proof_layout::ProofLayout::new(&proof_layout_inputs);
     let proof_slab: gpu_core::primitives::context::DeviceAllocation<E4> = base
         .context
-        .alloc_with_extra_alignment::<E4, 4>(
+        .alloc_with_extra_alignment::<E4, 5>(
             proof_layout.total_bytes / std::mem::size_of::<E4>(),
             gpu_core::allocator::tracker::AllocationPlacement::Bottom,
         )
