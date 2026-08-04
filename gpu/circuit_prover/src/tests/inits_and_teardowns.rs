@@ -329,8 +329,8 @@ pub(super) fn prepare_inits_and_teardowns_proof_fixture(
                 trace_len.trailing_zeros() as usize,
                 &worker,
             );
-        stage1_caps_from_tree(
-            &mem_oracle.tree,
+        stage1_subcaps_from_cap(
+            mem_oracle.tree.get_cap(),
             whir_schedule.cap_size / whir_schedule.base_lde_factor,
         )
     };
@@ -539,8 +539,8 @@ fn standalone_inits_and_teardowns_gpu_workflow_matches_cpu() {
             trace_len.trailing_zeros() as usize,
             &worker,
         );
-    let cpu_memory_caps = stage1_caps_from_tree(
-        &mem_oracle.tree,
+    let cpu_memory_caps = stage1_subcaps_from_cap(
+        mem_oracle.tree.get_cap(),
         whir_schedule.cap_size / whir_schedule.base_lde_factor,
     );
 
@@ -612,12 +612,7 @@ fn standalone_inits_and_teardowns_gpu_workflow_matches_cpu() {
         cpu_transcript_input.extend_from_slice(&canonical_top_bits);
         external_challenges.flatten_into_buffer(&mut cpu_transcript_input);
         flatten_merkle_caps_iter_into(
-            Some(
-                <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<BF>>::get_cap(
-                    &mem_oracle.tree,
-                ),
-            )
-            .into_iter(),
+            Some(mem_oracle.tree.get_cap()).into_iter(),
             &mut cpu_transcript_input,
         );
         let mut cpu_seed =

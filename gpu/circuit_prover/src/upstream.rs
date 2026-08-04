@@ -110,6 +110,8 @@ pub(crate) use prover::gkr::prover::utils::flatten_merkle_caps_iter_into;
 #[cfg(test)]
 pub(crate) use prover::gkr::prover::CommitmentMode;
 #[cfg(test)]
+pub(crate) use prover::gkr::prover::SetupCommitment;
+#[cfg(test)]
 pub(crate) use prover::gkr::prover::{
     dimension_reduction, forward_loop, prove_configured_with_gkr, sumcheck_loop,
 };
@@ -153,7 +155,7 @@ pub(crate) use prover::gkr::witness_gen::oracles::{
     MemoryCircuitOracle, NonMemoryCircuitOracle, UnifiedRiscvCircuitOracle,
 };
 #[cfg(test)]
-pub(crate) use prover::merkle_trees::{ColumnMajorMerkleTreeConstructor, MerkleTreeCapVarLength};
+pub(crate) use prover::merkle_trees::{MerkleTreeCapVarLength, PathQueriable};
 #[cfg(test)]
 pub(crate) use prover::query_utils::{assemble_query_index, BitSource};
 #[cfg(test)]

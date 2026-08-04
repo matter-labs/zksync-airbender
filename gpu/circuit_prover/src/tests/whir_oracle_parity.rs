@@ -124,7 +124,7 @@ pub(super) fn assert_recursive_whir_oracle_parity_for_supported_path(
     // Main-domain (coset-0) columns per oracle set, read through the RSQueriable
     // value source (matches `whir_fold`'s batching after the lazy-oracle refactor).
     // These test oracles are materialized, so the source returns EVALUATIONS.
-    use prover::merkle_trees::{MainDomainColumn, RSQueriable};
+    use prover::merkle_trees::MainDomainColumn;
     let main_domain_cols: [Vec<MainDomainColumn<'_, BF>>; 3] = [
         (0..oracle_refs[0].num_columns())
             .map(|c| oracle_refs[0].cosets.main_domain_column(c))
@@ -320,15 +320,9 @@ pub(super) fn assert_recursive_whir_oracle_parity_for_supported_path(
     .unwrap();
     assert_eq!(
         gpu_rs_oracle.get_tree_cap(context).unwrap(),
-        <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<BF>>::get_cap(
-            &cpu_rs_oracle.tree,
-        )
+        cpu_rs_oracle.tree.get_cap()
     );
-    cpu_recursive_caps.push(
-        <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<BF>>::get_cap(
-            &cpu_rs_oracle.tree,
-        ),
-    );
+    cpu_recursive_caps.push(cpu_rs_oracle.tree.get_cap());
     let gpu_initial_round_checkpoint = debug_initial_round_checkpoint_for_test(
         gpu_mem_trace_holder,
         mem_polys_claims,
@@ -351,9 +345,7 @@ pub(super) fn assert_recursive_whir_oracle_parity_for_supported_path(
     add_whir_commitment_to_transcript::<BF, E4, Blake2sTranscript, DefaultTreeConstructor>(
         &mut transcript_seed,
         &WhirCommitment::<BF, DefaultTreeConstructor> {
-            cap: <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<BF>>::get_cap(
-                &cpu_rs_oracle.tree,
-            ),
+            cap: cpu_rs_oracle.tree.get_cap(),
             _marker: core::marker::PhantomData,
         },
     );
@@ -402,9 +394,7 @@ pub(super) fn assert_recursive_whir_oracle_parity_for_supported_path(
     }
     assert_eq!(
         gpu_initial_round_checkpoint.recursive_cap,
-        <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<BF>>::get_cap(
-            &cpu_rs_oracle.tree,
-        ),
+        cpu_rs_oracle.tree.get_cap(),
         "initial recursive WHIR commitment diverged before PoW",
     );
     assert_eq!(
@@ -537,13 +527,9 @@ pub(super) fn assert_recursive_whir_oracle_parity_for_supported_path(
         .unwrap();
         assert_eq!(
             next_gpu_oracle.get_tree_cap(context).unwrap(),
-            <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<BF>>::get_cap(
-                &next_cpu_oracle.tree,
-            )
+            next_cpu_oracle.tree.get_cap()
         );
-        let next_cpu_oracle_cap = <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<
-            BF,
-        >>::get_cap(&next_cpu_oracle.tree);
+        let next_cpu_oracle_cap = next_cpu_oracle.tree.get_cap();
         cpu_recursive_caps.push(next_cpu_oracle_cap.clone());
         // Upstream folds the recursive oracle cap into the transcript before drawing
         // the next OOD point (see prover/src/gkr/whir/mod.rs).

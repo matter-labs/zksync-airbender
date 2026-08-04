@@ -278,7 +278,7 @@ fn run_basic_unrolled_stagewise_parity_test() {
         .trace_holder
         .read_per_coset_caps_synchronously(&context)
         .unwrap();
-    let setup_caps = stage1_caps_from_tree(&setup_commitment.tree, subcap_size);
+    let setup_caps = stage1_subcaps_from_cap(setup_commitment.get_cap(), subcap_size);
     assert_eq!(trace_holder_caps, setup_caps);
     let h_decoder_table = witness_gen_data
         .iter()
@@ -322,7 +322,7 @@ fn run_basic_unrolled_stagewise_parity_test() {
         .unwrap();
     context.get_exec_stream().synchronize().unwrap();
 
-    let memory_caps = stage1_caps_from_tree(&mem_oracle.tree, subcap_size);
+    let memory_caps = stage1_subcaps_from_cap(mem_oracle.tree.get_cap(), subcap_size);
     assert_eq!(
         stage1_output
             .memory_trace_holder
@@ -331,7 +331,7 @@ fn run_basic_unrolled_stagewise_parity_test() {
         memory_caps
     );
 
-    let witness_caps = stage1_caps_from_tree(&wit_oracle.tree, subcap_size);
+    let witness_caps = stage1_subcaps_from_cap(wit_oracle.tree.get_cap(), subcap_size);
     assert_eq!(
         stage1_output
             .witness_trace_holder
@@ -343,30 +343,15 @@ fn run_basic_unrolled_stagewise_parity_test() {
     let mut transcript_input = vec![];
     external_challenges.flatten_into_buffer(&mut transcript_input);
     flatten_merkle_caps_iter_into(
-        Some(
-            <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<BF>>::get_cap(
-                &setup_commitment.tree,
-            ),
-        )
-        .into_iter(),
+        Some(setup_commitment.get_cap()).into_iter(),
         &mut transcript_input,
     );
     flatten_merkle_caps_iter_into(
-        Some(
-            <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<BF>>::get_cap(
-                &mem_oracle.tree,
-            ),
-        )
-        .into_iter(),
+        Some(mem_oracle.tree.get_cap()).into_iter(),
         &mut transcript_input,
     );
     flatten_merkle_caps_iter_into(
-        Some(
-            <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<BF>>::get_cap(
-                &wit_oracle.tree,
-            ),
-        )
-        .into_iter(),
+        Some(wit_oracle.tree.get_cap()).into_iter(),
         &mut transcript_input,
     );
 
@@ -969,6 +954,9 @@ fn run_basic_unrolled_stagewise_parity_test() {
     // capture the full GPU WHIR proof from this call rather than running a
     // second gpu_whir_fold_supported_path (which would try to take the
     // already-consumed tree caps and panic).
+    let SetupCommitment::InMemory(setup_oracle) = &setup_commitment else {
+        panic!("WHIR oracle parity requires an in-memory setup commitment");
+    };
     let gpu_whir_proof = {
         let _range = scoped_range(None, "test.gpu.whir.recursive_oracle_parity");
         assert_recursive_whir_oracle_parity_for_supported_path(
@@ -978,7 +966,7 @@ fn run_basic_unrolled_stagewise_parity_test() {
             &wit_oracle,
             &cpu_wit_polys_claims,
             &mut stage1_output.witness_trace_holder,
-            &setup_commitment,
+            setup_oracle,
             &cpu_setup_polys_claims,
             &mut gpu_setup_transfer.trace_holder,
             base_layer_z,

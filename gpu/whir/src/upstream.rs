@@ -44,6 +44,8 @@ pub(crate) use prover::gkr::whir::WhirCommitment;
 pub(crate) use prover::merkle_trees::blake2s_for_everything_tree::Blake2sU32MerkleTreeWithCap;
 #[cfg(test)]
 pub(crate) use prover::merkle_trees::ColumnMajorMerkleTreeConstructor;
+#[cfg(test)]
+pub(crate) use prover::merkle_trees::PathQueriable;
 #[cfg(any(test, feature = "test-utils"))]
 pub(crate) use prover::merkle_trees::{DefaultTreeConstructor, MerkleTreeCapVarLength};
 #[cfg(any(test, feature = "test-utils"))]

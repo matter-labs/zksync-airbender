@@ -441,12 +441,11 @@ pub(super) fn assert_gkr_proof_structure_for_test(
     );
 }
 
-pub(super) fn stage1_caps_from_tree<T: ColumnMajorMerkleTreeConstructor<BF>>(
-    tree: &T,
+pub(super) fn stage1_subcaps_from_cap(
+    cap: MerkleTreeCapVarLength,
     subcap_size: usize,
 ) -> Vec<MerkleTreeCapVarLength> {
-    tree.get_cap()
-        .cap
+    cap.cap
         .chunks_exact(subcap_size)
         .map(|chunk| MerkleTreeCapVarLength {
             cap: chunk.to_vec(),

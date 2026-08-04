@@ -74,7 +74,7 @@ pub(super) fn assert_delegation_workflow_matches_cpu<W, O, F>(
     .unwrap();
     context.get_h2d_stream().synchronize().unwrap();
 
-    let cpu_setup_caps = stage1_caps_from_tree(&setup_commitment.tree, subcap_size);
+    let cpu_setup_caps = stage1_subcaps_from_cap(setup_commitment.get_cap(), subcap_size);
     let gpu_setup_caps = gpu_setup_transfer
         .trace_holder
         .read_per_coset_caps_synchronously(&context)
@@ -121,7 +121,7 @@ pub(super) fn assert_delegation_workflow_matches_cpu<W, O, F>(
             trace_len.trailing_zeros() as usize,
             &worker,
         );
-    let cpu_memory_caps = stage1_caps_from_tree(&mem_oracle.tree, subcap_size);
+    let cpu_memory_caps = stage1_subcaps_from_cap(mem_oracle.tree.get_cap(), subcap_size);
     if gpu_memory_caps != cpu_memory_caps {
         let first_mismatch = describe_first_trace_holder_column_mismatch(
             &stage1_output.memory_trace_holder,
@@ -133,7 +133,7 @@ pub(super) fn assert_delegation_workflow_matches_cpu<W, O, F>(
         panic!("{label}: memory caps diverged; first flat mismatch: {first_mismatch}");
     }
 
-    let cpu_witness_caps = stage1_caps_from_tree(&wit_oracle.tree, subcap_size);
+    let cpu_witness_caps = stage1_subcaps_from_cap(wit_oracle.tree.get_cap(), subcap_size);
     let gpu_witness_caps = stage1_output
         .witness_trace_holder
         .read_per_coset_caps_synchronously(&context)
@@ -200,30 +200,15 @@ pub(super) fn assert_delegation_workflow_matches_cpu<W, O, F>(
     let mut cpu_transcript_input = Vec::new();
     external_challenges.flatten_into_buffer(&mut cpu_transcript_input);
     flatten_merkle_caps_iter_into(
-        Some(
-            <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<BF>>::get_cap(
-                &setup_commitment.tree,
-            ),
-        )
-        .into_iter(),
+        Some(setup_commitment.get_cap()).into_iter(),
         &mut cpu_transcript_input,
     );
     flatten_merkle_caps_iter_into(
-        Some(
-            <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<BF>>::get_cap(
-                &mem_oracle.tree,
-            ),
-        )
-        .into_iter(),
+        Some(mem_oracle.tree.get_cap()).into_iter(),
         &mut cpu_transcript_input,
     );
     flatten_merkle_caps_iter_into(
-        Some(
-            <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<BF>>::get_cap(
-                &wit_oracle.tree,
-            ),
-        )
-        .into_iter(),
+        Some(wit_oracle.tree.get_cap()).into_iter(),
         &mut cpu_transcript_input,
     );
 
