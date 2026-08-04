@@ -232,7 +232,7 @@ pub(super) fn run_memory_workflow_input_parity_test<const FAMILY_IDX: u8>(
     .unwrap();
     context.get_h2d_stream().synchronize().unwrap();
 
-    let cpu_setup_caps = stage1_caps_from_tree(&setup_commitment.tree, subcap_size);
+    let cpu_setup_caps = stage1_subcaps_from_cap(setup_commitment.get_cap(), subcap_size);
     let gpu_setup_caps = gpu_setup_transfer
         .trace_holder
         .read_per_coset_caps_synchronously(&context)
@@ -295,7 +295,7 @@ pub(super) fn run_memory_workflow_input_parity_test<const FAMILY_IDX: u8>(
             trace_len.trailing_zeros() as usize,
             &worker,
         );
-    let cpu_memory_caps = stage1_caps_from_tree(&mem_oracle.tree, subcap_size);
+    let cpu_memory_caps = stage1_subcaps_from_cap(mem_oracle.tree.get_cap(), subcap_size);
     if gpu_memory_caps != cpu_memory_caps {
         let first_mismatch = describe_first_trace_holder_column_mismatch(
             &stage1_output.memory_trace_holder,
@@ -332,7 +332,7 @@ pub(super) fn run_memory_workflow_input_parity_test<const FAMILY_IDX: u8>(
         );
     }
 
-    let cpu_witness_caps = stage1_caps_from_tree(&wit_oracle.tree, subcap_size);
+    let cpu_witness_caps = stage1_subcaps_from_cap(wit_oracle.tree.get_cap(), subcap_size);
     let gpu_witness_caps = stage1_output
         .witness_trace_holder
         .read_per_coset_caps_synchronously(&context)

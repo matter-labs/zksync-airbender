@@ -13,8 +13,7 @@ use worker::Worker;
 use super::*;
 use crate::test_utils::make_test_context;
 use crate::upstream::{
-    ColumnMajorMerkleTreeConstructor, DefaultTreeConstructor, FieldExtension,
-    MerkleTreeCapVarLength, PrimeField, VirtualSetupPoly,
+    DefaultTreeConstructor, FieldExtension, MerkleTreeCapVarLength, PrimeField, VirtualSetupPoly,
 };
 use gpu_core::primitives::field::E4;
 use gpu_ops::simple::set_by_ref;
@@ -281,7 +280,7 @@ fn setup_host_matches_flattened_cpu_setup_and_caps() {
 
     let worker = Worker::new();
     let twiddles: fft::Twiddles<BF, Global> = fft::Twiddles::new(trace_len, &worker);
-    let setup_commitment = setup.commit(
+    let setup_commitment = setup.commit::<DefaultTreeConstructor>(
         &twiddles,
         lde_factor,
         log_rows_per_leaf as usize,
@@ -290,15 +289,14 @@ fn setup_host_matches_flattened_cpu_setup_and_caps() {
         &worker,
     );
     let subcap_size = tree_cap_size / lde_factor;
-    let setup_caps = <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<BF>>::get_cap(
-        &setup_commitment.tree,
-    )
-    .cap
-    .chunks_exact(subcap_size)
-    .map(|chunk| MerkleTreeCapVarLength {
-        cap: chunk.to_vec(),
-    })
-    .collect_vec();
+    let setup_caps = setup_commitment
+        .get_cap()
+        .cap
+        .chunks_exact(subcap_size)
+        .map(|chunk| MerkleTreeCapVarLength {
+            cap: chunk.to_vec(),
+        })
+        .collect_vec();
     assert_eq!(
         stage1_caps_from_unified_host_cap(&host.unified_tree_cap[..], log_lde_factor),
         setup_caps

@@ -37,6 +37,8 @@ use gpu_trace::trace::holder::{TraceHolder, TreesCacheMode, PARTIAL_TREE_REDUCTI
 // below (the `#[cfg(any(test, feature = "test-utils"))]` items). The production
 // oracle path (`from_device_monomial_coeffs_impl`, `schedule_*_into_slab`,
 // `into_host_keepalive`, `lde_factor`) references none of these.
+#[cfg(test)]
+use crate::upstream::PathQueriable;
 #[cfg(any(test, feature = "test-utils"))]
 use crate::upstream::{extension_field_from_base_coeffs, Field, MerkleTreeCapVarLength};
 #[cfg(any(test, feature = "test-utils"))]
@@ -711,7 +713,7 @@ pub(crate) mod tests {
         commit_single_ext_poly_no_transform_for_test,
         commit_single_ext_poly_with_transform_for_test, ColumnMajorExtensionOracleForLDE,
     };
-    use prover::merkle_trees::{ColumnMajorMerkleTreeConstructor, DefaultTreeConstructor};
+    use prover::merkle_trees::DefaultTreeConstructor;
     use rand::Rng;
     use worker::Worker;
 
@@ -834,7 +836,7 @@ pub(crate) mod tests {
 
         assert_eq!(
             gpu.get_tree_cap(&context).unwrap(),
-            <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<BF>>::get_cap(&cpu.tree)
+            PathQueriable::get_cap(&cpu.tree)
         );
 
         let query_indexes = [
@@ -1020,7 +1022,7 @@ pub(crate) mod tests {
 
         assert_eq!(
             gpu.get_tree_cap(&context).unwrap(),
-            <DefaultTreeConstructor as ColumnMajorMerkleTreeConstructor<BF>>::get_cap(&cpu.tree)
+            PathQueriable::get_cap(&cpu.tree)
         );
 
         for query_index in [0usize, 1, 7, 13] {

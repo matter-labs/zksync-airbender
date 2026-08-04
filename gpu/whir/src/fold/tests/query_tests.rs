@@ -15,7 +15,9 @@ use super::make_lde_trace_holder;
 use crate::fold::debug::{
     copy_back, copy_small_to_device, query_base_trace_holder_for_folded_index,
 };
-use crate::upstream::{Blake2sU32MerkleTreeWithCap, ColumnMajorMerkleTreeConstructor, PrimeField};
+use crate::upstream::{
+    Blake2sU32MerkleTreeWithCap, ColumnMajorMerkleTreeConstructor, PathQueriable, PrimeField,
+};
 
 #[test]
 #[cfg(not(no_cuda))]
@@ -63,7 +65,7 @@ fn base_query_paths_match_cpu_tree() {
         .collect::<Vec<_>>();
     let cpu_tree = <Blake2sU32MerkleTreeWithCap<Global> as ColumnMajorMerkleTreeConstructor<
         BF,
-    >>::construct_from_cosets::<BF, Global>(
+    >>::construct_from_cosets::<BF>(
         &source_refs,
         1usize << log_rows_per_leaf,
         1usize << log_tree_cap_size,
@@ -78,11 +80,7 @@ fn base_query_paths_match_cpu_tree() {
         let (_, _, gpu_query) =
             query_base_trace_holder_for_folded_index(&mut trace_holder, query_index, &context)
                 .unwrap();
-        let (_, cpu_path) =
-            <Blake2sU32MerkleTreeWithCap<Global> as ColumnMajorMerkleTreeConstructor<BF>>::get_proof::<Global>(
-                &cpu_tree,
-                query_index,
-            );
+        let (_, cpu_path) = PathQueriable::get_proof(&cpu_tree, query_index);
         assert_eq!(gpu_query.path, cpu_path, "query_index={}", query_index);
     }
 }

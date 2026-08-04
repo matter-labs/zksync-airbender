@@ -331,8 +331,7 @@ fn assert_non_memory_commit_memory_matches_cpu_for_test<const FAMILY_IDX: u8>(
         &worker,
     );
     let mut cpu_transcript = vec![];
-    let cpu_cap: MerkleTreeCapVarLength =
-        ColumnMajorMerkleTreeConstructor::<BF>::get_cap(&cpu_mem_oracle.tree);
+    let cpu_cap: MerkleTreeCapVarLength = cpu_mem_oracle.tree.get_cap();
     flatten_merkle_caps_iter_into(Some(cpu_cap).into_iter(), &mut cpu_transcript);
     let device_block_size = 1usize << DEVICE_ALLOCATOR_BLOCK_LOG_SIZE;
     let max_device_allocation_blocks_count = DEVICE_ALLOCATOR_ARENA_BYTES / device_block_size;
@@ -525,8 +524,7 @@ fn assert_memory_commit_memory_matches_cpu_for_test<const FAMILY_IDX: u8>(
         &worker,
     );
     let mut cpu_transcript = vec![];
-    let cpu_cap: MerkleTreeCapVarLength =
-        ColumnMajorMerkleTreeConstructor::<BF>::get_cap(&cpu_mem_oracle.tree);
+    let cpu_cap: MerkleTreeCapVarLength = cpu_mem_oracle.tree.get_cap();
     flatten_merkle_caps_iter_into(Some(cpu_cap).into_iter(), &mut cpu_transcript);
     let device_block_size = 1usize << DEVICE_ALLOCATOR_BLOCK_LOG_SIZE;
     let max_device_allocation_blocks_count = DEVICE_ALLOCATOR_ARENA_BYTES / device_block_size;
@@ -625,8 +623,7 @@ fn assert_delegation_commit_memory_matches_cpu<W, O, F>(
         &worker,
     );
     let mut cpu_transcript = vec![];
-    let cpu_cap: MerkleTreeCapVarLength =
-        ColumnMajorMerkleTreeConstructor::<BF>::get_cap(&cpu_mem_oracle.tree);
+    let cpu_cap: MerkleTreeCapVarLength = cpu_mem_oracle.tree.get_cap();
     flatten_merkle_caps_iter_into(Some(cpu_cap).into_iter(), &mut cpu_transcript);
 
     let device_block_size = 1usize << DEVICE_ALLOCATOR_BLOCK_LOG_SIZE;
