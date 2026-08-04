@@ -116,27 +116,65 @@ impl GkrVmPrograms {
     }
 }
 
-/// The name the VM's lean compiler records for a circuit, and the VM's allowlist:
-/// `None` means no VM path exists for it and none may be selected.
+/// The name the VM's lean compiler records for a circuit, and the VM's allowlist.
 ///
-/// Deliberately a hard match rather than a structural predicate — a circuit the VM
-/// has never been measured on must be added here on purpose.
+/// Now TOTAL over `CircuitType`: every circuit in the backward corpus
+/// (`SEG_CORPUS_LAYOUTS`) has a lean coordinate set, so there is no longer a
+/// circuit to return `None` for. The `Option` stays because callers branch on it
+/// and because a future circuit type must be given a name here on purpose — an
+/// exhaustive match means the compiler asks rather than defaulting it to "no VM".
+///
+/// Deliberately a hard match rather than a structural predicate. Being on this
+/// list means the coordinates COMPILE (`bwd_vm_every_corpus_circuit_compiles`),
+/// not that the circuit has been proven end-to-end on the VM — that claim belongs
+/// to a per-circuit parity gate, and only add_sub and blake2 have one.
 pub(crate) fn vm_circuit_name(
     circuit_type: crate::witness::circuit_type::CircuitType,
 ) -> Option<&'static str> {
     use crate::witness::circuit_type::{
         CircuitType, DelegationCircuitType, UnrolledCircuitType, UnrolledNonMemoryCircuitType,
     };
+    use crate::witness::circuit_type::UnrolledMemoryCircuitType;
+    // The name is the corpus layout's basename minus `_layout_gkr.json`
+    // (`SEG_CORPUS_LAYOUTS` in `backward::vm::seg_compile`). It is an identity
+    // label, not a lookup key: `compile_lean_coordinate` uses it only to name the
+    // coordinate in an error, so a wrong name misreports rather than mis-selects.
     match circuit_type {
         CircuitType::Unrolled(UnrolledCircuitType::NonMemory(
             UnrolledNonMemoryCircuitType::AddSubLuiAuipcMop,
         )) => Some("add_sub_lui_auipc_mop"),
+        CircuitType::Unrolled(UnrolledCircuitType::NonMemory(
+            UnrolledNonMemoryCircuitType::JumpBranchSlt,
+        )) => Some("jump_branch_slt"),
+        CircuitType::Unrolled(UnrolledCircuitType::NonMemory(
+            UnrolledNonMemoryCircuitType::MulDivUnsigned,
+        )) => Some("unsigned_mul_div"),
+        // `ShiftBinaryCsr` proves the layout still named `shift_binop`.
+        CircuitType::Unrolled(UnrolledCircuitType::NonMemory(
+            UnrolledNonMemoryCircuitType::ShiftBinaryCsr,
+        )) => Some("shift_binop"),
+        CircuitType::Unrolled(UnrolledCircuitType::Memory(
+            UnrolledMemoryCircuitType::LoadStoreWordOnly,
+        )) => Some("mem_word_only"),
+        CircuitType::Unrolled(UnrolledCircuitType::Memory(
+            UnrolledMemoryCircuitType::LoadStoreSubwordOnly,
+        )) => Some("mem_subword_only"),
+        CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns) => {
+            Some("inits_and_teardowns_preprocessed")
+        }
+        CircuitType::Unrolled(UnrolledCircuitType::Unified) => Some("unified_reduced_machine"),
+        CircuitType::Delegation(DelegationCircuitType::BigIntWithControl) => {
+            Some("bigint_with_extended_control")
+        }
         // The layout `Blake2WithCompression` proves is
         // `blake2_with_extended_control` — see the fixture that loads it.
         CircuitType::Delegation(DelegationCircuitType::Blake2WithCompression) => {
             Some("blake2_with_extended_control")
         }
-        _ => None,
+        CircuitType::Delegation(DelegationCircuitType::Blake2GFunction) => {
+            Some("blake2_g_function")
+        }
+        CircuitType::Delegation(DelegationCircuitType::KeccakSpecial5) => Some("keccak_special5"),
     }
 }
 

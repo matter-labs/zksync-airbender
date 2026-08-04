@@ -141,17 +141,26 @@ where
 /// of the pipeline reads — no scratch, no scatter.
 /// Register the pure copy-aliases of one layer's gate set.
 ///
-/// `CopyInBaseField` / `CopyInExtensionField` gates do no arithmetic — the
-/// output `InnerLayer{L+1, off}` simply aliases its input poly (a memory column
-/// or a layer-0 cache), so no kernel writes it and it carries no entry in the
-/// storage layout (which is why layer 1's `ThisLayerInnerLayerWrite` offsets
-/// start at 1). The flat path registers these as `aliased_*_outputs` in
-/// `commit_flat_forward_plan`; any path that REPLACES layer 0's flat
-/// scheduling must do the same registration itself, or downstream layers hit
-/// an unresolved address.
+/// `CopyInBaseField` / `CopyInExtensionField` gates do no arithmetic — the output
+/// simply aliases its input poly (a memory column or a layer-0 cache), so no kernel
+/// writes it and it carries no entry in the storage layout (which is why layer 1's
+/// `ThisLayerInnerLayerWrite` offsets start at 1). The flat path registers these as
+/// `aliased_*_outputs` in `commit_flat_forward_plan`; any path that REPLACES layer
+/// 0's flat scheduling must do the same registration itself, or downstream layers
+/// hit an unresolved address.
 ///
 /// Shared by the generated-layer0 kernel and the forward VM, which have the
 /// identical gap for the identical reason.
+///
+/// The output address is registered AS GIVEN, at `layer_idx + 1`, whatever variant
+/// it is. It is usually `InnerLayer{L+1, off}` but four corpus circuits
+/// (`unsigned_mul_div`, `mem_word_only`, `mem_subword_only`,
+/// `bigint_with_extended_control`) have a copy gate whose output is a
+/// `ScratchSpace`. This function used to destructure `InnerLayer` for its target
+/// layer and panic otherwise, which blocked the forward VM on all four; the layer
+/// it recovered that way is already pinned by the assertion below, and
+/// `commit_flat_forward_plan` — the path whose proofs are the reference — likewise
+/// inserts every copy alias at `layer_idx + 1` without inspecting the address.
 pub(super) fn register_layer_copy_aliases<B, E>(
     layer_idx: usize,
     layer: &GKRLayerDescription,
@@ -174,13 +183,7 @@ pub(super) fn register_layer_copy_aliases<B, E>(
                     "a layer-{layer_idx} copy gate must output to layer {}",
                     layer_idx + 1
                 );
-                let GKRAddress::InnerLayer {
-                    layer: out_layer,
-                    offset: _,
-                } = *output
-                else {
-                    panic!("copy gate output must be an InnerLayer address, got {output:?}");
-                };
+                let out_layer = layer_idx + 1;
                 let base_source = storage.try_get_base_poly(*input).map(|p| p.clone_shared());
                 if let Some(source) = base_source {
                     storage.insert_base_field_at_layer(out_layer, *output, source);

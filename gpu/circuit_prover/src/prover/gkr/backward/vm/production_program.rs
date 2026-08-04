@@ -189,6 +189,67 @@ mod tests {
         )
     }
 
+    /// Every corpus circuit's coordinates compile, both regimes, every layer.
+    ///
+    /// This is what puts a circuit on `gkr::vm_circuit_name`'s allowlist honestly.
+    /// That function is total over `CircuitType`, so `GkrVmPrograms::compile` now
+    /// runs `compile_all_slices` for EVERY circuit a proof is built for — and it
+    /// panics on error. A layout that fails to compile would therefore break
+    /// proofs of that circuit even with no VM selected. This gate is the reason
+    /// that is safe, and it is CPU-only so it runs in the default suite.
+    ///
+    /// It deliberately does NOT claim any of these circuits proves correctly on the
+    /// VM. Compiling is necessary, not sufficient; the sufficient claim is a
+    /// per-circuit proof-parity gate in `prover::tests::proof_matrix`, which only
+    /// add_sub and blake2_with_extended_control have.
+    /// Enumerated over `CircuitType` rather than over the corpus layout list, so
+    /// what is under test is the ALLOWLIST: every circuit a proof can be built for
+    /// resolves to a name, and that name's layout compiles. (The corpus list itself
+    /// lives behind the `bench` feature and so cannot gate a default-suite test.)
+    #[test]
+    fn bwd_vm_every_corpus_circuit_compiles() {
+        use crate::prover::gkr::vm_circuit_name;
+        use crate::witness::circuit_type::{
+            CircuitType, DelegationCircuitType as D, UnrolledCircuitType as U,
+            UnrolledMemoryCircuitType as M, UnrolledNonMemoryCircuitType as N,
+        };
+
+        const EVERY_CIRCUIT: [CircuitType; 12] = [
+            CircuitType::Unrolled(U::NonMemory(N::AddSubLuiAuipcMop)),
+            CircuitType::Unrolled(U::NonMemory(N::JumpBranchSlt)),
+            CircuitType::Unrolled(U::NonMemory(N::MulDivUnsigned)),
+            CircuitType::Unrolled(U::NonMemory(N::ShiftBinaryCsr)),
+            CircuitType::Unrolled(U::Memory(M::LoadStoreWordOnly)),
+            CircuitType::Unrolled(U::Memory(M::LoadStoreSubwordOnly)),
+            CircuitType::Unrolled(U::InitsAndTeardowns),
+            CircuitType::Unrolled(U::Unified),
+            CircuitType::Delegation(D::BigIntWithControl),
+            CircuitType::Delegation(D::Blake2WithCompression),
+            CircuitType::Delegation(D::Blake2GFunction),
+            CircuitType::Delegation(D::KeccakSpecial5),
+        ];
+
+        for circuit_type in EVERY_CIRCUIT {
+            let name = vm_circuit_name(circuit_type)
+                .unwrap_or_else(|| panic!("{circuit_type:?} has no VM circuit name"));
+            let artifact: GKRCircuitArtifact<BF> = crate::prover::tests::deserialize_json_for_test(
+                &format!("cs/compiled_circuits/{name}_layout_gkr.json"),
+            );
+            let layers = artifact.layers.len();
+            let slices = compile_all_slices(name, &artifact)
+                .unwrap_or_else(|error| panic!("{name} must compile every coordinate: {error}"));
+            assert_eq!(
+                slices.len(),
+                layers * 2,
+                "{name}: one coordinate per (layer, regime)"
+            );
+            eprintln!(
+                "[bwd-vm-corpus-compile] {name}: {layers} layers, {} coordinates",
+                layers * 2
+            );
+        }
+    }
+
     /// The bench builds its `CoeffLayer` by deserializing a committed layout from
     /// a source-tree path. This is the same chain over the artifact production
     /// already holds, which is what removes the need for a committed lean file.

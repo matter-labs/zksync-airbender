@@ -39,6 +39,37 @@ pub(crate) const EMBEDDED_BLAKE2_SCHEDULE: &[u8] = include_bytes!(
     "../../../../../../../cs/compiled_circuits/blake2_with_extended_control_schedule_b16_gkr.json"
 );
 
+/// The remaining committed b16 schedules, one per corpus layout that has one.
+///
+/// `unified_reduced_machine` is absent and is the ONLY corpus layout with no
+/// searched schedule, so it is the one circuit the forward VM cannot run even
+/// though its backward coordinates compile.
+pub(crate) const EMBEDDED_JUMP_BRANCH_SLT_SCHEDULE: &[u8] =
+    include_bytes!("../../../../../../../cs/compiled_circuits/jump_branch_slt_schedule_b16_gkr.json");
+pub(crate) const EMBEDDED_UNSIGNED_MUL_DIV_SCHEDULE: &[u8] = include_bytes!(
+    "../../../../../../../cs/compiled_circuits/unsigned_mul_div_schedule_b16_gkr.json"
+);
+pub(crate) const EMBEDDED_SHIFT_BINOP_SCHEDULE: &[u8] =
+    include_bytes!("../../../../../../../cs/compiled_circuits/shift_binop_schedule_b16_gkr.json");
+pub(crate) const EMBEDDED_MEM_WORD_ONLY_SCHEDULE: &[u8] =
+    include_bytes!("../../../../../../../cs/compiled_circuits/mem_word_only_schedule_b16_gkr.json");
+pub(crate) const EMBEDDED_MEM_SUBWORD_ONLY_SCHEDULE: &[u8] = include_bytes!(
+    "../../../../../../../cs/compiled_circuits/mem_subword_only_schedule_b16_gkr.json"
+);
+/// Named `inits_and_teardowns_*`, not `inits_and_teardowns_preprocessed_*` like the
+/// layout it schedules — the schedule file predates the layout rename.
+pub(crate) const EMBEDDED_INITS_AND_TEARDOWNS_SCHEDULE: &[u8] = include_bytes!(
+    "../../../../../../../cs/compiled_circuits/inits_and_teardowns_schedule_b16_gkr.json"
+);
+pub(crate) const EMBEDDED_BIGINT_SCHEDULE: &[u8] = include_bytes!(
+    "../../../../../../../cs/compiled_circuits/bigint_with_extended_control_schedule_b16_gkr.json"
+);
+pub(crate) const EMBEDDED_BLAKE2_G_FUNCTION_SCHEDULE: &[u8] = include_bytes!(
+    "../../../../../../../cs/compiled_circuits/blake2_g_function_schedule_b16_gkr.json"
+);
+pub(crate) const EMBEDDED_KECCAK_SPECIAL5_SCHEDULE: &[u8] =
+    include_bytes!("../../../../../../../cs/compiled_circuits/keccak_special5_schedule_b16_gkr.json");
+
 /// The embedded schedule for a circuit, or `None` if the forward VM has none.
 ///
 /// A schedule is SEARCH output — the b16 schedules were searched against each
@@ -49,14 +80,43 @@ pub(crate) fn embedded_schedule(circuit_type: CircuitType) -> Option<&'static [u
     use crate::witness::circuit_type::{
         DelegationCircuitType, UnrolledCircuitType, UnrolledNonMemoryCircuitType,
     };
+    use crate::witness::circuit_type::UnrolledMemoryCircuitType;
     match circuit_type {
         CircuitType::Unrolled(UnrolledCircuitType::NonMemory(
             UnrolledNonMemoryCircuitType::AddSubLuiAuipcMop,
         )) => Some(EMBEDDED_ADD_SUB_SCHEDULE),
+        CircuitType::Unrolled(UnrolledCircuitType::NonMemory(
+            UnrolledNonMemoryCircuitType::JumpBranchSlt,
+        )) => Some(EMBEDDED_JUMP_BRANCH_SLT_SCHEDULE),
+        CircuitType::Unrolled(UnrolledCircuitType::NonMemory(
+            UnrolledNonMemoryCircuitType::MulDivUnsigned,
+        )) => Some(EMBEDDED_UNSIGNED_MUL_DIV_SCHEDULE),
+        CircuitType::Unrolled(UnrolledCircuitType::NonMemory(
+            UnrolledNonMemoryCircuitType::ShiftBinaryCsr,
+        )) => Some(EMBEDDED_SHIFT_BINOP_SCHEDULE),
+        CircuitType::Unrolled(UnrolledCircuitType::Memory(
+            UnrolledMemoryCircuitType::LoadStoreWordOnly,
+        )) => Some(EMBEDDED_MEM_WORD_ONLY_SCHEDULE),
+        CircuitType::Unrolled(UnrolledCircuitType::Memory(
+            UnrolledMemoryCircuitType::LoadStoreSubwordOnly,
+        )) => Some(EMBEDDED_MEM_SUBWORD_ONLY_SCHEDULE),
+        CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns) => {
+            Some(EMBEDDED_INITS_AND_TEARDOWNS_SCHEDULE)
+        }
+        // The one corpus layout with no searched schedule.
+        CircuitType::Unrolled(UnrolledCircuitType::Unified) => None,
+        CircuitType::Delegation(DelegationCircuitType::BigIntWithControl) => {
+            Some(EMBEDDED_BIGINT_SCHEDULE)
+        }
         CircuitType::Delegation(DelegationCircuitType::Blake2WithCompression) => {
             Some(EMBEDDED_BLAKE2_SCHEDULE)
         }
-        _ => None,
+        CircuitType::Delegation(DelegationCircuitType::Blake2GFunction) => {
+            Some(EMBEDDED_BLAKE2_G_FUNCTION_SCHEDULE)
+        }
+        CircuitType::Delegation(DelegationCircuitType::KeccakSpecial5) => {
+            Some(EMBEDDED_KECCAK_SPECIAL5_SCHEDULE)
+        }
     }
 }
 

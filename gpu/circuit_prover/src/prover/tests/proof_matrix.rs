@@ -1516,6 +1516,216 @@ fn run_blake2_both_vms_proof_parity_test() {
     );
 }
 
+/// Which arms a coverage gate turns on.
+///
+/// `BackwardOnly` has exactly one user: `unified_reduced_machine` is the only corpus
+/// layout with no searched b16 schedule, so `embedded_schedule` returns `None` and
+/// the forward VM cannot run it however the switch is set.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum VmArms {
+    BackwardOnly,
+    Both,
+}
+
+/// The per-circuit coverage gate: put everything this circuit has a VM path for on
+/// the VM, in one proof, and require the proof to be bit-equal to the CPU reference.
+///
+/// One helper rather than ten copies because the claim is identical for every
+/// circuit and only the fixture, the layer count and the arms differ. add_sub's and
+/// blake2's gates stay hand-written: they additionally pin their launch counts
+/// against a fold-depth constant, which is a per-circuit fact this helper has no
+/// way to know.
+///
+/// Every poison is on. A poison makes a destination the VM did not write read as
+/// deliberate garbage, so an arm that reads storage it was supposed to have
+/// produced fails loudly instead of passing on a plausible stale value — which is
+/// the failure mode a bit-equality check would otherwise miss entirely.
+///
+/// Launch counters are asserted NONZERO, not exact. `check_vm_selection_is_servable`
+/// already rejects a coordinate this circuit has no program for, so the counters are
+/// here to catch the opposite: a selection that was accepted, ran nothing, and let
+/// the incumbent produce a trivially-equal proof.
+fn assert_vm_coverage_matches_cpu(
+    fixture: BasicUnrolledProofFixture,
+    main_layers: usize,
+    arms: VmArms,
+    label: &str,
+) {
+    use crate::prover::gkr::backward::vm::coords::AB_GKR_BWD_VM_COORDS_ENV;
+    use crate::prover::gkr::backward::vm::production_bind::{
+        count_bwd_vm_r0_launches, AB_GKR_BWD_VM_POISON_ACCUMULATOR_ENV,
+        AB_GKR_BWD_VM_POISON_CASCADE_ENV,
+    };
+    use crate::prover::gkr::forward::path::AB_GKR_FWD_VM_LAYERS_ENV;
+    use crate::prover::gkr::forward::vm::count_fwd_vm_s4_launches;
+    use crate::prover::gkr::forward::vm::production_bind::AB_GKR_FWD_VM_POISON_DESTINATIONS_ENV;
+
+    let _fwd_poison = EnvGuard::set(AB_GKR_FWD_VM_POISON_DESTINATIONS_ENV, "1");
+    let _poison = EnvGuard::set(AB_GKR_BWD_VM_POISON_ACCUMULATOR_ENV, "1");
+    let _cascade_poison = EnvGuard::set(AB_GKR_BWD_VM_POISON_CASCADE_ENV, "1");
+
+    let fwd_counter = count_fwd_vm_s4_launches();
+    let bwd_counter = count_bwd_vm_r0_launches();
+    let fwd_before = fwd_counter.launches();
+    let (r0_before, ext_before) = (bwd_counter.launches(), bwd_counter.ext_launches());
+
+    let layers = match arms {
+        VmArms::BackwardOnly => String::new(),
+        VmArms::Both => (0..main_layers)
+            .map(|layer| layer.to_string())
+            .collect::<Vec<_>>()
+            .join(","),
+    };
+    let coords = (0..main_layers)
+        .map(|layer| format!("{layer}:R0,{layer}:Ext"))
+        .collect::<Vec<_>>()
+        .join(",");
+
+    let gpu_proof = {
+        let _fwd = EnvGuard::set(AB_GKR_FWD_VM_LAYERS_ENV, &layers);
+        let _bwd = EnvGuard::set(AB_GKR_BWD_VM_COORDS_ENV, &coords);
+        let job = fixture.schedule_prove().unwrap();
+        let (proof, _ms) = job.finish().unwrap();
+        proof
+    };
+
+    assert_gkr_proof_eq_for_test(&gpu_proof, &fixture.expected_cpu_proof);
+    // Deltas, not absolutes: these gates are `#[serial]` but share a process, so a
+    // gate that ran earlier has already moved the counters.
+    let fwd = fwd_counter.launches() - fwd_before;
+    let (r0, ext) = (
+        bwd_counter.launches() - r0_before,
+        bwd_counter.ext_launches() - ext_before,
+    );
+    assert_eq!(
+        r0, main_layers,
+        "{label}: one VM-owned R0 launch per main layer"
+    );
+    assert!(
+        ext >= main_layers,
+        "{label}: every main layer must have run at least one continuation round; got {ext}"
+    );
+    if arms == VmArms::Both {
+        assert!(fwd > 0, "{label}: the forward arm must have run");
+    }
+    eprintln!(
+        "[vm-coverage] {label}: {main_layers} main layers, arms={} \
+         ({fwd} fwd + {r0} R0 + {ext} Ext launches), proof bit-equal to the CPU reference",
+        if arms == VmArms::Both { "fwd+bwd" } else { "bwd" },
+    );
+}
+
+macro_rules! vm_coverage_gate {
+    ($name:ident, $fixture:expr, $layers:expr, $arms:expr, $label:literal) => {
+        #[test]
+        #[serial]
+        #[ignore]
+        fn $name() {
+            assert_vm_coverage_matches_cpu($fixture, $layers, $arms, $label);
+        }
+    };
+}
+
+// ── Circuits with full VM coverage ───────────────────────────────────────────
+//
+// These pass today. Together with add_sub and blake2_with_extended_control (whose
+// gates are hand-written above, since they also pin their launch counts) that is
+// 7 of the 12 corpus layouts proving bit-equal to the CPU reference with every VM
+// path they have turned on.
+
+vm_coverage_gate!(
+    run_jump_branch_slt_vm_coverage_test,
+    prepare_jump_branch_slt_proof_fixture(),
+    4,
+    VmArms::Both,
+    "jump_branch_slt"
+);
+vm_coverage_gate!(
+    run_shift_binop_vm_coverage_test,
+    prepare_shift_binop_proof_fixture(),
+    4,
+    VmArms::Both,
+    "shift_binop"
+);
+vm_coverage_gate!(
+    run_inits_and_teardowns_vm_coverage_test,
+    prepare_inits_and_teardowns_matrix_proof_fixture(),
+    4,
+    VmArms::Both,
+    "inits_and_teardowns_preprocessed"
+);
+vm_coverage_gate!(
+    run_blake2_g_function_vm_coverage_test,
+    prepare_blake2_g_function_proof_fixture(),
+    5,
+    VmArms::Both,
+    "blake2_g_function"
+);
+vm_coverage_gate!(
+    run_keccak_special5_vm_coverage_test,
+    prepare_keccak_special5_proof_fixture(),
+    6,
+    VmArms::Both,
+    "keccak_special5"
+);
+
+// ── Circuits blocked on ONE backward binder gap ──────────────────────────────
+//
+// These five FAIL today, all with the same error from `bind_ext_round_sources`:
+//
+//     UnresolvedCascade { window: 0, address: InnerLayer { layer: 1, offset: N } }
+//
+// They are committed failing on purpose. `#[ignore]` keeps them out of every
+// default run, so they break no suite; what they buy is an executable statement of
+// the remaining coverage gap that goes green by itself when the gap closes, instead
+// of a prose TODO that rots.
+//
+// The shape of the gap: layer 1 is where `register_layer_copy_aliases` registers
+// copy-gate outputs, and a copy alias has no storage-layout entry and no fold
+// backing of its own — it aliases a layer-0 cache or a memory column. The Ext
+// binder's cascade resolution expects every layer-1 source to have a cascade slot,
+// so it rejects exactly the circuits that alias into layer 1. The five here do;
+// the seven that pass do not.
+//
+// Not a capacity problem, and not the 12,288-lane program cap: keccak_special5, the
+// heaviest layout in the corpus, is in the passing set.
+
+vm_coverage_gate!(
+    run_unsigned_mul_div_vm_coverage_test,
+    prepare_mul_div_proof_fixture(),
+    4,
+    VmArms::Both,
+    "unsigned_mul_div"
+);
+vm_coverage_gate!(
+    run_mem_word_only_vm_coverage_test,
+    prepare_load_store_word_only_proof_fixture(),
+    4,
+    VmArms::Both,
+    "mem_word_only"
+);
+vm_coverage_gate!(
+    run_mem_subword_only_vm_coverage_test,
+    prepare_load_store_subword_only_proof_fixture(),
+    4,
+    VmArms::Both,
+    "mem_subword_only"
+);
+vm_coverage_gate!(
+    run_bigint_vm_coverage_test,
+    prepare_bigint_proof_fixture(),
+    6,
+    VmArms::Both,
+    "bigint_with_extended_control"
+);
+vm_coverage_gate!(
+    run_unified_vm_coverage_test,
+    super::unified_fixtures_helpers::prepare_unified_proof_fixture(),
+    4,
+    VmArms::BackwardOnly,
+    "unified_reduced_machine"
+);
+
 /// A/B the forward VM on every non-dimension-reducing add_sub layer: N interleaved pairs of whole proofs
 /// in one process, VM-on against VM-off, reporting per-pair deltas plus the
 /// median, min, max and both peak-memory figures.
