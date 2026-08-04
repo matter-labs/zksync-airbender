@@ -1,3 +1,7 @@
 [toolchain]
-channel = "nightly"
-# channel = "nightly-2026-02-10"
+# Pinned, not floating: `prover/src/lib.rs` still uses `feature(lazy_type_alias)`,
+# which current nightlies have removed (renamed `checked_type_aliases`), so a
+# floating `nightly` fails to build this branch with E0557. Main's `1eae11ea`
+# deleted that usage and is not an ancestor here — float again once it is merged in.
+channel = "nightly-2026-02-10"
+# channel = "nightly"
