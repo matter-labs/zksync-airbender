@@ -120,6 +120,8 @@ pub(crate) struct Round2FusedSources {
     pub(crate) ext_sources: Box<[GpuFlatContinuingSourceEntry; FLAT_CONT_MAX_EXT_SOURCES]>,
     pub(crate) num_ext_sources: u32,
     pub(crate) idx_remap: Vec<u16>,
+    pub(crate) base_source_indices: Vec<u16>,
+    pub(crate) ext_source_indices: Vec<u16>,
 }
 
 unsafe impl Send for Round2FusedSources {}
@@ -137,6 +139,8 @@ impl Default for Round2FusedSources {
             ),
             num_ext_sources: 0,
             idx_remap: Vec::new(),
+            base_source_indices: Vec::new(),
+            ext_source_indices: Vec::new(),
         }
     }
 }

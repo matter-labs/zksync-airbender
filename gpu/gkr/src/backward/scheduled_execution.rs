@@ -91,9 +91,6 @@ where
             layer.device_seed = None;
             layer.device_claim_point_for_next_layer = None;
             layer.device_claims_for_next_layer = None;
-            // Per-layer batch-challenge device buffer — last read by this
-            // layer's backward sumcheck kernels, already scheduled.
-            layer.batch_challenge_storage.release_device();
         }
     }
 
@@ -257,6 +254,7 @@ where
                     proof_layout,
                     backward_layer_slot,
                     mirror_layers_to_host,
+                    &mut self.storage,
                     context,
                 )?;
             shared_device_seed = execution
@@ -277,9 +275,6 @@ where
                 .expect("dim-reducing scheduler must return the claim layout");
             dimension_reducing_layers.push(execution);
             backward_layer_slot += 1;
-            // Stream-ordered storage can be dropped once the layer's uploads and kernels have
-            // been fully enqueued on exec_stream.
-            self.purge_up_to_layer(layer_idx);
         }
         dimension_reducing_layers_range.end(stream)?;
         tracing_ranges.push(dimension_reducing_layers_range);
@@ -297,11 +292,6 @@ where
             main_backward_state.prepare_next_layer_static(context)?
         {
             let layer_idx = prepared_layer.layer_idx;
-            // SAFETY: `prepare_next_layer_static` released its `&mut`
-            // borrow on `main_backward_state` when it returned. The
-            // re-borrow here is read-only and lives only across the
-            // scheduler call (which doesn't touch storage mutably).
-            let storage_for_extras = main_backward_state.storage();
             let mut execution = prepared_layer.schedule_execute_main_layer_from_workflow_state(
                 shared_state_handle,
                 shared_device_seed,
@@ -314,7 +304,7 @@ where
                 proof_layout,
                 backward_layer_slot,
                 mirror_layers_to_host,
-                Some(storage_for_extras),
+                Some(&mut main_backward_state.storage),
                 context,
             )?;
             shared_device_seed = execution
@@ -335,7 +325,6 @@ where
                 .expect("main-layer scheduler must return the claim layout");
             main_layers.push(execution);
             backward_layer_slot += 1;
-            main_backward_state.purge_up_to_layer(layer_idx);
         }
         main_layers_range.end(stream)?;
         tracing_ranges.push(main_layers_range);

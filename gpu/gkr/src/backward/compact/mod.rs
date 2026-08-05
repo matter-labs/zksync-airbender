@@ -26,7 +26,8 @@ pub(crate) use kernels::*;
 pub(crate) use round0_desc::*;
 
 pub(in crate::backward) use round12_descs::{
-    build_flat_round1_unified_desc, build_flat_round2_unified_desc,
+    build_flat_round1_unified_desc, build_flat_round2_unified_desc, rebind_flat_round1_descriptor,
+    rebind_flat_round2_descriptor,
 };
 
 #[cfg(test)]

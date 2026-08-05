@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+use crate::upstream::GKRAddress;
+
 use super::super::{CoefficientRecipe, GpuFlatC0Ref, GpuFlatC1Pair};
 use super::types::{
     ContinuationSourceAssignment, FlatContinuationBuildPlan, FlatContinuationTermDesc,
@@ -20,11 +22,9 @@ fn apply_permutation_vec<T: Clone>(order: &[usize], data: &mut Vec<T>) {
 }
 
 /// Key for deduplicating continuation sources.
-/// We deduplicate by cache pointer plus source kind (base/ext), since round 1/2
-/// require base/ext separation even when the underlying continuation cache is shared.
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 struct ContinuationSourceKey {
-    cache_ptr: usize,
+    address: GKRAddress,
     is_ext: bool,
 }
 
@@ -53,16 +53,15 @@ impl FlatContinuationDescriptionBuilder {
         }
     }
 
-    /// Register a source by its cache pointer and return its index.
-    /// The actual source entry (prev, cache) is populated per step later.
+    /// Register a logical source and return its stable dense index.
     pub(in crate::backward::flat) fn add_source(
         &mut self,
-        cache_ptr: usize,
+        address: GKRAddress,
         gate_idx: usize,
         is_ext: bool,
         input_idx: usize,
     ) -> u32 {
-        let key = ContinuationSourceKey { cache_ptr, is_ext };
+        let key = ContinuationSourceKey { address, is_ext };
         if let Some(&idx) = self.source_map.get(&key) {
             return idx;
         }

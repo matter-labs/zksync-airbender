@@ -21,13 +21,13 @@ pub(super) fn emit_continuation_constraint_gate<E: Field>(
             // Quadratic terms → unified_quadratic
             for qt in &tmpl.quadratic_terms {
                 let lhs = b.add_source(
-                    gate.base_inputs[qt.lhs as usize].this_layer_start as usize,
+                    gate.base_addresses[qt.lhs as usize],
                     gate.gate_idx,
                     false,
                     qt.lhs as usize,
                 );
                 let rhs = b.add_source(
-                    gate.base_inputs[qt.rhs as usize].this_layer_start as usize,
+                    gate.base_addresses[qt.rhs as usize],
                     gate.gate_idx,
                     false,
                     qt.rhs as usize,
@@ -49,7 +49,7 @@ pub(super) fn emit_continuation_constraint_gate<E: Field>(
                     continue;
                 }
                 let src = b.add_source(
-                    gate.base_inputs[lt.input as usize].this_layer_start as usize,
+                    gate.base_addresses[lt.input as usize],
                     gate.gate_idx,
                     false,
                     lt.input as usize,
@@ -95,13 +95,13 @@ pub(super) fn emit_continuation_constraint_gate<E: Field>(
         Some(GpuGKRMainLayerConstraintMetadataSource::Immediate(ref meta)) => {
             for qt in &meta.quadratic_terms {
                 let lhs = b.add_source(
-                    gate.base_inputs[qt.lhs as usize].this_layer_start as usize,
+                    gate.base_addresses[qt.lhs as usize],
                     gate.gate_idx,
                     false,
                     qt.lhs as usize,
                 );
                 let rhs = b.add_source(
-                    gate.base_inputs[qt.rhs as usize].this_layer_start as usize,
+                    gate.base_addresses[qt.rhs as usize],
                     gate.gate_idx,
                     false,
                     qt.rhs as usize,
@@ -122,7 +122,7 @@ pub(super) fn emit_continuation_constraint_gate<E: Field>(
                     continue;
                 }
                 let src = b.add_source(
-                    gate.base_inputs[lt.input as usize].this_layer_start as usize,
+                    gate.base_addresses[lt.input as usize],
                     gate.gate_idx,
                     false,
                     lt.input as usize,
@@ -191,15 +191,14 @@ pub(super) fn emit_continuation_cross_product_gate<E: Field>(
 
             for qt in &quad_terms {
                 let lhs = b.add_source(
-                    gate.base_inputs[qt.lhs as usize + base_input_offset].this_layer_start as usize,
+                    gate.base_addresses[qt.lhs as usize + base_input_offset],
                     gate.gate_idx,
                     false,
                     qt.lhs as usize + base_input_offset,
                 );
                 for lt in &lin_terms {
                     let rhs = b.add_source(
-                        gate.base_inputs[lt.input as usize + base_input_offset].this_layer_start
-                            as usize,
+                        gate.base_addresses[lt.input as usize + base_input_offset],
                         gate.gate_idx,
                         false,
                         lt.input as usize + base_input_offset,
@@ -233,8 +232,7 @@ pub(super) fn emit_continuation_cross_product_gate<E: Field>(
 
             for lt in &lin_terms {
                 let rhs = b.add_source(
-                    gate.base_inputs[lt.input as usize + base_input_offset].this_layer_start
-                        as usize,
+                    gate.base_addresses[lt.input as usize + base_input_offset],
                     gate.gate_idx,
                     false,
                     lt.input as usize + base_input_offset,
@@ -285,15 +283,14 @@ pub(super) fn emit_continuation_cross_product_gate<E: Field>(
 
             for qt in &quad_terms {
                 let lhs = b.add_source(
-                    gate.base_inputs[qt.lhs as usize + base_input_offset].this_layer_start as usize,
+                    gate.base_addresses[qt.lhs as usize + base_input_offset],
                     gate.gate_idx,
                     false,
                     qt.lhs as usize + base_input_offset,
                 );
                 for lt in &lin_terms {
                     let rhs = b.add_source(
-                        gate.base_inputs[lt.input as usize + base_input_offset].this_layer_start
-                            as usize,
+                        gate.base_addresses[lt.input as usize + base_input_offset],
                         gate.gate_idx,
                         false,
                         lt.input as usize + base_input_offset,
@@ -326,8 +323,7 @@ pub(super) fn emit_continuation_cross_product_gate<E: Field>(
 
             for lt in &lin_terms {
                 let rhs = b.add_source(
-                    gate.base_inputs[lt.input as usize + base_input_offset].this_layer_start
-                        as usize,
+                    gate.base_addresses[lt.input as usize + base_input_offset],
                     gate.gate_idx,
                     false,
                     lt.input as usize + base_input_offset,
@@ -382,8 +378,7 @@ pub(super) fn emit_continuation_materialize_gate<E: Field>(
                     continue;
                 }
                 let src = b.add_source(
-                    gate.base_inputs[lt.input as usize + base_input_offset].this_layer_start
-                        as usize,
+                    gate.base_addresses[lt.input as usize + base_input_offset],
                     gate.gate_idx,
                     false,
                     lt.input as usize + base_input_offset,
@@ -411,8 +406,7 @@ pub(super) fn emit_continuation_materialize_gate<E: Field>(
                     continue;
                 }
                 let src = b.add_source(
-                    gate.base_inputs[lt.input as usize + base_input_offset].this_layer_start
-                        as usize,
+                    gate.base_addresses[lt.input as usize + base_input_offset],
                     gate.gate_idx,
                     false,
                     lt.input as usize + base_input_offset,
@@ -460,8 +454,7 @@ pub(super) fn emit_continuation_single_times_linear_form<E: Field>(
                         continue;
                     }
                     let other = b.add_source(
-                        gate.base_inputs[lt.input as usize + base_input_offset].this_layer_start
-                            as usize,
+                        gate.base_addresses[lt.input as usize + base_input_offset],
                         gate.gate_idx,
                         false,
                         lt.input as usize + base_input_offset,
@@ -492,8 +485,7 @@ pub(super) fn emit_continuation_single_times_linear_form<E: Field>(
                         continue;
                     }
                     let other = b.add_source(
-                        gate.base_inputs[qt.lhs as usize + base_input_offset].this_layer_start
-                            as usize,
+                        gate.base_addresses[qt.lhs as usize + base_input_offset],
                         gate.gate_idx,
                         false,
                         qt.lhs as usize + base_input_offset,
@@ -528,8 +520,7 @@ pub(super) fn emit_continuation_single_times_linear_form<E: Field>(
                         continue;
                     }
                     let other = b.add_source(
-                        gate.base_inputs[lt.input as usize + base_input_offset].this_layer_start
-                            as usize,
+                        gate.base_addresses[lt.input as usize + base_input_offset],
                         gate.gate_idx,
                         false,
                         lt.input as usize + base_input_offset,
@@ -562,8 +553,7 @@ pub(super) fn emit_continuation_single_times_linear_form<E: Field>(
                         continue;
                     }
                     let other = b.add_source(
-                        gate.base_inputs[qt.lhs as usize + base_input_offset].this_layer_start
-                            as usize,
+                        gate.base_addresses[qt.lhs as usize + base_input_offset],
                         gate.gate_idx,
                         false,
                         qt.lhs as usize + base_input_offset,
@@ -609,8 +599,7 @@ pub(super) fn emit_continuation_linear_form<E: Field>(
                         continue;
                     }
                     let src = b.add_source(
-                        gate.base_inputs[lt.input as usize + base_input_offset].this_layer_start
-                            as usize,
+                        gate.base_addresses[lt.input as usize + base_input_offset],
                         gate.gate_idx,
                         false,
                         lt.input as usize + base_input_offset,
@@ -637,8 +626,7 @@ pub(super) fn emit_continuation_linear_form<E: Field>(
                         continue;
                     }
                     let src = b.add_source(
-                        gate.base_inputs[qt.lhs as usize + base_input_offset].this_layer_start
-                            as usize,
+                        gate.base_addresses[qt.lhs as usize + base_input_offset],
                         gate.gate_idx,
                         false,
                         qt.lhs as usize + base_input_offset,
@@ -669,8 +657,7 @@ pub(super) fn emit_continuation_linear_form<E: Field>(
                         continue;
                     }
                     let src = b.add_source(
-                        gate.base_inputs[lt.input as usize + base_input_offset].this_layer_start
-                            as usize,
+                        gate.base_addresses[lt.input as usize + base_input_offset],
                         gate.gate_idx,
                         false,
                         lt.input as usize + base_input_offset,
@@ -699,8 +686,7 @@ pub(super) fn emit_continuation_linear_form<E: Field>(
                         continue;
                     }
                     let src = b.add_source(
-                        gate.base_inputs[qt.lhs as usize + base_input_offset].this_layer_start
-                            as usize,
+                        gate.base_addresses[qt.lhs as usize + base_input_offset],
                         gate.gate_idx,
                         false,
                         qt.lhs as usize + base_input_offset,
@@ -747,8 +733,7 @@ pub(super) fn emit_continuation_linear_form_times_ext<E: Field>(
                     continue;
                 }
                 let bf_src = b.add_source(
-                    gate.base_inputs[lt.input as usize + base_input_offset].this_layer_start
-                        as usize,
+                    gate.base_addresses[lt.input as usize + base_input_offset],
                     gate.gate_idx,
                     false,
                     lt.input as usize + base_input_offset,
@@ -781,8 +766,7 @@ pub(super) fn emit_continuation_linear_form_times_ext<E: Field>(
                     continue;
                 }
                 let bf_src = b.add_source(
-                    gate.base_inputs[lt.input as usize + base_input_offset].this_layer_start
-                        as usize,
+                    gate.base_addresses[lt.input as usize + base_input_offset],
                     gate.gate_idx,
                     false,
                     lt.input as usize + base_input_offset,

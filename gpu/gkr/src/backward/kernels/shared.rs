@@ -1,4 +1,3 @@
-use std::cell::UnsafeCell;
 use std::collections::BTreeMap;
 
 use era_cudart::memory::memory_copy_async;
@@ -75,53 +74,6 @@ impl ClaimBufferLayout {
             .get(address)
             .copied()
             .unwrap_or_else(|| panic!("missing claim address in layout: {address:?}"))
-    }
-}
-
-pub(crate) struct SharedChallengeDevice<E> {
-    pub(crate) device: UnsafeCell<DeviceAllocation<E>>,
-}
-
-// SAFETY: uploads and kernel launches are enqueued from the host in stream order.
-// SharedChallengeDevice only exposes raw pointers or temporary slice views for those enqueues.
-unsafe impl<E: Send> Send for SharedChallengeDevice<E> {}
-// SAFETY: the wrapped device allocation lives for the duration of all queued work and is only
-// accessed through explicit pointer/slice helpers.
-unsafe impl<E: Sync> Sync for SharedChallengeDevice<E> {}
-
-impl<E> SharedChallengeDevice<E> {
-    pub(crate) fn new(device: DeviceAllocation<E>) -> Self {
-        Self {
-            device: UnsafeCell::new(device),
-        }
-    }
-
-    pub(crate) unsafe fn slice_mut(&mut self, offset: usize, len: usize) -> &mut DeviceSlice<E> {
-        // SAFETY: callers guarantee the requested range is within bounds and use
-        // this temporary mutable view only to enqueue stream-ordered device work.
-        &mut (&mut *self.device.get())[offset..offset + len]
-    }
-}
-
-pub(crate) struct ScheduledChallengeStorage<E> {
-    #[allow(dead_code)] // keepalive: callbacks must outlive the scheduled stream ops.
-    pub(crate) callbacks: Callbacks<'static>,
-    pub(crate) device: Option<Box<SharedChallengeDevice<E>>>,
-}
-
-impl<E> ScheduledChallengeStorage<E> {
-    pub(crate) fn new(device: DeviceAllocation<E>) -> Self {
-        Self {
-            callbacks: Callbacks::new(),
-            device: Some(Box::new(SharedChallengeDevice::new(device))),
-        }
-    }
-
-    /// Release the per-layer batch-challenge device buffer. Its last scheduled
-    /// use is this main layer's backward sumcheck, so the reservation frees
-    /// stream-ordered at prove-end like the other backward handoff buffers.
-    pub(crate) fn release_device(&mut self) {
-        self.device = None;
     }
 }
 
@@ -307,8 +259,7 @@ pub fn h2d_seed_from_host(
 }
 
 /// Allocate a device `DeviceAllocation<E>` of length `claim_point.len() + 1`, laid out as
-/// `[claim_point || batching_challenge]` (matching the first backward layer's
-/// `round_scratch.claim_point`), and H2D the host values into it. Only test paths still need
+/// `[claim_point || batching_challenge]`, matching the backward input layout. Only test paths still need
 /// this bridge — the hot path threads the post-forward device squeeze buffer
 /// (`d_evaluation_point_and_batching`) straight into the orchestrator. The staging buffer is
 /// filled inside a stream-ordered callback; the caller-owned `Callbacks` must outlive stream

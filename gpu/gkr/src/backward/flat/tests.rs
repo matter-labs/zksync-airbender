@@ -1,18 +1,8 @@
-use super::super::super::{GpuBaseFieldSourceKind, GpuExtensionFieldPolyContinuingSourcePlan};
+use super::super::super::GpuBaseFieldSourceKind;
 use super::super::kernels::GpuGKRMainLayerKernelKind;
 use super::*;
-use crate::upstream::Field;
+use crate::upstream::{Field, GKRAddress};
 use gpu_core::primitives::field::E4;
-
-fn cont_source(cache_ptr: *mut E4) -> GpuExtensionFieldPolyContinuingSourcePlan<E4> {
-    GpuExtensionFieldPolyContinuingSourcePlan {
-        previous_layer_start: std::ptr::null(),
-        this_layer_start: cache_ptr,
-        this_layer_size: 0,
-        next_layer_size: 0,
-        first_access: false,
-    }
-}
 
 fn build_round1_desc_from_plan(
     plan: &FlatContinuationBuildPlan,
@@ -90,13 +80,14 @@ fn build_round2_desc_from_plan(
 fn flat_round1_source_remap_sanity() {
     let base_cache = [E4::ZERO; 1];
     let ext_cache = [E4::ZERO; 1];
-    let base_inputs = [cont_source(base_cache.as_ptr() as *mut E4)];
-    let ext_inputs = [cont_source(ext_cache.as_ptr() as *mut E4)];
-    let gate = PreparedGateForFlatContinuationPlan {
+    let gate: PreparedGateForFlatContinuationPlan<'_, E4> = PreparedGateForFlatContinuationPlan {
         kind: GpuGKRMainLayerKernelKind::MaskIdentity,
         gate_idx: 0,
-        base_inputs: &base_inputs,
-        ext_inputs: &ext_inputs,
+        base_addresses: &[GKRAddress::BaseLayerWitness(0)],
+        ext_addresses: &[GKRAddress::InnerLayer {
+            layer: 0,
+            offset: 0,
+        }],
         batch_challenge_power_offset: 0,
         constraint_source: None,
     };
@@ -126,13 +117,14 @@ fn flat_round1_source_remap_sanity() {
 fn flat_round2_source_remap_sanity() {
     let base_cache = [E4::ZERO; 1];
     let ext_cache = [E4::ZERO; 1];
-    let base_inputs = [cont_source(base_cache.as_ptr() as *mut E4)];
-    let ext_inputs = [cont_source(ext_cache.as_ptr() as *mut E4)];
-    let gate = PreparedGateForFlatContinuationPlan {
+    let gate: PreparedGateForFlatContinuationPlan<'_, E4> = PreparedGateForFlatContinuationPlan {
         kind: GpuGKRMainLayerKernelKind::MaskIdentity,
         gate_idx: 0,
-        base_inputs: &base_inputs,
-        ext_inputs: &ext_inputs,
+        base_addresses: &[GKRAddress::BaseLayerWitness(0)],
+        ext_addresses: &[GKRAddress::InnerLayer {
+            layer: 0,
+            offset: 0,
+        }],
         batch_challenge_power_offset: 0,
         constraint_source: None,
     };
@@ -157,6 +149,36 @@ fn flat_round2_source_remap_sanity() {
     let mut tags: Vec<u16> = desc.idx_remap.clone();
     tags.sort();
     assert_eq!(tags, vec![0u16, FLAT_CONT_EXT_SOURCE_BIT]);
+}
+
+#[test]
+fn flat_continuation_deduplicates_logical_sources_across_cache_allocations() {
+    let base_address = [GKRAddress::BaseLayerWitness(7)];
+    let ext_address = [GKRAddress::InnerLayer {
+        layer: 0,
+        offset: 9,
+    }];
+    let gates: [PreparedGateForFlatContinuationPlan<'_, E4>; 2] = [
+        PreparedGateForFlatContinuationPlan {
+            kind: GpuGKRMainLayerKernelKind::MaskIdentity,
+            gate_idx: 0,
+            base_addresses: &base_address,
+            ext_addresses: &ext_address,
+            batch_challenge_power_offset: 0,
+            constraint_source: None,
+        },
+        PreparedGateForFlatContinuationPlan {
+            kind: GpuGKRMainLayerKernelKind::MaskIdentity,
+            gate_idx: 1,
+            base_addresses: &base_address,
+            ext_addresses: &ext_address,
+            batch_challenge_power_offset: 1,
+            constraint_source: None,
+        },
+    ];
+
+    let plan = build_flat_continuation_plan(&gates);
+    assert_eq!(plan.term_desc.num_sources, 2);
 }
 
 // End-to-end coverage of the round-0 kernel gate kinds runs through

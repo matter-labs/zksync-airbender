@@ -1,25 +1,18 @@
 use std::collections::VecDeque;
 
-use super::super::super::{
-    GpuGKRStorage, GpuSumcheckRound0LaunchDescriptors, GpuSumcheckRound1PreparedStorage,
-    GpuSumcheckRound1ScheduledLaunchDescriptors, GpuSumcheckRound2PreparedStorage,
-    GpuSumcheckRound3AndBeyondPreparedStorage,
-};
+use super::super::super::{GpuGKRStorage, GpuSumcheckRound0LaunchDescriptors};
 use super::launchers::GkrEqSizes;
 use super::shared::{
-    ClaimBufferLayout, DeviceClaimPointAndBatching, ScheduledChallengeStorage,
-    ScheduledDimensionReducingFinalReadback,
+    ClaimBufferLayout, DeviceClaimPointAndBatching, ScheduledDimensionReducingFinalReadback,
 };
 use crate::immediate_factors::ImmediateFactorRecipeStructural;
 use crate::upstream::{
     Field, FieldExtension, GKRExternalChallenges, GKRInputs, GKRLayerDescription, Seed,
 };
-use era_cudart::result::CudaResult;
 use gpu_core::primitives::callbacks::Callbacks;
 use gpu_core::primitives::context::DeviceAllocation;
 use gpu_core::primitives::device_tracing::Range;
 use gpu_core::primitives::field::BF;
-use gpu_prover_context::ProverContext;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u32)]
@@ -134,15 +127,8 @@ pub(crate) struct GpuGKRMainLayerKernelBlueprint<E> {
     pub(crate) constraint_metadata_source: Option<GpuGKRMainLayerConstraintMetadataSource<E>>,
 }
 
-#[derive(Clone, Debug)]
-pub(crate) struct GpuGKRMainLayerRound3Prepared<E> {
-    pub(crate) step: usize,
-    pub(crate) prepared: GpuSumcheckRound3AndBeyondPreparedStorage<E>,
-}
-
 #[allow(dead_code)]
 pub(crate) struct GpuGKRMainLayerRoundScratch<E> {
-    pub(crate) claim_point: DeviceAllocation<E>,
     pub(crate) eq_low_group: DeviceAllocation<E>,
     pub(crate) accumulator: DeviceAllocation<E>,
     pub(crate) reduction_output: DeviceAllocation<E>,
@@ -164,9 +150,6 @@ pub struct GpuGKRMainLayerKernelPlan<E> {
     pub(crate) constraint_metadata_source: Option<GpuGKRMainLayerConstraintMetadataSource<E>>,
     #[allow(dead_code)]
     pub(crate) constraint_metadata_summary: Option<(usize, usize, E)>,
-    pub(crate) round1_prepared: GpuSumcheckRound1PreparedStorage<BF, E>,
-    pub(crate) round2_prepared: GpuSumcheckRound2PreparedStorage<BF, E>,
-    pub(crate) round3_and_beyond_prepared: Vec<GpuGKRMainLayerRound3Prepared<E>>,
 }
 
 /// Device-resident term/tile tables for one unified descriptor whose term/tile
@@ -262,8 +245,9 @@ pub struct GpuGKRMainLayerSumcheckLayerPlan<E> {
     /// Whether the continuation phase uses `__constant__` for coefficients
     /// (true when the count fits `FLAT_CONST_MAX`).
     pub(crate) flat_cont_use_constant: bool,
-    /// Flat continuation plan for rounds 1+ (shared term arrays + per-step source tables).
+    /// Flat continuation plan for rounds 1+.
     pub(crate) flat_continuation_plan: Option<super::super::flat::FlatContinuationBuildPlan>,
+    pub(crate) folding_evaluation_sources: Vec<(crate::upstream::GKRAddress, u16)>,
     /// Inline eval-recipes descriptor passed by value to each continuation launch.
     /// Mutually exclusive with `flat_cont_recipe_desc_device` (see round-0 pair).
     pub(crate) flat_cont_recipe_desc: Option<Box<crate::eval_recipes::GpuFlatRecipeEvalDesc>>,
@@ -308,13 +292,6 @@ pub struct GpuGKRMainLayerSumcheckLayerPlan<E> {
     pub(crate) round_scratch: GpuGKRMainLayerRoundScratch<E>,
     /// Keepalive slot for scheduling callbacks unrelated to inline recipe descriptors.
     pub(crate) recipe_upload_callbacks: Callbacks<'static>,
-    /// When set, `batch_challenge_base_ptr()` returns this raw pointer instead
-    /// of `round_scratch.claim_point.as_ptr().add(folding_steps)`. The
-    /// workflow_state path uses this to point at the orchestrator-owned
-    /// `device_claim_point_in[folding_steps]` so the per-layer
-    /// `round_scratch.claim_point` D2D is no longer needed.
-    #[allow(dead_code)]
-    pub(crate) batch_challenge_base_override_ptr: Option<*const E>,
     /// Strict 3-slot eq-sizes descriptor. Initialised at layer start from
     /// `make_eq_sizes(folding_steps - 1)`, mutated in place by
     /// `fold_eq_values_for_next_round` between sumcheck rounds, and passed by
@@ -322,10 +299,7 @@ pub struct GpuGKRMainLayerSumcheckLayerPlan<E> {
     pub(crate) eq_sizes: GkrEqSizes,
 }
 
-// SAFETY: `batch_challenge_base_override_ptr` only stores a raw pointer into a
-// device allocation that the caller keeps alive for the full duration of any
-// scheduled stream op consuming this layer plan. The pointer is never
-// dereferenced from Rust — it is only forwarded to kernel arguments.
+// SAFETY: descriptor raw pointers are only forwarded to stream-ordered kernels.
 unsafe impl<E> Send for GpuGKRMainLayerSumcheckLayerPlan<E> where E: Send {}
 unsafe impl<E> Sync for GpuGKRMainLayerSumcheckLayerPlan<E> where E: Sync {}
 
@@ -355,8 +329,6 @@ pub struct GpuGKRMainLayerScheduledLayerExecution<E: FieldExtension<BF> + Field>
     pub(crate) tracing_ranges: Vec<Range>,
     #[allow(dead_code)]
     pub(crate) start_callbacks: Callbacks<'static>,
-    #[allow(dead_code)]
-    pub(crate) batch_challenge_storage: ScheduledChallengeStorage<E>,
     #[allow(dead_code)]
     pub(crate) final_readback: ScheduledDimensionReducingFinalReadback,
     #[allow(dead_code)]
@@ -392,25 +364,5 @@ impl<E: Copy + Field> GpuGKRMainLayerKernelPlan<E> {
     #[doc(hidden)]
     pub fn constraint_metadata_summary(&self) -> Option<(usize, usize, E)> {
         self.constraint_metadata_summary
-    }
-}
-
-// Relocated from `#[cfg(test)] mod tests` (row 23): apex `smoke` drives
-// round-1 descriptor upload through this. `#[doc(hidden)] pub`.
-impl<E: Field + 'static> GpuGKRMainLayerSumcheckLayerPlan<E> {
-    #[doc(hidden)]
-    pub fn schedule_round_1(
-        &self,
-        callbacks: &mut Callbacks<'static>,
-        context: &ProverContext,
-    ) -> CudaResult<Vec<GpuSumcheckRound1ScheduledLaunchDescriptors<BF, E>>> {
-        self.kernel_plans
-            .iter()
-            .map(|kernel| {
-                kernel
-                    .round1_prepared
-                    .schedule_upload_launch_descriptors(context, callbacks)
-            })
-            .collect()
     }
 }

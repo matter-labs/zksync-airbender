@@ -1,4 +1,3 @@
-use super::super::super::super::GpuExtensionFieldPolyContinuingSourcePlan;
 use super::super::super::kernels::{
     GpuGKRMainLayerConstraintChallengeTerm, GpuGKRMainLayerConstraintMetadataSource,
     GpuGKRMainLayerDeferredChallengeSource, GpuGKRMainLayerKernelKind,
@@ -12,17 +11,15 @@ use super::super::CoefficientRecipe;
 use super::builder::FlatContinuationDescriptionBuilder;
 use super::types::FlatContinuationBuildPlan;
 use crate::immediate_factors::ImmediateFactorRecipeStructural;
-use crate::upstream::{Field, PrimeField};
+use crate::upstream::{Field, GKRAddress, PrimeField};
 use gpu_core::primitives::field::BF;
 
 /// Per-gate data needed for building the flat continuation plan.
 pub(crate) struct PreparedGateForFlatContinuationPlan<'a, E> {
     pub(crate) kind: GpuGKRMainLayerKernelKind,
     pub(crate) gate_idx: usize,
-    /// Base field inputs (as continuing sources in round 3+).
-    pub(crate) base_inputs: &'a [GpuExtensionFieldPolyContinuingSourcePlan<E>],
-    /// Extension field inputs (as continuing sources).
-    pub(crate) ext_inputs: &'a [GpuExtensionFieldPolyContinuingSourcePlan<E>],
+    pub(crate) base_addresses: &'a [GKRAddress],
+    pub(crate) ext_addresses: &'a [GKRAddress],
     pub(crate) batch_challenge_power_offset: u32,
     pub(crate) constraint_source: Option<&'a GpuGKRMainLayerConstraintMetadataSource<E>>,
 }
@@ -95,14 +92,12 @@ pub(crate) fn build_flat_continuation_plan<E: Field>(
 
         // Helper to add a base input source.
         let add_base = |b: &mut FlatContinuationDescriptionBuilder, idx: usize| -> u32 {
-            let src = &gate.base_inputs[idx];
-            b.add_source(src.this_layer_start as usize, gate.gate_idx, false, idx)
+            b.add_source(gate.base_addresses[idx], gate.gate_idx, false, idx)
         };
 
         // Helper to add an ext input source.
         let add_ext = |b: &mut FlatContinuationDescriptionBuilder, idx: usize| -> u32 {
-            let src = &gate.ext_inputs[idx];
-            b.add_source(src.this_layer_start as usize, gate.gate_idx, true, idx)
+            b.add_source(gate.ext_addresses[idx], gate.gate_idx, true, idx)
         };
 
         match gate.kind {

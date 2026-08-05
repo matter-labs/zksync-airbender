@@ -87,6 +87,7 @@ fn shared_state_dimension_reduction_purges_storage_after_each_layer() {
                 &proof_layout,
                 layer_slot,
                 true,
+                backward_state.storage_mut(),
                 context,
             )
             .unwrap();
@@ -172,7 +173,7 @@ fn shared_state_dimension_reduction_purges_storage_after_each_layer() {
             &proof_layout,
             main_layer_slot,
             true,
-            Some(main_state.storage()),
+            Some(main_state.storage_mut()),
             context,
         )
         .unwrap();

@@ -6,44 +6,6 @@ use super::{build_dimension_reducing_kernel_blueprints, sample_ext, successive_p
 use crate::upstream::{DimensionReducingInputOutput, OutputType};
 
 #[test]
-fn main_layer_kind_batch_challenge_count_matches_all_supported_kinds() {
-    let one_challenge_kinds = [
-        GpuGKRMainLayerKernelKind::BaseCopy,
-        GpuGKRMainLayerKernelKind::ExtCopy,
-        GpuGKRMainLayerKernelKind::Product,
-        GpuGKRMainLayerKernelKind::MaskIdentity,
-        GpuGKRMainLayerKernelKind::EnforceConstraintsMaxQuadratic,
-        GpuGKRMainLayerKernelKind::MaxQuadraticBaseOutput,
-        GpuGKRMainLayerKernelKind::LinearBaseOutput,
-        GpuGKRMainLayerKernelKind::InitsAndTeardownsInitialPair,
-        GpuGKRMainLayerKernelKind::InitialGrandProductWithoutCaches,
-        GpuGKRMainLayerKernelKind::MaterializeGrandProductTermExpression,
-    ];
-    let two_challenge_kinds = [
-        GpuGKRMainLayerKernelKind::LookupPair,
-        GpuGKRMainLayerKernelKind::LookupBasePair,
-        GpuGKRMainLayerKernelKind::LookupBaseMinusMultiplicityByBase,
-        GpuGKRMainLayerKernelKind::LookupExtMinusMultiplicityByExt,
-        GpuGKRMainLayerKernelKind::LookupUnbalanced,
-        GpuGKRMainLayerKernelKind::LookupWithCachedDensAndSetup,
-        GpuGKRMainLayerKernelKind::LookupPairFromBaseInputs,
-        GpuGKRMainLayerKernelKind::LookupWithDensAndSetupExpressions,
-        GpuGKRMainLayerKernelKind::LookupPairFromVectorInputs,
-        GpuGKRMainLayerKernelKind::LookupFromVectorInputWithSetup,
-        GpuGKRMainLayerKernelKind::LookupUnbalancedPairWithVectorInputs,
-        GpuGKRMainLayerKernelKind::LookupExtPair,
-        GpuGKRMainLayerKernelKind::LookupUnbalancedExtension,
-    ];
-
-    for kind in one_challenge_kinds {
-        assert_eq!(super::main_layer_kind_batch_challenge_count(kind), 1);
-    }
-    for kind in two_challenge_kinds {
-        assert_eq!(super::main_layer_kind_batch_challenge_count(kind), 2);
-    }
-}
-
-#[test]
 fn dimension_reducing_kernel_blueprints_match_cpu_order_and_challenges() {
     let layer = BTreeMap::from([
         (
