@@ -11,26 +11,26 @@ pub mod transition_round;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum EvaluationStep {
     QuadraticBaseByBase {
-        scratch_idx_a: u8,
-        scratch_idx_b: u8,
+        scratch_idx_a: u16,
+        scratch_idx_b: u16,
         coeff_idx: u32,
     },
     QuadraticBaseByExt {
-        scratch_idx_base: u8,
-        scratch_idx_ext: u8,
+        scratch_idx_base: u16,
+        scratch_idx_ext: u16,
         coeff_idx: u32,
     },
     QuadraticExtByExt {
-        scratch_idx_a: u8,
-        scratch_idx_b: u8,
+        scratch_idx_a: u16,
+        scratch_idx_b: u16,
         coeff_idx: u32,
     },
     LinearWithBase {
-        scratch_idx: u8,
+        scratch_idx: u16,
         coeff_idx: u32,
     },
     LinearWithExt {
-        scratch_idx: u8,
+        scratch_idx: u16,
         coeff_idx: u32,
     },
 }
@@ -38,12 +38,12 @@ pub enum EvaluationStep {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FoldedEvaluationStep {
     Quadratic {
-        scratch_idx_a: u8,
-        scratch_idx_b: u8,
+        scratch_idx_a: u16,
+        scratch_idx_b: u16,
         coeff_idx: u32,
     },
     Linear {
-        scratch_idx: u8,
+        scratch_idx: u16,
         coeff_idx: u32,
     },
 }
@@ -111,7 +111,7 @@ pub fn produce_descriptions_from_batched_description<
     let base_sources: Vec<_> = all_base_sources.iter().copied().collect();
     let ext_sources: Vec<_> = all_ext_sources.iter().copied().collect();
 
-    assert!(base_sources.len() + ext_sources.len() < 256); // so we do not overflow u8
+    assert!(base_sources.len() + ext_sources.len() < 65536); // so we do not overflow u16
 
     let ext_offset_for_folded_stages = base_sources.len();
 
@@ -166,11 +166,11 @@ pub fn produce_descriptions_from_batched_description<
                     let coeff_idx = constants.len();
                     constants.push(*coeff);
                     initial_evaluation_steps.push(EvaluationStep::LinearWithBase {
-                        scratch_idx: idx as u8,
+                        scratch_idx: idx as u16,
                         coeff_idx: coeff_idx as u32,
                     });
                     folded_evaluation_steps.push(FoldedEvaluationStep::Linear {
-                        scratch_idx: idx as u8,
+                        scratch_idx: idx as u16,
                         coeff_idx: coeff_idx as u32,
                     });
                     linear_term_issued_for_base.insert(addr);
@@ -192,11 +192,11 @@ pub fn produce_descriptions_from_batched_description<
                     let coeff_idx = constants.len();
                     constants.push(*coeff);
                     initial_evaluation_steps.push(EvaluationStep::LinearWithExt {
-                        scratch_idx: idx as u8,
+                        scratch_idx: idx as u16,
                         coeff_idx: coeff_idx as u32,
                     });
                     folded_evaluation_steps.push(FoldedEvaluationStep::Linear {
-                        scratch_idx: (idx + ext_offset_for_folded_stages) as u8,
+                        scratch_idx: (idx + ext_offset_for_folded_stages) as u16,
                         coeff_idx: coeff_idx as u32,
                     });
                     linear_term_issued_for_ext.insert(addr);
@@ -212,13 +212,13 @@ pub fn produce_descriptions_from_batched_description<
             constants.push(*coeff);
 
             initial_evaluation_steps.push(EvaluationStep::QuadraticBaseByBase {
-                scratch_idx_a: a_idx as u8,
-                scratch_idx_b: b_idx as u8,
+                scratch_idx_a: a_idx as u16,
+                scratch_idx_b: b_idx as u16,
                 coeff_idx: coeff_idx as u32,
             });
             folded_evaluation_steps.push(FoldedEvaluationStep::Quadratic {
-                scratch_idx_a: a_idx as u8,
-                scratch_idx_b: b_idx as u8,
+                scratch_idx_a: a_idx as u16,
+                scratch_idx_b: b_idx as u16,
                 coeff_idx: coeff_idx as u32,
             });
 
@@ -246,13 +246,13 @@ pub fn produce_descriptions_from_batched_description<
             constants.push(*coeff);
 
             initial_evaluation_steps.push(EvaluationStep::QuadraticBaseByExt {
-                scratch_idx_base: a_idx as u8,
-                scratch_idx_ext: b_idx as u8,
+                scratch_idx_base: a_idx as u16,
+                scratch_idx_ext: b_idx as u16,
                 coeff_idx: coeff_idx as u32,
             });
             folded_evaluation_steps.push(FoldedEvaluationStep::Quadratic {
-                scratch_idx_a: a_idx as u8,
-                scratch_idx_b: (b_idx + ext_offset_for_folded_stages) as u8,
+                scratch_idx_a: a_idx as u16,
+                scratch_idx_b: (b_idx + ext_offset_for_folded_stages) as u16,
                 coeff_idx: coeff_idx as u32,
             });
 
@@ -280,13 +280,13 @@ pub fn produce_descriptions_from_batched_description<
             constants.push(*coeff);
 
             initial_evaluation_steps.push(EvaluationStep::QuadraticExtByExt {
-                scratch_idx_a: a_idx as u8,
-                scratch_idx_b: b_idx as u8,
+                scratch_idx_a: a_idx as u16,
+                scratch_idx_b: b_idx as u16,
                 coeff_idx: coeff_idx as u32,
             });
             folded_evaluation_steps.push(FoldedEvaluationStep::Quadratic {
-                scratch_idx_a: (a_idx + ext_offset_for_folded_stages) as u8,
-                scratch_idx_b: (b_idx + ext_offset_for_folded_stages) as u8,
+                scratch_idx_a: (a_idx + ext_offset_for_folded_stages) as u16,
+                scratch_idx_b: (b_idx + ext_offset_for_folded_stages) as u16,
                 coeff_idx: coeff_idx as u32,
             });
 
@@ -316,11 +316,11 @@ pub fn produce_descriptions_from_batched_description<
         constants.push(*coeff);
 
         initial_evaluation_steps.push(EvaluationStep::LinearWithBase {
-            scratch_idx: idx as u8,
+            scratch_idx: idx as u16,
             coeff_idx: coeff_idx as u32,
         });
         folded_evaluation_steps.push(FoldedEvaluationStep::Linear {
-            scratch_idx: idx as u8,
+            scratch_idx: idx as u16,
             coeff_idx: coeff_idx as u32,
         });
     }
@@ -335,11 +335,11 @@ pub fn produce_descriptions_from_batched_description<
         constants.push(*coeff);
 
         initial_evaluation_steps.push(EvaluationStep::LinearWithExt {
-            scratch_idx: idx as u8,
+            scratch_idx: idx as u16,
             coeff_idx: coeff_idx as u32,
         });
         folded_evaluation_steps.push(FoldedEvaluationStep::Linear {
-            scratch_idx: (idx + ext_offset_for_folded_stages) as u8,
+            scratch_idx: (idx + ext_offset_for_folded_stages) as u16,
             coeff_idx: coeff_idx as u32,
         });
     }

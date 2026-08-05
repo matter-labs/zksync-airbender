@@ -19,7 +19,7 @@ use core::arch::aarch64::*;
 
 use ::field::baby_bear::base::BabyBearField;
 use ::field::baby_bear::ext4::BabyBearExt4;
-use ::field::PrimeField;
+use ::field::{Field, PrimeField};
 
 const P: u32 = 0x78000001;
 const K: u32 = 0x77ffffff; // -P^{-1} mod 2^32 (matches BabyBearField::MONT_K)
@@ -510,6 +510,61 @@ pub unsafe fn lazy_finalize_cells<const N: usize>(acc: *mut u64, out: *mut BabyB
     }
 }
 
+// ---------------------------------------------------------------------------
+// inner-linear-form (bracket) materialization for bracket-preserving evaluation
+// ---------------------------------------------------------------------------
+
+/// `dst[cell] += src[cell]` over 27 base cells.
+#[inline(always)]
+pub unsafe fn form_add_27(dst: *mut BabyBearField, src: *const BabyBearField) {
+    let d = dst as *mut u32;
+    let s = src as *const u32;
+    let mut i = 0;
+    while i + 4 <= 24 {
+        vst1q_u32(d.add(i), add4(vld1q_u32(d.add(i)), vld1q_u32(s.add(i))));
+        i += 4;
+    }
+    for i in 24..27 {
+        (*dst.add(i)).add_assign(&*src.add(i));
+    }
+}
+
+/// `dst[cell] -= src[cell]` over 27 base cells.
+#[inline(always)]
+pub unsafe fn form_sub_27(dst: *mut BabyBearField, src: *const BabyBearField) {
+    let d = dst as *mut u32;
+    let s = src as *const u32;
+    let mut i = 0;
+    while i + 4 <= 24 {
+        vst1q_u32(d.add(i), sub4(vld1q_u32(d.add(i)), vld1q_u32(s.add(i))));
+        i += 4;
+    }
+    for i in 24..27 {
+        (*dst.add(i)).sub_assign(&*src.add(i));
+    }
+}
+
+/// `dst[cell] += c * src[cell]` over 27 base cells.
+#[inline(always)]
+pub unsafe fn form_muladd_27(dst: *mut BabyBearField, src: *const BabyBearField, c: BabyBearField) {
+    let d = dst as *mut u32;
+    let s = src as *const u32;
+    let cv = vdupq_n_u32(c.raw_u32_value());
+    let mut i = 0;
+    while i + 4 <= 24 {
+        vst1q_u32(
+            d.add(i),
+            add4(vld1q_u32(d.add(i)), mont_mul4(vld1q_u32(s.add(i)), cv)),
+        );
+        i += 4;
+    }
+    for i in 24..27 {
+        let mut t = *src.add(i);
+        t.mul_assign(&c);
+        (*dst.add(i)).add_assign(&t);
+    }
+}
+
 /// `dst[cell] += coeff * a_base[cell]` over the 8 binary cells of the 27-grid.
 #[inline(always)]
 pub unsafe fn linear_base_27(
@@ -560,6 +615,788 @@ pub unsafe fn accumulate_times_eq<const N: usize>(
     for i in 0..N {
         let d = acc.add(i);
         store_e(d, add4(load_e(d), mat_mul(&m, load_e(evals.add(i)))));
+    }
+}
+
+// ---------------------------------------------------------------------------
+// SoA row-blocked kernels: 4 consecutive rows per NEON vector
+//
+// Within a per-thread row range every tap of the 27-cell read is CONTIGUOUS
+// across rows, so 4 rows load as one `vld1q`. Layouts (raw u32 buffers):
+// * base grid per poly:  [27 cells][4 rows]
+// * ext grid per poly:   [27 cells][4 limbs][4 rows] (transposed to SoA)
+// * lazy accumulator:    [27 cells][4 limbs][4 rows] u64
+// * reduced scratch / chunk accumulator: same shape, canonical u32
+// Term evaluation vectorizes over the 4 rows instead of over ext limbs.
+// ---------------------------------------------------------------------------
+
+/// 4x4 u32 transpose: rows (AoS ext elements) -> limb-major vectors.
+#[inline(always)]
+unsafe fn transpose4x4(
+    r0: uint32x4_t,
+    r1: uint32x4_t,
+    r2: uint32x4_t,
+    r3: uint32x4_t,
+) -> [uint32x4_t; 4] {
+    let t0 = vtrn1q_u32(r0, r1);
+    let t1 = vtrn2q_u32(r0, r1);
+    let t2 = vtrn1q_u32(r2, r3);
+    let t3 = vtrn2q_u32(r2, r3);
+    [
+        vreinterpretq_u32_u64(vtrn1q_u64(
+            vreinterpretq_u64_u32(t0),
+            vreinterpretq_u64_u32(t2),
+        )),
+        vreinterpretq_u32_u64(vtrn1q_u64(
+            vreinterpretq_u64_u32(t1),
+            vreinterpretq_u64_u32(t3),
+        )),
+        vreinterpretq_u32_u64(vtrn2q_u64(
+            vreinterpretq_u64_u32(t0),
+            vreinterpretq_u64_u32(t2),
+        )),
+        vreinterpretq_u32_u64(vtrn2q_u64(
+            vreinterpretq_u64_u32(t1),
+            vreinterpretq_u64_u32(t3),
+        )),
+    ]
+}
+
+/// Read the 8 binary cells of a base poly for rows `row..row+4` (one vld1q per
+/// tap) and extrapolate the 19 infinity cells with vectorized subs.
+#[inline(always)]
+pub unsafe fn soa_read_base_grid(
+    dst: *mut u32, // [27][4]
+    src: *const BabyBearField,
+    input_size: usize,
+    row: usize,
+    interpolate: bool,
+) {
+    let src = src as *const u32;
+    let cell = |c: usize| dst.add(4 * c);
+    let stride_step = input_size / 2;
+    for x0 in 0..2 {
+        let stride = stride_step * x0;
+        let dst_offset = 9 * x0;
+        for x1 in 0..2 {
+            let stride_step = stride_step / 2;
+            let stride = stride + x1 * stride_step;
+            let dst_offset = dst_offset + 3 * x1;
+            let stride_step = stride_step / 2;
+            let v0 = vld1q_u32(src.add(stride + row));
+            let v1 = vld1q_u32(src.add(stride + stride_step + row));
+            vst1q_u32(cell(dst_offset), v0);
+            vst1q_u32(cell(dst_offset + 1), v1);
+            if interpolate {
+                vst1q_u32(cell(dst_offset + 2), sub4(v1, v0));
+            }
+        }
+        if interpolate {
+            for x2 in 0..3 {
+                let a = vld1q_u32(cell(dst_offset + x2));
+                let b = vld1q_u32(cell(dst_offset + 3 + x2));
+                vst1q_u32(cell(dst_offset + 6 + x2), sub4(b, a));
+            }
+        }
+    }
+    if interpolate {
+        for x1 in 0..3 {
+            let o = 3 * x1;
+            for x2 in 0..3 {
+                let a = vld1q_u32(cell(o + x2));
+                let b = vld1q_u32(cell(9 + o + x2));
+                vst1q_u32(cell(18 + o + x2), sub4(b, a));
+            }
+        }
+    }
+}
+
+/// Read the 8 binary cells of an ext poly for rows `row..row+4`, transposing
+/// each cell to limb-major SoA, and extrapolate the infinity cells per limb.
+#[inline(always)]
+pub unsafe fn soa_read_ext_grid(
+    dst: *mut u32, // [27][4 limbs][4 rows]
+    src: *const BabyBearExt4,
+    input_size: usize,
+    row: usize,
+    interpolate: bool,
+) {
+    let src = src as *const u32;
+    let cell = |c: usize, l: usize| dst.add(16 * c + 4 * l);
+    let stride_step = input_size / 2;
+    for x0 in 0..2 {
+        let stride = stride_step * x0;
+        let dst_offset = 9 * x0;
+        for x1 in 0..2 {
+            let stride_step = stride_step / 2;
+            let stride = stride + x1 * stride_step;
+            let dst_offset = dst_offset + 3 * x1;
+            let stride_step = stride_step / 2;
+            for (o, idx) in [(dst_offset, stride + row), (dst_offset + 1, stride + stride_step + row)] {
+                let p = src.add(4 * idx);
+                let t = transpose4x4(
+                    vld1q_u32(p),
+                    vld1q_u32(p.add(4)),
+                    vld1q_u32(p.add(8)),
+                    vld1q_u32(p.add(12)),
+                );
+                for l in 0..4 {
+                    vst1q_u32(cell(o, l), t[l]);
+                }
+            }
+            if interpolate {
+                for l in 0..4 {
+                    let a = vld1q_u32(cell(dst_offset, l));
+                    let b = vld1q_u32(cell(dst_offset + 1, l));
+                    vst1q_u32(cell(dst_offset + 2, l), sub4(b, a));
+                }
+            }
+        }
+        if interpolate {
+            for x2 in 0..3 {
+                for l in 0..4 {
+                    let a = vld1q_u32(cell(dst_offset + x2, l));
+                    let b = vld1q_u32(cell(dst_offset + 3 + x2, l));
+                    vst1q_u32(cell(dst_offset + 6 + x2, l), sub4(b, a));
+                }
+            }
+        }
+    }
+    if interpolate {
+        for x1 in 0..3 {
+            let o = 3 * x1;
+            for x2 in 0..3 {
+                for l in 0..4 {
+                    let a = vld1q_u32(cell(o + x2, l));
+                    let b = vld1q_u32(cell(9 + o + x2, l));
+                    vst1q_u32(cell(18 + o + x2, l), sub4(b, a));
+                }
+            }
+        }
+    }
+}
+
+/// Row-pointwise `Ext4` multiplication in SoA form (flat quartic table).
+#[inline(always)]
+unsafe fn soa_ext_mul(
+    a: &[uint32x4_t; 4],
+    b: &[uint32x4_t; 4],
+    r11v: uint32x4_t,
+) -> [uint32x4_t; 4] {
+    let p00 = mont_mul4(a[0], b[0]);
+    let p01 = mont_mul4(a[0], b[1]);
+    let p02 = mont_mul4(a[0], b[2]);
+    let p03 = mont_mul4(a[0], b[3]);
+    let p10 = mont_mul4(a[1], b[0]);
+    let p11 = mont_mul4(a[1], b[1]);
+    let p12 = mont_mul4(a[1], b[2]);
+    let p13 = mont_mul4(a[1], b[3]);
+    let p20 = mont_mul4(a[2], b[0]);
+    let p21 = mont_mul4(a[2], b[1]);
+    let p22 = mont_mul4(a[2], b[2]);
+    let p23 = mont_mul4(a[2], b[3]);
+    let p30 = mont_mul4(a[3], b[0]);
+    let p31 = mont_mul4(a[3], b[1]);
+    let p32 = mont_mul4(a[3], b[2]);
+    let p33 = mont_mul4(a[3], b[3]);
+    // out0 = p00 + 11*(p11 + p23 + p32)
+    let out0 = add4(p00, mont_mul4(add4(add4(p11, p23), p32), r11v));
+    // out1 = p01 + p10 + p22 + 11*p33
+    let out1 = add4(add4(p01, p10), add4(p22, mont_mul4(p33, r11v)));
+    // out2 = p02 + p20 + 11*(p13 + p31)
+    let out2 = add4(add4(p02, p20), mont_mul4(add4(p13, p31), r11v));
+    // out3 = p03 + p12 + p21 + p30
+    let out3 = add4(add4(p03, p12), add4(p21, p30));
+    [out0, out1, out2, out3]
+}
+
+/// `acc[cell] += coeff * (a[cell] * b[cell])` over 27 cells x 4 rows, lazily
+/// (raw 64-bit products, same cadence/bounds as the AoS lazy kernels).
+#[inline(always)]
+pub unsafe fn soa_quad_bb_lazy(
+    acc: *mut u64, // [27][4 limbs][4 rows]
+    a: *const u32,
+    b: *const u32,
+    coeff: &BabyBearExt4,
+) {
+    let climbs: [u32; 4] = core::mem::transmute(*coeff);
+    for c in 0..27 {
+        let t = mont_mul4(vld1q_u32(a.add(4 * c)), vld1q_u32(b.add(4 * c)));
+        let t_lo = vget_low_u32(t);
+        for l in 0..4 {
+            let p = acc.add(16 * c + 4 * l);
+            let cl = climbs[l];
+            let lo = vmlal_u32(vld1q_u64(p), t_lo, vdup_n_u32(cl));
+            let hi = vmlal_high_u32(vld1q_u64(p.add(2)), t, vdupq_n_u32(cl));
+            vst1q_u64(p, lo);
+            vst1q_u64(p.add(2), hi);
+        }
+    }
+}
+
+/// `acc[cell] += coeff * a[cell]` over the 8 binary cells, lazily.
+#[inline(always)]
+pub unsafe fn soa_lin_base_lazy(acc: *mut u64, a: *const u32, coeff: &BabyBearExt4) {
+    let climbs: [u32; 4] = core::mem::transmute(*coeff);
+    for i in 0..2 {
+        let offset = 9 * i;
+        for j in 0..2 {
+            let offset = offset + 3 * j;
+            for kk in 0..2 {
+                let c = offset + kk;
+                let t = vld1q_u32(a.add(4 * c));
+                let t_lo = vget_low_u32(t);
+                for l in 0..4 {
+                    let p = acc.add(16 * c + 4 * l);
+                    let cl = climbs[l];
+                    let lo = vmlal_u32(vld1q_u64(p), t_lo, vdup_n_u32(cl));
+                    let hi = vmlal_high_u32(vld1q_u64(p.add(2)), t, vdupq_n_u32(cl));
+                    vst1q_u64(p, lo);
+                    vst1q_u64(p.add(2), hi);
+                }
+            }
+        }
+    }
+}
+
+/// Conditional `R*P` subtraction over the whole SoA lazy accumulator.
+#[inline(always)]
+pub unsafe fn soa_lazy_condsub(acc: *mut u64) {
+    let rp = vdupq_n_u64(RP);
+    for i in 0..(27 * 8) {
+        let p = acc.add(2 * i);
+        let x = vld1q_u64(p);
+        let mask = vcgeq_u64(x, rp);
+        vst1q_u64(p, vsubq_u64(x, vandq_u64(mask, rp)));
+    }
+}
+
+/// Final REDC + canonicalization of the SoA lazy accumulator into canonical
+/// SoA u32 cells; zeroes the accumulator.
+#[inline(always)]
+pub unsafe fn soa_lazy_finalize(acc: *mut u64, out: *mut u32) {
+    let rp = vdupq_n_u64(RP);
+    let p2 = vdup_n_u32(P);
+    let k2 = vdup_n_u32(K);
+    let pq = vdupq_n_u32(P);
+    for i in 0..(27 * 4) {
+        let ptr = acc.add(4 * i);
+        let mut lo = vld1q_u64(ptr);
+        let mut hi = vld1q_u64(ptr.add(2));
+        lo = vsubq_u64(lo, vandq_u64(vcgeq_u64(lo, rp), rp));
+        hi = vsubq_u64(hi, vandq_u64(vcgeq_u64(hi, rp), rp));
+        let m_lo = vmul_u32(vmovn_u64(lo), k2);
+        let m_hi = vmul_u32(vmovn_u64(hi), k2);
+        lo = vmlal_u32(lo, m_lo, p2);
+        hi = vmlal_u32(hi, m_hi, p2);
+        let r = vcombine_u32(vshrn_n_u64::<32>(lo), vshrn_n_u64::<32>(hi));
+        vst1q_u32(out.add(4 * i), vminq_u32(r, vsubq_u32(r, pq)));
+        vst1q_u64(ptr, vdupq_n_u64(0));
+        vst1q_u64(ptr.add(2), vdupq_n_u64(0));
+    }
+}
+
+/// `dst[cell] += coeff (x) (a_ext[cell] (x) b_ext[cell])` over 27 cells x 4 rows
+/// into the reduced SoA scratch.
+#[inline(always)]
+pub unsafe fn soa_quad_ee(
+    dst: *mut u32,
+    a: *const u32,
+    b: *const u32,
+    coeff_bcast: &[uint32x4_t; 4],
+    r11v: uint32x4_t,
+) {
+    for c in 0..27 {
+        let av: [uint32x4_t; 4] = core::array::from_fn(|l| vld1q_u32(a.add(16 * c + 4 * l)));
+        let bv: [uint32x4_t; 4] = core::array::from_fn(|l| vld1q_u32(b.add(16 * c + 4 * l)));
+        let v = soa_ext_mul(&av, &bv, r11v);
+        let w = soa_ext_mul(&v, coeff_bcast, r11v);
+        for l in 0..4 {
+            let p = dst.add(16 * c + 4 * l);
+            vst1q_u32(p, add4(vld1q_u32(p), w[l]));
+        }
+    }
+}
+
+/// `dst[cell] += coeff (x) (a_ext[cell] * b_base[cell])` over 27 cells x 4 rows.
+#[inline(always)]
+pub unsafe fn soa_quad_be(
+    dst: *mut u32,
+    a_ext: *const u32,
+    b_base: *const u32,
+    coeff_bcast: &[uint32x4_t; 4],
+    r11v: uint32x4_t,
+) {
+    for c in 0..27 {
+        let bv = vld1q_u32(b_base.add(4 * c));
+        let t: [uint32x4_t; 4] =
+            core::array::from_fn(|l| mont_mul4(vld1q_u32(a_ext.add(16 * c + 4 * l)), bv));
+        let w = soa_ext_mul(&t, coeff_bcast, r11v);
+        for l in 0..4 {
+            let p = dst.add(16 * c + 4 * l);
+            vst1q_u32(p, add4(vld1q_u32(p), w[l]));
+        }
+    }
+}
+
+/// `dst[cell] += coeff (x) a_ext[cell]` over the 8 binary cells x 4 rows.
+#[inline(always)]
+pub unsafe fn soa_lin_ext(
+    dst: *mut u32,
+    a_ext: *const u32,
+    coeff_bcast: &[uint32x4_t; 4],
+    r11v: uint32x4_t,
+) {
+    for i in 0..2 {
+        let offset = 9 * i;
+        for j in 0..2 {
+            let offset = offset + 3 * j;
+            for kk in 0..2 {
+                let c = offset + kk;
+                let av: [uint32x4_t; 4] =
+                    core::array::from_fn(|l| vld1q_u32(a_ext.add(16 * c + 4 * l)));
+                let w = soa_ext_mul(&av, coeff_bcast, r11v);
+                for l in 0..4 {
+                    let p = dst.add(16 * c + 4 * l);
+                    vst1q_u32(p, add4(vld1q_u32(p), w[l]));
+                }
+            }
+        }
+    }
+}
+
+/// `dst[cell] += constant` over the 8 binary cells x 4 rows.
+#[inline(always)]
+pub unsafe fn soa_add_const(dst: *mut u32, const_bcast: &[uint32x4_t; 4]) {
+    for i in 0..2 {
+        let offset = 9 * i;
+        for j in 0..2 {
+            let offset = offset + 3 * j;
+            for kk in 0..2 {
+                let c = offset + kk;
+                for l in 0..4 {
+                    let p = dst.add(16 * c + 4 * l);
+                    vst1q_u32(p, add4(vld1q_u32(p), const_bcast[l]));
+                }
+            }
+        }
+    }
+}
+
+/// Per-block eq application: `acc[cell] += (lazy_out[cell] + reduced[cell]) (x) eq`
+/// where `eq` is the 4-row eq block in SoA form; also zeroes `reduced`.
+#[inline(always)]
+pub unsafe fn soa_apply_eq_and_accumulate(
+    acc: *mut u32,
+    lazy_out: *const u32,
+    reduced: *mut u32,
+    eq_soa: &[uint32x4_t; 4],
+    r11v: uint32x4_t,
+) {
+    for c in 0..27 {
+        let v: [uint32x4_t; 4] = core::array::from_fn(|l| {
+            add4(
+                vld1q_u32(lazy_out.add(16 * c + 4 * l)),
+                vld1q_u32(reduced.add(16 * c + 4 * l)),
+            )
+        });
+        let w = soa_ext_mul(&v, eq_soa, r11v);
+        for l in 0..4 {
+            let p = acc.add(16 * c + 4 * l);
+            vst1q_u32(p, add4(vld1q_u32(p), w[l]));
+            vst1q_u32(reduced.add(16 * c + 4 * l), vdupq_n_u32(0));
+        }
+    }
+}
+
+/// Transpose a block of 4 consecutive AoS ext values into limb-major SoA.
+#[inline(always)]
+pub unsafe fn soa_transpose_ext4(src: *const BabyBearExt4) -> [uint32x4_t; 4] {
+    let p = src as *const u32;
+    transpose4x4(
+        vld1q_u32(p),
+        vld1q_u32(p.add(4)),
+        vld1q_u32(p.add(8)),
+        vld1q_u32(p.add(12)),
+    )
+}
+
+/// Broadcast the limbs of one ext value to row vectors.
+#[inline(always)]
+pub unsafe fn soa_broadcast_ext(v: &BabyBearExt4) -> [uint32x4_t; 4] {
+    let limbs: [u32; 4] = core::mem::transmute(*v);
+    core::array::from_fn(|l| vdupq_n_u32(limbs[l]))
+}
+
+/// Montgomery form of the non-residue as a row vector, for the SoA kernels.
+#[inline(always)]
+pub fn soa_r11v() -> uint32x4_t {
+    unsafe { vdupq_n_u32(r11()) }
+}
+
+// ---------------------------------------------------------------------------
+// SoA fold kernels (transition + ext-only passes), 4 rows per vector
+// ---------------------------------------------------------------------------
+
+/// Per-tap multiplication table of a fixed ext multiplier `p`, broadcast to row
+/// vectors: `(p (x) v)_j = sum_k m[j][k] * v_k` with every entry canonical
+/// (the `11*p_i` entries are REDC'd once at build time), so tap products stay
+/// below `P^2` and are lazy-accumulable.
+#[derive(Clone, Copy)]
+pub struct SoaExtTable {
+    m: [[uint32x4_t; 4]; 4],
+}
+
+impl SoaExtTable {
+    #[inline(always)]
+    pub fn new(p: &BabyBearExt4) -> Self {
+        let l: [u32; 4] = unsafe { core::mem::transmute(*p) };
+        let e11 = BabyBearField::new(11);
+        let scaled: [u32; 4] = core::array::from_fn(|i| {
+            let mut t = BabyBearField::from_raw_u32(l[i]);
+            t.mul_assign(&e11);
+            t.raw_u32_value()
+        });
+        // flat table with `a = p` fixed:
+        // out0 = p0 v0 + 11p1 v1 + 11p3 v2 + 11p2 v3
+        // out1 = p1 v0 + p0 v1 + p2 v2 + 11p3 v3
+        // out2 = p2 v0 + 11p3 v1 + p0 v2 + 11p1 v3
+        // out3 = p3 v0 + p2 v1 + p1 v2 + p0 v3
+        let rows: [[u32; 4]; 4] = [
+            [l[0], scaled[1], scaled[3], scaled[2]],
+            [l[1], l[0], l[2], scaled[3]],
+            [l[2], scaled[3], l[0], scaled[1]],
+            [l[3], l[2], l[1], l[0]],
+        ];
+        SoaExtTable {
+            m: unsafe {
+                core::array::from_fn(|j| core::array::from_fn(|k| vdupq_n_u32(rows[j][k])))
+            },
+        }
+    }
+
+    /// Direct (reduced) application: `p (x) v` for a SoA row-vector value.
+    #[inline(always)]
+    pub unsafe fn apply(&self, v: &[uint32x4_t; 4]) -> [uint32x4_t; 4] {
+        core::array::from_fn(|j| {
+            let mut acc = mont_mul4(self.m[j][0], v[0]);
+            acc = add4(acc, mont_mul4(self.m[j][1], v[1]));
+            acc = add4(acc, mont_mul4(self.m[j][2], v[2]));
+            add4(acc, mont_mul4(self.m[j][3], v[3]))
+        })
+    }
+}
+
+/// Lazy u64x2-pair accumulator for one SoA limb (4 rows), with the standard
+/// `R*P` conditional-subtract invariant.
+#[derive(Clone, Copy)]
+struct LazyLimb {
+    lo: uint64x2_t,
+    hi: uint64x2_t,
+}
+
+impl LazyLimb {
+    #[inline(always)]
+    unsafe fn zero() -> Self {
+        LazyLimb {
+            lo: vdupq_n_u64(0),
+            hi: vdupq_n_u64(0),
+        }
+    }
+
+    #[inline(always)]
+    unsafe fn mla(&mut self, coeff: uint32x4_t, v: uint32x4_t) {
+        self.lo = vmlal_u32(self.lo, vget_low_u32(coeff), vget_low_u32(v));
+        self.hi = vmlal_high_u32(self.hi, coeff, v);
+    }
+
+    #[inline(always)]
+    unsafe fn condsub(&mut self) {
+        let rp = vdupq_n_u64(RP);
+        self.lo = vsubq_u64(self.lo, vandq_u64(vcgeq_u64(self.lo, rp), rp));
+        self.hi = vsubq_u64(self.hi, vandq_u64(vcgeq_u64(self.hi, rp), rp));
+    }
+
+    #[inline(always)]
+    unsafe fn redc(mut self) -> uint32x4_t {
+        self.condsub();
+        let p2 = vdup_n_u32(P);
+        let k2 = vdup_n_u32(K);
+        let m_lo = vmul_u32(vmovn_u64(self.lo), k2);
+        let m_hi = vmul_u32(vmovn_u64(self.hi), k2);
+        let lo = vmlal_u32(self.lo, m_lo, p2);
+        let hi = vmlal_u32(self.hi, m_hi, p2);
+        let r = vcombine_u32(vshrn_n_u64::<32>(lo), vshrn_n_u64::<32>(hi));
+        vminq_u32(r, vsubq_u32(r, vdupq_n_u32(P)))
+    }
+}
+
+/// 8-tap fold of a base poly for 4 consecutive rows, SoA output (limb-major):
+/// `out_j = sum_i prefix[i]_j * base[pos + i*stride .. +4]`, accumulated lazily
+/// per limb (one vld1q per tap, 2 vmlal per tap per limb).
+#[inline(always)]
+pub unsafe fn soa_fold8_base(
+    src: *const BabyBearField,
+    prefix_limbs: &[[uint32x4_t; 4]; 8], // [tap][limb] broadcast
+    stride: usize,
+    pos: usize,
+) -> [uint32x4_t; 4] {
+    let src = src as *const u32;
+    let mut acc = [LazyLimb::zero(); 4];
+    for i in 0..8 {
+        let taps = vld1q_u32(src.add(pos + i * stride));
+        for j in 0..4 {
+            acc[j].mla(prefix_limbs[i][j], taps);
+        }
+        if i % 2 == 1 {
+            for j in 0..4 {
+                acc[j].condsub();
+            }
+        }
+    }
+    core::array::from_fn(|j| acc[j].redc())
+}
+
+/// 8-tap fold of an ext poly for 4 consecutive rows, SoA output: per tap the
+/// AoS block is transposed to limb-major and the tap's precomputed table rows
+/// are lazy-accumulated (4 products per output limb per tap).
+#[inline(always)]
+pub unsafe fn soa_fold8_ext(
+    src: *const BabyBearExt4,
+    tables: &[SoaExtTable; 8],
+    stride: usize,
+    pos: usize,
+) -> [uint32x4_t; 4] {
+    let mut acc = [LazyLimb::zero(); 4];
+    for i in 0..8 {
+        let v = soa_transpose_ext4(src.add(pos + i * stride));
+        let t = &tables[i];
+        for j in 0..4 {
+            acc[j].mla(t.m[j][0], v[0]);
+            acc[j].mla(t.m[j][1], v[1]);
+            acc[j].condsub();
+            acc[j].mla(t.m[j][2], v[2]);
+            acc[j].mla(t.m[j][3], v[3]);
+            acc[j].condsub();
+        }
+    }
+    core::array::from_fn(|j| acc[j].redc())
+}
+
+/// Inverse of `soa_transpose_ext4`: limb-major row vectors -> 4 AoS ext values.
+#[inline(always)]
+pub unsafe fn soa_store_ext4(limbs: &[uint32x4_t; 4], dst: *mut BabyBearExt4) {
+    let t = transpose4x4(limbs[0], limbs[1], limbs[2], limbs[3]);
+    let d = dst as *mut u32;
+    vst1q_u32(d, t[0]);
+    vst1q_u32(d.add(4), t[1]);
+    vst1q_u32(d.add(8), t[2]);
+    vst1q_u32(d.add(12), t[3]);
+}
+
+/// SoA limb-major sub over one cell: `a - b`.
+#[inline(always)]
+pub unsafe fn soa_sub_limbs(a: &[uint32x4_t; 4], b: &[uint32x4_t; 4]) -> [uint32x4_t; 4] {
+    core::array::from_fn(|j| sub4(a[j], b[j]))
+}
+
+/// SoA limb-major add over one cell.
+#[inline(always)]
+pub unsafe fn soa_add_limbs(a: &[uint32x4_t; 4], b: &[uint32x4_t; 4]) -> [uint32x4_t; 4] {
+    core::array::from_fn(|j| add4(a[j], b[j]))
+}
+
+/// Load one SoA cell (limb-major) from a raw grid buffer.
+#[inline(always)]
+pub unsafe fn soa_load_cell(src: *const u32) -> [uint32x4_t; 4] {
+    core::array::from_fn(|j| vld1q_u32(src.add(4 * j)))
+}
+
+/// Store one SoA cell (limb-major) into a raw grid buffer.
+#[inline(always)]
+pub unsafe fn soa_store_cell(dst: *mut u32, v: &[uint32x4_t; 4]) {
+    for j in 0..4 {
+        vst1q_u32(dst.add(4 * j), v[j]);
+    }
+}
+
+/// `dst[cell] += coeff (x) (a[cell] (x) b[cell])` over N ext SoA cells.
+#[inline(always)]
+pub unsafe fn soa_quad_ee_n<const N: usize>(
+    dst: *mut u32,
+    a: *const u32,
+    b: *const u32,
+    coeff_bcast: &[uint32x4_t; 4],
+    r11v: uint32x4_t,
+) {
+    for c in 0..N {
+        let av = soa_load_cell(a.add(16 * c));
+        let bv = soa_load_cell(b.add(16 * c));
+        let v = soa_ext_mul(&av, &bv, r11v);
+        let w = soa_ext_mul(&v, coeff_bcast, r11v);
+        let p = dst.add(16 * c);
+        for l in 0..4 {
+            let q = p.add(4 * l);
+            vst1q_u32(q, add4(vld1q_u32(q), w[l]));
+        }
+    }
+}
+
+/// `dst[cell 0] += coeff (x) a[cell 0]` — value-cell-only linear step for the
+/// transition's `[G(0), G_inf]` scratch.
+#[inline(always)]
+pub unsafe fn soa_lin_ext_cell0(
+    dst: *mut u32,
+    a: *const u32,
+    coeff_bcast: &[uint32x4_t; 4],
+    r11v: uint32x4_t,
+) {
+    let av = soa_load_cell(a);
+    let w = soa_ext_mul(&av, coeff_bcast, r11v);
+    for l in 0..4 {
+        let q = dst.add(4 * l);
+        vst1q_u32(q, add4(vld1q_u32(q), w[l]));
+    }
+}
+
+/// `dst[cell 0] += constant` (broadcast limbs).
+#[inline(always)]
+pub unsafe fn soa_add_const_cell0(dst: *mut u32, const_bcast: &[uint32x4_t; 4]) {
+    for l in 0..4 {
+        let q = dst.add(4 * l);
+        vst1q_u32(q, add4(vld1q_u32(q), const_bcast[l]));
+    }
+}
+
+/// Per-block eq application over N cells: `acc[cell] += eval[cell] (x) eq`,
+/// zeroing the eval scratch.
+#[inline(always)]
+pub unsafe fn soa_apply_eq_and_accumulate_n<const N: usize>(
+    acc: *mut u32,
+    eval: *mut u32,
+    eq_soa: &[uint32x4_t; 4],
+    r11v: uint32x4_t,
+) {
+    for c in 0..N {
+        let v = soa_load_cell(eval.add(16 * c));
+        let w = soa_ext_mul(&v, eq_soa, r11v);
+        let p = acc.add(16 * c);
+        for l in 0..4 {
+            let q = p.add(4 * l);
+            vst1q_u32(q, add4(vld1q_u32(q), w[l]));
+            vst1q_u32(eval.add(16 * c + 4 * l), vdupq_n_u32(0));
+        }
+    }
+}
+
+/// Horizontal reduction of an N-cell SoA chunk accumulator to AoS ext values.
+#[inline(always)]
+pub unsafe fn soa_final_reduce_to_ext_n<const N: usize>(
+    acc: *const u32,
+    out: *mut BabyBearExt4,
+) {
+    for c in 0..N {
+        let mut limbs = [0u32; 4];
+        for l in 0..4 {
+            let mut s = 0u64;
+            for r in 0..4 {
+                s += *acc.add(16 * c + 4 * l + r) as u64;
+            }
+            limbs[l] = (s % (P as u64)) as u32;
+        }
+        *out.add(c) = core::mem::transmute(limbs);
+    }
+}
+
+/// `dst[cell] += src[cell]` over N ext SoA cells (form build, folded stages).
+#[inline(always)]
+pub unsafe fn soa_ext_form_add_n<const N: usize>(dst: *mut u32, src: *const u32) {
+    for i in 0..(4 * N) {
+        let p = dst.add(4 * i);
+        vst1q_u32(p, add4(vld1q_u32(p), vld1q_u32(src.add(4 * i))));
+    }
+}
+
+/// `dst[cell] -= src[cell]` over N ext SoA cells.
+#[inline(always)]
+pub unsafe fn soa_ext_form_sub_n<const N: usize>(dst: *mut u32, src: *const u32) {
+    for i in 0..(4 * N) {
+        let p = dst.add(4 * i);
+        vst1q_u32(p, sub4(vld1q_u32(p), vld1q_u32(src.add(4 * i))));
+    }
+}
+
+/// `dst[cell] += c * src[cell]` (base-field coefficient) over N ext SoA cells.
+#[inline(always)]
+pub unsafe fn soa_ext_form_muladd_n<const N: usize>(
+    dst: *mut u32,
+    src: *const u32,
+    c: BabyBearField,
+) {
+    let cv = vdupq_n_u32(c.raw_u32_value());
+    for i in 0..(4 * N) {
+        let p = dst.add(4 * i);
+        vst1q_u32(
+            p,
+            add4(vld1q_u32(p), mont_mul4(vld1q_u32(src.add(4 * i)), cv)),
+        );
+    }
+}
+
+/// Broadcast limb vectors for the fold prefix of base polys.
+#[inline(always)]
+pub fn soa_prefix_limbs(prefix: &[BabyBearExt4; 8]) -> [[uint32x4_t; 4]; 8] {
+    core::array::from_fn(|i| {
+        let l: [u32; 4] = unsafe { core::mem::transmute(prefix[i]) };
+        core::array::from_fn(|j| unsafe { vdupq_n_u32(l[j]) })
+    })
+}
+
+/// `dst[cell] += src[cell]` over the full 27x4 SoA base grid (form build).
+#[inline(always)]
+pub unsafe fn soa_form_add(dst: *mut u32, src: *const u32) {
+    for i in 0..27 {
+        let p = dst.add(4 * i);
+        vst1q_u32(p, add4(vld1q_u32(p), vld1q_u32(src.add(4 * i))));
+    }
+}
+
+/// `dst[cell] -= src[cell]` over the full 27x4 SoA base grid.
+#[inline(always)]
+pub unsafe fn soa_form_sub(dst: *mut u32, src: *const u32) {
+    for i in 0..27 {
+        let p = dst.add(4 * i);
+        vst1q_u32(p, sub4(vld1q_u32(p), vld1q_u32(src.add(4 * i))));
+    }
+}
+
+/// `dst[cell] += c * src[cell]` over the full 27x4 SoA base grid.
+#[inline(always)]
+pub unsafe fn soa_form_muladd(dst: *mut u32, src: *const u32, c: BabyBearField) {
+    let cv = vdupq_n_u32(c.raw_u32_value());
+    for i in 0..27 {
+        let p = dst.add(4 * i);
+        vst1q_u32(
+            p,
+            add4(vld1q_u32(p), mont_mul4(vld1q_u32(src.add(4 * i)), cv)),
+        );
+    }
+}
+
+/// Horizontal reduction of the chunk accumulator: sum the 4 row lanes of every
+/// (cell, limb) and write AoS ext cells.
+#[inline(always)]
+pub unsafe fn soa_final_reduce_to_ext(acc: *const u32, out: *mut BabyBearExt4) {
+    for c in 0..27 {
+        let mut limbs = [0u32; 4];
+        for l in 0..4 {
+            let mut s = 0u64;
+            for r in 0..4 {
+                s += *acc.add(16 * c + 4 * l + r) as u64;
+            }
+            limbs[l] = (s % (P as u64)) as u32;
+        }
+        *out.add(c) = core::mem::transmute(limbs);
     }
 }
 

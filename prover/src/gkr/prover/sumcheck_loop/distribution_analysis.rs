@@ -1747,6 +1747,155 @@ mod test {
         );
     }
 
+    /// Quantifies the term duplication introduced by fully expanding the
+    /// brackets of (enforce-)max-quadratic gates: a gate product
+    /// `a * (sum_j c_j b_j)` expands into `k` monomials `(c_j, a, b_j)`, and
+    /// the batched description then re-merges identical unordered `(a, b)`
+    /// pairs across gates by summing coefficients.
+    #[test]
+    fn analyze_bracket_expansion_duplication() {
+        let circuit: GKRCircuitArtifact<BabyBearField> = if USE_GKR_WITH_CACHES {
+            deserialize_from_file("../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_gkr.json")
+        } else {
+            deserialize_from_file(
+                "../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_no_caches_gkr.json",
+            )
+        };
+        let layer = &circuit.layers[0];
+
+        let mut n_max_quad = 0usize;
+        let mut n_enforce_single = 0usize;
+        let mut n_enforce_list = 0usize;
+
+        // bracket-preserving structure of MaxQuadratic / EnforceSingle gates
+        let mut brackets = 0usize;
+        let mut monomials = 0usize;
+        let mut bracket_size_hist: BTreeMap<usize, usize> = BTreeMap::new();
+        let mut distinct_brackets: BTreeSet<Vec<(u128, GKRAddress)>> = BTreeSet::new();
+        // unordered pair multiset over the fully expanded monomials
+        let mut pair_instances = 0usize;
+        let mut pair_counts: BTreeMap<(GKRAddress, GKRAddress), usize> = BTreeMap::new();
+        let mut linear_raw = 0usize;
+        let mut linear_distinct: BTreeSet<GKRAddress> = BTreeSet::new();
+
+        let mut max_quad_rels: Vec<&NoFieldMaxQuadraticGKRRelation<BabyBearField>> = vec![];
+        let mut list_rels = vec![];
+        for gate in layer
+            .gates_with_external_connections
+            .iter()
+            .chain(layer.gates.iter())
+        {
+            match &gate.enforced_relation {
+                NoFieldGKRRelation::MaxQuadratic { input, .. } => {
+                    n_max_quad += 1;
+                    max_quad_rels.push(input);
+                }
+                NoFieldGKRRelation::EnforceSingleMaxQuadraticConstraint { input, .. } => {
+                    n_enforce_single += 1;
+                    max_quad_rels.push(input);
+                }
+                NoFieldGKRRelation::EnforceConstraintsMaxQuadratic { input } => {
+                    n_enforce_list += 1;
+                    list_rels.push(input);
+                }
+                _ => {}
+            }
+        }
+
+        for rel in max_quad_rels.into_iter() {
+            for (a, inner) in rel.quadratic_terms.iter() {
+                let mut key: Vec<(u128, GKRAddress)> = inner
+                    .iter()
+                    .filter(|(c, _)| !c.is_zero())
+                    .map(|(c, b)| (c.as_u128_reduced(), *b))
+                    .collect();
+                if key.is_empty() {
+                    continue;
+                }
+                brackets += 1;
+                monomials += key.len();
+                *bracket_size_hist.entry(key.len()).or_default() += 1;
+                for (_, b) in key.iter() {
+                    let pair = if *a <= *b { (*a, *b) } else { (*b, *a) };
+                    *pair_counts.entry(pair).or_default() += 1;
+                    pair_instances += 1;
+                }
+                key.sort();
+                distinct_brackets.insert(key);
+            }
+            for (c, v) in rel.linear_terms.iter() {
+                if !c.is_zero() {
+                    linear_raw += 1;
+                    linear_distinct.insert(*v);
+                }
+            }
+        }
+
+        // the constraints-list gate is stored pair-keyed with per-pair
+        // (coeff, alpha-power) lists: its "expansion" is the list length
+        let mut list_pairs = 0usize;
+        let mut list_pair_instances = 0usize;
+
+        for input in list_rels.into_iter() {
+            for ((a, b), powers) in input.quadratic_terms.iter() {
+                list_pairs += 1;
+                list_pair_instances += powers.len();
+                let pair = if *a <= *b { (*a, *b) } else { (*b, *a) };
+                *pair_counts.entry(pair).or_default() += powers.len();
+                pair_instances += powers.len();
+                monomials += powers.len();
+            }
+            for (v, powers) in input.linear_terms.iter() {
+                linear_raw += powers.len();
+                linear_distinct.insert(*v);
+            }
+        }
+
+        let distinct_pairs = pair_counts.len();
+        let max_pair_count = pair_counts.values().copied().max().unwrap_or(0);
+        let pairs_seen_once = pair_counts.values().filter(|c| **c == 1).count();
+
+        println!(
+            "gates: {} MaxQuadratic, {} EnforceSingleMaxQuadraticConstraint, {} EnforceConstraintsMaxQuadratic",
+            n_max_quad, n_enforce_single, n_enforce_list
+        );
+        println!(
+            "bracket-preserving: {} products (brackets), {} distinct bracket forms (CSE degree {:.2}x)",
+            brackets,
+            distinct_brackets.len(),
+            brackets as f64 / distinct_brackets.len().max(1) as f64,
+        );
+        println!("bracket size histogram (size -> count): {:?}", bracket_size_hist);
+        if n_enforce_list > 0 {
+            println!(
+                "constraints-list gates: {} stored pairs, {} pair instances across constraints ({:.2}x internal duplication)",
+                list_pairs,
+                list_pair_instances,
+                list_pair_instances as f64 / list_pairs.max(1) as f64,
+            );
+        }
+        println!(
+            "fully expanded: {} monomials from {} products -> expansion degree {:.2}x",
+            monomials,
+            brackets + list_pairs,
+            monomials as f64 / (brackets + list_pairs).max(1) as f64,
+        );
+        println!(
+            "after cross-gate merge: {} distinct unordered (a, b) pairs from {} instances -> duplication degree {:.2}x ({} pairs unique, max multiplicity {})",
+            distinct_pairs,
+            pair_instances,
+            pair_instances as f64 / distinct_pairs.max(1) as f64,
+            pairs_seen_once,
+            max_pair_count,
+        );
+        println!(
+            "linear terms: {} raw entries over {} distinct polys -> {:.2}x",
+            linear_raw,
+            linear_distinct.len(),
+            linear_raw as f64 / linear_distinct.len().max(1) as f64,
+        );
+    }
+
     #[test]
     fn analyze_terms_in_circuit() {
         let circuit: GKRCircuitArtifact<BabyBearField> = if USE_GKR_WITH_CACHES {
