@@ -161,40 +161,42 @@ pub fn produce_bounded_scratch_description<F: PrimeField, E: FieldExtension<F> +
     let mut linear_issued_for_base = BTreeSet::new();
     let mut linear_issued_for_ext = BTreeSet::new();
 
-    let mut push_linear_base = |addr: &GKRAddress,
-                                constants: &mut Vec<E>,
-                                ops: &mut Vec<AbstractOp>,
-                                linear_issued_for_base: &mut BTreeSet<GKRAddress>| {
-        if linear_issued_for_base.contains(addr) {
-            return;
-        }
-        for (el, coeff) in description.linear_part_base_by_everything.iter() {
-            if el != addr {
-                continue;
+    let mut push_linear_base =
+        |addr: &GKRAddress,
+         constants: &mut Vec<E>,
+         ops: &mut Vec<AbstractOp>,
+         linear_issued_for_base: &mut BTreeSet<GKRAddress>| {
+            if linear_issued_for_base.contains(addr) {
+                return;
             }
-            let coeff_idx = constants.len() as u32;
-            constants.push(*coeff);
-            ops.push(AbstractOp::LinBase(base_index(addr), coeff_idx));
-            linear_issued_for_base.insert(*addr);
-        }
-    };
-    let mut push_linear_ext = |addr: &GKRAddress,
-                               constants: &mut Vec<E>,
-                               ops: &mut Vec<AbstractOp>,
-                               linear_issued_for_ext: &mut BTreeSet<GKRAddress>| {
-        if linear_issued_for_ext.contains(addr) {
-            return;
-        }
-        for (el, coeff) in description.linear_part_ext_by_everything.iter() {
-            if el != addr {
-                continue;
+            for (el, coeff) in description.linear_part_base_by_everything.iter() {
+                if el != addr {
+                    continue;
+                }
+                let coeff_idx = constants.len() as u32;
+                constants.push(*coeff);
+                ops.push(AbstractOp::LinBase(base_index(addr), coeff_idx));
+                linear_issued_for_base.insert(*addr);
             }
-            let coeff_idx = constants.len() as u32;
-            constants.push(*coeff);
-            ops.push(AbstractOp::LinExt(ext_index(addr), coeff_idx));
-            linear_issued_for_ext.insert(*addr);
-        }
-    };
+        };
+    let mut push_linear_ext =
+        |addr: &GKRAddress,
+         constants: &mut Vec<E>,
+         ops: &mut Vec<AbstractOp>,
+         linear_issued_for_ext: &mut BTreeSet<GKRAddress>| {
+            if linear_issued_for_ext.contains(addr) {
+                return;
+            }
+            for (el, coeff) in description.linear_part_ext_by_everything.iter() {
+                if el != addr {
+                    continue;
+                }
+                let coeff_idx = constants.len() as u32;
+                constants.push(*coeff);
+                ops.push(AbstractOp::LinExt(ext_index(addr), coeff_idx));
+                linear_issued_for_ext.insert(*addr);
+            }
+        };
 
     for (a, other) in description.quadratic_part_base_by_base.iter() {
         for (b, coeff) in other.iter() {
@@ -445,8 +447,7 @@ pub fn evaluate_initial_with_bounded_scratch<F: PrimeField, E: FieldExtension<F>
 
     let input_size = 1 << input_size_log2;
 
-    let mut base_field_scratch =
-        vec![[F::ZERO; 27]; description.num_base_slots].into_boxed_slice();
+    let mut base_field_scratch = vec![[F::ZERO; 27]; description.num_base_slots].into_boxed_slice();
     let mut ext_field_scratch = vec![[E::ZERO; 27]; description.num_ext_slots].into_boxed_slice();
     let mut eval_scratch = [E::ZERO; 27];
 

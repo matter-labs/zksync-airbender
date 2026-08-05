@@ -8,7 +8,7 @@ pub(crate) fn read_ext_and_fold_8<F: Field>(
     row: usize,
 ) -> F {
     #[cfg(target_arch = "aarch64")]
-    if crate::gkr::prover::sumcheck_loop::windowed_mode::neon::is_bb4::<F>() {
+    if const { crate::gkr::prover::sumcheck_loop::windowed_mode::neon::is_bb4::<F>() } {
         unsafe {
             let result = crate::gkr::prover::sumcheck_loop::windowed_mode::neon::fold8_ext(
                 src.ptr as *const _,
@@ -41,7 +41,7 @@ pub(crate) fn read_ext_and_fold_2<F: Field>(
     row: usize,
 ) -> F {
     #[cfg(target_arch = "aarch64")]
-    if crate::gkr::prover::sumcheck_loop::windowed_mode::neon::is_bb4::<F>() {
+    if const { crate::gkr::prover::sumcheck_loop::windowed_mode::neon::is_bb4::<F>() } {
         unsafe {
             let result = crate::gkr::prover::sumcheck_loop::windowed_mode::neon::fold2_ext(
                 src.ptr as *const _,

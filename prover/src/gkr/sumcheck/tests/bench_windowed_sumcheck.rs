@@ -234,7 +234,8 @@ fn bench_simple_product() {
                 assert_eq!(v, claim);
             }
 
-            let folding_challenge = E::from_base(F::from_u128_with_reduction(2 * (step as u128) + 1));
+            let folding_challenge =
+                E::from_base(F::from_u128_with_reduction(2 * (step as u128) + 1));
             folding_challenges.push(folding_challenge);
             let next_claim = evaluate_small_univariate_poly::<F, E, 4>(&coeffs, &folding_challenge);
 

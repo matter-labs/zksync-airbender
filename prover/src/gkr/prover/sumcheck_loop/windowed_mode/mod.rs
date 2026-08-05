@@ -5,9 +5,10 @@ use crate::gkr::prover::sumcheck::access_and_fold::*;
 pub(crate) mod bench;
 pub(crate) mod bounded_scratch;
 pub(crate) mod full_size_scratch;
+pub(crate) mod sumcheck_loop;
+
 #[cfg(target_arch = "aarch64")]
 pub(crate) mod neon;
-pub(crate) mod sumcheck_loop;
 
 #[inline(always)]
 fn interpolate_at_inf_from_0_1_basis<F: Field>(a: F, b: F) -> F {
@@ -101,7 +102,7 @@ fn evaluate_quadratic_base<F: PrimeField, E: FieldExtension<F> + Field>(
     prefactor: &E,
 ) {
     #[cfg(target_arch = "aarch64")]
-    if neon::is_bb_pair::<F, E>() {
+    if const { neon::is_bb_pair::<F, E>() } {
         unsafe {
             neon::quad_base_cells::<27>(
                 dst.as_mut_ptr() as *mut _,
@@ -129,7 +130,7 @@ fn evaluate_quadratic_mixed<F: PrimeField, E: FieldExtension<F> + Field>(
     prefactor: &E,
 ) {
     #[cfg(target_arch = "aarch64")]
-    if neon::is_bb_pair::<F, E>() {
+    if const { neon::is_bb_pair::<F, E>() } {
         unsafe {
             neon::quad_mixed_cells::<27>(
                 dst.as_mut_ptr() as *mut _,
@@ -157,7 +158,7 @@ fn evaluate_quadratic_ext<F: Field, const N: usize>(
     prefactor: &F,
 ) {
     #[cfg(target_arch = "aarch64")]
-    if neon::is_bb4::<F>() {
+    if const { neon::is_bb4::<F>() } {
         unsafe {
             neon::quad_ext_cells::<N>(
                 dst.as_mut_ptr() as *mut _,
@@ -184,7 +185,7 @@ fn evaluate_linear_base<F: PrimeField, E: FieldExtension<F> + Field>(
     prefactor: &E,
 ) {
     #[cfg(target_arch = "aarch64")]
-    if neon::is_bb_pair::<F, E>() {
+    if const { neon::is_bb_pair::<F, E>() } {
         unsafe {
             neon::linear_base_27(
                 dst.as_mut_ptr() as *mut _,
@@ -212,7 +213,7 @@ fn evaluate_linear_base<F: PrimeField, E: FieldExtension<F> + Field>(
 #[inline(always)]
 fn evaluate_linear_ext<F: Field>(dst: &mut [F; 27], a: &[F; 27], prefactor: &F) {
     #[cfg(target_arch = "aarch64")]
-    if neon::is_bb4::<F>() {
+    if const { neon::is_bb4::<F>() } {
         unsafe {
             neon::linear_ext_27(
                 dst.as_mut_ptr() as *mut _,
@@ -245,7 +246,7 @@ fn read_base_and_fold<F: PrimeField, E: FieldExtension<F> + Field>(
     row: usize,
 ) -> E {
     #[cfg(target_arch = "aarch64")]
-    if neon::is_bb_pair::<F, E>() {
+    if const { neon::is_bb_pair::<F, E>() } {
         unsafe {
             let result = neon::fold8_base(
                 src.ptr as *const _,
@@ -294,13 +295,15 @@ fn read_base_then_fold_and_interpolate<F: PrimeField, E: FieldExtension<F> + Fie
                 let src_0_idx = stride + row;
                 let src_1_idx = src_0_idx + stride_step;
 
-                let folded_0 =
-                    read_base_and_fold(src, precomputed_eq_prefix, base_input_stride, src_0_idx);
+                let (folded_0, folded_1) = read_base_and_fold_pair(
+                    src,
+                    precomputed_eq_prefix,
+                    base_input_stride,
+                    src_0_idx,
+                    src_1_idx,
+                );
                 buffer.write(src_0_idx, folded_0);
                 dst[dst_offset] = folded_0;
-
-                let folded_1 =
-                    read_base_and_fold(src, precomputed_eq_prefix, base_input_stride, src_1_idx);
                 buffer.write(src_1_idx, folded_1);
                 dst[dst_offset + 1] = folded_1;
 
@@ -355,19 +358,79 @@ fn read_base_then_fold_without_interpolation<F: PrimeField, E: FieldExtension<F>
                 let src_0_idx = stride + row;
                 let src_1_idx = src_0_idx + stride_step;
 
-                let folded_0 =
-                    read_base_and_fold(src, precomputed_eq_prefix, base_input_stride, src_0_idx);
+                let (folded_0, folded_1) = read_base_and_fold_pair(
+                    src,
+                    precomputed_eq_prefix,
+                    base_input_stride,
+                    src_0_idx,
+                    src_1_idx,
+                );
                 buffer.write(src_0_idx, folded_0);
                 dst[dst_offset] = folded_0;
-
-                let folded_1 =
-                    read_base_and_fold(src, precomputed_eq_prefix, base_input_stride, src_1_idx);
                 buffer.write(src_1_idx, folded_1);
                 dst[dst_offset + 1] = folded_1;
             }
             // here we filled all options of (x0, x1, 0/1/inf)
         }
     }
+}
+
+/// Fused pair of 8-tap base folds (used where a caller needs the values at
+/// `row0` and `row1` back-to-back, e.g. the transition round's `(f(0), f(1))`).
+#[inline(always)]
+fn read_base_and_fold_pair<F: PrimeField, E: FieldExtension<F> + Field>(
+    src: &DisjointAccessQuasiSlice<F, false>,
+    precomputed_eq_prefix: &[E; 8],
+    stride: usize,
+    row0: usize,
+    row1: usize,
+) -> (E, E) {
+    #[cfg(target_arch = "aarch64")]
+    if const { neon::is_bb_pair::<F, E>() } {
+        unsafe {
+            let result = neon::fold8_base_x2(
+                src.ptr as *const _,
+                &*(precomputed_eq_prefix as *const [E; 8] as *const _),
+                stride,
+                row0,
+                row1,
+            );
+            return *(&result as *const _ as *const (E, E));
+        }
+    }
+    (
+        read_base_and_fold(src, precomputed_eq_prefix, stride, row0),
+        read_base_and_fold(src, precomputed_eq_prefix, stride, row1),
+    )
+}
+
+/// Fused pair of 8-tap ext folds; the vectorized path matrix-izes each prefix
+/// element once for both rows.
+#[inline(always)]
+fn read_ext_and_fold_pair<F: Field>(
+    src: &DisjointAccessQuasiSlice<F, false>,
+    precomputed_eq_prefix: &[F; 8],
+    stride: usize,
+    row0: usize,
+    row1: usize,
+) -> (F, F) {
+    #[cfg(target_arch = "aarch64")]
+    if const { neon::is_bb4::<F>() } {
+        unsafe {
+            let result = neon::fold8_ext_x2(
+                src.ptr as *const _,
+                &*(precomputed_eq_prefix as *const [F; 8] as *const _),
+                stride,
+                row0,
+                row1,
+            );
+            return *(&result as *const _ as *const (F, F));
+        }
+    }
+    (
+        read_ext_and_fold(src, precomputed_eq_prefix, stride, row0),
+        read_ext_and_fold(src, precomputed_eq_prefix, stride, row1),
+    )
 }
 
 #[inline(always)]
@@ -378,7 +441,7 @@ fn read_ext_and_fold<F: Field>(
     row: usize,
 ) -> F {
     #[cfg(target_arch = "aarch64")]
-    if neon::is_bb4::<F>() {
+    if const { neon::is_bb4::<F>() } {
         unsafe {
             let result = neon::fold8_ext(
                 src.ptr as *const _,
@@ -427,13 +490,15 @@ fn read_ext_then_fold_and_interpolate<F: PrimeField, E: FieldExtension<F> + Fiel
                 let src_0_idx = stride + row;
                 let src_1_idx = src_0_idx + stride_step;
 
-                let folded_0 =
-                    read_ext_and_fold(src, precomputed_eq_prefix, base_input_stride, src_0_idx);
+                let (folded_0, folded_1) = read_ext_and_fold_pair(
+                    src,
+                    precomputed_eq_prefix,
+                    base_input_stride,
+                    src_0_idx,
+                    src_1_idx,
+                );
                 buffer.write(src_0_idx, folded_0);
                 dst[dst_offset] = folded_0;
-
-                let folded_1 =
-                    read_ext_and_fold(src, precomputed_eq_prefix, base_input_stride, src_1_idx);
                 buffer.write(src_1_idx, folded_1);
                 dst[dst_offset + 1] = folded_1;
 
@@ -488,13 +553,15 @@ fn read_ext_then_fold_without_interpolation<F: PrimeField, E: FieldExtension<F> 
                 let src_0_idx = stride + row;
                 let src_1_idx = src_0_idx + stride_step;
 
-                let folded_0 =
-                    read_ext_and_fold(src, precomputed_eq_prefix, base_input_stride, src_0_idx);
+                let (folded_0, folded_1) = read_ext_and_fold_pair(
+                    src,
+                    precomputed_eq_prefix,
+                    base_input_stride,
+                    src_0_idx,
+                    src_1_idx,
+                );
                 buffer.write(src_0_idx, folded_0);
                 dst[dst_offset] = folded_0;
-
-                let folded_1 =
-                    read_ext_and_fold(src, precomputed_eq_prefix, base_input_stride, src_1_idx);
                 buffer.write(src_1_idx, folded_1);
                 dst[dst_offset + 1] = folded_1;
             }
@@ -526,21 +593,15 @@ fn read_ext_then_fold_and_interpolate_inplace<F: PrimeField, E: FieldExtension<F
                 let src_0_idx = stride + row;
                 let src_1_idx = src_0_idx + stride_step;
 
-                let folded_0 = read_ext_and_fold(
+                let (folded_0, folded_1) = read_ext_and_fold_pair(
                     buffer,
                     precomputed_eq_prefix,
                     unfolded_input_stride,
                     src_0_idx,
+                    src_1_idx,
                 );
                 buffer.write(src_0_idx, folded_0);
                 dst[dst_offset] = folded_0;
-
-                let folded_1 = read_ext_and_fold(
-                    buffer,
-                    precomputed_eq_prefix,
-                    unfolded_input_stride,
-                    src_1_idx,
-                );
                 buffer.write(src_1_idx, folded_1);
                 dst[dst_offset + 1] = folded_1;
 
@@ -594,21 +655,15 @@ fn read_ext_then_fold_without_interpolation_inplace<F: PrimeField, E: FieldExten
                 let src_0_idx = stride + row;
                 let src_1_idx = src_0_idx + stride_step;
 
-                let folded_0 = read_ext_and_fold(
+                let (folded_0, folded_1) = read_ext_and_fold_pair(
                     buffer,
                     precomputed_eq_prefix,
                     unfolded_input_stride,
                     src_0_idx,
+                    src_1_idx,
                 );
                 buffer.write(src_0_idx, folded_0);
                 dst[dst_offset] = folded_0;
-
-                let folded_1 = read_ext_and_fold(
-                    buffer,
-                    precomputed_eq_prefix,
-                    unfolded_input_stride,
-                    src_1_idx,
-                );
                 buffer.write(src_1_idx, folded_1);
                 dst[dst_offset + 1] = folded_1;
             }
@@ -626,7 +681,7 @@ pub(crate) fn accumulate_scaled<E: Field, const N: usize>(
     eq: &E,
 ) {
     #[cfg(target_arch = "aarch64")]
-    if neon::is_bb4::<E>() {
+    if const { neon::is_bb4::<E>() } {
         unsafe {
             neon::accumulate_times_eq::<N>(
                 acc.as_mut_ptr() as *mut _,

@@ -111,7 +111,10 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> KernelCollector<F, E> {
     /// Each quadratic term contributes an undirected edge between the two [`GKRAddress`]es it
     /// multiplies: if `a` is a key in the (conceptual) map and `b` appears as one of the entries of
     /// its value `Vec<(GKRAddress, E)>`, then the graph has an edge `a -- b`.
-    pub(crate) fn partition_quadratic_graph(&self, target_cluster_size: usize) -> GraphPartitioning<E> {
+    pub(crate) fn partition_quadratic_graph(
+        &self,
+        target_cluster_size: usize,
+    ) -> GraphPartitioning<E> {
         let challenge_constants = BatchedGKRTermDescriptionConstants {
             external_challenges: GKRExternalChallenges {
                 permutation_argument_linearization_challenges: [E::ONE;
@@ -1133,8 +1136,14 @@ impl<E: Field> AddressGraph<E> {
         }
         let a = self.vertex(a);
         let b = self.vertex(b);
-        self.adjacency[a].entry(b).or_insert(E::ZERO).add_assign(&coeff);
-        self.adjacency[b].entry(a).or_insert(E::ZERO).add_assign(&coeff);
+        self.adjacency[a]
+            .entry(b)
+            .or_insert(E::ZERO)
+            .add_assign(&coeff);
+        self.adjacency[b]
+            .entry(a)
+            .or_insert(E::ZERO)
+            .add_assign(&coeff);
     }
 
     /// Build the cluster list with the two-phase strategy:
@@ -1214,7 +1223,8 @@ impl<E: Field> AddressGraph<E> {
                 .unwrap();
             unassigned.remove(&seed);
             let mut vertices: BTreeSet<usize> = [seed.0, seed.1].into_iter().collect();
-            let mut edges: Vec<(usize, usize, E)> = vec![(seed.0, seed.1, coeff_of(seed.0, seed.1))];
+            let mut edges: Vec<(usize, usize, E)> =
+                vec![(seed.0, seed.1, coeff_of(seed.0, seed.1))];
 
             loop {
                 // Absorb every unassigned edge that is already fully inside the cluster: it adds a
@@ -1338,7 +1348,6 @@ impl<E: Field> AddressGraph<E> {
         }
         components
     }
-
 }
 
 pub fn liveness_analysis<F: PrimeField>(circuit: &GKRCircuitArtifact<F>, layer_idx: usize) {
@@ -1689,7 +1698,10 @@ mod test {
 
         let cmp = collector.compare_gate_vs_batched_cost(layer);
 
-        println!("\n===== batched (flattened) vs individual gates, layer {} =====", layer_idx);
+        println!(
+            "\n===== batched (flattened) vs individual gates, layer {} =====",
+            layer_idx
+        );
         println!(
             "gates: {} ({} unmodeled)",
             cmp.num_gates, cmp.unmodeled_gates
@@ -1725,7 +1737,10 @@ mod test {
             cmp.gate_native.adds as i64 - cmp.gate_native_cse.adds as i64,
         );
 
-        assert_eq!(cmp.unmodeled_gates, 0, "all layer-0 gate kinds should be modeled");
+        assert_eq!(
+            cmp.unmodeled_gates, 0,
+            "all layer-0 gate kinds should be modeled"
+        );
         assert!(
             cmp.gate_internal_mults_cse() <= cmp.gate_internal_mults(),
             "CSE cannot increase internal multiplications"
@@ -1758,9 +1773,7 @@ mod test {
     #[test]
     fn partition_quadratic_graph_in_circuit() {
         let circuit: GKRCircuitArtifact<BabyBearField> = if USE_GKR_WITH_CACHES {
-            deserialize_from_file(
-                "../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_gkr.json",
-            )
+            deserialize_from_file("../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_gkr.json")
         } else {
             deserialize_from_file(
                 "../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_no_caches_gkr.json",
@@ -1788,7 +1801,10 @@ mod test {
                     if !printed.insert(key) {
                         continue;
                     }
-                    println!("        * {:?} x {:?}  (coeff {})", address, neighbour, coeff);
+                    println!(
+                        "        * {:?} x {:?}  (coeff {})",
+                        address, neighbour, coeff
+                    );
                 }
             }
         }
@@ -1875,8 +1891,8 @@ mod test {
             KernelCollector::<F, E>::from_layer(layer, layer_idx, E::ONE, E::ONE, E::ONE, &[], 0);
 
         let scratch_space = 8;
-        let plan =
-            collector.optimize_quadratic_evaluation_partitioned(scratch_space, Scheduler::default());
+        let plan = collector
+            .optimize_quadratic_evaluation_partitioned(scratch_space, Scheduler::default());
 
         println!(
             "\n===== partitioned evaluation plan (scratch = {}, {} for inputs) =====",
@@ -1930,7 +1946,10 @@ mod test {
             .filter(|p| p.fits)
             .map(|p| p.re_reads)
             .sum();
-        assert_eq!(reread_from_fitting, 0, "fitting partitions must never re-read");
+        assert_eq!(
+            reread_from_fitting, 0,
+            "fitting partitions must never re-read"
+        );
         assert_eq!(plan.total_reads, plan.distinct_inputs + plan.re_reads);
     }
 

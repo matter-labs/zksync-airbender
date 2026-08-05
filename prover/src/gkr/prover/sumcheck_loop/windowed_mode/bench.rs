@@ -25,8 +25,8 @@ use std::mem::MaybeUninit;
 use super::bounded_scratch::*;
 use super::full_size_scratch::extension_only_round::in_1_out_1::ExtensionOnlyRoundWindowIn1Out1;
 use super::full_size_scratch::extension_only_round::in_1_out_3::ExtensionOnlyRoundWindowIn1Out3;
-use super::full_size_scratch::extension_only_round::in_3_out_1::ExtensionOnlyRoundWindowIn3Out1;
 use super::full_size_scratch::extension_only_round::in_2_out_2::ExtensionOnlyRoundWindowIn2Out2;
+use super::full_size_scratch::extension_only_round::in_3_out_1::ExtensionOnlyRoundWindowIn3Out1;
 use super::full_size_scratch::extension_only_round::in_3_out_3::ExtensionOnlyRoundWindowIn3Out3;
 use super::full_size_scratch::extension_only_round::{
     evaluate_extension_only_rounds_with_full_sized_scratch_parallel,
@@ -121,7 +121,11 @@ fn collect_ext_sources<'a, F: PrimeField, E: FieldExtension<F> + Field>(
 
 fn assert_acc_eq<E: Field>(a: &[E; 27], b: &[E; 27], what: &str) {
     for i in 0..27 {
-        assert_eq!(a[i], b[i], "accumulator diverged at cell {} for {}", i, what);
+        assert_eq!(
+            a[i], b[i],
+            "accumulator diverged at cell {} for {}",
+            i, what
+        );
     }
 }
 
@@ -227,11 +231,13 @@ fn time_ext_only_chain<
             worker,
         );
 
-        cur_log2 = I::folded_buffer_size_for_unfolded_input_size(cur_log2)
-            .trailing_zeros() as usize;
+        cur_log2 =
+            I::folded_buffer_size_for_unfolded_input_size(cur_log2).trailing_zeros() as usize;
         rounds_processed += I::OUTPUT_WINDOW_SIZE;
         for i in 0..I::OUTPUT_WINDOW_SIZE {
-            chain_challenges.push(pseudo_challenge::<F, E>(300 + (rounds_processed + i) as u32));
+            chain_challenges.push(pseudo_challenge::<F, E>(
+                300 + (rounds_processed + i) as u32,
+            ));
         }
     }
     (start.elapsed(), rounds_processed)
@@ -285,20 +291,18 @@ fn extract_window3_univariates<F: PrimeField, E: FieldExtension<F> + Field>(
     folding_challenges: &[E],
     worker: &Worker,
 ) -> [[E; 2]; 3] {
-    let eq_prefix_4: [E; 4] =
-        make_eq_poly_in_full::<E>(&prev_challenges[s + 1..s + 3], worker)
-            .pop()
-            .unwrap()
-            .to_vec()
-            .try_into()
-            .unwrap();
-    let eq_prefix_2: [E; 2] =
-        make_eq_poly_in_full::<E>(&prev_challenges[s + 2..s + 3], worker)
-            .pop()
-            .unwrap()
-            .to_vec()
-            .try_into()
-            .unwrap();
+    let eq_prefix_4: [E; 4] = make_eq_poly_in_full::<E>(&prev_challenges[s + 1..s + 3], worker)
+        .pop()
+        .unwrap()
+        .to_vec()
+        .try_into()
+        .unwrap();
+    let eq_prefix_2: [E; 2] = make_eq_poly_in_full::<E>(&prev_challenges[s + 2..s + 3], worker)
+        .pop()
+        .unwrap()
+        .to_vec()
+        .try_into()
+        .unwrap();
 
     let r0 = evaluate_claim_from_intermediate_matrix_27(&eq_prefix_4, acc);
     let acc_9 = bind_accumulator_27(acc, &folding_challenges[s]);
@@ -361,7 +365,10 @@ pub fn run_windowed_full_chain<F: PrimeField, E: FieldExtension<F> + Field>(
         worker,
     ));
     if verbose {
-        println!("  pass initial window-3 (rounds 0-2) @2^{folding_steps}: {:?}", now.elapsed());
+        println!(
+            "  pass initial window-3 (rounds 0-2) @2^{folding_steps}: {:?}",
+            now.elapsed()
+        );
     }
 
     // round 3: transition, folds everything into ext buffers
@@ -373,10 +380,9 @@ pub fn run_windowed_full_chain<F: PrimeField, E: FieldExtension<F> + Field>(
                 &w[..3],
                 worker,
             );
-        let work =
-            <TI as TransitionRoundImplementation<F, E>>::work_size_for_unfolded_input_size(
-                folding_steps,
-            );
+        let work = <TI as TransitionRoundImplementation<F, E>>::work_size_for_unfolded_input_size(
+            folding_steps,
+        );
         let base_buffers: Vec<_> = base_folding_buffers
             .iter_mut()
             .map(|el| DisjointAccessQuasiSlice::<_, true>::from_uninit_slice_mut(el))
@@ -399,7 +405,10 @@ pub fn run_windowed_full_chain<F: PrimeField, E: FieldExtension<F> + Field>(
         per_round.push(acc);
     }
     if verbose {
-        println!("  pass transition in3out1 (round 3) @2^{folding_steps}: {:?}", now.elapsed());
+        println!(
+            "  pass transition in3out1 (round 3) @2^{folding_steps}: {:?}",
+            now.elapsed()
+        );
     }
 
     let mut cur_log2 = folding_steps - 3;
@@ -480,7 +489,10 @@ pub fn run_windowed_full_chain<F: PrimeField, E: FieldExtension<F> + Field>(
         let (acc, took) = ext_pass!(ExtensionOnlyRoundWindowIn3Out1);
         per_round.push(acc);
         if verbose {
-            println!("  pass ext in3out1 (round {}) @2^{cur_log2}: {:?}", next_round, took);
+            println!(
+                "  pass ext in3out1 (round {}) @2^{cur_log2}: {:?}",
+                next_round, took
+            );
         }
         cur_log2 -= 3;
         next_round += 1;
@@ -491,7 +503,10 @@ pub fn run_windowed_full_chain<F: PrimeField, E: FieldExtension<F> + Field>(
         let (acc, took) = ext_pass!(ExtensionOnlyRoundWindowIn1Out1);
         per_round.push(acc);
         if verbose {
-            println!("  pass ext in1out1 (round {}) @2^{cur_log2}: {:?}", next_round, took);
+            println!(
+                "  pass ext in1out1 (round {}) @2^{cur_log2}: {:?}",
+                next_round, took
+            );
         }
         cur_log2 -= 1;
         next_round += 1;
@@ -550,7 +565,10 @@ pub fn run_windowed_full_chain_v2<F: PrimeField, E: FieldExtension<F> + Field>(
         worker,
     ));
     if verbose {
-        println!("  pass initial window-3 (rounds 0-2) @2^{folding_steps}: {:?}", now.elapsed());
+        println!(
+            "  pass initial window-3 (rounds 0-2) @2^{folding_steps}: {:?}",
+            now.elapsed()
+        );
     }
 
     // rounds 3-5: in3out3 transition, folds everything into ext buffers
@@ -562,10 +580,9 @@ pub fn run_windowed_full_chain_v2<F: PrimeField, E: FieldExtension<F> + Field>(
                 &w[..3],
                 worker,
             );
-        let work =
-            <TI as TransitionRoundImplementation<F, E>>::work_size_for_unfolded_input_size(
-                folding_steps,
-            );
+        let work = <TI as TransitionRoundImplementation<F, E>>::work_size_for_unfolded_input_size(
+            folding_steps,
+        );
         let base_buffers: Vec<_> = base_folding_buffers
             .iter_mut()
             .map(|el| DisjointAccessQuasiSlice::<_, true>::from_uninit_slice_mut(el))
@@ -594,7 +611,10 @@ pub fn run_windowed_full_chain_v2<F: PrimeField, E: FieldExtension<F> + Field>(
         ));
     }
     if verbose {
-        println!("  pass transition in3out3 (rounds 3-5) @2^{folding_steps}: {:?}", now.elapsed());
+        println!(
+            "  pass transition in3out3 (rounds 3-5) @2^{folding_steps}: {:?}",
+            now.elapsed()
+        );
     }
 
     let mut cur_log2 = folding_steps - 3;
@@ -655,7 +675,10 @@ pub fn run_windowed_full_chain_v2<F: PrimeField, E: FieldExtension<F> + Field>(
         let (acc, took) = ext_pass_v2!(ExtensionOnlyRoundWindowIn3Out1);
         per_round.push(acc);
         if verbose {
-            println!("  pass ext in3out1 (round {}) @2^{cur_log2}: {:?}", next_round, took);
+            println!(
+                "  pass ext in3out1 (round {}) @2^{cur_log2}: {:?}",
+                next_round, took
+            );
         }
         cur_log2 -= 3;
         next_round += 1;
@@ -665,7 +688,10 @@ pub fn run_windowed_full_chain_v2<F: PrimeField, E: FieldExtension<F> + Field>(
         let (acc, took) = ext_pass_v2!(ExtensionOnlyRoundWindowIn1Out1);
         per_round.push(acc);
         if verbose {
-            println!("  pass ext in1out1 (round {}) @2^{cur_log2}: {:?}", next_round, took);
+            println!(
+                "  pass ext in1out1 (round {}) @2^{cur_log2}: {:?}",
+                next_round, took
+            );
         }
         cur_log2 -= 1;
         next_round += 1;
@@ -792,7 +818,10 @@ pub fn run_windowed_sumcheck_benchmarks<F: PrimeField, E: FieldExtension<F> + Fi
         );
         best_a = best_a.min(now.elapsed());
     }
-    println!("[A] window-3 rounds 0-2, ALL terms, full-size scratch: {:?}", best_a);
+    println!(
+        "[A] window-3 rounds 0-2, ALL terms, full-size scratch: {:?}",
+        best_a
+    );
 
     // ---------------- variant B: bounded scratch (Belady) ----------------
     for (bcap, ecap) in [(4usize, 2usize), (8, 4), (16, 8), (32, 16)] {
@@ -852,7 +881,8 @@ pub fn run_windowed_sumcheck_benchmarks<F: PrimeField, E: FieldExtension<F> + Fi
     // bounded-scratch flavor of the same window
     let mut best_c_window_bounded = std::time::Duration::MAX;
     {
-        let (bounded, _, _) = produce_bounded_scratch_description(&desc_bbbe, 16, 8.min(ext_polys_bbbe.len().max(2)));
+        let (bounded, _, _) =
+            produce_bounded_scratch_description(&desc_bbbe, 16, 8.min(ext_polys_bbbe.len().max(2)));
         let mut acc = [E::ZERO; 27];
         for _ in 0..iters {
             let now = std::time::Instant::now();
@@ -866,7 +896,11 @@ pub fn run_windowed_sumcheck_benchmarks<F: PrimeField, E: FieldExtension<F> + Fi
             );
             best_c_window_bounded = best_c_window_bounded.min(now.elapsed());
         }
-        assert_acc_eq(&acc, &acc_bbbe, "bounded bbbe window vs full-size bbbe window");
+        assert_acc_eq(
+            &acc,
+            &acc_bbbe,
+            "bounded bbbe window vs full-size bbbe window",
+        );
     }
 
     // window over ee-only terms: used for the split-identity check
@@ -884,7 +918,11 @@ pub fn run_windowed_sumcheck_benchmarks<F: PrimeField, E: FieldExtension<F> + Fi
         for i in 0..27 {
             sum[i].add_assign(&acc_ee_window[i]);
         }
-        assert_acc_eq(&sum, &acc_all, "bbbe window + ee window == all-terms window");
+        assert_acc_eq(
+            &sum,
+            &acc_all,
+            "bbbe window + ee window == all-terms window",
+        );
     }
 
     // classic evaluation of the ee-only part for rounds 0..3
@@ -929,7 +967,10 @@ pub fn run_windowed_sumcheck_benchmarks<F: PrimeField, E: FieldExtension<F> + Fi
         classic_all = Some(res.coeffs);
     }
     let classic_all = classic_all.unwrap();
-    println!("[D] classic per-round batched evaluation, ALL terms, rounds 0-2: {:?}", best_d);
+    println!(
+        "[D] classic per-round batched evaluation, ALL terms, rounds 0-2: {:?}",
+        best_d
+    );
 
     // validation of the window accumulator against the classic rounds through the bind chain
     {
@@ -948,18 +989,29 @@ pub fn run_windowed_sumcheck_benchmarks<F: PrimeField, E: FieldExtension<F> + Fi
 
         let round_0 = evaluate_claim_from_intermediate_matrix_27(&eq_prefix_4, &acc_all);
         assert_eq!(round_0[0], classic_all[0][0], "round 0: G(0) vs classic c0");
-        assert_eq!(round_0[2], classic_all[0][1], "round 0: G_inf vs classic c2");
+        assert_eq!(
+            round_0[2], classic_all[0][1],
+            "round 0: G_inf vs classic c2"
+        );
 
         let acc_9 = bind_accumulator_27(&acc_all, &window_challenges[0]);
         let round_1 = evaluate_claim_from_intermediate_matrix_9(&eq_prefix_2, &acc_9);
         assert_eq!(round_1[0], classic_all[1][0], "round 1: G(0) vs classic c0");
-        assert_eq!(round_1[2], classic_all[1][1], "round 1: G_inf vs classic c2");
+        assert_eq!(
+            round_1[2], classic_all[1][1],
+            "round 1: G_inf vs classic c2"
+        );
 
         let round_2 = bind_accumulator_9(&acc_9, &window_challenges[1]);
         assert_eq!(round_2[0], classic_all[2][0], "round 2: G(0) vs classic c0");
-        assert_eq!(round_2[2], classic_all[2][1], "round 2: G_inf vs classic c2");
+        assert_eq!(
+            round_2[2], classic_all[2][1],
+            "round 2: G_inf vs classic c2"
+        );
 
-        println!("validation: window accumulator matches classic rounds 0-2 through the bind chain");
+        println!(
+            "validation: window accumulator matches classic rounds 0-2 through the bind chain"
+        );
     }
 
     // ---------------- transition round (round 3 + fold everything to ext) ----------------
@@ -1025,7 +1077,10 @@ pub fn run_windowed_sumcheck_benchmarks<F: PrimeField, E: FieldExtension<F> + Fi
         transition_acc = acc;
         best_t = best_t.min(took);
     }
-    println!("[T] transition round 3 (in 3, out 1; folds all polys to ext): {:?}", best_t);
+    println!(
+        "[T] transition round 3 (in 3, out 1; folds all polys to ext): {:?}",
+        best_t
+    );
 
     // validate transition against the classic step-3 coefficients
     {
@@ -1052,6 +1107,134 @@ pub fn run_windowed_sumcheck_benchmarks<F: PrimeField, E: FieldExtension<F> + Fi
     }
     drop(accumulator_buffer);
 
+    // ---------------- merged transition + in1out3 experiment ----------------
+    // Reference: buffers currently hold fold-by-(w0..w2); run one in1out3 pass
+    // on them to get the rounds-4-6 accumulator + folded-by-w3 buffers.
+    {
+        use super::full_size_scratch::merged_transition::evaluate_merged_transition_in1out3_parallel;
+        type I13 = ExtensionOnlyRoundWindowIn1Out3;
+
+        let cur_log2 = folding_steps - 3;
+        let i13_work =
+            <I13 as ExtensionOnlyRoundImplementation<F, E>>::work_size_for_unfolded_input_size(
+                cur_log2,
+            );
+        let i13_prefix =
+            <I13 as ExtensionOnlyRoundImplementation<F, E>>::make_prefix_from_all_folding_challenges(
+                &window_challenges[..4],
+                worker,
+            );
+        let eq_suffix_i13 = find_eq_with_len(&eq_tables, i13_work);
+
+        let mut run_i13 = |base_folding_buffers: &mut Vec<Box<[MaybeUninit<E>]>>,
+                           ext_folding_buffers: &mut Vec<Box<[MaybeUninit<E>]>>|
+         -> ([E; 27], std::time::Duration) {
+            let base_buffers: Vec<_> = base_folding_buffers
+                .iter_mut()
+                .map(|el| DisjointAccessQuasiSlice::<_, false>::from_uninit_slice_mut(el))
+                .collect();
+            let ext_buffers: Vec<_> = ext_folding_buffers
+                .iter_mut()
+                .map(|el| DisjointAccessQuasiSlice::<_, false>::from_uninit_slice_mut(el))
+                .collect();
+            let now = std::time::Instant::now();
+            let acc = evaluate_extension_only_rounds_with_full_sized_scratch_parallel::<F, E, I13>(
+                base_buffers,
+                ext_buffers,
+                &compact_all,
+                &i13_prefix,
+                eq_suffix_i13,
+                cur_log2,
+                worker,
+            );
+            (acc, now.elapsed())
+        };
+
+        // time the separate in1out3 (needs fresh transition output each iter
+        // because the pass folds in place)
+        let mut best_i13 = std::time::Duration::MAX;
+        let mut acc27_ref = [E::ZERO; 27];
+        for i in 0..iters {
+            if i > 0 {
+                let _ = run_transition(&mut base_folding_buffers, &mut ext_folding_buffers);
+            }
+            let (acc, took) = run_i13(&mut base_folding_buffers, &mut ext_folding_buffers);
+            acc27_ref = acc;
+            best_i13 = best_i13.min(took);
+        }
+
+        // snapshot the folded-by-w3 buffer halves for validation
+        let half = buffer_size / 2;
+        let snapshot: Vec<Vec<E>> = base_folding_buffers
+            .iter()
+            .chain(ext_folding_buffers.iter())
+            .map(|el| (0..half).map(|i| unsafe { el[i].assume_init() }).collect())
+            .collect();
+
+        // merged pass setup
+        let eq_mid = make_eq_poly_in_full::<E>(&prev_challenges[4..7], worker)
+            .pop()
+            .unwrap();
+        let eq_suffix_merged = find_eq_with_len(&eq_tables, i13_work);
+        assert_eq!(eq_suffix_merged.len(), 1 << (folding_steps - 7));
+
+        let mut best_merged = std::time::Duration::MAX;
+        let mut acc2_m = [E::ZERO; 2];
+        let mut acc27_m = [E::ZERO; 27];
+        for _ in 0..iters {
+            let base_buffers: Vec<_> = base_folding_buffers
+                .iter_mut()
+                .map(|el| DisjointAccessQuasiSlice::<_, true>::from_uninit_slice_mut(el))
+                .collect();
+            let ext_buffers: Vec<_> = ext_folding_buffers
+                .iter_mut()
+                .map(|el| DisjointAccessQuasiSlice::<_, true>::from_uninit_slice_mut(el))
+                .collect();
+            let now = std::time::Instant::now();
+            let (a2, a27) = evaluate_merged_transition_in1out3_parallel(
+                base_sources_all.clone(),
+                ext_sources_all.clone(),
+                base_buffers,
+                ext_buffers,
+                &compact_all,
+                &transition_prefix,
+                &window_challenges[3],
+                &eq_mid,
+                eq_suffix_merged,
+                folding_steps,
+                worker,
+            );
+            best_merged = best_merged.min(now.elapsed());
+            acc2_m = a2;
+            acc27_m = a27;
+        }
+
+        assert_eq!(acc2_m[0], transition_acc[0], "merged: round-3 G(0)");
+        assert_eq!(acc2_m[1], transition_acc[1], "merged: round-3 G_inf");
+        for i in 0..27 {
+            assert_eq!(acc27_m[i], acc27_ref[i], "merged: rounds 4-6 cell {}", i);
+        }
+        for (poly_idx, expected) in snapshot.iter().enumerate() {
+            let buf = if poly_idx < base_folding_buffers.len() {
+                &base_folding_buffers[poly_idx]
+            } else {
+                &ext_folding_buffers[poly_idx - base_folding_buffers.len()]
+            };
+            for i in 0..half {
+                let got = unsafe { buf[i].assume_init() };
+                assert_eq!(got, expected[i], "merged: buffer {} at {}", poly_idx, i);
+            }
+        }
+        println!("validation: merged pass matches transition acc, in1out3 acc and folded buffers");
+        println!(
+            "[M] merged transition+in1out3 (rounds 3-6, fused fold): {:?} vs separate {:?} + {:?} = {:?}",
+            best_merged,
+            best_t,
+            best_i13,
+            best_t + best_i13,
+        );
+    }
+
     // ---------------- ext-only rounds: windows of 1 / 2 / 3 ----------------
     // Chains are timing-only at this scale (the window-2/3 chains fold dummy
     // pending challenges); impl correctness is covered by the synthetic test.
@@ -1070,7 +1253,10 @@ pub fn run_windowed_sumcheck_benchmarks<F: PrimeField, E: FieldExtension<F> + Fi
             worker,
         )
     };
-    println!("[E1] ext-only rounds, window 1: {} rounds in {:?}", w1_rounds, w1_time);
+    println!(
+        "[E1] ext-only rounds, window 1: {} rounds in {:?}",
+        w1_rounds, w1_time
+    );
 
     let (w2_time, w2_rounds) = {
         run_transition(&mut base_folding_buffers, &mut ext_folding_buffers);
@@ -1084,7 +1270,10 @@ pub fn run_windowed_sumcheck_benchmarks<F: PrimeField, E: FieldExtension<F> + Fi
             worker,
         )
     };
-    println!("[E2] ext-only rounds, window 2: {} rounds in {:?}", w2_rounds, w2_time);
+    println!(
+        "[E2] ext-only rounds, window 2: {} rounds in {:?}",
+        w2_rounds, w2_time
+    );
 
     let (w3_time, w3_rounds) = {
         run_transition(&mut base_folding_buffers, &mut ext_folding_buffers);
@@ -1098,7 +1287,10 @@ pub fn run_windowed_sumcheck_benchmarks<F: PrimeField, E: FieldExtension<F> + Fi
             worker,
         )
     };
-    println!("[E3] ext-only rounds, window 3: {} rounds in {:?}", w3_rounds, w3_time);
+    println!(
+        "[E3] ext-only rounds, window 3: {} rounds in {:?}",
+        w3_rounds, w3_time
+    );
 
     // ---------------- full windowed chain vs naive per-round loop ----------------
     println!("full chain: window-3 initial -> transition in3out1 -> in1out3 -> in3out3... -> in3out1 -> in1out1");
@@ -1122,7 +1314,10 @@ pub fn run_windowed_sumcheck_benchmarks<F: PrimeField, E: FieldExtension<F> + Fi
         chain_rounds = Some(rounds);
     }
     let chain_rounds = chain_rounds.unwrap();
-    println!("[F] full windowed chain, all {} rounds: {:?}", folding_steps, best_chain);
+    println!(
+        "[F] full windowed chain, all {} rounds: {:?}",
+        folding_steps, best_chain
+    );
 
     let mut best_chain_v2 = std::time::Duration::MAX;
     let mut chain_v2_rounds = None;
@@ -1167,15 +1362,34 @@ pub fn run_windowed_sumcheck_benchmarks<F: PrimeField, E: FieldExtension<F> + Fi
         naive_rounds = Some(res.coeffs);
     }
     let naive_rounds = naive_rounds.unwrap();
-    println!("[N] naive per-round loop, all {} rounds: {:?}", folding_steps, best_naive);
+    println!(
+        "[N] naive per-round loop, all {} rounds: {:?}",
+        folding_steps, best_naive
+    );
 
     for (i, (a, b)) in chain_rounds.iter().zip(naive_rounds.iter()).enumerate() {
-        assert_eq!(a[0], b[0], "round {}: G(0) diverged between chain and naive", i);
-        assert_eq!(a[1], b[1], "round {}: G_inf diverged between chain and naive", i);
+        assert_eq!(
+            a[0], b[0],
+            "round {}: G(0) diverged between chain and naive",
+            i
+        );
+        assert_eq!(
+            a[1], b[1],
+            "round {}: G_inf diverged between chain and naive",
+            i
+        );
     }
     for (i, (a, b)) in chain_v2_rounds.iter().zip(naive_rounds.iter()).enumerate() {
-        assert_eq!(a[0], b[0], "round {}: G(0) diverged between chain v2 and naive", i);
-        assert_eq!(a[1], b[1], "round {}: G_inf diverged between chain v2 and naive", i);
+        assert_eq!(
+            a[0], b[0],
+            "round {}: G(0) diverged between chain v2 and naive",
+            i
+        );
+        assert_eq!(
+            a[1], b[1],
+            "round {}: G_inf diverged between chain v2 and naive",
+            i
+        );
     }
     println!(
         "validation: both windowed chains match the naive per-round loop on all {} rounds",
@@ -1184,17 +1398,38 @@ pub fn run_windowed_sumcheck_benchmarks<F: PrimeField, E: FieldExtension<F> + Fi
     drop(accumulator_buffer);
 
     println!("==== summary ====");
-    println!("initial 3 rounds:  window-3 all-terms full scratch  {:?}", best_a);
-    println!("                   split (bb/be window + classic ee) {:?}", best_c_window + best_c_classic_ee);
-    println!("                   classic per-round baseline        {:?}", best_d);
-    println!("round 3 + fold:    transition in3out1                {:?}", best_t);
+    println!(
+        "initial 3 rounds:  window-3 all-terms full scratch  {:?}",
+        best_a
+    );
+    println!(
+        "                   split (bb/be window + classic ee) {:?}",
+        best_c_window + best_c_classic_ee
+    );
+    println!(
+        "                   classic per-round baseline        {:?}",
+        best_d
+    );
+    println!(
+        "round 3 + fold:    transition in3out1                {:?}",
+        best_t
+    );
     println!(
         "ext-only rounds:   w1 {:?} ({} rounds), w2 {:?} ({} rounds), w3 {:?} ({} rounds)",
         w1_time, w1_rounds, w2_time, w2_rounds, w3_time, w3_rounds
     );
-    println!("full sumcheck:     windowed chain (in3out1 trans.)   {:?}", best_chain);
-    println!("                   windowed chain (in3out3 trans.)   {:?}", best_chain_v2);
-    println!("                   naive per-round loop              {:?}", best_naive);
+    println!(
+        "full sumcheck:     windowed chain (in3out1 trans.)   {:?}",
+        best_chain
+    );
+    println!(
+        "                   windowed chain (in3out3 trans.)   {:?}",
+        best_chain_v2
+    );
+    println!(
+        "                   naive per-round loop              {:?}",
+        best_naive
+    );
 }
 
 #[cfg(test)]
@@ -1207,7 +1442,9 @@ mod synthetic_tests {
     type E = BabyBearExt4;
 
     fn pseudo_base(seed: &mut u64) -> F {
-        *seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        *seed = seed
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         F::from_u32_with_reduction((*seed >> 33) as u32)
     }
 
@@ -1294,7 +1531,10 @@ mod synthetic_tests {
             .map(|_| (0..size).map(|_| pseudo_ext(seed)).collect())
             .collect();
 
-        let baddr = |i: usize| GKRAddress::InnerLayer { layer: 0, offset: i };
+        let baddr = |i: usize| GKRAddress::InnerLayer {
+            layer: 0,
+            offset: i,
+        };
         let eaddr = |i: usize| GKRAddress::InnerLayer {
             layer: 0,
             offset: num_base + i,
@@ -1302,7 +1542,10 @@ mod synthetic_tests {
 
         let mut description = BatchedGKRDescription::<F, E>::default();
         description.quadratic_part_base_by_base = vec![
-            (baddr(0), vec![(baddr(1), pseudo_ext(seed)), (baddr(2), pseudo_ext(seed))]),
+            (
+                baddr(0),
+                vec![(baddr(1), pseudo_ext(seed)), (baddr(2), pseudo_ext(seed))],
+            ),
             (baddr(1), vec![(baddr(3), pseudo_ext(seed))]),
         ];
         description.quadratic_part_base_by_ext = vec![
@@ -1463,8 +1706,7 @@ mod synthetic_tests {
         let (desc_bbbe, desc_ee) = split_batched_description(&inst.description);
         let (compact_bbbe, bbbe_base, bbbe_ext) =
             produce_descriptions_from_batched_description(&desc_bbbe);
-        let (compact_ee, ee_base, ee_ext) =
-            produce_descriptions_from_batched_description(&desc_ee);
+        let (compact_ee, ee_base, ee_ext) = produce_descriptions_from_batched_description(&desc_ee);
         assert!(ee_base.is_empty());
         let bbbe_base_sources: Vec<_> = bbbe_base
             .iter()
@@ -1641,10 +1883,9 @@ mod synthetic_tests {
         assert_eq!(ext_addrs.len(), inst.ext_polys.len());
 
         type TI = TransitionRoundWindowIn3Out1;
-        let work =
-            <TI as TransitionRoundImplementation<F, E>>::work_size_for_unfolded_input_size(
-                SIZE_LOG2,
-            );
+        let work = <TI as TransitionRoundImplementation<F, E>>::work_size_for_unfolded_input_size(
+            SIZE_LOG2,
+        );
         assert_eq!(work, size / 16);
         let suffix_challenges: Vec<E> = (0..(work.trailing_zeros() as usize))
             .map(|_| pseudo_ext(&mut seed))
@@ -1653,9 +1894,10 @@ mod synthetic_tests {
             .pop()
             .unwrap();
 
-        let prefix = <TI as TransitionRoundImplementation<F, E>>::make_prefix_from_all_folding_challenges(
-            &pending, &worker,
-        );
+        let prefix =
+            <TI as TransitionRoundImplementation<F, E>>::make_prefix_from_all_folding_challenges(
+                &pending, &worker,
+            );
 
         let base_sources: Vec<_> = inst
             .base_polys
@@ -1913,7 +2155,10 @@ mod synthetic_tests {
         let ext_polys: Vec<Vec<E>> = (0..3)
             .map(|_| (0..size).map(|_| pseudo_ext(&mut seed)).collect())
             .collect();
-        let eaddr = |i: usize| GKRAddress::InnerLayer { layer: 0, offset: i };
+        let eaddr = |i: usize| GKRAddress::InnerLayer {
+            layer: 0,
+            offset: i,
+        };
         let mut description = BatchedGKRDescription::<F, E>::default();
         description.quadratic_part_ext_by_ext = vec![
             (eaddr(0), vec![(eaddr(1), pseudo_ext(&mut seed))]),
@@ -1930,22 +2175,20 @@ mod synthetic_tests {
         // window 1
         {
             let pending: Vec<E> = vec![pseudo_ext(&mut seed)];
-            let work =
-                <ExtensionOnlyRoundWindowIn1Out1 as ExtensionOnlyRoundImplementation<F, E>>::work_size_for_unfolded_input_size(SIZE_LOG2);
+            let work = <ExtensionOnlyRoundWindowIn1Out1 as ExtensionOnlyRoundImplementation<
+                F,
+                E,
+            >>::work_size_for_unfolded_input_size(SIZE_LOG2);
             assert_eq!(work, size / 4);
-            let suffix_challenges: Vec<E> =
-                (0..(work.trailing_zeros() as usize)).map(|_| pseudo_ext(&mut seed)).collect();
+            let suffix_challenges: Vec<E> = (0..(work.trailing_zeros() as usize))
+                .map(|_| pseudo_ext(&mut seed))
+                .collect();
             let eq_suffix = make_eq_poly_in_full::<E>(&suffix_challenges, &worker)
                 .pop()
                 .unwrap();
 
             let acc = run_ext_only_pass::<ExtensionOnlyRoundWindowIn1Out1>(
-                &ext_polys,
-                &compact,
-                &pending,
-                &eq_suffix,
-                SIZE_LOG2,
-                &worker,
+                &ext_polys, &compact, &pending, &eq_suffix, SIZE_LOG2, &worker,
             );
             let reference = reference_ext_only_accumulator::<1, 3>(
                 &ext_polys,
@@ -1962,22 +2205,20 @@ mod synthetic_tests {
         // window 2
         {
             let pending: Vec<E> = (0..2).map(|_| pseudo_ext(&mut seed)).collect();
-            let work =
-                <ExtensionOnlyRoundWindowIn2Out2 as ExtensionOnlyRoundImplementation<F, E>>::work_size_for_unfolded_input_size(SIZE_LOG2);
+            let work = <ExtensionOnlyRoundWindowIn2Out2 as ExtensionOnlyRoundImplementation<
+                F,
+                E,
+            >>::work_size_for_unfolded_input_size(SIZE_LOG2);
             assert_eq!(work, size / 16);
-            let suffix_challenges: Vec<E> =
-                (0..(work.trailing_zeros() as usize)).map(|_| pseudo_ext(&mut seed)).collect();
+            let suffix_challenges: Vec<E> = (0..(work.trailing_zeros() as usize))
+                .map(|_| pseudo_ext(&mut seed))
+                .collect();
             let eq_suffix = make_eq_poly_in_full::<E>(&suffix_challenges, &worker)
                 .pop()
                 .unwrap();
 
             let acc = run_ext_only_pass::<ExtensionOnlyRoundWindowIn2Out2>(
-                &ext_polys,
-                &compact,
-                &pending,
-                &eq_suffix,
-                SIZE_LOG2,
-                &worker,
+                &ext_polys, &compact, &pending, &eq_suffix, SIZE_LOG2, &worker,
             );
             let reference = reference_ext_only_accumulator::<2, 9>(
                 &ext_polys,
@@ -1994,22 +2235,20 @@ mod synthetic_tests {
         // window 3
         {
             let pending: Vec<E> = (0..3).map(|_| pseudo_ext(&mut seed)).collect();
-            let work =
-                <ExtensionOnlyRoundWindowIn3Out3 as ExtensionOnlyRoundImplementation<F, E>>::work_size_for_unfolded_input_size(SIZE_LOG2);
+            let work = <ExtensionOnlyRoundWindowIn3Out3 as ExtensionOnlyRoundImplementation<
+                F,
+                E,
+            >>::work_size_for_unfolded_input_size(SIZE_LOG2);
             assert_eq!(work, size / 64);
-            let suffix_challenges: Vec<E> =
-                (0..(work.trailing_zeros() as usize)).map(|_| pseudo_ext(&mut seed)).collect();
+            let suffix_challenges: Vec<E> = (0..(work.trailing_zeros() as usize))
+                .map(|_| pseudo_ext(&mut seed))
+                .collect();
             let eq_suffix = make_eq_poly_in_full::<E>(&suffix_challenges, &worker)
                 .pop()
                 .unwrap();
 
             let acc = run_ext_only_pass::<ExtensionOnlyRoundWindowIn3Out3>(
-                &ext_polys,
-                &compact,
-                &pending,
-                &eq_suffix,
-                SIZE_LOG2,
-                &worker,
+                &ext_polys, &compact, &pending, &eq_suffix, SIZE_LOG2, &worker,
             );
             let reference = reference_ext_only_accumulator::<3, 27>(
                 &ext_polys,
@@ -2026,22 +2265,20 @@ mod synthetic_tests {
         // bridge in: fold 1 pending challenge, open a window of 3
         {
             let pending: Vec<E> = vec![pseudo_ext(&mut seed)];
-            let work =
-                <ExtensionOnlyRoundWindowIn1Out3 as ExtensionOnlyRoundImplementation<F, E>>::work_size_for_unfolded_input_size(SIZE_LOG2);
+            let work = <ExtensionOnlyRoundWindowIn1Out3 as ExtensionOnlyRoundImplementation<
+                F,
+                E,
+            >>::work_size_for_unfolded_input_size(SIZE_LOG2);
             assert_eq!(work, size / 16);
-            let suffix_challenges: Vec<E> =
-                (0..(work.trailing_zeros() as usize)).map(|_| pseudo_ext(&mut seed)).collect();
+            let suffix_challenges: Vec<E> = (0..(work.trailing_zeros() as usize))
+                .map(|_| pseudo_ext(&mut seed))
+                .collect();
             let eq_suffix = make_eq_poly_in_full::<E>(&suffix_challenges, &worker)
                 .pop()
                 .unwrap();
 
             let acc = run_ext_only_pass::<ExtensionOnlyRoundWindowIn1Out3>(
-                &ext_polys,
-                &compact,
-                &pending,
-                &eq_suffix,
-                SIZE_LOG2,
-                &worker,
+                &ext_polys, &compact, &pending, &eq_suffix, SIZE_LOG2, &worker,
             );
             let reference = reference_ext_only_accumulator::<3, 27>(
                 &ext_polys,
@@ -2058,22 +2295,20 @@ mod synthetic_tests {
         // bridge out: fold 3 pending challenges, window of 1
         {
             let pending: Vec<E> = (0..3).map(|_| pseudo_ext(&mut seed)).collect();
-            let work =
-                <ExtensionOnlyRoundWindowIn3Out1 as ExtensionOnlyRoundImplementation<F, E>>::work_size_for_unfolded_input_size(SIZE_LOG2);
+            let work = <ExtensionOnlyRoundWindowIn3Out1 as ExtensionOnlyRoundImplementation<
+                F,
+                E,
+            >>::work_size_for_unfolded_input_size(SIZE_LOG2);
             assert_eq!(work, size / 16);
-            let suffix_challenges: Vec<E> =
-                (0..(work.trailing_zeros() as usize)).map(|_| pseudo_ext(&mut seed)).collect();
+            let suffix_challenges: Vec<E> = (0..(work.trailing_zeros() as usize))
+                .map(|_| pseudo_ext(&mut seed))
+                .collect();
             let eq_suffix = make_eq_poly_in_full::<E>(&suffix_challenges, &worker)
                 .pop()
                 .unwrap();
 
             let acc = run_ext_only_pass::<ExtensionOnlyRoundWindowIn3Out1>(
-                &ext_polys,
-                &compact,
-                &pending,
-                &eq_suffix,
-                SIZE_LOG2,
-                &worker,
+                &ext_polys, &compact, &pending, &eq_suffix, SIZE_LOG2, &worker,
             );
             let reference = reference_ext_only_accumulator::<1, 3>(
                 &ext_polys,

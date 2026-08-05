@@ -33,8 +33,7 @@ use worker::Worker;
 
 use common_constants::{
     BIGINT_OPS_WITH_CONTROL_CSR_REGISTER, BLAKE2S_DELEGATION_CSR_REGISTER,
-    BLAKE2S_G_FUNCTION_DELEGATION_CSR_REGISTER, KECCAK_SPECIAL5_CSR_REGISTER,
-    NON_DETERMINISM_CSR,
+    BLAKE2S_G_FUNCTION_DELEGATION_CSR_REGISTER, KECCAK_SPECIAL5_CSR_REGISTER, NON_DETERMINISM_CSR,
 };
 use cs::definitions::ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX;
 
@@ -183,13 +182,7 @@ fn windowed_sumcheck_bench_add_sub() {
     let setup = GKRSetup::construct(&table_driver, &data.decoder_table, trace_len, &circuit);
     let mut gkr_storage = GKRStorage::<BabyBearField, BabyBearExt4>::default();
     let (preprocessed_generic_lookup, decoder_lookup_fill_value) = setup
-        .preprocess_generic_lookups(
-            &circuit,
-            lookup_alpha,
-            trace_len,
-            &mut gkr_storage,
-            &worker,
-        );
+        .preprocess_generic_lookups(&circuit, lookup_alpha, trace_len, &mut gkr_storage, &worker);
     gkr_storage.insert_base_field_at_layer(
         0,
         cs::definitions::GKRAddress::VirtualSetup(VirtualSetupPoly::RangeCheck16Bits),

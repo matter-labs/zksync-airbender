@@ -83,8 +83,8 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> TransitionRoundImplementation<
         // we only need 0 and infinity
         let base_input_stride = input_size / 8;
         let stride = base_input_stride / 2;
-        let folded_0 = read_base_and_fold(src, prefix, base_input_stride, row);
-        let folded_1 = read_base_and_fold(src, prefix, base_input_stride, row + stride);
+        let (folded_0, folded_1) =
+            read_base_and_fold_pair(src, prefix, base_input_stride, row, row + stride);
 
         // write back
         buffer.write(row, folded_0);
@@ -106,8 +106,8 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> TransitionRoundImplementation<
         // we still have to compute both
         let base_input_stride = input_size / 8;
         let stride = base_input_stride / 2;
-        let folded_0 = read_base_and_fold(src, prefix, base_input_stride, row);
-        let folded_1 = read_base_and_fold(src, prefix, base_input_stride, row + stride);
+        let (folded_0, folded_1) =
+            read_base_and_fold_pair(src, prefix, base_input_stride, row, row + stride);
 
         // write back
         buffer.write(row, folded_0);
@@ -128,8 +128,8 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> TransitionRoundImplementation<
         // we only need 0 and infinity
         let base_input_stride = input_size / 8;
         let stride = base_input_stride / 2;
-        let folded_0 = read_ext_and_fold(src, prefix, base_input_stride, row);
-        let folded_1 = read_ext_and_fold(src, prefix, base_input_stride, row + stride);
+        let (folded_0, folded_1) =
+            read_ext_and_fold_pair(src, prefix, base_input_stride, row, row + stride);
 
         // write back
         buffer.write(row, folded_0);
@@ -151,8 +151,8 @@ impl<F: PrimeField, E: FieldExtension<F> + Field> TransitionRoundImplementation<
         // we still have to compute both
         let base_input_stride = input_size / 8;
         let stride = base_input_stride / 2;
-        let folded_0 = read_ext_and_fold(src, prefix, base_input_stride, row);
-        let folded_1 = read_ext_and_fold(src, prefix, base_input_stride, row + stride);
+        let (folded_0, folded_1) =
+            read_ext_and_fold_pair(src, prefix, base_input_stride, row, row + stride);
 
         // write back
         buffer.write(row, folded_0);

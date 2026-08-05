@@ -115,6 +115,125 @@ pub fn evaluate_initial_with_full_sized_scratch<F: PrimeField, E: FieldExtension
         }
 
         // and now compute
+        #[cfg(target_arch = "aarch64")]
+        if const { neon::is_bb_pair::<F, E>() } {
+            // Lazy-accumulation path: base*base and linear-base terms add raw
+            // 64-bit lane products into `lazy_acc` (layout: cell-major, 4 u64
+            // lanes per cell); every 2 such products one conditional `R*P`
+            // subtraction keeps lanes below R*P (see neon.rs bound analysis),
+            // and a single REDC per row happens in `lazy_finalize_cells`.
+            // be/ee/linear-ext terms keep the reduced path via `eval_scratch`.
+            let mut lazy_acc = [0u64; 27 * 4];
+            let mut lazy_products = 0usize;
+            for step in description.initial_evaluation_steps.iter() {
+                match *step {
+                    EvaluationStep::QuadraticBaseByBase {
+                        scratch_idx_a,
+                        scratch_idx_b,
+                        coeff_idx,
+                    } => {
+                        let coeff = description.constants[coeff_idx as usize];
+                        unsafe {
+                            neon::lazy_quad_base_cells::<27>(
+                                lazy_acc.as_mut_ptr(),
+                                base_field_scratch[scratch_idx_a as usize].as_ptr() as *const _,
+                                base_field_scratch[scratch_idx_b as usize].as_ptr() as *const _,
+                                &*(&coeff as *const E as *const _),
+                            );
+                        }
+                        lazy_products += 1;
+                        if lazy_products == 2 {
+                            unsafe { neon::lazy_condsub_cells::<27>(lazy_acc.as_mut_ptr()) };
+                            lazy_products = 0;
+                        }
+                    }
+                    EvaluationStep::LinearWithBase {
+                        scratch_idx,
+                        coeff_idx,
+                    } => {
+                        let coeff = description.constants[coeff_idx as usize];
+                        unsafe {
+                            neon::lazy_linear_base_27(
+                                lazy_acc.as_mut_ptr(),
+                                base_field_scratch[scratch_idx as usize].as_ptr() as *const _,
+                                &*(&coeff as *const E as *const _),
+                            );
+                        }
+                        lazy_products += 1;
+                        if lazy_products == 2 {
+                            unsafe { neon::lazy_condsub_cells::<27>(lazy_acc.as_mut_ptr()) };
+                            lazy_products = 0;
+                        }
+                    }
+                    EvaluationStep::QuadraticBaseByExt {
+                        scratch_idx_base,
+                        scratch_idx_ext,
+                        coeff_idx,
+                    } => {
+                        let coeff = description.constants[coeff_idx as usize];
+                        evaluate_quadratic_mixed(
+                            &mut eval_scratch,
+                            &ext_field_scratch[scratch_idx_ext as usize],
+                            &base_field_scratch[scratch_idx_base as usize],
+                            &coeff,
+                        );
+                    }
+                    EvaluationStep::QuadraticExtByExt {
+                        scratch_idx_a,
+                        scratch_idx_b,
+                        coeff_idx,
+                    } => {
+                        let coeff = description.constants[coeff_idx as usize];
+                        evaluate_quadratic_ext(
+                            &mut eval_scratch,
+                            &ext_field_scratch[scratch_idx_a as usize],
+                            &ext_field_scratch[scratch_idx_b as usize],
+                            &coeff,
+                        );
+                    }
+                    EvaluationStep::LinearWithExt {
+                        scratch_idx,
+                        coeff_idx,
+                    } => {
+                        let coeff = description.constants[coeff_idx as usize];
+                        evaluate_linear_ext(
+                            &mut eval_scratch,
+                            &ext_field_scratch[scratch_idx as usize],
+                            &coeff,
+                        );
+                    }
+                }
+            }
+
+            if description.total_additive_constant.is_zero() == false {
+                for i in 0..2 {
+                    let offset = 9 * i;
+                    for j in 0..2 {
+                        let offset = offset + 3 * j;
+                        for k in 0..2 {
+                            eval_scratch[offset + k]
+                                .add_assign(&description.total_additive_constant);
+                        }
+                    }
+                }
+            }
+
+            let mut lazy_out = [E::ZERO; 27];
+            unsafe {
+                neon::lazy_finalize_cells::<27>(
+                    lazy_acc.as_mut_ptr(),
+                    lazy_out.as_mut_ptr() as *mut _,
+                );
+            }
+            for i in 0..27 {
+                eval_scratch[i].add_assign(&lazy_out[i]);
+            }
+
+            accumulate_scaled(&mut accumulator, &eval_scratch, eq_prefactor);
+            continue;
+        }
+
+        // and now compute
         for step in description.initial_evaluation_steps.iter() {
             match *step {
                 EvaluationStep::QuadraticBaseByBase {
