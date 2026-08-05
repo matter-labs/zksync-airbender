@@ -4,8 +4,8 @@
 //! the query arithmetic. See .agents/specs/2026-06-21-gkr-sp2-resolution-binding-design.md §4.
 
 use super::source::{SpecialDescriptor, SpecialStrategy};
-use cs::gkr_compiler::dag_ir::{Bf, Ext, LookupResolver, LookupValueKind, RangeWidth, Resolvers};
 use field::{Field, PrimeField};
+use gkr_eval_ir::{Bf, Ext, LookupResolver, LookupValueKind, RangeWidth, Resolvers};
 use std::cell::Cell;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -129,7 +129,7 @@ pub trait PeekResolver {
 
 use crate::fwd::context::{CompiledLayer, RootOutput};
 use crate::fwd::isa::{Instr, OperandLine, Program};
-use cs::gkr_compiler::dag_ir::{DagLayer, eval_layer_expr};
+use gkr_eval_ir::{DagLayer, eval_layer_expr};
 use std::collections::BTreeSet;
 
 /// Every distinct `desc` referenced by an emitted `Special { desc }` operand — from BOTH
@@ -243,8 +243,8 @@ mod tests {
     use crate::fwd::context::CompiledLayer;
     use crate::fwd::isa::{Instr, OperandLine, Program};
     use crate::fwd::source::{SpecialDescriptor, SpecialStrategy};
-    use cs::gkr_compiler::dag_ir::{Bf, ExprId, Ext, LookupResolver, LookupValueKind, RangeWidth};
     use field::{Field, FieldExtension, PrimeField};
+    use gkr_eval_ir::{Bf, ExprId, Ext, LookupResolver, LookupValueKind, RangeWidth};
 
     fn lift(b: Bf) -> Ext {
         <Ext as FieldExtension<Bf>>::from_base(b)
@@ -322,20 +322,20 @@ mod tests {
     use crate::fwd::context::{CompileTrace, DagForwardContext, OutputCell, RootOutput};
     use crate::fwd::source::{ConstBank, SpecialTable};
     use crate::fwd::stats::CompileStats;
-    use cs::gkr_compiler::dag_ir::{
+    use gkr_eval_ir::{
         ArenaBuilder, BatchingOrder, ChallengeRef, DagLayer, ReadPlace, Resolvers, RootId,
         SourceKind, VirtualSetupKind,
     };
     use std::collections::BTreeMap;
 
     struct ZeroReadResolver;
-    impl cs::gkr_compiler::dag_ir::ReadResolver for ZeroReadResolver {
+    impl gkr_eval_ir::ReadResolver for ZeroReadResolver {
         fn read(&self, _place: &ReadPlace, _row: usize) -> Ext {
             Ext::ZERO
         }
     }
     struct ZeroLookupResolverSp2;
-    impl cs::gkr_compiler::dag_ir::LookupResolver for ZeroLookupResolverSp2 {
+    impl gkr_eval_ir::LookupResolver for ZeroLookupResolverSp2 {
         fn lookup(
             &self,
             _kind: &LookupValueKind,
@@ -347,22 +347,22 @@ mod tests {
         }
     }
     struct ZeroVirtualSetupResolver;
-    impl cs::gkr_compiler::dag_ir::VirtualSetupResolver for ZeroVirtualSetupResolver {
+    impl gkr_eval_ir::VirtualSetupResolver for ZeroVirtualSetupResolver {
         fn virtual_setup(&self, _kind: &VirtualSetupKind, _row: usize) -> Bf {
             Bf::ZERO
         }
     }
     struct ZeroChallengeResolver;
-    impl cs::gkr_compiler::dag_ir::ChallengeResolver for ZeroChallengeResolver {
+    impl gkr_eval_ir::ChallengeResolver for ZeroChallengeResolver {
         fn challenge(&self, _r: &ChallengeRef) -> Ext {
             Ext::ZERO
         }
     }
 
     fn make_resolvers_sp2<'a>(
-        read: &'a dyn cs::gkr_compiler::dag_ir::ReadResolver,
-        lookup: &'a dyn cs::gkr_compiler::dag_ir::LookupResolver,
-        challenge: &'a dyn cs::gkr_compiler::dag_ir::ChallengeResolver,
+        read: &'a dyn gkr_eval_ir::ReadResolver,
+        lookup: &'a dyn gkr_eval_ir::LookupResolver,
+        challenge: &'a dyn gkr_eval_ir::ChallengeResolver,
     ) -> Resolvers<'a> {
         Resolvers {
             read,
@@ -536,9 +536,9 @@ mod tests {
 
     /// Returns the zero resolvers and a single-element rows slice for const-fold tests.
     fn stub_resolvers_rows() -> (
-        impl cs::gkr_compiler::dag_ir::ReadResolver,
-        impl cs::gkr_compiler::dag_ir::LookupResolver,
-        impl cs::gkr_compiler::dag_ir::ChallengeResolver,
+        impl gkr_eval_ir::ReadResolver,
+        impl gkr_eval_ir::LookupResolver,
+        impl gkr_eval_ir::ChallengeResolver,
         Vec<usize>,
     ) {
         (

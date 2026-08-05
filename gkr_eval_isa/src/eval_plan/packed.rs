@@ -1,10 +1,10 @@
-use cs::gkr_compiler::dag_ir::{join, DagLayer, Expr, FieldKind, SourceKind};
+use gkr_eval_ir::{DagLayer, Expr, FieldKind, SourceKind, join};
 
-use crate::fwd::isa::{Sign, MAX_ARITY};
+use crate::fwd::isa::{MAX_ARITY, Sign};
 
 use super::{
-    field_lanes, unit_sign_expr, CacheStoreFrom, EvalOp, EvalPlan, MaterializeFrom, Operand,
-    RootKey, SinkInfo, TempId, TempRef, ValueFingerprint, ValueRef,
+    CacheStoreFrom, EvalOp, EvalPlan, MaterializeFrom, Operand, RootKey, SinkInfo, TempId, TempRef,
+    ValueFingerprint, ValueRef, field_lanes, unit_sign_expr,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -63,7 +63,7 @@ pub enum PackedEvalOp {
     },
     CacheDrop(ValueRef),
     Commit {
-        root_id: cs::gkr_compiler::dag_ir::RootId,
+        root_id: gkr_eval_ir::RootId,
         root: RootKey,
         sink: SinkInfo,
         from: MaterializeFrom,
@@ -1373,7 +1373,7 @@ mod tests {
 
     use super::*;
     use crate::eval_plan::{ValueFingerprint, ValueRef};
-    use cs::gkr_compiler::dag_ir::{ArenaBuilder, BatchingOrder, ExprId, ReadPlace, SourceKind};
+    use gkr_eval_ir::{ArenaBuilder, BatchingOrder, ExprId, ReadPlace, SourceKind};
 
     fn value(expr: u32, field: FieldKind) -> ValueRef {
         ValueRef {
@@ -1806,9 +1806,11 @@ mod tests {
                 operand: Operand::Temp(candidate),
             }) if *candidate == temp
         ));
-        assert!(!rewritten
-            .iter()
-            .any(|op| matches!(op, EvalOp::AccMul(_) | EvalOp::AccNeg)));
+        assert!(
+            !rewritten
+                .iter()
+                .any(|op| matches!(op, EvalOp::AccMul(_) | EvalOp::AccNeg))
+        );
     }
 
     #[test]

@@ -190,7 +190,7 @@ mod tests {
     /// half of the same bill.
     #[test]
     fn report_the_schedule_validation_time() {
-        use cs::gkr_compiler::dag_ir::schedule::validate_circuit_schedule;
+        use gkr_eval_isa::validate_circuit_schedule;
 
         let artifact = add_sub_artifact();
 

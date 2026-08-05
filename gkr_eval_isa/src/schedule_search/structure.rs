@@ -16,7 +16,9 @@
 
 use std::collections::HashMap;
 
-use cs::gkr_compiler::dag_ir::{enumerate_site_domain, DagLayer, RootGroup, RootId, SiteKey};
+use gkr_eval_ir::{DagLayer, RootGroup, RootId};
+
+use crate::schedule::{RelationUnit, SiteKey, enumerate_site_domain};
 
 /// All cacheable reuse occurrences of `layer`, as a deterministically ordered `Vec`
 /// (`SiteKey`'s `Ord`; cs's `enumerate_site_domain` returns a `BTreeSet`, so the
@@ -53,18 +55,18 @@ pub fn relation_units(layer: &DagLayer) -> Vec<Vec<RootId>> {
 }
 
 /// Canonical relation units with cache ownership — cs-owned single source of
-/// truth ([`cs::gkr_compiler::dag_ir::relation_units_with_caches`]); wrapped here
+/// truth ([`crate::schedule::relation_units_with_caches`]); wrapped here
 /// for the search. Panics on the unsupported cross-layer/cache-only cache class
 /// (a producer-time invariant, not a search-tunable outcome).
-pub fn relation_units_with_caches(layer: &DagLayer) -> Vec<cs::gkr_compiler::dag_ir::RelationUnit> {
-    cs::gkr_compiler::dag_ir::relation_units_with_caches(layer)
+pub fn relation_units_with_caches(layer: &DagLayer) -> Vec<RelationUnit> {
+    crate::schedule::relation_units_with_caches(layer)
         .unwrap_or_else(|e| panic!("relation_units_with_caches: {e}"))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cs::gkr_compiler::dag_ir::{
+    use gkr_eval_ir::{
         BatchingOrder, ClaimInfo, Expr, ExprId, FieldKind, Root, RootOrigin, RootSlot, SinkInfo,
         SinkKind, SourceId, SourceInfo, SourceKind,
     };
@@ -73,7 +75,7 @@ mod tests {
     fn read_source(col: usize) -> SourceInfo {
         SourceInfo {
             kind: SourceKind::Read {
-                place: cs::gkr_compiler::dag_ir::ReadPlace::BaseLayerWitness { column: col },
+                place: gkr_eval_ir::ReadPlace::BaseLayerWitness { column: col },
             },
         }
     }
@@ -86,7 +88,11 @@ mod tests {
                 field: FieldKind::Base,
             }),
             claim: Some(ClaimInfo {
-                origin: RootOrigin { group, relation_index: rel, slot: RootSlot::Output(0) },
+                origin: RootOrigin {
+                    group,
+                    relation_index: rel,
+                    slot: RootSlot::Output(0),
+                },
             }),
         }
     }
@@ -95,7 +101,12 @@ mod tests {
     fn relation_units_groups_same_relation_and_keeps_others_singleton() {
         // roots: (Gates,0), (Gates,0), (Gates,1), (GatesExternal,0)
         let layer = DagLayer {
-            sources: vec![read_source(0), read_source(1), read_source(2), read_source(3)],
+            sources: vec![
+                read_source(0),
+                read_source(1),
+                read_source(2),
+                read_source(3),
+            ],
             exprs: vec![
                 Expr::Source(SourceId(0)),
                 Expr::Source(SourceId(1)),
@@ -114,11 +125,7 @@ mod tests {
         let units = relation_units(&layer);
         assert_eq!(
             units,
-            vec![
-                vec![RootId(0), RootId(1)],
-                vec![RootId(2)],
-                vec![RootId(3)],
-            ]
+            vec![vec![RootId(0), RootId(1)], vec![RootId(2)], vec![RootId(3)],]
         );
     }
 
@@ -134,7 +141,10 @@ mod tests {
                 Root {
                     expr: ExprId(0),
                     materialize: Some(SinkInfo {
-                        kind: SinkKind::Cache { layer: 0, offset: 0 },
+                        kind: SinkKind::Cache {
+                            layer: 0,
+                            offset: 0,
+                        },
                         field: FieldKind::Base,
                     }),
                     claim: None,

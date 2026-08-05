@@ -8,32 +8,33 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use cs::gkr_compiler::dag_ir::{
-    bwd_cache_fences, eval_layer_expr, lower_dag, validate, validate_circuit_schedule, Bf,
-    ChallengeRef, ChallengeResolver, CircuitSchedule, DagCircuit, DagLayer, Expr, ExprId, Ext,
-    LookupResolver, LookupValueKind, ReadPlace, ReadResolver, Resolvers, SourceKind,
-    VirtualSetupKind, VirtualSetupResolver,
-};
 use cs::gkr_compiler::GKRCircuitArtifact;
 use field::baby_bear::base::BabyBearField;
 use field::{Field, FieldExtension, PrimeField};
+use gkr_eval_ir::{
+    Bf, ChallengeRef, ChallengeResolver, DagCircuit, DagLayer, Expr, ExprId, Ext, LookupResolver,
+    LookupValueKind, ReadPlace, ReadResolver, Resolvers, SourceKind, VirtualSetupKind,
+    VirtualSetupResolver, eval_layer_expr, lower_dag, validate,
+};
+use gkr_eval_isa::{CircuitSchedule, bwd_cache_fences, validate_circuit_schedule};
 
 // ── SP1 backward-reduction test surface (added Task 1) ────────────────────────
 use std::collections::{BTreeMap, BTreeSet};
 
-use cs::gkr_compiler::dag_ir::{
-    bwd_roots, BatchingOrder, BwdRegime, ChallengeKey, ChallengePower, ClaimInfo, FieldKind, Root,
-    RootGroup, RootId, RootOrigin, RootSlot, SiteKey, SourceId, SourceInfo,
+use gkr_eval_ir::{
+    BatchingOrder, ChallengeKey, ChallengePower, ClaimInfo, FieldKind, Root, RootGroup, RootId,
+    RootOrigin, RootSlot, SourceId, SourceInfo, claim_roots,
 };
-use gkr_eval_isa::bwd::batch::{pack_batch_dst, unpack_batch_dst, BATCH_COEFFICIENT_ONE};
-use gkr_eval_isa::bwd::compile::{compile_distilled_legacy_only, BwdCompiledLayer};
-use gkr_eval_isa::bwd::distill::{bind, distill, distilled_site_domain, DistilledLayer};
-use gkr_eval_isa::bwd::interp::{interpret_bwd_row, role_combine, sumcheck_fold_point, Role};
+use gkr_eval_isa::bwd::batch::{BATCH_COEFFICIENT_ONE, pack_batch_dst, unpack_batch_dst};
+use gkr_eval_isa::bwd::compile::{BwdCompiledLayer, compile_distilled_legacy_only};
+use gkr_eval_isa::bwd::distill::{DistilledLayer, bind, distill, distilled_site_domain};
+use gkr_eval_isa::bwd::interp::{Role, interpret_bwd_row, role_combine, sumcheck_fold_point};
 use gkr_eval_isa::bwd::source::{BwdSpecial, FoldState, MaterializationPolicy, OriginLeaf};
-use gkr_eval_isa::fwd::compile::{build_cross_layer_field_map, SiteDecisions};
+use gkr_eval_isa::fwd::compile::{SiteDecisions, build_cross_layer_field_map};
 use gkr_eval_isa::fwd::encode::{decode, encode as encode_result};
 use gkr_eval_isa::fwd::error::CompileError;
 use gkr_eval_isa::fwd::isa::{Instr, MovDir, OperandField, OperandLine, Program};
+use gkr_eval_isa::{BwdRegime, SiteKey};
 
 /// The cross-layer field map threaded into `distill` / `compile` (the width oracle
 /// for cross-layer reads). Same shape as `build_cross_layer_field_map`'s output.
@@ -82,13 +83,13 @@ fn hash_dbg_row<T: std::fmt::Debug>(t: &T, row: usize) -> u32 {
 
 pub struct SyntheticResolvers;
 
-impl cs::gkr_compiler::dag_ir::ReadResolver for SyntheticResolvers {
+impl gkr_eval_ir::ReadResolver for SyntheticResolvers {
     fn read(&self, place: &ReadPlace, row: usize) -> Ext {
         lift(Bf::from_u32_with_reduction(hash_dbg_row(place, row)))
     }
 }
 
-impl cs::gkr_compiler::dag_ir::LookupResolver for SyntheticResolvers {
+impl gkr_eval_ir::LookupResolver for SyntheticResolvers {
     fn lookup(
         &self,
         kind: &LookupValueKind,
@@ -107,13 +108,13 @@ impl cs::gkr_compiler::dag_ir::LookupResolver for SyntheticResolvers {
     }
 }
 
-impl cs::gkr_compiler::dag_ir::VirtualSetupResolver for SyntheticResolvers {
+impl gkr_eval_ir::VirtualSetupResolver for SyntheticResolvers {
     fn virtual_setup(&self, kind: &VirtualSetupKind, row: usize) -> Bf {
         Bf::from_u32_with_reduction(hash_dbg_row(kind, row))
     }
 }
 
-impl cs::gkr_compiler::dag_ir::ChallengeResolver for SyntheticResolvers {
+impl gkr_eval_ir::ChallengeResolver for SyntheticResolvers {
     fn challenge(&self, r: &ChallengeRef) -> Ext {
         lift(Bf::from_u32_with_reduction(hash_dbg_row(r, 0)))
     }
@@ -471,7 +472,7 @@ fn eval_oracle(
 }
 
 /// The alpha-combined oracle value: `Σ_i beta^i · eval(root_i)`, root 0 unscaled,
-/// over the canonical `bwd_roots` batching order.
+/// over the canonical `claim_roots` batching order.
 #[allow(clippy::too_many_arguments)]
 fn oracle_root(
     layer: &DagLayer,
@@ -485,7 +486,7 @@ fn oracle_root(
 ) -> Ext {
     let mut memo: HashMap<ExprId, Ext> = HashMap::new();
     let mut acc = Ext::ZERO;
-    for (i, &rid) in bwd_roots(layer).iter().enumerate() {
+    for (i, &rid) in claim_roots(layer).iter().enumerate() {
         let expr = layer.roots[rid.0 as usize].expr;
         let mut t = eval_oracle(
             layer, expr, regime, role, row, round, ch, orig, plain, &mut memo,
@@ -1284,7 +1285,7 @@ pub fn layers_with_bwd_roots(name: &str) -> impl Iterator<Item = (usize, DagLaye
     let cross = build_cross_layer_field_map(&dag);
     let mut out = Vec::new();
     for (li, layer) in dag.layers.iter().enumerate() {
-        if bwd_roots(layer).is_empty() {
+        if claim_roots(layer).is_empty() {
             continue; // nothing to prove backward
         }
         out.push((li, layer.clone(), cross.clone()));

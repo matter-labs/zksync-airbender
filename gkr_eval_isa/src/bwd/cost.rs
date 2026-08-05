@@ -40,7 +40,7 @@
 //! Task 7 makes that lazy state *cheap*: VS polys are multilinear by
 //! construction, so a depth-`d` fold is the same `O(k)` multilinear closed form
 //! with the bound coordinates replaced by fold challenges
-//! ([`cs::gkr_compiler::dag_ir::VirtualSetupResolver::virtual_setup_fold`]).
+//! ([`gkr_eval_ir::VirtualSetupResolver::virtual_setup_fold`]).
 //! The device implements that closed form, so a VS-origin fold moves **zero
 //! DRAM** — it is compute-only. This model therefore charges VS-origin folds 0
 //! read bytes and 0 store bytes at every round, superseding the old
@@ -52,7 +52,7 @@ use super::compile::BwdCompiledLayer;
 use super::interp::Role;
 use super::source::{BwdSpecial, FoldState, MaterializationPolicy, OriginLeaf};
 use crate::fwd::isa::{Instr, OperandField, OperandLine};
-use cs::gkr_compiler::dag_ir::{FieldKind, ReadPlace};
+use gkr_eval_ir::{FieldKind, ReadPlace};
 
 /// Bytes per field cell (a `Bf` limb).
 pub const CELL_BYTES: usize = 4;
@@ -365,9 +365,9 @@ mod tests {
     use super::*;
     use crate::bwd::distill::distill;
     use crate::fwd::isa::{Instr, OperandLine};
-    use cs::gkr_compiler::dag_ir::{
-        BatchingOrder, BwdRegime, ClaimInfo, DagLayer, Expr, ExprId, FieldKind, Root, RootGroup,
-        RootId, RootOrigin, RootSlot, SinkInfo, SinkKind, SourceId, SourceInfo, SourceKind,
+    use gkr_eval_ir::{
+        BatchingOrder, ClaimInfo, DagLayer, Expr, ExprId, FieldKind, Root, RootGroup, RootId,
+        RootOrigin, RootSlot, SinkInfo, SinkKind, SourceId, SourceInfo, SourceKind,
         VirtualSetupKind,
     };
     use std::collections::{BTreeMap, HashMap};
@@ -505,7 +505,7 @@ mod tests {
     fn read_src(column: usize) -> SourceInfo {
         SourceInfo {
             kind: SourceKind::Read {
-                place: cs::gkr_compiler::dag_ir::ReadPlace::BaseLayerWitness { column },
+                place: gkr_eval_ir::ReadPlace::BaseLayerWitness { column },
             },
         }
     }
@@ -544,7 +544,7 @@ mod tests {
             vec![Expr::Source(SourceId(0))],
             ExprId(0),
         );
-        let d = distill(&l, BwdRegime::Ext, &HashMap::new(), None);
+        let d = distill(&l, crate::BwdRegime::Ext, &HashMap::new(), None);
         let c = compile_distilled_expect(&d);
         assert_eq!(c.stats_ext.fold_uses, 1, "exactly one fold occurrence");
 
@@ -612,7 +612,7 @@ mod tests {
             vec![Expr::Source(SourceId(0))],
             ExprId(0),
         );
-        let d = distill(&l, BwdRegime::Ext, &HashMap::new(), None);
+        let d = distill(&l, crate::BwdRegime::Ext, &HashMap::new(), None);
         let c = compile_distilled_expect(&d);
         assert_eq!(c.stats_ext.fold_uses, 1);
 
@@ -674,7 +674,7 @@ mod tests {
         // 4*2^d (base-width origin) — the cost model must be origin-width-
         // aware, not blanket base-width.
         let l = cache_and_base_layer();
-        let d = distill(&l, BwdRegime::Ext, &HashMap::new(), None);
+        let d = distill(&l, crate::BwdRegime::Ext, &HashMap::new(), None);
         let c = compile_distilled_expect(&d);
         assert_eq!(
             c.stats_ext.fold_uses, 2,
@@ -707,7 +707,7 @@ mod tests {
             vec![Expr::Source(SourceId(0))],
             ExprId(0),
         );
-        let d = distill(&l, BwdRegime::R0, &HashMap::new(), None);
+        let d = distill(&l, crate::BwdRegime::R0, &HashMap::new(), None);
         let c = compile_distilled_expect(&d);
         assert_eq!(c.stats_ext.fold_uses, 0, "R0 has no fold sources");
         assert!(matches!(
@@ -751,7 +751,7 @@ mod tests {
             vec![Expr::Source(SourceId(0))],
             ExprId(0),
         );
-        let d = distill(&l, BwdRegime::Ext, &HashMap::new(), None);
+        let d = distill(&l, crate::BwdRegime::Ext, &HashMap::new(), None);
         let c = compile_distilled_expect(&d);
         // Force lazy at every round with a high LazyUpTo cap.
         let g = geometric_total(&c, MaterializationPolicy::LazyUpTo(255), 4, &d.cross_fields);

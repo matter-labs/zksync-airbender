@@ -9,7 +9,7 @@
 
 mod common;
 
-use cs::gkr_compiler::dag_ir::BwdRegime;
+use gkr_eval_isa::BwdRegime;
 use gkr_eval_isa::bwd::compile::{
     compile_distilled, compile_distilled_legacy_only, compile_distilled_streamed,
 };

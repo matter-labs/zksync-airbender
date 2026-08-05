@@ -218,7 +218,7 @@ pub enum BackwardSearchError {
     MissingStableValue,
     MissingStableSite,
     MissingLeafInstant {
-        expr: cs::gkr_compiler::dag_ir::ExprId,
+        expr: gkr_eval_ir::ExprId,
     },
     PagingActionCount {
         expected: usize,

@@ -23,7 +23,7 @@
 //! One backward production lineage: an overflow of any bound here is a compiler
 //! error. There is no extended record, no version field, and no fallback format.
 
-use cs::gkr_compiler::dag_ir::FieldKind;
+use gkr_eval_ir::FieldKind;
 
 use super::model::{CoeffTerm, CoefficientRecipeId};
 use crate::bwd::source::VIRTUAL_SETUP_MATERIALIZE_DEPTH;

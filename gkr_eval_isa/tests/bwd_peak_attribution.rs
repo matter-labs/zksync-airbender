@@ -18,7 +18,8 @@ mod common;
 
 use std::collections::BTreeMap;
 
-use cs::gkr_compiler::dag_ir::{BwdRegime, Expr, ExprId, ReadPlace, SourceKind};
+use gkr_eval_ir::{Expr, ExprId, ReadPlace, SourceKind};
+use gkr_eval_isa::BwdRegime;
 use gkr_eval_isa::bwd::compile::compile_distilled_peak;
 use gkr_eval_isa::bwd::distill::{distill, DistilledLayer};
 

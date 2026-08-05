@@ -27,17 +27,18 @@ mod common;
 
 use std::collections::BTreeMap;
 
-use common::{assert_bwd_value_parity, layers_with_bwd_roots, FIXTURES};
-use cs::gkr_compiler::dag_ir::{BwdRegime, Expr, ExprId};
+use common::{FIXTURES, assert_bwd_value_parity, layers_with_bwd_roots};
+use gkr_eval_ir::{Expr, ExprId};
+use gkr_eval_isa::BwdRegime;
 use gkr_eval_isa::bwd::compile::{
-    compile_distilled_fragments_planned, BwdCompiledLayer, FragmentBackend,
+    BwdCompiledLayer, FragmentBackend, compile_distilled_fragments_planned,
 };
 use gkr_eval_isa::bwd::construct::construct_fragment_order;
-use gkr_eval_isa::bwd::distill::{distill, stable_distilled_site_domain, DistilledLayer};
+use gkr_eval_isa::bwd::distill::{DistilledLayer, distill, stable_distilled_site_domain};
 use gkr_eval_isa::bwd::fif::coordinate_correct_frozen_with_backend;
-use gkr_eval_isa::bwd::plan::{plan_entries_fnv, BwdOccurrencePlan, PlanAction, PlanEntry};
-use gkr_eval_isa::bwd::trace::{certify, BwdCompileTrace, BwdEvent, BwdServedFrom, FrozenDemand};
-use gkr_eval_isa::eval_plan::{compile_backward_fragments_replayed, CompiledBackwardEvaluation};
+use gkr_eval_isa::bwd::plan::{BwdOccurrencePlan, PlanAction, PlanEntry, plan_entries_fnv};
+use gkr_eval_isa::bwd::trace::{BwdCompileTrace, BwdEvent, BwdServedFrom, FrozenDemand, certify};
+use gkr_eval_isa::eval_plan::{CompiledBackwardEvaluation, compile_backward_fragments_replayed};
 use gkr_eval_isa::fwd::encode::{decode, encode};
 use gkr_eval_isa::fwd::error::CompileError;
 
@@ -162,7 +163,7 @@ fn assert_shared_replay(
     old: &BwdCompiledLayer,
     new: &CompiledBackwardEvaluation,
     d: &DistilledLayer,
-    layer: &cs::gkr_compiler::dag_ir::DagLayer,
+    layer: &gkr_eval_ir::DagLayer,
 ) {
     assert_eq!(decode(&new.encoded).unwrap(), new.compiled.program, "{ctx}");
     assert_bwd_value_parity(&new.compiled, d, layer);
@@ -249,7 +250,7 @@ fn assert_clean_certified_and_valued(
     c: &gkr_eval_isa::bwd::compile::BwdCompiledLayer,
     t: &BwdCompileTrace,
     d: &DistilledLayer,
-    layer: &cs::gkr_compiler::dag_ir::DagLayer,
+    layer: &gkr_eval_ir::DagLayer,
     certify_exact: bool,
 ) {
     assert!(!diverged(t), "[{ctx}] planned replay diverged");
@@ -379,7 +380,7 @@ fn single_retain_plan(base: &BwdOccurrencePlan, candidate: RetainCandidate) -> B
 fn exercise_retain_corpus(
     ctx: &str,
     d: &DistilledLayer,
-    layer: &cs::gkr_compiler::dag_ir::DagLayer,
+    layer: &gkr_eval_ir::DagLayer,
     order: &[usize],
     base: &BwdOccurrencePlan,
     certify_exact: bool,

@@ -3,9 +3,9 @@
 //! These four primitives are used by both `arithmetic` and `constraint` lowering;
 //! they live here to avoid verbatim duplication.
 
-use crate::definitions::GKRAddress;
 use super::super::{ArenaBuilder, ExprId, SourceKind};
 use super::map_address;
+use cs::definitions::GKRAddress;
 
 /// The `ExprId` for reading `addr`.
 ///

@@ -1,10 +1,8 @@
 use std::path::PathBuf;
 
 use cs::gkr_compiler::GKRCircuitArtifact;
-use cs::gkr_compiler::dag_ir::{
-    DagLayer, ExprId, FieldKind, RootId, lower_dag, relation_units_with_caches, validate,
-};
 use field::baby_bear::base::BabyBearField;
+use gkr_eval_ir::{DagLayer, ExprId, FieldKind, RootId, lower_dag, validate};
 
 use crate::eval_plan::{
     EvaluationGenome, EvaluationLayoutVariant, LANES_PER_STORAGE_CELL, PackConfig,
@@ -14,6 +12,7 @@ use crate::eval_plan::{
 use crate::fwd::compile::{build_cross_layer_field_map, expr_operand_field};
 use crate::fwd::context::{ForwardAction, build_forward_actions};
 use crate::fwd::isa::OperandField;
+use crate::schedule::relation_units_with_caches;
 
 use super::{
     EvaluationUnit, EvaluationUnitKey, FitnessError, adapt_forward_relations, root_key, sort_roots,
@@ -60,7 +59,7 @@ fn load_fixture(name: &str) -> GKRCircuitArtifact<BabyBearField> {
 
 fn expr_fields(
     layer: &DagLayer,
-    cross: &std::collections::HashMap<cs::gkr_compiler::dag_ir::ReadPlace, FieldKind>,
+    cross: &std::collections::HashMap<gkr_eval_ir::ReadPlace, FieldKind>,
 ) -> Vec<FieldKind> {
     (0..layer.exprs.len())
         .map(

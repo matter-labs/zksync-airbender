@@ -10,27 +10,26 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::hash::{Hash, Hasher};
 
 use cs::definitions::GKRAddress;
-use cs::gkr_compiler::dag_ir::{
-    ChallengeRef, RangeWidth, lower_dag, validate, validate_circuit_schedule,
-};
 use field::{FieldExtension, PrimeField};
+use gkr_eval_ir::{lower_dag, validate, ChallengeRef, RangeWidth};
+use gkr_eval_isa::validate_circuit_schedule;
 
 use gkr_eval_isa::fwd::binding::{
-    BackingKey, SourceMarkerMode, bind_final_sources, read_place_to_backing,
+    bind_final_sources, read_place_to_backing, BackingKey, SourceMarkerMode,
 };
-use gkr_eval_isa::fwd::compile::{CompiledCircuit, compile_circuit, load_committed_schedule};
+use gkr_eval_isa::fwd::compile::{compile_circuit, load_committed_schedule, CompiledCircuit};
 use gkr_eval_isa::fwd::context::{CompiledLayer, DagForwardContext};
 use gkr_eval_isa::fwd::encode::decode;
 use gkr_eval_isa::fwd::isa::{DstLine, Instr, LdcSub, MovDir, OperandField, OperandLine, Program};
-use gkr_eval_isa::fwd::source::{SpecialStrategy, virtual_setup_kind_code};
+use gkr_eval_isa::fwd::source::{virtual_setup_kind_code, SpecialStrategy};
 
 use super::desc::{
-    ARENA_GENERIC_FAMILY, ARENA_RANGE_CHECK_16, ARENA_TIMESTAMP, ARG_DERIVED_E4_CAP, CONST_CAP,
-    CONST_DERIVED_E4_CAP, DESC_CAP, DST_SLOT_COUNT, FILL_BANK_NONE, PROGRAM_CAP, SD_AGGREGATE,
-    SD_DECODER, SD_SETUP, SD_SINGLE_COLUMN, SD_VIRTUAL, SOURCE_WINDOW_COUNT, unpack_desc,
+    unpack_desc, ARENA_GENERIC_FAMILY, ARENA_RANGE_CHECK_16, ARENA_TIMESTAMP, ARG_DERIVED_E4_CAP,
+    CONST_CAP, CONST_DERIVED_E4_CAP, DESC_CAP, DST_SLOT_COUNT, FILL_BANK_NONE, PROGRAM_CAP,
+    SD_AGGREGATE, SD_DECODER, SD_SETUP, SD_SINGLE_COLUMN, SD_VIRTUAL, SOURCE_WINDOW_COUNT,
 };
 use super::lower::{
-    FwdVmHeaderInputs, FwdVmLowerError, ResolvedColumn, lower_layer_desc, read_place_to_gkr_address,
+    lower_layer_desc, read_place_to_gkr_address, FwdVmHeaderInputs, FwdVmLowerError, ResolvedColumn,
 };
 use crate::primitives::field::{BF, E4};
 
@@ -446,7 +445,7 @@ fn desc_overflow_is_a_hard_error() {
     for i in 0..(DESC_CAP + 1) {
         ctx.specials.push(SpecialDescriptor {
             strategy: SpecialStrategy::PeekSetup,
-            origin_expr: cs::gkr_compiler::dag_ir::ExprId(i as u32),
+            origin_expr: gkr_eval_ir::ExprId(i as u32),
         });
     }
     let cl = synthetic_layer(Program::default(), ctx);
@@ -478,7 +477,7 @@ fn program_overflow_without_fallback_context_is_an_error() {
 
 #[test]
 fn unresolved_column_is_an_error() {
-    use cs::gkr_compiler::dag_ir::ReadPlace;
+    use gkr_eval_ir::ReadPlace;
     let mut ctx = DagForwardContext::default();
     ctx.backings
         .read_slot_col(&ReadPlace::Setup { column: 3 }, OperandField::Base)
@@ -508,7 +507,7 @@ fn unresolved_column_is_an_error() {
 
 #[test]
 fn split_matrix_slot_produces_per_matrix_wire_slots() {
-    use cs::gkr_compiler::dag_ir::ReadPlace;
+    use gkr_eval_ir::ReadPlace;
     let mut ctx = DagForwardContext::default();
     // THREE dense columns of ONE compile slot: cols 0 and 2 live in matrix A
     // (at matrix cols 1 and 0 — also exercises the col renumber within a
@@ -594,7 +593,7 @@ fn split_matrix_slot_produces_per_matrix_wire_slots() {
 
 #[test]
 fn source_window_overflow_is_a_hard_error() {
-    use cs::gkr_compiler::dag_ir::ReadPlace;
+    use gkr_eval_ir::ReadPlace;
     let mut ctx = DagForwardContext::default();
     // Each source resolves into its own matrix. The 65th physical group
     // cannot get a source window.
@@ -641,7 +640,7 @@ fn source_window_overflow_is_a_hard_error() {
 
 #[test]
 fn col_remap_collision_is_a_hard_error() {
-    use cs::gkr_compiler::dag_ir::ReadPlace;
+    use gkr_eval_ir::ReadPlace;
     let mut ctx = DagForwardContext::default();
     ctx.backings
         .read_slot_col(&ReadPlace::Setup { column: 0 }, OperandField::Base)
@@ -690,7 +689,7 @@ fn col_remap_collision_is_a_hard_error() {
 
 #[test]
 fn arg_derived_e4_overflow_is_a_hard_error_and_terminates() {
-    use cs::gkr_compiler::dag_ir::{ChallengeKey, ChallengePower};
+    use gkr_eval_ir::{ChallengeKey, ChallengePower};
     let mut ctx = DagForwardContext::default();
     for i in 0..(ARG_DERIVED_E4_CAP as u32 + 1) {
         ctx.derived_e4.intern(&ChallengeRef {
@@ -760,7 +759,7 @@ fn load_compiled_with_artifact(
 
 #[test]
 fn wire_slot_census_fits_slot_count_on_all_fixtures() {
-    use gpu_gkr_model::storage_layout::{GpuGKRStorageLayout, address_storage_layer};
+    use gpu_gkr_model::storage_layout::{address_storage_layer, GpuGKRStorageLayout};
 
     let mut max_wire = 0usize;
     let mut max_at = String::new();

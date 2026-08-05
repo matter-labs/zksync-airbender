@@ -5711,7 +5711,7 @@ impl SegCell {
 
 // ── The Stage-A matrix drivers ───────────────────────────────────────────────
 
-use cs::gkr_compiler::dag_ir::BwdRegime as DagBwdRegime;
+use gkr_eval_ir::BwdRegime as DagBwdRegime;
 
 use super::seg_compile::{
     lean_coordinate, seg_coordinate_layers, ungrouped_lean_layer, ADD_SUB_LAYOUT,

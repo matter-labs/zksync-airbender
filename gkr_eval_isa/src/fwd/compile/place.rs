@@ -39,7 +39,7 @@
 
 use std::collections::HashMap;
 
-use cs::gkr_compiler::dag_ir::ExprId;
+use gkr_eval_ir::ExprId;
 
 use crate::fwd::compile::CompileError;
 use crate::fwd::isa::{LdcSub, OperandField, Sign};
@@ -369,7 +369,7 @@ pub fn plan_placement_with_peak(
 mod tests {
     use super::*; // VInstrKind, VirtualOp, VirtualInstr, PlacementInput, Placement, plan_placement
     use crate::fwd::isa::{OperandField as F, Sign};
-    use cs::gkr_compiler::dag_ir::ExprId;
+    use gkr_eval_ir::ExprId;
     use std::collections::HashMap;
 
     fn v(n: u32) -> ExprId {

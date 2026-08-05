@@ -32,16 +32,16 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
-use cs::gkr_compiler::dag_ir::{
-    DagLayer, Expr, ExprId, FieldKind, LayerSchedule, ReadPlace, RootId, SourceKind,
-};
+use gkr_eval_ir::{DagLayer, Expr, ExprId, FieldKind, ReadPlace, RootId, SourceKind};
+
+use crate::schedule::LayerSchedule;
 
 use super::super::context::{DagForwardContext, ForwardAction};
-use super::super::isa::{LdcSub, MovDir, OperandField, OperandLine, Sign, Special, MAX_ARITY};
+use super::super::isa::{LdcSub, MAX_ARITY, MovDir, OperandField, OperandLine, Sign, Special};
 use super::analyze::{analyze_layer, materialize_descriptors};
 use super::arith::{
-    child_operand_field, child_operand_field_overridden, classify_additive_child, field_from_u8,
-    is_constant_one, is_neg_one_factor, is_zero_expr, sign_from_u8, AdditiveChild,
+    AdditiveChild, child_operand_field, child_operand_field_overridden, classify_additive_child,
+    field_from_u8, is_constant_one, is_neg_one_factor, is_zero_expr, sign_from_u8,
 };
 use super::decisions::{OccurrenceStreams, SiteDecisions};
 use super::place::{VInstrKind, ValueId, VirtualInstr, VirtualOp};
@@ -347,7 +347,7 @@ struct VirtualLower<'a> {
     ctx: &'a mut DagForwardContext,
     /// Owned clone of `ctx.cross_layer_fields` so `child_operand_field` can borrow it
     /// immutably while `ctx` is mutated (interning backings/consts/derived_e4).
-    cross: HashMap<ReadPlace, cs::gkr_compiler::dag_ir::FieldKind>,
+    cross: HashMap<ReadPlace, gkr_eval_ir::FieldKind>,
     out: Vec<VInstr>,
     step_of_instr: Vec<usize>,
     cur_step: usize,
@@ -380,7 +380,7 @@ struct VirtualLower<'a> {
     /// VirtualSetup kind → interned `ctx.specials` index (dedup: ≤4 entries/layer).
     /// All `VirtualSetup { kind }` sources of the same kind evaluate to the same
     /// `virtual_setup(kind, row)`, so one descriptor per kind is value-correct.
-    virtual_setup_descs: HashMap<cs::gkr_compiler::dag_ir::VirtualSetupKind, u16>,
+    virtual_setup_descs: HashMap<gkr_eval_ir::VirtualSetupKind, u16>,
     /// Task 3 residency state driven by `SiteDecisions`/`OccurrenceStreams`. `Some` =
     /// the emitter-owned residency policy; `None` = the uncached per-step-recompute
     /// path (still the default for callers that pass no decisions). This is now the
@@ -1129,7 +1129,7 @@ impl<'a> VirtualLower<'a> {
     /// gate stays live and catches a kind/origin mispairing).
     fn intern_virtual_setup(
         &mut self,
-        kind: cs::gkr_compiler::dag_ir::VirtualSetupKind,
+        kind: gkr_eval_ir::VirtualSetupKind,
         origin_expr: ExprId,
     ) -> u16 {
         if let Some(&d) = self.virtual_setup_descs.get(&kind) {
@@ -1896,7 +1896,7 @@ impl<'a> VirtualLower<'a> {
         let lhs_op = self.lower_operand_virtual(layer, lhs, expected)?;
         let rhs_op = self.lower_operand_virtual(layer, rhs, expected)?;
         self.produce_product_into_acc(sign, lf, &lhs_op, rf, &rhs_op); // acc = ±(lhs*rhs)
-                                                                       // acc = ±(lhs*rhs) ⊕ P  (ADD commutes; `stash` is `P` at `acc_field`).
+        // acc = ±(lhs*rhs) ⊕ P  (ADD commutes; `stash` is `P` at `acc_field`).
         self.push_fold(acc_field, vec![VirtualOp::Value(stash)], true, Sign::Plus);
         Ok(())
     }
@@ -3061,9 +3061,10 @@ mod tests {
     use crate::fwd::compile::compile_circuit;
     use crate::fwd::isa::{Instr, OperandLine};
     use crate::fwd::source::SpecialStrategy;
-    use cs::gkr_compiler::dag_ir::{lower_dag, validate, CircuitSchedule};
+    use crate::schedule::CircuitSchedule;
     use cs::gkr_compiler::GKRCircuitArtifact;
     use field::baby_bear::base::BabyBearField;
+    use gkr_eval_ir::{lower_dag, validate};
     use std::path::PathBuf;
 
     fn compiled_circuit_dir() -> PathBuf {

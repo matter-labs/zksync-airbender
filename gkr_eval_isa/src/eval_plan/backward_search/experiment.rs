@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::time::{Duration, Instant};
 
-use cs::gkr_compiler::dag_ir::{BwdRegime, DagLayer, ExprId};
+use gkr_eval_ir::{DagLayer, ExprId};
 
 use crate::bwd::distill::DistilledLayer;
 use crate::bwd::plan::{plan_entries_fnv, BwdOccurrencePlan, PlanAction};
@@ -77,7 +77,7 @@ pub struct PagerRunTelemetry {
 pub struct InstanceKey {
     pub fixture: String,
     pub layer_index: usize,
-    pub regime: BwdRegime,
+    pub regime: crate::BwdRegime,
     pub budget_cells: usize,
 }
 
@@ -397,8 +397,8 @@ fn instance_sort_key(instance: &InstanceMetrics) -> (&str, usize, u8, usize) {
         &instance.key.fixture,
         instance.key.layer_index,
         match instance.key.regime {
-            BwdRegime::R0 => 0,
-            BwdRegime::Ext => 1,
+            crate::BwdRegime::R0 => 0,
+            crate::BwdRegime::Ext => 1,
         },
         instance.key.budget_cells,
     )
@@ -1808,13 +1808,13 @@ fn measurements_from_compiled(
     }
 }
 
-pub fn round_profiles(trace_len: usize, regime: BwdRegime) -> Vec<RoundProfile> {
+pub fn round_profiles(trace_len: usize, regime: crate::BwdRegime) -> Vec<RoundProfile> {
     assert!(trace_len.is_power_of_two() && trace_len >= 2);
     let rounds = trace_len.trailing_zeros() as u8;
     (0..rounds)
         .filter(|&round| match regime {
-            BwdRegime::R0 => round == 0,
-            BwdRegime::Ext => round != 0,
+            crate::BwdRegime::R0 => round == 0,
+            crate::BwdRegime::Ext => round != 0,
         })
         .map(|round| RoundProfile {
             round,
@@ -1967,7 +1967,7 @@ impl InstanceMetrics {
 fn classified_instance(
     fixture: &str,
     layer_index: usize,
-    regime: BwdRegime,
+    regime: crate::BwdRegime,
     trace_len: usize,
     budget_cells: usize,
     classification: ArmClassification,
@@ -2317,9 +2317,9 @@ mod tests {
     use std::collections::{BTreeMap, BTreeSet, HashMap};
     use std::time::Duration;
 
-    use cs::gkr_compiler::dag_ir::{
-        BatchingOrder, BwdRegime, ClaimInfo, DagLayer, Expr, ExprId, ReadPlace, Root, RootGroup,
-        RootId, RootOrigin, RootSlot, SourceId, SourceInfo, SourceKind,
+    use gkr_eval_ir::{
+        BatchingOrder, ClaimInfo, DagLayer, Expr, ExprId, ReadPlace, Root, RootGroup, RootId,
+        RootOrigin, RootSlot, SourceId, SourceInfo, SourceKind,
     };
 
     use crate::bwd::compile::FragmentBackend;
@@ -2365,8 +2365,8 @@ mod tests {
     #[test]
     fn whole_pass_rollup_sums_preweighted_totals_without_double_weighting() {
         let report = ExperimentReport::from_instances(vec![
-            report_fixture("first", BwdRegime::R0, 4, 100, Some(100), 8),
-            report_fixture("second", BwdRegime::R0, 4, 200, Some(200), 8),
+            report_fixture("first", crate::BwdRegime::R0, 4, 100, Some(100), 8),
+            report_fixture("second", crate::BwdRegime::R0, 4, 200, Some(200), 8),
         ]);
         assert_eq!(report.equal_instance.arm1.dram_bytes, 150);
         assert_eq!(report.whole_pass.corpus_rows, 8);
@@ -2376,8 +2376,8 @@ mod tests {
     #[test]
     fn rollups_expose_independent_per_arm_instance_and_row_coverage() {
         let report = ExperimentReport::from_instances(vec![
-            report_fixture("with-incumbent", BwdRegime::R0, 4, 100, Some(80), 8),
-            report_fixture("without-incumbent", BwdRegime::R0, 4, 200, None, 8),
+            report_fixture("with-incumbent", crate::BwdRegime::R0, 4, 100, Some(80), 8),
+            report_fixture("without-incumbent", crate::BwdRegime::R0, 4, 200, None, 8),
         ]);
 
         assert_eq!(report.equal_instance.arm1.computed_instances, 2);
@@ -2403,7 +2403,7 @@ mod tests {
 
     #[test]
     fn unavailable_incumbent_and_solver_capped_never_enter_percentage_denominators() {
-        let mut capped = report_fixture("capped", BwdRegime::Ext, 4, 0, Some(40), 8);
+        let mut capped = report_fixture("capped", crate::BwdRegime::Ext, 4, 0, Some(40), 8);
         capped.arm1 = super::classified_arm(
             super::ExperimentArm::ExactConstructive,
             ArmClassification::SolverCapped {
@@ -2412,7 +2412,7 @@ mod tests {
                 peak_states: 1,
             },
         );
-        let mut unavailable = report_fixture("unavailable", BwdRegime::Ext, 4, 20, None, 8);
+        let mut unavailable = report_fixture("unavailable", crate::BwdRegime::Ext, 4, 20, None, 8);
         unavailable.classification = ArmClassification::Trivial {
             reason: "uncomputed fixture",
         };
@@ -2421,7 +2421,7 @@ mod tests {
             unavailable.classification.clone(),
         );
         let report = ExperimentReport::from_instances(vec![
-            report_fixture("comparable", BwdRegime::Ext, 4, 30, Some(40), 8),
+            report_fixture("comparable", crate::BwdRegime::Ext, 4, 30, Some(40), 8),
             unavailable,
             capped,
         ]);
@@ -2432,8 +2432,22 @@ mod tests {
     #[test]
     fn matching_incumbent_counts_matching_budget_provenance_not_score_equality() {
         let report = ExperimentReport::from_instances(vec![
-            report_fixture("different-score-c4", BwdRegime::R0, 4, 30, Some(40), 8),
-            report_fixture("non-production-c2", BwdRegime::R0, 2, 30, Some(40), 8),
+            report_fixture(
+                "different-score-c4",
+                crate::BwdRegime::R0,
+                4,
+                30,
+                Some(40),
+                8,
+            ),
+            report_fixture(
+                "non-production-c2",
+                crate::BwdRegime::R0,
+                2,
+                30,
+                Some(40),
+                8,
+            ),
         ]);
         assert_eq!(report.counts_by_budget[&4].matching_incumbent, 1);
         assert_eq!(report.counts_by_budget[&2].matching_incumbent, 0);
@@ -2444,7 +2458,7 @@ mod tests {
     fn uncached_and_incumbent_sections_render_their_comparisons() {
         let report = ExperimentReport::from_instances(vec![report_fixture(
             "comparable",
-            BwdRegime::R0,
+            crate::BwdRegime::R0,
             4,
             30,
             Some(40),
@@ -2457,7 +2471,7 @@ mod tests {
 
     #[test]
     fn telemetry_renders_pager_calls_and_detailed_certificate_counters() {
-        let mut instance = report_fixture("telemetry", BwdRegime::R0, 4, 30, Some(40), 8);
+        let mut instance = report_fixture("telemetry", crate::BwdRegime::R0, 4, 30, Some(40), 8);
         instance.arm1.pager.calls = 7;
         instance.arm1.measurements.as_mut().unwrap().certificate =
             Some(super::CertificateMetrics {
@@ -2481,7 +2495,7 @@ mod tests {
     fn primary_telemetry_renders_missing_certificate_as_unavailable() {
         let report = ExperimentReport::from_instances(vec![report_fixture(
             "uncertified-incumbent",
-            BwdRegime::R0,
+            crate::BwdRegime::R0,
             4,
             30,
             Some(40),
@@ -2503,11 +2517,11 @@ mod tests {
     #[test]
     fn report_round_profiles_match_r0_and_ext_logical_row_evaluations() {
         assert_eq!(
-            round_profiles(8, BwdRegime::R0),
+            round_profiles(8, crate::BwdRegime::R0),
             vec![RoundProfile { round: 0, rows: 4 }]
         );
         assert_eq!(
-            round_profiles(8, BwdRegime::Ext),
+            round_profiles(8, crate::BwdRegime::Ext),
             vec![
                 RoundProfile { round: 1, rows: 2 },
                 RoundProfile { round: 2, rows: 1 },
@@ -2517,15 +2531,15 @@ mod tests {
 
     fn synthetic_report() -> ExperimentReport {
         ExperimentReport::from_instances(vec![
-            report_fixture("feasible-c2", BwdRegime::R0, 2, 10, None, 8),
-            report_fixture("feasible-c3", BwdRegime::R0, 3, 10, None, 8),
-            report_fixture("feasible-c4", BwdRegime::R0, 4, 10, Some(10), 8),
+            report_fixture("feasible-c2", crate::BwdRegime::R0, 2, 10, None, 8),
+            report_fixture("feasible-c3", crate::BwdRegime::R0, 3, 10, None, 8),
+            report_fixture("feasible-c4", crate::BwdRegime::R0, 4, 10, Some(10), 8),
         ])
     }
 
     fn report_fixture(
         fixture: &str,
-        regime: BwdRegime,
+        regime: crate::BwdRegime,
         budget_cells: usize,
         arm1_dram_bytes: u128,
         incumbent_dram_bytes: Option<u128>,
@@ -3078,7 +3092,7 @@ mod tests {
 
     fn synthetic_fixture() -> (DagLayer, DistilledLayer) {
         let layer = synthetic_two_shared_sources_layer();
-        let distilled = distill(&layer, BwdRegime::Ext, &HashMap::new(), None);
+        let distilled = distill(&layer, crate::BwdRegime::Ext, &HashMap::new(), None);
         (layer, distilled)
     }
 
@@ -3122,7 +3136,7 @@ mod tests {
             roots: vec![claim_root(root, 0)],
             resolutions: BTreeMap::new(),
         };
-        let distilled = distill(&layer, BwdRegime::Ext, &HashMap::new(), None);
+        let distilled = distill(&layer, crate::BwdRegime::Ext, &HashMap::new(), None);
         (layer, distilled)
     }
 

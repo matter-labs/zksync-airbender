@@ -109,9 +109,10 @@ mod tests {
     use super::*;
     use std::path::PathBuf;
 
+    use crate::schedule::CircuitSchedule;
     use cs::gkr_compiler::GKRCircuitArtifact;
-    use cs::gkr_compiler::dag_ir::{CircuitSchedule, lower_dag, validate};
     use field::baby_bear::base::BabyBearField;
+    use gkr_eval_ir::{lower_dag, validate};
 
     use crate::fwd::compile::compile_circuit;
     use crate::fwd::context::CompiledLayer;

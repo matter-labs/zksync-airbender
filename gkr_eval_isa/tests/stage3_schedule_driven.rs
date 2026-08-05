@@ -6,11 +6,11 @@
 //! `mod common`.
 
 mod common;
-use common::{load_dag_sched, resolvers, sample_rows, schedule_path, SyntheticResolvers};
+use common::{SyntheticResolvers, load_dag_sched, resolvers, sample_rows, schedule_path};
 
-use cs::gkr_compiler::dag_ir::CircuitSchedule;
 use cs::gkr_compiler::GKRCircuitArtifact;
 use field::baby_bear::base::BabyBearField;
+use gkr_eval_isa::CircuitSchedule;
 use gkr_eval_isa::fwd::compile::decisions::SiteDecisions;
 use gkr_eval_isa::fwd::compile::{
     build_cross_layer_field_map, compile_circuit, compile_layer, layer_needs_compile,
@@ -25,8 +25,10 @@ use gkr_eval_isa::fwd::interp::interpret_layer_row;
 fn compile_circuit_rejects_stale_sites() {
     // COMMITTED_CORPUS[0]: fixture name INCLUDES `.json`, stem does not (common::load_fixture
     // vs common::schedule_path contracts — tests/common/mod.rs:105-115).
-    let (dag, mut sched, artifact) =
-        load_committed("add_sub_lui_auipc_mop_layout_gkr.json", "add_sub_lui_auipc_mop");
+    let (dag, mut sched, artifact) = load_committed(
+        "add_sub_lui_auipc_mop_layout_gkr.json",
+        "add_sub_lui_auipc_mop",
+    );
     let li = sched
         .layers
         .iter()
@@ -35,7 +37,10 @@ fn compile_circuit_rejects_stale_sites() {
     sched.layers[li].sites.pop();
     match compile_circuit(&dag, &sched, &artifact) {
         Err(CompileError::InvalidSchedule(msg)) => {
-            assert!(msg.contains("site"), "validator message should name the site domain: {msg}")
+            assert!(
+                msg.contains("site"),
+                "validator message should name the site domain: {msg}"
+            )
         }
         other => panic!("expected InvalidSchedule, got {other:?}"),
     }
@@ -62,11 +67,23 @@ fn load_committed_schedule_roundtrip_and_missing() {
 /// schedule stem differs from the fixture stem only for `inits_and_teardowns`
 /// (fixture: `..._preprocessed_layout_gkr.json`, schedule: `inits_and_teardowns`).
 const COMMITTED_CORPUS: &[(&str, &str)] = &[
-    ("add_sub_lui_auipc_mop_layout_gkr.json", "add_sub_lui_auipc_mop"),
-    ("bigint_with_extended_control_layout_gkr.json", "bigint_with_extended_control"),
+    (
+        "add_sub_lui_auipc_mop_layout_gkr.json",
+        "add_sub_lui_auipc_mop",
+    ),
+    (
+        "bigint_with_extended_control_layout_gkr.json",
+        "bigint_with_extended_control",
+    ),
     ("blake2_g_function_layout_gkr.json", "blake2_g_function"),
-    ("blake2_with_extended_control_layout_gkr.json", "blake2_with_extended_control"),
-    ("inits_and_teardowns_preprocessed_layout_gkr.json", "inits_and_teardowns"),
+    (
+        "blake2_with_extended_control_layout_gkr.json",
+        "blake2_with_extended_control",
+    ),
+    (
+        "inits_and_teardowns_preprocessed_layout_gkr.json",
+        "inits_and_teardowns",
+    ),
     ("jump_branch_slt_layout_gkr.json", "jump_branch_slt"),
     ("keccak_special5_layout_gkr.json", "keccak_special5"),
     ("mem_subword_only_layout_gkr.json", "mem_subword_only"),
@@ -168,30 +185,38 @@ fn tracker_admission_implies_placement_feasible_on_committed_corpus() {
 mod task8_nested_shapes {
     use std::collections::{BTreeMap, HashMap};
 
-    use cs::gkr_compiler::dag_ir::{
-        eval_layer_root, BatchingOrder, ClaimInfo, DagLayer, Expr, ExprId, FieldKind,
-        LayerSchedule, ReadPlace, Root, RootGroup, RootId, RootOrigin, RootSlot, SinkInfo,
-        SinkKind, SourceId, SourceInfo, SourceKind,
-    };
     use cs::gkr_compiler::{
         GKRLayerDescription, GateArtifacts, NoFieldGKRRelation, NoFieldMaxQuadraticGKRRelation,
         NoFieldStructuredExpression,
     };
+    use gkr_eval_ir::{
+        BatchingOrder, ClaimInfo, DagLayer, Expr, ExprId, FieldKind, ReadPlace, Root, RootGroup,
+        RootId, RootOrigin, RootSlot, SinkInfo, SinkKind, SourceId, SourceInfo, SourceKind,
+        eval_layer_root,
+    };
+    use gkr_eval_isa::LayerSchedule;
 
     use gkr_eval_isa::fwd::compile::compile_layer;
     use gkr_eval_isa::fwd::interp::interpret_layer_row;
 
-    use crate::common::{resolvers, SyntheticResolvers};
+    use crate::common::{SyntheticResolvers, resolvers};
 
     fn witness(col: usize) -> SourceInfo {
-        SourceInfo { kind: SourceKind::Read { place: ReadPlace::BaseLayerWitness { column: col } } }
+        SourceInfo {
+            kind: SourceKind::Read {
+                place: ReadPlace::BaseLayerWitness { column: col },
+            },
+        }
     }
 
     /// An atom (Output+claim) root over `expr`, materialized to `Export { slot }`.
     fn atom_root(expr: ExprId, slot: usize) -> Root {
         Root {
             expr,
-            materialize: Some(SinkInfo { kind: SinkKind::Export { slot }, field: FieldKind::Base }),
+            materialize: Some(SinkInfo {
+                kind: SinkKind::Export { slot },
+                field: FieldKind::Base,
+            }),
             claim: Some(ClaimInfo {
                 origin: RootOrigin {
                     group: RootGroup::Gates,
@@ -215,7 +240,10 @@ mod task8_nested_shapes {
         };
         GKRLayerDescription {
             layer: 0,
-            gates: vec![GateArtifacts { output_layer: 0, enforced_relation: relation }],
+            gates: vec![GateArtifacts {
+                output_layer: 0,
+                enforced_relation: relation,
+            }],
             gates_with_external_connections: vec![],
             cached_relations: BTreeMap::new(),
             intermediate_layer_width: None,
@@ -229,7 +257,7 @@ mod task8_nested_shapes {
     /// `atom_roots` (these tests' roots all share `(Gates, 0)`, so this matches the
     /// canonical single-unit decomposition), giving `atom_order() == order`.
     fn trivial_schedule(order: Vec<RootId>) -> LayerSchedule {
-        use cs::gkr_compiler::dag_ir::RelationUnit;
+        use gkr_eval_isa::RelationUnit;
         let units = if order.is_empty() {
             vec![]
         } else {
@@ -240,7 +268,12 @@ mod task8_nested_shapes {
                 cache_roots: vec![],
             }]
         };
-        LayerSchedule { units, sites: vec![], predicted_traffic: 0, floor: 0 }
+        LayerSchedule {
+            units,
+            sites: vec![],
+            predicted_traffic: 0,
+            floor: 0,
+        }
     }
 
     /// Compile `layer` under `decisions: None` and assert every exposed root's
@@ -273,13 +306,15 @@ mod task8_nested_shapes {
             exprs: vec![
                 Expr::Source(SourceId(0)),             // 0 = x
                 Expr::Source(SourceId(1)),             // 1 = y
-                Expr::Source(SourceId(2)),              // 2 = z
-                Expr::Add(vec![ExprId(0), ExprId(1)]),  // 3 = xy = x + y   (shared)
-                Expr::Add(vec![ExprId(3), ExprId(2)]),  // 4 = rootA = xy + z
-                Expr::Mul(vec![ExprId(3), ExprId(3)]),  // 5 = rootB = xy * xy
+                Expr::Source(SourceId(2)),             // 2 = z
+                Expr::Add(vec![ExprId(0), ExprId(1)]), // 3 = xy = x + y   (shared)
+                Expr::Add(vec![ExprId(3), ExprId(2)]), // 4 = rootA = xy + z
+                Expr::Mul(vec![ExprId(3), ExprId(3)]), // 5 = rootB = xy * xy
             ],
             roots: vec![atom_root(ExprId(4), 0), atom_root(ExprId(5), 1)],
-            batching: BatchingOrder { roots: vec![RootId(0), RootId(1)] },
+            batching: BatchingOrder {
+                roots: vec![RootId(0), RootId(1)],
+            },
             resolutions: BTreeMap::new(),
         };
         let sched = trivial_schedule(vec![RootId(0), RootId(1)]);
@@ -295,13 +330,15 @@ mod task8_nested_shapes {
             exprs: vec![
                 Expr::Source(SourceId(0)),             // 0 = x
                 Expr::Source(SourceId(1)),             // 1 = y
-                Expr::Source(SourceId(2)),              // 2 = z
-                Expr::Mul(vec![ExprId(0), ExprId(1)]),  // 3 = xy = x * y   (shared)
-                Expr::Mul(vec![ExprId(3), ExprId(2)]),  // 4 = rootA = xy * z
-                Expr::Add(vec![ExprId(3), ExprId(3)]),  // 5 = rootB = xy + xy
+                Expr::Source(SourceId(2)),             // 2 = z
+                Expr::Mul(vec![ExprId(0), ExprId(1)]), // 3 = xy = x * y   (shared)
+                Expr::Mul(vec![ExprId(3), ExprId(2)]), // 4 = rootA = xy * z
+                Expr::Add(vec![ExprId(3), ExprId(3)]), // 5 = rootB = xy + xy
             ],
             roots: vec![atom_root(ExprId(4), 0), atom_root(ExprId(5), 1)],
-            batching: BatchingOrder { roots: vec![RootId(0), RootId(1)] },
+            batching: BatchingOrder {
+                roots: vec![RootId(0), RootId(1)],
+            },
             resolutions: BTreeMap::new(),
         };
         let sched = trivial_schedule(vec![RootId(0), RootId(1)]);
@@ -321,7 +358,11 @@ mod task8_nested_shapes {
         let layer = DagLayer {
             sources: vec![
                 witness(0),
-                SourceInfo { kind: SourceKind::Constant { value: BABYBEAR_NEG_ONE } },
+                SourceInfo {
+                    kind: SourceKind::Constant {
+                        value: BABYBEAR_NEG_ONE,
+                    },
+                },
             ],
             exprs: vec![
                 Expr::Source(SourceId(0)),             // 0 = x
@@ -329,7 +370,9 @@ mod task8_nested_shapes {
                 Expr::Mul(vec![ExprId(1), ExprId(0)]), // 2 = root = (-1) * x
             ],
             roots: vec![atom_root(ExprId(2), 0)],
-            batching: BatchingOrder { roots: vec![RootId(0)] },
+            batching: BatchingOrder {
+                roots: vec![RootId(0)],
+            },
             resolutions: BTreeMap::new(),
         };
         let sched = trivial_schedule(vec![RootId(0)]);
@@ -344,7 +387,12 @@ mod task8_nested_shapes {
             .expect("compile_layer");
         let mut negates = 0usize;
         for instr in &compiled.program.instrs {
-            if let Instr::Mul { operands, negate_acc, .. } = instr {
+            if let Instr::Mul {
+                operands,
+                negate_acc,
+                ..
+            } = instr
+            {
                 if *negate_acc {
                     negates += 1;
                     assert!(operands.is_empty(), "negate-acc Mul must be zero-arity");
@@ -360,7 +408,10 @@ mod task8_nested_shapes {
                 );
             }
         }
-        assert_eq!(negates, 1, "the (-1)*x root must negate exactly once via Mul{{negate_acc}}");
+        assert_eq!(
+            negates, 1,
+            "the (-1)*x root must negate exactly once via Mul{{negate_acc}}"
+        );
     }
 }
 
@@ -376,13 +427,13 @@ mod task8_nested_shapes {
 fn compile_circuit_loads_validates_and_compiles_all_layers() {
     let name = "add_sub_lui_auipc_mop_layout_gkr.json";
     let artifact = common::load_fixture(name);
-    let dag = cs::gkr_compiler::dag_ir::lower_dag(&artifact).unwrap();
-    cs::gkr_compiler::dag_ir::validate(&dag).unwrap();
-    let sched: cs::gkr_compiler::dag_ir::CircuitSchedule = serde_json::from_reader(
+    let dag = gkr_eval_ir::lower_dag(&artifact).unwrap();
+    gkr_eval_ir::validate(&dag).unwrap();
+    let sched: gkr_eval_isa::CircuitSchedule = serde_json::from_reader(
         std::fs::File::open(schedule_path("add_sub_lui_auipc_mop")).unwrap(),
     )
     .unwrap();
-    cs::gkr_compiler::dag_ir::validate_circuit_schedule(&dag, &sched).unwrap();
+    gkr_eval_isa::validate_circuit_schedule(&dag, &sched).unwrap();
     let compiled = compile_circuit(&dag, &sched, &artifact).unwrap();
     assert_eq!(compiled.layers.len(), dag.layers.len());
     assert_eq!(compiled.budget, 16);
@@ -409,8 +460,7 @@ fn schedule_driven_compile_matches_eval_oracle_add_sub() {
             let outs = interpret_layer_row(cl, layer, &resolvers(&sr), row).unwrap();
             for (rid, _) in &cl.root_outputs {
                 let got = outs.by_root[rid];
-                let want =
-                    cs::gkr_compiler::dag_ir::eval_layer_root(layer, *rid, row, &resolvers(&sr));
+                let want = gkr_eval_ir::eval_layer_root(layer, *rid, row, &resolvers(&sr));
                 assert_eq!(got, want, "{name} L{li} root {rid:?} row {row}");
                 checks += 1;
             }
@@ -423,14 +473,18 @@ fn schedule_driven_compile_matches_eval_oracle_add_sub() {
 fn load_committed(
     name: &str,
     stem: &str,
-) -> (cs::gkr_compiler::dag_ir::DagCircuit, CircuitSchedule, GKRCircuitArtifact<BabyBearField>) {
+) -> (
+    gkr_eval_ir::DagCircuit,
+    CircuitSchedule,
+    GKRCircuitArtifact<BabyBearField>,
+) {
     let artifact = common::load_fixture(name);
-    let dag = cs::gkr_compiler::dag_ir::lower_dag(&artifact)
-        .unwrap_or_else(|e| panic!("[{name}] lower_dag: {e}"));
-    cs::gkr_compiler::dag_ir::validate(&dag).unwrap_or_else(|e| panic!("[{name}] validate: {e}"));
+    let dag =
+        gkr_eval_ir::lower_dag(&artifact).unwrap_or_else(|e| panic!("[{name}] lower_dag: {e}"));
+    gkr_eval_ir::validate(&dag).unwrap_or_else(|e| panic!("[{name}] validate: {e}"));
     let sched = gkr_eval_isa::fwd::compile::load_committed_schedule(&schedule_path(stem))
         .unwrap_or_else(|e| panic!("[{name}] load_committed_schedule {stem}: {e:?}"));
-    cs::gkr_compiler::dag_ir::validate_circuit_schedule(&dag, &sched)
+    gkr_eval_isa::validate_circuit_schedule(&dag, &sched)
         .unwrap_or_else(|e| panic!("[{name}] validate_circuit_schedule: {e}"));
     (dag, sched, artifact)
 }
@@ -450,7 +504,11 @@ fn all_committed_schedules_compile_and_match_oracle() {
         let (dag, sched, artifact) = load_committed(name, stem);
         let compiled = compile_circuit(&dag, &sched, &artifact)
             .unwrap_or_else(|e| panic!("[{name}] compile_circuit: {e:?}"));
-        assert_eq!(compiled.layers.len(), dag.layers.len(), "{name} layer count");
+        assert_eq!(
+            compiled.layers.len(),
+            dag.layers.len(),
+            "{name} layer count"
+        );
 
         let n = dag.globals.trace_len;
         for (li, layer) in dag.layers.iter().enumerate() {
@@ -463,17 +521,23 @@ fn all_committed_schedules_compile_and_match_oracle() {
                     .unwrap_or_else(|e| panic!("[{name}] L{li} row {row} interp: {e:?}"));
                 for (rid, _) in &cl.root_outputs {
                     let got = outs.by_root[rid];
-                    let want =
-                        cs::gkr_compiler::dag_ir::eval_layer_root(layer, *rid, row, &resolvers(&sr));
+                    let want = gkr_eval_ir::eval_layer_root(layer, *rid, row, &resolvers(&sr));
                     assert_eq!(got, want, "{name} L{li} root {rid:?} row {row}");
                     total_checks += 1;
                 }
             }
         }
         passed += 1;
-        eprintln!("[stage3-parity] {name}: OK ({} layers)", compiled.layers.len());
+        eprintln!(
+            "[stage3-parity] {name}: OK ({} layers)",
+            compiled.layers.len()
+        );
     }
-    assert_eq!(passed, COMMITTED_CORPUS.len(), "all committed schedules must compile + match");
+    assert_eq!(
+        passed,
+        COMMITTED_CORPUS.len(),
+        "all committed schedules must compile + match"
+    );
     assert!(total_checks > 0, "vacuous");
     eprintln!(
         "[stage3-parity] {passed}/{} fixtures, {total_checks} root checks",

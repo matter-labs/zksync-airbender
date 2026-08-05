@@ -3,8 +3,8 @@
 use super::context::{CompiledLayer, DagForwardContext, OutputCell, RootOutput, RowOutputs};
 use super::error::InterpError;
 use super::isa::*;
-use cs::gkr_compiler::dag_ir::{Bf, DagLayer, Ext, ReadPlace, Resolvers, eval_layer_expr};
 use field::{Field, FieldExtension, PrimeField};
+use gkr_eval_ir::{Bf, DagLayer, Ext, ReadPlace, Resolvers, eval_layer_expr};
 use std::collections::HashMap;
 
 #[inline]
@@ -353,7 +353,7 @@ mod tests {
     use crate::fwd::isa::*;
     use crate::fwd::source::{ConstBank, SpecialTable};
     use crate::fwd::stats::CompileStats;
-    use cs::gkr_compiler::dag_ir::{
+    use gkr_eval_ir::{
         BatchingOrder, ChallengeRef, DagLayer, Ext, ReadPlace, Resolvers, RootId, VirtualSetupKind,
     };
     use std::collections::BTreeMap;
@@ -362,7 +362,7 @@ mod tests {
 
     /// Returns `lift(Bf::from_u32_with_reduction(col + row))`.
     struct ColPlusRowReadResolver;
-    impl cs::gkr_compiler::dag_ir::ReadResolver for ColPlusRowReadResolver {
+    impl gkr_eval_ir::ReadResolver for ColPlusRowReadResolver {
         fn read(&self, place: &ReadPlace, row: usize) -> Ext {
             let col = match *place {
                 ReadPlace::BaseLayerMemory { column } => column,
@@ -377,10 +377,10 @@ mod tests {
     }
 
     struct ZeroLookupResolver;
-    impl cs::gkr_compiler::dag_ir::LookupResolver for ZeroLookupResolver {
+    impl gkr_eval_ir::LookupResolver for ZeroLookupResolver {
         fn lookup(
             &self,
-            _kind: &cs::gkr_compiler::dag_ir::LookupValueKind,
+            _kind: &gkr_eval_ir::LookupValueKind,
             _set_index: usize,
             _evaluated_query: Ext,
             _row: usize,
@@ -390,14 +390,14 @@ mod tests {
     }
 
     struct ZeroVirtualSetupResolver;
-    impl cs::gkr_compiler::dag_ir::VirtualSetupResolver for ZeroVirtualSetupResolver {
+    impl gkr_eval_ir::VirtualSetupResolver for ZeroVirtualSetupResolver {
         fn virtual_setup(&self, _kind: &VirtualSetupKind, _row: usize) -> Bf {
             Bf::ZERO
         }
     }
 
     struct FixedChallengeResolver(Ext);
-    impl cs::gkr_compiler::dag_ir::ChallengeResolver for FixedChallengeResolver {
+    impl gkr_eval_ir::ChallengeResolver for FixedChallengeResolver {
         fn challenge(&self, _r: &ChallengeRef) -> Ext {
             self.0
         }
@@ -416,8 +416,8 @@ mod tests {
     }
 
     fn make_resolvers<'a>(
-        read: &'a dyn cs::gkr_compiler::dag_ir::ReadResolver,
-        challenge: &'a dyn cs::gkr_compiler::dag_ir::ChallengeResolver,
+        read: &'a dyn gkr_eval_ir::ReadResolver,
+        challenge: &'a dyn gkr_eval_ir::ChallengeResolver,
     ) -> Resolvers<'a> {
         Resolvers {
             read,
@@ -789,7 +789,7 @@ mod tests {
     /// the result must equal lift(2) + challenge exactly.
     #[test]
     fn promote_lifts_base_acc() {
-        use cs::gkr_compiler::dag_ir::{ChallengeKey, ChallengePower, ChallengeRef};
+        use gkr_eval_ir::{ChallengeKey, ChallengePower, ChallengeRef};
         let alpha_ref = ChallengeRef {
             key: ChallengeKey::LookupAdditive,
             power: ChallengePower::One,
@@ -864,7 +864,7 @@ mod tests {
     #[test]
     fn base_acc_plus_ext_challenge_add() {
         // We need a challenge in the bank.
-        use cs::gkr_compiler::dag_ir::{ChallengeKey, ChallengePower, ChallengeRef};
+        use gkr_eval_ir::{ChallengeKey, ChallengePower, ChallengeRef};
         let alpha_ref = ChallengeRef {
             key: ChallengeKey::LookupAdditive,
             power: ChallengePower::One,
@@ -991,7 +991,7 @@ mod tests {
     /// The descriptor side-table has one entry (PeekSetup, origin_expr = ExprId(0)).
     fn compiled_mov_acc_from_special_desc0() -> (CompiledLayer, DagLayer) {
         use crate::fwd::source::{SpecialDescriptor, SpecialStrategy};
-        use cs::gkr_compiler::dag_ir::ExprId;
+        use gkr_eval_ir::ExprId;
 
         let mut specials = crate::fwd::source::SpecialTable::default();
         specials.push(SpecialDescriptor {

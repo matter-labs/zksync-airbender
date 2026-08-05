@@ -15,7 +15,7 @@
 //! edges) and returns every value the emitter could plausibly want to cache — the
 //! validator uses it to catch a schedule gone stale under DAG drift (§ check b).
 
-use crate::gkr_compiler::dag_ir::{ExprId, FieldKind, RootId};
+use gkr_eval_ir::{ExprId, FieldKind, RootId};
 
 /// One scheduled circuit at one budget. `layers` is index-aligned with `DagCircuit.layers`.
 ///
@@ -69,21 +69,28 @@ impl LayerSchedule {
     /// in unit (execution) order. This is exactly the sequence the emitter
     /// consumes and equals the pre-Phase-1 flat `order` field.
     pub fn atom_order(&self) -> Vec<RootId> {
-        self.units.iter().flat_map(|u| u.atom_roots.iter().copied()).collect()
+        self.units
+            .iter()
+            .flat_map(|u| u.atom_roots.iter().copied())
+            .collect()
     }
 }
 
 /// Identity of one demand site: a specific consumer's specific operand slot (or a
 /// root's own output) demanding `value`. Mirrors `gkr_eval_isa`'s `decisions.rs`
 /// copy exactly (Task 6 unifies them; cs is the source of truth going forward).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
+)]
 pub struct SiteKey {
     pub root: RootId,
     pub consumer: SiteConsumer,
     pub value: ExprId,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
+)]
 pub enum SiteConsumer {
     Expr { expr: ExprId, input_index: u32 },
     RootOutput,
@@ -103,7 +110,7 @@ pub fn field_cells(field: FieldKind) -> usize {
 // this with search-only ordering/grouping rather than duplicating it.
 // ─────────────────────────────────────────────────────────────────────────────────
 
-use crate::gkr_compiler::dag_ir::{DagCircuit, DagLayer, Expr, RootGroup, SinkKind, SourceKind};
+use gkr_eval_ir::{DagCircuit, DagLayer, Expr, RootGroup, SinkKind, SourceKind};
 use std::collections::{BTreeSet, HashSet};
 
 /// Every structural demand site in `layer`: per atom-root occurrence, walk Add/Mul
@@ -168,7 +175,11 @@ pub fn enumerate_site_domain(layer: &DagLayer) -> BTreeSet<SiteKey> {
         }
         let rid = RootId(i as u32);
         if is_site(layer, &consumers, root.expr) {
-            out.insert(SiteKey { root: rid, consumer: SiteConsumer::RootOutput, value: root.expr });
+            out.insert(SiteKey {
+                root: rid,
+                consumer: SiteConsumer::RootOutput,
+                value: root.expr,
+            });
         }
         walk_demand(layer, &consumers, rid, root.expr, &mut visited, &mut out);
     }
@@ -229,7 +240,10 @@ fn push_if_site(
     if is_site(layer, consumers, value) {
         out.insert(SiteKey {
             root,
-            consumer: SiteConsumer::Expr { expr: consumer_expr, input_index },
+            consumer: SiteConsumer::Expr {
+                expr: consumer_expr,
+                input_index,
+            },
             value,
         });
     }
@@ -253,7 +267,10 @@ fn is_cacheable(layer: &DagLayer, value: ExprId) -> bool {
     match &layer.exprs[value.0 as usize] {
         Expr::Add(_) | Expr::Mul(_) => true,
         Expr::Source(src_id) => {
-            matches!(layer.sources[src_id.0 as usize].kind, SourceKind::Read { .. })
+            matches!(
+                layer.sources[src_id.0 as usize].kind,
+                SourceKind::Read { .. }
+            )
         }
     }
 }
@@ -286,7 +303,9 @@ pub fn relation_units_with_caches(layer: &DagLayer) -> Result<Vec<RelationUnit>,
         if root.materialize.is_none() {
             continue;
         }
-        let Some(claim) = root.claim.as_ref() else { continue };
+        let Some(claim) = root.claim.as_ref() else {
+            continue;
+        };
         let key = (claim.origin.group.clone(), claim.origin.relation_index);
         let idx = *key_to_unit.entry(key.clone()).or_insert_with(|| {
             units.push(RelationUnit {
@@ -308,8 +327,10 @@ pub fn relation_units_with_caches(layer: &DagLayer) -> Result<Vec<RelationUnit>,
     // fence resolution cones like enumerate_site_domain, schedule.rs:166-173). A
     // cache reachable only under a resolution-fenced cone is still owned by that
     // relation for provenance (locked by a Step-6 unit test). See codex-P5.
-    let reach: Vec<HashSet<ExprId>> =
-        units.iter().map(|u| relation_reachable_exprs(layer, &u.atom_roots)).collect();
+    let reach: Vec<HashSet<ExprId>> = units
+        .iter()
+        .map(|u| relation_reachable_exprs(layer, &u.atom_roots))
+        .collect();
 
     // Assign each Cache root to its unique same-layer consuming relation.
     for (i, root) in layer.roots.iter().enumerate() {
@@ -321,7 +342,9 @@ pub fn relation_units_with_caches(layer: &DagLayer) -> Result<Vec<RelationUnit>,
             continue;
         }
         let e = root.expr;
-        let owners: Vec<usize> = (0..units.len()).filter(|&u| reach[u].contains(&e)).collect();
+        let owners: Vec<usize> = (0..units.len())
+            .filter(|&u| reach[u].contains(&e))
+            .collect();
         match owners.as_slice() {
             [u] => units[*u].cache_roots.push(RootId(i as u32)),
             [] => {
@@ -329,7 +352,7 @@ pub fn relation_units_with_caches(layer: &DagLayer) -> Result<Vec<RelationUnit>,
                     "unsupported: cache root {} (expr {}) has no same-layer consuming relation \
                      (cache-only or cross-layer ownership is not representable in Phase 1)",
                     i, e.0
-                ))
+                ));
             }
             many => {
                 return Err(format!(
@@ -338,7 +361,7 @@ pub fn relation_units_with_caches(layer: &DagLayer) -> Result<Vec<RelationUnit>,
                     i,
                     e.0,
                     many.len()
-                ))
+                ));
             }
         }
     }
@@ -350,8 +373,10 @@ pub fn relation_units_with_caches(layer: &DagLayer) -> Result<Vec<RelationUnit>,
 /// atom-root exprs themselves. Deterministic; no scoring/schedule state.
 fn relation_reachable_exprs(layer: &DagLayer, atom_roots: &[RootId]) -> HashSet<ExprId> {
     let mut seen: HashSet<ExprId> = HashSet::new();
-    let mut stack: Vec<ExprId> =
-        atom_roots.iter().map(|&r| layer.roots[r.0 as usize].expr).collect();
+    let mut stack: Vec<ExprId> = atom_roots
+        .iter()
+        .map(|&r| layer.roots[r.0 as usize].expr)
+        .collect();
     while let Some(e) = stack.pop() {
         if !seen.insert(e) {
             continue;
@@ -363,7 +388,8 @@ fn relation_reachable_exprs(layer: &DagLayer, atom_roots: &[RootId]) -> HashSet<
                 }
             }
             Expr::Source(src_id) => {
-                if let SourceKind::LookupValue { query, .. } = &layer.sources[src_id.0 as usize].kind
+                if let SourceKind::LookupValue { query, .. } =
+                    &layer.sources[src_id.0 as usize].kind
                 {
                     stack.push(*query);
                 }
@@ -385,7 +411,10 @@ fn relation_reachable_exprs(layer: &DagLayer, atom_roots: &[RootId]) -> HashSet<
 ///     staleness `Err` in both directions);
 /// (c) every stored priority is finite;
 /// (d) `floor <= predicted_traffic`.
-pub fn validate_circuit_schedule(circuit: &DagCircuit, sched: &CircuitSchedule) -> Result<(), String> {
+pub fn validate_circuit_schedule(
+    circuit: &DagCircuit,
+    sched: &CircuitSchedule,
+) -> Result<(), String> {
     if sched.layers.len() != circuit.layers.len() {
         return Err(format!(
             "schedule has {} layers, circuit has {}",
@@ -405,8 +434,10 @@ fn validate_layer_schedule(layer: &DagLayer, ls: &LayerSchedule) -> Result<(), S
     // (a4 also fires here if a stored schedule references an unsupported cache class.)
     // NOTE: RootGroup is Hash+Eq but NOT Ord (model.rs:176-180) — use HashMap, not BTreeMap.
     use std::collections::HashMap;
-    let canon_by_id: HashMap<(RootGroup, usize), &RelationUnit> =
-        canonical.iter().map(|u| ((u.group.clone(), u.relation_index), u)).collect();
+    let canon_by_id: HashMap<(RootGroup, usize), &RelationUnit> = canonical
+        .iter()
+        .map(|u| ((u.group.clone(), u.relation_index), u))
+        .collect();
 
     // (a1) identity coverage: stored unit identities == canonical identities, no dup.
     let mut seen_ids: HashMap<(RootGroup, usize), ()> = HashMap::new();
@@ -447,7 +478,10 @@ fn validate_layer_schedule(layer: &DagLayer, ls: &LayerSchedule) -> Result<(), S
     let mut stored: BTreeSet<SiteKey> = BTreeSet::new();
     for (k, _) in &ls.sites {
         if !stored.insert(*k) {
-            return Err(format!("sites has a duplicate SiteKey for value {}", k.value.0));
+            return Err(format!(
+                "sites has a duplicate SiteKey for value {}",
+                k.value.0
+            ));
         }
     }
     let domain = enumerate_site_domain(layer);
@@ -465,7 +499,10 @@ fn validate_layer_schedule(layer: &DagLayer, ls: &LayerSchedule) -> Result<(), S
 
     // (d) floor <= predicted_traffic.
     if ls.floor > ls.predicted_traffic {
-        return Err(format!("floor {} > predicted_traffic {}", ls.floor, ls.predicted_traffic));
+        return Err(format!(
+            "floor {} > predicted_traffic {}",
+            ls.floor, ls.predicted_traffic
+        ));
     }
     Ok(())
 }
@@ -473,7 +510,10 @@ fn validate_layer_schedule(layer: &DagLayer, ls: &LayerSchedule) -> Result<(), S
 /// Isolated (and independently testable — see the brief's Step 1) site-set-equality
 /// check: `stored` must equal `domain` exactly. Reports whichever side has an extra
 /// entry (both directions are real staleness, not just one).
-fn check_site_domain_match(stored: &BTreeSet<SiteKey>, domain: &BTreeSet<SiteKey>) -> Result<(), String> {
+fn check_site_domain_match(
+    stored: &BTreeSet<SiteKey>,
+    domain: &BTreeSet<SiteKey>,
+) -> Result<(), String> {
     if let Some(extra) = stored.difference(domain).next() {
         return Err(format!(
             "stale schedule: stored site (root {}, value {}) is not in the structural domain",
@@ -492,7 +532,7 @@ fn check_site_domain_match(stored: &BTreeSet<SiteKey>, domain: &BTreeSet<SiteKey
 #[cfg(test)]
 mod validator_tests {
     use super::*;
-    use crate::gkr_compiler::dag_ir::*;
+    use gkr_eval_ir::*;
     use std::collections::BTreeMap;
 
     // A 1-layer circuit: one atom root (Output+claim) over an Ext add, plus one Base source.
@@ -500,21 +540,45 @@ mod validator_tests {
     fn demo_circuit() -> DagCircuit {
         let layer = DagLayer {
             sources: vec![
-                SourceInfo { kind: SourceKind::Read { place: ReadPlace::BaseLayerWitness { column: 0 } } },
-                SourceInfo { kind: SourceKind::Read { place: ReadPlace::BaseLayerWitness { column: 1 } } },
+                SourceInfo {
+                    kind: SourceKind::Read {
+                        place: ReadPlace::BaseLayerWitness { column: 0 },
+                    },
+                },
+                SourceInfo {
+                    kind: SourceKind::Read {
+                        place: ReadPlace::BaseLayerWitness { column: 1 },
+                    },
+                },
             ],
-            exprs: vec![Expr::Source(SourceId(0)), Expr::Source(SourceId(1)), Expr::Add(vec![ExprId(0), ExprId(1)])],
+            exprs: vec![
+                Expr::Source(SourceId(0)),
+                Expr::Source(SourceId(1)),
+                Expr::Add(vec![ExprId(0), ExprId(1)]),
+            ],
             roots: vec![Root {
                 expr: ExprId(2),
-                materialize: Some(SinkInfo { kind: SinkKind::Export { slot: 0 }, field: FieldKind::Base }),
-                claim: Some(ClaimInfo { origin: RootOrigin {
-                    group: RootGroup::Gates, relation_index: 0, slot: RootSlot::Output(0),
-                } }),
+                materialize: Some(SinkInfo {
+                    kind: SinkKind::Export { slot: 0 },
+                    field: FieldKind::Base,
+                }),
+                claim: Some(ClaimInfo {
+                    origin: RootOrigin {
+                        group: RootGroup::Gates,
+                        relation_index: 0,
+                        slot: RootSlot::Output(0),
+                    },
+                }),
             }],
-            batching: BatchingOrder { roots: vec![RootId(0)] },
+            batching: BatchingOrder {
+                roots: vec![RootId(0)],
+            },
             resolutions: BTreeMap::new(),
         };
-        DagCircuit { layers: vec![layer], globals: DagGlobals::default() }
+        DagCircuit {
+            layers: vec![layer],
+            globals: DagGlobals::default(),
+        }
     }
 
     fn ok_schedule() -> CircuitSchedule {
@@ -543,7 +607,12 @@ mod validator_tests {
     #[test]
     fn rejects_layer_count_mismatch() {
         let mut s = ok_schedule();
-        s.layers.push(LayerSchedule { units: vec![], sites: vec![], predicted_traffic: 0, floor: 0 });
+        s.layers.push(LayerSchedule {
+            units: vec![],
+            sites: vec![],
+            predicted_traffic: 0,
+            floor: 0,
+        });
         assert!(validate_circuit_schedule(&demo_circuit(), &s).is_err());
     }
 
@@ -560,7 +629,10 @@ mod validator_tests {
             cache_roots: vec![],
         }];
         let err = validate_circuit_schedule(&demo_circuit(), &s).unwrap_err();
-        assert!(err.contains("unit"), "error must name the unit check, got: {err}");
+        assert!(
+            err.contains("unit"),
+            "error must name the unit check, got: {err}"
+        );
     }
 
     #[test]
@@ -571,9 +643,16 @@ mod validator_tests {
         let mut c = demo_circuit();
         c.layers[0].roots.push(Root {
             expr: ExprId(2),
-            materialize: Some(SinkInfo { kind: SinkKind::Export { slot: 1 }, field: FieldKind::Base }),
+            materialize: Some(SinkInfo {
+                kind: SinkKind::Export { slot: 1 },
+                field: FieldKind::Base,
+            }),
             claim: Some(ClaimInfo {
-                origin: RootOrigin { group: RootGroup::Gates, relation_index: 0, slot: RootSlot::Output(1) },
+                origin: RootOrigin {
+                    group: RootGroup::Gates,
+                    relation_index: 0,
+                    slot: RootSlot::Output(1),
+                },
             }),
         });
         let mut s = ok_schedule();
@@ -584,7 +663,10 @@ mod validator_tests {
             cache_roots: vec![],
         }];
         let err = validate_circuit_schedule(&c, &s).unwrap_err();
-        assert!(err.contains("atom_roots"), "error must name the atom_roots order check, got: {err}");
+        assert!(
+            err.contains("atom_roots"),
+            "error must name the atom_roots order check, got: {err}"
+        );
     }
 
     #[test]
@@ -599,7 +681,10 @@ mod validator_tests {
         let mut s = ok_schedule();
         s.layers[0].units = vec![unit.clone(), unit];
         let err = validate_circuit_schedule(&demo_circuit(), &s).unwrap_err();
-        assert!(err.contains("duplicate"), "error must name the duplicate check, got: {err}");
+        assert!(
+            err.contains("duplicate"),
+            "error must name the duplicate check, got: {err}"
+        );
     }
 
     #[test]
@@ -608,11 +693,18 @@ mod validator_tests {
         // structural site domain is EMPTY. A stored site is therefore stale.
         let mut s = ok_schedule();
         s.layers[0].sites = vec![(
-            SiteKey { root: RootId(0), consumer: SiteConsumer::RootOutput, value: ExprId(2) },
+            SiteKey {
+                root: RootId(0),
+                consumer: SiteConsumer::RootOutput,
+                value: ExprId(2),
+            },
             1.0,
         )];
         let err = validate_circuit_schedule(&demo_circuit(), &s).unwrap_err();
-        assert!(err.contains("stale"), "error must name the staleness check, got: {err}");
+        assert!(
+            err.contains("stale"),
+            "error must name the staleness check, got: {err}"
+        );
     }
 
     #[test]
@@ -620,19 +712,38 @@ mod validator_tests {
         // x = Source(0) reused as Add(x, x) — x is a DRAM-Read leaf consumed twice, so it is
         // a genuine structural site the schedule must record.
         let layer = DagLayer {
-            sources: vec![SourceInfo { kind: SourceKind::Read { place: ReadPlace::BaseLayerWitness { column: 0 } } }],
-            exprs: vec![Expr::Source(SourceId(0)), Expr::Add(vec![ExprId(0), ExprId(0)])],
+            sources: vec![SourceInfo {
+                kind: SourceKind::Read {
+                    place: ReadPlace::BaseLayerWitness { column: 0 },
+                },
+            }],
+            exprs: vec![
+                Expr::Source(SourceId(0)),
+                Expr::Add(vec![ExprId(0), ExprId(0)]),
+            ],
             roots: vec![Root {
                 expr: ExprId(1),
-                materialize: Some(SinkInfo { kind: SinkKind::Export { slot: 0 }, field: FieldKind::Base }),
-                claim: Some(ClaimInfo { origin: RootOrigin {
-                    group: RootGroup::Gates, relation_index: 0, slot: RootSlot::Output(0),
-                } }),
+                materialize: Some(SinkInfo {
+                    kind: SinkKind::Export { slot: 0 },
+                    field: FieldKind::Base,
+                }),
+                claim: Some(ClaimInfo {
+                    origin: RootOrigin {
+                        group: RootGroup::Gates,
+                        relation_index: 0,
+                        slot: RootSlot::Output(0),
+                    },
+                }),
             }],
-            batching: BatchingOrder { roots: vec![RootId(0)] },
+            batching: BatchingOrder {
+                roots: vec![RootId(0)],
+            },
             resolutions: BTreeMap::new(),
         };
-        let c = DagCircuit { layers: vec![layer], globals: DagGlobals::default() };
+        let c = DagCircuit {
+            layers: vec![layer],
+            globals: DagGlobals::default(),
+        };
         let s = CircuitSchedule {
             circuit: "demo".into(),
             budget: 16,
@@ -649,60 +760,117 @@ mod validator_tests {
             }],
         };
         let err = validate_circuit_schedule(&c, &s).unwrap_err();
-        assert!(err.contains("stale"), "error must name the staleness check, got: {err}");
+        assert!(
+            err.contains("stale"),
+            "error must name the staleness check, got: {err}"
+        );
     }
 
     #[test]
     fn rejects_nan_priority() {
         let mut s = ok_schedule();
         s.layers[0].sites = vec![(
-            SiteKey { root: RootId(0), consumer: SiteConsumer::RootOutput, value: ExprId(2) },
+            SiteKey {
+                root: RootId(0),
+                consumer: SiteConsumer::RootOutput,
+                value: ExprId(2),
+            },
             f64::NAN,
         )];
         // NaN would also fail the domain-match check (stale), so pair it with a matching
         // domain site: use the reused-leaf layer instead, where the domain is non-empty.
         let layer = DagLayer {
-            sources: vec![SourceInfo { kind: SourceKind::Read { place: ReadPlace::BaseLayerWitness { column: 0 } } }],
-            exprs: vec![Expr::Source(SourceId(0)), Expr::Add(vec![ExprId(0), ExprId(0)])],
+            sources: vec![SourceInfo {
+                kind: SourceKind::Read {
+                    place: ReadPlace::BaseLayerWitness { column: 0 },
+                },
+            }],
+            exprs: vec![
+                Expr::Source(SourceId(0)),
+                Expr::Add(vec![ExprId(0), ExprId(0)]),
+            ],
             roots: vec![Root {
                 expr: ExprId(1),
-                materialize: Some(SinkInfo { kind: SinkKind::Export { slot: 0 }, field: FieldKind::Base }),
-                claim: Some(ClaimInfo { origin: RootOrigin {
-                    group: RootGroup::Gates, relation_index: 0, slot: RootSlot::Output(0),
-                } }),
+                materialize: Some(SinkInfo {
+                    kind: SinkKind::Export { slot: 0 },
+                    field: FieldKind::Base,
+                }),
+                claim: Some(ClaimInfo {
+                    origin: RootOrigin {
+                        group: RootGroup::Gates,
+                        relation_index: 0,
+                        slot: RootSlot::Output(0),
+                    },
+                }),
             }],
-            batching: BatchingOrder { roots: vec![RootId(0)] },
+            batching: BatchingOrder {
+                roots: vec![RootId(0)],
+            },
             resolutions: BTreeMap::new(),
         };
-        let c = DagCircuit { layers: vec![layer.clone()], globals: DagGlobals::default() };
+        let c = DagCircuit {
+            layers: vec![layer.clone()],
+            globals: DagGlobals::default(),
+        };
         let domain = enumerate_site_domain(&layer);
-        assert!(!domain.is_empty(), "test setup: expected a non-empty structural site domain");
+        assert!(
+            !domain.is_empty(),
+            "test setup: expected a non-empty structural site domain"
+        );
         // Supply the FULL domain (so check (b) passes) with one entry's priority set to NaN.
-        s.layers[0].sites =
-            domain.iter().enumerate().map(|(i, &k)| (k, if i == 0 { f64::NAN } else { 0.0 })).collect();
+        s.layers[0].sites = domain
+            .iter()
+            .enumerate()
+            .map(|(i, &k)| (k, if i == 0 { f64::NAN } else { 0.0 }))
+            .collect();
         s.layers[0].units = relation_units_with_caches(&layer).unwrap();
         let err = validate_circuit_schedule(&c, &s).unwrap_err();
-        assert!(err.contains("finite"), "error must name the finiteness check, got: {err}");
+        assert!(
+            err.contains("finite"),
+            "error must name the finiteness check, got: {err}"
+        );
     }
 
     #[test]
     fn rejects_infinite_priority() {
         let layer = DagLayer {
-            sources: vec![SourceInfo { kind: SourceKind::Read { place: ReadPlace::BaseLayerWitness { column: 0 } } }],
-            exprs: vec![Expr::Source(SourceId(0)), Expr::Add(vec![ExprId(0), ExprId(0)])],
+            sources: vec![SourceInfo {
+                kind: SourceKind::Read {
+                    place: ReadPlace::BaseLayerWitness { column: 0 },
+                },
+            }],
+            exprs: vec![
+                Expr::Source(SourceId(0)),
+                Expr::Add(vec![ExprId(0), ExprId(0)]),
+            ],
             roots: vec![Root {
                 expr: ExprId(1),
-                materialize: Some(SinkInfo { kind: SinkKind::Export { slot: 0 }, field: FieldKind::Base }),
-                claim: Some(ClaimInfo { origin: RootOrigin {
-                    group: RootGroup::Gates, relation_index: 0, slot: RootSlot::Output(0),
-                } }),
+                materialize: Some(SinkInfo {
+                    kind: SinkKind::Export { slot: 0 },
+                    field: FieldKind::Base,
+                }),
+                claim: Some(ClaimInfo {
+                    origin: RootOrigin {
+                        group: RootGroup::Gates,
+                        relation_index: 0,
+                        slot: RootSlot::Output(0),
+                    },
+                }),
             }],
-            batching: BatchingOrder { roots: vec![RootId(0)] },
+            batching: BatchingOrder {
+                roots: vec![RootId(0)],
+            },
             resolutions: BTreeMap::new(),
         };
-        let c = DagCircuit { layers: vec![layer.clone()], globals: DagGlobals::default() };
+        let c = DagCircuit {
+            layers: vec![layer.clone()],
+            globals: DagGlobals::default(),
+        };
         let domain = enumerate_site_domain(&layer);
-        assert!(!domain.is_empty(), "test setup: expected a non-empty structural site domain");
+        assert!(
+            !domain.is_empty(),
+            "test setup: expected a non-empty structural site domain"
+        );
         let sites: Vec<(SiteKey, f64)> = domain
             .iter()
             .enumerate()
@@ -719,7 +887,10 @@ mod validator_tests {
             }],
         };
         let err = validate_circuit_schedule(&c, &s).unwrap_err();
-        assert!(err.contains("finite"), "error must name the finiteness check, got: {err}");
+        assert!(
+            err.contains("finite"),
+            "error must name the finiteness check, got: {err}"
+        );
     }
 
     #[test]
@@ -727,30 +898,51 @@ mod validator_tests {
         let mut s = ok_schedule();
         s.layers[0].floor = 100;
         let err = validate_circuit_schedule(&demo_circuit(), &s).unwrap_err();
-        assert!(err.contains("floor"), "error must name the floor check, got: {err}");
+        assert!(
+            err.contains("floor"),
+            "error must name the floor check, got: {err}"
+        );
     }
 
     #[test]
     fn check_site_domain_match_hand_supplied_stored_extra() {
-        let a = SiteKey { root: RootId(0), consumer: SiteConsumer::RootOutput, value: ExprId(1) };
+        let a = SiteKey {
+            root: RootId(0),
+            consumer: SiteConsumer::RootOutput,
+            value: ExprId(1),
+        };
         let stored: BTreeSet<SiteKey> = [a].into_iter().collect();
         let domain: BTreeSet<SiteKey> = BTreeSet::new();
         let err = check_site_domain_match(&stored, &domain).unwrap_err();
-        assert!(err.contains("stale"), "error must name the staleness check, got: {err}");
+        assert!(
+            err.contains("stale"),
+            "error must name the staleness check, got: {err}"
+        );
     }
 
     #[test]
     fn check_site_domain_match_hand_supplied_domain_extra() {
-        let a = SiteKey { root: RootId(0), consumer: SiteConsumer::RootOutput, value: ExprId(1) };
+        let a = SiteKey {
+            root: RootId(0),
+            consumer: SiteConsumer::RootOutput,
+            value: ExprId(1),
+        };
         let stored: BTreeSet<SiteKey> = BTreeSet::new();
         let domain: BTreeSet<SiteKey> = [a].into_iter().collect();
         let err = check_site_domain_match(&stored, &domain).unwrap_err();
-        assert!(err.contains("stale"), "error must name the staleness check, got: {err}");
+        assert!(
+            err.contains("stale"),
+            "error must name the staleness check, got: {err}"
+        );
     }
 
     #[test]
     fn check_site_domain_match_equal_sets_ok() {
-        let a = SiteKey { root: RootId(0), consumer: SiteConsumer::RootOutput, value: ExprId(1) };
+        let a = SiteKey {
+            root: RootId(0),
+            consumer: SiteConsumer::RootOutput,
+            value: ExprId(1),
+        };
         let stored: BTreeSet<SiteKey> = [a].into_iter().collect();
         let domain: BTreeSet<SiteKey> = [a].into_iter().collect();
         assert!(check_site_domain_match(&stored, &domain).is_ok());
@@ -760,7 +952,7 @@ mod validator_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::gkr_compiler::dag_ir::{ExprId, RootGroup, RootId};
+    use gkr_eval_ir::{ExprId, RootGroup, RootId};
 
     #[test]
     fn circuit_schedule_serde_roundtrip() {
@@ -787,20 +979,32 @@ mod tests {
                         (
                             SiteKey {
                                 root: RootId(0),
-                                consumer: SiteConsumer::Expr { expr: ExprId(5), input_index: 1 },
+                                consumer: SiteConsumer::Expr {
+                                    expr: ExprId(5),
+                                    input_index: 1,
+                                },
                                 value: ExprId(3),
                             },
                             0.5,
                         ),
                         (
-                            SiteKey { root: RootId(2), consumer: SiteConsumer::RootOutput, value: ExprId(7) },
+                            SiteKey {
+                                root: RootId(2),
+                                consumer: SiteConsumer::RootOutput,
+                                value: ExprId(7),
+                            },
                             -2.25,
                         ),
                     ],
                     predicted_traffic: 12,
                     floor: 9,
                 },
-                LayerSchedule { units: vec![], sites: vec![], predicted_traffic: 0, floor: 0 },
+                LayerSchedule {
+                    units: vec![],
+                    sites: vec![],
+                    predicted_traffic: 0,
+                    floor: 0,
+                },
             ],
         };
         let json = serde_json::to_string(&sched).expect("serialize");
@@ -816,21 +1020,32 @@ mod tests {
 
     // ── enumerate_site_domain ──────────────────────────────────────────────────
 
-    use crate::gkr_compiler::dag_ir::*;
+    use gkr_eval_ir::*;
     use std::collections::BTreeMap;
 
     fn atom_root(expr: ExprId, slot: usize) -> Root {
         Root {
             expr,
-            materialize: Some(SinkInfo { kind: SinkKind::Export { slot }, field: FieldKind::Base }),
-            claim: Some(ClaimInfo { origin: RootOrigin {
-                group: RootGroup::Gates, relation_index: 0, slot: RootSlot::Output(slot),
-            } }),
+            materialize: Some(SinkInfo {
+                kind: SinkKind::Export { slot },
+                field: FieldKind::Base,
+            }),
+            claim: Some(ClaimInfo {
+                origin: RootOrigin {
+                    group: RootGroup::Gates,
+                    relation_index: 0,
+                    slot: RootSlot::Output(slot),
+                },
+            }),
         }
     }
 
     fn witness(col: usize) -> SourceInfo {
-        SourceInfo { kind: SourceKind::Read { place: ReadPlace::BaseLayerWitness { column: col } } }
+        SourceInfo {
+            kind: SourceKind::Read {
+                place: ReadPlace::BaseLayerWitness { column: col },
+            },
+        }
     }
 
     #[test]
@@ -838,9 +1053,15 @@ mod tests {
         // x + y, each used exactly once: no reuse, no sites.
         let layer = DagLayer {
             sources: vec![witness(0), witness(1)],
-            exprs: vec![Expr::Source(SourceId(0)), Expr::Source(SourceId(1)), Expr::Add(vec![ExprId(0), ExprId(1)])],
+            exprs: vec![
+                Expr::Source(SourceId(0)),
+                Expr::Source(SourceId(1)),
+                Expr::Add(vec![ExprId(0), ExprId(1)]),
+            ],
             roots: vec![atom_root(ExprId(2), 0)],
-            batching: BatchingOrder { roots: vec![RootId(0)] },
+            batching: BatchingOrder {
+                roots: vec![RootId(0)],
+            },
             resolutions: BTreeMap::new(),
         };
         assert!(enumerate_site_domain(&layer).is_empty());
@@ -851,13 +1072,22 @@ mod tests {
         // x reused: Add(x, x).
         let layer = DagLayer {
             sources: vec![witness(0)],
-            exprs: vec![Expr::Source(SourceId(0)), Expr::Add(vec![ExprId(0), ExprId(0)])],
+            exprs: vec![
+                Expr::Source(SourceId(0)),
+                Expr::Add(vec![ExprId(0), ExprId(0)]),
+            ],
             roots: vec![atom_root(ExprId(1), 0)],
-            batching: BatchingOrder { roots: vec![RootId(0)] },
+            batching: BatchingOrder {
+                roots: vec![RootId(0)],
+            },
             resolutions: BTreeMap::new(),
         };
         let domain = enumerate_site_domain(&layer);
-        assert_eq!(domain.len(), 2, "both operand edges to x are sites (input_index 0 and 1)");
+        assert_eq!(
+            domain.len(),
+            2,
+            "both operand edges to x are sites (input_index 0 and 1)"
+        );
         for key in &domain {
             assert_eq!(key.value, ExprId(0));
             assert_eq!(key.root, RootId(0));
@@ -868,10 +1098,15 @@ mod tests {
     fn constant_and_challenge_leaves_are_never_sites_even_when_reused() {
         let layer = DagLayer {
             sources: vec![
-                SourceInfo { kind: SourceKind::Constant { value: 7 } },
+                SourceInfo {
+                    kind: SourceKind::Constant { value: 7 },
+                },
                 SourceInfo {
                     kind: SourceKind::Challenge {
-                        reference: ChallengeRef { key: ChallengeKey::ConstraintAggregation, power: ChallengePower::One },
+                        reference: ChallengeRef {
+                            key: ChallengeKey::ConstraintAggregation,
+                            power: ChallengePower::One,
+                        },
                     },
                 },
             ],
@@ -881,7 +1116,9 @@ mod tests {
                 Expr::Add(vec![ExprId(0), ExprId(0), ExprId(1), ExprId(1)]),
             ],
             roots: vec![atom_root(ExprId(2), 0)],
-            batching: BatchingOrder { roots: vec![RootId(0)] },
+            batching: BatchingOrder {
+                roots: vec![RootId(0)],
+            },
             resolutions: BTreeMap::new(),
         };
         assert!(enumerate_site_domain(&layer).is_empty());
@@ -901,7 +1138,9 @@ mod tests {
                 Expr::Mul(vec![ExprId(3), ExprId(2)]), // 5 = rootB
             ],
             roots: vec![atom_root(ExprId(4), 0), atom_root(ExprId(5), 1)],
-            batching: BatchingOrder { roots: vec![RootId(0), RootId(1)] },
+            batching: BatchingOrder {
+                roots: vec![RootId(0), RootId(1)],
+            },
             resolutions: BTreeMap::new(),
         };
         let domain = enumerate_site_domain(&layer);
@@ -923,13 +1162,19 @@ mod tests {
                 Expr::Mul(vec![ExprId(2), ExprId(2)]), // 3 = q = p * p
             ],
             roots: vec![atom_root(ExprId(2), 0), atom_root(ExprId(3), 1)],
-            batching: BatchingOrder { roots: vec![RootId(0), RootId(1)] },
+            batching: BatchingOrder {
+                roots: vec![RootId(0), RootId(1)],
+            },
             resolutions: BTreeMap::new(),
         };
         let domain = enumerate_site_domain(&layer);
         // p's RootOutput occurrence (root 0) is a site (consumers = 1 root reg + 2 operand
         // edges from q = 3 >= 2); the two operand edges into q are sites too.
-        assert!(domain.contains(&SiteKey { root: RootId(0), consumer: SiteConsumer::RootOutput, value: ExprId(2) }));
+        assert!(domain.contains(&SiteKey {
+            root: RootId(0),
+            consumer: SiteConsumer::RootOutput,
+            value: ExprId(2)
+        }));
         assert_eq!(domain.len(), 3);
     }
 
@@ -939,16 +1184,30 @@ mod tests {
         Root {
             expr,
             materialize: None,
-            claim: Some(ClaimInfo { origin: RootOrigin {
-                group: RootGroup::Gates, relation_index, slot: RootSlot::Constraint(0),
-            } }),
+            claim: Some(ClaimInfo {
+                origin: RootOrigin {
+                    group: RootGroup::Gates,
+                    relation_index,
+                    slot: RootSlot::Constraint(0),
+                },
+            }),
         }
     }
 
     fn cache_root(expr: ExprId, layer_idx: usize, offset: usize) -> Root {
         // Materialize-only Cache root: not an atom root (no claim), but its inline
         // materialize write IS a genuine forward demand — must still count.
-        Root { expr, materialize: Some(SinkInfo { kind: SinkKind::Cache { layer: layer_idx, offset }, field: FieldKind::Base }), claim: None }
+        Root {
+            expr,
+            materialize: Some(SinkInfo {
+                kind: SinkKind::Cache {
+                    layer: layer_idx,
+                    offset,
+                },
+                field: FieldKind::Base,
+            }),
+            claim: None,
+        }
     }
 
     #[test]
@@ -960,9 +1219,15 @@ mod tests {
         // count, leaving consumers[s] = 1 -> no site.
         let layer = DagLayer {
             sources: vec![witness(0), witness(1)],
-            exprs: vec![Expr::Source(SourceId(0)), Expr::Source(SourceId(1)), Expr::Add(vec![ExprId(0), ExprId(1)])],
+            exprs: vec![
+                Expr::Source(SourceId(0)),
+                Expr::Source(SourceId(1)),
+                Expr::Add(vec![ExprId(0), ExprId(1)]),
+            ],
             roots: vec![atom_root(ExprId(2), 0), constraint_root(ExprId(2), 1)],
-            batching: BatchingOrder { roots: vec![RootId(0)] },
+            batching: BatchingOrder {
+                roots: vec![RootId(0)],
+            },
             resolutions: BTreeMap::new(),
         };
         assert!(enumerate_site_domain(&layer).is_empty());
@@ -984,11 +1249,16 @@ mod tests {
                 Expr::Mul(vec![ExprId(3), ExprId(2)]), // 4 = q = s * z
             ],
             roots: vec![atom_root(ExprId(4), 0), cache_root(ExprId(3), 0, 0)],
-            batching: BatchingOrder { roots: vec![RootId(0)] },
+            batching: BatchingOrder {
+                roots: vec![RootId(0)],
+            },
             resolutions: BTreeMap::new(),
         };
         let domain = enumerate_site_domain(&layer);
-        assert!(domain.iter().any(|k| k.value == ExprId(3)), "s must still be a site: domain {domain:?}");
+        assert!(
+            domain.iter().any(|k| k.value == ExprId(3)),
+            "s must still be a site: domain {domain:?}"
+        );
     }
 
     #[test]
@@ -1010,28 +1280,44 @@ mod tests {
                 Expr::Mul(vec![ExprId(2), ExprId(2)]), // 4 = rootA = w * w (real, unfenced)
             ],
             roots: vec![atom_root(ExprId(4), 0), atom_root(ExprId(3), 1)],
-            batching: BatchingOrder { roots: vec![RootId(0), RootId(1)] },
-            resolutions: [(ExprId(3), ResolutionStrategy::PeekSetup)].into_iter().collect(),
+            batching: BatchingOrder {
+                roots: vec![RootId(0), RootId(1)],
+            },
+            resolutions: [(ExprId(3), ResolutionStrategy::PeekSetup)]
+                .into_iter()
+                .collect(),
         };
         let domain = enumerate_site_domain(&layer);
         // w's two REAL operand edges (from rootA's Mul) are sites.
         assert!(domain.contains(&SiteKey {
             root: RootId(0),
-            consumer: SiteConsumer::Expr { expr: ExprId(4), input_index: 0 },
+            consumer: SiteConsumer::Expr {
+                expr: ExprId(4),
+                input_index: 0
+            },
             value: ExprId(2),
         }));
         assert!(domain.contains(&SiteKey {
             root: RootId(0),
-            consumer: SiteConsumer::Expr { expr: ExprId(4), input_index: 1 },
+            consumer: SiteConsumer::Expr {
+                expr: ExprId(4),
+                input_index: 1
+            },
             value: ExprId(2),
         }));
         // No site is ever attributed to the fenced fold-leaf as a consumer: its cone
         // is never walked, so w's two occurrences as ITS children contribute nothing.
-        assert!(domain
-            .iter()
-            .all(|k| !matches!(k.consumer, SiteConsumer::Expr { expr, .. } if expr == ExprId(3))));
+        assert!(
+            domain.iter().all(
+                |k| !matches!(k.consumer, SiteConsumer::Expr { expr, .. } if expr == ExprId(3))
+            )
+        );
         // Exactly the two real sites for w (no phantom extras).
-        assert_eq!(domain.iter().filter(|k| k.value == ExprId(2)).count(), 2, "domain: {domain:?}");
+        assert_eq!(
+            domain.iter().filter(|k| k.value == ExprId(2)).count(),
+            2,
+            "domain: {domain:?}"
+        );
     }
 
     #[test]
@@ -1056,7 +1342,9 @@ mod tests {
                 Expr::Add(vec![ExprId(2), ExprId(1)]), // 3 = root, ALSO reuses query directly
             ],
             roots: vec![atom_root(ExprId(3), 0)],
-            batching: BatchingOrder { roots: vec![RootId(0)] },
+            batching: BatchingOrder {
+                roots: vec![RootId(0)],
+            },
             resolutions: BTreeMap::new(),
         };
         let domain = enumerate_site_domain(&layer);
@@ -1065,8 +1353,14 @@ mod tests {
         // ExprId(0), is separately reused by query's own Add — a different value's sites.)
         let query_sites: Vec<_> = domain.iter().filter(|k| k.value == ExprId(1)).collect();
         assert_eq!(query_sites.len(), 2, "domain: {domain:?}");
-        assert!(query_sites.iter().any(|k| k.consumer == SiteConsumer::Expr { expr: ExprId(2), input_index: 0 }),
-            "the LookupValue source's query edge must appear as a demand site at input_index 0");
+        assert!(
+            query_sites.iter().any(|k| k.consumer
+                == SiteConsumer::Expr {
+                    expr: ExprId(2),
+                    input_index: 0
+                }),
+            "the LookupValue source's query edge must appear as a demand site at input_index 0"
+        );
     }
 
     #[test]
@@ -1082,7 +1376,9 @@ mod tests {
                 Expr::Mul(vec![ExprId(3), ExprId(2)]),
             ],
             roots: vec![atom_root(ExprId(4), 0), atom_root(ExprId(5), 1)],
-            batching: BatchingOrder { roots: vec![RootId(0), RootId(1)] },
+            batching: BatchingOrder {
+                roots: vec![RootId(0), RootId(1)],
+            },
             resolutions: BTreeMap::new(),
         };
         let a = enumerate_site_domain(&layer);
@@ -1097,9 +1393,16 @@ mod tests {
     fn atom_root_rel(expr: ExprId, relation_index: usize, slot: usize) -> Root {
         Root {
             expr,
-            materialize: Some(SinkInfo { kind: SinkKind::Export { slot }, field: FieldKind::Base }),
+            materialize: Some(SinkInfo {
+                kind: SinkKind::Export { slot },
+                field: FieldKind::Base,
+            }),
             claim: Some(ClaimInfo {
-                origin: RootOrigin { group: RootGroup::Gates, relation_index, slot: RootSlot::Output(slot) },
+                origin: RootOrigin {
+                    group: RootGroup::Gates,
+                    relation_index,
+                    slot: RootSlot::Output(slot),
+                },
             }),
         }
     }
@@ -1109,9 +1412,15 @@ mod tests {
         // (i) A relation with no Cache root in its cone → empty cache_roots.
         let layer = DagLayer {
             sources: vec![witness(0), witness(1)],
-            exprs: vec![Expr::Source(SourceId(0)), Expr::Source(SourceId(1)), Expr::Add(vec![ExprId(0), ExprId(1)])],
+            exprs: vec![
+                Expr::Source(SourceId(0)),
+                Expr::Source(SourceId(1)),
+                Expr::Add(vec![ExprId(0), ExprId(1)]),
+            ],
             roots: vec![atom_root(ExprId(2), 0)],
-            batching: BatchingOrder { roots: vec![RootId(0)] },
+            batching: BatchingOrder {
+                roots: vec![RootId(0)],
+            },
             resolutions: BTreeMap::new(),
         };
         let units = relation_units_with_caches(&layer).unwrap();
@@ -1134,7 +1443,9 @@ mod tests {
                 Expr::Mul(vec![ExprId(3), ExprId(2)]), // 4 = q = s * z (atom root)
             ],
             roots: vec![atom_root(ExprId(4), 0), cache_root(ExprId(3), 0, 0)],
-            batching: BatchingOrder { roots: vec![RootId(0)] },
+            batching: BatchingOrder {
+                roots: vec![RootId(0)],
+            },
             resolutions: BTreeMap::new(),
         };
         let units = relation_units_with_caches(&layer).unwrap();
@@ -1161,7 +1472,9 @@ mod tests {
                 atom_root_rel(ExprId(4), 1, 0),
                 cache_root(ExprId(2), 0, 0),
             ],
-            batching: BatchingOrder { roots: vec![RootId(0), RootId(1)] },
+            batching: BatchingOrder {
+                roots: vec![RootId(0), RootId(1)],
+            },
             resolutions: BTreeMap::new(),
         };
         let err = relation_units_with_caches(&layer).unwrap_err();
@@ -1181,11 +1494,16 @@ mod tests {
                 Expr::Mul(vec![ExprId(0), ExprId(0)]), // 3 = orphan cache expr
             ],
             roots: vec![atom_root(ExprId(2), 0), cache_root(ExprId(3), 0, 0)],
-            batching: BatchingOrder { roots: vec![RootId(0)] },
+            batching: BatchingOrder {
+                roots: vec![RootId(0)],
+            },
             resolutions: BTreeMap::new(),
         };
         let err = relation_units_with_caches(&layer).unwrap_err();
-        assert!(err.contains("no same-layer consuming relation"), "got: {err}");
+        assert!(
+            err.contains("no same-layer consuming relation"),
+            "got: {err}"
+        );
     }
 
     #[test]
@@ -1203,8 +1521,12 @@ mod tests {
                 Expr::Add(vec![ExprId(2), ExprId(2)]), // 3 = fold-leaf (RESOLUTION-PRUNED), atom root
             ],
             roots: vec![atom_root(ExprId(3), 0), cache_root(ExprId(2), 0, 0)],
-            batching: BatchingOrder { roots: vec![RootId(0)] },
-            resolutions: [(ExprId(3), ResolutionStrategy::PeekSetup)].into_iter().collect(),
+            batching: BatchingOrder {
+                roots: vec![RootId(0)],
+            },
+            resolutions: [(ExprId(3), ResolutionStrategy::PeekSetup)]
+                .into_iter()
+                .collect(),
         };
         let units = relation_units_with_caches(&layer).unwrap();
         assert_eq!(units.len(), 1);

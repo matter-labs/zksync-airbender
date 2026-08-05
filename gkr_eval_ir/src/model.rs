@@ -3,20 +3,17 @@ use std::collections::BTreeMap;
 // ── ID newtypes ──────────────────────────────────────────────────────────────
 
 #[derive(
-    Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord,
-    serde::Serialize, serde::Deserialize,
+    Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]
 pub struct SourceId(pub u32);
 
 #[derive(
-    Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord,
-    serde::Serialize, serde::Deserialize,
+    Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]
 pub struct ExprId(pub u32);
 
 #[derive(
-    Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord,
-    serde::Serialize, serde::Deserialize,
+    Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]
 pub struct RootId(pub u32);
 
@@ -109,11 +106,23 @@ pub struct ChallengeRef {
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum SourceKind {
-    Read { place: ReadPlace },
-    Constant { value: u32 },
-    Challenge { reference: ChallengeRef },
-    VirtualSetup { kind: VirtualSetupKind },
-    LookupValue { kind: LookupValueKind, set_index: usize, query: ExprId },
+    Read {
+        place: ReadPlace,
+    },
+    Constant {
+        value: u32,
+    },
+    Challenge {
+        reference: ChallengeRef,
+    },
+    VirtualSetup {
+        kind: VirtualSetupKind,
+    },
+    LookupValue {
+        kind: LookupValueKind,
+        set_index: usize,
+        query: ExprId,
+    },
 }
 
 // ── SourceInfo ───────────────────────────────────────────────────────────────
@@ -227,7 +236,10 @@ pub enum ResolutionStrategy {
     PeekSetup,
     /// (d) decoder lookup value: `mask ? preprocessed_generic_lookup[map.last()[row]] : fill`.
     /// `predicate` is the circuit global `machine_state.execute`; `fill` is a runtime handle.
-    PeekDecoder { predicate: ReadPlace, fill: FillSource },
+    PeekDecoder {
+        predicate: ReadPlace,
+        fill: FillSource,
+    },
 }
 
 /// Selects the single-column mapping array (and the stored element width).
@@ -317,7 +329,9 @@ mod tests {
             sources: vec![source],
             exprs: vec![expr_src, expr_add],
             roots: vec![root],
-            batching: BatchingOrder { roots: vec![root_id] },
+            batching: BatchingOrder {
+                roots: vec![root_id],
+            },
             resolutions: BTreeMap::new(),
         };
 
@@ -344,13 +358,19 @@ mod tests {
             "batching": { "roots": [] }
         }"#;
         let layer: DagLayer = serde_json::from_str(legacy).expect("legacy layer must deserialize");
-        assert!(layer.resolutions.is_empty(), "missing `resolutions` must default to empty");
+        assert!(
+            layer.resolutions.is_empty(),
+            "missing `resolutions` must default to empty"
+        );
 
         // And a populated map round-trips.
         let mut l2 = layer.clone();
-        l2.resolutions.insert(ExprId(0), ResolutionStrategy::PeekSetup);
         l2.resolutions
-            .insert(ExprId(1), ResolutionStrategy::PeekAggregate { set_index: 3 });
+            .insert(ExprId(0), ResolutionStrategy::PeekSetup);
+        l2.resolutions.insert(
+            ExprId(1),
+            ResolutionStrategy::PeekAggregate { set_index: 3 },
+        );
         let json = serde_json::to_string(&l2).unwrap();
         let back: DagLayer = serde_json::from_str(&json).unwrap();
         assert_eq!(l2, back, "resolutions must round-trip");

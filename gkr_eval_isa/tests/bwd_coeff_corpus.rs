@@ -31,21 +31,22 @@ mod common;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
 
-use common::{layers_with_bwd_roots, FIXTURES};
-use cs::gkr_compiler::dag_ir::{
-    eval_layer_expr, Bf, BwdRegime, ChallengeKey, ChallengePower, ChallengeRef, ChallengeResolver,
-    DagLayer, Ext, FieldKind, LookupResolver, LookupValueKind, ReadPlace, ReadResolver, Resolvers,
-    SinkKind, VirtualSetupKind, VirtualSetupResolver,
-};
+use common::{FIXTURES, layers_with_bwd_roots};
 use field::{Field, FieldExtension, PrimeField};
+use gkr_eval_ir::{
+    Bf, ChallengeKey, ChallengePower, ChallengeRef, ChallengeResolver, DagLayer, Ext, FieldKind,
+    LookupResolver, LookupValueKind, ReadPlace, ReadResolver, Resolvers, SinkKind,
+    VirtualSetupKind, VirtualSetupResolver, eval_layer_expr,
+};
+use gkr_eval_isa::BwdRegime;
 use gkr_eval_isa::bwd::coeff::lean::decode_atoms;
-use gkr_eval_isa::bwd::coeff::limits::{in_scope, with_conditional_blake2, LEAN_MAX_IMMEDIATES};
+use gkr_eval_isa::bwd::coeff::limits::{LEAN_MAX_IMMEDIATES, in_scope, with_conditional_blake2};
 use gkr_eval_isa::bwd::coeff::model::ImmediateId;
 use gkr_eval_isa::bwd::coeff::{
-    compile_lean_coordinate, factor, group_coeff_layer, immediate_value, interpret_coeff_layer,
-    lower_coeff_layer, lower_lean_layer, rescale, CoeffCensus, CoeffLayer, CoeffResolver,
-    CoeffTerm, CoefficientRecipeId, LeanAtom, LeanProgram, NormalizedCoefficientRecipe, SourceId,
-    TermId,
+    CoeffCensus, CoeffLayer, CoeffResolver, CoeffTerm, CoefficientRecipeId, LeanAtom, LeanProgram,
+    NormalizedCoefficientRecipe, SourceId, TermId, compile_lean_coordinate, factor,
+    group_coeff_layer, immediate_value, interpret_coeff_layer, lower_coeff_layer, lower_lean_layer,
+    rescale,
 };
 use gkr_eval_isa::bwd::distill::distill;
 use gkr_eval_isa::bwd::source::OriginLeaf;
@@ -139,8 +140,8 @@ impl ChallengeResolver for Chal {
     }
 }
 
-fn slot_tag(slot: &cs::gkr_compiler::dag_ir::PermutationSlot) -> u32 {
-    use cs::gkr_compiler::dag_ir::PermutationSlot as S;
+fn slot_tag(slot: &gkr_eval_ir::PermutationSlot) -> u32 {
+    use gkr_eval_ir::PermutationSlot as S;
     match slot {
         S::AddressLow => 0,
         S::AddressHigh => 1,

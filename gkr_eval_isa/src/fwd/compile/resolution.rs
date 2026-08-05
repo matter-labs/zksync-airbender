@@ -1,7 +1,7 @@
 //! Expression-level resolution lowering (spec §9): prune resolved fold subtrees to one Special.
 
-use super::super::source::{lower_resolution, SpecialTable};
-use cs::gkr_compiler::dag_ir::{DagLayer, ExprId};
+use super::super::source::{SpecialTable, lower_resolution};
+use gkr_eval_ir::{DagLayer, ExprId};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ResolveOutcome {
@@ -26,7 +26,7 @@ pub fn resolve_or_descend(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cs::gkr_compiler::dag_ir::{
+    use gkr_eval_ir::{
         ArenaBuilder, BatchingOrder, ClaimInfo, DagLayer, FieldKind, ResolutionStrategy, Root,
         RootGroup, RootId, RootOrigin, RootSlot, SinkInfo, SinkKind, SourceKind,
     };
@@ -48,7 +48,10 @@ mod tests {
             roots: vec![Root {
                 expr: e,
                 materialize: Some(SinkInfo {
-                    kind: SinkKind::Inner { layer: 0, offset: 0 },
+                    kind: SinkKind::Inner {
+                        layer: 0,
+                        offset: 0,
+                    },
                     field: FieldKind::Base,
                 }),
                 claim: Some(ClaimInfo {
@@ -59,15 +62,23 @@ mod tests {
                     },
                 }),
             }],
-            batching: BatchingOrder { roots: vec![RootId(0)] },
+            batching: BatchingOrder {
+                roots: vec![RootId(0)],
+            },
             resolutions,
         };
         let mut specials = SpecialTable::default();
-        assert!(matches!(resolve_or_descend(&layer, e, &mut specials), ResolveOutcome::Special(0)));
+        assert!(matches!(
+            resolve_or_descend(&layer, e, &mut specials),
+            ResolveOutcome::Special(0)
+        ));
         assert_eq!(specials.len(), 1);
         assert_eq!(specials.get(0).unwrap().origin_expr, e);
         // an unresolved expr descends (and emits no new special)
-        assert_eq!(resolve_or_descend(&layer, other, &mut specials), ResolveOutcome::Descend);
+        assert_eq!(
+            resolve_or_descend(&layer, other, &mut specials),
+            ResolveOutcome::Descend
+        );
         assert_eq!(specials.len(), 1);
     }
 }

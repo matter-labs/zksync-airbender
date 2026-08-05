@@ -32,22 +32,23 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
-use common::{layers_with_bwd_roots, CrossFields, FIXTURES};
-use cs::gkr_compiler::dag_ir::{BwdRegime, DagLayer, FieldKind, ReadPlace};
-use gkr_eval_isa::bwd::coeff::lean::{decode_atoms, encode_program, LeanAtom, LEAN_WORDS_PER_TERM};
+use common::{CrossFields, FIXTURES, layers_with_bwd_roots};
+use gkr_eval_ir::{DagLayer, FieldKind, ReadPlace};
+use gkr_eval_isa::BwdRegime;
+use gkr_eval_isa::bwd::coeff::lean::{LEAN_WORDS_PER_TERM, LeanAtom, decode_atoms, encode_program};
 use gkr_eval_isa::bwd::coeff::lean_artifact::{
-    compile_lean_coordinate, lean_artifact_bytes, read_lean_circuit_artifact,
-    write_lean_circuit_artifact, LeanCircuitArtifact, LeanCoordinateArtifact,
+    LeanCircuitArtifact, LeanCoordinateArtifact, compile_lean_coordinate, lean_artifact_bytes,
+    read_lean_circuit_artifact, write_lean_circuit_artifact,
 };
 use gkr_eval_isa::bwd::coeff::limits::{
-    in_scope, TermCategory, DESCRIPTOR_ALIGNMENT_WORDS, KERNEL_ARGUMENT_CEILING_BYTES,
-    LEAN_DESCRIPTOR_PROGRAM_BYTES, LEAN_DESCRIPTOR_PROGRAM_WORDS, LEAN_MAX_REALIZED_PROGRAM_WORDS,
+    DESCRIPTOR_ALIGNMENT_WORDS, KERNEL_ARGUMENT_CEILING_BYTES, LEAN_DESCRIPTOR_PROGRAM_BYTES,
+    LEAN_DESCRIPTOR_PROGRAM_WORDS, LEAN_MAX_REALIZED_PROGRAM_WORDS, TermCategory, in_scope,
 };
 use gkr_eval_isa::bwd::coeff::order::order_terms;
 use gkr_eval_isa::bwd::coeff::stats::neg_one_census;
 use gkr_eval_isa::bwd::coeff::{
-    group_coeff_layer, lower_coeff_layer, ArtifactRegime, CoeffLayer, CoeffSource, CoeffTerm,
-    CoefficientRecipeId, ProjectionId, SourceId, TermId,
+    ArtifactRegime, CoeffLayer, CoeffSource, CoeffTerm, CoefficientRecipeId, ProjectionId,
+    SourceId, TermId, group_coeff_layer, lower_coeff_layer,
 };
 use gkr_eval_isa::bwd::distill::distill;
 use gkr_eval_isa::bwd::source::OriginLeaf;

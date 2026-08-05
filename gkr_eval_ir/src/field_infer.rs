@@ -18,7 +18,7 @@
 //! Base-storage places (`BaseLayerMemory`, `BaseLayerWitness`, `Setup`, `Scratch`) always
 //! return `Some(Base)`.
 
-use super::{ExprId, Expr, FieldKind, ReadPlace, SourceInfo, SourceKind};
+use super::{Expr, ExprId, FieldKind, ReadPlace, SourceInfo, SourceKind};
 
 // ── join ─────────────────────────────────────────────────────────────────────
 
@@ -61,9 +61,7 @@ pub fn source_field(kind: &SourceKind) -> Result<FieldKind, ReadPlace> {
         SourceKind::VirtualSetup { .. } => Ok(FieldKind::Base),
         SourceKind::Challenge { .. } => Ok(FieldKind::Ext),
 
-        SourceKind::Read { place } => {
-            read_place_field(place).ok_or_else(|| place.clone())
-        }
+        SourceKind::Read { place } => read_place_field(place).ok_or_else(|| place.clone()),
     }
 }
 
@@ -103,8 +101,8 @@ pub fn expr_field(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::gkr_compiler::dag_ir::{
-        ChallengePower, ChallengeKey, ChallengeRef, ExprId, Expr, FieldKind, LookupValueKind,
+    use crate::{
+        ChallengeKey, ChallengePower, ChallengeRef, Expr, ExprId, FieldKind, LookupValueKind,
         ReadPlace, SourceId, SourceInfo, SourceKind, VirtualSetupKind,
     };
 
@@ -150,7 +148,9 @@ mod tests {
 
     #[test]
     fn source_virtual_setup_is_base() {
-        let kind = SourceKind::VirtualSetup { kind: VirtualSetupKind::RangeCheck16Bits };
+        let kind = SourceKind::VirtualSetup {
+            kind: VirtualSetupKind::RangeCheck16Bits,
+        };
         assert_eq!(source_field(&kind), Ok(FieldKind::Base));
     }
 
@@ -169,41 +169,73 @@ mod tests {
 
     #[test]
     fn read_place_base_layer_memory_is_base() {
-        assert_eq!(read_place_field(&ReadPlace::BaseLayerMemory { column: 0 }), Some(FieldKind::Base));
+        assert_eq!(
+            read_place_field(&ReadPlace::BaseLayerMemory { column: 0 }),
+            Some(FieldKind::Base)
+        );
     }
 
     #[test]
     fn read_place_scratch_is_base() {
-        assert_eq!(read_place_field(&ReadPlace::Scratch { slot: 0 }), Some(FieldKind::Base));
+        assert_eq!(
+            read_place_field(&ReadPlace::Scratch { slot: 0 }),
+            Some(FieldKind::Base)
+        );
     }
 
     #[test]
     fn read_place_base_layer_witness_is_base() {
-        assert_eq!(read_place_field(&ReadPlace::BaseLayerWitness { column: 0 }), Some(FieldKind::Base));
+        assert_eq!(
+            read_place_field(&ReadPlace::BaseLayerWitness { column: 0 }),
+            Some(FieldKind::Base)
+        );
     }
 
     #[test]
     fn read_place_setup_is_base() {
-        assert_eq!(read_place_field(&ReadPlace::Setup { column: 0 }), Some(FieldKind::Base));
+        assert_eq!(
+            read_place_field(&ReadPlace::Setup { column: 0 }),
+            Some(FieldKind::Base)
+        );
     }
 
     // ── source_field: cross-layer reads return Err ────────────────────────────
 
     #[test]
     fn read_place_layer_output_returns_none() {
-        assert_eq!(read_place_field(&ReadPlace::LayerOutput { layer: 0, offset: 0 }), None);
+        assert_eq!(
+            read_place_field(&ReadPlace::LayerOutput {
+                layer: 0,
+                offset: 0
+            }),
+            None
+        );
     }
 
     #[test]
     fn read_place_cache_output_returns_none() {
-        assert_eq!(read_place_field(&ReadPlace::CacheOutput { layer: 0, offset: 0 }), None);
+        assert_eq!(
+            read_place_field(&ReadPlace::CacheOutput {
+                layer: 0,
+                offset: 0
+            }),
+            None
+        );
     }
 
     #[test]
     fn source_read_layer_output_returns_err() {
-        let place = ReadPlace::LayerOutput { layer: 1, offset: 3 };
-        let kind = SourceKind::Read { place: place.clone() };
-        assert!(matches!(source_field(&kind), Err(ReadPlace::LayerOutput { .. })));
+        let place = ReadPlace::LayerOutput {
+            layer: 1,
+            offset: 3,
+        };
+        let kind = SourceKind::Read {
+            place: place.clone(),
+        };
+        assert!(matches!(
+            source_field(&kind),
+            Err(ReadPlace::LayerOutput { .. })
+        ));
     }
 
     // ── expr_field ────────────────────────────────────────────────────────────
@@ -213,7 +245,9 @@ mod tests {
     #[test]
     fn expr_field_mul_constant_challenge_is_ext() {
         let sources = vec![
-            SourceInfo { kind: SourceKind::Constant { value: 7 } },
+            SourceInfo {
+                kind: SourceKind::Constant { value: 7 },
+            },
             SourceInfo {
                 kind: SourceKind::Challenge {
                     reference: ChallengeRef {
@@ -240,12 +274,16 @@ mod tests {
     #[test]
     fn expr_field_add_base_base_is_base() {
         let sources = vec![
-            SourceInfo { kind: SourceKind::Constant { value: 1 } },
-            SourceInfo { kind: SourceKind::LookupValue {
-                kind: LookupValueKind::TimestampIndex,
-                set_index: 0,
-                query: ExprId(0),
-            }},
+            SourceInfo {
+                kind: SourceKind::Constant { value: 1 },
+            },
+            SourceInfo {
+                kind: SourceKind::LookupValue {
+                    kind: LookupValueKind::TimestampIndex,
+                    set_index: 0,
+                    query: ExprId(0),
+                },
+            },
         ];
 
         let exprs = vec![
@@ -260,7 +298,9 @@ mod tests {
 
     #[test]
     fn source_field_read_scratch_is_base() {
-        let kind = SourceKind::Read { place: ReadPlace::Scratch { slot: 0 } };
+        let kind = SourceKind::Read {
+            place: ReadPlace::Scratch { slot: 0 },
+        };
         assert_eq!(source_field(&kind), Ok(FieldKind::Base));
     }
 }

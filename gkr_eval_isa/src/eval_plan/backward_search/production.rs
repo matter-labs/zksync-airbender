@@ -3,7 +3,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Condvar, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
-use cs::gkr_compiler::dag_ir::{BwdRegime, DagLayer};
+use gkr_eval_ir::DagLayer;
 use rayon::prelude::*;
 
 use crate::bwd::distill::DistilledLayer;
@@ -37,7 +37,7 @@ pub struct ProductionSearchIdentity {
     pub circuit: String,
     pub layout_fixture: String,
     pub layer: usize,
-    pub regime: BwdRegime,
+    pub regime: crate::BwdRegime,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1160,8 +1160,8 @@ fn production_identity_seed(identity: &ProductionSearchIdentity, budget_cells: u
     hash_bytes(
         &mut seed,
         &[match identity.regime {
-            BwdRegime::R0 => 0,
-            BwdRegime::Ext => 1,
+            crate::BwdRegime::R0 => 0,
+            crate::BwdRegime::Ext => 1,
         }],
     );
     hash_bytes(&mut seed, &(budget_cells as u64).to_le_bytes());
@@ -1201,9 +1201,9 @@ mod tests {
     use std::sync::atomic::AtomicBool;
     use std::sync::{Arc, Barrier, Condvar, Mutex};
 
-    use cs::gkr_compiler::dag_ir::{
-        BatchingOrder, BwdRegime, ClaimInfo, DagLayer, Expr, ExprId, ReadPlace, Root, RootGroup,
-        RootId, RootOrigin, RootSlot, SourceId, SourceInfo, SourceKind, VirtualSetupKind,
+    use gkr_eval_ir::{
+        BatchingOrder, ClaimInfo, DagLayer, Expr, ExprId, ReadPlace, Root, RootGroup, RootId,
+        RootOrigin, RootSlot, SourceId, SourceInfo, SourceKind, VirtualSetupKind,
     };
 
     use crate::bwd::distill::{DistilledLayer, distill};
@@ -1369,7 +1369,7 @@ mod tests {
     fn production_seed_selector_reports_nontrivial_exact_solver_telemetry() {
         let (canonical, distilled) = shared_source_fixture();
         let selected = select_production_backward_seeds(
-            &test_identity(BwdRegime::Ext),
+            &test_identity(crate::BwdRegime::Ext),
             &canonical,
             &distilled,
             8,
@@ -1628,13 +1628,13 @@ mod tests {
     #[test]
     fn production_result_order_matches_rebuilt_selected_order_and_telemetry() {
         let canonical = stable_domain_mismatch_paging_trivial_layer();
-        let distilled = distill(&canonical, BwdRegime::Ext, &HashMap::new(), None);
+        let distilled = distill(&canonical, crate::BwdRegime::Ext, &HashMap::new(), None);
         let (_, initial) = build_backward_search_problem(&canonical, &distilled, 8, 4).unwrap();
         let initial = initial.unwrap();
         let mut preceding = stable_indices_for(&initial, &initial.selected_order);
         preceding.reverse();
         let result = search_production_backward(
-            &test_identity(BwdRegime::Ext),
+            &test_identity(crate::BwdRegime::Ext),
             &canonical,
             &distilled,
             8,
@@ -1675,7 +1675,7 @@ mod tests {
         let (canonical, distilled) = shared_source_fixture();
         let snapshots = std::sync::Mutex::new(Vec::<ProductionSearchProgress>::new());
         let result = search_production_backward_with_progress(
-            &test_identity(BwdRegime::Ext),
+            &test_identity(crate::BwdRegime::Ext),
             &canonical,
             &distilled,
             8,
@@ -1708,7 +1708,7 @@ mod tests {
     #[test]
     fn preceding_budget_seed_is_scored_inside_the_fresh_tier() {
         let canonical = stable_domain_mismatch_paging_trivial_layer();
-        let distilled = distill(&canonical, BwdRegime::Ext, &HashMap::new(), None);
+        let distilled = distill(&canonical, crate::BwdRegime::Ext, &HashMap::new(), None);
         let (_, problem) = build_backward_search_problem(&canonical, &distilled, 8, 4).unwrap();
         let problem = problem.unwrap();
         let mut preceding = stable_indices_for(&problem, &problem.selected_order);
@@ -1721,7 +1721,7 @@ mod tests {
             &problem,
             8,
             &seeds,
-            production_identity_seed(&test_identity(BwdRegime::Ext), 4),
+            production_identity_seed(&test_identity(crate::BwdRegime::Ext), 4),
             2,
         )
         .unwrap();
@@ -1781,9 +1781,9 @@ mod tests {
     #[test]
     fn empty_leaf_domain_still_searches_fragment_order() {
         let canonical = paging_trivial_four_fragment_layer();
-        let distilled = distill(&canonical, BwdRegime::Ext, &HashMap::new(), None);
+        let distilled = distill(&canonical, crate::BwdRegime::Ext, &HashMap::new(), None);
         let result = search_production_backward(
-            &test_identity(BwdRegime::Ext),
+            &test_identity(crate::BwdRegime::Ext),
             &canonical,
             &distilled,
             8,
@@ -1820,7 +1820,7 @@ mod tests {
 
     #[test]
     fn production_identity_seed_is_stable_and_coordinate_sensitive() {
-        let identity = test_identity(BwdRegime::R0);
+        let identity = test_identity(crate::BwdRegime::R0);
         let seed = production_identity_seed(&identity, 4);
         assert_eq!(seed, 0xbbf2_c671_016e_083b);
         assert_eq!(seed, production_identity_seed(&identity, 4));
@@ -1830,7 +1830,7 @@ mod tests {
         changed.circuit.push('x');
         assert_ne!(seed, production_identity_seed(&changed, 4));
         changed = identity.clone();
-        changed.regime = BwdRegime::Ext;
+        changed.regime = crate::BwdRegime::Ext;
         assert_ne!(seed, production_identity_seed(&changed, 4));
         changed = identity.clone();
         changed.layer += 1;
@@ -1892,7 +1892,7 @@ mod tests {
         );
     }
 
-    fn test_identity(regime: BwdRegime) -> ProductionSearchIdentity {
+    fn test_identity(regime: crate::BwdRegime) -> ProductionSearchIdentity {
         ProductionSearchIdentity {
             circuit: "synthetic".to_owned(),
             layout_fixture: "synthetic_layout_gkr.json".to_owned(),
@@ -1905,9 +1905,9 @@ mod tests {
         preceding_order: Option<&[usize]>,
     ) -> Result<ProductionBackwardPlan, BackwardSearchError> {
         let canonical = stable_domain_mismatch_paging_trivial_layer();
-        let distilled = distill(&canonical, BwdRegime::Ext, &HashMap::new(), None);
+        let distilled = distill(&canonical, crate::BwdRegime::Ext, &HashMap::new(), None);
         select_production_backward_seeds(
-            &test_identity(BwdRegime::Ext),
+            &test_identity(crate::BwdRegime::Ext),
             &canonical,
             &distilled,
             8,
@@ -2044,14 +2044,14 @@ mod tests {
 
     fn shared_source_fixture() -> (DagLayer, DistilledLayer) {
         let layer = synthetic_two_shared_sources_layer();
-        let distilled = distill(&layer, BwdRegime::Ext, &HashMap::new(), None);
+        let distilled = distill(&layer, crate::BwdRegime::Ext, &HashMap::new(), None);
         (layer, distilled)
     }
 
     fn stable_domain_mismatch_fixture() -> (DagLayer, DistilledLayer) {
         let mut layer = synthetic_two_shared_sources_layer();
         layer.roots.rotate_left(1);
-        let distilled = distill(&layer, BwdRegime::Ext, &HashMap::new(), None);
+        let distilled = distill(&layer, crate::BwdRegime::Ext, &HashMap::new(), None);
         (layer, distilled)
     }
 

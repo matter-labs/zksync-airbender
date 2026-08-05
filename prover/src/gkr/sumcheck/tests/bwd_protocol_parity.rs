@@ -63,6 +63,7 @@ use std::alloc::Global;
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
+use cs::definitions::gkr::{NoFieldLinearRelation, NoFieldSingleColumnLookupRelation};
 use cs::definitions::{
     GKRAddress, VirtualSetupPoly, PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX,
     PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX,
@@ -71,26 +72,26 @@ use cs::definitions::{
     PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX,
     PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX,
 };
-use cs::gkr_compiler::dag_ir::{
-    bwd_roots, lower_dag, validate, BatchingOrder, Bf, BwdRegime, ChallengeKey, ChallengePower,
-    ChallengeRef, ChallengeResolver, ClaimInfo, DagLayer, Expr, ExprId, Ext, FieldKind,
-    LookupResolver, LookupValueKind, PermutationSlot, ReadPlace, ReadResolver, Resolvers, Root,
-    RootGroup, RootId, RootOrigin, RootSlot, SinkInfo, SinkKind, SourceId, SourceInfo, SourceKind,
-    VirtualSetupKind, VirtualSetupResolver,
-};
-use cs::definitions::gkr::{NoFieldLinearRelation, NoFieldSingleColumnLookupRelation};
 use cs::gkr_compiler::{
     GKRCircuitArtifact, GKRLayerDescription, GateArtifacts, NoFieldGKRCacheRelation,
     NoFieldGKRRelation, NoFieldMaxQuadraticGKRRelation, NoFieldStructuredExpression,
 };
 use cs::tables::TableDriver;
 use field::{Field, FieldExtension, FixedArrayConvertible, PrimeField};
+use gkr_eval_ir::{
+    claim_roots, lower_dag, validate, BatchingOrder, Bf, ChallengeKey, ChallengePower,
+    ChallengeRef, ChallengeResolver, ClaimInfo, DagLayer, Expr, ExprId, Ext, FieldKind,
+    LookupResolver, LookupValueKind, PermutationSlot, ReadPlace, ReadResolver, Resolvers, Root,
+    RootGroup, RootId, RootOrigin, RootSlot, SinkInfo, SinkKind, SourceId, SourceInfo, SourceKind,
+    VirtualSetupKind, VirtualSetupResolver,
+};
 use gkr_eval_isa::bwd::compile::{compile_distilled, BwdCompiledLayer};
 use gkr_eval_isa::bwd::distill::{bind, distill, BwdBindings, DistilledLayer};
 use gkr_eval_isa::bwd::interp::{interpret_bwd_row, sumcheck_fold_point, Role};
 use gkr_eval_isa::bwd::source::{BwdSpecial, FoldState, MaterializationPolicy, OriginLeaf};
 use gkr_eval_isa::fwd::compile::build_cross_layer_field_map;
 use gkr_eval_isa::fwd::error::CompileError;
+use gkr_eval_isa::BwdRegime;
 use riscv_transpiler::ir::FullUnsignedMachineDecoderConfig;
 use riscv_transpiler::replayer::{ReplayerRam, ReplayerVM};
 use riscv_transpiler::vm::{DelegationsAndFamiliesCounters, ReplayBuffer};
@@ -119,14 +120,14 @@ use crate::gkr::virtual_polys::init_and_teardown_base::{
 use crate::gkr::virtual_polys::range_check::{
     evaluate_virtual_range_check_setup_poly, materialize_virtual_range_check_setup_poly,
 };
-use common_constants::TIMESTAMP_COLUMNS_NUM_BITS;
-use cs::gkr_compiler::dag_ir::fold_vs_from_originals;
 use crate::gkr::witness_gen::delegation_circuits::evaluate_gkr_witness_for_delegation_circuit;
 use crate::gkr::witness_gen::family_circuits::GKRFullWitnessTrace;
 use crate::tests::gkr::orchestration::common::{
     hardcoded_external_challenges, run_vm_and_capture, ProgramConfig,
 };
 use crate::tracers::oracles::transpiler_oracles::delegation::BigintDelegationOracle;
+use common_constants::TIMESTAMP_COLUMNS_NUM_BITS;
+use gkr_eval_ir::fold_vs_from_originals;
 
 const FOLDING_STEPS: usize = 8;
 const POLY_SIZE: usize = 1 << FOLDING_STEPS;
@@ -469,8 +470,7 @@ fn family_base_product() -> Family {
         .collect();
 
     let relation = NoFieldMaxQuadraticGKRRelation {
-        quadratic_terms: vec![(addr_a, vec![(1u32, addr_b)].into_boxed_slice())]
-            .into_boxed_slice(),
+        quadratic_terms: vec![(addr_a, vec![(1u32, addr_b)].into_boxed_slice())].into_boxed_slice(),
         linear_terms: vec![].into_boxed_slice(),
         constant: 0,
     };
@@ -628,8 +628,7 @@ fn family_constraint_between_gates() -> Family {
 
     let m1 = minus_one_u32();
     let constraint = NoFieldMaxQuadraticGKRRelation {
-        quadratic_terms: vec![(addr_t, vec![(1u32, addr_t)].into_boxed_slice())]
-            .into_boxed_slice(),
+        quadratic_terms: vec![(addr_t, vec![(1u32, addr_t)].into_boxed_slice())].into_boxed_slice(),
         linear_terms: vec![(m1, addr_t)].into_boxed_slice(),
         constant: 0,
     };
@@ -1004,7 +1003,9 @@ fn vs_closed_form_fold(kind: &VirtualSetupKind, y: usize, ch: &[Ext], k: usize) 
             evaluate_virtual_range_check_setup_poly::<Bf, Ext, 16>(&point, n)
         }
         VirtualSetupKind::RangeCheckTimestamp => {
-            evaluate_virtual_range_check_setup_poly::<Bf, Ext, TIMESTAMP_COLUMNS_NUM_BITS>(&point, n)
+            evaluate_virtual_range_check_setup_poly::<Bf, Ext, TIMESTAMP_COLUMNS_NUM_BITS>(
+                &point, n,
+            )
         }
         VirtualSetupKind::InitsAndTeardownsLow => {
             evaluate_virtual_inits_and_teardowns_base_address_setup_polys::<Bf, Ext, 2>(&point, n).0
@@ -1041,11 +1042,11 @@ fn vs_closed_form_matches_recompute() {
     ];
     for k in [4usize, 6] {
         let rc = materialize_virtual_range_check_setup_poly::<Bf, Global, TEST_BITS>(k as u32);
-        let (it_low, it_high) =
-            materialize_virtual_inits_and_teardowns_base_address_setup_poly::<Bf, Global, TEST_BITS>(
-                k as u32,
-                &worker,
-            );
+        let (it_low, it_high) = materialize_virtual_inits_and_teardowns_base_address_setup_poly::<
+            Bf,
+            Global,
+            TEST_BITS,
+        >(k as u32, &worker);
 
         // Originals in production index space, read through the instrument view.
         let orig = |kind: &VirtualSetupKind, z: usize| -> Bf {
@@ -1066,10 +1067,20 @@ fn vs_closed_form_matches_recompute() {
                     evaluate_virtual_range_check_setup_poly::<Bf, Ext, TEST_BITS>(&point, n)
                 }
                 VirtualSetupKind::InitsAndTeardownsLow => {
-                    evaluate_virtual_inits_and_teardowns_base_address_setup_polys::<Bf, Ext, TEST_BITS>(&point, n).0
+                    evaluate_virtual_inits_and_teardowns_base_address_setup_polys::<
+                        Bf,
+                        Ext,
+                        TEST_BITS,
+                    >(&point, n)
+                    .0
                 }
                 VirtualSetupKind::InitsAndTeardownsHigh => {
-                    evaluate_virtual_inits_and_teardowns_base_address_setup_polys::<Bf, Ext, TEST_BITS>(&point, n).1
+                    evaluate_virtual_inits_and_teardowns_base_address_setup_polys::<
+                        Bf,
+                        Ext,
+                        TEST_BITS,
+                    >(&point, n)
+                    .1
                 }
             }
         };
@@ -1219,7 +1230,10 @@ fn run_instrument(cx: &InstrumentCtx<'_>, policy: MaterializationPolicy) -> Vec<
 
     for r in 0..k {
         // (d) chain: round-entry claim and eq prefactor match the capture.
-        assert_eq!(claim, run.per_round_claims[r], "{ctx} claim chain, round {r}");
+        assert_eq!(
+            claim, run.per_round_claims[r],
+            "{ctx} claim chain, round {r}"
+        );
         assert_eq!(
             eq_prefactor, run.per_round_eq_prefactor[r],
             "{ctx} eq-prefactor chain, round {r}"
@@ -1379,7 +1393,10 @@ fn check_family(fam: Family) {
     let eq_last = &eq_full.last().unwrap()[..];
     let mut output_claims: BTreeMap<GKRAddress, Ext> = BTreeMap::new();
     for (addr, vals) in &fam.ext_outputs {
-        output_claims.insert(*addr, evaluate_with_precomputed_eq_ext::<Ext>(vals, eq_last));
+        output_claims.insert(
+            *addr,
+            evaluate_with_precomputed_eq_ext::<Ext>(vals, eq_last),
+        );
     }
     for (addr, vals) in &fam.base_outputs {
         output_claims.insert(
@@ -1745,14 +1762,16 @@ fn build_bigint_storage(
     let trace_len = artifact.trace_len;
     let setup = GKRSetup::construct(table_driver, &[], trace_len, artifact);
     let mut storage = GKRStorage::<Bf, Ext>::default();
-    let (preprocessed_generic_lookup, decoder_lookup_fill_value) = setup
-        .preprocess_generic_lookups(artifact, lookup_alpha, trace_len, &mut storage, worker);
+    let (preprocessed_generic_lookup, decoder_lookup_fill_value) =
+        setup.preprocess_generic_lookups(artifact, lookup_alpha, trace_len, &mut storage, worker);
     storage.insert_base_field_at_layer(
         0,
         GKRAddress::VirtualSetup(VirtualSetupPoly::RangeCheck16Bits),
-        BaseFieldPoly::new(materialize_virtual_range_check_setup_poly::<Bf, Global, 16>(
-            trace_len.trailing_zeros(),
-        )),
+        BaseFieldPoly::new(
+            materialize_virtual_range_check_setup_poly::<Bf, Global, 16>(
+                trace_len.trailing_zeros(),
+            ),
+        ),
     );
     storage.insert_base_field_at_layer(
         0,
@@ -1798,7 +1817,13 @@ struct FixtureChallenges {
 }
 
 impl FixtureChallenges {
-    fn new(beta: Ext, alpha: Ext, gamma: Ext, external: &GKRExternalChallenges<Bf, Ext>, max_beta_pow: usize) -> Self {
+    fn new(
+        beta: Ext,
+        alpha: Ext,
+        gamma: Ext,
+        external: &GKRExternalChallenges<Bf, Ext>,
+        max_beta_pow: usize,
+    ) -> Self {
         let powers = |base: Ext, n: usize| -> Vec<Ext> {
             let mut v = Vec::with_capacity(n + 1);
             let mut acc = Ext::ONE;
@@ -1993,7 +2018,10 @@ fn par_q_sums(
                 let end = (start + chunk).min(acc_size);
                 s.spawn(move || {
                     // Per-thread resolver views over the shared column data.
-                    let folded_view = folded.map(|f| FoldedView { folded: f, origs: cols });
+                    let folded_view = folded.map(|f| FoldedView {
+                        folded: f,
+                        origs: cols,
+                    });
                     let rr = match &folded_view {
                         Some(v) => Resolvers {
                             read: v,
@@ -2102,7 +2130,7 @@ fn protocol_parity_bigint_l0() {
     validate(&dag).expect("validate(dag)");
     let cross = build_cross_layer_field_map(&dag);
     let layer0 = &dag.layers[0];
-    let spine = bwd_roots(layer0);
+    let spine = claim_roots(layer0);
     assert!(spine.len() > 200, "bigint L0 must batch its full root set");
     let d_r0 = distill(layer0, BwdRegime::R0, &cross, None);
     assert!(!d_r0.skipped_decoder, "bigint L0 is decoder-free (R0)");
@@ -2232,12 +2260,18 @@ fn protocol_parity_bigint_l0() {
         .collect();
     let mut output_claims: BTreeMap<GKRAddress, Ext> = BTreeMap::new();
     for (addr, claim) in par_map(&base_outs, threads, |(addr, vals)| {
-        (*addr, evaluate_with_precomputed_eq::<Bf, Ext>(vals, eq_last))
+        (
+            *addr,
+            evaluate_with_precomputed_eq::<Bf, Ext>(vals, eq_last),
+        )
     }) {
         output_claims.insert(addr, claim);
     }
     for (addr, claim) in par_map(&ext_outs, threads, |(addr, vals)| {
-        (*addr, evaluate_with_precomputed_eq_ext::<Ext>(vals, eq_last))
+        (
+            *addr,
+            evaluate_with_precomputed_eq_ext::<Ext>(vals, eq_last),
+        )
     }) {
         output_claims.insert(addr, claim);
     }
@@ -2263,7 +2297,7 @@ fn protocol_parity_bigint_l0() {
     );
 
     // Alpha-slot pin at scale: the collector's flattened batch weights are
-    // consecutive beta powers IN `bwd_roots` ORDER, constraint slots consume a
+    // consecutive beta powers IN `claim_roots` ORDER, constraint slots consume a
     // power with zero claim, and the combined claim is the weighted sum.
     assert_eq!(
         run.per_relation_weights.len(),
@@ -2274,8 +2308,7 @@ fn protocol_parity_bigint_l0() {
     let mut n_constraint_slots = 0usize;
     for (i, rid) in spine.iter().enumerate() {
         assert_eq!(
-            run.per_relation_weights[i],
-            cols.chal.beta_pows[i],
+            run.per_relation_weights[i], cols.chal.beta_pows[i],
             "slot {i} weight must be beta^{i}"
         );
         let root = &layer0.roots[rid.0 as usize];
@@ -2295,7 +2328,10 @@ fn protocol_parity_bigint_l0() {
             other => panic!("unexpected L0 claim-root sink {other:?}"),
         }
     }
-    assert!(n_constraint_slots > 100, "the constraint set must be in the batch");
+    assert!(
+        n_constraint_slots > 100,
+        "the constraint set must be in the batch"
+    );
     assert_eq!(
         run.initial_combined_claim, expected_claim,
         "combined claim over weighted slots"
@@ -2319,7 +2355,11 @@ fn protocol_parity_bigint_l0() {
             "{ctx} eq-prefactor chain"
         );
 
-        let (c, d) = if r == 0 { (&c_r0, &d_r0) } else { (&c_ext, &d_ext) };
+        let (c, d) = if r == 0 {
+            (&c_r0, &d_r0)
+        } else {
+            (&c_ext, &d_ext)
+        };
         let bind_always = bind(d, MaterializationPolicy::AlwaysMaterialize, r as u8);
         let bind_lazy2 = bind(d, MaterializationPolicy::LazyUpTo(2), r as u8);
         let materialized = bind_always
@@ -2404,7 +2444,10 @@ fn protocol_parity_bigint_l0() {
         // (c) emission reproduces the committed [E; 4]; (b) d == d_oracle.
         let (coeffs, d_rec) = recover_and_emit::<Bf, Ext>(z, claim, eq_prefactor, q0, q2);
         assert_eq!(d_rec, d_oracle, "{ctx} (b) recovered d");
-        assert_eq!(coeffs, run.round_coeffs[r], "{ctx} (c) committed univariate");
+        assert_eq!(
+            coeffs, run.round_coeffs[r],
+            "{ctx} (c) committed univariate"
+        );
 
         // (d) transcript replay.
         commit_field_els::<Bf, Ext>(&mut inst_seed, &coeffs);
@@ -2416,25 +2459,24 @@ fn protocol_parity_bigint_l0() {
 
         // Advance the folded buffers to depth r+1 for the next round.
         if r + 1 < k {
-            let folded_next: Vec<(ReadPlace, Vec<Ext>)> =
-                par_map(&fold_places, threads, |place| {
-                    let next = if r == 0 {
-                        // Depth-1 fold over the ORIGINALS via the read resolver
-                        // (bit-reversed, base lifted / ext direct), so Ext-valued
-                        // fenced cache columns fold without a spurious lift.
-                        let half = 1usize << (k - 1);
-                        (0..half)
-                            .map(|y| {
-                                let a = cols.read(place, 2 * y);
-                                let b = cols.read(place, 2 * y + 1);
-                                add(mul(sub(b, &a), &ch), &a)
-                            })
-                            .collect()
-                    } else {
-                        fold_step(&folded[place], &ch)
-                    };
-                    (place.clone(), next)
-                });
+            let folded_next: Vec<(ReadPlace, Vec<Ext>)> = par_map(&fold_places, threads, |place| {
+                let next = if r == 0 {
+                    // Depth-1 fold over the ORIGINALS via the read resolver
+                    // (bit-reversed, base lifted / ext direct), so Ext-valued
+                    // fenced cache columns fold without a spurious lift.
+                    let half = 1usize << (k - 1);
+                    (0..half)
+                        .map(|y| {
+                            let a = cols.read(place, 2 * y);
+                            let b = cols.read(place, 2 * y + 1);
+                            add(mul(sub(b, &a), &ch), &a)
+                        })
+                        .collect()
+                } else {
+                    fold_step(&folded[place], &ch)
+                };
+                (place.clone(), next)
+            });
             folded = folded_next.into_iter().collect();
         }
     }
@@ -2451,11 +2493,8 @@ fn protocol_parity_bigint_l0() {
     // last-evaluations line at r_last.
     assert!(!run.last_evaluations.is_empty());
     let r_last = drawn[k - 1];
-    let last_entries: Vec<(GKRAddress, [Ext; 2])> = run
-        .last_evaluations
-        .iter()
-        .map(|(a, v)| (*a, *v))
-        .collect();
+    let last_entries: Vec<(GKRAddress, [Ext; 2])> =
+        run.last_evaluations.iter().map(|(a, v)| (*a, *v)).collect();
     assert!(
         last_entries
             .iter()

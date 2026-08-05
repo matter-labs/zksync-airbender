@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
-use cs::gkr_compiler::dag_ir::DagLayer;
+use gkr_eval_ir::DagLayer;
 use rayon::prelude::*;
 
 use crate::bwd::distill::DistilledLayer;
@@ -579,9 +579,9 @@ fn infeasible_score(ordinal: usize) -> BackwardScore {
 mod tests {
     use std::collections::{BTreeMap, HashMap};
 
-    use cs::gkr_compiler::dag_ir::{
-        BatchingOrder, BwdRegime, ClaimInfo, DagLayer, Expr, ExprId, ReadPlace, Root, RootGroup,
-        RootId, RootOrigin, RootSlot, SourceId, SourceInfo, SourceKind,
+    use gkr_eval_ir::{
+        BatchingOrder, ClaimInfo, DagLayer, Expr, ExprId, ReadPlace, Root, RootGroup, RootId,
+        RootOrigin, RootSlot, SourceId, SourceInfo, SourceKind,
     };
     use rayon::ThreadPoolBuilder;
 
@@ -1183,7 +1183,7 @@ mod tests {
 
     fn synthetic_solved_problem() -> SyntheticFixture {
         let layer = synthetic_two_shared_sources_layer();
-        let distilled = distill(&layer, BwdRegime::Ext, &HashMap::new(), None);
+        let distilled = distill(&layer, crate::BwdRegime::Ext, &HashMap::new(), None);
         let (_, problem) = build_backward_search_problem(&layer, &distilled, 8, 4).unwrap();
         let problem = problem.expect("synthetic two-shared-source problem");
         let exact = match solve_exact_paging(&problem.demands, MAX_PAGER_STATES).unwrap() {

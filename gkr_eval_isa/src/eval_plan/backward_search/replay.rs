@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::time::{Duration, Instant};
 
-use cs::gkr_compiler::dag_ir::{ExprId, FieldKind};
+use gkr_eval_ir::{ExprId, FieldKind};
 
 use crate::bwd::distill::DistilledLayer;
 use crate::bwd::plan::{BwdOccurrencePlan, PlanAction, PlanEntry, plan_entries_fnv};
@@ -752,9 +752,9 @@ fn map_replay_error(error: BackwardEvaluationError) -> BackwardSearchError {
 mod tests {
     use std::collections::{BTreeMap, HashMap};
 
-    use cs::gkr_compiler::dag_ir::{
-        BatchingOrder, BwdRegime, ClaimInfo, DagLayer, Expr, ExprId, ReadPlace, Root, RootGroup,
-        RootId, RootOrigin, RootSlot, SourceId, SourceInfo, SourceKind,
+    use gkr_eval_ir::{
+        BatchingOrder, ClaimInfo, DagLayer, Expr, ExprId, ReadPlace, Root, RootGroup, RootId,
+        RootOrigin, RootSlot, SourceId, SourceInfo, SourceKind,
     };
 
     use crate::bwd::distill::{DistilledLayer, distill};
@@ -873,7 +873,7 @@ mod tests {
     #[test]
     fn replayed_positions_may_compress_after_an_earlier_hit() {
         let layer = synthetic_two_shared_sources_layer();
-        let distilled = distill(&layer, BwdRegime::Ext, &HashMap::new(), None);
+        let distilled = distill(&layer, crate::BwdRegime::Ext, &HashMap::new(), None);
         let (_, problem) = build_backward_search_problem(&layer, &distilled, 8, 4).unwrap();
         let problem = problem.expect("two shared-source problem");
         let demand_values = problem
@@ -1109,7 +1109,7 @@ mod tests {
     #[test]
     fn r0_global_reads_include_exact_t2_role_combine_ops() {
         let layer = synthetic_shared_read_layer();
-        let distilled = distill(&layer, BwdRegime::R0, &HashMap::new(), None);
+        let distilled = distill(&layer, crate::BwdRegime::R0, &HashMap::new(), None);
         let (_, problem) = build_backward_search_problem(&layer, &distilled, 8, 4).unwrap();
         let problem = problem.unwrap();
         assert!(problem.demands.iter().all(|demand| {
@@ -1127,7 +1127,7 @@ mod tests {
 
     fn synthetic_shared_read_fixture() -> SyntheticFixture {
         let layer = synthetic_shared_read_layer();
-        let distilled = distill(&layer, BwdRegime::Ext, &HashMap::new(), None);
+        let distilled = distill(&layer, crate::BwdRegime::Ext, &HashMap::new(), None);
         let (_, problem) = build_backward_search_problem(&layer, &distilled, 8, 4).unwrap();
         let problem = problem.expect("synthetic shared-read problem");
         let exact = match solve_exact_paging(&problem.demands, MAX_PAGER_STATES).unwrap() {

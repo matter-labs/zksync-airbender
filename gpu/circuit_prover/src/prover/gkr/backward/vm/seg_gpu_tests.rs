@@ -63,9 +63,9 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::rc::Rc;
 use std::sync::Arc;
 
-use cs::gkr_compiler::dag_ir::{BwdRegime, FieldKind, ReadPlace};
 use era_cudart::memory::{memory_copy, memory_copy_async};
 use era_cudart::slice::DeviceSlice;
+use gkr_eval_ir::{BwdRegime, FieldKind, ReadPlace};
 use gkr_eval_isa::bwd::coeff::interp::{interpret_coeff_layer, interpret_lean_program};
 use gkr_eval_isa::bwd::coeff::lean::{
     decode_program, encode_program_atoms, validate_program, LeanAtomRef, LEAN_CLASS_MASK,

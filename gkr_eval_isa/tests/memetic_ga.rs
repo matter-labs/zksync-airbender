@@ -12,17 +12,17 @@ mod common;
 
 use std::collections::HashMap;
 
-use cs::gkr_compiler::dag_ir::{lower_dag, validate, DagCircuit, FieldKind, ReadPlace};
 use cs::gkr_compiler::GKRCircuitArtifact;
 use field::baby_bear::base::BabyBearField;
+use gkr_eval_ir::{DagCircuit, FieldKind, ReadPlace, lower_dag, validate};
 
 use gkr_eval_isa::fwd::compile::build_cross_layer_field_map;
 use gkr_eval_isa::schedule_search::genome::Genome;
 use gkr_eval_isa::schedule_search::scorer::{
-    decode_schedule, genome_from_schedule, objective_key, score, LayerCtx,
+    LayerCtx, decode_schedule, genome_from_schedule, objective_key, score,
 };
 use gkr_eval_isa::schedule_search::search::{
-    ga_local_descent, optimize_from_population, seeded_population, SearchConfig,
+    SearchConfig, ga_local_descent, optimize_from_population, seeded_population,
 };
 
 use common::load_fixture;
@@ -33,12 +33,21 @@ const ADD_SUB: &str = "add_sub_lui_auipc_mop_layout_gkr.json";
 
 /// Tiny GA config for the real-fixture gates (NOT the 20k default).
 fn tiny_cfg() -> SearchConfig {
-    SearchConfig { pop: 8, evals: 400, seed: 0, ..SearchConfig::default() }
+    SearchConfig {
+        pop: 8,
+        evals: 400,
+        seed: 0,
+        ..SearchConfig::default()
+    }
 }
 
 fn load_dag(
     fixture: &str,
-) -> (DagCircuit, GKRCircuitArtifact<BabyBearField>, HashMap<ReadPlace, FieldKind>) {
+) -> (
+    DagCircuit,
+    GKRCircuitArtifact<BabyBearField>,
+    HashMap<ReadPlace, FieldKind>,
+) {
     let artifact = load_fixture(fixture);
     let dag = lower_dag(&artifact).unwrap_or_else(|e| panic!("[{fixture}] lower_dag: {e}"));
     validate(&dag).unwrap_or_else(|e| panic!("[{fixture}] validate: {e}"));
@@ -51,10 +60,19 @@ fn load_dag(
 #[test]
 fn ga_local_descent_never_worsens() {
     let (dag, artifact, cross) = load_dag(ADD_SUB);
-    let ctx = LayerCtx::new(&dag.layers[0], &artifact.layers[0], &artifact, &cross, REAL_BUDGET);
+    let ctx = LayerCtx::new(
+        &dag.layers[0],
+        &artifact.layers[0],
+        &artifact,
+        &cross,
+        REAL_BUDGET,
+    );
 
     // A random (non-neutral) start so descent actually has neighbors to try.
-    let start = seeded_population(&ctx, 8, 0).into_iter().last().expect("seeded tail");
+    let start = seeded_population(&ctx, 8, 0)
+        .into_iter()
+        .last()
+        .expect("seeded tail");
     let start_score = score(&start, &ctx);
 
     let mut evals = 0usize;
@@ -64,14 +82,23 @@ fn ga_local_descent_never_worsens() {
         objective_key(&out_score) <= objective_key(&start_score),
         "local descent worsened the candidate: {out_score:?} > {start_score:?}"
     );
-    assert!(evals > 0, "descent must have scored at least one neighbor batch");
+    assert!(
+        evals > 0,
+        "descent must have scored at least one neighbor batch"
+    );
 }
 
 /// The GA is deterministic: same `seed` + `cfg` + `ctx` -> identical winner.
 #[test]
 fn optimize_from_population_is_deterministic() {
     let (dag, artifact, cross) = load_dag(ADD_SUB);
-    let ctx = LayerCtx::new(&dag.layers[0], &artifact.layers[0], &artifact, &cross, REAL_BUDGET);
+    let ctx = LayerCtx::new(
+        &dag.layers[0],
+        &artifact.layers[0],
+        &artifact,
+        &cross,
+        REAL_BUDGET,
+    );
     let cfg = tiny_cfg();
 
     let seeds_a = seeded_population(&ctx, cfg.pop.min(cfg.evals), cfg.seed);
@@ -79,8 +106,14 @@ fn optimize_from_population_is_deterministic() {
     let a = optimize_from_population(&ctx, seeds_a, &cfg);
     let b = optimize_from_population(&ctx, seeds_b, &cfg);
 
-    assert_eq!(a.best_genome, b.best_genome, "GA best_genome must be deterministic");
-    assert_eq!(a.best_score, b.best_score, "GA best_score must be deterministic");
+    assert_eq!(
+        a.best_genome, b.best_genome,
+        "GA best_genome must be deterministic"
+    );
+    assert_eq!(
+        a.best_score, b.best_score,
+        "GA best_score must be deterministic"
+    );
     assert_eq!(a.evals, b.evals, "GA eval count must be deterministic");
 }
 
@@ -89,11 +122,20 @@ fn optimize_from_population_is_deterministic() {
 #[test]
 fn ga_beats_or_matches_neutral_seed() {
     let (dag, artifact, cross) = load_dag(ADD_SUB);
-    let ctx = LayerCtx::new(&dag.layers[0], &artifact.layers[0], &artifact, &cross, REAL_BUDGET);
+    let ctx = LayerCtx::new(
+        &dag.layers[0],
+        &artifact.layers[0],
+        &artifact,
+        &cross,
+        REAL_BUDGET,
+    );
 
     let neutral = Genome::neutral(ctx.n_order_keys(), ctx.n_sites());
     let neutral_score = score(&neutral, &ctx);
-    assert!(!neutral_score.infeasible, "neutral seed must be feasible at budget {REAL_BUDGET}");
+    assert!(
+        !neutral_score.infeasible,
+        "neutral seed must be feasible at budget {REAL_BUDGET}"
+    );
 
     let cfg = tiny_cfg();
     let seeds = seeded_population(&ctx, cfg.pop.min(cfg.evals), cfg.seed);
@@ -122,7 +164,13 @@ fn ga_beats_or_matches_neutral_seed() {
 #[test]
 fn genome_from_schedule_round_trips() {
     let (dag, artifact, cross) = load_dag(ADD_SUB);
-    let ctx = LayerCtx::new(&dag.layers[0], &artifact.layers[0], &artifact, &cross, REAL_BUDGET);
+    let ctx = LayerCtx::new(
+        &dag.layers[0],
+        &artifact.layers[0],
+        &artifact,
+        &cross,
+        REAL_BUDGET,
+    );
 
     // A non-trivial genome: reversed unit keys + a deterministic priority sweep.
     let mut g0 = Genome::neutral(ctx.n_order_keys(), ctx.n_sites());
@@ -142,5 +190,9 @@ fn genome_from_schedule_round_trips() {
     assert_eq!(ls2.units, ls.units, "unit order must round-trip");
     assert_eq!(ls2.sites, ls.sites, "site priorities must round-trip");
     // Scoring the inverted genome reproduces the original's compile exactly.
-    assert_eq!(score(&g1, &ctx), score(&g0, &ctx), "incumbent scores as itself");
+    assert_eq!(
+        score(&g1, &ctx),
+        score(&g0, &ctx),
+        "incumbent scores as itself"
+    );
 }

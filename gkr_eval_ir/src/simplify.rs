@@ -206,7 +206,10 @@ impl Rebuild<'_> {
     fn const_expr(&mut self, v: u32) -> ExprId {
         // All callers pass already-reduced fold results (`fold_add`/`fold_mul`
         // output, or a value copied from an existing reduced Constant).
-        debug_assert!((v as u64) < SIMPLIFY_MODULUS, "const_expr: value {v} not reduced mod {SIMPLIFY_MODULUS}");
+        debug_assert!(
+            (v as u64) < SIMPLIFY_MODULUS,
+            "const_expr: value {v} not reduced mod {SIMPLIFY_MODULUS}"
+        );
         let s = self.arena.intern_source(SourceKind::Constant { value: v });
         self.arena.source_expr(s)
     }
@@ -263,10 +266,12 @@ impl Rebuild<'_> {
                     let mut rest: Vec<ExprId> = Vec::with_capacity(flat.len());
                     for id in flat {
                         match self.as_const(id) {
-                            Some(v) => acc = Some(match acc {
-                                Some(a) => fold_add(a, v),
-                                None => v,
-                            }),
+                            Some(v) => {
+                                acc = Some(match acc {
+                                    Some(a) => fold_add(a, v),
+                                    None => v,
+                                })
+                            }
                             None => rest.push(id),
                         }
                     }
@@ -299,8 +304,10 @@ impl Rebuild<'_> {
                         1 => {
                             // All-constant fold implies provably-base today; assert protects
                             // against future as_const/source_field drift.
-                            debug_assert!(self.as_const(rest[0]).is_none() || self.provably_base(old),
-                                "constant replacement must be provably base");
+                            debug_assert!(
+                                self.as_const(rest[0]).is_none() || self.provably_base(old),
+                                "constant replacement must be provably base"
+                            );
                             rest[0]
                         }
                         _ => self.arena.add(rest),
@@ -330,10 +337,12 @@ impl Rebuild<'_> {
                     let mut rest: Vec<ExprId> = Vec::with_capacity(flat.len());
                     for id in flat {
                         match self.as_const(id) {
-                            Some(v) => acc = Some(match acc {
-                                Some(a) => fold_mul(a, v),
-                                None => v,
-                            }),
+                            Some(v) => {
+                                acc = Some(match acc {
+                                    Some(a) => fold_mul(a, v),
+                                    None => v,
+                                })
+                            }
                             None => rest.push(id),
                         }
                     }
@@ -377,8 +386,10 @@ impl Rebuild<'_> {
                             1 => {
                                 // All-constant fold implies provably-base today; assert protects
                                 // against future as_const/source_field drift.
-                                debug_assert!(self.as_const(rest[0]).is_none() || self.provably_base(old),
-                                    "constant replacement must be provably base");
+                                debug_assert!(
+                                    self.as_const(rest[0]).is_none() || self.provably_base(old),
+                                    "constant replacement must be provably base"
+                                );
                                 rest[0]
                             }
                             _ => self.arena.mul(rest),
@@ -397,7 +408,7 @@ impl Rebuild<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::gkr_compiler::dag_ir::{
+    use crate::{
         validate_simplified, BatchingOrder, ChallengeKey, ChallengePower, ChallengeRef, ClaimInfo,
         DagCircuit, DagGlobals, LookupValueKind, ReadPlace, ResolutionStrategy, RootGroup,
         RootOrigin, RootSlot, SinkInfo, SinkKind,
@@ -474,7 +485,12 @@ mod tests {
         };
         let layer = layer_of(a, vec![root], BTreeMap::new());
         let out = simplify_layer(&layer);
-        assert_eq!(out.exprs.len(), 1, "only the root constant survives: {:?}", out.exprs);
+        assert_eq!(
+            out.exprs.len(),
+            1,
+            "only the root constant survives: {:?}",
+            out.exprs
+        );
         assert_eq!(out.roots.len(), 1);
     }
 
@@ -543,7 +559,12 @@ mod tests {
         let layer = layer_of(a, roots, BTreeMap::new());
         let out = simplify_layer(&layer);
         match &out.exprs[out.roots[0].expr.0 as usize] {
-            Expr::Add(ops) => assert_eq!(ops.len(), 2, "Add(xy, z) must keep nested xy, got {:?}", ops),
+            Expr::Add(ops) => assert_eq!(
+                ops.len(),
+                2,
+                "Add(xy, z) must keep nested xy, got {:?}",
+                ops
+            ),
             other => panic!("expected Add, got {:?}", other),
         }
     }
@@ -571,7 +592,11 @@ mod tests {
             Expr::Add(ops) => assert_eq!(ops.len(), 2, "fenced leaf survives as one operand"),
             other => panic!("expected Add, got {:?}", other),
         }
-        assert_eq!(out.resolutions.len(), 1, "resolution key remapped, not dropped");
+        assert_eq!(
+            out.resolutions.len(),
+            1,
+            "resolution key remapped, not dropped"
+        );
     }
 
     /// The fenced node ITSELF skips rewrites: a same-op fan-out-1 child INSIDE a
@@ -595,7 +620,12 @@ mod tests {
         );
         let out = simplify_layer(&layer);
         match &out.exprs[out.roots[0].expr.0 as usize] {
-            Expr::Add(ops) => assert_eq!(ops.len(), 2, "fenced node keeps nested child, got {:?}", ops),
+            Expr::Add(ops) => assert_eq!(
+                ops.len(),
+                2,
+                "fenced node keeps nested child, got {:?}",
+                ops
+            ),
             other => panic!("expected fenced Add to survive, got {:?}", other),
         }
     }
@@ -631,7 +661,12 @@ mod tests {
         let layer = layer_of(a, roots, BTreeMap::new());
         let out = simplify_layer(&layer);
         match &out.exprs[out.roots[0].expr.0 as usize] {
-            Expr::Add(ops) => assert_eq!(ops.len(), 2, "query edge must keep fan-out at 2, got {:?}", ops),
+            Expr::Add(ops) => assert_eq!(
+                ops.len(),
+                2,
+                "query edge must keep fan-out at 2, got {:?}",
+                ops
+            ),
             other => panic!("expected Add, got {:?}", other),
         }
     }
@@ -810,7 +845,12 @@ mod tests {
         let layer = layer_of(a, vec![root], BTreeMap::new());
         let out = simplify_layer(&layer);
         // Both the Constant source and the LookupValue source survive.
-        assert_eq!(out.sources.len(), 2, "query subtree stays alive: {:?}", out.sources);
+        assert_eq!(
+            out.sources.len(),
+            2,
+            "query subtree stays alive: {:?}",
+            out.sources
+        );
         // Find the LookupValue source in the output and follow its query edge.
         let query = out
             .sources

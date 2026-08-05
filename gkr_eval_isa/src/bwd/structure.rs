@@ -8,9 +8,11 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
 
-use cs::gkr_compiler::dag_ir::{
-    bwd_cache_fences, join, source_field, DagLayer, Expr, ExprId, FieldKind, SiteKey, SourceKind,
+use gkr_eval_ir::{
+    DagLayer, Expr, ExprId, FieldKind, SourceKind, analyze_claim_cone, join, source_field,
 };
+
+use crate::schedule::SiteKey;
 
 use super::distill::{DistilledLayer, StableBwdExprKey, StableBwdSiteKey};
 use super::source::BwdSpecial;
@@ -188,7 +190,7 @@ fn attach_canonical_unit_uses(
             StableBwdExprKey::BatchingTerm(_) | StableBwdExprKey::CombinedSpine => None,
         })
         .collect();
-    let fences = bwd_cache_fences(canonical);
+    let cone = analyze_claim_cone(canonical);
 
     for (unit_index, roots) in distilled.unit_order.iter().enumerate() {
         let mut reached = BTreeSet::new();
@@ -204,7 +206,7 @@ fn attach_canonical_unit_uses(
             if targets.contains(&expr) {
                 reached.insert(expr);
             }
-            if fences.contains_key(&expr) {
+            if cone.cache_boundary(expr).is_some() {
                 continue;
             }
             match &canonical.exprs[expr.0 as usize] {
@@ -300,7 +302,7 @@ fn cone_dram_cells(
     }
     let cost = match &d.layer.exprs[expr.0 as usize] {
         Expr::Source(source) => match d.regime {
-            cs::gkr_compiler::dag_ir::BwdRegime::R0 => {
+            crate::BwdRegime::R0 => {
                 if matches!(
                     d.layer.sources[source.0 as usize].kind,
                     SourceKind::Read { .. }
@@ -310,7 +312,7 @@ fn cone_dram_cells(
                     0
                 }
             }
-            cs::gkr_compiler::dag_ir::BwdRegime::Ext => d
+            crate::BwdRegime::Ext => d
                 .leaf_descs
                 .get(&expr)
                 .and_then(|desc| d.specials.get(*desc))
@@ -337,7 +339,11 @@ fn cone_dram_cells(
     cost
 }
 
-pub(super) fn expr_width(d: &DistilledLayer, expr: ExprId, memo: &mut [Option<FieldKind>]) -> usize {
+pub(super) fn expr_width(
+    d: &DistilledLayer,
+    expr: ExprId,
+    memo: &mut [Option<FieldKind>],
+) -> usize {
     match expr_field(d, expr, memo) {
         FieldKind::Base => 1,
         FieldKind::Ext => 4,

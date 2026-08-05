@@ -9,10 +9,11 @@
 
 mod common;
 
-use cs::gkr_compiler::dag_ir::{
-    BatchingOrder, BwdRegime, ClaimInfo, DagLayer, Expr, ExprId, ReadPlace, Root, RootGroup,
-    RootId, RootOrigin, RootSlot, SourceId, SourceInfo, SourceKind,
+use gkr_eval_ir::{
+    BatchingOrder, ClaimInfo, DagLayer, Expr, ExprId, ReadPlace, Root, RootGroup, RootId,
+    RootOrigin, RootSlot, SourceId, SourceInfo, SourceKind,
 };
+use gkr_eval_isa::BwdRegime;
 use std::collections::BTreeMap;
 
 use common::{

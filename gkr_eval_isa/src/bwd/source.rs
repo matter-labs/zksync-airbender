@@ -4,7 +4,7 @@
 //! indexes ONLY `BwdSpecialTable` — fwd's `SpecialTable`, `peek.rs`
 //! validators, and fwd stats are never applied to bwd programs.
 
-use cs::gkr_compiler::dag_ir::{ReadPlace, VirtualSetupKind};
+use gkr_eval_ir::{ReadPlace, VirtualSetupKind};
 
 /// Which stored representation a `FoldSource` reads from at a given round.
 /// REV2: not carried by `BwdSpecial` (that's structural-only) — this lives in
@@ -24,7 +24,7 @@ pub const VIRTUAL_SETUP_MATERIALIZE_DEPTH: u8 = 3;
 /// The pre-distillation identity of a fold origin.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OriginLeaf {
-    /// Exactly the payload of `cs::gkr_compiler::dag_ir::SourceKind::Read`.
+    /// Exactly the payload of `gkr_eval_ir::SourceKind::Read`.
     Read(ReadPlace),
     VirtualSetup { kind: VirtualSetupKind },
     // REV2: LookupColumn placeholder DELETED — decoder binding is deferred design.

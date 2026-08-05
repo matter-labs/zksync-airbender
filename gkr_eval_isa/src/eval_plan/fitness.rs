@@ -1,9 +1,8 @@
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, HashSet};
 
-use cs::gkr_compiler::dag_ir::{
-    DagLayer, Expr, ExprId, FieldKind, RootGroup, RootId, relation_units_with_caches,
-};
+use crate::schedule::relation_units_with_caches;
+use gkr_eval_ir::{DagLayer, Expr, ExprId, FieldKind, RootGroup, RootId};
 
 use super::genome::root_cmp;
 use super::{

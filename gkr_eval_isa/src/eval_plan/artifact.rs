@@ -2,9 +2,9 @@ use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 
 use cs::definitions::GKRAddress;
-use cs::gkr_compiler::dag_ir::{DagCircuit, DagLayer, ExprId, FieldKind, ReadPlace, RootId};
 use cs::gkr_compiler::{GKRCircuitArtifact, GKRLayerDescription};
 use field::baby_bear::base::BabyBearField;
+use gkr_eval_ir::{DagCircuit, DagLayer, ExprId, FieldKind, ReadPlace, RootId};
 
 use crate::fwd::compile::{build_cross_layer_field_map, expr_operand_field};
 use crate::fwd::context::{ForwardAction, build_forward_actions};

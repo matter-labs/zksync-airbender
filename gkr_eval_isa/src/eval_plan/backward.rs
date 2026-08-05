@@ -1,24 +1,23 @@
 //! Closed symbolic adapter for normalized backward fragments.
 
-use cs::gkr_compiler::dag_ir::{
-    join, source_field, BwdRegime, Expr, ExprId, FieldKind, ReadPlace, RootId, SourceId, SourceKind,
+use gkr_eval_ir::{
+    Expr, ExprId, FieldKind, ReadPlace, RootId, SourceId, SourceKind, join, source_field,
 };
 
-use crate::bwd::compile::{fragment_descs, tally_bwd_program, BwdCompiledLayer};
-use crate::bwd::distill::{distilled_site_domain, DistilledLayer};
-use crate::bwd::plan::{plan_entries_fnv, BwdOccurrencePlan, PlanReplayError, PlanRun};
+use crate::bwd::compile::{BwdCompiledLayer, fragment_descs, tally_bwd_program};
+use crate::bwd::distill::{DistilledLayer, distilled_site_domain};
+use crate::bwd::plan::{BwdOccurrencePlan, PlanReplayError, PlanRun, plan_entries_fnv};
 use crate::bwd::source::BwdSpecialTable;
 use crate::bwd::trace::{
-    certify, live_profile, physical_traffic_events, plan_epoch_fragment,
-    retain_physical_traffic_events, BwdCompileTrace, BwdEvent,
+    BwdCompileTrace, BwdEvent, certify, live_profile, physical_traffic_events, plan_epoch_fragment,
+    retain_physical_traffic_events,
 };
 
 use super::{
-    budget_lanes_from_cells,
+    BackwardReplay, ConcreteBindError, ConcreteEvalProgram, ConcreteTerminal, EvalPlan, PackConfig,
+    PackError, PackedEvalPlan, PlanError, budget_lanes_from_cells,
     concrete::{bind_backward_packed_plan, bind_backward_packed_plan_for_model},
     elaborate_backward_fragments_driver, elaborate_backward_fragments_replayed_driver, pack_plan,
-    BackwardReplay, ConcreteBindError, ConcreteEvalProgram, ConcreteTerminal, EvalPlan, PackConfig,
-    PackError, PackedEvalPlan, PlanError,
 };
 
 /// Symbolic backward evaluation before descriptor binding. The special table is
@@ -400,7 +399,7 @@ fn compile_backward_symbolic(
             traced: traced_traffic,
         });
     }
-    if d.regime == BwdRegime::Ext && certify(&compiled, &trace).is_err() {
+    if d.regime == crate::BwdRegime::Ext && certify(&compiled, &trace).is_err() {
         return Err(BackwardEvaluationError::TrafficCertificateMismatch {
             symbolic: symbolic_traffic,
             packed: packed_traffic,
@@ -758,32 +757,32 @@ fn backward_expr_field(
 mod tests {
     use std::collections::{BTreeMap, HashMap};
 
-    use cs::gkr_compiler::dag_ir::{
-        eval_layer_expr, eval_layer_root, BatchingOrder, Bf, BwdRegime, ChallengeKey,
-        ChallengePower, ChallengeRef, ChallengeResolver, ClaimInfo, DagLayer, Expr, ExprId, Ext,
-        FieldKind, LookupResolver, LookupValueKind, ReadPlace, ReadResolver, Resolvers, Root,
-        RootGroup, RootOrigin, RootSlot, SourceId, SourceInfo, SourceKind, VirtualSetupKind,
-        VirtualSetupResolver,
-    };
     use field::{Field, FieldExtension, PrimeField};
+    use gkr_eval_ir::{
+        BatchingOrder, Bf, ChallengeKey, ChallengePower, ChallengeRef, ChallengeResolver,
+        ClaimInfo, DagLayer, Expr, ExprId, Ext, FieldKind, LookupResolver, LookupValueKind,
+        ReadPlace, ReadResolver, Resolvers, Root, RootGroup, RootOrigin, RootSlot, SourceId,
+        SourceInfo, SourceKind, VirtualSetupKind, VirtualSetupResolver, eval_layer_expr,
+        eval_layer_root,
+    };
 
     use crate::bwd::batch::unpack_batch_dst;
-    use crate::bwd::distill::{distill, distilled_site_domain, DistilledLayer};
+    use crate::bwd::distill::{DistilledLayer, distill, distilled_site_domain};
     use crate::bwd::fragment::{FragmentSpec, FragmentTable, MergedRecipe, ProductRecipe};
-    use crate::bwd::plan::{plan_entries_fnv, BwdOccurrencePlan, PlanAction, PlanEntry};
+    use crate::bwd::plan::{BwdOccurrencePlan, PlanAction, PlanEntry, plan_entries_fnv};
     use crate::bwd::source::BwdSpecial;
     use crate::bwd::trace::{BwdEvent, BwdServeKind};
-    use crate::fwd::isa::{Sign, MAX_CELL};
+    use crate::fwd::isa::{MAX_CELL, Sign};
 
     use super::{
-        compile_backward_fragments_replayed, compile_backward_fragments_uncached,
-        elaborate_backward_fragments_driver, elaborate_backward_fragments_uncached,
-        map_compile_concrete_error, map_replay_plan_error, BackwardEvaluationError,
+        BackwardEvaluationError, compile_backward_fragments_replayed,
+        compile_backward_fragments_uncached, elaborate_backward_fragments_driver,
+        elaborate_backward_fragments_uncached, map_compile_concrete_error, map_replay_plan_error,
     };
     use crate::eval_plan::{
-        bind_packed_plan, interpret_backward_packed_plan, interpret_backward_plan,
         ConcreteBindError, EvalOp, EvalPlan, Operand, PackedEvalOp, PackedEvalPlan,
-        PlacementTelemetry, PlanError, PlanInterpError, TempId, ValueRef,
+        PlacementTelemetry, PlanError, PlanInterpError, TempId, ValueRef, bind_packed_plan,
+        interpret_backward_packed_plan, interpret_backward_plan,
     };
 
     #[test]
@@ -1054,13 +1053,13 @@ mod tests {
             ],
             batching: BatchingOrder {
                 roots: (0..roots.len())
-                    .map(|i| cs::gkr_compiler::dag_ir::RootId(i as u32))
+                    .map(|i| gkr_eval_ir::RootId(i as u32))
                     .collect(),
             },
             roots,
             resolutions: BTreeMap::new(),
         };
-        distill(&layer, BwdRegime::Ext, &HashMap::new(), None)
+        distill(&layer, crate::BwdRegime::Ext, &HashMap::new(), None)
     }
 
     fn backward_two_bf_fragments_fixture() -> DistilledLayer {
@@ -1070,13 +1069,13 @@ mod tests {
             exprs: vec![Expr::Source(SourceId(0)), Expr::Source(SourceId(1))],
             batching: BatchingOrder {
                 roots: (0..roots.len())
-                    .map(|i| cs::gkr_compiler::dag_ir::RootId(i as u32))
+                    .map(|i| gkr_eval_ir::RootId(i as u32))
                     .collect(),
             },
             roots,
             resolutions: BTreeMap::new(),
         };
-        distill(&layer, BwdRegime::R0, &HashMap::new(), None)
+        distill(&layer, crate::BwdRegime::R0, &HashMap::new(), None)
     }
 
     fn backward_two_domain_values_fixture() -> DistilledLayer {
@@ -1105,13 +1104,13 @@ mod tests {
             ],
             batching: BatchingOrder {
                 roots: (0..roots.len())
-                    .map(|i| cs::gkr_compiler::dag_ir::RootId(i as u32))
+                    .map(|i| gkr_eval_ir::RootId(i as u32))
                     .collect(),
             },
             roots,
             resolutions: BTreeMap::new(),
         };
-        distill(&layer, BwdRegime::Ext, &HashMap::new(), None)
+        distill(&layer, crate::BwdRegime::Ext, &HashMap::new(), None)
     }
 
     fn replay_plan(d: &DistilledLayer) -> BwdOccurrencePlan {
@@ -1280,7 +1279,7 @@ mod tests {
     fn malformed_backward_invalid_root_returns_attributable_error() {
         let mut d = backward_fixture();
         let root_count = d.layer.roots.len();
-        d.root = cs::gkr_compiler::dag_ir::RootId(root_count as u32);
+        d.root = gkr_eval_ir::RootId(root_count as u32);
 
         assert_eq!(
             format!("{:?}", malformed_uncached_error(&d)),
@@ -1901,11 +1900,12 @@ mod tests {
     fn backward_uncached_coeff_and_c_init() {
         let d = backward_fixture();
         assert!(!d.fragments.c_init.terms.is_empty());
-        assert!(d
-            .fragments
-            .fragments
-            .iter()
-            .any(|fragment| !fragment.recipe.is_trivial()));
+        assert!(
+            d.fragments
+                .fragments
+                .iter()
+                .any(|fragment| !fragment.recipe.is_trivial())
+        );
 
         let out = elaborate_backward_fragments_uncached(&d, None, 4, false).unwrap();
         assert!(matches!(
@@ -1944,12 +1944,12 @@ mod tests {
                 Expr::Mul(vec![ExprId(0), ExprId(1)]),
             ],
             batching: BatchingOrder {
-                roots: vec![cs::gkr_compiler::dag_ir::RootId(0)],
+                roots: vec![gkr_eval_ir::RootId(0)],
             },
             roots: vec![claim_only_root(ExprId(2), 0)],
             resolutions: BTreeMap::new(),
         };
-        let d = distill(&layer, BwdRegime::R0, &HashMap::new(), None);
+        let d = distill(&layer, crate::BwdRegime::R0, &HashMap::new(), None);
         assert_eq!(d.fragments.fragments.len(), 1);
         assert_eq!(d.fragments.fragments[0].atoms.len(), 2);
 
@@ -2047,13 +2047,13 @@ mod tests {
             }],
             exprs: vec![Expr::Source(SourceId(0))],
             batching: BatchingOrder {
-                roots: vec![cs::gkr_compiler::dag_ir::RootId(0)],
+                roots: vec![gkr_eval_ir::RootId(0)],
             },
             roots: vec![claim_only_root(ExprId(0), 0)],
             resolutions: BTreeMap::new(),
         };
         let cross = HashMap::from([(place, FieldKind::Ext)]);
-        let d = distill(&layer, BwdRegime::R0, &cross, None);
+        let d = distill(&layer, crate::BwdRegime::R0, &cross, None);
 
         let out = compile_backward_fragments_uncached(&d, None, 4, false).unwrap();
         let EvalOp::AccInit(Operand::Source(value)) = out.symbolic.plan.ops[0] else {
@@ -2082,7 +2082,7 @@ mod tests {
             sources,
             exprs,
             batching: BatchingOrder {
-                roots: vec![cs::gkr_compiler::dag_ir::RootId(0)],
+                roots: vec![gkr_eval_ir::RootId(0)],
             },
             roots: vec![claim_only_root(ExprId(5), 0)],
             resolutions: BTreeMap::new(),
@@ -2090,7 +2090,7 @@ mod tests {
         let cross = (0..5)
             .map(|offset| (ReadPlace::CacheOutput { layer: 0, offset }, FieldKind::Ext))
             .collect();
-        let mut d = distill(&layer, BwdRegime::R0, &cross, None);
+        let mut d = distill(&layer, crate::BwdRegime::R0, &cross, None);
         let root_expr = d.layer.roots[d.root.0 as usize].expr;
         d.fragments = FragmentTable {
             fragments: vec![FragmentSpec {
@@ -2158,7 +2158,7 @@ mod tests {
             sources,
             exprs,
             batching: BatchingOrder {
-                roots: vec![cs::gkr_compiler::dag_ir::RootId(0)],
+                roots: vec![gkr_eval_ir::RootId(0)],
             },
             roots: vec![claim_only_root(root_expr, 0)],
             resolutions: BTreeMap::new(),
@@ -2187,7 +2187,7 @@ mod tests {
 
         let out = elaborate_backward_fragments_driver(
             &layer,
-            cs::gkr_compiler::dag_ir::RootId(0),
+            gkr_eval_ir::RootId(0),
             &fields,
             &fragments,
             &[0],
@@ -2213,12 +2213,12 @@ mod tests {
                 Expr::Mul(vec![ExprId(0), ExprId(5)]),
             ],
             batching: BatchingOrder {
-                roots: vec![cs::gkr_compiler::dag_ir::RootId(0)],
+                roots: vec![gkr_eval_ir::RootId(0)],
             },
             roots: vec![claim_only_root(ExprId(6), 0)],
             resolutions: BTreeMap::new(),
         };
-        let d = distill(&layer, BwdRegime::R0, &HashMap::new(), None);
+        let d = distill(&layer, crate::BwdRegime::R0, &HashMap::new(), None);
         let (term, add) = d
             .fragments
             .fragments

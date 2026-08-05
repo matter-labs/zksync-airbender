@@ -11,8 +11,8 @@
 //! - max-quadratic: `constant + Σ_quad c_ij·a_i·b_ij + Σ_lin c_i·x_i`
 //! - copy:          `read(input)` (base or extension field)
 
-use crate::definitions::gkr::NoFieldLinearRelation;
-use crate::definitions::GKRAddress;
+use cs::definitions::gkr::NoFieldLinearRelation;
+use cs::definitions::GKRAddress;
 
 use super::super::{ArenaBuilder, ExprId, FieldKind};
 use super::util::{apply_coeff, const_expr, read_expr, sum_terms};
@@ -40,7 +40,7 @@ pub(super) fn lower_linear(
 /// Returns the root expr and `FieldKind::Base` (max-quadratic is base-field).
 pub(super) fn lower_max_quadratic(
     arena: &mut ArenaBuilder,
-    rel: &crate::gkr_compiler::NoFieldMaxQuadraticGKRRelation,
+    rel: &cs::gkr_compiler::NoFieldMaxQuadraticGKRRelation,
 ) -> (ExprId, FieldKind) {
     let mut terms = Vec::new();
     if rel.constant != 0 {

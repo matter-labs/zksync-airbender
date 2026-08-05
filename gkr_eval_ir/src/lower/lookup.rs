@@ -35,8 +35,8 @@
 //! There is no `Sub`/`Neg` node: `a − b = a + (−1)·b`, where `−1` is the reduced
 //! base-field constant `F::CHARACTERISTICS − 1`, threaded in as `minus_one`.
 
-use crate::definitions::gkr::{NoFieldSingleColumnLookupRelation, NoFieldVectorLookupRelation};
-use crate::definitions::GKRAddress;
+use cs::definitions::gkr::{NoFieldSingleColumnLookupRelation, NoFieldVectorLookupRelation};
+use cs::definitions::GKRAddress;
 
 use super::super::{
     ArenaBuilder, ChallengeKey, ChallengePower, ChallengeRef, ExprId, LookupValueKind, SourceKind,
@@ -82,7 +82,10 @@ pub(super) fn read(arena: &mut ArenaBuilder, addr: GKRAddress) -> ExprId {
 ///
 /// Reuses the Task-7 linear-lowering helper so the query arithmetic is identical
 /// to `LinearBaseFieldRelation`. The returned field is always `Base`.
-fn lower_query(arena: &mut ArenaBuilder, lin: &crate::definitions::gkr::NoFieldLinearRelation) -> ExprId {
+fn lower_query(
+    arena: &mut ArenaBuilder,
+    lin: &cs::definitions::gkr::NoFieldLinearRelation,
+) -> ExprId {
     super::arithmetic::lower_linear(arena, lin).0
 }
 

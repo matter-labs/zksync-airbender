@@ -79,11 +79,6 @@ pub(crate) use cs::gkr_circuits::{
     shift_binop_circuit_with_preprocessed_bytecode_for_gkr, shift_binop_table_addition_fn,
     shift_binop_table_driver_fn, ExecutorFamilyDecoderData as CSExecutorFamilyDecoderData,
 };
-pub(crate) use cs::gkr_compiler::dag_ir::VirtualSetupKind;
-pub(crate) use cs::gkr_compiler::dag_ir::{
-    lower_dag, validate as validate_dag, BwdRegime, ChallengeKey, ChallengePower, ChallengeRef,
-    ChallengeResolver, DagLayer, FieldKind, PermutationSlot, RangeWidth, ReadPlace,
-};
 pub(crate) use cs::gkr_compiler::{
     compile_unrolled_circuit_state_transition_into_gkr, CompiledAddressSpaceRelationStrict,
     CompiledAddressStrict, CompiledMemoryTimestamp, GKRAuxLayoutData, GKRCircuitArtifact,
@@ -92,6 +87,12 @@ pub(crate) use cs::gkr_compiler::{
     NoFieldSpecialMemoryContributionRelation, OutputType,
 };
 pub(crate) use cs::tables::{TableDriver, TableType};
+pub(crate) use gkr_eval_ir::VirtualSetupKind;
+pub(crate) use gkr_eval_ir::{
+    claim_roots, lower_dag, validate as validate_dag, ChallengeKey, ChallengePower, ChallengeRef,
+    ChallengeResolver, DagLayer, FieldKind, PermutationSlot, RangeWidth, ReadPlace,
+};
+pub(crate) use gkr_eval_isa::BwdRegime;
 
 // -----------------------------------------------------------------------
 // `field` — base field, extension towers

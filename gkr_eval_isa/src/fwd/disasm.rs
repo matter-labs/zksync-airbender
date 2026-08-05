@@ -14,7 +14,7 @@ use super::context::{CompiledLayer, DagForwardContext, ForwardAction, OutputCell
 use super::isa::{DstLine, Instr, LdcSub, MovDir, OperandField, OperandLine, Sign};
 use super::source::SpecialStrategy;
 use super::stats::{OP_ADD, OP_FMA, OP_MOV, OP_MUL};
-use cs::gkr_compiler::dag_ir::{DagLayer, Expr, Root, RootId, SourceKind};
+use gkr_eval_ir::{DagLayer, Expr, Root, RootId, SourceKind};
 use std::fmt::Write;
 
 fn field_tag(f: &OperandField) -> &'static str {
@@ -56,10 +56,7 @@ fn fmt_special_lit(idx: u16) -> String {
 /// `LookupValue TimestampIndex set=35 query=e779` — the lookup table + query the forward
 /// VM peeks the precomputed resolution of. Returns `None` if the DAG isn't supplied or
 /// the origin isn't a plain source leaf.
-fn describe_peek_origin(
-    layer: Option<&DagLayer>,
-    origin: cs::gkr_compiler::dag_ir::ExprId,
-) -> Option<String> {
+fn describe_peek_origin(layer: Option<&DagLayer>, origin: gkr_eval_ir::ExprId) -> Option<String> {
     let layer = layer?;
     let Expr::Source(sid) = layer.exprs.get(origin.0 as usize)? else {
         return None;

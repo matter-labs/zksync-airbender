@@ -13,7 +13,7 @@
 //!
 //! REV2 encoding (Codex option b):
 //! * **order genes** permute the CANONICAL relation units
-//!   ([`bwd_relation_units`](cs::gkr_compiler::dag_ir::bwd_relation_units), which
+//!   ([`claim_relation_units`](gkr_eval_ir::claim_relation_units), which
 //!   [`distill`] partitions into `DistilledLayer::unit_order`). The adapter
 //!   re-distills with the decoded `unit_permutation`, rebuilding the top-level
 //!   alpha `Add` in that order. Each root keeps its FIXED beta exponent (its
@@ -23,7 +23,7 @@
 //! * **cache-priority genes** map to a canonical-provenance site ordering that
 //!   is invariant under re-distillation. Each candidate translates those stable
 //!   keys to its own distilled
-//!   [`SiteKey`](cs::gkr_compiler::dag_ir::SiteKey)s before producing the
+//!   [`SiteKey`](gkr_eval_ir::SiteKey)s before producing the
 //!   [`SiteDecisions`] the bwd compiler consumes.
 //! * **initial genomes** include a deterministic structure-aware pair: a greedy
 //!   maximum-reuse-adjacency unit order and its reverse, with cache priorities
@@ -54,7 +54,7 @@ use std::collections::HashMap;
 
 use rayon::prelude::*;
 
-use cs::gkr_compiler::dag_ir::{BwdRegime, DagLayer, FieldKind, ReadPlace};
+use gkr_eval_ir::{DagLayer, FieldKind, ReadPlace};
 
 use crate::bwd::compile::{compile_distilled, BwdTrafficStats};
 use crate::bwd::distill::{distill, stable_distilled_site_domain, StableBwdSiteKey};
@@ -163,7 +163,7 @@ fn score_candidate(
     genome: &Genome,
     stable_site_keys: &[StableBwdSiteKey],
     layer: &DagLayer,
-    regime: BwdRegime,
+    regime: crate::BwdRegime,
     cross: &HashMap<ReadPlace, FieldKind>,
     budget: usize,
 ) -> (Vec<usize>, SiteDecisions, BwdScore) {
@@ -491,7 +491,7 @@ fn seed_population(
 /// distilled site domain is also empty).
 pub fn search_bwd_layer(
     layer: &DagLayer,
-    regime: BwdRegime,
+    regime: crate::BwdRegime,
     cross: &HashMap<ReadPlace, FieldKind>,
     budget: usize,
     cfg: &BwdSearchConfig,

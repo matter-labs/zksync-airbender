@@ -35,7 +35,8 @@
 
 mod common;
 
-use cs::gkr_compiler::dag_ir::{lower_dag, BwdRegime};
+use gkr_eval_ir::lower_dag;
+use gkr_eval_isa::BwdRegime;
 use gkr_eval_isa::bwd::batch::unpack_batch_dst;
 use gkr_eval_isa::bwd::compile::BwdCompiledLayer;
 use gkr_eval_isa::bwd::distill::distill;
@@ -172,7 +173,10 @@ fn batching_sink_does_not_force_reloading_the_preserved_accumulator() {
                         // re-reading it cannot differ. Any other special is opaque
                         // here and stays.
                         OperandLine::Special { desc } => {
-                            matches!(compiled.specials.get(*desc), Some(BwdSpecial::VirtualSetup { .. }))
+                            matches!(
+                                compiled.specials.get(*desc),
+                                Some(BwdSpecial::VirtualSetup { .. })
+                            )
                         }
                         // A raw source read is not free to repeat.
                         OperandLine::Source { .. } => false,

@@ -15,8 +15,8 @@ use super::sp2_peek_adapter::{
     compile_add_sub_circuit, compile_unsigned_mul_div_circuit, ADD_SUB_TRACE_LEN_LOG2,
     MUL_DIV_TRACE_LEN_LOG2,
 };
-use cs::gkr_compiler::dag_ir::lower_dag;
 use cs::gkr_compiler::GKRCircuitArtifact;
+use gkr_eval_ir::lower_dag;
 use gkr_eval_isa::fwd::compile::compile_circuit;
 use gkr_eval_isa::fwd::disasm::disassemble_layer;
 
@@ -32,18 +32,26 @@ fn disasm(title: &str, circuit: &GKRCircuitArtifact<BF>, stem: &str, layer_idx: 
         .join(format!("{stem}_schedule_b16_gkr.json"));
     let sched_bytes = std::fs::read(&sched_path)
         .unwrap_or_else(|e| panic!("read committed schedule {sched_path:?}: {e}"));
-    let schedule: cs::gkr_compiler::dag_ir::CircuitSchedule =
-        serde_json::from_slice(&sched_bytes)
-            .unwrap_or_else(|e| panic!("parse committed schedule {sched_path:?}: {e}"));
+    let schedule: gkr_eval_isa::CircuitSchedule = serde_json::from_slice(&sched_bytes)
+        .unwrap_or_else(|e| panic!("parse committed schedule {sched_path:?}: {e}"));
     let compiled = compile_circuit(&dag, &schedule, circuit).expect("compile_circuit failed");
-    disassemble_layer(title, &compiled.layers[layer_idx], Some(&dag.layers[layer_idx]))
+    disassemble_layer(
+        title,
+        &compiled.layers[layer_idx],
+        Some(&dag.layers[layer_idx]),
+    )
 }
 
 #[test]
 #[ignore = "inspection tool: builds a full circuit and prints; run with --ignored --nocapture"]
 fn disasm_add_sub_layer0() {
     let circuit = compile_add_sub_circuit(ADD_SUB_TRACE_LEN_LOG2);
-    let text = disasm("add_sub layer-0 forward program", &circuit, "add_sub_lui_auipc_mop", 0);
+    let text = disasm(
+        "add_sub layer-0 forward program",
+        &circuit,
+        "add_sub_lui_auipc_mop",
+        0,
+    );
     println!("\n{text}");
     assert!(!text.is_empty());
 }
@@ -52,7 +60,12 @@ fn disasm_add_sub_layer0() {
 #[ignore = "inspection tool: builds a full circuit and prints; run with --ignored --nocapture"]
 fn disasm_unsigned_mul_div_layer0() {
     let circuit = compile_unsigned_mul_div_circuit(MUL_DIV_TRACE_LEN_LOG2);
-    let text = disasm("unsigned_mul_div layer-0 forward program", &circuit, "unsigned_mul_div", 0);
+    let text = disasm(
+        "unsigned_mul_div layer-0 forward program",
+        &circuit,
+        "unsigned_mul_div",
+        0,
+    );
     println!("\n{text}");
     assert!(!text.is_empty());
 }

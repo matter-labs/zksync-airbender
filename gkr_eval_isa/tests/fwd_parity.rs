@@ -24,13 +24,12 @@
 //! (consistent with the no_caches deferral).
 
 mod common;
-use common::{load_fixture, resolvers, sample_rows, schedule_path, SyntheticResolvers};
+use common::{SyntheticResolvers, load_fixture, resolvers, sample_rows, schedule_path};
 
 use std::collections::BTreeMap;
 
-use cs::gkr_compiler::dag_ir::{
-    eval_layer_root, lower_dag, validate, validate_circuit_schedule, CircuitSchedule, RootId,
-};
+use gkr_eval_ir::{RootId, eval_layer_root, lower_dag, validate};
+use gkr_eval_isa::{CircuitSchedule, validate_circuit_schedule};
 
 use gkr_eval_isa::fwd::compile::compile_circuit;
 use gkr_eval_isa::fwd::context::RootOutput;
@@ -45,11 +44,23 @@ use gkr_eval_isa::fwd::validate::validate_compiled;
 // `..._preprocessed_layout_gkr.json`, schedule stem: `inits_and_teardowns`).
 
 const CORPUS: &[(&str, &str)] = &[
-    ("add_sub_lui_auipc_mop_layout_gkr.json", "add_sub_lui_auipc_mop"),
-    ("bigint_with_extended_control_layout_gkr.json", "bigint_with_extended_control"),
+    (
+        "add_sub_lui_auipc_mop_layout_gkr.json",
+        "add_sub_lui_auipc_mop",
+    ),
+    (
+        "bigint_with_extended_control_layout_gkr.json",
+        "bigint_with_extended_control",
+    ),
     ("blake2_g_function_layout_gkr.json", "blake2_g_function"),
-    ("blake2_with_extended_control_layout_gkr.json", "blake2_with_extended_control"),
-    ("inits_and_teardowns_preprocessed_layout_gkr.json", "inits_and_teardowns"),
+    (
+        "blake2_with_extended_control_layout_gkr.json",
+        "blake2_with_extended_control",
+    ),
+    (
+        "inits_and_teardowns_preprocessed_layout_gkr.json",
+        "inits_and_teardowns",
+    ),
     ("jump_branch_slt_layout_gkr.json", "jump_branch_slt"),
     ("keccak_special5_layout_gkr.json", "keccak_special5"),
     ("mem_subword_only_layout_gkr.json", "mem_subword_only"),
@@ -101,7 +112,10 @@ fn check_fixture(name: &str, stem: &str) -> usize {
             encode(&cl.program).unwrap_or_else(|e| panic!("[{name}] layer {l}: encode: {e:?}"));
         let decoded =
             decode(&lanes).unwrap_or_else(|e| panic!("[{name}] layer {l}: decode: {e:?}"));
-        assert_eq!(decoded, cl.program, "[{name}] layer {l}: encode/decode roundtrip mismatch");
+        assert_eq!(
+            decoded, cl.program,
+            "[{name}] layer {l}: encode/decode roundtrip mismatch"
+        );
 
         // Parity at sampled rows for every exposed root.
         let by_root: BTreeMap<RootId, RootOutput> = cl.root_outputs.iter().cloned().collect();
@@ -140,7 +154,10 @@ fn run_corpus(fixtures: &[(&str, &str)]) {
     for &(name, stem) in fixtures {
         let t0 = std::time::Instant::now();
         let comparisons = check_fixture(name, stem);
-        eprintln!("[fwd_parity] {name} OK in {:?} ({comparisons} root comparisons)", t0.elapsed());
+        eprintln!(
+            "[fwd_parity] {name} OK in {:?} ({comparisons} root comparisons)",
+            t0.elapsed()
+        );
         total += comparisons;
     }
     assert!(total > 0, "parity gate compared 0 roots — vacuous pass");
@@ -170,7 +187,10 @@ fn parity_all_layout_gkr() {
 fn compile_fixture(
     name: &str,
     stem: &str,
-) -> (gkr_eval_isa::fwd::compile::CompiledCircuit, cs::gkr_compiler::dag_ir::DagCircuit) {
+) -> (
+    gkr_eval_isa::fwd::compile::CompiledCircuit,
+    gkr_eval_ir::DagCircuit,
+) {
     let artifact = load_fixture(name);
     let dag = lower_dag(&artifact).unwrap_or_else(|e| panic!("[{name}] lower_dag: {e}"));
     validate(&dag).unwrap_or_else(|e| panic!("[{name}] validate(dag): {e}"));
@@ -187,7 +207,10 @@ fn compile_fixture(
 /// Fixtures the Task-5 emission tests walk: the cheap add_sub + shift pair (the
 /// invariants are universal; the full corpus is covered by `parity_all_layout_gkr`).
 const EMISSION_FIXTURES: &[(&str, &str)] = &[
-    ("add_sub_lui_auipc_mop_layout_gkr.json", "add_sub_lui_auipc_mop"),
+    (
+        "add_sub_lui_auipc_mop_layout_gkr.json",
+        "add_sub_lui_auipc_mop",
+    ),
     ("shift_binop_layout_gkr.json", "shift_binop"),
 ];
 
@@ -205,7 +228,10 @@ fn promote_emitted_iff_transition() {
                 encode(&cl.program).unwrap_or_else(|e| panic!("[{name}] layer {l}: encode: {e:?}"));
             let decoded =
                 decode(&lanes).unwrap_or_else(|e| panic!("[{name}] layer {l}: decode: {e:?}"));
-            assert_eq!(decoded, cl.program, "[{name}] layer {l}: roundtrip mismatch");
+            assert_eq!(
+                decoded, cl.program,
+                "[{name}] layer {l}: roundtrip mismatch"
+            );
             validate_compiled(cl, dag_layer)
                 .unwrap_or_else(|e| panic!("[{name}] layer {l}: strict v2 validation: {e:?}"));
         }
@@ -288,7 +314,12 @@ fn ext_cells_emit_bucket_indices() {
             };
             for (i, instr) in cl.program.instrs.iter().enumerate() {
                 match instr {
-                    Instr::Mov { dir, field, dst, src } => {
+                    Instr::Mov {
+                        dir,
+                        field,
+                        dst,
+                        src,
+                    } => {
                         if let MovDir::AccFromSrc | MovDir::DstFromSrc = dir {
                             if let Some(OperandLine::Smem { cell }) = src {
                                 check(i, *cell, *field);
@@ -300,14 +331,24 @@ fn ext_cells_emit_bucket_indices() {
                             }
                         }
                     }
-                    Instr::Add { field, operands, .. } | Instr::Mul { field, operands, .. } => {
+                    Instr::Add {
+                        field, operands, ..
+                    }
+                    | Instr::Mul {
+                        field, operands, ..
+                    } => {
                         for op in operands {
                             if let OperandLine::Smem { cell } = op {
                                 check(i, *cell, *field);
                             }
                         }
                     }
-                    Instr::Fma { field_lhs, field_rhs, pairs, .. } => {
+                    Instr::Fma {
+                        field_lhs,
+                        field_rhs,
+                        pairs,
+                        ..
+                    } => {
                         for (lo, ro) in pairs {
                             if let OperandLine::Smem { cell } = lo {
                                 check(i, *cell, *field_lhs);
@@ -321,7 +362,10 @@ fn ext_cells_emit_bucket_indices() {
             }
         }
     }
-    assert!(ext_refs > 0, "vacuous — no ext-field smem references in the whole corpus");
+    assert!(
+        ext_refs > 0,
+        "vacuous — no ext-field smem references in the whole corpus"
+    );
 }
 
 /// Spec §3 stores invariant: every materialized root is a `GlobalMaterialize`

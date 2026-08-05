@@ -34,17 +34,14 @@ use std::path::PathBuf;
 
 use field::baby_bear::base::BabyBearField;
 
-use crate::gkr_compiler::{
-    GKRCircuitArtifact, NoFieldGKRCacheRelation, NoFieldGKRRelation,
-};
-use crate::gkr_compiler::dag_ir::lower_dag;
-use crate::gkr_compiler::test_support::{sample_relations, single_relation_artifact};
+use cs::gkr_compiler::test_support::{sample_relations, single_relation_artifact};
+use cs::gkr_compiler::{GKRCircuitArtifact, NoFieldGKRCacheRelation, NoFieldGKRRelation};
+use gkr_eval_ir::lower_dag;
 
 // ── File-system helpers ──────────────────────────────────────────────────────
 
 fn compiled_circuit_dir() -> PathBuf {
-    // `cs` lives at `<workspace>/cs`; compiled_circuits is a peer directory.
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("compiled_circuits")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../cs/compiled_circuits")
 }
 
 /// Load one fixture JSON → `GKRCircuitArtifact<BabyBearField>`.
@@ -153,9 +150,16 @@ fn cache_family_name(rel: &NoFieldGKRCacheRelation) -> &'static str {
 /// Walk every layer's `gates`, `gates_with_external_connections`, and
 /// `cached_relations` and insert the family name (gate or cache variant) into
 /// `names`.
-fn collect_families(artifact: &GKRCircuitArtifact<BabyBearField>, names: &mut BTreeSet<&'static str>) {
+fn collect_families(
+    artifact: &GKRCircuitArtifact<BabyBearField>,
+    names: &mut BTreeSet<&'static str>,
+) {
     for layer in &artifact.layers {
-        for gate in layer.gates.iter().chain(layer.gates_with_external_connections.iter()) {
+        for gate in layer
+            .gates
+            .iter()
+            .chain(layer.gates_with_external_connections.iter())
+        {
             names.insert(gate_family_name(&gate.enforced_relation));
         }
         for (_addr, rel) in layer.cached_relations.iter() {
@@ -397,11 +401,11 @@ fn support_coverage() {
 /// should ever emit it.
 #[test]
 fn u32_space_generic_audit() {
-    use crate::gkr_compiler::{
+    use cs::definitions::gkr::RamWordRepresentation;
+    use cs::gkr_compiler::{
         CompiledAddressSpaceRelationStrict, CompiledAddressStrict, CompiledMemoryTimestamp,
         NoFieldSpecialMemoryContributionRelation,
     };
-    use crate::definitions::gkr::RamWordRepresentation;
 
     // ── Part 1: no committed fixture contains U32SpaceGeneric ───────────────
 
@@ -461,7 +465,10 @@ fn u32_space_generic_audit() {
     // gate that passes through a single memory tuple to lower_memory_tuple).
     let rel = NoFieldGKRRelation::MaterializeGrandProductTermExpression {
         input: generic_tuple,
-        output: crate::definitions::GKRAddress::InnerLayer { layer: 1, offset: 0 },
+        output: cs::definitions::GKRAddress::InnerLayer {
+            layer: 1,
+            offset: 0,
+        },
     };
     let artifact = single_relation_artifact(rel);
     let result = lower_dag(&artifact);
@@ -480,7 +487,7 @@ fn u32_space_generic_audit() {
 
 #[test]
 fn resolutions_peek_single_column_present_for_timestamp() {
-    use crate::gkr_compiler::dag_ir::{lower_dag, RangeWidth, ResolutionStrategy};
+    use gkr_eval_ir::{lower_dag, RangeWidth, ResolutionStrategy};
 
     let path = compiled_circuit_dir().join("jump_branch_slt_layout_gkr.json");
     let artifact = load_fixture(&path).expect("fixture must load");
@@ -490,7 +497,15 @@ fn resolutions_peek_single_column_present_for_timestamp() {
         .layers
         .iter()
         .flat_map(|l| l.resolutions.values())
-        .filter(|s| matches!(s, ResolutionStrategy::PeekSingleColumn { width: RangeWidth::Timestamp, .. }))
+        .filter(|s| {
+            matches!(
+                s,
+                ResolutionStrategy::PeekSingleColumn {
+                    width: RangeWidth::Timestamp,
+                    ..
+                }
+            )
+        })
         .count();
     assert!(
         timestamp_peeks > 0,
@@ -508,7 +523,7 @@ fn resolutions_peek_single_column_present_for_timestamp() {
 // resolutions_peek_aggregate_present_for_shift_binop below.
 #[test]
 fn resolutions_peek_decoder_present_for_add_sub() {
-    use crate::gkr_compiler::dag_ir::{lower_dag, FillSource, ReadPlace, ResolutionStrategy};
+    use gkr_eval_ir::{lower_dag, FillSource, ReadPlace, ResolutionStrategy};
 
     // add_sub has machine_state and its decoder lookup is a VectorizedLookup cache
     // with set_index == DECODER_LOOKUP_FORMAL_SET_INDEX → PeekDecoder.
@@ -516,21 +531,27 @@ fn resolutions_peek_decoder_present_for_add_sub() {
     let artifact = load_fixture(&path).expect("fixture must load");
     let circuit = lower_dag(&artifact).expect("lower_dag must succeed");
 
-    let all: Vec<&ResolutionStrategy> =
-        circuit.layers.iter().flat_map(|l| l.resolutions.values()).collect();
+    let all: Vec<&ResolutionStrategy> = circuit
+        .layers
+        .iter()
+        .flat_map(|l| l.resolutions.values())
+        .collect();
 
     let decoder = all.iter().find_map(|s| match s {
         ResolutionStrategy::PeekDecoder { predicate, fill } => Some((predicate, fill)),
         _ => None,
     });
     let (predicate, fill) = decoder.expect("add_sub must emit a PeekDecoder");
-    assert!(matches!(predicate, ReadPlace::BaseLayerMemory { .. }), "decoder predicate is a base-layer read");
+    assert!(
+        matches!(predicate, ReadPlace::BaseLayerMemory { .. }),
+        "decoder predicate is a base-layer read"
+    );
     assert!(matches!(fill, FillSource::DecoderLookupFill));
 }
 
 #[test]
 fn resolutions_peek_aggregate_present_for_shift_binop() {
-    use crate::gkr_compiler::dag_ir::{lower_dag, ResolutionStrategy};
+    use gkr_eval_ir::{lower_dag, ResolutionStrategy};
 
     // shift_binop has non-decoder VectorizedLookup cache entries (set_index 0-4) →
     // PeekAggregate. add_sub only has the decoder VectorizedLookup; shift_binop is
@@ -551,7 +572,7 @@ fn resolutions_peek_aggregate_present_for_shift_binop() {
 
 #[test]
 fn resolutions_peek_decoder_predicate_matches_global_execute() {
-    use crate::gkr_compiler::dag_ir::{lower_dag, ReadPlace, ResolutionStrategy};
+    use gkr_eval_ir::{lower_dag, ReadPlace, ResolutionStrategy};
 
     let path = compiled_circuit_dir().join("add_sub_lui_auipc_mop_layout_gkr.json");
     let artifact = load_fixture(&path).expect("fixture must load");
@@ -581,7 +602,7 @@ fn resolutions_peek_decoder_predicate_matches_global_execute() {
 
 #[test]
 fn resolutions_peek_setup_present_for_add_sub() {
-    use crate::gkr_compiler::dag_ir::{lower_dag, ResolutionStrategy};
+    use gkr_eval_ir::{lower_dag, ResolutionStrategy};
 
     let path = compiled_circuit_dir().join("add_sub_lui_auipc_mop_layout_gkr.json");
     let artifact = load_fixture(&path).expect("fixture must load");
@@ -593,12 +614,15 @@ fn resolutions_peek_setup_present_for_add_sub() {
         .flat_map(|l| l.resolutions.values())
         .filter(|s| matches!(s, ResolutionStrategy::PeekSetup))
         .count();
-    assert!(setup_peeks > 0, "the minus-setup leg must emit PeekSetup resolutions");
+    assert!(
+        setup_peeks > 0,
+        "the minus-setup leg must emit PeekSetup resolutions"
+    );
 }
 
 /// Assert no memory-tuple in `rel` uses `U32SpaceGeneric`.
 fn check_relation_no_u32_generic(fixture_name: &str, rel: &NoFieldGKRRelation) {
-    use crate::gkr_compiler::CompiledAddressStrict;
+    use cs::gkr_compiler::CompiledAddressStrict;
     use NoFieldGKRRelation as R;
 
     let tuples: Vec<_> = match rel {
@@ -617,9 +641,9 @@ fn check_relation_no_u32_generic(fixture_name: &str, rel: &NoFieldGKRRelation) {
 fn assert_no_u32_space_generic(
     fixture_name: &str,
     context: &str,
-    mt: &crate::gkr_compiler::NoFieldSpecialMemoryContributionRelation,
+    mt: &cs::gkr_compiler::NoFieldSpecialMemoryContributionRelation,
 ) {
-    use crate::gkr_compiler::CompiledAddressStrict;
+    use cs::gkr_compiler::CompiledAddressStrict;
     assert!(
         !matches!(mt.address, CompiledAddressStrict::U32SpaceGeneric(..)),
         "fixture {fixture_name:?} contains U32SpaceGeneric in {context} — \
@@ -631,7 +655,7 @@ fn assert_no_u32_space_generic(
 
 #[test]
 fn resolutions_validate_clean_no_caches_add_sub() {
-    use crate::gkr_compiler::dag_ir::{lower_dag, validate};
+    use gkr_eval_ir::{lower_dag, validate};
     let path = compiled_circuit_dir().join("add_sub_lui_auipc_mop_layout_no_caches_gkr.json");
     let artifact = load_fixture(&path).expect("fixture must load");
     let circuit = lower_dag(&artifact).expect("lower_dag must succeed");
@@ -650,7 +674,7 @@ fn resolutions_validate_clean_no_caches_add_sub() {
 /// disagreement on a fixture not covered by the earlier targeted tests.
 #[test]
 fn resolutions_validate_clean_over_all_fixtures() {
-    use crate::gkr_compiler::dag_ir::{lower_dag, validate, ResolutionStrategy};
+    use gkr_eval_ir::{lower_dag, validate, ResolutionStrategy};
 
     let mut total = 0usize;
     let mut processed = 0usize;
@@ -658,10 +682,16 @@ fn resolutions_validate_clean_over_all_fixtures() {
     let mut setup_seen = false;
     let mut single_seen = false;
     let mut aggregate_seen = false;
-    for name in LAYOUT_GKR_FIXTURES.iter().chain(LAYOUT_NO_CACHES_GKR_FIXTURES.iter()) {
+    for name in LAYOUT_GKR_FIXTURES
+        .iter()
+        .chain(LAYOUT_NO_CACHES_GKR_FIXTURES.iter())
+    {
         let path = compiled_circuit_dir().join(name);
-        let Some(artifact) = load_fixture(&path) else { continue }; // skip absent/stale fixtures
-        let circuit = lower_dag(&artifact).unwrap_or_else(|e| panic!("{name}: lower_dag failed: {e}"));
+        let Some(artifact) = load_fixture(&path) else {
+            continue;
+        }; // skip absent/stale fixtures
+        let circuit =
+            lower_dag(&artifact).unwrap_or_else(|e| panic!("{name}: lower_dag failed: {e}"));
 
         // Every populated resolutions table must pass the static validator.
         validate(&circuit).unwrap_or_else(|e| panic!("{name}: validate failed: {e}"));
@@ -686,8 +716,20 @@ fn resolutions_validate_clean_over_all_fixtures() {
         LAYOUT_GKR_FIXTURES.len() + LAYOUT_NO_CACHES_GKR_FIXTURES.len()
     );
     assert!(total > 0, "golden fixtures must populate some resolutions");
-    assert!(decoder_seen, "at least one golden fixture must emit a PeekDecoder");
-    assert!(setup_seen, "at least one golden fixture must emit a PeekSetup");
-    assert!(single_seen, "at least one golden fixture must emit a PeekSingleColumn");
-    assert!(aggregate_seen, "at least one golden fixture must emit a PeekAggregate");
+    assert!(
+        decoder_seen,
+        "at least one golden fixture must emit a PeekDecoder"
+    );
+    assert!(
+        setup_seen,
+        "at least one golden fixture must emit a PeekSetup"
+    );
+    assert!(
+        single_seen,
+        "at least one golden fixture must emit a PeekSingleColumn"
+    );
+    assert!(
+        aggregate_seen,
+        "at least one golden fixture must emit a PeekAggregate"
+    );
 }

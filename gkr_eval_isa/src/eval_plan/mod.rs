@@ -31,59 +31,60 @@ mod search_driver_visibility_tests {
 }
 
 pub use artifact::{
-    compile_circuit_with_evaluation_genomes, compile_layer_with_evaluation_genome,
-    load_evaluation_genome_artifact, produce_searched_evaluation_genome_artifact,
     CompiledEvaluationCircuit, CompiledEvaluationLayer, DomainCertificate, EvaluationArtifactError,
     EvaluationCompileError, EvaluationGenomeArtifact, EvaluationGenomeCircuitArtifact,
     EvaluationLayoutVariant, EvaluationPass, ForwardActionProvenance, ForwardActionRecord,
-    SearchProvenance,
+    SearchProvenance, compile_circuit_with_evaluation_genomes,
+    compile_layer_with_evaluation_genome, load_evaluation_genome_artifact,
+    produce_searched_evaluation_genome_artifact,
 };
 pub use backward::{
+    BackwardEvaluationError, BackwardSymbolicEvaluation, CompiledBackwardEvaluation,
     compile_backward_fragments_replayed, compile_backward_fragments_uncached,
-    elaborate_backward_fragments_uncached, BackwardEvaluationError, BackwardSymbolicEvaluation,
-    CompiledBackwardEvaluation,
+    elaborate_backward_fragments_uncached,
 };
 pub use backward_artifact::{
-    backward_problem_certificate, capture_backward_plan_artifact, compile_backward_plan_artifact,
+    BackwardArtifactCoordinate, BackwardArtifactError, BackwardEvaluationCircuitArtifact,
+    BackwardLayerArtifact, BackwardPagingCertificateArtifact, BackwardPlanArtifact,
+    BackwardProblemCertificate, BackwardRegimeArtifact, BackwardRegimeChainProgress,
+    BackwardScoreArtifact, CanonicalU128, SourceCostArtifact, backward_problem_certificate,
+    capture_backward_plan_artifact, compile_backward_plan_artifact,
     load_backward_evaluation_artifact, produce_backward_regime_chain,
     produce_backward_regime_chain_with_progress, publish_backward_evaluation_artifact,
-    select_backward_plan, BackwardArtifactCoordinate, BackwardArtifactError,
-    BackwardEvaluationCircuitArtifact, BackwardLayerArtifact, BackwardPagingCertificateArtifact,
-    BackwardPlanArtifact, BackwardProblemCertificate, BackwardRegimeArtifact,
-    BackwardRegimeChainProgress, BackwardScoreArtifact, CanonicalU128, SourceCostArtifact,
+    select_backward_plan,
 };
 pub use concrete::{
-    bind_packed_plan, bind_packed_plan_with_actions, disassemble_concrete_eval_program,
-    validate_concrete_eval_program, ConcreteBindError, ConcreteBindingStats, ConcreteEvalProgram,
-    ConcreteTerminal, PlacementTelemetry,
+    ConcreteBindError, ConcreteBindingStats, ConcreteEvalProgram, ConcreteTerminal,
+    PlacementTelemetry, bind_packed_plan, bind_packed_plan_with_actions,
+    disassemble_concrete_eval_program, validate_concrete_eval_program,
 };
 pub use fitness::{
-    adapt_forward_relations, fitness_key, EvaluationGenome, EvaluationUnit, EvaluationUnitKey,
-    FitnessError, PlacementStatus, PlanFitness, PlanSearchContext, ScoredEvaluation,
+    EvaluationGenome, EvaluationUnit, EvaluationUnitKey, FitnessError, PlacementStatus,
+    PlanFitness, PlanSearchContext, ScoredEvaluation, adapt_forward_relations, fitness_key,
 };
 pub use genome::{
     GenomeOracle, GenomeOracleError, StagingPair, StructuralSiteIndex, ValueCostProfile,
 };
 pub use identity::{
-    structural_fingerprints, validate_structural_identity, IdentityError, ValueFingerprint,
+    IdentityError, ValueFingerprint, structural_fingerprints, validate_structural_identity,
 };
 pub use interp::{
-    interpret_backward_plan, interpret_plan, PlanExecution, PlanInterpError, RootObservation,
+    PlanExecution, PlanInterpError, RootObservation, interpret_backward_plan, interpret_plan,
 };
-pub use packed::{pack_plan, PackConfig, PackError, PackedEvalOp, PackedEvalPlan, PackedStats};
+pub use packed::{PackConfig, PackError, PackedEvalOp, PackedEvalPlan, PackedStats, pack_plan};
 pub use packed_interp::{interpret_backward_packed_plan, interpret_packed_plan};
 pub use search::{
-    mutation_search, staging_refinement, MutationSearchConfig, MutationSearchError,
-    MutationSearchOutcome, SearchTelemetry, StagingRefinementOutcome,
+    MutationSearchConfig, MutationSearchError, MutationSearchOutcome, SearchTelemetry,
+    StagingRefinementOutcome, mutation_search, staging_refinement,
 };
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use crate::bwd::plan::{PlanAction, PlanRun};
 use crate::bwd::trace::{BwdEvent, BwdFingerprint, BwdServeKind, BwdServedFrom};
-use crate::fwd::isa::{Sign, MAX_CELL};
-use cs::gkr_compiler::dag_ir::{
-    join, DagLayer, Expr, ExprId, FieldKind, Root, RootId, RootOrigin, SinkInfo, SourceKind,
+use crate::fwd::isa::{MAX_CELL, Sign};
+use gkr_eval_ir::{
+    DagLayer, Expr, ExprId, FieldKind, Root, RootId, RootOrigin, SinkInfo, SourceKind, join,
 };
 
 const BABYBEAR_NEG_ONE: u32 = 0x7800_0001 - 1;
@@ -3133,20 +3134,21 @@ mod tests {
     use std::collections::{BTreeMap, HashMap, HashSet};
 
     use cs::definitions::GKRAddress;
-    use cs::gkr_compiler::dag_ir::{
-        eval_layer_root, expr_field, ArenaBuilder, BatchingOrder, Bf, ChallengeKey, ChallengePower,
-        ChallengeRef, ChallengeResolver, ClaimInfo, Ext, LookupResolver, LookupValueKind,
-        ReadPlace, ReadResolver, ResolutionStrategy, Resolvers, Root, RootGroup, RootSlot,
-        SinkKind, SourceId, SourceInfo, SourceKind, VirtualSetupKind, VirtualSetupResolver,
-    };
     use field::{FieldExtension, PrimeField};
+    use gkr_eval_ir::{
+        ArenaBuilder, BatchingOrder, Bf, ChallengeKey, ChallengePower, ChallengeRef,
+        ChallengeResolver, ClaimInfo, Ext, LookupResolver, LookupValueKind, ReadPlace,
+        ReadResolver, ResolutionStrategy, Resolvers, Root, RootGroup, RootSlot, SinkKind, SourceId,
+        SourceInfo, SourceKind, VirtualSetupKind, VirtualSetupResolver, eval_layer_root,
+        expr_field,
+    };
 
     use crate::fwd::context::{ForwardAction, RootOutput};
     use crate::fwd::interp::interpret_layer_row;
-    use crate::fwd::isa::{Instr, OperandLine, MAX_CELL};
+    use crate::fwd::isa::{Instr, MAX_CELL, OperandLine};
 
     use crate::bwd::fragment::{FragmentSpec, MergedRecipe};
-    use crate::bwd::plan::{plan_entries_fnv, BwdOccurrencePlan, PlanEntry};
+    use crate::bwd::plan::{BwdOccurrencePlan, PlanEntry, plan_entries_fnv};
 
     use super::*;
 
@@ -3162,7 +3164,7 @@ mod tests {
 
     fn read(arena: &mut ArenaBuilder, column: usize) -> ExprId {
         let source = arena.intern_source(SourceKind::Read {
-            place: cs::gkr_compiler::dag_ir::ReadPlace::BaseLayerWitness { column },
+            place: gkr_eval_ir::ReadPlace::BaseLayerWitness { column },
         });
         arena.source_expr(source)
     }
@@ -3687,10 +3689,12 @@ mod tests {
         let plan = elaborate_uncached(&layer, &fields(&layer), &[RootId(0)]).unwrap();
         assert_plan_matches_roots(&layer, &[RootId(0)], &plan);
         assert_eq!(plan.stats.arithmetic_ops, 0);
-        assert!(!plan
-            .ops
-            .iter()
-            .any(|op| matches!(op, EvalOp::AccMul(_) | EvalOp::AccFma { .. })));
+        assert!(
+            !plan
+                .ops
+                .iter()
+                .any(|op| matches!(op, EvalOp::AccMul(_) | EvalOp::AccFma { .. }))
+        );
         assert_concrete_matches_roots(&layer, &[RootId(0)], &plan, 8);
     }
 
@@ -3780,31 +3784,35 @@ mod tests {
         )));
 
         let concrete = bind_packed_plan(&packed, &layer, &roots, 0, 8).unwrap();
-        assert!(concrete
-            .compiled
-            .program
-            .instrs
-            .iter()
-            .any(|instr| matches!(
-                instr,
-                Instr::Fma {
-                    sign: Sign::Minus,
-                    ..
-                }
-            )));
-        assert!(concrete
-            .compiled
-            .program
-            .instrs
-            .iter()
-            .any(|instr| matches!(
-                instr,
-                Instr::Mul {
-                    negate_acc: true,
-                    operands,
-                    ..
-                } if operands.len() == 1
-            )));
+        assert!(
+            concrete
+                .compiled
+                .program
+                .instrs
+                .iter()
+                .any(|instr| matches!(
+                    instr,
+                    Instr::Fma {
+                        sign: Sign::Minus,
+                        ..
+                    }
+                ))
+        );
+        assert!(
+            concrete
+                .compiled
+                .program
+                .instrs
+                .iter()
+                .any(|instr| matches!(
+                    instr,
+                    Instr::Mul {
+                        negate_acc: true,
+                        operands,
+                        ..
+                    } if operands.len() == 1
+                ))
+        );
     }
 
     #[test]
@@ -3826,10 +3834,12 @@ mod tests {
                 operand: Operand::Source(value),
             } if value.expr == a
         )));
-        assert!(!plan
-            .ops
-            .iter()
-            .any(|op| matches!(op, EvalOp::AccNeg | EvalOp::SaveAcc(_))));
+        assert!(
+            !plan
+                .ops
+                .iter()
+                .any(|op| matches!(op, EvalOp::AccNeg | EvalOp::SaveAcc(_)))
+        );
 
         let packed = assert_packed_matches_plan(&layer, &plan);
         assert!(packed.ops.iter().any(|op| matches!(
@@ -3841,19 +3851,21 @@ mod tests {
             } if operands.len() == 1
         )));
         let concrete = bind_packed_plan(&packed, &layer, &[RootId(0)], 0, 8).unwrap();
-        assert!(concrete
-            .compiled
-            .program
-            .instrs
-            .iter()
-            .any(|instr| matches!(
-                instr,
-                Instr::Add {
-                    sign: Sign::Minus,
-                    operands,
-                    ..
-                } if operands.len() == 1
-            )));
+        assert!(
+            concrete
+                .compiled
+                .program
+                .instrs
+                .iter()
+                .any(|instr| matches!(
+                    instr,
+                    Instr::Add {
+                        sign: Sign::Minus,
+                        operands,
+                        ..
+                    } if operands.len() == 1
+                ))
+        );
     }
 
     #[test]
@@ -4706,10 +4718,11 @@ mod tests {
             .unwrap();
 
         assert_eq!(first_child.value, old_fp);
-        assert!(plan
-            .ops
-            .iter()
-            .any(|op| matches!(op, EvalOp::CacheDrop(value) if value.fingerprint == old_fp)));
+        assert!(
+            plan.ops
+                .iter()
+                .any(|op| matches!(op, EvalOp::CacheDrop(value) if value.fingerprint == old_fp))
+        );
         assert!(plan.ops.iter().any(
             |op| matches!(op, EvalOp::CacheStore { value, .. } if value.fingerprint == new_fp)
         ));
@@ -4754,10 +4767,12 @@ mod tests {
         assert!(plan.ops.iter().any(
             |op| matches!(op, EvalOp::CacheStore { value, .. } if value.fingerprint == old_fp)
         ));
-        assert!(!plan
-            .ops
-            .iter()
-            .any(|op| matches!(op, EvalOp::CacheDrop(value) if value.fingerprint == old_fp)));
+        assert!(
+            !plan
+                .ops
+                .iter()
+                .any(|op| matches!(op, EvalOp::CacheDrop(value) if value.fingerprint == old_fp))
+        );
         assert!(!plan.ops.iter().any(
             |op| matches!(op, EvalOp::CacheStore { value, .. } if value.fingerprint == new_fp)
         ));
@@ -4858,10 +4873,11 @@ mod tests {
             elaborate_with_oracle(&layer, &fields(&layer), &[RootId(0)], 1, &mut oracle).unwrap();
         let execution = assert_plan_matches_roots(&layer, &[RootId(0)], &plan);
 
-        assert!(plan
-            .ops
-            .iter()
-            .any(|op| matches!(op, EvalOp::AccFma { .. })));
+        assert!(
+            plan.ops
+                .iter()
+                .any(|op| matches!(op, EvalOp::AccFma { .. }))
+        );
         assert!(!plan.ops.iter().any(|op| matches!(op, EvalOp::SaveAcc(_))));
         assert_eq!(plan.stats.dram_read_lanes, 3);
         assert!(execution.stored_values.is_empty());
@@ -4893,10 +4909,12 @@ mod tests {
             elaborate_with_oracle(&layer, &expr_fields, &[RootId(0)], 2, &mut oracle).unwrap();
         let execution = assert_plan_matches_roots(&layer, &[RootId(0)], &plan);
 
-        assert!(!plan
-            .ops
-            .iter()
-            .any(|op| matches!(op, EvalOp::AccFma { .. })));
+        assert!(
+            !plan
+                .ops
+                .iter()
+                .any(|op| matches!(op, EvalOp::AccFma { .. }))
+        );
         assert_eq!(plan.stats.stash_stores, 1);
         assert!(plan.ops.iter().any(|op| {
             matches!(
@@ -4907,10 +4925,12 @@ mod tests {
                 } if value.fingerprint == product_fp
             )
         }));
-        assert!(execution
-            .stored_values
-            .iter()
-            .any(|value| value.fingerprint == product_fp));
+        assert!(
+            execution
+                .stored_values
+                .iter()
+                .any(|value| value.fingerprint == product_fp)
+        );
         assert_eq!(plan.sites, oracle.calls);
     }
 
@@ -5089,9 +5109,11 @@ mod tests {
             served_from(&events, value),
             vec![BwdServedFrom::Recomputed, BwdServedFrom::Resident]
         );
-        assert!(events
-            .iter()
-            .any(|event| matches!(event, BwdEvent::Admit { value: v, .. } if *v == value)));
+        assert!(
+            events
+                .iter()
+                .any(|event| matches!(event, BwdEvent::Admit { value: v, .. } if *v == value))
+        );
         assert_eq!(
             plan.ops
                 .iter()
@@ -5175,13 +5197,17 @@ mod tests {
         let (plan, events, value) = replay_source_fixture(&[PlanAction::Bypass], 8).unwrap();
 
         assert_eq!(served_from(&events, value), vec![BwdServedFrom::Recomputed]);
-        assert!(!events
-            .iter()
-            .any(|event| matches!(event, BwdEvent::Admit { value: v, .. } if *v == value)));
-        assert!(!plan
-            .ops
-            .iter()
-            .any(|op| matches!(op, EvalOp::CacheStore { .. })));
+        assert!(
+            !events
+                .iter()
+                .any(|event| matches!(event, BwdEvent::Admit { value: v, .. } if *v == value))
+        );
+        assert!(
+            !plan
+                .ops
+                .iter()
+                .any(|op| matches!(op, EvalOp::CacheStore { .. }))
+        );
     }
 
     #[test]
@@ -5667,13 +5693,17 @@ mod tests {
             replay_test_run(&layer, &[sum], Vec::new(), BTreeSet::from([product]), 8)
                 .expect("an eliminated product leaves the independently eligible stream empty");
 
-        assert!(!events
-            .iter()
-            .any(|event| matches!(event, BwdEvent::Serve { fp, .. } if fp.value == product)));
-        assert!(!plan
-            .ops
-            .iter()
-            .any(|op| matches!(op, EvalOp::CacheStore { .. })));
+        assert!(
+            !events
+                .iter()
+                .any(|event| matches!(event, BwdEvent::Serve { fp, .. } if fp.value == product))
+        );
+        assert!(
+            !plan
+                .ops
+                .iter()
+                .any(|op| matches!(op, EvalOp::CacheStore { .. }))
+        );
     }
 
     #[test]
@@ -5724,10 +5754,12 @@ mod tests {
             assert!(!events.iter().any(|event| {
                 matches!(event, BwdEvent::Serve { fp, .. } if fp.value == left || fp.value == right)
             }));
-            assert!(!plan
-                .ops
-                .iter()
-                .any(|op| matches!(op, EvalOp::CacheStore { .. })));
+            assert!(
+                !plan
+                    .ops
+                    .iter()
+                    .any(|op| matches!(op, EvalOp::CacheStore { .. }))
+            );
         }
     }
 
@@ -5766,9 +5798,11 @@ mod tests {
             replay_test_run(&layer, &[sum], Vec::new(), BTreeSet::from([product]), 8)
                 .expect("an FMA-eliminated product remains ineligible with a compound operand");
 
-        assert!(!events
-            .iter()
-            .any(|event| matches!(event, BwdEvent::Serve { fp, .. } if fp.value == product)));
+        assert!(
+            !events
+                .iter()
+                .any(|event| matches!(event, BwdEvent::Serve { fp, .. } if fp.value == product))
+        );
     }
 
     #[test]
@@ -5888,9 +5922,11 @@ mod tests {
                 )
             });
 
-            assert!(!events
-                .iter()
-                .any(|event| matches!(event, BwdEvent::Serve { fp, .. } if fp.value == product)));
+            assert!(
+                !events.iter().any(
+                    |event| matches!(event, BwdEvent::Serve { fp, .. } if fp.value == product)
+                )
+            );
             assert_eq!(served_from(&events, a).len(), 2);
         }
     }

@@ -30,11 +30,12 @@ use common::{compiled_circuit_dir, load_fixture};
 
 use std::path::PathBuf;
 
-use cs::gkr_compiler::dag_ir::{lower_dag, validate, validate_circuit_schedule};
+use gkr_eval_ir::{lower_dag, validate};
 use gkr_eval_isa::fwd::compile::decisions::SiteDecisions;
 use gkr_eval_isa::fwd::compile::{
     build_cross_layer_field_map, compile_layer, layer_needs_compile, load_committed_schedule,
 };
+use gkr_eval_isa::validate_circuit_schedule;
 
 /// (layout fixture file, committed schedule stem) for all 11 cache-layout circuits —
 /// the stem differs from the fixture stem only for `inits_and_teardowns` (fixture is

@@ -56,11 +56,11 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
-use cs::gkr_compiler::dag_ir::{
-    Bf, BwdRegime, DagLayer, Expr, ExprId, FieldKind, RootSlot, SourceId as DagSourceId,
-    SourceKind, bwd_roots, read_place_field,
-};
 use field::PrimeField;
+use gkr_eval_ir::{
+    Bf, DagLayer, Expr, ExprId, FieldKind, RootSlot, SourceId as DagSourceId, SourceKind,
+    claim_roots, read_place_field,
+};
 
 use super::limits::MAX_COEFFICIENT_ENCODINGS;
 use super::model::{
@@ -322,17 +322,17 @@ impl Lowering<'_> {
     fn run(&mut self) -> Result<(), CoeffError> {
         self.check_root_order()?;
         self.lower_c_init()?;
-        if self.distilled.regime == BwdRegime::R0 {
+        if self.distilled.regime == crate::BwdRegime::R0 {
             self.lower_r0_root_c0()?;
         }
         self.lower_fragments()
     }
 
-    /// `bwd_roots` is the single source of truth for batching position, and
+    /// `claim_roots` is the single source of truth for batching position, and
     /// `DistilledLayer::root_terms` is assembled in exactly that order. A mismatch
     /// means the two arguments describe different layers.
     fn check_root_order(&self) -> Result<(), CoeffError> {
-        let order = bwd_roots(self.canonical);
+        let order = claim_roots(self.canonical);
         let terms = &self.distilled.root_terms;
         if order.len() != terms.len() {
             return Err(CoeffError::RootCountMismatch {
@@ -373,13 +373,13 @@ impl Lowering<'_> {
     fn lower_c_init(&mut self) -> Result<(), CoeffError> {
         let d = self.distilled;
         let spine_scalar = self.scalar_sum(&d.fragments.c_init)?;
-        if d.regime == BwdRegime::Ext {
+        if d.regime == crate::BwdRegime::Ext {
             self.c_init = self.c_init.add(&spine_scalar);
         }
         Ok(())
     }
 
-    /// R0 `acc_c0`, per canonical claim-bearing root in `bwd_roots` order (§5.2).
+    /// R0 `acc_c0`, per canonical claim-bearing root in `claim_roots` order (§5.2).
     fn lower_r0_root_c0(&mut self) -> Result<(), CoeffError> {
         let canonical = self.canonical;
         let terms = &self.distilled.root_terms;
@@ -416,7 +416,7 @@ impl Lowering<'_> {
     }
 
     /// A root's canonical batch/challenge factor: the multiplicative identity for
-    /// root zero (`bwd_roots[0]`, unscaled by construction), else its
+    /// root zero (`claim_roots[0]`, unscaled by construction), else its
     /// `ClaimBatching` beta power.
     fn batch_factor(&self, term: &DistilledRootTerm) -> Result<Recipe, CoeffError> {
         let Some(expr) = term.batching_factor else { return Ok(Recipe::one()) };
@@ -469,7 +469,7 @@ impl Lowering<'_> {
 
     /// Route one fragment's expanded value into terms / `c_init`.
     fn emit(&mut self, k: &Recipe, value: Quad) {
-        let r0 = self.distilled.regime == BwdRegime::R0;
+        let r0 = self.distilled.regime == crate::BwdRegime::R0;
         if !r0 {
             // Every scalar-only contribution merges into the one c_init recipe,
             // and every degree-1 contribution becomes one `C0Linear`. At R0 both

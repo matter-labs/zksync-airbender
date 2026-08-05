@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use crate::definitions::GKRAddress;
+use cs::definitions::GKRAddress;
 
 use super::{Expr, ExprId, SourceId, SourceInfo, SourceKind};
 
@@ -247,7 +247,10 @@ mod tests {
 
         let ab = arena.add(vec![a, b]);
         let ba = arena.add(vec![b, a]);
-        assert_eq!(ab, ba, "add([a,b]) and add([b,a]) should be the same ExprId");
+        assert_eq!(
+            ab, ba,
+            "add([a,b]) and add([b,a]) should be the same ExprId"
+        );
     }
 
     /// `add([a, add([b, c])])` must intern to the same `ExprId` as `add([a, b, c])`
@@ -283,8 +286,16 @@ mod tests {
         );
         match &arena.exprs()[nested.0 as usize] {
             Expr::Add(ops) => {
-                assert_eq!(ops.len(), 2, "nested Add must survive as 2 operands, got {:?}", ops);
-                assert!(ops.contains(&bc), "the nested Add itself must be a direct operand");
+                assert_eq!(
+                    ops.len(),
+                    2,
+                    "nested Add must survive as 2 operands, got {:?}",
+                    ops
+                );
+                assert!(
+                    ops.contains(&bc),
+                    "the nested Add itself must be a direct operand"
+                );
             }
             other => panic!("expected Add, got {:?}", other),
         }
@@ -296,8 +307,15 @@ mod tests {
         let mut arena = ArenaBuilder::new();
         let id1 = arena.intern_source(SourceKind::Constant { value: 42 });
         let id2 = arena.intern_source(SourceKind::Constant { value: 42 });
-        assert_eq!(id1, id2, "identical Constant sources should intern to one SourceId");
-        assert_eq!(arena.sources().len(), 1, "only one SourceInfo should be stored");
+        assert_eq!(
+            id1, id2,
+            "identical Constant sources should intern to one SourceId"
+        );
+        assert_eq!(
+            arena.sources().len(),
+            1,
+            "only one SourceInfo should be stored"
+        );
     }
 
     /// `mul([a, a])` must stay length-2 and be distinct from `mul([a])`.
@@ -325,7 +343,10 @@ mod tests {
 
         let ab = arena.mul(vec![a, b]);
         let ba = arena.mul(vec![b, a]);
-        assert_eq!(ab, ba, "mul([a,b]) and mul([b,a]) should be the same ExprId");
+        assert_eq!(
+            ab, ba,
+            "mul([a,b]) and mul([b,a]) should be the same ExprId"
+        );
     }
 
     /// `mul([a, mul([b, c])])` must intern to the same `ExprId` as `mul([a, b, c])`
@@ -361,8 +382,16 @@ mod tests {
         );
         match &arena.exprs()[nested.0 as usize] {
             Expr::Mul(ops) => {
-                assert_eq!(ops.len(), 2, "nested Mul must survive as 2 operands, got {:?}", ops);
-                assert!(ops.contains(&bc), "the nested Mul itself must be a direct operand");
+                assert_eq!(
+                    ops.len(),
+                    2,
+                    "nested Mul must survive as 2 operands, got {:?}",
+                    ops
+                );
+                assert!(
+                    ops.contains(&bc),
+                    "the nested Mul itself must be a direct operand"
+                );
             }
             other => panic!("expected Mul, got {:?}", other),
         }
@@ -397,11 +426,20 @@ mod tests {
         let z = a.intern_source(SourceKind::Constant { value: 3 });
         let (ex, ey, ez) = (a.source_expr(x), a.source_expr(y), a.source_expr(z));
         let bc = a.fenced_add(vec![ey, ez]); // fenced Add([y, z])
-        let nested = a.add(vec![ex, bc]);    // add([x, fenced]) must NOT flatten bc
+        let nested = a.add(vec![ex, bc]); // add([x, fenced]) must NOT flatten bc
         match &a.exprs()[nested.0 as usize] {
             Expr::Add(ops) => {
-                assert_eq!(ops.len(), 2, "fenced child must survive as one operand, got {:?}", ops);
-                assert!(ops.contains(&bc), "the fenced node itself must be a direct operand, got {:?}", ops);
+                assert_eq!(
+                    ops.len(),
+                    2,
+                    "fenced child must survive as one operand, got {:?}",
+                    ops
+                );
+                assert!(
+                    ops.contains(&bc),
+                    "the fenced node itself must be a direct operand, got {:?}",
+                    ops
+                );
             }
             other => panic!("expected Add, got {:?}", other),
         }

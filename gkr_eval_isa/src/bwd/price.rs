@@ -53,7 +53,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::ops::Range;
 
-use cs::gkr_compiler::dag_ir::{Expr, ExprId, FieldKind};
+use gkr_eval_ir::{Expr, ExprId, FieldKind};
 
 use super::compile::{BwdCompileBackend, BwdCompiledLayer, TermBackend};
 use super::distill::{distilled_site_domain, DistilledLayer};

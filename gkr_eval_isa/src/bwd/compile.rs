@@ -26,7 +26,7 @@
 
 use std::collections::BTreeMap;
 
-use cs::gkr_compiler::dag_ir::{Expr, ExprId};
+use gkr_eval_ir::{Expr, ExprId};
 
 use crate::bwd::batch::unpack_batch_dst;
 use crate::fwd::binding::{bind_final_sources, BackingTable, SourceMarkerMode, SourceWindowTable};
@@ -1392,9 +1392,9 @@ mod tests {
     use crate::bwd::source::MaterializationPolicy;
     use crate::fwd::encode::encode;
     use crate::fwd::isa::MovDir;
-    use cs::gkr_compiler::dag_ir::{
-        BatchingOrder, BwdRegime, ChallengeKey, ChallengePower, ChallengeRef, ClaimInfo, DagLayer,
-        ReadPlace, Root, RootGroup, RootOrigin, RootSlot, SourceId, SourceInfo, SourceKind,
+    use gkr_eval_ir::{
+        BatchingOrder, ChallengeKey, ChallengePower, ChallengeRef, ClaimInfo, DagLayer, ReadPlace,
+        Root, RootGroup, RootOrigin, RootSlot, SourceId, SourceInfo, SourceKind,
     };
     use std::collections::{BTreeMap, HashMap};
 
@@ -1428,7 +1428,7 @@ mod tests {
                 .iter()
                 .enumerate()
                 .filter(|(_, r)| r.claim.is_some())
-                .map(|(i, _)| cs::gkr_compiler::dag_ir::RootId(i as u32))
+                .map(|(i, _)| gkr_eval_ir::RootId(i as u32))
                 .collect(),
         };
         DagLayer {
@@ -1513,7 +1513,7 @@ mod tests {
             vec![Expr::Source(SourceId(0)), Expr::Source(SourceId(1))],
             vec![claim_only_root(ExprId(0), 0), claim_only_root(ExprId(1), 1)],
         );
-        let d = distill(&l, BwdRegime::R0, &HashMap::new(), None);
+        let d = distill(&l, crate::BwdRegime::R0, &HashMap::new(), None);
         assert_eq!(d.fragments.fragments.len(), 2);
         let (_, coefficient_descs, acc_init_desc) = fragment_descs(&d);
         let c = compile_distilled_fragments(&d, 16, None).unwrap();
@@ -1616,7 +1616,7 @@ mod tests {
             vec![claim_only_root(ExprId(0), 0)],
         );
         // (a) R0: the leaf is a final plain source read.
-        let d = distill(&l, BwdRegime::R0, &HashMap::new(), None);
+        let d = distill(&l, crate::BwdRegime::R0, &HashMap::new(), None);
         let c = compile_distilled(&d, 16, None).expect("R0 compile");
         assert_result_in_acc(&c.program);
         assert_eq!(
@@ -1645,7 +1645,7 @@ mod tests {
         // (c) Ext: this legacy compiler represents the leaf as a FoldSource
         // Special in the BWD namespace. The shared eval-plan compiler moves
         // read-origin folds onto final Source lanes instead.
-        let d = distill(&l, BwdRegime::Ext, &HashMap::new(), None);
+        let d = distill(&l, crate::BwdRegime::Ext, &HashMap::new(), None);
         let c = compile_distilled(&d, 16, None).expect("Ext compile");
         assert_result_in_acc(&c.program);
         assert_eq!(c.program.instrs.len(), 1);
@@ -1693,7 +1693,7 @@ mod tests {
             vec![Expr::Source(SourceId(0))],
             vec![claim_only_root(ExprId(0), 0)],
         );
-        for regime in [BwdRegime::R0, BwdRegime::Ext] {
+        for regime in [crate::BwdRegime::R0, crate::BwdRegime::Ext] {
             let d = distill(&l, regime, &HashMap::new(), None);
             let c = compile_distilled(&d, 16, None).expect("compile");
             assert_result_in_acc(&c.program);
@@ -1728,7 +1728,7 @@ mod tests {
             ],
             vec![claim_only_root(ExprId(4), 0)],
         );
-        for regime in [BwdRegime::R0, BwdRegime::Ext] {
+        for regime in [crate::BwdRegime::R0, crate::BwdRegime::Ext] {
             let d = distill(&l, regime, &HashMap::new(), None);
             let c = compile_distilled(&d, 16, None).expect("compile");
             assert_result_in_acc(&c.program);
@@ -1769,7 +1769,7 @@ mod tests {
                 claim_only_root(ExprId(7), 2),
             ],
         );
-        let d = distill(&l, BwdRegime::Ext, &HashMap::new(), None);
+        let d = distill(&l, crate::BwdRegime::Ext, &HashMap::new(), None);
         let decisions = all_sites(&d);
         let c = compile_distilled(&d, 8, Some(&decisions)).expect("b8 compile under pressure");
         assert_result_in_acc(&c.program);
@@ -1797,9 +1797,7 @@ mod tests {
                 read_src(1),
                 SourceInfo {
                     kind: SourceKind::LookupValue {
-                        kind: cs::gkr_compiler::dag_ir::LookupValueKind::GenericColumn {
-                            column: 0,
-                        },
+                        kind: gkr_eval_ir::LookupValueKind::GenericColumn { column: 0 },
                         set_index: 0,
                         query: ExprId(2),
                     },
@@ -1862,7 +1860,7 @@ mod tests {
     #[test]
     fn replay_serve_counts_match_uncached_emission() {
         let l = lookup_fold_layer();
-        let d = distill(&l, BwdRegime::Ext, &HashMap::new(), None);
+        let d = distill(&l, crate::BwdRegime::Ext, &HashMap::new(), None);
         // The LookupValue leaf must be gone (rewritten to its query).
         assert!(!d
             .layer
@@ -1922,7 +1920,7 @@ mod tests {
         // With decisions, q (fan-out 2, in the distilled domain) is admitted at
         // its first demand: one recompute (w0/w1 gathered ONCE) + a cell re-read.
         let l = lookup_fold_layer();
-        let d = distill(&l, BwdRegime::Ext, &HashMap::new(), None);
+        let d = distill(&l, crate::BwdRegime::Ext, &HashMap::new(), None);
         let (w0, w1, w2, _q) = find_distilled_ids(&d);
         let decisions = all_sites(&d);
         let c = compile_distilled(&d, 16, Some(&decisions)).expect("cached compile");
@@ -1946,7 +1944,7 @@ mod tests {
     #[test]
     fn program_bytes_invariant_across_bindings() {
         let l = lookup_fold_layer();
-        let d = distill(&l, BwdRegime::Ext, &HashMap::new(), None);
+        let d = distill(&l, crate::BwdRegime::Ext, &HashMap::new(), None);
         let decisions = all_sites(&d);
 
         let c1 = compile_distilled(&d, 16, Some(&decisions)).expect("compile 1");

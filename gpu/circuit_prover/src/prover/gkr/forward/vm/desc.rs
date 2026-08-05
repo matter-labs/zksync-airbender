@@ -297,7 +297,7 @@ mod tests {
         // `virtual_setup_kind_code` returns the `KIND_ORDER` index (0..3);
         // the packed-desc `vkind` field now stores the native
         // `gkr_base_source_kind` value verbatim (2..5), i.e. index + 2.
-        use cs::gkr_compiler::dag_ir::VirtualSetupKind::*;
+        use gkr_eval_ir::VirtualSetupKind::*;
         use gkr_eval_isa::fwd::source::virtual_setup_kind_code;
         assert_eq!(
             virtual_setup_kind_code(&RangeCheck16Bits) + 2,

@@ -38,8 +38,8 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
-use cs::gkr_compiler::dag_ir::{
-    BwdRegime, DagLayer, FieldKind, ReadPlace, RootSlot, SinkKind, VirtualSetupKind, bwd_roots,
+use gkr_eval_ir::{
+    DagLayer, FieldKind, ReadPlace, RootSlot, SinkKind, VirtualSetupKind, claim_roots,
     read_place_field,
 };
 use serde::{Deserialize, Serialize};
@@ -218,7 +218,7 @@ pub fn source_window_count(lowered: &CoeffLayer, distilled: &DistilledLayer) -> 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct CoeffCensus {
     // ── canonical structure ──────────────────────────────────────────────
-    /// `bwd_roots(canonical).len()` — the canonical batching order's length.
+    /// `claim_roots(canonical).len()` — the canonical batching order's length.
     pub canonical_roots: usize,
     /// Claim-bearing roots carrying a materialized output sink.
     pub materialized_roots: usize,
@@ -399,7 +399,7 @@ pub fn census_coeff_layer(
     trace: &LoweringTrace,
 ) -> Result<CoeffCensus, CoeffError> {
     let mut c = CoeffCensus {
-        canonical_roots: bwd_roots(canonical).len(),
+        canonical_roots: claim_roots(canonical).len(),
         fragments_total: trace.fragments_total,
         fragments_live: trace.fragments_live,
         pre_distribution_atoms: trace.pre_distribution_atoms,
@@ -463,7 +463,7 @@ pub fn census_coeff_layer(
         });
     }
 
-    let r0 = lowered.regime == BwdRegime::R0;
+    let r0 = lowered.regime == crate::BwdRegime::R0;
     let mut projection_uses: BTreeMap<ProjectionId, usize> = BTreeMap::new();
     let mut coefficient_ids: BTreeSet<_> = BTreeSet::new();
     // The two stream bounds are computed by `limits::{lower,upper}_bound_program_words`,
@@ -496,7 +496,11 @@ pub fn census_coeff_layer(
                 }
                 1
             }
-            CoeffTerm::C2Product { lhs_field, rhs_field, .. } => {
+            CoeffTerm::C2Product {
+                lhs_field,
+                rhs_field,
+                ..
+            } => {
                 if r0 {
                     match (lhs_field, rhs_field) {
                         (FieldKind::Base, FieldKind::Base) => c.r0_c2_bf_bf += 1,
@@ -567,14 +571,18 @@ pub fn census_coeff_layer(
 pub struct CoeffCensusRow {
     pub circuit: String,
     pub layer: usize,
-    pub regime: BwdRegime,
+    pub regime: crate::BwdRegime,
     pub live_categories: BTreeSet<TermCategory>,
     pub census: CoeffCensus,
 }
 
 impl CoeffCensusRow {
     pub fn regime_label(&self) -> &'static str {
-        if self.regime == BwdRegime::R0 { "R0" } else { "Ext" }
+        if self.regime == crate::BwdRegime::R0 {
+            "R0"
+        } else {
+            "Ext"
+        }
     }
 
     /// Total, lexical order over coordinates. Two runs that agree on the row set
@@ -591,7 +599,7 @@ impl CoeffCensusRow {
 pub struct CoeffCensusFailure {
     pub circuit: String,
     pub layer: usize,
-    pub regime: BwdRegime,
+    pub regime: crate::BwdRegime,
     pub error: CoeffError,
 }
 
@@ -608,15 +616,14 @@ pub fn census_layer(
 ) -> (Vec<CoeffCensusRow>, Vec<CoeffCensusFailure>) {
     let mut rows = Vec::with_capacity(2);
     let mut failures = Vec::new();
-    for regime in [BwdRegime::R0, BwdRegime::Ext] {
+    for regime in [crate::BwdRegime::R0, crate::BwdRegime::Ext] {
         let distilled = distill(canonical, regime, cross_fields, None);
-        let censused = lower_coeff_layer_traced(canonical, &distilled).and_then(
-            |(lowered, trace)| {
+        let censused =
+            lower_coeff_layer_traced(canonical, &distilled).and_then(|(lowered, trace)| {
                 let census = census_coeff_layer(canonical, &distilled, &lowered, &trace)?;
                 let live_categories = live_term_categories(&lowered)?;
                 Ok((live_categories, census))
-            },
-        );
+            });
         match censused {
             Ok((live_categories, census)) => rows.push(CoeffCensusRow {
                 circuit: circuit.to_string(),
@@ -746,19 +753,27 @@ pub fn census_csv(rows: &[CoeffCensusRow]) -> String {
 /// ([`CoeffCensusFailure`]), which is what §3.1's conditional-circuit handling
 /// needs.
 pub fn live_term_categories(lowered: &CoeffLayer) -> Result<BTreeSet<TermCategory>, CoeffError> {
-    let r0 = lowered.regime == BwdRegime::R0;
+    let r0 = lowered.regime == crate::BwdRegime::R0;
     let mut live = BTreeSet::new();
     for term in &lowered.terms {
         live.insert(match term {
-            CoeffTerm::C0Linear { field: FieldKind::Base, .. } => TermCategory::C0LinearBf,
-            CoeffTerm::C0Linear { field: FieldKind::Ext, .. } => TermCategory::C0LinearE4,
-            CoeffTerm::C2Product { lhs_field, rhs_field, .. } => {
-                match (lhs_field, rhs_field) {
-                    (FieldKind::Base, FieldKind::Base) => TermCategory::C2ProductBfBf,
-                    (FieldKind::Ext, FieldKind::Ext) => TermCategory::C2ProductE4E4,
-                    _ => TermCategory::C2ProductBfE4,
-                }
-            }
+            CoeffTerm::C0Linear {
+                field: FieldKind::Base,
+                ..
+            } => TermCategory::C0LinearBf,
+            CoeffTerm::C0Linear {
+                field: FieldKind::Ext,
+                ..
+            } => TermCategory::C0LinearE4,
+            CoeffTerm::C2Product {
+                lhs_field,
+                rhs_field,
+                ..
+            } => match (lhs_field, rhs_field) {
+                (FieldKind::Base, FieldKind::Base) => TermCategory::C2ProductBfBf,
+                (FieldKind::Ext, FieldKind::Ext) => TermCategory::C2ProductE4E4,
+                _ => TermCategory::C2ProductBfE4,
+            },
             CoeffTerm::DualProduct { .. } => TermCategory::DualProductE4,
         });
     }

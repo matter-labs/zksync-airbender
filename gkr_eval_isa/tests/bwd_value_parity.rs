@@ -6,7 +6,7 @@
 //! LazyUpTo(2)} × round × sampled row, this asserts the backward interpreter
 //! (`interpret_bwd_row`) equals the authoritative expression oracle
 //!   `Σ_i beta^i · eval(root_i)`  (root 0 unscaled)
-//! over the CANONICAL `bwd_roots` order, BIT-EXACT.
+//! over the CANONICAL `claim_roots` order, BIT-EXACT.
 //!
 //! The per-(compiled, distilled, layer) sweep itself — the shared role+fold
 //! transform, the rewrite-aware oracle, the materialized-buffer resolver, and the
@@ -37,8 +37,9 @@ mod common;
 
 use std::collections::BTreeSet;
 
-use common::{load_fixture, schedule_stem, CacheConsistentResolvers};
-use cs::gkr_compiler::dag_ir::{bwd_roots, lower_dag, validate, BwdRegime};
+use common::{CacheConsistentResolvers, load_fixture, schedule_stem};
+use gkr_eval_ir::{claim_roots, lower_dag, validate};
+use gkr_eval_isa::BwdRegime;
 use gkr_eval_isa::bwd::compile::compile_distilled;
 use gkr_eval_isa::bwd::distill::distill;
 use gkr_eval_isa::fwd::compile::build_cross_layer_field_map;
@@ -101,7 +102,7 @@ fn bwd_value_parity_all_fixtures() {
         let cross = build_cross_layer_field_map(&dag);
 
         for (li, layer) in dag.layers.iter().enumerate() {
-            if bwd_roots(layer).is_empty() {
+            if claim_roots(layer).is_empty() {
                 continue; // nothing to prove backward
             }
             // The corpus MUST exercise fenced cache columns (else the gate silently
@@ -154,7 +155,10 @@ fn bwd_value_parity_all_fixtures() {
         println!("  {s}");
     }
 
-    assert!(interpreted_r0 > 0 && interpreted_ext > 0, "both regimes must be exercised");
+    assert!(
+        interpreted_r0 > 0 && interpreted_ext > 0,
+        "both regimes must be exercised"
+    );
     // The whole point of this gate post-fence: the corpus MUST exercise fenced cache
     // columns, otherwise the witness-consistent read side is never engaged.
     assert!(
@@ -162,14 +166,18 @@ fn bwd_value_parity_all_fixtures() {
         "no fenced cache columns across the corpus — the fence is not being exercised"
     );
 
-    let pinned_skip: BTreeSet<String> =
-        PINNED_SKIPPED_DECODER.iter().map(|s| s.to_string()).collect();
+    let pinned_skip: BTreeSet<String> = PINNED_SKIPPED_DECODER
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
     assert_eq!(
         skipped, pinned_skip,
         "skipped_decoder set drifted from the pinned expectation — update deliberately"
     );
-    let pinned_floor: BTreeSet<String> =
-        PINNED_B16_INFEASIBLE.iter().map(|s| s.to_string()).collect();
+    let pinned_floor: BTreeSet<String> = PINNED_B16_INFEASIBLE
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
     assert_eq!(
         floor_retries, pinned_floor,
         "b16-infeasible floor-retry set drifted from the pinned expectation — update deliberately"

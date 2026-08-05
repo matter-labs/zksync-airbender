@@ -34,12 +34,12 @@
 //! Subtraction never appears here, so there is no `Sub`/`Neg` node; the only
 //! signed term is the U8 byte shift `2^8`, a plain positive base constant.
 
-use crate::definitions::{
+use cs::definitions::gkr::{AddressSpaceType, RamWordRepresentation};
+use cs::definitions::{
     PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX,
     PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX,
 };
-use crate::definitions::gkr::{AddressSpaceType, RamWordRepresentation};
-use crate::gkr_compiler::{
+use cs::gkr_compiler::{
     CompiledAddressSpaceRelationStrict, CompiledAddressStrict, CompiledMemoryTimestamp,
     InitsOrTeardownsTimestampAndValue, NoFieldSpecialMemoryContributionRelation,
 };
@@ -253,7 +253,11 @@ fn timestamp_terms(
             } else {
                 lo_read
             };
-            terms.push(challenge_scaled(arena, PermutationSlot::TimestampLow, lo_inner));
+            terms.push(challenge_scaled(
+                arena,
+                PermutationSlot::TimestampLow,
+                lo_inner,
+            ));
 
             let hi = mem_read(arena, ts[1]);
             terms.push(challenge_scaled(arena, PermutationSlot::TimestampHigh, hi));
@@ -263,11 +267,7 @@ fn timestamp_terms(
 
 /// Append the value linearization terms. `U16Limbs` reads two limbs directly;
 /// `U8Limbs` recomposes each limb as `b_lo + 2^8·b_hi`; `Zero` adds nothing.
-fn value_terms(
-    arena: &mut ArenaBuilder,
-    value: &RamWordRepresentation,
-    terms: &mut Vec<ExprId>,
-) {
+fn value_terms(arena: &mut ArenaBuilder, value: &RamWordRepresentation, terms: &mut Vec<ExprId>) {
     match value {
         RamWordRepresentation::Zero => {}
         RamWordRepresentation::U16Limbs(read_value) => {
@@ -301,8 +301,8 @@ fn recompose_bytes(arena: &mut ArenaBuilder, lo_col: usize, hi_col: usize) -> Ex
 /// reads (addresses), via [`super::map_address`].
 pub(super) fn product_of_reads(
     arena: &mut ArenaBuilder,
-    a: crate::definitions::GKRAddress,
-    b: crate::definitions::GKRAddress,
+    a: cs::definitions::GKRAddress,
+    b: cs::definitions::GKRAddress,
 ) -> ExprId {
     let a = read_addr(arena, a);
     let b = read_addr(arena, b);
@@ -323,7 +323,7 @@ pub(super) fn product_of_tuples(
 
 /// Read `addr` (a same-layer cache address resolves to the materialized value's
 /// shared `ExprId` for in-layer reuse; see [`super::util::read_expr`]).
-fn read_addr(arena: &mut ArenaBuilder, addr: crate::definitions::GKRAddress) -> ExprId {
+fn read_addr(arena: &mut ArenaBuilder, addr: cs::definitions::GKRAddress) -> ExprId {
     super::util::read_expr(arena, addr)
 }
 
@@ -331,8 +331,8 @@ fn read_addr(arena: &mut ArenaBuilder, addr: crate::definitions::GKRAddress) -> 
 /// `input·mask + (1 − mask)`). `input − 1` is `input + (−1)`.
 pub(super) fn mask_into_identity(
     arena: &mut ArenaBuilder,
-    input: crate::definitions::GKRAddress,
-    mask: crate::definitions::GKRAddress,
+    input: cs::definitions::GKRAddress,
+    mask: cs::definitions::GKRAddress,
     minus_one: u32,
 ) -> ExprId {
     let input = read_addr(arena, input);
@@ -419,7 +419,11 @@ fn inits_or_teardowns_tuple(
     } else {
         addr_high_setup
     };
-    terms.push(challenge_scaled(arena, slot_for_address_high(), addr_high_inner));
+    terms.push(challenge_scaled(
+        arena,
+        slot_for_address_high(),
+        addr_high_inner,
+    ));
 
     // timestamp + value limbs (Teardown only; Init contributes zero).
     if let InitsOrTeardownsTimestampAndValue::Teardown {
@@ -435,9 +439,17 @@ fn inits_or_teardowns_tuple(
             (rhs_timestamp, rhs_value)
         };
         let ts_lo = mem_read(arena, timestamp[0]);
-        terms.push(challenge_scaled(arena, PermutationSlot::TimestampLow, ts_lo));
+        terms.push(challenge_scaled(
+            arena,
+            PermutationSlot::TimestampLow,
+            ts_lo,
+        ));
         let ts_hi = mem_read(arena, timestamp[1]);
-        terms.push(challenge_scaled(arena, PermutationSlot::TimestampHigh, ts_hi));
+        terms.push(challenge_scaled(
+            arena,
+            PermutationSlot::TimestampHigh,
+            ts_hi,
+        ));
         let val_lo = mem_read(arena, value[0]);
         terms.push(challenge_scaled(arena, PermutationSlot::ValueLow, val_lo));
         let val_hi = mem_read(arena, value[1]);

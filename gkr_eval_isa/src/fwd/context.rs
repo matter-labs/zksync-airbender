@@ -6,10 +6,8 @@ use super::isa::{DstLine, OperandLine, Program};
 use super::source::{ConstBank, DerivedE4Banks, SpecialTable};
 use super::stats::CompileStats;
 use cs::definitions::GKRAddress;
-use cs::gkr_compiler::dag_ir::{
-    DagLayer, ExprId, Ext, FieldKind, ReadPlace, Root, RootGroup, RootId,
-};
 use cs::gkr_compiler::{GKRLayerDescription, NoFieldGKRRelation};
+use gkr_eval_ir::{DagLayer, ExprId, Ext, FieldKind, ReadPlace, Root, RootGroup, RootId};
 use std::collections::{BTreeMap, HashMap};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -179,13 +177,13 @@ fn classify_relation(
 mod tests {
     use super::*;
     use cs::definitions::GKRAddress;
-    use cs::gkr_compiler::dag_ir::{
-        BatchingOrder, ClaimInfo, DagLayer, FieldKind, Root, RootGroup, RootId, RootOrigin,
-        RootSlot, SinkInfo, SinkKind, SourceInfo, SourceKind,
-    };
     use cs::gkr_compiler::{
         GKRLayerDescription, GateArtifacts, NoFieldGKRRelation, NoFieldMaxQuadraticGKRRelation,
         NoFieldStructuredExpression,
+    };
+    use gkr_eval_ir::{
+        BatchingOrder, ClaimInfo, DagLayer, FieldKind, Root, RootGroup, RootId, RootOrigin,
+        RootSlot, SinkInfo, SinkKind, SourceInfo, SourceKind,
     };
     use std::collections::BTreeMap;
 
@@ -309,7 +307,7 @@ mod tests {
         let mut layer = empty_layer();
         // Cache root: materializes but carries no claim/origin → cache (materialization-only).
         layer.roots.push(Root {
-            expr: cs::gkr_compiler::dag_ir::ExprId(0),
+            expr: gkr_eval_ir::ExprId(0),
             materialize: Some(SinkInfo {
                 kind: SinkKind::Cache {
                     layer: 0,
@@ -342,7 +340,7 @@ mod tests {
 
         let mut layer = empty_layer();
         layer.roots.push(Root {
-            expr: cs::gkr_compiler::dag_ir::ExprId(0),
+            expr: gkr_eval_ir::ExprId(0),
             materialize: Some(SinkInfo {
                 kind: SinkKind::Export { slot: 0 },
                 field: FieldKind::Ext,

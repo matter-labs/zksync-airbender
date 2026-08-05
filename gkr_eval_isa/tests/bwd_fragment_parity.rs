@@ -34,8 +34,9 @@ mod common;
 
 use std::collections::BTreeSet;
 
-use common::{load_fixture, schedule_stem, CacheConsistentResolvers};
-use cs::gkr_compiler::dag_ir::{bwd_roots, lower_dag, validate, BwdRegime};
+use common::{CacheConsistentResolvers, load_fixture, schedule_stem};
+use gkr_eval_ir::{claim_roots, lower_dag, validate};
+use gkr_eval_isa::BwdRegime;
 use gkr_eval_isa::bwd::compile::{BwdCompiledLayer, compile_distilled_fragments_traced};
 use gkr_eval_isa::bwd::distill::distill;
 use gkr_eval_isa::bwd::trace::BwdEvent;
@@ -99,7 +100,7 @@ fn bwd_fragment_parity_all_fixtures() {
         let cross = build_cross_layer_field_map(&dag);
 
         for (li, layer) in dag.layers.iter().enumerate() {
-            if bwd_roots(layer).is_empty() {
+            if claim_roots(layer).is_empty() {
                 continue; // nothing to prove backward
             }
             // The corpus MUST exercise fenced cache columns (else the gate silently
@@ -125,17 +126,15 @@ fn bwd_fragment_parity_all_fixtures() {
                             panic!("[{ctx}] compile (identity order) at floor {floor}: {e:?}")
                         })
                     }
-                    Err(e) => panic!(
-                        "[{ctx}] compile_distilled_fragments_traced (identity order): {e:?}"
-                    ),
+                    Err(e) => {
+                        panic!("[{ctx}] compile_distilled_fragments_traced (identity order): {e:?}")
+                    }
                 };
-                let new = compile_backward_fragments_uncached(
-                    &d,
-                    None,
-                    4,
-                    old_trace.stream_reductions,
-                )
-                .unwrap_or_else(|e| panic!("[{ctx}] shared compile (identity order): {e:?}"));
+                let new =
+                    compile_backward_fragments_uncached(&d, None, 4, old_trace.stream_reductions)
+                        .unwrap_or_else(|e| {
+                            panic!("[{ctx}] shared compile (identity order): {e:?}")
+                        });
                 match regime {
                     BwdRegime::R0 => interpreted_r0 += 1,
                     BwdRegime::Ext => interpreted_ext += 1,
@@ -165,19 +164,21 @@ fn bwd_fragment_parity_all_fixtures() {
                 let rev: Vec<usize> = (0..d.fragments.fragments.len()).rev().collect::<Vec<_>>();
                 let (old_rev, old_rev_trace) =
                     match compile_distilled_fragments_traced(&d, BUDGET, Some(&rev)) {
-                    Ok(c) => c,
-                    Err(CompileError::BudgetBelowFloor { floor, .. }) => {
-                        floor_retries
-                            .insert(format!("{stem}[L{li}][{regime:?}][rev] floor={floor}"));
-                        compile_distilled_fragments_traced(&d, floor, Some(&rev))
-                            .unwrap_or_else(|e| {
-                                panic!("[{ctx}] compile (reversed order) at floor {floor}: {e:?}")
-                            })
-                    }
-                    Err(e) => panic!(
-                        "[{ctx}] compile_distilled_fragments_traced (reversed order): {e:?}"
-                    ),
-                };
+                        Ok(c) => c,
+                        Err(CompileError::BudgetBelowFloor { floor, .. }) => {
+                            floor_retries
+                                .insert(format!("{stem}[L{li}][{regime:?}][rev] floor={floor}"));
+                            compile_distilled_fragments_traced(&d, floor, Some(&rev))
+                                .unwrap_or_else(|e| {
+                                    panic!(
+                                        "[{ctx}] compile (reversed order) at floor {floor}: {e:?}"
+                                    )
+                                })
+                        }
+                        Err(e) => panic!(
+                            "[{ctx}] compile_distilled_fragments_traced (reversed order): {e:?}"
+                        ),
+                    };
                 let new_rev = compile_backward_fragments_uncached(
                     &d,
                     Some(&rev),
@@ -224,7 +225,10 @@ fn bwd_fragment_parity_all_fixtures() {
         println!("  {s}");
     }
 
-    assert!(interpreted_r0 > 0 && interpreted_ext > 0, "both regimes must be exercised");
+    assert!(
+        interpreted_r0 > 0 && interpreted_ext > 0,
+        "both regimes must be exercised"
+    );
     // The whole point of this gate post-fence: the corpus MUST exercise fenced cache
     // columns, otherwise the witness-consistent read side is never engaged.
     assert!(
@@ -232,14 +236,18 @@ fn bwd_fragment_parity_all_fixtures() {
         "no fenced cache columns across the corpus — the fence is not being exercised"
     );
 
-    let pinned_skip: BTreeSet<String> =
-        PINNED_SKIPPED_DECODER.iter().map(|s| s.to_string()).collect();
+    let pinned_skip: BTreeSet<String> = PINNED_SKIPPED_DECODER
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
     assert_eq!(
         skipped, pinned_skip,
         "skipped_decoder set drifted from the pinned expectation — update deliberately"
     );
-    let pinned_floor: BTreeSet<String> =
-        PINNED_B16_INFEASIBLE.iter().map(|s| s.to_string()).collect();
+    let pinned_floor: BTreeSet<String> = PINNED_B16_INFEASIBLE
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
     assert_eq!(
         floor_retries, pinned_floor,
         "b16-infeasible floor-retry set drifted from the pinned expectation — update deliberately"

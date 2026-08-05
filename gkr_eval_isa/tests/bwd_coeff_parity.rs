@@ -14,14 +14,14 @@
 
 use std::collections::{BTreeMap, HashMap};
 
-use cs::gkr_compiler::dag_ir::{
-    ArenaBuilder, BatchingOrder, Bf, BwdRegime, ChallengeKey, ChallengePower, ChallengeRef,
-    ChallengeResolver, ClaimInfo, DagLayer, ExprId, Ext, FieldKind, LookupResolver,
-    LookupValueKind, ReadPlace, ReadResolver, Resolvers, Root, RootGroup, RootId, RootOrigin,
-    RootSlot, SinkInfo, SinkKind, SourceKind, VirtualSetupKind, VirtualSetupResolver, bwd_roots,
-    eval_layer_expr,
-};
 use field::{Field, FieldExtension, PrimeField};
+use gkr_eval_ir::{
+    ArenaBuilder, BatchingOrder, Bf, ChallengeKey, ChallengePower, ChallengeRef, ChallengeResolver,
+    ClaimInfo, DagLayer, ExprId, Ext, FieldKind, LookupResolver, LookupValueKind, ReadPlace,
+    ReadResolver, Resolvers, Root, RootGroup, RootId, RootOrigin, RootSlot, SinkInfo, SinkKind,
+    SourceKind, VirtualSetupKind, VirtualSetupResolver, claim_roots, eval_layer_expr,
+};
+use gkr_eval_isa::BwdRegime;
 use gkr_eval_isa::bwd::coeff::{
     CoeffLayer, CoeffResolver, CoeffTerm, CoefficientRecipeId, SourceId, interpret_coeff_layer,
     lower_coeff_layer,
@@ -389,13 +389,13 @@ fn r0_all_constraint_layer() -> DagLayer {
 // ── Oracle ───────────────────────────────────────────────────────────────────
 
 /// The canonical alpha-combined spine at sumcheck point `x`:
-/// `root_0 + sum_{i>=1} beta^i * root_i` over `bwd_roots` order.
+/// `root_0 + sum_{i>=1} beta^i * root_i` over `claim_roots` order.
 fn spine_at(canonical: &DagLayer, row: usize, seed: u32, x: u32) -> Ext {
     let leaves = Leaves { seed, x };
     let ch = Chal;
     let r = resolvers_at(&leaves, &ch);
     let mut acc = Ext::ZERO;
-    for (i, &rid) in bwd_roots(canonical).iter().enumerate() {
+    for (i, &rid) in claim_roots(canonical).iter().enumerate() {
         let mut v = eval_layer_expr(canonical, canonical.roots[rid.0 as usize].expr, row, &r);
         if i > 0 {
             let power = if i == 1 { ChallengePower::One } else { ChallengePower::Static(i as u32) };
@@ -579,7 +579,7 @@ fn r0_constant_addends_are_covered_by_the_output_shortcut() {
 #[test]
 fn r0_batched_output_roots_carry_their_own_beta_power() {
     let layer = r0_batched_output_layer();
-    assert_eq!(bwd_roots(&layer), &[RootId(2), RootId(0), RootId(1)]);
+    assert_eq!(claim_roots(&layer), &[RootId(2), RootId(0), RootId(1)]);
 
     let d = distill(&layer, BwdRegime::R0, &HashMap::new(), None);
     let coeff = lower_coeff_layer(&layer, &d).expect("R0 lowering");

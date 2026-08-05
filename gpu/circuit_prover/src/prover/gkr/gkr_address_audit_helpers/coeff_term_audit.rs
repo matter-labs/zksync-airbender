@@ -33,10 +33,11 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 use std::sync::OnceLock;
 
-use cs::definitions::{GKRAddress, VirtualSetupPoly};
-use cs::gkr_compiler::dag_ir::{
-    bwd_roots, lower_dag, validate, BwdRegime, DagLayer, ReadPlace, VirtualSetupKind,
+use crate::upstream::{
+    claim_roots, lower_dag, validate_dag as validate, BwdRegime, DagLayer, ReadPlace,
+    VirtualSetupKind,
 };
+use cs::definitions::{GKRAddress, VirtualSetupPoly};
 use cs::gkr_compiler::GKRCircuitArtifact;
 use field::baby_bear::base::BabyBearField;
 use gkr_eval_isa::bwd::coeff::limits::{in_scope, with_conditional_blake2};
@@ -119,10 +120,7 @@ fn bearing_layers(
 ) -> Vec<(
     usize,
     DagLayer,
-    std::collections::HashMap<
-        cs::gkr_compiler::dag_ir::ReadPlace,
-        cs::gkr_compiler::dag_ir::FieldKind,
-    >,
+    std::collections::HashMap<gkr_eval_ir::ReadPlace, gkr_eval_ir::FieldKind>,
 )> {
     let dag = lower_dag(artifact).unwrap_or_else(|e| panic!("[{circuit}] lower_dag: {e}"));
     validate(&dag).unwrap_or_else(|e| panic!("[{circuit}] validate: {e}"));
@@ -130,7 +128,7 @@ fn bearing_layers(
     dag.layers
         .iter()
         .enumerate()
-        .filter(|(_, layer)| !bwd_roots(layer).is_empty())
+        .filter(|(_, layer)| !claim_roots(layer).is_empty())
         .map(|(li, layer)| (li, layer.clone(), cross.clone()))
         .collect()
 }
@@ -990,7 +988,7 @@ fn bwd_coeff_complete_corpus_census_incumbent_parity() {
 /// and classify every difference.
 fn source_set_delta(
     canonical: &DagLayer,
-    cross: &std::collections::HashMap<ReadPlace, cs::gkr_compiler::dag_ir::FieldKind>,
+    cross: &std::collections::HashMap<ReadPlace, gkr_eval_ir::FieldKind>,
     gather: &BTreeSet<GKRAddress>,
 ) -> SourceSetDelta {
     let sources_of = |regime| -> BTreeSet<GKRAddress> {

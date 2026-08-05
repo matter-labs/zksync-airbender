@@ -23,7 +23,8 @@ mod common;
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use common::load_layer;
-use cs::gkr_compiler::dag_ir::{BwdRegime, Expr, SourceInfo, SourceKind};
+use gkr_eval_ir::{Expr, SourceInfo, SourceKind};
+use gkr_eval_isa::BwdRegime;
 use gkr_eval_isa::bwd::compile::spine_terms;
 use gkr_eval_isa::bwd::distill::distill;
 

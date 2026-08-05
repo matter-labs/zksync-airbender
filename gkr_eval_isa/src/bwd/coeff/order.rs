@@ -192,7 +192,7 @@ fn term_sources(term: &CoeffTerm) -> Vec<SourceId> {
 
 #[cfg(test)]
 mod tests {
-    use cs::gkr_compiler::dag_ir::{BwdRegime, FieldKind, ReadPlace};
+    use gkr_eval_ir::{FieldKind, ReadPlace};
 
     use super::*;
     use crate::bwd::coeff::model::{
@@ -203,7 +203,7 @@ mod tests {
 
     fn layer(sources: usize, terms: Vec<CoeffTerm>) -> CoeffLayer {
         CoeffLayer {
-            regime: BwdRegime::Ext,
+            regime: crate::BwdRegime::Ext,
             c_init: None,
             coefficients: Vec::new(),
             sources: (0..sources)

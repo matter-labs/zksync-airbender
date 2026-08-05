@@ -28,10 +28,12 @@
 
 use std::collections::{BTreeSet, HashMap, HashSet};
 
-use crate::gkr_compiler::dag_ir::{
-    source_field, DagLayer, Expr, ExprId, FieldKind, ReadPlace, RootGroup, RootId, SiteConsumer,
-    SiteKey, SinkKind, SourceKind,
+use gkr_eval_ir::{
+    DagLayer, Expr, ExprId, FieldKind, ReadPlace, RootGroup, RootId, SinkKind, SourceKind,
+    source_field,
 };
+
+use crate::schedule::{SiteConsumer, SiteKey};
 
 /// A same-layer cache boundary: the backward pass folds the forward-materialized
 /// cache column instead of descending into the defining cone (mirrors production,
@@ -91,7 +93,7 @@ pub enum BwdRegime {
 /// of `claim.is_some()` roots with each appearing exactly once. Layer validation
 /// is a precondition of this view, so this asserts (a debug contract) rather than
 /// re-validating.
-pub fn bwd_roots(layer: &DagLayer) -> &[RootId] {
+pub fn claim_roots(layer: &DagLayer) -> &[RootId] {
     let claim_roots: Vec<RootId> = layer
         .roots
         .iter()
@@ -129,10 +131,10 @@ pub fn bwd_roots(layer: &DagLayer) -> &[RootId] {
 /// [`relation_units_with_caches`](super::schedule::relation_units_with_caches),
 /// this includes claim-ONLY Constraint roots (`materialize: None`), which the
 /// forward decomposition omits.
-pub fn bwd_relation_units(layer: &DagLayer) -> Vec<Vec<RootId>> {
+pub fn claim_relation_units(layer: &DagLayer) -> Vec<Vec<RootId>> {
     let mut groups: Vec<Vec<RootId>> = Vec::new();
     let mut key_to_idx: HashMap<(RootGroup, usize), usize> = HashMap::new();
-    for &rid in bwd_roots(layer) {
+    for &rid in claim_roots(layer) {
         let claim = layer.roots[rid.0 as usize]
             .claim
             .as_ref()
@@ -172,9 +174,23 @@ pub fn enumerate_bwd_site_domain(layer: &DagLayer, regime: BwdRegime) -> BTreeSe
         }
         let rid = RootId(i as u32);
         if is_site(layer, regime, &consumers, &fences, root.expr) {
-            out.insert(SiteKey { root: rid, consumer: SiteConsumer::RootOutput, value: root.expr });
+            out.insert(SiteKey {
+                root: rid,
+                consumer: SiteConsumer::RootOutput,
+                value: root.expr,
+            });
         }
-        walk_demand(layer, regime, &consumers, &fences, rid, root.expr, /* descend_query */ true, &mut visited, &mut out);
+        walk_demand(
+            layer,
+            regime,
+            &consumers,
+            &fences,
+            rid,
+            root.expr,
+            /* descend_query */ true,
+            &mut visited,
+            &mut out,
+        );
     }
     out
 }
@@ -204,7 +220,8 @@ fn reachable_exprs_bwd(layer: &DagLayer) -> HashSet<ExprId> {
         }
         match &layer.exprs[e.0 as usize] {
             Expr::Source(src_id) => {
-                if let SourceKind::LookupValue { query, .. } = &layer.sources[src_id.0 as usize].kind
+                if let SourceKind::LookupValue { query, .. } =
+                    &layer.sources[src_id.0 as usize].kind
                 {
                     stack.push(*query);
                 }
@@ -235,7 +252,8 @@ fn consumer_counts_bwd(
             Expr::Source(src_id) => {
                 // Count a query edge only when its LookupValue source is reachable
                 // — guaranteed here since `e` ranges over the reachable set only.
-                if let SourceKind::LookupValue { query, .. } = &layer.sources[src_id.0 as usize].kind
+                if let SourceKind::LookupValue { query, .. } =
+                    &layer.sources[src_id.0 as usize].kind
                 {
                     consumers[query.0 as usize] += 1;
                 }
@@ -288,14 +306,36 @@ fn walk_demand(
                 if descend_query {
                     let q = *query;
                     push_if_site(layer, regime, consumers, fences, root, value, 0, q, out);
-                    walk_demand(layer, regime, consumers, fences, root, q, descend_query, visited, out);
+                    walk_demand(
+                        layer,
+                        regime,
+                        consumers,
+                        fences,
+                        root,
+                        q,
+                        descend_query,
+                        visited,
+                        out,
+                    );
                 }
             }
         }
         Expr::Add(children) | Expr::Mul(children) => {
             for (idx, &c) in children.iter().enumerate() {
-                push_if_site(layer, regime, consumers, fences, root, value, idx as u32, c, out);
-                walk_demand(layer, regime, consumers, fences, root, c, descend_query, visited, out);
+                push_if_site(
+                    layer, regime, consumers, fences, root, value, idx as u32, c, out,
+                );
+                walk_demand(
+                    layer,
+                    regime,
+                    consumers,
+                    fences,
+                    root,
+                    c,
+                    descend_query,
+                    visited,
+                    out,
+                );
             }
         }
     }
@@ -316,7 +356,10 @@ fn push_if_site(
     if is_site(layer, regime, consumers, fences, value) {
         out.insert(SiteKey {
             root,
-            consumer: SiteConsumer::Expr { expr: consumer_expr, input_index },
+            consumer: SiteConsumer::Expr {
+                expr: consumer_expr,
+                input_index,
+            },
             value,
         });
     }
@@ -440,26 +483,32 @@ fn read_leaf_width_r0(kind: &SourceKind, cross: &HashMap<ReadPlace, FieldKind>) 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::gkr_compiler::dag_ir::{
-        cross_layer_field_map_upto, enumerate_site_domain, lower_dag, relation_units_with_caches,
+    use crate::fwd::compile::build_cross_layer_field_map;
+    use crate::schedule::{enumerate_site_domain, relation_units_with_caches};
+    use cs::gkr_compiler::test_support::build_add_sub_artifact;
+    use gkr_eval_ir::{
         BatchingOrder, ClaimInfo, DagLayer, Expr, ExprId, Root, RootGroup, RootId, RootOrigin,
         RootSlot, SinkInfo, SinkKind, SourceId, SourceInfo, SourceKind, VirtualSetupKind,
+        lower_dag,
     };
-    use crate::gkr_compiler::test_support::build_add_sub_artifact;
     use std::collections::BTreeMap;
 
     /// The lowered canonical DAG for the `add_sub_lui_auipc_mop` fixture, the same
     /// artifact the other `dag_ir` tests load (`validate.rs`, `lower/mod.rs`).
-    fn add_sub_dag() -> crate::gkr_compiler::dag_ir::DagCircuit {
+    fn add_sub_dag() -> gkr_eval_ir::DagCircuit {
         lower_dag(&build_add_sub_artifact()).expect("lower_dag must succeed")
     }
 
     /// Layer index of the base layer, which carries the claim-only Constraint roots
     /// and lookup cones the backward-only tests exercise.
-    fn layer_with_claim_only(dag: &crate::gkr_compiler::dag_ir::DagCircuit) -> usize {
+    fn layer_with_claim_only(dag: &gkr_eval_ir::DagCircuit) -> usize {
         dag.layers
             .iter()
-            .position(|l| l.roots.iter().any(|r| r.claim.is_some() && r.materialize.is_none()))
+            .position(|l| {
+                l.roots
+                    .iter()
+                    .any(|r| r.claim.is_some() && r.materialize.is_none())
+            })
             .expect("fixture must have a layer with claim-only Constraint roots")
     }
 
@@ -480,11 +529,14 @@ mod tests {
                 .filter(|(_, r)| r.claim.is_some())
                 .map(|(i, _)| RootId(i as u32))
                 .collect();
-            let bwd: Vec<RootId> = bwd_roots(layer).to_vec();
+            let bwd: Vec<RootId> = claim_roots(layer).to_vec();
             let bwd_set: BTreeSet<RootId> = bwd.iter().copied().collect();
-            assert_eq!(bwd.len(), bwd_set.len(), "bwd_roots has no duplicates");
-            assert_eq!(bwd_set, claims, "bwd_roots set == claim-bearing roots set");
-            assert_eq!(bwd.len(), claims.len(), "bwd_roots count == claim count");
+            assert_eq!(bwd.len(), bwd_set.len(), "claim_roots has no duplicates");
+            assert_eq!(
+                bwd_set, claims,
+                "claim_roots set == claim-bearing roots set"
+            );
+            assert_eq!(bwd.len(), claims.len(), "claim_roots count == claim count");
         }
     }
 
@@ -498,7 +550,7 @@ mod tests {
         // Every forward relation unit (materialize ∧ claim) must appear as a
         // backward group, keyed by (group, relation_index).
         let fwd_units = relation_units_with_caches(layer).expect("fwd units");
-        let bwd_groups = bwd_relation_units(layer);
+        let bwd_groups = claim_relation_units(layer);
         // RootGroup is Hash+Eq but NOT Ord (model.rs) — use HashSet, not BTreeSet.
         let bwd_keys: std::collections::HashSet<(RootGroup, usize)> = bwd_groups
             .iter()
@@ -530,7 +582,10 @@ mod tests {
             .filter(|(_, r)| r.claim.is_some() && r.materialize.is_none())
             .map(|(i, _)| RootId(i as u32))
             .collect();
-        assert!(!claim_only.is_empty(), "fixture layer must have claim-only roots");
+        assert!(
+            !claim_only.is_empty(),
+            "fixture layer must have claim-only roots"
+        );
         let extra = claim_only
             .iter()
             .find(|rid| bwd_members.contains(rid) && !fwd_members.contains(rid));
@@ -586,7 +641,10 @@ mod tests {
         assert!(read_site.is_some(), "fixture must have a Read-leaf site");
         let read_site = *read_site.unwrap();
         assert!(r0.contains(&read_site), "Read-leaf site present in R0");
-        assert!(ext.contains(&read_site), "the same Read-leaf site present in Ext");
+        assert!(
+            ext.contains(&read_site),
+            "the same Read-leaf site present in Ext"
+        );
     }
 
     #[test]
@@ -599,11 +657,13 @@ mod tests {
         let layer = DagLayer {
             sources: vec![
                 SourceInfo {
-                    kind: SourceKind::VirtualSetup { kind: VirtualSetupKind::RangeCheck16Bits },
+                    kind: SourceKind::VirtualSetup {
+                        kind: VirtualSetupKind::RangeCheck16Bits,
+                    },
                 },
                 SourceInfo {
                     kind: SourceKind::Read {
-                        place: crate::gkr_compiler::dag_ir::ReadPlace::BaseLayerWitness { column: 0 },
+                        place: gkr_eval_ir::ReadPlace::BaseLayerWitness { column: 0 },
                     },
                 },
             ],
@@ -628,7 +688,9 @@ mod tests {
                     },
                 }),
             }],
-            batching: BatchingOrder { roots: vec![RootId(0)] },
+            batching: BatchingOrder {
+                roots: vec![RootId(0)],
+            },
             resolutions: BTreeMap::new(),
         };
         let vs = ExprId(0);
@@ -644,7 +706,10 @@ mod tests {
         );
         // Sanity: the Read leaf (ExprId(1)) IS admitted in both regimes, so the
         // difference above is genuinely the VirtualSetup rule, not an empty domain.
-        assert!(r0.iter().any(|k| k.value == ExprId(1)), "Read leaf is a site in R0");
+        assert!(
+            r0.iter().any(|k| k.value == ExprId(1)),
+            "Read leaf is a site in R0"
+        );
     }
 
     /// A minimal layer with a same-layer cache root `c = a + b` (Ext-field Cache
@@ -656,12 +721,12 @@ mod tests {
             sources: vec![
                 SourceInfo {
                     kind: SourceKind::Read {
-                        place: crate::gkr_compiler::dag_ir::ReadPlace::BaseLayerWitness { column: 0 },
+                        place: gkr_eval_ir::ReadPlace::BaseLayerWitness { column: 0 },
                     },
                 },
                 SourceInfo {
                     kind: SourceKind::Read {
-                        place: crate::gkr_compiler::dag_ir::ReadPlace::BaseLayerWitness { column: 1 },
+                        place: gkr_eval_ir::ReadPlace::BaseLayerWitness { column: 1 },
                     },
                 },
             ],
@@ -676,7 +741,10 @@ mod tests {
                 Root {
                     expr: ExprId(2),
                     materialize: Some(SinkInfo {
-                        kind: SinkKind::Cache { layer: 3, offset: 7 },
+                        kind: SinkKind::Cache {
+                            layer: 3,
+                            offset: 7,
+                        },
                         field: FieldKind::Ext,
                     }),
                     claim: None,
@@ -694,7 +762,9 @@ mod tests {
                     }),
                 },
             ],
-            batching: BatchingOrder { roots: vec![RootId(1)] },
+            batching: BatchingOrder {
+                roots: vec![RootId(1)],
+            },
             resolutions: BTreeMap::new(),
         }
     }
@@ -708,12 +778,12 @@ mod tests {
             sources: vec![
                 SourceInfo {
                     kind: SourceKind::Read {
-                        place: crate::gkr_compiler::dag_ir::ReadPlace::BaseLayerWitness { column: 0 },
+                        place: gkr_eval_ir::ReadPlace::BaseLayerWitness { column: 0 },
                     },
                 },
                 SourceInfo {
                     kind: SourceKind::Read {
-                        place: crate::gkr_compiler::dag_ir::ReadPlace::BaseLayerWitness { column: 1 },
+                        place: gkr_eval_ir::ReadPlace::BaseLayerWitness { column: 1 },
                     },
                 },
             ],
@@ -728,7 +798,10 @@ mod tests {
                 Root {
                     expr: ExprId(2),
                     materialize: Some(SinkInfo {
-                        kind: SinkKind::Cache { layer: 3, offset: 7 },
+                        kind: SinkKind::Cache {
+                            layer: 3,
+                            offset: 7,
+                        },
                         field: FieldKind::Ext,
                     }),
                     claim: None,
@@ -738,7 +811,10 @@ mod tests {
                 Root {
                     expr: ExprId(3),
                     materialize: Some(SinkInfo {
-                        kind: SinkKind::Cache { layer: 3, offset: 8 },
+                        kind: SinkKind::Cache {
+                            layer: 3,
+                            offset: 8,
+                        },
                         field: FieldKind::Ext,
                     }),
                     claim: Some(ClaimInfo {
@@ -750,7 +826,9 @@ mod tests {
                     }),
                 },
             ],
-            batching: BatchingOrder { roots: vec![RootId(1)] },
+            batching: BatchingOrder {
+                roots: vec![RootId(1)],
+            },
             resolutions: BTreeMap::new(),
         }
     }
@@ -776,7 +854,13 @@ mod tests {
         let fences = bwd_cache_fences(&layer);
         assert_eq!(fences.len(), 1);
         let f = fences.get(&c_expr).expect("cache expr fenced");
-        assert_eq!(f.place, ReadPlace::CacheOutput { layer: 3, offset: 7 });
+        assert_eq!(
+            f.place,
+            ReadPlace::CacheOutput {
+                layer: 3,
+                offset: 7
+            }
+        );
         assert_eq!(f.field, FieldKind::Ext);
     }
 
@@ -787,7 +871,10 @@ mod tests {
         let c_expr = ExprId(2);
         let reach = reachable_exprs_bwd(&layer);
         assert!(!reach.contains(&a_expr), "descended through a cache fence");
-        assert!(reach.contains(&c_expr), "cache expr must stay in the reachable set as a leaf");
+        assert!(
+            reach.contains(&c_expr),
+            "cache expr must stay in the reachable set as a leaf"
+        );
     }
 
     #[test]
@@ -805,7 +892,7 @@ mod tests {
     fn bwd_floor_ext_ge_4x_distinct_leaves() {
         let dag = add_sub_dag();
         for (li, layer) in dag.layers.iter().enumerate() {
-            let cross = cross_layer_field_map_upto(&dag, li);
+            let cross = build_cross_layer_field_map(&dag);
 
             // Independently count the backward floor leaves reachable from the
             // claim-bearing roots, mirroring the (cache-fenced) walk: distinct Read
@@ -846,7 +933,7 @@ mod tests {
         // The fixture's base layer must actually have reachable Read leaves, so the
         // floor is a non-trivial positive bound (not vacuously satisfied).
         let li = 0;
-        let cross = cross_layer_field_map_upto(&dag, li);
+        let cross = build_cross_layer_field_map(&dag);
         assert!(bwd_traffic_floor(&dag.layers[li], BwdRegime::Ext, &cross) > 0);
     }
 }

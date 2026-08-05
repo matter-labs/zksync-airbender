@@ -9,7 +9,7 @@
 
 use std::collections::HashMap;
 
-use cs::gkr_compiler::dag_ir::{DagLayer, Expr, ExprId, FieldKind, ReadPlace, RootId, SourceKind};
+use gkr_eval_ir::{DagLayer, Expr, ExprId, FieldKind, ReadPlace, RootId, SourceKind};
 
 use crate::fwd::compile::expr_operand_field;
 use crate::fwd::context::ForwardAction;

@@ -8,6 +8,7 @@ pub mod construct;
 pub mod cost;
 pub mod disasm;
 pub mod distill;
+pub mod domain;
 pub mod engine;
 pub mod fif;
 pub mod fragment;

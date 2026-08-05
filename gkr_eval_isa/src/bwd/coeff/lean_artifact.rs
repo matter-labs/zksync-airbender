@@ -41,7 +41,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use cs::gkr_compiler::dag_ir::{BwdRegime, DagLayer, FieldKind, ReadPlace};
+use gkr_eval_ir::{DagLayer, FieldKind, ReadPlace};
 use serde::{Deserialize, Serialize};
 
 use super::group::group_coeff_layer;
@@ -57,7 +57,7 @@ use crate::bwd::source::VIRTUAL_SETUP_MATERIALIZE_DEPTH;
 
 // ── Schema ───────────────────────────────────────────────────────────────────
 
-/// The serialized spelling of [`BwdRegime`], which is not `serde`-derived
+/// The serialized spelling of [`crate::BwdRegime`], which is not `serde`-derived
 /// upstream. `R0` / `Ext`, the same two labels every report in this crate uses.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum ArtifactRegime {
@@ -66,17 +66,17 @@ pub enum ArtifactRegime {
 }
 
 impl ArtifactRegime {
-    pub fn of(regime: BwdRegime) -> Self {
+    pub fn of(regime: crate::BwdRegime) -> Self {
         match regime {
-            BwdRegime::R0 => ArtifactRegime::R0,
-            BwdRegime::Ext => ArtifactRegime::Ext,
+            crate::BwdRegime::R0 => ArtifactRegime::R0,
+            crate::BwdRegime::Ext => ArtifactRegime::Ext,
         }
     }
 
-    pub fn regime(self) -> BwdRegime {
+    pub fn regime(self) -> crate::BwdRegime {
         match self {
-            ArtifactRegime::R0 => BwdRegime::R0,
-            ArtifactRegime::Ext => BwdRegime::Ext,
+            ArtifactRegime::R0 => crate::BwdRegime::R0,
+            ArtifactRegime::Ext => crate::BwdRegime::Ext,
         }
     }
 
@@ -201,10 +201,10 @@ impl From<LeanBindError> for LeanArtifactError {
 /// was retired. It reads [`VIRTUAL_SETUP_MATERIALIZE_DEPTH`] directly, the same
 /// constant [`limits::PUBLISH_TARGET_DEPTH`](super::limits::PUBLISH_TARGET_DEPTH)
 /// names for the publication threshold.
-pub const fn lean_target_depth(regime: BwdRegime) -> u8 {
+pub const fn lean_target_depth(regime: crate::BwdRegime) -> u8 {
     match regime {
-        BwdRegime::R0 => 0,
-        BwdRegime::Ext => VIRTUAL_SETUP_MATERIALIZE_DEPTH,
+        crate::BwdRegime::R0 => 0,
+        crate::BwdRegime::Ext => VIRTUAL_SETUP_MATERIALIZE_DEPTH,
     }
 }
 
@@ -246,13 +246,13 @@ pub fn order_covers_layer(order: &[TermId], terms: usize) -> bool {
 pub fn lower_lean_layer(
     canonical: &DagLayer,
     cross_fields: &HashMap<ReadPlace, FieldKind>,
-    regime: BwdRegime,
+    regime: crate::BwdRegime,
 ) -> Result<(CoeffLayer, u8), LeanArtifactError> {
     let distilled = distill(canonical, regime, cross_fields, None);
     let layer = lower_coeff_layer(canonical, &distilled)?;
     let layer = match regime {
-        BwdRegime::R0 => layer,
-        BwdRegime::Ext => group_coeff_layer(layer)?,
+        crate::BwdRegime::R0 => layer,
+        crate::BwdRegime::Ext => group_coeff_layer(layer)?,
     };
     Ok((layer, lean_target_depth(regime)))
 }
@@ -282,7 +282,7 @@ pub fn compile_lean_coordinate(
     layer_index: usize,
     canonical: &DagLayer,
     cross_fields: &HashMap<ReadPlace, FieldKind>,
-    regime: BwdRegime,
+    regime: crate::BwdRegime,
 ) -> Result<LeanCoordinateArtifact, LeanArtifactError> {
     let (layer, target_depth) = lower_lean_layer(canonical, cross_fields, regime)?;
     // The committed order: over TERMS at R0, over ATOMS in `Ext`. `order` is the
@@ -290,8 +290,8 @@ pub fn compile_lean_coordinate(
     // encoded — an encoder handed a malformed order would panic on a term index
     // instead of reporting which coordinate's ordering pass is broken.
     let atoms = match regime {
-        BwdRegime::R0 => None,
-        BwdRegime::Ext => Some(order_atoms(&layer)),
+        crate::BwdRegime::R0 => None,
+        crate::BwdRegime::Ext => Some(order_atoms(&layer)),
     };
     let order = match &atoms {
         None => order_terms(&layer),
@@ -331,9 +331,12 @@ mod tests {
     /// the two spellings of that threshold must not drift apart.
     #[test]
     fn lean_target_depth_is_the_publication_threshold() {
-        assert_eq!(lean_target_depth(BwdRegime::R0), 0);
-        assert_eq!(lean_target_depth(BwdRegime::Ext), 3);
-        assert_eq!(lean_target_depth(BwdRegime::Ext), PUBLISH_TARGET_DEPTH);
+        assert_eq!(lean_target_depth(crate::BwdRegime::R0), 0);
+        assert_eq!(lean_target_depth(crate::BwdRegime::Ext), 3);
+        assert_eq!(
+            lean_target_depth(crate::BwdRegime::Ext),
+            PUBLISH_TARGET_DEPTH
+        );
     }
 
     /// The check the lean codec deliberately does not make: a partial order, a

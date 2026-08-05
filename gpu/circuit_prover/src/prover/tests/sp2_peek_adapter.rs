@@ -36,13 +36,13 @@ use cs::gkr_circuits::{
     mul_div_circuit_with_preprocessed_bytecode_for_gkr, mul_div_table_addition_fn,
     mul_div_table_driver_fn,
 };
-use cs::gkr_compiler::dag_ir::{
+use cs::gkr_compiler::{GKRCircuitArtifact, NoFieldGKRCacheRelation, NoFieldGKRRelation};
+use field::{Field, FieldExtension, PrimeField};
+use gkr_eval_ir::{
     eval_layer_expr, lower_dag, ChallengeKey, ChallengePower, ChallengeRef, ChallengeResolver,
     DagCircuit, DagLayer, ExprId, Ext, LookupResolver, PermutationSlot, RangeWidth, ReadPlace,
     ReadResolver, Resolvers, VirtualSetupKind, VirtualSetupResolver,
 };
-use cs::gkr_compiler::{GKRCircuitArtifact, NoFieldGKRCacheRelation, NoFieldGKRRelation};
-use field::{Field, FieldExtension, PrimeField};
 use gkr_eval_isa::fwd::compile::compile_circuit;
 use gkr_eval_isa::fwd::context::CompiledLayer;
 use gkr_eval_isa::fwd::source::{SpecialDescriptor, SpecialStrategy};
@@ -386,7 +386,7 @@ impl VirtualSetupResolver for ProverVirtualSetupResolver<'_> {
 }
 
 // `Bf` is the dag_ir base alias (== BF); name it locally for the trait impl above.
-use cs::gkr_compiler::dag_ir::Bf;
+use gkr_eval_ir::Bf;
 
 // ── OracleResolvers: the owned bundle a gate builds as a local ───────────────
 
@@ -687,9 +687,8 @@ fn build_real_data(recipe: CircuitRecipe) -> RealData {
         .join(format!("{}_schedule_b16_gkr.json", recipe.schedule_stem));
     let sched_bytes = std::fs::read(&sched_path)
         .unwrap_or_else(|e| panic!("read committed schedule {sched_path:?}: {e}"));
-    let schedule: cs::gkr_compiler::dag_ir::CircuitSchedule =
-        serde_json::from_slice(&sched_bytes)
-            .unwrap_or_else(|e| panic!("parse committed schedule {sched_path:?}: {e}"));
+    let schedule: gkr_eval_isa::CircuitSchedule = serde_json::from_slice(&sched_bytes)
+        .unwrap_or_else(|e| panic!("parse committed schedule {sched_path:?}: {e}"));
     let compiled_circuit =
         compile_circuit(&dag, &schedule, &circuit).expect("compile_circuit (b16 schedule) failed");
     let compiled_layer0: CompiledLayer =
@@ -931,8 +930,8 @@ fn both_real_data_builds_succeed() {
 
 // ── Task 6: ProverPeekResolver — SP2 prover-backed peek ─────────────────────
 
+use gkr_eval_ir::FillSource;
 use gkr_eval_isa::fwd::peek::{base_coeff_pure, PeekError, PeekResolver};
-use cs::gkr_compiler::dag_ir::FillSource;
 
 /// Resolves `SpecialDescriptor` peek strategies against PRISTINE snapshots in
 /// [`RealData`] (F1: never re-derives from a drained trace). Implements all four
@@ -964,9 +963,12 @@ impl PeekResolver for ProverPeekResolver<'_> {
             SpecialStrategy::PeekSingleColumn { set_index, width } => {
                 let (raw, limit): (u32, u64) = match width {
                     RangeWidth::Bits16 => {
-                        let col = d.range16_map.get(*set_index).ok_or(
-                            PeekError::SetIndexOutOfRange { set_index: *set_index },
-                        )?;
+                        let col =
+                            d.range16_map
+                                .get(*set_index)
+                                .ok_or(PeekError::SetIndexOutOfRange {
+                                    set_index: *set_index,
+                                })?;
                         let v = *col.get(row).ok_or(PeekError::IndexOutOfRange {
                             index: row,
                             len: col.len(),
@@ -975,7 +977,9 @@ impl PeekResolver for ProverPeekResolver<'_> {
                     }
                     RangeWidth::Timestamp => {
                         let col = d.timestamp_map.get(*set_index).ok_or(
-                            PeekError::SetIndexOutOfRange { set_index: *set_index },
+                            PeekError::SetIndexOutOfRange {
+                                set_index: *set_index,
+                            },
                         )?;
                         let v = *col.get(row).ok_or(PeekError::IndexOutOfRange {
                             index: row,
@@ -986,14 +990,20 @@ impl PeekResolver for ProverPeekResolver<'_> {
                     }
                 };
                 if (raw as u64) >= limit {
-                    return Err(PeekError::WidthOverflow { value: raw, width: *width });
+                    return Err(PeekError::WidthOverflow {
+                        value: raw,
+                        width: *width,
+                    });
                 }
                 Ok(lift(BF::from_u32_with_reduction(raw)))
             }
             SpecialStrategy::PeekAggregate { set_index } => {
-                let col = d.generic_map.get(*set_index).ok_or(
-                    PeekError::SetIndexOutOfRange { set_index: *set_index },
-                )?;
+                let col = d
+                    .generic_map
+                    .get(*set_index)
+                    .ok_or(PeekError::SetIndexOutOfRange {
+                        set_index: *set_index,
+                    })?;
                 let idx = *col.get(row).ok_or(PeekError::IndexOutOfRange {
                     index: row,
                     len: col.len(),
@@ -1001,19 +1011,24 @@ impl PeekResolver for ProverPeekResolver<'_> {
                 d.preprocessed_generic_lookup
                     .get(idx)
                     .copied()
-                    .ok_or(PeekError::IndexOutOfRange { index: idx, len: d.preprocessed_generic_lookup.len() })
+                    .ok_or(PeekError::IndexOutOfRange {
+                        index: idx,
+                        len: d.preprocessed_generic_lookup.len(),
+                    })
             }
             SpecialStrategy::PeekSetup => {
                 // Zero-pad past len: mirrors production vector_lookup.rs:57-59.
-                Ok(d.preprocessed_generic_lookup.get(row).copied().unwrap_or(E4::ZERO))
+                Ok(d.preprocessed_generic_lookup
+                    .get(row)
+                    .copied()
+                    .unwrap_or(E4::ZERO))
             }
             SpecialStrategy::PeekDecoder { predicate, fill } => {
                 // F4: bind the DESCRIPTOR's own predicate + fill, not adapter globals.
                 // Read predicate via the passed ReadResolver → Ext.
                 let mask_ext = r.read.read(predicate, row);
                 // Predicate is a base column; take its base coefficient.
-                let mask_bf = base_coeff_pure(mask_ext)
-                    .ok_or(PeekError::NonBaseQueryFold)?;
+                let mask_bf = base_coeff_pure(mask_ext).ok_or(PeekError::NonBaseQueryFold)?;
                 // Production spelling: decoder_predicate[row].as_boolean() (vector_lookup.rs:49).
                 let fill_val = match fill {
                     FillSource::DecoderLookupFill => d.decoder_fill,
@@ -1022,16 +1037,20 @@ impl PeekResolver for ProverPeekResolver<'_> {
                     Ok(fill_val)
                 } else {
                     let col = d.generic_map.get(d.decoder_set_index).ok_or(
-                        PeekError::SetIndexOutOfRange { set_index: d.decoder_set_index },
+                        PeekError::SetIndexOutOfRange {
+                            set_index: d.decoder_set_index,
+                        },
                     )?;
                     let idx = *col.get(row).ok_or(PeekError::IndexOutOfRange {
                         index: row,
                         len: col.len(),
                     })? as usize;
-                    d.preprocessed_generic_lookup
-                        .get(idx)
-                        .copied()
-                        .ok_or(PeekError::IndexOutOfRange { index: idx, len: d.preprocessed_generic_lookup.len() })
+                    d.preprocessed_generic_lookup.get(idx).copied().ok_or(
+                        PeekError::IndexOutOfRange {
+                            index: idx,
+                            len: d.preprocessed_generic_lookup.len(),
+                        },
+                    )
                 }
             }
             // VirtualSetup is resolver-computed (reads nothing): its value IS
@@ -1048,7 +1067,10 @@ fn adapter_resolves_one_peek_per_present_strategy_on_real_add_sub() {
     let data = build_add_sub_real_data();
     let peek = ProverPeekResolver { data: &data };
     let descs: Vec<_> = data.compiled_layer0.ctx.specials.iter().collect();
-    assert!(!descs.is_empty(), "add_sub layer0 must emit peek descriptors");
+    assert!(
+        !descs.is_empty(),
+        "add_sub layer0 must emit peek descriptors"
+    );
     let ors = OracleResolvers::new(&data);
     let r = ors.real();
     for d in descs {
@@ -1060,10 +1082,10 @@ fn adapter_resolves_one_peek_per_present_strategy_on_real_add_sub() {
 fn g1_peek_eq_fold_all_rows_add_sub_layer0() {
     let data = build_add_sub_real_data();
     let rows: Vec<usize> = (0..data.trace_len).collect(); // ALL rows (Global Constraint)
-    // Partition the all-row differential across rayon workers: each chunk builds its own
-    // resolver bundle from `&data` (the bundle is `!Sync`, so it must be task-local) and
-    // runs `validate_special_bindings` on its slice. The function stays serial internally;
-    // its O(descriptors) coverage checks re-run per chunk (negligible). Counts sum.
+                                                          // Partition the all-row differential across rayon workers: each chunk builds its own
+                                                          // resolver bundle from `&data` (the bundle is `!Sync`, so it must be task-local) and
+                                                          // runs `validate_special_bindings` on its slice. The function stays serial internally;
+                                                          // its O(descriptors) coverage checks re-run per chunk (negligible). Counts sum.
     let n: usize = rows
         .par_chunks(16_384)
         .map(|chunk| {
@@ -1081,7 +1103,10 @@ fn g1_peek_eq_fold_all_rows_add_sub_layer0() {
         })
         .sum();
     assert!(n > 0, "expected at least one descriptor×row comparison");
-    println!("G1 add_sub L0: {n} peek==fold comparisons over {} rows", data.trace_len);
+    println!(
+        "G1 add_sub L0: {n} peek==fold comparisons over {} rows",
+        data.trace_len
+    );
 }
 
 // ── StrategyKinds: absorb which peek strategies are referenced at a layer ────
@@ -1104,12 +1129,12 @@ impl StrategyKinds {
         for d in compiled.ctx.specials.iter() {
             match &d.strategy {
                 SpecialStrategy::PeekSingleColumn { .. } => self.single = true,
-                SpecialStrategy::PeekAggregate { .. }   => self.aggregate = true,
-                SpecialStrategy::PeekSetup              => self.setup = true,
-                SpecialStrategy::PeekDecoder { .. }     => self.decoder = true,
+                SpecialStrategy::PeekAggregate { .. } => self.aggregate = true,
+                SpecialStrategy::PeekSetup => self.setup = true,
+                SpecialStrategy::PeekDecoder { .. } => self.decoder = true,
                 // VirtualSetup is not one of the four *peek* strategies this
                 // coverage tracker asserts on (it reads nothing) — ignore it.
-                SpecialStrategy::VirtualSetup { .. }    => {}
+                SpecialStrategy::VirtualSetup { .. } => {}
             }
         }
     }
@@ -1136,7 +1161,10 @@ impl RealData {
 #[test]
 fn g1_all_four_strategies_covered_layer0() {
     let mut seen = StrategyKinds::default();
-    for data in [build_add_sub_real_data(), build_unsigned_mul_div_real_data()] {
+    for data in [
+        build_add_sub_real_data(),
+        build_unsigned_mul_div_real_data(),
+    ] {
         let rows: Vec<usize> = (0..data.trace_len).collect();
         // All-row binding differential, partitioned across rayon workers (same pattern as
         // g1_peek_eq_fold_all_rows): per-chunk local resolver bundle, counts sum.
@@ -1156,11 +1184,16 @@ fn g1_all_four_strategies_covered_layer0() {
                 .unwrap()
             })
             .sum();
-        assert!(n > 0, "validate_special_bindings did no descriptor×row comparisons");
+        assert!(
+            n > 0,
+            "validate_special_bindings did no descriptor×row comparisons"
+        );
         seen.absorb(&data.compiled_layer0); // count strategies referenced at layer 0
     }
-    assert!(seen.single && seen.aggregate && seen.setup && seen.decoder,
-            "all four strategies must be validated on real data at layer 0: {seen:?}");
+    assert!(
+        seen.single && seen.aggregate && seen.setup && seen.decoder,
+        "all four strategies must be validated on real data at layer 0: {seen:?}"
+    );
 }
 
 // ── Task 9: G2 — VM-with-peeks vs identity-fold root parity (layer 0) ────────
@@ -1194,7 +1227,7 @@ fn sample_or_all_rows(data: &RealData) -> Vec<usize> {
     rows.extend(n.saturating_sub(TAIL)..n); // last TAIL rows
     let stride = (n / STRIDE_POINTS).max(1);
     rows.extend((0..n).step_by(stride)); // even spread across the trace
-    // Exercise the PeekSetup zero-fill boundary inside the composed VM too:
+                                         // Exercise the PeekSetup zero-fill boundary inside the composed VM too:
     let p = data.preprocessed_len;
     for r in [p.saturating_sub(1), p, p + 1] {
         if r < n {
@@ -1203,14 +1236,20 @@ fn sample_or_all_rows(data: &RealData) -> Vec<usize> {
     }
     rows.sort_unstable();
     rows.dedup();
-    println!("G2 sampled {}/{n} rows (set G2_ALL_ROWS=1 for exhaustive)", rows.len());
+    println!(
+        "G2 sampled {}/{n} rows (set G2_ALL_ROWS=1 for exhaustive)",
+        rows.len()
+    );
     rows
 }
 
 #[test]
 fn g2_vm_with_peeks_matches_identity_fold_root_parity_layer0() {
     let mut comparisons = 0usize; // non-vacuity guard (matches G1's `n > 0` discipline)
-    for data in [build_add_sub_real_data(), build_unsigned_mul_div_real_data()] {
+    for data in [
+        build_add_sub_real_data(),
+        build_unsigned_mul_div_real_data(),
+    ] {
         let peek = ProverPeekResolver { data: &data };
         let rows: Vec<usize> = sample_or_all_rows(&data); // all-row preferred; logs if sampled
         let layer = &data.dag.layers[0];
@@ -1238,8 +1277,7 @@ fn g2_vm_with_peeks_matches_identity_fold_root_parity_layer0() {
                 let oracle = ors.with_lookup(&id);
                 let mut c = 0usize;
                 for (rid, vm_val) in &vm.by_root {
-                    let oracle_val =
-                        cs::gkr_compiler::dag_ir::eval_layer_root(layer, *rid, row, &oracle);
+                    let oracle_val = gkr_eval_ir::eval_layer_root(layer, *rid, row, &oracle);
                     assert_eq!(
                         *vm_val, oracle_val,
                         "root {rid:?} row {row}: VM-with-peeks != identity-fold"
@@ -1252,7 +1290,10 @@ fn g2_vm_with_peeks_matches_identity_fold_root_parity_layer0() {
             .sum();
         comparisons += comps;
     }
-    assert!(comparisons > 0, "G2 compared no roots across either circuit");
+    assert!(
+        comparisons > 0,
+        "G2 compared no roots across either circuit"
+    );
 }
 
 #[test]
@@ -1269,7 +1310,12 @@ fn g1_peek_setup_zero_padding_edge() {
         "unsigned_mul_div preprocessed_len={pad_row} must be < trace_len={} for a padding region to exist",
         data.trace_len
     );
-    println!("PeekSetup padding edge: pad_row={pad_row}, trace_len={}", data.trace_len);
-    let d = data.first_peek_setup_descriptor().expect("a PeekSetup descriptor");
+    println!(
+        "PeekSetup padding edge: pad_row={pad_row}, trace_len={}",
+        data.trace_len
+    );
+    let d = data
+        .first_peek_setup_descriptor()
+        .expect("a PeekSetup descriptor");
     assert_eq!(peek.peek(d, pad_row, &r).unwrap(), E4::ZERO);
 }

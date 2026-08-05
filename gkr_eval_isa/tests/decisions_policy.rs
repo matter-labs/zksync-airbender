@@ -9,49 +9,66 @@
 //! `decisions: None`, drives root-compile order purely from `order`).
 
 mod common;
-use common::{resolvers, SyntheticResolvers};
+use common::{SyntheticResolvers, resolvers};
 
 use std::collections::{BTreeMap, HashMap};
 
-use cs::gkr_compiler::dag_ir::{
-    eval_layer_root, BatchingOrder, ChallengeKey, ChallengePower, ChallengeRef, ClaimInfo,
-    DagLayer, Expr, ExprId, FieldKind, LayerSchedule, ReadPlace, Root, RootGroup, RootId,
-    RootOrigin, RootSlot, SinkInfo, SinkKind, SourceId, SourceInfo, SourceKind,
-};
 use cs::gkr_compiler::{
     GKRLayerDescription, GateArtifacts, NoFieldGKRRelation, NoFieldMaxQuadraticGKRRelation,
     NoFieldStructuredExpression,
 };
+use gkr_eval_ir::{
+    BatchingOrder, ChallengeKey, ChallengePower, ChallengeRef, ClaimInfo, DagLayer, Expr, ExprId,
+    FieldKind, ReadPlace, Root, RootGroup, RootId, RootOrigin, RootSlot, SinkInfo, SinkKind,
+    SourceId, SourceInfo, SourceKind, eval_layer_root,
+};
+use gkr_eval_isa::LayerSchedule;
 
-use gkr_eval_isa::fwd::compile::decisions::{SiteConsumer, SiteDecisions, SiteKey};
 use gkr_eval_isa::fwd::compile::compile_layer;
+use gkr_eval_isa::fwd::compile::decisions::{SiteConsumer, SiteDecisions, SiteKey};
 use gkr_eval_isa::fwd::interp::interpret_layer_row;
 
 // ── shared synthetic-layer scaffolding (mirrors task1/task8 in stage3_schedule_driven) ──
 
 fn witness(col: usize) -> SourceInfo {
-    SourceInfo { kind: SourceKind::Read { place: ReadPlace::BaseLayerWitness { column: col } } }
+    SourceInfo {
+        kind: SourceKind::Read {
+            place: ReadPlace::BaseLayerWitness { column: col },
+        },
+    }
 }
 
 fn challenge() -> SourceInfo {
     SourceInfo {
         kind: SourceKind::Challenge {
-            reference: ChallengeRef { key: ChallengeKey::ConstraintAggregation, power: ChallengePower::One },
+            reference: ChallengeRef {
+                key: ChallengeKey::ConstraintAggregation,
+                power: ChallengePower::One,
+            },
         },
     }
 }
 
 fn constant(value: u32) -> SourceInfo {
-    SourceInfo { kind: SourceKind::Constant { value } }
+    SourceInfo {
+        kind: SourceKind::Constant { value },
+    }
 }
 
 /// An atom (Output+claim) root over `expr`, materialized to `Export { slot }` at `field`.
 fn atom_root_field(expr: ExprId, slot: usize, field: FieldKind) -> Root {
     Root {
         expr,
-        materialize: Some(SinkInfo { kind: SinkKind::Export { slot }, field }),
+        materialize: Some(SinkInfo {
+            kind: SinkKind::Export { slot },
+            field,
+        }),
         claim: Some(ClaimInfo {
-            origin: RootOrigin { group: RootGroup::Gates, relation_index: 0, slot: RootSlot::Output(slot) },
+            origin: RootOrigin {
+                group: RootGroup::Gates,
+                relation_index: 0,
+                slot: RootSlot::Output(slot),
+            },
         }),
     }
 }
@@ -73,7 +90,10 @@ fn compute_artifact_layer() -> GKRLayerDescription {
     };
     GKRLayerDescription {
         layer: 0,
-        gates: vec![GateArtifacts { output_layer: 0, enforced_relation: relation }],
+        gates: vec![GateArtifacts {
+            output_layer: 0,
+            enforced_relation: relation,
+        }],
         gates_with_external_connections: vec![],
         cached_relations: BTreeMap::new(),
         intermediate_layer_width: None,
@@ -86,7 +106,7 @@ fn compute_artifact_layer() -> GKRLayerDescription {
 /// `atom_roots` (every root here is `(Gates, 0)`, matching the canonical
 /// single-unit decomposition), so `atom_order()` reproduces `order` exactly.
 fn trivial_schedule(order: Vec<RootId>) -> LayerSchedule {
-    use cs::gkr_compiler::dag_ir::RelationUnit;
+    use gkr_eval_isa::RelationUnit;
     let units = if order.is_empty() {
         vec![]
     } else {
@@ -97,15 +117,31 @@ fn trivial_schedule(order: Vec<RootId>) -> LayerSchedule {
             cache_roots: vec![],
         }]
     };
-    LayerSchedule { units, sites: vec![], predicted_traffic: 0, floor: 0 }
+    LayerSchedule {
+        units,
+        sites: vec![],
+        predicted_traffic: 0,
+        floor: 0,
+    }
 }
 
 fn root_output(root: RootId, value: ExprId) -> SiteKey {
-    SiteKey { root, consumer: SiteConsumer::RootOutput, value }
+    SiteKey {
+        root,
+        consumer: SiteConsumer::RootOutput,
+        value,
+    }
 }
 
 fn site(root: RootId, consumer_expr: ExprId, input_index: u32, value: ExprId) -> SiteKey {
-    SiteKey { root, consumer: SiteConsumer::Expr { expr: consumer_expr, input_index }, value }
+    SiteKey {
+        root,
+        consumer: SiteConsumer::Expr {
+            expr: consumer_expr,
+            input_index,
+        },
+        value,
+    }
 }
 
 /// A cross-layer Ext DRAM read leaf: `SourceKind::Read` (so it reaches DRAM and is
@@ -114,7 +150,14 @@ fn site(root: RootId, consumer_expr: ExprId, input_index: u32, value: ExprId) ->
 /// leaf recomputes for free and is (correctly) refused by the reaches-DRAM admission gate.
 fn ext_dram_read(offset: usize) -> (SourceInfo, ReadPlace) {
     let place = ReadPlace::CacheOutput { layer: 0, offset };
-    (SourceInfo { kind: SourceKind::Read { place: place.clone() } }, place)
+    (
+        SourceInfo {
+            kind: SourceKind::Read {
+                place: place.clone(),
+            },
+        },
+        place,
+    )
 }
 
 fn compile(
@@ -134,8 +177,16 @@ fn compile_with_cross(
     cross: &HashMap<ReadPlace, FieldKind>,
 ) -> gkr_eval_isa::fwd::context::CompiledLayer {
     let art = compute_artifact_layer();
-    compile_layer(layer, &art, &BTreeMap::new(), cross, sched, budget, decisions)
-        .expect("compile_layer")
+    compile_layer(
+        layer,
+        &art,
+        &BTreeMap::new(),
+        cross,
+        sched,
+        budget,
+        decisions,
+    )
+    .expect("compile_layer")
 }
 
 // ── Test 1: cache hit beats the uncached (`decisions: None`) compile on the caching metric ──
@@ -151,16 +202,18 @@ fn decisions_cache_hit_beats_uncached() {
     let layer = DagLayer {
         sources: vec![witness(0), witness(1), witness(2), witness(3)],
         exprs: vec![
-            Expr::Source(SourceId(0)), // 0 = x
-            Expr::Source(SourceId(1)), // 1 = y
-            Expr::Source(SourceId(2)), // 2 = x2
-            Expr::Source(SourceId(3)), // 3 = x3
+            Expr::Source(SourceId(0)),             // 0 = x
+            Expr::Source(SourceId(1)),             // 1 = y
+            Expr::Source(SourceId(2)),             // 2 = x2
+            Expr::Source(SourceId(3)),             // 3 = x3
             Expr::Add(vec![ExprId(0), ExprId(1)]), // 4 = s = x + y (shared)
             Expr::Mul(vec![ExprId(4), ExprId(2)]), // 5 = R0 = s * x2
             Expr::Mul(vec![ExprId(4), ExprId(3)]), // 6 = R1 = s * x3
         ],
         roots: vec![atom_root(ExprId(5), 0), atom_root(ExprId(6), 1)],
-        batching: BatchingOrder { roots: vec![RootId(0), RootId(1)] },
+        batching: BatchingOrder {
+            roots: vec![RootId(0), RootId(1)],
+        },
         resolutions: BTreeMap::new(),
     };
     let (x, y, s) = (ExprId(0), ExprId(1), ExprId(4));
@@ -192,24 +245,40 @@ fn decisions_cache_hit_beats_uncached() {
     // 12→8, decisions 9→8), which is why raw instr count no longer separates them. What
     // caching actually buys is measured by `dram_traffic` (the S3 primary objective) and the
     // recompute count below.
-    assert_eq!(decisions_compiled.program.instrs.len(), 8, "decisions instr-count pin (tied post-F5)");
-    assert_eq!(uncached_compiled.program.instrs.len(), 8, "uncached instr-count pin (tied post-F5)");
+    assert_eq!(
+        decisions_compiled.program.instrs.len(),
+        8,
+        "decisions instr-count pin (tied post-F5)"
+    );
+    assert_eq!(
+        uncached_compiled.program.instrs.len(),
+        8,
+        "uncached instr-count pin (tied post-F5)"
+    );
 
     // "1 compute, no recompute": `s` is the layer's only Add, computed ONCE when cached and
     // TWICE when uncached (recomputed for R1).
     assert_eq!(
-        decisions_compiled.stats.op_counts[gkr_eval_isa::fwd::stats::OP_ADD], 1,
+        decisions_compiled.stats.op_counts[gkr_eval_isa::fwd::stats::OP_ADD],
+        1,
         "cached: s (the only Add) computed exactly once",
     );
     assert_eq!(
-        uncached_compiled.stats.op_counts[gkr_eval_isa::fwd::stats::OP_ADD], 2,
+        uncached_compiled.stats.op_counts[gkr_eval_isa::fwd::stats::OP_ADD],
+        2,
         "uncached: s recomputed for R1 → the Add appears twice",
     );
 
     // The caching win: strictly less DRAM traffic. Cached reads x,y,x2,x3 once each (=4);
     // uncached re-reads x,y to recompute s (=6). This is the property the test exists to pin.
-    assert_eq!(decisions_compiled.stats.dram_traffic, 4, "cached DRAM-traffic pin");
-    assert_eq!(uncached_compiled.stats.dram_traffic, 6, "uncached DRAM-traffic pin");
+    assert_eq!(
+        decisions_compiled.stats.dram_traffic, 4,
+        "cached DRAM-traffic pin"
+    );
+    assert_eq!(
+        uncached_compiled.stats.dram_traffic, 6,
+        "uncached DRAM-traffic pin"
+    );
     assert!(
         decisions_compiled.stats.dram_traffic < uncached_compiled.stats.dram_traffic,
         "Decisions ({}) must read strictly less DRAM traffic than uncached ({}) once s is cached",
@@ -241,10 +310,10 @@ fn eviction_respects_priority_and_width() {
         let layer = DagLayer {
             sources: vec![witness(0), e_src],
             exprs: vec![
-                Expr::Source(SourceId(0)),    // 0 = B (Base DRAM leaf)
-                Expr::Source(SourceId(1)),    // 1 = E (Ext DRAM leaf, via cross map)
-                Expr::Add(vec![ExprId(0)]),   // 2 = B-probe wrapper
-                Expr::Add(vec![ExprId(1)]),   // 3 = E-probe wrapper
+                Expr::Source(SourceId(0)),  // 0 = B (Base DRAM leaf)
+                Expr::Source(SourceId(1)),  // 1 = E (Ext DRAM leaf, via cross map)
+                Expr::Add(vec![ExprId(0)]), // 2 = B-probe wrapper
+                Expr::Add(vec![ExprId(1)]), // 3 = E-probe wrapper
             ],
             roots: vec![
                 atom_root_field(ExprId(0), 0, FieldKind::Base), // R0: B produce
@@ -252,7 +321,9 @@ fn eviction_respects_priority_and_width() {
                 atom_root_field(ExprId(2), 2, FieldKind::Base), // R2: B probe
                 atom_root_field(ExprId(3), 3, FieldKind::Ext),  // R3: E probe
             ],
-            batching: BatchingOrder { roots: vec![RootId(0), RootId(1), RootId(2), RootId(3)] },
+            batching: BatchingOrder {
+                roots: vec![RootId(0), RootId(1), RootId(2), RootId(3)],
+            },
             resolutions: BTreeMap::new(),
         };
         let cross: HashMap<ReadPlace, FieldKind> = [(e_place, FieldKind::Ext)].into();
@@ -274,14 +345,26 @@ fn eviction_respects_priority_and_width() {
     let (_, b, e, _) = build_layer();
     let lower = run(1.0, 100.0);
     let after_r1_lower = &lower.resident_realized[1].1;
-    assert!(!after_r1_lower.contains(&b), "lower-priority B must be evicted to admit E");
-    assert!(after_r1_lower.contains(&e), "E must be admitted once it evicts B");
+    assert!(
+        !after_r1_lower.contains(&b),
+        "lower-priority B must be evicted to admit E"
+    );
+    assert!(
+        after_r1_lower.contains(&e),
+        "E must be admitted once it evicts B"
+    );
 
     // (b) B's priority HIGHER: E's admission is skipped, B stays resident.
     let higher = run(100.0, 1.0);
     let after_r1_higher = &higher.resident_realized[1].1;
-    assert!(after_r1_higher.contains(&b), "higher-priority B must survive E's admission attempt");
-    assert!(!after_r1_higher.contains(&e), "E must NOT be admitted over a higher-priority B");
+    assert!(
+        after_r1_higher.contains(&b),
+        "higher-priority B must survive E's admission attempt"
+    );
+    assert!(
+        !after_r1_higher.contains(&e),
+        "E must NOT be admitted over a higher-priority B"
+    );
 }
 
 // ── Test 2b: non-domain leaves (interior challenge/const) are never admitted ─────────
@@ -324,7 +407,9 @@ fn interior_challenge_and_constant_are_never_admitted_even_with_high_priority_ge
             atom_root(ExprId(6), 2),
             atom_root(ExprId(7), 3),
         ],
-        batching: BatchingOrder { roots: vec![RootId(0), RootId(1), RootId(2), RootId(3)] },
+        batching: BatchingOrder {
+            roots: vec![RootId(0), RootId(1), RootId(2), RootId(3)],
+        },
         resolutions: BTreeMap::new(),
     };
     let order = vec![RootId(0), RootId(1), RootId(2), RootId(3)];
@@ -351,9 +436,16 @@ fn interior_challenge_and_constant_are_never_admitted_even_with_high_priority_ge
     // Non-vacuous: the genuinely cacheable reused DRAM leaf w0 IS admitted at some step
     // (spare budget), so the gate discriminates rather than refusing everything.
     assert!(
-        compiled.resident_realized.iter().any(|(_, after)| after.contains(&w0)),
+        compiled
+            .resident_realized
+            .iter()
+            .any(|(_, after)| after.contains(&w0)),
         "reused DRAM leaf {w0:?} (cacheable ∧ fan-out≥2) must still be admitted; snapshots: {:?}",
-        compiled.resident_realized.iter().map(|(_, a)| a).collect::<Vec<_>>()
+        compiled
+            .resident_realized
+            .iter()
+            .map(|(_, a)| a)
+            .collect::<Vec<_>>()
     );
 }
 
@@ -376,9 +468,9 @@ fn dead_value_slot_reused_without_eviction() {
     let layer = DagLayer {
         sources: vec![witness(0), witness(1), witness(2)],
         exprs: vec![
-            Expr::Source(SourceId(0)), // 0 = A
-            Expr::Source(SourceId(1)), // 1 = D
-            Expr::Source(SourceId(2)), // 2 = C
+            Expr::Source(SourceId(0)),  // 0 = A
+            Expr::Source(SourceId(1)),  // 1 = D
+            Expr::Source(SourceId(2)),  // 2 = C
             Expr::Add(vec![ExprId(0)]), // 3 = A-probe wrapper
             Expr::Add(vec![ExprId(1)]), // 4 = D-probe wrapper
             Expr::Add(vec![ExprId(2)]), // 5 = C-probe wrapper
@@ -392,11 +484,25 @@ fn dead_value_slot_reused_without_eviction() {
             atom_root(ExprId(5), 5), // R5: C probe
         ],
         batching: BatchingOrder {
-            roots: vec![RootId(0), RootId(1), RootId(2), RootId(3), RootId(4), RootId(5)],
+            roots: vec![
+                RootId(0),
+                RootId(1),
+                RootId(2),
+                RootId(3),
+                RootId(4),
+                RootId(5),
+            ],
         },
         resolutions: BTreeMap::new(),
     };
-    let order = vec![RootId(0), RootId(1), RootId(2), RootId(3), RootId(4), RootId(5)];
+    let order = vec![
+        RootId(0),
+        RootId(1),
+        RootId(2),
+        RootId(3),
+        RootId(4),
+        RootId(5),
+    ];
     let sched = trivial_schedule(order);
     let (a, d, c) = (ExprId(0), ExprId(1), ExprId(2));
 
@@ -412,14 +518,20 @@ fn dead_value_slot_reused_without_eviction() {
     let uncached = compile(&layer, &sched, 2, None);
 
     // Uncached re-reads every occurrence: A(R0,R1) + D(R2,R4) + C(R3,R5) = 6 DRAM reads.
-    assert_eq!(uncached.stats.dram_reads, 6, "uncached re-reads each of A/D/C twice");
+    assert_eq!(
+        uncached.stats.dram_reads, 6,
+        "uncached re-reads each of A/D/C twice"
+    );
     // Cached fits all three in a 2-cell budget with zero re-reads — dead A's cell is
     // REUSED by placement for C, no eviction required. 3 = one read per distinct leaf.
     assert_eq!(
         cached.stats.dram_reads, 3,
         "fill caches A/D/C in budget 2 via dead-slot reuse (no eviction, no re-read)"
     );
-    assert!(cached.stats.max_live_cells <= 2, "peak live must fit the 2-cell budget");
+    assert!(
+        cached.stats.max_live_cells <= 2,
+        "peak live must fit the 2-cell budget"
+    );
 }
 
 // ── Test 4: leaf caching removes the second DRAM read ──────────────────────────────
@@ -439,7 +551,9 @@ fn read_leaf_cacheable() {
             Expr::Add(vec![ExprId(0)]), // 1 = W-probe wrapper
         ],
         roots: vec![atom_root(ExprId(0), 0), atom_root(ExprId(1), 1)],
-        batching: BatchingOrder { roots: vec![RootId(0), RootId(1)] },
+        batching: BatchingOrder {
+            roots: vec![RootId(0), RootId(1)],
+        },
         resolutions: BTreeMap::new(),
     };
     let w = ExprId(0);
@@ -450,7 +564,10 @@ fn read_leaf_cacheable() {
     let decisions_compiled = compile(&layer, &sched, 16, Some(&decisions));
     let uncached_compiled = compile(&layer, &sched, 16, None);
 
-    assert_eq!(uncached_compiled.stats.dram_reads, 2, "uncached (decisions: None) reads W twice");
+    assert_eq!(
+        uncached_compiled.stats.dram_reads, 2,
+        "uncached (decisions: None) reads W twice"
+    );
     assert_eq!(
         decisions_compiled.stats.dram_reads, 1,
         "Decisions must cache W after its first read, removing the second DRAM read"
@@ -482,12 +599,26 @@ fn decisions_compile_is_deterministic() {
             atom_root(ExprId(2), 5),
         ],
         batching: BatchingOrder {
-            roots: vec![RootId(0), RootId(1), RootId(2), RootId(3), RootId(4), RootId(5)],
+            roots: vec![
+                RootId(0),
+                RootId(1),
+                RootId(2),
+                RootId(3),
+                RootId(4),
+                RootId(5),
+            ],
         },
         resolutions: BTreeMap::new(),
     };
     let (x, y, z) = (ExprId(0), ExprId(1), ExprId(2));
-    let order = vec![RootId(0), RootId(1), RootId(2), RootId(3), RootId(4), RootId(5)];
+    let order = vec![
+        RootId(0),
+        RootId(1),
+        RootId(2),
+        RootId(3),
+        RootId(4),
+        RootId(5),
+    ];
     let sched = trivial_schedule(order);
 
     let build_decisions = || {
@@ -503,8 +634,14 @@ fn decisions_compile_is_deterministic() {
     let c1 = compile(&layer, &sched, 1, Some(&d1));
     let c2 = compile(&layer, &sched, 1, Some(&d2));
 
-    assert_eq!(c1.program, c2.program, "identical Decisions inputs must emit identical programs");
-    assert_eq!(c1.resident_realized, c2.resident_realized, "residency snapshots must also match");
+    assert_eq!(
+        c1.program, c2.program,
+        "identical Decisions inputs must emit identical programs"
+    );
+    assert_eq!(
+        c1.resident_realized, c2.resident_realized,
+        "residency snapshots must also match"
+    );
 }
 
 // ── Test 6: value parity under adversarial priorities ───────────────────────────────
@@ -527,7 +664,9 @@ fn decisions_value_parity_any_priorities() {
             Expr::Mul(vec![ExprId(3), ExprId(2)]), // 5 = R1 = s * z
         ],
         roots: vec![atom_root(ExprId(4), 0), atom_root(ExprId(5), 1)],
-        batching: BatchingOrder { roots: vec![RootId(0), RootId(1)] },
+        batching: BatchingOrder {
+            roots: vec![RootId(0), RootId(1)],
+        },
         resolutions: BTreeMap::new(),
     };
     let order = vec![RootId(0), RootId(1)];
@@ -571,7 +710,10 @@ fn decisions_value_parity_any_priorities() {
             for (rid, _) in &compiled.root_outputs {
                 let got = outs.by_root[rid];
                 let want = eval_layer_root(&layer, *rid, row, &resolvers(&sr));
-                assert_eq!(got, want, "row {row} root {rid:?} mismatch under config hi={hi} lo={lo}");
+                assert_eq!(
+                    got, want,
+                    "row {row} root {rid:?} mismatch under config hi={hi} lo={lo}"
+                );
                 checks += 1;
             }
         }
@@ -597,10 +739,10 @@ fn decisions_add_order_matches_virtual_fma_partition_not_materialize_shape() {
     let layer = DagLayer {
         sources: vec![witness(0), witness(1), witness(2), witness(3)],
         exprs: vec![
-            Expr::Source(SourceId(0)), // 0 = addend_a
-            Expr::Source(SourceId(1)), // 1 = addend_b
-            Expr::Source(SourceId(2)), // 2 = l
-            Expr::Source(SourceId(3)), // 3 = r
+            Expr::Source(SourceId(0)),             // 0 = addend_a
+            Expr::Source(SourceId(1)),             // 1 = addend_b
+            Expr::Source(SourceId(2)),             // 2 = l
+            Expr::Source(SourceId(3)),             // 3 = r
             Expr::Mul(vec![ExprId(2), ExprId(3)]), // 4 = Mul(l, r)
             // Deliberately interleaved: addend, product, addend.
             Expr::Add(vec![ExprId(0), ExprId(4), ExprId(1)]), // 5 = Add root
@@ -634,15 +776,24 @@ fn decisions_add_order_matches_virtual_fma_partition_not_materialize_shape() {
     let compiled = compile(&layer, &sched, 2, Some(&decisions));
 
     let after_r0 = &compiled.resident_realized[0].1;
-    assert!(after_r0.contains(&addend_a), "addend_a is visited first under both orderings");
+    assert!(
+        after_r0.contains(&addend_a),
+        "addend_a is visited first under both orderings"
+    );
     assert!(
         after_r0.contains(&addend_b),
         "FMA-partition order (addends before products) must admit addend_b 2nd, not l — \
          got resident {after_r0:?} (a materialize-shaped original-encounter-order lowering \
          would instead admit `l` here)"
     );
-    assert!(!after_r0.contains(&l), "l must lose the 2-slot budget to addend_b under FMA-partition order");
-    assert!(!after_r0.contains(&r), "r must lose the 2-slot budget to addend_b under FMA-partition order");
+    assert!(
+        !after_r0.contains(&l),
+        "l must lose the 2-slot budget to addend_b under FMA-partition order"
+    );
+    assert!(
+        !after_r0.contains(&r),
+        "r must lose the 2-slot budget to addend_b under FMA-partition order"
+    );
 }
 
 // ── Task 8c: generation-identity readmission ────────────────────────────────────────
@@ -681,8 +832,8 @@ fn readmission_after_eviction_gets_fresh_generation_and_stays_placement_feasible
     let layer = DagLayer {
         sources: vec![witness(0), witness(1)],
         exprs: vec![
-            Expr::Source(SourceId(0)), // 0 = B
-            Expr::Source(SourceId(1)), // 1 = C
+            Expr::Source(SourceId(0)),  // 0 = B
+            Expr::Source(SourceId(1)),  // 1 = C
             Expr::Add(vec![ExprId(1)]), // 2 = C-probe wrapper
             Expr::Add(vec![ExprId(0)]), // 3 = B-probe #2 wrapper (triggers re-admission)
             Expr::Add(vec![ExprId(0)]), // 4 = B-probe #3 wrapper (served from new generation)
@@ -711,7 +862,10 @@ fn readmission_after_eviction_gets_fresh_generation_and_stays_placement_feasible
     let compiled = compile(&layer, &sched, 1, Some(&decisions));
 
     // Eviction fired as engineered: B is gone after R1, back after R3.
-    assert!(!compiled.resident_realized[1].1.contains(&b), "C's admission must evict B at R1");
+    assert!(
+        !compiled.resident_realized[1].1.contains(&b),
+        "C's admission must evict B at R1"
+    );
     assert!(
         compiled.resident_realized[3].1.contains(&b),
         "B must be RE-ADMITTED at R3 now that `never_readmit` no longer blocks it \
@@ -737,7 +891,10 @@ fn readmission_after_eviction_gets_fresh_generation_and_stays_placement_feasible
         for (rid, _) in &compiled.root_outputs {
             let got = outs.by_root[rid];
             let want = eval_layer_root(&layer, *rid, row, &resolvers(&sr));
-            assert_eq!(got, want, "row {row} root {rid:?} mismatch under readmission");
+            assert_eq!(
+                got, want,
+                "row {row} root {rid:?} mismatch under readmission"
+            );
             checks += 1;
         }
     }

@@ -6,7 +6,7 @@ use super::context::{CompileTrace, CompiledLayer, DagForwardContext, ForwardActi
 use super::encode::encode;
 use super::error::CompileError;
 use super::isa::{DstLine, Instr, LdcSub, MovDir, OperandField, OperandLine, Program, Special};
-use cs::gkr_compiler::dag_ir::{DagLayer, Expr, ExprId, Root, SourceKind};
+use gkr_eval_ir::{DagLayer, Expr, ExprId, Root, SourceKind};
 
 // ── Check 1: coverage re-walk ─────────────────────────────────────────────────
 
@@ -75,7 +75,7 @@ fn check_action_completeness(
         if root.materialize.is_none() {
             continue;
         }
-        let rid = cs::gkr_compiler::dag_ir::RootId(idx as u32);
+        let rid = gkr_eval_ir::RootId(idx as u32);
         if !compiled.ctx.actions.contains_key(&rid) {
             return Err(CompileError::OutputUnresolved(rid));
         }
@@ -620,7 +620,7 @@ mod tests {
     };
     use super::super::stats::CompileStats;
     use super::*;
-    use cs::gkr_compiler::dag_ir::{
+    use gkr_eval_ir::{
         BatchingOrder, ClaimInfo, DagLayer, Expr, ExprId, FieldKind, LookupValueKind, RangeWidth,
         ReadPlace, ResolutionStrategy, Root, RootGroup, RootId, RootOrigin, RootSlot, SinkInfo,
         SinkKind, SourceId, SourceInfo, SourceKind,

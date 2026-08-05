@@ -15,8 +15,8 @@
 //! The semantic reference is the ORACLE of the whole backward pipeline: every
 //! parity ladder — lean CPU, and the CUDA executor — is stated against it.
 
-use cs::gkr_compiler::dag_ir::{Bf, BwdRegime, Ext};
 use field::{Field, FieldExtension, PrimeField};
+use gkr_eval_ir::{Bf, Ext};
 
 use super::group;
 use super::lean::{
@@ -199,7 +199,9 @@ pub fn interpret_coeff_layer(
 /// saves is a MULTIPLICATION, and that saving lives in [`accumulate_imm`].
 fn immediate_value(layer: &CoeffLayer, id: ImmediateId) -> Result<Ext, CoeffError> {
     let value = group::immediate_value(layer, id).ok_or(CoeffError::UnknownImmediate { id })?;
-    Ok(<Ext as FieldExtension<Bf>>::from_base(Bf::from_u32_with_reduction(value)))
+    Ok(<Ext as FieldExtension<Bf>>::from_base(
+        Bf::from_u32_with_reduction(value),
+    ))
 }
 
 /// Add `imm * v` to a group's per-side sum, spending NO multiplication on the two
@@ -262,7 +264,11 @@ fn projection(
     resolver: &impl CoeffResolver,
 ) -> Result<(Ext, Ext), CoeffError> {
     if p.projection != expected {
-        return Err(CoeffError::ProjectionRoleMismatch { term, expected, found: p.projection });
+        return Err(CoeffError::ProjectionRoleMismatch {
+            term,
+            expected,
+            found: p.projection,
+        });
     }
     source_pair(layer, p.source, row, resolver)
 }
@@ -350,7 +356,9 @@ pub fn interpret_lean_program(
 ) -> Result<(Ext, Ext), LeanInterpError> {
     let atoms = lean::decode_atoms(program, layer.regime)?;
     let seed = match layer.c_init {
-        Some(id) if layer.regime == BwdRegime::R0 => return Err(LeanInterpError::CInitAtR0 { id }),
+        Some(id) if layer.regime == crate::BwdRegime::R0 => {
+            return Err(LeanInterpError::CInitAtR0 { id });
+        }
         Some(id) => coefficient(layer, id, resolver)?,
         None => Ext::ZERO,
     };
@@ -386,10 +394,19 @@ pub fn interpret_lean_program(
                     &mut partial_c0,
                     &mut partial_c2,
                 )?,
-                LeanAtom::Group { core, has_c0, has_c2, members } => lean_group(
+                LeanAtom::Group {
+                    core,
+                    has_c0,
+                    has_c2,
+                    members,
+                } => lean_group(
                     layer,
                     records[index],
-                    GroupHeader { core: *core, has_c0: *has_c0, has_c2: *has_c2 },
+                    GroupHeader {
+                        core: *core,
+                        has_c0: *has_c0,
+                        has_c2: *has_c2,
+                    },
                     members,
                     row,
                     resolver,
@@ -442,9 +459,7 @@ fn lean_parts(
             let (e0, _) = source_pair(layer, a, row, resolver)?;
             Ok(LeanParts::C0(e0))
         }
-        TermCategory::C2ProductBfBf
-        | TermCategory::C2ProductBfE4
-        | TermCategory::C2ProductE4E4 => {
+        TermCategory::C2ProductBfBf | TermCategory::C2ProductBfE4 | TermCategory::C2ProductE4E4 => {
             let b = second_source(position, record)?;
             let (_, da) = source_pair(layer, a, row, resolver)?;
             let (_, db) = source_pair(layer, b, row, resolver)?;
@@ -474,13 +489,15 @@ fn lean_parts(
 /// The category `record`'s class names in `regime`, rejecting a dead class by the
 /// record's POSITION in the program.
 fn record_category(
-    regime: BwdRegime,
+    regime: crate::BwdRegime,
     position: usize,
     record: &LeanTerm,
 ) -> Result<TermCategory, LeanCodecError> {
     let class = u16::from(record.class);
-    lean_category(regime, class)
-        .ok_or(LeanCodecError::ClassNotInRegime { term: position, opcode: class })
+    lean_category(regime, class).ok_or(LeanCodecError::ClassNotInRegime {
+        term: position,
+        opcode: class,
+    })
 }
 
 /// Add one decoded PLAIN record's contribution to its list's partial pair: its own
@@ -500,7 +517,11 @@ fn lean_record(
     acc_c2: &mut Ext,
 ) -> Result<(), LeanInterpError> {
     let category = record_category(layer.regime, position, record)?;
-    let k = coefficient(layer, CoefficientRecipeId(u32::from(record.coeff)), resolver)?;
+    let k = coefficient(
+        layer,
+        CoefficientRecipeId(u32::from(record.coeff)),
+        resolver,
+    )?;
     match lean_parts(layer, category, position, record, row, resolver)? {
         LeanParts::C0(v) => {
             let mut t = k;
@@ -594,12 +615,15 @@ fn lean_group(
 /// The tables are the wire ABI and are public, so this and
 /// [`lean::validate_program`] read the same rows; only the `find` is spelled
 /// twice.
-fn lean_category(regime: BwdRegime, class: u16) -> Option<TermCategory> {
+fn lean_category(regime: crate::BwdRegime, class: u16) -> Option<TermCategory> {
     let table = match regime {
-        BwdRegime::R0 => LEAN_R0_OPCODES,
-        BwdRegime::Ext => LEAN_CONT_OPCODES,
+        crate::BwdRegime::R0 => LEAN_R0_OPCODES,
+        crate::BwdRegime::Ext => LEAN_CONT_OPCODES,
     };
-    table.iter().find(|(listed, _)| *listed == class).map(|(_, category)| *category)
+    table
+        .iter()
+        .find(|(listed, _)| *listed == class)
+        .map(|(_, category)| *category)
 }
 
 /// The second operand slot of a two-source class. The sentinel there is a record
@@ -621,11 +645,9 @@ mod tests {
     use std::path::PathBuf;
 
     use cs::gkr_compiler::GKRCircuitArtifact;
-    use cs::gkr_compiler::dag_ir::{
-        Bf, DagLayer, FieldKind, ReadPlace, bwd_roots, lower_dag, validate,
-    };
     use field::baby_bear::base::BabyBearField;
     use field::{FieldExtension, PrimeField};
+    use gkr_eval_ir::{Bf, DagLayer, FieldKind, ReadPlace, claim_roots, lower_dag, validate};
     use rayon::prelude::*;
 
     use super::*;
@@ -683,7 +705,7 @@ mod tests {
         dag.layers
             .iter()
             .enumerate()
-            .filter(|(_, layer)| !bwd_roots(layer).is_empty())
+            .filter(|(_, layer)| !claim_roots(layer).is_empty())
             .map(|(li, layer)| (li, layer.clone(), cross.clone()))
             .collect()
     }
@@ -738,9 +760,10 @@ mod tests {
                     lift(bf(fnv(&[0xb0, self.seed ^ id.0, row]))),
                     lift(bf(fnv(&[0xb1, self.seed ^ id.0, row]))),
                 ),
-                FieldKind::Ext => {
-                    (ext(0x5000, self.seed ^ id.0, row), ext(0x5001, self.seed ^ id.0, row))
-                }
+                FieldKind::Ext => (
+                    ext(0x5000, self.seed ^ id.0, row),
+                    ext(0x5001, self.seed ^ id.0, row),
+                ),
             }
         }
     }
@@ -748,7 +771,7 @@ mod tests {
     // ── Synthetic layers ─────────────────────────────────────────────────────
 
     fn layer(
-        regime: BwdRegime,
+        regime: crate::BwdRegime,
         sources: &[FieldKind],
         recipes: usize,
         terms: Vec<CoeffTerm>,
@@ -819,14 +842,19 @@ mod tests {
         ];
         CoeffLayer {
             c_init: Some(CoefficientRecipeId(2)),
-            ..layer(BwdRegime::Ext, &[FieldKind::Ext; 3], 2, terms)
+            ..layer(crate::BwdRegime::Ext, &[FieldKind::Ext; 3], 2, terms)
         }
     }
 
     /// One hand-spelled record, as its own program.
     fn record(class: u16, coeff: u16, source_a: u16, source_b: u16) -> LeanProgram {
         LeanProgram {
-            words: vec![(class << lean::LEAN_CLASS_SHIFT) | coeff, source_a, source_b, 0],
+            words: vec![
+                (class << lean::LEAN_CLASS_SHIFT) | coeff,
+                source_a,
+                source_b,
+                0,
+            ],
             term_count: 1,
         }
     }
@@ -869,8 +897,12 @@ mod tests {
                 let mut count = 0usize;
                 let mut seeded = 0usize;
                 for (li, canonical, cross) in layers_with_bwd_roots(name) {
-                    for regime in [BwdRegime::R0, BwdRegime::Ext] {
-                        let label = if regime == BwdRegime::R0 { "R0" } else { "Ext" };
+                    for regime in [crate::BwdRegime::R0, crate::BwdRegime::Ext] {
+                        let label = if regime == crate::BwdRegime::R0 {
+                            "R0"
+                        } else {
+                            "Ext"
+                        };
                         let tag = format!("{name} L{li} {label}");
                         let distilled = distill(&canonical, regime, &cross, None);
                         let layer = lower_coeff_layer(&canonical, &distilled)
@@ -882,7 +914,10 @@ mod tests {
                             Ok(()),
                             "[{tag}] the encoder emits a program the validator accepts",
                         );
-                        let resolver = Pseudo { layer: &layer, seed: (li as u32) << 8 | 0x5a };
+                        let resolver = Pseudo {
+                            layer: &layer,
+                            seed: (li as u32) << 8 | 0x5a,
+                        };
                         for row in ROWS {
                             let semantic = interpret_coeff_layer(&layer, row, &resolver)
                                 .unwrap_or_else(|e| panic!("[{tag}] semantic: {e:?}"));
@@ -904,7 +939,11 @@ mod tests {
                 (count, seeded)
             })
             .reduce(|| (0, 0), |a, b| (a.0 + b.0, a.1 + b.1));
-        assert_eq!(coordinates, in_scope::COORDINATES, "every in-scope coordinate was covered");
+        assert_eq!(
+            coordinates,
+            in_scope::COORDINATES,
+            "every in-scope coordinate was covered"
+        );
         /// Coordinates carrying a `c_init`, measured: 27 of the 57 `Ext` ones. R0
         /// contributes ZERO, since its lowering drops the spine's scalar addends —
         /// which is also why nothing in the corpus can reach
@@ -925,9 +964,16 @@ mod tests {
         let layer = seeded_ext_layer();
         let program = lean::encode_program(&layer, &order_terms(&layer)).expect("a legal layer");
         assert_eq!(lean::validate_program(&program, &layer), Ok(()));
-        let resolver = Pseudo { layer: &layer, seed: 0x77 };
+        let resolver = Pseudo {
+            layer: &layer,
+            seed: 0x77,
+        };
         let c_init = resolver.coefficient(layer.c_init.expect("a seeded layer"));
-        assert_ne!(c_init, Ext::ZERO, "the fixture must make the seed observable");
+        assert_ne!(
+            c_init,
+            Ext::ZERO,
+            "the fixture must make the seed observable"
+        );
 
         for row in ROWS {
             let semantic = interpret_coeff_layer(&layer, row, &resolver).expect("semantic");
@@ -947,10 +993,19 @@ mod tests {
                 for _ in 1..k {
                     expected.add_assign(&c_init);
                 }
-                assert_eq!(misseeded.0, expected, "row {row} k={k}: divergence is (k-1)*c_init");
-                assert_eq!(misseeded.1, semantic.1, "row {row} k={k}: acc_c2 carries no seed");
+                assert_eq!(
+                    misseeded.0, expected,
+                    "row {row} k={k}: divergence is (k-1)*c_init"
+                );
+                assert_eq!(
+                    misseeded.1, semantic.1,
+                    "row {row} k={k}: acc_c2 carries no seed"
+                );
                 if k > 1 {
-                    assert_ne!(misseeded.0, lean.0, "row {row} k={k}: K*c_init must be caught");
+                    assert_ne!(
+                        misseeded.0, lean.0,
+                        "row {row} k={k}: K*c_init must be caught"
+                    );
                 }
             }
         }
@@ -964,13 +1019,24 @@ mod tests {
             c0(0, CoefficientRecipeId::ONE.0, 0, FieldKind::Base),
             c2(1, 2, (0, FieldKind::Base), (1, FieldKind::Ext)),
         ];
-        let unseeded = layer(BwdRegime::R0, &[FieldKind::Base, FieldKind::Ext], 1, terms);
+        let unseeded = layer(
+            crate::BwdRegime::R0,
+            &[FieldKind::Base, FieldKind::Ext],
+            1,
+            terms,
+        );
         let id = CoefficientRecipeId(2);
-        let seeded = CoeffLayer { c_init: Some(id), ..unseeded.clone() };
+        let seeded = CoeffLayer {
+            c_init: Some(id),
+            ..unseeded.clone()
+        };
         let program =
             lean::encode_program(&unseeded, &order_terms(&unseeded)).expect("a legal R0 layer");
         // The two layers differ only in `c_init`, so one resolver serves both.
-        let resolver = Pseudo { layer: &unseeded, seed: 0x88 };
+        let resolver = Pseudo {
+            layer: &unseeded,
+            seed: 0x88,
+        };
 
         let semantic = interpret_coeff_layer(&unseeded, 0, &resolver).expect("semantic");
         assert_eq!(
@@ -995,8 +1061,11 @@ mod tests {
             c0(0, CoefficientRecipeId::ONE.0, 0, FieldKind::Ext),
             dual(1, CoefficientRecipeId::NEG_ONE.0, 0, 1),
         ];
-        let layer = layer(BwdRegime::Ext, &[FieldKind::Ext; 2], 1, terms);
-        let resolver = Pseudo { layer: &layer, seed: 0x99 };
+        let layer = layer(crate::BwdRegime::Ext, &[FieldKind::Ext; 2], 1, terms);
+        let resolver = Pseudo {
+            layer: &layer,
+            seed: 0x99,
+        };
         let run = |program: &LeanProgram, k: usize| {
             interpret_lean_program(program, &layer, 0, &resolver, k)
         };
@@ -1005,23 +1074,38 @@ mod tests {
         // class at all there — `lean::decode_atoms` reads it as one).
         assert_eq!(
             run(&record(3, 0, 0, SOURCE_NONE), 1),
-            Err(LeanInterpError::Codec(LeanCodecError::ClassNotInRegime { term: 0, opcode: 3 })),
+            Err(LeanInterpError::Codec(LeanCodecError::ClassNotInRegime {
+                term: 0,
+                opcode: 3
+            })),
         );
         // A two-source class with no second source cannot execute.
         assert_eq!(
             run(&record(1, 0, 0, SOURCE_NONE), 1),
-            Err(LeanInterpError::Codec(LeanCodecError::SourceBMissing { term: 0 })),
+            Err(LeanInterpError::Codec(LeanCodecError::SourceBMissing {
+                term: 0
+            })),
         );
         // `decode_program`'s own rules still apply.
         assert_eq!(
-            run(&LeanProgram { words: vec![0, 0, 0], term_count: 1 }, 1),
-            Err(LeanInterpError::Codec(LeanCodecError::TruncatedStream { words: 3 })),
+            run(
+                &LeanProgram {
+                    words: vec![0, 0, 0],
+                    term_count: 1
+                },
+                1
+            ),
+            Err(LeanInterpError::Codec(LeanCodecError::TruncatedStream {
+                words: 3
+            })),
         );
         // A slot past the source table and an unbanked coefficient are the
         // SEMANTIC interpreter's errors, reported by the helpers it shares.
         assert_eq!(
             run(&record(0, 0, 7, SOURCE_NONE), 1),
-            Err(LeanInterpError::Coeff(CoeffError::UnknownSource { id: SourceId(7) })),
+            Err(LeanInterpError::Coeff(CoeffError::UnknownSource {
+                id: SourceId(7)
+            })),
         );
         let past = CoefficientRecipeId::RESERVED + layer.coefficients.len() as u32;
         assert_eq!(
@@ -1037,8 +1121,17 @@ mod tests {
         words.extend(record(0, 0, 0, SOURCE_NONE).words);
         words.extend(record(3, 0, 0, SOURCE_NONE).words);
         assert_eq!(
-            run(&LeanProgram { words, term_count: 3 }, 2),
-            Err(LeanInterpError::Codec(LeanCodecError::ClassNotInRegime { term: 2, opcode: 3 })),
+            run(
+                &LeanProgram {
+                    words,
+                    term_count: 3
+                },
+                2
+            ),
+            Err(LeanInterpError::Codec(LeanCodecError::ClassNotInRegime {
+                term: 2,
+                opcode: 3
+            })),
         );
     }
 
@@ -1048,7 +1141,10 @@ mod tests {
     fn zero_lists_is_not_a_launch() {
         let layer = seeded_ext_layer();
         let program = lean::encode_program(&layer, &order_terms(&layer)).expect("a legal layer");
-        let resolver = Pseudo { layer: &layer, seed: 0xaa };
+        let resolver = Pseudo {
+            layer: &layer,
+            seed: 0xaa,
+        };
         let _ = interpret_lean_program(&program, &layer, 0, &resolver, 0);
     }
 
@@ -1062,13 +1158,19 @@ mod tests {
             groups: vec![CoeffGroup {
                 core: CoefficientRecipeId(2),
                 members: vec![
-                    CoeffGroupMember { term: TermId(0), immediate: a },
-                    CoeffGroupMember { term: TermId(1), immediate: b },
+                    CoeffGroupMember {
+                        term: TermId(0),
+                        immediate: a,
+                    },
+                    CoeffGroupMember {
+                        term: TermId(1),
+                        immediate: b,
+                    },
                 ],
                 has_c0: true,
                 has_c2: false,
             }],
-            ..layer(BwdRegime::Ext, &[FieldKind::Ext; 2], 1, terms)
+            ..layer(crate::BwdRegime::Ext, &[FieldKind::Ext; 2], 1, terms)
         }
     }
 
@@ -1081,7 +1183,10 @@ mod tests {
     fn reserved_group_immediates_add_and_subtract() {
         let row = 5;
         let grouped = grouped_pair(ImmediateId::ONE, ImmediateId::NEG_ONE);
-        let resolver = Pseudo { layer: &grouped, seed: 0xb1 };
+        let resolver = Pseudo {
+            layer: &grouped,
+            seed: 0xb1,
+        };
         let (got_c0, got_c2) = interpret_coeff_layer(&grouped, row, &resolver).expect("grouped");
 
         let core = resolver.coefficient(CoefficientRecipeId(2));
@@ -1091,7 +1196,10 @@ mod tests {
         let mut want = first;
         want.sub_assign(&second);
         want.mul_assign(&core);
-        assert_eq!(got_c0, want, "the group sum is (+1)*first + (-1)*second, times the core");
+        assert_eq!(
+            got_c0, want,
+            "the group sum is (+1)*first + (-1)*second, times the core"
+        );
         assert_eq!(got_c2, Ext::ZERO, "`C0Linear` members feed no c2 side");
     }
 
@@ -1118,15 +1226,21 @@ mod tests {
             c0(4, CoefficientRecipeId::ONE.0, 0, FieldKind::Ext),
             dual(5, plain.0, 0, 1),
         ];
-        let mut layer = layer(BwdRegime::Ext, &[FieldKind::Ext; 3], 4, terms);
+        let mut layer = layer(crate::BwdRegime::Ext, &[FieldKind::Ext; 3], 4, terms);
         layer.c_init = Some(seed);
         layer.immediates = vec![7, 9];
         layer.groups = vec![
             CoeffGroup {
                 core: core_a,
                 members: vec![
-                    CoeffGroupMember { term: TermId(0), immediate: ImmediateId::ONE },
-                    CoeffGroupMember { term: TermId(1), immediate: ImmediateId::banked(0) },
+                    CoeffGroupMember {
+                        term: TermId(0),
+                        immediate: ImmediateId::ONE,
+                    },
+                    CoeffGroupMember {
+                        term: TermId(1),
+                        immediate: ImmediateId::banked(0),
+                    },
                 ],
                 has_c0: true,
                 has_c2: true,
@@ -1134,8 +1248,14 @@ mod tests {
             CoeffGroup {
                 core: core_b,
                 members: vec![
-                    CoeffGroupMember { term: TermId(2), immediate: ImmediateId::NEG_ONE },
-                    CoeffGroupMember { term: TermId(3), immediate: ImmediateId::banked(1) },
+                    CoeffGroupMember {
+                        term: TermId(2),
+                        immediate: ImmediateId::NEG_ONE,
+                    },
+                    CoeffGroupMember {
+                        term: TermId(3),
+                        immediate: ImmediateId::banked(1),
+                    },
                 ],
                 has_c0: true,
                 has_c2: false,
@@ -1167,7 +1287,11 @@ mod tests {
 
         let layer = grouped_ext_layer();
         let atoms = order_atoms(&layer);
-        assert_eq!(atoms.len(), 4, "two groups and two singletons are four atoms");
+        assert_eq!(
+            atoms.len(),
+            4,
+            "two groups and two singletons are four atoms"
+        );
         let program = lean::encode_program_atoms(&layer, &atoms).expect("a legal grouped layer");
         assert_eq!(lean::validate_program(&program, &layer), Ok(()));
         assert_eq!(program.term_count, 6);
@@ -1177,11 +1301,18 @@ mod tests {
             "six terms plus two headers",
         );
 
-        let resolver = Pseudo { layer: &layer, seed: 0xc7 };
+        let resolver = Pseudo {
+            layer: &layer,
+            seed: 0xc7,
+        };
         let flat = lean::encode_program(&layer, &order_terms(&layer)).expect("a legal flat stream");
         for row in GROUPED_ROWS {
             let semantic = interpret_coeff_layer(&layer, row, &resolver).expect("semantic");
-            assert_ne!(semantic.0, Ext::ZERO, "row {row}: the fixture must be observable");
+            assert_ne!(
+                semantic.0,
+                Ext::ZERO,
+                "row {row}: the fixture must be observable"
+            );
             assert_ne!(semantic.1, Ext::ZERO, "row {row}: the fixture must feed c2");
             for k in GROUPED_KS {
                 let lean =
@@ -1196,7 +1327,10 @@ mod tests {
                 // the same layer does — is a different element.
                 let ungrouped =
                     interpret_lean_program(&flat, &layer, row, &resolver, k).expect("flat");
-                assert_ne!(ungrouped, lean, "row {row} k={k}: the flat walk must NOT agree");
+                assert_ne!(
+                    ungrouped, lean,
+                    "row {row} k={k}: the flat walk must NOT agree"
+                );
             }
         }
     }
@@ -1209,7 +1343,10 @@ mod tests {
     fn an_out_of_range_group_immediate_is_rejected() {
         let past = ImmediateId::banked(0); // `immediates` is empty
         let grouped = grouped_pair(ImmediateId::ONE, past);
-        let resolver = Pseudo { layer: &grouped, seed: 0xb2 };
+        let resolver = Pseudo {
+            layer: &grouped,
+            seed: 0xb2,
+        };
         assert_eq!(
             interpret_coeff_layer(&grouped, 0, &resolver),
             Err(CoeffError::UnknownImmediate { id: past }),
@@ -1226,9 +1363,12 @@ mod tests {
         let (base, extension) = ((0, FieldKind::Base), (1, FieldKind::Ext));
         let mut values = Vec::new();
         for (lhs, rhs) in [(base, extension), (extension, base)] {
-            let layer = layer(BwdRegime::R0, &sources, 1, vec![c2(0, 2, lhs, rhs)]);
+            let layer = layer(crate::BwdRegime::R0, &sources, 1, vec![c2(0, 2, lhs, rhs)]);
             let program = lean::encode_program(&layer, &[TermId(0)]).expect("a legal term");
-            let resolver = Pseudo { layer: &layer, seed: 0xa1 };
+            let resolver = Pseudo {
+                layer: &layer,
+                seed: 0xa1,
+            };
             for row in ROWS {
                 let semantic = interpret_coeff_layer(&layer, row, &resolver).expect("semantic");
                 let lean =
@@ -1237,7 +1377,14 @@ mod tests {
             }
             values.push(interpret_lean_program(&program, &layer, 0, &resolver, 1).expect("lean"));
         }
-        assert_eq!(values[0], values[1], "the wire's BF-first normalization is value-neutral");
-        assert_ne!(values[0].1, Ext::ZERO, "the fixture must make the product observable");
+        assert_eq!(
+            values[0], values[1],
+            "the wire's BF-first normalization is value-neutral"
+        );
+        assert_ne!(
+            values[0].1,
+            Ext::ZERO,
+            "the fixture must make the product observable"
+        );
     }
 }

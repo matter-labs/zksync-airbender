@@ -12,8 +12,7 @@
 //!     if any sampled relation lacks a reference arm (no log-only escape —
 //!     spec §8 review 4/M);
 //!   * the **four enforced golden circuits** (`golden_circuit_artifacts()`):
-//!       - structural correspondence via Task-12 `validate` + `check_batching_parity`
-//!         (the §8 "structural" leg: which root ↔ which beta power);
+//!       - structural validation of the canonical DAG;
 //!       - a value-differential on each golden circuit's **layer 0**
 //!         (base-only reads, no cross-layer/cache `Prior` aliasing);
 //!   * an explicit **memory-tuple** value check against the prover's real
@@ -28,11 +27,6 @@ use std::collections::BTreeSet;
 
 use cs::definitions::gkr::RamWordRepresentation;
 use cs::definitions::GKRAddress;
-use cs::gkr_compiler::codegen_ir::lower as retired_lower;
-use cs::gkr_compiler::dag_ir::{
-    check_batching_parity, eval_layer_root, lower_dag, validate, DagLayer, Expr, ExprId, Resolvers,
-    Root, RootGroup, RootId, RootSlot, SinkKind,
-};
 use cs::gkr_compiler::test_support::{
     build_add_sub_artifact, golden_circuit_artifacts, sample_relation_cases, sample_relations,
     single_relation_artifact, variant_name, ConcreteField,
@@ -41,12 +35,16 @@ use cs::gkr_compiler::{
     CompiledAddressSpaceRelationStrict, CompiledAddressStrict, CompiledMemoryTimestamp,
     NoFieldGKRRelation, NoFieldSpecialMemoryContributionRelation,
 };
+use gkr_eval_ir::{
+    eval_layer_root, lower_dag, validate, DagLayer, Expr, ExprId, Resolvers, Root, RootGroup,
+    RootId, RootSlot, SinkKind,
+};
 
 use field::Field;
 
 use super::dag_ir_reference::{
-    collect_addresses, reference_relation_values, RefChallengeResolver, RefCtx,
-    RefLookupResolver, RefVirtualSetupResolver, StorageReadResolver, E,
+    collect_addresses, reference_relation_values, RefChallengeResolver, RefCtx, RefLookupResolver,
+    RefVirtualSetupResolver, StorageReadResolver, E,
 };
 
 const TRACE_LEN: usize = 2;
@@ -102,7 +100,10 @@ fn diff_layer(
             .filter_map(|(i, r)| r.claim.as_ref().map(|c| (RootId(i as u32), &c.origin)))
         {
             let (relation, refs) = match origin.group {
-                RootGroup::Gates => (&gates[origin.relation_index], &gate_refs[origin.relation_index]),
+                RootGroup::Gates => (
+                    &gates[origin.relation_index],
+                    &gate_refs[origin.relation_index],
+                ),
                 RootGroup::GatesExternal => (
                     &gates_external[origin.relation_index],
                     &ext_refs[origin.relation_index],
@@ -176,7 +177,10 @@ fn exhaustive_per_relation_value_differential() {
         assert!(n >= 1, "{name}: subcase must produce at least one root");
         total += n;
     }
-    assert!(total >= 30, "expected at least one root per variant, got {total}");
+    assert!(
+        total >= 30,
+        "expected at least one root per variant, got {total}"
+    );
     println!("exhaustive per-relation differential: compared {total} claim-bearing roots");
 }
 
@@ -189,7 +193,10 @@ fn exhaustive_per_relation_value_differential() {
 #[test]
 fn every_sampled_relation_has_a_reference_arm() {
     let mut missing = Vec::new();
-    for (name, rel) in sample_relations().into_iter().chain(sample_relation_cases()) {
+    for (name, rel) in sample_relations()
+        .into_iter()
+        .chain(sample_relation_cases())
+    {
         // Bind the addresses this relation actually reads, then resolve.
         let mut addrs = BTreeSet::new();
         collect_addresses(&rel, &mut addrs);
@@ -231,20 +238,6 @@ fn is_base_only(rel: &NoFieldGKRRelation) -> bool {
 }
 
 #[test]
-fn golden_circuits_structural_parity() {
-    for (name, artifact) in golden_circuit_artifacts() {
-        let dag = lower_dag(&artifact)
-            .unwrap_or_else(|e| panic!("{name}: lower_dag must succeed, got Err: {e}"));
-        validate(&dag).unwrap_or_else(|e| panic!("{name}: DAG must validate: {e}"));
-        let retired = retired_lower::<ConcreteField>(&artifact)
-            .unwrap_or_else(|e| panic!("{name}: retired lower must succeed: {e}"));
-        check_batching_parity::<ConcreteField>(&dag, &retired)
-            .unwrap_or_else(|e| panic!("{name}: batching parity must hold: {e}"));
-        println!("golden '{name}': validate + batching parity OK ({} layers)", dag.layers.len());
-    }
-}
-
-#[test]
 fn golden_circuits_layer0_value_differential() {
     for (name, artifact) in golden_circuit_artifacts() {
         let dag = lower_dag(&artifact)
@@ -252,8 +245,11 @@ fn golden_circuits_layer0_value_differential() {
         let src_layer = &artifact.layers[0];
         let dag_layer = &dag.layers[0];
 
-        let gates: Vec<NoFieldGKRRelation> =
-            src_layer.gates.iter().map(|g| g.enforced_relation.clone()).collect();
+        let gates: Vec<NoFieldGKRRelation> = src_layer
+            .gates
+            .iter()
+            .map(|g| g.enforced_relation.clone())
+            .collect();
         let gates_external: Vec<NoFieldGKRRelation> = src_layer
             .gates_with_external_connections
             .iter()
@@ -269,12 +265,12 @@ fn golden_circuits_layer0_value_differential() {
         // (rare) is left unbound; relations consuming it are skipped below.
         let mut addrs = BTreeSet::new();
         for src in &dag_layer.sources {
-            if let cs::gkr_compiler::dag_ir::SourceKind::Read { place } = &src.kind {
+            if let gkr_eval_ir::SourceKind::Read { place } = &src.kind {
                 // Bind base AND any cross-layer/cache read so no shared sub-expr
                 // hits an unbound poly. Cross-layer values are arbitrary fixed
                 // bindings; the value leg only compares base-only roots whose
                 // reference reads base addresses, so the extra bindings are harmless.
-                if !matches!(place, cs::gkr_compiler::dag_ir::ReadPlace::Scratch { .. }) {
+                if !matches!(place, gkr_eval_ir::ReadPlace::Scratch { .. }) {
                     addrs.insert(super::dag_ir_reference::read_place_to_address(place));
                 }
             }
@@ -367,7 +363,10 @@ fn memory_tuple_matches_prover_evaluate_memory_query() {
     };
     let rel = NoFieldGKRRelation::MaterializeGrandProductTermExpression {
         input: desc.clone(),
-        output: GKRAddress::InnerLayer { layer: 1, offset: 0 },
+        output: GKRAddress::InnerLayer {
+            layer: 1,
+            offset: 0,
+        },
     };
 
     // Bind a value for every memory column the descriptor reads.
@@ -401,8 +400,7 @@ fn memory_tuple_matches_prover_evaluate_memory_query() {
     let external = ctx.external_challenges();
     let zero_pad = vec![ConcreteField::ZERO; TRACE_LEN];
     let sources = ctx.base_layer_memory_sources(8, &zero_pad); // max column referenced is 8.
-    let prover_value =
-        evaluate_memory_query::<ConcreteField, E>(&desc, ROW, &sources, &external);
+    let prover_value = evaluate_memory_query::<ConcreteField, E>(&desc, ROW, &sources, &external);
 
     assert_eq!(
         dag_value, prover_value,
@@ -442,7 +440,7 @@ fn cone_contains(layer: &DagLayer, start: ExprId, target: ExprId) -> bool {
         }
         match &layer.exprs[id.0 as usize] {
             Expr::Source(src_id) => {
-                if let cs::gkr_compiler::dag_ir::SourceKind::LookupValue { query, .. } =
+                if let gkr_eval_ir::SourceKind::LookupValue { query, .. } =
                     &layer.sources[src_id.0 as usize].kind
                 {
                     stack.push(*query);

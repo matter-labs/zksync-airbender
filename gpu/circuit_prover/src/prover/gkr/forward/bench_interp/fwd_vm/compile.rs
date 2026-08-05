@@ -3,8 +3,8 @@
 //! module is `cfg(all(test, feature = "bench"))`), so the crate's
 //! `crate::upstream` re-export convention does not apply.
 
-use cs::gkr_compiler::dag_ir::{lower_dag, validate, validate_circuit_schedule, CircuitSchedule, DagCircuit};
 use cs::gkr_compiler::GKRCircuitArtifact;
+use gkr_eval_ir::{lower_dag, validate, validate_circuit_schedule, CircuitSchedule, DagCircuit};
 use gkr_eval_isa::fwd::compile::{compile_circuit, load_committed_schedule, CompiledCircuit};
 use gkr_eval_isa::fwd::context::CompiledLayer;
 use gkr_eval_isa::fwd::encode::{decode, encode};
@@ -44,7 +44,12 @@ pub(crate) fn load_fwd_vm_circuit(stem: &str) -> FwdVmCircuit {
     let compiled = compile_circuit(&dag, &sched, &artifact)
         .unwrap_or_else(|e| panic!("[{stem}] compile_circuit: {e:?}"));
 
-    FwdVmCircuit { dag, sched, artifact, compiled }
+    FwdVmCircuit {
+        dag,
+        sched,
+        artifact,
+        compiled,
+    }
 }
 
 /// Encode one compiled layer's program (spec §5 canonical pre-gate: encode,

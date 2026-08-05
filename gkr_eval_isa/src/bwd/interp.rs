@@ -42,12 +42,12 @@
 use super::compile::BwdCompiledLayer;
 use super::distill::{BwdBindings, DistilledLayer};
 use super::source::{BwdSpecial, FoldState, OriginLeaf};
-use crate::bwd::batch::{unpack_batch_dst, BATCH_COEFFICIENT_ONE};
+use crate::bwd::batch::{BATCH_COEFFICIENT_ONE, unpack_batch_dst};
 use crate::fwd::error::InterpError;
 use crate::fwd::interp::smem_lane;
 use crate::fwd::isa::*;
-use cs::gkr_compiler::dag_ir::{Bf, Ext, ReadPlace, Resolvers, VirtualSetupKind};
 use field::{Field, FieldExtension, PrimeField};
+use gkr_eval_ir::{Bf, Ext, ReadPlace, Resolvers, VirtualSetupKind};
 
 #[inline]
 fn lift(b: Bf) -> Ext {
@@ -495,21 +495,19 @@ pub fn interpret_bwd_row(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::bwd::batch::{pack_batch_dst, BATCH_COEFFICIENT_ONE};
+    use crate::bwd::batch::{BATCH_COEFFICIENT_ONE, pack_batch_dst};
     use crate::bwd::compile::{compile_distilled, compile_distilled_fragments};
     use crate::bwd::distill::{bind, distill};
     use crate::bwd::fragment::{FragmentSpec, FragmentTable, MergedRecipe, ProductRecipe};
     use crate::bwd::source::MaterializationPolicy;
-    use cs::gkr_compiler::dag_ir::{
-        eval_layer_root, BatchingOrder, ChallengeKey, ChallengePower, ChallengeRef, ClaimInfo,
-        DagLayer, Expr, ExprId, FieldKind, LookupValueKind, ReadPlace, ReadResolver, RootGroup,
-        RootId, RootOrigin, RootSlot, SinkInfo, SinkKind, SourceId, SourceInfo, SourceKind,
-        VirtualSetupKind,
-    };
-    use cs::gkr_compiler::dag_ir::{
-        BwdRegime, ChallengeResolver, LookupResolver, Root, VirtualSetupResolver,
-    };
     use field::FieldExtension;
+    use gkr_eval_ir::{
+        BatchingOrder, ChallengeKey, ChallengePower, ChallengeRef, ClaimInfo, DagLayer, Expr,
+        ExprId, FieldKind, LookupValueKind, ReadPlace, ReadResolver, RootGroup, RootId, RootOrigin,
+        RootSlot, SinkInfo, SinkKind, SourceId, SourceInfo, SourceKind, VirtualSetupKind,
+        eval_layer_root,
+    };
+    use gkr_eval_ir::{ChallengeResolver, LookupResolver, Root, VirtualSetupResolver};
     use std::collections::{BTreeMap, HashMap};
 
     // ── Resolvers ─────────────────────────────────────────────────────────────
@@ -691,13 +689,13 @@ mod tests {
         let place = ReadPlace::BaseLayerWitness { column: 0 };
 
         // R0: leaf stays a Global backing.
-        let d = distill(&l, BwdRegime::R0, &HashMap::new(), None);
+        let d = distill(&l, crate::BwdRegime::R0, &HashMap::new(), None);
         let c = compile_distilled_fragments(&d, 16, None).expect("R0 compile");
         let b = bind(&d, MaterializationPolicy::AlwaysMaterialize, 0);
 
         // Ext: leaf becomes a FoldSource; round 0 binds LazyFromOriginals{0} =
         // one read per element = identical role math.
-        let de = distill(&l, BwdRegime::Ext, &HashMap::new(), None);
+        let de = distill(&l, crate::BwdRegime::Ext, &HashMap::new(), None);
         let ce = compile_distilled_fragments(&de, 16, None).expect("Ext compile");
         let be = bind(&de, MaterializationPolicy::AlwaysMaterialize, 0);
 
@@ -740,7 +738,7 @@ mod tests {
     fn coefficient_and_acc_init_resolve_via_recipe_evaluate() {
         // Distill a trivial real layer only to obtain a valid `d`/`c`.
         let l = bare_read_layer();
-        let mut d = distill(&l, BwdRegime::R0, &HashMap::new(), None);
+        let mut d = distill(&l, crate::BwdRegime::R0, &HashMap::new(), None);
         let mut c = compile_distilled(&d, 16, None).expect("R0 compile");
 
         // Overwrite the distilled arena + fragment table with a controlled,
@@ -843,7 +841,7 @@ mod tests {
     #[test]
     fn independent_base_and_ext_sinks_accumulate_with_and_without_coefficients() {
         let l = bare_read_layer();
-        let mut d = distill(&l, BwdRegime::R0, &HashMap::new(), None);
+        let mut d = distill(&l, crate::BwdRegime::R0, &HashMap::new(), None);
         let mut c = compile_distilled(&d, 16, None).expect("R0 compile");
         d.layer = layer(
             vec![
@@ -958,7 +956,7 @@ mod tests {
     #[test]
     fn sink_free_backward_program_is_rejected() {
         let l = bare_read_layer();
-        let d = distill(&l, BwdRegime::R0, &HashMap::new(), None);
+        let d = distill(&l, crate::BwdRegime::R0, &HashMap::new(), None);
         let c = compile_distilled(&d, 16, None).expect("legacy compile");
         let read = WitnessRead;
         let ch = BetaChallenge(Ext::ZERO);
@@ -977,7 +975,7 @@ mod tests {
     #[test]
     fn lazy_from_originals_equals_materialized_buffer() {
         let l = bare_read_layer();
-        let d = distill(&l, BwdRegime::Ext, &HashMap::new(), None);
+        let d = distill(&l, crate::BwdRegime::Ext, &HashMap::new(), None);
         let c = compile_distilled_fragments(&d, 16, None).expect("Ext compile");
 
         let r0 = lift(Bf::from_u32_with_reduction(13));
@@ -987,10 +985,12 @@ mod tests {
         let chl = BetaChallenge(Ext::ZERO);
         let r_orig = resolvers(&orig, &chl);
         let lazy_b = bind(&d, MaterializationPolicy::LazyUpTo(1), 1);
-        assert!(lazy_b
-            .states
-            .iter()
-            .all(|s| *s == FoldState::LazyFromOriginals { depth: 1 }));
+        assert!(
+            lazy_b
+                .states
+                .iter()
+                .all(|s| *s == FoldState::LazyFromOriginals { depth: 1 })
+        );
 
         // Materialized run: resolver serves the depth-1 BUFFER, state = Materialized.
         let buf = BufferRead { r0 };
@@ -1016,7 +1016,7 @@ mod tests {
     #[test]
     fn depth2_fold_matches_recurrence() {
         let l = bare_read_layer();
-        let d = distill(&l, BwdRegime::Ext, &HashMap::new(), None);
+        let d = distill(&l, crate::BwdRegime::Ext, &HashMap::new(), None);
         let c = compile_distilled_fragments(&d, 16, None).expect("Ext compile");
         let read = WitnessRead;
         let ch = BetaChallenge(Ext::ZERO);
@@ -1046,10 +1046,11 @@ mod tests {
         };
 
         let b2 = bind(&d, MaterializationPolicy::LazyUpTo(2), 2);
-        assert!(b2
-            .states
-            .iter()
-            .all(|s| *s == FoldState::LazyFromOriginals { depth: 2 }));
+        assert!(
+            b2.states
+                .iter()
+                .all(|s| *s == FoldState::LazyFromOriginals { depth: 2 })
+        );
         for x in 0..4 {
             let got = interpret_bwd_row(&c, &d, &b2, &r, Role::T0, x, &[r0, r1]).unwrap();
             assert_eq!(got, f2(2 * x), "depth-2 T0 fold mismatch at row {x}");
@@ -1092,7 +1093,7 @@ mod tests {
     #[test]
     fn alpha_spine_end_to_end_matches_role_wrapped_eval() {
         let canonical = three_root_layer();
-        let d = distill(&canonical, BwdRegime::R0, &HashMap::new(), None);
+        let d = distill(&canonical, crate::BwdRegime::R0, &HashMap::new(), None);
         let c = compile_distilled_fragments(&d, 16, None).expect("compile");
         let b = bind(&d, MaterializationPolicy::AlwaysMaterialize, 0);
 
@@ -1167,7 +1168,7 @@ mod tests {
     #[test]
     fn lazy_vs_fold_routes_through_resolver_override() {
         let l = vs_leaf_layer();
-        let d = distill(&l, BwdRegime::Ext, &HashMap::new(), None);
+        let d = distill(&l, crate::BwdRegime::Ext, &HashMap::new(), None);
         let c = compile_distilled_fragments(&d, 16, None).expect("Ext compile");
 
         let kind = VirtualSetupKind::RangeCheck16Bits;
@@ -1189,10 +1190,11 @@ mod tests {
         // Round 0: depth-0 fold (empty ch) → plain virtual_setup lifted. VS is
         // row-constant, so the role combine collapses to that single value.
         let b0 = bind(&d, MaterializationPolicy::LazyUpTo(2), 0);
-        assert!(b0
-            .states
-            .iter()
-            .all(|s| *s == FoldState::LazyFromOriginals { depth: 0 }));
+        assert!(
+            b0.states
+                .iter()
+                .all(|s| *s == FoldState::LazyFromOriginals { depth: 0 })
+        );
         let plain = lift(vs.virtual_setup(&kind, 0));
         for x in 0..4 {
             let t0 = interpret_bwd_row(&c, &d, &b0, &r, Role::T0, x, &[]).unwrap();
@@ -1209,10 +1211,11 @@ mod tests {
             lift(Bf::from_u32_with_reduction(5)),
         ];
         let b2 = bind(&d, MaterializationPolicy::LazyUpTo(2), 2);
-        assert!(b2
-            .states
-            .iter()
-            .all(|s| *s == FoldState::LazyFromOriginals { depth: 2 }));
+        assert!(
+            b2.states
+                .iter()
+                .all(|s| *s == FoldState::LazyFromOriginals { depth: 2 })
+        );
         for role in [Role::T0, Role::T2] {
             for x in 0..4 {
                 let got = interpret_bwd_row(&c, &d, &b2, &r, role, x, &rr).unwrap();
@@ -1227,7 +1230,7 @@ mod tests {
     #[test]
     fn short_round_challenges_is_malformed() {
         let l = bare_read_layer();
-        let d = distill(&l, BwdRegime::Ext, &HashMap::new(), None);
+        let d = distill(&l, crate::BwdRegime::Ext, &HashMap::new(), None);
         let c = compile_distilled_fragments(&d, 16, None).expect("Ext compile");
         let read = WitnessRead;
         let ch = BetaChallenge(Ext::ZERO);

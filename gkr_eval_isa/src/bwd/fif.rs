@@ -24,7 +24,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use cs::gkr_compiler::dag_ir::ExprId;
+use gkr_eval_ir::ExprId;
 
 use super::compile::{
     compile_distilled_planned, BwdCompileBackend, BwdCompiledLayer, TermBackend,

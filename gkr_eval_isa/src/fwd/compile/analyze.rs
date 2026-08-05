@@ -8,7 +8,7 @@ use super::super::context::{DagForwardContext, ForwardAction};
 use super::super::isa::OperandField;
 use super::super::source::lower_resolution;
 use super::arith::{child_operand_field, is_zero_expr};
-use cs::gkr_compiler::dag_ir::{DagLayer, Expr, ExprId, RootId, SinkInfo, SinkKind, SourceKind};
+use gkr_eval_ir::{DagLayer, Expr, ExprId, RootId, SinkInfo, SinkKind, SourceKind};
 use std::collections::HashMap;
 
 // ── Public types ─────────────────────────────────────────────────────────────
@@ -476,7 +476,7 @@ mod tests {
     use super::*;
     use crate::fwd::context::ForwardAction;
     use cs::definitions::GKRAddress;
-    use cs::gkr_compiler::dag_ir::{
+    use gkr_eval_ir::{
         ArenaBuilder, BatchingOrder, ClaimInfo, DagLayer, FieldKind, ReadPlace, ResolutionStrategy,
         Root, RootGroup, RootId, RootOrigin, RootSlot, SinkInfo, SinkKind, SourceKind,
     };
@@ -521,7 +521,7 @@ mod tests {
 
     /// A claim-bearing Inner-output `Root` materializing at `offset` (its own relation).
     /// The Stage-1 "old non-cache Output root": `materialize.is_some() && claim.is_some()`.
-    fn claim_inner_root(expr: cs::gkr_compiler::dag_ir::ExprId, offset: usize) -> Root {
+    fn claim_inner_root(expr: gkr_eval_ir::ExprId, offset: usize) -> Root {
         Root {
             expr,
             materialize: Some(SinkInfo {
@@ -638,7 +638,7 @@ mod tests {
 
     #[test]
     fn source_resident_flags_reused_read_not_virtualsetup() {
-        use cs::gkr_compiler::dag_ir::{ReadPlace, VirtualSetupKind};
+        use gkr_eval_ir::{ReadPlace, VirtualSetupKind};
         let mut a = ArenaBuilder::new();
         let r_sid = a.intern_source(SourceKind::Read {
             place: ReadPlace::BaseLayerWitness { column: 3 },
@@ -671,7 +671,7 @@ mod tests {
 
     #[test]
     fn identical_read_sources_dedup_to_one_exprid() {
-        use cs::gkr_compiler::dag_ir::ReadPlace;
+        use gkr_eval_ir::ReadPlace;
         let mut a = ArenaBuilder::new();
         let s1 = a.intern_source(SourceKind::Read {
             place: ReadPlace::BaseLayerWitness { column: 7 },
@@ -693,7 +693,7 @@ mod tests {
     //     would be counted twice (once per Mul) and falsely flagged.
     #[test]
     fn candidate_skips_zero_annihilated_mul_read() {
-        use cs::gkr_compiler::dag_ir::ReadPlace;
+        use gkr_eval_ir::ReadPlace;
         let mut a = ArenaBuilder::new();
         let r_sid = a.intern_source(SourceKind::Read {
             place: ReadPlace::BaseLayerWitness { column: 3 },
@@ -725,7 +725,7 @@ mod tests {
     //     Add (NOT a bare Read), so category (c) cannot fire — this isolates (b).
     #[test]
     fn candidate_skips_copyalias_root_read() {
-        use cs::gkr_compiler::dag_ir::ReadPlace;
+        use gkr_eval_ir::ReadPlace;
         let mut a = ArenaBuilder::new();
         let r_sid = a.intern_source(SourceKind::Read {
             place: ReadPlace::BaseLayerWitness { column: 4 },
@@ -761,7 +761,7 @@ mod tests {
     //     sole-source skip must drop both. Default (Compute) action → category (b) inert.
     #[test]
     fn candidate_skips_sole_source_passthrough_read() {
-        use cs::gkr_compiler::dag_ir::ReadPlace;
+        use gkr_eval_ir::ReadPlace;
         let mut a = ArenaBuilder::new();
         let r_sid = a.intern_source(SourceKind::Read {
             place: ReadPlace::BaseLayerWitness { column: 5 },
@@ -791,7 +791,7 @@ mod tests {
     // the zero Mul's own read is dropped, but the Add's reads survive.
     #[test]
     fn candidate_keeps_read_in_add_with_zero_mul_sibling() {
-        use cs::gkr_compiler::dag_ir::ReadPlace;
+        use gkr_eval_ir::ReadPlace;
         let mut a = ArenaBuilder::new();
         let kept_sid = a.intern_source(SourceKind::Read {
             place: ReadPlace::BaseLayerWitness { column: 6 },

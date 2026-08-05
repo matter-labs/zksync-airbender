@@ -1,4 +1,4 @@
-use cs::gkr_compiler::dag_ir::{
+use gkr_eval_ir::{
     ChallengeKey, ChallengePower, DagLayer, Expr, ExprId, LookupValueKind, PermutationSlot,
     ReadPlace, SourceKind, VirtualSetupKind,
 };

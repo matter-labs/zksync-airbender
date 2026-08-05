@@ -26,11 +26,11 @@
 
 use std::cmp::Ordering;
 
-use cs::gkr_compiler::dag_ir::{
-    Bf, BwdRegime, ChallengePower, ChallengeRef, ChallengeResolver, ExprId, Ext, FieldKind,
-    ReadPlace, RootId, SinkKind, VirtualSetupKind,
-};
 use field::{Field, FieldExtension, PrimeField};
+use gkr_eval_ir::{
+    Bf, ChallengePower, ChallengeRef, ChallengeResolver, ExprId, Ext, FieldKind, ReadPlace, RootId,
+    SinkKind, VirtualSetupKind,
+};
 
 use crate::bwd::fragment::FactorKey;
 use crate::bwd::source::OriginLeaf;
@@ -143,11 +143,17 @@ pub struct ProjectionId {
 
 impl ProjectionId {
     pub fn endpoint0(source: SourceId) -> Self {
-        ProjectionId { source, projection: Projection::Endpoint0 }
+        ProjectionId {
+            source,
+            projection: Projection::Endpoint0,
+        }
     }
 
     pub fn delta(source: SourceId) -> Self {
-        ProjectionId { source, projection: Projection::Delta }
+        ProjectionId {
+            source,
+            projection: Projection::Delta,
+        }
     }
 }
 
@@ -202,12 +208,14 @@ pub fn source_order_key(origin: &OriginLeaf) -> (u8, u8, usize, usize) {
 /// no read counterpart.
 pub fn sink_read_place(sink: &SinkKind) -> Option<ReadPlace> {
     match sink {
-        SinkKind::Inner { layer, offset } => {
-            Some(ReadPlace::LayerOutput { layer: *layer, offset: *offset })
-        }
-        SinkKind::Cache { layer, offset } => {
-            Some(ReadPlace::CacheOutput { layer: *layer, offset: *offset })
-        }
+        SinkKind::Inner { layer, offset } => Some(ReadPlace::LayerOutput {
+            layer: *layer,
+            offset: *offset,
+        }),
+        SinkKind::Cache { layer, offset } => Some(ReadPlace::CacheOutput {
+            layer: *layer,
+            offset: *offset,
+        }),
         SinkKind::Scratch { slot } => Some(ReadPlace::Scratch { slot: *slot }),
         SinkKind::Export { .. } => None,
     }
@@ -248,7 +256,10 @@ impl CoeffChallenge {
             ChallengePower::Static(1) => ChallengePower::One,
             other => other,
         };
-        CoeffChallenge(ChallengeRef { key: reference.key, power })
+        CoeffChallenge(ChallengeRef {
+            key: reference.key,
+            power,
+        })
     }
 }
 
@@ -304,7 +315,9 @@ pub struct CoeffProduct {
 
 impl Ord for CoeffProduct {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.challenges.cmp(&other.challenges).then_with(|| self.scalar.cmp(&other.scalar))
+        self.challenges
+            .cmp(&other.challenges)
+            .then_with(|| self.scalar.cmp(&other.scalar))
     }
 }
 
@@ -349,7 +362,10 @@ impl NormalizedCoefficientRecipe {
 
     /// A bare scalar (`0` collapses to [`zero`](Self::zero)).
     pub fn scalar(v: Bf) -> Self {
-        Self::from_terms(vec![CoeffProduct { scalar: v.as_u32_reduced(), challenges: Vec::new() }])
+        Self::from_terms(vec![CoeffProduct {
+            scalar: v.as_u32_reduced(),
+            challenges: Vec::new(),
+        }])
     }
 
     /// A bare challenge factor.
@@ -373,8 +389,11 @@ impl NormalizedCoefficientRecipe {
             if t.scalar == 0 {
                 continue;
             }
-            let mut challenges: Vec<CoeffChallenge> =
-                t.challenges.into_iter().map(|c| CoeffChallenge::new(c.0)).collect();
+            let mut challenges: Vec<CoeffChallenge> = t
+                .challenges
+                .into_iter()
+                .map(|c| CoeffChallenge::new(c.0))
+                .collect();
             challenges.sort();
             let slot = merged.entry(challenges).or_insert(Bf::ZERO);
             slot.add_assign(&Bf::from_u32_with_reduction(t.scalar));
@@ -382,7 +401,10 @@ impl NormalizedCoefficientRecipe {
         let terms = merged
             .into_iter()
             .filter(|(_, v)| v.as_u32_reduced() != 0)
-            .map(|(challenges, v)| CoeffProduct { scalar: v.as_u32_reduced(), challenges })
+            .map(|(challenges, v)| CoeffProduct {
+                scalar: v.as_u32_reduced(),
+                challenges,
+            })
             .collect();
         NormalizedCoefficientRecipe { terms }
     }
@@ -425,7 +447,10 @@ impl NormalizedCoefficientRecipe {
                 scalar.mul_assign(&Bf::from_u32_with_reduction(b.scalar));
                 let mut challenges = a.challenges.clone();
                 challenges.extend(b.challenges.iter().cloned());
-                terms.push(CoeffProduct { scalar: scalar.as_u32_reduced(), challenges });
+                terms.push(CoeffProduct {
+                    scalar: scalar.as_u32_reduced(),
+                    challenges,
+                });
             }
         }
         Self::from_terms(terms)
@@ -564,7 +589,7 @@ impl CoeffTerm {
 /// sorted by normalized recipe so its order does not depend on term order.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CoeffLayer {
-    pub regime: BwdRegime,
+    pub regime: crate::BwdRegime,
     /// The per-thread `acc_c0` initializer (§5.3), evaluated once per
     /// proof/program. `None` = initialize to zero and consume no coefficient slot.
     pub c_init: Option<CoefficientRecipeId>,
@@ -607,9 +632,13 @@ pub enum CoeffError {
     /// The canonical layer and the distilled layer disagree on how many backward
     /// roots exist — they describe different layers.
     RootCountMismatch { canonical: usize, distilled: usize },
-    /// `DistilledLayer::root_terms` disagrees with the canonical `bwd_roots`
+    /// `DistilledLayer::root_terms` disagrees with the canonical `claim_roots`
     /// order (the single source of truth for batching position).
-    RootOrderMismatch { position: usize, expected: RootId, found: RootId },
+    RootOrderMismatch {
+        position: usize,
+        expected: RootId,
+        found: RootId,
+    },
     /// A `root_terms` entry names a root outside the canonical layer.
     UnknownCanonicalRoot { root: RootId },
     /// A backward root that is not claim-bearing.
@@ -633,7 +662,11 @@ pub enum CoeffError {
     /// version field, and no fallback format. For the conditional
     /// `blake2_with_compression` scope it triggers §3.1's whole-circuit exclusion;
     /// for any mandatory circuit it fails the build.
-    CoefficientBankOverflow { recipes: usize, reserved: usize, limit: usize },
+    CoefficientBankOverflow {
+        recipes: usize,
+        reserved: usize,
+        limit: usize,
+    },
     /// One coordinate needs more distinct non-`±1` coefficient-group immediates
     /// than the wire's immediate table holds
     /// ([`limits::LEAN_MAX_IMMEDIATES`](super::limits::LEAN_MAX_IMMEDIATES)).
@@ -651,7 +684,11 @@ pub enum CoeffError {
     /// A cross-layer read whose width is absent from `DistilledLayer::cross_fields`.
     MissingCrossLayerField { place: ReadPlace },
     /// One structural origin resolved to two different widths.
-    SourceFieldConflict { origin: OriginLeaf, first: FieldKind, second: FieldKind },
+    SourceFieldConflict {
+        origin: OriginLeaf,
+        first: FieldKind,
+        second: FieldKind,
+    },
     /// The interpreter was handed a coefficient id with no bank entry.
     UnknownCoefficient { id: CoefficientRecipeId },
     /// The interpreter was handed a coefficient id whose recipe is the additive
@@ -668,7 +705,11 @@ pub enum CoeffError {
     UnknownSource { id: SourceId },
     /// A term projects a role its opcode cannot consume (`C0Linear` over `Delta`,
     /// `C2Product` over `Endpoint0`).
-    ProjectionRoleMismatch { term: TermId, expected: Projection, found: Projection },
+    ProjectionRoleMismatch {
+        term: TermId,
+        expected: Projection,
+        found: Projection,
+    },
     /// A claim-bearing root has no materialized sink and is not a
     /// `RootSlot::Constraint` root — so §5.2's "claim-only constraint roots
     /// contribute no `acc_c0`" accounting does not describe this layer.
@@ -680,7 +721,10 @@ pub enum CoeffError {
     /// `RootSlot::Output` root lowers fine, so the census is the first place the
     /// contradiction becomes observable — and it is derivable purely from
     /// `DagLayer::roots`, which is why it is a typed error and not an assertion.
-    ConstraintRootAccountingMismatch { sinkless_claim_roots: usize, constraint_slot_roots: usize },
+    ConstraintRootAccountingMismatch {
+        sinkless_claim_roots: usize,
+        constraint_slot_roots: usize,
+    },
     /// A lowered layer uses a term category its regime's opcode table cannot
     /// encode — a `DualProduct` at R0, or a base-field `C0Linear` in `Ext`
     /// (§9.2's opcode census).
@@ -688,5 +732,8 @@ pub enum CoeffError {
     /// Derivable from `CoeffLayer::regime` and `CoeffLayer::terms` alone, so it is
     /// a typed error rather than a library-level assertion: a census must be able
     /// to report the offending coordinate as data and continue (§3.1).
-    TermCategoryNotEncodable { regime: BwdRegime, category: super::limits::TermCategory },
+    TermCategoryNotEncodable {
+        regime: crate::BwdRegime,
+        category: super::limits::TermCategory,
+    },
 }

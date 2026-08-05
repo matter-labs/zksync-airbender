@@ -2,7 +2,8 @@ mod common;
 use std::collections::{BTreeMap, BTreeSet};
 
 use common::*;
-use cs::gkr_compiler::dag_ir::{BwdRegime, DagLayer, ExprId, bwd_roots};
+use gkr_eval_ir::{DagLayer, ExprId, claim_roots};
+use gkr_eval_isa::BwdRegime;
 use gkr_eval_isa::bwd::compile::{
     compile_distilled, compile_distilled_at_planned_lb, compile_distilled_fragments_planned,
     compile_distilled_planned, compile_distilled_traced,
@@ -406,7 +407,7 @@ fn certificate_exact_on_baseline_and_planned() {
     let mut checked = 0usize;
     for &name in FIXTURES {
         let (layer, cross) = load_layer(name, 0);
-        if bwd_roots(&layer).is_empty() {
+        if claim_roots(&layer).is_empty() {
             continue; // L0 has no backward roots for this fixture
         }
         let d = distill(&layer, BwdRegime::Ext, &cross, None);
@@ -479,7 +480,7 @@ fn construct_order_is_permutation_all_fixtures() {
     let mut checked = 0usize;
     for &name in FIXTURES {
         let (layer, cross) = load_layer(name, 0);
-        if bwd_roots(&layer).is_empty() {
+        if claim_roots(&layer).is_empty() {
             continue; // L0 has no backward roots for this fixture
         }
         let d0 = distill(&layer, BwdRegime::Ext, &cross, None);
@@ -1028,7 +1029,7 @@ fn engine_runs_all_fixtures_b16() {
     );
     for &name in FIXTURES {
         let (layer, cross) = load_layer(name, 0);
-        if bwd_roots(&layer).is_empty() {
+        if claim_roots(&layer).is_empty() {
             continue; // L0 has no backward roots for this fixture
         }
 
@@ -1396,7 +1397,7 @@ fn engine_value_parity_all_fixtures() {
     );
     for &name in FIXTURES {
         let (layer, cross) = load_layer(name, 0);
-        if bwd_roots(&layer).is_empty() {
+        if claim_roots(&layer).is_empty() {
             continue; // L0 has no backward roots for this fixture
         }
 

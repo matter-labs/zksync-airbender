@@ -6,7 +6,7 @@
 //! applying the four REV2-pinned rules:
 //!   1. Alpha spine: the distilled root expr is
 //!      `expr(root_0) + Σ_{i>=1} beta^i · expr(root_i)` over the canonical
-//!      [`bwd_roots`] (batching) order; `beta^i` is a `Challenge` leaf keyed
+//!      [`claim_roots`] (batching) order; `beta^i` is a `Challenge` leaf keyed
 //!      [`ChallengeKey::ClaimBatching`] with power `One` (i == 1) or
 //!      `Static(i)` (i >= 2). Root 0 is UNSCALED; claim-only constraint roots
 //!      consume a power slot like any other backward root.
@@ -32,14 +32,16 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
-use cs::gkr_compiler::dag_ir::{
-    bwd_cache_fences, bwd_relation_units, bwd_roots, enumerate_bwd_site_domain, ArenaBuilder,
-    BatchingOrder, BwdRegime, CacheFence, ChallengeKey, ChallengePower, ChallengeRef, ClaimInfo,
+use gkr_eval_ir::{
+    ArenaBuilder, BatchingOrder, ChallengeKey, ChallengePower, ChallengeRef, ClaimCone, ClaimInfo,
     DagLayer, Expr, ExprId, FieldKind, ReadPlace, ResolutionStrategy, Root, RootGroup, RootId,
-    RootOrigin, RootSlot, SiteKey, SourceKind,
+    RootOrigin, RootSlot, SourceKind, analyze_claim_cone, claim_relation_units, claim_roots,
 };
 
-use super::fragment::{decompose_spine, FragmentTable};
+use crate::bwd::domain::enumerate_bwd_site_domain;
+use crate::schedule::SiteKey;
+
+use super::fragment::{FragmentTable, decompose_spine};
 use super::source::{BwdSpecial, BwdSpecialTable, FoldState, MaterializationPolicy, OriginLeaf};
 
 // ── DistilledLayer ────────────────────────────────────────────────────────────
@@ -56,7 +58,7 @@ pub struct DistilledLayer {
     pub root: RootId,
     /// STRUCTURAL descs (origin only, REV2).
     pub specials: BwdSpecialTable,
-    pub regime: BwdRegime,
+    pub regime: crate::BwdRegime,
     /// First-class lowering inputs (REV2 — not an overlay the canonical
     /// field inference can ignore): distilled leaf -> desc, and distilled
     /// leaf -> forced field (Ext for fold leaves).
@@ -79,7 +81,7 @@ pub struct DistilledLayer {
     /// distilled `ExprId`s inside are only cross-run comparable through
     /// [`FragmentTable::stable_view`] / [`FragmentTable::stable_c_init`].
     pub fragments: FragmentTable,
-    /// Per-root provenance of the alpha spine, in canonical [`bwd_roots`]
+    /// Per-root provenance of the alpha spine, in canonical [`claim_roots`]
     /// (batching) order — one entry per claim-bearing canonical root. Unlike
     /// [`fragments`](Self::fragments), which deliberately MERGES occurrences
     /// across roots (and so loses root identity), this table keeps each root's
@@ -89,14 +91,14 @@ pub struct DistilledLayer {
     ///
     /// Construction order (the relation-unit permutation) does NOT affect this
     /// table: entries are recorded by canonical [`RootId`] and then assembled in
-    /// `bwd_roots` order.
+    /// `claim_roots` order.
     pub root_terms: Vec<DistilledRootTerm>,
 }
 
 /// One canonical root's contribution to the distilled alpha spine.
 ///
 /// `batched_expr` is what the spine actually adds; `value_expr` is the same root
-/// UNSCALED. For the first root in canonical [`bwd_roots`] order the two are the
+/// UNSCALED. For the first root in canonical [`claim_roots`] order the two are the
 /// same `ExprId` and `batching_factor` is `None` (root zero is unscaled by
 /// construction, rule 1); for every later root `batched_expr` is
 /// `Mul(batching_factor, value_expr)` where the factor is the `ClaimBatching`
@@ -164,29 +166,36 @@ pub struct StableBwdSiteKey {
 // ── distill ───────────────────────────────────────────────────────────────────
 
 /// Distill `layer` for `regime`. `unit_permutation` permutes the CANONICAL
-/// relation units ([`bwd_relation_units`]) when rebuilding the top-level alpha
+/// relation units ([`claim_relation_units`]) when rebuilding the top-level alpha
 /// Add — each root KEEPS its fixed beta exponent (its position in the canonical
-/// [`bwd_roots`] batching order), so any permutation is value-identical by
+/// [`claim_roots`] batching order), so any permutation is value-identical by
 /// commutativity; ordering only matters for lowering (it drives the re-interning
 /// order, hence the distilled `ExprId` numbering). `None` = canonical order.
 pub fn distill(
     layer: &DagLayer,
-    regime: BwdRegime,
+    regime: crate::BwdRegime,
     cross: &HashMap<ReadPlace, FieldKind>,
     unit_permutation: Option<&[usize]>,
 ) -> DistilledLayer {
-    let units = bwd_relation_units(layer);
-    let order = bwd_roots(layer);
+    let units = claim_relation_units(layer);
+    let order = claim_roots(layer);
     // Fixed beta exponent per backward root = its position in batching order.
-    let exponent: HashMap<RootId, usize> =
-        order.iter().enumerate().map(|(i, &r)| (r, i)).collect();
+    let exponent: HashMap<RootId, usize> = order.iter().enumerate().map(|(i, &r)| (r, i)).collect();
 
     let unit_indices: Vec<usize> = match unit_permutation {
         None => (0..units.len()).collect(),
         Some(p) => {
-            assert_eq!(p.len(), units.len(), "unit_permutation length must match unit count");
+            assert_eq!(
+                p.len(),
+                units.len(),
+                "unit_permutation length must match unit count"
+            );
             let seen: BTreeSet<usize> = p.iter().copied().collect();
-            assert_eq!(seen.len(), p.len(), "unit_permutation must not repeat indices");
+            assert_eq!(
+                seen.len(),
+                p.len(),
+                "unit_permutation must not repeat indices"
+            );
             assert!(
                 seen.iter().all(|&i| i < units.len()),
                 "unit_permutation indices must be in range"
@@ -201,7 +210,7 @@ pub fn distill(
     // leaves during the rebuild (mirrors production folding `GKRAddress::Cached`
     // columns), replacing the inlined defining cone. Subsumes cached lookups
     // (their shared expr id IS the fence key).
-    let fences = bwd_cache_fences(layer);
+    let cone = analyze_claim_cone(layer);
 
     let mut cx = Reintern {
         layer,
@@ -210,7 +219,7 @@ pub fn distill(
         specials: BwdSpecialTable::default(),
         leaf_descs: BTreeMap::new(),
         field_overrides: BTreeMap::new(),
-        fences: &fences,
+        cone: &cone,
         cross_fields: HashMap::new(),
         memo: HashMap::new(),
         stable_exprs: BTreeMap::new(),
@@ -229,10 +238,16 @@ pub fn distill(
             let (term, batching_factor) = if i == 0 {
                 (cone, None)
             } else {
-                let power =
-                    if i == 1 { ChallengePower::One } else { ChallengePower::Static(i as u32) };
+                let power = if i == 1 {
+                    ChallengePower::One
+                } else {
+                    ChallengePower::Static(i as u32)
+                };
                 let beta_src = cx.arena.intern_source(SourceKind::Challenge {
-                    reference: ChallengeRef { key: ChallengeKey::ClaimBatching, power },
+                    reference: ChallengeRef {
+                        key: ChallengeKey::ClaimBatching,
+                        power,
+                    },
                 });
                 let beta = cx.arena.source_expr(beta_src);
                 (cx.arena.mul(vec![beta, cone]), Some(beta))
@@ -255,8 +270,11 @@ pub fn distill(
             terms.push(term);
         }
     }
-    assert!(!terms.is_empty(), "distill requires >= 1 claim-bearing root");
-    // Canonical table: `bwd_roots` order is the single source of truth, and every
+    assert!(
+        !terms.is_empty(),
+        "distill requires >= 1 claim-bearing root"
+    );
+    // Canonical table: `claim_roots` order is the single source of truth, and every
     // backward root must have contributed a spine term (units partition the roots).
     let root_terms: Vec<DistilledRootTerm> = order
         .iter()
@@ -295,7 +313,9 @@ pub fn distill(
         sources: cx.arena.sources().to_vec(),
         exprs: cx.arena.exprs().to_vec(),
         roots: vec![root],
-        batching: BatchingOrder { roots: vec![RootId(0)] },
+        batching: BatchingOrder {
+            roots: vec![RootId(0)],
+        },
         // CLEARED by contract: copied fences would trigger fwd descriptor
         // emission in the shared lowerer before any bwd hook fires.
         resolutions: BTreeMap::new(),
@@ -354,14 +374,13 @@ pub fn distill(
 /// Re-interning context: canonical layer in, fresh arena + side tables out.
 struct Reintern<'a> {
     layer: &'a DagLayer,
-    regime: BwdRegime,
+    regime: crate::BwdRegime,
     arena: ArenaBuilder,
     specials: BwdSpecialTable,
     leaf_descs: BTreeMap<ExprId, u16>,
     field_overrides: BTreeMap<ExprId, FieldKind>,
-    /// Same-layer cache boundaries (`ExprId -> CacheFence`): descent stops here
-    /// and emits a `Read(CacheOutput)` fold leaf.
-    fences: &'a HashMap<ExprId, CacheFence>,
+    /// Canonical claim cone, including same-layer cache boundaries where descent stops.
+    cone: &'a ClaimCone,
     /// Fenced places' fields, merged into `DistilledLayer::cross_fields`.
     cross_fields: HashMap<ReadPlace, FieldKind>,
     /// canonical ExprId -> distilled ExprId (a rewritten `LookupValue` maps to
@@ -390,11 +409,13 @@ impl Reintern<'_> {
         // match, so it also subsumes cached `LookupValue` leaves (their shared
         // expr id IS the fence key) — the `:LookupValue` rewrite below stays as
         // the fallback for genuinely uncached lookups.
-        if let Some(f) = self.fences.get(&e) {
+        if let Some(f) = self.cone.cache_boundary(e) {
             let place = f.place.clone();
-            let s = self.arena.intern_source(SourceKind::Read { place: place.clone() });
+            let s = self.arena.intern_source(SourceKind::Read {
+                place: place.clone(),
+            });
             let ne = self.arena.source_expr(s);
-            if self.regime == BwdRegime::Ext {
+            if self.regime == crate::BwdRegime::Ext {
                 let d = self.specials.intern(BwdSpecial::FoldSource {
                     origin: OriginLeaf::Read(place.clone()),
                 });
@@ -420,9 +441,11 @@ impl Reintern<'_> {
                         return n;
                     }
                     SourceKind::Read { place } => {
-                        let s = self.arena.intern_source(SourceKind::Read { place: place.clone() });
+                        let s = self.arena.intern_source(SourceKind::Read {
+                            place: place.clone(),
+                        });
                         let ne = self.arena.source_expr(s);
-                        if self.regime == BwdRegime::Ext {
+                        if self.regime == crate::BwdRegime::Ext {
                             let d = self.specials.intern(BwdSpecial::FoldSource {
                                 origin: OriginLeaf::Read(place),
                             });
@@ -437,13 +460,13 @@ impl Reintern<'_> {
                             .intern_source(SourceKind::VirtualSetup { kind: kind.clone() });
                         let ne = self.arena.source_expr(s);
                         let d = match self.regime {
-                            BwdRegime::Ext => {
+                            crate::BwdRegime::Ext => {
                                 self.field_overrides.insert(ne, FieldKind::Ext);
                                 self.specials.intern(BwdSpecial::FoldSource {
                                     origin: OriginLeaf::VirtualSetup { kind },
                                 })
                             }
-                            BwdRegime::R0 => {
+                            crate::BwdRegime::R0 => {
                                 self.specials.intern(BwdSpecial::VirtualSetup { kind })
                             }
                         };
@@ -490,39 +513,10 @@ fn claim_cone_has_decoder(layer: &DagLayer) -> bool {
     if decoder_keys.is_empty() {
         return false;
     }
-    // Fence: descent stops at same-layer cache roots (the backward pass folds the
-    // materialized cache column), so a decoder reachable ONLY through a cache no
-    // longer poisons the layer — matching the fenced re-intern.
-    let fences = bwd_cache_fences(layer);
-    let mut seen: HashSet<ExprId> = HashSet::new();
-    let mut stack: Vec<ExprId> = layer
-        .roots
-        .iter()
-        .filter(|r| r.claim.is_some())
-        .map(|r| r.expr)
-        .collect();
-    while let Some(e) = stack.pop() {
-        if !seen.insert(e) {
-            continue;
-        }
-        if fences.contains_key(&e) {
-            continue;
-        }
-        if decoder_keys.contains(&e) {
-            return true;
-        }
-        match &layer.exprs[e.0 as usize] {
-            Expr::Source(sid) => {
-                if let SourceKind::LookupValue { query, .. } =
-                    &layer.sources[sid.0 as usize].kind
-                {
-                    stack.push(*query);
-                }
-            }
-            Expr::Add(children) | Expr::Mul(children) => stack.extend(children.iter().copied()),
-        }
-    }
-    false
+    let cone = analyze_claim_cone(layer);
+    decoder_keys
+        .into_iter()
+        .any(|expr| cone.is_reachable(expr) && cone.cache_boundary(expr).is_none())
 }
 
 // ── Per-run binding ───────────────────────────────────────────────────────────
@@ -556,37 +550,39 @@ pub struct BwdBindings {
 /// exist until the device port grows an Ext-typed VS buffer read.
 pub fn bind(d: &DistilledLayer, policy: MaterializationPolicy, round: u8) -> BwdBindings {
     let states = (0..d.specials.len())
-        .map(|i| match d.specials.get(i as u16).expect("dense desc index") {
-            // CS-M5a Task 3: Coefficient/AccInit descriptors live ONLY in a
-            // compiled layer's cloned table (interned by the Task-5 fragment
-            // lowering beyond `d.specials.len()`); the distilled `d.specials`
-            // this binder iterates never holds one, so binding them is a bug.
-            BwdSpecial::Coefficient { .. } | BwdSpecial::AccInit => {
-                unreachable!("Coefficient/AccInit descriptors never appear in d.specials")
-            }
-            BwdSpecial::VirtualSetup { .. } => FoldState::LazyFromOriginals { depth: round },
-            // VS-origin FoldSource: forced lazy regardless of policy (Bf resolver
-            // cannot carry an Ext folded buffer — see the fn doc).
-            BwdSpecial::FoldSource { origin: OriginLeaf::VirtualSetup { .. } } => {
-                FoldState::LazyFromOriginals { depth: round }
-            }
-            BwdSpecial::FoldSource { .. } => {
-                if round == 0 {
-                    FoldState::LazyFromOriginals { depth: 0 }
-                } else {
-                    match policy {
-                        MaterializationPolicy::AlwaysMaterialize => FoldState::Materialized,
-                        MaterializationPolicy::LazyUpTo(k) => {
-                            if round <= k {
-                                FoldState::LazyFromOriginals { depth: round }
-                            } else {
-                                FoldState::Materialized
+        .map(
+            |i| match d.specials.get(i as u16).expect("dense desc index") {
+                // CS-M5a Task 3: Coefficient/AccInit descriptors live ONLY in a
+                // compiled layer's cloned table (interned by the Task-5 fragment
+                // lowering beyond `d.specials.len()`); the distilled `d.specials`
+                // this binder iterates never holds one, so binding them is a bug.
+                BwdSpecial::Coefficient { .. } | BwdSpecial::AccInit => {
+                    unreachable!("Coefficient/AccInit descriptors never appear in d.specials")
+                }
+                BwdSpecial::VirtualSetup { .. } => FoldState::LazyFromOriginals { depth: round },
+                // VS-origin FoldSource: forced lazy regardless of policy (Bf resolver
+                // cannot carry an Ext folded buffer — see the fn doc).
+                BwdSpecial::FoldSource {
+                    origin: OriginLeaf::VirtualSetup { .. },
+                } => FoldState::LazyFromOriginals { depth: round },
+                BwdSpecial::FoldSource { .. } => {
+                    if round == 0 {
+                        FoldState::LazyFromOriginals { depth: 0 }
+                    } else {
+                        match policy {
+                            MaterializationPolicy::AlwaysMaterialize => FoldState::Materialized,
+                            MaterializationPolicy::LazyUpTo(k) => {
+                                if round <= k {
+                                    FoldState::LazyFromOriginals { depth: round }
+                                } else {
+                                    FoldState::Materialized
+                                }
                             }
                         }
                     }
                 }
-            }
-        })
+            },
+        )
         .collect();
     BwdBindings { states }
 }
@@ -607,12 +603,13 @@ pub fn distilled_site_domain(d: &DistilledLayer) -> BTreeSet<SiteKey> {
 pub fn stable_distilled_site_domain(d: &DistilledLayer) -> BTreeMap<StableBwdSiteKey, SiteKey> {
     let mut stable = BTreeMap::new();
     for site in distilled_site_domain(d) {
-        let value = *d.stable_exprs.get(&site.value).unwrap_or_else(|| {
-            panic!("missing stable provenance for site value {:?}", site.value)
-        });
+        let value = *d
+            .stable_exprs
+            .get(&site.value)
+            .unwrap_or_else(|| panic!("missing stable provenance for site value {:?}", site.value));
         let consumer = match site.consumer {
-            cs::gkr_compiler::dag_ir::SiteConsumer::RootOutput => StableBwdConsumer::RootOutput,
-            cs::gkr_compiler::dag_ir::SiteConsumer::Expr { expr, input_index } => {
+            crate::schedule::SiteConsumer::RootOutput => StableBwdConsumer::RootOutput,
+            crate::schedule::SiteConsumer::Expr { expr, input_index } => {
                 let expr_key = *d.stable_exprs.get(&expr).unwrap_or_else(|| {
                     panic!("missing stable provenance for site consumer {expr:?}")
                 });
@@ -633,7 +630,10 @@ pub fn stable_distilled_site_domain(d: &DistilledLayer) -> BTreeMap<StableBwdSit
                     .checked_sub(1)
                     .expect("the current site value must occur in the consumer prefix")
                     as u32;
-                StableBwdConsumer::Expr { expr: expr_key, duplicate_ordinal }
+                StableBwdConsumer::Expr {
+                    expr: expr_key,
+                    duplicate_ordinal,
+                }
             }
         };
         let stable_key = StableBwdSiteKey { consumer, value };
@@ -653,12 +653,12 @@ mod tests {
     use super::*;
     use crate::bwd::compile::compile_distilled;
     use crate::fwd::binding::BackingKey;
-    use cs::gkr_compiler::dag_ir::{
-        eval_layer_root, Bf, ChallengeResolver, Ext, FillSource, LookupResolver, LookupValueKind,
-        ReadResolver, Resolvers, SinkInfo, SinkKind, SourceId, SourceInfo, VirtualSetupKind,
-        VirtualSetupResolver,
-    };
     use field::{Field, FieldExtension, PrimeField};
+    use gkr_eval_ir::{
+        Bf, ChallengeResolver, Ext, FillSource, LookupResolver, LookupValueKind, ReadResolver,
+        Resolvers, SinkInfo, SinkKind, SourceId, SourceInfo, VirtualSetupKind,
+        VirtualSetupResolver, eval_layer_root,
+    };
 
     fn lift(b: Bf) -> Ext {
         <Ext as FieldExtension<Bf>>::from_base(b)
@@ -679,9 +679,9 @@ mod tests {
     impl ReadResolver for WitnessRead {
         fn read(&self, place: &ReadPlace, row: usize) -> Ext {
             match place {
-                ReadPlace::BaseLayerWitness { column } => {
-                    lift(Bf::from_u32_with_reduction(7 * *column as u32 + row as u32 + 1))
-                }
+                ReadPlace::BaseLayerWitness { column } => lift(Bf::from_u32_with_reduction(
+                    7 * *column as u32 + row as u32 + 1,
+                )),
                 other => panic!("unexpected read place {other:?}"),
             }
         }
@@ -706,7 +706,11 @@ mod tests {
     struct BetaChallenge(Ext);
     impl ChallengeResolver for BetaChallenge {
         fn challenge(&self, r: &ChallengeRef) -> Ext {
-            assert_eq!(r.key, ChallengeKey::ClaimBatching, "unexpected challenge {r:?}");
+            assert_eq!(
+                r.key,
+                ChallengeKey::ClaimBatching,
+                "unexpected challenge {r:?}"
+            );
             match r.power {
                 ChallengePower::One => self.0,
                 ChallengePower::Static(i) => pow(self.0, i),
@@ -717,27 +721,45 @@ mod tests {
     fn resolvers<'a>(read: &'a WitnessRead, ch: &'a BetaChallenge) -> Resolvers<'a> {
         static LOOKUP: ConstLookup = ConstLookup(Bf::ZERO);
         static VS: ConstVirtualSetup = ConstVirtualSetup(Bf::ZERO);
-        Resolvers { read, lookup: &LOOKUP, virtual_setup: &VS, challenge: ch }
+        Resolvers {
+            read,
+            lookup: &LOOKUP,
+            virtual_setup: &VS,
+            challenge: ch,
+        }
     }
 
     // ── Layer-building helpers ────────────────────────────────────────────────
 
     fn read_src(column: usize) -> SourceInfo {
-        SourceInfo { kind: SourceKind::Read { place: ReadPlace::BaseLayerWitness { column } } }
+        SourceInfo {
+            kind: SourceKind::Read {
+                place: ReadPlace::BaseLayerWitness { column },
+            },
+        }
     }
 
     fn origin(relation_index: usize, slot: RootSlot) -> RootOrigin {
-        RootOrigin { group: RootGroup::Gates, relation_index, slot }
+        RootOrigin {
+            group: RootGroup::Gates,
+            relation_index,
+            slot,
+        }
     }
 
     fn claim_root(expr: ExprId, relation_index: usize) -> Root {
         Root {
             expr,
             materialize: Some(SinkInfo {
-                kind: SinkKind::Inner { layer: 1, offset: relation_index },
+                kind: SinkKind::Inner {
+                    layer: 1,
+                    offset: relation_index,
+                },
                 field: FieldKind::Ext,
             }),
-            claim: Some(ClaimInfo { origin: origin(relation_index, RootSlot::Output(0)) }),
+            claim: Some(ClaimInfo {
+                origin: origin(relation_index, RootSlot::Output(0)),
+            }),
         }
     }
 
@@ -745,7 +767,9 @@ mod tests {
         Root {
             expr,
             materialize: None,
-            claim: Some(ClaimInfo { origin: origin(relation_index, RootSlot::Constraint(0)) }),
+            claim: Some(ClaimInfo {
+                origin: origin(relation_index, RootSlot::Constraint(0)),
+            }),
         }
     }
 
@@ -770,7 +794,9 @@ mod tests {
                 claim_root(ExprId(4), 1),
                 claim_only_root(ExprId(5), 2),
             ],
-            batching: BatchingOrder { roots: vec![RootId(0), RootId(1), RootId(2)] },
+            batching: BatchingOrder {
+                roots: vec![RootId(0), RootId(1), RootId(2)],
+            },
             resolutions: BTreeMap::new(),
         }
     }
@@ -780,9 +806,13 @@ mod tests {
     fn alpha_spine_order_and_powers() {
         let layer = three_root_layer();
         let cross = HashMap::new();
-        let d = distill(&layer, BwdRegime::R0, &cross, None);
+        let d = distill(&layer, crate::BwdRegime::R0, &cross, None);
         assert!(!d.skipped_decoder);
-        assert_eq!(d.unit_order.len(), 3, "three units (distinct relation indices)");
+        assert_eq!(
+            d.unit_order.len(),
+            3,
+            "three units (distinct relation indices)"
+        );
 
         let read = WitnessRead;
         let beta = lift(Bf::from_u32_with_reduction(11));
@@ -803,9 +833,12 @@ mod tests {
             assert_eq!(got, expected, "alpha spine value mismatch at row {row}");
 
             // A unit permutation keeps every root's exponent (value-identical).
-            let dp = distill(&layer, BwdRegime::R0, &cross, Some(&[2, 0, 1]));
+            let dp = distill(&layer, crate::BwdRegime::R0, &cross, Some(&[2, 0, 1]));
             let got_p = eval_layer_root(&dp.layer, dp.root, row, &r);
-            assert_eq!(got_p, expected, "permuted spine must be value-identical (row {row})");
+            assert_eq!(
+                got_p, expected,
+                "permuted spine must be value-identical (row {row})"
+            );
         }
     }
 
@@ -816,7 +849,9 @@ mod tests {
         DagLayer {
             sources: vec![
                 read_src(0),
-                SourceInfo { kind: SourceKind::Constant { value: 5 } },
+                SourceInfo {
+                    kind: SourceKind::Constant { value: 5 },
+                },
                 SourceInfo {
                     kind: SourceKind::LookupValue {
                         kind: LookupValueKind::GenericColumn { column: 0 },
@@ -833,7 +868,9 @@ mod tests {
                 Expr::Add(vec![ExprId(0), ExprId(3)]), // 4 = w0 + lv (root)
             ],
             roots: vec![claim_root(ExprId(4), 0)],
-            batching: BatchingOrder { roots: vec![RootId(0)] },
+            batching: BatchingOrder {
+                roots: vec![RootId(0)],
+            },
             resolutions: BTreeMap::new(),
         }
     }
@@ -841,7 +878,7 @@ mod tests {
     #[test]
     fn lookup_value_leaf_is_rewritten_to_its_query() {
         let layer = lookup_layer();
-        let d = distill(&layer, BwdRegime::R0, &HashMap::new(), None);
+        let d = distill(&layer, crate::BwdRegime::R0, &HashMap::new(), None);
         assert!(!d.skipped_decoder);
 
         // No LookupValue source survives the rebuild.
@@ -880,9 +917,12 @@ mod tests {
                 fill: FillSource::DecoderLookupFill,
             },
         );
-        for regime in [BwdRegime::R0, BwdRegime::Ext] {
+        for regime in [crate::BwdRegime::R0, crate::BwdRegime::Ext] {
             let d = distill(&layer, regime, &HashMap::new(), None);
-            assert!(d.skipped_decoder, "reachable PeekDecoder must set skipped_decoder");
+            assert!(
+                d.skipped_decoder,
+                "reachable PeekDecoder must set skipped_decoder"
+            );
             // The rebuild still completes: the distilled layer is well-formed.
             assert_eq!(d.layer.roots.len(), 1);
         }
@@ -899,8 +939,9 @@ mod tests {
                 fill: FillSource::DecoderLookupFill,
             },
         );
-        l2.resolutions.insert(ExprId(2), ResolutionStrategy::PeekSetup);
-        let d2 = distill(&l2, BwdRegime::R0, &HashMap::new(), None);
+        l2.resolutions
+            .insert(ExprId(2), ResolutionStrategy::PeekSetup);
+        let d2 = distill(&l2, crate::BwdRegime::R0, &HashMap::new(), None);
         assert!(!d2.skipped_decoder, "unreachable decoder key must not skip");
     }
 
@@ -912,9 +953,13 @@ mod tests {
             sources: vec![
                 read_src(0),
                 read_src(1),
-                SourceInfo { kind: SourceKind::Constant { value: 7 } },
                 SourceInfo {
-                    kind: SourceKind::VirtualSetup { kind: VirtualSetupKind::RangeCheck16Bits },
+                    kind: SourceKind::Constant { value: 7 },
+                },
+                SourceInfo {
+                    kind: SourceKind::VirtualSetup {
+                        kind: VirtualSetupKind::RangeCheck16Bits,
+                    },
                 },
             ],
             exprs: vec![
@@ -927,7 +972,9 @@ mod tests {
                 Expr::Add(vec![ExprId(1), ExprId(5)]), // 6 = root
             ],
             roots: vec![claim_root(ExprId(6), 0)],
-            batching: BatchingOrder { roots: vec![RootId(0)] },
+            batching: BatchingOrder {
+                roots: vec![RootId(0)],
+            },
             resolutions: BTreeMap::new(),
         }
     }
@@ -938,7 +985,9 @@ mod tests {
             .iter()
             .enumerate()
             .filter_map(|(i, e)| match e {
-                Expr::Source(s) => Some((ExprId(i as u32), d.layer.sources[s.0 as usize].kind.clone())),
+                Expr::Source(s) => {
+                    Some((ExprId(i as u32), d.layer.sources[s.0 as usize].kind.clone()))
+                }
                 _ => None,
             })
             .collect()
@@ -947,21 +996,29 @@ mod tests {
     #[test]
     fn ext_regime_rewrites_read_and_virtual_setup_leaves_to_fold_sources() {
         let layer = ext_layer();
-        let d = distill(&layer, BwdRegime::Ext, &HashMap::new(), None);
+        let d = distill(&layer, crate::BwdRegime::Ext, &HashMap::new(), None);
 
         for (eid, kind) in distilled_leaves_of(&d) {
             match kind {
                 SourceKind::Read { place } => {
-                    let desc = *d.leaf_descs.get(&eid).expect("Ext Read leaf must carry a desc");
+                    let desc = *d
+                        .leaf_descs
+                        .get(&eid)
+                        .expect("Ext Read leaf must carry a desc");
                     assert_eq!(
                         d.specials.get(desc),
-                        Some(&BwdSpecial::FoldSource { origin: OriginLeaf::Read(place) }),
+                        Some(&BwdSpecial::FoldSource {
+                            origin: OriginLeaf::Read(place)
+                        }),
                         "Read leaf desc must be a FoldSource with its own place"
                     );
                     assert_eq!(d.field_overrides.get(&eid), Some(&FieldKind::Ext));
                 }
                 SourceKind::VirtualSetup { kind } => {
-                    let desc = *d.leaf_descs.get(&eid).expect("Ext VS leaf must carry a desc");
+                    let desc = *d
+                        .leaf_descs
+                        .get(&eid)
+                        .expect("Ext VS leaf must carry a desc");
                     assert_eq!(
                         d.specials.get(desc),
                         Some(&BwdSpecial::FoldSource {
@@ -972,7 +1029,10 @@ mod tests {
                 }
                 SourceKind::Constant { .. } => {
                     assert!(!d.leaf_descs.contains_key(&eid), "constants carry no desc");
-                    assert!(!d.field_overrides.contains_key(&eid), "constants keep inference");
+                    assert!(
+                        !d.field_overrides.contains_key(&eid),
+                        "constants keep inference"
+                    );
                 }
                 other => panic!("unexpected distilled leaf {other:?}"),
             }
@@ -985,16 +1045,22 @@ mod tests {
     #[test]
     fn r0_regime_keeps_reads_ordinary_and_types_virtual_setup_descs() {
         let layer = ext_layer();
-        let d = distill(&layer, BwdRegime::R0, &HashMap::new(), None);
+        let d = distill(&layer, crate::BwdRegime::R0, &HashMap::new(), None);
 
         for (eid, kind) in distilled_leaves_of(&d) {
             match kind {
                 SourceKind::Read { .. } => {
-                    assert!(!d.leaf_descs.contains_key(&eid), "R0 Read leaves are ordinary");
+                    assert!(
+                        !d.leaf_descs.contains_key(&eid),
+                        "R0 Read leaves are ordinary"
+                    );
                     assert!(!d.field_overrides.contains_key(&eid));
                 }
                 SourceKind::VirtualSetup { kind } => {
-                    let desc = *d.leaf_descs.get(&eid).expect("R0 VS leaf must carry a desc");
+                    let desc = *d
+                        .leaf_descs
+                        .get(&eid)
+                        .expect("R0 VS leaf must carry a desc");
                     assert_eq!(
                         d.specials.get(desc),
                         Some(&BwdSpecial::VirtualSetup { kind }),
@@ -1029,14 +1095,19 @@ mod tests {
                 Root {
                     expr: ExprId(2),
                     materialize: Some(SinkInfo {
-                        kind: SinkKind::Cache { layer: 0, offset: 2 },
+                        kind: SinkKind::Cache {
+                            layer: 0,
+                            offset: 2,
+                        },
                         field: FieldKind::Ext,
                     }),
                     claim: None,
                 },
                 claim_root(ExprId(3), 0),
             ],
-            batching: BatchingOrder { roots: vec![RootId(1)] },
+            batching: BatchingOrder {
+                roots: vec![RootId(1)],
+            },
             resolutions: BTreeMap::new(),
         }
     }
@@ -1056,8 +1127,11 @@ mod tests {
     #[test]
     fn distill_fences_same_layer_cache_to_cacheoutput_leaf() {
         let layer = cache_layer();
-        let d = distill(&layer, BwdRegime::Ext, &HashMap::new(), None);
-        let cache_place = ReadPlace::CacheOutput { layer: 0, offset: 2 };
+        let d = distill(&layer, crate::BwdRegime::Ext, &HashMap::new(), None);
+        let cache_place = ReadPlace::CacheOutput {
+            layer: 0,
+            offset: 2,
+        };
         let a_place = ReadPlace::BaseLayerWitness { column: 0 };
 
         // A Read(CacheOutput{0,2}) leaf with a FoldSource desc exists.
@@ -1065,17 +1139,30 @@ mod tests {
             matches!(
                 d.specials.get(i),
                 Some(BwdSpecial::FoldSource {
-                    origin: OriginLeaf::Read(ReadPlace::CacheOutput { layer: 0, offset: 2 })
+                    origin: OriginLeaf::Read(ReadPlace::CacheOutput {
+                        layer: 0,
+                        offset: 2
+                    })
                 })
             )
         });
-        assert!(has_cache_leaf, "no CacheOutput FoldSource leaf: {:?}", d.specials);
+        assert!(
+            has_cache_leaf,
+            "no CacheOutput FoldSource leaf: {:?}",
+            d.specials
+        );
 
         // The cache column is a surviving Read; the defining cone's `w0` leaf is
         // NOT (it was reachable only through the fenced cache).
         let reads = distilled_reads(&d);
-        assert!(reads.contains(&cache_place), "cache column missing: {reads:?}");
-        assert!(!reads.contains(&a_place), "cone leaked through fence: {reads:?}");
+        assert!(
+            reads.contains(&cache_place),
+            "cache column missing: {reads:?}"
+        );
+        assert!(
+            !reads.contains(&a_place),
+            "cone leaked through fence: {reads:?}"
+        );
 
         // Field plumbing: the fenced place's field rides cross_fields.
         assert_eq!(d.cross_fields.get(&cache_place), Some(&FieldKind::Ext));
@@ -1084,19 +1171,32 @@ mod tests {
     #[test]
     fn distill_r0_fenced_cache_is_plain_read_leaf() {
         let layer = cache_layer();
-        let d = distill(&layer, BwdRegime::R0, &HashMap::new(), None);
-        let cache_place = ReadPlace::CacheOutput { layer: 0, offset: 2 };
+        let d = distill(&layer, crate::BwdRegime::R0, &HashMap::new(), None);
+        let cache_place = ReadPlace::CacheOutput {
+            layer: 0,
+            offset: 2,
+        };
 
         // R0: no FoldSource desc — the CacheOutput leaf is an ordinary Read.
-        assert!(d.leaf_descs.is_empty(), "R0 fenced cache carries no desc: {:?}", d.leaf_descs);
-        assert!(distilled_reads(&d).contains(&cache_place), "cache column missing");
+        assert!(
+            d.leaf_descs.is_empty(),
+            "R0 fenced cache carries no desc: {:?}",
+            d.leaf_descs
+        );
+        assert!(
+            distilled_reads(&d).contains(&cache_place),
+            "cache column missing"
+        );
         // The sink's field still rides cross_fields (drives R0 backing width).
         assert_eq!(d.cross_fields.get(&cache_place), Some(&FieldKind::Ext));
 
         // Compile lowers the leaf to a Global backing keyed BackingKey::CacheOutput.
         let c = compile_distilled(&d, 16, None).expect("compiles");
         let has_cache_backing = (0..c.backings.n_slots()).any(|s| {
-            matches!(c.backings.backing(s as u8), Some(BackingKey::CacheOutput { .. }))
+            matches!(
+                c.backings.backing(s as u8),
+                Some(BackingKey::CacheOutput { .. })
+            )
         });
         assert!(has_cache_backing, "no CacheOutput backing in R0 compile");
     }
@@ -1106,9 +1206,17 @@ mod tests {
     fn canonical_layer_is_unmutated() {
         let layer = three_root_layer();
         let before = layer.clone();
-        let _ = distill(&layer, BwdRegime::R0, &HashMap::new(), None);
-        let _ = distill(&layer, BwdRegime::Ext, &HashMap::new(), Some(&[1, 2, 0]));
-        assert_eq!(layer, before, "distill must never mutate the canonical layer");
+        let _ = distill(&layer, crate::BwdRegime::R0, &HashMap::new(), None);
+        let _ = distill(
+            &layer,
+            crate::BwdRegime::Ext,
+            &HashMap::new(),
+            Some(&[1, 2, 0]),
+        );
+        assert_eq!(
+            layer, before,
+            "distill must never mutate the canonical layer"
+        );
     }
 
     // ── bind() ────────────────────────────────────────────────────────────────
@@ -1120,10 +1228,12 @@ mod tests {
         let mut vs = Vec::new();
         for i in 0..d.specials.len() as u16 {
             match d.specials.get(i) {
-                Some(BwdSpecial::FoldSource { origin: OriginLeaf::Read(_) }) => reads.push(i),
-                Some(BwdSpecial::FoldSource { origin: OriginLeaf::VirtualSetup { .. } }) => {
-                    vs.push(i)
-                }
+                Some(BwdSpecial::FoldSource {
+                    origin: OriginLeaf::Read(_),
+                }) => reads.push(i),
+                Some(BwdSpecial::FoldSource {
+                    origin: OriginLeaf::VirtualSetup { .. },
+                }) => vs.push(i),
                 other => panic!("unexpected Ext desc {other:?}"),
             }
         }
@@ -1133,14 +1243,22 @@ mod tests {
     #[test]
     fn bind_maps_policy_and_round_per_desc() {
         let layer = ext_layer();
-        let d = distill(&layer, BwdRegime::Ext, &HashMap::new(), None);
+        let d = distill(&layer, crate::BwdRegime::Ext, &HashMap::new(), None);
         assert_eq!(d.specials.len(), 3);
         let (reads, vs) = read_and_vs_descs(&d);
-        assert_eq!((reads.len(), vs.len()), (2, 1), "2 Read-origin + 1 VS-origin fold");
+        assert_eq!(
+            (reads.len(), vs.len()),
+            (2, 1),
+            "2 Read-origin + 1 VS-origin fold"
+        );
 
         // Round 0: no previous-round buffer exists — always lazy depth 0.
         let b0 = bind(&d, MaterializationPolicy::AlwaysMaterialize, 0);
-        assert!(b0.states.iter().all(|s| *s == FoldState::LazyFromOriginals { depth: 0 }));
+        assert!(
+            b0.states
+                .iter()
+                .all(|s| *s == FoldState::LazyFromOriginals { depth: 0 })
+        );
 
         // Round >= 1, AlwaysMaterialize: Read-origin folds read the buffer, but a
         // VS-origin fold stays forced-lazy (Bf resolver cannot carry an Ext fold).
@@ -1159,17 +1277,24 @@ mod tests {
         // LazyUpTo(2): round 2 recomputes at depth 2 (VS agrees with Read here),
         // round 3 materializes the Read folds but leaves VS forced-lazy.
         let b2 = bind(&d, MaterializationPolicy::LazyUpTo(2), 2);
-        assert!(b2.states.iter().all(|s| *s == FoldState::LazyFromOriginals { depth: 2 }));
+        assert!(
+            b2.states
+                .iter()
+                .all(|s| *s == FoldState::LazyFromOriginals { depth: 2 })
+        );
         let b3 = bind(&d, MaterializationPolicy::LazyUpTo(2), 3);
         for &i in &reads {
             assert_eq!(b3.states[i as usize], FoldState::Materialized);
         }
         for &i in &vs {
-            assert_eq!(b3.states[i as usize], FoldState::LazyFromOriginals { depth: 3 });
+            assert_eq!(
+                b3.states[i as usize],
+                FoldState::LazyFromOriginals { depth: 3 }
+            );
         }
 
         // R0: a VirtualSetup desc is never a materialized fold buffer.
-        let dr0 = distill(&layer, BwdRegime::R0, &HashMap::new(), None);
+        let dr0 = distill(&layer, crate::BwdRegime::R0, &HashMap::new(), None);
         let br0 = bind(&dr0, MaterializationPolicy::AlwaysMaterialize, 3);
         assert_eq!(br0.states, vec![FoldState::LazyFromOriginals { depth: 3 }]);
     }
@@ -1180,9 +1305,12 @@ mod tests {
         // In three_root_layer each Read leaf is shared by two roots, so the
         // rebuilt cones keep fanout >= 2 Read leaves: sites in both regimes.
         let layer = three_root_layer();
-        let d = distill(&layer, BwdRegime::R0, &HashMap::new(), None);
+        let d = distill(&layer, crate::BwdRegime::R0, &HashMap::new(), None);
         let sites = distilled_site_domain(&d);
-        assert!(!sites.is_empty(), "rebuilt layer must expose Read-leaf sites");
+        assert!(
+            !sites.is_empty(),
+            "rebuilt layer must expose Read-leaf sites"
+        );
         // Every site is keyed on the SINGLE distilled root.
         assert!(sites.iter().all(|k| k.root == d.root));
     }

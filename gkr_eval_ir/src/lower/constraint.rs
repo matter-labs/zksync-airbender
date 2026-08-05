@@ -20,14 +20,12 @@
 //! Neither arm produces a sink; a constraint root carries `materialize: None`.
 
 use super::super::{
-    ArenaBuilder, ChallengeKey, ChallengeRef, ChallengePower, ClaimInfo, ExprId, Root,
-    RootOrigin, RootSlot, SourceKind,
+    ArenaBuilder, ChallengeKey, ChallengePower, ChallengeRef, ClaimInfo, ExprId, Root, RootOrigin,
+    RootSlot, SourceKind,
 };
-use super::{LayerOut, RootGroup};
 use super::util::{apply_coeff, const_expr, read_expr, sum_terms};
-use crate::gkr_compiler::{
-    NoFieldMaxQuadraticConstraintsGKRRelation, NoFieldMaxQuadraticGKRRelation,
-};
+use super::{LayerOut, RootGroup};
+use cs::gkr_compiler::{NoFieldMaxQuadraticConstraintsGKRRelation, NoFieldMaxQuadraticGKRRelation};
 
 /// Intern `Expr::Source(Challenge { key, power })`.
 fn challenge_expr(arena: &mut ArenaBuilder, key: ChallengeKey, power: ChallengePower) -> ExprId {
@@ -154,12 +152,7 @@ fn lower_batched_expr(
 ///
 /// No sink is created (`materialize: None`). The root is claim-bearing; Task 11
 /// assembles the batching order — this function only emits the root.
-fn emit_constraint(
-    out: &mut LayerOut,
-    expr: ExprId,
-    group: RootGroup,
-    relation_index: usize,
-) {
+fn emit_constraint(out: &mut LayerOut, expr: ExprId, group: RootGroup, relation_index: usize) {
     out.roots.push(Root {
         expr,
         materialize: None,

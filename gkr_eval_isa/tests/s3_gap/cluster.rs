@@ -62,7 +62,7 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
-use cs::gkr_compiler::dag_ir::{
+use gkr_eval_ir::{
     BatchingOrder, DagLayer, Expr, ExprId, Root, RootId, SinkInfo, SinkKind, SourceId, SourceInfo,
     SourceKind,
 };
@@ -95,7 +95,10 @@ pub fn connected_root_cluster(layer: &DagLayer, seed_root: RootId) -> DagLayer {
             continue; // only claim cones drive sharing (a cache root's self-reach is not sharing)
         }
         for cache_rid in cache_roots_in_cone(layer, rid, &cache_expr_to_root) {
-            cache_to_claim_consumers.entry(cache_rid).or_default().insert(rid);
+            cache_to_claim_consumers
+                .entry(cache_rid)
+                .or_default()
+                .insert(rid);
         }
     }
 
@@ -222,7 +225,9 @@ pub fn connected_root_cluster(layer: &DagLayer, seed_root: RootId) -> DagLayer {
         sources: new_sources,
         exprs: new_exprs,
         roots: new_roots,
-        batching: BatchingOrder { roots: new_batching },
+        batching: BatchingOrder {
+            roots: new_batching,
+        },
         resolutions: new_resolutions,
     }
 }
@@ -345,7 +350,7 @@ fn collect_expr_cone(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cs::gkr_compiler::dag_ir::{validate, DagCircuit, DagGlobals};
+    use gkr_eval_ir::{DagCircuit, DagGlobals, validate};
 
     use super::reachable_shared_cache_values;
 
@@ -367,8 +372,10 @@ mod tests {
                 _ => best = Some((size, seed)),
             }
         }
-        best.expect("at least one root must share a cache value in its cluster (add_sub L0 has caches)")
-            .1
+        best.expect(
+            "at least one root must share a cache value in its cluster (add_sub L0 has caches)",
+        )
+        .1
     }
 
     fn wrap(layer: DagLayer) -> DagCircuit {
@@ -384,9 +391,9 @@ mod tests {
     /// and the shared-cache reuse is preserved with no dangling references.
     #[test]
     fn connected_root_cluster_preserves_validity_and_shared_cache() {
-        use cs::gkr_compiler::dag_ir::lower_dag;
         use cs::gkr_compiler::GKRCircuitArtifact;
         use field::baby_bear::base::BabyBearField;
+        use gkr_eval_ir::lower_dag;
         use std::path::PathBuf;
 
         let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))

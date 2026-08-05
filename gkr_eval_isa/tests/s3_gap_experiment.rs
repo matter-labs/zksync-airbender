@@ -36,20 +36,20 @@ mod s3_gap;
 // superseded by the compile-in-loop scorer (`gkr_eval_isa::schedule_search::{scorer,search}`).
 
 use s3_gap::cluster::{connected_root_cluster, reachable_shared_cache_values};
-use s3_gap::driver::{oracle_available, run_oracle, Mode, OracleResult};
+use s3_gap::driver::{Mode, OracleResult, oracle_available, run_oracle};
 use s3_gap::floor::dag_traffic_floor;
 use s3_gap::instance::{distinct_live_values, extract_instance};
 use s3_gap::pack::fragmentation_upper_bound;
-use s3_gap::report::{format_report, gate, GapRow};
+use s3_gap::report::{GapRow, format_report, gate};
 
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use cs::gkr_compiler::dag_ir::{
-    lower_dag, validate, DagCircuit, DagGlobals, DagLayer, FieldKind, ReadPlace, RootId,
-};
 use cs::gkr_compiler::GKRCircuitArtifact;
 use field::baby_bear::base::BabyBearField;
+use gkr_eval_ir::{
+    DagCircuit, DagGlobals, DagLayer, FieldKind, ReadPlace, RootId, lower_dag, validate,
+};
 use gkr_eval_isa::fwd::compile::{build_cross_layer_field_map, compile_circuit};
 
 // REAL_BUDGET — the production smem cell budget the whole experiment targets.
@@ -90,7 +90,7 @@ fn load_layer_source(
 }
 
 /// Load the committed b16 schedule for `stem` (`{stem}_schedule_b16_gkr.json`).
-fn load_committed_schedule(stem: &str) -> Option<cs::gkr_compiler::dag_ir::CircuitSchedule> {
+fn load_committed_schedule(stem: &str) -> Option<gkr_eval_isa::CircuitSchedule> {
     let path = compiled_circuit_dir().join(format!("{stem}_schedule_b16_gkr.json"));
     let bytes = std::fs::read(path).ok()?;
     serde_json::from_slice(&bytes).ok()
@@ -283,7 +283,9 @@ fn s3_gap_experiment() {
         if accepted == 0 {
             // BLOCKED escalation path: even small ≥2-prior clusters are
             // over-strict-infeasible at 16. Dump what we tried before failing.
-            eprintln!("[GAP] ESCALATION: no ≥2-prior add_sub-L0 cluster solved BOTH J and E to optimal at budget {REAL_BUDGET} within {CAP_SECS}s.");
+            eprintln!(
+                "[GAP] ESCALATION: no ≥2-prior add_sub-L0 cluster solved BOTH J and E to optimal at budget {REAL_BUDGET} within {CAP_SECS}s."
+            );
             eprintln!("[GAP] Candidates tried (seed -> roots/priors):");
             for cand in &candidates {
                 eprintln!(
@@ -644,7 +646,9 @@ fn dag_fanout_census() {
     println!(
         "\n=== CACHEABLE-CANDIDATE CENSUS (fork = cache vs recompute per multi-consumer node) ==="
     );
-    println!("K=#(≥2 consumers); K_x=cross-root-reused (real cache decisions); W=max concurrent → DP state 2^W\n");
+    println!(
+        "K=#(≥2 consumers); K_x=cross-root-reused (real cache decisions); W=max concurrent → DP state 2^W\n"
+    );
     for &fixture in ALL_FIXTURES {
         let short = fixture.trim_end_matches("_layout_gkr.json");
         let Some((layer, cross)) = try_load_l0(fixture) else {
@@ -887,7 +891,9 @@ fn s3_gap_multicircuit() {
             measured += 1;
         }
         if !any_shared {
-            println!("  caches present, but no sweet-spot cluster has a DRAM leaf shared across ≥2 roots");
+            println!(
+                "  caches present, but no sweet-spot cluster has a DRAM leaf shared across ≥2 roots"
+            );
             summary.push((short.to_string(), false, 0, true, 0, 0, 0, 0.0));
         }
     }
@@ -916,9 +922,13 @@ fn s3_gap_multicircuit() {
         }
     );
     if any_order_matters {
-        println!("  VERDICT: order matters on ≥1 circuit → CachingOnly is NOT universal; investigate the flagged clusters.");
+        println!(
+            "  VERDICT: order matters on ≥1 circuit → CachingOnly is NOT universal; investigate the flagged clusters."
+        );
     } else {
-        println!("  VERDICT: every order-sensitive cluster shows ~0% gap at budget {REAL_BUDGET} → CachingOnly generalizes (fix eviction, no order beam).");
+        println!(
+            "  VERDICT: every order-sensitive cluster shows ~0% gap at budget {REAL_BUDGET} → CachingOnly generalizes (fix eviction, no order beam)."
+        );
     }
 }
 
@@ -985,12 +995,12 @@ fn s3_gap_multicircuit() {
 /// yields site(s) with the correct root context.
 #[test]
 fn query_edge_counts_as_site_consumer() {
-    use cs::gkr_compiler::dag_ir::{
+    use gkr_eval_ir::{
         BatchingOrder, ClaimInfo, Expr, ExprId, FieldKind, LookupValueKind, Root, RootGroup,
-        RootOrigin, RootSlot, SinkInfo, SinkKind, SiteConsumer, SiteKey, SourceId, SourceInfo,
-        SourceKind,
+        RootOrigin, RootSlot, SinkInfo, SinkKind, SourceId, SourceInfo, SourceKind,
     };
     use gkr_eval_isa::schedule_search::structure::enumerate_sites;
+    use gkr_eval_isa::{SiteConsumer, SiteKey};
     use std::collections::BTreeMap;
 
     // e0 = Read (cacheable value under test)
@@ -1001,7 +1011,7 @@ fn query_edge_counts_as_site_consumer() {
         sources: vec![
             SourceInfo {
                 kind: SourceKind::Read {
-                    place: cs::gkr_compiler::dag_ir::ReadPlace::BaseLayerWitness { column: 0 },
+                    place: gkr_eval_ir::ReadPlace::BaseLayerWitness { column: 0 },
                 },
             },
             SourceInfo {
@@ -1020,7 +1030,10 @@ fn query_edge_counts_as_site_consumer() {
         roots: vec![Root {
             expr: ExprId(2),
             materialize: Some(SinkInfo {
-                kind: SinkKind::Inner { layer: 0, offset: 0 },
+                kind: SinkKind::Inner {
+                    layer: 0,
+                    offset: 0,
+                },
                 field: FieldKind::Base,
             }),
             claim: Some(ClaimInfo {
@@ -1041,12 +1054,18 @@ fn query_edge_counts_as_site_consumer() {
     let expected = vec![
         SiteKey {
             root: RootId(0),
-            consumer: SiteConsumer::Expr { expr: ExprId(1), input_index: 0 },
+            consumer: SiteConsumer::Expr {
+                expr: ExprId(1),
+                input_index: 0,
+            },
             value: ExprId(0),
         },
         SiteKey {
             root: RootId(0),
-            consumer: SiteConsumer::Expr { expr: ExprId(2), input_index: 0 },
+            consumer: SiteConsumer::Expr {
+                expr: ExprId(2),
+                input_index: 0,
+            },
             value: ExprId(0),
         },
     ];

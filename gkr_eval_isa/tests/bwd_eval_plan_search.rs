@@ -11,10 +11,11 @@ use std::{
 };
 
 use common::assert_bwd_value_parity;
-use cs::gkr_compiler::dag_ir::{
-    BatchingOrder, BwdRegime, ClaimInfo, DagLayer, Expr, ExprId, ReadPlace, Root, RootGroup,
-    RootId, RootOrigin, RootSlot, SourceId, SourceInfo, SourceKind,
+use gkr_eval_ir::{
+    BatchingOrder, ClaimInfo, DagLayer, Expr, ExprId, ReadPlace, Root, RootGroup, RootId,
+    RootOrigin, RootSlot, SourceId, SourceInfo, SourceKind,
 };
+use gkr_eval_isa::BwdRegime;
 use gkr_eval_isa::bwd::distill::{DistilledLayer, distill};
 use gkr_eval_isa::eval_plan::backward_search::experiment::{
     AcceptedIncumbent, ArmClassification, ExperimentReport, InstanceResult, render_markdown,
@@ -190,7 +191,7 @@ fn plan3_audit_write_roots_relative_path_at_repository() {
 fn plan3_parallel_budget_group_matches_sequential() {
     let fixture = "add_sub_lui_auipc_mop_layout_gkr.json";
     let artifact = common::load_fixture(fixture);
-    let dag = cs::gkr_compiler::dag_ir::lower_dag(&artifact)
+    let dag = gkr_eval_ir::lower_dag(&artifact)
         .unwrap_or_else(|error| panic!("[{fixture}] lower DAG: {error}"));
     let (layer_index, layer, cross) = common::layers_with_bwd_roots(fixture)
         .next()
@@ -260,7 +261,7 @@ fn plan3_parallel_budget_group_matches_sequential() {
 fn plan3_parallel_incumbent_prepass_matches_sequential() {
     let fixture = "add_sub_lui_auipc_mop_layout_gkr.json";
     let artifact = common::load_fixture(fixture);
-    let dag = cs::gkr_compiler::dag_ir::lower_dag(&artifact)
+    let dag = gkr_eval_ir::lower_dag(&artifact)
         .unwrap_or_else(|error| panic!("[{fixture}] lower DAG: {error}"));
     let (layer_index, layer, cross) = common::layers_with_bwd_roots(fixture)
         .next()
@@ -359,7 +360,7 @@ fn build_corpus_layers() -> Vec<CorpusLayer> {
     let mut layers = Vec::new();
     for &fixture in common::FIXTURES {
         let artifact = common::load_fixture(fixture);
-        let dag = cs::gkr_compiler::dag_ir::lower_dag(&artifact)
+        let dag = gkr_eval_ir::lower_dag(&artifact)
             .unwrap_or_else(|error| panic!("[{fixture}] lower DAG: {error}"));
         let trace_len = dag.globals.trace_len;
         layers.extend(
@@ -764,7 +765,7 @@ fn full_plan3_backward_paging_search_experiment() {
 fn plan3_add_sub_release_smoke() {
     let fixture = "add_sub_lui_auipc_mop_layout_gkr.json";
     let artifact = common::load_fixture(fixture);
-    let dag = cs::gkr_compiler::dag_ir::lower_dag(&artifact)
+    let dag = gkr_eval_ir::lower_dag(&artifact)
         .unwrap_or_else(|error| panic!("[{fixture}] lower DAG: {error}"));
     let (layer_index, layer, cross) = common::layers_with_bwd_roots(fixture)
         .next()
@@ -802,7 +803,7 @@ fn plan3_add_sub_release_smoke() {
 fn plan3_inits_and_teardowns_r0_c2_classifies() {
     let fixture = "inits_and_teardowns_preprocessed_layout_gkr.json";
     let artifact = common::load_fixture(fixture);
-    let dag = cs::gkr_compiler::dag_ir::lower_dag(&artifact)
+    let dag = gkr_eval_ir::lower_dag(&artifact)
         .unwrap_or_else(|error| panic!("[{fixture}] lower DAG: {error}"));
     let (layer_index, layer, cross) = common::layers_with_bwd_roots(fixture)
         .find(|(layer_index, _, _)| *layer_index == 0)
@@ -861,7 +862,7 @@ fn plan3_inits_and_teardowns_r0_c2_classifies() {
 fn plan3_unsigned_mul_div_l1_ext_c4_classifies() {
     let fixture = "unsigned_mul_div_layout_gkr.json";
     let artifact = common::load_fixture(fixture);
-    let dag = cs::gkr_compiler::dag_ir::lower_dag(&artifact)
+    let dag = gkr_eval_ir::lower_dag(&artifact)
         .unwrap_or_else(|error| panic!("[{fixture}] lower DAG: {error}"));
     let (layer_index, layer, cross) = common::layers_with_bwd_roots(fixture)
         .find(|(layer_index, _, _)| *layer_index == 1)

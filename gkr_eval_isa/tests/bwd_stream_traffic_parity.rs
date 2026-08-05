@@ -27,7 +27,7 @@
 
 mod common;
 
-use cs::gkr_compiler::dag_ir::BwdRegime;
+use gkr_eval_isa::BwdRegime;
 use gkr_eval_isa::bwd::compile::{
     compile_distilled, compile_distilled_legacy_only, compile_distilled_streamed, BwdCompiledLayer,
 };
@@ -87,7 +87,7 @@ fn streamed_read_side_equals_legacy_all_layers() {
         }
     }
     // Pin the coverage count (57 R0 + 57 Ext = 114 backward-root layer instances across the
-    // fixture corpus) so a silent shrink in `layers_with_bwd_roots` / `bwd_roots` fails this
+    // fixture corpus) so a silent shrink in `layers_with_bwd_roots` / `claim_roots` fails this
     // certificate loudly rather than passing vacuously on a subset. Update deliberately if the
     // corpus changes (mirrors the repo's other coverage pins).
     assert_eq!(

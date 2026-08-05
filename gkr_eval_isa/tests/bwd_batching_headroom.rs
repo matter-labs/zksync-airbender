@@ -32,15 +32,16 @@ mod common;
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use cs::gkr_compiler::dag_ir::{bwd_traffic_floor, BwdRegime, ExprId};
+use gkr_eval_ir::ExprId;
 use gkr_eval_isa::bwd::compile::{
-    compile_distilled_legacy_only, compile_distilled_streamed, BwdCompiledLayer,
+    BwdCompiledLayer, compile_distilled_legacy_only, compile_distilled_streamed,
 };
-use gkr_eval_isa::bwd::distill::{distill, DistilledLayer};
-use gkr_eval_isa::bwd::fif::{fif_select, oracle_saved, Gap};
+use gkr_eval_isa::bwd::distill::{DistilledLayer, distill};
+use gkr_eval_isa::bwd::fif::{Gap, fif_select, oracle_saved};
 use gkr_eval_isa::bwd::source::BwdSpecial;
 use gkr_eval_isa::bwd::trace::live_profile;
 use gkr_eval_isa::fwd::isa::{Instr, OperandLine, Program};
+use gkr_eval_isa::{BwdRegime, bwd_traffic_floor};
 
 /// Budgets swept for the idle-resource / invariance columns (bf lanes; Ext buckets = /4).
 const BUDGETS: &[usize] = &[16, 24, 32, 48, 64];
@@ -105,7 +106,11 @@ fn bwd_batching_headroom() {
             if d.skipped_decoder {
                 continue;
             }
-            let sel = if legacy_fits_b16(&d) { "legacy" } else { "STREAM" };
+            let sel = if legacy_fits_b16(&d) {
+                "legacy"
+            } else {
+                "STREAM"
+            };
             let is_stream = sel == "STREAM";
 
             // ── budget invariance (K=1 proof): b16 vs b64 identical peak/prog/stores ──
@@ -124,7 +129,11 @@ fn bwd_batching_headroom() {
                 .iter()
                 .map(|&b| format!("{}", b.saturating_sub(peak)))
                 .collect();
-            let mark = if budget_blind { "" } else { " ⚠BUDGET-SENSITIVE" };
+            let mark = if budget_blind {
+                ""
+            } else {
+                " ⚠BUDGET-SENSITIVE"
+            };
             t1.push(format!(
                 "| {stem} L0 {regime:?} | {sel} | {peak} | {n_instr} | {stores} | {} |{mark}",
                 idle.join(" | "),
@@ -177,7 +186,9 @@ fn bwd_batching_headroom() {
          with the budget while the lowering reclaims NONE of it. `cell_stores` = smem-write \
          traffic a budget-adaptive chunker could attack.\n"
     );
-    println!("| L0 layer | sel | peak | n_instr | cell_stores | idle@16 | idle@24 | idle@32 | idle@48 | idle@64 |");
+    println!(
+        "| L0 layer | sel | peak | n_instr | cell_stores | idle@16 | idle@24 | idle@32 | idle@48 | idle@64 |"
+    );
     println!("|---|---|---|---|---|---|---|---|---|---|");
     for r in &t1 {
         println!("{r}");
@@ -191,7 +202,9 @@ fn bwd_batching_headroom() {
          `FoldSource` reuse: `distinct` origins, total `uses`, `max_reuse`, `#reused` \
          (≥2×), `excess` = Σ(use−1) = fold gathers a perfect cache would erase.\n"
     );
-    println!("| L0 layer | sel | floor | realized | real÷floor | reread_waste | global | fold_traffic | distinct | uses | max_reuse | #reused | excess |");
+    println!(
+        "| L0 layer | sel | floor | realized | real÷floor | reread_waste | global | fold_traffic | distinct | uses | max_reuse | #reused | excess |"
+    );
     println!("|---|---|---|---|---|---|---|---|---|---|---|---|---|");
     for r in &t2 {
         println!("{r}");
@@ -231,7 +244,10 @@ fn bwd_batching_headroom() {
 /// used. Keyed by origin (merges descs sharing an origin — caching the value serves all).
 /// VS-origin folds are compute-only (zero DRAM gather) and excluded from the DRAM prize.
 fn read_origin_positions(c: &BwdCompiledLayer) -> Vec<Vec<usize>> {
-    read_origin_positions_keyed(c).into_iter().map(|(_, p)| p).collect()
+    read_origin_positions_keyed(c)
+        .into_iter()
+        .map(|(_, p)| p)
+        .collect()
 }
 
 /// Same walk as `read_origin_positions`, but keyed by the origin's Debug string (its
@@ -258,7 +274,10 @@ fn read_origin_positions_keyed(c: &BwdCompiledLayer) -> Vec<(String, Vec<usize>)
             }
         }
     }
-    map.into_iter().filter(|(_, (_, vs))| !*vs).map(|(k, (p, _))| (k, p)).collect()
+    map.into_iter()
+        .filter(|(_, (_, vs))| !*vs)
+        .map(|(k, (p, _))| (k, p))
+        .collect()
 }
 
 /// Reuse working-set peak (cells): max concurrent 4-cell residency over all reused origins'
@@ -325,7 +344,9 @@ fn bwd_reuse_lifetimes() {
         }
         let total_saved: usize = reused.iter().map(|&(_, _, s)| s).sum();
         if total_saved == 0 {
-            rows.push(format!("| {stem} L0 Ext | {reread_waste} | {n} | 0 | — | — | — | — | (no fold reuse) |"));
+            rows.push(format!(
+                "| {stem} L0 Ext | {reread_waste} | {n} | 0 | — | — | — | — | (no fold reuse) |"
+            ));
             continue;
         }
 
@@ -376,7 +397,9 @@ fn bwd_reuse_lifetimes() {
          `greedy%` at +B ∈ {{4,8,16,32,52}} lanes (1,2,4,8,13 Ext buckets) = % of the \
          reread-waste a +B-lane cache reclaims on the current order.\n"
     );
-    println!("| L0 layer | reread_waste | n_instr | reused_src | WS_peak | median span | max span | full-prize budget | greedy% @+4/+8/+16/+32/+52 |");
+    println!(
+        "| L0 layer | reread_waste | n_instr | reused_src | WS_peak | median span | max span | full-prize budget | greedy% @+4/+8/+16/+32/+52 |"
+    );
     println!("|---|---|---|---|---|---|---|---|---|");
     for r in &rows {
         println!("{r}");
@@ -398,7 +421,9 @@ fn bwd_reuse_lifetimes() {
 // here); the two FC0 tests below and `bwd_exact_ceiling` construct it accordingly.
 
 fn lcg(state: &mut u64, m: u64) -> u64 {
-    *state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+    *state = state
+        .wrapping_mul(6364136223846793005)
+        .wrapping_add(1442695040888963407);
     (*state >> 33) % m
 }
 
@@ -424,7 +449,11 @@ fn fc0_fif_solver_matches_oracle() {
             }
             pos.sort_unstable();
             for w in pos.windows(2) {
-                gaps.push(Gap { origin: ExprId(o as u32), start: w[0], end: w[1] });
+                gaps.push(Gap {
+                    origin: ExprId(o as u32),
+                    start: w[0],
+                    end: w[1],
+                });
             }
         }
         gaps.truncate(12); // oracle is 2^|gaps|
@@ -475,7 +504,11 @@ fn fc0_live_profile_matches_placement_peak() {
 fn bwd_exact_ceiling() {
     const B_TOT: &[usize] = &[16, 24, 32, 48, 64];
     const FLAT_EXTRA: &[usize] = &[4, 8, 16, 32, 52];
-    const HEAVY: &[&str] = &["bigint_with_extended_control", "keccak_special5", "unified_reduced_machine"];
+    const HEAVY: &[&str] = &[
+        "bigint_with_extended_control",
+        "keccak_special5",
+        "unified_reduced_machine",
+    ];
     let ledger_dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("fc0_ledger");
     std::fs::create_dir_all(&ledger_dir).unwrap();
     let mut rows: Vec<String> = Vec::new();
@@ -491,7 +524,11 @@ fn bwd_exact_ceiling() {
         let c = streamed(&d, 16);
         let n = c.program.instrs.len();
         let work = live_profile(&c.program);
-        let sel = if legacy_fits_b16(&d) { "legacy" } else { "STREAM" };
+        let sel = if legacy_fits_b16(&d) {
+            "legacy"
+        } else {
+            "STREAM"
+        };
 
         // Per-origin use positions WITH origin identity: new local helper
         // `read_origin_positions_keyed(&c) -> Vec<(String, Vec<usize>)>` — the same
@@ -502,7 +539,11 @@ fn bwd_exact_ceiling() {
         let mut gaps: Vec<Gap> = Vec::new();
         for (o, (_, pos)) in keyed.iter().enumerate() {
             for w in pos.windows(2) {
-                gaps.push(Gap { origin: ExprId(o as u32), start: w[0], end: w[1] });
+                gaps.push(Gap {
+                    origin: ExprId(o as u32),
+                    start: w[0],
+                    end: w[1],
+                });
             }
         }
 
@@ -511,11 +552,21 @@ fn bwd_exact_ceiling() {
         // reclaim% denominator mixes a non-leaf prize: re-scope before trusting it.
         let floor = bwd_traffic_floor(&layer, BwdRegime::Ext, &cross);
         let realized = c.stats_ext.global + c.stats_ext.fold_traffic;
-        assert!(realized >= floor, "{stem}: realized {realized} < floor {floor}");
+        assert!(
+            realized >= floor,
+            "{stem}: realized {realized} < floor {floor}"
+        );
         let reread_waste = realized - floor;
-        assert_eq!(c.stats_ext.global, 0, "{stem}: Ext slice has Global traffic");
+        assert_eq!(
+            c.stats_ext.global, 0,
+            "{stem}: Ext slice has Global traffic"
+        );
         let excess: usize = keyed.iter().map(|(_, p)| p.len().saturating_sub(1)).sum();
-        assert_eq!(4 * excess, reread_waste, "{stem}: fold-reuse excess != reread_waste");
+        assert_eq!(
+            4 * excess,
+            reread_waste,
+            "{stem}: fold-reuse excess != reread_waste"
+        );
 
         // (a) per-site envelope sweep; (b) flat-cap sweep.
         let env_saved: Vec<usize> = B_TOT
@@ -544,7 +595,10 @@ fn bwd_exact_ceiling() {
                 let per_b: Vec<String> = per_b_sel
                     .iter()
                     .map(|s| {
-                        let hits = s.iter().filter(|&&gi| gaps[gi].origin.0 as usize == o).count();
+                        let hits = s
+                            .iter()
+                            .filter(|&&gi| gaps[gi].origin.0 as usize == o)
+                            .count();
                         let misses = pos.len() - hits; // every non-hit use is a gather
                         let bypasses = (pos.len() - 1) - hits; // unretained gaps
                         format!("{{\"hits\":{hits},\"misses\":{misses},\"bypasses\":{bypasses}}}")
@@ -566,11 +620,25 @@ fn bwd_exact_ceiling() {
         )
         .unwrap();
 
-        let pct = |saved: usize| if reread_waste > 0 { 100 * 4 * saved / reread_waste } else { 100 };
+        let pct = |saved: usize| {
+            if reread_waste > 0 {
+                100 * 4 * saved / reread_waste
+            } else {
+                100
+            }
+        };
         rows.push(format!(
             "| {stem} L0 Ext | {sel} | {reread_waste} | {} | {} |",
-            env_saved.iter().map(|&s| format!("{}%", pct(s))).collect::<Vec<_>>().join(" / "),
-            flat_saved.iter().map(|&s| format!("{}%", pct(s))).collect::<Vec<_>>().join(" / "),
+            env_saved
+                .iter()
+                .map(|&s| format!("{}%", pct(s)))
+                .collect::<Vec<_>>()
+                .join(" / "),
+            flat_saved
+                .iter()
+                .map(|&s| format!("{}%", pct(s)))
+                .collect::<Vec<_>>()
+                .join(" / "),
         ));
         if HEAVY.contains(&stem) {
             g0.push((stem.to_string(), 4 * env_saved[3], reread_waste)); // index 3 = B_tot 48
@@ -578,17 +646,34 @@ fn bwd_exact_ceiling() {
     }
 
     println!("# FC0 — exact fixed-order ceiling (leaves-only FiF, Ext L0)\n");
-    println!("Envelope mode: free[t] = B_tot − work_live[t]. Flat mode: free[t] = +B (Table-3 comparable).");
-    println!("Reclaim% = 100·4·saved ÷ reread_waste. Ledger JSONs: {}\n", ledger_dir.display());
-    println!("| L0 layer | sel | reread_waste | ceiling% @B_tot 16/24/32/48/64 | ceiling% flat +4/+8/+16/+32/+52 |");
+    println!(
+        "Envelope mode: free[t] = B_tot − work_live[t]. Flat mode: free[t] = +B (Table-3 comparable)."
+    );
+    println!(
+        "Reclaim% = 100·4·saved ÷ reread_waste. Ledger JSONs: {}\n",
+        ledger_dir.display()
+    );
+    println!(
+        "| L0 layer | sel | reread_waste | ceiling% @B_tot 16/24/32/48/64 | ceiling% flat +4/+8/+16/+32/+52 |"
+    );
     println!("| --- | --- | --- | --- | --- |");
     for r in &rows {
         println!("{r}");
     }
     println!("\n## G0 verdict (heavy trio, per-site envelope @ B_tot=48 = b16 + 8 buckets)\n");
     for (stem, reclaimed, waste) in &g0 {
-        let pct = if *waste > 0 { 100 * reclaimed / waste } else { 100 };
-        let verdict = if pct >= 60 { "FUND FC1/FC2" } else if pct < 25 { "PIVOT (FC3/FC4)" } else { "GREY — RR call" };
+        let pct = if *waste > 0 {
+            100 * reclaimed / waste
+        } else {
+            100
+        };
+        let verdict = if pct >= 60 {
+            "FUND FC1/FC2"
+        } else if pct < 25 {
+            "PIVOT (FC3/FC4)"
+        } else {
+            "GREY — RR call"
+        };
         println!("- {stem}: {pct}% of reread_waste ({reclaimed}/{waste} cells) → {verdict}");
     }
 }

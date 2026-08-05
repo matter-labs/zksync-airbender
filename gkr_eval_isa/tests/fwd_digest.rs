@@ -59,7 +59,7 @@ use gkr_eval_isa::fwd::source::{
     virtual_setup_kind_code,
 };
 
-use cs::gkr_compiler::dag_ir::{
+use gkr_eval_ir::{
     ChallengeKey, ChallengePower, ChallengeRef, FillSource, PermutationSlot, RangeWidth, ReadPlace,
 };
 
@@ -314,7 +314,7 @@ fn serialize_permutation_slot(buf: &mut Vec<u8>, s: &PermutationSlot) {
     );
 }
 
-/// Variant tag first (declaration order in `cs::gkr_compiler::dag_ir::model`),
+/// Variant tag first (declaration order in `gkr_eval_ir::model`),
 /// then fields in declaration order.
 fn serialize_challenge_key(buf: &mut Vec<u8>, k: &ChallengeKey) {
     match k {

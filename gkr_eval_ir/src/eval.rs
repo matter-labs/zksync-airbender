@@ -177,7 +177,11 @@ fn eval_source(
         SourceKind::Challenge { reference } => r.challenge.challenge(reference),
         SourceKind::Read { place } => r.read.read(place, row),
         SourceKind::VirtualSetup { kind: vk } => lift(r.virtual_setup.virtual_setup(vk, row)),
-        SourceKind::LookupValue { kind: lk, set_index, query } => {
+        SourceKind::LookupValue {
+            kind: lk,
+            set_index,
+            query,
+        } => {
             let q_val = eval_expr(*query, layer, row, r, cache);
             lift(r.lookup.lookup(lk, *set_index, q_val, row))
         }
@@ -193,8 +197,8 @@ mod tests {
     use field::{Field, PrimeField};
 
     use super::*;
-    use crate::gkr_compiler::dag_ir::{
-        ArenaBuilder, BatchingOrder, ChallengeKey, ChallengeRef, ChallengePower, ClaimInfo,
+    use crate::{
+        ArenaBuilder, BatchingOrder, ChallengeKey, ChallengePower, ChallengeRef, ClaimInfo,
         DagLayer, Expr, FieldKind, LookupValueKind, ReadPlace, Root, RootGroup, RootId, RootOrigin,
         RootSlot, SinkInfo, SinkKind, SourceKind, VirtualSetupKind,
     };
@@ -250,7 +254,9 @@ mod tests {
             sources: arena.sources().to_vec(),
             exprs: arena.exprs().to_vec(),
             roots,
-            batching: BatchingOrder { roots: batching_roots },
+            batching: BatchingOrder {
+                roots: batching_roots,
+            },
             resolutions: BTreeMap::new(),
         }
     }
@@ -307,21 +313,19 @@ mod tests {
         let q_expr = arena.source_expr(q_src);
 
         // lv0 = LookupValue{GenericColumn{0}, set_index:3, query=q_expr}
-        let lv0_src =
-            arena.intern_source(SourceKind::LookupValue {
-                kind: LookupValueKind::GenericColumn { column: 0 },
-                set_index: 3,
-                query: q_expr,
-            });
+        let lv0_src = arena.intern_source(SourceKind::LookupValue {
+            kind: LookupValueKind::GenericColumn { column: 0 },
+            set_index: 3,
+            query: q_expr,
+        });
         let lv0 = arena.source_expr(lv0_src);
 
         // lv1 = LookupValue{GenericColumn{1}, set_index:3, query=q_expr}
-        let lv1_src =
-            arena.intern_source(SourceKind::LookupValue {
-                kind: LookupValueKind::GenericColumn { column: 1 },
-                set_index: 3,
-                query: q_expr,
-            });
+        let lv1_src = arena.intern_source(SourceKind::LookupValue {
+            kind: LookupValueKind::GenericColumn { column: 1 },
+            set_index: 3,
+            query: q_expr,
+        });
         let lv1 = arena.source_expr(lv1_src);
 
         // alpha = Challenge
@@ -329,7 +333,9 @@ mod tests {
             key: ChallengeKey::LookupAdditive,
             power: ChallengePower::One,
         };
-        let alpha_src = arena.intern_source(SourceKind::Challenge { reference: alpha_ref });
+        let alpha_src = arena.intern_source(SourceKind::Challenge {
+            reference: alpha_ref,
+        });
         let alpha = arena.source_expr(alpha_src);
 
         // alpha * lv1
@@ -339,7 +345,14 @@ mod tests {
         let sum = arena.add(vec![lv0, alpha_lv1]);
 
         let root_id = RootId(0);
-        let roots = vec![claim_output(sum, SinkKind::Inner { layer: 0, offset: 0 }, FieldKind::Ext)];
+        let roots = vec![claim_output(
+            sum,
+            SinkKind::Inner {
+                layer: 0,
+                offset: 0,
+            },
+            FieldKind::Ext,
+        )];
         let layer = layer_from_arena(&arena, roots, vec![root_id]);
 
         // Stub resolvers
@@ -396,9 +409,23 @@ mod tests {
 
         let roots = vec![
             // RootId(0): Cache materialize-only root (committed value).
-            cache_root(cache_expr, SinkKind::Cache { layer: 0, offset: 0 }, FieldKind::Base),
+            cache_root(
+                cache_expr,
+                SinkKind::Cache {
+                    layer: 0,
+                    offset: 0,
+                },
+                FieldKind::Base,
+            ),
             // RootId(1): claim-bearing consumer sharing the cache ExprId.
-            claim_output(sum, SinkKind::Inner { layer: 0, offset: 0 }, FieldKind::Base),
+            claim_output(
+                sum,
+                SinkKind::Inner {
+                    layer: 0,
+                    offset: 0,
+                },
+                FieldKind::Base,
+            ),
         ];
         // Only root 1 is claim-bearing; root 0 is the materialize-only cache.
         let layer = layer_from_arena(&arena, roots, vec![RootId(1)]);
@@ -448,8 +475,22 @@ mod tests {
         let sum = arena.add(vec![cache_expr, c3]);
 
         let roots = vec![
-            cache_root(cache_expr, SinkKind::Cache { layer: 0, offset: 0 }, FieldKind::Base),
-            claim_output(sum, SinkKind::Inner { layer: 0, offset: 0 }, FieldKind::Base),
+            cache_root(
+                cache_expr,
+                SinkKind::Cache {
+                    layer: 0,
+                    offset: 0,
+                },
+                FieldKind::Base,
+            ),
+            claim_output(
+                sum,
+                SinkKind::Inner {
+                    layer: 0,
+                    offset: 0,
+                },
+                FieldKind::Base,
+            ),
         ];
         let layer = layer_from_arena(&arena, roots, vec![RootId(1)]);
 
@@ -472,6 +513,9 @@ mod tests {
             e.add_assign(&lift(Bf::from_u32_with_reduction(3)));
             e
         };
-        assert_eq!(result_sum, expected_sum, "eval_layer_expr: sum expr mismatch");
+        assert_eq!(
+            result_sum, expected_sum,
+            "eval_layer_expr: sum expr mismatch"
+        );
     }
 }

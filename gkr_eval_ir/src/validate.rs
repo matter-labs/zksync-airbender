@@ -1,8 +1,7 @@
-//! Structural validators for the DAG IR + batching-sequence parity against the
-//! retired codegen IR (spec §7).
+//! Structural validators for the canonical DAG IR.
 //!
 //! # `validate`
-//! A pure `cs`-internal structural pass over a [`DagCircuit`]. It enforces the
+//! A GPU-independent structural pass over a [`DagCircuit`]. It enforces the
 //! spec §7 invariants:
 //! - Every claim-bearing root appears exactly once in [`BatchingOrder`];
 //!   materialization-only (cache) roots must NOT appear in `BatchingOrder`. A
@@ -26,27 +25,15 @@
 //! to the sink's [`FieldKind`]. A later layer's `Read` of that output resolves
 //! its field from this map — this is the consumer that the generator's old
 //! `read_field` placeholder was reserved for.
-//!
-//! # `check_batching_parity`
-//! Lowers the same artifact through both paths and asserts the new
-//! [`BatchingOrder`] reproduces the retired lowered `CodegenLayer` batching
-//! sequence position-by-position (`gates.chain(gates_external)`; per-gate `dst`
-//! output slots are claim-bearing output roots, an empty-`dst` constraint gate is
-//! a constraint slot). Output roots are matched by **sink identity**; constraint
-//! roots by [`RootOrigin`] plus a deterministic lowered-expression digest of the
-//! constraint root's interned `Expr` subtree.
 
 use std::collections::{HashMap, HashSet};
 
-use field::PrimeField;
-
-use crate::definitions::gkr::DECODER_LOOKUP_FORMAL_SET_INDEX;
-use crate::gkr_compiler::codegen_ir::CodegenCircuit;
+use cs::definitions::gkr::DECODER_LOOKUP_FORMAL_SET_INDEX;
 
 use super::{
     expr_field, source_field, ChallengeKey, ChallengePower, DagCircuit, DagLayer, Expr, ExprId,
-    FieldKind, LookupValueKind, RangeWidth, ReadPlace, ResolutionStrategy, RootGroup,
-    RootId, RootSlot, SinkKind, SourceId, SourceKind,
+    FieldKind, LookupValueKind, RangeWidth, ReadPlace, ResolutionStrategy, RootId, SinkKind,
+    SourceId, SourceKind,
 };
 
 // ── Cross-layer sink-field map ────────────────────────────────────────────────
@@ -76,9 +63,10 @@ fn resolve_source_field(
 ) -> Result<FieldKind, String> {
     match source_field(kind) {
         Ok(f) => Ok(f),
-        Err(place) => cross_layer.get(&place).cloned().ok_or_else(|| {
-            format!("unresolved cross-layer read field for {:?}", place)
-        }),
+        Err(place) => cross_layer
+            .get(&place)
+            .cloned()
+            .ok_or_else(|| format!("unresolved cross-layer read field for {:?}", place)),
     }
 }
 
@@ -142,27 +130,21 @@ fn check_source_field_kinds(layer: &DagLayer, li: usize) -> Result<(), String> {
     for (si, src) in layer.sources.iter().enumerate() {
         match &src.kind {
             SourceKind::Constant { .. } => {
-                if source_field(&src.kind)
-                    != Ok(FieldKind::Base)
-                {
+                if source_field(&src.kind) != Ok(FieldKind::Base) {
                     return Err(format!(
                         "layer {li} source {si}: Constant must be base-field"
                     ));
                 }
             }
             SourceKind::LookupValue { .. } => {
-                if source_field(&src.kind)
-                    != Ok(FieldKind::Base)
-                {
+                if source_field(&src.kind) != Ok(FieldKind::Base) {
                     return Err(format!(
                         "layer {li} source {si}: LookupValue must be base-field"
                     ));
                 }
             }
             SourceKind::Challenge { .. } => {
-                if source_field(&src.kind)
-                    != Ok(FieldKind::Ext)
-                {
+                if source_field(&src.kind) != Ok(FieldKind::Ext) {
                     return Err(format!(
                         "layer {li} source {si}: Challenge must be ext-field"
                     ));
@@ -205,15 +187,11 @@ enum Node {
 fn successors(node: Node, layer: &DagLayer) -> Vec<Node> {
     match node {
         Node::Expr(e) => match &layer.exprs[e as usize] {
-            Expr::Source(src_id) => {
-                match &layer.sources[src_id.0 as usize].kind {
-                    SourceKind::LookupValue { query, .. } => vec![Node::Expr(query.0)],
-                    _ => vec![],
-                }
-            }
-            Expr::Add(args) | Expr::Mul(args) => {
-                args.iter().map(|a| Node::Expr(a.0)).collect()
-            }
+            Expr::Source(src_id) => match &layer.sources[src_id.0 as usize].kind {
+                SourceKind::LookupValue { query, .. } => vec![Node::Expr(query.0)],
+                _ => vec![],
+            },
+            Expr::Add(args) | Expr::Mul(args) => args.iter().map(|a| Node::Expr(a.0)).collect(),
         },
         Node::Root(r) => {
             let expr = layer.roots[r as usize].expr;
@@ -283,7 +261,9 @@ fn check_acyclic(layer: &DagLayer, li: usize) -> Result<(), String> {
 /// `check_acyclic`) — so it is a true root-reachability oracle.
 fn collect_root_reachable_exprs(layer: &DagLayer) -> std::collections::HashSet<u32> {
     let mut visited: std::collections::HashSet<Node> = std::collections::HashSet::new();
-    let mut stack: Vec<Node> = (0..layer.roots.len()).map(|i| Node::Root(i as u32)).collect();
+    let mut stack: Vec<Node> = (0..layer.roots.len())
+        .map(|i| Node::Root(i as u32))
+        .collect();
     while let Some(node) = stack.pop() {
         if !visited.insert(node) {
             continue;
@@ -325,8 +305,11 @@ fn check_resolutions(layer: &DagLayer, li: usize) -> Result<(), String> {
         }
         match strat {
             ResolutionStrategy::PeekSingleColumn { set_index, width } => {
-                let SourceKind::LookupValue { kind, set_index: si, .. } =
-                    source_of(leaf, layer)
+                let SourceKind::LookupValue {
+                    kind,
+                    set_index: si,
+                    ..
+                } = source_of(leaf, layer)
                 else {
                     return Err(format!(
                         "layer {li}: PeekSingleColumn leaf {:?} is not a LookupValue source",
@@ -481,9 +464,9 @@ fn check_folded_lookup_shape(
                             (Some(p), Some(c)) => terms.push((c, Some(p))),
                             _ => {
                                 return Err(format!(
-                                    "layer {li}: folded lookup {:?} Mul missing challenge or lookup",
-                                    leaf
-                                ))
+                                "layer {li}: folded lookup {:?} Mul missing challenge or lookup",
+                                leaf
+                            ))
                             }
                         }
                     }
@@ -518,12 +501,14 @@ fn check_folded_lookup_shape(
             ));
         }
         match (i, power) {
-            (0, None) => {}                                  // column 0 must be unscaled (alpha^0 = 1, emitted as a bare Source)
+            (0, None) => {} // column 0 must be unscaled (alpha^0 = 1, emitted as a bare Source)
             (_, Some(p)) if i >= 1 && p as usize == i => {} // column j>=1 scaled by alpha^j
-            _ => return Err(format!(
-                "layer {li}: folded lookup {:?} column {i} has wrong scaling {:?}",
-                leaf, power
-            )),
+            _ => {
+                return Err(format!(
+                    "layer {li}: folded lookup {:?} column {i} has wrong scaling {:?}",
+                    leaf, power
+                ))
+            }
         }
     }
     Ok(())
@@ -540,7 +525,9 @@ fn check_folded_setup_shape(leaf: ExprId, layer: &DagLayer, li: usize) -> Result
     let mut powers: Vec<Option<u32>> = Vec::new(); // None = the unscaled (power-0) term
     let is_setup = |src_id: SourceId| -> Result<(), String> {
         match &layer.sources[src_id.0 as usize].kind {
-            SourceKind::Read { place: ReadPlace::Setup { .. } } => Ok(()),
+            SourceKind::Read {
+                place: ReadPlace::Setup { .. },
+            } => Ok(()),
             other => Err(format!(
                 "layer {li}: folded setup {:?} expected Read(Setup), got {:?}",
                 leaf, other
@@ -592,7 +579,9 @@ fn check_folded_setup_shape(leaf: ExprId, layer: &DagLayer, li: usize) -> Result
                                         }
                                     }
                                 }
-                                SourceKind::Read { place: ReadPlace::Setup { .. } } => {
+                                SourceKind::Read {
+                                    place: ReadPlace::Setup { .. },
+                                } => {
                                     saw_setup = true;
                                 }
                                 other => {
@@ -607,9 +596,9 @@ fn check_folded_setup_shape(leaf: ExprId, layer: &DagLayer, li: usize) -> Result
                             (Some(p), true) => powers.push(Some(p)),
                             _ => {
                                 return Err(format!(
-                                    "layer {li}: folded setup {:?} Mul missing challenge or Setup read",
-                                    leaf
-                                ))
+                                "layer {li}: folded setup {:?} Mul missing challenge or Setup read",
+                                leaf
+                            ))
                             }
                         }
                     }
@@ -900,10 +889,7 @@ pub fn validate_simplified(dag: &DagCircuit) -> Result<(), String> {
                     (&layer.exprs[c.0 as usize], is_add),
                     (Expr::Add(_), true) | (Expr::Mul(_), false)
                 );
-                if same_op
-                    && !fenced.contains(&c)
-                    && fan_out.get(&c).copied().unwrap_or(0) == 1
-                {
+                if same_op && !fenced.contains(&c) && fan_out.get(&c).copied().unwrap_or(0) == 1 {
                     return Err(format!(
                         "layer {li} expr {:?}: unflattened same-op fan-out-1 child {:?} \
                          (simplify_layer would flatten this)",
@@ -953,323 +939,6 @@ pub fn validate_simplified(dag: &DagCircuit) -> Result<(), String> {
     Ok(())
 }
 
-// ── Lowered-expression digest (constraint-root structural fingerprint) ─────────
-
-/// A deterministic structural digest of the interned `Expr` subtree rooted at
-/// `id`. Walks the DAG (with the layer's source table) and folds a stable
-/// FNV-1a hash over the operator shape + source kinds. Used to compare two
-/// constraint roots beyond their `RootOrigin` — kind alone is too weak, since two
-/// constraint roots can swap while both stay kind `Constraint` (review 2/M2).
-///
-/// # Forward-looking guard (spec §7)
-///
-/// The inequality branch in `check_batching_parity` (where `prev != digest`) is
-/// currently unreachable: the lowering emits exactly one constraint root per
-/// relation, so every `(group, relation_index)` key in
-/// `constraint_digest_by_origin` is unique within a layer — no two batching
-/// positions can share the same origin key.
-///
-/// The digest is intentionally kept as a **forward-looking guard mandated by
-/// spec §7** ("constraint roots are compared by `RootOrigin` plus a
-/// lowered-expression digest").  If a future lowering ever emits multiple
-/// constraint roots for the same relation, the digest would catch a swap where
-/// both share an origin but carry distinct expr subtrees.
-///
-/// The *actual* anti-swap protection that spec §7 requires today is delivered
-/// by the position-by-position `RootOrigin` comparison that precedes the digest
-/// check.  Do not remove the digest; it is a spec requirement, not dead code.
-fn expr_digest(id: ExprId, layer: &DagLayer) -> u64 {
-    fn fnv(mut h: u64, byte: u8) -> u64 {
-        h ^= byte as u64;
-        h.wrapping_mul(0x0000_0100_0000_01b3)
-    }
-    fn fnv_u64(mut h: u64, v: u64) -> u64 {
-        for i in 0..8 {
-            h = fnv(h, (v >> (i * 8)) as u8);
-        }
-        h
-    }
-    fn walk(id: ExprId, layer: &DagLayer, h: u64) -> u64 {
-        let mut h = h;
-        match &layer.exprs[id.0 as usize] {
-            Expr::Source(src_id) => {
-                h = fnv(h, 0x01);
-                h = digest_source(&layer.sources[src_id.0 as usize].kind, layer, h);
-            }
-            Expr::Add(args) => {
-                h = fnv(h, 0x02);
-                h = fnv_u64(h, args.len() as u64);
-                for &a in args {
-                    h = walk(a, layer, h);
-                }
-            }
-            Expr::Mul(args) => {
-                h = fnv(h, 0x03);
-                h = fnv_u64(h, args.len() as u64);
-                for &a in args {
-                    h = walk(a, layer, h);
-                }
-            }
-        }
-        h
-    }
-    fn digest_source(kind: &SourceKind, layer: &DagLayer, h: u64) -> u64 {
-        let mut h = h;
-        match kind {
-            SourceKind::Read { place } => {
-                h = fnv(h, 0x10);
-                h = digest_read_place(place, h);
-            }
-            SourceKind::Constant { value } => {
-                h = fnv(h, 0x12);
-                h = fnv_u64(h, *value as u64);
-            }
-            SourceKind::Challenge { reference } => {
-                h = fnv(h, 0x13);
-                // Hash the Debug form: a stable, deterministic serialization of
-                // the challenge key + power.
-                for b in format!("{:?}", reference).bytes() {
-                    h = fnv(h, b);
-                }
-            }
-            SourceKind::VirtualSetup { kind } => {
-                h = fnv(h, 0x14);
-                for b in format!("{:?}", kind).bytes() {
-                    h = fnv(h, b);
-                }
-            }
-            SourceKind::LookupValue {
-                kind,
-                set_index,
-                query,
-            } => {
-                h = fnv(h, 0x15);
-                for b in format!("{:?}", kind).bytes() {
-                    h = fnv(h, b);
-                }
-                h = fnv_u64(h, *set_index as u64);
-                h = walk(*query, layer, h);
-            }
-        }
-        h
-    }
-    fn digest_read_place(place: &ReadPlace, h: u64) -> u64 {
-        let mut h = h;
-        for b in format!("{:?}", place).bytes() {
-            h = fnv(h, b);
-        }
-        h
-    }
-    // FNV-1a offset basis.
-    walk(id, layer, 0xcbf2_9ce4_8422_2325)
-}
-
-// ── Batching-sequence parity (spec §7) ─────────────────────────────────────────
-
-/// A single expected batching-sequence slot derived from the retired lowered
-/// `CodegenLayer`.
-enum RetiredSlot {
-    /// An output slot: identified by its output `GKRAddress` (sink identity).
-    Output {
-        group: RootGroup,
-        relation_index: usize,
-        /// Index of this output within its gate (0 for single, 0/1 for pairs).
-        slot: usize,
-        addr: crate::definitions::GKRAddress,
-    },
-    /// A no-output constraint slot.
-    Constraint {
-        group: RootGroup,
-        relation_index: usize,
-    },
-}
-
-/// Map a retired output `GKRAddress` to the DAG `SinkKind` it lowers to, for the
-/// sink-identity comparison. Mirrors `lower::output_sink_kind`.
-fn addr_to_sink_kind(addr: &crate::definitions::GKRAddress) -> Option<SinkKind> {
-    use crate::definitions::GKRAddress;
-    match addr {
-        GKRAddress::InnerLayer { layer, offset } => Some(SinkKind::Inner {
-            layer: *layer,
-            offset: *offset,
-        }),
-        GKRAddress::Cached { layer, offset } => Some(SinkKind::Cache {
-            layer: *layer,
-            offset: *offset,
-        }),
-        GKRAddress::ScratchSpace(slot) => Some(SinkKind::Scratch { slot: *slot }),
-        _ => None,
-    }
-}
-
-/// Verify the new [`BatchingOrder`] reproduces the retired lowered
-/// `CodegenLayer` batching sequence **position-by-position** (spec §7).
-///
-/// `dag` and `retired` must be lowerings of the SAME artifact. Output roots are
-/// matched by sink identity; constraint roots by [`RootOrigin`] + a lowered-
-/// expression digest.
-pub fn check_batching_parity<F: PrimeField + PartialEq>(
-    dag: &DagCircuit,
-    retired: &CodegenCircuit,
-) -> Result<(), String> {
-    if dag.layers.len() != retired.layers.len() {
-        return Err(format!(
-            "layer count mismatch: dag {} vs retired {}",
-            dag.layers.len(),
-            retired.layers.len()
-        ));
-    }
-
-    for (li, (dl, rl)) in dag.layers.iter().zip(retired.layers.iter()).enumerate() {
-        // Per-layer: constraint-root digest keyed by its claimed origin. A second
-        // batching position claiming the SAME constraint origin but a DIFFERENT
-        // expr digest means the sparse origin table aliases two structurally
-        // distinct constraint roots (review 2/M2 — kind `Constraint` alone is too
-        // weak to catch a swap).
-        let mut constraint_digest_by_origin: HashMap<(RootGroup, usize), u64> = HashMap::new();
-
-        // Build the reference sequence from the retired lowered layer, iterating
-        // gates THEN gates_external (the retired `assign_batch_powers` order).
-        let mut expected: Vec<RetiredSlot> = Vec::new();
-        for (group, gates) in [
-            (RootGroup::Gates, &rl.gates),
-            (RootGroup::GatesExternal, &rl.gates_external),
-        ] {
-            for (relation_index, gate) in gates.iter().enumerate() {
-                if gate.dst.is_empty() {
-                    // No-output constraint gate. `num_challenges` is 1 for the
-                    // constraint families; each consumes exactly one batch slot.
-                    for _ in 0..gate.num_challenges {
-                        expected.push(RetiredSlot::Constraint {
-                            group: group.clone(),
-                            relation_index,
-                        });
-                    }
-                } else {
-                    for (slot, out) in gate.dst.iter().enumerate() {
-                        expected.push(RetiredSlot::Output {
-                            group: group.clone(),
-                            relation_index,
-                            slot,
-                            addr: out.addr.clone(),
-                        });
-                    }
-                }
-            }
-        }
-
-        // The new batching order, position-by-position.
-        let actual = &dl.batching.roots;
-        if actual.len() != expected.len() {
-            return Err(format!(
-                "layer {li}: batching length mismatch: dag {} vs retired {}",
-                actual.len(),
-                expected.len()
-            ));
-        }
-
-        for (pos, (root_id, slot)) in actual.iter().zip(expected.iter()).enumerate() {
-            // F3: bounds-check before raw indexing — check_batching_parity's public
-            // signature accepts an arbitrary DagCircuit, so malformed ids must
-            // return Err rather than panic.
-            if root_id.0 as usize >= dl.roots.len() {
-                return Err(format!(
-                    "layer {li} pos {pos}: batching root_id {:?} is out of range \
-                     (roots.len() = {})",
-                    root_id,
-                    dl.roots.len()
-                ));
-            }
-            let root = &dl.roots[root_id.0 as usize];
-            // Claim-bearing identity comes from the inlined `claim.origin` (codex#5
-            // soundness anchor: origin + sink identity are compared position-by-
-            // position over the claim-bearing roots).
-            let origin = root.claim.as_ref().map(|c| &c.origin).ok_or_else(|| {
-                format!("layer {li} pos {pos}: claim-bearing root {root_id:?} has no RootOrigin")
-            })?;
-            match slot {
-                RetiredSlot::Output {
-                    group,
-                    relation_index,
-                    slot: out_slot,
-                    addr,
-                } => {
-                    // Must be a materialized (Output) root.
-                    let got_sink = match &root.materialize {
-                        Some(s) => &s.kind,
-                        None => {
-                            return Err(format!(
-                                "layer {li} pos {pos}: expected Output root, got Constraint"
-                            ));
-                        }
-                    };
-                    // Sink identity: the DAG sink must equal the retired output addr's sink.
-                    let want_sink = addr_to_sink_kind(addr).ok_or_else(|| {
-                        format!(
-                            "layer {li} pos {pos}: retired output addr {addr:?} has no sink mapping"
-                        )
-                    })?;
-                    if *got_sink != want_sink {
-                        return Err(format!(
-                            "layer {li} pos {pos}: sink-identity mismatch: dag {got_sink:?} vs retired {want_sink:?}"
-                        ));
-                    }
-                    // Origin (group, relation_index, slot) must agree.
-                    if origin.group != *group
-                        || origin.relation_index != *relation_index
-                        || origin.slot != RootSlot::Output(*out_slot)
-                    {
-                        return Err(format!(
-                            "layer {li} pos {pos}: Output origin mismatch: dag {:?} vs retired (group={:?}, rel={relation_index}, slot=Output({out_slot}))",
-                            origin, group
-                        ));
-                    }
-                }
-                RetiredSlot::Constraint {
-                    group,
-                    relation_index,
-                } => {
-                    // A constraint root is claim-only: `materialize: None`.
-                    if root.materialize.is_some() {
-                        return Err(format!(
-                            "layer {li} pos {pos}: expected Constraint root, got Output"
-                        ));
-                    }
-                    let expr = root.expr;
-                    if origin.group != *group
-                        || origin.relation_index != *relation_index
-                        || !matches!(origin.slot, RootSlot::Constraint(_))
-                    {
-                        return Err(format!(
-                            "layer {li} pos {pos}: Constraint origin mismatch: dag {:?} vs retired (group={:?}, rel={relation_index}, slot=Constraint)",
-                            origin, group
-                        ));
-                    }
-                    // Structural fingerprint of the constraint's expr subtree.
-                    // Two constraint roots that swapped (same kind, but the origin
-                    // table now points one origin at the other's expr) carry
-                    // distinct digests; cross-check that each origin maps to a
-                    // single, consistent digest.
-                    let digest = expr_digest(expr, dl);
-                    let key = (origin.group.clone(), origin.relation_index);
-                    match constraint_digest_by_origin.get(&key) {
-                        Some(&prev) if prev != digest => {
-                            return Err(format!(
-                                "layer {li} pos {pos}: constraint origin {key:?} maps to two distinct expr digests ({prev:#x} != {digest:#x}) — origin/expr desync"
-                            ));
-                        }
-                        _ => {
-                            constraint_digest_by_origin.insert(key, digest);
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    Ok(())
-}
-
 // ── Tests ──────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -1277,14 +946,14 @@ mod tests {
     use std::collections::BTreeMap;
 
     use super::*;
-    use crate::definitions::gkr::DECODER_LOOKUP_FORMAL_SET_INDEX;
-    use crate::gkr_compiler::codegen_ir::lower as retired_lower;
-    use crate::gkr_compiler::dag_ir::{
-        lower_dag, BatchingOrder, ChallengeKey, ChallengePower, ChallengeRef, ClaimInfo, DagGlobals,
-        DagLayer, Expr, ExprId, FieldKind, FillSource, LookupValueKind, ReadPlace, Root, RootGroup,
-        RootId, RootOrigin, RootSlot, SinkInfo, SinkKind, SourceId, SourceInfo, SourceKind,
+    use crate::{
+        lower_dag, BatchingOrder, ChallengeKey, ChallengePower, ChallengeRef, ClaimInfo,
+        DagGlobals, DagLayer, Expr, ExprId, FieldKind, FillSource, LookupValueKind, ReadPlace,
+        Root, RootGroup, RootId, RootOrigin, RootSlot, SinkInfo, SinkKind, SourceId, SourceInfo,
+        SourceKind,
     };
-    use crate::gkr_compiler::test_support::{build_add_sub_artifact, ConcreteField};
+    use cs::definitions::gkr::DECODER_LOOKUP_FORMAL_SET_INDEX;
+    use cs::gkr_compiler::test_support::build_add_sub_artifact;
 
     // ── Root literal builders (sink inlined into `materialize`, origin into
     //    `claim`) — keep hand-built test layers concise after the Task-2 struct
@@ -1325,7 +994,10 @@ mod tests {
         let exprs = vec![Expr::Source(SourceId(0))];
         let roots = vec![out_root(
             ExprId(0),
-            SinkKind::Inner { layer: 0, offset: 0 },
+            SinkKind::Inner {
+                layer: 0,
+                offset: 0,
+            },
             FieldKind::Base,
         )];
         DagLayer {
@@ -1351,7 +1023,11 @@ mod tests {
     #[test]
     fn good_circuit_validates() {
         let c = circuit_of(good_single_layer());
-        assert!(validate(&c).is_ok(), "well-formed circuit should validate: {:?}", validate(&c));
+        assert!(
+            validate(&c).is_ok(),
+            "well-formed circuit should validate: {:?}",
+            validate(&c)
+        );
     }
 
     // ── Rejection: claim-bearing root missing from BatchingOrder ──────────────
@@ -1381,9 +1057,23 @@ mod tests {
         let exprs = vec![Expr::Source(SourceId(0))];
         let roots = vec![
             // root 0: materialization-only cache (claim: None).
-            cache_only_root(ExprId(0), SinkKind::Cache { layer: 0, offset: 0 }, FieldKind::Base),
+            cache_only_root(
+                ExprId(0),
+                SinkKind::Cache {
+                    layer: 0,
+                    offset: 0,
+                },
+                FieldKind::Base,
+            ),
             // root 1: claim-bearing Inner Output.
-            out_root(ExprId(0), SinkKind::Inner { layer: 0, offset: 0 }, FieldKind::Base),
+            out_root(
+                ExprId(0),
+                SinkKind::Inner {
+                    layer: 0,
+                    offset: 0,
+                },
+                FieldKind::Base,
+            ),
         ];
         let layer = DagLayer {
             sources,
@@ -1410,12 +1100,9 @@ mod tests {
         let mut layer = good_single_layer();
         // Expr is base (Constant) but the sink declares Ext → mismatch.
         layer.roots[0].materialize.as_mut().unwrap().field = FieldKind::Ext;
-        let err = validate(&circuit_of(layer))
-            .expect_err("expr/sink field mismatch must be rejected");
-        assert!(
-            err.contains("!= sink field"),
-            "unexpected error: {err}"
-        );
+        let err =
+            validate(&circuit_of(layer)).expect_err("expr/sink field mismatch must be rejected");
+        assert!(err.contains("!= sink field"), "unexpected error: {err}");
     }
 
     // ── Rejection: Constant typed Ext ─────────────────────────────────────────
@@ -1450,7 +1137,10 @@ mod tests {
         let exprs = vec![Expr::Add(vec![ExprId(0)])]; // refers to itself
         let roots = vec![out_root(
             ExprId(0),
-            SinkKind::Inner { layer: 0, offset: 0 },
+            SinkKind::Inner {
+                layer: 0,
+                offset: 0,
+            },
             FieldKind::Base,
         )];
         let layer = DagLayer {
@@ -1480,7 +1170,10 @@ mod tests {
         let exprs = vec![Expr::Source(SourceId(0))]; // expr 0's source queries expr 0
         let roots = vec![out_root(
             ExprId(0),
-            SinkKind::Inner { layer: 0, offset: 0 },
+            SinkKind::Inner {
+                layer: 0,
+                offset: 0,
+            },
             FieldKind::Base,
         )];
         let layer = DagLayer {
@@ -1523,7 +1216,10 @@ mod tests {
             let exprs = vec![Expr::Source(SourceId(0))];
             let roots = vec![out_root(
                 ExprId(0),
-                SinkKind::Inner { layer: 0, offset: 0 },
+                SinkKind::Inner {
+                    layer: 0,
+                    offset: 0,
+                },
                 FieldKind::Ext,
             )];
             DagLayer {
@@ -1539,13 +1235,19 @@ mod tests {
         let layer1 = {
             let sources = vec![SourceInfo {
                 kind: SourceKind::Read {
-                    place: ReadPlace::LayerOutput { layer: 0, offset: 0 },
+                    place: ReadPlace::LayerOutput {
+                        layer: 0,
+                        offset: 0,
+                    },
                 },
             }];
             let exprs = vec![Expr::Source(SourceId(0))];
             let roots = vec![out_root(
                 ExprId(0),
-                SinkKind::Inner { layer: 1, offset: 0 },
+                SinkKind::Inner {
+                    layer: 1,
+                    offset: 0,
+                },
                 FieldKind::Ext,
             )];
             DagLayer {
@@ -1585,7 +1287,10 @@ mod tests {
             let exprs = vec![Expr::Source(SourceId(0))];
             let roots = vec![out_root(
                 ExprId(0),
-                SinkKind::Inner { layer: 0, offset: 0 },
+                SinkKind::Inner {
+                    layer: 0,
+                    offset: 0,
+                },
                 FieldKind::Ext,
             )];
             DagLayer {
@@ -1601,13 +1306,19 @@ mod tests {
         let layer1 = {
             let sources = vec![SourceInfo {
                 kind: SourceKind::Read {
-                    place: ReadPlace::LayerOutput { layer: 0, offset: 0 },
+                    place: ReadPlace::LayerOutput {
+                        layer: 0,
+                        offset: 0,
+                    },
                 },
             }];
             let exprs = vec![Expr::Source(SourceId(0))];
             let roots = vec![out_root(
                 ExprId(0),
-                SinkKind::Inner { layer: 1, offset: 0 },
+                SinkKind::Inner {
+                    layer: 1,
+                    offset: 0,
+                },
                 FieldKind::Base, // WRONG: resolved read is Ext
             )];
             DagLayer {
@@ -1637,85 +1348,12 @@ mod tests {
         validate(&dag).expect("add_sub DAG must validate");
     }
 
-    #[test]
-    fn add_sub_batching_parity() {
-        let artifact = build_add_sub_artifact();
-        let dag = lower_dag(&artifact).expect("lower_dag must succeed");
-        let retired = retired_lower::<ConcreteField>(&artifact).expect("retired lower must succeed");
-        check_batching_parity::<ConcreteField>(&dag, &retired)
-            .expect("add_sub batching parity must hold");
-    }
-
-    /// Non-vacuity guard: a deliberately reversed batching order must FAIL parity.
-    /// Without this, a parity check that silently passed everything would go
-    /// unnoticed (count-only parity is exactly the bug spec §7 Finding 1 warns of).
-    #[test]
-    fn parity_rejects_reversed_batching_order() {
-        let artifact = build_add_sub_artifact();
-        let mut dag = lower_dag(&artifact).expect("lower_dag must succeed");
-        let retired = retired_lower::<ConcreteField>(&artifact).expect("retired lower must succeed");
-        // Find a layer with >= 2 batched roots and reverse it, then expect failure.
-        let mut perturbed = false;
-        for layer in &mut dag.layers {
-            if layer.batching.roots.len() >= 2 {
-                layer.batching.roots.reverse();
-                perturbed = true;
-                break;
-            }
-        }
-        assert!(perturbed, "fixture must have a layer with >=2 batched roots");
-        assert!(
-            check_batching_parity::<ConcreteField>(&dag, &retired).is_err(),
-            "reversed batching order must FAIL parity (proves test is not vacuous)"
-        );
-    }
-
-    #[test]
-    fn add_sub_no_caches_batching_parity() {
-        use crate::gkr_compiler::test_support::build_add_sub_artifact_no_caches;
-        let artifact = build_add_sub_artifact_no_caches();
-        let dag = lower_dag(&artifact).expect("lower_dag must succeed");
-        let retired = retired_lower::<ConcreteField>(&artifact).expect("retired lower must succeed");
-        validate(&dag).expect("add_sub (no caches) DAG must validate");
-        check_batching_parity::<ConcreteField>(&dag, &retired)
-            .expect("add_sub (no caches) batching parity must hold");
-    }
-
     // (Task 1 removed `SourceKind::Prior` and the caches-lead ordering invariant.
     // The former Prior-target / caches-not-leading rejection tests
     // (`rejects_out_of_range_prior`, `rejects_prior_to_constraint_root`,
     // `rejects_prior_to_non_cache_output`, `rejects_caches_not_leading`) tested
     // invariants that no longer exist; out-of-range index references are now
     // covered by the reference-range invariants in `validate`.)
-
-    // ── F3: check_batching_parity must bounds-check root/sink ids ────────────
-
-    /// `check_batching_parity` with a batching root_id that is out of range for
-    /// `dl.roots` must return `Err`, not panic.
-    #[test]
-    fn parity_rejects_out_of_range_root_id() {
-        let artifact = build_add_sub_artifact();
-        let mut dag = lower_dag(&artifact).expect("lower_dag must succeed");
-        let retired = retired_lower::<ConcreteField>(&artifact).expect("retired lower must succeed");
-        // Corrupt the batching order in the first layer that has at least one
-        // batched root: replace the first root_id with a clearly out-of-range id.
-        let target_layer = dag
-            .layers
-            .iter_mut()
-            .find(|l| !l.batching.roots.is_empty())
-            .expect("fixture must have at least one layer with batched roots");
-        target_layer.batching.roots[0] = RootId(u32::MAX);
-        let result = check_batching_parity::<ConcreteField>(&dag, &retired);
-        assert!(
-            result.is_err(),
-            "out-of-range root_id in batching must return Err (not panic)"
-        );
-        let msg = result.unwrap_err();
-        assert!(
-            msg.contains("out of range"),
-            "error should mention out of range, got: {msg}"
-        );
-    }
 
     // ── Resolution side-table helpers ─────────────────────────────────────────
 
@@ -1742,7 +1380,9 @@ mod tests {
         };
         DagLayer {
             sources: vec![
-                SourceInfo { kind: SourceKind::Constant { value: 0 } },
+                SourceInfo {
+                    kind: SourceKind::Constant { value: 0 },
+                },
                 lv(0),
                 alpha1,
                 lv(1),
@@ -1757,10 +1397,15 @@ mod tests {
             ],
             roots: vec![out_root(
                 ExprId(5),
-                SinkKind::Inner { layer: 0, offset: 0 },
+                SinkKind::Inner {
+                    layer: 0,
+                    offset: 0,
+                },
                 FieldKind::Ext,
             )],
-            batching: BatchingOrder { roots: vec![RootId(0)] },
+            batching: BatchingOrder {
+                roots: vec![RootId(0)],
+            },
             resolutions: BTreeMap::new(),
         }
     }
@@ -1777,7 +1422,11 @@ mod tests {
     fn layer_with_single_setup_fold() -> DagLayer {
         DagLayer {
             sources: vec![
-                SourceInfo { kind: SourceKind::Read { place: ReadPlace::Setup { column: 0 } } }, // 0
+                SourceInfo {
+                    kind: SourceKind::Read {
+                        place: ReadPlace::Setup { column: 0 },
+                    },
+                }, // 0
                 SourceInfo {
                     kind: SourceKind::Challenge {
                         reference: ChallengeRef {
@@ -1786,7 +1435,11 @@ mod tests {
                         },
                     },
                 }, // 1: alpha^1
-                SourceInfo { kind: SourceKind::Read { place: ReadPlace::Setup { column: 1 } } }, // 2
+                SourceInfo {
+                    kind: SourceKind::Read {
+                        place: ReadPlace::Setup { column: 1 },
+                    },
+                }, // 2
             ],
             exprs: vec![
                 Expr::Source(SourceId(0)),             // 0: Setup col 0 (unscaled)
@@ -1797,10 +1450,15 @@ mod tests {
             ],
             roots: vec![out_root(
                 ExprId(4),
-                SinkKind::Inner { layer: 0, offset: 0 },
+                SinkKind::Inner {
+                    layer: 0,
+                    offset: 0,
+                },
                 FieldKind::Ext,
             )],
-            batching: BatchingOrder { roots: vec![RootId(0)] },
+            batching: BatchingOrder {
+                roots: vec![RootId(0)],
+            },
             resolutions: BTreeMap::new(),
         }
     }
@@ -1813,10 +1471,15 @@ mod tests {
         // The in-range check must reject it before reachability is tested.
         let mut layer = layer_with_single_generic_lookup(0);
         let out_of_range = ExprId(layer.exprs.len() as u32); // beyond the vec
-        layer.resolutions.insert(out_of_range, ResolutionStrategy::PeekSetup);
+        layer
+            .resolutions
+            .insert(out_of_range, ResolutionStrategy::PeekSetup);
         let c = circuit_of(layer);
         let e = validate(&c).expect_err("out-of-range resolution leaf must be rejected");
-        assert!(e.contains("out-of-range"), "error must mention out-of-range, got: {e}");
+        assert!(
+            e.contains("out-of-range"),
+            "error must mention out-of-range, got: {e}"
+        );
     }
 
     #[test]
@@ -1826,10 +1489,14 @@ mod tests {
         let layer = layer_with_single_generic_lookup(/* set_index */ 7);
         let leaf = generic_lookup_leaf_expr(&layer); // the folded-lookup ExprId
         let mut bad = layer.clone();
-        bad.resolutions.insert(leaf, ResolutionStrategy::PeekAggregate { set_index: 9 });
+        bad.resolutions
+            .insert(leaf, ResolutionStrategy::PeekAggregate { set_index: 9 });
         let c = circuit_of(bad);
         let e = validate(&c).expect_err("set_index mismatch must be rejected");
-        assert!(e.contains("set 7 != 9"), "error must mention set mismatch, got: {e}");
+        assert!(
+            e.contains("set 7 != 9"),
+            "error must mention set mismatch, got: {e}"
+        );
     }
 
     #[test]
@@ -1837,7 +1504,8 @@ mod tests {
         let layer = layer_with_single_generic_lookup(7);
         let leaf = generic_lookup_leaf_expr(&layer);
         let mut good = layer.clone();
-        good.resolutions.insert(leaf, ResolutionStrategy::PeekAggregate { set_index: 7 });
+        good.resolutions
+            .insert(leaf, ResolutionStrategy::PeekAggregate { set_index: 7 });
         let c = circuit_of(good);
         assert!(
             validate(&c).is_ok(),
@@ -1852,14 +1520,17 @@ mod tests {
         // (the false-negative the loose source-scan would have accepted).
         let mut layer = layer_with_single_generic_lookup(7);
         let c_src = SourceId(layer.sources.len() as u32);
-        layer.sources.push(SourceInfo { kind: SourceKind::Constant { value: 1 } });
+        layer.sources.push(SourceInfo {
+            kind: SourceKind::Constant { value: 1 },
+        });
         let c_expr = ExprId(layer.exprs.len() as u32);
         layer.exprs.push(Expr::Source(c_src));
         // Rebuild the leaf Add (ExprId 5) to include the stray Constant term.
         layer.exprs[5] = Expr::Add(vec![ExprId(1), ExprId(4), c_expr]);
-        layer
-            .resolutions
-            .insert(ExprId(5), ResolutionStrategy::PeekAggregate { set_index: 7 });
+        layer.resolutions.insert(
+            ExprId(5),
+            ResolutionStrategy::PeekAggregate { set_index: 7 },
+        );
         let c = circuit_of(layer);
         let e = validate(&c).expect_err("a fold with an extra Constant term must be rejected");
         // The stray Constant source goes through the Source arm → generic_col rejects it
@@ -1877,23 +1548,49 @@ mod tests {
         let mut layer = layer_with_single_generic_lookup(7);
         let q = ExprId(0); // reuse the existing query-const expr
         let sbase = layer.sources.len() as u32;
-        layer.sources.push(SourceInfo { kind: SourceKind::LookupValue {
-            kind: LookupValueKind::GenericColumn { column: 0 }, set_index: 7, query: q } });
-        layer.sources.push(SourceInfo { kind: SourceKind::Challenge { reference: ChallengeRef {
-            key: ChallengeKey::LookupMultiplicative, power: ChallengePower::Static(1) } } });
-        layer.sources.push(SourceInfo { kind: SourceKind::LookupValue {
-            kind: LookupValueKind::GenericColumn { column: 1 }, set_index: 7, query: q } });
+        layer.sources.push(SourceInfo {
+            kind: SourceKind::LookupValue {
+                kind: LookupValueKind::GenericColumn { column: 0 },
+                set_index: 7,
+                query: q,
+            },
+        });
+        layer.sources.push(SourceInfo {
+            kind: SourceKind::Challenge {
+                reference: ChallengeRef {
+                    key: ChallengeKey::LookupMultiplicative,
+                    power: ChallengePower::Static(1),
+                },
+            },
+        });
+        layer.sources.push(SourceInfo {
+            kind: SourceKind::LookupValue {
+                kind: LookupValueKind::GenericColumn { column: 1 },
+                set_index: 7,
+                query: q,
+            },
+        });
         let ebase = layer.exprs.len() as u32;
-        layer.exprs.push(Expr::Source(SourceId(sbase)));                       // lv0
-        layer.exprs.push(Expr::Source(SourceId(sbase + 1)));                   // alpha^1
-        layer.exprs.push(Expr::Source(SourceId(sbase + 2)));                   // lv1
-        layer.exprs.push(Expr::Mul(vec![ExprId(ebase + 1), ExprId(ebase + 2)])); // alpha*lv1
-        layer.exprs.push(Expr::Add(vec![ExprId(ebase), ExprId(ebase + 3)]));     // orphaned fold leaf
+        layer.exprs.push(Expr::Source(SourceId(sbase))); // lv0
+        layer.exprs.push(Expr::Source(SourceId(sbase + 1))); // alpha^1
+        layer.exprs.push(Expr::Source(SourceId(sbase + 2))); // lv1
+        layer
+            .exprs
+            .push(Expr::Mul(vec![ExprId(ebase + 1), ExprId(ebase + 2)])); // alpha*lv1
+        layer
+            .exprs
+            .push(Expr::Add(vec![ExprId(ebase), ExprId(ebase + 3)])); // orphaned fold leaf
         let orphan = ExprId(ebase + 4);
-        layer.resolutions.insert(orphan, ResolutionStrategy::PeekAggregate { set_index: 7 });
+        layer
+            .resolutions
+            .insert(orphan, ResolutionStrategy::PeekAggregate { set_index: 7 });
         let c = circuit_of(layer);
-        let e = validate(&c).expect_err("a well-formed but root-unreachable fold leaf must be rejected");
-        assert!(e.contains("not reachable"), "error must mention not reachable, got: {e}");
+        let e = validate(&c)
+            .expect_err("a well-formed but root-unreachable fold leaf must be rejected");
+        assert!(
+            e.contains("not reachable"),
+            "error must mention not reachable, got: {e}"
+        );
     }
 
     // ── B2: check_folded_setup_shape negative test ────────────────────────────
@@ -1904,7 +1601,8 @@ mod tests {
     fn resolutions_rejects_malformed_setup_fold() {
         // Positive control.
         let mut good = layer_with_single_setup_fold();
-        good.resolutions.insert(ExprId(4), ResolutionStrategy::PeekSetup);
+        good.resolutions
+            .insert(ExprId(4), ResolutionStrategy::PeekSetup);
         assert!(
             validate(&circuit_of(good)).is_ok(),
             "well-formed setup fold must validate"
@@ -1913,13 +1611,17 @@ mod tests {
         // Negative: replace source 0 (Setup{col:0}) with a BaseLayerMemory read.
         let mut bad = layer_with_single_setup_fold();
         bad.sources[0] = SourceInfo {
-            kind: SourceKind::Read { place: ReadPlace::BaseLayerMemory { column: 0 } },
+            kind: SourceKind::Read {
+                place: ReadPlace::BaseLayerMemory { column: 0 },
+            },
         };
-        bad.resolutions.insert(ExprId(4), ResolutionStrategy::PeekSetup);
-        let e = validate(&circuit_of(bad))
-            .expect_err("non-Setup read in setup fold must be rejected");
+        bad.resolutions
+            .insert(ExprId(4), ResolutionStrategy::PeekSetup);
+        let e =
+            validate(&circuit_of(bad)).expect_err("non-Setup read in setup fold must be rejected");
         assert!(
-            e.contains("folded setup") && (e.contains("expected Read(Setup)") || e.contains("Setup")),
+            e.contains("folded setup")
+                && (e.contains("expected Read(Setup)") || e.contains("Setup")),
             "error must mention setup shape, got: {e}"
         );
     }
@@ -1932,7 +1634,12 @@ mod tests {
         let layer = layer_with_single_generic_lookup(DECODER_LOOKUP_FORMAL_SET_INDEX);
         let leaf = generic_lookup_leaf_expr(&layer);
         let mut bad = layer.clone();
-        bad.resolutions.insert(leaf, ResolutionStrategy::PeekAggregate { set_index: DECODER_LOOKUP_FORMAL_SET_INDEX });
+        bad.resolutions.insert(
+            leaf,
+            ResolutionStrategy::PeekAggregate {
+                set_index: DECODER_LOOKUP_FORMAL_SET_INDEX,
+            },
+        );
         let e = validate(&circuit_of(bad))
             .expect_err("PeekAggregate with decoder set must be rejected");
         assert!(
@@ -1956,8 +1663,8 @@ mod tests {
                 fill: FillSource::DecoderLookupFill,
             },
         );
-        let e = validate(&circuit_of(bad))
-            .expect_err("non-BaseLayerMemory predicate must be rejected");
+        let e =
+            validate(&circuit_of(bad)).expect_err("non-BaseLayerMemory predicate must be rejected");
         assert!(
             e.contains("base-layer read") || e.contains("predicate"),
             "error must mention predicate, got: {e}"
@@ -2018,11 +1725,13 @@ mod tests {
         };
         let mut layer = DagLayer {
             sources: vec![
-                SourceInfo { kind: SourceKind::Constant { value: 0 } }, // 0: query
-                lv(0),   // 1: lv0
-                alpha1,  // 2: alpha^1
-                lv(1),   // 3: lv1
-                alpha0,  // 4: alpha^0  <- NEW
+                SourceInfo {
+                    kind: SourceKind::Constant { value: 0 },
+                }, // 0: query
+                lv(0),  // 1: lv0
+                alpha1, // 2: alpha^1
+                lv(1),  // 3: lv1
+                alpha0, // 4: alpha^0  <- NEW
             ],
             exprs: vec![
                 Expr::Source(SourceId(0)),             // 0: query
@@ -2036,14 +1745,22 @@ mod tests {
             ],
             roots: vec![out_root(
                 ExprId(7),
-                SinkKind::Inner { layer: 0, offset: 0 },
+                SinkKind::Inner {
+                    layer: 0,
+                    offset: 0,
+                },
                 FieldKind::Ext,
             )],
-            batching: BatchingOrder { roots: vec![RootId(0)] },
+            batching: BatchingOrder {
+                roots: vec![RootId(0)],
+            },
             resolutions: BTreeMap::new(),
         };
         // Tag the fold leaf ExprId(7) as PeekAggregate{set_index:7}.
-        layer.resolutions.insert(ExprId(7), ResolutionStrategy::PeekAggregate { set_index: 7 });
+        layer.resolutions.insert(
+            ExprId(7),
+            ResolutionStrategy::PeekAggregate { set_index: 7 },
+        );
         let c = circuit_of(layer);
         let e = validate(&c).expect_err("alpha^0-scaled column-0 must be rejected");
         assert!(
@@ -2075,15 +1792,28 @@ mod tests {
         let exprs = vec![Expr::Source(SourceId(0))];
         let roots = vec![
             // root 0: degenerate — neither materializes nor carries a claim.
-            Root { expr: ExprId(0), materialize: None, claim: None },
+            Root {
+                expr: ExprId(0),
+                materialize: None,
+                claim: None,
+            },
             // root 1: well-formed claim-bearing Output (satisfies batching).
-            out_root(ExprId(0), SinkKind::Inner { layer: 0, offset: 0 }, FieldKind::Base),
+            out_root(
+                ExprId(0),
+                SinkKind::Inner {
+                    layer: 0,
+                    offset: 0,
+                },
+                FieldKind::Base,
+            ),
         ];
         let layer = DagLayer {
             sources,
             exprs,
             roots,
-            batching: BatchingOrder { roots: vec![RootId(1)] },
+            batching: BatchingOrder {
+                roots: vec![RootId(1)],
+            },
             resolutions: BTreeMap::new(),
         };
         let err = validate(&circuit_of(layer))
@@ -2098,15 +1828,20 @@ mod tests {
 
     #[test]
     fn cross_layer_resolver_resolves_ext_cache_output() {
-        use crate::gkr_compiler::dag_ir::*;
+        use crate::*;
         // Layer 0 produces one Ext value materialized as Cache{layer:0, offset:0}.
         let l0 = DagLayer {
-            sources: vec![SourceInfo { kind: SourceKind::Constant { value: 1 } }],
+            sources: vec![SourceInfo {
+                kind: SourceKind::Constant { value: 1 },
+            }],
             exprs: vec![Expr::Source(SourceId(0))],
             roots: vec![Root {
                 expr: ExprId(0),
                 materialize: Some(SinkInfo {
-                    kind: SinkKind::Cache { layer: 0, offset: 0 },
+                    kind: SinkKind::Cache {
+                        layer: 0,
+                        offset: 0,
+                    },
                     field: FieldKind::Ext,
                 }),
                 claim: None,
@@ -2117,14 +1852,22 @@ mod tests {
         // Layer 1 reads that cache output.
         let l1 = DagLayer {
             sources: vec![SourceInfo {
-                kind: SourceKind::Read { place: ReadPlace::CacheOutput { layer: 0, offset: 0 } },
+                kind: SourceKind::Read {
+                    place: ReadPlace::CacheOutput {
+                        layer: 0,
+                        offset: 0,
+                    },
+                },
             }],
             exprs: vec![Expr::Source(SourceId(0))],
             roots: vec![],
             batching: BatchingOrder { roots: vec![] },
             resolutions: std::collections::BTreeMap::new(),
         };
-        let circuit = DagCircuit { layers: vec![l0, l1], globals: DagGlobals::default() };
+        let circuit = DagCircuit {
+            layers: vec![l0, l1],
+            globals: DagGlobals::default(),
+        };
 
         let cross = cross_layer_field_map_upto(&circuit, 1);
         let f = resolve_expr_field(ExprId(0), &circuit.layers[1], &cross).expect("resolves");
@@ -2142,11 +1885,19 @@ mod tests {
     /// (see `source_field_read_scratch_is_base`), so it stands in for a
     /// generic non-constant Base-valued leaf without accidentally folding.
     fn scratch_read(slot: usize) -> SourceInfo {
-        SourceInfo { kind: SourceKind::Read { place: ReadPlace::Scratch { slot } } }
+        SourceInfo {
+            kind: SourceKind::Read {
+                place: ReadPlace::Scratch { slot },
+            },
+        }
     }
 
     fn root_of(expr: ExprId) -> Root {
-        Root { expr, materialize: None, claim: None }
+        Root {
+            expr,
+            materialize: None,
+            claim: None,
+        }
     }
 
     /// (i) A non-fenced same-op child with fan-out == 1: `Add(Add(x, y), z)`
@@ -2159,9 +1910,9 @@ mod tests {
         let sz = scratch_read(2);
         let sources = vec![sx, sy, sz];
         let exprs = vec![
-            Expr::Source(SourceId(0)), // x
-            Expr::Source(SourceId(1)), // y
-            Expr::Source(SourceId(2)), // z
+            Expr::Source(SourceId(0)),             // x
+            Expr::Source(SourceId(1)),             // y
+            Expr::Source(SourceId(2)),             // z
             Expr::Add(vec![ExprId(0), ExprId(1)]), // inner Add(x, y), fan-out 1
             Expr::Add(vec![ExprId(3), ExprId(2)]), // outer Add(inner, z) — root
         ];
@@ -2185,8 +1936,12 @@ mod tests {
     #[test]
     fn validate_simplified_rejects_two_constant_operands() {
         let sources = vec![
-            SourceInfo { kind: SourceKind::Constant { value: 2 } },
-            SourceInfo { kind: SourceKind::Constant { value: 3 } },
+            SourceInfo {
+                kind: SourceKind::Constant { value: 2 },
+            },
+            SourceInfo {
+                kind: SourceKind::Constant { value: 3 },
+            },
         ];
         let exprs = vec![
             Expr::Source(SourceId(0)),
@@ -2212,7 +1967,12 @@ mod tests {
     #[test]
     fn validate_simplified_rejects_add_retaining_constant_zero() {
         let sx = scratch_read(0);
-        let sources = vec![SourceInfo { kind: SourceKind::Constant { value: 0 } }, sx];
+        let sources = vec![
+            SourceInfo {
+                kind: SourceKind::Constant { value: 0 },
+            },
+            sx,
+        ];
         let exprs = vec![
             Expr::Source(SourceId(0)), // Constant(0)
             Expr::Source(SourceId(1)), // x
@@ -2237,7 +1997,12 @@ mod tests {
     #[test]
     fn validate_simplified_rejects_mul_retaining_constant_one() {
         let sx = scratch_read(0);
-        let sources = vec![SourceInfo { kind: SourceKind::Constant { value: 1 } }, sx];
+        let sources = vec![
+            SourceInfo {
+                kind: SourceKind::Constant { value: 1 },
+            },
+            sx,
+        ];
         let exprs = vec![
             Expr::Source(SourceId(0)), // Constant(1)
             Expr::Source(SourceId(1)), // x
@@ -2264,10 +2029,7 @@ mod tests {
     fn validate_simplified_rejects_unary_add() {
         let sx = scratch_read(0);
         let sources = vec![sx];
-        let exprs = vec![
-            Expr::Source(SourceId(0)),
-            Expr::Add(vec![ExprId(0)]),
-        ];
+        let exprs = vec![Expr::Source(SourceId(0)), Expr::Add(vec![ExprId(0)])];
         let layer = DagLayer {
             sources,
             exprs,
@@ -2277,10 +2039,7 @@ mod tests {
         };
         let err = validate_simplified(&circuit_of(layer))
             .expect_err("unary non-fenced Add must be rejected");
-        assert!(
-            err.contains("must have >=2"),
-            "unexpected error: {err}"
-        );
+        assert!(err.contains("must have >=2"), "unexpected error: {err}");
     }
 
     /// (vi) A `Mul` that IS provably Base (both operands are Base per
@@ -2292,7 +2051,12 @@ mod tests {
     #[test]
     fn validate_simplified_rejects_provably_base_mul_retaining_constant_zero() {
         let sx = scratch_read(0);
-        let sources = vec![SourceInfo { kind: SourceKind::Constant { value: 0 } }, sx];
+        let sources = vec![
+            SourceInfo {
+                kind: SourceKind::Constant { value: 0 },
+            },
+            sx,
+        ];
         let exprs = vec![
             Expr::Source(SourceId(0)), // Constant(0) — Base
             Expr::Source(SourceId(1)), // Read{Scratch} — also Base
@@ -2307,9 +2071,6 @@ mod tests {
         };
         let err = validate_simplified(&circuit_of(layer))
             .expect_err("provably-base Mul retaining Constant(0) must be rejected");
-        assert!(
-            err.contains("is provably Base"),
-            "unexpected error: {err}"
-        );
+        assert!(err.contains("is provably Base"), "unexpected error: {err}");
     }
 }

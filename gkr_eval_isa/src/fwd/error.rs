@@ -1,7 +1,7 @@
 //! Centralized error types for the forward-eval VM. `From` conversions let the
 //! compiler bubble encode/bind failures into `CompileError` cleanly.
 
-use cs::gkr_compiler::dag_ir::RootId;
+use gkr_eval_ir::RootId;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum EncodeError {

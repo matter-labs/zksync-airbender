@@ -10,17 +10,16 @@ mod common;
 
 use std::collections::HashMap;
 
-use cs::gkr_compiler::dag_ir::{
-    lower_dag, validate, validate_circuit_schedule, DagCircuit, FieldKind, ReadPlace,
-};
 use cs::gkr_compiler::GKRCircuitArtifact;
 use field::baby_bear::base::BabyBearField;
+use gkr_eval_ir::{DagCircuit, FieldKind, ReadPlace, lower_dag, validate};
+use gkr_eval_isa::validate_circuit_schedule;
 
 use gkr_eval_isa::fwd::compile::decisions::SiteDecisions;
 use gkr_eval_isa::fwd::compile::{build_cross_layer_field_map, compile_layer};
 use gkr_eval_isa::schedule_search::genome::Genome;
 use gkr_eval_isa::schedule_search::producer::produce_circuit_schedule;
-use gkr_eval_isa::schedule_search::scorer::{objective_key, score, LayerCtx};
+use gkr_eval_isa::schedule_search::scorer::{LayerCtx, objective_key, score};
 use gkr_eval_isa::schedule_search::search::SearchConfig;
 
 use common::{compiled_circuit_dir, load_fixture, schedule_stem};
@@ -66,7 +65,11 @@ const ALL_FIXTURES: &[&str] = &[
 
 fn load_dag(
     fixture: &str,
-) -> (DagCircuit, GKRCircuitArtifact<BabyBearField>, HashMap<ReadPlace, FieldKind>) {
+) -> (
+    DagCircuit,
+    GKRCircuitArtifact<BabyBearField>,
+    HashMap<ReadPlace, FieldKind>,
+) {
     let artifact = load_fixture(fixture);
     let dag = lower_dag(&artifact).unwrap_or_else(|e| panic!("[{fixture}] lower_dag: {e}"));
     validate(&dag).unwrap_or_else(|e| panic!("[{fixture}] validate: {e}"));
@@ -80,20 +83,35 @@ fn infeasible_ranks_last() {
     let (dag, artifact, cross) = load_dag(ADD_SUB);
     let layer = &dag.layers[0];
 
-    let feasible_ctx = LayerCtx::new(layer, &artifact.layers[0], &artifact, &cross, GENEROUS_BUDGET);
+    let feasible_ctx = LayerCtx::new(
+        layer,
+        &artifact.layers[0],
+        &artifact,
+        &cross,
+        GENEROUS_BUDGET,
+    );
     let genome = Genome::neutral(feasible_ctx.n_order_keys(), feasible_ctx.n_sites());
     let feasible = score(&genome, &feasible_ctx);
-    assert!(!feasible.infeasible, "add_sub L0 must be feasible at budget {GENEROUS_BUDGET}");
+    assert!(
+        !feasible.infeasible,
+        "add_sub L0 must be feasible at budget {GENEROUS_BUDGET}"
+    );
 
     let tight_ctx = LayerCtx::new(layer, &artifact.layers[0], &artifact, &cross, 1);
     let infeasible = score(&genome, &tight_ctx);
-    assert!(infeasible.infeasible, "budget 1 must be BudgetBelowFloor on add_sub L0");
+    assert!(
+        infeasible.infeasible,
+        "budget 1 must be BudgetBelowFloor on add_sub L0"
+    );
 
     assert!(
         objective_key(&feasible) < objective_key(&infeasible),
         "any feasible score must rank strictly before an infeasible one"
     );
-    assert!(feasible < infeasible, "CandidateScore Ord must agree with objective_key");
+    assert!(
+        feasible < infeasible,
+        "CandidateScore Ord must agree with objective_key"
+    );
 }
 
 /// `score()` is deterministic: same genome twice -> identical `CandidateScore`.
@@ -101,7 +119,13 @@ fn infeasible_ranks_last() {
 fn score_deterministic() {
     let (dag, artifact, cross) = load_dag(ADD_SUB);
     let layer = &dag.layers[0];
-    let ctx = LayerCtx::new(layer, &artifact.layers[0], &artifact, &cross, GENEROUS_BUDGET);
+    let ctx = LayerCtx::new(
+        layer,
+        &artifact.layers[0],
+        &artifact,
+        &cross,
+        GENEROUS_BUDGET,
+    );
 
     // A non-neutral genome (perturbed order + biases) so determinism is checked on a
     // candidate that actually exercises admit/evict decisions, not the trivial seed.
@@ -116,7 +140,10 @@ fn score_deterministic() {
     let a = score(&genome, &ctx);
     let b = score(&genome, &ctx);
     assert_eq!(a, b, "score() must be deterministic for a fixed genome");
-    assert!(!a.infeasible, "perturbed genome must still be feasible at budget {GENEROUS_BUDGET}");
+    assert!(
+        !a.infeasible,
+        "perturbed genome must still be feasible at budget {GENEROUS_BUDGET}"
+    );
 }
 
 /// End-to-end smoke (mini GATE-D): tiny search (pop=4, evals=40) on add_sub produces
@@ -125,7 +152,12 @@ fn score_deterministic() {
 #[test]
 fn small_search_roundtrip_add_sub() {
     let (dag, artifact, cross) = load_dag(ADD_SUB);
-    let cfg = SearchConfig { pop: 4, evals: 40, seed: 0, ..SearchConfig::default() };
+    let cfg = SearchConfig {
+        pop: 4,
+        evals: 40,
+        seed: 0,
+        ..SearchConfig::default()
+    };
     let stem = schedule_stem(ADD_SUB);
 
     let mut sched = produce_circuit_schedule(&dag, &artifact, SEARCH_TEST_BUDGET, &cfg, None);
@@ -148,7 +180,7 @@ fn small_search_roundtrip_add_sub() {
     // (on `back`) and by the production load gates; a sub-ULP priority shift never
     // reorders a cache decision (all fixture gates pass on the loaded values).
     let json = serde_json::to_string(&sched).unwrap();
-    let back: cs::gkr_compiler::dag_ir::CircuitSchedule = serde_json::from_str(&json).unwrap();
+    let back: gkr_eval_isa::CircuitSchedule = serde_json::from_str(&json).unwrap();
     assert_eq!(back.circuit, sched.circuit);
     assert_eq!(back.budget, sched.budget);
     assert_eq!(back.layers.len(), sched.layers.len());
@@ -159,7 +191,10 @@ fn small_search_roundtrip_add_sub() {
         assert_eq!(b.sites.len(), s.sites.len());
         for ((bk, bv), (sk, sv)) in b.sites.iter().zip(&s.sites) {
             assert_eq!(bk, sk, "site keys must round-trip exactly");
-            assert!((bv - sv).abs() < 1e-9, "site priority round-trip within tol: {bv} vs {sv}");
+            assert!(
+                (bv - sv).abs() < 1e-9,
+                "site priority round-trip within tol: {bv} vs {sv}"
+            );
         }
     }
 
@@ -188,7 +223,10 @@ fn small_search_roundtrip_add_sub() {
             compiled.stats.dram_traffic, ls.predicted_traffic,
             "layer {li}: predicted_traffic must equal an immediate recompile"
         );
-        assert!(ls.floor <= ls.predicted_traffic, "layer {li}: floor above achieved traffic");
+        assert!(
+            ls.floor <= ls.predicted_traffic,
+            "layer {li}: floor above achieved traffic"
+        );
         if li == 0 {
             println!(
                 "mini GATE-D add_sub L0: predicted_traffic={} floor={} (pop={} evals={})",
@@ -224,7 +262,10 @@ fn produce_all_schedules() {
     let only = std::env::var("GKR_SCHEDULE_ONLY").ok();
     for fixture in ALL_FIXTURES {
         if let Some(filter) = &only {
-            if !filter.split(',').any(|s| !s.trim().is_empty() && fixture.contains(s.trim())) {
+            if !filter
+                .split(',')
+                .any(|s| !s.trim().is_empty() && fixture.contains(s.trim()))
+            {
                 eprintln!("skipped {fixture} (GKR_SCHEDULE_ONLY={filter})");
                 continue;
             }
@@ -238,8 +279,7 @@ fn produce_all_schedules() {
         let stem = fixture
             .trim_end_matches("_preprocessed_layout_gkr.json")
             .trim_end_matches("_layout_gkr.json");
-        let out = compiled_circuit_dir()
-            .join(format!("{stem}_schedule_b{REAL_BUDGET}_gkr.json"));
+        let out = compiled_circuit_dir().join(format!("{stem}_schedule_b{REAL_BUDGET}_gkr.json"));
         // Load the OLD committed schedule BEFORE overwriting and seed the GA with
         // it: elitism then guarantees the regenerated schedule never regresses
         // below the persisted traffic (non-regression by construction), while the
@@ -279,8 +319,9 @@ fn produce_all_schedules() {
         // rewritten, so iterating to a fixed point terminates (byte-stable) and the
         // committed corpus is self-verifying (`regen == no-op`).
         let new_traffic: usize = sched.layers.iter().map(|l| l.predicted_traffic).sum();
-        let old_traffic =
-            incumbent.as_ref().map(|s| s.layers.iter().map(|l| l.predicted_traffic).sum::<usize>());
+        let old_traffic = incumbent
+            .as_ref()
+            .map(|s| s.layers.iter().map(|l| l.predicted_traffic).sum::<usize>());
         match old_traffic {
             Some(old) if new_traffic >= old => {
                 eprintln!("kept {stem} (traffic {new_traffic} >= committed {old}; no rewrite)");
@@ -291,7 +332,9 @@ fn produce_all_schedules() {
                 eprintln!(
                     "wrote {} (traffic {new_traffic}{})",
                     out.display(),
-                    old_traffic.map(|o| format!(" < committed {o}")).unwrap_or_default()
+                    old_traffic
+                        .map(|o| format!(" < committed {o}"))
+                        .unwrap_or_default()
                 );
             }
         }

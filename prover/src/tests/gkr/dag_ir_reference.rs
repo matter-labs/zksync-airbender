@@ -33,6 +33,11 @@
 
 use std::collections::BTreeSet;
 
+use cs::definitions::gkr::{
+    AddressSpaceType, NoFieldLinearRelation, NoFieldSingleColumnLookupRelation,
+    NoFieldVectorLookupRelation, RamWordRepresentation,
+};
+use cs::definitions::{GKRAddress, VirtualSetupPoly};
 use cs::definitions::{
     PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_HIGH_IDX,
     PERMUTATION_ARGUMENT_CHALLENGE_POWERS_ADDRESS_LOW_IDX,
@@ -41,23 +46,19 @@ use cs::definitions::{
     PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX,
     PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX,
 };
-use cs::definitions::gkr::{
-    AddressSpaceType, NoFieldLinearRelation, NoFieldSingleColumnLookupRelation,
-    NoFieldVectorLookupRelation, RamWordRepresentation,
-};
-use cs::definitions::{GKRAddress, VirtualSetupPoly};
-use cs::gkr_compiler::dag_ir::{
-    Bf, ChallengeKey, ChallengeRef, ChallengeResolver, Ext, LookupResolver, LookupValueKind,
-    PermutationSlot, ReadPlace, ReadResolver, VirtualSetupKind, VirtualSetupResolver,
-};
 use cs::gkr_compiler::{
     CompiledAddressSpaceRelationStrict, CompiledAddressStrict, CompiledMemoryTimestamp,
-    InitsOrTeardownsTimestampAndValue, NoFieldGKRRelation, NoFieldMaxQuadraticConstraintsGKRRelation,
-    NoFieldMaxQuadraticGKRRelation, NoFieldSpecialMemoryContributionRelation,
+    InitsOrTeardownsTimestampAndValue, NoFieldGKRRelation,
+    NoFieldMaxQuadraticConstraintsGKRRelation, NoFieldMaxQuadraticGKRRelation,
+    NoFieldSpecialMemoryContributionRelation,
 };
 use field::baby_bear::base::BabyBearField;
 use field::baby_bear::ext4::BabyBearExt4;
 use field::{Field, FieldExtension, PrimeField};
+use gkr_eval_ir::{
+    Bf, ChallengeKey, ChallengeRef, ChallengeResolver, Ext, LookupResolver, LookupValueKind,
+    PermutationSlot, ReadPlace, ReadResolver, VirtualSetupKind, VirtualSetupResolver,
+};
 
 use crate::gkr::sumcheck::access_and_fold::{BaseFieldPoly, GKRStorage};
 
@@ -265,8 +266,7 @@ impl RefCtx {
             LookupValueKind::GenericColumn { column } => 0x100 + *column as u64,
             LookupValueKind::DecoderColumn { column } => 0x200 + *column as u64,
         };
-        let q =
-            <E as FieldExtension<F>>::into_coeffs(query_value)[0].as_u32_reduced() as u64;
+        let q = <E as FieldExtension<F>>::into_coeffs(query_value)[0].as_u32_reduced() as u64;
         scramble(
             0x7000_0000_0000_0000
                 ^ kind_tag.rotate_left(48)
@@ -291,27 +291,25 @@ impl RefCtx {
         match &r.key {
             ChallengeKey::LookupAdditive => self.lookup_additive,
             ChallengeKey::LookupMultiplicative => match r.power {
-                cs::gkr_compiler::dag_ir::ChallengePower::One => self.lookup_multiplicative,
-                cs::gkr_compiler::dag_ir::ChallengePower::Static(j) => self.alpha_pow(j),
+                gkr_eval_ir::ChallengePower::One => self.lookup_multiplicative,
+                gkr_eval_ir::ChallengePower::Static(j) => self.alpha_pow(j),
             },
             ChallengeKey::PermutationAdditive => self.permutation_additive,
             ChallengeKey::PermutationLinearization(slot) => self.perm_lin_slot(slot),
             ChallengeKey::ConstraintAggregation => match r.power {
-                cs::gkr_compiler::dag_ir::ChallengePower::One => self.constraint_aggregation,
-                cs::gkr_compiler::dag_ir::ChallengePower::Static(p) => self.rho_pow(p as usize),
+                gkr_eval_ir::ChallengePower::One => self.constraint_aggregation,
+                gkr_eval_ir::ChallengePower::Static(p) => self.rho_pow(p as usize),
             },
             ChallengeKey::ClaimBatching => match r.power {
-                cs::gkr_compiler::dag_ir::ChallengePower::One => self.claim_batching,
-                cs::gkr_compiler::dag_ir::ChallengePower::Static(i) => self.beta_pow(i as usize),
+                gkr_eval_ir::ChallengePower::One => self.claim_batching,
+                gkr_eval_ir::ChallengePower::Static(i) => self.beta_pow(i as usize),
             },
         }
     }
 
     /// Build a `GKRExternalChallenges` view of this context (for the explicit
     /// memory-tuple ground-truth check via the real `evaluate_memory_query`).
-    pub(crate) fn external_challenges(
-        &self,
-    ) -> crate::definitions::GKRExternalChallenges<F, E> {
+    pub(crate) fn external_challenges(&self) -> crate::definitions::GKRExternalChallenges<F, E> {
         crate::definitions::GKRExternalChallenges {
             permutation_argument_linearization_challenges: std::array::from_fn(|i| {
                 self.permutation_linearization[i]
@@ -516,7 +514,11 @@ fn rational_pair(a: E, b: E, c: E, d: E) -> [E; 2] {
 
 /// The affine memory tuple value (Ext). Independent re-derivation of
 /// `evaluate_memory_query`.
-fn eval_memory_tuple(rel: &NoFieldSpecialMemoryContributionRelation, ctx: &RefCtx, row: usize) -> E {
+fn eval_memory_tuple(
+    rel: &NoFieldSpecialMemoryContributionRelation,
+    ctx: &RefCtx,
+    row: usize,
+) -> E {
     let mut result = ctx.permutation_additive;
 
     // address space contribution (base, added directly).
@@ -525,7 +527,9 @@ fn eval_memory_tuple(rel: &NoFieldSpecialMemoryContributionRelation, ctx: &RefCt
             result.add_assign(&lift(F::from_u32_with_reduction(c)));
         }
         CompiledAddressSpaceRelationStrict::IsRam(offset) => {
-            result.add_assign(&lift(ctx.read_base(GKRAddress::BaseLayerMemory(offset), row)));
+            result.add_assign(&lift(
+                ctx.read_base(GKRAddress::BaseLayerMemory(offset), row),
+            ));
         }
         CompiledAddressSpaceRelationStrict::IsRegister(offset) => {
             let mut t = F::ONE;
@@ -668,7 +672,9 @@ fn eval_inits_or_teardowns_tuple(
 ) -> E {
     let mut result = ctx.permutation_additive;
     // address space is RAM.
-    result.add_assign(&lift(F::from_u32_with_reduction(AddressSpaceType::RAM as u32)));
+    result.add_assign(&lift(F::from_u32_with_reduction(
+        AddressSpaceType::RAM as u32,
+    )));
 
     // low address.
     let addr_low = ctx.virtual_setup_value(&VirtualSetupKind::InitsAndTeardownsLow, row);
@@ -703,10 +709,22 @@ fn eval_inits_or_teardowns_tuple(
         };
         let mem = |col: usize| lift(ctx.read_base(GKRAddress::BaseLayerMemory(col), row));
         for (idx, col) in [
-            (PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX, timestamp[0]),
-            (PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX, timestamp[1]),
-            (PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX, value[0]),
-            (PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX, value[1]),
+            (
+                PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_LOW_IDX,
+                timestamp[0],
+            ),
+            (
+                PERMUTATION_ARGUMENT_CHALLENGE_POWERS_TIMESTAMP_HIGH_IDX,
+                timestamp[1],
+            ),
+            (
+                PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX,
+                value[0],
+            ),
+            (
+                PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_HIGH_IDX,
+                value[1],
+            ),
         ] {
             let mut t = ctx.perm_lin(idx);
             t.mul_assign(&mem(col));
@@ -803,7 +821,12 @@ pub(crate) fn reference_relation_values(
             input,
             range_check_width,
             ..
-        } => vec![lift(eval_single_column_lookup(input, *range_check_width, ctx, row))],
+        } => vec![lift(eval_single_column_lookup(
+            input,
+            *range_check_width,
+            ctx,
+            row,
+        ))],
         R::MaterializedVectorLookupInput { input, .. } => vec![eval_folded_lookup(input, ctx, row)],
 
         // ── PAIR family: 1/(b+γ) + 1/(d+γ) → [num, den] ──
@@ -812,8 +835,18 @@ pub(crate) fn reference_relation_values(
             range_check_width,
             ..
         } => {
-            let b = lift(eval_single_column_lookup(&input[0], *range_check_width, ctx, row));
-            let d = lift(eval_single_column_lookup(&input[1], *range_check_width, ctx, row));
+            let b = lift(eval_single_column_lookup(
+                &input[0],
+                *range_check_width,
+                ctx,
+                row,
+            ));
+            let d = lift(eval_single_column_lookup(
+                &input[1],
+                *range_check_width,
+                ctx,
+                row,
+            ));
             pair(b, d, ctx).to_vec()
         }
         R::LookupPairFromMaterializedBaseInputs { input, .. } => {
@@ -902,8 +935,7 @@ pub(crate) fn reference_relation_values(
         }
 
         // ── grand-product / product / mask (single Ext output) ──
-        R::InitialGrandProductFromCaches { input, .. }
-        | R::TrivialProduct { input, .. } => {
+        R::InitialGrandProductFromCaches { input, .. } | R::TrivialProduct { input, .. } => {
             let mut p = read_ext(input[0], ctx, row);
             p.mul_assign(&read_ext(input[1], ctx, row));
             vec![p]
@@ -1121,13 +1153,19 @@ pub(crate) fn collect_addresses(rel: &NoFieldGKRRelation, out: &mut BTreeSet<GKR
             out.insert(setup.0);
             out.insert(setup.1);
         }
-        R::LookupUnbalancedPairWithMaterializedBaseInputs { input, remainder, .. }
-        | R::LookupUnbalancedPairWithMaterializedVectorInputs { input, remainder, .. } => {
+        R::LookupUnbalancedPairWithMaterializedBaseInputs {
+            input, remainder, ..
+        }
+        | R::LookupUnbalancedPairWithMaterializedVectorInputs {
+            input, remainder, ..
+        } => {
             out.insert(input[0]);
             out.insert(input[1]);
             out.insert(*remainder);
         }
-        R::LookupUnbalancedPairWithVectorInputs { input, remainder, .. } => {
+        R::LookupUnbalancedPairWithVectorInputs {
+            input, remainder, ..
+        } => {
             out.insert(input[0]);
             out.insert(input[1]);
             collect_vector(remainder, out);

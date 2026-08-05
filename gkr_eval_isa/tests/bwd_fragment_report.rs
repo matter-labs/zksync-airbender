@@ -77,7 +77,7 @@ mod common;
 
 use common::{encode, layers_with_bwd_roots, FIXTURES};
 
-use cs::gkr_compiler::dag_ir::BwdRegime;
+use gkr_eval_isa::BwdRegime;
 use gkr_eval_isa::bwd::compile::{
     compile_distilled_fragments, compile_distilled_fragments_planned, BwdCompiledLayer,
     FragmentBackend,

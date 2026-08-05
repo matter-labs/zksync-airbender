@@ -43,8 +43,8 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use cs::gkr_compiler::dag_ir::{Bf, BwdRegime};
 use field::{Field, PrimeField};
+use gkr_eval_ir::Bf;
 
 use super::limits::{LEAN_MAX_IMMEDIATES, MAX_COEFFICIENT_ENCODINGS};
 use super::model::{
@@ -174,7 +174,7 @@ pub fn group_coeff_layer(layer: CoeffLayer) -> Result<CoeffLayer, CoeffError> {
         layer.groups.is_empty() && layer.immediates.is_empty(),
         "grouping is not idempotent by re-entry: it consumes an UNGROUPED layer"
     );
-    if layer.regime == BwdRegime::R0 {
+    if layer.regime == crate::BwdRegime::R0 {
         return Ok(layer);
     }
 
@@ -353,9 +353,7 @@ pub fn group_coeff_layer(layer: CoeffLayer) -> Result<CoeffLayer, CoeffError> {
 
 #[cfg(test)]
 mod tests {
-    use cs::gkr_compiler::dag_ir::{
-        ChallengeKey, ChallengePower, ChallengeRef, FieldKind, ReadPlace,
-    };
+    use gkr_eval_ir::{ChallengeKey, ChallengePower, ChallengeRef, FieldKind, ReadPlace};
 
     use super::*;
     use crate::bwd::coeff::model::{
@@ -509,7 +507,7 @@ mod tests {
             })
             .collect();
         CoeffLayer {
-            regime: BwdRegime::Ext,
+            regime: crate::BwdRegime::Ext,
             c_init: None,
             coefficients: bank,
             sources: (0..SOURCES)
@@ -885,7 +883,7 @@ mod tests {
     fn r0_layers_pass_through_untouched() {
         let recipes = [family(3), family(5)];
         let mut layer = ext_layer(&recipes, &[(Some(0), Kind::C0), (Some(1), Kind::C0)]);
-        layer.regime = BwdRegime::R0;
+        layer.regime = crate::BwdRegime::R0;
         let before = layer.clone();
         assert_eq!(
             group_coeff_layer(layer),

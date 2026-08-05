@@ -6,7 +6,7 @@
 
 use std::collections::{BTreeSet, HashMap};
 
-use cs::gkr_compiler::dag_ir::ExprId;
+use gkr_eval_ir::ExprId;
 
 use super::lower::{VDst, VInstr};
 use super::place::{ValueId, VirtualOp};

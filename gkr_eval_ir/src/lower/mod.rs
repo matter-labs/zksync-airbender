@@ -56,9 +56,9 @@ use std::collections::{BTreeMap, HashMap};
 
 use field::PrimeField;
 
-use crate::definitions::{GKRAddress, VirtualSetupPoly};
-use crate::definitions::gkr::DECODER_LOOKUP_FORMAL_SET_INDEX;
-use crate::gkr_compiler::{
+use cs::definitions::gkr::DECODER_LOOKUP_FORMAL_SET_INDEX;
+use cs::definitions::{GKRAddress, VirtualSetupPoly};
+use cs::gkr_compiler::{
     GKRCircuitArtifact, GateArtifacts, NoFieldGKRCacheRelation, NoFieldGKRRelation,
 };
 
@@ -277,13 +277,21 @@ impl LayerOut {
 
     /// Record a single-column lookup leaf's forward-peek strategy.
     /// `range_check_width == 16` selects the rc16 mapping; anything else is timestamp.
-    fn record_single(&mut self, leaf: ExprId, set_index: usize, range_check_width: u32) -> Result<(), String> {
+    fn record_single(
+        &mut self,
+        leaf: ExprId,
+        set_index: usize,
+        range_check_width: u32,
+    ) -> Result<(), String> {
         let width = if range_check_width == 16 {
             RangeWidth::Bits16
         } else {
             RangeWidth::Timestamp
         };
-        self.insert_resolution(leaf, ResolutionStrategy::PeekSingleColumn { set_index, width })
+        self.insert_resolution(
+            leaf,
+            ResolutionStrategy::PeekSingleColumn { set_index, width },
+        )
     }
 
     /// Record a generic-vector / decoder lookup leaf's forward-peek strategy.
@@ -308,10 +316,14 @@ impl LayerOut {
         let strat = if set_index == DECODER_LOOKUP_FORMAL_SET_INDEX {
             let predicate = decoder_predicate
                 .ok_or_else(|| {
-                    "dag_ir: decoder lookup fold but circuit has no machine_state predicate".to_string()
+                    "dag_ir: decoder lookup fold but circuit has no machine_state predicate"
+                        .to_string()
                 })?
                 .clone();
-            ResolutionStrategy::PeekDecoder { predicate, fill: FillSource::DecoderLookupFill }
+            ResolutionStrategy::PeekDecoder {
+                predicate,
+                fill: FillSource::DecoderLookupFill,
+            }
         } else {
             ResolutionStrategy::PeekAggregate { set_index }
         };
@@ -380,7 +392,12 @@ fn lower_relation(
         R::MaterializedVectorLookupInput { input, output } => {
             // folded_lookup is extension-valued (alpha powers are challenges).
             let expr = lookup::folded_lookup(arena, input);
-            out.record_vector(expr, input.lookup_set_index, input.columns.len(), decoder_predicate)?;
+            out.record_vector(
+                expr,
+                input.lookup_set_index,
+                input.columns.len(),
+                decoder_predicate,
+            )?;
             out.emit_output(expr, *output, FieldKind::Ext, group, relation_index)
         }
 
@@ -406,8 +423,18 @@ fn lower_relation(
         R::LookupPairFromVectorInputs { input, output } => {
             let b = lookup::folded_lookup(arena, &input[0]);
             let d = lookup::folded_lookup(arena, &input[1]);
-            out.record_vector(b, input[0].lookup_set_index, input[0].columns.len(), decoder_predicate)?;
-            out.record_vector(d, input[1].lookup_set_index, input[1].columns.len(), decoder_predicate)?;
+            out.record_vector(
+                b,
+                input[0].lookup_set_index,
+                input[0].columns.len(),
+                decoder_predicate,
+            )?;
+            out.record_vector(
+                d,
+                input[1].lookup_set_index,
+                input[1].columns.len(),
+                decoder_predicate,
+            )?;
             let (num, den) = lookup::pair(arena, b, d);
             out.emit_output_pair(num, den, *output, FieldKind::Ext, group, relation_index)
         }
@@ -445,7 +472,12 @@ fn lower_relation(
             // b = folded_lookup(input); c = multiplicity Read(setup.0);
             // d = alpha-folded setup columns.
             let b = lookup::folded_lookup(arena, input);
-            out.record_vector(b, input.lookup_set_index, input.columns.len(), decoder_predicate)?;
+            out.record_vector(
+                b,
+                input.lookup_set_index,
+                input.columns.len(),
+                decoder_predicate,
+            )?;
             let c = lookup::read(arena, setup.0);
             let d = lookup::folded_setup(arena, &setup.1);
             out.record_setup(d, setup.1.len())?;
@@ -477,7 +509,12 @@ fn lower_relation(
             // c = Read(setup.0) (multiplicity); d = alpha-folded setup columns.
             let a = lookup::read(arena, input.0);
             let b = lookup::folded_lookup(arena, &input.1);
-            out.record_vector(b, input.1.lookup_set_index, input.1.columns.len(), decoder_predicate)?;
+            out.record_vector(
+                b,
+                input.1.lookup_set_index,
+                input.1.columns.len(),
+                decoder_predicate,
+            )?;
             let c = lookup::read(arena, setup.0);
             let d = lookup::folded_setup(arena, &setup.1);
             out.record_setup(d, setup.1.len())?;
@@ -493,7 +530,12 @@ fn lower_relation(
             // c = Read(setup.0) (multiplicity); d = Read(setup.1) (cached setup).
             let a = lookup::read(arena, input.0);
             let b = lookup::folded_lookup(arena, &input.1);
-            out.record_vector(b, input.1.lookup_set_index, input.1.columns.len(), decoder_predicate)?;
+            out.record_vector(
+                b,
+                input.1.lookup_set_index,
+                input.1.columns.len(),
+                decoder_predicate,
+            )?;
             let c = lookup::read(arena, setup.0);
             let d = lookup::read(arena, setup.1);
             let (num, den) = lookup::dens_and_setup(arena, a, b, c, d, minus_one);
@@ -528,7 +570,12 @@ fn lower_relation(
             let a = lookup::read(arena, input[0]);
             let b = lookup::read(arena, input[1]);
             let d = lookup::folded_lookup(arena, remainder);
-            out.record_vector(d, remainder.lookup_set_index, remainder.columns.len(), decoder_predicate)?;
+            out.record_vector(
+                d,
+                remainder.lookup_set_index,
+                remainder.columns.len(),
+                decoder_predicate,
+            )?;
             let (num, den) = lookup::unbalanced(arena, a, b, d);
             out.emit_output_pair(num, den, *output, FieldKind::Ext, group, relation_index)
         }
@@ -647,14 +694,18 @@ fn lower_cache(
             relation,
             range_check_width,
         } => {
-            let expr =
-                lookup::single_column_lookup(arena, relation, *range_check_width as u32);
+            let expr = lookup::single_column_lookup(arena, relation, *range_check_width as u32);
             out.record_single(expr, relation.lookup_set_index, *range_check_width as u32)?;
             (expr, FieldKind::Base)
         }
         C::VectorizedLookup(vl) => {
             let expr = lookup::folded_lookup(arena, vl);
-            out.record_vector(expr, vl.lookup_set_index, vl.columns.len(), decoder_predicate)?;
+            out.record_vector(
+                expr,
+                vl.lookup_set_index,
+                vl.columns.len(),
+                decoder_predicate,
+            )?;
             (expr, FieldKind::Ext)
         }
         C::VectorizedLookupSetup(cols) => {
@@ -662,7 +713,10 @@ fn lower_cache(
             out.record_setup(expr, cols.len())?;
             (expr, FieldKind::Ext)
         }
-        C::MemoryTuple(mt) => (memory::lower_memory_tuple(arena, mt, minus_one)?, FieldKind::Ext),
+        C::MemoryTuple(mt) => (
+            memory::lower_memory_tuple(arena, mt, minus_one)?,
+            FieldKind::Ext,
+        ),
     };
     let root_id = out.emit_cache(expr, addr, field)?;
     Ok((root_id, expr))
@@ -683,8 +737,14 @@ fn check_decoder_masks<'a>(
     let assert_mask = |mask: GKRAddress| -> Result<(), String> {
         match expected_mask {
             Some(exp) if exp == mask => Ok(()),
-            Some(exp) => Err(format!("dag_ir: decoder mask {:?} != machine_state.execute {:?}", mask, exp)),
-            None => Err(format!("dag_ir: decoder consumer with mask {:?} but no machine_state", mask)),
+            Some(exp) => Err(format!(
+                "dag_ir: decoder mask {:?} != machine_state.execute {:?}",
+                mask, exp
+            )),
+            None => Err(format!(
+                "dag_ir: decoder consumer with mask {:?} but no machine_state",
+                mask
+            )),
         }
     };
     for rel in relations {
@@ -772,8 +832,14 @@ fn lower_layer<F: PrimeField + PartialEq>(
     // from batching by the `claim.is_some()` filter below.
     let mut cache_aliases: HashMap<GKRAddress, ExprId> = HashMap::new();
     for (addr, rel) in layer.cached_relations.iter() {
-        let (_root_id, expr) =
-            lower_cache(&mut arena, &mut out, *addr, rel, minus_one, decoder_predicate.as_ref())?;
+        let (_root_id, expr) = lower_cache(
+            &mut arena,
+            &mut out,
+            *addr,
+            rel,
+            minus_one,
+            decoder_predicate.as_ref(),
+        )?;
         cache_aliases.insert(*addr, expr); // alias → shared ExprId (was: root_id)
     }
     // From here on, a same-layer cache read IS the materialized value's ExprId.
@@ -913,16 +979,20 @@ pub fn lower_dag_legacy<F: PrimeField + PartialEq>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::definitions::gkr::NoFieldLinearRelation;
-    use crate::gkr_compiler::test_support::{sample_relations, single_relation_artifact};
-    use crate::gkr_compiler::{NoFieldMaxQuadraticGKRRelation, NoFieldStructuredExpression};
-    use crate::gkr_compiler::dag_ir::Expr;
+    use crate::Expr;
+    use cs::definitions::gkr::NoFieldLinearRelation;
+    use cs::gkr_compiler::test_support::{sample_relations, single_relation_artifact};
+    use cs::gkr_compiler::{NoFieldMaxQuadraticGKRRelation, NoFieldStructuredExpression};
 
     /// The single layer of a `single_relation_artifact`, lowered.
     fn lower_single(rel: NoFieldGKRRelation) -> DagLayer {
         let artifact = single_relation_artifact(rel);
         let circuit = lower_dag(&artifact).expect("lower_dag must succeed");
-        assert_eq!(circuit.layers.len(), 1, "single-relation artifact is one layer");
+        assert_eq!(
+            circuit.layers.len(),
+            1,
+            "single-relation artifact is one layer"
+        );
         circuit.layers.into_iter().next().unwrap()
     }
 
@@ -942,7 +1012,10 @@ mod tests {
         GKRAddress::BaseLayerWitness(i)
     }
     fn inner0() -> GKRAddress {
-        GKRAddress::InnerLayer { layer: 1, offset: 0 }
+        GKRAddress::InnerLayer {
+            layer: 1,
+            offset: 0,
+        }
     }
 
     // ── LinearBaseFieldRelation ────────────────────────────────────────────
@@ -1027,7 +1100,10 @@ mod tests {
                 let has_src = terms
                     .iter()
                     .any(|t| matches!(layer.exprs[t.0 as usize], Expr::Source(_)));
-                assert!(has_mul && has_src, "expected a Mul (quadratic) and a Source (linear)");
+                assert!(
+                    has_mul && has_src,
+                    "expected a Mul (quadratic) and a Source (linear)"
+                );
             }
             other => panic!("expected Add, got {:?}", other),
         }
@@ -1073,11 +1149,11 @@ mod tests {
     fn u32_space_generic_address_returns_err_not_panic() {
         // The only remaining Err path: a memory tuple whose address is the
         // confirmed-dead U32SpaceGeneric form must return Err, never panic.
-        use crate::gkr_compiler::{
+        use cs::definitions::gkr::RamWordRepresentation;
+        use cs::gkr_compiler::{
             CompiledAddressSpaceRelationStrict, CompiledAddressStrict, CompiledMemoryTimestamp,
             NoFieldSpecialMemoryContributionRelation,
         };
-        use crate::definitions::gkr::RamWordRepresentation;
         let generic = NoFieldSpecialMemoryContributionRelation {
             address_space: CompiledAddressSpaceRelationStrict::Constant(0),
             address: CompiledAddressStrict::U32SpaceGeneric([
@@ -1107,12 +1183,8 @@ mod tests {
 
     // ── Lookup lowering (Task 8) ────────────────────────────────────────────
 
-    use crate::definitions::gkr::{
-        NoFieldSingleColumnLookupRelation, NoFieldVectorLookupRelation,
-    };
-    use crate::gkr_compiler::dag_ir::{
-        ChallengeKey, LookupValueKind, SourceKind,
-    };
+    use crate::{ChallengeKey, LookupValueKind, SourceKind};
+    use cs::definitions::gkr::{NoFieldSingleColumnLookupRelation, NoFieldVectorLookupRelation};
 
     /// Trivial single-input linear query `1·x_addr`.
     fn lin(addr: GKRAddress) -> NoFieldLinearRelation {
@@ -1128,13 +1200,19 @@ mod tests {
 
     fn vl(set: usize, n_cols: usize) -> NoFieldVectorLookupRelation {
         NoFieldVectorLookupRelation {
-            columns: (0..n_cols).map(|i| lin(blw(i))).collect::<Vec<_>>().into_boxed_slice(),
+            columns: (0..n_cols)
+                .map(|i| lin(blw(i)))
+                .collect::<Vec<_>>()
+                .into_boxed_slice(),
             lookup_set_index: set,
         }
     }
 
     fn inner1() -> GKRAddress {
-        GKRAddress::InnerLayer { layer: 1, offset: 1 }
+        GKRAddress::InnerLayer {
+            layer: 1,
+            offset: 1,
+        }
     }
 
     /// All `Output` (materialized) roots' (field, expr), in root order.
@@ -1160,7 +1238,7 @@ mod tests {
 
     /// True if any source is a lookup-multiplicative challenge of power `j`.
     fn has_alpha_pow(layer: &DagLayer, j: u32) -> bool {
-        use crate::gkr_compiler::dag_ir::ChallengePower;
+        use crate::ChallengePower;
         layer.sources.iter().any(|s| {
             matches!(&s.kind, SourceKind::Challenge { reference }
                 if reference.key == ChallengeKey::LookupMultiplicative
@@ -1191,7 +1269,11 @@ mod tests {
         };
         let layer = lower_single(rel);
         let outs = outputs(&layer);
-        assert_eq!(outs.len(), 1, "MaterializeSingleLookupInput is single-output");
+        assert_eq!(
+            outs.len(),
+            1,
+            "MaterializeSingleLookupInput is single-output"
+        );
         assert_eq!(outs[0].0, FieldKind::Base, "single-column lookup is Base");
         // The output expr resolves (through CSE) to a RangeCheck16Index LookupValue.
         let kinds: Vec<_> = layer
@@ -1241,7 +1323,11 @@ mod tests {
         };
         let layer = lower_single(rel);
         let outs = outputs(&layer);
-        assert_eq!(outs.len(), 1, "MaterializedVectorLookupInput is single-output");
+        assert_eq!(
+            outs.len(),
+            1,
+            "MaterializedVectorLookupInput is single-output"
+        );
         assert_eq!(outs[0].0, FieldKind::Ext, "folded vector lookup is Ext");
         // Top-level expr is an Add of the per-column terms.
         assert!(
@@ -1250,7 +1336,10 @@ mod tests {
         );
         // alpha^1 and alpha^2 present; alpha^0 (col 0) carries no factor.
         assert!(has_alpha_pow(&layer, 1) && has_alpha_pow(&layer, 2));
-        assert!(!has_alpha_pow(&layer, 0), "column 0 carries no alpha factor");
+        assert!(
+            !has_alpha_pow(&layer, 0),
+            "column 0 carries no alpha factor"
+        );
         // Every emitted LookupValue carries set_index 5 (one per column).
         assert_eq!(lookup_set_indices(&layer), vec![5, 5, 5]);
     }
@@ -1259,10 +1348,7 @@ mod tests {
 
     /// Assert exactly two adjacent Output roots, both Ext, num = Add, den = Mul,
     /// and (if `expect_lookup_set` is `Some(set)`) every LookupValue set_index == set.
-    fn assert_two_output_num_add_den_mul(
-        layer: &DagLayer,
-        expect_lookup_set: Option<usize>,
-    ) {
+    fn assert_two_output_num_add_den_mul(layer: &DagLayer, expect_lookup_set: Option<usize>) {
         let outs = outputs(layer);
         assert_eq!(outs.len(), 2, "pair gate emits exactly two Output roots");
         for (f, _) in &outs {
@@ -1346,7 +1432,16 @@ mod tests {
     #[test]
     fn pair_from_cached_vector_inputs() {
         let rel = NoFieldGKRRelation::LookupPairFromCachedVectorInputs {
-            input: [GKRAddress::Cached { layer: 0, offset: 0 }, GKRAddress::Cached { layer: 0, offset: 1 }],
+            input: [
+                GKRAddress::Cached {
+                    layer: 0,
+                    offset: 0,
+                },
+                GKRAddress::Cached {
+                    layer: 0,
+                    offset: 1,
+                },
+            ],
             output: two_out(),
         };
         let layer = lower_single(rel);
@@ -1357,7 +1452,10 @@ mod tests {
     fn from_materialized_base_input_with_setup() {
         let rel = NoFieldGKRRelation::LookupFromMaterializedBaseInputWithSetup {
             input: blw(0),
-            setup: [blw(1), GKRAddress::VirtualSetup(VirtualSetupPoly::RangeCheck16Bits)],
+            setup: [
+                blw(1),
+                GKRAddress::VirtualSetup(VirtualSetupPoly::RangeCheck16Bits),
+            ],
             output: two_out(),
         };
         let layer = lower_single(rel);
@@ -1368,7 +1466,13 @@ mod tests {
     fn from_materialized_vector_input_with_setup() {
         let rel = NoFieldGKRRelation::LookupFromMaterializedVectorInputWithSetup {
             input: blw(0),
-            setup: [blw(1), GKRAddress::Cached { layer: 0, offset: 0 }],
+            setup: [
+                blw(1),
+                GKRAddress::Cached {
+                    layer: 0,
+                    offset: 0,
+                },
+            ],
             output: two_out(),
         };
         let layer = lower_single(rel);
@@ -1391,8 +1495,20 @@ mod tests {
     #[test]
     fn with_cached_dens_and_setup() {
         let rel = NoFieldGKRRelation::LookupWithCachedDensAndSetup {
-            input: [blw(0), GKRAddress::Cached { layer: 0, offset: 0 }],
-            setup: [blw(1), GKRAddress::Cached { layer: 0, offset: 1 }],
+            input: [
+                blw(0),
+                GKRAddress::Cached {
+                    layer: 0,
+                    offset: 0,
+                },
+            ],
+            setup: [
+                blw(1),
+                GKRAddress::Cached {
+                    layer: 0,
+                    offset: 1,
+                },
+            ],
             output: two_out(),
         };
         let layer = lower_single(rel);
@@ -1414,7 +1530,13 @@ mod tests {
     fn with_dens_and_cached_setup() {
         let rel = NoFieldGKRRelation::LookupWithDensAndCachedSetup {
             input: (blw(0), vl(9, 2)),
-            setup: (blw(1), GKRAddress::Cached { layer: 0, offset: 0 }),
+            setup: (
+                blw(1),
+                GKRAddress::Cached {
+                    layer: 0,
+                    offset: 0,
+                },
+            ),
             output: two_out(),
         };
         let layer = lower_single(rel);
@@ -1467,14 +1589,26 @@ mod tests {
         for (f, _) in &outs {
             assert_eq!(*f, FieldKind::Ext);
         }
-        assert!(matches!(expr(&layer, outs[0].1), Expr::Add(_)), "num is Add(a·d, c·b)");
-        assert!(matches!(expr(&layer, outs[1].1), Expr::Mul(_)), "den is Mul(b, d)");
-        assert!(!has_gamma(&layer), "rational-pair aggregate has no gamma shift");
+        assert!(
+            matches!(expr(&layer, outs[0].1), Expr::Add(_)),
+            "num is Add(a·d, c·b)"
+        );
+        assert!(
+            matches!(expr(&layer, outs[1].1), Expr::Mul(_)),
+            "den is Mul(b, d)"
+        );
+        assert!(
+            !has_gamma(&layer),
+            "rational-pair aggregate has no gamma shift"
+        );
         // num's Add terms are both Muls.
         if let Expr::Add(terms) = expr(&layer, outs[0].1) {
             assert_eq!(terms.len(), 2);
             for t in terms {
-                assert!(matches!(expr(&layer, *t), Expr::Mul(_)), "num terms are products");
+                assert!(
+                    matches!(expr(&layer, *t), Expr::Mul(_)),
+                    "num terms are products"
+                );
             }
         }
     }
@@ -1501,11 +1635,11 @@ mod tests {
 
     // ── Memory / grand-product / mask / inits-teardowns lowering (Task 9) ────
 
-    use crate::definitions::gkr::RamWordRepresentation;
-    use crate::definitions::VirtualSetupPoly;
-    use crate::gkr_compiler::dag_ir::{ChallengePower, PermutationSlot};
-    use crate::gkr_compiler::test_support::sample_relation_cases;
-    use crate::gkr_compiler::{
+    use crate::{ChallengePower, PermutationSlot};
+    use cs::definitions::gkr::RamWordRepresentation;
+    use cs::definitions::VirtualSetupPoly;
+    use cs::gkr_compiler::test_support::sample_relation_cases;
+    use cs::gkr_compiler::{
         CompiledAddressSpaceRelationStrict, CompiledAddressStrict, CompiledMemoryTimestamp,
         InitsOrTeardownsTimestampAndValue, NoFieldSpecialMemoryContributionRelation,
     };
@@ -1547,9 +1681,10 @@ mod tests {
 
     /// True if any `VirtualSetup` source of `kind` is present.
     fn has_virtual_setup(layer: &DagLayer, kind: VirtualSetupKind) -> bool {
-        layer.sources.iter().any(|s| {
-            matches!(&s.kind, SourceKind::VirtualSetup { kind: k } if *k == kind)
-        })
+        layer
+            .sources
+            .iter()
+            .any(|s| matches!(&s.kind, SourceKind::VirtualSetup { kind: k } if *k == kind))
     }
 
     /// Wrap a memory descriptor in a single-output `MaterializeGrandProductTermExpression`.
@@ -1566,28 +1701,46 @@ mod tests {
     fn initial_grand_product_from_caches_is_ext_mul() {
         let rel = NoFieldGKRRelation::InitialGrandProductFromCaches {
             input: [
-                GKRAddress::Cached { layer: 0, offset: 0 },
-                GKRAddress::Cached { layer: 0, offset: 1 },
+                GKRAddress::Cached {
+                    layer: 0,
+                    offset: 0,
+                },
+                GKRAddress::Cached {
+                    layer: 0,
+                    offset: 1,
+                },
             ],
             output: inner0(),
         };
         let layer = lower_single(rel);
         let (field, e) = single_output(&layer);
         assert_eq!(*field, FieldKind::Ext, "grand product is Ext");
-        assert!(matches!(expr(&layer, e), Expr::Mul(_)), "read(a)·read(b) is a Mul");
+        assert!(
+            matches!(expr(&layer, e), Expr::Mul(_)),
+            "read(a)·read(b) is a Mul"
+        );
     }
 
     #[test]
     fn unbalanced_grand_product_with_cache_is_ext_mul() {
         let rel = NoFieldGKRRelation::UnbalancedGrandProductWithCache {
-            scalar: GKRAddress::Cached { layer: 0, offset: 0 },
-            input: GKRAddress::Cached { layer: 0, offset: 1 },
+            scalar: GKRAddress::Cached {
+                layer: 0,
+                offset: 0,
+            },
+            input: GKRAddress::Cached {
+                layer: 0,
+                offset: 1,
+            },
             output: inner0(),
         };
         let layer = lower_single(rel);
         let (field, e) = single_output(&layer);
         assert_eq!(*field, FieldKind::Ext);
-        assert!(matches!(expr(&layer, e), Expr::Mul(_)), "read(s)·read(t) is a Mul");
+        assert!(
+            matches!(expr(&layer, e), Expr::Mul(_)),
+            "read(s)·read(t) is a Mul"
+        );
     }
 
     #[test]
@@ -1599,7 +1752,10 @@ mod tests {
         let layer = lower_single(rel);
         let (field, e) = single_output(&layer);
         assert_eq!(*field, FieldKind::Ext);
-        assert!(matches!(expr(&layer, e), Expr::Mul(_)), "read·read is a Mul");
+        assert!(
+            matches!(expr(&layer, e), Expr::Mul(_)),
+            "read·read is a Mul"
+        );
     }
 
     #[test]
@@ -1620,9 +1776,15 @@ mod tests {
         let layer = lower_single(rel);
         let (field, e) = single_output(&layer);
         assert_eq!(*field, FieldKind::Ext);
-        assert!(matches!(expr(&layer, e), Expr::Mul(_)), "tuple·tuple is a Mul");
+        assert!(
+            matches!(expr(&layer, e), Expr::Mul(_)),
+            "tuple·tuple is a Mul"
+        );
         // The tuple carries the additive permutation challenge and the addr slots.
-        assert!(has_permutation_additive(&layer), "tuple shifted by beta_perm");
+        assert!(
+            has_permutation_additive(&layer),
+            "tuple shifted by beta_perm"
+        );
         assert!(has_perm_slot(&layer, PermutationSlot::AddressLow));
         assert!(has_perm_slot(&layer, PermutationSlot::AddressHigh));
     }
@@ -1648,7 +1810,9 @@ mod tests {
                 if matches!(&layer.sources[sid.0 as usize].kind,
                     SourceKind::Constant { value: 1 }))
         });
-        let has_mul = terms.iter().any(|t| matches!(expr(&layer, *t), Expr::Mul(_)));
+        let has_mul = terms
+            .iter()
+            .any(|t| matches!(expr(&layer, *t), Expr::Mul(_)));
         assert!(has_const_one && has_mul, "expected Constant(1) + Mul term");
     }
 
@@ -1667,12 +1831,19 @@ mod tests {
         let layer = lower_single(materialize_tuple(is_register));
         // The `1 − bit` register indicator interns a Constant(1) and a (-1)·mem[0]
         // product. Both must be present as sub-exprs somewhere in the tuple.
-        let has_one = layer.sources.iter().any(|s| {
-            matches!(&s.kind, SourceKind::Constant { value: 1 })
-        });
-        assert!(has_one, "IsRegister contributes a Constant(1) for `1 − bit`");
+        let has_one = layer
+            .sources
+            .iter()
+            .any(|s| matches!(&s.kind, SourceKind::Constant { value: 1 }));
+        assert!(
+            has_one,
+            "IsRegister contributes a Constant(1) for `1 − bit`"
+        );
         // mem[0] is the address-space indicator bit.
-        assert!(memory_reads(&layer).contains(&0), "reads the indicator bit mem[0]");
+        assert!(
+            memory_reads(&layer).contains(&0),
+            "reads the indicator bit mem[0]"
+        );
         // The address U16Space(1) reads mem[1] scaled by ch(AddressLow).
         assert!(memory_reads(&layer).contains(&1));
         assert!(has_perm_slot(&layer, PermutationSlot::AddressLow));
@@ -1693,11 +1864,18 @@ mod tests {
         // `1 −` Constant that IsRegister does (only the Constant address space /
         // RAM const could) — here address space is IsRam and address is U16Space,
         // so no `Constant(1)` from the address-space term.
-        assert!(memory_reads(&layer).contains(&0), "reads the indicator bit mem[0]");
-        let has_one = layer.sources.iter().any(|s| {
-            matches!(&s.kind, SourceKind::Constant { value: 1 })
-        });
-        assert!(!has_one, "IsRam contributes the bare bit, no `1 −` Constant");
+        assert!(
+            memory_reads(&layer).contains(&0),
+            "reads the indicator bit mem[0]"
+        );
+        let has_one = layer
+            .sources
+            .iter()
+            .any(|s| matches!(&s.kind, SourceKind::Constant { value: 1 }));
+        assert!(
+            !has_one,
+            "IsRam contributes the bare bit, no `1 −` Constant"
+        );
     }
 
     #[test]
@@ -1721,9 +1899,10 @@ mod tests {
         let reads = memory_reads(&layer);
         assert!(reads.contains(&0) && reads.contains(&1) && reads.contains(&2));
         // coeff 3 appears as a Constant scaling the dynamic read.
-        let has_coeff = layer.sources.iter().any(|s| {
-            matches!(&s.kind, SourceKind::Constant { value: 3 })
-        });
+        let has_coeff = layer
+            .sources
+            .iter()
+            .any(|s| matches!(&s.kind, SourceKind::Constant { value: 3 }));
         assert!(has_coeff, "dynamic offset coeff `3` is a Constant factor");
         assert!(has_perm_slot(&layer, PermutationSlot::AddressLow));
         assert!(has_perm_slot(&layer, PermutationSlot::AddressHigh));
@@ -1745,10 +1924,14 @@ mod tests {
         for col in [10, 11, 12, 13] {
             assert!(reads.contains(&col), "byte column {col} read");
         }
-        let has_byte_shift = layer.sources.iter().any(|s| {
-            matches!(&s.kind, SourceKind::Constant { value: 256 })
-        });
-        assert!(has_byte_shift, "U8 recomposition multiplies high byte by 2^8 = 256");
+        let has_byte_shift = layer
+            .sources
+            .iter()
+            .any(|s| matches!(&s.kind, SourceKind::Constant { value: 256 }));
+        assert!(
+            has_byte_shift,
+            "U8 recomposition multiplies high byte by 2^8 = 256"
+        );
         assert!(has_perm_slot(&layer, PermutationSlot::ValueLow));
         assert!(has_perm_slot(&layer, PermutationSlot::ValueHigh));
     }
@@ -1766,9 +1949,10 @@ mod tests {
         let layer = lower_single(materialize_tuple(desc));
         let reads = memory_reads(&layer);
         assert!(reads.contains(&5) && reads.contains(&6), "ts limbs read");
-        let has_offset = layer.sources.iter().any(|s| {
-            matches!(&s.kind, SourceKind::Constant { value: 7 })
-        });
+        let has_offset = layer
+            .sources
+            .iter()
+            .any(|s| matches!(&s.kind, SourceKind::Constant { value: 7 }));
         assert!(has_offset, "timestamp_offset 7 is added to the low limb");
         assert!(has_perm_slot(&layer, PermutationSlot::TimestampLow));
         assert!(has_perm_slot(&layer, PermutationSlot::TimestampHigh));
@@ -1792,13 +1976,22 @@ mod tests {
         let layer = lower_single(rel);
         let (field, e) = single_output(&layer);
         assert_eq!(*field, FieldKind::Ext);
-        assert!(matches!(expr(&layer, e), Expr::Mul(_)), "init tuple·tuple is a Mul");
+        assert!(
+            matches!(expr(&layer, e), Expr::Mul(_)),
+            "init tuple·tuple is a Mul"
+        );
         assert!(
             memory_reads(&layer).is_empty(),
             "init has zeroed ts/value → no base-memory reads"
         );
-        assert!(has_virtual_setup(&layer, VirtualSetupKind::InitsAndTeardownsLow));
-        assert!(has_virtual_setup(&layer, VirtualSetupKind::InitsAndTeardownsHigh));
+        assert!(has_virtual_setup(
+            &layer,
+            VirtualSetupKind::InitsAndTeardownsLow
+        ));
+        assert!(has_virtual_setup(
+            &layer,
+            VirtualSetupKind::InitsAndTeardownsHigh
+        ));
         assert!(has_permutation_additive(&layer));
         assert!(has_perm_slot(&layer, PermutationSlot::AddressLow));
         assert!(has_perm_slot(&layer, PermutationSlot::AddressHigh));
@@ -1832,15 +2025,24 @@ mod tests {
         // All eight ts/value limb columns are read from base memory.
         let reads = memory_reads(&layer);
         for col in 0..8 {
-            assert!(reads.contains(&col), "teardown reads ts/value limb mem[{col}]");
+            assert!(
+                reads.contains(&col),
+                "teardown reads ts/value limb mem[{col}]"
+            );
         }
         assert!(has_perm_slot(&layer, PermutationSlot::TimestampLow));
         assert!(has_perm_slot(&layer, PermutationSlot::TimestampHigh));
         assert!(has_perm_slot(&layer, PermutationSlot::ValueLow));
         assert!(has_perm_slot(&layer, PermutationSlot::ValueHigh));
         // Still uses the inits/teardowns address virtual setups.
-        assert!(has_virtual_setup(&layer, VirtualSetupKind::InitsAndTeardownsLow));
-        assert!(has_virtual_setup(&layer, VirtualSetupKind::InitsAndTeardownsHigh));
+        assert!(has_virtual_setup(
+            &layer,
+            VirtualSetupKind::InitsAndTeardownsLow
+        ));
+        assert!(has_virtual_setup(
+            &layer,
+            VirtualSetupKind::InitsAndTeardownsHigh
+        ));
     }
 
     // -- smoke: every memory/inits subcase in sample_relation_cases lowers --
@@ -1848,8 +2050,8 @@ mod tests {
     #[test]
     fn memory_and_inits_sample_cases_lower_to_single_ext_output() {
         for (name, rel) in sample_relation_cases() {
-            let is_mem = name.starts_with("MemoryTuple")
-                || name.starts_with("InitsOrTeardownsInitialPair");
+            let is_mem =
+                name.starts_with("MemoryTuple") || name.starts_with("InitsOrTeardownsInitialPair");
             if !is_mem {
                 continue;
             }
@@ -1962,11 +2164,9 @@ mod tests {
     fn enforce_constraints_max_quadratic_produces_one_constraint_no_output() {
         // Batched: one quadratic term with one (c=1, p=1) power.
         let rel = NoFieldGKRRelation::EnforceConstraintsMaxQuadratic {
-            input: crate::gkr_compiler::NoFieldMaxQuadraticConstraintsGKRRelation {
-                quadratic_terms: vec![
-                    ((blw(0), blw(1)), vec![(1u32, 1usize)].into_boxed_slice()),
-                ]
-                .into_boxed_slice(),
+            input: cs::gkr_compiler::NoFieldMaxQuadraticConstraintsGKRRelation {
+                quadratic_terms: vec![((blw(0), blw(1)), vec![(1u32, 1usize)].into_boxed_slice())]
+                    .into_boxed_slice(),
                 linear_terms: vec![].into_boxed_slice(),
                 constants: vec![].into_boxed_slice(),
             },
@@ -1998,14 +2198,12 @@ mod tests {
     #[test]
     fn enforce_constraints_max_quadratic_contains_rho_challenge() {
         // Batched: linear term at power 2 → rho^2 = Static(2).
-        use crate::gkr_compiler::dag_ir::ChallengePower;
+        use crate::ChallengePower;
         let rel = NoFieldGKRRelation::EnforceConstraintsMaxQuadratic {
-            input: crate::gkr_compiler::NoFieldMaxQuadraticConstraintsGKRRelation {
+            input: cs::gkr_compiler::NoFieldMaxQuadraticConstraintsGKRRelation {
                 quadratic_terms: vec![].into_boxed_slice(),
-                linear_terms: vec![
-                    (blw(0), vec![(3u32, 2usize)].into_boxed_slice()),
-                ]
-                .into_boxed_slice(),
+                linear_terms: vec![(blw(0), vec![(3u32, 2usize)].into_boxed_slice())]
+                    .into_boxed_slice(),
                 constants: vec![(5u32, 1usize)].into_boxed_slice(),
             },
         };
@@ -2034,7 +2232,7 @@ mod tests {
     fn enforce_constraints_max_quadratic_empty_is_constant_zero() {
         // Empty relation: all three slices are empty → Constant(0).
         let rel = NoFieldGKRRelation::EnforceConstraintsMaxQuadratic {
-            input: crate::gkr_compiler::NoFieldMaxQuadraticConstraintsGKRRelation {
+            input: cs::gkr_compiler::NoFieldMaxQuadraticConstraintsGKRRelation {
                 quadratic_terms: vec![].into_boxed_slice(),
                 linear_terms: vec![].into_boxed_slice(),
                 constants: vec![].into_boxed_slice(),
@@ -2070,7 +2268,7 @@ mod tests {
 
     // ── Caches + batching order (Task 11): whole add_sub artifact ─────────────
 
-    use crate::gkr_compiler::test_support::build_add_sub_artifact;
+    use cs::gkr_compiler::test_support::build_add_sub_artifact;
 
     /// A root is a materialize-only cache root (`materialize: Some(Cache)`).
     fn is_cache_root(root: &Root) -> bool {
@@ -2119,11 +2317,7 @@ mod tests {
         for layer in &circuit.layers {
             // The number of cache roots equals the number of cached relations in
             // the source layer (each materializes exactly one root).
-            let n_cache_roots = layer
-                .roots
-                .iter()
-                .filter(|r| is_cache_root(r))
-                .count();
+            let n_cache_roots = layer.roots.iter().filter(|r| is_cache_root(r)).count();
 
             for (i, root) in layer.roots.iter().enumerate() {
                 let id = RootId(i as u32);
@@ -2149,7 +2343,10 @@ mod tests {
                 );
             }
         }
-        assert!(saw_cache_root, "expected at least one cache root across layers");
+        assert!(
+            saw_cache_root,
+            "expected at least one cache root across layers"
+        );
     }
 
     /// `batching.roots.len()` equals the claim-bearing root count per layer.
@@ -2198,11 +2395,17 @@ mod tests {
                 match (&root.materialize, &root.claim) {
                     // Cache: materialize-only, never batched.
                     (Some(s), None) if matches!(s.kind, SinkKind::Cache { .. }) => {
-                        assert!(!in_batching, "cache root {rid:?} must be absent from batching");
+                        assert!(
+                            !in_batching,
+                            "cache root {rid:?} must be absent from batching"
+                        );
                     }
                     // Claim-bearing: in batching exactly once.
                     (_, Some(_)) => {
-                        assert!(in_batching, "claim-bearing root {rid:?} must be in batching");
+                        assert!(
+                            in_batching,
+                            "claim-bearing root {rid:?} must be in batching"
+                        );
                     }
                     other => panic!("unexpected root attribute shape: {other:?}"),
                 }
@@ -2280,7 +2483,7 @@ mod tests {
 
     #[test]
     fn check_decoder_masks_rejects_wrong_mask() {
-        use crate::definitions::gkr::{NoFieldVectorLookupRelation, DECODER_LOOKUP_FORMAL_SET_INDEX};
+        use cs::definitions::gkr::{NoFieldVectorLookupRelation, DECODER_LOOKUP_FORMAL_SET_INDEX};
         let vec_rel = NoFieldVectorLookupRelation {
             columns: Box::new([]), // content irrelevant to the guard; only set_index matters
             lookup_set_index: DECODER_LOOKUP_FORMAL_SET_INDEX,
@@ -2289,8 +2492,14 @@ mod tests {
             input: (GKRAddress::BaseLayerMemory(99), vec_rel), // mask 99 ≠ execute 7
             setup: (GKRAddress::Setup(0), GKRAddress::Setup(1)),
             output: [
-                GKRAddress::InnerLayer { layer: 0, offset: 0 },
-                GKRAddress::InnerLayer { layer: 0, offset: 1 },
+                GKRAddress::InnerLayer {
+                    layer: 0,
+                    offset: 0,
+                },
+                GKRAddress::InnerLayer {
+                    layer: 0,
+                    offset: 1,
+                },
             ],
         };
         let relations = [rel];
@@ -2299,7 +2508,10 @@ mod tests {
             &BTreeMap::new(),
             Some(GKRAddress::BaseLayerMemory(7)),
         );
-        assert!(res.is_err(), "decoder mask ≠ machine_state.execute must be rejected");
+        assert!(
+            res.is_err(),
+            "decoder mask ≠ machine_state.execute must be rejected"
+        );
     }
 
     /// `LookupWithCachedDensAndSetup` is the LIVE cached-consumer path: the
@@ -2309,10 +2521,13 @@ mod tests {
     /// through this cached lookup path (no inline `NoFieldVectorLookupRelation`).
     #[test]
     fn check_decoder_masks_rejects_wrong_mask_cached() {
-        use crate::definitions::gkr::{NoFieldVectorLookupRelation, DECODER_LOOKUP_FORMAL_SET_INDEX};
+        use cs::definitions::gkr::{NoFieldVectorLookupRelation, DECODER_LOOKUP_FORMAL_SET_INDEX};
 
         // Cache address that will hold the decoder VectorizedLookup.
-        let cache_addr = GKRAddress::Cached { layer: 0, offset: 0 };
+        let cache_addr = GKRAddress::Cached {
+            layer: 0,
+            offset: 0,
+        };
 
         // The cached relation: a VectorizedLookup keyed to the decoder set index.
         let decoder_vl = NoFieldGKRCacheRelation::VectorizedLookup(NoFieldVectorLookupRelation {
@@ -2328,8 +2543,14 @@ mod tests {
             input: [GKRAddress::BaseLayerMemory(99), cache_addr], // mask 99 ≠ execute 7
             setup: [GKRAddress::Setup(0), GKRAddress::Setup(1)],
             output: [
-                GKRAddress::InnerLayer { layer: 0, offset: 0 },
-                GKRAddress::InnerLayer { layer: 0, offset: 1 },
+                GKRAddress::InnerLayer {
+                    layer: 0,
+                    offset: 0,
+                },
+                GKRAddress::InnerLayer {
+                    layer: 0,
+                    offset: 1,
+                },
             ],
         };
 
@@ -2353,12 +2574,21 @@ mod tests {
     fn insert_resolution_rejects_cse_collision() {
         let mut out = LayerOut::new();
         // First insert: Ok.
-        out.insert_resolution(ExprId(0), ResolutionStrategy::PeekSetup).expect("first insert must succeed");
+        out.insert_resolution(ExprId(0), ResolutionStrategy::PeekSetup)
+            .expect("first insert must succeed");
         // Idempotent re-insert of the same strategy: Ok.
-        out.insert_resolution(ExprId(0), ResolutionStrategy::PeekSetup).expect("idempotent re-insert must succeed");
+        out.insert_resolution(ExprId(0), ResolutionStrategy::PeekSetup)
+            .expect("idempotent re-insert must succeed");
         // Different strategy at the same leaf: CSE collision → Err.
-        let err = out.insert_resolution(ExprId(0), ResolutionStrategy::PeekAggregate { set_index: 3 })
+        let err = out
+            .insert_resolution(
+                ExprId(0),
+                ResolutionStrategy::PeekAggregate { set_index: 3 },
+            )
             .expect_err("conflicting strategy must be rejected");
-        assert!(err.contains("CSE collision"), "error must mention CSE collision, got: {err}");
+        assert!(
+            err.contains("CSE collision"),
+            "error must mention CSE collision, got: {err}"
+        );
     }
 }

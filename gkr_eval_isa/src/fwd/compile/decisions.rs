@@ -52,19 +52,22 @@
 //! `input_index: 0`.
 
 use super::super::context::ForwardAction;
-use super::arith::{classify_additive_child, is_constant_one, is_neg_one_factor, is_zero_expr, AdditiveChild};
-use cs::gkr_compiler::dag_ir::{enumerate_site_domain, DagLayer, Expr, ExprId, RootId, SourceKind};
+use super::arith::{
+    AdditiveChild, classify_additive_child, is_constant_one, is_neg_one_factor, is_zero_expr,
+};
+use crate::schedule::enumerate_site_domain;
+use gkr_eval_ir::{DagLayer, Expr, ExprId, RootId, SourceKind};
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 
 // ── SiteKey / SiteConsumer ───────────────────────────────────────────────────
 //
 // Task 6 unification: these used to be a byte-for-byte mirror copy of cs's
-// schema-v2 types (`cs::gkr_compiler::dag_ir::{SiteKey, SiteConsumer}`,
+// schema-v2 types (`gkr_eval_ir::{SiteKey, SiteConsumer}`,
 // `cs/src/gkr_compiler/dag_ir/schedule.rs`). cs is now the single source of
 // truth (its doc comment on `SiteKey` already said as much); re-exported here
 // so every existing `decisions::{SiteKey, SiteConsumer}` call site keeps
 // working unchanged.
-pub use cs::gkr_compiler::dag_ir::{SiteConsumer, SiteKey};
+pub use crate::schedule::{SiteConsumer, SiteKey};
 
 // ── SiteDecisions ────────────────────────────────────────────────────────────
 
@@ -82,7 +85,9 @@ pub struct SiteDecisions {
 
 impl SiteDecisions {
     pub fn new(sites: impl IntoIterator<Item = (SiteKey, f64)>) -> Self {
-        Self { map: sites.into_iter().collect() }
+        Self {
+            map: sites.into_iter().collect(),
+        }
     }
 
     pub fn get(&self, k: &SiteKey) -> Option<f64> {
@@ -264,8 +269,10 @@ impl OccurrenceStreams {
         // admissible with its existing per-occurrence priorities and no legitimate
         // caching is lost; only derived_e4 / constants / virtual-setup / lookup / and
         // fan-out-1 values are refused.
-        let admittable: BTreeSet<ExprId> =
-            enumerate_site_domain(layer).into_iter().map(|k| k.value).collect();
+        let admittable: BTreeSet<ExprId> = enumerate_site_domain(layer)
+            .into_iter()
+            .map(|k| k.value)
+            .collect();
         Self::from_flat(layer, flat, d, admittable)
     }
 
@@ -290,8 +297,11 @@ impl OccurrenceStreams {
         d: &SiteDecisions,
         domain: &BTreeSet<SiteKey>,
     ) -> Self {
-        let mut flat: Vec<SiteKey> =
-            vec![SiteKey { root: root_id, consumer: SiteConsumer::RootOutput, value: root_expr }];
+        let mut flat: Vec<SiteKey> = vec![SiteKey {
+            root: root_id,
+            consumer: SiteConsumer::RootOutput,
+            value: root_expr,
+        }];
         for &t in terms {
             demand_expand(layer, root_id, t, &mut flat);
         }
@@ -315,10 +325,18 @@ impl OccurrenceStreams {
                 *operand_reads.entry(key.value).or_default() += 1;
             }
             let priority = d.get(&key).unwrap_or(0.0);
-            streams.entry(key.value).or_default().push_back((key, priority));
+            streams
+                .entry(key.value)
+                .or_default()
+                .push_back((key, priority));
         }
         let reaches_dram = compute_reaches_dram(layer);
-        Self { streams, admittable, reaches_dram, operand_reads }
+        Self {
+            streams,
+            admittable,
+            reaches_dram,
+            operand_reads,
+        }
     }
 
     /// Whether `v`'s recompute cone reads DRAM (see the field doc). `false` for a peek /
@@ -336,7 +354,10 @@ impl OccurrenceStreams {
     /// Effective priority of `v` = priority of its FRONT unserved occurrence;
     /// `None` if no remaining occurrences (== evict-when-dead, -inf semantics).
     pub fn effective_priority(&self, v: ExprId) -> Option<f64> {
-        self.streams.get(&v).and_then(|q| q.front()).map(|(_, p)| *p)
+        self.streams
+            .get(&v)
+            .and_then(|q| q.front())
+            .map(|(_, p)| *p)
     }
 
     /// Advance past one served occurrence of `v` (called by the emitter at
@@ -377,9 +398,9 @@ fn compute_reaches_dram(layer: &DagLayer) -> BTreeSet<ExprId> {
                 Expr::Source(sid) => {
                     matches!(layer.sources[sid.0 as usize].kind, SourceKind::Read { .. })
                 }
-                Expr::Add(children) | Expr::Mul(children) => {
-                    children.iter().fold(false, |acc, c| visit(layer, c.0, memo) || acc)
-                }
+                Expr::Add(children) | Expr::Mul(children) => children
+                    .iter()
+                    .fold(false, |acc, c| visit(layer, c.0, memo) || acc),
             }
         };
         memo[e as usize] = Some(r);
@@ -423,7 +444,10 @@ fn demand_expand(layer: &DagLayer, root_id: RootId, value: ExprId, out: &mut Vec
                 push_and_expand(
                     layer,
                     root_id,
-                    SiteConsumer::Expr { expr: value, input_index: 0 },
+                    SiteConsumer::Expr {
+                        expr: value,
+                        input_index: 0,
+                    },
                     q,
                     out,
                 );
@@ -431,8 +455,11 @@ fn demand_expand(layer: &DagLayer, root_id: RootId, value: ExprId, out: &mut Vec
         }
         Expr::Add(children) => {
             // Mirrors compile_add_virtual's zero-addend filter (lower.rs:~415-421).
-            let filtered: Vec<ExprId> =
-                children.iter().copied().filter(|&c| !is_zero_expr(layer, c)).collect();
+            let filtered: Vec<ExprId> = children
+                .iter()
+                .copied()
+                .filter(|&c| !is_zero_expr(layer, c))
+                .collect();
             if filtered.is_empty() {
                 return;
             }
@@ -455,7 +482,10 @@ fn demand_expand(layer: &DagLayer, root_id: RootId, value: ExprId, out: &mut Vec
                     push_and_expand(
                         layer,
                         root_id,
-                        SiteConsumer::Expr { expr: value, input_index: idx },
+                        SiteConsumer::Expr {
+                            expr: value,
+                            input_index: idx,
+                        },
                         id,
                         out,
                     );
@@ -468,7 +498,10 @@ fn demand_expand(layer: &DagLayer, root_id: RootId, value: ExprId, out: &mut Vec
                     push_and_expand(
                         layer,
                         root_id,
-                        SiteConsumer::Expr { expr: value, input_index: idx },
+                        SiteConsumer::Expr {
+                            expr: value,
+                            input_index: idx,
+                        },
                         id,
                         out,
                     );
@@ -478,7 +511,10 @@ fn demand_expand(layer: &DagLayer, root_id: RootId, value: ExprId, out: &mut Vec
                     push_and_expand(
                         layer,
                         root_id,
-                        SiteConsumer::Expr { expr: value, input_index: idx },
+                        SiteConsumer::Expr {
+                            expr: value,
+                            input_index: idx,
+                        },
                         lhs,
                         out,
                     );
@@ -486,7 +522,10 @@ fn demand_expand(layer: &DagLayer, root_id: RootId, value: ExprId, out: &mut Vec
                     push_and_expand(
                         layer,
                         root_id,
-                        SiteConsumer::Expr { expr: value, input_index: idx },
+                        SiteConsumer::Expr {
+                            expr: value,
+                            input_index: idx,
+                        },
                         rhs,
                         out,
                     );
@@ -501,18 +540,26 @@ fn demand_expand(layer: &DagLayer, root_id: RootId, value: ExprId, out: &mut Vec
             if children.iter().any(|&c| is_zero_expr(layer, c)) {
                 return;
             }
-            let factors: Vec<ExprId> =
-                children.iter().copied().filter(|&c| !is_constant_one(layer, c)).collect();
+            let factors: Vec<ExprId> = children
+                .iter()
+                .copied()
+                .filter(|&c| !is_constant_one(layer, c))
+                .collect();
             if factors.is_empty() {
                 return;
             }
-            let surviving: Vec<ExprId> =
-                factors.into_iter().filter(|&f| !is_neg_one_factor(layer, f)).collect();
+            let surviving: Vec<ExprId> = factors
+                .into_iter()
+                .filter(|&f| !is_neg_one_factor(layer, f))
+                .collect();
             for (idx, f) in surviving.into_iter().enumerate() {
                 push_and_expand(
                     layer,
                     root_id,
-                    SiteConsumer::Expr { expr: value, input_index: idx as u32 },
+                    SiteConsumer::Expr {
+                        expr: value,
+                        input_index: idx as u32,
+                    },
                     f,
                     out,
                 );
@@ -530,7 +577,11 @@ fn push_and_expand(
     value: ExprId,
     out: &mut Vec<SiteKey>,
 ) {
-    out.push(SiteKey { root: root_id, consumer, value });
+    out.push(SiteKey {
+        root: root_id,
+        consumer,
+        value,
+    });
     demand_expand(layer, root_id, value, out);
 }
 
@@ -539,11 +590,13 @@ fn push_and_expand(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cs::gkr_compiler::dag_ir::{BatchingOrder, Root, SourceInfo};
+    use gkr_eval_ir::{BatchingOrder, Root, SourceInfo};
     use std::collections::BTreeMap as StdBTreeMap;
 
     fn const_source(value: u32) -> SourceInfo {
-        SourceInfo { kind: SourceKind::Constant { value } }
+        SourceInfo {
+            kind: SourceKind::Constant { value },
+        }
     }
 
     fn layer_with(sources: Vec<SourceInfo>, exprs: Vec<Expr>, roots: Vec<Root>) -> DagLayer {
@@ -557,7 +610,11 @@ mod tests {
     }
 
     fn root(expr: ExprId) -> Root {
-        Root { expr, materialize: None, claim: None }
+        Root {
+            expr,
+            materialize: None,
+            claim: None,
+        }
     }
 
     /// Every `RootId` in `order` classified `ForwardAction::Compute` — the
@@ -581,19 +638,41 @@ mod tests {
         let add_id = ExprId(1);
         let layer = layer_with(
             vec![const_source(5)],
-            vec![Expr::Source(cs::gkr_compiler::dag_ir::SourceId(0)), Expr::Add(vec![v, v])],
+            vec![
+                Expr::Source(gkr_eval_ir::SourceId(0)),
+                Expr::Add(vec![v, v]),
+            ],
             vec![root(add_id)],
         );
         let order = [RootId(0)];
 
-        let site0 = SiteKey { root: RootId(0), consumer: SiteConsumer::Expr { expr: add_id, input_index: 0 }, value: v };
-        let site1 = SiteKey { root: RootId(0), consumer: SiteConsumer::Expr { expr: add_id, input_index: 1 }, value: v };
+        let site0 = SiteKey {
+            root: RootId(0),
+            consumer: SiteConsumer::Expr {
+                expr: add_id,
+                input_index: 0,
+            },
+            value: v,
+        };
+        let site1 = SiteKey {
+            root: RootId(0),
+            consumer: SiteConsumer::Expr {
+                expr: add_id,
+                input_index: 1,
+            },
+            value: v,
+        };
         let decisions = SiteDecisions::new([(site0, 1.0), (site1, 2.0)]);
 
-        let mut streams = OccurrenceStreams::build(&layer, &order, &all_compute(&order), &decisions);
+        let mut streams =
+            OccurrenceStreams::build(&layer, &order, &all_compute(&order), &decisions);
         assert_eq!(streams.effective_priority(v), Some(1.0));
         streams.serve(v);
-        assert_eq!(streams.effective_priority(v), Some(2.0), "front must move to the second occurrence's gene");
+        assert_eq!(
+            streams.effective_priority(v),
+            Some(2.0),
+            "front must move to the second occurrence's gene"
+        );
     }
 
     /// A value with all occurrences served has None priority (evict-when-dead).
@@ -603,13 +682,17 @@ mod tests {
         let add_id = ExprId(1);
         let layer = layer_with(
             vec![const_source(5)],
-            vec![Expr::Source(cs::gkr_compiler::dag_ir::SourceId(0)), Expr::Add(vec![v, v])],
+            vec![
+                Expr::Source(gkr_eval_ir::SourceId(0)),
+                Expr::Add(vec![v, v]),
+            ],
             vec![root(add_id)],
         );
         let order = [RootId(0)];
         let decisions = SiteDecisions::new([]);
 
-        let mut streams = OccurrenceStreams::build(&layer, &order, &all_compute(&order), &decisions);
+        let mut streams =
+            OccurrenceStreams::build(&layer, &order, &all_compute(&order), &decisions);
         streams.serve(v);
         streams.serve(v);
         assert_eq!(streams.effective_priority(v), None);
@@ -623,14 +706,22 @@ mod tests {
         let v = ExprId(0);
         let layer = layer_with(
             vec![const_source(9)],
-            vec![Expr::Source(cs::gkr_compiler::dag_ir::SourceId(0))],
+            vec![Expr::Source(gkr_eval_ir::SourceId(0))],
             vec![root(v), root(v)],
         );
         // order[0] = RootId(1) (numerically LARGER), order[1] = RootId(0).
         let order = [RootId(1), RootId(0)];
 
-        let site_root1 = SiteKey { root: RootId(1), consumer: SiteConsumer::RootOutput, value: v };
-        let site_root0 = SiteKey { root: RootId(0), consumer: SiteConsumer::RootOutput, value: v };
+        let site_root1 = SiteKey {
+            root: RootId(1),
+            consumer: SiteConsumer::RootOutput,
+            value: v,
+        };
+        let site_root0 = SiteKey {
+            root: RootId(0),
+            consumer: SiteConsumer::RootOutput,
+            value: v,
+        };
         let decisions = SiteDecisions::new([(site_root1, 10.0), (site_root0, 20.0)]);
 
         let streams = OccurrenceStreams::build(&layer, &order, &all_compute(&order), &decisions);
@@ -657,12 +748,17 @@ mod tests {
         let mul_id = ExprId(4);
         let add_id = ExprId(5);
         let layer = layer_with(
-            vec![const_source(10), const_source(20), const_source(2), const_source(3)],
             vec![
-                Expr::Source(cs::gkr_compiler::dag_ir::SourceId(0)),
-                Expr::Source(cs::gkr_compiler::dag_ir::SourceId(1)),
-                Expr::Source(cs::gkr_compiler::dag_ir::SourceId(2)),
-                Expr::Source(cs::gkr_compiler::dag_ir::SourceId(3)),
+                const_source(10),
+                const_source(20),
+                const_source(2),
+                const_source(3),
+            ],
+            vec![
+                Expr::Source(gkr_eval_ir::SourceId(0)),
+                Expr::Source(gkr_eval_ir::SourceId(1)),
+                Expr::Source(gkr_eval_ir::SourceId(2)),
+                Expr::Source(gkr_eval_ir::SourceId(3)),
                 Expr::Mul(vec![l, r]),
                 // Deliberately interleaved: addend, product, addend.
                 Expr::Add(vec![addend_a, mul_id, addend_b]),
@@ -672,7 +768,8 @@ mod tests {
         let order = [RootId(0)];
         let decisions = SiteDecisions::new([]);
 
-        let mut streams = OccurrenceStreams::build(&layer, &order, &all_compute(&order), &decisions);
+        let mut streams =
+            OccurrenceStreams::build(&layer, &order, &all_compute(&order), &decisions);
         // Each of addend_a, addend_b, l, r has exactly one occurrence; serving
         // them in the expected order must drain each stream to None, and
         // serving out of order must NOT drain a not-yet-reached value's stream
@@ -706,15 +803,15 @@ mod tests {
                 const_source(7),
                 SourceInfo {
                     kind: SourceKind::LookupValue {
-                        kind: cs::gkr_compiler::dag_ir::LookupValueKind::RangeCheck16Index,
+                        kind: gkr_eval_ir::LookupValueKind::RangeCheck16Index,
                         set_index: 0,
                         query,
                     },
                 },
             ],
             vec![
-                Expr::Source(cs::gkr_compiler::dag_ir::SourceId(0)),
-                Expr::Source(cs::gkr_compiler::dag_ir::SourceId(1)),
+                Expr::Source(gkr_eval_ir::SourceId(0)),
+                Expr::Source(gkr_eval_ir::SourceId(1)),
             ],
             vec![root(lv_expr)],
         );
@@ -722,7 +819,10 @@ mod tests {
 
         let expected_key = SiteKey {
             root: RootId(0),
-            consumer: SiteConsumer::Expr { expr: lv_expr, input_index: 0 },
+            consumer: SiteConsumer::Expr {
+                expr: lv_expr,
+                input_index: 0,
+            },
             value: query,
         };
         let decisions = SiteDecisions::new([(expected_key, 42.0)]);
@@ -756,9 +856,9 @@ mod tests {
         let layer = layer_with(
             vec![const_source(9)],
             vec![
-                Expr::Source(cs::gkr_compiler::dag_ir::SourceId(0)), // 0 = v
-                Expr::Add(vec![v]),                                  // 1 = alias_wrapper
-                Expr::Add(vec![v]),                                  // 2 = real_wrapper
+                Expr::Source(gkr_eval_ir::SourceId(0)), // 0 = v
+                Expr::Add(vec![v]),                     // 1 = alias_wrapper
+                Expr::Add(vec![v]),                     // 2 = real_wrapper
             ],
             vec![root(alias_wrapper), root(real_wrapper)],
         );
@@ -778,7 +878,10 @@ mod tests {
 
         let real_site = SiteKey {
             root: RootId(1),
-            consumer: SiteConsumer::Expr { expr: real_wrapper, input_index: 0 },
+            consumer: SiteConsumer::Expr {
+                expr: real_wrapper,
+                input_index: 0,
+            },
             value: v,
         };
         let decisions = SiteDecisions::new([(real_site, 42.0)]);
@@ -817,9 +920,9 @@ mod tests {
         let layer = layer_with(
             vec![const_source(4)],
             vec![
-                Expr::Source(cs::gkr_compiler::dag_ir::SourceId(0)), // 0 = v
-                Expr::Add(vec![v]),                                  // 1 = shared_expr
-                Expr::Add(vec![v]),                                  // 2 = real_wrapper
+                Expr::Source(gkr_eval_ir::SourceId(0)), // 0 = v
+                Expr::Add(vec![v]),                     // 1 = shared_expr
+                Expr::Add(vec![v]),                     // 2 = real_wrapper
             ],
             vec![root(shared_expr), root(shared_expr), root(real_wrapper)],
         );
@@ -832,16 +935,25 @@ mod tests {
         .into_iter()
         .collect();
 
-        let root_output_site =
-            SiteKey { root: RootId(0), consumer: SiteConsumer::RootOutput, value: shared_expr };
+        let root_output_site = SiteKey {
+            root: RootId(0),
+            consumer: SiteConsumer::RootOutput,
+            value: shared_expr,
+        };
         let r0_demand_site = SiteKey {
             root: RootId(0),
-            consumer: SiteConsumer::Expr { expr: shared_expr, input_index: 0 },
+            consumer: SiteConsumer::Expr {
+                expr: shared_expr,
+                input_index: 0,
+            },
             value: v,
         };
         let real_site = SiteKey {
             root: RootId(2),
-            consumer: SiteConsumer::Expr { expr: real_wrapper, input_index: 0 },
+            consumer: SiteConsumer::Expr {
+                expr: real_wrapper,
+                input_index: 0,
+            },
             value: v,
         };
         let decisions = SiteDecisions::new([
@@ -901,22 +1013,29 @@ mod tests {
         let mut layer = layer_with(
             vec![const_source(7)],
             vec![
-                Expr::Source(cs::gkr_compiler::dag_ir::SourceId(0)), // 0 = x
-                Expr::Add(vec![x, x]),                               // 1 = w
-                Expr::Add(vec![w, w]),                               // 2 = fold_leaf (fenced)
+                Expr::Source(gkr_eval_ir::SourceId(0)), // 0 = x
+                Expr::Add(vec![x, x]),                  // 1 = w
+                Expr::Add(vec![w, w]),                  // 2 = fold_leaf (fenced)
             ],
             vec![root(fold_leaf), root(w)],
         );
-        layer.resolutions.insert(fold_leaf, cs::gkr_compiler::dag_ir::ResolutionStrategy::PeekSetup);
+        layer
+            .resolutions
+            .insert(fold_leaf, gkr_eval_ir::ResolutionStrategy::PeekSetup);
 
         // fold_leaf's root (RootId(0)) is visited FIRST — if its cone were walked
         // (unfixed), phantom occurrences for w (and, transitively, x) would land at
         // the FRONT of their queues, ahead of RootId(1)'s genuine demand below.
         let order = [RootId(0), RootId(1)];
-        let real_site = SiteKey { root: RootId(1), consumer: SiteConsumer::RootOutput, value: w };
+        let real_site = SiteKey {
+            root: RootId(1),
+            consumer: SiteConsumer::RootOutput,
+            value: w,
+        };
         let decisions = SiteDecisions::new([(real_site, 5.0)]);
 
-        let mut streams = OccurrenceStreams::build(&layer, &order, &all_compute(&order), &decisions);
+        let mut streams =
+            OccurrenceStreams::build(&layer, &order, &all_compute(&order), &decisions);
         assert_eq!(
             streams.effective_priority(w),
             Some(5.0),

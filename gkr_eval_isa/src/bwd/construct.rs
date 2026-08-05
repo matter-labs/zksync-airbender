@@ -23,7 +23,9 @@
 
 use std::collections::BTreeMap;
 
-use cs::gkr_compiler::dag_ir::{DagLayer, SiteKey};
+use gkr_eval_ir::DagLayer;
+
+use crate::schedule::SiteKey;
 
 use super::distill::{DistilledLayer, StableBwdSiteKey};
 use super::structure::{ReuseEdge, ReuseStructure};

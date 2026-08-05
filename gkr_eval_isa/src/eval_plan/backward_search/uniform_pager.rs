@@ -1,7 +1,7 @@
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BinaryHeap};
 
-use cs::gkr_compiler::dag_ir::ExprId;
+use gkr_eval_ir::ExprId;
 
 use super::BackwardSearchError;
 use super::pager::{ExactPagingPlan, PagingAction, reconstruct_paging_plan};
@@ -520,7 +520,7 @@ fn dag_initial_potentials(graph: &[Vec<Edge>]) -> Result<Vec<Cost>, BackwardSear
 mod tests {
     use std::collections::BTreeSet;
 
-    use cs::gkr_compiler::dag_ir::ExprId;
+    use gkr_eval_ir::ExprId;
 
     use crate::bwd::distill::{StableBwdConsumer, StableBwdExprKey, StableBwdSiteKey};
     use crate::bwd::trace::{BwdFingerprint, BwdServeKind};

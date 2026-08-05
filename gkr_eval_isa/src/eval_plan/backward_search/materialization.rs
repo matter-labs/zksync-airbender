@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use cs::gkr_compiler::dag_ir::FieldKind;
+use gkr_eval_ir::FieldKind;
 
 use crate::bwd::cost::{CELL_BYTES, EXT_BYTES};
 use crate::bwd::source::FoldState;

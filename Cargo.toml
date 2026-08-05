@@ -18,6 +18,7 @@ members = [
     "gpu/witness_eval_generator",
     "gpu_gkr_fwd_generator",
     "gkr_design_space",
+    "gkr_eval_ir",
     "gkr_eval_isa",
     "verifier",
     "full_statement_verifier",
@@ -101,6 +102,7 @@ default-members = [
     "gpu/witness_eval_generator",
     "gpu_gkr_fwd_generator",
     "gkr_design_space",
+    "gkr_eval_ir",
     # Restored to default-members after Stage 1 DAG-IR attribute-model rewrite (Task 7).
     # Note: --workspace and -p circuit_prover builds remain expected-broken until the GPU stage
     # (gpu/circuit_prover path-depends on gkr_eval_isa and has not yet been ported).
@@ -185,6 +187,7 @@ gpu_program_prover = { path = "./gpu/program_prover", default-features = false }
 execution_prover = { path = "./gpu/execution_prover", package = "gpu_execution_prover", default-features = false }
 prover_examples = { path = "./circuit_defs/prover_examples" }
 gpu_gkr_model = { path = "./gpu/gkr_model" }
+gkr_eval_ir = { path = "./gkr_eval_ir" }
 
 serde = { version = "1", default-features = false, features = ["derive", "alloc"] }
 clap = { version = "4.5.21", features = ["derive"] }

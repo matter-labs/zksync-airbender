@@ -29,13 +29,11 @@ use super::isa::{DstLine, Instr, LdcSub, MovDir, OperandField, OperandLine, Prog
 use super::stats::{CompileStats, OP_ADD, OP_FMA, OP_MOV, OP_MUL};
 use crate::bwd::batch::{pack_batch_dst, BATCH_COEFFICIENT_MAX, BATCH_COEFFICIENT_ONE};
 use crate::bwd::trace::BwdCompileTrace;
+use crate::schedule::{CircuitSchedule, LayerSchedule};
 use cs::definitions::GKRAddress;
-use cs::gkr_compiler::dag_ir::{
-    CircuitSchedule, DagCircuit, DagLayer, ExprId, FieldKind, LayerSchedule, ReadPlace, RootId,
-    SinkInfo, SinkKind,
-};
 use cs::gkr_compiler::{GKRCircuitArtifact, GKRLayerDescription};
 use field::baby_bear::base::BabyBearField;
+use gkr_eval_ir::{DagCircuit, DagLayer, ExprId, FieldKind, ReadPlace, RootId, SinkInfo, SinkKind};
 use std::collections::{BTreeMap, HashMap};
 
 /// Classification of a read operand for traffic-counter tallying (spec §11).
@@ -106,12 +104,9 @@ fn tally_operand(
 /// Public wrapper over the crate-private `arith::child_operand_field` so test-only
 /// oracle code can resolve an expr's operand field (→ cell width: Ext=4, Base=1).
 pub fn expr_operand_field(
-    layer: &cs::gkr_compiler::dag_ir::DagLayer,
-    expr_id: cs::gkr_compiler::dag_ir::ExprId,
-    cross: &std::collections::HashMap<
-        cs::gkr_compiler::dag_ir::ReadPlace,
-        cs::gkr_compiler::dag_ir::FieldKind,
-    >,
+    layer: &gkr_eval_ir::DagLayer,
+    expr_id: gkr_eval_ir::ExprId,
+    cross: &std::collections::HashMap<gkr_eval_ir::ReadPlace, gkr_eval_ir::FieldKind>,
 ) -> super::isa::OperandField {
     arith::child_operand_field(layer, expr_id, super::isa::OperandField::Base, cross)
 }
@@ -190,8 +185,8 @@ pub(crate) fn copy_src_read_place(addr: GKRAddress) -> Option<ReadPlace> {
 
 fn operand_field_of(sink: &SinkInfo) -> OperandField {
     match sink.field {
-        cs::gkr_compiler::dag_ir::FieldKind::Base => OperandField::Base,
-        cs::gkr_compiler::dag_ir::FieldKind::Ext => OperandField::Ext,
+        gkr_eval_ir::FieldKind::Base => OperandField::Base,
+        gkr_eval_ir::FieldKind::Ext => OperandField::Ext,
     }
 }
 
@@ -1108,7 +1103,7 @@ pub fn compile_circuit(
     schedule: &CircuitSchedule,
     artifact: &GKRCircuitArtifact<BabyBearField>,
 ) -> Result<CompiledCircuit, CompileError> {
-    cs::gkr_compiler::dag_ir::validate_circuit_schedule(dag, schedule)
+    crate::schedule::validate_circuit_schedule(dag, schedule)
         .map_err(CompileError::InvalidSchedule)?;
     let cross = build_cross_layer_field_map(dag);
     let mut layers = Vec::with_capacity(dag.layers.len());
@@ -1149,7 +1144,7 @@ pub fn compile_circuit(
 mod tests {
     use super::*;
     use crate::bwd::batch::BATCH_COEFFICIENT_MAX;
-    use cs::gkr_compiler::dag_ir::{BatchingOrder, Expr, Root, SourceId};
+    use gkr_eval_ir::{BatchingOrder, Expr, Root, SourceId};
     use std::collections::BTreeMap;
 
     #[test]

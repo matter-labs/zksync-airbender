@@ -26,13 +26,14 @@ use common::{
     CacheConsistentResolvers, SyntheticResolvers, cache_consistent_resolvers, load_fixture,
     resolvers,
 };
-use cs::gkr_compiler::dag_ir::{
-    ArenaBuilder, BatchingOrder, BwdRegime, ChallengeKey, ChallengePower, ChallengeRef, ClaimInfo,
-    DagLayer, Expr, ExprId, Ext, ReadPlace, Resolvers, Root, RootGroup, RootId, RootOrigin,
-    RootSlot, SourceKind, bwd_relation_units, bwd_roots, eval_layer_expr, eval_layer_root,
-    lower_dag, validate,
-};
 use field::Field;
+use gkr_eval_ir::{
+    ArenaBuilder, BatchingOrder, ChallengeKey, ChallengePower, ChallengeRef, ClaimInfo, DagLayer,
+    Expr, ExprId, Ext, ReadPlace, Resolvers, Root, RootGroup, RootId, RootOrigin, RootSlot,
+    SourceKind, claim_relation_units, claim_roots, eval_layer_expr, eval_layer_root, lower_dag,
+    validate,
+};
+use gkr_eval_isa::BwdRegime;
 use gkr_eval_isa::bwd::compile::{BwdCompiledLayer, compile_distilled, spine_terms};
 use gkr_eval_isa::bwd::distill::{DistilledLayer, StableBwdExprKey, distill};
 use gkr_eval_isa::bwd::source::BwdSpecial;
@@ -121,7 +122,7 @@ fn eval_rewritten(
             | SourceKind::VirtualSetup { .. } => {
                 // Delegate single-leaf evaluation to the authoritative evaluator
                 // (a leaf expr has no LookupValue beneath it to rewrite).
-                cs::gkr_compiler::dag_ir::eval_layer_expr(layer, e, row, r)
+                gkr_eval_ir::eval_layer_expr(layer, e, row, r)
             }
         },
         Expr::Add(children) => {
@@ -194,7 +195,7 @@ fn distill_all_fixtures_both_regimes() {
                 for row in [0usize, 1] {
                     let mut memo: HashMap<ExprId, Ext> = HashMap::new();
                     let mut expected = Ext::ZERO;
-                    for (i, &rid) in bwd_roots(layer).iter().enumerate() {
+                    for (i, &rid) in claim_roots(layer).iter().enumerate() {
                         let mut t = eval_rewritten(
                             layer,
                             layer.roots[rid.0 as usize].expr,
@@ -248,11 +249,11 @@ fn distill_all_fixtures_both_regimes() {
 // ── Plan-6 Task 1: canonical root provenance (`DistilledLayer::root_terms`) ───
 
 /// A synthetic canonical layer with three claim-only backward roots in three
-/// distinct relation units (`relation_index` 0/1/2, so `bwd_relation_units`
+/// distinct relation units (`relation_index` 0/1/2, so `claim_relation_units`
 /// yields three permutable units) whose BATCHING order is deliberately NOT the
 /// root-index order: `batching.roots = [R2, R0, R1]`. "Root zero" (the unbatched
 /// claim, beta exponent 0) is therefore `RootId(2)`, so an implementation that
-/// keyed the unbatched slot off `RootId(0)` instead of `bwd_roots(layer)[0]`
+/// keyed the unbatched slot off `RootId(0)` instead of `claim_roots(layer)[0]`
 /// fails the gates below. The three cones are structurally distinct (no two roots
 /// intern to one rebuilt expression) but share read leaves, so cone re-interning
 /// is still exercised.
@@ -347,16 +348,16 @@ fn multiset<T: std::hash::Hash + Eq + Clone>(v: &[T]) -> HashMap<T, usize> {
 }
 
 /// The Task-1 provenance gate shared by the synthetic permutation test and the
-/// corpus smoke above: `root_terms` is exactly `bwd_roots(canonical)` IN ORDER,
+/// corpus smoke above: `root_terms` is exactly `claim_roots(canonical)` IN ORDER,
 /// root zero (the first entry of that order) is UNSCALED, and every later entry
 /// names the exact `ClaimBatching` power of its canonical batching position.
 fn assert_root_terms_canonical(canonical: &DagLayer, d: &DistilledLayer, ctx: &str) {
-    let order = bwd_roots(canonical);
+    let order = claim_roots(canonical);
     let got: Vec<RootId> = d.root_terms.iter().map(|t| t.canonical_root).collect();
     assert_eq!(
         got,
         order.to_vec(),
-        "[{ctx}] root_terms must follow canonical bwd_roots order"
+        "[{ctx}] root_terms must follow canonical claim_roots order"
     );
     for (i, t) in d.root_terms.iter().enumerate() {
         match (i, t.batching_factor) {
@@ -400,12 +401,12 @@ fn distilled_root_terms_preserve_canonical_relation_order_and_batching() {
     let layer = synthetic_three_unit_layer();
     let cross = HashMap::new();
     assert_eq!(
-        bwd_relation_units(&layer).len(),
+        claim_relation_units(&layer).len(),
         3,
         "the synthetic layer must expose three permutable relation units"
     );
     // Canonical batching order is NOT root-index order: root zero is RootId(2).
-    assert_eq!(bwd_roots(&layer), &[RootId(2), RootId(0), RootId(1)]);
+    assert_eq!(claim_roots(&layer), &[RootId(2), RootId(0), RootId(1)]);
 
     let perms: [Option<Vec<usize>>; 3] = [None, Some(vec![2, 1, 0]), Some(vec![1, 2, 0])];
     for regime in [BwdRegime::R0, BwdRegime::Ext] {
@@ -420,7 +421,7 @@ fn distilled_root_terms_preserve_canonical_relation_order_and_batching() {
             assert_eq!(
                 d.root_terms[0].canonical_root,
                 RootId(2),
-                "[{ctx}] root zero is bwd_roots[0] (RootId(2)), not RootId(0)"
+                "[{ctx}] root zero is claim_roots[0] (RootId(2)), not RootId(0)"
             );
             assert_eq!(
                 d.root_terms[1].canonical_root,
@@ -476,7 +477,7 @@ fn distilled_root_terms_distinguish_value_from_batched_term() {
     let layer = synthetic_three_unit_layer();
     let cross = HashMap::new();
     let d = distill(&layer, BwdRegime::R0, &cross, None);
-    assert_eq!(d.root_terms.len(), bwd_roots(&layer).len());
+    assert_eq!(d.root_terms.len(), claim_roots(&layer).len());
 
     // Non-vacuity: three structurally distinct cones stay three distinct values.
     let mut values: Vec<ExprId> = d.root_terms.iter().map(|t| t.value_expr).collect();
@@ -614,7 +615,7 @@ fn compile_distilled_all_fixtures_b16() {
         let cross = build_cross_layer_field_map(&dag);
 
         for (li, layer) in dag.layers.iter().enumerate() {
-            if bwd_roots(layer).is_empty() {
+            if claim_roots(layer).is_empty() {
                 continue; // nothing to prove backward
             }
             for regime in [BwdRegime::R0, BwdRegime::Ext] {

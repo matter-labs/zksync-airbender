@@ -11,13 +11,14 @@
 
 use std::collections::HashMap;
 
-use cs::gkr_compiler::dag_ir::{DagLayer, FieldKind, ReadPlace, RootId, SiteKey};
 use cs::gkr_compiler::{GKRCircuitArtifact, GKRLayerDescription};
 use field::baby_bear::base::BabyBearField;
+use gkr_eval_ir::{DagLayer, FieldKind, ReadPlace, RootId};
 
-use crate::fwd::compile::decisions::SiteDecisions;
 use crate::fwd::compile::compile_layer;
+use crate::fwd::compile::decisions::SiteDecisions;
 use crate::fwd::error::CompileError;
+use crate::schedule::{LayerSchedule, RelationUnit, SiteKey};
 
 use super::decode::decode_unit_order;
 use super::genome::Genome;
@@ -42,7 +43,7 @@ pub struct LayerCtx<'a> {
     /// (`structure::relation_units_with_caches(layer)`) — the single grouping
     /// source. `decode_schedule` reorders these by the genome unit permutation
     /// and clones them into the decoded `LayerSchedule.units`.
-    pub units_with_caches: Vec<cs::gkr_compiler::dag_ir::RelationUnit>,
+    pub units_with_caches: Vec<RelationUnit>,
     /// Structural demand-site domain (`structure::enumerate_sites(layer)`); one
     /// [`Genome::cache_priority`] gene per entry, same order.
     pub sites: Vec<SiteKey>,
@@ -76,8 +77,10 @@ impl<'a> LayerCtx<'a> {
         // one unit order — the same genome always decodes to the same flat atom
         // order.
         let units_with_caches = super::structure::relation_units_with_caches(layer);
-        let units: Vec<Vec<RootId>> =
-            units_with_caches.iter().map(|u| u.atom_roots.clone()).collect();
+        let units: Vec<Vec<RootId>> = units_with_caches
+            .iter()
+            .map(|u| u.atom_roots.clone())
+            .collect();
         Self {
             layer,
             artifact_layer,
@@ -122,7 +125,7 @@ pub fn objective_key(score: &CandidateScore) -> (u8, usize, usize) {
 /// Build the `LayerSchedule` candidate `genome` decodes to (order + per-site
 /// priority genes), WITHOUT compiling it. Exposed so the search can compile a
 /// winning genome's own schedule once at the end without re-deriving it.
-pub fn decode_schedule(genome: &Genome, ctx: &LayerCtx) -> cs::gkr_compiler::dag_ir::LayerSchedule {
+pub fn decode_schedule(genome: &Genome, ctx: &LayerCtx) -> LayerSchedule {
     assert_eq!(
         genome.cache_priority.len(),
         ctx.sites.len(),
@@ -134,22 +137,33 @@ pub fn decode_schedule(genome: &Genome, ctx: &LayerCtx) -> cs::gkr_compiler::dag
         "genome root_order_key length must match ctx units"
     );
     let unit_perm = decode_unit_order(&genome.root_order_key);
-    let units: Vec<cs::gkr_compiler::dag_ir::RelationUnit> =
-        unit_perm.iter().map(|&u| ctx.units_with_caches[u].clone()).collect();
-    let sites: Vec<(SiteKey, f64)> =
-        ctx.sites.iter().copied().zip(genome.cache_priority.iter().copied()).collect();
-    cs::gkr_compiler::dag_ir::LayerSchedule { units, sites, predicted_traffic: 0, floor: ctx.floor }
+    let units: Vec<RelationUnit> = unit_perm
+        .iter()
+        .map(|&u| ctx.units_with_caches[u].clone())
+        .collect();
+    let sites: Vec<(SiteKey, f64)> = ctx
+        .sites
+        .iter()
+        .copied()
+        .zip(genome.cache_priority.iter().copied())
+        .collect();
+    LayerSchedule {
+        units,
+        sites,
+        predicted_traffic: 0,
+        floor: ctx.floor,
+    }
 }
 
 /// Inverse of [`decode_schedule`] (codex-P1 incumbent seeding): the genome whose
 /// decode reproduces `ls` exactly, so scoring it yields `ls`'s own traffic and
 /// elitism can never lose the incumbent. Requires `ls`'s sites to equal
 /// `ctx.sites` (guaranteed by `validate_circuit_schedule` check b).
-pub fn genome_from_schedule(ls: &cs::gkr_compiler::dag_ir::LayerSchedule, ctx: &LayerCtx) -> Genome {
+pub fn genome_from_schedule(ls: &LayerSchedule, ctx: &LayerCtx) -> Genome {
     use std::collections::HashMap;
     // root_order_key: assign each canonical unit its execution rank (unit vec order in `ls`).
     // Map canonical unit identity -> its index in ctx.units_with_caches.
-    let canon_idx: HashMap<(cs::gkr_compiler::dag_ir::RootGroup, usize), usize> = ctx
+    let canon_idx: HashMap<(gkr_eval_ir::RootGroup, usize), usize> = ctx
         .units_with_caches
         .iter()
         .enumerate()
@@ -164,8 +178,15 @@ pub fn genome_from_schedule(ls: &cs::gkr_compiler::dag_ir::LayerSchedule, ctx: &
     }
     // cache_priority: incumbent priority per ctx.sites[i] (sites order is the gene order).
     let prio: HashMap<SiteKey, f64> = ls.sites.iter().copied().collect();
-    let cache_priority = ctx.sites.iter().map(|s| prio.get(s).copied().unwrap_or(0.0)).collect();
-    Genome { root_order_key, cache_priority }
+    let cache_priority = ctx
+        .sites
+        .iter()
+        .map(|s| prio.get(s).copied().unwrap_or(0.0))
+        .collect();
+    Genome {
+        root_order_key,
+        cache_priority,
+    }
 }
 
 /// The fitness function (Task 6 spec §1). Decodes `genome`, compiles it for
@@ -192,9 +213,11 @@ pub fn score(genome: &Genome, ctx: &LayerCtx) -> CandidateScore {
             dram_traffic: compiled.stats.dram_traffic,
             instrs: compiled.stats.program_lanes,
         },
-        Err(CompileError::BudgetBelowFloor { .. }) => {
-            CandidateScore { infeasible: true, dram_traffic: usize::MAX, instrs: usize::MAX }
-        }
+        Err(CompileError::BudgetBelowFloor { .. }) => CandidateScore {
+            infeasible: true,
+            dram_traffic: usize::MAX,
+            instrs: usize::MAX,
+        },
         Err(err) => panic!(
             "scorer: unexpected compile error {:?} for genome {:?} (order units={}, sites={})",
             err,
@@ -211,17 +234,37 @@ mod tests {
 
     #[test]
     fn objective_key_ranks_infeasible_last_regardless_of_fields() {
-        let feasible = CandidateScore { infeasible: false, dram_traffic: usize::MAX, instrs: usize::MAX };
-        let infeasible = CandidateScore { infeasible: true, dram_traffic: 0, instrs: 0 };
+        let feasible = CandidateScore {
+            infeasible: false,
+            dram_traffic: usize::MAX,
+            instrs: usize::MAX,
+        };
+        let infeasible = CandidateScore {
+            infeasible: true,
+            dram_traffic: 0,
+            instrs: 0,
+        };
         assert!(objective_key(&feasible) < objective_key(&infeasible));
         assert!(feasible < infeasible);
     }
 
     #[test]
     fn candidate_score_orders_by_traffic_then_instrs() {
-        let a = CandidateScore { infeasible: false, dram_traffic: 10, instrs: 100 };
-        let b = CandidateScore { infeasible: false, dram_traffic: 10, instrs: 50 };
-        let c = CandidateScore { infeasible: false, dram_traffic: 5, instrs: 999 };
+        let a = CandidateScore {
+            infeasible: false,
+            dram_traffic: 10,
+            instrs: 100,
+        };
+        let b = CandidateScore {
+            infeasible: false,
+            dram_traffic: 10,
+            instrs: 50,
+        };
+        let c = CandidateScore {
+            infeasible: false,
+            dram_traffic: 5,
+            instrs: 999,
+        };
         assert!(b < a, "lower instrs wins the traffic tie");
         assert!(c < a, "lower traffic always wins regardless of instrs");
     }

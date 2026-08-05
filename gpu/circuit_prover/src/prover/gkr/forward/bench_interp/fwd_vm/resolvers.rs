@@ -9,8 +9,8 @@
 //! the `root_flat_addr`/D2H-column plumbing they depended on) is gone (Task
 //! 12) — superseded by the Task 10 production v2 device-side parity gate.
 
-use cs::gkr_compiler::dag_ir::{ChallengeKey, ChallengePower, ChallengeRef, Ext, PermutationSlot};
 use field::Field;
+use gkr_eval_ir::{ChallengeKey, ChallengePower, ChallengeRef, Ext, PermutationSlot};
 
 use super::super::fixture::{CircuitFixture, CircuitKeepalive};
 use crate::prover::gkr::stage1::GpuGKRStage1Output;

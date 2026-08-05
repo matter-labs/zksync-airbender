@@ -19,14 +19,15 @@
 
 use std::collections::HashMap;
 
-use cs::gkr_compiler::dag_ir::{CircuitSchedule, DagCircuit, FieldKind, LayerSchedule, ReadPlace};
 use cs::gkr_compiler::GKRCircuitArtifact;
 use field::baby_bear::base::BabyBearField;
+use gkr_eval_ir::{DagCircuit, FieldKind, ReadPlace};
 
 use crate::fwd::compile::{build_cross_layer_field_map, layer_needs_compile};
+use crate::schedule::{CircuitSchedule, LayerSchedule};
 
 use super::scorer::LayerCtx;
-use super::search::{search_layer, SearchConfig};
+use super::search::{SearchConfig, search_layer};
 use super::structure::relation_units;
 
 /// Build a `CircuitSchedule` for `dag` at `budget` by searching every
@@ -52,7 +53,12 @@ pub fn produce_circuit_schedule(
             // nothing was searched, and the validator requires
             // `floor <= predicted_traffic` (0 here); this also mirrors the
             // deleted v1 producer's empty branch exactly.
-            layers.push(LayerSchedule { units: vec![], sites: vec![], predicted_traffic: 0, floor: 0 });
+            layers.push(LayerSchedule {
+                units: vec![],
+                sites: vec![],
+                predicted_traffic: 0,
+                floor: 0,
+            });
             println!(
                 "schedule_search: layer {li}: no atom roots, no materialize roots, skipped (nodes={}, sites=0)",
                 layer.exprs.len()
@@ -89,12 +95,16 @@ pub fn produce_circuit_schedule(
     // — the caller (the fixture-regen entry point in `tests/schedule_search_gates.rs`)
     // sets it to the fixture stem before serializing, exactly as `load_dag_sched`
     // already expects a `CircuitSchedule.circuit` field to exist for the record.
-    let sched = CircuitSchedule { circuit: String::new(), budget, layers };
+    let sched = CircuitSchedule {
+        circuit: String::new(),
+        budget,
+        layers,
+    };
 
     // Structural self-check before handing the schedule back (the v1 producer ran
     // the cs validator on every produced schedule too): order-permutation, exact
     // site-domain match, finite priorities, floor <= predicted_traffic.
-    cs::gkr_compiler::dag_ir::validate_circuit_schedule(dag, &sched)
+    crate::schedule::validate_circuit_schedule(dag, &sched)
         .unwrap_or_else(|e| panic!("produce_circuit_schedule: schedule fails validation: {e}"));
     sched
 }

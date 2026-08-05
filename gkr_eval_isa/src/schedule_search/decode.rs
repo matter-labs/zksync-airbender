@@ -9,7 +9,7 @@
 //! that hadn't computed units yet), decoding here is always "unit-grouped":
 //! `Genome.root_order_key` has exactly one key per unit.
 
-use cs::gkr_compiler::dag_ir::RootId;
+use gkr_eval_ir::RootId;
 
 /// Sort unit indices `0..unit_key.len()` by their key (finite `f64`,
 /// `total_cmp` so `NaN`/`-0.0` never panic or silently mis-tie), ties broken by

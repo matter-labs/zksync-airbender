@@ -3,7 +3,7 @@ use std::ops::RangeInclusive;
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use cs::gkr_compiler::dag_ir::{BwdRegime, DagLayer, FieldKind, ReadPlace};
+use gkr_eval_ir::{DagLayer, FieldKind, ReadPlace};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::bwd::distill::{DistilledLayer, StableBwdConsumer, StableBwdExprKey, StableBwdSiteKey};
@@ -277,7 +277,7 @@ pub struct BackwardEvaluationCircuitArtifact {
 pub struct BackwardArtifactCoordinate {
     pub circuit: String,
     pub layer: usize,
-    pub regime: BwdRegime,
+    pub regime: crate::BwdRegime,
     pub budget_cells: usize,
 }
 
@@ -306,50 +306,50 @@ pub enum BackwardArtifactError {
     BudgetOutOfRange {
         circuit: String,
         layer: usize,
-        regime: BwdRegime,
+        regime: crate::BwdRegime,
         budget_cells: usize,
     },
     ProblemCertificateMismatch {
         circuit: String,
         layer: usize,
-        regime: BwdRegime,
+        regime: crate::BwdRegime,
         budget_cells: usize,
     },
     InvalidFragmentPermutation {
         circuit: String,
         layer: usize,
-        regime: BwdRegime,
+        regime: crate::BwdRegime,
         budget_cells: usize,
     },
     InvalidRetainedDemand {
         circuit: String,
         layer: usize,
-        regime: BwdRegime,
+        regime: crate::BwdRegime,
         budget_cells: usize,
         position: usize,
     },
     ScoreCertificateMismatch {
         circuit: String,
         layer: usize,
-        regime: BwdRegime,
+        regime: crate::BwdRegime,
         budget_cells: usize,
     },
     PagingCertificateMismatch {
         circuit: String,
         layer: usize,
-        regime: BwdRegime,
+        regime: crate::BwdRegime,
         budget_cells: usize,
     },
     InstructionDigestMismatch {
         circuit: String,
         layer: usize,
-        regime: BwdRegime,
+        regime: crate::BwdRegime,
         budget_cells: usize,
     },
     EncodedDigestMismatch {
         circuit: String,
         layer: usize,
-        regime: BwdRegime,
+        regime: crate::BwdRegime,
         budget_cells: usize,
     },
     ReplaySearch {
@@ -410,8 +410,13 @@ impl BackwardEvaluationCircuitArtifact {
             }
         }
         for layer in &self.layers {
-            validate_regime(&self.circuit, layer.layer, BwdRegime::R0, &layer.r0)?;
-            validate_regime(&self.circuit, layer.layer, BwdRegime::Ext, &layer.ext)?;
+            validate_regime(&self.circuit, layer.layer, crate::BwdRegime::R0, &layer.r0)?;
+            validate_regime(
+                &self.circuit,
+                layer.layer,
+                crate::BwdRegime::Ext,
+                &layer.ext,
+            )?;
         }
         Ok(())
     }
@@ -573,7 +578,7 @@ fn publish_backward_evaluation_artifact_to_temporary(
 fn validate_regime(
     circuit: &str,
     layer: usize,
-    regime: BwdRegime,
+    regime: crate::BwdRegime,
     artifact: &BackwardRegimeArtifact,
 ) -> Result<(), BackwardArtifactError> {
     for plan in &artifact.plans {
@@ -650,7 +655,7 @@ pub fn load_backward_evaluation_artifact(
 pub fn select_backward_plan(
     artifact: &BackwardEvaluationCircuitArtifact,
     layer: usize,
-    regime: BwdRegime,
+    regime: crate::BwdRegime,
     budget_cells: usize,
 ) -> Result<&BackwardPlanArtifact, BackwardArtifactError> {
     if !(MIN_BUDGET_CELLS..=MAX_BUDGET_CELLS).contains(&budget_cells) {
@@ -675,8 +680,8 @@ pub fn select_backward_plan(
             },
         })?;
     let regime_artifact = match regime {
-        BwdRegime::R0 => &layer_artifact.r0,
-        BwdRegime::Ext => &layer_artifact.ext,
+        crate::BwdRegime::R0 => &layer_artifact.r0,
+        crate::BwdRegime::Ext => &layer_artifact.ext,
     };
     let plan = regime_artifact
         .plans
@@ -1155,7 +1160,7 @@ impl From<StableBwdSiteKey> for StableSiteProjection {
 
 #[derive(Serialize)]
 enum FactorProjection {
-    Challenge(cs::gkr_compiler::dag_ir::ChallengeRef),
+    Challenge(gkr_eval_ir::ChallengeRef),
     Constant(u32),
     Expr(StableExprProjection),
 }
@@ -1439,7 +1444,7 @@ mod generation_tests {
             circuit: "circuit".to_owned(),
             layout_fixture: "fixture".to_owned(),
             layer: 7,
-            regime: BwdRegime::Ext,
+            regime: crate::BwdRegime::Ext,
         };
         let mut observed = Vec::new();
         let result = produce_regime_chain_with(&identity, 2..=5, |budget, preceding| {
@@ -1462,7 +1467,7 @@ mod generation_tests {
                 if failures == vec![BackwardArtifactCoordinate {
                     circuit: "circuit".to_owned(),
                     layer: 7,
-                    regime: BwdRegime::Ext,
+                    regime: crate::BwdRegime::Ext,
                     budget_cells: 3,
                 }]
         ));

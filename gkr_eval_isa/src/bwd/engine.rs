@@ -56,7 +56,7 @@
 
 use std::collections::HashMap;
 
-use cs::gkr_compiler::dag_ir::{BwdRegime, DagLayer, ExprId, FieldKind, ReadPlace};
+use gkr_eval_ir::{DagLayer, ExprId, FieldKind, ReadPlace};
 
 use super::compile::{
     compile_distilled_planned, compile_distilled_traced, BwdCompileBackend, BwdCompiledLayer,
@@ -233,7 +233,7 @@ impl CsPath {
 #[allow(clippy::too_many_arguments)]
 fn try_cs_path(
     layer: &DagLayer,
-    regime: BwdRegime,
+    regime: crate::BwdRegime,
     cross: &HashMap<ReadPlace, FieldKind>,
     budget: usize,
     bl_d: &DistilledLayer,
@@ -393,7 +393,7 @@ fn baseline_outcome(
 /// `PINNED_B16_INFEASIBLE` class), mirroring `search_bwd_layer`'s single hard-fail.
 pub fn cs_schedule_bwd_layer(
     layer: &DagLayer,
-    regime: BwdRegime,
+    regime: crate::BwdRegime,
     cross: &HashMap<ReadPlace, FieldKind>,
     budget: usize,
 ) -> CsOutcome {
@@ -408,7 +408,7 @@ pub fn cs_schedule_bwd_layer(
 /// the term pricing path — production code should keep calling [`cs_schedule_bwd_layer`].
 pub fn cs_schedule_bwd_layer_with_term_floor(
     layer: &DagLayer,
-    regime: BwdRegime,
+    regime: crate::BwdRegime,
     cross: &HashMap<ReadPlace, FieldKind>,
     budget: usize,
 ) -> CsOutcome {
@@ -431,7 +431,7 @@ pub fn cs_schedule_bwd_layer_with_term_floor(
 /// the priced run either way when the CS path ran.
 pub fn cs_schedule_bwd_layer_research(
     layer: &DagLayer,
-    regime: BwdRegime,
+    regime: crate::BwdRegime,
     cross: &HashMap<ReadPlace, FieldKind>,
     budget: usize,
     multiplier: usize,
@@ -462,7 +462,7 @@ pub fn cs_schedule_bwd_layer_research(
 #[allow(clippy::too_many_arguments)]
 fn cs_schedule_bwd_layer_impl(
     layer: &DagLayer,
-    regime: BwdRegime,
+    regime: crate::BwdRegime,
     cross: &HashMap<ReadPlace, FieldKind>,
     budget: usize,
     multiplier: usize,

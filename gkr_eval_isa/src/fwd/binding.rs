@@ -5,7 +5,7 @@
 //! (out_base/out_ext, cache_base/cache_ext), so `LayerOutput`/`CacheOutput` keys are
 //! FIELD-QUALIFIED — a mixed logical output uses TWO slots, one per matrix.
 //! `BaseLayerMemory`/`BaseLayerWitness`/`Setup`/`Scratch` are intrinsically bf
-//! (see `cs::gkr_compiler::dag_ir::field_infer`: base-storage places are always
+//! (see `gkr_eval_ir::field_infer`: base-storage places are always
 //! `FieldKind::Base`; GPU `ScratchSpace` resolves through `base_field_inputs`).
 //!
 //! Column indices are DENSE PER SLOT: `slot_col`/`read_slot_col` renumber the
@@ -19,7 +19,7 @@
 use super::error::BindError;
 use super::isa::{Instr, MAX_COLS, MAX_SLOTS, OperandField, OperandLine, Program};
 use crate::source_bind::{BindFailure, BoundSourceUse, LogicalSourceUse, bind_source_sequence};
-use cs::gkr_compiler::dag_ir::ReadPlace;
+use gkr_eval_ir::ReadPlace;
 use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]

@@ -10,7 +10,8 @@ mod common;
 use std::collections::{BTreeMap, BTreeSet};
 
 use common::load_dag_sched;
-use cs::gkr_compiler::dag_ir::{BwdRegime, FieldKind, ReadPlace, bwd_roots, lower_dag, validate};
+use gkr_eval_ir::{FieldKind, ReadPlace, claim_roots, lower_dag, validate};
+use gkr_eval_isa::BwdRegime;
 use gkr_eval_isa::bwd::distill::distill;
 use gkr_eval_isa::bwd::source::{BwdSpecial, OriginLeaf};
 use gkr_eval_isa::eval_plan::compile_backward_fragments_uncached;
@@ -319,7 +320,7 @@ fn source_window_corpus_census() {
         let mut fixture_bearing_layers = 0usize;
         let mut fixture_rootless_layers = 0usize;
         for (layer, canonical) in dag.layers.iter().enumerate() {
-            if bwd_roots(canonical).is_empty() {
+            if claim_roots(canonical).is_empty() {
                 fixture_rootless_layers += 1;
                 backward_rootless_layers += 1;
                 println!("{name} L{layer:<3} rootless");

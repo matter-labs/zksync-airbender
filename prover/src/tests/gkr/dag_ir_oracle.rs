@@ -1,7 +1,7 @@
 //! Task 6 — oracle-hook SPIKE (GATE before broad lowering).
 //!
 //! Proves that the new DAG-IR reference evaluator
-//! (`cs::gkr_compiler::dag_ir::eval::eval_layer_root`) can reproduce the
+//! (`gkr_eval_ir::eval::eval_layer_root`) can reproduce the
 //! **prover's authoritative per-relation values** on three representative
 //! relation shapes, using a HAND-BUILT `DagCircuit` (one layer, four roots).
 //!
@@ -17,13 +17,13 @@ use std::collections::BTreeSet;
 
 use cs::definitions::gkr::NoFieldLinearRelation;
 use cs::definitions::GKRAddress;
-use cs::gkr_compiler::dag_ir::{
+use cs::gkr_compiler::test_support::{build_add_sub_artifact, sample_relations};
+use cs::gkr_compiler::{NoFieldGKRRelation, NoFieldMaxQuadraticGKRRelation};
+use gkr_eval_ir::{
     eval_layer_root, ArenaBuilder, BatchingOrder, ChallengeKey, ChallengePower, ChallengeRef,
     ClaimInfo, DagLayer, ExprId, FieldKind, Resolvers, Root, RootGroup, RootId, RootOrigin,
     RootSlot, SinkInfo, SinkKind, SourceKind,
 };
-use cs::gkr_compiler::test_support::{build_add_sub_artifact, sample_relations};
-use cs::gkr_compiler::{NoFieldGKRRelation, NoFieldMaxQuadraticGKRRelation};
 
 use super::dag_ir_reference::{
     collect_addresses, read_place_to_address, reference_relation_values, RefChallengeResolver,
@@ -37,13 +37,9 @@ use super::dag_ir_reference::{
 fn read_expr(arena: &mut ArenaBuilder, addr: GKRAddress) -> ExprId {
     // mirror dag_ir::lower::map_address for the base places used here.
     let place = match addr {
-        GKRAddress::BaseLayerWitness(o) => cs::gkr_compiler::dag_ir::ReadPlace::BaseLayerWitness {
-            column: o,
-        },
-        GKRAddress::BaseLayerMemory(o) => cs::gkr_compiler::dag_ir::ReadPlace::BaseLayerMemory {
-            column: o,
-        },
-        GKRAddress::Setup(o) => cs::gkr_compiler::dag_ir::ReadPlace::Setup { column: o },
+        GKRAddress::BaseLayerWitness(o) => gkr_eval_ir::ReadPlace::BaseLayerWitness { column: o },
+        GKRAddress::BaseLayerMemory(o) => gkr_eval_ir::ReadPlace::BaseLayerMemory { column: o },
+        GKRAddress::Setup(o) => gkr_eval_ir::ReadPlace::Setup { column: o },
         other => panic!("address {:?} cannot be lowered to a ReadPlace here", other),
     };
     // sanity: the resolver inverse must round-trip.
@@ -207,8 +203,7 @@ fn dag_ir_oracle_matches_prover_reference_on_three_roots() {
     // ── Reference (authoritative) values ──
     let ref_linear = reference_relation_values(&linear, ROW, &ctx).expect("linear arm");
     let ref_pair = reference_relation_values(&lookup_pair, ROW, &ctx).expect("pair arm");
-    let ref_constraint =
-        reference_relation_values(&constraint, ROW, &ctx).expect("constraint arm");
+    let ref_constraint = reference_relation_values(&constraint, ROW, &ctx).expect("constraint arm");
     assert_eq!(ref_linear.len(), 1);
     assert_eq!(ref_pair.len(), 2, "lookup pair must produce (num, den)");
     assert_eq!(ref_constraint.len(), 1);

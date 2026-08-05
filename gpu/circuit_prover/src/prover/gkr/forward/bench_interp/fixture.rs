@@ -52,12 +52,12 @@ use crate::upstream::{
 };
 
 use cs::gkr_compiler::codegen_ir::{CodegenLayer, ExprNode, ProducerId};
-use cs::gkr_compiler::dag_ir::{
+use field::{Field, FieldExtension, PrimeField};
+use gkr_design_space::graph::{AnalysisGraph, Origin};
+use gkr_eval_ir::{
     ChallengeKey, ChallengePower, ChallengeRef, ChallengeResolver, DagLayer, LookupResolver,
     LookupValueKind, ReadPlace, ReadResolver, Resolvers, VirtualSetupKind, VirtualSetupResolver,
 };
-use field::{Field, FieldExtension, PrimeField};
-use gkr_design_space::graph::{AnalysisGraph, Origin};
 use gkr_eval_isa::bwd::fragment::MergedRecipe;
 
 use crate::prover::gkr::forward::vm::lower::ResolvedColumn;

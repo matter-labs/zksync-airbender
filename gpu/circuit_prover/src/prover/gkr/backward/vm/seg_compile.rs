@@ -43,11 +43,9 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, OnceLock};
 
-use cs::gkr_compiler::dag_ir::{
-    bwd_roots, lower_dag, validate, BwdRegime, DagLayer, FieldKind, ReadPlace,
-};
 use era_cudart::memory::memory_copy_async;
 use era_cudart::slice::DeviceSlice;
+use gkr_eval_ir::{claim_roots, lower_dag, validate, BwdRegime, DagLayer, FieldKind, ReadPlace};
 use gkr_eval_isa::bwd::coeff::interp::CoeffResolver;
 use gkr_eval_isa::bwd::coeff::lean_artifact::{
     compile_lean_coordinate, lower_lean_layer, LeanCoordinateArtifact,
@@ -158,7 +156,7 @@ const _: () = {
 pub(crate) fn seg_coordinate_layers(circuit: &'static str) -> Vec<usize> {
     let dag = lowered_dag(circuit);
     (0..dag.0.len())
-        .filter(|index| !bwd_roots(&dag.0[*index]).is_empty())
+        .filter(|index| !claim_roots(&dag.0[*index]).is_empty())
         .collect()
 }
 
@@ -265,7 +263,7 @@ pub(crate) fn lean_coordinate(
         .get(layer_index)
         .unwrap_or_else(|| panic!("{circuit} has no canonical layer {layer_index}"));
     assert!(
-        !bwd_roots(canonical).is_empty(),
+        !claim_roots(canonical).is_empty(),
         "{circuit} L{layer_index} has no backward roots and is not a coordinate"
     );
     let label = format!("{} L{layer_index} {regime:?}", short_name(circuit));

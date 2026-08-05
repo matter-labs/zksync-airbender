@@ -17,14 +17,15 @@ mod common;
 
 use std::time::Instant;
 
-use common::{load_layer, CrossFields};
-use cs::gkr_compiler::dag_ir::{bwd_roots, BwdRegime, DagLayer};
+use common::{CrossFields, load_layer};
+use gkr_eval_ir::{DagLayer, claim_roots};
+use gkr_eval_isa::BwdRegime;
 use gkr_eval_isa::bwd::compile::compile_distilled;
 use gkr_eval_isa::bwd::distill::distill;
 use gkr_eval_isa::bwd::engine::{cs_schedule_bwd_layer, cs_schedule_bwd_layer_research};
 use gkr_eval_isa::bwd::price::RECLAIM_N;
 use gkr_eval_isa::bwd::search::{
-    search_bwd_layer, BwdOrderMutation, BwdSearchConfig, BwdSeedStrategy,
+    BwdOrderMutation, BwdSearchConfig, BwdSeedStrategy, search_bwd_layer,
 };
 
 /// The b16 budget both engines schedule at (G-M0 pin).
@@ -101,9 +102,10 @@ fn run_ga_seed(
     let secs = start.elapsed().as_secs_f64();
 
     let d = distill(layer, regime, cross, Some(&outcome.unit_permutation));
-    let recompiled = compile_distilled(&d, budget, outcome.decisions.as_ref()).unwrap_or_else(|e| {
-        panic!("seed {seed}: GA winner recompile must be feasible at budget {budget}: {e:?}")
-    });
+    let recompiled =
+        compile_distilled(&d, budget, outcome.decisions.as_ref()).unwrap_or_else(|e| {
+            panic!("seed {seed}: GA winner recompile must be feasible at budget {budget}: {e:?}")
+        });
     assert_eq!(
         recompiled.stats_ext, outcome.stats,
         "seed {seed}: recompiled stats_ext must reproduce outcome.stats (determinism cross-check)"
@@ -123,7 +125,10 @@ fn run_ga_seed(
 /// `dnf` (a DNF is excluded from ranking, never treated as an automatic winner
 /// or loser).
 fn best_of(results: &[GaSeedResult]) -> Option<&GaSeedResult> {
-    results.iter().filter(|r| !r.dnf).min_by_key(|r| (r.infeasible, r.traffic, r.instrs))
+    results
+        .iter()
+        .filter(|r| !r.dnf)
+        .min_by_key(|r| (r.infeasible, r.traffic, r.instrs))
 }
 
 // ── comparator_smoke (Task 10, NOT ignored) ─────────────────────────────────────
@@ -143,20 +148,44 @@ fn comparator_smoke() {
     const SMOKE_EVALS: usize = 40;
 
     let (layer, cross) = load_layer(NAME, 0);
-    assert!(!bwd_roots(&layer).is_empty(), "{NAME}: layer 0 must have bwd roots");
+    assert!(
+        !claim_roots(&layer).is_empty(),
+        "{NAME}: layer 0 must have bwd roots"
+    );
 
     // Constructive engine.
     let cs = cs_schedule_bwd_layer(&layer, BwdRegime::Ext, &cross, BUDGET);
     let cs_traffic = cs.stats.global + cs.stats.fold_traffic;
     let cs_cert_ok = cs.certificate.counted_traffic == cs.certificate.reported_traffic;
-    assert!(cs_cert_ok, "{NAME}: CS certificate must be Ok (counted == reported)");
-    assert!(cs.instrs > 0, "{NAME}: CS shipped program must be non-empty");
+    assert!(
+        cs_cert_ok,
+        "{NAME}: CS certificate must be Ok (counted == reported)"
+    );
+    assert!(
+        cs.instrs > 0,
+        "{NAME}: CS shipped program must be non-empty"
+    );
 
     // GA at the tiny smoke config, seed 0 — the recompile + its determinism
     // cross-check run inside `run_ga_seed`.
-    let ga = run_ga_seed(&layer, BwdRegime::Ext, &cross, BUDGET, 0, SMOKE_POP, SMOKE_EVALS);
-    assert!(!ga.dnf, "{NAME}: tiny smoke config must not DNF ({} secs)", ga.secs);
-    assert!(ga.instrs > 0, "{NAME}: GA winner recompile must be non-empty");
+    let ga = run_ga_seed(
+        &layer,
+        BwdRegime::Ext,
+        &cross,
+        BUDGET,
+        0,
+        SMOKE_POP,
+        SMOKE_EVALS,
+    );
+    assert!(
+        !ga.dnf,
+        "{NAME}: tiny smoke config must not DNF ({} secs)",
+        ga.secs
+    );
+    assert!(
+        ga.instrs > 0,
+        "{NAME}: GA winner recompile must be non-empty"
+    );
 
     // Full verdict computation (same rule `g_m0_comparator` uses), printed but
     // not asserted as pass/fail — add_sub is not a gated circuit.
@@ -189,9 +218,7 @@ struct LayerRow {
 }
 
 fn print_ledger(rows: &[LayerRow]) {
-    println!(
-        "\nG-M0 comparator ledger (constructive CS vs GA-at-strength, Ext L0, b{BUDGET}):"
-    );
+    println!("\nG-M0 comparator ledger (constructive CS vs GA-at-strength, Ext L0, b{BUDGET}):");
     println!(
         "  {:<48} | {:>10} | {:>34} | {:>24} | verdict",
         "circuit",
@@ -200,7 +227,12 @@ fn print_ledger(rows: &[LayerRow]) {
         "CS (traffic/instrs/rounds/pins)"
     );
     for r in rows {
-        let dnf_seeds: Vec<u64> = r.ga_results.iter().filter(|g| g.dnf).map(|g| g.seed).collect();
+        let dnf_seeds: Vec<u64> = r
+            .ga_results
+            .iter()
+            .filter(|g| g.dnf)
+            .map(|g| g.seed)
+            .collect();
         let ga_str = match best_of(&r.ga_results) {
             Some(g) => format!("{}/{}/seed{}/{:.1}s", g.traffic, g.instrs, g.seed, g.secs),
             None => "ALL-DNF".to_string(),
@@ -215,9 +247,16 @@ fn print_ledger(rows: &[LayerRow]) {
             r.name,
             r.baseline_traffic,
             ga_str,
-            format!("{}/{}/{}/{}", r.cs_traffic, r.cs_instrs, r.cs_rounds, r.cs_pins),
+            format!(
+                "{}/{}/{}/{}",
+                r.cs_traffic, r.cs_instrs, r.cs_rounds, r.cs_pins
+            ),
             if r.pass { "PASS" } else { "FAIL" },
-            if r.cs_cert_ok { "" } else { " (certificate NOT ok)" },
+            if r.cs_cert_ok {
+                ""
+            } else {
+                " (certificate NOT ok)"
+            },
         );
     }
     println!();
@@ -250,7 +289,10 @@ fn g_m0_comparator() {
 
     for &name in G_M0_FIXTURES {
         let (layer, cross) = load_layer(name, 0);
-        assert!(!bwd_roots(&layer).is_empty(), "{name}: layer 0 must have bwd roots");
+        assert!(
+            !claim_roots(&layer).is_empty(),
+            "{name}: layer 0 must have bwd roots"
+        );
 
         // Canonical baseline traffic (the non-regression floor both engines share).
         let bl_d = distill(&layer, BwdRegime::Ext, &cross, None);
@@ -267,14 +309,23 @@ fn g_m0_comparator() {
         let ga_results: Vec<GaSeedResult> = GA_SEEDS
             .iter()
             .map(|&seed| {
-                run_ga_seed(&layer, BwdRegime::Ext, &cross, BUDGET, seed, GA_POP, GA_EVALS)
+                run_ga_seed(
+                    &layer,
+                    BwdRegime::Ext,
+                    &cross,
+                    BUDGET,
+                    seed,
+                    GA_POP,
+                    GA_EVALS,
+                )
             })
             .collect();
 
         let pass = match best_of(&ga_results) {
             Some(g) => {
                 cs_cert_ok
-                    && (cs_traffic < g.traffic || (cs_traffic == g.traffic && cs.instrs <= g.instrs))
+                    && (cs_traffic < g.traffic
+                        || (cs_traffic == g.traffic && cs.instrs <= g.instrs))
             }
             // No valid GA baseline (all 3 seeds DNF) — cannot certify a pass either way.
             None => false,
@@ -310,7 +361,11 @@ fn g_m0_comparator() {
             )
         })
         .collect();
-    assert!(failures.is_empty(), "G-M0 comparator FAILURES:\n{}", failures.join("\n"));
+    assert!(
+        failures.is_empty(),
+        "G-M0 comparator FAILURES:\n{}",
+        failures.join("\n")
+    );
 }
 
 // ── g_m0_comparator_sweep (CS-M4 Task 6, #[ignore] — in-process 1x/2x sweep) ─────
@@ -340,8 +395,15 @@ fn run_cs_sweep(
     ga_traffic: usize,
     ga_instrs: usize,
 ) -> CsSweepRun {
-    let out =
-        cs_schedule_bwd_layer_research(layer, BwdRegime::Ext, cross, BUDGET, multiplier, RECLAIM_N, true);
+    let out = cs_schedule_bwd_layer_research(
+        layer,
+        BwdRegime::Ext,
+        cross,
+        BUDGET,
+        multiplier,
+        RECLAIM_N,
+        true,
+    );
     let traffic = out.stats.global + out.stats.fold_traffic;
     let cert_ok = out.certificate.counted_traffic == out.certificate.reported_traffic;
     // Sanity only — the shipped plan must certify exactly (counted == reported). This is
@@ -353,9 +415,14 @@ fn run_cs_sweep(
     );
     // Same rule as g_m0_comparator: CS reaches Tier 2 on this fixture iff it never loses
     // to the GA reference (strict traffic drop, or tie broken by instrs).
-    let reaches_tier2 =
-        traffic < ga_traffic || (traffic == ga_traffic && out.instrs <= ga_instrs);
-    CsSweepRun { multiplier, traffic, leaf_calls: out.leaf_calls, instrs: out.instrs, reaches_tier2 }
+    let reaches_tier2 = traffic < ga_traffic || (traffic == ga_traffic && out.instrs <= ga_instrs);
+    CsSweepRun {
+        multiplier,
+        traffic,
+        leaf_calls: out.leaf_calls,
+        instrs: out.instrs,
+        reaches_tier2,
+    }
 }
 
 /// THE G-M0 multiplier sweep (heavy, in-process): for each of the four gated fixtures it
@@ -378,7 +445,10 @@ fn run_cs_sweep(
 fn g_m0_comparator_sweep() {
     for &name in G_M0_FIXTURES {
         let (layer, cross) = load_layer(name, 0);
-        assert!(!bwd_roots(&layer).is_empty(), "{name}: layer 0 must have bwd roots");
+        assert!(
+            !claim_roots(&layer).is_empty(),
+            "{name}: layer 0 must have bwd roots"
+        );
 
         // ── GA-at-strength reference, computed ONCE per fixture (the expensive part) —
         //    identical config to g_m0_comparator: GA_POP/GA_EVALS over GA_SEEDS,
@@ -386,7 +456,17 @@ fn g_m0_comparator_sweep() {
         //    multiplier. ──────────────────────────────────────────────────────────────
         let ga_results: Vec<GaSeedResult> = GA_SEEDS
             .iter()
-            .map(|&seed| run_ga_seed(&layer, BwdRegime::Ext, &cross, BUDGET, seed, GA_POP, GA_EVALS))
+            .map(|&seed| {
+                run_ga_seed(
+                    &layer,
+                    BwdRegime::Ext,
+                    &cross,
+                    BUDGET,
+                    seed,
+                    GA_POP,
+                    GA_EVALS,
+                )
+            })
             .collect();
         let (ga_traffic, ga_instrs, ga_seed) = match best_of(&ga_results) {
             Some(g) => (g.traffic, g.instrs, g.seed),

@@ -43,7 +43,8 @@ use gkr_eval_isa::bwd::source::{BwdSpecial, BwdSpecialTable, OriginLeaf};
 use gkr_eval_isa::fwd::isa::Program;
 use gkr_eval_isa::fwd::source::virtual_setup_kind_code;
 
-use cs::gkr_compiler::dag_ir::{bwd_roots, BwdRegime, ReadPlace};
+use gkr_eval_ir::{ReadPlace, claim_roots};
+use gkr_eval_isa::BwdRegime;
 
 // ── explicit byte serialization (mirrors tests/fwd_digest.rs) ───────────────────
 
@@ -171,18 +172,138 @@ struct Pin {
 /// on the fixture's L0, Ext regime, b16. `inits_and_teardowns` fell back to the canonical
 /// baseline (no priced plan shipped → `entries_fnv = None`).
 const PINS: &[Pin] = &[
-    Pin { name: "add_sub_lui_auipc_mop_layout_gkr.json", traffic: 892, lanes: 936, counted: 892, reported: 892, refusals: 0, evictions: 56, entries_fnv: Some(18244912854743436632), digest: 0xc8613db6f5de6f5b },
-    Pin { name: "bigint_with_extended_control_layout_gkr.json", traffic: 18056, lanes: 15275, counted: 18056, reported: 18056, refusals: 0, evictions: 453, entries_fnv: Some(591413752844331828), digest: 0x5e7849d2e570ebcc },
-    Pin { name: "blake2_g_function_layout_gkr.json", traffic: 532, lanes: 572, counted: 532, reported: 532, refusals: 0, evictions: 63, entries_fnv: Some(8490909918706597748), digest: 0xc1624970e3525590 },
-    Pin { name: "blake2_with_extended_control_layout_gkr.json", traffic: 8348, lanes: 5285, counted: 8348, reported: 8348, refusals: 0, evictions: 431, entries_fnv: Some(6829404962789468074), digest: 0x023f752de4898555 },
-    Pin { name: "inits_and_teardowns_preprocessed_layout_gkr.json", traffic: 256, lanes: 263, counted: 256, reported: 256, refusals: 0, evictions: 0, entries_fnv: None, digest: 0xc841107d89b2b2fb },
-    Pin { name: "jump_branch_slt_layout_gkr.json", traffic: 748, lanes: 827, counted: 748, reported: 748, refusals: 0, evictions: 58, entries_fnv: Some(2416640550128445911), digest: 0x010b397f7df46863 },
-    Pin { name: "keccak_special5_layout_gkr.json", traffic: 14580, lanes: 12678, counted: 14580, reported: 14580, refusals: 0, evictions: 388, entries_fnv: Some(14727149004627702300), digest: 0x7d4e5db517975672 },
-    Pin { name: "mem_subword_only_layout_gkr.json", traffic: 572, lanes: 691, counted: 572, reported: 572, refusals: 0, evictions: 41, entries_fnv: Some(8561008963937760174), digest: 0x950a6aed8af67c8f },
-    Pin { name: "mem_word_only_layout_gkr.json", traffic: 380, lanes: 484, counted: 380, reported: 380, refusals: 0, evictions: 30, entries_fnv: Some(1451386828103137462), digest: 0xcc2b22e63c5159cc },
-    Pin { name: "shift_binop_layout_gkr.json", traffic: 656, lanes: 686, counted: 656, reported: 656, refusals: 0, evictions: 35, entries_fnv: Some(6077704548435557912), digest: 0x8af344bf63ab8944 },
-    Pin { name: "unsigned_mul_div_layout_gkr.json", traffic: 412, lanes: 443, counted: 412, reported: 412, refusals: 0, evictions: 51, entries_fnv: Some(1850612376543111069), digest: 0xcce25912ff528e5b },
-    Pin { name: "unified_reduced_machine_layout_gkr.json", traffic: 3668, lanes: 3687, counted: 3668, reported: 3668, refusals: 0, evictions: 186, entries_fnv: Some(8553123700608381970), digest: 0x83b136caba3c1b46 },
+    Pin {
+        name: "add_sub_lui_auipc_mop_layout_gkr.json",
+        traffic: 892,
+        lanes: 936,
+        counted: 892,
+        reported: 892,
+        refusals: 0,
+        evictions: 56,
+        entries_fnv: Some(18244912854743436632),
+        digest: 0xc8613db6f5de6f5b,
+    },
+    Pin {
+        name: "bigint_with_extended_control_layout_gkr.json",
+        traffic: 18056,
+        lanes: 15275,
+        counted: 18056,
+        reported: 18056,
+        refusals: 0,
+        evictions: 453,
+        entries_fnv: Some(591413752844331828),
+        digest: 0x5e7849d2e570ebcc,
+    },
+    Pin {
+        name: "blake2_g_function_layout_gkr.json",
+        traffic: 532,
+        lanes: 572,
+        counted: 532,
+        reported: 532,
+        refusals: 0,
+        evictions: 63,
+        entries_fnv: Some(8490909918706597748),
+        digest: 0xc1624970e3525590,
+    },
+    Pin {
+        name: "blake2_with_extended_control_layout_gkr.json",
+        traffic: 8348,
+        lanes: 5285,
+        counted: 8348,
+        reported: 8348,
+        refusals: 0,
+        evictions: 431,
+        entries_fnv: Some(6829404962789468074),
+        digest: 0x023f752de4898555,
+    },
+    Pin {
+        name: "inits_and_teardowns_preprocessed_layout_gkr.json",
+        traffic: 256,
+        lanes: 263,
+        counted: 256,
+        reported: 256,
+        refusals: 0,
+        evictions: 0,
+        entries_fnv: None,
+        digest: 0xc841107d89b2b2fb,
+    },
+    Pin {
+        name: "jump_branch_slt_layout_gkr.json",
+        traffic: 748,
+        lanes: 827,
+        counted: 748,
+        reported: 748,
+        refusals: 0,
+        evictions: 58,
+        entries_fnv: Some(2416640550128445911),
+        digest: 0x010b397f7df46863,
+    },
+    Pin {
+        name: "keccak_special5_layout_gkr.json",
+        traffic: 14580,
+        lanes: 12678,
+        counted: 14580,
+        reported: 14580,
+        refusals: 0,
+        evictions: 388,
+        entries_fnv: Some(14727149004627702300),
+        digest: 0x7d4e5db517975672,
+    },
+    Pin {
+        name: "mem_subword_only_layout_gkr.json",
+        traffic: 572,
+        lanes: 691,
+        counted: 572,
+        reported: 572,
+        refusals: 0,
+        evictions: 41,
+        entries_fnv: Some(8561008963937760174),
+        digest: 0x950a6aed8af67c8f,
+    },
+    Pin {
+        name: "mem_word_only_layout_gkr.json",
+        traffic: 380,
+        lanes: 484,
+        counted: 380,
+        reported: 380,
+        refusals: 0,
+        evictions: 30,
+        entries_fnv: Some(1451386828103137462),
+        digest: 0xcc2b22e63c5159cc,
+    },
+    Pin {
+        name: "shift_binop_layout_gkr.json",
+        traffic: 656,
+        lanes: 686,
+        counted: 656,
+        reported: 656,
+        refusals: 0,
+        evictions: 35,
+        entries_fnv: Some(6077704548435557912),
+        digest: 0x8af344bf63ab8944,
+    },
+    Pin {
+        name: "unsigned_mul_div_layout_gkr.json",
+        traffic: 412,
+        lanes: 443,
+        counted: 412,
+        reported: 412,
+        refusals: 0,
+        evictions: 51,
+        entries_fnv: Some(1850612376543111069),
+        digest: 0xcce25912ff528e5b,
+    },
+    Pin {
+        name: "unified_reduced_machine_layout_gkr.json",
+        traffic: 3668,
+        lanes: 3687,
+        counted: 3668,
+        reported: 3668,
+        refusals: 0,
+        evictions: 186,
+        entries_fnv: Some(8553123700608381970),
+        digest: 0x83b136caba3c1b46,
+    },
 ];
 
 #[test]
@@ -191,7 +312,7 @@ fn bwd_backend_neutrality() {
     let mut missing: Vec<String> = Vec::new();
     for &name in FIXTURES {
         let (layer, cross) = load_layer(name, 0);
-        if bwd_roots(&layer).is_empty() {
+        if claim_roots(&layer).is_empty() {
             continue; // L0 has no backward roots for this fixture
         }
         let outcome = cs_schedule_bwd_layer_with_term_floor(&layer, BwdRegime::Ext, &cross, 16);
@@ -229,12 +350,27 @@ fn bwd_backend_neutrality() {
 
         match PINS.iter().find(|p| p.name == name) {
             Some(p) => {
-                assert_eq!(traffic, p.traffic, "{name}: traffic drift (TERM path not neutral)");
+                assert_eq!(
+                    traffic, p.traffic,
+                    "{name}: traffic drift (TERM path not neutral)"
+                );
                 assert_eq!(lanes, p.lanes, "{name}: program_lanes drift");
-                assert_eq!(cert.counted_traffic, p.counted, "{name}: certificate counted_traffic drift");
-                assert_eq!(cert.reported_traffic, p.reported, "{name}: certificate reported_traffic drift");
-                assert_eq!(cert.refusals, p.refusals, "{name}: certificate refusals drift");
-                assert_eq!(cert.evictions, p.evictions, "{name}: certificate evictions drift");
+                assert_eq!(
+                    cert.counted_traffic, p.counted,
+                    "{name}: certificate counted_traffic drift"
+                );
+                assert_eq!(
+                    cert.reported_traffic, p.reported,
+                    "{name}: certificate reported_traffic drift"
+                );
+                assert_eq!(
+                    cert.refusals, p.refusals,
+                    "{name}: certificate refusals drift"
+                );
+                assert_eq!(
+                    cert.evictions, p.evictions,
+                    "{name}: certificate evictions drift"
+                );
                 assert_eq!(entries_fnv, p.entries_fnv, "{name}: plan entries_fnv drift");
                 assert_eq!(
                     digest, p.digest,
@@ -249,5 +385,8 @@ fn bwd_backend_neutrality() {
         missing.is_empty(),
         "no pin constants for: {missing:?} — regenerate PINS from the printed `PIN …` table"
     );
-    assert!(checked > 0, "no fixture L0 had bwd roots — enumeration broke");
+    assert!(
+        checked > 0,
+        "no fixture L0 had bwd roots — enumeration broke"
+    );
 }

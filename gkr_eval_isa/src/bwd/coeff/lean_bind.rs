@@ -35,7 +35,7 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
-use cs::gkr_compiler::dag_ir::{FieldKind, ReadPlace};
+use gkr_eval_ir::{FieldKind, ReadPlace};
 use serde::{Deserialize, Serialize};
 
 use super::model::{CoeffLayer, CoeffTerm, SourceId, TermId};
@@ -52,7 +52,7 @@ use crate::source_bind::{
 /// the resolver cannot serve. `procedural_kinds_are_dense_and_bounded` pins the
 /// tagging against the enum.
 ///
-/// [`VirtualSetupKind`]: cs::gkr_compiler::dag_ir::VirtualSetupKind
+/// [`VirtualSetupKind`]: gkr_eval_ir::VirtualSetupKind
 pub const LEAN_PROCEDURAL_KINDS: u8 = 4;
 
 // ── Output ───────────────────────────────────────────────────────────────────
@@ -490,7 +490,7 @@ fn audit_windows(
 
 #[cfg(test)]
 mod tests {
-    use cs::gkr_compiler::dag_ir::{BwdRegime, VirtualSetupKind};
+    use gkr_eval_ir::VirtualSetupKind;
 
     use super::*;
     use crate::bwd::coeff::model::{CoeffSource, CoefficientRecipeId, ProjectionId};
@@ -498,7 +498,7 @@ mod tests {
 
     fn layer(sources: Vec<CoeffSource>, terms: Vec<CoeffTerm>) -> CoeffLayer {
         CoeffLayer {
-            regime: BwdRegime::Ext,
+            regime: crate::BwdRegime::Ext,
             c_init: None,
             coefficients: Vec::new(),
             sources,

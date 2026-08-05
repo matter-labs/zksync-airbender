@@ -10,19 +10,19 @@
 //! wanted, add it to `s3_gap_experiment.rs` instead (brief explicitly allows this).
 mod common;
 
-use common::{load_fixture, resolvers, sample_rows, SyntheticResolvers};
+use common::{SyntheticResolvers, load_fixture, resolvers, sample_rows};
 
 use std::collections::HashSet;
 
-use cs::gkr_compiler::dag_ir::{
-    eval_layer_root, lower_dag, lower_dag_legacy, validate, validate_simplified, DagLayer, Expr,
-    RootId, SourceKind,
+use gkr_eval_ir::{
+    DagLayer, Expr, RootId, SourceKind, eval_layer_root, lower_dag, lower_dag_legacy, validate,
+    validate_simplified,
 };
 
 // Task 5 promoted `dag_traffic_floor` to production (previously the test-side
 // `s3_gap/floor.rs` copy, included here via `#[path]`).
-use gkr_eval_isa::schedule_search::floor::dag_traffic_floor;
 use gkr_eval_isa::fwd::compile::build_cross_layer_field_map;
+use gkr_eval_isa::schedule_search::floor::dag_traffic_floor;
 
 const CORPUS: &[&str] = &[
     "add_sub_lui_auipc_mop_layout_gkr.json",
@@ -39,7 +39,7 @@ const CORPUS: &[&str] = &[
 ];
 
 /// Root-reachable expr-node count: a local worklist copy of the traversal
-/// `cs::gkr_compiler::dag_ir::simplify::fan_out` uses (root exprs + Add/Mul
+/// `gkr_eval_ir::simplify::fan_out` uses (root exprs + Add/Mul
 /// children + `LookupValue.query` edges), without requiring `cs` to export a
 /// crate-private counter for test-only consumption.
 fn reachable_count(layer: &DagLayer) -> usize {
@@ -60,8 +60,7 @@ fn reachable_count(layer: &DagLayer) -> usize {
                 }
             }
             Expr::Source(sid) => {
-                if let SourceKind::LookupValue { query, .. } = &layer.sources[sid.0 as usize].kind
-                {
+                if let SourceKind::LookupValue { query, .. } = &layer.sources[sid.0 as usize].kind {
                     if seen.insert(query.0) {
                         worklist.push(query.0);
                     }
@@ -78,9 +77,9 @@ fn simplified_eval_matches_legacy_on_corpus() {
     let mut checks = 0usize;
     for name in CORPUS {
         let artifact = load_fixture(name);
-        let legacy = lower_dag_legacy(&artifact).unwrap_or_else(|e| panic!("[{name}] lower_dag_legacy: {e}"));
-        let simplified =
-            lower_dag(&artifact).unwrap_or_else(|e| panic!("[{name}] lower_dag: {e}"));
+        let legacy = lower_dag_legacy(&artifact)
+            .unwrap_or_else(|e| panic!("[{name}] lower_dag_legacy: {e}"));
+        let simplified = lower_dag(&artifact).unwrap_or_else(|e| panic!("[{name}] lower_dag: {e}"));
         validate(&simplified).unwrap_or_else(|e| panic!("[{name}] validate: {e}"));
         validate_simplified(&simplified)
             .unwrap_or_else(|e| panic!("[{name}] validate_simplified: {e}"));
@@ -115,9 +114,9 @@ fn simplify_shrink_metrics_and_floor_non_increase() {
     let mut any_shrink = false;
     for name in CORPUS {
         let artifact = load_fixture(name);
-        let legacy = lower_dag_legacy(&artifact).unwrap_or_else(|e| panic!("[{name}] lower_dag_legacy: {e}"));
-        let simplified =
-            lower_dag(&artifact).unwrap_or_else(|e| panic!("[{name}] lower_dag: {e}"));
+        let legacy = lower_dag_legacy(&artifact)
+            .unwrap_or_else(|e| panic!("[{name}] lower_dag_legacy: {e}"));
+        let simplified = lower_dag(&artifact).unwrap_or_else(|e| panic!("[{name}] lower_dag: {e}"));
 
         let cross_l = build_cross_layer_field_map(&legacy);
         let cross_s = build_cross_layer_field_map(&simplified);
@@ -127,7 +126,11 @@ fn simplify_shrink_metrics_and_floor_non_increase() {
         let mut total_floor_l = 0usize;
         let mut total_floor_s = 0usize;
 
-        assert_eq!(legacy.layers.len(), simplified.layers.len(), "{name} layer count");
+        assert_eq!(
+            legacy.layers.len(),
+            simplified.layers.len(),
+            "{name} layer count"
+        );
         for (li, (ll, sl)) in legacy.layers.iter().zip(&simplified.layers).enumerate() {
             let nodes_l = reachable_count(ll);
             let nodes_s = reachable_count(sl);

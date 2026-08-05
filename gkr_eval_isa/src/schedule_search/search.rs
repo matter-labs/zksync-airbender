@@ -20,7 +20,7 @@
 
 use std::time::{Duration, Instant};
 
-use cs::gkr_compiler::dag_ir::LayerSchedule;
+use crate::schedule::LayerSchedule;
 
 use super::decode::decode_unit_order;
 use super::genome::{assert_normalized_genome, clamp_bias, Genome, CACHE_PRIORITY_BOUND};
@@ -1085,7 +1085,7 @@ fn reuse_weighted_genome(ctx: &LayerCtx) -> Genome {
     let width = |value: u32| -> f64 {
         let f = crate::fwd::compile::expr_operand_field(
             ctx.layer,
-            cs::gkr_compiler::dag_ir::ExprId(value),
+            gkr_eval_ir::ExprId(value),
             ctx.cross_layer_fields,
         );
         if f == crate::fwd::isa::OperandField::Ext {

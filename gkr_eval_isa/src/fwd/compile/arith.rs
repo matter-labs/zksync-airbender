@@ -10,9 +10,7 @@
 //! schedule-driven emission now.
 
 use super::super::isa::{OperandField, Sign};
-use cs::gkr_compiler::dag_ir::{
-    expr_field, Expr, ExprId, FieldKind, ReadPlace, SinkInfo, SinkKind, SourceKind,
-};
+use gkr_eval_ir::{Expr, ExprId, FieldKind, ReadPlace, SinkInfo, SinkKind, SourceKind, expr_field};
 use std::collections::HashMap;
 
 /// BabyBear modulus P = 2^31 − 2^27 + 1 = 0x78000001.
@@ -49,7 +47,7 @@ pub(crate) fn to_operand_field(f: FieldKind) -> OperandField {
 /// ignored — they are not read via those `ReadPlace` variants (`read_place_field`
 /// already classifies `Scratch` reads as `Base`).
 pub fn build_cross_layer_field_map(
-    circuit: &cs::gkr_compiler::dag_ir::DagCircuit,
+    circuit: &gkr_eval_ir::DagCircuit,
 ) -> HashMap<ReadPlace, FieldKind> {
     let mut map = HashMap::new();
     for dag_layer in &circuit.layers {
@@ -95,7 +93,7 @@ pub fn build_cross_layer_field_map(
 /// circuit), `expr_field_with_map` returns `None` and we fall back to `expected`.
 /// Where the field IS already known (`Ok`), `expected` and `map` are ignored.
 pub(crate) fn child_operand_field(
-    layer: &cs::gkr_compiler::dag_ir::DagLayer,
+    layer: &gkr_eval_ir::DagLayer,
     id: ExprId,
     expected: OperandField,
     map: &HashMap<ReadPlace, FieldKind>,
@@ -116,7 +114,7 @@ pub(crate) fn child_operand_field(
 /// cross-layer field `map`. Returns `None` if any such leaf is absent from the map
 /// (defensive). Only invoked on the `Err` branch, where a plain `expr_field` failed.
 fn expr_field_with_map(
-    layer: &cs::gkr_compiler::dag_ir::DagLayer,
+    layer: &gkr_eval_ir::DagLayer,
     id: ExprId,
     map: &HashMap<ReadPlace, FieldKind>,
 ) -> Option<FieldKind> {
@@ -161,7 +159,7 @@ fn join_field(a: FieldKind, b: FieldKind) -> FieldKind {
 /// (it passes an EMPTY override map and stays on `child_operand_field`), so fwd
 /// classification is bit-identical by construction.
 pub(crate) fn child_operand_field_overridden(
-    layer: &cs::gkr_compiler::dag_ir::DagLayer,
+    layer: &gkr_eval_ir::DagLayer,
     id: ExprId,
     expected: OperandField,
     map: &HashMap<ReadPlace, FieldKind>,
@@ -178,7 +176,7 @@ pub(crate) fn child_operand_field_overridden(
 /// verbatim (no descent); otherwise leaves classify via `expr_field`/the cross-layer
 /// `map` and compounds join their children (same lattice as `expr_field_with_map`).
 fn expr_field_with_overrides(
-    layer: &cs::gkr_compiler::dag_ir::DagLayer,
+    layer: &gkr_eval_ir::DagLayer,
     id: ExprId,
     map: &HashMap<ReadPlace, FieldKind>,
     overrides: &std::collections::BTreeMap<ExprId, FieldKind>,
@@ -205,7 +203,6 @@ fn expr_field_with_overrides(
     }
 }
 
-
 pub(crate) fn field_from_u8(v: u8) -> OperandField {
     if v == 0 {
         OperandField::Base
@@ -215,11 +212,7 @@ pub(crate) fn field_from_u8(v: u8) -> OperandField {
 }
 
 pub(crate) fn sign_from_u8(v: u8) -> Sign {
-    if v == 0 {
-        Sign::Plus
-    } else {
-        Sign::Minus
-    }
+    if v == 0 { Sign::Plus } else { Sign::Minus }
 }
 
 // ── small structural predicates ──────────────────────────────────────────────────
@@ -227,7 +220,7 @@ pub(crate) fn sign_from_u8(v: u8) -> Sign {
 /// True if `id` is a `Source` whose value is the field element `−1` (= P−1 =
 /// `BABYBEAR_NEG_ONE`). These factors are stripped from Mul children before
 /// field-grouped reduction; their count's parity decides the unary negate.
-pub(crate) fn is_neg_one_factor(layer: &cs::gkr_compiler::dag_ir::DagLayer, id: ExprId) -> bool {
+pub(crate) fn is_neg_one_factor(layer: &gkr_eval_ir::DagLayer, id: ExprId) -> bool {
     let Expr::Source(src) = &layer.exprs[id.0 as usize] else {
         return false;
     };
@@ -240,10 +233,7 @@ pub(crate) fn is_neg_one_factor(layer: &cs::gkr_compiler::dag_ir::DagLayer, id: 
 /// Decompose a `Mul` into `(negated_parity, surviving_factors)`: elide `Constant{1}`
 /// factors, peel `-1` factors (tracking the odd/even parity of their count), and
 /// return the remaining non-`±1` factors. `None` if `id` is not a `Mul`.
-fn mul_surviving_factors(
-    layer: &cs::gkr_compiler::dag_ir::DagLayer,
-    id: ExprId,
-) -> Option<(bool, Vec<ExprId>)> {
+fn mul_surviving_factors(layer: &gkr_eval_ir::DagLayer, id: ExprId) -> Option<(bool, Vec<ExprId>)> {
     let Expr::Mul(factors) = &layer.exprs[id.0 as usize] else {
         return None;
     };
@@ -268,34 +258,48 @@ fn mul_surviving_factors(
 ///   A negated single-factor `Mul([-1, x])` becomes `Addend { Minus, x }` (lower `x`,
 ///   NOT the wrapping Mul — folding the negate into the consuming ADD's sign bit).
 pub(crate) enum AdditiveChild {
-    Product { sign: Sign, lhs: ExprId, rhs: ExprId },
-    Addend { sign: Sign, id: ExprId },
+    Product {
+        sign: Sign,
+        lhs: ExprId,
+        rhs: ExprId,
+    },
+    Addend {
+        sign: Sign,
+        id: ExprId,
+    },
 }
 
 /// Classify an additive child of a sum into a product (FMA) or a sign-keyed addend.
 /// Shared by `try_compile_fma`'s product/addend partition AND `compile_reduction`'s
 /// add path so the negate-into-sign fold is uniform (DRY).
-pub(crate) fn classify_additive_child(
-    layer: &cs::gkr_compiler::dag_ir::DagLayer,
-    id: ExprId,
-) -> AdditiveChild {
+pub(crate) fn classify_additive_child(layer: &gkr_eval_ir::DagLayer, id: ExprId) -> AdditiveChild {
     match mul_surviving_factors(layer, id) {
         Some((negated, kept)) if kept.len() == 2 => {
             let sign = if negated { Sign::Minus } else { Sign::Plus };
-            AdditiveChild::Product { sign, lhs: kept[0], rhs: kept[1] }
+            AdditiveChild::Product {
+                sign,
+                lhs: kept[0],
+                rhs: kept[1],
+            }
         }
         Some((true, kept)) if kept.len() == 1 => {
             // Negated single surviving factor `(-1)·x`: lower `x` itself and fold the
             // negate into the consuming ADD's sign bit (no standalone unary negate).
-            AdditiveChild::Addend { sign: Sign::Minus, id: kept[0] }
+            AdditiveChild::Addend {
+                sign: Sign::Minus,
+                id: kept[0],
+            }
         }
         // Plain additive term (a source, a non-negated single-factor Mul, a compound
         // subtree, or any Mul whose surviving-factor count is not 1 or 2): no fold.
-        _ => AdditiveChild::Addend { sign: Sign::Plus, id },
+        _ => AdditiveChild::Addend {
+            sign: Sign::Plus,
+            id,
+        },
     }
 }
 
-pub(crate) fn is_constant_one(layer: &cs::gkr_compiler::dag_ir::DagLayer, id: ExprId) -> bool {
+pub(crate) fn is_constant_one(layer: &gkr_eval_ir::DagLayer, id: ExprId) -> bool {
     let Expr::Source(src) = &layer.exprs[id.0 as usize] else {
         return false;
     };
@@ -305,7 +309,7 @@ pub(crate) fn is_constant_one(layer: &cs::gkr_compiler::dag_ir::DagLayer, id: Ex
     )
 }
 
-fn is_constant_zero(layer: &cs::gkr_compiler::dag_ir::DagLayer, id: ExprId) -> bool {
+fn is_constant_zero(layer: &gkr_eval_ir::DagLayer, id: ExprId) -> bool {
     let Expr::Source(src) = &layer.exprs[id.0 as usize] else {
         return false;
     };
@@ -319,7 +323,7 @@ fn is_constant_zero(layer: &cs::gkr_compiler::dag_ir::DagLayer, id: ExprId) -> b
 /// `Mul` with any zero factor (annihilator), recursively. Such a term contributes
 /// nothing to a sum and is dropped by `compile_add` — `0` has no operand encoding
 /// (`Special::Zero` is not emittable, §6), so it must never reach lowering.
-pub(crate) fn is_zero_expr(layer: &cs::gkr_compiler::dag_ir::DagLayer, id: ExprId) -> bool {
+pub(crate) fn is_zero_expr(layer: &gkr_eval_ir::DagLayer, id: ExprId) -> bool {
     match &layer.exprs[id.0 as usize] {
         Expr::Source(_) => is_constant_zero(layer, id),
         Expr::Mul(factors) => factors.iter().any(|&f| is_zero_expr(layer, f)),

@@ -21,17 +21,18 @@ mod common;
 
 use std::collections::HashMap;
 
-use common::{lift, load_fixture, resolvers, CacheConsistentResolvers, SyntheticResolvers};
-use cs::gkr_compiler::dag_ir::{
-    bwd_roots, eval_layer_expr, lower_dag, validate, BwdRegime, ChallengeKey, ChallengePower,
-    ChallengeRef, DagLayer, Expr, ExprId, Ext, Resolvers, SourceKind,
-};
+use common::{CacheConsistentResolvers, SyntheticResolvers, lift, load_fixture, resolvers};
 use field::{Field, PrimeField};
+use gkr_eval_ir::{
+    ChallengeKey, ChallengePower, ChallengeRef, DagLayer, Expr, ExprId, Ext, Resolvers, SourceKind,
+    claim_roots, eval_layer_expr, lower_dag, validate,
+};
+use gkr_eval_isa::BwdRegime;
 use gkr_eval_isa::bwd::compile::compile_distilled;
 use gkr_eval_isa::bwd::distill::distill;
-use gkr_eval_isa::bwd::interp::{role_combine, sumcheck_fold_point, Role};
+use gkr_eval_isa::bwd::interp::{Role, role_combine, sumcheck_fold_point};
 use gkr_eval_isa::bwd::search::{
-    search_bwd_layer, BwdOrderMutation, BwdSearchConfig, BwdSeedStrategy,
+    BwdOrderMutation, BwdSearchConfig, BwdSeedStrategy, search_bwd_layer,
 };
 use gkr_eval_isa::fwd::compile::build_cross_layer_field_map;
 use gkr_eval_isa::fwd::error::CompileError;
@@ -40,8 +41,15 @@ use gkr_eval_isa::fwd::error::CompileError;
 
 /// beta^i as the distilled spine resolves it (i >= 1).
 fn beta_i(r: &Resolvers<'_>, i: usize) -> Ext {
-    let power = if i == 1 { ChallengePower::One } else { ChallengePower::Static(i as u32) };
-    r.challenge.challenge(&ChallengeRef { key: ChallengeKey::ClaimBatching, power })
+    let power = if i == 1 {
+        ChallengePower::One
+    } else {
+        ChallengePower::Static(i as u32)
+    };
+    r.challenge.challenge(&ChallengeRef {
+        key: ChallengeKey::ClaimBatching,
+        power,
+    })
 }
 
 /// Evaluate canonical (or distilled) expr `e` at (`regime`, `role`, `row`,
@@ -74,13 +82,13 @@ fn eval_oracle(
     }
     let v = match &layer.exprs[e.0 as usize] {
         Expr::Source(sid) => match &layer.sources[sid.0 as usize].kind {
-            SourceKind::LookupValue { query, .. } => {
-                eval_oracle(layer, *query, regime, role, row, round, ch, orig, plain, memo)
-            }
+            SourceKind::LookupValue { query, .. } => eval_oracle(
+                layer, *query, regime, role, row, round, ch, orig, plain, memo,
+            ),
             SourceKind::Read { place } => {
                 let depth = if regime == BwdRegime::Ext { round } else { 0 };
                 let base = |z: usize| {
-                    use cs::gkr_compiler::dag_ir::ReadResolver;
+                    use gkr_eval_ir::ReadResolver;
                     orig.read(place, z)
                 };
                 let a = sumcheck_fold_point(&base, 2 * row, depth, ch).unwrap();
@@ -89,7 +97,7 @@ fn eval_oracle(
             }
             SourceKind::VirtualSetup { kind } => {
                 let base = |z: usize| {
-                    use cs::gkr_compiler::dag_ir::VirtualSetupResolver;
+                    use gkr_eval_ir::VirtualSetupResolver;
                     lift(orig.virtual_setup(kind, z))
                 };
                 let a = sumcheck_fold_point(&base, 2 * row, round, ch).unwrap();
@@ -104,7 +112,9 @@ fn eval_oracle(
             let ch_ids = children.clone();
             let mut acc = Ext::ZERO;
             for c in ch_ids {
-                acc.add_assign(&eval_oracle(layer, c, regime, role, row, round, ch, orig, plain, memo));
+                acc.add_assign(&eval_oracle(
+                    layer, c, regime, role, row, round, ch, orig, plain, memo,
+                ));
             }
             acc
         }
@@ -112,7 +122,9 @@ fn eval_oracle(
             let ch_ids = children.clone();
             let mut acc = Ext::ONE;
             for c in ch_ids {
-                acc.mul_assign(&eval_oracle(layer, c, regime, role, row, round, ch, orig, plain, memo));
+                acc.mul_assign(&eval_oracle(
+                    layer, c, regime, role, row, round, ch, orig, plain, memo,
+                ));
             }
             acc
         }
@@ -121,7 +133,7 @@ fn eval_oracle(
     v
 }
 
-/// `Σ_i beta^i · eval(root_i)` (root 0 unscaled) over the canonical `bwd_roots`
+/// `Σ_i beta^i · eval(root_i)` (root 0 unscaled) over the canonical `claim_roots`
 /// batching order — the ground-truth value the permuted distilled root must match.
 #[allow(clippy::too_many_arguments)]
 fn oracle_root(
@@ -136,9 +148,11 @@ fn oracle_root(
 ) -> Ext {
     let mut memo: HashMap<ExprId, Ext> = HashMap::new();
     let mut acc = Ext::ZERO;
-    for (i, &rid) in bwd_roots(layer).iter().enumerate() {
+    for (i, &rid) in claim_roots(layer).iter().enumerate() {
         let expr = layer.roots[rid.0 as usize].expr;
-        let mut t = eval_oracle(layer, expr, regime, role, row, round, ch, orig, plain, &mut memo);
+        let mut t = eval_oracle(
+            layer, expr, regime, role, row, round, ch, orig, plain, &mut memo,
+        );
         if i >= 1 {
             t.mul_assign(&beta_i(plain, i));
         }
@@ -162,7 +176,7 @@ fn search_bwd_layer_smoke() {
     // Base-subfield round challenges (fold depth 1 exercises the fold transform).
     let round_challenges: Vec<Ext> = [3u32, 5, 7]
         .into_iter()
-        .map(|k| lift(cs::gkr_compiler::dag_ir::Bf::from_u32_with_reduction(k)))
+        .map(|k| lift(gkr_eval_ir::Bf::from_u32_with_reduction(k)))
         .collect();
     let round: u8 = 1;
     let role = Role::T0;
@@ -194,7 +208,11 @@ fn search_bwd_layer_smoke() {
 
         // Baseline: no-decisions compile at the pick's budget.
         let d0 = distill(layer, pick.regime, &cross, None);
-        assert!(!d0.skipped_decoder, "[{}] pick must be decoder-free", pick.name);
+        assert!(
+            !d0.skipped_decoder,
+            "[{}] pick must be decoder-free",
+            pick.name
+        );
         let baseline = compile_distilled(&d0, pick.budget, None)
             .unwrap_or_else(|e| panic!("[{}] baseline compile: {e:?}", pick.name));
         let baseline_traffic = baseline.stats_ext.global + baseline.stats_ext.fold_traffic;
@@ -226,8 +244,7 @@ fn search_bwd_layer_smoke() {
         // intended consumer contract — decisions + unit_permutation used
         // together; `decisions: None` = the no-decisions baseline outcome).
         let d_perm = distill(layer, pick.regime, &cross, Some(&outcome.unit_permutation));
-        let recompiled = match compile_distilled(&d_perm, pick.budget, outcome.decisions.as_ref())
-        {
+        let recompiled = match compile_distilled(&d_perm, pick.budget, outcome.decisions.as_ref()) {
             Ok(c) => c,
             Err(CompileError::BudgetBelowFloor { floor, .. }) => panic!(
                 "[{}] outcome decisions infeasible at budget {} (floor {floor})",
@@ -266,11 +283,27 @@ fn search_bwd_layer_smoke() {
         for row in 0..8usize {
             let mut memo: HashMap<ExprId, Ext> = HashMap::new();
             let got = eval_oracle(
-                &d_perm.layer, d_perm_root_expr, pick.regime, role, row, round, &round_challenges,
-                &cc, &plain, &mut memo,
+                &d_perm.layer,
+                d_perm_root_expr,
+                pick.regime,
+                role,
+                row,
+                round,
+                &round_challenges,
+                &cc,
+                &plain,
+                &mut memo,
             );
-            let expected =
-                oracle_root(layer, pick.regime, role, row, round, &round_challenges, &cc, &plain);
+            let expected = oracle_root(
+                layer,
+                pick.regime,
+                role,
+                row,
+                round,
+                &round_challenges,
+                &cc,
+                &plain,
+            );
             assert_eq!(
                 got, expected,
                 "[{}] permuted distilled root value mismatch at row {row}",
@@ -281,8 +314,13 @@ fn search_bwd_layer_smoke() {
         println!(
             "[{}] L{} {:?} b{}: baseline_traffic={baseline_traffic} outcome_traffic={out_traffic} \
              (global={} fold_traffic={}) perm={:?}",
-            pick.name, pick.layer, pick.regime, pick.budget, outcome.stats.global,
-            outcome.stats.fold_traffic, outcome.unit_permutation,
+            pick.name,
+            pick.layer,
+            pick.regime,
+            pick.budget,
+            outcome.stats.global,
+            outcome.stats.fold_traffic,
+            outcome.unit_permutation,
         );
     }
 }
@@ -410,7 +448,8 @@ fn search_bwd_layer_is_deterministic() {
 
     println!(
         "[{name}] deterministic across 2 runs: traffic={} perm={:?}",
-        outcome1.stats.global + outcome1.stats.fold_traffic, outcome1.unit_permutation,
+        outcome1.stats.global + outcome1.stats.fold_traffic,
+        outcome1.unit_permutation,
     );
 }
 

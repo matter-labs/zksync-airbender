@@ -12,9 +12,8 @@ mod common;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::time::Instant;
 
-use cs::gkr_compiler::dag_ir::{
-    DagLayer, Expr, ExprId, FieldKind, LayerSchedule, RootGroup, SourceKind, lower_dag, validate,
-};
+use gkr_eval_ir::{DagLayer, Expr, ExprId, FieldKind, RootGroup, SourceKind, lower_dag, validate};
+use gkr_eval_isa::LayerSchedule;
 use gkr_eval_isa::eval_plan::{
     CacheOracle, CacheStateView, EvaluationArtifactError, EvaluationCompileError, EvaluationGenome,
     EvaluationGenomeArtifact, EvaluationGenomeCircuitArtifact, EvaluationLayoutVariant,
@@ -85,9 +84,7 @@ fn arithmetic_arities(program: &Program) -> [usize; 3] {
     totals
 }
 
-fn root_segment_op_counts(
-    compiled: &CompiledLayer,
-) -> BTreeMap<cs::gkr_compiler::dag_ir::RootId, [usize; 4]> {
+fn root_segment_op_counts(compiled: &CompiledLayer) -> BTreeMap<gkr_eval_ir::RootId, [usize; 4]> {
     let mut roots_by_destination = BTreeMap::<(u8, u16), Vec<_>>::new();
     for &(root, output) in &compiled.root_outputs {
         if let RootOutput::Cell(OutputCell::Global { slot, col }) = output {
@@ -216,7 +213,7 @@ fn report_expr(layer: &DagLayer, expr: ExprId, label: &str) {
     visit(layer, expr, &mut BTreeSet::new());
 }
 
-fn report_expr_cone(layer: &DagLayer, root: cs::gkr_compiler::dag_ir::RootId) {
+fn report_expr_cone(layer: &DagLayer, root: gkr_eval_ir::RootId) {
     let expr = layer.roots[root.0 as usize].expr;
     report_expr(layer, expr, &format!("root-{}", root.0));
 }
@@ -580,7 +577,7 @@ fn score_first_fit(
 fn capture_retentive_circuit_artifact(
     circuit: &str,
     layout_fixture: &str,
-    dag: &cs::gkr_compiler::dag_ir::DagCircuit,
+    dag: &gkr_eval_ir::DagCircuit,
     layout: &cs::gkr_compiler::GKRCircuitArtifact<field::baby_bear::base::BabyBearField>,
 ) -> EvaluationGenomeCircuitArtifact {
     const BUDGET_CELLS: usize = 4;
@@ -887,7 +884,7 @@ fn add_sub_artifact_compiles_and_matches_canonical_values() {
             for &(root, _) in &concrete.compiled.root_outputs {
                 assert_eq!(
                     outputs.by_root[&root],
-                    cs::gkr_compiler::dag_ir::eval_layer_root(layer, root, row, &resolvers),
+                    gkr_eval_ir::eval_layer_root(layer, root, row, &resolvers),
                     "layer {layer_index} canonical root parity for root {} at row {row}",
                     root.0,
                 );
@@ -1057,7 +1054,7 @@ fn add_sub_artifact_compiles_and_matches_canonical_values() {
             for &(root, _) in &compiled_layer.concrete.compiled.root_outputs {
                 assert_eq!(
                     outputs.by_root[&root],
-                    cs::gkr_compiler::dag_ir::eval_layer_root(dag_layer, root, row, &resolvers,),
+                    gkr_eval_ir::eval_layer_root(dag_layer, root, row, &resolvers,),
                     "searched layer {layer_index} root {} row {row}",
                     root.0,
                 );
@@ -1130,7 +1127,7 @@ fn forward_with_caches_c4_artifact_corpus_compiles_and_matches_values() {
                 for &(root, _) in &searched_layer.concrete.compiled.root_outputs {
                     assert_eq!(
                         outputs.by_root[&root],
-                        cs::gkr_compiler::dag_ir::eval_layer_root(dag_layer, root, row, &resolvers,),
+                        gkr_eval_ir::eval_layer_root(dag_layer, root, row, &resolvers,),
                         "{circuit} layer {layer_index} root {} row {row}",
                         root.0,
                     );
@@ -1499,7 +1496,7 @@ fn search_add_sub_layer_zero() {
         for &root in context.materialized_roots() {
             assert_eq!(
                 concrete_outputs.by_root[&root],
-                cs::gkr_compiler::dag_ir::eval_layer_root(layer, root, 0, &resolvers),
+                gkr_eval_ir::eval_layer_root(layer, root, 0, &resolvers),
             );
         }
         assert_eq!(
@@ -1677,7 +1674,7 @@ fn compare_forward_corpus_layer_zero() {
             for &root in context.materialized_roots() {
                 assert_eq!(
                     concrete_outputs.by_root[&root],
-                    cs::gkr_compiler::dag_ir::eval_layer_root(layer, root, 0, &resolvers),
+                    gkr_eval_ir::eval_layer_root(layer, root, 0, &resolvers),
                     "{stem} b{budget_lanes} root {}",
                     root.0,
                 );
@@ -2022,8 +2019,8 @@ fn compare_forward_corpus_all_layers() {
                         );
                     }
                     if stem == "add_sub_lui_auipc_mop" && layer_index == 0 && budget_lanes == 16 {
-                        report_expr_cone(layer, cs::gkr_compiler::dag_ir::RootId(2));
-                        report_expr_cone(layer, cs::gkr_compiler::dag_ir::RootId(3));
+                        report_expr_cone(layer, gkr_eval_ir::RootId(2));
+                        report_expr_cone(layer, gkr_eval_ir::RootId(3));
                         report_expr(layer, ExprId(191), "expr-191");
                         report_expr(layer, ExprId(210), "expr-210");
                     }
@@ -2121,8 +2118,7 @@ fn compare_forward_corpus_all_layers() {
                     )
                     .unwrap();
                     for &(root, _) in &concrete.compiled.root_outputs {
-                        let canonical =
-                            cs::gkr_compiler::dag_ir::eval_layer_root(layer, root, row, &resolvers);
+                        let canonical = gkr_eval_ir::eval_layer_root(layer, root, row, &resolvers);
                         assert_eq!(
                             new_outputs.by_root[&root], canonical,
                             "{stem} layer {layer_index} b{budget_lanes} root {} row {row} canonical parity",

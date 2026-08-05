@@ -61,7 +61,7 @@
 //!
 //!   * **Decode needs the regime.** Class `2` is a LIVE R0 term class
 //!     (`C2ProductBfBf`) and an `Ext` control code, and the words cannot tell them
-//!     apart — [`decode_atoms`] / [`decode_program`] take a [`BwdRegime`], and the
+//!     apart — [`decode_atoms`] / [`decode_program`] take a [`crate::BwdRegime`], and the
 //!     R0 path is behaviourally identical to the regime-free one it replaced.
 //!   * **`term_count` stays SEMANTIC.** It counts TERMS (`order.len()`), never
 //!     records, so R0 keeps its one legal stream length while `Ext` becomes a
@@ -80,7 +80,7 @@
 
 use std::fmt::Write as _;
 
-use cs::gkr_compiler::dag_ir::{BwdRegime, FieldKind};
+use gkr_eval_ir::FieldKind;
 use serde::{Deserialize, Serialize};
 
 use super::limits::{
@@ -230,16 +230,16 @@ const _: () = assert!(!class_is_free(
 ));
 
 /// The lean class table of one regime.
-const fn lean_table(regime: BwdRegime) -> &'static [(u16, TermCategory)] {
+const fn lean_table(regime: crate::BwdRegime) -> &'static [(u16, TermCategory)] {
     match regime {
-        BwdRegime::R0 => LEAN_R0_OPCODES,
-        BwdRegime::Ext => LEAN_CONT_OPCODES,
+        crate::BwdRegime::R0 => LEAN_R0_OPCODES,
+        crate::BwdRegime::Ext => LEAN_CONT_OPCODES,
     }
 }
 
 /// The class of `category` in `regime`, or `None` when the regime does not admit
 /// the category at all.
-fn lean_class(regime: BwdRegime, category: TermCategory) -> Option<u16> {
+fn lean_class(regime: crate::BwdRegime, category: TermCategory) -> Option<u16> {
     lean_table(regime)
         .iter()
         .find(|(_, listed)| *listed == category)
@@ -247,7 +247,7 @@ fn lean_class(regime: BwdRegime, category: TermCategory) -> Option<u16> {
 }
 
 /// The category a class names in `regime`, or `None` for a dead class.
-fn lean_category(regime: BwdRegime, class: u16) -> Option<TermCategory> {
+fn lean_category(regime: crate::BwdRegime, class: u16) -> Option<TermCategory> {
     lean_table(regime)
         .iter()
         .find(|(listed, _)| *listed == class)
@@ -622,11 +622,11 @@ fn source_slots(
 /// group-header control code, and no property of the words distinguishes them.
 pub fn decode_atoms(
     program: &LeanProgram,
-    regime: BwdRegime,
+    regime: crate::BwdRegime,
 ) -> Result<Vec<LeanAtom>, LeanCodecError> {
     match regime {
-        BwdRegime::R0 => decode_r0_atoms(program),
-        BwdRegime::Ext => decode_ext_atoms(program),
+        crate::BwdRegime::R0 => decode_r0_atoms(program),
+        crate::BwdRegime::Ext => decode_ext_atoms(program),
     }
 }
 
@@ -763,7 +763,7 @@ fn term_record(record: &[u16]) -> LeanTerm {
 /// [`decode_atoms`].
 pub fn decode_program(
     program: &LeanProgram,
-    regime: BwdRegime,
+    regime: crate::BwdRegime,
 ) -> Result<Vec<LeanTerm>, LeanCodecError> {
     let atoms = decode_atoms(program, regime)?;
     let mut out = Vec::with_capacity(program.term_count);
@@ -832,7 +832,7 @@ pub fn validate_program(program: &LeanProgram, layer: &CoeffLayer) -> Result<(),
             } => {
                 debug_assert_eq!(
                     layer.regime,
-                    BwdRegime::Ext,
+                    crate::BwdRegime::Ext,
                     "an R0 stream decodes class 2 as a term, so it yields no group atom"
                 );
                 if CoefficientRecipeId(u32::from(*core)).literal().is_some() {
@@ -955,8 +955,8 @@ fn category_flags(category: TermCategory) -> u16 {
 /// `words`. The format is pinned by a test, so it cannot drift silently.
 pub fn disassemble(program: &LeanProgram, layer: &CoeffLayer) -> String {
     let regime = match layer.regime {
-        BwdRegime::R0 => "R0",
-        BwdRegime::Ext => "Ext",
+        crate::BwdRegime::R0 => "R0",
+        crate::BwdRegime::Ext => "Ext",
     };
     let mut out = String::new();
     let _ = writeln!(
@@ -969,7 +969,7 @@ pub fn disassemble(program: &LeanProgram, layer: &CoeffLayer) -> String {
     // At R0 the record count IS the term count. In `Ext` it is the term count plus
     // the headers, and a malformed stream may not agree with either, so every whole
     // record is rendered and the count disagreement is left to the line above.
-    let ext = layer.regime == BwdRegime::Ext;
+    let ext = layer.regime == crate::BwdRegime::Ext;
     let records = program.words.chunks_exact(LEAN_WORDS_PER_TERM);
     let limit = if ext { usize::MAX } else { program.term_count };
     let mut groups = 0usize;
@@ -1071,7 +1071,7 @@ fn source_tag(layer: &CoeffLayer, slot: u16) -> String {
 
 #[cfg(test)]
 mod tests {
-    use cs::gkr_compiler::dag_ir::ReadPlace;
+    use gkr_eval_ir::ReadPlace;
 
     use super::*;
     use crate::bwd::coeff::model::{
@@ -1087,7 +1087,7 @@ mod tests {
     }
 
     fn layer(
-        regime: BwdRegime,
+        regime: crate::BwdRegime,
         sources: &[FieldKind],
         recipes: usize,
         terms: Vec<CoeffTerm>,
@@ -1146,7 +1146,7 @@ mod tests {
             dual(2, CoefficientRecipeId::NEG_ONE.0, 1, 1),
             dual(3, 3, 0, 2),
         ];
-        layer(BwdRegime::Ext, &[FieldKind::Ext; 3], 2, terms)
+        layer(crate::BwdRegime::Ext, &[FieldKind::Ext; 3], 2, terms)
     }
 
     /// Every R0 class, once.
@@ -1163,7 +1163,12 @@ mod tests {
             ),
             c2(4, 2, (1, FieldKind::Ext), (1, FieldKind::Ext)),
         ];
-        layer(BwdRegime::R0, &[FieldKind::Base, FieldKind::Ext], 2, terms)
+        layer(
+            crate::BwdRegime::R0,
+            &[FieldKind::Base, FieldKind::Ext],
+            2,
+            terms,
+        )
     }
 
     /// The words a term should have, spelled out independently of the encoder.
@@ -1185,7 +1190,8 @@ mod tests {
         assert_eq!(program.bytes(), 4 * LEAN_BYTES_PER_TERM);
         assert_eq!(validate_program(&program, &layer), Ok(()));
         assert_eq!(
-            decode_program(&program, BwdRegime::Ext).expect("the encoder emits whole records"),
+            decode_program(&program, crate::BwdRegime::Ext)
+                .expect("the encoder emits whole records"),
             vec![
                 LeanTerm {
                     class: 1,
@@ -1223,7 +1229,7 @@ mod tests {
         let order = order_terms(&layer);
         let program = encode_program(&layer, &order).expect("a legal R0 layer");
         assert_eq!(validate_program(&program, &layer), Ok(()));
-        let decoded = decode_program(&program, BwdRegime::R0).expect("whole records");
+        let decoded = decode_program(&program, crate::BwdRegime::R0).expect("whole records");
         let mut classes: Vec<u8> = decoded.iter().map(|term| term.class).collect();
         classes.sort_unstable();
         assert_eq!(classes, vec![0, 1, 2, 3, 4], "all five live R0 classes");
@@ -1274,7 +1280,10 @@ mod tests {
             }
         );
         assert_eq!(validate_program(&program, &layer), Ok(()));
-        assert_eq!(decode_program(&program, BwdRegime::Ext), Ok(Vec::new()));
+        assert_eq!(
+            decode_program(&program, crate::BwdRegime::Ext),
+            Ok(Vec::new())
+        );
         assert_eq!(
             disassemble(&program, &layer),
             "; lean program regime=Ext terms=0 words=0 bytes=0\n",
@@ -1296,7 +1305,7 @@ mod tests {
     fn a_mixed_product_puts_the_bf_factor_first() {
         let sources = [FieldKind::Base, FieldKind::Ext];
         let straight = layer(
-            BwdRegime::R0,
+            crate::BwdRegime::R0,
             &sources,
             0,
             vec![c2(
@@ -1307,7 +1316,7 @@ mod tests {
             )],
         );
         let transposed = layer(
-            BwdRegime::R0,
+            crate::BwdRegime::R0,
             &sources,
             0,
             vec![c2(
@@ -1339,7 +1348,7 @@ mod tests {
     #[test]
     fn encode_rejects_a_category_the_regime_lacks() {
         let at_r0 = layer(
-            BwdRegime::R0,
+            crate::BwdRegime::R0,
             &[FieldKind::Ext],
             0,
             vec![dual(0, CoefficientRecipeId::ONE.0, 0, 0)],
@@ -1352,7 +1361,7 @@ mod tests {
             }),
         );
         let in_ext = layer(
-            BwdRegime::Ext,
+            crate::BwdRegime::Ext,
             &[FieldKind::Base],
             0,
             vec![c0(0, CoefficientRecipeId::ONE.0, 0, FieldKind::Base)],
@@ -1371,7 +1380,7 @@ mod tests {
     fn encode_rejects_a_coefficient_past_thirteen_bits() {
         let too_wide = u32::from(LEAN_COEFFICIENT_MASK) + 1;
         let layer = layer(
-            BwdRegime::Ext,
+            crate::BwdRegime::Ext,
             &[FieldKind::Ext],
             too_wide as usize,
             vec![
@@ -1393,7 +1402,7 @@ mod tests {
     #[test]
     fn encode_rejects_a_source_past_the_table() {
         let layer = layer(
-            BwdRegime::Ext,
+            crate::BwdRegime::Ext,
             &[FieldKind::Ext; 2],
             0,
             vec![dual(0, CoefficientRecipeId::ONE.0, 1, 9)],
@@ -1531,7 +1540,7 @@ mod tests {
             term_count: 2,
         };
         assert_eq!(
-            decode_program(&program, BwdRegime::Ext),
+            decode_program(&program, crate::BwdRegime::Ext),
             Err(LeanCodecError::ReservedWordNonZero { term: 1 }),
         );
         assert_eq!(
@@ -1556,7 +1565,7 @@ mod tests {
                 term_count: 1,
             };
             assert_eq!(
-                decode_program(&program, BwdRegime::Ext),
+                decode_program(&program, crate::BwdRegime::Ext),
                 Err(LeanCodecError::TruncatedStream { words: length }),
             );
             assert_eq!(
@@ -1569,12 +1578,12 @@ mod tests {
             term_count: 2,
         };
         assert_eq!(
-            decode_program(&two_records, BwdRegime::R0),
+            decode_program(&two_records, crate::BwdRegime::R0),
             Err(LeanCodecError::TruncatedStream { words: 4 }),
             "at R0 term_count disagreeing with the stream is the same length defect",
         );
         assert_eq!(
-            decode_program(&two_records, BwdRegime::Ext),
+            decode_program(&two_records, crate::BwdRegime::Ext),
             Err(LeanCodecError::TermCountMismatch {
                 terms: 1,
                 declared: 2
@@ -1610,7 +1619,7 @@ mod tests {
             c0(4, CoefficientRecipeId::ONE.0, 0, FieldKind::Ext),
             dual(5, plain.0, 0, 1),
         ];
-        let mut layer = layer(BwdRegime::Ext, &[FieldKind::Ext; 3], 3, terms);
+        let mut layer = layer(crate::BwdRegime::Ext, &[FieldKind::Ext; 3], 3, terms);
         layer.immediates = vec![7, 9];
         layer.groups = vec![
             CoeffGroup {
@@ -1727,7 +1736,7 @@ mod tests {
             },
         ];
         assert_eq!(
-            decode_atoms(&program, BwdRegime::Ext),
+            decode_atoms(&program, crate::BwdRegime::Ext),
             Ok(vec![
                 LeanAtom::Group {
                     core: 2,
@@ -1771,7 +1780,7 @@ mod tests {
             source_a: 0,
             source_b: 1,
         });
-        assert_eq!(decode_program(&program, BwdRegime::Ext), Ok(flat));
+        assert_eq!(decode_program(&program, crate::BwdRegime::Ext), Ok(flat));
     }
 
     /// A group-free atom order and the term order it flattens to encode to the SAME
@@ -1805,7 +1814,7 @@ mod tests {
             term_count: 3,
         };
         assert_eq!(
-            decode_program(&program, BwdRegime::R0),
+            decode_program(&program, crate::BwdRegime::R0),
             Ok(vec![
                 LeanTerm {
                     class: 0,
@@ -1828,13 +1837,13 @@ mod tests {
             ]),
         );
         assert_eq!(validate_program(&program, &layer), Ok(()));
-        let atoms = decode_atoms(&program, BwdRegime::R0).expect("three R0 records");
+        let atoms = decode_atoms(&program, crate::BwdRegime::R0).expect("three R0 records");
         assert!(
             atoms.iter().all(|atom| matches!(atom, LeanAtom::Term(_))),
             "an R0 stream has no group atom, whatever its classes",
         );
         assert_eq!(
-            decode_atoms(&program, BwdRegime::Ext),
+            decode_atoms(&program, crate::BwdRegime::Ext),
             Err(LeanCodecError::GroupMemberCountInvalid {
                 atom: 1,
                 members: 0
@@ -1856,7 +1865,7 @@ mod tests {
             term_count: 2,
         };
         assert_eq!(
-            decode_atoms(&program, BwdRegime::Ext),
+            decode_atoms(&program, crate::BwdRegime::Ext),
             Err(LeanCodecError::TruncatedGroup {
                 atom: 0,
                 members: 2
@@ -1879,7 +1888,7 @@ mod tests {
             term_count: 2,
         };
         assert_eq!(
-            decode_atoms(&program, BwdRegime::Ext),
+            decode_atoms(&program, crate::BwdRegime::Ext),
             Err(LeanCodecError::NestedGroupHeader { atom: 0, member: 1 }),
         );
     }
@@ -1895,7 +1904,7 @@ mod tests {
             (LEAN_CONT_GROUP_HEADER_CLASS << LEAN_CLASS_SHIFT) | CoefficientRecipeId::ONE.0 as u16,
         );
         assert_eq!(
-            decode_atoms(&program, BwdRegime::Ext).map(|atoms| atoms.len()),
+            decode_atoms(&program, crate::BwdRegime::Ext).map(|atoms| atoms.len()),
             Ok(4),
             "a literal core is well-formed on the wire",
         );
@@ -1974,7 +1983,7 @@ mod tests {
         let mut program = grouped_program();
         program.term_count = 5;
         assert_eq!(
-            decode_atoms(&program, BwdRegime::Ext),
+            decode_atoms(&program, crate::BwdRegime::Ext),
             Err(LeanCodecError::TermCountMismatch {
                 terms: 6,
                 declared: 5
@@ -1995,7 +2004,7 @@ mod tests {
             term_count: 1,
         };
         assert_eq!(
-            decode_atoms(&program, BwdRegime::Ext),
+            decode_atoms(&program, crate::BwdRegime::Ext),
             Err(LeanCodecError::GroupMemberCountInvalid {
                 atom: 0,
                 members: 1
@@ -2018,12 +2027,12 @@ mod tests {
     fn flags_zero_rejected() {
         let program = with_word(&grouped_program(), 2, 0);
         assert_eq!(
-            decode_atoms(&program, BwdRegime::Ext),
+            decode_atoms(&program, crate::BwdRegime::Ext),
             Err(LeanCodecError::GroupFlagsInvalid { atom: 0, flags: 0 }),
         );
         let reserved = with_word(&grouped_program(), 2, LEAN_GROUP_FLAG_MASK + 1);
         assert_eq!(
-            decode_atoms(&reserved, BwdRegime::Ext),
+            decode_atoms(&reserved, crate::BwdRegime::Ext),
             Err(LeanCodecError::GroupFlagsInvalid {
                 atom: 0,
                 flags: LEAN_GROUP_FLAG_MASK + 1
@@ -2045,7 +2054,7 @@ mod tests {
         let layer = grouped_ext_layer();
         let program = with_word(&grouped_program(), 2, LEAN_GROUP_FLAG_C0);
         assert_eq!(
-            decode_atoms(&program, BwdRegime::Ext).map(|atoms| atoms.len()),
+            decode_atoms(&program, crate::BwdRegime::Ext).map(|atoms| atoms.len()),
             Ok(4),
             "the flags are well-formed; only the layer's classes contradict them",
         );
@@ -2094,12 +2103,12 @@ mod tests {
                 match validate_program(&mutated, &layer) {
                     Err(_) => {
                         rejected += 1;
-                        let _ = decode_atoms(&mutated, BwdRegime::Ext);
-                        let _ = decode_program(&mutated, BwdRegime::Ext);
+                        let _ = decode_atoms(&mutated, crate::BwdRegime::Ext);
+                        let _ = decode_program(&mutated, crate::BwdRegime::Ext);
                     }
                     Ok(()) => {
                         still_valid += 1;
-                        let atoms = decode_atoms(&mutated, BwdRegime::Ext)
+                        let atoms = decode_atoms(&mutated, crate::BwdRegime::Ext)
                             .unwrap_or_else(|e| panic!("{where_}: valid but undecodable: {e:?}"));
                         let terms: usize = atoms
                             .iter()
@@ -2110,7 +2119,7 @@ mod tests {
                             .sum();
                         assert_eq!(terms, mutated.term_count, "{where_}: term total");
                         assert_eq!(
-                            decode_program(&mutated, BwdRegime::Ext).map(|flat| flat.len()),
+                            decode_program(&mutated, crate::BwdRegime::Ext).map(|flat| flat.len()),
                             Ok(terms),
                             "{where_}: the flat view drops headers and nothing else",
                         );
@@ -2141,7 +2150,7 @@ mod tests {
             c0(2, CoefficientRecipeId::NEG_ONE.0, 1, FieldKind::Ext),
         ];
         let layer = layer(
-            BwdRegime::R0,
+            crate::BwdRegime::R0,
             &[FieldKind::Base, FieldKind::Ext, FieldKind::Base],
             1,
             terms,
@@ -2242,7 +2251,7 @@ mod tests {
                         rejected += 1;
                         // Decoding a rejected stream must still be panic-free: the
                         // disassembler is read exactly when a program is malformed.
-                        let _ = decode_program(&mutated, BwdRegime::R0);
+                        let _ = decode_program(&mutated, crate::BwdRegime::R0);
                         let _ = disassemble(&mutated, &layer);
                     }
                     // (b) Still valid. Then the decode must succeed and every
@@ -2251,7 +2260,7 @@ mod tests {
                     // would mis-read.
                     Ok(()) => {
                         still_valid += 1;
-                        let terms = decode_program(&mutated, BwdRegime::R0)
+                        let terms = decode_program(&mutated, crate::BwdRegime::R0)
                             .unwrap_or_else(|e| panic!("{where_}: valid but undecodable: {e:?}"));
                         assert_eq!(terms.len(), layer.terms.len(), "{where_}: record count");
                         for (index, decoded) in terms.iter().enumerate() {

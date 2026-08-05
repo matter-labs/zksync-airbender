@@ -10,12 +10,13 @@
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
 
-use cs::gkr_compiler::dag_ir::{
-    ArenaBuilder, BatchingOrder, BwdRegime, ChallengeKey, ChallengePower, ChallengeRef,
-    ChallengeResolver, ClaimInfo, DagLayer, ExprId, Ext, FieldKind, ReadPlace, Root, RootGroup,
-    RootId, RootOrigin, RootSlot, SinkInfo, SinkKind, SourceKind, bwd_roots,
-};
 use field::{Field, FieldExtension, PrimeField};
+use gkr_eval_ir::{
+    ArenaBuilder, BatchingOrder, ChallengeKey, ChallengePower, ChallengeRef, ChallengeResolver,
+    ClaimInfo, DagLayer, ExprId, Ext, FieldKind, ReadPlace, Root, RootGroup, RootId, RootOrigin,
+    RootSlot, SinkInfo, SinkKind, SourceKind, claim_roots,
+};
+use gkr_eval_isa::BwdRegime;
 use gkr_eval_isa::bwd::coeff::{
     CoeffError, CoeffLayer, CoeffResolver, CoeffTerm, CoefficientRecipeId, Projection, SourceId,
     TermId, interpret_coeff_layer, lower_coeff_layer,
@@ -23,7 +24,7 @@ use gkr_eval_isa::bwd::coeff::{
 use gkr_eval_isa::bwd::distill::distill;
 use gkr_eval_isa::bwd::source::OriginLeaf;
 
-type Bf = cs::gkr_compiler::dag_ir::Bf;
+type Bf = gkr_eval_ir::Bf;
 
 /// BabyBear `-1` as a canonical `Constant` payload (same constant `fwd::compile`
 /// and `tests/common` use to build a negated additive child).
@@ -35,7 +36,9 @@ const OUT_LAYER: usize = 7;
 // ── Layer construction ───────────────────────────────────────────────────────
 
 fn read_leaf(a: &mut ArenaBuilder, column: usize) -> ExprId {
-    let s = a.intern_source(SourceKind::Read { place: ReadPlace::BaseLayerWitness { column } });
+    let s = a.intern_source(SourceKind::Read {
+        place: ReadPlace::BaseLayerWitness { column },
+    });
     a.source_expr(s)
 }
 
@@ -45,7 +48,9 @@ fn const_leaf(a: &mut ArenaBuilder, value: u32) -> ExprId {
 }
 
 fn challenge_leaf_with(a: &mut ArenaBuilder, key: ChallengeKey, power: ChallengePower) -> ExprId {
-    let s = a.intern_source(SourceKind::Challenge { reference: ChallengeRef { key, power } });
+    let s = a.intern_source(SourceKind::Challenge {
+        reference: ChallengeRef { key, power },
+    });
     a.source_expr(s)
 }
 
@@ -58,7 +63,10 @@ fn output_root(expr: ExprId, offset: usize, relation_index: usize) -> Root {
     Root {
         expr,
         materialize: Some(SinkInfo {
-            kind: SinkKind::Inner { layer: OUT_LAYER, offset },
+            kind: SinkKind::Inner {
+                layer: OUT_LAYER,
+                offset,
+            },
             field: FieldKind::Base,
         }),
         claim: Some(ClaimInfo {
@@ -159,9 +167,18 @@ fn scalar_coefficient(c: &CoeffLayer, id: CoefficientRecipeId) -> u32 {
     if id == CoefficientRecipeId::NEG_ONE {
         return NEG_ONE;
     }
-    let r = c.banked_recipe(id).unwrap_or_else(|| panic!("{id:?} has no bank entry"));
-    assert_eq!(r.terms.len(), 1, "expected a single-product recipe, got {r:?}");
-    assert!(r.terms[0].challenges.is_empty(), "expected a scalar-only recipe, got {r:?}");
+    let r = c
+        .banked_recipe(id)
+        .unwrap_or_else(|| panic!("{id:?} has no bank entry"));
+    assert_eq!(
+        r.terms.len(),
+        1,
+        "expected a single-product recipe, got {r:?}"
+    );
+    assert!(
+        r.terms[0].challenges.is_empty(),
+        "expected a scalar-only recipe, got {r:?}"
+    );
     r.terms[0].scalar
 }
 
@@ -171,13 +188,30 @@ fn batching_power(c: &CoeffLayer, id: CoefficientRecipeId) -> Option<ChallengePo
     if id == CoefficientRecipeId::ONE {
         return None;
     }
-    let r = c.banked_recipe(id).unwrap_or_else(|| panic!("{id:?} has no bank entry"));
-    assert_eq!(r.terms.len(), 1, "a batching factor is one product, got {r:?}");
+    let r = c
+        .banked_recipe(id)
+        .unwrap_or_else(|| panic!("{id:?} has no bank entry"));
+    assert_eq!(
+        r.terms.len(),
+        1,
+        "a batching factor is one product, got {r:?}"
+    );
     let p = &r.terms[0];
-    assert_eq!(p.scalar, 1, "a batching factor carries no scalar, got {r:?}");
-    assert_eq!(p.challenges.len(), 1, "a batching factor is one challenge, got {r:?}");
+    assert_eq!(
+        p.scalar, 1,
+        "a batching factor carries no scalar, got {r:?}"
+    );
+    assert_eq!(
+        p.challenges.len(),
+        1,
+        "a batching factor is one challenge, got {r:?}"
+    );
     let cr = &p.challenges[0].0;
-    assert_eq!(cr.key, ChallengeKey::ClaimBatching, "not a batching challenge: {cr:?}");
+    assert_eq!(
+        cr.key,
+        ChallengeKey::ClaimBatching,
+        "not a batching challenge: {cr:?}"
+    );
     Some(cr.power.clone())
 }
 
@@ -185,8 +219,14 @@ fn batching_power(c: &CoeffLayer, id: CoefficientRecipeId) -> Option<ChallengePo
 fn root_coefficient_pairing(c: &CoeffLayer) -> BTreeMap<usize, Option<ChallengePower>> {
     let mut out = BTreeMap::new();
     for t in &c.terms {
-        if let CoeffTerm::C0Linear { coefficient, value, .. } = t {
-            let prev = out.insert(out_offset_of(c, value.source), batching_power(c, *coefficient));
+        if let CoeffTerm::C0Linear {
+            coefficient, value, ..
+        } = t
+        {
+            let prev = out.insert(
+                out_offset_of(c, value.source),
+                batching_power(c, *coefficient),
+            );
             assert!(prev.is_none(), "two acc_c0 terms over one output address");
         }
     }
@@ -242,19 +282,33 @@ struct Probe<'a> {
 
 impl<'a> Probe<'a> {
     fn new(layer: &'a CoeffLayer) -> Self {
-        Probe { layer, c_init_override: None, queried: RefCell::new(Vec::new()) }
+        Probe {
+            layer,
+            c_init_override: None,
+            queried: RefCell::new(Vec::new()),
+        }
     }
 
     fn with_c_init(layer: &'a CoeffLayer, v: Ext) -> Self {
-        Probe { layer, c_init_override: Some(v), queried: RefCell::new(Vec::new()) }
+        Probe {
+            layer,
+            c_init_override: Some(v),
+            queried: RefCell::new(Vec::new()),
+        }
     }
 
     fn pair(&self, origin: &OriginLeaf, row: usize) -> (Ext, Ext) {
-        (lift(hash_dbg(origin, row as u32)), lift(hash_dbg(origin, row as u32 ^ 0x5f5f)))
+        (
+            lift(hash_dbg(origin, row as u32)),
+            lift(hash_dbg(origin, row as u32 ^ 0x5f5f)),
+        )
     }
 
     fn pair_for_column(&self, column: usize, row: usize) -> (Ext, Ext) {
-        self.pair(&OriginLeaf::Read(ReadPlace::BaseLayerWitness { column }), row)
+        self.pair(
+            &OriginLeaf::Read(ReadPlace::BaseLayerWitness { column }),
+            row,
+        )
     }
 }
 
@@ -292,26 +346,51 @@ fn r0_materialized_output_uses_one_endpoint0_read() {
 
     let c = lower(&layer, BwdRegime::R0).expect("R0 lowering");
 
-    let linear: Vec<&CoeffTerm> =
-        c.terms.iter().filter(|t| matches!(t, CoeffTerm::C0Linear { .. })).collect();
-    assert_eq!(linear.len(), 2, "one acc_c0 term per materialized claim root: {:?}", c.terms);
+    let linear: Vec<&CoeffTerm> = c
+        .terms
+        .iter()
+        .filter(|t| matches!(t, CoeffTerm::C0Linear { .. }))
+        .collect();
+    assert_eq!(
+        linear.len(),
+        2,
+        "one acc_c0 term per materialized claim root: {:?}",
+        c.terms
+    );
 
     let mut offsets: Vec<usize> = Vec::new();
     for t in &linear {
-        let CoeffTerm::C0Linear { value, field, .. } = t else { unreachable!() };
-        assert_eq!(value.projection, Projection::Endpoint0, "R0 acc_c0 is an Endpoint0 read");
-        assert_eq!(*field, FieldKind::Base, "the sink's field is the read width");
+        let CoeffTerm::C0Linear { value, field, .. } = t else {
+            unreachable!()
+        };
+        assert_eq!(
+            value.projection,
+            Projection::Endpoint0,
+            "R0 acc_c0 is an Endpoint0 read"
+        );
+        assert_eq!(
+            *field,
+            FieldKind::Base,
+            "the sink's field is the read width"
+        );
         offsets.push(out_offset_of(&c, value.source));
     }
     offsets.sort();
-    assert_eq!(offsets, vec![0, 1], "each root reads its OWN output address");
+    assert_eq!(
+        offsets,
+        vec![0, 1],
+        "each root reads its OWN output address"
+    );
 
     // The R0 advantage: no cone leaf is ever resolved at Endpoint0. Only the
     // materialized output addresses are.
     for t in &c.terms {
         for s in endpoint0_sources(t) {
             assert!(
-                matches!(origin_of(&c, s), OriginLeaf::Read(ReadPlace::LayerOutput { .. })),
+                matches!(
+                    origin_of(&c, s),
+                    OriginLeaf::Read(ReadPlace::LayerOutput { .. })
+                ),
                 "R0 re-evaluated a cone leaf at Endpoint0: {:?} in {t:?}",
                 origin_of(&c, s)
             );
@@ -336,19 +415,33 @@ fn r0_constraint_root_contributes_zero_without_reading_its_cone() {
     let c = lower(&layer, BwdRegime::R0).expect("R0 lowering");
 
     assert!(
-        !c.terms.iter().any(|t| matches!(t, CoeffTerm::C0Linear { .. })),
+        !c.terms
+            .iter()
+            .any(|t| matches!(t, CoeffTerm::C0Linear { .. })),
         "a claim-only constraint root is structurally zero on the hypercube: {:?}",
         c.terms
     );
     assert_eq!(c.c_init, None);
     for t in &c.terms {
-        assert!(endpoint0_sources(t).is_empty(), "the constraint cone must not be read at X=0");
+        assert!(
+            endpoint0_sources(t).is_empty(),
+            "the constraint cone must not be read at X=0"
+        );
     }
-    assert_eq!(c.terms.len(), 1, "only the delta product survives: {:?}", c.terms);
+    assert_eq!(
+        c.terms.len(),
+        1,
+        "only the delta product survives: {:?}",
+        c.terms
+    );
 
     let p = Probe::new(&c);
     let (acc_c0, acc_c2) = interpret_coeff_layer(&c, 3, &p).expect("interpret");
-    assert_eq!(acc_c0, Ext::ZERO, "acc_c0 is exactly zero for a constraint-only R0 layer");
+    assert_eq!(
+        acc_c0,
+        Ext::ZERO,
+        "acc_c0 is exactly zero for a constraint-only R0 layer"
+    );
     let (_, d0) = p.pair_for_column(0, 3);
     let (_, d1) = p.pair_for_column(1, 3);
     let mut want = d0;
@@ -370,17 +463,26 @@ fn r0_root_coefficients_follow_relation_order() {
     let cone_c = a.mul(vec![w0, w2]);
     let layer = assemble(
         &a,
-        vec![output_root(cone_a, 0, 0), output_root(cone_b, 1, 1), output_root(cone_c, 2, 2)],
+        vec![
+            output_root(cone_a, 0, 0),
+            output_root(cone_b, 1, 1),
+            output_root(cone_c, 2, 2),
+        ],
         vec![RootId(2), RootId(0), RootId(1)],
     );
-    assert_eq!(bwd_roots(&layer), &[RootId(2), RootId(0), RootId(1)]);
+    assert_eq!(claim_roots(&layer), &[RootId(2), RootId(0), RootId(1)]);
 
-    // The canonical pairing, read off `bwd_roots`: batching position i carries
+    // The canonical pairing, read off `claim_roots`: batching position i carries
     // beta^i, and each root's own materialized address identifies it.
     let mut expect: BTreeMap<usize, Option<ChallengePower>> = BTreeMap::new();
-    for (i, &rid) in bwd_roots(&layer).iter().enumerate() {
-        let sink = layer.roots[rid.0 as usize].materialize.as_ref().expect("materialized");
-        let SinkKind::Inner { offset, .. } = sink.kind else { panic!("{:?}", sink.kind) };
+    for (i, &rid) in claim_roots(&layer).iter().enumerate() {
+        let sink = layer.roots[rid.0 as usize]
+            .materialize
+            .as_ref()
+            .expect("materialized");
+        let SinkKind::Inner { offset, .. } = sink.kind else {
+            panic!("{:?}", sink.kind)
+        };
         expect.insert(offset, expected_power(i));
     }
     assert_eq!(
@@ -418,9 +520,20 @@ fn continuation_c_init_is_evaluated_once_per_program() {
 
     let c = lower(&layer, BwdRegime::Ext).expect("Ext lowering");
 
-    let init = c.c_init.expect("the scalar addend must land in c_init, not in a term");
-    assert_eq!(c.terms.len(), 1, "the scalar contribution is not a term: {:?}", c.terms);
-    assert!(matches!(c.terms[0], CoeffTerm::DualProduct { .. }), "{:?}", c.terms[0]);
+    let init = c
+        .c_init
+        .expect("the scalar addend must land in c_init, not in a term");
+    assert_eq!(
+        c.terms.len(),
+        1,
+        "the scalar contribution is not a term: {:?}",
+        c.terms
+    );
+    assert!(
+        matches!(c.terms[0], CoeffTerm::DualProduct { .. }),
+        "{:?}",
+        c.terms[0]
+    );
 
     // The whole scalar contribution is ONE recipe, asked for exactly once per
     // row: it is the per-thread `acc_c0` initializer, not a per-term factor.
@@ -448,7 +561,10 @@ fn continuation_c_init_is_evaluated_once_per_program() {
         want.sub_assign(&k2);
         let mut got = a0;
         got.sub_assign(&b0);
-        assert_eq!(got, want, "row {row}: c_init is a plain additive initializer");
+        assert_eq!(
+            got, want,
+            "row {row}: c_init is a plain additive initializer"
+        );
         assert_eq!(a2, b2, "row {row}: c_init never feeds acc_c2");
     }
 }
@@ -462,9 +578,23 @@ fn continuation_product_is_native_dual() {
     let layer = assemble(&a, vec![constraint_root(prod, 0)], vec![RootId(0)]);
 
     let ext = lower(&layer, BwdRegime::Ext).expect("Ext lowering");
-    assert_eq!(ext.terms.len(), 1, "one product, one native dual: {:?}", ext.terms);
-    let CoeffTerm::DualProduct { coefficient, lhs, rhs, .. } = ext.terms[0] else {
-        panic!("continuation products must be native duals, got {:?}", ext.terms[0]);
+    assert_eq!(
+        ext.terms.len(),
+        1,
+        "one product, one native dual: {:?}",
+        ext.terms
+    );
+    let CoeffTerm::DualProduct {
+        coefficient,
+        lhs,
+        rhs,
+        ..
+    } = ext.terms[0]
+    else {
+        panic!(
+            "continuation products must be native duals, got {:?}",
+            ext.terms[0]
+        );
     };
     assert_eq!(scalar_coefficient(&ext, coefficient), 1);
     assert_eq!(
@@ -473,7 +603,9 @@ fn continuation_product_is_native_dual() {
         "dual factors are sorted by stable source identity"
     );
     assert!(
-        !ext.terms.iter().any(|t| matches!(t, CoeffTerm::C2Product { .. })),
+        !ext.terms
+            .iter()
+            .any(|t| matches!(t, CoeffTerm::C2Product { .. })),
         "a continuation product is never split into an independent c2 term"
     );
 
@@ -481,7 +613,11 @@ fn continuation_product_is_native_dual() {
     // product only needs its delta half.
     let r0 = lower(&layer, BwdRegime::R0).expect("R0 lowering");
     assert_eq!(r0.terms.len(), 1);
-    assert!(matches!(r0.terms[0], CoeffTerm::C2Product { .. }), "{:?}", r0.terms[0]);
+    assert!(
+        matches!(r0.terms[0], CoeffTerm::C2Product { .. }),
+        "{:?}",
+        r0.terms[0]
+    );
 }
 
 // ── Distribution / degree ────────────────────────────────────────────────────
@@ -502,10 +638,21 @@ fn multi_atom_add_distribution_preserves_multiplicity() {
 
     let mut got: BTreeMap<(usize, usize), u32> = BTreeMap::new();
     for t in &c.terms {
-        let CoeffTerm::DualProduct { coefficient, lhs, rhs, .. } = t else { panic!("{t:?}") };
+        let CoeffTerm::DualProduct {
+            coefficient,
+            lhs,
+            rhs,
+            ..
+        } = t
+        else {
+            panic!("{t:?}")
+        };
         let key = (column_of(&c, *lhs), column_of(&c, *rhs));
         let prev = got.insert(key, scalar_coefficient(&c, *coefficient));
-        assert!(prev.is_none(), "A*B and B*A must merge into ONE body, not two");
+        assert!(
+            prev.is_none(),
+            "A*B and B*A must merge into ONE body, not two"
+        );
     }
     assert_eq!(
         got,
@@ -542,7 +689,10 @@ fn degree_three_is_a_compiler_error() {
     let deg3 = b.mul(vec![quad_atom, v2]);
     let layer_b = assemble(&b, vec![constraint_root(deg3, 0)], vec![RootId(0)]);
     let err = lower(&layer_b, BwdRegime::Ext).expect_err("degree three must not compile");
-    assert!(matches!(err, CoeffError::DegreeTooHigh { degree: 3, .. }), "wrong error {err:?}");
+    assert!(
+        matches!(err, CoeffError::DegreeTooHigh { degree: 3, .. }),
+        "wrong error {err:?}"
+    );
 }
 
 /// `Static(1)` and `One` spell the SAME power, so they must intern to one recipe
@@ -555,9 +705,16 @@ fn challenge_power_spellings_of_one_intern_to_a_single_id() {
     let mut a = ArenaBuilder::new();
     let w0 = read_leaf(&mut a, 0);
     let w1 = read_leaf(&mut a, 1);
-    let as_one = challenge_leaf_with(&mut a, ChallengeKey::LookupMultiplicative, ChallengePower::One);
-    let as_static_1 =
-        challenge_leaf_with(&mut a, ChallengeKey::LookupMultiplicative, ChallengePower::Static(1));
+    let as_one = challenge_leaf_with(
+        &mut a,
+        ChallengeKey::LookupMultiplicative,
+        ChallengePower::One,
+    );
+    let as_static_1 = challenge_leaf_with(
+        &mut a,
+        ChallengeKey::LookupMultiplicative,
+        ChallengePower::Static(1),
+    );
     let t0 = a.mul(vec![as_one, w0]);
     let t1 = a.mul(vec![as_static_1, w1]);
     let cone = a.add(vec![t0, t1]);
@@ -565,10 +722,19 @@ fn challenge_power_spellings_of_one_intern_to_a_single_id() {
 
     let c = lower(&layer, BwdRegime::Ext).expect("Ext lowering");
     assert_eq!(c.terms.len(), 2, "{:?}", c.terms);
-    assert_eq!(c.coefficients.len(), 1, "one power, one bank entry: {:?}", c.coefficients);
+    assert_eq!(
+        c.coefficients.len(),
+        1,
+        "one power, one bank entry: {:?}",
+        c.coefficients
+    );
     let ids: std::collections::BTreeSet<CoefficientRecipeId> =
         c.terms.iter().map(|t| t.coefficient()).collect();
-    assert_eq!(ids.len(), 1, "both spellings must reach the same CoefficientRecipeId");
+    assert_eq!(
+        ids.len(),
+        1,
+        "both spellings must reach the same CoefficientRecipeId"
+    );
     assert_eq!(
         c.coefficients[0].terms[0].challenges[0].0.power,
         ChallengePower::One,
@@ -580,7 +746,11 @@ fn challenge_power_spellings_of_one_intern_to_a_single_id() {
     let v0 = read_leaf(&mut b, 0);
     let v1 = read_leaf(&mut b, 1);
     let g1 = challenge_leaf_with(&mut b, ChallengeKey::LookupAdditive, ChallengePower::One);
-    let g2 = challenge_leaf_with(&mut b, ChallengeKey::LookupAdditive, ChallengePower::Static(2));
+    let g2 = challenge_leaf_with(
+        &mut b,
+        ChallengeKey::LookupAdditive,
+        ChallengePower::Static(2),
+    );
     let squared = b.mul(vec![g1, g1, v0]);
     let power = b.mul(vec![g2, v1]);
     let cone_b = b.add(vec![squared, power]);
@@ -623,12 +793,18 @@ fn normalization_cancels_signs_and_removes_zero_one_and_copy_alias() {
     let neg_e = a.mul(vec![neg, w_e]); // 2E - E: folds back to one
     let alias_f = a.add(vec![w_f]);
     let dual = a.mul(vec![alias_f, w_g]); // alias inside a product
-    let cone = a.add(vec![mul_one, alias_b, mul_zero, w_d, neg_d, two_e, neg_e, dual]);
+    let cone = a.add(vec![
+        mul_one, alias_b, mul_zero, w_d, neg_d, two_e, neg_e, dual,
+    ]);
     let layer = assemble(&a, vec![constraint_root(cone, 0)], vec![RootId(0)]);
 
     let c = lower(&layer, BwdRegime::Ext).expect("Ext lowering");
 
-    assert!(c.coefficients.is_empty(), "every surviving coefficient is +/-1: {:?}", c.coefficients);
+    assert!(
+        c.coefficients.is_empty(),
+        "every surviving coefficient is +/-1: {:?}",
+        c.coefficients
+    );
     assert_eq!(c.c_init, None, "no scalar addend here");
 
     let mut linear: Vec<usize> = Vec::new();
@@ -648,12 +824,26 @@ fn normalization_cancels_signs_and_removes_zero_one_and_copy_alias() {
         }
     }
     linear.sort();
-    assert_eq!(linear, vec![0, 1, 4], "A (x1), B (alias), E (2E-E) survive; C (x0), D (D-D) do not");
-    assert_eq!(duals, vec![(5, 6)], "the aliased factor is erased, leaving one dual");
+    assert_eq!(
+        linear,
+        vec![0, 1, 4],
+        "A (x1), B (alias), E (2E-E) survive; C (x0), D (D-D) do not"
+    );
+    assert_eq!(
+        duals,
+        vec![(5, 6)],
+        "the aliased factor is erased, leaving one dual"
+    );
 
     // A pruned body's leaves never reach the source table.
-    let columns: Vec<usize> = (0..c.sources.len()).map(|i| column_of(&c, SourceId(i as u32))).collect();
-    assert_eq!(columns, vec![0, 1, 4, 5, 6], "sources are the referenced ones, in stable order");
+    let columns: Vec<usize> = (0..c.sources.len())
+        .map(|i| column_of(&c, SourceId(i as u32)))
+        .collect();
+    assert_eq!(
+        columns,
+        vec![0, 1, 4, 5, 6],
+        "sources are the referenced ones, in stable order"
+    );
 
     // TermIds are dense and follow the emitted order.
     for (i, t) in c.terms.iter().enumerate() {

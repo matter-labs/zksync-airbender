@@ -13,7 +13,7 @@ use std::collections::hash_map::DefaultHasher;
 use std::collections::{BTreeMap, BTreeSet};
 use std::hash::{Hash, Hasher};
 
-use cs::gkr_compiler::dag_ir::{Expr, ExprId, SourceKind};
+use gkr_eval_ir::{Expr, ExprId, SourceKind};
 
 use crate::fwd::binding::{BackingTable, SourceWindowTable};
 use crate::fwd::isa::{DstLine, Instr, OperandField, OperandLine, Program};
@@ -337,7 +337,7 @@ pub(crate) struct PositionedPhysicalTrafficEvent {
 }
 
 pub(crate) fn positioned_physical_traffic_events(
-    layer: &cs::gkr_compiler::dag_ir::DagLayer,
+    layer: &gkr_eval_ir::DagLayer,
     program: &Program,
     specials: &BwdSpecialTable,
     leaf_descs: &BTreeMap<ExprId, u16>,
@@ -453,7 +453,7 @@ pub(crate) fn positioned_physical_traffic_events(
 }
 
 pub(crate) fn physical_traffic_events(
-    layer: &cs::gkr_compiler::dag_ir::DagLayer,
+    layer: &gkr_eval_ir::DagLayer,
     program: &Program,
     specials: &BwdSpecialTable,
     leaf_descs: &BTreeMap<ExprId, u16>,
@@ -807,7 +807,7 @@ mod tests {
         BwdEvent, BwdFingerprint, BwdServeKind, BwdServedFrom, checked_add_gather_cells,
         retain_physical_traffic_events,
     };
-    use cs::gkr_compiler::dag_ir::ExprId;
+    use gkr_eval_ir::ExprId;
 
     #[test]
     fn nondomain_gather_accumulation_reports_overflow() {

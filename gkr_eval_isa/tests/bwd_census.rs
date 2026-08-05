@@ -28,18 +28,18 @@ mod common;
 use std::collections::HashMap;
 
 use common::{load_fixture, schedule_stem};
-use cs::gkr_compiler::dag_ir::{bwd_roots, bwd_traffic_floor, lower_dag, validate, BwdRegime};
+use gkr_eval_ir::{claim_roots, lower_dag, validate};
 use gkr_eval_isa::bwd::compile::{
-    compile_distilled, compile_distilled_legacy_only, compile_distilled_streamed,
-    BwdCompiledLayer,
+    BwdCompiledLayer, compile_distilled, compile_distilled_legacy_only, compile_distilled_streamed,
 };
 use gkr_eval_isa::bwd::cost::{geometric_total, round_cost};
-use gkr_eval_isa::bwd::distill::{distill, DistilledLayer};
-use gkr_eval_isa::bwd::search::{search_bwd_layer, BwdSearchConfig};
+use gkr_eval_isa::bwd::distill::{DistilledLayer, distill};
+use gkr_eval_isa::bwd::search::{BwdSearchConfig, search_bwd_layer};
 use gkr_eval_isa::bwd::source::MaterializationPolicy;
 use gkr_eval_isa::fwd::compile::build_cross_layer_field_map;
 use gkr_eval_isa::fwd::encode::encode;
 use gkr_eval_isa::fwd::error::CompileError;
+use gkr_eval_isa::{BwdRegime, bwd_traffic_floor};
 
 /// The 12 pinned Global-Constraints fixtures (same list as
 /// `bwd_distill_fixtures.rs` / `fwd_vm_desc_census.rs`).
@@ -179,12 +179,16 @@ fn bwd_census() {
         let cross = build_cross_layer_field_map(&dag);
 
         for (li, layer) in dag.layers.iter().enumerate() {
-            if bwd_roots(layer).is_empty() {
+            if claim_roots(layer).is_empty() {
                 continue; // nothing to prove backward
             }
             for regime in [BwdRegime::R0, BwdRegime::Ext] {
                 let d = distill(layer, regime, &cross, None);
-                let skip_mark = if d.skipped_decoder { " [SKIPPED-DECODER]" } else { "" };
+                let skip_mark = if d.skipped_decoder {
+                    " [SKIPPED-DECODER]"
+                } else {
+                    ""
+                };
                 // Traffic floor (role-neutral DRAM cells: distinct Read leaves,
                 // Ext=4/leaf). Distinct from the PLACEMENT floor (smem lanes)
                 // that `BudgetBelowFloor` reports.
@@ -254,10 +258,21 @@ fn bwd_census() {
                 // on budget. Compare the representative's round-1 AlwaysMat cost
                 // against the largest feasible budget's.
                 if let Ok(hi) = try_compile(&d, *BUDGETS.last().unwrap()) {
-                    let a = round_cost(&rep, MaterializationPolicy::AlwaysMaterialize, 1, &d.cross_fields);
-                    let b = round_cost(&hi, MaterializationPolicy::AlwaysMaterialize, 1, &d.cross_fields);
+                    let a = round_cost(
+                        &rep,
+                        MaterializationPolicy::AlwaysMaterialize,
+                        1,
+                        &d.cross_fields,
+                    );
+                    let b = round_cost(
+                        &hi,
+                        MaterializationPolicy::AlwaysMaterialize,
+                        1,
+                        &d.cross_fields,
+                    );
                     assert_eq!(
-                        a, b,
+                        a,
+                        b,
                         "[{rk}] no-decisions traffic must be budget-invariant (b{rep_budget} vs b{})",
                         BUDGETS.last().unwrap()
                     );
@@ -301,27 +316,43 @@ fn bwd_census() {
 
     // ── Emit ──────────────────────────────────────────────────────────────────
     println!("# Backward-VM Census\n");
-    println!("Budgets: {BUDGETS:?} (bf lanes; Ext buckets = lanes/4). Rounds 1..={MAX_ROUND} + geometric total over rounds 0..={MAX_ROUND} (weight 2^-r).\n");
+    println!(
+        "Budgets: {BUDGETS:?} (bf lanes; Ext buckets = lanes/4). Rounds 1..={MAX_ROUND} + geometric total over rounds 0..={MAX_ROUND} (weight 2^-r).\n"
+    );
 
     println!("## Table A — Structural (per circuit × layer × regime × budget × variant)\n");
-    println!("Two rows per budget: `legacy` = `compile_distilled_legacy_only` (`stream_reductions = false`); `streamed` = `compile_distilled_streamed(.., true)`. `<- selected` marks the row `compile_distilled` (legacy-first, falls back to streamed on `BudgetBelowFloor`) actually returns at that budget. `max_live` is smem occupancy in lanes (Ext buckets = lanes/4); INFEASIBLE rows give the PLACEMENT floor (min feasible lanes). `realized` / `traffic_floor` are role-neutral DRAM cells (uncached, budget-invariant); `real÷floor` is the uncached per-leaf re-read multiplicity.\n");
-    println!("| layer | budget | variant | max_live (Ext: buckets) | n_instr | enc_lanes | realized | traffic_floor | real÷floor | cell_stores |");
+    println!(
+        "Two rows per budget: `legacy` = `compile_distilled_legacy_only` (`stream_reductions = false`); `streamed` = `compile_distilled_streamed(.., true)`. `<- selected` marks the row `compile_distilled` (legacy-first, falls back to streamed on `BudgetBelowFloor`) actually returns at that budget. `max_live` is smem occupancy in lanes (Ext buckets = lanes/4); INFEASIBLE rows give the PLACEMENT floor (min feasible lanes). `realized` / `traffic_floor` are role-neutral DRAM cells (uncached, budget-invariant); `real÷floor` is the uncached per-leaf re-read multiplicity.\n"
+    );
+    println!(
+        "| layer | budget | variant | max_live (Ext: buckets) | n_instr | enc_lanes | realized | traffic_floor | real÷floor | cell_stores |"
+    );
     println!("|---|---|---|---|---|---|---|---|---|---|");
     for r in &structural {
         println!("{r}");
     }
 
-    println!("\n## Table B — Traffic (per circuit × layer × regime × policy; read bytes T0+T2 per row)\n");
-    println!("no-decisions traffic is budget-invariant (guarded); tallied at the smallest feasible budget shown.\n");
-    println!("| layer @budget | policy | r1 | r2 | r3 | r4 | fold-store r1/r2/r3/r4 | geo-total B |");
+    println!(
+        "\n## Table B — Traffic (per circuit × layer × regime × policy; read bytes T0+T2 per row)\n"
+    );
+    println!(
+        "no-decisions traffic is budget-invariant (guarded); tallied at the smallest feasible budget shown.\n"
+    );
+    println!(
+        "| layer @budget | policy | r1 | r2 | r3 | r4 | fold-store r1/r2/r3/r4 | geo-total B |"
+    );
     println!("|---|---|---|---|---|---|---|---|");
     for r in &traffic {
         println!("{r}");
     }
 
     println!("\n## Table C — L0 search on/off (search runs for L0 layers only)\n");
-    println!("Search budget = smallest placement-feasible smem budget (lanes). Traffic is role-neutral DRAM cells (global + fold).\n");
-    println!("| L0 layer | search budget | traffic_floor | baseline traffic | searched traffic | Δ (base−search) | winner |");
+    println!(
+        "Search budget = smallest placement-feasible smem budget (lanes). Traffic is role-neutral DRAM cells (global + fold).\n"
+    );
+    println!(
+        "| L0 layer | search budget | traffic_floor | baseline traffic | searched traffic | Δ (base−search) | winner |"
+    );
     println!("|---|---|---|---|---|---|---|");
     for r in &search_rows {
         println!("{r}");
@@ -335,9 +366,14 @@ fn bwd_census() {
         println!("- b{b}: {} Ext layers", bucket_hist[&b]);
     }
     if !ext_floor_over_64.is_empty() {
-        println!("\nExt placement floors above b64 (need >16 buckets — sequential-accumulation follow-up):");
+        println!(
+            "\nExt placement floors above b64 (need >16 buckets — sequential-accumulation follow-up):"
+        );
         for (rk, lanes) in &ext_floor_over_64 {
-            println!("- {rk}: placement floor {lanes} lanes ({} buckets)", lanes / 4);
+            println!(
+                "- {rk}: placement floor {lanes} lanes ({} buckets)",
+                lanes / 4
+            );
         }
     }
 

@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
-use cs::gkr_compiler::dag_ir::{DagLayer, Expr, ExprId, FieldKind, SourceKind, source_field};
+use gkr_eval_ir::{DagLayer, Expr, ExprId, FieldKind, SourceKind, source_field};
 
 use crate::bwd::construct::construct_fragment_order;
 use crate::bwd::distill::{
@@ -483,7 +483,7 @@ fn scheduled_fragment_key(
 
 fn stable_site_for_fingerprint(
     d: &DistilledLayer,
-    stable_sites: &BTreeMap<StableBwdSiteKey, cs::gkr_compiler::dag_ir::SiteKey>,
+    stable_sites: &BTreeMap<StableBwdSiteKey, crate::schedule::SiteKey>,
     fragment_index: usize,
     fragment: &StableFragmentKey,
     fp: &BwdFingerprint,
@@ -806,9 +806,9 @@ fn classify_problem(problem: &BackwardSearchProblem) -> ProblemClassification {
 mod tests {
     use std::collections::{BTreeMap, BTreeSet, HashMap};
 
-    use cs::gkr_compiler::dag_ir::{
-        BatchingOrder, BwdRegime, ClaimInfo, ReadPlace, Root, RootGroup, RootId, RootOrigin,
-        RootSlot, SourceId, SourceInfo, VirtualSetupKind,
+    use gkr_eval_ir::{
+        BatchingOrder, ClaimInfo, ReadPlace, Root, RootGroup, RootId, RootOrigin, RootSlot,
+        SourceId, SourceInfo, VirtualSetupKind,
     };
 
     use crate::bwd::distill::distill;
@@ -838,7 +838,7 @@ mod tests {
     #[test]
     fn only_real_read_leaves_enter_the_paging_domain() {
         let canonical = synthetic_read_filter_problem_layer();
-        let d = distill(&canonical, BwdRegime::Ext, &HashMap::new(), None);
+        let d = distill(&canonical, crate::BwdRegime::Ext, &HashMap::new(), None);
         let stable_values = stable_distilled_site_domain(&d)
             .into_keys()
             .map(|site| site.value)
@@ -938,7 +938,7 @@ mod tests {
             roots: vec![claim_root(ExprId(3), 0), claim_root(ExprId(4), 1)],
             resolutions: BTreeMap::new(),
         };
-        let d = distill(&layer, BwdRegime::Ext, &HashMap::new(), None);
+        let d = distill(&layer, crate::BwdRegime::Ext, &HashMap::new(), None);
         (layer, d)
     }
 

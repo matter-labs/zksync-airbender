@@ -1,7 +1,7 @@
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, HashMap};
 
-use cs::gkr_compiler::dag_ir::{
+use gkr_eval_ir::{
     DagLayer, Expr, ExprId, FieldKind, RootGroup, RootId, RootOrigin, RootSlot, SinkInfo, SinkKind,
     SourceKind,
 };

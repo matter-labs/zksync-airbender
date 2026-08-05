@@ -22,7 +22,7 @@
 mod common;
 use common::load_fixture;
 
-use cs::gkr_compiler::dag_ir::{lower_dag, validate};
+use gkr_eval_ir::{lower_dag, validate};
 use gkr_eval_isa::fwd::compile::build_cross_layer_field_map;
 use gkr_eval_isa::schedule_search::scorer::LayerCtx;
 use gkr_eval_isa::schedule_search::search::{search_layer, SearchConfig};

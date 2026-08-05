@@ -9,7 +9,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Condvar, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
-use cs::gkr_compiler::dag_ir::{BwdRegime, DagLayer, ReadPlace, VirtualSetupKind};
+use gkr_eval_ir::{DagLayer, ReadPlace, VirtualSetupKind};
+use gkr_eval_isa::BwdRegime;
 use gkr_eval_isa::bwd::distill::{DistilledLayer, distill};
 use gkr_eval_isa::bwd::source::{BwdSpecial, BwdSpecialTable, OriginLeaf};
 use gkr_eval_isa::eval_plan::backward_search::problem::build_backward_search_problem;
@@ -101,7 +102,7 @@ fn captured_real_plan() -> &'static CapturedRealPlan {
     CAPTURED.get_or_init(|| {
         let fixture = common::FIXTURES[0];
         let source = common::load_fixture(fixture);
-        let dag = cs::gkr_compiler::dag_ir::lower_dag(&source).unwrap();
+        let dag = gkr_eval_ir::lower_dag(&source).unwrap();
         let (layer_index, layer, cross) = common::layers_with_bwd_roots(fixture)
             .next()
             .expect("fixture has a backward-bearing layer");
@@ -302,7 +303,7 @@ fn replay_real_plan(
 > {
     let fixture = common::FIXTURES[0];
     let source = common::load_fixture(fixture);
-    let dag = cs::gkr_compiler::dag_ir::lower_dag(&source).unwrap();
+    let dag = gkr_eval_ir::lower_dag(&source).unwrap();
     let (layer_index, layer, cross) = common::layers_with_bwd_roots(fixture)
         .next()
         .expect("fixture has a backward-bearing layer");
@@ -850,7 +851,7 @@ fn plan4_r0_exact_solver_feasibility_2_to_16() {
     let mut solved = 0usize;
     for fixture in R0_FEASIBILITY_FIXTURES {
         let artifact = common::load_fixture(fixture);
-        let dag = cs::gkr_compiler::dag_ir::lower_dag(&artifact).unwrap();
+        let dag = gkr_eval_ir::lower_dag(&artifact).unwrap();
         let trace_len = dag.globals.trace_len;
         let (layer_index, layer, cross) = common::layers_with_bwd_roots(fixture)
             .find(|(layer, _, _)| *layer == 0)
@@ -875,7 +876,7 @@ fn plan4_r0_exact_solver_feasibility_2_to_16() {
 fn production_order_searches_a_representative_real_layer() {
     let fixture = common::FIXTURES[0];
     let artifact = common::load_fixture(fixture);
-    let dag = cs::gkr_compiler::dag_ir::lower_dag(&artifact).unwrap();
+    let dag = gkr_eval_ir::lower_dag(&artifact).unwrap();
     let trace_len = dag.globals.trace_len;
     let (layer_index, layer, cross) = common::layers_with_bwd_roots(fixture)
         .next()
@@ -908,7 +909,7 @@ fn production_order_searches_a_representative_real_layer() {
 fn generation_chain_is_ascending_and_reports_each_completed_budget() {
     let fixture = common::FIXTURES[0];
     let source = common::load_fixture(fixture);
-    let dag = cs::gkr_compiler::dag_ir::lower_dag(&source).unwrap();
+    let dag = gkr_eval_ir::lower_dag(&source).unwrap();
     let (layer_index, layer, cross) = common::layers_with_bwd_roots(fixture).next().unwrap();
     let distilled = distill(&layer, BwdRegime::R0, &cross, None);
     let identity = ProductionSearchIdentity {
@@ -2653,7 +2654,7 @@ fn build_plan4_chain_inputs(fixtures: &[&'static str]) -> Vec<Plan4ChainInput> {
     let mut inputs = Vec::new();
     for &fixture in fixtures {
         let source = common::load_fixture(fixture);
-        let trace_len = cs::gkr_compiler::dag_ir::lower_dag(&source)
+        let trace_len = gkr_eval_ir::lower_dag(&source)
             .expect("lower Plan 4 fixture")
             .globals
             .trace_len;

@@ -33,24 +33,22 @@ use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 use common::load_layer;
-use cs::gkr_compiler::dag_ir::{
-    join, source_field, BwdRegime, DagLayer, Expr, ExprId, FieldKind, RootId, SiteConsumer,
-    SiteKey, SourceKind,
-};
-use gkr_eval_isa::bwd::compile::{compile_distilled, spine_terms, BwdCompiledLayer};
+use gkr_eval_ir::{DagLayer, Expr, ExprId, FieldKind, RootId, SourceKind, join, source_field};
+use gkr_eval_isa::bwd::compile::{BwdCompiledLayer, compile_distilled, spine_terms};
 use gkr_eval_isa::bwd::cost::{
     fold_read_bytes, geometric_total, origin_width_cells, r0_read_bytes, read_fold_state,
 };
 use gkr_eval_isa::bwd::distill::{
-    distill, distilled_site_domain, stable_distilled_site_domain, DistilledLayer,
+    DistilledLayer, distill, distilled_site_domain, stable_distilled_site_domain,
 };
 use gkr_eval_isa::bwd::interp::Role;
 use gkr_eval_isa::bwd::search::{
-    search_bwd_layer, BwdOrderMutation, BwdSearchConfig, BwdSeedStrategy,
+    BwdOrderMutation, BwdSearchConfig, BwdSeedStrategy, search_bwd_layer,
 };
 use gkr_eval_isa::bwd::source::{BwdSpecial, MaterializationPolicy};
 use gkr_eval_isa::fwd::compile::SiteDecisions;
 use gkr_eval_isa::fwd::error::CompileError;
+use gkr_eval_isa::{BwdRegime, SiteConsumer, SiteKey};
 use rayon::prelude::*;
 
 const HEAVY: &[&str] = &[
@@ -864,7 +862,9 @@ fn structured_seed_convergence_curves_heavy_l0() {
 
     println!("\n# Multi-seed convergence curves (heavy L0 Ext, release)");
     println!("# seeds=0..{} eval_budgets={eval_budgets:?}", seeds - 1);
-    println!("| circuit | evals | uncached | legacy/per-key median | structured/per-key median | structured/edge median | edge median delta | edge vs per-key W/T/L |");
+    println!(
+        "| circuit | evals | uncached | legacy/per-key median | structured/per-key median | structured/edge median | edge median delta | edge vs per-key W/T/L |"
+    );
     println!("|---|---:|---:|---:|---:|---:|---:|---:|");
     for (circuit_index, circuit) in circuits.iter().enumerate() {
         for &evals in &eval_budgets {
@@ -914,7 +914,9 @@ fn structured_seed_convergence_curves_heavy_l0() {
     }
 
     println!("\n## Paired raw traffic");
-    println!("| circuit | evals | seed | legacy/per-key | structured/per-key | structured/edge | edge delta |");
+    println!(
+        "| circuit | evals | seed | legacy/per-key | structured/per-key | structured/edge | edge delta |"
+    );
     println!("|---|---:|---:|---:|---:|---:|---:|");
     for point in points
         .iter()
@@ -1082,7 +1084,9 @@ fn proxy_exact_score_correlation_l0() {
             "## {stem}: floor={floor} budget={budget} feasible={} infeasible={infeasible}",
             rows.len()
         );
-        println!("| seed | proxy cells | program lanes | geo AlwaysMat B | geo Lazy<=2 B | geo Lazy<=4 B |");
+        println!(
+            "| seed | proxy cells | program lanes | geo AlwaysMat B | geo Lazy<=2 B | geo Lazy<=4 B |"
+        );
         println!("|---:|---:|---:|---:|---:|---:|");
         for row in &rows {
             println!(

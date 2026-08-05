@@ -1,9 +1,9 @@
-use std::collections::HashMap;
-use cs::gkr_compiler::dag_ir::{
-    DagLayer, Expr, ExprId, FieldKind, ReadPlace, Root, SinkInfo, SinkKind, SourceId,
-    SourceInfo, SourceKind, BatchingOrder,
+use gkr_eval_ir::{
+    BatchingOrder, DagLayer, Expr, ExprId, FieldKind, ReadPlace, Root, SinkInfo, SinkKind,
+    SourceId, SourceInfo, SourceKind,
 };
 use std::collections::BTreeMap;
+use std::collections::HashMap;
 
 /// Promoted to production in Task 5 (`gkr_eval_isa::schedule_search::floor`);
 /// this thin re-export keeps the test-side call sites alive until Task 7
@@ -27,12 +27,15 @@ pub use gkr_eval_isa::schedule_search::floor::dag_traffic_floor;
 // expected metric (floor == 5).
 #[cfg(test)]
 pub fn tests_support_two_reads_one_prior() -> (DagLayer, HashMap<ReadPlace, FieldKind>) {
-    use cs::gkr_compiler::dag_ir::{ClaimInfo, RootGroup, RootOrigin, RootSlot};
+    use gkr_eval_ir::{ClaimInfo, RootGroup, RootOrigin, RootSlot};
     // --- sources ---
     // src 0: ext cross-layer read A
     let src_ext_a = SourceInfo {
         kind: SourceKind::Read {
-            place: ReadPlace::LayerOutput { layer: 1, offset: 0 },
+            place: ReadPlace::LayerOutput {
+                layer: 1,
+                offset: 0,
+            },
         },
     };
     // src 1: base witness read B
@@ -56,7 +59,10 @@ pub fn tests_support_two_reads_one_prior() -> (DagLayer, HashMap<ReadPlace, Fiel
         roots: vec![Root {
             expr: ExprId(2),
             materialize: Some(SinkInfo {
-                kind: SinkKind::Inner { layer: 0, offset: 0 },
+                kind: SinkKind::Inner {
+                    layer: 0,
+                    offset: 0,
+                },
                 field: FieldKind::Ext, // top expr includes Ext leaf → Ext sink
             }),
             claim: Some(ClaimInfo {
@@ -72,7 +78,13 @@ pub fn tests_support_two_reads_one_prior() -> (DagLayer, HashMap<ReadPlace, Fiel
     };
 
     let mut cross: HashMap<ReadPlace, FieldKind> = HashMap::new();
-    cross.insert(ReadPlace::LayerOutput { layer: 1, offset: 0 }, FieldKind::Ext);
+    cross.insert(
+        ReadPlace::LayerOutput {
+            layer: 1,
+            offset: 0,
+        },
+        FieldKind::Ext,
+    );
 
     (layer, cross)
 }
@@ -91,6 +103,9 @@ mod tests {
     #[test]
     fn floor_is_pure_function_of_dag() {
         let (layer, cross) = tests_support_two_reads_one_prior();
-        assert_eq!(dag_traffic_floor(&layer, &cross), dag_traffic_floor(&layer, &cross));
+        assert_eq!(
+            dag_traffic_floor(&layer, &cross),
+            dag_traffic_floor(&layer, &cross)
+        );
     }
 }

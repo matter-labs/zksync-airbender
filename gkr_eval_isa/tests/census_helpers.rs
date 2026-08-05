@@ -6,12 +6,12 @@
 
 use std::path::PathBuf;
 
-use cs::gkr_compiler::dag_ir::{lower_dag, DagCircuit};
 use cs::gkr_compiler::GKRCircuitArtifact;
 use field::baby_bear::base::BabyBearField;
+use gkr_eval_ir::{DagCircuit, lower_dag};
 use gkr_eval_isa::fwd::compile::analyze::{analyze_layer, materialize_descriptors};
 use gkr_eval_isa::fwd::compile::build_cross_layer_field_map;
-use gkr_eval_isa::fwd::context::{build_forward_actions, DagForwardContext};
+use gkr_eval_isa::fwd::context::{DagForwardContext, build_forward_actions};
 use gkr_eval_isa::fwd::source::SpecialStrategy;
 
 // ── Fixture directory (verbatim from fwd_parity.rs) ────────────────────────

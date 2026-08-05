@@ -1,14 +1,14 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use cs::gkr_compiler::dag_ir::{
+use gkr_eval_ir::{
     DagLayer, Expr, ExprId, FieldKind, ReadPlace, RootId, SinkInfo, SinkKind, SourceKind,
 };
 
 use crate::bwd::batch::{
-    pack_batch_dst, unpack_batch_dst, BATCH_COEFFICIENT_MAX, BATCH_COEFFICIENT_ONE,
+    BATCH_COEFFICIENT_MAX, BATCH_COEFFICIENT_ONE, pack_batch_dst, unpack_batch_dst,
 };
 use crate::bwd::source::{BwdSpecial, BwdSpecialTable, OriginLeaf};
-use crate::fwd::binding::{bind_final_sources, BackingKey, SourceMarkerMode};
+use crate::fwd::binding::{BackingKey, SourceMarkerMode, bind_final_sources};
 use crate::fwd::compile::{copy_src_read_place, read_place_operand_field};
 use crate::fwd::context::{
     CompileTrace, CompiledLayer, DagForwardContext, ForwardAction, OutputCell, RootOutput,
@@ -16,17 +16,16 @@ use crate::fwd::context::{
 use crate::fwd::encode::{decode, encode, encoded_lane_count};
 use crate::fwd::error::{BindError, DecodeError, EncodeError};
 use crate::fwd::isa::{
-    DstLine, Instr, LdcSub, MovDir, OperandField, OperandLine, Program, Sign, Special, MAX_CELL,
-    MAX_DESC,
+    DstLine, Instr, LdcSub, MAX_CELL, MAX_DESC, MovDir, OperandField, OperandLine, Program, Sign,
+    Special,
 };
-use crate::fwd::source::{lower_resolution, SpecialDescriptor, SpecialStrategy};
+use crate::fwd::source::{SpecialDescriptor, SpecialStrategy, lower_resolution};
 use crate::fwd::stats::{CompileStats, OP_ADD, OP_FMA, OP_MOV, OP_MUL};
 use crate::fwd::{disasm::disassemble_layer, error::CompileError, validate::validate_compiled};
 
 use super::{
-    field_lanes, structural_fingerprints, unit_sign_expr, CacheStoreFrom, IdentityError,
-    MaterializeFrom, Operand, PackedEvalOp, PackedEvalPlan, RootKey, TempId, ValueFingerprint,
-    ValueRef,
+    CacheStoreFrom, IdentityError, MaterializeFrom, Operand, PackedEvalOp, PackedEvalPlan, RootKey,
+    TempId, ValueFingerprint, ValueRef, field_lanes, structural_fingerprints, unit_sign_expr,
 };
 
 const BABYBEAR_NEG_ONE: u32 = 0x7800_0001 - 1;
@@ -312,7 +311,7 @@ pub fn bind_packed_plan_with_actions(
     concrete.compiled.ctx.cross_layer_fields = cross_layer_fields.clone();
 
     let mut ordered_actions = actions.iter().collect::<Vec<_>>();
-    ordered_actions.sort_by_key(|entry| entry.0 .0);
+    ordered_actions.sort_by_key(|entry| entry.0.0);
     for (&root, action) in ordered_actions {
         match action {
             ForwardAction::Compute => {}
@@ -1801,7 +1800,7 @@ struct Emitter<'a> {
     root_outputs: Vec<(RootId, RootOutput)>,
     terminal: Option<PendingTerminal>,
     batch_sinks: usize,
-    desc_by_expr: HashMap<cs::gkr_compiler::dag_ir::ExprId, u16>,
+    desc_by_expr: HashMap<gkr_eval_ir::ExprId, u16>,
     source_mode: ConcreteSourceMode<'a>,
 }
 
@@ -2201,7 +2200,7 @@ impl Emitter<'_> {
 
     fn intern_descriptor(
         &mut self,
-        expr: cs::gkr_compiler::dag_ir::ExprId,
+        expr: gkr_eval_ir::ExprId,
         descriptor: SpecialDescriptor,
     ) -> Result<u16, ConcreteBindError> {
         if let Some(&desc) = self.desc_by_expr.get(&expr) {
@@ -2426,26 +2425,26 @@ fn tally_operand(
 mod tests {
     use super::*;
     use crate::bwd::batch::{
-        pack_batch_dst, unpack_batch_dst, BATCH_COEFFICIENT_MAX, BATCH_COEFFICIENT_ONE,
+        BATCH_COEFFICIENT_MAX, BATCH_COEFFICIENT_ONE, pack_batch_dst, unpack_batch_dst,
     };
     use crate::bwd::source::BwdSpecialTable;
     use crate::eval_plan::{
-        elaborate_uncached, pack_plan, structural_fingerprints, CacheStoreFrom, EvalOp, PackConfig,
-        PackedStats, ValueRef,
+        CacheStoreFrom, EvalOp, PackConfig, PackedStats, ValueRef, elaborate_uncached, pack_plan,
+        structural_fingerprints,
     };
     use crate::fwd::interp::interpret_program_row_acc;
     use cs::definitions::GKRAddress;
-    use cs::gkr_compiler::dag_ir::{
-        eval_layer_expr, BatchingOrder, Bf, ChallengeRef, ChallengeResolver, DagLayer, Expr,
-        ExprId, FieldKind, LookupResolver, LookupValueKind, ReadPlace, ReadResolver, Resolvers,
-        Root, RootId, SourceId, SourceInfo, SourceKind, VirtualSetupKind, VirtualSetupResolver,
-    };
     use field::Field;
+    use gkr_eval_ir::{
+        BatchingOrder, Bf, ChallengeRef, ChallengeResolver, DagLayer, Expr, ExprId, FieldKind,
+        LookupResolver, LookupValueKind, ReadPlace, ReadResolver, Resolvers, Root, RootId,
+        SourceId, SourceInfo, SourceKind, VirtualSetupKind, VirtualSetupResolver, eval_layer_expr,
+    };
 
     struct UnusedResolver;
 
     impl ReadResolver for UnusedResolver {
-        fn read(&self, _place: &ReadPlace, _row: usize) -> cs::gkr_compiler::dag_ir::Ext {
+        fn read(&self, _place: &ReadPlace, _row: usize) -> gkr_eval_ir::Ext {
             unreachable!("constant-only test layer does not read")
         }
     }
@@ -2455,7 +2454,7 @@ mod tests {
             &self,
             _kind: &LookupValueKind,
             _set_index: usize,
-            _evaluated_query: cs::gkr_compiler::dag_ir::Ext,
+            _evaluated_query: gkr_eval_ir::Ext,
             _row: usize,
         ) -> Bf {
             unreachable!("constant-only test layer does not look up")
@@ -2469,7 +2468,7 @@ mod tests {
     }
 
     impl ChallengeResolver for UnusedResolver {
-        fn challenge(&self, _reference: &ChallengeRef) -> cs::gkr_compiler::dag_ir::Ext {
+        fn challenge(&self, _reference: &ChallengeRef) -> gkr_eval_ir::Ext {
             unreachable!("constant-only test layer has no derived_e4")
         }
     }

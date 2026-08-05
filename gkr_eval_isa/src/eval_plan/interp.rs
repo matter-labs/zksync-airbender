@@ -2,8 +2,8 @@
 
 use std::collections::HashMap;
 
-use cs::gkr_compiler::dag_ir::{eval_layer_expr, DagLayer, Ext, Resolvers, RootId, SinkInfo};
 use field::Field;
+use gkr_eval_ir::{DagLayer, Ext, Resolvers, RootId, SinkInfo, eval_layer_expr};
 
 use crate::bwd::distill::DistilledLayer;
 use crate::bwd::source::{BwdSpecial, BwdSpecialTable};

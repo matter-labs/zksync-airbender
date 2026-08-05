@@ -15,8 +15,8 @@ mod common;
 
 use std::collections::HashMap;
 
-use common::{layers_with_bwd_roots, load_layer, FIXTURES};
-use cs::gkr_compiler::dag_ir::BwdRegime;
+use common::{FIXTURES, layers_with_bwd_roots, load_layer};
+use gkr_eval_isa::BwdRegime;
 use gkr_eval_isa::bwd::compile::compile_distilled_fragments;
 use gkr_eval_isa::bwd::construct::construct_fragment_order;
 use gkr_eval_isa::bwd::distill::{distill, stable_distilled_site_domain};
@@ -95,7 +95,10 @@ fn fragment_stable_views_are_unit_permutation_invariant() {
         }
     }
 
-    assert!(layers_checked > 0, "no distillable layers — fixture enumeration broke");
+    assert!(
+        layers_checked > 0,
+        "no distillable layers — fixture enumeration broke"
+    );
     assert!(
         permuted_layers > 0,
         "no layer had >= 2 units — the reversed permutation never exercised a reorder"
@@ -177,7 +180,10 @@ fn fragment_order_is_permutation_all_fixtures() {
             checked += 1;
         }
     }
-    assert!(checked > 0, "no distillable bwd layer — fixture enumeration broke");
+    assert!(
+        checked > 0,
+        "no distillable bwd layer — fixture enumeration broke"
+    );
     println!("fragment_order_is_permutation_all_fixtures: {checked} layer instances held");
 }
 
@@ -191,7 +197,10 @@ fn fragment_order_is_deterministic() {
 
     let a = construct_fragment_order(&layer, &d, &stable_domain);
     let b = construct_fragment_order(&layer, &d, &stable_domain);
-    assert_eq!(a, b, "construct_fragment_order must be deterministic on the same distill");
+    assert_eq!(
+        a, b,
+        "construct_fragment_order must be deterministic on the same distill"
+    );
 }
 
 /// (7.1c) Non-vacuity: on bigint L0 Ext there IS fragment-level reuse to

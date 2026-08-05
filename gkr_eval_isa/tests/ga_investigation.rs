@@ -32,15 +32,15 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
-use cs::gkr_compiler::dag_ir::{lower_dag, validate, DagCircuit, FieldKind, ReadPlace};
 use cs::gkr_compiler::GKRCircuitArtifact;
 use field::baby_bear::base::BabyBearField;
+use gkr_eval_ir::{DagCircuit, FieldKind, ReadPlace, lower_dag, validate};
 
 use gkr_eval_isa::fwd::compile::{build_cross_layer_field_map, load_committed_schedule};
-use gkr_eval_isa::schedule_search::scorer::{genome_from_schedule, LayerCtx};
+use gkr_eval_isa::schedule_search::scorer::{LayerCtx, genome_from_schedule};
 use gkr_eval_isa::schedule_search::search::{
-    optimize_from_population, optimize_instrumented, seeded_population, CrossoverKind, GaAblation,
-    GaRun, GenStat, SearchConfig,
+    CrossoverKind, GaAblation, GaRun, GenStat, SearchConfig, optimize_from_population,
+    optimize_instrumented, seeded_population,
 };
 
 use common::{compiled_circuit_dir, load_fixture, schedule_stem};
@@ -65,7 +65,11 @@ fn testbed_fixture(name: &str) -> &'static str {
     }
 }
 
-type Loaded = (DagCircuit, GKRCircuitArtifact<BabyBearField>, HashMap<ReadPlace, FieldKind>);
+type Loaded = (
+    DagCircuit,
+    GKRCircuitArtifact<BabyBearField>,
+    HashMap<ReadPlace, FieldKind>,
+);
 
 fn load_testbed(name: &str) -> Loaded {
     let fixture = testbed_fixture(name);
@@ -77,7 +81,7 @@ fn load_testbed(name: &str) -> Loaded {
 }
 
 /// Layer-0 committed schedule for `testbed` (the Phase-1 incumbent).
-fn committed_layer0(testbed: &str) -> cs::gkr_compiler::dag_ir::LayerSchedule {
+fn committed_layer0(testbed: &str) -> gkr_eval_isa::LayerSchedule {
     let stem = schedule_stem(testbed_fixture(testbed));
     let path = compiled_circuit_dir().join(format!("{stem}_schedule_b16_gkr.json"));
     let sched = load_committed_schedule(&path)
@@ -96,8 +100,19 @@ fn committed_layer0(testbed: &str) -> cs::gkr_compiler::dag_ir::LayerSchedule {
 #[test]
 fn optimize_instrumented_default_matches_production() {
     let (dag, artifact, cross) = load_testbed("add_sub");
-    let ctx = LayerCtx::new(&dag.layers[0], &artifact.layers[0], &artifact, &cross, BUDGET);
-    let cfg = SearchConfig { pop: 16, evals: 600, seed: 0, ..SearchConfig::default() };
+    let ctx = LayerCtx::new(
+        &dag.layers[0],
+        &artifact.layers[0],
+        &artifact,
+        &cross,
+        BUDGET,
+    );
+    let cfg = SearchConfig {
+        pop: 16,
+        evals: 600,
+        seed: 0,
+        ..SearchConfig::default()
+    };
 
     let prod = optimize_from_population(&ctx, seeded_population(&ctx, cfg.pop, cfg.seed), &cfg);
     let instr = optimize_instrumented(
@@ -116,12 +131,22 @@ fn optimize_instrumented_default_matches_production() {
         prod.best_genome, instr.result.best_genome,
         "default ablation + telemetry must be behavior-inert (best_genome drift)"
     );
-    assert_eq!(prod.evals, instr.result.evals, "eval accounting must be unchanged by telemetry");
-    assert!(instr.telemetry.is_some(), "collect=true must produce telemetry");
+    assert_eq!(
+        prod.evals, instr.result.evals,
+        "eval accounting must be unchanged by telemetry"
+    );
+    assert!(
+        instr.telemetry.is_some(),
+        "collect=true must produce telemetry"
+    );
     let tel = instr.telemetry.unwrap();
     assert_eq!(
         tel.final_best,
-        if prod.best_score.infeasible { usize::MAX } else { prod.best_score.dram_traffic },
+        if prod.best_score.infeasible {
+            usize::MAX
+        } else {
+            prod.best_score.dram_traffic
+        },
         "telemetry.final_best must equal the production result"
     );
 }
@@ -196,15 +221,30 @@ fn crossover_kind_str(k: CrossoverKind) -> &'static str {
 /// Aggregate one collected run into a summary row. Operator productivity is
 /// `improved / total_offspring` across all generations (a per-offspring
 /// productivity rate — a consistent denominator for the three operators).
-fn summarize(experiment: &str, tag: &str, run: &GaRun, cfg: &SearchConfig, wall: Duration) -> SummaryRow {
-    let t = run.telemetry.as_ref().expect("collect=true run must carry telemetry");
+fn summarize(
+    experiment: &str,
+    tag: &str,
+    run: &GaRun,
+    cfg: &SearchConfig,
+    wall: Duration,
+) -> SummaryRow {
+    let t = run
+        .telemetry
+        .as_ref()
+        .expect("collect=true run must carry telemetry");
     let tot_off: usize = t.generations.iter().map(|g| g.offspring).sum();
     let tot_x: usize = t.generations.iter().map(|g| g.crossover_improved).sum();
     let tot_m: usize = t.generations.iter().map(|g| g.mutation_improved).sum();
     let tot_l: usize = t.generations.iter().map(|g| g.local_descent_improved).sum();
     let denom = tot_off.max(1) as f64;
     // Convergence generation = last generation where the global best improved.
-    let conv = t.generations.iter().filter(|g| g.new_best).map(|g| g.generation).max().unwrap_or(0);
+    let conv = t
+        .generations
+        .iter()
+        .filter(|g| g.new_best)
+        .map(|g| g.generation)
+        .max()
+        .unwrap_or(0);
     let first = t.generations.first();
     let last = t.generations.last();
     SummaryRow {
@@ -253,7 +293,10 @@ fn out_dir() -> PathBuf {
 }
 
 fn write_jsonl(dir: &std::path::Path, testbed: &str, experiment: &str, tag: &str, run: &GaRun) {
-    let t = run.telemetry.as_ref().expect("collect=true run must carry telemetry");
+    let t = run
+        .telemetry
+        .as_ref()
+        .expect("collect=true run must carry telemetry");
     let path = dir.join(format!("{testbed}_{experiment}_{tag}.jsonl"));
     let mut f = std::fs::File::create(&path).unwrap_or_else(|e| panic!("create {path:?}: {e}"));
     for stat in &t.generations {
@@ -338,16 +381,25 @@ fn env_budgets() -> Vec<usize> {
         .split(',')
         .map(|s| s.trim())
         .filter(|s| !s.is_empty())
-        .map(|s| s.parse::<usize>().unwrap_or_else(|_| panic!("GKR_GA_INV_BUDGETS: bad usize {s:?}")))
+        .map(|s| {
+            s.parse::<usize>()
+                .unwrap_or_else(|_| panic!("GKR_GA_INV_BUDGETS: bad usize {s:?}"))
+        })
         .collect();
-    assert!(!budgets.is_empty(), "GKR_GA_INV_BUDGETS must list at least one budget");
+    assert!(
+        !budgets.is_empty(),
+        "GKR_GA_INV_BUDGETS must list at least one budget"
+    );
     budgets
 }
 
 fn env_seed_count() -> usize {
     std::env::var("GKR_GA_INV_SEEDS")
         .ok()
-        .map(|s| s.parse::<usize>().unwrap_or_else(|_| panic!("GKR_GA_INV_SEEDS: bad usize {s:?}")))
+        .map(|s| {
+            s.parse::<usize>()
+                .unwrap_or_else(|_| panic!("GKR_GA_INV_SEEDS: bad usize {s:?}"))
+        })
         .unwrap_or(8)
         .max(1)
 }
@@ -358,9 +410,15 @@ fn env_local_elites() -> Vec<usize> {
         .split(',')
         .map(|s| s.trim())
         .filter(|s| !s.is_empty())
-        .map(|s| s.parse::<usize>().unwrap_or_else(|_| panic!("GKR_GA_INV_LOCAL_ELITE: bad usize {s:?}")))
+        .map(|s| {
+            s.parse::<usize>()
+                .unwrap_or_else(|_| panic!("GKR_GA_INV_LOCAL_ELITE: bad usize {s:?}"))
+        })
         .collect();
-    assert!(!vals.is_empty(), "GKR_GA_INV_LOCAL_ELITE must list at least one value");
+    assert!(
+        !vals.is_empty(),
+        "GKR_GA_INV_LOCAL_ELITE must list at least one value"
+    );
     vals
 }
 
@@ -379,7 +437,10 @@ fn env_base_xover() -> CrossoverKind {
 fn env_base_local_elite() -> usize {
     std::env::var("GKR_GA_INV_BASE_LOCAL_ELITE")
         .ok()
-        .map(|s| s.parse::<usize>().unwrap_or_else(|_| panic!("GKR_GA_INV_BASE_LOCAL_ELITE: bad usize {s:?}")))
+        .map(|s| {
+            s.parse::<usize>()
+                .unwrap_or_else(|_| panic!("GKR_GA_INV_BASE_LOCAL_ELITE: bad usize {s:?}"))
+        })
         .unwrap_or(SearchConfig::default().local_elite)
 }
 
@@ -418,22 +479,54 @@ fn ga_battery() {
     println!("budgets={budgets:?} seeds={seed_count} first_budget={first_budget}");
 
     let dir = out_dir();
-    let mut cx = Ctx { testbed: &testbed, dir: &dir, rows: Vec::new() };
+    let mut cx = Ctx {
+        testbed: &testbed,
+        dir: &dir,
+        rows: Vec::new(),
+    };
 
     // ── Experiment 1: operator ablations (first budget) ──────────────────────
     println!("\n-- exp1: operator ablations (evals={first_budget}) --");
     let ablations: &[(&str, GaAblation)] = &[
         ("full", GaAblation::default()),
-        ("no_crossover", GaAblation { crossover: false, ..GaAblation::default() }),
-        ("no_mutation", GaAblation { mutation: false, ..GaAblation::default() }),
-        ("no_local_descent", GaAblation { local_descent: false, ..GaAblation::default() }),
+        (
+            "no_crossover",
+            GaAblation {
+                crossover: false,
+                ..GaAblation::default()
+            },
+        ),
+        (
+            "no_mutation",
+            GaAblation {
+                mutation: false,
+                ..GaAblation::default()
+            },
+        ),
+        (
+            "no_local_descent",
+            GaAblation {
+                local_descent: false,
+                ..GaAblation::default()
+            },
+        ),
         (
             "random_search",
-            GaAblation { crossover: false, mutation: false, local_descent: false, random_search: true },
+            GaAblation {
+                crossover: false,
+                mutation: false,
+                local_descent: false,
+                random_search: true,
+            },
         ),
         (
             "ld_only",
-            GaAblation { crossover: false, mutation: false, local_descent: true, random_search: true },
+            GaAblation {
+                crossover: false,
+                mutation: false,
+                local_descent: true,
+                random_search: true,
+            },
         ),
     ];
     for (tag, ab) in ablations {
@@ -447,12 +540,26 @@ fn ga_battery() {
     let committed_traffic = committed.predicted_traffic;
     let scratch_best = {
         let seeds = seeded_population(&ctx, base.pop, base.seed);
-        cx.run(&ctx, &base, GaAblation::default(), seeds, "exp2_incumbent", "from_scratch")
+        cx.run(
+            &ctx,
+            &base,
+            GaAblation::default(),
+            seeds,
+            "exp2_incumbent",
+            "from_scratch",
+        )
     };
     let seeded_best = {
         let mut seeds = seeded_population(&ctx, base.pop, base.seed);
         seeds.insert(0, genome_from_schedule(&committed, &ctx));
-        cx.run(&ctx, &base, GaAblation::default(), seeds, "exp2_incumbent", "incumbent_seeded")
+        cx.run(
+            &ctx,
+            &base,
+            GaAblation::default(),
+            seeds,
+            "exp2_incumbent",
+            "incumbent_seeded",
+        )
     };
     println!(
         "  committed(b16 L0)={committed_traffic}  from_scratch={scratch_best}  incumbent_seeded={seeded_best}  \
@@ -467,10 +574,21 @@ fn ga_battery() {
     for s in 0..seed_count as u64 {
         let cfg = SearchConfig { seed: s, ..base };
         let seeds = seeded_population(&ctx, cfg.pop, cfg.seed);
-        let best = cx.run(&ctx, &cfg, GaAblation::default(), seeds, "exp3_variance", &format!("seed{s}"));
+        let best = cx.run(
+            &ctx,
+            &cfg,
+            GaAblation::default(),
+            seeds,
+            "exp3_variance",
+            &format!("seed{s}"),
+        );
         finals.push(best);
     }
-    let feasible: Vec<usize> = finals.iter().copied().filter(|&v| v != usize::MAX).collect();
+    let feasible: Vec<usize> = finals
+        .iter()
+        .copied()
+        .filter(|&v| v != usize::MAX)
+        .collect();
     if feasible.is_empty() {
         println!("  variance: ALL runs infeasible");
     } else {
@@ -478,7 +596,11 @@ fn ga_battery() {
         let min = *feasible.iter().min().unwrap();
         let max = *feasible.iter().max().unwrap();
         let mean = feasible.iter().sum::<usize>() as f64 / n;
-        let var = feasible.iter().map(|&v| (v as f64 - mean).powi(2)).sum::<f64>() / n;
+        let var = feasible
+            .iter()
+            .map(|&v| (v as f64 - mean).powi(2))
+            .sum::<f64>()
+            / n;
         println!(
             "  variance: min={min} mean={mean:.2} max={max} stddev={:.3} (n_feasible={}/{})",
             var.sqrt(),
@@ -490,36 +612,84 @@ fn ga_battery() {
     // ── Experiment 4: budget sweep (full GA, seed 0) ─────────────────────────
     println!("\n-- exp4: budget sweep {budgets:?} (seed 0) --");
     for &b in &budgets {
-        let cfg = SearchConfig { evals: b, seed: 0, ..base };
+        let cfg = SearchConfig {
+            evals: b,
+            seed: 0,
+            ..base
+        };
         let seeds = seeded_population(&ctx, cfg.pop, cfg.seed);
-        cx.run(&ctx, &cfg, GaAblation::default(), seeds, "exp4_budget", &format!("evals{b}"));
+        cx.run(
+            &ctx,
+            &cfg,
+            GaAblation::default(),
+            seeds,
+            "exp4_budget",
+            &format!("evals{b}"),
+        );
     }
 
     // ── Experiment 5: config sensitivity (one-factor-at-a-time, first budget) ─
     println!("\n-- exp5: config sensitivity (evals={first_budget}) --");
     for sigma in [0.05f64, 0.15, 0.5] {
-        let cfg = SearchConfig { mutation_sigma: sigma, ..base };
+        let cfg = SearchConfig {
+            mutation_sigma: sigma,
+            ..base
+        };
         let seeds = seeded_population(&ctx, cfg.pop, cfg.seed);
-        cx.run(&ctx, &cfg, GaAblation::default(), seeds, "exp5_config", &format!("sigma{sigma}"));
+        cx.run(
+            &ctx,
+            &cfg,
+            GaAblation::default(),
+            seeds,
+            "exp5_config",
+            &format!("sigma{sigma}"),
+        );
     }
     for pop in [32usize, 64, 256] {
         let cfg = SearchConfig { pop, ..base };
         let seeds = seeded_population(&ctx, cfg.pop, cfg.seed);
-        cx.run(&ctx, &cfg, GaAblation::default(), seeds, "exp5_config", &format!("pop{pop}"));
+        cx.run(
+            &ctx,
+            &cfg,
+            GaAblation::default(),
+            seeds,
+            "exp5_config",
+            &format!("pop{pop}"),
+        );
     }
     for tourn in [2usize, 3, 5] {
-        let cfg = SearchConfig { tournament: tourn, ..base };
+        let cfg = SearchConfig {
+            tournament: tourn,
+            ..base
+        };
         let seeds = seeded_population(&ctx, cfg.pop, cfg.seed);
-        cx.run(&ctx, &cfg, GaAblation::default(), seeds, "exp5_config", &format!("tourn{tourn}"));
+        cx.run(
+            &ctx,
+            &cfg,
+            GaAblation::default(),
+            seeds,
+            "exp5_config",
+            &format!("tourn{tourn}"),
+        );
     }
 
     // ── Experiment 6: local_elite sweep (full GA, first budget) ──────────────
     let local_elites = env_local_elites();
     println!("\n-- exp6: local_elite sweep {local_elites:?} (evals={first_budget}) --");
     for &le in &local_elites {
-        let cfg = SearchConfig { local_elite: le, ..base };
+        let cfg = SearchConfig {
+            local_elite: le,
+            ..base
+        };
         let seeds = seeded_population(&ctx, cfg.pop, cfg.seed);
-        cx.run(&ctx, &cfg, GaAblation::default(), seeds, "exp6_local_elite", &format!("le{le}"));
+        cx.run(
+            &ctx,
+            &cfg,
+            GaAblation::default(),
+            seeds,
+            "exp6_local_elite",
+            &format!("le{le}"),
+        );
     }
 
     // ── Experiment 7: crossover-kind sweep (full GA, first budget) ───────────
@@ -530,7 +700,10 @@ fn ga_battery() {
         cx.run(
             &ctx,
             &base,
-            GaAblation { crossover: false, ..GaAblation::default() },
+            GaAblation {
+                crossover: false,
+                ..GaAblation::default()
+            },
             seeds,
             "exp7_xover",
             "none",
@@ -538,20 +711,41 @@ fn ga_battery() {
     }
     {
         // blx: per-gene BLX-alpha on both gene vectors (production operator).
-        let cfg = SearchConfig { crossover_kind: CrossoverKind::Blx, ..base };
+        let cfg = SearchConfig {
+            crossover_kind: CrossoverKind::Blx,
+            ..base
+        };
         let seeds = seeded_population(&ctx, cfg.pop, cfg.seed);
-        cx.run(&ctx, &cfg, GaAblation::default(), seeds, "exp7_xover", "blx");
+        cx.run(
+            &ctx,
+            &cfg,
+            GaAblation::default(),
+            seeds,
+            "exp7_xover",
+            "blx",
+        );
     }
     {
         // order: permutation-preserving OX on the unit-order genes.
-        let cfg = SearchConfig { crossover_kind: CrossoverKind::Order, ..base };
+        let cfg = SearchConfig {
+            crossover_kind: CrossoverKind::Order,
+            ..base
+        };
         let seeds = seeded_population(&ctx, cfg.pop, cfg.seed);
-        cx.run(&ctx, &cfg, GaAblation::default(), seeds, "exp7_xover", "order");
+        cx.run(
+            &ctx,
+            &cfg,
+            GaAblation::default(),
+            seeds,
+            "exp7_xover",
+            "order",
+        );
     }
 
     // ── Summary table (CSV + pretty stdout) ──────────────────────────────────
     let csv_path = dir.join(format!("{testbed}_summary.csv"));
-    let mut f = std::fs::File::create(&csv_path).unwrap_or_else(|e| panic!("create {csv_path:?}: {e}"));
+    let mut f =
+        std::fs::File::create(&csv_path).unwrap_or_else(|e| panic!("create {csv_path:?}: {e}"));
     writeln!(f, "{}", SummaryRow::csv_header()).unwrap();
     for r in &cx.rows {
         writeln!(f, "{}", r.csv_line()).unwrap();
@@ -560,8 +754,22 @@ fn ga_battery() {
     println!("\n=== SUMMARY: {testbed} L0 (floor={}) ===", ctx.floor);
     println!(
         "{:<16} {:<18} {:>6} {:>6} {:>6} {:>8} {:>5} {:>13} {:>7} {:>7} {:>7} {:>9} {:>10} {:>4} {:>6} {:>8}",
-        "experiment", "tag", "best", "floor", "gap", "evals", "gens", "origin", "xover%", "mut%",
-        "ld%", "conv_gen", "div_o(s→e)", "le", "xover", "wall_s",
+        "experiment",
+        "tag",
+        "best",
+        "floor",
+        "gap",
+        "evals",
+        "gens",
+        "origin",
+        "xover%",
+        "mut%",
+        "ld%",
+        "conv_gen",
+        "div_o(s→e)",
+        "le",
+        "xover",
+        "wall_s",
     );
     for r in &cx.rows {
         println!(
@@ -586,5 +794,9 @@ fn ga_battery() {
         );
     }
     println!("\nCSV: {}", csv_path.display());
-    println!("JSONL (per run): {}/{}_<experiment>_<tag>.jsonl", dir.display(), testbed);
+    println!(
+        "JSONL (per run): {}/{}_<experiment>_<tag>.jsonl",
+        dir.display(),
+        testbed
+    );
 }

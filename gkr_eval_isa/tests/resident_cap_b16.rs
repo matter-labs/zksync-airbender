@@ -32,14 +32,15 @@ mod common;
 
 use std::collections::HashMap;
 
-use cs::gkr_compiler::dag_ir::{lower_dag, validate, DagCircuit, FieldKind, LayerSchedule, ReadPlace};
 use cs::gkr_compiler::GKRCircuitArtifact;
 use field::baby_bear::base::BabyBearField;
+use gkr_eval_ir::{DagCircuit, FieldKind, ReadPlace, lower_dag, validate};
+use gkr_eval_isa::LayerSchedule;
 
 use gkr_eval_isa::fwd::compile::decisions::SiteDecisions;
 use gkr_eval_isa::fwd::compile::{build_cross_layer_field_map, compile_layer};
 use gkr_eval_isa::schedule_search::genome::Genome;
-use gkr_eval_isa::schedule_search::scorer::{decode_schedule, score, LayerCtx};
+use gkr_eval_isa::schedule_search::scorer::{LayerCtx, decode_schedule, score};
 
 use common::load_fixture;
 
@@ -47,7 +48,11 @@ const ADD_SUB: &str = "add_sub_lui_auipc_mop_layout_gkr.json";
 
 fn load_dag(
     fixture: &str,
-) -> (DagCircuit, GKRCircuitArtifact<BabyBearField>, HashMap<ReadPlace, FieldKind>) {
+) -> (
+    DagCircuit,
+    GKRCircuitArtifact<BabyBearField>,
+    HashMap<ReadPlace, FieldKind>,
+) {
     let artifact = load_fixture(fixture);
     let dag = lower_dag(&artifact).unwrap_or_else(|e| panic!("[{fixture}] lower_dag: {e}"));
     validate(&dag).unwrap_or_else(|e| panic!("[{fixture}] validate: {e}"));
@@ -96,7 +101,10 @@ fn b16_add_sub_l0_decisions_feasible_beats_legacy() {
     // -3 vs pre-relabel: add_sub L0's 3 Global CopyAlias roots are no longer charged
     // (free views, not DRAM traffic). Relationship (Decisions beats None) still holds.
     assert_eq!(legacy_traffic, 56, "legacy (decisions: None) traffic pin");
-    assert_eq!(decisions_score.dram_traffic, 31, "decisions(neutral) traffic pin");
+    assert_eq!(
+        decisions_score.dram_traffic, 31,
+        "decisions(neutral) traffic pin"
+    );
     assert!(
         decisions_score.dram_traffic < legacy_traffic,
         "Decisions traffic ({}) must beat the decisions-None baseline's ({}) at budget {BUDGET}",
@@ -192,8 +200,14 @@ fn decisions_feasible_and_no_worse_than_legacy_near_zero_headroom() {
     // free views, not DRAM traffic): legacy_at_floor 59→56, decisions_at_floor 39→36.
     // Relationship (Decisions never WORSE than None) still holds and is stronger.
     assert_eq!(legacy_floor, 8, "legacy floor (max_live_cells) pin");
-    assert_eq!(legacy_at_floor.stats.dram_traffic, 56, "legacy_at_floor traffic pin");
-    assert_eq!(decisions_at_floor.stats.dram_traffic, 36, "decisions_at_floor traffic pin");
+    assert_eq!(
+        legacy_at_floor.stats.dram_traffic, 56,
+        "legacy_at_floor traffic pin"
+    );
+    assert_eq!(
+        decisions_at_floor.stats.dram_traffic, 36,
+        "decisions_at_floor traffic pin"
+    );
     assert!(
         decisions_at_floor.stats.dram_traffic <= legacy_at_floor.stats.dram_traffic,
         "Decisions with zero headroom ({}) must not do WORSE than decisions-None ({})",

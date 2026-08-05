@@ -43,11 +43,11 @@
 
 use std::collections::BTreeMap;
 
-use cs::gkr_compiler::dag_ir::{
-    eval_layer_expr, ChallengeKey, ChallengePower, ChallengeRef, DagLayer, Expr, ExprId, Ext,
-    PermutationSlot, Resolvers, SourceKind,
-};
 use field::Field;
+use gkr_eval_ir::{
+    ChallengeKey, ChallengePower, ChallengeRef, DagLayer, Expr, ExprId, Ext, PermutationSlot,
+    Resolvers, SourceKind, eval_layer_expr,
+};
 
 use super::distill::{DistilledLayer, StableBwdExprKey};
 
@@ -345,7 +345,10 @@ pub fn decompose_spine(layer: &DagLayer, spine: &[ExprId]) -> FragmentTable {
             factors.sort();
             c_init_terms.push(ProductRecipe { factors });
             occurrences += 1;
-            assert!(occurrences < 100_000, "fragment decomposition occurrence guard exceeded");
+            assert!(
+                occurrences < 100_000,
+                "fragment decomposition occurrence guard exceeded"
+            );
             continue;
         }
         match &exprs[id.0 as usize] {
@@ -377,7 +380,10 @@ pub fn decompose_spine(layer: &DagLayer, spine: &[ExprId]) -> FragmentTable {
                 sig.sort();
                 frags.push((vec![id], sig));
                 occurrences += 1;
-                assert!(occurrences < 100_000, "fragment decomposition occurrence guard exceeded");
+                assert!(
+                    occurrences < 100_000,
+                    "fragment decomposition occurrence guard exceeded"
+                );
             }
         }
     }
@@ -386,14 +392,25 @@ pub fn decompose_spine(layer: &DagLayer, spine: &[ExprId]) -> FragmentTable {
     // occurrence appends its chain as one MergedRecipe term.
     let mut merged: BTreeMap<Vec<ExprId>, Vec<ProductRecipe>> = BTreeMap::new();
     for (atoms, chain) in frags {
-        merged.entry(atoms).or_default().push(ProductRecipe { factors: chain });
+        merged
+            .entry(atoms)
+            .or_default()
+            .push(ProductRecipe { factors: chain });
     }
     let fragments = merged
         .into_iter()
-        .map(|(atoms, terms)| FragmentSpec { atoms, recipe: MergedRecipe { terms } })
+        .map(|(atoms, terms)| FragmentSpec {
+            atoms,
+            recipe: MergedRecipe { terms },
+        })
         .collect();
 
-    FragmentTable { fragments, c_init: MergedRecipe { terms: c_init_terms } }
+    FragmentTable {
+        fragments,
+        c_init: MergedRecipe {
+            terms: c_init_terms,
+        },
+    }
 }
 
 // ── Tests ────────────────────────────────────────────────────────────────────
@@ -401,30 +418,45 @@ pub fn decompose_spine(layer: &DagLayer, spine: &[ExprId]) -> FragmentTable {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cs::gkr_compiler::dag_ir::{
+    use field::{Field, FieldExtension, PrimeField};
+    use gkr_eval_ir::{
         BatchingOrder, Bf, ChallengeKey, ChallengePower, ChallengeRef, ChallengeResolver,
         LookupResolver, LookupValueKind, ReadPlace, ReadResolver, Resolvers, SourceId, SourceInfo,
         VirtualSetupKind, VirtualSetupResolver,
     };
-    use field::{Field, FieldExtension, PrimeField};
 
     // ── Fixture helpers (mirrors distill.rs's test-fixture pattern: literal
     // DagLayer construction, no separate arena-builder type) ────────────────
 
     fn read_src(column: usize) -> SourceInfo {
-        SourceInfo { kind: SourceKind::Read { place: ReadPlace::BaseLayerWitness { column } } }
+        SourceInfo {
+            kind: SourceKind::Read {
+                place: ReadPlace::BaseLayerWitness { column },
+            },
+        }
     }
 
     fn const_src(value: u32) -> SourceInfo {
-        SourceInfo { kind: SourceKind::Constant { value } }
+        SourceInfo {
+            kind: SourceKind::Constant { value },
+        }
     }
 
     fn challenge_src(key: ChallengeKey) -> SourceInfo {
-        SourceInfo { kind: SourceKind::Challenge { reference: ChallengeRef { key, power: ChallengePower::One } } }
+        SourceInfo {
+            kind: SourceKind::Challenge {
+                reference: ChallengeRef {
+                    key,
+                    power: ChallengePower::One,
+                },
+            },
+        }
     }
 
     fn vs_src(kind: VirtualSetupKind) -> SourceInfo {
-        SourceInfo { kind: SourceKind::VirtualSetup { kind } }
+        SourceInfo {
+            kind: SourceKind::VirtualSetup { kind },
+        }
     }
 
     /// Assembles a minimal `DagLayer` around `sources`/`exprs`; `roots`/
@@ -444,7 +476,11 @@ mod tests {
     fn distributes_scalar_coefficient_through_add() {
         // beta * (A + B) -> 2 frags, recipes [[beta]].
         let l = layer(
-            vec![read_src(0), read_src(1), challenge_src(ChallengeKey::ClaimBatching)],
+            vec![
+                read_src(0),
+                read_src(1),
+                challenge_src(ChallengeKey::ClaimBatching),
+            ],
             vec![
                 Expr::Source(SourceId(0)),             // 0 = A
                 Expr::Source(SourceId(1)),             // 1 = B
@@ -456,10 +492,16 @@ mod tests {
         let table = decompose_spine(&l, &[ExprId(4)]);
 
         assert!(table.c_init.terms.is_empty(), "no scalar-pure addend here");
-        assert_eq!(table.fragments.len(), 2, "distribution must yield exactly A and B");
+        assert_eq!(
+            table.fragments.len(),
+            2,
+            "distribution must yield exactly A and B"
+        );
         assert_eq!(table.fragments[0].atoms, vec![ExprId(0)]);
         assert_eq!(table.fragments[1].atoms, vec![ExprId(1)]);
-        let expect = vec![ProductRecipe { factors: vec![ExprId(2)] }];
+        let expect = vec![ProductRecipe {
+            factors: vec![ExprId(2)],
+        }];
         assert_eq!(table.fragments[0].recipe.terms, expect);
         assert_eq!(table.fragments[1].recipe.terms, expect);
     }
@@ -470,7 +512,13 @@ mod tests {
         // coefficient tree is absorbed as ONE chain factor (the outermost
         // pure node id), never split back into its leaves.
         let l = layer(
-            vec![read_src(0), read_src(1), const_src(3), const_src(5), const_src(7)],
+            vec![
+                read_src(0),
+                read_src(1),
+                const_src(3),
+                const_src(5),
+                const_src(7),
+            ],
             vec![
                 Expr::Source(SourceId(0)),             // 0 = A
                 Expr::Source(SourceId(1)),             // 1 = B
@@ -490,7 +538,9 @@ mod tests {
         assert_eq!(table.fragments[0].atoms, vec![ExprId(0)]);
         assert_eq!(table.fragments[1].atoms, vec![ExprId(1)]);
         // Single absorbed factor = the outer nested-Mul node, not [c1,c2,c3].
-        let expect = vec![ProductRecipe { factors: vec![ExprId(6)] }];
+        let expect = vec![ProductRecipe {
+            factors: vec![ExprId(6)],
+        }];
         assert_eq!(table.fragments[0].recipe.terms, expect);
         assert_eq!(table.fragments[1].recipe.terms, expect);
     }
@@ -543,8 +593,12 @@ mod tests {
         assert_eq!(
             terms,
             vec![
-                ProductRecipe { factors: vec![ExprId(1)] },
-                ProductRecipe { factors: vec![ExprId(2)] },
+                ProductRecipe {
+                    factors: vec![ExprId(1)]
+                },
+                ProductRecipe {
+                    factors: vec![ExprId(2)]
+                },
             ]
         );
     }
@@ -565,7 +619,12 @@ mod tests {
         assert_eq!(table.fragments.len(), 1);
         assert_eq!(table.fragments[0].atoms, vec![ExprId(1)]);
         assert!(table.fragments[0].recipe.is_trivial());
-        assert_eq!(table.c_init.terms, vec![ProductRecipe { factors: vec![ExprId(0)] }]);
+        assert_eq!(
+            table.c_init.terms,
+            vec![ProductRecipe {
+                factors: vec![ExprId(0)]
+            }]
+        );
     }
 
     #[test]
@@ -575,7 +634,11 @@ mod tests {
         // frag {A} recipe [[c]], AND gamma's occurrence folds into c_init as the
         // FULL chain [c, gamma] (not just [gamma], and not dropped).
         let l = layer(
-            vec![read_src(0), const_src(7), challenge_src(ChallengeKey::ClaimBatching)],
+            vec![
+                read_src(0),
+                const_src(7),
+                challenge_src(ChallengeKey::ClaimBatching),
+            ],
             vec![
                 Expr::Source(SourceId(0)),             // 0 = A
                 Expr::Source(SourceId(1)),             // 1 = c
@@ -586,11 +649,17 @@ mod tests {
         );
         let table = decompose_spine(&l, &[ExprId(4)]);
 
-        assert_eq!(table.fragments.len(), 1, "distribution must yield exactly A");
+        assert_eq!(
+            table.fragments.len(),
+            1,
+            "distribution must yield exactly A"
+        );
         assert_eq!(table.fragments[0].atoms, vec![ExprId(0)]);
         assert_eq!(
             table.fragments[0].recipe.terms,
-            vec![ProductRecipe { factors: vec![ExprId(1)] }],
+            vec![ProductRecipe {
+                factors: vec![ExprId(1)]
+            }],
             "fragment {{A}} recipe must be [[c]]"
         );
         assert_eq!(
@@ -618,7 +687,10 @@ mod tests {
         assert_eq!(table.fragments.len(), 1);
         assert_eq!(table.fragments[0].atoms, vec![ExprId(0)]);
         assert!(table.fragments[0].recipe.is_trivial());
-        assert!(table.c_init.terms.is_empty(), "VS is never scalar-pure, never folds into c_init");
+        assert!(
+            table.c_init.terms.is_empty(),
+            "VS is never scalar-pure, never folds into c_init"
+        );
 
         // Mul[VS, A] -> ONE fragment over BOTH atoms (VS never absorbed as
         // a coefficient, since it is never scalar-pure).
@@ -653,7 +725,11 @@ mod tests {
         );
         let table = decompose_spine(&l, &[ExprId(4)]);
 
-        assert_eq!(table.fragments.len(), 1, "must NOT distribute into A*B + A*C");
+        assert_eq!(
+            table.fragments.len(),
+            1,
+            "must NOT distribute into A*B + A*C"
+        );
         assert_eq!(table.fragments[0].atoms, vec![ExprId(0), ExprId(3)]);
         assert!(table.fragments[0].recipe.is_trivial());
         assert!(table.c_init.terms.is_empty());
@@ -730,8 +806,12 @@ mod tests {
 
         let recipe = MergedRecipe {
             terms: vec![
-                ProductRecipe { factors: vec![ExprId(0), ExprId(1)] },
-                ProductRecipe { factors: vec![ExprId(2), ExprId(2)] },
+                ProductRecipe {
+                    factors: vec![ExprId(0), ExprId(1)],
+                },
+                ProductRecipe {
+                    factors: vec![ExprId(2), ExprId(2)],
+                },
             ],
         };
         // Manual: c·gamma + beta·beta.
@@ -746,7 +826,9 @@ mod tests {
         assert_eq!(MergedRecipe::default().evaluate(&l, &r), Ext::ZERO);
 
         // A single empty-factors term = multiplicative identity 1.
-        let unit = MergedRecipe { terms: vec![ProductRecipe::default()] };
+        let unit = MergedRecipe {
+            terms: vec![ProductRecipe::default()],
+        };
         assert_eq!(unit.evaluate(&l, &r), Ext::ONE);
 
         // Two empty-factors terms = 1 + 1 (multiplicity preserved, never collapsed).

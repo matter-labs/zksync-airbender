@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use cs::gkr_compiler::dag_ir::ExprId;
+use gkr_eval_ir::ExprId;
 
 use crate::eval_plan::ValueFingerprint;
 
@@ -714,7 +714,7 @@ fn reconstruct(arena: &[ArenaEntry], terminal: usize) -> (Vec<PagingAction>, Vec
 mod tests {
     use std::collections::{BTreeMap, BTreeSet};
 
-    use cs::gkr_compiler::dag_ir::ExprId;
+    use gkr_eval_ir::ExprId;
 
     use crate::bwd::distill::{StableBwdConsumer, StableBwdExprKey, StableBwdSiteKey};
     use crate::bwd::trace::{BwdFingerprint, BwdServeKind};

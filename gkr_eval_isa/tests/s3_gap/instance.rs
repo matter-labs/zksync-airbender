@@ -1,4 +1,4 @@
-use cs::gkr_compiler::dag_ir::{DagLayer, ExprId, FieldKind, ReadPlace, Root, SourceKind};
+use gkr_eval_ir::{DagLayer, ExprId, FieldKind, ReadPlace, Root, SourceKind};
 use gkr_eval_isa::fwd::compile::expr_operand_field;
 use gkr_eval_isa::fwd::isa::OperandField;
 use serde::{Deserialize, Serialize};
@@ -116,7 +116,7 @@ fn extract_instance_impl(
     budget: usize,
     materialize_cache: bool,
 ) -> (OracleInstance, HashMap<u32, u32>) {
-    use cs::gkr_compiler::dag_ir::{Expr, SinkInfo, SinkKind};
+    use gkr_eval_ir::{Expr, SinkInfo, SinkKind};
     use std::collections::HashSet;
 
     // Cache-root identity (attribute model): a `Cache` materialize with no claim.
@@ -310,7 +310,7 @@ pub fn relation_units_cache_as_root(layer: &DagLayer) -> Vec<u32> {
 }
 
 fn relation_units_impl(layer: &DagLayer, materialize_cache: bool) -> Vec<u32> {
-    use cs::gkr_compiler::dag_ir::{RootGroup, SinkInfo, SinkKind};
+    use gkr_eval_ir::{RootGroup, SinkInfo, SinkKind};
 
     let is_cache_root = |r: &Root| -> bool {
         matches!(
@@ -420,7 +420,7 @@ pub fn distinct_live_values(inst: &OracleInstance) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cs::gkr_compiler::dag_ir::{
+    use gkr_eval_ir::{
         BatchingOrder, ClaimInfo, DagLayer, Expr, ExprId, FieldKind, ReadPlace, Root, RootGroup,
         RootOrigin, RootSlot, SinkInfo, SinkKind, SourceId, SourceInfo, SourceKind,
     };
@@ -597,7 +597,7 @@ mod tests {
     /// carry (node 0 live at root 1 even though root 1 doesn't use it) raises it to 4.
     #[test]
     fn distinct_live_values_counts_carry_across_roots() {
-        use cs::gkr_compiler::dag_ir::{
+        use gkr_eval_ir::{
             BatchingOrder, ClaimInfo, Expr, ExprId, FieldKind, ReadPlace, Root, RootGroup,
             RootOrigin, RootSlot, SinkInfo, SinkKind, SourceId, SourceInfo, SourceKind,
         };
@@ -680,7 +680,7 @@ mod tests {
         //
         // Because expr 1 is pruned, we do NOT descend into its children.
         // Only ONE node is emitted: the Special terminal for expr 1.
-        use cs::gkr_compiler::dag_ir::{
+        use gkr_eval_ir::{
             BatchingOrder, ClaimInfo, Expr, ExprId, RangeWidth, ResolutionStrategy, Root,
             RootGroup, RootOrigin, RootSlot, SinkInfo, SinkKind, SourceId, SourceInfo, SourceKind,
         };
@@ -788,7 +788,7 @@ mod tests {
 
     #[test]
     fn relation_units_groups_pair_roots_and_singletons_cache() {
-        use cs::gkr_compiler::dag_ir::{
+        use gkr_eval_ir::{
             BatchingOrder, ClaimInfo, Expr, ExprId, RootGroup, RootOrigin, RootSlot, SinkInfo,
             SinkKind, SourceId, SourceInfo, SourceKind,
         };
