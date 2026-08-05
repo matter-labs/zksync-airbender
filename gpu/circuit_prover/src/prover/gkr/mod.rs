@@ -33,14 +33,9 @@ use std::sync::Arc;
 ///
 /// # Why this is a plain owned structure
 ///
-/// Compiling is the intensive part of running the VM — `lower_dag` + `validate`
-/// over a layout that can be tens of megabytes, then one coordinate compile per
-/// `(layer, regime)`. `report_the_compile_time_projection_over_the_corpus`
-/// measures add_sub at ~2.7 ms and blake2_with_extended_control at ~143 ms. That
-/// belongs where a circuit's other precomputations are built: once, off any
-/// proving path, held by the caller. Not in a process-global cache behind a lock,
-/// which would put the work on whichever thread happened to arrive first and give
-/// `prove()` no way to know when it had been paid.
+/// DAG lowering, validation, and all three symbolic compilers run once alongside
+/// the circuit's other precomputations, off the proving path. The caller owns the
+/// resulting programs; no process-global cache or search is involved.
 ///
 /// So `prove()` takes one of these by reference and hands borrows to the passes.
 /// Nothing downstream compiles, looks anything up, or locks.
@@ -56,11 +51,8 @@ pub struct GkrVmPrograms {
     /// The forward interpreter program, when this circuit has an embedded
     /// schedule (`forward::vm::program::embedded_schedule`).
     forward: Option<forward::vm::program::CompiledCircuit>,
-    /// Every `(layer, regime)` coordinate of the circuit's main layers.
-    backward: Vec<(
-        backward::vm::coords::BwdVmCoord,
-        backward::vm::production_program::CompiledSlice,
-    )>,
+    r0: Option<gpu_gkr_compiler::R0ProgramBundle>,
+    continuations: Option<gpu_gkr_compiler::ContinuationProgramBundle>,
 }
 
 /// The empty set, for paths that run no VM: test harnesses that drive the
@@ -69,7 +61,8 @@ pub struct GkrVmPrograms {
 /// borrow for `'static` and keep the state's lifetime parameter trivial.
 static EMPTY_VM_PROGRAMS: GkrVmPrograms = GkrVmPrograms {
     forward: None,
-    backward: Vec::new(),
+    r0: None,
+    continuations: None,
 };
 
 impl GkrVmPrograms {
@@ -82,101 +75,52 @@ impl GkrVmPrograms {
     ///
     /// `artifact` must be the RAW one, before
     /// `transform::normalize_compiled_circuit_for_gpu` — see
-    /// `backward::vm::production_program::compile_all_slices`.
+    /// `backward::vm::production_program::compile_all`.
     pub fn compile(
         circuit_type: crate::witness::circuit_type::CircuitType,
         artifact: &crate::upstream::GKRCircuitArtifact<crate::primitives::field::BF>,
     ) -> Self {
-        let Some(circuit_name) = vm_circuit_name(circuit_type) else {
-            return Self::default();
-        };
+        let dag = crate::upstream::lower_dag(artifact)
+            .unwrap_or_else(|error| panic!("GKR DAG lowering: {error}"));
+        crate::upstream::validate_dag(&dag)
+            .unwrap_or_else(|error| panic!("GKR DAG validation: {error}"));
         let forward = Some(
-            forward::vm::program::compile_program(circuit_type, artifact)
+            forward::vm::program::compile_program(circuit_type, &dag)
                 .unwrap_or_else(|error| panic!("forward VM program: {error}")),
         );
-        let backward = backward::vm::production_program::compile_all_slices(circuit_name, artifact)
-            .unwrap_or_else(|error| panic!("backward VM coordinates: {error}"));
-        Self { forward, backward }
+        let backward = backward::vm::production_program::compile_all(&dag)
+            .unwrap_or_else(|error| panic!("backward VM programs: {error}"));
+        Self {
+            forward,
+            r0: Some(backward.r0),
+            continuations: Some(backward.continuations),
+        }
     }
 
     pub(crate) fn forward(&self) -> Option<&forward::vm::program::CompiledCircuit> {
         self.forward.as_ref()
     }
 
-    /// The compiled slice for one coordinate, or `None` if this circuit has none.
-    pub(crate) fn backward_slice(
+    pub(crate) fn r0_layer(&self, layer: usize) -> Option<&gpu_gkr_compiler::R0LayerProgram> {
+        self.r0.as_ref()?.layers.get(layer)
+    }
+
+    pub(crate) fn continuation_layer(
         &self,
-        coord: backward::vm::coords::BwdVmCoord,
-    ) -> Option<&backward::vm::production_program::CompiledSlice> {
-        self.backward
-            .iter()
-            .find_map(|(selected, slice)| (*selected == coord).then_some(slice))
+        layer: usize,
+    ) -> Option<&gpu_gkr_compiler::ContinuationLayerProgram> {
+        self.continuations.as_ref()?.layers.get(layer)
+    }
+
+    pub(crate) fn has_backward_coord(&self, coord: backward::vm::coords::BwdVmCoord) -> bool {
+        match coord.regime {
+            crate::upstream::BwdRegime::R0 => self.r0_layer(coord.layer).is_some(),
+            crate::upstream::BwdRegime::Ext => self.continuation_layer(coord.layer).is_some(),
+        }
     }
 
     pub(crate) fn is_empty(&self) -> bool {
-        self.forward.is_none() && self.backward.is_empty()
-    }
-}
-
-/// The name the VM's lean compiler records for a circuit, and the VM's allowlist.
-///
-/// Now TOTAL over `CircuitType`: every circuit in the backward corpus
-/// (`SEG_CORPUS_LAYOUTS`) has a lean coordinate set, so there is no longer a
-/// circuit to return `None` for. The `Option` stays because callers branch on it
-/// and because a future circuit type must be given a name here on purpose — an
-/// exhaustive match means the compiler asks rather than defaulting it to "no VM".
-///
-/// Deliberately a hard match rather than a structural predicate. Being on this
-/// list means the coordinates COMPILE (`bwd_vm_every_corpus_circuit_compiles`),
-/// not that the circuit has been proven end-to-end on the VM — that claim belongs
-/// to a per-circuit parity gate, and only add_sub and blake2 have one.
-pub(crate) fn vm_circuit_name(
-    circuit_type: crate::witness::circuit_type::CircuitType,
-) -> Option<&'static str> {
-    use crate::witness::circuit_type::{
-        CircuitType, DelegationCircuitType, UnrolledCircuitType, UnrolledNonMemoryCircuitType,
-    };
-    use crate::witness::circuit_type::UnrolledMemoryCircuitType;
-    // The name is the corpus layout's basename minus `_layout_gkr.json`
-    // (`SEG_CORPUS_LAYOUTS` in `backward::vm::seg_compile`). It is an identity
-    // label, not a lookup key: `compile_lean_coordinate` uses it only to name the
-    // coordinate in an error, so a wrong name misreports rather than mis-selects.
-    match circuit_type {
-        CircuitType::Unrolled(UnrolledCircuitType::NonMemory(
-            UnrolledNonMemoryCircuitType::AddSubLuiAuipcMop,
-        )) => Some("add_sub_lui_auipc_mop"),
-        CircuitType::Unrolled(UnrolledCircuitType::NonMemory(
-            UnrolledNonMemoryCircuitType::JumpBranchSlt,
-        )) => Some("jump_branch_slt"),
-        CircuitType::Unrolled(UnrolledCircuitType::NonMemory(
-            UnrolledNonMemoryCircuitType::MulDivUnsigned,
-        )) => Some("unsigned_mul_div"),
-        // `ShiftBinaryCsr` proves the layout still named `shift_binop`.
-        CircuitType::Unrolled(UnrolledCircuitType::NonMemory(
-            UnrolledNonMemoryCircuitType::ShiftBinaryCsr,
-        )) => Some("shift_binop"),
-        CircuitType::Unrolled(UnrolledCircuitType::Memory(
-            UnrolledMemoryCircuitType::LoadStoreWordOnly,
-        )) => Some("mem_word_only"),
-        CircuitType::Unrolled(UnrolledCircuitType::Memory(
-            UnrolledMemoryCircuitType::LoadStoreSubwordOnly,
-        )) => Some("mem_subword_only"),
-        CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns) => {
-            Some("inits_and_teardowns_preprocessed")
-        }
-        CircuitType::Unrolled(UnrolledCircuitType::Unified) => Some("unified_reduced_machine"),
-        CircuitType::Delegation(DelegationCircuitType::BigIntWithControl) => {
-            Some("bigint_with_extended_control")
-        }
-        // The layout `Blake2WithCompression` proves is
-        // `blake2_with_extended_control` — see the fixture that loads it.
-        CircuitType::Delegation(DelegationCircuitType::Blake2WithCompression) => {
-            Some("blake2_with_extended_control")
-        }
-        CircuitType::Delegation(DelegationCircuitType::Blake2GFunction) => {
-            Some("blake2_g_function")
-        }
-        CircuitType::Delegation(DelegationCircuitType::KeccakSpecial5) => Some("keccak_special5"),
+        self.forward.is_none() && self.r0.is_none() && self.continuations.is_none()
     }
 }
 
@@ -200,7 +144,7 @@ pub(crate) fn check_vm_selection_is_servable(
     assert!(
         !programs.is_empty(),
         "{} / {} select a VM path but {circuit_type:?} has no compiled VM programs; \
-         `gkr::vm_circuit_name` is the allowlist",
+         no VM precomputation was supplied",
         forward::path::AB_GKR_FWD_VM_LAYERS_ENV,
         backward::vm::coords::AB_GKR_BWD_VM_COORDS_ENV,
     );
@@ -213,7 +157,7 @@ pub(crate) fn check_vm_selection_is_servable(
     }
     for coord in backward_coords {
         assert!(
-            programs.backward_slice(coord).is_some(),
+            programs.has_backward_coord(coord),
             "{} selects {coord}, which {circuit_type:?} has no compiled coordinate for",
             backward::vm::coords::AB_GKR_BWD_VM_COORDS_ENV,
         );

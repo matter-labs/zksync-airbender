@@ -1,10 +1,6 @@
-//! Schedule search (Stage 2b): DagLayer-native genome structure, the DAG-intrinsic
-//! traffic floor the search compares against, and the compile-in-loop metaheuristic
-//! that produces a `CircuitSchedule` (Task 6). This is the production home the
-//! test-only `gkr_eval_isa/tests/s3_gap`/`s3_planner` prototypes were promoted into
-//! (Tasks 5-6, see each submodule's docs for the provenance of what moved) — the
-//! `s3_planner` event-replay simulation (`Replay`/`forkset`/`StepPlanRaw`) is deleted:
-//! the scorer compiles candidates for real instead of simulating them.
+//! Offline forward schedule search: DAG-native genome structure, a traffic
+//! floor, and a compile-in-loop objective. Candidates are scored by the real
+//! compiler rather than a replay model.
 
 pub mod decode;
 pub mod floor;

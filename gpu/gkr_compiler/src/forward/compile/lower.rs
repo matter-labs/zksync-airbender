@@ -30,9 +30,9 @@
 //! (`child_operand_field`, `classify_additive_child`, `split_reduction`,
 //! `field_from_u8`/`sign_from_u8`, `is_*` predicates). Only operand delivery differs.
 
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
-use gkr_eval_ir::{DagLayer, Expr, ExprId, FieldKind, ReadPlace, RootId, SourceKind};
+use gkr_eval_ir::{DagLayer, Expr, ExprId, ReadPlace, RootId, SourceKind};
 
 use crate::schedule::LayerSchedule;
 
@@ -40,14 +40,12 @@ use super::super::context::{DagForwardContext, ForwardAction};
 use super::super::isa::{LdcSub, MAX_ARITY, MovDir, OperandField, OperandLine, Sign, Special};
 use super::analyze::{analyze_layer, materialize_descriptors};
 use super::arith::{
-    AdditiveChild, child_operand_field, child_operand_field_overridden, classify_additive_child,
-    field_from_u8, is_constant_one, is_neg_one_factor, is_zero_expr, sign_from_u8,
+    AdditiveChild, child_operand_field, classify_additive_child, field_from_u8, is_constant_one,
+    is_neg_one_factor, is_zero_expr, sign_from_u8,
 };
 use super::decisions::{OccurrenceStreams, SiteDecisions};
-use super::place::{VInstrKind, ValueId, VirtualInstr, VirtualOp};
+use super::place::{ValueId, VirtualInstr, VirtualOp};
 use super::schedule::split_reduction;
-use crate::bwd::plan::{BwdOccurrencePlan, PlanAction, PlanRun};
-use crate::bwd::trace::{BwdCompileTrace, BwdEvent, BwdFingerprint, BwdServeKind, BwdServedFrom};
 use crate::forward::compile::CompileError;
 
 /// Width (in cells) of a value's residency footprint under the `Decisions` residency
@@ -137,66 +135,6 @@ struct DecisionsState {
     generation: HashMap<ExprId, ValueId>,
 }
 
-// ── Task 4 (CS-M0): plan-driven residency ──────────────────────────────────────
-
-/// One plan-owned resident cell: its width-typing field plus the entry index at
-/// which its CURRENT retention closes (recorded at admit / refreshed on a Retain-hit
-/// re-arm). Once the retention closes (`PlanRun::retention` returns `None`) the value
-/// is EXPIRED — a rule-b eviction candidate — but keeps its `closes_at` for the
-/// victim tie-break ("smallest recorded `closes_at`").
-struct ResidentSlot {
-    field: OperandField,
-    closes_at: usize,
-}
-
-/// Task 4 plan-driven lowering input — mutually exclusive with the gene channel
-/// (`streams`). Carries the frozen [`BwdOccurrencePlan`] to replay plus the distilled
-/// site-domain value set (mirrors `OccurrenceStreams::admittable`): only serves whose
-/// value is in `domain` touch the plan matcher.
-pub(crate) struct PlanInput<'p> {
-    pub plan: &'p BwdOccurrencePlan,
-    pub domain: BTreeSet<ExprId>,
-}
-
-/// Task 4 (CS-M0) plan-driven residency state — present only when
-/// `VirtualLower::plan` is `Some`, and NEVER together with `decisions` (the gene
-/// channel). Wraps the fail-closed [`PlanRun`] matcher (Task 3) plus this replay's
-/// own residency/eviction bookkeeping. Unlike `DecisionsState`, admission is NOT
-/// priority-driven: the plan's per-occurrence `Retain`/`Bypass` action decides, and
-/// capacity is re-checked live (spec §5) — evicting only EXPIRED residents (§4 rule
-/// b), never a live retention.
-struct PlanRunState {
-    run: PlanRun,
-    /// Distilled site-domain values; only these serves drive the matcher.
-    domain: BTreeSet<ExprId>,
-    /// Width-typed resident cells. A `Bypass`-on-resident (rule a) releases its entry
-    /// EAGERLY (`plan_release_if_pending`), matching `plan_placement`'s true cell
-    /// lifetime (the cell dies at that last read), so this map normally holds only
-    /// values with a live (un-closed) retention. Expired entries survive here only
-    /// when a retention could not close normally (divergence / cone-suppressed closing
-    /// serve); those are the rule-b (`plan_evict_to_fit`) / `plan_finish` reclaim set.
-    resident: BTreeMap<ExprId, ResidentSlot>,
-    /// Width-weighted cells claimed by `resident` (Base = 1, Ext = 4).
-    live_width: usize,
-    budget: usize,
-    /// Action recorded at a DOMAIN serve for a NON-resident value, consumed once by
-    /// the matching admit site (`plan_try_admit`). Resident hits never record here
-    /// (the residency short-circuit serves them before any admit site is reached).
-    pending_action: BTreeMap<ExprId, PlanAction>,
-    /// A `Bypass`-on-resident value (rule a) awaiting slot release: set at the serve,
-    /// consumed by `plan_release_if_pending` right after the resident cell read is
-    /// captured (so the current serve is a free hit, later serves recompute).
-    pending_bypass_release: Option<ExprId>,
-    /// Re-admission generations (mirror of `DecisionsState::generation`): a value
-    /// re-admitted after an eviction serves through a fresh `ValueId` so its two
-    /// disjoint live intervals never collapse into one `defines`.
-    generation: HashMap<ExprId, ValueId>,
-    /// Values ever evicted this compile — gates fresh-generation minting on re-admit.
-    evicted_ever: HashSet<ExprId>,
-    /// Whether the single `Diverge` event has been recorded (fail-closed, once).
-    diverge_emitted: bool,
-}
-
 /// BabyBear field −1 (= P−1), the canonical additive-inverse-of-1 representative.
 const BABYBEAR_NEG_ONE: u32 = 0x78000001 - 1;
 
@@ -213,13 +151,12 @@ const INTERNAL_BASE: u32 = 1 << 30;
 pub(crate) enum VDst {
     Cell(ValueId),
     GlobalMaterialize { slot: u8, col: u16 },
-    BatchAccumulate { coefficient_desc: Option<u16> },
 }
 
 /// A rich virtual instruction. Operands are `VirtualOp` (Task 1) — symbolic `Value`s
 /// resolved to `Smem` cells by placement, plus the residency-free backing/ldc/special
 /// operands. `defines` names the `ValueId` a `Mov DstFromAcc Cell(v)` produces (`None`
-/// for folds and materialize writes). `is_dram_read` is Task-5 traffic metadata.
+/// for folds and materialize writes).
 #[derive(Clone, Debug)]
 pub(crate) enum VInstr {
     Add {
@@ -227,13 +164,11 @@ pub(crate) enum VInstr {
         sign: Sign,
         reads: Vec<VirtualOp>,
         defines: Option<ValueId>,
-        is_dram_read: bool,
     },
     Mul {
         field: OperandField,
         reads: Vec<VirtualOp>,
         defines: Option<ValueId>,
-        is_dram_read: bool,
     },
     Fma {
         field_lhs: OperandField,
@@ -241,7 +176,6 @@ pub(crate) enum VInstr {
         sign: Sign,
         pairs: Vec<(VirtualOp, VirtualOp)>,
         defines: Option<ValueId>,
-        is_dram_read: bool,
     },
     Mov {
         dir: MovDir,
@@ -249,7 +183,6 @@ pub(crate) enum VInstr {
         dst: Option<VDst>,
         src: Option<VirtualOp>,
         defines: Option<ValueId>,
-        is_dram_read: bool,
     },
 }
 
@@ -260,15 +193,6 @@ impl VInstr {
             | VInstr::Mul { defines, .. }
             | VInstr::Fma { defines, .. }
             | VInstr::Mov { defines, .. } => *defines,
-        }
-    }
-
-    pub(crate) fn is_dram_read(&self) -> bool {
-        match self {
-            VInstr::Add { is_dram_read, .. }
-            | VInstr::Mul { is_dram_read, .. }
-            | VInstr::Fma { is_dram_read, .. }
-            | VInstr::Mov { is_dram_read, .. } => *is_dram_read,
         }
     }
 
@@ -283,26 +207,7 @@ impl VInstr {
         }
     }
 
-    /// The `VInstrKind` tag (for the placement projection).
-    fn kind(&self) -> VInstrKind {
-        match self {
-            VInstr::Add { .. } => VInstrKind::Add,
-            VInstr::Mul { .. } => VInstrKind::Mul,
-            VInstr::Fma { .. } => VInstrKind::Fma,
-            VInstr::Mov { .. } => VInstrKind::Mov,
-        }
-    }
-
-    /// The `sign` (Fma/Add carry it; Mul/Mov are `Plus`).
-    fn sign(&self) -> Sign {
-        match self {
-            VInstr::Add { sign, .. } | VInstr::Fma { sign, .. } => *sign,
-            _ => Sign::Plus,
-        }
-    }
-
-    /// Project onto the Task-1 placement input. Placement only inspects `defines` +
-    /// `VirtualOp::Value` reads for liveness; the other fields are carried for shape.
+    /// Project the value definitions and reads used by placement.
     pub(crate) fn to_place(&self) -> VirtualInstr {
         let reads: Vec<VirtualOp> = match self {
             VInstr::Add { reads, .. } | VInstr::Mul { reads, .. } => reads.clone(),
@@ -317,12 +222,8 @@ impl VInstr {
             VInstr::Mov { src, .. } => src.iter().cloned().collect(),
         };
         VirtualInstr {
-            op: self.kind(),
-            field: self.field(),
             defines: self.defines(),
             reads,
-            sign: self.sign(),
-            is_dram_read: self.is_dram_read(),
         }
     }
 }
@@ -353,18 +254,6 @@ struct VirtualLower<'a> {
     cur_step: usize,
     /// Real `ExprId`s currently defined-resident (physically in a cell). Never internal.
     defined: HashSet<ExprId>,
-    /// SP1 streamed-fold eviction pin (Fix A): resident COMPOUND `ExprId`s that a
-    /// streamed reduction/FMA classified `!must_stash` (fold-direct) up front and has
-    /// not yet served. A mid-reduction `alloc_temp_evicting` / admission eviction must
-    /// NOT drop these — a dropped resident compound would fail `direct_operand`'s
-    /// `defined` guard and fall through to `source_to_vop`, which errors on a compound
-    /// (the `source_to_vop on non-source expr` crash). Both eviction victim filters
-    /// (`evict_to_fit`, `plan_evict_to_fit`) skip any candidate in this set. Populated
-    /// per streamed-fold entry (only ids not already pinned by an ancestor reduction —
-    /// nesting-safe) and cleared on that entry's return, so it is empty outside a
-    /// streamed fold. `decisions: None` never admits, so nothing is ever resident and
-    /// this stays empty — the forward program is byte-identical.
-    pinned_direct: HashSet<ExprId>,
     widths: HashMap<ValueId, OperandField>,
     next_internal: u32,
     /// Compute roots by their shared `ExprId`: `(RootId, slot, col, sink field)`.
@@ -386,48 +275,7 @@ struct VirtualLower<'a> {
     /// path (still the default for callers that pass no decisions). This is now the
     /// ONLY mode carrier — no separate policy field.
     decisions: Option<DecisionsState>,
-    /// Task 5 bwd HOOK 1 (source resolution): distilled leaf `ExprId` → its
-    /// `BwdSpecialTable` descriptor. Consulted FIRST by `source_to_vop` — a hit
-    /// lowers to `VirtualOp::Special { desc }` in the BWD descriptor namespace
-    /// before any canonical `SourceKind` handling (fold-source Reads in the Ext
-    /// regime, VirtualSetup in both). fwd callers pass the EMPTY map (identity
-    /// hook: the lookup never hits, canonical handling is bit-identical).
-    leaf_descs: &'a BTreeMap<ExprId, u16>,
-    /// Task 5 bwd HOOK 2 (leaf field): distilled leaf `ExprId` → forced field
-    /// (Ext for fold leaves), consulted BEFORE the canonical `expr_field`
-    /// classification at every node of the field walk (see `operand_field`).
-    /// fwd callers pass the EMPTY map (identity hook — `operand_field` then
-    /// short-circuits to the canonical `child_operand_field`).
-    field_overrides: &'a BTreeMap<ExprId, FieldKind>,
-    /// SP1 backward reduction streaming: when `true`, `compile_reduction_virtual`
-    /// folds children through the one-Ext-cell stash+refold engine
-    /// (`fold_reduction_streamed`) instead of pre-materializing every child into
-    /// its own concurrent cell. Set ONLY on the backward one-root driver
-    /// (`lower_bwd_root_virtual`), and there only as the legacy-first FALLBACK
-    /// engaged when the pre-materialize lowering overflows the budget. Every fwd
-    /// construction site sets `false`, so the forward program is byte-identical.
-    stream_reductions: bool,
-    /// Task 1 (CS-M0) bwd event trace: `Some` on a traced backward compile,
-    /// collecting serve/traffic events as the lowering runs. `None` on every
-    /// forward construction site and every untraced backward compile — so the
-    /// program bytes are unaffected by construction (only this Vec grows).
-    bwd_trace: Option<BwdCompileTrace>,
-    /// Task 1 consumer chain: the stack of exprs whose cone is currently being
-    /// walked, pushed/popped around `compile_expr_virtual`. `last()` is the
-    /// consumer attributed to a serve fingerprint. Behavior-neutral: read ONLY by
-    /// the trace hook, so it has no effect when `bwd_trace` is `None`.
-    consumer_stack: Vec<ExprId>,
-    /// Task 4 (CS-M0) plan-driven residency. `Some` on a plan-replay backward
-    /// compile; MUTUALLY EXCLUSIVE with `decisions` (the gene channel) — a compile
-    /// sets at most one. `None` on every forward construction site and every
-    /// gene/uncached backward compile, so those stay byte-identical.
-    plan: Option<PlanRunState>,
 }
-
-/// The fwd identity hooks: empty maps (`const`-constructible), so every fwd call
-/// site stays on the canonical classification/resolution paths bit-identically.
-static EMPTY_LEAF_DESCS: BTreeMap<ExprId, u16> = BTreeMap::new();
-static EMPTY_FIELD_OVERRIDES: BTreeMap<ExprId, FieldKind> = BTreeMap::new();
 
 impl<'a> VirtualLower<'a> {
     fn emit(&mut self, vi: VInstr) {
@@ -488,14 +336,12 @@ impl<'a> VirtualLower<'a> {
     // ── operand seeding / evict primitives ────────────────────────────────────────
 
     fn emit_init_field(&mut self, op: VirtualOp, field: OperandField) {
-        let is_dram = is_dram_op(&op);
         self.emit(VInstr::Mov {
             dir: MovDir::AccFromSrc,
             field,
             dst: None,
             src: Some(op),
             defines: None,
-            is_dram_read: is_dram,
         });
     }
 
@@ -514,7 +360,6 @@ impl<'a> VirtualLower<'a> {
             field: OperandField::Base,
             reads: vec![],
             defines: None,
-            is_dram_read: false,
         });
     }
 
@@ -526,7 +371,6 @@ impl<'a> VirtualLower<'a> {
             dst: Some(VDst::Cell(v)),
             src: None,
             defines: Some(v),
-            is_dram_read: false,
         });
     }
 
@@ -537,337 +381,15 @@ impl<'a> VirtualLower<'a> {
     /// lowering visits for `v` — every `lower_operand_virtual` call and every root's own
     /// top-level output demand (the driver loop) — so `effective_priority` keeps reading
     /// the CURRENT stream front. Call this BEFORE any hit/miss branching on `v`.
-    fn serve_occurrence(&mut self, v: ExprId, kind: BwdServeKind) {
+    fn serve_occurrence(&mut self, v: ExprId) {
         if let Some(ds) = &mut self.decisions {
             ds.streams.serve(v);
         }
-        let fp = BwdFingerprint {
-            term: self.cur_step as u32,
-            kind,
-            value: v,
-            consumer: self.consumer_stack.last().copied(),
-        };
-        // Task 4 (plan mode only): drive the fail-closed matcher on DOMAIN serves and
-        // stage the resulting Retain/Bypass action. No-op when `self.plan` is `None`
-        // (every fwd site and every gene/uncached backward compile).
-        self.plan_dispatch(&fp);
-        // Task 1 (observation-only): record the serve BEFORE the hit/miss branch the
-        // caller takes next, so `from` reflects whether `v` is resident AT serve time.
-        // `bwd_trace` is `None` on every forward site and on untraced backward compiles,
-        // so this records nothing there (program bytes unchanged).
-        if let Some(trace) = &mut self.bwd_trace {
-            let from = if self.defined.contains(&v) {
-                BwdServedFrom::Resident
-            } else {
-                BwdServedFrom::Recomputed
-            };
-            trace.events.push(BwdEvent::Serve { fp, from });
-        }
     }
 
-    // ── Task 4 (CS-M0): plan-driven residency (serve dispatch / admission / eviction) ──
-
-    /// Plan serve dispatch (spec §4). A no-op unless `self.plan` is `Some` and `fp.value`
-    /// is a DOMAIN serve. For a domain serve it advances the fail-closed matcher and:
-    /// (Retain, resident) re-arms the retention; (Retain, non-resident) stages an
-    /// admission for the matching admit site; (Bypass, resident) is rule a — the current
-    /// serve is a free hit, the slot is released right after the read
-    /// (`plan_release_if_pending`); (Bypass, non-resident) recomputes. Records the single
-    /// `Diverge` event the first time the matcher fails closed. Reads `self.defined` and
-    /// mutates only `self.plan` / `self.bwd_trace` (disjoint fields).
-    fn plan_dispatch(&mut self, fp: &BwdFingerprint) {
-        let resident = self.defined.contains(&fp.value);
-        let mut newly_diverged = None;
-        {
-            let Some(plan) = self.plan.as_mut() else {
-                return;
-            };
-            if !plan.domain.contains(&fp.value) {
-                return;
-            }
-            let action = plan.run.on_serve(fp);
-            if !plan.diverge_emitted {
-                if let Some(at) = plan.run.diverged() {
-                    plan.diverge_emitted = true;
-                    newly_diverged = Some(at);
-                }
-            }
-            match (action, resident) {
-                (PlanAction::Retain, true) => {
-                    // Free hit; keep residency, re-arm this value's next gap.
-                    let ca = plan.run.retention(fp.value).unwrap_or(usize::MAX);
-                    if let Some(slot) = plan.resident.get_mut(&fp.value) {
-                        slot.closes_at = ca;
-                    }
-                }
-                (PlanAction::Retain, false) => {
-                    plan.pending_action.insert(fp.value, PlanAction::Retain);
-                }
-                (PlanAction::Bypass, true) => {
-                    // Rule a: serve from the resident cell now, release the slot after.
-                    plan.pending_bypass_release = Some(fp.value);
-                }
-                (PlanAction::Bypass, false) => {
-                    // Plain recompute — no admission staged.
-                }
-            }
-        }
-        if let Some(at) = newly_diverged {
-            if let Some(trace) = &mut self.bwd_trace {
-                trace.events.push(BwdEvent::Diverge { at_entry: at });
-            }
-        }
-    }
-
-    /// Rule a completion (spec §4a "serve then release the slot"): if the just-dispatched
-    /// serve of `v` was a `Bypass` on a resident value, release its slot NOW — after its
-    /// cell read has been captured by the caller. The `Bypass` already closed `v`'s
-    /// retention (matcher), so the value is EXPIRED: free its width, drop it from the
-    /// resident map and `self.defined` (later serves recompute), and record the
-    /// `Evict { expired: true }`. Eager release keeps the live-capacity model in lockstep
-    /// with `plan_placement`'s true cell lifetimes (`v`'s cell dies at this last read), so
-    /// a later admission's capacity check is neither over- nor under-reserved. No-op
-    /// outside plan mode / when nothing is pending. (The single-owner retention chains
-    /// make the spec's "unless another retention still owns the value" vacuous.)
-    fn plan_release_if_pending(&mut self, v: ExprId) {
-        let release = matches!(
-            self.plan.as_ref().map(|p| p.pending_bypass_release),
-            Some(Some(x)) if x == v
-        );
-        if !release {
-            return;
-        }
-        let expired = {
-            let plan = self.plan.as_mut().expect("checked Some above");
-            plan.pending_bypass_release = None;
-            let freed = plan
-                .resident
-                .remove(&v)
-                .map_or(0, |s| resident_width(s.field));
-            plan.live_width = plan.live_width.saturating_sub(freed);
-            // Record the eviction so a LATER re-admission of `v` (a `Retain, Bypass,
-            // Retain` gapped chain) mints a FRESH generation id (`plan_try_admit` reads
-            // `evicted_ever`), instead of re-using `v` and emitting a second
-            // `emit_evict_to_cell(v)` — which `compute_live_ranges` (first-define-wins)
-            // would collapse into one `[first_def, last_use]` span across the released
-            // gap, holding `v` live in `plan_placement` after `live_width` freed it.
-            // Every other eviction path records this; the rule-a release must too.
-            plan.evicted_ever.insert(v);
-            // A rule-a release only fires when the Bypass just closed the retention.
-            plan.run.retention(v).is_none() || plan.run.diverged().is_some()
-        };
-        self.defined.remove(&v);
-        if let Some(trace) = &mut self.bwd_trace {
-            trace.events.push(BwdEvent::Evict { value: v, expired });
-        }
-    }
-
-    /// Unified admission choke for the leaf / compound / (fwd) root sites: the gene
-    /// channel routes through `try_admit`'s priority logic; plan mode routes through
-    /// `plan_try_admit` (the plan's own decision, no priority); neither → `None`
-    /// (uncached recompute, byte-identical to the pre-Task-4 `decisions.is_some()` gate).
     fn admit_decision(&mut self, v: ExprId, field: OperandField) -> Option<ValueId> {
-        if self.decisions.is_some() {
-            self.try_admit(v, field)
-        } else if self.plan.is_some() {
-            self.plan_try_admit(v, field)
-        } else {
-            None
-        }
+        self.try_admit(v, field)
     }
-
-    /// Plan-mode admission of a just-served / just-produced NON-resident value. Admits
-    /// iff the serve staged a `Retain` action (`pending_action`); otherwise `None`
-    /// (recompute). On a `Retain`, re-checks live capacity (spec §5): if short, evicts
-    /// only EXPIRED residents (§4 rule b); if still short, emits `Refuse` and declines
-    /// (never preempts a live retention). On admit, returns the `ValueId` the caller must
-    /// evict-to-cell — `v` on its first admission, or a fresh generation if re-admitted.
-    fn plan_try_admit(&mut self, v: ExprId, field: OperandField) -> Option<ValueId> {
-        match self.plan.as_mut()?.pending_action.remove(&v) {
-            Some(PlanAction::Retain) => {}
-            _ => return None,
-        }
-        let need = resident_width(field);
-        if !self.plan_evict_to_fit(need) {
-            if let Some(trace) = &mut self.bwd_trace {
-                trace.events.push(BwdEvent::Refuse {
-                    value: v,
-                    need: need as u32,
-                });
-            }
-            return None;
-        }
-        let evicted_before = self
-            .plan
-            .as_ref()
-            .expect("plan Some")
-            .evicted_ever
-            .contains(&v);
-        let gen_id = if evicted_before {
-            self.fresh_internal()
-        } else {
-            v
-        };
-        let closes_at = self
-            .plan
-            .as_ref()
-            .expect("plan Some")
-            .run
-            .retention(v)
-            .unwrap_or(usize::MAX);
-        {
-            let plan = self.plan.as_mut().expect("plan Some");
-            plan.resident.insert(v, ResidentSlot { field, closes_at });
-            if gen_id != v {
-                plan.generation.insert(v, gen_id);
-            }
-            plan.live_width += need;
-        }
-        self.defined.insert(v);
-        if let Some(trace) = &mut self.bwd_trace {
-            trace.events.push(BwdEvent::Admit {
-                value: v,
-                width: need as u8,
-            });
-        }
-        Some(gen_id)
-    }
-
-    /// Free at least `need` width-weighted cells for a plan admission by evicting EXPIRED
-    /// residents (§4 rule b). Victim order: dead first (no unconsumed plan entries), then
-    /// smallest recorded `closes_at`, then `ExprId`. A live retention is NEVER a victim.
-    /// Returns `true` iff `need` now fits; `false` (admission refused) if evicting every
-    /// expired resident still leaves it short. Emits an `Evict { expired: true }` per
-    /// victim. No-op-true outside plan mode.
-    fn plan_evict_to_fit(&mut self, need: usize) -> bool {
-        let to_evict = {
-            let Some(plan) = self.plan.as_ref() else {
-                return true;
-            };
-            if plan.live_width + need <= plan.budget {
-                return true;
-            }
-            let diverged = plan.run.diverged().is_some();
-            let pinned = &self.pinned_direct;
-            // (dead?, closes_at, value, field) — `dead = false` sorts first via `!dead`.
-            let mut victims: Vec<(bool, usize, ExprId, OperandField)> = plan
-                .resident
-                .iter()
-                .filter_map(|(&rv, slot)| {
-                    // Fix A: never evict a resident compound a streamed fold classified
-                    // fold-direct and has not yet served (same crash guard as `evict_to_fit`).
-                    if pinned.contains(&rv) {
-                        return None;
-                    }
-                    let expired = diverged || plan.run.retention(rv).is_none();
-                    if !expired {
-                        return None;
-                    }
-                    let dead = plan.run.remaining(rv) == 0;
-                    Some((!dead, slot.closes_at, rv, slot.field))
-                })
-                .collect();
-            victims.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)).then(a.2.cmp(&b.2)));
-            let mut freed = 0usize;
-            let mut to_evict: Vec<(ExprId, OperandField)> = Vec::new();
-            for (_, _, rv, f) in victims {
-                if plan.live_width - freed + need <= plan.budget {
-                    break;
-                }
-                freed += resident_width(f);
-                to_evict.push((rv, f));
-            }
-            if plan.live_width - freed + need > plan.budget {
-                return false; // ran out of expired residents without freeing enough
-            }
-            to_evict
-        };
-        for (rv, f) in to_evict {
-            {
-                let plan = self.plan.as_mut().expect("plan Some");
-                plan.resident.remove(&rv);
-                plan.live_width -= resident_width(f);
-                plan.evicted_ever.insert(rv);
-            }
-            self.defined.remove(&rv);
-            if let Some(trace) = &mut self.bwd_trace {
-                trace.events.push(BwdEvent::Evict {
-                    value: rv,
-                    expired: true,
-                });
-            }
-        }
-        true
-    }
-
-    /// End-of-lowering plan wrap-up (spec §4): run the matcher's EOF-divergence check and
-    /// record the single `Diverge` event if it fires now; then reclaim every remaining
-    /// resident (they leave residency at EOF), emitting an `Evict` per value. No-op
-    /// outside plan mode.
-    fn plan_finish(&mut self) {
-        let mut newly_diverged = None;
-        if let Some(plan) = self.plan.as_mut() {
-            plan.run.finish();
-            if !plan.diverge_emitted {
-                if let Some(at) = plan.run.diverged() {
-                    plan.diverge_emitted = true;
-                    newly_diverged = Some(at);
-                }
-            }
-        }
-        if let Some(at) = newly_diverged {
-            if let Some(trace) = &mut self.bwd_trace {
-                trace.events.push(BwdEvent::Diverge { at_entry: at });
-            }
-        }
-        let residents: Vec<(ExprId, bool)> = match &self.plan {
-            Some(plan) => {
-                let diverged = plan.run.diverged().is_some();
-                plan.resident
-                    .keys()
-                    .map(|&rv| (rv, diverged || plan.run.retention(rv).is_none()))
-                    .collect()
-            }
-            None => return,
-        };
-        for (rv, expired) in residents {
-            if let Some(plan) = self.plan.as_mut() {
-                let slot = plan.resident.remove(&rv);
-                if let Some(slot) = slot {
-                    plan.live_width -= resident_width(slot.field);
-                }
-            }
-            if let Some(trace) = &mut self.bwd_trace {
-                trace.events.push(BwdEvent::Evict { value: rv, expired });
-            }
-        }
-    }
-
-    /// Attempt to admit a just-produced value `v` (occupying `field`'s width) into the
-    /// `Decisions` resident set. Only meaningful when `self.decisions` is `Some`
-    /// (returns `None` otherwise). On success, `v` is inserted into both `resident` and
-    /// `defined` (and any evicted victims are removed from both) — the caller still needs
-    /// to emit the physical evict-to-cell instruction.
-    ///
-    /// Precondition: `v`'s CURRENT occurrence has already been `serve_occurrence`d, so
-    /// `effective_priority(v)` reflects `v`'s NEXT (future) occurrence — the one admission
-    /// is deciding whether to preserve residency for (brief: "≥1 remaining occurrence").
-    ///
-    /// Capacity (brief): width-weighted vs `budget`, headroom 0. If admitting `v` requires
-    /// eviction, victims are the min-effective-priority residents (`total_cmp`, `ExprId`
-    /// tie-break; a dead/`None`-priority resident sorts as -infinity, evicted first). If
-    /// even the weakest resident's priority is >= the admitting occurrence's priority (or
-    /// there isn't enough to evict), admission is SKIPPED — no partial eviction.
-    ///
-    /// Task 8c: on success, returns `Some(id)` naming the `ValueId` the caller must
-    /// physically evict-to-cell (`emit_evict_to_cell(id, field)`) and read thereafter
-    /// — `v` itself on `v`'s first-ever admission, or a FRESH internal generation id
-    /// if `v` was evicted at some earlier point in this layer compile (see
-    /// `generation`'s doc). The bookkeeping side effects (`resident`/`generation`/
-    /// `live_width`/`defined`) are all applied here; emitting the physical
-    /// evict-to-cell instruction stays the caller's job since callers differ on
-    /// whether the acc already holds `v`'s value at this point (a leaf must
-    /// `emit_init_field` first) or already does (a just-recomputed compound/root).
     fn try_admit(&mut self, v: ExprId, field: OperandField) -> Option<ValueId> {
         // RR-invariant: admit into residency ONLY values the genome scores — cs's site
         // domain (cacheable ∧ fan-out ≥ 2). Non-domain values (derived_e4, constants,
@@ -930,14 +452,6 @@ impl<'a> VirtualLower<'a> {
         {
             return g;
         }
-        // Task 4: plan mode carries its own re-admission generations.
-        if let Some(g) = self
-            .plan
-            .as_ref()
-            .and_then(|p| p.generation.get(&real).copied())
-        {
-            return g;
-        }
         real
     }
 
@@ -975,17 +489,10 @@ impl<'a> VirtualLower<'a> {
         // possibly-suboptimal victim choice; it is never a correctness gap. The
         // pending-reads lookup is keyed by the CURRENT generation id (`generation`),
         // not the real `ExprId`, since that is what `defer_read` incremented against.
-        let pinned = &self.pinned_direct;
         let mut candidates: Vec<(f64, ExprId, OperandField)> = ds
             .resident
             .iter()
             .filter(|&(&id, _)| {
-                // Fix A: a streamed fold classified this resident compound fold-direct
-                // and has not served it yet — evicting it would crash its later
-                // `direct_operand` serve. Never a victim while pinned.
-                if pinned.contains(&id) {
-                    return false;
-                }
                 let gen_id = ds.generation.get(&id).copied().unwrap_or(id);
                 ds.pending_reads.get(&gen_id).copied().unwrap_or(0) == 0
             })
@@ -1084,21 +591,18 @@ impl<'a> VirtualLower<'a> {
     }
 
     fn push_fold(&mut self, field: OperandField, ops: Vec<VirtualOp>, is_add: bool, sign: Sign) {
-        let is_dram = ops.iter().any(is_dram_op);
         if is_add {
             self.emit(VInstr::Add {
                 field,
                 sign,
                 reads: ops,
                 defines: None,
-                is_dram_read: is_dram,
             });
         } else {
             self.emit(VInstr::Mul {
                 field,
                 reads: ops,
                 defines: None,
-                is_dram_read: is_dram,
             });
         }
     }
@@ -1111,14 +615,12 @@ impl<'a> VirtualLower<'a> {
         pairs: Vec<(VirtualOp, VirtualOp)>,
     ) {
         for chunk in pairs.chunks(MAX_ARITY) {
-            let is_dram = chunk.iter().any(|(l, r)| is_dram_op(l) || is_dram_op(r));
             self.emit(VInstr::Fma {
                 field_lhs,
                 field_rhs,
                 sign,
                 pairs: chunk.to_vec(),
                 defines: None,
-                is_dram_read: is_dram,
             });
         }
     }
@@ -1148,18 +650,8 @@ impl<'a> VirtualLower<'a> {
         desc
     }
 
-    /// Field classification behind the Task 5 leaf-field hook: identical to
-    /// `child_operand_field` when `field_overrides` is empty (every fwd call —
-    /// a single `is_empty` branch, no behavior change), else the override-aware
-    /// walk (`child_operand_field_overridden`) that forces fold-leaf fields and
-    /// joins them up the tree. ALL in-lowerer field classification goes through
-    /// here so the two paths cannot drift per call site.
     fn operand_field(&self, layer: &DagLayer, id: ExprId, expected: OperandField) -> OperandField {
-        if self.field_overrides.is_empty() {
-            child_operand_field(layer, id, expected, &self.cross)
-        } else {
-            child_operand_field_overridden(layer, id, expected, &self.cross, self.field_overrides)
-        }
+        child_operand_field(layer, id, expected, &self.cross)
     }
 
     // ── source resolution (residency-free; mirrors arith::source_to_operand arms) ──
@@ -1174,25 +666,6 @@ impl<'a> VirtualLower<'a> {
         expr_id: ExprId,
         expected: OperandField,
     ) -> Result<VirtualOp, CompileError> {
-        // Task 5 bwd HOOK 1: a distilled leaf carrying a BwdSpecialTable desc lowers
-        // to a Special operand in the BWD namespace, before any canonical handling.
-        // fwd identity: the map is empty, so this never fires on a fwd compile.
-        if let Some(&desc) = self.leaf_descs.get(&expr_id) {
-            // Task 1: a READ-origin fold leaf gathers the folded value (4 Ext cells) per
-            // use — mirrors the tally's `fold_traffic`. A VS-origin fold uses the O(k)
-            // multilinear closed form (zero DRAM), so it emits NO TrafficRead.
-            if let Some(trace) = &mut self.bwd_trace {
-                if let Expr::Source(sid) = &layer.exprs[expr_id.0 as usize] {
-                    if matches!(layer.sources[sid.0 as usize].kind, SourceKind::Read { .. }) {
-                        trace.events.push(BwdEvent::TrafficRead {
-                            value: expr_id,
-                            cells: 4,
-                        });
-                    }
-                }
-            }
-            return Ok(VirtualOp::Special { desc });
-        }
         if layer.resolutions.contains_key(&expr_id) {
             let desc = *self.desc_by_expr.get(&expr_id).ok_or_else(|| {
                 CompileError::FieldMismatch(format!(
@@ -1216,18 +689,6 @@ impl<'a> VirtualLower<'a> {
                 // field bits in agreement.
                 let field = super::read_place_operand_field(place, &self.cross, expected);
                 let (slot, col) = self.ctx.backings.read_slot_col(place, field)?;
-                // Task 1: a bare Global read is real DRAM traffic at its field width
-                // (mirrors the tally's `global` accumulation).
-                if let Some(trace) = &mut self.bwd_trace {
-                    let cells = match field {
-                        OperandField::Base => 1,
-                        OperandField::Ext => 4,
-                    };
-                    trace.events.push(BwdEvent::TrafficRead {
-                        value: expr_id,
-                        cells,
-                    });
-                }
                 Ok(VirtualOp::Global { slot, col })
             }
             SourceKind::VirtualSetup { kind } => {
@@ -1271,17 +732,13 @@ impl<'a> VirtualLower<'a> {
         // occurrence off `expr_id`'s stream, consumed before any hit/miss branching so
         // `effective_priority` reflects the NEXT occurrence for any admission decision
         // taken below (`try_admit`'s precondition).
-        self.serve_occurrence(expr_id, BwdServeKind::Operand);
+        self.serve_occurrence(expr_id);
 
         // 1. Truly defined-resident → serve from its CURRENT generation's cell
         //    (Task 8c: `expr_id` itself unless it was re-admitted after an eviction).
         if self.defined.contains(&expr_id) {
             let gen_id = self.current_value_id(expr_id);
-            let op = self.defer_read(gen_id);
-            // Task 4 rule a: a `Bypass` on this resident serves the cell (above) THIS
-            // time, then releases the slot so later serves recompute. No-op otherwise.
-            self.plan_release_if_pending(expr_id);
-            return Ok(op);
+            return Ok(self.defer_read(gen_id));
         }
         // 2. A source or resolution-pruned leaf resolves to one operand line. Under
         //    `Decisions`, a leaf can ALSO be admitted into residency (Task 3: caching
@@ -1292,7 +749,7 @@ impl<'a> VirtualLower<'a> {
             || matches!(&layer.exprs[expr_id.0 as usize], Expr::Source(_))
         {
             let op = self.source_to_vop(layer, expr_id, expected)?;
-            if self.decisions.is_some() || self.plan.is_some() {
+            if self.decisions.is_some() {
                 let field = self.operand_field(layer, expr_id, expected);
                 if let Some(gen_id) = self.admit_decision(expr_id, field) {
                     // HIGH-1: eager cache write from the SOURCE (F1-clean). Writing from acc
@@ -1318,130 +775,9 @@ impl<'a> VirtualLower<'a> {
         self.finalize_produced(expr_id, field)
     }
 
-    // ── CS-M5a Task 5: fragment top-atom lowering (value-in-acc) ──────────────────
-
-    /// Lower a fragment TOP ATOM with REAL occurrence semantics (serve / resident-hit /
-    /// source-or-compound admission), ending with the atom's value IN THE ACC. The
-    /// fragment sibling of [`Self::lower_operand_virtual`]: same `lower_operand_virtual`
-    /// choke, but instead of RETURNING an operand line for a caller to fold, it INITS the
-    /// acc from the served value (so [`Self::lower_bwd_fragment`] can seed / mul-fold it).
-    ///
-    /// Every fragment atom MUST route through here — the atoms ARE the reuse targets, so
-    /// a direct `compile_expr_virtual` (which bypasses serve / hit / admit / retain — see
-    /// `bwd/trace.rs`) would make them unservable and uncacheable. The plan-replay channel
-    /// therefore sees these as ordinary occurrences (Retain on a top atom is possible).
-    fn lower_bwd_top_atom(
-        &mut self,
-        layer: &DagLayer,
-        atom: ExprId,
-        expected: OperandField,
-    ) -> Result<OperandField, CompileError> {
-        // Demand site (mirrors `lower_operand_virtual`): one occurrence off the stream
-        // (no-op under `decisions: None`), consumed before the hit/miss branch.
-        self.serve_occurrence(atom, BwdServeKind::Operand);
-
-        // 1. Resident hit → init the acc from the CURRENT generation's cell. Order mirrors
-        //    `lower_operand_virtual` EXACTLY: current gen → `defer_read` → `plan_release`
-        //    → `emit_init_field` (the acc read closes rule-a's slot lifetime). The
-        //    uncached gate never admits, so this arm is plan-mode only.
-        if self.defined.contains(&atom) {
-            let gen_id = self.current_value_id(atom);
-            let op = self.defer_read(gen_id);
-            self.plan_release_if_pending(atom);
-            let field = self.operand_field(layer, atom, expected);
-            self.emit_init_field(op, field);
-            return Ok(field);
-        }
-        // 2. Source / resolution leaf → one operand line; may be admitted to residency
-        //    (`decisions`/`plan`). On admit, the eager cache write + evict-to-cell leaves
-        //    the value in acc (evict is `DstFromAcc`, acc stays live) — NO reload. The
-        //    non-admit tail inits the acc from the source op directly.
-        if layer.resolutions.contains_key(&atom)
-            || matches!(&layer.exprs[atom.0 as usize], Expr::Source(_))
-        {
-            let op = self.source_to_vop(layer, atom, expected)?;
-            let field = self.operand_field(layer, atom, expected);
-            if self.decisions.is_some() || self.plan.is_some() {
-                if let Some(gen_id) = self.admit_decision(atom, field) {
-                    // HIGH-1 (as in `lower_operand_virtual`): eager cache write from the
-                    // SOURCE keeps the `init;evict` pair F1-fusible.
-                    self.materialize_cache_root_from_src(atom, &op);
-                    self.emit_init_field(op, field);
-                    self.widths.insert(gen_id, field);
-                    self.emit_evict_to_cell(gen_id, field);
-                    self.defined.insert(atom);
-                    return Ok(field);
-                }
-            }
-            self.materialize_cache_root_from_src(atom, &op); // F3: eager cache write from source
-            self.emit_init_field(op, field);
-            return Ok(field);
-        }
-        // 3. Compound → recompute the cone into the acc, then finalize/admit EXACTLY as the
-        //    operand path's compound arm — but WITHOUT its mandatory temp+reload when no
-        //    admission happens: the value is already in acc (value-in-acc convention), and
-        //    an admit's evict-to-cell is `DstFromAcc` (acc stays live), so no reload either.
-        let field = self.operand_field(layer, atom, expected);
-        self.compile_expr_virtual(layer, atom, field)?;
-        self.materialize_if_root(atom, true);
-        if let Some(gen_id) = self.admit_decision(atom, field) {
-            self.widths.insert(gen_id, field);
-            self.emit_evict_to_cell(gen_id, field);
-            self.defined.insert(atom); // idempotent under Decisions/plan (admit already did this)
-        }
-        Ok(field)
-    }
-
-    /// Lower one fragment's atom product into the ordinary accumulator, returning
-    /// the product's actual field. The batching coefficient is deliberately not
-    /// applied here; the fragment driver emits it as sink metadata.
-    fn lower_bwd_fragment(
-        &mut self,
-        layer: &DagLayer,
-        atoms: &[ExprId],
-    ) -> Result<FieldKind, CompileError> {
-        // First atom seeds the acc (value-in-acc).
-        let mut acc_field = self.lower_bwd_top_atom(layer, atoms[0], OperandField::Ext)?;
-        // Further atoms: spill the running product, serve the atom into acc, and mul-fold.
-        for &atom in &atoms[1..] {
-            let p = self.alloc_temp_evicting(acc_field)?;
-            let atom_field = self.lower_bwd_top_atom(layer, atom, OperandField::Ext)?;
-            self.push_fold(
-                acc_field,
-                vec![VirtualOp::Value(p)],
-                /* is_add */ false,
-                Sign::Plus,
-            );
-            if atom_field == OperandField::Ext {
-                acc_field = OperandField::Ext;
-            }
-        }
-        Ok(match acc_field {
-            OperandField::Base => FieldKind::Base,
-            OperandField::Ext => FieldKind::Ext,
-        })
-    }
-
     // ── expression lowering into the accumulator (mirrors arith::compile_expr) ────
 
-    /// Behavior-neutral wrapper around [`Self::compile_expr_virtual_inner`]: pushes
-    /// `expr_id` onto `consumer_stack` for the duration of its cone walk so the Task-1
-    /// trace can attribute operand serves to their consumer, then pops on every exit
-    /// (including the `?` error path). The push/pop is read ONLY by the trace hook, so
-    /// forward and untraced-backward compiles are unaffected.
     fn compile_expr_virtual(
-        &mut self,
-        layer: &DagLayer,
-        expr_id: ExprId,
-        expected: OperandField,
-    ) -> Result<(), CompileError> {
-        self.consumer_stack.push(expr_id);
-        let r = self.compile_expr_virtual_inner(layer, expr_id, expected);
-        self.consumer_stack.pop();
-        r
-    }
-
-    fn compile_expr_virtual_inner(
         &mut self,
         layer: &DagLayer,
         expr_id: ExprId,
@@ -1608,7 +944,6 @@ impl<'a> VirtualLower<'a> {
             field: rf,
             reads: vec![rhs_op.clone()],
             defines: None,
-            is_dram_read: is_dram_op(rhs_op),
         });
         if sign == Sign::Minus {
             self.emit_unary_negate();
@@ -1685,12 +1020,6 @@ impl<'a> VirtualLower<'a> {
         expected: OperandField,
     ) -> Result<(), CompileError> {
         debug_assert!(!children.is_empty());
-        // SP1 backward streaming fallback: fold children through the one-Ext-cell
-        // stash+refold engine instead of pre-materializing every child concurrently.
-        // Only the backward driver ever sets this; fwd stays on the legacy path below.
-        if self.stream_reductions {
-            return self.fold_reduction_streamed(layer, children, is_add, negate, expected);
-        }
         // Pre-materialize every child to an operand BEFORE seeding the acc (a compound
         // child clobbers the acc during its own lowering).
         let mut ops: Vec<(OperandField, VirtualOp, Sign)> = Vec::with_capacity(children.len());
@@ -1771,319 +1100,6 @@ impl<'a> VirtualLower<'a> {
         Ok(())
     }
 
-    // ── SP1: backward streamed reduction (one-Ext-cell stash + refold) ────────────
-
-    /// Direct-fold vs must-stash classifier for a reduction child (SP1). Mirrors the
-    /// arms of `lower_operand_virtual`: a resident hit is served directly; a source /
-    /// resolution leaf is direct UNLESS it MAY attempt admission (which emits an
-    /// `init;evict` pair that clobbers the acc); anything compound recomputes its cone
-    /// into the acc and so must be stashed. `true` = must stash, `false` = fold direct.
-    fn is_compound_or_may_admit(&self, layer: &DagLayer, id: ExprId) -> bool {
-        if self.defined.contains(&id) {
-            return false; // resident hit → served directly from its cell
-        }
-        if layer.resolutions.contains_key(&id)
-            || matches!(&layer.exprs[id.0 as usize], Expr::Source(_))
-        {
-            return self.may_attempt_admit(id); // source leaf: stash iff it may admit
-        }
-        true // compound cone → recompute clobbers the acc → stash
-    }
-
-    /// Whether lowering `id` as an operand MAY reach the eager `init;evict` admission
-    /// (which clobbers the acc), so the streamed reduction must route it through the
-    /// stash path rather than fold it directly. Gene channel: `try_admit`'s stateless
-    /// admissibility prefix (`is_admittable` ∧ (`reaches_dram` ∨ read-count ≥ 2)) plus a
-    /// remaining-occurrence lookahead. Plan mode (Task 4): any DOMAIN value may be
-    /// `Retain`ed at this serve, so it must be stash-routed to keep the admit site
-    /// reachable (a Bypassed one simply folds back through the `else` arm). `false` under
-    /// a pure `decisions: None` compile — no admission ever happens there.
-    fn may_attempt_admit(&self, id: ExprId) -> bool {
-        match &self.decisions {
-            Some(ds) => {
-                ds.streams.is_admittable(id)
-                    && (ds.streams.reaches_dram(id) || ds.streams.operand_read_count(id) >= 2)
-                    && ds.streams.effective_priority(id).is_some()
-            }
-            None => self.plan.as_ref().is_some_and(|p| p.domain.contains(&id)),
-        }
-    }
-
-    /// Serve `id`'s occurrence and return a direct operand: its resident cell if defined,
-    /// else its source/leaf operand. Precondition: `is_compound_or_may_admit(id)` is
-    /// `false`, so lowering `id` does not clobber the acc. Mirrors the serve +
-    /// resident-hit / source arms of `lower_operand_virtual` (`:768`-`:800`), minus the
-    /// admission branch (a direct child, by classification, will not admit).
-    fn direct_operand(
-        &mut self,
-        layer: &DagLayer,
-        id: ExprId,
-        expected: OperandField,
-    ) -> Result<VirtualOp, CompileError> {
-        self.serve_occurrence(id, BwdServeKind::Operand);
-        if self.defined.contains(&id) {
-            let g = self.current_value_id(id);
-            return Ok(self.defer_read(g));
-        }
-        self.source_to_vop(layer, id, expected)
-    }
-
-    /// Fold one compound (or may-admit) child `id` into the running partial `P` (held in
-    /// `stash`), leaving `acc = P ⊕ (sign)·child`. `field` is the child's field,
-    /// `acc_field` is `P`'s field. Serves the child, recomputes its cone into the acc via
-    /// the SHARED `compile_expr_virtual` machinery (hook-preserving), runs its
-    /// materialize/admission obligations, then combines with the stashed partial:
-    ///   * ADMITTED: evict the child to its resident cell, reload `P` from `stash`, and
-    ///     fold the child back from its cell (so its residency is available to later
-    ///     occurrences) — `acc = P ⊕ (sign)·cell`.
-    ///   * NOT admitted: negate in place for a `Minus` add, then fold `P` back —
-    ///     `acc = (±child) ⊕ P` (Add commutes; a `Mul` child is always `Plus`, giving
-    ///     `acc = child · P`).
-    #[allow(clippy::too_many_arguments)]
-    fn fold_compound_child_into_partial(
-        &mut self,
-        layer: &DagLayer,
-        id: ExprId,
-        sign: Sign,
-        field: OperandField,
-        is_add: bool,
-        acc_field: OperandField,
-        stash: ValueId,
-    ) -> Result<(), CompileError> {
-        self.serve_occurrence(id, BwdServeKind::Operand);
-        self.compile_expr_virtual(layer, id, field)?;
-        self.materialize_if_root(id, true);
-        let admitted = self.admit_decision(id, field);
-        if let Some(g) = admitted {
-            self.widths.insert(g, field);
-            self.emit_evict_to_cell(g, field);
-            self.defined.insert(id);
-            let cop = self.defer_read(g);
-            self.emit_init_field(VirtualOp::Value(stash), acc_field); // acc = P
-            self.push_fold(field, vec![cop], is_add, sign); // acc = P ⊕ (sign)·child
-        } else {
-            if is_add && sign == Sign::Minus {
-                self.emit_unary_negate(); // acc = -child
-            }
-            // acc = (±child) ⊕ P  (Add commutes; Mul child·P, sign always Plus).
-            self.push_fold(acc_field, vec![VirtualOp::Value(stash)], is_add, Sign::Plus);
-        }
-        Ok(())
-    }
-
-    /// Fold one compound-operand PRODUCT `sign·(lhs*rhs)` into the running partial `P`
-    /// (held in `stash`), leaving `acc = ±(lhs*rhs) ⊕ P` (`⊕` = ADD — the FMA cone is an
-    /// Add). Each operand is lowered PER-OPERAND via `lower_operand_virtual` (the legacy
-    /// admission-preserving entry: a compound operand recomputes its cone into the acc and
-    /// finalizes into its OWN cell, so a shared operand can become resident; a direct-leaf
-    /// operand resolves to its source line), then `produce_product_into_acc` recombines the
-    /// two operand lines into the signed product. The streaming win over legacy is holding
-    /// only THIS product's operands + the one running partial concurrently, not every
-    /// product's operands at once. `acc_field` is `P`'s field (the acc field at stash time).
-    #[allow(clippy::too_many_arguments)]
-    fn fold_compound_product_into_partial(
-        &mut self,
-        layer: &DagLayer,
-        sign: Sign,
-        lf: OperandField,
-        lhs: ExprId,
-        rf: OperandField,
-        rhs: ExprId,
-        acc_field: OperandField,
-        stash: ValueId,
-        expected: OperandField,
-    ) -> Result<(), CompileError> {
-        let lhs_op = self.lower_operand_virtual(layer, lhs, expected)?;
-        let rhs_op = self.lower_operand_virtual(layer, rhs, expected)?;
-        self.produce_product_into_acc(sign, lf, &lhs_op, rf, &rhs_op); // acc = ±(lhs*rhs)
-        // acc = ±(lhs*rhs) ⊕ P  (ADD commutes; `stash` is `P` at `acc_field`).
-        self.push_fold(acc_field, vec![VirtualOp::Value(stash)], true, Sign::Plus);
-        Ok(())
-    }
-
-    /// Fold every DIRECT (`!must_stash`) child of `kids` in field `phase` into the acc,
-    /// grouped by sign so each homogeneous group is one (`MAX_ARITY`-split) fold. Serves
-    /// each such child (via `direct_operand`) in `kids` order. Grouping ONLY — the
-    /// reduction's single tail negate is applied by `fold_reduction_streamed`.
-    fn fold_direct_group(
-        &mut self,
-        layer: &DagLayer,
-        kids: &[Kid],
-        seed: usize,
-        phase: OperandField,
-        is_add: bool,
-        expected: OperandField,
-    ) -> Result<(), CompileError> {
-        let mut plus: Vec<VirtualOp> = Vec::new();
-        let mut minus: Vec<VirtualOp> = Vec::new();
-        for i in 0..kids.len() {
-            if i == seed || kids[i].must_stash || kids[i].field != phase {
-                continue;
-            }
-            let op = self.direct_operand(layer, kids[i].id, expected)?;
-            match kids[i].sign {
-                Sign::Plus => plus.push(op),
-                Sign::Minus => minus.push(op),
-            }
-        }
-        if !plus.is_empty() {
-            self.emit_reduction_group_virtual(phase, plus, is_add, Sign::Plus)?;
-        }
-        if !minus.is_empty() {
-            self.emit_reduction_group_virtual(phase, minus, is_add, Sign::Minus)?;
-        }
-        Ok(())
-    }
-
-    /// SP1 streamed reduction: fold `children` bounding concurrent state to ONE stash
-    /// cell (the running partial) plus each child's own transient compute, instead of
-    /// the legacy pre-materialize-every-child loop. Value-identical to the legacy body
-    /// by Add/Mul commutativity; feasibility with streaming ⊇ legacy. Field-first phase
-    /// ordering (all Base children, then all Ext) lifts the acc to Ext at most once.
-    fn fold_reduction_streamed(
-        &mut self,
-        layer: &DagLayer,
-        children: &[ExprId],
-        is_add: bool,
-        negate: bool,
-        expected: OperandField,
-    ) -> Result<(), CompileError> {
-        // Classify every child (pre-lowering): (id, sign, field, must_stash).
-        let mut kids: Vec<Kid> = Vec::with_capacity(children.len());
-        for &c in children {
-            let (id, sign) = if is_add {
-                match classify_additive_child(layer, c) {
-                    // The reduction path is only reached after `try_compile_fma_virtual`
-                    // found no product child, so `Product` never occurs here.
-                    AdditiveChild::Product { .. } => (c, Sign::Plus),
-                    AdditiveChild::Addend { sign, id } => (id, sign),
-                }
-            } else {
-                (c, Sign::Plus)
-            };
-            let field = self.operand_field(layer, id, expected);
-            let must_stash = self.is_compound_or_may_admit(layer, id);
-            kids.push(Kid {
-                id,
-                sign,
-                field,
-                must_stash,
-            });
-        }
-
-        // Fix A: pin resident-compound fold-direct children against eviction until served.
-        // `is_compound_or_may_admit` returns false for a resident compound (a `defined`
-        // hit), so it is classified `!must_stash` and served LATER via `direct_operand` —
-        // but a per-phase `alloc_temp_evicting` or a seed admission between here and that
-        // serve can evict it, turning the serve's `source_to_vop` fallthrough into the
-        // `non-source expr` crash. Pin only ids not already pinned by an ancestor reduction
-        // (`HashSet::insert` reports newness → nesting-safe), run the fold, then unpin
-        // exactly those — the unpin runs on every `?` path because the fallible body is a
-        // separate call.
-        let candidates: Vec<ExprId> = kids
-            .iter()
-            .filter(|k| !k.must_stash)
-            .map(|k| k.id)
-            .filter(|&id| {
-                matches!(layer.exprs[id.0 as usize], Expr::Add(_) | Expr::Mul(_))
-                    && !layer.resolutions.contains_key(&id)
-                    && self.defined.contains(&id)
-            })
-            .collect();
-        let pinned: Vec<ExprId> = candidates
-            .into_iter()
-            .filter(|&id| self.pinned_direct.insert(id))
-            .collect();
-        let result = self.fold_reduction_streamed_folding(layer, &kids, is_add, negate, expected);
-        for id in pinned {
-            self.pinned_direct.remove(&id);
-        }
-        result
-    }
-
-    /// Streamed-reduction fold body: seed + field-phased direct/stash folds over the
-    /// pre-classified `kids`. Split from `fold_reduction_streamed` so the eviction pins
-    /// that function installs are always removed on return, including every `?` path.
-    fn fold_reduction_streamed_folding(
-        &mut self,
-        layer: &DagLayer,
-        kids: &[Kid],
-        is_add: bool,
-        negate: bool,
-        expected: OperandField,
-    ) -> Result<(), CompileError> {
-        // Seed by the LEGACY field/sign policy over ALL kids (Base-Plus, else Plus, else
-        // Base, else 0); `!must_stash` is only a tie-break. A compound/may-admit seed is
-        // computed into the acc directly (nothing to combine yet — no outer stash).
-        let seed = pick_seed(kids);
-        let mut acc_field = kids[seed].field;
-        if kids[seed].must_stash {
-            self.serve_occurrence(kids[seed].id, BwdServeKind::Operand);
-            self.compile_expr_virtual(layer, kids[seed].id, kids[seed].field)?;
-            self.materialize_if_root(kids[seed].id, true);
-            if self.decisions.is_some() || self.plan.is_some() {
-                if let Some(g) = self.admit_decision(kids[seed].id, kids[seed].field) {
-                    self.widths.insert(g, kids[seed].field);
-                    self.emit_evict_to_cell(g, kids[seed].field);
-                    self.defined.insert(kids[seed].id);
-                    // Re-seed the acc from the resident cell so it holds the seed value.
-                    let cop = self.defer_read(g);
-                    self.emit_init_field(cop, kids[seed].field);
-                }
-            }
-        } else {
-            let op = self.direct_operand(layer, kids[seed].id, expected)?;
-            self.emit_init_field(op, kids[seed].field);
-        }
-        if kids[seed].sign == Sign::Minus {
-            self.emit_unary_negate();
-        }
-        if kids.len() == 1 {
-            if negate {
-                self.emit_unary_negate();
-            }
-            return Ok(());
-        }
-
-        // Field phases: fold all BASE children, then all EXT children, so the acc lifts
-        // to Ext at most once. Within a phase: direct children (grouped) first, then
-        // stash each compound/may-admit child through the one-cell stash+refold.
-        for phase in [OperandField::Base, OperandField::Ext] {
-            self.fold_direct_group(layer, kids, seed, phase, is_add, expected)?;
-            if phase == OperandField::Ext
-                && kids
-                    .iter()
-                    .enumerate()
-                    .any(|(i, k)| i != seed && !k.must_stash && k.field == OperandField::Ext)
-            {
-                // An Ext direct fold just lifted the acc to Ext.
-                acc_field = OperandField::Ext;
-            }
-            for i in 0..kids.len() {
-                if i == seed || !kids[i].must_stash || kids[i].field != phase {
-                    continue;
-                }
-                let stash = self.alloc_temp_evicting(acc_field)?;
-                self.fold_compound_child_into_partial(
-                    layer,
-                    kids[i].id,
-                    kids[i].sign,
-                    kids[i].field,
-                    is_add,
-                    acc_field,
-                    stash,
-                )?;
-                if kids[i].field == OperandField::Ext {
-                    acc_field = OperandField::Ext;
-                }
-            }
-        }
-        if negate {
-            self.emit_unary_negate();
-        }
-        Ok(())
-    }
-
     /// One field-homogeneous group, split via `split_reduction` past `MAX_ARITY`
     /// (mirrors arith::emit_reduction_group). Split partials evict to fresh internal
     /// cells and fold back in.
@@ -2144,16 +1160,6 @@ impl<'a> VirtualLower<'a> {
         if products.is_empty() {
             return Ok(None);
         }
-        // SP1 backward streaming fallback (Task 2): fold products/addends through the
-        // one-cell stash+refold engine — leaf×leaf products stay fused (`emit_fma_products`),
-        // compound operands/addends stream one at a time — instead of pre-materializing
-        // every product operand concurrently (the wide-L0 placement floor).
-        if self.stream_reductions {
-            return self
-                .fma_streamed(layer, &products, &addends, expected)
-                .map(Some);
-        }
-
         let mut addend_ops: Vec<(OperandField, VirtualOp, Sign)> =
             Vec::with_capacity(addends.len());
         for &(sign, c) in &addends {
@@ -2193,214 +1199,6 @@ impl<'a> VirtualLower<'a> {
         Ok(Some(()))
     }
 
-    /// SP1 streamed FMA (Task 2): the streaming sibling of `try_compile_fma_virtual`,
-    /// engaged only under `stream_reductions`. Classifies each product/addend pre-lowering
-    /// and folds them bounding concurrent state to ONE running-partial stash plus each
-    /// item's own transient compute, instead of pre-materializing every product operand and
-    /// addend concurrently (the wide-L0 placement floor). Value-identical to the legacy body
-    /// by Add commutativity; read-side traffic identical (each leaf read once, tallied the
-    /// same whether it lands in an init / fold / FMA); feasibility ⊇ legacy.
-    ///
-    /// - **Direct addends** (`!must_stash`): grouped ADD-fold (base-first) — no cells.
-    /// - **Leaf×leaf products** (both operands direct): batched through `emit_fma_products`
-    ///   — FUSED, no cells (the existing fusion win is preserved).
-    /// - **Compound items** (a compound addend, or a product with ≥1 compound/may-admit
-    ///   operand): processed base-first, ONE AT A TIME wrapped by the running-partial stash;
-    ///   admission stays PER-OPERAND via `lower_operand_virtual` (never a synthetic product
-    ///   node), so a shared operand keeps its residency on the searched path.
-    fn fma_streamed(
-        &mut self,
-        layer: &DagLayer,
-        products: &[(Sign, ExprId, ExprId)],
-        addends: &[(Sign, ExprId)],
-        expected: OperandField,
-    ) -> Result<(), CompileError> {
-        // Classify addends (pre-lowering) into direct-fold vs stash-fold.
-        let mut direct_addends: Vec<(OperandField, ExprId, Sign)> = Vec::new();
-        let mut compound_addends: Vec<(OperandField, ExprId, Sign)> = Vec::new();
-        for &(sign, id) in addends {
-            let f = self.operand_field(layer, id, expected);
-            if self.is_compound_or_may_admit(layer, id) {
-                compound_addends.push((f, id, sign));
-            } else {
-                direct_addends.push((f, id, sign));
-            }
-        }
-        // Classify products: leaf (both operands direct → fused FMA, no cell) vs compound
-        // (≥1 operand compound/may-admit → one-at-a-time stash-fold).
-        let mut leaf_products: Vec<(Sign, OperandField, ExprId, OperandField, ExprId)> = Vec::new();
-        let mut compound_products: Vec<(Sign, OperandField, ExprId, OperandField, ExprId)> =
-            Vec::new();
-        for &(sign, lhs, rhs) in products {
-            let lf = self.operand_field(layer, lhs, expected);
-            let rf = self.operand_field(layer, rhs, expected);
-            let must_stash = self.is_compound_or_may_admit(layer, lhs)
-                || self.is_compound_or_may_admit(layer, rhs);
-            if must_stash {
-                compound_products.push((sign, lf, lhs, rf, rhs));
-            } else {
-                leaf_products.push((sign, lf, lhs, rf, rhs));
-            }
-        }
-
-        // Fix A: pin resident-compound fold-direct operands against eviction until served
-        // (same guard as `fold_reduction_streamed` — see its comment). A direct addend or a
-        // leaf-product operand can be a resident compound (classified `!must_stash` via a
-        // `defined` hit); a later `alloc_temp_evicting`/admission must not evict it before
-        // its `direct_operand` serve. Pin only ids not already pinned by an ancestor
-        // reduction, run the fold, then unpin exactly those (cleanup covers every `?` path).
-        let mut candidates: Vec<ExprId> = Vec::new();
-        for &(_, id, _) in &direct_addends {
-            candidates.push(id);
-        }
-        for &(_, _, lhs, _, rhs) in &leaf_products {
-            candidates.push(lhs);
-            candidates.push(rhs);
-        }
-        candidates.retain(|&id| {
-            matches!(layer.exprs[id.0 as usize], Expr::Add(_) | Expr::Mul(_))
-                && !layer.resolutions.contains_key(&id)
-                && self.defined.contains(&id)
-        });
-        let pinned: Vec<ExprId> = candidates
-            .into_iter()
-            .filter(|&id| self.pinned_direct.insert(id))
-            .collect();
-        let result = self.fma_streamed_folding(
-            layer,
-            direct_addends,
-            compound_addends,
-            leaf_products,
-            compound_products,
-            expected,
-        );
-        for id in pinned {
-            self.pinned_direct.remove(&id);
-        }
-        result
-    }
-
-    /// Streamed-FMA fold body: seed + leaf-product FMA + field-phased compound stash folds
-    /// over the pre-classified item lists. Split from `fma_streamed` so the eviction pins
-    /// that function installs are always removed on return, including every `?` path.
-    #[allow(clippy::too_many_arguments)]
-    fn fma_streamed_folding(
-        &mut self,
-        layer: &DagLayer,
-        direct_addends: Vec<(OperandField, ExprId, Sign)>,
-        compound_addends: Vec<(OperandField, ExprId, Sign)>,
-        leaf_products: Vec<(Sign, OperandField, ExprId, OperandField, ExprId)>,
-        mut compound_products: Vec<(Sign, OperandField, ExprId, OperandField, ExprId)>,
-        expected: OperandField,
-    ) -> Result<(), CompileError> {
-        // ── Seed ── prefer a DIRECT addend (legacy seed heuristic over pre-lowering
-        // fields); else a leaf product; else a compound product. `try_compile_fma_virtual`
-        // only reaches here with ≥1 product, so a product seed always exists when no direct
-        // addend does — a compound ADDEND is therefore never the seed (always stash-folded).
-        let mut acc_field;
-        let mut leaf_seed: Option<usize> = None; // index into `leaf_products` used as seed
-        if !direct_addends.is_empty() {
-            let mut ops: Vec<(OperandField, VirtualOp, Sign)> =
-                Vec::with_capacity(direct_addends.len());
-            for &(f, id, s) in &direct_addends {
-                let op = self.direct_operand(layer, id, expected)?;
-                ops.push((f, op, s));
-            }
-            let seed = self.seed_from_addends(&ops); // emits the acc init (+ negate)
-            self.fold_addends_into_acc(&ops, Some(seed))?; // folds the rest, base-first
-            acc_field = join_field(ops.iter().map(|(f, _, _)| *f));
-        } else if !leaf_products.is_empty() {
-            // Seed from the first Plus leaf product (else the first) — matching legacy's
-            // no-addends product seed.
-            let seed = leaf_products
-                .iter()
-                .position(|(s, ..)| *s == Sign::Plus)
-                .unwrap_or(0);
-            let (sign, lf, lhs, rf, rhs) = leaf_products[seed];
-            let lhs_op = self.direct_operand(layer, lhs, expected)?;
-            let rhs_op = self.direct_operand(layer, rhs, expected)?;
-            self.produce_product_into_acc(sign, lf, &lhs_op, rf, &rhs_op);
-            acc_field = product_field(lf, rf);
-            leaf_seed = Some(seed);
-        } else {
-            // Every product is compound: seed from the first Plus compound product (else the
-            // first), computed straight into the fresh acc (nothing to combine yet).
-            let seed = compound_products
-                .iter()
-                .position(|(s, ..)| *s == Sign::Plus)
-                .unwrap_or(0);
-            let (sign, lf, lhs, rf, rhs) = compound_products.remove(seed);
-            let lhs_op = self.lower_operand_virtual(layer, lhs, expected)?;
-            let rhs_op = self.lower_operand_virtual(layer, rhs, expected)?;
-            self.produce_product_into_acc(sign, lf, &lhs_op, rf, &rhs_op);
-            acc_field = product_field(lf, rf);
-        }
-
-        // ── Leaf×leaf products: fused FMA into the seeded acc (seed skipped). ──
-        let mut fma_lo: Vec<(Sign, OperandField, VirtualOp, OperandField, VirtualOp)> =
-            Vec::with_capacity(leaf_products.len());
-        for (i, &(sign, lf, lhs, rf, rhs)) in leaf_products.iter().enumerate() {
-            if Some(i) == leaf_seed {
-                continue;
-            }
-            let lhs_op = self.direct_operand(layer, lhs, expected)?;
-            let rhs_op = self.direct_operand(layer, rhs, expected)?;
-            fma_lo.push((sign, lf, lhs_op, rf, rhs_op));
-            if product_field(lf, rf) == OperandField::Ext {
-                acc_field = OperandField::Ext;
-            }
-        }
-        self.emit_fma_products(fma_lo);
-
-        // ── Compound items: one-at-a-time stash+refold, base-first (so the acc lifts to
-        // Ext at most once and Base stashes stay 1-lane while the acc is still Base). ──
-        for phase in [OperandField::Base, OperandField::Ext] {
-            for &(f, id, sign) in &compound_addends {
-                if f != phase {
-                    continue;
-                }
-                let stash = self.alloc_temp_evicting(acc_field)?;
-                self.fold_compound_child_into_partial(layer, id, sign, f, true, acc_field, stash)?;
-                if f == OperandField::Ext {
-                    acc_field = OperandField::Ext;
-                }
-            }
-            for &(sign, lf, lhs, rf, rhs) in &compound_products {
-                if product_field(lf, rf) != phase {
-                    continue;
-                }
-                let stash = self.alloc_temp_evicting(acc_field)?;
-                self.fold_compound_product_into_partial(
-                    layer, sign, lf, lhs, rf, rhs, acc_field, stash, expected,
-                )?;
-                if product_field(lf, rf) == OperandField::Ext {
-                    acc_field = OperandField::Ext;
-                }
-            }
-        }
-        Ok(())
-    }
-
-    // ── materialize obligations (Compute/Cache roots) ────────────────────────────
-
-    /// Emit the committed write(s) for every Compute root whose expr is `expr_id`, and
-    /// expose each as a `root_output`. `from_acc` reads the accumulator (value just
-    /// computed); otherwise the value is read from its resident cell.
-    ///
-    /// Root/cache-sink transparency under Task 8c (verified, not assumed): this
-    /// function's OWN bookkeeping (`expr_to_compute` keyed by the real `ExprId`,
-    /// `root_outputs`/`exposed` keyed by `RootId`) never touches `generation` — a
-    /// root's external identity (which `RootId` it is, which `(slot, col)` it
-    /// materializes to) is exactly what it was before this task. The only thing
-    /// generation indirection changes is WHICH PHYSICAL CELL the `from_acc = false`
-    /// branch reads from: a root's expr CAN be evicted-then-re-admitted before the
-    /// driver reaches the root's own turn (it's an ordinary `ExprId`, read like any
-    /// other value by whatever else in the layer references it), so the read must go
-    /// through `current_value_id` the same as every other resident-serving read.
-    /// This is safe because roots are produced (written to their backing) exactly
-    /// once regardless: `exposed` gates re-entry into this function entirely, so a
-    /// LATER re-admission of the same `ExprId` (after this root's write already
-    /// happened) can never trigger a second materialize write here.
     fn materialize_if_root(&mut self, expr_id: ExprId, from_acc: bool) {
         let Some(roots) = self.expr_to_compute.get(&expr_id).cloned() else {
             return;
@@ -2417,7 +1215,6 @@ impl<'a> VirtualLower<'a> {
                     dst: Some(VDst::GlobalMaterialize { slot, col }),
                     src: None,
                     defines: None,
-                    is_dram_read: false,
                 });
             } else {
                 self.emit(VInstr::Mov {
@@ -2426,7 +1223,6 @@ impl<'a> VirtualLower<'a> {
                     dst: Some(VDst::GlobalMaterialize { slot, col }),
                     src: Some(VirtualOp::Value(src_id)),
                     defines: None,
-                    is_dram_read: false,
                 });
             }
             self.root_outputs
@@ -2452,7 +1248,6 @@ impl<'a> VirtualLower<'a> {
                 dst: Some(VDst::GlobalMaterialize { slot, col }),
                 src: None,
                 defines: None,
-                is_dram_read: false,
             });
             self.root_outputs
                 .push((rid, VirtualRootOutput::Global { slot, col }));
@@ -2477,67 +1272,11 @@ impl<'a> VirtualLower<'a> {
                 dst: Some(VDst::GlobalMaterialize { slot, col }),
                 src: Some(op.clone()),
                 defines: None,
-                is_dram_read: false,
             });
             self.root_outputs
                 .push((rid, VirtualRootOutput::Global { slot, col }));
             self.exposed.insert(rid);
         }
-    }
-}
-
-/// A classified reduction child for the SP1 streamed fold: its lowering id, fold sign,
-/// operand field, and whether it must be stashed (compound or may-admit) rather than
-/// folded directly. Built once per reduction by `fold_reduction_streamed`.
-struct Kid {
-    id: ExprId,
-    sign: Sign,
-    field: OperandField,
-    must_stash: bool,
-}
-
-/// Seed selection for the SP1 streamed reduction: the LEGACY heuristic
-/// (`compile_reduction_virtual` seed pick) — a Base-Plus child, else any Plus, else any
-/// Base, else index 0 — with `!must_stash` as a final tie-break WITHIN each criterion (a
-/// directly-foldable seed avoids a compound recompute for the initial acc load, but never
-/// changes which field/sign class wins, so the acc's seed field matches legacy).
-fn pick_seed(kids: &[Kid]) -> usize {
-    let by = |pred: &dyn Fn(&Kid) -> bool| -> Option<usize> {
-        kids.iter()
-            .position(|k| pred(k) && !k.must_stash)
-            .or_else(|| kids.iter().position(|k| pred(k)))
-    };
-    by(&|k| k.field == OperandField::Base && k.sign == Sign::Plus)
-        .or_else(|| by(&|k| k.sign == Sign::Plus))
-        .or_else(|| by(&|k| k.field == OperandField::Base))
-        .unwrap_or(0)
-}
-
-/// True if `op` is a real backing (DRAM) read. Over-counts VirtualSetup-backed reads as
-/// DRAM (cosmetic — `is_dram_read` is Task-5 metadata, unused by placement/interp).
-fn is_dram_op(op: &VirtualOp) -> bool {
-    matches!(op, VirtualOp::Global { .. })
-}
-
-/// The field of a product `lhs*rhs`: `Ext` iff either operand is `Ext` (an Ext factor
-/// lifts the product), else `Base`. Used by the SP1 streamed FMA to track the running
-/// acc field (stash width + fold-back field).
-fn product_field(lf: OperandField, rf: OperandField) -> OperandField {
-    if lf == OperandField::Ext || rf == OperandField::Ext {
-        OperandField::Ext
-    } else {
-        OperandField::Base
-    }
-}
-
-/// `Ext` iff any field in `it` is `Ext`, else `Base` — the field the acc holds after a
-/// homogeneous-grouped reduction over operands of the given fields (any Ext member lifts
-/// the acc to Ext).
-fn join_field(it: impl Iterator<Item = OperandField>) -> OperandField {
-    if it.into_iter().any(|f| f == OperandField::Ext) {
-        OperandField::Ext
-    } else {
-        OperandField::Base
     }
 }
 
@@ -2654,7 +1393,6 @@ pub(crate) fn lower_layer_virtual(
         step_of_instr: Vec::new(),
         cur_step: 0,
         defined: HashSet::new(),
-        pinned_direct: HashSet::new(),
         widths: HashMap::new(),
         next_internal: INTERNAL_BASE,
         expr_to_compute,
@@ -2664,16 +1402,6 @@ pub(crate) fn lower_layer_virtual(
         desc_by_expr,
         virtual_setup_descs: HashMap::new(),
         decisions: decisions_state,
-        // fwd identity hooks — canonical resolution/classification, bit-identical.
-        leaf_descs: &EMPTY_LEAF_DESCS,
-        field_overrides: &EMPTY_FIELD_OVERRIDES,
-        // Forward lowering never streams reductions (byte-identical fwd programs).
-        stream_reductions: false,
-        // Forward paths never trace: `None` keeps the forward program byte-identical.
-        bwd_trace: None,
-        consumer_stack: Vec::new(),
-        // Forward paths never plan-drive (byte-identical fwd programs).
-        plan: None,
     };
 
     let mut resident_realized: Vec<(Vec<ExprId>, Vec<ExprId>)> =
@@ -2708,7 +1436,7 @@ pub(crate) fn lower_layer_virtual(
                     // `decisions.rs::build`'s `SiteConsumer::RootOutput` push) — served
                     // exactly once here, hit or miss, before branching on residency.
                     if st.decisions.is_some() {
-                        st.serve_occurrence(expr, BwdServeKind::RootOutput);
+                        st.serve_occurrence(expr);
                     }
                     if st.defined.contains(&expr) {
                         st.materialize_if_root(expr, false);

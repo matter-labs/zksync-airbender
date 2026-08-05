@@ -810,11 +810,5 @@ pub(crate) use flat_recipe_audit::{
     FlatRecipeAudit,
 };
 
-/// Task-3 backward coefficient-term freeze census. Test-only: it walks the
-/// committed layouts plus the production `blake2_with_compression` setup, so it
-/// pulls in `setups` and `gkr_eval_isa` and has no production caller.
-#[cfg(test)]
-mod coeff_term_audit;
-
 #[cfg(test)]
 mod tests;

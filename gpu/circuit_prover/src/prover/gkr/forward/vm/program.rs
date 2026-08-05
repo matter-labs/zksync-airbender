@@ -23,9 +23,8 @@
 use gpu_gkr_compiler::{compile_forward, parse_forward_artifact};
 pub(crate) use gpu_gkr_compiler::ForwardProgramBundle as CompiledCircuit;
 
-use crate::primitives::field::BF;
 use crate::witness::circuit_type::CircuitType;
-use crate::upstream::{lower_dag, validate_dag, GKRCircuitArtifact};
+use gkr_eval_ir::DagCircuit;
 
 /// The committed b16 schedule for `add_sub_lui_auipc_mop`, embedded so no
 /// source-tree path is read at runtime.
@@ -131,28 +130,27 @@ pub(crate) fn embedded_forward_artifact(circuit_type: CircuitType) -> &'static [
 /// running behind a lock on a proving thread.
 pub(crate) fn compile_program(
     circuit_type: CircuitType,
-    artifact: &GKRCircuitArtifact<BF>,
+    dag: &DagCircuit,
 ) -> Result<CompiledCircuit, String> {
-    compile_program_from_bytes(embedded_forward_artifact(circuit_type), artifact)
+    compile_program_from_bytes(embedded_forward_artifact(circuit_type), dag)
 }
 
 /// The compile chain itself, over an explicit schedule so the negative cases
 /// are testable.
 pub(crate) fn compile_program_from_bytes(
     schedule_bytes: &[u8],
-    artifact: &GKRCircuitArtifact<BF>,
+    dag: &DagCircuit,
 ) -> Result<CompiledCircuit, String> {
     let schedule = parse_forward_artifact(schedule_bytes, "embedded forward-VM artifact")
         .map_err(|e| format!("{e:?}"))?;
-    let dag = lower_dag(artifact).map_err(|e| format!("lower_dag: {e}"))?;
-    validate_dag(&dag).map_err(|e| format!("validate: {e}"))?;
-    compile_forward(&dag, &schedule).map_err(|e| format!("compile_forward: {e:?}"))
+    compile_forward(dag, &schedule).map_err(|e| format!("compile_forward: {e:?}"))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    use crate::primitives::field::BF;
     use crate::upstream::GKRCircuitArtifact;
 
     fn add_sub_artifact() -> GKRCircuitArtifact<BF> {
@@ -161,17 +159,23 @@ mod tests {
         )
     }
 
+    fn add_sub_dag() -> DagCircuit {
+        let dag = crate::upstream::lower_dag(&add_sub_artifact()).expect("lower add_sub DAG");
+        crate::upstream::validate_dag(&dag).expect("validate add_sub DAG");
+        dag
+    }
+
     /// The bench compile chain finds its schedule through
     /// `env!("CARGO_MANIFEST_DIR")` joined to a source-tree path, which does not
     /// exist in a shipped binary. This is the same chain reading bytes that
     /// travel with the executable.
     #[test]
     fn the_embedded_schedule_compiles_add_sub_with_no_source_tree_path() {
-        let artifact = add_sub_artifact();
-        let program = compile_program_from_bytes(EMBEDDED_ADD_SUB_SCHEDULE, &artifact)
+        let dag = add_sub_dag();
+        let program = compile_program_from_bytes(EMBEDDED_ADD_SUB_SCHEDULE, &dag)
             .expect("the embedded schedule must compile against the add_sub artifact");
 
-        assert_eq!(program.layers.len(), artifact.layers.len());
+        assert_eq!(program.layers.len(), dag.layers.len());
         assert!(
             !program.layers[0].program.instrs.is_empty(),
             "layer 0 is the layer this plan runs on the VM; it must carry a program"
@@ -184,7 +188,7 @@ mod tests {
     /// than discovering it at the launch site.
     #[test]
     fn the_embedded_program_is_compiled_at_the_s4_budget() {
-        let program = compile_program_from_bytes(EMBEDDED_ADD_SUB_SCHEDULE, &add_sub_artifact())
+        let program = compile_program_from_bytes(EMBEDDED_ADD_SUB_SCHEDULE, &add_sub_dag())
             .expect("the embedded schedule must compile");
         assert_eq!(program.budget, super::super::FWD_VM_S4_BUDGET_LANES as usize);
     }

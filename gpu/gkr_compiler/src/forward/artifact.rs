@@ -1,16 +1,10 @@
-//! Persisted, decoded schedule for the forward pass (GKR Stage 2b) — schema v2.
+//! Persisted offline-search result for the forward pass.
 //!
-//! v2 replaces the v1 event-replay schema (`StepPlan`/`ReplayEvent`/`DemandKind`,
-//! deleted) with a **genome + provenance** shape: `order` (the searched root
-//! execution order) and `sites` (a per-site scorer-assigned priority gene, keyed by
-//! [`SiteKey`]). The emitter (`gkr_eval_isa`'s `compile_layer` with
-//! `decisions: Some(&SiteDecisions)`) OWNS
-//! residency at compile time — it replays `order` and, for each demand, decides
-//! admit/evict from the site's priority (see `gkr_eval_isa::fwd::compile::decisions`).
-//! There is no persisted step-by-step residency replay anymore: the schedule records
-//! WHAT the search decided (order + priorities), not HOW the emitter got there.
+//! The artifact stores the searched relation order and per-site priority genes
+//! keyed by [`SiteKey`]. The compiler owns residency decisions; the artifact
+//! does not persist a step-by-step execution replay.
 //!
-//! [`enumerate_site_domain`] is the cs-owned, purely structural site enumerator: it
+//! [`enumerate_site_domain`] is the purely structural site enumerator: it
 //! walks a `DagLayer`'s demand graph (Add/Mul operand edges + `LookupValue.query`
 //! edges) and returns every value the emitter could plausibly want to cache — the
 //! validator uses it to catch a schedule gone stale under DAG drift (§ check b).
@@ -101,7 +95,7 @@ pub struct RelationUnit {
 impl ForwardLayerArtifact {
     /// Flattened atom-root execution order: concatenate each unit's `atom_roots`
     /// in unit (execution) order. This is exactly the sequence the emitter
-    /// consumes and equals the pre-Phase-1 flat `order` field.
+    /// consumes.
     pub fn atom_order(&self) -> Vec<RootId> {
         self.units
             .iter()
@@ -111,7 +105,7 @@ impl ForwardLayerArtifact {
 }
 
 /// Identity of one demand site: a specific consumer's specific operand slot (or a
-/// root's own output) demanding `value`. Mirrors `gkr_eval_isa`'s `decisions.rs`
+/// root's own output) demanding `value`. Mirrors `gpu_gkr_compiler`'s `decisions.rs`
 /// copy exactly (Task 6 unifies them; cs is the source of truth going forward).
 #[derive(
     Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
@@ -139,7 +133,7 @@ pub fn field_cells(field: FieldKind) -> usize {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────
-// Structural site enumeration (cs-owned; no gkr_eval_isa dependency — cs is a
+// Structural site enumeration (cs-owned; no gpu_gkr_compiler dependency — cs is a
 // lower-level crate). Task 5's `schedule_search::structure::enumerate_sites` wraps
 // this with search-only ordering/grouping rather than duplicating it.
 // ─────────────────────────────────────────────────────────────────────────────────
@@ -292,7 +286,7 @@ fn is_site(layer: &DagLayer, consumers: &[u32], value: ExprId) -> bool {
 /// Cacheable value classes: a cached-root-output (any root's `expr`), a compound
 /// intermediate (`Add`/`Mul`), or a DRAM-`Read` source leaf. Constants, challenges,
 /// virtual-setup, and `LookupValue` leaves carry zero DRAM traffic and are never
-/// cacheable (mirrors `gkr_eval_isa`'s test-tier `classify_values`/`NodeKind::Literal`
+/// cacheable (mirrors `gpu_gkr_compiler`'s test-tier `classify_values`/`NodeKind::Literal`
 /// classification, translated to `DagLayer` terms).
 fn is_cacheable(layer: &DagLayer, value: ExprId) -> bool {
     if layer.roots.iter().any(|r| r.expr == value) {
@@ -310,8 +304,8 @@ fn is_cacheable(layer: &DagLayer, value: ExprId) -> bool {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────
-// Canonical relation-unit decomposition (cs-owned; no gkr_eval_isa dependency).
-// The search (`gkr_eval_isa::schedule_search::structure`) wraps this and the
+// Canonical relation-unit decomposition (cs-owned; no gpu_gkr_compiler dependency).
+// The search (`gpu_gkr_compiler::schedule_search::structure`) wraps this and the
 // validator checks stored schedules against it.
 // ─────────────────────────────────────────────────────────────────────────────────
 
@@ -325,12 +319,12 @@ fn is_cacheable(layer: &DagLayer, value: ExprId) -> bool {
 /// only cross-layer via `Read{CacheOutput}` — is UNSUPPORTED in Phase 1 and
 /// returns `Err`. The committed corpus never triggers this (all caches at layer
 /// 0, consumed same-layer, 1:1). This is the single source of truth the search
-/// (`gkr_eval_isa::schedule_search::structure`) wraps and the validator checks
+/// (`gpu_gkr_compiler::schedule_search::structure`) wraps and the validator checks
 /// against.
 pub fn relation_units_with_caches(layer: &DagLayer) -> Result<Vec<RelationUnit>, String> {
     use std::collections::HashMap;
 
-    // Atom-root grouping (mirrors gkr_eval_isa::schedule_search::structure::relation_units).
+    // Atom-root grouping (mirrors gpu_gkr_compiler::schedule_search::structure::relation_units).
     let mut units: Vec<RelationUnit> = Vec::new();
     let mut key_to_unit: HashMap<(RootGroup, usize), usize> = HashMap::new();
     for (i, root) in layer.roots.iter().enumerate() {
@@ -356,11 +350,11 @@ pub fn relation_units_with_caches(layer: &DagLayer) -> Result<Vec<RelationUnit>,
     // Per-unit reachable expr set (transitive Add/Mul children + LookupValue.query
     // from each atom root's expr). Plain closure — matches the validated probe;
     // NOT resolution-fenced. Models AUTHORITATIVE relation ownership ("which
-    // relation's authoritative expr contains this cache expr" = the provenance the
-    // Phase-1 schema records), NOT fwd-VM forward-demand consumption (which would
+    // relation's authoritative expr contains this cache expr"), NOT fwd-VM
+    // forward-demand consumption (which would
     // fence resolution cones like enumerate_site_domain, schedule.rs:166-173). A
     // cache reachable only under a resolution-fenced cone is still owned by that
-    // relation for provenance (locked by a Step-6 unit test). See codex-P5.
+    // relation for provenance.
     let reach: Vec<HashSet<ExprId>> = units
         .iter()
         .map(|u| relation_reachable_exprs(layer, &u.atom_roots))
@@ -434,7 +428,7 @@ fn relation_reachable_exprs(layer: &DagLayer, atom_roots: &[RootId]) -> HashSet<
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────
-// Validator. Public signature unchanged from v1.
+// Validator.
 // ─────────────────────────────────────────────────────────────────────────────────
 
 /// Pure structural validation of a persisted schedule against its circuit:

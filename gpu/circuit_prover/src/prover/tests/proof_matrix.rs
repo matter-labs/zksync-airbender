@@ -2338,7 +2338,7 @@ fn run_corpus_forced_k_sweep_test() {
     );
 
     // The axis the policy is allowed to pick from, plus the policy itself. `None`
-    // is the policy arm: the switch UNSET leaves `seg_policy_k` in charge.
+    // is the policy arm: the switch UNSET leaves the typed K policy in charge.
     let arms: [Option<usize>; 7] = [
         None,
         Some(1),

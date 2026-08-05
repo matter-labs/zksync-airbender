@@ -1,12 +1,9 @@
 //! Which `(layer, regime)` coordinates the backward VM computes.
 //!
-//! A backward coordinate is a `(layer, regime)` pair, not a layer: `R0` and
-//! `Ext` are different programs over the same layer, compiled by different
-//! ordering passes ([`compile_lean_coordinate`] orders terms at R0 and atoms in
-//! `Ext`). So the switch names pairs, and `0:R0` is a different selection from
+//! A backward coordinate is a `(layer, regime)` pair, not a layer: R0 and
+//! continuation programs use separate compilers and ordering policies. The
+//! diagnostic switch therefore names pairs, and `0:R0` is distinct from
 //! `0:Ext`.
-//!
-//! [`compile_lean_coordinate`]: gkr_eval_isa::bwd::coeff::lean_artifact::compile_lean_coordinate
 
 use std::fmt;
 
@@ -122,7 +119,10 @@ pub(crate) fn check_selection(coords: &[BwdVmCoord]) -> Result<(), BwdVmCoordErr
             },
         };
         if !coords.contains(&mate) {
-            return Err(BwdVmCoordError::HalfLayer { coord, missing: mate });
+            return Err(BwdVmCoordError::HalfLayer {
+                coord,
+                missing: mate,
+            });
         }
     }
     Ok(())
@@ -188,7 +188,11 @@ mod tests {
     /// "nothing", which is how the A/B harness runs its off arm.
     #[test]
     fn unset_is_the_default_and_empty_is_off() {
-        assert_eq!(selection_from_value(None), None, "unset defers to availability");
+        assert_eq!(
+            selection_from_value(None),
+            None,
+            "unset defers to availability"
+        );
         assert_eq!(
             selection_from_value(Some("")),
             Some(Vec::new()),

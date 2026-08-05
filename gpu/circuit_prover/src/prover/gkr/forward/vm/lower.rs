@@ -45,22 +45,22 @@ use gpu_gkr_compiler::forward::context::CompiledLayer;
 use gpu_gkr_compiler::forward::encode::encode;
 use gpu_gkr_compiler::forward::error::EncodeError;
 use gpu_gkr_compiler::forward::isa::{
-    DstLine, Instr, LdcSub, MAX_COLS, OperandField, OperandLine, Program, SOURCE_WINDOW_COLUMNS,
+    DstLine, Instr, LdcSub, OperandField, OperandLine, Program, MAX_COLS, SOURCE_WINDOW_COLUMNS,
 };
-use gpu_gkr_compiler::forward::source::{SpecialStrategy, virtual_setup_kind_code};
+use gpu_gkr_compiler::forward::source::{virtual_setup_kind_code, SpecialStrategy};
 
 use crate::allocator::tracker::AllocationPlacement;
 use crate::primitives::context::DeviceAllocation;
 use crate::primitives::field::{BF, E4};
-use crate::primitives::static_host::{StaticPinnedBox, alloc_static_pinned_box_from_slice};
+use crate::primitives::static_host::{alloc_static_pinned_box_from_slice, StaticPinnedBox};
 use crate::prover::ProverContext;
 use crate::upstream::{ChallengeRef, GKRAddress, PrimeField, RangeWidth, ReadPlace};
 
 use super::desc::{
-    ARENA_GENERIC_FAMILY, ARENA_RANGE_CHECK_16, ARENA_TIMESTAMP, ARG_DERIVED_E4_CAP, CONST_CAP,
-    CONST_DERIVED_E4_CAP, DESC_CAP, DST_SLOT_COUNT, FILL_BANK_NONE, FwdVmDesc, MAPPING_ARENA_COUNT,
-    PROGRAM_CAP, SD_AGGREGATE, SD_DECODER, SD_SETUP, SD_SINGLE_COLUMN, SD_VIRTUAL,
-    SOURCE_WINDOW_COUNT, pack_desc,
+    pack_desc, FwdVmDesc, ARENA_GENERIC_FAMILY, ARENA_RANGE_CHECK_16, ARENA_TIMESTAMP,
+    ARG_DERIVED_E4_CAP, CONST_CAP, CONST_DERIVED_E4_CAP, DESC_CAP, DST_SLOT_COUNT, FILL_BANK_NONE,
+    MAPPING_ARENA_COUNT, PROGRAM_CAP, SD_AGGREGATE, SD_DECODER, SD_SETUP, SD_SINGLE_COLUMN,
+    SD_VIRTUAL, SOURCE_WINDOW_COUNT,
 };
 
 /// One resolved storage column: the column's device pointer plus the geometry
@@ -104,7 +104,7 @@ pub(crate) struct FwdVmHeaderInputs {
 
 #[derive(Debug)]
 pub(crate) enum FwdVmLowerError {
-    /// Wire-format encode failed (cap guard inside `gkr_eval_isa`).
+    /// Wire-format encode failed (cap guard inside `gpu_gkr_compiler`).
     Encode(EncodeError),
     /// Program exceeds `PROGRAM_CAP` and no fallback context was provided.
     ProgramOverflow {

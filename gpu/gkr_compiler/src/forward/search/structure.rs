@@ -1,4 +1,4 @@
-//! DagLayer-native site enumeration + relation-unit grouping (Task 5).
+//! DAG-native site enumeration and relation-unit grouping.
 //!
 //! `enumerate_sites` is a thin wrapper over cs's `enumerate_site_domain` (Task 4's
 //! structural site domain — the single source of truth for which values qualify as
@@ -8,11 +8,7 @@
 //! `relation_units` groups atom-roots (`materialize.is_some() && claim.is_some()`) by
 //! their `Root.claim.origin` relation identity `(group, relation_index)` — num/den
 //! (and any privately-shared fold) of one gate relation form one atomic scheduling
-//! unit. This mirrors the grouped-genome keying in
-//! `gkr_eval_isa/tests/s3_planner/metaheuristic.rs` (via its
-//! `gkr_eval_isa/tests/s3_gap/instance.rs::relation_units`, whose `Vec<u32>`
-//! unit-id-per-occurrence form this promotes to the `Vec<Vec<RootId>>`
-//! grouped-members form the production scheduler wants).
+//! unit.
 
 use std::collections::HashMap;
 
@@ -61,110 +57,4 @@ pub fn relation_units(layer: &DagLayer) -> Vec<Vec<RootId>> {
 pub fn relation_units_with_caches(layer: &DagLayer) -> Vec<RelationUnit> {
     crate::schedule::relation_units_with_caches(layer)
         .unwrap_or_else(|e| panic!("relation_units_with_caches: {e}"))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use gkr_eval_ir::{
-        BatchingOrder, ClaimInfo, Expr, ExprId, FieldKind, Root, RootOrigin, RootSlot, SinkInfo,
-        SinkKind, SourceId, SourceInfo, SourceKind,
-    };
-    use std::collections::BTreeMap;
-
-    fn read_source(col: usize) -> SourceInfo {
-        SourceInfo {
-            kind: SourceKind::Read {
-                place: gkr_eval_ir::ReadPlace::BaseLayerWitness { column: col },
-            },
-        }
-    }
-
-    fn claim_out(expr: ExprId, offset: usize, group: RootGroup, rel: usize) -> Root {
-        Root {
-            expr,
-            materialize: Some(SinkInfo {
-                kind: SinkKind::Inner { layer: 0, offset },
-                field: FieldKind::Base,
-            }),
-            claim: Some(ClaimInfo {
-                origin: RootOrigin {
-                    group,
-                    relation_index: rel,
-                    slot: RootSlot::Output(0),
-                },
-            }),
-        }
-    }
-
-    #[test]
-    fn relation_units_groups_same_relation_and_keeps_others_singleton() {
-        // roots: (Gates,0), (Gates,0), (Gates,1), (GatesExternal,0)
-        let layer = DagLayer {
-            sources: vec![
-                read_source(0),
-                read_source(1),
-                read_source(2),
-                read_source(3),
-            ],
-            exprs: vec![
-                Expr::Source(SourceId(0)),
-                Expr::Source(SourceId(1)),
-                Expr::Source(SourceId(2)),
-                Expr::Source(SourceId(3)),
-            ],
-            roots: vec![
-                claim_out(ExprId(0), 0, RootGroup::Gates, 0),
-                claim_out(ExprId(1), 1, RootGroup::Gates, 0),
-                claim_out(ExprId(2), 2, RootGroup::Gates, 1),
-                claim_out(ExprId(3), 3, RootGroup::GatesExternal, 0),
-            ],
-            batching: BatchingOrder { roots: vec![] },
-            resolutions: BTreeMap::new(),
-        };
-        let units = relation_units(&layer);
-        assert_eq!(
-            units,
-            vec![vec![RootId(0), RootId(1)], vec![RootId(2)], vec![RootId(3)],]
-        );
-    }
-
-    #[test]
-    fn relation_units_skips_non_atom_roots() {
-        // root0: Cache (materialize-only, no claim) — skipped.
-        // root1: Constraint (claim-only, no materialize) — skipped.
-        // root2: atom.
-        let layer = DagLayer {
-            sources: vec![read_source(0)],
-            exprs: vec![Expr::Source(SourceId(0))],
-            roots: vec![
-                Root {
-                    expr: ExprId(0),
-                    materialize: Some(SinkInfo {
-                        kind: SinkKind::Cache {
-                            layer: 0,
-                            offset: 0,
-                        },
-                        field: FieldKind::Base,
-                    }),
-                    claim: None,
-                },
-                Root {
-                    expr: ExprId(0),
-                    materialize: None,
-                    claim: Some(ClaimInfo {
-                        origin: RootOrigin {
-                            group: RootGroup::Gates,
-                            relation_index: 0,
-                            slot: RootSlot::Constraint(0),
-                        },
-                    }),
-                },
-                claim_out(ExprId(0), 0, RootGroup::Gates, 5),
-            ],
-            batching: BatchingOrder { roots: vec![] },
-            resolutions: BTreeMap::new(),
-        };
-        assert_eq!(relation_units(&layer), vec![vec![RootId(2)]]);
-    }
 }

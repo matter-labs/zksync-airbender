@@ -56,7 +56,7 @@ pub trait VirtualSetupResolver {
 
     /// Depth-`ch.len()` instrument fold of this VS poly at position `y`
     /// (LSB-first adjacent-pair fold; `ch[0]` innermost — the same recurrence
-    /// as `gkr_eval_isa`'s `sumcheck_fold_point`). The default recomputes from
+    /// as the GPU compiler's sumcheck point fold). The default recomputes from
     /// originals via [`fold_vs_from_originals`] — `O(2^d)` reads through
     /// `virtual_setup`, value-authoritative. Real harnesses / the device
     /// OVERRIDE this with the `O(k)` multilinear closed form: VS polys are
@@ -71,8 +71,8 @@ pub trait VirtualSetupResolver {
 /// Depth-`ch.len()` sumcheck fold of the point function `base` at position `y`
 /// from originals: `f(y) = f0(2y) + c·(f0(2y+1) − f0(2y))`, folded bottom-up
 /// over `ch` (`ch[0]` innermost / leaf-adjacent, `ch[len-1]` outermost). This
-/// is the identical recurrence to `gkr_eval_isa::bwd::interp::sumcheck_fold_point`;
-/// it is the value-authoritative reference the closed-form VS override must match.
+/// is the value-authoritative reference used by the GPU compiler and the
+/// closed-form VS override.
 pub fn fold_vs_from_originals(base: &dyn Fn(usize) -> Ext, y: usize, ch: &[Ext]) -> Ext {
     match ch.split_last() {
         None => base(y),

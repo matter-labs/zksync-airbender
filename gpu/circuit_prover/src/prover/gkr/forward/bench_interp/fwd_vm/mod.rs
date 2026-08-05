@@ -1,5 +1,5 @@
 //! fwd-VM program acquisition (Task 1, host-only) for the A/B bench harness
-//! over `gkr_eval_isa` fwd-VM `CompiledCircuit` programs.
+//! over `gpu_gkr_compiler` fwd-VM `CompiledCircuit` programs.
 //!
 //! Compiled ONLY under `cfg(all(test, feature = "bench"))` (inherited from
 //! `bench_interp`, see `bench_interp/mod.rs`). No production wiring. The

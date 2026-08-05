@@ -2,9 +2,9 @@
 //! §6, §7): bind one round's physical geometry to a `K`-free lean coordinate and
 //! build the complete by-value launch descriptor.
 //!
-//! The artifact ([`LeanCoordinateArtifact`]) is a pure function of the DAG: a
-//! committed term order, a fixed-width program, and a placement-free source
-//! binding. Everything PHYSICAL is here, and only here:
+//! Each typed layer program is a pure function of the DAG: a committed term
+//! order, a fixed-width program, and a placement-free source binding. Everything
+//! PHYSICAL is here, and only here:
 //!
 //!   1. the per-`(source, round)` [`SourceClass`] — the axis that decides how the
 //!      operand behind a wire slot is produced (raw read, inline fold, folded
@@ -46,25 +46,22 @@
 // only by its tests. Scoped here rather than on the parent.
 #![allow(dead_code)]
 
-use gkr_eval_isa::bwd::coeff::lean::{
-    decode_atoms, LeanAtom, LeanCodecError, LeanTerm, LEAN_CONT_OPCODES, LEAN_R0_OPCODES,
-    LEAN_WORDS_PER_TERM, SOURCE_NONE,
+use gpu_gkr_compiler::backward::{
+    category_arity, decode_continuation_program, decode_r0_program, split_round_robin,
+    CoefficientRecipeId, ImmediateId, LeanAtom, LeanCodecError, LeanProgram, LeanSourceBinding,
+    LeanTerm, TermCategory, LEAN_CONT_OPCODES, LEAN_DESCRIPTOR_PROGRAM_WORDS, LEAN_MAX_IMMEDIATES,
+    LEAN_R0_OPCODES, LEAN_WORDS_PER_TERM, MAX_COEFFICIENT_ENCODINGS, SOURCE_NONE,
+    SOURCE_WINDOW_COLUMNS,
 };
-use gkr_eval_isa::bwd::coeff::lean_artifact::LeanCoordinateArtifact;
-use gkr_eval_isa::bwd::coeff::lean_bind::LeanSourceBinding;
-use gkr_eval_isa::bwd::coeff::limits::{
-    category_arity, in_scope, TermCategory, LEAN_DESCRIPTOR_PROGRAM_WORDS, LEAN_MAX_IMMEDIATES,
-    MAX_COEFFICIENT_ENCODINGS, SOURCE_WINDOW_COLUMNS,
-};
-use gkr_eval_isa::bwd::coeff::model::{CoefficientRecipeId, ImmediateId};
-use gkr_eval_isa::bwd::coeff::order::split_round_robin;
+use gpu_gkr_compiler::{ContinuationLayerProgram, R0LayerProgram};
 
 use super::seg_desc::{
-    bwd_seg_lane, bwd_seg_lane_column, bwd_seg_lane_slot, BwdSegAddrSlot, BwdSegDesc, BwdSegProgPtrDesc, BwdSegSourceRecord,
-    BWD_COEFF_MAX_FOLD_DEPTH, BWD_COEFF_ORIGIN_PROCEDURAL, BWD_COEFF_ORIGIN_READ_BASE,
-    BWD_COEFF_ORIGIN_READ_EXT, BWD_COEFF_PROCEDURAL_KINDS, BWD_COEFF_PROCEDURAL_NONE,
-    BWD_COEFF_PUBLISH_TARGET_DEPTH, BWD_SEG_CONST_BANK, BWD_SEG_C_INIT_NONE, BWD_SEG_MAX_K,
-    BWD_SEG_ADDR_NONE, BWD_SEG_ADDR_SLOTS, BWD_SEG_MAX_SOURCES,
+    bwd_seg_lane, bwd_seg_lane_column, bwd_seg_lane_slot, BwdSegAddrSlot, BwdSegDesc,
+    BwdSegProgPtrDesc, BwdSegSourceRecord, BWD_COEFF_MAX_FOLD_DEPTH, BWD_COEFF_ORIGIN_PROCEDURAL,
+    BWD_COEFF_ORIGIN_READ_BASE, BWD_COEFF_ORIGIN_READ_EXT, BWD_COEFF_PROCEDURAL_KINDS,
+    BWD_COEFF_PROCEDURAL_NONE, BWD_COEFF_PUBLISH_TARGET_DEPTH, BWD_SEG_ADDR_NONE,
+    BWD_SEG_ADDR_SLOTS, BWD_SEG_CONST_BANK, BWD_SEG_C_INIT_NONE, BWD_SEG_MAX_K,
+    BWD_SEG_MAX_SOURCES,
 };
 use crate::primitives::field::{BF, E4};
 use crate::prover::gkr::backward::GkrEqSizes;
@@ -842,21 +839,18 @@ pub(crate) struct BwdSegRoundBinding<'a> {
     ///
     /// A layer property whose VALUE is round-dependent (a recipe evaluated in
     /// this round's challenge context), which is why it arrives with
-    /// [`Self::coefficients`] and resolves against the same payload. The lean
-    /// artifact does not carry it: `LeanCoordinateArtifact` is the program plus
-    /// the binding, and a seed is neither.
+    /// [`Self::coefficients`] and resolves against the same payload. The compiled
+    /// layer program does not carry it: a seed is round state, not program state.
     pub c_init: Option<CoefficientRecipeId>,
     /// The grouped layer's immediate table, CANONICAL base-field values in
     /// `ImmediateId::banked` order (`immediates[id - 2]`).
     ///
     /// It arrives with the round binding for the same reason
-    /// [`Self::coefficients`] does: [`LeanCoordinateArtifact`] carries the program
-    /// plus its source binding, and the table is neither — it is a property of the
-    /// LAYER the program was lowered from, which only the bridge that built both
-    /// still holds. Unlike the coefficients it is round-INDEPENDENT (a BF scalar,
-    /// not a challenge-evaluated recipe); lowering converts it to the kernel's
-    /// in-memory form once, host-side. Empty for a layer with no groups, which is
-    /// every R0 layer and every ungrouped Ext layer.
+    /// [`Self::coefficients`] does: the table belongs to the lowered layer, not the
+    /// encoded program or source binding. Unlike the coefficients it is
+    /// round-INDEPENDENT (a BF scalar, not a challenge-evaluated recipe); lowering
+    /// converts it to the kernel's in-memory form once, host-side. Empty for a
+    /// layer with no groups, which is every R0 layer and every ungrouped Ext layer.
     pub immediates: &'a [u32],
     pub eq_low: *const E4,
     pub eq_sizes: GkrEqSizes,
@@ -1234,8 +1228,16 @@ struct SegDescBody {
 /// the coefficient payload, upload the claim point, and (in
 /// [`ProgramMode::DevPtr`]) upload the stream and patch the pointer into its host
 /// copy of the descriptor.
-pub(crate) fn lower_bwd_seg(
-    artifact: &LeanCoordinateArtifact,
+struct SegProgramRef<'a> {
+    layer: usize,
+    regime: BwdRegime,
+    order: &'a [u32],
+    program: &'a LeanProgram,
+    binding: &'a LeanSourceBinding,
+}
+
+fn lower_bwd_seg_view(
+    artifact: SegProgramRef<'_>,
     binding: &BwdSegRoundBinding<'_>,
     scratch: &ResolvedPublishScratch,
     k: usize,
@@ -1249,7 +1251,7 @@ pub(crate) fn lower_bwd_seg(
     let round = u8::try_from(binding.round).map_err(|_| BwdSegLowerError::RoundTooDeep {
         round: binding.round,
     })?;
-    let regime = artifact.regime.regime();
+    let regime = artifact.regime;
     // R0 IS round zero: its kernel is the `FOLD_DEPTH = 0` specialization.
     if regime == BwdRegime::R0 && round != 0 {
         return Err(BwdSegLowerError::R0RoundMismatch {
@@ -1353,7 +1355,10 @@ pub(crate) fn lower_bwd_seg(
     // the whole-atom word span the stream copies — or, for a group
     // [`chop_atoms`] splits, the span its chunk headers and member copies are
     // addressed within.
-    let atoms = decode_atoms(&artifact.program, regime)?;
+    let atoms = match regime {
+        BwdRegime::R0 => decode_r0_program(artifact.program)?,
+        BwdRegime::Ext => decode_continuation_program(artifact.program)?,
+    };
     let mut atom_spans = Vec::with_capacity(atoms.len());
     let mut record_count = 0usize;
     for atom in &atoms {
@@ -1440,7 +1445,11 @@ pub(crate) fn lower_bwd_seg(
     // per-round facts whose lengths legitimately differ round to round — the
     // read side interns whatever backings that round reads. Comparing those
     // lengths would reject a correct binding.
-    let scratch_is_live = scratch.plan.bytes_per_parity.iter().any(|&bytes| bytes != 0);
+    let scratch_is_live = scratch
+        .plan
+        .bytes_per_parity
+        .iter()
+        .any(|&bytes| bytes != 0);
     if scratch_is_live {
         if let Some(previous) = usize::from(round)
             .checked_sub(1)
@@ -1456,10 +1465,11 @@ pub(crate) fn lower_bwd_seg(
             }
         }
     }
-    let expected_stride = publish_column_stride_bytes(binding.rows)
-        .ok_or(BwdSegLowerError::PublishScratchOverflow {
+    let expected_stride = publish_column_stride_bytes(binding.rows).ok_or(
+        BwdSegLowerError::PublishScratchOverflow {
             round: usize::from(round),
-        })?;
+        },
+    )?;
     if layout.column_stride_bytes != expected_stride {
         return Err(BwdSegLowerError::PublishStrideMismatch {
             round,
@@ -1800,6 +1810,58 @@ pub(crate) fn lower_bwd_seg(
     })
 }
 
+pub(crate) fn lower_bwd_seg_r0(
+    program: &R0LayerProgram,
+    binding: &BwdSegRoundBinding<'_>,
+    scratch: &ResolvedPublishScratch,
+    k: usize,
+    d2: D2Policy,
+    prog: ProgramMode,
+    coeff: CoeffMode,
+) -> Result<BwdSegSetup, BwdSegLowerError> {
+    lower_bwd_seg_view(
+        SegProgramRef {
+            layer: program.layer,
+            regime: BwdRegime::R0,
+            order: &program.order,
+            program: &program.program,
+            binding: &program.binding,
+        },
+        binding,
+        scratch,
+        k,
+        d2,
+        prog,
+        coeff,
+    )
+}
+
+pub(crate) fn lower_bwd_seg_continuation(
+    program: &ContinuationLayerProgram,
+    binding: &BwdSegRoundBinding<'_>,
+    scratch: &ResolvedPublishScratch,
+    k: usize,
+    d2: D2Policy,
+    prog: ProgramMode,
+    coeff: CoeffMode,
+) -> Result<BwdSegSetup, BwdSegLowerError> {
+    lower_bwd_seg_view(
+        SegProgramRef {
+            layer: program.layer,
+            regime: BwdRegime::Ext,
+            order: &program.order,
+            program: &program.program,
+            binding: &program.binding,
+        },
+        binding,
+        scratch,
+        k,
+        d2,
+        prog,
+        coeff,
+    )
+}
+
 /// Resolve ONE address slot into its descriptor entry.
 ///
 /// A slot is pure addressing plus the two facts that belong to a BACKING rather
@@ -1838,9 +1900,9 @@ fn lower_slot(index: u8, slot: &ResolvedAddrSlot) -> Result<BwdSegAddrSlot, BwdS
             base: std::ptr::null(),
             log2_stride: 0,
             origin: BWD_COEFF_ORIGIN_PROCEDURAL,
-            procedural_kind: slot.procedural_kind.ok_or(
-                BwdSegLowerError::MissingReadBacking { window: index },
-            )?,
+            procedural_kind: slot
+                .procedural_kind
+                .ok_or(BwdSegLowerError::MissingReadBacking { window: index })?,
             reserved: [0; 5],
         });
     };
@@ -2030,10 +2092,9 @@ fn lower_source(
                         window: slot_index.min(u8::MAX as usize) as u8,
                     },
                 )?;
-                let backing =
-                    target
-                        .base
-                        .ok_or(BwdSegLowerError::PlanMissingPublishRegion { window })?;
+                let backing = target
+                    .base
+                    .ok_or(BwdSegLowerError::PlanMissingPublishRegion { window })?;
                 // The write extent per column is `2 * rows * 16`, which the
                 // destination stride must at least cover or consecutive columns
                 // would overwrite each other. Compared against the EXTENT, not
@@ -2076,9 +2137,8 @@ fn lower_source(
                         // SAFETY: the offset is inside the parity buffer this plan
                         // sized and the caller allocated; this computes an address
                         // and never reads it.
-                        let base = unsafe {
-                            scratch.parity_base[usize::from(round & 1)].add(offset)
-                        };
+                        let base =
+                            unsafe { scratch.parity_base[usize::from(round & 1)].add(offset) };
                         let elements = publish_stride / E4_COLUMN_BYTES;
                         debug_assert!(elements.is_power_of_two());
                         table.push(BwdSegAddrSlot {
@@ -2102,7 +2162,11 @@ fn lower_source(
         if addr.publish.is_some() {
             return Err(BwdSegLowerError::UnexpectedPublishBacking { window });
         }
-        if layout.window_base.get(read_slot).copied().unwrap_or(PUBLISH_WINDOW_ABSENT)
+        if layout
+            .window_base
+            .get(read_slot)
+            .copied()
+            .unwrap_or(PUBLISH_WINDOW_ABSENT)
             != PUBLISH_WINDOW_ABSENT
         {
             return Err(BwdSegLowerError::PlanPublishRegionUnused { window });
@@ -2117,9 +2181,7 @@ fn lower_source(
             chain_read_column(scratch, u32::from(round), read_slot)
         {
             let base = slot.base.expect("an E4 origin has a backing");
-            if base.ptr as usize != expected_base as usize
-                || base.stride_bytes != expected_stride
-            {
+            if base.ptr as usize != expected_base as usize || base.stride_bytes != expected_stride {
                 return Err(BwdSegLowerError::ChainReadNotPriorPublish { window });
             }
         }
@@ -2483,7 +2545,7 @@ fn list_work_stats(lists: &[Vec<usize>], costs: &[u64]) -> ListWorkStats {
 // A floor of bytes read and written per LAUNCH assuming perfect caching, computed
 // analytically host-side, so a realized NCU figure reads as caching effectiveness
 // rather than a guess from wall time. The backward sibling of the forward
-// `dag_traffic_floor` (`gkr_eval_isa/src/schedule_search/floor.rs`): same two
+// `dag_traffic_floor` (`gpu_gkr_compiler/src/schedule_search/floor.rs`): same two
 // rules — dedupe by distinct backing, and non-DRAM sources contribute nothing —
 // over a different cone (the forward floor is output-cone-only over a DAG layer;
 // this one is per-launch over a lowered seg descriptor).
@@ -2755,62 +2817,4 @@ pub(crate) fn bwd_seg_floor_backing_census(setup: &BwdSegSetup) -> BwdSegFloorBa
 /// `realized >= floor` wording and wants RR's confirmation.
 pub(crate) fn bwd_seg_floor_soft_bound(floor_bytes: u64, l2_bytes: u64) -> u64 {
     floor_bytes.saturating_sub(l2_bytes)
-}
-
-#[cfg(test)]
-impl BwdSegLaunchDesc {
-    /// The descriptor exactly as a launch copies it — INTERIOR PADDING INCLUDED,
-    /// which is the point: lowering allocates it zeroed, so two identical
-    /// lowerings are byte-identical.
-    pub(crate) fn launch_bytes(&self) -> &[u8] {
-        let (base, len) = match self {
-            BwdSegLaunchDesc::Inline(desc) => (
-                &**desc as *const BwdSegDesc as *const u8,
-                core::mem::size_of::<BwdSegDesc>(),
-            ),
-            BwdSegLaunchDesc::ProgPtr(desc) => (
-                &**desc as *const BwdSegProgPtrDesc as *const u8,
-                core::mem::size_of::<BwdSegProgPtrDesc>(),
-            ),
-        };
-        // SAFETY: both descriptors are `repr(C)` plain data with no interior
-        // mutability, and the slice borrows from `self`.
-        unsafe { std::slice::from_raw_parts(base, len) }
-    }
-}
-
-/// Test-only, so that `assert_eq!(lower_bwd_seg(...), Err(...))` compiles: the
-/// descriptor is 26 KB of `Copy` plain data that derives no `PartialEq`, so it is
-/// compared as the bytes a launch would carry.
-#[cfg(test)]
-impl PartialEq for BwdSegSetup {
-    fn eq(&self, other: &Self) -> bool {
-        self.desc.launch_bytes() == other.desc.launch_bytes()
-            && self.coefficients == other.coefficients
-            && self.claim_point == other.claim_point
-            && self.immediates == other.immediates
-            && self.program_words == other.program_words
-            && self.work == other.work
-    }
-}
-
-/// Test-only, and a SUMMARY on purpose: the derived form would print 26 KB of
-/// mostly-zero arrays into a failure message.
-#[cfg(test)]
-impl core::fmt::Debug for BwdSegSetup {
-    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        let family = match &self.desc {
-            BwdSegLaunchDesc::Inline(_) => "inline",
-            BwdSegLaunchDesc::ProgPtr(_) => "progptr",
-        };
-        formatter
-            .debug_struct("BwdSegSetup")
-            .field("desc", &family)
-            .field("coefficients", &self.coefficients.len())
-            .field("claim_point", &self.claim_point.len())
-            .field("immediates", &self.immediates.len())
-            .field("program_words", &self.program_words.len())
-            .field("work", &self.work)
-            .finish()
-    }
 }

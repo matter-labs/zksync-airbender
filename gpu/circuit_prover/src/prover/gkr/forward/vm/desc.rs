@@ -9,7 +9,7 @@
 //! bytes + 4 B tail padding to the 16-B alignment = 27,456; `repr(C)` and C++
 //! round identically).
 //!
-//! Caps come from the corpus census (`gkr_eval_isa/tests/fwd_vm_desc_census.rs`,
+//! Caps come from the corpus census (`gpu_gkr_compiler/tests/fwd_vm_desc_census.rs`,
 //! maxima across all 11 committed with-caches fixtures: lanes 6574, consts 27,
 //! arg-derived E4 values 7, const-derived E4 values 1, descs 296) + margin. Overflow policy:
 //! program overflow falls back to `program_ldg`; every other cap is a hard
@@ -23,7 +23,7 @@ pub(crate) const CONST_CAP: usize = 40; // BF constants
 pub(crate) const ARG_DERIVED_E4_CAP: usize = 12; // schedule-time derived E4 values
 pub(crate) const DESC_CAP: usize = 370; // packed special descriptors
 pub(crate) const CONST_DERIVED_E4_CAP: usize = 8; // Task-8 __constant__ E4 bank (not in this struct);
-// also hosts the decoder fill (see `fill_bank_idx`)
+                                                  // also hosts the decoder fill (see `fill_bank_idx`)
 
 /// `fill_bank_idx` sentinel: the layer has no `SD_DECODER` desc (mirrors
 /// `FWD_VM_FILL_BANK_NONE`). Any accidental decoder read through it fails the
@@ -38,7 +38,7 @@ pub(crate) const SD_SINGLE_COLUMN: u32 = 0; // PeekSingleColumn: lift(mapping[ro
 pub(crate) const SD_AGGREGATE: u32 = 1; // PeekAggregate: table[mapping[row]]
 pub(crate) const SD_SETUP: u32 = 2; // PeekSetup: row < table_len ? table[row] : 0
 pub(crate) const SD_DECODER: u32 = 3; // PeekDecoder: mask[row] != 0 ? table[mapping[row]]
-//                            : const_derived_e4[fill_bank_idx]
+                                      //                            : const_derived_e4[fill_bank_idx]
 pub(crate) const SD_VIRTUAL: u32 = 4; // VirtualSetup: lift(n(vkind, gid)), no memory reads
 
 // --- mapping-arena selectors (packed-desc `arena` field) ---------------------
@@ -293,7 +293,7 @@ mod tests {
     }
 
     #[test]
-    fn vkind_codes_match_gkr_eval_isa_wire_codes() {
+    fn vkind_codes_match_gpu_gkr_compiler_wire_codes() {
         // `virtual_setup_kind_code` returns the `KIND_ORDER` index (0..3);
         // the packed-desc `vkind` field now stores the native
         // `gkr_base_source_kind` value verbatim (2..5), i.e. index + 2.

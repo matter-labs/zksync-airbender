@@ -7,7 +7,7 @@
 //! same commit. Three separate mechanisms cover the three drift directions:
 //!
 //!   1. **Rust-side drift is a BUILD failure.** The `const _: () = assert!(...)`
-//!      blocks below tie every literal to its authority in `gkr_eval_isa`.
+//!      blocks below tie every literal to its authority in `gpu_gkr_compiler`.
 //!   2. **CUDA-side STRUCT drift is a BUILD failure too.** The `.cuh`'s
 //!      `static_assert`s on every field offset and size run under nvcc during
 //!      `cargo check` — but they are CUDA-vs-CUDA, not CUDA-vs-Rust.
@@ -42,7 +42,7 @@
 //!
 //! # The program stream
 //!
-//! `program` is the LEAN wire (`gkr_eval_isa::bwd::coeff::lean`): one fixed
+//! `program` is the LEAN wire (`gpu_gkr_compiler::backward`): one fixed
 //! 8-byte header-first record per term, `[class:3 @13 | coeff_idx:13 @0]` then
 //! two source slots and a reserved word. It is embedded BY VALUE in the
 //! `__grid_constant__` parameter; [`BwdSegProgPtrDesc`] is the spike-only A/B
@@ -50,15 +50,14 @@
 
 use core::mem::{align_of, size_of};
 
-use gkr_eval_isa::bwd::coeff::lean::SOURCE_NONE;
-use gkr_eval_isa::bwd::coeff::limits::{
-    in_scope, DESCRIPTOR_ALIGNMENT_BYTES, KERNEL_ARGUMENT_CEILING_BYTES,
+use gpu_gkr_compiler::backward::{
+    CoefficientRecipeId, DESCRIPTOR_ALIGNMENT_BYTES, KERNEL_ARGUMENT_CEILING_BYTES,
     LEAN_DESCRIPTOR_PROGRAM_BYTES, LEAN_DESCRIPTOR_PROGRAM_WORDS, LEAN_MAX_IMMEDIATES,
-    MAX_COEFFICIENT_ENCODINGS, MAX_SOURCE_WINDOWS, PUBLISH_TARGET_DEPTH,
+    MAX_BACKWARD_COEFFICIENT_RECIPES, MAX_BACKWARD_RECORDS, MAX_BACKWARD_SOURCES,
+    MAX_COEFFICIENT_ENCODINGS, MAX_SOURCE_WINDOWS, PUBLISH_TARGET_DEPTH, SOURCE_NONE,
     SOURCE_WINDOW_COLUMNS,
 };
-use gkr_eval_isa::bwd::coeff::model::CoefficientRecipeId;
-use gkr_eval_isa::fwd::source::KIND_ORDER;
+use gpu_gkr_compiler::forward::source::KIND_ORDER;
 
 use crate::primitives::field::E4;
 use crate::primitives::utils::WARP_SIZE;
@@ -172,7 +171,7 @@ pub(crate) const BWD_SEG_MAX_SOURCES: usize = 1_072;
 /// NOT a measurement: it is the WIRE cap `LEAN_MAX_IMMEDIATES`, mirrored here so
 /// the descriptor can hold any table the encoder will ever emit. The mirror is a
 /// build failure rather than a convention (asserted in the block below), and it
-/// runs in this direction only: the GPU crate imports `gkr_eval_isa`, never the
+/// runs in this direction only: the GPU crate imports `gpu_gkr_compiler`, never the
 /// reverse, so the ISA's constant stays the authority and this one the copy.
 pub(crate) const BWD_SEG_MAX_IMMEDIATES: usize = 512;
 
@@ -189,7 +188,7 @@ const _: () = {
     assert!(LEAN_DESCRIPTOR_PROGRAM_BYTES == LEAN_DESCRIPTOR_PROGRAM_WORDS * size_of::<u16>());
     // `record_count` is a u16 as well, and it counts RECORDS — terms plus the group
     // headers grouping adds — so the census maximum it must hold is `MAX_RECORDS`.
-    assert!(in_scope::MAX_RECORDS <= u16::MAX as usize);
+    assert!(MAX_BACKWARD_RECORDS <= u16::MAX as usize);
 
     // The immediate array is the WIRE cap exactly: not a byte more (an unearned
     // 4-byte slot rides every launch) and not a byte less (a table the encoder can
@@ -201,10 +200,10 @@ const _: () = {
     // The bank covers every reserved-inclusive coefficient id the corpus can
     // name, stays inside the thirteen coefficient bits that name it, and fits the
     // per-module constant budget.
-    assert!(BWD_SEG_CONST_BANK >= in_scope::MAX_COEFFICIENT_RECIPES + 2);
+    assert!(BWD_SEG_CONST_BANK >= MAX_BACKWARD_COEFFICIENT_RECIPES + 2);
     assert!(
-        in_scope::MAX_COEFFICIENT_RECIPES + 2
-            == in_scope::MAX_COEFFICIENT_RECIPES + CoefficientRecipeId::RESERVED as usize
+        MAX_BACKWARD_COEFFICIENT_RECIPES + 2
+            == MAX_BACKWARD_COEFFICIENT_RECIPES + CoefficientRecipeId::RESERVED as usize
     );
     assert!(BWD_SEG_CONST_BANK <= MAX_COEFFICIENT_ENCODINGS);
     assert!(BWD_SEG_CONST_BANK * size_of::<E4>() == 18 * 1_024);
@@ -212,15 +211,15 @@ const _: () = {
 
     // The source capacity is the MEASUREMENT rounded up by strictly less than one
     // 16-slot quantum, so it cannot silently drift into headroom.
-    assert!(BWD_SEG_MAX_SOURCES >= in_scope::MAX_SOURCES);
-    assert!(BWD_SEG_MAX_SOURCES - in_scope::MAX_SOURCES < 16);
+    assert!(BWD_SEG_MAX_SOURCES >= MAX_BACKWARD_SOURCES);
+    assert!(BWD_SEG_MAX_SOURCES - MAX_BACKWARD_SOURCES < 16);
     assert!(BWD_SEG_MAX_SOURCES % 16 == 0);
     // A slot index rides the lean wire as a u16 whose 0xFFFF is the "no second
     // source" sentinel, so the capacity must stay strictly below it.
     assert!(BWD_SEG_MAX_SOURCES < SOURCE_NONE as usize);
 
     // The window struct's publication policy: publish on first physical access
-    // iff `target_depth >= BWD_COEFF_PUBLISH_TARGET_DEPTH`. Tied to `gkr_eval_isa`
+    // iff `target_depth >= BWD_COEFF_PUBLISH_TARGET_DEPTH`. Tied to `gpu_gkr_compiler`
     // so the rehoming out of the retired cell-era descriptor cannot have quietly
     // changed the threshold this lineage was measured under.
     assert!(BWD_COEFF_PUBLISH_TARGET_DEPTH == PUBLISH_TARGET_DEPTH);
@@ -396,7 +395,7 @@ const _: () = {
 /// `class` is the per-`(source, round)` SOURCE class assigned by Task 6's round
 /// lowering — `BfDirect = 0`, `BfInlineD1 = 1`, `BfInlineD2 = 2`, `E4Direct = 3`,
 /// `ProceduralInline = 4` — and is NOT the lean wire's three-bit TERM class
-/// (`gkr_eval_isa::bwd::coeff::lean::LEAN_CLASS_SHIFT`). The two are independent
+/// (`gpu_gkr_compiler::backward::LEAN_CLASS_SHIFT`). The two are independent
 /// axes: the term class fixes the projection and arity of an operation, the
 /// source class fixes how the operand behind a slot is produced. The enum with
 /// those discriminants is Task 6's, so it is the authority; this field is the

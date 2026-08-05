@@ -12,11 +12,7 @@ pub use self::arith::build_cross_layer_field_map;
 pub use self::decisions::SiteDecisions;
 use self::lower::lower_layer_virtual;
 use self::lower::{VDst, VInstr, VirtualRootOutput};
-pub use self::place::MoveCtx;
-use self::place::{
-    PlacementInput, RelocStep, ResidencyStep, VInstrKind, ValueId, VirtualOp, plan_placement,
-    plan_placement_with_peak,
-};
+use self::place::{PlacementInput, ResidencyStep, ValueId, VirtualOp, plan_placement};
 use super::binding::{BackingKey, SourceMarkerMode, bind_final_sources};
 use super::context::{
     CompileTrace, CompiledLayer, DagForwardContext, ForwardAction, OutputCell, RootOutput,
@@ -25,10 +21,9 @@ use super::context::{
 use super::error::CompileError;
 use super::isa::{DstLine, Instr, LdcSub, MovDir, OperandField, OperandLine, Program};
 use super::stats::{CompileStats, OP_ADD, OP_FMA, OP_MOV, OP_MUL};
-use crate::bwd::batch::{BATCH_COEFFICIENT_MAX, BATCH_COEFFICIENT_ONE, pack_batch_dst};
 use crate::schedule::{CircuitSchedule, LayerSchedule};
 use gkr_eval_ir::{
-    DagCircuit, DagLayer, ExprId, FieldKind, ReadPlace, RootExecution, RootId, SinkInfo, SinkKind,
+    DagCircuit, DagLayer, FieldKind, ReadPlace, RootExecution, RootId, SinkInfo, SinkKind,
 };
 use std::collections::{BTreeMap, HashMap};
 
@@ -97,9 +92,7 @@ fn tally_operand(
     }
 }
 
-/// Public wrapper over the crate-private `arith::child_operand_field` so test-only
-/// oracle code can resolve an expr's operand field (→ cell width: Ext=4, Base=1).
-pub fn expr_operand_field(
+pub(crate) fn expr_operand_field(
     layer: &gkr_eval_ir::DagLayer,
     expr_id: gkr_eval_ir::ExprId,
     cross: &std::collections::HashMap<gkr_eval_ir::ReadPlace, gkr_eval_ir::FieldKind>,
@@ -159,80 +152,6 @@ fn operand_field_of(sink: &SinkInfo) -> OperandField {
         gkr_eval_ir::FieldKind::Base => OperandField::Base,
         gkr_eval_ir::FieldKind::Ext => OperandField::Ext,
     }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────────
-// Stage-3 schedule-driven compile path. `lower.rs` holds the value/admit model.
-// ─────────────────────────────────────────────────────────────────────────────────
-
-/// Test-facing view of one Phase-1 lowered virtual instruction (Task 1 synthetic tests
-/// inspect emission SHAPE — cache-produce `Mul`→cell vs `Fma` fuse vs `Value` read —
-/// without depending on the crate-private `VInstr`/`VirtualOp` types).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum LoweredKind {
-    Add,
-    Mul,
-    Fma,
-    Mov,
-}
-
-/// A single lowered virtual instruction, projected for test inspection: its step index,
-/// opcode kind, the `ValueId` it defines (a `Mov`→cell evict, incl. cache-produce), and
-/// the `Value(v)` (smem-cell) operands it reads.
-#[derive(Clone, Debug)]
-pub struct LoweredInstr {
-    pub step: usize,
-    pub kind: LoweredKind,
-    pub defines: Option<ExprId>,
-    pub value_reads: Vec<ExprId>,
-}
-
-/// Lower one layer's `VInstr` stream under `decisions`/`budget` and project it to
-/// `LoweredInstr`s. Test-only seam: runs Stage-3 Phase 1 (`lower_layer_virtual`) and
-/// exposes the emission shape so synthetic tests can assert the cache-produce/fuse/resident
-/// partition. `decisions: None` is the uncached (per-step recompute) baseline; `Some` runs
-/// the sub-project-2 residency machine at `budget`.
-pub fn lower_layer_stream(
-    layer: &DagLayer,
-    layer_index: usize,
-    root_execution: Option<&BTreeMap<RootId, RootExecution>>,
-    cross_layer_fields: &HashMap<ReadPlace, FieldKind>,
-    schedule: &LayerSchedule,
-    budget: usize,
-    decisions: Option<&SiteDecisions>,
-) -> Result<Vec<LoweredInstr>, CompileError> {
-    let mut ctx = DagForwardContext::default();
-    ctx.actions = build_forward_actions(layer, root_execution)?;
-    ctx.cross_layer_fields = cross_layer_fields.clone();
-    let (vinstrs, step_of, _vouts, _rr) =
-        lower_layer_virtual(layer, schedule, &mut ctx, layer_index, decisions, budget)?;
-    Ok(vinstrs
-        .iter()
-        .zip(step_of)
-        .map(|(vi, step)| {
-            let pv = vi.to_place();
-            let kind = match pv.op {
-                VInstrKind::Add => LoweredKind::Add,
-                VInstrKind::Mul => LoweredKind::Mul,
-                VInstrKind::Fma => LoweredKind::Fma,
-                VInstrKind::Mov => LoweredKind::Mov,
-            };
-            let value_reads = pv
-                .reads
-                .iter()
-                .filter_map(|r| match r {
-                    VirtualOp::Value(v) => Some(*v),
-                    _ => None,
-                })
-                .collect();
-            LoweredInstr {
-                step,
-                kind,
-                defines: pv.defines,
-                value_reads,
-            }
-        })
-        .collect())
 }
 
 /// A whole circuit's schedule-driven forward program (OP-3).
@@ -386,26 +305,12 @@ fn compile_layer_at(
     })?;
 
     // Phase 3 — materialize the rich stream to ISA instructions.
-    let mut moves_at: HashMap<usize, Vec<RelocStep>> = HashMap::new();
-    for (i, r) in &placement.moves {
-        moves_at.entry(*i).or_default().push(*r);
-    }
     let mut program = Program::default();
     // vinstr index → its materialized instruction's PROGRAM index (they coincide today
     // — two-phase placement is relocation-free, so no MOVs are interleaved — but the
     // placed-width map below keys by program index, so track it explicitly).
     let mut prog_idx_of_vinstr: Vec<usize> = Vec::with_capacity(vinstrs.len());
     for (i, vi) in vinstrs.iter().enumerate() {
-        if let Some(ms) = moves_at.get(&i) {
-            for r in ms {
-                program.instrs.push(Instr::Mov {
-                    dir: MovDir::DstFromSrc,
-                    field: OperandField::Base,
-                    dst: Some(DstLine::Smem { cell: r.to }),
-                    src: Some(OperandLine::Smem { cell: r.from }),
-                });
-            }
-        }
         prog_idx_of_vinstr.push(program.instrs.len());
         program
             .instrs
@@ -516,7 +421,6 @@ fn compile_layer_at(
 
     let mut trace = CompileTrace::default();
     trace.max_live_cells = placement.max_live_cells;
-    trace.placement_moves = placement.move_ctx.clone();
     // Task 6: retain the per-cell placed-width map for `validate.rs`'s
     // `SmemRegionMismatch` check — `placement.cell_of` is consumed above and dropped
     // with this function, so project it (via `widths`) onto `(program instr, lane)`
@@ -636,7 +540,6 @@ fn materialize_vinstr(
                 idx: *idx,
             }),
             VirtualOp::Special { desc } => Ok(OperandLine::Special { desc: *desc }),
-            VirtualOp::Acc => Err(CompileError::FieldMismatch("unexpected Acc operand".into())),
         }
     };
     Ok(match vi {
@@ -698,23 +601,6 @@ fn materialize_vinstr(
                     slot: *slot,
                     col: *col,
                 }),
-                Some(VDst::BatchAccumulate { coefficient_desc }) => {
-                    let coefficient_desc = match coefficient_desc {
-                        Some(desc) if *desc <= BATCH_COEFFICIENT_MAX => *desc,
-                        Some(desc) => {
-                            return Err(CompileError::FieldMismatch(format!(
-                                "backward batch coefficient descriptor {desc:#06x} exceeds \
-                                 maximum {BATCH_COEFFICIENT_MAX:#06x}"
-                            )));
-                        }
-                        None => BATCH_COEFFICIENT_ONE,
-                    };
-                    Some(pack_batch_dst(coefficient_desc).map_err(|error| {
-                        CompileError::FieldMismatch(format!(
-                            "invalid backward batch coefficient descriptor: {error:?}"
-                        ))
-                    })?)
-                }
             };
             let src = match src {
                 None => None,

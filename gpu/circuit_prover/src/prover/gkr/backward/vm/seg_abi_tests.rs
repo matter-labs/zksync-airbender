@@ -41,19 +41,17 @@
 
 use std::mem::{align_of, offset_of, size_of};
 
-use gkr_eval_isa::bwd::coeff::lean::{
-    LEAN_CLASS_MASK, LEAN_CLASS_SHIFT, LEAN_COEFFICIENT_MASK, LEAN_COEFFICIENT_SHIFT,
-    LEAN_CONT_OPCODES, LEAN_GROUP_FLAG_C0, LEAN_GROUP_FLAG_C2, LEAN_GROUP_FLAG_MASK,
-    LEAN_R0_OPCODES, LEAN_WORDS_PER_TERM, SOURCE_NONE,
+use gpu_gkr_compiler::backward::{
+    continuation_opcode, r0_opcode, CoefficientRecipeId, ImmediateId, TermCategory,
+    CONTINUATION_LIVE_OPCODES, DESCRIPTOR_ALIGNMENT_BYTES, HEADER_COEFFICIENT_BITS,
+    HEADER_OPCODE_BITS, KERNEL_ARGUMENT_CEILING_BYTES, LEAN_CLASS_MASK, LEAN_CLASS_SHIFT,
+    LEAN_COEFFICIENT_MASK, LEAN_COEFFICIENT_SHIFT, LEAN_CONT_GROUP_HEADER_CLASS, LEAN_CONT_OPCODES,
+    LEAN_DESCRIPTOR_PROGRAM_BYTES, LEAN_DESCRIPTOR_PROGRAM_WORDS, LEAN_GROUP_FLAG_C0,
+    LEAN_GROUP_FLAG_C2, LEAN_GROUP_FLAG_MASK, LEAN_MAX_REALIZED_PROGRAM_WORDS, LEAN_R0_OPCODES,
+    LEAN_WORDS_PER_TERM, MAX_BACKWARD_COEFFICIENT_RECIPES, MAX_BACKWARD_RECORDS,
+    MAX_BACKWARD_SOURCES, MAX_BACKWARD_TERMS, MAX_COEFFICIENT_ENCODINGS, PUBLISH_TARGET_DEPTH,
+    R0_LIVE_OPCODES, SOURCE_NONE,
 };
-use gkr_eval_isa::bwd::coeff::limits::{
-    continuation_opcode, in_scope, r0_opcode, TermCategory, CONTINUATION_LIVE_OPCODES,
-    DESCRIPTOR_ALIGNMENT_BYTES, HEADER_COEFFICIENT_BITS, HEADER_OPCODE_BITS,
-    KERNEL_ARGUMENT_CEILING_BYTES, LEAN_CONT_GROUP_HEADER_CLASS, LEAN_DESCRIPTOR_PROGRAM_BYTES,
-    LEAN_DESCRIPTOR_PROGRAM_WORDS, LEAN_MAX_REALIZED_PROGRAM_WORDS, MAX_COEFFICIENT_ENCODINGS,
-    PUBLISH_TARGET_DEPTH, R0_LIVE_OPCODES,
-};
-use gkr_eval_isa::bwd::coeff::model::{CoefficientRecipeId, ImmediateId};
 
 use super::seg_coeff_eval::{
     SegCoeffEvalDesc, SegCoeffMonomial, SegCoeffRecipe, BWD_SEG_CHALLENGE_ABSENT,
@@ -64,17 +62,15 @@ use super::seg_coeff_eval::{
 };
 use super::seg_desc::BWD_SEG_C_INIT_NONE;
 use super::seg_desc::{
-    BwdSegAddrSlot, BwdSegDesc, BwdSegProgPtrDesc, BwdSegSourceRecord,
-    BWD_COEFF_MAX_FOLD_DEPTH, BWD_COEFF_ORIGIN_PROCEDURAL, BWD_COEFF_ORIGIN_READ_BASE,
-    BWD_COEFF_ORIGIN_READ_EXT, BWD_COEFF_PROCEDURAL_INITS_AND_TEARDOWNS_HIGH,
-    BWD_COEFF_PROCEDURAL_INITS_AND_TEARDOWNS_LOW, BWD_COEFF_PROCEDURAL_NONE,
-    BWD_COEFF_PROCEDURAL_RANGE_CHECK_16_BITS, BWD_COEFF_PROCEDURAL_RANGE_CHECK_TIMESTAMP,
-    BWD_COEFF_PUBLISH_TARGET_DEPTH, BWD_SEG_CONST_BANK, BWD_SEG_DESC_ALIGN, BWD_SEG_DESC_CAP,
-    BWD_SEG_ADDR_SLOTS,
-    BWD_SEG_FOLD_WEIGHT_BASE_D1, BWD_SEG_FOLD_WEIGHT_BASE_D2, BWD_SEG_FOLD_WEIGHT_BASE_D3,
-    BWD_SEG_FOLD_WEIGHT_SLOTS, BWD_SEG_INLINE_KERNEL_ARGUMENT_BYTES, BWD_SEG_MAX_IMMEDIATES,
-    BWD_SEG_MAX_K, BWD_SEG_MAX_SOURCES, BWD_SEG_MAX_THREADS_PER_BLOCK,
-    BWD_SEG_PROGPTR_KERNEL_ARGUMENT_BYTES,
+    BwdSegAddrSlot, BwdSegDesc, BwdSegProgPtrDesc, BwdSegSourceRecord, BWD_COEFF_MAX_FOLD_DEPTH,
+    BWD_COEFF_ORIGIN_PROCEDURAL, BWD_COEFF_ORIGIN_READ_BASE, BWD_COEFF_ORIGIN_READ_EXT,
+    BWD_COEFF_PROCEDURAL_INITS_AND_TEARDOWNS_HIGH, BWD_COEFF_PROCEDURAL_INITS_AND_TEARDOWNS_LOW,
+    BWD_COEFF_PROCEDURAL_NONE, BWD_COEFF_PROCEDURAL_RANGE_CHECK_16_BITS,
+    BWD_COEFF_PROCEDURAL_RANGE_CHECK_TIMESTAMP, BWD_COEFF_PUBLISH_TARGET_DEPTH, BWD_SEG_ADDR_SLOTS,
+    BWD_SEG_CONST_BANK, BWD_SEG_DESC_ALIGN, BWD_SEG_DESC_CAP, BWD_SEG_FOLD_WEIGHT_BASE_D1,
+    BWD_SEG_FOLD_WEIGHT_BASE_D2, BWD_SEG_FOLD_WEIGHT_BASE_D3, BWD_SEG_FOLD_WEIGHT_SLOTS,
+    BWD_SEG_INLINE_KERNEL_ARGUMENT_BYTES, BWD_SEG_MAX_IMMEDIATES, BWD_SEG_MAX_K,
+    BWD_SEG_MAX_SOURCES, BWD_SEG_MAX_THREADS_PER_BLOCK, BWD_SEG_PROGPTR_KERNEL_ARGUMENT_BYTES,
 };
 use super::seg_lower::SourceClass;
 use crate::primitives::field::E4;
@@ -215,10 +211,7 @@ fn seg_descriptor_has_no_unaccounted_bytes() {
             "source",
             BWD_SEG_MAX_SOURCES * size_of::<BwdSegSourceRecord>(),
         ),
-        (
-            "window",
-            BWD_SEG_ADDR_SLOTS * size_of::<BwdSegAddrSlot>(),
-        ),
+        ("window", BWD_SEG_ADDR_SLOTS * size_of::<BwdSegAddrSlot>()),
         // The seed's id plus the padding that preserves its 16-byte footprint.
         ("c_init_coeff", size_of::<u32>()),
         ("c_init_pad", 3 * size_of::<u32>()),
@@ -321,10 +314,7 @@ fn seg_progptr_descriptor_actually_drops_the_inline_program() {
             "source",
             BWD_SEG_MAX_SOURCES * size_of::<BwdSegSourceRecord>(),
         ),
-        (
-            "window",
-            BWD_SEG_ADDR_SLOTS * size_of::<BwdSegAddrSlot>(),
-        ),
+        ("window", BWD_SEG_ADDR_SLOTS * size_of::<BwdSegAddrSlot>()),
         // The seed's id plus the padding that preserves its 16-byte footprint.
         ("c_init_coeff", size_of::<u32>()),
         ("c_init_pad", 3 * size_of::<u32>()),
@@ -393,12 +383,12 @@ fn seg_coefficient_bank_materializes_the_reserved_literals() {
     // (`bank[0] = ONE`, `bank[1] = NEG_ONE`, recipes from index 2), so the kernel
     // resolves every coefficient with ONE uniform `bank[coeff_idx]` load — no
     // ±ONE fast path, no branch, no offset subtraction.
-    let needed = in_scope::MAX_COEFFICIENT_RECIPES + CoefficientRecipeId::RESERVED as usize;
+    let needed = MAX_BACKWARD_COEFFICIENT_RECIPES + CoefficientRecipeId::RESERVED as usize;
     eprintln!(
         "coefficient bank: {BWD_SEG_CONST_BANK} slots ({} B) for {needed} reserved-inclusive ids \
          (census {} recipes + {} literals), slack {} slots",
         BWD_SEG_CONST_BANK * size_of::<E4>(),
-        in_scope::MAX_COEFFICIENT_RECIPES,
+        MAX_BACKWARD_COEFFICIENT_RECIPES,
         CoefficientRecipeId::RESERVED,
         BWD_SEG_CONST_BANK - needed
     );
@@ -416,13 +406,13 @@ fn seg_coefficient_bank_materializes_the_reserved_literals() {
 fn seg_source_capacity_covers_the_census() {
     eprintln!(
         "sources: {BWD_SEG_MAX_SOURCES} slots for census {} (pad {} slots)",
-        in_scope::MAX_SOURCES,
-        BWD_SEG_MAX_SOURCES - in_scope::MAX_SOURCES
+        MAX_BACKWARD_SOURCES,
+        BWD_SEG_MAX_SOURCES - MAX_BACKWARD_SOURCES
     );
-    assert!(BWD_SEG_MAX_SOURCES >= in_scope::MAX_SOURCES);
+    assert!(BWD_SEG_MAX_SOURCES >= MAX_BACKWARD_SOURCES);
     // The round-up is strictly less than the 16-slot quantum that makes both
     // source-indexed arrays 16-byte-sized, so it cannot drift into headroom.
-    assert!(BWD_SEG_MAX_SOURCES - in_scope::MAX_SOURCES < 16);
+    assert!(BWD_SEG_MAX_SOURCES - MAX_BACKWARD_SOURCES < 16);
     assert_eq!(
         BWD_SEG_MAX_SOURCES * size_of::<u16>() % BWD_SEG_DESC_ALIGN,
         0
@@ -452,7 +442,7 @@ fn seg_source_record_is_a_six_byte_two_lane_record() {
     // byte with room to spare.
     assert!(BWD_SEG_ADDR_SLOTS <= u8::MAX as usize);
     // `column` is window-relative, and a window covers at most 128 columns.
-    assert!(gkr_eval_isa::bwd::coeff::limits::SOURCE_WINDOW_COLUMNS <= u16::MAX as usize + 1);
+    assert!(gpu_gkr_compiler::backward::SOURCE_WINDOW_COLUMNS <= u16::MAX as usize + 1);
 }
 
 #[test]
@@ -487,16 +477,16 @@ fn seg_program_array_is_the_lean_census_rounded_to_alignment() {
     // that measurement rounded up by strictly less than one 16-byte quantum.
     assert_eq!(
         LEAN_MAX_REALIZED_PROGRAM_WORDS,
-        LEAN_WORDS_PER_TERM * in_scope::MAX_RECORDS
+        LEAN_WORDS_PER_TERM * MAX_BACKWARD_RECORDS
     );
-    assert!(in_scope::MAX_RECORDS > in_scope::MAX_TERMS);
+    assert!(MAX_BACKWARD_RECORDS > MAX_BACKWARD_TERMS);
     assert!(LEAN_DESCRIPTOR_PROGRAM_WORDS >= LEAN_MAX_REALIZED_PROGRAM_WORDS);
     assert!(
         (LEAN_DESCRIPTOR_PROGRAM_WORDS - LEAN_MAX_REALIZED_PROGRAM_WORDS) * size_of::<u16>()
             < BWD_SEG_DESC_ALIGN
     );
     // `record_count` is a u16, and the census maximum has to fit it.
-    assert!(in_scope::MAX_RECORDS <= u16::MAX as usize);
+    assert!(MAX_BACKWARD_RECORDS <= u16::MAX as usize);
 }
 
 #[test]
@@ -710,7 +700,7 @@ fn the_seg_static_assert_matcher_rejects_a_numeric_prefix() {
 #[test]
 fn seg_cuda_constants_match_the_rust_mirror() {
     // The FROZEN opcode numbering the lean class tables are densified from. Its
-    // authority is `gkr_eval_isa`, not `seg_desc.rs` — the Rust side of this
+    // authority is `gpu_gkr_compiler`, not `seg_desc.rs` — the Rust side of this
     // lineage deliberately does not restate it — so the needles are built from
     // `limits::{r0_opcode, continuation_opcode}` directly.
     let r0_opcode_of = |category| {
@@ -928,7 +918,10 @@ fn seg_cuda_constants_match_the_rust_mirror() {
     // renumbering silently swaps per-row contributions for warp partials — a
     // wrong-shaped write into a buffer sized for the other shape.
     for (name, value) in [
-        ("BWD_SEG_OUTPUT_ROWS", u64::from(super::seg_desc::BWD_SEG_OUTPUT_ROWS)),
+        (
+            "BWD_SEG_OUTPUT_ROWS",
+            u64::from(super::seg_desc::BWD_SEG_OUTPUT_ROWS),
+        ),
         (
             "BWD_SEG_OUTPUT_PARTIALS",
             u64::from(super::seg_desc::BWD_SEG_OUTPUT_PARTIALS),
@@ -937,7 +930,7 @@ fn seg_cuda_constants_match_the_rust_mirror() {
         assert_eq!(seg_cuda_enumerator(name), value, "CUDA {name}");
     }
 
-    // The lean class tables, against the wire tables `gkr_eval_isa` owns.
+    // The lean class tables, against the wire tables `gpu_gkr_compiler` owns.
     let r0_class = |category| {
         LEAN_R0_OPCODES
             .iter()

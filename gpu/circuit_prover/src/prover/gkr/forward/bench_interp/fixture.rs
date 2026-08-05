@@ -58,7 +58,6 @@ use gkr_eval_ir::{
     ChallengeKey, ChallengePower, ChallengeRef, ChallengeResolver, DagLayer, LookupResolver,
     LookupValueKind, ReadPlace, ReadResolver, Resolvers, VirtualSetupKind, VirtualSetupResolver,
 };
-use gkr_eval_isa::bwd::fragment::MergedRecipe;
 
 use crate::prover::gkr::forward::vm::lower::ResolvedColumn;
 
@@ -563,21 +562,6 @@ impl CircuitFixture {
             }
             _ => super::fwd_vm::resolvers::challenge_value(self, reference),
         }
-    }
-
-    /// Evaluate one normalized coefficient/AccInit recipe with the same
-    /// challenge resolver used by the harness's backward CPU oracle.
-    pub(crate) fn evaluate_backward_recipe(&self, layer: &DagLayer, recipe: &MergedRecipe) -> E4 {
-        let resolver = FixtureBackwardRecipeResolver(self);
-        recipe.evaluate(
-            layer,
-            &Resolvers {
-                read: &resolver,
-                lookup: &resolver,
-                virtual_setup: &resolver,
-                challenge: &resolver,
-            },
-        )
     }
 
     /// The owning `ProverContext` for this fixture's replay/A-B launches.

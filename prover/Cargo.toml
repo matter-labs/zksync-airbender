@@ -45,9 +45,6 @@ serial_test = "3"
 cs = { workspace = true, features = ["test-support"] }
 proptest = "1"
 gkr_eval_ir.workspace = true
-# Task 10 (backward-VM parity) drives the layer oracle against `gkr_eval_isa`.
-# Dev-only: keeps the production dependency direction unchanged.
-gkr_eval_isa = { path = "../gkr_eval_isa" }
 
 [[bench]]
 name = "pow_bench"

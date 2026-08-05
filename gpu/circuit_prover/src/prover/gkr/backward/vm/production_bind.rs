@@ -1,9 +1,7 @@
 //! Binding the backward VM's R0 sources to the production prover state.
 //!
-//! Every `ResolvedBwdCoeffSourceWindow` measured by the bench is synthetic:
-//! [`seg_compile`]'s harness resolves windows against its own host storage
-//! model (`upload_round_storage`). This module is the production half — the
-//! same window geometry resolved against [`GpuGKRStorage`], through the SAME
+//! This module resolves symbolic compiler windows against [`GpuGKRStorage`]
+//! through the same
 //! accessors the flat path reads with (`try_get_base_poly` /
 //! `try_get_ext_poly`, via the forward VM's
 //! [`resolve_storage_column`]).
@@ -84,7 +82,6 @@
 //! round's per-row footprint at setup time; only the mechanical register-ceiling
 //! clamp is shared.
 //!
-//! [`seg_compile`]: super::seg_compile
 //! [`resolve_storage_column`]: crate::prover::gkr::forward::vm::production_bind::resolve_storage_column
 //! [`assign_class`]: super::seg_lower::assign_class
 
@@ -93,16 +90,14 @@ use std::ptr::null_mut;
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
-use gkr_eval_isa::bwd::coeff::lean_artifact::LeanCoordinateArtifact;
-use gkr_eval_isa::bwd::coeff::lean_bind::{
-    LeanBoundColumn, LeanBoundWindow, LeanSourceBinding, LeanSourceSlot,
+use gpu_gkr_compiler::backward::{
+    LeanBoundColumn, LeanBoundWindow, LeanSourceBinding, LeanSourceSlot, WindowFamily,
+    SOURCE_WINDOW_COLUMNS,
 };
-use gkr_eval_isa::bwd::coeff::limits::SOURCE_WINDOW_COLUMNS;
+use gpu_gkr_compiler::forward::source::KIND_ORDER;
+use gpu_gkr_compiler::{ContinuationLayerProgram, R0LayerProgram};
 use std::collections::{BTreeMap, BTreeSet};
-use gkr_eval_isa::bwd::coeff::stats::WindowFamily;
-use gkr_eval_isa::fwd::source::KIND_ORDER;
 
-use super::production_program::CompiledSlice;
 use super::seg::{
     bwd_seg_blocks_per_sm, bwd_seg_coeff_bank_device_ptr, launch_bwd_seg,
     launch_bwd_seg_build_fold_weights, BwdSegEpilogue,
@@ -114,18 +109,19 @@ use super::seg_coeff_eval::{
     BWD_SEG_CHALLENGE_SLOTS,
 };
 use super::seg_desc::{
-    BWD_COEFF_PUBLISH_TARGET_DEPTH, BWD_SEG_MAX_K, BWD_SEG_OUTPUT_PARTIALS, BWD_SEG_OUTPUT_ROWS,
-    BWD_SEG_ADDR_SLOTS,
+    BWD_COEFF_PUBLISH_TARGET_DEPTH, BWD_SEG_ADDR_SLOTS, BWD_SEG_MAX_K, BWD_SEG_OUTPUT_PARTIALS,
+    BWD_SEG_OUTPUT_ROWS,
 };
 use super::seg_lower::{
-    assign_class, lower_bwd_seg, plan_publish_scratch, BwdSegLowerError,
-    BwdSegRoundBinding, BwdSegSetup, CoeffMode, D2Policy, ProgramMode, PublishScratchPlan,
-    ResolvedAddrSlot, ResolvedPublishScratch, ResolvedSourceAddr, SourceClass, SourceOrigin,
+    assign_class, lower_bwd_seg_continuation, lower_bwd_seg_r0, plan_publish_scratch,
+    BwdSegLowerError, BwdSegRoundBinding, BwdSegSetup, CoeffMode, D2Policy, ProgramMode,
+    PublishScratchPlan, ResolvedAddrSlot, ResolvedPublishScratch, ResolvedSourceAddr, SourceClass,
+    SourceOrigin,
 };
 use crate::allocator::tracker::AllocationPlacement;
-use crate::primitives::utils::WARP_SIZE;
 use crate::primitives::context::DeviceAllocation;
 use crate::primitives::field::{BF, E4};
+use crate::primitives::utils::WARP_SIZE;
 use crate::prover::gkr::backward::{make_eq_sizes, GkrEqSizes};
 use crate::prover::gkr::forward::vm::lower::{read_place_to_gkr_address, ResolvedColumn};
 use crate::prover::gkr::forward::vm::production_bind::resolve_storage_column;
@@ -198,40 +194,33 @@ pub(crate) fn seg_continuation_policy_k(bytes_per_row: usize, ceiling: usize) ->
     clamp_policy_k(want, ceiling)
 }
 
-/// Dispatch to the regime-specific policy. This match is intentionally thin:
-/// policy logic belongs in the two functions above and is never shared between
-/// R0 and continuation rounds.
-pub(crate) fn seg_policy_k(regime: BwdRegime, bytes_per_row: usize, ceiling: usize) -> usize {
-    match regime {
-        BwdRegime::R0 => seg_r0_policy_k(bytes_per_row, ceiling),
-        BwdRegime::Ext => seg_continuation_policy_k(bytes_per_row, ceiling),
-    }
-}
-
-/// The `K` a launch actually runs: [`seg_policy_k`], unless `AB_BWD_VM_SEG_K`
-/// names this `(layer, regime)`.
-///
-/// The override lives HERE rather than inside the policy so the policy stays a
-/// pure function of its documented arguments — the bench scores it directly,
-/// and a diagnostic reaching into it would make every one of those
-/// calls depend on an environment variable.
-pub(crate) fn seg_k_for_launch(
-    regime: BwdRegime,
+/// The `K` an R0 launch actually runs, unless the benchmark override names it.
+pub(crate) fn seg_r0_k_for_launch(
     layer: usize,
     bytes_per_row: usize,
     ceiling: usize,
 ) -> usize {
-    if let Some(forced) = seg_forced_k(regime, layer) {
-        // Still filtered through the ceiling: a `K` the compiled family cannot
-        // host is not launchable, so honouring the override literally would turn
-        // a diagnostic into a launch failure.
+    if let Some(forced) = seg_forced_k(BwdRegime::R0, layer) {
         return forced.min(ceiling);
     }
-    seg_policy_k(regime, bytes_per_row, ceiling)
+    seg_r0_policy_k(bytes_per_row, ceiling)
+}
+
+/// The `K` a continuation launch actually runs, unless the benchmark override
+/// names it.
+pub(crate) fn seg_continuation_k_for_launch(
+    layer: usize,
+    bytes_per_row: usize,
+    ceiling: usize,
+) -> usize {
+    if let Some(forced) = seg_forced_k(BwdRegime::Ext, layer) {
+        return forced.min(ceiling);
+    }
+    seg_continuation_policy_k(bytes_per_row, ceiling)
 }
 
 /// `AB_BWD_VM_SEG_K`: force every VM-owned round to one `K`, bypassing
-/// [`seg_policy_k`]'s decision.
+/// the typed policy's decision.
 ///
 /// The instrument used to sweep `K` against PRODUCTION bindings. A bound
 /// production round is not one of the bench's synthetic corpus cells, so the
@@ -363,8 +352,6 @@ pub(crate) struct R0WindowShape {
 /// is a wiring defect, not a runtime condition.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum BwdVmBindError {
-    /// The coordinate is not an R0 program.
-    NotR0 { layer: usize, regime: BwdRegime },
     /// The artifact's own window geometry is malformed.
     WindowShape(BwdSegLowerError),
     /// Round 0 classified a window as publishing — the depth wiring is wrong.
@@ -388,8 +375,6 @@ pub(crate) enum BwdVmBindError {
     /// R0 must plan no publish scratch; a non-empty plan means the depth
     /// wiring is wrong.
     PublishPlanNotEmpty { bytes: usize },
-    /// The coordinate is not an Ext program.
-    NotExt { layer: usize, regime: BwdRegime },
     /// The Ext shape pass was asked about round 0, which the R0 program owns.
     NotAContinuationRound { round: u8 },
     /// A window chain-reads at this round but was assigned no column in the
@@ -407,12 +392,14 @@ pub(super) fn family_read_place(family: WindowFamily, column: usize) -> Option<R
         WindowFamily::BaseLayerWitness => Some(ReadPlace::BaseLayerWitness { column }),
         WindowFamily::Setup => Some(ReadPlace::Setup { column }),
         WindowFamily::Scratch => Some(ReadPlace::Scratch { slot: column }),
-        WindowFamily::LayerOutput { layer, .. } => {
-            Some(ReadPlace::LayerOutput { layer, offset: column })
-        }
-        WindowFamily::CacheOutput { layer, .. } => {
-            Some(ReadPlace::CacheOutput { layer, offset: column })
-        }
+        WindowFamily::LayerOutput { layer, .. } => Some(ReadPlace::LayerOutput {
+            layer,
+            offset: column,
+        }),
+        WindowFamily::CacheOutput { layer, .. } => Some(ReadPlace::CacheOutput {
+            layer,
+            offset: column,
+        }),
         WindowFamily::VirtualSetup { .. } => None,
     }
 }
@@ -420,17 +407,11 @@ pub(super) fn family_read_place(family: WindowFamily, column: usize) -> Option<R
 /// The CPU half of the binder: every window's address, field, class and publish
 /// flag, from the compiled coordinate alone.
 pub(crate) fn r0_window_shapes(
-    coord: &LeanCoordinateArtifact,
+    coord: &R0LayerProgram,
 ) -> Result<Vec<R0WindowShape>, BwdVmBindError> {
-    if coord.regime.regime() != BwdRegime::R0 {
-        return Err(BwdVmBindError::NotR0 {
-            layer: coord.layer,
-            regime: coord.regime.regime(),
-        });
-    }
     // A compile invariant (`the_lean_r0_coordinate_compiles_from_the_production_
     // artifact` pins it), not an input condition: R0 reads unfolded polynomials.
-    assert_eq!(coord.target_depth, 0, "an R0 coordinate is bound at depth 0");
+    assert_eq!(coord.target_depth(), 0, "an R0 program is bound at depth 0");
 
     let mut shapes = Vec::with_capacity(coord.binding.windows.len());
     for (index, window) in coord.binding.windows.iter().enumerate() {
@@ -447,7 +428,9 @@ pub(crate) fn r0_window_shapes(
         // policy only matters at delta 2 and cannot change the answer here.
         let (class, publishes) = assign_class(origin, 0, D2Policy::Inline);
         if publishes {
-            return Err(BwdVmBindError::UnexpectedPublish { window: index as u8 });
+            return Err(BwdVmBindError::UnexpectedPublish {
+                window: index as u8,
+            });
         }
         shapes.push(R0WindowShape {
             address,
@@ -507,16 +490,10 @@ fn ext_materialization_round(origin: SourceOrigin, d2: D2Policy) -> u8 {
 /// publish flag and chain state at round `round`, from the compiled coordinate
 /// alone.
 pub(crate) fn ext_round_window_shapes(
-    coord: &LeanCoordinateArtifact,
+    coord: &ContinuationLayerProgram,
     round: u8,
     d2: D2Policy,
 ) -> Result<Vec<ExtWindowShape>, BwdVmBindError> {
-    if coord.regime.regime() != BwdRegime::Ext {
-        return Err(BwdVmBindError::NotExt {
-            layer: coord.layer,
-            regime: coord.regime.regime(),
-        });
-    }
     if round == 0 {
         return Err(BwdVmBindError::NotAContinuationRound { round });
     }
@@ -539,7 +516,11 @@ pub(crate) fn ext_round_window_shapes(
         // A chained window reads E4 whatever its family produced — the origin
         // is the ROUND's, not the family's (`lower_window` derives the same
         // answer from the bound read's field).
-        let origin = if chained { SourceOrigin::E4 } else { raw_origin };
+        let origin = if chained {
+            SourceOrigin::E4
+        } else {
+            raw_origin
+        };
         let (class, materialize) = assign_class(origin, delta, d2);
         shapes.push(ExtWindowShape {
             address,
@@ -652,7 +633,7 @@ pub(crate) fn virtual_setup_address(kind: u8) -> GKRAddress {
 /// being threaded through the round loop. The order is the artifact's own
 /// (window, then column), so it is stable across the two calls that must agree.
 pub(super) fn folding_buffer_columns(
-    coord: &LeanCoordinateArtifact,
+    coord: &ContinuationLayerProgram,
     round: u8,
     rows: usize,
     d2: D2Policy,
@@ -804,17 +785,14 @@ impl SlotTable {
 /// publish plan.
 pub(crate) fn bind_r0_sources<E: Copy>(
     storage: &GpuGKRStorage<BF, E>,
-    coord: &LeanCoordinateArtifact,
+    coord: &R0LayerProgram,
     rows: usize,
 ) -> Result<BoundR0Sources, BwdVmBindError> {
     let shapes = r0_window_shapes(coord)?;
     let mut table = SlotTable::default();
-    let mut sources: Vec<Option<ResolvedSourceAddr>> =
-        vec![None; coord.binding.source_slots.len()];
+    let mut sources: Vec<Option<ResolvedSourceAddr>> = vec![None; coord.binding.source_slots.len()];
 
-    for (index, (shape, artifact_window)) in
-        shapes.iter().zip(&coord.binding.windows).enumerate()
-    {
+    for (index, (shape, artifact_window)) in shapes.iter().zip(&coord.binding.windows).enumerate() {
         let window = index as u8;
         for entry in &artifact_window.columns {
             let (slot, column) = match family_read_place(artifact_window.family, entry.column) {
@@ -964,7 +942,7 @@ fn note_folding_buffer_slot(
 /// depends on the layer's flat prepares having run.
 pub(crate) fn bind_ext_round_sources<E: Copy>(
     storage: &GpuGKRStorage<BF, E>,
-    coord: &LeanCoordinateArtifact,
+    coord: &ContinuationLayerProgram,
     folding_steps: usize,
     d2: D2Policy,
 ) -> Result<BoundExtSources, BwdVmBindError> {
@@ -1027,18 +1005,15 @@ pub(crate) fn bind_ext_round_sources<E: Copy>(
                         },
                     )?;
                     let resolved = buffer.column(column);
-                    let interned =
-                        table.intern(window, resolved, buffer.column_elems as u32)?;
+                    let interned = table.intern(window, resolved, buffer.column_elems as u32)?;
                     note_folding_buffer_slot(&mut patches, interned.0, round - 1, buffer, column);
                     interned
                 } else {
                     match &place {
                         Some(place) => {
-                            let resolved = resolve_storage_column(
-                                storage,
-                                read_place_to_gkr_address(place),
-                            )
-                            .ok_or(BwdVmBindError::UnresolvedWindow { window, address })?;
+                            let resolved =
+                                resolve_storage_column(storage, read_place_to_gkr_address(place))
+                                    .ok_or(BwdVmBindError::UnresolvedWindow { window, address })?;
                             if resolved.is_e4 != e4_origin {
                                 return Err(BwdVmBindError::WindowFieldMismatch {
                                     window,
@@ -1265,34 +1240,33 @@ pub(crate) struct BwdVmRound0Launch {
 /// somewhere unmeasured.
 pub(crate) fn build_bwd_vm_round0<E: Copy>(
     storage: &GpuGKRStorage<BF, E>,
-    slice: &CompiledSlice,
+    program: &R0LayerProgram,
     rows: usize,
     eq_low: *const E4,
     eq_sizes: GkrEqSizes,
     contributions: *mut E4,
     context: &ProverContext,
 ) -> CudaResult<BwdVmRound0Launch> {
-    let bound = bind_r0_sources(storage, &slice.coord, rows)
+    let bound = bind_r0_sources(storage, program, rows)
         .unwrap_or_else(|error| panic!("backward VM R0 source binding: {error:?}"));
     assert!(
-        slice.layer.immediates.is_empty(),
+        program.coefficients.immediates.is_empty(),
         "an R0 layer has no groups, so no immediate table"
     );
-    let tables = build_seg_coeff_eval_tables(&slice.layer.coefficients)
+    let tables = build_seg_coeff_eval_tables(&program.coefficients.coefficients)
         .unwrap_or_else(|error| panic!("backward VM R0 bank translation: {error:?}"));
 
     // Dead values with a live LENGTH: lowering sizes the bank and validates the
     // wire's coefficient ids off this slice; the device fill above supplies the
     // real values.
-    let coefficients = vec![E4::ZERO; slice.layer.coefficients.len()];
+    let coefficients = vec![E4::ZERO; program.coefficients.coefficients.len()];
     let scratch = ResolvedPublishScratch {
         parity_base: [null_mut(), null_mut()],
         plan: bound.publish_plan.clone(),
     };
     let bytes_per_row = seg_r0_bytes_per_row(&bound.slots, &bound.sources);
-    let k = seg_k_for_launch(
-        BwdRegime::R0,
-        slice.coord.layer,
+    let k = seg_r0_k_for_launch(
+        program.layer,
         bytes_per_row,
         seg_k_ceiling(BwdRegime::R0)?,
     );
@@ -1313,8 +1287,8 @@ pub(crate) fn build_bwd_vm_round0<E: Copy>(
         // in the loop and its tail is the fused one.
         output: BWD_SEG_OUTPUT_PARTIALS,
     };
-    let setup = lower_bwd_seg(
-        &slice.coord,
+    let setup = lower_bwd_seg_r0(
+        program,
         &binding,
         &scratch,
         k,
@@ -1353,9 +1327,7 @@ pub(crate) fn schedule_bwd_vm_round0(
     // The descriptor was lowered at plan build for step 0's row count; a loop
     // handing it a different `acc_size` would compute garbage silently.
     let (lowered_rows, contributions) = match &launch.setup.desc {
-        super::seg_lower::BwdSegLaunchDesc::Inline(desc) => {
-            (desc.logical_rows, desc.contributions)
-        }
+        super::seg_lower::BwdSegLaunchDesc::Inline(desc) => (desc.logical_rows, desc.contributions),
         super::seg_lower::BwdSegLaunchDesc::ProgPtr(desc) => {
             (desc.logical_rows, desc.contributions)
         }
@@ -1382,11 +1354,7 @@ pub(crate) fn schedule_bwd_vm_round0(
         // SAFETY: `contributions` is `round_scratch.partials`' live device
         // pointer, allocated for the worst-case partial count.
         let dst = unsafe { DeviceSlice::from_raw_parts_mut(contributions, elements) };
-        crate::ops::simple::set_by_val(
-            E4::from_array_of_base([BF::new(POISON); 4]),
-            dst,
-            stream,
-        )?;
+        crate::ops::simple::set_by_val(E4::from_array_of_base([BF::new(POISON); 4]), dst, stream)?;
     }
     #[cfg(not(test))]
     let _ = contributions;
@@ -1437,7 +1405,10 @@ fn schedule_seg_challenge_slab(
         let external = DeviceSlice::from_raw_parts(external_challenges, prefix);
         memory_copy_async(&mut slab[..prefix], external, stream)?;
         for (slot, source) in [
-            (BWD_SEG_CHALLENGE_LOOKUP_MULTIPLICATIVE, lookup_multiplicative),
+            (
+                BWD_SEG_CHALLENGE_LOOKUP_MULTIPLICATIVE,
+                lookup_multiplicative,
+            ),
             (BWD_SEG_CHALLENGE_LOOKUP_ADDITIVE, lookup_additive),
             (BWD_SEG_CHALLENGE_CLAIM_BATCHING, claim_batching),
         ] {
@@ -1599,15 +1570,15 @@ impl BwdVmExtLaunch {
 /// proof must stop on it rather than fall back somewhere unmeasured.
 pub(crate) fn build_bwd_vm_ext_rounds<E: Copy>(
     storage: &GpuGKRStorage<BF, E>,
-    slice: &CompiledSlice,
+    program: &ContinuationLayerProgram,
     folding_steps: usize,
     eq_low: *const E4,
     partials: *mut E4,
     context: &ProverContext,
 ) -> CudaResult<BwdVmExtLaunch> {
-    let bound = bind_ext_round_sources(storage, &slice.coord, folding_steps, D2Policy::Inline)
+    let bound = bind_ext_round_sources(storage, program, folding_steps, D2Policy::Inline)
         .unwrap_or_else(|error| panic!("backward VM Ext source binding: {error:?}"));
-    let tables = build_seg_coeff_eval_tables(&slice.layer.coefficients)
+    let tables = build_seg_coeff_eval_tables(&program.coefficients.coefficients)
         .unwrap_or_else(|error| panic!("backward VM Ext bank translation: {error:?}"));
 
     // Dead values with a live LENGTH, as at R0: lowering sizes the bank and
@@ -1615,7 +1586,7 @@ pub(crate) fn build_bwd_vm_ext_rounds<E: Copy>(
     // payload is bounds-check-only — `ab_gkr_main_layer_claim_point` is
     // production-owned, written in place by the round-update kernels, and the
     // VM must NEVER upload over it.
-    let coefficients = vec![E4::ZERO; slice.layer.coefficients.len()];
+    let coefficients = vec![E4::ZERO; program.coefficients.coefficients.len()];
     let claim_point = vec![E4::ZERO; folding_steps];
     let scratch = ResolvedPublishScratch {
         parity_base: [null_mut(), null_mut()],
@@ -1630,7 +1601,7 @@ pub(crate) fn build_bwd_vm_ext_rounds<E: Copy>(
             slots: round.folding_buffer_slots.clone(),
         });
         let bytes_per_row = seg_ext_bytes_per_row(&round.slots, &round.sources, round.round);
-        let k = seg_k_for_launch(BwdRegime::Ext, slice.coord.layer, bytes_per_row, ceiling);
+        let k = seg_continuation_k_for_launch(program.layer, bytes_per_row, ceiling);
         let binding = BwdSegRoundBinding {
             round: u32::from(round.round),
             rows: round.rows,
@@ -1638,8 +1609,8 @@ pub(crate) fn build_bwd_vm_ext_rounds<E: Copy>(
             sources: &round.sources,
             claim_point: &claim_point,
             coefficients: &coefficients,
-            c_init: slice.layer.c_init,
-            immediates: &slice.layer.immediates,
+            c_init: program.coefficients.c_init,
+            immediates: &program.coefficients.immediates,
             eq_low,
             eq_sizes: drained_eq_sizes(make_eq_sizes(folding_steps - 1), round.round),
             // EVERY round publishes partials, the final one included: its tail is
@@ -1652,8 +1623,8 @@ pub(crate) fn build_bwd_vm_ext_rounds<E: Copy>(
             output: BWD_SEG_OUTPUT_PARTIALS,
         };
         setups.push(
-            lower_bwd_seg(
-                &slice.coord,
+            lower_bwd_seg_continuation(
+                program,
                 &binding,
                 &scratch,
                 k,
@@ -1769,9 +1740,8 @@ pub(crate) fn schedule_bwd_vm_ext_round(
         const POISON: u32 = 0x5EED_DEAD & 0x7FFF_FFFF;
         // SAFETY: the allocation above, in full, before anything is scheduled
         // against it.
-        let dst = unsafe {
-            DeviceSlice::from_raw_parts_mut(buffer.as_ptr().cast_mut(), buffer.len())
-        };
+        let dst =
+            unsafe { DeviceSlice::from_raw_parts_mut(buffer.as_ptr().cast_mut(), buffer.len()) };
         crate::ops::simple::set_by_val(
             E4::from_array_of_base([BF::new(POISON); 4]),
             dst,
@@ -1858,8 +1828,7 @@ pub(crate) fn schedule_bwd_vm_ext_round(
 /// Env var opting the parity gate's accumulator poison in. Off by default so
 /// timing runs never pay for a correctness aid — the forward A/B's first
 /// inversion came from exactly this kind of aid left inside the measured arm.
-pub(crate) const AB_GKR_BWD_VM_POISON_ACCUMULATOR_ENV: &str =
-    "AB_GKR_BWD_VM_POISON_ACCUMULATOR";
+pub(crate) const AB_GKR_BWD_VM_POISON_ACCUMULATOR_ENV: &str = "AB_GKR_BWD_VM_POISON_ACCUMULATOR";
 
 /// Env var opting the parity gate's FOLD-STORAGE poison in: sentinel-fill every
 /// consolidated fold backing at layer prepare, AND every folding buffer the VM
@@ -1902,8 +1871,9 @@ pub(crate) fn schedule_fold_storage_poison<E: Copy>(
     let mut fill = |arc: &std::sync::Arc<DeviceAllocation<E>>| -> CudaResult<()> {
         // SAFETY: a live consolidated backing, owned by storage (which
         // outlives scheduling); the fill covers exactly its length.
-        let dst =
-            unsafe { DeviceSlice::from_raw_parts_mut(arc.as_ptr().cast_mut().cast::<E4>(), arc.len()) };
+        let dst = unsafe {
+            DeviceSlice::from_raw_parts_mut(arc.as_ptr().cast_mut().cast::<E4>(), arc.len())
+        };
         crate::ops::simple::set_by_val(value, dst, stream)
     };
     for layer in &storage.layers {
@@ -1944,8 +1914,7 @@ static BWD_VM_R0_LAUNCHES: std::sync::atomic::AtomicUsize = std::sync::atomic::A
 
 /// VM-owned Ext (continuation) launch count, same doctrine.
 #[cfg(test)]
-static BWD_VM_EXT_LAUNCHES: std::sync::atomic::AtomicUsize =
-    std::sync::atomic::AtomicUsize::new(0);
+static BWD_VM_EXT_LAUNCHES: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
 /// Zero BOTH launch counters and return a handle that reads them back.
 #[cfg(test)]

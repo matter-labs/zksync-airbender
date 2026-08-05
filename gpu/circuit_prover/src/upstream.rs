@@ -92,7 +92,13 @@ pub(crate) use gkr_eval_ir::{
     claim_roots, lower_dag, validate as validate_dag, ChallengeKey, ChallengePower, ChallengeRef,
     ChallengeResolver, DagLayer, FieldKind, PermutationSlot, RangeWidth, ReadPlace,
 };
-pub(crate) use gkr_eval_isa::BwdRegime;
+/// Runtime-only spelling used by launch selection and native specialization.
+/// Compiler policy remains separated into typed R0 and continuation APIs.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub(crate) enum BwdRegime {
+    R0,
+    Ext,
+}
 
 // -----------------------------------------------------------------------
 // `field` — base field, extension towers

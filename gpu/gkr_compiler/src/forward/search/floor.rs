@@ -1,11 +1,4 @@
-//! DAG-intrinsic traffic floor (Task 5 promotion).
-//!
-//! `dag_traffic_floor` moved here (verbatim, modulo the re-exported cross-map helper)
-//! from the test-side `gkr_eval_isa/tests/s3_gap/floor.rs` prototype so the Stage-2b
-//! schedule producer can record `LayerSchedule.floor` from production code.
-//! `build_cross_layer_field_map` already lives in `fwd::compile` (production); it is
-//! re-exported here so the schedule-search API surface is self-contained, per the
-//! Task-5 interface (`schedule_search::floor::build_cross_layer_field_map`).
+//! DAG-intrinsic traffic floor used by offline forward search.
 
 use std::collections::HashMap;
 
@@ -14,31 +7,6 @@ use gkr_eval_ir::{DagLayer, Expr, ExprId, FieldKind, ReadPlace, RootId, SourceKi
 use crate::forward::compile::expr_operand_field;
 use crate::forward::context::ForwardAction;
 use crate::forward::isa::OperandField;
-
-/// Cross-layer field map builder (production impl in `fwd::compile::arith`).
-pub use crate::forward::compile::build_cross_layer_field_map;
-
-/// DAG-intrinsic width-weighted DRAM traffic floor `D`.
-///
-/// Σ width over **distinct `SourceKind::Read` leaves** reachable from
-/// materialize-bearing top exprs (`root.materialize.is_some()` — Output + Cache,
-/// skipping claim-only Constraint roots). `VirtualSetup`/`Constant`/`Challenge`/
-/// `LookupValue` are zero traffic. (Part B: there is no `Prior` source any more —
-/// same-layer cache reuse is a recomputed shared `ExprId`, reached transitively
-/// through the cone that holds it.) Resolution-pruned exprs are treated as terminals
-/// (contribute 0, not descended). Order/budget-independent.
-pub fn dag_traffic_floor(layer: &DagLayer, cross: &HashMap<ReadPlace, FieldKind>) -> usize {
-    floor_over_roots(
-        layer,
-        cross,
-        layer
-            .roots
-            .iter()
-            // Materialize-bearing roots (Output + Cache); skip claim-only Constraint roots.
-            .filter_map(|r| r.materialize.is_some().then_some(r.expr.0))
-            .collect(),
-    )
-}
 
 /// [`dag_traffic_floor`] restricted to the roots the forward emitter actually
 /// LOWERS (Task 6): `materialize.is_some()` AND classified

@@ -112,6 +112,20 @@ pub fn bind_source_sequence(
     uses: &[LogicalSourceUse],
     mark_first_access: bool,
 ) -> Result<SourceBinding, BindFailure> {
+    bind_source_sequence_with_limits(
+        uses,
+        mark_first_access,
+        SOURCE_WINDOW_COLUMNS,
+        MAX_SOURCE_WINDOWS,
+    )
+}
+
+pub(crate) fn bind_source_sequence_with_limits(
+    uses: &[LogicalSourceUse],
+    mark_first_access: bool,
+    source_window_columns: usize,
+    max_source_windows: usize,
+) -> Result<SourceBinding, BindFailure> {
     // `(slot, column)` ordering IS "group by backing, then ascending column", so
     // one map gives both the window grouping and the deterministic scan order.
     let mut referenced = BTreeMap::<(u8, usize), Option<u16>>::new();
@@ -141,12 +155,12 @@ pub fn bind_source_sequence(
     for (&(slot, column), &fold_desc) in &referenced {
         let (window, first_column) = match active {
             Some((active_slot, window, first))
-                if active_slot == slot && column < first + SOURCE_WINDOW_COLUMNS =>
+                if active_slot == slot && column < first + source_window_columns =>
             {
                 (window, first)
             }
             _ => {
-                if windows.len() >= MAX_SOURCE_WINDOWS {
+                if windows.len() >= max_source_windows {
                     return Err(BindFailure::WindowOverflow);
                 }
                 let window = windows.len() as u8;
@@ -187,114 +201,4 @@ pub fn bind_source_sequence(
         windows,
         uses: bound,
     })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn read(slot: u8, column: usize) -> LogicalSourceUse {
-        LogicalSourceUse {
-            slot,
-            column,
-            fold_desc: None,
-        }
-    }
-
-    #[test]
-    fn windows_are_freely_based_and_hold_only_referenced_columns() {
-        let binding = bind_source_sequence(&[read(0, 128), read(0, 1)], false).unwrap();
-        assert_eq!(binding.windows.len(), 1);
-        assert_eq!(binding.windows[0].first_column, 1);
-        assert_eq!(binding.windows[0].columns, vec![1, 128]);
-        assert_eq!(
-            binding.uses,
-            vec![
-                BoundSourceUse {
-                    window: 0,
-                    column: 127,
-                    first_access: false
-                },
-                BoundSourceUse {
-                    window: 0,
-                    column: 0,
-                    first_access: false
-                },
-            ]
-        );
-    }
-
-    #[test]
-    fn a_backing_boundary_always_opens_a_new_window() {
-        // Same column in two backings: two windows, never one shared span.
-        let binding = bind_source_sequence(&[read(0, 7), read(1, 7)], false).unwrap();
-        assert_eq!(binding.windows.len(), 2);
-        assert_eq!((binding.windows[0].slot, binding.windows[1].slot), (0, 1));
-        assert_eq!(binding.uses[0].window, 0);
-        assert_eq!(binding.uses[1].window, 1);
-    }
-
-    #[test]
-    fn windows_are_numbered_in_ascending_backing_order() {
-        // The sequence visits backing 2 first; the LAYOUT still numbers by backing.
-        let binding = bind_source_sequence(&[read(2, 0), read(0, 0), read(1, 0)], false).unwrap();
-        assert_eq!(
-            binding.windows.iter().map(|w| w.slot).collect::<Vec<_>>(),
-            vec![0, 1, 2]
-        );
-        assert_eq!(
-            binding.uses.iter().map(|u| u.window).collect::<Vec<_>>(),
-            vec![2, 0, 1]
-        );
-    }
-
-    #[test]
-    fn first_access_marks_the_first_resolution_only() {
-        let binding = bind_source_sequence(&[read(0, 5), read(0, 6), read(0, 5)], true).unwrap();
-        assert_eq!(
-            binding
-                .uses
-                .iter()
-                .map(|u| u.first_access)
-                .collect::<Vec<_>>(),
-            vec![true, true, false]
-        );
-    }
-
-    #[test]
-    fn unmarked_mode_leaves_every_bit_clear() {
-        let binding = bind_source_sequence(&[read(0, 5), read(0, 5)], false).unwrap();
-        assert!(binding.uses.iter().all(|u| !u.first_access));
-    }
-
-    #[test]
-    fn a_sixty_fifth_window_overflows() {
-        let uses: Vec<_> = (0..=MAX_SOURCE_WINDOWS)
-            .map(|i| read(0, i * SOURCE_WINDOW_COLUMNS))
-            .collect();
-        assert_eq!(
-            bind_source_sequence(&uses, false),
-            Err(BindFailure::WindowOverflow)
-        );
-        assert_eq!(
-            bind_source_sequence(&uses[..MAX_SOURCE_WINDOWS], false)
-                .unwrap()
-                .windows
-                .len(),
-            MAX_SOURCE_WINDOWS
-        );
-    }
-
-    #[test]
-    fn disagreeing_fold_descriptors_are_rejected() {
-        let mut second = read(3, 9);
-        second.fold_desc = Some(4);
-        assert_eq!(
-            bind_source_sequence(&[read(3, 9), second], false),
-            Err(BindFailure::ConflictingFoldDesc { slot: 3, column: 9 })
-        );
-        // Agreeing descriptors bind, and the layout keeps them per column.
-        let binding = bind_source_sequence(&[second, second], false).unwrap();
-        assert_eq!(binding.windows[0].fold_descs.get(&9), Some(&4));
-    }
 }

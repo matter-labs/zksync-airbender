@@ -17,10 +17,14 @@ use gpu_gkr_compiler::validate_forward_artifact;
 use gpu_gkr_compiler::forward::binding::{
     bind_final_sources, read_place_to_backing, BackingKey, SourceMarkerMode,
 };
-use gpu_gkr_compiler::forward::compile::{compile_circuit, load_committed_schedule, CompiledCircuit};
+use gpu_gkr_compiler::forward::compile::{
+    compile_circuit, load_committed_schedule, CompiledCircuit,
+};
 use gpu_gkr_compiler::forward::context::{CompiledLayer, DagForwardContext};
 use gpu_gkr_compiler::forward::encode::decode;
-use gpu_gkr_compiler::forward::isa::{DstLine, Instr, LdcSub, MovDir, OperandField, OperandLine, Program};
+use gpu_gkr_compiler::forward::isa::{
+    DstLine, Instr, LdcSub, MovDir, OperandField, OperandLine, Program,
+};
 use gpu_gkr_compiler::forward::source::{virtual_setup_kind_code, SpecialStrategy};
 
 use super::desc::{
@@ -736,7 +740,7 @@ const ALL_LAYOUT_FIXTURES: [&str; 11] = [
 ];
 
 /// `_preprocessed` layout variants commit their schedule under the bare stem
-/// (same reverse-trim note as `gkr_eval_isa/tests/common/mod.rs`).
+/// (same reverse-trim note as `gpu_gkr_compiler/tests/common/mod.rs`).
 fn schedule_stem(name: &str) -> &str {
     name.trim_end_matches("_preprocessed_layout_gkr.json")
         .trim_end_matches("_layout_gkr.json")

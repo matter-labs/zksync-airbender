@@ -1,13 +1,10 @@
-//! Compile-in-loop fitness function (Task 6 spec §1): decode a [`Genome`] to a
+//! Compile-in-loop fitness function: decode a [`Genome`] to a
 //! concrete `(order, SiteDecisions)` candidate, compile it for real with the
 //! decoded `SiteDecisions`, and read the resulting `CandidateScore` off
 //! the ACTUAL compiled program — not a simulated replay.
 //!
-//! This replaces `gkr_eval_isa/tests/s3_planner/metaheuristic.rs`'s
-//! `score_candidate`/`Replay` event-simulation engine (deleted, Task 6): that
-//! engine modeled admit/evict/reload decisions itself and could drift from what
-//! the real emitter (`fwd::compile::lower`) does. `score` has no such model —
-//! it IS the real emitter, run once per candidate.
+//! There is no separate replay cost model: `score` runs the real emitter once
+//! per candidate.
 
 use std::collections::HashMap;
 
@@ -220,47 +217,5 @@ pub fn score(genome: &Genome, ctx: &LayerCtx) -> CandidateScore {
             ctx.units.len(),
             ctx.sites.len()
         ),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn objective_key_ranks_infeasible_last_regardless_of_fields() {
-        let feasible = CandidateScore {
-            infeasible: false,
-            dram_traffic: usize::MAX,
-            instrs: usize::MAX,
-        };
-        let infeasible = CandidateScore {
-            infeasible: true,
-            dram_traffic: 0,
-            instrs: 0,
-        };
-        assert!(objective_key(&feasible) < objective_key(&infeasible));
-        assert!(feasible < infeasible);
-    }
-
-    #[test]
-    fn candidate_score_orders_by_traffic_then_instrs() {
-        let a = CandidateScore {
-            infeasible: false,
-            dram_traffic: 10,
-            instrs: 100,
-        };
-        let b = CandidateScore {
-            infeasible: false,
-            dram_traffic: 10,
-            instrs: 50,
-        };
-        let c = CandidateScore {
-            infeasible: false,
-            dram_traffic: 5,
-            instrs: 999,
-        };
-        assert!(b < a, "lower instrs wins the traffic tie");
-        assert!(c < a, "lower traffic always wins regardless of instrs");
     }
 }

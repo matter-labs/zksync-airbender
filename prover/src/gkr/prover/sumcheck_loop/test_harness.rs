@@ -14,7 +14,7 @@
 //! [`recover_and_emit`] reconstructs the committed univariate `[E; 4]` monomial
 //! form from the round-polynomial evaluations `(g(0), g(2))` a backward VM would
 //! produce, delegating to the production emission helper. It lives here (not in
-//! `gkr_eval_isa`) precisely because it depends on that prover-side helper;
+//! `gpu_gkr_compiler`) precisely because it depends on that prover-side helper;
 //! placing it upstream would reverse the crate dependency direction.
 
 use super::*;

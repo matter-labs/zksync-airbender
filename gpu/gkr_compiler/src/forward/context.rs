@@ -2,7 +2,7 @@
 
 use super::binding::{BackingTable, SourceWindowTable};
 use super::error::CompileError;
-use super::isa::{DstLine, OperandLine, Program};
+use super::isa::{OperandLine, Program};
 use super::source::{ConstBank, DerivedE4Banks, SpecialTable};
 use super::stats::CompileStats;
 use gkr_eval_ir::{
@@ -69,10 +69,6 @@ pub struct CompileTrace {
     pub pruned_resolution_exprs: Vec<ExprId>, // exprs pruned because they carry a ResolutionStrategy
     pub max_live_cells: usize,
     pub nested_subexprs: usize, // compound children lowered to a cell (§11 general fallback)
-    /// Compaction relocations the cell allocator emitted (one per relocated Base), each
-    /// annotated with the triggering Ext + both live ranges. Empty when no quad had to
-    /// be cleared. Instrumentation only — not serialized, not part of value/traffic parity.
-    pub placement_moves: Vec<super::compile::MoveCtx>,
     /// v2 per-cell placed-width map retained from `Placement` (Task 6): `(program
     /// instruction index, bf-lane index) → placed width` of the value live in that lane
     /// at that instruction; an Ext entry covers all 4 lanes of its bucket. Consumed by

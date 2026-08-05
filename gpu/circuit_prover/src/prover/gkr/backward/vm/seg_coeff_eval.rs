@@ -5,10 +5,8 @@
 //! fold weights, by [`super::seg::launch_bwd_seg_build_fold_weights`]). The
 //! coefficient bank is neither: a [`NormalizedCoefficientRecipe`] is a function of
 //! the round's CHALLENGES, and in production those are squeezed from the transcript
-//! ON THE DEVICE. The harness sidesteps this — `seg_compile::seg_bank` hands
-//! lowering synthetic E4 values, and [`BwdSegRoundBinding::coefficients`] is
-//! documented as "ALREADY EVALUATED" — so no code in this lineage has ever turned a
-//! recipe into a value. That gap is the blocker.
+//! ON THE DEVICE. [`BwdSegRoundBinding::coefficients`] carries only a
+//! bounds-checking payload; production evaluation happens here.
 //!
 //! A device evaluator already exists and is in production: the incumbent flat
 //! lineage fills its own `ab_gkr_flat_coefficients` bank with `eval_recipes`'s
@@ -29,8 +27,7 @@
 //!
 //! while the flat kernel's `immediate_factor_monomial` holds at most two distinct
 //! challenge factors with `u8` exponents, times a per-RECIPE `u16` batching power.
-//! Over all 114 coordinates of the twelve committed layouts
-//! ([`seg_coeff_eval_tests::seg_coeff_eval_batching_shape_survey`]):
+//! The retained twelve-circuit census established these bounds:
 //!
 //!   * the claim-batching exponent reaches **694** — it IS the alpha spine's root
 //!     index, so it grows with the layer's root count and no `u8` power holds it;
@@ -43,9 +40,8 @@
 //!
 //! The fix is one field in one place: [`SegCoeffMonomial::batch_power`] is
 //! per-MONOMIAL and `u16`. The batching challenge then never competes for a factor
-//! slot, and every other bound holds with room to spare — which the coverage census
-//! ([`seg_coeff_eval_tests::seg_coeff_eval_covers_the_corpus`]) measures and pins,
-//! and which [`build_seg_coeff_eval_tables`] enforces as a typed REJECTION rather
+//! slot, and every other bound holds with room to spare. The builder
+//! [`build_seg_coeff_eval_tables`] enforces the bounds as a typed rejection rather
 //! than a panic, so a future compiler change that outgrows the format surfaces at
 //! setup instead of as a wrong proof.
 //!
@@ -93,9 +89,7 @@ use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
 use era_cudart::result::CudaResult;
 use era_cudart::stream::CudaStream;
 use era_cudart::{cuda_kernel_declaration, cuda_kernel_signature_arguments_and_function};
-use gkr_eval_isa::bwd::coeff::model::{
-    CoeffProduct, CoefficientRecipeId, NormalizedCoefficientRecipe,
-};
+use gpu_gkr_compiler::backward::{CoeffProduct, CoefficientRecipeId, NormalizedCoefficientRecipe};
 
 use super::seg_desc::BWD_SEG_CONST_BANK;
 use super::seg_lower::zeroed_box;
@@ -765,7 +759,7 @@ pub(crate) fn schedule_bwd_seg_coeff_bank_fill(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gkr_eval_isa::bwd::coeff::model::CoeffChallenge;
+    use gpu_gkr_compiler::backward::CoeffChallenge;
 
     fn challenge(key: ChallengeKey, power: ChallengePower) -> CoeffChallenge {
         CoeffChallenge::new(ChallengeRef { key, power })

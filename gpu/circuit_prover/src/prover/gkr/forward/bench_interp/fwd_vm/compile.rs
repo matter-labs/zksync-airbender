@@ -1,5 +1,5 @@
 //! Production-path compile of a fwd-VM `CompiledCircuit` from committed
-//! fixtures (Task 1). `gkr_eval_isa`/`cs` are dev-dependencies here (the
+//! fixtures (Task 1). `gpu_gkr_compiler`/`cs` are dev-dependencies here (the
 //! module is `cfg(all(test, feature = "bench"))`), so the crate's
 //! `crate::upstream` re-export convention does not apply.
 
@@ -24,7 +24,7 @@ pub(crate) struct FwdVmCircuit {
 
 /// Load + compile one committed circuit fixture by stem (e.g.
 /// `"add_sub_lui_auipc_mop"`) through the exact production chain
-/// (`gkr_eval_isa/tests/stage3_schedule_driven.rs:357` is the authority for
+/// (`gpu_gkr_compiler/tests/stage3_schedule_driven.rs:357` is the authority for
 /// this sequence): `lower_dag` -> `validate` -> `load_committed_schedule` ->
 /// `validate_circuit_schedule` -> `compile_circuit`. Panics with the stem
 /// named in the message on any failure.
@@ -42,8 +42,8 @@ pub(crate) fn load_fwd_vm_circuit(stem: &str) -> FwdVmCircuit {
         .unwrap_or_else(|e| panic!("[{stem}] load_committed_schedule: {e:?}"));
     validate_forward_artifact(&dag, &sched)
         .unwrap_or_else(|e| panic!("[{stem}] validate_forward_artifact: {e}"));
-    let compiled = compile_forward(&dag, &sched)
-        .unwrap_or_else(|e| panic!("[{stem}] compile_forward: {e:?}"));
+    let compiled =
+        compile_forward(&dag, &sched).unwrap_or_else(|e| panic!("[{stem}] compile_forward: {e:?}"));
 
     FwdVmCircuit {
         dag,

@@ -241,18 +241,19 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<'_, E>
     /// where the launcher's own reads happen; a selected coordinate with no
     /// compiled program is impossible by then (`check_vm_selection_is_servable`
     /// runs before the first enqueue), so it is an assert rather than a fallback.
-    fn bwd_vm_slice(
-        &self,
-        coord: super::super::vm::coords::BwdVmCoord,
-    ) -> Option<&super::super::vm::production_program::CompiledSlice> {
+    fn bwd_vm_coord_selected(&self, coord: super::super::vm::coords::BwdVmCoord) -> bool {
         match super::super::vm::coords::coords_from_env() {
             // EXPLICIT: a named coordinate with no compiled program is a wiring
             // defect, so it panics rather than quietly running the incumbent.
-            Some(coords) => coords.contains(&coord).then(|| {
-                self.vm_programs.backward_slice(coord).unwrap_or_else(|| {
-                    panic!("{coord} is selected but this circuit has no compiled coordinate for it")
-                })
-            }),
+            Some(coords) => {
+                coords.contains(&coord) && {
+                    assert!(
+                        self.vm_programs.has_backward_coord(coord),
+                        "{coord} is selected but this circuit has no compiled coordinate for it"
+                    );
+                    true
+                }
+            }
             // DEFAULT (unset): availability IS selection — but only for a layer
             // whose BOTH regimes compiled, or the default would hand itself the
             // half-owned layer `check_selection` exists to reject.
@@ -264,11 +265,37 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<'_, E>
                         crate::upstream::BwdRegime::Ext => crate::upstream::BwdRegime::R0,
                     },
                 };
-                self.vm_programs
-                    .backward_slice(mate)
-                    .and_then(|_| self.vm_programs.backward_slice(coord))
+                self.vm_programs.has_backward_coord(mate)
+                    && self.vm_programs.has_backward_coord(coord)
             }
         }
+    }
+
+    fn bwd_vm_r0_program(&self, layer: usize) -> Option<&gpu_gkr_compiler::R0LayerProgram> {
+        let coord = super::super::vm::coords::BwdVmCoord {
+            layer,
+            regime: crate::upstream::BwdRegime::R0,
+        };
+        self.bwd_vm_coord_selected(coord).then(|| {
+            self.vm_programs
+                .r0_layer(layer)
+                .expect("selected R0 program")
+        })
+    }
+
+    fn bwd_vm_continuation_program(
+        &self,
+        layer: usize,
+    ) -> Option<&gpu_gkr_compiler::ContinuationLayerProgram> {
+        let coord = super::super::vm::coords::BwdVmCoord {
+            layer,
+            regime: crate::upstream::BwdRegime::Ext,
+        };
+        self.bwd_vm_coord_selected(coord).then(|| {
+            self.vm_programs
+                .continuation_layer(layer)
+                .expect("selected continuation program")
+        })
     }
 
     fn prepare_layer_from_blueprints(
@@ -302,11 +329,10 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<'_, E>
         let vm_owns_layer = {
             use super::super::vm::coords::BwdVmCoord;
             let owns = |regime| {
-                self.bwd_vm_slice(BwdVmCoord {
+                self.bwd_vm_coord_selected(BwdVmCoord {
                     layer: layer_idx,
                     regime,
                 })
-                .is_some()
             };
             owns(crate::upstream::BwdRegime::R0) && owns(crate::upstream::BwdRegime::Ext)
         };
@@ -335,8 +361,11 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<'_, E>
                 .flat_map(|bp| bp.inputs.inputs_in_base.iter().copied())
                 .filter(|addr| *addr != GKRAddress::placeholder())
                 .collect();
-            self.storage
-                .register_flat_base_folding_for_layer(layer_idx, &flat_base_inputs, context)?;
+            self.storage.register_flat_base_folding_for_layer(
+                layer_idx,
+                &flat_base_inputs,
+                context,
+            )?;
             let flat_ext_inputs: std::collections::BTreeSet<GKRAddress> = blueprints
                 .iter()
                 .flat_map(|bp| bp.inputs.inputs_in_extension.iter().copied())
@@ -583,12 +612,7 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<'_, E>
         // flat path resolves its own — and the descriptor needs
         // `round_scratch`'s eq/accumulator pointers.
         let bwd_vm_round0 = {
-            use super::super::vm::coords::BwdVmCoord;
-            let slice_for_round0 = self.bwd_vm_slice(BwdVmCoord {
-                layer: layer_idx,
-                regime: crate::upstream::BwdRegime::R0,
-            });
-            if let Some(slice) = slice_for_round0 {
+            if let Some(program) = self.bwd_vm_r0_program(layer_idx) {
                 // Step 0's logical row count — the contribution half-stride.
                 let rows = 1usize << (folding_steps - 1);
                 // SAFETY: every instantiation uses `E = E4`, so these
@@ -597,7 +621,7 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<'_, E>
                 // the claims-buffer transmutes in the round loop).
                 Some(super::super::vm::production_bind::build_bwd_vm_round0(
                     &self.storage,
-                    slice,
+                    program,
                     rows,
                     round_scratch.eq_low_group.as_ptr() as *const E4,
                     make_eq_sizes(folding_steps.saturating_sub(1)),
@@ -616,17 +640,12 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<'_, E>
         // entries those prepares created, which is why this block sits after
         // them.
         let bwd_vm_ext = {
-            use super::super::vm::coords::BwdVmCoord;
-            let slice_for_continuation = self.bwd_vm_slice(BwdVmCoord {
-                layer: layer_idx,
-                regime: crate::upstream::BwdRegime::Ext,
-            });
-            if let Some(slice) = slice_for_continuation {
+            if let Some(program) = self.bwd_vm_continuation_program(layer_idx) {
                 // SAFETY: every instantiation uses `E = E4` (same argument as
                 // the `bwd_vm_round0` block above).
                 Some(super::super::vm::production_bind::build_bwd_vm_ext_rounds(
                     &self.storage,
-                    slice,
+                    program,
                     folding_steps,
                     round_scratch.eq_low_group.as_ptr() as *const E4,
                     round_scratch.partials.as_mut_ptr() as *mut E4,
@@ -652,7 +671,16 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<'_, E>
             // will not launch, and the builder reads the prepared plans that were
             // not built. `None` here is what makes the compact-descriptor blocks
             // below no-op: each is conditioned on the continuation plan.
-            (None, Vec::new(), None, None, 0, Callbacks::new(), None, true)
+            (
+                None,
+                Vec::new(),
+                None,
+                None,
+                0,
+                Callbacks::new(),
+                None,
+                true,
+            )
         } else {
             self.build_flat_continuation_artifacts(
                 &static_data,

@@ -495,7 +495,7 @@ fn forward_kernel_outputs_fit_four_pointer_backing_model_all_main_layers() {
 
 /// Retained joint-matrix census guard (ISA-v2 spec §2 / §8, Task 3.7).
 ///
-/// Independently of the `gkr_eval_isa` crate's `MatrixTable`, reproduce the §2
+/// Independently of the `gpu_gkr_compiler` crate's `MatrixTable`, reproduce the §2
 /// matrix-census figures from the LAUNCHER's own storage-layout model, so the
 /// census stays honest against the launcher. Per layer, count the distinct
 /// joint source+dst backings and assert the three ISA-cap invariants:
