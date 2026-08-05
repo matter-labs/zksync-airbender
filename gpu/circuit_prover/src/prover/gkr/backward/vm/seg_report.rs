@@ -95,8 +95,8 @@ use super::seg::{
     BWD_SEG_SMEM_BUCKETS_BYTES, SEG_REFERENCE_CLOCK_BUCKET_BYTES,
 };
 use super::production_bind::{
-    seg_policy_arms, seg_policy_k, seg_policy_k_with, seg_policy_rule, SegKRule,
-    SEG_CORPUS_K,
+    clamp_policy_k, seg_policy_k, SEG_CONTINUATION_WIDE_BYTES_PER_ROW, SEG_CORPUS_K,
+    SEG_R0_WIDE_BYTES_PER_ROW,
 };
 use super::seg_desc::{BwdSegDesc, BWD_SEG_DESC_CAP, BWD_SEG_MAX_K};
 use super::seg_lower::{
@@ -5263,9 +5263,9 @@ pub(super) fn probe_bytes_per_row(coord: &SegCoordinate, round: u8, d2: D2Policy
 /// The per-row device footprint AND the source width mix of one
 /// `(coordinate, round, D2 policy)` cell, from ONE probe model.
 ///
-/// The width mix is per SOURCE rather than per window: the closed-form `K` policy
-/// reads it, and what costs a term an operand load is the source it names, not
-/// how many windows the binding happens to group those sources into.
+/// The width mix is per SOURCE rather than per window: what costs a term an
+/// operand load is the source it names, not how many windows the binding happens
+/// to group those sources into.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) struct SegGeometryProbe {
     pub(super) bytes_per_row: usize,
@@ -8226,7 +8226,7 @@ fn bwd_seg_keccak_l0_monster() {
     drop(eq_low);
 }
 
-// ── Task 10: the full-corpus sweep and the closed-form `K` policy ────────────
+// ── Task 10: the full-corpus sweep and the `K` policies ─────────────────────
 //
 // Stage A answered "which configuration wins on ONE coordinate". This answers
 // "what does a launcher choose, at setup, for ANY coordinate" — which is a
@@ -8467,9 +8467,9 @@ pub(super) fn corpus_shape(k: usize) -> SegShape {
 
 /// The `K`-independent facts of one corpus coordinate.
 ///
-/// Everything the closed-form policy is ALLOWED to read lives here, and nothing
-/// else does: the policy has to be evaluable at setup, before any launch, so it
-/// may not depend on a measured median. `total_static_work` is the lowering's own
+/// Everything a production policy may read lives here, and nothing else does:
+/// policy selection happens at setup, before any launch, so it may not depend on
+/// a measured median. `total_static_work` is the lowering's own
 /// per-list work model summed back over the lists, which is where the "width mix"
 /// of spec §12 actually enters — a BF-inline-d2 operand costs 10 and an E4-direct
 /// one costs 0, so the sum already carries the mix that a raw term count does not.
@@ -8815,14 +8815,13 @@ pub(super) fn parse_corpus_csv(text: &str) -> Vec<SegCorpusRow> {
         .collect()
 }
 
-// ── The closed-form `K` policy (spec §12) ────────────────────────────────────
+// ── The `K` policy audit ─────────────────────────────────────────────────────
 //
-// MOVED to production (`super::production_bind`): `SEG_CORPUS_K`,
-// `seg_policy_k`, `seg_policy_k_with` and the two thresholds now ship with the
-// launcher, imported above so the fit below and the shipped rule cannot drift.
+// Production owns two independent policies. This bench scores them and retains
+// the old three-arm threshold search only as a diagnostic.
 
-/// One coordinate's verdict: what measured best, what the formula picks, and what
-/// the difference costs.
+/// One coordinate's verdict: what measured best, what its regime's policy picks,
+/// and what the difference costs.
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct SegPolicyVerdict {
     pub(super) facts: SegCoordFacts,
@@ -8883,36 +8882,47 @@ pub(super) fn corpus_best_k(group: &[SegCorpusRow], below_floor_counts: bool) ->
         .min()
 }
 
-/// Group a sweep's rows by coordinate and judge the formula against each.
+/// Group a sweep's rows by coordinate and judge its regime's policy against each.
 ///
-/// `below_floor_counts` is the one knob: the POLICY FIT reads only coordinates
-/// that reached the timing floor, and the audit's coverage section reads both, so
-/// a reader can see whether the below-floor coordinates would have moved it.
+/// `below_floor_counts` is the one knob: policy scoring normally reads only
+/// coordinates that reached the timing floor, and the audit's coverage section
+/// reads both.
 pub(super) fn evaluate_policy(
     rows: &[SegCorpusRow],
     below_floor_counts: bool,
 ) -> Vec<SegPolicyVerdict> {
-    // The committed pair OF EACH REGIME: a single pair cannot score the split.
     evaluate_policy_with(rows, below_floor_counts, None)
 }
 
-/// [`evaluate_policy`] at supplied thresholds — the fit's and the validation's
-/// scoring function, and the committed policy's, so all three agree by
-/// construction.
-/// `override_rule` replaces the committed rule FOR ONE REGIME, which is how the
-/// threshold scan and its leave-one-circuit-out validation try candidates: rows of
-/// the named regime score against the candidate, every other regime's against what
-/// it ships, so a scan never silently moves the regime it is not fitting.
-///
-/// The scan only builds [`SegKRule::Steps`] candidates. That is a diagnostic, not
-/// the shipped shape for both regimes — the continuation ships a
-/// [`SegKRule::LogQuadratic`] — and the answer it gives ("the best step rule for
-/// these rows") is exactly what says whether the logarithmic form is earning its
-/// place.
+/// A benchmark-only three-arm candidate. Production does not consume this type:
+/// R0 and continuation rounds have separate two-band policies in
+/// [`super::production_bind`]. The corpus scan remains useful as a diagnostic,
+/// but it cannot silently become the shipped policy.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct SegCandidateStep {
+    arms: [usize; 3],
+    lo: usize,
+    hi: usize,
+}
+
+fn candidate_k(rule: SegCandidateStep, bytes_per_row: usize, ceiling: usize) -> usize {
+    let want = if bytes_per_row < rule.lo {
+        rule.arms[0]
+    } else if bytes_per_row < rule.hi {
+        rule.arms[1]
+    } else {
+        rule.arms[2]
+    };
+    clamp_policy_k(want, ceiling)
+}
+
+/// Evaluate the production policies, optionally replacing one regime with a
+/// benchmark-only candidate. Rows of the other regime always use their own
+/// production policy.
 pub(super) fn evaluate_policy_with(
     rows: &[SegCorpusRow],
     below_floor_counts: bool,
-    override_rule: Option<(BwdRegime, SegKRule)>,
+    override_rule: Option<(BwdRegime, SegCandidateStep)>,
 ) -> Vec<SegPolicyVerdict> {
     let mut keys: Vec<(String, usize, SegRoundClass, usize)> = Vec::new();
     for row in rows {
@@ -8942,11 +8952,12 @@ pub(super) fn evaluate_policy_with(
             .max()
             .unwrap_or(SEG_CORPUS_BASELINE_K);
         let regime = facts.class.regime();
-        let rule = match override_rule {
-            Some((over, rule)) if over == regime => rule,
-            _ => seg_policy_rule(regime),
+        let policy_k = match override_rule {
+            Some((over, rule)) if over == regime => {
+                candidate_k(rule, facts.bytes_per_row, ceiling)
+            }
+            _ => seg_policy_k(regime, facts.bytes_per_row, ceiling),
         };
-        let policy_k = seg_policy_k_with(rule, facts.bytes_per_row, ceiling);
         let score = |k: usize| {
             group
                 .iter()
@@ -8984,7 +8995,7 @@ pub(super) fn evaluate_policy_with(
     out
 }
 
-/// The plan's threshold: a coordinate the formula loses more than this on is
+/// The audit threshold: a coordinate its regime's policy loses more than this on is
 /// tabulated individually.
 pub(super) const SEG_POLICY_LOSS_THRESHOLD: f64 = 0.02;
 
@@ -9100,12 +9111,12 @@ pub(super) fn policy_points(
 }
 
 /// Score a threshold pair over compact points: `(over threshold, mean loss)`.
-/// A candidate STEP rule for `regime`: its own arms if it ships a step rule, else
-/// the ascending default, because a scan over thresholds needs three arms to put
-/// between them and a logarithmic rule supplies none.
-fn candidate_steps(regime: BwdRegime, lo: usize, hi: usize) -> SegKRule {
-    SegKRule::Steps {
-        arms: seg_policy_arms(regime).unwrap_or([4, 8, 16]),
+/// A legacy three-arm candidate retained only for corpus diagnostics. Both
+/// regimes are scanned independently by the caller; production never shares
+/// this candidate between them.
+fn candidate_steps(_regime: BwdRegime, lo: usize, hi: usize) -> SegCandidateStep {
+    SegCandidateStep {
+        arms: [4, 8, 16],
         lo,
         hi,
     }
@@ -9118,7 +9129,7 @@ pub(super) fn score_points(points: &[SegPolicyPoint], narrow: usize, wide: usize
     let mut sum = 0.0;
     let mut finite = 0usize;
     for point in points {
-        let loss = point.loss(seg_policy_k_with(
+        let loss = point.loss(candidate_k(
             candidate_steps(point.regime, narrow, wide),
             point.bytes_per_row,
             point.ceiling,
@@ -9225,7 +9236,7 @@ pub(super) fn loco_validation(rows: &[SegCorpusRow]) -> Vec<SegLocoFold> {
                 .iter()
                 .filter(|point| {
                     point
-                        .loss(seg_policy_k_with(
+                        .loss(candidate_k(
                             candidate_steps(point.regime, narrow, wide),
                             point.bytes_per_row,
                             point.ceiling,
@@ -10737,7 +10748,7 @@ fn render_class_summary(rows: &[SegCorpusRow]) -> String {
     body
 }
 
-/// The loss table: every coordinate the closed form gives up more than
+/// The loss table: every coordinate its regime's policy gives up more than
 /// [`SEG_POLICY_LOSS_THRESHOLD`] on.
 fn render_loss_table(verdicts: &[SegPolicyVerdict]) -> String {
     let mut body = String::from(
@@ -10771,7 +10782,7 @@ fn render_loss_table(verdicts: &[SegPolicyVerdict]) -> String {
 }
 
 /// **The K policy pass.** Reads every published corpus chunk, derives the best `K`
-/// per coordinate, scores the closed form against it and publishes both tables.
+/// per coordinate, scores each regime's production policy and publishes both tables.
 ///
 /// No GPU: the sweep already did the measuring, and a policy that could only be
 /// re-derived on the machine that measured it would be unreviewable.
@@ -10834,13 +10845,9 @@ fn bwd_seg_corpus_k_policy() {
         .fold(0.0f64, f64::max);
     let critical_path = static_critical_path_correlation(&rows);
 
-    // Leave-one-CIRCUIT-out: refit BOTH thresholds on eleven circuits, score the
-    // twelfth. This is the committed derivation of the out-of-sample number; the
-    // audit quotes it beside the in-sample one and does not defend the fit any
-    // other way.
-    // PER REGIME. R0 and the continuation carry different arm sequences, so one
-    // fit over both would score half its points against the wrong arms — which is
-    // exactly the defect the split exists to fix.
+    // Leave-one-CIRCUIT-out remains a diagnostic for the legacy three-arm scan.
+    // Production deliberately uses simpler, independent two-band policies for R0
+    // and continuation rounds; the scan is not their derivation.
     for regime in [BwdRegime::R0, BwdRegime::Ext] {
         let regime_rows: Vec<SegCorpusRow> = rows
             .iter()
@@ -10855,13 +10862,20 @@ fn bwd_seg_corpus_k_policy() {
         let (over_n, mean) = score_points(&regime_points, optimum.0, optimum.1);
         let regime_folds = loco_validation(&regime_rows);
         let (fold_points, fold_mean, fold_over) = loco_summary(&regime_folds);
-        let committed = seg_policy_rule(regime);
+        let shipped = match regime {
+            BwdRegime::R0 => {
+                format!("K4 below {SEG_R0_WIDE_BYTES_PER_ROW} B/row, else K16")
+            }
+            BwdRegime::Ext => format!(
+                "K8 below {SEG_CONTINUATION_WIDE_BYTES_PER_ROW} B/row, else K16"
+            ),
+        };
         let agree = regime_folds
             .iter()
             .filter(|fold| (fold.narrow, fold.wide) == optimum)
             .count();
         eprintln!(
-            "[seg-corpus] {regime:?} ships {committed:?}: {} points, best STEP rule {optimum:?} \
+            "[seg-corpus] {regime:?} ships {shipped}: {} points, diagnostic three-arm optimum {optimum:?} \
              ({over_n} over threshold, mean {:+.3}%); LOCO over {} \
              folds {fold_points} points mean {:+.3}% ({fold_over} over), optimum reproduced \
              by {agree} of {}",
@@ -10895,8 +10909,10 @@ fn bwd_seg_corpus_k_policy() {
         }
     };
     eprintln!(
-        "[seg-corpus] LOCO over {} folds: {loco_points} points, mean loss {:+.3}%          (in-sample {:+.3}%), {loco_over} over threshold (in-sample {}); full-corpus scan          optimum ({}, {}) reproduced by {agreeing} of {} folds [{dissenting}]; \
-         committed ({}, {})",
+        "[seg-corpus] diagnostic LOCO over {} folds: {loco_points} points, mean loss \
+         {:+.3}% (in-sample {:+.3}%), {loco_over} over threshold (in-sample {}); \
+         full-corpus three-arm optimum ({}, {}) reproduced by {agreeing} of {} folds \
+         [{dissenting}]",
         folds.len(),
         loco_mean * 100.0,
         losses.iter().sum::<f64>() / losses.len().max(1) as f64 * 100.0,
@@ -10904,8 +10920,6 @@ fn bwd_seg_corpus_k_policy() {
         scan_optimum.0,
         scan_optimum.1,
         folds.len(),
-        scan_optimum.0,
-        scan_optimum.1,
     );
     eprintln!(
         "[seg-corpus] static critical-path model vs measured K scaling over {} pairs:          Pearson {:.3}, Spearman {:.3}; model predicts median {:.3}x where the          measurement shows {:.3}x",
@@ -10968,17 +10982,17 @@ fn bwd_seg_corpus_k_policy() {
         ),
     );
     record_summary_section(
-        "Corpus sweep: the closed-form K policy",
+        "Corpus sweep: the two K policies",
         &format!(
-            "`seg_policy_k(regime, bytes_per_row, ceiling)`, PER REGIME and per \
-             FORM: the continuation ships `{:?}` -- logarithmic, because the axis \
-             is -- and R0 ships `{:?}`, a step rule whose middle arm is NARROWER \
-             than its first, which is the fit and not a typo. Both clamp to the \
-             family ceiling. The full-corpus mixed-regime STEP scan optimum, kept \
-             for continuity with the pre-split audit, is ({}, {}) scoring {} over \
-             threshold at {:+.4}%.\n\n\
-             **Leave-one-circuit-out**: refit both thresholds on 11 circuits, score \
-             the 12th, x12 -> {loco_points} points, mean loss **{:+.3}%** against \
+            "Production keeps R0 and continuation decisions independent: R0 uses \
+             `K4` below **{} B/row** and `K16` above it; continuation uses `K8` \
+             below **{} B/row** and `K16` above it. Both clamp to the compiled \
+             family ceiling. The legacy full-corpus three-arm scan is retained as \
+             a diagnostic only: its optimum is ({}, {}), scoring {} over threshold \
+             at {:+.4}%.\n\n\
+             **Diagnostic leave-one-circuit-out**: refit the legacy scan on 11 \
+             circuits, score the 12th, x12 -> {loco_points} points, mean loss \
+             **{:+.3}%** against \
              {:+.3}% in-sample, **{loco_over}** over threshold against {}. The scan \
              optimum is reproduced by **{agreeing} of {}** folds ({dissenting}). The \
              points are NOT \
@@ -11000,8 +11014,8 @@ fn bwd_seg_corpus_k_policy() {
              Pearson **{:.3}**, Spearman **{:.3}**; the model predicts a median \
              **{:.3}x** where the measurement shows **{:.3}x**.\n\n\
              Points over the threshold:\n\n{}\n\nCSV: `{}`\n",
-            seg_policy_rule(BwdRegime::Ext),
-            seg_policy_rule(BwdRegime::R0),
+            SEG_R0_WIDE_BYTES_PER_ROW,
+            SEG_CONTINUATION_WIDE_BYTES_PER_ROW,
             scan_optimum.0,
             scan_optimum.1,
             fit_over,
@@ -13467,73 +13481,35 @@ mod tests {
         assert_eq!(corpus_best_k(&below, true), Some(8));
     }
 
-    /// The closed form stays inside the axis and inside the family's ceiling.
+    /// Both policies stay inside the measured axis and the family's ceiling.
     #[test]
     fn the_policy_never_leaves_the_axis_or_the_ceiling() {
         for regime in [BwdRegime::R0, BwdRegime::Ext] {
-        for bytes in [0usize, 1, 1_279, 1_280, 18_431, 18_432, 1 << 20, usize::MAX] {
-            for ceiling in [1usize, 2, 4, 8, 16, 24, 28, 32] {
-                let k = seg_policy_k(regime, bytes, ceiling);
-                assert!(
-                    SEG_CORPUS_K.contains(&k),
-                    "policy named K{k}, which is not on the axis"
-                );
-                assert!(
-                    k <= ceiling,
-                    "policy named K{k} above the ceiling {ceiling}"
-                );
+            for bytes in [0usize, 4_095, 4_096, 8_191, 8_192, 1 << 20, usize::MAX] {
+                for ceiling in [1usize, 2, 4, 8, 16, 24, 28, 32] {
+                    let k = seg_policy_k(regime, bytes, ceiling);
+                    assert!(
+                        SEG_CORPUS_K.contains(&k),
+                        "policy named K{k}, which is not on the axis"
+                    );
+                    assert!(
+                        k <= ceiling,
+                        "policy named K{k} above the ceiling {ceiling}"
+                    );
+                }
             }
-        }
-        // A ceiling below the whole axis still yields the axis minimum rather than
-        // nothing: every compiled family hosts K=4.
-        assert_eq!(seg_policy_k(BwdRegime::Ext, usize::MAX, 4), 4);
-        // The wide arm is K=16 — the widest two-block shape at the 64-register
-        // band — so no ceiling ever pushes the policy onto a single-block K.
-        assert_eq!(seg_policy_k(BwdRegime::Ext, usize::MAX, 16), 16);
-        assert_eq!(
-            seg_policy_k(BwdRegime::Ext, usize::MAX, 32),
-            16,
-            "K=32 is never selected"
-        );
-        }
-    }
-
-    /// The CONTINUATION rule is monotone in its one argument, even though its
-    /// quadratic term is negative — the vertex is outside any reachable footprint.
-    /// R0's is deliberately NOT monotone; see the next test.
-    #[test]
-    fn the_continuation_policy_is_monotone_in_the_per_row_footprint() {
-        let mut previous = 0;
-        for bytes in [0usize, 160, 512, 1_008, 2_056, 4_096, 6_976, 30_656, 1 << 20] {
-            let k = seg_policy_k(BwdRegime::Ext, bytes, 32);
-            assert!(
-                k >= previous,
-                "{bytes} B/row lowered the continuation policy from K{previous} to K{k}"
+            // A ceiling below the whole axis still yields the axis minimum rather
+            // than nothing: every compiled family hosts K=4.
+            assert_eq!(seg_policy_k(regime, usize::MAX, 4), 4);
+            // The wide arm is K=16 — the widest two-block shape at the 64-register
+            // band — so no ceiling ever pushes the policy onto a single-block K.
+            assert_eq!(seg_policy_k(regime, usize::MAX, 16), 16);
+            assert_eq!(
+                seg_policy_k(regime, usize::MAX, 32),
+                16,
+                "K=32 is never selected"
             );
-            previous = k;
         }
-        assert_eq!(seg_policy_k(BwdRegime::Ext, 1_008, 32), 4);
-        assert_eq!(seg_policy_k(BwdRegime::Ext, 2_056, 32), 8);
-        assert_eq!(seg_policy_k(BwdRegime::Ext, 6_976, 32), 16);
-    }
-
-    /// **R0's rule DIPS, and that is the fit.** Pinned as an executable statement
-    /// so nobody "fixes" the non-monotonicity into a monotone rule that scores
-    /// 4x worse out-of-sample (`SEG_POLICY_R0_RULE` carries the numbers).
-    #[test]
-    fn the_r0_policy_is_deliberately_not_monotone() {
-        let SegKRule::Steps { lo: mid, hi: wide, .. } = seg_policy_rule(BwdRegime::R0) else {
-            panic!("R0 ships a step rule");
-        };
-        let narrow_k = seg_policy_k(BwdRegime::R0, mid - 1, 32);
-        let mid_k = seg_policy_k(BwdRegime::R0, mid, 32);
-        let wide_k = seg_policy_k(BwdRegime::R0, wide, 32);
-        assert_eq!((narrow_k, mid_k, wide_k), (4, 2, 16));
-        assert!(
-            mid_k < narrow_k,
-            "R0's middle arm must be NARROWER than its first; a monotone R0 rule is \
-             a different (and measurably worse) policy"
-        );
     }
 
     /// **The Task-9 gate coordinate, and the R0 split RESOLVES it.**
@@ -13544,13 +13520,12 @@ mod tests {
     /// deeper than anything the corpus sweep reached) `K = 8` measured **1.27%
     /// slower** (5,948.2 us against 5,873.4 us, `seg_stage_a_matrix.csv`).
     ///
-    /// The per-regime fit puts R0's first step at 2,056 B/row, so 1,824 now answers
-    /// `K = 4` — the K the gate was actually won at. That is a real out-of-sample
-    /// validation of the split: Stage A's campaign never fed the corpus fit, and it
-    /// is measured at a depth the corpus never reached.
+    /// R0's simple 4 KiB boundary makes 1,824 answer `K = 4` — the K the gate was
+    /// actually won at. Continuations are intentionally independent and answer
+    /// `K = 8` at the same footprint.
     ///
-    /// Kept pinned exactly, because it is the one point outside the fit's own data
-    /// and a threshold edit that re-broke it should have to come through here.
+    /// Kept pinned exactly because it is the proof-level measurement that motivates
+    /// the independent R0 choice.
     #[test]
     fn the_r0_split_resolves_the_gate_coordinate_disagreement() {
         assert_eq!(
@@ -13558,15 +13533,13 @@ mod tests {
             4,
             "the gate coordinate was won at K4 and the R0 rule must agree"
         );
-        // The pre-split rule's answer, for the record: the continuation's arms at
-        // this footprint still say K8, which is what the R0 rule used to inherit.
+        // The continuation policy is separate, not a fallback shared with R0.
         assert_eq!(seg_policy_k(BwdRegime::Ext, 1_824, 32), 8);
     }
 
-    /// The fit is an exact argmin over its own candidate set, and the committed
-    /// constants are a ROUNDING of it rather than the argmin itself.
+    /// The legacy diagnostic scan is still an exact argmin over its candidate set.
     #[test]
-    fn the_committed_thresholds_are_a_rounding_of_the_fitted_optimum() {
+    fn the_diagnostic_threshold_scan_finds_its_fitted_optimum() {
         // Three synthetic coordinates whose best K is a clean step in footprint, so
         // the argmin is checkable by hand.
         let rows = policy_fixture();
@@ -13671,15 +13644,8 @@ mod tests {
         );
     }
 
-    /// Three synthetic coordinates: a light one that wants K4, a mid one that wants
-    /// K8 and a heavy one that wants K24.
     /// Three synthetic coordinates whose best `K` is a clean ASCENDING step in the
     /// footprint, for testing the threshold-scan machinery.
-    ///
-    /// They are `D1`, not `R0`: the scan builds its candidates from the regime's own
-    /// arms, and R0 ships a NON-MONOTONE sequence, so an ascending fixture scored
-    /// against R0's arms is unsatisfiable by construction — it asks the scan to
-    /// reach `K = 8` for the middle point through a rule whose middle arm is 2.
     fn policy_fixture() -> Vec<SegCorpusRow> {
         let mut rows = Vec::new();
         for (bytes, best) in [(512usize, 4usize), (4_096, 8), (40_960, 16)] {

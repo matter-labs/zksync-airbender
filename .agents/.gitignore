@@ -1,9 +1,7 @@
-# Agent-generated artifacts (plans, specs, audits, reviews) — see ../AGENTS.md "Agent Artifact Locations".
-# Paths are relative to this .agents/ directory.
-/.bus/
-/plans/
-/specs/
-/audits/
-/checkpoints/
-/experiments/
-.bus/
+# Keep agent-local state out of Git. This file must remain tracked so the rule
+# survives clones; only gpu_work.md and shared bin tooling stay in the repository.
+*
+!.gitignore
+!gpu_work.md
+!bin/
+!bin/**

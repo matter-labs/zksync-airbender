@@ -22,79 +22,67 @@ fn add_sub_artifact() -> GKRCircuitArtifact<BF> {
 fn the_policy_k_is_a_member_of_the_measured_axis_and_within_the_ceiling() {
     use crate::upstream::BwdRegime;
     for regime in [BwdRegime::R0, BwdRegime::Ext] {
-    for bytes_per_row in [0, 1_279, 1_280, 18_431, 18_432, 1 << 20] {
-        for ceiling in SEG_CORPUS_K {
-            let k = seg_policy_k(regime, bytes_per_row, ceiling);
-            assert!(SEG_CORPUS_K.contains(&k), "K{k} is off the measured axis");
-            assert!(k <= ceiling, "K{k} exceeds the register ceiling {ceiling}");
+        for bytes_per_row in [0, 4_095, 4_096, 8_191, 8_192, 1 << 20] {
+            for ceiling in SEG_CORPUS_K {
+                let k = seg_policy_k(regime, bytes_per_row, ceiling);
+                assert!(SEG_CORPUS_K.contains(&k), "K{k} is off the measured axis");
+                assert!(k <= ceiling, "K{k} exceeds the register ceiling {ceiling}");
+            }
         }
-    }
     }
 }
 
-/// Each regime's committed rule, evaluated at the footprints its documentation
-/// names. The VALUES are the corpus fit's; this pins the shipped rules to them so
-/// a coefficient or threshold edit cannot pass silently.
+/// R0 is its own policy: a narrow four-warp block until the per-row footprint is
+/// genuinely wide, then the occupancy-balanced sixteen-warp block.
 #[test]
-fn each_regimes_committed_rule_is_the_fitted_one() {
+fn r0_uses_two_simple_bands_split_at_four_kib() {
     use crate::upstream::BwdRegime;
 
-    // The continuation: logarithmic, spanning K2..K16 over the corpus's range.
     for (bytes, want) in [
-        (160usize, 2usize),
-        (352, 4),
-        (1_008, 4),
-        (2_056, 8),
-        (4_240, 8),
-        (6_976, 16),
-        (30_656, 16),
+        (0usize, 4usize),
+        (4_095, 4),
+        (4_096, 16),
+        (usize::MAX, 16),
+    ] {
+        assert_eq!(
+            seg_policy_k(BwdRegime::R0, bytes, 32),
+            want,
+            "the R0 policy moved at {bytes} B/row"
+        );
+    }
+}
+
+/// Continuation rounds have a substantively different implementation and policy:
+/// they start at eight warps and widen only at an eight-KiB footprint.
+#[test]
+fn continuation_uses_two_simple_bands_split_at_eight_kib() {
+    use crate::upstream::BwdRegime;
+
+    for (bytes, want) in [
+        (0usize, 8usize),
+        (8_191, 8),
+        (8_192, 16),
+        (usize::MAX, 16),
     ] {
         assert_eq!(
             seg_policy_k(BwdRegime::Ext, bytes, 32),
             want,
-            "the continuation rule moved at {bytes} B/row"
+            "the continuation policy moved at {bytes} B/row"
         );
     }
+}
 
-    // R0: NON-MONOTONE steps. The middle arm is smaller than the first, and that
-    // is the fit, not a typo — see `SEG_POLICY_R0_RULE`.
-    assert_eq!(seg_policy_k(BwdRegime::R0, 0, 32), 4);
-    assert_eq!(seg_policy_k(BwdRegime::R0, 2_055, 32), 4);
-    assert_eq!(seg_policy_k(BwdRegime::R0, 2_056, 32), 2);
-    assert_eq!(seg_policy_k(BwdRegime::R0, 4_239, 32), 2);
-    assert_eq!(seg_policy_k(BwdRegime::R0, 4_240, 32), 16);
+/// A policy result is still constrained by the compiled family's register
+/// ceiling and snaps down to a measured axis member.
+#[test]
+fn each_policy_respects_the_compiled_family_ceiling() {
+    use crate::upstream::BwdRegime;
 
-    // The ceiling caps by snapping DOWN to an axis member, never interpolating —
-    // and the axis floor is 1 now, so even a ceiling of 1 is servable.
     for ceiling in [1usize, 2, 4, 8, 16] {
         for regime in [BwdRegime::R0, BwdRegime::Ext] {
             assert!(seg_policy_k(regime, 30_656, ceiling) <= ceiling);
         }
     }
-}
-
-/// **The continuation rule must not turn back down inside a reachable footprint.**
-///
-/// Its quadratic term is negative, so the curve has a maximum; the fit puts the
-/// vertex at 1 GiB per row, far outside any geometry that can occur. This asserts
-/// the consequence rather than the algebra: `K` never decreases as the footprint
-/// grows, over the whole 64-bit range.
-#[test]
-fn the_continuation_rule_never_turns_back_down() {
-    use crate::upstream::BwdRegime;
-
-    let mut previous = 0;
-    let mut bytes = 16usize;
-    while bytes < (1usize << 40) {
-        let k = seg_policy_k(BwdRegime::Ext, bytes, 32);
-        assert!(
-            k >= previous,
-            "{bytes} B/row lowered the continuation rule from K{previous} to K{k}"
-        );
-        previous = k;
-        bytes = bytes * 3 / 2;
-    }
-    assert_eq!(previous, 16, "the corpus never asks the continuation for K32");
 }
 
 /// The two regimes must disagree somewhere, or the split is decoration.
