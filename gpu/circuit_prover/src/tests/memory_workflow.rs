@@ -480,6 +480,7 @@ pub(super) fn run_memory_workflow_input_parity_test<const FAMILY_IDX: u8>(
     );
 
     let gpu_forward_output = schedule_forward_pass(
+        CircuitType::Unrolled(UnrolledCircuitType::Memory(circuit_type)),
         &gpu_setup_transfer,
         &mut stage1_output,
         &mut gpu_forward_setup,

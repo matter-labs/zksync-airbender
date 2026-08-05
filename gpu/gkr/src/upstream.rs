@@ -11,6 +11,23 @@
 //! code are forbidden. `#[cfg(test)]` modules are exempt.
 
 // -----------------------------------------------------------------------
+// `gkr_eval_ir` — canonical GPU-independent evaluation DAG
+// -----------------------------------------------------------------------
+
+pub(crate) use gkr_eval_ir::{
+    ChallengeKey, ChallengePower, ChallengeRef, ChallengeResolver, FieldKind, PermutationSlot,
+    RangeWidth, ReadPlace, VirtualSetupKind,
+};
+
+/// Runtime-only launch-family spelling. Compiler policy stays split across
+/// typed R0 and continuation entry points.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub(crate) enum BwdRegime {
+    R0,
+    Ext,
+}
+
+// -----------------------------------------------------------------------
 // `cs` — circuit description, GKR layout, and compilation artifacts
 // -----------------------------------------------------------------------
 

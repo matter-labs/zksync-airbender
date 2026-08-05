@@ -455,6 +455,9 @@ fn run_jump_branch_slt_workflow_input_parity_test() {
 
     let (gpu_forward_output, gpu_transcript_handoff) = {
         let gpu_forward_output = schedule_forward_pass(
+            CircuitType::Unrolled(UnrolledCircuitType::NonMemory(
+                UnrolledNonMemoryCircuitType::JumpBranchSlt,
+            )),
             &gpu_setup_transfer,
             &mut stage1_output,
             &mut gpu_forward_setup,
@@ -941,6 +944,9 @@ fn run_shift_binop_cached_lookup_parity_test() {
     );
 
     let gpu_forward_output = schedule_forward_pass(
+        CircuitType::Unrolled(UnrolledCircuitType::NonMemory(
+            UnrolledNonMemoryCircuitType::ShiftBinary,
+        )),
         &gpu_setup_transfer,
         &mut stage1_output,
         &mut gpu_forward_setup,

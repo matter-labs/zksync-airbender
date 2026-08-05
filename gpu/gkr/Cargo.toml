@@ -20,6 +20,8 @@ gpu_cub = { workspace = true }
 gpu_prover_context = { workspace = true }
 gpu_trace = { workspace = true }
 gpu_gkr_model = { workspace = true }
+gpu_gkr_compiler = { workspace = true }
+gkr_eval_ir = { workspace = true }
 
 era_cudart = "=0.156.0"
 era_cudart_sys = "=0.156.0"

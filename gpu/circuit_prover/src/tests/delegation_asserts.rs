@@ -327,6 +327,7 @@ pub(super) fn assert_delegation_workflow_matches_cpu<W, O, F>(
 
     let (gpu_forward_output, gpu_transcript_handoff) = {
         let gpu_forward_output = schedule_forward_pass(
+            CircuitType::Delegation(circuit_type),
             &gpu_setup_transfer,
             &mut stage1_output,
             &mut gpu_forward_setup,

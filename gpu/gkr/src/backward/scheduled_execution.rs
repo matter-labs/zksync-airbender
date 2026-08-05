@@ -178,6 +178,7 @@ where
         // ACTUAL per-circuit i&t top bits: canonical for real i&t data, all
         // zeros for trivial (dummy) unified chunks (CPU-reference parity).
         inits_and_teardowns_top_bits: Vec<u32>,
+        programs: Option<std::sync::Arc<crate::GkrPrograms>>,
         device_external_challenges_ptr: *const E,
         mut shared_state: Box<ScheduledBackwardWorkflowState<E>>,
         initial_d_seed: DeviceAllocation<u32>,
@@ -284,6 +285,7 @@ where
             external_challenges,
             inits_and_teardowns_top_bits,
             false,
+            programs,
         );
         let mut main_layers = Vec::new();
         let main_layers_range = Range::new("gkr.backward.main_layers")?;
@@ -463,6 +465,7 @@ where
             compiled_circuit,
             external_challenges,
             inits_and_teardowns_top_bits,
+            None,
             device_external_challenges.as_ptr(),
             shared_state,
             initial_d_seed,

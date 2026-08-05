@@ -208,6 +208,9 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
             GKR_BACKWARD_MAX_KERNELS_PER_LAYER,
             blueprints.len()
         );
+        // Production compiled programs own R0 and every continuation round as
+        // one unit. Test-only states omit programs and retain the flat path.
+        let vm_owns_layer = self.programs.is_some();
 
         let mut round0_descriptors = Vec::with_capacity(blueprints.len());
         for blueprint in blueprints.iter() {
@@ -243,7 +246,9 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
         // resolves each gate's source pointers against the per-(layer, class)
         // consolidated storage backings and emits packed `u16` source
         // descriptors as it walks the gates.
-        let flat_round0_template_compact: Option<compact::FlatRound0BuildPlan> = {
+        let flat_round0_template_compact: Option<compact::FlatRound0BuildPlan> = if vm_owns_layer {
+            None
+        } else {
             let gates: Vec<_> = static_data
                 .iter()
                 .zip(kernel_plans.iter())
@@ -325,13 +330,19 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
         };
 
         let max_acc_size = self.trace_len / 2;
-        let reduction_temp_storage_bytes =
-            get_reduce_temp_storage_bytes::<E>(ReduceOperation::Sum, max_acc_size as i32)?;
+        let reduction_temp_storage_bytes = if vm_owns_layer {
+            1
+        } else {
+            get_reduce_temp_storage_bytes::<E>(ReduceOperation::Sum, max_acc_size as i32)?
+        };
         let partials_len = super::super::kernels::max_partials_len(max_acc_size);
         let partials = context.alloc(partials_len, AllocationPlacement::Top)?;
-        let round_scratch = GpuGKRMainLayerRoundScratch {
+        let mut round_scratch = GpuGKRMainLayerRoundScratch {
             eq_low_group: context.alloc(GKR_EQ_GROUP_TABLE_LEN, AllocationPlacement::Top)?,
-            accumulator: context.alloc(max_acc_size * 2, AllocationPlacement::Top)?,
+            accumulator: context.alloc(
+                if vm_owns_layer { 1 } else { max_acc_size * 2 },
+                AllocationPlacement::Top,
+            )?,
             reduction_output: context.alloc(2, AllocationPlacement::Top)?,
             reduction_temp_storage: context
                 .alloc_with_extra_alignment::<u8, CUB_TEMP_STORAGE_EXTRA_ALIGNMENT_LOG2>(
@@ -340,6 +351,38 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
                 )?,
             partials,
         };
+
+        let bwd_vm_round0 = self
+            .programs
+            .as_ref()
+            .map(|programs| {
+                super::super::vm::production_bind::build_bwd_vm_round0(
+                    &self.storage,
+                    programs.r0_layer(layer_idx),
+                    1usize << (folding_steps - 1),
+                    round_scratch.eq_low_group.as_ptr() as *const gpu_core::primitives::field::E4,
+                    make_eq_sizes(folding_steps.saturating_sub(1)),
+                    round_scratch.partials.as_mut_ptr() as *mut gpu_core::primitives::field::E4,
+                    &self.inits_and_teardowns_top_bits,
+                    context,
+                )
+            })
+            .transpose()?;
+        let bwd_vm_ext = self
+            .programs
+            .as_ref()
+            .map(|programs| {
+                super::super::vm::production_bind::build_bwd_vm_ext_rounds(
+                    &self.storage,
+                    programs.continuation_layer(layer_idx),
+                    folding_steps,
+                    round_scratch.eq_low_group.as_ptr() as *const gpu_core::primitives::field::E4,
+                    round_scratch.partials.as_mut_ptr() as *mut gpu_core::primitives::field::E4,
+                    &self.inits_and_teardowns_top_bits,
+                    context,
+                )
+            })
+            .transpose()?;
 
         // --- Build flat continuation plan for rounds 1+ ---
         let (
@@ -350,13 +393,17 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
             cont_recipe_callbacks,
             flat_cont_coeff_device_buf,
             flat_cont_use_constant,
-        ) = self.build_flat_continuation_artifacts(
-            &static_data,
-            &kernel_plans,
-            folding_steps,
-            layer_idx,
-            context,
-        )?;
+        ) = if vm_owns_layer {
+            (None, None, None, 0, Callbacks::new(), None, true)
+        } else {
+            self.build_flat_continuation_artifacts(
+                &static_data,
+                &kernel_plans,
+                folding_steps,
+                layer_idx,
+                context,
+            )?
+        };
         recipe_callbacks.extend(cont_recipe_callbacks);
 
         let flat_round1_desc = Self::build_flat_round1_desc(
@@ -474,7 +521,34 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
         }
 
         let mut folding_evaluation_sources = std::collections::BTreeMap::new();
-        if let Some(plan) = flat_continuation_plan.as_ref() {
+        let logicalize = |address| {
+            self.storage
+                .layout
+                .as_ref()
+                .map(|layout| {
+                    crate::transform::logical_protocol_address(
+                        address,
+                        &layout.scratch_space_mapping_rev,
+                    )
+                })
+                .unwrap_or(address)
+        };
+        if vm_owns_layer {
+            // The VM binder supplies final pointers from its last JIT folding
+            // buffer. Retain only the protocol address set and ordering here.
+            for kernel in &kernel_plans {
+                for address in kernel
+                    .inputs
+                    .inputs_in_base
+                    .iter()
+                    .chain(kernel.inputs.inputs_in_extension.iter())
+                {
+                    if *address != GKRAddress::placeholder() {
+                        folding_evaluation_sources.insert(logicalize(*address), 0);
+                    }
+                }
+            }
+        } else if let Some(plan) = flat_continuation_plan.as_ref() {
             let canonicalize = |address: GKRAddress| {
                 self.storage
                     .layout
@@ -496,18 +570,6 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
                     assignment.source_table_idx as u16,
                 );
             }
-            let logicalize = |address| {
-                self.storage
-                    .layout
-                    .as_ref()
-                    .map(|layout| {
-                        crate::transform::logical_protocol_address(
-                            address,
-                            &layout.scratch_space_mapping_rev,
-                        )
-                    })
-                    .unwrap_or(address)
-            };
             for kernel in &kernel_plans {
                 for (address, is_ext) in kernel
                     .inputs
@@ -597,6 +659,8 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
             flat_round2_terms_device,
             flat_continuation_terms_device,
             round_scratch,
+            bwd_vm_round0,
+            bwd_vm_ext,
             recipe_upload_callbacks: recipe_callbacks,
             eq_sizes: GkrEqSizes::zeroed(),
         })

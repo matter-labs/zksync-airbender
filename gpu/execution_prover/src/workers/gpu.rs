@@ -364,6 +364,7 @@ fn enqueue_phase_two<'a>(
             let job = prove::<A>(
                 circuit_type,
                 compiled_circuit_value,
+                std::sync::Arc::clone(&state.precomputations.gkr_programs),
                 &prover_config,
                 final_trace_size_log_2,
                 bundle,

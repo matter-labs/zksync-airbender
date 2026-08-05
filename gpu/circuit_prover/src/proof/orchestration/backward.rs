@@ -168,6 +168,7 @@ pub(in crate::proof) fn schedule_backward_phase(
     // ACTUAL per-circuit i&t top bits: canonical for real i&t data, all
     // zeros for trivial (dummy) unified chunks (CPU-reference parity).
     inits_and_teardowns_top_bits: Vec<u32>,
+    gkr_programs: std::sync::Arc<gpu_gkr::GkrPrograms>,
     d_external_challenges_ptr: *const E4,
     backward_shared_state: Box<ScheduledBackwardWorkflowState<E4>>,
     d_seed: DeviceAllocation<u32>,
@@ -184,6 +185,7 @@ pub(in crate::proof) fn schedule_backward_phase(
             compiled_circuit,
             external_challenges,
             inits_and_teardowns_top_bits,
+            Some(gkr_programs),
             d_external_challenges_ptr,
             backward_shared_state,
             d_seed,

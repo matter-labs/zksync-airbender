@@ -21,10 +21,13 @@ use gpu_core::primitives::context::{DeviceAllocation, HostAllocation};
 use gpu_core::primitives::device_structures::{DeviceMatrixChunkMutImpl, DeviceVectorChunk};
 use gpu_core::primitives::device_tracing::Range;
 use gpu_core::primitives::field::BF;
+use gpu_gkr_compiler::forward::context::CompiledLayer;
 use gpu_ops::simple::{
     add_into_y, mul, mul_into_y, set_by_val, Add, BinaryOp, Mul, SetByRef, SetByVal, Sub,
 };
 use gpu_prover_context::ProverContext;
+
+use crate::GkrPrograms;
 
 pub struct GpuGKRForwardOutput<B, E> {
     tracing_ranges: Vec<Range>,
@@ -194,6 +197,7 @@ mod cache_relation;
 mod dimension_reducing;
 mod flat_plan;
 mod materialize_helpers;
+pub(crate) mod vm;
 
 use cache_relation::{lower_cache_relation, LoweredCacheRelationOutput};
 
@@ -247,6 +251,7 @@ pub fn schedule_forward_pass<E>(
     inits_and_teardowns_top_bits: &[u32],
     final_trace_size_log_2: u32,
     output_evaluations_slab: Option<ForwardOutputSlabTarget<E>>,
+    programs: &GkrPrograms,
     context: &ProverContext,
 ) -> CudaResult<GpuGKRForwardOutput<BF, E>>
 where
@@ -316,22 +321,27 @@ where
         context,
     )?;
 
+    assert_eq!(
+        programs.forward.layers.len(),
+        compiled_circuit.layers.len(),
+        "forward GKR program must cover every main layer",
+    );
+
     for (layer_idx, layer) in compiled_circuit.layers.iter().enumerate() {
         let layer_range = Range::new(format!("gkr.forward.layer.{layer_idx}"))?;
         layer_range.start(stream)?;
         schedule_layer(
             layer_idx,
-            compiled_circuit.layers.len(),
             layer,
             &compiled_circuit,
-            &mut tracing_ranges,
             &mut storage,
             stage1,
             forward_setup,
             external_challenges,
-            inits_and_teardowns_top_bits,
-            decoder_predicate_address,
             trace_len,
+            inits_and_teardowns_top_bits,
+            &programs.forward.layers[layer_idx],
+            programs.forward.budget as u32,
             context,
         )?;
         layer_range.end(stream)?;
@@ -391,109 +401,35 @@ pub(super) fn schedule_ext_poly_readback<B, E: Copy>(
 
 fn schedule_layer<E>(
     layer_idx: usize,
-    total_layers: usize,
     layer: &GKRLayerDescription,
     compiled_circuit: &GKRCircuitArtifact<BF>,
-    tracing_ranges: &mut Vec<Range>,
     storage: &mut GpuGKRStorage<BF, E>,
     stage1: &GpuGKRStage1Output,
     forward_setup: &GpuGKRForwardSetup<E>,
     external_challenges: &GKRExternalChallenges<BF, E>,
-    inits_and_teardowns_top_bits: &[u32],
-    decoder_predicate_address: Option<GKRAddress>,
     trace_len: usize,
+    inits_and_teardowns_top_bits: &[u32],
+    program: &CompiledLayer,
+    budget_lanes: u32,
     context: &ProverContext,
 ) -> CudaResult<()>
 where
-    E: FieldExtension<BF> + Field + SetByRef + SetByVal + crate::ForwardKernels,
-    Add: BinaryOp<E, E, E>,
-    Add: BinaryOp<BF, E, E>,
-    Add: BinaryOp<E, BF, E>,
-    Mul: BinaryOp<E, E, E>,
-    Mul: BinaryOp<BF, E, E>,
-    Mul: BinaryOp<E, BF, E>,
-    Sub: BinaryOp<E, E, E>,
-    Sub: BinaryOp<E, BF, E>,
-    Sub: BinaryOp<BF, BF, BF>,
+    E: FieldExtension<BF> + Field + SetByRef + SetByVal + 'static,
 {
-    let stream = context.get_exec_stream();
     hydrate_scratch_space_layer(layer_idx, compiled_circuit, stage1, storage);
-    let cached_relations_ref = &layer.cached_relations;
-    if cached_relations_ref.is_empty() {
-        schedule_cache_relations(
-            layer_idx,
-            cached_relations_ref,
-            storage,
-            stage1,
-            forward_setup,
-            external_challenges,
-            decoder_predicate_address,
-            trace_len,
-            context,
-        )?;
-    } else {
-        let cache_range = Range::new(format!("gkr.forward.layer.{layer_idx}.cache"))?;
-        cache_range.start(stream)?;
-        schedule_cache_relations(
-            layer_idx,
-            cached_relations_ref,
-            storage,
-            stage1,
-            forward_setup,
-            external_challenges,
-            decoder_predicate_address,
-            trace_len,
-            context,
-        )?;
-        cache_range.end(stream)?;
-        tracing_ranges.push(cache_range);
-    }
-
-    let gates_range = Range::new(format!("gkr.forward.layer.{layer_idx}.gates"))?;
-    gates_range.start(stream)?;
-    assert_forward_layer_invariants(layer_idx, total_layers, layer);
-    assert_forward_no_cache_layer_invariants(layer, decoder_predicate_address);
-    let expected_output_layer = layer_idx + 1;
-    schedule_materialized_vector_lookup_inputs(
-        expected_output_layer,
-        layer,
-        storage,
-        stage1,
-        forward_setup,
-        decoder_predicate_address,
-        trace_len,
-        context,
-    )?;
-    schedule_materialized_single_lookup_inputs(
-        expected_output_layer,
-        layer,
-        storage,
-        trace_len,
-        context,
-    )?;
-    let plan = build_flat_forward_plan(
+    vm::production_bind::schedule_vm_layer(
         layer_idx,
-        &layer.gates,
-        &layer.gates_with_external_connections,
+        layer,
+        program,
+        budget_lanes,
+        storage,
         stage1,
         forward_setup,
-        decoder_predicate_address,
-        &compiled_circuit.scratch_space_mapping,
-        storage,
         external_challenges,
-        inits_and_teardowns_top_bits,
         trace_len,
+        inits_and_teardowns_top_bits,
         context,
     )?;
-    for desc in plan.descs.iter() {
-        if kernels::flat_desc_has_work(desc) {
-            kernels::launch_flat_forward_layer(desc, trace_len, context)?;
-        }
-    }
-    commit_flat_forward_plan(expected_output_layer, storage, plan);
-    gates_range.end(stream)?;
-    tracing_ranges.push(gates_range);
-
     Ok(())
 }
 

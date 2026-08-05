@@ -367,6 +367,11 @@ fn run_unified_stagewise_parity_test() {
     // GPU forward pass + transcript handoff.
     let (gpu_forward_output, gpu_transcript_handoff) = {
         let _range = scoped_range(None, "test.gpu.forward.schedule");
+        let programs = GkrPrograms::compile(
+            CircuitType::Unrolled(UnrolledCircuitType::Unified),
+            &compiled_circuit,
+        )
+        .expect("test circuit must compile its committed GKR programs");
         let gpu_forward_output = schedule_forward_pass_impl(
             Some(&gpu_setup_transfer.trace_holder),
             None,
@@ -377,6 +382,7 @@ fn run_unified_stagewise_parity_test() {
             &canonical_top_bits,
             final_trace_size_log_2,
             None,
+            &programs,
             &context,
         )
         .unwrap();

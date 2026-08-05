@@ -17,6 +17,7 @@ use gpu_core::primitives::device_tracing::Range;
 use gpu_core::primitives::field::{BF, E4};
 use gpu_gkr::backward::make_deferred_backward_workflow_state;
 use gpu_gkr::forward::{schedule_forward_pass, ForwardOutputSlabTarget};
+use gpu_gkr::GkrPrograms;
 use gpu_prover_context::ProverContext;
 use gpu_trace::witness::circuit_type::CircuitType;
 
@@ -50,6 +51,7 @@ use orchestration::{
 pub fn prove<'a, A: GoodAllocator + 'a>(
     circuit_type: CircuitType,
     compiled_circuit: GKRCircuitArtifact<BF>,
+    gkr_programs: Arc<GkrPrograms>,
     prover_config: &ProverConfig,
     final_trace_size_log_2: u32,
     inputs: GpuGKRProofTransfer<'a, A>,
@@ -153,6 +155,7 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
         &top_bits_host,
         final_trace_size_log_2,
         output_evaluations_slab,
+        &gkr_programs,
         context,
     )?;
     let ForwardToBackwardHandoff {
@@ -189,6 +192,7 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
         compiled_circuit.clone(),
         external_challenges.value,
         top_bits_host.clone(),
+        Arc::clone(&gkr_programs),
         external_challenges.device.as_ptr(),
         backward_shared_state,
         d_seed,

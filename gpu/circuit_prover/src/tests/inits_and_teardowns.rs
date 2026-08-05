@@ -362,6 +362,13 @@ pub(super) fn prepare_inits_and_teardowns_proof_fixture(
         BasicUnrolledFixture {
             context,
             circuit_type: CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns),
+            gkr_programs: Arc::new(
+                GkrPrograms::compile(
+                    CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns),
+                    &compiled_circuit,
+                )
+                .expect("fixture must compile its committed GKR programs"),
+            ),
             compiled_circuit,
             external_challenges,
             prover_config,
@@ -732,6 +739,11 @@ fn standalone_inits_and_teardowns_gpu_workflow_matches_cpu() {
             &context,
         )
         .unwrap();
+        let programs = GkrPrograms::compile(
+            CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns),
+            &compiled_circuit,
+        )
+        .expect("test circuit must compile its committed GKR programs");
         let gpu_forward_output = schedule_forward_pass_impl(
             None,
             Some(&synthetic_setup_trace_holder),
@@ -742,6 +754,7 @@ fn standalone_inits_and_teardowns_gpu_workflow_matches_cpu() {
             &crate::proof::canonical_inits_and_teardowns_top_bits(&compiled_circuit),
             FINAL_TRACE_SIZE_LOG_2,
             None,
+            &programs,
             &context,
         )
         .unwrap();
@@ -806,6 +819,13 @@ fn standalone_inits_and_teardowns_gpu_workflow_matches_cpu() {
     let gpu_job = prove::<Global>(
         CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns),
         compiled_circuit.clone(),
+        Arc::new(
+            GkrPrograms::compile(
+                CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns),
+                &compiled_circuit,
+            )
+            .expect("test circuit must compile its committed GKR programs"),
+        ),
         &prover_config,
         FINAL_TRACE_SIZE_LOG_2,
         bundle,

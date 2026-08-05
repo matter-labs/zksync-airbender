@@ -32,6 +32,7 @@ pub use lookup_builders::{
 };
 mod main_layer;
 mod scheduled_execution;
+pub(crate) mod vm;
 
 // Surface every kernels item via `backward::*` to preserve the previous
 // crate-wide path for consumers that read these as `backward::X`. Direct
@@ -147,6 +148,7 @@ impl<E: Field + FieldExtension<BF>> GpuGKRDimensionReducingBackwardState<BF, E> 
             lookup_multiplicative_challenge,
             lookup_additive_challenge,
             is_delegation,
+            None,
         )
     }
 
@@ -156,6 +158,7 @@ impl<E: Field + FieldExtension<BF>> GpuGKRDimensionReducingBackwardState<BF, E> 
         external_challenges: GKRExternalChallenges<BF, E>,
         inits_and_teardowns_top_bits: Vec<u32>,
         is_delegation: bool,
+        programs: Option<std::sync::Arc<crate::GkrPrograms>>,
     ) -> GpuGKRMainLayerBackwardState<E> {
         self.into_main_layer_backward_state_inner(
             compiled_circuit,
@@ -164,6 +167,7 @@ impl<E: Field + FieldExtension<BF>> GpuGKRDimensionReducingBackwardState<BF, E> 
             E::ZERO,
             E::ZERO,
             is_delegation,
+            programs,
         )
     }
 
@@ -177,6 +181,7 @@ impl<E: Field + FieldExtension<BF>> GpuGKRDimensionReducingBackwardState<BF, E> 
         lookup_multiplicative_challenge: E,
         lookup_additive_challenge: E,
         is_delegation: bool,
+        programs: Option<std::sync::Arc<crate::GkrPrograms>>,
     ) -> GpuGKRMainLayerBackwardState<E> {
         let compiled_circuit = normalize_compiled_circuit_for_gpu(compiled_circuit);
         assert!(
@@ -214,6 +219,7 @@ impl<E: Field + FieldExtension<BF>> GpuGKRDimensionReducingBackwardState<BF, E> 
             lookup_multiplicative_challenge,
             lookup_additive_challenge,
             is_delegation,
+            programs,
         }
     }
 }

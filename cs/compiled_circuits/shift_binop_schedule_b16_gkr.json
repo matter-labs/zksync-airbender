@@ -1,0 +1,4825 @@
+{
+  "circuit": "shift_binop",
+  "budget": 16,
+  "layers": [
+    {
+      "units": [
+        {
+          "group": "Gates",
+          "relation_index": 1,
+          "atom_roots": [
+            17
+          ],
+          "cache_roots": [
+            0,
+            1
+          ]
+        },
+        {
+          "group": "Gates",
+          "relation_index": 2,
+          "atom_roots": [
+            18
+          ],
+          "cache_roots": [
+            2,
+            3
+          ]
+        },
+        {
+          "group": "Gates",
+          "relation_index": 0,
+          "atom_roots": [
+            16
+          ],
+          "cache_roots": []
+        },
+        {
+          "group": "Gates",
+          "relation_index": 3,
+          "atom_roots": [
+            19
+          ],
+          "cache_roots": [
+            4,
+            5
+          ]
+        },
+        {
+          "group": "Gates",
+          "relation_index": 4,
+          "atom_roots": [
+            20
+          ],
+          "cache_roots": [
+            6,
+            7
+          ]
+        },
+        {
+          "group": "Gates",
+          "relation_index": 5,
+          "atom_roots": [
+            21
+          ],
+          "cache_roots": []
+        },
+        {
+          "group": "Gates",
+          "relation_index": 28,
+          "atom_roots": [
+            44
+          ],
+          "cache_roots": []
+        },
+        {
+          "group": "Gates",
+          "relation_index": 13,
+          "atom_roots": [
+            29
+          ],
+          "cache_roots": []
+        },
+        {
+          "group": "Gates",
+          "relation_index": 16,
+          "atom_roots": [
+            32
+          ],
+          "cache_roots": []
+        },
+        {
+          "group": "Gates",
+          "relation_index": 17,
+          "atom_roots": [
+            33
+          ],
+          "cache_roots": []
+        },
+        {
+          "group": "Gates",
+          "relation_index": 20,
+          "atom_roots": [
+            36
+          ],
+          "cache_roots": []
+        },
+        {
+          "group": "Gates",
+          "relation_index": 9,
+          "atom_roots": [
+            25
+          ],
+          "cache_roots": []
+        },
+        {
+          "group": "Gates",
+          "relation_index": 8,
+          "atom_roots": [
+            24
+          ],
+          "cache_roots": []
+        },
+        {
+          "group": "Gates",
+          "relation_index": 10,
+          "atom_roots": [
+            26
+          ],
+          "cache_roots": []
+        },
+        {
+          "group": "Gates",
+          "relation_index": 43,
+          "atom_roots": [
+            59
+          ],
+          "cache_roots": []
+        },
+        {
+          "group": "Gates",
+          "relation_index": 23,
+          "atom_roots": [
+            39
+          ],
+          "cache_roots": []
+        },
+        {
+          "group": "Gates",
+          "relation_index": 24,
+          "atom_roots": [
+            40
+          ],
+          "cache_roots": []
+        },
+        {
+          "group": "Gates",
+          "relation_index": 25,
+          "atom_roots": [
+            41
+          ],
+          "cache_roots": []
+        },
+        {
+          "group": "Gates",
+          "relation_index": 26,
+          "atom_roots": [
+            42
+          ],
+          "cache_roots": []
+        },
+        {
+          "group": "Gates",
+          "relation_index": 27,
+          "atom_roots": [
+            43
+          ],
+          "cache_roots": []
+        },
+        {
+          "group": "Gates",
+          "relation_index": 18,
+          "atom_roots": [
+            34
+          ],
+          "cache_roots": []
+        },
+        {
+          "group": "Gates",
+          "relation_index": 29,
+          "atom_roots": [
+            45
+          ],
+          "cache_roots": []
+        },
+        {
+          "group": "Gates",
+          "relation_index": 31,
+          "atom_roots": [
+            47
+          ],
+          "cache_roots": []
+        },
+        {
+          "group": "Gates",
+          "relation_index": 32,
+          "atom_roots": [
+            48
+          ],
+          "cache_roots": []
+        },
+        {
+          "group": "Gates",
+          "relation_index": 11,
+          "atom_roots": [
+            27
+          ],
+          "cache_roots": []
+        },
+        {
+          "group": "Gates",
+          "relation_index": 14,
+          "atom_roots": [
+            30
+          ],
+          "cache_roots": []
+        },
+        {
+          "group": "Gates",
+          "relation_index": 15,
+          "atom_roots": [
+            31
+          ],
+          "cache_roots": []
+        },
+        {
+          "group": "Gates",
+          "relation_index": 30,
+          "atom_roots": [
+            46
+          ],
+          "cache_roots": []
+        },
+        {
+          "group": "Gates",
+          "relation_index": 6,
+          "atom_roots": [
+            22
+          ],
+          "cache_roots": []
+        },
+        {
+          "group": "Gates",
+          "relation_index": 7,
+          "atom_roots": [
+            23
+          ],
+          "cache_roots": []
+        },
+        {
+          "group": "Gates",
+          "relation_index": 45,
+          "atom_roots": [
+            61,
+            62
+          ],
+          "cache_roots": []
+        },
+        {
+          "group": "Gates",
+          "relation_index": 12,
+          "atom_roots": [
+            28
+          ],
+          "cache_roots": []
+        },
+        {
+          "group": "Gates",
+          "relation_index": 40,
+          "atom_roots": [
+            56
+          ],
+          "cache_roots": []
+        },
+        {
+          "group": "Gates",
+          "relation_index": 39,
+          "atom_roots": [
+            55
+          ],
+          "cache_roots": []
+        },
+        {
+          "group": "Gates",
+          "relation_index": 19,
+          "atom_roots": [
+            35
+          ],
+          "cache_roots": []
+        },
+        {
+          "group": "Gates",
+          "relation_index": 22,
+          "atom_roots": [
+            38
+          ],
+          "cache_roots": []
+        },
+        {
+          "group": "Gates",
+          "relation_index": 36,
+          "atom_roots": [
+            52
+          ],
+          "cache_roots": []
+        },
+        {
+          "group": "Gates",
+          "relation_index": 34,
+          "atom_roots": [
+            50
+          ],
+          "cache_roots": []
+        },
+        {
+          "group": "Gates",
+          "relation_index": 35,
+          "atom_roots": [
+            51
+          ],
+          "cache_roots": []
+        },
+        {
+          "group": "Gates",
+          "relation_index": 37,
+          "atom_roots": [
+            53
+          ],
+          "cache_roots": []
+        },
+        {
+          "group": "Gates",
+          "relation_index": 44,
+          "atom_roots": [
+            60
+          ],
+          "cache_roots": []
+        },
+        {
+          "group": "Gates",
+          "relation_index": 49,
+          "atom_roots": [
+            68,
+            69
+          ],
+          "cache_roots": [
+            9,
+            10
+          ]
+        },
+        {
+          "group": "Gates",
+          "relation_index": 41,
+          "atom_roots": [
+            57
+          ],
+          "cache_roots": []
+        },
+        {
+          "group": "Gates",
+          "relation_index": 42,
+          "atom_roots": [
+            58
+          ],
+          "cache_roots": []
+        },
+        {
+          "group": "Gates",
+          "relation_index": 21,
+          "atom_roots": [
+            37
+          ],
+          "cache_roots": []
+        },
+        {
+          "group": "Gates",
+          "relation_index": 38,
+          "atom_roots": [
+            54
+          ],
+          "cache_roots": []
+        },
+        {
+          "group": "Gates",
+          "relation_index": 46,
+          "atom_roots": [
+            63
+          ],
+          "cache_roots": []
+        },
+        {
+          "group": "Gates",
+          "relation_index": 48,
+          "atom_roots": [
+            66,
+            67
+          ],
+          "cache_roots": [
+            8
+          ]
+        },
+        {
+          "group": "Gates",
+          "relation_index": 33,
+          "atom_roots": [
+            49
+          ],
+          "cache_roots": []
+        },
+        {
+          "group": "Gates",
+          "relation_index": 52,
+          "atom_roots": [
+            73,
+            74
+          ],
+          "cache_roots": [
+            14,
+            15
+          ]
+        },
+        {
+          "group": "Gates",
+          "relation_index": 50,
+          "atom_roots": [
+            70,
+            71
+          ],
+          "cache_roots": [
+            11,
+            12
+          ]
+        },
+        {
+          "group": "Gates",
+          "relation_index": 47,
+          "atom_roots": [
+            64,
+            65
+          ],
+          "cache_roots": []
+        },
+        {
+          "group": "Gates",
+          "relation_index": 51,
+          "atom_roots": [
+            72
+          ],
+          "cache_roots": [
+            13
+          ]
+        }
+      ],
+      "sites": [
+        [
+          {
+            "root": 16,
+            "consumer": "RootOutput",
+            "value": 168
+          },
+          -0.20164559240016855
+        ],
+        [
+          {
+            "root": 17,
+            "consumer": {
+              "Expr": {
+                "expr": 3,
+                "input_index": 0
+              }
+            },
+            "value": 1
+          },
+          -0.5071202307692224
+        ],
+        [
+          {
+            "root": 17,
+            "consumer": {
+              "Expr": {
+                "expr": 6,
+                "input_index": 0
+              }
+            },
+            "value": 4
+          },
+          -0.019595559476099852
+        ],
+        [
+          {
+            "root": 17,
+            "consumer": {
+              "Expr": {
+                "expr": 9,
+                "input_index": 0
+              }
+            },
+            "value": 7
+          },
+          0.13801956961991102
+        ],
+        [
+          {
+            "root": 17,
+            "consumer": {
+              "Expr": {
+                "expr": 13,
+                "input_index": 0
+              }
+            },
+            "value": 11
+          },
+          -0.08980138825232264
+        ],
+        [
+          {
+            "root": 17,
+            "consumer": {
+              "Expr": {
+                "expr": 14,
+                "input_index": 0
+              }
+            },
+            "value": 10
+          },
+          0.3150567131511932
+        ],
+        [
+          {
+            "root": 17,
+            "consumer": {
+              "Expr": {
+                "expr": 19,
+                "input_index": 1
+              }
+            },
+            "value": 18
+          },
+          0.25340548341779756
+        ],
+        [
+          {
+            "root": 17,
+            "consumer": {
+              "Expr": {
+                "expr": 20,
+                "input_index": 0
+              }
+            },
+            "value": 17
+          },
+          -0.455814638078721
+        ],
+        [
+          {
+            "root": 17,
+            "consumer": {
+              "Expr": {
+                "expr": 23,
+                "input_index": 1
+              }
+            },
+            "value": 3
+          },
+          0.11253178275347812
+        ],
+        [
+          {
+            "root": 17,
+            "consumer": {
+              "Expr": {
+                "expr": 23,
+                "input_index": 4
+              }
+            },
+            "value": 16
+          },
+          0.07093807685382604
+        ],
+        [
+          {
+            "root": 17,
+            "consumer": {
+              "Expr": {
+                "expr": 23,
+                "input_index": 5
+              }
+            },
+            "value": 22
+          },
+          0.21682685485113157
+        ],
+        [
+          {
+            "root": 17,
+            "consumer": {
+              "Expr": {
+                "expr": 25,
+                "input_index": 1
+              }
+            },
+            "value": 24
+          },
+          0.4424708487206951
+        ],
+        [
+          {
+            "root": 17,
+            "consumer": {
+              "Expr": {
+                "expr": 27,
+                "input_index": 1
+              }
+            },
+            "value": 26
+          },
+          -0.3106682348588512
+        ],
+        [
+          {
+            "root": 17,
+            "consumer": {
+              "Expr": {
+                "expr": 29,
+                "input_index": 1
+              }
+            },
+            "value": 28
+          },
+          0.22148854754774805
+        ],
+        [
+          {
+            "root": 17,
+            "consumer": {
+              "Expr": {
+                "expr": 32,
+                "input_index": 1
+              }
+            },
+            "value": 31
+          },
+          0.6641144195715045
+        ],
+        [
+          {
+            "root": 17,
+            "consumer": {
+              "Expr": {
+                "expr": 33,
+                "input_index": 0
+              }
+            },
+            "value": 30
+          },
+          0.19753048963814843
+        ],
+        [
+          {
+            "root": 17,
+            "consumer": {
+              "Expr": {
+                "expr": 37,
+                "input_index": 1
+              }
+            },
+            "value": 36
+          },
+          0.16190830305055115
+        ],
+        [
+          {
+            "root": 17,
+            "consumer": {
+              "Expr": {
+                "expr": 38,
+                "input_index": 0
+              }
+            },
+            "value": 35
+          },
+          0.018369003741398937
+        ],
+        [
+          {
+            "root": 17,
+            "consumer": {
+              "Expr": {
+                "expr": 40,
+                "input_index": 1
+              }
+            },
+            "value": 25
+          },
+          0.10487755715795911
+        ],
+        [
+          {
+            "root": 17,
+            "consumer": {
+              "Expr": {
+                "expr": 40,
+                "input_index": 4
+              }
+            },
+            "value": 34
+          },
+          -0.26843616877685006
+        ],
+        [
+          {
+            "root": 17,
+            "consumer": {
+              "Expr": {
+                "expr": 40,
+                "input_index": 5
+              }
+            },
+            "value": 39
+          },
+          0.2518377355242637
+        ],
+        [
+          {
+            "root": 17,
+            "consumer": {
+              "Expr": {
+                "expr": 169,
+                "input_index": 0
+              }
+            },
+            "value": 23
+          },
+          -0.7954587853777788
+        ],
+        [
+          {
+            "root": 17,
+            "consumer": {
+              "Expr": {
+                "expr": 169,
+                "input_index": 1
+              }
+            },
+            "value": 40
+          },
+          -0.08221748894834191
+        ],
+        [
+          {
+            "root": 18,
+            "consumer": {
+              "Expr": {
+                "expr": 3,
+                "input_index": 0
+              }
+            },
+            "value": 1
+          },
+          0.7957378062881588
+        ],
+        [
+          {
+            "root": 18,
+            "consumer": {
+              "Expr": {
+                "expr": 13,
+                "input_index": 0
+              }
+            },
+            "value": 11
+          },
+          0.02228235370772519
+        ],
+        [
+          {
+            "root": 18,
+            "consumer": {
+              "Expr": {
+                "expr": 14,
+                "input_index": 0
+              }
+            },
+            "value": 10
+          },
+          -0.1625115927889462
+        ],
+        [
+          {
+            "root": 18,
+            "consumer": {
+              "Expr": {
+                "expr": 19,
+                "input_index": 1
+              }
+            },
+            "value": 18
+          },
+          0.14194232926169847
+        ],
+        [
+          {
+            "root": 18,
+            "consumer": {
+              "Expr": {
+                "expr": 20,
+                "input_index": 0
+              }
+            },
+            "value": 17
+          },
+          -0.10912282850696564
+        ],
+        [
+          {
+            "root": 18,
+            "consumer": {
+              "Expr": {
+                "expr": 25,
+                "input_index": 1
+              }
+            },
+            "value": 24
+          },
+          0.17768361780686048
+        ],
+        [
+          {
+            "root": 18,
+            "consumer": {
+              "Expr": {
+                "expr": 32,
+                "input_index": 1
+              }
+            },
+            "value": 31
+          },
+          -0.12111688205484616
+        ],
+        [
+          {
+            "root": 18,
+            "consumer": {
+              "Expr": {
+                "expr": 33,
+                "input_index": 0
+              }
+            },
+            "value": 30
+          },
+          0.13052900751108515
+        ],
+        [
+          {
+            "root": 18,
+            "consumer": {
+              "Expr": {
+                "expr": 37,
+                "input_index": 1
+              }
+            },
+            "value": 36
+          },
+          0.546699189497787
+        ],
+        [
+          {
+            "root": 18,
+            "consumer": {
+              "Expr": {
+                "expr": 38,
+                "input_index": 0
+              }
+            },
+            "value": 35
+          },
+          -0.35939971865332115
+        ],
+        [
+          {
+            "root": 18,
+            "consumer": {
+              "Expr": {
+                "expr": 42,
+                "input_index": 1
+              }
+            },
+            "value": 41
+          },
+          -0.24264284928233193
+        ],
+        [
+          {
+            "root": 18,
+            "consumer": {
+              "Expr": {
+                "expr": 44,
+                "input_index": 1
+              }
+            },
+            "value": 43
+          },
+          0.39118737703360296
+        ],
+        [
+          {
+            "root": 18,
+            "consumer": {
+              "Expr": {
+                "expr": 45,
+                "input_index": 1
+              }
+            },
+            "value": 3
+          },
+          0.13865301193664864
+        ],
+        [
+          {
+            "root": 18,
+            "consumer": {
+              "Expr": {
+                "expr": 45,
+                "input_index": 2
+              }
+            },
+            "value": 16
+          },
+          0.2724052341544957
+        ],
+        [
+          {
+            "root": 18,
+            "consumer": {
+              "Expr": {
+                "expr": 45,
+                "input_index": 3
+              }
+            },
+            "value": 22
+          },
+          0.03699856073044305
+        ],
+        [
+          {
+            "root": 18,
+            "consumer": {
+              "Expr": {
+                "expr": 45,
+                "input_index": 4
+              }
+            },
+            "value": 42
+          },
+          -0.030127047876700813
+        ],
+        [
+          {
+            "root": 18,
+            "consumer": {
+              "Expr": {
+                "expr": 45,
+                "input_index": 5
+              }
+            },
+            "value": 44
+          },
+          -0.20704271415598297
+        ],
+        [
+          {
+            "root": 18,
+            "consumer": {
+              "Expr": {
+                "expr": 47,
+                "input_index": 0
+              }
+            },
+            "value": 41
+          },
+          -0.27125695980475933
+        ],
+        [
+          {
+            "root": 18,
+            "consumer": {
+              "Expr": {
+                "expr": 49,
+                "input_index": 1
+              }
+            },
+            "value": 25
+          },
+          0.44647485114105456
+        ],
+        [
+          {
+            "root": 18,
+            "consumer": {
+              "Expr": {
+                "expr": 49,
+                "input_index": 2
+              }
+            },
+            "value": 34
+          },
+          -0.479797396602255
+        ],
+        [
+          {
+            "root": 18,
+            "consumer": {
+              "Expr": {
+                "expr": 49,
+                "input_index": 3
+              }
+            },
+            "value": 39
+          },
+          0.1810321114232588
+        ],
+        [
+          {
+            "root": 18,
+            "consumer": {
+              "Expr": {
+                "expr": 49,
+                "input_index": 4
+              }
+            },
+            "value": 44
+          },
+          0.0802085873925996
+        ],
+        [
+          {
+            "root": 18,
+            "consumer": {
+              "Expr": {
+                "expr": 170,
+                "input_index": 0
+              }
+            },
+            "value": 45
+          },
+          0.030718295597153195
+        ],
+        [
+          {
+            "root": 18,
+            "consumer": {
+              "Expr": {
+                "expr": 170,
+                "input_index": 1
+              }
+            },
+            "value": 49
+          },
+          -0.008483858511288023
+        ],
+        [
+          {
+            "root": 19,
+            "consumer": {
+              "Expr": {
+                "expr": 42,
+                "input_index": 1
+              }
+            },
+            "value": 41
+          },
+          0.1145256305933854
+        ],
+        [
+          {
+            "root": 19,
+            "consumer": {
+              "Expr": {
+                "expr": 44,
+                "input_index": 1
+              }
+            },
+            "value": 43
+          },
+          -0.1961650450223011
+        ],
+        [
+          {
+            "root": 19,
+            "consumer": {
+              "Expr": {
+                "expr": 51,
+                "input_index": 1
+              }
+            },
+            "value": 50
+          },
+          -0.0012504466377924724
+        ],
+        [
+          {
+            "root": 19,
+            "consumer": {
+              "Expr": {
+                "expr": 53,
+                "input_index": 1
+              }
+            },
+            "value": 52
+          },
+          0.052816272583441126
+        ],
+        [
+          {
+            "root": 19,
+            "consumer": {
+              "Expr": {
+                "expr": 55,
+                "input_index": 1
+              }
+            },
+            "value": 54
+          },
+          -0.40503185746438497
+        ],
+        [
+          {
+            "root": 19,
+            "consumer": {
+              "Expr": {
+                "expr": 60,
+                "input_index": 1
+              }
+            },
+            "value": 51
+          },
+          -0.08342942909599553
+        ],
+        [
+          {
+            "root": 19,
+            "consumer": {
+              "Expr": {
+                "expr": 65,
+                "input_index": 1
+              }
+            },
+            "value": 64
+          },
+          0.32436488969711397
+        ],
+        [
+          {
+            "root": 19,
+            "consumer": {
+              "Expr": {
+                "expr": 67,
+                "input_index": 1
+              }
+            },
+            "value": 66
+          },
+          -0.44510168380343024
+        ],
+        [
+          {
+            "root": 19,
+            "consumer": {
+              "Expr": {
+                "expr": 68,
+                "input_index": 1
+              }
+            },
+            "value": 42
+          },
+          -0.4371243701613476
+        ],
+        [
+          {
+            "root": 19,
+            "consumer": {
+              "Expr": {
+                "expr": 68,
+                "input_index": 2
+              }
+            },
+            "value": 44
+          },
+          -0.4879370945345228
+        ],
+        [
+          {
+            "root": 19,
+            "consumer": {
+              "Expr": {
+                "expr": 68,
+                "input_index": 4
+              }
+            },
+            "value": 63
+          },
+          -0.1296322716994463
+        ],
+        [
+          {
+            "root": 19,
+            "consumer": {
+              "Expr": {
+                "expr": 171,
+                "input_index": 0
+              }
+            },
+            "value": 60
+          },
+          0.5378179683318824
+        ],
+        [
+          {
+            "root": 19,
+            "consumer": {
+              "Expr": {
+                "expr": 171,
+                "input_index": 1
+              }
+            },
+            "value": 68
+          },
+          -0.3469547225715069
+        ],
+        [
+          {
+            "root": 20,
+            "consumer": {
+              "Expr": {
+                "expr": 44,
+                "input_index": 1
+              }
+            },
+            "value": 43
+          },
+          0.5214133340285256
+        ],
+        [
+          {
+            "root": 20,
+            "consumer": {
+              "Expr": {
+                "expr": 51,
+                "input_index": 1
+              }
+            },
+            "value": 50
+          },
+          0.2429994909778699
+        ],
+        [
+          {
+            "root": 20,
+            "consumer": {
+              "Expr": {
+                "expr": 69,
+                "input_index": 0
+              }
+            },
+            "value": 41
+          },
+          0.062087777139442135
+        ],
+        [
+          {
+            "root": 20,
+            "consumer": {
+              "Expr": {
+                "expr": 72,
+                "input_index": 1
+              }
+            },
+            "value": 71
+          },
+          -0.009653329303502878
+        ],
+        [
+          {
+            "root": 20,
+            "consumer": {
+              "Expr": {
+                "expr": 74,
+                "input_index": 1
+              }
+            },
+            "value": 73
+          },
+          -0.1938355199669209
+        ],
+        [
+          {
+            "root": 20,
+            "consumer": {
+              "Expr": {
+                "expr": 75,
+                "input_index": 1
+              }
+            },
+            "value": 44
+          },
+          -0.11000953769149738
+        ],
+        [
+          {
+            "root": 20,
+            "consumer": {
+              "Expr": {
+                "expr": 75,
+                "input_index": 2
+              }
+            },
+            "value": 51
+          },
+          0.4494235460570502
+        ],
+        [
+          {
+            "root": 20,
+            "consumer": {
+              "Expr": {
+                "expr": 77,
+                "input_index": 1
+              }
+            },
+            "value": 76
+          },
+          -0.5693217508818558
+        ],
+        [
+          {
+            "root": 20,
+            "consumer": {
+              "Expr": {
+                "expr": 79,
+                "input_index": 1
+              }
+            },
+            "value": 78
+          },
+          0.8581228742688685
+        ],
+        [
+          {
+            "root": 20,
+            "consumer": {
+              "Expr": {
+                "expr": 81,
+                "input_index": 1
+              }
+            },
+            "value": 80
+          },
+          0.2726864317996872
+        ],
+        [
+          {
+            "root": 20,
+            "consumer": {
+              "Expr": {
+                "expr": 83,
+                "input_index": 1
+              }
+            },
+            "value": 82
+          },
+          0.32759633946470557
+        ],
+        [
+          {
+            "root": 20,
+            "consumer": {
+              "Expr": {
+                "expr": 84,
+                "input_index": 2
+              }
+            },
+            "value": 63
+          },
+          0.1480914162271649
+        ],
+        [
+          {
+            "root": 20,
+            "consumer": {
+              "Expr": {
+                "expr": 172,
+                "input_index": 0
+              }
+            },
+            "value": 75
+          },
+          -0.014172588755833826
+        ],
+        [
+          {
+            "root": 20,
+            "consumer": {
+              "Expr": {
+                "expr": 172,
+                "input_index": 1
+              }
+            },
+            "value": 84
+          },
+          0.0735148287450757
+        ],
+        [
+          {
+            "root": 21,
+            "consumer": {
+              "Expr": {
+                "expr": 173,
+                "input_index": 0
+              }
+            },
+            "value": 128
+          },
+          0.08316408062223218
+        ],
+        [
+          {
+            "root": 21,
+            "consumer": {
+              "Expr": {
+                "expr": 173,
+                "input_index": 1
+              }
+            },
+            "value": 137
+          },
+          0.3218685784677093
+        ],
+        [
+          {
+            "root": 21,
+            "consumer": {
+              "Expr": {
+                "expr": 174,
+                "input_index": 0
+              }
+            },
+            "value": 30
+          },
+          0.029117511679367367
+        ],
+        [
+          {
+            "root": 21,
+            "consumer": {
+              "Expr": {
+                "expr": 174,
+                "input_index": 1
+              }
+            },
+            "value": 136
+          },
+          0.7765824627110469
+        ],
+        [
+          {
+            "root": 21,
+            "consumer": {
+              "Expr": {
+                "expr": 175,
+                "input_index": 0
+              }
+            },
+            "value": 173
+          },
+          0.032057878271714864
+        ],
+        [
+          {
+            "root": 22,
+            "consumer": {
+              "Expr": {
+                "expr": 176,
+                "input_index": 0
+              }
+            },
+            "value": 31
+          },
+          -0.24288939544439436
+        ],
+        [
+          {
+            "root": 22,
+            "consumer": {
+              "Expr": {
+                "expr": 176,
+                "input_index": 1
+              }
+            },
+            "value": 136
+          },
+          0.5080602831794838
+        ],
+        [
+          {
+            "root": 22,
+            "consumer": {
+              "Expr": {
+                "expr": 178,
+                "input_index": 0
+              }
+            },
+            "value": 137
+          },
+          -0.03183831019949264
+        ],
+        [
+          {
+            "root": 22,
+            "consumer": {
+              "Expr": {
+                "expr": 178,
+                "input_index": 1
+              }
+            },
+            "value": 177
+          },
+          0.6169096491840489
+        ],
+        [
+          {
+            "root": 22,
+            "consumer": {
+              "Expr": {
+                "expr": 179,
+                "input_index": 1
+              }
+            },
+            "value": 178
+          },
+          -0.7685691689312714
+        ],
+        [
+          {
+            "root": 23,
+            "consumer": {
+              "Expr": {
+                "expr": 180,
+                "input_index": 0
+              }
+            },
+            "value": 136
+          },
+          -0.35384652141575684
+        ],
+        [
+          {
+            "root": 23,
+            "consumer": {
+              "Expr": {
+                "expr": 180,
+                "input_index": 1
+              }
+            },
+            "value": 177
+          },
+          0.05101944757979041
+        ],
+        [
+          {
+            "root": 23,
+            "consumer": "RootOutput",
+            "value": 180
+          },
+          0.2830161417949753
+        ],
+        [
+          {
+            "root": 24,
+            "consumer": {
+              "Expr": {
+                "expr": 182,
+                "input_index": 0
+              }
+            },
+            "value": 136
+          },
+          -0.07402161952562725
+        ],
+        [
+          {
+            "root": 24,
+            "consumer": {
+              "Expr": {
+                "expr": 184,
+                "input_index": 0
+              }
+            },
+            "value": 137
+          },
+          0.5657401569039731
+        ],
+        [
+          {
+            "root": 25,
+            "consumer": {
+              "Expr": {
+                "expr": 186,
+                "input_index": 0
+              }
+            },
+            "value": 10
+          },
+          0.2955526982323761
+        ],
+        [
+          {
+            "root": 25,
+            "consumer": {
+              "Expr": {
+                "expr": 186,
+                "input_index": 1
+              }
+            },
+            "value": 137
+          },
+          0.7001365384461157
+        ],
+        [
+          {
+            "root": 26,
+            "consumer": {
+              "Expr": {
+                "expr": 187,
+                "input_index": 0
+              }
+            },
+            "value": 124
+          },
+          0.05996061041775114
+        ],
+        [
+          {
+            "root": 26,
+            "consumer": {
+              "Expr": {
+                "expr": 187,
+                "input_index": 1
+              }
+            },
+            "value": 137
+          },
+          -0.06544570761979678
+        ],
+        [
+          {
+            "root": 26,
+            "consumer": {
+              "Expr": {
+                "expr": 188,
+                "input_index": 0
+              }
+            },
+            "value": 10
+          },
+          -0.25163173272138434
+        ],
+        [
+          {
+            "root": 26,
+            "consumer": {
+              "Expr": {
+                "expr": 188,
+                "input_index": 1
+              }
+            },
+            "value": 136
+          },
+          0.5325296206678496
+        ],
+        [
+          {
+            "root": 26,
+            "consumer": {
+              "Expr": {
+                "expr": 189,
+                "input_index": 0
+              }
+            },
+            "value": 30
+          },
+          1.0
+        ],
+        [
+          {
+            "root": 26,
+            "consumer": {
+              "Expr": {
+                "expr": 189,
+                "input_index": 1
+              }
+            },
+            "value": 137
+          },
+          0.16964559983300298
+        ],
+        [
+          {
+            "root": 27,
+            "consumer": {
+              "Expr": {
+                "expr": 180,
+                "input_index": 0
+              }
+            },
+            "value": 136
+          },
+          0.7388375377369285
+        ],
+        [
+          {
+            "root": 27,
+            "consumer": {
+              "Expr": {
+                "expr": 180,
+                "input_index": 1
+              }
+            },
+            "value": 177
+          },
+          0.6503488480359518
+        ],
+        [
+          {
+            "root": 27,
+            "consumer": {
+              "Expr": {
+                "expr": 191,
+                "input_index": 0
+              }
+            },
+            "value": 124
+          },
+          0.28945600203979965
+        ],
+        [
+          {
+            "root": 27,
+            "consumer": {
+              "Expr": {
+                "expr": 191,
+                "input_index": 1
+              }
+            },
+            "value": 136
+          },
+          -0.32456838512741054
+        ],
+        [
+          {
+            "root": 27,
+            "consumer": {
+              "Expr": {
+                "expr": 193,
+                "input_index": 0
+              }
+            },
+            "value": 137
+          },
+          0.4000288708914274
+        ],
+        [
+          {
+            "root": 27,
+            "consumer": {
+              "Expr": {
+                "expr": 193,
+                "input_index": 1
+              }
+            },
+            "value": 192
+          },
+          -0.31166251771485076
+        ],
+        [
+          {
+            "root": 27,
+            "consumer": {
+              "Expr": {
+                "expr": 194,
+                "input_index": 0
+              }
+            },
+            "value": 180
+          },
+          0.12087337702542078
+        ],
+        [
+          {
+            "root": 27,
+            "consumer": {
+              "Expr": {
+                "expr": 194,
+                "input_index": 1
+              }
+            },
+            "value": 191
+          },
+          -0.006675694082774086
+        ],
+        [
+          {
+            "root": 27,
+            "consumer": {
+              "Expr": {
+                "expr": 194,
+                "input_index": 2
+              }
+            },
+            "value": 193
+          },
+          -0.027154148582280463
+        ],
+        [
+          {
+            "root": 28,
+            "consumer": {
+              "Expr": {
+                "expr": 195,
+                "input_index": 0
+              }
+            },
+            "value": 132
+          },
+          0.36361367990451593
+        ],
+        [
+          {
+            "root": 28,
+            "consumer": {
+              "Expr": {
+                "expr": 195,
+                "input_index": 1
+              }
+            },
+            "value": 136
+          },
+          0.7525180768549764
+        ],
+        [
+          {
+            "root": 28,
+            "consumer": "RootOutput",
+            "value": 195
+          },
+          -0.11421725170628738
+        ],
+        [
+          {
+            "root": 29,
+            "consumer": {
+              "Expr": {
+                "expr": 196,
+                "input_index": 0
+              }
+            },
+            "value": 136
+          },
+          -0.26299769892337177
+        ],
+        [
+          {
+            "root": 29,
+            "consumer": {
+              "Expr": {
+                "expr": 196,
+                "input_index": 1
+              }
+            },
+            "value": 192
+          },
+          0.04744717753538294
+        ],
+        [
+          {
+            "root": 29,
+            "consumer": "RootOutput",
+            "value": 196
+          },
+          -0.19627231625967176
+        ],
+        [
+          {
+            "root": 30,
+            "consumer": {
+              "Expr": {
+                "expr": 198,
+                "input_index": 0
+              }
+            },
+            "value": 136
+          },
+          -0.10785538684309864
+        ],
+        [
+          {
+            "root": 30,
+            "consumer": {
+              "Expr": {
+                "expr": 198,
+                "input_index": 1
+              }
+            },
+            "value": 197
+          },
+          0.2757911513164049
+        ],
+        [
+          {
+            "root": 30,
+            "consumer": "RootOutput",
+            "value": 198
+          },
+          0.15098013320670434
+        ],
+        [
+          {
+            "root": 31,
+            "consumer": {
+              "Expr": {
+                "expr": 200,
+                "input_index": 0
+              }
+            },
+            "value": 136
+          },
+          -0.05806764446046542
+        ],
+        [
+          {
+            "root": 31,
+            "consumer": {
+              "Expr": {
+                "expr": 200,
+                "input_index": 1
+              }
+            },
+            "value": 199
+          },
+          -0.06056443733725262
+        ],
+        [
+          {
+            "root": 31,
+            "consumer": "RootOutput",
+            "value": 200
+          },
+          -0.06761508263155781
+        ],
+        [
+          {
+            "root": 32,
+            "consumer": {
+              "Expr": {
+                "expr": 202,
+                "input_index": 0
+              }
+            },
+            "value": 136
+          },
+          0.5612873549793571
+        ],
+        [
+          {
+            "root": 32,
+            "consumer": {
+              "Expr": {
+                "expr": 202,
+                "input_index": 1
+              }
+            },
+            "value": 201
+          },
+          0.03280589888698503
+        ],
+        [
+          {
+            "root": 32,
+            "consumer": "RootOutput",
+            "value": 202
+          },
+          0.7402867083333837
+        ],
+        [
+          {
+            "root": 33,
+            "consumer": {
+              "Expr": {
+                "expr": 203,
+                "input_index": 0
+              }
+            },
+            "value": 132
+          },
+          0.17927395930212925
+        ],
+        [
+          {
+            "root": 33,
+            "consumer": {
+              "Expr": {
+                "expr": 203,
+                "input_index": 1
+              }
+            },
+            "value": 137
+          },
+          0.057772295237759536
+        ],
+        [
+          {
+            "root": 33,
+            "consumer": {
+              "Expr": {
+                "expr": 205,
+                "input_index": 0
+              }
+            },
+            "value": 136
+          },
+          -0.025702797917829368
+        ],
+        [
+          {
+            "root": 33,
+            "consumer": "RootOutput",
+            "value": 206
+          },
+          -0.14779632259624728
+        ],
+        [
+          {
+            "root": 34,
+            "consumer": {
+              "Expr": {
+                "expr": 207,
+                "input_index": 0
+              }
+            },
+            "value": 11
+          },
+          0.2067325293057796
+        ],
+        [
+          {
+            "root": 34,
+            "consumer": {
+              "Expr": {
+                "expr": 207,
+                "input_index": 1
+              }
+            },
+            "value": 137
+          },
+          0.7628659619574516
+        ],
+        [
+          {
+            "root": 34,
+            "consumer": {
+              "Expr": {
+                "expr": 208,
+                "input_index": 0
+              }
+            },
+            "value": 136
+          },
+          0.5807355364053121
+        ],
+        [
+          {
+            "root": 35,
+            "consumer": {
+              "Expr": {
+                "expr": 173,
+                "input_index": 0
+              }
+            },
+            "value": 128
+          },
+          0.1511753584210518
+        ],
+        [
+          {
+            "root": 35,
+            "consumer": {
+              "Expr": {
+                "expr": 173,
+                "input_index": 1
+              }
+            },
+            "value": 137
+          },
+          0.2617697370423241
+        ],
+        [
+          {
+            "root": 35,
+            "consumer": {
+              "Expr": {
+                "expr": 209,
+                "input_index": 0
+              }
+            },
+            "value": 11
+          },
+          0.13440956768099863
+        ],
+        [
+          {
+            "root": 35,
+            "consumer": {
+              "Expr": {
+                "expr": 209,
+                "input_index": 1
+              }
+            },
+            "value": 136
+          },
+          0.3145531354566918
+        ],
+        [
+          {
+            "root": 35,
+            "consumer": {
+              "Expr": {
+                "expr": 210,
+                "input_index": 0
+              }
+            },
+            "value": 31
+          },
+          -0.007291030476703431
+        ],
+        [
+          {
+            "root": 35,
+            "consumer": {
+              "Expr": {
+                "expr": 210,
+                "input_index": 1
+              }
+            },
+            "value": 137
+          },
+          0.3112906389604803
+        ],
+        [
+          {
+            "root": 35,
+            "consumer": {
+              "Expr": {
+                "expr": 211,
+                "input_index": 0
+              }
+            },
+            "value": 173
+          },
+          -0.9768909836299589
+        ],
+        [
+          {
+            "root": 36,
+            "consumer": {
+              "Expr": {
+                "expr": 180,
+                "input_index": 0
+              }
+            },
+            "value": 136
+          },
+          -0.20974690026575296
+        ],
+        [
+          {
+            "root": 36,
+            "consumer": {
+              "Expr": {
+                "expr": 180,
+                "input_index": 1
+              }
+            },
+            "value": 177
+          },
+          -0.4588727917641098
+        ],
+        [
+          {
+            "root": 36,
+            "consumer": {
+              "Expr": {
+                "expr": 191,
+                "input_index": 0
+              }
+            },
+            "value": 124
+          },
+          0.157719680972362
+        ],
+        [
+          {
+            "root": 36,
+            "consumer": {
+              "Expr": {
+                "expr": 191,
+                "input_index": 1
+              }
+            },
+            "value": 136
+          },
+          -0.6358053414538823
+        ],
+        [
+          {
+            "root": 36,
+            "consumer": {
+              "Expr": {
+                "expr": 212,
+                "input_index": 0
+              }
+            },
+            "value": 137
+          },
+          -0.3594618572437184
+        ],
+        [
+          {
+            "root": 36,
+            "consumer": {
+              "Expr": {
+                "expr": 212,
+                "input_index": 1
+              }
+            },
+            "value": 197
+          },
+          0.2168517706112678
+        ],
+        [
+          {
+            "root": 36,
+            "consumer": {
+              "Expr": {
+                "expr": 213,
+                "input_index": 0
+              }
+            },
+            "value": 180
+          },
+          -0.46241027789576505
+        ],
+        [
+          {
+            "root": 36,
+            "consumer": {
+              "Expr": {
+                "expr": 213,
+                "input_index": 1
+              }
+            },
+            "value": 191
+          },
+          0.4380867975581779
+        ],
+        [
+          {
+            "root": 36,
+            "consumer": {
+              "Expr": {
+                "expr": 213,
+                "input_index": 2
+              }
+            },
+            "value": 212
+          },
+          0.07961568601889568
+        ],
+        [
+          {
+            "root": 37,
+            "consumer": {
+              "Expr": {
+                "expr": 195,
+                "input_index": 0
+              }
+            },
+            "value": 132
+          },
+          0.010905842895772844
+        ],
+        [
+          {
+            "root": 37,
+            "consumer": {
+              "Expr": {
+                "expr": 195,
+                "input_index": 1
+              }
+            },
+            "value": 136
+          },
+          0.5139330350198738
+        ],
+        [
+          {
+            "root": 37,
+            "consumer": "RootOutput",
+            "value": 195
+          },
+          0.08181468619706075
+        ],
+        [
+          {
+            "root": 38,
+            "consumer": {
+              "Expr": {
+                "expr": 215,
+                "input_index": 0
+              }
+            },
+            "value": 136
+          },
+          0.22040968654356977
+        ],
+        [
+          {
+            "root": 38,
+            "consumer": "RootOutput",
+            "value": 215
+          },
+          0.07788324767980398
+        ],
+        [
+          {
+            "root": 39,
+            "consumer": {
+              "Expr": {
+                "expr": 217,
+                "input_index": 0
+              }
+            },
+            "value": 136
+          },
+          0.4769279107820281
+        ],
+        [
+          {
+            "root": 39,
+            "consumer": "RootOutput",
+            "value": 217
+          },
+          0.008735721030049846
+        ],
+        [
+          {
+            "root": 40,
+            "consumer": {
+              "Expr": {
+                "expr": 219,
+                "input_index": 0
+              }
+            },
+            "value": 136
+          },
+          -0.3020117623853386
+        ],
+        [
+          {
+            "root": 40,
+            "consumer": "RootOutput",
+            "value": 219
+          },
+          -0.2723640177176992
+        ],
+        [
+          {
+            "root": 41,
+            "consumer": {
+              "Expr": {
+                "expr": 221,
+                "input_index": 0
+              }
+            },
+            "value": 136
+          },
+          0.22174320475050732
+        ],
+        [
+          {
+            "root": 41,
+            "consumer": "RootOutput",
+            "value": 221
+          },
+          -0.252501329407822
+        ],
+        [
+          {
+            "root": 42,
+            "consumer": {
+              "Expr": {
+                "expr": 203,
+                "input_index": 0
+              }
+            },
+            "value": 132
+          },
+          -0.24914629408663316
+        ],
+        [
+          {
+            "root": 42,
+            "consumer": {
+              "Expr": {
+                "expr": 203,
+                "input_index": 1
+              }
+            },
+            "value": 137
+          },
+          -0.10173699467103278
+        ],
+        [
+          {
+            "root": 42,
+            "consumer": {
+              "Expr": {
+                "expr": 205,
+                "input_index": 0
+              }
+            },
+            "value": 136
+          },
+          0.381735422159085
+        ],
+        [
+          {
+            "root": 42,
+            "consumer": "RootOutput",
+            "value": 206
+          },
+          0.14880024990535193
+        ],
+        [
+          {
+            "root": 43,
+            "consumer": {
+              "Expr": {
+                "expr": 222,
+                "input_index": 0
+              }
+            },
+            "value": 17
+          },
+          1.0
+        ],
+        [
+          {
+            "root": 43,
+            "consumer": {
+              "Expr": {
+                "expr": 222,
+                "input_index": 1
+              }
+            },
+            "value": 137
+          },
+          -0.14169237769859702
+        ],
+        [
+          {
+            "root": 43,
+            "consumer": {
+              "Expr": {
+                "expr": 223,
+                "input_index": 1
+              }
+            },
+            "value": 136
+          },
+          -0.1493507159487533
+        ],
+        [
+          {
+            "root": 44,
+            "consumer": {
+              "Expr": {
+                "expr": 178,
+                "input_index": 0
+              }
+            },
+            "value": 137
+          },
+          0.573688985220211
+        ],
+        [
+          {
+            "root": 44,
+            "consumer": {
+              "Expr": {
+                "expr": 178,
+                "input_index": 1
+              }
+            },
+            "value": 177
+          },
+          0.21034320519318195
+        ],
+        [
+          {
+            "root": 44,
+            "consumer": {
+              "Expr": {
+                "expr": 225,
+                "input_index": 0
+              }
+            },
+            "value": 17
+          },
+          -0.1123737725791124
+        ],
+        [
+          {
+            "root": 44,
+            "consumer": {
+              "Expr": {
+                "expr": 225,
+                "input_index": 1
+              }
+            },
+            "value": 136
+          },
+          -0.19044297363219967
+        ],
+        [
+          {
+            "root": 44,
+            "consumer": {
+              "Expr": {
+                "expr": 226,
+                "input_index": 0
+              }
+            },
+            "value": 35
+          },
+          -0.5382937776022159
+        ],
+        [
+          {
+            "root": 44,
+            "consumer": {
+              "Expr": {
+                "expr": 226,
+                "input_index": 1
+              }
+            },
+            "value": 137
+          },
+          0.11752920888740943
+        ],
+        [
+          {
+            "root": 44,
+            "consumer": {
+              "Expr": {
+                "expr": 227,
+                "input_index": 0
+              }
+            },
+            "value": 178
+          },
+          0.02573693080546026
+        ],
+        [
+          {
+            "root": 45,
+            "consumer": {
+              "Expr": {
+                "expr": 180,
+                "input_index": 0
+              }
+            },
+            "value": 136
+          },
+          0.285553479565403
+        ],
+        [
+          {
+            "root": 45,
+            "consumer": {
+              "Expr": {
+                "expr": 180,
+                "input_index": 1
+              }
+            },
+            "value": 177
+          },
+          0.2792322901787361
+        ],
+        [
+          {
+            "root": 45,
+            "consumer": {
+              "Expr": {
+                "expr": 191,
+                "input_index": 0
+              }
+            },
+            "value": 124
+          },
+          -0.1078187490428132
+        ],
+        [
+          {
+            "root": 45,
+            "consumer": {
+              "Expr": {
+                "expr": 191,
+                "input_index": 1
+              }
+            },
+            "value": 136
+          },
+          0.5465454714074265
+        ],
+        [
+          {
+            "root": 45,
+            "consumer": {
+              "Expr": {
+                "expr": 228,
+                "input_index": 0
+              }
+            },
+            "value": 137
+          },
+          0.3704789017725775
+        ],
+        [
+          {
+            "root": 45,
+            "consumer": {
+              "Expr": {
+                "expr": 228,
+                "input_index": 1
+              }
+            },
+            "value": 199
+          },
+          0.3347118748905669
+        ],
+        [
+          {
+            "root": 45,
+            "consumer": {
+              "Expr": {
+                "expr": 229,
+                "input_index": 0
+              }
+            },
+            "value": 180
+          },
+          -0.31254207342917073
+        ],
+        [
+          {
+            "root": 45,
+            "consumer": {
+              "Expr": {
+                "expr": 229,
+                "input_index": 1
+              }
+            },
+            "value": 191
+          },
+          0.129069855687542
+        ],
+        [
+          {
+            "root": 45,
+            "consumer": {
+              "Expr": {
+                "expr": 229,
+                "input_index": 2
+              }
+            },
+            "value": 228
+          },
+          -0.4239495629175787
+        ],
+        [
+          {
+            "root": 46,
+            "consumer": {
+              "Expr": {
+                "expr": 195,
+                "input_index": 0
+              }
+            },
+            "value": 132
+          },
+          0.253433995235189
+        ],
+        [
+          {
+            "root": 46,
+            "consumer": {
+              "Expr": {
+                "expr": 195,
+                "input_index": 1
+              }
+            },
+            "value": 136
+          },
+          -0.4343459650609884
+        ],
+        [
+          {
+            "root": 46,
+            "consumer": "RootOutput",
+            "value": 195
+          },
+          -0.2519642017260346
+        ],
+        [
+          {
+            "root": 47,
+            "consumer": {
+              "Expr": {
+                "expr": 231,
+                "input_index": 0
+              }
+            },
+            "value": 136
+          },
+          0.2751194882992828
+        ],
+        [
+          {
+            "root": 47,
+            "consumer": "RootOutput",
+            "value": 231
+          },
+          0.3942740205765439
+        ],
+        [
+          {
+            "root": 48,
+            "consumer": {
+              "Expr": {
+                "expr": 233,
+                "input_index": 0
+              }
+            },
+            "value": 136
+          },
+          1.0
+        ],
+        [
+          {
+            "root": 48,
+            "consumer": "RootOutput",
+            "value": 233
+          },
+          -0.5241201940606312
+        ],
+        [
+          {
+            "root": 49,
+            "consumer": {
+              "Expr": {
+                "expr": 235,
+                "input_index": 0
+              }
+            },
+            "value": 136
+          },
+          0.82028694541624
+        ],
+        [
+          {
+            "root": 49,
+            "consumer": "RootOutput",
+            "value": 235
+          },
+          -0.17641182515964998
+        ],
+        [
+          {
+            "root": 50,
+            "consumer": {
+              "Expr": {
+                "expr": 237,
+                "input_index": 0
+              }
+            },
+            "value": 136
+          },
+          -0.21531038112561132
+        ],
+        [
+          {
+            "root": 50,
+            "consumer": "RootOutput",
+            "value": 237
+          },
+          -0.3076002726648924
+        ],
+        [
+          {
+            "root": 51,
+            "consumer": {
+              "Expr": {
+                "expr": 203,
+                "input_index": 0
+              }
+            },
+            "value": 132
+          },
+          -0.1633379016686331
+        ],
+        [
+          {
+            "root": 51,
+            "consumer": {
+              "Expr": {
+                "expr": 203,
+                "input_index": 1
+              }
+            },
+            "value": 137
+          },
+          0.5944500901938153
+        ],
+        [
+          {
+            "root": 51,
+            "consumer": {
+              "Expr": {
+                "expr": 205,
+                "input_index": 0
+              }
+            },
+            "value": 136
+          },
+          -0.13096740610050428
+        ],
+        [
+          {
+            "root": 51,
+            "consumer": "RootOutput",
+            "value": 206
+          },
+          0.03796130136784139
+        ],
+        [
+          {
+            "root": 52,
+            "consumer": {
+              "Expr": {
+                "expr": 238,
+                "input_index": 0
+              }
+            },
+            "value": 18
+          },
+          -0.08431185252648923
+        ],
+        [
+          {
+            "root": 52,
+            "consumer": {
+              "Expr": {
+                "expr": 238,
+                "input_index": 1
+              }
+            },
+            "value": 137
+          },
+          0.4062382117999948
+        ],
+        [
+          {
+            "root": 52,
+            "consumer": {
+              "Expr": {
+                "expr": 239,
+                "input_index": 0
+              }
+            },
+            "value": 136
+          },
+          0.751810415404201
+        ],
+        [
+          {
+            "root": 53,
+            "consumer": {
+              "Expr": {
+                "expr": 178,
+                "input_index": 0
+              }
+            },
+            "value": 137
+          },
+          -0.0911028104059919
+        ],
+        [
+          {
+            "root": 53,
+            "consumer": {
+              "Expr": {
+                "expr": 178,
+                "input_index": 1
+              }
+            },
+            "value": 177
+          },
+          0.6816126048376034
+        ],
+        [
+          {
+            "root": 53,
+            "consumer": {
+              "Expr": {
+                "expr": 241,
+                "input_index": 0
+              }
+            },
+            "value": 18
+          },
+          -0.16897326526607323
+        ],
+        [
+          {
+            "root": 53,
+            "consumer": {
+              "Expr": {
+                "expr": 241,
+                "input_index": 1
+              }
+            },
+            "value": 136
+          },
+          0.42136471997341496
+        ],
+        [
+          {
+            "root": 53,
+            "consumer": {
+              "Expr": {
+                "expr": 242,
+                "input_index": 0
+              }
+            },
+            "value": 36
+          },
+          0.3400740662338061
+        ],
+        [
+          {
+            "root": 53,
+            "consumer": {
+              "Expr": {
+                "expr": 242,
+                "input_index": 1
+              }
+            },
+            "value": 137
+          },
+          0.34636145266583973
+        ],
+        [
+          {
+            "root": 53,
+            "consumer": {
+              "Expr": {
+                "expr": 243,
+                "input_index": 0
+              }
+            },
+            "value": 178
+          },
+          -0.17245909255823355
+        ],
+        [
+          {
+            "root": 54,
+            "consumer": {
+              "Expr": {
+                "expr": 180,
+                "input_index": 0
+              }
+            },
+            "value": 136
+          },
+          -0.23160014405677715
+        ],
+        [
+          {
+            "root": 54,
+            "consumer": {
+              "Expr": {
+                "expr": 180,
+                "input_index": 1
+              }
+            },
+            "value": 177
+          },
+          -0.5499976222261092
+        ],
+        [
+          {
+            "root": 54,
+            "consumer": {
+              "Expr": {
+                "expr": 191,
+                "input_index": 0
+              }
+            },
+            "value": 124
+          },
+          0.03954580604046915
+        ],
+        [
+          {
+            "root": 54,
+            "consumer": {
+              "Expr": {
+                "expr": 191,
+                "input_index": 1
+              }
+            },
+            "value": 136
+          },
+          -0.3366958109959751
+        ],
+        [
+          {
+            "root": 54,
+            "consumer": {
+              "Expr": {
+                "expr": 244,
+                "input_index": 0
+              }
+            },
+            "value": 137
+          },
+          -0.20214317910999613
+        ],
+        [
+          {
+            "root": 54,
+            "consumer": {
+              "Expr": {
+                "expr": 244,
+                "input_index": 1
+              }
+            },
+            "value": 201
+          },
+          -0.6269541198640634
+        ],
+        [
+          {
+            "root": 54,
+            "consumer": {
+              "Expr": {
+                "expr": 245,
+                "input_index": 0
+              }
+            },
+            "value": 180
+          },
+          0.060388943914990834
+        ],
+        [
+          {
+            "root": 54,
+            "consumer": {
+              "Expr": {
+                "expr": 245,
+                "input_index": 1
+              }
+            },
+            "value": 191
+          },
+          -0.29367061556508167
+        ],
+        [
+          {
+            "root": 54,
+            "consumer": {
+              "Expr": {
+                "expr": 245,
+                "input_index": 2
+              }
+            },
+            "value": 244
+          },
+          0.012759640935623762
+        ],
+        [
+          {
+            "root": 55,
+            "consumer": {
+              "Expr": {
+                "expr": 195,
+                "input_index": 0
+              }
+            },
+            "value": 132
+          },
+          -0.7159391487849589
+        ],
+        [
+          {
+            "root": 55,
+            "consumer": {
+              "Expr": {
+                "expr": 195,
+                "input_index": 1
+              }
+            },
+            "value": 136
+          },
+          0.5351538193586344
+        ],
+        [
+          {
+            "root": 55,
+            "consumer": "RootOutput",
+            "value": 195
+          },
+          -0.15801879009901776
+        ],
+        [
+          {
+            "root": 56,
+            "consumer": {
+              "Expr": {
+                "expr": 247,
+                "input_index": 0
+              }
+            },
+            "value": 136
+          },
+          -0.2376072447301012
+        ],
+        [
+          {
+            "root": 56,
+            "consumer": "RootOutput",
+            "value": 247
+          },
+          -0.3783878831508469
+        ],
+        [
+          {
+            "root": 57,
+            "consumer": {
+              "Expr": {
+                "expr": 249,
+                "input_index": 0
+              }
+            },
+            "value": 136
+          },
+          0.5704066927937774
+        ],
+        [
+          {
+            "root": 57,
+            "consumer": "RootOutput",
+            "value": 249
+          },
+          0.06699951909746726
+        ],
+        [
+          {
+            "root": 58,
+            "consumer": {
+              "Expr": {
+                "expr": 251,
+                "input_index": 0
+              }
+            },
+            "value": 136
+          },
+          -0.1721067868142327
+        ],
+        [
+          {
+            "root": 58,
+            "consumer": "RootOutput",
+            "value": 251
+          },
+          -0.2543755283339694
+        ],
+        [
+          {
+            "root": 59,
+            "consumer": {
+              "Expr": {
+                "expr": 253,
+                "input_index": 0
+              }
+            },
+            "value": 136
+          },
+          -0.23335728177860543
+        ],
+        [
+          {
+            "root": 59,
+            "consumer": "RootOutput",
+            "value": 253
+          },
+          -0.3419338708950413
+        ],
+        [
+          {
+            "root": 60,
+            "consumer": {
+              "Expr": {
+                "expr": 203,
+                "input_index": 0
+              }
+            },
+            "value": 132
+          },
+          0.32580189719843555
+        ],
+        [
+          {
+            "root": 60,
+            "consumer": {
+              "Expr": {
+                "expr": 203,
+                "input_index": 1
+              }
+            },
+            "value": 137
+          },
+          0.3845141953473381
+        ],
+        [
+          {
+            "root": 60,
+            "consumer": {
+              "Expr": {
+                "expr": 205,
+                "input_index": 0
+              }
+            },
+            "value": 136
+          },
+          0.8555255637966432
+        ],
+        [
+          {
+            "root": 60,
+            "consumer": "RootOutput",
+            "value": 206
+          },
+          0.2188074208077056
+        ],
+        [
+          {
+            "root": 61,
+            "consumer": {
+              "Expr": {
+                "expr": 258,
+                "input_index": 0
+              }
+            },
+            "value": 80
+          },
+          0.2053465053561786
+        ],
+        [
+          {
+            "root": 61,
+            "consumer": {
+              "Expr": {
+                "expr": 259,
+                "input_index": 2
+              }
+            },
+            "value": 258
+          },
+          0.2517675913159714
+        ],
+        [
+          {
+            "root": 61,
+            "consumer": {
+              "Expr": {
+                "expr": 260,
+                "input_index": 0
+              }
+            },
+            "value": 256
+          },
+          -0.17715164302611386
+        ],
+        [
+          {
+            "root": 62,
+            "consumer": {
+              "Expr": {
+                "expr": 258,
+                "input_index": 0
+              }
+            },
+            "value": 80
+          },
+          -0.9075987467690778
+        ],
+        [
+          {
+            "root": 62,
+            "consumer": {
+              "Expr": {
+                "expr": 261,
+                "input_index": 0
+              }
+            },
+            "value": 256
+          },
+          -0.6654067597792013
+        ],
+        [
+          {
+            "root": 62,
+            "consumer": {
+              "Expr": {
+                "expr": 261,
+                "input_index": 1
+              }
+            },
+            "value": 258
+          },
+          0.0903087349263294
+        ],
+        [
+          {
+            "root": 63,
+            "consumer": "RootOutput",
+            "value": 82
+          },
+          0.07860834335100175
+        ],
+        [
+          {
+            "root": 64,
+            "consumer": {
+              "Expr": {
+                "expr": 265,
+                "input_index": 0
+              }
+            },
+            "value": 76
+          },
+          -0.02741112065563189
+        ],
+        [
+          {
+            "root": 64,
+            "consumer": {
+              "Expr": {
+                "expr": 266,
+                "input_index": 2
+              }
+            },
+            "value": 265
+          },
+          -0.16133548272218667
+        ],
+        [
+          {
+            "root": 64,
+            "consumer": {
+              "Expr": {
+                "expr": 267,
+                "input_index": 0
+              }
+            },
+            "value": 263
+          },
+          -0.1968902393884656
+        ],
+        [
+          {
+            "root": 65,
+            "consumer": {
+              "Expr": {
+                "expr": 265,
+                "input_index": 0
+              }
+            },
+            "value": 76
+          },
+          0.2391801172394558
+        ],
+        [
+          {
+            "root": 65,
+            "consumer": {
+              "Expr": {
+                "expr": 268,
+                "input_index": 0
+              }
+            },
+            "value": 263
+          },
+          -0.009932461109167174
+        ],
+        [
+          {
+            "root": 65,
+            "consumer": {
+              "Expr": {
+                "expr": 268,
+                "input_index": 1
+              }
+            },
+            "value": 265
+          },
+          0.2208527773111408
+        ],
+        [
+          {
+            "root": 66,
+            "consumer": {
+              "Expr": {
+                "expr": 269,
+                "input_index": 0
+              }
+            },
+            "value": 78
+          },
+          0.06893316156966023
+        ],
+        [
+          {
+            "root": 66,
+            "consumer": {
+              "Expr": {
+                "expr": 270,
+                "input_index": 0
+              }
+            },
+            "value": 91
+          },
+          -0.2503863132148308
+        ],
+        [
+          {
+            "root": 66,
+            "consumer": {
+              "Expr": {
+                "expr": 271,
+                "input_index": 0
+              }
+            },
+            "value": 269
+          },
+          -0.06270620088955436
+        ],
+        [
+          {
+            "root": 66,
+            "consumer": {
+              "Expr": {
+                "expr": 271,
+                "input_index": 1
+              }
+            },
+            "value": 270
+          },
+          0.4288969894534581
+        ],
+        [
+          {
+            "root": 67,
+            "consumer": {
+              "Expr": {
+                "expr": 269,
+                "input_index": 0
+              }
+            },
+            "value": 78
+          },
+          0.003224445704850698
+        ],
+        [
+          {
+            "root": 67,
+            "consumer": {
+              "Expr": {
+                "expr": 270,
+                "input_index": 0
+              }
+            },
+            "value": 91
+          },
+          0.04779264241336073
+        ],
+        [
+          {
+            "root": 67,
+            "consumer": {
+              "Expr": {
+                "expr": 272,
+                "input_index": 0
+              }
+            },
+            "value": 269
+          },
+          0.8384148750196353
+        ],
+        [
+          {
+            "root": 67,
+            "consumer": {
+              "Expr": {
+                "expr": 272,
+                "input_index": 1
+              }
+            },
+            "value": 270
+          },
+          -0.011683792414142358
+        ],
+        [
+          {
+            "root": 68,
+            "consumer": {
+              "Expr": {
+                "expr": 273,
+                "input_index": 0
+              }
+            },
+            "value": 95
+          },
+          0.3795944243390332
+        ],
+        [
+          {
+            "root": 68,
+            "consumer": {
+              "Expr": {
+                "expr": 274,
+                "input_index": 0
+              }
+            },
+            "value": 99
+          },
+          -0.5802352936858014
+        ],
+        [
+          {
+            "root": 68,
+            "consumer": {
+              "Expr": {
+                "expr": 275,
+                "input_index": 0
+              }
+            },
+            "value": 273
+          },
+          -0.12579312403924647
+        ],
+        [
+          {
+            "root": 68,
+            "consumer": {
+              "Expr": {
+                "expr": 275,
+                "input_index": 1
+              }
+            },
+            "value": 274
+          },
+          -0.06914313190294148
+        ],
+        [
+          {
+            "root": 69,
+            "consumer": {
+              "Expr": {
+                "expr": 273,
+                "input_index": 0
+              }
+            },
+            "value": 95
+          },
+          0.09422023891830532
+        ],
+        [
+          {
+            "root": 69,
+            "consumer": {
+              "Expr": {
+                "expr": 274,
+                "input_index": 0
+              }
+            },
+            "value": 99
+          },
+          -0.07379357936009336
+        ],
+        [
+          {
+            "root": 69,
+            "consumer": {
+              "Expr": {
+                "expr": 276,
+                "input_index": 0
+              }
+            },
+            "value": 273
+          },
+          -0.3042491881390079
+        ],
+        [
+          {
+            "root": 69,
+            "consumer": {
+              "Expr": {
+                "expr": 276,
+                "input_index": 1
+              }
+            },
+            "value": 274
+          },
+          0.2601225588861098
+        ],
+        [
+          {
+            "root": 70,
+            "consumer": {
+              "Expr": {
+                "expr": 277,
+                "input_index": 0
+              }
+            },
+            "value": 102
+          },
+          0.17577245491849702
+        ],
+        [
+          {
+            "root": 70,
+            "consumer": {
+              "Expr": {
+                "expr": 278,
+                "input_index": 0
+              }
+            },
+            "value": 107
+          },
+          0.4063669342779671
+        ],
+        [
+          {
+            "root": 70,
+            "consumer": {
+              "Expr": {
+                "expr": 279,
+                "input_index": 0
+              }
+            },
+            "value": 277
+          },
+          -0.11436901450211316
+        ],
+        [
+          {
+            "root": 70,
+            "consumer": {
+              "Expr": {
+                "expr": 279,
+                "input_index": 1
+              }
+            },
+            "value": 278
+          },
+          -0.0011051778753305014
+        ],
+        [
+          {
+            "root": 71,
+            "consumer": {
+              "Expr": {
+                "expr": 277,
+                "input_index": 0
+              }
+            },
+            "value": 102
+          },
+          0.1648491451375266
+        ],
+        [
+          {
+            "root": 71,
+            "consumer": {
+              "Expr": {
+                "expr": 278,
+                "input_index": 0
+              }
+            },
+            "value": 107
+          },
+          -0.28987999323573177
+        ],
+        [
+          {
+            "root": 71,
+            "consumer": {
+              "Expr": {
+                "expr": 280,
+                "input_index": 0
+              }
+            },
+            "value": 277
+          },
+          0.053454356477952256
+        ],
+        [
+          {
+            "root": 71,
+            "consumer": {
+              "Expr": {
+                "expr": 280,
+                "input_index": 1
+              }
+            },
+            "value": 278
+          },
+          0.17114676132789605
+        ],
+        [
+          {
+            "root": 72,
+            "consumer": "RootOutput",
+            "value": 110
+          },
+          0.21939697718173704
+        ],
+        [
+          {
+            "root": 73,
+            "consumer": {
+              "Expr": {
+                "expr": 281,
+                "input_index": 0
+              }
+            },
+            "value": 167
+          },
+          -0.1510116892987266
+        ],
+        [
+          {
+            "root": 73,
+            "consumer": {
+              "Expr": {
+                "expr": 282,
+                "input_index": 0
+              }
+            },
+            "value": 168
+          },
+          0.3637421416928748
+        ],
+        [
+          {
+            "root": 73,
+            "consumer": {
+              "Expr": {
+                "expr": 282,
+                "input_index": 1
+              }
+            },
+            "value": 281
+          },
+          0.050516703136828545
+        ],
+        [
+          {
+            "root": 73,
+            "consumer": {
+              "Expr": {
+                "expr": 284,
+                "input_index": 0
+              }
+            },
+            "value": 147
+          },
+          -0.2871735665323537
+        ],
+        [
+          {
+            "root": 73,
+            "consumer": {
+              "Expr": {
+                "expr": 285,
+                "input_index": 2
+              }
+            },
+            "value": 284
+          },
+          0.2285854358290242
+        ],
+        [
+          {
+            "root": 74,
+            "consumer": {
+              "Expr": {
+                "expr": 281,
+                "input_index": 0
+              }
+            },
+            "value": 167
+          },
+          -0.1761267939222217
+        ],
+        [
+          {
+            "root": 74,
+            "consumer": {
+              "Expr": {
+                "expr": 284,
+                "input_index": 0
+              }
+            },
+            "value": 147
+          },
+          -0.2703587624209475
+        ],
+        [
+          {
+            "root": 74,
+            "consumer": {
+              "Expr": {
+                "expr": 287,
+                "input_index": 0
+              }
+            },
+            "value": 281
+          },
+          -0.13211332949588162
+        ],
+        [
+          {
+            "root": 74,
+            "consumer": {
+              "Expr": {
+                "expr": 287,
+                "input_index": 1
+              }
+            },
+            "value": 284
+          },
+          0.12530832289889987
+        ]
+      ],
+      "predicted_traffic": 33,
+      "floor": 33
+    },
+    {
+      "units": [
+        {
+          "group": "Gates",
+          "relation_index": 0,
+          "atom_roots": [
+            5
+          ],
+          "cache_roots": []
+        },
+        {
+          "group": "Gates",
+          "relation_index": 3,
+          "atom_roots": [
+            8,
+            9
+          ],
+          "cache_roots": []
+        },
+        {
+          "group": "Gates",
+          "relation_index": 2,
+          "atom_roots": [
+            7
+          ],
+          "cache_roots": []
+        },
+        {
+          "group": "Gates",
+          "relation_index": 8,
+          "atom_roots": [
+            16,
+            17
+          ],
+          "cache_roots": [
+            0,
+            1
+          ]
+        },
+        {
+          "group": "Gates",
+          "relation_index": 9,
+          "atom_roots": [
+            18,
+            19
+          ],
+          "cache_roots": [
+            2,
+            3
+          ]
+        },
+        {
+          "group": "Gates",
+          "relation_index": 4,
+          "atom_roots": [
+            10,
+            11
+          ],
+          "cache_roots": []
+        },
+        {
+          "group": "Gates",
+          "relation_index": 10,
+          "atom_roots": [
+            20,
+            21
+          ],
+          "cache_roots": [
+            4
+          ]
+        },
+        {
+          "group": "Gates",
+          "relation_index": 5,
+          "atom_roots": [
+            12,
+            13
+          ],
+          "cache_roots": []
+        },
+        {
+          "group": "Gates",
+          "relation_index": 7,
+          "atom_roots": [
+            15
+          ],
+          "cache_roots": []
+        },
+        {
+          "group": "Gates",
+          "relation_index": 1,
+          "atom_roots": [
+            6
+          ],
+          "cache_roots": []
+        },
+        {
+          "group": "Gates",
+          "relation_index": 6,
+          "atom_roots": [
+            14
+          ],
+          "cache_roots": []
+        }
+      ],
+      "sites": [
+        [
+          {
+            "root": 8,
+            "consumer": {
+              "Expr": {
+                "expr": 162,
+                "input_index": 1
+              }
+            },
+            "value": 161
+          },
+          0.5888122759224439
+        ],
+        [
+          {
+            "root": 8,
+            "consumer": {
+              "Expr": {
+                "expr": 163,
+                "input_index": 0
+              }
+            },
+            "value": 157
+          },
+          -0.453384130682166
+        ],
+        [
+          {
+            "root": 9,
+            "consumer": {
+              "Expr": {
+                "expr": 164,
+                "input_index": 0
+              }
+            },
+            "value": 157
+          },
+          -0.33638310094295787
+        ],
+        [
+          {
+            "root": 9,
+            "consumer": {
+              "Expr": {
+                "expr": 164,
+                "input_index": 1
+              }
+            },
+            "value": 161
+          },
+          0.32087876925824466
+        ],
+        [
+          {
+            "root": 10,
+            "consumer": {
+              "Expr": {
+                "expr": 169,
+                "input_index": 1
+              }
+            },
+            "value": 168
+          },
+          0.8702247768142797
+        ],
+        [
+          {
+            "root": 10,
+            "consumer": {
+              "Expr": {
+                "expr": 170,
+                "input_index": 0
+              }
+            },
+            "value": 165
+          },
+          0.8329968215693173
+        ],
+        [
+          {
+            "root": 11,
+            "consumer": {
+              "Expr": {
+                "expr": 171,
+                "input_index": 0
+              }
+            },
+            "value": 165
+          },
+          0.7332687858458007
+        ],
+        [
+          {
+            "root": 11,
+            "consumer": {
+              "Expr": {
+                "expr": 171,
+                "input_index": 1
+              }
+            },
+            "value": 168
+          },
+          0.6192544369567661
+        ],
+        [
+          {
+            "root": 12,
+            "consumer": {
+              "Expr": {
+                "expr": 174,
+                "input_index": 1
+              }
+            },
+            "value": 173
+          },
+          -0.8675454337831585
+        ],
+        [
+          {
+            "root": 12,
+            "consumer": {
+              "Expr": {
+                "expr": 177,
+                "input_index": 0
+              }
+            },
+            "value": 175
+          },
+          0.048633403278945275
+        ],
+        [
+          {
+            "root": 13,
+            "consumer": {
+              "Expr": {
+                "expr": 179,
+                "input_index": 0
+              }
+            },
+            "value": 173
+          },
+          -0.8028145446896133
+        ],
+        [
+          {
+            "root": 13,
+            "consumer": {
+              "Expr": {
+                "expr": 179,
+                "input_index": 1
+              }
+            },
+            "value": 175
+          },
+          -0.4217043923505386
+        ],
+        [
+          {
+            "root": 16,
+            "consumer": {
+              "Expr": {
+                "expr": 182,
+                "input_index": 0
+              }
+            },
+            "value": 33
+          },
+          -0.26531902673699315
+        ],
+        [
+          {
+            "root": 16,
+            "consumer": {
+              "Expr": {
+                "expr": 183,
+                "input_index": 0
+              }
+            },
+            "value": 62
+          },
+          0.9095443699826966
+        ],
+        [
+          {
+            "root": 16,
+            "consumer": {
+              "Expr": {
+                "expr": 184,
+                "input_index": 0
+              }
+            },
+            "value": 182
+          },
+          0.8728083249712346
+        ],
+        [
+          {
+            "root": 16,
+            "consumer": {
+              "Expr": {
+                "expr": 184,
+                "input_index": 1
+              }
+            },
+            "value": 183
+          },
+          -0.25636744929472055
+        ],
+        [
+          {
+            "root": 17,
+            "consumer": {
+              "Expr": {
+                "expr": 182,
+                "input_index": 0
+              }
+            },
+            "value": 33
+          },
+          0.092403102539093
+        ],
+        [
+          {
+            "root": 17,
+            "consumer": {
+              "Expr": {
+                "expr": 183,
+                "input_index": 0
+              }
+            },
+            "value": 62
+          },
+          -0.8562566083906185
+        ],
+        [
+          {
+            "root": 17,
+            "consumer": {
+              "Expr": {
+                "expr": 185,
+                "input_index": 0
+              }
+            },
+            "value": 182
+          },
+          -0.25091609960569095
+        ],
+        [
+          {
+            "root": 17,
+            "consumer": {
+              "Expr": {
+                "expr": 185,
+                "input_index": 1
+              }
+            },
+            "value": 183
+          },
+          0.8743786405191565
+        ],
+        [
+          {
+            "root": 18,
+            "consumer": {
+              "Expr": {
+                "expr": 186,
+                "input_index": 0
+              }
+            },
+            "value": 91
+          },
+          -0.4584172119515626
+        ],
+        [
+          {
+            "root": 18,
+            "consumer": {
+              "Expr": {
+                "expr": 187,
+                "input_index": 0
+              }
+            },
+            "value": 120
+          },
+          -0.14336880047934675
+        ],
+        [
+          {
+            "root": 18,
+            "consumer": {
+              "Expr": {
+                "expr": 188,
+                "input_index": 0
+              }
+            },
+            "value": 186
+          },
+          0.2946397903018212
+        ],
+        [
+          {
+            "root": 18,
+            "consumer": {
+              "Expr": {
+                "expr": 188,
+                "input_index": 1
+              }
+            },
+            "value": 187
+          },
+          0.7127076446133913
+        ],
+        [
+          {
+            "root": 19,
+            "consumer": {
+              "Expr": {
+                "expr": 186,
+                "input_index": 0
+              }
+            },
+            "value": 91
+          },
+          0.6658792643152638
+        ],
+        [
+          {
+            "root": 19,
+            "consumer": {
+              "Expr": {
+                "expr": 187,
+                "input_index": 0
+              }
+            },
+            "value": 120
+          },
+          -0.8816869442565598
+        ],
+        [
+          {
+            "root": 19,
+            "consumer": {
+              "Expr": {
+                "expr": 189,
+                "input_index": 0
+              }
+            },
+            "value": 186
+          },
+          0.2978586100112781
+        ],
+        [
+          {
+            "root": 19,
+            "consumer": {
+              "Expr": {
+                "expr": 189,
+                "input_index": 1
+              }
+            },
+            "value": 187
+          },
+          0.4127723397419558
+        ],
+        [
+          {
+            "root": 20,
+            "consumer": {
+              "Expr": {
+                "expr": 192,
+                "input_index": 0
+              }
+            },
+            "value": 149
+          },
+          0.21933606088593627
+        ],
+        [
+          {
+            "root": 20,
+            "consumer": {
+              "Expr": {
+                "expr": 193,
+                "input_index": 1
+              }
+            },
+            "value": 192
+          },
+          -0.038135289052261934
+        ],
+        [
+          {
+            "root": 20,
+            "consumer": {
+              "Expr": {
+                "expr": 194,
+                "input_index": 0
+              }
+            },
+            "value": 190
+          },
+          -0.7494630845101642
+        ],
+        [
+          {
+            "root": 21,
+            "consumer": {
+              "Expr": {
+                "expr": 192,
+                "input_index": 0
+              }
+            },
+            "value": 149
+          },
+          -0.7330951926675622
+        ],
+        [
+          {
+            "root": 21,
+            "consumer": {
+              "Expr": {
+                "expr": 195,
+                "input_index": 0
+              }
+            },
+            "value": 190
+          },
+          -0.7255074013611811
+        ],
+        [
+          {
+            "root": 21,
+            "consumer": {
+              "Expr": {
+                "expr": 195,
+                "input_index": 1
+              }
+            },
+            "value": 192
+          },
+          0.5845916898346437
+        ]
+      ],
+      "predicted_traffic": 58,
+      "floor": 58
+    },
+    {
+      "units": [
+        {
+          "group": "Gates",
+          "relation_index": 0,
+          "atom_roots": [
+            0
+          ],
+          "cache_roots": []
+        },
+        {
+          "group": "Gates",
+          "relation_index": 1,
+          "atom_roots": [
+            1
+          ],
+          "cache_roots": []
+        },
+        {
+          "group": "Gates",
+          "relation_index": 2,
+          "atom_roots": [
+            2,
+            3
+          ],
+          "cache_roots": []
+        },
+        {
+          "group": "Gates",
+          "relation_index": 3,
+          "atom_roots": [
+            4
+          ],
+          "cache_roots": []
+        },
+        {
+          "group": "Gates",
+          "relation_index": 4,
+          "atom_roots": [
+            5
+          ],
+          "cache_roots": []
+        },
+        {
+          "group": "Gates",
+          "relation_index": 5,
+          "atom_roots": [
+            6,
+            7
+          ],
+          "cache_roots": []
+        },
+        {
+          "group": "Gates",
+          "relation_index": 6,
+          "atom_roots": [
+            8
+          ],
+          "cache_roots": []
+        },
+        {
+          "group": "Gates",
+          "relation_index": 7,
+          "atom_roots": [
+            9
+          ],
+          "cache_roots": []
+        },
+        {
+          "group": "Gates",
+          "relation_index": 8,
+          "atom_roots": [
+            10
+          ],
+          "cache_roots": []
+        },
+        {
+          "group": "Gates",
+          "relation_index": 9,
+          "atom_roots": [
+            11
+          ],
+          "cache_roots": []
+        }
+      ],
+      "sites": [
+        [
+          {
+            "root": 0,
+            "consumer": {
+              "Expr": {
+                "expr": 5,
+                "input_index": 0
+              }
+            },
+            "value": 1
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 1,
+            "consumer": {
+              "Expr": {
+                "expr": 9,
+                "input_index": 0
+              }
+            },
+            "value": 1
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 2,
+            "consumer": {
+              "Expr": {
+                "expr": 13,
+                "input_index": 1
+              }
+            },
+            "value": 12
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 2,
+            "consumer": {
+              "Expr": {
+                "expr": 16,
+                "input_index": 0
+              }
+            },
+            "value": 14
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 3,
+            "consumer": {
+              "Expr": {
+                "expr": 18,
+                "input_index": 0
+              }
+            },
+            "value": 12
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 3,
+            "consumer": {
+              "Expr": {
+                "expr": 18,
+                "input_index": 1
+              }
+            },
+            "value": 14
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 6,
+            "consumer": {
+              "Expr": {
+                "expr": 23,
+                "input_index": 1
+              }
+            },
+            "value": 22
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 6,
+            "consumer": {
+              "Expr": {
+                "expr": 26,
+                "input_index": 0
+              }
+            },
+            "value": 24
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 7,
+            "consumer": {
+              "Expr": {
+                "expr": 28,
+                "input_index": 0
+              }
+            },
+            "value": 22
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 7,
+            "consumer": {
+              "Expr": {
+                "expr": 28,
+                "input_index": 1
+              }
+            },
+            "value": 24
+          },
+          0.0
+        ]
+      ],
+      "predicted_traffic": 41,
+      "floor": 41
+    },
+    {
+      "units": [
+        {
+          "group": "GatesExternal",
+          "relation_index": 0,
+          "atom_roots": [
+            0,
+            1
+          ],
+          "cache_roots": []
+        },
+        {
+          "group": "GatesExternal",
+          "relation_index": 1,
+          "atom_roots": [
+            2,
+            3
+          ],
+          "cache_roots": []
+        },
+        {
+          "group": "GatesExternal",
+          "relation_index": 2,
+          "atom_roots": [
+            4
+          ],
+          "cache_roots": []
+        },
+        {
+          "group": "GatesExternal",
+          "relation_index": 3,
+          "atom_roots": [
+            5
+          ],
+          "cache_roots": []
+        },
+        {
+          "group": "GatesExternal",
+          "relation_index": 4,
+          "atom_roots": [
+            6
+          ],
+          "cache_roots": []
+        },
+        {
+          "group": "GatesExternal",
+          "relation_index": 5,
+          "atom_roots": [
+            7
+          ],
+          "cache_roots": []
+        }
+      ],
+      "sites": [
+        [
+          {
+            "root": 0,
+            "consumer": {
+              "Expr": {
+                "expr": 2,
+                "input_index": 1
+              }
+            },
+            "value": 1
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 0,
+            "consumer": {
+              "Expr": {
+                "expr": 5,
+                "input_index": 0
+              }
+            },
+            "value": 3
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 1,
+            "consumer": {
+              "Expr": {
+                "expr": 7,
+                "input_index": 0
+              }
+            },
+            "value": 1
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 1,
+            "consumer": {
+              "Expr": {
+                "expr": 7,
+                "input_index": 1
+              }
+            },
+            "value": 3
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 2,
+            "consumer": {
+              "Expr": {
+                "expr": 10,
+                "input_index": 1
+              }
+            },
+            "value": 9
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 2,
+            "consumer": {
+              "Expr": {
+                "expr": 13,
+                "input_index": 0
+              }
+            },
+            "value": 11
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 3,
+            "consumer": {
+              "Expr": {
+                "expr": 15,
+                "input_index": 0
+              }
+            },
+            "value": 9
+          },
+          0.0
+        ],
+        [
+          {
+            "root": 3,
+            "consumer": {
+              "Expr": {
+                "expr": 15,
+                "input_index": 1
+              }
+            },
+            "value": 11
+          },
+          0.0
+        ]
+      ],
+      "predicted_traffic": 32,
+      "floor": 32
+    }
+  ]
+}

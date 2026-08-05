@@ -688,6 +688,10 @@ where
     let base = BasicUnrolledFixture {
         context,
         circuit_type: fixture_circuit_type,
+        gkr_programs: Arc::new(
+            GkrPrograms::compile(fixture_circuit_type, &compiled_circuit)
+                .expect("fixture must compile its committed GKR programs"),
+        ),
         compiled_circuit,
         external_challenges,
         prover_config,
@@ -791,6 +795,10 @@ where
     BasicUnrolledFixture {
         context,
         circuit_type: fixture_circuit_type,
+        gkr_programs: Arc::new(
+            GkrPrograms::compile(fixture_circuit_type, &compiled_circuit)
+                .expect("fixture must compile its committed GKR programs"),
+        ),
         compiled_circuit,
         external_challenges,
         prover_config,
@@ -1075,6 +1083,10 @@ fn prepare_unified_fixture(
         BasicUnrolledFixture {
             context,
             circuit_type: fixture_circuit_type,
+            gkr_programs: Arc::new(
+                GkrPrograms::compile(fixture_circuit_type, &compiled_circuit)
+                    .expect("fixture must compile its committed GKR programs"),
+            ),
             compiled_circuit,
             external_challenges,
             prover_config,

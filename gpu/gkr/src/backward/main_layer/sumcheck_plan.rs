@@ -465,31 +465,80 @@ where
         challenge_out: *mut E,
         context: &ProverContext,
     ) -> CudaResult<()> {
-        let prev_e4 = prev_claim_coord as *const E4;
-        let claim_e4 = claim as *mut E4;
-        let eq_pref_e4 = eq_prefactor as *mut E4;
-        let coeffs_e4 = coeffs_out as *mut E4;
-        let chal_e4 = challenge_out as *mut E4;
         let eq_low_ptr_mut = self.round_scratch.eq_low_group.as_mut_ptr() as *mut E4;
-        let partials_ptr = self.round_scratch.partials.as_mut_ptr() as *mut E4;
-        let num_partials = super::super::kernels::warp_partial_count(acc_size);
         let (slot_base, slot_size_before_fold) =
             super::super::kernels::resolve_active_eq_slot(&self.eq_sizes, eq_low_ptr_mut);
-        super::super::kernels::launch_backward_dual_finalize_from_partials(
-            partials_ptr as *const E4,
-            num_partials,
-            prev_e4,
+        self.dispatch_warp_partial_tail_inner(
+            acc_size,
+            (slot_base, slot_size_before_fold),
+            prev_claim_coord,
             seed,
-            claim_e4,
-            eq_pref_e4,
-            coeffs_e4,
-            chal_e4,
-            slot_base,
-            slot_size_before_fold,
+            claim,
+            eq_prefactor,
+            coeffs_out,
+            challenge_out,
             context,
         )?;
         super::super::kernels::record_active_eq_slot_fold(&mut self.eq_sizes);
         Ok(())
+    }
+
+    /// Final-round partial tail. The factored eq has been fully consumed, so
+    /// this runs the same reducer/update kernel without folding another slot.
+    #[allow(clippy::too_many_arguments)]
+    fn dispatch_warp_partial_tail_final_round(
+        &mut self,
+        prev_claim_coord: *const E,
+        seed: *mut u32,
+        claim: *mut E,
+        eq_prefactor: *mut E,
+        coeffs_out: *mut E,
+        challenge_out: *mut E,
+        context: &ProverContext,
+    ) -> CudaResult<()> {
+        let eq_low_ptr = self.round_scratch.eq_low_group.as_mut_ptr() as *mut E4;
+        self.dispatch_warp_partial_tail_inner(
+            1,
+            (eq_low_ptr, 0),
+            prev_claim_coord,
+            seed,
+            claim,
+            eq_prefactor,
+            coeffs_out,
+            challenge_out,
+            context,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn dispatch_warp_partial_tail_inner(
+        &mut self,
+        acc_size: usize,
+        eq_slot: (*mut E4, u32),
+        prev_claim_coord: *const E,
+        seed: *mut u32,
+        claim: *mut E,
+        eq_prefactor: *mut E,
+        coeffs_out: *mut E,
+        challenge_out: *mut E,
+        context: &ProverContext,
+    ) -> CudaResult<()> {
+        let partials_ptr = self.round_scratch.partials.as_mut_ptr() as *mut E4;
+        let num_partials = super::super::kernels::warp_partial_count(acc_size);
+        let (slot_base, slot_size_before_fold) = eq_slot;
+        super::super::kernels::launch_backward_dual_finalize_from_partials(
+            partials_ptr as *const E4,
+            num_partials,
+            prev_claim_coord as *const E4,
+            seed,
+            claim as *mut E4,
+            eq_prefactor as *mut E4,
+            coeffs_out as *mut E4,
+            challenge_out as *mut E4,
+            slot_base,
+            slot_size_before_fold,
+            context,
+        )
     }
 
     /// Main-layer variant of the device-only sumcheck accumulator reduction.
@@ -675,6 +724,13 @@ where
         folding: &DeviceAllocation<E>,
         per_poly_len: usize,
     ) -> BTreeMap<GKRAddress, *const E> {
+        if self.bwd_vm_ext.is_some() {
+            return self
+                .folding_evaluation_sources
+                .iter()
+                .map(|(address, _)| (*address, std::ptr::null()))
+                .collect();
+        }
         self.folding_evaluation_sources
             .iter()
             .map(|(address, source_idx)| {
@@ -841,12 +897,16 @@ where
             )?;
         }
 
-        let flat_coeff_callbacks = self.schedule_flat_eval_recipes(
-            &device_claim_point_in,
-            device_lookup_and_constraint_ptr,
-            device_external_challenges_ptr,
-            context,
-        )?;
+        let flat_coeff_callbacks = if self.bwd_vm_round0.is_some() {
+            Callbacks::new()
+        } else {
+            self.schedule_flat_eval_recipes(
+                &device_claim_point_in,
+                device_lookup_and_constraint_ptr,
+                device_external_challenges_ptr,
+                context,
+            )?
+        };
         // Continuation kernel reads the same 4 challenges (batch-base, lookup
         // mul/add, external) via per-element pointers as the round-0 kernel above.
         // SAFETY: the validated input length is `folding_steps + 1`, so the
@@ -911,6 +971,8 @@ where
 
         for step in 0..last_step {
             let acc_size = 1usize << (self.folding_steps - step - 1);
+            let vm_owns_step = (step == 0 && self.bwd_vm_round0.is_some())
+                || (step >= 1 && self.bwd_vm_ext.is_some());
             // Warp-partial round kernel + fused tail when the block can
             // fill a full warp's worth of gids; otherwise reduce-fold-update
             // fallback. The warp shfl_xor in the warp-partial kernel uses a
@@ -923,13 +985,15 @@ where
             // back to the unfused round-0 path (`launch_round0_kernels`), which
             // supports the device-buffer coeff loader. Fast-path circuits keep
             // the warp-partial path (their round-0 fits `__constant__`).
-            let use_warp_partial = (self.flat_use_constant || step != 0) && acc_size >= 32;
+            let incumbent_warp_partial =
+                !vm_owns_step && (self.flat_use_constant || step != 0) && acc_size >= 32;
+            let use_partials_tail = incumbent_warp_partial || vm_owns_step;
             let destination_len = 2 * acc_size;
             let mut round1_base_destination: Option<DeviceAllocation<E>> = None;
             let mut round1_ext_destination: Option<DeviceAllocation<E>> = None;
             let mut continuation_destination: Option<DeviceAllocation<E>> = None;
 
-            if step == 1 {
+            if !vm_owns_step && step == 1 {
                 if round1_base_count > 0 {
                     round1_base_destination = Some(context.alloc(
                         round1_base_count * destination_len,
@@ -969,7 +1033,7 @@ where
                 if let Some((devptr, _)) = self.flat_round1_terms_device.as_mut() {
                     **devptr = desc.to_devptr();
                 }
-            } else if step >= 2 {
+            } else if !vm_owns_step && step >= 2 {
                 if folding_poly_count > 0 {
                     continuation_destination = Some(context.alloc(
                         folding_poly_count * destination_len,
@@ -1035,9 +1099,9 @@ where
             }
 
             // Round-kernel launch.
-            if use_warp_partial {
+            if incumbent_warp_partial {
                 self.launch_round_kernel_warp_partial(step, acc_size, context)?;
-                if step == 0 {
+                if step == 0 && self.bwd_vm_ext.is_none() {
                     self.schedule_flat_continuation_eval_recipes(
                         cont_batch_base_ptr,
                         cont_lookup_mul_ptr,
@@ -1047,16 +1111,47 @@ where
                     )?;
                 }
             } else if step == 0 {
-                self.launch_round0_kernels(acc_size, context)?;
+                if let Some(vm) = self.bwd_vm_round0.as_mut() {
+                    super::super::vm::production_bind::schedule_bwd_vm_round0(
+                        vm,
+                        device_external_challenges_ptr as *const E4,
+                        cont_lookup_mul_ptr,
+                        cont_lookup_add_ptr,
+                        cont_batch_base_ptr,
+                        acc_size as u32,
+                        context,
+                    )?;
+                } else {
+                    self.launch_round0_kernels(acc_size, context)?;
+                }
                 // Round-0 kernel reads are now ordered before this point on
                 // `exec_stream`; the continuation eval_recipes write can
                 // safely target the shared `ab_gkr_flat_coefficients`
                 // __constant__ symbol without clobbering round-0's input.
-                self.schedule_flat_continuation_eval_recipes(
-                    cont_batch_base_ptr,
-                    cont_lookup_mul_ptr,
-                    cont_lookup_add_ptr,
-                    device_external_challenges_ptr as *const E4,
+                if self.bwd_vm_ext.is_none() {
+                    self.schedule_flat_continuation_eval_recipes(
+                        cont_batch_base_ptr,
+                        cont_lookup_mul_ptr,
+                        cont_lookup_add_ptr,
+                        device_external_challenges_ptr as *const E4,
+                        context,
+                    )?;
+                }
+            } else if let Some(ext) = self.bwd_vm_ext.as_mut() {
+                if step == 1 {
+                    super::super::vm::production_bind::schedule_bwd_vm_ext_bank_fill(
+                        ext,
+                        device_external_challenges_ptr as *const E4,
+                        cont_lookup_mul_ptr,
+                        cont_lookup_add_ptr,
+                        cont_batch_base_ptr,
+                        context,
+                    )?;
+                }
+                super::super::vm::production_bind::schedule_bwd_vm_ext_round(
+                    ext,
+                    step as u32,
+                    acc_size as u32,
                     context,
                 )?;
             } else {
@@ -1069,10 +1164,10 @@ where
                 }
             }
 
-            if step == 1 {
+            if !vm_owns_step && step == 1 {
                 drop(round1_base_destination.take());
                 round1_ext_current = round1_ext_destination;
-            } else if step >= 2 {
+            } else if !vm_owns_step && step >= 2 {
                 folding_current = continuation_destination;
                 folding_current_len = destination_len;
                 if step == 2 {
@@ -1100,7 +1195,7 @@ where
             // this iteration.
             let challenge_slot = unsafe { device_claim_point_out.slice_mut(step, 1) };
 
-            if use_warp_partial {
+            if use_partials_tail {
                 self.dispatch_warp_partial_tail(
                     acc_size,
                     prev_coord_slice.as_ptr(),
@@ -1135,46 +1230,58 @@ where
         // (skip `fold_eq_values_for_next_round`). The `[E;2]` last-round line is
         // still read from the round storage by
         // `final_evaluation_sources_for_last_step(last_step)` below.
-        let final_destination_len = 2usize;
-        let final_destination: Option<DeviceAllocation<E>> = if folding_poly_count > 0 {
-            Some(context.alloc(
-                folding_poly_count * final_destination_len,
-                AllocationPlacement::Top,
-            )?)
+        if let Some(ext) = self.bwd_vm_ext.as_mut() {
+            super::super::vm::production_bind::schedule_bwd_vm_ext_round(
+                ext,
+                last_step as u32,
+                1,
+                context,
+            )?;
         } else {
-            None
-        };
-        let destination_ptr = final_destination
-            .as_ref()
-            .map(|arena| arena.as_ptr() as *const u8)
-            .unwrap_or(self.round_scratch.accumulator.as_ptr() as *const u8);
-        let current_ptr = folding_current
-            .as_ref()
-            .map(|arena| arena.as_ptr() as *const u8)
-            .unwrap_or(destination_ptr);
-        let (_, final_desc) = self
-            .flat_continuation_unified_descs_compact
-            .iter_mut()
-            .find(|(round, _)| *round == last_step)
-            .expect("final flat continuation compact desc must be built");
-        compact::rebind_flat_continuation_descriptor::<E>(
-            final_desc,
-            compact::FoldingArenaBinding::new(current_ptr, folding_current_len.trailing_zeros()),
-            compact::FoldingArenaBinding::new(
-                destination_ptr,
-                final_destination_len.trailing_zeros(),
-            ),
-        );
-        if let Some((_, devptr, _)) = self
-            .flat_continuation_terms_device
-            .iter_mut()
-            .find(|(round, _, _)| *round == last_step)
-        {
-            **devptr = final_desc.to_devptr();
+            let final_destination_len = 2usize;
+            let final_destination: Option<DeviceAllocation<E>> = if folding_poly_count > 0 {
+                Some(context.alloc(
+                    folding_poly_count * final_destination_len,
+                    AllocationPlacement::Top,
+                )?)
+            } else {
+                None
+            };
+            let destination_ptr = final_destination
+                .as_ref()
+                .map(|arena| arena.as_ptr() as *const u8)
+                .unwrap_or(self.round_scratch.accumulator.as_ptr() as *const u8);
+            let current_ptr = folding_current
+                .as_ref()
+                .map(|arena| arena.as_ptr() as *const u8)
+                .unwrap_or(destination_ptr);
+            let (_, final_desc) = self
+                .flat_continuation_unified_descs_compact
+                .iter_mut()
+                .find(|(round, _)| *round == last_step)
+                .expect("final flat continuation compact desc must be built");
+            compact::rebind_flat_continuation_descriptor::<E>(
+                final_desc,
+                compact::FoldingArenaBinding::new(
+                    current_ptr,
+                    folding_current_len.trailing_zeros(),
+                ),
+                compact::FoldingArenaBinding::new(
+                    destination_ptr,
+                    final_destination_len.trailing_zeros(),
+                ),
+            );
+            if let Some((_, devptr, _)) = self
+                .flat_continuation_terms_device
+                .iter_mut()
+                .find(|(round, _, _)| *round == last_step)
+            {
+                **devptr = final_desc.to_devptr();
+            }
+            self.launch_round3_kernels_from_symbol(last_step, 1, false, context)?;
+            folding_current = final_destination;
+            folding_current_len = final_destination_len;
         }
-        self.launch_round3_kernels_from_symbol(last_step, 1, false, context)?;
-        folding_current = final_destination;
-        folding_current_len = final_destination_len;
         {
             // SAFETY: `last_step == folding_steps - 1`, so this input claim-point
             // coordinate (`z_{last_step}`) exists.
@@ -1189,17 +1296,29 @@ where
             let challenge_slot = unsafe { device_claim_point_out.slice_mut(last_step, 1) };
             // No `fold_eq_values_for_next_round`: there is no next round and the
             // factored eq is the identity at `acc_size == 1`.
-            self.run_round_coefficients_reduction_device(last_step, 1, context)?;
-            E::launch_backward_sumcheck_round_update(
-                &self.round_scratch.reduction_output,
-                prev_coord_slice,
-                &mut device_seed,
-                &mut device_claim,
-                &mut device_eq_prefactor,
-                coeffs_round_slice,
-                challenge_slot,
-                stream,
-            )?;
+            if self.bwd_vm_ext.is_some() {
+                self.dispatch_warp_partial_tail_final_round(
+                    prev_coord_slice.as_ptr(),
+                    device_seed.as_mut_ptr(),
+                    device_claim.as_mut_ptr(),
+                    device_eq_prefactor.as_mut_ptr(),
+                    coeffs_round_slice.as_mut_ptr(),
+                    challenge_slot.as_mut_ptr(),
+                    context,
+                )?;
+            } else {
+                self.run_round_coefficients_reduction_device(last_step, 1, context)?;
+                E::launch_backward_sumcheck_round_update(
+                    &self.round_scratch.reduction_output,
+                    prev_coord_slice,
+                    &mut device_seed,
+                    &mut device_claim,
+                    &mut device_eq_prefactor,
+                    coeffs_round_slice,
+                    challenge_slot,
+                    stream,
+                )?;
+            }
         }
 
         // Coeffs already landed in the slab via the per-round kernels; no
@@ -1212,8 +1331,13 @@ where
         // next-layer claim and the degree-1 `final_step_evaluations` (written to
         // the slab, committed, and sent in the proof). We then squeeze the 1
         // remaining challenge `[next_batching_challenge]`.
-        let transcript_input_sources = if self.folding_evaluation_sources.is_empty() {
+        let mut transcript_input_sources = if self.folding_evaluation_sources.is_empty() {
             BTreeMap::new()
+        } else if self.bwd_vm_ext.is_some() {
+            self.folding_evaluation_sources
+                .iter()
+                .map(|(address, _)| (*address, std::ptr::null()))
+                .collect()
         } else {
             self.final_evaluation_sources_for_last_step(
                 folding_current
@@ -1222,6 +1346,9 @@ where
                 folding_current_len,
             )
         };
+        if let Some(ext) = self.bwd_vm_ext.as_ref() {
+            ext.repoint_final_evaluations(&mut transcript_input_sources);
+        }
         let num_addresses = transcript_input_sources.len();
         let last_evals_len = num_addresses * 2;
         let transcript_input_addresses: Vec<GKRAddress> =

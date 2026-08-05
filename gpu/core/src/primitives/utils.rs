@@ -4,7 +4,8 @@ use std::os::raw::c_void;
 
 use era_cudart::execution::Dim3;
 use era_cudart::result::{CudaResult, CudaResultWrap};
-use era_cudart_sys::{cudaMemcpyToSymbol, CudaMemoryCopyKind};
+use era_cudart::stream::CudaStream;
+use era_cudart_sys::{cudaMemcpyToSymbol, cudaMemcpyToSymbolAsync, CudaMemoryCopyKind};
 
 pub const LOG_WARP_SIZE: u32 = 5;
 pub const WARP_SIZE: u32 = 1 << LOG_WARP_SIZE;
@@ -64,6 +65,27 @@ pub unsafe fn memcpy_to_symbol<T>(symbol: &T, src: &T) -> CudaResult<()> {
         size_of::<T>(),
         0,
         CudaMemoryCopyKind::HostToDevice,
+    )
+    .wrap()
+}
+
+/// Enqueue a host-to-constant-symbol copy on `stream`.
+///
+/// CUDA stages pageable host sources before returning, so a stack-local `src`
+/// may be dropped once this call returns.
+#[allow(clippy::missing_safety_doc)]
+pub unsafe fn memcpy_to_symbol_async<T>(
+    symbol: &T,
+    src: &T,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    cudaMemcpyToSymbolAsync(
+        symbol as *const T as *const c_void,
+        src as *const T as *const c_void,
+        size_of::<T>(),
+        0,
+        CudaMemoryCopyKind::HostToDevice,
+        stream.into(),
     )
     .wrap()
 }

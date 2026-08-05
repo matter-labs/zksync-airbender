@@ -290,6 +290,8 @@ pub struct GpuGKRMainLayerSumcheckLayerPlan<E> {
         FlatTermDeviceBuffers,
     )>,
     pub(crate) round_scratch: GpuGKRMainLayerRoundScratch<E>,
+    pub(crate) bwd_vm_round0: Option<super::super::vm::production_bind::BwdVmRound0Launch>,
+    pub(crate) bwd_vm_ext: Option<super::super::vm::production_bind::BwdVmExtLaunch>,
     /// Keepalive slot for scheduling callbacks unrelated to inline recipe descriptors.
     pub(crate) recipe_upload_callbacks: Callbacks<'static>,
     /// Strict 3-slot eq-sizes descriptor. Initialised at layer start from
@@ -316,6 +318,7 @@ pub struct GpuGKRMainLayerBackwardState<E: FieldExtension<BF> + Field> {
     pub(crate) lookup_multiplicative_challenge: E,
     pub(crate) lookup_additive_challenge: E,
     pub(crate) is_delegation: bool,
+    pub(crate) programs: Option<std::sync::Arc<crate::GkrPrograms>>,
 }
 
 pub(crate) struct ScheduledMainLayerExecutionState<E: FieldExtension<BF> + Field> {

@@ -360,6 +360,10 @@ pub(super) fn finish_proof_fixture(
         BasicUnrolledFixture {
             context,
             circuit_type: fixture_circuit_type,
+            gkr_programs: Arc::new(
+                GkrPrograms::compile(fixture_circuit_type, &compiled_circuit)
+                    .expect("fixture must compile its committed GKR programs"),
+            ),
             compiled_circuit,
             external_challenges,
             prover_config,
@@ -764,6 +768,10 @@ pub(super) fn finish_proof_fixture_memory(
         BasicUnrolledFixture {
             context,
             circuit_type: fixture_circuit_type,
+            gkr_programs: Arc::new(
+                GkrPrograms::compile(fixture_circuit_type, &compiled_circuit)
+                    .expect("fixture must compile its committed GKR programs"),
+            ),
             compiled_circuit,
             external_challenges,
             prover_config,
@@ -1034,6 +1042,7 @@ pub(super) fn build_basic_unrolled_async_backward_fixture_from_base(
     eprintln!("async-backward-from-base: forward setup ready");
 
     let gpu_forward_output = schedule_forward_pass(
+        base.circuit_type,
         setup_ref,
         &mut stage1_output,
         &mut gpu_forward_setup,

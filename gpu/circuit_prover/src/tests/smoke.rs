@@ -442,6 +442,7 @@ fn forward_to_backward_handoff_releases_forward_scratch() {
     context.get_exec_stream().synchronize().unwrap();
 
     let gpu_forward_output = schedule_forward_pass(
+        base.circuit_type,
         setup_ref,
         &mut stage1_output,
         &mut gpu_forward_setup,

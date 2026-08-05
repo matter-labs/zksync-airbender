@@ -17,7 +17,7 @@ use gpu_gkr::{
     forward::schedule_forward_pass as schedule_forward_pass_impl,
     setup::{GpuGKRSetupHost, GpuGKRSetupTransfer},
     stage1::GpuGKRStage1Output,
-    GpuGKRStorage,
+    GkrPrograms, GpuGKRStorage,
 };
 use gpu_ops::simple::{set_by_ref, SetByRef};
 use gpu_prover_context::ProverContext;
@@ -437,6 +437,7 @@ fn generate_stage1_output_for_test(
 }
 
 fn schedule_forward_pass<E>(
+    circuit_type: CircuitType,
     setup_transfer: &GpuGKRSetupTransfer<'_>,
     stage1: &mut GpuGKRStage1Output,
     forward_setup: &mut gpu_gkr::setup::GpuGKRForwardSetup<E>,
@@ -467,6 +468,8 @@ where
     // at all), so the canonical top bits are the actual ones.
     let inits_and_teardowns_top_bits =
         crate::proof::canonical_inits_and_teardowns_top_bits(compiled_circuit);
+    let programs = GkrPrograms::compile(circuit_type, compiled_circuit)
+        .expect("test circuit must compile its committed GKR programs");
     schedule_forward_pass_impl(
         Some(&setup_transfer.trace_holder),
         None,
@@ -477,6 +480,7 @@ where
         &inits_and_teardowns_top_bits,
         final_trace_size_log_2,
         None,
+        &programs,
         context,
     )
 }
@@ -484,6 +488,7 @@ where
 pub(crate) struct BasicUnrolledFixture {
     pub(crate) context: ProverContext,
     pub(crate) circuit_type: CircuitType,
+    pub(crate) gkr_programs: Arc<GkrPrograms>,
     pub(crate) compiled_circuit: GKRCircuitArtifact<BF>,
     pub(crate) external_challenges: GKRExternalChallenges<BF, E4>,
     pub(crate) prover_config: ProverConfig,
@@ -610,6 +615,7 @@ impl BasicUnrolledFixture {
         prove::<Global>(
             self.circuit_type,
             self.compiled_circuit.clone(),
+            Arc::clone(&self.gkr_programs),
             &self.prover_config,
             self.final_trace_size_log_2,
             transfers,
@@ -635,6 +641,7 @@ impl BasicUnrolledFixture {
         let mut proof_job = prove::<Global>(
             self.circuit_type,
             self.compiled_circuit.clone(),
+            Arc::clone(&self.gkr_programs),
             &self.prover_config,
             self.final_trace_size_log_2,
             transfers,

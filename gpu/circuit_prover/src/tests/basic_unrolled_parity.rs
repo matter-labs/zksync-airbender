@@ -451,6 +451,9 @@ fn run_basic_unrolled_workflow_input_parity_test() {
 
     let (gpu_forward_output, gpu_transcript_handoff) = {
         let gpu_forward_output = schedule_forward_pass(
+            CircuitType::Unrolled(UnrolledCircuitType::NonMemory(
+                UnrolledNonMemoryCircuitType::AddSubLuiAuipcMop,
+            )),
             &gpu_setup_transfer,
             &mut stage1_output,
             &mut gpu_forward_setup,
