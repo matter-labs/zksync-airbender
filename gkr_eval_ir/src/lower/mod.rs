@@ -65,8 +65,8 @@ use cs::gkr_compiler::{
 use super::{
     simplify::SIMPLIFY_MODULUS, simplify_circuit, ArenaBuilder, BatchingOrder, ClaimInfo,
     DagCircuit, DagGlobals, DagLayer, ExprId, FieldKind, FillSource, RangeWidth, ReadPlace,
-    ResolutionStrategy, Root, RootGroup, RootId, RootOrigin, RootSlot, SinkInfo, SinkKind,
-    SourceKind, VirtualSetupKind,
+    ResolutionStrategy, Root, RootExecution, RootGroup, RootId, RootOrigin, RootSlot, SinkInfo,
+    SinkKind, SourceKind, VirtualSetupKind,
 };
 
 /// Which arena/pass pipeline `lower_layer` should use.
@@ -911,6 +911,44 @@ fn lower_layer<F: PrimeField + PartialEq>(
     })
 }
 
+fn root_execution<F: PrimeField>(
+    artifact: &GKRCircuitArtifact<F>,
+    layer_index: usize,
+    layer: &DagLayer,
+) -> Result<BTreeMap<RootId, RootExecution>, String> {
+    let artifact_layer = &artifact.layers[layer_index];
+    let mut execution = BTreeMap::new();
+    for (index, root) in layer.roots.iter().enumerate() {
+        let Some(claim) = &root.claim else { continue };
+        let gates = match claim.origin.group {
+            RootGroup::Gates => &artifact_layer.gates,
+            RootGroup::GatesExternal => &artifact_layer.gates_with_external_connections,
+        };
+        let relation = &gates[claim.origin.relation_index].enforced_relation;
+        let semantics = match relation {
+            NoFieldGKRRelation::MaxQuadratic { output, .. }
+                if artifact.scratch_space_mapping.contains_key(output) =>
+            {
+                Some(RootExecution::Preinitialized)
+            }
+            NoFieldGKRRelation::CopyInBaseField { input, .. }
+            | NoFieldGKRRelation::CopyInExtensionField { input, .. } => match map_address(*input) {
+                SourceKind::Read { place } => Some(RootExecution::Alias { source: place }),
+                other => {
+                    return Err(format!(
+                        "dag_ir: copy root {index} has no readable source: {other:?}"
+                    ));
+                }
+            },
+            _ => None,
+        };
+        if let Some(semantics) = semantics {
+            execution.insert(RootId(index as u32), semantics);
+        }
+    }
+    Ok(execution)
+}
+
 /// Lower a compiled `GKRCircuitArtifact` into a `DagCircuit`.
 ///
 /// Returns `Err(...)` (never panics) for any relation family not yet lowered, so
@@ -934,12 +972,18 @@ pub fn lower_dag<F: PrimeField + PartialEq>(
     let layers = (0..artifact.layers.len())
         .map(|i| lower_layer(artifact, i, LowerMode::Simplified))
         .collect::<Result<Vec<_>, _>>()?;
+    let root_execution = layers
+        .iter()
+        .enumerate()
+        .map(|(index, layer)| root_execution(artifact, index, layer))
+        .collect::<Result<Vec<_>, _>>()?;
 
     let dag = DagCircuit {
         layers,
         globals: DagGlobals {
             trace_len: artifact.trace_len,
             scratch: BTreeMap::new(),
+            root_execution,
         },
     };
     Ok(simplify_circuit(dag))
@@ -964,12 +1008,18 @@ pub fn lower_dag_legacy<F: PrimeField + PartialEq>(
     let layers = (0..artifact.layers.len())
         .map(|i| lower_layer(artifact, i, LowerMode::Legacy))
         .collect::<Result<Vec<_>, _>>()?;
+    let root_execution = layers
+        .iter()
+        .enumerate()
+        .map(|(index, layer)| root_execution(artifact, index, layer))
+        .collect::<Result<Vec<_>, _>>()?;
 
     Ok(DagCircuit {
         layers,
         globals: DagGlobals {
             trace_len: artifact.trace_len,
             scratch: BTreeMap::new(),
+            root_execution,
         },
     })
 }

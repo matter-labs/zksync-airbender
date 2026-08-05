@@ -216,6 +216,15 @@ pub struct DagGlobals {
     pub trace_len: usize,
     /// Scratch-space size overrides keyed by slot index.
     pub scratch: BTreeMap<usize, usize>,
+    /// Sparse, GPU-independent execution semantics for roots whose materialization
+    /// is not represented by evaluating `Root::expr` and writing its sink.
+    pub root_execution: Vec<BTreeMap<RootId, RootExecution>>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub enum RootExecution {
+    Alias { source: ReadPlace },
+    Preinitialized,
 }
 
 // ── ResolutionStrategy (M2 forward-peek hint) ─────────────────────────────────

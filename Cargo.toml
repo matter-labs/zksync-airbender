@@ -40,6 +40,7 @@ members = [
     "gpu/execution_prover",
     "gpu/program_prover",
     "gpu/gkr_model",
+    "gpu/gkr_compiler",
     "execution_tests",
 
     "reduced_keccak",
@@ -109,6 +110,7 @@ default-members = [
     "gkr_eval_isa",
     # The only pure-CPU gpu crates; the CUDA ones are omitted so the default build needs no CUDA.
     "gpu/gkr_model",
+    "gpu/gkr_compiler",
     "circuit_defs/unrolled_circuits/add_sub_lui_auipc_mop",
     "circuit_defs/unrolled_circuits/jump_branch_slt",
     "circuit_defs/unrolled_circuits/mul_div_unsigned",
@@ -187,6 +189,7 @@ gpu_program_prover = { path = "./gpu/program_prover", default-features = false }
 execution_prover = { path = "./gpu/execution_prover", package = "gpu_execution_prover", default-features = false }
 prover_examples = { path = "./circuit_defs/prover_examples" }
 gpu_gkr_model = { path = "./gpu/gkr_model" }
+gpu_gkr_compiler = { path = "./gpu/gkr_compiler" }
 gkr_eval_ir = { path = "./gkr_eval_ir" }
 
 serde = { version = "1", default-features = false, features = ["derive", "alloc"] }
