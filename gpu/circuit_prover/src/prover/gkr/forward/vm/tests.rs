@@ -12,16 +12,16 @@ use std::hash::{Hash, Hasher};
 use cs::definitions::GKRAddress;
 use field::{FieldExtension, PrimeField};
 use gkr_eval_ir::{lower_dag, validate, ChallengeRef, RangeWidth};
-use gkr_eval_isa::validate_circuit_schedule;
+use gpu_gkr_compiler::validate_forward_artifact;
 
-use gkr_eval_isa::fwd::binding::{
+use gpu_gkr_compiler::forward::binding::{
     bind_final_sources, read_place_to_backing, BackingKey, SourceMarkerMode,
 };
-use gkr_eval_isa::fwd::compile::{compile_circuit, load_committed_schedule, CompiledCircuit};
-use gkr_eval_isa::fwd::context::{CompiledLayer, DagForwardContext};
-use gkr_eval_isa::fwd::encode::decode;
-use gkr_eval_isa::fwd::isa::{DstLine, Instr, LdcSub, MovDir, OperandField, OperandLine, Program};
-use gkr_eval_isa::fwd::source::{virtual_setup_kind_code, SpecialStrategy};
+use gpu_gkr_compiler::forward::compile::{compile_circuit, load_committed_schedule, CompiledCircuit};
+use gpu_gkr_compiler::forward::context::{CompiledLayer, DagForwardContext};
+use gpu_gkr_compiler::forward::encode::decode;
+use gpu_gkr_compiler::forward::isa::{DstLine, Instr, LdcSub, MovDir, OperandField, OperandLine, Program};
+use gpu_gkr_compiler::forward::source::{virtual_setup_kind_code, SpecialStrategy};
 
 use super::desc::{
     unpack_desc, ARENA_GENERIC_FAMILY, ARENA_RANGE_CHECK_16, ARENA_TIMESTAMP, ARG_DERIVED_E4_CAP,
@@ -49,8 +49,8 @@ fn load_compiled_circuit(stem: &str) -> CompiledCircuit {
         .join("../../cs/compiled_circuits")
         .join(format!("{stem}_schedule_b16_gkr.json"));
     let sched = load_committed_schedule(&schedule_path).unwrap();
-    validate_circuit_schedule(&dag, &sched).unwrap();
-    compile_circuit(&dag, &sched, &artifact).unwrap()
+    validate_forward_artifact(&dag, &sched).unwrap();
+    compile_circuit(&dag, &sched).unwrap()
 }
 
 // ── mock storage model ────────────────────────────────────────────────────────
@@ -440,7 +440,7 @@ fn const_bank_overflow_is_a_hard_error() {
 
 #[test]
 fn desc_overflow_is_a_hard_error() {
-    use gkr_eval_isa::fwd::source::SpecialDescriptor;
+    use gpu_gkr_compiler::forward::source::SpecialDescriptor;
     let mut ctx = DagForwardContext::default();
     for i in 0..(DESC_CAP + 1) {
         ctx.specials.push(SpecialDescriptor {
@@ -520,7 +520,7 @@ fn split_matrix_slot_produces_per_matrix_wire_slots() {
     let program = Program {
         instrs: vec![Instr::Add {
             field: OperandField::Base,
-            sign: gkr_eval_isa::fwd::isa::Sign::Plus,
+            sign: gpu_gkr_compiler::forward::isa::Sign::Plus,
             promote: false,
             operands: vec![
                 OperandLine::LogicalGlobal { slot: 0, col: 0 },
@@ -568,7 +568,7 @@ fn split_matrix_slot_produces_per_matrix_wire_slots() {
         lowered.instrs,
         vec![Instr::Add {
             field: OperandField::Base,
-            sign: gkr_eval_isa::fwd::isa::Sign::Plus,
+            sign: gpu_gkr_compiler::forward::isa::Sign::Plus,
             promote: false,
             operands: vec![
                 OperandLine::Source {
@@ -606,7 +606,7 @@ fn source_window_overflow_is_a_hard_error() {
         Program {
             instrs: vec![Instr::Add {
                 field: OperandField::Base,
-                sign: gkr_eval_isa::fwd::isa::Sign::Plus,
+                sign: gpu_gkr_compiler::forward::isa::Sign::Plus,
                 promote: false,
                 operands: (0..=SOURCE_WINDOW_COUNT as u16)
                     .map(|col| OperandLine::LogicalGlobal { slot: 0, col })
@@ -652,7 +652,7 @@ fn col_remap_collision_is_a_hard_error() {
         Program {
             instrs: vec![Instr::Add {
                 field: OperandField::Base,
-                sign: gkr_eval_isa::fwd::isa::Sign::Plus,
+                sign: gpu_gkr_compiler::forward::isa::Sign::Plus,
                 promote: false,
                 operands: vec![
                     OperandLine::LogicalGlobal { slot: 0, col: 0 },
@@ -753,8 +753,8 @@ fn load_compiled_with_artifact(
         .join("../../cs/compiled_circuits")
         .join(format!("{}_schedule_b16_gkr.json", schedule_stem(name)));
     let sched = load_committed_schedule(&schedule_path).unwrap();
-    validate_circuit_schedule(&dag, &sched).unwrap();
-    (compile_circuit(&dag, &sched, &artifact).unwrap(), artifact)
+    validate_forward_artifact(&dag, &sched).unwrap();
+    (compile_circuit(&dag, &sched).unwrap(), artifact)
 }
 
 #[test]

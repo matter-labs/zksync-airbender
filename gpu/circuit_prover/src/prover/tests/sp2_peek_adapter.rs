@@ -43,9 +43,9 @@ use gkr_eval_ir::{
     DagCircuit, DagLayer, ExprId, Ext, LookupResolver, PermutationSlot, RangeWidth, ReadPlace,
     ReadResolver, Resolvers, VirtualSetupKind, VirtualSetupResolver,
 };
-use gkr_eval_isa::fwd::compile::compile_circuit;
-use gkr_eval_isa::fwd::context::CompiledLayer;
-use gkr_eval_isa::fwd::source::{SpecialDescriptor, SpecialStrategy};
+use gpu_gkr_compiler::compile_forward;
+use gpu_gkr_compiler::forward::context::CompiledLayer;
+use gpu_gkr_compiler::forward::source::{SpecialDescriptor, SpecialStrategy};
 
 // `super::*` already re-exports (via `crate::upstream::*` + the tests/mod.rs `use`
 // block) the VM / replay / preprocessing machinery and the `BF`/`E4`/`GKRStorage`/
@@ -400,7 +400,7 @@ pub(super) struct OracleResolvers<'a> {
     read: ProverReadResolver<'a>,
     chal: ProverChallengeResolver<'a>,
     vs: ProverVirtualSetupResolver<'a>,
-    noop_lookup: gkr_eval_isa::fwd::peek::IdentityLookupResolver,
+    noop_lookup: gpu_gkr_compiler::forward::peek::IdentityLookupResolver,
 }
 
 impl<'a> OracleResolvers<'a> {
@@ -417,7 +417,7 @@ impl<'a> OracleResolvers<'a> {
             vs: ProverVirtualSetupResolver {
                 gkr_storage: &data.gkr_storage,
             },
-            noop_lookup: gkr_eval_isa::fwd::peek::IdentityLookupResolver::new(),
+            noop_lookup: gpu_gkr_compiler::forward::peek::IdentityLookupResolver::new(),
         }
     }
 
@@ -687,10 +687,10 @@ fn build_real_data(recipe: CircuitRecipe) -> RealData {
         .join(format!("{}_schedule_b16_gkr.json", recipe.schedule_stem));
     let sched_bytes = std::fs::read(&sched_path)
         .unwrap_or_else(|e| panic!("read committed schedule {sched_path:?}: {e}"));
-    let schedule: gkr_eval_isa::CircuitSchedule = serde_json::from_slice(&sched_bytes)
+    let schedule: gpu_gkr_compiler::ForwardSearchArtifact = serde_json::from_slice(&sched_bytes)
         .unwrap_or_else(|e| panic!("parse committed schedule {sched_path:?}: {e}"));
     let compiled_circuit =
-        compile_circuit(&dag, &schedule, &circuit).expect("compile_circuit (b16 schedule) failed");
+        compile_forward(&dag, &schedule).expect("compile_forward (b16 artifact) failed");
     let compiled_layer0: CompiledLayer =
         compiled_circuit.layers.into_iter().next().expect("layer 0");
 
@@ -847,7 +847,7 @@ fn challenge_fold_oracle_matches_prover_query_fold_on_real_unsigned_mul_div() {
     let data = build_unsigned_mul_div_real_data();
     let (origin_expr, set_index, sample_row) = data.first_aggregate_origin();
     let ors = OracleResolvers::new(&data);
-    let id = gkr_eval_isa::fwd::peek::IdentityLookupResolver::new();
+    let id = gpu_gkr_compiler::forward::peek::IdentityLookupResolver::new();
     let oracle = ors.with_lookup(&id);
     let fold = eval_layer_expr(&data.dag.layers[0], origin_expr, sample_row, &oracle);
     assert!(
@@ -889,7 +889,7 @@ fn challenge_fold_red_shifted_alpha_power_breaks_match_on_real_unsigned_mul_div(
     let vs = ProverVirtualSetupResolver {
         gkr_storage: &data.gkr_storage,
     };
-    let id = gkr_eval_isa::fwd::peek::IdentityLookupResolver::new();
+    let id = gpu_gkr_compiler::forward::peek::IdentityLookupResolver::new();
     let corrupted = Resolvers {
         read: &read,
         lookup: &id,
@@ -931,7 +931,7 @@ fn both_real_data_builds_succeed() {
 // ── Task 6: ProverPeekResolver — SP2 prover-backed peek ─────────────────────
 
 use gkr_eval_ir::FillSource;
-use gkr_eval_isa::fwd::peek::{base_coeff_pure, PeekError, PeekResolver};
+use gpu_gkr_compiler::forward::peek::{base_coeff_pure, PeekError, PeekResolver};
 
 /// Resolves `SpecialDescriptor` peek strategies against PRISTINE snapshots in
 /// [`RealData`] (F1: never re-derives from a drained trace). Implements all four
@@ -1092,7 +1092,7 @@ fn g1_peek_eq_fold_all_rows_add_sub_layer0() {
             let peek = ProverPeekResolver { data: &data };
             let ors = OracleResolvers::new(&data);
             let r = ors.real();
-            gkr_eval_isa::fwd::peek::validate_special_bindings(
+            gpu_gkr_compiler::forward::peek::validate_special_bindings(
                 &data.compiled_layer0,
                 &data.dag.layers[0],
                 chunk,
@@ -1174,7 +1174,7 @@ fn g1_all_four_strategies_covered_layer0() {
                 let peek = ProverPeekResolver { data: &data };
                 let ors = OracleResolvers::new(&data);
                 let r = ors.real();
-                gkr_eval_isa::fwd::peek::validate_special_bindings(
+                gpu_gkr_compiler::forward::peek::validate_special_bindings(
                     &data.compiled_layer0,
                     &data.dag.layers[0],
                     chunk,
@@ -1265,7 +1265,7 @@ fn g2_vm_with_peeks_matches_identity_fold_root_parity_layer0() {
             .map(|&row| {
                 let ors = OracleResolvers::new(&data);
                 let r = ors.real();
-                let vm = gkr_eval_isa::fwd::interp::interpret_layer_row_with_peeks(
+                let vm = gpu_gkr_compiler::forward::interp::interpret_layer_row_with_peeks(
                     &data.compiled_layer0,
                     layer,
                     &r,
@@ -1273,7 +1273,7 @@ fn g2_vm_with_peeks_matches_identity_fold_root_parity_layer0() {
                     row,
                 )
                 .unwrap();
-                let id = gkr_eval_isa::fwd::peek::IdentityLookupResolver::new();
+                let id = gpu_gkr_compiler::forward::peek::IdentityLookupResolver::new();
                 let oracle = ors.with_lookup(&id);
                 let mut c = 0usize;
                 for (rid, vm_val) in &vm.by_root {

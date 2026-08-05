@@ -42,10 +42,10 @@ use era_cudart::memory::memory_copy_async;
 use era_cudart::slice::DeviceSlice;
 
 use cs::definitions::GKRAddress;
-use gkr_eval_isa::fwd::compile::layer_needs_compile;
-use gkr_eval_isa::fwd::context::{CompiledLayer, OutputCell, RootOutput};
-use gkr_eval_isa::fwd::isa::{DstLine, Instr, LdcSub};
-use gkr_eval_isa::fwd::source::SpecialStrategy;
+use gpu_gkr_compiler::forward::compile::layer_needs_compile;
+use gpu_gkr_compiler::forward::context::{CompiledLayer, OutputCell, RootOutput};
+use gpu_gkr_compiler::forward::isa::{DstLine, Instr, LdcSub};
+use gpu_gkr_compiler::forward::source::SpecialStrategy;
 
 use super::desc::{CONST_DERIVED_E4_CAP, FILL_BANK_NONE};
 use super::lower::{

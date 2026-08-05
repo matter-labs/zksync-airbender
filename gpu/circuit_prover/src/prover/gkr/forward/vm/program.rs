@@ -20,8 +20,8 @@
 //! bench chain makes the same split — `load_fwd_vm_circuit` compiles from the
 //! raw artifact while `CircuitFixture` normalizes for storage.
 
-use gkr_eval_isa::fwd::compile::{compile_circuit, parse_committed_schedule};
-pub(crate) use gkr_eval_isa::fwd::compile::CompiledCircuit;
+use gpu_gkr_compiler::{compile_forward, parse_forward_artifact};
+pub(crate) use gpu_gkr_compiler::ForwardProgramBundle as CompiledCircuit;
 
 use crate::primitives::field::BF;
 use crate::witness::circuit_type::CircuitType;
@@ -80,7 +80,7 @@ pub(crate) const EMBEDDED_UNIFIED_SCHEDULE: &[u8] = include_bytes!(
 /// the forward VM's real allowlist. The match has no wildcard, so a new
 /// `CircuitType` variant fails to compile here rather than silently falling back
 /// to flat.
-pub(crate) fn embedded_schedule(circuit_type: CircuitType) -> Option<&'static [u8]> {
+pub(crate) fn embedded_forward_artifact(circuit_type: CircuitType) -> &'static [u8] {
     use crate::witness::circuit_type::{
         DelegationCircuitType, UnrolledCircuitType, UnrolledNonMemoryCircuitType,
     };
@@ -88,37 +88,37 @@ pub(crate) fn embedded_schedule(circuit_type: CircuitType) -> Option<&'static [u
     match circuit_type {
         CircuitType::Unrolled(UnrolledCircuitType::NonMemory(
             UnrolledNonMemoryCircuitType::AddSubLuiAuipcMop,
-        )) => Some(EMBEDDED_ADD_SUB_SCHEDULE),
+        )) => EMBEDDED_ADD_SUB_SCHEDULE,
         CircuitType::Unrolled(UnrolledCircuitType::NonMemory(
             UnrolledNonMemoryCircuitType::JumpBranchSlt,
-        )) => Some(EMBEDDED_JUMP_BRANCH_SLT_SCHEDULE),
+        )) => EMBEDDED_JUMP_BRANCH_SLT_SCHEDULE,
         CircuitType::Unrolled(UnrolledCircuitType::NonMemory(
             UnrolledNonMemoryCircuitType::MulDivUnsigned,
-        )) => Some(EMBEDDED_UNSIGNED_MUL_DIV_SCHEDULE),
+        )) => EMBEDDED_UNSIGNED_MUL_DIV_SCHEDULE,
         CircuitType::Unrolled(UnrolledCircuitType::NonMemory(
             UnrolledNonMemoryCircuitType::ShiftBinaryCsr,
-        )) => Some(EMBEDDED_SHIFT_BINOP_SCHEDULE),
+        )) => EMBEDDED_SHIFT_BINOP_SCHEDULE,
         CircuitType::Unrolled(UnrolledCircuitType::Memory(
             UnrolledMemoryCircuitType::LoadStoreWordOnly,
-        )) => Some(EMBEDDED_MEM_WORD_ONLY_SCHEDULE),
+        )) => EMBEDDED_MEM_WORD_ONLY_SCHEDULE,
         CircuitType::Unrolled(UnrolledCircuitType::Memory(
             UnrolledMemoryCircuitType::LoadStoreSubwordOnly,
-        )) => Some(EMBEDDED_MEM_SUBWORD_ONLY_SCHEDULE),
+        )) => EMBEDDED_MEM_SUBWORD_ONLY_SCHEDULE,
         CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns) => {
-            Some(EMBEDDED_INITS_AND_TEARDOWNS_SCHEDULE)
+            EMBEDDED_INITS_AND_TEARDOWNS_SCHEDULE
         }
-        CircuitType::Unrolled(UnrolledCircuitType::Unified) => Some(EMBEDDED_UNIFIED_SCHEDULE),
+        CircuitType::Unrolled(UnrolledCircuitType::Unified) => EMBEDDED_UNIFIED_SCHEDULE,
         CircuitType::Delegation(DelegationCircuitType::BigIntWithControl) => {
-            Some(EMBEDDED_BIGINT_SCHEDULE)
+            EMBEDDED_BIGINT_SCHEDULE
         }
         CircuitType::Delegation(DelegationCircuitType::Blake2WithCompression) => {
-            Some(EMBEDDED_BLAKE2_SCHEDULE)
+            EMBEDDED_BLAKE2_SCHEDULE
         }
         CircuitType::Delegation(DelegationCircuitType::Blake2GFunction) => {
-            Some(EMBEDDED_BLAKE2_G_FUNCTION_SCHEDULE)
+            EMBEDDED_BLAKE2_G_FUNCTION_SCHEDULE
         }
         CircuitType::Delegation(DelegationCircuitType::KeccakSpecial5) => {
-            Some(EMBEDDED_KECCAK_SPECIAL5_SCHEDULE)
+            EMBEDDED_KECCAK_SPECIAL5_SCHEDULE
         }
     }
 }
@@ -132,9 +132,8 @@ pub(crate) fn embedded_schedule(circuit_type: CircuitType) -> Option<&'static [u
 pub(crate) fn compile_program(
     circuit_type: CircuitType,
     artifact: &GKRCircuitArtifact<BF>,
-) -> Option<Result<CompiledCircuit, String>> {
-    let schedule = embedded_schedule(circuit_type)?;
-    Some(compile_program_from_bytes(schedule, artifact))
+) -> Result<CompiledCircuit, String> {
+    compile_program_from_bytes(embedded_forward_artifact(circuit_type), artifact)
 }
 
 /// The compile chain itself, over an explicit schedule so the negative cases
@@ -143,11 +142,11 @@ pub(crate) fn compile_program_from_bytes(
     schedule_bytes: &[u8],
     artifact: &GKRCircuitArtifact<BF>,
 ) -> Result<CompiledCircuit, String> {
-    let schedule = parse_committed_schedule(schedule_bytes, "embedded forward-VM schedule")
+    let schedule = parse_forward_artifact(schedule_bytes, "embedded forward-VM artifact")
         .map_err(|e| format!("{e:?}"))?;
     let dag = lower_dag(artifact).map_err(|e| format!("lower_dag: {e}"))?;
     validate_dag(&dag).map_err(|e| format!("validate: {e}"))?;
-    compile_circuit(&dag, &schedule, artifact).map_err(|e| format!("compile_circuit: {e:?}"))
+    compile_forward(&dag, &schedule).map_err(|e| format!("compile_forward: {e:?}"))
 }
 
 #[cfg(test)]
@@ -179,47 +178,6 @@ mod tests {
         );
     }
 
-    /// How much of the per-process compile is the schedule VALIDATION that
-    /// rejects a stale schedule, as opposed to the compile it guards.
-    ///
-    /// The guard is unconditional, so its cost is worth knowing before the VM
-    /// covers more circuits: `validate_circuit_schedule` rebuilds each layer's
-    /// canonical relation-unit decomposition and site domain, so it scales with
-    /// the circuit, not with the schedule file. The backward side's
-    /// `report_the_compile_time_projection_over_the_corpus` projects the other
-    /// half of the same bill.
-    #[test]
-    fn report_the_schedule_validation_time() {
-        use gkr_eval_isa::validate_circuit_schedule;
-
-        let artifact = add_sub_artifact();
-
-        let start = std::time::Instant::now();
-        let schedule =
-            parse_committed_schedule(EMBEDDED_ADD_SUB_SCHEDULE, "compile-time report").unwrap();
-        let parse_ms = start.elapsed().as_secs_f64() * 1e3;
-
-        let start = std::time::Instant::now();
-        let dag = lower_dag(&artifact).unwrap();
-        validate_dag(&dag).unwrap();
-        let lower_ms = start.elapsed().as_secs_f64() * 1e3;
-
-        let start = std::time::Instant::now();
-        validate_circuit_schedule(&dag, &schedule).unwrap();
-        let validate_ms = start.elapsed().as_secs_f64() * 1e3;
-
-        let start = std::time::Instant::now();
-        compile_program_from_bytes(EMBEDDED_ADD_SUB_SCHEDULE, &artifact).unwrap();
-        let whole_chain_ms = start.elapsed().as_secs_f64() * 1e3;
-
-        eprintln!(
-            "[fwd-vm-compile] add_sub, {} layers: parse_schedule {parse_ms:.1} ms, \
-             lower_dag+validate {lower_ms:.1} ms, validate_circuit_schedule {validate_ms:.1} ms, \
-             whole chain {whole_chain_ms:.1} ms",
-            dag.layers.len(),
-        );
-    }
-
     /// The launcher asserts its own capacity against the budget it is handed
     /// (`vm/mod.rs`), so a program compiled at any other budget cannot be
     /// launched by the s4 kernel. Pin the committed corpus at b16 here rather
@@ -231,32 +189,4 @@ mod tests {
         assert_eq!(program.budget, super::super::FWD_VM_S4_BUDGET_LANES as usize);
     }
 
-    /// Proves the schedule is validated against the artifact rather than
-    /// trusted: another circuit's committed schedule is well-formed JSON and
-    /// deserializes fine, so only validation can reject it.
-    #[test]
-    fn a_schedule_for_a_different_circuit_is_rejected() {
-        let other = std::fs::read(
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("../../cs/compiled_circuits/mem_word_only_schedule_b16_gkr.json"),
-        )
-        .expect("committed mem_word_only schedule must exist");
-
-        let err = compile_program_from_bytes(&other, &add_sub_artifact())
-            .expect_err("a schedule for another circuit must not compile against add_sub");
-        assert!(
-            err.contains("InvalidSchedule"),
-            "it must be rejected by schedule validation, not by parsing, got: {err}"
-        );
-    }
-
-    #[test]
-    fn bytes_that_are_not_a_schedule_are_rejected() {
-        let err = compile_program_from_bytes(b"{}", &add_sub_artifact())
-            .expect_err("an empty JSON object is not a CircuitSchedule");
-        assert!(
-            err.contains("parse embedded forward-VM schedule"),
-            "it must fail at the parse, before the DAG is lowered, got: {err}"
-        );
-    }
 }

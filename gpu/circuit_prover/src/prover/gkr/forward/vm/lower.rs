@@ -41,13 +41,13 @@ use std::{
 
 use era_cudart::memory::memory_copy_async;
 
-use gkr_eval_isa::fwd::context::CompiledLayer;
-use gkr_eval_isa::fwd::encode::encode;
-use gkr_eval_isa::fwd::error::EncodeError;
-use gkr_eval_isa::fwd::isa::{
+use gpu_gkr_compiler::forward::context::CompiledLayer;
+use gpu_gkr_compiler::forward::encode::encode;
+use gpu_gkr_compiler::forward::error::EncodeError;
+use gpu_gkr_compiler::forward::isa::{
     DstLine, Instr, LdcSub, MAX_COLS, OperandField, OperandLine, Program, SOURCE_WINDOW_COLUMNS,
 };
-use gkr_eval_isa::fwd::source::{SpecialStrategy, virtual_setup_kind_code};
+use gpu_gkr_compiler::forward::source::{SpecialStrategy, virtual_setup_kind_code};
 
 use crate::allocator::tracker::AllocationPlacement;
 use crate::primitives::context::DeviceAllocation;

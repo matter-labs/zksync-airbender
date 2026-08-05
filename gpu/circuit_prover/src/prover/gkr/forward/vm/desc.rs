@@ -50,7 +50,7 @@ pub(crate) const ARENA_TIMESTAMP: u32 = 2;
 // vkind == the native `gkr_base_source_kind` value, stored VERBATIM on the wire
 // (`native/prover/gkr/support/descriptors.cuh:12-18`: the four
 // GKR_BASE_SOURCE_VIRTUAL_* variants are 2..=5, in `KIND_ORDER`
-// (`gkr_eval_isa::fwd::source::KIND_ORDER`) order).
+// (`gpu_gkr_compiler::forward::source::KIND_ORDER`) order).
 pub(crate) const GKR_BASE_SOURCE_VIRTUAL_RANGE_CHECK_16_BITS: u32 = 2;
 pub(crate) const GKR_BASE_SOURCE_VIRTUAL_RANGE_CHECK_TIMESTAMP: u32 = 3;
 pub(crate) const GKR_BASE_SOURCE_VIRTUAL_INITS_AND_TEARDOWNS_LOW: u32 = 4;
@@ -68,7 +68,7 @@ pub(crate) const VKIND_INITS_AND_TEARDOWNS_HIGH: u32 =
 /// pin the native enum values (descriptors.cuh:12-18).
 const _: () = {
     use crate::upstream::VirtualSetupKind::*;
-    use gkr_eval_isa::fwd::source::KIND_ORDER;
+    use gpu_gkr_compiler::forward::source::KIND_ORDER;
     // KIND_ORDER index + 2 == vkind code (a 5th upstream kind fails here
     // loudly: this assert trips on the length mismatch, and separately
     // `pack_desc`'s `(2..=5)` range check would need widening to `(2..=6)` —
@@ -181,7 +181,7 @@ pub(crate) struct FwdVmDesc {
     pub descs: [u32; DESC_CAP], // 1392, 1,480 B
     // geometry
     pub count: u32, // 2872: rows (= trace_len = mapping-arena column stride)
-    // program, inline 16-bit wire lanes (gkr_eval_isa::fwd::encode)
+    // program, inline 16-bit wire lanes (gpu_gkr_compiler::forward::encode)
     pub program: [u16; PROGRAM_CAP], // 2876, 24,576 B; field bytes end at 27,452
 }
 
@@ -298,7 +298,7 @@ mod tests {
         // the packed-desc `vkind` field now stores the native
         // `gkr_base_source_kind` value verbatim (2..5), i.e. index + 2.
         use gkr_eval_ir::VirtualSetupKind::*;
-        use gkr_eval_isa::fwd::source::virtual_setup_kind_code;
+        use gpu_gkr_compiler::forward::source::virtual_setup_kind_code;
         assert_eq!(
             virtual_setup_kind_code(&RangeCheck16Bits) + 2,
             VKIND_RANGE_CHECK_16_BITS

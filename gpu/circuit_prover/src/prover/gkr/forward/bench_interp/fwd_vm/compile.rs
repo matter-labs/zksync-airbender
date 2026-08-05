@@ -4,10 +4,11 @@
 //! `crate::upstream` re-export convention does not apply.
 
 use cs::gkr_compiler::GKRCircuitArtifact;
-use gkr_eval_ir::{lower_dag, validate, validate_circuit_schedule, CircuitSchedule, DagCircuit};
-use gkr_eval_isa::fwd::compile::{compile_circuit, load_committed_schedule, CompiledCircuit};
-use gkr_eval_isa::fwd::context::CompiledLayer;
-use gkr_eval_isa::fwd::encode::{decode, encode};
+use gkr_eval_ir::{lower_dag, validate, DagCircuit};
+use gpu_gkr_compiler::forward::compile::{load_committed_schedule, CompiledCircuit};
+use gpu_gkr_compiler::forward::context::CompiledLayer;
+use gpu_gkr_compiler::forward::encode::{decode, encode};
+use gpu_gkr_compiler::{compile_forward, validate_forward_artifact, ForwardSearchArtifact};
 
 use crate::primitives::field::BF;
 
@@ -16,7 +17,7 @@ use crate::primitives::field::BF;
 /// into the device ABI.
 pub(crate) struct FwdVmCircuit {
     pub dag: DagCircuit,
-    pub sched: CircuitSchedule,
+    pub sched: ForwardSearchArtifact,
     pub artifact: GKRCircuitArtifact<BF>,
     pub compiled: CompiledCircuit,
 }
@@ -39,10 +40,10 @@ pub(crate) fn load_fwd_vm_circuit(stem: &str) -> FwdVmCircuit {
         .join(format!("{stem}_schedule_b16_gkr.json"));
     let sched = load_committed_schedule(&schedule_path)
         .unwrap_or_else(|e| panic!("[{stem}] load_committed_schedule: {e:?}"));
-    validate_circuit_schedule(&dag, &sched)
-        .unwrap_or_else(|e| panic!("[{stem}] validate_circuit_schedule: {e}"));
-    let compiled = compile_circuit(&dag, &sched, &artifact)
-        .unwrap_or_else(|e| panic!("[{stem}] compile_circuit: {e:?}"));
+    validate_forward_artifact(&dag, &sched)
+        .unwrap_or_else(|e| panic!("[{stem}] validate_forward_artifact: {e}"));
+    let compiled = compile_forward(&dag, &sched)
+        .unwrap_or_else(|e| panic!("[{stem}] compile_forward: {e:?}"));
 
     FwdVmCircuit {
         dag,

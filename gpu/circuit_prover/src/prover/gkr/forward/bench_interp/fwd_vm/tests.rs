@@ -23,7 +23,7 @@ fn fwd_vm_circuits_compile_and_size_probe() {
         assert_eq!(c.compiled.budget, 16, "{stem} committed budget");
         let mut any = false;
         for (li, layer) in c.dag.layers.iter().enumerate() {
-            if !gkr_eval_isa::fwd::compile::layer_needs_compile(c.sched.layers[li].units.is_empty(), layer) {
+            if !gpu_gkr_compiler::forward::compile::layer_needs_compile(c.sched.layers[li].units.is_empty(), layer) {
                 continue;
             }
             let lanes = super::compile::encoded_lanes(&c.compiled.layers[li]);
@@ -85,7 +85,7 @@ fn query_fwd_vm_device_attrs() -> super::report::FwdVmDeviceAttrs {
 #[serial_test::serial]
 fn fwd_vm_ab_report() {
     use era_cudart::memory::memory_copy_async;
-    use gkr_eval_isa::fwd::compile::layer_needs_compile;
+    use gpu_gkr_compiler::forward::compile::layer_needs_compile;
 
     use super::super::fixture::CircuitFixture;
     use super::super::harness::{time_flat, time_iters, TIMING_COUNT_CAP, TIMING_ITERS};

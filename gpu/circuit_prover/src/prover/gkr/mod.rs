@@ -90,8 +90,10 @@ impl GkrVmPrograms {
         let Some(circuit_name) = vm_circuit_name(circuit_type) else {
             return Self::default();
         };
-        let forward = forward::vm::program::compile_program(circuit_type, artifact)
-            .map(|result| result.unwrap_or_else(|error| panic!("forward VM program: {error}")));
+        let forward = Some(
+            forward::vm::program::compile_program(circuit_type, artifact)
+                .unwrap_or_else(|error| panic!("forward VM program: {error}")),
+        );
         let backward = backward::vm::production_program::compile_all_slices(circuit_name, artifact)
             .unwrap_or_else(|error| panic!("backward VM coordinates: {error}"));
         Self { forward, backward }

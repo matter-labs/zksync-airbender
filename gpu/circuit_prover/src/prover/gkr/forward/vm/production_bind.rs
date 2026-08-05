@@ -41,8 +41,8 @@ use era_cudart::memory::memory_copy_async;
 use era_cudart::result::{CudaResult, CudaResultWrap};
 use era_cudart::slice::DeviceSlice;
 use era_cudart_sys::cudaGetSymbolAddress;
-use gkr_eval_isa::fwd::context::CompiledLayer;
-use gkr_eval_isa::fwd::isa::LdcSub;
+use gpu_gkr_compiler::forward::context::CompiledLayer;
+use gpu_gkr_compiler::forward::isa::LdcSub;
 
 use super::desc::{CONST_DERIVED_E4_CAP, FILL_BANK_NONE};
 use super::lower::{FwdVmHeaderInputs, FwdVmLayerSetup, ResolvedColumn};
