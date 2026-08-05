@@ -15,6 +15,19 @@
 
 use super::super::kernels::GKR_DIM_REDUCING_BASE_SLOTS;
 
+#[derive(Clone, Copy)]
+pub(in crate::backward) struct FoldingArenaBinding {
+    pub(crate) base: *const u8,
+    pub(crate) log2_stride: u32,
+}
+
+impl FoldingArenaBinding {
+    pub(in crate::backward) fn new(base: *const u8, log2_stride: u32) -> Self {
+        assert!(!base.is_null());
+        Self { base, log2_stride }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Round 0 — pack/unpack
 // ---------------------------------------------------------------------------
@@ -157,17 +170,13 @@ pub(crate) fn pack_cont_base_source_real(first_access: bool, slot: u8, poly_idx:
     first_bit | ((slot as u16) << CONT_BASE_PTR_IDX_SHIFT) | (poly_idx & CONT_BASE_POLY_IDX_MASK)
 }
 
-/// Pack a virtual base source. `cache_slot` is the index in
-/// `tables.bases` holding the virtual cache backing
-/// (`intermediate_base_folding_consolidated.virtual_per_class[class]`).
+/// Pack a virtual base source. `cache_slot` indexes its destination arena.
 /// `kind` is the `GpuBaseFieldSourceKind` discriminant (2..=5 for the four
 /// virtual variants); the kernel synthesizes the value by calling
 /// `gkr_virtual_base_value(kind, gid)`.
 ///
-/// poly_idx within the virtual cache backing comes from
-/// `virtual_index[poly]` and is encoded into the descriptor's
-/// `virtual_cache_poly_idx` table (per-source array), so the source u16
-/// itself doesn't need to carry it for the virtual path.
+/// The source u16 does not need a source polynomial index because virtual
+/// values are synthesized by kind.
 #[cfg(test)]
 #[inline]
 pub(crate) fn pack_cont_base_source_virtual(first_access: bool, cache_slot: u8, kind: u8) -> u16 {

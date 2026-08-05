@@ -8,9 +8,9 @@ use era_cudart::slice::{CudaSlice, DeviceSlice};
 use crate::GpuGKRStorage;
 
 use super::super::kernels::*;
-use super::super::packed_main_layer_batch_challenge_len;
 use super::super::{compact, flat};
 use super::extras::{schedule_main_layer_extras_eval, MainLayerExtrasKeepalive};
+use super::state::FlatContinuationLaunchSizes;
 use crate::proof_layout::ProofLayout;
 use crate::upstream::{Field, FieldExtension, GKRAddress, Seed};
 use gpu_core::allocator::tracker::AllocationPlacement;
@@ -31,59 +31,6 @@ where
     Mul: BinaryOp<E, E, E>,
     [(); E::DEGREE]: Sized,
 {
-    fn schedule_batch_challenge_buffer_on_device(
-        &self,
-        device_claim_point_in: &DeviceClaimPointAndBatching<E>,
-        context: &ProverContext,
-    ) -> CudaResult<ScheduledChallengeStorage<E>> {
-        let len = packed_main_layer_batch_challenge_len(&self.kernel_plans);
-        assert!(
-            len > 0,
-            "main-layer batched execution requires at least one packed batch challenge"
-        );
-        // Static-blueprint main-layer plans never pre-populate `batch_challenges`;
-        // every packed slot is `base^(offset + k)` for the single device-resident
-        // batching challenge `base`. Assert so callers can't silently lose
-        // pre-drawn values.
-        assert!(
-            self.kernel_plans
-                .iter()
-                .all(|k| k.batch_challenges.is_empty()),
-            "schedule_batch_challenge_buffer_on_device requires static-blueprint specs",
-        );
-        let mut storage =
-            ScheduledChallengeStorage::new(context.alloc(len, AllocationPlacement::Top)?);
-        // Fill the packed buffer with powers of the device-resident batching
-        // challenge — the last slot of the orchestrator-owned
-        // `device_claim_point_in`.
-        // SAFETY: `device_claim_point_in` has length `folding_steps + 1`, so the
-        // final slot exists and is the batching challenge by construction.
-        let batching_slice = unsafe { device_claim_point_in.slice(self.folding_steps, 1) };
-        // SAFETY: `storage.device` was just allocated with capacity `len` and
-        // no other view into it exists yet; the `&mut DeviceSlice` is dropped
-        // at the end of this block. The subsequent `get_powers_by_ref` launch
-        // is stream-ordered on `exec_stream`, so the buffer is populated before
-        // any downstream consumer reads it.
-        unsafe {
-            // SAFETY: the freshly allocated challenge buffer is only re-viewed
-            // at the concrete `E4` layout used by this scheduler.
-            let dst_slice = storage
-                .device
-                .as_deref_mut()
-                .expect("challenge storage device just allocated")
-                .slice_mut(0, len);
-            let dst_e4 = dst_slice.transmute_mut::<E4>();
-            let batching_e4 = batching_slice.transmute::<E4>();
-            gpu_ops::powers::get_powers_by_ref::<E4>(
-                &batching_e4[0],
-                0,
-                dst_e4,
-                context.get_exec_stream(),
-            )?;
-        }
-        Ok(storage)
-    }
-
     fn fold_eq_values_for_next_round(
         &mut self,
         acc_size: usize,
@@ -142,10 +89,7 @@ where
             self.flat_cont_recipe_desc.is_some() || self.flat_cont_recipe_desc_device.is_some(),
             "flat continuation recipe descriptor must be scheduled"
         );
-        let sizes = self
-            .flat_round1_size_check()
-            .resolve(acc_size)
-            .expect("flat round 1 size check must be consistent");
+        let sizes = FlatContinuationLaunchSizes::from_acc_size(acc_size);
         let compact_desc = self
             .flat_round1_unified_desc_compact
             .as_ref()
@@ -199,10 +143,7 @@ where
             self.flat_cont_recipe_desc.is_some() || self.flat_cont_recipe_desc_device.is_some(),
             "flat continuation recipe descriptor must be scheduled"
         );
-        let sizes = self
-            .flat_round2_size_check()
-            .resolve(acc_size)
-            .expect("flat round 2 size check must be consistent");
+        let sizes = FlatContinuationLaunchSizes::from_acc_size(acc_size);
         let compact_desc = self
             .flat_round2_unified_desc_compact
             .as_ref()
@@ -261,12 +202,7 @@ where
             self.flat_cont_recipe_desc.is_some() || self.flat_cont_recipe_desc_device.is_some(),
             "flat continuation recipe descriptor must be scheduled"
         );
-        let sizes = self
-            .flat_round3_size_check(step)
-            .resolve(acc_size)
-            .unwrap_or_else(|| {
-                panic!("flat round 3 size check must be consistent for step {step}")
-            });
+        let sizes = FlatContinuationLaunchSizes::from_acc_size(acc_size);
         let (_, compact_desc) = self
             .flat_continuation_unified_descs_compact
             .iter()
@@ -365,10 +301,7 @@ where
 
         match step {
             1 => {
-                let sizes = self
-                    .flat_round1_size_check()
-                    .resolve(acc_size)
-                    .expect("flat round 1 size check must be consistent");
+                let sizes = FlatContinuationLaunchSizes::from_acc_size(acc_size);
                 let compact_desc = self
                     .flat_round1_unified_desc_compact
                     .as_ref()
@@ -412,10 +345,7 @@ where
                 }
             }
             2 => {
-                let sizes = self
-                    .flat_round2_size_check()
-                    .resolve(acc_size)
-                    .expect("flat round 2 size check must be consistent");
+                let sizes = FlatContinuationLaunchSizes::from_acc_size(acc_size);
                 let compact_desc = self
                     .flat_round2_unified_desc_compact
                     .as_ref()
@@ -462,12 +392,7 @@ where
                 }
             }
             step => {
-                let sizes = self
-                    .flat_round3_size_check(step)
-                    .resolve(acc_size)
-                    .unwrap_or_else(|| {
-                        panic!("flat round 3 size check must be consistent for step {step}")
-                    });
+                let sizes = FlatContinuationLaunchSizes::from_acc_size(acc_size);
                 let (_, compact_desc) = self
                     .flat_continuation_unified_descs_compact
                     .iter()
@@ -747,42 +672,16 @@ where
 
     fn final_evaluation_sources_for_last_step(
         &self,
-        last_step: usize,
+        folding: &DeviceAllocation<E>,
+        per_poly_len: usize,
     ) -> BTreeMap<GKRAddress, *const E> {
-        assert!(last_step >= 3, "main-layer final step must be in round 3+");
-        let mut result = BTreeMap::new();
-        for kernel in self.kernel_plans.iter() {
-            let prepared = &kernel
-                .round3_and_beyond_prepared
-                .iter()
-                .find(|prepared| prepared.step == last_step)
-                .unwrap_or_else(|| panic!("missing round 3+ prepared storage for step {last_step}"))
-                .prepared;
-            for (address, source) in kernel
-                .inputs
-                .inputs_in_base
-                .iter()
-                .zip(prepared.base_field_inputs.iter())
-            {
-                if *address == GKRAddress::placeholder() || result.contains_key(address) {
-                    continue;
-                }
-                result.insert(*address, source.this_layer_start.cast_const());
-            }
-            for (address, source) in kernel
-                .inputs
-                .inputs_in_extension
-                .iter()
-                .zip(prepared.extension_field_inputs.iter())
-            {
-                if *address == GKRAddress::placeholder() || result.contains_key(address) {
-                    continue;
-                }
-                result.insert(*address, source.this_layer_start.cast_const());
-            }
-        }
-
-        result
+        self.folding_evaluation_sources
+            .iter()
+            .map(|(address, source_idx)| {
+                let ptr = unsafe { folding.as_ptr().add(*source_idx as usize * per_poly_len) };
+                (*address, ptr)
+            })
+            .collect()
     }
 
     // `device_lookup_and_constraint_ptr`/`device_external_challenges_ptr` are
@@ -811,13 +710,9 @@ where
         proof_layout: &ProofLayout,
         layer_slot: usize,
         mirror_layer_to_host: bool,
-        // Read-only handle to the consolidated GKR storage. Used by the
-        // main-layer extras eval path to resolve missing cached-relation
-        // dependencies to their backing
-        // pointers without forcing additional allocations. Test paths
-        // that don't exercise extras can pass `None` to skip extras work
-        // entirely; production callers always pass `Some`.
-        storage: Option<&GpuGKRStorage<BF, E>>,
+        // Round 0 releases the raw output layer; the extras path later
+        // resolves retained input-layer dependencies.
+        mut storage: Option<&mut GpuGKRStorage<BF, E>>,
         context: &ProverContext,
     ) -> CudaResult<GpuGKRMainLayerScheduledLayerExecution<E>> {
         let stream = context.get_exec_stream();
@@ -946,8 +841,6 @@ where
             )?;
         }
 
-        let batch_challenge_storage =
-            self.schedule_batch_challenge_buffer_on_device(&device_claim_point_in, context)?;
         let flat_coeff_callbacks = self.schedule_flat_eval_recipes(
             &device_claim_point_in,
             device_lookup_and_constraint_ptr,
@@ -997,6 +890,24 @@ where
                 next_claim_point_and_batching_len,
             )
         };
+        let folding_poly_count = self
+            .flat_continuation_plan
+            .as_ref()
+            .map(|plan| plan.term_desc.num_sources as usize)
+            .unwrap_or(0);
+        let (round1_base_count, round1_ext_count) = self
+            .flat_round1_unified_desc_compact
+            .as_ref()
+            .map(|desc| {
+                (
+                    desc.num_base_sources as usize,
+                    desc.num_ext_sources as usize,
+                )
+            })
+            .unwrap_or((0, 0));
+        let mut round1_ext_current: Option<DeviceAllocation<E>> = None;
+        let mut folding_current: Option<DeviceAllocation<E>> = None;
+        let mut folding_current_len = 0usize;
 
         for step in 0..last_step {
             let acc_size = 1usize << (self.folding_steps - step - 1);
@@ -1013,6 +924,115 @@ where
             // supports the device-buffer coeff loader. Fast-path circuits keep
             // the warp-partial path (their round-0 fits `__constant__`).
             let use_warp_partial = (self.flat_use_constant || step != 0) && acc_size >= 32;
+            let destination_len = 2 * acc_size;
+            let mut round1_base_destination: Option<DeviceAllocation<E>> = None;
+            let mut round1_ext_destination: Option<DeviceAllocation<E>> = None;
+            let mut continuation_destination: Option<DeviceAllocation<E>> = None;
+
+            if step == 1 {
+                if round1_base_count > 0 {
+                    round1_base_destination = Some(context.alloc(
+                        round1_base_count * destination_len,
+                        AllocationPlacement::Top,
+                    )?);
+                }
+                if round1_ext_count > 0 {
+                    round1_ext_destination = Some(
+                        context
+                            .alloc(round1_ext_count * destination_len, AllocationPlacement::Top)?,
+                    );
+                }
+                let fallback = round1_base_destination
+                    .as_ref()
+                    .or(round1_ext_destination.as_ref())
+                    .map(|arena| arena.as_ptr() as *const u8)
+                    .unwrap_or(self.round_scratch.accumulator.as_ptr() as *const u8);
+                let base_binding = compact::FoldingArenaBinding::new(
+                    round1_base_destination
+                        .as_ref()
+                        .map(|arena| arena.as_ptr() as *const u8)
+                        .unwrap_or(fallback),
+                    destination_len.trailing_zeros(),
+                );
+                let ext_binding = compact::FoldingArenaBinding::new(
+                    round1_ext_destination
+                        .as_ref()
+                        .map(|arena| arena.as_ptr() as *const u8)
+                        .unwrap_or(fallback),
+                    destination_len.trailing_zeros(),
+                );
+                let desc = self
+                    .flat_round1_unified_desc_compact
+                    .as_mut()
+                    .expect("flat round 1 compact desc must be built");
+                compact::rebind_flat_round1_descriptor(desc, base_binding, ext_binding);
+                if let Some((devptr, _)) = self.flat_round1_terms_device.as_mut() {
+                    **devptr = desc.to_devptr();
+                }
+            } else if step >= 2 {
+                if folding_poly_count > 0 {
+                    continuation_destination = Some(context.alloc(
+                        folding_poly_count * destination_len,
+                        AllocationPlacement::Top,
+                    )?);
+                }
+                let destination_ptr = continuation_destination
+                    .as_ref()
+                    .map(|arena| arena.as_ptr() as *const u8)
+                    .unwrap_or(self.round_scratch.accumulator.as_ptr() as *const u8);
+                let destination_binding = compact::FoldingArenaBinding::new(
+                    destination_ptr,
+                    destination_len.trailing_zeros(),
+                );
+                if step == 2 {
+                    let current_ptr = round1_ext_current
+                        .as_ref()
+                        .map(|arena| arena.as_ptr() as *const u8)
+                        .unwrap_or(destination_ptr);
+                    let current_binding = compact::FoldingArenaBinding::new(
+                        current_ptr,
+                        (4 * acc_size).trailing_zeros(),
+                    );
+                    let desc = self
+                        .flat_round2_unified_desc_compact
+                        .as_mut()
+                        .expect("flat round 2 compact desc must be built");
+                    compact::rebind_flat_round2_descriptor::<E>(
+                        desc,
+                        current_binding,
+                        destination_binding,
+                    );
+                    if let Some((devptr, _)) = self.flat_round2_terms_device.as_mut() {
+                        **devptr = desc.to_devptr();
+                    }
+                } else {
+                    let current_ptr = folding_current
+                        .as_ref()
+                        .map(|arena| arena.as_ptr() as *const u8)
+                        .unwrap_or(destination_ptr);
+                    let current_binding = compact::FoldingArenaBinding::new(
+                        current_ptr,
+                        folding_current_len.trailing_zeros(),
+                    );
+                    let (_, desc) = self
+                        .flat_continuation_unified_descs_compact
+                        .iter_mut()
+                        .find(|(round, _)| *round == step)
+                        .expect("flat continuation compact desc must be built");
+                    compact::rebind_flat_continuation_descriptor::<E>(
+                        desc,
+                        current_binding,
+                        destination_binding,
+                    );
+                    if let Some((_, devptr, _)) = self
+                        .flat_continuation_terms_device
+                        .iter_mut()
+                        .find(|(round, _, _)| *round == step)
+                    {
+                        **devptr = desc.to_devptr();
+                    }
+                }
+            }
 
             // Round-kernel launch.
             if use_warp_partial {
@@ -1046,6 +1066,23 @@ where
                     step => {
                         self.launch_round3_kernels_from_symbol(step, acc_size, false, context)?
                     }
+                }
+            }
+
+            if step == 1 {
+                drop(round1_base_destination.take());
+                round1_ext_current = round1_ext_destination;
+            } else if step >= 2 {
+                folding_current = continuation_destination;
+                folding_current_len = destination_len;
+                if step == 2 {
+                    round1_ext_current = None;
+                }
+            }
+
+            if step == 0 {
+                if let Some(storage) = storage.as_deref_mut() {
+                    storage.purge_up_to_layer(self.layer_idx);
                 }
             }
 
@@ -1098,7 +1135,46 @@ where
         // (skip `fold_eq_values_for_next_round`). The `[E;2]` last-round line is
         // still read from the round storage by
         // `final_evaluation_sources_for_last_step(last_step)` below.
+        let final_destination_len = 2usize;
+        let final_destination: Option<DeviceAllocation<E>> = if folding_poly_count > 0 {
+            Some(context.alloc(
+                folding_poly_count * final_destination_len,
+                AllocationPlacement::Top,
+            )?)
+        } else {
+            None
+        };
+        let destination_ptr = final_destination
+            .as_ref()
+            .map(|arena| arena.as_ptr() as *const u8)
+            .unwrap_or(self.round_scratch.accumulator.as_ptr() as *const u8);
+        let current_ptr = folding_current
+            .as_ref()
+            .map(|arena| arena.as_ptr() as *const u8)
+            .unwrap_or(destination_ptr);
+        let (_, final_desc) = self
+            .flat_continuation_unified_descs_compact
+            .iter_mut()
+            .find(|(round, _)| *round == last_step)
+            .expect("final flat continuation compact desc must be built");
+        compact::rebind_flat_continuation_descriptor::<E>(
+            final_desc,
+            compact::FoldingArenaBinding::new(current_ptr, folding_current_len.trailing_zeros()),
+            compact::FoldingArenaBinding::new(
+                destination_ptr,
+                final_destination_len.trailing_zeros(),
+            ),
+        );
+        if let Some((_, devptr, _)) = self
+            .flat_continuation_terms_device
+            .iter_mut()
+            .find(|(round, _, _)| *round == last_step)
+        {
+            **devptr = final_desc.to_devptr();
+        }
         self.launch_round3_kernels_from_symbol(last_step, 1, false, context)?;
+        folding_current = final_destination;
+        folding_current_len = final_destination_len;
         {
             // SAFETY: `last_step == folding_steps - 1`, so this input claim-point
             // coordinate (`z_{last_step}`) exists.
@@ -1136,7 +1212,16 @@ where
         // next-layer claim and the degree-1 `final_step_evaluations` (written to
         // the slab, committed, and sent in the proof). We then squeeze the 1
         // remaining challenge `[next_batching_challenge]`.
-        let transcript_input_sources = self.final_evaluation_sources_for_last_step(last_step);
+        let transcript_input_sources = if self.folding_evaluation_sources.is_empty() {
+            BTreeMap::new()
+        } else {
+            self.final_evaluation_sources_for_last_step(
+                folding_current
+                    .as_ref()
+                    .expect("final folding arena must exist for evaluation sources"),
+                folding_current_len,
+            )
+        };
         let num_addresses = transcript_input_sources.len();
         let last_evals_len = num_addresses * 2;
         let transcript_input_addresses: Vec<GKRAddress> =
@@ -1161,6 +1246,7 @@ where
             };
             gpu_hash::blake2s::gather_e_addresses(&src_ptrs, dst, stream)?;
         }
+        drop(folding_current.take());
 
         // Slab destination for the degree-1 `final_step_evaluations` (BTreeMap
         // key order matches `final_step_eval_addresses`).
@@ -1260,7 +1346,9 @@ where
             Some(schedule_main_layer_extras_eval::<E>(
                 self.layer_idx,
                 &extra_addresses,
-                storage.expect("extras eval requires storage handle"),
+                storage
+                    .as_deref()
+                    .expect("extras eval requires storage handle"),
                 folding_point_ptr,
                 self.folding_steps,
                 trace_len,
@@ -1463,7 +1551,6 @@ where
         Ok(GpuGKRMainLayerScheduledLayerExecution {
             tracing_ranges,
             start_callbacks: Callbacks::new(),
-            batch_challenge_storage,
             final_readback: final_readback_callbacks,
             flat_coeff_callbacks,
             recipe_upload_callbacks: std::mem::replace(

@@ -7,11 +7,11 @@ use super::super::kernels::{
     pack_cache_u16, pack_source_u16, GpuGKRDimensionReducingTables, GpuGKRSourceRecord,
     GKR_DIM_REDUCING_BASE_SLOTS,
 };
+use super::encoding::{FoldingArenaBinding, FLAT_SOURCE_POLY_IDX_MASK};
 use super::{
-    build_backing_ranges, build_continuation_backing_ranges, resolve_backing_for_pointer,
-    resolve_continuation_backing_for_pointer, BackingRange, ContinuationBackingRange,
-    FlatTermTablesHost, GpuFlatRound1UnifiedDesc, GpuFlatRound2UnifiedDesc,
-    CONT_BASE_CACHE_VIRTUAL_FLAG, CONT_BASE_FIRST_ACCESS_FLAG, CONT_BASE_VIRTUAL_KIND_MASK,
+    build_backing_ranges, resolve_backing_for_pointer, BackingRange, FlatTermTablesHost,
+    GpuFlatRound1UnifiedDesc, GpuFlatRound2UnifiedDesc, CONT_BASE_CACHE_VIRTUAL_FLAG,
+    CONT_BASE_FIRST_ACCESS_FLAG, CONT_BASE_VIRTUAL_KIND_MASK,
 };
 use crate::upstream::Field;
 use gpu_core::primitives::field::BF;
@@ -59,6 +59,36 @@ impl SlotTable {
     }
 }
 
+pub(in crate::backward) fn rebind_flat_round1_descriptor(
+    desc: &mut GpuFlatRound1UnifiedDesc,
+    base_destination: FoldingArenaBinding,
+    ext_destination: FoldingArenaBinding,
+) {
+    desc.tables.bases[0] = base_destination.base;
+    desc.tables.log2_stride[0] = base_destination.log2_stride;
+    desc.tables.bases[1] = ext_destination.base;
+    desc.tables.log2_stride[1] = ext_destination.log2_stride;
+}
+
+pub(in crate::backward) fn rebind_flat_round2_descriptor<E>(
+    desc: &mut GpuFlatRound2UnifiedDesc,
+    ext_current: FoldingArenaBinding,
+    destination: FoldingArenaBinding,
+) {
+    desc.tables.bases[0] = ext_current.base;
+    desc.tables.log2_stride[0] = ext_current.log2_stride;
+    let num_sources = desc.num_base_sources as usize + desc.num_ext_sources as usize;
+    let sources_per_slot = FLAT_SOURCE_POLY_IDX_MASK as usize + 1;
+    for chunk in 0..num_sources.div_ceil(sources_per_slot) {
+        let slot = 1 + chunk;
+        let elements = (chunk * sources_per_slot) << destination.log2_stride;
+        desc.tables.bases[slot] = destination
+            .base
+            .wrapping_add(elements * std::mem::size_of::<E>());
+        desc.tables.log2_stride[slot] = destination.log2_stride;
+    }
+}
+
 /// Resolve a base-input pointer at round 1/2: sub-offset within the per-poly
 /// slot must be 0 (round 0/1/2 base inputs are full-poly reads). Returns
 /// `(backing_base, log2_stride, poly_idx)`.
@@ -66,26 +96,6 @@ fn resolve_source_pointer(ranges: &[BackingRange], ptr: *const u8) -> (*const u8
     resolve_backing_for_pointer(ranges, ptr).unwrap_or_else(
         || panic!("compact round 1/2: source pointer {ptr:?} does not fall within any consolidated source backing"),
     )
-}
-
-/// Resolve a cache-write pointer at round 1: sub-offset within the per-poly
-/// cache buffer must be 0 (round 1 always writes to position 0 in the cache).
-/// Returns `(cache_base, cache_log2_stride, poly_idx)`.
-fn resolve_round1_cache_pointer(
-    cache_ranges: &[ContinuationBackingRange],
-    ptr: *const u8,
-) -> (*const u8, u32, u16) {
-    let (base, log2_stride, poly_idx, sub_offset) =
-        resolve_continuation_backing_for_pointer(cache_ranges, ptr).unwrap_or_else(|| {
-            panic!(
-                "compact round 1: cache pointer {ptr:?} does not fall within any consolidated cache backing"
-            )
-        });
-    assert_eq!(
-        sub_offset, 0,
-        "compact round 1: cache pointer {ptr:?} has non-zero sub_offset {sub_offset}",
-    );
-    (base, log2_stride, poly_idx)
 }
 
 /// Build a compact round-1 unified descriptor directly from the round-1
@@ -100,6 +110,8 @@ pub(in crate::backward) fn build_flat_round1_unified_desc<E: Field>(
     round1_fused: &super::super::flat::Round1FusedSources,
     plan: &super::super::flat::FlatContinuationBuildPlan,
     storage: &GpuGKRStorage<BF, E>,
+    base_destination: FoldingArenaBinding,
+    ext_destination: FoldingArenaBinding,
 ) -> (Box<GpuFlatRound1UnifiedDesc>, Option<FlatTermTablesHost>) {
     use super::super::flat::{
         FLAT_CONT_EXT_SOURCE_BIT, FLAT_CONT_UNIFIED_SOURCE_GROUP_SIZE, TERM_TYPE_C0_ONLY_LINEAR,
@@ -109,9 +121,18 @@ pub(in crate::backward) fn build_flat_round1_unified_desc<E: Field>(
 
     let mut compact = Box::new(GpuFlatRound1UnifiedDesc::default());
     let source_ranges = build_backing_ranges(storage);
-    let cache_ranges = build_continuation_backing_ranges(storage);
 
     let mut slots = SlotTable::new();
+    let base_cache_slot = slots.assign(
+        &mut compact.tables,
+        base_destination.base,
+        base_destination.log2_stride,
+    );
+    let ext_cache_slot = slots.assign(
+        &mut compact.tables,
+        ext_destination.base,
+        ext_destination.log2_stride,
+    );
 
     let nb = round1_fused.num_base_sources as usize;
     let ne = round1_fused.num_ext_sources as usize;
@@ -148,18 +169,14 @@ pub(in crate::backward) fn build_flat_round1_unified_desc<E: Field>(
                 );
             }
         }
-        let cache_raw = entry.this_layer_cache_start as *const u8;
-        let (cache_base, cache_log2, cache_poly_idx) =
-            resolve_round1_cache_pointer(&cache_ranges, cache_raw);
-        let cache_slot = slots.assign(&mut compact.tables, cache_base, cache_log2);
-        let cache = pack_cache_u16(cache_slot, cache_poly_idx);
+        let cache = pack_cache_u16(base_cache_slot, i as u16);
         match entry.source_kind {
             GpuBaseFieldSourceKind::Real => {
                 let src_raw = entry.base_input_start;
                 let (src_base, src_log2, src_poly_idx) =
                     resolve_source_pointer(&source_ranges, src_raw);
                 let src_slot = slots.assign(&mut compact.tables, src_base, src_log2);
-                let src = pack_source_u16(entry.first_access, src_slot, src_poly_idx);
+                let src = pack_source_u16(true, src_slot, src_poly_idx);
                 compact.base_sources[i] = GpuGKRSourceRecord::new(src, cache);
             }
             GpuBaseFieldSourceKind::VirtualRangeCheck16Bits
@@ -167,11 +184,7 @@ pub(in crate::backward) fn build_flat_round1_unified_desc<E: Field>(
             | GpuBaseFieldSourceKind::VirtualInitsAndTeardownsLow
             | GpuBaseFieldSourceKind::VirtualInitsAndTeardownsHigh => {
                 let kind = entry.source_kind as u8;
-                let src = if entry.first_access {
-                    CONT_BASE_FIRST_ACCESS_FLAG
-                } else {
-                    0
-                } | (kind as u16 & CONT_BASE_VIRTUAL_KIND_MASK);
+                let src = CONT_BASE_FIRST_ACCESS_FLAG | (kind as u16 & CONT_BASE_VIRTUAL_KIND_MASK);
                 compact.base_sources[i] =
                     GpuGKRSourceRecord::new(src, cache | CONT_BASE_CACHE_VIRTUAL_FLAG);
             }
@@ -184,29 +197,10 @@ pub(in crate::backward) fn build_flat_round1_unified_desc<E: Field>(
     for i in 0..ne {
         let entry = &round1_fused.ext_sources[i];
         let prev_raw = entry.previous_layer_start;
-        let cache_raw = entry.this_layer_cache_start as *const u8;
-        let first_access = !prev_raw.is_null();
-        let (cache_base, cache_log2, cache_poly_idx) =
-            resolve_round1_cache_pointer(&cache_ranges, cache_raw);
-        let cache_slot = slots.assign(&mut compact.tables, cache_base, cache_log2);
-        let cache = pack_cache_u16(cache_slot, cache_poly_idx);
-        let (src_slot, src_poly_idx) = if first_access {
-            // Round 1 ext sources at first_access read from the consolidated
-            // ext source backing (`ext_class_backings[class]`). Subsequent
-            // accesses at round 1 (re-reads of the same source within a
-            // launch) point at the cache; treat those by reusing the cache
-            // slot.
-            let (src_base, src_log2, src_poly_idx) =
-                resolve_source_pointer(&source_ranges, prev_raw);
-            let src_slot = slots.assign(&mut compact.tables, src_base, src_log2);
-            (src_slot, src_poly_idx)
-        } else {
-            // The kernel reads from cache directly; re-encode using the cache
-            // slot as the source slot; no separate source backing is needed
-            // for the re-read.
-            (cache_slot, cache_poly_idx)
-        };
-        let src = pack_source_u16(first_access, src_slot, src_poly_idx);
+        let (src_base, src_log2, src_poly_idx) = resolve_source_pointer(&source_ranges, prev_raw);
+        let src_slot = slots.assign(&mut compact.tables, src_base, src_log2);
+        let src = pack_source_u16(true, src_slot, src_poly_idx);
+        let cache = pack_cache_u16(ext_cache_slot, i as u16);
         compact.ext_sources[i] = GpuGKRSourceRecord::new(src, cache);
     }
 
@@ -336,15 +330,6 @@ pub(in crate::backward) fn build_flat_round1_unified_desc<E: Field>(
     let mut tile_fold_offsets: Vec<u16> = Vec::with_capacity(num_tiles + 1);
     let mut folded: HashSet<u16> = HashSet::new();
 
-    let needs_folding = |src_idx: u16| -> bool {
-        if src_idx & FLAT_CONT_EXT_SOURCE_BIT != 0 {
-            let raw = (src_idx & !FLAT_CONT_EXT_SOURCE_BIT) as usize;
-            !round1_fused.ext_sources[raw].previous_layer_start.is_null()
-        } else {
-            round1_fused.base_sources[src_idx as usize].first_access
-        }
-    };
-
     for &(tile_start, tile_end) in &tile_boundaries {
         tile_term_offsets.push(tile_start as u16);
         tile_fold_offsets.push(fold_sources.len() as u16);
@@ -366,9 +351,8 @@ pub(in crate::backward) fn build_flat_round1_unified_desc<E: Field>(
         tile_sources.dedup();
 
         for src in tile_sources {
-            if !folded.contains(&src) && needs_folding(src) {
+            if folded.insert(src) {
                 fold_sources.push(src);
-                folded.insert(src);
             }
         }
     }
@@ -407,42 +391,17 @@ pub(in crate::backward) fn build_flat_round1_unified_desc<E: Field>(
     }
 }
 
-/// Resolve a round-2 cache pointer. For base sources at round 2,
-/// `this_layer_cache_start = buffer.initial_pointer()` (sub_offset=0), same
-/// as round 1. For ext sources at round 2 (sumcheck_step=2),
-/// `pointer_for_sumcheck_continuation(2)` returns `(buffer_start, buffer_start
-/// + size_after_one_fold)` — both within the consolidated ext-folding Arc.
-/// `previous_layer_start` is at sub_offset=0; `this_layer_cache_start` is at
-/// sub_offset=`size_after_one_fold`. sub_offset is not validated here
-///   (caller-specific).
-fn resolve_round2_cache_pointer(
-    cache_ranges: &[ContinuationBackingRange],
-    ptr: *const u8,
-) -> (*const u8, u32, u16, u32) {
-    resolve_continuation_backing_for_pointer(cache_ranges, ptr).unwrap_or_else(|| {
-        panic!(
-            "compact round 2: cache pointer {ptr:?} does not fall within any consolidated cache backing"
-        )
-    })
-}
-
 /// Build a compact round-2 unified descriptor directly from the static round-2
 /// desc, the continuation plan, and storage.
 ///
-/// Mirrors the round-1 fused builder with three differences:
-/// 1. Base entries carry an extra `base_quarter_size` (= base_poly_size / 4)
-///    that hoists into a descriptor-level u32.
-/// 2. Round 2 base `this_layer_cache_start = buffer.initial_pointer()` —
-///    same shape as round 1, sub_offset must be 0.
-/// 3. Round 2 ext `previous_layer_start` and `this_layer_cache_start` BOTH
-///    live in `intermediate_folding_consolidated`. The builder treats the
-///    ext slot like continuation: source and cache resolve to the same Arc
-///    with different sub_offsets. The kernel computes both offsets via
-///    per-step arithmetic, mirroring the continuation path.
+/// Base inputs fold directly from raw storage; extension inputs read the
+/// round-1 arena. Both write into the combined round-2 destination arena.
 pub(in crate::backward) fn build_flat_round2_unified_desc<E: Field>(
     round2_fused: &super::super::flat::Round2FusedSources,
     plan: &super::super::flat::FlatContinuationBuildPlan,
     storage: &GpuGKRStorage<BF, E>,
+    ext_current: FoldingArenaBinding,
+    destination: FoldingArenaBinding,
 ) -> (Box<GpuFlatRound2UnifiedDesc>, Option<FlatTermTablesHost>) {
     use super::super::flat::{
         FLAT_CONT_EXT_SOURCE_BIT, FLAT_CONT_UNIFIED_SOURCE_GROUP_SIZE, TERM_TYPE_C0_ONLY_LINEAR,
@@ -452,10 +411,13 @@ pub(in crate::backward) fn build_flat_round2_unified_desc<E: Field>(
 
     let mut compact = Box::new(GpuFlatRound2UnifiedDesc::default());
     let source_ranges = build_backing_ranges(storage);
-    let cache_ranges = build_continuation_backing_ranges(storage);
 
     let mut slots = SlotTable::new();
-
+    let ext_current_slot = slots.assign(
+        &mut compact.tables,
+        ext_current.base,
+        ext_current.log2_stride,
+    );
     let nb = round2_fused.num_base_sources as usize;
     let ne = round2_fused.num_ext_sources as usize;
     assert!(
@@ -468,6 +430,16 @@ pub(in crate::backward) fn build_flat_round2_unified_desc<E: Field>(
     );
     compact.num_base_sources = round2_fused.num_base_sources;
     compact.num_ext_sources = round2_fused.num_ext_sources;
+    let sources_per_slot = FLAT_SOURCE_POLY_IDX_MASK as usize + 1;
+    let destination_slots: Vec<u8> = (0..(nb + ne).div_ceil(sources_per_slot))
+        .map(|chunk| {
+            slots.assign(
+                &mut compact.tables,
+                destination.base.wrapping_add(chunk),
+                destination.log2_stride,
+            )
+        })
+        .collect();
 
     let mut layer_metadata: Option<(u32, u32, u32)> = None;
 
@@ -493,22 +465,18 @@ pub(in crate::backward) fn build_flat_round2_unified_desc<E: Field>(
                 );
             }
         }
-        let cache_raw = entry.this_layer_cache_start as *const u8;
-        let (cache_base, cache_log2, cache_poly_idx, cache_sub) =
-            resolve_round2_cache_pointer(&cache_ranges, cache_raw);
-        assert_eq!(
-            cache_sub, 0,
-            "compact round 2: base cache sub_offset must be 0, got {cache_sub} at base_source[{i}]",
+        let source_idx = round2_fused.base_source_indices[i] as usize;
+        let cache = pack_cache_u16(
+            destination_slots[source_idx / sources_per_slot],
+            (source_idx % sources_per_slot) as u16,
         );
-        let cache_slot = slots.assign(&mut compact.tables, cache_base, cache_log2);
-        let cache = pack_cache_u16(cache_slot, cache_poly_idx);
         match entry.source_kind {
             GpuBaseFieldSourceKind::Real => {
                 let src_raw = entry.base_input_start;
                 let (src_base, src_log2, src_poly_idx) =
                     resolve_source_pointer(&source_ranges, src_raw);
                 let src_slot = slots.assign(&mut compact.tables, src_base, src_log2);
-                let src = pack_source_u16(entry.first_access, src_slot, src_poly_idx);
+                let src = pack_source_u16(true, src_slot, src_poly_idx);
                 compact.base_sources[i] = GpuGKRSourceRecord::new(src, cache);
             }
             GpuBaseFieldSourceKind::VirtualRangeCheck16Bits
@@ -516,11 +484,7 @@ pub(in crate::backward) fn build_flat_round2_unified_desc<E: Field>(
             | GpuBaseFieldSourceKind::VirtualInitsAndTeardownsLow
             | GpuBaseFieldSourceKind::VirtualInitsAndTeardownsHigh => {
                 let kind = entry.source_kind as u8;
-                let src = if entry.first_access {
-                    CONT_BASE_FIRST_ACCESS_FLAG
-                } else {
-                    0
-                } | (kind as u16 & CONT_BASE_VIRTUAL_KIND_MASK);
+                let src = CONT_BASE_FIRST_ACCESS_FLAG | (kind as u16 & CONT_BASE_VIRTUAL_KIND_MASK);
                 compact.base_sources[i] =
                     GpuGKRSourceRecord::new(src, cache | CONT_BASE_CACHE_VIRTUAL_FLAG);
             }
@@ -531,28 +495,12 @@ pub(in crate::backward) fn build_flat_round2_unified_desc<E: Field>(
     }
 
     for i in 0..ne {
-        let entry = &round2_fused.ext_sources[i];
-        let prev_raw = entry.previous_layer_start;
-        let cache_raw = entry.this_layer_cache_start as *const u8;
-        let first_access = !prev_raw.is_null();
-        let (cache_base, cache_log2, cache_poly_idx, _cache_sub) =
-            resolve_round2_cache_pointer(&cache_ranges, cache_raw);
-        let cache_slot = slots.assign(&mut compact.tables, cache_base, cache_log2);
-        let cache = pack_cache_u16(cache_slot, cache_poly_idx);
-        if first_access {
-            let (prev_base, prev_log2, prev_poly_idx, _prev_sub) =
-                resolve_round2_cache_pointer(&cache_ranges, prev_raw);
-            assert_eq!(
-                prev_base as usize, cache_base as usize,
-                "compact round 2: ext prev/cache resolve to different backings at ext_source[{i}]"
-            );
-            assert_eq!(
-                prev_poly_idx, cache_poly_idx,
-                "compact round 2: ext prev/cache poly_idx mismatch at ext_source[{i}]"
-            );
-            let _ = prev_log2;
-        }
-        let src = pack_source_u16(first_access, cache_slot, cache_poly_idx);
+        let src = pack_source_u16(true, ext_current_slot, i as u16);
+        let source_idx = round2_fused.ext_source_indices[i] as usize;
+        let cache = pack_cache_u16(
+            destination_slots[source_idx / sources_per_slot],
+            (source_idx % sources_per_slot) as u16,
+        );
         compact.ext_sources[i] = GpuGKRSourceRecord::new(src, cache);
     }
 
@@ -681,15 +629,6 @@ pub(in crate::backward) fn build_flat_round2_unified_desc<E: Field>(
     let mut tile_fold_offsets: Vec<u16> = Vec::with_capacity(num_tiles + 1);
     let mut folded: HashSet<u16> = HashSet::new();
 
-    let needs_folding = |src_idx: u16| -> bool {
-        if src_idx & FLAT_CONT_EXT_SOURCE_BIT != 0 {
-            let raw = (src_idx & !FLAT_CONT_EXT_SOURCE_BIT) as usize;
-            !round2_fused.ext_sources[raw].previous_layer_start.is_null()
-        } else {
-            round2_fused.base_sources[src_idx as usize].first_access
-        }
-    };
-
     for &(tile_start, tile_end) in &tile_boundaries {
         tile_term_offsets.push(tile_start as u16);
         tile_fold_offsets.push(fold_sources.len() as u16);
@@ -711,9 +650,8 @@ pub(in crate::backward) fn build_flat_round2_unified_desc<E: Field>(
         tile_sources.dedup();
 
         for src in tile_sources {
-            if !folded.contains(&src) && needs_folding(src) {
+            if folded.insert(src) {
                 fold_sources.push(src);
-                folded.insert(src);
             }
         }
     }
@@ -745,5 +683,31 @@ pub(in crate::backward) fn build_flat_round2_unified_desc<E: Field>(
                 tile_fold_offsets,
             }),
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::backward::compact::{
+        rebind_flat_continuation_descriptor, FoldingArenaBinding, GpuFlatContinuationUnifiedDesc,
+    };
+
+    #[test]
+    fn continuation_descriptor_binds_current_and_destination_arenas_separately() {
+        let mut desc = GpuFlatContinuationUnifiedDesc::default();
+        desc.num_sources = 2049;
+        let current = FoldingArenaBinding::new(0x1000usize as *const u8, 6);
+        let destination = FoldingArenaBinding::new(0x2000usize as *const u8, 5);
+
+        rebind_flat_continuation_descriptor::<u64>(&mut desc, current, destination);
+
+        assert_eq!(desc.tables.bases[0], current.base);
+        assert_eq!(desc.tables.bases[2], destination.base);
+        assert_eq!((desc.sources[0].src >> 11) & 0xf, 0);
+        assert_eq!((desc.sources[0].cache >> 11) & 0xf, 2);
+        assert_eq!((desc.sources[2048].src >> 11) & 0xf, 1);
+        assert_eq!((desc.sources[2048].cache >> 11) & 0xf, 3);
+        assert_eq!(desc.sources[2048].src & 0x7ff, 0);
     }
 }

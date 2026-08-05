@@ -6,20 +6,15 @@ use era_cudart::result::{CudaResult, CudaResultWrap};
 use era_cudart::slice::{DeviceSlice, DeviceVariable};
 use era_cudart_sys::{cudaGetSymbolAddress, cuda_struct_and_stub};
 
-use super::super::super::{
-    GpuGKRStorage, GpuSumcheckRound1PreparedStorage, GpuSumcheckRound2PreparedStorage,
-    GpuSumcheckRound3AndBeyondPreparedStorage,
-};
-use super::encoding::{
-    GpuGKRDimensionReducingContinuationBatchCompact, GpuGKRDimensionReducingRound0BatchCompact,
-};
+use super::super::super::GpuGKRStorage;
+use super::encoding::GpuGKRDimensionReducingRound0BatchCompact;
 use super::launchers::GkrEqSizes;
 use super::shared::{
     ClaimBufferLayout, DeviceClaimPointAndBatching, ScheduledDimensionReducingFinalReadback,
     GKR_BACKWARD_MAX_TRACE_LEN_LOG2,
 };
 use crate::upstream::{
-    DimensionReducingInputOutput, Field, FieldExtension, GKRInputs, OutputType, Seed,
+    DimensionReducingInputOutput, Field, FieldExtension, GKRAddress, GKRInputs, OutputType, Seed,
 };
 use gpu_core::primitives::callbacks::Callbacks;
 use gpu_core::primitives::context::DeviceAllocation;
@@ -123,26 +118,16 @@ pub(crate) fn schedule_dim_reducing_batch_challenge_table_prelude(
     gpu_ops::powers::get_powers_by_ref::<E4>(base, 0, table, context.get_exec_stream())
 }
 
-#[derive(Clone, Debug)]
-pub(crate) struct GpuGKRDimensionReducingRound3Prepared<E> {
-    pub(crate) step: usize,
-    pub(crate) prepared: GpuSumcheckRound3AndBeyondPreparedStorage<E>,
-}
-
-#[allow(dead_code)]
 pub(crate) struct GpuGKRDimensionReducingRoundScratch<E> {
-    pub(crate) claim_point: DeviceAllocation<E>,
     pub(crate) eq_low_group: DeviceAllocation<E>,
     pub(crate) accumulator: DeviceAllocation<E>,
-    pub(crate) reduction_output: DeviceAllocation<E>,
-    pub(crate) reduction_temp_storage: DeviceAllocation<u8>,
     /// Per-block partials buffer for the fused tail (stage-1 dual-reduce
     /// output, stage-2 mega-finalize input).
     pub(crate) partials: DeviceAllocation<E>,
 }
 
 #[derive(Clone, Debug)]
-pub(crate) struct GpuGKRDimensionReducingKernelPlan<B, E> {
+pub(crate) struct GpuGKRDimensionReducingKernelPlan<E> {
     #[allow(dead_code)]
     pub(crate) kind: GpuGKRDimensionReducingKernelKind,
     pub(crate) inputs: GKRInputs,
@@ -151,9 +136,6 @@ pub(crate) struct GpuGKRDimensionReducingKernelPlan<B, E> {
     pub(crate) batch_challenge_count: usize,
     #[allow(dead_code)]
     pub(crate) batch_challenges: Vec<E>,
-    pub(crate) round1_prepared: GpuSumcheckRound1PreparedStorage<B, E>,
-    pub(crate) round2_prepared: Option<GpuSumcheckRound2PreparedStorage<B, E>>,
-    pub(crate) round3_and_beyond_prepared: Vec<GpuGKRDimensionReducingRound3Prepared<E>>,
 }
 
 #[doc(hidden)]
@@ -164,31 +146,19 @@ pub struct GpuGKRDimensionReducingSumcheckLayerPlan<B, E> {
     pub(crate) folding_steps: usize,
     #[allow(dead_code)]
     pub(crate) batch_challenge_base: Option<E>,
-    pub(crate) kernel_plans: Vec<GpuGKRDimensionReducingKernelPlan<B, E>>,
+    pub(crate) kernel_plans: Vec<GpuGKRDimensionReducingKernelPlan<E>>,
+    pub(crate) folding_addresses: Vec<GKRAddress>,
     pub(crate) round0_batch_template_compact: GpuGKRDimensionReducingRound0BatchCompact<E>,
-    pub(crate) round1_batch_template_compact: GpuGKRDimensionReducingContinuationBatchCompact<E>,
-    /// Single descriptor reused for every continuation step >= 2. The kernel
-    /// derives per-step folding-buffer offsets from `step + acc_size`.
-    pub(crate) continuation_batch_template_compact:
-        GpuGKRDimensionReducingContinuationBatchCompact<E>,
     pub(crate) round_scratch: GpuGKRDimensionReducingRoundScratch<E>,
-    /// When set, `batch_challenge_base_ptr()` returns this raw pointer instead
-    /// of `round_scratch.claim_point.as_ptr().add(folding_steps)`. The
-    /// workflow_state path uses this to point at the orchestrator-owned
-    /// `device_claim_point_in[folding_steps]` so the per-layer
-    /// `round_scratch.claim_point` D2D is no longer needed.
-    pub(crate) batch_challenge_base_override_ptr: Option<*const E>,
     /// Strict 3-slot eq-sizes descriptor. Initialised at layer start from
     /// `make_eq_sizes(folding_steps - 1)`, mutated in place by
     /// `fold_eq_values_for_next_round` between sumcheck rounds, and passed by
     /// value into the dim-reducing consumer kernel arg structs.
     pub(crate) eq_sizes: GkrEqSizes,
+    pub(crate) _phantom: std::marker::PhantomData<B>,
 }
 
-// SAFETY: `batch_challenge_base_override_ptr` only stores a raw pointer into a
-// device allocation that the caller keeps alive for the full duration of any
-// scheduled stream op consuming this layer plan. The pointer is never
-// dereferenced from Rust — it is only forwarded to kernel arguments.
+// SAFETY: descriptor raw pointers are only forwarded to stream-ordered kernels.
 unsafe impl<B, E> Send for GpuGKRDimensionReducingSumcheckLayerPlan<B, E>
 where
     B: Send,

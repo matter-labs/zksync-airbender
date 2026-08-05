@@ -16,12 +16,13 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use super::super::super::storage_layout::address_storage_layer;
 use super::super::super::GpuGKRStorage;
+use super::super::compact::FoldingArenaBinding;
 use super::super::kernels::{
     pack_cache_u16, pack_source_u16, DimensionReducingKernelBlueprint,
     GpuGKRDimensionReducingBatchRecordCompact, GpuGKRDimensionReducingContinuationBatchCompact,
-    GpuGKRDimensionReducingRound0BatchCompact, GpuGKRDimensionReducingTables, GpuGKRSourceRecord,
-    PayloadRange16, GKR_DIM_REDUCING_BASE_SLOTS, GKR_DIM_REDUCING_INLINE_U16_BUDGET,
-    GKR_DIM_REDUCING_MAX_RECORDS_PER_LAYER,
+    GpuGKRDimensionReducingKernelPlan, GpuGKRDimensionReducingRound0BatchCompact,
+    GpuGKRDimensionReducingTables, GpuGKRSourceRecord, PayloadRange16, GKR_DIM_REDUCING_BASE_SLOTS,
+    GKR_DIM_REDUCING_INLINE_U16_BUDGET, GKR_DIM_REDUCING_MAX_RECORDS_PER_LAYER,
 };
 use crate::upstream::{Field, GKRAddress};
 
@@ -129,50 +130,6 @@ fn resolve_ext_consolidated<B, E: Field>(
     )
 }
 
-/// `(layer, class)` lookup of the matching folding-buffer backing. Returns
-/// `(backing_ptr, log2_stride, poly_idx)`. The folding-buffer log2_stride is
-/// `log2(per_poly_size)`; the poly_idx aligns with the matching
-/// `ext_class_backing`.
-fn resolve_ext_folding_buffer<B, E: Field>(
-    storage: &GpuGKRStorage<B, E>,
-    address: GKRAddress,
-) -> (*const u8, u32, u16) {
-    let layout = storage
-        .layout
-        .as_ref()
-        .expect("storage layout required for compact dim-reducing encoding");
-    let layer = address_storage_layer(address);
-    let (_canonical_layer, class, _field, _poly_idx) =
-        layout.lookup(layer, &address).unwrap_or_else(|| {
-            panic!("address {address:?} missing from storage layout at layer {layer}")
-        });
-    let consolidated = storage.layers[layer]
-        .intermediate_folding_consolidated
-        .as_ref()
-        .unwrap_or_else(|| {
-            panic!(
-                "intermediate_folding_consolidated missing for layer {layer}; register_dim_reducing_inputs_for_layer should have allocated it"
-            )
-        });
-    let backing = consolidated.per_class.get(&class).unwrap_or_else(|| {
-        panic!(
-            "intermediate_folding_consolidated.per_class[{class:?}] missing at layer {layer} for address {address:?}",
-        )
-    });
-    let cache_poly_idx = consolidated.poly_index.get(&address).copied().unwrap_or_else(|| {
-        panic!("intermediate_folding_consolidated missing dense cache index for {address:?} at layer {layer}")
-    });
-    let log2_stride = (consolidated.per_poly_size as u32).trailing_zeros();
-    debug_assert_eq!(
-        1usize << log2_stride,
-        consolidated.per_poly_size,
-        "consolidated folding per_poly_size must be a power of two",
-    );
-    (backing.as_ptr() as *const u8, log2_stride, cache_poly_idx)
-}
-
-/// Push a u16 onto the inline payload, bumping the write cursor and panicking
-/// on overflow. `cursor` is the `(offset, count)` builder for the current
 /// `PayloadRange16`.
 fn push_payload_record(
     inline_payload: &mut [GpuGKRSourceRecord; GKR_DIM_REDUCING_INLINE_U16_BUDGET],
@@ -192,6 +149,128 @@ fn check_record_count(blueprints_len: usize) {
         blueprints_len <= GKR_DIM_REDUCING_MAX_RECORDS_PER_LAYER,
         "compact dim-reducing encoder: {blueprints_len} blueprints exceeds GKR_DIM_REDUCING_MAX_RECORDS_PER_LAYER={GKR_DIM_REDUCING_MAX_RECORDS_PER_LAYER}",
     );
+}
+
+fn folding_index<B, E>(
+    storage: &GpuGKRStorage<B, E>,
+    folding_addresses: &[GKRAddress],
+    address: GKRAddress,
+) -> u16 {
+    let canonical = storage
+        .layout
+        .as_ref()
+        .and_then(|layout| layout.aliases.get(&address))
+        .copied()
+        .unwrap_or(address);
+    folding_addresses
+        .binary_search(&canonical)
+        .unwrap_or_else(|_| panic!("folding address {canonical:?} missing from dense arena"))
+        .try_into()
+        .expect("folding source index exceeds u16")
+}
+
+pub(in crate::backward) fn build_round1_batch_compact_for_arena<B, E: Field>(
+    kernel_plans: &[GpuGKRDimensionReducingKernelPlan<E>],
+    storage: &GpuGKRStorage<B, E>,
+    folding_addresses: &[GKRAddress],
+    destination: FoldingArenaBinding,
+) -> GpuGKRDimensionReducingContinuationBatchCompact<E> {
+    check_record_count(kernel_plans.len());
+    let mut batch = GpuGKRDimensionReducingContinuationBatchCompact::<E> {
+        record_count: kernel_plans.len() as u32,
+        ..Default::default()
+    };
+    let mut tables = SlotTableBuilder::new();
+    let destination_slot = tables.get_or_create(destination.base, destination.log2_stride);
+    let mut payload_cursor = 0usize;
+    let mut first_access_seen = BTreeSet::new();
+
+    for (idx, kernel) in kernel_plans.iter().enumerate() {
+        let inputs_offset = payload_cursor as u16;
+        let mut inputs_count = 0u16;
+        for address in kernel.inputs.inputs_in_extension.iter().copied() {
+            if address == GKRAddress::placeholder() {
+                continue;
+            }
+            let (input_ptr, input_stride, input_idx) = resolve_ext_consolidated(storage, address);
+            let input_slot = tables.get_or_create(input_ptr, input_stride);
+            let cache_idx = folding_index(storage, folding_addresses, address);
+            let first_access = first_access_seen.insert(cache_idx);
+            push_payload_record(
+                &mut batch.inline_payload,
+                &mut payload_cursor,
+                GpuGKRSourceRecord::new(
+                    pack_source_u16(first_access, input_slot, input_idx),
+                    pack_cache_u16(destination_slot, cache_idx),
+                ),
+            );
+            inputs_count += 1;
+        }
+        batch.records[idx] = GpuGKRDimensionReducingBatchRecordCompact {
+            kind: kernel.kind.as_u32(),
+            inputs: PayloadRange16 {
+                offset: inputs_offset,
+                count: inputs_count,
+            },
+            outputs: PayloadRange16::default(),
+            batch_challenge_offset: kernel.batch_challenge_offset as u16,
+            batch_challenge_count: kernel.batch_challenge_count as u16,
+        };
+    }
+    batch.tables = tables.into_tables();
+    batch
+}
+
+pub(in crate::backward) fn build_continuation_batch_compact_for_arenas<B, E: Field>(
+    kernel_plans: &[GpuGKRDimensionReducingKernelPlan<E>],
+    storage: &GpuGKRStorage<B, E>,
+    folding_addresses: &[GKRAddress],
+    current: FoldingArenaBinding,
+    destination: FoldingArenaBinding,
+) -> GpuGKRDimensionReducingContinuationBatchCompact<E> {
+    check_record_count(kernel_plans.len());
+    let mut batch = GpuGKRDimensionReducingContinuationBatchCompact::<E> {
+        record_count: kernel_plans.len() as u32,
+        ..Default::default()
+    };
+    let mut tables = SlotTableBuilder::new();
+    let current_slot = tables.get_or_create(current.base, current.log2_stride);
+    let destination_slot = tables.get_or_create(destination.base, destination.log2_stride);
+    let mut payload_cursor = 0usize;
+    let mut first_access_seen = BTreeSet::new();
+
+    for (idx, kernel) in kernel_plans.iter().enumerate() {
+        let inputs_offset = payload_cursor as u16;
+        let mut inputs_count = 0u16;
+        for address in kernel.inputs.inputs_in_extension.iter().copied() {
+            if address == GKRAddress::placeholder() {
+                continue;
+            }
+            let poly_idx = folding_index(storage, folding_addresses, address);
+            let first_access = first_access_seen.insert(poly_idx);
+            push_payload_record(
+                &mut batch.inline_payload,
+                &mut payload_cursor,
+                GpuGKRSourceRecord::new(
+                    pack_source_u16(first_access, current_slot, poly_idx),
+                    pack_cache_u16(destination_slot, poly_idx),
+                ),
+            );
+            inputs_count += 1;
+        }
+        batch.records[idx] = GpuGKRDimensionReducingBatchRecordCompact {
+            kind: kernel.kind.as_u32(),
+            inputs: PayloadRange16 {
+                offset: inputs_offset,
+                count: inputs_count,
+            },
+            outputs: PayloadRange16::default(),
+            batch_challenge_offset: kernel.batch_challenge_offset as u16,
+            batch_challenge_count: kernel.batch_challenge_count as u16,
+        };
+    }
+    batch.tables = tables.into_tables();
+    batch
 }
 
 /// Build the compact round-0 batch descriptor. Both inputs and outputs
@@ -265,138 +344,6 @@ pub(in crate::backward) fn build_round0_batch_compact<B, E: Field>(
                 offset: outputs_offset,
                 count: outputs_count,
             },
-            batch_challenge_offset: blueprint.batch_challenge_offset as u16,
-            batch_challenge_count: blueprint.batch_challenge_count as u16,
-        };
-    }
-
-    batch.tables = tables.into_tables();
-    batch
-}
-
-/// Build the compact round-1 batch descriptor. For each ext input poly, the
-/// encoder collects (a) the original ext input slot in `ext_class_backings`,
-/// (b) the matching folding-buffer slot in
-/// `intermediate_folding_consolidated`. The kernel reads `previous_layer_start`
-/// from the input slot and `this_layer_start` from
-/// the record's cache half. The source and cache poly_idx values may differ
-/// for copy aliases.
-///
-/// `first_access` follows `last_used_for_layer` semantics: the first
-/// occurrence of a given `(layer, address)` pair within the batch payload
-/// returns `true`, subsequent occurrences return `false`.
-pub(in crate::backward) fn build_round1_batch_compact<B, E: Field>(
-    blueprints: &[DimensionReducingKernelBlueprint<E>],
-    storage: &GpuGKRStorage<B, E>,
-) -> GpuGKRDimensionReducingContinuationBatchCompact<E> {
-    check_record_count(blueprints.len());
-
-    let mut batch = GpuGKRDimensionReducingContinuationBatchCompact::<E> {
-        record_count: blueprints.len() as u32,
-        ..Default::default()
-    };
-    let mut tables = SlotTableBuilder::new();
-    let mut payload_cursor = 0usize;
-    let mut first_access_seen: BTreeSet<(usize, GKRAddress)> = BTreeSet::new();
-
-    for (idx, blueprint) in blueprints.iter().enumerate() {
-        debug_assert!(blueprint.inputs.inputs_in_base.is_empty());
-
-        let inputs_offset = payload_cursor as u16;
-        let mut inputs_count = 0u16;
-        for addr in blueprint.inputs.inputs_in_extension.iter().copied() {
-            if addr == GKRAddress::placeholder() {
-                continue;
-            }
-            let (input_ptr, input_log2_stride, poly_idx) = resolve_ext_consolidated(storage, addr);
-            let (folding_ptr, folding_log2_stride, folding_poly_idx) =
-                resolve_ext_folding_buffer(storage, addr);
-            let input_slot = tables.get_or_create(input_ptr, input_log2_stride);
-            let folding_slot = tables.get_or_create(folding_ptr, folding_log2_stride);
-
-            let layer = address_storage_layer(addr);
-            let key = (layer, addr);
-            let first_access = first_access_seen.insert(key);
-            let src = pack_source_u16(first_access, input_slot, poly_idx);
-            let cache = pack_cache_u16(folding_slot, folding_poly_idx);
-            push_payload_record(
-                &mut batch.inline_payload,
-                &mut payload_cursor,
-                GpuGKRSourceRecord::new(src, cache),
-            );
-            inputs_count += 1;
-        }
-
-        batch.records[idx] = GpuGKRDimensionReducingBatchRecordCompact {
-            kind: blueprint.kind.as_u32(),
-            inputs: PayloadRange16 {
-                offset: inputs_offset,
-                count: inputs_count,
-            },
-            outputs: PayloadRange16::default(),
-            batch_challenge_offset: blueprint.batch_challenge_offset as u16,
-            batch_challenge_count: blueprint.batch_challenge_count as u16,
-        };
-    }
-
-    batch.tables = tables.into_tables();
-    batch
-}
-
-/// Build the compact continuation batch descriptor for sumcheck steps >= 2.
-/// Sources resolve through folding-buffer slots only; the kernel uses
-/// `gkr_resolve_dim_reducing_continuation_source` which derives per-step
-/// offsets from `step + acc_size`.
-///
-/// `first_access` is `true` on the first occurrence of a
-/// `(layer, address)` pair within this step's batch payload.
-pub(in crate::backward) fn build_continuation_batch_compact<B, E: Field>(
-    blueprints: &[DimensionReducingKernelBlueprint<E>],
-    storage: &GpuGKRStorage<B, E>,
-) -> GpuGKRDimensionReducingContinuationBatchCompact<E> {
-    check_record_count(blueprints.len());
-
-    let mut batch = GpuGKRDimensionReducingContinuationBatchCompact::<E> {
-        record_count: blueprints.len() as u32,
-        ..Default::default()
-    };
-    let mut tables = SlotTableBuilder::new();
-    let mut payload_cursor = 0usize;
-    let mut first_access_seen: BTreeSet<(usize, GKRAddress)> = BTreeSet::new();
-
-    for (idx, blueprint) in blueprints.iter().enumerate() {
-        debug_assert!(blueprint.inputs.inputs_in_base.is_empty());
-
-        let inputs_offset = payload_cursor as u16;
-        let mut inputs_count = 0u16;
-        for addr in blueprint.inputs.inputs_in_extension.iter().copied() {
-            if addr == GKRAddress::placeholder() {
-                continue;
-            }
-            let (folding_ptr, folding_log2_stride, poly_idx) =
-                resolve_ext_folding_buffer(storage, addr);
-            let folding_slot = tables.get_or_create(folding_ptr, folding_log2_stride);
-
-            let layer = address_storage_layer(addr);
-            let key = (layer, addr);
-            let first_access = first_access_seen.insert(key);
-            let src = pack_source_u16(first_access, folding_slot, poly_idx);
-            let cache = pack_cache_u16(folding_slot, poly_idx);
-            push_payload_record(
-                &mut batch.inline_payload,
-                &mut payload_cursor,
-                GpuGKRSourceRecord::new(src, cache),
-            );
-            inputs_count += 1;
-        }
-
-        batch.records[idx] = GpuGKRDimensionReducingBatchRecordCompact {
-            kind: blueprint.kind.as_u32(),
-            inputs: PayloadRange16 {
-                offset: inputs_offset,
-                count: inputs_count,
-            },
-            outputs: PayloadRange16::default(),
             batch_challenge_offset: blueprint.batch_challenge_offset as u16,
             batch_challenge_count: blueprint.batch_challenge_count as u16,
         };

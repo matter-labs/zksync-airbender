@@ -177,19 +177,23 @@ static_assert(sizeof(flat_continuation_unified_desc_compact_devptr) <= 32 * 1024
 //   bits 14..11 : ptr_idx (4 bits, 16 slots) into `tables.bases` / `tables.log2_stride`
 //   bits 10..0  : poly_idx (11 bits, max 2048) within the chosen consolidated backing
 //
-// `prev` and `cache` derive from the same per-poly slot in the consolidated
-// folding backing — the encoder bakes the per-step offsets into the desc.
+// `prev` and `cache` use independent current/destination arena slots.
 
 template <typename E, typename Desc>
 DEVICE_FORCEINLINE void flat_cont_resolve_compact(const Desc &desc, const gkr_source_record record, const E *&prev, E *&cache) {
   const bool first_access = (record.src & 0x8000u) != 0;
-  const u32 ptr_idx = (record.src >> 11) & 0xFu;
-  const u32 poly_idx = record.src & 0x07FFu;
-  const u8 *base_u8 = desc.tables.bases[ptr_idx];
-  const u32 log2_stride = desc.tables.log2_stride[ptr_idx];
-  const E *poly_slot = reinterpret_cast<const E *>(base_u8) + (static_cast<size_t>(poly_idx) << log2_stride);
-  prev = first_access ? poly_slot + desc.prev_per_poly_offset[ptr_idx] : nullptr;
-  cache = const_cast<E *>(poly_slot) + desc.cache_per_poly_offset[ptr_idx];
+  const u32 src_slot = (record.src >> 11) & 0xFu;
+  const u32 src_poly_idx = record.src & 0x07FFu;
+  const u8 *src_base_u8 = desc.tables.bases[src_slot];
+  const u32 src_log2_stride = desc.tables.log2_stride[src_slot];
+  const E *src_poly = reinterpret_cast<const E *>(src_base_u8) + (static_cast<size_t>(src_poly_idx) << src_log2_stride);
+  prev = first_access ? src_poly + desc.prev_per_poly_offset[src_slot] : nullptr;
+  const u32 cache_slot = (record.cache >> 11) & 0xFu;
+  const u32 cache_poly_idx = record.cache & 0x07FFu;
+  const u8 *cache_base_u8 = desc.tables.bases[cache_slot];
+  const u32 cache_log2_stride = desc.tables.log2_stride[cache_slot];
+  E *cache_poly = const_cast<E *>(reinterpret_cast<const E *>(cache_base_u8)) + (static_cast<size_t>(cache_poly_idx) << cache_log2_stride);
+  cache = cache_poly + desc.cache_per_poly_offset[cache_slot];
 }
 
 // Fold-on-first-load for a continuing source, resolving prev/cache via the
@@ -667,26 +671,21 @@ template <typename E, typename Desc> DEVICE_FORCEINLINE E flat_round2_get_base_v
   return result;
 }
 
-// Round 2 ext source resolution: `previous_layer_start` and
-// `this_layer_cache_start` BOTH live inside the consolidated ext-folding Arc
-// (same poly slot) with `prev_sub_offset = 0` and
-// `cache_sub_offset = size_after_one_fold = 2 * fold_stride = 4 * next_layer_size`
-// (round-2 sumcheck-step-2 invariant; verified by the encoder).
-//
-// The kernel re-derives the cache offset from the runtime `next_layer_size`.
+// Round 2 extension sources read the round-1 arena and write the combined
+// round-2 destination arena.
 template <typename E, typename Desc>
-DEVICE_FORCEINLINE void flat_round2_resolve_ext_compact(const Desc &desc, const gkr_source_record record, const E *&prev, E *&cache, bool &first_access,
-                                                        const unsigned next_layer_size) {
+DEVICE_FORCEINLINE void flat_round2_resolve_ext_compact(const Desc &desc, const gkr_source_record record, const E *&prev, E *&cache, bool &first_access) {
   first_access = (record.src & 0x8000u) != 0;
-  const u32 ptr_idx = (record.src >> 11) & 0xFu;
-  const u32 poly_idx = record.src & 0x07FFu;
-  const u8 *base_u8 = desc.tables.bases[ptr_idx];
-  const u32 log2_stride = desc.tables.log2_stride[ptr_idx];
-  const E *poly_slot = reinterpret_cast<const E *>(base_u8) + (static_cast<size_t>(poly_idx) << log2_stride);
-  prev = first_access ? poly_slot : nullptr;
-  // cache_offset = size_after_one_fold = 4 * next_layer_size (round-2
-  // sumcheck step 2 invariant).
-  cache = const_cast<E *>(poly_slot) + (static_cast<size_t>(next_layer_size) << 2);
+  const u32 src_slot = (record.src >> 11) & 0xFu;
+  const u32 src_poly_idx = record.src & 0x07FFu;
+  const u8 *src_base_u8 = desc.tables.bases[src_slot];
+  const u32 src_log2_stride = desc.tables.log2_stride[src_slot];
+  prev = first_access ? reinterpret_cast<const E *>(src_base_u8) + (static_cast<size_t>(src_poly_idx) << src_log2_stride) : nullptr;
+  const u32 cache_slot = (record.cache >> 11) & 0xFu;
+  const u32 cache_poly_idx = record.cache & 0x07FFu;
+  const u8 *cache_base_u8 = desc.tables.bases[cache_slot];
+  const u32 cache_log2_stride = desc.tables.log2_stride[cache_slot];
+  cache = const_cast<E *>(reinterpret_cast<const E *>(cache_base_u8)) + (static_cast<size_t>(cache_poly_idx) << cache_log2_stride);
 }
 
 template <typename E, typename Desc>
@@ -695,7 +694,7 @@ DEVICE_FORCEINLINE E flat_round2_ext_fold_and_load_compact(const Desc &desc, con
   const E *prev;
   E *cache;
   bool first_access;
-  flat_round2_resolve_ext_compact<E>(desc, record, prev, cache, first_access, next_layer_size);
+  flat_round2_resolve_ext_compact<E>(desc, record, prev, cache, first_access);
   if (!first_access)
     return load<E, ld_modifier::ca>(cache, index);
   const E f0 = load<E, ld_modifier::cs>(prev, index);
@@ -730,15 +729,11 @@ DEVICE_FORCEINLINE void flat_round2_load_pair_cached_compact(const Desc &desc, c
   const E *cache;
   if (source_idx & FLAT_CONT_EXT_SOURCE_BIT) {
     const gkr_source_record ext_record = desc.ext_sources[source_idx & ~FLAT_CONT_EXT_SOURCE_BIT];
-    const u32 ptr_idx = (ext_record.cache >> 11) & 0xFu;
-    const u32 poly_idx = ext_record.cache & 0x07FFu;
-    const u8 *base_u8 = desc.tables.bases[ptr_idx];
-    const u32 log2_stride = desc.tables.log2_stride[ptr_idx];
-    const E *poly_slot = reinterpret_cast<const E *>(base_u8) + (static_cast<size_t>(poly_idx) << log2_stride);
-    // Round 2 ext cache lives at sub_offset = size_after_one_fold within the
-    // poly slot; cache_offset = 4 * next_layer_size, matching
-    // `flat_round2_resolve_ext_compact`.
-    cache = poly_slot + (static_cast<size_t>(next_layer_size) << 2);
+    const u32 cache_slot = (ext_record.cache >> 11) & 0xFu;
+    const u32 cache_poly_idx = ext_record.cache & 0x07FFu;
+    const u8 *cache_base_u8 = desc.tables.bases[cache_slot];
+    const u32 cache_log2_stride = desc.tables.log2_stride[cache_slot];
+    cache = reinterpret_cast<const E *>(cache_base_u8) + (static_cast<size_t>(cache_poly_idx) << cache_log2_stride);
   } else {
     gkr_base_source_kind source_kind;
     bool first_access;

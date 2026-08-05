@@ -521,35 +521,27 @@ DEVICE_FORCEINLINE void gkr_dim_reducing_round1_batched_compact_inner(const gkr_
   store<E, st_modifier::cs>(batch.contributions + acc_size, E::mul(total1, eq), gid);
 }
 
-// Continuation (sumcheck step >= 2) source resolver. The u16 encodes the
-// folding-buffer slot directly (the host has set up bases[ptr_idx] to the
-// consolidated folding backing's start). At step N >= 2:
-//   per_poly_size = (1 << (N+1)) * acc_size   (uniform for all polys)
-//   previous_offset_in_E = ((1 << (N+1)) - 8) * acc_size   // step 2 → 0
-//   this_offset_in_E     = ((1 << (N+1)) - 4) * acc_size   // step 2 → 4*acc
-//   this_layer_size = 2 * acc_size, next_layer_size = acc_size
+// Continuation sources read the current round arena and write the next one.
 template <typename E>
 DEVICE_FORCEINLINE gkr_ext_continuing_source<E> gkr_resolve_dim_reducing_continuation_source(const gkr_dim_reducing_tables &tables,
-                                                                                             const gkr_source_record record, const unsigned acc_size,
-                                                                                             const unsigned step) {
+                                                                                             const gkr_source_record record, const unsigned acc_size) {
   bool first_access;
   u32 ptr_idx;
   u32 poly_idx;
   unpack_dim_reducing_source_u16(record.src, first_access, ptr_idx, poly_idx);
-  E *buffer_base = reinterpret_cast<E *>(const_cast<u8 *>(tables.bases[ptr_idx]));
-  const u32 buffer_log2_stride = tables.log2_stride[ptr_idx];
-  E *buffer_start = buffer_base + (static_cast<size_t>(poly_idx) << buffer_log2_stride);
-  // Mirrors `pointer_for_sumcheck_continuation` cumulative offsets.
-  // At step k >= 2 (in acc_size units, where size_after_one_fold = 2^(k+1) * acc_size):
-  //   previous_offset = sum_{i=0..k-3} size_after_one_fold/2^i = (2^(k+2) - 16) * acc_size
-  //   this_offset     = previous_offset + size_after_one_fold/2^(k-2) = (2^(k+2) - 8) * acc_size
-  const unsigned shifted = 1u << (step + 2);
-  const E *previous = buffer_start + static_cast<size_t>(shifted - 16u) * acc_size;
-  E *this_layer = buffer_start + static_cast<size_t>(shifted - 8u) * acc_size;
+  E *source_base = reinterpret_cast<E *>(const_cast<u8 *>(tables.bases[ptr_idx]));
+  const u32 source_log2_stride = tables.log2_stride[ptr_idx];
+  E *source_start = source_base + (static_cast<size_t>(poly_idx) << source_log2_stride);
+  u32 cache_slot;
+  u32 cache_poly_idx;
+  unpack_dim_reducing_cache_u16(record.cache, cache_slot, cache_poly_idx);
+  E *cache_base = reinterpret_cast<E *>(const_cast<u8 *>(tables.bases[cache_slot]));
+  const u32 cache_log2_stride = tables.log2_stride[cache_slot];
+  E *cache_start = cache_base + (static_cast<size_t>(cache_poly_idx) << cache_log2_stride);
   // At step k >= 2, `this_layer_size = 4 * acc_size` (the f0/f1 stride within
   // the previous-layer span = trace_len_after_reduction >> (k-1) = 4 * acc_size_at_step_k);
   // `next_layer_size = this_layer_size / 2 = 2 * acc_size`.
-  return gkr_ext_continuing_source<E>{previous, this_layer, 4u * acc_size, 2u * acc_size, first_access};
+  return gkr_ext_continuing_source<E>{source_start, cache_start, 4u * acc_size, 2u * acc_size, first_access};
 }
 
 template <typename E, bool EXPLICIT_FORM>
@@ -565,7 +557,7 @@ DEVICE_FORCEINLINE void gkr_dim_reducing_continuation_batched_compact_inner(cons
     const auto &record = batch.records[i];
     gkr_ext_continuing_source<E> inputs[GKR_DIM_REDUCING_MAX_INPUTS_PER_RECORD];
     for (unsigned k = 0; k < record.inputs.count; ++k) {
-      inputs[k] = gkr_resolve_dim_reducing_continuation_source<E>(batch.tables, batch.inline_payload[record.inputs.offset + k], acc_size, step);
+      inputs[k] = gkr_resolve_dim_reducing_continuation_source<E>(batch.tables, batch.inline_payload[record.inputs.offset + k], acc_size);
     }
     E c0;
     E c1;

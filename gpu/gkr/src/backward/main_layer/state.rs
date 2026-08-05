@@ -3,7 +3,7 @@ use std::sync::Arc;
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
 
-use crate::GpuGKRStorage;
+use crate::{GpuBaseFieldSourceKind, GpuGKRStorage};
 
 use super::super::kernels::*;
 use super::super::{compact, flat};
@@ -164,9 +164,9 @@ impl<E: Field + FieldExtension<BF>> GpuGKRMainLayerBackwardState<E> {
     pub fn storage(&self) -> &GpuGKRStorage<BF, E> {
         &self.storage
     }
-
-    pub(crate) fn purge_up_to_layer(&mut self, layer: usize) {
-        self.storage.purge_up_to_layer(layer);
+    #[doc(hidden)]
+    pub fn storage_mut(&mut self) -> &mut GpuGKRStorage<BF, E> {
+        &mut self.storage
     }
 }
 
@@ -188,34 +188,8 @@ impl FlatContinuationLaunchSizes {
         }
     }
 
-    fn from_acc_size(acc_size: usize) -> Self {
-        Self::from_sizes(acc_size, acc_size)
-    }
-}
-
-#[allow(dead_code)]
-#[derive(Clone, Copy, Debug)]
-pub(in crate::backward) struct FlatContinuationSizeCheck {
-    pub(in crate::backward) sizes: Option<FlatContinuationLaunchSizes>,
-    pub(in crate::backward) consistent: bool,
-}
-
-impl FlatContinuationSizeCheck {
-    pub(in crate::backward) fn empty() -> Self {
-        Self {
-            sizes: None,
-            consistent: true,
-        }
-    }
-
-    pub(super) fn resolve(&self, acc_size: usize) -> Option<FlatContinuationLaunchSizes> {
-        if !self.consistent {
-            return None;
-        }
-        Some(
-            self.sizes
-                .unwrap_or_else(|| FlatContinuationLaunchSizes::from_acc_size(acc_size)),
-        )
+    pub(super) fn from_acc_size(acc_size: usize) -> Self {
+        Self::from_sizes(2 * acc_size, acc_size)
     }
 }
 
@@ -240,84 +214,11 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
             round0_descriptors.push(self.storage.get_for_sumcheck_round_0(&blueprint.inputs));
         }
 
-        // Pre-allocate consolidated folding backings per
-        // `(layer, AddressClass)` so per-blueprint
-        // `prepare_for_sumcheck_round_*` calls slice views into them
-        // instead of allocating per-poly. Round-1+ compact kernel-arg
-        // encoding indexes into these Arcs via a u16 source descriptor +
-        // per-launch bases table.
-        //
-        // - Base inputs route through `register_flat_base_folding_for_layer`.
-        //   `VirtualSetup` polys are excluded — no layout slot; they fall
-        //   back to per-poly allocation.
-        // - Ext inputs route through `register_dim_reducing_inputs_for_layer`
-        //   (same consolidation shape used by the dim-reducing path; the
-        //   function name carries over for main-layer artifact layers).
-        let flat_base_inputs: std::collections::BTreeSet<GKRAddress> = blueprints
-            .iter()
-            .flat_map(|bp| bp.inputs.inputs_in_base.iter().copied())
-            .filter(|addr| *addr != GKRAddress::placeholder())
-            .collect();
-        self.storage
-            .register_flat_base_folding_for_layer(layer_idx, &flat_base_inputs, context)?;
-        let flat_ext_inputs: std::collections::BTreeSet<GKRAddress> = blueprints
-            .iter()
-            .flat_map(|bp| bp.inputs.inputs_in_extension.iter().copied())
-            .filter(|addr| *addr != GKRAddress::placeholder())
-            .collect();
-        if !flat_ext_inputs.is_empty() {
-            self.storage.register_dim_reducing_inputs_for_layer(
-                layer_idx,
-                &flat_ext_inputs,
-                context,
-            )?;
-        }
-
-        let mut round1_prepared_all = Vec::with_capacity(blueprints.len());
-        for blueprint in blueprints.iter() {
-            round1_prepared_all.push(self.storage.prepare_for_sumcheck_round_1(
-                &blueprint.inputs,
-                layer_idx,
-                context,
-            )?);
-        }
-
-        let mut round2_prepared_all = Vec::with_capacity(blueprints.len());
-        for blueprint in blueprints.iter() {
-            round2_prepared_all.push(self.storage.prepare_for_sumcheck_round_2(
-                &blueprint.inputs,
-                layer_idx,
-                context,
-            )?);
-        }
-
-        let mut round3_prepared_all = Vec::with_capacity(blueprints.len());
-        round3_prepared_all.resize_with(blueprints.len(), Vec::new);
-        for step in 3..folding_steps {
-            for (prepared_for_kernel, blueprint) in
-                round3_prepared_all.iter_mut().zip(blueprints.iter())
-            {
-                let prepared = self.storage.prepare_for_sumcheck_round_3_and_beyond(
-                    &blueprint.inputs,
-                    layer_idx,
-                    step,
-                    context,
-                )?;
-                prepared_for_kernel.push(GpuGKRMainLayerRound3Prepared { step, prepared });
-            }
-        }
-
         let mut static_data = Vec::with_capacity(blueprints.len());
         let mut kernel_plans = Vec::with_capacity(blueprints.len());
-        for (
-            (((blueprint, round0_descriptors_for_kernel), round1_prepared), round2_prepared),
-            round3_and_beyond_prepared,
-        ) in blueprints
+        for (blueprint, round0_descriptors_for_kernel) in blueprints
             .into_iter()
             .zip(round0_descriptors.iter().cloned())
-            .zip(round1_prepared_all)
-            .zip(round2_prepared_all)
-            .zip(round3_prepared_all)
         {
             let constraint_metadata_summary = summarize_main_layer_constraint_metadata_source(
                 blueprint.constraint_metadata_source.as_ref(),
@@ -335,9 +236,6 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
                 auxiliary_challenge_source: blueprint.auxiliary_challenge_source,
                 constraint_metadata_source: blueprint.constraint_metadata_source,
                 constraint_metadata_summary,
-                round1_prepared,
-                round2_prepared,
-                round3_and_beyond_prepared,
             });
         }
 
@@ -432,7 +330,6 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
         let partials_len = super::super::kernels::max_partials_len(max_acc_size);
         let partials = context.alloc(partials_len, AllocationPlacement::Top)?;
         let round_scratch = GpuGKRMainLayerRoundScratch {
-            claim_point: context.alloc(folding_steps + 1, AllocationPlacement::Top)?,
             eq_low_group: context.alloc(GKR_EQ_GROUP_TABLE_LEN, AllocationPlacement::Top)?,
             accumulator: context.alloc(max_acc_size * 2, AllocationPlacement::Top)?,
             reduction_output: context.alloc(2, AllocationPlacement::Top)?,
@@ -447,7 +344,6 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
         // --- Build flat continuation plan for rounds 1+ ---
         let (
             flat_continuation_plan,
-            flat_continuation_per_step_sources,
             flat_cont_recipe_desc,
             flat_cont_recipe_desc_device,
             flat_cont_recipe_count,
@@ -463,17 +359,21 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
         )?;
         recipe_callbacks.extend(cont_recipe_callbacks);
 
-        let flat_round1_desc =
-            Self::build_flat_round1_desc(flat_continuation_plan.as_ref(), &kernel_plans);
-        let flat_round2_desc =
-            Self::build_flat_round2_desc(flat_continuation_plan.as_ref(), &kernel_plans);
+        let flat_round1_desc = Self::build_flat_round1_desc(
+            flat_continuation_plan.as_ref(),
+            &kernel_plans,
+            &self.storage,
+        );
+        let flat_round2_desc = Self::build_flat_round2_desc(
+            flat_continuation_plan.as_ref(),
+            &kernel_plans,
+            &self.storage,
+        );
+        let round1_stride = (self.trace_len / 2).trailing_zeros();
+        let round2_stride = (self.trace_len / 4).trailing_zeros();
 
-        // Compact descriptors: each fused builder takes the static desc +
-        // plan + storage and produces the compact unified desc in one pass
-        // (source pointers resolve to compact `(slot, poly_idx)` records
-        // and term/tile/fold metadata builds inline). The consolidated
-        // per-(layer, class) base-folding backings cover the base side;
-        // `intermediate_folding_consolidated` covers the ext side.
+        // Build structural compact descriptors. Their destination slots are
+        // rebound to round-local arenas immediately before each launch.
         // Each unified-desc builder returns `(inline_desc, Option<term tables>)`.
         // `Some` means the term/tile count overflows the inline __grid_constant__
         // cap → device-terms path: derive the `_devptr` companion desc
@@ -482,8 +382,13 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
         let flat_round1_unified_desc_compact = if let (Some(ref r1_desc), Some(plan)) =
             (&flat_round1_desc, flat_continuation_plan.as_ref())
         {
-            let (desc, tables) =
-                compact::build_flat_round1_unified_desc::<E>(r1_desc, plan, &self.storage);
+            let (desc, tables) = compact::build_flat_round1_unified_desc::<E>(
+                r1_desc,
+                plan,
+                &self.storage,
+                compact::FoldingArenaBinding::new(1usize as *const u8, round1_stride),
+                compact::FoldingArenaBinding::new(2usize as *const u8, round1_stride),
+            );
             if let Some(tables) = tables {
                 let devptr = Box::new(desc.to_devptr());
                 let bufs = upload_flat_term_tables(&tables, context, &mut recipe_callbacks)?;
@@ -497,8 +402,13 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
         let flat_round2_unified_desc_compact = if let (Some(ref r2_desc), Some(plan)) =
             (&flat_round2_desc, flat_continuation_plan.as_ref())
         {
-            let (desc, tables) =
-                compact::build_flat_round2_unified_desc::<E>(r2_desc, plan, &self.storage);
+            let (desc, tables) = compact::build_flat_round2_unified_desc::<E>(
+                r2_desc,
+                plan,
+                &self.storage,
+                compact::FoldingArenaBinding::new(1usize as *const u8, round1_stride),
+                compact::FoldingArenaBinding::new(2usize as *const u8, round2_stride),
+            );
             if let Some(tables) = tables {
                 let devptr = Box::new(desc.to_devptr());
                 let bufs = upload_flat_term_tables(&tables, context, &mut recipe_callbacks)?;
@@ -517,16 +427,15 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
             usize,
             Box<compact::GpuFlatContinuationUnifiedDesc>,
         )> = if let Some(ref plan) = flat_continuation_plan {
-            let mut out = Vec::with_capacity(flat_continuation_per_step_sources.len());
-            for (step, sources) in flat_continuation_per_step_sources.iter() {
-                let (desc, tables) =
-                    compact::build_flat_continuation_unified_desc(sources, plan, &self.storage);
+            let mut out = Vec::with_capacity(folding_steps.saturating_sub(3));
+            for step in 3..folding_steps {
+                let (desc, tables) = compact::build_flat_continuation_unified_desc(plan);
                 if let Some(tables) = tables {
                     let devptr = Box::new(desc.to_devptr());
                     let bufs = upload_flat_term_tables(&tables, context, &mut recipe_callbacks)?;
-                    flat_continuation_terms_device.push((*step, devptr, bufs));
+                    flat_continuation_terms_device.push((step, devptr, bufs));
                 }
-                out.push((*step, desc));
+                out.push((step, desc));
             }
             out
         } else {
@@ -562,6 +471,66 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
                 flat_continuation_plan.as_ref(),
                 &kernel_plans,
             );
+        }
+
+        let mut folding_evaluation_sources = std::collections::BTreeMap::new();
+        if let Some(plan) = flat_continuation_plan.as_ref() {
+            let canonicalize = |address: GKRAddress| {
+                self.storage
+                    .layout
+                    .as_ref()
+                    .and_then(|layout| layout.aliases.get(&address))
+                    .copied()
+                    .unwrap_or(address)
+            };
+            let mut source_indices = std::collections::HashMap::new();
+            for assignment in &plan.source_assignments {
+                let address = if assignment.is_ext {
+                    kernel_plans[assignment.gate_idx].inputs.inputs_in_extension
+                        [assignment.input_idx]
+                } else {
+                    kernel_plans[assignment.gate_idx].inputs.inputs_in_base[assignment.input_idx]
+                };
+                source_indices.insert(
+                    (canonicalize(address), assignment.is_ext),
+                    assignment.source_table_idx as u16,
+                );
+            }
+            let logicalize = |address| {
+                self.storage
+                    .layout
+                    .as_ref()
+                    .map(|layout| {
+                        crate::transform::logical_protocol_address(
+                            address,
+                            &layout.scratch_space_mapping_rev,
+                        )
+                    })
+                    .unwrap_or(address)
+            };
+            for kernel in &kernel_plans {
+                for (address, is_ext) in kernel
+                    .inputs
+                    .inputs_in_base
+                    .iter()
+                    .map(|address| (*address, false))
+                    .chain(
+                        kernel
+                            .inputs
+                            .inputs_in_extension
+                            .iter()
+                            .map(|address| (*address, true)),
+                    )
+                {
+                    if address == GKRAddress::placeholder() {
+                        continue;
+                    }
+                    if let Some(&source_idx) = source_indices.get(&(canonicalize(address), is_ext))
+                    {
+                        folding_evaluation_sources.insert(logicalize(address), source_idx);
+                    }
+                }
+            }
         }
 
         // All storage resolution (compact descriptors + round0..round3 prepared
@@ -617,6 +586,7 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
             flat_cont_coeff_device_buf,
             flat_cont_use_constant,
             flat_continuation_plan,
+            folding_evaluation_sources: folding_evaluation_sources.into_iter().collect(),
             flat_cont_recipe_desc,
             flat_cont_recipe_desc_device,
             flat_cont_recipe_count,
@@ -628,15 +598,14 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
             flat_continuation_terms_device,
             round_scratch,
             recipe_upload_callbacks: recipe_callbacks,
-            batch_challenge_base_override_ptr: None,
             eq_sizes: GkrEqSizes::zeroed(),
         })
     }
 
-    /// Build round-1 fused-source data from the continuation plan and round 1 prepared storage.
     fn build_flat_round1_desc(
         plan: Option<&flat::FlatContinuationBuildPlan>,
         kernel_plans: &[GpuGKRMainLayerKernelPlan<E>],
+        storage: &GpuGKRStorage<BF, E>,
     ) -> Option<Box<flat::Round1FusedSources>> {
         use flat::{
             GpuFlatBaseAfterOneSourceEntry, GpuFlatContinuingSourceEntry, Round1FusedSources,
@@ -645,135 +614,70 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
 
         let plan = plan?;
         let mut desc = Box::new(Round1FusedSources::default());
+        let mut idx_remap = vec![u16::MAX; plan.term_desc.num_sources as usize];
 
-        // Build a key→source index map using round3 prepared cache pointers (same as plan).
-        let round3_prepared = kernel_plans
-            .iter()
-            .map(|kp| {
-                kp.round3_and_beyond_prepared
-                    .iter()
-                    .find(|r| r.step == 3)
-                    .unwrap_or_else(|| panic!("missing round 3 prepared for step 3"))
-            })
-            .collect::<Vec<_>>();
-        let mut key_map: std::collections::HashMap<(usize, bool), u32> =
-            std::collections::HashMap::new();
         for assignment in &plan.source_assignments {
-            let r3 = round3_prepared[assignment.gate_idx];
-            let cache_ptr = if assignment.is_ext {
-                r3.prepared.extension_field_inputs[assignment.input_idx].this_layer_start as usize
+            let address = if assignment.is_ext {
+                kernel_plans[assignment.gate_idx].inputs.inputs_in_extension[assignment.input_idx]
             } else {
-                r3.prepared.base_field_inputs[assignment.input_idx].this_layer_start as usize
+                kernel_plans[assignment.gate_idx].inputs.inputs_in_base[assignment.input_idx]
             };
-            let key = (cache_ptr, assignment.is_ext);
-            if let Some(prev) = key_map.insert(key, assignment.source_table_idx) {
-                debug_assert_eq!(
-                    prev, assignment.source_table_idx,
-                    "flat round1: inconsistent source index for key"
-                );
-            }
-        }
+            let address = storage
+                .layout
+                .as_ref()
+                .and_then(|layout| layout.aliases.get(&address))
+                .copied()
+                .unwrap_or(address);
 
-        // Aggregate first_access across *all* gate inputs that map to the same source table idx.
-        let mut source_first_access = vec![false; plan.term_desc.num_sources as usize];
-        for (gate_idx, kp) in kernel_plans.iter().enumerate() {
-            let r3 = round3_prepared[gate_idx];
-            for (input_idx, src) in kp.round1_prepared.base_field_inputs.iter().enumerate() {
-                let key = (
-                    r3.prepared.base_field_inputs[input_idx].this_layer_start as usize,
-                    false,
-                );
-                if let Some(&idx) = key_map.get(&key) {
-                    if src.first_access {
-                        source_first_access[idx as usize] = true;
-                    }
-                }
-            }
-            for (input_idx, src) in kp.round1_prepared.extension_field_inputs.iter().enumerate() {
-                let key = (
-                    r3.prepared.extension_field_inputs[input_idx].this_layer_start as usize,
-                    true,
-                );
-                if let Some(&idx) = key_map.get(&key) {
-                    if src.first_access {
-                        source_first_access[idx as usize] = true;
-                    }
-                }
-            }
-        }
-
-        // Populate sources. Base sources come from round1_prepared, ext sources from round1_prepared.
-        // Source assignments map (gate_idx, is_ext, input_idx) → source_table_idx.
-        // For round 1/2, the source index encoding uses the high bit:
-        //   base → low indices (unchanged), ext → high bit set.
-        // We need to remap: the continuation plan assigned indices into a single flat array,
-        // but round 1/2 use split arrays with the high-bit tag.
-        let mut base_count = 0u32;
-        let mut ext_count = 0u32;
-        const UNASSIGNED: u16 = u16::MAX;
-        // Map from continuation source_table_idx → round1 tagged index.
-        let mut idx_remap = vec![UNASSIGNED; plan.term_desc.num_sources as usize];
-
-        for assignment in &plan.source_assignments {
-            let remap_slot = &mut idx_remap[assignment.source_table_idx as usize];
-            if *remap_slot != UNASSIGNED {
-                debug_assert_eq!(
-                    (*remap_slot & FLAT_CONT_EXT_SOURCE_BIT) != 0,
-                    assignment.is_ext,
-                    "flat round1: inconsistent base/ext mapping for source {}",
-                    assignment.source_table_idx,
-                );
-                continue;
-            }
-            let kp = &kernel_plans[assignment.gate_idx];
-            let combined_first_access = source_first_access[assignment.source_table_idx as usize];
             if assignment.is_ext {
-                let src = &kp.round1_prepared.extension_field_inputs[assignment.input_idx];
-                let tagged_idx = ext_count as u16 | FLAT_CONT_EXT_SOURCE_BIT;
-                assert!(
-                    (ext_count as usize) < FLAT_CONT_MAX_EXT_SOURCES,
-                    "flat round1: ext source overflow ({ext_count} >= {FLAT_CONT_MAX_EXT_SOURCES})",
-                );
-                *remap_slot = tagged_idx;
-                desc.ext_sources[ext_count as usize] = GpuFlatContinuingSourceEntry {
-                    previous_layer_start: if combined_first_access {
-                        src.previous_layer_start as *const u8
-                    } else {
-                        std::ptr::null()
-                    },
-                    this_layer_cache_start: src.this_layer_start as *mut u8,
+                let idx = desc.num_ext_sources as usize;
+                assert!(idx < FLAT_CONT_MAX_EXT_SOURCES);
+                let poly = storage
+                    .get_ext_poly_for_address(address)
+                    .expect("flat round 1 extension source must exist");
+                desc.ext_sources[idx] = GpuFlatContinuingSourceEntry {
+                    previous_layer_start: poly.as_ptr() as *const u8,
+                    this_layer_cache_start: std::ptr::null_mut(),
                 };
-                ext_count += 1;
+                idx_remap[assignment.source_table_idx as usize] =
+                    idx as u16 | FLAT_CONT_EXT_SOURCE_BIT;
+                desc.num_ext_sources += 1;
             } else {
-                let src = &kp.round1_prepared.base_field_inputs[assignment.input_idx];
-                let tagged_idx = base_count as u16;
-                assert!(
-                    (base_count as usize) < FLAT_CONT_MAX_BASE_SOURCES,
-                    "flat round1: base source overflow ({base_count} >= {FLAT_CONT_MAX_BASE_SOURCES})",
-                );
-                *remap_slot = tagged_idx;
-                desc.base_sources[base_count as usize] = GpuFlatBaseAfterOneSourceEntry {
-                    base_layer_half_size: src.base_layer_half_size,
-                    next_layer_size: src.next_layer_size,
-                    base_input_start: src.base_input_start as *const u8,
-                    this_layer_cache_start: src.this_layer_cache_start as *mut u8,
-                    first_access: combined_first_access,
-                    source_kind: src.source_kind,
+                let idx = desc.num_base_sources as usize;
+                assert!(idx < FLAT_CONT_MAX_BASE_SOURCES);
+                let (base_len, base_ptr, source_kind) =
+                    if let Some(kind) = GpuBaseFieldSourceKind::from_address(address) {
+                        (storage.base_trace_len(), std::ptr::null(), kind)
+                    } else {
+                        let poly = storage
+                            .get_base_poly_for_address(address)
+                            .expect("flat round 1 base source must exist");
+                        (
+                            poly.len(),
+                            poly.as_ptr() as *const u8,
+                            GpuBaseFieldSourceKind::Real,
+                        )
+                    };
+                desc.base_sources[idx] = GpuFlatBaseAfterOneSourceEntry {
+                    base_layer_half_size: base_len / 2,
+                    next_layer_size: base_len / 4,
+                    base_input_start: base_ptr,
+                    this_layer_cache_start: std::ptr::null_mut(),
+                    first_access: true,
+                    source_kind,
                 };
-                base_count += 1;
+                idx_remap[assignment.source_table_idx as usize] = idx as u16;
+                desc.num_base_sources += 1;
             }
         }
-        desc.num_base_sources = base_count;
-        desc.num_ext_sources = ext_count;
         desc.idx_remap = idx_remap;
-
         Some(desc)
     }
 
-    /// Build round-2 fused-source data from the continuation plan and round 2 prepared storage.
     fn build_flat_round2_desc(
         plan: Option<&flat::FlatContinuationBuildPlan>,
         kernel_plans: &[GpuGKRMainLayerKernelPlan<E>],
+        storage: &GpuGKRStorage<BF, E>,
     ) -> Option<Box<flat::Round2FusedSources>> {
         use flat::{
             GpuFlatBaseAfterTwoSourceEntry, GpuFlatContinuingSourceEntry, Round2FusedSources,
@@ -782,122 +686,60 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
 
         let plan = plan?;
         let mut desc = Box::new(Round2FusedSources::default());
+        let mut idx_remap = vec![u16::MAX; plan.term_desc.num_sources as usize];
 
-        // Build a key→source index map using round3 prepared cache pointers (same as plan).
-        let round3_prepared = kernel_plans
-            .iter()
-            .map(|kp| {
-                kp.round3_and_beyond_prepared
-                    .iter()
-                    .find(|r| r.step == 3)
-                    .unwrap_or_else(|| panic!("missing round 3 prepared for step 3"))
-            })
-            .collect::<Vec<_>>();
-        let mut key_map: std::collections::HashMap<(usize, bool), u32> =
-            std::collections::HashMap::new();
         for assignment in &plan.source_assignments {
-            let r3 = round3_prepared[assignment.gate_idx];
-            let cache_ptr = if assignment.is_ext {
-                r3.prepared.extension_field_inputs[assignment.input_idx].this_layer_start as usize
+            let address = if assignment.is_ext {
+                kernel_plans[assignment.gate_idx].inputs.inputs_in_extension[assignment.input_idx]
             } else {
-                r3.prepared.base_field_inputs[assignment.input_idx].this_layer_start as usize
+                kernel_plans[assignment.gate_idx].inputs.inputs_in_base[assignment.input_idx]
             };
-            let key = (cache_ptr, assignment.is_ext);
-            if let Some(prev) = key_map.insert(key, assignment.source_table_idx) {
-                debug_assert_eq!(
-                    prev, assignment.source_table_idx,
-                    "flat round2: inconsistent source index for key"
-                );
-            }
-        }
+            let address = storage
+                .layout
+                .as_ref()
+                .and_then(|layout| layout.aliases.get(&address))
+                .copied()
+                .unwrap_or(address);
+            let source_idx = assignment.source_table_idx as u16;
 
-        // Aggregate first_access across *all* gate inputs that map to the same source table idx.
-        let mut source_first_access = vec![false; plan.term_desc.num_sources as usize];
-        for (gate_idx, kp) in kernel_plans.iter().enumerate() {
-            let r3 = round3_prepared[gate_idx];
-            for (input_idx, src) in kp.round2_prepared.base_field_inputs.iter().enumerate() {
-                let key = (
-                    r3.prepared.base_field_inputs[input_idx].this_layer_start as usize,
-                    false,
-                );
-                if let Some(&idx) = key_map.get(&key) {
-                    if src.first_access {
-                        source_first_access[idx as usize] = true;
-                    }
-                }
-            }
-            for (input_idx, src) in kp.round2_prepared.extension_field_inputs.iter().enumerate() {
-                let key = (
-                    r3.prepared.extension_field_inputs[input_idx].this_layer_start as usize,
-                    true,
-                );
-                if let Some(&idx) = key_map.get(&key) {
-                    if src.first_access {
-                        source_first_access[idx as usize] = true;
-                    }
-                }
-            }
-        }
-
-        let mut base_count = 0u32;
-        let mut ext_count = 0u32;
-        const UNASSIGNED: u16 = u16::MAX;
-        let mut idx_remap = vec![UNASSIGNED; plan.term_desc.num_sources as usize];
-
-        for assignment in &plan.source_assignments {
-            let remap_slot = &mut idx_remap[assignment.source_table_idx as usize];
-            if *remap_slot != UNASSIGNED {
-                debug_assert_eq!(
-                    (*remap_slot & FLAT_CONT_EXT_SOURCE_BIT) != 0,
-                    assignment.is_ext,
-                    "flat round2: inconsistent base/ext mapping for source {}",
-                    assignment.source_table_idx,
-                );
-                continue;
-            }
-            let kp = &kernel_plans[assignment.gate_idx];
-            let combined_first_access = source_first_access[assignment.source_table_idx as usize];
             if assignment.is_ext {
-                let src = &kp.round2_prepared.extension_field_inputs[assignment.input_idx];
-                let tagged_idx = ext_count as u16 | FLAT_CONT_EXT_SOURCE_BIT;
-                assert!(
-                    (ext_count as usize) < FLAT_CONT_MAX_EXT_SOURCES,
-                    "flat round2: ext source overflow ({ext_count} >= {FLAT_CONT_MAX_EXT_SOURCES})",
-                );
-                *remap_slot = tagged_idx;
-                desc.ext_sources[ext_count as usize] = GpuFlatContinuingSourceEntry {
-                    previous_layer_start: if combined_first_access {
-                        src.previous_layer_start as *const u8
-                    } else {
-                        std::ptr::null()
-                    },
-                    this_layer_cache_start: src.this_layer_start as *mut u8,
-                };
-                ext_count += 1;
+                let idx = desc.num_ext_sources as usize;
+                assert!(idx < FLAT_CONT_MAX_EXT_SOURCES);
+                desc.ext_sources[idx] = GpuFlatContinuingSourceEntry::default();
+                desc.ext_source_indices.push(source_idx);
+                idx_remap[source_idx as usize] = idx as u16 | FLAT_CONT_EXT_SOURCE_BIT;
+                desc.num_ext_sources += 1;
             } else {
-                let src = &kp.round2_prepared.base_field_inputs[assignment.input_idx];
-                let tagged_idx = base_count as u16;
-                assert!(
-                    (base_count as usize) < FLAT_CONT_MAX_BASE_SOURCES,
-                    "flat round2: base source overflow ({base_count} >= {FLAT_CONT_MAX_BASE_SOURCES})",
-                );
-                *remap_slot = tagged_idx;
-                desc.base_sources[base_count as usize] = GpuFlatBaseAfterTwoSourceEntry {
-                    base_input_start: src.base_input_start as *const u8,
-                    this_layer_cache_start: src.this_layer_cache_start as *mut u8,
-                    base_layer_half_size: src.base_layer_half_size,
-                    base_quarter_size: src.base_quarter_size,
-                    next_layer_size: src.next_layer_size,
-                    first_access: combined_first_access,
-                    source_kind: src.source_kind,
+                let idx = desc.num_base_sources as usize;
+                assert!(idx < FLAT_CONT_MAX_BASE_SOURCES);
+                let (base_len, base_ptr, source_kind) =
+                    if let Some(kind) = GpuBaseFieldSourceKind::from_address(address) {
+                        (storage.base_trace_len(), std::ptr::null(), kind)
+                    } else {
+                        let poly = storage
+                            .get_base_poly_for_address(address)
+                            .expect("flat round 2 base source must exist");
+                        (
+                            poly.len(),
+                            poly.as_ptr() as *const u8,
+                            GpuBaseFieldSourceKind::Real,
+                        )
+                    };
+                desc.base_sources[idx] = GpuFlatBaseAfterTwoSourceEntry {
+                    base_input_start: base_ptr,
+                    this_layer_cache_start: std::ptr::null_mut(),
+                    base_layer_half_size: base_len / 2,
+                    base_quarter_size: base_len / 4,
+                    next_layer_size: base_len / 8,
+                    first_access: true,
+                    source_kind,
                 };
-                base_count += 1;
+                desc.base_source_indices.push(source_idx);
+                idx_remap[source_idx as usize] = idx as u16;
+                desc.num_base_sources += 1;
             }
         }
-        desc.num_base_sources = base_count;
-        desc.num_ext_sources = ext_count;
         desc.idx_remap = idx_remap;
-
         Some(desc)
     }
 
@@ -907,15 +749,11 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
         &self,
         _static_data: &[PreparedMainLayerKernelStaticData<E>],
         kernel_plans: &[GpuGKRMainLayerKernelPlan<E>],
-        folding_steps: usize,
+        _folding_steps: usize,
         _layer_idx: usize,
         context: &ProverContext,
     ) -> CudaResult<(
         Option<flat::FlatContinuationBuildPlan>,
-        Vec<(
-            usize,
-            Box<[flat::GpuFlatContinuingSourceEntry; flat::FLAT_CONT_MAX_SOURCES]>,
-        )>,
         Option<Box<crate::eval_recipes::GpuFlatRecipeEvalDesc>>,
         // Device-recipes path for the continuation phase. `Some` iff the
         // recipe tables overflow the inline caps (mutually exclusive with the
@@ -930,46 +768,55 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
         bool,
     )> {
         use flat::{
-            build_flat_continuation_plan, compile_recipes_for_device, GpuFlatContinuingSourceEntry,
-            PreparedGateForFlatContinuationPlan, FLAT_CONST_MAX, FLAT_CONT_MAX_SOURCES,
+            build_flat_continuation_plan, compile_recipes_for_device,
+            PreparedGateForFlatContinuationPlan, FLAT_CONST_MAX,
         };
 
-        // Use the first round 3 step's prepared storage to build the term arrays.
-        // The term structure (which gates reference which sources) is the same across steps;
-        // only the source pointers change per step.
-        let first_step = 3;
+        let aliases = self.storage.layout.as_ref().map(|layout| &layout.aliases);
+        let canonicalize = |address: GKRAddress| {
+            aliases
+                .and_then(|aliases| aliases.get(&address))
+                .copied()
+                .unwrap_or(address)
+        };
+        let canonical_base_addresses: Vec<Vec<GKRAddress>> = kernel_plans
+            .iter()
+            .map(|kp| {
+                kp.inputs
+                    .inputs_in_base
+                    .iter()
+                    .copied()
+                    .map(canonicalize)
+                    .collect()
+            })
+            .collect();
+        let canonical_ext_addresses: Vec<Vec<GKRAddress>> = kernel_plans
+            .iter()
+            .map(|kp| {
+                kp.inputs
+                    .inputs_in_extension
+                    .iter()
+                    .copied()
+                    .map(canonicalize)
+                    .collect()
+            })
+            .collect();
         let gates: Vec<_> = kernel_plans
             .iter()
             .enumerate()
-            .map(|(gate_idx, kp)| {
-                let round3 = kp
-                    .round3_and_beyond_prepared
-                    .iter()
-                    .find(|r| r.step == first_step)
-                    .unwrap_or_else(|| panic!("missing round 3 prepared for step {first_step}"));
-                PreparedGateForFlatContinuationPlan {
-                    kind: kp.kind,
-                    gate_idx,
-                    base_inputs: &round3.prepared.base_field_inputs,
-                    ext_inputs: &round3.prepared.extension_field_inputs,
-                    batch_challenge_power_offset: kp.batch_challenge_offset as u32,
-                    constraint_source: kp.constraint_metadata_source.as_ref(),
-                }
+            .map(|(gate_idx, kp)| PreparedGateForFlatContinuationPlan {
+                kind: kp.kind,
+                gate_idx,
+                base_addresses: &canonical_base_addresses[gate_idx],
+                ext_addresses: &canonical_ext_addresses[gate_idx],
+                batch_challenge_power_offset: kp.batch_challenge_offset as u32,
+                constraint_source: kp.constraint_metadata_source.as_ref(),
             })
             .collect();
         let plan = build_flat_continuation_plan(&gates);
         let total = plan.total_coefficients();
         if total == 0 {
-            return Ok((
-                Some(plan),
-                vec![],
-                None,
-                None,
-                0,
-                Callbacks::new(),
-                None,
-                true,
-            ));
+            return Ok((Some(plan), None, None, 0, Callbacks::new(), None, true));
         }
 
         // Compile one descriptor for the continuation eval-recipes launch.
@@ -1012,102 +859,8 @@ impl<E: Field + FieldExtension<BF> + Reduce> GpuGKRMainLayerBackwardState<E> {
             Some(context.alloc(total, AllocationPlacement::BestFit)?)
         };
 
-        // Build a key→source index map using round3 prepared cache pointers (same as plan).
-        let round3_prepared = kernel_plans
-            .iter()
-            .map(|kp| {
-                kp.round3_and_beyond_prepared
-                    .iter()
-                    .find(|r| r.step == first_step)
-                    .unwrap_or_else(|| panic!("missing round 3 prepared for step {first_step}"))
-            })
-            .collect::<Vec<_>>();
-        let mut key_map: std::collections::HashMap<(usize, bool), u32> =
-            std::collections::HashMap::new();
-        for assignment in &plan.source_assignments {
-            let r3 = round3_prepared[assignment.gate_idx];
-            let cache_ptr = if assignment.is_ext {
-                r3.prepared.extension_field_inputs[assignment.input_idx].this_layer_start as usize
-            } else {
-                r3.prepared.base_field_inputs[assignment.input_idx].this_layer_start as usize
-            };
-            let key = (cache_ptr, assignment.is_ext);
-            if let Some(prev) = key_map.insert(key, assignment.source_table_idx) {
-                debug_assert_eq!(
-                    prev, assignment.source_table_idx,
-                    "flat round3: inconsistent source index for key"
-                );
-            }
-        }
-
-        // Build per-step source tables.
-        let mut per_step_sources: Vec<(
-            usize,
-            Box<[GpuFlatContinuingSourceEntry; FLAT_CONT_MAX_SOURCES]>,
-        )> = Vec::new();
-        for step in first_step..folding_steps {
-            let mut sources: Box<[GpuFlatContinuingSourceEntry; FLAT_CONT_MAX_SOURCES]> =
-                Box::new([GpuFlatContinuingSourceEntry::default(); FLAT_CONT_MAX_SOURCES]);
-            let mut source_first_access = vec![false; plan.term_desc.num_sources as usize];
-            for (gate_idx, kp) in kernel_plans.iter().enumerate() {
-                let round3 = kp
-                    .round3_and_beyond_prepared
-                    .iter()
-                    .find(|r| r.step == step)
-                    .unwrap_or_else(|| panic!("missing round 3 prepared for step {step}"));
-                let r3_key = round3_prepared[gate_idx];
-                for (input_idx, src) in round3.prepared.base_field_inputs.iter().enumerate() {
-                    let key = (
-                        r3_key.prepared.base_field_inputs[input_idx].this_layer_start as usize,
-                        false,
-                    );
-                    if let Some(&idx) = key_map.get(&key) {
-                        if src.first_access {
-                            source_first_access[idx as usize] = true;
-                        }
-                    }
-                }
-                for (input_idx, src) in round3.prepared.extension_field_inputs.iter().enumerate() {
-                    let key = (
-                        r3_key.prepared.extension_field_inputs[input_idx].this_layer_start as usize,
-                        true,
-                    );
-                    if let Some(&idx) = key_map.get(&key) {
-                        if src.first_access {
-                            source_first_access[idx as usize] = true;
-                        }
-                    }
-                }
-            }
-            // Populate source entries for this step.
-            for assignment in &plan.source_assignments {
-                let round3 = kernel_plans[assignment.gate_idx]
-                    .round3_and_beyond_prepared
-                    .iter()
-                    .find(|r| r.step == step)
-                    .unwrap_or_else(|| panic!("missing round 3 prepared for step {step}"));
-                let src_plan = if assignment.is_ext {
-                    &round3.prepared.extension_field_inputs[assignment.input_idx]
-                } else {
-                    &round3.prepared.base_field_inputs[assignment.input_idx]
-                };
-                let combined_first_access =
-                    source_first_access[assignment.source_table_idx as usize];
-                sources[assignment.source_table_idx as usize] = GpuFlatContinuingSourceEntry {
-                    previous_layer_start: if combined_first_access {
-                        src_plan.previous_layer_start as *const u8
-                    } else {
-                        std::ptr::null()
-                    },
-                    this_layer_cache_start: src_plan.this_layer_start as *mut u8,
-                };
-            }
-            per_step_sources.push((step, sources));
-        }
-
         Ok((
             Some(plan),
-            per_step_sources,
             flat_cont_recipe_desc,
             flat_cont_recipe_desc_device,
             compiled.num_recipes,

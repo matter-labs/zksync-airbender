@@ -2,7 +2,7 @@ use super::super::{CoefficientRecipe, GpuFlatC0Ref, GpuFlatC1Pair};
 
 // Continuation (round 3+) unique-source table size. Sizes the inline `sources`
 // array in the compact `GpuFlatContinuationUnifiedDesc` (+ its devptr companion)
-// and the per-step host source `Box`es. Raised for
+// and the structural source table. Raised for
 // blake2_with_compression; stays well under the compact desc's 32 KB
 // inline ceiling (~4587 max). Lockstep with native `continuation.cuh`.
 pub(crate) const FLAT_CONT_MAX_SOURCES: usize = 3072;
@@ -101,14 +101,11 @@ impl Default for FlatContinuationTermDesc {
 // Continuation build plan
 // ---------------------------------------------------------------------------
 
-/// Complete build plan for the flat continuation kernel.
-/// `term_desc` holds the shared term arrays (same for all steps).
-/// Source entries are populated per step from prepared storage.
+/// Complete structural plan for the flat continuation kernel.
 pub(crate) struct FlatContinuationBuildPlan {
     pub(crate) term_desc: FlatContinuationTermDesc,
     pub(crate) recipes: Vec<CoefficientRecipe>,
-    /// One entry per unique source: records the first (gate_idx, is_ext, input_idx)
-    /// that mapped to a source table index. Used to populate per-step source entries.
+    /// One representative gate input per unique logical source.
     pub(crate) source_assignments: Vec<ContinuationSourceAssignment>,
 }
 

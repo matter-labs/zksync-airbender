@@ -8,8 +8,7 @@ use super::GpuSumcheckRound0LaunchDescriptors;
 use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::device_tracing::Range;
 use gpu_core::primitives::field::BF;
-use gpu_cub::cub::device_reduce::{get_reduce_temp_storage_bytes, Reduce, ReduceOperation};
-use gpu_cub::cub::CUB_TEMP_STORAGE_EXTRA_ALIGNMENT_LOG2;
+use gpu_cub::cub::device_reduce::Reduce;
 use gpu_prover_context::ProverContext;
 
 mod builders;
@@ -50,8 +49,6 @@ pub use kernels::{
     GpuGKRMainLayerSumcheckLayerPlan, ScheduledBackwardWorkflowState,
     ScheduledBackwardWorkflowStateHandle, GKR_EQ_GROUP_TABLE_LEN, GKR_EQ_HIGH_SLOTS,
 };
-
-use main_layer::state::{FlatContinuationLaunchSizes, FlatContinuationSizeCheck};
 
 // `pub` (not `pub(crate)`): apex proof builds dimension-reducing inputs / main-
 // layer address sets from these helpers.
@@ -114,6 +111,10 @@ impl<B, E> GpuGKRDimensionReducingBackwardState<B, E> {
     }
     pub fn storage(&self) -> &GpuGKRStorage<B, E> {
         &self.storage
+    }
+    #[doc(hidden)]
+    pub fn storage_mut(&mut self) -> &mut GpuGKRStorage<B, E> {
+        &mut self.storage
     }
 
     pub fn purge_up_to_layer(&mut self, layer: usize) {
@@ -246,105 +247,38 @@ impl<B: 'static, E: Field + Reduce> GpuGKRDimensionReducingBackwardState<B, E> {
             batch_challenge_count
         );
 
-        // Pre-allocate one consolidated ext-folding backing for this layer so
-        // every per-blueprint `prepare_for_sumcheck_round_*` call slices a
-        // view into it instead of allocating per-poly. The compact kernel-arg
-        // encoding indexes into this single Arc via a u16 source descriptor +
-        // per-launch bases table.
+        let aliases = self.storage.layout.as_ref().map(|layout| &layout.aliases);
         let dim_reducing_ext_inputs: std::collections::BTreeSet<GKRAddress> = blueprints
             .iter()
             .flat_map(|bp| bp.inputs.inputs_in_extension.iter().copied())
             .filter(|addr| *addr != GKRAddress::placeholder())
+            .map(|address| {
+                aliases
+                    .and_then(|aliases| aliases.get(&address))
+                    .copied()
+                    .unwrap_or(address)
+            })
             .collect();
-        self.storage.register_dim_reducing_inputs_for_layer(
-            layer_idx,
-            &dim_reducing_ext_inputs,
-            context,
-        )?;
-
-        let mut round1_prepared_all = Vec::with_capacity(blueprints.len());
-        for blueprint in blueprints.iter() {
-            round1_prepared_all.push(self.storage.prepare_for_sumcheck_round_1(
-                &blueprint.inputs,
-                layer_idx,
-                context,
-            )?);
-        }
-
-        let mut round2_prepared_all = Vec::with_capacity(blueprints.len());
-        for blueprint in blueprints.iter() {
-            round2_prepared_all.push(if folding_steps >= 3 {
-                Some(self.storage.prepare_for_sumcheck_round_2(
-                    &blueprint.inputs,
-                    layer_idx,
-                    context,
-                )?)
-            } else {
-                None
-            });
-        }
-
-        let mut round3_prepared_all: Vec<Vec<GpuGKRDimensionReducingRound3Prepared<E>>> =
-            Vec::with_capacity(blueprints.len());
-        round3_prepared_all.resize_with(blueprints.len(), Vec::new);
-        for step in 3..folding_steps {
-            for (prepared_for_kernel, blueprint) in
-                round3_prepared_all.iter_mut().zip(blueprints.iter())
-            {
-                let prepared = self.storage.prepare_for_sumcheck_round_3_and_beyond(
-                    &blueprint.inputs,
-                    layer_idx,
-                    step,
-                    context,
-                )?;
-                prepared_for_kernel.push(GpuGKRDimensionReducingRound3Prepared { step, prepared });
-            }
-        }
-
-        let kernel_plans: Vec<GpuGKRDimensionReducingKernelPlan<B, E>> = blueprints
+        let kernel_plans: Vec<GpuGKRDimensionReducingKernelPlan<E>> = blueprints
             .iter()
-            .zip(round1_prepared_all)
-            .zip(round2_prepared_all)
-            .zip(round3_prepared_all)
-            .map(
-                |(((blueprint, round1_prepared), round2_prepared), round3_and_beyond_prepared)| {
-                    GpuGKRDimensionReducingKernelPlan {
-                        kind: blueprint.kind,
-                        inputs: blueprint.inputs.clone(),
-                        batch_challenge_offset: blueprint.batch_challenge_offset,
-                        batch_challenge_count: blueprint.batch_challenge_count,
-                        batch_challenges: blueprint.batch_challenges.clone(),
-                        round1_prepared,
-                        round2_prepared,
-                        round3_and_beyond_prepared,
-                    }
-                },
-            )
+            .map(|blueprint| GpuGKRDimensionReducingKernelPlan {
+                kind: blueprint.kind,
+                inputs: blueprint.inputs.clone(),
+                batch_challenge_offset: blueprint.batch_challenge_offset,
+                batch_challenge_count: blueprint.batch_challenge_count,
+                batch_challenges: blueprint.batch_challenges.clone(),
+            })
             .collect();
 
         let round0_batch_template_compact =
             self::compact::encoder::build_round0_batch_compact(blueprints, &self.storage);
-        let round1_batch_template_compact =
-            self::compact::encoder::build_round1_batch_compact(blueprints, &self.storage);
-        let continuation_batch_template_compact =
-            self::compact::encoder::build_continuation_batch_compact(blueprints, &self.storage);
-
         let max_acc_size = trace_len_after_reduction / 2;
-        let reduction_temp_storage_bytes =
-            get_reduce_temp_storage_bytes::<E>(ReduceOperation::Sum, max_acc_size as i32)?;
         let partials_len = kernels::max_partials_len(max_acc_size);
         let partials = context.alloc(partials_len, AllocationPlacement::Top)?;
 
         let round_scratch = GpuGKRDimensionReducingRoundScratch {
-            claim_point: context.alloc(folding_steps + 1, AllocationPlacement::Top)?,
             eq_low_group: context.alloc(GKR_EQ_GROUP_TABLE_LEN, AllocationPlacement::Top)?,
             accumulator: context.alloc(max_acc_size * 2, AllocationPlacement::Top)?,
-            reduction_output: context.alloc(2, AllocationPlacement::Top)?,
-            reduction_temp_storage: context
-                .alloc_with_extra_alignment::<u8, CUB_TEMP_STORAGE_EXTRA_ALIGNMENT_LOG2>(
-                    reduction_temp_storage_bytes,
-                    AllocationPlacement::Top,
-                )?,
             partials,
         };
 
@@ -356,12 +290,11 @@ impl<B: 'static, E: Field + Reduce> GpuGKRDimensionReducingBackwardState<B, E> {
             folding_steps,
             batch_challenge_base,
             kernel_plans,
+            folding_addresses: dim_reducing_ext_inputs.into_iter().collect(),
             round0_batch_template_compact,
-            round1_batch_template_compact,
-            continuation_batch_template_compact,
             round_scratch,
-            batch_challenge_base_override_ptr: None,
             eq_sizes: GkrEqSizes::zeroed(),
+            _phantom: std::marker::PhantomData,
         })
     }
 
@@ -386,159 +319,10 @@ impl<E> GpuGKRMainLayerSumcheckLayerPlan<E> {
     pub fn kernel_plans(&self) -> &[GpuGKRMainLayerKernelPlan<E>] {
         &self.kernel_plans
     }
+
     pub fn round0_descriptors(&self) -> &[GpuSumcheckRound0LaunchDescriptors<BF, E>] {
         &self.round0_descriptors
     }
-
-    fn update_flat_cont_sizes_from_source(
-        sizes: &mut Option<FlatContinuationLaunchSizes>,
-        consistent: &mut bool,
-        src: &super::GpuExtensionFieldPolyContinuingSourcePlan<E>,
-    ) {
-        if src.this_layer_size == 0 || src.next_layer_size == 0 {
-            return;
-        }
-        let candidate =
-            FlatContinuationLaunchSizes::from_sizes(src.this_layer_size, src.next_layer_size);
-        match sizes {
-            None => *sizes = Some(candidate),
-            Some(prev) => {
-                if *prev != candidate {
-                    *consistent = false;
-                }
-            }
-        }
-    }
-
-    fn flat_round1_size_check(&self) -> FlatContinuationSizeCheck {
-        let Some(plan) = self.flat_continuation_plan.as_ref() else {
-            return FlatContinuationSizeCheck::empty();
-        };
-        let mut sizes = None;
-        let mut has_sources = false;
-        let mut consistent = true;
-        for assignment in plan.source_assignments.iter() {
-            if !assignment.is_ext {
-                continue;
-            }
-            let src = &self.kernel_plans[assignment.gate_idx]
-                .round1_prepared
-                .extension_field_inputs[assignment.input_idx];
-            if src.this_layer_size == 0 || src.next_layer_size == 0 {
-                continue;
-            }
-            has_sources = true;
-            Self::update_flat_cont_sizes_from_source(&mut sizes, &mut consistent, src);
-            if !consistent {
-                break;
-            }
-        }
-        FlatContinuationSizeCheck {
-            sizes,
-            consistent: consistent && (!has_sources || sizes.is_some()),
-        }
-    }
-
-    fn flat_round2_size_check(&self) -> FlatContinuationSizeCheck {
-        let Some(plan) = self.flat_continuation_plan.as_ref() else {
-            return FlatContinuationSizeCheck::empty();
-        };
-        let mut sizes = None;
-        let mut has_sources = false;
-        let mut consistent = true;
-        for assignment in plan.source_assignments.iter() {
-            if !assignment.is_ext {
-                continue;
-            }
-            let src = &self.kernel_plans[assignment.gate_idx]
-                .round2_prepared
-                .extension_field_inputs[assignment.input_idx];
-            if src.this_layer_size == 0 || src.next_layer_size == 0 {
-                continue;
-            }
-            has_sources = true;
-            Self::update_flat_cont_sizes_from_source(&mut sizes, &mut consistent, src);
-            if !consistent {
-                break;
-            }
-        }
-        FlatContinuationSizeCheck {
-            sizes,
-            consistent: consistent && (!has_sources || sizes.is_some()),
-        }
-    }
-
-    fn flat_round3_size_check(&self, step: usize) -> FlatContinuationSizeCheck {
-        let Some(plan) = self.flat_continuation_plan.as_ref() else {
-            return FlatContinuationSizeCheck::empty();
-        };
-        let mut sizes = None;
-        let mut has_sources = false;
-        let mut consistent = true;
-        for assignment in plan.source_assignments.iter() {
-            let round3 = self.kernel_plans[assignment.gate_idx]
-                .round3_and_beyond_prepared
-                .iter()
-                .find(|r| r.step == step);
-            let Some(round3) = round3 else {
-                continue;
-            };
-            let src = if assignment.is_ext {
-                &round3.prepared.extension_field_inputs[assignment.input_idx]
-            } else {
-                &round3.prepared.base_field_inputs[assignment.input_idx]
-            };
-            if src.this_layer_size == 0 || src.next_layer_size == 0 {
-                continue;
-            }
-            has_sources = true;
-            Self::update_flat_cont_sizes_from_source(&mut sizes, &mut consistent, src);
-            if !consistent {
-                break;
-            }
-        }
-        FlatContinuationSizeCheck {
-            sizes,
-            consistent: consistent && (!has_sources || sizes.is_some()),
-        }
-    }
 }
-
-const fn main_layer_kind_batch_challenge_count(kind: GpuGKRMainLayerKernelKind) -> usize {
-    match kind {
-        GpuGKRMainLayerKernelKind::LookupPair
-        | GpuGKRMainLayerKernelKind::LookupBasePair
-        | GpuGKRMainLayerKernelKind::LookupBaseMinusMultiplicityByBase
-        | GpuGKRMainLayerKernelKind::LookupExtMinusMultiplicityByExt
-        | GpuGKRMainLayerKernelKind::LookupUnbalanced
-        | GpuGKRMainLayerKernelKind::LookupWithCachedDensAndSetup
-        | GpuGKRMainLayerKernelKind::LookupPairFromBaseInputs
-        | GpuGKRMainLayerKernelKind::LookupWithDensAndSetupExpressions
-        | GpuGKRMainLayerKernelKind::LookupPairFromVectorInputs
-        | GpuGKRMainLayerKernelKind::LookupFromVectorInputWithSetup
-        | GpuGKRMainLayerKernelKind::LookupUnbalancedPairWithVectorInputs
-        | GpuGKRMainLayerKernelKind::LookupExtPair
-        | GpuGKRMainLayerKernelKind::LookupUnbalancedExtension => 2,
-        _ => 1,
-    }
-}
-
-pub(super) fn packed_main_layer_batch_challenge_len<E>(
-    kernel_plans: &[GpuGKRMainLayerKernelPlan<E>],
-) -> usize {
-    kernel_plans
-        .iter()
-        .map(|kernel| {
-            let count = main_layer_kind_batch_challenge_count(kernel.kind);
-            assert_eq!(
-                kernel.batch_challenge_count, count,
-                "kernel {:?} has unexpected batch-challenge count",
-                kernel.kind
-            );
-            count
-        })
-        .sum()
-}
-
 #[cfg(test)]
 mod tests;
