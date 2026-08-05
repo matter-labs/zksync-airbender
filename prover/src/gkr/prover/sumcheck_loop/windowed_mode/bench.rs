@@ -54,7 +54,7 @@ fn pseudo_challenge<F: PrimeField, E: FieldExtension<F> + Field>(i: u32) -> E {
     E::from_base(F::from_u32_with_reduction(v))
 }
 
-fn find_eq_with_len<E: Field>(tables: &[Box<[E]>], len: usize) -> &[E] {
+pub(crate) fn find_eq_with_len<E: Field>(tables: &[Box<[E]>], len: usize) -> &[E] {
     tables
         .iter()
         .find(|el| el.len() == len)
@@ -89,7 +89,7 @@ fn split_batched_description<F: PrimeField, E: FieldExtension<F> + Field>(
     (bbbe, ee)
 }
 
-fn collect_base_sources<'a, F: PrimeField, E: FieldExtension<F> + Field>(
+pub(crate) fn collect_base_sources<'a, F: PrimeField, E: FieldExtension<F> + Field>(
     storage: &'a GKRStorage<F, E>,
     addresses: &[GKRAddress],
 ) -> Vec<DisjointAccessQuasiSlice<F, false>> {
@@ -104,7 +104,7 @@ fn collect_base_sources<'a, F: PrimeField, E: FieldExtension<F> + Field>(
         .collect()
 }
 
-fn collect_ext_sources<'a, F: PrimeField, E: FieldExtension<F> + Field>(
+pub(crate) fn collect_ext_sources<'a, F: PrimeField, E: FieldExtension<F> + Field>(
     storage: &'a GKRStorage<F, E>,
     addresses: &[GKRAddress],
 ) -> Vec<DisjointAccessQuasiSlice<E, false>> {
@@ -1276,7 +1276,7 @@ fn evaluate_initial_bracket_parallel<F: PrimeField, E: FieldExtension<F> + Field
 /// and term evaluation vectorizes over the 4 rows (limb-major SoA for ext
 /// values). BabyBear-specific; the type-id hook rejects other field pairs.
 #[cfg(target_arch = "aarch64")]
-fn evaluate_initial_soa_parallel<F: PrimeField, E: FieldExtension<F> + Field>(
+pub(crate) fn evaluate_initial_soa_parallel<F: PrimeField, E: FieldExtension<F> + Field>(
     base_field_inputs: &[DisjointAccessQuasiSlice<F, false>],
     ext_field_inputs: &[DisjointAccessQuasiSlice<E, false>],
     base_interp: &[bool],
@@ -1297,21 +1297,21 @@ fn evaluate_initial_soa_parallel<F: PrimeField, E: FieldExtension<F> + Field>(
     }
 
     let work_size = (1 << input_size_log2) / 8;
-    let geometry = worker.get_geometry_with_threshold(work_size, PAR_THRESHOLD);
+    assert_eq!(work_size % 4, 0);
+    let num_blocks = work_size / 4;
+    let geometry = worker.get_geometry_with_threshold(num_blocks, PAR_THRESHOLD / 4);
     let mut acc_chunks = vec![[E::ZERO; 27]; geometry.num_chunks];
 
-    worker.scope_with_threshold(work_size, PAR_THRESHOLD, |scope, geometry| {
+    worker.scope_with_threshold(num_blocks, PAR_THRESHOLD / 4, |scope, geometry| {
         let mut it = acc_chunks.iter_mut();
         for thread_idx in 0..geometry.num_chunks {
-            let chunk_start = geometry.get_chunk_start_pos(thread_idx);
-            let chunk_size = geometry.get_chunk_size(thread_idx);
+            let chunk_start = geometry.get_chunk_start_pos(thread_idx) * 4;
+            let chunk_size = geometry.get_chunk_size(thread_idx) * 4;
             let base_field_inputs = base_field_inputs.to_vec();
             let ext_field_inputs = ext_field_inputs.to_vec();
             let acc_dst = it.next().unwrap();
 
             Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| {
-                assert_eq!(chunk_start % 4, 0);
-                assert_eq!(chunk_size % 4, 0);
                 let input_size = 1 << input_size_log2;
                 let ec = |c: &E| -> &BabyBearExt4 { unsafe { &*(c as *const E as *const _) } };
 
@@ -1483,7 +1483,7 @@ fn evaluate_initial_soa_parallel<F: PrimeField, E: FieldExtension<F> + Field>(
 /// vector, lazy per-limb fold accumulation, folded values transposed back to
 /// AoS for the buffer writes. BabyBear/Ext4-specific.
 #[cfg(target_arch = "aarch64")]
-fn evaluate_transition_soa_parallel<F: PrimeField, E: FieldExtension<F> + Field>(
+pub(crate) fn evaluate_transition_soa_parallel<F: PrimeField, E: FieldExtension<F> + Field>(
     base_field_inputs: &[DisjointAccessQuasiSlice<F, false>],
     ext_field_inputs: &[DisjointAccessQuasiSlice<E, false>],
     base_buffer_ptrs: &[usize],
@@ -1512,14 +1512,16 @@ fn evaluate_transition_soa_parallel<F: PrimeField, E: FieldExtension<F> + Field>
     assert_eq!(precomputed_eq_suffix.len(), work_size);
     let num_base = base_field_inputs.len();
 
-    let geometry = worker.get_geometry_with_threshold(work_size, PAR_THRESHOLD);
+    assert_eq!(work_size % 4, 0);
+    let num_blocks = work_size / 4;
+    let geometry = worker.get_geometry_with_threshold(num_blocks, PAR_THRESHOLD / 4);
     let mut acc_chunks = vec![[E::ZERO; 2]; geometry.num_chunks];
 
-    worker.scope_with_threshold(work_size, PAR_THRESHOLD, |scope, geometry| {
+    worker.scope_with_threshold(num_blocks, PAR_THRESHOLD / 4, |scope, geometry| {
         let mut it = acc_chunks.iter_mut();
         for thread_idx in 0..geometry.num_chunks {
-            let chunk_start = geometry.get_chunk_start_pos(thread_idx);
-            let chunk_size = geometry.get_chunk_size(thread_idx);
+            let chunk_start = geometry.get_chunk_start_pos(thread_idx) * 4;
+            let chunk_size = geometry.get_chunk_size(thread_idx) * 4;
             let base_field_inputs = base_field_inputs.to_vec();
             let ext_field_inputs = ext_field_inputs.to_vec();
             let base_buffer_ptrs = base_buffer_ptrs.to_vec();
@@ -1527,8 +1529,6 @@ fn evaluate_transition_soa_parallel<F: PrimeField, E: FieldExtension<F> + Field>
             let acc_dst = it.next().unwrap();
 
             Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| {
-                assert_eq!(chunk_start % 4, 0);
-                assert_eq!(chunk_size % 4, 0);
                 let ec = |c: &E| -> &BabyBearExt4 { unsafe { &*(c as *const E as *const _) } };
                 let prefix_bb: &[BabyBearExt4; 8] =
                     unsafe { &*(prefix as *const [E; 8] as *const _) };
@@ -1687,7 +1687,7 @@ fn evaluate_transition_soa_parallel<F: PrimeField, E: FieldExtension<F> + Field>
 /// (in3out3) in SoA, fills the 27-cell grid per poly, evaluates and applies eq
 /// per 4-row block. Buffers are ext AoS, written back in place.
 #[cfg(target_arch = "aarch64")]
-fn evaluate_ext_window3_soa_parallel<F: PrimeField, E: FieldExtension<F> + Field>(
+pub(crate) fn evaluate_ext_window3_soa_parallel<F: PrimeField, E: FieldExtension<F> + Field>(
     buffer_ptrs: &[usize], // combined slot order: base-origin polys then ext
     fold2_challenge: Option<&E>,
     fold8_prefix: Option<&[E; 8]>,
@@ -1722,20 +1722,20 @@ fn evaluate_ext_window3_soa_parallel<F: PrimeField, E: FieldExtension<F> + Field
     assert_eq!(precomputed_eq_suffix.len(), work_size);
     assert!(work_size >= 4);
 
-    let geometry = worker.get_geometry_with_threshold(work_size, PAR_THRESHOLD);
+    assert_eq!(work_size % 4, 0);
+    let num_blocks = work_size / 4;
+    let geometry = worker.get_geometry_with_threshold(num_blocks, PAR_THRESHOLD / 4);
     let mut acc_chunks = vec![[E::ZERO; 27]; geometry.num_chunks];
 
-    worker.scope_with_threshold(work_size, PAR_THRESHOLD, |scope, geometry| {
+    worker.scope_with_threshold(num_blocks, PAR_THRESHOLD / 4, |scope, geometry| {
         let mut it = acc_chunks.iter_mut();
         for thread_idx in 0..geometry.num_chunks {
-            let chunk_start = geometry.get_chunk_start_pos(thread_idx);
-            let chunk_size = geometry.get_chunk_size(thread_idx);
+            let chunk_start = geometry.get_chunk_start_pos(thread_idx) * 4;
+            let chunk_size = geometry.get_chunk_size(thread_idx) * 4;
             let buffer_ptrs = buffer_ptrs.to_vec();
             let acc_dst = it.next().unwrap();
 
             Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| {
-                assert_eq!(chunk_start % 4, 0);
-                assert_eq!(chunk_size % 4, 0);
                 let ec = |c: &E| -> &BabyBearExt4 { unsafe { &*(c as *const E as *const _) } };
                 let r11v = neon::soa_r11v();
                 let fold2_table = fold2_challenge.map(|c| neon::SoaExtTable::new(ec(c)));
@@ -1902,6 +1902,184 @@ fn evaluate_ext_window3_soa_parallel<F: PrimeField, E: FieldExtension<F> + Field
     }
 
     acc
+}
+
+/// Owned SoA + bracket program for one layer, consumed by the production
+/// windowed sumcheck loop (mirrors the program the bench driver builds inline).
+pub(crate) struct OwnedSoaProgram<F: PrimeField, E: Field> {
+    pub base_interp: Vec<bool>,
+    pub ext_interp: Vec<bool>,
+    pub forms: Vec<Vec<(FormOp<F>, u16)>>,
+    pub products: Vec<(u16, u16, E)>,
+    pub rest_steps: Vec<BenchStep<E>>,
+    pub folded_quad: Vec<(u16, u16, E)>,
+    pub folded_lin: Vec<(u16, E)>,
+    pub additive_constant: E,
+}
+
+/// Build the SoA + bracket-preserving program for a layer: interpolation flags,
+/// CSE'd multi-member bracket forms + preserved products (from the enforce
+/// max-quadratic kernels), the bracket-subtracted expanded remainder, and the
+/// folded-stage step lists over the combined slot space.
+pub(crate) fn build_soa_program<F: PrimeField, E: FieldExtension<F> + Field>(
+    description: &BatchedGKRDescription<F, E>,
+    collector: &KernelCollector<F, E>,
+    base_polys: &[GKRAddress],
+    ext_polys: &[GKRAddress],
+) -> OwnedSoaProgram<F, E> {
+    use crate::gkr::prover::sumcheck_loop::kernel_collector::KernelVariant;
+    use std::collections::BTreeSet;
+
+    let bidx = |addr: &GKRAddress| base_polys.iter().position(|el| el == addr).unwrap() as u16;
+    let eidx = |addr: &GKRAddress| ext_polys.iter().position(|el| el == addr).unwrap() as u16;
+
+    let mut base_quad: BTreeSet<GKRAddress> = BTreeSet::new();
+    let mut ext_quad: BTreeSet<GKRAddress> = BTreeSet::new();
+    for (a, list) in description.quadratic_part_base_by_base.iter() {
+        base_quad.insert(*a);
+        for (b, _) in list.iter() {
+            base_quad.insert(*b);
+        }
+    }
+    for (a, list) in description.quadratic_part_base_by_ext.iter() {
+        base_quad.insert(*a);
+        for (b, _) in list.iter() {
+            ext_quad.insert(*b);
+        }
+    }
+    for (a, list) in description.quadratic_part_ext_by_ext.iter() {
+        ext_quad.insert(*a);
+        for (b, _) in list.iter() {
+            ext_quad.insert(*b);
+        }
+    }
+    let base_interp: Vec<bool> = base_polys.iter().map(|a| base_quad.contains(a)).collect();
+    let ext_interp: Vec<bool> = ext_polys.iter().map(|a| ext_quad.contains(a)).collect();
+
+    let mut forms: Vec<Vec<(FormOp<F>, u16)>> = vec![];
+    let mut form_key_to_idx: BTreeMap<Vec<(u128, u16)>, u16> = BTreeMap::new();
+    let mut products: Vec<(u16, u16, E)> = vec![];
+    let mut subtract: BTreeMap<(GKRAddress, GKRAddress), E> = BTreeMap::new();
+
+    for kernel in collector.kernels.iter() {
+        let KernelVariant::EnforceSingleMaxQuadraticConstraint(rel, ch) = kernel else {
+            continue;
+        };
+        let challenge = ch[0];
+        for (a, bracket) in rel.relation.quadratic_terms.iter() {
+            let members: Vec<(F, GKRAddress)> = bracket
+                .iter()
+                .filter(|(c, _)| !c.is_zero())
+                .copied()
+                .collect();
+            if members.len() < 2 {
+                continue;
+            }
+            for (c, b) in members.iter() {
+                let pair = if *a <= *b { (*a, *b) } else { (*b, *a) };
+                let mut contribution = challenge;
+                contribution.mul_assign_by_base(c);
+                subtract
+                    .entry(pair)
+                    .or_insert(E::ZERO)
+                    .add_assign(&contribution);
+            }
+            let mut key: Vec<(u128, u16)> = members
+                .iter()
+                .map(|(c, b)| (c.as_u128_reduced(), bidx(b)))
+                .collect();
+            key.sort();
+            let form_idx = *form_key_to_idx.entry(key).or_insert_with(|| {
+                let ops: Vec<(FormOp<F>, u16)> = members
+                    .iter()
+                    .map(|(c, b)| {
+                        let op = if *c == F::ONE {
+                            FormOp::Add
+                        } else if *c == F::MINUS_ONE {
+                            FormOp::Sub
+                        } else {
+                            FormOp::Mul(*c)
+                        };
+                        (op, bidx(b))
+                    })
+                    .collect();
+                forms.push(ops);
+                (forms.len() - 1) as u16
+            });
+            products.push((bidx(a), form_idx, challenge));
+        }
+    }
+
+    let mut rest_steps: Vec<BenchStep<E>> = vec![];
+    for (a, list) in description.quadratic_part_base_by_base.iter() {
+        for (b, c) in list.iter() {
+            let mut c = *c;
+            if let Some(sub) = subtract.get(&(*a, *b)) {
+                c.sub_assign(sub);
+            }
+            if c.is_zero() {
+                continue;
+            }
+            rest_steps.push(BenchStep::QuadBB {
+                a: bidx(a),
+                b: bidx(b),
+                c,
+            });
+        }
+    }
+    for (a, list) in description.quadratic_part_base_by_ext.iter() {
+        for (b, c) in list.iter() {
+            rest_steps.push(BenchStep::QuadBE {
+                base: bidx(a),
+                ext: eidx(b),
+                c: *c,
+            });
+        }
+    }
+    for (a, list) in description.quadratic_part_ext_by_ext.iter() {
+        for (b, c) in list.iter() {
+            rest_steps.push(BenchStep::QuadEE {
+                a: eidx(a),
+                b: eidx(b),
+                c: *c,
+            });
+        }
+    }
+    for (a, c) in description.linear_part_base_by_everything.iter() {
+        rest_steps.push(BenchStep::LinB { i: bidx(a), c: *c });
+    }
+    for (a, c) in description.linear_part_ext_by_everything.iter() {
+        rest_steps.push(BenchStep::LinE { i: eidx(a), c: *c });
+    }
+
+    let nb = base_polys.len() as u16;
+    let mut folded_quad: Vec<(u16, u16, E)> = vec![];
+    for step in rest_steps.iter() {
+        match step {
+            BenchStep::QuadBB { a, b, c } => folded_quad.push((*a, *b, *c)),
+            BenchStep::QuadBE { base, ext, c } => folded_quad.push((*base, nb + *ext, *c)),
+            BenchStep::QuadEE { a, b, c } => folded_quad.push((nb + *a, nb + *b, *c)),
+            _ => {}
+        }
+    }
+    let mut folded_lin: Vec<(u16, E)> = vec![];
+    for (a, c) in description.linear_part_base_by_everything.iter() {
+        folded_lin.push((bidx(a), *c));
+    }
+    for (a, c) in description.linear_part_ext_by_everything.iter() {
+        folded_lin.push((nb + eidx(a), *c));
+    }
+
+    OwnedSoaProgram {
+        base_interp,
+        ext_interp,
+        forms,
+        products,
+        rest_steps,
+        folded_quad,
+        folded_lin,
+        additive_constant: description.constant_term,
+    }
 }
 
 /// Entry point called from the test. `layer` must be a same-size (non

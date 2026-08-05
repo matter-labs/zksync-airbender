@@ -486,7 +486,7 @@ where
 {
     if USE_BATCHING {
         use crate::gkr::prover::sumcheck_loop::windowed_mode::sumcheck_loop::windowed_sumcheck_loop;
-        windowed_sumcheck_loop::<F, E, TR, N>(
+        if let Some(result) = windowed_sumcheck_loop::<F, E, TR, N>(
             collector,
             initial_claim,
             prev_challenges,
@@ -496,8 +496,10 @@ where
             folding_steps,
             worker,
             seed,
-        );
-        println!("Running sumcheck loop in batched mode");
+        ) {
+            return result;
+        }
+        println!("Running sumcheck loop in per-round batched mode");
     } else {
         println!("Running sumcheck loop in individual kernel mode");
     };
