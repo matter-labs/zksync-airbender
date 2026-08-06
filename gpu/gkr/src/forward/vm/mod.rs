@@ -28,10 +28,8 @@ use gpu_prover_context::ProverContext;
 /// smem index math).
 pub(crate) const FWD_VM_THREADS_PER_BLOCK: u32 = 128;
 
-/// The release instantiation's compile-time cell budget in bf LANES:
-/// `ab_gkr_fwd_vm_s4_kernel` = 4 ext-cell buckets = 16 bf lanes (the committed
-/// b16 corpus budget).
-pub(crate) const FWD_VM_S4_BUDGET_LANES: u32 = 16;
+/// The release instantiation's compile-time E4-bucket budget.
+pub(crate) const FWD_VM_S4_BUDGET_BUCKETS: u32 = 4;
 
 // --- __constant__ derived-E4 bank (Task 8 kernel-side symbol) ----------------
 // Runtime-produced `LdcSub::ConstDerivedE4` values — the one legitimately
@@ -96,21 +94,21 @@ cuda_kernel_declaration!(pub(crate)
 
 /// Launch the RELEASE fwd-VM interpreter (`ab_gkr_fwd_vm_s4_kernel`,
 /// row-per-thread over `desc.count` rows, static smem — zero dynamic bytes).
-/// `budget_lanes` is the layer's compiled cell budget (`CompiledLayer::
-/// budget`); the s4 instantiation supports exactly [`FWD_VM_S4_BUDGET_LANES`].
+/// `budget_buckets` is the circuit's retained E4-bucket budget; the s4
+/// instantiation supports exactly [`FWD_VM_S4_BUDGET_BUCKETS`].
 /// Enqueues on `exec_stream`; the caller keeps `setup` alive until every
 /// launch scheduled with it has been enqueued (it owns any `program_ldg`
 /// fallback the by-value descriptor points into).
 #[allow(dead_code)]
 pub(crate) fn launch_fwd_vm_s4(
     setup: &FwdVmLayerSetup,
-    budget_lanes: u32,
+    budget_buckets: u32,
     context: &ProverContext,
 ) -> CudaResult<()> {
     assert_eq!(
-        budget_lanes, FWD_VM_S4_BUDGET_LANES,
-        "ab_gkr_fwd_vm_s4_kernel is instantiated for a {FWD_VM_S4_BUDGET_LANES}-lane cell \
-         budget; layer compiled at {budget_lanes}"
+        budget_buckets, FWD_VM_S4_BUDGET_BUCKETS,
+        "ab_gkr_fwd_vm_s4_kernel is instantiated for a {FWD_VM_S4_BUDGET_BUCKETS}-bucket \
+         budget; circuit compiled at {budget_buckets}"
     );
     let grid_dim = setup.desc.count.max(1).div_ceil(FWD_VM_THREADS_PER_BLOCK);
     let config = CudaLaunchConfig::builder()

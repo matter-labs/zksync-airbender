@@ -1,8 +1,8 @@
 use gpu_gkr_compiler::manual::parse_args;
 
 fn base() -> Vec<String> {
-    "--circuit tiny --layout tiny.json --output tiny_schedule_b16_gkr.json --seed 7 \
-     --cache-cells 16 --population 2 --evaluations 8"
+    "--circuit tiny --layout tiny.json --output tiny_schedule_b4_gkr.json --seed 7 \
+     --cache-buckets 4 --population 2 --evaluations 8"
         .split_whitespace()
         .map(str::to_owned)
         .collect()
@@ -10,12 +10,18 @@ fn base() -> Vec<String> {
 
 #[test]
 fn required_inputs_are_hard_errors() {
-    for required in ["--seed", "--cache-cells", "--output"] {
+    for required in ["--seed", "--cache-buckets", "--output"] {
         let mut args = base();
         let index = args.iter().position(|arg| arg == required).unwrap();
         args.drain(index..=index + 1);
         assert!(parse_args(args).is_err(), "{required}");
     }
+}
+
+#[test]
+fn cache_budget_uses_e4_buckets() {
+    let args = parse_args(base()).unwrap();
+    assert_eq!(args.cache_buckets, 4);
 }
 
 #[test]

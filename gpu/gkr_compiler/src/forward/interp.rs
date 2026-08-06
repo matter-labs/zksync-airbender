@@ -78,7 +78,7 @@ fn interpret_layer_row_impl(
     // changes a value (bf↪e4 embedding); it exists so the interpreter mirrors
     // the state the Task 3 validator checks statically.
     let mut acc_is_ext = false;
-    let mut cells: Vec<Ext> = vec![Ext::ZERO; compiled.budget.max(4)];
+    let mut cells: Vec<Ext> = vec![Ext::ZERO; compiled.budget_lanes.max(4)];
     let mut globals: HashMap<(u8, u16), Ext> = HashMap::new();
 
     for instr in &compiled.program.instrs {

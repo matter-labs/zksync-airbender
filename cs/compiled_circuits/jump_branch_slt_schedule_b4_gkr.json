@@ -1,6 +1,6 @@
 {
   "circuit": "jump_branch_slt",
-  "budget": 16,
+  "budget_buckets": 4,
   "layers": [
     {
       "units": [

@@ -1,6 +1,6 @@
 {
   "circuit": "add_sub_lui_auipc_mop",
-  "budget": 16,
+  "budget_buckets": 4,
   "layers": [
     {
       "units": [

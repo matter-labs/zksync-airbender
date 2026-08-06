@@ -5,6 +5,7 @@ use super::error::CompileError;
 use super::isa::{OperandLine, Program};
 use super::source::{ConstBank, DerivedE4Banks, SpecialTable};
 use super::stats::CompileStats;
+use crate::profile::BF_LANES_PER_E4_BUCKET;
 use gkr_eval_ir::{
     DagLayer, Expr, ExprId, Ext, FieldKind, ReadPlace, RootExecution, RootId, SinkInfo, SinkKind,
     SourceKind,
@@ -88,12 +89,13 @@ pub struct CompiledLayer {
     pub root_outputs: Vec<(RootId, RootOutput)>, // Compute (Cell) + CopyAlias (Alias) roots
     pub skipped: Vec<RootId>,                    // SkipScratchPrefill roots
     pub trace: CompileTrace,
-    /// Smem budget in BF LANES (4-B cells), the allocator's internal unit — 16 at the
-    /// committed b16 corpus. On the v2 wire the same space is `budget / 4` ext-cell
-    /// BUCKETS ([`Self::budget_buckets`]); bf-field `Smem` indices are lane indices
-    /// bounded by `budget`, ext-field indices are bucket indices bounded by
+    /// Smem budget in BF lanes (4-B cells), the allocator's internal unit. The
+    /// retained four-bucket corpus enters the allocator as 16 lanes. On the v2
+    /// wire the same space is `budget_lanes / 4` E4 buckets
+    /// ([`Self::budget_buckets`]); bf-field `Smem` indices are lane indices
+    /// bounded by `budget_lanes`, ext-field indices are bucket indices bounded by
     /// `budget_buckets()` (spec §3: one number, two views).
-    pub budget: usize,
+    pub budget_lanes: usize,
     pub stats: CompileStats,
     /// Stage-3 (schedule-driven) EXPLICIT per-step residency boundary snapshots,
     /// index-aligned with `LayerSchedule::order`: `(before, after)` where `before`
@@ -109,11 +111,11 @@ impl CompiledLayer {
         &self.program.instrs
     }
 
-    /// The smem budget in v2 ext-cell BUCKETS (16 B × blockDim each): `budget / 4`.
+    /// The smem budget in v2 E4 buckets (16 B × blockDim each).
     /// The bound for ext-field `Smem` wire indices (bf indices are bounded by
-    /// [`Self::budget`] directly).
+    /// [`Self::budget_lanes`] directly).
     pub fn budget_buckets(&self) -> usize {
-        self.budget / 4
+        self.budget_lanes / BF_LANES_PER_E4_BUCKET
     }
 }
 

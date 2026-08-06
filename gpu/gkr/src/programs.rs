@@ -18,31 +18,31 @@ use gpu_trace::witness::circuit_type::{
 use crate::upstream::GKRCircuitArtifact;
 
 const ADD_SUB: &[u8] =
-    include_bytes!("../../../cs/compiled_circuits/add_sub_lui_auipc_mop_schedule_b16_gkr.json");
+    include_bytes!("../../../cs/compiled_circuits/add_sub_lui_auipc_mop_schedule_b4_gkr.json");
 const BIGINT: &[u8] = include_bytes!(
-    "../../../cs/compiled_circuits/bigint_with_extended_control_schedule_b16_gkr.json"
+    "../../../cs/compiled_circuits/bigint_with_extended_control_schedule_b4_gkr.json"
 );
 const BLAKE2_G: &[u8] =
-    include_bytes!("../../../cs/compiled_circuits/blake2_g_function_schedule_b16_gkr.json");
+    include_bytes!("../../../cs/compiled_circuits/blake2_g_function_schedule_b4_gkr.json");
 const BLAKE2_EXT: &[u8] = include_bytes!(
-    "../../../cs/compiled_circuits/blake2_with_extended_control_schedule_b16_gkr.json"
+    "../../../cs/compiled_circuits/blake2_with_extended_control_schedule_b4_gkr.json"
 );
 const INITS: &[u8] =
-    include_bytes!("../../../cs/compiled_circuits/inits_and_teardowns_schedule_b16_gkr.json");
+    include_bytes!("../../../cs/compiled_circuits/inits_and_teardowns_schedule_b4_gkr.json");
 const JUMP: &[u8] =
-    include_bytes!("../../../cs/compiled_circuits/jump_branch_slt_schedule_b16_gkr.json");
+    include_bytes!("../../../cs/compiled_circuits/jump_branch_slt_schedule_b4_gkr.json");
 const KECCAK: &[u8] =
-    include_bytes!("../../../cs/compiled_circuits/keccak_special5_schedule_b16_gkr.json");
+    include_bytes!("../../../cs/compiled_circuits/keccak_special5_schedule_b4_gkr.json");
 const MEM_SUBWORD: &[u8] =
-    include_bytes!("../../../cs/compiled_circuits/mem_subword_only_schedule_b16_gkr.json");
+    include_bytes!("../../../cs/compiled_circuits/mem_subword_only_schedule_b4_gkr.json");
 const MEM_WORD: &[u8] =
-    include_bytes!("../../../cs/compiled_circuits/mem_word_only_schedule_b16_gkr.json");
+    include_bytes!("../../../cs/compiled_circuits/mem_word_only_schedule_b4_gkr.json");
 const SHIFT: &[u8] =
-    include_bytes!("../../../cs/compiled_circuits/shift_binop_schedule_b16_gkr.json");
+    include_bytes!("../../../cs/compiled_circuits/shift_binop_schedule_b4_gkr.json");
 const UNIFIED: &[u8] =
-    include_bytes!("../../../cs/compiled_circuits/unified_reduced_machine_schedule_b16_gkr.json");
+    include_bytes!("../../../cs/compiled_circuits/unified_reduced_machine_schedule_b4_gkr.json");
 const UNSIGNED_MUL_DIV: &[u8] =
-    include_bytes!("../../../cs/compiled_circuits/unsigned_mul_div_schedule_b16_gkr.json");
+    include_bytes!("../../../cs/compiled_circuits/unsigned_mul_div_schedule_b4_gkr.json");
 
 fn forward_artifact(circuit_type: CircuitType) -> &'static [u8] {
     match circuit_type {

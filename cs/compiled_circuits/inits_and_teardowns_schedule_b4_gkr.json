@@ -1,6 +1,6 @@
 {
   "circuit": "inits_and_teardowns",
-  "budget": 16,
+  "budget_buckets": 4,
   "layers": [
     {
       "units": [

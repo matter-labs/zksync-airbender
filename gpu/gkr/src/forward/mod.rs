@@ -341,7 +341,7 @@ where
             trace_len,
             inits_and_teardowns_top_bits,
             &programs.forward.layers[layer_idx],
-            programs.forward.budget as u32,
+            programs.forward.budget_buckets as u32,
             context,
         )?;
         layer_range.end(stream)?;
@@ -410,7 +410,7 @@ fn schedule_layer<E>(
     trace_len: usize,
     inits_and_teardowns_top_bits: &[u32],
     program: &CompiledLayer,
-    budget_lanes: u32,
+    budget_buckets: u32,
     context: &ProverContext,
 ) -> CudaResult<()>
 where
@@ -421,7 +421,7 @@ where
         layer_idx,
         layer,
         program,
-        budget_lanes,
+        budget_buckets,
         storage,
         stage1,
         forward_setup,

@@ -50,7 +50,7 @@ fn valid_artifact(dag: &DagCircuit) -> ForwardSearchArtifact {
     let layer = &dag.layers[0];
     ForwardSearchArtifact {
         circuit: "tiny".into(),
-        budget: 16,
+        budget_buckets: 4,
         layers: vec![ForwardLayerArtifact {
             units: relation_units_with_caches(layer).unwrap(),
             sites: enumerate_site_domain(layer)

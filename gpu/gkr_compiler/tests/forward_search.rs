@@ -66,7 +66,7 @@ fn fixed_inputs_produce_identical_artifacts() {
         search_forward(ForwardSearchRequest {
             circuit: "tiny",
             dag: &dag,
-            resources: ForwardResourceProfile { cache_cells: 16 },
+            resources: ForwardResourceProfile { cache_buckets: 4 },
             config: config(),
             seed: 7,
             incumbent: None,
@@ -82,7 +82,7 @@ fn a_valid_incumbent_cannot_be_silently_ignored() {
     let request = |incumbent| ForwardSearchRequest {
         circuit: "tiny",
         dag: &dag,
-        resources: ForwardResourceProfile { cache_cells: 16 },
+        resources: ForwardResourceProfile { cache_buckets: 4 },
         config: config(),
         seed: 7,
         incumbent,
@@ -105,7 +105,7 @@ fn a_stale_incumbent_is_rejected_before_search() {
     let mut incumbent = search_forward(ForwardSearchRequest {
         circuit: "tiny",
         dag: &dag,
-        resources: ForwardResourceProfile { cache_cells: 16 },
+        resources: ForwardResourceProfile { cache_buckets: 4 },
         config: config(),
         seed: 7,
         incumbent: None,
@@ -116,7 +116,7 @@ fn a_stale_incumbent_is_rejected_before_search() {
         search_forward(ForwardSearchRequest {
             circuit: "tiny",
             dag: &dag,
-            resources: ForwardResourceProfile { cache_cells: 16 },
+            resources: ForwardResourceProfile { cache_buckets: 4 },
             config: config(),
             seed: 7,
             incumbent: Some(&incumbent),

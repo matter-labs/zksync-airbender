@@ -1,6 +1,6 @@
 {
   "circuit": "unified_reduced_machine",
-  "budget": 16,
+  "budget_buckets": 4,
   "layers": [
     {
       "units": [

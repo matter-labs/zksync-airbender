@@ -4,7 +4,7 @@ use crate::{CrossoverKind, SearchConfig};
 
 pub const HELP: &str = "gkr-forward-artifact \
   --circuit <stem> --layout <layout-json> --output <artifact-json> \
-  --seed <u64> --cache-cells <usize> --population <usize> --evaluations <usize> \
+  --seed <u64> --cache-buckets <usize> --population <usize> --evaluations <usize> \
   [--incumbent <artifact-json>] [--replace]";
 
 #[derive(Debug, PartialEq, Eq)]
@@ -13,7 +13,7 @@ pub struct ManualArgs {
     pub layout: PathBuf,
     pub output: PathBuf,
     pub seed: u64,
-    pub cache_cells: usize,
+    pub cache_buckets: usize,
     pub population: usize,
     pub evaluations: usize,
     pub incumbent: Option<PathBuf>,
@@ -28,7 +28,7 @@ where
     let mut layout = None;
     let mut output = None;
     let mut seed = None;
-    let mut cache_cells = None;
+    let mut cache_buckets = None;
     let mut population = None;
     let mut evaluations = None;
     let mut incumbent = None;
@@ -50,11 +50,11 @@ where
                         .map_err(|_| "invalid --seed")?,
                 )
             }
-            "--cache-cells" => {
-                cache_cells = Some(
+            "--cache-buckets" => {
+                cache_buckets = Some(
                     value(&mut args, &flag)?
                         .parse()
-                        .map_err(|_| "invalid --cache-cells")?,
+                        .map_err(|_| "invalid --cache-buckets")?,
                 )
             }
             "--population" => {
@@ -82,13 +82,13 @@ where
         layout: layout.ok_or("missing --layout")?,
         output: output.ok_or("missing --output")?,
         seed: seed.ok_or("missing --seed")?,
-        cache_cells: cache_cells.ok_or("missing --cache-cells")?,
+        cache_buckets: cache_buckets.ok_or("missing --cache-buckets")?,
         population: population.ok_or("missing --population")?,
         evaluations: evaluations.ok_or("missing --evaluations")?,
         incumbent,
         replace,
     };
-    let expected = format!("{}_schedule_b{}_gkr.json", args.circuit, args.cache_cells);
+    let expected = format!("{}_schedule_b{}_gkr.json", args.circuit, args.cache_buckets);
     if args.output.file_name().and_then(|name| name.to_str()) != Some(&expected) {
         return Err(format!("output must end in {expected}"));
     }

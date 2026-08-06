@@ -21,6 +21,7 @@ use super::context::{
 use super::error::CompileError;
 use super::isa::{DstLine, Instr, LdcSub, MovDir, OperandField, OperandLine, Program};
 use super::stats::{CompileStats, OP_ADD, OP_FMA, OP_MOV, OP_MUL};
+use crate::profile::BF_LANES_PER_E4_BUCKET;
 use crate::schedule::{CircuitSchedule, LayerSchedule};
 use gkr_eval_ir::{
     DagCircuit, DagLayer, FieldKind, ReadPlace, RootExecution, RootId, SinkInfo, SinkKind,
@@ -158,7 +159,7 @@ fn operand_field_of(sink: &SinkInfo) -> OperandField {
 #[derive(Clone, Debug)]
 pub struct CompiledCircuit {
     pub circuit: String,
-    pub budget: usize,
+    pub budget_buckets: usize,
     pub layers: Vec<CompiledLayer>,
 }
 
@@ -447,7 +448,7 @@ fn compile_layer_at(
         root_outputs,
         skipped,
         trace,
-        budget: place_budget,
+        budget_lanes: place_budget,
         stats,
         resident_realized,
     })
@@ -631,7 +632,7 @@ pub fn layer_needs_compile(order_is_empty: bool, layer: &DagLayer) -> bool {
     !(order_is_empty && layer.roots.iter().all(|r| r.materialize.is_none()))
 }
 
-/// Load one committed `*_schedule_b16_gkr.json`. Parse-only — structural
+/// Load one committed `*_schedule_b4_gkr.json`. Parse-only — structural
 /// validation against the circuit happens in `compile_circuit`
 /// (`validate_circuit_schedule`), so a caller cannot forget it. A missing or
 /// unparsable file is a hard error: there is NO produce-on-missing fallback
@@ -643,7 +644,7 @@ pub fn load_committed_schedule(path: &std::path::Path) -> Result<CircuitSchedule
     parse_committed_schedule(&bytes, &path.display().to_string())
 }
 
-/// Parse a committed `*_schedule_b16_gkr.json` already in memory.
+/// Parse a committed `*_schedule_b4_gkr.json` already in memory.
 /// [`load_committed_schedule`] is this plus the file read; a consumer that
 /// embeds the schedule in its binary has no path to read at runtime and calls
 /// this directly. `origin` only names the source in the error message.
@@ -673,6 +674,7 @@ pub fn compile_circuit(
 ) -> Result<CompiledCircuit, CompileError> {
     crate::schedule::validate_circuit_schedule(dag, schedule)
         .map_err(CompileError::InvalidSchedule)?;
+    let budget_lanes = schedule.budget_buckets * BF_LANES_PER_E4_BUCKET;
     let cross = build_cross_layer_field_map(dag);
     let mut layers = Vec::with_capacity(dag.layers.len());
     for (li, layer) in dag.layers.iter().enumerate() {
@@ -684,7 +686,7 @@ pub fn compile_circuit(
                 root_outputs: Vec::new(),
                 skipped: Vec::new(),
                 trace: CompileTrace::default(),
-                budget: schedule.budget,
+                budget_lanes,
                 stats: CompileStats::default(),
                 resident_realized: Vec::new(),
             });
@@ -696,14 +698,14 @@ pub fn compile_circuit(
                 dag.globals.root_execution.get(li),
                 &cross,
                 ls,
-                schedule.budget,
+                budget_lanes,
                 Some(&decisions),
             )?);
         }
     }
     Ok(CompiledCircuit {
         circuit: schedule.circuit.clone(),
-        budget: schedule.budget,
+        budget_buckets: schedule.budget_buckets,
         layers,
     })
 }

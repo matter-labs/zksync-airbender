@@ -51,8 +51,8 @@ pub fn parse_forward_artifact(
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ForwardSearchArtifact {
     pub circuit: String,
-    /// Cache budget in CELLS (not entry count). The optimizer input, recorded.
-    pub budget: usize,
+    /// Shared-memory cache budget in E4 buckets. The optimizer input, recorded.
+    pub budget_buckets: usize,
     pub layers: Vec<ForwardLayerArtifact>,
 }
 

@@ -281,10 +281,10 @@ fn check_smem_bounds(compiled: &CompiledLayer) -> Result<(), CompileError> {
             OperandField::Ext => cell as usize * 4 + 4,
             OperandField::Base => cell as usize + 1,
         };
-        if floor > compiled.budget {
+        if floor > compiled.budget_lanes {
             return Err(CompileError::BudgetBelowFloor {
                 floor,
-                budget: compiled.budget,
+                budget: compiled.budget_lanes,
             });
         }
         Ok(())

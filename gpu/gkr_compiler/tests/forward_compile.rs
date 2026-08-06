@@ -49,7 +49,7 @@ fn artifact_compiles_without_a_cs_compiler_input() {
     let layer = &dag.layers[0];
     let artifact = ForwardSearchArtifact {
         circuit: "tiny".into(),
-        budget: 16,
+        budget_buckets: 4,
         layers: vec![ForwardLayerArtifact {
             units: relation_units_with_caches(layer).unwrap(),
             sites: enumerate_site_domain(layer)

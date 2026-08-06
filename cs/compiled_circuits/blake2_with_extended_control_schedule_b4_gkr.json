@@ -1,6 +1,6 @@
 {
   "circuit": "blake2_with_extended_control",
-  "budget": 16,
+  "budget_buckets": 4,
   "layers": [
     {
       "units": [

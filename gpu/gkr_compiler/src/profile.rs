@@ -1,7 +1,9 @@
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ForwardResourceProfile {
-    pub cache_cells: usize,
+    pub cache_buckets: usize,
 }
+
+pub(crate) const BF_LANES_PER_E4_BUCKET: usize = 4;
 
 /// Backward compiler capacities selected for one GPU implementation.
 ///

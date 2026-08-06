@@ -22,22 +22,24 @@ use std::collections::HashMap;
 use gkr_eval_ir::{DagCircuit, FieldKind, ReadPlace};
 
 use crate::forward::compile::{build_cross_layer_field_map, layer_needs_compile};
+use crate::profile::BF_LANES_PER_E4_BUCKET;
 use crate::schedule::{CircuitSchedule, LayerSchedule};
 
 use super::scorer::LayerCtx;
 use super::search::{SearchConfig, search_layer};
 use super::structure::relation_units;
 
-/// Build a `CircuitSchedule` for `dag` at `budget` by searching every
+/// Build a `CircuitSchedule` for `dag` at `budget_buckets` by searching every
 /// compiled (atom-root-bearing) layer with `cfg`. Prints one line per layer to
 /// stdout (RR's desired perf-envelope visibility): node/site counts, evals
 /// performed, compiles/sec, and wall time.
 pub fn produce_circuit_schedule(
     dag: &DagCircuit,
-    budget: usize,
+    budget_buckets: usize,
     cfg: &SearchConfig,
     incumbent: Option<&CircuitSchedule>,
 ) -> CircuitSchedule {
+    let budget_lanes = budget_buckets * BF_LANES_PER_E4_BUCKET;
     let cross: HashMap<ReadPlace, FieldKind> = build_cross_layer_field_map(dag);
     let mut layers: Vec<LayerSchedule> = Vec::with_capacity(dag.layers.len());
 
@@ -63,7 +65,7 @@ pub fn produce_circuit_schedule(
             continue;
         }
 
-        let ctx = LayerCtx::new(dag, li, &cross, budget);
+        let ctx = LayerCtx::new(dag, li, &cross, budget_lanes);
         let n_sites = ctx.n_sites();
         let node_count = layer.exprs.len();
 
@@ -94,7 +96,7 @@ pub fn produce_circuit_schedule(
     // already expects a `CircuitSchedule.circuit` field to exist for the record.
     let sched = CircuitSchedule {
         circuit: String::new(),
-        budget,
+        budget_buckets,
         layers,
     };
 

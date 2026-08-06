@@ -43,9 +43,10 @@ fn every_retained_forward_artifact_validates_compiles_and_encodes() {
         let dag = lower_dag(&layout).unwrap_or_else(|error| panic!("{stem}: {error}"));
         validate(&dag).unwrap_or_else(|error| panic!("{stem}: {error}"));
 
-        let artifact_name = format!("{stem}_schedule_b16_gkr.json");
+        let artifact_name = format!("{stem}_schedule_b4_gkr.json");
         let artifact_bytes = std::fs::read(directory.join(&artifact_name)).unwrap();
         let artifact = parse_forward_artifact(&artifact_bytes, &artifact_name).unwrap();
+        assert_eq!(artifact.budget_buckets, 4, "{stem}");
         let compiled =
             compile_forward(&dag, &artifact).unwrap_or_else(|error| panic!("{stem}: {error:?}"));
 

@@ -1,6 +1,6 @@
 {
   "circuit": "keccak_special5",
-  "budget": 16,
+  "budget_buckets": 4,
   "layers": [
     {
       "units": [

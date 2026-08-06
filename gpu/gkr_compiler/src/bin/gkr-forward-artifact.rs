@@ -34,14 +34,14 @@ fn run(raw_args: Vec<String>) -> Result<(), String> {
 
     let config = search_config(&args);
     eprintln!(
-        "search config: seed={} cache_cells={} population={} evaluations={} {:?}",
-        args.seed, args.cache_cells, args.population, args.evaluations, config
+        "search config: seed={} cache_buckets={} population={} evaluations={} {:?}",
+        args.seed, args.cache_buckets, args.population, args.evaluations, config
     );
     let artifact = search_forward(ForwardSearchRequest {
         circuit: &args.circuit,
         dag: &dag,
         resources: ForwardResourceProfile {
-            cache_cells: args.cache_cells,
+            cache_buckets: args.cache_buckets,
         },
         config,
         seed: args.seed,

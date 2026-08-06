@@ -598,7 +598,7 @@ template <bool LDG, u32 BUCKETS> DEVICE_FORCEINLINE void vm_body_static(const fw
       vm_body_static<false, B>(desc, fwd_vm_cells_s);                                                                                                          \
   }
 
-// 4 buckets == the committed corpus's budget-16 bf lanes.
+// Four E4 buckets: the committed corpus budget.
 FWDVM_STATIC_KERNEL(4)
 
 EXTERN __launch_bounds__(128, 4) __global__ void ab_gkr_fwd_vm_validate_kernel(const __grid_constant__ fwd_vm_desc desc, u32 *error_flag) {

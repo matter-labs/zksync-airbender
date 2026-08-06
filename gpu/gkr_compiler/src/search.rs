@@ -100,10 +100,10 @@ pub fn search_forward(
                 incumbent.circuit, request.circuit
             )));
         }
-        if incumbent.budget != request.resources.cache_cells {
+        if incumbent.budget_buckets != request.resources.cache_buckets {
             return Err(ForwardSearchError::IncumbentMismatch(format!(
                 "incumbent budget {} does not match {}",
-                incumbent.budget, request.resources.cache_cells
+                incumbent.budget_buckets, request.resources.cache_buckets
             )));
         }
         validate_forward_artifact(request.dag, incumbent).map_err(ForwardSearchError::Artifact)?;
@@ -128,7 +128,7 @@ pub fn search_forward(
     };
     let mut artifact = producer::produce_circuit_schedule(
         request.dag,
-        request.resources.cache_cells,
+        request.resources.cache_buckets,
         &config,
         request.incumbent,
     );

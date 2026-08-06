@@ -479,7 +479,7 @@ pub(crate) fn schedule_vm_layer<E>(
     layer_idx: usize,
     layer: &GKRLayerDescription,
     cl: &CompiledLayer,
-    budget_lanes: u32,
+    budget_buckets: u32,
     storage: &mut GpuGKRStorage<BF, E>,
     stage1: &GpuGKRStage1Output,
     forward_setup: &GpuGKRForwardSetup<E>,
@@ -522,7 +522,7 @@ where
     stage_const_derived_e4_bank(cl, &setup, forward_setup, context)
         .unwrap_or_else(|e| panic!("forward VM layer {layer_idx}: {e}"));
 
-    super::launch_fwd_vm_s4(&setup, budget_lanes, context)?;
+    super::launch_fwd_vm_s4(&setup, budget_buckets, context)?;
 
     // The VM emits no `GlobalMaterialize` for a pure copy gate — its output
     // aliases its input — so, exactly as `generated_layer0` must, register
