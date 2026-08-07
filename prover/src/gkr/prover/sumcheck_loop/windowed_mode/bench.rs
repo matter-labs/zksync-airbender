@@ -4516,6 +4516,128 @@ pub fn run_windowed_sumcheck_benchmarks<F: PrimeField, E: FieldExtension<F> + Fi
                             })
                         };
 
+                        // ---- monomial-form verifier (the "updated" verifier) ----
+                        //
+                        // PROVER extra work: the 16 evaluation points H u gH
+                        // form exactly the size-16 subgroup <w16> (gamma = w16,
+                        // gamma^2 = w8; eval idx < 8 sits at w16^(2*idx), idx
+                        // >= 8 at w16^(2*(idx-8)+1)), so the prover converts
+                        // q's 16 values to monomial coefficients C_0..C_15
+                        // with one 16-point inverse DFT and sends THOSE.
+                        let sixteenth = BabyBearField::from_u32_with_reduction(16)
+                            .inverse()
+                            .unwrap();
+                        let omega16_inv = omega16_bb.inverse().unwrap();
+                        let exp_of =
+                            |idx: usize| -> usize { if idx < 8 { 2 * idx } else { 2 * (idx - 8) + 1 } };
+                        let to_monomial = |q: &[E; 16]| -> [E; 16] {
+                            core::array::from_fn(|m| {
+                                let mut acc = E::ZERO;
+                                for idx in 0..16 {
+                                    let tw = omega16_inv.pow((exp_of(idx) * m % 16) as u32);
+                                    let mut t = q[idx];
+                                    t.mul_assign_by_base(unsafe {
+                                        &*(&tw as *const _ as *const F)
+                                    });
+                                    acc.add_assign(&t);
+                                }
+                                acc.mul_assign_by_base(unsafe {
+                                    &*(&sixteenth as *const _ as *const F)
+                                });
+                                acc
+                            })
+                        };
+                        // VERIFIER claim check, fully unrolled:
+                        //   claim == sum_{j<8} Eq_j * q(w8^j)
+                        //         == sum_{t<8} (C_t + C_{t+8}) * W_t
+                        // where W_t = sum_j Eq_j * w8^(j*t) -- only t < 8
+                        // exist because w8^8 = 1 makes W periodic in t -- and
+                        // W_0 = sum_j Eq_j = 1 (eq sums to one over the cube),
+                        // so the t = 0 term costs no multiply. Base-field
+                        // twiddles, no inversions, no per-point Horner.
+                        let verifier_claim = |c: &[E; 16], eq8: &[E; 8]| -> E {
+                            let folded: [E; 8] = core::array::from_fn(|t| {
+                                let mut v = c[t];
+                                v.add_assign(&c[t + 8]);
+                                v
+                            });
+                            let w: [E; 8] = core::array::from_fn(|t| {
+                                let mut acc = E::ZERO;
+                                for j in 0..8 {
+                                    let tw = omega8_bb.pow((j * t % 8) as u32);
+                                    let mut v = eq8[j];
+                                    v.mul_assign_by_base(unsafe {
+                                        &*(&tw as *const _ as *const F)
+                                    });
+                                    acc.add_assign(&v);
+                                }
+                                acc
+                            });
+                            assert_eq!(w[0], E::ONE, "eq table must sum to 1");
+                            let mut claim = folded[0]; // W_0 = 1
+                            for t in 1..8 {
+                                let mut v = folded[t];
+                                v.mul_assign(&w[t]);
+                                claim.add_assign(&v);
+                            }
+                            claim
+                        };
+                        // VERIFIER next-claim: plain Horner over C_15..C_0.
+                        let horner16 = |c: &[E; 16], r: &E| -> E {
+                            let mut acc = c[15];
+                            for m in (0..15).rev() {
+                                acc.mul_assign(r);
+                                acc.add_assign(&c[m]);
+                            }
+                            acc
+                        };
+                        // VERIFIER fold weights, inversion-free product form:
+                        //   L_j(r) = [prod_{k!=j} (r - w8^k)] * D_j,
+                        //   D_j = 1/prod_{k!=j} (w8^j - w8^k)
+                        // The D_j are DOMAIN constants (base field, inverted
+                        // once at setup); at runtime only prefix/suffix
+                        // products of (r - w8^k) are needed.
+                        let d_consts: [E; 8] = core::array::from_fn(|j| {
+                            let mut d = BabyBearField::ONE;
+                            for k in 0..8 {
+                                if k != j {
+                                    let mut t = omega8_bb.pow(j as u32);
+                                    t.sub_assign(&omega8_bb.pow(k as u32));
+                                    d.mul_assign(&t);
+                                }
+                            }
+                            let dinv = d.inverse().unwrap();
+                            E::from_base(unsafe { *(&dinv as *const _ as *const F) })
+                        });
+                        let l8_product_form = |r: &E| -> [E; 8] {
+                            let diffs: [E; 8] = core::array::from_fn(|k| {
+                                let uk = omega8_bb.pow(k as u32);
+                                let mut t = *r;
+                                t.sub_assign(&E::from_base(unsafe {
+                                    *(&uk as *const _ as *const F)
+                                }));
+                                t
+                            });
+                            let mut pre = [E::ONE; 9];
+                            for k in 0..8 {
+                                let mut p = pre[k];
+                                p.mul_assign(&diffs[k]);
+                                pre[k + 1] = p;
+                            }
+                            let mut suf = [E::ONE; 9];
+                            for k in (0..8).rev() {
+                                let mut p = suf[k + 1];
+                                p.mul_assign(&diffs[k]);
+                                suf[k] = p;
+                            }
+                            core::array::from_fn(|j| {
+                                let mut v = pre[j];
+                                v.mul_assign(&suf[j + 1]);
+                                v.mul_assign(&d_consts[j]);
+                                v
+                            })
+                        };
+
                         // folded term lists over the combined slot space
                         let nbu = nb as u16;
                         let mut chain_quads: Vec<(u16, u16, E)> = vec![];
@@ -4640,7 +4762,13 @@ pub fn run_windowed_sumcheck_benchmarks<F: PrimeField, E: FieldExtension<F> + Fi
                                     }
                                 };
                                 eval_times[g] = t0.elapsed();
+                                // prover-side: convert q to monomial form;
+                                // everything the verifier does below uses ONLY
+                                // the coefficients
+                                let coeffs = to_monomial(&q);
+                                assert_eq!(coeffs[15], E::ZERO, "deg(q) <= 14");
                                 if let Some(expected) = q_prev_at_r {
+                                    // evaluation-form reference check
                                     let mut claim = E::ZERO;
                                     for j in 0..8 {
                                         let mut t = w3g[g][j];
@@ -4652,9 +4780,36 @@ pub fn run_windowed_sumcheck_benchmarks<F: PrimeField, E: FieldExtension<F> + Fi
                                         "chain claim mismatch entering pass {}",
                                         g
                                     );
+                                    // monomial-form VERIFIER check (fold +
+                                    // DFT8 + dot; no barycentric, no
+                                    // inversions)
+                                    assert_eq!(
+                                        verifier_claim(&coeffs, &w3g[g]),
+                                        expected,
+                                        "monomial verifier claim at pass {}",
+                                        g
+                                    );
                                 }
-                                q_prev_at_r = Some(interp_at(&q, &rs[g]));
-                                let lw = l8_at(&rs[g]);
+                                // verifier next-claim via Horner; must agree
+                                // with the barycentric evaluation of q's
+                                // 16-value form
+                                let q_r = horner16(&coeffs, &rs[g]);
+                                assert_eq!(
+                                    q_r,
+                                    interp_at(&q, &rs[g]),
+                                    "Horner vs barycentric q(r) at pass {}",
+                                    g
+                                );
+                                q_prev_at_r = Some(q_r);
+                                // verifier fold weights: inversion-free
+                                // product form == barycentric form
+                                let lw = l8_product_form(&rs[g]);
+                                assert_eq!(
+                                    lw,
+                                    l8_at(&rs[g]),
+                                    "product-form fold weights at pass {}",
+                                    g
+                                );
                                 let t1 = std::time::Instant::now();
                                 if g == 0 {
                                     for (i, col) in base_cols_rev.iter().enumerate() {
@@ -4766,7 +4921,7 @@ pub fn run_windowed_sumcheck_benchmarks<F: PrimeField, E: FieldExtension<F> + Fi
                             best_total, head, tail, t_setup,
                         );
                         println!(
-                            "validation: every pass claim chains via interpolated q(r); final G(folded values) == q(r)"
+                            "validation: every pass claim chains via interpolated q(r); final G(folded values) == q(r); monomial-form verifier (coeff fold + DFT8 + Horner + product-form fold weights) agrees on every pass"
                         );
 
                         // ---- fused variant: pass-0 fold merged into pass-1 ----
