@@ -42,15 +42,23 @@ stream:
   and the domain generator indices are hard-coded separately on each side. Moving
   to k=3/5 means touching, independently:
   - `native/uniskip_abi.cuh` — `UNISKIP_TAPS` (16), `UNISKIP_CELLS` (32),
-    `UNISKIP_WARPS_PER_BLOCK` (8), `UNISKIP_CELLS_PER_WARP` (4), and the
-    `static_assert`s tying them together;
+    `UNISKIP_WARPS_PER_BLOCK` (8), `UNISKIP_CELLS_PER_WARP` (4), the
+    `static_assert`s tying them together, and `UNISKIP_LOG_ADDRESSABLE_PLANES`
+    (11 = 7 column bits + log2(taps)) with the max-row assertion beside it;
   - `src/abi.rs` — the same four constants (`UNISKIP_LOG_TAPS` is derived from
     `UNISKIP_TAPS` and follows on its own);
   - `src/domain.rs` — the subgroup and coset generator indices, `omega16()` =
-    `TWO_ADICITY_GENERATORS[4]` and `gamma()` = `TWO_ADICITY_GENERATORS[5]`, plus
-    the `omega16` name itself;
+    `TWO_ADICITY_GENERATORS[4]` and `gamma()` = `TWO_ADICITY_GENERATORS[5]`, the
+    `omega16` name itself, and the production arithmetic `F::new(16)` (the
+    `inv16` sites) and `r.pow(16)` in `fold_weights`;
   - the tests that pin the k=4 values — the bare `16` literals in `src/domain.rs`'s
-    tests and `UNISKIP_MAX_LOG_ROWS == 21` in `src/geometry.rs`'s.
+    tests, the addressable-plane/element-index pins in `src/abi.rs`'s layout
+    tests, and `UNISKIP_MAX_LOG_ROWS == 21` plus the eq-tuple pins in
+    `src/geometry.rs`'s.
+
+  This list enumerates the k-dependent sites known at this commit; before
+  trusting it exhaustive after further changes, grep for `UNISKIP_TAPS` and the
+  bare `16`/`11`/`21` literals.
 
   Deriving all of that from one constant per language is deliberately **not** done:
   v2 restructures these kernels anyway, and v1's scope fixes k at 4 on purpose.
