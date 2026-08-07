@@ -99,8 +99,12 @@ the column as "this stage is achieving *at least* this much".
   1510 GB/s **is** the achieved bandwidth — 84% of the card's ~1.8 TB/s peak. Treat
   ~1.5 TB/s as the *practical streaming ceiling* and ~1.8 TB/s as the hard one; the
   gap between them is why the derived bounds below are given as ranges.
-- **`lde` is bandwidth-bound at ~16× the floor**, not slow at the floor. Each thread
-  produces one coset cell from all 16 taps of its (column, row).
+- **`lde` is bandwidth-bound at ~16× re-read = 8.5× floor traffic**, not slow at the
+  floor. Each thread produces one coset cell from all 16 taps of its (column, row),
+  so the taps are *read* 16×; against the floor — which counts the coset write too —
+  total traffic is `(16 read + 1 write) / (1 read + 1 write)` = **8.5×**. The two
+  multipliers are not interchangeable and only the 8.5× divides the compulsory
+  column.
 
   *Mechanism — RESIDENCY, not capacity.* The launch is grid-strided and clamped to
   `MAX_BLOCKS = 65536` blocks × 256 threads = exactly `2^24` threads, so the stride
@@ -116,19 +120,36 @@ the column as "this stage is achieving *at least* this much".
 
   *Measured sweep* (same kernel, `--log-trace` 20…24), which is what settles it:
 
-  | log_rows | sharer spacing | tap block (+coset) | compulsory GB/s |
-  | --- | --- | --- | --- |
-  | 16 | 256 blk | 4 (8) MiB | 805.8 |
-  | 17 | 512 blk | 8 (16) MiB | 725.2 |
-  | 18 | 1024 blk | 16 (32) MiB | **183.5** ← collapse |
-  | 19 | 2048 blk | 32 (64) MiB | 173.2 |
-  | 20 | 4096 blk | 64 (128) MiB | 173.8 |
+  The `bf` and `e4` reuse distances are listed separately — an `e4` column is 4×
+  the bytes of a `bf` one, and conflating them is what makes a capacity story look
+  plausible. Both kernels see the same block spacing. Compulsory GB/s is the
+  aggregate over both, which is what the bench prints.
+
+  | log_rows | sharer spacing | `bf` reuse dist. (tap + coset) | `e4` reuse dist. | compulsory GB/s |
+  | --- | --- | --- | --- | --- |
+  | 16 | 256 blk | 8 MiB | 32 MiB | 805.8 |
+  | 17 | 512 blk | 16 MiB | 64 MiB | 725.2 |
+  | 18 | 1024 blk | 32 MiB | **128 MiB** | **183.5** ← collapse |
+  | 19 | 2048 blk | 64 MiB | 256 MiB | 173.2 |
+  | 20 | 4096 blk | 128 MiB | 512 MiB | 173.8 |
 
   The collapse lands between 512 and 1024 blocks of spacing, against the
-  ~1128-block resident window. It is **nowhere near a capacity boundary**: this
-  device's L2 is 128 MiB (`cudaDevAttrL2CacheSize` = 134217728) and at `log_rows 18`
-  the whole reuse distance is 32 MiB — a quarter of it — yet throughput has already
-  fallen to its `log_rows 20` value. Capacity is context here, not the constraint.
+  ~1128-block resident window. It is **nowhere near a capacity boundary** — but the
+  `e4` column is why that needs one more step of arithmetic rather than an eyeball.
+  This device's L2 is 128 MiB (`cudaDevAttrL2CacheSize` = 134217728), and at
+  `log_rows 18` the `e4` reuse distance is 128 MiB *to the byte*: taken alone, the
+  `e4` half of the collapse row is exactly the coincidence a capacity story wants.
+
+  The aggregate rate rules it out. At `log_rows 18` the two classes carry 52% / 48%
+  of the compulsory bytes (768 MiB `bf` backing, 704 MiB `e4`), and the kernels run
+  back to back on one stream, so the aggregate is the harmonic combination
+  `1 / (0.52/r_bf + 0.48/r_e4)`. Had **only** `e4` collapsed — `bf` holding the
+  725 GB/s it showed one step earlier — the stage would read
+  `1 / (0.52/725 + 0.48/174)` ≈ **288 GB/s**. Even giving `bf` perfect reuse at the
+  full 1477 GB/s hardware rate only reaches 322 GB/s. Measured is **183.5**, which
+  forces `r_bf` ≈ **193 GB/s**: the `bf` kernel, whose reuse distance is 32 MiB —
+  **a quarter of L2** — demonstrably collapsed too, in the same step. Capacity is
+  context here, not the constraint.
 
   *What the timing says.* At the plateau the stage moves `16 × 5.75 GiB` read +
   `5.75 GiB` written ≈ 105 GB, i.e. **~1477 GB/s over 71.06 ms** — 82% of card peak
@@ -147,7 +168,7 @@ the column as "this stage is achieving *at least* this much".
 - **`lde` is 74.6% of the pass**, so the global coset materialization the v1 design
   deliberately measures is the whole story of this baseline. `eval` (20.3%) and
   `fold` (5.0%) are the rest.
-- **`eval`: at least a third of its loads are cache-served; the table does not say
+- **`eval`: at least a quarter of its loads are cache-served; the table does not say
   whether DRAM is the binding constraint.** Floor over time (12.36 GB / 19.37 ms =
   638 GB/s) only establishes that eval's DRAM rate is *at least* 638 GB/s — it
   cannot show the stage is off the DRAM limit. The argument that does carry: with
