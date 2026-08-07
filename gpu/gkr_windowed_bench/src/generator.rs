@@ -187,7 +187,7 @@ impl EncodedAtom {
         }
         for (product, member) in members[..product_count].iter_mut().enumerate() {
             member.factor &= IMMEDIATE_ID_MASK;
-            if (product + 1) % 4 == 0 || product + 1 == product_count {
+            if (product + 1) % 4 == 0 && product + 1 < product_count {
                 member.factor |= REDUCE_AFTER;
             }
         }
@@ -1056,7 +1056,7 @@ mod tests {
                 .iter()
                 .filter(|instruction| instruction.factor & REDUCE_AFTER != 0)
                 .count(),
-            21
+            11
         );
     }
 

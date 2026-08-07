@@ -333,27 +333,21 @@ DEVICE_FORCEINLINE window_triplet<bf> window_eval_bf_term(const window_vm_desc &
   }
 }
 
-DEVICE_FORCEINLINE window_triplet<u64> window_eval_bf_product_wide(const window_vm_desc &desc, const window_instruction instruction, const u32 row,
-                                                                   const u32 log_rows, const u32 log_trace, const window_selector selector) {
+DEVICE_FORCEINLINE void window_accumulate_bf_product_wide(const window_vm_desc &desc, const window_instruction instruction, const u32 row, const u32 log_rows,
+                                                          const u32 log_trace, const window_selector selector, window_triplet<u64> &sum) {
   const window_bf_source source_a_view = window_resolve_bf_source(desc, instruction.source_a, log_trace);
   const window_bf_source source_b_view = window_resolve_bf_source(desc, instruction.source_b, log_trace);
   const window_triplet<bf> a = window_resolve_triplet<bf>(source_a_view, row, log_rows, selector);
   const window_triplet<bf> b = window_resolve_triplet<bf>(source_b_view, row, log_rows, selector);
   const u16 immediate_id = instruction.factor & WINDOW_IMMEDIATE_ID_MASK;
-  window_triplet<u64> result;
   if (immediate_id == WINDOW_IMMEDIATE_ONE) {
-    result.apply([&](u64 &value, const u32 cell) { value = mul_wide(a.values[cell].limb, b.values[cell].limb); });
+    sum.apply([&](u64 &value, const u32 cell) { value = mad_wide(a.values[cell].limb, b.values[cell].limb, value); });
   } else if (immediate_id == WINDOW_IMMEDIATE_NEG_ONE) {
-    result.apply([&](u64 &value, const u32 cell) { value = mul_wide(bf::ORDER - a.values[cell].limb, b.values[cell].limb); });
+    sum.apply([&](u64 &value, const u32 cell) { value = mad_wide(bf::ORDER - a.values[cell].limb, b.values[cell].limb, value); });
   } else {
     const bf immediate = bf::from_reduced_raw_repr(desc.immediates[immediate_id - WINDOW_IMMEDIATE_RESERVED]);
-    result.apply([&](u64 &value, const u32 cell) { value = mul_wide(bf::mul(immediate, a.values[cell]).limb, b.values[cell].limb); });
+    sum.apply([&](u64 &value, const u32 cell) { value = mad_wide(bf::mul(immediate, a.values[cell]).limb, b.values[cell].limb, value); });
   }
-  return result;
-}
-
-DEVICE_FORCEINLINE void window_add_bf_product_wide(const window_triplet<u64> &value, window_triplet<u64> &sum) {
-  sum.apply([&](u64 &cell_sum, const u32 cell) { cell_sum += value.values[cell]; });
 }
 
 DEVICE_FORCEINLINE void window_reduce_and_rebase_bf_wide(window_triplet<u64> &sum) {
@@ -430,7 +424,7 @@ DEVICE_FORCEINLINE u32 window_execute_bf_atom(const window_vm_desc &desc, const 
     }
 
     const e4 core = ::ab_gkr_windowed_coeff_bank[head.factor];
-    sums.apply([&](const bf sum, const u32 cell) { accumulators[cell] = e4::fma(core, sum, accumulators[cell]); });
+    sums.apply([&](const bf sum, const u32 cell) { accumulators[cell] = e4::add(e4::mul(core, sum), accumulators[cell]); });
     return pc;
   }
 
@@ -440,9 +434,8 @@ DEVICE_FORCEINLINE u32 window_execute_bf_atom(const window_vm_desc &desc, const 
 #pragma unroll 1
     for (u16 member = 0; member < product_prefix_count; ++member) {
       const window_instruction product = desc.program[pc++];
-      const window_triplet<u64> value = window_eval_bf_product_wide(desc, product, row, log_rows, log_trace, selector);
-      window_add_bf_product_wide(value, wide_sums);
-      if (member + 1 < product_prefix_count && (product.factor & WINDOW_REDUCE_AFTER))
+      window_accumulate_bf_product_wide(desc, product, row, log_rows, log_trace, selector, wide_sums);
+      if (product.factor & WINDOW_REDUCE_AFTER)
         window_reduce_and_rebase_bf_wide(wide_sums);
     }
     sums = window_reduce_bf_wide(wide_sums);
@@ -489,7 +482,7 @@ DEVICE_FORCEINLINE u32 window_execute_bf_atom(const window_vm_desc &desc, const 
   }
 
   const e4 core = ::ab_gkr_windowed_coeff_bank[head.factor];
-  sums.apply([&](const bf sum, const u32 cell) { accumulators[cell] = e4::fma(core, sum, accumulators[cell]); });
+  sums.apply([&](const bf sum, const u32 cell) { accumulators[cell] = e4::add(e4::mul(core, sum), accumulators[cell]); });
   return pc;
 }
 
@@ -536,15 +529,26 @@ DEVICE_FORCEINLINE u32 window_execute_e4_atom(const window_vm_desc &desc, const 
   return pc;
 }
 
-DEVICE_FORCEINLINE e4 window_eq(const window_vm_desc &desc, const u32 row) {
+DEVICE_FORCEINLINE e4 window_eq(const window_vm_desc &desc, const u32 row, const u32 lane) {
   const u32 shift1 = desc.eq_sizes.low;
   const u32 shift0 = desc.eq_sizes.low + desc.eq_sizes.high[1];
   const u32 hi0 = (row >> shift0) & ((1u << desc.eq_sizes.high[0]) - 1u);
   const u32 hi1 = (row >> shift1) & ((1u << desc.eq_sizes.high[1]) - 1u);
   const u32 low = row & ((1u << desc.eq_sizes.low) - 1u);
-  e4 value = ::ab_gkr_windowed_eq_high[hi0];
-  value = e4::mul(value, ::ab_gkr_windowed_eq_high[256 + hi1]);
-  return e4::mul(value, load<e4, ld_modifier::ca>(desc.eq_low, low));
+  const u32 leader_lane = lane & ~low;
+  e4 high = e4::ZERO();
+  if (lane == leader_lane) {
+    high = ::ab_gkr_windowed_eq_high[hi0];
+    high = e4::mul(high, ::ab_gkr_windowed_eq_high[256 + hi1]);
+  }
+  const uint4 packed = reinterpret_cast<const uint4 *>(&high)[0];
+  uint4 broadcast;
+  broadcast.x = __shfl_sync(0xffffffffu, packed.x, leader_lane);
+  broadcast.y = __shfl_sync(0xffffffffu, packed.y, leader_lane);
+  broadcast.z = __shfl_sync(0xffffffffu, packed.z, leader_lane);
+  broadcast.w = __shfl_sync(0xffffffffu, packed.w, leader_lane);
+  high = reinterpret_cast<const e4 *>(&broadcast)[0];
+  return e4::mul(high, load<e4, ld_modifier::ca>(desc.eq_low, low));
 }
 
 DEVICE_FORCEINLINE e4 window_warp_sum(e4 value) {
@@ -593,10 +597,10 @@ EXTERN __global__ __launch_bounds__(WINDOW_THREADS_PER_BLOCK, 4) void ab_gkr_win
       pc = window_execute_bf_atom(desc, instruction, pc, row, desc.log_rows, log_trace, selector, accumulators);
   }
 
-  const e4 eq = window_eq(desc, row);
+  const e4 eq = window_eq(desc, row, lane);
 #pragma unroll
   for (u32 cell = 0; cell < 3; ++cell) {
-    e4 accumulator = active ? e4::mul(accumulators[cell], eq) : e4::ZERO();
+    e4 accumulator = active ? e4::mul(eq, accumulators[cell]) : e4::ZERO();
     accumulator = window_warp_sum(accumulator);
     if (lane == 0) {
       const size_t partial_index = static_cast<size_t>(blockIdx.x) * WINDOW_CELLS + 3 * warp + cell;

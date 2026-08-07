@@ -943,3 +943,339 @@ artifact SHA-256 is
 The log-24 requested source-load floor remains 70,665,633,792 bytes; the
 specialization removes arithmetic and accumulator traffic, not the benchmark's
 allocation footprint or declared input-load floor.
+
+## Fast-affine BF-group encoding probe
+
+A follow-up encoding reserved bit 15 of a BF group header's `source_a` field
+as a validated fast-affine promise and used the low 15 bits for arity. The
+source-scheduled round-zero artifact had 14 matching groups: three pure
+two-linear-member `+1/+1` groups and eleven product-prefix groups with exactly
+one `-1` linear tail. E4 headers rejected the bit. The CUDA candidate used
+direct, manually unrolled addition for the pure groups and direct subtraction
+for the one-tail product groups, bypassing generic BF immediate dispatch.
+
+The candidate kept 56 registers/thread, zero stack/local memory, and 13,824
+bytes of static shared memory (14,848 bytes including the driver reserve). It
+passed all 69 artifact-generator/library tests, reproduced log-8 checksum
+`0xbb2eb9da3c8c062b` under Compute Sanitizer with zero errors, and reproduced
+log-24 checksum `0x8820ab14cacc9ff7`. Its candidate artifact SHA-256 was
+`3fee3d861dbbe585c2e9c64a28af5f57d2dc1e65736a407d4a5e122b7d52fc84`.
+
+The static VM census and locked 10-warmup/100-iteration timings were:
+
+| Variant | VM instructions | `LDG` | `LDC` | `IMAD` | `IADD` | `BRA` | `BSSY` / `BSYNC` | Median 1 | Median 2 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| Retained control | 6,028 | 189 | 101 | 1,068 | 1,543 | 425 | 3 / 3 | 14.000880 ms | 13.999952 ms |
+| Fast-affine candidate | 6,132 | 197 | 109 | 1,083 | 1,559 | 431 | 3 / 3 | 14.207392 ms | 14.207504 ms |
+
+An interleaved rerun of the preserved control measured 13.999744 ms, ruling
+out a clock or thermal shift. The candidate is therefore about 1.48% slower:
+the extra arity mask, flag branches, and 104-instruction static expansion cost
+more than eliminating immediate dispatch in 14 groups. A full NCU capture was
+not taken because the ordinary timing regression was large, repeatable, and
+already accompanied by the unfavorable static-code delta.
+
+The experiment is rejected. The wire encoding, decoder/generator changes,
+CUDA paths, and candidate artifact were removed. The restored artifact SHA-256
+is `0360242bf31d20f837bb9618c3b64c5f8b9f288e540f9e6266c6c72c509ae50d`,
+and the log-24 requested source-load floor remains 70,665,633,792 bytes.
+
+## Autonomous accumulator-arithmetic probes
+
+### Explicit BF multiply plus add
+
+The BF-valued accumulator fold previously used the generic scalar
+`e4::fma(core, sum, accumulator)`. Its four underlying `bf::fma` operations
+use `red_wide` because the accumulator is injected into the high word before
+Montgomery reduction. The candidate instead performs `e4::mul(core, sum)`
+followed by `e4::add`, allowing the products to use the narrower `bf::red`
+path before ordinary modular addition.
+
+Ptxas kept 56 registers/thread, zero stack/local memory, and 13,824 bytes of
+static shared memory (14,848 bytes including the driver reserve). The VM-only
+static body fell from 6,028 to 6,004 non-NOP instructions, with `IADD` sites
+falling from 1,543 to 1,523; `LDG`, `LDC`, `IMAD`, `BRA`, `BSSY`, and `BSYNC`
+counts were unchanged.
+
+Locked 10-warmup/100-iteration log-24 timings were:
+
+| Variant | Median 1 | Median 2 | Interleaved median | Checksum |
+|---|---:|---:|---:|---:|
+| Retained fused control | 14.000384 ms | 13.998624 ms | 13.998528 ms | `0x8820ab14cacc9ff7` |
+| Explicit multiply plus add | 13.861649 ms | 13.861456 ms | — | `0x8820ab14cacc9ff7` |
+
+The approximately 0.98% improvement is repeatable and is retained as the new
+working baseline. On this Blackwell target, avoiding the general wide fused
+reduction is cheaper than the nominal source-level fusion.
+
+### Hoisted E4 batching-core non-residue products
+
+The E4-valued fold was rewritten locally to compute the batching core's three
+`mul_by_non_residue` limbs once per atom and reuse them across its two or three
+output cells. A benchmark-local flat quartic multiply duplicated the exact
+four lazy accumulators used by `e4::mul` and then added the existing
+accumulator.
+
+Nvcc already performs this common-subexpression elimination across the
+unrolled cell loop: the candidate and retained BF multiply-plus-add kernel had
+byte-identical VM SASS. Both contained 6,004 non-NOP instructions with
+identical opcode counts and retained 56 registers/thread, zero stack/local
+memory, and 14,848 reported shared bytes. Compute Sanitizer reported zero
+errors and reproduced log-8 checksum `0xbb2eb9da3c8c062b`.
+
+The source-expanded candidate measured 13.859552 and 13.861344 ms versus the
+retained kernel's 13.861649 and 13.861456 ms. With identical generated code,
+the sub-0.01% difference is measurement noise. The local helper is rejected
+and the clearer shared `e4::fma` call is restored.
+
+### Factored-equality high-product warp broadcast
+
+The next isolated probe targets an epilogue redundancy visible from the
+factor geometry. At log 24, the low equality factor owns five bits, so every
+lane in a warp has the same two high-factor indices. The retained kernel
+nevertheless performs the full high-high E4 multiplication independently in
+all 32 lanes before multiplying by each lane's low factor.
+
+The candidate elects one leader per subgroup of lanes sharing the high
+indices, computes the high product only in those leaders, and broadcasts its
+four limbs with four indexed warp shuffles. The subgroup is derived from
+`min(eq_sizes.low, 5)`, so the scheme remains correct for every supported
+factor geometry: log-24 and log-8 use one leader per warp, smaller low factors
+use multiple leaders, and a zero-bit low factor degenerates to one leader per
+lane. This should exchange up to 31 of 32 redundant full E4 multiplications
+for four shuffle instructions per thread without changing tables or
+allocations.
+
+The initial generic-mask form retained 56 registers/thread, zero stack/local
+memory, and 14,848 reported shared bytes. It emitted 6,020 non-NOP VM
+instructions and measured 13.850161, 13.850272, and 13.847296 ms against
+interleaved multiply-plus-add controls of 13.860368 and 13.859552 ms. A simpler
+but equivalent identity, `leader_lane = lane & ~low`, removed the min/shift/mask
+bookkeeping. It emitted 6,017 instructions, versus 6,004 for the control, with
+four additional `SHFL` sites and one additional `BRA`; the other principal
+opcode counts matched the multiply-plus-add kernel. Its medians were
+13.848352 and 13.849136 ms against an interleaved 13.859600 ms control, a
+repeatable approximately 0.08% improvement. Compute Sanitizer reported zero
+errors and reproduced both pinned checksums.
+
+The original arithmetic-saving rationale needs an important qualification:
+SIMT issues the high multiplication once per warp even when all lanes are
+active, so predicating it to leaders does not remove 31 warp instructions.
+Only the small measured code-shape/active-mask effect is real; the result is
+not a 32-fold arithmetic saving. Five alternating timing comparisons favored
+the simplified candidate, and the operand-order isolation below independently
+confirmed its approximately 0.11% incremental gain. It is retained on that
+empirical basis, not on the rejected per-lane arithmetic argument.
+
+### Duplicate-product reuse census
+
+An independent decoded-artifact census found 109 product members and 109
+distinct `(source_a, source_b, class)` triples. There are zero duplicate
+products to cache or reference across atoms, so no product-reuse encoding or
+register cache was implemented.
+
+### Equality multiply operand-order probe
+
+The final epilogue micro-probe swaps `e4::mul(accumulator, eq)` to the
+commutative `e4::mul(eq, accumulator)`. This places the cell-invariant equality
+value in the flat multiplier's first operand, allowing nvcc to reuse its three
+non-residue products across the unrolled three-cell loop if they were not
+already eliminated. The candidate is bit-exact because each quartic output
+accumulates the same four non-overflowing `u64` products.
+
+The operand swap alone emitted 5,970 non-NOP VM instructions, including 1,056
+`IMAD`, 1,517 `IADD`, 425 `BRA`, and 60 `SHFL` sites. It measured 13.844849
+and 13.846208 ms. Combined with the equality-high broadcast it emitted 5,982
+instructions, including the same `IMAD` and `IADD` counts, 426 `BRA`, and 64
+`SHFL` sites. Three locked combined medians were 13.830336, 13.829360, and
+13.829888 ms. Both variants retained 56 registers/thread, zero stack/local
+memory, and 14,848 reported shared bytes; Compute Sanitizer found zero errors
+and both pinned checksums matched.
+
+Putting equality first is retained: compared with the broadcast-only form it
+removes 35 static instructions, including 12 `IMAD`, six `IADD`, six
+`VIMNMX`, and six `LOP3` sites. This confirms that nvcc reuses equality's
+three non-residue products across the unrolled output cells. The broadcast is
+also retained because its isolated incremental improvement remained stable
+when layered on the operand swap, despite its less direct SIMT mechanism. The
+combined kernel is approximately 1.21% faster than the original fused control.
+
+### Partial-warp active-guard probe
+
+For the measured log-8 and log-24 configurations, `logical_rows` is divisible
+by 32 and the VM grid contains exactly `logical_rows / 32` blocks. Therefore
+every launched lane is active, while the generic kernel still clamps the row
+and selects zero instead of the equality-weighted accumulator in every output
+cell. The next isolated candidate removes only that row guard and output
+select. The candidate is valid for log trace at least 8, including both pinned
+benchmark sizes, but not for the crate's currently accepted log-3 through
+log-7 geometries. It will be retained only if the measured gain justifies
+either an explicit minimum-size contract or a separate small-geometry path;
+otherwise the generic guard remains.
+
+Ptxas moved in the wrong direction after the apparent source simplification:
+the candidate emitted 5,986 non-NOP VM instructions versus 5,982 for the
+control, adding two `IMAD`, one `IADD`, two `LOP3`, and one `SEL` site while
+removing two `ISETP` and three `BRA` sites. Resources remained 56
+registers/thread, zero stack/local memory, and 14,848 reported shared bytes.
+Two locked candidate medians were 14.018720 and 14.016928 ms, while the
+interleaved preserved control measured 13.829184 ms. The checksum remained
+`0x8820ab14cacc9ff7`, but the candidate was approximately 1.36% slower. It is
+rejected and the generic active guard is restored; no supported-size contract
+is narrowed.
+
+### Fused wide-product accumulation probe
+
+The final profile identifies raw lazy BF products as the largest
+math-pipe-throttle source location. The retained loop computes each raw `u64`
+product with `mul_wide`, returns a three-cell temporary, and then adds it to
+the running wide sums. The next candidate instead passes the sums into that
+resolver and uses `mad_wide(operand_a, operand_b, sum)` directly. This preserves
+the same nonnegative terms, encoded four-product overflow boundaries, and
+final Montgomery reductions. It may remove the separate 64-bit additions and
+shorten live ranges, but it may also move work from the less-loaded ALU-heavy
+pipe onto the already limiting FMA-heavy pipe; SASS and paired timing decide.
+
+The candidate retained 56 registers/thread, zero stack/local memory, and
+14,848 reported shared bytes. Its VM body fell only from 5,982 to 5,980
+non-NOP instructions: three `IADD` sites disappeared, one `BRA` appeared, and
+the 1,056 `IMAD` sites were unchanged. The dynamic loop effect was much larger
+than that static delta suggests. Two locked candidate medians were 13.684336
+and 13.684384 ms versus a 13.830976 ms interleaved control, a repeatable 1.06%
+improvement. Both pinned checksums match, and log-8 Compute Sanitizer reports
+zero errors.
+
+A focused VM-only report at
+`target/profiling/autonomous_math_pass/mad_wide_profile.ncu-rep` confirms the
+mechanism. Relative to the pre-candidate full report, dynamic instructions
+fall from 19,271,647,232 to 19,111,804,928 and NCU duration falls from
+14.153248 to 13.992160 ms. Shared FMA-heavy utilization moves from 80.97% to
+80.66%, ALU-heavy from 66.86% to 66.51%, math-pipe-throttle cycles per issued
+instruction from 2.591 to 2.510, and issue activity from 76.98% to 77.16%.
+The fused accumulator is retained.
+
+### Shift/subtract Montgomery rebase probe
+
+Every intermediate lazy-product boundary reduces its wide sum and then
+rebases the reduced limb with `mul_wide(limb, MONT_R)` so more raw products can
+be accumulated. For Baby Bear, `MONT_R = 2^28 - 2` exactly. Replacing that
+constant multiply with `(u64(limb) << 28) - (u64(limb) << 1)` produces the
+identical nonnegative integer, so it preserves both the overflow proof and all
+later reductions. The current SASS has three static `IMAD.WIDE` sites for this
+operation inside the dynamically frequent boundary path. The candidate tests
+whether explicit shift/subtract moves enough work from the limiting shared
+FMA-heavy pipe to the less-loaded ALU-heavy pipe; ptxas may also canonicalize
+the expression back to the multiply, in which case it is a no-op.
+
+Ptxas did exactly that: the candidate and retained fused-wide kernel have
+byte-identical VM SASS, including 5,980 non-NOP instructions, 1,056 `IMAD`,
+1,514 `IADD`, and 377 `SHF` sites, with identical resource usage. The three
+rebases remain `IMAD.WIDE.U32` by constant `0x0ffffffe`. No timing run is
+meaningful for identical generated code; the explicit shift/subtract source is
+rejected and the clearer `mul_wide` form is restored.
+
+### In-place E4 term accumulation probe
+
+The product-bearing E4 executor currently receives each evaluated term as a
+three-cell E4 triplet and then copies or add/subtracts that 12-limb temporary
+into the group sums. The candidate keeps the same term switch, interpolation,
+field multiplications, signs, and reductions, but lets each switch arm consume
+its three result cells directly into the destination sum. Separate compile-time
+initialize and accumulate forms avoid a dynamic first-member branch. No field
+operation is fused into `red_wide`: E4-by-E4 coefficients are already at the
+four-product bound, and adding another high-word term would exceed its valid
+domain. This probe targets only temporary live ranges and ptxas scheduling.
+
+The callback form retained 56 registers/thread and zero stack/local memory,
+but expanded the VM from 5,980 to 6,295 non-NOP instructions. It removed 12
+static `LDG` sites while adding five `IMAD`, 123 `IADD`, 88 `VIMNMX`, 29
+`BRA`, five `LOP3`, and 49 `MOV` sites. Two locked medians were 14.191136 and
+14.193056 ms versus a 13.683152 ms interleaved fused-wide control, a roughly
+3.71% regression with the correct checksum. The candidate is rejected and
+the compiler-friendly return-by-value triplet is restored.
+
+### Lazy-boundary predicate-order probe
+
+The unified wide-product loop currently tests `member + 1 <
+product_prefix_count` before the instruction's encoded `REDUCE_AFTER` bit.
+Only 21 of the artifact's 72 lazy products carry that bit, including ten final
+products that must not rebase. Reversing the short-circuit operands preserves
+the exact boundary semantics and wire encoding but gives ptxas the opportunity
+to skip the loop-end comparison for the 51 unmarked products. The boundary
+line is also a top wait/math PC-sampling location in the retained profile.
+
+Ptxas canonicalized both predicate orders to byte-identical VM SASS: 5,980
+non-NOP instructions with identical `IMAD`, `IADD`, `ISETP`, `BRA`, and `LOP3`
+counts and unchanged resources. No timing distinction exists; the original
+loop-end-first source order is restored.
+
+### Intermediate-only lazy-boundary encoding probe
+
+Source operand order cannot change the flattened SASS: every lazy product
+still executes an `IADD`, `LOP3`, `ISETP`, and branch to combine the loop-end
+test with `REDUCE_AFTER`. The stronger candidate changes the experimental wire
+invariant so only intermediate reduce-and-rebase boundaries carry the bit; the
+last product is always handled by the existing unconditional post-loop final
+reduction. The generator marks each fourth non-final product, and the validator
+rejects a rebase bit on the final product while retaining the maximum-four-raw-
+products check. The VM can then branch on the bit alone. This does not change
+term order, immediate IDs, raw-product windows, or arithmetic results, but it
+requires a regenerated artifact and updated validator fixtures.
+
+The regenerated source-scheduled artifact contains the same 10 lazy groups
+and 72 lazy products, with 11 intermediate boundary bits instead of 21 bits
+including final products. Regeneration took 21.23 seconds. All 65
+artifact-generator/library tests pass. The artifact SHA-256 is now
+`10b5559c9d51cddf36e3208e41f446466ed3b72ae94bc5fcf93853f80cb9ec7e`.
+
+Ptxas retained 56 registers/thread, zero stack/local memory, and 14,848
+reported shared bytes. The VM falls from 5,980 to 5,978 non-NOP instructions;
+the only static opcode change is two fewer `LOP3` sites. Two locked medians
+were 13.639392 and 13.637248 ms versus a 13.683168 ms interleaved control, a
+repeatable approximately 0.33% improvement. Both pinned checksums match, and
+log-8 Compute Sanitizer reports zero errors.
+
+The focused report at
+`target/profiling/autonomous_math_pass/intermediate_only_profile.ncu-rep`
+shows dynamic instructions falling from 19,111,804,928 to 19,026,870,272 and
+NCU duration from 13.992160 to 13.934592 ms. ALU-heavy utilization falls from
+66.51% to 66.13%, math-pipe-throttle cycles per issued instruction from 2.510
+to 2.498, and the remaining resource envelope is unchanged. The
+intermediate-only boundary encoding is retained.
+
+### Final autonomous-pass verification and profile
+
+The final non-lineinfo edit build took 5.75 seconds. Its VM is byte-identical
+to the timed candidate and contains 5,978 non-NOP instructions: 101 `LDC`, 189
+`LDG`, 1,056 `IMAD`, 1,514 `IADD`, 316 `ISETP`, 427 `BRA`, 64 `SHFL`, 726
+`VIMNMX`, and 411 `LOP3` sites. Ptxas reports 56 registers/thread, zero
+stack/local memory, and 13,824 bytes static shared memory (14,848 bytes with
+the driver reserve).
+
+A fresh deterministic regeneration produced byte-identical artifact SHA-256
+`10b5559c9d51cddf36e3208e41f446466ed3b72ae94bc5fcf93853f80cb9ec7e`.
+All 65 artifact-generator/library tests pass. Final Compute Sanitizer reports
+zero errors and log-8 checksum `0xbb2eb9da3c8c062b`. Two final locked log-24
+medians were 13.639424 and 13.636433 ms around an interleaved original control
+of 13.996912 ms, a 2.56% autonomous-pass improvement. The log-24 checksum is
+`0x8820ab14cacc9ff7`, and the requested source-load floor remains
+70,665,633,792 bytes.
+
+The representative final VM-only report is
+`target/profiling/autonomous_math_pass/final_retained_full.ncu-rep`. Relative
+to the pre-autonomous full report:
+
+- NCU duration falls from 14.153248 to 13.890464 ms;
+- dynamic instructions fall from 19,271,647,232 to 19,026,870,272;
+- shared FMA-heavy and ALU-heavy utilization move from 80.97% / 66.86% to
+  80.78% / 66.11%, while issue activity moves from 76.98% to 77.04%;
+- math-pipe-throttle cycles per issued instruction fall from 2.591 to 2.497;
+- memory throughput is still only 41.30%, with 83.69% L1/TEX and 49.16% L2 hit
+  rates; and
+- instruction-cache hit rate remains 97.89%, while no-instruction stall is
+  only 0.540 cycles per issued instruction.
+
+The limiting resource is therefore still the shared FMA-heavy/ALU-lite math
+pipe, not memory bandwidth, occupancy, or instruction delivery. The remaining
+obvious field fusions are either outside `red_wide`'s overflow domain or were
+measured as regressions in this ledger.
