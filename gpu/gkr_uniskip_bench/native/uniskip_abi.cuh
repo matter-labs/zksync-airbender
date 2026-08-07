@@ -135,6 +135,18 @@ constexpr u32 UNISKIP_MAX_LOG_ROWS = UNISKIP_ELEMENT_INDEX_BITS - UNISKIP_LOG_AD
 static_assert((1u << UNISKIP_LOG_ADDRESSABLE_PLANES) == 128 * UNISKIP_TAPS);
 static_assert(UNISKIP_MAX_LOG_ROWS == 21);
 
+} // namespace airbender::gkr_uniskip_bench
+
+EXTERN __device__ __constant__ e4 ab_gkr_uniskip_coeff_bank[airbender::gkr_uniskip_bench::UNISKIP_COEFF_BANK];
+EXTERN __device__ __constant__ e4 ab_gkr_uniskip_eq_high[2 * airbender::gkr_uniskip_bench::UNISKIP_EQ_HIGH];
+EXTERN __device__ __constant__ bf ab_gkr_uniskip_lde_matrix[airbender::gkr_uniskip_bench::UNISKIP_TAPS * airbender::gkr_uniskip_bench::UNISKIP_TAPS];
+EXTERN __device__ __constant__ e4 ab_gkr_uniskip_fold_weights[airbender::gkr_uniskip_bench::UNISKIP_TAPS];
+
+static_assert(sizeof(ab_gkr_uniskip_coeff_bank) + sizeof(ab_gkr_uniskip_eq_high) + sizeof(ab_gkr_uniskip_lde_matrix) + sizeof(ab_gkr_uniskip_fold_weights) <=
+              64 * 1024);
+
+namespace airbender::gkr_uniskip_bench {
+
 // The ONE source accessor for TERM EXECUTION: every operand read in the eval kernel
 // goes through it, so v2 (LDE-on-read / published sources) only swaps this body. The
 // LDE and fold kernels deliberately do NOT use it — they are bulk per-column plane
@@ -149,12 +161,45 @@ template <typename T> DEVICE_FORCEINLINE T uniskip_source_value(const uniskip_vm
   return load<T, ld_modifier::ca>(base, (plane << desc.log_rows) + row);
 }
 
+// SOURCE-RESOLUTION SELECTOR. An empty derived class: same members, same layout,
+// same 2512-byte `__grid_constant__` parameter, so the host wire struct is shared.
+// Its only job is to re-bind `uniskip_source_value` overload resolution inside the
+// eval body, which is why term execution needs no per-mode spelling.
+struct uniskip_fused_desc : uniskip_vm_desc {};
+static_assert(sizeof(uniskip_fused_desc) == sizeof(uniskip_vm_desc));
+static_assert(alignof(uniskip_fused_desc) == alignof(uniskip_vm_desc));
+static_assert(offsetof(uniskip_fused_desc, program) == 0);
+static_assert(offsetof(uniskip_fused_desc, eq_sizes) == 2492);
+
+// LDE-ON-READ. Same (source, cell, row) contract as the accessor above, with the
+// coset materialization absorbed: `desc.coset_bases` is never read and need not
+// exist. An H cell is the direct tap load; coset cell `UNISKIP_TAPS + c` is the dot
+// of the source's 16 taps with row `c` of the coset LDE matrix. `T::fma` resolves to
+// `bf::fma(bf, bf, bf)` for a `bf` source and to `e4::fma(e4, bf, e4)` for an `e4`
+// one — the latter IS the four per-limb dots, since the extension is `bf`-linear per
+// limb. The matrix entry is warp-uniform, so `__constant__` broadcasts it.
+template <typename T> DEVICE_FORCEINLINE T uniskip_source_value(const uniskip_fused_desc &desc, const u16 source_id, const u32 cell, const u32 row) {
+  const uniskip_source_record rec = desc.source[source_id];
+  const u32 window = rec.addr >> 7;
+  const size_t column = rec.addr & 0x7f;                                    // widen BEFORE the shift
+  const T *base = reinterpret_cast<const T *>(desc.tap_bases[window].base); // typed BEFORE element arithmetic
+  const size_t plane = column * UNISKIP_TAPS;
+  if (cell < UNISKIP_TAPS)
+    return load<T, ld_modifier::ca>(base, ((plane + cell) << desc.log_rows) + row);
+  const bf *weights = &ab_gkr_uniskip_lde_matrix[(cell - UNISKIP_TAPS) * UNISKIP_TAPS];
+  T acc = T::ZERO();
+#pragma unroll
+  for (u32 t = 0; t < UNISKIP_TAPS; ++t)
+    acc = T::fma(load<T, ld_modifier::ca>(base, ((plane + t) << desc.log_rows) + row), weights[t], acc);
+  return acc;
+}
+
+// CELL MAP. Which of the 32 cells warp `w` owns. `block` (INTERLEAVE = false) is the
+// v1 map, cells 4w..4w+3, so warps 0-3 are all-H and warps 4-7 all-coset — under
+// LDE-on-read the coset warps carry every recompute. `interleave` gives warp `w` the
+// cells {w, w+8, w+16, w+24}, 2 H and 2 coset each. Both are bijections onto
+// 0..UNISKIP_CELLS and `q` is cell-indexed, so the oracle is unaffected.
+template <bool INTERLEAVE> DEVICE_FORCEINLINE u32 uniskip_first_cell(const u32 warp) { return INTERLEAVE ? warp : warp * UNISKIP_CELLS_PER_WARP; }
+template <bool INTERLEAVE> constexpr u32 uniskip_cell_stride() { return INTERLEAVE ? UNISKIP_WARPS_PER_BLOCK : 1; }
+
 } // namespace airbender::gkr_uniskip_bench
-
-EXTERN __device__ __constant__ e4 ab_gkr_uniskip_coeff_bank[airbender::gkr_uniskip_bench::UNISKIP_COEFF_BANK];
-EXTERN __device__ __constant__ e4 ab_gkr_uniskip_eq_high[2 * airbender::gkr_uniskip_bench::UNISKIP_EQ_HIGH];
-EXTERN __device__ __constant__ bf ab_gkr_uniskip_lde_matrix[airbender::gkr_uniskip_bench::UNISKIP_TAPS * airbender::gkr_uniskip_bench::UNISKIP_TAPS];
-EXTERN __device__ __constant__ e4 ab_gkr_uniskip_fold_weights[airbender::gkr_uniskip_bench::UNISKIP_TAPS];
-
-static_assert(sizeof(ab_gkr_uniskip_coeff_bank) + sizeof(ab_gkr_uniskip_eq_high) + sizeof(ab_gkr_uniskip_lde_matrix) + sizeof(ab_gkr_uniskip_fold_weights) <=
-              64 * 1024);

@@ -70,6 +70,14 @@ cuda_kernel!(
     )
 );
 cuda_kernel!(Eval, ab_gkr_uniskip_eval_kernel(desc: UniskipVmDesc));
+// The fused kernels take the device-side `uniskip_fused_desc`, an empty derived
+// class of `uniskip_vm_desc` (same size, same layout, asserted in the header), so
+// the wire struct is shared.
+cuda_kernel!(EvalFused, ab_gkr_uniskip_eval_fused_kernel(desc: UniskipVmDesc));
+cuda_kernel!(
+    EvalFusedInterleave,
+    ab_gkr_uniskip_eval_fused_interleave_kernel(desc: UniskipVmDesc)
+);
 cuda_kernel!(
     Finalize,
     ab_gkr_uniskip_finalize_kernel(partials: *const u32, blocks: u32, q: *mut u32)
@@ -257,6 +265,25 @@ pub fn eval(desc: &UniskipVmDesc, blocks: u32, stream: &CudaStream) -> CudaResul
     let args = EvalArguments::new(*desc);
     let config = CudaLaunchConfig::basic(blocks, UNISKIP_THREADS_PER_BLOCK as u32, stream);
     EvalFunction::default().launch(&config, &args)
+}
+
+/// [`eval`] with the coset LDE recomputed on read: same partials, no coset backing.
+pub fn eval_fused(desc: &UniskipVmDesc, blocks: u32, stream: &CudaStream) -> CudaResult<()> {
+    let args = EvalFusedArguments::new(*desc);
+    let config = CudaLaunchConfig::basic(blocks, UNISKIP_THREADS_PER_BLOCK as u32, stream);
+    EvalFusedFunction::default().launch(&config, &args)
+}
+
+/// [`eval_fused`] under the interleaved cell map — warp `w` owns cells
+/// `{w, w+8, w+16, w+24}`, so every warp carries two coset cells' recompute.
+pub fn eval_fused_interleave(
+    desc: &UniskipVmDesc,
+    blocks: u32,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    let args = EvalFusedInterleaveArguments::new(*desc);
+    let config = CudaLaunchConfig::basic(blocks, UNISKIP_THREADS_PER_BLOCK as u32, stream);
+    EvalFusedInterleaveFunction::default().launch(&config, &args)
 }
 
 /// Reduce the `blocks * UNISKIP_CELLS` partials into the `UNISKIP_CELLS` cells of `q`.

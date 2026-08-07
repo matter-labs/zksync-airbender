@@ -1,6 +1,6 @@
 # gpu_gkr_uniskip_bench — measurements
 
-## Register gate (Task 4; refreshed in Task 5 for fold, in v2 Task 0 for row-shape LDE)
+## Register gate (Task 4; refreshed in Task 5 for fold, in v2 Task 0 for row-shape LDE, in v2 Task 1 for the fused eval)
 
 Build with the crate's nvcc diagnostic path — `gpu_native_build` turns the env var
 into `-D GPU_GKR_UNISKIP_BENCH_ENABLE_BUILD_DIAG=ON`, which
@@ -33,6 +33,8 @@ fallback (4 × 256 × 16 B) was not needed and no `__maxnreg__` was added.
 | kernel | sm_120 (local) | sm_80 | sm_89 | sm_90 | stack / spill st / spill ld |
 | --- | --- | --- | --- | --- | --- |
 | `ab_gkr_uniskip_eval_kernel` | 54 | 55 | 48 | 48 | 0 / 0 / 0 |
+| `ab_gkr_uniskip_eval_fused_kernel` | 61 | 60 | 60 | 57 | 0 / 0 / 0 |
+| `ab_gkr_uniskip_eval_fused_interleave_kernel` | 168 | 184 | 168 | 168 | 0 / 0 / 0 |
 | `ab_gkr_uniskip_fold_e4_kernel` | 89 | 40 | 44 | 87 | 0 / 0 / 0 |
 | `ab_gkr_uniskip_fold_bf_kernel` | 36 | 30 | 30 | 30 | 0 / 0 / 0 |
 | `ab_gkr_uniskip_finalize_kernel` | 32 | 29 | 28 | 32 | 0 / 0 / 0 (128 B smem) |
@@ -58,6 +60,8 @@ matters is there.
 | kernel | sm_80 | sm_89 | sm_90 | sm_120 |
 | --- | --- | --- | --- | --- |
 | `eval` | 4 blk, ~50% | 5 blk, ~83% | 5 blk, ~62.5% | 4 blk, ~67% |
+| `eval_fused` | 4 blk, ~50% | 4 blk, ~67% | 4 blk, ~50% | 4 blk, ~67% |
+| `eval_fused_interleave` | **1 blk, ~12.5%** | **1 blk, ~17%** | **1 blk, ~12.5%** | **1 blk, ~17%** |
 | `fold_e4` | 6 blk, ~75% | 5 blk, ~83% | **2 blk, ~25%** | **2 blk, ~33%** |
 | `fold_bf` | ~100% | ~100% | ~100% | ~100% |
 | `lde_e4_row` | 8 blk, ~100% | 6 blk, ~100% | 6 blk, ~75% | 6 blk, ~100% |
@@ -75,7 +79,28 @@ a defect.
 
 The eval kernel's descriptor is a `__grid_constant__` by-value parameter:
 2864 B cmem[0] on sm_80/sm_89 (2512 B of `uniskip_vm_desc` plus the driver's
-per-launch prefix), 16 B cmem[2].
+per-launch prefix), 16 B cmem[2]. The fused kernels take `uniskip_fused_desc`,
+which is that same struct (an empty derived class), so their cmem is unchanged.
+
+`eval_fused_interleave` is the second outlier. Under the block map the four cells a
+warp owns are `4w..4w+3`, so `cell >= UNISKIP_TAPS` reduces to `w >= 4` for all four
+and ptxas emits ONE recompute region; under the interleaved map the cells are
+`w, w+8, w+16, w+24` and `w < 8` is not provable from `threadIdx.x`, so each of the
+four unrolled slots gets its own test and its own 16-tap load block. That is the
+codegen difference; the 168-vs-61 register count and the times below are the
+measurement, and no separate experiment isolates the two causes from each other.
+
+**`__launch_bounds__` was tried on the fused pair and rejected** — it is the obvious
+way to make the cell-map A/B occupancy-neutral, and it cannot be had spill-free:
+
+| `__launch_bounds__(256, N)` | `eval_fused` sm_120 | `eval_fused_interleave` sm_120 |
+| --- | --- | --- |
+| none (shipped) | 61 regs, 0 spill | 168 regs, 0 spill |
+| N = 4 | 64 regs, 0 spill | 64 regs, **664 B stack / 1336 B spill st / 1356 B spill ld** |
+| N = 2 | 94 regs, 0 spill | 128 regs, **168 B stack / 168 B spill st / 168 B spill ld** |
+
+The zero-spill gate wins, so both fused kernels ship unconstrained and the cell-map
+comparison below is read WITH its occupancy confound stated, not removed.
 
 ## Baseline (Task 5)
 
@@ -286,3 +311,95 @@ inside a single run's spread, so the two `e4` forms are a tie and the shipped bu
 takes the one with 8 fewer registers. The register/time correlation is **not**
 attributed to occupancy — that would need `ncu`; only the counts and the times are
 measured here.
+
+## Rung 2a — fused pass, LDE on read, `--mode fused-recompute` (v2 Task 1)
+
+```
+.agents/bin/with_gpu_lock.sh target/release/gpu_gkr_uniskip_bench \
+    --log-trace 24 --warmup 10 --iterations 100 --mode fused-recompute --cell-map block
+.agents/bin/with_gpu_lock.sh target/release/gpu_gkr_uniskip_bench \
+    --log-trace 24 --warmup 10 --iterations 100 --mode fused-recompute --cell-map interleave
+```
+
+Same device, census and geometry as the Task 5 baseline. The coset is never
+materialized: there is no LDE launch and no coset backing, so the `lde` stage row is
+the (empty) interval between two events and the resident backings drop from
+**11.50 GiB to 5.75 GiB** — the mode's whole memory claim, printed as
+`resident backings` at startup. `--validate` and `--validate-flat-eq` at
+`--log-trace 10` pass for both cell maps (q 32/32, fold OK; the LDE check reports
+`n/a` because there is no coset buffer to compare — the `q` oracle addresses all 32
+cells and covers the recomputed ones).
+
+Control arm, same build (`--mode unfused --lde-shape row`): `lde` 8.640,
+`eval` 19.415, `finalize` 0.033, `fold` 4.743, total 32.833 ms.
+
+| stage | block: median | mean | min | max | interleave: median | mean | min | max |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| lde | 0.000 | 0.001 | 0.000 | 0.003 | 0.000 | 0.001 | 0.000 | 0.003 |
+| eval | **52.403** | 52.407 | 52.181 | 52.613 | **62.016** | 62.016 | 61.993 | 62.044 |
+| finalize | 0.033 | 0.033 | 0.032 | 0.035 | 0.033 | 0.033 | 0.033 | 0.035 |
+| fold | 4.742 | 4.742 | 4.738 | 4.746 | 4.741 | 4.742 | 4.739 | 4.747 |
+| **total** | **57.179** | 57.183 | 56.958 | 57.388 | **66.792** | 66.792 | 66.770 | 66.823 |
+
+**The primary bar is missed.** It is the unfused sum this replaces —
+`lde + eval + finalize` = 8.640 + 19.415 + 0.033 = **28.088 ms**. The fused pass
+costs `eval + finalize` = **52.436 ms** (block) and **62.049 ms** (interleave),
+i.e. **1.87×** and **2.21×** the bar. The `fold` stage is untouched by the mode and
+is excluded from both sides.
+
+`--cell-map interleave` is 9.6 ms slower than `block` and does NOT settle the
+warp-balance question: it is register-limited to 1 block/SM against `block`'s 4 (see
+the register gate above), and the `__launch_bounds__` that would remove that
+confound makes it spill. Read the row as "the interleaved map as it compiles today",
+not as "spreading the recompute does not help".
+
+### Profile of the fused block kernel
+
+```
+.agents/bin/with_gpu_lock.sh ncu --set basic --metrics dram__bytes.sum \
+    --kernel-name-base demangled --kernel-name 'regex:ab_gkr_uniskip_eval_fused_kernel' \
+    --launch-count 1 --target-processes all -o target/profiling/ncu/<ts>_fused_block \
+    target/release/gpu_gkr_uniskip_bench --log-trace 24 --warmup 1 --iterations 1 \
+    --mode fused-recompute --cell-map block
+```
+
+Report under `target/profiling/ncu/` (gitignored). Kernel duration under the
+profiler 53.45 ms (52.40 ms un-profiled), 32768 blocks × 256 threads.
+
+| metric | value |
+| --- | --- |
+| `dram__bytes.sum` | **15.99 GB** |
+| DRAM floor for this kernel (tap backing 5.75 GiB + partials) | 6.19 GB |
+| ratio | **2.58×** |
+| Compute (SM) throughput | **72.28 %** |
+| `sm__issue_active.avg.pct_of_peak_sustained_elapsed` | **49.76 %** |
+| DRAM throughput | 18.74 % |
+| L2 throughput | 32.21 % |
+| L1/TEX throughput | 17.14 % |
+| registers / thread | 61 (occupancy limit 4 blocks/SM) |
+| theoretical / achieved occupancy | 66.67 % / 58.72 % |
+
+Three things this measurement settles, and one it does not.
+
+- **The kernel is not DRAM-bound.** DRAM sits at 18.7 % of peak while the SM
+  throughput counter is at 72.3 %; `ncu`'s own bottleneck rule reads
+  "compute is more heavily utilized than memory". Whichever pipe the 72.3 % is, it is
+  not the memory system, so the 2.58× DRAM overshoot is a symptom rather than the
+  binding constraint at this shape.
+- **Recompute-on-read does not pay for itself in DRAM at this shape.** 15.99 GB is
+  *more* than the 12.35 GB the unfused eval must read (both backings), and the taps
+  are only 6.17 GB, so the recompute re-reads them ~2.6× out of DRAM. The whole pass
+  still moves less: unfused `lde` + `eval` have a 24.7 GB floor against the fused
+  15.99 GB measured, ≈ 35 % fewer bytes for 1.87× the time.
+- **The arithmetic is where the time went, as the brief's accounting predicted.**
+  Per row the coset resolution costs 83,456 `bf` MACs (16 coset cells ×
+  (190 `bf` refs × 16 + 34 `e4` refs × 4 limbs × 16)) ⇒ ~87.5 G `bf` MACs per pass at
+  2^20 rows, each a BabyBear Montgomery multiply plus reduce. That the SM throughput
+  counter is the high one is consistent with that; **which pipe** dominates is not
+  measured here (`--set basic` carries no pipe breakdown) and is left open.
+- **What it does NOT settle: the redundancy inside a warp.** Under the block map a
+  coset warp calls the accessor four times per operand reference — once per cell it
+  owns — and all four calls load *the same 16 taps* of the same source at the same
+  row. The 61-register count says ptxas is not commoning them. Removing that 4× is
+  exactly a cached fill (Task 2) and cannot be done behind a per-cell accessor, which
+  is why this rung's number is a Task 2 input rather than a defect to fix here.

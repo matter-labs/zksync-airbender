@@ -21,6 +21,12 @@ stream:
 | `finalize` | `finalize` | sums the block partials into the 32 evaluations `q` |
 | `fold` | `fold_bf`, `fold_e4` | collapses the 16 taps into the evaluation at the round challenge `r` |
 
+`--mode` picks how the coset cells are produced. `unfused` (the default) is the
+table above. `fused-recompute` deletes the `lde` stage and the coset backing
+outright: the eval accessor extends the taps on read, so the pass is one kernel plus
+`finalize` plus `fold`, and the device holds 1× the backing instead of 2×. Both
+modes produce the same `q`.
+
 ### Geometry
 
 - 16 taps of a logical row live on the multiplicative subgroup `H` of order 16;
@@ -41,6 +47,11 @@ stream:
   warps 4–7 the coset cells, so the `H`-vs-coset choice is warp-uniform. The four
   accumulators are only ever indexed by fully unrolled loops, so they stay in
   registers (zero spills — see `iteration_times.md`).
+- Fused modes add `--cell-map interleave`, which gives warp `w` the cells
+  `{w, w+8, w+16, w+24}` — two `H` and two coset each, so the recompute spreads over
+  all eight warps instead of sitting on warps 4–7. Both maps are bijections onto the
+  32 cells and `q` is cell-indexed, so the oracle is unaffected. The map is a
+  compile-time template argument, hence one kernel per (mode, map).
 - `eq` is factored into three tables: the low `low` bits of a row index a device
   table, the next `high[1]` bits and the top `high[0]` bits index two
   `__constant__` tables of at most 256 entries each. High tables fill first.
@@ -91,6 +102,17 @@ through one function, `uniskip_source_value<T>(desc, source_id, cell, row)` in
 from the cell, and issues one typed load. **v2 (LDE-on-read, published sources) only
 swaps this body** — the term execution above it does not change.
 
+That swap is an **overload**, selected by the descriptor type. `uniskip_fused_desc`
+is an empty class derived from `uniskip_vm_desc` — same members, same size, same
+`__grid_constant__ ` parameter, so the host wire struct is shared and only overload
+resolution differs. The term loop is `uniskip_eval_body<Desc, INTERLEAVE>`; each
+`__global__` entry point instantiates it with one descriptor type, so the call sites
+inside it are spelled identically for every mode and neither arm pays for the
+other's code. The fused overload reads no coset base at all: an `H` cell is the
+direct tap load, and coset cell `UNISKIP_TAPS + c` is the 16-tap dot with row `c` of
+the coset LDE matrix (`e4` scaled by the `bf` entry, which is the four per-limb
+dots).
+
 The LDE and fold kernels deliberately do *not* go through it: they are bulk
 per-column plane sweeps that inline their own tap addressing
 (`native/uniskip.cu`), because they walk whole planes rather than resolving
@@ -114,9 +136,19 @@ target/release/gpu_gkr_uniskip_bench --help
 # the recorded baseline (add `--lde-shape cell` for the v1 LDE control arm)
 .agents/bin/with_gpu_lock.sh target/release/gpu_gkr_uniskip_bench \
     --log-trace 24 --warmup 10 --iterations 100
+
+# the fused pass (add `--cell-map interleave` for the spread-recompute arm)
+.agents/bin/with_gpu_lock.sh target/release/gpu_gkr_uniskip_bench \
+    --log-trace 24 --warmup 10 --iterations 100 --mode fused-recompute
 ```
 
 Building and `--help` do not need the lock; every execution does.
+
+**The shape flags are an explicit matrix, not free-floating knobs:** `--lde-shape`
+is rejected in a fused mode (there is no LDE stage to shape) and `--cell-map` is
+rejected in an unfused one (which keeps the v1 block map). The inapplicable knob
+prints as `n/a` in the config block and the summary line, so a recorded measurement
+can never name a shape the run did not use.
 
 ### Validation
 
@@ -124,6 +156,11 @@ Building and `--help` do not need the lock; every execution does.
 .agents/bin/with_gpu_lock.sh target/release/gpu_gkr_uniskip_bench --log-trace 10 --validate
 .agents/bin/with_gpu_lock.sh target/release/gpu_gkr_uniskip_bench --log-trace 10 --validate-flat-eq
 ```
+
+Both apply to every mode; add `--mode fused-recompute --cell-map {block,interleave}`
+to validate the fused arms. There the LDE check reports `n/a` — a fused mode has no
+coset buffer to compare — and the `q` oracle, which addresses all 32 cells through
+`abi::source_offset`, is what pins the recomputed ones.
 
 `--validate` runs three bit-exact checks against a host oracle that regenerates the
 operand data from the init formula rather than reading it back: **LDE** (first and
@@ -201,7 +238,10 @@ None of these is an oversight; each is a scoping decision to be revisited.
   which is ~2× the traffic of extending on read. That is measured **on purpose** —
   it is the baseline that v2's LDE-on-read accessor has to beat. (The 16× tap
   re-read that made `lde` dominate the v1 pass is a separate defect, fixed by
-  `--lde-shape row`; the materialization itself remains.)
+  `--lde-shape row`; the materialization itself remains.) It is still the default:
+  `--mode fused-recompute` halves the resident backings but is measured at 1.87× the
+  unfused pass's time, because a per-cell accessor cannot amortize the 16-tap dot
+  across the four cells a warp owns — see `iteration_times.md`.
 - **No shared-memory operand cache.** Operand reuse (~3.8 references per source)
   is left to L1/L2.
 - **No tensor cores.** The tap→coset extension is a 16×16 matrix apply per column

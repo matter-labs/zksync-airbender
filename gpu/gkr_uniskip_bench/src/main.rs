@@ -4,7 +4,9 @@ use clap::{CommandFactory, Parser};
 use era_cudart::device::{get_device, get_device_properties};
 use gpu_gkr_uniskip_bench::abi::{UNISKIP_CELLS, UNISKIP_SRC_E4_GLOBAL};
 use gpu_gkr_uniskip_bench::geometry::Geometry;
-use gpu_gkr_uniskip_bench::harness::{Harness, LdeShape, StageTimes, STAGES};
+use gpu_gkr_uniskip_bench::harness::{
+    CellMap, EvalMode, Harness, LdeShape, PassConfig, StageTimes, STAGES,
+};
 use gpu_gkr_uniskip_bench::kernels::NvtxRange;
 use gpu_gkr_uniskip_bench::synth::{generate, Census};
 
@@ -44,10 +46,21 @@ struct Cli {
     #[arg(long, default_value_t = 72)]
     grouped_atoms: u32,
 
+    /// Source resolution: `unfused` materializes the coset in its own LDE stage,
+    /// `fused-recompute` extends the taps on read (no LDE launch, no coset backing).
+    #[arg(long, value_enum, default_value_t = EvalMode::Unfused)]
+    mode: EvalMode,
+
     /// LDE grid shape: `cell` = one thread per coset cell (v1, 16x tap re-read),
     /// `row` = one thread per row emitting all 16 cells. Same output bytes.
-    #[arg(long, value_enum, default_value_t = LdeShape::Row)]
-    lde_shape: LdeShape,
+    /// Unfused modes only.
+    #[arg(long, value_enum)]
+    lde_shape: Option<LdeShape>,
+
+    /// Cells a warp owns: `block` = `4w..4w+3` (v1; warps 4-7 carry every coset
+    /// recompute), `interleave` = `{w, w+8, w+16, w+24}`. Fused modes only.
+    #[arg(long, value_enum)]
+    cell_map: Option<CellMap>,
 
     /// Wrap the first timed iteration in the `gkr_uniskip_pass0` NVTX range.
     /// Needs `--iterations >= 1`.
@@ -109,8 +122,40 @@ fn gb_per_s(bytes: u64, median_ms: f64) -> f64 {
     bytes as f64 / (median_ms * 1e-3) / 1e9
 }
 
+/// The legal flag matrix: a grid-shape flag only applies to the mode that runs that
+/// grid. Rejecting the combination is deliberate — silently ignoring it would let a
+/// recorded measurement name a shape the run never used.
+fn pass_config(cli: &Cli) -> PassConfig {
+    let fused = !cli.mode.materializes_coset();
+    if fused && cli.lde_shape.is_some() {
+        fail(format!(
+            "--lde-shape applies to unfused modes only; --mode {} runs no LDE stage",
+            cli.mode.as_str()
+        ));
+    }
+    if !fused && cli.cell_map.is_some() {
+        fail(format!(
+            "--cell-map applies to fused modes only; --mode {} keeps the v1 block map",
+            cli.mode.as_str()
+        ));
+    }
+    PassConfig {
+        mode: cli.mode,
+        lde_shape: cli.lde_shape.unwrap_or_default(),
+        cell_map: cli.cell_map.unwrap_or_default(),
+    }
+}
+
 fn main() {
     let cli = Cli::parse();
+    let config = pass_config(&cli);
+    // The knob the mode does not run reads `n/a`, so a recorded line never names a
+    // shape that run never used.
+    let (lde_shape_label, cell_map_label) = if config.mode.materializes_coset() {
+        (config.lde_shape.as_str(), "n/a")
+    } else {
+        ("n/a", config.cell_map.as_str())
+    };
 
     let geometry = Geometry::new(cli.log_trace).unwrap_or_else(|e| fail(e));
     let census = Census {
@@ -129,7 +174,9 @@ fn main() {
     println!("  profile             {}", cli.profile);
     println!("  validate            {}", cli.validate);
     println!("  validate_flat_eq    {}", cli.validate_flat_eq);
-    println!("  lde_shape           {}", cli.lde_shape.as_str());
+    println!("  mode                {}", config.mode.as_str());
+    println!("  lde_shape           {lde_shape_label}");
+    println!("  cell_map            {cell_map_label}");
     println!("geometry");
     println!("  log_rows            {}", geometry.log_rows);
     println!("  logical rows        {}", geometry.logical_rows);
@@ -151,14 +198,8 @@ fn main() {
     );
 
     let validate = cli.validate || cli.validate_flat_eq;
-    let mut harness = Harness::new(
-        &program,
-        &geometry,
-        cli.seed,
-        cli.validate_flat_eq,
-        cli.lde_shape,
-    )
-    .unwrap_or_else(|e| fail(format!("device setup failed: {e}")));
+    let mut harness = Harness::new(&program, &geometry, cli.seed, cli.validate_flat_eq, config)
+        .unwrap_or_else(|e| fail(format!("device setup failed: {e}")));
 
     let bytes = harness.pass_bytes();
     let columns: u32 = program.windows.iter().map(|w| w.columns).sum();
@@ -177,8 +218,17 @@ fn main() {
     );
     println!("  columns             {columns}");
     println!(
-        "  tap backing         {:.2} GiB (the coset backing matches)",
-        gib(harness.layout.backing_bytes())
+        "  tap backing         {:.2} GiB ({})",
+        gib(harness.layout.backing_bytes()),
+        if config.mode.materializes_coset() {
+            "the coset backing matches"
+        } else {
+            "no coset backing"
+        }
+    );
+    println!(
+        "  resident backings   {:.2} GiB",
+        gib(harness.backing_bytes_resident())
     );
     println!(
         "  compulsory traffic  {} B ({:.2} GiB) per pass",
@@ -251,15 +301,21 @@ fn main() {
                 .unwrap_or_else(|e| fail(format!("pass failed: {e}")));
         }
         let mut failed = false;
-        match harness
-            .validate_lde()
-            .unwrap_or_else(|e| fail(format!("validation download failed: {e}")))
-        {
-            Ok(()) => println!("LDE validate: OK"),
-            Err(mismatch) => {
-                eprintln!("LDE validate: FAILED — {mismatch}");
-                failed = true;
+        if config.mode.materializes_coset() {
+            match harness
+                .validate_lde()
+                .unwrap_or_else(|e| fail(format!("validation download failed: {e}")))
+            {
+                Ok(()) => println!("LDE validate: OK"),
+                Err(mismatch) => {
+                    eprintln!("LDE validate: FAILED — {mismatch}");
+                    failed = true;
+                }
             }
+        } else {
+            // No coset buffer exists; the q oracle addresses all 32 cells and covers
+            // the recomputed ones.
+            println!("LDE validate: n/a (no coset backing)");
         }
         match harness
             .validate_q(&program)
@@ -287,10 +343,12 @@ fn main() {
     }
 
     println!(
-        "summary: log_trace {} | lde_shape {} | {sources} sources / {columns} columns / {} B \
-         ({:.2} GiB) per pass | total median {total_median:.3} ms over {} iterations | {device}",
+        "summary: log_trace {} | mode {} | lde_shape {lde_shape_label} | cell_map {cell_map_label} | \
+         {sources} sources / \
+         {columns} columns / {} B ({:.2} GiB) per pass | total median {total_median:.3} ms over \
+         {} iterations | {device}",
         cli.log_trace,
-        cli.lde_shape.as_str(),
+        config.mode.as_str(),
         bytes.total,
         gib(bytes.total),
         samples.len()

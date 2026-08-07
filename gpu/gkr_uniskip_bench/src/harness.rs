@@ -133,6 +133,60 @@ impl LdeShape {
     }
 }
 
+/// Where the coset cells come from. `Unfused` materializes them in a separate LDE
+/// stage and the eval kernel reads them back — the v1 pass. `FusedRecompute` drops
+/// both the LDE launches and the coset backing: the accessor extends the source's
+/// 16 taps on read. The two produce the same `q`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, clap::ValueEnum)]
+pub enum EvalMode {
+    #[default]
+    Unfused,
+    FusedRecompute,
+}
+
+impl EvalMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Unfused => "unfused",
+            Self::FusedRecompute => "fused-recompute",
+        }
+    }
+
+    /// Whether the pass writes a coset backing at all.
+    pub fn materializes_coset(self) -> bool {
+        self == Self::Unfused
+    }
+}
+
+/// Which four of the 32 cells a warp owns. `Block` is the v1 map (warp `w` takes
+/// cells `4w..4w+3`, so warps 0-3 are all-H and warps 4-7 all-coset); `Interleave`
+/// gives warp `w` the cells `{w, w+8, w+16, w+24}`, two of each. Fused modes only —
+/// it exists to spread the recompute across all eight warps.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, clap::ValueEnum)]
+pub enum CellMap {
+    #[default]
+    Block,
+    Interleave,
+}
+
+impl CellMap {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Block => "block",
+            Self::Interleave => "interleave",
+        }
+    }
+}
+
+/// The shape knobs of one pass. `lde_shape` applies to [`EvalMode::Unfused`] only
+/// and `cell_map` to the fused modes only; `main` rejects the other combinations.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct PassConfig {
+    pub mode: EvalMode,
+    pub lde_shape: LdeShape,
+    pub cell_map: CellMap,
+}
+
 /// The timed stages of one pass, in execution order.
 pub const STAGES: [&str; 4] = ["lde", "eval", "finalize", "fold"];
 
@@ -154,14 +208,21 @@ pub struct PassBytes {
     pub total: u64,
 }
 
+/// A class-pair LDE launch (`bf`, `e4`), or `None` in a mode with no LDE stage.
+type LdeLaunch = fn(&UniskipVmDesc, &DeviceSlice<u16>, usize, &CudaStream) -> CudaResult<()>;
+type EvalLaunch = fn(&UniskipVmDesc, u32, &CudaStream) -> CudaResult<()>;
+
 pub struct Harness {
     pub layout: Layout,
     pub desc: UniskipVmDesc,
     geometry: Geometry,
     seed: u32,
     flat_eq: bool,
-    lde_shape: LdeShape,
+    config: PassConfig,
+    lde: Option<[LdeLaunch; CLASSES]>,
+    eval: EvalLaunch,
     taps: [DeviceAllocation<u32>; CLASSES],
+    /// One unused word per class in a fused mode — see [`EvalMode::materializes_coset`].
     cosets: [DeviceAllocation<u32>; CLASSES],
     #[allow(dead_code)] // referenced by desc.eq_low
     eq_low: DeviceAllocation<u32>,
@@ -180,14 +241,14 @@ impl Harness {
     /// Allocate the backings, upload the program, the LDE matrix and the coefficient
     /// bank, and run the init kernels over the taps and the eq tables. `flat_eq`
     /// forces every eq entry to ONE — the `--validate-flat-eq` debug mode, which
-    /// isolates the term VM from the eq composition on both sides. `lde_shape` picks
-    /// the LDE grid shape; it changes no output byte.
+    /// isolates the term VM from the eq composition on both sides. `config` picks the
+    /// source-resolution mode and the grid shapes; none of them changes `q`.
     pub fn new(
         program: &SynthProgram,
         geometry: &Geometry,
         seed: u32,
         flat_eq: bool,
-        lde_shape: LdeShape,
+        config: PassConfig,
     ) -> CudaResult<Self> {
         let layout = Layout::new(program, geometry);
         let stream = CudaStream::create()?;
@@ -197,7 +258,18 @@ impl Harness {
         let alloc_words =
             |class: usize| DeviceAllocation::<u32>::alloc(layout.class_words(class).max(1));
         let mut taps = [alloc_words(CLASS_BF)?, alloc_words(CLASS_E4)?];
-        let cosets = [alloc_words(CLASS_BF)?, alloc_words(CLASS_E4)?];
+        // A fused mode never reads a coset element, so it allocates no coset backing:
+        // this is the 1x-backing memory saving the mode exists for. Its base records
+        // are NULLED below rather than pointed at the placeholder, so a stray coset
+        // read faults instead of returning garbage.
+        let cosets = if config.mode.materializes_coset() {
+            [alloc_words(CLASS_BF)?, alloc_words(CLASS_E4)?]
+        } else {
+            [
+                DeviceAllocation::<u32>::alloc(1)?,
+                DeviceAllocation::<u32>::alloc(1)?,
+            ]
+        };
 
         let mut job_ids: [Vec<u16>; CLASSES] = [Vec::new(), Vec::new()];
         for (id, rec) in program.sources.iter().enumerate() {
@@ -259,7 +331,11 @@ impl Harness {
                 base: taps[class].as_ptr() as u64 + byte_offset,
             };
             desc.coset_bases[window] = UniskipBaseRecord {
-                base: cosets[class].as_ptr() as u64 + byte_offset,
+                base: if config.mode.materializes_coset() {
+                    cosets[class].as_ptr() as u64 + byte_offset
+                } else {
+                    0
+                },
             };
         }
 
@@ -288,13 +364,33 @@ impl Harness {
             events.push(CudaEvent::create()?);
         }
 
+        // Mode dispatch is resolved ONCE, here: the pass itself is two function
+        // pointers, so neither arm carries the other's branch.
+        let lde = match config.mode {
+            EvalMode::Unfused => Some(match config.lde_shape {
+                LdeShape::Cell => [kernels::lde_bf as LdeLaunch, kernels::lde_e4 as LdeLaunch],
+                LdeShape::Row => [
+                    kernels::lde_bf_row as LdeLaunch,
+                    kernels::lde_e4_row as LdeLaunch,
+                ],
+            }),
+            EvalMode::FusedRecompute => None,
+        };
+        let eval: EvalLaunch = match (config.mode, config.cell_map) {
+            (EvalMode::Unfused, _) => kernels::eval,
+            (EvalMode::FusedRecompute, CellMap::Block) => kernels::eval_fused,
+            (EvalMode::FusedRecompute, CellMap::Interleave) => kernels::eval_fused_interleave,
+        };
+
         Ok(Self {
             layout,
             desc,
             geometry: *geometry,
             seed,
             flat_eq,
-            lde_shape,
+            config,
+            lde,
+            eval,
             taps,
             cosets,
             eq_low,
@@ -308,12 +404,11 @@ impl Harness {
         })
     }
 
-    /// One coset LDE pass over both field classes, in the configured grid shape.
+    /// One coset LDE pass over both field classes, in the configured grid shape —
+    /// nothing at all in a fused mode, where the accessor absorbs it.
     pub fn run_lde(&self) -> CudaResult<()> {
-        type Launch = fn(&UniskipVmDesc, &DeviceSlice<u16>, usize, &CudaStream) -> CudaResult<()>;
-        let (bf, e4): (Launch, Launch) = match self.lde_shape {
-            LdeShape::Cell => (kernels::lde_bf, kernels::lde_e4),
-            LdeShape::Row => (kernels::lde_bf_row, kernels::lde_e4_row),
+        let Some([bf, e4]) = self.lde else {
+            return Ok(());
         };
         bf(
             &self.desc,
@@ -356,7 +451,7 @@ impl Harness {
         self.events[0].record(&self.stream)?;
         self.run_lde()?;
         self.events[1].record(&self.stream)?;
-        kernels::eval(&self.desc, self.geometry.blocks, &self.stream)?;
+        (self.eval)(&self.desc, self.geometry.blocks, &self.stream)?;
         self.events[2].record(&self.stream)?;
         kernels::finalize(
             &self.partials,
@@ -373,6 +468,16 @@ impl Harness {
         self.stream.synchronize()
     }
 
+    pub fn config(&self) -> PassConfig {
+        self.config
+    }
+
+    /// Device bytes the pass holds in its tap and coset backings.
+    pub fn backing_bytes_resident(&self) -> u64 {
+        let backing = self.layout.backing_bytes();
+        backing + u64::from(self.config.mode.materializes_coset()) * backing
+    }
+
     /// Device time of the last pass, in [`STAGES`] order. Only valid once the pass
     /// has completed — call [`Self::synchronize`] first.
     pub fn stage_times(&self) -> CudaResult<StageTimes> {
@@ -386,15 +491,18 @@ impl Harness {
         })
     }
 
-    /// Compulsory traffic of one pass, in [`STAGES`] order — see [`PassBytes`].
+    /// Compulsory traffic of one pass, in [`STAGES`] order — see [`PassBytes`]. A
+    /// fused mode has no LDE stage and its eval reads the tap backing only, so its
+    /// floor is one backing lighter in each of the two stages.
     pub fn pass_bytes(&self) -> PassBytes {
         let e4_bytes = CLASS_WORDS[CLASS_E4] as u64 * size_of::<u32>() as u64;
         let backing = self.layout.backing_bytes();
         let partials = self.geometry.partials * e4_bytes;
         let folded = u64::from(self.desc.num_sources) * self.layout.rows * e4_bytes;
+        let coset = u64::from(self.config.mode.materializes_coset()) * backing;
         let stage = [
-            2 * backing,
-            2 * backing + partials,
+            2 * coset,
+            backing + coset + partials,
             partials + UNISKIP_CELLS as u64 * e4_bytes,
             backing + folded,
         ];
@@ -434,8 +542,14 @@ impl Harness {
     }
 
     /// Compare the first and last used column of every window — taps and all 16
-    /// coset cells — against the host reference, bit-exact.
+    /// coset cells — against the host reference, bit-exact. Only meaningful where the
+    /// coset is materialized; a fused mode has no buffer to check and leans on the
+    /// `q` oracle, which addresses all 32 cells.
     pub fn validate_lde(&self) -> CudaResult<Result<(), String>> {
+        assert!(
+            self.config.mode.materializes_coset(),
+            "validate_lde needs a materialized coset"
+        );
         for window in 0..UNISKIP_WINDOWS {
             let columns = self.layout.windows[window].columns as usize;
             let checked: Vec<usize> = match columns {

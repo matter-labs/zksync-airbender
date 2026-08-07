@@ -227,17 +227,22 @@ DEVICE_FORCEINLINE e4 uniskip_eq_at(const uniskip_vm_desc &desc, const u32 row) 
 }
 
 // CELL-SLAB WARPS. blockDim = 256; lane = row inside a 32-row tile, so the whole
-// block works one tile and warp w owns cells 4w..4w+3 (warps 0-3 tap cells, warps
-// 4-7 coset cells — the H-vs-coset choice is warp-uniform inside the accessor).
+// block works one tile and warp w owns the 4 cells `uniskip_first_cell<INTERLEAVE>(w)`
+// names (block map: 4w..4w+3, warps 0-3 tap cells and warps 4-7 coset cells).
 // The 4 accumulators are indexed ONLY by fully unrolled loops: a dynamic index
 // would put them in local memory and spill.
 // `Geometry` guarantees rows == gridDim.x * UNISKIP_ROWS_PER_BLOCK (log_rows >= 5),
 // so no row is out of range.
-EXTERN __global__ void ab_gkr_uniskip_eval_kernel(const __grid_constant__ uniskip_vm_desc desc) {
+//
+// `Desc` selects source resolution and nothing else: `uniskip_vm_desc` reads the
+// materialized coset, `uniskip_fused_desc` recomputes it on read. Term execution
+// below is the same text for both.
+template <typename Desc, bool INTERLEAVE> DEVICE_FORCEINLINE void uniskip_eval_body(const Desc &desc) {
   const u32 lane = threadIdx.x % UNISKIP_ROWS_PER_BLOCK;
   const u32 warp = threadIdx.x / UNISKIP_ROWS_PER_BLOCK;
   const u32 row = blockIdx.x * UNISKIP_ROWS_PER_BLOCK + lane;
-  const u32 first_cell = warp * UNISKIP_CELLS_PER_WARP;
+  const u32 first_cell = uniskip_first_cell<INTERLEAVE>(warp);
+  constexpr u32 cell_step = uniskip_cell_stride<INTERLEAVE>();
 
   e4 acc[UNISKIP_CELLS_PER_WARP];
 #pragma unroll
@@ -260,7 +265,7 @@ EXTERN __global__ void ab_gkr_uniskip_eval_kernel(const __grid_constant__ uniski
         const bool product = member.term_class == UNISKIP_CLASS_PRODUCT_BF_BF;
 #pragma unroll
         for (u32 i = 0; i < UNISKIP_CELLS_PER_WARP; ++i) {
-          const u32 cell = first_cell + i;
+          const u32 cell = first_cell + i * cell_step;
           bf value = uniskip_source_value<bf>(desc, member.source_a, cell, row);
           if (product)
             value = bf::mul(value, uniskip_source_value<bf>(desc, member.source_b, cell, row));
@@ -282,17 +287,17 @@ EXTERN __global__ void ab_gkr_uniskip_eval_kernel(const __grid_constant__ uniski
     case UNISKIP_CLASS_LINEAR_BF:
 #pragma unroll
       for (u32 i = 0; i < UNISKIP_CELLS_PER_WARP; ++i)
-        acc[i] = e4::fma(coeff, uniskip_source_value<bf>(desc, term.source_a, first_cell + i, row), acc[i]);
+        acc[i] = e4::fma(coeff, uniskip_source_value<bf>(desc, term.source_a, first_cell + i * cell_step, row), acc[i]);
       break;
     case UNISKIP_CLASS_LINEAR_E4:
 #pragma unroll
       for (u32 i = 0; i < UNISKIP_CELLS_PER_WARP; ++i)
-        acc[i] = e4::fma(coeff, uniskip_source_value<e4>(desc, term.source_a, first_cell + i, row), acc[i]);
+        acc[i] = e4::fma(coeff, uniskip_source_value<e4>(desc, term.source_a, first_cell + i * cell_step, row), acc[i]);
       break;
     case UNISKIP_CLASS_PRODUCT_BF_BF:
 #pragma unroll
       for (u32 i = 0; i < UNISKIP_CELLS_PER_WARP; ++i) {
-        const u32 cell = first_cell + i;
+        const u32 cell = first_cell + i * cell_step;
         const bf a = uniskip_source_value<bf>(desc, term.source_a, cell, row);
         const bf b = uniskip_source_value<bf>(desc, term.source_b, cell, row);
         acc[i] = e4::fma(coeff, bf::mul(a, b), acc[i]);
@@ -301,7 +306,7 @@ EXTERN __global__ void ab_gkr_uniskip_eval_kernel(const __grid_constant__ uniski
     case UNISKIP_CLASS_PRODUCT_BF_E4:
 #pragma unroll
       for (u32 i = 0; i < UNISKIP_CELLS_PER_WARP; ++i) {
-        const u32 cell = first_cell + i;
+        const u32 cell = first_cell + i * cell_step;
         const bf a = uniskip_source_value<bf>(desc, term.source_a, cell, row);
         const e4 b = uniskip_source_value<e4>(desc, term.source_b, cell, row);
         acc[i] = e4::fma(coeff, e4::mul(b, a), acc[i]);
@@ -310,7 +315,7 @@ EXTERN __global__ void ab_gkr_uniskip_eval_kernel(const __grid_constant__ uniski
     case UNISKIP_CLASS_PRODUCT_E4_E4:
 #pragma unroll
       for (u32 i = 0; i < UNISKIP_CELLS_PER_WARP; ++i) {
-        const u32 cell = first_cell + i;
+        const u32 cell = first_cell + i * cell_step;
         const e4 a = uniskip_source_value<e4>(desc, term.source_a, cell, row);
         const e4 b = uniskip_source_value<e4>(desc, term.source_b, cell, row);
         acc[i] = e4::fma(coeff, e4::mul(a, b), acc[i]);
@@ -325,8 +330,22 @@ EXTERN __global__ void ab_gkr_uniskip_eval_kernel(const __grid_constant__ uniski
   for (u32 i = 0; i < UNISKIP_CELLS_PER_WARP; ++i) {
     const e4 total = uniskip_warp_sum(e4::mul(acc[i], eq));
     if (lane == 0)
-      desc.partials[blockIdx.x * UNISKIP_CELLS + first_cell + i] = total;
+      desc.partials[blockIdx.x * UNISKIP_CELLS + first_cell + i * cell_step] = total;
   }
+}
+
+// UNFUSED (v1 control arm): reads the materialized coset, block cell map.
+EXTERN __global__ void ab_gkr_uniskip_eval_kernel(const __grid_constant__ uniskip_vm_desc desc) { uniskip_eval_body<uniskip_vm_desc, false>(desc); }
+
+// FUSED: the coset LDE is absorbed into the accessor, so there is no LDE launch and
+// no coset backing. Same wire struct — `uniskip_fused_desc` only picks the overload.
+// Neither carries a `__launch_bounds__`: capping the interleaved map to 4 or 2
+// blocks/SM makes it spill (iteration_times.md), and the block map already lands at
+// 61 registers on its own.
+EXTERN __global__ void ab_gkr_uniskip_eval_fused_kernel(const __grid_constant__ uniskip_fused_desc desc) { uniskip_eval_body<uniskip_fused_desc, false>(desc); }
+
+EXTERN __global__ void ab_gkr_uniskip_eval_fused_interleave_kernel(const __grid_constant__ uniskip_fused_desc desc) {
+  uniskip_eval_body<uniskip_fused_desc, true>(desc);
 }
 
 // One block per cell; each sums its column of the partials matrix.
