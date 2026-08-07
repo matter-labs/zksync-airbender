@@ -131,7 +131,29 @@ fn load_boundary_transcript_prefix() -> (
 
 #[test]
 fn gkr_unified_packed_commitment_basic_fibonacci() {
-    let worker = Worker::new_with_num_threads(8);
+    gkr_unified_packed_commitment_basic_fibonacci_impl(8, false);
+}
+
+/// Copy of [`gkr_unified_packed_commitment_basic_fibonacci`] configured for large
+/// external cloud machines: 64 worker threads and FULLY IN-MEMORY oracles — the
+/// packed setup is committed in memory (`GKRSetup::commit_packed`, no on-disk
+/// cache) and the memory/witness base + intermediate WHIR oracles are fully
+/// materialized (`WhirOracleStorage::fully_in_memory()`). The proof must be
+/// byte-identical to the recompute-based run; this variant does not (re)write the
+/// reference proof fixtures.
+#[test]
+#[ignore = "cloud-machine scale: 64 cores + enough RAM to materialize the 2^31 packed RS codewords"]
+fn gkr_unified_packed_commitment_basic_fibonacci_64core_in_memory() {
+    gkr_unified_packed_commitment_basic_fibonacci_impl(64, true);
+}
+
+/// Shared body of the packed unified fibonacci proving tests. `fully_in_memory`
+/// selects the oracle storage: `false` = the historical memory-light configuration
+/// (coset-recompute base/intermediate oracles + on-disk cached setup, reference
+/// fixtures written), `true` = everything materialized in RAM (in-memory packed
+/// setup commitment + in-memory oracles, no fixtures written).
+fn gkr_unified_packed_commitment_basic_fibonacci_impl(num_threads: usize, fully_in_memory: bool) {
+    let worker = Worker::new_with_num_threads(num_threads);
     let level = SecurityLevel::Sec100;
     // With `pack_log2 = 4` the 2^22 base trace is packed into a single 2^26-variate
     // multilinear per column — exactly the `message_log2 = 26` of the EVM-production
@@ -325,57 +347,76 @@ fn gkr_unified_packed_commitment_basic_fibonacci() {
 
     let setup = GKRSetup::construct(&table_driver, &decoder_table, trace_len, &unified_circuit);
 
-    // On-disk setup with the "second" (per-coset subtree) tree layout: the packed
-    // setup is prepared coset-by-coset — each coset's RS codewords and its cap-size-1
-    // subtree are streamed to disk, then a small top-tree over the subtree roots — so
-    // the ~2^31 codeword and its tree never have to be materialized whole. This and
-    // later runs read them back lazily via mmap. Delete the cache files to recompute.
-    let setup_disk_prefix = "test_proofs/unified_setup_proth120_ondisk";
     let lde_factor = prover_config.lde_factor;
     let values_per_leaf = prover_config.base_oracles_values_per_leaf;
-    let setup_coset_paths: Vec<_> = (0..lde_factor)
-        .map(|i| coset_file_path(setup_disk_prefix, i))
-        .collect();
-    let setup_on_disk_present = top_tree_file_path(setup_disk_prefix).exists()
-        && setup_coset_paths.iter().all(|p| p.exists());
 
-    if !setup_on_disk_present {
-        println!("On-disk setup not present; preparing coset-by-coset (split tree) and caching");
-        let inputs: Vec<&[Proth120]> = setup.hypercube_evals.iter().map(|el| &el[..]).collect();
-        serialize_packed_base_commitment_split_to_disk::<Proth120, Keccak256MerkleTreeWithCap>(
-            &inputs,
+    let setup_commitment = if fully_in_memory {
+        // Commit the packed setup fully in memory: RS codewords + monolithic Merkle
+        // tree materialized (byte-identical commitment to the on-disk/split path).
+        println!("Committing setup in memory (packed)");
+        SetupCommitment::InMemory(setup.commit_packed::<Keccak256MerkleTreeWithCap>(
             &packed_twiddles,
             lde_factor,
             values_per_leaf.trailing_zeros() as usize,
             prover_config.cap_size,
             TRACE_LEN_LOG2,
             pack_log2,
-            setup_disk_prefix,
             &worker,
-        )
-        .expect("cache split setup to disk");
+        ))
     } else {
-        println!("Reusing cached on-disk setup at prefix {setup_disk_prefix}");
-    }
+        // On-disk setup with the "second" (per-coset subtree) tree layout: the packed
+        // setup is prepared coset-by-coset — each coset's RS codewords and its cap-size-1
+        // subtree are streamed to disk, then a small top-tree over the subtree roots — so
+        // the ~2^31 codeword and its tree never have to be materialized whole. This and
+        // later runs read them back lazily via mmap. Delete the cache files to recompute.
+        let setup_disk_prefix = "test_proofs/unified_setup_proth120_ondisk";
+        let setup_coset_paths: Vec<_> = (0..lde_factor)
+            .map(|i| coset_file_path(setup_disk_prefix, i))
+            .collect();
+        let setup_on_disk_present = top_tree_file_path(setup_disk_prefix).exists()
+            && setup_coset_paths.iter().all(|p| p.exists());
 
-    // Open the on-disk setup: RS codewords + the split (per-coset subtree) tree, all
-    // memory-mapped and read lazily.
-    let setup_rs =
-        OnDiskRsCodewords::<Proth120>::open(setup_coset_paths).expect("open on-disk setup RS");
-    let setup_coset_size_log2 = RSQueriable::coset_size_log2(&setup_rs);
-    let setup_disk_tree = <Keccak256MerkleTreeWithCap as ColumnMajorMerkleTreeConstructor<
-        Proth120,
-    >>::open_disk_artifacts(
-        setup_disk_prefix,
-        OnDiskTreeLayout::CosetSubtrees,
-        lde_factor,
-    );
+        if !setup_on_disk_present {
+            println!(
+                "On-disk setup not present; preparing coset-by-coset (split tree) and caching"
+            );
+            let inputs: Vec<&[Proth120]> =
+                setup.hypercube_evals.iter().map(|el| &el[..]).collect();
+            serialize_packed_base_commitment_split_to_disk::<Proth120, Keccak256MerkleTreeWithCap>(
+                &inputs,
+                &packed_twiddles,
+                lde_factor,
+                values_per_leaf.trailing_zeros() as usize,
+                prover_config.cap_size,
+                TRACE_LEN_LOG2,
+                pack_log2,
+                setup_disk_prefix,
+                &worker,
+            )
+            .expect("cache split setup to disk");
+        } else {
+            println!("Reusing cached on-disk setup at prefix {setup_disk_prefix}");
+        }
 
-    let setup_commitment = SetupCommitment::OnDisk {
-        rs: Box::new(setup_rs),
-        tree: setup_disk_tree,
-        values_per_leaf,
-        coset_size_log2: setup_coset_size_log2,
+        // Open the on-disk setup: RS codewords + the split (per-coset subtree) tree, all
+        // memory-mapped and read lazily.
+        let setup_rs =
+            OnDiskRsCodewords::<Proth120>::open(setup_coset_paths).expect("open on-disk setup RS");
+        let setup_coset_size_log2 = RSQueriable::coset_size_log2(&setup_rs);
+        let setup_disk_tree = <Keccak256MerkleTreeWithCap as ColumnMajorMerkleTreeConstructor<
+            Proth120,
+        >>::open_disk_artifacts(
+            setup_disk_prefix,
+            OnDiskTreeLayout::CosetSubtrees,
+            lde_factor,
+        );
+
+        SetupCommitment::OnDisk {
+            rs: Box::new(setup_rs),
+            tree: setup_disk_tree,
+            values_per_leaf,
+            coset_size_log2: setup_coset_size_log2,
+        }
     };
 
     // 6. Prove one unified circuit instance with the packed commitment mode.
@@ -392,8 +433,18 @@ fn gkr_unified_packed_commitment_basic_fibonacci() {
         }),
     };
 
+    let storage = if fully_in_memory {
+        WhirOracleStorage::fully_in_memory()
+    } else {
+        WhirOracleStorage::fully_recompute()
+    };
+
     println!("Trying to prove (unified, packed commitment, pack_log2 = {pack_log2})");
-    println!("  memory/witness RS codewords: Recompute; setup: on-disk");
+    if fully_in_memory {
+        println!("  memory/witness RS codewords: InMemory; setup: in-memory");
+    } else {
+        println!("  memory/witness RS codewords: Recompute; setup: on-disk");
+    }
     let now = std::time::Instant::now();
     let proof = prove_configured_with_gkr_with_storage::<
         Proth120,
@@ -409,18 +460,23 @@ fn gkr_unified_packed_commitment_basic_fibonacci() {
         &packed_twiddles,
         &prover_config,
         commitment_mode,
-        WhirOracleStorage::fully_recompute(),
+        storage,
         top_bits,
         trace_len,
         &worker,
     );
     println!("Packed unified proving time is {:?}", now.elapsed());
 
-    serialize_to_file(&proof, "unified_circuit_proof_proth120.json");
-    serialize_to_file(
-        &commitment_mode,
-        "unified_circuit_proof_proth120_commitment_mod_aux_data.json",
-    );
+    // Only the reference (recompute + on-disk setup) configuration writes the
+    // committed proof fixtures; the in-memory variant is a performance/parity run
+    // whose proof must come out byte-identical anyway.
+    if !fully_in_memory {
+        serialize_to_file(&proof, "unified_circuit_proof_proth120.json");
+        serialize_to_file(
+            &commitment_mode,
+            "unified_circuit_proof_proth120_commitment_mod_aux_data.json",
+        );
+    }
 }
 
 /// STEP 1 of the EVM GKR verifier: reproduce the `MergedAndPackedMemoryAndWitness`
