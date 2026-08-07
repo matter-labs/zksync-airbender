@@ -316,7 +316,7 @@ fn gkr_unified_packed_commitment_basic_fibonacci() {
     //    `SetupCommitment::OnDisk` (so the setup never has to sit in RAM while
     //    proving). Delete the `*.rscw`/`*.tree` cache files to force a recompute.
     use crate::gkr::prover::{
-        prove_configured_with_gkr_with_storage, RsCodewordSource, SetupCommitment,
+        prove_configured_with_gkr_with_storage, SetupCommitment, WhirOracleStorage,
     };
     use crate::gkr::whir::coset_commit::serialize_packed_base_commitment_split_to_disk;
     use crate::gkr::whir::rs_on_disk::{coset_file_path, OnDiskRsCodewords};
@@ -409,7 +409,7 @@ fn gkr_unified_packed_commitment_basic_fibonacci() {
         &packed_twiddles,
         &prover_config,
         commitment_mode,
-        RsCodewordSource::Recompute,
+        WhirOracleStorage::fully_recompute(),
         top_bits,
         trace_len,
         &worker,

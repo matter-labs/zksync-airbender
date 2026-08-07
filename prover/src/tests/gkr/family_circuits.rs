@@ -827,7 +827,7 @@ fn add_sub_mop_real_program_check_satisfied() {
 /// change the proof.
 #[test]
 fn add_sub_family_rs_codeword_source_parity() {
-    use crate::gkr::prover::RsCodewordSource;
+    use crate::gkr::prover::WhirOracleStorage;
     use riscv_transpiler::vm::DelegationsAndFamiliesCounters;
 
     type CountersT = DelegationsAndFamiliesCounters;
@@ -891,8 +891,9 @@ fn add_sub_family_rs_codeword_source_parity() {
     let trace_len = 1usize << TRACE_LEN_LOG2;
     let external_challenges = super::orchestration::common::hardcoded_external_challenges();
 
-    // Prove the SAME trace under each RS-codeword storage policy.
-    let prove = |rs_codeword_source: RsCodewordSource| {
+    // Prove the SAME trace under each WHIR oracle storage policy, including the
+    // mixed one (recompute-based base oracles + materialized intermediates).
+    let prove = |storage: WhirOracleStorage| {
         super::orchestration::per_family::prove_built_family_trace_with_rs_source(
             &circuit,
             &table_driver,
@@ -901,22 +902,28 @@ fn add_sub_family_rs_codeword_source_parity() {
             trace_len,
             &external_challenges,
             SecurityLevel::Sec80,
-            rs_codeword_source,
+            storage,
             &worker,
         )
     };
 
-    let proof_in_memory = prove(RsCodewordSource::InMemory);
-    let proof_recompute = prove(RsCodewordSource::Recompute);
+    let proof_in_memory = prove(WhirOracleStorage::fully_in_memory());
+    let proof_recompute = prove(WhirOracleStorage::fully_recompute());
+    let proof_mixed = prove(WhirOracleStorage::recompute_base_materialized_intermediates());
 
     // The storage policy must not change the proof: compare the full serialized form.
     let bytes_in_memory =
         serde_json::to_vec(&proof_in_memory).expect("proof serializes (InMemory)");
     let bytes_recompute =
         serde_json::to_vec(&proof_recompute).expect("proof serializes (Recompute)");
+    let bytes_mixed = serde_json::to_vec(&proof_mixed).expect("proof serializes (mixed)");
     assert_eq!(
         bytes_in_memory, bytes_recompute,
         "InMemory and Recompute RS-codeword sources must produce byte-identical proofs"
+    );
+    assert_eq!(
+        bytes_in_memory, bytes_mixed,
+        "recompute base + materialized intermediates must produce a byte-identical proof"
     );
 }
 

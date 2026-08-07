@@ -6,8 +6,9 @@ use crate::definitions::SecurityLevel;
 use crate::gkr::prover::setup::GKRSetup;
 use crate::gkr::prover::{
     prove_configured_with_gkr, prove_configured_with_gkr_with_storage, CommitmentMode,
-    RsCodewordSource, SetupCommitment,
+    SetupCommitment, WhirOracleStorage,
 };
+use crate::gkr::whir::ColumnMajorBaseOracleForLDE;
 use crate::gkr::prover::{GKRExternalChallenges, GKRProof};
 use crate::gkr::prover_config::example_configs;
 use crate::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
@@ -159,18 +160,17 @@ pub fn prove_built_family_trace_on_disk_setup(
     ) else {
         unreachable!("GKRSetup::commit always returns the InMemory variant")
     };
-    let values_per_leaf = setup_oracle.values_per_leaf;
-    let coset_size_log2 = setup_oracle.coset_size_log2;
+    let values_per_leaf = setup_oracle.values_per_leaf();
+    let coset_size_log2 = setup_oracle.coset_size_log2();
 
     // 2) Write the RS codewords (one file per coset) and the monolithic tree to disk.
     //    The tree goes out through `write_disk_artifacts` (the only disk serializer):
     //    it rebuilds the tree from the materialized cosets — byte-identical to
     //    `setup.commit`'s tree since the coset order + bitreverse flags match.
-    let materialized = setup_oracle
-        .cosets
-        .as_any()
-        .downcast_ref::<MaterializedCosets<BabyBearField>>()
-        .expect("setup.commit produces materialized cosets");
+    let ColumnMajorBaseOracleForLDE::InMemory(ref setup_in_memory) = setup_oracle else {
+        unreachable!("setup.commit produces the in-memory (materialized) variant")
+    };
+    let materialized: &MaterializedCosets<BabyBearField> = &setup_in_memory.cosets;
     let coset_paths = materialized
         .serialize_to_disk(disk_prefix)
         .expect("write setup RS codewords to disk");
@@ -233,17 +233,18 @@ pub fn prove_built_family_trace_on_disk_setup(
         &twiddles,
         &prover_config,
         CommitmentMode::SeparateMemoryAndWitness,
-        RsCodewordSource::InMemory,
+        WhirOracleStorage::fully_in_memory(),
         Vec::new(),
         trace_len,
         worker,
     )
 }
 
-/// Like [`prove_built_family_trace`] but lets the caller pick the RS-codeword
-/// storage policy ([`RsCodewordSource`]) via the config-aware prover entry point.
-/// The setup commitment is always in-memory. For a fixed [`CommitmentMode`] the
-/// resulting proof must be identical across storage policies — see
+/// Like [`prove_built_family_trace`] but lets the caller pick the WHIR oracle
+/// storage policy ([`WhirOracleStorage`]: base RS-codeword source + intermediate
+/// oracle mode) via the config-aware prover entry point. The setup commitment is
+/// always in-memory. For a fixed [`CommitmentMode`] the resulting proof must be
+/// identical across storage policies — see
 /// `add_sub_family_rs_codeword_source_parity`.
 #[allow(clippy::too_many_arguments)]
 pub fn prove_built_family_trace_with_rs_source(
@@ -254,7 +255,7 @@ pub fn prove_built_family_trace_with_rs_source(
     trace_len: usize,
     external_challenges: &GKRExternalChallenges<BabyBearField, BabyBearExt4>,
     level: SecurityLevel,
-    rs_codeword_source: RsCodewordSource,
+    storage: WhirOracleStorage,
     worker: &Worker,
 ) -> GKRProof<BabyBearField, BabyBearExt4, DefaultTreeConstructor> {
     let mut prover_config = example_configs::config_for_security_level_under_pessimistic_conjecture(
@@ -295,7 +296,7 @@ pub fn prove_built_family_trace_with_rs_source(
         &twiddles,
         &prover_config,
         CommitmentMode::SeparateMemoryAndWitness,
-        rs_codeword_source,
+        storage,
         Vec::new(),
         trace_len,
         worker,

@@ -401,7 +401,7 @@ fn commit_memory_cap(
         trace_len_log2,
         worker,
     );
-    mem.tree.get_cap()
+    mem.get_cap()
 }
 
 fn unified_register_final_values<C>(vm: &VmRunOutput<C>) -> Vec<FinalRegisterValue>

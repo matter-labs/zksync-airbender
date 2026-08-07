@@ -1,5 +1,7 @@
 use super::*;
-use crate::gkr::whir::{hypercube_to_monomial, ColumnMajorBaseOracleForLDE, MaterializedCosets};
+use crate::gkr::whir::{
+    hypercube_to_monomial, ColumnMajorBaseOracleForLDE, InMemoryBaseOracle, MaterializedCosets,
+};
 use fft::Twiddles;
 use fft::{
     bitreverse_enumeration_inplace, distribute_powers_parallel, distribute_powers_serial,
@@ -499,13 +501,12 @@ where
             };
             cosets.push(trace_part);
         }
-        return ColumnMajorBaseOracleForLDE {
-            cosets: Box::new(MaterializedCosets { cosets }),
-            tree: Box::new(T::dummy()),
+        return ColumnMajorBaseOracleForLDE::InMemory(InMemoryBaseOracle {
+            cosets: MaterializedCosets { cosets },
+            tree: T::dummy(),
             values_per_leaf: 1 << whir_first_fold_step_log2,
             coset_size_log2: trace_len_log2,
-            _marker: core::marker::PhantomData,
-        };
+        });
     }
 
     let values_per_leaf = 1 << whir_first_fold_step_log2;
@@ -554,13 +555,12 @@ where
         worker,
     );
 
-    ColumnMajorBaseOracleForLDE {
-        cosets: Box::new(MaterializedCosets { cosets }),
-        tree: Box::new(tree),
+    ColumnMajorBaseOracleForLDE::InMemory(InMemoryBaseOracle {
+        cosets: MaterializedCosets { cosets },
+        tree,
         values_per_leaf,
         coset_size_log2: trace_len_log2,
-        _marker: core::marker::PhantomData,
-    }
+    })
 }
 
 /// Packed analogue of [`commit_trace_part`]: instead of committing each input
@@ -609,13 +609,12 @@ where
                 coset_size_log2: packed_trace_len_log2,
             });
         }
-        return ColumnMajorBaseOracleForLDE {
-            cosets: Box::new(MaterializedCosets { cosets }),
-            tree: Box::new(T::dummy()),
+        return ColumnMajorBaseOracleForLDE::InMemory(InMemoryBaseOracle {
+            cosets: MaterializedCosets { cosets },
+            tree: T::dummy(),
             values_per_leaf,
             coset_size_log2: packed_trace_len_log2,
-            _marker: core::marker::PhantomData,
-        };
+        });
     }
 
     // Pack `2^pack_log2` polys into each packed multilinear (monomial form).
@@ -688,13 +687,12 @@ where
         worker,
     );
 
-    ColumnMajorBaseOracleForLDE {
-        cosets: Box::new(MaterializedCosets { cosets }),
-        tree: Box::new(tree),
+    ColumnMajorBaseOracleForLDE::InMemory(InMemoryBaseOracle {
+        cosets: MaterializedCosets { cosets },
+        tree,
         values_per_leaf,
         coset_size_log2: packed_trace_len_log2,
-        _marker: core::marker::PhantomData,
-    }
+    })
 }
 
 pub(crate) fn pack_polys_parallel_from_hypercubes_to_monomials<F: PrimeField + TwoAdicField>(

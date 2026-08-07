@@ -134,36 +134,6 @@ pub trait PathQueriable: core::fmt::Debug + Send + Sync {
     fn get_proof(&self, idx: usize) -> (Digest, Vec<Digest>);
 }
 
-/// A [`PathQueriable`] that only carries a Merkle cap. `get_cap` returns it;
-/// `get_proof` is unreachable. Used for "slim" base oracles whose round-0 inclusion
-/// paths are served out-of-band (a base query hook, or the on-disk setup tree), so the
-/// oracle itself only needs to reproduce the commitment cap for the transcript.
-#[derive(Debug)]
-pub struct CapOnlyTree {
-    cap: MerkleTreeCapVarLength,
-}
-
-impl CapOnlyTree {
-    pub fn new(cap: MerkleTreeCapVarLength) -> Self {
-        Self { cap }
-    }
-}
-
-impl PathQueriable for CapOnlyTree {
-    fn get_cap(&self) -> MerkleTreeCapVarLength {
-        self.cap.clone()
-    }
-    fn get_proof(
-        &self,
-        _idx: usize,
-    ) -> (
-        [u32; DIGEST_SIZE_U32_WORDS],
-        Vec<[u32; DIGEST_SIZE_U32_WORDS]>,
-    ) {
-        unreachable!("CapOnlyTree serves only the commitment cap; round-0 paths come from the base query hook")
-    }
-}
-
 /// A producer of one LDE coset's columns, driving the closure-based constructors on
 /// [`ColumnMajorMerkleTreeConstructor`]. `producer(coset_index)` returns that
 /// coset's columns — each borrowed (when the coset is materialized) or owned (when
