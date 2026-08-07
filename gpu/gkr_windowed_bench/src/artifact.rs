@@ -242,10 +242,6 @@ pub enum ArtifactError {
         header: u32,
         record: u32,
     },
-    LazyReductionBoundaryMissing {
-        header: u32,
-        record: u32,
-    },
     LazyReductionWindowTooLong {
         header: u32,
         record: u32,
@@ -493,8 +489,8 @@ pub fn decode_program(
                         record: member_record as u32,
                     });
                 }
-                if member_offset == usize::from(lazy_product_count) && !reduction_boundary {
-                    return Err(ArtifactError::LazyReductionBoundaryMissing {
+                if member_offset == usize::from(lazy_product_count) && reduction_boundary {
+                    return Err(ArtifactError::LazyReductionFlagOutsidePrefix {
                         header: record as u32,
                         record: member_record as u32,
                     });
@@ -1040,22 +1036,23 @@ mod tests {
     #[test]
     fn lazy_bf_group_masks_boundary_bits_from_immediate_ids() {
         let artifact = lazy_bf_group_artifact(
-            GROUP_HAS_PRODUCT | 2,
+            GROUP_HAS_PRODUCT | 3,
             vec![
                 instruction(WindowClass::ProductBfBf, 0, 0, 0),
                 instruction(WindowClass::ProductBfBf, REDUCE_AFTER | 1, 0, 0),
+                instruction(WindowClass::ProductBfBf, 0, 0, 0),
             ],
         );
 
         let (atoms, stats) = decode_program(&artifact).unwrap();
-        assert_eq!(stats.terms, 2);
+        assert_eq!(stats.terms, 3);
         assert!(matches!(
             atoms.as_slice(),
             [WindowAtom::GroupBf {
-                lazy_product_count: 2,
+                lazy_product_count: 3,
                 members,
                 ..
-            }] if members.iter().map(|member| member.coefficient).collect::<Vec<_>>() == vec![0, 1]
+            }] if members.iter().map(|member| member.coefficient).collect::<Vec<_>>() == vec![0, 1, 0]
         ));
     }
 
@@ -1121,7 +1118,7 @@ mod tests {
             GROUP_HAS_PRODUCT | 2,
             vec![
                 instruction(WindowClass::ProductBfBf, 0, 0, 0),
-                instruction(WindowClass::ProductBfBf, REDUCE_AFTER, 0, 0),
+                instruction(WindowClass::ProductBfBf, 0, 0, 0),
                 instruction(WindowClass::ProductBfBf, 0, 0, 0),
             ],
         );
@@ -1138,7 +1135,7 @@ mod tests {
             GROUP_HAS_PRODUCT | 2,
             vec![
                 instruction(WindowClass::ProductBfBf, 0, 0, 0),
-                instruction(WindowClass::ProductBfBf, REDUCE_AFTER, 0, 0),
+                instruction(WindowClass::ProductBfBf, 0, 0, 0),
                 instruction(WindowClass::LinearBf, REDUCE_AFTER, 0, SOURCE_NONE),
             ],
         );
@@ -1150,18 +1147,18 @@ mod tests {
     }
 
     #[test]
-    fn lazy_bf_group_requires_a_boundary_on_the_final_product() {
+    fn lazy_bf_group_rejects_a_rebase_on_the_final_product() {
         let artifact = lazy_bf_group_artifact(
             GROUP_HAS_PRODUCT | 2,
             vec![
                 instruction(WindowClass::ProductBfBf, 0, 0, 0),
-                instruction(WindowClass::ProductBfBf, 1, 0, 0),
+                instruction(WindowClass::ProductBfBf, REDUCE_AFTER | 1, 0, 0),
             ],
         );
 
         assert!(matches!(
             decode_program(&artifact),
-            Err(ArtifactError::LazyReductionBoundaryMissing { record: 2, .. })
+            Err(ArtifactError::LazyReductionFlagOutsidePrefix { record: 2, .. })
         ));
     }
 
@@ -1174,7 +1171,7 @@ mod tests {
                 instruction(WindowClass::ProductBfBf, 0, 0, 0),
                 instruction(WindowClass::ProductBfBf, 0, 0, 0),
                 instruction(WindowClass::ProductBfBf, 0, 0, 0),
-                instruction(WindowClass::ProductBfBf, REDUCE_AFTER, 0, 0),
+                instruction(WindowClass::ProductBfBf, 0, 0, 0),
             ],
         );
 
