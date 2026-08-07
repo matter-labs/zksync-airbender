@@ -1374,7 +1374,7 @@ pub(crate) fn evaluate_initial_soa_parallel<F: PrimeField, E: FieldExtension<F> 
 
                         let mut lazy_products = 0usize;
                         for (a, form, c) in products.iter() {
-                            neon::soa_quad_bb_lazy(
+                            neon::soa_quad_bb_lazy::<27>(
                                 lazy_acc.as_mut_ptr(),
                                 base_grids[*a as usize].as_ptr(),
                                 form_grids[*form as usize].as_ptr(),
@@ -1382,14 +1382,14 @@ pub(crate) fn evaluate_initial_soa_parallel<F: PrimeField, E: FieldExtension<F> 
                             );
                             lazy_products += 1;
                             if lazy_products == 2 {
-                                neon::soa_lazy_condsub(lazy_acc.as_mut_ptr());
+                                neon::soa_lazy_condsub::<27>(lazy_acc.as_mut_ptr());
                                 lazy_products = 0;
                             }
                         }
                         for step in steps.iter() {
                             match step {
                                 BenchStep::QuadBB { a, b, c } => {
-                                    neon::soa_quad_bb_lazy(
+                                    neon::soa_quad_bb_lazy::<27>(
                                         lazy_acc.as_mut_ptr(),
                                         base_grids[*a as usize].as_ptr(),
                                         base_grids[*b as usize].as_ptr(),
@@ -1397,7 +1397,7 @@ pub(crate) fn evaluate_initial_soa_parallel<F: PrimeField, E: FieldExtension<F> 
                                     );
                                     lazy_products += 1;
                                     if lazy_products == 2 {
-                                        neon::soa_lazy_condsub(lazy_acc.as_mut_ptr());
+                                        neon::soa_lazy_condsub::<27>(lazy_acc.as_mut_ptr());
                                         lazy_products = 0;
                                     }
                                 }
@@ -1409,13 +1409,13 @@ pub(crate) fn evaluate_initial_soa_parallel<F: PrimeField, E: FieldExtension<F> 
                                     );
                                     lazy_products += 1;
                                     if lazy_products == 2 {
-                                        neon::soa_lazy_condsub(lazy_acc.as_mut_ptr());
+                                        neon::soa_lazy_condsub::<27>(lazy_acc.as_mut_ptr());
                                         lazy_products = 0;
                                     }
                                 }
                                 BenchStep::QuadBE { base, ext, c } => {
                                     let cb = neon::soa_broadcast_ext(ec(c));
-                                    neon::soa_quad_be(
+                                    neon::soa_quad_be::<27>(
                                         reduced.as_mut_ptr(),
                                         ext_grids[*ext as usize].as_ptr(),
                                         base_grids[*base as usize].as_ptr(),
@@ -1448,11 +1448,11 @@ pub(crate) fn evaluate_initial_soa_parallel<F: PrimeField, E: FieldExtension<F> 
                             neon::soa_add_const(reduced.as_mut_ptr(), &const_bcast);
                         }
 
-                        neon::soa_lazy_finalize(lazy_acc.as_mut_ptr(), lazy_out.as_mut_ptr());
+                        neon::soa_lazy_finalize::<27>(lazy_acc.as_mut_ptr(), lazy_out.as_mut_ptr());
                         let eq_soa = neon::soa_transpose_ext4(
                             precomputed_eq_suffix.as_ptr().add(row) as *const _,
                         );
-                        neon::soa_apply_eq_and_accumulate(
+                        neon::soa_apply_eq_and_accumulate::<27>(
                             acc_soa.as_mut_ptr(),
                             lazy_out.as_ptr(),
                             reduced.as_mut_ptr(),
@@ -2082,6 +2082,1129 @@ pub(crate) fn build_soa_program<F: PrimeField, E: FieldExtension<F> + Field>(
     }
 }
 
+/// Univariate-skip (k = 3) initial pass: each poly's 8 packed values per block
+/// (top-3-bit strides, domain order j = 4*x0+2*x1+x2 on H = <w8>) are LDE'd to
+/// the coset w16*H with size-8 NTTs; the bracketed program is evaluated on all
+/// 16 points (packed linear terms and the constant are dense over the domain),
+/// eq-weighted per 4-row block, and reduced to the `[E; 16]` evaluations of
+/// the skipped-round univariate q on H u w16*H.
+#[cfg(target_arch = "aarch64")]
+fn evaluate_initial_uniskip_soa_parallel<F: PrimeField, E: FieldExtension<F> + Field>(
+    base_field_inputs: &[DisjointAccessQuasiSlice<F, false>],
+    ext_field_inputs: &[DisjointAccessQuasiSlice<E, false>],
+    forms: &[Vec<(FormOp<F>, u16)>],
+    products: &[(u16, u16, E)],
+    rest_steps: &[BenchStep<E>],
+    additive_constant: &E,
+    lde_tables: &neon::SoaLde8Tables,
+    precomputed_eq_suffix: &[E],
+    input_size_log2: usize,
+    worker: &Worker,
+) -> [E; 16] {
+    use crate::gkr::PAR_THRESHOLD;
+    use ::field::baby_bear::ext4::BabyBearExt4;
+    use core::arch::aarch64::{uint32x4_t, vld1q_u32, vst1q_u32};
+
+    if const { !neon::is_bb_pair::<F, E>() } {
+        unreachable!("uniskip variant is BabyBear/Ext4-specific");
+    }
+
+    let work_size = (1 << input_size_log2) / 8;
+    assert_eq!(precomputed_eq_suffix.len(), work_size);
+    assert_eq!(work_size % 4, 0);
+    let num_blocks = work_size / 4;
+    let geometry = worker.get_geometry_with_threshold(num_blocks, PAR_THRESHOLD / 4);
+    let mut acc_chunks = vec![[E::ZERO; 16]; geometry.num_chunks];
+
+    worker.scope_with_threshold(num_blocks, PAR_THRESHOLD / 4, |scope, geometry| {
+        let mut it = acc_chunks.iter_mut();
+        for thread_idx in 0..geometry.num_chunks {
+            let chunk_start = geometry.get_chunk_start_pos(thread_idx) * 4;
+            let chunk_size = geometry.get_chunk_size(thread_idx) * 4;
+            let base_field_inputs = base_field_inputs.to_vec();
+            let ext_field_inputs = ext_field_inputs.to_vec();
+            let lde_tables = *lde_tables;
+            let acc_dst = it.next().unwrap();
+
+            Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| {
+                let input_size = 1 << input_size_log2;
+                let ec = |c: &E| -> &BabyBearExt4 { unsafe { &*(c as *const E as *const _) } };
+                let r11v = neon::soa_r11v();
+                let const_bcast = unsafe { neon::soa_broadcast_ext(ec(additive_constant)) };
+                let has_const = !additive_constant.is_zero();
+
+                // grids: cells 0..8 = H values (domain order), 8..16 = coset LDE
+                let mut base_grids = vec![[0u32; 16 * 4]; base_field_inputs.len()];
+                let mut ext_grids = vec![[0u32; 16 * 16]; ext_field_inputs.len()];
+                let mut form_grids = vec![[0u32; 16 * 4]; forms.len()];
+                let mut lazy_acc = [0u64; 16 * 16];
+                let mut lazy_out = [0u32; 16 * 16];
+                let mut reduced = [0u32; 16 * 16];
+                let mut acc_soa = [0u32; 16 * 16];
+
+                unsafe {
+                    for row in (chunk_start..(chunk_start + chunk_size)).step_by(4) {
+                        for (grid, src) in base_grids.iter_mut().zip(base_field_inputs.iter()) {
+                            let h = neon::soa_read_base_block8(
+                                src.ptr as *const _,
+                                input_size,
+                                row,
+                            );
+                            let coset = neon::soa_lde8(&h, &lde_tables);
+                            for j in 0..8 {
+                                vst1q_u32(grid.as_mut_ptr().add(4 * j), h[j]);
+                                vst1q_u32(grid.as_mut_ptr().add(4 * (8 + j)), coset[j]);
+                            }
+                        }
+                        for (grid, src) in ext_grids.iter_mut().zip(ext_field_inputs.iter()) {
+                            let s0 = input_size / 2;
+                            let s1 = input_size / 4;
+                            let s2 = input_size / 8;
+                            let base = src.ptr as *const BabyBearExt4;
+                            for j in 0..8usize {
+                                let idx =
+                                    row + (j >> 2) * s0 + ((j >> 1) & 1) * s1 + (j & 1) * s2;
+                                let limbs = neon::soa_transpose_ext4(base.add(idx));
+                                neon::soa_store_cell(grid.as_mut_ptr().add(16 * j), &limbs);
+                            }
+                            for l in 0..4usize {
+                                let h: [uint32x4_t; 8] = core::array::from_fn(|j| {
+                                    vld1q_u32(grid.as_ptr().add(16 * j + 4 * l))
+                                });
+                                let coset = neon::soa_lde8(&h, &lde_tables);
+                                for j in 0..8 {
+                                    vst1q_u32(
+                                        grid.as_mut_ptr().add(16 * (8 + j) + 4 * l),
+                                        coset[j],
+                                    );
+                                }
+                            }
+                        }
+                        // forms: materialize on the H half, then LDE like a poly
+                        for (grid, members) in form_grids.iter_mut().zip(forms.iter()) {
+                            grid[..32].fill(0);
+                            for (op, idx) in members.iter() {
+                                let src = base_grids[*idx as usize].as_ptr();
+                                match op {
+                                    FormOp::Add => {
+                                        neon::soa_base_form_add_n::<8>(grid.as_mut_ptr(), src)
+                                    }
+                                    FormOp::Sub => {
+                                        neon::soa_base_form_sub_n::<8>(grid.as_mut_ptr(), src)
+                                    }
+                                    FormOp::Mul(c) => neon::soa_base_form_muladd_n::<8>(
+                                        grid.as_mut_ptr(),
+                                        src,
+                                        *(c as *const F as *const _),
+                                    ),
+                                }
+                            }
+                            let h: [uint32x4_t; 8] = core::array::from_fn(|j| {
+                                vld1q_u32(grid.as_ptr().add(4 * j))
+                            });
+                            let coset = neon::soa_lde8(&h, &lde_tables);
+                            for j in 0..8 {
+                                vst1q_u32(grid.as_mut_ptr().add(4 * (8 + j)), coset[j]);
+                            }
+                        }
+
+                        let mut lazy_products = 0usize;
+                        macro_rules! lazy_tick {
+                            () => {
+                                lazy_products += 1;
+                                if lazy_products == 2 {
+                                    neon::soa_lazy_condsub::<16>(lazy_acc.as_mut_ptr());
+                                    lazy_products = 0;
+                                }
+                            };
+                        }
+                        for (a, form, c) in products.iter() {
+                            neon::soa_quad_bb_lazy::<16>(
+                                lazy_acc.as_mut_ptr(),
+                                base_grids[*a as usize].as_ptr(),
+                                form_grids[*form as usize].as_ptr(),
+                                ec(c),
+                            );
+                            lazy_tick!();
+                        }
+                        for step in rest_steps.iter() {
+                            match step {
+                                BenchStep::QuadBB { a, b, c } => {
+                                    neon::soa_quad_bb_lazy::<16>(
+                                        lazy_acc.as_mut_ptr(),
+                                        base_grids[*a as usize].as_ptr(),
+                                        base_grids[*b as usize].as_ptr(),
+                                        ec(c),
+                                    );
+                                    lazy_tick!();
+                                }
+                                BenchStep::LinB { i, c } => {
+                                    neon::soa_lin_base_all_n::<16>(
+                                        lazy_acc.as_mut_ptr(),
+                                        base_grids[*i as usize].as_ptr(),
+                                        ec(c),
+                                    );
+                                    lazy_tick!();
+                                }
+                                BenchStep::QuadBE { base, ext, c } => {
+                                    let cb = neon::soa_broadcast_ext(ec(c));
+                                    neon::soa_quad_be::<16>(
+                                        reduced.as_mut_ptr(),
+                                        ext_grids[*ext as usize].as_ptr(),
+                                        base_grids[*base as usize].as_ptr(),
+                                        &cb,
+                                        r11v,
+                                    );
+                                }
+                                BenchStep::QuadEE { a, b, c } => {
+                                    let cb = neon::soa_broadcast_ext(ec(c));
+                                    neon::soa_quad_ee_n::<16>(
+                                        reduced.as_mut_ptr(),
+                                        ext_grids[*a as usize].as_ptr(),
+                                        ext_grids[*b as usize].as_ptr(),
+                                        &cb,
+                                        r11v,
+                                    );
+                                }
+                                BenchStep::LinE { i, c } => {
+                                    let cb = neon::soa_broadcast_ext(ec(c));
+                                    neon::soa_lin_ext_all_n::<16>(
+                                        reduced.as_mut_ptr(),
+                                        ext_grids[*i as usize].as_ptr(),
+                                        &cb,
+                                        r11v,
+                                    );
+                                }
+                            }
+                        }
+                        if has_const {
+                            neon::soa_add_const_all_n::<16>(reduced.as_mut_ptr(), &const_bcast);
+                        }
+
+                        neon::soa_lazy_finalize::<16>(lazy_acc.as_mut_ptr(), lazy_out.as_mut_ptr());
+                        let eq_soa = neon::soa_transpose_ext4(
+                            precomputed_eq_suffix.as_ptr().add(row) as *const _,
+                        );
+                        neon::soa_apply_eq_and_accumulate::<16>(
+                            acc_soa.as_mut_ptr(),
+                            lazy_out.as_ptr(),
+                            reduced.as_mut_ptr(),
+                            &eq_soa,
+                            r11v,
+                        );
+                    }
+
+                    let mut out = [BabyBearExt4::ZERO; 16];
+                    neon::soa_final_reduce_to_ext_n::<16>(acc_soa.as_ptr(), out.as_mut_ptr());
+                    *acc_dst = *(&out as *const _ as *const [E; 16]);
+                }
+            })
+        }
+    });
+
+    let mut acc = acc_chunks.pop().unwrap();
+    for el in acc_chunks.into_iter() {
+        for i in 0..16 {
+            acc[i].add_assign(&el[i]);
+        }
+    }
+
+    acc
+}
+
+/// Univariate-skip k = 6 initial pass: 64 packed values per block LDE'd to the
+/// coset with size-64 NTTs (radix-2 or radix-8 pipeline), bracketed program on
+/// all 128 evaluation points.
+#[cfg(target_arch = "aarch64")]
+fn evaluate_initial_uniskip64_soa_parallel<F: PrimeField, E: FieldExtension<F> + Field>(
+    base_field_inputs: &[DisjointAccessQuasiSlice<F, false>],
+    ext_field_inputs: &[DisjointAccessQuasiSlice<E, false>],
+    forms: &[Vec<(FormOp<F>, u16)>],
+    products: &[(u16, u16, E)],
+    rest_steps: &[BenchStep<E>],
+    additive_constant: &E,
+    lde_tables: &neon::SoaLde64Tables,
+    use_radix8: bool,
+    precomputed_eq_suffix: &[E],
+    input_size_log2: usize,
+    worker: &Worker,
+) -> [E; 128] {
+    use crate::gkr::PAR_THRESHOLD;
+    use ::field::baby_bear::ext4::BabyBearExt4;
+    use core::arch::aarch64::{uint32x4_t, vld1q_u32, vst1q_u32};
+
+    if const { !neon::is_bb_pair::<F, E>() } {
+        unreachable!("uniskip variant is BabyBear/Ext4-specific");
+    }
+
+    let work_size = (1 << input_size_log2) / 64;
+    assert_eq!(precomputed_eq_suffix.len(), work_size);
+    assert_eq!(work_size % 4, 0);
+    let num_blocks = work_size / 4;
+    let geometry = worker.get_geometry_with_threshold(num_blocks, PAR_THRESHOLD / 4);
+    let mut acc_chunks = vec![[E::ZERO; 128]; geometry.num_chunks];
+
+    worker.scope_with_threshold(num_blocks, PAR_THRESHOLD / 4, |scope, geometry| {
+        let mut it = acc_chunks.iter_mut();
+        for thread_idx in 0..geometry.num_chunks {
+            let chunk_start = geometry.get_chunk_start_pos(thread_idx) * 4;
+            let chunk_size = geometry.get_chunk_size(thread_idx) * 4;
+            let base_field_inputs = base_field_inputs.to_vec();
+            let ext_field_inputs = ext_field_inputs.to_vec();
+            let lde_tables = *lde_tables;
+            let acc_dst = it.next().unwrap();
+
+            Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| {
+                let input_size = 1 << input_size_log2;
+                let ec = |c: &E| -> &BabyBearExt4 { unsafe { &*(c as *const E as *const _) } };
+                let r11v = neon::soa_r11v();
+                let const_bcast = unsafe { neon::soa_broadcast_ext(ec(additive_constant)) };
+                let has_const = !additive_constant.is_zero();
+                let lde = |h: &[uint32x4_t; 64]| -> [uint32x4_t; 64] {
+                    unsafe {
+                        if use_radix8 {
+                            neon::soa_lde64_r8(h, &lde_tables)
+                        } else {
+                            neon::soa_lde64_r2(h, &lde_tables)
+                        }
+                    }
+                };
+
+                let mut base_grids = vec![[0u32; 128 * 4]; base_field_inputs.len()];
+                let mut ext_grids = vec![[0u32; 128 * 16]; ext_field_inputs.len()];
+                let mut form_grids = vec![[0u32; 128 * 4]; forms.len()];
+                let mut lazy_acc = vec![0u64; 128 * 16];
+                let mut lazy_out = vec![0u32; 128 * 16];
+                let mut reduced = vec![0u32; 128 * 16];
+                let mut acc_soa = vec![0u32; 128 * 16];
+
+                unsafe {
+                    for row in (chunk_start..(chunk_start + chunk_size)).step_by(4) {
+                        for (grid, src) in base_grids.iter_mut().zip(base_field_inputs.iter()) {
+                            let h = neon::soa_read_base_block64(
+                                src.ptr as *const _,
+                                input_size,
+                                row,
+                            );
+                            let coset = lde(&h);
+                            for j in 0..64 {
+                                vst1q_u32(grid.as_mut_ptr().add(4 * j), h[j]);
+                                vst1q_u32(grid.as_mut_ptr().add(4 * (64 + j)), coset[j]);
+                            }
+                        }
+                        for (grid, src) in ext_grids.iter_mut().zip(ext_field_inputs.iter()) {
+                            let step = input_size / 64;
+                            let base = src.ptr as *const BabyBearExt4;
+                            for j in 0..64usize {
+                                let mut off = row;
+                                for bit in 0..6 {
+                                    if (j >> bit) & 1 == 1 {
+                                        off += step << bit;
+                                    }
+                                }
+                                let limbs = neon::soa_transpose_ext4(base.add(off));
+                                neon::soa_store_cell(grid.as_mut_ptr().add(16 * j), &limbs);
+                            }
+                            for l in 0..4usize {
+                                let h: [uint32x4_t; 64] = core::array::from_fn(|j| {
+                                    vld1q_u32(grid.as_ptr().add(16 * j + 4 * l))
+                                });
+                                let coset = lde(&h);
+                                for j in 0..64 {
+                                    vst1q_u32(
+                                        grid.as_mut_ptr().add(16 * (64 + j) + 4 * l),
+                                        coset[j],
+                                    );
+                                }
+                            }
+                        }
+                        for (grid, members) in form_grids.iter_mut().zip(forms.iter()) {
+                            grid[..64 * 4].fill(0);
+                            for (op, idx) in members.iter() {
+                                let src = base_grids[*idx as usize].as_ptr();
+                                match op {
+                                    FormOp::Add => {
+                                        neon::soa_base_form_add_n::<64>(grid.as_mut_ptr(), src)
+                                    }
+                                    FormOp::Sub => {
+                                        neon::soa_base_form_sub_n::<64>(grid.as_mut_ptr(), src)
+                                    }
+                                    FormOp::Mul(c) => neon::soa_base_form_muladd_n::<64>(
+                                        grid.as_mut_ptr(),
+                                        src,
+                                        *(c as *const F as *const _),
+                                    ),
+                                }
+                            }
+                            let h: [uint32x4_t; 64] = core::array::from_fn(|j| {
+                                vld1q_u32(grid.as_ptr().add(4 * j))
+                            });
+                            let coset = lde(&h);
+                            for j in 0..64 {
+                                vst1q_u32(grid.as_mut_ptr().add(4 * (64 + j)), coset[j]);
+                            }
+                        }
+
+                        let mut lazy_products = 0usize;
+                        macro_rules! lazy_tick {
+                            () => {
+                                lazy_products += 1;
+                                if lazy_products == 2 {
+                                    neon::soa_lazy_condsub::<128>(lazy_acc.as_mut_ptr());
+                                    lazy_products = 0;
+                                }
+                            };
+                        }
+                        for (a, form, c) in products.iter() {
+                            neon::soa_quad_bb_lazy::<128>(
+                                lazy_acc.as_mut_ptr(),
+                                base_grids[*a as usize].as_ptr(),
+                                form_grids[*form as usize].as_ptr(),
+                                ec(c),
+                            );
+                            lazy_tick!();
+                        }
+                        for step in rest_steps.iter() {
+                            match step {
+                                BenchStep::QuadBB { a, b, c } => {
+                                    neon::soa_quad_bb_lazy::<128>(
+                                        lazy_acc.as_mut_ptr(),
+                                        base_grids[*a as usize].as_ptr(),
+                                        base_grids[*b as usize].as_ptr(),
+                                        ec(c),
+                                    );
+                                    lazy_tick!();
+                                }
+                                BenchStep::LinB { i, c } => {
+                                    neon::soa_lin_base_all_n::<128>(
+                                        lazy_acc.as_mut_ptr(),
+                                        base_grids[*i as usize].as_ptr(),
+                                        ec(c),
+                                    );
+                                    lazy_tick!();
+                                }
+                                BenchStep::QuadBE { base, ext, c } => {
+                                    let cb = neon::soa_broadcast_ext(ec(c));
+                                    neon::soa_quad_be::<128>(
+                                        reduced.as_mut_ptr(),
+                                        ext_grids[*ext as usize].as_ptr(),
+                                        base_grids[*base as usize].as_ptr(),
+                                        &cb,
+                                        r11v,
+                                    );
+                                }
+                                BenchStep::QuadEE { a, b, c } => {
+                                    let cb = neon::soa_broadcast_ext(ec(c));
+                                    neon::soa_quad_ee_n::<128>(
+                                        reduced.as_mut_ptr(),
+                                        ext_grids[*a as usize].as_ptr(),
+                                        ext_grids[*b as usize].as_ptr(),
+                                        &cb,
+                                        r11v,
+                                    );
+                                }
+                                BenchStep::LinE { i, c } => {
+                                    let cb = neon::soa_broadcast_ext(ec(c));
+                                    neon::soa_lin_ext_all_n::<128>(
+                                        reduced.as_mut_ptr(),
+                                        ext_grids[*i as usize].as_ptr(),
+                                        &cb,
+                                        r11v,
+                                    );
+                                }
+                            }
+                        }
+                        if has_const {
+                            neon::soa_add_const_all_n::<128>(reduced.as_mut_ptr(), &const_bcast);
+                        }
+
+                        neon::soa_lazy_finalize::<128>(
+                            lazy_acc.as_mut_ptr(),
+                            lazy_out.as_mut_ptr(),
+                        );
+                        let eq_soa = neon::soa_transpose_ext4(
+                            precomputed_eq_suffix.as_ptr().add(row) as *const _,
+                        );
+                        neon::soa_apply_eq_and_accumulate::<128>(
+                            acc_soa.as_mut_ptr(),
+                            lazy_out.as_ptr(),
+                            reduced.as_mut_ptr(),
+                            &eq_soa,
+                            r11v,
+                        );
+                    }
+
+                    let mut out = [BabyBearExt4::ZERO; 128];
+                    neon::soa_final_reduce_to_ext_n::<128>(acc_soa.as_ptr(), out.as_mut_ptr());
+                    *acc_dst = *(&out as *const _ as *const [E; 128]);
+                }
+            })
+        }
+    });
+
+    let mut acc = acc_chunks.pop().unwrap();
+    for el in acc_chunks.into_iter() {
+        for i in 0..128 {
+            acc[i].add_assign(&el[i]);
+        }
+    }
+
+    acc
+}
+
+/// Slot-schedule step for the tiled uniskip evaluator. Base-pool indices
+/// < `num_base` are real polys; >= `num_base` are bracket forms (materialized
+/// from source taps on load, so forms do not pin their member grids).
+#[derive(Clone)]
+pub enum TiledStep<E: Field> {
+    LoadBase { slot: u16, idx: u16 },
+    LoadExt { slot: u16, idx: u16 },
+    /// combine the form's members from their RESIDENT grids (all 128 cells --
+    /// LDE is linear, so the coset half combines directly) into `slot`
+    BuildForm { slot: u16, form: u16, member_slots: Vec<u16> },
+    QuadBB { sa: u16, sb: u16, c: E },
+    QuadBE { sb: u16, se: u16, c: E },
+    QuadEE { sa: u16, sb: u16, c: E },
+    LinB { slot: u16, c: E },
+    LinE { slot: u16, c: E },
+}
+
+pub struct TiledStats {
+    pub num_clusters: usize,
+    pub isolated_ops: usize,
+    pub peak_base_live: usize,
+    pub peak_ext_live: usize,
+    pub base_loads: usize,
+    pub ext_loads: usize,
+    pub distinct_base: usize,
+    pub distinct_ext: usize,
+}
+
+/// Clustered min-scratch schedule over the BRACKETED op set (products +
+/// remainder + linears), with forms as virtual base-pool operands.
+fn produce_tiled_uniskip_schedule<F: PrimeField, E: FieldExtension<F> + Field>(
+    forms: &[Vec<(FormOp<F>, u16)>],
+    products: &[(u16, u16, E)],
+    rest_steps: &[BenchStep<E>],
+    num_base: usize,
+    base_cap: usize,
+    ext_cap: usize,
+) -> (Vec<TiledStep<E>>, TiledStats) {
+    use std::collections::{BTreeMap, BTreeSet};
+    #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
+    enum Opnd {
+        B(u16),
+        X(u16),
+    }
+    #[derive(Clone)]
+    enum Op<E> {
+        Quad(Opnd, Opnd, E),
+        Lin(Opnd, E),
+        /// materialize form f from its members
+        Build(u16),
+    }
+    let nb = num_base as u16;
+    let mut ops: Vec<Op<E>> = vec![];
+    // form builds first in the op universe (scheduled by the greedy wherever
+    // cheapest, but always before the first product that uses the form)
+    let build_op_of_form: Vec<usize> = (0..forms.len()).map(|f| f).collect();
+    for f in 0..forms.len() {
+        ops.push(Op::Build(f as u16));
+    }
+    let _ = &build_op_of_form;
+    for (a, f, c) in products.iter() {
+        ops.push(Op::Quad(Opnd::B(*a), Opnd::B(nb + *f), *c));
+    }
+    for step in rest_steps.iter() {
+        match step {
+            BenchStep::QuadBB { a, b, c } => ops.push(Op::Quad(Opnd::B(*a), Opnd::B(*b), *c)),
+            BenchStep::QuadBE { base, ext, c } => {
+                ops.push(Op::Quad(Opnd::B(*base), Opnd::X(*ext), *c))
+            }
+            BenchStep::QuadEE { a, b, c } => ops.push(Op::Quad(Opnd::X(*a), Opnd::X(*b), *c)),
+            BenchStep::LinB { i, c } => ops.push(Op::Lin(Opnd::B(*i), *c)),
+            BenchStep::LinE { i, c } => ops.push(Op::Lin(Opnd::X(*i), *c)),
+        }
+    }
+    // Build ops list ALL member polys plus the produced form as operands, so
+    // clustering/liveness keep members resident through the build and the
+    // form resident through its products.
+    let operands_of = |op: &Op<E>| -> Vec<Opnd> {
+        match op {
+            Op::Quad(a, b, _) => vec![Some(*a), Some(*b)].into_iter().flatten().collect(),
+            Op::Lin(a, _) => vec![*a],
+            Op::Build(f) => {
+                let mut v: Vec<Opnd> = forms[*f as usize]
+                    .iter()
+                    .map(|(_, m)| Opnd::B(*m))
+                    .collect();
+                v.push(Opnd::B(nb + *f));
+                v
+            }
+        }
+    };
+
+    // union-find clustering
+    let n = ops.len();
+    let mut parent: Vec<usize> = (0..n).collect();
+    fn find(p: &mut Vec<usize>, mut x: usize) -> usize {
+        while p[x] != x {
+            p[x] = p[p[x]];
+            x = p[x];
+        }
+        x
+    }
+    let mut first: BTreeMap<Opnd, usize> = BTreeMap::new();
+    for (pos, op) in ops.iter().enumerate() {
+        for o in operands_of(op).iter() {
+            if let Some(&f0) = first.get(o) {
+                let (ra, rb) = (find(&mut parent, f0), find(&mut parent, pos));
+                if ra != rb {
+                    parent[ra] = rb;
+                }
+            } else {
+                first.insert(*o, pos);
+            }
+        }
+    }
+    let mut clusters: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
+    for pos in 0..n {
+        let r = find(&mut parent, pos);
+        clusters.entry(r).or_default().push(pos);
+    }
+    let mut cluster_list: Vec<Vec<usize>> = clusters.into_values().collect();
+    cluster_list.sort_by_key(|c| (c.len(), c[0]));
+    let isolated = cluster_list.iter().filter(|c| c.len() == 1).count();
+
+    // greedy order + peak-live
+    let mut remaining: BTreeMap<Opnd, usize> = BTreeMap::new();
+    for op in ops.iter() {
+        for o in operands_of(op).iter() {
+            *remaining.entry(*o).or_default() += 1;
+        }
+    }
+    let mut order: Vec<usize> = Vec::with_capacity(n);
+    let mut live: BTreeSet<Opnd> = BTreeSet::new();
+    let mut rem = remaining.clone();
+    let (mut peak_b, mut peak_x) = (0usize, 0usize);
+    let mut form_built = vec![false; forms.len()];
+    for cluster in cluster_list.iter() {
+        let mut pending = cluster.clone();
+        while !pending.is_empty() {
+            let mut best = usize::MAX;
+            let mut best_key = (usize::MAX, 0usize, usize::MAX);
+            for (i, &pos) in pending.iter().enumerate() {
+                // a product/linear referencing an unbuilt form is not yet
+                // schedulable
+                let uses_unbuilt_form = operands_of(&ops[pos]).iter().any(|o| {
+                    matches!(o, Opnd::B(v) if *v >= nb && !form_built[(*v - nb) as usize])
+                }) && !matches!(ops[pos], Op::Build(_));
+                if uses_unbuilt_form {
+                    continue;
+                }
+                let mut new_loads = 0usize;
+                let mut new_uses = 0usize;
+                for o in operands_of(&ops[pos]).iter() {
+                    if !live.contains(o) {
+                        new_loads += 1;
+                        new_uses += rem[o];
+                    }
+                }
+                let key = (new_loads, usize::MAX - new_uses, pos);
+                if key < best_key {
+                    best_key = key;
+                    best = i;
+                }
+            }
+            assert!(best != usize::MAX, "no schedulable op (form dependency cycle?)");
+            let pos = pending.swap_remove(best);
+            if let Op::Build(f) = ops[pos] {
+                form_built[f as usize] = true;
+            }
+            for o in operands_of(&ops[pos]).iter() {
+                live.insert(*o);
+            }
+            peak_b = peak_b.max(live.iter().filter(|o| matches!(o, Opnd::B(_))).count());
+            peak_x = peak_x.max(live.iter().filter(|o| matches!(o, Opnd::X(_))).count());
+            for o in operands_of(&ops[pos]).iter() {
+                let r = rem.get_mut(o).unwrap();
+                *r -= 1;
+                if *r == 0 {
+                    live.remove(o);
+                }
+            }
+            order.push(pos);
+        }
+    }
+
+    // Belady slot assignment
+    let mut uses: BTreeMap<Opnd, Vec<usize>> = BTreeMap::new();
+    for (pos, &p) in order.iter().enumerate() {
+        for o in operands_of(&ops[p]).iter() {
+            uses.entry(*o).or_default().push(pos);
+        }
+    }
+    let mut cursor: BTreeMap<Opnd, usize> = uses.keys().map(|k| (*k, 0usize)).collect();
+    struct Pool {
+        resident: Vec<Option<u16>>,
+        loc: std::collections::BTreeMap<u16, u16>,
+        loads: usize,
+    }
+    let mut bp = Pool {
+        resident: vec![None; base_cap],
+        loc: BTreeMap::new(),
+        loads: 0,
+    };
+    let mut xp = Pool {
+        resident: vec![None; ext_cap],
+        loc: BTreeMap::new(),
+        loads: 0,
+    };
+    let mut steps: Vec<TiledStep<E>> = vec![];
+    for &p in order.iter() {
+        // Build ops are handled specially: members must be resident (loaded on
+        // demand), then the form gets a fresh slot; forms are never reloadable
+        // (that would require re-running the build), so at sane capacities the
+        // Belady policy must keep them resident through their last product.
+        if let Op::Build(f) = ops[p] {
+            let members = &forms[f as usize];
+            let mut member_slots: Vec<u16> = Vec::with_capacity(members.len());
+            for (_, m) in members.iter() {
+                let idx = *m;
+                if let Some(&sl) = bp.loc.get(&idx) {
+                    member_slots.push(sl);
+                    continue;
+                }
+                let sl = if let Some(free) = bp.resident.iter().position(|e| e.is_none()) {
+                    free as u16
+                } else {
+                    let mut vs = u16::MAX;
+                    let mut vd = 0usize;
+                    for (sn, r) in bp.resident.iter().enumerate() {
+                        let r = r.unwrap();
+                        // never evict another member of this build, and never
+                        // evict a live form
+                        if members.iter().any(|(_, mm)| *mm == r) || r >= nb {
+                            continue;
+                        }
+                        let ro = Opnd::B(r);
+                        let d = {
+                            let l = &uses[&ro];
+                            let c = cursor[&ro];
+                            if c < l.len() {
+                                l[c]
+                            } else {
+                                usize::MAX
+                            }
+                        };
+                        if d >= vd {
+                            vd = d;
+                            vs = sn as u16;
+                        }
+                    }
+                    assert!(vs != u16::MAX, "base capacity too small for form build");
+                    let ev = bp.resident[vs as usize].take().unwrap();
+                    bp.loc.remove(&ev);
+                    vs
+                };
+                bp.resident[sl as usize] = Some(idx);
+                bp.loc.insert(idx, sl);
+                bp.loads += 1;
+                steps.push(TiledStep::LoadBase { slot: sl, idx });
+                member_slots.push(sl);
+            }
+            // slot for the form itself
+            let form_operand = nb + f;
+            let sl = if let Some(free) = bp.resident.iter().position(|e| e.is_none()) {
+                free as u16
+            } else {
+                let mut vs = u16::MAX;
+                let mut vd = 0usize;
+                for (sn, r) in bp.resident.iter().enumerate() {
+                    let r = r.unwrap();
+                    if members.iter().any(|(_, mm)| *mm == r) || r >= nb {
+                        continue;
+                    }
+                    let ro = Opnd::B(r);
+                    let d = {
+                        let l = &uses[&ro];
+                        let c = cursor[&ro];
+                        if c < l.len() {
+                            l[c]
+                        } else {
+                            usize::MAX
+                        }
+                    };
+                    if d >= vd {
+                        vd = d;
+                        vs = sn as u16;
+                    }
+                }
+                assert!(vs != u16::MAX, "base capacity too small for form slot");
+                let ev = bp.resident[vs as usize].take().unwrap();
+                bp.loc.remove(&ev);
+                vs
+            };
+            bp.resident[sl as usize] = Some(form_operand);
+            bp.loc.insert(form_operand, sl);
+            steps.push(TiledStep::BuildForm {
+                slot: sl,
+                form: f,
+                member_slots,
+            });
+            for o in operands_of(&ops[p]).iter() {
+                *cursor.get_mut(o).unwrap() += 1;
+            }
+            continue;
+        }
+
+        let operands = operands_of(&ops[p]);
+        let mut slots: [u16; 2] = [0; 2];
+        for (i, o) in operands.iter().enumerate() {
+            let o = o;
+            let (pool, is_b, idx) = match o {
+                Opnd::B(v) => (&mut bp, true, *v),
+                Opnd::X(v) => (&mut xp, false, *v),
+            };
+            if let Some(&sl) = pool.loc.get(&idx) {
+                slots[i] = sl;
+                continue;
+            }
+            assert!(
+                !(is_b && idx >= nb),
+                "form {} evicted before its last use; increase base capacity",
+                idx - nb
+            );
+            let protected: Option<u16> = operands.get(1 - i).and_then(|other| match (o, other) {
+                (Opnd::B(_), Opnd::B(v)) => Some(*v),
+                (Opnd::X(_), Opnd::X(v)) => Some(*v),
+                _ => None,
+            });
+            let sl = if let Some(free) = pool.resident.iter().position(|e| e.is_none()) {
+                free as u16
+            } else {
+                let mut vs = u16::MAX;
+                let mut vd = 0usize;
+                for (sn, r) in pool.resident.iter().enumerate() {
+                    let r = r.unwrap();
+                    if Some(r) == protected {
+                        continue;
+                    }
+                    // a live form cannot be re-materialized by a plain load
+                    if is_b && r >= nb {
+                        let ro = Opnd::B(r);
+                        let l = &uses[&ro];
+                        if cursor[&ro] < l.len() {
+                            continue;
+                        }
+                    }
+                    let ro = if is_b { Opnd::B(r) } else { Opnd::X(r) };
+                    let d = {
+                        let l = &uses[&ro];
+                        let c = cursor[&ro];
+                        if c < l.len() {
+                            l[c]
+                        } else {
+                            usize::MAX
+                        }
+                    };
+                    if d >= vd {
+                        vd = d;
+                        vs = sn as u16;
+                    }
+                }
+                let ev = pool.resident[vs as usize].take().unwrap();
+                pool.loc.remove(&ev);
+                vs
+            };
+            pool.resident[sl as usize] = Some(idx);
+            pool.loc.insert(idx, sl);
+            pool.loads += 1;
+            steps.push(if is_b {
+                TiledStep::LoadBase { slot: sl, idx }
+            } else {
+                TiledStep::LoadExt { slot: sl, idx }
+            });
+            slots[i] = sl;
+        }
+        for o in operands.iter() {
+            *cursor.get_mut(o).unwrap() += 1;
+        }
+        match &ops[p] {
+            Op::Build(_) => unreachable!("handled above"),
+            Op::Quad(a, b, c) => match (a, b) {
+                (Opnd::B(_), Opnd::B(_)) => steps.push(TiledStep::QuadBB {
+                    sa: slots[0],
+                    sb: slots[1],
+                    c: *c,
+                }),
+                (Opnd::B(_), Opnd::X(_)) => steps.push(TiledStep::QuadBE {
+                    sb: slots[0],
+                    se: slots[1],
+                    c: *c,
+                }),
+                (Opnd::X(_), Opnd::X(_)) => steps.push(TiledStep::QuadEE {
+                    sa: slots[0],
+                    sb: slots[1],
+                    c: *c,
+                }),
+                _ => unreachable!("BE ops are ordered base-first"),
+            },
+            Op::Lin(a, c) => match a {
+                Opnd::B(_) => steps.push(TiledStep::LinB { slot: slots[0], c: *c }),
+                Opnd::X(_) => steps.push(TiledStep::LinE { slot: slots[0], c: *c }),
+            },
+        }
+    }
+
+    let stats = TiledStats {
+        num_clusters: cluster_list.len(),
+        isolated_ops: isolated,
+        peak_base_live: peak_b.max(2),
+        peak_ext_live: peak_x.max(2),
+        base_loads: bp.loads,
+        ext_loads: xp.loads,
+        distinct_base: uses.keys().filter(|o| matches!(o, Opnd::B(_))).count(),
+        distinct_ext: uses.keys().filter(|o| matches!(o, Opnd::X(_))).count(),
+    };
+    (steps, stats)
+}
+
+/// Tiled k=6 uniskip initial pass: grids live in a bounded slot pool and are
+/// (re)materialized on the schedule's Load steps, so only
+/// `base_cap * 2KB + ext_cap * 8KB` of grid scratch is hot at any time.
+/// Forms are materialized directly from source taps (member reads + combine
+/// on H, then LDE), so they do not pin member grids.
+#[cfg(target_arch = "aarch64")]
+fn evaluate_initial_uniskip64_tiled_soa_parallel<F: PrimeField, E: FieldExtension<F> + Field>(
+    base_field_inputs: &[DisjointAccessQuasiSlice<F, false>],
+    ext_field_inputs: &[DisjointAccessQuasiSlice<E, false>],
+    forms: &[Vec<(FormOp<F>, u16)>],
+    schedule: &[TiledStep<E>],
+    base_cap: usize,
+    ext_cap: usize,
+    additive_constant: &E,
+    lde_tables: &neon::SoaLde64Tables,
+    precomputed_eq_suffix: &[E],
+    input_size_log2: usize,
+    worker: &Worker,
+) -> [E; 128] {
+    use crate::gkr::PAR_THRESHOLD;
+    use ::field::baby_bear::ext4::BabyBearExt4;
+    use core::arch::aarch64::{uint32x4_t, vld1q_u32, vst1q_u32};
+
+    if const { !neon::is_bb_pair::<F, E>() } {
+        unreachable!("uniskip variant is BabyBear/Ext4-specific");
+    }
+    let num_base = base_field_inputs.len();
+    let work_size = (1 << input_size_log2) / 64;
+    assert_eq!(precomputed_eq_suffix.len(), work_size);
+    assert_eq!(work_size % 4, 0);
+    let num_blocks = work_size / 4;
+    let geometry = worker.get_geometry_with_threshold(num_blocks, PAR_THRESHOLD / 4);
+    let mut acc_chunks = vec![[E::ZERO; 128]; geometry.num_chunks];
+
+    worker.scope_with_threshold(num_blocks, PAR_THRESHOLD / 4, |scope, geometry| {
+        let mut it = acc_chunks.iter_mut();
+        for thread_idx in 0..geometry.num_chunks {
+            let chunk_start = geometry.get_chunk_start_pos(thread_idx) * 4;
+            let chunk_size = geometry.get_chunk_size(thread_idx) * 4;
+            let base_field_inputs = base_field_inputs.to_vec();
+            let ext_field_inputs = ext_field_inputs.to_vec();
+            let lde_tables = *lde_tables;
+            let acc_dst = it.next().unwrap();
+
+            Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| {
+                let input_size = 1 << input_size_log2;
+                let ec = |c: &E| -> &BabyBearExt4 { unsafe { &*(c as *const E as *const _) } };
+                let r11v = neon::soa_r11v();
+                let const_bcast = unsafe { neon::soa_broadcast_ext(ec(additive_constant)) };
+                let has_const = !additive_constant.is_zero();
+
+                let mut base_slots = vec![[0u32; 128 * 4]; base_cap];
+                let mut ext_slots = vec![[0u32; 128 * 16]; ext_cap];
+                let mut lazy_acc = vec![0u64; 128 * 16];
+                let mut lazy_out = vec![0u32; 128 * 16];
+                let mut reduced = vec![0u32; 128 * 16];
+                let mut acc_soa = vec![0u32; 128 * 16];
+
+                unsafe {
+                    for row in (chunk_start..(chunk_start + chunk_size)).step_by(4) {
+                        let mut lazy_products = 0usize;
+                        macro_rules! lazy_tick {
+                            () => {
+                                lazy_products += 1;
+                                if lazy_products == 2 {
+                                    neon::soa_lazy_condsub::<128>(lazy_acc.as_mut_ptr());
+                                    lazy_products = 0;
+                                }
+                            };
+                        }
+                        for step in schedule.iter() {
+                            match step {
+                                TiledStep::LoadBase { slot, idx } => {
+                                    let grid = base_slots[*slot as usize].as_mut_ptr();
+                                    let h = neon::soa_read_base_block64(
+                                        base_field_inputs[*idx as usize].ptr as *const _,
+                                        input_size,
+                                        row,
+                                    );
+                                    let coset = neon::soa_lde64_r2(&h, &lde_tables);
+                                    for j in 0..64 {
+                                        vst1q_u32(grid.add(4 * j), h[j]);
+                                        vst1q_u32(grid.add(4 * (64 + j)), coset[j]);
+                                    }
+                                }
+                                TiledStep::BuildForm {
+                                    slot,
+                                    form,
+                                    member_slots,
+                                } => {
+                                    // LDE is linear: combine members' full
+                                    // 128-cell grids straight from L1 -- no
+                                    // source reads, no form LDE
+                                    let dst = base_slots[*slot as usize].as_mut_ptr();
+                                    core::ptr::write_bytes(dst, 0, 128 * 4);
+                                    for ((op, _), msl) in
+                                        forms[*form as usize].iter().zip(member_slots.iter())
+                                    {
+                                        let src = base_slots[*msl as usize].as_ptr();
+                                        match op {
+                                            FormOp::Add => neon::soa_base_form_add_n::<128>(
+                                                dst, src,
+                                            ),
+                                            FormOp::Sub => neon::soa_base_form_sub_n::<128>(
+                                                dst, src,
+                                            ),
+                                            FormOp::Mul(c) => {
+                                                neon::soa_base_form_muladd_n::<128>(
+                                                    dst,
+                                                    src,
+                                                    *(c as *const F as *const _),
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                                TiledStep::LoadExt { slot, idx } => {
+                                    let grid = ext_slots[*slot as usize].as_mut_ptr();
+                                    let step_sz = input_size / 64;
+                                    let base = ext_field_inputs[*idx as usize].ptr
+                                        as *const BabyBearExt4;
+                                    for j in 0..64usize {
+                                        let mut off = row;
+                                        for bit in 0..6 {
+                                            if (j >> bit) & 1 == 1 {
+                                                off += step_sz << bit;
+                                            }
+                                        }
+                                        let limbs = neon::soa_transpose_ext4(base.add(off));
+                                        neon::soa_store_cell(grid.add(16 * j), &limbs);
+                                    }
+                                    for l in 0..4usize {
+                                        let h: [uint32x4_t; 64] = core::array::from_fn(|j| {
+                                            vld1q_u32(
+                                                ext_slots[*slot as usize]
+                                                    .as_ptr()
+                                                    .add(16 * j + 4 * l),
+                                            )
+                                        });
+                                        let coset = neon::soa_lde64_r2(&h, &lde_tables);
+                                        for j in 0..64 {
+                                            vst1q_u32(
+                                                ext_slots[*slot as usize]
+                                                    .as_mut_ptr()
+                                                    .add(16 * (64 + j) + 4 * l),
+                                                coset[j],
+                                            );
+                                        }
+                                    }
+                                }
+                                TiledStep::QuadBB { sa, sb, c } => {
+                                    neon::soa_quad_bb_lazy::<128>(
+                                        lazy_acc.as_mut_ptr(),
+                                        base_slots[*sa as usize].as_ptr(),
+                                        base_slots[*sb as usize].as_ptr(),
+                                        ec(c),
+                                    );
+                                    lazy_tick!();
+                                }
+                                TiledStep::LinB { slot, c } => {
+                                    neon::soa_lin_base_all_n::<128>(
+                                        lazy_acc.as_mut_ptr(),
+                                        base_slots[*slot as usize].as_ptr(),
+                                        ec(c),
+                                    );
+                                    lazy_tick!();
+                                }
+                                TiledStep::QuadBE { sb, se, c } => {
+                                    let cb = neon::soa_broadcast_ext(ec(c));
+                                    neon::soa_quad_be::<128>(
+                                        reduced.as_mut_ptr(),
+                                        ext_slots[*se as usize].as_ptr(),
+                                        base_slots[*sb as usize].as_ptr(),
+                                        &cb,
+                                        r11v,
+                                    );
+                                }
+                                TiledStep::QuadEE { sa, sb, c } => {
+                                    let cb = neon::soa_broadcast_ext(ec(c));
+                                    neon::soa_quad_ee_n::<128>(
+                                        reduced.as_mut_ptr(),
+                                        ext_slots[*sa as usize].as_ptr(),
+                                        ext_slots[*sb as usize].as_ptr(),
+                                        &cb,
+                                        r11v,
+                                    );
+                                }
+                                TiledStep::LinE { slot, c } => {
+                                    let cb = neon::soa_broadcast_ext(ec(c));
+                                    neon::soa_lin_ext_all_n::<128>(
+                                        reduced.as_mut_ptr(),
+                                        ext_slots[*slot as usize].as_ptr(),
+                                        &cb,
+                                        r11v,
+                                    );
+                                }
+                            }
+                        }
+                        if has_const {
+                            neon::soa_add_const_all_n::<128>(reduced.as_mut_ptr(), &const_bcast);
+                        }
+                        neon::soa_lazy_finalize::<128>(
+                            lazy_acc.as_mut_ptr(),
+                            lazy_out.as_mut_ptr(),
+                        );
+                        let eq_soa = neon::soa_transpose_ext4(
+                            precomputed_eq_suffix.as_ptr().add(row) as *const _,
+                        );
+                        neon::soa_apply_eq_and_accumulate::<128>(
+                            acc_soa.as_mut_ptr(),
+                            lazy_out.as_ptr(),
+                            reduced.as_mut_ptr(),
+                            &eq_soa,
+                            r11v,
+                        );
+                    }
+
+                    let mut out = [BabyBearExt4::ZERO; 128];
+                    neon::soa_final_reduce_to_ext_n::<128>(acc_soa.as_ptr(), out.as_mut_ptr());
+                    *acc_dst = *(&out as *const _ as *const [E; 128]);
+                }
+            })
+        }
+    });
+
+    let mut acc = acc_chunks.pop().unwrap();
+    for el in acc_chunks.into_iter() {
+        for i in 0..128 {
+            acc[i].add_assign(&el[i]);
+        }
+    }
+
+    acc
+}
+
 /// Entry point called from the test. `layer` must be a same-size (non
 /// dimension-reducing) layer, typically layer 0, with `gkr_storage` populated by
 /// the forward pass.
@@ -2581,6 +3704,1287 @@ pub fn run_windowed_sumcheck_benchmarks<F: PrimeField, E: FieldExtension<F> + Fi
                 "[SB] window-3 rounds 0-2, SoA + bracket-preserving: {:?} (SoA expanded [S]: {:?})",
                 best_sb, best_soa,
             );
+
+            // ---------------- uniskip (k = 3) initial round ----------------
+            {
+                use ::field::baby_bear::base::BabyBearField;
+                let omega16_bb = ::fft::domain_generator_for_size::<BabyBearField>(16);
+                let mut omega8_bb = omega16_bb;
+                omega8_bb.square();
+                let lde_tables = neon::SoaLde8Tables::new(omega8_bb, omega16_bb);
+
+                let mut acc_u = [E::ZERO; 16];
+                let mut best_u = std::time::Duration::MAX;
+                for _ in 0..iters {
+                    let now = std::time::Instant::now();
+                    acc_u = evaluate_initial_uniskip_soa_parallel(
+                        &base_sources_all,
+                        &ext_sources_all,
+                        &forms,
+                        &products,
+                        &rest_steps,
+                        &description.constant_term,
+                        &lde_tables,
+                        eq_suffix_initial,
+                        folding_steps,
+                        worker,
+                    );
+                    best_u = best_u.min(now.elapsed());
+                }
+
+                // H-identity: the eq-weighted sum of q over H must equal the
+                // eq-weighted sum of the window accumulator's binary cells
+                let eq8 = make_eq_poly_in_full::<E>(&prev_challenges[..3], worker)
+                    .pop()
+                    .unwrap();
+                let mut lhs = E::ZERO;
+                let mut rhs = E::ZERO;
+                for j in 0..8usize {
+                    let mut t = eq8[j];
+                    t.mul_assign(&acc_u[j]);
+                    lhs.add_assign(&t);
+                    let cell = 9 * (j >> 2) + 3 * ((j >> 1) & 1) + (j & 1);
+                    let mut t = eq8[j];
+                    t.mul_assign(&acc_all[cell]);
+                    rhs.add_assign(&t);
+                }
+                assert_eq!(lhs, rhs, "uniskip H-domain eq-weighted sum vs window accumulator");
+                println!(
+                    "[U] uniskip k=3 initial (16-point q, bracketed): {:?} (window-3 SoA+brackets [SB]: {:?})",
+                    best_u, best_sb,
+                );
+                println!("validation: uniskip q matches window accumulator on the H domain");
+
+                // -------- uniskip k=6, size-64 NTT (radix-2 vs radix-8) --------
+                let omega128_bb = ::fft::domain_generator_for_size::<BabyBearField>(128);
+                let mut omega64_bb = omega128_bb;
+                omega64_bb.square();
+                let lde64_tables = neon::SoaLde64Tables::new(omega64_bb, omega128_bb);
+                let eq_suffix_64 = find_eq_with_len(&eq_tables, trace_len / 64);
+
+                // standalone NTT micro-benchmark
+                {
+                    use core::arch::aarch64::{uint32x4_t, vdupq_n_u32};
+                    let dummy: [uint32x4_t; 64] =
+                        core::array::from_fn(|i| unsafe { vdupq_n_u32(i as u32 + 1) });
+                    let iters_ntt = 200_000u32;
+                    let now = std::time::Instant::now();
+                    let mut sink = dummy;
+                    for _ in 0..iters_ntt {
+                        sink = unsafe { neon::soa_lde64_r2(&sink, &lde64_tables) };
+                    }
+                    std::hint::black_box(&sink);
+                    let t_r2 = now.elapsed() / iters_ntt;
+                    let now = std::time::Instant::now();
+                    let mut sink = dummy;
+                    for _ in 0..iters_ntt {
+                        sink = unsafe { neon::soa_lde64_r8(&sink, &lde64_tables) };
+                    }
+                    std::hint::black_box(&sink);
+                    let t_r8 = now.elapsed() / iters_ntt;
+                    println!(
+                        "[NTT64] lde64 micro: radix-2 {:?}/call, radix-8 {:?}/call (4 lanes each)",
+                        t_r2, t_r8
+                    );
+                }
+
+                let mut acc_u64_r2 = [E::ZERO; 128];
+                let mut best_u64_r2 = std::time::Duration::MAX;
+                for _ in 0..iters {
+                    let now = std::time::Instant::now();
+                    acc_u64_r2 = evaluate_initial_uniskip64_soa_parallel(
+                        &base_sources_all,
+                        &ext_sources_all,
+                        &forms,
+                        &products,
+                        &rest_steps,
+                        &description.constant_term,
+                        &lde64_tables,
+                        false,
+                        eq_suffix_64,
+                        folding_steps,
+                        worker,
+                    );
+                    best_u64_r2 = best_u64_r2.min(now.elapsed());
+                }
+                let mut acc_u64_r8 = [E::ZERO; 128];
+                let mut best_u64_r8 = std::time::Duration::MAX;
+                for _ in 0..iters {
+                    let now = std::time::Instant::now();
+                    acc_u64_r8 = evaluate_initial_uniskip64_soa_parallel(
+                        &base_sources_all,
+                        &ext_sources_all,
+                        &forms,
+                        &products,
+                        &rest_steps,
+                        &description.constant_term,
+                        &lde64_tables,
+                        true,
+                        eq_suffix_64,
+                        folding_steps,
+                        worker,
+                    );
+                    best_u64_r8 = best_u64_r8.min(now.elapsed());
+                }
+                for i in 0..128 {
+                    assert_eq!(
+                        acc_u64_r2[i], acc_u64_r8[i],
+                        "radix-2 vs radix-8 accumulator divergence at point {}",
+                        i
+                    );
+                }
+                // claim identity: eq6-weighted sum over H64 must equal the
+                // eq3-weighted sum over H8 (both equal the full-cube claim)
+                let eq64 = make_eq_poly_in_full::<E>(&prev_challenges[..6], worker)
+                    .pop()
+                    .unwrap();
+                let mut lhs64 = E::ZERO;
+                for j in 0..64usize {
+                    let mut t = eq64[j];
+                    t.mul_assign(&acc_u64_r2[j]);
+                    lhs64.add_assign(&t);
+                }
+                assert_eq!(lhs64, lhs, "uniskip k=6 H-domain claim vs k=3");
+                println!(
+                    "[U64] uniskip k=6 initial (128-point q, bracketed): radix-2 {:?}, radix-8 {:?} (k=3 [U]: {:?}, window [SB]: {:?})",
+                    best_u64_r2, best_u64_r8, best_u, best_sb,
+                );
+                println!("validation: k=6 radix variants bit-identical; H64 claim matches k=3");
+
+                // -------- tiled k=6: clustered schedule, bounded slot pools --------
+                let (_, tstats) = produce_tiled_uniskip_schedule::<F, E>(
+                    &forms,
+                    &products,
+                    &rest_steps,
+                    base_polys_all.len(),
+                    64,
+                    8,
+                );
+                println!(
+                    "[U64T] bracketed DAG: {} clusters, {} isolated; zero-recompute capacity {} base(+forms) / {} ext slots",
+                    tstats.num_clusters,
+                    tstats.isolated_ops,
+                    tstats.peak_base_live,
+                    tstats.peak_ext_live,
+                );
+                for (bcap, ecap) in [
+                    (tstats.peak_base_live, tstats.peak_ext_live),
+                    (tstats.peak_base_live + 4, tstats.peak_ext_live + 2),
+                ] {
+                    let (schedule, st) = produce_tiled_uniskip_schedule::<F, E>(
+                        &forms,
+                        &products,
+                        &rest_steps,
+                        base_polys_all.len(),
+                        bcap,
+                        ecap,
+                    );
+                    let mut acc_t = [E::ZERO; 128];
+                    let mut best_t64 = std::time::Duration::MAX;
+                    for _ in 0..iters {
+                        let now = std::time::Instant::now();
+                        acc_t = evaluate_initial_uniskip64_tiled_soa_parallel(
+                            &base_sources_all,
+                            &ext_sources_all,
+                            &forms,
+                            &schedule,
+                            bcap,
+                            ecap,
+                            &description.constant_term,
+                            &lde64_tables,
+                            eq_suffix_64,
+                            folding_steps,
+                            worker,
+                        );
+                        best_t64 = best_t64.min(now.elapsed());
+                    }
+                    for i in 0..128 {
+                        assert_eq!(
+                            acc_t[i], acc_u64_r2[i],
+                            "tiled k=6 accumulator divergence at point {}",
+                            i
+                        );
+                    }
+                    println!(
+                        "[U64T] tiled k=6 {}b/{}e slots (grid loads {} base / {} distinct, {} ext): {:?} (untiled [U64]: {:?}, k=3 [U]: {:?}, [SB]: {:?})",
+                        bcap,
+                        ecap,
+                        st.base_loads,
+                        st.distinct_base,
+                        st.ext_loads,
+                        best_t64,
+                        best_u64_r2,
+                        best_u,
+                        best_sb,
+                    );
+                }
+                println!("validation: tiled k=6 accumulator bit-identical to untiled");
+
+                // ---- LSB-binding artificial test (contiguous taps, SoA engine) ----
+                {
+                    use super::lsb_bench::{
+                        self, LsbLdeAny, PH_ALL, PH_EXT, PH_FILL_BASE, PH_FILL_EXT, PH_FORMS,
+                        PH_LAZY,
+                    };
+
+                    // eq split for the LSB convention.
+                    //
+                    // The MSB phases weight trace index i with
+                    //   W(i) = eq8[top 3 bits of i] * eqs[low 21 bits of i]
+                    // and both factors are eq tables, i.e. products of one
+                    // factor per BIT. A per-bit product can be regrouped around
+                    // any bit boundary, in particular around the LOW k bits:
+                    //
+                    //     i (24 bits):  [ suffix bits (row) | low k bits (j) ]
+                    //     W(i)       =        T_k[row]      *     w_k[j]
+                    //
+                    // so the LSB evaluators can use w_k as the window weight
+                    // and T_k as the per-row suffix table while producing the
+                    // SAME total claim as the MSB phases -- that is what the
+                    // cross-family `lhs` assertions below rely on. Extraction:
+                    // w_k[j] = eqs[j]/eqs[0] strips the suffix part off the
+                    // low-bit entries, and T_k[row] regains the eq8 factor for
+                    // the top 3 bits plus the remaining eqs bits.
+                    let eqs = eq_suffix_initial;
+                    let inv0 = eqs[0].inverse().expect("eq entry invertible");
+                    let normed = |j: usize| {
+                        let mut t = eqs[j];
+                        t.mul_assign(&inv0);
+                        t
+                    };
+                    let w3_lsb: Vec<E> = (0..8).map(normed).collect();
+                    let w6_lsb: Vec<E> = (0..64).map(normed).collect();
+                    let rows8 = trace_len / 8;
+                    let sub8 = rows8 / 8;
+                    let t8: Vec<E> = (0..rows8)
+                        .map(|row| {
+                            let mut t = eq8[row / sub8];
+                            t.mul_assign(&eqs[(row % sub8) * 8]);
+                            t
+                        })
+                        .collect();
+                    let rows64 = trace_len / 64;
+                    let sub64 = rows64 / 8;
+                    let t64: Vec<E> = (0..rows64)
+                        .map(|row| {
+                            let mut t = eq8[row / sub64];
+                            t.mul_assign(&eqs[(row % sub64) * 64]);
+                            t
+                        })
+                        .collect();
+
+                    let lsb8_tables =
+                        LsbLdeAny::K8(neon::LsbLde8Tables::new(omega8_bb, omega16_bb));
+                    let lsb64_tables =
+                        LsbLdeAny::K64(neon::LsbLde64Tables::new(omega64_bb, omega128_bb));
+
+                    // canonical vs partially-reduced NTT8 micro-benchmark
+                    {
+                        use core::arch::aarch64::vdupq_n_u32;
+                        let LsbLdeAny::K8(ref t8m) = lsb8_tables else {
+                            unreachable!()
+                        };
+                        let dummy = [unsafe { vdupq_n_u32(1) }, unsafe { vdupq_n_u32(2) }];
+                        let iters_ntt = 2_000_000u32;
+                        let now = std::time::Instant::now();
+                        let mut sink = dummy;
+                        for _ in 0..iters_ntt {
+                            sink = unsafe { neon::lsb_lde8_base(sink, t8m) };
+                        }
+                        std::hint::black_box(&sink);
+                        let t_canon = now.elapsed() / iters_ntt;
+                        let now = std::time::Instant::now();
+                        let mut sink = dummy;
+                        for _ in 0..iters_ntt {
+                            sink = unsafe { neon::lsb_lde8_base_lazy(sink, t8m) };
+                        }
+                        std::hint::black_box(&sink);
+                        let t_lazy = now.elapsed() / iters_ntt;
+                        let t8mat = neon::LsbLde8MatTables::new(omega8_bb, omega16_bb);
+                        let now = std::time::Instant::now();
+                        let mut sink = dummy;
+                        for _ in 0..iters_ntt {
+                            sink = unsafe { neon::lsb_lde8_base_mat(sink, &t8mat) };
+                        }
+                        std::hint::black_box(&sink);
+                        let t_mat = now.elapsed() / iters_ntt;
+                        println!(
+                            "[NTT8] lsb lde8 micro: canonical {:?}/call, partially-reduced {:?}/call, lagrange-matrix {:?}/call (8 cells each)",
+                            t_canon, t_lazy, t_mat
+                        );
+                    }
+
+                    // zero-reload bounded schedule (bracketed op set, forms
+                    // built from resident members)
+                    let (lsb_schedule, lsb_stats) = produce_tiled_uniskip_schedule::<F, E>(
+                        &forms,
+                        &products,
+                        &rest_steps,
+                        base_polys_all.len(),
+                        tstats.peak_base_live,
+                        tstats.peak_ext_live,
+                    );
+
+                    macro_rules! time_runs {
+                        ($n:expr, $body:expr) => {{
+                            let mut best = std::time::Duration::MAX;
+                            let mut result = None;
+                            for _ in 0..$n {
+                                let now = std::time::Instant::now();
+                                let r = $body;
+                                best = best.min(now.elapsed());
+                                result = Some(r);
+                            }
+                            (result.unwrap(), best)
+                        }};
+                    }
+                    macro_rules! lsb_full {
+                        ($ng:literal, $nbin:literal, $out:literal, $u:literal, $tables:expr, $t:expr, $rows:expr, $mask:expr) => {
+                            lsb_bench::lsb_soa_full_parallel::<F, E, $ng, $nbin, $out, $u>(
+                                &base_sources_all,
+                                &ext_sources_all,
+                                &base_interp,
+                                &ext_interp,
+                                $tables,
+                                &forms,
+                                &products,
+                                &rest_steps,
+                                &description.constant_term,
+                                $t,
+                                $rows,
+                                worker,
+                                $mask,
+                            )
+                        };
+                    }
+                    macro_rules! lsb_bounded {
+                        ($ng:literal, $nbin:literal, $out:literal, $tables:expr, $t:expr, $rows:expr) => {
+                            lsb_bench::lsb_soa_bounded_parallel::<F, E, $ng, $nbin, $out>(
+                                &base_sources_all,
+                                &ext_sources_all,
+                                $tables,
+                                &forms,
+                                &lsb_schedule,
+                                tstats.peak_base_live,
+                                tstats.peak_ext_live,
+                                &description.constant_term,
+                                $t,
+                                $rows,
+                                worker,
+                            )
+                        };
+                    }
+
+                    let (acc_lw3, best_lw3) =
+                        time_runs!(iters, lsb_full!(7, 2, 27, 1, None, &t8, rows8, PH_ALL));
+                    let (acc_lw3b, best_lw3b) =
+                        time_runs!(iters, lsb_bounded!(7, 2, 27, None, &t8, rows8));
+                    let (acc_lu8, best_lu8) = time_runs!(
+                        iters,
+                        lsb_full!(4, 4, 16, 1, Some(&lsb8_tables), &t8, rows8, PH_ALL)
+                    );
+                    let (acc_lu8b, best_lu8b) =
+                        time_runs!(iters, lsb_bounded!(4, 4, 16, Some(&lsb8_tables), &t8, rows8));
+                    let lsb8_mat_tables =
+                        LsbLdeAny::K8Mat(neon::LsbLde8MatTables::new(omega8_bb, omega16_bb));
+                    let (acc_lu8m, best_lu8m) = time_runs!(
+                        iters,
+                        lsb_full!(4, 4, 16, 1, Some(&lsb8_mat_tables), &t8, rows8, PH_ALL)
+                    );
+                    let (acc_lu8m_x2, best_lu8m_x2) = time_runs!(
+                        iters,
+                        lsb_full!(4, 4, 16, 2, Some(&lsb8_mat_tables), &t8, rows8, PH_ALL)
+                    );
+                    let (acc_lu64, best_lu64) = time_runs!(
+                        iters,
+                        lsb_full!(32, 32, 128, 1, Some(&lsb64_tables), &t64, rows64, PH_ALL)
+                    );
+                    let (acc_lu64b, best_lu64b) = time_runs!(
+                        iters,
+                        lsb_bounded!(32, 32, 128, Some(&lsb64_tables), &t64, rows64)
+                    );
+
+                    // row-unrolled variants (outer-loop analog of the MSB
+                    // 4-row vectorization)
+                    let (acc_lw3_x2, best_lw3_x2) =
+                        time_runs!(iters, lsb_full!(7, 2, 27, 2, None, &t8, rows8, PH_ALL));
+                    let (acc_lw3_x4, best_lw3_x4) =
+                        time_runs!(iters, lsb_full!(7, 2, 27, 4, None, &t8, rows8, PH_ALL));
+                    let (acc_lu8_x2, best_lu8_x2) = time_runs!(
+                        iters,
+                        lsb_full!(4, 4, 16, 2, Some(&lsb8_tables), &t8, rows8, PH_ALL)
+                    );
+                    let (acc_lu8_x4, best_lu8_x4) = time_runs!(
+                        iters,
+                        lsb_full!(4, 4, 16, 4, Some(&lsb8_tables), &t8, rows8, PH_ALL)
+                    );
+                    let (acc_lu64_x2, best_lu64_x2) = time_runs!(
+                        iters,
+                        lsb_full!(32, 32, 128, 2, Some(&lsb64_tables), &t64, rows64, PH_ALL)
+                    );
+                    let (acc_lu64_x4, best_lu64_x4) = time_runs!(
+                        iters,
+                        lsb_full!(32, 32, 128, 4, Some(&lsb64_tables), &t64, rows64, PH_ALL)
+                    );
+
+                    // validations: the eq-weighted claim is layout-independent
+                    let claim_of = |weights: &[E], cells: &[E]| {
+                        let mut s = E::ZERO;
+                        for (w, c) in weights.iter().zip(cells.iter()) {
+                            let mut t = *w;
+                            t.mul_assign(c);
+                            s.add_assign(&t);
+                        }
+                        s
+                    };
+                    assert_eq!(
+                        claim_of(&w3_lsb, &acc_lw3[..8]),
+                        lhs,
+                        "LSB window-3 claim vs MSB full-cube claim"
+                    );
+                    assert_eq!(
+                        claim_of(&w3_lsb, &acc_lu8[..8]),
+                        lhs,
+                        "LSB uniskip k=3 claim vs MSB full-cube claim"
+                    );
+                    assert_eq!(
+                        claim_of(&w6_lsb, &acc_lu64[..64]),
+                        lhs,
+                        "LSB uniskip k=6 claim vs MSB full-cube claim"
+                    );
+                    for j in 0..8 {
+                        assert_eq!(
+                            acc_lw3[j], acc_lu8[j],
+                            "LSB window-3 binary cell {} vs uniskip H cell",
+                            j
+                        );
+                    }
+                    assert_eq!(acc_lw3b, acc_lw3, "LSB window-3 bounded vs full");
+                    assert_eq!(acc_lu8b, acc_lu8, "LSB uniskip k=3 bounded vs full");
+                    assert_eq!(acc_lu64b, acc_lu64, "LSB uniskip k=6 bounded vs full");
+                    assert_eq!(acc_lw3_x2, acc_lw3, "LSB window-3 x2 vs x1");
+                    assert_eq!(acc_lw3_x4, acc_lw3, "LSB window-3 x4 vs x1");
+                    assert_eq!(acc_lu8_x2, acc_lu8, "LSB uniskip k=3 x2 vs x1");
+                    assert_eq!(acc_lu8m, acc_lu8, "LSB uniskip k=3 matrix-LDE vs NTT");
+                    assert_eq!(acc_lu8m_x2, acc_lu8, "LSB uniskip k=3 matrix-LDE x2 vs NTT");
+                    assert_eq!(acc_lu8_x4, acc_lu8, "LSB uniskip k=3 x4 vs x1");
+                    assert_eq!(acc_lu64_x2, acc_lu64, "LSB uniskip k=6 x2 vs x1");
+                    assert_eq!(acc_lu64_x4, acc_lu64, "LSB uniskip k=6 x4 vs x1");
+
+                    println!(
+                        "[LSB-W3] window-3 LSB SoA engine: full {:?} (x2 {:?}, x4 {:?}), bounded {:?} ({}b/{}e slots, {} base loads / {} distinct) (MSB SoA+brackets [SB]: {:?})",
+                        best_lw3,
+                        best_lw3_x2,
+                        best_lw3_x4,
+                        best_lw3b,
+                        tstats.peak_base_live,
+                        tstats.peak_ext_live,
+                        lsb_stats.base_loads,
+                        lsb_stats.distinct_base,
+                        best_sb,
+                    );
+                    println!(
+                        "[LSB-U8] uniskip k=3 LSB SoA engine: full {:?} (x2 {:?}, x4 {:?}), bounded {:?} (MSB SoA [U]: {:?})",
+                        best_lu8, best_lu8_x2, best_lu8_x4, best_lu8b, best_u,
+                    );
+                    println!(
+                        "[LSB-U8M] uniskip k=3 LSB, lagrange-matrix LDE: full {:?} (x2 {:?}) (NTT-LDE full: {:?}, x2: {:?})",
+                        best_lu8m, best_lu8m_x2, best_lu8, best_lu8_x2,
+                    );
+                    println!(
+                        "[LSB-U64] uniskip k=6 LSB SoA engine: full {:?} (x2 {:?}, x4 {:?}), bounded {:?} (MSB SoA [U64] r2: {:?})",
+                        best_lu64, best_lu64_x2, best_lu64_x4, best_lu64b, best_u64_r2,
+                    );
+                    println!(
+                        "validation: LSB claims match the MSB full-cube claim; window-3 binary cells == uniskip k=3 H cells; bounded and x2/x4 bit-identical to full"
+                    );
+
+                    // phase split: cumulative masks, reported as deltas
+                    macro_rules! split_report {
+                        ($label:expr, $ng:literal, $nbin:literal, $out:literal, $tables:expr, $t:expr, $rows:expr) => {{
+                            let cum = [
+                                PH_FILL_BASE,
+                                PH_FILL_BASE | PH_FILL_EXT,
+                                PH_FILL_BASE | PH_FILL_EXT | PH_FORMS,
+                                PH_FILL_BASE | PH_FILL_EXT | PH_FORMS | PH_LAZY,
+                                PH_FILL_BASE | PH_FILL_EXT | PH_FORMS | PH_LAZY | PH_EXT,
+                                PH_ALL,
+                            ];
+                            let mut times: Vec<std::time::Duration> = vec![];
+                            for m in cum {
+                                let (_, t) = time_runs!(
+                                    2,
+                                    lsb_full!($ng, $nbin, $out, 1, $tables, $t, $rows, m)
+                                );
+                                times.push(t);
+                            }
+                            let d = |i: usize| {
+                                if i == 0 {
+                                    times[0]
+                                } else {
+                                    times[i].saturating_sub(times[i - 1])
+                                }
+                            };
+                            println!(
+                                "[LSB-SPLIT] {}: fill-base {:?}, fill-ext {:?}, forms {:?}, bb-lazy {:?}, ext-terms {:?}, eq+acc {:?} (full {:?})",
+                                $label,
+                                d(0),
+                                d(1),
+                                d(2),
+                                d(3),
+                                d(4),
+                                d(5),
+                                times[5],
+                            );
+                        }};
+                    }
+                    split_report!("window-3", 7, 2, 27, None, &t8, rows8);
+                    split_report!("uniskip k=3", 4, 4, 16, Some(&lsb8_tables), &t8, rows8);
+                    split_report!("uniskip k=6", 32, 32, 128, Some(&lsb64_tables), &t64, rows64);
+
+                    // ---- full 24-round chain of width-3 uniskip passes ----
+                    //
+                    // Artificial (fixed-challenge, no transcript) protocol on
+                    // bit-reversed witness columns. Notation:
+                    //
+                    //   G(..)     the circuit's quadratic gate polynomial: at one
+                    //             point of the boolean cube it combines every
+                    //             column's value there:
+                    //             sum coeff*col_a*col_b (+ linear terms + const).
+                    //   i         24-bit trace index; bit v of i IS boolean
+                    //             variable v. LSB binding: pass g eliminates the
+                    //             three lowest remaining bits (vars 3g..3g+2),
+                    //             so i = row*8 + j with j in 0..8 and `row` the
+                    //             surviving high bits.
+                    //   H, gH     the size-8 subgroup <w8> and its coset g*H
+                    //             (g = w16). Boolean assignment j of a row is
+                    //             identified with the point u_j = w8^j of H.
+                    //   packed    for a fixed row, a column's 8 values
+                    //   poly      {col[8*row+j]} are the evaluation form of a
+                    //             degree-<8 univariate P_row with P_row(u_j) =
+                    //             col[8*row+j]; the LDE in the evaluators
+                    //             extends it to the coset points.
+                    //   q_g(X)    the pass's packed sum-polynomial
+                    //               q_g(X) = sum_row T_g(row) * G(packed at X)
+                    //             deg q_g <= 14 (G quadratic in degree-7 packed
+                    //             polys), so its 16 values on H u gH pin it down.
+                    //   W(i)      the eq weight, one factor per bit:
+                    //             W(i) = prod_v f_v(bit_v(i)). Because it is a
+                    //             per-bit product it splits around ANY bit group:
+                    //               W(i) = w3_g[j] * T_g(row)
+                    //             with w3_g over the 3 dying bits, T_g the rest.
+                    //   r_g       the pass challenge. Folding = evaluating every
+                    //             packed poly at r_g:
+                    //               folded[row] = P_row(r_g)
+                    //                           = sum_j L_j(r_g) * col[8row+j].
+                    //
+                    // One pass, pictorially (columns shrink 8x):
+                    //
+                    //   col: [ v0 .. v7 | v8 .. v15 | ... ]   8 values per row
+                    //           row 0       row 1
+                    //     |
+                    //     | evaluate: q_g at the 16 points of H u gH
+                    //     | claim:    sum_j w3_g[j] * q_g(u_j)
+                    //     | fold(r_g):
+                    //     v
+                    //   col':[ P_0(r_g) | P_1(r_g) | ... ]    1 value per row
+                    //
+                    // The chain telescopes, which is the entire validation:
+                    //
+                    //   q_g(r_g) = sum_row  T_g(row)   * G(folded row values)
+                    //            = sum_row',j w3_{g+1}[j]*T_{g+1}(row') * G(..)
+                    //            = sum_j w3_{g+1}[j] * q_{g+1}(u_j)
+                    //
+                    // (first step: definition of the fold; second: W splits per
+                    // bit; third: definition of q_{g+1}.) So the NEXT pass's
+                    // weighted H-values must reproduce the PREVIOUS pass's q
+                    // interpolated (degree-15 barycentric) at its challenge --
+                    // any error in the fold, the LDE, the eq tables or the term
+                    // evaluation breaks it. After the last fold every column is
+                    // a single value and the identity degenerates to
+                    // G(final values) == q_7(r_7).
+                    //
+                    // Why eq is (nearly) free here: uniskip keeps the eq factor
+                    // of the three skipped variables OUT of the packed
+                    // polynomial. The prover only multiplies each row's G-value
+                    // by the scalar suffix weight T_g(row) (one ext multiply
+                    // per row, `soa_apply_eq_*`); the window part w3_g touches
+                    // only the 8 H-values of q_g when the claim is formed --
+                    // verifier-side work, 8 multiplies per PASS. The kernels
+                    // never see eq inside the 16-point term evaluation, which
+                    // is why "eq+acc" is 27-66ms of the 1.4s chain in
+                    // [LSB-SPLIT].
+                    {
+                        use ::field::baby_bear::base::BabyBearField;
+                        let nbits = folding_steps;
+                        let nb = base_sources_all.len();
+                        let ne = ext_sources_all.len();
+                        let num_passes = nbits / 3;
+                        assert_eq!(nbits % 3, 0);
+
+                        // bit-reversed column copies (one-time, outside timing)
+                        let t_setup = std::time::Instant::now();
+                        let mut base_cols_rev: Vec<Vec<F>> =
+                            (0..nb).map(|_| vec![F::ZERO; trace_len]).collect();
+                        let mut ext_cols_rev: Vec<Vec<E>> =
+                            (0..ne).map(|_| vec![E::ZERO; trace_len]).collect();
+                        {
+                            let src_b: Vec<usize> =
+                                base_sources_all.iter().map(|s| s.ptr as usize).collect();
+                            let dst_b: Vec<usize> = base_cols_rev
+                                .iter_mut()
+                                .map(|c| c.as_mut_ptr() as usize)
+                                .collect();
+                            let src_e: Vec<usize> =
+                                ext_sources_all.iter().map(|s| s.ptr as usize).collect();
+                            let dst_e: Vec<usize> = ext_cols_rev
+                                .iter_mut()
+                                .map(|c| c.as_mut_ptr() as usize)
+                                .collect();
+                            let total_cols = nb + ne;
+                            worker.scope_with_threshold(total_cols, 1, |scope, geometry| {
+                                for thread_idx in 0..geometry.num_chunks {
+                                    let cs = geometry.get_chunk_start_pos(thread_idx);
+                                    let cl = geometry.get_chunk_size(thread_idx);
+                                    let src_b = src_b.clone();
+                                    let dst_b = dst_b.clone();
+                                    let src_e = src_e.clone();
+                                    let dst_e = dst_e.clone();
+                                    Worker::smart_spawn(
+                                        scope,
+                                        thread_idx == geometry.len() - 1,
+                                        move |_| unsafe {
+                                            let shift = 32 - nbits;
+                                            for c in cs..(cs + cl) {
+                                                if c < nb {
+                                                    let sp = src_b[c] as *const F;
+                                                    let dp = dst_b[c] as *mut F;
+                                                    for i in 0..trace_len {
+                                                        let j = (i as u32).reverse_bits()
+                                                            as usize
+                                                            >> shift;
+                                                        *dp.add(i) = *sp.add(j);
+                                                    }
+                                                } else {
+                                                    let sp = src_e[c - nb] as *const E;
+                                                    let dp = dst_e[c - nb] as *mut E;
+                                                    for i in 0..trace_len {
+                                                        let j = (i as u32).reverse_bits()
+                                                            as usize
+                                                            >> shift;
+                                                        *dp.add(i) = *sp.add(j);
+                                                    }
+                                                }
+                                            }
+                                        },
+                                    )
+                                }
+                            });
+                        }
+                        let brev_base_sources: Vec<_> = base_cols_rev
+                            .iter()
+                            .map(|c| DisjointAccessQuasiSlice::<_, false>::from_init_slice(&c[..]))
+                            .collect();
+                        let brev_ext_sources: Vec<_> = ext_cols_rev
+                            .iter()
+                            .map(|c| DisjointAccessQuasiSlice::<_, false>::from_init_slice(&c[..]))
+                            .collect();
+
+                        // artificial per-variable eq factors + per-pass challenges
+                        let mut seed = 0xC0FFEEu64;
+                        let mut pe = || -> E {
+                            let mut limbs = [BabyBearField::ZERO; 4];
+                            for l in limbs.iter_mut() {
+                                seed = seed
+                                    .wrapping_mul(6364136223846793005)
+                                    .wrapping_add(1442695040888963407);
+                                *l = BabyBearField::from_u32_with_reduction((seed >> 33) as u32);
+                            }
+                            let v =
+                                ::field::baby_bear::ext4::BabyBearExt4::from_array_of_base(limbs);
+                            unsafe { *(&v as *const _ as *const E) }
+                        };
+                        let chall: Vec<E> = (0..nbits).map(|_| pe()).collect();
+                        let rs: Vec<E> = (0..num_passes).map(|_| pe()).collect();
+                        let fac = |v: usize, bit: usize| -> E {
+                            if bit == 1 {
+                                chall[v]
+                            } else {
+                                let mut t = E::ONE;
+                                t.sub_assign(&chall[v]);
+                                t
+                            }
+                        };
+                        let w3g: Vec<[E; 8]> = (0..num_passes)
+                            .map(|g| {
+                                core::array::from_fn(|j| {
+                                    let mut t = E::ONE;
+                                    for b in 0..3 {
+                                        t.mul_assign(&fac(3 * g + b, (j >> b) & 1));
+                                    }
+                                    t
+                                })
+                            })
+                            .collect();
+                        let tgs: Vec<Vec<E>> = (0..num_passes)
+                            .map(|g| {
+                                let rem = nbits - 3 * (g + 1);
+                                let mut t = vec![E::ONE; 1 << rem];
+                                for b in 0..rem {
+                                    let half = 1usize << b;
+                                    let (f0, f1) = (fac(3 * (g + 1) + b, 0), fac(3 * (g + 1) + b, 1));
+                                    for i in 0..half {
+                                        let mut hi = t[i];
+                                        hi.mul_assign(&f1);
+                                        t[i + half] = hi;
+                                        t[i].mul_assign(&f0);
+                                    }
+                                }
+                                t
+                            })
+                            .collect();
+
+                        // 16 evaluation points and interpolation helpers
+                        let u_pts: [E; 16] = core::array::from_fn(|idx| {
+                            let mut u = if idx < 8 {
+                                omega8_bb.pow(idx as u32)
+                            } else {
+                                let mut t = omega16_bb;
+                                t.mul_assign(&omega8_bb.pow((idx - 8) as u32));
+                                t
+                            };
+                            let uf = unsafe { *(&u as *const _ as *const F) };
+                            let _ = &mut u;
+                            E::from_base(uf)
+                        });
+                        let denom_inv: [E; 16] = core::array::from_fn(|j| {
+                            let mut d = E::ONE;
+                            for k in 0..16 {
+                                if k != j {
+                                    let mut t = u_pts[j];
+                                    t.sub_assign(&u_pts[k]);
+                                    d.mul_assign(&t);
+                                }
+                            }
+                            d.inverse().expect("distinct points")
+                        });
+                        let interp_at = |q: &[E; 16], r: &E| -> E {
+                            let mut pre = [E::ONE; 17];
+                            for k in 0..16 {
+                                let mut t = *r;
+                                t.sub_assign(&u_pts[k]);
+                                let mut p = pre[k];
+                                p.mul_assign(&t);
+                                pre[k + 1] = p;
+                            }
+                            let mut suf = [E::ONE; 17];
+                            for k in (0..16).rev() {
+                                let mut t = *r;
+                                t.sub_assign(&u_pts[k]);
+                                let mut p = suf[k + 1];
+                                p.mul_assign(&t);
+                                suf[k] = p;
+                            }
+                            let mut acc = E::ZERO;
+                            for j in 0..16 {
+                                let mut t = q[j];
+                                t.mul_assign(&pre[j]);
+                                t.mul_assign(&suf[j + 1]);
+                                t.mul_assign(&denom_inv[j]);
+                                acc.add_assign(&t);
+                            }
+                            acc
+                        };
+                        let eighth_bb = BabyBearField::from_u32_with_reduction(8)
+                            .inverse()
+                            .unwrap();
+                        let l8_at = |r: &E| -> [E; 8] {
+                            let mut z = r.pow(8);
+                            z.sub_assign(&E::ONE);
+                            core::array::from_fn(|j| {
+                                let uj_bb = omega8_bb.pow(j as u32);
+                                let uj = E::from_base(unsafe { *(&uj_bb as *const _ as *const F) });
+                                let mut denom = *r;
+                                denom.sub_assign(&uj);
+                                let mut w = z;
+                                w.mul_assign(&uj);
+                                w.mul_assign(&denom.inverse().expect("r not in H"));
+                                w.mul_assign_by_base(unsafe {
+                                    &*(&eighth_bb as *const _ as *const F)
+                                });
+                                w
+                            })
+                        };
+
+                        // folded term lists over the combined slot space
+                        let nbu = nb as u16;
+                        let mut chain_quads: Vec<(u16, u16, E)> = vec![];
+                        let mut chain_lins: Vec<(u16, E)> = vec![];
+                        for step in rest_steps.iter() {
+                            match step {
+                                BenchStep::QuadBB { a, b, c } => chain_quads.push((*a, *b, *c)),
+                                BenchStep::QuadBE { base, ext, c } => {
+                                    chain_quads.push((*base, nbu + *ext, *c))
+                                }
+                                BenchStep::QuadEE { a, b, c } => {
+                                    chain_quads.push((nbu + *a, nbu + *b, *c))
+                                }
+                                BenchStep::LinB { i, c } => chain_lins.push((*i, *c)),
+                                BenchStep::LinE { i, c } => chain_lins.push((nbu + *i, *c)),
+                            }
+                        }
+                        let t_setup = t_setup.elapsed();
+
+                        {
+                            // SoA fold kernels must agree bitwise with the AoS ones
+                            let lw0 = l8_at(&rs[0]);
+                            let n_check = 1usize << (nbits - 3);
+                            let mut a = vec![E::ZERO; n_check];
+                            let mut b = vec![E::ZERO; n_check];
+                            lsb_bench::lsb_fold_base_parallel::<F, E>(
+                                base_cols_rev[0].as_ptr() as *const u8,
+                                &mut a,
+                                &lw0,
+                                worker,
+                            );
+                            lsb_bench::lsb_fold_base_soa_parallel::<F, E>(
+                                base_cols_rev[0].as_ptr() as *const u8,
+                                &mut b,
+                                &lw0,
+                                worker,
+                            );
+                            assert_eq!(a, b, "SoA base fold vs AoS");
+                            lsb_bench::lsb_fold_ext_parallel::<E>(
+                                ext_cols_rev[0].as_ptr() as *const u8,
+                                &mut a,
+                                &lw0,
+                                worker,
+                            );
+                            lsb_bench::lsb_fold_ext_soa_parallel::<E>(
+                                ext_cols_rev[0].as_ptr() as *const u8,
+                                &mut b,
+                                &lw0,
+                                worker,
+                            );
+                            assert_eq!(a, b, "SoA ext fold vs AoS");
+                        }
+
+                        let mut eval_times = vec![std::time::Duration::ZERO; num_passes];
+                        let mut fold_times = vec![std::time::Duration::ZERO; num_passes];
+                        let mut best_total = std::time::Duration::MAX;
+                        // pre-allocated pass-1 folding buffers (like the MSB
+                        // chain's ext_folding_buffers -- not part of the timing)
+                        let mut pass1_bufs: Vec<Vec<E>> = (0..(nb + ne))
+                            .map(|_| vec![E::ZERO; 1usize << (nbits - 3)])
+                            .collect();
+                        for _iteration in 0..2 {
+                            let t_total = std::time::Instant::now();
+                            let mut q_prev_at_r: Option<E> = None;
+                            let mut combined: Vec<Vec<E>> = Vec::new();
+                            for g in 0..num_passes {
+                                let out_size = 1usize << (nbits - 3 * g - 3);
+                                let t0 = std::time::Instant::now();
+                                let q: [E; 16] = if g == 0 {
+                                    lsb_bench::lsb_soa_full_parallel::<F, E, 4, 4, 16, 2>(
+                                        &brev_base_sources,
+                                        &brev_ext_sources,
+                                        &base_interp,
+                                        &ext_interp,
+                                        Some(&lsb8_mat_tables),
+                                        &forms,
+                                        &products,
+                                        &rest_steps,
+                                        &description.constant_term,
+                                        &tgs[0],
+                                        out_size,
+                                        worker,
+                                        PH_ALL,
+                                    )
+                                } else {
+                                    let cur: &Vec<Vec<E>> =
+                                        if g == 1 { &pass1_bufs } else { &combined };
+                                    let srcs: Vec<DisjointAccessQuasiSlice<E, false>> = cur
+                                        .iter()
+                                        .map(|c| {
+                                            DisjointAccessQuasiSlice::<_, false>::from_init_slice(
+                                                &c[..],
+                                            )
+                                        })
+                                        .collect();
+                                    if out_size % 2 == 0 {
+                                        lsb_bench::lsb_uniskip_ext_pass_parallel::<F, E, 2>(
+                                            &srcs,
+                                            &forms,
+                                            &products,
+                                            &chain_quads,
+                                            &chain_lins,
+                                            &description.constant_term,
+                                            &lsb8_mat_tables,
+                                            &tgs[g],
+                                            out_size,
+                                            worker,
+                                        )
+                                    } else {
+                                        lsb_bench::lsb_uniskip_ext_pass_parallel::<F, E, 1>(
+                                            &srcs,
+                                            &forms,
+                                            &products,
+                                            &chain_quads,
+                                            &chain_lins,
+                                            &description.constant_term,
+                                            &lsb8_mat_tables,
+                                            &tgs[g],
+                                            out_size,
+                                            worker,
+                                        )
+                                    }
+                                };
+                                eval_times[g] = t0.elapsed();
+                                if let Some(expected) = q_prev_at_r {
+                                    let mut claim = E::ZERO;
+                                    for j in 0..8 {
+                                        let mut t = w3g[g][j];
+                                        t.mul_assign(&q[j]);
+                                        claim.add_assign(&t);
+                                    }
+                                    assert_eq!(
+                                        claim, expected,
+                                        "chain claim mismatch entering pass {}",
+                                        g
+                                    );
+                                }
+                                q_prev_at_r = Some(interp_at(&q, &rs[g]));
+                                let lw = l8_at(&rs[g]);
+                                let t1 = std::time::Instant::now();
+                                if g == 0 {
+                                    for (i, col) in base_cols_rev.iter().enumerate() {
+                                        lsb_bench::lsb_fold_base_soa_parallel::<F, E>(
+                                            col.as_ptr() as *const u8,
+                                            &mut pass1_bufs[i],
+                                            &lw,
+                                            worker,
+                                        );
+                                    }
+                                    for (i, col) in ext_cols_rev.iter().enumerate() {
+                                        lsb_bench::lsb_fold_ext_soa_parallel::<E>(
+                                            col.as_ptr() as *const u8,
+                                            &mut pass1_bufs[nb + i],
+                                            &lw,
+                                            worker,
+                                        );
+                                    }
+                                } else {
+                                    let cur: &Vec<Vec<E>> =
+                                        if g == 1 { &pass1_bufs } else { &combined };
+                                    let mut next: Vec<Vec<E>> = Vec::with_capacity(cur.len());
+                                    for col in cur.iter() {
+                                        let mut dstv = vec![E::ZERO; out_size];
+                                        if out_size % 4 == 0 {
+                                            lsb_bench::lsb_fold_ext_soa_parallel::<E>(
+                                                col.as_ptr() as *const u8,
+                                                &mut dstv,
+                                                &lw,
+                                                worker,
+                                            );
+                                        } else {
+                                            lsb_bench::lsb_fold_ext_parallel::<E>(
+                                                col.as_ptr() as *const u8,
+                                                &mut dstv,
+                                                &lw,
+                                                worker,
+                                            );
+                                        }
+                                        next.push(dstv);
+                                    }
+                                    combined = next;
+                                }
+                                fold_times[g] = t1.elapsed();
+                            }
+                            // final identity: G(final values) == q_last(r_last)
+                            let final_vals: Vec<E> = combined.iter().map(|c| c[0]).collect();
+                            let mut g_val = description.constant_term;
+                            for (a, f, c) in products.iter() {
+                                let mut form_val = E::ZERO;
+                                for (op, m) in forms[*f as usize].iter() {
+                                    match op {
+                                        FormOp::Add => {
+                                            form_val.add_assign(&final_vals[*m as usize]);
+                                        }
+                                        FormOp::Sub => {
+                                            form_val.sub_assign(&final_vals[*m as usize]);
+                                        }
+                                        FormOp::Mul(cf) => {
+                                            let mut t = final_vals[*m as usize];
+                                            t.mul_assign_by_base(cf);
+                                            form_val.add_assign(&t);
+                                        }
+                                    }
+                                }
+                                let mut t = final_vals[*a as usize];
+                                t.mul_assign(&form_val);
+                                t.mul_assign(c);
+                                g_val.add_assign(&t);
+                            }
+                            for (a, b, c) in chain_quads.iter() {
+                                let mut t = final_vals[*a as usize];
+                                t.mul_assign(&final_vals[*b as usize]);
+                                t.mul_assign(c);
+                                g_val.add_assign(&t);
+                            }
+                            for (i, c) in chain_lins.iter() {
+                                let mut t = final_vals[*i as usize];
+                                t.mul_assign(c);
+                                g_val.add_assign(&t);
+                            }
+                            assert_eq!(
+                                g_val,
+                                q_prev_at_r.unwrap(),
+                                "final G identity vs interpolated q(r)"
+                            );
+                            best_total = best_total.min(t_total.elapsed());
+                        }
+
+                        let mut head = std::time::Duration::ZERO;
+                        let mut tail = std::time::Duration::ZERO;
+                        for g in 0..num_passes {
+                            let d = eval_times[g] + fold_times[g];
+                            if g < 4 {
+                                head += d;
+                            } else {
+                                tail += d;
+                            }
+                            println!(
+                                "[LSB-CHAIN] pass {} (size 2^{:>2}): eval {:?}, fold {:?}",
+                                g,
+                                nbits - 3 * g,
+                                eval_times[g],
+                                fold_times[g],
+                            );
+                        }
+                        println!(
+                            "[LSB-CHAIN] full 24-var chain of width-3 uniskip passes: total {:?} (to 2^12: {:?}, tail 2^12->1: {:?}; one-time bitrev+setup {:?})",
+                            best_total, head, tail, t_setup,
+                        );
+                        println!(
+                            "validation: every pass claim chains via interpolated q(r); final G(folded values) == q(r)"
+                        );
+
+                        // ---- fused variant: pass-0 fold merged into pass-1 ----
+                        let mut f_eval = vec![std::time::Duration::ZERO; num_passes];
+                        let mut f_fold = vec![std::time::Duration::ZERO; num_passes];
+                        let mut best_total_f = std::time::Duration::MAX;
+                        let mut fpass1_bufs: Vec<Vec<E>> = (0..(nb + ne))
+                            .map(|_| vec![E::ZERO; 1usize << (nbits - 3)])
+                            .collect();
+                        for _iteration in 0..2 {
+                            let t_total = std::time::Instant::now();
+                            let t0 = std::time::Instant::now();
+                            let q0 = lsb_bench::lsb_soa_full_parallel::<F, E, 4, 4, 16, 2>(
+                                &brev_base_sources,
+                                &brev_ext_sources,
+                                &base_interp,
+                                &ext_interp,
+                                Some(&lsb8_mat_tables),
+                                &forms,
+                                &products,
+                                &rest_steps,
+                                &description.constant_term,
+                                &tgs[0],
+                                1usize << (nbits - 3),
+                                worker,
+                                PH_ALL,
+                            );
+                            f_eval[0] = t0.elapsed();
+                            let mut q_prev_at_r = interp_at(&q0, &rs[0]);
+                            let lw0 = l8_at(&rs[0]);
+                            let base_addrs: Vec<usize> = base_cols_rev
+                                .iter()
+                                .map(|c| c.as_ptr() as usize)
+                                .collect();
+                            let ext_addrs: Vec<usize> =
+                                ext_cols_rev.iter().map(|c| c.as_ptr() as usize).collect();
+                            let fold_addrs: Vec<usize> = fpass1_bufs
+                                .iter_mut()
+                                .map(|c| c.as_mut_ptr() as usize)
+                                .collect();
+                            let t1 = std::time::Instant::now();
+                            let q1 = lsb_bench::lsb_fold_and_ext_pass_parallel::<F, E>(
+                                &base_addrs,
+                                &ext_addrs,
+                                &fold_addrs,
+                                &lw0,
+                                &forms,
+                                &products,
+                                &chain_quads,
+                                &chain_lins,
+                                &description.constant_term,
+                                &lsb8_mat_tables,
+                                &tgs[1],
+                                worker,
+                            );
+                            f_eval[1] = t1.elapsed(); // includes the pass-0 fold
+                            {
+                                let mut claim = E::ZERO;
+                                for j in 0..8 {
+                                    let mut t = w3g[1][j];
+                                    t.mul_assign(&q1[j]);
+                                    claim.add_assign(&t);
+                                }
+                                assert_eq!(claim, q_prev_at_r, "fused pass-1 claim");
+                            }
+                            q_prev_at_r = interp_at(&q1, &rs[1]);
+                            let mut fcombined: Vec<Vec<E>> = Vec::new();
+                            for g in 2..num_passes {
+                                let in_size = 1usize << (nbits - 3 * g);
+                                let lwg = l8_at(&rs[g - 1]);
+                                let tf = std::time::Instant::now();
+                                let cur: &Vec<Vec<E>> =
+                                    if g == 2 { &fpass1_bufs } else { &fcombined };
+                                let mut next: Vec<Vec<E>> = Vec::with_capacity(cur.len());
+                                for col in cur.iter() {
+                                    let mut dstv = vec![E::ZERO; in_size];
+                                    if in_size % 4 == 0 {
+                                        lsb_bench::lsb_fold_ext_soa_parallel::<E>(
+                                            col.as_ptr() as *const u8,
+                                            &mut dstv,
+                                            &lwg,
+                                            worker,
+                                        );
+                                    } else {
+                                        lsb_bench::lsb_fold_ext_parallel::<E>(
+                                            col.as_ptr() as *const u8,
+                                            &mut dstv,
+                                            &lwg,
+                                            worker,
+                                        );
+                                    }
+                                    next.push(dstv);
+                                }
+                                fcombined = next;
+                                f_fold[g - 1] = tf.elapsed();
+                                let te = std::time::Instant::now();
+                                let srcs: Vec<DisjointAccessQuasiSlice<E, false>> = fcombined
+                                    .iter()
+                                    .map(|c| {
+                                        DisjointAccessQuasiSlice::<_, false>::from_init_slice(
+                                            &c[..],
+                                        )
+                                    })
+                                    .collect();
+                                let rows_g = in_size / 8;
+                                let q: [E; 16] = if rows_g % 2 == 0 && rows_g >= 2 {
+                                    lsb_bench::lsb_uniskip_ext_pass_parallel::<F, E, 2>(
+                                        &srcs,
+                                        &forms,
+                                        &products,
+                                        &chain_quads,
+                                        &chain_lins,
+                                        &description.constant_term,
+                                        &lsb8_mat_tables,
+                                        &tgs[g],
+                                        rows_g,
+                                        worker,
+                                    )
+                                } else {
+                                    lsb_bench::lsb_uniskip_ext_pass_parallel::<F, E, 1>(
+                                        &srcs,
+                                        &forms,
+                                        &products,
+                                        &chain_quads,
+                                        &chain_lins,
+                                        &description.constant_term,
+                                        &lsb8_mat_tables,
+                                        &tgs[g],
+                                        rows_g,
+                                        worker,
+                                    )
+                                };
+                                f_eval[g] = te.elapsed();
+                                let mut claim = E::ZERO;
+                                for j in 0..8 {
+                                    let mut t = w3g[g][j];
+                                    t.mul_assign(&q[j]);
+                                    claim.add_assign(&t);
+                                }
+                                assert_eq!(
+                                    claim, q_prev_at_r,
+                                    "fused chain claim mismatch entering pass {}",
+                                    g
+                                );
+                                q_prev_at_r = interp_at(&q, &rs[g]);
+                            }
+                            // last fold to single values + final identity
+                            let lw_last = l8_at(&rs[num_passes - 1]);
+                            let tf = std::time::Instant::now();
+                            let mut finals: Vec<E> = Vec::with_capacity(fcombined.len());
+                            for col in fcombined.iter() {
+                                let mut dstv = vec![E::ZERO; 1];
+                                lsb_bench::lsb_fold_ext_parallel::<E>(
+                                    col.as_ptr() as *const u8,
+                                    &mut dstv,
+                                    &lw_last,
+                                    worker,
+                                );
+                                finals.push(dstv[0]);
+                            }
+                            f_fold[num_passes - 1] = tf.elapsed();
+                            let mut g_val = description.constant_term;
+                            for (a, f, c) in products.iter() {
+                                let mut form_val = E::ZERO;
+                                for (op, m) in forms[*f as usize].iter() {
+                                    match op {
+                                        FormOp::Add => {
+                                            form_val.add_assign(&finals[*m as usize]);
+                                        }
+                                        FormOp::Sub => {
+                                            form_val.sub_assign(&finals[*m as usize]);
+                                        }
+                                        FormOp::Mul(cf) => {
+                                            let mut t = finals[*m as usize];
+                                            t.mul_assign_by_base(cf);
+                                            form_val.add_assign(&t);
+                                        }
+                                    }
+                                }
+                                let mut t = finals[*a as usize];
+                                t.mul_assign(&form_val);
+                                t.mul_assign(c);
+                                g_val.add_assign(&t);
+                            }
+                            for (a, b, c) in chain_quads.iter() {
+                                let mut t = finals[*a as usize];
+                                t.mul_assign(&finals[*b as usize]);
+                                t.mul_assign(c);
+                                g_val.add_assign(&t);
+                            }
+                            for (i, c) in chain_lins.iter() {
+                                let mut t = finals[*i as usize];
+                                t.mul_assign(c);
+                                g_val.add_assign(&t);
+                            }
+                            assert_eq!(g_val, q_prev_at_r, "fused final G identity");
+                            best_total_f = best_total_f.min(t_total.elapsed());
+                        }
+                        for g in 0..num_passes {
+                            println!(
+                                "[LSB-CHAIN-F] pass {} (size 2^{:>2}): eval {:?}, fold {:?}{}",
+                                g,
+                                nbits - 3 * g,
+                                f_eval[g],
+                                f_fold[g],
+                                if g == 1 { "  (eval includes fused pass-0 fold)" } else { "" },
+                            );
+                        }
+                        println!(
+                            "[LSB-CHAIN-F] fused chain total {:?} (unfused: {:?})",
+                            best_total_f, best_total,
+                        );
+                        println!(
+                            "validation: fused chain claims + final G identity hold"
+                        );
+                    }
+                }
+            }
         }
 
         // expanded steps over the combined folded slot space (all polys ext
@@ -2646,6 +5050,62 @@ pub fn run_windowed_sumcheck_benchmarks<F: PrimeField, E: FieldExtension<F> + Fi
             bounded.num_distinct_ext,
             best,
         );
+    }
+
+    // ---------------- variant B2: clustered-DAG bounded scratch ----------------
+    {
+        use super::bounded_scratch::produce_clustered_scratch_description;
+        let (_d, _b, _e, stats) =
+            produce_clustered_scratch_description(&description, 16, 8);
+        println!(
+            "[B2] evaluation DAG: {} clusters (sizes {:?}{}), {} isolated gates; zero-reload capacity: {} base / {} ext slots",
+            stats.num_clusters,
+            &stats.cluster_sizes[..stats.cluster_sizes.len().min(6)],
+            if stats.cluster_sizes.len() > 6 { ", ..." } else { "" },
+            stats.isolated_ops,
+            stats.peak_base_live,
+            stats.peak_ext_live,
+        );
+        for (bcap, ecap) in [
+            (stats.peak_base_live, stats.peak_ext_live),
+            (16usize, 8usize),
+            (12, 6),
+            (8, 4),
+            (6, 3),
+            (4, 2),
+        ] {
+            let bcap = bcap.max(2).min(base_polys_all.len().max(2));
+            let ecap = ecap.max(2).min(ext_polys_all.len().max(2));
+            let (clustered, b_srcs, e_srcs, _) =
+                produce_clustered_scratch_description(&description, bcap, ecap);
+            assert_eq!(b_srcs, base_polys_all);
+            assert_eq!(e_srcs, ext_polys_all);
+            let mut acc = [E::ZERO; 27];
+            let mut best = std::time::Duration::MAX;
+            for _ in 0..iters {
+                let now = std::time::Instant::now();
+                acc = evaluate_initial_with_bounded_scratch_parallel(
+                    base_sources_all.clone(),
+                    ext_sources_all.clone(),
+                    &clustered,
+                    eq_suffix_initial,
+                    folding_steps,
+                    worker,
+                );
+                best = best.min(now.elapsed());
+            }
+            assert_acc_eq(&acc, &acc_all, "clustered bounded scratch vs full-size");
+            println!(
+                "[B2] clustered {}b/{}e slots (loads: {} base / {} distinct, {} ext / {} distinct): {:?}",
+                bcap,
+                ecap,
+                clustered.num_base_loads,
+                clustered.num_distinct_base,
+                clustered.num_ext_loads,
+                clustered.num_distinct_ext,
+                best,
+            );
+        }
     }
 
     // ---------------- variant C: split bb/be window + classic ee rounds ----------------
@@ -2934,6 +5394,79 @@ pub fn run_windowed_sumcheck_benchmarks<F: PrimeField, E: FieldExtension<F> + Fi
             "[TS] SoA transition round 3 (in 3, out 1): {:?} (AoS [T]: {:?})",
             best_ts, best_t,
         );
+    }
+
+    // ---------------- transition with Lagrange fold weights (uniskip wiring) ----------------
+    #[cfg(target_arch = "aarch64")]
+    {
+        use ::field::baby_bear::base::BabyBearField;
+        let omega16_bb = ::fft::domain_generator_for_size::<BabyBearField>(16);
+        let mut omega8_bb = omega16_bb;
+        omega8_bb.square();
+
+        // L_j(r) = (r^8 - 1) * u_j / (8 (r - u_j)) for u_j in H = <w8>
+        let r = window_challenges[0];
+        let mut z = r.pow(8);
+        z.sub_assign(&E::ONE);
+        let eighth_bb = BabyBearField::from_u32_with_reduction(8).inverse().unwrap();
+        let lagrange: [E; 8] = core::array::from_fn(|j| {
+            let uj_bb = omega8_bb.pow(j as u32);
+            let uj = E::from_base(unsafe { *(&uj_bb as *const _ as *const F) });
+            let mut denom = r;
+            denom.sub_assign(&uj);
+            let mut w = z;
+            w.mul_assign(&uj);
+            w.mul_assign(&denom.inverse().expect("r not in H"));
+            w.mul_assign_by_base(unsafe { &*(&eighth_bb as *const _ as *const F) });
+            w
+        });
+
+        let base_ptrs: Vec<usize> = base_folding_buffers
+            .iter_mut()
+            .map(|el| el.as_mut_ptr() as usize)
+            .collect();
+        let ext_ptrs: Vec<usize> = ext_folding_buffers
+            .iter_mut()
+            .map(|el| el.as_mut_ptr() as usize)
+            .collect();
+        let now = std::time::Instant::now();
+        let _acc_t = evaluate_transition_soa_parallel(
+            &base_sources_all,
+            &ext_sources_all,
+            &base_ptrs,
+            &ext_ptrs,
+            &forms,
+            &products,
+            &folded_quad,
+            &folded_lin,
+            &description.constant_term,
+            &lagrange,
+            eq_suffix_transition,
+            folding_steps,
+            worker,
+        );
+        let t_time = now.elapsed();
+
+        // spot-check the Lagrange fold: buffer values must equal the packed
+        // poly evaluated at r
+        let src0 = &base_sources_all[0];
+        for pos in [0usize, 12345] {
+            let mut expected = E::ZERO;
+            for j in 0..8usize {
+                let stride = trace_len / 8;
+                let v = src0.read(pos + j * stride);
+                let mut t = lagrange[j];
+                t.mul_assign_by_base(&v);
+                expected.add_assign(&t);
+            }
+            let got = unsafe { base_folding_buffers[0][pos].assume_init() };
+            assert_eq!(got, expected, "Lagrange fold mismatch at {}", pos);
+        }
+        println!(
+            "[UT] transition with Lagrange fold weights (uniskip wiring): {:?} (eq-fold [TS] above)",
+            t_time
+        );
+        println!("validation: Lagrange fold matches direct packed-poly evaluation at r");
     }
 
     // ---------------- merged transition + in1out3 experiment ----------------
@@ -3703,6 +6236,191 @@ mod synthetic_tests {
             size_log2,
             worker,
         )
+    }
+
+    #[test]
+    fn uniskip_initial_matches_reference() {
+        use ::field::baby_bear::base::BabyBearField;
+
+        let worker = Worker::new_with_num_threads(1);
+        let mut seed = 4242u64;
+        const SIZE_LOG2: usize = 8;
+        let size = 1 << SIZE_LOG2;
+        let inst = make_instance(size, &mut seed);
+        let num_base = inst.base_polys.len();
+
+        let omega16 = ::fft::domain_generator_for_size::<BabyBearField>(16);
+        let mut omega8 = omega16;
+        omega8.square();
+        let lde_tables = super::super::neon::SoaLde8Tables::new(omega8, omega16);
+
+        // all-expanded steps over the instance description
+        let bidx = |a: &GKRAddress| match a {
+            GKRAddress::InnerLayer { offset, .. } => *offset as u16,
+            _ => unreachable!(),
+        };
+        let eidx = |a: &GKRAddress| match a {
+            GKRAddress::InnerLayer { offset, .. } => (*offset - num_base) as u16,
+            _ => unreachable!(),
+        };
+        let mut steps: Vec<BenchStep<E>> = vec![];
+        for (a, list) in inst.description.quadratic_part_base_by_base.iter() {
+            for (b, c) in list.iter() {
+                steps.push(BenchStep::QuadBB { a: bidx(a), b: bidx(b), c: *c });
+            }
+        }
+        for (a, list) in inst.description.quadratic_part_base_by_ext.iter() {
+            for (b, c) in list.iter() {
+                steps.push(BenchStep::QuadBE { base: bidx(a), ext: eidx(b), c: *c });
+            }
+        }
+        for (a, list) in inst.description.quadratic_part_ext_by_ext.iter() {
+            for (b, c) in list.iter() {
+                steps.push(BenchStep::QuadEE { a: eidx(a), b: eidx(b), c: *c });
+            }
+        }
+        for (a, c) in inst.description.linear_part_base_by_everything.iter() {
+            steps.push(BenchStep::LinB { i: bidx(a), c: *c });
+        }
+        for (a, c) in inst.description.linear_part_ext_by_everything.iter() {
+            steps.push(BenchStep::LinE { i: eidx(a), c: *c });
+        }
+
+        let work = size / 8;
+        let suffix_challenges: Vec<E> = (0..(work.trailing_zeros() as usize))
+            .map(|_| pseudo_ext(&mut seed))
+            .collect();
+        let eq_suffix = make_eq_poly_in_full::<E>(&suffix_challenges, &worker)
+            .pop()
+            .unwrap();
+
+        let base_sources: Vec<_> = inst
+            .base_polys
+            .iter()
+            .map(|el| DisjointAccessQuasiSlice::<_, false>::from_init_slice(&el[..]))
+            .collect();
+        let ext_sources: Vec<_> = inst
+            .ext_polys
+            .iter()
+            .map(|el| DisjointAccessQuasiSlice::<_, false>::from_init_slice(&el[..]))
+            .collect();
+
+        let acc = evaluate_initial_uniskip_soa_parallel::<F, E>(
+            &base_sources,
+            &ext_sources,
+            &[],
+            &[],
+            &steps,
+            &inst.description.constant_term,
+            &lde_tables,
+            &eq_suffix,
+            SIZE_LOG2,
+            &worker,
+        );
+
+        // scalar reference: per block, interpolate each poly's 8 packed values
+        // (inverse DFT with base roots) and evaluate q at all 16 domain points
+        let omega8_inv = omega8.inverse().unwrap();
+        let eighth = BabyBearField::from_u32_with_reduction(8).inverse().unwrap();
+        let f_of = |v: BabyBearField| -> F { unsafe { *(&v as *const _ as *const F) } };
+
+        // domain points: u_j = omega8^j (j<8), then omega16 * omega8^(j-8)
+        let point = |idx: usize| -> BabyBearField {
+            if idx < 8 {
+                omega8.pow(idx as u32)
+            } else {
+                let mut t = omega16;
+                t.mul_assign(&omega8.pow((idx - 8) as u32));
+                t
+            }
+        };
+
+        // coefficients of the packed poly from 8 E-values (base-field roots)
+        let coeffs_from = |vals: &[E; 8]| -> [E; 8] {
+            core::array::from_fn(|i| {
+                let mut acc = E::ZERO;
+                for j in 0..8 {
+                    let mut t = vals[j];
+                    let w = omega8_inv.pow((i * j % 8) as u32);
+                    t.mul_assign_by_base(&f_of(w));
+                    acc.add_assign(&t);
+                }
+                acc.mul_assign_by_base(&f_of(eighth));
+                acc
+            })
+        };
+        let eval_at = |c: &[E; 8], x: BabyBearField| -> E {
+            let mut acc = E::ZERO;
+            for i in (0..8).rev() {
+                acc.mul_assign_by_base(&f_of(x));
+                acc.add_assign(&c[i]);
+            }
+            acc
+        };
+
+        let stride = size / 8;
+        let mut reference = [E::ZERO; 16];
+        for row in 0..work {
+            // packed values per poly at the 16 points
+            let mut packed: Vec<[E; 16]> = vec![[E::ZERO; 16]; num_base + inst.ext_polys.len()];
+            for (slot, poly) in inst.base_polys.iter().enumerate() {
+                let vals: [E; 8] =
+                    core::array::from_fn(|j| E::from_base(poly[row + j * stride]));
+                let c = coeffs_from(&vals);
+                for idx in 0..16 {
+                    packed[slot][idx] = eval_at(&c, point(idx));
+                }
+            }
+            for (k, poly) in inst.ext_polys.iter().enumerate() {
+                let vals: [E; 8] = core::array::from_fn(|j| poly[row + j * stride]);
+                let c = coeffs_from(&vals);
+                for idx in 0..16 {
+                    packed[num_base + k][idx] = eval_at(&c, point(idx));
+                }
+            }
+            for idx in 0..16 {
+                let mut val = E::ZERO;
+                for step in steps.iter() {
+                    match step {
+                        BenchStep::QuadBB { a, b, c } => {
+                            let mut t = packed[*a as usize][idx];
+                            t.mul_assign(&packed[*b as usize][idx]);
+                            t.mul_assign(c);
+                            val.add_assign(&t);
+                        }
+                        BenchStep::QuadBE { base, ext, c } => {
+                            let mut t = packed[*base as usize][idx];
+                            t.mul_assign(&packed[num_base + *ext as usize][idx]);
+                            t.mul_assign(c);
+                            val.add_assign(&t);
+                        }
+                        BenchStep::QuadEE { a, b, c } => {
+                            let mut t = packed[num_base + *a as usize][idx];
+                            t.mul_assign(&packed[num_base + *b as usize][idx]);
+                            t.mul_assign(c);
+                            val.add_assign(&t);
+                        }
+                        BenchStep::LinB { i, c } => {
+                            let mut t = packed[*i as usize][idx];
+                            t.mul_assign(c);
+                            val.add_assign(&t);
+                        }
+                        BenchStep::LinE { i, c } => {
+                            let mut t = packed[num_base + *i as usize][idx];
+                            t.mul_assign(c);
+                            val.add_assign(&t);
+                        }
+                    }
+                }
+                val.add_assign(&inst.description.constant_term);
+                val.mul_assign(&eq_suffix[row]);
+                reference[idx].add_assign(&val);
+            }
+        }
+
+        for idx in 0..16 {
+            assert_eq!(acc[idx], reference[idx], "uniskip q mismatch at point {}", idx);
+        }
     }
 
     #[test]

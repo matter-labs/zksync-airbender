@@ -609,3 +609,402 @@ pub fn evaluate_initial_with_bounded_scratch_parallel<
 
     acc
 }
+
+/// Statistics of the clustered evaluation-DAG analysis.
+#[derive(Clone, Debug)]
+pub struct ClusterStats {
+    /// number of connected components of the "gates share an input" graph
+    pub num_clusters: usize,
+    /// gates that share no input with any other gate (singleton clusters)
+    pub isolated_ops: usize,
+    /// component sizes, descending
+    pub cluster_sizes: Vec<usize>,
+    /// peak simultaneously-live base operands along the chosen order
+    /// (= minimal base capacity with zero reloads)
+    pub peak_base_live: usize,
+    /// same for ext operands
+    pub peak_ext_live: usize,
+}
+
+/// Cluster-aware variant of [`produce_bounded_scratch_description`]: gates are
+/// grouped into connected components of the input-sharing graph (isolated
+/// gates first — they never interact through the scratch), and within each
+/// component ordered greedily to keep operands resident (fewest new loads
+/// first, then highest future reuse of the new operands). Slots are then
+/// assigned with Belady eviction over the improved order; dead operands
+/// (no remaining uses) free their slot without cost, so the reported
+/// `peak_*_live` capacities run the schedule with zero reloads.
+pub fn produce_clustered_scratch_description<F: PrimeField, E: FieldExtension<F> + Field>(
+    description: &BatchedGKRDescription<F, E>,
+    num_base_slots: usize,
+    num_ext_slots: usize,
+) -> (
+    BoundedScratchDescription<F, E>,
+    Vec<GKRAddress>,
+    Vec<GKRAddress>,
+    ClusterStats,
+) {
+    // ---- op collection (same universe as the fixed-order planner) ----
+    let mut all_base_sources = BTreeSet::new();
+    let mut all_ext_sources = BTreeSet::new();
+    let mut base_quad = BTreeSet::new();
+    let mut ext_quad = BTreeSet::new();
+    for (a, other) in description.quadratic_part_base_by_base.iter() {
+        all_base_sources.insert(*a);
+        base_quad.insert(*a);
+        for (b, _) in other.iter() {
+            all_base_sources.insert(*b);
+            base_quad.insert(*b);
+        }
+    }
+    for (a, other) in description.quadratic_part_base_by_ext.iter() {
+        all_base_sources.insert(*a);
+        base_quad.insert(*a);
+        for (b, _) in other.iter() {
+            all_ext_sources.insert(*b);
+            ext_quad.insert(*b);
+        }
+    }
+    for (a, other) in description.quadratic_part_ext_by_ext.iter() {
+        all_ext_sources.insert(*a);
+        ext_quad.insert(*a);
+        for (b, _) in other.iter() {
+            all_ext_sources.insert(*b);
+            ext_quad.insert(*b);
+        }
+    }
+    for (a, _) in description.linear_part_base_by_everything.iter() {
+        all_base_sources.insert(*a);
+    }
+    for (a, _) in description.linear_part_ext_by_everything.iter() {
+        all_ext_sources.insert(*a);
+    }
+    let base_sources: Vec<_> = all_base_sources.iter().copied().collect();
+    let ext_sources: Vec<_> = all_ext_sources.iter().copied().collect();
+    let base_index = |a: &GKRAddress| base_sources.iter().position(|el| el == a).unwrap() as u32;
+    let ext_index = |a: &GKRAddress| ext_sources.iter().position(|el| el == a).unwrap() as u32;
+
+    let mut constants: Vec<E> = vec![];
+    let mut ops: Vec<AbstractOp> = vec![];
+    for (a, other) in description.quadratic_part_base_by_base.iter() {
+        for (b, coeff) in other.iter() {
+            let ci = constants.len() as u32;
+            constants.push(*coeff);
+            ops.push(AbstractOp::QuadBB(base_index(a), base_index(b), ci));
+        }
+    }
+    for (a, other) in description.quadratic_part_base_by_ext.iter() {
+        for (b, coeff) in other.iter() {
+            let ci = constants.len() as u32;
+            constants.push(*coeff);
+            ops.push(AbstractOp::QuadBE(base_index(a), ext_index(b), ci));
+        }
+    }
+    for (a, other) in description.quadratic_part_ext_by_ext.iter() {
+        for (b, coeff) in other.iter() {
+            let ci = constants.len() as u32;
+            constants.push(*coeff);
+            ops.push(AbstractOp::QuadEE(ext_index(a), ext_index(b), ci));
+        }
+    }
+    for (a, coeff) in description.linear_part_base_by_everything.iter() {
+        let ci = constants.len() as u32;
+        constants.push(*coeff);
+        ops.push(AbstractOp::LinBase(base_index(a), ci));
+    }
+    for (a, coeff) in description.linear_part_ext_by_everything.iter() {
+        let ci = constants.len() as u32;
+        constants.push(*coeff);
+        ops.push(AbstractOp::LinExt(ext_index(a), ci));
+    }
+
+    // ---- clustering: connected components of the input-sharing graph ----
+    let n = ops.len();
+    let mut parent: Vec<usize> = (0..n).collect();
+    fn find(parent: &mut Vec<usize>, mut x: usize) -> usize {
+        while parent[x] != x {
+            parent[x] = parent[parent[x]];
+            x = parent[x];
+        }
+        x
+    }
+    let mut operand_first_op: BTreeMap<Operand, usize> = BTreeMap::new();
+    for (pos, op) in ops.iter().enumerate() {
+        for operand in op.operands().0.iter().flatten() {
+            match operand_first_op.entry(*operand) {
+                std::collections::btree_map::Entry::Vacant(v) => {
+                    v.insert(pos);
+                }
+                std::collections::btree_map::Entry::Occupied(o) => {
+                    let ra = find(&mut parent, *o.get());
+                    let rb = find(&mut parent, pos);
+                    if ra != rb {
+                        parent[ra] = rb;
+                    }
+                }
+            }
+        }
+    }
+    let mut clusters: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
+    for pos in 0..n {
+        let root = find(&mut parent, pos);
+        clusters.entry(root).or_default().push(pos);
+    }
+    let mut cluster_list: Vec<Vec<usize>> = clusters.into_values().collect();
+    // isolated gates first, then ascending size; deterministic tie-break by
+    // smallest member index
+    cluster_list.sort_by_key(|c| (c.len(), c[0]));
+    let isolated_ops = cluster_list.iter().filter(|c| c.len() == 1).count();
+    let mut cluster_sizes: Vec<usize> = cluster_list.iter().map(|c| c.len()).collect();
+    cluster_sizes.sort_unstable_by(|a, b| b.cmp(a));
+
+    // ---- greedy min-scratch ordering within each cluster ----
+    let mut remaining_uses: BTreeMap<Operand, usize> = BTreeMap::new();
+    for op in ops.iter() {
+        for operand in op.operands().0.iter().flatten() {
+            *remaining_uses.entry(*operand).or_default() += 1;
+        }
+    }
+    let mut order: Vec<usize> = Vec::with_capacity(n);
+    let mut resident_live: BTreeSet<Operand> = BTreeSet::new();
+    for cluster in cluster_list.iter() {
+        let mut pending: Vec<usize> = cluster.clone();
+        while !pending.is_empty() {
+            // pick the op with the fewest non-resident operands; tie-break on
+            // the highest total remaining uses of its new operands (amortize
+            // the load), then on the original index for determinism
+            let mut best = 0usize;
+            let mut best_key = (usize::MAX, 0usize, usize::MAX);
+            for (i, &pos) in pending.iter().enumerate() {
+                let operands = ops[pos].operands().0;
+                let mut new_loads = 0usize;
+                let mut new_uses = 0usize;
+                for operand in operands.iter().flatten() {
+                    if !resident_live.contains(operand) {
+                        new_loads += 1;
+                        new_uses += remaining_uses[operand];
+                    }
+                }
+                let key = (new_loads, usize::MAX - new_uses, pos);
+                if key < best_key {
+                    best_key = key;
+                    best = i;
+                }
+            }
+            let pos = pending.swap_remove(best);
+            for operand in ops[pos].operands().0.iter().flatten() {
+                resident_live.insert(*operand);
+                let r = remaining_uses.get_mut(operand).unwrap();
+                *r -= 1;
+                if *r == 0 {
+                    resident_live.remove(operand);
+                }
+            }
+            order.push(pos);
+        }
+        // components are input-disjoint: residency resets naturally as all of
+        // this cluster's operands die
+    }
+    assert_eq!(order.len(), n);
+
+    // ---- peak-live along the order (min zero-reload capacities) ----
+    let mut remaining_uses: BTreeMap<Operand, usize> = BTreeMap::new();
+    for op in ops.iter() {
+        for operand in op.operands().0.iter().flatten() {
+            *remaining_uses.entry(*operand).or_default() += 1;
+        }
+    }
+    let mut live: BTreeSet<Operand> = BTreeSet::new();
+    let (mut peak_base, mut peak_ext) = (0usize, 0usize);
+    for &pos in order.iter() {
+        for operand in ops[pos].operands().0.iter().flatten() {
+            live.insert(*operand);
+        }
+        let nb = live
+            .iter()
+            .filter(|o| matches!(o, Operand::Base(_)))
+            .count();
+        let ne = live.iter().filter(|o| matches!(o, Operand::Ext(_))).count();
+        peak_base = peak_base.max(nb);
+        peak_ext = peak_ext.max(ne);
+        for operand in ops[pos].operands().0.iter().flatten() {
+            let r = remaining_uses.get_mut(operand).unwrap();
+            *r -= 1;
+            if *r == 0 {
+                live.remove(operand);
+            }
+        }
+    }
+
+    let stats = ClusterStats {
+        num_clusters: cluster_list.len(),
+        isolated_ops,
+        cluster_sizes,
+        peak_base_live: peak_base.max(2),
+        peak_ext_live: peak_ext.max(2),
+    };
+
+    // ---- Belady slot assignment over the clustered order ----
+    assert!(num_base_slots >= 2 && num_ext_slots >= 2);
+    assert!(num_base_slots < 256 && num_ext_slots < 256);
+    let ordered_ops: Vec<AbstractOp> = order.iter().map(|&p| ops[p]).collect();
+
+    let mut uses: BTreeMap<Operand, Vec<usize>> = BTreeMap::new();
+    for (pos, op) in ordered_ops.iter().enumerate() {
+        for operand in op.operands().0.iter().flatten() {
+            uses.entry(*operand).or_default().push(pos);
+        }
+    }
+    let mut use_cursor: BTreeMap<Operand, usize> = uses.keys().map(|k| (*k, 0usize)).collect();
+    let next_use_after = |uses: &BTreeMap<Operand, Vec<usize>>,
+                          cursor: &BTreeMap<Operand, usize>,
+                          operand: &Operand|
+     -> usize {
+        let list = &uses[operand];
+        let c = cursor[operand];
+        if c < list.len() {
+            list[c]
+        } else {
+            usize::MAX
+        }
+    };
+
+    struct Pool {
+        resident: Vec<Option<u32>>,
+        location: BTreeMap<u32, u8>,
+        loads: usize,
+    }
+    let mut base_pool = Pool {
+        resident: vec![None; num_base_slots],
+        location: BTreeMap::new(),
+        loads: 0,
+    };
+    let mut ext_pool = Pool {
+        resident: vec![None; num_ext_slots],
+        location: BTreeMap::new(),
+        loads: 0,
+    };
+    let base_interp: Vec<bool> = base_sources.iter().map(|el| base_quad.contains(el)).collect();
+    let ext_interp: Vec<bool> = ext_sources.iter().map(|el| ext_quad.contains(el)).collect();
+
+    let mut steps: Vec<BoundedStep> = vec![];
+    for op in ordered_ops.iter() {
+        let (operands, coeff_idx) = op.operands();
+        let mut assigned_slots: [u8; 2] = [0; 2];
+        for (i, operand) in operands.iter().enumerate() {
+            let Some(operand) = operand else { continue };
+            let (pool, is_base) = match operand {
+                Operand::Base(_) => (&mut base_pool, true),
+                Operand::Ext(_) => (&mut ext_pool, false),
+            };
+            let idx = match operand {
+                Operand::Base(v) | Operand::Ext(v) => *v,
+            };
+            if let Some(slot) = pool.location.get(&idx) {
+                assigned_slots[i] = *slot;
+                continue;
+            }
+            let protected: Option<u32> = match &operands[1 - i] {
+                Some(other) => match (operand, other) {
+                    (Operand::Base(_), Operand::Base(v)) => Some(*v),
+                    (Operand::Ext(_), Operand::Ext(v)) => Some(*v),
+                    _ => None,
+                },
+                None => None,
+            };
+            let slot = if let Some(free) = pool.resident.iter().position(|el| el.is_none()) {
+                free as u8
+            } else {
+                let mut victim_slot = u8::MAX;
+                let mut victim_dist = 0usize;
+                for (slot, resident) in pool.resident.iter().enumerate() {
+                    let resident = resident.expect("full pool");
+                    if Some(resident) == protected {
+                        continue;
+                    }
+                    let victim_operand = if is_base {
+                        Operand::Base(resident)
+                    } else {
+                        Operand::Ext(resident)
+                    };
+                    let dist = next_use_after(&uses, &use_cursor, &victim_operand);
+                    if dist >= victim_dist {
+                        victim_dist = dist;
+                        victim_slot = slot as u8;
+                    }
+                }
+                let evicted = pool.resident[victim_slot as usize].take().unwrap();
+                pool.location.remove(&evicted);
+                victim_slot
+            };
+            pool.resident[slot as usize] = Some(idx);
+            pool.location.insert(idx, slot);
+            pool.loads += 1;
+            if is_base {
+                steps.push(BoundedStep::LoadBase {
+                    slot,
+                    src_idx: idx,
+                    interpolate: base_interp[idx as usize],
+                });
+            } else {
+                steps.push(BoundedStep::LoadExt {
+                    slot,
+                    src_idx: idx,
+                    interpolate: ext_interp[idx as usize],
+                });
+            }
+            assigned_slots[i] = slot;
+        }
+        // advance use cursors
+        for operand in operands.iter().flatten() {
+            *use_cursor.get_mut(operand).unwrap() += 1;
+        }
+        match op {
+            AbstractOp::QuadBB(_, _, _) => steps.push(BoundedStep::QuadraticBaseByBase {
+                slot_a: assigned_slots[0],
+                slot_b: assigned_slots[1],
+                coeff_idx,
+            }),
+            AbstractOp::QuadBE(_, _, _) => steps.push(BoundedStep::QuadraticBaseByExt {
+                slot_base: assigned_slots[0],
+                slot_ext: assigned_slots[1],
+                coeff_idx,
+            }),
+            AbstractOp::QuadEE(_, _, _) => steps.push(BoundedStep::QuadraticExtByExt {
+                slot_a: assigned_slots[0],
+                slot_b: assigned_slots[1],
+                coeff_idx,
+            }),
+            AbstractOp::LinBase(_, _) => steps.push(BoundedStep::LinearWithBase {
+                slot: assigned_slots[0],
+                coeff_idx,
+            }),
+            AbstractOp::LinExt(_, _) => steps.push(BoundedStep::LinearWithExt {
+                slot: assigned_slots[0],
+                coeff_idx,
+            }),
+        }
+    }
+
+    let num_distinct_base = uses
+        .keys()
+        .filter(|o| matches!(o, Operand::Base(_)))
+        .count();
+    let num_distinct_ext = uses.keys().filter(|o| matches!(o, Operand::Ext(_))).count();
+
+    let desc = BoundedScratchDescription {
+        steps,
+        constants,
+        total_additive_constant: description.constant_term,
+        num_base_slots,
+        num_ext_slots,
+        num_distinct_base,
+        num_distinct_ext,
+        num_base_loads: base_pool.loads,
+        num_ext_loads: ext_pool.loads,
+        _marker: core::marker::PhantomData,
+    };
+
+    (desc, base_sources, ext_sources, stats)
+}
+

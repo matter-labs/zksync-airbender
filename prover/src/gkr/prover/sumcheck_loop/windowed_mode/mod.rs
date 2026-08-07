@@ -10,6 +10,9 @@ pub(crate) mod sumcheck_loop;
 #[cfg(target_arch = "aarch64")]
 pub(crate) mod neon;
 
+#[cfg(target_arch = "aarch64")]
+pub(crate) mod lsb_bench;
+
 #[inline(always)]
 fn interpolate_at_inf_from_0_1_basis<F: Field>(a: F, b: F) -> F {
     let mut result = b;
