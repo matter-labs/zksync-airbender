@@ -1,4 +1,6 @@
 use clap::{CommandFactory, Parser};
+use gpu_gkr_uniskip_bench::geometry::Geometry;
+use gpu_gkr_uniskip_bench::synth::{generate, Census};
 
 /// Standalone CUDA benchmark for one uniskip sumcheck pass (k = 4).
 #[derive(Parser)]
@@ -49,21 +51,23 @@ struct Cli {
     validate_flat_eq: bool,
 }
 
+fn fail(message: String) -> ! {
+    Cli::command()
+        .error(clap::error::ErrorKind::InvalidValue, message)
+        .exit()
+}
+
 fn main() {
     let cli = Cli::parse();
 
-    let Some(ungrouped_terms) = cli.semantic_terms.checked_sub(cli.grouped_atoms) else {
-        Cli::command()
-            .error(
-                clap::error::ErrorKind::InvalidValue,
-                format!(
-                    "--grouped-atoms ({}) exceeds --semantic-terms ({})",
-                    cli.grouped_atoms, cli.semantic_terms
-                ),
-            )
-            .exit();
+    let geometry = Geometry::new(cli.log_trace).unwrap_or_else(|e| fail(e));
+    let census = Census {
+        sources: cli.sources,
+        semantic_terms: cli.semantic_terms,
+        groups: cli.groups,
+        grouped_atoms: cli.grouped_atoms,
     };
-    let program_records = ungrouped_terms + cli.groups + cli.grouped_atoms;
+    let program = generate(cli.seed, census).unwrap_or_else(|e| fail(e));
 
     println!("gpu_gkr_uniskip_bench config");
     println!("  log_trace           {}", cli.log_trace);
@@ -73,11 +77,23 @@ fn main() {
     println!("  profile             {}", cli.profile);
     println!("  validate            {}", cli.validate);
     println!("  validate_flat_eq    {}", cli.validate_flat_eq);
+    println!("geometry");
+    println!("  log_rows            {}", geometry.log_rows);
+    println!("  logical rows        {}", geometry.logical_rows);
+    println!("  blocks              {}", geometry.blocks);
+    println!(
+        "  eq sizes            high {} / {} low {}",
+        geometry.eq_sizes.0, geometry.eq_sizes.1, geometry.eq_sizes.2
+    );
+    println!("  partials            {} e4", geometry.partials);
     println!("census");
-    println!("  sources             {}", cli.sources);
-    println!("  semantic terms      {}", cli.semantic_terms);
-    println!("  groups              {}", cli.groups);
-    println!("  grouped atoms       {}", cli.grouped_atoms);
-    println!("  ungrouped terms     {ungrouped_terms}");
-    println!("  program records     {program_records}");
+    println!("{}", program.census);
+    println!(
+        "  window columns      {:?}",
+        program
+            .windows
+            .iter()
+            .map(|w| w.columns)
+            .collect::<Vec<_>>()
+    );
 }

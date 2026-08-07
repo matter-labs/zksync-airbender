@@ -1,6 +1,7 @@
 //! Host-side domain math for the uniskip pass: the size-16 subgroup `H`, its odd
 //! coset `gamma * H`, the coset LDE matrix and the Lagrange fold weights.
 
+use crate::abi::UNISKIP_TAPS;
 use field::baby_bear::base::BabyBearField;
 use field::baby_bear::ext4::BabyBearExt4;
 use field::{Field, FieldExtension};
@@ -44,8 +45,9 @@ fn e4_sub(a: E4, b: E4) -> E4 {
 // L_t(X) on H: prod(X - omega^s) = X^16 - 1, derivative at omega^t = 16*omega^{-t}
 //   => L_t(X) = (X^16 - 1) * omega^t * inv16 / (X - omega^t)
 // On the odd coset X_c^16 = gamma^16 = -1, so (X_c^16 - 1) = -2 for every c.
-/// `M[c][t] = L_t(gamma * omega^c)`: extends 16 taps on `H` to the 16 coset cells.
-pub fn lde_matrix() -> [[F; 16]; 16] {
+/// `M[c][t] = L_t(gamma * omega^c)`: extends the taps on `H` to the coset cells.
+/// Row `c` is device cell `abi::cell_for_coset_row(c)`.
+pub fn lde_matrix() -> [[F; UNISKIP_TAPS]; UNISKIP_TAPS] {
     let omega = omega16();
     let gamma = gamma();
     let inv16 = F::new(16).inverse().unwrap();
@@ -61,11 +63,11 @@ pub fn lde_matrix() -> [[F; 16]; 16] {
     })
 }
 
-/// `[L_t(r)]_t`: the weights that fold 16 taps on `H` into the evaluation at `r`.
-pub fn fold_weights(r: E4) -> [E4; 16] {
+/// `[L_t(r)]_t`: the weights that fold the taps on `H` into the evaluation at `r`.
+pub fn fold_weights(r: E4) -> [E4; UNISKIP_TAPS] {
     let omega = omega16();
     // On H the barycentric form divides by zero; the weights are the Kronecker delta.
-    if let Some(t) = (0..16).find(|&t| r == lift(omega.pow(t as u32))) {
+    if let Some(t) = (0..UNISKIP_TAPS).find(|&t| r == lift(omega.pow(t as u32))) {
         return core::array::from_fn(|s| if s == t { E4::ONE } else { E4::ZERO });
     }
     let inv16 = lift(F::new(16).inverse().unwrap());
