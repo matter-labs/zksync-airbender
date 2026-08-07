@@ -67,10 +67,9 @@ per-column plane sweeps that inline their own tap addressing
 individual operands. In v2 the LDE sweep is what the accessor absorbs, so it is
 the seam's counterpart, not one of its users.
 
-`abi::source_offset` is the
-host mirror of exactly that arithmetic, and the CPU oracle addresses every cell
-through it, so an accessor/kernel disagreement surfaces as a validation failure
-rather than as silently matching wrong data.
+`abi::source_offset` is the host mirror of exactly that arithmetic, and the CPU
+oracle addresses every cell through it, so an accessor/kernel disagreement surfaces
+as a validation failure rather than as silently matching wrong data.
 
 ## Build and run
 
