@@ -37,8 +37,23 @@ stream:
 - `eq` is factored into three tables: the low `low` bits of a row index a device
   table, the next `high[1]` bits and the top `high[0]` bits index two
   `__constant__` tables of at most 256 entries each. High tables fill first.
-- The constants are shaped so k=3/5 would be a one-line change, but nothing is
-  parameterized on k today.
+- **k is fixed at 4 across both languages, and changing it is not a one-line
+  change.** Nothing is parameterized on k; the dependent taps/cells/warp geometry
+  and the domain generator indices are hard-coded separately on each side. Moving
+  to k=3/5 means touching, independently:
+  - `native/uniskip_abi.cuh` — `UNISKIP_TAPS` (16), `UNISKIP_CELLS` (32),
+    `UNISKIP_WARPS_PER_BLOCK` (8), `UNISKIP_CELLS_PER_WARP` (4), and the
+    `static_assert`s tying them together;
+  - `src/abi.rs` — the same four constants (`UNISKIP_LOG_TAPS` is derived from
+    `UNISKIP_TAPS` and follows on its own);
+  - `src/domain.rs` — the subgroup and coset generator indices, `omega16()` =
+    `TWO_ADICITY_GENERATORS[4]` and `gamma()` = `TWO_ADICITY_GENERATORS[5]`, plus
+    the `omega16` name itself;
+  - the tests that pin the k=4 values — the bare `16` literals in `src/domain.rs`'s
+    tests and `UNISKIP_MAX_LOG_ROWS == 21` in `src/geometry.rs`'s.
+
+  Deriving all of that from one constant per language is deliberately **not** done:
+  v2 restructures these kernels anyway, and v1's scope fixes k at 4 on purpose.
 
 ### Addressing contract
 
@@ -124,8 +139,8 @@ a dev-dependency here. Keep profiler output under `target/` (gitignored).
 
 Each pass records CUDA events around the four stages; every pass records them,
 warmup included, so a timed pass and an untimed one do identical work. The reported
-`GB/s` column divides each stage's **compulsory** traffic — every distinct byte it
-must read or write at least once, from `Harness::pass_bytes` — by its median time.
+`min GB/s` column divides each stage's **compulsory** traffic — every distinct byte
+it must read or write at least once, from `Harness::pass_bytes` — by its median time.
 That is a *lower* bound on achieved bandwidth, not a measurement of it: real DRAM
 traffic is never below the floor and is usually above it (the LDE re-reads its input
 once per coset cell, ~16×), so the true GB/s is at least the number printed and can

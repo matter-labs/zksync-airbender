@@ -10,7 +10,10 @@ using namespace ::airbender::primitives::memory;
 namespace airbender::gkr_uniskip_bench {
 
 // k is FIXED at 4: 16 taps on H, plus the 16 cells of the odd coset gamma*H.
-// Shaped so k=3/5 stays a one-line change, but nothing here is parameterized.
+// Nothing here is parameterized on k and changing it is NOT a one-line edit. A k change touches, independently: UNISKIP_TAPS,
+// UNISKIP_CELLS, UNISKIP_WARPS_PER_BLOCK and UNISKIP_CELLS_PER_WARP below plus the static_asserts tying them together; the same
+// four constants in `src/abi.rs`; the generator indices in `src/domain.rs` (`omega16` = TWO_ADICITY_GENERATORS[4], `gamma` =
+// TWO_ADICITY_GENERATORS[5], and the `omega16` name); and the k=4 literals in the domain and geometry tests. See README.md.
 constexpr u32 UNISKIP_TAPS = 16;
 constexpr u32 UNISKIP_CELLS = 32; // 0..15 = H (direct taps), 16..31 = coset
 

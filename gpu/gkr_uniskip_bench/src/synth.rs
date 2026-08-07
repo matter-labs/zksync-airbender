@@ -300,7 +300,15 @@ pub fn generate(seed: u32, cfg: Census) -> Result<SynthProgram, String> {
             cfg.grouped_atoms, cfg.groups
         ));
     }
-    let records = ungrouped + cfg.groups + cfg.grouped_atoms;
+    let records = ungrouped
+        .checked_add(cfg.groups)
+        .and_then(|r| r.checked_add(cfg.grouped_atoms))
+        .ok_or_else(|| {
+            format!(
+                "{ungrouped} ungrouped terms + {} group headers + {} grouped atoms overflow the u32 record count",
+                cfg.groups, cfg.grouped_atoms
+            )
+        })?;
     if records as usize > UNISKIP_PROGRAM_CAPACITY {
         return Err(format!(
             "{records} program records exceed UNISKIP_PROGRAM_CAPACITY {UNISKIP_PROGRAM_CAPACITY}"
@@ -883,6 +891,34 @@ mod cpu_tests {
             ..Census::default()
         };
         assert!(generate(0, thin_sources).is_err());
+        assert!(generate(0, OVERFLOWING_RECORDS)
+            .unwrap_err()
+            .contains("overflow the u32 record count"));
+    }
+
+    /// The record count is `semantic_terms + groups`; every field is a CLI-controlled
+    /// `u32`, so a valid `semantic_terms - grouped_atoms` can still be followed by an
+    /// addition that leaves `u32`. Dev used to panic here and release used to wrap into
+    /// a small `records` that slipped past the capacity check.
+    const OVERFLOWING_RECORDS: Census = Census {
+        sources: 59,
+        semantic_terms: 4294967295,
+        groups: 102,
+        grouped_atoms: 4294967195,
+    };
+
+    #[test]
+    fn cpu_synth_record_count_overflow_is_rejected() {
+        // Everything before the addition must succeed, or the case would not reach it.
+        assert_eq!(
+            OVERFLOWING_RECORDS.semantic_terms - OVERFLOWING_RECORDS.grouped_atoms,
+            100
+        );
+        assert!(OVERFLOWING_RECORDS.grouped_atoms / OVERFLOWING_RECORDS.groups >= 2);
+        let err = generate(0, OVERFLOWING_RECORDS).unwrap_err();
+        assert!(err.contains("overflow the u32 record count"), "{err}");
+        // Release must not wrap into a small record count that passes the capacity gate.
+        assert!(!err.contains("UNISKIP_PROGRAM_CAPACITY"), "{err}");
     }
 
     #[test]

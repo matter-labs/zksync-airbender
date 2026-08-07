@@ -85,7 +85,8 @@ Tap backing 5.75 GiB (the coset backing matches); compulsory traffic
 
 Spread over 100 iterations is under 0.1% on every stage.
 
-"Compulsory GB/s" divides each stage's *floor* traffic — every distinct byte it must
+"Compulsory GB/s" — the column the binary prints as `min GB/s` — divides each stage's
+*floor* traffic — every distinct byte it must
 touch at least once, per `Harness::pass_bytes` — by its median time. It is a **lower
 bound** on the achieved bandwidth, not a measurement of it: real DRAM traffic is
 never below the floor and is usually above it, so a stage that re-reads its input
@@ -103,11 +104,13 @@ the column as "this stage is achieving *at least* this much".
   floor. Each thread produces one coset cell from all 16 taps of its (column, row),
   so the taps are *read* 16×; against the floor — which counts the coset write too —
   total traffic is `(16 read + 1 write) / (1 read + 1 write)` = **8.5×**. The two
-  multipliers are not interchangeable and only the 8.5× divides the compulsory
-  column.
+  multipliers are not interchangeable: the printed compulsory rate is the issued
+  rate *divided* by 8.5, so it is the 8.5× that **multiplies** the compulsory column
+  back up to the rate the kernel actually issues (173.8 → ~1477 GB/s), not the 16×.
 
-  *Mechanism — RESIDENCY, not capacity.* The launch is grid-strided and clamped to
-  `MAX_BLOCKS = 65536` blocks × 256 threads = exactly `2^24` threads, so the stride
+  *Mechanism — a residency hypothesis, not a settled fact.* The launch is
+  grid-strided and clamped to `MAX_BLOCKS = 65536` blocks × 256 threads = exactly
+  `2^24` threads, so the stride
   equals the grid: a thread's index advances by `2^24` per iteration, and since the
   decomposition is `job = (i >> log_rows) / 16`, `cell = (i >> log_rows) % 16`,
   `row = i mod 2^log_rows`, **each thread's `(cell, row)` is fixed for the whole
@@ -115,10 +118,20 @@ the column as "this stage is achieving *at least* this much".
   therefore always `2^log_rows` threads = **`2^(log_rows - 8)` blocks** apart in
   dispatch order. Both LDE kernels get 6 blocks/SM (256 threads, 36/42 registers,
   1536-thread SM cap), so the device retires only **~1128 blocks concurrently**
-  (188 SMs × 6). Reuse survives exactly while a cell-sharer is still reachable
-  inside that resident window — a residency threshold, not a cache-capacity one.
+  (188 SMs × 6).
 
-  *Measured sweep* (same kernel, `--log-trace` 20…24), which is what settles it:
+  That dispatch geometry is exact. The step from it to "reuse ends at the residency
+  boundary" is **not measured**: block residency says when a *producer block* is
+  still running, and an L2 line outlives the block that filled it, so co-residency
+  bounds nothing about line lifetime — it is a correlate of reuse, not a limit on
+  it. Read the rest of this section as the story the sweep is consistent with, not
+  as a named mechanism. **The settling measurement is per-kernel
+  `ncu --metrics dram__bytes.sum` on `lde_bf` and `lde_e4` across the same sweep**:
+  the residency reading predicts per-kernel DRAM volume rising toward ~16× the floor
+  between `log_rows` 17 and 18 for *both* classes, a capacity reading predicts
+  `lde_e4` moving first and alone. It was not run here.
+
+  *Measured sweep* (same kernel, `--log-trace` 20…24):
 
   The `bf` and `e4` reuse distances are listed separately — an `e4` column is 4×
   the bytes of a `bf` one, and conflating them is what makes a capacity story look
@@ -134,37 +147,52 @@ the column as "this stage is achieving *at least* this much".
   | 20 | 4096 blk | 128 MiB | 512 MiB | 173.8 |
 
   The collapse lands between 512 and 1024 blocks of spacing, against the
-  ~1128-block resident window. It is **nowhere near a capacity boundary** — but the
-  `e4` column is why that needs one more step of arithmetic rather than an eyeball.
-  This device's L2 is 128 MiB (`cudaDevAttrL2CacheSize` = 134217728), and at
+  ~1128-block resident window — the correlation the residency reading rests on. The
+  `bf` half of that row is also nowhere near a capacity boundary, but the `e4`
+  column is why that needs one more step of arithmetic rather than an eyeball. This
+  device's L2 is 128 MiB (`cudaDevAttrL2CacheSize` = 134217728), and at
   `log_rows 18` the `e4` reuse distance is 128 MiB *to the byte*: taken alone, the
   `e4` half of the collapse row is exactly the coincidence a capacity story wants.
 
-  The aggregate rate rules it out. At `log_rows 18` the two classes carry 52% / 48%
-  of the compulsory bytes (768 MiB `bf` backing, 704 MiB `e4`), and the kernels run
-  back to back on one stream, so the aggregate is the harmonic combination
-  `1 / (0.52/r_bf + 0.48/r_e4)`. Had **only** `e4` collapsed — `bf` holding the
-  725 GB/s it showed one step earlier — the stage would read
-  `1 / (0.52/725 + 0.48/174)` ≈ **288 GB/s**. Even giving `bf` perfect reuse at the
-  full 1477 GB/s hardware rate only reaches 322 GB/s. Measured is **183.5**, which
-  forces `r_bf` ≈ **193 GB/s**: the `bf` kernel, whose reuse distance is 32 MiB —
-  **a quarter of L2** — demonstrably collapsed too, in the same step. Capacity is
-  context here, not the constraint.
+  The aggregate rate argues against a *pure-`e4`* capacity story — but only under a
+  premise the sweep does not measure. At `log_rows 18` the two classes carry
+  52% / 48% of the **backing** bytes (768 MiB `bf`, 704 MiB `e4`; counting the write
+  as well as the read leaves the split unchanged), and the kernels run back to back
+  on one stream, so the aggregate is the harmonic combination
+  `1 / (0.52/r_bf + 0.48/r_e4)`. That is one equation in two unknowns: the bench
+  prints only the aggregate, never a per-class rate, so inverting it needs an
+  assumption about `r_e4`.
+
+  **Premise (unmeasured, monotonicity): `r_e4` at the collapse row is no better than
+  the ~174 GB/s the aggregate settles to once both classes are past the cliff** —
+  i.e. the collapsed `e4` rate does not improve as `log_rows` grows over 18…20.
+  Under it, `1 / (0.52/725 + 0.48/174)` ≈ **288 GB/s** would be the reading if only
+  `e4` had collapsed (and even perfect `bf` reuse at 1477 GB/s only reaches
+  322 GB/s), whereas measured is **183.5** — which forces `r_bf` ≈ **193 GB/s**, so
+  the `bf` kernel, whose reuse distance is 32 MiB (**a quarter of L2**), collapsed
+  in the same step and capacity is context rather than the constraint.
+
+  Drop the premise and the arithmetic no longer forces it: the same measured
+  183.5 GB/s is equally consistent with `bf` holding the 725 GB/s it showed one step
+  earlier and `r_e4` ≈ **101 GB/s**, which is exactly the pure-`e4` capacity story.
+  Aggregate stage timing cannot separate the two; the per-kernel `dram__bytes.sum`
+  run above can.
 
   *What the timing says.* At the plateau the stage moves `16 × 5.75 GiB` read +
   `5.75 GiB` written ≈ 105 GB, i.e. **~1477 GB/s over 71.06 ms** — 82% of card peak
   and the same rate `fold` reaches. Reading the whole sweep at that one constant
   rate is self-consistent: the traffic multiplier over the floor falls from 8.5× at
   the plateau to ~1.8× at `log_rows 16`, and nothing else about the kernel changes.
-  Confirming the multiplier directly wants `ncu --metrics dram__bytes.sum` on the
-  two LDE kernels; not run here.
+  Self-consistency is not confirmation; the same `ncu --metrics dram__bytes.sum` run
+  measures the multiplier directly.
 
-  *The v2 lever follows from the mechanism.* Shrinking the working set does nothing
-  — capacity was never binding. The fix is changing the **grid decomposition** so
-  the cell-sharers are co-resident: have one thread emit all 16 coset cells from a
-  single tap load (the reuse becomes register-local and the 16× read collapses to
-  1×), or map threads cell-major so the sharers land in the same or neighbouring
-  blocks. Either way it is a v2 kernel change and explicitly out of scope here.
+  *The v2 lever does not depend on which reading is right.* Under either the
+  residency or the capacity story the fix is the same change to the **grid
+  decomposition**: have one thread emit all 16 coset cells from a single tap load,
+  which makes the reuse register-local and collapses the 16× read to 1× regardless
+  of what L2 was doing, or map threads cell-major so the sharers land in the same or
+  neighbouring blocks. Either way it is a v2 kernel change and explicitly out of
+  scope here.
 - **`lde` is 74.6% of the pass**, so the global coset materialization the v1 design
   deliberately measures is the whole story of this baseline. `eval` (20.3%) and
   `fold` (5.0%) are the rest.
@@ -174,10 +202,14 @@ the column as "this stage is achieving *at least* this much".
   cannot show the stage is off the DRAM limit. The argument that does carry: with
   224 operand references over 59 sources, eval issues roughly 3.8× the floor in
   loads (~47 GB), while 19.37 ms of DRAM buys only ~29 GB at the 1.51 TB/s `fold`
-  actually reaches, or ~35 GB even at the card's ~1.8 TB/s peak. So **between ~12
-  and ~18 GB of the issued volume — a quarter to two fifths — must be coming out of
-  L1/L2**. DRAM traffic therefore sits somewhere in [12.4, ~35] GB, and naming the
-  actual limiter (DRAM, L2, or issue) needs `ncu`.
+  actually reaches, or ~35 GB even at the card's ~1.8 TB/s peak. Against the hard
+  peak that is unconditional: **at least ~12 GB of the issued volume — a quarter —
+  is cache-served**. Adding the further assumption that eval cannot beat the
+  1.51 TB/s `fold` demonstrates raises the floor to ~18 GB (two fifths), but that
+  one is conditional. Neither figure is an *upper* bound: the cache-served share
+  could be anything from a quarter up to nearly all of the ~47 GB, since the
+  argument only ever bounds it from below. DRAM traffic therefore sits somewhere in
+  [12.4, ~35] GB, and naming the actual limiter (DRAM, L2, or issue) needs `ncu`.
 - **The eval/finalize split is not anomalous.** Task 4 flagged the eval partials
   store as one active lane per warp writing 4 scattered 16-B values; at this
   geometry that whole output is 32768 blocks × 32 cells × 16 B = 16.8 MB, i.e.

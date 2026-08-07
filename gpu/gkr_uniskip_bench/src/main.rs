@@ -205,7 +205,8 @@ fn main() {
         println!("timing: skipped (--iterations 0)");
     } else {
         println!("timing over {} iterations (ms)", samples.len());
-        println!("  stage        median      mean       min       max      GB/s");
+        // "min GB/s": compulsory traffic / median, a LOWER bound on achieved bandwidth.
+        println!("  stage        median      mean       min       max  min GB/s");
         let stage_series =
             |pick: &dyn Fn(&StageTimes) -> f32| -> Vec<f32> { samples.iter().map(pick).collect() };
         for (stage, name) in STAGES.iter().enumerate() {
