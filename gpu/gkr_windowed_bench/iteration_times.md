@@ -713,8 +713,9 @@ zero.
 
 The candidate keeps 56 registers/thread, zero stack/local memory, 13,824 bytes
 of static shared memory (14,848 bytes including the driver reserve), and the
-four-block launch bound. The separate wide-product evaluator increases the VM
-from 4,384 to 5,734 non-NOP static instructions; the new binary has 86 `LDC`,
+four-block launch bound. An exact VM-section opcode census, stopping at the
+next function and excluding `NOP`, counts 5,731 static instructions versus
+4,384 before the change; the new binary has 86 `LDC`,
 207 `LDG`, 1,007 `IMAD`, and 3/3 `BSSY`/`BSYNC` sites. A log-8
 compute-sanitizer run reports zero errors and checksum
 `0xbb2eb9da3c8c062b`.
@@ -748,3 +749,69 @@ The larger static body measurably hurts ICC locality and does not translate the
 full IMAD reduction into elapsed time, but the ordinary timing win is stable
 without an occupancy or spill regression. The lazy artifact and executor are
 retained as the next experimental baseline.
+
+## Lazy BF product-loop deduplication
+
+The first lazy executor force-inlined the complete BF product source resolver,
+two endpoint interpolators, and immediate dispatch at three source callsites:
+the peeled first product, loop body, and peeled final product. Its linear tail
+also called the general BF evaluator, so ptxas emitted product arms that the
+generated schedule never executes. This explains why removing reductions
+lowered dynamic instructions while the static VM grew sharply.
+
+The artifact validator now makes the generator's schedule invariant explicit:
+after a nonzero lazy product prefix, every remaining BF group member must be
+linear. A product in that tail is rejected as `LazyProductTailClass`. This
+permits the CUDA lazy tail to use a one-case linear evaluator without embedding
+unreachable product or procedural-linear machinery.
+
+Two loop shapes were measured independently. Variant A starts three `u64`
+sums at zero and runs the entire product prefix through one `#pragma unroll 1`
+loop and one evaluator callsite. Intermediate encoded boundaries reduce and
+rebase; the final member is recognized from the loop counter and receives only
+the post-loop final reduction. Variant B peels the first product and unifies
+the remainder. It checks a boundary on the peeled first member because that is
+legal in the artifact even though the current generator does not emit it.
+
+The table uses a consistent `cuobjdump` census over only the VM function,
+excluding `NOP` instructions:
+
+| Variant | Registers | Stack / local | VM instructions | `LDG` | `LDC` | `IMAD` | `IADD` | `BRA` | `BSSY` / `BSYNC` | Log-24 medians |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| Three-site baseline | 56 | 0 / 0 B | 5,731 | 207 | 86 | 1,007 | 1,463 | 374 | 3 / 3 | 15.814000 / 15.813504 ms |
+| Unified zero-init (A) | 56 | 0 / 0 B | 4,715 | 151 | 67 | 853 | 1,278 | 277 | 3 / 3 | 15.447056 / 15.446784 ms |
+| Peeled first (B) | 56 | 0 / 0 B | 4,952 | 167 | 75 | 898 | 1,332 | 282 | 3 / 3 | 15.680112 / 15.678928 ms |
+
+All three candidate binaries used 13,824 bytes of static shared memory (14,848
+bytes including the driver reserve). Both new variants passed all 60 library
+tests, reproduced log-8 checksum `0xbb2eb9da3c8c062b` and log-24 checksum
+`0x8820ab14cacc9ff7`, and reported zero compute-sanitizer errors. Variant A is
+retained: its two medians are about 2.32% faster than the contemporaneous
+three-site baseline, while Variant B gives back most of that improvement.
+
+The representative full VM-only report is
+`target/profiling/lazy_bf_loop_dedup/retained_full.ncu-rep`. Relative to the
+previous lazy-reduction report, using the same raw metrics and normalization:
+
+- NCU duration falls from 16.181856 to 15.836992 ms;
+- dynamic instructions fall from 21,790,523,392 to 21,601,648,640, while
+  dynamic `IMAD` is nearly unchanged at 4,027,187,200 versus 4,025,810,944;
+- dynamic `BRA` rises from 609,878,016 to 625,541,120 because the unified loop
+  executes more control, but duplicated evaluator control and selector work
+  disappear elsewhere;
+- theoretical/achieved occupancy remains 75% / 74.01%, and issue slots busy
+  rise from 76.02% to 77.18%;
+- shared-FMA-heavy-plus-ALU-lite and ALU-heavy utilization rise from 79.25% /
+  66.44% to 80.22% / 67.16%;
+- L1/TEX, L2, and ICC hit rates move from 84.57% / 46.94% / 98.16% to
+  85.66% / 42.64% / 98.25%; and
+- all-sample PC proportions move from 32.40% to 34.70% not selected, 25.27%
+  to 22.00% math-pipe throttle, 11.29% to 11.13% wait, 8.51% to 9.46%
+  dispatch stall, 6.45% to 6.16% long scoreboard, and 3.47% to 3.72% no
+  instruction.
+
+The gain therefore does not come from eliminating another material number of
+Montgomery multiplications. It comes from removing force-inlined interpreter
+machinery and about 189 million executed instructions while preserving the
+lazy-reduction arithmetic. The kernel remains primarily limited by the shared
+FMA-heavy/ALU-lite pipe, but its instruction/control overhead is lower.

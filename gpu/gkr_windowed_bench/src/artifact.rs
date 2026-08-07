@@ -173,6 +173,7 @@ pub enum ArtifactError {
     GroupHeaderPayloadNonZero { record: u32 },
     InvalidLazyProductCount { record: u32, count: u16, arity: u16 },
     LazyProductPrefixClass { header: u32, record: u32 },
+    LazyProductTailClass { header: u32, record: u32 },
     LazyReductionFlagOutsidePrefix { header: u32, record: u32 },
     LazyReductionBoundaryMissing { header: u32, record: u32 },
     LazyReductionWindowTooLong { header: u32, record: u32 },
@@ -388,6 +389,14 @@ pub fn decode_program(
                 if reduction_boundary {
                     products_since_reduction = 0;
                 }
+            } else if class == WindowClass::GroupBf
+                && lazy_product_count != 0
+                && member_class != WindowClass::LinearBf
+            {
+                return Err(ArtifactError::LazyProductTailClass {
+                    header: record as u32,
+                    record: member_record as u32,
+                });
             } else if reduction_boundary {
                 return Err(ArtifactError::LazyReductionFlagOutsidePrefix {
                     header: record as u32,
@@ -897,6 +906,23 @@ mod tests {
         assert!(matches!(
             decode_program(&artifact),
             Err(ArtifactError::LazyProductPrefixClass { record: 1, .. })
+        ));
+    }
+
+    #[test]
+    fn lazy_bf_group_rejects_a_product_after_the_prefix() {
+        let artifact = lazy_bf_group_artifact(
+            2,
+            vec![
+                instruction(WindowClass::ProductBfBf, 0, 0, 0),
+                instruction(WindowClass::ProductBfBf, REDUCE_AFTER, 0, 0),
+                instruction(WindowClass::ProductBfBf, 0, 0, 0),
+            ],
+        );
+
+        assert!(matches!(
+            decode_program(&artifact),
+            Err(ArtifactError::LazyProductTailClass { record: 3, .. })
         ));
     }
 
