@@ -10,9 +10,9 @@ use gpu_gkr_compiler::{compile_continuations, GpuResourceProfile};
 
 use crate::abi::WindowInstruction;
 use crate::artifact::{
-    encode_artifact, validate_artifact, FrozenArtifact, FrozenBoundColumn, FrozenField,
-    FrozenSourceSlot, FrozenWindow, FrozenWindowFamily, WindowClass, ARTIFACT_MAGIC,
-    ARTIFACT_VERSION, SOURCE_NONE,
+    decode_program, encode_artifact, validate_artifact, ArtifactError, FrozenArtifact,
+    FrozenBoundColumn, FrozenField, FrozenSourceSlot, FrozenWindow, FrozenWindowFamily, WindowAtom,
+    WindowClass, WindowTerm, ARTIFACT_MAGIC, ARTIFACT_VERSION, SOURCE_NONE,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -32,7 +32,319 @@ impl core::fmt::Display for GeneratorError {
 
 impl std::error::Error for GeneratorError {}
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum ProgramSchedule {
+    #[default]
+    Compiler,
+    ControlAtoms,
+    Control,
+    Source,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ScheduleCensus {
+    pub atoms: u32,
+    pub terms: u32,
+    pub bf_atoms: u32,
+    pub e4_atoms: u32,
+    pub field_transitions: u32,
+    pub shape_transitions_within_field: u32,
+    pub class_transitions: u32,
+    pub group_immediate_transitions: u32,
+    pub adjacent_equal_source_a: u32,
+    pub adjacent_equal_source_b: u32,
+    pub projected_bf_accesses: u64,
+    pub projected_procedural_bf_accesses: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum EncodedAtom {
+    Term(WindowInstruction),
+    Group {
+        class: WindowClass,
+        core: u16,
+        members: Vec<WindowInstruction>,
+    },
+}
+
+impl EncodedAtom {
+    fn members(&self) -> &[WindowInstruction] {
+        match self {
+            Self::Term(term) => core::slice::from_ref(term),
+            Self::Group { members, .. } => members,
+        }
+    }
+
+    fn field(&self) -> u16 {
+        self.members()[0].term_class & 1
+    }
+
+    fn shape(&self) -> u8 {
+        matches!(self, Self::Group { .. }) as u8
+    }
+
+    fn core(&self) -> u16 {
+        match self {
+            Self::Term(term) => term.factor,
+            Self::Group { core, .. } => *core,
+        }
+    }
+
+    fn class_sequence(&self) -> Vec<u16> {
+        self.members()
+            .iter()
+            .map(|member| member.term_class)
+            .collect()
+    }
+
+    fn source_sequence(&self) -> Vec<(u16, u16)> {
+        self.members()
+            .iter()
+            .map(|member| (member.source_a, member.source_b))
+            .collect()
+    }
+
+    fn sort_members_control(&mut self) {
+        if let Self::Group { members, .. } = self {
+            members.sort_unstable_by_key(|member| {
+                (
+                    member.term_class,
+                    immediate_kind(member.factor),
+                    member.source_a,
+                    member.source_b,
+                    member.factor,
+                )
+            });
+        }
+    }
+
+    fn sort_members_source(&mut self) {
+        if let Self::Group { members, .. } = self {
+            members.sort_unstable_by_key(|member| {
+                (
+                    member.source_a,
+                    member.source_b,
+                    member.term_class,
+                    immediate_kind(member.factor),
+                    member.factor,
+                )
+            });
+        }
+    }
+
+    fn append_to(self, program: &mut Vec<WindowInstruction>) {
+        match self {
+            Self::Term(term) => program.push(term),
+            Self::Group {
+                class,
+                core,
+                members,
+            } => {
+                let encoded_count = if class == WindowClass::GroupBf {
+                    u16::try_from(members.len()).expect("validated BF group arity fits in u16")
+                } else {
+                    0
+                };
+                program.push(WindowInstruction {
+                    term_class: class as u16,
+                    factor: core,
+                    source_a: encoded_count,
+                    source_b: 0,
+                });
+                program.extend(members);
+            }
+        }
+    }
+}
+
+fn immediate_kind(factor: u16) -> u8 {
+    match factor {
+        0 => 0,
+        1 => 1,
+        _ => 2,
+    }
+}
+
+fn apply_schedule(atoms: &mut [EncodedAtom], schedule: ProgramSchedule) {
+    match schedule {
+        ProgramSchedule::Compiler => {}
+        ProgramSchedule::ControlAtoms => atoms.sort_unstable_by_key(|atom| {
+            (
+                atom.field(),
+                atom.shape(),
+                atom.class_sequence(),
+                atom.source_sequence(),
+                atom.members().len(),
+                atom.core(),
+            )
+        }),
+        ProgramSchedule::Control => {
+            atoms.iter_mut().for_each(EncodedAtom::sort_members_control);
+            atoms.sort_unstable_by_key(|atom| {
+                (
+                    atom.field(),
+                    atom.shape(),
+                    atom.class_sequence(),
+                    atom.source_sequence(),
+                    atom.members().len(),
+                    atom.core(),
+                )
+            });
+        }
+        ProgramSchedule::Source => {
+            atoms.iter_mut().for_each(EncodedAtom::sort_members_source);
+            atoms.sort_unstable_by_key(|atom| {
+                (
+                    atom.field(),
+                    atom.source_sequence(),
+                    atom.shape(),
+                    atom.class_sequence(),
+                    atom.members().len(),
+                    atom.core(),
+                )
+            });
+        }
+    }
+}
+
+fn term_field(class: WindowClass) -> u8 {
+    match class {
+        WindowClass::LinearBf | WindowClass::ProductBfBf => 0,
+        WindowClass::LinearE4 | WindowClass::ProductBfE4 | WindowClass::ProductE4E4 => 1,
+        WindowClass::GroupBf | WindowClass::GroupE4 => {
+            unreachable!("decoded atoms never contain group headers as terms")
+        }
+    }
+}
+
+fn atom_terms(atom: &WindowAtom) -> &[WindowTerm] {
+    match atom {
+        WindowAtom::Term(term) => core::slice::from_ref(term),
+        WindowAtom::GroupBf { members, .. } | WindowAtom::GroupE4 { members, .. } => members,
+    }
+}
+
+fn atom_shape(atom: &WindowAtom) -> u8 {
+    matches!(
+        atom,
+        WindowAtom::GroupBf { .. } | WindowAtom::GroupE4 { .. }
+    ) as u8
+}
+
+fn transitions<T: PartialEq>(values: impl IntoIterator<Item = T>) -> u32 {
+    let mut values = values.into_iter();
+    let Some(mut previous) = values.next() else {
+        return 0;
+    };
+    values.fold(0, |count, value| {
+        let changed = value != previous;
+        previous = value;
+        count + u32::from(changed)
+    })
+}
+
+fn source_is_procedural(artifact: &FrozenArtifact, source: u16) -> bool {
+    let slot = artifact.source_slots[usize::from(source)];
+    artifact.windows[usize::from(slot.window)]
+        .family
+        .is_procedural()
+}
+
+fn bf_source_accesses(term: &WindowTerm) -> [(u16, u64); 2] {
+    match term.class {
+        WindowClass::LinearBf => [(term.source_a, 8), (SOURCE_NONE, 0)],
+        WindowClass::ProductBfBf => [(term.source_a, 32), (term.source_b, 32)],
+        WindowClass::ProductBfE4 => [(term.source_a, 32), (SOURCE_NONE, 0)],
+        WindowClass::LinearE4 | WindowClass::ProductE4E4 => [(SOURCE_NONE, 0), (SOURCE_NONE, 0)],
+        WindowClass::GroupBf | WindowClass::GroupE4 => {
+            unreachable!("decoded atoms never contain group headers as terms")
+        }
+    }
+}
+
+pub fn schedule_census(artifact: &FrozenArtifact) -> Result<ScheduleCensus, ArtifactError> {
+    let (atoms, stats) = decode_program(artifact)?;
+    let flattened = atoms
+        .iter()
+        .flat_map(atom_terms)
+        .collect::<Vec<&WindowTerm>>();
+    let fields = atoms
+        .iter()
+        .map(|atom| term_field(atom_terms(atom)[0].class))
+        .collect::<Vec<_>>();
+    let field_transitions = transitions(fields.iter().copied());
+    let shape_transitions_within_field = atoms
+        .windows(2)
+        .filter(|pair| {
+            let left_field = term_field(atom_terms(&pair[0])[0].class);
+            let right_field = term_field(atom_terms(&pair[1])[0].class);
+            left_field == right_field && atom_shape(&pair[0]) != atom_shape(&pair[1])
+        })
+        .count() as u32;
+    let class_transitions = transitions(flattened.iter().map(|term| term.class as u8));
+    let group_immediate_transitions = transitions(
+        atoms
+            .iter()
+            .flat_map(|atom| match atom {
+                WindowAtom::Term(_) => &[][..],
+                WindowAtom::GroupBf { members, .. } | WindowAtom::GroupE4 { members, .. } => {
+                    members.as_slice()
+                }
+            })
+            .map(|term| immediate_kind(term.coefficient)),
+    );
+    let adjacent_equal_source_a = flattened
+        .windows(2)
+        .filter(|pair| pair[0].source_a == pair[1].source_a)
+        .count() as u32;
+    let adjacent_equal_source_b = flattened
+        .windows(2)
+        .filter(|pair| {
+            pair[0].source_b != SOURCE_NONE
+                && pair[1].source_b != SOURCE_NONE
+                && pair[0].source_b == pair[1].source_b
+        })
+        .count() as u32;
+    let (projected_bf_accesses, projected_procedural_bf_accesses) = flattened
+        .iter()
+        .flat_map(|term| bf_source_accesses(term))
+        .filter(|(_, accesses)| *accesses != 0)
+        .fold((0, 0), |(total, procedural), (source, accesses)| {
+            (
+                total + accesses,
+                procedural
+                    + if source_is_procedural(artifact, source) {
+                        accesses
+                    } else {
+                        0
+                    },
+            )
+        });
+    let bf_atoms = fields.iter().filter(|field| **field == 0).count() as u32;
+    Ok(ScheduleCensus {
+        atoms: atoms.len() as u32,
+        terms: stats.terms,
+        bf_atoms,
+        e4_atoms: atoms.len() as u32 - bf_atoms,
+        field_transitions,
+        shape_transitions_within_field,
+        class_transitions,
+        group_immediate_transitions,
+        adjacent_equal_source_a,
+        adjacent_equal_source_b,
+        projected_bf_accesses,
+        projected_procedural_bf_accesses,
+    })
+}
+
 pub fn generate_add_sub_layer0(layout_path: &Path) -> Result<FrozenArtifact, GeneratorError> {
+    generate_add_sub_layer0_with_schedule(layout_path, ProgramSchedule::Compiler)
+}
+
+pub fn generate_add_sub_layer0_with_schedule(
+    layout_path: &Path,
+    schedule: ProgramSchedule,
+) -> Result<FrozenArtifact, GeneratorError> {
     let bytes = std::fs::read(layout_path)
         .map_err(|error| GeneratorError::context("read circuit layout", error))?;
     let circuit: GKRCircuitArtifact<BabyBearField> = serde_json::from_slice(&bytes)
@@ -51,12 +363,10 @@ pub fn generate_add_sub_layer0(layout_path: &Path) -> Result<FrozenArtifact, Gen
     let atoms = decode_continuation_program(&layer.program)
         .map_err(|error| GeneratorError(format!("decode continuation program: {error:?}")))?;
 
-    let mut program = Vec::with_capacity(layer.program.words.len() / 4);
-    for atom in atoms {
-        match atom {
-            LeanAtom::Term(term) => {
-                program.push(encode_term(&term, &layer.binding)?);
-            }
+    let mut encoded_atoms = atoms
+        .into_iter()
+        .map(|atom| match atom {
+            LeanAtom::Term(term) => Ok(EncodedAtom::Term(encode_term(&term, &layer.binding)?)),
             LeanAtom::Group {
                 core,
                 has_c0: _,
@@ -94,21 +404,19 @@ pub fn generate_add_sub_layer0(layout_path: &Path) -> Result<FrozenArtifact, Gen
                         members.len()
                     )));
                 };
-                let encoded_count = if group_class == WindowClass::GroupBf {
-                    member_count
-                } else {
-                    0
-                };
-                program.push(WindowInstruction {
-                    term_class: group_class as u16,
-                    factor: core,
-                    source_a: encoded_count,
-                    source_b: 0,
-                });
-                program.extend(encoded_members);
+                Ok(EncodedAtom::Group {
+                    class: group_class,
+                    core,
+                    members: encoded_members,
+                })
             }
-        }
-    }
+        })
+        .collect::<Result<Vec<_>, GeneratorError>>()?;
+    apply_schedule(&mut encoded_atoms, schedule);
+    let mut program = Vec::with_capacity(layer.program.words.len() / 4);
+    encoded_atoms
+        .into_iter()
+        .for_each(|atom| atom.append_to(&mut program));
 
     let windows = layer
         .binding
@@ -266,6 +574,7 @@ fn convert_family(family: WindowFamily) -> Result<FrozenWindowFamily, GeneratorE
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
     use std::path::PathBuf;
 
     use crate::artifact::{decode_program, validate_artifact, WindowAtom};
@@ -306,5 +615,119 @@ mod tests {
         let first = generate_add_sub_layer0(&add_sub_layout()).unwrap();
         let second = generate_add_sub_layer0(&add_sub_layout()).unwrap();
         assert_eq!(first, second);
+    }
+
+    #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+    struct SemanticAtomKey {
+        shape: u8,
+        core: u16,
+        members: Vec<(u8, u16, u16, u16)>,
+    }
+
+    fn semantic_members(members: &[crate::artifact::WindowTerm]) -> Vec<(u8, u16, u16, u16)> {
+        let mut keys = members
+            .iter()
+            .map(|term| {
+                (
+                    term.class as u8,
+                    term.coefficient,
+                    term.source_a,
+                    term.source_b,
+                )
+            })
+            .collect::<Vec<_>>();
+        keys.sort_unstable();
+        keys
+    }
+
+    fn semantic_multiset(atoms: &[WindowAtom]) -> BTreeMap<SemanticAtomKey, usize> {
+        atoms.iter().fold(BTreeMap::new(), |mut counts, atom| {
+            let key = match atom {
+                WindowAtom::Term(term) => SemanticAtomKey {
+                    shape: 0,
+                    core: term.coefficient,
+                    members: vec![(
+                        term.class as u8,
+                        term.coefficient,
+                        term.source_a,
+                        term.source_b,
+                    )],
+                },
+                WindowAtom::GroupBf { core, members } => SemanticAtomKey {
+                    shape: 1,
+                    core: *core,
+                    members: semantic_members(members),
+                },
+                WindowAtom::GroupE4 { core, members } => SemanticAtomKey {
+                    shape: 2,
+                    core: *core,
+                    members: semantic_members(members),
+                },
+            };
+            *counts.entry(key).or_default() += 1;
+            counts
+        })
+    }
+
+    #[test]
+    fn program_schedules_preserve_semantic_multiset() {
+        let variants = [
+            ProgramSchedule::Compiler,
+            ProgramSchedule::ControlAtoms,
+            ProgramSchedule::Control,
+            ProgramSchedule::Source,
+        ]
+        .map(|schedule| {
+            let artifact =
+                generate_add_sub_layer0_with_schedule(&add_sub_layout(), schedule).unwrap();
+            let (atoms, stats) = decode_program(&artifact).unwrap();
+            assert_eq!(stats.terms, 150);
+            assert_eq!(atoms.len(), 72);
+            assert_eq!(stats.groups, 25);
+            let bf_atoms = atoms
+                .iter()
+                .filter(|atom| {
+                    matches!(
+                        atom,
+                        WindowAtom::Term(term)
+                            if matches!(term.class, WindowClass::LinearBf | WindowClass::ProductBfBf)
+                    ) || matches!(atom, WindowAtom::GroupBf { .. })
+                })
+                .count();
+            assert_eq!(bf_atoms, 65);
+            (artifact, atoms)
+        });
+        let expected = semantic_multiset(&variants[0].1);
+        for (_, atoms) in &variants[1..] {
+            assert_eq!(semantic_multiset(atoms), expected);
+        }
+    }
+
+    #[test]
+    fn schedule_census_tracks_control_and_source_locality() {
+        let census = |schedule| {
+            let artifact =
+                generate_add_sub_layer0_with_schedule(&add_sub_layout(), schedule).unwrap();
+            schedule_census(&artifact).unwrap()
+        };
+        let compiler = census(ProgramSchedule::Compiler);
+        let control_atoms = census(ProgramSchedule::ControlAtoms);
+        let control = census(ProgramSchedule::Control);
+        let source = census(ProgramSchedule::Source);
+
+        for candidate in [control_atoms, control, source] {
+            assert_eq!(candidate.atoms, 72);
+            assert_eq!(candidate.terms, 150);
+            assert_eq!(candidate.bf_atoms, 65);
+            assert_eq!(candidate.e4_atoms, 7);
+            assert_eq!(candidate.field_transitions, 1);
+        }
+        assert_eq!(control.shape_transitions_within_field, 2);
+        assert!(control.class_transitions < compiler.class_transitions);
+        assert!(
+            source.adjacent_equal_source_a + source.adjacent_equal_source_b
+                >= compiler.adjacent_equal_source_a + compiler.adjacent_equal_source_b
+        );
+        assert!(compiler.projected_procedural_bf_accesses <= compiler.projected_bf_accesses);
     }
 }

@@ -8,7 +8,6 @@ pub const WARPS_PER_BLOCK: u32 = 9;
 pub const THREADS_PER_BLOCK: u32 = 32 * WARPS_PER_BLOCK;
 pub const WINDOW_CELLS: u32 = 27;
 pub const SOURCE_NONE: u16 = u16::MAX;
-pub const SOURCE_COLUMN_BITS: u32 = 7;
 pub const PROGRAM_CAPACITY: usize = 175;
 pub const SOURCE_CAPACITY: usize = 59;
 pub const SLOT_CAPACITY: usize = 6;
@@ -54,13 +53,40 @@ impl Default for WindowAddrSlot {
     }
 }
 
-#[repr(C, align(2))]
+#[repr(C, align(4))]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct WindowSourceRecord {
-    pub src: u16,
-    pub cache: u16,
-    pub class: u8,
-    pub delta: u8,
+    pub packed: u32,
+}
+
+impl WindowSourceRecord {
+    pub const fn new(window: u16, column: u16) -> Self {
+        Self {
+            packed: (window as u32) | ((column as u32) << 16),
+        }
+    }
+
+    pub const fn window(self) -> u16 {
+        self.packed as u16
+    }
+
+    pub const fn column(self) -> u16 {
+        (self.packed >> 16) as u16
+    }
+}
+
+#[repr(C, align(8))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct WindowBaseRecord {
+    pub base: *const u8,
+}
+
+impl Default for WindowBaseRecord {
+    fn default() -> Self {
+        Self {
+            base: core::ptr::null(),
+        }
+    }
 }
 
 #[repr(C, align(8))]
@@ -77,7 +103,7 @@ pub struct WindowInstruction {
 pub struct WindowVmDesc {
     pub program: [WindowInstruction; PROGRAM_CAPACITY],
     pub sources: [WindowSourceRecord; SOURCE_CAPACITY],
-    pub slots: [WindowAddrSlot; SLOT_CAPACITY],
+    pub window_bases: [WindowBaseRecord; SLOT_CAPACITY],
     pub immediates: [u32; IMMEDIATE_CAPACITY],
     pub eq_low: *const E4,
     pub partials: *mut E4,
@@ -85,7 +111,6 @@ pub struct WindowVmDesc {
     pub term_count: u32,
     pub record_count: u32,
     pub num_sources: u32,
-    pub num_slots: u32,
     pub num_immediates: u32,
     pub num_coefficients: u32,
     pub c_init_coeff: u32,
@@ -106,8 +131,12 @@ const _: () = {
     assert!(offset_of!(WindowAddrSlot, origin) == 9);
     assert!(offset_of!(WindowAddrSlot, procedural_kind) == 10);
     assert!(offset_of!(WindowAddrSlot, reserved) == 11);
-    assert!(size_of::<WindowSourceRecord>() == 6);
-    assert!(align_of::<WindowSourceRecord>() == 2);
+    assert!(size_of::<WindowSourceRecord>() == 4);
+    assert!(align_of::<WindowSourceRecord>() == 4);
+    assert!(offset_of!(WindowSourceRecord, packed) == 0);
+    assert!(size_of::<WindowBaseRecord>() == 8);
+    assert!(align_of::<WindowBaseRecord>() == 8);
+    assert!(offset_of!(WindowBaseRecord, base) == 0);
     assert!(size_of::<WindowInstruction>() == 8);
     assert!(align_of::<WindowInstruction>() == 8);
     assert!(offset_of!(WindowInstruction, term_class) == 0);
@@ -118,25 +147,24 @@ const _: () = {
     assert!(SOURCE_CAPACITY == 59);
     assert!(SLOT_CAPACITY == 6);
     assert!(IMMEDIATE_CAPACITY == 7);
-    assert!(size_of::<WindowVmDesc>() == 1_952);
+    assert!(size_of::<WindowVmDesc>() == 1_792);
     assert!(size_of::<WindowVmDesc>() <= KERNEL_ARGUMENT_CEILING_BYTES);
     assert!(align_of::<WindowVmDesc>() == 16);
     assert!(offset_of!(WindowVmDesc, program) == 0);
     assert!(offset_of!(WindowVmDesc, sources) == 1_400);
-    assert!(offset_of!(WindowVmDesc, slots) == 1_760);
-    assert!(offset_of!(WindowVmDesc, immediates) == 1_856);
-    assert!(offset_of!(WindowVmDesc, eq_low) == 1_888);
-    assert!(offset_of!(WindowVmDesc, partials) == 1_896);
-    assert!(offset_of!(WindowVmDesc, program_records) == 1_904);
-    assert!(offset_of!(WindowVmDesc, term_count) == 1_908);
-    assert!(offset_of!(WindowVmDesc, record_count) == 1_912);
-    assert!(offset_of!(WindowVmDesc, num_sources) == 1_916);
-    assert!(offset_of!(WindowVmDesc, num_slots) == 1_920);
-    assert!(offset_of!(WindowVmDesc, num_immediates) == 1_924);
-    assert!(offset_of!(WindowVmDesc, num_coefficients) == 1_928);
-    assert!(offset_of!(WindowVmDesc, c_init_coeff) == 1_932);
-    assert!(offset_of!(WindowVmDesc, log_rows) == 1_936);
-    assert!(offset_of!(WindowVmDesc, eq_sizes) == 1_940);
+    assert!(offset_of!(WindowVmDesc, window_bases) == 1_640);
+    assert!(offset_of!(WindowVmDesc, immediates) == 1_688);
+    assert!(offset_of!(WindowVmDesc, eq_low) == 1_720);
+    assert!(offset_of!(WindowVmDesc, partials) == 1_728);
+    assert!(offset_of!(WindowVmDesc, program_records) == 1_736);
+    assert!(offset_of!(WindowVmDesc, term_count) == 1_740);
+    assert!(offset_of!(WindowVmDesc, record_count) == 1_744);
+    assert!(offset_of!(WindowVmDesc, num_sources) == 1_748);
+    assert!(offset_of!(WindowVmDesc, num_immediates) == 1_752);
+    assert!(offset_of!(WindowVmDesc, num_coefficients) == 1_756);
+    assert!(offset_of!(WindowVmDesc, c_init_coeff) == 1_760);
+    assert!(offset_of!(WindowVmDesc, log_rows) == 1_764);
+    assert!(offset_of!(WindowVmDesc, eq_sizes) == 1_768);
     assert!(THREADS_PER_BLOCK == 288);
     assert!(WINDOW_CELLS == 3 * WARPS_PER_BLOCK);
 };
@@ -170,13 +198,16 @@ mod tests {
     }
 
     #[test]
-    fn source_record_matches_the_segmented_vm_layout() {
-        assert_eq!(size_of::<WindowSourceRecord>(), 6);
-        assert_eq!(align_of::<WindowSourceRecord>(), 2);
-        assert_eq!(offset_of!(WindowSourceRecord, src), 0);
-        assert_eq!(offset_of!(WindowSourceRecord, cache), 2);
-        assert_eq!(offset_of!(WindowSourceRecord, class), 4);
-        assert_eq!(offset_of!(WindowSourceRecord, delta), 5);
+    fn source_record_is_a_compact_window_column_pair() {
+        assert_eq!(size_of::<WindowSourceRecord>(), 4);
+        assert_eq!(align_of::<WindowSourceRecord>(), 4);
+        assert_eq!(offset_of!(WindowSourceRecord, packed), 0);
+        let record = WindowSourceRecord::new(0x1234, 0xabcd);
+        assert_eq!(record.window(), 0x1234);
+        assert_eq!(record.column(), 0xabcd);
+        assert_eq!(size_of::<WindowBaseRecord>(), 8);
+        assert_eq!(align_of::<WindowBaseRecord>(), 8);
+        assert_eq!(offset_of!(WindowBaseRecord, base), 0);
     }
 
     #[test]
@@ -186,25 +217,24 @@ mod tests {
         assert_eq!(SOURCE_CAPACITY, 59);
         assert_eq!(SLOT_CAPACITY, 6);
         assert_eq!(IMMEDIATE_CAPACITY, 7);
-        assert_eq!(size_of::<WindowVmDesc>(), 1_952);
+        assert_eq!(size_of::<WindowVmDesc>(), 1_792);
         assert!(size_of::<WindowVmDesc>() <= KERNEL_ARGUMENT_CEILING_BYTES);
         assert_eq!(align_of::<WindowVmDesc>(), 16);
         assert_eq!(offset_of!(WindowVmDesc, program), 0);
         assert_eq!(offset_of!(WindowVmDesc, sources), 1_400);
-        assert_eq!(offset_of!(WindowVmDesc, slots), 1_760);
-        assert_eq!(offset_of!(WindowVmDesc, immediates), 1_856);
-        assert_eq!(offset_of!(WindowVmDesc, eq_low), 1_888);
-        assert_eq!(offset_of!(WindowVmDesc, partials), 1_896);
-        assert_eq!(offset_of!(WindowVmDesc, program_records), 1_904);
-        assert_eq!(offset_of!(WindowVmDesc, term_count), 1_908);
-        assert_eq!(offset_of!(WindowVmDesc, record_count), 1_912);
-        assert_eq!(offset_of!(WindowVmDesc, num_sources), 1_916);
-        assert_eq!(offset_of!(WindowVmDesc, num_slots), 1_920);
-        assert_eq!(offset_of!(WindowVmDesc, num_immediates), 1_924);
-        assert_eq!(offset_of!(WindowVmDesc, num_coefficients), 1_928);
-        assert_eq!(offset_of!(WindowVmDesc, c_init_coeff), 1_932);
-        assert_eq!(offset_of!(WindowVmDesc, log_rows), 1_936);
-        assert_eq!(offset_of!(WindowVmDesc, eq_sizes), 1_940);
+        assert_eq!(offset_of!(WindowVmDesc, window_bases), 1_640);
+        assert_eq!(offset_of!(WindowVmDesc, immediates), 1_688);
+        assert_eq!(offset_of!(WindowVmDesc, eq_low), 1_720);
+        assert_eq!(offset_of!(WindowVmDesc, partials), 1_728);
+        assert_eq!(offset_of!(WindowVmDesc, program_records), 1_736);
+        assert_eq!(offset_of!(WindowVmDesc, term_count), 1_740);
+        assert_eq!(offset_of!(WindowVmDesc, record_count), 1_744);
+        assert_eq!(offset_of!(WindowVmDesc, num_sources), 1_748);
+        assert_eq!(offset_of!(WindowVmDesc, num_immediates), 1_752);
+        assert_eq!(offset_of!(WindowVmDesc, num_coefficients), 1_756);
+        assert_eq!(offset_of!(WindowVmDesc, c_init_coeff), 1_760);
+        assert_eq!(offset_of!(WindowVmDesc, log_rows), 1_764);
+        assert_eq!(offset_of!(WindowVmDesc, eq_sizes), 1_768);
     }
 
     #[test]

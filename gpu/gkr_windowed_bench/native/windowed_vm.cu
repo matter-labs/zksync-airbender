@@ -22,9 +22,6 @@ constexpr u16 WINDOW_CLASS_PRODUCT_E4_E4 = 5;
 constexpr u16 WINDOW_CLASS_GROUP_BF = 6;
 constexpr u16 WINDOW_CLASS_GROUP_E4 = 7;
 constexpr u16 WINDOW_CLASS_FIELD_E4 = 1;
-constexpr u16 WINDOW_SOURCE_COLUMN_MASK = 127;
-constexpr u32 WINDOW_SOURCE_COLUMN_BITS = 7;
-constexpr u8 WINDOW_SOURCE_CLASS_PROCEDURAL = 4;
 constexpr u16 WINDOW_IMMEDIATE_ONE = 0;
 constexpr u16 WINDOW_IMMEDIATE_NEG_ONE = 1;
 constexpr u16 WINDOW_IMMEDIATE_RESERVED = 2;
@@ -49,31 +46,10 @@ EXTERN __global__ void ab_gkr_windowed_init_e4_kernel(e4 *values, const u64 coun
   }
 }
 
-DEVICE_FORCEINLINE bf window_virtual_value(const u8 kind, const u32 row) {
-  switch (kind) {
-  case 0:
-    return row < (1u << 16) ? bf::from_u32_unchecked(row) : bf::ZERO();
-  case 1:
-    return row < (1u << 19) ? bf::from_u32_unchecked(row) : bf::ZERO();
-  case 2:
-    return bf::from_u32_unchecked((row << 2) & 0xffffu);
-  case 3:
-    return bf::from_u32_unchecked(row >> 14);
-  default:
-    return bf::ZERO();
-  }
-}
-
 struct window_bf_source {
   const bf *column;
-  u8 procedural_kind;
-  bool procedural;
 
-  DEVICE_FORCEINLINE bf value(const u32 index) const {
-    if (procedural)
-      return window_virtual_value(procedural_kind, index);
-    return ::airbender::primitives::memory::load<bf, ld_modifier::ca>(column, index);
-  }
+  DEVICE_FORCEINLINE bf value(const u32 index) const { return ::airbender::primitives::memory::load<bf, ld_modifier::ca>(column, index); }
 };
 
 struct window_e4_source {
@@ -82,22 +58,20 @@ struct window_e4_source {
   DEVICE_FORCEINLINE e4 value(const u32 index) const { return ::airbender::primitives::memory::load<e4, ld_modifier::ca>(column, index); }
 };
 
-DEVICE_FORCEINLINE window_bf_source window_resolve_bf_source(const window_vm_desc &desc, const u16 source) {
+DEVICE_FORCEINLINE window_bf_source window_resolve_bf_source(const window_vm_desc &desc, const u16 source, const u32 log_trace) {
   const window_source_record record = desc.sources[source];
-  const window_addr_slot slot = desc.slots[record.src >> WINDOW_SOURCE_COLUMN_BITS];
-  if (record.source_class == WINDOW_SOURCE_CLASS_PROCEDURAL)
-    return {nullptr, slot.procedural_kind, true};
-  const bf *base = reinterpret_cast<const bf *>(slot.base);
-  const bf *column = base + (static_cast<size_t>(record.src & WINDOW_SOURCE_COLUMN_MASK) << slot.log2_stride);
-  return {column, 0, false};
+  const u16 window = static_cast<u16>(record.packed);
+  const u16 column = static_cast<u16>(record.packed >> 16);
+  const bf *window_base = reinterpret_cast<const bf *>(desc.window_bases[window].base);
+  return {window_base + (static_cast<size_t>(column) << log_trace)};
 }
 
-DEVICE_FORCEINLINE window_e4_source window_resolve_e4_source(const window_vm_desc &desc, const u16 source) {
+DEVICE_FORCEINLINE window_e4_source window_resolve_e4_source(const window_vm_desc &desc, const u16 source, const u32 log_trace) {
   const window_source_record record = desc.sources[source];
-  const window_addr_slot slot = desc.slots[record.src >> WINDOW_SOURCE_COLUMN_BITS];
-  const e4 *base = reinterpret_cast<const e4 *>(slot.base);
-  const e4 *column = base + (static_cast<size_t>(record.src & WINDOW_SOURCE_COLUMN_MASK) << slot.log2_stride);
-  return {column};
+  const u16 window = static_cast<u16>(record.packed);
+  const u16 column = static_cast<u16>(record.packed >> 16);
+  const e4 *window_base = reinterpret_cast<const e4 *>(desc.window_bases[window].base);
+  return {window_base + (static_cast<size_t>(column) << log_trace)};
 }
 
 DEVICE_FORCEINLINE bf window_sub(const bf one, const bf zero) { return bf::sub(one, zero); }
@@ -215,18 +189,18 @@ DEVICE_FORCEINLINE void window_init_e4_sign(const u16 immediate_id, window_tripl
 }
 
 DEVICE_FORCEINLINE window_triplet<bf> window_eval_bf_term(const window_vm_desc &desc, const window_instruction instruction, const u32 row, const u32 log_rows,
-                                                          const window_selector selector) {
+                                                          const u32 log_trace, const window_selector selector) {
   switch (instruction.term_class) {
   case WINDOW_CLASS_LINEAR_BF: {
     if (selector.infinity0 || selector.infinity1)
       return {{bf::ZERO(), bf::ZERO(), bf::ZERO()}};
-    const window_bf_source source = window_resolve_bf_source(desc, instruction.source_a);
+    const window_bf_source source = window_resolve_bf_source(desc, instruction.source_a, log_trace);
     const window_triplet<bf> a = window_resolve_triplet<bf>(source, row, log_rows, selector);
     return {{a.values[0], a.values[1], bf::ZERO()}};
   }
   case WINDOW_CLASS_PRODUCT_BF_BF: {
-    const window_bf_source source_a_view = window_resolve_bf_source(desc, instruction.source_a);
-    const window_bf_source source_b_view = window_resolve_bf_source(desc, instruction.source_b);
+    const window_bf_source source_a_view = window_resolve_bf_source(desc, instruction.source_a, log_trace);
+    const window_bf_source source_b_view = window_resolve_bf_source(desc, instruction.source_b, log_trace);
     const window_triplet<bf> a = window_resolve_triplet<bf>(source_a_view, row, log_rows, selector);
     const window_triplet<bf> b = window_resolve_triplet<bf>(source_b_view, row, log_rows, selector);
     return {{bf::mul(a.values[0], b.values[0]), bf::mul(a.values[1], b.values[1]), bf::mul(a.values[2], b.values[2])}};
@@ -237,25 +211,25 @@ DEVICE_FORCEINLINE window_triplet<bf> window_eval_bf_term(const window_vm_desc &
 }
 
 DEVICE_FORCEINLINE window_triplet<e4> window_eval_e4_term(const window_vm_desc &desc, const window_instruction instruction, const u32 row, const u32 log_rows,
-                                                          const window_selector selector) {
+                                                          const u32 log_trace, const window_selector selector) {
   switch (instruction.term_class) {
   case WINDOW_CLASS_LINEAR_E4: {
     if (selector.infinity0 || selector.infinity1)
       return {{e4::ZERO(), e4::ZERO(), e4::ZERO()}};
-    const window_e4_source source = window_resolve_e4_source(desc, instruction.source_a);
+    const window_e4_source source = window_resolve_e4_source(desc, instruction.source_a, log_trace);
     const window_triplet<e4> a = window_resolve_triplet<e4>(source, row, log_rows, selector);
     return {{a.values[0], a.values[1], e4::ZERO()}};
   }
   case WINDOW_CLASS_PRODUCT_BF_E4: {
-    const window_bf_source source_bf = window_resolve_bf_source(desc, instruction.source_a);
-    const window_e4_source source_e4 = window_resolve_e4_source(desc, instruction.source_b);
+    const window_bf_source source_bf = window_resolve_bf_source(desc, instruction.source_a, log_trace);
+    const window_e4_source source_e4 = window_resolve_e4_source(desc, instruction.source_b, log_trace);
     const window_triplet<bf> a = window_resolve_triplet<bf>(source_bf, row, log_rows, selector);
     const window_triplet<e4> b = window_resolve_triplet<e4>(source_e4, row, log_rows, selector);
     return {{e4::mul(b.values[0], a.values[0]), e4::mul(b.values[1], a.values[1]), e4::mul(b.values[2], a.values[2])}};
   }
   case WINDOW_CLASS_PRODUCT_E4_E4: {
-    const window_e4_source source_a_view = window_resolve_e4_source(desc, instruction.source_a);
-    const window_e4_source source_b_view = window_resolve_e4_source(desc, instruction.source_b);
+    const window_e4_source source_a_view = window_resolve_e4_source(desc, instruction.source_a, log_trace);
+    const window_e4_source source_b_view = window_resolve_e4_source(desc, instruction.source_b, log_trace);
     const window_triplet<e4> a = window_resolve_triplet<e4>(source_a_view, row, log_rows, selector);
     const window_triplet<e4> b = window_resolve_triplet<e4>(source_b_view, row, log_rows, selector);
     return {{e4::mul(a.values[0], b.values[0]), e4::mul(a.values[1], b.values[1]), e4::mul(a.values[2], b.values[2])}};
@@ -266,11 +240,11 @@ DEVICE_FORCEINLINE window_triplet<e4> window_eval_e4_term(const window_vm_desc &
 }
 
 DEVICE_FORCEINLINE u32 window_execute_bf_atom(const window_vm_desc &desc, const window_instruction head, u32 pc, const u32 row, const u32 log_rows,
-                                              const window_selector selector, const window_accumulator_view accumulators) {
+                                              const u32 log_trace, const window_selector selector, const window_accumulator_view accumulators) {
   const bool grouped = head.term_class == WINDOW_CLASS_GROUP_BF;
   const u16 arity = grouped ? head.source_a : 1;
   const window_instruction first = grouped ? desc.program[pc++] : head;
-  const window_triplet<bf> first_value = window_eval_bf_term(desc, first, row, log_rows, selector);
+  const window_triplet<bf> first_value = window_eval_bf_term(desc, first, row, log_rows, log_trace, selector);
   window_triplet<bf> sums = first_value;
   if (grouped)
     window_init_bf_immediate(desc, first.factor, sums);
@@ -278,7 +252,7 @@ DEVICE_FORCEINLINE u32 window_execute_bf_atom(const window_vm_desc &desc, const 
 #pragma unroll 1
   for (u16 member = 1; member < arity; ++member) {
     const window_instruction tail = desc.program[pc++];
-    const window_triplet<bf> value = window_eval_bf_term(desc, tail, row, log_rows, selector);
+    const window_triplet<bf> value = window_eval_bf_term(desc, tail, row, log_rows, log_trace, selector);
     window_apply_bf_immediate(desc, tail.factor, value, sums);
   }
 
@@ -288,17 +262,17 @@ DEVICE_FORCEINLINE u32 window_execute_bf_atom(const window_vm_desc &desc, const 
 }
 
 DEVICE_FORCEINLINE u32 window_execute_e4_atom(const window_vm_desc &desc, const window_instruction head, u32 pc, const u32 row, const u32 log_rows,
-                                              const window_selector selector, const window_accumulator_view accumulators) {
+                                              const u32 log_trace, const window_selector selector, const window_accumulator_view accumulators) {
   const bool grouped = head.term_class == WINDOW_CLASS_GROUP_E4;
   const window_instruction first = grouped ? desc.program[pc++] : head;
-  const window_triplet<e4> first_value = window_eval_e4_term(desc, first, row, log_rows, selector);
+  const window_triplet<e4> first_value = window_eval_e4_term(desc, first, row, log_rows, log_trace, selector);
   window_triplet<e4> sums = first_value;
   if (grouped)
     window_init_e4_sign(first.factor, sums);
 
   if (grouped) {
     const window_instruction second = desc.program[pc++];
-    const window_triplet<e4> second_value = window_eval_e4_term(desc, second, row, log_rows, selector);
+    const window_triplet<e4> second_value = window_eval_e4_term(desc, second, row, log_rows, log_trace, selector);
     window_apply_e4_sign(second.factor, second_value, sums);
   }
 
@@ -340,6 +314,7 @@ EXTERN __global__ __launch_bounds__(WINDOW_THREADS_PER_BLOCK, 4) void ab_gkr_win
   const u32 x1 = warp % 3;
   const window_selector selector{x0, x1, static_cast<bool>(__all_sync(0xffffffffu, x0 == 2)), static_cast<bool>(__all_sync(0xffffffffu, x1 == 2))};
   const u32 candidate_row = blockIdx.x * 32 + lane;
+  const u32 log_trace = desc.log_rows + 3;
   const u32 rows = 1u << desc.log_rows;
   const bool active = candidate_row < rows;
   const u32 row = active ? candidate_row : 0;
@@ -358,9 +333,9 @@ EXTERN __global__ __launch_bounds__(WINDOW_THREADS_PER_BLOCK, 4) void ab_gkr_win
   while (pc < desc.record_count) {
     const window_instruction instruction = desc.program[pc++];
     if (instruction.term_class & WINDOW_CLASS_FIELD_E4)
-      pc = window_execute_e4_atom(desc, instruction, pc, row, desc.log_rows, selector, accumulators);
+      pc = window_execute_e4_atom(desc, instruction, pc, row, desc.log_rows, log_trace, selector, accumulators);
     else
-      pc = window_execute_bf_atom(desc, instruction, pc, row, desc.log_rows, selector, accumulators);
+      pc = window_execute_bf_atom(desc, instruction, pc, row, desc.log_rows, log_trace, selector, accumulators);
   }
 
   const e4 eq = window_eq(desc, row);

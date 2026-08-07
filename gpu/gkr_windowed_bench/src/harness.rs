@@ -8,14 +8,15 @@ use era_cudart::stream::CudaStream;
 use era_cudart_sys::CudaError;
 
 use crate::abi::{
-    WindowAddrSlot, WindowInstruction, WindowSourceRecord, WindowVmDesc, BF, C_INIT_NONE, E4,
-    IMMEDIATE_CAPACITY, PROGRAM_CAPACITY, SLOT_CAPACITY, SOURCE_CAPACITY, WINDOW_CELLS,
+    WindowAddrSlot, WindowBaseRecord, WindowInstruction, WindowSourceRecord, WindowVmDesc, BF,
+    C_INIT_NONE, E4, IMMEDIATE_CAPACITY, PROGRAM_CAPACITY, SLOT_CAPACITY, SOURCE_CAPACITY,
+    SOURCE_CLASS_BF_DIRECT, SOURCE_CLASS_E4_DIRECT, WINDOW_CELLS,
 };
 use crate::artifact::{
     decode_artifact, decode_program, FrozenArtifact, FrozenField, WindowAtom, WindowClass,
     WindowTerm, ADD_SUB_LAYER0_BYTES,
 };
-use crate::geometry::{build_allocation_plan, AllocationPlan, GeometryError};
+use crate::geometry::{build_allocation_plan, AllocationPlan, GeometryError, PlannedSource};
 use crate::kernels::{
     coefficient_bank_device_ptr, configure_window_vm_shared_carveout, eq_high_device_ptr,
     launch_finalize, launch_init_bf, launch_init_e4, launch_window_vm, COEFFICIENT_CAPACITY,
@@ -70,7 +71,7 @@ impl AllocationReport {
             .ok_or_else(|| BenchError("E4 backing byte count overflow".to_owned()))?;
         let program_bytes = artifact.program.len() * size_of::<WindowInstruction>();
         let source_bytes = plan.source_records.len() * size_of::<WindowSourceRecord>();
-        let slot_bytes = plan.windows.len() * size_of::<WindowAddrSlot>();
+        let slot_bytes = plan.windows.len() * size_of::<WindowBaseRecord>();
         let immediate_bytes = artifact.immediates.len() * size_of::<u32>();
         let eq_low_bytes = plan.eq_low_elements * size_of::<E4>();
         let launch_parameter_bytes = size_of::<WindowVmDesc>();
@@ -131,6 +132,40 @@ impl From<GeometryError> for BenchError {
     }
 }
 
+fn compact_source_records(
+    records: &[PlannedSource],
+    slots: &[WindowAddrSlot],
+) -> Result<Vec<WindowSourceRecord>, BenchError> {
+    records
+        .iter()
+        .enumerate()
+        .map(|(source, record)| {
+            let window = usize::from(record.window);
+            slots.get(window).ok_or_else(|| {
+                BenchError(format!(
+                    "source {source} refers to missing address slot {window}"
+                ))
+            })?;
+            match record.class {
+                SOURCE_CLASS_BF_DIRECT | SOURCE_CLASS_E4_DIRECT => {}
+                class => {
+                    return Err(BenchError(format!(
+                        "source {source} has unsupported class {class}"
+                    )))
+                }
+            }
+            Ok(WindowSourceRecord::new(record.window, record.column))
+        })
+        .collect()
+}
+
+fn window_base_records(slots: &[WindowAddrSlot]) -> Vec<WindowBaseRecord> {
+    slots
+        .iter()
+        .map(|slot| WindowBaseRecord { base: slot.base })
+        .collect()
+}
+
 enum OwnedBacking {
     Bf(DeviceAllocation<BF>),
     E4(DeviceAllocation<E4>),
@@ -171,10 +206,6 @@ impl WindowedHarness {
         let report = AllocationReport::from_plan(&artifact, &plan, COEFFICIENT_CAPACITY)?;
         let inline_program =
             inline_table::<WindowInstruction, PROGRAM_CAPACITY>(&artifact.program, "program")?;
-        let inline_sources = inline_table::<WindowSourceRecord, SOURCE_CAPACITY>(
-            &plan.source_records,
-            "source table",
-        )?;
         let inline_immediates =
             inline_table::<u32, IMMEDIATE_CAPACITY>(&artifact.immediates, "immediate table")?;
         let stream = CudaStream::default();
@@ -222,8 +253,12 @@ impl WindowedHarness {
                 reserved: [0; 5],
             })
             .collect::<Vec<_>>();
-        let inline_slots =
-            inline_table::<WindowAddrSlot, SLOT_CAPACITY>(&host_slots, "address-slot table")?;
+        let compact_sources = compact_source_records(&plan.source_records, &host_slots)?;
+        let inline_sources =
+            inline_table::<WindowSourceRecord, SOURCE_CAPACITY>(&compact_sources, "source table")?;
+        let window_bases = window_base_records(&host_slots);
+        let inline_window_bases =
+            inline_table::<WindowBaseRecord, SLOT_CAPACITY>(&window_bases, "window base table")?;
         let mut eq_low = DeviceAllocation::<E4>::alloc(plan.eq_low_elements)
             .map_err(|error| BenchError::cuda("allocate low equality table", error))?;
         launch_init_e4(&mut eq_low, 0x4000, &stream)
@@ -260,7 +295,7 @@ impl WindowedHarness {
         let descriptor = WindowVmDesc {
             program: inline_program,
             sources: inline_sources,
-            slots: inline_slots,
+            window_bases: inline_window_bases,
             immediates: inline_immediates,
             eq_low: eq_low.as_ptr(),
             partials: partials.as_mut_ptr(),
@@ -268,7 +303,6 @@ impl WindowedHarness {
             term_count: artifact.term_count,
             record_count: artifact.record_count,
             num_sources: artifact.source_slots.len() as u32,
-            num_slots: artifact.windows.len() as u32,
             num_immediates: artifact.immediates.len() as u32,
             num_coefficients: artifact.coefficient_count,
             c_init_coeff: artifact.c_init_coeff.unwrap_or(C_INIT_NONE),
@@ -449,18 +483,18 @@ mod tests {
         let plan = build_allocation_plan(&artifact, 8).unwrap();
         let report = AllocationReport::from_plan(&artifact, &plan, 80).unwrap();
 
-        assert_eq!(report.bf_backing_bytes, 134_144);
+        assert_eq!(report.bf_backing_bytes, 135_168);
         assert_eq!(report.e4_backing_bytes, 16_384);
         assert_eq!(report.program_bytes, 8);
-        assert_eq!(report.source_bytes, 24);
-        assert_eq!(report.slot_bytes, 64);
+        assert_eq!(report.source_bytes, 16);
+        assert_eq!(report.slot_bytes, 32);
         assert_eq!(report.immediate_bytes, 0);
         assert_eq!(report.eq_low_bytes, 512);
-        assert_eq!(report.launch_parameter_bytes, 1_952);
+        assert_eq!(report.launch_parameter_bytes, 1_792);
         assert_eq!(report.partial_bytes, 432);
         assert_eq!(report.final_bytes, 432);
         assert_eq!(report.constant_bytes, 9_472);
-        assert_eq!(report.total_resident_bytes, 161_376);
+        assert_eq!(report.total_resident_bytes, 162_400);
     }
 
     #[test]
@@ -473,6 +507,32 @@ mod tests {
     fn inline_table_rejects_values_past_capacity() {
         let error = inline_table::<u32, 2>(&[11, 22, 33], "test table").unwrap_err();
         assert_eq!(error.0, "test table has 3 entries, inline capacity is 2");
+    }
+
+    #[test]
+    fn compact_source_reconstructs_typed_column_address() {
+        let direct = PlannedSource {
+            window: 1,
+            column: 3,
+            class: SOURCE_CLASS_BF_DIRECT,
+        };
+        let slots = [
+            WindowAddrSlot::default(),
+            WindowAddrSlot {
+                base: 0x1000usize as *const u8,
+                log2_stride: 5,
+                ..WindowAddrSlot::default()
+            },
+        ];
+
+        let compact = compact_source_records(&[direct], &slots).unwrap();
+        let bases = window_base_records(&slots);
+        let record = compact[0];
+        let log_trace = 5u32;
+        let typed_base = bases[usize::from(record.window())].base.cast::<BF>();
+        let reconstructed = typed_base.wrapping_add(usize::from(record.column()) << log_trace);
+
+        assert_eq!(reconstructed as usize, 0x1000 + 3 * 32 * size_of::<BF>());
     }
 
     #[test]
