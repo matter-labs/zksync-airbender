@@ -3,6 +3,7 @@
 use era_cudart::event::{elapsed_time, CudaEvent};
 use era_cudart::memory::{memory_copy, DeviceAllocation};
 use era_cudart::result::CudaResult;
+use era_cudart::slice::DeviceSlice;
 use era_cudart::stream::CudaStream;
 
 use crate::abi::*;
@@ -111,6 +112,27 @@ impl Layout {
     }
 }
 
+/// Grid shape of the coset LDE. `Cell` is the v1 shape — one thread per
+/// (job, cell, row), so a row's 16 taps are re-read once per coset cell. `Row` is the
+/// intra-thread reshape — one thread per (job, row), per (job, row, limb) for `e4` —
+/// which reads each tap once and emits all 16 cells. Both write the same bytes, so
+/// they are interchangeable for every consumer and for validation.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, clap::ValueEnum)]
+pub enum LdeShape {
+    Cell,
+    #[default]
+    Row,
+}
+
+impl LdeShape {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Cell => "cell",
+            Self::Row => "row",
+        }
+    }
+}
+
 /// The timed stages of one pass, in execution order.
 pub const STAGES: [&str; 4] = ["lde", "eval", "finalize", "fold"];
 
@@ -138,6 +160,7 @@ pub struct Harness {
     geometry: Geometry,
     seed: u32,
     flat_eq: bool,
+    lde_shape: LdeShape,
     taps: [DeviceAllocation<u32>; CLASSES],
     cosets: [DeviceAllocation<u32>; CLASSES],
     #[allow(dead_code)] // referenced by desc.eq_low
@@ -157,12 +180,14 @@ impl Harness {
     /// Allocate the backings, upload the program, the LDE matrix and the coefficient
     /// bank, and run the init kernels over the taps and the eq tables. `flat_eq`
     /// forces every eq entry to ONE — the `--validate-flat-eq` debug mode, which
-    /// isolates the term VM from the eq composition on both sides.
+    /// isolates the term VM from the eq composition on both sides. `lde_shape` picks
+    /// the LDE grid shape; it changes no output byte.
     pub fn new(
         program: &SynthProgram,
         geometry: &Geometry,
         seed: u32,
         flat_eq: bool,
+        lde_shape: LdeShape,
     ) -> CudaResult<Self> {
         let layout = Layout::new(program, geometry);
         let stream = CudaStream::create()?;
@@ -269,6 +294,7 @@ impl Harness {
             geometry: *geometry,
             seed,
             flat_eq,
+            lde_shape,
             taps,
             cosets,
             eq_low,
@@ -282,15 +308,20 @@ impl Harness {
         })
     }
 
-    /// One coset LDE pass over both field classes.
+    /// One coset LDE pass over both field classes, in the configured grid shape.
     pub fn run_lde(&self) -> CudaResult<()> {
-        kernels::lde_bf(
+        type Launch = fn(&UniskipVmDesc, &DeviceSlice<u16>, usize, &CudaStream) -> CudaResult<()>;
+        let (bf, e4): (Launch, Launch) = match self.lde_shape {
+            LdeShape::Cell => (kernels::lde_bf, kernels::lde_e4),
+            LdeShape::Row => (kernels::lde_bf_row, kernels::lde_e4_row),
+        };
+        bf(
             &self.desc,
             &self.jobs[CLASS_BF],
             self.job_counts[CLASS_BF],
             &self.stream,
         )?;
-        kernels::lde_e4(
+        e4(
             &self.desc,
             &self.jobs[CLASS_E4],
             self.job_counts[CLASS_E4],

@@ -29,6 +29,13 @@ stream:
 - `log_rows = log_trace - 4`; `log_rows` must be in `[5, 21]`. The upper bound is
   the device accessor's 32-bit element index (an `addr` names up to 128 columns of
   16 planes, so `11 + log_rows` bits), the lower bound is one block's row tile.
+- The LDE stage has two interchangeable grid shapes, `--lde-shape {cell,row}`, which
+  write the same bytes. `cell` (`lde_bf`/`lde_e4`) is one thread per (column, coset
+  cell, row), so a row's 16 taps are re-read once per cell. `row`
+  (`lde_bf_v2`/`lde_e4_v2`, the default) is one thread per (column, row) — per
+  (column, row, limb) for `e4`, since the extension is `bf`-linear per limb — which
+  reads each tap once and emits all 16 cells, keeping the reuse in registers. Both are
+  measured in `iteration_times.md`.
 - The eval kernel is **cell-slab**: 256 threads = 8 warps, lane = row inside a
   32-row tile, warp `w` owns cells `4w..4w+3`. Warps 0–3 take the tap cells and
   warps 4–7 the coset cells, so the `H`-vs-coset choice is warp-uniform. The four
@@ -104,7 +111,7 @@ target/release/gpu_gkr_uniskip_bench --help
 # any run that touches the GPU (locked)
 .agents/bin/with_gpu_lock.sh target/release/gpu_gkr_uniskip_bench --log-trace 20
 
-# the recorded baseline
+# the recorded baseline (add `--lde-shape cell` for the v1 LDE control arm)
 .agents/bin/with_gpu_lock.sh target/release/gpu_gkr_uniskip_bench \
     --log-trace 24 --warmup 10 --iterations 100
 ```
@@ -150,10 +157,10 @@ warmup included, so a timed pass and an untimed one do identical work. The repor
 `min GB/s` column divides each stage's **compulsory** traffic — every distinct byte
 it must read or write at least once, from `Harness::pass_bytes` — by its median time.
 That is a *lower* bound on achieved bandwidth, not a measurement of it: real DRAM
-traffic is never below the floor and is usually above it (the LDE re-reads its input
-once per coset cell, ~16×), so the true GB/s is at least the number printed and can
-be many times it. Measured numbers and their interpretation live in
-`iteration_times.md`.
+traffic is never below the floor and is usually above it (`--lde-shape cell` re-reads
+its input once per coset cell, ~16×; `row` reads it once, so there the two coincide),
+so the true GB/s is at least the number printed and can be many times it. Measured
+numbers and their interpretation live in `iteration_times.md`.
 
 ## Census defaults and provenance
 
@@ -192,8 +199,9 @@ None of these is an oversight; each is a scoping decision to be revisited.
   synthesis is Task 6.
 - **Global coset materialization.** The coset is written to memory and read back,
   which is ~2× the traffic of extending on read. That is measured **on purpose** —
-  it is the v1 baseline that v2's LDE-on-read accessor has to beat, and it is why
-  `lde` dominates the recorded pass.
+  it is the baseline that v2's LDE-on-read accessor has to beat. (The 16× tap
+  re-read that made `lde` dominate the v1 pass is a separate defect, fixed by
+  `--lde-shape row`; the materialization itself remains.)
 - **No shared-memory operand cache.** Operand reuse (~3.8 references per source)
   is left to L1/L2.
 - **No tensor cores.** The tap→coset extension is a 16×16 matrix apply per column

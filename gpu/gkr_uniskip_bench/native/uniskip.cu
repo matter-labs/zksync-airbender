@@ -84,6 +84,76 @@ EXTERN __global__ void ab_gkr_uniskip_lde_e4_kernel(const __grid_constant__ unis
   }
 }
 
+// ROW SHAPE. One thread owns (job, row) and emits all 16 coset cells from ONE tap
+// load, so the 16 threads that shared a row's taps in the cell-shape kernel above are
+// now a single THREAD — the reuse is register-local and the 16x tap re-read is gone by
+// construction. Lanes are consecutive rows, so each tap-plane load and each coset-plane
+// store is warp-coalesced exactly as before. Bytes written are identical to the
+// cell-shape kernel's.
+EXTERN __global__ void ab_gkr_uniskip_lde_bf_v2_kernel(const __grid_constant__ uniskip_vm_desc desc, const u16 *jobs, const u32 num_jobs) {
+  const u64 rows = u64{1} << desc.log_rows;
+  const u64 total = rows * u64{num_jobs};
+  for (u64 i = blockIdx.x * u64{blockDim.x} + threadIdx.x; i < total; i += u64{blockDim.x} * gridDim.x) {
+    const u32 job = static_cast<u32>(i >> desc.log_rows);
+    const u64 row = i & (rows - 1);
+    const uniskip_source_record rec = desc.source[jobs[job]];
+    const u32 window = rec.addr >> 7;
+    const size_t col = rec.addr & 0x7f;
+    const bf *taps = reinterpret_cast<const bf *>(desc.tap_bases[window].base);
+    bf *coset = reinterpret_cast<bf *>(const_cast<u8 *>(desc.coset_bases[window].base));
+    bf tap[UNISKIP_TAPS];
+#pragma unroll
+    for (u32 t = 0; t < UNISKIP_TAPS; ++t)
+      tap[t] = load<bf, ld_modifier::cs>(taps, ((col * UNISKIP_TAPS + t) << desc.log_rows) + row);
+#pragma unroll
+    for (u32 cell = 0; cell < UNISKIP_TAPS; ++cell) {
+      bf acc = bf::ZERO();
+#pragma unroll
+      for (u32 t = 0; t < UNISKIP_TAPS; ++t)
+        acc = bf::add(acc, bf::mul(ab_gkr_uniskip_lde_matrix[cell * UNISKIP_TAPS + t], tap[t]));
+      coset[((col * UNISKIP_TAPS + cell) << desc.log_rows) + row] = acc;
+    }
+  }
+}
+
+// LIMB-LANE ROW SHAPE. One thread owns (job, row, limb): limb = lane & 3 and the row
+// advances with lane >> 2, so a warp covers 8 rows x 4 limbs = 128 B contiguous of every
+// plane it touches. The coset LDE is BF-linear per limb, so a lane needs only its own
+// limb of the 16 taps to produce its limb of all 16 cells — the cell-sharers of the
+// cell-shape kernel collapse into ONE thread here too, and its 4 limb-sharers are
+// adjacent lanes. Bytes written are identical to the cell-shape kernel's.
+EXTERN __global__ void ab_gkr_uniskip_lde_e4_v2_kernel(const __grid_constant__ uniskip_vm_desc desc, const u16 *jobs, const u32 num_jobs) {
+  constexpr u32 LIMBS = 4;
+  const u64 rows = u64{1} << desc.log_rows;
+  const u64 total = rows * u64{num_jobs} * LIMBS;
+  for (u64 i = blockIdx.x * u64{blockDim.x} + threadIdx.x; i < total; i += u64{blockDim.x} * gridDim.x) {
+    const u32 job = static_cast<u32>(i >> (desc.log_rows + 2));
+    const u64 row = (i >> 2) & (rows - 1);
+    const u32 limb = static_cast<u32>(i) & (LIMBS - 1);
+    const uniskip_source_record rec = desc.source[jobs[job]];
+    const u32 window = rec.addr >> 7;
+    const size_t col = rec.addr & 0x7f;
+    // e4 planes viewed as bf words: limb `l` of element `e` is word `4e + l`. The lane
+    // base is 64-bit; the plane-to-plane offsets below fit 32 bits (15 * 4 << 21).
+    const size_t lane = (((col * UNISKIP_TAPS) << desc.log_rows) + row) * LIMBS + limb;
+    const bf *taps = reinterpret_cast<const bf *>(desc.tap_bases[window].base) + lane;
+    bf *coset = reinterpret_cast<bf *>(const_cast<u8 *>(desc.coset_bases[window].base)) + lane;
+    const u32 plane = LIMBS << desc.log_rows;
+    bf tap[UNISKIP_TAPS];
+#pragma unroll
+    for (u32 t = 0; t < UNISKIP_TAPS; ++t)
+      tap[t] = load<bf, ld_modifier::cs>(taps, t * plane);
+#pragma unroll
+    for (u32 cell = 0; cell < UNISKIP_TAPS; ++cell) {
+      bf acc = bf::ZERO();
+#pragma unroll
+      for (u32 t = 0; t < UNISKIP_TAPS; ++t)
+        acc = bf::add(acc, bf::mul(tap[t], ab_gkr_uniskip_lde_matrix[cell * UNISKIP_TAPS + t]));
+      coset[cell * plane] = acc;
+    }
+  }
+}
+
 // FOLD. Collapses the 16 taps on H into the evaluation at the round challenge r:
 // folded[source * rows + row] = sum_t L_t(r) * tap_t(row), an e4 for both input
 // classes. Output is indexed by SOURCE id, not by job: the two class job lists

@@ -4,7 +4,7 @@ use clap::{CommandFactory, Parser};
 use era_cudart::device::{get_device, get_device_properties};
 use gpu_gkr_uniskip_bench::abi::{UNISKIP_CELLS, UNISKIP_SRC_E4_GLOBAL};
 use gpu_gkr_uniskip_bench::geometry::Geometry;
-use gpu_gkr_uniskip_bench::harness::{Harness, StageTimes, STAGES};
+use gpu_gkr_uniskip_bench::harness::{Harness, LdeShape, StageTimes, STAGES};
 use gpu_gkr_uniskip_bench::kernels::NvtxRange;
 use gpu_gkr_uniskip_bench::synth::{generate, Census};
 
@@ -43,6 +43,11 @@ struct Cli {
     /// Census: semantic terms that live inside a group.
     #[arg(long, default_value_t = 72)]
     grouped_atoms: u32,
+
+    /// LDE grid shape: `cell` = one thread per coset cell (v1, 16x tap re-read),
+    /// `row` = one thread per row emitting all 16 cells. Same output bytes.
+    #[arg(long, value_enum, default_value_t = LdeShape::Row)]
+    lde_shape: LdeShape,
 
     /// Wrap the first timed iteration in the `gkr_uniskip_pass0` NVTX range.
     /// Needs `--iterations >= 1`.
@@ -124,6 +129,7 @@ fn main() {
     println!("  profile             {}", cli.profile);
     println!("  validate            {}", cli.validate);
     println!("  validate_flat_eq    {}", cli.validate_flat_eq);
+    println!("  lde_shape           {}", cli.lde_shape.as_str());
     println!("geometry");
     println!("  log_rows            {}", geometry.log_rows);
     println!("  logical rows        {}", geometry.logical_rows);
@@ -145,8 +151,14 @@ fn main() {
     );
 
     let validate = cli.validate || cli.validate_flat_eq;
-    let mut harness = Harness::new(&program, &geometry, cli.seed, cli.validate_flat_eq)
-        .unwrap_or_else(|e| fail(format!("device setup failed: {e}")));
+    let mut harness = Harness::new(
+        &program,
+        &geometry,
+        cli.seed,
+        cli.validate_flat_eq,
+        cli.lde_shape,
+    )
+    .unwrap_or_else(|e| fail(format!("device setup failed: {e}")));
 
     let bytes = harness.pass_bytes();
     let columns: u32 = program.windows.iter().map(|w| w.columns).sum();
@@ -275,9 +287,10 @@ fn main() {
     }
 
     println!(
-        "summary: log_trace {} | {sources} sources / {columns} columns / {} B ({:.2} GiB) per pass \
-         | total median {total_median:.3} ms over {} iterations | {device}",
+        "summary: log_trace {} | lde_shape {} | {sources} sources / {columns} columns / {} B \
+         ({:.2} GiB) per pass | total median {total_median:.3} ms over {} iterations | {device}",
         cli.log_trace,
+        cli.lde_shape.as_str(),
         bytes.total,
         gib(bytes.total),
         samples.len()

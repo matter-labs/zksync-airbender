@@ -1,6 +1,6 @@
 # gpu_gkr_uniskip_bench — measurements
 
-## Register gate (Task 4, refreshed in Task 5 for the fold kernels)
+## Register gate (Task 4; refreshed in Task 5 for fold, in v2 Task 0 for row-shape LDE)
 
 Build with the crate's nvcc diagnostic path — `gpu_native_build` turns the env var
 into `-D GPU_GKR_UNISKIP_BENCH_ENABLE_BUILD_DIAG=ON`, which
@@ -15,6 +15,17 @@ CUDAARCHS="80;89;90" GPU_GKR_UNISKIP_BENCH_ENABLE_BUILD_DIAG=1 cargo build --rel
 build, `touch native/uniskip.cu` and rebuild with it unset before running on the
 local device.
 
+**Run the diagnostic build with the sccache launcher out of the way** — point
+`CMAKE_TOOLCHAIN_FILE` at an empty file. `--keep` does not survive sccache: the
+cache key ignores it, the front-end leg's `*.cudafe1.stub.c` is not carried in the
+cached artifacts, and the resulting entry then breaks *ordinary* builds of the same
+translation unit with `fatal error: <tu>.cudafe1.stub.c: No such file or directory`
+until it is overwritten (`SCCACHE_RECACHE=1 cargo build …`, client-side env, is the
+recovery). Without the launcher the single-arch diagnostic build succeeds outright;
+the multi-arch one still exits non-zero after emitting every arch's `ptxas info`
+(the per-arch `--keep` intermediates collide on one filename), which is enough for
+this table.
+
 Gate: ZERO spills on the eval kernel. **PASS** — no spill stores, no spill loads and
 no stack frame on any kernel of any architecture, so the shared-memory accumulator
 fallback (4 × 256 × 16 B) was not needed and no `__maxnreg__` was added.
@@ -27,6 +38,8 @@ fallback (4 × 256 × 16 B) was not needed and no `__maxnreg__` was added.
 | `ab_gkr_uniskip_finalize_kernel` | 32 | 29 | 28 | 32 | 0 / 0 / 0 (128 B smem) |
 | `ab_gkr_uniskip_lde_e4_kernel` | 42 | 35 | 42 | 34 | 0 / 0 / 0 |
 | `ab_gkr_uniskip_lde_bf_kernel` | 36 | 32 | 38 | 32 | 0 / 0 / 0 |
+| `ab_gkr_uniskip_lde_e4_v2_kernel` | 40 | 32 | 40 | 40 | 0 / 0 / 0 |
+| `ab_gkr_uniskip_lde_bf_v2_kernel` | 64 | 64 | 64 | 64 | 0 / 0 / 0 |
 | `ab_gkr_uniskip_init_e4_kernel` | 32 | 32 | 29 | 30 | 0 / 0 / 0 |
 | `ab_gkr_uniskip_init_bf_kernel` | 16 | 14 | 14 | 16 | 0 / 0 / 0 |
 
@@ -47,6 +60,8 @@ matters is there.
 | `eval` | 4 blk, ~50% | 5 blk, ~83% | 5 blk, ~62.5% | 4 blk, ~67% |
 | `fold_e4` | 6 blk, ~75% | 5 blk, ~83% | **2 blk, ~25%** | **2 blk, ~33%** |
 | `fold_bf` | ~100% | ~100% | ~100% | ~100% |
+| `lde_e4_v2` | 8 blk, ~100% | 6 blk, ~100% | 6 blk, ~75% | 6 blk, ~100% |
+| `lde_bf_v2` | 4 blk, ~50% | 4 blk, ~67% | 4 blk, ~50% | 4 blk, ~67% |
 
 (Blocks/SM = `floor(65536 / (256 × regs))`, capped by the 2048-thread limit on
 sm_80/sm_90 and the 1536-thread limit on sm_89/sm_120; register allocation
@@ -66,8 +81,12 @@ per-launch prefix), 16 B cmem[2].
 
 ```
 .agents/bin/with_gpu_lock.sh target/release/gpu_gkr_uniskip_bench \
-    --log-trace 24 --warmup 10 --iterations 100
+    --log-trace 24 --warmup 10 --iterations 100 --lde-shape cell
 ```
+
+(`--lde-shape cell` is the v1 LDE, which was the only shape when this was recorded
+and is no longer the default — see the rung-1 section below. Reconfirmed on the
+rung-1 build: `lde` 71.053 ms, total 95.196 ms.)
 
 Device: **NVIDIA RTX PRO 6000 Blackwell Server Edition** (sm_120, 97887 MiB).
 Default census (59 sources / 59 columns, 175 records, 103 coefficient
@@ -216,3 +235,54 @@ the column as "this stage is achieving *at least* this much".
   0.14% of eval's floor traffic, and `finalize` consumes it in 0.033 ms. The store
   shape is real but amortized to nothing at benchmark size — it would only matter at
   a geometry with far more blocks per unit of work.
+
+## Rung 1 — intra-thread LDE, `--lde-shape row` (v2 Task 0)
+
+```
+.agents/bin/with_gpu_lock.sh target/release/gpu_gkr_uniskip_bench \
+    --log-trace 24 --warmup 10 --iterations 100 --lde-shape row
+```
+
+Same device, census and geometry as the Task 5 baseline. `row` is the default;
+`cell` selects the v1 kernels, which are untouched and serve as the control arm.
+Both shapes write the same bytes, so `--validate` and `--validate-flat-eq` at
+`--log-trace 10` pin the reshape with no oracle change — both pass (LDE OK,
+q 32/32, fold OK) for both shapes.
+
+| stage | median ms | mean ms | min ms | max ms | compulsory GB/s |
+| --- | --- | --- | --- | --- | --- |
+| lde | **8.635** | 8.634 | 8.609 | 8.654 | 1430.1 |
+| eval | 19.410 | 19.411 | 19.400 | 19.428 | 637.0 |
+| finalize | 0.033 | 0.032 | 0.031 | 0.035 | 512.0 |
+| fold | 4.743 | 4.743 | 4.739 | 4.747 | 1510.4 |
+| **total** | **32.820** | 32.821 | 32.792 | 32.842 | 971.8 |
+
+Against the same build's `cell` arm (`lde` 71.053 ms, total 95.196 ms): **8.23× on
+the stage, 2.90× on the pass**, and `lde` drops from 74.6% of the pass to 26.3%.
+
+The row shape reads every tap exactly once and writes every coset cell exactly
+once — the 16 threads that shared a row's taps in the cell shape are one thread
+(`bf`) or four adjacent lanes (`e4`), so the reuse is register-local. Issued
+traffic is therefore the compulsory floor, and unlike the cell shape's column the
+1430 GB/s **is** the achieved rate: 95% of the 1510 GB/s `fold` demonstrates as
+this device's practical streaming ceiling, so the stage is at the streaming limit
+and there is no further headroom in this kernel without cutting bytes.
+
+### Output-shape A/B (which intra-thread form to ship)
+
+Three builds, otherwise identical; only the per-thread output form of the named
+kernel changes. "16 live" = all 16 cells accumulated, then 16 stores; "serial" =
+one accumulator, each cell stored as it is produced. Registers are sm_120.
+
+| `bf` form | `e4` form | `bf` regs | `e4` regs | `lde` median ms |
+| --- | --- | --- | --- | --- |
+| 16 live | 16 live | 72 | 48 | 9.194 |
+| serial | 16 live | 64 | 48 | 8.622 |
+| serial | serial (shipped) | 64 | 40 | 8.635 |
+
+Zero spills and no stack frame in every cell. Serializing `bf` is worth 0.572 ms
+(the runs' min–max spans do not overlap); serializing `e4` costs 0.013 ms, which is
+inside a single run's spread, so the two `e4` forms are a tie and the shipped build
+takes the one with 8 fewer registers. The register/time correlation is **not**
+attributed to occupancy — that would need `ncu`; only the counts and the times are
+measured here.

@@ -44,6 +44,14 @@ cuda_kernel!(
     ab_gkr_uniskip_lde_e4_kernel(desc: UniskipVmDesc, jobs: *const u16, num_jobs: u32)
 );
 cuda_kernel!(
+    LdeBfRow,
+    ab_gkr_uniskip_lde_bf_v2_kernel(desc: UniskipVmDesc, jobs: *const u16, num_jobs: u32)
+);
+cuda_kernel!(
+    LdeE4Row,
+    ab_gkr_uniskip_lde_e4_v2_kernel(desc: UniskipVmDesc, jobs: *const u16, num_jobs: u32)
+);
+cuda_kernel!(
     FoldBf,
     ab_gkr_uniskip_fold_bf_kernel(
         desc: UniskipVmDesc,
@@ -138,6 +146,12 @@ fn lde_total(desc: &UniskipVmDesc, num_jobs: usize) -> u64 {
     (1u64 << desc.log_rows) * num_jobs as u64 * UNISKIP_TAPS as u64
 }
 
+/// Threads of a row-shape LDE launch: one per (job, row), times `lanes` — 1 for the
+/// `bf` kernel, 4 for the `e4` kernel's limb lanes.
+fn lde_row_total(desc: &UniskipVmDesc, num_jobs: usize, lanes: u64) -> u64 {
+    (1u64 << desc.log_rows) * num_jobs as u64 * lanes
+}
+
 /// One coset cell per (job, cell, row) over the `bf` source records in `jobs`.
 pub fn lde_bf(
     desc: &UniskipVmDesc,
@@ -166,6 +180,37 @@ pub fn lde_e4(
     let total = lde_total(desc, num_jobs);
     let args = LdeE4Arguments::new(*desc, jobs.as_ptr(), num_jobs as u32);
     LdeE4Function::default().launch(&config(total, stream), &args)
+}
+
+/// All 16 coset cells per (job, row) over the `bf` source records in `jobs` — the
+/// row-shape counterpart of [`lde_bf`], writing the same bytes.
+pub fn lde_bf_row(
+    desc: &UniskipVmDesc,
+    jobs: &DeviceSlice<u16>,
+    num_jobs: usize,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    if num_jobs == 0 {
+        return Ok(());
+    }
+    let total = lde_row_total(desc, num_jobs, 1);
+    let args = LdeBfRowArguments::new(*desc, jobs.as_ptr(), num_jobs as u32);
+    LdeBfRowFunction::default().launch(&config(total, stream), &args)
+}
+
+/// The `e4` counterpart of [`lde_bf_row`]: one thread per (job, row, limb).
+pub fn lde_e4_row(
+    desc: &UniskipVmDesc,
+    jobs: &DeviceSlice<u16>,
+    num_jobs: usize,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    if num_jobs == 0 {
+        return Ok(());
+    }
+    let total = lde_row_total(desc, num_jobs, 4);
+    let args = LdeE4RowArguments::new(*desc, jobs.as_ptr(), num_jobs as u32);
+    LdeE4RowFunction::default().launch(&config(total, stream), &args)
 }
 
 fn fold_total(desc: &UniskipVmDesc, num_jobs: usize) -> u64 {
