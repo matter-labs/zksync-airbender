@@ -1,8 +1,7 @@
 use std::collections::BTreeMap;
 
 use crate::abi::{
-    WindowEqSizes, ORIGIN_READ_BASE, ORIGIN_READ_EXT, SOURCE_CLASS_BF_DIRECT,
-    SOURCE_CLASS_E4_DIRECT, WINDOW_CELLS,
+    WindowEqSizes, ORIGIN_PROCEDURAL, ORIGIN_READ_BASE, ORIGIN_READ_EXT, WINDOW_CELLS,
 };
 use crate::artifact::{
     validate_artifact, ArtifactError, FrozenArtifact, FrozenField, FrozenWindowFamily,
@@ -32,13 +31,6 @@ pub struct WindowPlan {
     pub procedural_kind: u8,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct PlannedSource {
-    pub window: u16,
-    pub column: u16,
-    pub class: u8,
-}
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AllocationPlan {
     pub log_trace: u32,
@@ -52,7 +44,6 @@ pub struct AllocationPlan {
     pub final_elements: usize,
     pub backings: Vec<BackingPlan>,
     pub windows: Vec<WindowPlan>,
-    pub source_records: Vec<PlannedSource>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -61,7 +52,6 @@ pub enum GeometryError {
     UnsupportedLogTrace { log_trace: u32 },
     SizeOverflow { resource: &'static str },
     MissingBacking { window: usize },
-    SourceWindowOutOfRange { source: usize, window: u8 },
 }
 
 impl core::fmt::Display for GeometryError {
@@ -113,6 +103,9 @@ pub fn build_allocation_plan(
 
     let mut aggregate = BTreeMap::<FrozenWindowFamily, (FrozenField, u32)>::new();
     for window in &artifact.windows {
+        if window.family.is_procedural() {
+            continue;
+        }
         let columns = window
             .columns
             .last()
@@ -156,6 +149,18 @@ pub fn build_allocation_plan(
 
     let mut windows = Vec::with_capacity(artifact.windows.len());
     for (window_index, window) in artifact.windows.iter().enumerate() {
+        if let FrozenWindowFamily::VirtualSetup { kind } = window.family {
+            windows.push(WindowPlan {
+                family: window.family,
+                field: window.field,
+                backing: None,
+                base_offset_bytes: 0,
+                log2_stride: log_trace as u8,
+                origin: ORIGIN_PROCEDURAL,
+                procedural_kind: kind,
+            });
+            continue;
+        }
         let index =
             backing_index
                 .get(&window.family)
@@ -184,26 +189,6 @@ pub fn build_allocation_plan(
         });
     }
 
-    let mut source_records = Vec::with_capacity(artifact.source_slots.len());
-    for (source, slot) in artifact.source_slots.iter().enumerate() {
-        let window =
-            windows
-                .get(usize::from(slot.window))
-                .ok_or(GeometryError::SourceWindowOutOfRange {
-                    source,
-                    window: slot.window,
-                })?;
-        let class = match window.field {
-            FrozenField::Base => SOURCE_CLASS_BF_DIRECT,
-            FrozenField::Ext => SOURCE_CLASS_E4_DIRECT,
-        };
-        source_records.push(PlannedSource {
-            window: u16::from(slot.window),
-            column: slot.column,
-            class,
-        });
-    }
-
     let partial_elements = usize::try_from(num_blocks)
         .ok()
         .and_then(|blocks| blocks.checked_mul(WINDOW_CELLS as usize))
@@ -227,13 +212,12 @@ pub fn build_allocation_plan(
         final_elements: WINDOW_CELLS as usize,
         backings,
         windows,
-        source_records,
     })
 }
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use crate::abi::{WindowInstruction, SOURCE_CLASS_BF_DIRECT, SOURCE_CLASS_E4_DIRECT};
+    use crate::abi::WindowInstruction;
     use crate::artifact::{
         FrozenArtifact, FrozenBoundColumn, FrozenField, FrozenSourceSlot, FrozenWindow,
         FrozenWindowFamily, WindowClass, ARTIFACT_MAGIC, ARTIFACT_VERSION, SOURCE_NONE,
@@ -378,7 +362,7 @@ pub(crate) mod tests {
     #[test]
     fn shared_families_share_allocations_but_keep_window_offsets() {
         let plan = build_allocation_plan(&geometry_fixture(), 8).unwrap();
-        assert_eq!(plan.backings.len(), 3);
+        assert_eq!(plan.backings.len(), 2);
         let base = &plan.backings[0];
         assert_eq!(base.family, FrozenWindowFamily::BaseLayerMemory);
         assert_eq!(base.columns, 131);
@@ -393,25 +377,11 @@ pub(crate) mod tests {
         assert_eq!(ext.columns, 4);
         assert_eq!(ext.stride_bytes, 4096);
         assert_eq!(ext.bytes, 4 * 4096);
-        let virtual_setup = &plan.backings[2];
         assert_eq!(
-            virtual_setup.family,
+            plan.windows[3].family,
             FrozenWindowFamily::VirtualSetup { kind: 1 }
         );
-        assert_eq!(virtual_setup.columns, 1);
-        assert_eq!(virtual_setup.bytes, 1024);
-        assert_eq!(plan.windows[3].backing, Some(2));
-    }
-
-    #[test]
-    fn source_records_preserve_window_coordinates_and_classes() {
-        let plan = build_allocation_plan(&geometry_fixture(), 8).unwrap();
-        assert_eq!(plan.source_records[0].window, 0);
-        assert_eq!(plan.source_records[0].column, 0);
-        assert_eq!(plan.source_records[1].window, 1);
-        assert_eq!(plan.source_records[1].column, 2);
-        assert_eq!(plan.source_records[0].class, SOURCE_CLASS_BF_DIRECT);
-        assert_eq!(plan.source_records[2].class, SOURCE_CLASS_E4_DIRECT);
-        assert_eq!(plan.source_records[3].class, SOURCE_CLASS_BF_DIRECT);
+        assert_eq!(plan.windows[3].backing, None);
+        assert_eq!(plan.windows[3].base_offset_bytes, 0);
     }
 }

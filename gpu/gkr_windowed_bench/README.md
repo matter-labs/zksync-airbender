@@ -54,23 +54,23 @@ two-member add/sub pairs. Mixed products are encoded in canonical BF-then-E4
 source order. The decoder rejects programs outside these compiler-derived
 invariants instead of falling back to a generic group path.
 
-The complete control descriptor is passed by value as a 1,792-byte
-`__grid_constant__` kernel argument. Its 175 aligned program records, 59
-four-byte source references, 6 host-resolved window bases, and 7 immediates
-are inline; only the input/equality/output data remains pointer-backed. A
-source reference packs a `u16` window in its low half and a `u16` relative
-column in its high half so the kernel needs one 32-bit metadata load. Because
-all sources share the trace domain, the kernel computes `log_trace` once and
-uses typed pointer arithmetic for `window_base + (column << log_trace)`. This
-costs one dependent base lookup per operand, but scales as four bytes per
-source plus eight bytes per window instead of eight bytes per source.
+The complete control descriptor is passed by value as a 1,536-byte
+`__grid_constant__` kernel argument. Its 175 aligned program records, 6
+host-resolved window bases, and 7 immediates are inline; only the
+input/equality/output data remains pointer-backed. Each ordinary source
+operand directly packs a 7-bit relative column and a 6-bit window into its
+existing `u16` instruction field. Because all sources share the trace domain,
+the kernel computes `log_trace` once and uses typed pointer arithmetic for
+`window_base + (column << log_trace)`. There is no source-ID table or device
+source-metadata indirection.
 
-This benchmark deliberately materializes the two procedural setup windows as
-ordinary, deterministically initialized BF allocations. That changes their
-values and therefore the output checksum, but correctness is outside the
-experiment's scope. It keeps real allocation and load traffic while giving all
-BF sources the same device load path, which is substantially faster and much
-smaller than carrying the procedural switch through the inlined VM.
+The two virtual-setup windows are addressless and allocate no storage. The
+four terms that consume them use two explicit cold BF classes: procedural
+linear-A and direct-BF-by-procedural-B. Their source field stores one of the
+four procedural kinds, and a small CUDA source synthesizes the requested row
+before reusing the common triplet interpolation. Ordinary BF classes are
+rejected if they name a virtual window, so the hot direct resolver contains no
+procedural discriminator. Real input families remain independent allocations.
 
 ## Build and run
 
