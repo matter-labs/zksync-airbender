@@ -35,6 +35,7 @@ members = [
     "gpu/prover_context",
     "gpu/trace",
     "gpu/gkr",
+    "gpu/gkr_windowed_bench",
     "gpu/whir",
     "gpu/circuit_prover",
     "gpu/execution_prover",
