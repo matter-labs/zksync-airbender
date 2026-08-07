@@ -42,6 +42,7 @@ members = [
     "gpu/gkr_model",
     "gpu/gkr_compiler",
     "gkr_eval_ir",
+    "gpu/gkr_uniskip_bench",
 
     "reduced_keccak",
 
