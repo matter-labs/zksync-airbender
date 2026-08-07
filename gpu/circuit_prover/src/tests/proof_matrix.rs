@@ -838,6 +838,12 @@ fn run_blake2_g_function_profile_test() {
 // unified multi_schedule (with closure-to-ONE grand-product assertions)
 // ---------------------------------------------------------------------------
 
+#[test]
+#[ignore]
+fn run_unified_proof_parity_test() {
+    run_proof_parity(&prepare_unified_proof_fixture());
+}
+
 /// Full e2e unified proof parity + closure-to-ONE.
 ///
 /// Proves the unified_reduced_machine circuit on the GPU and asserts the proof is
