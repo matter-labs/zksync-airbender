@@ -7,6 +7,9 @@
 pub mod abi;
 pub mod domain;
 pub mod geometry;
+pub mod harness;
+pub mod kernels;
+pub mod reference;
 pub mod synth;
 
 #[cfg(test)]

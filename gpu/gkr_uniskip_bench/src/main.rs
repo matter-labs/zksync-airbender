@@ -1,5 +1,6 @@
 use clap::{CommandFactory, Parser};
 use gpu_gkr_uniskip_bench::geometry::Geometry;
+use gpu_gkr_uniskip_bench::harness::Harness;
 use gpu_gkr_uniskip_bench::synth::{generate, Census};
 
 /// Standalone CUDA benchmark for one uniskip sumcheck pass (k = 4).
@@ -96,4 +97,28 @@ fn main() {
             .map(|w| w.columns)
             .collect::<Vec<_>>()
     );
+
+    let harness = Harness::new(&program, &geometry, cli.seed)
+        .unwrap_or_else(|e| fail(format!("device setup failed: {e}")));
+    for _ in 0..cli.warmup + cli.iterations {
+        harness
+            .run_lde()
+            .unwrap_or_else(|e| fail(format!("LDE launch failed: {e}")));
+    }
+    harness
+        .synchronize()
+        .unwrap_or_else(|e| fail(format!("LDE failed: {e}")));
+
+    if cli.validate {
+        match harness
+            .validate_lde()
+            .unwrap_or_else(|e| fail(format!("validation download failed: {e}")))
+        {
+            Ok(()) => println!("LDE validate: OK"),
+            Err(mismatch) => {
+                eprintln!("LDE validate: FAILED — {mismatch}");
+                std::process::exit(1);
+            }
+        }
+    }
 }
