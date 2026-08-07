@@ -14,6 +14,8 @@ constexpr u32 WINDOW_PROGRAM_CAPACITY = 175;
 constexpr u32 WINDOW_SLOT_CAPACITY = 6;
 constexpr u32 WINDOW_IMMEDIATE_CAPACITY = 7;
 constexpr u32 WINDOW_KERNEL_ARGUMENT_CEILING_BYTES = 32764;
+constexpr u16 WINDOW_GROUP_HAS_PRODUCT = 1u << 15;
+constexpr u16 WINDOW_GROUP_PRODUCT_PREFIX_COUNT_MASK = WINDOW_GROUP_HAS_PRODUCT - 1;
 
 struct window_eq_sizes {
   u32 high[2];
@@ -75,5 +77,6 @@ static_assert(__builtin_offsetof(window_vm_desc, log_rows) == 1520);
 static_assert(__builtin_offsetof(window_vm_desc, eq_sizes) == 1524);
 static_assert(WINDOW_THREADS_PER_BLOCK == 32 * WINDOW_WARPS_PER_BLOCK);
 static_assert(WINDOW_CELLS == 3 * WINDOW_WARPS_PER_BLOCK);
+static_assert((WINDOW_GROUP_HAS_PRODUCT & WINDOW_GROUP_PRODUCT_PREFIX_COUNT_MASK) == 0);
 
 } // namespace airbender::gkr_windowed_bench

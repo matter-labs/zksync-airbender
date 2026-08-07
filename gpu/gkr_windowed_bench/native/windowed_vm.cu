@@ -170,6 +170,22 @@ template <typename T> struct window_triplet {
   }
 };
 
+template <typename T> struct window_pair {
+  T values[2];
+
+  template <typename F> DEVICE_FORCEINLINE void apply(F fn) {
+#pragma unroll
+    for (u32 cell = 0; cell < 2; ++cell)
+      fn(values[cell], cell);
+  }
+
+  template <typename F> DEVICE_FORCEINLINE void apply(F fn) const {
+#pragma unroll
+    for (u32 cell = 0; cell < 2; ++cell)
+      fn(values[cell], cell);
+  }
+};
+
 DEVICE_FORCEINLINE window_triplet<bf> window_zero_bf_triplet() {
   window_triplet<bf> result;
 #pragma unroll
@@ -191,6 +207,12 @@ DEVICE_FORCEINLINE window_triplet<T> window_resolve_triplet(const Source &source
   return {{endpoint0, endpoint1, window_sub(endpoint1, endpoint0)}};
 }
 
+template <typename T, typename Source>
+DEVICE_FORCEINLINE window_pair<T> window_resolve_boolean_pair(const Source &source, const u32 row, const u32 log_rows, const window_selector selector) {
+  return {{source.value(window_corner_index(row, log_rows, selector.x0, selector.x1, 0)),
+           source.value(window_corner_index(row, log_rows, selector.x0, selector.x1, 1))}};
+}
+
 DEVICE_FORCEINLINE void window_apply_bf_immediate(const window_vm_desc &desc, const u16 immediate_id, const window_triplet<bf> &value,
                                                   window_triplet<bf> &sum) {
   if (immediate_id == WINDOW_IMMEDIATE_ONE) {
@@ -203,7 +225,37 @@ DEVICE_FORCEINLINE void window_apply_bf_immediate(const window_vm_desc &desc, co
   }
 }
 
+DEVICE_FORCEINLINE void window_apply_bf_immediate(const window_vm_desc &desc, const u16 immediate_id, const window_pair<bf> &value, window_pair<bf> &sum) {
+  if (immediate_id == WINDOW_IMMEDIATE_ONE) {
+    sum.apply([&](bf &cell_sum, const u32 cell) { cell_sum = bf::add(cell_sum, value.values[cell]); });
+  } else if (immediate_id == WINDOW_IMMEDIATE_NEG_ONE) {
+    sum.apply([&](bf &cell_sum, const u32 cell) { cell_sum = bf::sub(cell_sum, value.values[cell]); });
+  } else {
+    const bf immediate = bf::from_reduced_raw_repr(desc.immediates[immediate_id - WINDOW_IMMEDIATE_RESERVED]);
+    sum.apply([&](bf &cell_sum, const u32 cell) { cell_sum = bf::add(cell_sum, bf::mul(immediate, value.values[cell])); });
+  }
+}
+
+DEVICE_FORCEINLINE void window_apply_bf_immediate(const window_vm_desc &desc, const u16 immediate_id, const window_pair<bf> &value, window_triplet<bf> &sum) {
+  if (immediate_id == WINDOW_IMMEDIATE_ONE) {
+    value.apply([&](const bf cell_value, const u32 cell) { sum.values[cell] = bf::add(sum.values[cell], cell_value); });
+  } else if (immediate_id == WINDOW_IMMEDIATE_NEG_ONE) {
+    value.apply([&](const bf cell_value, const u32 cell) { sum.values[cell] = bf::sub(sum.values[cell], cell_value); });
+  } else {
+    const bf immediate = bf::from_reduced_raw_repr(desc.immediates[immediate_id - WINDOW_IMMEDIATE_RESERVED]);
+    value.apply([&](const bf cell_value, const u32 cell) { sum.values[cell] = bf::add(sum.values[cell], bf::mul(immediate, cell_value)); });
+  }
+}
+
 DEVICE_FORCEINLINE void window_apply_e4_sign(const u16 immediate_id, const window_triplet<e4> &value, window_triplet<e4> &sum) {
+  if (immediate_id == WINDOW_IMMEDIATE_ONE) {
+    sum.apply([&](e4 &cell_sum, const u32 cell) { cell_sum = e4::add(cell_sum, value.values[cell]); });
+  } else {
+    sum.apply([&](e4 &cell_sum, const u32 cell) { cell_sum = e4::sub(cell_sum, value.values[cell]); });
+  }
+}
+
+DEVICE_FORCEINLINE void window_apply_e4_sign(const u16 immediate_id, const window_pair<e4> &value, window_pair<e4> &sum) {
   if (immediate_id == WINDOW_IMMEDIATE_ONE) {
     sum.apply([&](e4 &cell_sum, const u32 cell) { cell_sum = e4::add(cell_sum, value.values[cell]); });
   } else {
@@ -222,19 +274,27 @@ DEVICE_FORCEINLINE void window_init_bf_immediate(const window_vm_desc &desc, con
   }
 }
 
+DEVICE_FORCEINLINE void window_init_bf_immediate(const window_vm_desc &desc, const u16 immediate_id, window_pair<bf> &value) {
+  if (immediate_id == WINDOW_IMMEDIATE_ONE)
+    return;
+  if (immediate_id == WINDOW_IMMEDIATE_NEG_ONE) {
+    value.apply([](bf &cell_value, const u32) { cell_value = bf::sub(bf::ZERO(), cell_value); });
+  } else {
+    const bf immediate = bf::from_reduced_raw_repr(desc.immediates[immediate_id - WINDOW_IMMEDIATE_RESERVED]);
+    value.apply([&](bf &cell_value, const u32) { cell_value = bf::mul(immediate, cell_value); });
+  }
+}
+
 DEVICE_FORCEINLINE void window_init_e4_sign(const u16 immediate_id, window_triplet<e4> &value) {
   if (immediate_id == WINDOW_IMMEDIATE_ONE)
     return;
   value.apply([](e4 &cell_value, const u32) { cell_value = e4::sub(e4::ZERO(), cell_value); });
 }
 
-DEVICE_FORCEINLINE window_triplet<bf> window_eval_bf_linear_term(const window_vm_desc &desc, const window_instruction instruction, const u32 row,
-                                                                 const u32 log_rows, const u32 log_trace, const window_selector selector) {
-  if (selector.infinity0 || selector.infinity1)
-    return window_zero_bf_triplet();
-  const window_bf_source source = window_resolve_bf_source(desc, instruction.source_a, log_trace);
-  const window_triplet<bf> a = window_resolve_triplet<bf>(source, row, log_rows, selector);
-  return {{a.values[0], a.values[1], bf::ZERO()}};
+DEVICE_FORCEINLINE void window_init_e4_sign(const u16 immediate_id, window_pair<e4> &value) {
+  if (immediate_id == WINDOW_IMMEDIATE_ONE)
+    return;
+  value.apply([](e4 &cell_value, const u32) { cell_value = e4::sub(e4::ZERO(), cell_value); });
 }
 
 DEVICE_FORCEINLINE window_triplet<bf> window_eval_bf_term(const window_vm_desc &desc, const window_instruction instruction, const u32 row, const u32 log_rows,
@@ -339,25 +399,80 @@ DEVICE_FORCEINLINE u32 window_execute_bf_atom(const window_vm_desc &desc, const 
                                               const u32 log_trace, const window_selector selector, const window_accumulator_view accumulators) {
   const bool grouped = head.term_class == WINDOW_CLASS_GROUP_BF;
   const u16 arity = grouped ? head.source_a : 1;
+  const bool has_product = grouped ? (head.source_b & WINDOW_GROUP_HAS_PRODUCT) != 0
+                                   : head.term_class == WINDOW_CLASS_PRODUCT_BF_BF || head.term_class == WINDOW_CLASS_PRODUCT_BF_BF_PROCEDURAL_B;
+  const u16 product_prefix_count = grouped ? head.source_b & WINDOW_GROUP_PRODUCT_PREFIX_COUNT_MASK : 0;
+
+  if (!has_product) {
+    if (selector.infinity0 || selector.infinity1)
+      return pc + (grouped ? arity : 0);
+
+    window_pair<bf> sums;
+    if (grouped) {
+      const window_instruction first = desc.program[pc++];
+      const window_bf_source source = window_resolve_bf_source(desc, first.source_a, log_trace);
+      sums = window_resolve_boolean_pair<bf>(source, row, log_rows, selector);
+      window_init_bf_immediate(desc, first.factor, sums);
+
+#pragma unroll 1
+      for (u16 member = 1; member < arity; ++member) {
+        const window_instruction tail = desc.program[pc++];
+        const window_bf_source tail_source = window_resolve_bf_source(desc, tail.source_a, log_trace);
+        const window_pair<bf> value = window_resolve_boolean_pair<bf>(tail_source, row, log_rows, selector);
+        window_apply_bf_immediate(desc, tail.factor, value, sums);
+      }
+    } else if (head.term_class == WINDOW_CLASS_LINEAR_BF_PROCEDURAL_A) {
+      const window_procedural_source source{head.source_a};
+      sums = window_resolve_boolean_pair<bf>(source, row, log_rows, selector);
+    } else {
+      const window_bf_source source = window_resolve_bf_source(desc, head.source_a, log_trace);
+      sums = window_resolve_boolean_pair<bf>(source, row, log_rows, selector);
+    }
+
+    const e4 core = ::ab_gkr_windowed_coeff_bank[head.factor];
+    sums.apply([&](const bf sum, const u32 cell) { accumulators[cell] = e4::fma(core, sum, accumulators[cell]); });
+    return pc;
+  }
+
   window_triplet<bf> sums;
-  if (grouped && head.source_b != 0) {
-    const u16 lazy_product_count = head.source_b;
+  if (grouped && product_prefix_count >= 2) {
     window_triplet<u64> wide_sums{{0, 0, 0}};
 #pragma unroll 1
-    for (u16 member = 0; member < lazy_product_count; ++member) {
+    for (u16 member = 0; member < product_prefix_count; ++member) {
       const window_instruction product = desc.program[pc++];
       const window_triplet<u64> value = window_eval_bf_product_wide(desc, product, row, log_rows, log_trace, selector);
       window_add_bf_product_wide(value, wide_sums);
-      if (member + 1 < lazy_product_count && (product.factor & WINDOW_REDUCE_AFTER))
+      if (member + 1 < product_prefix_count && (product.factor & WINDOW_REDUCE_AFTER))
         window_reduce_and_rebase_bf_wide(wide_sums);
     }
     sums = window_reduce_bf_wide(wide_sums);
 
+    if (selector.infinity0 || selector.infinity1) {
+      pc += arity - product_prefix_count;
+    } else {
 #pragma unroll 1
-    for (u16 member = lazy_product_count; member < arity; ++member) {
-      const window_instruction tail = desc.program[pc++];
-      const window_triplet<bf> value = window_eval_bf_linear_term(desc, tail, row, log_rows, log_trace, selector);
-      window_apply_bf_immediate(desc, tail.factor, value, sums);
+      for (u16 member = product_prefix_count; member < arity; ++member) {
+        const window_instruction tail = desc.program[pc++];
+        const window_bf_source source = window_resolve_bf_source(desc, tail.source_a, log_trace);
+        const window_pair<bf> value = window_resolve_boolean_pair<bf>(source, row, log_rows, selector);
+        window_apply_bf_immediate(desc, tail.factor, value, sums);
+      }
+    }
+  } else if (grouped && product_prefix_count == 1) {
+    const window_instruction first = desc.program[pc++];
+    sums = window_eval_bf_term(desc, first, row, log_rows, log_trace, selector);
+    window_init_bf_immediate(desc, first.factor, sums);
+
+    if (selector.infinity0 || selector.infinity1) {
+      pc += arity - 1;
+    } else {
+#pragma unroll 1
+      for (u16 member = 1; member < arity; ++member) {
+        const window_instruction tail = desc.program[pc++];
+        const window_bf_source source = window_resolve_bf_source(desc, tail.source_a, log_trace);
+        const window_pair<bf> value = window_resolve_boolean_pair<bf>(source, row, log_rows, selector);
+        window_apply_bf_immediate(desc, tail.factor, value, sums);
+      }
     }
   } else {
     const window_instruction first = grouped ? desc.program[pc++] : head;
@@ -381,6 +496,29 @@ DEVICE_FORCEINLINE u32 window_execute_bf_atom(const window_vm_desc &desc, const 
 DEVICE_FORCEINLINE u32 window_execute_e4_atom(const window_vm_desc &desc, const window_instruction head, u32 pc, const u32 row, const u32 log_rows,
                                               const u32 log_trace, const window_selector selector, const window_accumulator_view accumulators) {
   const bool grouped = head.term_class == WINDOW_CLASS_GROUP_E4;
+  const bool has_product = grouped ? (head.source_b & WINDOW_GROUP_HAS_PRODUCT) != 0 : head.term_class != WINDOW_CLASS_LINEAR_E4;
+  if (!has_product) {
+    if (selector.infinity0 || selector.infinity1)
+      return pc + (grouped ? 2 : 0);
+
+    const window_instruction first = grouped ? desc.program[pc++] : head;
+    const window_e4_source first_source = window_resolve_e4_source(desc, first.source_a, log_trace);
+    window_pair<e4> sums = window_resolve_boolean_pair<e4>(first_source, row, log_rows, selector);
+    if (grouped)
+      window_init_e4_sign(first.factor, sums);
+
+    if (grouped) {
+      const window_instruction second = desc.program[pc++];
+      const window_e4_source second_source = window_resolve_e4_source(desc, second.source_a, log_trace);
+      const window_pair<e4> second_value = window_resolve_boolean_pair<e4>(second_source, row, log_rows, selector);
+      window_apply_e4_sign(second.factor, second_value, sums);
+    }
+
+    const e4 core = ::ab_gkr_windowed_coeff_bank[head.factor];
+    sums.apply([&](const e4 &sum, const u32 cell) { accumulators[cell] = e4::fma(core, sum, accumulators[cell]); });
+    return pc;
+  }
+
   const window_instruction first = grouped ? desc.program[pc++] : head;
   const window_triplet<e4> first_value = window_eval_e4_term(desc, first, row, log_rows, log_trace, selector);
   window_triplet<e4> sums = first_value;

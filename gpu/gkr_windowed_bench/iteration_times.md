@@ -815,3 +815,131 @@ Montgomery multiplications. It comes from removing force-inlined interpreter
 machinery and about 189 million executed instructions while preserving the
 lazy-reduction arithmetic. The kernel remains primarily limited by the shared
 FMA-heavy/ALU-lite pipe, but its instruction/control overhead is lower.
+
+## Warp-local three-lane partial-store probe
+
+The retained epilogue performs three sequential warp reductions and lets lane
+zero issue one streaming E4 store after each reduction. The probe instead let
+lane `cell` retain the completed result for cell `cell`; after all reductions,
+lanes zero through two issued one indexed store instruction to their three
+contiguous partial-output locations. It did not stage data across warps, add a
+barrier, or change the requested output bytes.
+
+Ptxas emitted one VM `STG.E.EF.128` site instead of three while preserving 56
+registers/thread, zero stack/local memory, and 14,848 reported shared bytes.
+All 60 library tests passed, and the log-8 Compute Sanitizer run reproduced
+checksum `0xbb2eb9da3c8c062b` with zero errors.
+
+Two candidate and contemporaneous baseline log-24 trials produced:
+
+| Variant | Median 1 | Median 2 |
+|---|---:|---:|
+| Three-lane store | 15.470287 ms | 15.469280 ms |
+| Retained lane-zero stores | 15.446192 ms | 15.445808 ms |
+
+The candidate is consistently about 0.15% slower. Reducing the number of warp
+store instructions does not compensate for selecting and carrying the
+lane-owned E4 result through the remaining reductions. The original three
+lane-zero stores are restored.
+
+## Swizzled three-output reduction probes
+
+Two follow-up probes attempted to reduce all three output cells concurrently.
+The first multiplied every shared accumulator by `eq`, then assigned eight
+lanes to each cell. Those lanes directly summed four strided shared values,
+wrote 24 partials back in a modulo-four swizzle, and finished the three
+independent eight-way reductions with shuffle masks 16, 8, and 4. The second
+probe replaced the direct shared 1:4 sums with two shuffle stages per cell;
+only the resulting 24 four-row partials passed through shared memory before
+the same concurrent final reduction.
+
+Both probes retained 56 registers/thread, zero stack/local memory, and 14,848
+reported shared bytes. Both emitted one streaming E4 output-store site. The
+direct-shared version reduced the VM from 60 to 12 scalar shuffle instructions;
+the shuffle-first version emitted 36. Their exact VM-only SASS census and
+log-24 timings were:
+
+| Variant | VM instructions | `SHFL.BFLY` | `LDS.128` | `STS.128` | `STG.E.EF.128` | Median 1 | Median 2 |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Retained independent reductions | 4,715 | 60 | 9 | 10 | 3 | 15.445792 ms | 15.446688 ms |
+| Direct-shared 1:4 + shuffles | 4,576 | 12 | 14 | 15 | 1 | 15.515040 ms | 15.515232 ms |
+| Shuffle 1:4 + shared transpose | 4,624 | 36 | 10 | 13 | 1 | 15.519567 ms | 15.519360 ms |
+
+The direct-shared and shuffle-first candidates are about 0.45% and 0.47%
+slower than the contemporaneous control. The reduction instruction savings do
+not repay the shared-memory transpose and its dependency/reconvergence cost;
+moving more of the first stage back to shuffles is slightly worse still. Both
+candidates reproduced the log-8 checksum `0xbb2eb9da3c8c062b`; the direct-shared
+candidate also passed Compute Sanitizer with zero errors, and the shuffle-first
+candidate passed the same check independently. The original three sequential
+warp reductions and stores are restored.
+
+## Round-zero linear BF/E4 specialization
+
+The retained round-zero encoding uses the high bit of a BF or E4 group
+header's `source_b` as validated product-presence metadata. BF headers use the
+low 15 bits as a product-prefix count: zero is generic eager encoding, one is
+a validated one-product eager prefix, and two or more select the existing lazy
+wide-product prefix. E4 headers keep their implicit arity of two and require
+all low payload bits to be zero. The decoder rejects either direction of a
+flag/member mismatch, and the generator derives the bit from member classes.
+
+Product-free BF atoms now have a distinct pair-shaped executor. The five
+infinity-selector warps advance over a group without loading its members,
+loading its batching coefficient, or touching shared accumulators. The four
+Boolean-selector warps load only the two selected `bit2` endpoints, apply BF
+immediates to a two-cell sum, and fold accumulator cells zero and one. For a
+product group with an encoded prefix, infinity warps skip its known-linear
+tail and Boolean warps apply that tail to the first two product sums only. The
+three product cells and the wide lazy-product reduction are unchanged.
+
+The same second-stage specialization applies to product-free E4 atoms. The
+source-scheduled add/sub artifact has one pure-linear E4 pair group; its other
+E4 atoms are product-bearing and stay on the general triplet executor. This is
+a round-zero wire invariant, not an add/sub-layer-zero CUDA special case.
+
+All timed variants retained 56 registers/thread, zero stack/local memory, and
+13,824 bytes of static shared memory (14,848 bytes including the driver
+reserve). The static census excludes `NOP` instructions:
+
+| Variant | VM instructions | `LDG` | `LDC` | `IMAD` | `IADD` | `BRA` | `BSSY` / `BSYNC` | Median 1 | Median 2 | Decision |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|
+| Contemporaneous control | 4,715 | 151 | 67 | 853 | 1,278 | 277 | 3 / 3 | 15.447472 ms | 15.445888 ms | Superseded |
+| BF pair/product-tail specialization | 5,765 | 185 | 93 | 1,010 | 1,448 | 418 | 3 / 3 | 14.455248 ms | 14.454880 ms | Retain |
+| Merged product-prefix tails | 5,009 | 157 | 78 | 912 | 1,336 | 310 | 3 / 3 | 14.539552 ms | 14.541248 ms | Reject |
+| BF plus E4 pair specialization | 6,028 | 189 | 101 | 1,068 | 1,543 | 425 | 3 / 3 | 13.998848 ms | 13.998960 ms | Retain |
+| Split BF/E4 top-level loops | 6,080 | 189 | 103 | 1,071 | 1,548 | 431 | 3 / 3 | 14.007088 ms | 14.010144 ms | Reject |
+
+The product-prefix merge proved that a smaller static body is not sufficient:
+although it removed 756 instructions from the BF candidate, its less
+specialized control layout was about 0.59% slower. Likewise, replacing the
+per-atom field dispatch with separate BF and E4 loops added loop overhead and
+lost about 0.07%. The retained BF+E4 candidate is about 9.37% faster than the
+contemporaneous control and 3.16% faster than the BF-only candidate.
+
+The retained full VM-only report is
+`target/profiling/linear_bf_specialization/retained_full.ncu-rep`. Relative to
+`target/profiling/lazy_bf_loop_dedup/retained_full.ncu-rep`:
+
+- NCU duration falls from 15.836992 to 14.304096 ms;
+- dynamic instructions fall from 21,601,648,640 to 19,695,730,688;
+- dynamic `IMAD`, `IADD`, and `BRA` fall from 4,025,810,944 / 5,695,537,152 /
+  625,541,120 to 3,596,746,752 / 5,114,429,440 / 588,578,816;
+- achieved occupancy moves from 74.01% to 70.96%, while issue slots busy rise
+  from 77.27% to 77.81%;
+- FMA-heavy, its ALU-lite subpipe, and ALU-heavy utilization move from 80.22%
+  / 37.31% / 67.16% to 80.99% / 36.12% / 67.99%;
+- L1/TEX, L2, and ICC hit rates move from 85.66% / 42.64% / 98.25% to 83.96%
+  / 48.64% / 97.91%; and
+- all-sample PC proportions are 33.63% not selected, 23.51% math-pipe
+  throttle, 12.70% wait, 9.59% selected, 8.37% dispatch stall, 4.67% no
+  instruction, 4.39% long scoreboard, and 3.05% short scoreboard.
+
+The final candidate passes all 65 artifact/library tests, reproduces log-8
+checksum `0xbb2eb9da3c8c062b` and log-24 checksum
+`0x8820ab14cacc9ff7`, and reports zero Compute Sanitizer errors. The regenerated
+artifact SHA-256 is
+`0360242bf31d20f837bb9618c3b64c5f8b9f288e540f9e6266c6c72c509ae50d`.
+The log-24 requested source-load floor remains 70,665,633,792 bytes; the
+specialization removes arithmetic and accumulator traffic, not the benchmark's
+allocation footprint or declared input-load floor.
