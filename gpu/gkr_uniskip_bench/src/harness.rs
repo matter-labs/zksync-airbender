@@ -1,5 +1,6 @@
 //! Device allocations, descriptor upload and the LDE pass.
 
+use era_cudart::event::{elapsed_time, CudaEvent};
 use era_cudart::memory::{memory_copy, DeviceAllocation};
 use era_cudart::result::CudaResult;
 use era_cudart::stream::CudaStream;
@@ -101,6 +102,33 @@ impl Layout {
     pub fn class_words(&self, class: usize) -> usize {
         self.class_elements[class] as usize * CLASS_WORDS[class]
     }
+
+    /// Bytes of the tap backings of both classes; the coset backings match.
+    pub fn backing_bytes(&self) -> u64 {
+        (0..CLASSES)
+            .map(|class| self.class_words(class) as u64 * size_of::<u32>() as u64)
+            .sum()
+    }
+}
+
+/// The timed stages of one pass, in execution order.
+pub const STAGES: [&str; 4] = ["lde", "eval", "finalize", "fold"];
+
+/// Device time of one pass, from the CUDA events the pass records.
+#[derive(Clone, Copy, Debug)]
+pub struct StageTimes {
+    pub stage_ms: [f32; STAGES.len()],
+    pub total_ms: f32,
+}
+
+/// COMPULSORY traffic of one pass: every distinct byte a stage must read or write
+/// at least once. The eval kernel ISSUES far more loads than this — one per operand
+/// reference — but they resolve in cache, so this is a floor, and `bytes / time` is
+/// an upper bound on the bandwidth a stage could be achieving.
+#[derive(Clone, Copy, Debug)]
+pub struct PassBytes {
+    pub stage: [u64; STAGES.len()],
+    pub total: u64,
 }
 
 pub struct Harness {
@@ -115,9 +143,13 @@ pub struct Harness {
     eq_low: DeviceAllocation<u32>,
     partials: DeviceAllocation<u32>,
     q: DeviceAllocation<u32>,
+    /// One `e4` per (source, row), at `source * rows + row`.
+    folded: DeviceAllocation<u32>,
     jobs: [DeviceAllocation<u16>; CLASSES],
     job_counts: [usize; CLASSES],
     stream: CudaStream,
+    /// `STAGES.len() + 1` markers: one before the first stage, one after each.
+    events: Vec<CudaEvent>,
 }
 
 impl Harness {
@@ -175,6 +207,9 @@ impl Harness {
         let mut partials =
             DeviceAllocation::<u32>::alloc(geometry.partials as usize * CLASS_WORDS[CLASS_E4])?;
         let q = DeviceAllocation::<u32>::alloc(UNISKIP_CELLS * CLASS_WORDS[CLASS_E4])?;
+        let folded = DeviceAllocation::<u32>::alloc(
+            program.sources.len() * geometry.logical_rows as usize * CLASS_WORDS[CLASS_E4],
+        )?;
 
         let mut desc = UniskipVmDesc {
             record_count: program.program.len() as u32,
@@ -205,6 +240,7 @@ impl Harness {
         kernels::upload_lde_matrix(&reference::flat_lde_matrix(&lde_matrix()))?;
         kernels::upload_eq_high(&reference::eq_high_words(seed, flat_eq))?;
         kernels::upload_coeff_bank(&reference::coeff_bank_words(seed))?;
+        kernels::upload_fold_weights(&reference::fold_weight_words(seed))?;
         kernels::init_bf(&mut taps[CLASS_BF], seed, &stream)?;
         kernels::init_e4(&mut taps[CLASS_E4], seed, &stream)?;
         kernels::init_e4(&mut eq_low, seed, &stream)?;
@@ -221,6 +257,11 @@ impl Harness {
             )?;
         }
 
+        let mut events = Vec::with_capacity(STAGES.len() + 1);
+        for _ in 0..=STAGES.len() {
+            events.push(CudaEvent::create()?);
+        }
+
         Ok(Self {
             layout,
             desc,
@@ -232,9 +273,11 @@ impl Harness {
             eq_low,
             partials,
             q,
+            folded,
             jobs,
             job_counts,
             stream,
+            events,
         })
     }
 
@@ -254,21 +297,79 @@ impl Harness {
         )
     }
 
-    /// One full uniskip pass: coset LDE, then the 32-cell eval, then the reduction
-    /// of the block partials into `q`.
+    /// One fold pass over both field classes, at the round challenge the fold
+    /// weights were uploaded for.
+    pub fn run_fold(&mut self) -> CudaResult<()> {
+        kernels::fold_bf(
+            &self.desc,
+            &self.jobs[CLASS_BF],
+            self.job_counts[CLASS_BF],
+            &mut self.folded,
+            &self.stream,
+        )?;
+        kernels::fold_e4(
+            &self.desc,
+            &self.jobs[CLASS_E4],
+            self.job_counts[CLASS_E4],
+            &mut self.folded,
+            &self.stream,
+        )
+    }
+
+    /// One full uniskip pass: coset LDE, the 32-cell eval, the reduction of the
+    /// block partials into `q`, then the fold at the round challenge. Every pass
+    /// records the stage events, warmup included, so a timed pass and an untimed
+    /// one are the same work.
     pub fn run_pass(&mut self) -> CudaResult<()> {
+        self.events[0].record(&self.stream)?;
         self.run_lde()?;
+        self.events[1].record(&self.stream)?;
         kernels::eval(&self.desc, self.geometry.blocks, &self.stream)?;
+        self.events[2].record(&self.stream)?;
         kernels::finalize(
             &self.partials,
             self.geometry.blocks,
             &mut self.q,
             &self.stream,
-        )
+        )?;
+        self.events[3].record(&self.stream)?;
+        self.run_fold()?;
+        self.events[4].record(&self.stream)
     }
 
     pub fn synchronize(&self) -> CudaResult<()> {
         self.stream.synchronize()
+    }
+
+    /// Device time of the last pass, in [`STAGES`] order. Only valid once the pass
+    /// has completed — call [`Self::synchronize`] first.
+    pub fn stage_times(&self) -> CudaResult<StageTimes> {
+        let mut stage_ms = [0f32; STAGES.len()];
+        for (stage, ms) in stage_ms.iter_mut().enumerate() {
+            *ms = elapsed_time(&self.events[stage], &self.events[stage + 1])?;
+        }
+        Ok(StageTimes {
+            stage_ms,
+            total_ms: elapsed_time(&self.events[0], &self.events[STAGES.len()])?,
+        })
+    }
+
+    /// Compulsory traffic of one pass, in [`STAGES`] order — see [`PassBytes`].
+    pub fn pass_bytes(&self) -> PassBytes {
+        let e4_bytes = CLASS_WORDS[CLASS_E4] as u64 * size_of::<u32>() as u64;
+        let backing = self.layout.backing_bytes();
+        let partials = self.geometry.partials * e4_bytes;
+        let folded = u64::from(self.desc.num_sources) * self.layout.rows * e4_bytes;
+        let stage = [
+            2 * backing,
+            2 * backing + partials,
+            partials + UNISKIP_CELLS as u64 * e4_bytes,
+            backing + folded,
+        ];
+        PassBytes {
+            stage,
+            total: stage.iter().sum(),
+        }
     }
 
     /// The 32 evaluations the last pass produced, four `u32` limbs per cell.
@@ -328,6 +429,68 @@ impl Harness {
                     &coset,
                     &label,
                 ) {
+                    return Ok(Err(e));
+                }
+            }
+        }
+        Ok(Ok(()))
+    }
+
+    /// The first and last used column of a field class, in backing order. Fewer
+    /// than two entries if the class holds fewer than two columns.
+    fn class_edge_sources(&self, class: usize) -> Vec<(usize, UniskipSourceRecord)> {
+        let mut of_class: Vec<(usize, UniskipSourceRecord)> = self.desc.source
+            [..self.desc.num_sources as usize]
+            .iter()
+            .copied()
+            .enumerate()
+            .filter(|(_, rec)| class_index(rec.source_class) == class)
+            .collect();
+        of_class.sort_by_key(|(_, rec)| {
+            self.layout
+                .column_base(addr_window(rec.addr), addr_column(rec.addr))
+        });
+        match of_class.len() {
+            0 => Vec::new(),
+            1 => vec![of_class[0]],
+            n => vec![of_class[0], of_class[n - 1]],
+        }
+    }
+
+    /// Rows the fold check samples: the two ends plus a few interior rows.
+    fn sample_rows(&self) -> Vec<u64> {
+        let rows = self.layout.rows;
+        let mut sampled = vec![0, 1, rows / 3, rows / 2, rows - 1];
+        sampled.sort_unstable();
+        sampled.dedup();
+        sampled
+    }
+
+    /// Compare the folded values of the first and last used column of both field
+    /// classes, at sampled rows, against the host fold — bit-exact. Sampled rather
+    /// than exhaustive: the fold output is one `e4` per (source, row), so a full
+    /// download is the size of the whole tap backing.
+    pub fn validate_fold(&self) -> CudaResult<Result<(), String>> {
+        let words = CLASS_WORDS[CLASS_E4];
+        let rows = self.sample_rows();
+        for class in 0..CLASSES {
+            for (id, rec) in self.class_edge_sources(class) {
+                let mut host = vec![0u32; rows.len() * words];
+                for (i, &row) in rows.iter().enumerate() {
+                    let start = (id as u64 * self.layout.rows + row) as usize * words;
+                    memory_copy(
+                        &mut host[i * words..(i + 1) * words],
+                        &self.folded[start..start + words],
+                    )?;
+                }
+                let label = format!(
+                    "source {id} (window {} column {})",
+                    addr_window(rec.addr),
+                    addr_column(rec.addr)
+                );
+                if let Err(e) =
+                    reference::fold_check(&self.layout, self.seed, rec, &rows, &host, &label)
+                {
                     return Ok(Err(e));
                 }
             }

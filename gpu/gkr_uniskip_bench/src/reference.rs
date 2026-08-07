@@ -7,8 +7,8 @@
 use field::{Field, FieldExtension};
 
 use crate::abi::*;
-use crate::domain::{lde_matrix, E4, F};
-use crate::geometry::Geometry;
+use crate::domain::{fold_weights, lde_matrix, E4, F};
+use crate::geometry::{Geometry, UNISKIP_MAX_LOG_ROWS};
 use crate::harness::{class_index, Layout, CLASS_BF, CLASS_E4, CLASS_WORDS};
 use crate::synth::SynthProgram;
 
@@ -21,6 +21,11 @@ use crate::synth::SynthProgram;
 pub const UNISKIP_EQ_HIGH_INIT_BASE: u64 = 0;
 pub const UNISKIP_COEFF_INIT_BASE: u64 = UNISKIP_EQ_HIGH_INIT_BASE + 2 * UNISKIP_EQ_HIGH as u64;
 pub const UNISKIP_EQ_LOW_INIT_BASE: u64 = UNISKIP_COEFF_INIT_BASE + UNISKIP_COEFF_BANK as u64;
+/// Entries eq low can occupy at the largest addressable geometry — the high tables
+/// fill first, so its bit count is `UNISKIP_MAX_LOG_ROWS - 2 * UNISKIP_LOG_EQ_HIGH`.
+/// The challenge sits past that, so its draws stay distinct at every `log_rows`.
+pub const UNISKIP_EQ_LOW_INIT_MAX_LEN: u64 = 1 << (UNISKIP_MAX_LOG_ROWS - 2 * UNISKIP_LOG_EQ_HIGH);
+pub const UNISKIP_CHALLENGE_INIT_BASE: u64 = UNISKIP_EQ_LOW_INIT_BASE + UNISKIP_EQ_LOW_INIT_MAX_LEN;
 
 /// Mirrors `uniskip_init_canonical`: `index` is the ABSOLUTE index of the field
 /// element inside its backing allocation, `component` tags the `bf` limbs of an
@@ -98,6 +103,24 @@ fn e4_words(x: E4) -> [u32; 4] {
     [x.c0.c0, x.c0.c1, x.c1.c0, x.c1.c1].map(|f| f.raw_u32_value())
 }
 
+/// The round challenge `r`: four init draws, one per `E4` coordinate. Synthetic —
+/// the bench has no transcript, so `r` is a deterministic function of `--seed`
+/// rather than a Fiat-Shamir squeeze.
+pub fn fold_challenge(seed: u32) -> E4 {
+    E4::from_array_of_base(core::array::from_fn(|j| {
+        F::new(init_canonical(
+            seed,
+            UNISKIP_CHALLENGE_INIT_BASE + j as u64,
+            0,
+        ))
+    }))
+}
+
+/// `[L_t(r)]_t` in tap order, as the device words the fold kernels index.
+pub fn fold_weight_words(seed: u32) -> [[u32; 4]; UNISKIP_TAPS] {
+    fold_weights(fold_challenge(seed)).map(e4_words)
+}
+
 /// The two field classes a window backing can hold, spelled so the tap/LDE
 /// reproduction is written once.
 trait Cell: Copy {
@@ -107,6 +130,8 @@ trait Cell: Copy {
     fn words(self) -> [u32; 4];
     /// `self += weight * value`.
     fn add_scaled(&mut self, weight: F, value: Self);
+    /// `acc += weight * self` — the fold's `E4`-weighted accumulation.
+    fn add_to_e4(self, weight: E4, acc: &mut E4);
 }
 
 impl Cell for F {
@@ -123,6 +148,9 @@ impl Cell for F {
     fn add_scaled(&mut self, weight: F, value: Self) {
         self.add_assign_product(&weight, &value);
     }
+    fn add_to_e4(self, weight: E4, acc: &mut E4) {
+        acc.add_assign_product_with_base(&weight, &self);
+    }
 }
 
 impl Cell for E4 {
@@ -138,6 +166,9 @@ impl Cell for E4 {
     }
     fn add_scaled(&mut self, weight: F, value: Self) {
         <E4 as FieldExtension<F>>::add_assign_product_with_base(self, &value, &weight);
+    }
+    fn add_to_e4(self, weight: E4, acc: &mut E4) {
+        acc.add_assign_product(&weight, &self);
     }
 }
 
@@ -471,6 +502,63 @@ pub fn check_q(expected: &[E4; UNISKIP_CELLS], actual: &[u32]) -> Result<(), Str
     Ok(())
 }
 
+/// One source's folded value at one row: the same weighted sum of the 16 taps on
+/// `H` the fold kernel runs, over data regenerated from the init formula and
+/// addressed through [`source_offset`].
+fn folded_row<T: Cell>(
+    layout: &Layout,
+    seed: u32,
+    rec: UniskipSourceRecord,
+    weights: &[E4; UNISKIP_TAPS],
+    row: u64,
+) -> E4 {
+    let base = layout.windows[addr_window(rec.addr)].offset;
+    let mut acc = E4::ZERO;
+    for (tap, weight) in weights.iter().enumerate() {
+        let (buffer, offset) = source_offset(rec, cell_for_tap(tap), row, layout.log_rows);
+        assert_eq!(buffer, CellBuffer::Tap);
+        T::init(seed, base + offset).add_to_e4(*weight, &mut acc);
+    }
+    acc
+}
+
+/// Bit-exact check of one source's folded values at `rows`; `actual` holds four
+/// `u32` limbs per sampled row, in `rows` order. The window comes from `rec.addr`,
+/// so there is no window/record pair that could disagree.
+pub fn fold_check(
+    layout: &Layout,
+    seed: u32,
+    rec: UniskipSourceRecord,
+    rows: &[u64],
+    actual: &[u32],
+    label: &str,
+) -> Result<(), String> {
+    let words = CLASS_WORDS[CLASS_E4];
+    if actual.len() != rows.len() * words {
+        return Err(format!(
+            "{label} fold: expected {} words, downloaded {}",
+            rows.len() * words,
+            actual.len()
+        ));
+    }
+    let weights = fold_weights(fold_challenge(seed));
+    for (i, &row) in rows.iter().enumerate() {
+        let want = match class_index(rec.source_class) {
+            CLASS_BF => folded_row::<F>(layout, seed, rec, &weights, row),
+            _ => folded_row::<E4>(layout, seed, rec, &weights, row),
+        };
+        for (limb, want) in e4_words(want).iter().enumerate() {
+            let got = actual[i * words + limb];
+            if got != *want {
+                return Err(format!(
+                    "{label} fold: row {row} limb {limb}: expected {want:#010x}, got {got:#010x}"
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Bit-exact check of one column's taps and all 16 coset cells.
 pub fn check_column(
     layout: &Layout,
@@ -574,6 +662,54 @@ mod cpu_tests {
                 baseline,
                 "immediate slot {slot} does not reach q"
             );
+        }
+    }
+
+    /// Pins the fold oracle's accessor-driven addressing against the flat
+    /// plane-order view of a column block, for both field classes.
+    #[test]
+    fn cpu_fold_check_matches_the_flat_column() {
+        // The challenge draws sit past the largest eq low table, so no geometry can
+        // make them alias it.
+        let widest = Geometry::new(crate::geometry::UNISKIP_MAX_LOG_TRACE).unwrap();
+        assert!(
+            UNISKIP_EQ_LOW_INIT_BASE + widest.eq_low_len() as u64 <= UNISKIP_CHALLENGE_INIT_BASE
+        );
+
+        let geometry = Geometry::new(10).unwrap();
+        let program = generate(5, Census::default()).unwrap();
+        let layout = Layout::new(&program, &geometry);
+        let seed = 5;
+        let weights = fold_weights(fold_challenge(seed));
+        let rows = [0u64, 1, layout.rows / 2, layout.rows - 1];
+
+        for window in [0usize, SYNTH_E4_WINDOW] {
+            let column = layout.windows[window].columns as usize - 1;
+            let rec = program
+                .sources
+                .iter()
+                .copied()
+                .find(|r| addr_window(r.addr) == window && addr_column(r.addr) == column)
+                .unwrap();
+            let class = class_index(rec.source_class);
+            let base = layout.column_base(window, column);
+            let mut words = Vec::new();
+            for &row in &rows {
+                let mut acc = E4::ZERO;
+                for (tap, weight) in weights.iter().enumerate() {
+                    // Flat view: the column block is tap-major, `tap * rows + row`.
+                    let index = base + tap as u64 * layout.rows + row;
+                    match class {
+                        CLASS_BF => init_bf(seed, index).add_to_e4(*weight, &mut acc),
+                        _ => init_e4(seed, index).add_to_e4(*weight, &mut acc),
+                    }
+                }
+                words.extend_from_slice(&e4_words(acc));
+            }
+            fold_check(&layout, seed, rec, &rows, &words, "cpu").unwrap();
+
+            words[0] ^= 1;
+            assert!(fold_check(&layout, seed, rec, &rows, &words, "cpu").is_err());
         }
     }
 

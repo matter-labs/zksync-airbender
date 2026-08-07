@@ -4,7 +4,7 @@
 //! a `u32` word array (one word per `bf`, four per `e4`), so every pointer that
 //! crosses here is a `*mut u32`.
 
-use std::ffi::c_void;
+use std::ffi::{c_char, c_void, CStr};
 
 use era_cudart::cuda_kernel;
 use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
@@ -21,6 +21,7 @@ use crate::abi::{
 cuda_struct_and_stub! { static ab_gkr_uniskip_coeff_bank: [[u32; 4]; UNISKIP_COEFF_BANK]; }
 cuda_struct_and_stub! { static ab_gkr_uniskip_eq_high: [[u32; 4]; 2 * UNISKIP_EQ_HIGH]; }
 cuda_struct_and_stub! { static ab_gkr_uniskip_lde_matrix: [u32; UNISKIP_TAPS * UNISKIP_TAPS]; }
+cuda_struct_and_stub! { static ab_gkr_uniskip_fold_weights: [[u32; 4]; UNISKIP_TAPS]; }
 
 /// Blocks a grid-stride launch may use. The kernels loop, so this only bounds the
 /// launch; every configuration above it is covered by the stride.
@@ -41,6 +42,24 @@ cuda_kernel!(
 cuda_kernel!(
     LdeE4,
     ab_gkr_uniskip_lde_e4_kernel(desc: UniskipVmDesc, jobs: *const u16, num_jobs: u32)
+);
+cuda_kernel!(
+    FoldBf,
+    ab_gkr_uniskip_fold_bf_kernel(
+        desc: UniskipVmDesc,
+        jobs: *const u16,
+        num_jobs: u32,
+        folded: *mut u32
+    )
+);
+cuda_kernel!(
+    FoldE4,
+    ab_gkr_uniskip_fold_e4_kernel(
+        desc: UniskipVmDesc,
+        jobs: *const u16,
+        num_jobs: u32,
+        folded: *mut u32
+    )
 );
 cuda_kernel!(Eval, ab_gkr_uniskip_eval_kernel(desc: UniskipVmDesc));
 cuda_kernel!(
@@ -90,6 +109,12 @@ pub fn upload_eq_high(tables: &[[u32; 4]; 2 * UNISKIP_EQ_HIGH]) -> CudaResult<()
 /// Upload the coefficient bank the eval kernel indexes by `term.coeff`.
 pub fn upload_coeff_bank(bank: &[[u32; 4]; UNISKIP_COEFF_BANK]) -> CudaResult<()> {
     unsafe { memcpy_to_symbol(&ab_gkr_uniskip_coeff_bank, bank) }
+}
+
+/// Upload `[L_t(r)]_t` — [`crate::domain::fold_weights`] at the round challenge, in
+/// tap order, which is the order the fold kernels index.
+pub fn upload_fold_weights(weights: &[[u32; 4]; UNISKIP_TAPS]) -> CudaResult<()> {
+    unsafe { memcpy_to_symbol(&ab_gkr_uniskip_fold_weights, weights) }
 }
 
 /// Fill a `bf` backing with the deterministic init generator; `dst` is one word
@@ -143,6 +168,44 @@ pub fn lde_e4(
     LdeE4Function::default().launch(&config(total, stream), &args)
 }
 
+fn fold_total(desc: &UniskipVmDesc, num_jobs: usize) -> u64 {
+    (1u64 << desc.log_rows) * num_jobs as u64
+}
+
+/// One `e4` per (job, row) over the `bf` source records in `jobs`, written at
+/// `source_id * rows + row` of `folded` (four words per element).
+pub fn fold_bf(
+    desc: &UniskipVmDesc,
+    jobs: &DeviceSlice<u16>,
+    num_jobs: usize,
+    folded: &mut DeviceSlice<u32>,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    if num_jobs == 0 {
+        return Ok(());
+    }
+    let total = fold_total(desc, num_jobs);
+    let args = FoldBfArguments::new(*desc, jobs.as_ptr(), num_jobs as u32, folded.as_mut_ptr());
+    FoldBfFunction::default().launch(&config(total, stream), &args)
+}
+
+/// The `e4` counterpart of [`fold_bf`]. The two class job lists partition the
+/// source ids, so both write into the same `folded` buffer without overlap.
+pub fn fold_e4(
+    desc: &UniskipVmDesc,
+    jobs: &DeviceSlice<u16>,
+    num_jobs: usize,
+    folded: &mut DeviceSlice<u32>,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    if num_jobs == 0 {
+        return Ok(());
+    }
+    let total = fold_total(desc, num_jobs);
+    let args = FoldE4Arguments::new(*desc, jobs.as_ptr(), num_jobs as u32, folded.as_mut_ptr());
+    FoldE4Function::default().launch(&config(total, stream), &args)
+}
+
 /// One block per 32-row tile; writes `UNISKIP_CELLS` `e4` partials per block into
 /// `desc.partials`. NOT grid-strided: the grid covers every row exactly once.
 pub fn eval(desc: &UniskipVmDesc, blocks: u32, stream: &CudaStream) -> CudaResult<()> {
@@ -165,4 +228,36 @@ pub fn finalize(
         stream,
     );
     FinalizeFunction::default().launch(&config, &args)
+}
+
+// NVTX. The cluster's wrapper lives in gpu_core, which is a dev-dependency here,
+// so the bench exports the two calls it needs from its own archive (native/uniskip.cu).
+#[cfg(not(no_cuda))]
+unsafe extern "C" {
+    fn ab_gkr_uniskip_nvtx_range_push(name: *const c_char);
+    fn ab_gkr_uniskip_nvtx_range_pop();
+}
+
+// No Toolkit means no archive to link. NVTX only annotates, and real NVTX is inert
+// with no profiler attached, so no-ops are the faithful degradation.
+#[cfg(no_cuda)]
+unsafe fn ab_gkr_uniskip_nvtx_range_push(_name: *const c_char) {}
+#[cfg(no_cuda)]
+unsafe fn ab_gkr_uniskip_nvtx_range_pop() {}
+
+/// An open NVTX range, closed on drop. The underlying push/pop stack is
+/// thread-local, so ranges nest but must not cross threads.
+pub struct NvtxRange(());
+
+impl NvtxRange {
+    pub fn new(name: &CStr) -> Self {
+        unsafe { ab_gkr_uniskip_nvtx_range_push(name.as_ptr()) };
+        Self(())
+    }
+}
+
+impl Drop for NvtxRange {
+    fn drop(&mut self) {
+        unsafe { ab_gkr_uniskip_nvtx_range_pop() };
+    }
 }

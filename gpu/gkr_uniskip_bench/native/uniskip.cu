@@ -1,5 +1,7 @@
 #include "uniskip_abi.cuh"
 
+#include <nvtx3/nvToolsExt.h>
+
 // Storage for the `__constant__` symbols declared by uniskip_abi.cuh.
 __device__ __constant__ e4 ab_gkr_uniskip_coeff_bank[airbender::gkr_uniskip_bench::UNISKIP_COEFF_BANK];
 __device__ __constant__ e4 ab_gkr_uniskip_eq_high[2 * airbender::gkr_uniskip_bench::UNISKIP_EQ_HIGH];
@@ -79,6 +81,50 @@ EXTERN __global__ void ab_gkr_uniskip_lde_e4_kernel(const __grid_constant__ unis
       acc = e4::add(
           acc, e4::mul(load<e4, ld_modifier::ca>(taps, ((col * UNISKIP_TAPS + t) << desc.log_rows) + row), ab_gkr_uniskip_lde_matrix[cell * UNISKIP_TAPS + t]));
     coset[((col * UNISKIP_TAPS + cell) << desc.log_rows) + row] = acc;
+  }
+}
+
+// FOLD. Collapses the 16 taps on H into the evaluation at the round challenge r:
+// folded[source * rows + row] = sum_t L_t(r) * tap_t(row), an e4 for both input
+// classes. Output is indexed by SOURCE id, not by job: the two class job lists
+// partition the source ids, so both kernels share one buffer and each column's
+// folded values stay contiguous. The taps are read exactly once here, hence `cs`
+// rather than the LDE's reuse-friendly `ca`.
+EXTERN __global__ void ab_gkr_uniskip_fold_bf_kernel(const __grid_constant__ uniskip_vm_desc desc, const u16 *jobs, const u32 num_jobs, e4 *folded) {
+  const u64 rows = u64{1} << desc.log_rows;
+  const u64 total = rows * u64{num_jobs};
+  for (u64 i = blockIdx.x * u64{blockDim.x} + threadIdx.x; i < total; i += u64{blockDim.x} * gridDim.x) {
+    const u32 job = static_cast<u32>(i >> desc.log_rows);
+    const u64 row = i & (rows - 1);
+    const u16 source = jobs[job];
+    const uniskip_source_record rec = desc.source[source];
+    const u32 window = rec.addr >> 7;
+    const size_t col = rec.addr & 0x7f;
+    const bf *taps = reinterpret_cast<const bf *>(desc.tap_bases[window].base);
+    e4 acc = e4::ZERO();
+#pragma unroll
+    for (u32 t = 0; t < UNISKIP_TAPS; ++t)
+      acc = e4::fma(ab_gkr_uniskip_fold_weights[t], load<bf, ld_modifier::cs>(taps, ((col * UNISKIP_TAPS + t) << desc.log_rows) + row), acc);
+    folded[u64{source} * rows + row] = acc;
+  }
+}
+
+EXTERN __global__ void ab_gkr_uniskip_fold_e4_kernel(const __grid_constant__ uniskip_vm_desc desc, const u16 *jobs, const u32 num_jobs, e4 *folded) {
+  const u64 rows = u64{1} << desc.log_rows;
+  const u64 total = rows * u64{num_jobs};
+  for (u64 i = blockIdx.x * u64{blockDim.x} + threadIdx.x; i < total; i += u64{blockDim.x} * gridDim.x) {
+    const u32 job = static_cast<u32>(i >> desc.log_rows);
+    const u64 row = i & (rows - 1);
+    const u16 source = jobs[job];
+    const uniskip_source_record rec = desc.source[source];
+    const u32 window = rec.addr >> 7;
+    const size_t col = rec.addr & 0x7f;
+    const e4 *taps = reinterpret_cast<const e4 *>(desc.tap_bases[window].base);
+    e4 acc = e4::ZERO();
+#pragma unroll
+    for (u32 t = 0; t < UNISKIP_TAPS; ++t)
+      acc = e4::fma(ab_gkr_uniskip_fold_weights[t], load<e4, ld_modifier::cs>(taps, ((col * UNISKIP_TAPS + t) << desc.log_rows) + row), acc);
+    folded[u64{source} * rows + row] = acc;
   }
 }
 
@@ -233,5 +279,12 @@ EXTERN __global__ void ab_gkr_uniskip_finalize_kernel(const e4 *partials, const 
   if (lane == 0)
     q[cell] = sum;
 }
+
+// NVTX shim. gpu_core owns the cluster's NVTX wrapper, but it is a dev-dependency
+// here (crate-root serial guard only), so the two calls the bench needs are
+// exported from its own archive. nvtx3 is header-only and inert with no profiler
+// attached.
+EXTERN void ab_gkr_uniskip_nvtx_range_push(const char *name) { nvtxRangePushA(name); }
+EXTERN void ab_gkr_uniskip_nvtx_range_pop() { nvtxRangePop(); }
 
 } // namespace airbender::gkr_uniskip_bench
