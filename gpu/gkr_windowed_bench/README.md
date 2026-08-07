@@ -54,10 +54,23 @@ two-member add/sub pairs. Mixed products are encoded in canonical BF-then-E4
 source order. The decoder rejects programs outside these compiler-derived
 invariants instead of falling back to a generic group path.
 
-The complete control descriptor is passed by value as a 1,952-byte
-`__grid_constant__` kernel argument. Its 175 aligned program records, 59 source
-records, 6 address slots, and 7 immediates are inline; only the
-witness/equality/output data remains pointer-backed.
+The complete control descriptor is passed by value as a 1,792-byte
+`__grid_constant__` kernel argument. Its 175 aligned program records, 59
+four-byte source references, 6 host-resolved window bases, and 7 immediates
+are inline; only the input/equality/output data remains pointer-backed. A
+source reference packs a `u16` window in its low half and a `u16` relative
+column in its high half so the kernel needs one 32-bit metadata load. Because
+all sources share the trace domain, the kernel computes `log_trace` once and
+uses typed pointer arithmetic for `window_base + (column << log_trace)`. This
+costs one dependent base lookup per operand, but scales as four bytes per
+source plus eight bytes per window instead of eight bytes per source.
+
+This benchmark deliberately materializes the two procedural setup windows as
+ordinary, deterministically initialized BF allocations. That changes their
+values and therefore the output checksum, but correctness is outside the
+experiment's scope. It keeps real allocation and load traffic while giving all
+BF sources the same device load path, which is substantially faster and much
+smaller than carrying the procedural switch through the inlined VM.
 
 ## Build and run
 
@@ -103,14 +116,18 @@ not rebuild the compiler stack:
 cargo run --release -p gpu_gkr_windowed_bench \
   --features artifact-gen \
   --bin generate_add_sub_layer0 -- \
+  --schedule source \
   --layout cs/compiled_circuits/add_sub_lui_auipc_mop_layout_gkr.json \
   --output gpu/gkr_windowed_bench/artifacts/add_sub_layer0.bin
 ```
 
 The generator lowers layer 0 through the incoming segmented VM compiler and
-then serializes the round-0 benchmark form. This experimental artifact is
-replaced in place rather than migrated through format versions. Drift is
-acceptable for this crate; regeneration is an explicit operation.
+then serializes the round-0 benchmark form. The checked-in artifact uses the
+`source` schedule, which preserves atom/group semantics while improving source
+locality; `compiler`, `control-atoms`, and `control` are available for A/B
+experiments. This experimental artifact is replaced in place rather than
+migrated through format versions. Drift is acceptable for this crate;
+regeneration is an explicit operation.
 
 ## Deliberate limitations
 

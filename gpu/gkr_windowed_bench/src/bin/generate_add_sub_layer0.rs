@@ -1,7 +1,29 @@
 use std::path::PathBuf;
 
-use clap::Parser;
-use gpu_gkr_windowed_bench::generator::{generate_add_sub_layer0, generate_bytes};
+use clap::{Parser, ValueEnum};
+use gpu_gkr_windowed_bench::artifact::encode_artifact;
+use gpu_gkr_windowed_bench::generator::{
+    generate_add_sub_layer0_with_schedule, schedule_census, ProgramSchedule,
+};
+
+#[derive(Clone, Copy, Debug, ValueEnum)]
+enum ScheduleArg {
+    Compiler,
+    ControlAtoms,
+    Control,
+    Source,
+}
+
+impl From<ScheduleArg> for ProgramSchedule {
+    fn from(schedule: ScheduleArg) -> Self {
+        match schedule {
+            ScheduleArg::Compiler => Self::Compiler,
+            ScheduleArg::ControlAtoms => Self::ControlAtoms,
+            ScheduleArg::Control => Self::Control,
+            ScheduleArg::Source => Self::Source,
+        }
+    }
+}
 
 #[derive(Parser)]
 struct Args {
@@ -9,6 +31,8 @@ struct Args {
     layout: Option<PathBuf>,
     #[arg(long)]
     output: Option<PathBuf>,
+    #[arg(long, value_enum, default_value_t = ScheduleArg::Compiler)]
+    schedule: ScheduleArg,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -20,8 +44,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let output = args
         .output
         .unwrap_or_else(|| manifest.join("artifacts/add_sub_layer0.bin"));
-    let artifact = generate_add_sub_layer0(&layout)?;
-    let bytes = generate_bytes(&layout)?;
+    let artifact = generate_add_sub_layer0_with_schedule(&layout, args.schedule.into())?;
+    let census = schedule_census(&artifact)?;
+    let bytes = encode_artifact(&artifact)?;
     if let Some(parent) = output.parent() {
         std::fs::create_dir_all(parent)?;
     }
@@ -43,9 +68,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .filter(|window| window.family.is_procedural())
         .count();
     println!(
-        "wrote {}: terms={} records={} program_bytes={} coefficients={} immediates={} sources={} windows={} bf_windows={} e4_windows={} procedural_windows={}",
+        "wrote {}: schedule={:?} terms={} atoms={} records={} program_bytes={} coefficients={} immediates={} sources={} windows={} bf_windows={} e4_windows={} procedural_windows={} field_transitions={} shape_transitions={} class_transitions={} immediate_transitions={} same_source_a={} same_source_b={} bf_accesses={} procedural_bf_accesses={}",
         output.display(),
+        args.schedule,
         artifact.term_count,
+        census.atoms,
         artifact.record_count,
         artifact.program.len() * core::mem::size_of::<gpu_gkr_windowed_bench::abi::WindowInstruction>(),
         artifact.coefficient_count,
@@ -55,6 +82,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         bf_windows,
         e4_windows,
         procedural,
+        census.field_transitions,
+        census.shape_transitions_within_field,
+        census.class_transitions,
+        census.group_immediate_transitions,
+        census.adjacent_equal_source_a,
+        census.adjacent_equal_source_b,
+        census.projected_bf_accesses,
+        census.projected_procedural_bf_accesses,
     );
     Ok(())
 }

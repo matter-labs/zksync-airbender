@@ -446,3 +446,122 @@ log-8 compute-sanitizer run reports zero errors and checksum
 `0xbb2eb9da3c8c062b`. Every timed log-24 variant produced checksum
 `0x8820ab14cacc9ff7`. The representative full profile therefore remains
 `target/profiling/ncu/windowed_gkr_add_sub_l0_log24_selector_vote_full.ncu-rep`.
+
+## Schedule, outlining, and materialized-source experiments
+
+The compiler artifact generator now supports deterministic `compiler`,
+`control-atoms`, `control`, and `source` schedules and reports a locality/control
+census. All schedules contain the same semantic multiset of 72 atoms and 150
+terms. Changing only the embedded artifact leaves the VM SASS byte-for-byte
+identical.
+
+| Schedule | Field / shape / class transitions | Same source A / B | Log-24 medians |
+|---|---:|---:|---:|
+| Compiler | 3 / 18 / 51 | 41 / 28 | 18.092848 / 18.064976 ms |
+| Control atoms | 1 / 2 / 26 | 39 / 27 | 18.168575 / 18.243361 ms |
+| Control plus member reorder | 1 / 2 / 26 | 33 / 28 | 18.309200 / 18.277008 ms |
+| Source | 1 / 25 / 52 | 54 / 26 | 18.163376 / 17.996143 ms; repeats 18.034864 / 18.033569 / 18.008656 ms |
+
+The control-oriented orderings lost despite sharply reducing transition counts.
+The small but repeatable source-locality lead is retained in the checked-in
+artifact.
+
+The spill/code-size matrix used that source schedule:
+
+| Variant | Registers | Stack | VM instructions | Log-24 median(s) | Decision |
+|---|---:|---:|---:|---:|---|
+| BF-majority inverted dispatch | 54 | 0 B | 6,936 | 18.160608 / 18.171728 ms | Reject |
+| `#pragma unroll 1` E4 loop | 56 | 0 B | 5,544 | 18.771616 / 18.836399 ms | Reject |
+| Unconditional four-corner loads | 56 | 0 B | 7,632 | 19.303568 / 19.300049 ms | Reject |
+| Outlined E4 executor, unbounded | 118 | 0 B | 4,240 inline | 51.463150 ms | Reject |
+| Outlined E4 executor, 56-register cap | 56 | 128 B | 4,144 inline | 20.637054 ms | Reject |
+| Outlined endpoint resolver | 56 | 72 B | 3,536 inline | 32.513901 / 32.581535 ms | Reject |
+| Five-block launch bound | 40 | 64 B | 7,096 | 18.811888 / 18.829504 ms | Reject |
+| Outlined procedural generator | 56 | 0 B | 4,944 inline | 21.376896 / 21.607073 ms | Reject |
+
+The capped E4 callee reported 124 spill-store bytes and 136 spill-load bytes;
+the five-block kernel emitted 34 static local stores and 39 local loads. Small
+spill frames are operationally tolerable, but neither the extra occupancy nor
+the instruction-cache relief recovered their traffic/call cost.
+
+### Host-resolved and materialized source winner
+
+Resolving each source's final column pointer on the host removes the inline
+source-to-address-slot lookup. It retains 56 registers and zero stack/local
+memory while reducing the VM from 6,936 to 6,768 instructions and constant-load
+sites from 112 to 79. Its two medians were 17.168400 and 17.152496 ms.
+
+The two procedural setup windows are now also backed by real, deterministically
+initialized BF allocations. This is valid for this throughput-only benchmark:
+it intentionally changes the checksum from `0x8820ab14cacc9ff7` to
+`0x29757dbb496ca7dc`, but preserves real allocation and load traffic. Removing
+the procedural source switch gives one uniform BF load path:
+
+- VM instructions: 3,456;
+- `BSSY` / `BSYNC`: 3 / 3;
+- static `LDC` / `LDG` sites: 68 / 129;
+- 56 registers/thread, zero stack/local memory; and
+- log-24 medians: 15.343072 / 15.342336 ms.
+
+Compacting the launch source table to exactly 59 resolved pointers reduces the
+descriptor from 2,448 to 1,968 bytes and constant-parameter usage from 3,344 to
+2,864 bytes without changing the instruction counts. The retained medians are
+15.334929 and 15.334336 ms. Removing the warp votes increased reconvergence
+sites from 3 to 40 and regressed to 15.685216 ms, so the votes remain.
+
+The final log-8 compute-sanitizer run reports zero errors. The new full VM-only
+report is
+`target/profiling/ncu/windowed_gkr_add_sub_l0_log24_materialized_pointer_full.ncu-rep`:
+
+- NCU duration: 15.74 ms;
+- dynamic instructions and branches: 21.23 billion / 509.02 million;
+- theoretical/achieved occupancy: 75% / 74.27%;
+- issue slots busy: 76.40%;
+- instruction-cache hit rate: 99.998%;
+- L1/TEX and L2 hit rates: 85.80% / 42.43%;
+- physical FMA-heavy and ALU-heavy utilization: 83.25% / 62.57%; and
+- PC-sampling proportions: 33.26% not selected, 26.08% math-pipe throttle,
+  11.11% wait, 7.65% dispatch stall, 6.64% long scoreboard, and 2.29% no
+  instruction.
+
+Relative to the retained selector-vote profile, no-instruction samples fell
+from 23.49% to 2.29% and the ICC hit rate rose from 97.00% to 99.998%. The
+kernel is now primarily limited by FMA-heavy math throughput rather than
+instruction delivery. The ordinary 15.334 ms medians are about 15% faster than
+the fresh 18.059 / 18.125 ms pre-experiment baseline.
+
+### Compact source-reference result
+
+The resolved-pointer source table is a useful throughput upper bound, but its
+eight bytes per source do not scale well with larger programs. The retained
+replacement stores a four-byte source record with a `u16` window and `u16`
+relative column, plus one eight-byte host-resolved base pointer per window.
+The record is physically packed into one `u32`; an initial two-field C++ form
+made `ptxas` issue two `LDC.U16` operations per resolution.
+
+The trace stride is not stored in either table. All inputs have the same
+domain size, so the kernel computes `log_trace = desc.log_rows + 3` once and
+resolves BF/E4 operands with typed `window_base + (column << log_trace)`
+arithmetic. The descriptor falls from 1,968 to 1,792 bytes. For the current
+artifact, source/window metadata is 236 + 48 bytes rather than 472 bytes of
+resolved source pointers.
+
+| Source encoding | VM instructions | `LDC` sites | Log-24 medians |
+|---|---:|---:|---:|
+| Resolved pointer upper bound | 3,456 | 68 | 15.334929 / 15.334336 ms |
+| Separate `u16` fields | 3,568 | 88 | 15.886256 / 15.886224 ms |
+| Packed `u32` | 3,576 | 72 | 15.838512 / 15.837168 ms |
+
+The packed form is retained. It keeps 56 registers/thread, zero stack/local
+memory, and 3/3 `BSSY`/`BSYNC` sites. Its approximately 3.28% cost quantifies
+the dependent window-base lookup plus address arithmetic that the pointer
+upper bound avoids. The release edit build took 7.16 seconds, preserving the
+quick kernel-iteration goal. All 42 all-target tests pass; the log-8
+compute-sanitizer run reports zero errors and checksum `0x6bd630443cf77a02`.
+Artifact regeneration is byte-identical at
+`3af2e3c55c556c8f8a4ed019cfca04dbd754aba92f093aa332329069c34ab5e3`.
+
+Both compact-source timings remain VM-only. The two procedural setup windows
+are still materialized as real BF allocations before timing, so their
+materialization cost is not represented here and must be accounted for by any
+end-to-end implementation.
