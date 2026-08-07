@@ -1,13 +1,12 @@
 use std::collections::HashMap;
 
-use gkr_eval_ir::{FieldKind, ReadPlace, VirtualSetupKind, read_place_field};
-use serde::{Deserialize, Serialize};
+use gkr_eval_ir::{read_place_field, FieldKind, ReadPlace, VirtualSetupKind};
 
 use super::model::CoeffSource;
 use super::source::OriginLeaf;
 
 /// Logical backing identity used by the backward source-window binder.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum WindowFamily {
     BaseLayerMemory,
     BaseLayerWitness,
@@ -37,7 +36,7 @@ fn backing_field(
         .unwrap_or(source.field)
 }
 
-pub fn window_family(
+pub(crate) fn window_family(
     source: &CoeffSource,
     cross_fields: &HashMap<ReadPlace, FieldKind>,
 ) -> (WindowFamily, usize) {

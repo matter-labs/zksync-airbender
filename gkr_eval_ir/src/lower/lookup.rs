@@ -2,9 +2,7 @@
 //!
 //! Every lookup relation lowers to `LookupValue` source leaves plus ordinary
 //! arithmetic over the lookup-additive challenge `gamma` and lookup-multiplicative
-//! challenge powers `alpha^j` (per the companion design doc, sections "Lookup
-//! Values", "Two-output Lookup Gates", "Lookup Minus Setup", and the rational-pair
-//! part of "Product, Mask, And Rational-Pair Gates"). The extension-valued vector
+//! challenge powers `alpha^j`. The extension-valued vector
 //! lookup object is NOT a primitive source: it is alpha-folded base lookup values.
 //!
 //! # The two single-output materializations
@@ -81,8 +79,7 @@ pub(super) fn read(arena: &mut ArenaBuilder, addr: GKRAddress) -> ExprId {
 
 /// Lower a linear relation query into an `ExprId` (`constant + Σ c_i·x_i`).
 ///
-/// Reuses the Task-7 linear-lowering helper so the query arithmetic is identical
-/// to `LinearBaseFieldRelation`. The returned field is always `Base`.
+/// Uses the same arithmetic lowering as `LinearBaseFieldRelation`.
 fn lower_query<F: PrimeField>(
     arena: &mut ArenaBuilder,
     lin: &cs::definitions::gkr::NoFieldLinearRelation<F>,
@@ -148,9 +145,7 @@ pub(super) fn folded_lookup<F: PrimeField>(
             arena.source_expr(zero)
         }
         1 => terms[0],
-        // Multi-column fold: fence this Add so its ExprId survives as a single
-        // operand in root-reachable nodes and is findable by the resolutions validator.
-        _ => arena.fenced_add(terms),
+        _ => arena.add(terms),
     }
 }
 
@@ -175,9 +170,7 @@ pub(super) fn folded_setup(arena: &mut ArenaBuilder, setup_cols: &[GKRAddress]) 
             arena.source_expr(zero)
         }
         1 => terms[0],
-        // Multi-column fold: fence this Add so its ExprId survives as a single
-        // operand in root-reachable nodes and is findable by the resolutions validator.
-        _ => arena.fenced_add(terms),
+        _ => arena.add(terms),
     }
 }
 

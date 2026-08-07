@@ -18,56 +18,6 @@ use crate::upstream::{
 use gpu_core::primitives::field::E4;
 use gpu_ops::simple::set_by_ref;
 
-impl GpuGKRForwardSetup<E4> {
-    pub(crate) fn for_test_generic_lookup(
-        context: &ProverContext,
-        lookup_additive_challenge: E4,
-        generic_lookup_values: &[E4],
-        decoder_lookup_fill_value: E4,
-    ) -> CudaResult<Self> {
-        let mut d_lookup_challenges = context.alloc(3, AllocationPlacement::BestFit)?;
-        memory_copy_async(
-            &mut d_lookup_challenges,
-            &[E4::ONE, lookup_additive_challenge, E4::ZERO][..],
-            context.get_exec_stream(),
-        )?;
-        crate::forward::kernels::schedule_lookup_gamma_consts_prelude_e4(
-            d_lookup_challenges[1..2].as_ptr(),
-            context,
-        )?;
-
-        let mut device_decoder_lookup_fill_value =
-            context.alloc::<E4>(1, AllocationPlacement::BestFit)?;
-        memory_copy_async(
-            &mut device_decoder_lookup_fill_value,
-            &[decoder_lookup_fill_value],
-            context.get_exec_stream(),
-        )?;
-
-        let generic_lookup = if generic_lookup_values.is_empty() {
-            None
-        } else {
-            let mut device =
-                context.alloc::<E4>(generic_lookup_values.len(), AllocationPlacement::BestFit)?;
-            memory_copy_async(
-                &mut device,
-                generic_lookup_values,
-                context.get_exec_stream(),
-            )?;
-            Some(device)
-        };
-        context.get_exec_stream().synchronize()?;
-
-        Ok(Self {
-            _tracing_ranges: Vec::new(),
-            _callbacks: Callbacks::new(),
-            d_lookup_challenges,
-            device_decoder_lookup_fill_value,
-            generic_lookup,
-        })
-    }
-}
-
 fn make_test_cpu_setup(
     trace_len: usize,
     generic_lookup_width: usize,
@@ -250,7 +200,7 @@ fn launch_generic_lookup_preprocessing(
         generic_lookup_width,
         &mut generic_lookup,
     );
-    launch_forward_setup_generic_lookup::<E4>(&batch, generic_lookup_len, context).unwrap();
+    launch_forward_setup_generic_lookup(&batch, generic_lookup_len, context).unwrap();
 
     read_ext_allocation(&generic_lookup, context)
 }
@@ -675,7 +625,7 @@ fn forward_setup_schedule_generic_lookup_matches_cpu() {
     )
     .unwrap();
 
-    let scheduled = schedule_forward_setup_for_shape::<E4>(
+    let scheduled = schedule_forward_setup_for_shape(
         Some((&transfer.trace_holder, transfer.host.columns_count)),
         trace_len,
         generic_lookup_width,

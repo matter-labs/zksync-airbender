@@ -689,7 +689,7 @@ where
         context,
         circuit_type: fixture_circuit_type,
         gkr_programs: Arc::new(
-            GkrPrograms::compile(fixture_circuit_type, &compiled_circuit)
+            GkrPrograms::compile(fixture_circuit_type, Arc::new(compiled_circuit.clone()))
                 .expect("fixture must compile its committed GKR programs"),
         ),
         compiled_circuit,
@@ -796,7 +796,7 @@ where
         context,
         circuit_type: fixture_circuit_type,
         gkr_programs: Arc::new(
-            GkrPrograms::compile(fixture_circuit_type, &compiled_circuit)
+            GkrPrograms::compile(fixture_circuit_type, Arc::new(compiled_circuit.clone()))
                 .expect("fixture must compile its committed GKR programs"),
         ),
         compiled_circuit,
@@ -1084,7 +1084,7 @@ fn prepare_unified_fixture(
             context,
             circuit_type: fixture_circuit_type,
             gkr_programs: Arc::new(
-                GkrPrograms::compile(fixture_circuit_type, &compiled_circuit)
+                GkrPrograms::compile(fixture_circuit_type, Arc::new(compiled_circuit.clone()))
                     .expect("fixture must compile its committed GKR programs"),
             ),
             compiled_circuit,

@@ -15,5 +15,4 @@ field.workspace = true
 serde.workspace = true
 
 [dev-dependencies]
-cs = { workspace = true, features = ["compiler"] }
 serde_json = "1"

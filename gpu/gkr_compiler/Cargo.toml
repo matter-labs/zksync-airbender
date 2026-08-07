@@ -1,7 +1,7 @@
 [package]
 name = "gpu_gkr_compiler"
 version.workspace = true
-edition = "2024"
+edition.workspace = true
 authors.workspace = true
 homepage.workspace = true
 repository.workspace = true
@@ -13,15 +13,18 @@ categories.workspace = true
 cs = { workspace = true, features = ["compiler"] }
 field.workspace = true
 gkr_eval_ir.workspace = true
-gpu_gkr_model.workspace = true
-rand = { workspace = true, features = ["std", "std_rng"] }
-rayon = "1"
-serde = { version = "1", features = ["derive"] }
+serde.workspace = true
 serde_json = "1"
+
+[features]
+search = []
 
 [[bin]]
 name = "gkr-forward-artifact"
 path = "src/bin/gkr-forward-artifact.rs"
+required-features = ["search"]
 
-[dev-dependencies]
-cs = { workspace = true, features = ["compiler"] }
+[[test]]
+name = "forward_search"
+path = "tests/forward_search.rs"
+required-features = ["search"]

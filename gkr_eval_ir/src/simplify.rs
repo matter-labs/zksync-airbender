@@ -1,36 +1,26 @@
-//! Value-preserving DAG simplification (spec:
-//! .agents/specs/2026-07-04-gkr-dag-simplify-design.md). Memoized bottom-up
-//! rebuild into a fresh unflattened arena; reachability and remapping include
-//! the `SourceKind::LookupValue::query` edge. Fenced = `resolutions` keys.
+//! Value-preserving, bottom-up DAG simplification into a fresh arena.
+//! Reachability and remapping include `SourceKind::LookupValue::query`.
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::BTreeMap;
 
 use super::{
     field_infer::source_field, ArenaBuilder, DagCircuit, DagLayer, Expr, ExprId, FieldKind, Root,
     SourceKind,
 };
 
-/// BabyBear field modulus (matches `eval.rs`'s concrete field). Public so
-/// `lower_dag`/`lower_dag_legacy` can assert the actual `F::CHARACTERISTICS`
-/// matches before this module's hardcoded const-folding runs.
+/// BabyBear modulus used for canonical constant folding.
 pub(crate) const SIMPLIFY_MODULUS: u64 = 2013265921;
-/// Local alias to keep the fold helpers below unchanged.
-const P: u64 = SIMPLIFY_MODULUS;
-
-/// BabyBear addition mod `P`.
 fn fold_add(a: u32, b: u32) -> u32 {
-    ((a as u64 + b as u64) % P) as u32
+    ((a as u64 + b as u64) % SIMPLIFY_MODULUS) as u32
 }
 
-/// BabyBear multiplication mod `P`.
 fn fold_mul(a: u32, b: u32) -> u32 {
-    ((a as u64 * b as u64) % P) as u32
+    ((a as u64 * b as u64) % SIMPLIFY_MODULUS) as u32
 }
 
-pub fn simplify_circuit(dag: DagCircuit) -> DagCircuit {
+pub(crate) fn simplify_circuit(dag: DagCircuit) -> DagCircuit {
     DagCircuit {
         layers: dag.layers.iter().map(simplify_layer_fixpoint).collect(),
-        globals: dag.globals,
     }
 }
 
@@ -63,13 +53,14 @@ pub(crate) fn simplify_layer_fixpoint(layer: &DagLayer) -> DagLayer {
 /// occurrence (once per root), and each reachable `LookupValue.query` edge.
 /// Reachability traverses children AND query edges; dead arena nodes never
 /// appear in the result.
-pub(crate) fn fan_out(layer: &DagLayer) -> HashMap<ExprId, usize> {
-    let mut counts: HashMap<ExprId, usize> = HashMap::new();
-    let mut seen: HashSet<ExprId> = HashSet::new();
+fn fan_out(layer: &DagLayer) -> Vec<usize> {
+    let mut counts = vec![0; layer.exprs.len()];
+    let mut seen = vec![false; layer.exprs.len()];
     let mut worklist: Vec<ExprId> = Vec::new();
     for root in &layer.roots {
-        *counts.entry(root.expr).or_insert(0) += 1;
-        if seen.insert(root.expr) {
+        counts[root.expr.0 as usize] += 1;
+        if !seen[root.expr.0 as usize] {
+            seen[root.expr.0 as usize] = true;
             worklist.push(root.expr);
         }
     }
@@ -77,16 +68,18 @@ pub(crate) fn fan_out(layer: &DagLayer) -> HashMap<ExprId, usize> {
         match &layer.exprs[id.0 as usize] {
             Expr::Add(children) | Expr::Mul(children) => {
                 for &c in children {
-                    *counts.entry(c).or_insert(0) += 1;
-                    if seen.insert(c) {
+                    counts[c.0 as usize] += 1;
+                    if !seen[c.0 as usize] {
+                        seen[c.0 as usize] = true;
                         worklist.push(c);
                     }
                 }
             }
             Expr::Source(sid) => {
-                if let SourceKind::LookupValue { query, .. } = &layer.sources[sid.0 as usize].kind {
-                    *counts.entry(*query).or_insert(0) += 1;
-                    if seen.insert(*query) {
+                if let SourceKind::LookupValue { query, .. } = &layer.sources[sid.0 as usize] {
+                    counts[query.0 as usize] += 1;
+                    if !seen[query.0 as usize] {
+                        seen[query.0 as usize] = true;
                         worklist.push(*query);
                     }
                 }
@@ -98,24 +91,19 @@ pub(crate) fn fan_out(layer: &DagLayer) -> HashMap<ExprId, usize> {
 
 pub(crate) fn simplify_layer(layer: &DagLayer) -> DagLayer {
     let mut rb = Rebuild {
-        arena: ArenaBuilder::with_flatten(false),
-        map: HashMap::new(),
+        arena: ArenaBuilder::new(),
+        map: vec![None; layer.exprs.len()],
         layer,
-        // Fence set = the layer's own `resolutions` keys (the arena's private
-        // fence set does not survive lowering). No rewrites read this yet
-        // (Task 5); it is populated here so the field exists on `Rebuild`
-        // ahead of that use.
-        fenced: layer.resolutions.keys().copied().collect(),
         fan_out: fan_out(layer),
-        provably_base_memo: HashMap::new(),
+        provably_base_memo: vec![None; layer.exprs.len()],
     };
     let roots: Vec<Root> = layer
         .roots
         .iter()
         .map(|r| Root {
             expr: rb.rebuild(r.expr),
-            materialize: r.materialize.clone(),
-            claim: r.claim.clone(),
+            materialize: r.materialize,
+            claim: r.claim,
         })
         .collect();
     let mut resolutions = BTreeMap::new();
@@ -123,13 +111,13 @@ pub(crate) fn simplify_layer(layer: &DagLayer) -> DagLayer {
         // Fenced keys must be root-reachable to survive rewrites; if a key
         // is NOT in the memo map, its subtree was never rebuilt (dead
         // resolution) — drop it rather than panicking.
-        let Some(&new) = rb.map.get(old) else {
+        let Some(new) = rb.map[old.0 as usize] else {
             continue;
         };
-        if let Some(existing) = resolutions.insert(new, strat.clone()) {
+        if let Some(existing) = resolutions.insert(new, *strat) {
             assert_eq!(
                 &existing, strat,
-                "dag_ir simplify: resolution CSE collision at {:?}",
+                "gkr_eval_ir: resolution CSE collision at {:?}",
                 new
             );
         }
@@ -140,22 +128,16 @@ pub(crate) fn simplify_layer(layer: &DagLayer) -> DagLayer {
         roots,
         batching: layer.batching.clone(),
         resolutions,
+        forward_skip_roots: layer.forward_skip_roots.clone(),
     }
 }
 
 struct Rebuild<'a> {
     arena: ArenaBuilder,
-    map: HashMap<ExprId, ExprId>,
+    map: Vec<Option<ExprId>>,
     layer: &'a DagLayer,
-    /// Fenced (resolution-keyed) old `ExprId`s: rewrites must not cross a
-    /// resolution-keyed fold-leaf boundary (self-fence guard in Add/Mul, plus
-    /// later tasks' const-fold/collapse rewrites).
-    fenced: HashSet<ExprId>,
-    /// Consumer-edge counts over the OLD layer, used to decide fan-out==1
-    /// flatten in the Add/Mul arms below.
-    fan_out: HashMap<ExprId, usize>,
-    /// Memoized `provably_base` results, keyed by OLD `ExprId`.
-    provably_base_memo: HashMap<ExprId, bool>,
+    fan_out: Vec<usize>,
+    provably_base_memo: Vec<Option<bool>>,
 }
 
 /// Bottom-up, memoized: is the subtree at `old` (in `layer`) guaranteed to be
@@ -163,25 +145,21 @@ struct Rebuild<'a> {
 /// from `source_field` — NOT provably base (conservative). `Challenge`
 /// sources are `Ok(Ext)` — NOT provably base. Add/Mul are provably base iff
 /// every child is. Shared between `simplify`'s annihilator/collapse rewrites
-/// and `validate_simplified`'s Mul-retains-Constant(0) exception, so both
+/// and the Mul-retains-Constant(0) exception, so both
 /// sides agree on what "provably Base" means.
-pub(crate) fn provably_base(
-    layer: &DagLayer,
-    memo: &mut HashMap<ExprId, bool>,
-    old: ExprId,
-) -> bool {
-    if let Some(&v) = memo.get(&old) {
+fn provably_base(layer: &DagLayer, memo: &mut [Option<bool>], old: ExprId) -> bool {
+    if let Some(v) = memo[old.0 as usize] {
         return v;
     }
     let result = match &layer.exprs[old.0 as usize] {
-        Expr::Source(sid) => source_field(&layer.sources[sid.0 as usize].kind)
+        Expr::Source(sid) => source_field(&layer.sources[sid.0 as usize])
             .map(|f| f == FieldKind::Base)
             .unwrap_or(false),
         Expr::Add(children) | Expr::Mul(children) => {
             children.iter().all(|&c| provably_base(layer, memo, c))
         }
     };
-    memo.insert(old, result);
+    memo[old.0 as usize] = Some(result);
     result
 }
 
@@ -194,7 +172,7 @@ impl Rebuild<'_> {
     /// `value`.
     fn as_const(&self, new: ExprId) -> Option<u32> {
         match &self.arena.exprs()[new.0 as usize] {
-            Expr::Source(sid) => match &self.arena.sources()[sid.0 as usize].kind {
+            Expr::Source(sid) => match &self.arena.sources()[sid.0 as usize] {
                 SourceKind::Constant { value } => Some(*value),
                 _ => None,
             },
@@ -215,12 +193,12 @@ impl Rebuild<'_> {
     }
 
     fn rebuild(&mut self, old: ExprId) -> ExprId {
-        if let Some(&new) = self.map.get(&old) {
+        if let Some(new) = self.map[old.0 as usize] {
             return new;
         }
         let new = match self.layer.exprs[old.0 as usize].clone() {
             Expr::Source(sid) => {
-                let kind = match self.layer.sources[sid.0 as usize].kind.clone() {
+                let kind = match self.layer.sources[sid.0 as usize] {
                     SourceKind::LookupValue {
                         kind,
                         set_index,
@@ -239,17 +217,15 @@ impl Rebuild<'_> {
                 self.arena.source_expr(sid)
             }
             Expr::Add(children) => {
-                // SELF-FENCE GUARD: a fenced node skips all rewrites (later
-                // tasks add more here) — rebuild children only, no flatten.
-                if self.fenced.contains(&old) {
+                if self.layer.resolutions.contains_key(&old) {
                     let ch: Vec<ExprId> = children.iter().map(|&c| self.rebuild(c)).collect();
                     self.arena.add(ch)
                 } else {
                     let mut flat: Vec<ExprId> = Vec::with_capacity(children.len());
                     for &c in &children {
                         let inline = matches!(self.layer.exprs[c.0 as usize], Expr::Add(_))
-                            && self.fan_out[&c] == 1
-                            && !self.fenced.contains(&c);
+                            && self.fan_out[c.0 as usize] == 1
+                            && !self.layer.resolutions.contains_key(&c);
                         if inline {
                             if let Expr::Add(gc) = self.layer.exprs[c.0 as usize].clone() {
                                 // Rebuild grandchildren directly; the child
@@ -283,47 +259,22 @@ impl Rebuild<'_> {
                     }
                     // collapse (Add unit = 0)
                     match rest.len() {
-                        0 => {
-                            let v = acc.unwrap_or(0);
-                            if self.provably_base(old) {
-                                self.const_expr(v)
-                            } else {
-                                // Dead by induction: `rest.len() == 0` means every
-                                // (rebuilt) operand was a `Constant` source, and
-                                // `Constant` is always `FieldKind::Base` (see
-                                // `source_field`), so `provably_base(old)` is true
-                                // by the Add/Mul "every child is" rule above. A
-                                // regression here would silently emit a bogus
-                                // unary Add wrapping a Base constant as if it were
-                                // Ext — fail loudly instead.
-                                unreachable!(
-                                    "all-constant Add operand list implies provably_base; guard regression"
-                                );
-                            }
-                        }
-                        1 => {
-                            // All-constant fold implies provably-base today; assert protects
-                            // against future as_const/source_field drift.
-                            debug_assert!(
-                                self.as_const(rest[0]).is_none() || self.provably_base(old),
-                                "constant replacement must be provably base"
-                            );
-                            rest[0]
-                        }
+                        0 => self.const_expr(acc.unwrap_or(0)),
+                        1 => rest[0],
                         _ => self.arena.add(rest),
                     }
                 }
             }
             Expr::Mul(children) => {
-                if self.fenced.contains(&old) {
+                if self.layer.resolutions.contains_key(&old) {
                     let ch: Vec<ExprId> = children.iter().map(|&c| self.rebuild(c)).collect();
                     self.arena.mul(ch)
                 } else {
                     let mut flat: Vec<ExprId> = Vec::with_capacity(children.len());
                     for &c in &children {
                         let inline = matches!(self.layer.exprs[c.0 as usize], Expr::Mul(_))
-                            && self.fan_out[&c] == 1
-                            && !self.fenced.contains(&c);
+                            && self.fan_out[c.0 as usize] == 1
+                            && !self.layer.resolutions.contains_key(&c);
                         if inline {
                             if let Expr::Mul(gc) = self.layer.exprs[c.0 as usize].clone() {
                                 flat.extend(gc.iter().map(|&g| self.rebuild(g)));
@@ -362,43 +313,15 @@ impl Rebuild<'_> {
                         }
                         // collapse (Mul unit = 1)
                         match rest.len() {
-                            0 => {
-                                let v = acc.unwrap_or(1);
-                                if self.provably_base(old) {
-                                    self.const_expr(v)
-                                } else {
-                                    // Dead by induction: `rest.len() == 0` here
-                                    // means every (rebuilt) operand was a
-                                    // `Constant` source (the `acc == Some(0)`
-                                    // case above always leaves a Constant(0) in
-                                    // `rest`, so this can only be reached via
-                                    // all-constant operands folding to 1), and
-                                    // `Constant` is always `FieldKind::Base`, so
-                                    // `provably_base(old)` is true by the Mul
-                                    // "every child is" rule — fail loudly on
-                                    // regression instead of emitting a bogus
-                                    // unary Mul.
-                                    unreachable!(
-                                        "all-constant Mul operand list implies provably_base; guard regression"
-                                    );
-                                }
-                            }
-                            1 => {
-                                // All-constant fold implies provably-base today; assert protects
-                                // against future as_const/source_field drift.
-                                debug_assert!(
-                                    self.as_const(rest[0]).is_none() || self.provably_base(old),
-                                    "constant replacement must be provably base"
-                                );
-                                rest[0]
-                            }
+                            0 => self.const_expr(acc.unwrap_or(1)),
+                            1 => rest[0],
                             _ => self.arena.mul(rest),
                         }
                     }
                 }
             }
         };
-        self.map.insert(old, new);
+        self.map[old.0 as usize] = Some(new);
         new
     }
 }
@@ -408,10 +331,10 @@ impl Rebuild<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::validate::validate;
     use crate::{
-        validate_simplified, BatchingOrder, ChallengeKey, ChallengePower, ChallengeRef, ClaimInfo,
-        DagCircuit, DagGlobals, LookupValueKind, ReadPlace, ResolutionStrategy, RootGroup,
-        RootOrigin, RootSlot, SinkInfo, SinkKind,
+        BatchingOrder, ChallengeKey, ChallengePower, ChallengeRef, DagCircuit, LookupValueKind,
+        ReadPlace, ResolutionStrategy, RootGroup, RootOrigin, SinkInfo, SinkKind,
     };
 
     /// Build a `Constant` source expr with the given BabyBear value.
@@ -445,7 +368,6 @@ mod tests {
     fn circuit_of(layer: DagLayer) -> DagCircuit {
         DagCircuit {
             layers: vec![layer],
-            globals: Default::default(),
         }
     }
 
@@ -462,13 +384,14 @@ mod tests {
             roots,
             batching: BatchingOrder { roots: vec![] },
             resolutions,
+            forward_skip_roots: std::collections::BTreeSet::new(),
         }
     }
 
     /// DCE: an expr unreachable from any root/query edge does not survive the rebuild.
     #[test]
     fn rebuild_drops_unreachable() {
-        let mut a = ArenaBuilder::with_flatten(false);
+        let mut a = ArenaBuilder::new();
         let c1 = {
             let s = a.intern_source(SourceKind::Constant { value: 7 });
             a.source_expr(s)
@@ -494,9 +417,7 @@ mod tests {
         assert_eq!(out.roots.len(), 1);
     }
 
-    /// Three distinct `Read` sources standing in for read-like leaves. Task 4
-    /// added const-folding, so these must NOT be `Constant` sources (folding
-    /// would collapse the flatten/CSE fixtures below into a single constant).
+    /// Three distinct non-constant leaves for flattening and CSE fixtures.
     fn three_read_like_sources(a: &mut ArenaBuilder) -> (ExprId, ExprId, ExprId) {
         let mut mk = |offset: usize| {
             let s = a.intern_source(SourceKind::Read {
@@ -510,7 +431,7 @@ mod tests {
     /// fan-out==1 nested Add flattens; the association-invariant dup merges via CSE.
     #[test]
     fn flatten_fanout1_and_cse_associations() {
-        let mut a = ArenaBuilder::with_flatten(false);
+        let mut a = ArenaBuilder::new();
         let (x, y, z) = three_read_like_sources(&mut a);
         let xy = a.add(vec![x, y]);
         let n1 = a.add(vec![xy, z]); // Add(Add(x,y), z)
@@ -539,7 +460,7 @@ mod tests {
     /// fan-out>=2 nested Add is PRESERVED (sharing wins over flatten).
     #[test]
     fn shared_nested_add_is_preserved() {
-        let mut a = ArenaBuilder::with_flatten(false);
+        let mut a = ArenaBuilder::new();
         let (x, y, z) = three_read_like_sources(&mut a);
         let xy = a.add(vec![x, y]);
         let n1 = a.add(vec![xy, z]);
@@ -572,7 +493,7 @@ mod tests {
     /// A fenced (resolution-keyed) Add child is never flattened even at fan-out 1.
     #[test]
     fn fenced_child_never_flattens() {
-        let mut a = ArenaBuilder::with_flatten(false);
+        let mut a = ArenaBuilder::new();
         let (x, y, z) = three_read_like_sources(&mut a);
         let leaf = a.add(vec![y, z]);
         let top = a.add(vec![x, leaf]);
@@ -599,11 +520,10 @@ mod tests {
         );
     }
 
-    /// The fenced node ITSELF skips rewrites: a same-op fan-out-1 child INSIDE a
-    /// fenced Add must not be flattened (spec §3: fenced = child-rebuild only).
+    /// A fenced node rebuilds its children without rewriting itself.
     #[test]
     fn fenced_node_own_children_not_flattened() {
-        let mut a = ArenaBuilder::with_flatten(false);
+        let mut a = ArenaBuilder::new();
         let (x, y, z) = three_read_like_sources(&mut a);
         let inner = a.add(vec![y, z]); // fan-out 1 — would flatten if unfenced
         let leaf = a.add(vec![x, inner]); // the fenced fold leaf
@@ -634,7 +554,7 @@ mod tests {
     /// once as a normal child and once as a query has fan-out 2 → must NOT flatten.
     #[test]
     fn query_edge_counts_toward_fanout() {
-        let mut a = ArenaBuilder::with_flatten(false);
+        let mut a = ArenaBuilder::new();
         let (x, y, z) = three_read_like_sources(&mut a);
         let shared = a.add(vec![y, z]);
         let top = a.add(vec![x, shared]); // consumer 1 (would flatten alone)
@@ -674,7 +594,7 @@ mod tests {
     /// Sign-pair cancellation = flatten + const-fold + identity: -1 * -1 * x → x.
     #[test]
     fn double_negation_cancels() {
-        let mut a = ArenaBuilder::with_flatten(false);
+        let mut a = ArenaBuilder::new();
         let neg1 = const_expr(&mut a, 2013265920); // p-1
         let x = read_like(&mut a, 101); // NOT provably base is fine here
         let inner = a.mul(vec![neg1, x]);
@@ -688,7 +608,7 @@ mod tests {
             }],
             BTreeMap::new(),
         );
-        let out = simplify_layer_fixpoint(&layer); // Task 5 wrapper; until then two manual passes
+        let out = simplify_layer_fixpoint(&layer);
         assert!(
             matches!(&out.exprs[out.roots[0].expr.0 as usize], Expr::Source(_)),
             "Mul(-1, Mul(-1, x)) must collapse to x, got {:?}",
@@ -699,7 +619,7 @@ mod tests {
     /// Base annihilator: Mul(0, base) → Constant(0).
     #[test]
     fn base_zero_annihilates() {
-        let mut a = ArenaBuilder::with_flatten(false);
+        let mut a = ArenaBuilder::new();
         let zero = const_expr(&mut a, 0);
         let five = const_expr(&mut a, 5);
         let m = a.mul(vec![zero, five]);
@@ -715,7 +635,7 @@ mod tests {
         let out = simplify_layer(&layer);
         match &out.exprs[out.roots[0].expr.0 as usize] {
             Expr::Source(sid) => assert_eq!(
-                out.sources[sid.0 as usize].kind,
+                out.sources[sid.0 as usize],
                 SourceKind::Constant { value: 0 },
                 "Mul(0, 5) must collapse to Constant(0)"
             ),
@@ -726,7 +646,7 @@ mod tests {
     /// Ext-guard: Mul(0, challenge) is NOT rewritten to a constant.
     #[test]
     fn ext_zero_product_is_suppressed() {
-        let mut a = ArenaBuilder::with_flatten(false);
+        let mut a = ArenaBuilder::new();
         let zero = const_expr(&mut a, 0);
         let ch = challenge_expr(&mut a); // SourceKind::Challenge → Ext
         let m = a.mul(vec![zero, ch]);
@@ -749,7 +669,7 @@ mod tests {
     /// Identity drops + collapse: Add(0, x) → x; Mul(1, x) → x; constants fold pairwise.
     #[test]
     fn identities_and_folding() {
-        let mut a = ArenaBuilder::with_flatten(false);
+        let mut a = ArenaBuilder::new();
         // Add(const 2, const 3, x) → Add(const 5, x)
         let c2 = const_expr(&mut a, 2);
         let c3 = const_expr(&mut a, 3);
@@ -794,7 +714,7 @@ mod tests {
                 assert_eq!(ops.len(), 2, "Add(2,3,x) → Add(5, x), got {:?}", ops);
                 let has_five = ops.iter().any(|&id| match &out.exprs[id.0 as usize] {
                     Expr::Source(sid) => {
-                        out.sources[sid.0 as usize].kind == SourceKind::Constant { value: 5 }
+                        out.sources[sid.0 as usize] == SourceKind::Constant { value: 5 }
                     }
                     _ => false,
                 });
@@ -807,14 +727,14 @@ mod tests {
         // Since y and z are distinct nodes (different read offsets), they collapse to distinct IDs.
         match &out.exprs[out.roots[1].expr.0 as usize] {
             Expr::Source(sid) => assert!(
-                matches!(&out.sources[sid.0 as usize].kind, SourceKind::Read { .. }),
+                matches!(&out.sources[sid.0 as usize], SourceKind::Read { .. }),
                 "Mul(1,y) must collapse to y (a Read source)"
             ),
             other => panic!("expected Mul(1,y) to collapse to a source, got {:?}", other),
         }
         match &out.exprs[out.roots[2].expr.0 as usize] {
             Expr::Source(sid) => assert!(
-                matches!(&out.sources[sid.0 as usize].kind, SourceKind::Read { .. }),
+                matches!(&out.sources[sid.0 as usize], SourceKind::Read { .. }),
                 "Add(0,z) must collapse to z (a Read source)"
             ),
             other => panic!("expected Add(0,z) to collapse to a source, got {:?}", other),
@@ -824,7 +744,7 @@ mod tests {
     /// LookupValue.query is remapped AND keeps its subtree alive.
     #[test]
     fn lookup_query_is_remapped_and_reachable() {
-        let mut a = ArenaBuilder::with_flatten(false);
+        let mut a = ArenaBuilder::new();
         let q = {
             let s = a.intern_source(SourceKind::Constant { value: 3 });
             a.source_expr(s)
@@ -851,72 +771,34 @@ mod tests {
             "query subtree stays alive: {:?}",
             out.sources
         );
-        // Find the LookupValue source in the output and follow its query edge.
         let query = out
             .sources
             .iter()
-            .find_map(|s| match &s.kind {
-                SourceKind::LookupValue { query, .. } => Some(*query),
+            .find_map(|s| match s {
+                SourceKind::LookupValue { query, .. } => Some(query),
                 _ => None,
             })
+            .copied()
             .expect("LookupValue survives");
-        // The rebuilt query edge must point at a genuinely-rebuilt Constant(3)
-        // — not a stale old ExprId copied through without rebuild(query),
-        // which in this layout would self-refer to the LookupValue node.
         assert_ne!(
             query, out.roots[0].expr,
             "query must not point at the LookupValue node itself"
         );
         let sid = match &out.exprs[query.0 as usize] {
-            Expr::Source(sid) => *sid,
+            Expr::Source(sid) => sid,
             other => panic!("query edge must point at a Source expr, got {:?}", other),
         };
         assert_eq!(
-            out.sources[sid.0 as usize].kind,
+            out.sources[sid.0 as usize],
             SourceKind::Constant { value: 3 },
             "query edge points at the rebuilt constant"
         );
     }
 
-    /// Task 5: `simplify_circuit` (via `simplify_layer_fixpoint`) drives the
-    /// double-negation layer to a form that satisfies `validate_simplified`.
+    /// An Ext-valued zero product retains its field-bearing Mul shape.
     #[test]
-    fn fixpoint_output_validates_as_simplified() {
-        let mut a = ArenaBuilder::with_flatten(false);
-        let neg1 = const_expr(&mut a, 2013265920); // p-1
-        let x = read_like(&mut a, 101);
-        let inner = a.mul(vec![neg1, x]);
-        let outer = a.mul(vec![neg1, inner]); // inner fan-out 1 → flattens
-        let layer = layer_of(
-            a,
-            vec![Root {
-                expr: outer,
-                materialize: None,
-                claim: Some(ClaimInfo {
-                    origin: RootOrigin {
-                        group: RootGroup::Gates,
-                        relation_index: 0,
-                        slot: RootSlot::Constraint(0),
-                    },
-                }),
-            }],
-            BTreeMap::new(),
-        );
-        let mut circuit = circuit_of(layer);
-        circuit.layers[0].batching = BatchingOrder {
-            roots: vec![super::super::RootId(0)],
-        };
-        let out = simplify_circuit(circuit);
-        validate_simplified(&out).unwrap();
-    }
-
-    /// The field-suppression exception is part of the invariant: an Ext-valued
-    /// zero product survives simplify as a Mul retaining Constant(0) and must
-    /// pass `validate_simplified` (codex finding 5 — do not defer this to
-    /// Task 8; the Task 7 corpus gate depends on the exception being right).
-    #[test]
-    fn ext_zero_product_passes_validate_simplified() {
-        let mut a = ArenaBuilder::with_flatten(false);
+    fn ext_zero_product_validates() {
+        let mut a = ArenaBuilder::new();
         let zero = const_expr(&mut a, 0);
         let ch = challenge_expr(&mut a); // SourceKind::Challenge → Ext
         let m = a.mul(vec![zero, ch]);
@@ -925,12 +807,9 @@ mod tests {
             vec![Root {
                 expr: m,
                 materialize: None,
-                claim: Some(ClaimInfo {
-                    origin: RootOrigin {
-                        group: RootGroup::Gates,
-                        relation_index: 0,
-                        slot: RootSlot::Constraint(0),
-                    },
+                claim: Some(RootOrigin {
+                    group: RootGroup::Gates,
+                    relation_index: 0,
                 }),
             }],
             BTreeMap::new(),
@@ -945,22 +824,16 @@ mod tests {
             other => panic!("field-preservation violated: {:?}", other),
         }
         assert!(
-            super::super::validate(&out).is_ok(),
+            validate(&out).is_ok(),
             "plain validate must accept the Ext zero-product circuit"
         );
-        validate_simplified(&out).unwrap();
+        validate(&out).unwrap();
     }
 
-    /// Task 8: the Ext-zero-sink variant of the field-suppression exception — a
-    /// MATERIALIZED (not just claimed) Ext-field root over `Mul(0, challenge)`
-    /// must also keep its `Mul` shape (spec §3 field constraint) and pass
-    /// `validate_simplified`. `ext_zero_product_passes_validate_simplified`
-    /// above pins the claim-root case; this pins the `SinkInfo`-materialize
-    /// case (a `Scratch` sink), which exercises a different code path in
-    /// `validate`/`validate_simplified` (sink field vs. claim field checks).
+    /// The same field-preserving rule applies to a materialized Ext root.
     #[test]
-    fn ext_zero_materialized_sink_passes_validate_simplified() {
-        let mut a = ArenaBuilder::with_flatten(false);
+    fn ext_zero_materialized_sink_validates() {
+        let mut a = ArenaBuilder::new();
         let zero = const_expr(&mut a, 0);
         let ch = challenge_expr(&mut a); // SourceKind::Challenge → Ext
         let m = a.mul(vec![zero, ch]);
@@ -983,9 +856,9 @@ mod tests {
             other => panic!("field-preservation violated: {:?}", other),
         }
         assert!(
-            super::super::validate(&out).is_ok(),
+            validate(&out).is_ok(),
             "plain validate must accept the Ext zero-product materialized-sink circuit"
         );
-        validate_simplified(&out).unwrap();
+        validate(&out).unwrap();
     }
 }

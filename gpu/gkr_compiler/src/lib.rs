@@ -1,34 +1,34 @@
 //! CPU-only offline search and symbolic compiler for GPU GKR evaluation.
 
-pub mod analysis;
-pub mod backward;
-pub mod forward;
+mod analysis;
+mod backward;
+mod forward;
 mod interval_pack;
-#[doc(hidden)]
-pub mod manual;
-mod profile;
-mod schedule;
+#[cfg(feature = "search")]
 mod search;
 mod source_bind;
 
-pub use backward::{
-    ContinuationCompileError, ContinuationLayerProgram, ContinuationProgramBundle, R0CompileError,
-    R0LayerProgram, R0ProgramBundle, compile_continuations, compile_r0,
-};
+pub use backward::*;
 pub use forward::artifact::{
-    ForwardArtifactError, ForwardLayerArtifact, ForwardSearchArtifact, RelationUnit, SiteConsumer,
-    SiteKey, parse_forward_artifact, validate_forward_artifact,
+    parse_forward_artifact, ForwardArtifactError, ForwardLayerArtifact, ForwardSearchArtifact,
+    RelationUnit, SiteConsumer, SiteKey,
 };
 pub use forward::compile::CompiledCircuit as ForwardProgramBundle;
-pub use forward::context::CompiledLayer as ForwardLayerProgram;
+pub use forward::context::CompiledLayer;
+pub use forward::encode::encode as encode_forward_program;
 pub use forward::error::CompileError as ForwardCompileError;
-pub use profile::{
-    ContinuationResourceProfile, ForwardResourceProfile, GpuResourceProfile, R0ResourceProfile,
-    ResourceProfileError, validate_continuation_profile, validate_r0_profile,
+pub use forward::error::EncodeError as ForwardEncodeError;
+pub use forward::isa::{
+    DstLine as ForwardDstLine, Instr as ForwardInstr, LdcSub as ForwardLdcSub,
+    OperandField as ForwardOperandField, OperandLine as ForwardOperandLine,
+    Program as ForwardProgram, MAX_COLS as FORWARD_MAX_COLS,
+    SOURCE_WINDOW_COLUMNS as FORWARD_SOURCE_WINDOW_COLUMNS,
 };
-pub use search::{
-    CrossoverKind, ForwardSearchError, ForwardSearchRequest, SearchConfig, search_forward,
+pub use forward::source::{
+    virtual_setup_kind_code, SpecialStrategy as ForwardSpecialStrategy, KIND_ORDER,
 };
+#[cfg(feature = "search")]
+pub use search::{search_forward, ForwardSearchError, ForwardSearchRequest, SearchConfig};
 
 pub(crate) use backward::common::BwdRegime;
 
@@ -36,12 +36,13 @@ pub fn compile_forward(
     dag: &gkr_eval_ir::DagCircuit,
     artifact: &ForwardSearchArtifact,
 ) -> Result<ForwardProgramBundle, ForwardCompileError> {
-    validate_forward_artifact(dag, artifact)
+    forward::artifact::validate_forward_artifact(dag, artifact)
         .map_err(|error| ForwardCompileError::InvalidSchedule(error.to_string()))?;
-    let program = forward::compile::compile_circuit(dag, artifact)?;
-    for (layer_index, (compiled, retained)) in
-        program.layers.iter().zip(&artifact.layers).enumerate()
-    {
+    let layers = forward::compile::compile_circuit(dag, artifact)?;
+    for compiled in &layers {
+        forward::validate::validate_compiled(compiled)?;
+    }
+    for (layer_index, (compiled, retained)) in layers.iter().zip(&artifact.layers).enumerate() {
         if compiled.stats.dram_traffic != retained.predicted_traffic {
             return Err(ForwardCompileError::InvalidSchedule(format!(
                 "layer {layer_index}: retained predicted_traffic {} != realized {}",
@@ -49,5 +50,10 @@ pub fn compile_forward(
             )));
         }
     }
-    Ok(program)
+    Ok(forward::compile::CompiledCircuit {
+        layers: layers
+            .into_iter()
+            .map(forward::context::CompiledLayerBuild::into_runtime)
+            .collect(),
+    })
 }

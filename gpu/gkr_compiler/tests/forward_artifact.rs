@@ -1,23 +1,19 @@
 use std::collections::BTreeMap;
 
 use gkr_eval_ir::{
-    BatchingOrder, ClaimInfo, DagCircuit, DagGlobals, DagLayer, Expr, ExprId, FieldKind, ReadPlace,
-    Root, RootGroup, RootId, RootOrigin, RootSlot, SinkInfo, SinkKind, SourceId, SourceInfo,
-    SourceKind,
+    BatchingOrder, DagCircuit, DagLayer, Expr, ExprId, FieldKind, ReadPlace, Root, RootGroup,
+    RootId, RootOrigin, SinkInfo, SinkKind, SourceId, SourceKind,
 };
-use gpu_gkr_compiler::forward::artifact::{enumerate_site_domain, relation_units_with_caches};
 use gpu_gkr_compiler::{
-    ForwardArtifactError, ForwardLayerArtifact, ForwardSearchArtifact, parse_forward_artifact,
-    validate_forward_artifact,
+    compile_forward, parse_forward_artifact, ForwardLayerArtifact, ForwardSearchArtifact,
+    RelationUnit, SiteConsumer, SiteKey,
 };
 
 fn repeated_source_dag() -> DagCircuit {
     DagCircuit {
         layers: vec![DagLayer {
-            sources: vec![SourceInfo {
-                kind: SourceKind::Read {
-                    place: ReadPlace::BaseLayerWitness { column: 0 },
-                },
+            sources: vec![SourceKind::Read {
+                place: ReadPlace::BaseLayerWitness { column: 0 },
             }],
             exprs: vec![
                 Expr::Source(SourceId(0)),
@@ -26,39 +22,52 @@ fn repeated_source_dag() -> DagCircuit {
             roots: vec![Root {
                 expr: ExprId(1),
                 materialize: Some(SinkInfo {
-                    kind: SinkKind::Export { slot: 0 },
+                    kind: SinkKind::Inner {
+                        layer: 0,
+                        offset: 0,
+                    },
                     field: FieldKind::Base,
                 }),
-                claim: Some(ClaimInfo {
-                    origin: RootOrigin {
-                        group: RootGroup::Gates,
-                        relation_index: 0,
-                        slot: RootSlot::Output(0),
-                    },
+                claim: Some(RootOrigin {
+                    group: RootGroup::Gates,
+                    relation_index: 0,
                 }),
             }],
             batching: BatchingOrder {
                 roots: vec![RootId(0)],
             },
             resolutions: BTreeMap::new(),
+            forward_skip_roots: Default::default(),
         }],
-        globals: DagGlobals::default(),
     }
 }
 
 fn valid_artifact(dag: &DagCircuit) -> ForwardSearchArtifact {
-    let layer = &dag.layers[0];
+    assert_eq!(dag.layers.len(), 1);
     ForwardSearchArtifact {
         circuit: "tiny".into(),
         budget_buckets: 4,
         layers: vec![ForwardLayerArtifact {
-            units: relation_units_with_caches(layer).unwrap(),
-            sites: enumerate_site_domain(layer)
-                .into_iter()
-                .map(|site| (site, 0.5))
+            units: vec![RelationUnit {
+                group: RootGroup::Gates,
+                relation_index: 0,
+            }],
+            sites: (0..2)
+                .map(|input_index| {
+                    (
+                        SiteKey {
+                            root: RootId(0),
+                            consumer: SiteConsumer::Expr {
+                                expr: ExprId(1),
+                                input_index,
+                            },
+                            value: ExprId(0),
+                        },
+                        0.5,
+                    )
+                })
                 .collect(),
             predicted_traffic: 1,
-            floor: 1,
         }],
     }
 }
@@ -69,25 +78,29 @@ fn malformed_bytes_are_a_hard_error() {
 }
 
 #[test]
+fn unknown_artifact_fields_are_rejected() {
+    let mut artifact = serde_json::to_value(valid_artifact(&repeated_source_dag())).unwrap();
+    artifact
+        .as_object_mut()
+        .unwrap()
+        .insert("unexpected".into(), 1.into());
+    assert!(parse_forward_artifact(&serde_json::to_vec(&artifact).unwrap(), "test").is_err());
+}
+
+#[test]
 fn a_mutated_site_identity_is_rejected() {
     let dag = repeated_source_dag();
     let mut artifact = valid_artifact(&dag);
     artifact.layers[0].sites[0].0.root = RootId(9);
-    assert!(matches!(
-        validate_forward_artifact(&dag, &artifact),
-        Err(ForwardArtifactError::SiteDomainMismatch(_))
-    ));
+    assert!(compile_forward(&dag, &artifact).is_err());
 }
 
 #[test]
-fn a_non_finite_priority_is_rejected() {
+fn a_priority_outside_the_search_domain_is_rejected() {
     let dag = repeated_source_dag();
     let mut artifact = valid_artifact(&dag);
-    artifact.layers[0].sites[0].1 = f64::NAN;
-    assert!(matches!(
-        validate_forward_artifact(&dag, &artifact),
-        Err(ForwardArtifactError::NonFinitePriority(_))
-    ));
+    artifact.layers[0].sites[0].1 = 2.0;
+    assert!(compile_forward(&dag, &artifact).is_err());
 }
 
 #[test]
@@ -96,5 +109,17 @@ fn an_artifact_for_another_dag_is_rejected() {
     let artifact = valid_artifact(&dag);
     let mut other = dag.clone();
     other.layers[0].roots[0].expr = ExprId(0);
-    assert!(validate_forward_artifact(&other, &artifact).is_err());
+    assert!(compile_forward(&other, &artifact).is_err());
+}
+
+#[test]
+fn artifact_compiles_and_checks_its_retained_cost() {
+    let dag = repeated_source_dag();
+    let artifact = valid_artifact(&dag);
+    let program = compile_forward(&dag, &artifact).unwrap();
+    assert!(!program.layers[0].program.instrs.is_empty());
+
+    let mut stale = artifact;
+    stale.layers[0].predicted_traffic += 1;
+    assert!(compile_forward(&dag, &stale).is_err());
 }

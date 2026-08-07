@@ -1,6 +1,7 @@
 pub(crate) mod distill;
 pub(crate) mod fragment;
 pub(crate) mod group;
+#[cfg(test)]
 pub(crate) mod interp;
 pub(crate) mod lean;
 pub(crate) mod lean_bind;
@@ -10,6 +11,9 @@ pub(crate) mod model;
 pub(crate) mod order;
 pub(crate) mod source;
 pub(crate) mod source_layout;
+
+pub(crate) type Bf = field::baby_bear::base::BabyBearField;
+pub(crate) type Ext = field::baby_bear::ext4::BabyBearExt4;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum BwdRegime {

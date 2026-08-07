@@ -1,15 +1,16 @@
-//! Forward-eval VM (spec §1–§16). CPU compiler + interpreter + 16-bit-lane encoding.
-//! Input IR: `gkr_eval_ir`. Replaces ISA-v2 + the per-circuit flat generator.
-pub mod artifact;
-pub mod binding;
-pub mod compile;
-pub mod context;
-pub mod encode;
-pub mod error;
-pub mod interp;
-pub mod isa;
-pub mod peek;
+//! Forward VM compiler and 16-bit-lane encoding for `gkr_eval_ir`.
+pub(crate) mod artifact;
+pub(crate) mod binding;
+pub(crate) mod compile;
+pub(crate) mod context;
+pub(crate) mod encode;
+pub(crate) mod error;
+pub(crate) mod isa;
+#[cfg(feature = "search")]
 pub(crate) mod search;
-pub mod source;
-pub mod stats;
-pub mod validate;
+pub(crate) mod source;
+pub(crate) mod stats;
+pub(crate) mod validate;
+
+pub(crate) const BF_LANES_PER_E4_BUCKET: usize = 4;
+pub(crate) const BABYBEAR_NEG_ONE: u32 = 0x78000000;

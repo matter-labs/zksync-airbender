@@ -3,11 +3,9 @@ use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
 
 use crate::upstream::{GKRCircuitArtifact, WhirSchedule};
-use gpu_core::primitives::callbacks::Callbacks;
-use gpu_core::primitives::context::{DeviceAllocation, UnsafeMutAccessor};
+use gpu_core::primitives::context::{DeviceAllocation, UnsafeAccessor};
 use gpu_core::primitives::device_tracing::Range;
 use gpu_core::primitives::field::{BF, E4};
-use gpu_gkr::backward::kernels::ScheduledBackwardWorkflowStateHandle;
 use gpu_gkr::backward::GpuGKRBackwardScheduledExecution;
 use gpu_gkr::base_layer_claims::{
     schedule_prepare_base_layer_claims_with_sources, GpuGKRBaseLayerClaimsScheduledExecution,
@@ -24,10 +22,9 @@ use gpu_whir::fold::{schedule_gpu_whir_fold_with_sources, GpuWhirFoldScheduledEx
 
 pub(in crate::proof) struct WhirPhaseResult {
     pub(in crate::proof) transition_ranges: Vec<Range>,
-    pub(in crate::proof) post_backward_callbacks: Callbacks<'static>,
-    pub(in crate::proof) base_layer_claims_scheduled: GpuGKRBaseLayerClaimsScheduledExecution<E4>,
+    pub(in crate::proof) base_layer_claims_scheduled: GpuGKRBaseLayerClaimsScheduledExecution,
     pub(in crate::proof) base_layer_claims_shared_state:
-        UnsafeMutAccessor<ScheduledBaseLayerClaimsState<E4>>,
+        UnsafeAccessor<ScheduledBaseLayerClaimsState>,
     pub(in crate::proof) whir_scheduled: GpuWhirFoldScheduledExecution,
 }
 
@@ -86,8 +83,7 @@ pub(in crate::proof) fn schedule_whir_phase<'a>(
     setup_transfer: &mut Option<GpuGKRSetupTransfer<'a>>,
     synthetic_setup_trace_holder: &mut Option<TraceHolder<BF>>,
     stage1_output: &mut GpuGKRStage1Output,
-    backward_scheduled: &mut GpuGKRBackwardScheduledExecution<BF, E4>,
-    backward_shared_state: ScheduledBackwardWorkflowStateHandle<E4>,
+    backward_scheduled: &mut GpuGKRBackwardScheduledExecution,
     proof_slab: &DeviceAllocation<E4>,
     proof_layout: &ProofLayout,
     batching_pow_bits: u32,
@@ -106,14 +102,12 @@ pub(in crate::proof) fn schedule_whir_phase<'a>(
     let final_claim_addresses = backward_scheduled.final_claim_addresses().to_vec();
     let (final_device_seed, final_device_claim_point) =
         backward_scheduled.final_device_seed_and_claim_point_mut();
-    let mut base_layer_claims_scheduled = schedule_prepare_base_layer_claims_with_sources(
+    let base_layer_claims_scheduled = schedule_prepare_base_layer_claims_with_sources(
         compiled_circuit.layers[0].clone(),
         final_device_claim_point,
         // Layer-1 incoming claim addresses are schedule-time-known (the
         // `ClaimBufferLayout` built when backward staged its final claims),
-        // so the base-layer extras plan is built at schedule time without
-        // waiting for the backward post-handoff callback to materialize a
-        // host BTreeMap.
+        // so the base-layer extras plan is built without a host claim map.
         &final_claim_addresses,
         setup_trace_holder,
         &stage1_output.memory_trace_holder,
@@ -130,13 +124,6 @@ pub(in crate::proof) fn schedule_whir_phase<'a>(
         stage1_output,
         context,
     )?);
-
-    let stream = context.get_exec_stream();
-    let post_backward_handoff_range = Range::new("gkr.proof.post_backward_handoff")?;
-    post_backward_handoff_range.start(stream)?;
-    let post_backward_callbacks = backward_scheduled.schedule_post_backward_handoff(context)?;
-    post_backward_handoff_range.end(stream)?;
-    transition_ranges.push(post_backward_handoff_range);
 
     // Draw the WHIR base batching challenge on device from the rolling backward
     // seed. Pow-aware (`draw_random_field_els_with_pow(seed, 1, bits)`): grinds
@@ -176,10 +163,10 @@ pub(in crate::proof) fn schedule_whir_phase<'a>(
         let (point_slab_ptr, point_slab_len) = unsafe {
             proof_layout.whir_original_evaluation_point_device_mut(proof_slab.as_ptr() as *mut u8)
         };
-        debug_assert_eq!(point_slab_len, claim_point.len());
+        assert_eq!(point_slab_len, claim_point.len());
         let point_slab_dst =
             unsafe { DeviceSlice::from_raw_parts_mut(point_slab_ptr, point_slab_len) };
-        memory_copy_async(point_slab_dst, claim_point, stream)?;
+        memory_copy_async(point_slab_dst, claim_point, context.get_exec_stream())?;
     }
     let whir_scheduled = {
         let setup_trace_holder = if let Some(setup_transfer) = setup_transfer.as_mut() {
@@ -191,7 +178,6 @@ pub(in crate::proof) fn schedule_whir_phase<'a>(
         };
         let (final_device_seed_mut, claim_point) =
             backward_scheduled.final_device_seed_and_claim_point_mut();
-        let _ = backward_shared_state; // production seed/batching state is now device-resident
         schedule_gpu_whir_fold_with_sources(
             &mut stage1_output.memory_trace_holder,
             &mut stage1_output.witness_trace_holder,
@@ -215,7 +201,6 @@ pub(in crate::proof) fn schedule_whir_phase<'a>(
 
     Ok(WhirPhaseResult {
         transition_ranges,
-        post_backward_callbacks,
         base_layer_claims_scheduled,
         base_layer_claims_shared_state,
         whir_scheduled,

@@ -1,5 +1,4 @@
-//! Term ordering and the physical K-split for the segmented lean VM (design §3
-//! "Phase 2 — segmented eval", §7 "Term ordering").
+//! Backward term ordering and physical K-split.
 //!
 //! Two independent, purely positional host passes:
 //!
@@ -23,7 +22,7 @@ use super::model::{CoeffLayer, CoeffTerm, SourceId, TermId};
 
 /// How many most recently emitted terms define the affinity window.
 ///
-/// Matched to the stride-`K` co-touch effect the order exists to create (§7):
+/// Matched to the stride-`K` co-touch effect the order exists to create:
 /// the window stands for the sources the warps running "around" the next term
 /// are still touching, so it is sized for the warp neighbourhood, not for a
 /// resident set — there IS no resident state in this VM.
@@ -39,7 +38,7 @@ const AFFINITY_WINDOW: usize = 8;
 /// The singleton instantiation of [`order_atoms`]' generic core: one row per
 /// term, keyed by `TermId`. Kept as its own function — unchanged output is the
 /// pin later atom-granular work is checked against.
-pub fn order_terms(layer: &CoeffLayer) -> Vec<TermId> {
+pub(crate) fn order_terms(layer: &CoeffLayer) -> Vec<TermId> {
     let rows: Vec<(u32, Vec<SourceId>, TermId)> = layer
         .terms
         .iter()
@@ -48,7 +47,7 @@ pub fn order_terms(layer: &CoeffLayer) -> Vec<TermId> {
     order_rows(rows)
 }
 
-/// The committed ATOM order (spec §4.5): [`order_terms`] generalized from terms
+/// The committed atom order: [`order_terms`] generalized from terms
 /// to atoms — a plain term or a whole [`CoeffGroup`](super::model::CoeffGroup),
 /// never split across the greedy placement.
 ///
@@ -57,7 +56,7 @@ pub fn order_terms(layer: &CoeffLayer) -> Vec<TermId> {
 /// union of every member's [`term_sources`]. A plain term keeps its own
 /// `TermId`/sources. [`flatten_atoms`] turns the result back into a `TermId`
 /// permutation for the artifact.
-pub fn order_atoms(layer: &CoeffLayer) -> Vec<LeanAtomRef> {
+pub(crate) fn order_atoms(layer: &CoeffLayer) -> Vec<LeanAtomRef> {
     let mut grouped = vec![false; layer.terms.len()];
     let mut rows: Vec<(u32, Vec<SourceId>, LeanAtomRef)> = Vec::with_capacity(layer.terms.len());
     for (index, group) in layer.groups.iter().enumerate() {
@@ -88,7 +87,7 @@ pub fn order_atoms(layer: &CoeffLayer) -> Vec<LeanAtomRef> {
 /// encodes: a term atom emits itself, a group atom emits its members in the
 /// group's own (ascending) order — the members of one group always land
 /// contiguously, never interleaved with another atom's terms.
-pub fn flatten_atoms(layer: &CoeffLayer, atoms: &[LeanAtomRef]) -> Vec<TermId> {
+pub(crate) fn flatten_atoms(layer: &CoeffLayer, atoms: &[LeanAtomRef]) -> Vec<TermId> {
     let mut flat = Vec::with_capacity(layer.terms.len());
     for atom in atoms {
         match atom {
@@ -172,7 +171,7 @@ fn order_rows<T: Copy>(mut rows: Vec<(u32, Vec<SourceId>, T)>) -> Vec<T> {
 }
 
 /// Split `items` into exactly `k` lists, `list w` taking positions
-/// `w, w+k, w+2k, …` — the §3 physical per-warp split.
+/// `w, w+k, w+2k, …`.
 ///
 /// Purely positional, so it splits `TermId`s, decoded records or word indices
 /// alike, and each list keeps the relative order of the input. Trailing lists

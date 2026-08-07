@@ -1,42 +1,19 @@
 //! Field-kind inference for the DAG IR.
 //!
-//! # Rules
-//! - `join(Base, Base) = Base`; otherwise `Ext`.
-//! - `source_field`: `Constant | LookupValue | VirtualSetup → Base`, `Challenge → Ext`,
-//!   `Read{place}` → delegated to `read_place_field` (see below).
-//! - `expr_field`: `Source(s)` → `source_field(s)`; `Add`/`Mul` → `join` over arg fields.
 //!
-//! Cache values are ordinary shared sub-exprs (same-layer reuse = DAG sharing),
-//! so a cache value's field flows through its expr via normal inference — there
-//! is no special source case for it.
-//!
-//! # Cross-layer reads (DONE_WITH_CONCERNS)
-//! `ReadPlace::LayerOutput` and `ReadPlace::CacheOutput` carry no field tag in the model.
-//! The field depends on the *producing* layer's output, which only the generator (Task 7)
-//! can supply.  `read_place_field` therefore returns `None` for those two variants;
-//! callers that need a definitive answer must supply a resolver or consult the generator.
-//! Base-storage places (`BaseLayerMemory`, `BaseLayerWitness`, `Setup`, `Scratch`) always
-//! return `Some(Base)`.
+//! Cross-layer reads require the producing layer's field from a resolver.
 
-use super::{Expr, ExprId, FieldKind, ReadPlace, SourceInfo, SourceKind};
-
-// ── join ─────────────────────────────────────────────────────────────────────
+use super::{Expr, ExprId, FieldKind, ReadPlace, SourceKind};
 
 /// Lattice join: `Base ⊔ Base = Base`, anything involving `Ext` gives `Ext`.
-pub fn join(a: FieldKind, b: FieldKind) -> FieldKind {
+pub(crate) fn join(a: FieldKind, b: FieldKind) -> FieldKind {
     match (a, b) {
         (FieldKind::Base, FieldKind::Base) => FieldKind::Base,
         _ => FieldKind::Ext,
     }
 }
 
-// ── read_place_field ──────────────────────────────────────────────────────────
-
-/// Returns the field kind for a `ReadPlace`.
-///
-/// Returns `Some(Base)` for base-storage places.
-/// Returns `None` for `LayerOutput` and `CacheOutput` — those require a cross-layer
-/// resolver that only the generator (Task 7) can provide.
+/// Returns `None` for cross-layer reads, which require a resolver.
 pub fn read_place_field(place: &ReadPlace) -> Option<FieldKind> {
     match place {
         ReadPlace::BaseLayerMemory { .. }
@@ -47,14 +24,7 @@ pub fn read_place_field(place: &ReadPlace) -> Option<FieldKind> {
     }
 }
 
-// ── source_field ──────────────────────────────────────────────────────────────
-
-/// Infers the field kind for a `SourceKind`.
-///
-/// Returns `Ok(FieldKind)` for all determinable cases.
-/// Returns `Err(ReadPlace)` when the source is `Read{LayerOutput|CacheOutput}` and
-/// the field cannot be determined without a cross-layer resolver.
-pub fn source_field(kind: &SourceKind) -> Result<FieldKind, ReadPlace> {
+pub(crate) fn source_field(kind: &SourceKind) -> Result<FieldKind, ReadPlace> {
     match kind {
         SourceKind::Constant { .. } | SourceKind::InitsAndTeardownsTopBits { .. } => {
             Ok(FieldKind::Base)
@@ -63,30 +33,27 @@ pub fn source_field(kind: &SourceKind) -> Result<FieldKind, ReadPlace> {
         SourceKind::VirtualSetup { .. } => Ok(FieldKind::Base),
         SourceKind::Challenge { .. } => Ok(FieldKind::Ext),
 
-        SourceKind::Read { place } => read_place_field(place).ok_or_else(|| place.clone()),
+        SourceKind::Read { place } => read_place_field(place).ok_or(*place),
     }
 }
 
-// ── expr_field ────────────────────────────────────────────────────────────────
-
-/// Infers the field kind for an expression identified by `id`.
-///
-/// `exprs` is the layer's expression table; `sources` is the layer's source table.
-///
-/// Returns `Ok(FieldKind)` when all referenced sources are determinable.
-/// Returns the first `Err(ReadPlace)` encountered for cross-layer reads.
-pub fn expr_field(
+/// Infer an expression field, using `resolve` for cross-layer reads.
+pub fn expr_field_with_resolver(
     exprs: &[Expr],
-    sources: &[SourceInfo],
+    sources: &[SourceKind],
     id: ExprId,
+    resolve: &impl Fn(&ReadPlace) -> Option<FieldKind>,
 ) -> Result<FieldKind, ReadPlace> {
     match &exprs[id.0 as usize] {
-        Expr::Source(src_id) => source_field(&sources[src_id.0 as usize].kind),
+        Expr::Source(src_id) => match source_field(&sources[src_id.0 as usize]) {
+            Ok(field) => Ok(field),
+            Err(place) => resolve(&place).ok_or(place),
+        },
 
         Expr::Add(args) | Expr::Mul(args) => {
             let mut acc = FieldKind::Base;
             for &arg_id in args {
-                let f = expr_field(exprs, sources, arg_id)?;
+                let f = expr_field_with_resolver(exprs, sources, arg_id, resolve)?;
                 acc = join(acc, f);
                 // Short-circuit: once Ext, can't go back to Base.
                 if acc == FieldKind::Ext {
@@ -105,7 +72,7 @@ mod tests {
     use super::*;
     use crate::{
         ChallengeKey, ChallengePower, ChallengeRef, Expr, ExprId, FieldKind, LookupValueKind,
-        ReadPlace, SourceId, SourceInfo, SourceKind, VirtualSetupKind,
+        ReadPlace, SourceId, SourceKind, VirtualSetupKind,
     };
 
     // ── join ──────────────────────────────────────────────────────────────────
@@ -160,7 +127,7 @@ mod tests {
     fn source_challenge_is_ext() {
         let kind = SourceKind::Challenge {
             reference: ChallengeRef {
-                key: ChallengeKey::ConstraintAggregation,
+                key: ChallengeKey::ClaimBatching,
                 power: ChallengePower::One,
             },
         };
@@ -231,60 +198,43 @@ mod tests {
             layer: 1,
             offset: 3,
         };
-        let kind = SourceKind::Read {
-            place: place.clone(),
-        };
+        let kind = SourceKind::Read { place };
         assert!(matches!(
             source_field(&kind),
             Err(ReadPlace::LayerOutput { .. })
         ));
     }
 
-    // ── expr_field ────────────────────────────────────────────────────────────
-
-    /// Build a small expression table: two sources and a Mul over them.
-    /// Mul(Constant, Challenge) → Ext.
     #[test]
     fn expr_field_mul_constant_challenge_is_ext() {
         let sources = vec![
-            SourceInfo {
-                kind: SourceKind::Constant { value: 7 },
-            },
-            SourceInfo {
-                kind: SourceKind::Challenge {
-                    reference: ChallengeRef {
-                        key: ChallengeKey::ConstraintAggregation,
-                        power: ChallengePower::One,
-                    },
+            SourceKind::Constant { value: 7 },
+            SourceKind::Challenge {
+                reference: ChallengeRef {
+                    key: ChallengeKey::ClaimBatching,
+                    power: ChallengePower::One,
                 },
             },
         ];
 
-        // Expr 0: Source(SourceId(0)) — Constant
-        // Expr 1: Source(SourceId(1)) — Challenge
-        // Expr 2: Mul([ExprId(0), ExprId(1)])
         let exprs = vec![
             Expr::Source(SourceId(0)),
             Expr::Source(SourceId(1)),
             Expr::Mul(vec![ExprId(0), ExprId(1)]),
         ];
 
-        let result = expr_field(&exprs, &sources, ExprId(2));
+        let result = expr_field_with_resolver(&exprs, &sources, ExprId(2), &|_| None);
         assert_eq!(result, Ok(FieldKind::Ext));
     }
 
     #[test]
     fn expr_field_add_base_base_is_base() {
         let sources = vec![
-            SourceInfo {
-                kind: SourceKind::Constant { value: 1 },
-            },
-            SourceInfo {
-                kind: SourceKind::LookupValue {
-                    kind: LookupValueKind::TimestampIndex,
-                    set_index: 0,
-                    query: ExprId(0),
-                },
+            SourceKind::Constant { value: 1 },
+            SourceKind::LookupValue {
+                kind: LookupValueKind::TimestampIndex,
+                set_index: 0,
+                query: ExprId(0),
             },
         ];
 
@@ -294,7 +244,7 @@ mod tests {
             Expr::Add(vec![ExprId(0), ExprId(1)]),
         ];
 
-        let result = expr_field(&exprs, &sources, ExprId(2));
+        let result = expr_field_with_resolver(&exprs, &sources, ExprId(2), &|_| None);
         assert_eq!(result, Ok(FieldKind::Base));
     }
 

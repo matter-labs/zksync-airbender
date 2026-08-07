@@ -10,26 +10,13 @@ use super::super::super::GpuGKRStorage;
 use super::encoding::GpuGKRDimensionReducingRound0BatchCompact;
 use super::launchers::GkrEqSizes;
 use super::shared::{
-    ClaimBufferLayout, DeviceClaimPointAndBatching, ScheduledDimensionReducingFinalReadback,
-    GKR_BACKWARD_MAX_TRACE_LEN_LOG2,
+    ClaimBufferLayout, DeviceClaimPointAndBatching, GKR_BACKWARD_MAX_TRACE_LEN_LOG2,
 };
-use crate::upstream::{
-    DimensionReducingInputOutput, Field, FieldExtension, GKRAddress, GKRInputs, OutputType, Seed,
-};
-use gpu_core::primitives::callbacks::Callbacks;
+use crate::upstream::{DimensionReducingInputOutput, GKRAddress, GKRInputs, OutputType};
 use gpu_core::primitives::context::DeviceAllocation;
 use gpu_core::primitives::device_tracing::Range;
 use gpu_core::primitives::field::{BF, E4};
 use gpu_prover_context::ProverContext;
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct DimensionReducingKernelBlueprint<E> {
-    pub(crate) kind: GpuGKRDimensionReducingKernelKind,
-    pub(crate) inputs: GKRInputs,
-    pub(crate) batch_challenge_offset: usize,
-    pub(crate) batch_challenge_count: usize,
-    pub(crate) batch_challenges: Vec<E>,
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u32)]
@@ -42,13 +29,20 @@ impl GpuGKRDimensionReducingKernelKind {
     pub(crate) const fn as_u32(self) -> u32 {
         self as u32
     }
+
+    pub(crate) const fn challenge_count(self) -> usize {
+        match self {
+            Self::Pairwise => 1,
+            Self::Lookup => 2,
+        }
+    }
 }
 
 // Dim-reducing layers are keyed by OutputType: 2 pairwise records for
 // PermutationProduct, up to 3 lookup records, plus (unified circuit)
 // 2 pairwise records for InitsAndTeardownsProduct = 7 records / 10 challenges.
 // MUST stay in lockstep with the native mirror in
-// native/prover/gkr/support/descriptors.cuh (GKR_DIM_REDUCING_MAX_RECORDS_PER_LAYER /
+// native/gkr/support/descriptors.cuh (GKR_DIM_REDUCING_MAX_RECORDS_PER_LAYER /
 // GKR_DIM_REDUCING_BATCH_CHALLENGE_TABLE_LEN).
 pub(crate) const GKR_DIM_REDUCING_MAX_RECORDS_PER_LAYER: usize = 7;
 pub(crate) const GKR_DIM_REDUCING_BATCH_CHALLENGE_TABLE_LEN: usize = 10;
@@ -67,24 +61,18 @@ cuda_struct_and_stub! {
 }
 
 pub(crate) fn get_dim_reducing_layer_claim_point_device_ptr() -> *mut E4 {
-    use std::sync::OnceLock;
-
-    static PTR: OnceLock<usize> = OnceLock::new();
-    let ptr = *PTR.get_or_init(|| {
-        let mut p: *mut c_void = null_mut();
-        // SAFETY: ab_gkr_dim_reducing_layer_claim_point is a valid
-        // __constant__ symbol defined in backward/dim_reducing.cu.
-        unsafe {
-            cudaGetSymbolAddress(
-                &mut p,
-                &ab_gkr_dim_reducing_layer_claim_point as *const _ as *const c_void,
-            )
-        }
-        .wrap()
-        .expect("cudaGetSymbolAddress failed for ab_gkr_dim_reducing_layer_claim_point");
-        p as usize
-    });
-    ptr as *mut E4
+    let mut ptr: *mut c_void = null_mut();
+    // SAFETY: ab_gkr_dim_reducing_layer_claim_point is a valid
+    // __constant__ symbol defined in backward/dim_reducing.cu.
+    unsafe {
+        cudaGetSymbolAddress(
+            &mut ptr,
+            &ab_gkr_dim_reducing_layer_claim_point as *const _ as *const c_void,
+        )
+    }
+    .wrap()
+    .expect("cudaGetSymbolAddress failed for ab_gkr_dim_reducing_layer_claim_point");
+    ptr.cast()
 }
 
 fn get_dim_reducing_batch_challenge_table_device_ptr() -> *mut E4 {
@@ -118,86 +106,54 @@ pub(crate) fn schedule_dim_reducing_batch_challenge_table_prelude(
     gpu_ops::powers::get_powers_by_ref::<E4>(base, 0, table, context.get_exec_stream())
 }
 
-pub(crate) struct GpuGKRDimensionReducingRoundScratch<E> {
-    pub(crate) eq_low_group: DeviceAllocation<E>,
-    pub(crate) accumulator: DeviceAllocation<E>,
+pub(crate) struct GpuGKRDimensionReducingRoundScratch {
+    pub(crate) eq_low_group: DeviceAllocation<E4>,
+    pub(crate) accumulator: DeviceAllocation<E4>,
     /// Per-block partials buffer for the fused tail (stage-1 dual-reduce
     /// output, stage-2 mega-finalize input).
-    pub(crate) partials: DeviceAllocation<E>,
+    pub(crate) partials: DeviceAllocation<E4>,
 }
 
-#[derive(Clone, Debug)]
-pub(crate) struct GpuGKRDimensionReducingKernelPlan<E> {
-    #[allow(dead_code)]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct GpuGKRDimensionReducingKernelPlan {
     pub(crate) kind: GpuGKRDimensionReducingKernelKind,
     pub(crate) inputs: GKRInputs,
     pub(crate) batch_challenge_offset: usize,
-    #[allow(dead_code)]
-    pub(crate) batch_challenge_count: usize,
-    #[allow(dead_code)]
-    pub(crate) batch_challenges: Vec<E>,
 }
 
 #[doc(hidden)]
-pub struct GpuGKRDimensionReducingSumcheckLayerPlan<B, E> {
+pub(crate) struct GpuGKRDimensionReducingSumcheckLayerPlan {
     pub layer_idx: usize,
-    #[allow(dead_code)]
     pub(crate) trace_len_after_reduction: usize,
     pub(crate) folding_steps: usize,
-    #[allow(dead_code)]
-    pub(crate) batch_challenge_base: Option<E>,
-    pub(crate) kernel_plans: Vec<GpuGKRDimensionReducingKernelPlan<E>>,
+    pub(crate) kernel_plans: Vec<GpuGKRDimensionReducingKernelPlan>,
     pub(crate) folding_addresses: Vec<GKRAddress>,
-    pub(crate) round0_batch_template_compact: GpuGKRDimensionReducingRound0BatchCompact<E>,
-    pub(crate) round_scratch: GpuGKRDimensionReducingRoundScratch<E>,
+    pub(crate) round0_batch_template_compact: GpuGKRDimensionReducingRound0BatchCompact<E4>,
+    pub(crate) round_scratch: GpuGKRDimensionReducingRoundScratch,
     /// Strict 3-slot eq-sizes descriptor. Initialised at layer start from
     /// `make_eq_sizes(folding_steps - 1)`, mutated in place by
     /// `fold_eq_values_for_next_round` between sumcheck rounds, and passed by
     /// value into the dim-reducing consumer kernel arg structs.
     pub(crate) eq_sizes: GkrEqSizes,
-    pub(crate) _phantom: std::marker::PhantomData<B>,
 }
 
 // SAFETY: descriptor raw pointers are only forwarded to stream-ordered kernels.
-unsafe impl<B, E> Send for GpuGKRDimensionReducingSumcheckLayerPlan<B, E>
-where
-    B: Send,
-    E: Send,
-{
-}
-unsafe impl<B, E> Sync for GpuGKRDimensionReducingSumcheckLayerPlan<B, E>
-where
-    B: Sync,
-    E: Sync,
-{
-}
+unsafe impl Send for GpuGKRDimensionReducingSumcheckLayerPlan {}
+unsafe impl Sync for GpuGKRDimensionReducingSumcheckLayerPlan {}
 
-pub struct GpuGKRDimensionReducingBackwardState<B, E> {
+pub struct GpuGKRDimensionReducingBackwardState {
     #[allow(dead_code)] // Keeps queued forward ranges alive until the stream consumes them.
     pub(crate) forward_tracing_ranges: Vec<Range>,
-    pub(crate) storage: GpuGKRStorage<B, E>,
+    pub(crate) storage: GpuGKRStorage<BF, E4>,
     pub(crate) pending_layers:
         VecDeque<(usize, BTreeMap<OutputType, DimensionReducingInputOutput>)>,
     pub(crate) next_trace_len_after_reduction: usize,
 }
 
-pub(crate) struct ScheduledDimensionReducingLayerExecutionState<E: FieldExtension<BF> + Field> {
-    pub(crate) seed: Seed,
-    pub(crate) folding_challenges: Vec<E>,
-}
-
 #[doc(hidden)]
-pub struct GpuGKRDimensionReducingScheduledLayerExecution<B, E: FieldExtension<BF> + Field> {
+pub(crate) struct GpuGKRDimensionReducingScheduledLayerExecution {
     #[allow(dead_code)] // Keeps queued NVTX host callbacks alive until the stream consumes them.
     pub(crate) tracing_ranges: Vec<Range>,
-    #[allow(dead_code)]
-    // Keeps layer-start callbacks alive until the stream consumes them.
-    pub(crate) start_callbacks: Callbacks<'static>,
-    #[allow(dead_code)]
-    pub(crate) final_readback: ScheduledDimensionReducingFinalReadback,
-    #[allow(dead_code)]
-    // keepalive: shared state is referenced by stream-scheduled callbacks via shared_state_handle.
-    pub(crate) shared_state: Box<ScheduledDimensionReducingLayerExecutionState<E>>,
     /// Device-resident Fiat-Shamir seed passed in by the caller, consumed by
     /// this layer's per-round + end-of-layer transcript work, and returned
     /// via `.take()` for the next backward layer scheduler to reuse. `None`
@@ -207,29 +163,11 @@ pub struct GpuGKRDimensionReducingScheduledLayerExecution<B, E: FieldExtension<B
     /// NEXT backward layer. Populated on-device from this layer's folding
     /// challenges + end-of-layer squeezed challenges. Taken by the orchestrator
     /// via `.take()`.
-    pub device_claim_point_for_next_layer: Option<DeviceClaimPointAndBatching<E>>,
+    pub device_claim_point_for_next_layer: Option<DeviceClaimPointAndBatching>,
     /// Device-resident `current_claims` buffer for the NEXT backward layer.
     /// This layer's `device_new_claims` becomes the next layer's input to
     /// `build_combined_claim`.
-    pub device_claims_for_next_layer: Option<DeviceAllocation<E>>,
+    pub device_claims_for_next_layer: Option<DeviceAllocation<E4>>,
     /// Explicit address order of `device_claims_for_next_layer`.
     pub claim_layout_for_next_layer: Option<ClaimBufferLayout>,
-    #[allow(dead_code)]
-    pub(crate) _phantom: std::marker::PhantomData<B>,
-}
-
-#[cfg(test)]
-mod cap_tests {
-    use super::{
-        GKR_DIM_REDUCING_BATCH_CHALLENGE_TABLE_LEN, GKR_DIM_REDUCING_MAX_RECORDS_PER_LAYER,
-    };
-
-    // Lockstep guard: these two values are mirrored verbatim into
-    // native/prover/gkr/support/descriptors.cuh:52-53. If you change one
-    // side you MUST change the other; this test fails loudly to force it.
-    #[test]
-    fn gkr_dim_reducing_caps_lockstep() {
-        assert_eq!(GKR_DIM_REDUCING_MAX_RECORDS_PER_LAYER, 7);
-        assert_eq!(GKR_DIM_REDUCING_BATCH_CHALLENGE_TABLE_LEN, 10);
-    }
 }

@@ -1,21 +1,16 @@
 use std::collections::BTreeMap;
 
 use gkr_eval_ir::{
-    BatchingOrder, ClaimInfo, DagCircuit, DagGlobals, DagLayer, Expr, ExprId, FieldKind, ReadPlace,
-    Root, RootGroup, RootId, RootOrigin, RootSlot, SinkInfo, SinkKind, SourceId, SourceInfo,
-    SourceKind,
+    BatchingOrder, DagCircuit, DagLayer, Expr, ExprId, FieldKind, ReadPlace, Root, RootGroup,
+    RootId, RootOrigin, SinkInfo, SinkKind, SourceId, SourceKind,
 };
-use gpu_gkr_compiler::{
-    CrossoverKind, ForwardResourceProfile, ForwardSearchRequest, SearchConfig, search_forward,
-};
+use gpu_gkr_compiler::{compile_forward, search_forward, ForwardSearchRequest, SearchConfig};
 
 fn tiny_dag() -> DagCircuit {
     DagCircuit {
         layers: vec![DagLayer {
-            sources: vec![SourceInfo {
-                kind: SourceKind::Read {
-                    place: ReadPlace::BaseLayerWitness { column: 0 },
-                },
+            sources: vec![SourceKind::Read {
+                place: ReadPlace::BaseLayerWitness { column: 0 },
             }],
             exprs: vec![
                 Expr::Source(SourceId(0)),
@@ -24,24 +19,50 @@ fn tiny_dag() -> DagCircuit {
             roots: vec![Root {
                 expr: ExprId(1),
                 materialize: Some(SinkInfo {
-                    kind: SinkKind::Export { slot: 0 },
+                    kind: SinkKind::Inner {
+                        layer: 0,
+                        offset: 0,
+                    },
                     field: FieldKind::Base,
                 }),
-                claim: Some(ClaimInfo {
-                    origin: RootOrigin {
-                        group: RootGroup::Gates,
-                        relation_index: 0,
-                        slot: RootSlot::Output(0),
-                    },
+                claim: Some(RootOrigin {
+                    group: RootGroup::Gates,
+                    relation_index: 0,
                 }),
             }],
             batching: BatchingOrder {
                 roots: vec![RootId(0)],
             },
             resolutions: BTreeMap::new(),
+            forward_skip_roots: Default::default(),
         }],
-        globals: DagGlobals::default(),
     }
+}
+
+fn shared_expr_dag() -> DagCircuit {
+    let mut dag = tiny_dag();
+    let mut second = dag.layers[0].roots[0].clone();
+    second.materialize.as_mut().unwrap().kind = SinkKind::Inner {
+        layer: 0,
+        offset: 1,
+    };
+    second.claim.as_mut().unwrap().relation_index = 1;
+    dag.layers[0].roots.push(second);
+    dag.layers[0].batching.roots.push(RootId(1));
+    dag
+}
+
+fn with_claim_only_root(mut dag: DagCircuit) -> DagCircuit {
+    dag.layers[0].roots.push(Root {
+        expr: ExprId(1),
+        materialize: None,
+        claim: Some(RootOrigin {
+            group: RootGroup::Gates,
+            relation_index: 1,
+        }),
+    });
+    dag.layers[0].batching.roots.push(RootId(1));
+    dag
 }
 
 fn config() -> SearchConfig {
@@ -53,9 +74,6 @@ fn config() -> SearchConfig {
         crossover_rate: 0.9,
         mutation_rate: 0.1,
         mutation_sigma: 0.15,
-        local_steps: 0,
-        local_elite: 0,
-        crossover: CrossoverKind::Order,
     }
 }
 
@@ -66,7 +84,7 @@ fn fixed_inputs_produce_identical_artifacts() {
         search_forward(ForwardSearchRequest {
             circuit: "tiny",
             dag: &dag,
-            resources: ForwardResourceProfile { cache_buckets: 4 },
+            cache_buckets: 4,
             config: config(),
             seed: 7,
             incumbent: None,
@@ -77,26 +95,60 @@ fn fixed_inputs_produce_identical_artifacts() {
 }
 
 #[test]
-fn a_valid_incumbent_cannot_be_silently_ignored() {
-    let dag = tiny_dag();
-    let request = |incumbent| ForwardSearchRequest {
-        circuit: "tiny",
-        dag: &dag,
-        resources: ForwardResourceProfile { cache_buckets: 4 },
+fn shared_expressions_allow_reordered_relations() {
+    search_forward(ForwardSearchRequest {
+        circuit: "shared",
+        dag: &shared_expr_dag(),
+        cache_buckets: 4,
         config: config(),
         seed: 7,
-        incumbent,
+        incumbent: None,
+    })
+    .unwrap();
+}
+
+#[test]
+fn claim_only_roots_are_not_forward_units() {
+    search_forward(ForwardSearchRequest {
+        circuit: "claim-only",
+        dag: &with_claim_only_root(tiny_dag()),
+        cache_buckets: 4,
+        config: config(),
+        seed: 7,
+        incumbent: None,
+    })
+    .unwrap();
+}
+
+#[test]
+fn search_does_not_regress_a_valid_incumbent() {
+    let dag = tiny_dag();
+    let incumbent = search_forward(ForwardSearchRequest {
+        circuit: "tiny",
+        dag: &dag,
+        cache_buckets: 4,
+        config: config(),
+        seed: 3,
+        incumbent: None,
+    })
+    .unwrap();
+    let result = search_forward(ForwardSearchRequest {
+        circuit: "tiny",
+        dag: &dag,
+        cache_buckets: 4,
+        config: config(),
+        seed: 11,
+        incumbent: Some(&incumbent),
+    })
+    .unwrap();
+    let score = |artifact| {
+        let layer = &compile_forward(&dag, artifact).unwrap().layers[0];
+        (
+            artifact.layers[0].predicted_traffic,
+            layer.program.instrs.len(),
+        )
     };
-    let incumbent = search_forward(request(None)).unwrap();
-    let refined = search_forward(request(Some(&incumbent))).unwrap();
-    let objective = |artifact: &gpu_gkr_compiler::ForwardSearchArtifact| {
-        artifact
-            .layers
-            .iter()
-            .map(|layer| layer.predicted_traffic)
-            .sum::<usize>()
-    };
-    assert!(objective(&refined) <= objective(&incumbent));
+    assert!(score(&result) <= score(&incumbent));
 }
 
 #[test]
@@ -105,22 +157,36 @@ fn a_stale_incumbent_is_rejected_before_search() {
     let mut incumbent = search_forward(ForwardSearchRequest {
         circuit: "tiny",
         dag: &dag,
-        resources: ForwardResourceProfile { cache_buckets: 4 },
+        cache_buckets: 4,
         config: config(),
         seed: 7,
         incumbent: None,
     })
     .unwrap();
-    incumbent.layers[0].units[0].atom_roots[0] = RootId(9);
-    assert!(
-        search_forward(ForwardSearchRequest {
-            circuit: "tiny",
-            dag: &dag,
-            resources: ForwardResourceProfile { cache_buckets: 4 },
-            config: config(),
-            seed: 7,
-            incumbent: Some(&incumbent),
-        })
-        .is_err()
-    );
+    incumbent.layers[0].units[0].relation_index = 9;
+    assert!(search_forward(ForwardSearchRequest {
+        circuit: "tiny",
+        dag: &dag,
+        cache_buckets: 4,
+        config: config(),
+        seed: 7,
+        incumbent: Some(&incumbent),
+    })
+    .is_err());
+}
+
+#[test]
+fn a_materialize_only_layer_is_rejected_before_search() {
+    let mut dag = tiny_dag();
+    dag.layers[0].roots[0].claim = None;
+    dag.layers[0].batching.roots.clear();
+    assert!(search_forward(ForwardSearchRequest {
+        circuit: "tiny",
+        dag: &dag,
+        cache_buckets: 4,
+        config: config(),
+        seed: 7,
+        incumbent: None,
+    })
+    .is_err());
 }

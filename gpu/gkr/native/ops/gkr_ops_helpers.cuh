@@ -1,12 +1,6 @@
 #pragma once
 
-// Shared device-side helpers used by the backward sumcheck round-update
-// kernel (`ab_backward_sumcheck_round_update_kernel` in `gkr_ops.cu`, used
-// as the small-`acc_size` fallback by the backward main-layer scheduler)
-// and by the fused-tail `mega_finalize` template at
-// `gpu/gkr/native/gkr/backward/mega_finalize.cuh`. Keeping the
-// algebra in one header guarantees the two consumers produce byte-identical
-// per-round outputs.
+// Backward sumcheck round-update helpers.
 
 #include "hash.cuh"
 

@@ -10,12 +10,7 @@ namespace airbender::gkr::backward {
 // Only `challenges` is round state the transcript squeezed on the device, and only
 // it is a pointer.
 //
-// `coefficients` is the write target — the `ab_gkr_bwd_seg_coeff_bank`
-// `__constant__` symbol's own device address under the `const` loader, or the
-// descriptor's device buffer under the `ptr` loader. Writing a `__constant__`
-// symbol through its address is the same mechanism the flat lineage's
-// `eval_recipes` kernels use for `ab_gkr_flat_coefficients`; the constant cache is
-// invalidated between launches, so a later kernel's `__constant__` reads see it.
+// `coefficients` is the `ab_gkr_bwd_seg_coeff_bank` symbol's device address.
 //
 // The reserved literals occupy bank slots 0 and 1 and are filled here like any
 // other slot (constant recipes, no factors), so ONE launch produces the whole

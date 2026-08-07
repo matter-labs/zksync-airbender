@@ -711,10 +711,6 @@ fn whir_initial_state_matches_cpu_use_hypercube_evals_for_batching_large() {
     run_whir_initial_state_matches_cpu(MIN_LOG_N_FOR_MULTISTAGE_KERNELS + 1, true, true);
 }
 
-// helpers.rs was promoted to the permanent `crate::fold::debug` module (Task 10)
-// so the apex parity suite can reach the `debug_*_for_test` entry points (which
-// arrive here via `use super::*`, re-exported at the `fold` level). The internal
-// builders are imported directly from `debug`.
 use crate::fold::debug::{
     build_initial_state, copy_back, evaluate_monomial_form_device, fold_eq_poly_in_place_device,
     fold_evaluation_form_in_place_device, fold_monomial_form_in_place_device,

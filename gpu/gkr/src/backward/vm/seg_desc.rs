@@ -1,102 +1,30 @@
-//! The SEGMENTED lean VM's by-value launch descriptors (segmented-lean-VM
-//! design §3, §5, §7).
+//! Rust half of the segmented backward VM ABI.
 //!
-//! THIS FILE IS ONE HALF OF AN ABI. Its CUDA half is
-//! `native/prover/gkr/backward/segmented_vm.cuh`, which carries the same field
-//! offsets under `static_assert`. Neither half may move without the other in the
-//! same commit. Three separate mechanisms cover the three drift directions:
-//!
-//!   1. **Rust-side drift is a BUILD failure.** The `const _: () = assert!(...)`
-//!      blocks below tie every literal to its authority in `gpu_gkr_compiler`.
-//!   2. **CUDA-side STRUCT drift is a BUILD failure too.** The `.cuh`'s
-//!      `static_assert`s on every field offset and size run under nvcc during
-//!      `cargo check` — but they are CUDA-vs-CUDA, not CUDA-vs-Rust.
-//!   3. **CUDA-side CONSTANT drift is a TEST failure only.**
-//!      [`seg_abi_tests`](super::seg_abi_tests)'s header-text matchers read
-//!      `segmented_vm.cuh` and compare each mirrored literal against the Rust
-//!      value — and they are `#[cfg(test)]`, so `cargo check` alone does not run
-//!      them. Do not skip them after editing the header.
-//!
-//! # What this lineage does NOT carry
-//!
-//! The absences relative to the retired cell-era descriptor are load-bearing:
-//!
-//!   * **No challenge pointer.** Fold challenges have exactly ONE authority, the
-//!     `ab_gkr_main_layer_claim_point` `__constant__` symbol (the incumbent
-//!     route), so `round_challenges` / `n_round_challenges` are gone.
-//!   * **No `cell_budget`.** There is no cell file and no residency genome: the
-//!     prologue folds sources into registers, the eval loop reads them.
-//!   * **No `num_words`.** [`BwdSegDesc::list_offset`] carries the program
-//!     length: `list_offset[k]` IS the end of the stream.
-//!   * **The seed path DOES carry a coefficient recipe index** — see
-//!     [`BwdSegDesc::c_init_coeff`]. It carried resolved limbs until production
-//!     wiring showed the host has no value to resolve: the bank is filled on the
-//!     device.
-//!
-//! [`BwdSegAddrSlot`] and the origin / procedural-kind / publication
-//! constants below are the ONE thing the retired cell-era descriptor left behind:
-//! they were shared by both lineages and were rehomed here verbatim — same field
-//! order, same offsets (`procedural_kind` at 28), same numbering — when that
-//! lineage was deleted. Their `BWD_COEFF_` prefix is kept precisely so the CUDA
-//! half and the ABI matchers stay word-for-word comparable across the move.
-//!
-//! # The program stream
-//!
-//! `program` is the LEAN wire (`gpu_gkr_compiler::backward`): one fixed
-//! 8-byte header-first record per term, `[class:3 @13 | coeff_idx:13 @0]` then
-//! two source slots and a reserved word. It is embedded BY VALUE in the
-//! `__grid_constant__` parameter; [`BwdSegProgPtrDesc`] is the spike-only A/B
-//! twin that reads it from device memory instead (§5).
+//! The matching CUDA definitions and offset assertions live in
+//! `native/gkr/backward/segmented_vm.cuh`.
 
 use core::mem::{align_of, size_of};
 
-use gpu_gkr_compiler::backward::{
+use gpu_gkr_compiler::KIND_ORDER;
+use gpu_gkr_compiler::{
     CoefficientRecipeId, DESCRIPTOR_ALIGNMENT_BYTES, KERNEL_ARGUMENT_CEILING_BYTES,
     LEAN_DESCRIPTOR_PROGRAM_BYTES, LEAN_DESCRIPTOR_PROGRAM_WORDS, LEAN_MAX_IMMEDIATES,
-    MAX_BACKWARD_COEFFICIENT_RECIPES, MAX_BACKWARD_RECORDS, MAX_BACKWARD_SOURCES,
-    MAX_COEFFICIENT_ENCODINGS, MAX_SOURCE_WINDOWS, PUBLISH_TARGET_DEPTH, SOURCE_NONE,
-    SOURCE_WINDOW_COLUMNS,
+    MAX_BACKWARD_COEFFICIENT_RECIPES, MAX_BACKWARD_SOURCES, MAX_COEFFICIENT_ENCODINGS,
+    MAX_SOURCE_WINDOWS, PUBLISH_TARGET_DEPTH, SOURCE_NONE, SOURCE_WINDOW_COLUMNS,
 };
-use gpu_gkr_compiler::forward::source::KIND_ORDER;
 
 use crate::backward::GkrEqSizes;
 use gpu_core::primitives::field::E4;
 use gpu_core::primitives::utils::WARP_SIZE;
 
-// ── Capacities and launch geometry ───────────────────────────────────────────
-
-/// The by-value kernel-argument cap. `size_of::<BwdSegDesc>() <=
-/// BWD_SEG_DESC_CAP` is the FINAL authority on the descriptor's shape.
+/// Maximum by-value kernel argument size.
 pub(crate) const BWD_SEG_DESC_CAP: usize = 32_764;
-/// Descriptor alignment. Load-bearing rather than cosmetic: it is what places
-/// [`BwdSegDesc::program`] — the descriptor's FIRST field — on a 16-byte
-/// boundary, which is the only reason the lean census's one-word round-up to
-/// [`LEAN_DESCRIPTOR_PROGRAM_WORDS`] buys anything.
+/// Keeps the inline program 16-byte aligned.
 pub(crate) const BWD_SEG_DESC_ALIGN: usize = 16;
 
-/// Warps a block may run, i.e. the largest legal `K` of the round-robin term
-/// split. One warp per term list, `blockDim = 32 * k`, so `K` tops out exactly
-/// where the CUDA block does.
-pub(crate) const BWD_SEG_MAX_K: usize = 32;
-/// The CUDA hardware maximum block size, which is what caps [`BWD_SEG_MAX_K`].
-pub(crate) const BWD_SEG_MAX_THREADS_PER_BLOCK: usize = 1_024;
+pub(crate) const BWD_SEG_MAX_K: usize = 16;
 
-/// Slots in this lineage's OWN `__constant__` coefficient bank
-/// (`ab_gkr_bwd_seg_coeff_bank`, declared on the CUDA side in Task 7). No
-/// `backward::flat` symbol is involved.
-///
-/// **RR ruling 2026-07-27: the two reserved literal ids are MATERIALIZED at the
-/// bank head** — `bank[0] = ONE`, `bank[1] = NEG_ONE`, banked recipes from index
-/// [`CoefficientRecipeId::RESERVED`] on — so the kernel resolves every
-/// coefficient with ONE uniform `bank[coeff_idx]` load: no ±ONE fast path, no
-/// branch, no offset subtraction. The census is why: 149 of 15,860 terms carry
-/// `+1` and none carries `−1`, so a per-term branch to save 0.94% of the e4
-/// multiplies is a net loss. Host lowering (Task 6) owns the materialization;
-/// wire coefficient ids are reserved-INCLUSIVE and the kernel indexes raw.
-///
-/// Sized from the census (`1,138` recipes `+ 2` literals `= 1,140`), rounded up
-/// so the bank is exactly 18 KiB of the 64 KB per-module `__constant__` budget —
-/// 12 slots of slack, which [`seg_abi_tests`](super::seg_abi_tests) prints.
+/// Slots in the device coefficient bank, including the reserved `±1` entries.
 pub(crate) const BWD_SEG_CONST_BANK: usize = 1_152;
 
 /// [`BwdSegDesc::c_init_coeff`] for a layer with no `acc_c0` seed.
@@ -106,73 +34,17 @@ pub(crate) const BWD_SEG_CONST_BANK: usize = 1_152;
 /// value so that a byte-level truncation cannot turn absence into a live id.
 pub(crate) const BWD_SEG_C_INIT_NONE: u32 = u32::MAX;
 
-/// Descriptor CAPACITY for source windows — deliberately NOT
-/// [`in_scope::MAX_SOURCE_WINDOWS_USED`], which is a corpus MEASUREMENT.
-///
-/// The two are different kinds of fact and conflating them cost a circuit: the
-/// array used to be sized by the measurement (17, the observed artifact-level max
-/// for blake2 L0 R0), so when the binder's re-windowing split that layer's 17
-/// artifact windows into 18 production windows, lowering REJECTED a circuit that
-/// the format has room for four times over. An observed number belongs in a
-/// census; a capacity belongs here.
-///
-/// Sized generously because a window is cheap: 32 bytes, so 128 of them are 4 KiB
-/// of a descriptor with ~6 KiB of headroom under [`BWD_SEG_DESC_CAP`], which stays
-/// the final authority.
-///
-/// [`MAX_SOURCE_WINDOWS`] `== 64` is NOT the ceiling here, and treating it as one
-/// was the same conflation one level down. That constant is the WIRE's
-/// `source_window:6` field, which bounds the windows an ARTIFACT may name; these
-/// windows are the binder's re-partition of those, they live only in this
-/// descriptor, and the program stream never re-encodes them. Their real ceiling is
-/// [`BwdSegSourceRecord::window`], a byte.
-///
-/// 128 because production storage splits one artifact window into as many pieces
-/// as it has differently-strided backings, and that is a property of storage, not
-/// of the artifact: blake2 L0 Ext's 13 artifact windows need 115. The split itself
-/// is free — each piece is a pointer and a stride — so the only thing that ever
-/// had to grow is this number.
 pub(crate) const BWD_SEG_ADDR_SLOTS: usize = 64;
 const _: () = assert!(BWD_SEG_ADDR_SLOTS == MAX_SOURCE_WINDOWS);
 
-/// [`BwdSegDesc::output`]: the incumbent per-row ACCUMULATOR layout — `2 *
-/// logical_rows` entries, consumed by the separate reduction + round-update tail.
-/// The default, and what the bench's per-row CPU oracle compares against.
-pub(crate) const BWD_SEG_OUTPUT_ROWS: u32 = 0;
-/// [`BwdSegDesc::output`]: ONE `(c0, c2)` pair per block — per 32-row tile — at
-/// the incumbent warp-partial layout (`partials[i * 2]`, `[i * 2 + 1]`), consumed
-/// directly by `ab_gkr_backward_dual_finalize_from_partials_e4_kernel`.
-///
-/// The kernel keeps the row-axis reduction instead of handing 32x the bytes to a
-/// separate one: it costs one 5-step `shfl_xor` per accumulator in warp 0 only,
-/// and no shared memory. Values are unchanged — field addition is exact and
-/// associative, so the pair is the bit-identical sum of the rows it replaces.
-pub(crate) const BWD_SEG_OUTPUT_PARTIALS: u32 = 1;
-
-/// Fold-weight bank shape (spec §4.1): slots hold only q >= 1 (the q = 0
+/// Fold-weight bank slots hold only q >= 1 (the q = 0
 /// coefficient is the difference form's implicit 1), packed per delta.
 pub(crate) const BWD_SEG_FOLD_WEIGHT_SLOTS: usize = 11;
-pub(crate) const BWD_SEG_FOLD_WEIGHT_BASE_D1: usize = 0;
-pub(crate) const BWD_SEG_FOLD_WEIGHT_BASE_D2: usize = 1;
-pub(crate) const BWD_SEG_FOLD_WEIGHT_BASE_D3: usize = 4;
-const _: () = assert!(BWD_SEG_FOLD_WEIGHT_BASE_D2 == BWD_SEG_FOLD_WEIGHT_BASE_D1 + 1);
-const _: () = assert!(BWD_SEG_FOLD_WEIGHT_BASE_D3 == BWD_SEG_FOLD_WEIGHT_BASE_D2 + 3);
-const _: () = assert!(BWD_SEG_FOLD_WEIGHT_SLOTS == BWD_SEG_FOLD_WEIGHT_BASE_D3 + 7);
 
-/// Source-table slots the descriptor can hold: the census maximum of 1,062
-/// rounded up to a multiple of 16 slots, which makes both source-indexed arrays
-/// ([`BwdSegDesc::fold_source`] and [`BwdSegDesc::source`]) a whole number of
-/// 16-byte lines.
+/// Source-table slots rounded to a 16-slot boundary.
 pub(crate) const BWD_SEG_MAX_SOURCES: usize = 1_072;
 
-/// Inline capacity of [`BwdSegDesc::immediates`] — the per-launch immediate table
-/// grouped coefficients scale their shared core by (spec §4.5).
-///
-/// NOT a measurement: it is the WIRE cap `LEAN_MAX_IMMEDIATES`, mirrored here so
-/// the descriptor can hold any table the encoder will ever emit. The mirror is a
-/// build failure rather than a convention (asserted in the block below), and it
-/// runs in this direction only: the GPU crate imports `gpu_gkr_compiler`, never the
-/// reverse, so the ISA's constant stays the authority and this one the copy.
+/// Inline immediate-table capacity, mirrored from the compiler ISA.
 pub(crate) const BWD_SEG_MAX_IMMEDIATES: usize = 512;
 
 const _: () = {
@@ -180,16 +52,11 @@ const _: () = {
     assert!(BWD_SEG_DESC_ALIGN == DESCRIPTOR_ALIGNMENT_BYTES);
 
     // One warp per list, and the block is the cap.
-    assert!(BWD_SEG_MAX_K * WARP_SIZE as usize == BWD_SEG_MAX_THREADS_PER_BLOCK);
-    assert!(BWD_SEG_MAX_THREADS_PER_BLOCK == 1_024);
+    assert!(BWD_SEG_MAX_K * WARP_SIZE as usize == 512);
     // `k` and every `list_offset` entry are u16.
     assert!(BWD_SEG_MAX_K <= u16::MAX as usize);
     assert!(LEAN_DESCRIPTOR_PROGRAM_WORDS <= u16::MAX as usize);
     assert!(LEAN_DESCRIPTOR_PROGRAM_BYTES == LEAN_DESCRIPTOR_PROGRAM_WORDS * size_of::<u16>());
-    // `record_count` is a u16 as well, and it counts RECORDS — terms plus the group
-    // headers grouping adds — so the census maximum it must hold is `MAX_RECORDS`.
-    assert!(MAX_BACKWARD_RECORDS <= u16::MAX as usize);
-
     // The immediate array is the WIRE cap exactly: not a byte more (an unearned
     // 4-byte slot rides every launch) and not a byte less (a table the encoder can
     // emit must fit). The mirror direction is GPU-imports-ISA.
@@ -200,36 +67,204 @@ const _: () = {
     // The bank covers every reserved-inclusive coefficient id the corpus can
     // name, stays inside the thirteen coefficient bits that name it, and fits the
     // per-module constant budget.
-    assert!(BWD_SEG_CONST_BANK >= MAX_BACKWARD_COEFFICIENT_RECIPES + 2);
     assert!(
-        MAX_BACKWARD_COEFFICIENT_RECIPES + 2
+        BWD_SEG_CONST_BANK
             == MAX_BACKWARD_COEFFICIENT_RECIPES + CoefficientRecipeId::RESERVED as usize
     );
     assert!(BWD_SEG_CONST_BANK <= MAX_COEFFICIENT_ENCODINGS);
     assert!(BWD_SEG_CONST_BANK * size_of::<E4>() == 18 * 1_024);
     assert!(BWD_SEG_CONST_BANK * size_of::<E4>() <= 64 * 1_024);
 
-    // The source capacity is the MEASUREMENT rounded up by strictly less than one
-    // 16-slot quantum, so it cannot silently drift into headroom.
-    assert!(BWD_SEG_MAX_SOURCES >= MAX_BACKWARD_SOURCES);
-    assert!(BWD_SEG_MAX_SOURCES - MAX_BACKWARD_SOURCES < 16);
+    assert!(BWD_SEG_MAX_SOURCES == MAX_BACKWARD_SOURCES);
     assert!(BWD_SEG_MAX_SOURCES % 16 == 0);
     // A slot index rides the lean wire as a u16 whose 0xFFFF is the "no second
     // source" sentinel, so the capacity must stay strictly below it.
     assert!(BWD_SEG_MAX_SOURCES < SOURCE_NONE as usize);
 
-    // The window struct's publication policy: publish on first physical access
-    // iff `target_depth >= BWD_COEFF_PUBLISH_TARGET_DEPTH`. Tied to `gpu_gkr_compiler`
-    // so the rehoming out of the retired cell-era descriptor cannot have quietly
-    // changed the threshold this lineage was measured under.
     assert!(BWD_COEFF_PUBLISH_TARGET_DEPTH == PUBLISH_TARGET_DEPTH);
 };
 
-// ── Source-window origin (§10.2) ─────────────────────────────────────────────
-//
-// Rehomed verbatim from the retired cell-era descriptor, together with
-// [`BwdSegAddrSlot`] below: the two lineages shared this struct and these
-// numbers, and the segmented executor still resolves a window through them.
+#[cfg(test)]
+mod cuda_abi_tests {
+    use super::*;
+    use crate::backward::vm::seg_coeff_eval::{
+        BWD_SEG_CHALLENGE_CLAIM_BATCHING, BWD_SEG_CHALLENGE_SLOTS, BWD_SEG_COEFF_MAX_MONOMIALS,
+    };
+    use crate::backward::vm::seg_lower::SourceClass;
+    use gpu_gkr_compiler::{
+        ImmediateId, HEADER_COEFFICIENT_BITS, HEADER_OPCODE_BITS, LEAN_CLASS_SHIFT,
+        LEAN_COEFFICIENT_SHIFT, LEAN_CONT_GROUP_HEADER_CLASS, LEAN_CONT_OPCODES,
+        LEAN_GROUP_FLAG_C0, LEAN_GROUP_FLAG_C2, LEAN_R0_OPCODES, LEAN_WORDS_PER_TERM,
+    };
+
+    const CUDA_VM: &str = include_str!("../../../native/gkr/backward/segmented_vm.cuh");
+    const CUDA_COEFF: &str = include_str!("../../../native/gkr/backward/seg_coeff_eval.cuh");
+
+    fn cpp_literal(source: &str, name: &str) -> u64 {
+        let marker = format!("{name} = ");
+        let expression = source
+            .lines()
+            .find_map(|line| {
+                let line = line.trim();
+                line.starts_with("constexpr ")
+                    .then(|| line.split_once(&marker).map(|(_, value)| value))
+                    .flatten()
+            })
+            .unwrap_or_else(|| panic!("missing CUDA ABI constant {name}"));
+        let expression = expression
+            .split_once(';')
+            .map_or(expression, |(value, _)| value)
+            .trim_end_matches(['u', 'U', 'l', 'L']);
+        if let Some(hex) = expression.strip_prefix("0x") {
+            u64::from_str_radix(hex, 16).unwrap_or_else(|_| {
+                panic!("CUDA ABI constant {name} is not a literal: {expression}")
+            })
+        } else {
+            expression.parse().unwrap_or_else(|_| {
+                panic!("CUDA ABI constant {name} is not a literal: {expression}")
+            })
+        }
+    }
+
+    #[test]
+    fn cpu_backward_cuda_abi_matches_rust() {
+        for (name, value) in [
+            (
+                "BWD_COEFF_HEADER_COEFFICIENT_BITS",
+                HEADER_COEFFICIENT_BITS as u64,
+            ),
+            ("BWD_COEFF_HEADER_OPCODE_BITS", HEADER_OPCODE_BITS as u64),
+            (
+                "BWD_COEFF_PUBLISH_TARGET_DEPTH",
+                PUBLISH_TARGET_DEPTH as u64,
+            ),
+            ("BWD_SEG_ADDR_NONE", SOURCE_NONE as u64),
+            (
+                "BWD_SEG_ADDR_COLUMN_BITS",
+                SOURCE_WINDOW_COLUMNS.trailing_zeros() as u64,
+            ),
+            ("BWD_SEG_DESC_CAP", BWD_SEG_DESC_CAP as u64),
+            ("BWD_SEG_DESC_ALIGN", BWD_SEG_DESC_ALIGN as u64),
+            ("BWD_SEG_MAX_K", BWD_SEG_MAX_K as u64),
+            ("BWD_SEG_CONST_BANK", BWD_SEG_CONST_BANK as u64),
+            ("BWD_SEG_C_INIT_NONE", BWD_SEG_C_INIT_NONE as u64),
+            ("BWD_SEG_MAX_SOURCES", BWD_SEG_MAX_SOURCES as u64),
+            (
+                "BWD_SEG_PROGRAM_WORD_CAP",
+                LEAN_DESCRIPTOR_PROGRAM_WORDS as u64,
+            ),
+            ("BWD_SEG_ADDR_SLOTS", BWD_SEG_ADDR_SLOTS as u64),
+            ("BWD_SEG_MAX_IMMEDIATES", BWD_SEG_MAX_IMMEDIATES as u64),
+            ("BWD_SEG_WORDS_PER_TERM", LEAN_WORDS_PER_TERM as u64),
+            ("BWD_SEG_COEFFICIENT_SHIFT", LEAN_COEFFICIENT_SHIFT as u64),
+        ] {
+            assert_eq!(cpp_literal(CUDA_VM, name), value, "{name}");
+        }
+        assert!(CUDA_VM
+            .contains("constexpr u32 BWD_SEG_CLASS_SHIFT = BWD_COEFF_HEADER_COEFFICIENT_BITS;"));
+        assert_eq!(LEAN_CLASS_SHIFT, HEADER_COEFFICIENT_BITS);
+        for (name, value) in [
+            (
+                "BWD_COEFF_ORIGIN_READ_BASE",
+                BWD_COEFF_ORIGIN_READ_BASE as u64,
+            ),
+            (
+                "BWD_COEFF_ORIGIN_READ_EXT",
+                BWD_COEFF_ORIGIN_READ_EXT as u64,
+            ),
+            (
+                "BWD_COEFF_ORIGIN_PROCEDURAL",
+                BWD_COEFF_ORIGIN_PROCEDURAL as u64,
+            ),
+            (
+                "BWD_COEFF_PROCEDURAL_RANGE_CHECK_16_BITS",
+                BWD_COEFF_PROCEDURAL_RANGE_CHECK_16_BITS as u64,
+            ),
+            (
+                "BWD_COEFF_PROCEDURAL_RANGE_CHECK_TIMESTAMP",
+                BWD_COEFF_PROCEDURAL_RANGE_CHECK_TIMESTAMP as u64,
+            ),
+            (
+                "BWD_COEFF_PROCEDURAL_INITS_AND_TEARDOWNS_LOW",
+                BWD_COEFF_PROCEDURAL_INITS_AND_TEARDOWNS_LOW as u64,
+            ),
+            (
+                "BWD_COEFF_PROCEDURAL_INITS_AND_TEARDOWNS_HIGH",
+                BWD_COEFF_PROCEDURAL_INITS_AND_TEARDOWNS_HIGH as u64,
+            ),
+            (
+                "BWD_COEFF_PROCEDURAL_NONE",
+                BWD_COEFF_PROCEDURAL_NONE as u64,
+            ),
+            ("BWD_SEG_R0_CLASS_C0_LINEAR_BF", LEAN_R0_OPCODES[0].0 as u64),
+            ("BWD_SEG_R0_CLASS_C0_LINEAR_E4", LEAN_R0_OPCODES[1].0 as u64),
+            (
+                "BWD_SEG_R0_CLASS_C2_PRODUCT_BF_BF",
+                LEAN_R0_OPCODES[2].0 as u64,
+            ),
+            (
+                "BWD_SEG_R0_CLASS_C2_PRODUCT_BF_E4",
+                LEAN_R0_OPCODES[3].0 as u64,
+            ),
+            (
+                "BWD_SEG_R0_CLASS_C2_PRODUCT_E4_E4",
+                LEAN_R0_OPCODES[4].0 as u64,
+            ),
+            (
+                "BWD_SEG_EXT_CLASS_C0_LINEAR_E4",
+                LEAN_CONT_OPCODES[0].0 as u64,
+            ),
+            (
+                "BWD_SEG_EXT_CLASS_DUAL_PRODUCT_E4",
+                LEAN_CONT_OPCODES[1].0 as u64,
+            ),
+            (
+                "BWD_SEG_EXT_CLASS_GROUP_HEADER",
+                LEAN_CONT_GROUP_HEADER_CLASS as u64,
+            ),
+            ("BWD_SEG_GROUP_FLAG_C0", LEAN_GROUP_FLAG_C0 as u64),
+            ("BWD_SEG_GROUP_FLAG_C2", LEAN_GROUP_FLAG_C2 as u64),
+            ("BWD_SEG_IMMEDIATE_ONE", ImmediateId::ONE.0 as u64),
+            ("BWD_SEG_IMMEDIATE_NEG_ONE", ImmediateId::NEG_ONE.0 as u64),
+            ("BWD_SEG_IMMEDIATE_RESERVED", ImmediateId::RESERVED as u64),
+            (
+                "BWD_SEG_SOURCE_CLASS_BF_DIRECT",
+                SourceClass::BfDirect.code() as u64,
+            ),
+            (
+                "BWD_SEG_SOURCE_CLASS_BF_INLINE_D1",
+                SourceClass::BfInlineD1.code() as u64,
+            ),
+            (
+                "BWD_SEG_SOURCE_CLASS_BF_INLINE_D2",
+                SourceClass::BfInlineD2.code() as u64,
+            ),
+            (
+                "BWD_SEG_SOURCE_CLASS_E4_DIRECT",
+                SourceClass::E4Direct.code() as u64,
+            ),
+            (
+                "BWD_SEG_SOURCE_CLASS_PROCEDURAL_INLINE",
+                SourceClass::ProceduralInline.code() as u64,
+            ),
+        ] {
+            assert_eq!(cpp_literal(CUDA_VM, name), value, "{name}");
+        }
+        for (name, value) in [
+            (
+                "BWD_SEG_CHALLENGE_CLAIM_BATCHING",
+                BWD_SEG_CHALLENGE_CLAIM_BATCHING as u64,
+            ),
+            ("BWD_SEG_CHALLENGE_SLOTS", BWD_SEG_CHALLENGE_SLOTS as u64),
+            (
+                "BWD_SEG_COEFF_MAX_MONOMIALS",
+                BWD_SEG_COEFF_MAX_MONOMIALS as u64,
+            ),
+        ] {
+            assert_eq!(cpp_literal(CUDA_COEFF, name), value, "{name}");
+        }
+    }
+}
 
 /// Window origin: a base-field matrix backing.
 pub(crate) const BWD_COEFF_ORIGIN_READ_BASE: u8 = 0;
@@ -243,16 +278,12 @@ pub(crate) const BWD_COEFF_PROCEDURAL_RANGE_CHECK_16_BITS: u8 = 0;
 pub(crate) const BWD_COEFF_PROCEDURAL_RANGE_CHECK_TIMESTAMP: u8 = 1;
 pub(crate) const BWD_COEFF_PROCEDURAL_INITS_AND_TEARDOWNS_LOW: u8 = 2;
 pub(crate) const BWD_COEFF_PROCEDURAL_INITS_AND_TEARDOWNS_HIGH: u8 = 3;
-/// A window whose origin is a real matrix carries no procedural kind. Zero would
-/// alias [`BWD_COEFF_PROCEDURAL_RANGE_CHECK_16_BITS`], so the absent marker is
-/// `0xff` and [`BwdSegAddrSlot::default`] uses it.
+/// A window whose origin is a real matrix carries no procedural kind.
 pub(crate) const BWD_COEFF_PROCEDURAL_NONE: u8 = 0xff;
 /// Procedural kinds the format admits.
 pub(crate) const BWD_COEFF_PROCEDURAL_KINDS: usize = 4;
 
-/// §10.2's static materialization policy: publish on first physical access iff
-/// `target_depth >= BWD_COEFF_PUBLISH_TARGET_DEPTH`. One tunable constant, not
-/// a scheduling decision or a genome.
+/// First target depth published by the fold prologue.
 pub(crate) const BWD_COEFF_PUBLISH_TARGET_DEPTH: u8 = 3;
 
 /// D0..D3: the bounded lazy-fold depths the JAOT prologue materializes over.
@@ -281,8 +312,6 @@ const _: () = {
         InitsAndTeardownsHigh
     ));
     assert!(BWD_COEFF_PROCEDURAL_NONE as usize >= BWD_COEFF_PROCEDURAL_KINDS);
-    // §10.2's publication threshold is what bounds the resolver set: past it a
-    // backing is at most one fold behind.
     assert!(BWD_COEFF_MAX_FOLD_DEPTH == BWD_COEFF_PUBLISH_TARGET_DEPTH);
 };
 
@@ -293,11 +322,8 @@ const _: () = {
 /// leaves it holds and, when it holds none, the procedural kind that synthesizes
 /// them.
 ///
-/// Sources and destinations index the SAME table, exactly as the incumbent flat
-/// path's `tables.bases` / `tables.log2_stride` do (`support/descriptors.cuh`): a
-/// fold buffer is a base and a stride like any other backing. A destination
-/// slot's `base` includes the round's slot offset within its region, which is why
-/// a slot is per `(backing, round)` and the table is rebuilt per launch.
+/// Sources and destinations index the same table. A destination slot's `base`
+/// includes the round offset, so the table is rebuilt per launch.
 ///
 /// A slot is keyed by BACKING, never by a run of referenced columns. That is what
 /// keeps the count proportional to how many matrices a layer touches rather than
@@ -306,8 +332,7 @@ const _: () = {
 /// packed differently from its matrix just names a different slot on its other
 /// lane.
 ///
-/// `log2_stride` is in ELEMENT units of whatever type the lane is read as — the
-/// incumbent's convention. Every production stride is a power of two: a raw
+/// `log2_stride` is in elements of the lane's requested type. A raw
 /// column stride is the poly length and a fold region stride is `2 *
 /// size_after_one_fold`.
 ///
@@ -322,20 +347,6 @@ pub(crate) struct BwdSegAddrSlot {
     pub origin: u8,
     pub procedural_kind: u8,
     pub reserved: [u8; 5],
-}
-
-impl Default for BwdSegAddrSlot {
-    /// A dead slot. `procedural_kind` is [`BWD_COEFF_PROCEDURAL_NONE`], NOT
-    /// zero — zero is a live kind.
-    fn default() -> Self {
-        Self {
-            base: std::ptr::null(),
-            log2_stride: 0,
-            origin: BWD_COEFF_ORIGIN_READ_BASE,
-            procedural_kind: BWD_COEFF_PROCEDURAL_NONE,
-            reserved: [0; 5],
-        }
-    }
 }
 
 const _: () = {
@@ -375,50 +386,24 @@ pub(crate) fn bwd_seg_lane_slot(lane: u16) -> usize {
     usize::from(lane >> BWD_SEG_ADDR_COLUMN_BITS)
 }
 
-/// The column a lane names. Callers must not pass [`BWD_SEG_ADDR_NONE`].
-pub(crate) fn bwd_seg_lane_column(lane: u16) -> usize {
-    debug_assert_ne!(lane, BWD_SEG_ADDR_NONE);
-    usize::from(lane) & (SOURCE_WINDOW_COLUMNS - 1)
-}
-
 const _: () = {
     assert!(SOURCE_WINDOW_COLUMNS == 1 << BWD_SEG_ADDR_COLUMN_BITS);
     // A live lane can never collide with the absence sentinel.
     assert!((BWD_SEG_ADDR_SLOTS << BWD_SEG_ADDR_COLUMN_BITS) <= BWD_SEG_ADDR_NONE as usize);
 };
 
-// ── Source table ─────────────────────────────────────────────────────────────
-
 /// One entry of the per-launch source table: where a source is read from, and
 /// how this round resolves it.
 ///
-/// `class` is the per-`(source, round)` SOURCE class assigned by Task 6's round
-/// lowering — `BfDirect = 0`, `BfInlineD1 = 1`, `BfInlineD2 = 2`, `E4Direct = 3`,
-/// `ProceduralInline = 4` — and is NOT the lean wire's three-bit TERM class
-/// (`gpu_gkr_compiler::backward::LEAN_CLASS_SHIFT`). The two are independent
-/// axes: the term class fixes the projection and arity of an operation, the
-/// source class fixes how the operand behind a slot is produced. The enum with
-/// those discriminants is Task 6's, so it is the authority; this field is the
-/// byte it travels in.
-///
-/// `align(4)` mirrors the CUDA `alignas(4)`: it STATES the record's own requirement
-/// that a slot address be 0 mod 4, the precondition for ever reading the record as
-/// one 32-bit word. It used to also MOVE the array — `list_offset` is 33 u16s, which
-/// left the descriptor tail at 2 mod 4 — but [`BwdSegDesc::num_immediates`] is the
-/// fifth u16 of the count block and brings the tail back to 0 mod 4, so both arrays
-/// are now naturally aligned and the attribute costs nothing. It stays so the
-/// record's alignment is a declared property rather than an accident of whatever
-/// precedes it. On CUDA 13.3 the alignment ALONE changes no SASS and no register
-/// count — the CUDA half carries that measurement.
+/// `class` describes source production and is independent from the lean term
+/// class in `gpu_gkr_compiler::backward`.
 #[repr(C, align(2))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct BwdSegSourceRecord {
     /// READ address, as a lane into [`BwdSegDesc::slot`].
     pub src: u16,
-    /// DESTINATION address, same table and same encoding, or
+    /// Destination address, in the same encoding, or
     /// [`BWD_SEG_ADDR_NONE`] when this source publishes nothing this round.
-    /// "Does this source publish" is this field, which is why no `materialize`
-    /// flag survives.
     pub cache: u16,
     /// This round's source class (see the struct doc).
     pub class: u8,
@@ -426,20 +411,6 @@ pub(crate) struct BwdSegSourceRecord {
     /// Per SOURCE, not per slot: two artifact windows may read the same matrix at
     /// different depths.
     pub delta: u8,
-}
-
-impl Default for BwdSegSourceRecord {
-    /// A dead record: both lanes absent, so a reader past `num_sources` cannot
-    /// resolve an address at all. `src` is the sentinel rather than zero, which
-    /// would name slot 0 column 0 — a live address.
-    fn default() -> Self {
-        Self {
-            src: BWD_SEG_ADDR_NONE,
-            cache: BWD_SEG_ADDR_NONE,
-            class: 0,
-            delta: 0,
-        }
-    }
 }
 
 const _: () = {
@@ -456,14 +427,7 @@ const _: () = {
     assert!(SOURCE_WINDOW_COLUMNS <= u8::MAX as usize + 1);
 };
 
-// ── The inline-program descriptor ────────────────────────────────────────────
-
-/// The complete by-value launch descriptor, passed as a single
-/// `__grid_constant__` kernel parameter (§3).
-///
-/// Field order is chosen so `program` sits at offset 0 — 16-byte aligned by the
-/// descriptor's own alignment, at no cost in padding — and so the launch tail's
-/// pointers land naturally aligned after the arrays.
+/// By-value `__grid_constant__` kernel argument.
 #[repr(C, align(16))]
 #[derive(Clone, Copy)]
 pub(crate) struct BwdSegDesc {
@@ -476,339 +440,52 @@ pub(crate) struct BwdSegDesc {
     pub list_offset: [u16; BWD_SEG_MAX_K + 1],
     /// Term lists, i.e. warps in the block. `blockDim == 32 * k`.
     pub k: u16,
-    /// Lean RECORDS across all `k` lists, so
-    /// `list_offset[k] == LEAN_WORDS_PER_TERM * record_count`.
-    ///
-    /// Records, not terms: the grouped wire (spec §4.4) spends one fixed-width
-    /// HEADER record per group on top of its member terms, so the two counts
-    /// diverge and only the record count multiplies out to the stream length. An
-    /// ungrouped program has no headers and the two coincide, which is why the
-    /// field's VALUE did not change when it was renamed.
-    pub record_count: u16,
-    /// Live entries of [`Self::source`].
-    pub num_sources: u16,
     /// Leading entries of [`Self::fold_source`] the prologue folds.
     pub num_foldable: u16,
-    /// Live entries of [`Self::immediates`]. Zero for an ungrouped program.
-    pub num_immediates: u16,
-    /// Source slots the JAOT prologue folds, in FOLD order: warp `w` takes
-    /// `s = w, w + k, w + 2k, …`. The order is a performance contract (§7) — the
-    /// sources the eval loop touches EARLIEST are folded LAST, so they are the
-    /// warmest in L1 when eval starts.
+    /// Source slots the prologue folds; warp `w` takes `w, w + k, ...`.
     pub fold_source: [u16; BWD_SEG_MAX_SOURCES],
-    /// The per-launch source table. Entries at and past [`Self::num_sources`]
-    /// are zero-filled and never read.
     pub source: [BwdSegSourceRecord; BWD_SEG_MAX_SOURCES],
-    /// Live source windows, IMPORTED from the cell-era descriptor rather than
-    /// forked (`procedural_kind` at offset 28 included), so both lineages share
-    /// one window layout and one publication policy
-    /// ([`BWD_COEFF_PUBLISH_TARGET_DEPTH`]).
+    /// Live source windows.
     pub slot: [BwdSegAddrSlot; BWD_SEG_ADDR_SLOTS],
     /// The per-thread `acc_c0` seed as a COEFFICIENT ID, or
     /// [`BWD_SEG_C_INIT_NONE`] when the layer has none.
-    ///
-    /// It used to be resolved E4 limbs, and that could not survive production. The
-    /// seed's value is `bank[id]`, the bank is filled ON THE DEVICE from challenges
-    /// the transcript squeezes there ([`super::seg_coeff_eval`]), and this
-    /// descriptor is a by-value kernel argument built on the host at scheduling
-    /// time — so the host has no value to put here. The id it does have, and the
-    /// device already holds the bank the executors index for every other
-    /// coefficient, so the seed resolves through the same accessor.
-    ///
-    /// Zero is a LIVE id (`CoefficientRecipeId::ONE`), which is why absence needs a
-    /// sentinel rather than the old all-zero limbs.
     pub c_init_coeff: u32,
-    /// Padding that keeps this field's 16-byte footprint, and with it the
-    /// descriptor's whole tail layout, unchanged across the limbs-to-id move: the
-    /// note on [`Self::immediates`] is what depends on it. Never read by the kernel.
-    pub c_init_pad: [u32; 3],
-    /// This launch's immediate table (spec §4.5): the BASE-field scalars a grouped
-    /// term multiplies its group's shared core coefficient by, in the encoder's
-    /// ascending-deduplicated order, as raw Montgomery-form limbs.
-    ///
-    /// Indexed by a member record's `ImmediateId`, which rides the wire in the
-    /// member's coefficient field. Entries at and past [`Self::num_immediates`] are
-    /// zero-filled and never read; the `±1` immediates are wire-level reserved ids
-    /// and consume no slot here.
-    ///
-    /// Placed after the 16-byte `c_init` block so the descriptor's pointer tail
-    /// keeps its natural alignment: `[u32; 512]` is 2 KiB, a whole number of
-    /// 16-byte quanta, so every following offset shifts by exactly that.
+    /// Base-field scalars referenced by grouped terms.
     pub immediates: [u32; BWD_SEG_MAX_IMMEDIATES],
-    /// Evaluated E4 coefficients for the `ptr` loader specialization. The
-    /// `const` loader reads this lineage's `__constant__` bank and ignores it.
-    /// Reserved-inclusive either way: `[ONE, NEG_ONE, recipes…]`.
-    pub coefficients: *const E4,
     /// Production factored-eq low table; high tables remain in `ab_gkr_eq_high`.
     pub eq_low: *const E4,
-    /// `2 * logical_rows` entries: `eq * acc_c0` in `[0, logical_rows)` and
-    /// `eq * acc_c2` in `[logical_rows, 2 * logical_rows)`.
+    /// Interleaved c0/c2 partials, two entries per warp row.
     pub contributions: *mut E4,
     pub eq_sizes: GkrEqSizes,
-    /// Bank entries, reserved literals included.
-    pub n_coefficients: u32,
-    /// Rows this launch evaluates. Also the contribution half-stride: the
-    /// incumbent `acc_size`.
+    /// Rows this launch evaluates.
     pub logical_rows: u32,
-    /// What the epilogue writes: [`BWD_SEG_OUTPUT_ROWS`] (per-row contributions)
-    /// or [`BWD_SEG_OUTPUT_PARTIALS`] (one warp-partial pair per 32-row tile).
-    /// Occupies the word that used to be explicit trailing padding, so the
-    /// descriptor's size and every field offset are unchanged.
-    pub output: u32,
 }
-
-impl BwdSegDesc {
-    /// An empty descriptor: null pointers, no windows, no program.
-    ///
-    /// `[u16; LEAN_DESCRIPTOR_PROGRAM_WORDS]` is far past the arity `Default` is
-    /// derived for, so this is written out rather than derived.
-    /// ABI-GATE ONLY, and the `cfg_attr` says so rather than a blanket `allow`:
-    /// under `cfg(test)` there is no suppression, so if
-    /// [`seg_abi_tests`](super::seg_abi_tests) ever stops calling this, it goes
-    /// back to warning instead of sitting here forever. Production lowering builds
-    /// a descriptor field-by-field from a real round binding
-    /// ([`seg_lower::lower_bwd_seg`](super::seg_lower::lower_bwd_seg)) and never
-    /// starts from a zeroed one.
-    #[cfg_attr(not(test), allow(dead_code))]
-    pub(crate) fn empty() -> Self {
-        Self {
-            program: [0; LEAN_DESCRIPTOR_PROGRAM_WORDS],
-            list_offset: [0; BWD_SEG_MAX_K + 1],
-            k: 0,
-            record_count: 0,
-            num_sources: 0,
-            num_foldable: 0,
-            num_immediates: 0,
-            fold_source: [0; BWD_SEG_MAX_SOURCES],
-            source: [BwdSegSourceRecord::default(); BWD_SEG_MAX_SOURCES],
-            slot: [BwdSegAddrSlot::default(); BWD_SEG_ADDR_SLOTS],
-            c_init_coeff: BWD_SEG_C_INIT_NONE,
-            c_init_pad: [0; 3],
-            immediates: [0; BWD_SEG_MAX_IMMEDIATES],
-            coefficients: std::ptr::null(),
-            eq_low: std::ptr::null(),
-            contributions: std::ptr::null_mut(),
-            eq_sizes: GkrEqSizes::zeroed(),
-            n_coefficients: 0,
-            logical_rows: 0,
-            output: BWD_SEG_OUTPUT_ROWS,
-        }
-    }
-}
-
-// ── The device-program A/B twin (§5) ─────────────────────────────────────────
-
-/// [`BwdSegDesc`] field-for-field, with the inline `program` array REPLACED by a
-/// device pointer and its length.
-///
-/// Dropping the array is the whole point: keeping it and merely not reading it
-/// would leave 17,248 bytes resident in every launch's parameter space and
-/// measure nothing. Inline fit proves the ABI is feasible, not that `K` warps
-/// streaming a 17 KiB param-space program alongside an 18 KiB `__constant__`
-/// coefficient bank wins on constant-cache behaviour — this twin is the one
-/// comparison point that answers it.
-///
-/// Lowering leaves `program` NULL; the harness uploads
-/// `BwdSegSetup::program_words` to a device buffer and patches the pointer into
-/// its host copy of the descriptor before launch — the descriptor is a by-value
-/// kernel parameter, so patching the host copy IS the mechanism. Ownership of
-/// the staging buffer is the caller's, exactly as for the coefficient bank.
-#[repr(C, align(16))]
-#[derive(Clone, Copy)]
-pub(crate) struct BwdSegProgPtrDesc {
-    /// Device-resident lean term stream, `program_words` u16 words long.
-    pub program: *const u16,
-    pub program_words: u32,
-    /// See [`BwdSegDesc::list_offset`]; offsets index the DEVICE stream here.
-    pub list_offset: [u16; BWD_SEG_MAX_K + 1],
-    pub k: u16,
-    /// See [`BwdSegDesc::record_count`]: RECORDS, terms plus group headers.
-    pub record_count: u16,
-    pub num_sources: u16,
-    pub num_foldable: u16,
-    /// See [`BwdSegDesc::num_immediates`].
-    pub num_immediates: u16,
-    pub fold_source: [u16; BWD_SEG_MAX_SOURCES],
-    pub source: [BwdSegSourceRecord; BWD_SEG_MAX_SOURCES],
-    pub slot: [BwdSegAddrSlot; BWD_SEG_ADDR_SLOTS],
-    /// See [`BwdSegDesc::c_init_coeff`].
-    pub c_init_coeff: u32,
-    /// See [`BwdSegDesc::c_init_pad`].
-    pub c_init_pad: [u32; 3],
-    /// See [`BwdSegDesc::immediates`]. Inline in BOTH twins: only the PROGRAM moves
-    /// to device memory in this A/B, so the immediate table stays by value and the
-    /// comparison isolates the program's residency.
-    pub immediates: [u32; BWD_SEG_MAX_IMMEDIATES],
-    pub coefficients: *const E4,
-    pub eq_low: *const E4,
-    pub contributions: *mut E4,
-    pub eq_sizes: GkrEqSizes,
-    pub n_coefficients: u32,
-    pub logical_rows: u32,
-    /// See [`BwdSegDesc::output`].
-    pub output: u32,
-    /// Two words rather than three now that `output` took one: the head is 12
-    /// bytes here instead of 17,248, so the tail lands elsewhere modulo 16.
-    /// Never read by the kernel.
-    pub pad: [u32; 2],
-}
-
-impl BwdSegProgPtrDesc {
-    /// An empty descriptor; ABI-gate only, for the same reason and under the same
-    /// `cfg_attr` as [`BwdSegDesc::empty`].
-    #[cfg_attr(not(test), allow(dead_code))]
-    pub(crate) fn empty() -> Self {
-        Self {
-            program: std::ptr::null(),
-            program_words: 0,
-            list_offset: [0; BWD_SEG_MAX_K + 1],
-            k: 0,
-            record_count: 0,
-            num_sources: 0,
-            num_foldable: 0,
-            num_immediates: 0,
-            fold_source: [0; BWD_SEG_MAX_SOURCES],
-            source: [BwdSegSourceRecord::default(); BWD_SEG_MAX_SOURCES],
-            slot: [BwdSegAddrSlot::default(); BWD_SEG_ADDR_SLOTS],
-            c_init_coeff: BWD_SEG_C_INIT_NONE,
-            c_init_pad: [0; 3],
-            immediates: [0; BWD_SEG_MAX_IMMEDIATES],
-            coefficients: std::ptr::null(),
-            eq_low: std::ptr::null(),
-            contributions: std::ptr::null_mut(),
-            eq_sizes: GkrEqSizes::zeroed(),
-            n_coefficients: 0,
-            logical_rows: 0,
-            output: BWD_SEG_OUTPUT_ROWS,
-            pad: [0; 2],
-        }
-    }
-}
-
-// ── Kernel-argument budget ───────────────────────────────────────────────────
-
-/// Param-space bytes a formal list occupies under the C parameter-packing rules
-/// both nvcc and this side follow: each formal starts at the next multiple of its
-/// own alignment.
-///
-/// `formals` is `(size, align)` in DECLARATION order.
-///
-/// ABI-GATE ONLY: no launch reads this. The launcher hands nvcc a descriptor and
-/// nvcc does the packing, so the budget is a CLAIM about the launch ABI that only
-/// [`seg_abi_tests::seg_kernel_argument_bytes_are_pinned_for_both_launcher_shapes`](super::seg_abi_tests)
-/// can check. `cfg_attr(not(test), ...)` rather than a blanket `allow` so losing
-/// that test brings the warning back.
-#[cfg_attr(not(test), allow(dead_code))]
-const fn kernel_argument_bytes(formals: &[(usize, usize)]) -> usize {
-    let mut total: usize = 0;
-    let mut index = 0;
-    while index < formals.len() {
-        let (size, align) = formals[index];
-        total = total.next_multiple_of(align) + size;
-        index += 1;
-    }
-    total
-}
-
-/// Total kernel-argument bytes one launch of the inline-program family consumes.
-///
-/// The ASSUMED formal-parameter list is `(BwdSegDesc desc)` and nothing else —
-/// everything else a launch needs is out of band: fold challenges in the
-/// `ab_gkr_main_layer_claim_point` `__constant__` symbol, the coefficient bank in
-/// this lineage's own `__constant__` symbol (or, under the `ptr` loader, behind
-/// [`BwdSegDesc::coefficients`]), the epilogue plane in DYNAMIC shared memory,
-/// and `k` in [`BwdSegDesc::k`]. If a launcher signature grows a formal, add it
-/// here and update the pin in [`seg_abi_tests`](super::seg_abi_tests) in the same
-/// commit.
-///
-/// ABI-GATE ONLY — see [`kernel_argument_bytes`].
-#[cfg_attr(not(test), allow(dead_code))]
-pub(crate) const BWD_SEG_INLINE_KERNEL_ARGUMENT_BYTES: usize =
-    kernel_argument_bytes(&[(size_of::<BwdSegDesc>(), align_of::<BwdSegDesc>())]);
-
-/// Total kernel-argument bytes one launch of the progptr family consumes; the
-/// assumed formal list is `(BwdSegProgPtrDesc desc)`. ABI-GATE ONLY; see
-/// [`BWD_SEG_INLINE_KERNEL_ARGUMENT_BYTES`].
-#[cfg_attr(not(test), allow(dead_code))]
-pub(crate) const BWD_SEG_PROGPTR_KERNEL_ARGUMENT_BYTES: usize = kernel_argument_bytes(&[(
-    size_of::<BwdSegProgPtrDesc>(),
-    align_of::<BwdSegProgPtrDesc>(),
-)]);
 
 // The layout, pinned against the same literals `segmented_vm.cuh` will
 // `static_assert`. A change to either struct fails one of the two builds.
 const _: () = {
     use core::mem::offset_of;
 
-    assert!(size_of::<BwdSegDesc>() == 29_040);
+    assert!(size_of::<BwdSegDesc>() == 24_672);
     assert!(align_of::<BwdSegDesc>() == BWD_SEG_DESC_ALIGN);
     // The FINAL authority on the descriptor's shape.
     assert!(size_of::<BwdSegDesc>() <= BWD_SEG_DESC_CAP);
     assert!(offset_of!(BwdSegDesc, program) == 0);
-    assert!(offset_of!(BwdSegDesc, list_offset) == 17_248);
-    assert!(offset_of!(BwdSegDesc, k) == 17_314);
-    assert!(offset_of!(BwdSegDesc, record_count) == 17_316);
-    assert!(offset_of!(BwdSegDesc, num_sources) == 17_318);
-    assert!(offset_of!(BwdSegDesc, num_foldable) == 17_320);
-    assert!(offset_of!(BwdSegDesc, num_immediates) == 17_322);
-    assert!(offset_of!(BwdSegDesc, fold_source) == 17_324);
-    assert!(offset_of!(BwdSegDesc, source) == 19_468);
-    // Four bytes of implicit padding precede `window`: the source array is
-    // 4-byte-aligned and the window array is 8-byte-aligned. nvcc inserts the
-    // same gap by the same rule, and the offsets on both sides are asserted, so
-    // it needs no explicit field.
-    assert!(offset_of!(BwdSegDesc, slot) == 25_904);
-    assert!(offset_of!(BwdSegDesc, c_init_coeff) == 26_928);
-    assert!(offset_of!(BwdSegDesc, immediates) == 26_944);
-    assert!(offset_of!(BwdSegDesc, coefficients) == 28_992);
-    assert!(offset_of!(BwdSegDesc, eq_low) == 29_000);
-    assert!(offset_of!(BwdSegDesc, contributions) == 29_008);
-    assert!(offset_of!(BwdSegDesc, eq_sizes) == 29_016);
-    assert!(offset_of!(BwdSegDesc, n_coefficients) == 29_028);
-    assert!(offset_of!(BwdSegDesc, logical_rows) == 29_032);
-    assert!(offset_of!(BwdSegDesc, output) == 29_036);
+    assert!(offset_of!(BwdSegDesc, list_offset) == 12_944);
+    assert!(offset_of!(BwdSegDesc, k) == 12_978);
+    assert!(offset_of!(BwdSegDesc, num_foldable) == 12_980);
+    assert!(offset_of!(BwdSegDesc, fold_source) == 12_982);
+    assert!(offset_of!(BwdSegDesc, source) == 15_126);
+    // Two bytes of implicit padding precede the 8-byte-aligned slot array.
+    assert!(offset_of!(BwdSegDesc, slot) == 21_560);
+    assert!(offset_of!(BwdSegDesc, c_init_coeff) == 22_584);
+    assert!(offset_of!(BwdSegDesc, immediates) == 22_588);
+    assert!(offset_of!(BwdSegDesc, eq_low) == 24_640);
+    assert!(offset_of!(BwdSegDesc, contributions) == 24_648);
+    assert!(offset_of!(BwdSegDesc, eq_sizes) == 24_656);
+    assert!(offset_of!(BwdSegDesc, logical_rows) == 24_668);
     // The program stream starts on a 16-byte boundary and can be buffered
     // through wide loads.
     assert!(offset_of!(BwdSegDesc, program) % BWD_SEG_DESC_ALIGN == 0);
-    // `pad` is the tail, and it is what makes the size a whole number of
-    // alignment quanta.
-    assert!(offset_of!(BwdSegDesc, output) + size_of::<u32>() == size_of::<BwdSegDesc>());
     assert!(size_of::<BwdSegDesc>() % BWD_SEG_DESC_ALIGN == 0);
-
-    assert!(size_of::<BwdSegProgPtrDesc>() == 11_808);
-    assert!(align_of::<BwdSegProgPtrDesc>() == BWD_SEG_DESC_ALIGN);
-    assert!(size_of::<BwdSegProgPtrDesc>() <= BWD_SEG_DESC_CAP);
-    assert!(offset_of!(BwdSegProgPtrDesc, program) == 0);
-    assert!(offset_of!(BwdSegProgPtrDesc, program_words) == 8);
-    assert!(offset_of!(BwdSegProgPtrDesc, list_offset) == 12);
-    assert!(offset_of!(BwdSegProgPtrDesc, k) == 78);
-    assert!(offset_of!(BwdSegProgPtrDesc, record_count) == 80);
-    assert!(offset_of!(BwdSegProgPtrDesc, num_sources) == 82);
-    assert!(offset_of!(BwdSegProgPtrDesc, num_foldable) == 84);
-    assert!(offset_of!(BwdSegProgPtrDesc, num_immediates) == 86);
-    assert!(offset_of!(BwdSegProgPtrDesc, fold_source) == 88);
-    assert!(offset_of!(BwdSegProgPtrDesc, source) == 2_232);
-    // No gap here: with a 4-byte-aligned record the progptr `source` array ends
-    // exactly at `window`.
-    assert!(offset_of!(BwdSegProgPtrDesc, slot) == 8_664);
-    assert!(offset_of!(BwdSegProgPtrDesc, c_init_coeff) == 9_688);
-    assert!(offset_of!(BwdSegProgPtrDesc, immediates) == 9_704);
-    assert!(offset_of!(BwdSegProgPtrDesc, coefficients) == 11_752);
-    assert!(offset_of!(BwdSegProgPtrDesc, eq_low) == 11_760);
-    assert!(offset_of!(BwdSegProgPtrDesc, contributions) == 11_768);
-    assert!(offset_of!(BwdSegProgPtrDesc, eq_sizes) == 11_776);
-    assert!(offset_of!(BwdSegProgPtrDesc, n_coefficients) == 11_788);
-    assert!(offset_of!(BwdSegProgPtrDesc, logical_rows) == 11_792);
-    assert!(offset_of!(BwdSegProgPtrDesc, output) == 11_796);
-    assert!(offset_of!(BwdSegProgPtrDesc, pad) == 11_800);
-    assert!(
-        offset_of!(BwdSegProgPtrDesc, pad) + size_of::<[u32; 2]>()
-            == size_of::<BwdSegProgPtrDesc>()
-    );
-    assert!(size_of::<BwdSegProgPtrDesc>() % BWD_SEG_DESC_ALIGN == 0);
-    // The A/B twin really drops the array rather than leaving it resident.
-    assert!(
-        size_of::<BwdSegDesc>() - size_of::<BwdSegProgPtrDesc>()
-            >= LEAN_DESCRIPTOR_PROGRAM_BYTES - BWD_SEG_DESC_ALIGN
-    );
 };

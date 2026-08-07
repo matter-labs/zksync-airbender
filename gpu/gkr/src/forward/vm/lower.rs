@@ -1,64 +1,28 @@
-//! fwd-VM v2 production descriptor lowering (Task 9): `CompiledLayer` →
-//! by-value [`FwdVmDesc`] + owning [`FwdVmLayerSetup`].
+//! Lowers a compiled forward layer to its CUDA descriptor.
 //!
-//! The one non-obvious transformation here is the **Global slot/column
-//! renumber** (spec §2 "the lowering renumbers Global cols from layer-offsets
-//! to dense matrix-column indices per slot"): the compiled program's `Global
-//! { slot, col }` operands carry the `BackingTable`'s per-slot DENSE column
-//! indices (assignment order — meaningless outside the table), while the
-//! kernel addresses column `c` of slot `s` as `base[s] + c * stride_bytes[s]`
-//! (`fwd_vm.cuh`). The lowering therefore resolves every dense column through
-//! the first-class reverse map (`slot_col_to_read_place`) to its storage
-//! column and rewrites each Global to `(wire slot, matrix col)` before
-//! encoding.
-//!
-//! **Wire-slot splitting**: the ABI contract "a slot IS one homogeneous
-//! matrix `(base, stride)`" is a WIRE-level contract, and production flat
-//! storage does not honor it at compile-slot granularity — CopyAlias
-//! cache/output columns are VIEWS into OTHER consolidated matrices
-//! (`storage/views.rs`), so one compile-time slot's columns can span several
-//! matrices (every inner layer does; Task 10 Finding 2). The lowering
-//! therefore groups each compile slot's resolved columns by distinct
-//! `(matrix_base, stride_bytes)` and allocates one WIRE slot per group
-//! (first-appearance order); `base[16]`/`stride_bytes[16]` are indexed by
-//! WIRE slot, and the program rewrite renumbers the slot field alongside the
-//! col field. Total wire slots must fit `DST_SLOT_COUNT` (SLOT_BITS=4 on the
-//! wire) — a hard error, guarded corpus-wide by the
-//! `wire_slot_census_fits_slot_count_on_all_fixtures` test (max observed: 6).
-//! Field homogeneity per wire slot holds by construction: a wire slot serves
-//! exactly one compile slot, and every column is checked against that compile
-//! slot's field (`SlotFieldMismatch`).
-//!
-//! Overflow policy (spec §2): program overflow falls back to `program_ldg`
-//! (a device allocation staged per the `SchedulerHostAllocator` rules —
-//! scheduling-time-known immutable data, written once on the scheduling
-//! thread); every other cap is a hard error, no fallback.
-
+//! Compile-time columns are dense backing-table indices. Lowering resolves
+//! them to storage columns and splits each compile slot by distinct
+//! `(matrix_base, stride_bytes)` so every wire slot names one homogeneous
+//! matrix.
 use std::{
     collections::{BTreeMap, BTreeSet},
     ptr,
 };
 
-use era_cudart::memory::memory_copy_async;
-
-use gpu_gkr_compiler::forward::context::CompiledLayer;
-use gpu_gkr_compiler::forward::encode::encode;
-use gpu_gkr_compiler::forward::error::EncodeError;
-use gpu_gkr_compiler::forward::isa::{
-    DstLine, Instr, LdcSub, OperandField, OperandLine, Program, MAX_COLS, SOURCE_WINDOW_COLUMNS,
+use gpu_gkr_compiler::{
+    encode_forward_program as encode, virtual_setup_kind_code, CompiledLayer,
+    ForwardDstLine as DstLine, ForwardEncodeError as EncodeError, ForwardInstr as Instr,
+    ForwardOperandField as OperandField, ForwardOperandLine as OperandLine,
+    ForwardProgram as Program, ForwardSpecialStrategy as SpecialStrategy,
+    FORWARD_MAX_COLS as MAX_COLS, FORWARD_SOURCE_WINDOW_COLUMNS as SOURCE_WINDOW_COLUMNS,
 };
-use gpu_gkr_compiler::forward::source::{virtual_setup_kind_code, SpecialStrategy};
 
 use crate::upstream::{ChallengeRef, GKRAddress, PrimeField, RangeWidth, ReadPlace};
-use gpu_core::allocator::tracker::AllocationPlacement;
-use gpu_core::primitives::context::DeviceAllocation;
 use gpu_core::primitives::field::{BF, E4};
-use gpu_core::primitives::static_host::{alloc_static_pinned_box_from_slice, StaticPinnedBox};
-use gpu_prover_context::ProverContext;
 
 use super::desc::{
     pack_desc, FwdVmDesc, ARENA_GENERIC_FAMILY, ARENA_RANGE_CHECK_16, ARENA_TIMESTAMP,
-    ARG_DERIVED_E4_CAP, CONST_CAP, CONST_DERIVED_E4_CAP, DESC_CAP, DST_SLOT_COUNT, FILL_BANK_NONE,
+    ARG_DERIVED_E4_CAP, CONST_CAP, CONST_DERIVED_E4_CAP, DESC_CAP, DST_SLOT_COUNT,
     MAPPING_ARENA_COUNT, PROGRAM_CAP, SD_AGGREGATE, SD_DECODER, SD_INITS_TOP_BITS, SD_SETUP,
     SD_SINGLE_COLUMN, SD_VIRTUAL, SOURCE_WINDOW_COUNT,
 };
@@ -79,19 +43,11 @@ pub(crate) struct ResolvedColumn {
     pub stride_bytes: u32,
 }
 
-/// Per-layer header inputs sourced from the prover buffers (Task 7
-/// investigation): the 3 stage-1 mapping arenas (`GpuGKRLookupMappings`
-/// generic_family / range_check_16 / timestamp — column-major, column stride =
-/// `count`), the ONE shared α-folded generic-lookup table
-/// (`GpuGKRForwardSetup::generic_lookup`), and the row count. Unused pointers
-/// may be null — the lowering only requires (and only emits) the ones the
-/// layer's specials actually reference.
+/// Per-layer inputs sourced from prover buffers. Unused pointers may be null.
 ///
-/// The decoder FILL value is NOT a header input: the lowering only reserves
-/// its const-derived-e4 bank slot (`FwdVmDesc::fill_bank_idx`); the caller
-/// supplies the value in the bank upload (see [`lower_layer_desc`]).
+/// The decoder fill value occupies the final const-derived-E4 bank slot.
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct FwdVmHeaderInputs {
+pub(crate) struct FwdVmHeaderInputs<'a> {
     pub mapping_arena: [*const u32; MAPPING_ARENA_COUNT],
     /// `generic_family` column of the decoder mapping (`num_generic_sets`,
     /// the arena's last column). Required iff the layer has a `PeekDecoder`.
@@ -100,20 +56,17 @@ pub(crate) struct FwdVmHeaderInputs {
     pub table_len: u32,
     /// Rows (= trace_len = mapping-arena column stride).
     pub count: u32,
-    pub inits_and_teardowns_top_bits: [u32; 16],
-    pub num_inits_and_teardowns_top_bits: usize,
+    pub inits_and_teardowns_top_bits: &'a [u32],
 }
 
 #[derive(Debug)]
 pub(crate) enum FwdVmLowerError {
     /// Wire-format encode failed (cap guard inside `gpu_gkr_compiler`).
     Encode(EncodeError),
-    /// Program exceeds `PROGRAM_CAP` and no fallback context was provided.
+    /// Program exceeds the inline descriptor capacity.
     ProgramOverflow {
         lanes: usize,
     },
-    /// CUDA error while staging the `program_ldg` fallback.
-    Cuda(era_cudart_sys::CudaError),
     ConstBankOverflow {
         n: usize,
     },
@@ -203,53 +156,13 @@ pub(crate) enum FwdVmLowerError {
     /// Two decoder descs resolved to different execute-predicate columns
     /// (the desc header holds ONE mask pointer).
     DecoderMaskConflict,
-    /// Two dense columns resolved to the SAME matrix column of one WIRE slot —
-    /// a resolver bug would otherwise silently alias two distinct dense
-    /// columns onto one wire `(slot, col)`, producing a well-formed-but-wrong
-    /// program. Hard error: this is the last line of defense before an
-    /// expensive GPU parity debug cycle. `slot` is the COMPILE slot of the
-    /// colliding column (the wire slot is derived, the compile slot is what a
-    /// human can map back to the backing table).
+    /// Distinct dense columns mapped to the same wire matrix column.
     ColRemapCollision {
         slot: u8,
         matrix_col: usize,
     },
 }
 
-/// Owning wrapper for one lowered layer. The descriptor is passed BY VALUE at
-/// launch, but an oversize program leaves a raw `program_ldg` device pointer
-/// embedded in it — per the GPU scheduling contract the backing allocations
-/// must stay alive until every launch scheduled with this descriptor has been
-/// enqueued, so they ride along here. `_program_fallback_host` is the pinned
-/// staging source of the H2D copy scheduled at lowering time; it is a
-/// dedicated (non-pool) pinned allocation, so it is retained conservatively
-/// until the setup drops rather than relying on stream-ordered pool reuse.
-pub(crate) struct FwdVmLayerSetup {
-    pub desc: FwdVmDesc,
-    _program_fallback: Option<DeviceAllocation<u16>>,
-    _program_fallback_host: Option<StaticPinnedBox<u16>>,
-}
-
-/// Compact summary (the 26 KB descriptor's arrays are not useful output).
-impl core::fmt::Debug for FwdVmLayerSetup {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.debug_struct("FwdVmLayerSetup")
-            .field("n_instr", &self.desc.n_instr)
-            .field("program_lanes", &self.desc.program_lanes)
-            .field("program_inline", &self.desc.program_ldg.is_null())
-            .field("n_consts", &self.desc.n_consts)
-            .field("n_arg_derived_e4", &self.desc.n_arg_derived_e4)
-            .field("n_const_derived_e4", &self.desc.n_const_derived_e4)
-            .field("fill_bank_idx", &self.desc.fill_bank_idx)
-            .field("n_descs", &self.desc.n_descs)
-            .field("count", &self.desc.count)
-            .finish_non_exhaustive()
-    }
-}
-
-/// The flat `GKRAddress` behind a DAG-IR `ReadPlace` (inverse of `lower_dag`'s
-/// `map_address`; same mapping as the bench harness'
-/// `read_place_to_gkr_address`). Total: `VirtualSetup` is never a `ReadPlace`.
 pub(crate) fn read_place_to_gkr_address(place: &ReadPlace) -> GKRAddress {
     match *place {
         ReadPlace::BaseLayerMemory { column } => GKRAddress::BaseLayerMemory(column),
@@ -304,9 +217,8 @@ fn derive_source_geometry(
         n_windows: 0,
     };
     let coordinates = source_coordinates(&cl.program);
-    for compiler_window in 0..cl.ctx.source_windows.len() as u8 {
+    for compiler_window in 0..cl.source_windows.len() as u8 {
         let expect_e4 = cl
-            .ctx
             .source_windows
             .source_field(compiler_window)
             .expect("dense source-window table")
@@ -317,7 +229,6 @@ fn derive_source_geometry(
             .filter(|(window, _)| *window == compiler_window)
         {
             let place = cl
-                .ctx
                 .source_windows
                 .resolve_read_place(window, column)
                 .ok_or(FwdVmLowerError::UnmappedSource { window, column })?;
@@ -403,30 +314,16 @@ fn derive_source_geometry(
     Ok(geometry)
 }
 
-/// Wire-slot geometry derived from the storage resolver (module doc,
-/// "wire-slot splitting"): `base`/`stride_bytes` are indexed by WIRE slot —
-/// one wire slot per distinct `(matrix_base, stride_bytes)` group WITHIN each
-/// compile slot, allocated in first-appearance order — plus the
-/// `(compile slot, dense col)` → `(wire slot, matrix col)` renumbering.
 struct SlotGeometry {
     base: [*mut u8; DST_SLOT_COUNT],
     stride_bytes: [u32; DST_SLOT_COUNT],
-    /// Wire slots allocated so far (`base`/`stride_bytes` valid for
-    /// `0..n_wire_slots`, null/zero beyond).
     n_wire_slots: usize,
-    /// `(compile slot, dense col)` → `(wire slot, matrix col)` for the
-    /// destination columns that the final program actually materializes.
     remap: BTreeMap<(u8, u16), (u8, u16)>,
-    /// Matrix columns already claimed per wire slot (`ColRemapCollision`).
     claimed: Vec<Vec<u16>>,
 }
 
 impl SlotGeometry {
-    /// Wire slot for `(base, stride)` within this compile slot's group list,
-    /// allocating a fresh one on first appearance. Wire slots are NOT shared
-    /// across compile slots (a wire slot inherits its compile slot's field;
-    /// alias views may legitimately map two compile slots onto one matrix,
-    /// and merging them would false-positive the collision guard).
+    /// Wire slots are not shared across compile slots.
     fn wire_slot_for(
         &mut self,
         slot_groups: &mut Vec<(*mut u8, u32, u8)>,
@@ -456,7 +353,7 @@ fn derive_slot_geometry(
     cl: &CompiledLayer,
     resolve_column: &dyn Fn(GKRAddress) -> Option<ResolvedColumn>,
 ) -> Result<SlotGeometry, FwdVmLowerError> {
-    let backings = &cl.ctx.backings;
+    let backings = &cl.backings;
     let mut geom = SlotGeometry {
         base: [ptr::null_mut(); DST_SLOT_COUNT],
         stride_bytes: [0; DST_SLOT_COUNT],
@@ -484,9 +381,12 @@ fn derive_slot_geometry(
         if slot_columns.is_empty() {
             continue;
         }
-        let Some(field) = backings.slot_field(slot) else {
-            continue;
-        };
+        let field = backings
+            .slot_field(slot)
+            .ok_or(FwdVmLowerError::UnmappedGlobal {
+                slot,
+                col: slot_columns[0],
+            })?;
         let expect_e4 = field == OperandField::Ext;
         // This compile slot's `(base, stride) -> wire slot` groups. Field
         // homogeneity per wire slot follows from the per-column field check
@@ -547,20 +447,12 @@ fn remap_global(geom: &SlotGeometry, slot: u8, col: u16) -> Result<(u8, u16), Fw
 
 fn remap_operand(geom: &SourceGeometry, o: OperandLine) -> Result<OperandLine, FwdVmLowerError> {
     Ok(match o {
-        OperandLine::Source {
-            window,
-            column,
-            first_access,
-        } => {
+        OperandLine::Source { window, column } => {
             let &(window, column) = geom
                 .remap
                 .get(&(window, column))
                 .ok_or(FwdVmLowerError::UnmappedSource { window, column })?;
-            OperandLine::Source {
-                window,
-                column,
-                first_access,
-            }
+            OperandLine::Source { window, column }
         }
         other => other,
     })
@@ -593,12 +485,10 @@ fn rewrite_program(
             Instr::Add {
                 field,
                 sign,
-                promote,
                 operands,
             } => Instr::Add {
                 field: *field,
                 sign: *sign,
-                promote: *promote,
                 operands: operands
                     .iter()
                     .map(|o| remap_operand(source_geom, *o))
@@ -606,12 +496,10 @@ fn rewrite_program(
             },
             Instr::Mul {
                 field,
-                promote,
                 negate_acc,
                 operands,
             } => Instr::Mul {
                 field: *field,
-                promote: *promote,
                 negate_acc: *negate_acc,
                 operands: operands
                     .iter()
@@ -622,13 +510,11 @@ fn rewrite_program(
                 field_lhs,
                 field_rhs,
                 sign,
-                promote,
                 pairs,
             } => Instr::Fma {
                 field_lhs: *field_lhs,
                 field_rhs: *field_rhs,
                 sign: *sign,
-                promote: *promote,
                 pairs: pairs
                     .iter()
                     .map(|(l, r)| {
@@ -655,53 +541,20 @@ fn rewrite_program(
     Ok(Program { instrs })
 }
 
-/// Length of a `DerivedE4Banks` channel — the banks expose no length accessor,
-/// so probe `get` upward from 0 (dense `Vec` internally, terminates at the
-/// real length; same technique as the bench harness).
-///
-/// `cap` structurally bounds the probe at `cap + 1`: the caller's own cap
-/// check (`n > cap` → hard error) fires right after, so a corrupt/oversized
-/// bank can never drive `n` past `cap + 1` and wrap `n as u16` into an
-/// infinite loop (`ARG_DERIVED_E4_CAP`/`CONST_DERIVED_E4_CAP` are both « 2^16).
-fn derived_e4_bank_len(cl: &CompiledLayer, sub: LdcSub, cap: usize) -> usize {
-    let mut n = 0usize;
-    while n <= cap && cl.ctx.derived_e4.get(sub, n as u16).is_some() {
-        n += 1;
-    }
-    n
-}
-
-/// Assemble the full by-value fwd-VM v2 descriptor for one compiled layer.
+/// Assemble the by-value forward VM descriptor for one compiled layer.
 ///
 /// - `resolve_column` maps a flat `GKRAddress` to its resident storage column
 ///   (production: the consolidated `storage/views.rs` matrices; tests: mocks).
-/// - `challenge` yields the concrete `E4` value of a schedule-time
-///   (`ArgDerivedE4`) reference. `ConstDerivedE4` values are NOT part of the
-///   descriptor — upload them via [`super::upload_const_derived_e4`]; only the
-///   bank LENGTH rides the desc (`n_const_derived_e4`, VALIDATE bounds check).
-/// - **Decoder fill**: for a layer with a `PeekDecoder` special, the lowering
-///   APPENDS one bank slot after the real `ConstDerivedE4` entries
-///   (`fill_bank_idx` = pre-append length, `n_const_derived_e4` includes it)
-///   but does NOT supply the value. ORDERING CONTRACT (mechanism (a), fill
-///   value host-known): the caller must place the — final — fill value at
-///   `values[fill_bank_idx]` of the [`super::upload_const_derived_e4`] upload
-///   and enqueue that upload on `exec_stream` BEFORE any launch of this
-///   layer's descriptor (`gpu_tests::const_derived_e4_values` implements the
-///   append for the harness/gate callers). If a future production caller only
-///   has the fill device-resident (`device_decoder_lookup_fill_value`), the
-///   alternative is a 16-B D2D `memcpyToSymbolAsync` into bank slot
-///   `fill_bank_idx` enqueued after the bank upload — same ordering contract
-///   against the launches.
-/// - `fallback_context`: required only if the encoded program exceeds
-///   `PROGRAM_CAP` (never for the committed corpus); `None` turns program
-///   overflow into a hard error.
+/// - `challenge` resolves schedule-time `ArgDerivedE4` references.
+/// - `ConstDerivedE4` values and the optional decoder fill are staged by the
+///   production binding before the layer launch; only their bank indices and
+///   count live in the descriptor.
 pub(crate) fn lower_layer_desc(
     cl: &CompiledLayer,
-    header: &FwdVmHeaderInputs,
+    header: &FwdVmHeaderInputs<'_>,
     resolve_column: &dyn Fn(GKRAddress) -> Option<ResolvedColumn>,
     challenge: &dyn Fn(&ChallengeRef) -> E4,
-    fallback_context: Option<&ProverContext>,
-) -> Result<FwdVmLayerSetup, FwdVmLowerError> {
+) -> Result<FwdVmDesc, FwdVmLowerError> {
     // SAFETY: all-zero bytes are a valid `FwdVmDesc` — plain-old-data fields
     // plus nullable raw pointers; every meaningful field is filled below.
     let mut desc: FwdVmDesc = unsafe { core::mem::zeroed() };
@@ -716,34 +569,14 @@ pub(crate) fn lower_layer_desc(
     desc.dst_base = dst_geom.base;
     desc.dst_stride_bytes = dst_geom.stride_bytes;
     desc.n_instr = program.instrs.len() as u32;
-    desc.program_lanes = lanes.len() as u32;
 
-    // ----- program residency: inline when it fits, LDG fallback otherwise. -----
-    let (fallback_dev, fallback_host) = if lanes.len() <= PROGRAM_CAP {
-        desc.program[..lanes.len()].copy_from_slice(&lanes);
-        desc.program_ldg = ptr::null();
-        (None, None)
-    } else {
-        let context =
-            fallback_context.ok_or(FwdVmLowerError::ProgramOverflow { lanes: lanes.len() })?;
-        // SchedulerHostAllocator rules: scheduling-time-known immutable data,
-        // written once here on the scheduling thread; the stream only reads.
-        let host = alloc_static_pinned_box_from_slice(&lanes).map_err(FwdVmLowerError::Cuda)?;
-        let mut dev: DeviceAllocation<u16> = context
-            .alloc(lanes.len(), AllocationPlacement::BestFit)
-            .map_err(FwdVmLowerError::Cuda)?;
-        memory_copy_async(
-            &mut dev[0..lanes.len()],
-            &host[..],
-            context.get_exec_stream(),
-        )
-        .map_err(FwdVmLowerError::Cuda)?;
-        desc.program_ldg = dev.as_ptr();
-        (Some(dev), Some(host))
-    };
+    if lanes.len() > PROGRAM_CAP {
+        return Err(FwdVmLowerError::ProgramOverflow { lanes: lanes.len() });
+    }
+    desc.program[..lanes.len()].copy_from_slice(&lanes);
 
     // ----- banks (hard caps, no fallback). -----
-    let consts = cl.ctx.consts.values();
+    let consts = cl.consts.values();
     if consts.len() > CONST_CAP {
         return Err(FwdVmLowerError::ConstBankOverflow { n: consts.len() });
     }
@@ -752,32 +585,31 @@ pub(crate) fn lower_layer_desc(
     }
     let mut n_consts = consts.len();
 
-    let n_arg = derived_e4_bank_len(cl, LdcSub::ArgDerivedE4, ARG_DERIVED_E4_CAP);
+    let n_arg = cl.derived_e4.arg_refs().len();
     if n_arg > ARG_DERIVED_E4_CAP {
         return Err(FwdVmLowerError::ArgDerivedE4Overflow { n: n_arg });
     }
-    for i in 0..n_arg {
-        let r = cl
-            .ctx
-            .derived_e4
-            .get(LdcSub::ArgDerivedE4, i as u16)
-            .unwrap();
+    for (i, r) in cl.derived_e4.arg_refs().iter().enumerate() {
         desc.arg_derived_e4[i] = challenge(r);
     }
-    desc.n_arg_derived_e4 = n_arg as u32;
-
-    // The decoder fill slot (reserved below) also lives in this bank, so the
-    // final `n_const_derived_e4`/cap check happen after the specials loop.
-    let mut n_const_derived_e4 =
-        derived_e4_bank_len(cl, LdcSub::ConstDerivedE4, CONST_DERIVED_E4_CAP);
+    let n_const_derived_e4 = usize::from(cl.derived_e4.uses_lookup_additive())
+        + usize::from(
+            cl.specials
+                .iter()
+                .any(|special| matches!(special, SpecialStrategy::PeekDecoder { .. })),
+        );
+    if n_const_derived_e4 > CONST_DERIVED_E4_CAP {
+        return Err(FwdVmLowerError::ConstDerivedE4Overflow {
+            n: n_const_derived_e4,
+        });
+    }
 
     // ----- special descriptors (packed u32 each) + header pointers. -----
-    let n_descs = cl.ctx.specials.len();
+    let n_descs = cl.specials.len();
     if n_descs > DESC_CAP {
         return Err(FwdVmLowerError::DescOverflow { n: n_descs });
     }
     let mut uses_table = false;
-    let mut fill_bank_idx = FILL_BANK_NONE;
     let mut mask: *const BF = ptr::null();
     let require_arena = |arena: u32| -> Result<u32, FwdVmLowerError> {
         if header.mapping_arena[arena as usize].is_null() {
@@ -790,8 +622,8 @@ pub(crate) fn lower_layer_desc(
         u16::try_from(set_index)
             .map_err(|_| FwdVmLowerError::SetIndexOverflow { desc: d, set_index })
     };
-    for (d, sd) in cl.ctx.specials.iter().enumerate() {
-        desc.descs[d] = match &sd.strategy {
+    for (d, sd) in cl.specials.iter().enumerate() {
+        desc.descs[d] = match sd {
             SpecialStrategy::PeekSingleColumn { set_index, width } => {
                 let arena = require_arena(match width {
                     RangeWidth::Bits16 => ARENA_RANGE_CHECK_16,
@@ -810,13 +642,6 @@ pub(crate) fn lower_layer_desc(
             }
             SpecialStrategy::PeekDecoder { predicate, .. } => {
                 uses_table = true;
-                // Reserve ONE const-derived-e4 bank slot for the per-circuit
-                // fill value (shared by every decoder desc of the layer);
-                // the caller uploads the value there (see the fn doc).
-                if fill_bank_idx == FILL_BANK_NONE {
-                    fill_bank_idx = n_const_derived_e4 as u32;
-                    n_const_derived_e4 += 1;
-                }
                 let arena = require_arena(ARENA_GENERIC_FAMILY)?;
                 let col = header
                     .decoder_mapping_col
@@ -841,18 +666,17 @@ pub(crate) fn lower_layer_desc(
                 pack_desc(SD_VIRTUAL, 0, 0, virtual_setup_kind_code(kind) + 2)
             }
             SpecialStrategy::InitsAndTeardownsTopBits { reference } => {
-                if reference.set_index >= header.num_inits_and_teardowns_top_bits {
-                    return Err(FwdVmLowerError::SetIndexOverflow {
+                let raw = *header
+                    .inits_and_teardowns_top_bits
+                    .get(reference.set_index)
+                    .ok_or(FwdVmLowerError::SetIndexOverflow {
                         desc: d,
                         set_index: reference.set_index,
-                    });
-                }
+                    })?;
                 if n_consts >= CONST_CAP {
                     return Err(FwdVmLowerError::ConstBankOverflow { n: n_consts + 1 });
                 }
-                let raw = header.inits_and_teardowns_top_bits[reference.set_index]
-                    .checked_shl(reference.shift)
-                    .unwrap_or(0);
+                let raw = raw.checked_shl(reference.shift).unwrap_or(0);
                 desc.consts[n_consts] = BF::from_u32_with_reduction(raw);
                 let slot = u16::try_from(n_consts).expect("CONST_CAP fits u16");
                 n_consts += 1;
@@ -860,15 +684,6 @@ pub(crate) fn lower_layer_desc(
             }
         };
     }
-    desc.n_consts = n_consts as u32;
-    desc.n_descs = n_descs as u32;
-    if n_const_derived_e4 > CONST_DERIVED_E4_CAP {
-        return Err(FwdVmLowerError::ConstDerivedE4Overflow {
-            n: n_const_derived_e4,
-        });
-    }
-    desc.n_const_derived_e4 = n_const_derived_e4 as u32;
-    desc.fill_bank_idx = fill_bank_idx;
     desc.mapping_arena = header.mapping_arena;
     if uses_table {
         if header.table.is_null() {
@@ -882,9 +697,5 @@ pub(crate) fn lower_layer_desc(
     // ----- geometry. -----
     desc.count = header.count;
 
-    Ok(FwdVmLayerSetup {
-        desc,
-        _program_fallback: fallback_dev,
-        _program_fallback_host: fallback_host,
-    })
+    Ok(desc)
 }

@@ -5,24 +5,13 @@ use std::collections::HashMap;
 use gkr_eval_ir::{DagLayer, Expr, ExprId, FieldKind, ReadPlace, RootId, SourceKind};
 
 use crate::forward::compile::expr_operand_field;
-use crate::forward::context::ForwardAction;
-use crate::forward::isa::OperandField;
 
-/// [`dag_traffic_floor`] restricted to the roots the forward emitter actually
-/// LOWERS (Task 6): `materialize.is_some()` AND classified
-/// [`ForwardAction::Compute`]. A `CopyAlias` root emits ZERO program
-/// instructions (`lower.rs`'s CopyAlias arm records a storage-alias
-/// `RootOutput` and never lowers `root.expr` — "zero program lanes"), and a
-/// `SkipScratchPrefill` root emits nothing at all, so their cones contribute no
-/// compiled DRAM reads; counting them (as the plain DAG floor does) can push
-/// "floor" ABOVE the achievable compile traffic on cross-layer aggregation
-/// layers, inverting the bound. This variant is what the schedule producer
-/// records as `LayerSchedule.floor` so `floor <= predicted_traffic` is a real
-/// invariant of the compile metric.
-pub fn dag_traffic_floor_with_actions(
+/// Traffic floor over roots that emit forward instructions. Copy aliases and
+/// skipped scratch prefills contribute no reads.
+pub(super) fn dag_traffic_floor(
     layer: &DagLayer,
     cross: &HashMap<ReadPlace, FieldKind>,
-    actions: &HashMap<RootId, ForwardAction>,
+    compute_roots: &std::collections::BTreeSet<RootId>,
 ) -> usize {
     floor_over_roots(
         layer,
@@ -32,8 +21,7 @@ pub fn dag_traffic_floor_with_actions(
             .iter()
             .enumerate()
             .filter_map(|(i, r)| {
-                let lowered = r.materialize.is_some()
-                    && matches!(actions.get(&RootId(i as u32)), Some(ForwardAction::Compute));
+                let lowered = r.materialize.is_some() && compute_roots.contains(&RootId(i as u32));
                 lowered.then_some(r.expr.0)
             })
             .collect(),
@@ -54,20 +42,19 @@ fn floor_over_roots(
         if !seen_expr.insert(eid) {
             continue;
         }
-        // Resolution-pruned → special terminal: 0 traffic, do NOT descend.
-        // MUST mirror Task-3 extraction's pruning so D and the instance agree.
+        // Peeks are omitted from this conservative lower bound.
         if layer.resolutions.contains_key(&ExprId(eid)) {
             continue;
         }
         match &layer.exprs[eid as usize] {
             Expr::Source(sid) => {
-                if let SourceKind::Read { .. } = &layer.sources[sid.0 as usize].kind {
+                if let SourceKind::Read { .. } = &layer.sources[sid.0 as usize] {
                     if distinct_reads.insert(sid.0 as usize) {
                         let f = expr_operand_field(layer, ExprId(eid), cross);
-                        total += if f == OperandField::Ext { 4 } else { 1 };
+                        total += f.lanes();
                     }
                 }
-                // VirtualSetup / Constant / Challenge / LookupValue → 0 traffic.
+                // Host values and virtual setup sources do not read DRAM.
             }
             Expr::Add(ch) | Expr::Mul(ch) => stack.extend(ch.iter().map(|c| c.0)),
         }

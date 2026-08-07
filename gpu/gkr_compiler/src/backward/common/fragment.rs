@@ -1,45 +1,9 @@
-//! Backward fragment decomposition (CS-M5a Task 1, spec §3): the pure,
-//! side-effect-free walk that decomposes a backward alpha-spine's addends
-//! into FRAGMENTS — `acc = c_init + Σ recipe_i · value(fragment_i)` — so a
-//! later stage (Task 2+) can lower each fragment's value once and its
-//! summed coefficient recipe cheaply.
+//! Decomposes a backward batching spine into
+//! `c_init + Σ recipe_i · value(fragment_i)`.
 //!
-//! Ported from the proven reference classifier
-//! `.agents/experiments/2026-07-13-bwd-order-eviction/wsdump/src/bin/fragclass.rs`
-//! (`analyze()`), adapted to build the real IR (not just stats) over this
-//! crate's distilled-arena types ([`DagLayer`]/[`Expr`]/[`ExprId`]).
-//!
-//! Normative walk semantics:
-//!  1. `scalar_pure` is a bottom-up per-expr flag: `Constant`/`Challenge`
-//!     leaves are scalar-pure; an `Add`/`Mul` is scalar-pure iff every child
-//!     is. `VirtualSetup` and every other `Source` kind (`Read`,
-//!     `LookupValue`) are NEVER scalar-pure, regardless of shape.
-//!  2. The spine addends are walked with an `(id, chain)` stack, `chain`
-//!     being the accumulated scalar-pure factors seen so far (a
-//!     [`ProductRecipe`] in progress):
-//!       - `id` scalar-pure -> its value (chain ++ id) is a [`C_init`]
-//!         contribution (`c_init` field).
-//!       - `Add(children)` -> push every child with the SAME chain
-//!         (occurrences are NEVER deduped — `A + A` walks `A` twice).
-//!       - `Mul(_)` -> FLATTEN the whole Mul-nest first (scalar-pure
-//!         factors at any depth are absorbed into the chain; non-scalar
-//!         factors become sorted value atoms). If exactly one non-scalar
-//!         atom remains AND it is an `Add`, DISTRIBUTE (push its children
-//!         with the enriched chain, linearizing `c·(x+y) = c·x + c·y`).
-//!         Otherwise, emit one fragment occurrence keyed by the sorted
-//!         atom multiset (no distribution inside multi-atom products, even
-//!         if one atom happens to be an `Add`).
-//!       - bare non-scalar `Source` -> emit a singleton-atom fragment
-//!         occurrence.
-//!  3. Occurrences are merged by their sorted `atoms` (the fragment's value
-//!     key): each occurrence appends its chain as one term of the
-//!     fragment's [`MergedRecipe`] (sum of products; never collapsed —
-//!     `A + A` yields ONE fragment with TWO empty-factor terms, not a
-//!     single doubled term).
-//!  4. [`MergedRecipe::is_trivial`] holds iff the recipe is exactly the
-//!     scalar `1` (one term, no factors).
-//!
-//! [`C_init`]: FragmentTable::c_init
+//! Scalar-only factors form recipes. Non-scalar multiplicative factors form a
+//! sorted fragment key, and equal keys merge their recipe occurrences. A lone
+//! additive non-scalar factor is distributed before grouping.
 
 use std::collections::BTreeMap;
 
@@ -51,7 +15,7 @@ use gkr_eval_ir::{DagLayer, Expr, ExprId, SourceKind};
 /// leaves, or Add/Mul closures thereof — see module docs). Empty = the
 /// multiplicative identity `1`.
 #[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
-pub struct ProductRecipe {
+pub(crate) struct ProductRecipe {
     pub factors: Vec<ExprId>,
 }
 
@@ -60,7 +24,7 @@ pub struct ProductRecipe {
 /// identical unit ("1") terms stay two terms, not one term "2" (see
 /// `repeated_operands_keep_multiplicity` below).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct MergedRecipe {
+pub(crate) struct MergedRecipe {
     pub terms: Vec<ProductRecipe>,
 }
 
@@ -69,7 +33,7 @@ pub struct MergedRecipe {
 /// opaque multi-atom product) paired with the summed coefficient recipe it
 /// is read under, across every additive occurrence found in the spine.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct FragmentSpec {
+pub(crate) struct FragmentSpec {
     pub atoms: Vec<ExprId>,
     pub recipe: MergedRecipe,
 }
@@ -77,7 +41,7 @@ pub struct FragmentSpec {
 /// The full decomposition of a backward spine:
 /// `acc = c_init + Σ_i fragments[i].recipe · value(fragments[i].atoms)`.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct FragmentTable {
+pub(crate) struct FragmentTable {
     pub fragments: Vec<FragmentSpec>,
     pub c_init: MergedRecipe,
 }
@@ -87,7 +51,7 @@ pub struct FragmentTable {
 /// Decompose `spine` (the addend roots of a backward alpha-spine, or any
 /// list of expr roots over `layer`) into a [`FragmentTable`] per the
 /// normative walk documented above.
-pub fn decompose_spine(layer: &DagLayer, spine: &[ExprId]) -> FragmentTable {
+pub(crate) fn decompose_spine(layer: &DagLayer, spine: &[ExprId]) -> FragmentTable {
     let exprs = &layer.exprs;
     let sources = &layer.sources;
 
@@ -97,7 +61,7 @@ pub fn decompose_spine(layer: &DagLayer, spine: &[ExprId]) -> FragmentTable {
     for (i, expr) in exprs.iter().enumerate() {
         scalar_pure[i] = match expr {
             Expr::Source(s) => matches!(
-                sources[s.0 as usize].kind,
+                sources[s.0 as usize],
                 SourceKind::Constant { .. }
                     | SourceKind::Challenge { .. }
                     | SourceKind::InitsAndTeardownsTopBits { .. }

@@ -1,57 +1,18 @@
-//! Placement-free source binding for a segmented lean program (segmented-lean-VM
-//! design §4, §5; coefficient-ISA design §9.4, §10.2).
-//!
-//! The lean VM has no cell file, no residency and no paging, so a source binding
-//! here is a small object: there is no
-//! per-operand coordinate to emit, because the wire already carries the source
-//! SLOT ([`lean`](super::lean)'s `source_a`/`source_b`), and the executor turns a
-//! slot into an address through a per-source record. This module produces exactly
-//! that:
-//!
-//!   * [`LeanSourceBinding::windows`] — the window partition of the layer's read
-//!     backings, numbered by ascending backing; and
-//!   * [`LeanSourceBinding::source_slots`] — one `(window, column)` per source, in
-//!     SOURCE SLOT order, which is the CPU-side origin of the GPU descriptor's
-//!     per-source record.
-//!
-//! # What it inherited from the retired cell-era binder
-//!
-//! The retired `bind_coeff_sources` took a placed program and emitted a
-//! per-operand coordinate. Its CHECKS carry over — the window span, the backing
-//! origin, the source alias, and the procedural kind — and they are what this
-//! module states against a committed TERM ORDER instead of a placement. Its
-//! `first_access` marker does NOT carry over: there is no publish-on-first-access
-//! state in a VM with no residency, so [`bind_lean_sources`] asks the shared core
-//! for no marker at all.
-//!
-//! # What is deliberately NOT here
-//!
-//! No per-operand coordinate, no `first_access`, no `materialize` flag, no
-//! residency mode, no stride and no device pointer. Strides and publish backings
-//! are the GPU descriptor's (design §13 keeps the artifact free of physical
-//! pointers), and the ROUND-dependent depth rules (`target_depth == round`,
-//! catch-up ∈ `{0, 1, fold_depth}`) belong to GPU round lowering, which is the
-//! only place a round exists.
+//! Source-window binding for segmented backward programs.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use gkr_eval_ir::{FieldKind, ReadPlace};
-use serde::{Deserialize, Serialize};
 
 use super::model::{CoeffLayer, CoeffTerm, SourceId, TermId};
-use super::source_layout::{WindowFamily, window_family};
-use crate::source_bind::{BindFailure, LogicalSourceUse, bind_source_sequence_with_limits};
+use super::source_layout::{window_family, WindowFamily};
+use crate::backward::common::limits::{MAX_SOURCE_WINDOWS, SOURCE_WINDOW_COLUMNS};
+use crate::source_bind::{bind_source_sequence, BindFailure, LogicalSourceUse};
 
-/// Procedural source kinds the format admits — the four [`VirtualSetupKind`]
-/// values, which `stats::window_family` tags `0..4`.
-///
-/// The GPU descriptor mirrors this number (`BWD_COEFF_PROCEDURAL_KINDS`) and
-/// reserves `0xff` for "not procedural", so a kind at or above this is a window
-/// the resolver cannot serve. `procedural_kinds_are_dense_and_bounded` pins the
-/// tagging against the enum.
+/// Number of procedural source kinds supported by the descriptor.
 ///
 /// [`VirtualSetupKind`]: gkr_eval_ir::VirtualSetupKind
-pub const LEAN_PROCEDURAL_KINDS: u8 = 4;
+pub(crate) const LEAN_PROCEDURAL_KINDS: u8 = 4;
 
 // ── Output ───────────────────────────────────────────────────────────────────
 
@@ -59,7 +20,7 @@ pub const LEAN_PROCEDURAL_KINDS: u8 = 4;
 ///
 /// The source is artifactized as a `u32` slot: [`SourceId`] carries no serde
 /// derives and this struct nests inside the serialized coordinate.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LeanBoundColumn {
     /// The backing's OWN column, not the window-relative offset.
     pub column: usize,
@@ -72,7 +33,7 @@ pub struct LeanBoundColumn {
 /// addressable.
 ///
 /// [`SOURCE_WINDOW_COLUMNS`]: super::limits::SOURCE_WINDOW_COLUMNS
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LeanBoundWindow {
     pub family: WindowFamily,
     pub first_column: usize,
@@ -88,16 +49,14 @@ impl LeanBoundWindow {
     pub fn backing_field(&self) -> FieldKind {
         match self.family {
             WindowFamily::LayerOutput { ext, .. } | WindowFamily::CacheOutput { ext, .. } => {
-                if ext { FieldKind::Ext } else { FieldKind::Base }
+                if ext {
+                    FieldKind::Ext
+                } else {
+                    FieldKind::Base
+                }
             }
             _ => FieldKind::Base,
         }
-    }
-
-    /// Whether the resolver evaluates this window's columns in closed form instead
-    /// of reading DRAM (§9.6's procedural source kind).
-    pub fn is_procedural(&self) -> bool {
-        self.procedural_kind().is_some()
     }
 
     /// The procedural kind tag, or `None` for a real matrix.
@@ -109,42 +68,15 @@ impl LeanBoundWindow {
     }
 }
 
-/// One source's bound coordinate: the window it lives in and its offset inside
-/// that window's span.
-///
-/// One per source, in `CoeffLayer::sources` slot order — the wire names a SLOT, so
-/// the executor indexes this array directly. `column` is `u16` because that is the
-/// width the GPU descriptor's per-source record packs it at; the value itself is
-/// always below [`SOURCE_WINDOW_COLUMNS`](super::limits::SOURCE_WINDOW_COLUMNS).
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct LeanSourceSlot {
-    pub window: u8,
-    /// Offset from the window's `first_column`.
-    pub column: u16,
-}
-
 /// A committed lean program's complete source binding.
 ///
 /// Carries no fold depth: the depth a program is bound for is a property of the
 /// typed layer program, and duplicating it here would create a second place for
 /// it to be wrong.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LeanSourceBinding {
     pub windows: Vec<LeanBoundWindow>,
-    pub source_slots: Vec<LeanSourceSlot>,
-}
-
-impl LeanSourceBinding {
-    /// The source a coordinate names, or `None` for an unassigned column.
-    pub fn resolve(&self, window: u8, column: u16) -> Option<SourceId> {
-        let entry = self.windows.get(window as usize)?;
-        let absolute = entry.first_column.checked_add(usize::from(column))?;
-        entry
-            .columns
-            .binary_search_by_key(&absolute, |c| c.column)
-            .ok()
-            .map(|index| SourceId(entry.columns[index].source))
-    }
+    pub source_count: usize,
 }
 
 // ── Errors ───────────────────────────────────────────────────────────────────
@@ -175,10 +107,8 @@ pub enum LeanBindError {
     /// ([`LeanBoundWindow::family`], column address) — is not the one its own
     /// source resolves to, or two distinct sources claim one backing coordinate.
     ///
-    /// The family is not decoration: it is what selects DRAM versus procedural
-    /// resolution ([`LeanBoundWindow::is_procedural`]) and the backing's own field
-    /// width ([`LeanBoundWindow::backing_field`]), so it must be re-derived from
-    /// the source and never trusted.
+    /// The family selects procedural resolution and backing field width, so it
+    /// must be derived from the source.
     WindowBackingMismatch { window: u8 },
     /// A procedurally resolved window claims more than one column. Each procedural
     /// kind is its own single-column family, and GPU lowering's precondition set
@@ -234,12 +164,6 @@ fn operand_sources(term: &CoeffTerm) -> (SourceId, Option<SourceId>) {
 /// `cross_fields`): it
 /// decides which homogeneous matrix a cross-layer output read belongs to, exactly
 /// as it does for the census.
-///
-/// `target_depth` is the fold depth this program is bound FOR, and it is recorded
-/// rather than validated here. Every rule about it is round-dependent, so GPU
-/// round lowering validates the depth against the round it is binding. Nothing in
-/// the window layout depends on it.
-///
 /// # Panics
 ///
 /// If `order` names a term outside `layer.terms`, if a term names a source outside
@@ -249,19 +173,11 @@ fn operand_sources(term: &CoeffTerm) -> (SourceId, Option<SourceId>) {
 /// terms, [`lower_coeff_layer`](super::lower::lower_coeff_layer) interns a source
 /// only when a term consumes it, and
 /// the family-specific compiler checks coverage explicitly before it gets here.
-pub(crate) fn bind_lean_sources_with_limits(
+pub(crate) fn bind_lean_sources(
     layer: &CoeffLayer,
     cross_fields: &HashMap<ReadPlace, FieldKind>,
     order: &[TermId],
-    target_depth: u8,
-    source_window_columns: usize,
-    max_source_windows: usize,
 ) -> Result<LeanSourceBinding, LeanBindError> {
-    // Recorded, not validated — see the doc above. Named in the signature because
-    // the coordinate this binding belongs to is bound at one depth and callers read
-    // the two together.
-    let _ = target_depth;
-
     // Where each source lives. `(family, column)` IS the read place, so this is
     // the identity the window partition is taken over.
     let placed: Vec<(WindowFamily, usize)> = layer
@@ -294,8 +210,7 @@ pub(crate) fn bind_lean_sources_with_limits(
     }
 
     // The exact window count the referenced set needs, computed BEFORE the shared
-    // core is asked for a layout so the overflow can report it. Windows are the
-    // scarce resource (§9.4's `source_window:6`), and a binder that only learned
+    // core is asked for a layout so the overflow can report it. A binder that only learned
     // "more than 64" could not say how far over the layer is.
     let mut per_family: BTreeMap<WindowFamily, BTreeSet<usize>> = BTreeMap::new();
     for &source in &sequence {
@@ -308,7 +223,7 @@ pub(crate) fn bind_lean_sources_with_limits(
             let mut windows = 0;
             let mut first = None;
             for &column in columns {
-                if first.is_none_or(|base| column >= base + source_window_columns) {
+                if first.is_none_or(|base| column >= base + SOURCE_WINDOW_COLUMNS) {
                     windows += 1;
                     first = Some(column);
                 }
@@ -316,7 +231,7 @@ pub(crate) fn bind_lean_sources_with_limits(
             windows
         })
         .sum();
-    if needed > max_source_windows {
+    if needed > MAX_SOURCE_WINDOWS {
         return Err(LeanBindError::WindowOverflow { needed });
     }
 
@@ -335,31 +250,17 @@ pub(crate) fn bind_lean_sources_with_limits(
             LogicalSourceUse {
                 slot: families[&family],
                 column,
-                // A lean source's fold state is a property of the WINDOW's backing
-                // and target depth, never of a use, so there is no per-column fold
-                // descriptor to agree on here.
-                fold_desc: None,
             }
         })
         .collect();
 
-    // No `first_access` marker: a VM with no residency publishes nothing on first
-    // access, so there is no bit to assign and nowhere to record one.
-    let bound =
-        bind_source_sequence_with_limits(&uses, false, source_window_columns, max_source_windows)
-            .map_err(|failure| match failure {
-            BindFailure::WindowOverflow => {
-                unreachable!("the exact window count was checked against the cap above")
-            }
-            BindFailure::ConflictingFoldDesc { .. } => {
-                unreachable!("a lean use carries no fold descriptor")
-            }
-        })?;
+    let bound = bind_source_sequence(&uses).map_err(|failure| match failure {
+        BindFailure::WindowOverflow => {
+            unreachable!("the exact window count was checked against the cap above")
+        }
+    })?;
 
     let family_at: Vec<WindowFamily> = families.keys().copied().collect();
-    // `(family, column) -> source` over the RESOLVED set. Two distinct sources
-    // mapping to one backing coordinate is the alias defect `audit_windows`
-    // reports; the map keeps the first and the audit finds the collision.
     let mut source_at: BTreeMap<(WindowFamily, usize), SourceId> = BTreeMap::new();
     for &source in &sequence {
         source_at.entry(at(source)).or_insert(source);
@@ -385,49 +286,15 @@ pub(crate) fn bind_lean_sources_with_limits(
         })
         .collect();
 
-    audit_windows_with_columns(&windows, layer, cross_fields, source_window_columns)?;
-
-    // One slot per source, dense: the wire names a slot, so the executor indexes
-    // this array and a hole would be unaddressable.
-    let mut slots: Vec<Option<LeanSourceSlot>> = vec![None; layer.sources.len()];
-    for (index, window) in windows.iter().enumerate() {
-        for column in &window.columns {
-            slots[column.source as usize] = Some(LeanSourceSlot {
-                window: index as u8,
-                column: (column.column - window.first_column) as u16,
-            });
-        }
-    }
-    let source_slots = slots
-        .into_iter()
-        .enumerate()
-        .map(|(slot, bound)| {
-            bound.unwrap_or_else(|| {
-                panic!(
-                    "source {slot} is resolved by no ordered term: the committed order must \
-                     cover the layer"
-                )
-            })
-        })
-        .collect();
+    validate_windows(&windows, layer, cross_fields, SOURCE_WINDOW_COLUMNS)?;
 
     Ok(LeanSourceBinding {
         windows,
-        source_slots,
+        source_count: layer.sources.len(),
     })
 }
 
-/// The span, canonical-partition, origin, alias and procedural-kind checks, against
-/// the layer the binding claims to bind.
-///
-/// The placement-free half of the retired cell-era binding certificate. It runs
-/// on every binding the constructor above produces —
-/// the checks are `O(sources)` and they are the only thing that gives
-/// [`LeanBoundWindow::family`] its meaning, since the GPU descriptor picks DRAM
-/// versus procedural resolution off it. Three of the four defects are unreachable
-/// through the constructor by construction; they are checked anyway, because "the
-/// constructor cannot produce it" is a claim about today's constructor.
-fn audit_windows_with_columns(
+fn validate_windows(
     windows: &[LeanBoundWindow],
     layer: &CoeffLayer,
     cross_fields: &HashMap<ReadPlace, FieldKind>,
@@ -512,21 +379,18 @@ fn audit_windows_with_columns(
             }
         }
 
-        // Unmergeable within one backing — the rule that makes the partition
-        // CANONICAL rather than merely valid (mirrors the cell-era certificate's
-        // final window check). Windows are numbered by ascending
+        // Unmergeable within one backing. Windows are numbered by ascending
         // `(backing, column)`, so two windows of one backing are adjacent, and a
         // second one based inside the first's 128-column span could have been the
         // first. A layout that admitted it would not be minimal, and window indices
         // are the scarce resource the six-bit field rations.
-        if let Some((family, base)) = preceding
-            && family == window.family
-            && window.first_column < base + source_window_columns
-        {
-            return Err(LeanBindError::ColumnOverflow {
-                window: at,
-                column: window.first_column,
-            });
+        if let Some((family, base)) = preceding {
+            if family == window.family && window.first_column < base + source_window_columns {
+                return Err(LeanBindError::ColumnOverflow {
+                    window: at,
+                    column: window.first_column,
+                });
+            }
         }
         preceding = Some((window.family, window.first_column));
     }

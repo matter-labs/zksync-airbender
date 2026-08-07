@@ -99,7 +99,7 @@ default-members = [
     "verifier_generator",
     "worker",
     "witness_eval_generator",
-    # The only pure-CPU gpu crates; the CUDA ones are omitted so the default build needs no CUDA.
+    # GPU-adjacent pure-CPU crates; CUDA crates are omitted from the default build.
     "gpu/gkr_model",
     "gpu/gkr_compiler",
     "gkr_eval_ir",

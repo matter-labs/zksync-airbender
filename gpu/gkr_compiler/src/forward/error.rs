@@ -1,7 +1,7 @@
 //! Centralized error types for the forward-eval VM. `From` conversions let the
 //! compiler bubble encode/bind failures into `CompileError` cleanly.
 
-use gkr_eval_ir::RootId;
+use gkr_eval_ir::ChallengeRef;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum EncodeError {
@@ -14,11 +14,6 @@ pub enum EncodeError {
         slot: u8,
         col: u16,
     },
-    UnboundLogicalFold {
-        slot: u8,
-        col: u16,
-        desc: u16,
-    },
     LdcIdxOutOfRange(u16),
     DescOutOfRange(u16),
     ArityOutOfRange(usize),
@@ -28,64 +23,31 @@ pub enum EncodeError {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum DecodeError {
-    BadOperandType(u16),
-    BadMovDir(u16),
-    NonZeroReserved,
-    NonCanonicalField,
-    ZeroArity,
-    Truncated,
-    SpecialIdx(u16),
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum BindError {
     SlotOverflow,
     ColOverflow(usize),
     SourceWindowOverflow,
     UnknownLogicalSource { slot: u8, col: u16 },
-    ConflictingSourceBinding { slot: u8, col: u16 },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum CompileError {
-    NonScratchMaxQuadratic(RootId),
-    OutputUnresolved(RootId),
     UncoveredLookupLeaf(u32), // ExprId.0
-    DegenerateRoot(RootId),   // standalone empty Add/Mul root (bare 0/1 output)
-    DegenerateConstProduct,   // product of only −1 factors (constant ±1, never real)
-    /// v2 acc-domain (§1.2 iff rule): `promote` set on an instruction that does
-    /// not require an ext acc, or while the tracked acc domain is already ext.
-    PromoteNotRequired,
-    /// v2 acc-domain (§1.3): an ext-acc-requiring op (Add{Ext}, Mul{Ext},
-    /// Fma{B,E}/{E,E}) executes on a base-domain acc without `promote` set.
-    ExtAccWithoutPromote,
-    /// v2 acc-domain (§1.4): `Mov DstFromAcc` with field=Base while the tracked
-    /// acc domain is ext — no implicit truncation.
-    AccTruncation,
+    UnsupportedChallenge(ChallengeRef),
     FieldMismatch(String),
-    /// v2 (spec §2/§12): a `Global` operand/dst whose instruction field bit
-    /// disagrees with its slot's storage field (one slot = one homogeneous
-    /// matrix; the field bit must AGREE, it selects nothing).
+    /// A global operand's field disagrees with its storage slot.
     FieldStorageMismatch {
         slot: u8,
         col: u16,
     },
     ExtCellMisaligned(u16),
-    /// v2 (spec §3): a `Smem` operand/dst whose field bit disagrees with the PLACED
-    /// width of the value occupying that cell/bucket at that instruction. `cell` is
-    /// the WIRE index (bucket index for an Ext field bit, bf-lane index for Base).
-    SmemRegionMismatch {
-        cell: u16,
-    },
+    /// The required live width exceeds the shared-memory budget.
     BudgetBelowFloor {
         floor: usize,
         budget: usize,
     },
-    /// `validate_circuit_schedule` (or `load_committed_schedule` I/O/parse) failed;
-    /// the wrapped message is the validator's/serde's own diagnostic.
+    /// Structural schedule validation failed.
     InvalidSchedule(String),
-    FrozenDemandFailure,
     Bind(BindError),
     Encode(EncodeError),
 }
@@ -98,14 +60,4 @@ impl From<EncodeError> for CompileError {
     fn from(e: EncodeError) -> Self {
         CompileError::Encode(e)
     }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum InterpError {
-    UnknownSlot(u8),
-    UnknownSpecial(u16),
-    UnknownDerivedE4(u16),
-    UnknownConst(u16),
-    MalformedInstr(String),
-    Peek(crate::forward::peek::PeekError),
 }

@@ -1,50 +1,9 @@
 //! DAG-IR generator: lowers a compiled `GKRCircuitArtifact` into a `DagCircuit`.
 //!
-//! # Driver
-//! For each `GKRLayerDescription`, the per-layer driver first materializes
-//! `layer.cached_relations` into `Cache`-sink `Output` roots, then iterates
-//! `layer.gates` THEN `layer.gates_with_external_connections`. The gate order is
-//! protocol significant — it matches the retired `assign_batch_powers` order in
-//! the codegen IR — so claim-bearing roots are emitted in the same sequence the
-//! sumcheck batching expects.
-//!
-//! # Caches (materialization-only roots)
-//! Each `(addr, NoFieldGKRCacheRelation)` lowers via [`lower_cache`] to a
-//! `Cache{layer,offset}`-sink `Output` root using the same per-variant builder a
-//! gate would use (single-column lookup → `Base`; vectorized lookup / vectorized
-//! setup / memory tuple → `Ext`). Cache roots are NOT claim-bearing: they record
-//! no `RootOrigin` and are excluded from the `BatchingOrder` (they consume no
-//! batching power), matching the source artifact where caches are computed per
-//! layer but excluded from batch-power assignment. Caches are materialized FIRST
-//! so the cache-address → shared-`ExprId` alias map is populated; a subsequent
-//! gate input that reads a same-layer cache address then resolves directly to
-//! that value's shared `ExprId` (in-layer reuse = DAG sharing) instead of a
-//! `Read(CacheOutput)` compatibility read — see [`util::read_expr`]. A genuine
-//! external/compat cache read (no in-layer materializer) still falls back to
-//! `Read(CacheOutput)`.
-//!
-//! # Staged lowering
-//! The arithmetic/copy family (`LinearBaseFieldRelation`, `MaxQuadratic`,
-//! `CopyInBaseField`, `CopyInExtensionField`), the full lookup family (the two
-//! single-output materializations plus every two-output num/den pair gate — see
-//! [`lookup`]), the grand-product / memory-tuple / mask / inits-teardowns
-//! family (see [`memory`]), and the enforce/constraint family
-//! (`EnforceSingleMaxQuadraticConstraint`, `EnforceConstraintsMaxQuadratic` — see
-//! [`constraint`]) are implemented. The `NoFieldGKRRelation` match is now
-//! exhaustive. The only remaining `Err(...)` path is the confirmed-dead
-//! `U32SpaceGeneric` address form inside [`memory::lower_memory_tuple`], which is
-//! NEVER panicked on — it returns `Err` (Task 14 audits its absence from golden
-//! artifacts).
-//!
-//! # The cross-layer field subtlety
-//! An `Output` root's sink field is taken from the RELATION, not from field
-//! inference: Linear / MaxQuadratic / CopyInBaseField → `Base`,
-//! CopyInExtensionField → `Ext`. Deriving it via `source_field`/`expr_field`
-//! would hit the `LayerOutput`/`CacheOutput` cross-layer gap (those reads carry
-//! no field tag), so we never do that here. Cross-layer read fields are resolved
-//! by the Task-12 validator, which walks layers in declaration order and reads a
-//! later layer's `Read{LayerOutput|CacheOutput}` field from the producing layer's
-//! sink `FieldKind` — so the generator records no per-read field map of its own.
+//! Cache relations are materialized first so same-layer consumers share their
+//! expressions. Claim-bearing gates retain artifact order because that order
+//! determines batching powers. Output fields come from the relation; validation
+//! resolves field kinds for cross-layer reads from the producing sink.
 
 mod arithmetic;
 mod constraint;
@@ -52,7 +11,9 @@ mod lookup;
 mod memory;
 mod util;
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
+
+use crate::validate::validate;
 
 use field::PrimeField;
 
@@ -63,39 +24,13 @@ use cs::gkr_compiler::{
 };
 
 use super::{
-    simplify::SIMPLIFY_MODULUS, simplify_circuit, ArenaBuilder, BatchingOrder, ClaimInfo,
-    DagCircuit, DagGlobals, DagLayer, ExprId, FieldKind, FillSource, RangeWidth, ReadPlace,
-    ResolutionStrategy, Root, RootExecution, RootGroup, RootId, RootOrigin, RootSlot, SinkInfo,
-    SinkKind, SourceKind, VirtualSetupKind,
+    simplify::{simplify_circuit, SIMPLIFY_MODULUS},
+    ArenaBuilder, BatchingOrder, DagCircuit, DagLayer, ExprId, FieldKind, RangeWidth, ReadPlace,
+    ResolutionStrategy, Root, RootGroup, RootId, RootOrigin, SinkInfo, SinkKind, SourceKind,
+    VirtualSetupKind,
 };
 
-/// Which arena/pass pipeline `lower_layer` should use.
-///
-/// `Simplified` (the production path via [`lower_dag`]) builds an unflattened
-/// arena (`ArenaBuilder::with_flatten(false)`) so `simplify_circuit`'s
-/// fan-out-aware rewrites see the real DAG shape; `lower_dag` runs the
-/// simplify pass once all layers are lowered. `Legacy` (via
-/// [`lower_dag_legacy`], test-support only) reconstructs the pre-simplification
-/// pipeline: build-time flattening on, no simplify pass — used for
-/// differential gates that need the un-simplified reference shape (spec
-/// G-diff-b).
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum LowerMode {
-    Simplified,
-    Legacy,
-}
-
-/// Map a `GKRAddress` to the DAG-IR `SourceKind` for an input read.
-///
-/// Base-storage families become `Read{place}`; inner/cache layers become the
-/// cross-layer `Read{LayerOutput|CacheOutput}` reads; `VirtualSetup` maps the
-/// `VirtualSetupPoly` variant to its `VirtualSetupKind`.
-///
-/// This is the field-agnostic fallback. A `GKRAddress::Cached` materialized as a
-/// cache value in the current layer resolves to that value's shared `ExprId`
-/// BEFORE this fallback runs (see [`util::read_expr`]); the `CacheOutput` arm
-/// here is the genuine external/compat read for caches with no in-layer
-/// materializer.
+/// Map an input address to a source. Same-layer cache aliases are resolved first.
 pub(crate) fn map_address(addr: GKRAddress) -> SourceKind {
     match addr {
         GKRAddress::BaseLayerWitness(column) => SourceKind::Read {
@@ -132,17 +67,14 @@ fn map_virtual_setup(poly: VirtualSetupPoly) -> VirtualSetupKind {
     }
 }
 
-/// Map an OUTPUT `GKRAddress` to the DAG-IR `SinkKind`.
-///
-/// Arithmetic/copy gates write only to inner layers; cache/scratch arms exist
-/// for the families Tasks 8–11 add.
+/// Map an output `GKRAddress` to its sink.
 fn output_sink_kind(addr: GKRAddress) -> Result<SinkKind, String> {
     match addr {
         GKRAddress::InnerLayer { layer, offset } => Ok(SinkKind::Inner { layer, offset }),
         GKRAddress::Cached { layer, offset } => Ok(SinkKind::Cache { layer, offset }),
         GKRAddress::ScratchSpace(slot) => Ok(SinkKind::Scratch { slot }),
         other => Err(format!(
-            "dag_ir: output address {:?} cannot be a sink",
+            "gkr_eval_ir: output address {:?} cannot be a sink",
             other
         )),
     }
@@ -163,9 +95,7 @@ impl LayerOut {
         }
     }
 
-    /// Emit one claim-bearing `Output` root for `expr` writing to `output` with
-    /// `field`. Sink inlined into `materialize`; origin into
-    /// `claim` (`RootOrigin{group, relation_index, slot: Output(0)}`).
+    /// Emit one claim-bearing, materialized root.
     fn emit_output(
         &mut self,
         expr: ExprId,
@@ -180,41 +110,29 @@ impl LayerOut {
                 kind: output_sink_kind(output)?,
                 field,
             }),
-            claim: Some(ClaimInfo {
-                origin: RootOrigin {
-                    group,
-                    relation_index,
-                    slot: RootSlot::Output(0),
-                },
+            claim: Some(RootOrigin {
+                group,
+                relation_index,
             }),
         });
         Ok(())
     }
 
-    /// Emit one materialization-only cache `Output` root for `expr`, writing to
-    /// the `Cache{layer,offset}` sink at `addr` with `field`, and return its
-    /// `RootId`.
-    ///
-    /// Cache roots are NOT claim-bearing: they record NO `RootOrigin` and are NOT
-    /// added to the batching order. They materialize the value so it is committed;
-    /// same-layer consumers reuse the value by sharing its `ExprId` (DAG sharing),
-    /// not by referencing this root (see the module + design docs).
     fn emit_cache(
         &mut self,
         expr: ExprId,
         addr: GKRAddress,
         field: FieldKind,
-    ) -> Result<RootId, String> {
+    ) -> Result<(), String> {
         let (layer, offset) = match addr {
             GKRAddress::Cached { layer, offset } => (layer, offset),
             other => {
                 return Err(format!(
-                    "dag_ir: cache relation keyed by non-cache address {:?}",
+                    "gkr_eval_ir: cache relation keyed by non-cache address {:?}",
                     other
                 ));
             }
         };
-        let root_id = RootId(self.roots.len() as u32);
         self.roots.push(Root {
             expr,
             materialize: Some(SinkInfo {
@@ -223,13 +141,10 @@ impl LayerOut {
             }),
             claim: None,
         });
-        Ok(root_id)
+        Ok(())
     }
 
-    /// Emit TWO adjacent `Output` roots — num (slot `Output(0)`) then den (slot
-    /// `Output(1)`) — for a two-output lookup gate, writing to `output[0]` and
-    /// `output[1]` with `field`. The roots are adjacent in emission order so they
-    /// receive consecutive batching powers.
+    /// Emit adjacent numerator and denominator roots in batching order.
     fn emit_output_pair(
         &mut self,
         num: ExprId,
@@ -239,19 +154,16 @@ impl LayerOut {
         group: RootGroup,
         relation_index: usize,
     ) -> Result<(), String> {
-        for (slot, (expr, addr)) in [(num, output[0]), (den, output[1])].into_iter().enumerate() {
+        for (expr, addr) in [(num, output[0]), (den, output[1])] {
             self.roots.push(Root {
                 expr,
                 materialize: Some(SinkInfo {
                     kind: output_sink_kind(addr)?,
-                    field: field.clone(),
+                    field,
                 }),
-                claim: Some(ClaimInfo {
-                    origin: RootOrigin {
-                        group: group.clone(),
-                        relation_index,
-                        slot: RootSlot::Output(slot),
-                    },
+                claim: Some(RootOrigin {
+                    group,
+                    relation_index,
                 }),
             });
         }
@@ -265,7 +177,7 @@ impl LayerOut {
         if let Some(existing) = self.resolutions.get(&leaf) {
             if existing != &strat {
                 return Err(format!(
-                    "dag_ir: resolution CSE collision at {:?}: {:?} vs {:?}",
+                    "gkr_eval_ir: resolution CSE collision at {:?}: {:?} vs {:?}",
                     leaf, existing, strat
                 ));
             }
@@ -307,22 +219,13 @@ impl LayerOut {
         if num_columns == 0 {
             return Ok(());
         }
-        // PeekDecoder is only ever emitted for a decoder-set fold that was
-        // reached via a masked consumer (LookupWithDensAndSetupExpressions /
-        // LookupWithDensAndCachedSetup). The mask is enforced upstream by
-        // check_decoder_masks, so an unmasked decoder fold cannot occur on the
-        // real pipeline — any decoder consumer that bypasses the mask guard
-        // is a generator bug caught before this point.
         let strat = if set_index == DECODER_LOOKUP_FORMAL_SET_INDEX {
-            let predicate = decoder_predicate
-                .ok_or_else(|| {
-                    "dag_ir: decoder lookup fold but circuit has no machine_state predicate"
-                        .to_string()
-                })?
-                .clone();
+            let predicate = decoder_predicate.ok_or_else(|| {
+                "gkr_eval_ir: decoder lookup fold but circuit has no machine_state predicate"
+                    .to_string()
+            })?;
             ResolutionStrategy::PeekDecoder {
-                predicate,
-                fill: FillSource::DecoderLookupFill,
+                predicate: *predicate,
             }
         } else {
             ResolutionStrategy::PeekAggregate { set_index }
@@ -358,9 +261,19 @@ fn lower_relation<F: PrimeField>(
 ) -> Result<(), String> {
     use NoFieldGKRRelation as R;
     match rel {
-        R::LinearBaseFieldRelation { input, output } => {
-            let (expr, field) = arithmetic::lower_linear(arena, input);
-            out.emit_output(expr, *output, field, group, relation_index)
+        R::LinearBaseFieldRelation { .. }
+        | R::EnforceConstraintsMaxQuadratic { .. }
+        | R::InitialGrandProductWithoutCaches { .. }
+        | R::UnbalancedGrandProductWithCache { .. }
+        | R::MaterializeGrandProductTermExpression { .. }
+        | R::MaterializeSingleLookupInput { .. }
+        | R::LookupWithDensAndSetupExpressions { .. }
+        | R::LookupPairFromBaseInputs { .. }
+        | R::LookupPairFromCachedVectorInputs { .. }
+        | R::LookupPairFromVectorInputs { .. }
+        | R::LookupFromVectorInputWithSetup { .. }
+        | R::LookupUnbalancedPairWithVectorInputs { .. } => {
+            Err("gkr_eval_ir: unsupported relation in retained GPU circuits".to_string())
         }
         R::MaxQuadratic { input, output, .. } => {
             let (expr, field) = arithmetic::lower_max_quadratic(arena, input);
@@ -371,24 +284,12 @@ fn lower_relation<F: PrimeField>(
             out.emit_output(expr, *output, field, group, relation_index)
         }
         R::CopyInExtensionField { input, output } => {
-            // The input is read in the extension field. The cross-layer read's
-            // `Ext` field is resolved by the Task-12 validator from the producing
-            // layer's sink, so nothing is recorded here.
+            // The producing sink determines the field of a cross-layer read.
             let (expr, field) = arithmetic::lower_copy(arena, *input, FieldKind::Ext);
             out.emit_output(expr, *output, field, group, relation_index)
         }
 
         // ── Single-output lookup materializations ───────────────────────────
-        R::MaterializeSingleLookupInput {
-            input,
-            output,
-            range_check_width,
-        } => {
-            // single_column_lookup is a base-valued LookupValue.
-            let expr = lookup::single_column_lookup(arena, input, *range_check_width);
-            out.record_single(expr, input.lookup_set_index, *range_check_width)?;
-            out.emit_output(expr, *output, FieldKind::Base, group, relation_index)
-        }
         R::MaterializedVectorLookupInput { input, output } => {
             // folded_lookup is extension-valued (alpha powers are challenges).
             let expr = lookup::folded_lookup(arena, input);
@@ -402,44 +303,13 @@ fn lower_relation<F: PrimeField>(
         }
 
         // ── Two-output PAIR family: 1/(b+γ) + 1/(d+γ) ───────────────────────
-        R::LookupPairFromBaseInputs {
-            input,
-            output,
-            range_check_width,
-        } => {
-            let b = lookup::single_column_lookup(arena, &input[0], *range_check_width);
-            let d = lookup::single_column_lookup(arena, &input[1], *range_check_width);
-            out.record_single(b, input[0].lookup_set_index, *range_check_width)?;
-            out.record_single(d, input[1].lookup_set_index, *range_check_width)?;
-            let (num, den) = lookup::pair(arena, b, d);
-            out.emit_output_pair(num, den, *output, FieldKind::Ext, group, relation_index)
-        }
         R::LookupPairFromMaterializedBaseInputs { input, output } => {
             let b = lookup::read(arena, input[0]);
             let d = lookup::read(arena, input[1]);
             let (num, den) = lookup::pair(arena, b, d);
             out.emit_output_pair(num, den, *output, FieldKind::Ext, group, relation_index)
         }
-        R::LookupPairFromVectorInputs { input, output } => {
-            let b = lookup::folded_lookup(arena, &input[0]);
-            let d = lookup::folded_lookup(arena, &input[1]);
-            out.record_vector(
-                b,
-                input[0].lookup_set_index,
-                input[0].columns.len(),
-                decoder_predicate,
-            )?;
-            out.record_vector(
-                d,
-                input[1].lookup_set_index,
-                input[1].columns.len(),
-                decoder_predicate,
-            )?;
-            let (num, den) = lookup::pair(arena, b, d);
-            out.emit_output_pair(num, den, *output, FieldKind::Ext, group, relation_index)
-        }
-        R::LookupPairFromMaterializedVectorInputs { input, output }
-        | R::LookupPairFromCachedVectorInputs { input, output } => {
+        R::LookupPairFromMaterializedVectorInputs { input, output } => {
             let b = lookup::read(arena, input[0]);
             let d = lookup::read(arena, input[1]);
             let (num, den) = lookup::pair(arena, b, d);
@@ -464,27 +334,6 @@ fn lower_relation<F: PrimeField>(
             let (num, den) = lookup::minus_multiplicity(arena, b, c, d, minus_one);
             out.emit_output_pair(num, den, *output, FieldKind::Ext, group, relation_index)
         }
-        R::LookupFromVectorInputWithSetup {
-            input,
-            setup,
-            output,
-        } => {
-            // b = folded_lookup(input); c = multiplicity Read(setup.0);
-            // d = alpha-folded setup columns.
-            let b = lookup::folded_lookup(arena, input);
-            out.record_vector(
-                b,
-                input.lookup_set_index,
-                input.columns.len(),
-                decoder_predicate,
-            )?;
-            let c = lookup::read(arena, setup.0);
-            let d = lookup::folded_setup(arena, &setup.1);
-            out.record_setup(d, setup.1.len())?;
-            let (num, den) = lookup::minus_multiplicity(arena, b, c, d, minus_one);
-            out.emit_output_pair(num, den, *output, FieldKind::Ext, group, relation_index)
-        }
-
         // ── Two-output DENS-AND-SETUP: a/(b+γ) − c/(d+γ) ────────────────────
         R::LookupWithCachedDensAndSetup {
             input,
@@ -497,27 +346,6 @@ fn lower_relation<F: PrimeField>(
             let b = lookup::read(arena, input[1]);
             let c = lookup::read(arena, setup[0]);
             let d = lookup::read(arena, setup[1]);
-            let (num, den) = lookup::dens_and_setup(arena, a, b, c, d, minus_one);
-            out.emit_output_pair(num, den, *output, FieldKind::Ext, group, relation_index)
-        }
-        R::LookupWithDensAndSetupExpressions {
-            input,
-            setup,
-            output,
-        } => {
-            // a = Read(input.0) (mask); b = folded_lookup(input.1);
-            // c = Read(setup.0) (multiplicity); d = alpha-folded setup columns.
-            let a = lookup::read(arena, input.0);
-            let b = lookup::folded_lookup(arena, &input.1);
-            out.record_vector(
-                b,
-                input.1.lookup_set_index,
-                input.1.columns.len(),
-                decoder_predicate,
-            )?;
-            let c = lookup::read(arena, setup.0);
-            let d = lookup::folded_setup(arena, &setup.1);
-            out.record_setup(d, setup.1.len())?;
             let (num, den) = lookup::dens_and_setup(arena, a, b, c, d, minus_one);
             out.emit_output_pair(num, den, *output, FieldKind::Ext, group, relation_index)
         }
@@ -539,26 +367,6 @@ fn lower_relation<F: PrimeField>(
             let (num, den) = lookup::unbalanced(arena, a, b, d);
             out.emit_output_pair(num, den, *output, FieldKind::Ext, group, relation_index)
         }
-        R::LookupUnbalancedPairWithVectorInputs {
-            input,
-            remainder,
-            output,
-        } => {
-            // a = Read(input[0]); b = Read(input[1]) (prior pair);
-            // d = folded_lookup(remainder).
-            let a = lookup::read(arena, input[0]);
-            let b = lookup::read(arena, input[1]);
-            let d = lookup::folded_lookup(arena, remainder);
-            out.record_vector(
-                d,
-                remainder.lookup_set_index,
-                remainder.columns.len(),
-                decoder_predicate,
-            )?;
-            let (num, den) = lookup::unbalanced(arena, a, b, d);
-            out.emit_output_pair(num, den, *output, FieldKind::Ext, group, relation_index)
-        }
-
         // ── Two-output RATIONAL-PAIR aggregate: a/b + c/d ───────────────────
         R::AggregateLookupRationalPair { input, output } => {
             // input[0] = [a_num, b_den]; input[1] = [c_num, d_den].
@@ -576,28 +384,9 @@ fn lower_relation<F: PrimeField>(
             let expr = memory::product_of_reads(arena, input[0], input[1]);
             out.emit_output(expr, *output, FieldKind::Ext, group, relation_index)
         }
-        R::InitialGrandProductWithoutCaches { input, output } => {
-            // lower_memory_tuple(a) · lower_memory_tuple(b).
-            let expr = memory::product_of_tuples(arena, &input[0], &input[1], minus_one)?;
-            out.emit_output(expr, *output, FieldKind::Ext, group, relation_index)
-        }
-        R::UnbalancedGrandProductWithCache {
-            scalar,
-            input,
-            output,
-        } => {
-            // read(scalar) · read(input).
-            let expr = memory::product_of_reads(arena, *scalar, *input);
-            out.emit_output(expr, *output, FieldKind::Ext, group, relation_index)
-        }
         R::TrivialProduct { input, output } => {
             // read(a) · read(b).
             let expr = memory::product_of_reads(arena, input[0], input[1]);
-            out.emit_output(expr, *output, FieldKind::Ext, group, relation_index)
-        }
-        R::MaterializeGrandProductTermExpression { input, output } => {
-            // lower_memory_tuple(input).
-            let expr = memory::lower_memory_tuple(arena, input, minus_one)?;
             out.emit_output(expr, *output, FieldKind::Ext, group, relation_index)
         }
         R::MaskIntoIdentityProduct {
@@ -630,13 +419,9 @@ fn lower_relation<F: PrimeField>(
             out.emit_output(expr, *output, FieldKind::Ext, group, relation_index)
         }
 
-        // ── Enforce / constraint family (Task 10) ────────────────────────────
+        // ── Enforce / constraint family ─────────────────────────────────────
         R::EnforceSingleMaxQuadraticConstraint { input, .. } => {
             constraint::lower_single_constraint(arena, out, input, group, relation_index);
-            Ok(())
-        }
-        R::EnforceConstraintsMaxQuadratic { input } => {
-            constraint::lower_batched_constraint(arena, out, input, group, relation_index);
             Ok(())
         }
     }
@@ -655,10 +440,6 @@ fn lower_relation<F: PrimeField>(
 ///   setup reads).
 /// - `MemoryTuple` → [`memory::lower_memory_tuple`], `Ext` (challenge-folded).
 ///
-/// Returns the materialized root's `RootId` AND the cache value's `ExprId`. The
-/// root is materialization-only: it carries no `RootOrigin` and is excluded from
-/// the batching order. The returned `ExprId` is the value's shared expr, which
-/// same-layer consumers alias to (in-layer reuse = DAG sharing).
 fn lower_cache<F: PrimeField>(
     arena: &mut ArenaBuilder,
     out: &mut LayerOut,
@@ -666,7 +447,7 @@ fn lower_cache<F: PrimeField>(
     rel: &NoFieldGKRCacheRelation<F>,
     minus_one: u32,
     decoder_predicate: Option<&ReadPlace>,
-) -> Result<(RootId, ExprId), String> {
+) -> Result<ExprId, String> {
     use NoFieldGKRCacheRelation as C;
     let (expr, field) = match rel {
         C::SingleColumnLookup {
@@ -697,8 +478,8 @@ fn lower_cache<F: PrimeField>(
             FieldKind::Ext,
         ),
     };
-    let root_id = out.emit_cache(expr, addr, field)?;
-    Ok((root_id, expr))
+    out.emit_cache(expr, addr, field)?;
+    Ok(expr)
 }
 
 /// Every decoder-lookup consumer must use the global `machine_state.execute` as
@@ -717,22 +498,17 @@ fn check_decoder_masks<'a, F: PrimeField + 'a>(
         match expected_mask {
             Some(exp) if exp == mask => Ok(()),
             Some(exp) => Err(format!(
-                "dag_ir: decoder mask {:?} != machine_state.execute {:?}",
+                "gkr_eval_ir: decoder mask {:?} != machine_state.execute {:?}",
                 mask, exp
             )),
             None => Err(format!(
-                "dag_ir: decoder consumer with mask {:?} but no machine_state",
+                "gkr_eval_ir: decoder consumer with mask {:?} but no machine_state",
                 mask
             )),
         }
     };
     for rel in relations {
         match rel {
-            R::LookupWithDensAndSetupExpressions { input, .. } => {
-                if input.1.lookup_set_index == DECODER_LOOKUP_FORMAL_SET_INDEX {
-                    assert_mask(input.0)?;
-                }
-            }
             R::LookupWithCachedDensAndSetup { input, .. } => {
                 if let Some(C::VectorizedLookup(vl)) = cached_relations.get(&input[1]) {
                     if vl.lookup_set_index == DECODER_LOOKUP_FORMAL_SET_INDEX {
@@ -756,18 +532,9 @@ fn check_decoder_masks<'a, F: PrimeField + 'a>(
 fn lower_layer<F: PrimeField + PartialEq>(
     artifact: &GKRCircuitArtifact<F>,
     layer_index: usize,
-    mode: LowerMode,
 ) -> Result<DagLayer, String> {
     let layer = &artifact.layers[layer_index];
-    let mut arena = match mode {
-        // Unflattened: `simplify_circuit` (run once by `lower_dag` after all
-        // layers are lowered) is a fan-out-aware rewrite over the real DAG
-        // shape, so build-time flattening must be off here.
-        LowerMode::Simplified => ArenaBuilder::with_flatten(false),
-        // Pre-simplification reference shape: build-time flattening on, matching
-        // the pipeline `lower_dag_legacy` reconstructs.
-        LowerMode::Legacy => ArenaBuilder::with_flatten(true),
-    };
+    let mut arena = ArenaBuilder::new();
     let mut out = LayerOut::new();
 
     // Reduced base-field `−1`, used to encode subtractions as `a + (−1)·b` (there
@@ -778,10 +545,7 @@ fn lower_layer<F: PrimeField + PartialEq>(
     let trace_len = artifact.trace_len;
     let inits_word_bits = artifact.memory_layout.inits_and_teardowns_word_bits;
 
-    // Decoder predicate is the circuit global `machine_state.execute`. None when the
-    // circuit has no machine state (then no decoder lookup exists either). Tasks 3-4 use it.
-    // OWNED here; threaded downward as `Option<&ReadPlace>` because `ReadPlace` is
-    // `Clone` not `Copy` — passing it by value to many call sites would move it.
+    // Decoder predicate is absent when the circuit has no machine state.
     let decoder_predicate: Option<ReadPlace> = artifact
         .memory_layout
         .machine_state
@@ -810,7 +574,7 @@ fn lower_layer<F: PrimeField + PartialEq>(
     // from batching by the `claim.is_some()` filter below.
     let mut cache_aliases: HashMap<GKRAddress, ExprId> = HashMap::new();
     for (addr, rel) in layer.cached_relations.iter() {
-        let (_root_id, expr) = lower_cache(
+        let expr = lower_cache(
             &mut arena,
             &mut out,
             *addr,
@@ -818,7 +582,7 @@ fn lower_layer<F: PrimeField + PartialEq>(
             minus_one,
             decoder_predicate.as_ref(),
         )?;
-        cache_aliases.insert(*addr, expr); // alias → shared ExprId (was: root_id)
+        cache_aliases.insert(*addr, expr);
     }
     // From here on, a same-layer cache read IS the materialized value's ExprId.
     arena.set_cache_aliases(cache_aliases);
@@ -833,7 +597,7 @@ fn lower_layer<F: PrimeField + PartialEq>(
                 arena,
                 out,
                 &gate.enforced_relation,
-                group.clone(),
+                group,
                 relation_index,
                 minus_one,
                 trace_len,
@@ -865,139 +629,78 @@ fn lower_layer<F: PrimeField + PartialEq>(
             .collect(),
     };
 
-    // Derived-fence invariant: every arena-fenced node (multi-column fold-leaf
-    // `Add`s marked non-flattenable — see `ArenaBuilder::fenced_add`) must be a
-    // `resolutions` key, since fencing exists ONLY to keep those leaves
-    // single-operand and findable by the resolution-driven forward evaluator.
-    // A fenced node with no resolution entry means the derived-fence rule
-    // (fence ⟺ resolution key) was violated upstream — surface it as an error,
-    // not a silent miscompile.
-    for f in arena.fenced() {
-        if !out.resolutions.contains_key(f) {
-            return Err(format!(
-                "dag_ir: fenced node {f:?} has no resolution entry — derived-fence rule violated"
-            ));
-        }
-    }
-
     Ok(DagLayer {
         sources: arena.sources().to_vec(),
         exprs: arena.exprs().to_vec(),
         roots: out.roots,
         batching,
         resolutions: out.resolutions,
+        forward_skip_roots: BTreeSet::new(),
     })
 }
 
-fn root_execution<F: PrimeField>(
+fn forward_skip_roots<F: PrimeField>(
     artifact: &GKRCircuitArtifact<F>,
     layer_index: usize,
     layer: &DagLayer,
-) -> Result<BTreeMap<RootId, RootExecution>, String> {
+) -> Result<BTreeSet<RootId>, String> {
     let artifact_layer = &artifact.layers[layer_index];
-    let mut execution = BTreeMap::new();
+    let mut skip_roots = BTreeSet::new();
     for (index, root) in layer.roots.iter().enumerate() {
         let Some(claim) = &root.claim else { continue };
-        let gates = match claim.origin.group {
+        let gates = match claim.group {
             RootGroup::Gates => &artifact_layer.gates,
             RootGroup::GatesExternal => &artifact_layer.gates_with_external_connections,
         };
-        let relation = &gates[claim.origin.relation_index].enforced_relation;
-        let semantics = match relation {
+        let relation = &gates[claim.relation_index].enforced_relation;
+        let skip = match relation {
             NoFieldGKRRelation::MaxQuadratic { output, .. }
                 if artifact.scratch_space_mapping.contains_key(output) =>
             {
-                Some(RootExecution::Preinitialized)
+                true
             }
             NoFieldGKRRelation::CopyInBaseField { input, .. }
             | NoFieldGKRRelation::CopyInExtensionField { input, .. } => match map_address(*input) {
-                SourceKind::Read { place } => Some(RootExecution::Alias { source: place }),
+                SourceKind::Read { .. } => true,
                 other => {
                     return Err(format!(
-                        "dag_ir: copy root {index} has no readable source: {other:?}"
+                        "gkr_eval_ir: copy root {index} has no readable source: {other:?}"
                     ));
                 }
             },
-            _ => None,
+            _ => false,
         };
-        if let Some(semantics) = semantics {
-            execution.insert(RootId(index as u32), semantics);
+        if skip {
+            skip_roots.insert(RootId(index as u32));
         }
     }
-    Ok(execution)
+    Ok(skip_roots)
 }
 
 /// Lower a compiled `GKRCircuitArtifact` into a `DagCircuit`.
 ///
-/// Returns `Err(...)` (never panics) for any relation family not yet lowered, so
-/// staged tests fail cleanly while implemented families succeed.
+/// Returns an error for unsupported relation families.
 ///
-/// Production path: each layer is lowered over an unflattened arena
-/// (`LowerMode::Simplified`), then the whole circuit is run once through
-/// `simplify_circuit` (a fixpoint, always value-preserving pass — see
-/// `simplify.rs`). See [`lower_dag_legacy`] for the pre-simplification
-/// reference pipeline kept for differential tests.
+/// Each layer is lowered over an unflattened arena, then the circuit is
+/// simplified to a fixpoint.
 pub fn lower_dag<F: PrimeField + PartialEq>(
     artifact: &GKRCircuitArtifact<F>,
 ) -> Result<DagCircuit, String> {
     if F::CHARACTERISTICS_U32 as u64 != SIMPLIFY_MODULUS {
         return Err(format!(
-            "dag_ir: simplify pass is hardcoded to modulus {SIMPLIFY_MODULUS} (BabyBear) but \
-             field characteristic is {}; dag_ir simplify would silently const-fold mod the wrong prime",
+            "gkr_eval_ir: simplification requires modulus {SIMPLIFY_MODULUS} (BabyBear), \
+             but the field characteristic is {}",
             F::CHARACTERISTICS_U32
         ));
     }
-    let layers = (0..artifact.layers.len())
-        .map(|i| lower_layer(artifact, i, LowerMode::Simplified))
+    let mut layers = (0..artifact.layers.len())
+        .map(|i| lower_layer(artifact, i))
         .collect::<Result<Vec<_>, _>>()?;
-    let root_execution = layers
-        .iter()
-        .enumerate()
-        .map(|(index, layer)| root_execution(artifact, index, layer))
-        .collect::<Result<Vec<_>, _>>()?;
-
-    let dag = DagCircuit {
-        layers,
-        globals: DagGlobals {
-            trace_len: artifact.trace_len,
-            scratch: BTreeMap::new(),
-            root_execution,
-        },
-    };
-    Ok(simplify_circuit(dag))
-}
-
-/// Lower a compiled `GKRCircuitArtifact` into a `DagCircuit` via the
-/// pre-simplification pipeline: build-time arena flattening ON, and NO
-/// `simplify_circuit` pass.
-///
-/// Test-support only: reconstructs the pre-simplification pipeline for
-/// differential gates (spec G-diff-b). Production code must call [`lower_dag`].
-pub fn lower_dag_legacy<F: PrimeField + PartialEq>(
-    artifact: &GKRCircuitArtifact<F>,
-) -> Result<DagCircuit, String> {
-    if F::CHARACTERISTICS_U32 as u64 != SIMPLIFY_MODULUS {
-        return Err(format!(
-            "dag_ir: simplify pass is hardcoded to modulus {SIMPLIFY_MODULUS} (BabyBear) but \
-             field characteristic is {}; dag_ir simplify would silently const-fold mod the wrong prime",
-            F::CHARACTERISTICS_U32
-        ));
+    for (index, layer) in layers.iter_mut().enumerate() {
+        layer.forward_skip_roots = forward_skip_roots(artifact, index, layer)?;
     }
-    let layers = (0..artifact.layers.len())
-        .map(|i| lower_layer(artifact, i, LowerMode::Legacy))
-        .collect::<Result<Vec<_>, _>>()?;
-    let root_execution = layers
-        .iter()
-        .enumerate()
-        .map(|(index, layer)| root_execution(artifact, index, layer))
-        .collect::<Result<Vec<_>, _>>()?;
 
-    Ok(DagCircuit {
-        layers,
-        globals: DagGlobals {
-            trace_len: artifact.trace_len,
-            scratch: BTreeMap::new(),
-            root_execution,
-        },
-    })
+    let dag = simplify_circuit(DagCircuit { layers });
+    validate(&dag)?;
+    Ok(dag)
 }

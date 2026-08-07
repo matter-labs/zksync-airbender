@@ -1,19 +1,9 @@
-//! fwd-VM v2 descriptor ABI (Task 7): the Rust mirror of `fwd_vm_desc`
-//! (`native/prover/gkr/forward/fwd_vm.cuh`) — ONE struct, passed by value as a
-//! `__grid_constant__` kernel parameter (param-space limit 32,764 B).
+//! Rust half of the forward VM descriptor ABI.
 //!
-//! Keep field-for-field with the CUDA side. Field ORDER deviates from the
-//! spec-§2 sketch on purpose: `e4`/`E4` is 16-aligned, so fields are grouped
-//! by descending alignment (E4 -> pointers -> u32 -> u16) to keep the layout
-//! free of INTERNAL padding and the exact-size assert stable (27,452 field
-//! bytes + 4 B tail padding to the 16-B alignment = 27,456; `repr(C)` and C++
-//! round identically).
+//! Keep field-for-field with the CUDA side. `E4` is 16-byte aligned, and the exact
+//! shared size is guarded below.
 //!
-//! Caps come from the corpus census (`gpu_gkr_compiler/tests/fwd_vm_desc_census.rs`,
-//! maxima across all 11 committed with-caches fixtures: lanes 6574, consts 27,
-//! arg-derived E4 values 7, const-derived E4 values 1, descs 296) + margin. Overflow policy:
-//! program overflow falls back to `program_ldg`; every other cap is a hard
-//! lowering error (no fallback).
+//! Programs and banks are inline; values exceeding a capacity are rejected.
 
 use gpu_core::primitives::field::{BF, E4};
 
@@ -22,13 +12,7 @@ pub(crate) const PROGRAM_CAP: usize = 12288; // u16 lanes, 24 KB inline
 pub(crate) const CONST_CAP: usize = 64; // compiled + runtime BF constants
 pub(crate) const ARG_DERIVED_E4_CAP: usize = 12; // schedule-time derived E4 values
 pub(crate) const DESC_CAP: usize = 370; // packed special descriptors
-pub(crate) const CONST_DERIVED_E4_CAP: usize = 8; // Task-8 __constant__ E4 bank (not in this struct);
-                                                  // also hosts the decoder fill (see `fill_bank_idx`)
-
-/// `fill_bank_idx` sentinel: the layer has no `SD_DECODER` desc (mirrors
-/// `FWD_VM_FILL_BANK_NONE`). Any accidental decoder read through it fails the
-/// VALIDATE kernel's bank-bounds check loudly.
-pub(crate) const FILL_BANK_NONE: u32 = u32::MAX;
+pub(crate) const CONST_DERIVED_E4_CAP: usize = 8; // Includes the optional decoder fill.
 pub(crate) const SOURCE_WINDOW_COUNT: usize = 64;
 pub(crate) const DST_SLOT_COUNT: usize = 16;
 pub(crate) const MAPPING_ARENA_COUNT: usize = 3; // generic_family / range_check_16 / timestamp
@@ -38,7 +22,7 @@ pub(crate) const SD_SINGLE_COLUMN: u32 = 0; // PeekSingleColumn: lift(mapping[ro
 pub(crate) const SD_AGGREGATE: u32 = 1; // PeekAggregate: table[mapping[row]]
 pub(crate) const SD_SETUP: u32 = 2; // PeekSetup: row < table_len ? table[row] : 0
 pub(crate) const SD_DECODER: u32 = 3; // PeekDecoder: mask[row] != 0 ? table[mapping[row]]
-                                      //                            : const_derived_e4[fill_bank_idx]
+                                      //                            : const_derived_e4[last]
 pub(crate) const SD_VIRTUAL: u32 = 4; // VirtualSetup: lift(n(vkind, gid)), no memory reads
 pub(crate) const SD_INITS_TOP_BITS: u32 = 5; // runtime init/teardown address prefix
 
@@ -49,9 +33,9 @@ pub(crate) const ARENA_TIMESTAMP: u32 = 2;
 
 // --- SD_VIRTUAL `vkind` codes -------------------------------------------------
 // vkind == the native `gkr_base_source_kind` value, stored VERBATIM on the wire
-// (`native/prover/gkr/support/descriptors.cuh:12-18`: the four
+// (`native/gkr/support/descriptors.cuh`: the four
 // GKR_BASE_SOURCE_VIRTUAL_* variants are 2..=5, in `KIND_ORDER`
-// (`gpu_gkr_compiler::forward::source::KIND_ORDER`) order).
+// (`gpu_gkr_compiler::KIND_ORDER`) order).
 pub(crate) const GKR_BASE_SOURCE_VIRTUAL_RANGE_CHECK_16_BITS: u32 = 2;
 pub(crate) const GKR_BASE_SOURCE_VIRTUAL_RANGE_CHECK_TIMESTAMP: u32 = 3;
 pub(crate) const GKR_BASE_SOURCE_VIRTUAL_INITS_AND_TEARDOWNS_LOW: u32 = 4;
@@ -69,7 +53,7 @@ pub(crate) const VKIND_INITS_AND_TEARDOWNS_HIGH: u32 =
 /// pin the native enum values (descriptors.cuh:12-18).
 const _: () = {
     use crate::upstream::VirtualSetupKind;
-    use gpu_gkr_compiler::forward::source::KIND_ORDER;
+    use gpu_gkr_compiler::KIND_ORDER;
     // KIND_ORDER index + 2 == vkind code (a 5th upstream kind fails here
     // loudly: this assert trips on the length mismatch, and separately
     // `pack_desc`'s `(2..=5)` range check would need widening to `(2..=6)` —
@@ -101,12 +85,16 @@ const _: () = {
 // VERBATIM (../support/descriptors.cuh:12-18; pinned by the const asserts
 // above).
 pub(crate) const DESC_KIND_SHIFT: u32 = 0;
+#[cfg(test)]
 pub(crate) const DESC_KIND_MASK: u32 = 0x7;
 pub(crate) const DESC_ARENA_SHIFT: u32 = 3;
+#[cfg(test)]
 pub(crate) const DESC_ARENA_MASK: u32 = 0x3;
 pub(crate) const DESC_SET_INDEX_SHIFT: u32 = 5;
+#[cfg(test)]
 pub(crate) const DESC_SET_INDEX_MASK: u32 = 0xffff;
 pub(crate) const DESC_VKIND_SHIFT: u32 = 21;
+#[cfg(test)]
 pub(crate) const DESC_VKIND_MASK: u32 = 0x7;
 
 /// Pack one special descriptor into its wire u32. Fields the kind does not use
@@ -126,7 +114,8 @@ pub(crate) fn pack_desc(kind: u32, arena: u32, set_index: u16, vkind: u32) -> u3
 
 /// Decode counterpart of [`pack_desc`] — `(kind, arena, set_index, vkind)`.
 /// The kernel does the same shifts inline; this exists for tests/disassembly.
-pub(crate) fn unpack_desc(desc: u32) -> (u32, u32, u16, u32) {
+#[cfg(test)]
+fn unpack_desc(desc: u32) -> (u32, u32, u16, u32) {
     (
         (desc >> DESC_KIND_SHIFT) & DESC_KIND_MASK,
         (desc >> DESC_ARENA_SHIFT) & DESC_ARENA_MASK,
@@ -135,61 +124,32 @@ pub(crate) fn unpack_desc(desc: u32) -> (u32, u32, u16, u32) {
     )
 }
 
-/// The fwd-VM v2 kernel parameter — mirror of CUDA `fwd_vm_desc`
-/// (`native/prover/gkr/forward/fwd_vm.cuh`), field-for-field. Offsets in the
+/// Forward VM kernel parameter; mirror of CUDA `fwd_vm_desc`
+/// (`native/gkr/forward/fwd_vm.cuh`), field-for-field. Offsets in the
 /// comments are byte offsets shared by both sides (zero internal padding).
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub(crate) struct FwdVmDesc {
-    // schedule-time-known derived E4 values, inline (16-aligned E4 first: zero padding)
-    pub arg_derived_e4: [E4; ARG_DERIVED_E4_CAP], // 0, 192 B
-    // program oversize fallback; null when the program is inline (expected always)
-    pub program_ldg: *const u16, // 192
-    // Read-source and materialization-destination geometry are independent.
-    pub source_base: [*mut u8; SOURCE_WINDOW_COUNT], // 200
-    pub dst_base: [*mut u8; DST_SLOT_COUNT],         // 712
-    // special-descriptor header (all schedule-time-known): 3 column-major u32
-    // mapping arenas (column stride = `count`), the ONE shared generic-lookup
-    // E4 table (contents runtime-filled), and the per-circuit
-    // execute-predicate mask column (or null). The decoder FILL value (also a
-    // per-circuit singleton, runtime challenge-dependent) is NOT pointed to
-    // from here — it lives in the `ab_gkr_fwd_vm_const_derived_e4` bank at
-    // `fill_bank_idx` (same class as a ConstDerivedE4).
-    pub mapping_arena: [*const u32; MAPPING_ARENA_COUNT], // 840
-    pub table: *const E4,                                 // 864
-    pub mask: *const BF,                                  // 872
-    // program header
-    pub n_instr: u32,       // 880
-    pub program_lanes: u32, // 884
-    // column geometry, continued
-    pub source_stride_bytes: [u32; SOURCE_WINDOW_COUNT], // 888
-    pub dst_stride_bytes: [u32; DST_SLOT_COUNT],         // 1144
-    // banks, inline (schedule-time known)
-    pub n_consts: u32,           // 1208
-    pub consts: [BF; CONST_CAP], // 1212, Montgomery
-    pub n_arg_derived_e4: u32,   // 1468
-    // special descriptors
-    pub n_descs: u32, // 1472
-    // used length of the Task-8 __constant__ bank (INCLUDING the appended
-    // decoder fill slot, if any); read only under VALIDATE
-    pub n_const_derived_e4: u32, // 1476
-    // const-derived-e4 bank slot of the decoder fill value, or
-    // `FILL_BANK_NONE` when the layer has no SD_DECODER desc; read only on
-    // decoder-miss rows
-    pub fill_bank_idx: u32, // 1480
-    pub table_len: u32,     // 1484
-    // per-desc packed u32 (bit split above)
-    pub descs: [u32; DESC_CAP], // 1488, 1,480 B
-    // geometry
-    pub count: u32, // 2968: rows (= trace_len = mapping-arena column stride)
-    // program, inline 16-bit wire lanes (gpu_gkr_compiler::forward::encode)
-    pub program: [u16; PROGRAM_CAP], // 2972, 24,576 B; field bytes end at 27,548
+    pub arg_derived_e4: [E4; ARG_DERIVED_E4_CAP],
+    pub source_base: [*mut u8; SOURCE_WINDOW_COUNT],
+    pub dst_base: [*mut u8; DST_SLOT_COUNT],
+    pub mapping_arena: [*const u32; MAPPING_ARENA_COUNT],
+    pub table: *const E4,
+    pub mask: *const BF,
+    pub n_instr: u32,
+    pub source_stride_bytes: [u32; SOURCE_WINDOW_COUNT],
+    pub dst_stride_bytes: [u32; DST_SLOT_COUNT],
+    pub consts: [BF; CONST_CAP],
+    pub table_len: u32,
+    pub descs: [u32; DESC_CAP],
+    pub count: u32,
+    pub program: [u16; PROGRAM_CAP],
 }
 
 /// ABI size guards, paired with the CUDA `static_assert`s in `fwd_vm.cuh`.
 const _: () = {
     assert!(
-        core::mem::size_of::<FwdVmDesc>() == 27552,
+        core::mem::size_of::<FwdVmDesc>() == 27520,
         "fwd_vm_desc/FwdVmDesc ABI size drift"
     );
     assert!(
@@ -214,28 +174,21 @@ mod tests {
     fn desc_layout_offsets_match_the_documented_abi() {
         use core::mem::offset_of;
         assert_eq!(offset_of!(FwdVmDesc, arg_derived_e4), 0);
-        assert_eq!(offset_of!(FwdVmDesc, program_ldg), 192);
-        assert_eq!(offset_of!(FwdVmDesc, source_base), 200);
-        assert_eq!(offset_of!(FwdVmDesc, dst_base), 712);
-        assert_eq!(offset_of!(FwdVmDesc, mapping_arena), 840);
-        assert_eq!(offset_of!(FwdVmDesc, table), 864);
-        assert_eq!(offset_of!(FwdVmDesc, mask), 872);
-        assert_eq!(offset_of!(FwdVmDesc, n_instr), 880);
-        assert_eq!(offset_of!(FwdVmDesc, program_lanes), 884);
-        assert_eq!(offset_of!(FwdVmDesc, source_stride_bytes), 888);
-        assert_eq!(offset_of!(FwdVmDesc, dst_stride_bytes), 1144);
-        assert_eq!(offset_of!(FwdVmDesc, n_consts), 1208);
-        assert_eq!(offset_of!(FwdVmDesc, consts), 1212);
-        assert_eq!(offset_of!(FwdVmDesc, n_arg_derived_e4), 1468);
-        assert_eq!(offset_of!(FwdVmDesc, n_descs), 1472);
-        assert_eq!(offset_of!(FwdVmDesc, n_const_derived_e4), 1476);
-        assert_eq!(offset_of!(FwdVmDesc, fill_bank_idx), 1480);
-        assert_eq!(offset_of!(FwdVmDesc, table_len), 1484);
-        assert_eq!(offset_of!(FwdVmDesc, descs), 1488);
-        assert_eq!(offset_of!(FwdVmDesc, count), 2968);
-        assert_eq!(offset_of!(FwdVmDesc, program), 2972);
-        assert_eq!(offset_of!(FwdVmDesc, program) + 2 * PROGRAM_CAP, 27548);
-        assert_eq!(core::mem::size_of::<FwdVmDesc>(), 27552);
+        assert_eq!(offset_of!(FwdVmDesc, source_base), 192);
+        assert_eq!(offset_of!(FwdVmDesc, dst_base), 704);
+        assert_eq!(offset_of!(FwdVmDesc, mapping_arena), 832);
+        assert_eq!(offset_of!(FwdVmDesc, table), 856);
+        assert_eq!(offset_of!(FwdVmDesc, mask), 864);
+        assert_eq!(offset_of!(FwdVmDesc, n_instr), 872);
+        assert_eq!(offset_of!(FwdVmDesc, source_stride_bytes), 876);
+        assert_eq!(offset_of!(FwdVmDesc, dst_stride_bytes), 1132);
+        assert_eq!(offset_of!(FwdVmDesc, consts), 1196);
+        assert_eq!(offset_of!(FwdVmDesc, table_len), 1452);
+        assert_eq!(offset_of!(FwdVmDesc, descs), 1456);
+        assert_eq!(offset_of!(FwdVmDesc, count), 2936);
+        assert_eq!(offset_of!(FwdVmDesc, program), 2940);
+        assert_eq!(offset_of!(FwdVmDesc, program) + 2 * PROGRAM_CAP, 27516);
+        assert_eq!(core::mem::size_of::<FwdVmDesc>(), 27520);
     }
 
     #[test]
@@ -300,7 +253,7 @@ mod tests {
         // the packed-desc `vkind` field now stores the native
         // `gkr_base_source_kind` value verbatim (2..5), i.e. index + 2.
         use gkr_eval_ir::VirtualSetupKind::*;
-        use gpu_gkr_compiler::forward::source::virtual_setup_kind_code;
+        use gpu_gkr_compiler::virtual_setup_kind_code;
         assert_eq!(
             virtual_setup_kind_code(&RangeCheck16Bits) + 2,
             VKIND_RANGE_CHECK_16_BITS

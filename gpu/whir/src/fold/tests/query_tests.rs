@@ -10,7 +10,6 @@ use worker::Worker;
 use crate::test_utils::make_test_context;
 use gpu_core::allocator::tracker::AllocationPlacement;
 
-// helpers.rs was promoted to the permanent `crate::fold::debug` module (Task 10).
 use super::make_lde_trace_holder;
 use crate::fold::debug::{
     copy_back, copy_small_to_device, query_base_trace_holder_for_folded_index,
@@ -243,5 +242,3 @@ fn whir_build_eq_values_preserves_large_eval_buffer() {
     assert_eq!(actual_mid, expected_mid);
     assert_eq!(actual_tail, expected_tail);
 }
-// GpuScheduledBaseFieldQuery + its `decode` impl were relocated to
-// `crate::fold::debug` (Task 10), next to the query helper that returns it.

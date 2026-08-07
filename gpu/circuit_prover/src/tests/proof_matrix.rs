@@ -852,9 +852,8 @@ fn run_blake2_g_function_profile_test() {
 /// `whir_proof` incl. PoW/queries). Then drives the no-filter grand-product
 /// accumulator closure using the GPU proof's accumulator and asserts it closes to
 /// `E4::ONE` — mirroring the CPU orchestration (orchestration/unified.rs:259-278).
-/// Unlike GATE 2 (stagewise), this exercises the full backward+WHIR path, so it is
-/// the first test that commits the base-layer (layer 0) cached-relation extras into
-/// the WHIR transcript.
+/// This exercises the full backward and WHIR path, including base-layer cached
+/// relation extras in the transcript.
 ///
 /// Concurrent shape (schedule -> schedule -> finish -> finish), NOT serial: both
 /// unified (2^24) jobs are scheduled before either finishes, so the second proof's

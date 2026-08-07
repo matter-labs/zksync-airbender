@@ -1,5 +1,5 @@
 use std::ffi::c_void;
-use std::ptr::{self, null, null_mut};
+use std::ptr::{null, null_mut};
 
 use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
 use era_cudart::result::{CudaResult, CudaResultWrap};
@@ -27,24 +27,18 @@ cuda_struct_and_stub! {
 }
 
 fn get_lookup_alpha_powers_device_ptr() -> *mut E4 {
-    use std::sync::OnceLock;
-
-    static PTR: OnceLock<usize> = OnceLock::new();
-    let ptr = *PTR.get_or_init(|| {
-        let mut p: *mut c_void = ptr::null_mut();
-        // SAFETY: ab_gkr_lookup_alpha_powers is a valid __constant__ e4 array
-        // defined in native/prover/gkr/setup/kernels.cu.
-        unsafe {
-            cudaGetSymbolAddress(
-                &mut p,
-                &ab_gkr_lookup_alpha_powers as *const _ as *const c_void,
-            )
-        }
-        .wrap()
-        .expect("cudaGetSymbolAddress failed for ab_gkr_lookup_alpha_powers");
-        p as usize
-    });
-    ptr as *mut E4
+    let mut ptr: *mut c_void = null_mut();
+    // SAFETY: ab_gkr_lookup_alpha_powers is a valid __constant__ e4 array
+    // defined in native/gkr/setup/kernels.cu.
+    unsafe {
+        cudaGetSymbolAddress(
+            &mut ptr,
+            &ab_gkr_lookup_alpha_powers as *const _ as *const c_void,
+        )
+    }
+    .wrap()
+    .expect("cudaGetSymbolAddress failed for ab_gkr_lookup_alpha_powers");
+    ptr.cast()
 }
 
 pub(super) fn schedule_lookup_alpha_powers_prelude(
@@ -313,27 +307,14 @@ pub(super) fn gkr_forward_setup_generic_lookup_launch_config(
     CudaLaunchConfig::basic(grid_dim, block_dim, context.get_exec_stream())
 }
 
-pub(super) fn launch_forward_setup_generic_lookup<E: crate::SetupKernels>(
-    batch: &GpuGKRForwardSetupGenericLookupBatch<E>,
+pub(super) fn launch_forward_setup_generic_lookup(
+    batch: &GpuGKRForwardSetupGenericLookupBatch<E4>,
     row_count: usize,
     context: &ProverContext,
 ) -> CudaResult<()> {
     assert!(row_count <= u32::MAX as usize);
     let config = gkr_forward_setup_generic_lookup_launch_config(row_count as u32, context);
     let args = GpuGKRForwardSetupGenericLookupArguments::new(*batch, row_count as u32);
-    GpuGKRForwardSetupGenericLookupFunction(E::FORWARD_SETUP_GENERIC_LOOKUP).launch(&config, &args)
-}
-
-/// Setup-phase GPU kernels. Defined and implemented in the leaf module that
-/// owns the underlying `ab_*_e4_kernel` symbols; the combined
-/// `crate::SetupKernels` supertrait aggregates this with the
-/// forward/backward sub-traits.
-#[allow(dead_code)] // several constants are referenced only from #[cfg(test)] launchers
-pub(crate) trait SetupKernels: Copy + Sized {
-    const FORWARD_SETUP_GENERIC_LOOKUP: GpuGKRForwardSetupGenericLookupSignature<Self>;
-}
-
-impl SetupKernels for gpu_core::primitives::field::E4 {
-    const FORWARD_SETUP_GENERIC_LOOKUP: GpuGKRForwardSetupGenericLookupSignature<Self> =
-        ab_gkr_forward_setup_generic_lookup_e4_kernel;
+    GpuGKRForwardSetupGenericLookupFunction(ab_gkr_forward_setup_generic_lookup_e4_kernel)
+        .launch(&config, &args)
 }

@@ -1,5 +1,5 @@
 use era_cudart::result::CudaResult;
-use gpu_core::primitives::field::{BF, E4};
+use gpu_core::primitives::field::BF;
 use gpu_prover_context::ProverContext;
 
 use crate::gkr_address_audit::AddressClass;
@@ -22,83 +22,58 @@ pub(super) fn register_layer_copy_aliases<B, E>(
         .chain(layer.gates_with_external_connections.iter())
     {
         match &gate.enforced_relation {
-            NoFieldGKRRelation::CopyInBaseField { input, output }
-            | NoFieldGKRRelation::CopyInExtensionField { input, output } => {
+            NoFieldGKRRelation::CopyInBaseField { input, output } => {
                 assert_eq!(gate.output_layer, layer_idx + 1);
                 let out_layer = layer_idx + 1;
-                let base_source = storage.try_get_base_poly(*input).map(|p| p.clone_shared());
-                if let Some(source) = base_source {
-                    storage.insert_base_field_at_layer(out_layer, *output, source);
-                } else {
-                    let ext_source = storage.get_ext_poly(*input).clone_shared();
-                    storage.insert_extension_at_layer(out_layer, *output, ext_source);
-                }
+                let source = storage
+                    .try_get_base_poly(*input)
+                    .expect("base-field copy source must exist")
+                    .clone_shared();
+                storage.insert_base_field_at_layer(out_layer, *output, source);
+            }
+            NoFieldGKRRelation::CopyInExtensionField { input, output } => {
+                assert_eq!(gate.output_layer, layer_idx + 1);
+                let out_layer = layer_idx + 1;
+                let source = storage.get_ext_poly(*input).clone_shared();
+                storage.insert_extension_at_layer(out_layer, *output, source);
             }
             _ => {}
         }
     }
 }
 
-pub(super) fn materialize_ext_output_slot<E>(
+pub(super) fn materialize_output_slot<E>(
     storage: &mut GpuGKRStorage<BF, E>,
     storage_layer: usize,
     class: AddressClass,
     trace_len: usize,
     context: &ProverContext,
-) -> CudaResult<Option<*mut E4>>
+) -> CudaResult<()>
 where
     E: Field + FieldExtension<BF> + 'static,
 {
     let layout = storage.layout.as_ref().expect("storage layout").clone();
-    let addrs: Vec<GKRAddress> = layout
+    let outputs: Vec<(GKRAddress, FieldType)> = layout
         .layers
         .get(storage_layer)
         .into_iter()
         .flat_map(|layer| layer.index.iter())
-        .filter(|(_, (candidate, field, _))| *candidate == class && *field == FieldType::Ext)
-        .map(|(address, _)| *address)
+        .filter(|(_, (candidate, _, _))| *candidate == class)
+        .map(|(address, (_, field, _))| (*address, *field))
         .collect();
-    if addrs.is_empty() {
-        return Ok(None);
+    for (address, field) in outputs {
+        match field {
+            FieldType::Base => {
+                let view = storage.allocate_base_view(storage_layer, address, context)?;
+                debug_assert_eq!(view.len(), trace_len);
+                storage.insert_base_field_at_layer(storage_layer, address, view);
+            }
+            FieldType::Ext => {
+                let view = storage.allocate_ext_view(storage_layer, address, context)?;
+                debug_assert_eq!(view.len(), trace_len);
+                storage.insert_extension_at_layer(storage_layer, address, view);
+            }
+        }
     }
-    for address in addrs {
-        let view = storage.allocate_ext_view(storage_layer, address, context)?;
-        debug_assert_eq!(view.len(), trace_len);
-        storage.insert_extension_at_layer(storage_layer, address, view);
-    }
-    Ok(Some(
-        storage.layers[storage_layer].ext_class_backings[&class].as_ptr() as *mut E4,
-    ))
-}
-
-pub(super) fn materialize_base_output_slot<E>(
-    storage: &mut GpuGKRStorage<BF, E>,
-    storage_layer: usize,
-    class: AddressClass,
-    trace_len: usize,
-    context: &ProverContext,
-) -> CudaResult<Option<*mut BF>>
-where
-    E: Field + FieldExtension<BF> + 'static,
-{
-    let layout = storage.layout.as_ref().expect("storage layout").clone();
-    let addrs: Vec<GKRAddress> = layout
-        .layers
-        .get(storage_layer)
-        .into_iter()
-        .flat_map(|layer| layer.index.iter())
-        .filter(|(_, (candidate, field, _))| *candidate == class && *field == FieldType::Base)
-        .map(|(address, _)| *address)
-        .collect();
-    if addrs.is_empty() {
-        return Ok(None);
-    }
-    for address in addrs {
-        let view = storage.allocate_base_view(storage_layer, address, context)?;
-        debug_assert_eq!(view.len(), trace_len);
-        storage.insert_base_field_at_layer(storage_layer, address, view);
-    }
-    Ok(Some(
-        storage.layers[storage_layer].base_class_backings[&class].as_ptr() as *mut BF,
-    ))
+    Ok(())
 }

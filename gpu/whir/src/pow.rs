@@ -35,7 +35,7 @@ pub(crate) struct PowAndQueryIndexesState {
 ///    indexes on device.
 ///
 /// The prover's own PoW search kernel guarantees the POW validity invariant
-/// that `verify_pow` formerly asserted, so the host-side sanity check is
+/// required by `verify_pow`, so the host-side sanity check is
 /// intentionally elided on this path.
 pub(crate) fn schedule_pow_verify_and_query_indexes(
     device_seed: &mut DeviceSlice<u32>,

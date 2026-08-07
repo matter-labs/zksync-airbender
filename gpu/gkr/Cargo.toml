@@ -13,7 +13,6 @@ links = "gpu_gkr_native"
 
 [dependencies]
 gpu_core = { workspace = true }
-gpu_ntt = { workspace = true }
 gpu_ops = { workspace = true }
 gpu_hash = { workspace = true }
 gpu_cub = { workspace = true }
@@ -30,9 +29,6 @@ cs = { workspace = true, features = ["compiler"] }
 prover = { workspace = true, features = ["prover"] }
 field = { workspace = true }
 
-itertools = "0.14"
-log = "0.4.29"
-
 [build-dependencies]
 gpu_native_build = { workspace = true }
 
@@ -40,6 +36,4 @@ gpu_native_build = { workspace = true }
 worker = { workspace = true }
 fft = { workspace = true }
 rand = "0.9"
-env_logger = "0.11"
-serde = { workspace = true }
-serde_json = "*"
+itertools = "0.14"

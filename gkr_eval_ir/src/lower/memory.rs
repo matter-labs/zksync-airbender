@@ -1,10 +1,7 @@
 //! Memory-tuple / grand-product / mask / inits-teardowns lowering for the DAG IR.
 //!
-//! A memory tuple is NOT a source in this design: it lowers to an affine `Expr`
-//! over `Read(BaseLayerMemory)` leaves, base-field constants, and permutation
-//! challenges. The authoritative arithmetic is `evaluate_memory_query` in
-//! `prover/src/gkr/prover/forward_loop/utils.rs`, which turns a
-//! `NoFieldSpecialMemoryContributionRelation` into:
+//! A memory tuple lowers to an affine expression over base-layer memory reads,
+//! constants, and permutation challenges:
 //!
 //! ```text
 //! tuple = Challenge(PermutationAdditive)
@@ -12,27 +9,7 @@
 //!       + Σ_slot Challenge(PermutationLinearization(slot)) · limb_or_offset
 //! ```
 //!
-//! Descriptor special cases (local arithmetic rewrites, per the companion doc
-//! "Memory Tuple Gates"):
-//!
-//! - address space `Constant(c)` → `c`; `IsRam(bit)` → `bit`; `IsRegister(bit)` → `1 − bit`
-//! - address `ConstantU16(c)`/`Constant(c)` → `ch(AddressLow)·c`
-//! - address `U16Space(o)` → `ch(AddressLow)·mem[o]`
-//! - address `U32Space([lo,hi])` → `ch(AddressLow)·mem[lo] + ch(AddressHigh)·mem[hi]`
-//! - address `U32SpaceSpecialIndirect` → `ch(AddressLow)·(mem[low_base] + low_offset
-//!       + coeff·mem[dynamic]) + ch(AddressHigh)·mem[high]`
-//! - timestamp `Normal([lo,hi])` → `ch(TsLow)·(mem[lo] + timestamp_offset) + ch(TsHigh)·mem[hi]`
-//! - value `U16Limbs([lo,hi])` → `ch(ValLow)·mem[lo] + ch(ValHigh)·mem[hi]`
-//! - value `U8Limbs([b0,b1,b2,b3])` → `ch(ValLow)·(mem[b0] + 2^8·mem[b1])
-//!       + ch(ValHigh)·(mem[b2] + 2^8·mem[b3])`
-//! - `Zero` timestamp/value/`U32SpaceGeneric` address → see below.
-//!
-//! `U32SpaceGeneric` is the confirmed-dead path (the prover's `evaluate_memory_query`
-//! `todo!()`s on it); we return `Err(...)` rather than lowering it. Task 14 audits
-//! that no golden artifact contains it.
-//!
-//! Subtraction never appears here, so there is no `Sub`/`Neg` node; the only
-//! signed term is the U8 byte shift `2^8`, a plain positive base constant.
+//! `U32SpaceGeneric` is unsupported and rejected during lowering.
 
 use cs::definitions::gkr::{AddressSpaceType, RamWordRepresentation};
 use cs::definitions::{
@@ -111,7 +88,7 @@ fn slot_for_address_high() -> PermutationSlot {
 /// Lower a `NoFieldSpecialMemoryContributionRelation` into an affine `Expr`,
 /// matching `evaluate_memory_query`.
 ///
-/// Returns `Err` only for the confirmed-dead `U32SpaceGeneric` address form.
+/// Returns an error for the unsupported `U32SpaceGeneric` address form.
 ///
 /// `minus_one` is the reduced base-field `−1` (`F::CHARACTERISTICS − 1`), used to
 /// encode the `IsRegister` `1 − bit` rewrite without a `Sub`/`Neg` node.
@@ -224,11 +201,7 @@ fn address_terms(
             terms.push(challenge_scaled(arena, slot_for_address_high(), hi));
         }
         CompiledAddressStrict::U32SpaceGeneric(..) => {
-            return Err(
-                "dag_ir: U32SpaceGeneric address form is the confirmed-dead path and is not lowered \
-                 (Task 14 audits its absence)"
-                    .to_string(),
-            );
+            return Err("gkr_eval_ir: U32SpaceGeneric address form is not supported".to_string());
         }
     }
     Ok(())
@@ -307,18 +280,6 @@ pub(super) fn product_of_reads(
     let a = read_addr(arena, a);
     let b = read_addr(arena, b);
     arena.mul(vec![a, b])
-}
-
-/// `lower_memory_tuple(a) · lower_memory_tuple(b)`.
-pub(super) fn product_of_tuples(
-    arena: &mut ArenaBuilder,
-    a: &NoFieldSpecialMemoryContributionRelation,
-    b: &NoFieldSpecialMemoryContributionRelation,
-    minus_one: u32,
-) -> Result<ExprId, String> {
-    let a = lower_memory_tuple(arena, a, minus_one)?;
-    let b = lower_memory_tuple(arena, b, minus_one)?;
-    Ok(arena.mul(vec![a, b]))
 }
 
 /// Read `addr` (a same-layer cache address resolves to the materialized value's

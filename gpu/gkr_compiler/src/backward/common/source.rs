@@ -6,9 +6,3 @@ pub enum OriginLeaf {
     Read(ReadPlace),
     VirtualSetup { kind: VirtualSetupKind },
 }
-
-impl OriginLeaf {
-    pub fn is_vs(&self) -> bool {
-        matches!(self, Self::VirtualSetup { .. })
-    }
-}

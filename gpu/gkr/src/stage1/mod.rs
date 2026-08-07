@@ -42,9 +42,6 @@ use era_cudart::slice::DeviceSlice;
 
 mod multiplicities;
 
-#[cfg(test)]
-mod tests;
-
 #[doc(hidden)]
 pub struct GpuGKRLookupMappings {
     generic_family: Option<DeviceAllocation<u32>>,
@@ -109,14 +106,6 @@ impl GpuGKRLookupMappings {
     pub fn decoder_mapping(&self) -> Option<&DeviceSlice<u32>> {
         self.has_decoder
             .then(|| &self.generic_family()[self.column_range(self.num_generic_sets)])
-    }
-
-    pub(crate) fn range_check_mapping(&self, set_idx: usize) -> &DeviceSlice<u32> {
-        &self.range_check_16()[self.column_range(set_idx)]
-    }
-
-    pub(crate) fn timestamp_mapping(&self, set_idx: usize) -> &DeviceSlice<u32> {
-        &self.timestamp()[self.column_range(set_idx)]
     }
 }
 
@@ -561,17 +550,16 @@ impl GpuGKRStage1Output {
         range_multiplicities_range.end(stream)?;
         tracing_ranges.push(range_multiplicities_range);
 
-        // Memory commit is deferred: cosets and trees are materialized right before WHIR fold
-        // queries. Tree caps for memory are provided externally to prove().
-
-        let witness_commit_range = Range::new("gkr.stage1.commit.witness_trace")?;
-        witness_commit_range.start(stream)?;
-        match witness_cap_dst {
-            Some(dst) => witness_trace_holder.commit_all_into(dst, context)?,
-            None => witness_trace_holder.commit_all(context)?,
+        if witness_trace_holder.columns_count > 0 {
+            let witness_commit_range = Range::new("gkr.stage1.commit.witness_trace")?;
+            witness_commit_range.start(stream)?;
+            match witness_cap_dst {
+                Some(dst) => witness_trace_holder.commit_all_into(dst, context)?,
+                None => witness_trace_holder.commit_all(context)?,
+            }
+            witness_commit_range.end(stream)?;
+            tracing_ranges.push(witness_commit_range);
         }
-        witness_commit_range.end(stream)?;
-        tracing_ranges.push(witness_commit_range);
         stage1_range.end(stream)?;
         tracing_ranges.push(stage1_range);
 

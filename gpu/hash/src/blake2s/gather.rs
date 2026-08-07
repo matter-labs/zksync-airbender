@@ -587,10 +587,7 @@ cuda_kernel!(
 );
 
 /// Maximum source addresses the `gather_e_addresses` kernel-arg descriptor can
-/// hold. Must match `GKR_GATHER_MAX_ADDRESSES` in `native/gather.cu`. See
-/// `gkr_address_audit_helpers::GKR_GATHER_MAX_ADDRESSES` in
-/// `gpu_circuit_prover` for the rationale; the audit panics if any future circuit
-/// exceeds this.
+/// hold. Must match `GKR_GATHER_MAX_ADDRESSES` in `native/gather.cu`.
 const GKR_GATHER_MAX_ADDRESSES: usize = 1280;
 
 /// Kernel-arg descriptor for `gather_e_addresses`. Inline form: passed by
@@ -690,9 +687,7 @@ pub fn gather_e_addresses(
     assert!(num_addresses > 0);
     assert!(
         num_addresses <= GKR_GATHER_MAX_ADDRESSES,
-        "gather descriptor has {} addresses; exceeds GKR_GATHER_MAX_ADDRESSES = {}. \
-         Raise the constant here, its mirror in native/gather.cu, and \
-         gpu_circuit_prover's audit-helper copy after re-running the audit.",
+        "gather descriptor has {} addresses; exceeds GKR_GATHER_MAX_ADDRESSES = {}",
         num_addresses,
         GKR_GATHER_MAX_ADDRESSES,
     );

@@ -1,75 +1,29 @@
-//! Normalized lowering from the canonical DAG + distillation data to the
-//! coefficient IR (design §5).
+//! Lowers a distilled DAG layer to normalized coefficient terms.
 //!
-//! # Inputs
+//! At R0, materialized roots supply `acc_c0` through endpoint reads while
+//! fragments supply `acc_c2`; scalar and linear fragment residues are omitted.
 //!
-//! Both views the design's reusable seam (§5.1) names are required, which is why
-//! [`lower_coeff_layer`] takes two arguments:
-//!
-//!   * [`DistilledLayer`] supplies the rebuilt cones, the [`FragmentTable`]
-//!     (`acc = c_init + sum recipe_i * value(fragment_i)`), the per-root
-//!     `root_terms` provenance, and the field overrides; and
-//!   * the CANONICAL [`DagLayer`] supplies each backward root's claim origin and
-//!     its optional materialized output address (`roots[rid].materialize`) — which
-//!     `DistilledRootTerm` deliberately does not carry (it is `Copy`).
-//!
-//! # What each regime emits
-//!
-//! `R0` (§5.2): `X = 0` is still on the Boolean hypercube, so `acc_c0` comes
-//! entirely from the canonical roots — one `Endpoint0` read of a materialized
-//! root's OUTPUT COLUMN per claim-bearing output root, and nothing at all for a
-//! claim-only constraint root (structurally zero on the hypercube). The
-//! materialized root's cone is never re-evaluated at `Endpoint0`; that would be
-//! value-equivalent but substantially more expensive. `acc_c2` comes from the
-//! `FragmentTable`, where merging across roots is desirable. Fragment
-//! contributions to `X^0` and `X^1` are therefore DROPPED at R0: `X^0` is already
-//! covered by the root shortcut and `acc_c1` does not exist.
-//!
-//! `Ext` (§5.3): everything lowers from the `FragmentTable`. Scalar-only
-//! contributions — the spine's own `c_init` PLUS every degree-0 residue that
-//! distribution produces — merge into one `c_init` recipe used as the per-thread
-//! `acc_c0` initializer. Degree-1 contributions become `C0Linear`; degree-2
-//! contributions become NATIVE `DualProduct` (never a split c0/c2 pair).
-//!
-//! # Normalization order (§6), and why it is deterministic
-//!
-//! 1. Every scalar-pure expression is expanded into a canonical sum of products
-//!    over primitive `Constant`/`Challenge` leaves, so constants, batch powers and
-//!    challenge factors are combined, products and sums are sorted, signs cancel,
-//!    like challenge multisets merge, and zero / one are eliminated
-//!    ([`NormalizedCoefficientRecipe`]).
-//! 2. Every non-scalar atom is linearized into `Endpoint0`/`Delta` and products of
-//!    linear sums are distributed; degree above two is a typed compiler error.
-//!    Unary `Add`/`Mul` aliases and multiply-by-one collapse here, which is where
-//!    `CopyAlias`-shaped nodes are erased.
-//! 3. Bodies (the arithmetic shape without the coefficient) are keyed by the
-//!    STRUCTURAL source order [`source_order_key`] defines — not by rebuilt
-//!    `ExprId`, not by traversal order — and accumulated in a `BTreeMap`, so
-//!    identical bodies merge by summing their coefficient recipes.
-//! 4. Bodies whose coefficient cancels to zero are removed; what survives is
-//!    already in stable key order, and only then are `TermId`s assigned.
-//! 5. `SourceId`s are assigned by walking the sorted set of origins the SURVIVING
-//!    bodies reference; the coefficient bank is the sorted set of distinct
-//!    non-literal recipes. Neither depends on emission order.
-//!
-//! [`FragmentTable`]: super::fragment::FragmentTable
+//! In continuation rounds, scalar residues merge into `c_init`, linear terms
+//! become `C0Linear`, and quadratic terms become `DualProduct`. Structural keys
+//! and sorted maps make source, term, and coefficient identities deterministic.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use field::PrimeField;
 use gkr_eval_ir::{
-    Bf, DagLayer, Expr, ExprId, FieldKind, RootSlot, SourceId as DagSourceId, SourceKind,
-    claim_roots, read_place_field,
+    claim_roots, read_place_field, DagLayer, Expr, ExprId, FieldKind, SourceId as DagSourceId,
+    SourceKind,
 };
 
 use super::distill::{DistilledLayer, DistilledRootTerm};
 use super::fragment::MergedRecipe;
 use super::limits::MAX_COEFFICIENT_ENCODINGS;
 use super::model::{
-    CoeffError, CoeffLayer, CoeffSource, CoeffTerm, CoefficientRecipeId,
-    NormalizedCoefficientRecipe, ProjectionId, SourceId, TermId, sink_read_place, source_order_key,
+    sink_read_place, source_order_key, CoeffError, CoeffLayer, CoeffSource, CoeffTerm,
+    CoefficientRecipeId, NormalizedCoefficientRecipe, ProjectionId, SourceId, TermId,
 };
 use super::source::OriginLeaf;
+use super::Bf;
 
 /// Order-stable handle on one structural source origin, used everywhere inside the
 /// lowering in place of a [`SourceId`] (which only exists once the surviving
@@ -78,56 +32,11 @@ type SourceKey = (u8, u8, usize, usize);
 
 type Recipe = NormalizedCoefficientRecipe;
 
-/// Distribution accounting the lowering observes but the [`CoeffLayer`] cannot
-/// reconstruct (design §5.4): the PRE-distribution atom/product volume and how far
-/// linearizing + distributing a fragment's product of linear sums grew it.
-///
-/// Every field is a pure observation of the same walk `lower_coeff_layer` performs,
-/// so producing it changes no output. It exists because the post-distribution term
-/// table has already merged bodies across fragments and roots, which destroys the
-/// per-fragment growth signal §5.4 requires to be pinned.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct LoweringTrace {
-    /// `DistilledLayer::fragments.fragments.len()`.
-    pub fragments_total: usize,
-    /// Fragments whose coefficient recipe did NOT cancel to zero — the ones that
-    /// actually reach distribution.
-    pub fragments_live: usize,
-    /// `Σ atoms.len()` over live fragments: the non-distributed atom volume.
-    pub pre_distribution_atoms: usize,
-    /// One pre-distribution product per live fragment (a fragment IS the product
-    /// of its atoms), so this equals `fragments_live`. Named separately because it
-    /// is the denominator of the expansion factor.
-    pub pre_distribution_products: usize,
-    /// `Σ` monomials produced by distributing each live fragment, counted BEFORE
-    /// cross-fragment body merging: a degree-0 residue counts 1, plus one per
-    /// distinct linear source and one per distinct quadratic source pair.
-    pub distributed_monomials: usize,
-    /// Largest monomial count a SINGLE fragment expanded to. Since each fragment
-    /// is exactly one pre-distribution product, this IS the maximum distribution
-    /// expansion factor.
-    pub max_expansion_factor: usize,
-    /// Largest `atoms.len()` over live fragments.
-    pub max_fragment_atoms: usize,
-    /// Degree-0 residues distribution produced (R0 drops them, `Ext` merges them
-    /// into `c_init`).
-    pub distributed_degree0_residues: usize,
-}
-
 /// Lower one distilled backward layer to coefficient terms.
-pub fn lower_coeff_layer(
+pub(crate) fn lower_coeff_layer(
     canonical: &DagLayer,
     distilled: &DistilledLayer,
 ) -> Result<CoeffLayer, CoeffError> {
-    lower_coeff_layer_traced(canonical, distilled).map(|(layer, _)| layer)
-}
-
-/// [`lower_coeff_layer`] plus the distribution accounting of §5.4. The `CoeffLayer`
-/// is bit-identical to what [`lower_coeff_layer`] returns.
-pub fn lower_coeff_layer_traced(
-    canonical: &DagLayer,
-    distilled: &DistilledLayer,
-) -> Result<(CoeffLayer, LoweringTrace), CoeffError> {
     let mut cx = Lowering {
         canonical,
         distilled,
@@ -138,11 +47,9 @@ pub fn lower_coeff_layer_traced(
         bodies: BTreeMap::new(),
         c_init: Recipe::zero(),
         fragment: 0,
-        trace: LoweringTrace::default(),
     };
     cx.run()?;
-    let trace = cx.trace.clone();
-    cx.finish().map(|layer| (layer, trace))
+    cx.finish()
 }
 
 // ── Scalar purity ────────────────────────────────────────────────────────────
@@ -164,7 +71,7 @@ fn scalar_pure_flags(layer: &DagLayer) -> Vec<bool> {
     for (i, expr) in layer.exprs.iter().enumerate() {
         pure[i] = match expr {
             Expr::Source(sid) => matches!(
-                layer.sources[sid.0 as usize].kind,
+                layer.sources[sid.0 as usize],
                 SourceKind::Constant { .. }
                     | SourceKind::Challenge { .. }
                     | SourceKind::InitsAndTeardownsTopBits { .. }
@@ -329,7 +236,6 @@ struct Lowering<'a> {
     c_init: Recipe,
     /// Fragment index the current expansion belongs to, for error reporting.
     fragment: usize,
-    trace: LoweringTrace,
 }
 
 impl Lowering<'_> {
@@ -368,22 +274,8 @@ impl Lowering<'_> {
 
     /// The spine's own scalar-pure addends.
     ///
-    /// At `Ext` they seed the per-thread `acc_c0` initializer (§5.3).
-    ///
-    /// At R0 they are DROPPED. Design §5.3 expected R0's `c_init` to be
-    /// structurally empty and asked for "a documented parity explanation" for any
-    /// exception; the exception is the common case (26 of the 57 pinned R0 layers
-    /// have a non-empty spine `c_init`), so here is the explanation. A non-empty R0
-    /// `c_init` is just the scalar ADDENDS of the claim cones — `FragmentTable`
-    /// decomposes `beta^i * (A*B + k)` into a fragment plus the scalar `beta^i * k`.
-    /// At R0 the whole `X^0` coefficient of the spine is
-    /// `sum_i batch_i * cone_i(0)`, and `cone_i(0)` is either the materialized
-    /// output column (read at `Endpoint0`) or structurally zero for a claim-only
-    /// constraint. Either way the scalar addend is ALREADY inside that value, so
-    /// adding `c_init` on top would double-count it. Dropping it is not an
-    /// approximation — it is the only value-correct choice, and
-    /// `r0_constant_addends_are_covered_by_the_output_shortcut` in
-    /// `tests/bwd_coeff_parity.rs` pins it against the canonical DAG.
+    /// Continuation seeds `acc_c0` with these addends. R0 drops them because its
+    /// materialized endpoint value already includes them.
     fn lower_c_init(&mut self) -> Result<(), CoeffError> {
         let d = self.distilled;
         let spine_scalar = self.scalar_sum(&d.fragments.c_init)?;
@@ -393,7 +285,7 @@ impl Lowering<'_> {
         Ok(())
     }
 
-    /// R0 `acc_c0`, per canonical claim-bearing root in `claim_roots` order (§5.2).
+    /// R0 `acc_c0`, in canonical claim-root order.
     fn lower_r0_root_c0(&mut self) -> Result<(), CoeffError> {
         let canonical = self.canonical;
         let terms = &self.distilled.root_terms;
@@ -403,13 +295,12 @@ impl Lowering<'_> {
                 .roots
                 .get(rid.0 as usize)
                 .ok_or(CoeffError::UnknownCanonicalRoot { root: rid })?;
-            let claim = root
-                .claim
-                .as_ref()
-                .ok_or(CoeffError::RootNotClaimBearing { root: rid })?;
+            if root.claim.is_none() {
+                return Err(CoeffError::RootNotClaimBearing { root: rid });
+            }
             let coefficient = self.batch_factor(term)?;
-            match (&root.materialize, &claim.origin.slot) {
-                (Some(sink), RootSlot::Output(_)) => {
+            match &root.materialize {
+                Some(sink) => {
                     let place =
                         sink_read_place(&sink.kind).ok_or_else(|| CoeffError::UnsupportedSink {
                             root: rid,
@@ -421,13 +312,7 @@ impl Lowering<'_> {
                 // A claim-only constraint is structurally zero on the hypercube,
                 // so it contributes no acc_c0 term and its cone is never read at
                 // Endpoint0.
-                (None, RootSlot::Constraint(_)) => {}
-                (Some(_), RootSlot::Constraint(_)) => {
-                    return Err(CoeffError::MaterializedConstraintRoot { root: rid });
-                }
-                (None, RootSlot::Output(_)) => {
-                    return Err(CoeffError::MaterializedOutputMissing { root: rid });
-                }
+                None => {}
             }
         }
         Ok(())
@@ -446,7 +331,7 @@ impl Lowering<'_> {
             expr,
         };
         match &d.exprs[expr.0 as usize] {
-            Expr::Source(sid) => match &d.sources[sid.0 as usize].kind {
+            Expr::Source(sid) => match &d.sources[sid.0 as usize] {
                 SourceKind::Challenge { reference } => Ok(Recipe::challenge(reference.clone())),
                 _ => Err(err()),
             },
@@ -456,7 +341,6 @@ impl Lowering<'_> {
 
     fn lower_fragments(&mut self) -> Result<(), CoeffError> {
         let d = self.distilled;
-        self.trace.fragments_total = d.fragments.fragments.len();
         for (index, fragment) in d.fragments.fragments.iter().enumerate() {
             self.fragment = index;
             let k = self.scalar_sum(&fragment.recipe)?;
@@ -465,10 +349,6 @@ impl Lowering<'_> {
                 // and never reaches the source table.
                 continue;
             }
-            self.trace.fragments_live += 1;
-            self.trace.pre_distribution_products += 1;
-            self.trace.pre_distribution_atoms += fragment.atoms.len();
-            self.trace.max_fragment_atoms = self.trace.max_fragment_atoms.max(fragment.atoms.len());
             // The degree bound is checked exactly, by the expansion itself.
             let mut value = Quad::one();
             for &atom in &fragment.atoms {
@@ -480,13 +360,6 @@ impl Lowering<'_> {
                         degree,
                     })?;
             }
-            // Distribution growth of THIS fragment (§5.4), before cross-fragment
-            // body merging erases it.
-            let residue = usize::from(!value.scalar.is_zero());
-            let monomials = residue + value.linear.len() + value.quad.len();
-            self.trace.distributed_monomials += monomials;
-            self.trace.distributed_degree0_residues += residue;
-            self.trace.max_expansion_factor = self.trace.max_expansion_factor.max(monomials);
             self.emit(&k, value);
         }
         Ok(())
@@ -572,7 +445,7 @@ impl Lowering<'_> {
         }
         let d = self.distilled;
         let r = match &d.layer.exprs[e.0 as usize] {
-            Expr::Source(sid) => match &d.layer.sources[sid.0 as usize].kind {
+            Expr::Source(sid) => match &d.layer.sources[sid.0 as usize] {
                 SourceKind::Constant { value } => {
                     Recipe::scalar(Bf::from_u32_with_reduction(*value))
                 }
@@ -627,7 +500,7 @@ impl Lowering<'_> {
 
     fn leaf_source(&mut self, e: ExprId, sid: DagSourceId) -> Result<SourceKey, CoeffError> {
         let d = self.distilled;
-        let origin = match &d.layer.sources[sid.0 as usize].kind {
+        let origin = match &d.layer.sources[sid.0 as usize] {
             SourceKind::Read { place } => OriginLeaf::Read(place.clone()),
             SourceKind::VirtualSetup { kind } => OriginLeaf::VirtualSetup { kind: kind.clone() },
             // `LookupValue` leaves are erased by distillation (rule 2), and
@@ -729,8 +602,7 @@ impl Lowering<'_> {
         }
         let coefficients: Vec<Recipe> = bank.into_iter().collect();
 
-        // §9.2: thirteen coefficient bits, two of them reserved for the `+1`/`-1`
-        // literals. Overflow is a compiler error — there is no extended encoding.
+        // Two coefficient ids are reserved for the `+1` and `-1` literals.
         let reserved = CoefficientRecipeId::RESERVED as usize;
         if coefficients.len() + reserved > MAX_COEFFICIENT_ENCODINGS {
             return Err(CoeffError::CoefficientBankOverflow {

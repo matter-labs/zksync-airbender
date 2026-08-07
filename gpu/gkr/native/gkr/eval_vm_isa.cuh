@@ -5,14 +5,11 @@
 namespace airbender::gkr {
 
 // --- ISA 16-bit lane layout ----------------------------------------------------
-// Mirrors `gkr_eval_isa::fwd::isa` (Rust), the encode/decode authority for the
-// wire format (`gkr_eval_isa/src/fwd/{isa,encode}.rs`); the two sides cannot
-// share a header, so keep the blocks in sync. These constants RELABEL the
-// format — the layout itself is pinned by the Rust encoder + its raw-bit tests.
+// Mirrors the Rust forward ISA and encoder in `gpu_gkr_compiler`.
 //
-// header:  arith [op:2][arity:7 @2][f0:1 @9][f1:1 @10][promote:1 @11][sign:1 @12][rsvd @13+]
+// header:  arith [op:2][arity:7 @2][f0:1 @9][f1:1 @10][sign:1 @11][rsvd @12+]
 //          mov   [op=3:2][dir:2 @2][field:1 @4][rsvd @5+]
-// operand: [tag:2][payload:14]; tag 0=Source{[first:1 @2][window:6 @3][column:7 @9]}
+// operand: [tag:2][payload:14]; tag 0=Source{[window:6 @2][column:7 @8]}
 //          1=Smem{[cell @2]}
 //          2=Ldc{[sub:2 @2][idx @4]} 3=Special{[desc @2]}
 // dst:     [tag:1]; tag 0=Smem{[cell @1]} 1=GlobalMaterialize{[slot:4 @1][col @5]}
@@ -31,20 +28,16 @@ constexpr u32 FWD_VM_HDR_ARITY_BITS = 7;
 constexpr u32 FWD_VM_HDR_ARITY_MASK = (1u << FWD_VM_HDR_ARITY_BITS) - 1;            // 0x7f
 constexpr u32 FWD_VM_HDR_F0_SHIFT = FWD_VM_HDR_ARITY_SHIFT + FWD_VM_HDR_ARITY_BITS; // 9
 constexpr u32 FWD_VM_HDR_F1_SHIFT = FWD_VM_HDR_F0_SHIFT + 1;                        // 10
-constexpr u32 FWD_VM_HDR_PROMOTE_SHIFT = FWD_VM_HDR_F1_SHIFT + 1;                   // 11
-constexpr u32 FWD_VM_HDR_SIGN_SHIFT = FWD_VM_HDR_PROMOTE_SHIFT + 1;                 // 12
-constexpr u32 FWD_VM_HDR_RSVD_SHIFT = FWD_VM_HDR_SIGN_SHIFT + 1;                    // 13
+constexpr u32 FWD_VM_HDR_SIGN_SHIFT = FWD_VM_HDR_F1_SHIFT + 1;                      // 11
 
 // Mov header fields + dir values (dir 3 stays reserved)
 constexpr u32 FWD_VM_MOV_DIR_SHIFT = FWD_VM_OP_BITS; // 2
 constexpr u32 FWD_VM_MOV_DIR_BITS = 2;
 constexpr u32 FWD_VM_MOV_DIR_MASK = (1u << FWD_VM_MOV_DIR_BITS) - 1;
 constexpr u32 FWD_VM_MOV_FIELD_SHIFT = FWD_VM_MOV_DIR_SHIFT + FWD_VM_MOV_DIR_BITS; // 4
-constexpr u32 FWD_VM_MOV_RSVD_SHIFT = FWD_VM_MOV_FIELD_SHIFT + 1;                  // 5
 constexpr u32 FWD_VM_MOV_ACC_FROM_SRC = 0;
 constexpr u32 FWD_VM_MOV_DST_FROM_ACC = 1;
 constexpr u32 FWD_VM_MOV_DST_FROM_SRC = 2;
-constexpr u32 FWD_VM_MOV_DIR_RESERVED = 3;
 
 // operand lane
 constexpr u32 FWD_VM_OPERAND_TAG_BITS = 2;
@@ -53,8 +46,7 @@ constexpr u32 FWD_VM_OPERAND_SOURCE = 0;
 constexpr u32 FWD_VM_OPERAND_SMEM = 1;
 constexpr u32 FWD_VM_OPERAND_LDC = 2;
 constexpr u32 FWD_VM_OPERAND_SPECIAL = 3;
-constexpr u32 FWD_VM_FIRST_ACCESS_SHIFT = FWD_VM_OPERAND_TAG_BITS; // 2
-constexpr u32 FWD_VM_SOURCE_WINDOW_SHIFT = FWD_VM_FIRST_ACCESS_SHIFT + 1;
+constexpr u32 FWD_VM_SOURCE_WINDOW_SHIFT = FWD_VM_OPERAND_TAG_BITS;
 constexpr u32 FWD_VM_SOURCE_WINDOW_BITS = 6;
 constexpr u32 FWD_VM_SOURCE_WINDOW_MASK = (1u << FWD_VM_SOURCE_WINDOW_BITS) - 1;
 constexpr u32 FWD_VM_SOURCE_COLUMN_SHIFT = FWD_VM_SOURCE_WINDOW_SHIFT + FWD_VM_SOURCE_WINDOW_BITS;

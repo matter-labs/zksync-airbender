@@ -38,7 +38,7 @@ use std::collections::HashMap;
 use std::hash::Hash;
 
 /// Lanes one four-lane-aligned group holds.
-pub const QUAD_LANES: usize = 4;
+pub(crate) const QUAD_LANES: usize = 4;
 
 /// Backtracking-search node cap. The greedy fast path handles every layer in the
 /// committed corpus, so the search runs only when greedy strands a single-lane
@@ -47,11 +47,11 @@ pub const QUAD_LANES: usize = 4;
 /// falling back to [`PackFailure::NoFeasibleColoring`] (never worse than greedy
 /// alone). Small enough to stay sub-second, large enough that no realistic layer —
 /// and no fuzzed small instance — reaches it.
-pub const QUAD_SEARCH_NODE_CAP: u64 = 200_000;
+pub(crate) const QUAD_SEARCH_NODE_CAP: u64 = 200_000;
 
 /// Inclusive `[def, last_use]` live interval over a flat step index space.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Interval {
+pub(crate) struct Interval {
     pub def: usize,
     pub last_use: usize,
 }
@@ -59,7 +59,7 @@ pub struct Interval {
 impl Interval {
     /// Inclusive-interval overlap. Two values conflict for a lane iff their
     /// intervals overlap.
-    pub fn overlaps(&self, other: &Interval) -> bool {
+    pub(crate) fn overlaps(&self, other: &Interval) -> bool {
         self.def <= other.last_use && other.def <= self.last_use
     }
 }
@@ -67,13 +67,13 @@ impl Interval {
 /// The two widths the cell file supports: one lane, or one four-lane-aligned
 /// group.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum PackWidth {
+pub(crate) enum PackWidth {
     Single,
     Quad,
 }
 
 impl PackWidth {
-    pub fn lanes(self) -> usize {
+    pub(crate) fn lanes(self) -> usize {
         match self {
             PackWidth::Single => 1,
             PackWidth::Quad => QUAD_LANES,
@@ -85,7 +85,7 @@ impl PackWidth {
 /// floor the caller reports; [`PackFailure::floor`] does that reconstruction so
 /// two callers cannot spell the same floor differently.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum PackFailure {
+pub(crate) enum PackFailure {
     /// The width-weighted live demand exceeds `lanes` at some instant, so no
     /// placement of any kind can fit.
     PeakExceedsBudget { peak: usize },
@@ -98,7 +98,7 @@ pub enum PackFailure {
 
 impl PackFailure {
     /// The lane floor to report for this failure at this budget.
-    pub fn floor(self, lanes: usize) -> usize {
+    pub(crate) fn floor(self, lanes: usize) -> usize {
         match self {
             PackFailure::PeakExceedsBudget { peak } => peak,
             PackFailure::QuadDemandExceedsBudget { quads_needed } => quads_needed * QUAD_LANES,
@@ -111,7 +111,7 @@ impl PackFailure {
 /// count any single instant needs. A necessary feasibility condition — an
 /// instance with `peak > lanes` cannot be placed by any algorithm, with or
 /// without moves.
-pub fn peak_weighted_demand<V, W>(ranges: &HashMap<V, Interval>, width_of: W) -> usize
+pub(crate) fn peak_weighted_demand<V, W>(ranges: &HashMap<V, Interval>, width_of: W) -> usize
 where
     V: Copy + Eq + Hash,
     W: Fn(V) -> PackWidth,
@@ -272,7 +272,7 @@ where
 /// quad coloring can — fall back to a backtracking search over quad colorings.
 /// Fails only when the peak width-weighted demand overflows, when the quad demand
 /// alone overflows, or when no coloring seats the singles within the node cap.
-pub fn assign_lanes<V, W>(
+pub(crate) fn assign_lanes<V, W>(
     ranges: &HashMap<V, Interval>,
     width_of: W,
     lanes: usize,

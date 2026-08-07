@@ -5,7 +5,10 @@ use era_cudart::result::CudaResult;
 use fft::GoodAllocator;
 
 use crate::proof::inputs::GpuGKRProofTransferKeepalive;
-use crate::upstream::{DefaultTreeConstructor, Field, GKRCircuitArtifact, GKRProof, OutputType};
+use crate::upstream::{
+    DefaultTreeConstructor, DimensionReducingInputOutput, Field, GKRCircuitArtifact, GKRProof,
+    OutputType,
+};
 use gpu_core::primitives::callbacks::Callbacks;
 use gpu_core::primitives::context::HostAllocation;
 use gpu_core::primitives::device_tracing::Range;
@@ -35,9 +38,9 @@ pub(super) struct GpuGKRProofJobKeepalive<'a, A: GoodAllocator> {
     /// tracing_data, memory caps, canonical_top_bits, external_challenges) plus the
     /// shared `Transfer`'s accumulated `Callbacks`.
     pub(super) _inputs: GpuGKRProofTransferKeepalive<'a, A>,
-    pub(super) _forward_setup: GpuGKRForwardSetupHostKeepalive<E4>,
-    pub(super) _backward: GpuGKRBackwardScheduledExecution<BF, E4>,
-    pub(super) _base_layer_claims: GpuGKRBaseLayerClaimsScheduledExecution<E4>,
+    pub(super) _forward_setup: GpuGKRForwardSetupHostKeepalive,
+    pub(super) _backward: GpuGKRBackwardScheduledExecution,
+    pub(super) _base_layer_claims: GpuGKRBaseLayerClaimsScheduledExecution,
     pub(super) _whir: GpuWhirFoldScheduledExecution,
     /// Pinned host mirror of the device-resident proof slab. Populated
     /// by the terminal D2H; read by the single assembly callback. This is the
@@ -58,11 +61,6 @@ pub struct GpuGKRProofJob<'a, A: GoodAllocator> {
 }
 
 impl<'a, A: GoodAllocator> GpuGKRProofJob<'a, A> {
-    #[cfg(test)]
-    pub(crate) fn is_finished(&self) -> CudaResult<bool> {
-        self.is_finished_event.query()
-    }
-
     pub fn finish(self) -> CudaResult<(GKRProof<BF, E4, DefaultTreeConstructor>, f32)> {
         let Self {
             is_finished_event,
@@ -87,10 +85,7 @@ impl<'a, A: GoodAllocator> GpuGKRProofJob<'a, A> {
 }
 
 pub(crate) fn top_layer_claim_layout(
-    output_layer_for_sumcheck: &BTreeMap<
-        OutputType,
-        prover::gkr::prover::dimension_reduction::forward::DimensionReducingInputOutput,
-    >,
+    output_layer_for_sumcheck: &BTreeMap<OutputType, DimensionReducingInputOutput>,
 ) -> ClaimBufferLayout {
     let mut addresses = BTreeSet::new();
     let permutation_output = &output_layer_for_sumcheck[&OutputType::PermutationProduct];

@@ -1,22 +1,12 @@
-//! Single-file audit point for items consumed from upstream crates
-//! (`cs`, `prover`, `field`).
-//!
-//! When bumping an upstream version, scan this file first — every type,
-//! function, and constant the crate depends on is re-exported here, so a
-//! missing/renamed item surfaces as a compile error pointing at this
-//! manifest rather than at scattered call sites.
-//!
-//! Consumers under `gpu/gkr/src/` import upstream items exclusively through
-//! `crate::upstream` — direct `use cs::…` / `use prover::…` lines in consumer
-//! code are forbidden. `#[cfg(test)]` modules are exempt.
+//! Upstream types used by `gpu_gkr`.
 
 // -----------------------------------------------------------------------
 // `gkr_eval_ir` — canonical GPU-independent evaluation DAG
 // -----------------------------------------------------------------------
 
 pub(crate) use gkr_eval_ir::{
-    ChallengeKey, ChallengePower, ChallengeRef, ChallengeResolver, FieldKind, PermutationSlot,
-    RangeWidth, ReadPlace, VirtualSetupKind,
+    ChallengeKey, ChallengePower, ChallengeRef, FieldKind, PermutationSlot, RangeWidth, ReadPlace,
+    VirtualSetupKind,
 };
 
 /// Runtime-only launch-family spelling. Compiler policy stays split across
@@ -49,21 +39,12 @@ pub(crate) use cs::gkr_compiler::{
     NoFieldSpecialMemoryContributionRelation, OutputType,
 };
 pub(crate) type GKRLayerDescription = cs::gkr_compiler::GKRLayerDescription<BabyBearField>;
-pub(crate) type GateArtifacts = cs::gkr_compiler::GateArtifacts<BabyBearField>;
 pub(crate) use cs::gkr_compiler::{
     GKRLayerDescription as CSGKRLayerDescription, GateArtifacts as CSGateArtifacts,
 };
-pub(crate) type NoFieldGKRCacheRelation = cs::gkr_compiler::NoFieldGKRCacheRelation<BabyBearField>;
 pub(crate) type NoFieldGKRRelation = cs::gkr_compiler::NoFieldGKRRelation<BabyBearField>;
 pub(crate) use cs::gkr_compiler::NoFieldGKRRelation as CSNoFieldGKRRelation;
-pub(crate) type NoFieldMaxQuadraticGKRRelation =
-    cs::gkr_compiler::NoFieldMaxQuadraticGKRRelation<BabyBearField>;
 pub(crate) use cs::gkr_compiler::NoFieldStructuredExpression;
-pub(crate) type NoFieldLinearRelation = cs::definitions::gkr::NoFieldLinearRelation<BabyBearField>;
-pub(crate) type NoFieldSingleColumnLookupRelation =
-    cs::definitions::gkr::NoFieldSingleColumnLookupRelation<BabyBearField>;
-pub(crate) type NoFieldVectorLookupRelation =
-    cs::definitions::gkr::NoFieldVectorLookupRelation<BabyBearField>;
 pub(crate) use cs::tables::TableType;
 
 // -----------------------------------------------------------------------

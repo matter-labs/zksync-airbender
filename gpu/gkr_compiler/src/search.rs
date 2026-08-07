@@ -1,16 +1,8 @@
 use std::fmt;
 
-use crate::forward::search::{producer, search as engine};
-use crate::{
-    ForwardArtifactError, ForwardResourceProfile, ForwardSearchArtifact, compile_forward,
-    validate_forward_artifact,
-};
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum CrossoverKind {
-    Blx,
-    Order,
-}
+use crate::forward::artifact::validate_forward_artifact;
+use crate::forward::search::producer;
+use crate::{compile_forward, ForwardArtifactError, ForwardSearchArtifact};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SearchConfig {
@@ -21,9 +13,6 @@ pub struct SearchConfig {
     pub crossover_rate: f64,
     pub mutation_rate: f64,
     pub mutation_sigma: f64,
-    pub local_steps: usize,
-    pub local_elite: usize,
-    pub crossover: CrossoverKind,
 }
 
 impl SearchConfig {
@@ -36,9 +25,6 @@ impl SearchConfig {
             crossover_rate: 0.9,
             mutation_rate: 0.1,
             mutation_sigma: 0.15,
-            local_steps: 2,
-            local_elite: 0,
-            crossover: CrossoverKind::Order,
         }
     }
 
@@ -50,8 +36,7 @@ impl SearchConfig {
             && (0.0..=1.0).contains(&self.crossover_rate)
             && (0.0..=1.0).contains(&self.mutation_rate)
             && self.mutation_sigma.is_finite()
-            && self.mutation_sigma > 0.0
-            && self.local_elite <= self.population;
+            && self.mutation_sigma > 0.0;
         if valid {
             Ok(())
         } else {
@@ -63,7 +48,7 @@ impl SearchConfig {
 pub struct ForwardSearchRequest<'a> {
     pub circuit: &'a str,
     pub dag: &'a gkr_eval_ir::DagCircuit,
-    pub resources: ForwardResourceProfile,
+    pub cache_buckets: usize,
     pub config: SearchConfig,
     pub seed: u64,
     pub incumbent: Option<&'a ForwardSearchArtifact>,
@@ -100,40 +85,24 @@ pub fn search_forward(
                 incumbent.circuit, request.circuit
             )));
         }
-        if incumbent.budget_buckets != request.resources.cache_buckets {
+        if incumbent.budget_buckets != request.cache_buckets {
             return Err(ForwardSearchError::IncumbentMismatch(format!(
                 "incumbent budget {} does not match {}",
-                incumbent.budget_buckets, request.resources.cache_buckets
+                incumbent.budget_buckets, request.cache_buckets
             )));
         }
         validate_forward_artifact(request.dag, incumbent).map_err(ForwardSearchError::Artifact)?;
     }
     request.config.validate()?;
 
-    let config = engine::SearchConfig {
-        pop: request.config.population,
-        evals: request.config.evaluations,
-        seed: request.seed,
-        tournament: request.config.tournament,
-        elitism: request.config.elitism,
-        crossover_rate: request.config.crossover_rate,
-        mutation_rate: request.config.mutation_rate,
-        mutation_sigma: request.config.mutation_sigma,
-        local_steps: request.config.local_steps,
-        local_elite: request.config.local_elite,
-        crossover_kind: match request.config.crossover {
-            CrossoverKind::Blx => engine::CrossoverKind::Blx,
-            CrossoverKind::Order => engine::CrossoverKind::Order,
-        },
-    };
     let mut artifact = producer::produce_circuit_schedule(
         request.dag,
-        request.resources.cache_buckets,
-        &config,
+        request.cache_buckets,
+        &request.config,
+        request.seed,
         request.incumbent,
     );
     artifact.circuit = request.circuit.to_owned();
-    validate_forward_artifact(request.dag, &artifact).map_err(ForwardSearchError::Artifact)?;
     compile_forward(request.dag, &artifact).map_err(ForwardSearchError::Compile)?;
     Ok(artifact)
 }

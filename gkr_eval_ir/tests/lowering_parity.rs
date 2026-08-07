@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use cs::gkr_compiler::GKRCircuitArtifact;
 use field::baby_bear::base::BabyBearField;
-use gkr_eval_ir::{lower_dag, validate};
+use gkr_eval_ir::lower_dag;
 
 const RETAINED_LAYOUTS: &[&str] = &[
     "add_sub_lui_auipc_mop_layout_gkr.json",
@@ -27,7 +27,20 @@ fn every_retained_layout_lowers_and_validates() {
         let bytes = std::fs::read(&path).unwrap_or_else(|error| panic!("{fixture}: {error}"));
         let artifact: GKRCircuitArtifact<BabyBearField> =
             serde_json::from_slice(&bytes).unwrap_or_else(|error| panic!("{fixture}: {error}"));
-        let dag = lower_dag(&artifact).unwrap_or_else(|error| panic!("{fixture}: {error}"));
-        validate(&dag).unwrap_or_else(|error| panic!("{fixture}: {error}"));
+        lower_dag(&artifact).unwrap_or_else(|error| panic!("{fixture}: {error}"));
     }
+}
+
+#[test]
+fn no_cache_layouts_are_rejected() {
+    let directory = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../cs/compiled_circuits");
+    let fixture = "add_sub_lui_auipc_mop_layout_no_caches_gkr.json";
+    let artifact: GKRCircuitArtifact<BabyBearField> =
+        serde_json::from_slice(&std::fs::read(directory.join(fixture)).unwrap()).unwrap();
+
+    let error = lower_dag(&artifact).expect_err("GPU no-cache layouts are not supported");
+    assert!(
+        error.contains("unsupported relation"),
+        "unexpected error: {error}"
+    );
 }

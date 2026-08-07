@@ -1,50 +1,31 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::upstream::{GKRAddress, GKRCircuitArtifact, WhirSchedule};
-use gpu_core::primitives::field::BF;
-use gpu_gkr::proof_layout::{
+use crate::upstream::{GKRAddress, WhirSchedule};
+use crate::GkrPrograms;
+
+use super::{
     BackwardLayerDims, ProofLayoutBaseLayerGeometry, ProofLayoutInputs, WhirBaseLayerDims,
     WhirDims, WhirIntermediateDims,
 };
 
-pub(crate) fn build_proof_layout_inputs<E>(
-    compiled_circuit: &GKRCircuitArtifact<BF>,
-    external_challenges: &prover::gkr::prover::GKRExternalChallenges<BF, E>,
+pub fn build_proof_layout_inputs(
+    gkr_programs: &GkrPrograms,
     whir_schedule: &WhirSchedule,
     final_trace_size_log_2: u32,
     memory_geometry: ProofLayoutBaseLayerGeometry,
     witness_geometry: ProofLayoutBaseLayerGeometry,
     setup_geometry: ProofLayoutBaseLayerGeometry,
-) -> ProofLayoutInputs
-where
-    E: field::Field + field::FieldExtension<BF>,
-{
-    // Normalize-once for the address-derivation helpers so they see the
-    // same `(MaxQuadratic { output: ScratchSpace(K) })` shape that the
-    // backward main-layer scheduler operates on. Without this, cached
-    // dependencies derived structurally could disagree with the runtime
-    // storage aliases used to evaluate them. The clone is paid once per proof.
-    let compiled_circuit =
-        gpu_gkr_model::transform::normalize_compiled_circuit_for_gpu(compiled_circuit.clone());
+) -> ProofLayoutInputs {
+    let compiled_circuit = gkr_programs.runtime_circuit();
     let initial_trace_size_log_2 = compiled_circuit.trace_len.trailing_zeros();
-    let dimension_reducing_inputs = gpu_gkr::backward::derive_dimension_reducing_inputs(
+    let dimension_reducing_inputs = crate::backward::derive_dimension_reducing_inputs(
         compiled_circuit.layers.len(),
         &compiled_circuit.global_output_map,
         initial_trace_size_log_2,
         final_trace_size_log_2,
     );
-    let main_layer_input_addresses_per_layer =
-        gpu_gkr::backward::collect_main_layer_input_addresses_per_layer::<E>(
-            &compiled_circuit,
-            external_challenges,
-        );
-    let main_layer_cached_dependencies_per_layer =
-        gpu_gkr::backward::collect_main_layer_cached_dependencies_per_layer(&compiled_circuit);
-    let main_layer_extra_evaluation_addresses_per_layer =
-        gpu_gkr::backward::compute_main_layer_extra_evaluation_addresses_per_layer(
-            &main_layer_input_addresses_per_layer,
-            &main_layer_cached_dependencies_per_layer,
-        );
+    let (main_layer_input_addresses_per_layer, main_layer_extra_evaluation_addresses_per_layer) =
+        gkr_programs.main_layer_layout_addresses();
     assert!(initial_trace_size_log_2 >= final_trace_size_log_2);
     let num_dim_reducing_layers = (initial_trace_size_log_2 - final_trace_size_log_2) as usize;
     let num_main_layers = compiled_circuit.layers.len();
@@ -155,11 +136,11 @@ where
     let initial_query_count = whir_schedule.whir_queries_schedule[0];
 
     let base_layer_dims = |g: ProofLayoutBaseLayerGeometry| -> WhirBaseLayerDims {
-        // `cap_digest_count`: total digests across all LDE cosets for this
-        // base layer. `allocate_tree_caps` sizes each coset at
-        // `1 << (log_tree_cap_size - log_lde_factor)` digests (trace_holder.rs)
-        // so the sum over `lde_factor` cosets is `1 << log_tree_cap_size`.
-        let cap_digest_count = 1usize << g.log_tree_cap_size;
+        let cap_digest_count = if g.columns_count == 0 {
+            0
+        } else {
+            1usize << g.log_tree_cap_size
+        };
         let leaf_values_len = g.columns_count * initial_values_per_leaf;
         // Matches whir_fold.rs:1765-1776 and the setup_columns_count==0
         // branch at 1846.

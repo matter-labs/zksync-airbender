@@ -1,16 +1,21 @@
-use std::collections::{BTreeSet, HashMap};
+use std::collections::HashMap;
 
 use gkr_eval_ir::{DagCircuit, FieldKind, ReadPlace};
 
 use super::common::distill::distill;
-use super::common::interp::{CoeffResolver, LeanInterpError, interpret_lean_program};
-use super::common::lean::{LeanCodecError, LeanProgram, encode_program, validate_program};
-use super::common::lean_bind::{LeanBindError, LeanSourceBinding, bind_lean_sources_with_limits};
+#[cfg(test)]
+use super::common::interp::{interpret_lean_program, CoeffResolver, LeanInterpError};
+use super::common::lean::{encode_program, validate_program, LeanCodecError, LeanProgram};
+use super::common::lean_bind::{bind_lean_sources, LeanBindError, LeanSourceBinding};
+use super::common::limits::{
+    LEAN_DESCRIPTOR_PROGRAM_WORDS, LEAN_MAX_COEFFICIENT_RECIPES, LEAN_MAX_SOURCES,
+};
 use super::common::lower::lower_coeff_layer;
-use super::common::model::{CoeffError, CoeffLayer, ProjectionId, TermId};
+#[cfg(test)]
+use super::common::model::CoeffLayer;
+use super::common::model::{CoeffError, NormalizedCoefficientRecipe};
 use super::common::order::order_terms;
 use crate::analysis::build_cross_layer_field_map;
-use crate::{GpuResourceProfile, ResourceProfileError, validate_r0_profile};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct R0ProgramBundle {
@@ -19,22 +24,17 @@ pub struct R0ProgramBundle {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct R0LayerProgram {
+    #[cfg(test)]
     pub layer: usize,
-    pub coefficients: CoeffLayer,
-    pub order: Vec<u32>,
+    pub coefficient_recipes: Vec<NormalizedCoefficientRecipe>,
     pub program: LeanProgram,
     pub binding: LeanSourceBinding,
-}
-
-impl R0LayerProgram {
-    pub const fn target_depth(&self) -> u8 {
-        0
-    }
+    #[cfg(test)]
+    pub(crate) semantic: CoeffLayer,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum R0CompileError {
-    Profile(ResourceProfileError),
     Lower {
         layer: usize,
         error: CoeffError,
@@ -46,9 +46,6 @@ pub enum R0CompileError {
     Bind {
         layer: usize,
         error: LeanBindError,
-    },
-    OrderCoverage {
-        layer: usize,
     },
     Capacity {
         layer: usize,
@@ -65,30 +62,6 @@ impl core::fmt::Display for R0CompileError {
 }
 
 impl std::error::Error for R0CompileError {}
-
-fn order_covers_layer(order: &[TermId], terms: usize) -> bool {
-    if order.len() != terms {
-        return false;
-    }
-    let mut seen = vec![false; terms];
-    order.iter().all(|id| match seen.get_mut(id.0 as usize) {
-        Some(slot) if !*slot => {
-            *slot = true;
-            true
-        }
-        _ => false,
-    })
-}
-
-fn projection_count(layer: &CoeffLayer) -> usize {
-    let mut projections = BTreeSet::<ProjectionId>::new();
-    for term in &layer.terms {
-        term.for_each_projection_use(|projection| {
-            projections.insert(projection);
-        });
-    }
-    projections.len()
-}
 
 fn require(
     layer: usize,
@@ -111,7 +84,6 @@ fn compile_layer(
     layer_index: usize,
     canonical: &gkr_eval_ir::DagLayer,
     cross_fields: &HashMap<ReadPlace, FieldKind>,
-    profile: &crate::R0ResourceProfile,
 ) -> Result<R0LayerProgram, R0CompileError> {
     let distilled = distill(canonical, crate::BwdRegime::R0, cross_fields);
     let coefficients =
@@ -120,24 +92,15 @@ fn compile_layer(
             error,
         })?;
     let order = order_terms(&coefficients);
-    if !order_covers_layer(&order, coefficients.terms.len()) {
-        return Err(R0CompileError::OrderCoverage { layer: layer_index });
-    }
     let program = encode_program(&coefficients, &order).map_err(|error| R0CompileError::Codec {
         layer: layer_index,
         error,
     })?;
-    let binding = bind_lean_sources_with_limits(
-        &coefficients,
-        cross_fields,
-        &order,
-        0,
-        profile.source_window_columns,
-        profile.max_source_windows,
-    )
-    .map_err(|error| R0CompileError::Bind {
-        layer: layer_index,
-        error,
+    let binding = bind_lean_sources(&coefficients, cross_fields, &order).map_err(|error| {
+        R0CompileError::Bind {
+            layer: layer_index,
+            error,
+        }
     })?;
     validate_program(&program, &coefficients).map_err(|error| R0CompileError::Codec {
         layer: layer_index,
@@ -146,60 +109,52 @@ fn compile_layer(
 
     for (resource, required, maximum) in [
         (
-            "immediates",
-            coefficients.immediates.len(),
-            profile.max_immediates,
-        ),
-        (
             "coefficient_recipes",
             coefficients.coefficients.len(),
-            profile.max_coefficient_recipes,
+            LEAN_MAX_COEFFICIENT_RECIPES,
         ),
-        ("sources", coefficients.sources.len(), profile.max_sources),
-        (
-            "projections",
-            projection_count(&coefficients),
-            profile.max_projections,
-        ),
-        ("records", program.words.len() / 4, profile.max_records),
+        ("sources", coefficients.sources.len(), LEAN_MAX_SOURCES),
         (
             "program_words",
             program.words.len(),
-            profile.max_program_words,
+            LEAN_DESCRIPTOR_PROGRAM_WORDS,
         ),
     ] {
         require(layer_index, resource, required, maximum)?;
     }
 
+    #[cfg(test)]
+    let coefficient_recipes = coefficients.coefficients.clone();
+    #[cfg(not(test))]
+    let coefficient_recipes = coefficients.coefficients;
     Ok(R0LayerProgram {
+        #[cfg(test)]
         layer: layer_index,
-        coefficients,
-        order: order.into_iter().map(|id| id.0).collect(),
+        coefficient_recipes,
         program,
         binding,
+        #[cfg(test)]
+        semantic: coefficients,
     })
 }
 
-pub fn compile_r0(
-    dag: &DagCircuit,
-    profile: &GpuResourceProfile,
-) -> Result<R0ProgramBundle, R0CompileError> {
-    validate_r0_profile(&profile.r0).map_err(R0CompileError::Profile)?;
+pub fn compile_r0(dag: &DagCircuit) -> Result<R0ProgramBundle, R0CompileError> {
     let cross_fields = build_cross_layer_field_map(dag);
     let layers = dag
         .layers
         .iter()
         .enumerate()
-        .map(|(layer, canonical)| compile_layer(layer, canonical, &cross_fields, &profile.r0))
+        .map(|(layer, canonical)| compile_layer(layer, canonical, &cross_fields))
         .collect::<Result<_, _>>()?;
     Ok(R0ProgramBundle { layers })
 }
 
-pub fn interpret_r0_program(
+#[cfg(test)]
+pub(crate) fn interpret_r0_program(
     program: &R0LayerProgram,
     row: usize,
     resolver: &impl CoeffResolver,
     k: usize,
-) -> Result<(gkr_eval_ir::Ext, gkr_eval_ir::Ext), LeanInterpError> {
-    interpret_lean_program(&program.program, &program.coefficients, row, resolver, k)
+) -> Result<(super::common::Ext, super::common::Ext), LeanInterpError> {
+    interpret_lean_program(&program.program, &program.semantic, row, resolver, k)
 }

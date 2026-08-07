@@ -1,29 +1,17 @@
-//! Backing/source table: ReadPlace ⇄ (slot, col), keyed on storage field (§4,§8,§12).
+//! Maps logical reads to dense columns in homogeneous storage slots.
 //!
-//! v2 (spec §2): a slot IS one homogeneous device matrix. Production storage keeps
-//! separate consolidated base and ext backings per logical layer/cache output
-//! (out_base/out_ext, cache_base/cache_ext), so `LayerOutput`/`CacheOutput` keys are
-//! FIELD-QUALIFIED — a mixed logical output uses TWO slots, one per matrix.
-//! `BaseLayerMemory`/`BaseLayerWitness`/`Setup`/`Scratch` are intrinsically bf
-//! (see `gkr_eval_ir::field_infer`: base-storage places are always
-//! `FieldKind::Base`; GPU `ScratchSpace` resolves through `base_field_inputs`).
-//!
-//! Column indices are DENSE PER SLOT: `slot_col`/`read_slot_col` renumber the
-//! original layer-offset to the slot's next dense matrix-column index, so the v2
-//! descriptor can address column `c` of slot `s` as `base[s] + c * stride[s]`.
-//! The reverse map (`slot_col_to_read_place`, `slot_columns`) is first-class:
-//! every reader that needs the ORIGINAL offset (CPU interp resolution, GPU
-//! address wiring, disassembly) must go through it — a dense col is meaningless
-//! outside its table.
+//! Layer and cache slots are field-qualified; base memory, witness, setup, and
+//! scratch slots are always base-field. Reverse lookup recovers the original
+//! logical offset when binding GPU addresses.
 
 use super::error::BindError;
-use super::isa::{Instr, MAX_COLS, MAX_SLOTS, OperandField, OperandLine, Program};
-use crate::source_bind::{BindFailure, BoundSourceUse, LogicalSourceUse, bind_source_sequence};
+use super::isa::{Instr, OperandField, OperandLine, Program, MAX_COLS, MAX_SLOTS};
+use crate::source_bind::{bind_source_sequence, BindFailure, BoundSourceUse, LogicalSourceUse};
 use gkr_eval_ir::ReadPlace;
 use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum BackingKey {
+pub(crate) enum BackingKey {
     BaseLayerMemory,
     BaseLayerWitness,
     Setup,
@@ -32,18 +20,10 @@ pub enum BackingKey {
     CacheOutput { layer: usize, field: OperandField },
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum SourceMarkerMode {
-    Forward,
-    Backward,
-}
-
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct SourceWindow {
+pub(crate) struct SourceWindow {
     pub backing: BackingKey,
     pub first_column: usize,
-    referenced_columns: BTreeSet<usize>,
-    fold_descs: BTreeMap<usize, u16>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -55,13 +35,6 @@ impl SourceWindowTable {
     pub fn len(&self) -> usize {
         self.windows.len()
     }
-    pub fn is_empty(&self) -> bool {
-        self.windows.is_empty()
-    }
-    pub fn windows(&self) -> &[SourceWindow] {
-        &self.windows
-    }
-
     pub fn source_field(&self, window: u8) -> Option<OperandField> {
         self.windows
             .get(window as usize)
@@ -71,35 +44,13 @@ impl SourceWindowTable {
     pub fn resolve_read_place(&self, window: u8, column: u8) -> Option<ReadPlace> {
         let entry = self.windows.get(window as usize)?;
         let absolute = entry.first_column.checked_add(column as usize)?;
-        entry
-            .referenced_columns
-            .contains(&absolute)
-            .then(|| backing_to_read_place(&entry.backing, absolute))
-    }
-
-    pub fn fold_desc(&self, window: u8, column: u8) -> Option<u16> {
-        let entry = self.windows.get(window as usize)?;
-        let absolute = entry.first_column.checked_add(column as usize)?;
-        entry.fold_descs.get(&absolute).copied()
-    }
-}
-
-impl SourceWindow {
-    pub fn referenced_columns(&self) -> impl Iterator<Item = usize> + '_ {
-        self.referenced_columns.iter().copied()
-    }
-
-    pub fn fold_descriptors(&self) -> impl Iterator<Item = (usize, u16)> + '_ {
-        self.fold_descs
-            .iter()
-            .map(|(&column, &desc)| (column, desc))
+        Some(backing_to_read_place(&entry.backing, absolute))
     }
 }
 
 impl BackingKey {
-    /// The storage field of the matrix this key names (spec §2: one slot = one
-    /// homogeneous matrix). Base-storage keys are intrinsically bf.
-    pub fn field(&self) -> OperandField {
+    /// Storage field of the matrix this key names.
+    pub(crate) fn field(&self) -> OperandField {
         match self {
             BackingKey::BaseLayerMemory
             | BackingKey::BaseLayerWitness
@@ -110,12 +61,10 @@ impl BackingKey {
     }
 }
 
-/// Per-slot dense column renumbering: original layer-offset → dense matrix col,
-/// plus the dense-ordered offset list for the reverse direction.
 #[derive(Clone, Debug, Default)]
 struct SlotCols {
-    dense_of: BTreeMap<usize, u16>, // original offset -> dense col
-    offsets: Vec<usize>,            // dense col -> original offset (assignment order)
+    offsets: Vec<usize>,
+    index: BTreeMap<usize, u16>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -125,7 +74,7 @@ pub struct BackingTable {
 }
 
 impl BackingTable {
-    pub fn intern(&mut self, key: BackingKey) -> Result<u8, BindError> {
+    pub(crate) fn intern(&mut self, key: BackingKey) -> Result<u8, BindError> {
         if let Some(i) = self.slots.iter().position(|k| *k == key) {
             return Ok(i as u8);
         }
@@ -136,7 +85,7 @@ impl BackingTable {
         self.cols.push(SlotCols::default());
         Ok((self.slots.len() - 1) as u8)
     }
-    pub fn backing(&self, slot: u8) -> Option<&BackingKey> {
+    pub(crate) fn backing(&self, slot: u8) -> Option<&BackingKey> {
         self.slots.get(slot as usize)
     }
 
@@ -146,28 +95,33 @@ impl BackingTable {
         self.slots.get(slot as usize).map(BackingKey::field)
     }
 
-    /// Number of interned slots (≤ `MAX_SLOTS`).
-    pub fn n_slots(&self) -> usize {
-        self.slots.len()
-    }
-
     /// Intern `(key, original offset)` → `(slot, dense col)`. The SINGLE
     /// renumbering authority: reads (`read_slot_col`) and GlobalMaterialize
     /// writes (compile's sink path) both go through here, so a value's read and
     /// write resolve to the same dense column.
-    pub fn slot_col(&mut self, key: BackingKey, offset: usize) -> Result<(u8, u16), BindError> {
+    pub(crate) fn slot_col(
+        &mut self,
+        key: BackingKey,
+        offset: usize,
+    ) -> Result<(u8, u16), BindError> {
         let slot = self.intern(key)?;
         let sc = &mut self.cols[slot as usize];
-        if let Some(&c) = sc.dense_of.get(&offset) {
-            return Ok((slot, c));
+        if let Some(&column) = sc.index.get(&offset) {
+            return Ok((slot, column));
         }
         let c = sc.offsets.len();
         if c as u32 >= MAX_COLS {
             return Err(BindError::ColOverflow(offset));
         }
-        sc.dense_of.insert(offset, c as u16);
         sc.offsets.push(offset);
+        sc.index.insert(offset, c as u16);
         Ok((slot, c as u16))
+    }
+
+    pub(crate) fn strip_indexes(&mut self) {
+        for cols in &mut self.cols {
+            cols.index = BTreeMap::new();
+        }
     }
 
     /// Resolve a read to `(slot, dense col)`. `field` is the READ's field (the
@@ -175,7 +129,7 @@ impl BackingTable {
     /// `build_cross_layer_field_map`); it selects which homogeneous matrix
     /// (slot) of a mixed logical output the read targets. Intrinsically-bf
     /// places ignore it (their key carries no field).
-    pub fn read_slot_col(
+    pub(crate) fn read_slot_col(
         &mut self,
         place: &ReadPlace,
         field: OperandField,
@@ -202,7 +156,7 @@ impl BackingTable {
     /// The slot's original offsets in dense-column order (`slot_columns(s)[c]`
     /// is the original offset of dense col `c`). Empty for an unknown slot.
     /// The descriptor lowering orders matrix columns with this.
-    pub fn slot_columns(&self, slot: u8) -> &[usize] {
+    pub(crate) fn slot_columns(&self, slot: u8) -> &[usize] {
         self.cols
             .get(slot as usize)
             .map(|sc| sc.offsets.as_slice())
@@ -212,14 +166,9 @@ impl BackingTable {
 
 /// One logical read this program still makes, in operand-visit order.
 ///
-/// The dense `(slot, col)` is kept alongside the resolved key so a rejected
-/// sequence is reported in the operand's OWN vocabulary.
 struct LogicalRead {
     backing: BackingKey,
     absolute: usize,
-    fold_desc: Option<u16>,
-    slot: u8,
-    col: u16,
 }
 
 /// Rewrite compiler-private logical reads after all source-moving peepholes.
@@ -229,19 +178,13 @@ struct LogicalRead {
 /// [`crate::source_bind::bind_source_sequence`]; this is the `Program` adapter
 /// around it. Window numbering is unchanged: the core numbers windows by ascending
 /// backing index, and this adapter indexes backings in `BackingKey` order.
-pub fn bind_final_sources(
+pub(crate) fn bind_final_sources(
     program: &mut Program,
     backings: &BackingTable,
-    marker_mode: SourceMarkerMode,
 ) -> Result<SourceWindowTable, BindError> {
     let mut reads = Vec::<LogicalRead>::new();
     visit_operands_mut(program, |operand| {
-        let logical = match *operand {
-            OperandLine::LogicalGlobal { slot, col } => Some((slot, col, None)),
-            OperandLine::LogicalFold { slot, col, desc } => Some((slot, col, Some(desc))),
-            _ => None,
-        };
-        if let Some((slot, col, fold_desc)) = logical {
+        if let OperandLine::LogicalGlobal { slot, col } = *operand {
             let backing = backings
                 .backing(slot)
                 .cloned()
@@ -251,13 +194,7 @@ pub fn bind_final_sources(
                 .get(col as usize)
                 .copied()
                 .ok_or(BindError::UnknownLogicalSource { slot, col })?;
-            reads.push(LogicalRead {
-                backing,
-                absolute,
-                fold_desc,
-                slot,
-                col,
-            });
+            reads.push(LogicalRead { backing, absolute });
         }
         Ok(())
     })?;
@@ -280,34 +217,12 @@ pub fn bind_final_sources(
         .map(|read| LogicalSourceUse {
             slot: index_of[&read.backing],
             column: read.absolute,
-            fold_desc: read.fold_desc,
         })
         .collect();
 
-    let binding = bind_source_sequence(&sequence, marker_mode == SourceMarkerMode::Backward)
-        .map_err(|failure| match failure {
-            BindFailure::WindowOverflow => BindError::SourceWindowOverflow,
-            // Report the operand that disagreed, in ITS dense vocabulary.
-            BindFailure::ConflictingFoldDesc { slot, column } => {
-                let mut first = None::<Option<u16>>;
-                for read in &reads {
-                    if index_of[&read.backing] != slot || read.absolute != column {
-                        continue;
-                    }
-                    match first {
-                        None => first = Some(read.fold_desc),
-                        Some(desc) if desc != read.fold_desc => {
-                            return BindError::ConflictingSourceBinding {
-                                slot: read.slot,
-                                col: read.col,
-                            };
-                        }
-                        Some(_) => {}
-                    }
-                }
-                unreachable!("the core rejected a column no operand disagrees on")
-            }
-        })?;
+    let binding = bind_source_sequence(&sequence).map_err(|failure| match failure {
+        BindFailure::WindowOverflow => BindError::SourceWindowOverflow,
+    })?;
 
     let table = SourceWindowTable {
         windows: binding
@@ -316,8 +231,6 @@ pub fn bind_final_sources(
             .map(|window| SourceWindow {
                 backing: keys[window.slot as usize].clone(),
                 first_column: window.first_column,
-                referenced_columns: window.columns.iter().copied().collect(),
-                fold_descs: window.fold_descs.clone(),
             })
             .collect(),
     };
@@ -326,24 +239,13 @@ pub fn bind_final_sources(
     // coordinate of the `i`-th logical operand.
     let mut bound = binding.uses.iter();
     visit_operands_mut(program, |operand| {
-        if !matches!(
-            *operand,
-            OperandLine::LogicalGlobal { .. } | OperandLine::LogicalFold { .. }
-        ) {
+        if !matches!(*operand, OperandLine::LogicalGlobal { .. }) {
             return Ok(());
         }
-        let &BoundSourceUse {
-            window,
-            column,
-            first_access,
-        } = bound
+        let &BoundSourceUse { window, column } = bound
             .next()
             .expect("one bound coordinate per logical operand");
-        *operand = OperandLine::Source {
-            window,
-            column,
-            first_access,
-        };
+        *operand = OperandLine::Source { window, column };
         Ok(())
     })?;
     debug_assert!(
@@ -382,7 +284,7 @@ fn visit_operands_mut(
 
 /// The field-qualified backing key + ORIGINAL offset of a read. `field` is the
 /// read's storage field; only `LayerOutput`/`CacheOutput` keys carry it.
-pub fn read_place_to_backing(place: &ReadPlace, field: OperandField) -> (BackingKey, usize) {
+fn read_place_to_backing(place: &ReadPlace, field: OperandField) -> (BackingKey, usize) {
     match *place {
         ReadPlace::BaseLayerMemory { column } => (BackingKey::BaseLayerMemory, column),
         ReadPlace::BaseLayerWitness { column } => (BackingKey::BaseLayerWitness, column),

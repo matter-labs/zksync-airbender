@@ -3,15 +3,14 @@ use super::*;
 use era_cudart::memory::memory_copy_async;
 use fft::bitreverse_enumeration_inplace;
 
-use fft::batch_inverse_inplace;
 use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::static_host::{
     alloc_static_pinned_box_from_slice, alloc_static_pinned_box_uninit,
 };
 
 use crate::kernels::{accumulate_whir_base_columns, serialize_whir_e4_columns};
+use crate::upstream::DefaultTreeConstructor;
 use crate::upstream::PrimeField;
-use crate::upstream::{Blake2sTranscript, DefaultTreeConstructor};
 // Only consumed by the `#[cfg(test)]` query-parity helpers below.
 #[cfg(test)]
 use crate::upstream::BaseFieldQuery;
@@ -163,64 +162,6 @@ pub(crate) fn schedule_query_base_trace_holder_for_folded_index(
     })
 }
 
-pub(super) fn special_lagrange_interpolate(
-    eval_at_0: E4,
-    eval_at_1: E4,
-    eval_at_random: E4,
-    random_point: E4,
-) -> [E4; 3] {
-    let mut coeffs_for_0 = [E4::ZERO, E4::ZERO, E4::ONE];
-    coeffs_for_0[1] = E4::ONE;
-    coeffs_for_0[1].add_assign(&random_point);
-    coeffs_for_0[1].negate();
-    coeffs_for_0[0] = random_point;
-
-    let mut coeffs_for_1 = [E4::ZERO, E4::ZERO, E4::ONE];
-    coeffs_for_1[1] = random_point;
-    coeffs_for_1[1].negate();
-
-    let mut coeffs_for_random = [E4::ZERO, E4::ZERO, E4::ONE];
-    coeffs_for_random[1] = E4::ONE;
-    coeffs_for_random[1].negate();
-
-    let mut dens = [E4::ONE, E4::ONE, E4::ONE];
-    let mut t = E4::ZERO;
-    t.sub_assign(&E4::ONE);
-    dens[0].mul_assign(&t);
-    let mut t = E4::ZERO;
-    t.sub_assign(&random_point);
-    dens[0].mul_assign(&t);
-
-    let mut t = E4::ONE;
-    t.sub_assign(&random_point);
-    dens[1].mul_assign(&t);
-
-    let t = random_point;
-    dens[2].mul_assign(&t);
-    let mut t = random_point;
-    t.sub_assign(&E4::ONE);
-    dens[2].mul_assign(&t);
-
-    let mut buffer = [E4::ZERO; 3];
-    batch_inverse_inplace(&mut dens, &mut buffer);
-
-    let mut result = [E4::ZERO; 3];
-    for (eval, den, coeffs) in [
-        (eval_at_0, dens[0], coeffs_for_0),
-        (eval_at_1, dens[1], coeffs_for_1),
-        (eval_at_random, dens[2], coeffs_for_random),
-    ] {
-        for (dst, coeff) in result.iter_mut().zip(coeffs) {
-            let mut term = coeff;
-            term.mul_assign(&den);
-            term.mul_assign(&eval);
-            dst.add_assign(&term);
-        }
-    }
-
-    result
-}
-
 pub(super) fn build_initial_batched_evals_device_impl(
     memory_trace_holder: &TraceHolder<BF>,
     memory_weights: &[E4],
@@ -356,11 +297,7 @@ pub(super) fn initialize_batched_forms_impl(
         context,
     )?;
 
-    // Production uses the fused accumulate-and-serialize kernel; the test
-    // path here keeps the legacy E4-only accumulate above, so populate the
-    // BF scratch via the standalone serialize before invoking the shared
-    // `initialize_batched_monomial_form` (which now expects a pre-populated
-    // buffer).
+    // The shared initializer consumes serialized BF limbs.
     let mut vectorized_scratch =
         context.alloc::<BF>(trace_len * EXT4_DEGREE, AllocationPlacement::BestFit)?;
     serialize_whir_e4_columns(
@@ -629,301 +566,6 @@ pub(super) fn evaluate_monomial_form_device(
     Ok(result)
 }
 
-/// `(batch_challenges, claim, monomials, sumchecked_poly_evaluation_form, eq_poly)`.
-#[doc(hidden)]
-pub type DebugInitialStateForTest = ([Vec<E4>; 3], E4, Vec<E4>, Vec<E4>, Vec<E4>);
-
-#[doc(hidden)]
-pub fn debug_build_initial_state_for_test(
-    memory_trace_holder: &TraceHolder<BF>,
-    mem_polys_claims: &[E4],
-    witness_trace_holder: &TraceHolder<BF>,
-    wit_polys_claims: &[E4],
-    setup_trace_holder: &TraceHolder<BF>,
-    setup_polys_claims: &[E4],
-    original_evaluation_point: &[E4],
-    batching_challenge: E4,
-    use_hypercube_evals_for_batching: bool,
-    context: &ProverContext,
-) -> CudaResult<DebugInitialStateForTest> {
-    let trace_len = 1usize << memory_trace_holder.log_domain_size;
-    let mut state = GpuWhirState::new(trace_len, context)?;
-    let (batch_challenges, claim) = build_initial_state(
-        memory_trace_holder,
-        mem_polys_claims,
-        witness_trace_holder,
-        wit_polys_claims,
-        setup_trace_holder,
-        setup_polys_claims,
-        original_evaluation_point,
-        batching_challenge,
-        use_hypercube_evals_for_batching,
-        &mut state,
-        context,
-    )?;
-
-    let monomials_vectorized = copy_back(state.sumchecked_poly_monomial_form.slice(), context);
-    let mut monomials = vectorized_to_e4_coeffs(
-        &monomials_vectorized,
-        state.original_trace_len,
-        state.current_len,
-    );
-    bitreverse_enumeration_inplace(&mut monomials);
-
-    Ok((
-        batch_challenges,
-        claim,
-        monomials,
-        copy_back(&state.sumchecked_poly_evaluation_form[..trace_len], context),
-        copy_back(&state.eq_poly[..trace_len], context),
-    ))
-}
-
-#[doc(hidden)]
-pub fn debug_build_initial_state_snapshots_for_test(
-    memory_trace_holder: &TraceHolder<BF>,
-    mem_polys_claims: &[E4],
-    witness_trace_holder: &TraceHolder<BF>,
-    wit_polys_claims: &[E4],
-    setup_trace_holder: &TraceHolder<BF>,
-    setup_polys_claims: &[E4],
-    original_evaluation_point: &[E4],
-    batching_challenge: E4,
-    use_hypercube_evals_for_batching: bool,
-    context: &ProverContext,
-) -> CudaResult<(Vec<E4>, Vec<E4>)> {
-    let trace_len = 1usize << memory_trace_holder.log_domain_size;
-    let mut state = GpuWhirState::new(trace_len, context)?;
-    let batch_challenges = initialize_batched_forms(
-        memory_trace_holder,
-        witness_trace_holder,
-        setup_trace_holder,
-        mem_polys_claims.len(),
-        wit_polys_claims.len(),
-        setup_polys_claims.len(),
-        batching_challenge,
-        use_hypercube_evals_for_batching,
-        &mut state,
-        context,
-    )?;
-    let pre_eq = copy_back(&state.sumchecked_poly_evaluation_form[..trace_len], context);
-
-    let mut point_device: DeviceAllocation<E4> = context.alloc(
-        original_evaluation_point.len(),
-        AllocationPlacement::BestFit,
-    )?;
-    copy_small_to_device(&mut point_device[..], original_evaluation_point, context)?;
-    launch_build_eq_values_from_point(
-        point_device.as_ptr(),
-        0,
-        original_evaluation_point.len(),
-        state.eq_group_tables.as_mut_ptr(),
-        state.eq_poly.as_mut_ptr(),
-        trace_len,
-        context,
-    )?;
-    context.get_exec_stream().synchronize()?;
-    drop(point_device);
-
-    let mut batched_claim = E4::ZERO;
-    for (weights, claims) in
-        batch_challenges
-            .iter()
-            .zip([mem_polys_claims, wit_polys_claims, setup_polys_claims])
-    {
-        for (weight, claim) in weights.iter().zip(claims.iter()) {
-            let mut term = *claim;
-            term.mul_assign(weight);
-            batched_claim.add_assign(&term);
-        }
-    }
-
-    let post_eq = copy_back(&state.sumchecked_poly_evaluation_form[..trace_len], context);
-    Ok((pre_eq, post_eq))
-}
-
-// #[doc(hidden)] pub fields: the apex parity test reads every field of the
-// checkpoint returned by `debug_initial_round_checkpoint_for_test`.
-#[doc(hidden)]
-pub struct DebugInitialWhirRoundCheckpoint {
-    pub sumcheck_polys: Vec<[E4; 3]>,
-    pub folding_challenges: Vec<E4>,
-    pub folded_monomial_form: Vec<E4>,
-    pub recursive_cap: MerkleTreeCapVarLength,
-    pub ood_point: E4,
-    pub ood_value: E4,
-    pub transcript_seed: Seed,
-}
-
-#[doc(hidden)]
-pub struct DebugWhirInitialFoldState {
-    state: GpuWhirState,
-}
-
-#[doc(hidden)]
-pub fn debug_initial_round_checkpoint_for_test(
-    memory_trace_holder: &TraceHolder<BF>,
-    mem_polys_claims: &[E4],
-    witness_trace_holder: &TraceHolder<BF>,
-    wit_polys_claims: &[E4],
-    setup_trace_holder: &TraceHolder<BF>,
-    setup_polys_claims: &[E4],
-    original_evaluation_point: &[E4],
-    original_lde_factor: usize,
-    batching_challenge: E4,
-    num_initial_folding_rounds: usize,
-    first_recursive_lde_factor: usize,
-    next_folding_steps: usize,
-    tree_cap_size: usize,
-    use_hypercube_evals_for_batching: bool,
-    transcript_seed: Seed,
-    context: &ProverContext,
-) -> CudaResult<DebugInitialWhirRoundCheckpoint> {
-    let two_inv = BF::from_u32_unchecked(2).inverse().unwrap();
-    let trace_len = 1usize << memory_trace_holder.log_domain_size;
-    let mut state = GpuWhirState::new(trace_len, context)?;
-    build_initial_state(
-        memory_trace_holder,
-        mem_polys_claims,
-        witness_trace_holder,
-        wit_polys_claims,
-        setup_trace_holder,
-        setup_polys_claims,
-        original_evaluation_point,
-        batching_challenge,
-        use_hypercube_evals_for_batching,
-        &mut state,
-        context,
-    )?;
-
-    let mut transcript_seed = transcript_seed;
-    let mut sumcheck_polys = Vec::with_capacity(num_initial_folding_rounds);
-    let mut folding_challenges = Vec::with_capacity(num_initial_folding_rounds);
-    for _ in 0..num_initial_folding_rounds {
-        let (f0, f1, f_half) = special_three_point_eval_device(&mut state, context)?;
-        let coeffs = special_lagrange_interpolate(f0, f1, f_half, E4::from_base(two_inv));
-        sumcheck_polys.push(coeffs);
-        commit_field_els::<BF, E4, Blake2sTranscript>(&mut transcript_seed, &coeffs);
-        let folding_challenge =
-            draw_random_field_els::<BF, E4, Blake2sTranscript>(&mut transcript_seed, 1)[0];
-        folding_challenges.push(folding_challenge);
-        fold_monomial_form_in_place_device(&mut state, folding_challenge, context)?;
-        fold_evaluation_form_in_place_device(&mut state, folding_challenge, context)?;
-        fold_eq_poly_in_place_device(&mut state, folding_challenge, context)?;
-        state.current_len /= 2;
-    }
-
-    let mut folded_monomial_form_host = alloc_static_pinned_box_uninit(trace_len * EXT4_DEGREE)?;
-    memory_copy_async(
-        &mut folded_monomial_form_host,
-        state.sumchecked_poly_monomial_form.slice(),
-        context.get_exec_stream(),
-    )?;
-    context.get_exec_stream().synchronize()?;
-    let folded_monomial_form_vectorized = folded_monomial_form_host.to_vec();
-    let mut folded_monomial_form = vectorized_to_e4_coeffs(
-        &folded_monomial_form_vectorized,
-        state.original_trace_len,
-        state.current_len,
-    );
-    bitreverse_enumeration_inplace(&mut folded_monomial_form);
-
-    let oracle = GpuWhirExtensionOracle::from_device_monomial_coeffs(
-        &state.sumchecked_poly_monomial_form,
-        state.current_len,
-        first_recursive_lde_factor,
-        1 << next_folding_steps,
-        tree_cap_size,
-        true, // #279: coeff-form recursive WHIR oracles (match production)
-        context,
-    )?;
-    let recursive_cap = oracle.get_tree_cap(context)?;
-    add_whir_commitment_to_transcript::<BF, E4, Blake2sTranscript, DefaultTreeConstructor>(
-        &mut transcript_seed,
-        &WhirCommitment::<BF, DefaultTreeConstructor> {
-            cap: recursive_cap.clone(),
-            _marker: PhantomData,
-        },
-    );
-
-    let _rs_domain_log2 = trace_len.trailing_zeros() as usize
-        + original_lde_factor.trailing_zeros() as usize
-        - num_initial_folding_rounds;
-    let ood_point = draw_random_field_els::<BF, E4, Blake2sTranscript>(&mut transcript_seed, 1)[0];
-    let ood_value = evaluate_monomial_form_device(&mut state, ood_point, context)?;
-    commit_field_els::<BF, E4, Blake2sTranscript>(&mut transcript_seed, &[ood_value]);
-
-    Ok(DebugInitialWhirRoundCheckpoint {
-        sumcheck_polys,
-        folding_challenges,
-        folded_monomial_form,
-        recursive_cap,
-        ood_point,
-        ood_value,
-        transcript_seed,
-    })
-}
-
-#[doc(hidden)]
-pub fn debug_build_initial_fold_state_for_test(
-    memory_trace_holder: &TraceHolder<BF>,
-    mem_polys_claims: &[E4],
-    witness_trace_holder: &TraceHolder<BF>,
-    wit_polys_claims: &[E4],
-    setup_trace_holder: &TraceHolder<BF>,
-    setup_polys_claims: &[E4],
-    original_evaluation_point: &[E4],
-    batching_challenge: E4,
-    use_hypercube_evals_for_batching: bool,
-    context: &ProverContext,
-) -> CudaResult<DebugWhirInitialFoldState> {
-    let trace_len = 1usize << memory_trace_holder.log_domain_size;
-    let mut state = GpuWhirState::new(trace_len, context)?;
-    build_initial_state(
-        memory_trace_holder,
-        mem_polys_claims,
-        witness_trace_holder,
-        wit_polys_claims,
-        setup_trace_holder,
-        setup_polys_claims,
-        original_evaluation_point,
-        batching_challenge,
-        use_hypercube_evals_for_batching,
-        &mut state,
-        context,
-    )?;
-    Ok(DebugWhirInitialFoldState { state })
-}
-
-#[doc(hidden)]
-pub fn debug_apply_initial_fold_challenge_for_test(
-    debug_state: &mut DebugWhirInitialFoldState,
-    challenge: E4,
-    context: &ProverContext,
-) -> CudaResult<Vec<E4>> {
-    fold_monomial_form_in_place_device(&mut debug_state.state, challenge, context)?;
-    fold_evaluation_form_in_place_device(&mut debug_state.state, challenge, context)?;
-    fold_eq_poly_in_place_device(&mut debug_state.state, challenge, context)?;
-    debug_state.state.current_len /= 2;
-
-    let mut host =
-        alloc_static_pinned_box_uninit(debug_state.state.original_trace_len * EXT4_DEGREE)?;
-    memory_copy_async(
-        &mut host,
-        debug_state.state.sumchecked_poly_monomial_form.slice(),
-        context.get_exec_stream(),
-    )?;
-    context.get_exec_stream().synchronize()?;
-    let monomials_vectorized = host.to_vec();
-    let mut monomials = vectorized_to_e4_coeffs(
-        &monomials_vectorized,
-        debug_state.state.original_trace_len,
-        debug_state.state.current_len,
-    );
-    bitreverse_enumeration_inplace(&mut monomials);
-    Ok(monomials)
-}
-
 pub(super) fn vectorized_to_e4_coeffs(
     vectorized_coeffs: &[BF],
     stride: usize,
@@ -938,10 +580,6 @@ pub(super) fn vectorized_to_e4_coeffs(
         .collect_vec()
 }
 
-// Relocated from `tests/query_tests.rs` (Task 10) so the query helper
-// (`schedule_query_base_trace_holder_for_folded_index`, `#[cfg(test)]` above)
-// can name its return type. Crate-internal (query parity tests only) — no
-// apex consumer, so it stays `pub(crate)`, not `#[doc(hidden)] pub`.
 #[cfg(test)]
 pub(crate) struct GpuScheduledBaseFieldQuery {
     pub(crate) index: usize,

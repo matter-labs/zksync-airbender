@@ -1,26 +1,10 @@
-//! Scalar interpreters for the coefficient ISA (design §4, §9).
-//!
-//! Two of them, over one [`CoeffResolver`]:
-//!
-//!   * [`interpret_coeff_layer`] — the SEMANTIC reference. One row in,
-//!     `(acc_c0, acc_c2)` out. There is no `T0`/`T2` role, no generic arithmetic
-//!     accumulator, and no `acc_c1`: the round update recovers `c1` from the
-//!     normalized claim. It deliberately knows nothing about the wire encoding.
-//!   * [`interpret_lean_program`] — the LEAN interpreter of the segmented lean VM
-//!     (`lean` module). It has no residency at all; what it adds is SEGMENTATION —
-//!     the `K` per-warp term lists and the rule that exactly one of their partials
-//!     carries `c_init`. The gate is identity with the semantic interpreter, at
-//!     every `K`.
-//!
-//! The semantic reference is the ORACLE of the whole backward pipeline: every
-//! parity ladder — lean CPU, and the CUDA executor — is stated against it.
+//! Scalar reference interpreters for backward coefficient programs.
 
 use field::{Field, FieldExtension, PrimeField};
-use gkr_eval_ir::{Bf, Ext};
 
 use super::group;
 use super::lean::{
-    self, LEAN_CONT_OPCODES, LEAN_R0_OPCODES, LeanAtom, LeanCodecError, LeanProgram, LeanTerm,
+    self, LeanAtom, LeanCodecError, LeanProgram, LeanTerm, LEAN_CONT_OPCODES, LEAN_R0_OPCODES,
     SOURCE_NONE,
 };
 use super::limits::TermCategory;
@@ -29,17 +13,9 @@ use super::model::{
     SourceId, TermId,
 };
 use super::order::split_round_robin;
+use super::{Bf, Ext};
 
-/// The two values a coefficient program needs from its environment.
-///
-/// [`CoeffResolver::coefficient`] is only ever called for a BANKED id: reserved
-/// literals (`+1`/`-1`) are resolved by the interpreter itself, so an
-/// implementation never has to allocate an evaluated bank entry for them.
-///
-/// [`CoeffResolver::source_pair`] returns the source's two named projections at
-/// `row`, in that order: `(Endpoint0, Delta) = (s0, s1 - s0)`. It is a PAIR
-/// because a native dual factor performs one physical source-pair resolution, not
-/// two projection reads (§8).
+/// Values supplied by the interpreter's environment.
 pub trait CoeffResolver {
     fn coefficient(&self, id: CoefficientRecipeId) -> Ext;
     fn source_pair(&self, id: SourceId, row: usize) -> (Ext, Ext);
@@ -56,7 +32,7 @@ pub trait CoeffResolver {
 /// DualProduct(k, A, B)   acc_c0 += k * A.s0 * B.s0 ; acc_c2 += k * A.ds * B.ds
 /// ```
 ///
-/// A GROUPED layer (§4.1) changes the SHAPE of that sum, never its value. A
+/// A grouped layer changes the shape of that sum, never its value. A
 /// group's members carry the group's CORE as their coefficient id plus their own
 /// base-field immediate, so the members are summed FIRST and the core multiplies
 /// each accumulator side once:
@@ -73,10 +49,7 @@ pub trait CoeffResolver {
 ///
 /// This is the same field element the ungrouped layer produces — `SUM_m (imm_m *
 /// core) * v_m == core * SUM_m imm_m * v_m` is distributivity, and field
-/// arithmetic is exact, so there is no tolerance in which a dropped immediate or a
-/// double-served member could hide. The corpus gate
-/// (`bwd_coeff_corpus.rs::grouped_semantics_match_ungrouped_bit_for_bit`) asserts
-/// it limb for limb on every `Ext` coordinate.
+/// arithmetic is exact.
 ///
 /// An UNGROUPED layer takes exactly the path it always did: `layer.groups` is
 /// empty, every term is plain, and the group loop does not run.
@@ -204,14 +177,7 @@ fn immediate_value(layer: &CoeffLayer, id: ImmediateId) -> Result<Ext, CoeffErro
     ))
 }
 
-/// Add `imm * v` to a group's per-side sum, spending NO multiplication on the two
-/// reserved immediates: `+1` is an addition and `-1` a subtraction (§4.4 — a
-/// member's immediate is meant to be cheaper than the `Ext` coefficient it
-/// replaced, and for `±1` it is free).
-///
-/// `imm` is ignored on both fast paths, so a wrong lift of a reserved id cannot
-/// change a value; the SIGN comes from the id, which is the only thing that carries
-/// it.
+/// Add `imm * v`, using direct add/subtract for the reserved literals.
 fn accumulate_imm(acc: &mut Ext, id: ImmediateId, imm: Ext, v: Ext) {
     if id == ImmediateId::ONE {
         acc.add_assign(&v);
@@ -294,12 +260,7 @@ pub enum LeanInterpError {
     Coeff(CoeffError),
     /// `layer.c_init` is `Some` in the R0 regime.
     ///
-    /// R0 lowering DROPS the spine's scalar addends
-    /// ([`lower_coeff_layer`](super::lower::lower_coeff_layer)) because at R0 they
-    /// are already inside the materialized output value the `acc_c0` shortcut
-    /// reads, so seeding one here would double-count them (§5.3). No
-    /// [`CoeffError`] variant says this — it is a property of the regime, not of
-    /// any id, record or term.
+    /// R0 already includes the scalar addends in its materialized output.
     CInitAtR0 { id: CoefficientRecipeId },
 }
 
@@ -315,34 +276,7 @@ impl From<CoeffError> for LeanInterpError {
     }
 }
 
-/// Interpret one row of a LEAN program under the `k`-way segmentation the launch
-/// performs, returning `(acc_c0, acc_c2)`.
-///
-/// `k` is the number of per-warp lists:
-/// [`split_round_robin`](super::order::split_round_robin) over the decoded ATOM
-/// indices gives list `w` atoms `w, w+k, w+2k, …` (§3), each list accumulates its
-/// own partial pair in isolation, and the result is the sum of the `k` partials.
-/// Field addition is exact, so the value is the same for every `k` — segmentation
-/// is invisible to parity, which is what lets this be the oracle a kernel must
-/// match bit-for-bit at whatever `K` it launches.
-///
-/// The unit of the split is the ATOM ([`LeanAtom`]), not the record: a GROUP is one
-/// indivisible unit of work, since its `core * SUM imm_m * v_m` shape only exists
-/// while its members share a partial. That is also why this round-robin is not the
-/// deal a kernel performs — §6: ANY whole-atom partition yields the same field
-/// element, so list IDENTITY is deliberately not part of the contract and is never
-/// compared against the GPU's descriptor deal. A group-free program (every R0
-/// program, and every continuation program the ungrouped pipeline emits) has one
-/// atom per record, so the split is position-identical to the pre-group one.
-///
-/// `c_init` seeds EXACTLY ONE partial — list 0's `acc_c0` (§5.3). Seeding each
-/// list would reduce to `K * c_init`; list 0 is seeded even when it is empty
-/// (`k` above the atom count), so the seed lands exactly once for every `k`.
-///
-/// SEMANTIC layer only: every operand resolves through
-/// [`CoeffResolver::source_pair`] at the projection its CLASS implies, since no
-/// projection travels on the lean wire. Raw-BF inline folds, procedural synthesis
-/// and the prologue are round-binding concerns and are deliberately absent.
+/// Interpret one row under `k`-way whole-atom segmentation.
 ///
 /// # Panics
 ///
@@ -379,8 +313,7 @@ pub fn interpret_lean_program(
     let mut acc_c0 = Ext::ZERO;
     let mut acc_c2 = Ext::ZERO;
     for (list, list_atoms) in split_round_robin(&indices, k).iter().enumerate() {
-        // §5.3: ONE partial carries the seed. `k` seeded partials would reduce to
-        // `k * c_init`.
+        // Seed exactly one partial.
         let mut partial_c0 = if list == 0 { seed } else { Ext::ZERO };
         let mut partial_c2 = Ext::ZERO;
         for &index in list_atoms {
@@ -421,10 +354,7 @@ pub fn interpret_lean_program(
     Ok((acc_c0, acc_c2))
 }
 
-/// The per-side products one record's CLASS contributes, with its COEFFICIENT
-/// factored out — the one place the wire's projection paths are spelled, so a plain
-/// record and a group member cannot read their operands differently (§4.1: grouping
-/// changes which factor multiplies the products, never the products).
+/// Per-side products with the coefficient factored out.
 enum LeanParts {
     /// `acc_c0 += <coefficient> * v`.
     C0(Ext),
@@ -476,12 +406,6 @@ fn lean_parts(
             let mut c2 = ad;
             c2.mul_assign(&bd);
             Ok(LeanParts::Dual { c0, c2 })
-        }
-        // The lean class tables carry no `Move` row — `lean.rs`'s
-        // `is_densified_frozen_table` proves it when the crate compiles — so
-        // `lean_category` cannot return one.
-        TermCategory::MoveBf | TermCategory::MoveE4 => {
-            unreachable!("the lean class tables have no move rows")
         }
     }
 }
@@ -553,16 +477,7 @@ struct GroupHeader {
     has_c2: bool,
 }
 
-/// Add one decoded GROUP atom's contribution to its list's partial pair:
-/// `core * SUM_m imm_m * v_m`, per side (§4.1).
-///
-/// This is [`interpret_coeff_layer`]'s group loop over wire records instead of
-/// `CoeffTerm`s: the members' products come from the SAME [`lean_parts`] a plain
-/// record uses, the per-member immediate goes through the SAME
-/// [`immediate_value`] / [`accumulate_imm`] pair the semantic interpreter uses (so
-/// `±1` costs no multiplication there either), and the core multiplies each side
-/// exactly once — and is skipped outright on a side the flags say the group does
-/// not feed, rather than multiplied against zero.
+/// Add `core * SUM_m imm_m * v_m` for one decoded group.
 ///
 /// The header's `core` is read as a bank id in the ordinary recipe id space, so a
 /// core that is a reserved literal would evaluate as that literal instead of being

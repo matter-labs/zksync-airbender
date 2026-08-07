@@ -1,21 +1,17 @@
 //! Structural validators for the canonical DAG IR.
 //!
 //! # `validate`
-//! A GPU-independent structural pass over a [`DagCircuit`]. It enforces the
-//! spec §7 invariants:
+//! A GPU-independent structural pass over a [`DagCircuit`]. It enforces:
 //! - Every claim-bearing root appears exactly once in [`BatchingOrder`];
 //!   materialization-only (cache) roots must NOT appear in `BatchingOrder`. A
 //!   same-layer cache value is reused by sharing its `ExprId` (DAG sharing), not
 //!   by a separate source reference.
-//! - Each `Output` root's sink is written exactly once per layer; `Constraint`
-//!   roots have no sink.
+//! - Each materialized sink is written exactly once per layer.
 //! - Every source field is inferable; every expr field is inferable by `join`.
-//! - An `Output` root's expr field equals its sink field exactly (no implicit
+//! - A materialized root's expr field equals its sink field exactly (no implicit
 //!   conversion either direction).
-//! - `LookupValue`/`Constant` are base-field; `Challenge` is ext.
 //! - Every referenced `ExprId`/`SourceId` (including each `Root.expr`) is in
-//!   range and the dependency graph (`Expr→operands`, `LookupValue.query→Expr`,
-//!   `Root→expr`) is acyclic.
+//!   range and the expression dependency graph is acyclic.
 //!
 //! ## Cross-layer field resolution
 //! `ReadPlace::LayerOutput`/`CacheOutput` carry no field tag (the model only
@@ -23,142 +19,21 @@
 //! map from each layer's sink "place" (`Inner{layer,offset}` →
 //! `LayerOutput{layer,offset}`, `Cache{layer,offset}` → `CacheOutput{layer,offset}`)
 //! to the sink's [`FieldKind`]. A later layer's `Read` of that output resolves
-//! its field from this map — this is the consumer that the generator's old
-//! `read_field` placeholder was reserved for.
+//! its field from this map.
 
 use std::collections::{HashMap, HashSet};
 
 use cs::definitions::gkr::DECODER_LOOKUP_FORMAL_SET_INDEX;
 
+use super::field_infer::expr_field_with_resolver;
 use super::{
-    expr_field, source_field, ChallengeKey, ChallengePower, DagCircuit, DagLayer, Expr, ExprId,
-    FieldKind, LookupValueKind, RangeWidth, ReadPlace, ResolutionStrategy, RootId, SinkKind,
-    SourceId, SourceKind,
+    ChallengeKey, ChallengePower, DagCircuit, DagLayer, Expr, ExprId, FieldKind, LookupValueKind,
+    RangeWidth, ReadPlace, ResolutionStrategy, RootId, SinkKind, SourceId, SourceKind,
 };
 
-// ── Cross-layer sink-field map ────────────────────────────────────────────────
+// ── Expression-graph acyclicity ──────────────────────────────────────────────
 
-/// The `ReadPlace` that a later layer would use to read this sink's output, if
-/// any. `Inner`/`Cache` sinks are readable cross-layer; `Export`/`Scratch` sinks
-/// are not addressable as a `LayerOutput`/`CacheOutput` read.
-fn sink_read_place(kind: &SinkKind) -> Option<ReadPlace> {
-    match kind {
-        SinkKind::Inner { layer, offset } => Some(ReadPlace::LayerOutput {
-            layer: *layer,
-            offset: *offset,
-        }),
-        SinkKind::Cache { layer, offset } => Some(ReadPlace::CacheOutput {
-            layer: *layer,
-            offset: *offset,
-        }),
-        SinkKind::Export { .. } | SinkKind::Scratch { .. } => None,
-    }
-}
-
-/// Resolve a layer's source field, falling back to the accumulated cross-layer
-/// sink-field map for `Read{LayerOutput|CacheOutput}` reads.
-fn resolve_source_field(
-    kind: &SourceKind,
-    cross_layer: &HashMap<ReadPlace, FieldKind>,
-) -> Result<FieldKind, String> {
-    match source_field(kind) {
-        Ok(f) => Ok(f),
-        Err(place) => cross_layer
-            .get(&place)
-            .cloned()
-            .ok_or_else(|| format!("unresolved cross-layer read field for {:?}", place)),
-    }
-}
-
-/// Resolve an expr's field, recursing through `Add`/`Mul` and resolving cross-
-/// layer reads from `cross_layer`.
-pub(crate) fn resolve_expr_field(
-    id: ExprId,
-    layer: &DagLayer,
-    cross_layer: &HashMap<ReadPlace, FieldKind>,
-) -> Result<FieldKind, String> {
-    // Fast path: the source-only inference already resolves everything that is
-    // not a cross-layer read.
-    match expr_field(&layer.exprs, &layer.sources, id) {
-        Ok(f) => Ok(f),
-        Err(_) => {
-            // At least one leaf is a cross-layer read; recompute by hand,
-            // resolving those reads from `cross_layer`.
-            match &layer.exprs[id.0 as usize] {
-                Expr::Source(src_id) => {
-                    resolve_source_field(&layer.sources[src_id.0 as usize].kind, cross_layer)
-                }
-                Expr::Add(args) | Expr::Mul(args) => {
-                    let mut acc = FieldKind::Base;
-                    for &arg in args {
-                        let f = resolve_expr_field(arg, layer, cross_layer)?;
-                        acc = super::join(acc, f);
-                    }
-                    Ok(acc)
-                }
-            }
-        }
-    }
-}
-
-/// The cross-layer sink-field map accumulated from layers `0..upto_layer`, exactly as
-/// `validate()` publishes it ([validate.rs] sink-publish loop). Used by schedule validation
-/// to resolve the field/width of an `ExprId` whose cone reads a prior layer's output/cache.
-pub(crate) fn cross_layer_field_map_upto(
-    circuit: &DagCircuit,
-    upto_layer: usize,
-) -> std::collections::HashMap<ReadPlace, FieldKind> {
-    let mut cross_layer = std::collections::HashMap::new();
-    for layer in circuit.layers.iter().take(upto_layer) {
-        for root in &layer.roots {
-            if let Some(sink) = &root.materialize {
-                if let Some(place) = sink_read_place(&sink.kind) {
-                    cross_layer.insert(place, sink.field);
-                }
-            }
-        }
-    }
-    cross_layer
-}
-
-// ── Per-source field-kind invariants (spec §7) ───────────────────────────────
-
-/// `Constant`/`LookupValue` must be base; `Challenge` must be ext. (`source_field`
-/// already encodes these, but the validator asserts them explicitly so a future
-/// change to the inference can't silently violate the contract.)
-fn check_source_field_kinds(layer: &DagLayer, li: usize) -> Result<(), String> {
-    for (si, src) in layer.sources.iter().enumerate() {
-        match &src.kind {
-            SourceKind::Constant { .. } | SourceKind::InitsAndTeardownsTopBits { .. } => {
-                if source_field(&src.kind) != Ok(FieldKind::Base) {
-                    return Err(format!(
-                        "layer {li} source {si}: Constant must be base-field"
-                    ));
-                }
-            }
-            SourceKind::LookupValue { .. } => {
-                if source_field(&src.kind) != Ok(FieldKind::Base) {
-                    return Err(format!(
-                        "layer {li} source {si}: LookupValue must be base-field"
-                    ));
-                }
-            }
-            SourceKind::Challenge { .. } => {
-                if source_field(&src.kind) != Ok(FieldKind::Ext) {
-                    return Err(format!(
-                        "layer {li} source {si}: Challenge must be ext-field"
-                    ));
-                }
-            }
-            _ => {}
-        }
-    }
-    Ok(())
-}
-
-// ── Dependency-graph acyclicity (Expr→Source, Root→Expr, LookupValue.query→Expr)
-
-/// State color for the DFS cycle check over the unified dependency graph.
+/// State color for Add/Mul child and lookup-query edges.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Color {
     White,
@@ -166,76 +41,32 @@ enum Color {
     Black,
 }
 
-/// A node in the unified per-layer dependency graph.
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
-enum Node {
-    Expr(u32),
-    Root(u32),
-}
-
-/// Return the direct successors of `node` in the per-layer dependency graph,
-/// following these edge kinds:
-/// - `Expr::Add/Mul → operand Expr`
-/// - `Expr::Source(LookupValue{query}) → query Expr`
-/// - `Root → its expr`
-///
-/// NOTE: `successors()` is shared between `check_acyclic` and
-/// `collect_root_reachable_exprs`. The `Node::Root → expr` arm is dual-purpose:
-/// besides acyclicity, it is the sole descent path for the reachability oracle
-/// (`collect_root_reachable_exprs`, seeded from roots) that `check_resolutions`
-/// relies on — do NOT drop it.
-fn successors(node: Node, layer: &DagLayer) -> Vec<Node> {
-    match node {
-        Node::Expr(e) => match &layer.exprs[e as usize] {
-            Expr::Source(src_id) => match &layer.sources[src_id.0 as usize].kind {
-                SourceKind::LookupValue { query, .. } => vec![Node::Expr(query.0)],
-                _ => vec![],
-            },
-            Expr::Add(args) | Expr::Mul(args) => args.iter().map(|a| Node::Expr(a.0)).collect(),
+fn successors(expr: u32, layer: &DagLayer) -> Vec<u32> {
+    match &layer.exprs[expr as usize] {
+        Expr::Source(src_id) => match &layer.sources[src_id.0 as usize] {
+            SourceKind::LookupValue { query, .. } => vec![query.0],
+            _ => vec![],
         },
-        Node::Root(r) => {
-            let expr = layer.roots[r as usize].expr;
-            vec![Node::Expr(expr.0)]
-        }
+        Expr::Add(args) | Expr::Mul(args) => args.iter().map(|a| a.0).collect(),
     }
 }
 
-/// Detect any cycle reachable through the edge kinds in `successors`
-/// (`Expr::Add/Mul → operand`, `LookupValue.query → Expr`, `Root → its expr`).
-///
-/// The expr DAG is acyclic by construction (operands are interned before their
-/// parent ⇒ a child `ExprId` is always < its parent), but an unchecked
-/// `LookupValue.query` cycle would infinite-loop the evaluator (review 2/M2), so
-/// this remains a hard rejection.
 fn check_acyclic(layer: &DagLayer, li: usize) -> Result<(), String> {
-    let mut color: HashMap<Node, Color> = HashMap::new();
-
-    // Visit every expr and every root as a DFS root so disconnected components
-    // are covered.
-    let mut roots_to_visit: Vec<Node> = Vec::new();
-    for i in 0..layer.exprs.len() {
-        roots_to_visit.push(Node::Expr(i as u32));
-    }
-    for i in 0..layer.roots.len() {
-        roots_to_visit.push(Node::Root(i as u32));
-    }
-
-    for start in roots_to_visit {
-        if color.get(&start).copied().unwrap_or(Color::White) != Color::White {
+    let mut color = vec![Color::White; layer.exprs.len()];
+    for start in 0..layer.exprs.len() as u32 {
+        if color[start as usize] != Color::White {
             continue;
         }
-        // (node, successors, next-index)
-        let mut stack: Vec<(Node, Vec<Node>, usize)> = vec![(start, successors(start, layer), 0)];
-        color.insert(start, Color::Gray);
-        while let Some((node, succ, idx)) = stack.last_mut() {
+        let mut stack = vec![(start, successors(start, layer), 0)];
+        color[start as usize] = Color::Gray;
+        while let Some((expr, succ, idx)) = stack.last_mut() {
             if *idx < succ.len() {
                 let next = succ[*idx];
                 *idx += 1;
-                match color.get(&next).copied().unwrap_or(Color::White) {
+                match color[next as usize] {
                     Color::White => {
-                        color.insert(next, Color::Gray);
-                        let s = successors(next, layer);
-                        stack.push((next, s, 0));
+                        color[next as usize] = Color::Gray;
+                        stack.push((next, successors(next, layer), 0));
                     }
                     Color::Gray => {
                         return Err(format!(
@@ -245,7 +76,7 @@ fn check_acyclic(layer: &DagLayer, li: usize) -> Result<(), String> {
                     Color::Black => {}
                 }
             } else {
-                color.insert(*node, Color::Black);
+                color[*expr as usize] = Color::Black;
                 stack.pop();
             }
         }
@@ -255,36 +86,24 @@ fn check_acyclic(layer: &DagLayer, li: usize) -> Result<(), String> {
 
 // ── Resolution-table helpers ──────────────────────────────────────────────────
 
-/// Collect every `ExprId` reachable from the layer's ROOTS, following the same
-/// edges as `check_acyclic`'s `successors` (Add/Mul operands, `LookupValue.query`,
-/// `Root → expr`). Seeded from `layer.roots` ONLY — NOT from all exprs (unlike
-/// `check_acyclic`) — so it is a true root-reachability oracle.
-fn collect_root_reachable_exprs(layer: &DagLayer) -> std::collections::HashSet<u32> {
-    let mut visited: std::collections::HashSet<Node> = std::collections::HashSet::new();
-    let mut stack: Vec<Node> = (0..layer.roots.len())
-        .map(|i| Node::Root(i as u32))
-        .collect();
-    while let Some(node) = stack.pop() {
-        if !visited.insert(node) {
+fn collect_root_reachable_exprs(layer: &DagLayer) -> Vec<bool> {
+    let mut visited = vec![false; layer.exprs.len()];
+    let mut stack: Vec<u32> = layer.roots.iter().map(|root| root.expr.0).collect();
+    while let Some(expr) = stack.pop() {
+        if visited[expr as usize] {
             continue;
         }
-        for next in successors(node, layer) {
-            if !visited.contains(&next) {
+        visited[expr as usize] = true;
+        for next in successors(expr, layer) {
+            if !visited[next as usize] {
                 stack.push(next);
             }
         }
     }
     visited
-        .into_iter()
-        .filter_map(|n| match n {
-            Node::Expr(e) => Some(e),
-            Node::Root(_) => None,
-        })
-        .collect()
 }
 
-/// Validate the `resolutions` side-table (M2 forward-peek hints). Fires only on
-/// present entries; an empty map is always valid (absent ⇒ recompute).
+/// Validate the forward resolution table.
 fn check_resolutions(layer: &DagLayer, li: usize) -> Result<(), String> {
     if layer.resolutions.is_empty() {
         return Ok(());
@@ -297,7 +116,7 @@ fn check_resolutions(layer: &DagLayer, li: usize) -> Result<(), String> {
                 leaf
             ));
         }
-        if !reachable.contains(&leaf.0) {
+        if !reachable[leaf.0 as usize] {
             return Err(format!(
                 "layer {li}: resolution leaf {:?} ({:?}) is not reachable from any root",
                 leaf, strat
@@ -305,25 +124,25 @@ fn check_resolutions(layer: &DagLayer, li: usize) -> Result<(), String> {
         }
         match strat {
             ResolutionStrategy::PeekSingleColumn { set_index, width } => {
-                let SourceKind::LookupValue {
+                let Some(SourceKind::LookupValue {
                     kind,
                     set_index: si,
                     ..
-                } = source_of(leaf, layer)
+                }) = source_of(leaf, layer)
                 else {
                     return Err(format!(
                         "layer {li}: PeekSingleColumn leaf {:?} is not a LookupValue source",
                         leaf
                     ));
                 };
-                if si != *set_index {
+                if *si != *set_index {
                     return Err(format!(
                         "layer {li}: PeekSingleColumn leaf {:?} set {si} != strategy set {set_index}",
                         leaf
                     ));
                 }
                 let ok = matches!(
-                    (&kind, width),
+                    (kind, width),
                     (LookupValueKind::RangeCheck16Index, RangeWidth::Bits16)
                         | (LookupValueKind::TimestampIndex, RangeWidth::Timestamp)
                 );
@@ -343,19 +162,14 @@ fn check_resolutions(layer: &DagLayer, li: usize) -> Result<(), String> {
                 }
                 check_folded_lookup_shape(leaf, layer, li, *set_index)?;
             }
-            ResolutionStrategy::PeekDecoder { predicate, fill } => {
-                // The predicate is checked only as "a base-layer read" and is NOT
-                // independently verifiable as == machine_state.execute at validate() time
-                // (the IR carries no machine_state). That equality is guaranteed by the
-                // generator's check_decoder_masks guard + the
-                // resolutions_peek_decoder_predicate_matches_global_execute coverage test.
+            ResolutionStrategy::PeekDecoder { predicate } => {
+                // The IR has no machine state, so equality with execute is checked while lowering.
                 if !matches!(predicate, ReadPlace::BaseLayerMemory { .. }) {
                     return Err(format!(
                         "layer {li}: PeekDecoder predicate must be a base-layer read on {:?}",
                         leaf
                     ));
                 }
-                let _ = fill; // FillSource has a single variant; nothing to cross-check statically.
                 check_folded_lookup_shape(leaf, layer, li, DECODER_LOOKUP_FORMAL_SET_INDEX)?;
             }
             ResolutionStrategy::PeekSetup => {
@@ -380,7 +194,7 @@ fn check_folded_lookup_shape(
     // (column, alpha_power): power None = the unscaled column-0 term.
     let mut terms: Vec<(usize, Option<u32>)> = Vec::new();
     let generic_col = |src_id: SourceId| -> Result<usize, String> {
-        match &layer.sources[src_id.0 as usize].kind {
+        match &layer.sources[src_id.0 as usize] {
             SourceKind::LookupValue {
                 kind: LookupValueKind::GenericColumn { column },
                 set_index,
@@ -421,7 +235,7 @@ fn check_folded_lookup_shape(
                                     leaf
                                 ));
                             };
-                            match &layer.sources[s.0 as usize].kind {
+                            match &layer.sources[s.0 as usize] {
                                 SourceKind::Challenge { reference } => {
                                     if reference.key != ChallengeKey::LookupMultiplicative {
                                         return Err(format!(
@@ -524,7 +338,7 @@ fn check_folded_lookup_shape(
 fn check_folded_setup_shape(leaf: ExprId, layer: &DagLayer, li: usize) -> Result<(), String> {
     let mut powers: Vec<Option<u32>> = Vec::new(); // None = the unscaled (power-0) term
     let is_setup = |src_id: SourceId| -> Result<(), String> {
-        match &layer.sources[src_id.0 as usize].kind {
+        match &layer.sources[src_id.0 as usize] {
             SourceKind::Read {
                 place: ReadPlace::Setup { .. },
             } => Ok(()),
@@ -561,7 +375,7 @@ fn check_folded_setup_shape(leaf: ExprId, layer: &DagLayer, li: usize) -> Result
                                     leaf
                                 ));
                             };
-                            match &layer.sources[s.0 as usize].kind {
+                            match &layer.sources[s.0 as usize] {
                                 SourceKind::Challenge { reference } => {
                                     if reference.key != ChallengeKey::LookupMultiplicative {
                                         return Err(format!(
@@ -653,31 +467,26 @@ fn check_folded_setup_shape(leaf: ExprId, layer: &DagLayer, li: usize) -> Result
     Ok(())
 }
 
-/// Read the `SourceKind` of a leaf that is a bare `Expr::Source`, else a sentinel
-/// `Constant` (used only by the shape checks above).
-fn source_of(leaf: ExprId, layer: &DagLayer) -> SourceKind {
+fn source_of(leaf: ExprId, layer: &DagLayer) -> Option<&SourceKind> {
     if let Expr::Source(src_id) = &layer.exprs[leaf.0 as usize] {
-        layer.sources[src_id.0 as usize].kind.clone()
+        Some(&layer.sources[src_id.0 as usize])
     } else {
-        SourceKind::Constant { value: 0 }
+        None
     }
 }
 
 // ── Top-level structural validator ────────────────────────────────────────────
 
-/// Structurally validate a [`DagCircuit`] against the spec §7 invariants.
+/// Structurally validate a [`DagCircuit`].
 ///
 /// Returns `Err(String)` describing the first violation found, `Ok(())` if the
 /// circuit is well-formed.
-pub fn validate(dag: &DagCircuit) -> Result<(), String> {
+pub(crate) fn validate(dag: &DagCircuit) -> Result<(), String> {
     // Accumulated cross-layer sink fields, keyed by the `ReadPlace` a later layer
     // would use to read the producing sink.
     let mut cross_layer: HashMap<ReadPlace, FieldKind> = HashMap::new();
 
     for (li, layer) in dag.layers.iter().enumerate() {
-        // ── Per-source field-kind invariants ─────────────────────────────────
-        check_source_field_kinds(layer, li)?;
-
         // ── Reference-range invariants ────────────────────────────────────────
         // The expr DAG is acyclic by construction (operands interned before the
         // parent ⇒ child `ExprId` < parent), so there is no Prior/caches-lead
@@ -696,8 +505,7 @@ pub fn validate(dag: &DagCircuit) -> Result<(), String> {
                             src_id
                         ));
                     }
-                    if let SourceKind::LookupValue { query, .. } =
-                        &layer.sources[src_id.0 as usize].kind
+                    if let SourceKind::LookupValue { query, .. } = &layer.sources[src_id.0 as usize]
                     {
                         if query.0 as usize >= layer.exprs.len() {
                             return Err(format!(
@@ -719,8 +527,7 @@ pub fn validate(dag: &DagCircuit) -> Result<(), String> {
                 }
             }
         }
-        // …and every `Root.expr` must be in range too (review codex#5: keep the
-        // root pointer explicitly checked, not just the arena exprs).
+        // Every root expression must also be in range.
         for (ri, root) in layer.roots.iter().enumerate() {
             let expr = root.expr;
             if expr.0 as usize >= layer.exprs.len() {
@@ -788,12 +595,11 @@ pub fn validate(dag: &DagCircuit) -> Result<(), String> {
         }
 
         // ── Each materialized sink written by exactly one root ────────────────
-        // Constraint roots (`materialize: None`) write no sink. Sink identity is
-        // now the inlined `SinkKind` (carries layer/offset/slot), so dedup by it.
+        // Roots without materialization write no sink.
         let mut sink_seen: HashSet<SinkKind> = HashSet::new();
         for (ri, root) in layer.roots.iter().enumerate() {
             if let Some(sink) = &root.materialize {
-                if !sink_seen.insert(sink.kind.clone()) {
+                if !sink_seen.insert(sink.kind) {
                     return Err(format!(
                         "layer {li} root {ri}: sink {:?} written by more than one root",
                         sink.kind
@@ -802,13 +608,15 @@ pub fn validate(dag: &DagCircuit) -> Result<(), String> {
             }
         }
 
-        // ── Field inference: every source/expr field inferable; for a ─────────
-        //    materialized root, expr field == sink field exactly (this is also
-        //    the cache-Output expr/sink-field invariant — cache roots carry
-        //    `materialize: Some(Cache)` and pass through here).
+        // ── Field inference ──────────────────────────────────────────────────
         for (ri, root) in layer.roots.iter().enumerate() {
-            let expr_f = resolve_expr_field(root.expr, layer, &cross_layer)
-                .map_err(|e| format!("layer {li} root {ri}: {e}"))?;
+            let expr_f =
+                expr_field_with_resolver(&layer.exprs, &layer.sources, root.expr, &|place| {
+                    cross_layer.get(place).copied()
+                })
+                .map_err(|place| {
+                    format!("layer {li} root {ri}: unresolved cross-layer read field for {place:?}")
+                })?;
             if let Some(sink) = &root.materialize {
                 if expr_f != sink.field {
                     return Err(format!(
@@ -821,120 +629,16 @@ pub fn validate(dag: &DagCircuit) -> Result<(), String> {
 
         // ── Publish this layer's sink fields for later layers ─────────────────
         // Iterate roots and visit each `materialize` sink. Cache roots
-        // (`claim: None`) MUST be visited: `sink_read_place` returns `Some` for
+        // (`claim: None`) MUST be visited: `read_place` returns `Some` for
         // `Cache`, so a later layer's `Read{CacheOutput}` can resolve its field.
         for root in &layer.roots {
             if let Some(sink) = &root.materialize {
-                if let Some(place) = sink_read_place(&sink.kind) {
+                if let Some(place) = sink.kind.read_place() {
                     cross_layer.insert(place, sink.field);
                 }
             }
         }
     }
 
-    Ok(())
-}
-
-// ── `simplify_layer` output invariant (Task 5) ────────────────────────────────
-
-/// Structurally validate that every layer of `dag` is a fixpoint of
-/// `simplify_layer` — i.e. running `simplify_layer` on it again would be a
-/// no-op. For every ROOT-REACHABLE, non-fenced (`layer.resolutions` keys are
-/// exempt) `Add`/`Mul` node:
-/// - no same-op child with fan-out==1 (a non-fenced child) — would flatten;
-/// - at most one `Constant` operand — multiple would const-fold;
-/// - no `Constant(0)` operand in `Add`, no `Constant(1)` operand in `Mul` —
-///   identity would drop it;
-/// - no empty or unary non-fenced `Add`/`Mul` — collapse would fire;
-/// - EXCEPTION: a `Mul` retaining a `Constant(0)` operand is legal iff the
-///   node is NOT provably Base (the field-suppressed annihilator guard: an
-///   Ext-valued zero product is intentionally NOT rewritten to a Base
-///   constant).
-///
-/// `dag` need not otherwise satisfy [`validate`]'s artifact-shape invariants;
-/// this is a narrower, simplify-specific check reusable on hand-built or
-/// intermediate DAGs.
-pub fn validate_simplified(dag: &DagCircuit) -> Result<(), String> {
-    for (li, layer) in dag.layers.iter().enumerate() {
-        let fenced: HashSet<ExprId> = layer.resolutions.keys().copied().collect();
-        let reachable = collect_root_reachable_exprs(layer);
-        let fan_out = super::simplify::fan_out(layer);
-        let mut base_memo: HashMap<ExprId, bool> = HashMap::new();
-        for &e in &reachable {
-            let id = ExprId(e);
-            if fenced.contains(&id) {
-                continue;
-            }
-            let (is_add, children) = match &layer.exprs[e as usize] {
-                Expr::Add(c) => (true, c),
-                Expr::Mul(c) => (false, c),
-                Expr::Source(_) => continue,
-            };
-            let op_name = if is_add { "Add" } else { "Mul" };
-
-            if children.len() < 2 {
-                return Err(format!(
-                    "layer {li} expr {:?}: non-fenced {op_name} has {} operand(s), \
-                     must have >=2 (empty/unary op would have been collapsed)",
-                    id,
-                    children.len()
-                ));
-            }
-
-            let mut const_count = 0usize;
-            let mut const_zero = false;
-            let mut const_one = false;
-            for &c in children {
-                let same_op = matches!(
-                    (&layer.exprs[c.0 as usize], is_add),
-                    (Expr::Add(_), true) | (Expr::Mul(_), false)
-                );
-                if same_op && !fenced.contains(&c) && fan_out.get(&c).copied().unwrap_or(0) == 1 {
-                    return Err(format!(
-                        "layer {li} expr {:?}: unflattened same-op fan-out-1 child {:?} \
-                         (simplify_layer would flatten this)",
-                        id, c
-                    ));
-                }
-                if let Expr::Source(sid) = &layer.exprs[c.0 as usize] {
-                    if let SourceKind::Constant { value } = layer.sources[sid.0 as usize].kind {
-                        const_count += 1;
-                        const_zero |= value == 0;
-                        const_one |= value == 1;
-                    }
-                }
-            }
-
-            if const_count > 1 {
-                return Err(format!(
-                    "layer {li} expr {:?}: {op_name} retains {const_count} Constant operands, \
-                     must be const-folded to at most 1",
-                    id
-                ));
-            }
-            if is_add && const_zero {
-                return Err(format!(
-                    "layer {li} expr {:?}: Add retains a Constant(0) operand (identity not applied)",
-                    id
-                ));
-            }
-            if !is_add && const_one {
-                return Err(format!(
-                    "layer {li} expr {:?}: Mul retains a Constant(1) operand (identity not applied)",
-                    id
-                ));
-            }
-            if !is_add && const_zero {
-                // Field-suppressed annihilator exception: legal iff NOT provably Base.
-                if super::simplify::provably_base(layer, &mut base_memo, id) {
-                    return Err(format!(
-                        "layer {li} expr {:?}: Mul retains a Constant(0) operand but the node \
-                         is provably Base — the annihilator rewrite should have fired",
-                        id
-                    ));
-                }
-            }
-        }
-    }
     Ok(())
 }
