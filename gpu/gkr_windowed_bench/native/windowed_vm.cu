@@ -27,6 +27,8 @@ constexpr u16 WINDOW_CLASS_FIELD_E4 = 1;
 constexpr u16 WINDOW_IMMEDIATE_ONE = 0;
 constexpr u16 WINDOW_IMMEDIATE_NEG_ONE = 1;
 constexpr u16 WINDOW_IMMEDIATE_RESERVED = 2;
+constexpr u16 WINDOW_REDUCE_AFTER = 1u << 15;
+constexpr u16 WINDOW_IMMEDIATE_ID_MASK = WINDOW_REDUCE_AFTER - 1u;
 constexpr u16 WINDOW_SOURCE_COLUMN_BITS = 7;
 constexpr u16 WINDOW_SOURCE_COLUMN_MASK = (1u << WINDOW_SOURCE_COLUMN_BITS) - 1u;
 constexpr u32 WINDOW_C_INIT_NONE = 0xffffffffu;
@@ -262,6 +264,39 @@ DEVICE_FORCEINLINE window_triplet<bf> window_eval_bf_term(const window_vm_desc &
   }
 }
 
+DEVICE_FORCEINLINE window_triplet<u64> window_eval_bf_product_wide(const window_vm_desc &desc, const window_instruction instruction, const u32 row,
+                                                                   const u32 log_rows, const u32 log_trace, const window_selector selector) {
+  const window_bf_source source_a_view = window_resolve_bf_source(desc, instruction.source_a, log_trace);
+  const window_bf_source source_b_view = window_resolve_bf_source(desc, instruction.source_b, log_trace);
+  const window_triplet<bf> a = window_resolve_triplet<bf>(source_a_view, row, log_rows, selector);
+  const window_triplet<bf> b = window_resolve_triplet<bf>(source_b_view, row, log_rows, selector);
+  const u16 immediate_id = instruction.factor & WINDOW_IMMEDIATE_ID_MASK;
+  window_triplet<u64> result;
+  if (immediate_id == WINDOW_IMMEDIATE_ONE) {
+    result.apply([&](u64 &value, const u32 cell) { value = mul_wide(a.values[cell].limb, b.values[cell].limb); });
+  } else if (immediate_id == WINDOW_IMMEDIATE_NEG_ONE) {
+    result.apply([&](u64 &value, const u32 cell) { value = mul_wide(bf::ORDER - a.values[cell].limb, b.values[cell].limb); });
+  } else {
+    const bf immediate = bf::from_reduced_raw_repr(desc.immediates[immediate_id - WINDOW_IMMEDIATE_RESERVED]);
+    result.apply([&](u64 &value, const u32 cell) { value = mul_wide(bf::mul(immediate, a.values[cell]).limb, b.values[cell].limb); });
+  }
+  return result;
+}
+
+DEVICE_FORCEINLINE void window_add_bf_product_wide(const window_triplet<u64> &value, window_triplet<u64> &sum) {
+  sum.apply([&](u64 &cell_sum, const u32 cell) { cell_sum += value.values[cell]; });
+}
+
+DEVICE_FORCEINLINE void window_reduce_and_rebase_bf_wide(window_triplet<u64> &sum) {
+  sum.apply([](u64 &cell_sum, const u32) { cell_sum = mul_wide(bf::red_wide(cell_sum).limb, bf::MONT_R); });
+}
+
+DEVICE_FORCEINLINE window_triplet<bf> window_reduce_bf_wide(const window_triplet<u64> &sum) {
+  window_triplet<bf> result;
+  result.apply([&](bf &value, const u32 cell) { value = bf::red_wide(sum.values[cell]); });
+  return result;
+}
+
 DEVICE_FORCEINLINE window_triplet<e4> window_eval_e4_term(const window_vm_desc &desc, const window_instruction instruction, const u32 row, const u32 log_rows,
                                                           const u32 log_trace, const window_selector selector) {
   switch (instruction.term_class) {
@@ -295,17 +330,42 @@ DEVICE_FORCEINLINE u32 window_execute_bf_atom(const window_vm_desc &desc, const 
                                               const u32 log_trace, const window_selector selector, const window_accumulator_view accumulators) {
   const bool grouped = head.term_class == WINDOW_CLASS_GROUP_BF;
   const u16 arity = grouped ? head.source_a : 1;
-  const window_instruction first = grouped ? desc.program[pc++] : head;
-  const window_triplet<bf> first_value = window_eval_bf_term(desc, first, row, log_rows, log_trace, selector);
-  window_triplet<bf> sums = first_value;
-  if (grouped)
-    window_init_bf_immediate(desc, first.factor, sums);
+  window_triplet<bf> sums;
+  if (grouped && head.source_b != 0) {
+    const u16 lazy_product_count = head.source_b;
+    const window_instruction first = desc.program[pc++];
+    window_triplet<u64> wide_sums = window_eval_bf_product_wide(desc, first, row, log_rows, log_trace, selector);
+#pragma unroll 1
+    for (u16 member = 1; member < lazy_product_count - 1; ++member) {
+      const window_instruction product = desc.program[pc++];
+      const window_triplet<u64> value = window_eval_bf_product_wide(desc, product, row, log_rows, log_trace, selector);
+      window_add_bf_product_wide(value, wide_sums);
+      if (product.factor & WINDOW_REDUCE_AFTER)
+        window_reduce_and_rebase_bf_wide(wide_sums);
+    }
+    const window_instruction final_product = desc.program[pc++];
+    const window_triplet<u64> final_value = window_eval_bf_product_wide(desc, final_product, row, log_rows, log_trace, selector);
+    window_add_bf_product_wide(final_value, wide_sums);
+    sums = window_reduce_bf_wide(wide_sums);
 
 #pragma unroll 1
-  for (u16 member = 1; member < arity; ++member) {
-    const window_instruction tail = desc.program[pc++];
-    const window_triplet<bf> value = window_eval_bf_term(desc, tail, row, log_rows, log_trace, selector);
-    window_apply_bf_immediate(desc, tail.factor, value, sums);
+    for (u16 member = lazy_product_count; member < arity; ++member) {
+      const window_instruction tail = desc.program[pc++];
+      const window_triplet<bf> value = window_eval_bf_term(desc, tail, row, log_rows, log_trace, selector);
+      window_apply_bf_immediate(desc, tail.factor, value, sums);
+    }
+  } else {
+    const window_instruction first = grouped ? desc.program[pc++] : head;
+    sums = window_eval_bf_term(desc, first, row, log_rows, log_trace, selector);
+    if (grouped)
+      window_init_bf_immediate(desc, first.factor, sums);
+
+#pragma unroll 1
+    for (u16 member = 1; member < arity; ++member) {
+      const window_instruction tail = desc.program[pc++];
+      const window_triplet<bf> value = window_eval_bf_term(desc, tail, row, log_rows, log_trace, selector);
+      window_apply_bf_immediate(desc, tail.factor, value, sums);
+    }
   }
 
   const e4 core = ::ab_gkr_windowed_coeff_bank[head.factor];

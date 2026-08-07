@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use clap::{Parser, ValueEnum};
 use gpu_gkr_windowed_bench::artifact::encode_artifact;
 use gpu_gkr_windowed_bench::generator::{
-    generate_add_sub_layer0_with_schedule, schedule_census, ProgramSchedule,
+    generate_add_sub_layer0_with_options, schedule_census, ProgramSchedule,
 };
 
 #[derive(Clone, Copy, Debug, ValueEnum)]
@@ -33,6 +33,8 @@ struct Args {
     output: Option<PathBuf>,
     #[arg(long, value_enum, default_value_t = ScheduleArg::Compiler)]
     schedule: ScheduleArg,
+    #[arg(long)]
+    lazy_bf_reduction: bool,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -44,7 +46,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let output = args
         .output
         .unwrap_or_else(|| manifest.join("artifacts/add_sub_layer0.bin"));
-    let artifact = generate_add_sub_layer0_with_schedule(&layout, args.schedule.into())?;
+    let artifact = generate_add_sub_layer0_with_options(
+        &layout,
+        args.schedule.into(),
+        args.lazy_bf_reduction,
+    )?;
     let census = schedule_census(&artifact)?;
     let bytes = encode_artifact(&artifact)?;
     if let Some(parent) = output.parent() {
@@ -68,9 +74,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .filter(|window| window.family.is_procedural())
         .count();
     println!(
-        "wrote {}: schedule={:?} terms={} atoms={} records={} program_bytes={} coefficients={} immediates={} sources={} windows={} bf_windows={} e4_windows={} procedural_windows={} field_transitions={} shape_transitions={} class_transitions={} immediate_transitions={} same_source_a={} same_source_b={} bf_accesses={} procedural_bf_accesses={}",
+        "wrote {}: schedule={:?} lazy_bf_reduction={} terms={} atoms={} records={} program_bytes={} coefficients={} immediates={} sources={} windows={} bf_windows={} e4_windows={} procedural_windows={} field_transitions={} shape_transitions={} class_transitions={} immediate_transitions={} same_source_a={} same_source_b={} bf_accesses={} procedural_bf_accesses={} lazy_bf_groups={} lazy_bf_products={} reduction_boundaries={}",
         output.display(),
         args.schedule,
+        args.lazy_bf_reduction,
         artifact.term_count,
         census.atoms,
         artifact.record_count,
@@ -90,6 +97,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         census.adjacent_equal_source_b,
         census.projected_bf_accesses,
         census.projected_procedural_bf_accesses,
+        census.lazy_bf_groups,
+        census.lazy_bf_products,
+        census.reduction_boundaries,
     );
     Ok(())
 }
