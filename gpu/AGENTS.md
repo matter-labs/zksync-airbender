@@ -28,7 +28,12 @@ audit, storage layout, circuit transform; deps `cs` + `field`, no CUDA; consumed
 internally by `gpu_gkr`), **`gpu_gkr_compiler`** (CPU-only checked compiler
 for committed forward schedules and the separate backward R0/continuation
 programs; offline search and its manual artifact tool are behind the `search`
-feature), and **`gpu_native_build`** (the shared build-script helper, a
+feature), **`gpu_gkr_uniskip_bench`** (`gkr_uniskip_bench/`:
+standalone CUDA benchmark for one uniskip sumcheck pass (k = 4) over a synthetic
+program, with its own `gpu_gkr_uniskip_bench_native` archive, namespace
+`airbender::gkr_uniskip_bench`; no consumers and no prover-crate deps — `gpu_core`
+is a dev-dependency only, for the crate-root serial guard), and
+**`gpu_native_build`** (the shared build-script helper, a
 build-dependency only). The GPU-independent evaluation DAG lives at the workspace
 root in `gkr_eval_ir`; `gpu_gkr_compiler` depends on it.
 
