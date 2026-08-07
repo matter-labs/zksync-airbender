@@ -38,8 +38,8 @@ fallback (4 × 256 × 16 B) was not needed and no `__maxnreg__` was added.
 | `ab_gkr_uniskip_finalize_kernel` | 32 | 29 | 28 | 32 | 0 / 0 / 0 (128 B smem) |
 | `ab_gkr_uniskip_lde_e4_kernel` | 42 | 35 | 42 | 34 | 0 / 0 / 0 |
 | `ab_gkr_uniskip_lde_bf_kernel` | 36 | 32 | 38 | 32 | 0 / 0 / 0 |
-| `ab_gkr_uniskip_lde_e4_v2_kernel` | 40 | 32 | 40 | 40 | 0 / 0 / 0 |
-| `ab_gkr_uniskip_lde_bf_v2_kernel` | 64 | 64 | 64 | 64 | 0 / 0 / 0 |
+| `ab_gkr_uniskip_lde_e4_row_kernel` | 40 | 32 | 40 | 40 | 0 / 0 / 0 |
+| `ab_gkr_uniskip_lde_bf_row_kernel` | 64 | 64 | 64 | 64 | 0 / 0 / 0 |
 | `ab_gkr_uniskip_init_e4_kernel` | 32 | 32 | 29 | 30 | 0 / 0 / 0 |
 | `ab_gkr_uniskip_init_bf_kernel` | 16 | 14 | 14 | 16 | 0 / 0 / 0 |
 
@@ -60,8 +60,8 @@ matters is there.
 | `eval` | 4 blk, ~50% | 5 blk, ~83% | 5 blk, ~62.5% | 4 blk, ~67% |
 | `fold_e4` | 6 blk, ~75% | 5 blk, ~83% | **2 blk, ~25%** | **2 blk, ~33%** |
 | `fold_bf` | ~100% | ~100% | ~100% | ~100% |
-| `lde_e4_v2` | 8 blk, ~100% | 6 blk, ~100% | 6 blk, ~75% | 6 blk, ~100% |
-| `lde_bf_v2` | 4 blk, ~50% | 4 blk, ~67% | 4 blk, ~50% | 4 blk, ~67% |
+| `lde_e4_row` | 8 blk, ~100% | 6 blk, ~100% | 6 blk, ~75% | 6 blk, ~100% |
+| `lde_bf_row` | 4 blk, ~50% | 4 blk, ~67% | 4 blk, ~50% | 4 blk, ~67% |
 
 (Blocks/SM = `floor(65536 / (256 × regs))`, capped by the 2048-thread limit on
 sm_80/sm_90 and the 1536-thread limit on sm_89/sm_120; register allocation

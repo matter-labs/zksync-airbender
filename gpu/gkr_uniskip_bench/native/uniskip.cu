@@ -90,7 +90,7 @@ EXTERN __global__ void ab_gkr_uniskip_lde_e4_kernel(const __grid_constant__ unis
 // construction. Lanes are consecutive rows, so each tap-plane load and each coset-plane
 // store is warp-coalesced exactly as before. Bytes written are identical to the
 // cell-shape kernel's.
-EXTERN __global__ void ab_gkr_uniskip_lde_bf_v2_kernel(const __grid_constant__ uniskip_vm_desc desc, const u16 *jobs, const u32 num_jobs) {
+EXTERN __global__ void ab_gkr_uniskip_lde_bf_row_kernel(const __grid_constant__ uniskip_vm_desc desc, const u16 *jobs, const u32 num_jobs) {
   const u64 rows = u64{1} << desc.log_rows;
   const u64 total = rows * u64{num_jobs};
   for (u64 i = blockIdx.x * u64{blockDim.x} + threadIdx.x; i < total; i += u64{blockDim.x} * gridDim.x) {
@@ -122,7 +122,7 @@ EXTERN __global__ void ab_gkr_uniskip_lde_bf_v2_kernel(const __grid_constant__ u
 // limb of the 16 taps to produce its limb of all 16 cells — the cell-sharers of the
 // cell-shape kernel collapse into ONE thread here too, and its 4 limb-sharers are
 // adjacent lanes. Bytes written are identical to the cell-shape kernel's.
-EXTERN __global__ void ab_gkr_uniskip_lde_e4_v2_kernel(const __grid_constant__ uniskip_vm_desc desc, const u16 *jobs, const u32 num_jobs) {
+EXTERN __global__ void ab_gkr_uniskip_lde_e4_row_kernel(const __grid_constant__ uniskip_vm_desc desc, const u16 *jobs, const u32 num_jobs) {
   constexpr u32 LIMBS = 4;
   const u64 rows = u64{1} << desc.log_rows;
   const u64 total = rows * u64{num_jobs} * LIMBS;

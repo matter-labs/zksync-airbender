@@ -45,11 +45,11 @@ cuda_kernel!(
 );
 cuda_kernel!(
     LdeBfRow,
-    ab_gkr_uniskip_lde_bf_v2_kernel(desc: UniskipVmDesc, jobs: *const u16, num_jobs: u32)
+    ab_gkr_uniskip_lde_bf_row_kernel(desc: UniskipVmDesc, jobs: *const u16, num_jobs: u32)
 );
 cuda_kernel!(
     LdeE4Row,
-    ab_gkr_uniskip_lde_e4_v2_kernel(desc: UniskipVmDesc, jobs: *const u16, num_jobs: u32)
+    ab_gkr_uniskip_lde_e4_row_kernel(desc: UniskipVmDesc, jobs: *const u16, num_jobs: u32)
 );
 cuda_kernel!(
     FoldBf,

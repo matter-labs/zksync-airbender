@@ -32,7 +32,7 @@ stream:
 - The LDE stage has two interchangeable grid shapes, `--lde-shape {cell,row}`, which
   write the same bytes. `cell` (`lde_bf`/`lde_e4`) is one thread per (column, coset
   cell, row), so a row's 16 taps are re-read once per cell. `row`
-  (`lde_bf_v2`/`lde_e4_v2`, the default) is one thread per (column, row) — per
+  (`lde_bf_row`/`lde_e4_row`, the default) is one thread per (column, row) — per
   (column, row, limb) for `e4`, since the extension is `bf`-linear per limb — which
   reads each tap once and emits all 16 cells, keeping the reuse in registers. Both are
   measured in `iteration_times.md`.
