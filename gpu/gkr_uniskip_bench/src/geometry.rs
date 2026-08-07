@@ -1,9 +1,25 @@
 //! Launch geometry of one uniskip pass at k = 4.
 
-use crate::abi::{UNISKIP_CELLS, UNISKIP_LOG_EQ_HIGH, UNISKIP_ROWS_PER_BLOCK, UNISKIP_TAPS};
+use crate::abi::{
+    UNISKIP_CELLS, UNISKIP_ELEMENT_INDEX_BITS, UNISKIP_LOG_ADDRESSABLE_PLANES, UNISKIP_LOG_EQ_HIGH,
+    UNISKIP_LOG_TAPS, UNISKIP_MAX_WINDOW_COLUMNS, UNISKIP_ROWS_PER_BLOCK, UNISKIP_TAPS,
+};
 
 /// `log_rows` below this leaves fewer rows than a block covers.
 pub const UNISKIP_MIN_LOG_ROWS: u32 = 5;
+/// `log_rows` above this overflows the device accessor's 32-bit element index:
+/// the worst-case index is `(2^UNISKIP_LOG_ADDRESSABLE_PLANES << log_rows) - 1`,
+/// and `load()` narrows it to `unsigned`.
+pub const UNISKIP_MAX_LOG_ROWS: u32 = UNISKIP_ELEMENT_INDEX_BITS - UNISKIP_LOG_ADDRESSABLE_PLANES;
+/// Largest `--log-trace` this bench can address.
+pub const UNISKIP_MAX_LOG_TRACE: u32 = UNISKIP_MAX_LOG_ROWS + UNISKIP_LOG_TAPS;
+
+/// Largest element index `uniskip_source_value` can produce at `log_rows`: the
+/// last plane an `addr` can name, plus the last row.
+pub fn max_element_index(log_rows: u32) -> u64 {
+    let planes = (UNISKIP_MAX_WINDOW_COLUMNS * UNISKIP_TAPS) as u64;
+    ((planes - 1) << log_rows) + ((1u64 << log_rows) - 1)
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Geometry {
@@ -23,17 +39,24 @@ pub struct Geometry {
 
 impl Geometry {
     pub fn new(log_trace: u32) -> Result<Self, String> {
-        let log_rows = log_trace
-            .checked_sub(UNISKIP_TAPS.trailing_zeros())
-            .ok_or_else(|| {
-                format!(
-                    "--log-trace {log_trace} is below the k = 4 skip factor ({} taps)",
-                    UNISKIP_TAPS
-                )
-            })?;
+        let log_rows = log_trace.checked_sub(UNISKIP_LOG_TAPS).ok_or_else(|| {
+            format!(
+                "--log-trace {log_trace} is below the k = 4 skip factor ({} taps)",
+                UNISKIP_TAPS
+            )
+        })?;
         if log_rows < UNISKIP_MIN_LOG_ROWS {
             return Err(format!(
                 "--log-trace {log_trace} gives log_rows {log_rows}, below the minimum {UNISKIP_MIN_LOG_ROWS}"
+            ));
+        }
+        if log_rows > UNISKIP_MAX_LOG_ROWS {
+            return Err(format!(
+                "--log-trace {log_trace} gives log_rows {log_rows}, over the maximum \
+                 {UNISKIP_MAX_LOG_ROWS} (--log-trace {UNISKIP_MAX_LOG_TRACE}): an addr names up to \
+                 {UNISKIP_MAX_WINDOW_COLUMNS} columns x {UNISKIP_TAPS} planes, so the accessor's \
+                 element index would reach {} and the device load() offset is {UNISKIP_ELEMENT_INDEX_BITS}-bit",
+                max_element_index(log_rows)
             ));
         }
         // HIGH-FIRST fill: each high table caps at UNISKIP_EQ_HIGH entries, the
@@ -116,8 +139,20 @@ mod cpu_tests {
         assert_eq!(g.eq_sizes, (8, 8, 4));
         assert!(Geometry::new(8).is_err());
 
-        for log_trace in 9..=32 {
+        // The addressing bound is pinned behaviour, not a coincidence: it is the
+        // largest log_rows whose worst-case element index still fits the device
+        // accessor's 32-bit load() offset.
+        assert_eq!(UNISKIP_MAX_LOG_ROWS, 21);
+        assert_eq!(UNISKIP_MAX_LOG_TRACE, 25);
+        assert!(max_element_index(UNISKIP_MAX_LOG_ROWS) <= u64::from(u32::MAX));
+        assert!(max_element_index(UNISKIP_MAX_LOG_ROWS + 1) > u64::from(u32::MAX));
+        let rejected = Geometry::new(UNISKIP_MAX_LOG_TRACE + 1).unwrap_err();
+        assert!(rejected.contains("over the maximum"), "{rejected}");
+        assert!(Geometry::new(32).is_err());
+
+        for log_trace in 9..=UNISKIP_MAX_LOG_TRACE {
             let g = Geometry::new(log_trace).unwrap();
+            assert!(max_element_index(g.log_rows) <= u64::from(u32::MAX));
             let (high0, high1, low) = g.eq_sizes;
             assert_eq!(high0 + high1 + low, g.log_rows, "log_trace {log_trace}");
             assert!(g.eq_high_len(0) <= UNISKIP_EQ_HIGH);

@@ -212,14 +212,16 @@ impl Pool {
         self.picks += 1;
         let hot = u32::from(self.hot);
         if hot == 0 {
-            return self.start + ((n + self.seed) % u32::from(self.len)) as u16;
+            let len = u32::from(self.len);
+            return self.start + (n.wrapping_add(self.seed % len) % len) as u16;
         }
         let hot_before = (n / SYNTH_HOT_PERIOD) * SYNTH_HOT_PER_PERIOD
             + (n % SYNTH_HOT_PERIOD).min(SYNTH_HOT_PER_PERIOD);
         let index = if n % SYNTH_HOT_PERIOD < SYNTH_HOT_PER_PERIOD {
             hot_before % hot
         } else {
-            hot + (n - hot_before + self.seed) % (u32::from(self.len) - hot)
+            let cold = u32::from(self.len) - hot;
+            hot + (n - hot_before).wrapping_add(self.seed % cold) % cold
         };
         self.start + index as u16
     }
@@ -259,7 +261,7 @@ impl Emitter {
     }
 
     fn next_immediate(&mut self) -> u16 {
-        let id = (self.members + self.seed) % SYNTH_IMMEDIATE_IDS;
+        let id = self.members.wrapping_add(self.seed % SYNTH_IMMEDIATE_IDS) % SYNTH_IMMEDIATE_IDS;
         self.immediate_id_counts[id as usize] += 1;
         id as u16
     }
@@ -506,7 +508,10 @@ fn ungrouped_term(emitter: &mut Emitter, term_class: u16, class_counts: [u32; 5]
 }
 
 fn group_member(emitter: &mut Emitter) -> UniskipTerm {
-    let product = (emitter.members + emitter.seed) % SYNTH_MEMBER_PRODUCT_PERIOD
+    let product = emitter
+        .members
+        .wrapping_add(emitter.seed % SYNTH_MEMBER_PRODUCT_PERIOD)
+        % SYNTH_MEMBER_PRODUCT_PERIOD
         == SYNTH_MEMBER_PRODUCT_PERIOD - 1;
     let coeff = emitter.next_immediate();
     emitter.members += 1;
@@ -697,6 +702,29 @@ mod cpu_tests {
         let c = generate(12, Census::default()).unwrap();
         assert_ne!(a.wire_bytes(), c.wire_bytes());
         assert_eq!(a.census.records, c.census.records);
+    }
+
+    /// The seed offsets every cursor; the extremes must not overflow, and the
+    /// census must not drift with them (the seed is reduced by each cursor's
+    /// modulus, so no phase hiccups at the wrap point). Runs with overflow checks
+    /// on under the dev profile.
+    #[test]
+    fn cpu_synth_seed_extremes() {
+        for seed in [u32::MAX, u32::MAX - 1, 0x8000_0000, u32::MAX / 2] {
+            let p = generate(seed, Census::default()).unwrap();
+            assert_eq!(p.census.records, 175);
+            assert_eq!(p.census.live_coeff_ids, 80);
+            assert_eq!(p.census.operand_references, 224);
+            assert_eq!(p.census.member_class_counts[0], 48);
+            assert_eq!(p.census.member_class_counts[2], 24);
+            assert_eq!(p.census.immediate_id_counts, vec![4; 18]);
+            assert!(p.census.per_source_refs.iter().all(|&r| r > 0));
+            walk(&p);
+            assert_eq!(
+                generate(seed, Census::default()).unwrap().wire_bytes(),
+                p.wire_bytes()
+            );
+        }
     }
 
     #[test]

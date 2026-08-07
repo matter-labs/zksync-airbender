@@ -5,6 +5,8 @@
 
 /// Direct taps of a logical row, living on `H` (k = 4).
 pub const UNISKIP_TAPS: usize = 16;
+/// `log2(UNISKIP_TAPS)` — the k = 4 skip factor, `log_trace - log_rows`.
+pub const UNISKIP_LOG_TAPS: u32 = UNISKIP_TAPS.trailing_zeros();
 /// Cells evaluated per logical row: `0..16` on `H`, `16..32` on the coset.
 pub const UNISKIP_CELLS: usize = 32;
 
@@ -44,6 +46,14 @@ pub const UNISKIP_ADDR_COLUMN_BITS: u32 = 7;
 pub const UNISKIP_ADDR_COLUMN_MASK: u16 = (1 << UNISKIP_ADDR_COLUMN_BITS) - 1;
 /// Columns a single window can address.
 pub const UNISKIP_MAX_WINDOW_COLUMNS: usize = 1 << UNISKIP_ADDR_COLUMN_BITS;
+
+/// Planes an `addr` can name: `UNISKIP_MAX_WINDOW_COLUMNS * UNISKIP_TAPS`. The
+/// accessor's element index is `(plane << log_rows) + row`, so it occupies
+/// `UNISKIP_LOG_ADDRESSABLE_PLANES + log_rows` bits.
+pub const UNISKIP_LOG_ADDRESSABLE_PLANES: u32 = UNISKIP_ADDR_COLUMN_BITS + UNISKIP_LOG_TAPS;
+/// The device `load()` takes a 32-bit `unsigned` offset, which is what bounds
+/// `log_rows` (see `geometry::UNISKIP_MAX_LOG_ROWS`).
+pub const UNISKIP_ELEMENT_INDEX_BITS: u32 = 32;
 
 #[repr(C, align(8))]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -209,6 +219,15 @@ mod cpu_tests {
         assert_eq!(size_of::<UniskipVmDesc>(), 2512);
         assert_eq!(align_of::<UniskipVmDesc>(), 16);
         assert!(size_of::<UniskipVmDesc>() <= 32764);
+
+        // Addressing bound, mirrored from the header's constants of the same name.
+        assert_eq!(UNISKIP_LOG_TAPS, 4);
+        assert_eq!(UNISKIP_LOG_ADDRESSABLE_PLANES, 11);
+        assert_eq!(UNISKIP_ELEMENT_INDEX_BITS, 32);
+        assert_eq!(
+            1usize << UNISKIP_LOG_ADDRESSABLE_PLANES,
+            UNISKIP_MAX_WINDOW_COLUMNS * UNISKIP_TAPS
+        );
 
         // __constant__ budget: coeff bank + both eq high tables + LDE matrix + fold weights.
         let constant_bytes = UNISKIP_COEFF_BANK * 16

@@ -115,6 +115,19 @@ static_assert(sizeof(uniskip_vm_desc) == 2512);
 // Passed by value as a `__grid_constant__` kernel parameter.
 static_assert(sizeof(uniskip_vm_desc) <= 32764);
 
+// ADDRESSING BOUND. `addr` names at most 2^7 columns of UNISKIP_TAPS planes each,
+// so the accessor's element index `(plane << log_rows) + row` spans
+// UNISKIP_LOG_ADDRESSABLE_PLANES + log_rows bits. `load()` takes a 32-bit unsigned
+// offset and NARROWS the size_t computed below, so the index is only safe while
+// log_rows <= UNISKIP_MAX_LOG_ROWS. That is a stated invariant, enforced host-side
+// by Geometry::new (src/geometry.rs, same two constants); the size_t arithmetic here
+// still matters — it keeps the plane product out of 16-bit.
+constexpr u32 UNISKIP_LOG_ADDRESSABLE_PLANES = 11;
+constexpr u32 UNISKIP_ELEMENT_INDEX_BITS = 32;
+constexpr u32 UNISKIP_MAX_LOG_ROWS = UNISKIP_ELEMENT_INDEX_BITS - UNISKIP_LOG_ADDRESSABLE_PLANES;
+static_assert((1u << UNISKIP_LOG_ADDRESSABLE_PLANES) == 128 * UNISKIP_TAPS);
+static_assert(UNISKIP_MAX_LOG_ROWS == 21);
+
 // The ONE source accessor: every operand read in every kernel goes through it,
 // so v2 (LDE-on-read / published sources) only swaps this body.
 template <typename T> DEVICE_FORCEINLINE T uniskip_source_value(const uniskip_vm_desc &desc, const u16 source_id, const u32 cell, const u32 row) {
