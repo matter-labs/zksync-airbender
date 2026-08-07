@@ -1,14 +1,12 @@
 //! Address classification and relation/cache dependency-collection primitives
-//! for the GKR backward path, shared by the storage layout (`storage_layout`)
-//! and the diagnostic audit pass in `gpu_circuit_prover`. Pure structural walks
-//! of `cs::gkr_compiler::GKRCircuitArtifact` — no GPU allocations, challenges,
-//! or kernel launches.
+//! for the GKR backward path and storage layout. Pure structural walks of
+//! `cs::gkr_compiler::GKRCircuitArtifact` — no GPU work.
 //!
 //! Storage-partition taxonomy used as the backing-buffer key by
 //! `base_class_backings` / `ext_class_backings` and as the per-launch slot
 //! key by the dim-reducing kernel's dynamic `bases[16]` pointer table.
 //! Slot assignment within a launch is now dynamic and deduplicated by
-//! backing pointer (see `SlotTableBuilder` in `backward::compact::encoder`),
+//! backing pointer (see `gpu_gkr::backward::dim_reducing_encoder`),
 //! so the per-layer ceiling is the kernel's `bases[]` width.
 //!
 //! | class                       | role                                      |
@@ -413,9 +411,7 @@ pub fn collect_addresses_from_relation<F: PrimeField>(
     }
 }
 
-/// Walk a cache relation (these are the prepare-cache kernels for the layer)
-/// and collect every `GKRAddress` it reads. The output is the cache's own
-/// address (the BTreeMap key in `cached_relations`).
+/// Collect every address read by a cache relation.
 pub fn collect_addresses_from_cache_relation<F: PrimeField>(
     rel: &NoFieldGKRCacheRelation<F>,
     reads: &mut Vec<GKRAddress>,

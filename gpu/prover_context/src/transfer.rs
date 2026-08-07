@@ -3,45 +3,10 @@ use era_cudart::event::{CudaEvent, CudaEventCreateFlags};
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
 use era_cudart::slice::{CudaSlice, CudaSliceMut, DeviceSlice};
-use era_cudart::stream::{CudaStream, CudaStreamWaitEventFlags};
+use era_cudart::stream::CudaStreamWaitEventFlags;
 use gpu_core::primitives::callbacks::Callbacks;
 use std::sync::Arc;
 
-/// One-shot exec → d2h fork/join wrapper. Records a `DISABLE_TIMING` event
-/// on `exec_stream`, waits on it from `d2h_stream`, runs `body` with the
-/// d2h stream, then joins via the symmetric event back to `exec_stream`.
-///
-/// Use for per-layer D2H bundles where every source has been written on
-/// exec by the time of the fork and exec needs the D2Hs visible before
-/// proceeding (e.g., before scheduling a final-readback callback or
-/// dropping the source allocations).
-///
-/// `pub` (not `pub(crate)`): production code in `gpu_circuit_prover`'s
-/// `gkr::backward` module schedules D2H fork/join bundles through this helper
-/// across the crate boundary.
-pub fn fork_join_exec_to_d2h<R, F>(
-    exec_stream: &CudaStream,
-    d2h_stream: &CudaStream,
-    body: F,
-) -> CudaResult<R>
-where
-    F: FnOnce(&CudaStream) -> CudaResult<R>,
-{
-    let src_ready = CudaEvent::create_with_flags(CudaEventCreateFlags::DISABLE_TIMING)?;
-    src_ready.record(exec_stream)?;
-    d2h_stream.wait_event(&src_ready, CudaStreamWaitEventFlags::DEFAULT)?;
-
-    let result = body(d2h_stream)?;
-
-    let d2h_done = CudaEvent::create_with_flags(CudaEventCreateFlags::DISABLE_TIMING)?;
-    d2h_done.record(d2h_stream)?;
-    exec_stream.wait_event(&d2h_done, CudaStreamWaitEventFlags::DEFAULT)?;
-    Ok(result)
-}
-
-// `#[doc(hidden)] pub` (not `pub(crate)`) so `gpu_circuit_prover`'s test suites can
-// reach this type across the crate boundary. // test-reference readers
-#[doc(hidden)]
 pub struct Transfer<'a> {
     pub(crate) allocated: CudaEvent,
     pub(crate) transferred: CudaEvent,
@@ -49,9 +14,6 @@ pub struct Transfer<'a> {
 }
 
 impl<'a> Transfer<'a> {
-    // `pub` (not `pub(crate)`): production code in `gpu_circuit_prover`'s
-    // `trace::memory_transfer` constructs and drives a `Transfer` directly
-    // across the crate boundary (not just via `single_shot_h2d`).
     pub fn new() -> CudaResult<Self> {
         Ok(Self {
             allocated: CudaEvent::create_with_flags(CudaEventCreateFlags::DISABLE_TIMING)?,
@@ -60,27 +22,17 @@ impl<'a> Transfer<'a> {
         })
     }
 
-    // `pub` (not `pub(crate)`): production code in `gpu_circuit_prover`'s
-    // `trace::memory_transfer` records a `Transfer`'s allocation event
-    // directly across the crate boundary.
     pub fn record_allocated(&self, context: &ProverContext) -> CudaResult<()> {
         self.allocated.record(context.get_exec_stream())
     }
 
-    // `pub` (not `pub(crate)`): production code in `gpu_circuit_prover`'s
-    // `trace::memory_transfer` waits on a `Transfer`'s allocation event
-    // directly across the crate boundary.
     pub fn ensure_allocated(&self, context: &ProverContext) -> CudaResult<()> {
         context
             .get_h2d_stream()
             .wait_event(&self.allocated, CudaStreamWaitEventFlags::DEFAULT)
     }
 
-    // `needless_pass_by_value`: clippy's `&Arc` + internal-clone suggestion is
-    // equivalent, but by-value keeps the ownership transfer explicit at every
-    // `schedule` call site across the `gpu_trace`/`gpu_circuit_prover`
-    // boundary (the callback below moves `src` directly instead of an extra
-    // clone-then-move, so this is not a wasted allocation either way).
+    // Ownership moves into the callback that keeps the H2D source alive.
     #[allow(clippy::needless_pass_by_value)]
     pub fn schedule<T>(
         &mut self,
@@ -92,9 +44,6 @@ impl<'a> Transfer<'a> {
         self.ensure_allocated(context)?;
         let stream = context.get_h2d_stream();
         memory_copy_async(dst, src.as_ref(), stream)?;
-        // `src` is already owned here, so move it into the callback directly
-        // instead of cloning: the callback's only job is to keep the H2D
-        // source alive until the copy completes.
         let f = move || {
             let _ = src;
         };
@@ -128,9 +77,6 @@ impl<'a> Transfer<'a> {
         self.callbacks.schedule(f, stream)
     }
 
-    // `pub` (not `pub(crate)`): production code in `gpu_circuit_prover`'s
-    // `trace::memory_transfer` records a `Transfer`'s transferred event
-    // directly across the crate boundary.
     pub fn record_transferred(&self, context: &ProverContext) -> CudaResult<()> {
         self.transferred.record(context.get_h2d_stream())
     }
@@ -141,23 +87,13 @@ impl<'a> Transfer<'a> {
             .wait_event(&self.transferred, CudaStreamWaitEventFlags::DEFAULT)
     }
 
-    // `pub` (not `pub(crate)`): production code in `gpu_circuit_prover`'s
-    // `trace::memory_transfer` and `proof::inputs` unwraps a finished
-    // `Transfer` into its `Callbacks` directly across the crate boundary.
     pub fn into_callbacks(self) -> Callbacks<'a> {
         self.callbacks
     }
 }
 
-/// Test-only convenience for running a single wrapper's `schedule_transfer`
-/// through its own one-shot `Transfer`, e.g.
-/// `single_shot_h2d(|t| wrapper.schedule_transfer(t, context), context)?`.
-///
-/// The returned `Transfer` has its `transferred` event already recorded; the
-/// caller should either `ensure_transferred` on it or `h2d_stream.synchronize()`
-/// before consuming the device buffers.
-// `#[doc(hidden)] pub` (not `#[cfg(test)]`) so `gpu_circuit_prover`'s test suites can
-// reach this helper across the crate boundary. // test-reference readers
+/// Test helper that schedules and records a complete one-shot H2D transfer.
+/// Callers must wait for it before consuming the device buffers.
 #[doc(hidden)]
 pub fn single_shot_h2d<'a, F>(f: F, context: &ProverContext) -> CudaResult<Transfer<'a>>
 where

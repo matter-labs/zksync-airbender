@@ -301,7 +301,7 @@ pub fn schedule_gpu_whir_fold_with_sources(
         // and `log_rows_per_leaf` (asserted above) and all run in
         // `TreesCacheMode::CachePartial`. We descriptor-pack the three
         // oracles and launch the consolidated leaf and partial-path kernels
-        // once each, replacing the legacy 3 × lde_factor per-coset filter
+        // once each instead of filtering each coset three times
         // pattern. Empty-`columns_count` oracles are skipped in-kernel.
         memory_trace_holder.ensure_cosets_materialized(context)?;
         witness_trace_holder.ensure_cosets_materialized(context)?;

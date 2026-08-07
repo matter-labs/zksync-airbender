@@ -410,14 +410,6 @@ impl ProofLayout {
                     indices: &[u32]|
          -> WhirBaseLayerCommitmentAndQueries<BF, E4, DefaultTreeConstructor> {
             let base_layout = self.whir_base(which);
-            // Zero-width base layers (e.g. the width-0 witness layer of the
-            // standalone inits-and-teardowns circuit, or an absent setup) commit
-            // to a dummy tree on the CPU (`commit_trace_part` short-circuits to
-            // `T::dummy()`, whose `get_cap()` is empty). The slab still reserves a
-            // cap region sized by the base geometry and stage 1 fills it with a
-            // degenerate hash, but the proof must present an EMPTY cap to match
-            // the CPU reference. This mirrors the `num_columns == 0` gate already
-            // applied to `queries` below.
             let cap = if base_layout.num_columns == 0 {
                 Vec::new()
             } else {
@@ -536,7 +528,7 @@ impl ProofLayout {
     /// Parse `sumcheck_intermediate_values: BTreeMap<layer_idx, _>`
     /// from the D2H'd slab.
     ///
-    /// `extra_evaluations_by_layer` is a legacy/fallback sparse source whose
+    /// `extra_evaluations_by_layer` is a sparse source whose
     /// values may come from slab-resident WHIR base-evaluation ranges
     /// (`DenseSource::read_from_slab`). For every layer-slot, the dedicated
     /// `extra_evaluations` slab range is also read when present: each entry is

@@ -67,7 +67,8 @@ impl ExecutionProver {
                 // self-consistent.
                 let compiled_circuit = self.binary_holders[&binary_key].precomputations
                     [&UnrolledCircuitType::Unified]
-                    .compiled_circuit
+                    .gkr_programs
+                    .compiled_circuit()
                     .as_ref();
                 let canonical_top_bits = canonical_inits_and_teardowns_top_bits(compiled_circuit);
                 fs_transform_unified(

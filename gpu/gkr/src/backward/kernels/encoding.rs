@@ -1,8 +1,44 @@
+use std::ffi::c_void;
 use std::ptr::{null, null_mut};
 
 use super::dim_reducing::GKR_DIM_REDUCING_MAX_RECORDS_PER_LAYER;
 use super::launchers::GkrEqSizes;
 use crate::upstream::Field;
+use era_cudart::result::CudaResultWrap;
+use era_cudart_sys::{cudaGetSymbolAddress, cuda_struct_and_stub};
+use gpu_core::primitives::field::E4;
+
+#[derive(Clone, Copy)]
+pub(in crate::backward) struct FoldingArenaBinding {
+    pub(crate) base: *const u8,
+    pub(crate) log2_stride: u32,
+}
+
+impl FoldingArenaBinding {
+    pub(in crate::backward) fn new(base: *const u8, log2_stride: u32) -> Self {
+        assert!(!base.is_null());
+        Self { base, log2_stride }
+    }
+}
+
+pub(crate) const MAX_MAIN_LAYER_CLAIM_POINT_LEN: usize = super::GKR_BACKWARD_MAX_TRACE_LEN_LOG2 + 1;
+
+cuda_struct_and_stub! {
+    static ab_gkr_main_layer_claim_point: [E4; MAX_MAIN_LAYER_CLAIM_POINT_LEN];
+}
+
+pub(crate) fn get_main_layer_claim_point_device_ptr() -> *mut E4 {
+    let mut ptr: *mut c_void = null_mut();
+    unsafe {
+        cudaGetSymbolAddress(
+            &mut ptr,
+            &ab_gkr_main_layer_claim_point as *const _ as *const c_void,
+        )
+    }
+    .wrap()
+    .expect("cudaGetSymbolAddress failed for ab_gkr_main_layer_claim_point");
+    ptr.cast()
+}
 
 // ---------------------------------------------------------------------------
 // Compact dim-reducing descriptor types. Each source record carries two u16s:
@@ -10,16 +46,12 @@ use crate::upstream::Field;
 // halves resolve against the same per-launch `bases` / `log2_stride` tables.
 // ---------------------------------------------------------------------------
 
-/// Pessimistic upper bound on the per-launch u16 source list. Anchored to
-/// `FLAT_ROUND0_MAX_SOURCES = 1280` (see `gkr_address_audit.rs`).
-pub(crate) const GKR_DIM_REDUCING_INLINE_U16_BUDGET: usize = 1280;
+pub(crate) const GKR_DIM_REDUCING_MAX_INPUTS_PER_RECORD: usize = 2;
+pub(crate) const GKR_DIM_REDUCING_MAX_OUTPUTS_PER_RECORD: usize = 2;
+pub(crate) const GKR_DIM_REDUCING_INLINE_RECORD_CAP: usize = GKR_DIM_REDUCING_MAX_RECORDS_PER_LAYER
+    * (GKR_DIM_REDUCING_MAX_INPUTS_PER_RECORD + GKR_DIM_REDUCING_MAX_OUTPUTS_PER_RECORD);
 
-/// Number of per-launch base-pointer slots. Main-layer flat-path launches
-/// use one slot per *backing* (not per class): up to 4 base read backings,
-/// 4 base cache backings, 1-3 ext read backings, and 1 ext cache backing —
-/// easily 10+ distinct Arcs per launch. 16 leaves comfortable headroom;
-/// the 4-bit `ptr_idx` field in every u16 source encoding is sized to
-/// match.
+/// Number of base pointers addressable by the 4-bit source pointer index.
 pub(crate) const GKR_DIM_REDUCING_BASE_SLOTS: usize = 16;
 
 /// `(offset, count)` over the `inline_payload[GpuGKRSourceRecord]` array.
@@ -31,8 +63,7 @@ pub(crate) struct PayloadRange16 {
     pub(crate) count: u16,
 }
 
-/// One dim-reducing record (kernel-batch entry). 16 B with two PayloadRange16
-/// slots, a u32 kind, and u16 batch-challenge metadata.
+/// One dim-reducing record (kernel-batch entry).
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct GpuGKRDimensionReducingBatchRecordCompact {
@@ -40,7 +71,7 @@ pub(crate) struct GpuGKRDimensionReducingBatchRecordCompact {
     pub(crate) inputs: PayloadRange16,
     pub(crate) outputs: PayloadRange16,
     pub(crate) batch_challenge_offset: u16,
-    pub(crate) batch_challenge_count: u16,
+    pub(crate) _reserved: u16,
 }
 
 /// Per-launch pointer + stride tables.
@@ -84,22 +115,19 @@ impl GpuGKRSourceRecord {
     }
 }
 
-/// Compact replacement for `GpuGKRDimensionReducingRound0Batch<E>`.
-/// ~3.7 KB by-value kernel-arg footprint.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub(crate) struct GpuGKRDimensionReducingRound0BatchCompact<E> {
     pub(crate) record_count: u32,
     pub(crate) _reserved0: u32,
-    pub(crate) _reserved1: u32,
-    pub(crate) _reserved2: u32,
     pub(crate) eq_low: *const E,
     pub(crate) eq_sizes: GkrEqSizes,
+    pub(crate) _eq_sizes_pad: u32,
     pub(crate) contributions: *mut E,
     pub(crate) tables: GpuGKRDimensionReducingTables,
     pub(crate) records:
         [GpuGKRDimensionReducingBatchRecordCompact; GKR_DIM_REDUCING_MAX_RECORDS_PER_LAYER],
-    pub(crate) inline_payload: [GpuGKRSourceRecord; GKR_DIM_REDUCING_INLINE_U16_BUDGET],
+    pub(crate) inline_payload: [GpuGKRSourceRecord; GKR_DIM_REDUCING_INLINE_RECORD_CAP],
 }
 
 impl<E: Field> Default for GpuGKRDimensionReducingRound0BatchCompact<E> {
@@ -107,40 +135,31 @@ impl<E: Field> Default for GpuGKRDimensionReducingRound0BatchCompact<E> {
         Self {
             record_count: 0,
             _reserved0: 0,
-            _reserved1: 0,
-            _reserved2: 0,
             eq_low: null(),
             eq_sizes: GkrEqSizes::zeroed(),
+            _eq_sizes_pad: 0,
             contributions: null_mut(),
             tables: GpuGKRDimensionReducingTables::default(),
             records: [GpuGKRDimensionReducingBatchRecordCompact::default();
                 GKR_DIM_REDUCING_MAX_RECORDS_PER_LAYER],
-            inline_payload: [GpuGKRSourceRecord::default(); GKR_DIM_REDUCING_INLINE_U16_BUDGET],
+            inline_payload: [GpuGKRSourceRecord::default(); GKR_DIM_REDUCING_INLINE_RECORD_CAP],
         }
     }
 }
 
-/// Compact replacement for `GpuGKRDimensionReducingRound{1,2,3}Batch<E>`.
-/// Continuation rounds drop the `outputs` payload range (per-record reads
-/// only) but otherwise share the round-0 layout. The kernel infers
-/// `previous_layer_start` / `this_layer_start` / sizes from the per-launch
-/// `step` plus the `bases` / `log2_stride` tables.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub(crate) struct GpuGKRDimensionReducingContinuationBatchCompact<E> {
     pub(crate) record_count: u32,
     pub(crate) _reserved0: u32,
-    pub(crate) _reserved1: u32,
-    pub(crate) _reserved2: u32,
     pub(crate) eq_low: *const E,
     pub(crate) eq_sizes: GkrEqSizes,
+    pub(crate) _eq_sizes_pad: u32,
     pub(crate) contributions: *mut E,
-    pub(crate) explicit_form: bool,
-    pub(crate) _padding: [u8; 7],
     pub(crate) tables: GpuGKRDimensionReducingTables,
     pub(crate) records:
         [GpuGKRDimensionReducingBatchRecordCompact; GKR_DIM_REDUCING_MAX_RECORDS_PER_LAYER],
-    pub(crate) inline_payload: [GpuGKRSourceRecord; GKR_DIM_REDUCING_INLINE_U16_BUDGET],
+    pub(crate) inline_payload: [GpuGKRSourceRecord; GKR_DIM_REDUCING_INLINE_RECORD_CAP],
 }
 
 impl<E: Field> Default for GpuGKRDimensionReducingContinuationBatchCompact<E> {
@@ -148,17 +167,14 @@ impl<E: Field> Default for GpuGKRDimensionReducingContinuationBatchCompact<E> {
         Self {
             record_count: 0,
             _reserved0: 0,
-            _reserved1: 0,
-            _reserved2: 0,
             eq_low: null(),
             eq_sizes: GkrEqSizes::zeroed(),
+            _eq_sizes_pad: 0,
             contributions: null_mut(),
-            explicit_form: false,
-            _padding: [0; 7],
             tables: GpuGKRDimensionReducingTables::default(),
             records: [GpuGKRDimensionReducingBatchRecordCompact::default();
                 GKR_DIM_REDUCING_MAX_RECORDS_PER_LAYER],
-            inline_payload: [GpuGKRSourceRecord::default(); GKR_DIM_REDUCING_INLINE_U16_BUDGET],
+            inline_payload: [GpuGKRSourceRecord::default(); GKR_DIM_REDUCING_INLINE_RECORD_CAP],
         }
     }
 }
@@ -169,19 +185,22 @@ impl<E: Field> Default for GpuGKRDimensionReducingContinuationBatchCompact<E> {
 /// (11 bits, up to 2048 polys per slot).
 #[inline]
 pub(crate) const fn pack_source_u16(first_access: bool, ptr_idx: u8, poly_idx: u16) -> u16 {
+    assert!(ptr_idx < 16, "pointer index exceeds 4-bit wire field");
+    assert!(
+        poly_idx < 2048,
+        "polynomial index exceeds 11-bit wire field"
+    );
     let fa = if first_access { 1u16 << 15 } else { 0 };
-    let p = ((ptr_idx as u16) & 0xF) << 11;
-    let q = poly_idx & 0x07FF;
-    fa | p | q
+    fa | ((ptr_idx as u16) << 11) | poly_idx
 }
 
-/// Cache half of a dual source record. Bit 15 is normally reserved and kept
-/// clear; flat base virtual sources use it as a local discriminator because
-/// their source half carries `first_access` plus a virtual source kind rather
-/// than a real source pointer.
+/// Cache half of a dual source record. Bit 15 stays clear.
 #[inline]
 pub(crate) const fn pack_cache_u16(ptr_idx: u8, poly_idx: u16) -> u16 {
-    let p = ((ptr_idx as u16) & 0xF) << 11;
-    let q = poly_idx & 0x07FF;
-    p | q
+    assert!(ptr_idx < 16, "pointer index exceeds 4-bit wire field");
+    assert!(
+        poly_idx < 2048,
+        "polynomial index exceeds 11-bit wire field"
+    );
+    ((ptr_idx as u16) << 11) | poly_idx
 }

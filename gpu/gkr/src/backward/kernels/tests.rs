@@ -1,19 +1,7 @@
-use std::mem::size_of;
-
-use era_cudart::result::CudaResult;
-use era_cudart::slice::DeviceSlice;
+use std::mem::{align_of, offset_of, size_of};
 
 use super::*;
-use crate::gkr_address_audit_helpers::{
-    KERNEL_ARG_HARD_CEILING_BYTES, KERNEL_ARG_SOFT_TARGET_BYTES,
-};
-use crate::upstream::Field;
-use gpu_core::primitives::context::DeviceAllocation;
-use gpu_core::primitives::device_structures::{DeviceVectorChunk, DeviceVectorChunkMut};
 use gpu_core::primitives::field::E4;
-use gpu_cub::cub::device_reduce::{reduce, Reduce, ReduceOperation};
-use gpu_ops::simple::{mul_into_y, BinaryOp, Mul};
-use gpu_prover_context::ProverContext;
 
 #[inline]
 pub(crate) const fn unpack_source_u16(packed: u16) -> (bool, u8, u16) {
@@ -21,54 +9,6 @@ pub(crate) const fn unpack_source_u16(packed: u16) -> (bool, u8, u16) {
     let ptr_idx = ((packed >> 11) & 0xF) as u8;
     let poly_idx = packed & 0x07FF;
     (first_access, ptr_idx, poly_idx)
-}
-
-pub(crate) fn apply_eq_and_reduce_accumulator<E>(
-    eq_values: &DeviceAllocation<E>,
-    accumulator: &mut DeviceAllocation<E>,
-    reduction_output: &mut DeviceAllocation<E>,
-    reduction_temp_storage: &mut DeviceAllocation<u8>,
-    acc_size: usize,
-    context: &ProverContext,
-) -> CudaResult<()>
-where
-    E: Field + Reduce,
-    Mul: BinaryOp<E, E, E>,
-{
-    let stream = context.get_exec_stream();
-    let eq_values = DeviceVectorChunk::new(eq_values, 0, acc_size);
-    let reduction_temp = unsafe {
-        DeviceSlice::from_raw_parts_mut(
-            reduction_temp_storage.as_mut_ptr(),
-            reduction_temp_storage.len(),
-        )
-    };
-
-    {
-        let mut low_half = DeviceVectorChunkMut::new(accumulator, 0, acc_size);
-        mul_into_y(&eq_values, &mut low_half, stream)?;
-        reduce(
-            ReduceOperation::Sum,
-            reduction_temp,
-            &low_half,
-            &mut reduction_output[0],
-            stream,
-        )?;
-    }
-
-    {
-        let mut high_half = DeviceVectorChunkMut::new(accumulator, acc_size, acc_size);
-        mul_into_y(&eq_values, &mut high_half, stream)?;
-        reduce(
-            ReduceOperation::Sum,
-            reduction_temp,
-            &high_half,
-            &mut reduction_output[1],
-            stream,
-        )?;
-    }
-
-    Ok(())
 }
 
 #[test]
@@ -99,28 +39,116 @@ fn pack_source_u16_layout_bits() {
 
 #[test]
 fn compact_descriptor_sizes_under_kernel_arg_ceiling() {
+    const KERNEL_ARG_CEILING_BYTES: usize = gpu_gkr_compiler::KERNEL_ARGUMENT_CEILING_BYTES;
     let r0 = size_of::<GpuGKRDimensionReducingRound0BatchCompact<E4>>();
     let cont = size_of::<GpuGKRDimensionReducingContinuationBatchCompact<E4>>();
-    // Both must fit comfortably under the soft 16 KB target (and well
-    // under the 32 KB hard ceiling enforced by `cudaLaunchKernelExC`).
-    assert!(
-        r0 <= KERNEL_ARG_SOFT_TARGET_BYTES,
-        "round0 compact = {r0} B exceeds soft target {KERNEL_ARG_SOFT_TARGET_BYTES}"
-    );
-    assert!(
-        cont <= KERNEL_ARG_SOFT_TARGET_BYTES,
-        "continuation compact = {cont} B exceeds soft target {KERNEL_ARG_SOFT_TARGET_BYTES}"
-    );
-    assert!(r0 < KERNEL_ARG_HARD_CEILING_BYTES);
-    assert!(cont < KERNEL_ARG_HARD_CEILING_BYTES);
+    assert_eq!(r0, 456);
+    assert_eq!(cont, 456);
+    assert!(r0 + size_of::<u32>() <= KERNEL_ARG_CEILING_BYTES);
+    assert!(cont + 2 * size_of::<u32>() <= KERNEL_ARG_CEILING_BYTES);
+
+    assert_eq!(size_of::<GkrEqSizes>(), 12);
+    assert_eq!(align_of::<GkrEqSizes>(), 4);
+    assert_eq!(offset_of!(GkrEqSizes, high), 0);
+    assert_eq!(offset_of!(GkrEqSizes, low), 8);
+
+    macro_rules! assert_layout {
+        ($ty:ty) => {
+            assert_eq!(align_of::<$ty>(), 8);
+            assert_eq!(offset_of!($ty, record_count), 0);
+            assert_eq!(offset_of!($ty, _reserved0), 4);
+            assert_eq!(offset_of!($ty, eq_low), 8);
+            assert_eq!(offset_of!($ty, eq_sizes), 16);
+            assert_eq!(offset_of!($ty, _eq_sizes_pad), 28);
+            assert_eq!(offset_of!($ty, contributions), 32);
+            assert_eq!(offset_of!($ty, tables), 40);
+            assert_eq!(offset_of!($ty, records), 232);
+            assert_eq!(offset_of!($ty, inline_payload), 344);
+        };
+    }
+    assert_layout!(GpuGKRDimensionReducingRound0BatchCompact<E4>);
+    assert_layout!(GpuGKRDimensionReducingContinuationBatchCompact<E4>);
 }
 
 #[test]
 fn compact_record_is_16_bytes() {
-    // Audit's projected post-compaction footprint depends on this size.
+    assert_eq!(size_of::<PayloadRange16>(), 4);
+    assert_eq!(align_of::<PayloadRange16>(), 2);
+    assert_eq!(offset_of!(PayloadRange16, offset), 0);
+    assert_eq!(offset_of!(PayloadRange16, count), 2);
+
+    assert_eq!(size_of::<GpuGKRDimensionReducingBatchRecordCompact>(), 16);
+    assert_eq!(align_of::<GpuGKRDimensionReducingBatchRecordCompact>(), 4);
     assert_eq!(
-        size_of::<GpuGKRDimensionReducingBatchRecordCompact>(),
-        16,
-        "compact batch record size must remain 16 bytes"
+        offset_of!(GpuGKRDimensionReducingBatchRecordCompact, kind),
+        0
     );
+    assert_eq!(
+        offset_of!(GpuGKRDimensionReducingBatchRecordCompact, inputs),
+        4
+    );
+    assert_eq!(
+        offset_of!(GpuGKRDimensionReducingBatchRecordCompact, outputs),
+        8
+    );
+    assert_eq!(
+        offset_of!(
+            GpuGKRDimensionReducingBatchRecordCompact,
+            batch_challenge_offset
+        ),
+        12
+    );
+    assert_eq!(
+        offset_of!(GpuGKRDimensionReducingBatchRecordCompact, _reserved),
+        14
+    );
+
+    assert_eq!(size_of::<GpuGKRDimensionReducingTables>(), 192);
+    assert_eq!(align_of::<GpuGKRDimensionReducingTables>(), 8);
+    assert_eq!(offset_of!(GpuGKRDimensionReducingTables, bases), 0);
+    assert_eq!(offset_of!(GpuGKRDimensionReducingTables, log2_stride), 128);
+
+    assert_eq!(size_of::<GpuGKRSourceRecord>(), 4);
+    assert_eq!(align_of::<GpuGKRSourceRecord>(), 2);
+    assert_eq!(offset_of!(GpuGKRSourceRecord, src), 0);
+    assert_eq!(offset_of!(GpuGKRSourceRecord, cache), 2);
+}
+
+#[test]
+fn compact_cuda_constants_match_rust() {
+    let header = include_str!("../../../native/gkr/support/descriptors.cuh");
+    for declaration in [
+        "GKR_DIM_REDUCING_MAX_RECORDS_PER_LAYER = 7;",
+        "GKR_DIM_REDUCING_BATCH_CHALLENGE_TABLE_LEN = 10;",
+        "GKR_DIM_REDUCING_INLINE_RECORD_CAP = 28;",
+        "GKR_DIM_REDUCING_BASE_SLOTS = 16;",
+        "GKR_DIM_REDUCING_MAX_INPUTS_PER_RECORD = 2;",
+        "GKR_DIM_REDUCING_MAX_OUTPUTS_PER_RECORD = 2;",
+        "GKR_BACKWARD_MAX_TRACE_LEN_LOG2 = 24;",
+        "GKR_DIM_REDUCING_LAYER_CLAIM_POINT_LEN = GKR_BACKWARD_MAX_TRACE_LEN_LOG2 + 2;",
+        "GKR_MAIN_LAYER_CLAIM_POINT_LEN = GKR_BACKWARD_MAX_TRACE_LEN_LOG2 + 1;",
+        "GKR_FORWARD_SETUP_GENERIC_LOOKUP_MAX_COLUMNS = 10;",
+        "GKR_EQ_GROUP_SIZE = 8;",
+        "GKR_EQ_HIGH_SLOTS = 2;",
+    ] {
+        assert!(
+            header.contains(declaration),
+            "missing CUDA declaration: {declaration}"
+        );
+    }
+    assert_eq!(GKR_DIM_REDUCING_MAX_RECORDS_PER_LAYER, 7);
+    assert_eq!(GKR_DIM_REDUCING_BATCH_CHALLENGE_TABLE_LEN, 10);
+    assert_eq!(GKR_DIM_REDUCING_INLINE_RECORD_CAP, 28);
+    assert_eq!(GKR_DIM_REDUCING_BASE_SLOTS, 16);
+    assert_eq!(GKR_DIM_REDUCING_MAX_INPUTS_PER_RECORD, 2);
+    assert_eq!(GKR_DIM_REDUCING_MAX_OUTPUTS_PER_RECORD, 2);
+    assert_eq!(GKR_BACKWARD_MAX_TRACE_LEN_LOG2, 24);
+    assert_eq!(GKR_EQ_GROUP_SIZE, 8);
+    assert_eq!(GKR_EQ_HIGH_SLOTS, 2);
+    assert_eq!(
+        crate::setup::kernels::GKR_FORWARD_SETUP_GENERIC_LOOKUP_MAX_COLUMNS,
+        10
+    );
+    assert_eq!(MAX_DIM_REDUCING_LAYER_CLAIM_POINT_LEN, 26);
+    assert_eq!(MAX_MAIN_LAYER_CLAIM_POINT_LEN, 25);
 }

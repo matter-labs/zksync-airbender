@@ -6,7 +6,9 @@ use era_cudart::result::CudaResult;
 
 use crate::upstream::{DefaultTreeConstructor, GKRExternalChallenges, GKRProof, WhirSchedule};
 use gpu_core::primitives::callbacks::Callbacks;
-use gpu_core::primitives::context::{DeviceAllocation, HostAllocation, UnsafeMutAccessor};
+use gpu_core::primitives::context::{
+    DeviceAllocation, HostAllocation, UnsafeAccessor, UnsafeMutAccessor,
+};
 use gpu_core::primitives::field::{BF, E4};
 use gpu_gkr::base_layer_claims::{
     clone_base_layer_extra_evaluations_from_slab, ScheduledBaseLayerClaimsState,
@@ -21,14 +23,7 @@ pub(in crate::proof) fn schedule_terminal_proof_assembly(
     proof_layout: &ProofLayout,
     proof_slot: UnsafeMutAccessor<Option<GKRProof<BF, E4, DefaultTreeConstructor>>>,
     whir_schedule: WhirSchedule,
-    base_layer_claims_shared_state: UnsafeMutAccessor<ScheduledBaseLayerClaimsState<E4>>,
-    // Deferred base-layer-claims metadata publication built by
-    // `schedule_prepare_base_layer_claims_with_sources` and handed off via
-    // `take_pending_aggregation`. Invoked at the head of this terminal
-    // callback so `clone_base_layer_extra_evaluations_from_slab` below sees
-    // the populated `base_layer_claims_shared_state.result`. This is folded
-    // into the terminal callback so exactly one host callback fires per proof.
-    pending_aggregation: Box<dyn Fn() + Send + Sync + 'static>,
+    base_layer_claims_shared_state: UnsafeAccessor<ScheduledBaseLayerClaimsState>,
     external_challenges: GKRExternalChallenges<BF, E4>,
     inits_and_teardowns_top_bits: Vec<u32>,
     callbacks: &mut Callbacks<'_>,
@@ -52,14 +47,6 @@ pub(in crate::proof) fn schedule_terminal_proof_assembly(
         {
             let proof_layout_for_parse = proof_layout.clone();
             move || {
-                // Publish base-layer-claims metadata first. Pure host work
-                // (no CUDA calls); the metadata sink read by
-                // `clone_base_layer_extra_evaluations_from_slab` below.
-                pending_aggregation();
-                // Source all device-produced proof fields from the
-                // terminal-D2H'd slab — including `final_explicit_evaluations`,
-                // which final forward dim-reduction wrote directly into the
-                // slab's `output_evaluations` block.
                 let slab_bytes = unsafe { proof_host_mirror_accessor.get() };
                 let final_explicit_evaluations =
                     proof_layout_for_parse.parse_final_explicit_evaluations(slab_bytes);

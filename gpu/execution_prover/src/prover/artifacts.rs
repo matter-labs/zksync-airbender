@@ -21,7 +21,7 @@ pub struct CircuitArtifact {
 impl CircuitArtifact {
     fn from_precomputations(precomputations: &CircuitPrecomputations) -> Self {
         Self {
-            compiled_circuit: Arc::clone(&precomputations.compiled_circuit),
+            compiled_circuit: Arc::clone(precomputations.gkr_programs.compiled_circuit()),
             cpu_setup: Arc::clone(precomputations.setup_host.cpu_setup()),
         }
     }

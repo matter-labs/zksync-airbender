@@ -57,23 +57,12 @@ template <typename E> DEVICE_FORCEINLINE E gkr_get_initial_delta(const gkr_ext_i
   return E::sub(f1, f0);
 }
 
-template <typename E, bool EXPLICIT_FORM>
+template <typename E>
 DEVICE_FORCEINLINE void gkr_get_continuing_points(const gkr_ext_continuing_source<E> &source, const E folding_challenge, const unsigned index, E &f0,
-                                                  E &f1_or_delta) {
+                                                  E &delta) {
   f0 = gkr_get_continuing_value(source, folding_challenge, index);
   const E f1 = gkr_get_continuing_value(source, folding_challenge, source.next_layer_size + index);
-  if constexpr (EXPLICIT_FORM) {
-    f1_or_delta = f1;
-  } else {
-    f1_or_delta = E::sub(f1, f0);
-  }
-}
-
-template <typename E> DEVICE_FORCEINLINE void gkr_accumulate_contribution(E *dst, const unsigned index, const unsigned acc_size, const E c0, const E c1) {
-  const E prev0 = load<E, ld_modifier::cs>(dst, index);
-  const E prev1 = load<E, ld_modifier::cs>(dst, acc_size + index);
-  store<E, st_modifier::cs>(dst, E::add(prev0, c0), index);
-  store<E, st_modifier::cs>(dst, E::add(prev1, c1), acc_size + index);
+  delta = E::sub(f1, f0);
 }
 
 DEVICE_FORCEINLINE unsigned gkr_eq_group_count(const unsigned challenge_count) {
@@ -86,57 +75,6 @@ DEVICE_FORCEINLINE unsigned gkr_eq_group_size(const unsigned challenge_count, co
     return 0;
   const unsigned remaining = challenge_count - group_start;
   return remaining < GKR_EQ_GROUP_SIZE ? remaining : GKR_EQ_GROUP_SIZE;
-}
-
-template <typename E>
-DEVICE_FORCEINLINE void gkr_build_eq_group_tables_from_pairs(const E *eq_pair_values, const unsigned challenge_count, E *eq_group_tables) {
-  const unsigned group_idx = blockIdx.x;
-  const unsigned group_size = gkr_eq_group_size(challenge_count, group_idx);
-  if (group_size == 0)
-    return;
-
-  const unsigned tid = threadIdx.x;
-  const unsigned chunk_count = (group_size + GKR_EQ_CHUNK_SIZE - 1) / GKR_EQ_CHUNK_SIZE;
-  const unsigned group_start = group_idx * GKR_EQ_GROUP_SIZE;
-  __shared__ E chunk_tables[GKR_EQ_MAX_CHUNKS_PER_GROUP][GKR_EQ_CHUNK_TABLE_LEN];
-
-  if (tid < chunk_count * GKR_EQ_CHUNK_TABLE_LEN) {
-    const unsigned chunk_idx = tid / GKR_EQ_CHUNK_TABLE_LEN;
-    const unsigned chunk_table_idx = tid % GKR_EQ_CHUNK_TABLE_LEN;
-    const unsigned variable_offset = chunk_idx * GKR_EQ_CHUNK_SIZE;
-    const unsigned remaining = group_size - variable_offset;
-    const unsigned chunk_size = remaining < GKR_EQ_CHUNK_SIZE ? remaining : GKR_EQ_CHUNK_SIZE;
-    const unsigned chunk_len = 1u << chunk_size;
-    if (chunk_table_idx < chunk_len) {
-      const unsigned variable_idx = group_start + variable_offset;
-      const unsigned first_bit = chunk_size == 2 ? ((chunk_table_idx >> 1) & 1u) : (chunk_table_idx & 1u);
-      E value = load<E, ld_modifier::cs>(eq_pair_values, 2 * variable_idx + first_bit);
-      if (chunk_size == 2) {
-        const unsigned low_bit = chunk_table_idx & 1u;
-        value = E::mul(value, load<E, ld_modifier::cs>(eq_pair_values, 2 * (variable_idx + 1) + low_bit));
-      }
-      chunk_tables[chunk_idx][chunk_table_idx] = value;
-    }
-  }
-  __syncthreads();
-
-  const unsigned group_len = 1u << group_size;
-  if (tid >= group_len)
-    return;
-
-  E acc;
-  unsigned consumed_bits = 0;
-  for (unsigned chunk_idx = 0; chunk_idx < chunk_count; ++chunk_idx) {
-    const unsigned remaining = group_size - consumed_bits;
-    const unsigned chunk_size = remaining < GKR_EQ_CHUNK_SIZE ? remaining : GKR_EQ_CHUNK_SIZE;
-    const unsigned shift = group_size - consumed_bits - chunk_size;
-    const unsigned chunk_table_idx = (tid >> shift) & ((1u << chunk_size) - 1u);
-    const E factor = chunk_tables[chunk_idx][chunk_table_idx];
-    acc = (chunk_idx == 0) ? factor : E::mul(acc, factor);
-    consumed_bits += chunk_size;
-  }
-
-  store<E, st_modifier::cs>(eq_group_tables + group_idx * GKR_EQ_GROUP_TABLE_LEN, acc, tid);
 }
 
 template <typename E>
@@ -217,32 +155,6 @@ DEVICE_FORCEINLINE void gkr_build_eq_values_from_group_tables(const E *eq_group_
   }
 
   store<E, st_modifier::cs>(eq_values, acc, gid);
-}
-
-template <typename E> DEVICE_FORCEINLINE void gkr_fold_eq_values_in_place(E *eq_values, const unsigned half_len) {
-  const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
-  if (gid >= half_len)
-    return;
-
-  const E low = load<E, ld_modifier::cs>(eq_values, gid);
-  const E high = load<E, ld_modifier::cs>(eq_values, gid + half_len);
-  store<E, st_modifier::cs>(eq_values, E::add(low, high), gid);
-}
-
-// Halves the top high-group slot in place: for each i < new_g_len,
-// high_slab_group_base[i] := high_slab_group_base[i] + high_slab_group_base[i + new_g_len].
-// Single-block launch — the largest fold has GKR_EQ_GROUP_TABLE_LEN / 2 = 128
-// active threads, well under occupancy limits. The caller passes the slab
-// base pointer offset to the slot being folded (i.e. the per-group base, not
-// the global slab base), keeping the kernel pointer-driven and layer-kind
-// agnostic.
-template <typename E> DEVICE_FORCEINLINE void gkr_fold_eq_high_group_in_place(E *high_slab_group_base, const unsigned new_g_len) {
-  const unsigned tid = threadIdx.x;
-  if (tid >= new_g_len)
-    return;
-  const E low = load<E, ld_modifier::cs>(high_slab_group_base, tid);
-  const E high = load<E, ld_modifier::cs>(high_slab_group_base, tid + new_g_len);
-  store<E, st_modifier::cs>(high_slab_group_base, E::add(low, high), tid);
 }
 
 template <typename E>
