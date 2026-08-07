@@ -106,20 +106,31 @@ impl Layout {
 pub struct Harness {
     pub layout: Layout,
     pub desc: UniskipVmDesc,
+    geometry: Geometry,
     seed: u32,
+    flat_eq: bool,
     taps: [DeviceAllocation<u32>; CLASSES],
     cosets: [DeviceAllocation<u32>; CLASSES],
-    #[allow(dead_code)] // referenced by desc.eq_low; the eval kernel reads it in Task 4.
+    #[allow(dead_code)] // referenced by desc.eq_low
     eq_low: DeviceAllocation<u32>,
+    partials: DeviceAllocation<u32>,
+    q: DeviceAllocation<u32>,
     jobs: [DeviceAllocation<u16>; CLASSES],
     job_counts: [usize; CLASSES],
     stream: CudaStream,
 }
 
 impl Harness {
-    /// Allocate the backings, upload the program and the LDE matrix, and run the
-    /// init kernels over the taps and the eq tables.
-    pub fn new(program: &SynthProgram, geometry: &Geometry, seed: u32) -> CudaResult<Self> {
+    /// Allocate the backings, upload the program, the LDE matrix and the coefficient
+    /// bank, and run the init kernels over the taps and the eq tables. `flat_eq`
+    /// forces every eq entry to ONE — the `--validate-flat-eq` debug mode, which
+    /// isolates the term VM from the eq composition on both sides.
+    pub fn new(
+        program: &SynthProgram,
+        geometry: &Geometry,
+        seed: u32,
+        flat_eq: bool,
+    ) -> CudaResult<Self> {
         let layout = Layout::new(program, geometry);
         let stream = CudaStream::create()?;
 
@@ -154,8 +165,16 @@ impl Harness {
             }
         }
 
-        let eq_low_words = geometry.eq_low_len() * CLASS_WORDS[CLASS_E4];
+        // The allocation carries the whole derived-table init space; `eq_low` is its
+        // tail slice, so no two derived tables hold identical data (see
+        // `reference::UNISKIP_EQ_LOW_INIT_BASE`).
+        let eq_low_offset = reference::UNISKIP_EQ_LOW_INIT_BASE as usize * CLASS_WORDS[CLASS_E4];
+        let eq_low_words = eq_low_offset + geometry.eq_low_len() * CLASS_WORDS[CLASS_E4];
         let mut eq_low = DeviceAllocation::<u32>::alloc(eq_low_words)?;
+
+        let mut partials =
+            DeviceAllocation::<u32>::alloc(geometry.partials as usize * CLASS_WORDS[CLASS_E4])?;
+        let q = DeviceAllocation::<u32>::alloc(UNISKIP_CELLS * CLASS_WORDS[CLASS_E4])?;
 
         let mut desc = UniskipVmDesc {
             record_count: program.program.len() as u32,
@@ -165,7 +184,8 @@ impl Harness {
                 high: [geometry.eq_sizes.0, geometry.eq_sizes.1],
                 low: geometry.eq_sizes.2,
             },
-            eq_low: eq_low.as_ptr() as u64,
+            eq_low: eq_low.as_ptr() as u64 + (eq_low_offset * size_of::<u32>()) as u64,
+            partials: partials.as_mut_ptr() as u64,
             immediates: program.immediates_canonical.map(reference::to_device_bf),
             ..Default::default()
         };
@@ -183,19 +203,35 @@ impl Harness {
         }
 
         kernels::upload_lde_matrix(&reference::flat_lde_matrix(&lde_matrix()))?;
-        kernels::upload_eq_high(&reference::eq_high_words(seed))?;
+        kernels::upload_eq_high(&reference::eq_high_words(seed, flat_eq))?;
+        kernels::upload_coeff_bank(&reference::coeff_bank_words(seed))?;
         kernels::init_bf(&mut taps[CLASS_BF], seed, &stream)?;
         kernels::init_e4(&mut taps[CLASS_E4], seed, &stream)?;
         kernels::init_e4(&mut eq_low, seed, &stream)?;
         stream.synchronize()?;
 
+        if flat_eq {
+            let ones: Vec<u32> =
+                std::iter::repeat_n(reference::e4_one_words(), geometry.eq_low_len())
+                    .flatten()
+                    .collect();
+            memory_copy(
+                &mut eq_low[eq_low_offset..eq_low_offset + ones.len()],
+                &ones[..],
+            )?;
+        }
+
         Ok(Self {
             layout,
             desc,
+            geometry: *geometry,
             seed,
+            flat_eq,
             taps,
             cosets,
             eq_low,
+            partials,
+            q,
             jobs,
             job_counts,
             stream,
@@ -218,8 +254,35 @@ impl Harness {
         )
     }
 
+    /// One full uniskip pass: coset LDE, then the 32-cell eval, then the reduction
+    /// of the block partials into `q`.
+    pub fn run_pass(&mut self) -> CudaResult<()> {
+        self.run_lde()?;
+        kernels::eval(&self.desc, self.geometry.blocks, &self.stream)?;
+        kernels::finalize(
+            &self.partials,
+            self.geometry.blocks,
+            &mut self.q,
+            &self.stream,
+        )
+    }
+
     pub fn synchronize(&self) -> CudaResult<()> {
         self.stream.synchronize()
+    }
+
+    /// The 32 evaluations the last pass produced, four `u32` limbs per cell.
+    pub fn download_q(&self) -> CudaResult<Vec<u32>> {
+        let mut host = vec![0u32; UNISKIP_CELLS * CLASS_WORDS[CLASS_E4]];
+        memory_copy(&mut host[..], &self.q[..])?;
+        Ok(host)
+    }
+
+    /// Compare all 32 cells against the full CPU oracle, bit-exact.
+    pub fn validate_q(&self, program: &SynthProgram) -> CudaResult<Result<(), String>> {
+        let actual = self.download_q()?;
+        let expected = reference::eval_q(program, &self.geometry, self.seed, self.flat_eq);
+        Ok(reference::check_q(&expected, &actual))
     }
 
     fn download_column(

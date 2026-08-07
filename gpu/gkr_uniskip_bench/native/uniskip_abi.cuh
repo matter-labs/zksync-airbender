@@ -18,10 +18,14 @@ constexpr u32 UNISKIP_CELLS = 32; // 0..15 = H (direct taps), 16..31 = coset
 constexpr u32 UNISKIP_THREADS_PER_BLOCK = 256;
 constexpr u32 UNISKIP_WARPS_PER_BLOCK = 8;
 constexpr u32 UNISKIP_CELLS_PER_WARP = 4;
+// Rows an eval block covers: one lane per row, every warp of the block on the same
+// 32 rows. Mirrored by `abi::UNISKIP_ROWS_PER_BLOCK`.
+constexpr u32 UNISKIP_ROWS_PER_BLOCK = UNISKIP_THREADS_PER_BLOCK / UNISKIP_WARPS_PER_BLOCK;
 
 static_assert(UNISKIP_CELLS == 2 * UNISKIP_TAPS);
 static_assert(UNISKIP_WARPS_PER_BLOCK * 32 == UNISKIP_THREADS_PER_BLOCK);
 static_assert(UNISKIP_WARPS_PER_BLOCK * UNISKIP_CELLS_PER_WARP == UNISKIP_CELLS);
+static_assert(UNISKIP_ROWS_PER_BLOCK == 32); // one warp-wide row tile, so lane == row offset
 
 constexpr u32 UNISKIP_WINDOWS = 6;
 constexpr u32 UNISKIP_SOURCE_CAPACITY = 64;   // default census 59 sources; generator rejects > 64

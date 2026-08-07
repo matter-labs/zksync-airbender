@@ -220,6 +220,10 @@ mod cpu_tests {
         assert_eq!(align_of::<UniskipVmDesc>(), 16);
         assert!(size_of::<UniskipVmDesc>() <= 32764);
 
+        // Launch geometry, mirrored from the header's constants of the same name:
+        // one warp-wide row tile per block, so `lane == row - blockIdx * 32`.
+        assert_eq!(UNISKIP_ROWS_PER_BLOCK, 32);
+
         // Addressing bound, mirrored from the header's constants of the same name.
         assert_eq!(UNISKIP_LOG_TAPS, 4);
         assert_eq!(UNISKIP_LOG_ADDRESSABLE_PLANES, 11);

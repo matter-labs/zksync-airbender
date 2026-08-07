@@ -13,8 +13,12 @@ use era_cudart::slice::DeviceSlice;
 use era_cudart::stream::CudaStream;
 use era_cudart_sys::{cudaMemcpyToSymbol, cuda_struct_and_stub, CudaMemoryCopyKind};
 
-use crate::abi::{UniskipVmDesc, UNISKIP_EQ_HIGH, UNISKIP_TAPS, UNISKIP_THREADS_PER_BLOCK};
+use crate::abi::{
+    UniskipVmDesc, UNISKIP_CELLS, UNISKIP_COEFF_BANK, UNISKIP_EQ_HIGH, UNISKIP_TAPS,
+    UNISKIP_THREADS_PER_BLOCK,
+};
 
+cuda_struct_and_stub! { static ab_gkr_uniskip_coeff_bank: [[u32; 4]; UNISKIP_COEFF_BANK]; }
 cuda_struct_and_stub! { static ab_gkr_uniskip_eq_high: [[u32; 4]; 2 * UNISKIP_EQ_HIGH]; }
 cuda_struct_and_stub! { static ab_gkr_uniskip_lde_matrix: [u32; UNISKIP_TAPS * UNISKIP_TAPS]; }
 
@@ -37,6 +41,11 @@ cuda_kernel!(
 cuda_kernel!(
     LdeE4,
     ab_gkr_uniskip_lde_e4_kernel(desc: UniskipVmDesc, jobs: *const u16, num_jobs: u32)
+);
+cuda_kernel!(Eval, ab_gkr_uniskip_eval_kernel(desc: UniskipVmDesc));
+cuda_kernel!(
+    Finalize,
+    ab_gkr_uniskip_finalize_kernel(partials: *const u32, blocks: u32, q: *mut u32)
 );
 
 fn grid(total: u64) -> u32 {
@@ -76,6 +85,11 @@ pub fn upload_lde_matrix(matrix: &[u32; UNISKIP_TAPS * UNISKIP_TAPS]) -> CudaRes
 /// remainder — one allocation as far as the init generator is concerned.
 pub fn upload_eq_high(tables: &[[u32; 4]; 2 * UNISKIP_EQ_HIGH]) -> CudaResult<()> {
     unsafe { memcpy_to_symbol(&ab_gkr_uniskip_eq_high, tables) }
+}
+
+/// Upload the coefficient bank the eval kernel indexes by `term.coeff`.
+pub fn upload_coeff_bank(bank: &[[u32; 4]; UNISKIP_COEFF_BANK]) -> CudaResult<()> {
+    unsafe { memcpy_to_symbol(&ab_gkr_uniskip_coeff_bank, bank) }
 }
 
 /// Fill a `bf` backing with the deterministic init generator; `dst` is one word
@@ -127,4 +141,28 @@ pub fn lde_e4(
     let total = lde_total(desc, num_jobs);
     let args = LdeE4Arguments::new(*desc, jobs.as_ptr(), num_jobs as u32);
     LdeE4Function::default().launch(&config(total, stream), &args)
+}
+
+/// One block per 32-row tile; writes `UNISKIP_CELLS` `e4` partials per block into
+/// `desc.partials`. NOT grid-strided: the grid covers every row exactly once.
+pub fn eval(desc: &UniskipVmDesc, blocks: u32, stream: &CudaStream) -> CudaResult<()> {
+    let args = EvalArguments::new(*desc);
+    let config = CudaLaunchConfig::basic(blocks, UNISKIP_THREADS_PER_BLOCK as u32, stream);
+    EvalFunction::default().launch(&config, &args)
+}
+
+/// Reduce the `blocks * UNISKIP_CELLS` partials into the `UNISKIP_CELLS` cells of `q`.
+pub fn finalize(
+    partials: &DeviceSlice<u32>,
+    blocks: u32,
+    q: &mut DeviceSlice<u32>,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    let args = FinalizeArguments::new(partials.as_ptr(), blocks, q.as_mut_ptr());
+    let config = CudaLaunchConfig::basic(
+        UNISKIP_CELLS as u32,
+        UNISKIP_THREADS_PER_BLOCK as u32,
+        stream,
+    );
+    FinalizeFunction::default().launch(&config, &args)
 }

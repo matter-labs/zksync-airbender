@@ -8,7 +8,19 @@ use field::{Field, FieldExtension};
 
 use crate::abi::*;
 use crate::domain::{lde_matrix, E4, F};
+use crate::geometry::Geometry;
 use crate::harness::{class_index, Layout, CLASS_BF, CLASS_E4, CLASS_WORDS};
+use crate::synth::SynthProgram;
+
+/// DERIVED-TABLE INIT SPACE. The generator keys on the absolute element index inside
+/// an allocation, so two tables that both start at index 0 would hold identical data
+/// and an index confusion between them would be invisible. The three derived `e4`
+/// tables therefore share one virtual index space — eq high (both tables), then the
+/// coefficient bank, then eq low. `eq_low`'s device allocation carries the prefix as
+/// an unused pad so its slice genuinely starts at [`UNISKIP_EQ_LOW_INIT_BASE`].
+pub const UNISKIP_EQ_HIGH_INIT_BASE: u64 = 0;
+pub const UNISKIP_COEFF_INIT_BASE: u64 = UNISKIP_EQ_HIGH_INIT_BASE + 2 * UNISKIP_EQ_HIGH as u64;
+pub const UNISKIP_EQ_LOW_INIT_BASE: u64 = UNISKIP_COEFF_INIT_BASE + UNISKIP_COEFF_BANK as u64;
 
 /// Mirrors `uniskip_init_canonical`: `index` is the ABSOLUTE index of the field
 /// element inside its backing allocation, `component` tags the `bf` limbs of an
@@ -44,11 +56,42 @@ pub fn flat_lde_matrix(
     core::array::from_fn(|i| matrix[i / UNISKIP_TAPS][i % UNISKIP_TAPS].raw_u32_value())
 }
 
+/// Entry `index` of the eq high symbol: `[0, UNISKIP_EQ_HIGH)` is table 0, the
+/// remainder table 1.
+fn eq_high_value(seed: u32, index: usize) -> E4 {
+    init_e4(seed, UNISKIP_EQ_HIGH_INIT_BASE + index as u64)
+}
+
+fn eq_low_value(seed: u32, index: usize) -> E4 {
+    init_e4(seed, UNISKIP_EQ_LOW_INIT_BASE + index as u64)
+}
+
 /// Both eq high tables as one allocation of `2 * UNISKIP_EQ_HIGH` `e4` entries:
 /// table 0 first, table 1 from `UNISKIP_EQ_HIGH`. Synthetic weights — they carry
-/// the production factored shape, not a transcript-real `q`.
-pub fn eq_high_words(seed: u32) -> [[u32; 4]; 2 * UNISKIP_EQ_HIGH] {
-    core::array::from_fn(|i| e4_words(init_e4(seed, i as u64)))
+/// the production factored shape, not a transcript-real `q`. `flat_eq` forces the
+/// whole symbol to ONE, the `--validate-flat-eq` debug mode.
+pub fn eq_high_words(seed: u32, flat_eq: bool) -> [[u32; 4]; 2 * UNISKIP_EQ_HIGH] {
+    core::array::from_fn(|i| {
+        e4_words(if flat_eq {
+            E4::ONE
+        } else {
+            eq_high_value(seed, i)
+        })
+    })
+}
+
+/// The `e4` the `--validate-flat-eq` mode writes over every eq entry.
+pub fn e4_one_words() -> [u32; 4] {
+    e4_words(E4::ONE)
+}
+
+/// The coefficient bank the eval kernel indexes by `term.coeff`.
+pub fn coeff_bank(seed: u32) -> [E4; UNISKIP_COEFF_BANK] {
+    core::array::from_fn(|i| init_e4(seed, UNISKIP_COEFF_INIT_BASE + i as u64))
+}
+
+pub fn coeff_bank_words(seed: u32) -> [[u32; 4]; UNISKIP_COEFF_BANK] {
+    coeff_bank(seed).map(e4_words)
 }
 
 fn e4_words(x: E4) -> [u32; 4] {
@@ -229,6 +272,205 @@ fn diff_block(
     Ok(())
 }
 
+/// All 32 cells of one source at one row: the 16 taps straight from the init
+/// generator, the 16 coset cells extended by the same LDE the device runs. The
+/// oracle recomputes them instead of reading the device coset buffer.
+fn source_cells<T: Cell>(
+    layout: &Layout,
+    matrix: &[[F; UNISKIP_TAPS]; UNISKIP_TAPS],
+    seed: u32,
+    window: usize,
+    rec: UniskipSourceRecord,
+    row: u64,
+    out: &mut [T; UNISKIP_CELLS],
+) {
+    let base = layout.windows[window].offset;
+    for tap in 0..UNISKIP_TAPS {
+        let (buffer, offset) = source_offset(rec, cell_for_tap(tap), row, layout.log_rows);
+        debug_assert_eq!(buffer, CellBuffer::Tap);
+        out[cell_for_tap(tap)] = T::init(seed, base + offset);
+    }
+    for (c, weights) in matrix.iter().enumerate() {
+        let mut acc = T::zero();
+        for (t, weight) in weights.iter().enumerate() {
+            acc.add_scaled(*weight, out[cell_for_tap(t)]);
+        }
+        out[cell_for_coset_row(c)] = acc;
+    }
+}
+
+/// Every source's 32 cell values at one row, reused across rows.
+struct RowValues {
+    bf: Vec<[F; UNISKIP_CELLS]>,
+    e4: Vec<[E4; UNISKIP_CELLS]>,
+}
+
+impl RowValues {
+    fn new(sources: usize) -> Self {
+        Self {
+            bf: vec![[F::ZERO; UNISKIP_CELLS]; sources],
+            e4: vec![[E4::ZERO; UNISKIP_CELLS]; sources],
+        }
+    }
+
+    fn fill(
+        &mut self,
+        layout: &Layout,
+        matrix: &[[F; UNISKIP_TAPS]; UNISKIP_TAPS],
+        program: &SynthProgram,
+        seed: u32,
+        row: u64,
+    ) {
+        for (id, rec) in program.sources.iter().enumerate() {
+            let window = addr_window(rec.addr);
+            match class_index(rec.source_class) {
+                CLASS_BF => source_cells(layout, matrix, seed, window, *rec, row, &mut self.bf[id]),
+                _ => source_cells(layout, matrix, seed, window, *rec, row, &mut self.e4[id]),
+            }
+        }
+    }
+}
+
+/// `T(row)`: the factored eq weight, composed exactly as `uniskip_eq_at` does.
+fn eq_at(geometry: &Geometry, seed: u32, row: u64, flat_eq: bool) -> E4 {
+    if flat_eq {
+        return E4::ONE;
+    }
+    let (high0, high1, low) = geometry.split_row(row);
+    let mut eq = eq_high_value(seed, high0);
+    eq.mul_assign(&eq_high_value(seed, UNISKIP_EQ_HIGH + high1));
+    eq.mul_assign(&eq_low_value(seed, low));
+    eq
+}
+
+/// One row's contribution to each cell, before the eq weight: the same record walk
+/// the eval kernel runs, over all 32 cells instead of a warp's 4.
+fn run_program(
+    program: &SynthProgram,
+    values: &RowValues,
+    coeffs: &[E4; UNISKIP_COEFF_BANK],
+    immediates: &[F; UNISKIP_MAX_IMMEDIATES],
+    acc: &mut [E4; UNISKIP_CELLS],
+) {
+    let mut pc = 0usize;
+    while pc < program.program.len() {
+        let term = program.program[pc];
+        let coeff = coeffs[term.coeff as usize];
+        if term.term_class == UNISKIP_CLASS_GROUP_BF {
+            let arity = term.source_a as usize;
+            let mut sum = [F::ZERO; UNISKIP_CELLS];
+            for m in 1..=arity {
+                let member = program.program[pc + m];
+                let a = &values.bf[member.source_a as usize];
+                for (cell, sum) in sum.iter_mut().enumerate() {
+                    let mut value = a[cell];
+                    if member.term_class == UNISKIP_CLASS_PRODUCT_BF_BF {
+                        value.mul_assign(&values.bf[member.source_b as usize][cell]);
+                    }
+                    match member.coeff {
+                        UNISKIP_IMMEDIATE_ONE => sum.add_assign(&value),
+                        UNISKIP_IMMEDIATE_NEG_ONE => sum.sub_assign(&value),
+                        id => sum.add_assign_product(
+                            &immediates[(id - UNISKIP_IMMEDIATE_RESERVED) as usize],
+                            &value,
+                        ),
+                    };
+                }
+            }
+            for (cell, acc) in acc.iter_mut().enumerate() {
+                acc.add_assign_product_with_base(&coeff, &sum[cell]);
+            }
+            pc += arity + 1;
+            continue;
+        }
+        let a = term.source_a as usize;
+        let b = term.source_b as usize;
+        for (cell, acc) in acc.iter_mut().enumerate() {
+            match term.term_class {
+                UNISKIP_CLASS_LINEAR_BF => {
+                    acc.add_assign_product_with_base(&coeff, &values.bf[a][cell]);
+                }
+                UNISKIP_CLASS_LINEAR_E4 => {
+                    acc.add_assign_product(&coeff, &values.e4[a][cell]);
+                }
+                UNISKIP_CLASS_PRODUCT_BF_BF => {
+                    let mut value = values.bf[a][cell];
+                    value.mul_assign(&values.bf[b][cell]);
+                    acc.add_assign_product_with_base(&coeff, &value);
+                }
+                UNISKIP_CLASS_PRODUCT_BF_E4 => {
+                    let mut value = values.e4[b][cell];
+                    value.mul_assign_by_base(&values.bf[a][cell]);
+                    acc.add_assign_product(&coeff, &value);
+                }
+                UNISKIP_CLASS_PRODUCT_E4_E4 => {
+                    let mut value = values.e4[a][cell];
+                    value.mul_assign(&values.e4[b][cell]);
+                    acc.add_assign_product(&coeff, &value);
+                }
+                other => unreachable!("record {pc} has class {other}"),
+            }
+        }
+        pc += 1;
+    }
+}
+
+/// FULL ORACLE of the eval + finalize pass:
+/// `q[cell] = Σ_row T(row) · Σ_terms coeff · value(cell, row)`.
+///
+/// Independent of the device by construction — it regenerates the operand data from
+/// the init formula and re-extends it to the coset itself. Cost is
+/// `O(rows · sources · UNISKIP_TAPS²)`, so it is a small-`--log-trace` validation
+/// path, not something to run at the benchmark size.
+pub fn eval_q(
+    program: &SynthProgram,
+    geometry: &Geometry,
+    seed: u32,
+    flat_eq: bool,
+) -> [E4; UNISKIP_CELLS] {
+    let layout = Layout::new(program, geometry);
+    let matrix = lde_matrix();
+    let coeffs = coeff_bank(seed);
+    let immediates = program.immediates_canonical.map(F::new);
+    let mut values = RowValues::new(program.sources.len());
+    let mut totals = [E4::ZERO; UNISKIP_CELLS];
+    for row in 0..layout.rows {
+        values.fill(&layout, &matrix, program, seed, row);
+        let mut acc = [E4::ZERO; UNISKIP_CELLS];
+        run_program(program, &values, &coeffs, &immediates, &mut acc);
+        let eq = eq_at(geometry, seed, row, flat_eq);
+        for (cell, total) in totals.iter_mut().enumerate() {
+            let mut scaled = acc[cell];
+            scaled.mul_assign(&eq);
+            total.add_assign(&scaled);
+        }
+    }
+    totals
+}
+
+/// Bit-exact check of the downloaded `q`, four `u32` limbs per cell.
+pub fn check_q(expected: &[E4; UNISKIP_CELLS], actual: &[u32]) -> Result<(), String> {
+    let words = CLASS_WORDS[CLASS_E4];
+    if actual.len() != UNISKIP_CELLS * words {
+        return Err(format!(
+            "q: expected {} words, downloaded {}",
+            UNISKIP_CELLS * words,
+            actual.len()
+        ));
+    }
+    for (cell, want) in expected.iter().enumerate() {
+        for (limb, want) in e4_words(*want).iter().enumerate() {
+            let got = actual[cell * words + limb];
+            if got != *want {
+                return Err(format!(
+                    "q cell {cell} limb {limb}: expected {want:#010x}, got {got:#010x}"
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Bit-exact check of one column's taps and all 16 coset cells.
 pub fn check_column(
     layout: &Layout,
@@ -312,6 +554,26 @@ mod cpu_tests {
                 }
                 assert_eq!(taps, flat, "window {window} column {column}");
             }
+        }
+    }
+
+    /// The census guarantees every immediate id is exercised; this proves the
+    /// oracle actually applies each one, so a device-repr conversion bug in
+    /// `desc.immediates` cannot pass `--validate` unnoticed.
+    #[test]
+    fn cpu_eval_q_uses_every_immediate() {
+        let geometry = Geometry::new(9).unwrap();
+        let program = generate(5, Census::default()).unwrap();
+        let baseline = eval_q(&program, &geometry, 5, false);
+        for slot in 0..UNISKIP_MAX_IMMEDIATES {
+            let mut perturbed = program.clone();
+            let value = &mut perturbed.immediates_canonical[slot];
+            *value = if *value == 1 { 2 } else { *value - 1 };
+            assert_ne!(
+                eval_q(&perturbed, &geometry, 5, false),
+                baseline,
+                "immediate slot {slot} does not reach q"
+            );
         }
     }
 

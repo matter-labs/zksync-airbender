@@ -82,4 +82,156 @@ EXTERN __global__ void ab_gkr_uniskip_lde_e4_kernel(const __grid_constant__ unis
   }
 }
 
+DEVICE_FORCEINLINE e4 uniskip_shfl_xor_e4(const e4 value, const int lane_mask) {
+  static_assert(sizeof(e4) == sizeof(uint4));
+  e4 result;
+  *reinterpret_cast<uint4 *>(&result) = shfl_xor(0xffffffffu, *reinterpret_cast<const uint4 *>(&value), lane_mask, UNISKIP_ROWS_PER_BLOCK);
+  return result;
+}
+
+// Sum one e4 across a full warp; every lane ends with the total.
+DEVICE_FORCEINLINE e4 uniskip_warp_sum(e4 value) {
+#pragma unroll
+  for (int lane_mask = UNISKIP_ROWS_PER_BLOCK >> 1; lane_mask > 0; lane_mask >>= 1)
+    value = e4::add(value, uniskip_shfl_xor_e4(value, lane_mask));
+  return value;
+}
+
+// T(row) of the factored eq: the low `low` bits of the row index eq_low, the next
+// `high[1]` bits high table 1, the top bits high table 0 (the split
+// `geometry::Geometry::split_row` mirrors). Every shift is < log_rows <= 21.
+DEVICE_FORCEINLINE e4 uniskip_eq_at(const uniskip_vm_desc &desc, const u32 row) {
+  const u32 low_bits = desc.eq_sizes.low;
+  const u32 high1_bits = desc.eq_sizes.high[1];
+  const u32 low = row & ((1u << low_bits) - 1);
+  const u32 high1 = (row >> low_bits) & ((1u << high1_bits) - 1);
+  const u32 high0 = row >> (low_bits + high1_bits);
+  const e4 high = e4::mul(ab_gkr_uniskip_eq_high[high0], ab_gkr_uniskip_eq_high[UNISKIP_EQ_HIGH + high1]);
+  return e4::mul(high, load<e4, ld_modifier::ca>(desc.eq_low, low));
+}
+
+// CELL-SLAB WARPS. blockDim = 256; lane = row inside a 32-row tile, so the whole
+// block works one tile and warp w owns cells 4w..4w+3 (warps 0-3 tap cells, warps
+// 4-7 coset cells — the H-vs-coset choice is warp-uniform inside the accessor).
+// The 4 accumulators are indexed ONLY by fully unrolled loops: a dynamic index
+// would put them in local memory and spill.
+// `Geometry` guarantees rows == gridDim.x * UNISKIP_ROWS_PER_BLOCK (log_rows >= 5),
+// so no row is out of range.
+EXTERN __global__ void ab_gkr_uniskip_eval_kernel(const __grid_constant__ uniskip_vm_desc desc) {
+  const u32 lane = threadIdx.x % UNISKIP_ROWS_PER_BLOCK;
+  const u32 warp = threadIdx.x / UNISKIP_ROWS_PER_BLOCK;
+  const u32 row = blockIdx.x * UNISKIP_ROWS_PER_BLOCK + lane;
+  const u32 first_cell = warp * UNISKIP_CELLS_PER_WARP;
+
+  e4 acc[UNISKIP_CELLS_PER_WARP];
+#pragma unroll
+  for (u32 i = 0; i < UNISKIP_CELLS_PER_WARP; ++i)
+    acc[i] = e4::ZERO();
+
+  for (u32 pc = 0; pc < desc.record_count;) {
+    const uniskip_term term = desc.program[pc];
+    const e4 coeff = ab_gkr_uniskip_coeff_bank[term.coeff];
+    if (term.term_class == UNISKIP_CLASS_GROUP_BF) {
+      // Header: coeff = core bank id, source_a = arity. The members sum in bf,
+      // scaled by their IMMEDIATE id, and the whole group costs one e4 coeff FMA.
+      const u32 arity = term.source_a;
+      bf sum[UNISKIP_CELLS_PER_WARP];
+#pragma unroll
+      for (u32 i = 0; i < UNISKIP_CELLS_PER_WARP; ++i)
+        sum[i] = bf::ZERO();
+      for (u32 m = 1; m <= arity; ++m) {
+        const uniskip_term member = desc.program[pc + m];
+        const bool product = member.term_class == UNISKIP_CLASS_PRODUCT_BF_BF;
+#pragma unroll
+        for (u32 i = 0; i < UNISKIP_CELLS_PER_WARP; ++i) {
+          const u32 cell = first_cell + i;
+          bf value = uniskip_source_value<bf>(desc, member.source_a, cell, row);
+          if (product)
+            value = bf::mul(value, uniskip_source_value<bf>(desc, member.source_b, cell, row));
+          if (member.coeff == UNISKIP_IMMEDIATE_ONE)
+            sum[i] = bf::add(sum[i], value);
+          else if (member.coeff == UNISKIP_IMMEDIATE_NEG_ONE)
+            sum[i] = bf::sub(sum[i], value);
+          else
+            sum[i] = bf::fma(desc.immediates[member.coeff - UNISKIP_IMMEDIATE_RESERVED], value, sum[i]);
+        }
+      }
+#pragma unroll
+      for (u32 i = 0; i < UNISKIP_CELLS_PER_WARP; ++i)
+        acc[i] = e4::fma(coeff, sum[i], acc[i]);
+      pc += arity + 1;
+      continue;
+    }
+    switch (term.term_class) {
+    case UNISKIP_CLASS_LINEAR_BF:
+#pragma unroll
+      for (u32 i = 0; i < UNISKIP_CELLS_PER_WARP; ++i)
+        acc[i] = e4::fma(coeff, uniskip_source_value<bf>(desc, term.source_a, first_cell + i, row), acc[i]);
+      break;
+    case UNISKIP_CLASS_LINEAR_E4:
+#pragma unroll
+      for (u32 i = 0; i < UNISKIP_CELLS_PER_WARP; ++i)
+        acc[i] = e4::fma(coeff, uniskip_source_value<e4>(desc, term.source_a, first_cell + i, row), acc[i]);
+      break;
+    case UNISKIP_CLASS_PRODUCT_BF_BF:
+#pragma unroll
+      for (u32 i = 0; i < UNISKIP_CELLS_PER_WARP; ++i) {
+        const u32 cell = first_cell + i;
+        const bf a = uniskip_source_value<bf>(desc, term.source_a, cell, row);
+        const bf b = uniskip_source_value<bf>(desc, term.source_b, cell, row);
+        acc[i] = e4::fma(coeff, bf::mul(a, b), acc[i]);
+      }
+      break;
+    case UNISKIP_CLASS_PRODUCT_BF_E4:
+#pragma unroll
+      for (u32 i = 0; i < UNISKIP_CELLS_PER_WARP; ++i) {
+        const u32 cell = first_cell + i;
+        const bf a = uniskip_source_value<bf>(desc, term.source_a, cell, row);
+        const e4 b = uniskip_source_value<e4>(desc, term.source_b, cell, row);
+        acc[i] = e4::fma(coeff, e4::mul(b, a), acc[i]);
+      }
+      break;
+    case UNISKIP_CLASS_PRODUCT_E4_E4:
+#pragma unroll
+      for (u32 i = 0; i < UNISKIP_CELLS_PER_WARP; ++i) {
+        const u32 cell = first_cell + i;
+        const e4 a = uniskip_source_value<e4>(desc, term.source_a, cell, row);
+        const e4 b = uniskip_source_value<e4>(desc, term.source_b, cell, row);
+        acc[i] = e4::fma(coeff, e4::mul(a, b), acc[i]);
+      }
+      break;
+    }
+    ++pc;
+  }
+
+  const e4 eq = uniskip_eq_at(desc, row);
+#pragma unroll
+  for (u32 i = 0; i < UNISKIP_CELLS_PER_WARP; ++i) {
+    const e4 total = uniskip_warp_sum(e4::mul(acc[i], eq));
+    if (lane == 0)
+      desc.partials[blockIdx.x * UNISKIP_CELLS + first_cell + i] = total;
+  }
+}
+
+// One block per cell; each sums its column of the partials matrix.
+EXTERN __global__ void ab_gkr_uniskip_finalize_kernel(const e4 *partials, const u32 blocks, e4 *q) {
+  __shared__ e4 warp_sums[UNISKIP_WARPS_PER_BLOCK];
+  const u32 cell = blockIdx.x;
+  const u32 lane = threadIdx.x % UNISKIP_ROWS_PER_BLOCK;
+  const u32 warp = threadIdx.x / UNISKIP_ROWS_PER_BLOCK;
+
+  e4 sum = e4::ZERO();
+  for (u32 block = threadIdx.x; block < blocks; block += UNISKIP_THREADS_PER_BLOCK)
+    sum = e4::add(sum, load<e4, ld_modifier::cs>(partials, block * UNISKIP_CELLS + cell));
+  sum = uniskip_warp_sum(sum);
+  if (lane == 0)
+    warp_sums[warp] = sum;
+  __syncthreads();
+  if (warp != 0)
+    return;
+  sum = uniskip_warp_sum(lane < UNISKIP_WARPS_PER_BLOCK ? warp_sums[lane] : e4::ZERO());
+  if (lane == 0)
+    q[cell] = sum;
+}
+
 } // namespace airbender::gkr_uniskip_bench

@@ -1,4 +1,5 @@
 use clap::{CommandFactory, Parser};
+use gpu_gkr_uniskip_bench::abi::UNISKIP_CELLS;
 use gpu_gkr_uniskip_bench::geometry::Geometry;
 use gpu_gkr_uniskip_bench::harness::Harness;
 use gpu_gkr_uniskip_bench::synth::{generate, Census};
@@ -47,7 +48,7 @@ struct Cli {
     #[arg(long)]
     validate: bool,
 
-    /// Validate with all eq tables forced to ONE on both sides.
+    /// Validate with all eq tables forced to ONE on both sides. Implies `--validate`.
     #[arg(long)]
     validate_flat_eq: bool,
 }
@@ -98,18 +99,27 @@ fn main() {
             .collect::<Vec<_>>()
     );
 
-    let harness = Harness::new(&program, &geometry, cli.seed)
+    let validate = cli.validate || cli.validate_flat_eq;
+    let mut harness = Harness::new(&program, &geometry, cli.seed, cli.validate_flat_eq)
         .unwrap_or_else(|e| fail(format!("device setup failed: {e}")));
     for _ in 0..cli.warmup + cli.iterations {
         harness
-            .run_lde()
-            .unwrap_or_else(|e| fail(format!("LDE launch failed: {e}")));
+            .run_pass()
+            .unwrap_or_else(|e| fail(format!("pass launch failed: {e}")));
+    }
+    // Validation compares device buffers, so it needs a pass to have run even when
+    // the iteration count is zero.
+    if validate {
+        harness
+            .run_pass()
+            .unwrap_or_else(|e| fail(format!("pass launch failed: {e}")));
     }
     harness
         .synchronize()
-        .unwrap_or_else(|e| fail(format!("LDE failed: {e}")));
+        .unwrap_or_else(|e| fail(format!("pass failed: {e}")));
 
-    if cli.validate {
+    if validate {
+        let mut failed = false;
         match harness
             .validate_lde()
             .unwrap_or_else(|e| fail(format!("validation download failed: {e}")))
@@ -117,8 +127,21 @@ fn main() {
             Ok(()) => println!("LDE validate: OK"),
             Err(mismatch) => {
                 eprintln!("LDE validate: FAILED — {mismatch}");
-                std::process::exit(1);
+                failed = true;
             }
+        }
+        match harness
+            .validate_q(&program)
+            .unwrap_or_else(|e| fail(format!("validation download failed: {e}")))
+        {
+            Ok(()) => println!("q validate: OK ({}/{})", UNISKIP_CELLS, UNISKIP_CELLS),
+            Err(mismatch) => {
+                eprintln!("q validate: FAILED — {mismatch}");
+                failed = true;
+            }
+        }
+        if failed {
+            std::process::exit(1);
         }
     }
 }
