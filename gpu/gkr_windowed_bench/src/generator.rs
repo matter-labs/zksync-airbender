@@ -10,9 +10,10 @@ use gpu_gkr_compiler::{compile_continuations, GpuResourceProfile};
 
 use crate::abi::WindowInstruction;
 use crate::artifact::{
-    decode_program, encode_artifact, validate_artifact, ArtifactError, FrozenArtifact,
-    FrozenBoundColumn, FrozenField, FrozenSourceSlot, FrozenWindow, FrozenWindowFamily, WindowAtom,
-    WindowClass, WindowTerm, ARTIFACT_MAGIC, ARTIFACT_VERSION, SOURCE_NONE,
+    decode_program, decode_source_coordinate, encode_artifact, encode_source_coordinate,
+    validate_artifact, ArtifactError, FrozenArtifact, FrozenBoundColumn, FrozenField,
+    FrozenSourceSlot, FrozenWindow, FrozenWindowFamily, WindowAtom, WindowClass, WindowTerm,
+    ARTIFACT_MAGIC, ARTIFACT_VERSION, SOURCE_NONE,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -102,6 +103,15 @@ impl EncodedAtom {
             .iter()
             .map(|member| (member.source_a, member.source_b))
             .collect()
+    }
+
+    fn procedural(&self) -> bool {
+        self.members().iter().any(|member| {
+            matches!(
+                record_class(member),
+                WindowClass::LinearBfProceduralA | WindowClass::ProductBfBfProceduralB
+            )
+        })
     }
 
     fn sort_members_control(&mut self) {
@@ -196,6 +206,7 @@ fn apply_schedule(atoms: &mut [EncodedAtom], schedule: ProgramSchedule) {
             atoms.sort_unstable_by_key(|atom| {
                 (
                     atom.field(),
+                    atom.procedural(),
                     atom.source_sequence(),
                     atom.shape(),
                     atom.class_sequence(),
@@ -209,7 +220,10 @@ fn apply_schedule(atoms: &mut [EncodedAtom], schedule: ProgramSchedule) {
 
 fn term_field(class: WindowClass) -> u8 {
     match class {
-        WindowClass::LinearBf | WindowClass::ProductBfBf => 0,
+        WindowClass::LinearBf
+        | WindowClass::ProductBfBf
+        | WindowClass::LinearBfProceduralA
+        | WindowClass::ProductBfBfProceduralB => 0,
         WindowClass::LinearE4 | WindowClass::ProductBfE4 | WindowClass::ProductE4E4 => 1,
         WindowClass::GroupBf | WindowClass::GroupE4 => {
             unreachable!("decoded atoms never contain group headers as terms")
@@ -244,18 +258,23 @@ fn transitions<T: PartialEq>(values: impl IntoIterator<Item = T>) -> u32 {
 }
 
 fn source_is_procedural(artifact: &FrozenArtifact, source: u16) -> bool {
-    let slot = artifact.source_slots[usize::from(source)];
-    artifact.windows[usize::from(slot.window)]
-        .family
-        .is_procedural()
+    let (window, _) = decode_source_coordinate(source)
+        .expect("validated term source must contain a direct coordinate");
+    artifact.windows[usize::from(window)].family.is_procedural()
 }
 
-fn bf_source_accesses(term: &WindowTerm) -> [(u16, u64); 2] {
+fn bf_source_accesses(term: &WindowTerm) -> [(u16, u64, bool); 2] {
     match term.class {
-        WindowClass::LinearBf => [(term.source_a, 8), (SOURCE_NONE, 0)],
-        WindowClass::ProductBfBf => [(term.source_a, 32), (term.source_b, 32)],
-        WindowClass::ProductBfE4 => [(term.source_a, 32), (SOURCE_NONE, 0)],
-        WindowClass::LinearE4 | WindowClass::ProductE4E4 => [(SOURCE_NONE, 0), (SOURCE_NONE, 0)],
+        WindowClass::LinearBf => [(term.source_a, 8, false), (SOURCE_NONE, 0, false)],
+        WindowClass::LinearBfProceduralA => [(term.source_a, 8, true), (SOURCE_NONE, 0, false)],
+        WindowClass::ProductBfBf => [(term.source_a, 32, false), (term.source_b, 32, false)],
+        WindowClass::ProductBfBfProceduralB => {
+            [(term.source_a, 32, false), (term.source_b, 32, true)]
+        }
+        WindowClass::ProductBfE4 => [(term.source_a, 32, false), (SOURCE_NONE, 0, false)],
+        WindowClass::LinearE4 | WindowClass::ProductE4E4 => {
+            [(SOURCE_NONE, 0, false), (SOURCE_NONE, 0, false)]
+        }
         WindowClass::GroupBf | WindowClass::GroupE4 => {
             unreachable!("decoded atoms never contain group headers as terms")
         }
@@ -308,18 +327,21 @@ pub fn schedule_census(artifact: &FrozenArtifact) -> Result<ScheduleCensus, Arti
     let (projected_bf_accesses, projected_procedural_bf_accesses) = flattened
         .iter()
         .flat_map(|term| bf_source_accesses(term))
-        .filter(|(_, accesses)| *accesses != 0)
-        .fold((0, 0), |(total, procedural), (source, accesses)| {
-            (
-                total + accesses,
-                procedural
-                    + if source_is_procedural(artifact, source) {
-                        accesses
-                    } else {
-                        0
-                    },
-            )
-        });
+        .filter(|(_, accesses, _)| *accesses != 0)
+        .fold(
+            (0, 0),
+            |(total, procedural), (source, accesses, generated)| {
+                (
+                    total + accesses,
+                    procedural
+                        + if generated || source_is_procedural(artifact, source) {
+                            accesses
+                        } else {
+                            0
+                        },
+                )
+            },
+        );
     let bf_atoms = fields.iter().filter(|field| **field == 0).count() as u32;
     Ok(ScheduleCensus {
         atoms: atoms.len() as u32,
@@ -492,20 +514,81 @@ fn encode_term(
     term: &LeanTerm,
     binding: &LeanSourceBinding,
 ) -> Result<WindowInstruction, GeneratorError> {
-    let class = match term.class {
-        0 => match source_field(binding, term.source_a)? {
-            FrozenField::Base => WindowClass::LinearBf,
-            FrozenField::Ext => WindowClass::LinearE4,
+    let (class, source_a, source_b) = match term.class {
+        0 => match source_procedural_kind(binding, term.source_a)? {
+            Some(kind) => (
+                WindowClass::LinearBfProceduralA,
+                u16::from(kind),
+                SOURCE_NONE,
+            ),
+            None => {
+                let class = match source_field(binding, term.source_a)? {
+                    FrozenField::Base => WindowClass::LinearBf,
+                    FrozenField::Ext => WindowClass::LinearE4,
+                };
+                (
+                    class,
+                    encode_bound_source(binding, term.source_a)?,
+                    SOURCE_NONE,
+                )
+            }
         },
         1 => {
-            let field_a = source_field(binding, term.source_a)?;
-            let field_b = source_field(binding, term.source_b)?;
-            match (field_a, field_b) {
-                (FrozenField::Base, FrozenField::Base) => WindowClass::ProductBfBf,
-                (FrozenField::Base, FrozenField::Ext) | (FrozenField::Ext, FrozenField::Base) => {
-                    WindowClass::ProductBfE4
+            let procedural_a = source_procedural_kind(binding, term.source_a)?;
+            let procedural_b = source_procedural_kind(binding, term.source_b)?;
+            match (procedural_a, procedural_b) {
+                (Some(_), Some(_)) => {
+                    return Err(GeneratorError(
+                        "round-0 product has two procedural operands".to_owned(),
+                    ));
                 }
-                (FrozenField::Ext, FrozenField::Ext) => WindowClass::ProductE4E4,
+                (Some(kind), None) => {
+                    if source_field(binding, term.source_b)? != FrozenField::Base {
+                        return Err(GeneratorError(
+                            "round-0 procedural product has an E4 direct operand".to_owned(),
+                        ));
+                    }
+                    (
+                        WindowClass::ProductBfBfProceduralB,
+                        encode_bound_source(binding, term.source_b)?,
+                        u16::from(kind),
+                    )
+                }
+                (None, Some(kind)) => {
+                    if source_field(binding, term.source_a)? != FrozenField::Base {
+                        return Err(GeneratorError(
+                            "round-0 procedural product has an E4 direct operand".to_owned(),
+                        ));
+                    }
+                    (
+                        WindowClass::ProductBfBfProceduralB,
+                        encode_bound_source(binding, term.source_a)?,
+                        u16::from(kind),
+                    )
+                }
+                (None, None) => {
+                    let field_a = source_field(binding, term.source_a)?;
+                    let field_b = source_field(binding, term.source_b)?;
+                    let (class, source_a, source_b) = match (field_a, field_b) {
+                        (FrozenField::Base, FrozenField::Base) => {
+                            (WindowClass::ProductBfBf, term.source_a, term.source_b)
+                        }
+                        (FrozenField::Base, FrozenField::Ext) => {
+                            (WindowClass::ProductBfE4, term.source_a, term.source_b)
+                        }
+                        (FrozenField::Ext, FrozenField::Base) => {
+                            (WindowClass::ProductBfE4, term.source_b, term.source_a)
+                        }
+                        (FrozenField::Ext, FrozenField::Ext) => {
+                            (WindowClass::ProductE4E4, term.source_a, term.source_b)
+                        }
+                    };
+                    (
+                        class,
+                        encode_bound_source(binding, source_a)?,
+                        encode_bound_source(binding, source_b)?,
+                    )
+                }
             }
         }
         class => {
@@ -514,19 +597,42 @@ fn encode_term(
             )));
         }
     };
-    let (source_a, source_b) = if class == WindowClass::ProductBfE4
-        && source_field(binding, term.source_a)? == FrozenField::Ext
-    {
-        (term.source_b, term.source_a)
-    } else {
-        (term.source_a, term.source_b)
-    };
     Ok(WindowInstruction {
         term_class: class as u16,
         factor: term.coeff,
         source_a,
         source_b,
     })
+}
+
+fn source_procedural_kind(
+    binding: &LeanSourceBinding,
+    source: u16,
+) -> Result<Option<u8>, GeneratorError> {
+    if source == SOURCE_NONE {
+        return Err(GeneratorError("product source is absent".to_owned()));
+    }
+    let slot = binding
+        .source_slots
+        .get(usize::from(source))
+        .ok_or_else(|| GeneratorError(format!("source {source} is out of range")))?;
+    let window = binding
+        .windows
+        .get(usize::from(slot.window))
+        .ok_or_else(|| GeneratorError(format!("source {source} window is out of range")))?;
+    Ok(match window.family {
+        WindowFamily::VirtualSetup { kind } => Some(kind),
+        _ => None,
+    })
+}
+
+fn encode_bound_source(binding: &LeanSourceBinding, source: u16) -> Result<u16, GeneratorError> {
+    let slot = binding
+        .source_slots
+        .get(usize::from(source))
+        .ok_or_else(|| GeneratorError(format!("source {source} is out of range")))?;
+    encode_source_coordinate(slot.window, slot.column)
+        .map_err(|error| GeneratorError::context("encode direct source coordinate", error))
 }
 
 fn record_class(record: &WindowInstruction) -> WindowClass {
@@ -577,7 +683,11 @@ mod tests {
     use std::collections::BTreeMap;
     use std::path::PathBuf;
 
-    use crate::artifact::{decode_program, validate_artifact, WindowAtom};
+    use gpu_gkr_compiler::backward::{LeanBoundColumn, LeanBoundWindow, LeanSourceSlot};
+
+    use crate::artifact::{
+        decode_program, decode_source_coordinate, validate_artifact, WindowAtom,
+    };
 
     use super::*;
 
@@ -617,6 +727,72 @@ mod tests {
         assert_eq!(first, second);
     }
 
+    #[test]
+    fn add_sub_layer_zero_uses_direct_source_coordinates() {
+        let artifact =
+            generate_add_sub_layer0_with_schedule(&add_sub_layout(), ProgramSchedule::Source)
+                .unwrap();
+        let bound = artifact
+            .source_slots
+            .iter()
+            .map(|slot| (slot.window, slot.column))
+            .collect::<std::collections::BTreeSet<_>>();
+        let (atoms, _) = decode_program(&artifact).unwrap();
+        let mut procedural_linear = 0;
+        let mut procedural_product = 0;
+
+        for term in atoms.iter().flat_map(atom_terms) {
+            match term.class {
+                WindowClass::LinearBfProceduralA => {
+                    procedural_linear += 1;
+                    assert!(term.source_a < 4);
+                    assert_eq!(term.source_b, SOURCE_NONE);
+                }
+                WindowClass::ProductBfBfProceduralB => {
+                    procedural_product += 1;
+                    let source_a = decode_source_coordinate(term.source_a).unwrap();
+                    assert!(bound.contains(&source_a), "unbound source A {source_a:?}");
+                    assert!(term.source_b < 4);
+                }
+                _ => {
+                    let source_a = decode_source_coordinate(term.source_a).unwrap();
+                    assert!(bound.contains(&source_a), "unbound source A {source_a:?}");
+                    if term.source_b != SOURCE_NONE {
+                        let source_b = decode_source_coordinate(term.source_b).unwrap();
+                        assert!(bound.contains(&source_b), "unbound source B {source_b:?}");
+                    }
+                }
+            }
+        }
+        assert_eq!(procedural_linear, 2);
+        assert_eq!(procedural_product, 2);
+        let procedural_positions = atoms
+            .iter()
+            .enumerate()
+            .filter_map(|(position, atom)| {
+                matches!(
+                    atom,
+                    WindowAtom::Term(term)
+                        if matches!(
+                            term.class,
+                            WindowClass::LinearBfProceduralA
+                                | WindowClass::ProductBfBfProceduralB
+                        )
+                )
+                .then_some(position)
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(procedural_positions.len(), 4);
+        let first_e4 = atoms
+            .iter()
+            .position(|atom| term_field(atom_terms(atom)[0].class) == 1)
+            .unwrap();
+        assert_eq!(
+            procedural_positions,
+            (first_e4 - 4..first_e4).collect::<Vec<_>>()
+        );
+    }
+
     #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
     struct SemanticAtomKey {
         shape: u8,
@@ -624,44 +800,80 @@ mod tests {
         members: Vec<(u8, u16, u16, u16)>,
     }
 
-    fn semantic_members(members: &[crate::artifact::WindowTerm]) -> Vec<(u8, u16, u16, u16)> {
+    fn procedural_coordinate(artifact: &FrozenArtifact, kind: u16) -> u16 {
+        let window = artifact
+            .windows
+            .iter()
+            .position(|window| {
+                window.family == FrozenWindowFamily::VirtualSetup { kind: kind as u8 }
+            })
+            .unwrap() as u8;
+        let slot = artifact
+            .source_slots
+            .iter()
+            .find(|slot| slot.window == window)
+            .unwrap();
+        encode_source_coordinate(slot.window, slot.column).unwrap()
+    }
+
+    fn semantic_term(
+        artifact: &FrozenArtifact,
+        term: &crate::artifact::WindowTerm,
+    ) -> (u8, u16, u16, u16) {
+        match term.class {
+            WindowClass::LinearBfProceduralA => (
+                WindowClass::LinearBf as u8,
+                term.coefficient,
+                procedural_coordinate(artifact, term.source_a),
+                SOURCE_NONE,
+            ),
+            WindowClass::ProductBfBfProceduralB => (
+                WindowClass::ProductBfBf as u8,
+                term.coefficient,
+                term.source_a,
+                procedural_coordinate(artifact, term.source_b),
+            ),
+            _ => (
+                term.class as u8,
+                term.coefficient,
+                term.source_a,
+                term.source_b,
+            ),
+        }
+    }
+
+    fn semantic_members(
+        artifact: &FrozenArtifact,
+        members: &[crate::artifact::WindowTerm],
+    ) -> Vec<(u8, u16, u16, u16)> {
         let mut keys = members
             .iter()
-            .map(|term| {
-                (
-                    term.class as u8,
-                    term.coefficient,
-                    term.source_a,
-                    term.source_b,
-                )
-            })
+            .map(|term| semantic_term(artifact, term))
             .collect::<Vec<_>>();
         keys.sort_unstable();
         keys
     }
 
-    fn semantic_multiset(atoms: &[WindowAtom]) -> BTreeMap<SemanticAtomKey, usize> {
+    fn semantic_multiset(
+        artifact: &FrozenArtifact,
+        atoms: &[WindowAtom],
+    ) -> BTreeMap<SemanticAtomKey, usize> {
         atoms.iter().fold(BTreeMap::new(), |mut counts, atom| {
             let key = match atom {
                 WindowAtom::Term(term) => SemanticAtomKey {
                     shape: 0,
                     core: term.coefficient,
-                    members: vec![(
-                        term.class as u8,
-                        term.coefficient,
-                        term.source_a,
-                        term.source_b,
-                    )],
+                    members: vec![semantic_term(artifact, term)],
                 },
                 WindowAtom::GroupBf { core, members } => SemanticAtomKey {
                     shape: 1,
                     core: *core,
-                    members: semantic_members(members),
+                    members: semantic_members(artifact, members),
                 },
                 WindowAtom::GroupE4 { core, members } => SemanticAtomKey {
                     shape: 2,
                     core: *core,
-                    members: semantic_members(members),
+                    members: semantic_members(artifact, members),
                 },
             };
             *counts.entry(key).or_default() += 1;
@@ -690,17 +902,83 @@ mod tests {
                     matches!(
                         atom,
                         WindowAtom::Term(term)
-                            if matches!(term.class, WindowClass::LinearBf | WindowClass::ProductBfBf)
+                            if matches!(
+                                term.class,
+                                WindowClass::LinearBf
+                                    | WindowClass::ProductBfBf
+                                    | WindowClass::LinearBfProceduralA
+                                    | WindowClass::ProductBfBfProceduralB
+                            )
                     ) || matches!(atom, WindowAtom::GroupBf { .. })
                 })
                 .count();
             assert_eq!(bf_atoms, 65);
             (artifact, atoms)
         });
-        let expected = semantic_multiset(&variants[0].1);
-        for (_, atoms) in &variants[1..] {
-            assert_eq!(semantic_multiset(atoms), expected);
+        let expected = semantic_multiset(&variants[0].0, &variants[0].1);
+        for (artifact, atoms) in &variants[1..] {
+            assert_eq!(semantic_multiset(artifact, atoms), expected);
         }
+    }
+
+    #[test]
+    fn unsupported_procedural_products_are_rejected() {
+        let binding = LeanSourceBinding {
+            windows: vec![
+                LeanBoundWindow {
+                    family: WindowFamily::VirtualSetup { kind: 0 },
+                    first_column: 0,
+                    columns: vec![LeanBoundColumn {
+                        column: 0,
+                        source: 0,
+                    }],
+                },
+                LeanBoundWindow {
+                    family: WindowFamily::VirtualSetup { kind: 1 },
+                    first_column: 0,
+                    columns: vec![LeanBoundColumn {
+                        column: 0,
+                        source: 1,
+                    }],
+                },
+                LeanBoundWindow {
+                    family: WindowFamily::CacheOutput {
+                        layer: 0,
+                        ext: true,
+                    },
+                    first_column: 0,
+                    columns: vec![LeanBoundColumn {
+                        column: 0,
+                        source: 2,
+                    }],
+                },
+            ],
+            source_slots: vec![
+                LeanSourceSlot {
+                    window: 0,
+                    column: 0,
+                },
+                LeanSourceSlot {
+                    window: 1,
+                    column: 0,
+                },
+                LeanSourceSlot {
+                    window: 2,
+                    column: 0,
+                },
+            ],
+        };
+        let product = |source_a, source_b| LeanTerm {
+            class: 1,
+            coeff: 0,
+            source_a,
+            source_b,
+        };
+
+        let error = encode_term(&product(0, 1), &binding).unwrap_err();
+        assert!(error.0.contains("two procedural operands"));
+        let error = encode_term(&product(0, 2), &binding).unwrap_err();
+        assert!(error.0.contains("E4 direct operand"));
     }
 
     #[test]
@@ -729,5 +1007,7 @@ mod tests {
                 >= compiler.adjacent_equal_source_a + compiler.adjacent_equal_source_b
         );
         assert!(compiler.projected_procedural_bf_accesses <= compiler.projected_bf_accesses);
+        assert_eq!(source.projected_bf_accesses, 6_904);
+        assert_eq!(source.projected_procedural_bf_accesses, 80);
     }
 }

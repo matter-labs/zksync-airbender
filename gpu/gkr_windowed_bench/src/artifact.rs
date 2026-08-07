@@ -7,6 +7,11 @@ pub const ARTIFACT_MAGIC: [u8; 8] = *b"WGKRW3\0\0";
 pub const ARTIFACT_VERSION: u32 = 1;
 pub const SOURCE_NONE: u16 = u16::MAX;
 pub const SOURCE_WINDOW_COLUMNS: u16 = 128;
+pub const SOURCE_COLUMN_BITS: u32 = 7;
+pub const SOURCE_COLUMN_MASK: u16 = (1 << SOURCE_COLUMN_BITS) - 1;
+pub const SOURCE_WINDOW_BITS: u32 = 6;
+pub const SOURCE_COORDINATE_MASK: u16 =
+    (((1 << SOURCE_WINDOW_BITS) - 1) << SOURCE_COLUMN_BITS) | SOURCE_COLUMN_MASK;
 pub static ADD_SUB_LAYER0_BYTES: &[u8] = include_bytes!("../artifacts/add_sub_layer0.bin");
 
 const MAX_COEFFICIENTS: u32 = u16::MAX as u32 + 1;
@@ -20,9 +25,11 @@ pub enum WindowClass {
     LinearE4 = 1,
     ProductBfBf = 2,
     ProductBfE4 = 3,
+    LinearBfProceduralA = 4,
     ProductE4E4 = 5,
     GroupBf = 6,
     GroupE4 = 7,
+    ProductBfBfProceduralB = 8,
 }
 
 impl TryFrom<u8> for WindowClass {
@@ -34,9 +41,11 @@ impl TryFrom<u8> for WindowClass {
             1 => Ok(Self::LinearE4),
             2 => Ok(Self::ProductBfBf),
             3 => Ok(Self::ProductBfE4),
+            4 => Ok(Self::LinearBfProceduralA),
             5 => Ok(Self::ProductE4E4),
             6 => Ok(Self::GroupBf),
             7 => Ok(Self::GroupE4),
+            8 => Ok(Self::ProductBfBfProceduralB),
             _ => Err(()),
         }
     }
@@ -146,6 +155,8 @@ pub enum ArtifactError {
     CoefficientOutOfRange { record: u32, coefficient: u16 },
     ImmediateOutOfRange { record: u32, immediate: u16 },
     SourceOutOfRange { record: u32, source: u16 },
+    DirectProceduralSource { record: u32, source: u16 },
+    ProceduralKindUnavailable { record: u32, kind: u16 },
     SourceBMustBeNone { record: u32 },
     SourceBMissing { record: u32 },
     MalformedGroup { record: u32 },
@@ -159,6 +170,8 @@ pub enum ArtifactError {
     InvalidProceduralKind { window: usize, kind: u8 },
     BoundSourceOutOfRange { window: usize, source: u32 },
     InvalidSourceBinding { source: usize },
+    SourceCoordinateOutOfRange { window: u8, column: u16 },
+    InvalidSourceCoordinate { source: u16 },
     Decode(String),
 }
 
@@ -169,6 +182,23 @@ impl core::fmt::Display for ArtifactError {
 }
 
 impl std::error::Error for ArtifactError {}
+
+pub fn encode_source_coordinate(window: u8, column: u16) -> Result<u16, ArtifactError> {
+    if u32::from(window) >= 1 << SOURCE_WINDOW_BITS || column >= SOURCE_WINDOW_COLUMNS {
+        return Err(ArtifactError::SourceCoordinateOutOfRange { window, column });
+    }
+    Ok((u16::from(window) << SOURCE_COLUMN_BITS) | column)
+}
+
+pub fn decode_source_coordinate(source: u16) -> Result<(u8, u16), ArtifactError> {
+    if source == SOURCE_NONE || source & !SOURCE_COORDINATE_MASK != 0 {
+        return Err(ArtifactError::InvalidSourceCoordinate { source });
+    }
+    Ok((
+        (source >> SOURCE_COLUMN_BITS) as u8,
+        source & SOURCE_COLUMN_MASK,
+    ))
+}
 
 fn bincode_options() -> impl Options {
     bincode::DefaultOptions::new()
@@ -454,18 +484,32 @@ fn decode_term(
             coefficient,
         });
     }
-    validate_source(artifact, instruction.source_a, record)?;
     match class {
         WindowClass::LinearBf | WindowClass::LinearE4 => {
+            validate_direct_source(artifact, instruction.source_a, record)?;
+            if instruction.source_b != SOURCE_NONE {
+                return Err(ArtifactError::SourceBMustBeNone { record });
+            }
+        }
+        WindowClass::LinearBfProceduralA => {
+            validate_procedural_kind(artifact, instruction.source_a, record)?;
             if instruction.source_b != SOURCE_NONE {
                 return Err(ArtifactError::SourceBMustBeNone { record });
             }
         }
         WindowClass::ProductBfBf | WindowClass::ProductBfE4 | WindowClass::ProductE4E4 => {
+            validate_direct_source(artifact, instruction.source_a, record)?;
             if instruction.source_b == SOURCE_NONE {
                 return Err(ArtifactError::SourceBMissing { record });
             }
-            validate_source(artifact, instruction.source_b, record)?;
+            validate_direct_source(artifact, instruction.source_b, record)?;
+        }
+        WindowClass::ProductBfBfProceduralB => {
+            validate_direct_source(artifact, instruction.source_a, record)?;
+            if instruction.source_b == SOURCE_NONE {
+                return Err(ArtifactError::SourceBMissing { record });
+            }
+            validate_procedural_kind(artifact, instruction.source_b, record)?;
         }
         WindowClass::GroupBf | WindowClass::GroupE4 => {
             unreachable!("group headers are handled by decode_program")
@@ -486,20 +530,48 @@ fn decode_term(
     })
 }
 
-fn validate_source(
+fn validate_direct_source(
     artifact: &FrozenArtifact,
     source: u16,
     record: u32,
 ) -> Result<(), ArtifactError> {
-    if usize::from(source) >= artifact.source_slots.len() {
+    let (window, column) = decode_source_coordinate(source)
+        .map_err(|_| ArtifactError::SourceOutOfRange { record, source })?;
+    if !artifact
+        .source_slots
+        .iter()
+        .any(|slot| slot.window == window && slot.column == column)
+    {
         return Err(ArtifactError::SourceOutOfRange { record, source });
+    }
+    if artifact.windows[usize::from(window)].family.is_procedural() {
+        return Err(ArtifactError::DirectProceduralSource { record, source });
+    }
+    Ok(())
+}
+
+fn validate_procedural_kind(
+    artifact: &FrozenArtifact,
+    kind: u16,
+    record: u32,
+) -> Result<(), ArtifactError> {
+    let available = u8::try_from(kind).ok().is_some_and(|kind| {
+        kind < 4
+            && artifact
+                .windows
+                .iter()
+                .any(|window| window.family == FrozenWindowFamily::VirtualSetup { kind })
+    });
+    if !available {
+        return Err(ArtifactError::ProceduralKindUnavailable { record, kind });
     }
     Ok(())
 }
 
 fn source_field(artifact: &FrozenArtifact, source: u16) -> FrozenField {
-    let slot = artifact.source_slots[usize::from(source)];
-    artifact.windows[usize::from(slot.window)].field
+    let (window, _) = decode_source_coordinate(source)
+        .expect("validated term source must contain a direct coordinate");
+    artifact.windows[usize::from(window)].field
 }
 
 fn validate_term_fields(
@@ -509,13 +581,18 @@ fn validate_term_fields(
     source_b: u16,
     record: u32,
 ) -> Result<(), ArtifactError> {
+    if class == WindowClass::LinearBfProceduralA {
+        return Ok(());
+    }
     let field_a = source_field(artifact, source_a);
     let fields_match = match class {
         WindowClass::LinearBf => field_a == FrozenField::Base,
+        WindowClass::LinearBfProceduralA => unreachable!("handled above"),
         WindowClass::LinearE4 => field_a == FrozenField::Ext,
         WindowClass::ProductBfBf => {
             field_a == FrozenField::Base && source_field(artifact, source_b) == FrozenField::Base
         }
+        WindowClass::ProductBfBfProceduralB => field_a == FrozenField::Base,
         WindowClass::ProductBfE4 => {
             field_a == FrozenField::Base && source_field(artifact, source_b) == FrozenField::Ext
         }
@@ -559,18 +636,33 @@ mod tests {
     use super::*;
 
     #[test]
+    fn source_coordinate_uses_six_window_and_seven_column_bits() {
+        let encoded = encode_source_coordinate(63, 127).unwrap();
+        assert_eq!(encoded, 0x1fff);
+        assert_eq!(decode_source_coordinate(encoded).unwrap(), (63, 127));
+        assert!(encode_source_coordinate(64, 0).is_err());
+        assert!(encode_source_coordinate(0, 128).is_err());
+        assert!(decode_source_coordinate(0x2000).is_err());
+        assert!(decode_source_coordinate(SOURCE_NONE).is_err());
+    }
+
+    #[test]
     fn class_low_bit_selects_the_result_field() {
         assert_eq!(WindowClass::LinearBf as u16, 0);
         assert_eq!(WindowClass::LinearE4 as u16, 1);
         assert_eq!(WindowClass::ProductBfBf as u16, 2);
         assert_eq!(WindowClass::ProductBfE4 as u16, 3);
+        assert_eq!(WindowClass::LinearBfProceduralA as u16, 4);
         assert_eq!(WindowClass::ProductE4E4 as u16, 5);
         assert_eq!(WindowClass::GroupBf as u16, 6);
         assert_eq!(WindowClass::GroupE4 as u16, 7);
+        assert_eq!(WindowClass::ProductBfBfProceduralB as u16, 8);
         for class in [
             WindowClass::LinearBf,
             WindowClass::ProductBfBf,
             WindowClass::GroupBf,
+            WindowClass::LinearBfProceduralA,
+            WindowClass::ProductBfBfProceduralB,
         ] {
             assert_eq!((class as u16) & 1, 0);
         }
@@ -644,6 +736,91 @@ mod tests {
         });
     }
 
+    fn add_virtual_source(artifact: &mut FrozenArtifact, kind: u8) -> u16 {
+        let window = artifact.windows.len() as u8;
+        let source = artifact.source_slots.len() as u32;
+        artifact.windows.push(FrozenWindow {
+            family: FrozenWindowFamily::VirtualSetup { kind },
+            first_column: 0,
+            field: FrozenField::Base,
+            columns: vec![FrozenBoundColumn { column: 0, source }],
+        });
+        artifact
+            .source_slots
+            .push(FrozenSourceSlot { window, column: 0 });
+        encode_source_coordinate(window, 0).unwrap()
+    }
+
+    #[test]
+    fn procedural_classes_store_the_kind_in_the_procedural_operand() {
+        let mut artifact = valid_artifact();
+        add_virtual_source(&mut artifact, 1);
+        artifact.program = vec![instruction(
+            WindowClass::LinearBfProceduralA,
+            0,
+            1,
+            SOURCE_NONE,
+        )];
+        let (atoms, _) = decode_program(&artifact).unwrap();
+        assert!(matches!(
+            atoms.as_slice(),
+            [WindowAtom::Term(WindowTerm {
+                class: WindowClass::LinearBfProceduralA,
+                source_a: 1,
+                source_b: SOURCE_NONE,
+                ..
+            })]
+        ));
+
+        artifact.program = vec![instruction(WindowClass::ProductBfBfProceduralB, 0, 0, 1)];
+        validate_artifact(&artifact).unwrap();
+    }
+
+    #[test]
+    fn ordinary_bf_class_rejects_a_procedural_coordinate() {
+        let mut artifact = valid_artifact();
+        let procedural = add_virtual_source(&mut artifact, 0);
+        artifact.program[0].source_a = procedural;
+        assert!(matches!(
+            validate_artifact(&artifact),
+            Err(ArtifactError::DirectProceduralSource { .. })
+        ));
+    }
+
+    #[test]
+    fn procedural_kind_must_be_available() {
+        let mut artifact = valid_artifact();
+        add_virtual_source(&mut artifact, 0);
+        artifact.program[0] = instruction(WindowClass::LinearBfProceduralA, 0, 4, SOURCE_NONE);
+        assert!(matches!(
+            validate_artifact(&artifact),
+            Err(ArtifactError::ProceduralKindUnavailable { kind: 4, .. })
+        ));
+    }
+
+    #[test]
+    fn procedural_term_cannot_be_a_group_member() {
+        let mut artifact = valid_artifact();
+        add_virtual_source(&mut artifact, 0);
+        artifact.term_count = 2;
+        artifact.record_count = 3;
+        artifact.coefficient_count = 3;
+        for procedural in [
+            instruction(WindowClass::LinearBfProceduralA, 0, 0, SOURCE_NONE),
+            instruction(WindowClass::ProductBfBfProceduralB, 0, 0, 0),
+        ] {
+            artifact.program = vec![
+                instruction(WindowClass::GroupBf, 2, 2, 0),
+                instruction(WindowClass::LinearBf, 0, 0, SOURCE_NONE),
+                procedural,
+            ];
+            assert!(matches!(
+                validate_artifact(&artifact),
+                Err(ArtifactError::GroupMemberClassMismatch { .. })
+            ));
+        }
+    }
+
     #[test]
     fn singleton_artifact_round_trips() {
         let artifact = valid_artifact();
@@ -672,13 +849,14 @@ mod tests {
     fn e4_group_is_an_implicit_pair_with_sign_immediates() {
         let mut artifact = valid_artifact();
         add_ext_source(&mut artifact);
+        let ext_source = encode_source_coordinate(1, 0).unwrap();
         artifact.term_count = 2;
         artifact.record_count = 3;
         artifact.coefficient_count = 3;
         artifact.program = vec![
             instruction(WindowClass::GroupE4, 2, 0, 0),
-            instruction(WindowClass::LinearE4, 0, 1, SOURCE_NONE),
-            instruction(WindowClass::ProductBfE4, 1, 0, 1),
+            instruction(WindowClass::LinearE4, 0, ext_source, SOURCE_NONE),
+            instruction(WindowClass::ProductBfE4, 1, 0, ext_source),
         ];
         let stats = validate_artifact(&artifact).unwrap();
         assert_eq!(stats.terms, 2);
@@ -690,7 +868,8 @@ mod tests {
     fn product_bf_e4_must_be_encoded_bf_first() {
         let mut artifact = valid_artifact();
         add_ext_source(&mut artifact);
-        artifact.program = vec![instruction(WindowClass::ProductBfE4, 0, 1, 0)];
+        let ext_source = encode_source_coordinate(1, 0).unwrap();
+        artifact.program = vec![instruction(WindowClass::ProductBfE4, 0, ext_source, 0)];
         assert!(matches!(
             validate_artifact(&artifact),
             Err(ArtifactError::FieldClassMismatch { .. })
@@ -701,13 +880,14 @@ mod tests {
     fn bf_group_rejects_e4_members() {
         let mut artifact = valid_artifact();
         add_ext_source(&mut artifact);
+        let ext_source = encode_source_coordinate(1, 0).unwrap();
         artifact.term_count = 2;
         artifact.record_count = 3;
         artifact.coefficient_count = 3;
         artifact.program = vec![
             instruction(WindowClass::GroupBf, 2, 2, 0),
             instruction(WindowClass::LinearBf, 0, 0, SOURCE_NONE),
-            instruction(WindowClass::LinearE4, 0, 1, SOURCE_NONE),
+            instruction(WindowClass::LinearE4, 0, ext_source, SOURCE_NONE),
         ];
         assert!(matches!(
             validate_artifact(&artifact),
@@ -719,14 +899,15 @@ mod tests {
     fn e4_group_rejects_banked_immediates() {
         let mut artifact = valid_artifact();
         add_ext_source(&mut artifact);
+        let ext_source = encode_source_coordinate(1, 0).unwrap();
         artifact.term_count = 2;
         artifact.record_count = 3;
         artifact.coefficient_count = 3;
         artifact.immediates.push(7);
         artifact.program = vec![
             instruction(WindowClass::GroupE4, 2, 0, 0),
-            instruction(WindowClass::LinearE4, 2, 1, SOURCE_NONE),
-            instruction(WindowClass::LinearE4, 0, 1, SOURCE_NONE),
+            instruction(WindowClass::LinearE4, 2, ext_source, SOURCE_NONE),
+            instruction(WindowClass::LinearE4, 0, ext_source, SOURCE_NONE),
         ];
         assert!(matches!(
             validate_artifact(&artifact),
@@ -816,7 +997,7 @@ mod tests {
     #[test]
     fn unknown_class_is_rejected() {
         let mut artifact = valid_artifact();
-        artifact.program[0].term_class = 4;
+        artifact.program[0].term_class = 9;
         assert!(matches!(
             validate_artifact(&artifact),
             Err(ArtifactError::InvalidClass { .. })

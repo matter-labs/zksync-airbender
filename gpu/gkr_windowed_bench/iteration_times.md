@@ -565,3 +565,127 @@ Both compact-source timings remain VM-only. The two procedural setup windows
 are still materialized as real BF allocations before timing, so their
 materialization cost is not represented here and must be accounted for by any
 end-to-end implementation.
+
+## Direct-coordinate and addressless-procedural result
+
+The source-table indirection is now eliminated entirely. Every ordinary
+instruction operand carries a direct 13-bit coordinate: seven low bits select
+the relative column and six bits select one of at most 64 windows. The kernel
+decodes that coordinate and indexes only the six-entry inline window-base
+table. This reduces the descriptor from 1,792 to 1,536 bytes.
+
+With the procedural windows still materialized, the direct-coordinate stage
+reported 3,560 static VM instructions, 55 `LDC` sites, 129 `LDG` sites, and
+3/3 `BSSY`/`BSYNC` sites. It retained 56 registers/thread with zero stack or
+local memory. Two log-24 medians were 15.937296 and 15.937280 ms, with the
+materialized-input checksum `0x29757dbb496ca7dc`. Despite removing 17 `LDC`
+sites and 16 instructions relative to the packed source table, it was about
+0.10 ms slower; the removed dependent metadata load was not the limiting cost.
+Its requested source-load floor was 71,336,722,432 bytes.
+
+The final experimental encoding gives the four actual procedural terms their
+own cold BF opcodes:
+
+- class 4 is a linear procedural-A term and stores the procedural kind in
+  `source_a`;
+- class 8 is BF-by-procedural-B and stores a direct BF coordinate in
+  `source_a` plus the procedural kind in `source_b`.
+
+The checked-in add/sub layer-0 artifact contains exactly two terms of each
+shape and no procedural group members. Ordinary term classes are rejected if
+they reference a virtual window, keeping the common BF resolver free of a
+procedural discriminator. The allocation plan now leaves virtual-window bases
+null and allocates no storage for them. At log 24 this removes 128 MiB of BF
+storage, reducing total resident storage from 8,618,256,560 to 8,484,038,832
+bytes.
+
+The honest procedural VM has 4,384 static instructions, 57 `LDC` sites, 133
+`LDG` sites, 3/3 reconvergence sites, 56 registers/thread, and zero stack/local
+memory. Explicitly constructing zero BF triplets in registers also removes all
+three compiler-generated BF evaluator globals; only the pre-existing 96 bytes
+of E4 zero objects remain. Two ordinary log-24 runs produced:
+
+| Run | Minimum | Median | Checksum |
+|---|---:|---:|---:|
+| Direct procedural 1 | 15.861824 ms | 15.864608 ms | `0x8820ab14cacc9ff7` |
+| Direct procedural 2 | 15.861312 ms | 15.864576 ms | `0x8820ab14cacc9ff7` |
+
+The original procedural checksum is restored, and the honest path is slightly
+faster than the materialized direct-coordinate checkpoint. A log-8
+compute-sanitizer run reports zero errors and checksum
+`0xbb2eb9da3c8c062b`. Non-lineinfo release rebuilds took 6.97 seconds for the
+materialized stage and 7.02 seconds for the final procedural stage. The final
+requested source-load floor is 70,665,633,792 bytes. The final source-scheduled
+artifact hash is
+`9519a96ed680a7505b029229cb396ccf48f65bd55e249cafc23545fd641b9f4b`.
+
+The representative VM-only report is
+`target/profiling/ncu/windowed_gkr_add_sub_l0_log24_direct_procedural_full.ncu-rep`:
+
+- NCU duration: 16.20 ms;
+- dynamic instructions and branches: 22.41 billion / 727.25 million;
+- theoretical/achieved occupancy: 75% / 74.00%;
+- L1/TEX, L2, and ICC hit rates: 86.02% / 41.57% / 99.90%;
+- issue slots busy: 77.93%;
+- physical shared-FMA-heavy-plus-ALU-lite and ALU-heavy utilization: 81.54% /
+  66.05%; and
+- PC-sampling proportions: 34.96% not selected, 20.25% math-pipe throttle,
+  12.89% wait, 9.83% dispatch stall, 6.78% long scoreboard, and 2.93% no
+  instruction.
+
+## Five-block occupancy probe
+
+A five-block probe kept all three E4 accumulator planes in shared memory and
+changed the launch bound from four to five blocks. Five blocks require 74,240
+bytes of shared memory including the measured driver reserve. A 73% preferred
+carveout request—the rounded-up fraction actually required—selects the next
+supported hardware partition, 102.4 KiB; there is no intermediate partition on
+this device.
+
+Register allocation is quantized in eight-register-per-thread tiers. A nominal
+44-register allocation would round to 48 and require 69,120 registers for five
+288-thread blocks, exceeding the 65,536-register SM file. Ptxas therefore
+compiled the probe at 40 registers/thread. Relative to the 56-register
+baseline, it introduced a 72-byte stack frame, 59 static `LDL` sites, 53 static
+`STL` sites, and grew the VM from 4,384 to 4,616 static instructions. Static
+shared memory remained 13,824 bytes, reported as 14,848 bytes including the
+driver reserve.
+
+NCU confirmed five-block residency: register and warp limits were both five
+blocks, shared memory admitted six, theoretical occupancy was 93.75%, and
+achieved occupancy was 90.99%. Two ordinary log-24 runs nevertheless
+regressed:
+
+| Run | Minimum | Median | Checksum |
+|---|---:|---:|---:|
+| Five blocks 1 | 16.457184 ms | 16.472641 ms | `0x8820ab14cacc9ff7` |
+| Five blocks 2 | 16.449152 ms | 16.463440 ms | `0x8820ab14cacc9ff7` |
+
+The full rejected-variant report is
+`target/profiling/windowed_five_block/five_block_full.ncu-rep`. Compared with
+the representative four-block profile:
+
+| Metric | Four blocks | Five blocks |
+|---|---:|---:|
+| NCU duration | 16.20 ms | 16.87 ms |
+| Dynamic instructions | 22.41 billion | 23.81 billion |
+| Achieved occupancy | 74.00% | 90.99% |
+| Issue slots busy | 77.93% | 79.84% |
+| Shared FMA-heavy + ALU-lite | 81.54% | 75.71% |
+| ALU-heavy | 66.05% | 59.45% |
+| L1/TEX hit rate | 86.02% | 51.36% |
+| L2 hit rate | 41.57% | 84.04% |
+| Local spill requests | 0 | 62,521,344 |
+| Not-selected samples | 34.96% | 40.17% |
+| Math-pipe throttle samples | 20.25% | 22.66% |
+| Wait samples | 12.89% | 9.50% |
+| Dispatch-stall samples | 9.83% | 8.77% |
+| Long-scoreboard samples | 6.78% | 7.30% |
+| No-instruction samples | 2.93% | 2.26% |
+
+The extra warps reduce wait, dispatch, and instruction-starvation stalls, but
+those were not the dominant limit. They increase contention on already-busy
+math pipelines, while forced spills add 6.26% more dynamic instructions and
+the larger shared partition substantially reduces L1 capacity. The five-block
+variant is rejected; the 56-register, four-block launch bound and 60% carveout
+are restored.

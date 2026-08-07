@@ -18,13 +18,17 @@ constexpr u16 WINDOW_CLASS_LINEAR_BF = 0;
 constexpr u16 WINDOW_CLASS_LINEAR_E4 = 1;
 constexpr u16 WINDOW_CLASS_PRODUCT_BF_BF = 2;
 constexpr u16 WINDOW_CLASS_PRODUCT_BF_E4 = 3;
+constexpr u16 WINDOW_CLASS_LINEAR_BF_PROCEDURAL_A = 4;
 constexpr u16 WINDOW_CLASS_PRODUCT_E4_E4 = 5;
 constexpr u16 WINDOW_CLASS_GROUP_BF = 6;
 constexpr u16 WINDOW_CLASS_GROUP_E4 = 7;
+constexpr u16 WINDOW_CLASS_PRODUCT_BF_BF_PROCEDURAL_B = 8;
 constexpr u16 WINDOW_CLASS_FIELD_E4 = 1;
 constexpr u16 WINDOW_IMMEDIATE_ONE = 0;
 constexpr u16 WINDOW_IMMEDIATE_NEG_ONE = 1;
 constexpr u16 WINDOW_IMMEDIATE_RESERVED = 2;
+constexpr u16 WINDOW_SOURCE_COLUMN_BITS = 7;
+constexpr u16 WINDOW_SOURCE_COLUMN_MASK = (1u << WINDOW_SOURCE_COLUMN_BITS) - 1u;
 constexpr u32 WINDOW_C_INIT_NONE = 0xffffffffu;
 
 DEVICE_FORCEINLINE bf initialized_bf(const u64 index, const u32 seed, const u32 component) {
@@ -58,18 +62,44 @@ struct window_e4_source {
   DEVICE_FORCEINLINE e4 value(const u32 index) const { return ::airbender::primitives::memory::load<e4, ld_modifier::ca>(column, index); }
 };
 
+constexpr HOST_DEVICE_FORCEINLINE u32 window_procedural_raw(const u16 kind, const u32 index) {
+  switch (kind) {
+  case 0:
+    return index < (1u << 16) ? index : 0;
+  case 1:
+    return index < (1u << 19) ? index : 0;
+  case 2:
+    return (index << 2) & 0xffffu;
+  case 3:
+    return index >> 14;
+  default:
+    return 0;
+  }
+}
+
+static_assert(window_procedural_raw(0, 0xffffu) == 0xffffu);
+static_assert(window_procedural_raw(0, 0x10000u) == 0);
+static_assert(window_procedural_raw(1, 0x7ffffu) == 0x7ffffu);
+static_assert(window_procedural_raw(1, 0x80000u) == 0);
+static_assert(window_procedural_raw(2, 0x12345u) == 0x8d14u);
+static_assert(window_procedural_raw(3, 1u << 14) == 1);
+
+struct window_procedural_source {
+  u16 kind;
+
+  DEVICE_FORCEINLINE bf value(const u32 index) const { return bf::from_u32_unchecked(window_procedural_raw(kind, index)); }
+};
+
 DEVICE_FORCEINLINE window_bf_source window_resolve_bf_source(const window_vm_desc &desc, const u16 source, const u32 log_trace) {
-  const window_source_record record = desc.sources[source];
-  const u16 window = static_cast<u16>(record.packed);
-  const u16 column = static_cast<u16>(record.packed >> 16);
+  const u16 window = source >> WINDOW_SOURCE_COLUMN_BITS;
+  const u16 column = source & WINDOW_SOURCE_COLUMN_MASK;
   const bf *window_base = reinterpret_cast<const bf *>(desc.window_bases[window].base);
   return {window_base + (static_cast<size_t>(column) << log_trace)};
 }
 
 DEVICE_FORCEINLINE window_e4_source window_resolve_e4_source(const window_vm_desc &desc, const u16 source, const u32 log_trace) {
-  const window_source_record record = desc.sources[source];
-  const u16 window = static_cast<u16>(record.packed);
-  const u16 column = static_cast<u16>(record.packed >> 16);
+  const u16 window = source >> WINDOW_SOURCE_COLUMN_BITS;
+  const u16 column = source & WINDOW_SOURCE_COLUMN_MASK;
   const e4 *window_base = reinterpret_cast<const e4 *>(desc.window_bases[window].base);
   return {window_base + (static_cast<size_t>(column) << log_trace)};
 }
@@ -138,6 +168,14 @@ template <typename T> struct window_triplet {
   }
 };
 
+DEVICE_FORCEINLINE window_triplet<bf> window_zero_bf_triplet() {
+  window_triplet<bf> result;
+#pragma unroll
+  for (u32 cell = 0; cell < 3; ++cell)
+    result.values[cell] = bf::from_reduced_raw_repr(0);
+  return result;
+}
+
 struct window_accumulator_view {
   e4 *thread_base;
 
@@ -193,8 +231,15 @@ DEVICE_FORCEINLINE window_triplet<bf> window_eval_bf_term(const window_vm_desc &
   switch (instruction.term_class) {
   case WINDOW_CLASS_LINEAR_BF: {
     if (selector.infinity0 || selector.infinity1)
-      return {{bf::ZERO(), bf::ZERO(), bf::ZERO()}};
+      return window_zero_bf_triplet();
     const window_bf_source source = window_resolve_bf_source(desc, instruction.source_a, log_trace);
+    const window_triplet<bf> a = window_resolve_triplet<bf>(source, row, log_rows, selector);
+    return {{a.values[0], a.values[1], bf::ZERO()}};
+  }
+  case WINDOW_CLASS_LINEAR_BF_PROCEDURAL_A: {
+    if (selector.infinity0 || selector.infinity1)
+      return window_zero_bf_triplet();
+    const window_procedural_source source{instruction.source_a};
     const window_triplet<bf> a = window_resolve_triplet<bf>(source, row, log_rows, selector);
     return {{a.values[0], a.values[1], bf::ZERO()}};
   }
@@ -205,8 +250,15 @@ DEVICE_FORCEINLINE window_triplet<bf> window_eval_bf_term(const window_vm_desc &
     const window_triplet<bf> b = window_resolve_triplet<bf>(source_b_view, row, log_rows, selector);
     return {{bf::mul(a.values[0], b.values[0]), bf::mul(a.values[1], b.values[1]), bf::mul(a.values[2], b.values[2])}};
   }
+  case WINDOW_CLASS_PRODUCT_BF_BF_PROCEDURAL_B: {
+    const window_bf_source source_a_view = window_resolve_bf_source(desc, instruction.source_a, log_trace);
+    const window_procedural_source source_b_view{instruction.source_b};
+    const window_triplet<bf> a = window_resolve_triplet<bf>(source_a_view, row, log_rows, selector);
+    const window_triplet<bf> b = window_resolve_triplet<bf>(source_b_view, row, log_rows, selector);
+    return {{bf::mul(a.values[0], b.values[0]), bf::mul(a.values[1], b.values[1]), bf::mul(a.values[2], b.values[2])}};
+  }
   default:
-    return {{bf::ZERO(), bf::ZERO(), bf::ZERO()}};
+    return window_zero_bf_triplet();
   }
 }
 
