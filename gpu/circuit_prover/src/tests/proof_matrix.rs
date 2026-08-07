@@ -68,12 +68,6 @@ pub(super) fn run_profile(fixture: &BasicUnrolledFixture) {
 // add_sub hand-written per-circuit test functions
 // ---------------------------------------------------------------------------
 
-#[test]
-#[ignore]
-fn run_add_sub_proof_parity_test() {
-    run_proof_parity(&prepare_basic_unrolled_proof_fixture());
-}
-
 /// Full-proof parity at Sec100, where the lookup-challenge and WHIR-batching
 /// PoWs are non-zero — exercises the on-device grinding + nonce path.
 #[test]
@@ -920,19 +914,6 @@ fn run_unified_multi_schedule_test() {
         baseline_device_usage,
         "device memory must return to baseline after both proofs complete"
     );
-}
-
-/// Unified circuit single-proof parity, matching the `proof_parity` body every
-/// other circuit uses: prove once and assert field-wise bit-exactness vs the CPU
-/// `prove_configured_with_gkr` reference (`assert_gkr_proof_eq_for_test`, which
-/// covers `grand_product_accumulator_computed` and the full `whir_proof`). The
-/// grand-product closure-to-ONE check specific to the full machine lives in
-/// `run_unified_multi_schedule_test`; this test exists so unified has the same
-/// proof_parity / multi_schedule / profile trio as the other circuits.
-#[test]
-#[ignore]
-fn run_unified_proof_parity_test() {
-    run_proof_parity(&prepare_unified_proof_fixture());
 }
 
 /// Unified circuit profile run (warmup + profiled prove, structure check only).

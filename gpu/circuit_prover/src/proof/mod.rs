@@ -14,6 +14,7 @@ use gpu_core::primitives::callbacks::Callbacks;
 use gpu_core::primitives::context::UnsafeMutAccessor;
 use gpu_core::primitives::device_tracing::Range;
 use gpu_core::primitives::field::E4;
+use gpu_gkr::backward::GKRBackwardStageSnapshotSink;
 use gpu_gkr::forward::{schedule_forward_pass, ForwardOutputSlabTarget};
 use gpu_gkr::GkrPrograms;
 use gpu_prover_context::ProverContext;
@@ -31,6 +32,42 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
     prover_config: &ProverConfig,
     final_trace_size_log_2: u32,
     inputs: GpuGKRProofTransfer<'a, A>,
+    context: &ProverContext,
+) -> CudaResult<GpuGKRProofJob<'a, A>> {
+    prove_inner(
+        gkr_programs,
+        prover_config,
+        final_trace_size_log_2,
+        inputs,
+        None,
+        context,
+    )
+}
+
+#[cfg(test)]
+pub(crate) fn prove_stagewise<'a, A: GoodAllocator + 'a>(
+    gkr_programs: &Arc<GkrPrograms>,
+    prover_config: &ProverConfig,
+    final_trace_size_log_2: u32,
+    inputs: GpuGKRProofTransfer<'a, A>,
+    context: &ProverContext,
+) -> CudaResult<GpuGKRProofJob<'a, A>> {
+    prove_inner(
+        gkr_programs,
+        prover_config,
+        final_trace_size_log_2,
+        inputs,
+        Some(Box::default()),
+        context,
+    )
+}
+
+fn prove_inner<'a, A: GoodAllocator + 'a>(
+    gkr_programs: &Arc<GkrPrograms>,
+    prover_config: &ProverConfig,
+    final_trace_size_log_2: u32,
+    inputs: GpuGKRProofTransfer<'a, A>,
+    mut stage_snapshots: Option<Box<GKRBackwardStageSnapshotSink>>,
     context: &ProverContext,
 ) -> CudaResult<GpuGKRProofJob<'a, A>> {
     let compiled_circuit = gkr_programs.compiled_circuit().as_ref();
@@ -166,6 +203,8 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
         d_lookup_challenges_for_backward,
         &proof_slab,
         &proof_layout,
+        stage_snapshots.as_deref_mut().map(UnsafeMutAccessor::new),
+        &mut callbacks,
         context,
     )?;
     let batching_pow_bits =
@@ -277,6 +316,7 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
         callbacks,
         proof,
         ranges,
+        stage_snapshots,
         keepalive: GpuGKRProofJobKeepalive {
             _stage1: stage1_output.into_keepalive(),
             _inputs: inputs_keepalive,

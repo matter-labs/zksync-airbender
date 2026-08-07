@@ -36,6 +36,11 @@ pub(super) fn assert_sumcheck_intermediate_values_eq_for_test_with_layer<
         actual.final_step_evaluations, expected.final_step_evaluations,
         "layer {layer_idx}: final_step_evaluations mismatch"
     );
+    assert_eq!(
+        actual.extra_evaluations_from_caching_relations,
+        expected.extra_evaluations_from_caching_relations,
+        "layer {layer_idx}: cached-relation evaluations mismatch"
+    );
 }
 
 pub(super) fn assert_base_field_query_eq_for_test(
@@ -78,18 +83,9 @@ pub(super) fn assert_whir_proof_eq_for_test(
         .enumerate()
     {
         assert_eq!(
-            actual_poly.len(),
-            expected_poly.len(),
-            "WHIR sumcheck polynomial degree diverged at round {round_idx}",
+            actual_poly, expected_poly,
+            "WHIR sumcheck polynomial diverged at round {round_idx}",
         );
-        for (coeff_idx, (&actual_coeff, &expected_coeff)) in
-            actual_poly.iter().zip(expected_poly.iter()).enumerate()
-        {
-            assert_eq!(
-                actual_coeff, expected_coeff,
-                "WHIR sumcheck coefficient diverged at round {round_idx}, coeff {coeff_idx}",
-            );
-        }
     }
     assert_eq!(
         actual.ood_samples, expected.ood_samples,
@@ -114,6 +110,10 @@ pub(super) fn assert_whir_proof_eq_for_test(
     assert_eq!(
         actual.batched_opening, expected.batched_opening,
         "WHIR batched opening diverged",
+    );
+    assert_eq!(
+        actual.whir_schedule, expected.whir_schedule,
+        "WHIR schedule diverged",
     );
 
     for (actual_commitment, expected_commitment) in [
@@ -176,6 +176,10 @@ pub(super) fn assert_gkr_proof_eq_for_test(
     assert_eq!(
         actual.grand_product_accumulator_computed,
         expected.grand_product_accumulator_computed
+    );
+    assert_eq!(
+        actual.inits_and_teardowns_top_bits, expected.inits_and_teardowns_top_bits,
+        "inits-and-teardowns top bits diverged",
     );
     assert_eq!(
         actual.sumcheck_intermediate_values.len(),

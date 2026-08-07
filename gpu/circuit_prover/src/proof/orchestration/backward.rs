@@ -1,12 +1,15 @@
 use era_cudart::result::CudaResult;
 
 use gpu_core::allocator::tracker::AllocationPlacement;
+use gpu_core::primitives::callbacks::Callbacks;
 use gpu_core::primitives::context::DeviceAllocation;
+use gpu_core::primitives::context::UnsafeMutAccessor;
 use gpu_core::primitives::device_tracing::Range;
 use gpu_core::primitives::field::{BF, E4};
 use gpu_gkr::backward::kernels::{eq_group_tables_len, launch_build_eq_values_from_point};
 use gpu_gkr::backward::{
-    ClaimBufferLayout, GpuGKRBackwardScheduledExecution, GpuGKRDimensionReducingBackwardState,
+    ClaimBufferLayout, GKRBackwardStageSnapshotSink, GpuGKRBackwardScheduledExecution,
+    GpuGKRDimensionReducingBackwardState,
 };
 use gpu_gkr::forward::{GpuGKRForwardOutput, GpuGKRTranscriptHandoff};
 use gpu_gkr::proof_layout::ProofLayout;
@@ -156,6 +159,8 @@ pub(in crate::proof) fn schedule_backward_phase(
     d_lookup_challenges_for_backward: DeviceAllocation<E4>,
     proof_slab: &DeviceAllocation<E4>,
     proof_layout: &ProofLayout,
+    stage_snapshots: Option<UnsafeMutAccessor<GKRBackwardStageSnapshotSink>>,
+    callbacks: &mut Callbacks<'_>,
     context: &ProverContext,
 ) -> CudaResult<BackwardPhaseResult> {
     let backward_scheduled = backward_state.schedule_execute_backward_workflow(
@@ -169,6 +174,8 @@ pub(in crate::proof) fn schedule_backward_phase(
         d_lookup_challenges_for_backward,
         proof_slab,
         proof_layout,
+        stage_snapshots,
+        callbacks,
         context,
     )?;
     Ok(BackwardPhaseResult { backward_scheduled })

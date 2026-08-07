@@ -13,7 +13,11 @@ use gpu_core::primitives::callbacks::Callbacks;
 use gpu_core::primitives::context::HostAllocation;
 use gpu_core::primitives::device_tracing::Range;
 use gpu_core::primitives::field::{BF, E4};
-use gpu_gkr::backward::{ClaimBufferLayout, GpuGKRBackwardScheduledExecution};
+#[cfg(test)]
+use gpu_gkr::backward::GKRBackwardStageSnapshot;
+use gpu_gkr::backward::{
+    ClaimBufferLayout, GKRBackwardStageSnapshotSink, GpuGKRBackwardScheduledExecution,
+};
 use gpu_gkr::base_layer_claims::GpuGKRBaseLayerClaimsScheduledExecution;
 use gpu_gkr::setup::GpuGKRForwardSetupHostKeepalive;
 use gpu_gkr::stage1::GpuGKRStage1Keepalive;
@@ -51,21 +55,32 @@ pub(super) struct GpuGKRProofJobKeepalive<'a, A: GoodAllocator> {
     pub(super) _proof_host_mirror: Option<HostAllocation<[u8]>>,
 }
 
+type FinishedProof = GKRProof<BF, E4, DefaultTreeConstructor>;
+type FinishedProofWithSnapshots = (
+    FinishedProof,
+    Option<Box<GKRBackwardStageSnapshotSink>>,
+    f32,
+);
+#[cfg(test)]
+type StagewiseFinishedProof = (FinishedProof, Vec<GKRBackwardStageSnapshot>, f32);
+
 pub struct GpuGKRProofJob<'a, A: GoodAllocator> {
     pub(crate) is_finished_event: CudaEvent,
     pub(crate) callbacks: Callbacks<'a>,
     pub(crate) proof: Box<Option<GKRProof<BF, E4, DefaultTreeConstructor>>>,
     pub(crate) ranges: Vec<Range>,
+    pub(crate) stage_snapshots: Option<Box<GKRBackwardStageSnapshotSink>>,
     pub(super) keepalive: GpuGKRProofJobKeepalive<'a, A>,
 }
 
 impl<'a, A: GoodAllocator> GpuGKRProofJob<'a, A> {
-    pub fn finish(self) -> CudaResult<(GKRProof<BF, E4, DefaultTreeConstructor>, f32)> {
+    fn finish_inner(self) -> CudaResult<FinishedProofWithSnapshots> {
         let Self {
             is_finished_event,
             callbacks,
             mut proof,
             ranges,
+            stage_snapshots,
             keepalive,
         } = self;
         is_finished_event.synchronize()?;
@@ -79,7 +94,24 @@ impl<'a, A: GoodAllocator> GpuGKRProofJob<'a, A> {
             .expect("proof job must keep the top-level range")
             .elapsed()?;
 
+        Ok((proof, stage_snapshots, proof_time_ms))
+    }
+
+    pub fn finish(self) -> CudaResult<(GKRProof<BF, E4, DefaultTreeConstructor>, f32)> {
+        let (proof, _, proof_time_ms) = self.finish_inner()?;
         Ok((proof, proof_time_ms))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn finish_stagewise(self) -> CudaResult<StagewiseFinishedProof> {
+        let (proof, snapshots, proof_time_ms) = self.finish_inner()?;
+        Ok((
+            proof,
+            snapshots
+                .expect("stagewise proof job must collect snapshots")
+                .into_snapshots(),
+            proof_time_ms,
+        ))
     }
 }
 

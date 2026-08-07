@@ -72,6 +72,7 @@ mod commit_memory;
 mod fixtures;
 mod inits_and_teardowns;
 mod proof_matrix;
+mod stagewise;
 
 use asserts::*;
 

@@ -4,10 +4,14 @@ use era_cudart::slice::CudaSlice;
 use super::kernels::*;
 use crate::proof_layout::ProofLayout;
 use crate::upstream::GKRAddress;
+use gpu_core::primitives::callbacks::Callbacks;
 use gpu_core::primitives::context::DeviceAllocation;
+use gpu_core::primitives::context::UnsafeMutAccessor;
 use gpu_core::primitives::device_tracing::Range;
 use gpu_core::primitives::field::E4;
 use gpu_prover_context::ProverContext;
+
+use super::stage_snapshots::{schedule_stage_snapshot, GKRBackwardStageSnapshotSink};
 
 impl GpuGKRBackwardScheduledExecution {
     pub fn final_device_seed_and_claim_point_mut(
@@ -88,6 +92,8 @@ impl GpuGKRDimensionReducingBackwardState {
         // base eval ranges and merged at parse time.
         proof_slab: &DeviceAllocation<E4>,
         proof_layout: &ProofLayout,
+        stage_snapshots: Option<UnsafeMutAccessor<GKRBackwardStageSnapshotSink>>,
+        callbacks: &mut Callbacks<'_>,
         context: &ProverContext,
     ) -> CudaResult<GpuGKRBackwardScheduledExecution> {
         let stream = context.get_exec_stream();
@@ -103,8 +109,26 @@ impl GpuGKRDimensionReducingBackwardState {
             DeviceClaimPointAndBatching::from_allocation(initial_d_claim_point_and_batching);
         let mut shared_device_claims = initial_d_claims;
         let mut shared_claim_layout = initial_claim_layout;
+        if let Some(output) = stage_snapshots {
+            let initial_layer_idx = self
+                .pending_layers
+                .front()
+                .map_or(programs.runtime_circuit().layers.len(), |(layer_idx, _)| {
+                    layer_idx + 1
+                });
+            schedule_stage_snapshot(
+                initial_layer_idx,
+                &shared_device_claim_point,
+                &shared_device_claims,
+                &shared_claim_layout,
+                output,
+                callbacks,
+                context,
+            )?;
+        }
         let mut backward_layer_slot: usize = 0;
         while let Some(mut prepared_layer) = self.prepare_next_layer_static(context)? {
+            let layer_idx = prepared_layer.layer_idx;
             let mut execution = prepared_layer.schedule_execute_dimension_reducing_layer(
                 shared_device_seed,
                 shared_device_claim_point,
@@ -116,6 +140,26 @@ impl GpuGKRDimensionReducingBackwardState {
                 &mut self.storage,
                 context,
             )?;
+            if let Some(output) = stage_snapshots {
+                schedule_stage_snapshot(
+                    layer_idx,
+                    execution
+                        .device_claim_point_for_next_layer
+                        .as_ref()
+                        .expect("dimension-reducing layer must return its claim point"),
+                    execution
+                        .device_claims_for_next_layer
+                        .as_ref()
+                        .expect("dimension-reducing layer must return its claims"),
+                    execution
+                        .claim_layout_for_next_layer
+                        .as_ref()
+                        .expect("dimension-reducing layer must return its claim layout"),
+                    output,
+                    callbacks,
+                    context,
+                )?;
+            }
             shared_device_seed = execution
                 .device_seed
                 .take()
@@ -146,6 +190,7 @@ impl GpuGKRDimensionReducingBackwardState {
         while let Some(mut prepared_layer) =
             main_backward_state.prepare_next_layer_static(context)?
         {
+            let layer_idx = prepared_layer.layer_idx;
             let mut execution = prepared_layer.schedule_execute_main_layer(
                 shared_device_seed,
                 shared_device_claim_point,
@@ -159,6 +204,26 @@ impl GpuGKRDimensionReducingBackwardState {
                 &mut main_backward_state.storage,
                 context,
             )?;
+            if let Some(output) = stage_snapshots {
+                schedule_stage_snapshot(
+                    layer_idx,
+                    execution
+                        .device_claim_point_for_next_layer
+                        .as_ref()
+                        .expect("main layer must return its claim point"),
+                    execution
+                        .device_claims_for_next_layer
+                        .as_ref()
+                        .expect("main layer must return its claims"),
+                    execution
+                        .claim_layout_for_next_layer
+                        .as_ref()
+                        .expect("main layer must return its claim layout"),
+                    output,
+                    callbacks,
+                    context,
+                )?;
+            }
             shared_device_seed = execution
                 .device_seed
                 .take()

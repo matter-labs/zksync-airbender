@@ -13,6 +13,7 @@ mod dim_reducing_sumcheck_plan;
 pub mod kernels;
 mod main_layer;
 mod scheduled_execution;
+mod stage_snapshots;
 pub(crate) mod vm;
 
 pub(crate) use kernels::*;
@@ -22,6 +23,8 @@ pub use kernels::{
     GpuGKRBackwardScheduledExecution, GpuGKRDimensionReducingBackwardState, GKR_EQ_GROUP_TABLE_LEN,
     GKR_EQ_HIGH_SLOTS,
 };
+#[doc(hidden)]
+pub use stage_snapshots::{GKRBackwardStageSnapshot, GKRBackwardStageSnapshotSink};
 
 pub(crate) use main_layer::extras::derive_dimension_reducing_inputs;
 
