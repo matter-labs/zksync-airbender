@@ -13,7 +13,8 @@ use crate::artifact::{
     decode_program, decode_source_coordinate, encode_artifact, encode_source_coordinate,
     validate_artifact, ArtifactError, FrozenArtifact, FrozenBoundColumn, FrozenField,
     FrozenSourceSlot, FrozenWindow, FrozenWindowFamily, WindowAtom, WindowClass, WindowTerm,
-    ARTIFACT_MAGIC, ARTIFACT_VERSION, IMMEDIATE_ID_MASK, REDUCE_AFTER, SOURCE_NONE,
+    ARTIFACT_MAGIC, ARTIFACT_VERSION, GROUP_HAS_PRODUCT, IMMEDIATE_ID_MASK, REDUCE_AFTER,
+    SOURCE_NONE,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -176,11 +177,14 @@ impl EncodedAtom {
             .iter()
             .take_while(|member| record_class(member) == WindowClass::ProductBfBf)
             .count();
-        if product_count < 2 {
+        if product_count == 0 {
             return;
         }
         *lazy_product_count =
             u16::try_from(product_count).expect("validated BF group arity fits in u16");
+        if product_count == 1 {
+            return;
+        }
         for (product, member) in members[..product_count].iter_mut().enumerate() {
             member.factor &= IMMEDIATE_ID_MASK;
             if (product + 1) % 4 == 0 || product + 1 == product_count {
@@ -203,11 +207,21 @@ impl EncodedAtom {
                 } else {
                     0
                 };
+                let has_product = members.iter().any(|member| match class {
+                    WindowClass::GroupBf => record_class(member) == WindowClass::ProductBfBf,
+                    WindowClass::GroupE4 => matches!(
+                        record_class(member),
+                        WindowClass::ProductBfE4 | WindowClass::ProductE4E4
+                    ),
+                    _ => unreachable!("encoded group must have a group class"),
+                });
+                let header_source_b =
+                    lazy_product_count | if has_product { GROUP_HAS_PRODUCT } else { 0 };
                 program.push(WindowInstruction {
                     term_class: class as u16,
                     factor: core,
                     source_a: encoded_count,
-                    source_b: lazy_product_count,
+                    source_b: header_source_b,
                 });
                 program.extend(members);
             }
@@ -768,7 +782,7 @@ mod tests {
 
     use crate::artifact::{
         decode_program, decode_source_coordinate, encode_artifact, validate_artifact, WindowAtom,
-        ADD_SUB_LAYER0_BYTES,
+        ADD_SUB_LAYER0_BYTES, GROUP_PRODUCT_PREFIX_COUNT_MASK,
     };
 
     use super::*;
@@ -1044,6 +1058,73 @@ mod tests {
                 .count(),
             21
         );
+    }
+
+    #[test]
+    fn group_product_headers_match_their_members() {
+        for schedule in [
+            ProgramSchedule::Compiler,
+            ProgramSchedule::ControlAtoms,
+            ProgramSchedule::Control,
+            ProgramSchedule::Source,
+        ] {
+            let artifact =
+                generate_add_sub_layer0_with_options(&add_sub_layout(), schedule, true).unwrap();
+            let (atoms, _) = decode_program(&artifact).unwrap();
+            let mut record = 0usize;
+
+            for atom in atoms {
+                let head = artifact.program[record];
+                match atom {
+                    WindowAtom::Term(_) => record += 1,
+                    WindowAtom::GroupBf {
+                        lazy_product_count,
+                        members,
+                        ..
+                    } => {
+                        let has_product = head.source_b & GROUP_HAS_PRODUCT != 0;
+                        let prefix_count = head.source_b & GROUP_PRODUCT_PREFIX_COUNT_MASK;
+                        let product_positions = members
+                            .iter()
+                            .enumerate()
+                            .filter_map(|(position, member)| {
+                                (member.class == WindowClass::ProductBfBf).then_some(position)
+                            })
+                            .collect::<Vec<_>>();
+                        assert_eq!(has_product, !product_positions.is_empty());
+                        match prefix_count {
+                            0 => assert!(product_positions.is_empty()),
+                            1 => {
+                                assert_eq!(product_positions, vec![0]);
+                                assert_eq!(lazy_product_count, 0);
+                            }
+                            count => {
+                                assert_eq!(count, lazy_product_count);
+                                assert_eq!(
+                                    product_positions,
+                                    (0..usize::from(count)).collect::<Vec<_>>()
+                                );
+                            }
+                        }
+                        record += members.len() + 1;
+                    }
+                    WindowAtom::GroupE4 { members, .. } => {
+                        assert_eq!(head.source_a, 0);
+                        assert_eq!(head.source_b & GROUP_PRODUCT_PREFIX_COUNT_MASK, 0);
+                        let has_product = head.source_b & GROUP_HAS_PRODUCT != 0;
+                        let products = members.iter().filter(|member| {
+                            matches!(
+                                member.class,
+                                WindowClass::ProductBfE4 | WindowClass::ProductE4E4
+                            )
+                        });
+                        assert_eq!(has_product, products.count() != 0);
+                        record += members.len() + 1;
+                    }
+                }
+            }
+            assert_eq!(record, artifact.program.len());
+        }
     }
 
     #[test]

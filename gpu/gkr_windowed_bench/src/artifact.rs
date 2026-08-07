@@ -15,6 +15,8 @@ pub const SOURCE_COORDINATE_MASK: u16 =
 pub const REDUCE_AFTER: u16 = 1 << 15;
 pub const IMMEDIATE_ID_MASK: u16 = REDUCE_AFTER - 1;
 pub const MAX_LAZY_PRODUCTS_PER_REDUCTION: u16 = 4;
+pub const GROUP_HAS_PRODUCT: u16 = 1 << 15;
+pub const GROUP_PRODUCT_PREFIX_COUNT_MASK: u16 = GROUP_HAS_PRODUCT - 1;
 pub static ADD_SUB_LAYER0_BYTES: &[u8] = include_bytes!("../artifacts/add_sub_layer0.bin");
 
 const MAX_COEFFICIENTS: u32 = u16::MAX as u32 + 1;
@@ -155,39 +157,137 @@ pub struct ProgramStats {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ArtifactError {
     BadMagic,
-    UnsupportedVersion { version: u32 },
-    WrongLayer { layer: u32 },
-    InvalidCoefficientCount { count: u32 },
-    CInitOutOfRange { coefficient: u32 },
-    RecordCount { declared: u32, decoded: u32 },
-    TermCount { declared: u32, decoded: u32 },
-    InvalidClass { record: u32, class: u8 },
-    CoefficientOutOfRange { record: u32, coefficient: u16 },
-    ImmediateOutOfRange { record: u32, immediate: u16 },
-    SourceOutOfRange { record: u32, source: u16 },
-    DirectProceduralSource { record: u32, source: u16 },
-    ProceduralKindUnavailable { record: u32, kind: u16 },
-    SourceBMustBeNone { record: u32 },
-    SourceBMissing { record: u32 },
-    MalformedGroup { record: u32 },
-    GroupHeaderPayloadNonZero { record: u32 },
-    InvalidLazyProductCount { record: u32, count: u16, arity: u16 },
-    LazyProductPrefixClass { header: u32, record: u32 },
-    LazyProductTailClass { header: u32, record: u32 },
-    LazyReductionFlagOutsidePrefix { header: u32, record: u32 },
-    LazyReductionBoundaryMissing { header: u32, record: u32 },
-    LazyReductionWindowTooLong { header: u32, record: u32 },
-    GroupMemberClassMismatch { header: u32, record: u32 },
-    E4GroupImmediateOutOfRange { record: u32, immediate: u16 },
-    FieldClassMismatch { record: u32 },
-    TooManyWindows { count: usize },
-    NonCanonicalWindow { window: usize },
-    InvalidWindowField { window: usize },
-    InvalidProceduralKind { window: usize, kind: u8 },
-    BoundSourceOutOfRange { window: usize, source: u32 },
-    InvalidSourceBinding { source: usize },
-    SourceCoordinateOutOfRange { window: u8, column: u16 },
-    InvalidSourceCoordinate { source: u16 },
+    UnsupportedVersion {
+        version: u32,
+    },
+    WrongLayer {
+        layer: u32,
+    },
+    InvalidCoefficientCount {
+        count: u32,
+    },
+    CInitOutOfRange {
+        coefficient: u32,
+    },
+    RecordCount {
+        declared: u32,
+        decoded: u32,
+    },
+    TermCount {
+        declared: u32,
+        decoded: u32,
+    },
+    InvalidClass {
+        record: u32,
+        class: u8,
+    },
+    CoefficientOutOfRange {
+        record: u32,
+        coefficient: u16,
+    },
+    ImmediateOutOfRange {
+        record: u32,
+        immediate: u16,
+    },
+    SourceOutOfRange {
+        record: u32,
+        source: u16,
+    },
+    DirectProceduralSource {
+        record: u32,
+        source: u16,
+    },
+    ProceduralKindUnavailable {
+        record: u32,
+        kind: u16,
+    },
+    SourceBMustBeNone {
+        record: u32,
+    },
+    SourceBMissing {
+        record: u32,
+    },
+    MalformedGroup {
+        record: u32,
+    },
+    GroupHeaderPayloadNonZero {
+        record: u32,
+    },
+    InvalidLazyProductCount {
+        record: u32,
+        count: u16,
+        arity: u16,
+    },
+    LazyProductFlagMissing {
+        record: u32,
+        count: u16,
+    },
+    GroupProductFlagMismatch {
+        header: u32,
+        encoded: bool,
+        products: u16,
+    },
+    InvalidEagerProductLayout {
+        header: u32,
+    },
+    LazyProductPrefixClass {
+        header: u32,
+        record: u32,
+    },
+    LazyProductTailClass {
+        header: u32,
+        record: u32,
+    },
+    LazyReductionFlagOutsidePrefix {
+        header: u32,
+        record: u32,
+    },
+    LazyReductionBoundaryMissing {
+        header: u32,
+        record: u32,
+    },
+    LazyReductionWindowTooLong {
+        header: u32,
+        record: u32,
+    },
+    GroupMemberClassMismatch {
+        header: u32,
+        record: u32,
+    },
+    E4GroupImmediateOutOfRange {
+        record: u32,
+        immediate: u16,
+    },
+    FieldClassMismatch {
+        record: u32,
+    },
+    TooManyWindows {
+        count: usize,
+    },
+    NonCanonicalWindow {
+        window: usize,
+    },
+    InvalidWindowField {
+        window: usize,
+    },
+    InvalidProceduralKind {
+        window: usize,
+        kind: u8,
+    },
+    BoundSourceOutOfRange {
+        window: usize,
+        source: u32,
+    },
+    InvalidSourceBinding {
+        source: usize,
+    },
+    SourceCoordinateOutOfRange {
+        window: u8,
+        column: u16,
+    },
+    InvalidSourceCoordinate {
+        source: u16,
+    },
     Decode(String),
 }
 
@@ -306,15 +406,21 @@ pub fn decode_program(
                 coefficient,
             });
         }
-        let (member_count, lazy_product_count) = match class {
-            WindowClass::GroupBf => (usize::from(instruction.source_a), instruction.source_b),
+        let (member_count, lazy_product_count, has_product) = match class {
+            WindowClass::GroupBf => (
+                usize::from(instruction.source_a),
+                instruction.source_b & GROUP_PRODUCT_PREFIX_COUNT_MASK,
+                instruction.source_b & GROUP_HAS_PRODUCT != 0,
+            ),
             WindowClass::GroupE4 => {
-                if instruction.source_a != 0 || instruction.source_b != 0 {
+                if instruction.source_a != 0
+                    || instruction.source_b & GROUP_PRODUCT_PREFIX_COUNT_MASK != 0
+                {
                     return Err(ArtifactError::GroupHeaderPayloadNonZero {
                         record: record as u32,
                     });
                 }
-                (2, 0)
+                (2, 0, instruction.source_b & GROUP_HAS_PRODUCT != 0)
             }
             _ => unreachable!("non-group records are handled above"),
         };
@@ -323,11 +429,17 @@ pub fn decode_program(
                 record: record as u32,
             });
         }
-        if lazy_product_count == 1 || usize::from(lazy_product_count) > member_count {
+        if usize::from(lazy_product_count) > member_count {
             return Err(ArtifactError::InvalidLazyProductCount {
                 record: record as u32,
                 count: lazy_product_count,
                 arity: member_count as u16,
+            });
+        }
+        if class == WindowClass::GroupBf && !has_product && lazy_product_count != 0 {
+            return Err(ArtifactError::LazyProductFlagMissing {
+                record: record as u32,
+                count: lazy_product_count,
             });
         }
         let mut members = Vec::with_capacity(member_count);
@@ -337,8 +449,9 @@ pub fn decode_program(
             let member_instruction = artifact.program[member_record];
             let member_class = decode_class(member_instruction.term_class, member_record as u32)?;
             let reduction_boundary = member_instruction.factor & REDUCE_AFTER != 0;
-            let in_lazy_prefix =
-                class == WindowClass::GroupBf && member_offset <= usize::from(lazy_product_count);
+            let in_lazy_prefix = class == WindowClass::GroupBf
+                && lazy_product_count >= 2
+                && member_offset <= usize::from(lazy_product_count);
             let immediate = if class == WindowClass::GroupBf {
                 member_instruction.factor & IMMEDIATE_ID_MASK
             } else {
@@ -390,7 +503,7 @@ pub fn decode_program(
                     products_since_reduction = 0;
                 }
             } else if class == WindowClass::GroupBf
-                && lazy_product_count != 0
+                && lazy_product_count >= 2
                 && member_class != WindowClass::LinearBf
             {
                 return Err(ArtifactError::LazyProductTailClass {
@@ -425,6 +538,33 @@ pub fn decode_program(
                 true,
             )?);
         }
+        let product_count = members
+            .iter()
+            .filter(|member| match class {
+                WindowClass::GroupBf => member.class == WindowClass::ProductBfBf,
+                WindowClass::GroupE4 => matches!(
+                    member.class,
+                    WindowClass::ProductBfE4 | WindowClass::ProductE4E4
+                ),
+                _ => unreachable!("class is a group header"),
+            })
+            .count() as u16;
+        if has_product != (product_count != 0) {
+            return Err(ArtifactError::GroupProductFlagMismatch {
+                header: record as u32,
+                encoded: has_product,
+                products: product_count,
+            });
+        }
+        if class == WindowClass::GroupBf {
+            if lazy_product_count == 1
+                && (product_count != 1 || members[0].class != WindowClass::ProductBfBf)
+            {
+                return Err(ArtifactError::InvalidEagerProductLayout {
+                    header: record as u32,
+                });
+            }
+        }
         stats.groups += 1;
         stats.terms += member_count as u32;
         match class {
@@ -432,7 +572,11 @@ pub fn decode_program(
                 stats.bf_groups += 1;
                 atoms.push(WindowAtom::GroupBf {
                     core: coefficient,
-                    lazy_product_count,
+                    lazy_product_count: if lazy_product_count >= 2 {
+                        lazy_product_count
+                    } else {
+                        0
+                    },
                     members,
                 });
             }
@@ -832,9 +976,71 @@ mod tests {
     }
 
     #[test]
-    fn lazy_bf_group_masks_boundary_bits_from_immediate_ids() {
+    fn bf_group_product_flag_must_match_members() {
+        let missing = lazy_bf_group_artifact(
+            0,
+            vec![
+                instruction(WindowClass::ProductBfBf, 0, 0, 0),
+                instruction(WindowClass::LinearBf, 0, 0, SOURCE_NONE),
+            ],
+        );
+        assert!(matches!(
+            decode_program(&missing),
+            Err(ArtifactError::GroupProductFlagMismatch { .. })
+        ));
+
+        let spurious = lazy_bf_group_artifact(
+            GROUP_HAS_PRODUCT,
+            vec![
+                instruction(WindowClass::LinearBf, 0, 0, SOURCE_NONE),
+                instruction(WindowClass::LinearBf, 1, 0, SOURCE_NONE),
+            ],
+        );
+        assert!(matches!(
+            decode_program(&spurious),
+            Err(ArtifactError::GroupProductFlagMismatch { .. })
+        ));
+    }
+
+    #[test]
+    fn lazy_count_requires_the_product_flag() {
         let artifact = lazy_bf_group_artifact(
             2,
+            vec![
+                instruction(WindowClass::ProductBfBf, 0, 0, 0),
+                instruction(WindowClass::ProductBfBf, REDUCE_AFTER, 0, 0),
+            ],
+        );
+        assert!(matches!(
+            decode_program(&artifact),
+            Err(ArtifactError::LazyProductFlagMissing { count: 2, .. })
+        ));
+    }
+
+    #[test]
+    fn eager_product_prefix_requires_one_product_at_member_zero() {
+        for members in [
+            vec![
+                instruction(WindowClass::LinearBf, 0, 0, SOURCE_NONE),
+                instruction(WindowClass::ProductBfBf, 0, 0, 0),
+            ],
+            vec![
+                instruction(WindowClass::ProductBfBf, 0, 0, 0),
+                instruction(WindowClass::ProductBfBf, 0, 0, 0),
+            ],
+        ] {
+            let artifact = lazy_bf_group_artifact(GROUP_HAS_PRODUCT | 1, members);
+            assert!(matches!(
+                decode_program(&artifact),
+                Err(ArtifactError::InvalidEagerProductLayout { .. })
+            ));
+        }
+    }
+
+    #[test]
+    fn lazy_bf_group_masks_boundary_bits_from_immediate_ids() {
+        let artifact = lazy_bf_group_artifact(
+            GROUP_HAS_PRODUCT | 2,
             vec![
                 instruction(WindowClass::ProductBfBf, 0, 0, 0),
                 instruction(WindowClass::ProductBfBf, REDUCE_AFTER | 1, 0, 0),
@@ -854,29 +1060,29 @@ mod tests {
     }
 
     #[test]
-    fn lazy_bf_group_rejects_a_single_lazy_product() {
+    fn one_product_prefix_is_eager() {
         let artifact = lazy_bf_group_artifact(
-            1,
+            GROUP_HAS_PRODUCT | 1,
             vec![
-                instruction(WindowClass::ProductBfBf, REDUCE_AFTER, 0, 0),
+                instruction(WindowClass::ProductBfBf, 0, 0, 0),
                 instruction(WindowClass::LinearBf, 0, 0, SOURCE_NONE),
             ],
         );
 
+        let (atoms, _) = decode_program(&artifact).unwrap();
         assert!(matches!(
-            decode_program(&artifact),
-            Err(ArtifactError::InvalidLazyProductCount {
-                count: 1,
-                arity: 2,
+            atoms.as_slice(),
+            [WindowAtom::GroupBf {
+                lazy_product_count: 0,
                 ..
-            })
+            }]
         ));
     }
 
     #[test]
     fn lazy_bf_group_rejects_a_count_above_group_arity() {
         let artifact = lazy_bf_group_artifact(
-            3,
+            GROUP_HAS_PRODUCT | 3,
             vec![
                 instruction(WindowClass::ProductBfBf, 0, 0, 0),
                 instruction(WindowClass::ProductBfBf, REDUCE_AFTER, 0, 0),
@@ -896,7 +1102,7 @@ mod tests {
     #[test]
     fn lazy_bf_group_rejects_a_non_product_in_the_prefix() {
         let artifact = lazy_bf_group_artifact(
-            2,
+            GROUP_HAS_PRODUCT | 2,
             vec![
                 instruction(WindowClass::LinearBf, 0, 0, SOURCE_NONE),
                 instruction(WindowClass::ProductBfBf, REDUCE_AFTER, 0, 0),
@@ -912,7 +1118,7 @@ mod tests {
     #[test]
     fn lazy_bf_group_rejects_a_product_after_the_prefix() {
         let artifact = lazy_bf_group_artifact(
-            2,
+            GROUP_HAS_PRODUCT | 2,
             vec![
                 instruction(WindowClass::ProductBfBf, 0, 0, 0),
                 instruction(WindowClass::ProductBfBf, REDUCE_AFTER, 0, 0),
@@ -929,7 +1135,7 @@ mod tests {
     #[test]
     fn lazy_bf_group_rejects_a_boundary_flag_after_the_prefix() {
         let artifact = lazy_bf_group_artifact(
-            2,
+            GROUP_HAS_PRODUCT | 2,
             vec![
                 instruction(WindowClass::ProductBfBf, 0, 0, 0),
                 instruction(WindowClass::ProductBfBf, REDUCE_AFTER, 0, 0),
@@ -946,7 +1152,7 @@ mod tests {
     #[test]
     fn lazy_bf_group_requires_a_boundary_on_the_final_product() {
         let artifact = lazy_bf_group_artifact(
-            2,
+            GROUP_HAS_PRODUCT | 2,
             vec![
                 instruction(WindowClass::ProductBfBf, 0, 0, 0),
                 instruction(WindowClass::ProductBfBf, 1, 0, 0),
@@ -962,7 +1168,7 @@ mod tests {
     #[test]
     fn lazy_bf_group_rejects_more_than_four_products_per_window() {
         let artifact = lazy_bf_group_artifact(
-            5,
+            GROUP_HAS_PRODUCT | 5,
             vec![
                 instruction(WindowClass::ProductBfBf, 0, 0, 0),
                 instruction(WindowClass::ProductBfBf, 0, 0, 0),
@@ -1062,7 +1268,7 @@ mod tests {
         artifact.record_count = 3;
         artifact.coefficient_count = 3;
         artifact.program = vec![
-            instruction(WindowClass::GroupBf, 2, 2, 0),
+            instruction(WindowClass::GroupBf, 2, 2, GROUP_HAS_PRODUCT),
             instruction(WindowClass::LinearBf, 0, 0, SOURCE_NONE),
             instruction(WindowClass::ProductBfBf, 1, 0, 0),
         ];
@@ -1081,7 +1287,7 @@ mod tests {
         artifact.record_count = 3;
         artifact.coefficient_count = 3;
         artifact.program = vec![
-            instruction(WindowClass::GroupE4, 2, 0, 0),
+            instruction(WindowClass::GroupE4, 2, 0, GROUP_HAS_PRODUCT),
             instruction(WindowClass::LinearE4, 0, ext_source, SOURCE_NONE),
             instruction(WindowClass::ProductBfE4, 1, 0, ext_source),
         ];
@@ -1089,6 +1295,36 @@ mod tests {
         assert_eq!(stats.terms, 2);
         assert_eq!(stats.bf_groups, 0);
         assert_eq!(stats.e4_groups, 1);
+    }
+
+    #[test]
+    fn e4_group_product_flag_must_match_members() {
+        let mut missing = valid_artifact();
+        add_ext_source(&mut missing);
+        let ext_source = encode_source_coordinate(1, 0).unwrap();
+        missing.term_count = 2;
+        missing.record_count = 3;
+        missing.coefficient_count = 3;
+        missing.program = vec![
+            instruction(WindowClass::GroupE4, 2, 0, 0),
+            instruction(WindowClass::LinearE4, 0, ext_source, SOURCE_NONE),
+            instruction(WindowClass::ProductBfE4, 1, 0, ext_source),
+        ];
+        assert!(matches!(
+            decode_program(&missing),
+            Err(ArtifactError::GroupProductFlagMismatch { .. })
+        ));
+
+        let mut spurious = missing;
+        spurious.program = vec![
+            instruction(WindowClass::GroupE4, 2, 0, GROUP_HAS_PRODUCT),
+            instruction(WindowClass::LinearE4, 0, ext_source, SOURCE_NONE),
+            instruction(WindowClass::LinearE4, 1, ext_source, SOURCE_NONE),
+        ];
+        assert!(matches!(
+            decode_program(&spurious),
+            Err(ArtifactError::GroupProductFlagMismatch { .. })
+        ));
     }
 
     #[test]
