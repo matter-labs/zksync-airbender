@@ -228,6 +228,15 @@ DEVICE_FORCEINLINE void window_init_e4_sign(const u16 immediate_id, window_tripl
   value.apply([](e4 &cell_value, const u32) { cell_value = e4::sub(e4::ZERO(), cell_value); });
 }
 
+DEVICE_FORCEINLINE window_triplet<bf> window_eval_bf_linear_term(const window_vm_desc &desc, const window_instruction instruction, const u32 row,
+                                                                 const u32 log_rows, const u32 log_trace, const window_selector selector) {
+  if (selector.infinity0 || selector.infinity1)
+    return window_zero_bf_triplet();
+  const window_bf_source source = window_resolve_bf_source(desc, instruction.source_a, log_trace);
+  const window_triplet<bf> a = window_resolve_triplet<bf>(source, row, log_rows, selector);
+  return {{a.values[0], a.values[1], bf::ZERO()}};
+}
+
 DEVICE_FORCEINLINE window_triplet<bf> window_eval_bf_term(const window_vm_desc &desc, const window_instruction instruction, const u32 row, const u32 log_rows,
                                                           const u32 log_trace, const window_selector selector) {
   switch (instruction.term_class) {
@@ -333,25 +342,21 @@ DEVICE_FORCEINLINE u32 window_execute_bf_atom(const window_vm_desc &desc, const 
   window_triplet<bf> sums;
   if (grouped && head.source_b != 0) {
     const u16 lazy_product_count = head.source_b;
-    const window_instruction first = desc.program[pc++];
-    window_triplet<u64> wide_sums = window_eval_bf_product_wide(desc, first, row, log_rows, log_trace, selector);
+    window_triplet<u64> wide_sums{{0, 0, 0}};
 #pragma unroll 1
-    for (u16 member = 1; member < lazy_product_count - 1; ++member) {
+    for (u16 member = 0; member < lazy_product_count; ++member) {
       const window_instruction product = desc.program[pc++];
       const window_triplet<u64> value = window_eval_bf_product_wide(desc, product, row, log_rows, log_trace, selector);
       window_add_bf_product_wide(value, wide_sums);
-      if (product.factor & WINDOW_REDUCE_AFTER)
+      if (member + 1 < lazy_product_count && (product.factor & WINDOW_REDUCE_AFTER))
         window_reduce_and_rebase_bf_wide(wide_sums);
     }
-    const window_instruction final_product = desc.program[pc++];
-    const window_triplet<u64> final_value = window_eval_bf_product_wide(desc, final_product, row, log_rows, log_trace, selector);
-    window_add_bf_product_wide(final_value, wide_sums);
     sums = window_reduce_bf_wide(wide_sums);
 
 #pragma unroll 1
     for (u16 member = lazy_product_count; member < arity; ++member) {
       const window_instruction tail = desc.program[pc++];
-      const window_triplet<bf> value = window_eval_bf_term(desc, tail, row, log_rows, log_trace, selector);
+      const window_triplet<bf> value = window_eval_bf_linear_term(desc, tail, row, log_rows, log_trace, selector);
       window_apply_bf_immediate(desc, tail.factor, value, sums);
     }
   } else {
