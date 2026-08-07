@@ -117,6 +117,7 @@ cargo run --release -p gpu_gkr_windowed_bench \
   --features artifact-gen \
   --bin generate_add_sub_layer0 -- \
   --schedule source \
+  --lazy-bf-reduction \
   --layout cs/compiled_circuits/add_sub_lui_auipc_mop_layout_gkr.json \
   --output gpu/gkr_windowed_bench/artifacts/add_sub_layer0.bin
 ```
@@ -124,10 +125,13 @@ cargo run --release -p gpu_gkr_windowed_bench \
 The generator lowers layer 0 through the incoming segmented VM compiler and
 then serializes the round-0 benchmark form. The checked-in artifact uses the
 `source` schedule, which preserves atom/group semantics while improving source
-locality; `compiler`, `control-atoms`, and `control` are available for A/B
-experiments. This experimental artifact is replaced in place rather than
-migrated through format versions. Drift is acceptable for this crate;
-regeneration is an explicit operation.
+locality, plus `--lazy-bf-reduction`. The lazy option places direct BF products
+before a group's linear tail and marks reduction boundaries of at most four
+products; omitting it regenerates the eager-reduction comparison artifact.
+`compiler`, `control-atoms`, and `control` are available for A/B experiments.
+This experimental artifact is replaced in place rather than migrated through
+format versions. Drift is acceptable for this crate; regeneration is an
+explicit operation.
 
 ## Deliberate limitations
 

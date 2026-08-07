@@ -13,7 +13,7 @@ use crate::artifact::{
     decode_program, decode_source_coordinate, encode_artifact, encode_source_coordinate,
     validate_artifact, ArtifactError, FrozenArtifact, FrozenBoundColumn, FrozenField,
     FrozenSourceSlot, FrozenWindow, FrozenWindowFamily, WindowAtom, WindowClass, WindowTerm,
-    ARTIFACT_MAGIC, ARTIFACT_VERSION, SOURCE_NONE,
+    ARTIFACT_MAGIC, ARTIFACT_VERSION, IMMEDIATE_ID_MASK, REDUCE_AFTER, SOURCE_NONE,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -56,6 +56,9 @@ pub struct ScheduleCensus {
     pub adjacent_equal_source_b: u32,
     pub projected_bf_accesses: u64,
     pub projected_procedural_bf_accesses: u64,
+    pub lazy_bf_groups: u32,
+    pub lazy_bf_products: u32,
+    pub reduction_boundaries: u32,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -64,6 +67,7 @@ enum EncodedAtom {
     Group {
         class: WindowClass,
         core: u16,
+        lazy_product_count: u16,
         members: Vec<WindowInstruction>,
     },
 }
@@ -142,12 +146,56 @@ impl EncodedAtom {
         }
     }
 
+    fn prepare_lazy_bf_reduction(&mut self) {
+        let Self::Group {
+            class,
+            lazy_product_count,
+            members,
+            ..
+        } = self
+        else {
+            return;
+        };
+        if *class != WindowClass::GroupBf {
+            return;
+        }
+        members.sort_unstable_by_key(|member| {
+            (
+                match record_class(member) {
+                    WindowClass::ProductBfBf => 0,
+                    WindowClass::LinearBf => 1,
+                    _ => 2,
+                },
+                immediate_kind(member.factor),
+                member.source_a,
+                member.source_b,
+                member.factor,
+            )
+        });
+        let product_count = members
+            .iter()
+            .take_while(|member| record_class(member) == WindowClass::ProductBfBf)
+            .count();
+        if product_count < 2 {
+            return;
+        }
+        *lazy_product_count =
+            u16::try_from(product_count).expect("validated BF group arity fits in u16");
+        for (product, member) in members[..product_count].iter_mut().enumerate() {
+            member.factor &= IMMEDIATE_ID_MASK;
+            if (product + 1) % 4 == 0 || product + 1 == product_count {
+                member.factor |= REDUCE_AFTER;
+            }
+        }
+    }
+
     fn append_to(self, program: &mut Vec<WindowInstruction>) {
         match self {
             Self::Term(term) => program.push(term),
             Self::Group {
                 class,
                 core,
+                lazy_product_count,
                 members,
             } => {
                 let encoded_count = if class == WindowClass::GroupBf {
@@ -159,7 +207,7 @@ impl EncodedAtom {
                     term_class: class as u16,
                     factor: core,
                     source_a: encoded_count,
-                    source_b: 0,
+                    source_b: lazy_product_count,
                 });
                 program.extend(members);
             }
@@ -342,6 +390,22 @@ pub fn schedule_census(artifact: &FrozenArtifact) -> Result<ScheduleCensus, Arti
                 )
             },
         );
+    let (lazy_bf_groups, lazy_bf_products) =
+        atoms
+            .iter()
+            .fold((0u32, 0u32), |(groups, products), atom| match atom {
+                WindowAtom::GroupBf {
+                    lazy_product_count, ..
+                } if *lazy_product_count != 0 => {
+                    (groups + 1, products + u32::from(*lazy_product_count))
+                }
+                _ => (groups, products),
+            });
+    let reduction_boundaries = artifact
+        .program
+        .iter()
+        .filter(|instruction| instruction.factor & REDUCE_AFTER != 0)
+        .count() as u32;
     let bf_atoms = fields.iter().filter(|field| **field == 0).count() as u32;
     Ok(ScheduleCensus {
         atoms: atoms.len() as u32,
@@ -356,6 +420,9 @@ pub fn schedule_census(artifact: &FrozenArtifact) -> Result<ScheduleCensus, Arti
         adjacent_equal_source_b,
         projected_bf_accesses,
         projected_procedural_bf_accesses,
+        lazy_bf_groups,
+        lazy_bf_products,
+        reduction_boundaries,
     })
 }
 
@@ -366,6 +433,14 @@ pub fn generate_add_sub_layer0(layout_path: &Path) -> Result<FrozenArtifact, Gen
 pub fn generate_add_sub_layer0_with_schedule(
     layout_path: &Path,
     schedule: ProgramSchedule,
+) -> Result<FrozenArtifact, GeneratorError> {
+    generate_add_sub_layer0_with_options(layout_path, schedule, false)
+}
+
+pub fn generate_add_sub_layer0_with_options(
+    layout_path: &Path,
+    schedule: ProgramSchedule,
+    lazy_bf_reduction: bool,
 ) -> Result<FrozenArtifact, GeneratorError> {
     let bytes = std::fs::read(layout_path)
         .map_err(|error| GeneratorError::context("read circuit layout", error))?;
@@ -429,12 +504,18 @@ pub fn generate_add_sub_layer0_with_schedule(
                 Ok(EncodedAtom::Group {
                     class: group_class,
                     core,
+                    lazy_product_count: 0,
                     members: encoded_members,
                 })
             }
         })
         .collect::<Result<Vec<_>, GeneratorError>>()?;
     apply_schedule(&mut encoded_atoms, schedule);
+    if lazy_bf_reduction {
+        encoded_atoms
+            .iter_mut()
+            .for_each(EncodedAtom::prepare_lazy_bf_reduction);
+    }
     let mut program = Vec::with_capacity(layer.program.words.len() / 4);
     encoded_atoms
         .into_iter()
@@ -686,7 +767,8 @@ mod tests {
     use gpu_gkr_compiler::backward::{LeanBoundColumn, LeanBoundWindow, LeanSourceSlot};
 
     use crate::artifact::{
-        decode_program, decode_source_coordinate, validate_artifact, WindowAtom,
+        decode_program, decode_source_coordinate, encode_artifact, validate_artifact, WindowAtom,
+        ADD_SUB_LAYER0_BYTES,
     };
 
     use super::*;
@@ -865,7 +947,7 @@ mod tests {
                     core: term.coefficient,
                     members: vec![semantic_term(artifact, term)],
                 },
-                WindowAtom::GroupBf { core, members } => SemanticAtomKey {
+                WindowAtom::GroupBf { core, members, .. } => SemanticAtomKey {
                     shape: 1,
                     core: *core,
                     members: semantic_members(artifact, members),
@@ -919,6 +1001,89 @@ mod tests {
         for (artifact, atoms) in &variants[1..] {
             assert_eq!(semantic_multiset(artifact, atoms), expected);
         }
+    }
+
+    #[test]
+    fn lazy_bf_reduction_marks_product_prefixes() {
+        let artifact =
+            generate_add_sub_layer0_with_options(&add_sub_layout(), ProgramSchedule::Source, true)
+                .unwrap();
+        let (atoms, _) = decode_program(&artifact).unwrap();
+        let mut lazy_groups = 0usize;
+        let mut lazy_products = 0usize;
+
+        for atom in atoms {
+            if let WindowAtom::GroupBf {
+                lazy_product_count,
+                members,
+                ..
+            } = atom
+            {
+                if lazy_product_count == 0 {
+                    continue;
+                }
+                lazy_groups += 1;
+                lazy_products += usize::from(lazy_product_count);
+                assert!(lazy_product_count >= 2);
+                assert!(members[..usize::from(lazy_product_count)]
+                    .iter()
+                    .all(|member| member.class == WindowClass::ProductBfBf));
+                assert!(members[usize::from(lazy_product_count)..]
+                    .iter()
+                    .all(|member| member.class == WindowClass::LinearBf));
+            }
+        }
+
+        assert_eq!(lazy_groups, 10);
+        assert_eq!(lazy_products, 72);
+        assert_eq!(
+            artifact
+                .program
+                .iter()
+                .filter(|instruction| instruction.factor & REDUCE_AFTER != 0)
+                .count(),
+            21
+        );
+    }
+
+    #[test]
+    fn lazy_bf_reduction_preserves_semantic_multiset() {
+        let ordinary =
+            generate_add_sub_layer0_with_options(&add_sub_layout(), ProgramSchedule::Source, false)
+                .unwrap();
+        let lazy =
+            generate_add_sub_layer0_with_options(&add_sub_layout(), ProgramSchedule::Source, true)
+                .unwrap();
+        let (ordinary_atoms, _) = decode_program(&ordinary).unwrap();
+        let (lazy_atoms, _) = decode_program(&lazy).unwrap();
+
+        assert_eq!(
+            semantic_multiset(&lazy, &lazy_atoms),
+            semantic_multiset(&ordinary, &ordinary_atoms)
+        );
+    }
+
+    #[test]
+    fn source_schedule_with_lazy_reduction_matches_embedded_artifact() {
+        let artifact =
+            generate_add_sub_layer0_with_options(&add_sub_layout(), ProgramSchedule::Source, true)
+                .unwrap();
+
+        assert_eq!(encode_artifact(&artifact).unwrap(), ADD_SUB_LAYER0_BYTES);
+    }
+
+    #[test]
+    fn schedule_wrapper_keeps_lazy_reduction_disabled() {
+        assert_eq!(
+            generate_add_sub_layer0_with_schedule(&add_sub_layout(), ProgramSchedule::Source)
+                .unwrap(),
+            generate_add_sub_layer0_with_options(
+                &add_sub_layout(),
+                ProgramSchedule::Source,
+                false,
+            )
+            .unwrap()
+        );
     }
 
     #[test]

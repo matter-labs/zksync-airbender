@@ -689,3 +689,62 @@ math pipelines, while forced spills add 6.26% more dynamic instructions and
 the larger shared partition substantially reduces L1 capacity. The five-block
 variant is rejected; the 56-register, four-block launch bound and 60% carveout
 are restored.
+
+## Lazy BF-group Montgomery reduction
+
+The round-zero BF artifact now opts ten groups into a product-prefix encoding.
+The BF group header's formerly-zero `source_b` stores the lazy product count;
+factor bit 15 marks a reduction boundary and the low 15 bits retain the
+immediate ID. The generator orders direct BF products before linear members,
+marks every fourth product and the final product, and leaves groups with zero
+or one product on the eager path. The retained artifact census is ten lazy
+groups, 72 lazy products, and 21 boundaries. Its SHA-256 is
+`c264c0969e8df75e3b05dde5492f57dd0519834c2ebcb41dace2d5474e30091f`.
+
+Each lazy contribution is accumulated as a nonnegative raw `u64` Montgomery
+product. Negative terms negate one operand as `p - a`; banked terms first scale
+one operand with the existing reduced BF multiply. At most four raw products
+are accumulated before `bf::red_wide`. Intermediate boundaries rebase the
+reduced limb with a raw multiply by `MONT_R`, while the final product boundary
+returns to the ordinary BF group sum for the linear tail. The validator checks
+the product prefix, masked immediate IDs, final boundary, and four-product
+bound; old artifacts select the eager path because their header payload is
+zero.
+
+The candidate keeps 56 registers/thread, zero stack/local memory, 13,824 bytes
+of static shared memory (14,848 bytes including the driver reserve), and the
+four-block launch bound. The separate wide-product evaluator increases the VM
+from 4,384 to 5,734 non-NOP static instructions; the new binary has 86 `LDC`,
+207 `LDG`, 1,007 `IMAD`, and 3/3 `BSSY`/`BSYNC` sites. A log-8
+compute-sanitizer run reports zero errors and checksum
+`0xbb2eb9da3c8c062b`.
+
+Two contemporaneous log-24 baseline and candidate runs produced:
+
+| Run | Minimum | Median | Checksum |
+|---|---:|---:|---:|
+| Eager baseline 1 | 15.862464 ms | 15.864592 ms | `0x8820ab14cacc9ff7` |
+| Eager baseline 2 | 15.862720 ms | 15.865120 ms | `0x8820ab14cacc9ff7` |
+| Lazy candidate 1 | 15.809312 ms | 15.812272 ms | `0x8820ab14cacc9ff7` |
+| Lazy candidate 2 | 15.810080 ms | 15.813264 ms | `0x8820ab14cacc9ff7` |
+
+The approximately 0.33% improvement is repeatable. The full VM-only report is
+`target/profiling/lazy_bf_reduction/lazy_bf_reduction_full.ncu-rep`:
+
+- NCU duration is 16.18 ms, with 21.79 billion dynamic instructions and 613.42
+  million branches;
+- dynamic `IMAD` falls from 4,149,870,592 to 4,027,187,200, a 2.96% reduction;
+- theoretical/achieved occupancy remains 75% / 73.96%;
+- shared-FMA-heavy-plus-ALU-lite utilization falls from 81.54% to 79.25%, while
+  ALU-heavy moves from 66.05% to 66.44%;
+- issue slots busy fall from 77.93% to 76.02%;
+- L1/TEX, L2, and ICC hit rates are 84.57% / 46.94% / 98.16%, versus the
+  eager profile's 86.02% / 41.57% / 99.90%; and
+- PC-sampling proportions are 33.25% not selected, 26.10% math-pipe throttle,
+  10.97% wait, 8.65% dispatch stall, 5.54% long scoreboard, and 3.44% no
+  instruction.
+
+The larger static body measurably hurts ICC locality and does not translate the
+full IMAD reduction into elapsed time, but the ordinary timing win is stable
+without an occupancy or spill regression. The lazy artifact and executor are
+retained as the next experimental baseline.
