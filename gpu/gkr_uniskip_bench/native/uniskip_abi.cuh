@@ -132,8 +132,10 @@ constexpr u32 UNISKIP_MAX_LOG_ROWS = UNISKIP_ELEMENT_INDEX_BITS - UNISKIP_LOG_AD
 static_assert((1u << UNISKIP_LOG_ADDRESSABLE_PLANES) == 128 * UNISKIP_TAPS);
 static_assert(UNISKIP_MAX_LOG_ROWS == 21);
 
-// The ONE source accessor: every operand read in every kernel goes through it,
-// so v2 (LDE-on-read / published sources) only swaps this body.
+// The ONE source accessor for TERM EXECUTION: every operand read in the eval kernel
+// goes through it, so v2 (LDE-on-read / published sources) only swaps this body. The
+// LDE and fold kernels deliberately do NOT use it — they are bulk per-column plane
+// sweeps and inline their own tap addressing.
 template <typename T> DEVICE_FORCEINLINE T uniskip_source_value(const uniskip_vm_desc &desc, const u16 source_id, const u32 cell, const u32 row) {
   const uniskip_source_record rec = desc.source[source_id];
   const u32 window = rec.addr >> 7;

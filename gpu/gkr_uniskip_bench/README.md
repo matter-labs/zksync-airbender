@@ -55,11 +55,19 @@ stream:
 
 ### The accessor seam
 
-Every operand read in every kernel goes through one function,
-`uniskip_source_value<T>(desc, source_id, cell, row)` in `native/uniskip_abi.cuh`.
-It resolves the source record, picks the tap or coset base from the cell, and
-issues one typed load. **v2 (LDE-on-read, published sources) only swaps this
-body** — the term execution above it does not change. `abi::source_offset` is the
+Every operand read **in the eval kernel** — that is, all term execution — goes
+through one function, `uniskip_source_value<T>(desc, source_id, cell, row)` in
+`native/uniskip_abi.cuh`. It resolves the source record, picks the tap or coset base
+from the cell, and issues one typed load. **v2 (LDE-on-read, published sources) only
+swaps this body** — the term execution above it does not change.
+
+The LDE and fold kernels deliberately do *not* go through it: they are bulk
+per-column plane sweeps that inline their own tap addressing
+(`native/uniskip.cu`), because they walk whole planes rather than resolving
+individual operands. In v2 the LDE sweep is what the accessor absorbs, so it is
+the seam's counterpart, not one of its users.
+
+`abi::source_offset` is the
 host mirror of exactly that arithmetic, and the CPU oracle addresses every cell
 through it, so an accessor/kernel disagreement surfaces as a validation failure
 rather than as silently matching wrong data.
@@ -119,9 +127,11 @@ Each pass records CUDA events around the four stages; every pass records them,
 warmup included, so a timed pass and an untimed one do identical work. The reported
 `GB/s` column divides each stage's **compulsory** traffic — every distinct byte it
 must read or write at least once, from `Harness::pass_bytes` — by its median time.
-That is an *upper bound* on achieved bandwidth, not a measurement of it: a stage
-that re-reads its input (the LDE does, 16×) moves considerably more. Measured
-numbers and their interpretation live in `iteration_times.md`.
+That is a *lower* bound on achieved bandwidth, not a measurement of it: real DRAM
+traffic is never below the floor and is usually above it (the LDE re-reads its input
+once per coset cell, ~16×), so the true GB/s is at least the number printed and can
+be many times it. Measured numbers and their interpretation live in
+`iteration_times.md`.
 
 ## Census defaults and provenance
 

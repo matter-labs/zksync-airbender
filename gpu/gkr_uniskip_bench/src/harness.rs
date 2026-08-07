@@ -122,9 +122,10 @@ pub struct StageTimes {
 }
 
 /// COMPULSORY traffic of one pass: every distinct byte a stage must read or write
-/// at least once. The eval kernel ISSUES far more loads than this — one per operand
-/// reference — but they resolve in cache, so this is a floor, and `bytes / time` is
-/// an upper bound on the bandwidth a stage could be achieving.
+/// at least once. Real DRAM traffic is never below this and is usually above it —
+/// the eval kernel issues one load per operand reference, and the LDE re-reads its
+/// input once per coset cell — so `bytes / time` is a LOWER bound on the bandwidth
+/// a stage is achieving, not an upper one.
 #[derive(Clone, Copy, Debug)]
 pub struct PassBytes {
     pub stage: [u64; STAGES.len()],

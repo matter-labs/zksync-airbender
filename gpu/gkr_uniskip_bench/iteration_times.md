@@ -86,9 +86,11 @@ Tap backing 5.75 GiB (the coset backing matches); compulsory traffic
 Spread over 100 iterations is under 0.1% on every stage.
 
 "Compulsory GB/s" divides each stage's *floor* traffic — every distinct byte it must
-touch at least once, per `Harness::pass_bytes` — by its median time. It is an upper
-bound on the achieved bandwidth, not a measurement of it: a stage that re-reads its
-input moves more than the floor.
+touch at least once, per `Harness::pass_bytes` — by its median time. It is a **lower
+bound** on the achieved bandwidth, not a measurement of it: real DRAM traffic is
+never below the floor and is usually above it, so a stage that re-reads its input
+(the LDE does, once per coset cell) is moving several times the number shown. Read
+the column as "this stage is achieving *at least* this much".
 
 ### Reading the numbers
 
@@ -96,21 +98,48 @@ input moves more than the floor.
   `e4` per (source, row); floor and issued traffic are the same 7.16 GB, so its
   1510 GB/s **is** the achieved bandwidth. Treat ~1.5 TB/s as this device's
   practical streaming ceiling for the rest of the table.
-- **`lde` is bandwidth-bound at 16× the floor**, not slow at the floor. Each thread
-  produces one coset cell from all 16 taps of its (column, row), and the 16 threads
-  that share those taps are `2^log_rows` apart in the grid-stride index — different
-  blocks, scheduled far apart, with a 5.75 GiB backing between them, so nothing is
-  reused in L2. Issued traffic is therefore `16 × 5.75 GiB` read + `5.75 GiB`
-  written ≈ 105 GB, which over 71.06 ms is **~1477 GB/s** — the same ceiling `fold`
-  hits. The stage is at the hardware limit for the traffic it generates; the lever
-  is generating less of it (one thread emitting all 16 coset cells from one tap
-  load), which is a v2 kernel change and explicitly out of scope here.
+- **`lde` is bandwidth-bound at ~16× the floor**, not slow at the floor. Each thread
+  produces one coset cell from all 16 taps of its (column, row).
+
+  *Mechanism.* The launch is grid-strided and clamped to `MAX_BLOCKS = 65536` blocks
+  × 256 threads = `2^24` threads per sweep, and the index decomposes as
+  `job = (i >> log_rows) / 16`, `cell = (i >> log_rows) % 16`, `row = i mod 2^rows`.
+  At `log_rows = 20` that makes **one grid sweep exactly one column's 16 cells**. The
+  16 threads sharing a row's taps sit one cell-plane (`2^20` threads) apart inside
+  that sweep, so the reuse distance is one column's whole tap block: **64 MiB for a
+  `bf` column, 256 MiB for an `e4` one**, with an equal volume of coset stores
+  flowing through L2 in the same sweep. This device's L2 is 128 MiB
+  (`cudaDevAttrL2CacheSize` = 134217728), so the `e4` sweep cannot fit, and the `bf`
+  sweep is exactly at capacity once its own stores are counted.
+
+  *What the timing says.* With no reuse the stage moves `16 × 5.75 GiB` read +
+  `5.75 GiB` written ≈ 105 GB, i.e. **~1477 GB/s over 71.06 ms — the ceiling `fold`
+  demonstrates**. With perfect `bf` reuse it would move ~57 GB (~800 GB/s) and its
+  71 ms would then need some other explanation. Only the first reading is
+  self-consistent, so the reuse is not materialising at this geometry. Settling it
+  outright wants `ncu --metrics dram__bytes.sum` on the two LDE kernels; not run
+  here.
+
+  *Cross-check.* The same kernel at `--log-trace 20`, where a column's tap block is
+  4 MiB (`bf`) / 16 MiB (`e4`) and comfortably L2-resident, reports 805 GB/s
+  compulsory instead of 174 — most of the 16× re-read is absorbed by cache there.
+  The reuse distance scaling with `rows` is exactly the mechanism above.
+
+  The stage is at the hardware limit for the traffic it generates; the lever is
+  generating less of it (one thread emitting all 16 coset cells from one tap load),
+  which is a v2 kernel change and explicitly out of scope here.
 - **`lde` is 74.6% of the pass**, so the global coset materialization the v1 design
   deliberately measures is the whole story of this baseline. `eval` (20.3%) and
   `fold` (5.0%) are the rest.
-- **`eval` is not DRAM-bound.** 12.36 GB of floor traffic in 19.37 ms is 638 GB/s,
-  well under the ceiling; with ~3.8 operand references per source the issued load
-  volume is several times the floor and is being served by L1/L2.
+- **`eval`: at least a third of its loads are cache-served; the table does not say
+  whether DRAM is the binding constraint.** Floor over time (12.36 GB / 19.37 ms =
+  638 GB/s) only establishes that eval's DRAM rate is *at least* 638 GB/s — it
+  cannot show the stage is off the DRAM limit. The argument that does carry: with
+  224 operand references over 59 sources, eval issues roughly 3.8× the floor in
+  loads (~47 GB), while 19.37 ms at the ~1.5 TB/s ceiling `fold` establishes buys
+  only ~29 GB from DRAM. So ≥18 GB of the issued volume — better than a third —
+  must be coming out of L1/L2. DRAM traffic therefore sits somewhere in
+  [12.4, ~29] GB, and naming the actual limiter (DRAM, L2, or issue) needs `ncu`.
 - **The eval/finalize split is not anomalous.** Task 4 flagged the eval partials
   store as one active lane per warp writing 4 scattered 16-B values; at this
   geometry that whole output is 32768 blocks × 32 cells × 16 B = 16.8 MB, i.e.
