@@ -127,6 +127,7 @@ fn compact_cuda_constants_match_rust() {
         "GKR_BACKWARD_MAX_TRACE_LEN_LOG2 = 24;",
         "GKR_DIM_REDUCING_LAYER_CLAIM_POINT_LEN = GKR_BACKWARD_MAX_TRACE_LEN_LOG2 + 2;",
         "GKR_MAIN_LAYER_CLAIM_POINT_LEN = GKR_BACKWARD_MAX_TRACE_LEN_LOG2 + 1;",
+        "GKR_FORWARD_SETUP_GENERIC_LOOKUP_MAX_COLUMNS = 10;",
         "GKR_EQ_GROUP_SIZE = 8;",
         "GKR_EQ_HIGH_SLOTS = 2;",
     ] {
@@ -144,6 +145,10 @@ fn compact_cuda_constants_match_rust() {
     assert_eq!(GKR_BACKWARD_MAX_TRACE_LEN_LOG2, 24);
     assert_eq!(GKR_EQ_GROUP_SIZE, 8);
     assert_eq!(GKR_EQ_HIGH_SLOTS, 2);
+    assert_eq!(
+        crate::setup::kernels::GKR_FORWARD_SETUP_GENERIC_LOOKUP_MAX_COLUMNS,
+        10
+    );
     assert_eq!(MAX_DIM_REDUCING_LAYER_CLAIM_POINT_LEN, 26);
     assert_eq!(MAX_MAIN_LAYER_CLAIM_POINT_LEN, 25);
 }

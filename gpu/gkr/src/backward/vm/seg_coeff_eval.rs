@@ -55,7 +55,7 @@ const _: () = {
 /// The slab slot and exponent one challenge reference resolves to.
 ///
 /// The exponent is the reference's own power; a product's MULTIPLICITY is folded in
-/// separately by [`translate_recipe`].
+/// separately by [`translate_recipe_inner`].
 pub(crate) fn bwd_seg_challenge_slot(r: &ChallengeRef) -> Result<(u8, u32), SegCoeffEvalError> {
     let power = match r.power {
         ChallengePower::One => 1u32,

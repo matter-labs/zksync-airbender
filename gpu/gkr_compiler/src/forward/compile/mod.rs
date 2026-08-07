@@ -143,8 +143,10 @@ fn compile_layer_at(
     // Bind logical reads to source windows.
     ctx.source_windows = bind_final_sources(&mut program, &ctx.backings)?;
 
-    let mut stats = CompileStats::default();
-    stats.instrs = program.instrs.len();
+    let mut stats = CompileStats {
+        instrs: program.instrs.len(),
+        ..CompileStats::default()
+    };
     for instr in &program.instrs {
         match instr {
             Instr::Mov { src, field, .. } => {
@@ -193,7 +195,7 @@ fn smem_wire_index(lane: u16, field: OperandField) -> Result<u16, CompileError> 
     match field {
         OperandField::Base => Ok(lane),
         OperandField::Ext => {
-            if lane % 4 != 0 {
+            if !lane.is_multiple_of(4) {
                 return Err(CompileError::ExtCellMisaligned(lane));
             }
             Ok(lane / 4)

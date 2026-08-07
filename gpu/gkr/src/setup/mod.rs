@@ -108,10 +108,11 @@ impl<'a> GpuGKRSetupTransfer<'a> {
 
     #[cfg(test)]
     pub(crate) fn bind_setup_columns_into_storage<E>(&self, storage: &mut GpuGKRStorage<BF, E>) {
+        assert!(self.host.columns_count > 0);
         assert_eq!(self.trace_holder.columns_count, self.host.columns_count);
         assert_eq!(
             1usize << self.trace_holder.log_domain_size,
-            self.host.trace_len
+            self.host.raw_hypercube_evals.len() / self.host.columns_count
         );
         bind_trace_holder_columns_into_storage(&self.trace_holder, storage, GKRAddress::Setup);
     }
@@ -394,10 +395,6 @@ pub struct GpuGKRForwardSetupHostKeepalive {
 }
 
 impl GpuGKRForwardSetup {
-    pub fn has_generic_lookup(&self) -> bool {
-        self.generic_lookup.is_some()
-    }
-
     /// Device view over `d_lookup_challenges[1..2]` — `lookup_additive_part` lives in the
     /// second slot of the device-resident lookup challenges buffer. No standalone allocation.
     pub(crate) fn lookup_additive_part_device(&self) -> &era_cudart::slice::DeviceSlice<E4> {

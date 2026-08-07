@@ -45,8 +45,8 @@ summary — the contract document is the source of truth.
   operation thereafter only reads.
 - **MUST** consume D2H readback buffers via a scheduled host callback, never
   from the scheduling thread.
-- **MUST** fork/join any op on an auxiliary stream (`h2d_stream`,
-  `d2h_stream`, or `side_stream`) against `exec_stream` with explicit CUDA
+- **MUST** fork/join any op on an auxiliary stream (`h2d_stream` or
+  `side_stream`) against `exec_stream` with explicit CUDA
   events. The driver gives independent streams no implicit ordering.
 - **MUST** allocate and drop pool-backed handles on `exec_stream`. If a
   secondary stream touched the allocation, the `exec_stream` join wait must be
@@ -63,9 +63,8 @@ summary — the contract document is the source of truth.
 - **MUST** keep `prove()` enqueue-only. No `stream.synchronize()`, no host
   blocking for `exec_stream` progress — not even for profiling or logging.
   Host blocking belongs in `GpuGKRProofJob::finish()`.
-- **Default to `exec_stream`** for H2D/D2H copies. Use `h2d_stream` /
-  `d2h_stream` only when meaningful copy/compute overlap justifies the
-  fork/join machinery.
+- **Default to `exec_stream`** for copies. Use `h2d_stream` only when meaningful
+  H2D overlap justifies the fork/join machinery.
 
 ## Key Files and Structure
 

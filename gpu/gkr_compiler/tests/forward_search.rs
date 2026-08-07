@@ -41,7 +41,7 @@ fn tiny_dag() -> DagCircuit {
 
 fn shared_expr_dag() -> DagCircuit {
     let mut dag = tiny_dag();
-    let mut second = dag.layers[0].roots[0].clone();
+    let mut second = dag.layers[0].roots[0];
     second.materialize.as_mut().unwrap().kind = SinkKind::Inner {
         layer: 0,
         offset: 1,

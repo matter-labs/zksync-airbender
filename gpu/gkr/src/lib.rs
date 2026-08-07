@@ -25,18 +25,14 @@ pub mod stage1;
 pub(crate) mod storage;
 pub(crate) mod storage_types;
 pub(crate) mod support;
-#[allow(unused_imports)]
 pub(crate) mod upstream;
 
 pub(crate) use forward::kernels::ForwardKernels;
-pub(crate) use storage_types::*;
-// Cross-crate proof orchestration and tests use these storage types.
 pub(crate) use gpu_gkr_model::address_audit as gkr_address_audit;
 pub(crate) use gpu_gkr_model::storage_layout;
 pub(crate) use gpu_gkr_model::transform;
 pub use programs::GkrPrograms;
-#[doc(hidden)]
-pub use storage_types::{GpuBaseFieldPoly, GpuExtensionFieldPoly, GpuGKRStorage};
+pub(crate) use storage_types::*;
 // Keep the public path `gpu_gkr::gkr_initial_inner_products` (apex proof).
 pub use support::initial_inner_products as gkr_initial_inner_products;
 

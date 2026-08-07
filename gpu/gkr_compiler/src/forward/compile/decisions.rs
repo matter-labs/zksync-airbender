@@ -165,9 +165,13 @@ fn compute_reaches_dram(layer: &DagLayer) -> BTreeSet<ExprId> {
                 Expr::Source(sid) => {
                     matches!(layer.sources[sid.0 as usize], SourceKind::Read { .. })
                 }
-                Expr::Add(children) | Expr::Mul(children) => children
-                    .iter()
-                    .fold(false, |acc, c| visit(layer, c.0, memo) || acc),
+                Expr::Add(children) | Expr::Mul(children) => {
+                    let mut reaches_dram = false;
+                    for child in children {
+                        reaches_dram |= visit(layer, child.0, memo);
+                    }
+                    reaches_dram
+                }
             }
         };
         memo[e as usize] = Some(r);

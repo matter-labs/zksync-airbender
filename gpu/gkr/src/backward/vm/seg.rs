@@ -84,9 +84,14 @@ fn launch_bwd_seg_build_fold_weights(round: u32, context: &ProverContext) -> Cud
     )
 }
 
-fn plane_smem_bytes(k: u32) -> usize {
+const fn plane_smem_bytes(k: u32) -> usize {
     k.saturating_sub(1) as usize * WARP_SIZE as usize * size_of::<E4>()
 }
+
+const _: () = {
+    assert!(plane_smem_bytes(BWD_SEG_MAX_K as u32) == 7_680);
+    assert!(plane_smem_bytes(BWD_SEG_MAX_K as u32) <= 48 * 1_024);
+};
 
 fn launch_config<'a>(desc: &BwdSegDesc, context: &'a ProverContext) -> CudaLaunchConfig<'a> {
     let k = u32::from(desc.k);

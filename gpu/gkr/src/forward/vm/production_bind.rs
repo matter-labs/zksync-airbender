@@ -299,7 +299,7 @@ pub(crate) fn schedule_vm_layer(
     .unwrap_or_else(|e| panic!("forward VM layer {layer_idx}: {e:?}"));
 
     stage_const_derived_e4_bank(cl, forward_setup, context)
-        .unwrap_or_else(|e| panic!("forward VM layer {layer_idx}: {e}"));
+        .unwrap_or_else(|e| panic!("forward VM layer {layer_idx}: {e:?}"));
 
     super::launch_fwd_vm(&setup, context)?;
 

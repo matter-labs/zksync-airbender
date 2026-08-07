@@ -72,7 +72,7 @@ pub(in crate::proof) fn prepare_backward_handoff(
     let (forward_setup_keepalive, d_lookup_challenges_for_backward) =
         forward_setup.into_host_keepalive_taking_lookup_challenges();
     let top_layer_claim_layout = top_layer_claim_layout(&output_layer_for_sumcheck);
-    let num_top_claims = top_layer_claim_layout.len();
+    let num_top_claims = top_layer_claim_layout.claim_count();
     let mut initial_d_claims: DeviceAllocation<E4> =
         context.alloc(num_top_claims, AllocationPlacement::BestFit)?;
 

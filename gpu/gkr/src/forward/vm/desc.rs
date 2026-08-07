@@ -244,7 +244,7 @@ mod tests {
     #[test]
     #[should_panic(expected = "desc kind")]
     fn pack_desc_rejects_out_of_range_kind() {
-        pack_desc(SD_VIRTUAL + 1, 0, 0, 0);
+        pack_desc(SD_INITS_TOP_BITS + 1, 0, 0, 0);
     }
 
     #[test]

@@ -221,14 +221,14 @@ impl GpuGKRDimensionReducingSumcheckLayerPlan {
 
         assert_eq!(
             device_claims_in.len(),
-            claim_layout.len(),
+            claim_layout.claim_count(),
             "device claims buffer must match claim layout length",
         );
 
         {
             let batching = device_claim_point_in.slice(self.folding_steps, 1);
             crate::gkr_ops::build_combined_claim(
-                &device_claims_in[..claim_layout.len()],
+                &device_claims_in[..claim_layout.claim_count()],
                 batching,
                 &desc_pairs,
                 &mut device_claim[..],

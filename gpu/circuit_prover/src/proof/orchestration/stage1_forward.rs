@@ -96,7 +96,13 @@ pub(in crate::proof) fn prepare_stage1_and_forward_setup<'a, A: GoodAllocator + 
         bundle.memory.host.log_lde_factor, setup_geometry.log_lde_factor,
         "memory transfer log_lde_factor must match setup geometry",
     );
-    let setup_columns_count = bundle.setup.map_or(0, |s| s.trace_holder.columns_count);
+    let setup_columns_count = bundle.setup.map_or(0, |setup| {
+        assert!(
+            setup.trace_holder.columns_count > 0,
+            "zero-width setup must be represented by no setup transfer",
+        );
+        setup.trace_holder.columns_count
+    });
 
     let memory_layer_geometry = GpuGKRTraceGeometry {
         log_domain_size: compiled_circuit.trace_len.trailing_zeros(),
@@ -146,19 +152,17 @@ pub(in crate::proof) fn prepare_stage1_and_forward_setup<'a, A: GoodAllocator + 
     let (setup_cap_ptr, setup_cap_len_u32) =
         unsafe { proof_layout.whir_base_cap_device_mut(slab_base, WhirBaseLayerKind::Setup) };
 
-    {
+    if memory_cap_len_u32 > 0 {
         let src = unsafe { bundle.memory.unified_device_cap().transmute::<u32>() };
         assert_eq!(src.len(), memory_cap_len_u32);
         let dst = unsafe { DeviceSlice::from_raw_parts_mut(memory_cap_ptr, memory_cap_len_u32) };
         memory_copy_async(dst, src, stream)?;
     }
     if let Some(setup_transfer_ref) = bundle.setup {
-        if setup_cap_len_u32 > 0 {
-            let src = unsafe { setup_transfer_ref.unified_device_cap().transmute::<u32>() };
-            assert_eq!(src.len(), setup_cap_len_u32);
-            let dst = unsafe { DeviceSlice::from_raw_parts_mut(setup_cap_ptr, setup_cap_len_u32) };
-            memory_copy_async(dst, src, stream)?;
-        }
+        let src = unsafe { setup_transfer_ref.unified_device_cap().transmute::<u32>() };
+        assert_eq!(src.len(), setup_cap_len_u32);
+        let dst = unsafe { DeviceSlice::from_raw_parts_mut(setup_cap_ptr, setup_cap_len_u32) };
+        memory_copy_async(dst, src, stream)?;
     }
 
     // SAFETY: the layout owns this live, disjoint u32 range in the slab.

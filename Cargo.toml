@@ -180,7 +180,7 @@ gpu_whir = { path = "./gpu/whir" }
 gpu_circuit_prover = { path = "./gpu/circuit_prover", default-features = false }
 gpu_execution_prover = { path = "./gpu/execution_prover", default-features = false }
 gpu_program_prover = { path = "./gpu/program_prover", default-features = false }
-prover_examples = { path = "./circuit_defs/prover_examples" }
+prover_examples = { path = "./circuit_defs/prover_examples", default-features = false }
 gpu_gkr_model = { path = "./gpu/gkr_model" }
 gpu_gkr_compiler = { path = "./gpu/gkr_compiler" }
 gkr_eval_ir = { path = "./gkr_eval_ir" }

@@ -166,16 +166,7 @@ fn rewrite_relation_scratch_addresses<F: PrimeField>(
             rewrite_addr(input, mapping);
             rewrite_addr(output, mapping);
         }
-        // Lookup relations whose `input` / `remainder` fields carry inline
-        // `NoFieldLinearRelation` or `NoFieldVectorLookupRelation` expressions
-        // (not pre-materialized GKRAddresses). cs/'s scratch-mapping rewrite
-        // only touches the top-level standalone lookup expression lists
-        // (`range_check_16_lookups_compiled`, `timestamp_range_check_lookups_compiled`,
-        // `generic_lookups_compiled`) in `family_circuit.rs`; it does NOT
-        // rewrite linear terms embedded in these layer-gate relations. Without
-        // this rewrite a scratch-backed address left unrewritten in a
-        // `linear_terms` entry causes a missing-slot panic in
-        // `register_flat_base_folding_for_layer`.
+        // Relation-local base inputs are not covered by cs's top-level lookup rewrite.
         LookupPairFromBaseInputs { input, .. } => {
             for single in input.iter_mut() {
                 rewrite_linear_relation(&mut single.input, mapping);
@@ -192,48 +183,17 @@ fn rewrite_relation_scratch_addresses<F: PrimeField>(
         LookupUnbalancedPairWithVectorInputs { remainder, .. } => {
             rewrite_vector_lookup(remainder, mapping);
         }
-        // `1/(a+gamma) + 1/(b+gamma)` where `a, b` are base-field values that
-        // may be materialized into scratch. cs/'s scratch-mapping rewrite only
-        // touches range-check-16 / timestamp / generic lookup `input` linear
-        // terms; it leaves the materialized addresses here unchanged. Without
-        // this rewrite the writers are rewritten to `ScratchSpace` so the
-        // layout drops the `InnerLayer` slots while the still-`InnerLayer`
-        // reads panic in `register_flat_base_folding_for_layer`'s layout
-        // lookup. `output` (extension results) is never scratch-mapped.
         LookupPairFromMaterializedBaseInputs { input, .. } => {
             for addr in input.iter_mut() {
                 rewrite_addr(addr, mapping);
             }
         }
-        // `a/b + 1/(c + gamma)` where `c` (the `remainder`) is a *base-field*
-        // value that may be materialized into scratch. cs/'s scratch-mapping
-        // rewrite only touches the range-check-16 / timestamp / generic
-        // lookup `input` linear terms (`family_circuit.rs:1018-1042`); it
-        // leaves this relation's `remainder` as its `InnerLayer` address. The
-        // unified circuit is the first to exercise a scratch-backed `remainder`
-        // here — without this rewrite, the writer (the `MaxQuadratic` that
-        // produces `c`) is rewritten to `ScratchSpace` so the layout drops the
-        // `InnerLayer` slot, while this still-`InnerLayer` read panics in
-        // `register_flat_base_folding_for_layer`'s layout lookup. `input` (the
-        // extension `a/b` pair) and `output` (extension results) are never
-        // scratch-mapped (scratch is base-only), so only `remainder` is
-        // rewritten — mirroring cs/'s base-read-only substitution.
+        // Only the base-field remainder may be scratch-mapped.
         LookupUnbalancedPairWithMaterializedBaseInputs { remainder, .. } => {
             rewrite_addr(remainder, mapping);
         }
-        // `ScratchSpace` is base-field-only; rewriting `CopyInExtensionField`
-        // inputs/outputs to `ScratchSpace` would mis-type the kernel
-        // (forward writes the value as base, but the ExtCopy kernel reads it
-        // as ext) and panic in `get_for_sumcheck_round_0`'s extension lookup.
-        // cs/'s scratch-mapping rewrite (`delegation_circuit.rs:580-604`)
-        // only touches lookup-style relations where the operand is base by
-        // construction, so the GPU normalize pass mirrors that constraint
-        // here: only base-side relations get the substitution.
+        // ScratchSpace is base-field-only.
         CopyInExtensionField { .. } => {}
-        // Other relations either have their scratch references already
-        // rewritten by cs/ (lookups) or are not expected to reference
-        // scratch-backed values today. If a future relation does, add it
-        // here alongside the constraint variants above.
         _ => {}
     }
 }

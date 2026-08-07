@@ -93,6 +93,9 @@ constexpr u32 BWD_SEG_LANE_INDEX_MASK = BWD_SEG_WARP_LANES - 1;
 
 static_assert(BWD_SEG_MAX_K * BWD_SEG_WARP_LANES == 512, "one warp per list");
 static_assert(1u << BWD_SEG_WARP_SHIFT == BWD_SEG_WARP_LANES, "warp layout drift");
+constexpr u32 BWD_SEG_MAX_PLANE_SMEM_BYTES = (BWD_SEG_MAX_K - 1) * BWD_SEG_WARP_LANES * sizeof(e4);
+static_assert(BWD_SEG_MAX_PLANE_SMEM_BYTES == 7680, "segmented VM shared-memory formula drift");
+static_assert(BWD_SEG_MAX_PLANE_SMEM_BYTES <= 48 * 1024, "segmented VM exceeds default shared-memory limit");
 static_assert(BWD_SEG_LANE_INDEX_MASK == 31, "warp lane index mask drift");
 
 // Coefficient-bank slots, including the two reserved literal ids.
@@ -313,7 +316,7 @@ struct alignas(BWD_SEG_DESC_ALIGN) bwd_seg_desc {
   // Interleaved c0/c2 partials, two entries per warp row.
   e4 *contributions;
   gkr_eq_sizes eq_sizes;
-  // Rows this launch evaluates and the endpoint half-stride of target-depth backings.
+  // Rows this launch evaluates.
   u32 logical_rows;
 };
 

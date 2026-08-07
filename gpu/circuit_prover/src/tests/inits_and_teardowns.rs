@@ -145,8 +145,7 @@ pub(super) fn alloc_pinned_vec_from_slice_for_test<T: Copy>(
 ///   * The preprocessed i/t layout has a zero-width setup
 ///     (`witness_layout.total_width == 0`), so `gpu_setup_host` is `None` and
 ///     the tracing-data host is an empty non-memory holder — the GPU prove()
-///     drives the synthetic zero-width setup path. This mirrors the manual
-///     bundle in `standalone_inits_and_teardowns_gpu_workflow_matches_cpu`.
+///     drives the synthetic zero-width setup path.
 ///
 /// Uses `hashed_fibonacci`, which produces non-empty RAM touches. When
 /// `compute_cpu_reference` is false the
@@ -328,7 +327,7 @@ pub(super) fn prepare_inits_and_teardowns_proof_fixture(
                 &worker,
             );
         stage1_subcaps_from_cap(
-            mem_oracle.tree.get_cap(),
+            &mem_oracle.tree.get_cap(),
             whir_schedule.cap_size / whir_schedule.base_lde_factor,
         )
     };

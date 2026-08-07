@@ -182,7 +182,7 @@ fn check_resolutions(layer: &DagLayer, li: usize) -> Result<(), String> {
 
 /// Validate `leaf` is EXACTLY the `folded_lookup` shape for `expected_set`:
 /// 1 column ⇒ bare `Source(LookupValue{GenericColumn{0}})`;
-/// >1 columns ⇒ `Add` of one UNSCALED column-0 lookup plus, per j≥1, a 2-factor
+/// More than one column ⇒ `Add` of one UNSCALED column-0 lookup plus, per j≥1, a 2-factor
 /// `Mul([Challenge{LookupMultiplicative,Static(j)}, LookupValue{GenericColumn{j}}])`.
 /// Columns must be exactly {0..n-1}; column 0 unscaled; all sets == expected_set.
 fn check_folded_lookup_shape(

@@ -75,12 +75,9 @@ drift by convention.
   headers and `gpu_hash`'s `hash.cuh` (via `DEP_GPU_HASH_NATIVE_INCLUDE`) for
   the blake2s-dependent protocol kernels in `ops/gkr_ops.cu`.
 
-## Widening convention
+## Public API
 
-- `#[doc(hidden)] pub use storage_types::{...}` — storage/descriptor types
-  the apex e2e suite and proof orchestration name across the crate boundary
-  (test-reference surface, not production API).
-- Plain `pub` is production cross-crate API.
+- Plain `pub` is production cross-crate API. Storage internals stay crate-private.
 
 ## Build and Test
 

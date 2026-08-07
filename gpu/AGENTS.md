@@ -108,9 +108,9 @@ root in `gkr_eval_ir`; `gpu_gkr_compiler` depends on it.
   archive's kernels, so no header export / `DEP_*` is needed (unlike gpu_hash).
   Dep: `gpu_core`.
 - **`gpu_prover_context`** = `ProverContext` + `ProverContextConfig` (the
-  device/host allocators, the four CUDA streams — `exec_stream`, `h2d_stream`,
-  `d2h_stream`, `side_stream` — and the NTT twiddle `DeviceContext`) plus the
-  H2D/D2H `Transfer` fork/join machinery (`transfer.rs`). No native of its
+  device/host allocators, the three CUDA streams — `exec_stream`, `h2d_stream`,
+  `side_stream` — and the NTT twiddle `DeviceContext`) plus the H2D `Transfer`
+  machinery (`transfer.rs`). No native of its
   own — pure Rust over `gpu_core` + `gpu_ntt`. Every crate from `gpu_trace`
   upward threads a `&ProverContext` through its scheduling functions. See
   [`prover_context/AGENTS.md`](prover_context/AGENTS.md).
@@ -124,7 +124,8 @@ root in `gkr_eval_ir`; `gpu_gkr_compiler` depends on it.
   / `common_constants`. See [`trace/AGENTS.md`](trace/AGENTS.md).
 - **`gpu_gkr`** = the GKR engine (forward pass, backward/sumcheck rounds,
   setup, base-layer claims, proof layout) plus the GKR/WHIR protocol kernels
-  (`gkr_ops/`), with its own `gpu_gkr_native`, namespaces
+  (`gkr_ops/`), with its own `gpu_gkr_native` (25 kernels and 8 `__constant__`
+  symbols), namespaces
   `airbender::gkr::{backward, forward, ops, setup}`. `build.rs` sets
   `export_include(true)`: exports its `native/` dir as
   `DEP_GPU_GKR_NATIVE_INCLUDE` so `gpu_whir` can include its

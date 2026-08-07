@@ -359,7 +359,7 @@ fn enqueue_phase_two<'a>(
                 "BATCH[{batch_id}] GPU_WORKER[{device_id}] producing proof for circuit {circuit_type:?}[{sequence_id}]"
             );
             let job = prove::<A>(
-                std::sync::Arc::clone(&state.precomputations.gkr_programs),
+                &state.precomputations.gkr_programs,
                 &prover_config,
                 final_trace_size_log_2,
                 bundle,

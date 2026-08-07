@@ -31,7 +31,7 @@ unsafe impl Sync for GpuGKRMainLayerSumcheckLayerPlan {}
 
 #[doc(hidden)]
 pub(crate) struct GpuGKRMainLayerBackwardState {
-    #[allow(dead_code)]
+    #[allow(dead_code)] // Keeps queued forward ranges alive through backward scheduling.
     pub(crate) forward_tracing_ranges: Vec<Range>,
     pub(crate) storage: GpuGKRStorage<BF, E4>,
     pub(crate) pending_layers: VecDeque<usize>,

@@ -92,21 +92,6 @@ impl GpuGKRLookupMappings {
     pub(crate) fn release_timestamp(&mut self) {
         self.timestamp = None;
     }
-
-    fn column_range(&self, column: usize) -> core::ops::Range<usize> {
-        let start = column * self.trace_len;
-        start..start + self.trace_len
-    }
-
-    pub fn generic_mapping(&self, set_idx: usize) -> &DeviceSlice<u32> {
-        assert!(set_idx < self.num_generic_sets);
-        &self.generic_family()[self.column_range(set_idx)]
-    }
-
-    pub fn decoder_mapping(&self) -> Option<&DeviceSlice<u32>> {
-        self.has_decoder
-            .then(|| &self.generic_family()[self.column_range(self.num_generic_sets)])
-    }
 }
 
 /// Stage-1 keepalive: only the tracing-range NVTX scopes need to outlive the

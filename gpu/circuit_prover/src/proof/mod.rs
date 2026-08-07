@@ -27,7 +27,7 @@ use orchestration::{
 };
 
 pub fn prove<'a, A: GoodAllocator + 'a>(
-    gkr_programs: Arc<GkrPrograms>,
+    gkr_programs: &Arc<GkrPrograms>,
     prover_config: &ProverConfig,
     final_trace_size_log_2: u32,
     inputs: GpuGKRProofTransfer<'a, A>,
@@ -90,7 +90,7 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
         mut forward_setup,
         d_seed,
     } = prepare_stage1_and_forward_setup::<A>(
-        &gkr_programs,
+        gkr_programs,
         prover_config,
         final_trace_size_log_2,
         whir_schedule,
@@ -129,7 +129,7 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
         &top_bits_host,
         final_trace_size_log_2,
         output_evaluations_slab,
-        &gkr_programs,
+        gkr_programs,
         context,
     )?;
     let ForwardToBackwardHandoff {
@@ -157,7 +157,7 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
     } = schedule_backward_phase(
         backward_state,
         top_bits_host.clone(),
-        Arc::clone(&gkr_programs),
+        Arc::clone(gkr_programs),
         external_challenges.device.as_ptr(),
         d_seed,
         d_evaluation_point_and_batching,

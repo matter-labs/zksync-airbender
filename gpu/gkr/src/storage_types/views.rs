@@ -4,30 +4,22 @@ use std::sync::Arc;
 use crate::gkr_address_audit::AddressClass;
 use crate::storage_layout::GpuGKRStorageLayout;
 use crate::upstream::GKRAddress;
-use era_cudart::slice::{CudaSlice, DeviceSlice};
+use era_cudart::slice::CudaSlice;
+#[cfg(test)]
+use era_cudart::slice::DeviceSlice;
 use gpu_core::primitives::context::DeviceAllocation;
+#[cfg(test)]
 use gpu_core::primitives::device_structures::DeviceVectorChunk;
 
-#[doc(hidden)]
-pub struct GpuGKRLayerSource<B, E> {
-    pub base_field_inputs: BTreeMap<GKRAddress, GpuBaseFieldPoly<B>>,
-    pub extension_field_inputs: BTreeMap<GKRAddress, GpuExtensionFieldPoly<E>>,
-    /// Consolidated per-`AddressClass` backings for base-field polys living at
-    /// this layer. Lazily allocated by `GpuGKRStorage::allocate_base_view`
-    /// when a layout is set; size is taken from the layout's per-slot poly
-    /// count. Empty when no consolidated allocations have been requested for
-    /// this layer.
+pub(crate) struct GpuGKRLayerSource<B, E> {
+    pub(crate) base_field_inputs: BTreeMap<GKRAddress, GpuBaseFieldPoly<B>>,
+    pub(crate) extension_field_inputs: BTreeMap<GKRAddress, GpuExtensionFieldPoly<E>>,
     pub(crate) base_class_backings: BTreeMap<AddressClass, Arc<DeviceAllocation<B>>>,
     pub(crate) ext_class_backings: BTreeMap<AddressClass, Arc<DeviceAllocation<E>>>,
 }
 
-#[doc(hidden)]
-pub struct GpuGKRStorage<B, E> {
-    pub layers: Vec<GpuGKRLayerSource<B, E>>,
-    /// Pre-computed storage layout from `GKRCircuitArtifact`. When set,
-    /// `allocate_base_view` / `allocate_ext_view` route through the per-class
-    /// consolidated backings; when `None`, callers must use the per-poly
-    /// allocation path directly (test-only).
+pub(crate) struct GpuGKRStorage<B, E> {
+    pub(crate) layers: Vec<GpuGKRLayerSource<B, E>>,
     pub(crate) layout: Option<Arc<GpuGKRStorageLayout>>,
 }
 
@@ -51,8 +43,7 @@ impl<B, E> Default for GpuGKRStorage<B, E> {
     }
 }
 
-#[doc(hidden)]
-pub struct GpuBaseFieldPoly<B> {
+pub(crate) struct GpuBaseFieldPoly<B> {
     pub(crate) backing: Arc<DeviceAllocation<B>>,
     pub(crate) offset: usize,
     pub(crate) len: usize,
@@ -90,25 +81,21 @@ impl<B> GpuBaseFieldPoly<B> {
         self.clone()
     }
 
-    pub fn len(&self) -> usize {
+    pub(crate) fn len(&self) -> usize {
         self.len
     }
 
-    pub fn is_empty(&self) -> bool {
-        self.len == 0
-    }
-
-    pub fn as_ptr(&self) -> *const B {
+    pub(crate) fn as_ptr(&self) -> *const B {
         unsafe { self.backing.as_ptr().add(self.offset) }
     }
 
-    pub fn as_device_chunk(&self) -> DeviceVectorChunk<'_, B> {
+    #[cfg(test)]
+    pub(crate) fn as_device_chunk(&self) -> DeviceVectorChunk<'_, B> {
         DeviceVectorChunk::new(self.backing.as_ref(), self.offset, self.len)
     }
 }
 
-#[doc(hidden)]
-pub struct GpuExtensionFieldPoly<E> {
+pub(crate) struct GpuExtensionFieldPoly<E> {
     pub(crate) backing: Arc<DeviceAllocation<E>>,
     pub(crate) offset: usize,
     pub(crate) len: usize,
@@ -146,15 +133,11 @@ impl<E> GpuExtensionFieldPoly<E> {
         self.clone()
     }
 
-    pub fn len(&self) -> usize {
+    pub(crate) fn len(&self) -> usize {
         self.len
     }
 
-    pub fn is_empty(&self) -> bool {
-        self.len == 0
-    }
-
-    pub fn as_ptr(&self) -> *const E {
+    pub(crate) fn as_ptr(&self) -> *const E {
         unsafe { self.backing.as_ptr().add(self.offset) }
     }
 
@@ -215,16 +198,20 @@ impl<B, E> GpuGKRStorage<B, E> {
         self.layers.get(layer)?.extension_field_inputs.get(&address)
     }
 
-    pub fn get_base_layer(&self, address: GKRAddress) -> &GpuBaseFieldPoly<B> {
+    #[cfg(test)]
+    pub(crate) fn get_base_layer(&self, address: GKRAddress) -> &GpuBaseFieldPoly<B> {
         self.get_base_poly_for_address(address)
             .expect("base layer poly must exist")
     }
 
-    pub fn try_get_base_poly(&self, address: GKRAddress) -> Option<&GpuBaseFieldPoly<B>> {
+    pub(crate) fn try_get_base_poly(&self, address: GKRAddress) -> Option<&GpuBaseFieldPoly<B>> {
         self.get_base_poly_for_address(address)
     }
 
-    pub fn try_get_ext_poly(&self, address: GKRAddress) -> Option<&GpuExtensionFieldPoly<E>> {
+    pub(crate) fn try_get_ext_poly(
+        &self,
+        address: GKRAddress,
+    ) -> Option<&GpuExtensionFieldPoly<E>> {
         self.get_ext_poly_for_address(address)
     }
 
@@ -232,7 +219,7 @@ impl<B, E> GpuGKRStorage<B, E> {
         self.layers.truncate(layer + 1);
     }
 
-    pub fn get_ext_poly(&self, address: GKRAddress) -> &GpuExtensionFieldPoly<E> {
+    pub(crate) fn get_ext_poly(&self, address: GKRAddress) -> &GpuExtensionFieldPoly<E> {
         self.get_ext_poly_for_address(address)
             .expect("extension poly must exist")
     }
@@ -295,10 +282,5 @@ impl<E> GpuExtensionFieldPoly<E> {
     pub(crate) fn new(backing: DeviceAllocation<E>) -> Self {
         let len = backing.len();
         Self::from_arc(Arc::new(backing), 0, len)
-    }
-
-    #[doc(hidden)]
-    pub fn as_device_chunk(&self) -> DeviceVectorChunk<'_, E> {
-        DeviceVectorChunk::new(self.backing.as_ref(), self.offset, self.len)
     }
 }

@@ -104,7 +104,7 @@ fn resolve_ext_consolidated<B, E: Field>(
         .get(&class)
         .unwrap_or_else(|| {
             panic!(
-                "ext_class_backings missing for layer {canonical_layer} class {class:?} (address {address:?}); register_dim_reducing_inputs_for_layer should have allocated it"
+                "ext_class_backings missing for layer {canonical_layer} class {class:?} (address {address:?}); GpuGKRStorage::allocate_ext_view should have allocated it"
             )
         });
     (

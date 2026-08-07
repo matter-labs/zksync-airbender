@@ -499,6 +499,7 @@ struct LoweredSource {
     publishes: bool,
 }
 
+#[derive(Clone, Copy)]
 struct SegProgramRef<'a> {
     regime: BwdRegime,
     program: &'a LeanProgram,
@@ -1043,7 +1044,7 @@ fn check_column_geometry(window: u8, column: &ResolvedColumn) -> Result<(), BwdS
     } else {
         BF_COLUMN_BYTES
     };
-    if column.stride_bytes % element != 0 {
+    if !column.stride_bytes.is_multiple_of(element) {
         return Err(BwdSegLowerError::WindowStrideMismatch {
             window,
             is_e4: column.is_e4,

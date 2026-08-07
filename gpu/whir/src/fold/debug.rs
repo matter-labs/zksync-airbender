@@ -1,12 +1,9 @@
 use super::*;
 
 use era_cudart::memory::memory_copy_async;
-use fft::bitreverse_enumeration_inplace;
 
 use gpu_core::allocator::tracker::AllocationPlacement;
-use gpu_core::primitives::static_host::{
-    alloc_static_pinned_box_from_slice, alloc_static_pinned_box_uninit,
-};
+use gpu_core::primitives::static_host::alloc_static_pinned_box_from_slice;
 
 use crate::kernels::{accumulate_whir_base_columns, serialize_whir_e4_columns};
 use crate::upstream::DefaultTreeConstructor;

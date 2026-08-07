@@ -6,7 +6,7 @@ use cs::gkr_compiler::GKRCircuitArtifact;
 use field::baby_bear::base::BabyBearField;
 use gkr_eval_ir::lower_dag;
 use gpu_gkr_compiler::{
-    parse_forward_artifact, search_forward, ForwardSearchRequest, SearchConfig,
+    compile_forward, parse_forward_artifact, search_forward, ForwardSearchRequest, SearchConfig,
 };
 
 const HELP: &str = "gkr-forward-artifact \
@@ -156,8 +156,21 @@ fn run(raw_args: Vec<String>) -> Result<(), String> {
     if check.circuit != args.circuit || check.budget_buckets != args.cache_buckets {
         return Err("temporary artifact metadata does not match the command".into());
     }
+    compile_forward(&dag, &check).map_err(|error| format!("temporary artifact: {error:?}"))?;
     std::fs::rename(&temporary, &args.output).map_err(|error| error.to_string())?;
     Ok(())
+}
+
+fn main() {
+    let args: Vec<_> = std::env::args().skip(1).collect();
+    if args.iter().any(|arg| arg == "--help" || arg == "-h") {
+        println!("{HELP}");
+        return;
+    }
+    if let Err(error) = run(args) {
+        eprintln!("{error}\n{HELP}");
+        std::process::exit(2);
+    }
 }
 
 #[cfg(test)]
@@ -178,17 +191,5 @@ mod tests {
         let output = args.iter().position(|arg| arg == "--output").unwrap() + 1;
         args[output] = "another.json".into();
         assert!(parse_args(args).is_err());
-    }
-}
-
-fn main() {
-    let args: Vec<_> = std::env::args().skip(1).collect();
-    if args.iter().any(|arg| arg == "--help" || arg == "-h") {
-        println!("{HELP}");
-        return;
-    }
-    if let Err(error) = run(args) {
-        eprintln!("{error}\n{HELP}");
-        std::process::exit(2);
     }
 }

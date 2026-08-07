@@ -248,7 +248,7 @@ pub(super) fn assert_gkr_proof_structure_for_test(
 }
 
 pub(super) fn stage1_subcaps_from_cap(
-    cap: MerkleTreeCapVarLength,
+    cap: &MerkleTreeCapVarLength,
     subcap_size: usize,
 ) -> Vec<MerkleTreeCapVarLength> {
     cap.cap

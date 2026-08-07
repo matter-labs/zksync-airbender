@@ -9,8 +9,8 @@ use crate::forward::artifact::{ForwardLayerArtifact, ForwardSearchArtifact};
 use crate::forward::BF_LANES_PER_E4_BUCKET;
 use crate::search::SearchConfig;
 
+use super::engine::search_layer;
 use super::scorer::LayerCtx;
-use super::search::search_layer;
 
 pub(crate) fn produce_circuit_schedule(
     dag: &DagCircuit,
@@ -38,11 +38,9 @@ pub(crate) fn produce_circuit_schedule(
         layers.push(search_layer(&ctx, cfg, seed, layer_incumbent));
     }
 
-    let sched = ForwardSearchArtifact {
+    ForwardSearchArtifact {
         circuit: String::new(),
         budget_buckets,
         layers,
-    };
-
-    sched
+    }
 }

@@ -61,8 +61,8 @@ DEVICE_FORCEINLINE void mega_finalize_block(const PartialsSource &partials, cons
   }
 
   // Parallel fold of the active eq slot. `active_eq_size_before_fold` is the
-  // bit count (matches `g_size_before` in `fold_factored_eq_one_round`). The
-  // largest fold (eq_low / GKR_EQ_GROUP_TABLE_LEN / 2 = 128) fits in any
+  // bit count before the fold. The largest fold
+  // (eq_low / GKR_EQ_GROUP_TABLE_LEN / 2 = 128) fits in any
   // block with BLOCK_THREADS >= 128.
   if (active_eq_size_before_fold >= 1) {
     const unsigned new_g_len = 1u << (active_eq_size_before_fold - 1);

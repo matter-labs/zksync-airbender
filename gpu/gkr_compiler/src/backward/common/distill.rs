@@ -188,10 +188,8 @@ impl Reintern<'_> {
         // expr id IS the fence key) — the `:LookupValue` rewrite below stays as
         // the fallback for genuinely uncached lookups.
         if let Some(f) = self.cone.cache_boundary(e) {
-            let place = f.place.clone();
-            let s = self.arena.intern_source(SourceKind::Read {
-                place: place.clone(),
-            });
+            let place = f.place;
+            let s = self.arena.intern_source(SourceKind::Read { place });
             let ne = self.arena.source_expr(s);
             if self.regime == crate::BwdRegime::Ext {
                 self.field_overrides.insert(ne, FieldKind::Ext);
@@ -214,9 +212,7 @@ impl Reintern<'_> {
                         return n;
                     }
                     SourceKind::Read { place } => {
-                        let s = self.arena.intern_source(SourceKind::Read {
-                            place: place.clone(),
-                        });
+                        let s = self.arena.intern_source(SourceKind::Read { place });
                         let ne = self.arena.source_expr(s);
                         if self.regime == crate::BwdRegime::Ext {
                             self.field_overrides.insert(ne, FieldKind::Ext);
@@ -224,9 +220,7 @@ impl Reintern<'_> {
                         ne
                     }
                     SourceKind::VirtualSetup { kind } => {
-                        let s = self
-                            .arena
-                            .intern_source(SourceKind::VirtualSetup { kind: kind.clone() });
+                        let s = self.arena.intern_source(SourceKind::VirtualSetup { kind });
                         let ne = self.arena.source_expr(s);
                         match self.regime {
                             crate::BwdRegime::Ext => {

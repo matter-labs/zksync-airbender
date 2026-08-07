@@ -230,7 +230,7 @@ impl SlotTable {
         let stride = column.stride_bytes as usize;
         let ptr = column.ptr as usize;
         let base = column.matrix_base as usize;
-        if stride == 0 || ptr < base || (ptr - base) % stride != 0 {
+        if stride == 0 || ptr < base || !(ptr - base).is_multiple_of(stride) {
             return Err(BwdVmBindError::UnresolvableRank { window });
         }
         let rank = (ptr - base) / stride;

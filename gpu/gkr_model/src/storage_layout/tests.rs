@@ -239,10 +239,7 @@ fn no_caches_artifacts_use_only_gpu_forward_supported_variants() {
                     | R::AggregateLookupRationalPair { .. }
                     | R::InitsOrTeardownsInitialPair { .. } => {}
                     R::MaxQuadratic { output, .. } => {
-                        // Backward dispatch (build_main_layer_kernel_blueprints_static)
-                        // supports MaxQuadratic unconditionally. The forward path still
-                        // expects the output to be pre-materialized via scratch_space_mapping;
-                        // without it the unimplemented! arm in forward.rs fires.
+                        // Forward requires MaxQuadratic outputs to be scratch-backed.
                         assert!(
                                 artifact.scratch_space_mapping.contains_key(output),
                                 "{basename} layer {layer_idx}: non-scratch-backed MaxQuadratic output {output:?} requires direct GPU forward support"
@@ -262,16 +259,7 @@ fn no_caches_artifacts_use_only_gpu_forward_supported_variants() {
     assert!(covered > 0, "expected at least one no-cache artifact");
 }
 
-/// After `normalize_compiled_circuit_for_gpu`, no surviving gate may reference
-/// a scratch-mapped `InnerLayer` address. The normalize pass rewrites every
-/// such address's *producer* (e.g. the `MaxQuadratic` writer) to its
-/// `ScratchSpace` alias, which removes the `InnerLayer` slot from the storage
-/// layout. Any consumer that still reads the `InnerLayer` address would then
-/// fail the layout lookup in `register_flat_base_folding_for_layer`
-/// (`storage/ops.rs`). This guards the full rewrite coverage of
-/// `rewrite_relation_scratch_addresses` against new relation variants that
-/// carry materialized base reads (regression: the unified circuit's
-/// `LookupUnbalancedPairWithMaterializedBaseInputs.remainder`).
+/// Normalization must rewrite every read of a scratch-mapped inner-layer address.
 #[test]
 fn normalize_leaves_no_scratch_mapped_inner_layer_reads() {
     let dir = compiled_circuit_dir();

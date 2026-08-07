@@ -48,7 +48,6 @@ pub(super) struct GpuGKRProofJobKeepalive<'a, A: GoodAllocator> {
     /// device reservations (proof slab, WHIR caps/ephemerals, batching
     /// challenge, backward handoff buffers) are released stream-ordered at the
     /// end of `prove()`.
-    #[allow(dead_code)]
     pub(super) _proof_host_mirror: Option<HostAllocation<[u8]>>,
 }
 

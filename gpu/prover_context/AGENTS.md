@@ -1,8 +1,8 @@
 # AGENTS.md
 
 `gpu_prover_context` owns `ProverContext` + `ProverContextConfig` (device/host
-allocators, the four CUDA streams, the NTT twiddle `DeviceContext`) and the
-H2D/D2H `Transfer` machinery (`transfer.rs`: `Transfer`, `fork_join_exec_to_d2h`).
+allocators, the three CUDA streams, the NTT twiddle `DeviceContext`) and the
+H2D `Transfer` machinery (`transfer.rs`: `Transfer`).
 It has **no native CUDA of its own** — pure Rust over `gpu_core`'s
 allocator/primitives and `gpu_ntt`'s `DeviceContext`.
 
@@ -18,9 +18,9 @@ constructs and threads a `&ProverContext` through its scheduling functions.
 
 ## GPU Scheduling Contract
 
-This crate **owns** the contract's subject matter — the four streams
-(`exec_stream`, `h2d_stream`, `d2h_stream`, `side_stream`), the stream-ordered
-device/host allocators, and the `Transfer` fork/join wrapper (`gpu_core` owns
+This crate **owns** the contract's subject matter — the three streams
+(`exec_stream`, `h2d_stream`, `side_stream`), the stream-ordered
+device/host allocators, and the H2D `Transfer` wrapper (`gpu_core` owns
 the separate `SchedulerHostAllocator` pool the contract also documents).
 Before editing `src/context.rs` or `src/transfer.rs`, read
 [`../docs/gpu_scheduling_contract.md`](../docs/gpu_scheduling_contract.md) in
@@ -39,8 +39,8 @@ truth.
 - **MUST** fill stream-ordered H2D staging buffers via a scheduled host
   callback; consume D2H readback buffers the same way. Never touch either
   from the scheduling thread.
-- **MUST** fork/join any op on an auxiliary stream (`h2d_stream`,
-  `d2h_stream`, or `side_stream`) against `exec_stream` with explicit CUDA
+- **MUST** fork/join any op on an auxiliary stream (`h2d_stream` or
+  `side_stream`) against `exec_stream` with explicit CUDA
   events. The driver gives independent streams no implicit ordering.
 - **MUST** allocate and drop pool-backed handles on `exec_stream`; if a
   secondary stream touched the allocation, the join wait must be scheduled
@@ -48,8 +48,8 @@ truth.
 - **MUST** observe write-exclusivity within any fork/join window: exactly one
   stream writes a shared buffer at a time.
 - **MUST NOT** call any CUDA API from within a host callback.
-- **Default to `exec_stream`** for H2D/D2H copies; use the auxiliary streams
-  only when meaningful overlap justifies the fork/join machinery.
+- **Default to `exec_stream`** for copies; use `h2d_stream` only when meaningful
+  H2D overlap justifies the fork/join machinery.
 
 ## Upstream imports
 
@@ -63,18 +63,8 @@ directly from a consumer module.
 
 ## Widening convention
 
-Several `ProverContext`/`Transfer` members are `pub` (not `pub(crate)`)
-specifically so `gpu_circuit_prover`'s production code or test suites can
-reach them across the crate boundary — each site carries a `// pub because
-…` comment explaining the specific caller:
-
-- Plain `pub` + why-pub comment = a production cross-crate API (e.g.
-  `alloc_host_uninit_slice`, `Transfer::new`, `fork_join_exec_to_d2h`).
-- `#[doc(hidden)] pub` = a test-reference seam only (e.g.
-  `get_used_mem_peak`, `get_host_used_mem_current/peak`,
-  `reset_host_used_mem_peak`, the `Transfer` struct fields' consumers) —
-  the apex e2e test suite reaches these, but they are not part of the
-  production surface.
+- Plain `pub` is production cross-crate API.
+- `#[doc(hidden)] pub` is reserved for cross-crate test support.
 
 ## Build and Test
 

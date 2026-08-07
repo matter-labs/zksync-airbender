@@ -298,7 +298,7 @@ fn retarget_value_to_op(vi: &mut VInstr, from: ValueId, to: &VirtualOp) -> bool 
 
 /// Propagate an immutable leaf source into its sole read. Cell sources and accumulator
 /// spills are excluded.
-fn propagate_single_use_leaf_copies(vinstrs: &mut Vec<VInstr>) -> bool {
+fn propagate_single_use_leaf_copies(vinstrs: &mut [VInstr]) -> bool {
     let mut leaf_copies: Vec<(ValueId, VirtualOp)> = Vec::new();
     for vi in vinstrs.iter() {
         if let VInstr::Mov {

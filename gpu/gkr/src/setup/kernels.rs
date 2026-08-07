@@ -19,7 +19,7 @@ use gpu_hash::blake2s::Digest;
 use gpu_prover_context::ProverContext;
 use gpu_trace::trace::holder::TraceHolder;
 
-pub(super) const GKR_FORWARD_SETUP_GENERIC_LOOKUP_MAX_COLUMNS: usize = 10;
+pub(crate) const GKR_FORWARD_SETUP_GENERIC_LOOKUP_MAX_COLUMNS: usize = 10;
 pub(super) const GKR_FORWARD_SETUP_THREADS_PER_BLOCK: u32 = WARP_SIZE * 4;
 
 cuda_struct_and_stub! {
@@ -73,7 +73,6 @@ pub(super) fn schedule_lookup_alpha_powers_prelude(
     )
 }
 
-#[allow(dead_code)]
 pub struct GpuGKRSetupHost {
     pub(crate) raw_hypercube_evals: StaticPinnedBox<BF>,
     pub(crate) partial_trees: Vec<StaticPinnedBox<Digest>>,
@@ -81,7 +80,6 @@ pub struct GpuGKRSetupHost {
     /// in canonical bit-reversed coset order so a single H2D fills the device
     /// unified cap directly.
     pub(crate) unified_tree_cap: StaticPinnedBox<Digest>,
-    pub(crate) trace_len: usize,
     pub log_domain_size: u32,
     pub columns_count: usize,
     pub log_lde_factor: u32,
@@ -125,7 +123,6 @@ impl GpuGKRSetupHost {
             raw_hypercube_evals,
             partial_trees,
             unified_tree_cap,
-            trace_len,
             log_domain_size,
             columns_count,
             log_lde_factor,
@@ -137,7 +134,7 @@ impl GpuGKRSetupHost {
     #[cfg(test)]
     pub(crate) fn column_offset(&self, column: usize) -> usize {
         assert!(column < self.columns_count);
-        column * self.trace_len
+        column * (self.raw_hypercube_evals.len() / self.columns_count)
     }
 }
 

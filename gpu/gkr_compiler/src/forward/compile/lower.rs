@@ -404,7 +404,7 @@ impl<'a> VirtualLower<'a> {
     }
 
     fn operand_field(&self, layer: &DagLayer, id: ExprId) -> OperandField {
-        child_operand_field(layer, id, &self.cross)
+        child_operand_field(layer, id, self.cross)
     }
 
     // ── source resolution (residency-free; mirrors arith::source_to_operand arms) ──
@@ -423,7 +423,7 @@ impl<'a> VirtualLower<'a> {
         };
         match &layer.sources[src_id.0 as usize] {
             SourceKind::Read { place } => {
-                let field = super::read_place_operand_field(place, &self.cross);
+                let field = super::read_place_operand_field(place, self.cross);
                 let (slot, col) = self.ctx.backings.read_slot_col(place, field)?;
                 Ok(VirtualOp::Global { slot, col })
             }
@@ -951,27 +951,25 @@ pub(crate) fn lower_layer_virtual(
     };
 
     for &rid in &atom_order {
-        if compute_roots.contains(&rid) {
-            if !st.exposed[rid.0 as usize] {
-                let expr = layer.roots[rid.0 as usize].expr;
-                let sink = layer.roots[rid.0 as usize]
-                    .materialize
-                    .as_ref()
-                    .expect("Compute root has a materialize sink");
-                let expected = super::operand_field_of(sink);
-                // A root output is one demand occurrence.
-                st.serve_occurrence(expr);
-                if st.decisions.resident.contains_key(&expr) {
-                    let value = VirtualOp::Value(st.current_value_id(expr));
-                    st.materialize(expr, MaterializationSource::Operand(value), false);
-                } else {
-                    st.compile_expr_virtual(layer, expr, expected)?;
-                    st.materialize(expr, MaterializationSource::Accumulator, false);
-                    let field = st.operand_field(layer, expr);
-                    if let Some(gen_id) = st.try_admit(expr, field) {
-                        st.widths.insert(gen_id, field);
-                        st.emit_evict_to_cell(gen_id, field);
-                    }
+        if compute_roots.contains(&rid) && !st.exposed[rid.0 as usize] {
+            let expr = layer.roots[rid.0 as usize].expr;
+            let sink = layer.roots[rid.0 as usize]
+                .materialize
+                .as_ref()
+                .expect("Compute root has a materialize sink");
+            let expected = super::operand_field_of(sink);
+            // A root output is one demand occurrence.
+            st.serve_occurrence(expr);
+            if st.decisions.resident.contains_key(&expr) {
+                let value = VirtualOp::Value(st.current_value_id(expr));
+                st.materialize(expr, MaterializationSource::Operand(value), false);
+            } else {
+                st.compile_expr_virtual(layer, expr, expected)?;
+                st.materialize(expr, MaterializationSource::Accumulator, false);
+                let field = st.operand_field(layer, expr);
+                if let Some(gen_id) = st.try_admit(expr, field) {
+                    st.widths.insert(gen_id, field);
+                    st.emit_evict_to_cell(gen_id, field);
                 }
             }
         }

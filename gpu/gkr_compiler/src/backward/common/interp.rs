@@ -10,7 +10,7 @@ use super::lean::{
 use super::limits::TermCategory;
 use super::model::{
     CoeffError, CoeffLayer, CoeffTerm, CoefficientRecipeId, ImmediateId, Projection, ProjectionId,
-    SourceId, TermId,
+    SourceId,
 };
 use super::order::split_round_robin;
 use super::{Bf, Ext};
@@ -82,15 +82,15 @@ pub fn interpret_coeff_layer(
         }
         let k = coefficient(layer, term.coefficient(), resolver)?;
         match term {
-            CoeffTerm::C0Linear { id, value, .. } => {
-                let (e0, _) = projection(layer, *id, *value, Projection::Endpoint0, row, resolver)?;
+            CoeffTerm::C0Linear { value, .. } => {
+                let (e0, _) = projection(layer, *value, Projection::Endpoint0, row, resolver)?;
                 let mut v = k;
                 v.mul_assign(&e0);
                 acc_c0.add_assign(&v);
             }
-            CoeffTerm::C2Product { id, lhs, rhs, .. } => {
-                let (_, dl) = projection(layer, *id, *lhs, Projection::Delta, row, resolver)?;
-                let (_, dr) = projection(layer, *id, *rhs, Projection::Delta, row, resolver)?;
+            CoeffTerm::C2Product { lhs, rhs, .. } => {
+                let (_, dl) = projection(layer, *lhs, Projection::Delta, row, resolver)?;
+                let (_, dr) = projection(layer, *rhs, Projection::Delta, row, resolver)?;
                 let mut v = k;
                 v.mul_assign(&dl);
                 v.mul_assign(&dr);
@@ -123,14 +123,13 @@ pub fn interpret_coeff_layer(
             let imm = immediate_value(layer, member.immediate)?;
             let term = &layer.terms[member.term.0 as usize];
             match term {
-                CoeffTerm::C0Linear { id, value, .. } => {
-                    let (e0, _) =
-                        projection(layer, *id, *value, Projection::Endpoint0, row, resolver)?;
+                CoeffTerm::C0Linear { value, .. } => {
+                    let (e0, _) = projection(layer, *value, Projection::Endpoint0, row, resolver)?;
                     accumulate_imm(&mut s_c0, member.immediate, imm, e0);
                 }
-                CoeffTerm::C2Product { id, lhs, rhs, .. } => {
-                    let (_, dl) = projection(layer, *id, *lhs, Projection::Delta, row, resolver)?;
-                    let (_, dr) = projection(layer, *id, *rhs, Projection::Delta, row, resolver)?;
+                CoeffTerm::C2Product { lhs, rhs, .. } => {
+                    let (_, dl) = projection(layer, *lhs, Projection::Delta, row, resolver)?;
+                    let (_, dr) = projection(layer, *rhs, Projection::Delta, row, resolver)?;
                     let mut v = dl;
                     v.mul_assign(&dr);
                     accumulate_imm(&mut s_c2, member.immediate, imm, v);
@@ -223,18 +222,13 @@ fn source_pair(
 /// Resolve a projection, rejecting a role its opcode cannot consume.
 fn projection(
     layer: &CoeffLayer,
-    term: TermId,
     p: ProjectionId,
     expected: Projection,
     row: usize,
     resolver: &impl CoeffResolver,
 ) -> Result<(Ext, Ext), CoeffError> {
     if p.projection != expected {
-        return Err(CoeffError::ProjectionRoleMismatch {
-            term,
-            expected,
-            found: p.projection,
-        });
+        return Err(CoeffError::ProjectionRoleMismatch);
     }
     source_pair(layer, p.source, row, resolver)
 }
@@ -314,8 +308,10 @@ pub fn interpret_lean_program(
     let mut acc_c2 = Ext::ZERO;
     for (list, list_atoms) in split_round_robin(&indices, k).iter().enumerate() {
         // Seed exactly one partial.
-        let mut partial_c0 = if list == 0 { seed } else { Ext::ZERO };
-        let mut partial_c2 = Ext::ZERO;
+        let mut partial = LeanAccumulators {
+            c0: if list == 0 { seed } else { Ext::ZERO },
+            c2: Ext::ZERO,
+        };
         for &index in list_atoms {
             match &atoms[index] {
                 LeanAtom::Term(term) => lean_record(
@@ -324,8 +320,8 @@ pub fn interpret_lean_program(
                     term,
                     row,
                     resolver,
-                    &mut partial_c0,
-                    &mut partial_c2,
+                    &mut partial.c0,
+                    &mut partial.c2,
                 )?,
                 LeanAtom::Group {
                     core,
@@ -343,13 +339,12 @@ pub fn interpret_lean_program(
                     members,
                     row,
                     resolver,
-                    &mut partial_c0,
-                    &mut partial_c2,
+                    &mut partial,
                 )?,
             }
         }
-        acc_c0.add_assign(&partial_c0);
-        acc_c2.add_assign(&partial_c2);
+        acc_c0.add_assign(&partial.c0);
+        acc_c2.add_assign(&partial.c2);
     }
     Ok((acc_c0, acc_c2))
 }
@@ -477,6 +472,11 @@ struct GroupHeader {
     has_c2: bool,
 }
 
+struct LeanAccumulators {
+    c0: Ext,
+    c2: Ext,
+}
+
 /// Add `core * SUM_m imm_m * v_m` for one decoded group.
 ///
 /// The header's `core` is read as a bank id in the ordinary recipe id space, so a
@@ -490,8 +490,7 @@ fn lean_group(
     members: &[LeanTerm],
     row: usize,
     resolver: &impl CoeffResolver,
-    acc_c0: &mut Ext,
-    acc_c2: &mut Ext,
+    accumulators: &mut LeanAccumulators,
 ) -> Result<(), LeanInterpError> {
     let core = coefficient(layer, CoefficientRecipeId(u32::from(group.core)), resolver)?;
     let mut s_c0 = Ext::ZERO;
@@ -515,12 +514,12 @@ fn lean_group(
     if group.has_c0 {
         let mut v = core;
         v.mul_assign(&s_c0);
-        acc_c0.add_assign(&v);
+        accumulators.c0.add_assign(&v);
     }
     if group.has_c2 {
         let mut v = core;
         v.mul_assign(&s_c2);
-        acc_c2.add_assign(&v);
+        accumulators.c2.add_assign(&v);
     }
     Ok(())
 }

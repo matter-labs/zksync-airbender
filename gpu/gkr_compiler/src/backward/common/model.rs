@@ -645,9 +645,5 @@ pub enum CoeffError {
     #[cfg(test)]
     UnknownSource { id: SourceId },
     #[cfg(test)]
-    ProjectionRoleMismatch {
-        term: TermId,
-        expected: Projection,
-        found: Projection,
-    },
+    ProjectionRoleMismatch,
 }

@@ -1,4 +1,4 @@
-//! Compile-in-loop genetic search.
+//! Compile-in-loop genetic search engine.
 
 use crate::forward::artifact::ForwardLayerArtifact;
 use crate::search::SearchConfig;
@@ -215,7 +215,7 @@ fn optimize_from_population(
     }
 
     while evals < budget {
-        population.sort_by(|a, b| a.1.cmp(&b.1));
+        population.sort_by_key(|candidate| candidate.1);
         let mut next: Vec<(Genome, CandidateScore)> = population
             .iter()
             .take(cfg.elitism.min(population.len()))

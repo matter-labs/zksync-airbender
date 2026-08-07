@@ -131,9 +131,8 @@ pub(crate) struct GpuGKRDimensionReducingSumcheckLayerPlan {
     pub(crate) round0_batch_template_compact: GpuGKRDimensionReducingRound0BatchCompact<E4>,
     pub(crate) round_scratch: GpuGKRDimensionReducingRoundScratch,
     /// Strict 3-slot eq-sizes descriptor. Initialised at layer start from
-    /// `make_eq_sizes(folding_steps - 1)`, mutated in place by
-    /// `fold_eq_values_for_next_round` between sumcheck rounds, and passed by
-    /// value into the dim-reducing consumer kernel arg structs.
+    /// `make_eq_sizes(folding_steps - 1)`, updated between sumcheck rounds,
+    /// and passed by value into the dim-reducing consumer kernel arguments.
     pub(crate) eq_sizes: GkrEqSizes,
 }
 

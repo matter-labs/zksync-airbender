@@ -299,20 +299,15 @@ impl Lowering<'_> {
                 return Err(CoeffError::RootNotClaimBearing { root: rid });
             }
             let coefficient = self.batch_factor(term)?;
-            match &root.materialize {
-                Some(sink) => {
-                    let place =
-                        sink_read_place(&sink.kind).ok_or_else(|| CoeffError::UnsupportedSink {
-                            root: rid,
-                            sink: sink.kind.clone(),
-                        })?;
-                    let source = self.intern_source(OriginLeaf::Read(place), sink.field)?;
-                    self.push_body(BodyKey::C0Linear { source }, coefficient);
-                }
-                // A claim-only constraint is structurally zero on the hypercube,
-                // so it contributes no acc_c0 term and its cone is never read at
-                // Endpoint0.
-                None => {}
+            // A claim-only constraint is structurally zero on the hypercube, so
+            // it contributes no acc_c0 term and its cone is never read at Endpoint0.
+            if let Some(sink) = &root.materialize {
+                let place = sink_read_place(&sink.kind).ok_or(CoeffError::UnsupportedSink {
+                    root: rid,
+                    sink: sink.kind,
+                })?;
+                let source = self.intern_source(OriginLeaf::Read(place), sink.field)?;
+                self.push_body(BodyKey::C0Linear { source }, coefficient);
             }
         }
         Ok(())
@@ -332,7 +327,7 @@ impl Lowering<'_> {
         };
         match &d.exprs[expr.0 as usize] {
             Expr::Source(sid) => match &d.sources[sid.0 as usize] {
-                SourceKind::Challenge { reference } => Ok(Recipe::challenge(reference.clone())),
+                SourceKind::Challenge { reference } => Ok(Recipe::challenge(*reference)),
                 _ => Err(err()),
             },
             _ => Err(err()),
@@ -449,7 +444,7 @@ impl Lowering<'_> {
                 SourceKind::Constant { value } => {
                     Recipe::scalar(Bf::from_u32_with_reduction(*value))
                 }
-                SourceKind::Challenge { reference } => Recipe::challenge(reference.clone()),
+                SourceKind::Challenge { reference } => Recipe::challenge(*reference),
                 SourceKind::InitsAndTeardownsTopBits { reference } => {
                     Recipe::inits_and_teardowns_top_bits(*reference)
                 }
@@ -501,8 +496,8 @@ impl Lowering<'_> {
     fn leaf_source(&mut self, e: ExprId, sid: DagSourceId) -> Result<SourceKey, CoeffError> {
         let d = self.distilled;
         let origin = match &d.layer.sources[sid.0 as usize] {
-            SourceKind::Read { place } => OriginLeaf::Read(place.clone()),
-            SourceKind::VirtualSetup { kind } => OriginLeaf::VirtualSetup { kind: kind.clone() },
+            SourceKind::Read { place } => OriginLeaf::Read(*place),
+            SourceKind::VirtualSetup { kind } => OriginLeaf::VirtualSetup { kind: *kind },
             // `LookupValue` leaves are erased by distillation (rule 2), and
             // `Constant`/`Challenge` are degree 0 and never reach here.
             _ => return Err(CoeffError::UnsupportedLeaf { expr: e }),
@@ -527,9 +522,7 @@ impl Lowering<'_> {
                     .cross_fields
                     .get(place)
                     .copied()
-                    .ok_or_else(|| CoeffError::MissingCrossLayerField {
-                        place: place.clone(),
-                    }),
+                    .ok_or(CoeffError::MissingCrossLayerField { place: *place }),
             },
         }
     }

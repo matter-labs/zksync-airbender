@@ -20,7 +20,7 @@ use crate::GkrPrograms;
 
 pub struct GpuGKRForwardOutput<B, E> {
     tracing_ranges: Vec<Range>,
-    pub storage: GpuGKRStorage<B, E>,
+    storage: GpuGKRStorage<B, E>,
     pub initial_layer_for_sumcheck: usize,
     pub dimension_reducing_inputs:
         BTreeMap<usize, BTreeMap<OutputType, DimensionReducingInputOutput>>,
@@ -154,12 +154,12 @@ pub fn schedule_forward_pass(
     )?;
     let storage_layout = std::sync::Arc::new(
         crate::storage_layout::GpuGKRStorageLayout::from_artifact_with_tower(
-            &compiled_circuit,
+            compiled_circuit,
             final_trace_size_log_2 as usize,
         ),
     );
     storage.set_layout(storage_layout);
-    bind_scratch_space_into_storage(&compiled_circuit, stage1, &mut storage);
+    bind_scratch_space_into_storage(compiled_circuit, stage1, &mut storage);
 
     if usage.last_generic_mapping_layer.is_none() {
         stage1.lookup_mappings.release_generic_family();
@@ -186,7 +186,7 @@ pub fn schedule_forward_pass(
         schedule_layer(
             layer_idx,
             layer,
-            &compiled_circuit,
+            compiled_circuit,
             &mut storage,
             stage1,
             forward_setup,

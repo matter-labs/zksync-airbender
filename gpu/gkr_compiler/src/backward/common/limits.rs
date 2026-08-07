@@ -121,7 +121,7 @@ const _: () = assert!(
     LEAN_MAX_COEFFICIENT_RECIPES + CoefficientRecipeId::RESERVED as usize
         <= MAX_COEFFICIENT_ENCODINGS
 );
-const _: () = assert!(LEAN_DESCRIPTOR_PROGRAM_WORDS % (DESCRIPTOR_ALIGNMENT_BYTES / 2) == 0);
+const _: () = assert!(LEAN_DESCRIPTOR_PROGRAM_WORDS.is_multiple_of(DESCRIPTOR_ALIGNMENT_BYTES / 2));
 const _: () =
     assert!(LEAN_DESCRIPTOR_PROGRAM_BYTES == program_bytes(LEAN_DESCRIPTOR_PROGRAM_WORDS));
 const _: () = assert!(LEAN_DESCRIPTOR_PROGRAM_BYTES < KERNEL_ARGUMENT_CEILING_BYTES);

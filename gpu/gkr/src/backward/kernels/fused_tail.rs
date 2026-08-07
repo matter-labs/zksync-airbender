@@ -78,8 +78,7 @@ pub(crate) fn max_partials_len(max_acc_size: usize) -> usize {
 /// Resolves the active eq slot for the upcoming fold. Returns
 /// `(slot_base_ptr, slot_size_before_fold)` and the **next** size for the
 /// caller to write back into `eq_sizes` AFTER the kernel is scheduled.
-/// Mirrors `fold_factored_eq_one_round`'s priority order:
-/// `high[0]` > `high[1]` > `low`.
+/// Priority is `high[0]` > `high[1]` > `low`.
 pub(crate) fn resolve_active_eq_slot(eq_sizes: &GkrEqSizes, eq_low: *mut E4) -> (*mut E4, u32) {
     if eq_sizes.high[0] > 0 {
         #[allow(clippy::erasing_op)]

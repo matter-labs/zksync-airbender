@@ -59,6 +59,10 @@ pub(crate) struct FwdVmHeaderInputs<'a> {
     pub inits_and_teardowns_top_bits: &'a [u32],
 }
 
+#[expect(
+    dead_code,
+    reason = "error payloads are emitted by the derived Debug implementation"
+)]
 #[derive(Debug)]
 pub(crate) enum FwdVmLowerError {
     /// Wire-format encode failed (cap guard inside `gpu_gkr_compiler`).

@@ -79,12 +79,14 @@ use crate::upstream::*;
 use fixtures::*;
 
 fn test_artifact_path(relative_path: &str) -> PathBuf {
-    // `relative_path` is workspace-root-relative (e.g. "examples/.../app.bin").
-    // The crate lives at gpu/circuit_prover/, so two ".." reach the root.
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..")
-        .join(relative_path)
+    let root = std::env::var_os("AB_TEST_ARTIFACT_ROOT")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| {
+            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("..")
+                .join("..")
+        });
+    root.join(relative_path)
 }
 
 fn upload_slice_to_device_for_test<T: Copy>(
@@ -316,7 +318,7 @@ impl BasicUnrolledFixture {
         transfers: BasicUnrolledTransfers<'static>,
     ) -> CudaResult<GpuGKRProofJob<'static, Global>> {
         prove::<Global>(
-            Arc::clone(&self.gkr_programs),
+            &self.gkr_programs,
             &self.prover_config,
             self.final_trace_size_log_2,
             transfers,
@@ -340,7 +342,7 @@ impl BasicUnrolledFixture {
         // and ride on in the job's keepalive, so they appear on both sides.
         let mem_before_prove = self.context.get_used_mem_current();
         let mut proof_job = prove::<Global>(
-            Arc::clone(&self.gkr_programs),
+            &self.gkr_programs,
             &self.prover_config,
             self.final_trace_size_log_2,
             transfers,

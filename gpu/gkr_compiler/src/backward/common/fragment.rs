@@ -98,10 +98,7 @@ pub(crate) fn decompose_spine(layer: &DagLayer, spine: &[ExprId]) -> FragmentTab
     let mut frags: Vec<(Vec<ExprId>, Vec<ExprId>)> = Vec::new();
     let mut c_init_terms: Vec<ProductRecipe> = Vec::new();
     let mut occurrences: usize = 0;
-    // Final-review T1-M1: this single shared `(id, chain)` stack is semantically
-    // equivalent to the reference classifier's per-term stack (one stack per spine
-    // addend) — LIFO popping never interleaves chains across addends, since each
-    // pushed entry carries its own complete `chain` snapshot.
+    // Each entry owns its complete chain, so one stack can process all addends.
     let mut work: Vec<(ExprId, Vec<ExprId>)> = spine.iter().map(|&t| (t, Vec::new())).collect();
     while let Some((id, chain)) = work.pop() {
         if is_pure(id) {

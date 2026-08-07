@@ -490,7 +490,7 @@ fn decode_r0_atoms(program: &LeanProgram) -> Result<Vec<LeanAtom>, LeanCodecErro
         });
     }
     let mut out = Vec::with_capacity(program.words.len() / LEAN_WORDS_PER_TERM);
-    for record in program.words.chunks_exact(LEAN_WORDS_PER_TERM) {
+    for record in program.words.as_chunks::<LEAN_WORDS_PER_TERM>().0 {
         out.push(LeanAtom::Term(term_record(record)));
     }
     Ok(out)

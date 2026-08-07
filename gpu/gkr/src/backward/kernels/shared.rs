@@ -43,7 +43,7 @@ impl ClaimBufferLayout {
         }
     }
 
-    pub fn len(&self) -> usize {
+    pub fn claim_count(&self) -> usize {
         self.addresses.len()
     }
 
@@ -58,7 +58,7 @@ impl ClaimBufferLayout {
 pub(crate) struct DeviceClaimPointAndBatching {
     ptr: usize,
     len: usize,
-    #[allow(dead_code)]
+    #[allow(dead_code)] // Owns the allocation when the pointer is not a borrowed symbol.
     owner: Option<DeviceAllocation<E4>>,
 }
 
@@ -106,9 +106,7 @@ impl DeviceClaimPointAndBatching {
 pub struct GpuGKRBackwardScheduledExecution {
     #[allow(dead_code)] // Keeps queued NVTX host callbacks alive until the stream consumes them.
     pub(crate) tracing_ranges: Vec<Range>,
-    #[allow(dead_code)]
     pub(crate) dimension_reducing_layers: Vec<GpuGKRDimensionReducingScheduledLayerExecution>,
-    #[allow(dead_code)]
     pub(crate) main_layers: Vec<GpuGKRMainLayerScheduledLayerExecution>,
     pub(crate) final_device_seed: Option<DeviceAllocation<u32>>,
     pub(crate) final_device_claim_point_and_batching: Option<DeviceClaimPointAndBatching>,

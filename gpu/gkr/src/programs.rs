@@ -104,61 +104,6 @@ pub(crate) fn backward_layer_plans(
         .collect()
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use gpu_gkr_compiler::{LeanBoundColumn, LeanBoundWindow, LeanSourceBinding};
-    use std::collections::BTreeSet;
-
-    #[test]
-    fn bound_inputs_include_cache_and_virtual_setup_sources() {
-        let binding = LeanSourceBinding {
-            windows: vec![
-                LeanBoundWindow {
-                    family: WindowFamily::CacheOutput {
-                        layer: 2,
-                        ext: true,
-                    },
-                    first_column: 7,
-                    columns: vec![LeanBoundColumn {
-                        column: 7,
-                        source: 0,
-                    }],
-                },
-                LeanBoundWindow {
-                    family: WindowFamily::VirtualSetup { kind: 0 },
-                    first_column: 0,
-                    columns: vec![LeanBoundColumn {
-                        column: 0,
-                        source: 1,
-                    }],
-                },
-            ],
-            source_count: 0,
-        };
-        let inputs: BTreeSet<_> = binding
-            .windows
-            .iter()
-            .flat_map(|window| {
-                window
-                    .columns
-                    .iter()
-                    .map(|column| bound_window_address(window.family, column.column))
-            })
-            .collect();
-        assert_eq!(
-            inputs,
-            BTreeSet::from([
-                GKRAddress::Cached {
-                    layer: 2,
-                    offset: 7
-                },
-                GKRAddress::VirtualSetup(VirtualSetupPoly::RangeCheck16Bits),
-            ])
-        );
-    }
-}
-
 const ADD_SUB: &[u8] =
     include_bytes!("../../../cs/compiled_circuits/add_sub_lui_auipc_mop_schedule_b4_gkr.json");
 const BIGINT: &[u8] = include_bytes!(
@@ -303,5 +248,60 @@ impl GkrPrograms {
         layer: usize,
     ) -> &gpu_gkr_compiler::ContinuationLayerProgram {
         &self.continuations.layers[layer]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gpu_gkr_compiler::{LeanBoundColumn, LeanBoundWindow, LeanSourceBinding};
+    use std::collections::BTreeSet;
+
+    #[test]
+    fn bound_inputs_include_cache_and_virtual_setup_sources() {
+        let binding = LeanSourceBinding {
+            windows: vec![
+                LeanBoundWindow {
+                    family: WindowFamily::CacheOutput {
+                        layer: 2,
+                        ext: true,
+                    },
+                    first_column: 7,
+                    columns: vec![LeanBoundColumn {
+                        column: 7,
+                        source: 0,
+                    }],
+                },
+                LeanBoundWindow {
+                    family: WindowFamily::VirtualSetup { kind: 0 },
+                    first_column: 0,
+                    columns: vec![LeanBoundColumn {
+                        column: 0,
+                        source: 1,
+                    }],
+                },
+            ],
+            source_count: 0,
+        };
+        let inputs: BTreeSet<_> = binding
+            .windows
+            .iter()
+            .flat_map(|window| {
+                window
+                    .columns
+                    .iter()
+                    .map(|column| bound_window_address(window.family, column.column))
+            })
+            .collect();
+        assert_eq!(
+            inputs,
+            BTreeSet::from([
+                GKRAddress::Cached {
+                    layer: 2,
+                    offset: 7
+                },
+                GKRAddress::VirtualSetup(VirtualSetupPoly::RangeCheck16Bits),
+            ])
+        );
     }
 }

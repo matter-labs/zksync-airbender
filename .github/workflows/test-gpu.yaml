@@ -125,6 +125,8 @@ jobs:
           path: zksync-airbender-gpu/
 
       - name: Test GKR VM parity
+        env:
+          AB_TEST_ARTIFACT_ROOT: ${{ github.workspace }}
         run: |
           chmod +x zksync-airbender-gpu/gpu_circuit_prover-tests
           if [ "${{ matrix.security }}" = "security_100" ]; then
@@ -132,7 +134,7 @@ jobs:
           else
             parity_test=run_add_sub_proof_parity_test
           fi
-          zksync-airbender-gpu/gpu_circuit_prover-tests "$parity_test" --ignored --nocapture --test-threads=1
+          zksync-airbender-gpu/gpu_circuit_prover-tests "tests::proof_matrix::$parity_test" --exact --ignored --nocapture --test-threads=1
 
       - name: Prove recursion unified on GPU
         run: |

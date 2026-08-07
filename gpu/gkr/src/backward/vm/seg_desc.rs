@@ -76,7 +76,7 @@ const _: () = {
     assert!(BWD_SEG_CONST_BANK * size_of::<E4>() <= 64 * 1_024);
 
     assert!(BWD_SEG_MAX_SOURCES == MAX_BACKWARD_SOURCES);
-    assert!(BWD_SEG_MAX_SOURCES % 16 == 0);
+    assert!(BWD_SEG_MAX_SOURCES.is_multiple_of(16));
     // A slot index rides the lean wire as a u16 whose 0xFFFF is the "no second
     // source" sentinel, so the capacity must stay strictly below it.
     assert!(BWD_SEG_MAX_SOURCES < SOURCE_NONE as usize);
@@ -146,6 +146,10 @@ mod cuda_abi_tests {
             ("BWD_SEG_DESC_CAP", BWD_SEG_DESC_CAP as u64),
             ("BWD_SEG_DESC_ALIGN", BWD_SEG_DESC_ALIGN as u64),
             ("BWD_SEG_MAX_K", BWD_SEG_MAX_K as u64),
+            (
+                "BWD_SEG_FOLD_WEIGHT_SLOTS",
+                BWD_SEG_FOLD_WEIGHT_SLOTS as u64,
+            ),
             ("BWD_SEG_CONST_BANK", BWD_SEG_CONST_BANK as u64),
             ("BWD_SEG_C_INIT_NONE", BWD_SEG_C_INIT_NONE as u64),
             ("BWD_SEG_MAX_SOURCES", BWD_SEG_MAX_SOURCES as u64),
@@ -487,5 +491,5 @@ const _: () = {
     // The program stream starts on a 16-byte boundary and can be buffered
     // through wide loads.
     assert!(offset_of!(BwdSegDesc, program) % BWD_SEG_DESC_ALIGN == 0);
-    assert!(size_of::<BwdSegDesc>() % BWD_SEG_DESC_ALIGN == 0);
+    assert!(size_of::<BwdSegDesc>().is_multiple_of(BWD_SEG_DESC_ALIGN));
 };

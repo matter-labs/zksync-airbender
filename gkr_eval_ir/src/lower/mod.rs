@@ -243,21 +243,22 @@ impl LayerOut {
     }
 }
 
+#[derive(Clone, Copy)]
+struct RelationInputs<'a> {
+    minus_one: u32,
+    trace_len: usize,
+    inits_word_bits: Option<u32>,
+    decoder_predicate: Option<&'a ReadPlace>,
+}
+
 /// Lower one relation into the shared arena + layer accumulator.
-///
-/// `group`/`relation_index` identify the gate's position so the emitted root's
-/// `RootOrigin` is recorded. `trace_len`/`inits_word_bits` are circuit globals the
-/// inits/teardowns top-bits constant needs (see [`memory::lower_inits_or_teardowns`]).
 fn lower_relation<F: PrimeField>(
     arena: &mut ArenaBuilder,
     out: &mut LayerOut,
     rel: &NoFieldGKRRelation<F>,
     group: RootGroup,
     relation_index: usize,
-    minus_one: u32,
-    trace_len: usize,
-    inits_word_bits: Option<u32>,
-    decoder_predicate: Option<&ReadPlace>,
+    inputs: RelationInputs<'_>,
 ) -> Result<(), String> {
     use NoFieldGKRRelation as R;
     match rel {
@@ -297,7 +298,7 @@ fn lower_relation<F: PrimeField>(
                 expr,
                 input.lookup_set_index,
                 input.columns.len(),
-                decoder_predicate,
+                inputs.decoder_predicate,
             )?;
             out.emit_output(expr, *output, FieldKind::Ext, group, relation_index)
         }
@@ -331,7 +332,7 @@ fn lower_relation<F: PrimeField>(
             let b = lookup::read(arena, *input);
             let c = lookup::read(arena, setup[0]);
             let d = lookup::read(arena, setup[1]);
-            let (num, den) = lookup::minus_multiplicity(arena, b, c, d, minus_one);
+            let (num, den) = lookup::minus_multiplicity(arena, b, c, d, inputs.minus_one);
             out.emit_output_pair(num, den, *output, FieldKind::Ext, group, relation_index)
         }
         // ── Two-output DENS-AND-SETUP: a/(b+γ) − c/(d+γ) ────────────────────
@@ -346,7 +347,7 @@ fn lower_relation<F: PrimeField>(
             let b = lookup::read(arena, input[1]);
             let c = lookup::read(arena, setup[0]);
             let d = lookup::read(arena, setup[1]);
-            let (num, den) = lookup::dens_and_setup(arena, a, b, c, d, minus_one);
+            let (num, den) = lookup::dens_and_setup(arena, a, b, c, d, inputs.minus_one);
             out.emit_output_pair(num, den, *output, FieldKind::Ext, group, relation_index)
         }
         // ── Two-output UNBALANCED: a/b + 1/(d+γ) ────────────────────────────
@@ -395,7 +396,7 @@ fn lower_relation<F: PrimeField>(
             output,
         } => {
             // 1 + mask·(input − 1)   (= input·mask + (1 − mask)).
-            let expr = memory::mask_into_identity(arena, *input, *mask, minus_one);
+            let expr = memory::mask_into_identity(arena, *input, *mask, inputs.minus_one);
             out.emit_output(expr, *output, FieldKind::Ext, group, relation_index)
         }
 
@@ -413,8 +414,8 @@ fn lower_relation<F: PrimeField>(
                 arena,
                 timestamp_and_value,
                 *set_idxes,
-                trace_len,
-                inits_word_bits,
+                inputs.trace_len,
+                inputs.inits_word_bits,
             );
             out.emit_output(expr, *output, FieldKind::Ext, group, relation_index)
         }
@@ -508,15 +509,12 @@ fn check_decoder_masks<'a, F: PrimeField + 'a>(
         }
     };
     for rel in relations {
-        match rel {
-            R::LookupWithCachedDensAndSetup { input, .. } => {
-                if let Some(C::VectorizedLookup(vl)) = cached_relations.get(&input[1]) {
-                    if vl.lookup_set_index == DECODER_LOOKUP_FORMAL_SET_INDEX {
-                        assert_mask(input[0])?;
-                    }
+        if let R::LookupWithCachedDensAndSetup { input, .. } = rel {
+            if let Some(C::VectorizedLookup(vl)) = cached_relations.get(&input[1]) {
+                if vl.lookup_set_index == DECODER_LOOKUP_FORMAL_SET_INDEX {
+                    assert_mask(input[0])?;
                 }
             }
-            _ => {}
         }
     }
     Ok(())
@@ -551,6 +549,12 @@ fn lower_layer<F: PrimeField + PartialEq>(
         .machine_state
         .as_ref()
         .map(|t| ReadPlace::BaseLayerMemory { column: t.execute });
+    let relation_inputs = RelationInputs {
+        minus_one,
+        trace_len,
+        inits_word_bits,
+        decoder_predicate: decoder_predicate.as_ref(),
+    };
 
     let expected_decoder_mask: Option<GKRAddress> = artifact
         .memory_layout
@@ -599,10 +603,7 @@ fn lower_layer<F: PrimeField + PartialEq>(
                 &gate.enforced_relation,
                 group,
                 relation_index,
-                minus_one,
-                trace_len,
-                inits_word_bits,
-                decoder_predicate.as_ref(),
+                relation_inputs,
             )?;
         }
         Ok(())
