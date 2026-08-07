@@ -14,11 +14,22 @@ pub const UNISKIP_MAX_LOG_ROWS: u32 = UNISKIP_ELEMENT_INDEX_BITS - UNISKIP_LOG_A
 /// Largest `--log-trace` this bench can address.
 pub const UNISKIP_MAX_LOG_TRACE: u32 = UNISKIP_MAX_LOG_ROWS + UNISKIP_LOG_TAPS;
 
+/// Bits the accessor's element index occupies at `log_rows`: the addressable
+/// planes above the row bits. Exact for every `log_rows`, including the absurd
+/// range — this is a validation path, so it must never overflow.
+pub fn element_index_bits(log_rows: u32) -> u64 {
+    u64::from(UNISKIP_LOG_ADDRESSABLE_PLANES) + u64::from(log_rows)
+}
+
 /// Largest element index `uniskip_source_value` can produce at `log_rows`: the
-/// last plane an `addr` can name, plus the last row.
+/// last plane an `addr` can name, plus the last row. SATURATES at `u64::MAX`
+/// once the index needs more than 64 bits (exact up to and including 64) —
+/// report [`element_index_bits`], not this value, outside the usable range.
 pub fn max_element_index(log_rows: u32) -> u64 {
-    let planes = (UNISKIP_MAX_WINDOW_COLUMNS * UNISKIP_TAPS) as u64;
-    ((planes - 1) << log_rows) + ((1u64 << log_rows) - 1)
+    match element_index_bits(log_rows) {
+        bits if bits >= 64 => u64::MAX,
+        bits => (1u64 << bits) - 1,
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -55,8 +66,8 @@ impl Geometry {
                 "--log-trace {log_trace} gives log_rows {log_rows}, over the maximum \
                  {UNISKIP_MAX_LOG_ROWS} (--log-trace {UNISKIP_MAX_LOG_TRACE}): an addr names up to \
                  {UNISKIP_MAX_WINDOW_COLUMNS} columns x {UNISKIP_TAPS} planes, so the accessor's \
-                 element index would reach {} and the device load() offset is {UNISKIP_ELEMENT_INDEX_BITS}-bit",
-                max_element_index(log_rows)
+                 element index would need {} bits and the device load() offset is {UNISKIP_ELEMENT_INDEX_BITS}-bit",
+                element_index_bits(log_rows)
             ));
         }
         // HIGH-FIRST fill: each high table caps at UNISKIP_EQ_HIGH entries, the
@@ -148,7 +159,26 @@ mod cpu_tests {
         assert!(max_element_index(UNISKIP_MAX_LOG_ROWS + 1) > u64::from(u32::MAX));
         let rejected = Geometry::new(UNISKIP_MAX_LOG_TRACE + 1).unwrap_err();
         assert!(rejected.contains("over the maximum"), "{rejected}");
+        assert!(rejected.contains("would need 33 bits"), "{rejected}");
         assert!(Geometry::new(32).is_err());
+
+        // Validation must stay total: the index arithmetic saturates instead of
+        // shifting past u64, so absurd inputs are rejected, not a panic (dev) or a
+        // truncated bound in the message (release).
+        assert_eq!(element_index_bits(53), 64);
+        assert_eq!(max_element_index(53), u64::MAX); // exact at 64 bits
+        assert_eq!(max_element_index(54), u64::MAX); // saturated beyond
+        assert_eq!(element_index_bits(u32::MAX), 4_294_967_306);
+        assert_eq!(max_element_index(u32::MAX), u64::MAX);
+        for log_trace in [62u32, 66, 68, 96, u32::MAX] {
+            let rejected = Geometry::new(log_trace).unwrap_err();
+            let bits = element_index_bits(log_trace - UNISKIP_LOG_TAPS);
+            assert!(rejected.contains("over the maximum"), "{rejected}");
+            assert!(
+                rejected.contains(&format!("would need {bits} bits")),
+                "log_trace {log_trace}: {rejected}"
+            );
+        }
 
         for log_trace in 9..=UNISKIP_MAX_LOG_TRACE {
             let g = Geometry::new(log_trace).unwrap();
