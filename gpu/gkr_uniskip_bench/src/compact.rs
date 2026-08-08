@@ -197,8 +197,10 @@ impl BankPerm {
 
 /// The slots of a distance-`d` phase are the taps with bit `log2(d)` clear — one of the
 /// four coordinate hyperplanes of the 4-bit tap index, which is why the identity map
-/// collides: `{0,1,2,3,8,9,10,11}` is pairwise congruent mod 8, and that cost 79 %
-/// excess shared wavefronts in the first build of this mode.
+/// collides: `{0,1,2,3,8,9,10,11}` is pairwise congruent mod 8. Measured on this layout,
+/// [`BankPerm::Identity`] runs **60 %** over the ideal shared-wavefront count against
+/// `Linear`'s 19 %. (The 79 % figure in earlier notes belongs to a deleted group-major
+/// layout, not to this one.)
 ///
 /// [`BankPerm::Linear`] is the GF(2)-linear map with column images `[1, 2, 5, 14]`,
 /// i.e. `(t0, t1, t2, t3) -> (t0^t2, t1^t3, t2^t3, t3)`. It is **a** linear permutation

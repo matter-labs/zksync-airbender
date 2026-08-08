@@ -21,8 +21,8 @@ constexpr u32 UNISKIP_COMPACT_MAX_ROUNDS = 20;
 // BANK PERMUTATION. An element sits at `perm[tap] * G + group`: group in the LOW bits so
 // a round's lanes hit consecutive banks, and the tap permuted so the 32 / G slots a round
 // touches land in distinct banks. The identity collides (`{0,1,2,3,8,9,10,11}` is
-// pairwise congruent mod 8) and cost 79 % excess shared wavefronts in the first build of
-// this mode. The table is host-built and uploaded so the formula exists in one place;
+// pairwise congruent mod 8) and measures 60 % over the ideal shared-wavefront count on
+// this layout, against the shipped permutation's 19 %. The table is host-built and uploaded so the formula exists in one place;
 // each thread reads its own entry once, at entry.
 
 // One lane's work in one round: the two staging offsets it owns and the twiddle it

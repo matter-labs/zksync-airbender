@@ -44,8 +44,12 @@ bit-identical results.
 ### Modes, and which one to run
 
 All numbers below are medians at `--log-trace 24` on an RTX PRO 6000 Blackwell over
-`--warmup 10 --iterations 100`, from `iteration_times.md`; all 16 legal arms pass
-`--validate` and `--validate-flat-eq` (the 24-cell matrix is tabulated there too).
+`--warmup 10 --iterations 100`, from `iteration_times.md`; all 12 arms of the **v1/v2**
+matrix pass `--validate` and `--validate-flat-eq` (that 24-cell matrix is what is
+tabulated there). Counting the v3 modes the crate has **18** legal arms — 12 here, plus
+`lsb-recompute` x 2 term orders, plus `lsb-compact` x 2 group counts x 2 term orders — and
+22 if `--bank-perm`'s second value is counted as a shape rather than an A/B control; the
+v3 arms carry their own validation records in the *v3 R0* and *v3 R1* sections.
 `pass − fold` is `lde + eval + finalize` — the
 part the modes actually change, since `fold` is identical work everywhere (its
 challenge depends on `q` through the transcript, so it cannot be fused) and is already

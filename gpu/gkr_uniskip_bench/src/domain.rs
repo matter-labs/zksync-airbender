@@ -113,9 +113,10 @@ pub fn ntt_twiddles() -> [[F; UNISKIP_TAPS]; UNISKIP_NTT_TABLES] {
     tables
 }
 
-/// One radix-2 butterfly layer at distance `d`: the upper lane of a pair keeps
-/// `u + v`, the lower `u - v`. Identical for iDIF and DIT — only where the stage's
-/// twiddle is applied differs (iDIF after, DIT before).
+/// One radix-2 butterfly layer at distance `d`: the LOW index of a pair (`lane & d == 0`)
+/// takes `u + v` and the HIGH index (`lane | d`) takes `u - v`. Identical for iDIF and
+/// DIT — only where the stage's twiddle is applied differs (iDIF after, DIT before), and
+/// it always lands on the high index.
 fn butterfly(x: &mut [F; UNISKIP_TAPS], d: usize) {
     for lane in 0..UNISKIP_TAPS {
         if lane & d == 0 {

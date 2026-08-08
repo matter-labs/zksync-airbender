@@ -192,7 +192,8 @@ fn pass_config(cli: &Cli, geometry: &Geometry) -> PassConfig {
     }
     if !cli.mode.uses_compact_groups() && cli.bank_perm.is_some() {
         fail(format!(
-            "--bank-perm applies to --mode lsb-compact only; --mode {} stages nothing",
+            "--bank-perm applies to --mode lsb-compact only; --mode {} has no compaction \
+             staging buffer to lay out",
             cli.mode.as_str()
         ));
     }

@@ -1376,7 +1376,7 @@ What this settles:
   **SUPERSEDED BY R1, and the verdict hardens to parked.** The v3 R1 rung took the
   *superset* of this prize — all 62 unity multiplies, not radix-4's 32 — by dissolving the
   lane = tap binding in shared memory. It delivered the arithmetic exactly
-  (`fmaheavy` 81.5 % -> 68.8 %) and **still lost 15 %** of wall time to the enabling
+  (`fmaheavy` 81.5 % -> 68.7 %) and **still lost 14–15 %** of wall time to the enabling
   mechanism. Radix-4's distinguishing property is therefore no longer the 28.6 % — it is
   that it pays no staging cost — but it captures roughly half the arithmetic that R1
   proved insufficient, for its own unpriced costs. The micro-A/B is still owed and the
@@ -1476,7 +1476,7 @@ Standing levers, from this profile, in the order the evidence supports them:
    unity and survive only because lane = tap makes them lane-divergent. The v3 R1 rung
    removed **all 62** by staging in shared memory and packing the real 50 across lanes
    (`--mode lsb-compact`), delivering the predicted arithmetic — `fmaheavy` 81.5 % ->
-   68.8 %, chain multiplies per row −43 % at G = 4 and −50 % at G = 8 — and **lost 15 % of
+   68.7 %, chain multiplies per row −43 % at G = 4 and −50 % at G = 8 — and **lost 14–15 % of
    wall time**, because the staging moved the work onto the narrower LSU pipe. See the
    v3 R1 section. Blocked radix-4 recovers 32 of the 62 (28.6 %) without staging, and
    stays parked against that measurement. (b) **The window** (R2/R3), which
@@ -1609,20 +1609,50 @@ The staging cost is equally visible: static `LDS`/`STS` go from R0's **8 / 2** t
 Locked, `--log-trace 24`, `--warmup 10 --iterations 100`, medians. R0 re-measured in the
 same session as the control.
 
-| arm | `eval` | `finalize` | **eval + finalize** | vs recorded bar | vs same-session control | spread (`eval` min–max) |
-| --- | --- | --- | --- | --- | --- | --- |
-| R0 `lsb-recompute` census (bar 20.713) | 20.860 | 0.061 | **20.921** (control) | +1.00 % | — | 20.35–20.94 |
-| R0 `lsb-recompute` locality (bar 20.596) | 20.739 | 0.061 | **20.800** (control) | +0.99 % | — | 20.33–20.81 |
-| compact G = 4 census | 23.766 | 0.033 | **23.799** | +14.9 % | **+13.8 %** | 23.27–23.84 |
-| compact G = 4 locality | **23.766** | 0.033 | **23.799** | +15.6 % | **+14.4 %** | 23.27–23.84 |
-| compact G = 8 census | 41.664 | 0.018 | 41.682 | +101 % | +99 % | 41.65–41.68 |
-| compact G = 8 locality | 41.274 | 0.018 | 41.292 | +100 % | +99 % | 41.24–41.31 |
+All six rows below are from **one session on one build**, `--bank-perm linear` (the
+default) throughout:
+
+```bash
+.agents/bin/with_gpu_lock.sh target/release/gpu_gkr_uniskip_bench \
+    --log-trace 24 --warmup 10 --iterations 100 \
+    --mode lsb-compact --compact-groups {4,8} --term-order {census,locality}
+.agents/bin/with_gpu_lock.sh target/release/gpu_gkr_uniskip_bench \
+    --log-trace 24 --warmup 10 --iterations 100 --mode lsb-recompute --term-order {census,locality}
+```
+
+| arm | `--bank-perm` | `eval` | `finalize` | **eval + finalize** | vs recorded bar | vs same-session control | spread (`eval` min–max) |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| R0 `lsb-recompute` census (bar 20.713) | n/a | 20.835 | 0.061 | **20.896** (control) | +0.88 % | — | 20.350–20.898 |
+| R0 `lsb-recompute` locality (bar 20.596) | n/a | 20.714 | 0.061 | **20.775** (control) | +0.87 % | — | 20.326–20.781 |
+| compact G = 4 census | linear | 23.816 | 0.033 | **23.849** | +15.1 % | **+14.1 %** | 23.460–23.862 |
+| compact G = 4 locality | linear | **23.682** | 0.033 | **23.715** | +15.1 % | **+14.2 %** | 23.134–23.740 |
+| compact G = 8 census | linear | 42.189 | 0.018 | 42.207 | +104 % | +102 % | 42.180–42.198 |
+| compact G = 8 locality | linear | 41.242 | 0.018 | 41.260 | +100 % | +98.6 % | 41.206–41.287 |
+
+**Correction to the first two versions of this table.** The R1 commit's rows and the
+review-round-1 rows were not all from the session their header claimed. In round 1 the
+`--bank-perm` A/B's *G = 4 locality* numbers were pasted into **both** G = 4 rows, making
+census and locality byte-identical in median, sum and both spread endpoints — which is not
+a measurement, it is a copy/paste error — and the G = 8 census row was left at its
+pre-fix value under a header claiming re-measurement. **The table above replaces both**;
+it was produced by re-running all six cells rather than by editing numbers.
+
+Census does **not** equal locality at G = 4. Two independent runs, same build:
+
+| run | G = 4 census | G = 4 locality | locality win |
+| --- | --- | --- | --- |
+| 1 (the table above) | 23.816 | 23.682 | **−0.56 %** |
+| 2 (independent) | 24.076 | 23.930 | **−0.61 %** |
+
+— the same sign and size as `locality`'s effect in every other mode. Those two runs also
+show the run-to-run drift directly: **+1.1 % on the same arm, same binary**, which is the
+scale the control-drift note below is about.
 
 **Which denominator, and the drift.** The percentages above are given against **both** the
 recorded R0 bars (20.713 / 20.596) and the R0 control re-measured in this session
-(20.921 / 20.800). The control runs **+1.0 %** above its own recorded figure — about 45x
-the ~0.02 % reproducibility the R0 record demonstrated across rebuilds, so it is worth
-accounting for rather than passing over. It is **not codegen**: this rung adds a
+(20.896 / 20.775). The control runs **+0.88 %** above its own recorded figure — roughly
+**50x** the ~0.02 % reproducibility the R0 record demonstrated across rebuilds, so it is
+worth accounting for rather than passing over. It is **not codegen**: this rung adds a
 translation unit and a ~5 KB `__constant__` to the same device link
 (`CUDA_SEPARABLE_COMPILATION`), which could plausibly perturb existing kernels, so the
 `lsb-recompute` kernel's sm_120 SASS was recounted in this build — **3216 instructions,
@@ -1645,18 +1675,27 @@ resolver-model hypothesis (76 608 ops/row at G = 8, −48.8 %; 87 040 at G = 4, 
 is falsified as a predictor of wall time** — the model counts multiplies and the wall is
 not paying for multiplies any more.
 
-The G = 8 row carries a caveat that must travel with it: the first build measured
-29.086 / 28.618, and the bank-conflict fix below (which is a strict win for G = 4's
-rounds) made G = 8's *initial staging store and final readback* 4-way conflicted, because
-those two use the natural lane = tap binding rather than the round schedule. **28.6 ms is
-the fairest G = 8 figure; 40.9 is the same arm with a known layout defect.** Neither is
-within 35 % of the bar, so the conclusion does not turn on it and it was not re-fixed.
+The G = 8 row carries a caveat, but **not the one the first version of this record gave**.
+That version blamed the bank permutation for G = 8's regression from the first build's
+28.618 — an inference across two builds that differed in two ways at once, exactly the
+error the `--bank-perm` A/B was built to retire. The A/B says the opposite: at G = 8
+`identity` is **42.642** and `linear` **41.274**, so the permutation is a **3.2 % win**
+there, not the cause. (And the store/readback is 4-way conflicted under *either*
+permutation — `perm[t] * 8 + g` takes 8 distinct values mod 32 whatever `perm` is — so it
+was never the discriminator.) What actually separates 28.6 from 41.2 is the **layout**:
+the deleted first build stored group-major with an odd stride (`g * 17 + t`), the shipped
+one stores group-minor (`perm[t] * G + g`), and at G = 8 the latter is worse for the
+lane = tap store/readback path while being better for the round path. No G = 8 layout
+comes within 35 % of the bar, so the conclusion does not turn on which is fairest, and no
+third layout was built.
 
 ### The optimization attempt, and what it settled
 
-The first profile showed **3.94 billion shared bank conflicts** — 8.89 G actual against
-4.96 G ideal wavefronts, 79 % excess — traced to a stride argument that was necessary but
-not sufficient: the slots of a distance-`d` phase are the taps with bit `log2 d` clear,
+The first profile — of the now-deleted stride-17 group-major build — showed **3.94 billion
+shared bank conflicts**, 8.89 G actual against 4.96 G ideal wavefronts, **79 % excess**.
+(The shipped layout's own `identity` arm is less bad at **60 %** excess, 7.95 G against the
+same 4.97 G ideal; 79 % is the deleted build's figure and belongs to it.) The cause is a
+stride argument that was necessary but not sufficient: the slots of a distance-`d` phase are the taps with bit `log2 d` clear,
 and the identity map collides pairwise mod 8 on `{0,1,2,3,8,9,10,11}`. The fix
 (optimization attempt 1 of the 2 allowed) permutes the tap by the GF(2)-linear map with
 column images `[1, 2, 5, 14]` — **a** permutation found by enumeration, not a unique or
@@ -1693,7 +1732,7 @@ keeps the pre-permutation layout reachable so the A/B is single-variable and re-
 `sm__inst_executed_pipe_lsu`, the **count of LSU instructions**, not the wavefronts they
 expand into; no amount of bank tuning can reach it. The second optimization attempt was
 therefore not spent: the structural minimum of this design is ~2 shared accesses per
-element per stage, and the measured gap to R0 is 15 %.
+element per stage, and the measured gap to R0 is 14–15 %.
 
 **A correction to the first version of this record.** It reported this A/B as
 23.755 -> 23.574 (−0.8 %), which compared two *different builds* whose layouts differed in
@@ -1708,25 +1747,29 @@ is the one that suffers most without it — but no G = 8 layout comes within 35 
 ### ncu — G = 4 locality against R0
 
 `ncu --set full`, same recipe and location as R0's
-(`target/profiling/ncu/v3r1_compact_g4_locality_full.ncu-rep`).
+(`target/profiling/ncu/v3r1_compact_g4_locality_full.ncu-rep`). **Re-profiled on the
+current build** (`--bank-perm linear`, the shipped default) so every figure here comes
+from one report; the R1 commit's version of this table mixed the pre-permutation build's
+rows with the A/B's and is replaced.
 
-| metric | R0 `lsb-recompute` | **R1 compact G = 4** |
+| metric | R0 `lsb-recompute` | **R1 compact G = 4, linear** |
 | --- | --- | --- |
-| duration under the profiler | 21.14 ms | 24.06 ms |
-| **bounding pipe** | `fmaheavy` **81.51 %** = SM SOL 81.43 % | **`lsu` 87.19 %** = SM SOL 87.06 % |
-| `sm__pipe_fmaheavy_cycles_active` | 81.51 % | **68.83 %** ← the multiply cut, delivered |
-| `sm__inst_executed_pipe_lsu` | 32.20 % | **87.19 %** ← where it went |
-| `sm__inst_executed_pipe_alu` / `adu` | 35.00 / 57.95 % | 27.94 / **0.85 %** |
-| executed instructions | 24 388 763 648 | 25 448 579 072 (+4.3 %) |
+| duration under the profiler | 21.14 ms | 23.84 ms |
+| **bounding pipe** | `fmaheavy` **81.51 %** = SM SOL 81.43 % | **`lsu` 86.85 %** = SM SOL 86.58 % |
+| `sm__pipe_fmaheavy_cycles_active` | 81.51 % | **68.74 %** ← the multiply cut, delivered |
+| `sm__inst_executed_pipe_lsu` | 32.20 % | **86.85 %** ← where it went |
+| `sm__inst_executed_pipe_alu` / `adu` | 35.00 / 57.95 % | 28.19 / **9.06 %** |
+| executed instructions | 24 388 763 648 | 25 475 055 616 (+4.5 %) |
 | shared instructions (`smsp__sass_inst_executed_op_shared`) | ~0 | **4 444 979 200** |
-| `dram__bytes.sum` vs floor | 6.21 GB, 1.000× | 6.21 GB, **1.000×** |
+| shared wavefronts / bank conflicts | ~0 | 5 894 834 628 / 927 533 884 |
+| `dram__bytes.sum` vs floor | 6.21 GB, 1.000× | 6.22 GB, **1.000×** |
 | global load sectors | 684 195 840 | **684 195 840** (identical) |
 | registers, blocks/SM | 40, **6** | 67, **3** |
-| achieved occupancy | 99.28 % | **49.70 %** |
+| achieved occupancy | 99.28 % | **49.74 %** |
 | stalls: `short_scoreboard` | 9.9 % | **33.9 %** |
 | stalls: `math_pipe_throttle` | 28.4 % | 8.6 % |
-| stalls: `mio_throttle` | 0.6 % | 3.0 % |
-| stalls: `wait` / `not_selected` | 15.3 / 27.1 % | 22.7 / 13.4 % |
+| stalls: `mio_throttle` | 0.6 % | 3.1 % |
+| stalls: `wait` / `not_selected` | 15.3 / 27.1 % | 22.6 / 13.6 % |
 
 Read together:
 
@@ -1742,12 +1785,14 @@ Read together:
   every operand and accumulator array; 40 -> 67 registers takes blocks/SM from 6 to 3.
 - **Memory behaviour is untouched and still perfect**: identical global load sectors and
   1.000× the DRAM floor. Nothing about this rung is a traffic story.
-- **`adu` collapsing from 57.95 % to 0.85 % is OPEN, not explained.** The obvious reading
+- **`adu` falling from 57.95 % to 9.06 % is OPEN, not explained.** (The R1 commit reported
+  0.85 % here; that was the pre-permutation build, and the shipped layout's own address
+  arithmetic puts it at 9.06 % — a smaller drop, same open question.) The obvious reading
   — "the schedule carries precomputed offsets" — does not survive contact with the table:
   those are *shared* offsets and R0 has no shared memory at all, while the **global**
   element-index arithmetic is unchanged between the two modes (identical issued load
   sectors, the same expression per reference). So either R0's original 58 % ADU
-  attribution was wrong, or this moved for a reason neither profile isolates. Recorded as
+  attribution was wrong, or this moved for a reason none of the three profiles isolates. Recorded as
   a contradiction to resolve, not as a win to claim.
 
 ### Verdict, and what it does to the radix-4 arm
