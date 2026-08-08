@@ -73,9 +73,9 @@ struct Cli {
 
     /// Validation knob: rewrite this many same-class binary products into
     /// self-products (`x * x`), which is the only way to exercise the LSB mode's
-    /// duplicate rule — the default census emits none. It changes `q` and the
-    /// per-source reference counts, so a timing taken under it is not comparable
-    /// with the recorded arms.
+    /// duplicate rule — the default census emits none. It changes `q`; the census
+    /// and cache plan do not track it and go stale (see README), so a timing taken
+    /// under it is not comparable with the recorded arms.
     #[arg(long, default_value_t = 0)]
     self_products: u32,
 

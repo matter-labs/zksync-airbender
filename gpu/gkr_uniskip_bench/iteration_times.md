@@ -1334,7 +1334,7 @@ What this settles:
 | iDIF d = 8 (0) | 9 | **8** — `k ∈ {0,1}`, i.e. bit 3 of `t` clear | 1 — `t = 8`, exponent 0 on lane 0 |
 | iDIF d = 4 (1) | 10 | **8** — `k ∈ {0,2}`, i.e. bit 2 of `t` clear | 2 — `t = 4, 12` |
 | DIT d = 4 (5) | 10 | **8** — same mask | 2 — `t = 4, 12` |
-| DIT d = 8 (6) | 9 | **8** — same mask | 1 — `t = 8` |
+| DIT d = 8 (6) | 9 | **8** — same mask as iDIF d = 8 | 1 — `t = 8` |
 | | 38 | **32** | 6 |
 
   So the cut is **32 of the 112 issued per group = 28.6 %**, not 38 / 34 %. The 6
@@ -1343,8 +1343,8 @@ What this settles:
   does not touch it.
 
   Where that would land the resolver model, **as the A/B's hypothesis and nothing more**:
-  a blocked arm issuing 112 − 32 = **80** full `bf::mul` per group, with the consumer
-  term unchanged, models at `326 x (80 x 4) + 224 x 16` = **107 904** ops/row against this
+  a blocked arm issuing 112 − 32 = **80** full `bf::mul` per group, with the address
+  `IMAD.WIDE` term unchanged, models at `326 x (80 x 4) + 224 x 16` = **107 904** ops/row against this
   arm's 149 632 (−27.9 %) and v2's winner 140 480 (−23.2 %). That is a resolver-model
   number, not a wall projection — it prices none of the costs below.
 

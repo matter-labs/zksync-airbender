@@ -336,8 +336,9 @@ additionally reports `fold validate: n/a`, since it runs no fold stage.
 
 `--self-products <N>` applies to every mode and is validation-only: it rewrites `N`
 same-class binary products into `x * x`, which is the only way to reach the LSB mode's
-W = 0 duplicate rule (see [The LSB mode](#the-lsb-mode-v3-r0)). It changes `q` and the
-cache plan, so never take a recorded timing under it.
+W = 0 duplicate rule (see [The LSB mode](#the-lsb-mode-v3-r0)). It changes `q`, and the
+census and cache plan do not track it — they go stale (see the mode contract above) —
+so never take a recorded timing under it.
 
 `--validate` runs three bit-exact checks against a host oracle that regenerates the
 operand data from the init formula rather than reading it back: **LDE** (first and
