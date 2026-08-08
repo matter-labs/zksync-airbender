@@ -46,6 +46,11 @@ pub struct UniskipCompactSlot {
     pub tw: u32,
 }
 
+/// v3 R2 pair-resident geometry: a group's 16 taps on 8 lanes at 2 per lane, so a warp
+/// holds 4 groups and a block covers 32 logical rows. Mirrored in
+/// `native/uniskip_lsb_pair.cuh`; derivation in [`crate::pair`].
+pub const UNISKIP_PAIR_ROWS_PER_BLOCK: usize = UNISKIP_WARPS_PER_BLOCK * (32 / (UNISKIP_TAPS / 2));
+
 /// Lane-indexed twiddle tables of the factorized coset transform — see
 /// [`crate::domain::ntt_twiddles`] for the stage order. The two distance-1 butterfly
 /// stages carry only unity and are elided, so the chain's 8 exchange stages need 7

@@ -110,6 +110,12 @@ cuda_kernel!(
     EvalLsbCompactG8,
     ab_gkr_uniskip_eval_lsb_compact_g8_kernel(desc: UniskipVmDesc)
 );
+// The v3 R2 kernel: pair-resident producer, `uniskip_pair_desc` is the sixth empty
+// derived class of `uniskip_vm_desc` — same wire again.
+cuda_kernel!(
+    EvalLsbPair,
+    ab_gkr_uniskip_eval_lsb_pair_kernel(desc: UniskipVmDesc)
+);
 cuda_kernel!(
     Finalize,
     ab_gkr_uniskip_finalize_kernel(partials: *const u32, blocks: u32, q: *mut u32)
@@ -399,6 +405,13 @@ pub fn eval_lsb_compact_g8(
     let args = EvalLsbCompactG8Arguments::new(*desc);
     let config = CudaLaunchConfig::basic(blocks, UNISKIP_THREADS_PER_BLOCK as u32, stream);
     EvalLsbCompactG8Function::default().launch(&config, &args)
+}
+
+/// The v3 R2 arm: pair-resident radix-2, 8 warps x 4 groups = 32 logical rows per block.
+pub fn eval_lsb_pair(desc: &UniskipVmDesc, blocks: u32, stream: &CudaStream) -> CudaResult<()> {
+    let args = EvalLsbPairArguments::new(*desc);
+    let config = CudaLaunchConfig::basic(blocks, UNISKIP_THREADS_PER_BLOCK as u32, stream);
+    EvalLsbPairFunction::default().launch(&config, &args)
 }
 
 /// Reduce the `blocks * UNISKIP_CELLS` partials into the `UNISKIP_CELLS` cells of `q`.

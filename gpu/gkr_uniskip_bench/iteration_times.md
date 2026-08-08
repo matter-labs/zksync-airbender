@@ -1373,7 +1373,16 @@ What this settles:
   the 6-blocks/SM warp ceiling); and the `e4` axis complication (a transpose in and out,
   or limb-major loads). None of those is priced here.
 
-  **SUPERSEDED BY R1, and the verdict hardens to parked.** The v3 R1 rung took the
+  **CLOSED BY R2 (see the v3 R2 section); the R1 note below is kept for the lineage.**
+  Pair-residency reaches **64 issued multiplies per group — the same count any co-located
+  packing achieves — at the smallest register bill of the family** (2 elements per lane
+  against radix-4's 4), with no transposes and no `e4` axis complication, and it measured
+  **−20.9 %** of wall. Radix-4's remaining distinguishing property was only ever part of
+  the residual 14 exponent-zero pairs, at double the accumulators on a kernel already at
+  3 blocks/SM. The gate does not advance and the arm should not be built without a new
+  argument.
+
+  **Superseded by R1 first, which is how it got here.** The v3 R1 rung took the
   *superset* of this prize — all 62 unity multiplies, not radix-4's 32 — by dissolving the
   lane = tap binding in shared memory. It delivered the arithmetic exactly
   (`fmaheavy` 81.5 % -> 68.7 %) and **still lost 14–15 %** of wall time to the enabling
@@ -1478,8 +1487,10 @@ Standing levers, from this profile, in the order the evidence supports them:
    (`--mode lsb-compact`), delivering the predicted arithmetic — `fmaheavy` 81.5 % ->
    68.7 %, chain multiplies per row −43 % at G = 4 and −50 % at G = 8 — and **lost 14–15 % of
    wall time**, because the staging moved the work onto the narrower LSU pipe. See the
-   v3 R1 section. Blocked radix-4 recovers 32 of the 62 (28.6 %) without staging, and
-   stays parked against that measurement. (b) **The window** (R2/R3), which
+   v3 R1 section. **v3 R2 then removed them in registers** — pair-resident radix-2,
+   `lo = u + v; hi = (u - v) * w`, where the unity multiply is never written — for
+   −20.9 % of wall, which closes this lever and with it blocked radix-4 (32 of the 62, at
+   double the accumulators). (b) **The window** (R2/R3), which
    removes whole productions rather than multiplies inside one.
 2. **`sm__inst_executed_pipe_adu` at 58 %** says address arithmetic is the second-busiest
    pipe. v2's F9 finding (ptxas does not strength-reduce the per-tap address chain)
@@ -1818,3 +1829,181 @@ cost — two cross-lane transposes, a 4x register map on a kernel already at 3 b
 and an `e4` axis transpose. The micro-A/B it owes is now a *smaller* prize against
 *measured* evidence that this class of trade does not clear on this part, so it does not
 advance.
+
+## v3 R2 — pair-resident radix-2 (`--mode lsb-pair`): WIN, −20.9 %
+
+RR's insight, and it is a source-text argument rather than a scheduling one: a
+divergence-free radix-2 butterfly needs **both halves of the pair in the same lane**. R0
+binds lane = tap, so the halves are lane-divergent and a stage must read as a select plus
+an *unconditional* multiply — unity on half the lanes, unskippable. Put the pair in one
+lane and the stage becomes
+
+```
+lo = u + v;            // no multiply exists here, at any stage
+hi = (u - v) * w;
+```
+
+The unity multiply is not skipped, predicated, or scheduled around — **it is never
+written**. No shared memory, no schedule table: the register medium R1 vindicated, with
+the multiply cut R1 proved relieves the pipe.
+
+**Result: 16.283 ms `eval + finalize` (locality), −20.9 % against R0's bar and −29.4 %
+against v2's best arm** — the first arm to land inside the design's original 16–19 ms
+first landing zone, at its bottom edge.
+
+### Geometry and the re-pair
+
+A group's 16 taps live on **8 lanes, two per lane**; a warp holds 4 groups, so a block of
+256 threads covers **32 logical rows** — twice R0's decode amortization, free. While the
+chain pairs on tap bit `b`, lane `l` holds the two elements whose bits-other-than-`b` are
+`l` and whose bit `b` is the slot; that map is a bijection at every `b`.
+
+The pairing a stage needs changes with its distance, so between stages each lane **keeps
+one output and trades the other**: one `shfl_xor` per re-pair. In the lane index at stage
+`b` (the tap index with bit `b` deleted) the bit to trade is `b_next`, shifted down by one
+when it sat above the deleted bit — giving masks **4, 2, 1, 1, 2, 4** for the chain's six
+bit changes. Both sides of a trade run the same three selects:
+
+```
+sent = high ? lo : hi;   recv = shfl_xor(sent, MASK);
+lo   = high ? recv : lo; hi   = high ? hi : recv;
+```
+
+Two consequences fall out. The chain **ends on the map it started on**, so `H` (loaded as
+taps `l`, `l + 8`) and the coset (cells `l`, `l + 8`) share one layout and the consumer
+needs no re-indexing. And the warp's four groups sit at lane offsets `group * 8`, so the
+epilogue merge is `xor 8` then `xor 16` — R0's single `xor 16` argument at four groups,
+gated by `q` rather than by analogy.
+
+### The counts
+
+| | R0 `lsb-recompute` | R1 `lsb-compact` G = 4 | **R2 `lsb-pair`** |
+| --- | --- | --- | --- |
+| lanes per group | 16 | 16 (staged) | **8** |
+| rows per block | 16 | 32 | **32** |
+| issued multiplies per group | 112 | 64 (+ SMEM staging) | **64** |
+| producer multiplies per row (static SASS) | 77.0 | 44.0 | **44.0** |
+| producer shuffles per row (static SASS) | 88.0 | 0 (SMEM instead) | **33.0** |
+| shared-memory instructions | ~0 | 4.44 G | **~0** |
+| accumulators per lane | 2 `e4` | 2 `e4` | 4 `e4` |
+
+R2 reaches R1's multiply count with **none** of R1's medium: 64 issued multiplies per
+group either way, but R1 paid 4.44 G shared instructions for it and R2 pays 0. The
+residual over the algebraic 50 is the 14 exponent-zero pairs (1+2+4+4+2+1 across the six
+stage tables), lane-divergent at pack-2 and deliberately left issued.
+
+### Gates — all pass
+
+- **Host executor** (`cpu_pair_chain_matches_reference`): runs the pair chain's semantics
+  in the kernel's own shape — pair butterfly, re-pair permutation, twist — against
+  `domain::coset_from_taps` over the canonical extremes, all 16 single-tap impulses and 64
+  pseudorandom sets, plus every `E4` limb position against a dense apply
+  (`cpu_pair_chain_e4_limbs`). **Mutation-checked**: moving the DIF multiply to the low
+  output fails it, and so does perturbing one re-pair mask.
+- **Cross-mode oracle**: `q` bit-exact equal to `lsb-recompute`'s, compared device-to-device
+  with `--dump-q` under both term orders — same `sha256[0:16] = ed3bead0bce8833d` as every
+  other v3 arm.
+- **Standard cells**: 8/8 `q validate: OK (32/32)` — {`census`, `locality`} x
+  {`--validate`, `--validate-flat-eq`} x {`--self-products 0`, `--self-products 12`}.
+- **ptxas 0 stack / 0 spill and zero `LDL`/`STL` on sm_80/89/90/120.**
+
+| kernel | sm_80 | sm_89 | sm_90 | sm_120 | blocks/SM (sm_120) |
+| --- | --- | --- | --- | --- | --- |
+| `…_lsb_w0_kernel` (R0) | 96 | 96 | 56 | **40** | 6 |
+| `…_lsb_compact_g4_kernel` (R1) | 127 | 127 | 73 | 67 | 3 |
+| `…_lsb_pair_kernel` (R2) | 138 | 138 | 72 | **72** | **3** |
+
+  Four `e4` accumulators instead of two costs 40 -> 72 registers and halves occupancy;
+  R2 wins by 21 % anyway, which is the headline finding of the profile below.
+
+- **SASS mechanism**, four-arch, from the chain's 22 inlined instantiations (6 `bf`
+  operand sites + 4 `e4` sites x 4 limb passes): **8 multiplies per lane per chain x 22 =
+  176 static, serving 4 rows = 44.0/row** against R0's `7 x 22 = 154` over 2 rows = 77.0
+  — the designed 64-vs-112 per group, exactly. Shuffles: **6 per chain x 22 = 132 static
+  = 33.0/row** against R0's `8 x 22 = 176` over 2 rows = 88.0, i.e. **0.375x**. (Measured
+  totals are 164 and 184 `SHFL`; the extra 32 and 8 are the epilogue reductions — two
+  masks x four `e4` accumulators and one mask x two, respectively.)
+
+### Timings
+
+Emitted programmatically from the run log rather than transcribed. All six rows are one
+session, one build.
+
+```bash
+.agents/bin/with_gpu_lock.sh target/release/gpu_gkr_uniskip_bench \
+    --log-trace 24 --warmup 10 --iterations 100 --mode {lsb-pair,lsb-recompute} \
+    --term-order {census,locality}
+```
+
+| arm | `eval` | `finalize` | **eval + finalize** | vs recorded bar | vs same-session control | spread (`eval` min-max) |
+| --- | --- | --- | --- | --- | --- | --- |
+| `lsb-pair` census | 16.420 | 0.033 | **16.453** | **−20.6 %** | **−21.0 %** | 16.410–16.504 |
+| `lsb-pair` locality | **16.250** | 0.033 | **16.283** | **−20.9 %** | **−21.4 %** | 16.247–16.275 |
+| `lsb-recompute` census | 20.767 | 0.061 | 20.828 (control) | +0.6 % | — | 20.352–20.834 |
+| `lsb-recompute` locality | 20.645 | 0.061 | 20.706 (control) | +0.5 % | — | 20.326–20.713 |
+
+A second independent run of the two `lsb-pair` cells gives 16.612 / 16.294 — census drifts
++1.2 %, locality +0.03 %, the same session-level scale the R1 record documented. The
+control sits +0.5 to +0.6 % above its recorded bar, so the win is −20.6 % to −21.4 %
+whichever denominator is used.
+
+Against the whole ladder: **v1 90.462 -> v2 23.078 -> R0 20.596 -> R2 16.283** on
+`pass − fold`, i.e. **5.56x v1** and **−29.4 % against v2's recommended arm**. On the
+corrected unit basis, 16.283 / 1.875 = **8.68 ms/unit**, **1.09x** the 8.00 ms/unit
+windowed reference — the parity bar for a k = 4 pass is 15.0 ms, now **8.5 %** away.
+
+### ncu — `lsb-pair` locality against R0
+
+`ncu --set full`, `target/profiling/ncu/v3r2_pair_locality_full.ncu-rep`.
+
+| metric | R0 `lsb-recompute` | R1 `lsb-compact` G = 4 | **R2 `lsb-pair`** |
+| --- | --- | --- | --- |
+| duration under the profiler | 21.14 ms | 23.84 ms | **16.91 ms** |
+| **bounding pipe** | `fmaheavy` 81.51 % | `lsu` 86.85 % | **`fmaheavy` 81.85 %** = SM SOL 81.59 % |
+| `sm__inst_executed_pipe_lsu` | 32.20 % | 86.85 % | **18.27 %** |
+| `sm__inst_executed_pipe_alu` / `adu` | 35.00 / 57.95 % | 28.19 / 9.06 % | 39.53 / 50.21 % |
+| executed instructions | 24 388 763 648 | 25 475 055 616 | **18 941 444 096** (−22.3 % vs R0) |
+| shared instructions | ~0 | 4 444 979 200 | **~0** |
+| `dram__bytes.sum` vs floor | 6.21 GB, 1.000× | 6.22 GB, 1.000× | **6.21 GB, 1.000×** |
+| global load sectors | 684 195 840 | 684 195 840 | **684 195 840** (identical) |
+| registers, blocks/SM | 40, 6 | 67, 3 | **72, 3** |
+| achieved occupancy | 99.28 % | 49.74 % | **49.71 %** |
+| stalls: `math_pipe_throttle` | 28.4 % | 8.6 % | 22.3 % |
+| stalls: `not_selected` / `wait` | 27.1 / 15.3 % | 13.6 / 22.6 % | 22.7 / 21.5 % |
+| stalls: `short_scoreboard` | 9.9 % | 33.9 % | 10.3 % |
+
+What this settles:
+
+- **The win is a pure work reduction.** Executed instructions fall **22.3 %** and the wall
+  falls 21 % — the kernel stays exactly where R0 was, `fmaheavy` ≈ SM SOL ≈ 82 %, and
+  simply has less to do. Nothing moved to another pipe; `lsu` *fell* 32.2 % -> 18.3 %
+  because the shuffle traffic dropped 0.375x and each element is still one global load.
+- **It wins at HALF R0's occupancy.** 72 registers puts it at 3 blocks/SM against R0's 6,
+  and it is 21 % faster regardless — the same lesson v2's rung 2a recorded, restated: on a
+  throughput-bound kernel occupancy is not what orders the arms.
+- **Memory behaviour is untouched**: byte-identical issued load sectors to R0 and R1, and
+  1.000× the DRAM floor. Every v3 arm now agrees on this, which is what makes the three
+  comparable as pure compute experiments.
+- **R1's read-across held.** The same −43 % multiply cut that bought R1 −12.7 `fmaheavy`
+  points bought R2 −22 % of instructions and −21 % of wall — the difference being entirely
+  the medium. R1 was the control that proves R2's mechanism is the multiply cut and not
+  something incidental.
+- `adu` at 50.2 % is now the second pipe, and the R1 record's open question about the ADU
+  attribution stands unresolved — R2 does not settle it either.
+
+### Verdict and what it does to the radix-4 arm
+
+**R2 ships as the recommended v3 arm.** It is the fastest arm this crate has measured, on
+the same 5.75 GiB footprint, at 1.000× the DRAM floor, zero spills, and a `q` that is
+bit-exact with every other v3 mode.
+
+**Blocked radix-4 is closed as a distinct arm, not merely parked.** Its stated prize was
+recovering unity multiplies while keeping the shuffle binding. Pair-residency reaches
+**64 issued multiplies per group — the same count any co-located packing achieves — at the
+smallest register bill of the family** (2 elements per lane; radix-4 needs 4, doubling the
+accumulators again on a kernel already at 3 blocks/SM) and with no transposes and no `e4`
+axis complication. What packing higher could still buy is part of the residual 14
+exponent-zero pairs, and R1 measured what removing *all* 62 of R0's unity multiplies is
+worth once a medium is priced. There is no longer a hypothesis under which radix-4 wins
+that pair-residency has not already collected more cheaply; the gate does not advance and
+the arm should not be built without a new argument.

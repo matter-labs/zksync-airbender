@@ -8,6 +8,7 @@ pub mod abi;
 pub mod cache;
 pub mod compact;
 pub mod domain;
+pub mod pair;
 pub mod geometry;
 pub mod harness;
 pub mod kernels;

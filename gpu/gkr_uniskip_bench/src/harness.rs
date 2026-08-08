@@ -183,6 +183,7 @@ pub enum EvalMode {
     FusedCached,
     LsbRecompute,
     LsbCompact,
+    LsbPair,
 }
 
 impl EvalMode {
@@ -193,6 +194,7 @@ impl EvalMode {
             Self::FusedCached => "fused-cached",
             Self::LsbRecompute => "lsb-recompute",
             Self::LsbCompact => "lsb-compact",
+            Self::LsbPair => "lsb-pair",
         }
     }
 
@@ -209,7 +211,7 @@ impl EvalMode {
     /// Element ordering of the tap backing this mode's accessor expects.
     pub fn source_layout(self) -> SourceLayout {
         match self {
-            Self::LsbRecompute | Self::LsbCompact => SourceLayout::LsbGroup,
+            Self::LsbRecompute | Self::LsbCompact | Self::LsbPair => SourceLayout::LsbGroup,
             _ => SourceLayout::PlaneMajor,
         }
     }
@@ -224,6 +226,7 @@ impl EvalMode {
     pub fn rows_per_block(self) -> u32 {
         match self {
             Self::LsbRecompute => UNISKIP_LSB_ROWS_PER_BLOCK as u32,
+            Self::LsbPair => UNISKIP_PAIR_ROWS_PER_BLOCK as u32,
             _ => UNISKIP_ROWS_PER_BLOCK as u32,
         }
     }
@@ -232,7 +235,7 @@ impl EvalMode {
     /// plus `finalize`: the fold kernels address plane-major taps, and no fold has been
     /// written for the LSB ordering (spec R4).
     pub fn runs_fold(self) -> bool {
-        !matches!(self, Self::LsbRecompute | Self::LsbCompact)
+        !matches!(self, Self::LsbRecompute | Self::LsbCompact | Self::LsbPair)
     }
 
     /// Whether `--lde-shape` names a grid this mode runs.
@@ -533,7 +536,8 @@ impl Harness {
             EvalMode::FusedRecompute
             | EvalMode::FusedCached
             | EvalMode::LsbRecompute
-            | EvalMode::LsbCompact => None,
+            | EvalMode::LsbCompact
+            | EvalMode::LsbPair => None,
         };
         let eval: EvalLaunch = match (config.mode, config.cell_map) {
             (EvalMode::Unfused, _) => kernels::eval,
@@ -542,6 +546,7 @@ impl Harness {
             (EvalMode::FusedCached, CellMap::Block) => kernels::eval_fused_cached,
             (EvalMode::FusedCached, CellMap::Interleave) => kernels::eval_fused_cached_interleave,
             (EvalMode::LsbRecompute, _) => kernels::eval_lsb_w0,
+            (EvalMode::LsbPair, _) => kernels::eval_lsb_pair,
             (EvalMode::LsbCompact, _) => match compact_groups {
                 4 => kernels::eval_lsb_compact_g4,
                 8 => kernels::eval_lsb_compact_g8,

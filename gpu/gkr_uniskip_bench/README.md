@@ -29,8 +29,8 @@ outright: the eval accessor extends the taps on read, so the pass is one kernel 
 sources' coset cells are produced once per row tile instead of once per reference.
 All three modes produce the same `q`.
 
-`lsb-recompute` (v3 R0) and `lsb-compact` (v3 R1) are a different architecture, not
-further points on that ladder — see [The LSB mode](#the-lsb-mode-v3-r0) below. Its `q` is
+`lsb-recompute` (v3 R0), `lsb-compact` (v3 R1) and `lsb-pair` (v3 R2) are a different
+architecture, not further points on that ladder — see [The LSB mode](#the-lsb-mode-v3-r0) below. Its `q` is
 deliberately *not* the same as the other three modes': the same init generator over a
 different element ordering gives different operand data, so it carries its own oracle
 leg rather than a shared expected value.
@@ -46,8 +46,8 @@ bit-identical results.
 All numbers below are medians at `--log-trace 24` on an RTX PRO 6000 Blackwell over
 `--warmup 10 --iterations 100`, from `iteration_times.md`; all 12 arms of the **v1/v2**
 matrix pass `--validate` and `--validate-flat-eq` (that 24-cell matrix is what is
-tabulated there). Counting the v3 modes the crate has **18** legal arms — 12 here, plus
-`lsb-recompute` x 2 term orders, plus `lsb-compact` x 2 group counts x 2 term orders — and
+tabulated there). Counting the v3 modes the crate has **20** legal arms — 12 here, plus
+`lsb-recompute` x 2 term orders, plus `lsb-compact` x 2 group counts x 2 term orders,
 22 if `--bank-perm`'s second value is counted as a shape rather than an A/B control; the
 v3 arms carry their own validation records in the *v3 R0* and *v3 R1* sections.
 `pass − fold` is `lde + eval + finalize` — the
@@ -167,6 +167,28 @@ single-variable bank-permutation A/B that removed 69 % of the conflicts and move
 wall +0.08 % — the
 measurement that identifies the bound as LSU *instruction* issue rather than wavefronts.
 Its `q` is bit-exact equal to `lsb-recompute`'s, checked device-to-device with `--dump-q`.
+
+### The pair mode (v3 R2) — the recommended v3 arm
+
+`--mode lsb-pair` is R0 with the butterfly's two halves **in the same lane**. R0 binds
+lane = tap, so a stage's two halves are lane-divergent and it must be written as a select
+plus an unconditional multiply — unity on half the lanes, unskippable. Pair-resident, the
+stage is `lo = u + v; hi = (u - v) * w`, and the low output's unity multiply **is never
+written**: no shared memory, no schedule table, no predication.
+
+A group's 16 taps live on 8 lanes at 2 per lane, a warp holds 4 groups, and a block covers
+**32 logical rows** (twice R0's decode amortization). Between stages each lane keeps one
+output and trades the other — one `shfl_xor` per re-pair, masks 4, 2, 1, 1, 2, 4 — and the
+chain ends on the map it started on, so `H` and the coset share one layout. Derivation,
+the host executor and its mutation checks: `src/pair.rs`.
+
+**It is the fastest arm this crate has measured**: **16.283 ms** `eval + finalize`
+(locality) against R0's 20.596 (**−20.9 %**) and v2's best 23.078 (**−29.4 %**), at 64
+issued multiplies per group against R0's 112, 0.375× R0's producer shuffles, −22.3 %
+executed instructions, 1.000× the DRAM floor, and byte-identical issued load sectors to
+R0. It costs 72 registers against R0's 40 — 3 blocks/SM against 6 — and wins anyway. Its
+`q` is bit-exact equal to `lsb-recompute`'s. Full record, including the ncu comparison
+against R0 and R1, in `iteration_times.md`'s *v3 R2* section.
 
 `iteration_times.md` carries the R0 gate record: at `--log-trace 24` it is
 **20.713 ms** (`census`) and **20.596 ms** (`locality`) on `eval + finalize` against
@@ -363,6 +385,10 @@ pins the recomputed, the cached and the shuffle-NTT-produced ones. `lsb-recomput
 additionally reports `fold validate: n/a`, since it runs no fold stage.
 
 ```bash
+# the v3 R2 arm (the recommended v3 mode)
+.agents/bin/with_gpu_lock.sh target/release/gpu_gkr_uniskip_bench --log-trace 10 --validate \
+    --mode lsb-pair --term-order {census,locality}
+
 # the v3 R1 arm
 .agents/bin/with_gpu_lock.sh target/release/gpu_gkr_uniskip_bench --log-trace 10 --validate \
     --mode lsb-compact --compact-groups {4,8} --term-order {census,locality}
