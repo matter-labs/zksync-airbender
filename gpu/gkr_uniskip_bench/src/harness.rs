@@ -243,8 +243,10 @@ impl EvalMode {
         self == Self::Unfused
     }
 
-    /// Whether `--cell-map` names a warp map this mode runs. The LSB mode's lane map is
-    /// fixed at this rung (lane = tap, two groups per warp), so the knob is rejected.
+    /// Whether `--cell-map` names a warp map this mode runs. Every LSB mode fixes its own
+    /// lane map — `lsb-recompute` lane = tap at two groups per warp, `lsb-pair`
+    /// pair-resident at eight lanes per group and four groups per warp — so the knob is
+    /// rejected for all of them.
     pub fn uses_cell_map(self) -> bool {
         matches!(self, Self::FusedRecompute | Self::FusedCached)
     }

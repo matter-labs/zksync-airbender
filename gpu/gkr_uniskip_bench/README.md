@@ -46,10 +46,11 @@ bit-identical results.
 All numbers below are medians at `--log-trace 24` on an RTX PRO 6000 Blackwell over
 `--warmup 10 --iterations 100`, from `iteration_times.md`; all 12 arms of the **v1/v2**
 matrix pass `--validate` and `--validate-flat-eq` (that 24-cell matrix is what is
-tabulated there). Counting the v3 modes the crate has **20** legal arms — 12 here, plus
-`lsb-recompute` x 2 term orders, plus `lsb-compact` x 2 group counts x 2 term orders,
-22 if `--bank-perm`'s second value is counted as a shape rather than an A/B control; the
-v3 arms carry their own validation records in the *v3 R0* and *v3 R1* sections.
+tabulated there). Counting the v3 modes the crate has **20** legal arms: 12 here, plus
+`lsb-recompute` x 2 term orders (2), plus `lsb-compact` x 2 group counts x 2 term orders
+(4), plus `lsb-pair` x 2 term orders (2) — 12 + 2 + 4 + 2 = 20, or 24 if `--bank-perm`'s
+second value is counted as a shape rather than an A/B control. The v3 arms carry their own
+validation records in the *v3 R0*, *v3 R1* and *v3 R2* sections.
 `pass − fold` is `lde + eval + finalize` — the
 part the modes actually change, since `fold` is identical work everywhere (its
 challenge depends on `q` through the transcript, so it cannot be fused) and is already
@@ -62,8 +63,10 @@ running at its own bandwidth floor.
 | `--mode unfused --lde-shape row` (the CLI default) | a materialized coset buffer, row-shaped LDE | 11.50 GiB | 28.078 ms | the control arm; the recommended shape of the mode that carries a live LDE validation leg |
 | `--mode unfused --lde-shape cell` | ditto, v1 grid (16× tap re-read) | 11.50 GiB | 90.462 ms | the v1 control, kept unaltered; same live LDE validation leg |
 
-**The recommendation is `fused-cached` + `interleave` + `locality`.** It is the fastest
-arm measured (3.92× the v1 pass on `pass − fold`, 3.42× on the full pass, 1.22× the
+**Within the v1/v2 ladder the recommendation is `fused-cached` + `interleave` +
+`locality`.** (The crate's fastest arm overall is v3's `--mode lsb-pair`; every v3 arm
+beats this one — see [The pair mode](#the-pair-mode-v3-r2--the-recommended-v3-arm).) It is
+the fastest of the twelve arms below (3.92× the v1 pass on `pass − fold`, 3.42× on the full pass, 1.22× the
 best unfused arm), on the smallest device footprint (half the backing, because no coset
 is materialized), with issued DRAM traffic at 1.008× the compulsory floor — and within
 the interleaved pair it is also the better register/occupancy point (66 registers, 3
@@ -356,7 +359,8 @@ Building and `--help` do not need the lock; every execution does.
 **The shape flags are an explicit matrix, not free-floating knobs:** `--lde-shape`
 applies to the unfused mode only (no other mode has an LDE stage to shape) and
 `--cell-map` to the two fused modes only — `unfused` keeps the v1 block map and
-`lsb-recompute` fixes the lane map at lane = tap, two groups per warp. `--compact-groups`
+each LSB mode fixes its own (`lsb-recompute` lane = tap at two groups per warp,
+`lsb-pair` pair-resident at eight lanes per group and four groups per warp). `--compact-groups`
 and `--bank-perm` apply to `lsb-compact` alone, and `--compact-groups 8` additionally
 needs `--log-trace >= 10` (a compact block is 8 warps × `groups` rows and must tile the
 trace — rejected with a message, not an assert). The inapplicable knob prints as `n/a` in
@@ -399,7 +403,9 @@ B=target/release/gpu_gkr_uniskip_bench
 $B --log-trace 12 --iterations 0 --dump-q --mode lsb-recompute --term-order locality | grep '^q\[' > /tmp/a
 $B --log-trace 12 --iterations 0 --dump-q --mode lsb-compact --compact-groups 4 \
     --term-order locality | grep '^q\[' > /tmp/b
-diff /tmp/a /tmp/b        # empty
+$B --log-trace 12 --iterations 0 --dump-q --mode lsb-pair \
+    --term-order locality | grep '^q\[' > /tmp/c
+diff /tmp/a /tmp/b && diff /tmp/a /tmp/c        # both empty
 ```
 
 `--dump-q` prints the 32 evaluations as raw hex words, one cell per line, and applies to

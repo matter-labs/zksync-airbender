@@ -34,8 +34,7 @@ DEVICE_FORCEINLINE u32 uniskip_pair_element(const u32 lane, const u32 bit, const
   return ((lane >> bit) << (bit + 1)) | (slot << bit) | (lane & ((1u << bit) - 1));
 }
 
-// The lane's two values through the chain. `p` caches which side of each re-pair this lane
-// is on; the masks are compile-time so `p` costs one AND per stage, not a lookup.
+// The lane's two values through the chain.
 struct uniskip_pair_regs {
   bf lo;
   bf hi;

@@ -108,8 +108,8 @@ pub fn lane_twiddles(lane: usize) -> Vec<F> {
 }
 
 /// Re-pair: each lane keeps one of its two values and trades the other with the lane at
-/// `lane ^ mask`. `p` — whether this lane is the high side of the trading pair — decides
-/// which one stays, and both sides use the same three selects.
+/// `lane ^ mask`. Which one stays is decided by whether the lane is the high side of the
+/// trading pair; both sides use the same three selects.
 fn repair(pairs: &mut [(F, F); PAIR_LANES], mask: usize) {
     let sent: Vec<F> = (0..PAIR_LANES)
         .map(|l| {

@@ -56,7 +56,9 @@ struct Cli {
     /// `lsb-recompute` is the v3 R0 arm — LSB group layout, lane = tap, one
     /// shuffle-NTT per reference, no window and no fold stage — and `lsb-compact` is
     /// v3 R1, which stages the group vectors in shared memory and packs only the real
-    /// multiplies across lanes (measured slower; kept as a control arm).
+    /// multiplies across lanes (measured slower; kept as a control arm). `lsb-pair` is
+    /// v3 R2 and the recommended v3 arm: pair-resident radix-2, both halves of a
+    /// butterfly in one lane, so the unity multiply is never written.
     #[arg(long, value_enum, default_value_t = EvalMode::Unfused)]
     mode: EvalMode,
 
@@ -178,8 +180,7 @@ fn pass_config(cli: &Cli, geometry: &Geometry) -> PassConfig {
                 cli.mode.as_str()
             ),
             _ => format!(
-                "--cell-map applies to fused modes only; --mode {} fixes the lane map at \
-                 lane = tap, two groups per warp",
+                "--cell-map applies to fused modes only; --mode {} fixes its own lane map",
                 cli.mode.as_str()
             ),
         });

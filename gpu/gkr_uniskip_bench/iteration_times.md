@@ -1917,22 +1917,40 @@ stage tables), lane-divergent at pack-2 and deliberately left issued.
   R2 wins by 21 % anyway, which is the headline finding of the profile below.
 
 - **SASS mechanism**, four-arch, from the chain's 22 inlined instantiations (6 `bf`
-  operand sites + 4 `e4` sites x 4 limb passes): **8 multiplies per lane per chain x 22 =
-  176 static, serving 4 rows = 44.0/row** against R0's `7 x 22 = 154` over 2 rows = 77.0
-  — the designed 64-vs-112 per group, exactly. Shuffles: **6 per chain x 22 = 132 static
-  = 33.0/row** against R0's `8 x 22 = 176` over 2 rows = 88.0, i.e. **0.375x**. (Measured
-  totals are 164 and 184 `SHFL`; the extra 32 and 8 are the epilogue reductions — two
-  masks x four `e4` accumulators and one mask x two, respectively.)
+  operand sites + 4 `e4` sites x 4 limb passes). The chain slice is separable from the
+  rest because the remainder scales with elements per lane, so the split below is a
+  measurement rather than an attribution (sm_120):
+
+| kernel | total `IMAD.WIDE` | of which chain | non-chain remainder | elements/lane | rows/walk | **chain muls/row** | issued muls/group |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| R0 `lsb-recompute` | 423 | 22 x 7 = 154 | 269 | 1 | 2 | **77.0** | 112 |
+| **R2 `lsb-pair`** | 655 | 22 x 8 = 176 | **479** | 2 | 4 | **44.0** | **64** |
+
+  The remainder is 479 against 269 for twice the elements per lane — 1.78x, the same
+  near-linear scaling R1's table showed at 1.96x/3.89x for 2 and 4 — so the chain slice is
+  not absorbing it. Shuffles: **6 per chain x 22 = 132 static = 33.0/row** against R0's
+  `8 x 22 = 176` over 2 rows = 88.0, i.e. **0.375x**. (Measured `SHFL` totals are 164 and
+  184; the extra 32 and 8 are the epilogue reductions — two masks x four `e4`
+  accumulators, and one mask x two.)
 
 ### Timings
 
-Emitted programmatically from the run log rather than transcribed. All six rows are one
-session, one build.
+**All four rows below are one session, one build**, and the table is emitted from the run
+log by `tools/timing_table.py` rather than transcribed — the R1 record lost two review
+rounds to hand-assembled tables, so the capture and the emit are now separate steps:
 
 ```bash
-.agents/bin/with_gpu_lock.sh target/release/gpu_gkr_uniskip_bench \
-    --log-trace 24 --warmup 10 --iterations 100 --mode {lsb-pair,lsb-recompute} \
-    --term-order {census,locality}
+.agents/bin/with_gpu_lock.sh bash -c '
+  B=target/release/gpu_gkr_uniskip_bench
+  for spec in "lsb-pair census" "lsb-pair locality" \
+              "lsb-recompute census" "lsb-recompute locality"; do
+    set -- $spec
+    echo "=== MODE=$1 ORDER=$2"
+    $B --log-trace 24 --warmup 10 --iterations 100 --mode $1 --term-order $2
+  done' > /tmp/runlog.txt
+
+python3 gpu/gkr_uniskip_bench/tools/timing_table.py /tmp/runlog.txt \
+    --control lsb-recompute --bar census=20.713 --bar locality=20.596
 ```
 
 | arm | `eval` | `finalize` | **eval + finalize** | vs recorded bar | vs same-session control | spread (`eval` min-max) |
@@ -1950,7 +1968,7 @@ whichever denominator is used.
 Against the whole ladder: **v1 90.462 -> v2 23.078 -> R0 20.596 -> R2 16.283** on
 `pass − fold`, i.e. **5.56x v1** and **−29.4 % against v2's recommended arm**. On the
 corrected unit basis, 16.283 / 1.875 = **8.68 ms/unit**, **1.09x** the 8.00 ms/unit
-windowed reference — the parity bar for a k = 4 pass is 15.0 ms, now **8.5 %** away.
+windowed reference — the parity bar for a k = 4 pass is 15.0 ms, now **8.6 %** away.
 
 ### ncu — `lsb-pair` locality against R0
 

@@ -332,6 +332,15 @@ mod cpu_tests {
         // v3 LSB geometry: a 16-lane half-warp is one group, so a block is 16 rows.
         assert_eq!(UNISKIP_LSB_GROUPS_PER_WARP, 2);
         assert_eq!(UNISKIP_LSB_ROWS_PER_BLOCK, 16);
+        // v3 R2 pair geometry: 8 lanes per group, 4 groups per warp, 32 rows per block.
+        // This constant sizes the grid and the partials while its `.cuh` twin maps rows
+        // to lanes, so a one-sided edit would otherwise surface only as a failed
+        // `--validate` on a GPU.
+        assert_eq!(UNISKIP_PAIR_ROWS_PER_BLOCK, 32);
+        assert_eq!(
+            UNISKIP_PAIR_ROWS_PER_BLOCK,
+            UNISKIP_WARPS_PER_BLOCK * (32 / (UNISKIP_TAPS / 2))
+        );
         assert_eq!(UNISKIP_NTT_TABLES, 7);
         // v3 R1 compaction wire.
         assert_eq!(size_of::<UniskipCompactSlot>(), 8);
