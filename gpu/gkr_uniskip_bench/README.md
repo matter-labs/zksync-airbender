@@ -44,7 +44,7 @@ bit-identical results.
 ### Modes, and which one to run
 
 All numbers below are medians at `--log-trace 24` on an RTX PRO 6000 Blackwell over
-`--warmup 10 --iterations 100`, from `iteration_times.md`; all 12 legal arms pass
+`--warmup 10 --iterations 100`, from `iteration_times.md`; all 16 legal arms pass
 `--validate` and `--validate-flat-eq` (the 24-cell matrix is tabulated there too).
 `pass − fold` is `lde + eval + finalize` — the
 part the modes actually change, since `fold` is identical work everywhere (its
@@ -329,9 +329,12 @@ Building and `--help` do not need the lock; every execution does.
 **The shape flags are an explicit matrix, not free-floating knobs:** `--lde-shape`
 applies to the unfused mode only (no other mode has an LDE stage to shape) and
 `--cell-map` to the two fused modes only — `unfused` keeps the v1 block map and
-`lsb-recompute` fixes the lane map at lane = tap, two groups per warp. The
-inapplicable knob prints as `n/a` in the config block and the summary line, so a
-recorded measurement can never name a shape the run did not use. `--term-order` is not in the matrix: it
+`lsb-recompute` fixes the lane map at lane = tap, two groups per warp. `--compact-groups`
+and `--bank-perm` apply to `lsb-compact` alone, and `--compact-groups 8` additionally
+needs `--log-trace >= 10` (a compact block is 8 warps × `groups` rows and must tile the
+trace — rejected with a message, not an assert). The inapplicable knob prints as `n/a` in
+the config block and the summary line, so a recorded measurement can never name a shape
+the run did not use. `--term-order` is not in the matrix: it
 reorders records, which every mode executes.
 
 The cache plan — `C`, `Ru`, the mul-pipe op split and the slot assignment — prints at
@@ -353,6 +356,23 @@ LDE check reports `n/a` — no mode but `unfused` has a coset buffer to compare 
 the `q` oracle, which addresses all 32 cells through `Layout::source_offset`, is what
 pins the recomputed, the cached and the shuffle-NTT-produced ones. `lsb-recompute`
 additionally reports `fold validate: n/a`, since it runs no fold stage.
+
+```bash
+# the v3 R1 arm
+.agents/bin/with_gpu_lock.sh target/release/gpu_gkr_uniskip_bench --log-trace 10 --validate \
+    --mode lsb-compact --compact-groups {4,8} --term-order {census,locality}
+
+# cross-mode oracle: lsb-compact's q must be BIT-EXACT equal to lsb-recompute's, compared
+# device-to-device with no host oracle in the loop
+B=target/release/gpu_gkr_uniskip_bench
+$B --log-trace 12 --iterations 0 --dump-q --mode lsb-recompute --term-order locality | grep '^q\[' > /tmp/a
+$B --log-trace 12 --iterations 0 --dump-q --mode lsb-compact --compact-groups 4 \
+    --term-order locality | grep '^q\[' > /tmp/b
+diff /tmp/a /tmp/b        # empty
+```
+
+`--dump-q` prints the 32 evaluations as raw hex words, one cell per line, and applies to
+every mode; it is how two arms are compared without going through the host oracle.
 
 `--self-products <N>` applies to every mode and is validation-only: it rewrites `N`
 same-class binary products into `x * x`, which is the only way to reach the LSB mode's

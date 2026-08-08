@@ -3,9 +3,10 @@ use std::ffi::CStr;
 use clap::{CommandFactory, Parser};
 use era_cudart::device::{get_device, get_device_properties};
 use gpu_gkr_uniskip_bench::abi::{
-    UNISKIP_CELLS, UNISKIP_COMPACT_DEFAULT_GROUPS, UNISKIP_SRC_E4_GLOBAL,
+    UNISKIP_CELLS, UNISKIP_COMPACT_DEFAULT_GROUPS, UNISKIP_LOG_TAPS, UNISKIP_SRC_E4_GLOBAL,
 };
 use gpu_gkr_uniskip_bench::cache;
+use gpu_gkr_uniskip_bench::compact::BankPerm;
 use gpu_gkr_uniskip_bench::geometry::Geometry;
 use gpu_gkr_uniskip_bench::harness::{
     CellMap, EvalMode, Harness, LdeShape, PassConfig, StageTimes, STAGES,
@@ -53,7 +54,9 @@ struct Cli {
     /// `fused-recompute` extends the taps on read (no LDE launch, no coset backing),
     /// `fused-cached` adds the fixed shared-memory slab assignment on top,
     /// `lsb-recompute` is the v3 R0 arm — LSB group layout, lane = tap, one
-    /// shuffle-NTT per reference, no window and no fold stage.
+    /// shuffle-NTT per reference, no window and no fold stage — and `lsb-compact` is
+    /// v3 R1, which stages the group vectors in shared memory and packs only the real
+    /// multiplies across lanes (measured slower; kept as a control arm).
     #[arg(long, value_enum, default_value_t = EvalMode::Unfused)]
     mode: EvalMode,
 
@@ -77,6 +80,12 @@ struct Cli {
     /// elements, so one program walk serves `groups` rows. Compact mode only.
     #[arg(long)]
     compact_groups: Option<u32>,
+
+    /// Staging tap permutation in `--mode lsb-compact`: `linear` (the shipped,
+    /// bank-conflict-free layout) or `identity` (the pre-fix layout, kept so the
+    /// bank-conflict A/B is re-runnable). Compact mode only.
+    #[arg(long, value_enum)]
+    bank_perm: Option<BankPerm>,
 
     /// Validation knob: rewrite this many same-class binary products into
     /// self-products (`x * x`), which is the only way to exercise the LSB mode's
@@ -155,7 +164,7 @@ fn gb_per_s(bytes: u64, median_ms: f64) -> f64 {
 /// The legal flag matrix: a grid-shape flag only applies to the mode that runs that
 /// grid. Rejecting the combination is deliberate — silently ignoring it would let a
 /// recorded measurement name a shape the run never used.
-fn pass_config(cli: &Cli) -> PassConfig {
+fn pass_config(cli: &Cli, geometry: &Geometry) -> PassConfig {
     if !cli.mode.uses_lde_shape() && cli.lde_shape.is_some() {
         fail(format!(
             "--lde-shape applies to unfused modes only; --mode {} runs no LDE stage",
@@ -181,6 +190,12 @@ fn pass_config(cli: &Cli) -> PassConfig {
             cli.mode.as_str()
         ));
     }
+    if !cli.mode.uses_compact_groups() && cli.bank_perm.is_some() {
+        fail(format!(
+            "--bank-perm applies to --mode lsb-compact only; --mode {} stages nothing",
+            cli.mode.as_str()
+        ));
+    }
     let compact_groups = cli
         .compact_groups
         .unwrap_or(UNISKIP_COMPACT_DEFAULT_GROUPS as u32);
@@ -189,17 +204,35 @@ fn pass_config(cli: &Cli) -> PassConfig {
             "--compact-groups {compact_groups} is not one of 4, 8"
         ));
     }
-    PassConfig {
+    let config = PassConfig {
         mode: cli.mode,
         lde_shape: cli.lde_shape.unwrap_or_default(),
         cell_map: cli.cell_map.unwrap_or_default(),
         compact_groups,
+        bank_perm: cli.bank_perm.unwrap_or_default(),
+    };
+    // The eval grid must tile the trace: a compact block is 8 warps x `groups` rows, so a
+    // small --log-trace can leave fewer rows than one block covers. Rejected here rather
+    // than through Geometry's bare assert, so it exits like every other illegal
+    // combination.
+    let rows_per_block = u64::from(config.mode.rows_per_block_with(config.compact_groups));
+    let rows = 1u64 << geometry.log_rows;
+    if !rows.is_multiple_of(rows_per_block) {
+        fail(format!(
+            "--log-trace {} gives {rows} logical rows, which --mode {} at {rows_per_block} rows \
+             per block does not tile; raise --log-trace to at least {}",
+            geometry.log_trace,
+            config.mode.as_str(),
+            rows_per_block.trailing_zeros() + UNISKIP_LOG_TAPS
+        ));
     }
+    config
 }
 
 fn main() {
     let cli = Cli::parse();
-    let config = pass_config(&cli);
+    let geometry = Geometry::new(cli.log_trace).unwrap_or_else(|e| fail(e));
+    let config = pass_config(&cli, &geometry);
     // The knob the mode does not run reads `n/a`, so a recorded line never names a
     // shape that run never used.
     let lde_shape_label = if config.mode.uses_lde_shape() {
@@ -212,13 +245,12 @@ fn main() {
     } else {
         "n/a"
     };
-    let compact_groups_label = if config.mode.uses_compact_groups() {
-        config.compact_groups.to_string()
+    let (compact_groups_label, bank_perm_label) = if config.mode.uses_compact_groups() {
+        (config.compact_groups.to_string(), config.bank_perm.as_str())
     } else {
-        "n/a".to_string()
+        ("n/a".to_string(), "n/a")
     };
 
-    let geometry = Geometry::new(cli.log_trace).unwrap_or_else(|e| fail(e));
     let census = Census {
         sources: cli.sources,
         semantic_terms: cli.semantic_terms,
@@ -250,6 +282,7 @@ fn main() {
     println!("  lde_shape           {lde_shape_label}");
     println!("  cell_map            {cell_map_label}");
     println!("  compact_groups      {compact_groups_label}");
+    println!("  bank_perm           {bank_perm_label}");
     println!("  term_order          {}", cli.term_order.as_str());
     println!("  self_products       {self_products}");
     if self_products > 0 {
@@ -474,7 +507,7 @@ fn main() {
 
     println!(
         "summary: log_trace {} | mode {} | lde_shape {lde_shape_label} | cell_map {cell_map_label} | \
-         compact_groups {compact_groups_label} | term_order {} | C {} Ru {} | {sources} sources / \
+         compact_groups {compact_groups_label} | bank_perm {bank_perm_label} | term_order {} | C {} Ru {} | {sources} sources / \
          {columns} columns / {} B ({:.2} GiB) per pass | total median {total_median:.3} ms over \
          {} iterations | {device}",
         cli.log_trace,

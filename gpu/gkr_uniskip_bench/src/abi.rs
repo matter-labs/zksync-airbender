@@ -26,9 +26,10 @@ pub const UNISKIP_LSB_ROWS_PER_BLOCK: usize = UNISKIP_WARPS_PER_BLOCK * UNISKIP_
 /// 4 and 8 are built and the winner ships as the mode default. A lane holds `G / 2`
 /// elements, all at the same tap, so one program walk serves `G` rows.
 pub const UNISKIP_COMPACT_MAX_GROUPS: usize = 8;
-/// Groups a warp owns when `--compact-groups` is not given: the measured winner. 8 halves
-/// the multiply count again but costs 128 registers (2 blocks/SM against 4's 3) and is
-/// nearly twice as slow — see `iteration_times.md`'s v3 R1 section.
+/// Groups a warp owns when `--compact-groups` is not given: the measured winner. 8 cuts
+/// the chain's multiplies a further 12.5 % against 4 (both are far under R0's 112 per
+/// group — 56 and 64) but costs 128 registers, 2 blocks/SM against 4's 3, and is nearly
+/// twice as slow — see `iteration_times.md`'s v3 R1 section.
 pub const UNISKIP_COMPACT_DEFAULT_GROUPS: usize = 4;
 /// Rounds the device schedule symbol is sized for — the largest group count's total.
 pub const UNISKIP_COMPACT_MAX_ROUNDS: usize = 20;

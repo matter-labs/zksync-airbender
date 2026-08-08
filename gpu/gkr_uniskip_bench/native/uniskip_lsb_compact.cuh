@@ -18,20 +18,17 @@ namespace airbender::gkr_uniskip_bench {
 // amortizing decode G / 2x better than R0.
 constexpr u32 UNISKIP_COMPACT_MAX_ROUNDS = 20;
 
-// BANK PERMUTATION. An element sits at `bank_perm(tap) * G + group`: group in the LOW
-// bits so a round's lanes hit consecutive banks, and the tap permuted so the 32 / G slots
-// a round touches have distinct `bank_perm` modulo 32 / G. The GF(2)-linear map with
-// column images [1, 2, 5, 14]; the identity collides (`{0,1,2,3,8,9,10,11}` pairwise mod
-// 8) and cost 79 % excess shared wavefronts in the first build of this mode. Derivation
-// and the measured conflict-freedom proof: `src/compact.rs`. Evaluated once per thread.
-DEVICE_FORCEINLINE u32 uniskip_compact_bank_perm(const u32 tap) {
-  return ((tap & 1) ^ ((tap >> 2) & 1)) | ((((tap >> 1) & 1) ^ ((tap >> 3) & 1)) << 1) | ((((tap >> 2) & 1) ^ ((tap >> 3) & 1)) << 2) | (((tap >> 3) & 1) << 3);
-}
+// BANK PERMUTATION. An element sits at `perm[tap] * G + group`: group in the LOW bits so
+// a round's lanes hit consecutive banks, and the tap permuted so the 32 / G slots a round
+// touches land in distinct banks. The identity collides (`{0,1,2,3,8,9,10,11}` is
+// pairwise congruent mod 8) and cost 79 % excess shared wavefronts in the first build of
+// this mode. The table is host-built and uploaded so the formula exists in one place;
+// each thread reads its own entry once, at entry.
 
 // One lane's work in one round: the two staging offsets it owns and the twiddle it
 // multiplies by, or 0 for "nothing to multiply". A twiddle is never zero, so the sentinel
 // is unambiguous. 8 bytes, align 8, so the read is one LDS.64. Host builder and its
-// coverage proof: `src/compact.rs`.
+// coverage/execution proofs: `src/compact.rs`.
 struct alignas(8) uniskip_compact_slot {
   u16 lo;
   u16 hi;
@@ -44,6 +41,7 @@ static_assert(alignof(uniskip_compact_slot) == 8);
 
 EXTERN __device__ __constant__
     airbender::gkr_uniskip_bench::uniskip_compact_slot ab_gkr_uniskip_compact_sched[airbender::gkr_uniskip_bench::UNISKIP_COMPACT_MAX_ROUNDS * 32];
+EXTERN __device__ __constant__ u32 ab_gkr_uniskip_compact_perm[airbender::gkr_uniskip_bench::UNISKIP_TAPS];
 
 namespace airbender::gkr_uniskip_bench {
 

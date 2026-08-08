@@ -24,7 +24,7 @@ fn lift(x: F) -> E4 {
     <E4 as FieldExtension<F>>::from_base(x)
 }
 
-fn mul(a: F, b: F) -> F {
+pub(crate) fn mul(a: F, b: F) -> F {
     let mut r = a;
     r.mul_assign(&b);
     r
@@ -79,12 +79,14 @@ pub const fn bitrev_tap(i: usize) -> usize {
 ///
 /// | table | stage | multiplier at lane `l` |
 /// | --- | --- | --- |
-/// | 0..2 | iDIF, butterfly distance 8 / 4 / 2 | `omega^-((l & (d-1)) * 16/(2d))` on the lower lanes, `1` on the upper |
-/// | 3 | normalize + twist, folded | `inv16 * gamma^bitrev(l)` |
-/// | 4..6 | DIT, butterfly distance 2 / 4 / 8 | `omega^((l & (d-1)) * 16/(2d))` on the lower lanes, `1` on the upper |
+/// | 0..2 | iDIF, butterfly distance 8 / 4 / 2 | `omega^-((l & (d-1)) * 16/(2d))` on the HIGH lane of each pair (`l & d != 0`), `1` on the low |
+/// | 3 | normalize + twist, folded | `inv16 * gamma^bitrev(l)`, non-unity on every lane |
+/// | 4..6 | DIT, butterfly distance 2 / 4 / 8 | `omega^((l & (d-1)) * 16/(2d))` on the HIGH lane of each pair, `1` on the low |
 ///
 /// The two distance-1 stages carry only unity (their exponent is `0 * 8`) and are
-/// elided on both sides, which is why there are 7 tables and not 9.
+/// elided on both sides, which is why there are 7 tables and not 9. "High lane" is
+/// `l & d != 0`, which `stage` below sets and `compact::Phase::multiplied` depends on:
+/// a twiddle on a LOW element would be silently dropped by the compaction schedule.
 pub fn ntt_twiddles() -> [[F; UNISKIP_TAPS]; UNISKIP_NTT_TABLES] {
     let omega = omega16();
     let omega_inv = omega.inverse().unwrap();

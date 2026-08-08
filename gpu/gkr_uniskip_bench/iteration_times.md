@@ -1058,8 +1058,8 @@ all of which have to travel with that number:
 
 - **Stage inclusion.** Uniskip's side is `lde + eval + finalize`; the windowed side is
   its round work as quoted. Both exclude fold. If uniskip's fold is put back it is
-  4.743 ms per 4 variables = 1.19 ms/variable, taking row 8 to 6.96 ms/variable — but
-  the windowed side's fold-equivalent is unknown, so that pairing is not fair either.
+  (23.078 + 4.743) / 1.875 = **14.84 ms/unit**, i.e. 1.85x the reference — but the
+  windowed side's fold-equivalent is unknown, so that pairing is not fair either.
   Nothing here lets the two be compared fold-inclusive.
 - **Different programs.** This bench runs a deterministic synthetic program pinned to
   the *census* of the round-0/layer-0 add/sub circuit, with a synthetic group-type mix,
@@ -1508,9 +1508,10 @@ multiply cut is real, proven in SASS and visible in the profile (`fmaheavy` 81.5
 
 `--mode lsb-compact --compact-groups {4,8}`. Same LSB backing, same W = 0
 recompute-everything semantics, same `eq`/`finalize` path, no fold — R0 with a
-restructured producer and warp geometry. New files only
-(`native/uniskip_lsb_compact.{cu,cuh}`, `src/compact.rs`); `uniskip.cu`,
-`uniskip_abi.cuh` and `uniskip_lsb.cuh` are byte-untouched.
+restructured producer and warp geometry. New native and schedule files
+(`native/uniskip_lsb_compact.{cu,cuh}`, `src/compact.rs`) plus wiring in
+`CMakeLists.txt`, `abi.rs`, `harness.rs`, `kernels.rs`, `lib.rs` and `main.rs`;
+`uniskip.cu`, `uniskip_abi.cuh` and `uniskip_lsb.{cu,cuh}` are byte-untouched.
 
 - **Geometry.** A warp owns `G` groups; lane `l` holds `G / 2` elements, all at tap
   `l & 15` — element `k` is group `(l >> 4) + 2k`. The lane keeps its R0 cell identity
@@ -1533,12 +1534,38 @@ restructured producer and warp geometry. New files only
 
 - **Cross-mode oracle (new, and stronger than R0's self-oracle).** `lsb-compact`
   preserves `lsb-recompute`'s element ordering, init generator and `eq` composition, so
-  its `q` must be bit-exact equal. Dumped device-side (`--dump-q`) and compared without
-  going through the host oracle at all: **all 32 cells identical for
-  {`census`, `locality`} x {G = 4, G = 8}**.
+  its `q` must be bit-exact equal. Dumped device-side and compared without going through
+  the host oracle at all:
+
+```bash
+for order in census locality; do
+  B=target/release/gpu_gkr_uniskip_bench
+  $B --log-trace 12 --iterations 0 --dump-q --mode lsb-recompute  --term-order $order | grep '^q\[' > /tmp/q_r0_$order.txt
+  for g in 4 8; do
+    $B --log-trace 12 --iterations 0 --dump-q --mode lsb-compact --compact-groups $g --term-order $order | grep '^q\[' > /tmp/q_c${g}_$order.txt
+    diff -q /tmp/q_r0_$order.txt /tmp/q_c${g}_$order.txt      # -> identical
+  done
+done
+```
+
+  All six dumps (R0, G = 4, G = 8, each under both term orders) are 32 cells and hash to
+  the same value, `sha256[0:16] = ed3bead0bce8833d`; `diff` reports **IDENTICAL** for all
+  four comparisons. (The two term orders agree with each other as well, which is the
+  order-invariance R0's record already established.)
 - **Standard cells.** 16/16 pass `q validate: OK (32/32)` — {G = 4, G = 8} x
   {`census`, `locality`} x {`--validate`, `--validate-flat-eq`} x
-  {`--self-products 0`, `--self-products 12`}.
+  {`--self-products 0`, `--self-products 12`}. One representative cell per G, in full:
+
+```
+$ … --log-trace 10 --validate --mode lsb-compact --compact-groups 4 --term-order locality
+LDE validate: n/a (no coset backing)
+q validate: OK (32/32)
+fold validate: n/a (no fold stage in this mode)
+$ … --log-trace 10 --validate --mode lsb-compact --compact-groups 8 --term-order locality
+LDE validate: n/a (no coset backing)
+q validate: OK (32/32)
+fold validate: n/a (no fold stage in this mode)
+```
 - **Schedule proof (CPU, GPU-free).** `cpu_compact_schedule_covers_every_element_once`
   checks against `domain::ntt_twiddles`, not a device twin: every `(phase, group, slot)`
   exactly once, the twiddle equal to the census entry, **no unity element scheduled**, and
@@ -1569,8 +1596,8 @@ passes), so its multiply count is separable from the rest of the `IMAD.WIDE` tot
 | compact G = 4 | 704 | 22 x 8 = 176 | 4 | **44.0** (−43 %) | 64 |
 | compact G = 8 | 1354 | 22 x 14 = 308 | 8 | **38.5** (−50 %) | 56 |
 
-The non-chain remainder scales exactly with the element count — 269 / 528 / 1046 for
-1 / 2 / 4 elements per lane — which is what makes the split above a measurement rather
+The non-chain remainder scales ≈ with the element count — 269 / 528 / 1046 for
+1 / 2 / 4 elements per lane, i.e. 1.96x and 3.89x rather than exactly 2x and 4x — which is what makes the split above a measurement rather
 than an attribution. The designed ratios (112 -> 64 -> 56 lane-multiplies per group) and
 the measured per-row ratios (77 -> 44 -> 38.5) agree to three digits.
 
@@ -1582,16 +1609,38 @@ The staging cost is equally visible: static `LDS`/`STS` go from R0's **8 / 2** t
 Locked, `--log-trace 24`, `--warmup 10 --iterations 100`, medians. R0 re-measured in the
 same session as the control.
 
-| arm | `eval` | `finalize` | **eval + finalize** | vs R0's bar | spread (`eval` min–max) |
-| --- | --- | --- | --- | --- | --- |
-| R0 `lsb-recompute` census (bar 20.713) | 20.838 | 0.061 | 20.899 | — | 20.36–20.90 |
-| R0 `lsb-recompute` locality (bar 20.596) | 20.711 | 0.061 | 20.772 | — | 20.33–20.79 |
-| compact G = 4 census | 23.754 | 0.033 | **23.787** | **+14.8 %** | 23.68–25.41 |
-| compact G = 4 locality | **23.574** | 0.033 | **23.607** | **+14.6 %** | 23.11–23.62 |
-| compact G = 8 census | 41.664 | 0.018 | 41.682 | +101 % | 41.65–41.68 |
-| compact G = 8 locality | 40.902 | 0.018 | 40.920 | +99 % | 40.87–40.94 |
+| arm | `eval` | `finalize` | **eval + finalize** | vs recorded bar | vs same-session control | spread (`eval` min–max) |
+| --- | --- | --- | --- | --- | --- | --- |
+| R0 `lsb-recompute` census (bar 20.713) | 20.860 | 0.061 | **20.921** (control) | +1.00 % | — | 20.35–20.94 |
+| R0 `lsb-recompute` locality (bar 20.596) | 20.739 | 0.061 | **20.800** (control) | +0.99 % | — | 20.33–20.81 |
+| compact G = 4 census | 23.766 | 0.033 | **23.799** | +14.9 % | **+13.8 %** | 23.27–23.84 |
+| compact G = 4 locality | **23.766** | 0.033 | **23.799** | +15.6 % | **+14.4 %** | 23.27–23.84 |
+| compact G = 8 census | 41.664 | 0.018 | 41.682 | +101 % | +99 % | 41.65–41.68 |
+| compact G = 8 locality | 41.274 | 0.018 | 41.292 | +100 % | +99 % | 41.24–41.31 |
 
-G = 4 is the better arm and is the mode default. **Both miss R0, and R1's own
+**Which denominator, and the drift.** The percentages above are given against **both** the
+recorded R0 bars (20.713 / 20.596) and the R0 control re-measured in this session
+(20.921 / 20.800). The control runs **+1.0 %** above its own recorded figure — about 45x
+the ~0.02 % reproducibility the R0 record demonstrated across rebuilds, so it is worth
+accounting for rather than passing over. It is **not codegen**: this rung adds a
+translation unit and a ~5 KB `__constant__` to the same device link
+(`CUDA_SEPARABLE_COMPILATION`), which could plausibly perturb existing kernels, so the
+`lsb-recompute` kernel's sm_120 SASS was recounted in this build — **3216 instructions,
+identical to the R1 commit's and to the R0 record's**. The drift is therefore session /
+measurement, not code. The miss stands on either denominator: **+13.8 % to +15.6 %**.
+
+**Modes unperturbed, this build.** R0's record set the precedent of showing the v1/v2
+kernels at their recorded register counts in the same diagnostic build. Repeated here:
+
+| kernel | sm_120 regs, R1 build | recorded |
+| --- | --- | --- |
+| `ab_gkr_uniskip_eval_kernel` | 54 | 54 |
+| `ab_gkr_uniskip_eval_fused_kernel` | 64 | 64 |
+| `ab_gkr_uniskip_eval_fused_interleave_kernel` | 125 | 125 |
+| `ab_gkr_uniskip_eval_fused_cached{,_interleave}_kernel` | 66 / 66 | 66 / 66 |
+| `ab_gkr_uniskip_eval_lsb_w0_kernel` | 40 (3216 SASS instructions) | 40 (3216) |
+
+G = 4 is the better arm and is the mode default. **Both miss R0 on either denominator, and R1's own
 resolver-model hypothesis (76 608 ops/row at G = 8, −48.8 %; 87 040 at G = 4, −41.8 %)
 is falsified as a predictor of wall time** — the model counts multiplies and the wall is
 not paying for multiplies any more.
@@ -1610,24 +1659,51 @@ The first profile showed **3.94 billion shared bank conflicts** — 8.89 G actua
 not sufficient: the slots of a distance-`d` phase are the taps with bit `log2 d` clear,
 and the identity map collides pairwise mod 8 on `{0,1,2,3,8,9,10,11}`. The fix
 (optimization attempt 1 of the 2 allowed) permutes the tap by the GF(2)-linear map with
-column images `[1, 2, 5, 14]`, enumerated as the one linear permutation whose low 3 bits
-stay a bijection on all four hyperplanes **and** whose low 2 bits do on every 4-slot round
-window; `cpu_compact_schedule_is_bank_conflict_free` now histogams the real schedule's
-banks and asserts degree 1 rather than arguing from a stride.
+column images `[1, 2, 5, 14]` — **a** permutation found by enumeration, not a unique or
+canonical one. Of the 20 160 invertible GF(2) 4x4 maps, **1 344** keep the low 3 bits
+bijective on all four tap hyperplanes and **768** are additionally conflict-free under
+`ordered_slots`' greedy at both group counts; `[1, 2, 6, 13]` works equally well and
+`[1, 2, 4, 15]` has the hyperplane property yet still conflicts at G = 8. **The
+hyperplane condition is necessary but not the operative acceptance test** — the operative
+one is measured: `cpu_compact_schedule_is_bank_conflict_free` histograms the real
+schedule's banks and asserts degree 1, rather than arguing from a stride or a structural
+property.
 
-| | before | after |
+The permutation is a **runnable arm**, not a one-off edit: `--bank-perm {identity,linear}`
+keeps the pre-permutation layout reachable so the A/B is single-variable and re-runnable.
+
+```bash
+.agents/bin/with_gpu_lock.sh target/release/gpu_gkr_uniskip_bench \
+    --log-trace 24 --warmup 10 --iterations 100 \
+    --mode lsb-compact --compact-groups 4 --term-order locality --bank-perm {identity,linear}
+```
+
+| G = 4, locality, one build, one session | `--bank-perm identity` | `--bank-perm linear` |
 | --- | --- | --- |
-| shared bank conflicts | 3 935 025 913 | **857 233 355** (−78 %) |
-| shared wavefronts | 8 902 326 657 | **5 824 534 099** (−35 %) |
-| `sm__inst_executed_pipe_lsu` | 87.06 % | **87.19 %** |
-| `eval` (G = 4, locality) | 23.755 | 23.574 (−0.8 %) |
+| shared bank conflicts | 2 978 900 658 | **927 561 850** (−69 %) |
+| shared wavefronts | 7 946 201 402 | **5 894 862 594** (−26 %) |
+| `sm__inst_executed_pipe_lsu` | 86.64 % | **86.85 %** (+0.21) |
+| SM speed-of-light | 86.38 % | 86.59 % |
+| `fmaheavy` | 68.60 % | 68.74 % |
+| `eval` median | **23.747** | **23.766** (+0.08 %) |
 
-**That is the decisive measurement of this rung.** Removing 78 % of the bank conflicts
-moved the LSU pipe by 0.13 points and the wall by 0.8 %, because the bound is
-`sm__inst_executed_pipe_lsu` — the **count of LSU instructions**, not the wavefronts they
-expand into. No amount of bank tuning can reach it. The second optimization attempt was
+**That is the decisive measurement of this rung.** Removing 69 % of the bank conflicts and
+26 % of the shared wavefronts moved the LSU pipe **up** 0.21 points and the wall by
++0.08 % — inside the noise, and certainly not a win. The bound is
+`sm__inst_executed_pipe_lsu`, the **count of LSU instructions**, not the wavefronts they
+expand into; no amount of bank tuning can reach it. The second optimization attempt was
 therefore not spent: the structural minimum of this design is ~2 shared accesses per
 element per stage, and the measured gap to R0 is 15 %.
+
+**A correction to the first version of this record.** It reported this A/B as
+23.755 -> 23.574 (−0.8 %), which compared two *different builds* whose layouts differed in
+two ways at once (group-major with an odd stride, then group-minor with a permuted tap).
+The single-variable numbers above supersede it: the honest figure is **+0.08 %, not
+−0.8 %**, which strengthens the conclusion rather than weakening it. The three layouts
+measured, for the record: stride-17 group-major (first build, now deleted) G = 4 23.755 /
+G = 8 28.618; `identity` G = 4 23.747 / G = 8 42.642; `linear` (shipped) G = 4 23.766 /
+G = 8 41.274. **At G = 8 the permutation is worth 3.2 %**, because its store/readback path
+is the one that suffers most without it — but no G = 8 layout comes within 35 % of the bar.
 
 ### ncu — G = 4 locality against R0
 
@@ -1666,8 +1742,13 @@ Read together:
   every operand and accumulator array; 40 -> 67 registers takes blocks/SM from 6 to 3.
 - **Memory behaviour is untouched and still perfect**: identical global load sectors and
   1.000× the DRAM floor. Nothing about this rung is a traffic story.
-- `adu` collapsing from 58 % to 0.85 % is the one incidental win: the schedule carries
-  precomputed offsets, so the address arithmetic R0 spent on the ADU pipe is gone.
+- **`adu` collapsing from 57.95 % to 0.85 % is OPEN, not explained.** The obvious reading
+  — "the schedule carries precomputed offsets" — does not survive contact with the table:
+  those are *shared* offsets and R0 has no shared memory at all, while the **global**
+  element-index arithmetic is unchanged between the two modes (identical issued load
+  sectors, the same expression per reference). So either R0's original 58 % ADU
+  attribution was wrong, or this moved for a reason neither profile isolates. Recorded as
+  a contradiction to resolve, not as a win to claim.
 
 ### Verdict, and what it does to the radix-4 arm
 

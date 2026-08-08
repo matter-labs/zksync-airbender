@@ -8,7 +8,7 @@ use era_cudart::stream::CudaStream;
 
 use crate::abi::*;
 use crate::cache::CachePlan;
-use crate::compact;
+use crate::compact::{self, BankPerm};
 use crate::domain::lde_matrix;
 use crate::geometry::Geometry;
 use crate::kernels;
@@ -214,7 +214,7 @@ impl EvalMode {
         }
     }
 
-    /// Whether `--compact-groups` names a warp geometry this mode runs.
+    /// Whether `--compact-groups` / `--bank-perm` name knobs this mode runs.
     pub fn uses_compact_groups(self) -> bool {
         self == Self::LsbCompact
     }
@@ -276,8 +276,14 @@ impl CellMap {
     }
 }
 
-/// The shape knobs of one pass. `lde_shape` applies to [`EvalMode::Unfused`] only
-/// and `cell_map` to the fused modes only; `main` rejects the other combinations.
+/// The shape knobs of one pass. `lde_shape` applies to [`EvalMode::Unfused`] only,
+/// `cell_map` to the fused modes only, and `compact_groups`/`bank_perm` to
+/// [`EvalMode::LsbCompact`] only; `main` rejects the other combinations.
+///
+/// `Default` leaves `compact_groups` at 0, which is not a legal group count — construct
+/// through `main`'s `pass_config`, which fills it, or set it explicitly. `Harness::new`
+/// substitutes a legal value for the modes that ignore it, so only a hand-built
+/// `LsbCompact` config can reach the invalid state.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct PassConfig {
     pub mode: EvalMode,
@@ -285,6 +291,9 @@ pub struct PassConfig {
     pub cell_map: CellMap,
     /// Groups a warp owns in [`EvalMode::LsbCompact`]; ignored elsewhere.
     pub compact_groups: u32,
+    /// Staging tap permutation in [`EvalMode::LsbCompact`]; ignored elsewhere. `Identity`
+    /// is the pre-fix layout, kept reachable so the bank-conflict A/B is re-runnable.
+    pub bank_perm: BankPerm,
 }
 
 /// The timed stages of one pass, in execution order.
@@ -480,8 +489,9 @@ impl Harness {
 
         kernels::upload_lde_matrix(&reference::flat_lde_matrix(&lde_matrix()))?;
         kernels::upload_ntt_twiddles(&reference::ntt_twiddle_words())?;
+        kernels::upload_compact_perm(&compact::bank_perm_words(config.bank_perm))?;
         kernels::upload_compact_schedule(
-            &compact::schedule_words(compact_groups as usize)
+            &compact::schedule_words(config.bank_perm, compact_groups as usize)
                 .try_into()
                 .expect("the compaction schedule is padded to the symbol size"),
         )?;

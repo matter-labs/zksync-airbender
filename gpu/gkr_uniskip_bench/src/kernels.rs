@@ -26,6 +26,7 @@ cuda_struct_and_stub! { static ab_gkr_uniskip_fold_weights: [[u32; 4]; UNISKIP_T
 cuda_struct_and_stub! { static ab_gkr_uniskip_cache_fill: [u16; UNISKIP_CACHE_UNITS]; }
 cuda_struct_and_stub! { static ab_gkr_uniskip_ntt_twiddles: [u32; UNISKIP_NTT_TABLES * UNISKIP_TAPS]; }
 cuda_struct_and_stub! { static ab_gkr_uniskip_compact_sched: [UniskipCompactSlot; UNISKIP_COMPACT_MAX_ROUNDS * 32]; }
+cuda_struct_and_stub! { static ab_gkr_uniskip_compact_perm: [u32; UNISKIP_TAPS]; }
 
 /// Blocks a grid-stride launch may use. The kernels loop, so this only bounds the
 /// launch; every configuration above it is covered by the stride.
@@ -187,6 +188,12 @@ pub fn upload_compact_schedule(
     schedule: &[UniskipCompactSlot; UNISKIP_COMPACT_MAX_ROUNDS * 32],
 ) -> CudaResult<()> {
     unsafe { memcpy_to_symbol(&ab_gkr_uniskip_compact_sched, schedule) }
+}
+
+/// Upload the staging tap permutation — [`crate::compact::bank_perm_words`]. The device
+/// reads it once per thread, so the formula lives on the host alone and cannot drift.
+pub fn upload_compact_perm(perm: &[u32; UNISKIP_TAPS]) -> CudaResult<()> {
+    unsafe { memcpy_to_symbol(&ab_gkr_uniskip_compact_perm, perm) }
 }
 
 /// Fill a `bf` backing with the deterministic init generator; `dst` is one word

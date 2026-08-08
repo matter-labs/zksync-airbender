@@ -2,6 +2,7 @@
 
 __device__ __constant__
     airbender::gkr_uniskip_bench::uniskip_compact_slot ab_gkr_uniskip_compact_sched[airbender::gkr_uniskip_bench::UNISKIP_COMPACT_MAX_ROUNDS * 32];
+__device__ __constant__ u32 ab_gkr_uniskip_compact_perm[airbender::gkr_uniskip_bench::UNISKIP_TAPS];
 
 namespace airbender::gkr_uniskip_bench {
 
@@ -158,7 +159,7 @@ template <u32 G> DEVICE_FORCEINLINE void uniskip_eval_compact(const uniskip_comp
   const u32 lane_id = threadIdx.x % 32;
   uniskip_compact_lane<G> lane;
   lane.tap = lane_id & (UNISKIP_TAPS - 1);
-  lane.perm_tap = uniskip_compact_bank_perm(lane.tap);
+  lane.perm_tap = ab_gkr_uniskip_compact_perm[lane.tap];
   lane.half = lane_id >> UNISKIP_LOG_TAPS;
   lane.row_base = blockIdx.x * u64{UNISKIP_WARPS_PER_BLOCK * G} + warp * G;
   lane.stage = staging + warp * G * UNISKIP_TAPS;
