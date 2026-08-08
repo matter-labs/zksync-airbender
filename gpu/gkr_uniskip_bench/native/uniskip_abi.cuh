@@ -69,10 +69,15 @@ struct alignas(8) uniskip_term {
   u16 source_a;
   u16 source_b;
 };
+// `cache_slot` was v1's `reserved` byte. The struct is still 4 bytes and the wire is
+// unchanged; only the byte's meaning is new: it names the first UNISKIP_CACHE unit of
+// this source's shared-memory coset slab, or UNISKIP_CACHE_SLOT_NONE when the source
+// is uncached and resolves through the Task 1 recompute path. Only the fused-cached
+// accessor reads it; every other mode leaves it at the sentinel.
 struct alignas(4) uniskip_source_record {
   u16 addr; /* window:6 | column:7 */
   u8 source_class;
-  u8 reserved;
+  u8 cache_slot;
 };
 struct alignas(8) uniskip_base_record {
   const u8 *base;
@@ -136,14 +141,40 @@ constexpr u32 UNISKIP_MAX_LOG_ROWS = UNISKIP_ELEMENT_INDEX_BITS - UNISKIP_LOG_AD
 static_assert((1u << UNISKIP_LOG_ADDRESSABLE_PLANES) == 128 * UNISKIP_TAPS);
 static_assert(UNISKIP_MAX_LOG_ROWS == 21);
 
+// SHARED-MEMORY SOURCE CACHE (fused-cached mode). The pool is a flat array of
+// fixed-size UNITS; one unit holds ONE `bf` plane of one source's coset slab for the
+// block's 32-row tile — UNISKIP_TAPS coset cells x UNISKIP_ROWS_PER_BLOCK rows. A `bf`
+// source therefore occupies one unit and an `e4` source four consecutive ones (one per
+// limb), which is what makes the slab byte cost exactly proportional to the field
+// class's component width and the read path uniform in the limb count.
+constexpr u32 UNISKIP_CACHE_UNIT_WORDS = UNISKIP_TAPS * UNISKIP_ROWS_PER_BLOCK;
+constexpr u32 UNISKIP_CACHE_UNITS = 16;
+constexpr u32 UNISKIP_CACHE_POOL_WORDS = UNISKIP_CACHE_UNITS * UNISKIP_CACHE_UNIT_WORDS;
+constexpr u8 UNISKIP_CACHE_SLOT_NONE = 0xff;
+// Inverse (unit -> source) plan, so the tile-start fill iterates UNITS and not the
+// whole source table: `source_id | limb << 8`, or UNISKIP_CACHE_FILL_NONE for a free
+// unit. Host-precomputed; see `src/cache.rs`.
+constexpr u16 UNISKIP_CACHE_FILL_NONE = 0xffff;
+static_assert(UNISKIP_SOURCE_CAPACITY <= 0x100, "the fill entry packs a source id in its low byte");
+static_assert(UNISKIP_CACHE_UNITS < UNISKIP_CACHE_SLOT_NONE, "a unit index must fit `cache_slot` beside its sentinel");
+// The fill assigns one lane per (unit, row) and strides by the block, so the two must
+// divide; with 16 units it is exactly two lanes per thread, warp `w` filling units
+// `w` and `w + 8`.
+static_assert((UNISKIP_CACHE_UNITS * UNISKIP_ROWS_PER_BLOCK) % UNISKIP_THREADS_PER_BLOCK == 0);
+// Static shared memory is capped at 48 KB per block without an opt-in, and the pool is
+// the only shared allocation the eval kernel makes (the cell reduction is `shfl`-only).
+static_assert(UNISKIP_CACHE_POOL_WORDS * sizeof(u32) <= 48 * 1024);
+
 } // namespace airbender::gkr_uniskip_bench
 
 EXTERN __device__ __constant__ e4 ab_gkr_uniskip_coeff_bank[airbender::gkr_uniskip_bench::UNISKIP_COEFF_BANK];
 EXTERN __device__ __constant__ e4 ab_gkr_uniskip_eq_high[2 * airbender::gkr_uniskip_bench::UNISKIP_EQ_HIGH];
 EXTERN __device__ __constant__ bf ab_gkr_uniskip_lde_matrix[airbender::gkr_uniskip_bench::UNISKIP_TAPS * airbender::gkr_uniskip_bench::UNISKIP_TAPS];
 EXTERN __device__ __constant__ e4 ab_gkr_uniskip_fold_weights[airbender::gkr_uniskip_bench::UNISKIP_TAPS];
+EXTERN __device__ __constant__ u16 ab_gkr_uniskip_cache_fill[airbender::gkr_uniskip_bench::UNISKIP_CACHE_UNITS];
 
-static_assert(sizeof(ab_gkr_uniskip_coeff_bank) + sizeof(ab_gkr_uniskip_eq_high) + sizeof(ab_gkr_uniskip_lde_matrix) + sizeof(ab_gkr_uniskip_fold_weights) <=
+static_assert(sizeof(ab_gkr_uniskip_coeff_bank) + sizeof(ab_gkr_uniskip_eq_high) + sizeof(ab_gkr_uniskip_lde_matrix) + sizeof(ab_gkr_uniskip_fold_weights) +
+                  sizeof(ab_gkr_uniskip_cache_fill) <=
               64 * 1024);
 
 namespace airbender::gkr_uniskip_bench {
@@ -152,7 +183,11 @@ namespace airbender::gkr_uniskip_bench {
 // goes through it, so v2 (LDE-on-read / published sources) only swaps this body. The
 // LDE and fold kernels deliberately do NOT use it — they are bulk per-column plane
 // sweeps and inline their own tap addressing.
-template <typename T> DEVICE_FORCEINLINE T uniskip_source_value(const uniskip_vm_desc &desc, const u16 source_id, const u32 cell, const u32 row) {
+//
+// The trailing `bf *` is the fused-cached mode's shared-memory pool. Every mode spells
+// the call identically, so term execution stays one text; the modes that resolve
+// without a cache ignore it.
+template <typename T> DEVICE_FORCEINLINE T uniskip_source_value(const uniskip_vm_desc &desc, bf *, const u16 source_id, const u32 cell, const u32 row) {
   const uniskip_source_record rec = desc.source[source_id];
   const u32 window = rec.addr >> 7;
   const size_t column = rec.addr & 0x7f; // widen BEFORE the shift
@@ -162,15 +197,19 @@ template <typename T> DEVICE_FORCEINLINE T uniskip_source_value(const uniskip_vm
   return load<T, ld_modifier::ca>(base, (plane << desc.log_rows) + row);
 }
 
-// SOURCE-RESOLUTION SELECTOR. An empty derived class: same members, same layout,
+// SOURCE-RESOLUTION SELECTORS. Empty derived classes: same members, same layout,
 // same 2512-byte `__grid_constant__` parameter, so the host wire struct is shared.
-// Its only job is to re-bind `uniskip_source_value` overload resolution inside the
+// Their only job is to re-bind `uniskip_source_value` overload resolution inside the
 // eval body, which is why term execution needs no per-mode spelling.
 struct uniskip_fused_desc : uniskip_vm_desc {};
+struct uniskip_cached_desc : uniskip_vm_desc {};
 static_assert(sizeof(uniskip_fused_desc) == sizeof(uniskip_vm_desc));
 static_assert(alignof(uniskip_fused_desc) == alignof(uniskip_vm_desc));
 static_assert(offsetof(uniskip_fused_desc, program) == 0);
 static_assert(offsetof(uniskip_fused_desc, eq_sizes) == 2492);
+static_assert(sizeof(uniskip_cached_desc) == sizeof(uniskip_vm_desc));
+static_assert(alignof(uniskip_cached_desc) == alignof(uniskip_vm_desc));
+static_assert(offsetof(uniskip_cached_desc, eq_sizes) == 2492);
 
 // The `bf` limbs of a source value, flat. The coset dot is `bf`-linear per limb, so
 // it treats a `bf` source as one limb and an `e4` source as four.
@@ -193,23 +232,27 @@ template <> struct uniskip_flat_limbs<e4> {
 constexpr u32 UNISKIP_DOT_CHUNK = 4;
 static_assert(UNISKIP_TAPS % UNISKIP_DOT_CHUNK == 0);
 
-// LDE-ON-READ. Same (source, cell, row) contract as the accessor above, with the
-// coset materialization absorbed: `desc.coset_bases` is never read and need not
-// exist. An H cell is the direct tap load; coset cell `UNISKIP_TAPS + c` is the dot
-// of the source's 16 taps with row `c` of the coset LDE matrix, accumulated wide in
-// `UNISKIP_DOT_CHUNK`-tap chunks. The matrix entry is warp-uniform, so `__constant__`
-// broadcasts it.
-template <typename T> DEVICE_FORCEINLINE T uniskip_source_value(const uniskip_fused_desc &desc, const u16 source_id, const u32 cell, const u32 row) {
-  using limbs_of = uniskip_flat_limbs<T>;
-  constexpr u32 LIMBS = limbs_of::COUNT;
-  const uniskip_source_record rec = desc.source[source_id];
+// LDE-ON-READ, the two halves the fused and fused-cached accessors share.
+// `uniskip_tap_read` is the direct load of an H cell; `uniskip_coset_recompute` is the
+// dot of the source's 16 taps with row `coset_row` of the coset LDE matrix, per `bf`
+// limb, accumulated wide in `UNISKIP_DOT_CHUNK`-tap chunks. The matrix entry is
+// warp-uniform, so `__constant__` broadcasts it.
+template <typename T> DEVICE_FORCEINLINE T uniskip_tap_read(const uniskip_vm_desc &desc, const uniskip_source_record rec, const u32 cell, const u32 row) {
   const u32 window = rec.addr >> 7;
   const size_t column = rec.addr & 0x7f;                                    // widen BEFORE the shift
   const T *base = reinterpret_cast<const T *>(desc.tap_bases[window].base); // typed BEFORE element arithmetic
+  return load<T, ld_modifier::ca>(base, ((column * UNISKIP_TAPS + cell) << desc.log_rows) + row);
+}
+
+template <typename T>
+DEVICE_FORCEINLINE T uniskip_coset_recompute(const uniskip_vm_desc &desc, const uniskip_source_record rec, const u32 coset_row, const u32 row) {
+  using limbs_of = uniskip_flat_limbs<T>;
+  constexpr u32 LIMBS = limbs_of::COUNT;
+  const u32 window = rec.addr >> 7;
+  const size_t column = rec.addr & 0x7f;
+  const T *base = reinterpret_cast<const T *>(desc.tap_bases[window].base);
   const size_t plane = column * UNISKIP_TAPS;
-  if (cell < UNISKIP_TAPS)
-    return load<T, ld_modifier::ca>(base, ((plane + cell) << desc.log_rows) + row);
-  const bf *weights = &ab_gkr_uniskip_lde_matrix[(cell - UNISKIP_TAPS) * UNISKIP_TAPS];
+  const bf *weights = &ab_gkr_uniskip_lde_matrix[coset_row * UNISKIP_TAPS];
   bf acc[LIMBS];
 #pragma unroll
   for (u32 l = 0; l < LIMBS; ++l)
@@ -234,6 +277,88 @@ template <typename T> DEVICE_FORCEINLINE T uniskip_source_value(const uniskip_fu
       acc[l] = bf::add(acc[l], bf::red_wide(wide[l]));
   }
   return limbs_of::pack(acc);
+}
+
+// FUSED (rung 2a): the coset materialization is absorbed, so `desc.coset_bases` is
+// never read and need not exist.
+template <typename T> DEVICE_FORCEINLINE T uniskip_source_value(const uniskip_fused_desc &desc, bf *, const u16 source_id, const u32 cell, const u32 row) {
+  const uniskip_source_record rec = desc.source[source_id];
+  if (cell < UNISKIP_TAPS)
+    return uniskip_tap_read<T>(desc, rec, cell, row);
+  return uniskip_coset_recompute<T>(desc, rec, cell - UNISKIP_TAPS, row);
+}
+
+// FUSED-CACHED (rung 2b): identical to the fused accessor except that a coset cell of
+// a source the host assigned a slot reads the block's shared-memory slab instead of
+// re-running the dot. `row & (UNISKIP_ROWS_PER_BLOCK - 1)` is the lane, because a
+// block's rows are `blockIdx.x * UNISKIP_ROWS_PER_BLOCK + lane` and the tile is
+// exactly one warp wide. An `e4` source's four limbs live in four consecutive units,
+// so the limb walk is one unit stride.
+template <typename T>
+DEVICE_FORCEINLINE T uniskip_source_value(const uniskip_cached_desc &desc, bf *cache, const u16 source_id, const u32 cell, const u32 row) {
+  using limbs_of = uniskip_flat_limbs<T>;
+  constexpr u32 LIMBS = limbs_of::COUNT;
+  const uniskip_source_record rec = desc.source[source_id];
+  if (cell < UNISKIP_TAPS)
+    return uniskip_tap_read<T>(desc, rec, cell, row);
+  if (rec.cache_slot == UNISKIP_CACHE_SLOT_NONE)
+    return uniskip_coset_recompute<T>(desc, rec, cell - UNISKIP_TAPS, row);
+  const bf *slab =
+      cache + u32{rec.cache_slot} * UNISKIP_CACHE_UNIT_WORDS + (cell - UNISKIP_TAPS) * UNISKIP_ROWS_PER_BLOCK + (row & (UNISKIP_ROWS_PER_BLOCK - 1));
+  bf limbs[LIMBS];
+#pragma unroll
+  for (u32 l = 0; l < LIMBS; ++l)
+    limbs[l] = slab[l * UNISKIP_CACHE_UNIT_WORDS];
+  return limbs_of::pack(limbs);
+}
+
+// TILE-START COOPERATIVE FILL. One lane owns (unit, row) and is ROW-SHAPED — it loads
+// that row's 16 taps once and emits all 16 coset cells from registers, so a slab costs
+// 16 tap loads per row rather than the 256 a per-cell fill would issue (v2 Task 0's
+// result, applied inside the kernel). Lane == row inside the tile, so both the tap
+// loads and the slab stores are warp-contiguous; with UNISKIP_CACHE_UNITS = 16 warp `w`
+// fills units `w` and `w + 8`. The outer loop is NOT unrolled on purpose: each
+// iteration holds 16 taps live, and unrolling would double that against the eval body's
+// own register ceiling. Callers must `__syncthreads()` before the first cached read.
+DEVICE_FORCEINLINE void uniskip_cache_fill(const uniskip_vm_desc &desc, bf *cache) {
+  constexpr u32 LANES = UNISKIP_CACHE_UNITS * UNISKIP_ROWS_PER_BLOCK;
+#pragma unroll 1
+  for (u32 idx = threadIdx.x; idx < LANES; idx += UNISKIP_THREADS_PER_BLOCK) {
+    const u32 unit = idx / UNISKIP_ROWS_PER_BLOCK;
+    const u32 entry = ab_gkr_uniskip_cache_fill[unit];
+    if (entry == UNISKIP_CACHE_FILL_NONE)
+      continue;
+    const u32 lane = idx % UNISKIP_ROWS_PER_BLOCK;
+    const uniskip_source_record rec = desc.source[entry & 0xff];
+    const u32 limb = entry >> 8;
+    const u32 width = rec.source_class == UNISKIP_SRC_E4_GLOBAL ? uniskip_flat_limbs<e4>::COUNT : uniskip_flat_limbs<bf>::COUNT;
+    const u32 window = rec.addr >> 7;
+    const size_t column = rec.addr & 0x7f;
+    const u64 row = blockIdx.x * u64{UNISKIP_ROWS_PER_BLOCK} + lane;
+    // The whole element index goes into the POINTER (64-bit); what is left is the
+    // plane stride, which the addressing bound keeps inside `load`'s 32-bit offset.
+    const bf *taps = reinterpret_cast<const bf *>(desc.tap_bases[window].base) + ((((column * UNISKIP_TAPS) << desc.log_rows) + row) * width + limb);
+    const u32 plane = width << desc.log_rows;
+    bf tap[UNISKIP_TAPS];
+#pragma unroll
+    for (u32 t = 0; t < UNISKIP_TAPS; ++t)
+      tap[t] = load<bf, ld_modifier::ca>(taps, t * plane);
+    bf *slab = cache + unit * UNISKIP_CACHE_UNIT_WORDS + lane;
+#pragma unroll
+    for (u32 c = 0; c < UNISKIP_TAPS; ++c) {
+      const bf *weights = &ab_gkr_uniskip_lde_matrix[c * UNISKIP_TAPS];
+      bf acc = bf::ZERO();
+#pragma unroll
+      for (u32 chunk = 0; chunk < UNISKIP_TAPS; chunk += UNISKIP_DOT_CHUNK) {
+        u64 wide = 0;
+#pragma unroll
+        for (u32 j = 0; j < UNISKIP_DOT_CHUNK; ++j)
+          wide = mad_wide(bf::into_raw_u32(tap[chunk + j]), bf::into_raw_u32(weights[chunk + j]), wide);
+        acc = bf::add(acc, bf::red_wide(wide));
+      }
+      slab[c * UNISKIP_ROWS_PER_BLOCK] = acc;
+    }
+  }
 }
 
 // CELL MAP. Which of the 32 cells warp `w` owns. `block` (INTERLEAVE = false) is the

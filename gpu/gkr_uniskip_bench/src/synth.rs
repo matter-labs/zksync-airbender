@@ -161,7 +161,69 @@ pub struct SynthProgram {
     pub census: CensusSummary,
 }
 
+/// Order of the lowered record stream. `Census` is emission order — the class
+/// interleave the generator produces. `Locality` is a permutation of it that clusters
+/// records reading the same sources, which changes L1/L2 behaviour for the sources the
+/// shared-memory cache does NOT hold. Both are the same records with the same
+/// coefficients, so every census quantity and `q` itself are unchanged.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, clap::ValueEnum)]
+pub enum TermOrder {
+    #[default]
+    Census,
+    Locality,
+}
+
+impl TermOrder {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Census => "census",
+            Self::Locality => "locality",
+        }
+    }
+}
+
 impl SynthProgram {
+    /// Reorder the record stream in place. The unit of movement is a TOP-LEVEL record
+    /// — an ungrouped term, or a group header with its members — because a member's
+    /// coefficient is the group's immediate and moving it out would change the value.
+    /// Members inside a group are clustered too; their sum is over the same field, so
+    /// order is irrelevant to it.
+    ///
+    /// Sound because `q` is a sum of per-term contributions in `bf`/`e4`, where
+    /// addition is exactly associative and commutative — `cpu_synth_term_order_keeps_q`
+    /// checks that against the full oracle rather than assuming it.
+    pub fn apply_term_order(&mut self, order: TermOrder) {
+        if order == TermOrder::Census {
+            return;
+        }
+        let mut units: Vec<(Vec<u16>, usize, Vec<UniskipTerm>)> = Vec::new();
+        let mut pc = 0usize;
+        while pc < self.program.len() {
+            let record = self.program[pc];
+            let mut unit = vec![record];
+            if record.term_class == UNISKIP_CLASS_GROUP_BF {
+                let arity = record.source_a as usize;
+                let mut members = self.program[pc + 1..pc + 1 + arity].to_vec();
+                members.sort_by_key(|m| (m.source_a, m.source_b));
+                unit.extend(members);
+                pc += arity + 1;
+            } else {
+                pc += 1;
+            }
+            let mut key: Vec<u16> = unit
+                .iter()
+                .skip(usize::from(record.term_class == UNISKIP_CLASS_GROUP_BF))
+                .flat_map(|t| [t.source_a, t.source_b])
+                .filter(|&s| s != UNISKIP_SOURCE_UNUSED)
+                .collect();
+            key.sort_unstable();
+            key.dedup();
+            units.push((key, units.len(), unit));
+        }
+        units.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+        self.program = units.into_iter().flat_map(|(_, _, unit)| unit).collect();
+    }
+
     /// Little-endian image of everything that reaches the device wire.
     pub fn wire_bytes(&self) -> Vec<u8> {
         let mut out = Vec::with_capacity(
@@ -175,7 +237,7 @@ impl SynthProgram {
         for s in &self.sources {
             out.extend_from_slice(&s.addr.to_le_bytes());
             out.push(s.source_class);
-            out.push(s.reserved);
+            out.push(s.cache_slot);
         }
         for imm in self.immediates_canonical {
             out.extend_from_slice(&imm.to_le_bytes());
@@ -367,7 +429,7 @@ pub fn generate(seed: u32, cfg: Census) -> Result<SynthProgram, String> {
             sources.push(UniskipSourceRecord {
                 addr: source_addr(w, column),
                 source_class: spec.kind.source_class(),
-                reserved: 0,
+                cache_slot: UNISKIP_CACHE_SLOT_NONE,
             });
         }
     }
@@ -781,7 +843,7 @@ mod cpu_tests {
                     "source {id} column {column} outside its span"
                 );
                 assert_eq!(rec.addr, source_addr(window, column));
-                assert_eq!(rec.reserved, 0);
+                assert_eq!(rec.cache_slot, UNISKIP_CACHE_SLOT_NONE);
                 assert!(
                     seen.insert((window, column)),
                     "duplicate source at ({window}, {column})"
@@ -919,6 +981,108 @@ mod cpu_tests {
         assert!(err.contains("overflow the u32 record count"), "{err}");
         // Release must not wrap into a small record count that passes the capacity gate.
         assert!(!err.contains("UNISKIP_PROGRAM_CAPACITY"), "{err}");
+    }
+
+    /// `locality` must be a PERMUTATION of the census stream at the record level and
+    /// leave every census invariant standing — the whole point is that it changes only
+    /// the order operands are touched in.
+    #[test]
+    fn cpu_synth_term_order_is_a_permutation() {
+        for seed in [0u32, 7, 4242] {
+            let census = generate(seed, Census::default()).unwrap();
+            let mut local = census.clone();
+            local.apply_term_order(TermOrder::Locality);
+
+            assert_ne!(local.program, census.program, "locality changed nothing");
+            assert_eq!(local.sources, census.sources);
+            assert_eq!(local.census, census.census);
+            assert_eq!(local.program.len(), census.program.len());
+
+            let sorted = |p: &SynthProgram| {
+                let mut records: Vec<(u16, u16, u16, u16)> = p
+                    .program
+                    .iter()
+                    .map(|t| (t.term_class, t.coeff, t.source_a, t.source_b))
+                    .collect();
+                records.sort_unstable();
+                records
+            };
+            assert_eq!(sorted(&local), sorted(&census));
+
+            // The grammar still walks, and every derived census quantity re-derives to
+            // the same numbers off the reordered stream.
+            let w = walk(&local);
+            assert_eq!(w.groups, census.census.groups);
+            assert_eq!(w.members, census.census.grouped_atoms);
+            assert_eq!(w.ungrouped, census.census.ungrouped_terms);
+            assert_eq!(w.semantic_terms, census.census.semantic_terms);
+            assert_eq!(
+                w.coefficient_applications,
+                census.census.coefficient_applications
+            );
+            assert_eq!(w.operand_references, census.census.operand_references);
+            assert!(w.used.iter().all(|&u| u));
+
+            // Deterministic, and idempotent — sorting an already-sorted stream is a
+            // no-op, so a re-applied order cannot drift.
+            let mut again = census.clone();
+            again.apply_term_order(TermOrder::Locality);
+            assert_eq!(again.program, local.program);
+            again.apply_term_order(TermOrder::Locality);
+            assert_eq!(again.program, local.program);
+
+            // It really does cluster: the number of times the leading source id changes
+            // between consecutive top-level records drops.
+            let leads = |p: &SynthProgram| {
+                let mut out = Vec::new();
+                let mut pc = 0usize;
+                while pc < p.program.len() {
+                    let record = p.program[pc];
+                    let arity = if record.term_class == UNISKIP_CLASS_GROUP_BF {
+                        record.source_a as usize
+                    } else {
+                        0
+                    };
+                    let first = if arity > 0 {
+                        p.program[pc + 1..pc + 1 + arity]
+                            .iter()
+                            .map(|m| m.source_a)
+                            .min()
+                            .unwrap()
+                    } else {
+                        record.source_a
+                    };
+                    out.push(first);
+                    pc += arity + 1;
+                }
+                out.windows(2).filter(|w| w[0] != w[1]).count()
+            };
+            assert!(
+                leads(&local) < leads(&census),
+                "locality did not reduce source switches"
+            );
+        }
+    }
+
+    /// The reorder is only legal because `q` is a sum whose terms commute. Check it
+    /// against the full oracle at a geometry small enough to run on the CPU, in both
+    /// eq modes, rather than asserting the algebra.
+    #[test]
+    fn cpu_synth_term_order_keeps_q() {
+        use crate::geometry::Geometry;
+        use crate::reference::eval_q;
+
+        let geometry = Geometry::new(10).unwrap();
+        let census = generate(7, Census::default()).unwrap();
+        let mut local = census.clone();
+        local.apply_term_order(TermOrder::Locality);
+        for flat_eq in [false, true] {
+            assert_eq!(
+                eval_q(&local, &geometry, 7, flat_eq),
+                eval_q(&census, &geometry, 7, flat_eq),
+                "term order changed q (flat_eq {flat_eq})"
+            );
+        }
     }
 
     #[test]

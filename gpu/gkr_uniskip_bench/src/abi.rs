@@ -41,6 +41,30 @@ pub const UNISKIP_SRC_E4_GLOBAL: u8 = 1;
 
 pub const UNISKIP_SOURCE_UNUSED: u16 = 0xffff;
 
+/// `u32` words of one shared-memory cache unit: one `bf` plane of a source's coset
+/// slab for a block's row tile — `UNISKIP_TAPS` coset cells by
+/// `UNISKIP_ROWS_PER_BLOCK` rows.
+pub const UNISKIP_CACHE_UNIT_WORDS: usize = UNISKIP_TAPS * UNISKIP_ROWS_PER_BLOCK;
+/// Units the fused-cached kernel's shared pool holds. A `bf` source takes one, an
+/// `e4` source four (one per limb), so a slab's byte cost is exactly its component
+/// width times [`UNISKIP_CACHE_UNIT_WORDS`].
+pub const UNISKIP_CACHE_UNITS: usize = 16;
+pub const UNISKIP_CACHE_POOL_WORDS: usize = UNISKIP_CACHE_UNITS * UNISKIP_CACHE_UNIT_WORDS;
+pub const UNISKIP_CACHE_UNIT_BYTES: usize = UNISKIP_CACHE_UNIT_WORDS * size_of::<u32>();
+/// [`UniskipSourceRecord::cache_slot`] of an uncached source.
+pub const UNISKIP_CACHE_SLOT_NONE: u8 = 0xff;
+/// Entry of a free unit in the inverse (unit -> source) fill plan.
+pub const UNISKIP_CACHE_FILL_NONE: u16 = 0xffff;
+
+/// `bf` limbs of one element of a source class — the component width the cache plan
+/// prices slabs and resolver work in.
+pub const fn component_width(source_class: u8) -> u32 {
+    match source_class {
+        UNISKIP_SRC_E4_GLOBAL => 4,
+        _ => 1,
+    }
+}
+
 /// `addr = window << UNISKIP_ADDR_COLUMN_BITS | column`.
 pub const UNISKIP_ADDR_COLUMN_BITS: u32 = 7;
 pub const UNISKIP_ADDR_COLUMN_MASK: u16 = (1 << UNISKIP_ADDR_COLUMN_BITS) - 1;
@@ -71,7 +95,10 @@ pub struct UniskipTerm {
 pub struct UniskipSourceRecord {
     pub addr: u16,
     pub source_class: u8,
-    pub reserved: u8,
+    /// v1's `reserved` byte, same 4-byte record: the first shared-memory cache unit
+    /// of this source's coset slab, or [`UNISKIP_CACHE_SLOT_NONE`] when uncached.
+    /// Only the fused-cached accessor reads it.
+    pub cache_slot: u8,
 }
 
 #[repr(C, align(8))]
@@ -233,15 +260,36 @@ mod cpu_tests {
             UNISKIP_MAX_WINDOW_COLUMNS * UNISKIP_TAPS
         );
 
-        // __constant__ budget: coeff bank + both eq high tables + LDE matrix + fold weights.
+        // __constant__ budget: coeff bank + both eq high tables + LDE matrix + fold
+        // weights + the inverse cache-fill plan.
         let constant_bytes = UNISKIP_COEFF_BANK * 16
             + 2 * UNISKIP_EQ_HIGH * 16
             + UNISKIP_TAPS * UNISKIP_TAPS * 4
-            + UNISKIP_TAPS * 16;
+            + UNISKIP_TAPS * 16
+            + UNISKIP_CACHE_UNITS * 2;
         assert!(
             constant_bytes <= 64 * 1024,
             "{constant_bytes} B of __constant__"
         );
+
+        // Shared-memory cache, mirrored from the header's constants of the same name.
+        assert_eq!(UNISKIP_CACHE_UNIT_WORDS, 512);
+        assert_eq!(UNISKIP_CACHE_UNIT_BYTES, 2048);
+        assert_eq!(UNISKIP_CACHE_POOL_WORDS * 4, 32768);
+        const { assert!(UNISKIP_CACHE_POOL_WORDS * 4 <= 48 * 1024, "static smem cap") };
+        const { assert!(UNISKIP_CACHE_UNITS < UNISKIP_CACHE_SLOT_NONE as usize) };
+        const {
+            assert!(
+                UNISKIP_SOURCE_CAPACITY <= 0x100,
+                "fill entry packs a source id"
+            )
+        };
+        assert_eq!(
+            (UNISKIP_CACHE_UNITS * UNISKIP_ROWS_PER_BLOCK) % UNISKIP_THREADS_PER_BLOCK,
+            0
+        );
+        assert_eq!(component_width(UNISKIP_SRC_BF_GLOBAL), 1);
+        assert_eq!(component_width(UNISKIP_SRC_E4_GLOBAL), 4);
     }
 
     #[test]
@@ -329,7 +377,7 @@ mod cpu_tests {
             let rec = UniskipSourceRecord {
                 addr: source_addr(window, column),
                 source_class: UNISKIP_SRC_BF_GLOBAL,
-                reserved: 0,
+                cache_slot: UNISKIP_CACHE_SLOT_NONE,
             };
             for cell in 0..UNISKIP_CELLS {
                 for row in 0..(1u64 << log_rows) {

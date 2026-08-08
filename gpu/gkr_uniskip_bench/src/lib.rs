@@ -5,6 +5,7 @@
 //! iterated on without the prover stack. See `README.md`.
 
 pub mod abi;
+pub mod cache;
 pub mod domain;
 pub mod geometry;
 pub mod harness;

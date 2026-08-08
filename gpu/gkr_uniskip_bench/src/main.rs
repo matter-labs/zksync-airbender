@@ -3,12 +3,13 @@ use std::ffi::CStr;
 use clap::{CommandFactory, Parser};
 use era_cudart::device::{get_device, get_device_properties};
 use gpu_gkr_uniskip_bench::abi::{UNISKIP_CELLS, UNISKIP_SRC_E4_GLOBAL};
+use gpu_gkr_uniskip_bench::cache;
 use gpu_gkr_uniskip_bench::geometry::Geometry;
 use gpu_gkr_uniskip_bench::harness::{
     CellMap, EvalMode, Harness, LdeShape, PassConfig, StageTimes, STAGES,
 };
 use gpu_gkr_uniskip_bench::kernels::NvtxRange;
-use gpu_gkr_uniskip_bench::synth::{generate, Census};
+use gpu_gkr_uniskip_bench::synth::{generate, Census, TermOrder};
 
 /// Standalone CUDA benchmark for one uniskip sumcheck pass (k = 4).
 #[derive(Parser)]
@@ -47,9 +48,15 @@ struct Cli {
     grouped_atoms: u32,
 
     /// Source resolution: `unfused` materializes the coset in its own LDE stage,
-    /// `fused-recompute` extends the taps on read (no LDE launch, no coset backing).
+    /// `fused-recompute` extends the taps on read (no LDE launch, no coset backing),
+    /// `fused-cached` adds the fixed shared-memory slab assignment on top.
     #[arg(long, value_enum, default_value_t = EvalMode::Unfused)]
     mode: EvalMode,
+
+    /// Record order: `census` = emission order, `locality` = the permutation that
+    /// clusters records reading the same sources. Same records, same `q`.
+    #[arg(long, value_enum, default_value_t = TermOrder::Census)]
+    term_order: TermOrder,
 
     /// LDE grid shape: `cell` = one thread per coset cell (v1, 16x tap re-read),
     /// `row` = one thread per row emitting all 16 cells. Same output bytes.
@@ -164,7 +171,11 @@ fn main() {
         groups: cli.groups,
         grouped_atoms: cli.grouped_atoms,
     };
-    let program = generate(cli.seed, census).unwrap_or_else(|e| fail(e));
+    let mut program = generate(cli.seed, census).unwrap_or_else(|e| fail(e));
+    program.apply_term_order(cli.term_order);
+    // Order-invariant: the plan is ranked off the reference census, which is a property
+    // of the record multiset.
+    let plan = cache::plan(&program);
 
     println!("gpu_gkr_uniskip_bench config");
     println!("  log_trace           {}", cli.log_trace);
@@ -177,6 +188,7 @@ fn main() {
     println!("  mode                {}", config.mode.as_str());
     println!("  lde_shape           {lde_shape_label}");
     println!("  cell_map            {cell_map_label}");
+    println!("  term_order          {}", cli.term_order.as_str());
     println!("geometry");
     println!("  log_rows            {}", geometry.log_rows);
     println!("  logical rows        {}", geometry.logical_rows);
@@ -196,10 +208,28 @@ fn main() {
             .map(|w| w.columns)
             .collect::<Vec<_>>()
     );
+    // Printed in every mode: the plan is a property of the program, and `C` / `Ru` /
+    // the op split are what decide whether an all-cell fill producer is worth building.
+    println!(
+        "cache plan{}",
+        if config.mode.uses_cache() {
+            ""
+        } else {
+            " (not applied in this mode)"
+        }
+    );
+    println!("{plan}");
 
     let validate = cli.validate || cli.validate_flat_eq;
-    let mut harness = Harness::new(&program, &geometry, cli.seed, cli.validate_flat_eq, config)
-        .unwrap_or_else(|e| fail(format!("device setup failed: {e}")));
+    let mut harness = Harness::new(
+        &program,
+        &geometry,
+        cli.seed,
+        cli.validate_flat_eq,
+        config,
+        &plan,
+    )
+    .unwrap_or_else(|e| fail(format!("device setup failed: {e}")));
 
     let bytes = harness.pass_bytes();
     let columns: u32 = program.windows.iter().map(|w| w.columns).sum();
@@ -344,11 +374,14 @@ fn main() {
 
     println!(
         "summary: log_trace {} | mode {} | lde_shape {lde_shape_label} | cell_map {cell_map_label} | \
-         {sources} sources / \
+         term_order {} | C {} Ru {} | {sources} sources / \
          {columns} columns / {} B ({:.2} GiB) per pass | total median {total_median:.3} ms over \
          {} iterations | {device}",
         cli.log_trace,
         config.mode.as_str(),
+        cli.term_order.as_str(),
+        plan.cached_width,
+        plan.uncached_refs,
         bytes.total,
         gib(bytes.total),
         samples.len()

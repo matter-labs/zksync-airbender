@@ -14,14 +14,15 @@ use era_cudart::stream::CudaStream;
 use era_cudart_sys::{cudaMemcpyToSymbol, cuda_struct_and_stub, CudaMemoryCopyKind};
 
 use crate::abi::{
-    UniskipVmDesc, UNISKIP_CELLS, UNISKIP_COEFF_BANK, UNISKIP_EQ_HIGH, UNISKIP_TAPS,
-    UNISKIP_THREADS_PER_BLOCK,
+    UniskipVmDesc, UNISKIP_CACHE_UNITS, UNISKIP_CELLS, UNISKIP_COEFF_BANK, UNISKIP_EQ_HIGH,
+    UNISKIP_TAPS, UNISKIP_THREADS_PER_BLOCK,
 };
 
 cuda_struct_and_stub! { static ab_gkr_uniskip_coeff_bank: [[u32; 4]; UNISKIP_COEFF_BANK]; }
 cuda_struct_and_stub! { static ab_gkr_uniskip_eq_high: [[u32; 4]; 2 * UNISKIP_EQ_HIGH]; }
 cuda_struct_and_stub! { static ab_gkr_uniskip_lde_matrix: [u32; UNISKIP_TAPS * UNISKIP_TAPS]; }
 cuda_struct_and_stub! { static ab_gkr_uniskip_fold_weights: [[u32; 4]; UNISKIP_TAPS]; }
+cuda_struct_and_stub! { static ab_gkr_uniskip_cache_fill: [u16; UNISKIP_CACHE_UNITS]; }
 
 /// Blocks a grid-stride launch may use. The kernels loop, so this only bounds the
 /// launch; every configuration above it is covered by the stride.
@@ -78,6 +79,17 @@ cuda_kernel!(
     EvalFusedInterleave,
     ab_gkr_uniskip_eval_fused_interleave_kernel(desc: UniskipVmDesc)
 );
+// The cached kernels take `uniskip_cached_desc`, the third empty derived class of
+// `uniskip_vm_desc` — same wire struct again, and the cache plan travels in the
+// records' `cache_slot` byte plus the `ab_gkr_uniskip_cache_fill` symbol.
+cuda_kernel!(
+    EvalFusedCached,
+    ab_gkr_uniskip_eval_fused_cached_kernel(desc: UniskipVmDesc)
+);
+cuda_kernel!(
+    EvalFusedCachedInterleave,
+    ab_gkr_uniskip_eval_fused_cached_interleave_kernel(desc: UniskipVmDesc)
+);
 cuda_kernel!(
     Finalize,
     ab_gkr_uniskip_finalize_kernel(partials: *const u32, blocks: u32, q: *mut u32)
@@ -131,6 +143,13 @@ pub fn upload_coeff_bank(bank: &[[u32; 4]; UNISKIP_COEFF_BANK]) -> CudaResult<()
 /// tap order, which is the order the fold kernels index.
 pub fn upload_fold_weights(weights: &[[u32; 4]; UNISKIP_TAPS]) -> CudaResult<()> {
     unsafe { memcpy_to_symbol(&ab_gkr_uniskip_fold_weights, weights) }
+}
+
+/// Upload the INVERSE cache plan — [`crate::cache::CachePlan::fill`], unit -> source
+/// and limb — which is what the tile fill iterates. Uploaded in every mode so a run
+/// never inherits another plan's units; the non-cached kernels never read it.
+pub fn upload_cache_fill(fill: &[u16; UNISKIP_CACHE_UNITS]) -> CudaResult<()> {
+    unsafe { memcpy_to_symbol(&ab_gkr_uniskip_cache_fill, fill) }
 }
 
 /// Fill a `bf` backing with the deterministic init generator; `dst` is one word
@@ -284,6 +303,26 @@ pub fn eval_fused_interleave(
     let args = EvalFusedInterleaveArguments::new(*desc);
     let config = CudaLaunchConfig::basic(blocks, UNISKIP_THREADS_PER_BLOCK as u32, stream);
     EvalFusedInterleaveFunction::default().launch(&config, &args)
+}
+
+/// [`eval_fused`] with the planned sources' coset slabs cached in shared memory for
+/// the block's row tile — filled once at tile start, read thereafter; uncached sources
+/// keep the recompute path.
+pub fn eval_fused_cached(desc: &UniskipVmDesc, blocks: u32, stream: &CudaStream) -> CudaResult<()> {
+    let args = EvalFusedCachedArguments::new(*desc);
+    let config = CudaLaunchConfig::basic(blocks, UNISKIP_THREADS_PER_BLOCK as u32, stream);
+    EvalFusedCachedFunction::default().launch(&config, &args)
+}
+
+/// [`eval_fused_cached`] under the interleaved cell map.
+pub fn eval_fused_cached_interleave(
+    desc: &UniskipVmDesc,
+    blocks: u32,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    let args = EvalFusedCachedInterleaveArguments::new(*desc);
+    let config = CudaLaunchConfig::basic(blocks, UNISKIP_THREADS_PER_BLOCK as u32, stream);
+    EvalFusedCachedInterleaveFunction::default().launch(&config, &args)
 }
 
 /// Reduce the `blocks * UNISKIP_CELLS` partials into the `UNISKIP_CELLS` cells of `q`.

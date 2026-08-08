@@ -7,6 +7,7 @@ use era_cudart::slice::DeviceSlice;
 use era_cudart::stream::CudaStream;
 
 use crate::abi::*;
+use crate::cache::CachePlan;
 use crate::domain::lde_matrix;
 use crate::geometry::Geometry;
 use crate::kernels;
@@ -136,12 +137,15 @@ impl LdeShape {
 /// Where the coset cells come from. `Unfused` materializes them in a separate LDE
 /// stage and the eval kernel reads them back — the v1 pass. `FusedRecompute` drops
 /// both the LDE launches and the coset backing: the accessor extends the source's
-/// 16 taps on read. The two produce the same `q`.
+/// 16 taps on read. `FusedCached` adds a fixed shared-memory assignment on top of it,
+/// so the planned sources' coset slabs are produced once per 32-row tile instead of
+/// once per reference. All three produce the same `q`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, clap::ValueEnum)]
 pub enum EvalMode {
     #[default]
     Unfused,
     FusedRecompute,
+    FusedCached,
 }
 
 impl EvalMode {
@@ -149,12 +153,18 @@ impl EvalMode {
         match self {
             Self::Unfused => "unfused",
             Self::FusedRecompute => "fused-recompute",
+            Self::FusedCached => "fused-cached",
         }
     }
 
     /// Whether the pass writes a coset backing at all.
     pub fn materializes_coset(self) -> bool {
         self == Self::Unfused
+    }
+
+    /// Whether the pass reads the shared-memory cache plan.
+    pub fn uses_cache(self) -> bool {
+        self == Self::FusedCached
     }
 }
 
@@ -242,13 +252,15 @@ impl Harness {
     /// bank, and run the init kernels over the taps and the eq tables. `flat_eq`
     /// forces every eq entry to ONE — the `--validate-flat-eq` debug mode, which
     /// isolates the term VM from the eq composition on both sides. `config` picks the
-    /// source-resolution mode and the grid shapes; none of them changes `q`.
+    /// source-resolution mode and the grid shapes; none of them changes `q`. `plan` is
+    /// the shared-memory assignment, applied to the wire only in a caching mode.
     pub fn new(
         program: &SynthProgram,
         geometry: &Geometry,
         seed: u32,
         flat_eq: bool,
         config: PassConfig,
+        plan: &CachePlan,
     ) -> CudaResult<Self> {
         let layout = Layout::new(program, geometry);
         let stream = CudaStream::create()?;
@@ -324,6 +336,25 @@ impl Harness {
         };
         desc.program[..program.program.len()].copy_from_slice(&program.program);
         desc.source[..program.sources.len()].copy_from_slice(&program.sources);
+        // The plan reaches the device on the wire (`cache_slot` per record) and as the
+        // inverse unit -> source table below. A non-caching mode leaves every record at
+        // the sentinel and uploads an empty table, so no kernel can read a stale slot.
+        let fill = if config.mode.uses_cache() {
+            assert_eq!(
+                plan.source_slot.len(),
+                program.sources.len(),
+                "the cache plan was lowered from a different program"
+            );
+            for (rec, &slot) in desc.source[..program.sources.len()]
+                .iter_mut()
+                .zip(plan.source_slot.iter())
+            {
+                rec.cache_slot = slot;
+            }
+            plan.fill
+        } else {
+            [UNISKIP_CACHE_FILL_NONE; UNISKIP_CACHE_UNITS]
+        };
         for window in 0..UNISKIP_WINDOWS {
             let class = layout.windows[window].class;
             let byte_offset = layout.window_byte_offset(window) as u64;
@@ -343,6 +374,7 @@ impl Harness {
         kernels::upload_eq_high(&reference::eq_high_words(seed, flat_eq))?;
         kernels::upload_coeff_bank(&reference::coeff_bank_words(seed))?;
         kernels::upload_fold_weights(&reference::fold_weight_words(seed))?;
+        kernels::upload_cache_fill(&fill)?;
         kernels::init_bf(&mut taps[CLASS_BF], seed, &stream)?;
         kernels::init_e4(&mut taps[CLASS_E4], seed, &stream)?;
         kernels::init_e4(&mut eq_low, seed, &stream)?;
@@ -374,12 +406,14 @@ impl Harness {
                     kernels::lde_e4_row as LdeLaunch,
                 ],
             }),
-            EvalMode::FusedRecompute => None,
+            EvalMode::FusedRecompute | EvalMode::FusedCached => None,
         };
         let eval: EvalLaunch = match (config.mode, config.cell_map) {
             (EvalMode::Unfused, _) => kernels::eval,
             (EvalMode::FusedRecompute, CellMap::Block) => kernels::eval_fused,
             (EvalMode::FusedRecompute, CellMap::Interleave) => kernels::eval_fused_interleave,
+            (EvalMode::FusedCached, CellMap::Block) => kernels::eval_fused_cached,
+            (EvalMode::FusedCached, CellMap::Interleave) => kernels::eval_fused_cached_interleave,
         };
 
         Ok(Self {
