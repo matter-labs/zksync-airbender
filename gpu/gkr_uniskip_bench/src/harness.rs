@@ -8,6 +8,7 @@ use era_cudart::stream::CudaStream;
 
 use crate::abi::*;
 use crate::cache::CachePlan;
+use crate::compact;
 use crate::domain::lde_matrix;
 use crate::geometry::Geometry;
 use crate::kernels;
@@ -181,6 +182,7 @@ pub enum EvalMode {
     FusedRecompute,
     FusedCached,
     LsbRecompute,
+    LsbCompact,
 }
 
 impl EvalMode {
@@ -190,6 +192,7 @@ impl EvalMode {
             Self::FusedRecompute => "fused-recompute",
             Self::FusedCached => "fused-cached",
             Self::LsbRecompute => "lsb-recompute",
+            Self::LsbCompact => "lsb-compact",
         }
     }
 
@@ -206,9 +209,14 @@ impl EvalMode {
     /// Element ordering of the tap backing this mode's accessor expects.
     pub fn source_layout(self) -> SourceLayout {
         match self {
-            Self::LsbRecompute => SourceLayout::LsbGroup,
+            Self::LsbRecompute | Self::LsbCompact => SourceLayout::LsbGroup,
             _ => SourceLayout::PlaneMajor,
         }
+    }
+
+    /// Whether `--compact-groups` names a warp geometry this mode runs.
+    pub fn uses_compact_groups(self) -> bool {
+        self == Self::LsbCompact
     }
 
     /// Logical rows one eval block covers — 32 for the lane = row modes, 16 for the
@@ -224,7 +232,7 @@ impl EvalMode {
     /// plus `finalize`: the fold kernels address plane-major taps, and no fold has been
     /// written for the LSB ordering (spec R4).
     pub fn runs_fold(self) -> bool {
-        self != Self::LsbRecompute
+        !matches!(self, Self::LsbRecompute | Self::LsbCompact)
     }
 
     /// Whether `--lde-shape` names a grid this mode runs.
@@ -236,6 +244,15 @@ impl EvalMode {
     /// fixed at this rung (lane = tap, two groups per warp), so the knob is rejected.
     pub fn uses_cell_map(self) -> bool {
         matches!(self, Self::FusedRecompute | Self::FusedCached)
+    }
+
+    /// Logical rows one eval block covers, given the compaction geometry (ignored by
+    /// every mode but [`Self::LsbCompact`], whose block is 8 warps x `groups` rows).
+    pub fn rows_per_block_with(self, groups: u32) -> u32 {
+        match self {
+            Self::LsbCompact => UNISKIP_WARPS_PER_BLOCK as u32 * groups,
+            _ => self.rows_per_block(),
+        }
     }
 }
 
@@ -266,6 +283,8 @@ pub struct PassConfig {
     pub mode: EvalMode,
     pub lde_shape: LdeShape,
     pub cell_map: CellMap,
+    /// Groups a warp owns in [`EvalMode::LsbCompact`]; ignored elsewhere.
+    pub compact_groups: u32,
 }
 
 /// The timed stages of one pass, in execution order.
@@ -338,8 +357,16 @@ impl Harness {
         plan: &CachePlan,
     ) -> CudaResult<Self> {
         let layout = Layout::new(program, geometry, config.mode.source_layout());
-        let eval_blocks = geometry.eval_blocks(config.mode.rows_per_block());
-        let eval_partials = geometry.eval_partials(config.mode.rows_per_block());
+        // A mode that runs no compaction still uploads a well-formed schedule, so the
+        // symbol never holds another run's plan.
+        let compact_groups = if config.mode.uses_compact_groups() {
+            config.compact_groups
+        } else {
+            UNISKIP_COMPACT_MAX_GROUPS as u32
+        };
+        let rows_per_block = config.mode.rows_per_block_with(compact_groups);
+        let eval_blocks = geometry.eval_blocks(rows_per_block);
+        let eval_partials = geometry.eval_partials(rows_per_block);
         let stream = CudaStream::create()?;
 
         // `alloc(0)` has no valid device pointer; a class with no columns still gets
@@ -453,6 +480,11 @@ impl Harness {
 
         kernels::upload_lde_matrix(&reference::flat_lde_matrix(&lde_matrix()))?;
         kernels::upload_ntt_twiddles(&reference::ntt_twiddle_words())?;
+        kernels::upload_compact_schedule(
+            &compact::schedule_words(compact_groups as usize)
+                .try_into()
+                .expect("the compaction schedule is padded to the symbol size"),
+        )?;
         kernels::upload_eq_high(&reference::eq_high_words(seed, flat_eq))?;
         kernels::upload_coeff_bank(&reference::coeff_bank_words(seed))?;
         kernels::upload_fold_weights(&reference::fold_weight_words(seed))?;
@@ -488,7 +520,10 @@ impl Harness {
                     kernels::lde_e4_row as LdeLaunch,
                 ],
             }),
-            EvalMode::FusedRecompute | EvalMode::FusedCached | EvalMode::LsbRecompute => None,
+            EvalMode::FusedRecompute
+            | EvalMode::FusedCached
+            | EvalMode::LsbRecompute
+            | EvalMode::LsbCompact => None,
         };
         let eval: EvalLaunch = match (config.mode, config.cell_map) {
             (EvalMode::Unfused, _) => kernels::eval,
@@ -497,6 +532,11 @@ impl Harness {
             (EvalMode::FusedCached, CellMap::Block) => kernels::eval_fused_cached,
             (EvalMode::FusedCached, CellMap::Interleave) => kernels::eval_fused_cached_interleave,
             (EvalMode::LsbRecompute, _) => kernels::eval_lsb_w0,
+            (EvalMode::LsbCompact, _) => match compact_groups {
+                4 => kernels::eval_lsb_compact_g4,
+                8 => kernels::eval_lsb_compact_g8,
+                other => panic!("--compact-groups {other} has no kernel"),
+            },
         };
 
         Ok(Self {

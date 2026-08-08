@@ -29,8 +29,8 @@ outright: the eval accessor extends the taps on read, so the pass is one kernel 
 sources' coset cells are produced once per row tile instead of once per reference.
 All three modes produce the same `q`.
 
-`lsb-recompute` is the **v3 R0** arm and is a different architecture, not a fourth
-point on that ladder — see [The LSB mode](#the-lsb-mode-v3-r0) below. Its `q` is
+`lsb-recompute` (v3 R0) and `lsb-compact` (v3 R1) are a different architecture, not
+further points on that ladder — see [The LSB mode](#the-lsb-mode-v3-r0) below. Its `q` is
 deliberately *not* the same as the other three modes': the same init generator over a
 different element ordering gives different operand data, so it carries its own oracle
 leg rather than a shared expected value.
@@ -142,6 +142,26 @@ modes above and changes everything else:
   blocks), so `fold` reports
   `0.000` and `fold validate` reports `n/a` — and the mode allocates no fold output
   buffer.
+
+### The compact mode (v3 R1)
+
+`--mode lsb-compact --compact-groups {4,8}` is R0 with a restructured producer: a warp
+owns `groups` groups instead of 2, a lane holds `groups / 2` elements (all at one tap),
+and the group vectors are staged in **shared memory** so the lane-to-element binding
+dissolves. A static, host-built schedule (`src/compact.rs`, uploaded and copied to shared
+memory once per block) then packs only the **50 real multiplies** of a group's chain into
+`ceil(groups * m / 32)` rounds per stage, instead of the 112 R0 must issue because its
+unity twiddles are lane-divergent. Everything else — LSB backing, W = 0, `eq`, `finalize`,
+no fold — is R0's.
+
+It is **measured and kept as a control arm, not a recommendation**: the multiply cut is
+real (chain multiplies per row −43 % at `groups = 4`, −50 % at 8; `fmaheavy` 81.5 % →
+68.8 %) and the pass is **14.6 % slower** than `lsb-recompute`, because the staging moves
+the work onto the narrower LSU pipe, which becomes the whole SM speed-of-light at 87 %.
+`iteration_times.md`'s *v3 R1* section carries the full record, including the
+bank-conflict fix that removed 78 % of the conflicts and moved the wall 0.8 % — the
+measurement that identifies the bound as LSU *instruction* issue rather than wavefronts.
+Its `q` is bit-exact equal to `lsb-recompute`'s, checked device-to-device with `--dump-q`.
 
 `iteration_times.md` carries the R0 gate record: at `--log-trace 24` it is
 **20.713 ms** (`census`) and **20.596 ms** (`locality`) on `eval + finalize` against

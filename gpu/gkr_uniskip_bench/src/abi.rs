@@ -22,6 +22,29 @@ pub const UNISKIP_ROWS_PER_BLOCK: usize = UNISKIP_THREADS_PER_BLOCK / UNISKIP_WA
 pub const UNISKIP_LSB_GROUPS_PER_WARP: usize = 32 / UNISKIP_TAPS;
 pub const UNISKIP_LSB_ROWS_PER_BLOCK: usize = UNISKIP_WARPS_PER_BLOCK * UNISKIP_LSB_GROUPS_PER_WARP;
 
+/// v3 R1 compaction: groups a warp owns. `G` is a compile-time kernel parameter; both
+/// 4 and 8 are built and the winner ships as the mode default. A lane holds `G / 2`
+/// elements, all at the same tap, so one program walk serves `G` rows.
+pub const UNISKIP_COMPACT_MAX_GROUPS: usize = 8;
+/// Groups a warp owns when `--compact-groups` is not given: the measured winner. 8 halves
+/// the multiply count again but costs 128 registers (2 blocks/SM against 4's 3) and is
+/// nearly twice as slow — see `iteration_times.md`'s v3 R1 section.
+pub const UNISKIP_COMPACT_DEFAULT_GROUPS: usize = 4;
+/// Rounds the device schedule symbol is sized for — the largest group count's total.
+pub const UNISKIP_COMPACT_MAX_ROUNDS: usize = 20;
+
+/// One lane's work in one compaction round: the two staging offsets it owns and the
+/// twiddle it multiplies by, or `0` for "this lane multiplies nothing this round".
+/// A twiddle is never zero, so the sentinel is unambiguous. 8 bytes, `align(8)`, so the
+/// device reads it as one `LDS.64`.
+#[repr(C, align(8))]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct UniskipCompactSlot {
+    pub lo: u16,
+    pub hi: u16,
+    pub tw: u32,
+}
+
 /// Lane-indexed twiddle tables of the factorized coset transform — see
 /// [`crate::domain::ntt_twiddles`] for the stage order. The two distance-1 butterfly
 /// stages carry only unity and are elided, so the chain's 8 exchange stages need 7
@@ -304,6 +327,14 @@ mod cpu_tests {
         assert_eq!(UNISKIP_LSB_GROUPS_PER_WARP, 2);
         assert_eq!(UNISKIP_LSB_ROWS_PER_BLOCK, 16);
         assert_eq!(UNISKIP_NTT_TABLES, 7);
+        // v3 R1 compaction wire.
+        assert_eq!(size_of::<UniskipCompactSlot>(), 8);
+        assert_eq!(align_of::<UniskipCompactSlot>(), 8);
+        assert_eq!(offset_of!(UniskipCompactSlot, lo), 0);
+        assert_eq!(offset_of!(UniskipCompactSlot, hi), 2);
+        assert_eq!(offset_of!(UniskipCompactSlot, tw), 4);
+        // The staging offsets must fit the u16 the slot carries.
+        assert!(UNISKIP_COMPACT_MAX_GROUPS * UNISKIP_TAPS <= u16::MAX as usize);
 
         // Addressing bound, mirrored from the header's constants of the same name.
         assert_eq!(UNISKIP_LOG_TAPS, 4);

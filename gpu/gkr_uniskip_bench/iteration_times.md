@@ -1017,27 +1017,43 @@ owner's quoted figure for the separate *windowed*-sumcheck bench on the same dev
 class. It was **not** measured by this crate, it runs a different program, and no
 controlled A/B exists between the two. Treat it as a scale marker, not as a result.
 
-A fair comparison has to be **per sumcheck variable**, because that is what the two
-schemes buy at different rates: one uniskip pass at k = 4 kills **4** variables, one
-windowed round kills **1**. The reference is therefore 14 / 3 = **4.67 ms per
-variable**, and each uniskip arm is its `pass − fold` divided by 4. Fold is excluded on
-both sides — the quoted windowed figure excludes it, and uniskip's `fold` is a separate
-stage.
+**CORRECTED BASIS (2026-08-08).** An earlier revision of this section divided each pass
+by the number of bits it peels — 4 for uniskip k = 4, 3 for the windowed reference — and
+reported 5.77 vs 4.67 ms/bit, 1.24x. **That form overcredits multi-bit passes and the
+numbers it produced are withdrawn.** Peeling is sequential and each peeled bit halves the
+instance, so a k-bit pass at size `N` replaces single-bit work of
+`N * (2 - 2^(1-k))` halving-adjusted **units**, not `k * N`: the later bits a bigger pass
+claims credit for are the nearly-free ones. w = 3 buys **1.75** units, k = 4 buys
+**1.875** — not 3 and 4. Equivalently, multiply a pass by the tail factor
+`1 / (1 - 2^-k)` for a run-to-completion total. Raw pass times below are untouched; only
+the derived comparison changes.
 
-| # | arm | pass − fold | ms per variable | × the 4.67 ms/variable reference |
-| --- | --- | --- | --- | --- |
-| 1 | unfused, cell LDE (v1) | 90.462 | 22.62 | 4.85× |
-| 2 | unfused, row LDE | 28.078 | 7.02 | 1.50× |
-| 3 | fused-recompute, block | 34.447 | 8.61 | 1.85× |
-| 4 | fused-recompute, interleave | 28.101 | 7.03 | 1.51× |
-| 5 | fused-cached, block, census | 26.382 | 6.60 | 1.41× |
-| 6 | fused-cached, block, locality | 26.670 | 6.67 | 1.43× |
-| 7 | fused-cached, interleave, census | 23.272 | 5.82 | 1.25× |
-| 8 | **fused-cached, interleave, locality** | **23.078** | **5.77** | **1.24×** |
+The reference is therefore 14 / 1.75 = **8.00 ms per unit** (tail-total 16.0 ms), and
+each uniskip arm is its `pass − fold` divided by 1.875. Fold is excluded on both sides —
+the quoted windowed figure excludes it, and uniskip's `fold` is a separate stage; note
+that k = 4 crosses a pass boundary every 4 bits against w = 3's every 3, so its
+fold/boundary amortization is a small **uncounted credit to uniskip** in what follows.
 
-**Verdict: the ladder narrowed the gap from 4.85× to 1.24× — and did not close it.** On
+| # | arm | pass − fold | ms per **unit** (÷ 1.875) | × the 8.00 ms/unit reference | tail-total (× 16/15) |
+| --- | --- | --- | --- | --- | --- |
+| 1 | unfused, cell LDE (v1) | 90.462 | 48.25 | 6.03× | 96.49 |
+| 2 | unfused, row LDE | 28.078 | 14.97 | 1.87× | 29.95 |
+| 3 | fused-recompute, block | 34.447 | 18.37 | 2.30× | 36.74 |
+| 4 | fused-recompute, interleave | 28.101 | 14.99 | 1.87× | 29.98 |
+| 5 | fused-cached, block, census | 26.382 | 14.07 | 1.76× | 28.14 |
+| 6 | fused-cached, block, locality | 26.670 | 14.22 | 1.78× | 28.45 |
+| 7 | fused-cached, interleave, census | 23.272 | 12.41 | 1.55× | 24.82 |
+| 8 | **fused-cached, interleave, locality** | **23.078** | **12.31** | **1.54×** | **24.62** |
+
+Windowed parity for a k = 4 pass is therefore **15.0 ms** of `eval + finalize`
+(`8.00 x 1.875`), not the 18.7 the per-bit form implied. The gate-eval framing corrects
+the same way: uniskip runs the gate program 2x per element and windowed 3.375x, which per
+unit is 1.067 against 1.929 — uniskip does **1.81x** fewer gate evaluations per unit, not
+the 2.25x the per-bit form gave.
+
+**Verdict: the ladder narrowed the gap from 6.03× to 1.54× — and did not close it.** On
 this synthetic program, at this geometry, on this part, uniskip k = 4 still costs about
-a quarter more per sumcheck variable than the windowed reference point. Four caveats,
+a half more per halving-adjusted unit than the windowed reference point. Four caveats,
 all of which have to travel with that number:
 
 - **Stage inclusion.** Uniskip's side is `lde + eval + finalize`; the windowed side is
@@ -1167,9 +1183,12 @@ Both rows were reconfirmed on the review fix-up binary (`census` 20.655 / 0.061,
 `locality` 20.536 / 0.061 — 0.02 %); that round changed host code, a comment and the
 docs only, and the sm_120 kernel SASS is unchanged at 3216 instructions.
 
-Per sumcheck variable against the external windowed reference point (4.67 ms/variable,
-all the caveats in *Per-variable* above still apply): 20.596 / 4 = **5.15 ms/variable**,
-**1.10x** the reference, down from v2's 5.77 / 1.24x.
+Against the external windowed reference point on the corrected **unit** basis (see the
+withdrawn per-bit form in *Per-variable* above; all its other caveats still apply):
+20.596 / 1.875 = **10.99 ms/unit**, **1.37x** the 8.00 ms/unit reference, down from v2's
+12.31 / 1.54x. Windowed parity for this pass is **15.0 ms** of `eval + finalize`. The
+earlier per-bit figure for this arm (5.15 ms/variable, 1.10x) is **withdrawn** — it
+overcredited the pass for the cheap tail bits.
 
 ### Hard gates
 
@@ -1352,7 +1371,17 @@ What this settles:
   that replace the 8 exchange stages; the **4x register map** (8 regs/lane per BF-eq
   resident against the default's 2, on a kernel currently at 40 registers and exactly at
   the 6-blocks/SM warp ceiling); and the `e4` axis complication (a transpose in and out,
-  or limb-major loads). None of those is priced here. R1 decides by measured time.
+  or limb-major loads). None of those is priced here.
+
+  **SUPERSEDED BY R1, and the verdict hardens to parked.** The v3 R1 rung took the
+  *superset* of this prize — all 62 unity multiplies, not radix-4's 32 — by dissolving the
+  lane = tap binding in shared memory. It delivered the arithmetic exactly
+  (`fmaheavy` 81.5 % -> 68.8 %) and **still lost 15 %** of wall time to the enabling
+  mechanism. Radix-4's distinguishing property is therefore no longer the 28.6 % — it is
+  that it pays no staging cost — but it captures roughly half the arithmetic that R1
+  proved insufficient, for its own unpriced costs. The micro-A/B is still owed and the
+  gate still does not advance; it is now a smaller prize against measured evidence that
+  this class of trade does not clear on this part.
 - **Constant-load serialization was designed out, and the profile does not contradict
   it.** The twiddle tables are lane-indexed, so a hot-path `__constant__` read would be a
   16-way divergent access on every stage of every reference; the kernel instead hoists all
@@ -1441,13 +1470,16 @@ what carries the miss.
 Standing levers, from this profile, in the order the evidence supports them:
 
 1. **Mul-pipe work is the whole wall** (`fmaheavy` = SM SOL = 81.5 %), and it has two
-   independent reductions left, neither closed. (a) **The unity multiplies.** 7 per lane
-   is the minimum for **radix-2 under lane = tap**, not for the transform: 62 of the 112
-   issued multiplies per group are unity and survive only because lane = tap makes them
-   lane-divergent. A map that moves a stage's axis *inside* the lane makes its unity-ness
-   a compile-time slot property under unroll — that is exactly what blocked radix-4 buys,
-   and the gate record above sizes it at **32 of 112 (28.6 %)**, the slot-determined
-   subset only. (b) **The window** (R2/R3), which
+   independent reductions left. (a) **The unity multiplies — MEASURED at R1, and the
+   lever is closed on the mul-pipe side.** 7 per lane is the minimum for **radix-2 under
+   lane = tap**, not for the transform: 62 of the 112 issued multiplies per group are
+   unity and survive only because lane = tap makes them lane-divergent. The v3 R1 rung
+   removed **all 62** by staging in shared memory and packing the real 50 across lanes
+   (`--mode lsb-compact`), delivering the predicted arithmetic — `fmaheavy` 81.5 % ->
+   68.8 %, chain multiplies per row −43 % at G = 4 and −50 % at G = 8 — and **lost 15 % of
+   wall time**, because the staging moved the work onto the narrower LSU pipe. See the
+   v3 R1 section. Blocked radix-4 recovers 32 of the 62 (28.6 %) without staging, and
+   stays parked against that measurement. (b) **The window** (R2/R3), which
    removes whole productions rather than multiplies inside one.
 2. **`sm__inst_executed_pipe_adu` at 58 %** says address arithmetic is the second-busiest
    pipe. v2's F9 finding (ptxas does not strength-reduce the per-tap address chain)
@@ -1456,3 +1488,207 @@ Standing levers, from this profile, in the order the evidence supports them:
 3. **The block covers 16 rows, not 32**, so the per-record VM decode is amortized over
    half as many rows as v2's. Two groups per lane (a 32-row tile at 4 `e4` accumulators)
    is the obvious cheap experiment and belongs to R1's lane/layout A/B.
+
+## v3 R1 — SMEM-staged compacted producer (`--mode lsb-compact`): MISS, and why
+
+RR's observation that opened this rung: R0's "unity multiplies are unskippable" is an
+artifact of the **lane = tap shuffle binding**, not of the problem. Bind lane to tap and a
+stage's twiddle is a per-lane constant, so one warp instruction has to serve unity and
+non-unity lanes at once and 62 of a group's 112 issued multiplies do nothing. Stage the
+group vectors in shared memory and the binding dissolves: an element is an address, any
+lane can own any element, and a **static schedule packs only the 50 real multiplies** into
+`ceil(G * m_s / 32)` rounds per stage — no branches, no predication, no divergence.
+
+**The mechanism works exactly as designed and the pass is slower anyway.** The
+multiply cut is real, proven in SASS and visible in the profile (`fmaheavy` 81.5 % ->
+68.8 %); it buys nothing because the staging that enables it moves the work onto a
+**narrower pipe**. That is the finding.
+
+### What was built
+
+`--mode lsb-compact --compact-groups {4,8}`. Same LSB backing, same W = 0
+recompute-everything semantics, same `eq`/`finalize` path, no fold — R0 with a
+restructured producer and warp geometry. New files only
+(`native/uniskip_lsb_compact.{cu,cuh}`, `src/compact.rs`); `uniskip.cu`,
+`uniskip_abi.cuh` and `uniskip_lsb.cuh` are byte-untouched.
+
+- **Geometry.** A warp owns `G` groups; lane `l` holds `G / 2` elements, all at tap
+  `l & 15` — element `k` is group `(l >> 4) + 2k`. The lane keeps its R0 cell identity
+  (cell `t` on H, `16 + t` on the coset, per row) and one program walk serves `G` rows, so
+  decode amortizes `G / 2`x better than R0. A block is 8 warps x `G` rows.
+- **Producer.** Per reference the warp loads its `G` groups coalesced, keeps H in
+  registers (so the transform may run in place and destroy the buffer), stages H, runs the
+  chain as fused butterfly+multiply rounds, and reads the coset back. `e4` runs the
+  identical chain limb-sequentially through the one buffer.
+- **Schedule.** Host-built (`src/compact.rs`), uploaded to `__constant__`, copied to
+  shared memory once per block — nothing reads it lane-indexed from `__constant__` in the
+  hot path. Multiplying slots occupy a dense prefix of each phase, and `mul_rounds` is
+  compile-time, so a round past it emits **no multiply code at all** rather than a
+  predicated one.
+- **Accumulation.** One `(H, coset)` `e4` pair per row through the walk (rows cannot mix
+  before `eq`), then eq-weight, collapse the lane's rows, and R0's `xor 16` merge and
+  partials path unchanged.
+
+### Gates — all pass
+
+- **Cross-mode oracle (new, and stronger than R0's self-oracle).** `lsb-compact`
+  preserves `lsb-recompute`'s element ordering, init generator and `eq` composition, so
+  its `q` must be bit-exact equal. Dumped device-side (`--dump-q`) and compared without
+  going through the host oracle at all: **all 32 cells identical for
+  {`census`, `locality`} x {G = 4, G = 8}**.
+- **Standard cells.** 16/16 pass `q validate: OK (32/32)` — {G = 4, G = 8} x
+  {`census`, `locality`} x {`--validate`, `--validate-flat-eq`} x
+  {`--self-products 0`, `--self-products 12`}.
+- **Schedule proof (CPU, GPU-free).** `cpu_compact_schedule_covers_every_element_once`
+  checks against `domain::ntt_twiddles`, not a device twin: every `(phase, group, slot)`
+  exactly once, the twiddle equal to the census entry, **no unity element scheduled**, and
+  the multiplying entries a dense prefix. `cpu_compact_mul_census` pins
+  `[2,2,1,0,4,0,1,2,2]` mul rounds at G = 8 (14 total, 56 lane-multiplies per group) and
+  8 / 64 at G = 4, against R0's 112.
+- **ptxas 0 stack / 0 spill and zero `LDL`/`STL` in SASS on sm_80/89/90/120**, both G.
+
+| kernel | sm_80 | sm_89 | sm_90 | sm_120 | blocks/SM (sm_120) | stack / spill |
+| --- | --- | --- | --- | --- | --- | --- |
+| `…_lsb_w0_kernel` (R0) | 96 | 96 | 56 | **40** | **6** | 0 / 0 / 0 |
+| `…_lsb_compact_g4_kernel` | 127 | 127 | 73 | **67** | 3 | 0 / 0 / 0 |
+| `…_lsb_compact_g8_kernel` | 231 | 232 | 138 | **128** | 2 | 0 / 0 / 0 |
+
+  The register growth is the `G / 2` elements per lane multiplying every operand and
+  accumulator array: G = 8 needs 4 `(H, coset)` `e4` accumulator pairs (32 registers) plus
+  two `e4` operands x 4 elements x 4 limbs. It never spills, but it costs half (G = 4) to
+  two thirds (G = 8) of R0's occupancy.
+
+### SASS mechanism proof — the compaction is real
+
+The chain is inlined at 22 sites per kernel (6 `bf` operand sites + 4 `e4` sites x 4 limb
+passes), so its multiply count is separable from the rest of the `IMAD.WIDE` total:
+
+| kernel | total `IMAD.WIDE` (sm_120) | of which chain | rows served per walk | **chain multiplies / row** | lane-muls / group |
+| --- | --- | --- | --- | --- | --- |
+| R0 `lsb-recompute` | 423 | 22 x 7 = 154 | 2 | **77.0** | 112 |
+| compact G = 4 | 704 | 22 x 8 = 176 | 4 | **44.0** (−43 %) | 64 |
+| compact G = 8 | 1354 | 22 x 14 = 308 | 8 | **38.5** (−50 %) | 56 |
+
+The non-chain remainder scales exactly with the element count — 269 / 528 / 1046 for
+1 / 2 / 4 elements per lane — which is what makes the split above a measurement rather
+than an attribution. The designed ratios (112 -> 64 -> 56 lane-multiplies per group) and
+the measured per-row ratios (77 -> 44 -> 38.5) agree to three digits.
+
+The staging cost is equally visible: static `LDS`/`STS` go from R0's **8 / 2** to
+**712 / 443** (G = 4) and **1416 / 883** (G = 8).
+
+### Timings — MISS on every arm
+
+Locked, `--log-trace 24`, `--warmup 10 --iterations 100`, medians. R0 re-measured in the
+same session as the control.
+
+| arm | `eval` | `finalize` | **eval + finalize** | vs R0's bar | spread (`eval` min–max) |
+| --- | --- | --- | --- | --- | --- |
+| R0 `lsb-recompute` census (bar 20.713) | 20.838 | 0.061 | 20.899 | — | 20.36–20.90 |
+| R0 `lsb-recompute` locality (bar 20.596) | 20.711 | 0.061 | 20.772 | — | 20.33–20.79 |
+| compact G = 4 census | 23.754 | 0.033 | **23.787** | **+14.8 %** | 23.68–25.41 |
+| compact G = 4 locality | **23.574** | 0.033 | **23.607** | **+14.6 %** | 23.11–23.62 |
+| compact G = 8 census | 41.664 | 0.018 | 41.682 | +101 % | 41.65–41.68 |
+| compact G = 8 locality | 40.902 | 0.018 | 40.920 | +99 % | 40.87–40.94 |
+
+G = 4 is the better arm and is the mode default. **Both miss R0, and R1's own
+resolver-model hypothesis (76 608 ops/row at G = 8, −48.8 %; 87 040 at G = 4, −41.8 %)
+is falsified as a predictor of wall time** — the model counts multiplies and the wall is
+not paying for multiplies any more.
+
+The G = 8 row carries a caveat that must travel with it: the first build measured
+29.086 / 28.618, and the bank-conflict fix below (which is a strict win for G = 4's
+rounds) made G = 8's *initial staging store and final readback* 4-way conflicted, because
+those two use the natural lane = tap binding rather than the round schedule. **28.6 ms is
+the fairest G = 8 figure; 40.9 is the same arm with a known layout defect.** Neither is
+within 35 % of the bar, so the conclusion does not turn on it and it was not re-fixed.
+
+### The optimization attempt, and what it settled
+
+The first profile showed **3.94 billion shared bank conflicts** — 8.89 G actual against
+4.96 G ideal wavefronts, 79 % excess — traced to a stride argument that was necessary but
+not sufficient: the slots of a distance-`d` phase are the taps with bit `log2 d` clear,
+and the identity map collides pairwise mod 8 on `{0,1,2,3,8,9,10,11}`. The fix
+(optimization attempt 1 of the 2 allowed) permutes the tap by the GF(2)-linear map with
+column images `[1, 2, 5, 14]`, enumerated as the one linear permutation whose low 3 bits
+stay a bijection on all four hyperplanes **and** whose low 2 bits do on every 4-slot round
+window; `cpu_compact_schedule_is_bank_conflict_free` now histogams the real schedule's
+banks and asserts degree 1 rather than arguing from a stride.
+
+| | before | after |
+| --- | --- | --- |
+| shared bank conflicts | 3 935 025 913 | **857 233 355** (−78 %) |
+| shared wavefronts | 8 902 326 657 | **5 824 534 099** (−35 %) |
+| `sm__inst_executed_pipe_lsu` | 87.06 % | **87.19 %** |
+| `eval` (G = 4, locality) | 23.755 | 23.574 (−0.8 %) |
+
+**That is the decisive measurement of this rung.** Removing 78 % of the bank conflicts
+moved the LSU pipe by 0.13 points and the wall by 0.8 %, because the bound is
+`sm__inst_executed_pipe_lsu` — the **count of LSU instructions**, not the wavefronts they
+expand into. No amount of bank tuning can reach it. The second optimization attempt was
+therefore not spent: the structural minimum of this design is ~2 shared accesses per
+element per stage, and the measured gap to R0 is 15 %.
+
+### ncu — G = 4 locality against R0
+
+`ncu --set full`, same recipe and location as R0's
+(`target/profiling/ncu/v3r1_compact_g4_locality_full.ncu-rep`).
+
+| metric | R0 `lsb-recompute` | **R1 compact G = 4** |
+| --- | --- | --- |
+| duration under the profiler | 21.14 ms | 24.06 ms |
+| **bounding pipe** | `fmaheavy` **81.51 %** = SM SOL 81.43 % | **`lsu` 87.19 %** = SM SOL 87.06 % |
+| `sm__pipe_fmaheavy_cycles_active` | 81.51 % | **68.83 %** ← the multiply cut, delivered |
+| `sm__inst_executed_pipe_lsu` | 32.20 % | **87.19 %** ← where it went |
+| `sm__inst_executed_pipe_alu` / `adu` | 35.00 / 57.95 % | 27.94 / **0.85 %** |
+| executed instructions | 24 388 763 648 | 25 448 579 072 (+4.3 %) |
+| shared instructions (`smsp__sass_inst_executed_op_shared`) | ~0 | **4 444 979 200** |
+| `dram__bytes.sum` vs floor | 6.21 GB, 1.000× | 6.21 GB, **1.000×** |
+| global load sectors | 684 195 840 | **684 195 840** (identical) |
+| registers, blocks/SM | 40, **6** | 67, **3** |
+| achieved occupancy | 99.28 % | **49.70 %** |
+| stalls: `short_scoreboard` | 9.9 % | **33.9 %** |
+| stalls: `math_pipe_throttle` | 28.4 % | 8.6 % |
+| stalls: `mio_throttle` | 0.6 % | 3.0 % |
+| stalls: `wait` / `not_selected` | 15.3 / 27.1 % | 22.7 / 13.4 % |
+
+Read together:
+
+- **The compaction did what it promised.** `fmaheavy` fell 12.7 points and
+  `math_pipe_throttle` fell from the largest stall (28.4 %) to 8.6 %. The multiply pipe is
+  no longer the constraint.
+- **It moved the work onto a narrower pipe.** `lsu` went 32.2 % -> 87.19 % and is now the
+  whole SM speed-of-light. Total executed instructions barely changed (+4.3 %) — this is
+  not "more work", it is **the same amount of work on a pipe with less throughput**.
+  `short_scoreboard` (the shared-memory dependency stall) tripled to 33.9 % and is the
+  largest stall.
+- **Occupancy halved as a second, independent cost.** `G / 2` elements per lane multiply
+  every operand and accumulator array; 40 -> 67 registers takes blocks/SM from 6 to 3.
+- **Memory behaviour is untouched and still perfect**: identical global load sectors and
+  1.000× the DRAM floor. Nothing about this rung is a traffic story.
+- `adu` collapsing from 58 % to 0.85 % is the one incidental win: the schedule carries
+  precomputed offsets, so the address arithmetic R0 spent on the ADU pipe is gone.
+
+### Verdict, and what it does to the radix-4 arm
+
+**R1 is a MISS and the mechanism is falsified as a wall-time lever, not as arithmetic.**
+Packing the real multiplies is achievable, exact, and worth 43–50 % of the producer's
+multiplies per row; it cannot pay for itself through shared memory on this part, because
+the staging costs more LSU instructions than the multiplies it saves cost mul-pipe
+instructions, and the LSU pipe is narrower. R0 (`--mode lsb-recompute`) remains the
+recommended v3 arm.
+
+What this does **not** falsify: the multiply cut itself. Any mechanism that removes those
+62 unity multiplies **without** a per-element shared-memory round trip is still live — the
+cost was never the packing, it was the medium.
+
+**Blocked radix-4 stays PARKED, now doubly so.** It recovers 32 of the 62 unity multiplies
+(28.6 % of the 112 issued, per the gate record above) while *keeping* the shuffle binding,
+so it pays no staging cost at all — which is now the interesting property, not the 28.6 %.
+But R1 has measured the prize: the whole 62 (compaction's 43–50 % per-row cut, a superset
+of radix-4's) bought −12.7 points of `fmaheavy` and **still lost 15 %** once the enabling
+mechanism was priced. Radix-4 would capture roughly half that arithmetic for a different
+cost — two cross-lane transposes, a 4x register map on a kernel already at 3 blocks/SM,
+and an `e4` axis transpose. The micro-A/B it owes is now a *smaller* prize against
+*measured* evidence that this class of trade does not clear on this part, so it does not
+advance.

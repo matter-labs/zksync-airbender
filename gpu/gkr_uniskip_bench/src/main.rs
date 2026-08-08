@@ -2,7 +2,9 @@ use std::ffi::CStr;
 
 use clap::{CommandFactory, Parser};
 use era_cudart::device::{get_device, get_device_properties};
-use gpu_gkr_uniskip_bench::abi::{UNISKIP_CELLS, UNISKIP_SRC_E4_GLOBAL};
+use gpu_gkr_uniskip_bench::abi::{
+    UNISKIP_CELLS, UNISKIP_COMPACT_DEFAULT_GROUPS, UNISKIP_SRC_E4_GLOBAL,
+};
 use gpu_gkr_uniskip_bench::cache;
 use gpu_gkr_uniskip_bench::geometry::Geometry;
 use gpu_gkr_uniskip_bench::harness::{
@@ -71,6 +73,11 @@ struct Cli {
     #[arg(long, value_enum)]
     cell_map: Option<CellMap>,
 
+    /// Groups a warp owns in `--mode lsb-compact`: 4 or 8. A lane holds `groups / 2`
+    /// elements, so one program walk serves `groups` rows. Compact mode only.
+    #[arg(long)]
+    compact_groups: Option<u32>,
+
     /// Validation knob: rewrite this many same-class binary products into
     /// self-products (`x * x`), which is the only way to exercise the LSB mode's
     /// duplicate rule — the default census emits none. It changes `q`; the census
@@ -83,6 +90,12 @@ struct Cli {
     /// Needs `--iterations >= 1`.
     #[arg(long)]
     profile: bool,
+
+    /// Print the 32 evaluations as raw hex words, one cell per line. Two runs that
+    /// claim the same `q` can then be compared device-to-device, without going through
+    /// the host oracle — which is what pins `lsb-compact` against `lsb-recompute`.
+    #[arg(long)]
+    dump_q: bool,
 
     /// Check the GPU result against the host reference.
     #[arg(long)]
@@ -162,10 +175,25 @@ fn pass_config(cli: &Cli) -> PassConfig {
             ),
         });
     }
+    if !cli.mode.uses_compact_groups() && cli.compact_groups.is_some() {
+        fail(format!(
+            "--compact-groups applies to --mode lsb-compact only; --mode {} has a fixed warp geometry",
+            cli.mode.as_str()
+        ));
+    }
+    let compact_groups = cli
+        .compact_groups
+        .unwrap_or(UNISKIP_COMPACT_DEFAULT_GROUPS as u32);
+    if !matches!(compact_groups, 4 | 8) {
+        fail(format!(
+            "--compact-groups {compact_groups} is not one of 4, 8"
+        ));
+    }
     PassConfig {
         mode: cli.mode,
         lde_shape: cli.lde_shape.unwrap_or_default(),
         cell_map: cli.cell_map.unwrap_or_default(),
+        compact_groups,
     }
 }
 
@@ -183,6 +211,11 @@ fn main() {
         config.cell_map.as_str()
     } else {
         "n/a"
+    };
+    let compact_groups_label = if config.mode.uses_compact_groups() {
+        config.compact_groups.to_string()
+    } else {
+        "n/a".to_string()
     };
 
     let geometry = Geometry::new(cli.log_trace).unwrap_or_else(|e| fail(e));
@@ -216,6 +249,7 @@ fn main() {
     println!("  mode                {}", config.mode.as_str());
     println!("  lde_shape           {lde_shape_label}");
     println!("  cell_map            {cell_map_label}");
+    println!("  compact_groups      {compact_groups_label}");
     println!("  term_order          {}", cli.term_order.as_str());
     println!("  self_products       {self_products}");
     if self_products > 0 {
@@ -228,8 +262,8 @@ fn main() {
     println!("  logical rows        {}", geometry.logical_rows);
     println!(
         "  blocks              {} ({} rows per block)",
-        geometry.eval_blocks(config.mode.rows_per_block()),
-        config.mode.rows_per_block()
+        geometry.eval_blocks(config.mode.rows_per_block_with(config.compact_groups)),
+        config.mode.rows_per_block_with(config.compact_groups)
     );
     println!(
         "  eq sizes            high {} / {} low {}",
@@ -237,7 +271,7 @@ fn main() {
     );
     println!(
         "  partials            {} e4",
-        geometry.eval_partials(config.mode.rows_per_block())
+        geometry.eval_partials(config.mode.rows_per_block_with(config.compact_groups))
     );
     println!("census");
     println!("{}", program.census);
@@ -361,6 +395,26 @@ fn main() {
         );
     }
 
+    if cli.dump_q {
+        if samples.is_empty() {
+            harness
+                .run_pass()
+                .unwrap_or_else(|e| fail(format!("pass launch failed: {e}")));
+            harness
+                .synchronize()
+                .unwrap_or_else(|e| fail(format!("pass failed: {e}")));
+        }
+        let q = harness
+            .download_q()
+            .unwrap_or_else(|e| fail(format!("q download failed: {e}")));
+        for (cell, limbs) in q.chunks(4).enumerate() {
+            println!(
+                "q[{cell:02}] {:08x} {:08x} {:08x} {:08x}",
+                limbs[0], limbs[1], limbs[2], limbs[3]
+            );
+        }
+    }
+
     // Validation compares device buffers, so it needs a pass to have run even when
     // the iteration count is zero.
     if validate {
@@ -420,7 +474,7 @@ fn main() {
 
     println!(
         "summary: log_trace {} | mode {} | lde_shape {lde_shape_label} | cell_map {cell_map_label} | \
-         term_order {} | C {} Ru {} | {sources} sources / \
+         compact_groups {compact_groups_label} | term_order {} | C {} Ru {} | {sources} sources / \
          {columns} columns / {} B ({:.2} GiB) per pass | total median {total_median:.3} ms over \
          {} iterations | {device}",
         cli.log_trace,

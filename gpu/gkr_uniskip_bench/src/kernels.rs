@@ -14,8 +14,9 @@ use era_cudart::stream::CudaStream;
 use era_cudart_sys::{cudaMemcpyToSymbol, cuda_struct_and_stub, CudaMemoryCopyKind};
 
 use crate::abi::{
-    UniskipVmDesc, UNISKIP_CACHE_UNITS, UNISKIP_CELLS, UNISKIP_COEFF_BANK, UNISKIP_EQ_HIGH,
-    UNISKIP_NTT_TABLES, UNISKIP_TAPS, UNISKIP_THREADS_PER_BLOCK,
+    UniskipCompactSlot, UniskipVmDesc, UNISKIP_CACHE_UNITS, UNISKIP_CELLS, UNISKIP_COEFF_BANK,
+    UNISKIP_COMPACT_MAX_ROUNDS, UNISKIP_EQ_HIGH, UNISKIP_NTT_TABLES, UNISKIP_TAPS,
+    UNISKIP_THREADS_PER_BLOCK,
 };
 
 cuda_struct_and_stub! { static ab_gkr_uniskip_coeff_bank: [[u32; 4]; UNISKIP_COEFF_BANK]; }
@@ -24,6 +25,7 @@ cuda_struct_and_stub! { static ab_gkr_uniskip_lde_matrix: [u32; UNISKIP_TAPS * U
 cuda_struct_and_stub! { static ab_gkr_uniskip_fold_weights: [[u32; 4]; UNISKIP_TAPS]; }
 cuda_struct_and_stub! { static ab_gkr_uniskip_cache_fill: [u16; UNISKIP_CACHE_UNITS]; }
 cuda_struct_and_stub! { static ab_gkr_uniskip_ntt_twiddles: [u32; UNISKIP_NTT_TABLES * UNISKIP_TAPS]; }
+cuda_struct_and_stub! { static ab_gkr_uniskip_compact_sched: [UniskipCompactSlot; UNISKIP_COMPACT_MAX_ROUNDS * 32]; }
 
 /// Blocks a grid-stride launch may use. The kernels loop, so this only bounds the
 /// launch; every configuration above it is covered by the stride.
@@ -97,6 +99,16 @@ cuda_kernel!(
     EvalLsbW0,
     ab_gkr_uniskip_eval_lsb_w0_kernel(desc: UniskipVmDesc)
 );
+// The v3 R1 kernels, one per group count. `uniskip_compact_desc` is a fifth empty
+// derived class of `uniskip_vm_desc` - same wire again.
+cuda_kernel!(
+    EvalLsbCompactG4,
+    ab_gkr_uniskip_eval_lsb_compact_g4_kernel(desc: UniskipVmDesc)
+);
+cuda_kernel!(
+    EvalLsbCompactG8,
+    ab_gkr_uniskip_eval_lsb_compact_g8_kernel(desc: UniskipVmDesc)
+);
 cuda_kernel!(
     Finalize,
     ab_gkr_uniskip_finalize_kernel(partials: *const u32, blocks: u32, q: *mut u32)
@@ -165,6 +177,16 @@ pub fn upload_cache_fill(fill: &[u16; UNISKIP_CACHE_UNITS]) -> CudaResult<()> {
 /// registers, so no hot-path access is a divergent `__constant__` read.
 pub fn upload_ntt_twiddles(twiddles: &[u32; UNISKIP_NTT_TABLES * UNISKIP_TAPS]) -> CudaResult<()> {
     unsafe { memcpy_to_symbol(&ab_gkr_uniskip_ntt_twiddles, twiddles) }
+}
+
+/// Upload the v3 R1 compaction schedule - [`crate::compact::schedule_words`], padded to
+/// the symbol size so a stale tail can never be read as live work. The kernels copy it to
+/// shared memory once per block; nothing reads it lane-indexed from `__constant__` in the
+/// hot path.
+pub fn upload_compact_schedule(
+    schedule: &[UniskipCompactSlot; UNISKIP_COMPACT_MAX_ROUNDS * 32],
+) -> CudaResult<()> {
+    unsafe { memcpy_to_symbol(&ab_gkr_uniskip_compact_sched, schedule) }
 }
 
 /// Fill a `bf` backing with the deterministic init generator; `dst` is one word
@@ -348,6 +370,28 @@ pub fn eval_lsb_w0(desc: &UniskipVmDesc, blocks: u32, stream: &CudaStream) -> Cu
     let args = EvalLsbW0Arguments::new(*desc);
     let config = CudaLaunchConfig::basic(blocks, UNISKIP_THREADS_PER_BLOCK as u32, stream);
     EvalLsbW0Function::default().launch(&config, &args)
+}
+
+/// The v3 R1 arm at 4 groups per warp: 8 warps x 4 rows = 32 logical rows per block.
+pub fn eval_lsb_compact_g4(
+    desc: &UniskipVmDesc,
+    blocks: u32,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    let args = EvalLsbCompactG4Arguments::new(*desc);
+    let config = CudaLaunchConfig::basic(blocks, UNISKIP_THREADS_PER_BLOCK as u32, stream);
+    EvalLsbCompactG4Function::default().launch(&config, &args)
+}
+
+/// The v3 R1 arm at 8 groups per warp: 8 warps x 8 rows = 64 logical rows per block.
+pub fn eval_lsb_compact_g8(
+    desc: &UniskipVmDesc,
+    blocks: u32,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    let args = EvalLsbCompactG8Arguments::new(*desc);
+    let config = CudaLaunchConfig::basic(blocks, UNISKIP_THREADS_PER_BLOCK as u32, stream);
+    EvalLsbCompactG8Function::default().launch(&config, &args)
 }
 
 /// Reduce the `blocks * UNISKIP_CELLS` partials into the `UNISKIP_CELLS` cells of `q`.

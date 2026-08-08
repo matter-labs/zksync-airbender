@@ -11,5 +11,6 @@ include(${AB_CUDA_CMAKE_DIR}/ab_cuda_target.cmake)
 add_library(gpu_gkr_uniskip_bench_native STATIC
         uniskip.cu
         uniskip_lsb.cu
+        uniskip_lsb_compact.cu
 )
 ab_cuda_configure_target(gpu_gkr_uniskip_bench_native PREFIX GPU_GKR_UNISKIP_BENCH INCLUDE_DIRS ${GPU_CORE_NATIVE_INCLUDE})
