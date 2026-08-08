@@ -1181,8 +1181,11 @@ all the caveats in *Per-variable* above still apply): 20.596 / 4 = **5.15 ms/var
   device's factorized producer is checked against the matrix on real data, not against
   itself. `LDE validate` and `fold validate` report `n/a` (no coset buffer, no fold
   stage). The `--self-products` cells are what exercise the W = 0 duplicate rule — the
-  default census emits no self-product, so a bare run never reaches that branch; see the
-  README's mode contract for why the knob also makes the v2/v3 A/B non-work-matched.
+  default census emits no self-product, so a bare run never reaches that branch. The knob
+  rewrites `program` only — the census and the cache plan are measured once at generation
+  and go **stale** under it rather than tracking it, which is why a run with it on labels
+  both `STALE`; see the README's mode contract for that and for why the knob also makes
+  the v2/v3 A/B non-work-matched.
 - **ptxas stack/spill 0 on all four architectures**, and **zero `LDL`/`STL` in SASS on
   all four**.
 
@@ -1293,10 +1296,14 @@ What this settles:
 
 - **The rung is still mul-pipe bound, and now harder.** `fmaheavy` 81.51 % *is* the
   81.43 % SM SOL, up from v2's 75.26 %, and `math_pipe_throttle` is the single largest
-  stall at 28.4 %. The architecture change bought its 11 % by doing **less** mul-pipe work
-  per cell, not by moving the bottleneck: the 16-tap-dot-per-(reference, cell) producer is
-  replaced by one shuffle-NTT per (reference, group) that serves all 16 coset cells, and
-  the `H` cell falls out of the same load instead of costing a second one.
+  stall at 28.4 %. **It did not get there by doing fewer multiplies** — the cost model
+  below shows the producer's multiply work is a wash per output cell (28 mul-pipe ops
+  either way) and that this arm carries 1.065x the modelled resolver work of v2's cached
+  winner. The 11 % is instruction-stream economy: one coalesced group load per reference
+  serves all 16 coset cells *and* the `H` cell, so 17x fewer load instructions and their
+  address chains issue per (record, row); registers fall 66 -> 40, doubling blocks/SM to
+  the warp ceiling; and the static body shrinks 4.2x. What rose to 81.5 % is the *share*
+  of the stream that is multiplies, because everything around them was removed.
 - **Shuffles are ~5.6 % of the instruction stream, not the 1–2 % the design predicted.**
   The op-level shuffle counter is `n/a` on this chip, so the dynamic count is derived
   from the program structure and cross-checked against static SASS: 8 exchange stages per
@@ -1313,15 +1320,35 @@ What this settles:
   shuffle evidence alone, because the shuffle count is only half of what radix-4 changes.
 
   The other half is on the pipe that is actually saturated. Under the blocked
-  4-strided-taps/lane map (4 lanes per group, 8 groups per warp) the lane index carries
-  the low 2 tap bits, so the **d = 4 and d = 8 stages become intra-lane** — and inside a
-  lane the slot index is a compile-time constant under `#pragma unroll`, so their unity
-  twiddles are eliminated outright instead of issuing. The census tables give the count
-  exactly: tables 0 / 1 / 5 / 6 hold 7 / 6 / 6 / 7 non-unity entries of 16, i.e.
-  **9 + 10 + 10 + 9 = 38** unity multiplies removed from the 112 issued per group — a
-  **~34 % cut in producer multiplies**, on the pipe measured at 81.5 % SOL.
+  4-strided-taps/lane map (4 lanes per group, 8 groups per warp) `lane = t & 3` and
+  `slot k = t >> 2`, so the **d = 4 and d = 8 stages become intra-lane** — and the slot
+  index is a compile-time constant under `#pragma unroll`, so a unity twiddle there is
+  eliminated outright instead of issuing.
 
-  What the owed micro-A/B has to price against that 34 %: the two cross-lane transposes
+  **Only the SLOT-determined unity entries are removable**, which is fewer than the raw
+  unity count. A multiply at slot `k` is removable only if its twiddle is unity for all
+  four lanes of that slot:
+
+| stage (table) | unity entries | slot-determined (removable) | lane-determined (not) |
+| --- | --- | --- | --- |
+| iDIF d = 8 (0) | 9 | **8** — `k ∈ {0,1}`, i.e. bit 3 of `t` clear | 1 — `t = 8`, exponent 0 on lane 0 |
+| iDIF d = 4 (1) | 10 | **8** — `k ∈ {0,2}`, i.e. bit 2 of `t` clear | 2 — `t = 4, 12` |
+| DIT d = 4 (5) | 10 | **8** — same mask | 2 — `t = 4, 12` |
+| DIT d = 8 (6) | 9 | **8** — same mask | 1 — `t = 8` |
+| | 38 | **32** | 6 |
+
+  So the cut is **32 of the 112 issued per group = 28.6 %**, not 38 / 34 %. The 6
+  leftovers are exponent-zero twiddles that land on lane 0 of a *non*-unity slot — the
+  same lane-divergent class the cost model above proves unskippable, and the blocked map
+  does not touch it.
+
+  Where that would land the resolver model, **as the A/B's hypothesis and nothing more**:
+  a blocked arm issuing 112 − 32 = **80** full `bf::mul` per group, with the consumer
+  term unchanged, models at `326 x (80 x 4) + 224 x 16` = **107 904** ops/row against this
+  arm's 149 632 (−27.9 %) and v2's winner 140 480 (−23.2 %). That is a resolver-model
+  number, not a wall projection — it prices none of the costs below.
+
+  What the owed micro-A/B has to price against that 28.6 %: the two cross-lane transposes
   that replace the 8 exchange stages; the **4x register map** (8 regs/lane per BF-eq
   resident against the default's 2, on a kernel currently at 40 registers and exactly at
   the 6-blocks/SM warp ceiling); and the `e4` axis complication (a transpose in and out,
@@ -1403,7 +1430,11 @@ gate. The **dominant** term is the executed-vs-algebraic gap of the previous sub
 the projection priced 50 multiplies per 16 outputs (3.1 per element) and the lane = tap
 map issues 112 (7 per element), so `326 x 50 = 16 300` becomes `326 x 112 = 36 512` lane
 multiplies per row, 2.24x the priced figure. Against v2's 83 456 that is a **2.29x**
-arithmetic reduction, not the ladder table's 5.1x. The fitted intercept being an artifact
+reduction **in the ladder's own unit — a count of field multiplies**, not the ladder
+table's 5.1x. That unit is not mul-pipe time: v2's per-tap `mad_wide` is one pipe op and
+this chain's `bf::mul` is four, so in the op-unit of the table above both arms sit at
+146 048 ops/row and the arithmetic is a wash. The 2.29x is the honest correction to the
+5.1x claim, not a claim of 2.29x less work. The fitted intercept being an artifact
 of the v2 kernel is a real second-order effect, and the design flagged it, but it is not
 what carries the miss.
 
@@ -1415,7 +1446,8 @@ Standing levers, from this profile, in the order the evidence supports them:
    issued multiplies per group are unity and survive only because lane = tap makes them
    lane-divergent. A map that moves a stage's axis *inside* the lane makes its unity-ness
    a compile-time slot property under unroll — that is exactly what blocked radix-4 buys,
-   and the gate record above sizes it at ~38 of 112. (b) **The window** (R2/R3), which
+   and the gate record above sizes it at **32 of 112 (28.6 %)**, the slot-determined
+   subset only. (b) **The window** (R2/R3), which
    removes whole productions rather than multiplies inside one.
 2. **`sm__inst_executed_pipe_adu` at 58 %** says address arithmetic is the second-busiest
    pipe. v2's F9 finding (ptxas does not strength-reduce the per-tap address chain)

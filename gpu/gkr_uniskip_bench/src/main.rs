@@ -196,7 +196,7 @@ fn main() {
     let self_products = program.force_self_products(cli.self_products);
     if self_products != cli.self_products {
         fail(format!(
-            "--self-products {}: this census emits only {self_products} same-class binary products",
+            "--self-products {}: this program has only {self_products} same-class binary products to rewrite",
             cli.self_products
         ));
     }
@@ -218,6 +218,11 @@ fn main() {
     println!("  cell_map            {cell_map_label}");
     println!("  term_order          {}", cli.term_order.as_str());
     println!("  self_products       {self_products}");
+    if self_products > 0 {
+        println!(
+            "  census / plan       STALE (measured before --self-products rewrote the program)"
+        );
+    }
     println!("geometry");
     println!("  log_rows            {}", geometry.log_rows);
     println!("  logical rows        {}", geometry.logical_rows);
@@ -247,12 +252,13 @@ fn main() {
     // Printed in every mode: the plan is a property of the program, and `C` / `Ru` /
     // the op split are what decide whether an all-cell fill producer is worth building.
     println!(
-        "cache plan{}",
+        "cache plan{}{}",
         if config.mode.uses_cache() {
             ""
         } else {
             " (not applied in this mode)"
-        }
+        },
+        if self_products > 0 { " (STALE)" } else { "" }
     );
     println!("{plan}");
 

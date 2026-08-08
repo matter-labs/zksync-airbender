@@ -248,10 +248,14 @@ impl SynthProgram {
     ///
     /// VALIDATION KNOB, not a census knob. The default census has no self-product, so
     /// the LSB mode's W = 0 duplicate rule — a repeated operand inside one term is
-    /// produced once, spec 2.5 — is otherwise unreachable on the device. It does move
-    /// per-source reference counts (one reference migrates from `source_b` to
-    /// `source_a`), so the printed cache plan changes with it and a timing taken under
-    /// it is not comparable with the recorded arms.
+    /// produced once — is otherwise unreachable on the device.
+    ///
+    /// It mutates `program` ONLY. [`CensusSummary::per_source_refs`] is measured once in
+    /// [`generate`] and is what `cache::plan` ranks off, so neither the census nor the
+    /// plan moves with it — they go **stale**: one reference per rewritten record has
+    /// migrated from `source_b` to `source_a` and the printed figures no longer describe
+    /// the program that runs. `main` labels them stale rather than silently reprinting
+    /// them, and a timing taken under this knob is not comparable with the recorded arms.
     pub fn force_self_products(&mut self, count: u32) -> u32 {
         let mut done = 0;
         for term in self.program.iter_mut() {
@@ -1106,13 +1110,9 @@ mod cpu_tests {
         }
     }
 
-    /// The reorder is only legal because `q` is a sum whose terms commute. Check it
-    /// against the full oracle at a geometry small enough to run on the CPU, in both
-    /// eq modes, rather than asserting the algebra.
-    /// The duplicate-rule knob: the default census has no self-product (so the
-    /// recorded arms' reference counts are unaffected by the rule existing), the
-    /// rewrite touches only `source_b`, and it genuinely changes `q` — so a device run
-    /// under it is a real test of the LSB accessor's short-circuit and not a no-op.
+    /// The duplicate-rule knob: the default census has no self-product, the rewrite
+    /// touches only `source_b`, and it genuinely changes `q` — so a device run under it
+    /// is a real test of the LSB accessor's short-circuit and not a no-op.
     #[test]
     fn cpu_synth_force_self_products() {
         use crate::abi::SourceLayout;
@@ -1149,6 +1149,9 @@ mod cpu_tests {
         assert_eq!(all.force_self_products(1), 0);
     }
 
+    /// The reorder is only legal because `q` is a sum whose terms commute. Check it
+    /// against the full oracle at a geometry small enough to run on the CPU, in both
+    /// eq modes, rather than asserting the algebra.
     #[test]
     fn cpu_synth_term_order_keeps_q() {
         use crate::geometry::Geometry;

@@ -122,9 +122,12 @@ modes above and changes everything else:
   The default census emits **no** self-product, so that rule is unreachable on a bare
   run; `--self-products <N>` rewrites `N` same-class binary products into `x * x` for
   exactly this purpose and is wired into `--validate`. It is a **validation** knob, not
-  a census knob: it moves per-source reference counts (one reference migrates from
-  `source_b` to `source_a`) and therefore the printed cache plan, so a timing taken
-  under it is not comparable with the recorded arms. It also makes the v2/v3 A/B
+  a census knob, and it rewrites the *program* only: the census and the cache plan are
+  measured once at generation and neither tracks it, so under this knob they are
+  **stale** — one reference per rewritten record has migrated from `source_b` to
+  `source_a` and the printed figures describe a program that no longer runs. The config
+  block labels both `STALE` for exactly that reason, and a timing taken under the knob
+  is not comparable with the recorded arms. It also makes the v2/v3 A/B
   **non-work-matched** — `uniskip_eval_body` resolves both operands unconditionally, so
   on a self-product census v2 does two resolutions where this mode does one. That does
   not touch the recorded R0 comparison, which runs the default census at
