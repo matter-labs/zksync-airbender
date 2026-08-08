@@ -71,6 +71,14 @@ struct Cli {
     #[arg(long, value_enum)]
     cell_map: Option<CellMap>,
 
+    /// Validation knob: rewrite this many same-class binary products into
+    /// self-products (`x * x`), which is the only way to exercise the LSB mode's
+    /// duplicate rule — the default census emits none. It changes `q` and the
+    /// per-source reference counts, so a timing taken under it is not comparable
+    /// with the recorded arms.
+    #[arg(long, default_value_t = 0)]
+    self_products: u32,
+
     /// Wrap the first timed iteration in the `gkr_uniskip_pass0` NVTX range.
     /// Needs `--iterations >= 1`.
     #[arg(long)]
@@ -185,6 +193,13 @@ fn main() {
         grouped_atoms: cli.grouped_atoms,
     };
     let mut program = generate(cli.seed, census).unwrap_or_else(|e| fail(e));
+    let self_products = program.force_self_products(cli.self_products);
+    if self_products != cli.self_products {
+        fail(format!(
+            "--self-products {}: this census emits only {self_products} same-class binary products",
+            cli.self_products
+        ));
+    }
     program.apply_term_order(cli.term_order);
     // Order-invariant: the plan is ranked off the reference census, which is a property
     // of the record multiset.
@@ -202,6 +217,7 @@ fn main() {
     println!("  lde_shape           {lde_shape_label}");
     println!("  cell_map            {cell_map_label}");
     println!("  term_order          {}", cli.term_order.as_str());
+    println!("  self_products       {self_products}");
     println!("geometry");
     println!("  log_rows            {}", geometry.log_rows);
     println!("  logical rows        {}", geometry.logical_rows);

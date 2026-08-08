@@ -224,6 +224,48 @@ impl SynthProgram {
         self.program = units.into_iter().flat_map(|(_, _, unit)| unit).collect();
     }
 
+    /// Binary-product records whose two operands are the SAME source. The generator
+    /// emits none, which is why the W = 0 duplicate rule needs
+    /// [`Self::force_self_products`] to be exercised at all.
+    pub fn self_products(&self) -> u32 {
+        self.program
+            .iter()
+            .filter(|t| Self::is_binary_product(t.term_class) && t.source_a == t.source_b)
+            .count() as u32
+    }
+
+    fn is_binary_product(term_class: u16) -> bool {
+        // BF x E4 cannot self-alias: the operands are drawn from different classes.
+        matches!(
+            term_class,
+            UNISKIP_CLASS_PRODUCT_BF_BF | UNISKIP_CLASS_PRODUCT_E4_E4
+        )
+    }
+
+    /// Rewrite the first `count` same-class binary products into SELF-products
+    /// (`x * x`), touching `source_b` and nothing else. Returns how many it actually
+    /// rewrote, which is `count` unless the program holds fewer such records.
+    ///
+    /// VALIDATION KNOB, not a census knob. The default census has no self-product, so
+    /// the LSB mode's W = 0 duplicate rule — a repeated operand inside one term is
+    /// produced once, spec 2.5 — is otherwise unreachable on the device. It does move
+    /// per-source reference counts (one reference migrates from `source_b` to
+    /// `source_a`), so the printed cache plan changes with it and a timing taken under
+    /// it is not comparable with the recorded arms.
+    pub fn force_self_products(&mut self, count: u32) -> u32 {
+        let mut done = 0;
+        for term in self.program.iter_mut() {
+            if done == count {
+                break;
+            }
+            if Self::is_binary_product(term.term_class) && term.source_a != term.source_b {
+                term.source_b = term.source_a;
+                done += 1;
+            }
+        }
+        done
+    }
+
     /// Little-endian image of everything that reaches the device wire.
     pub fn wire_bytes(&self) -> Vec<u8> {
         let mut out = Vec::with_capacity(
@@ -1067,6 +1109,46 @@ mod cpu_tests {
     /// The reorder is only legal because `q` is a sum whose terms commute. Check it
     /// against the full oracle at a geometry small enough to run on the CPU, in both
     /// eq modes, rather than asserting the algebra.
+    /// The duplicate-rule knob: the default census has no self-product (so the
+    /// recorded arms' reference counts are unaffected by the rule existing), the
+    /// rewrite touches only `source_b`, and it genuinely changes `q` — so a device run
+    /// under it is a real test of the LSB accessor's short-circuit and not a no-op.
+    #[test]
+    fn cpu_synth_force_self_products() {
+        use crate::abi::SourceLayout;
+        use crate::geometry::Geometry;
+        use crate::reference::eval_q;
+
+        let base = generate(7, Census::default()).unwrap();
+        assert_eq!(base.self_products(), 0);
+
+        let mut forced = base.clone();
+        assert_eq!(forced.force_self_products(8), 8);
+        assert_eq!(forced.self_products(), 8);
+        for (a, b) in base.program.iter().zip(&forced.program) {
+            assert_eq!(
+                (a.term_class, a.coeff, a.source_a),
+                (b.term_class, b.coeff, b.source_a)
+            );
+        }
+
+        let geometry = Geometry::new(10).unwrap();
+        for layout in [SourceLayout::PlaneMajor, SourceLayout::LsbGroup] {
+            assert_ne!(
+                eval_q(&forced, &geometry, 7, false, layout),
+                eval_q(&base, &geometry, 7, false, layout),
+                "{layout:?}"
+            );
+        }
+
+        // Saturates at the number of same-class binary products rather than lying.
+        let mut all = base.clone();
+        let available = all.force_self_products(u32::MAX);
+        assert!(available >= 8, "{available}");
+        assert_eq!(all.self_products(), available);
+        assert_eq!(all.force_self_products(1), 0);
+    }
+
     #[test]
     fn cpu_synth_term_order_keeps_q() {
         use crate::geometry::Geometry;

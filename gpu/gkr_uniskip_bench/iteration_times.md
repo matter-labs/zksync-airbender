@@ -1106,8 +1106,8 @@ about these kernels on this census — not a production estimate.
 
 ## v3 R0 — LSB lane-striped uniskip, W = 0 (`--mode lsb-recompute`)
 
-The first rung of the v3 design
-(`.agents/specs/2026-08-08-gkr-uniskip-v3-lsb-lane-design.md`), built to its §8 R0
+The first rung of the v3 LSB lane-striped design (spec dated 2026-08-08; not committed,
+so every number it is measured against is restated here), built to its R0
 scope: **2-group lane = tap, W = 0** (recompute every reference, no window, no cache),
 full eval + finalize. No fold, no multi-round, no binding-order oracle — those are R4.
 Every v1/v2 kernel is untouched; the mode is a new `.cu`
@@ -1154,13 +1154,18 @@ values to 0.06 %, so the comparison is not a cross-session one.
 | `locality` | **20.535** | 0.061 | **20.596** | 23.056 + 0.034 = 23.090 | 23.078 | **PASS, −10.8 %** |
 
 `fold` is excluded on both sides, as everywhere in this file — and in this mode it is
-excluded because it does not exist: the LSB fold is R4 work (§7 pins it as a
-separate-buffer write, since a low-bit fold reads 16 adjacent inputs and writes one).
+excluded because it does not exist: the LSB fold is R4 work, and the design pins it as
+a separate-buffer write, since a low-bit fold reads 16 adjacent inputs and writes one —
+folding in place would be a race across blocks.
 The mode therefore also drops v2's ~0.92 GiB fold-output buffer; resident backings are
 5.75 GiB, the same 1x as the fused modes.
 
 `--term-order locality` is again a small, real win (−0.6 %, spans 20.32–20.62 against
 20.36–20.73). It is the same sub-percent size as under v2's interleave map.
+
+Both rows were reconfirmed on the review fix-up binary (`census` 20.655 / 0.061,
+`locality` 20.536 / 0.061 — 0.02 %); that round changed host code, a comment and the
+docs only, and the sm_120 kernel SASS is unchanged at 3216 instructions.
 
 Per sumcheck variable against the external windowed reference point (4.67 ms/variable,
 all the caveats in *Per-variable* above still apply): 20.596 / 4 = **5.15 ms/variable**,
@@ -1168,13 +1173,18 @@ all the caveats in *Per-variable* above still apply): 20.596 / 4 = **5.15 ms/var
 
 ### Hard gates
 
-- **Bit-exact `q`.** 32/32 for all four cells of {`census`, `locality`} x
-  {`--validate`, `--validate-flat-eq`} at `--log-trace 10`. The oracle addresses the taps
-  through the new LSB host mirror (`abi::lsb_source_offset` via `Layout::source_offset`)
-  and re-extends them with the dense `domain::lde_matrix()`, so the device's factorized
-  producer is checked against the matrix on real data, not against itself. `LDE validate`
-  and `fold validate` report `n/a` (no coset buffer, no fold stage).
-- **ptxas stack/spill 0 on all four architectures**, and **zero `LDL`/`STL` in SASS**.
+- **Bit-exact `q`.** 32/32 for all **eight** cells of {`census`, `locality`} x
+  {`--validate`, `--validate-flat-eq`} x {`--self-products 0`, `--self-products 12`} at
+  `--log-trace 10`. The oracle addresses the taps through the LSB host mirror
+  (`abi::lsb_source_offset` via `Layout::source_offset`, cell -> tap through
+  `abi::tap_for_cell`) and re-extends them with the dense `domain::lde_matrix()`, so the
+  device's factorized producer is checked against the matrix on real data, not against
+  itself. `LDE validate` and `fold validate` report `n/a` (no coset buffer, no fold
+  stage). The `--self-products` cells are what exercise the W = 0 duplicate rule — the
+  default census emits no self-product, so a bare run never reaches that branch; see the
+  README's mode contract for why the knob also makes the v2/v3 A/B non-work-matched.
+- **ptxas stack/spill 0 on all four architectures**, and **zero `LDL`/`STL` in SASS on
+  all four**.
 
 | kernel | sm_120 | sm_80 | sm_89 | sm_90 | stack / spill st / spill ld |
 | --- | --- | --- | --- | --- | --- |
@@ -1184,10 +1194,36 @@ all the caveats in *Per-variable* above still apply): 20.596 / 4 = **5.15 ms/var
   (`eval` 54, `eval_fused` 64, `eval_fused_interleave` 125, both cached kernels 66 on
   sm_120), which is the evidence that this rung left them alone.
 
-  `cuobjdump -sass` on `uniskip_lsb.cu.o` (sm_120): **3216 instructions** in the kernel
-  body, **0 `LDL`, 0 `STL`**, 184 `SHFL` (5.72 % static). For scale, v2's cached
-  interleave kernel is 13 568 instructions — the LSB body is 4.2x smaller because the
-  16-tap dot is gone and the term loop is not unrolled over four cells.
+  The register table is the diagnostic build at the top of this file (which carries the
+  `--keep` / sccache hazard documented there — the recovery is
+  `touch native/*.cu*` + `SCCACHE_RECACHE=1 cargo build`; note that pointing
+  `CMAKE_TOOLCHAIN_FILE` at an empty file does **not** displace the launcher for this
+  crate, because `CMAKE_CUDA_COMPILER_LAUNCHER` is already in its CMake cache). The SASS
+  check needs no diagnostic flags at all and therefore poisons nothing:
+
+```bash
+# CUDAARCHS is not in the cargo fingerprint AND is cached by CMake, so clear both.
+rm -rf target/release/build/gpu_gkr_uniskip_bench-*/out/build
+touch gpu/gkr_uniskip_bench/native/*.cu gpu/gkr_uniskip_bench/native/*.cuh
+CUDAARCHS="80;89;90;120" cargo build --release -p gpu_gkr_uniskip_bench
+cuobjdump -sass .../gpu_gkr_uniskip_bench_native.dir/uniskip_lsb.cu.o   # all four in one object
+# then clear + rebuild with CUDAARCHS unset so the shipped binary is native-only,
+# and re-run the validation set on it.
+```
+
+  The kernel body on every architecture:
+
+| arch | instructions | `LDL` | `STL` | `SHFL` | `LDG` | `LDS` / `STS` |
+| --- | --- | --- | --- | --- | --- | --- |
+| sm_80 | 4096 | **0** | **0** | 184 | 11 | 8 / 2 |
+| sm_89 | 4096 | **0** | **0** | 184 | 11 | 8 / 2 |
+| sm_90 | 3240 | **0** | **0** | 184 | 11 | 8 / 2 |
+| sm_120 | 3216 | **0** | **0** | 184 | 11 | 8 / 2 |
+
+  For scale, v2's cached interleave kernel is 13 568 instructions on sm_120 — the LSB
+  body is 4.2x smaller because the 16-tap dot is gone and the term loop is not unrolled
+  over four cells. `SHFL`/`LDG`/`LDS`/`STS` are identical across architectures; only the
+  scalar integer scheduling differs.
 
 - **Occupancy.** 40 registers puts the register block limit at **6 blocks/SM** against
   v2's 3, and 4096 + 1024 B of shared memory at 12 — so registers still bind, but now at
@@ -1227,15 +1263,19 @@ and write the block partials: `48 bf columns x 16 planes x 2^20 rows x 4 B`
 binary's printed whole-pass compulsory traffic, 6 241 124 864 B, additionally counts
 `finalize` re-reading the partials and writing `q`.)
 
-**Issued source-load sectors: 1.000x compulsory, exactly.** `ncu` reports
+**Issued source-load sectors: 1.000x the compulsory MINIMUM FOR THE ISSUED REQUESTS —
+a coalescing ratio, not a traffic ratio.** `ncu` reports
 117 964 800 global load *requests* and 684 195 840 *sectors*. Both are exact:
 524 288 warps x 225 requests (190 `bf` references + 34 `e4` references + 1 `eq_low`) and
 524 288 x 1305 sectors (`190 x 4 + 34 x 16 + 1`). A warp's two `bf` groups are 128 B
 contiguous = 4 sectors and its two `e4` groups 512 B = 16 sectors, which are the *minima*
 for those byte counts — so the LSB layout costs **zero** coalescing overhead and the R0
-requirement (≤ 1.05x) passes at 1.000x. Against a distinct-bytes-once floor the W = 0
-recompute re-reads the backing 3.54x (`190/48` on `bf`, `34/11` on `e4`); L1 and L2
-absorb all of it, which is why DRAM lands on the floor.
+requirement (≤ 1.05x) passes at 1.000x. **This is not an issued-vs-distinct-bytes
+measure.** Against a distinct-bytes-once floor the W = 0 recompute re-reads the backing
+**3.54x** (`190/48` on `bf`, `34/11` on `e4`) — the mode's structural re-read, since
+nothing is retained across references. L1 and L2 absorb all of it, which is why DRAM
+lands on the floor at 1.000x; that DRAM figure *is* a distinct-bytes measure and the two
+must not be quoted as if they were the same claim.
 
 **Pipes and stalls.**
 
@@ -1257,16 +1297,35 @@ What this settles:
   per cell, not by moving the bottleneck: the 16-tap-dot-per-(reference, cell) producer is
   replaced by one shuffle-NTT per (reference, group) that serves all 16 coset cells, and
   the `H` cell falls out of the same load instead of costing a second one.
-- **Shuffles are ~5.6 % of the instruction stream, not the 1–2 % the spec predicted —
-  and they are still not the constraint.** The op-level shuffle counter is `n/a` on this
-  chip, so the dynamic count is derived from the program structure and cross-checked
-  against static SASS: 8 exchange stages per component pass gives
-  `190 x 8 + 34 x 32 + 8 = 2616` `SHFL` per warp-program-pass, against
-  `24 388 763 648 / 524 288 = 46 516` executed instructions per warp — **5.62 %**, in line
-  with the 5.72 % static share. The spec's 1–2 % prediction was computed for the
-  perfect-window case (92 component passes); at W = 0 there are 326. **The blocked
-  radix-4 escalation (§5) is nonetheless NOT triggered**: its gate also requires material
-  MIO stalls, and `mio_throttle` is **0.6 %** of stalls. Recorded for R1 to decide by time.
+- **Shuffles are ~5.6 % of the instruction stream, not the 1–2 % the design predicted.**
+  The op-level shuffle counter is `n/a` on this chip, so the dynamic count is derived
+  from the program structure and cross-checked against static SASS: 8 exchange stages per
+  component pass gives `190 x 8 + 34 x 32 + 8 = 2616` `SHFL` per warp-program-pass,
+  against `24 388 763 648 / 524 288 = 46 516` executed instructions per warp — **5.62 %**,
+  in line with the 5.72 % static share. The 1–2 % prediction was computed for the
+  perfect-window case (92 component passes); at W = 0 there are 326.
+
+  **Blocked radix-4: PARKED — first disjunct MET, micro-A/B OWED.** The escalation gate
+  is "SHFL/MIO ≥ 5 % wall-equivalent **or** material MIO stalls, **plus** a micro-A/B
+  predicting ≥ 3 % pass win". The first disjunct is **met** at 5.62 % (`mio_throttle` is
+  only 0.6 % of stalls, so the *other* disjunct is not); the micro-A/B has **not** been
+  run, so the gate does not advance — and it must not be recorded as declined on the
+  shuffle evidence alone, because the shuffle count is only half of what radix-4 changes.
+
+  The other half is on the pipe that is actually saturated. Under the blocked
+  4-strided-taps/lane map (4 lanes per group, 8 groups per warp) the lane index carries
+  the low 2 tap bits, so the **d = 4 and d = 8 stages become intra-lane** — and inside a
+  lane the slot index is a compile-time constant under `#pragma unroll`, so their unity
+  twiddles are eliminated outright instead of issuing. The census tables give the count
+  exactly: tables 0 / 1 / 5 / 6 hold 7 / 6 / 6 / 7 non-unity entries of 16, i.e.
+  **9 + 10 + 10 + 9 = 38** unity multiplies removed from the 112 issued per group — a
+  **~34 % cut in producer multiplies**, on the pipe measured at 81.5 % SOL.
+
+  What the owed micro-A/B has to price against that 34 %: the two cross-lane transposes
+  that replace the 8 exchange stages; the **4x register map** (8 regs/lane per BF-eq
+  resident against the default's 2, on a kernel currently at 40 registers and exactly at
+  the 6-blocks/SM warp ceiling); and the `e4` axis complication (a transpose in and out,
+  or limb-major loads). None of those is priced here. R1 decides by measured time.
 - **Constant-load serialization was designed out, and the profile does not contradict
   it.** The twiddle tables are lane-indexed, so a hot-path `__constant__` read would be a
   16-way divergent access on every stage of every reference; the kernel instead hoists all
@@ -1277,26 +1336,87 @@ What this settles:
   consequence of running 48 warps per SM instead of 24 on a saturated pipe. It is not a
   defect: it is what 100 % occupancy on a throughput-bound kernel looks like.
 
+### The producer cost model: executed, not algebraic
+
+The v3 ladder priced this rung at **326 x 50 = 16 300** field multiplies per row, which
+it called 5.1x v2's per-read 83 456 (`326 references x 16 FMA x 16 cells`). **The kernel
+issues 326 x 112 = 36 512** — a 2.24x gap, and 2.29x rather than 5.1x against v2. It is a
+property of the lane map, not a defect:
+
+`uniskip_lsb_coset` runs **7 unconditional `bf::mul` per lane** = **112 full multiplies
+per 16-output group**. The twiddle census proves only **50** of those are non-unity
+(17 iDIF + 16 twist + 17 DIT); the other **62 are unity multiplies that still issue**,
+because under lane = tap the unity entries are *lane-divergent* — lane 0 and lane 15 of
+one stage want different twiddles and the same warp instruction has to serve both, so a
+unity slot cannot be skipped. Only the two distance-1 stages, whose twiddle is unity on
+**every** lane, are compile-time removable, and they already are (7 tables, not 9).
+
+Like-for-like against v2, **per output cell**, in this file's mul-pipe-op unit
+(`mad_wide` 1, `red_wide`/`red` 3, so `bf::mul` = 4):
+
+| | producer multiplies per coset cell | + address `IMAD.WIDE` | total |
+| --- | --- | --- | --- |
+| v2 chunked dot (16 `mad_wide` + 4 `red_wide`, per cell) | 16 + 12 = **28** | 16 (one per tap load) | **44** |
+| v3 shuffle-NTT (7 `bf::mul` per lane, lane = one cell) | 7 x 4 = **28** | 1 (one load per lane) | **29** |
+
+**The producer's multiply work is a wash — 28 against 28.** The 1.52x that appears when
+addressing is included is the address chain, not the transform. Per row over the
+width-weighted reference count 326, and against this file's own resolver model:
+
+| arm | modelled mul-pipe ops / row | vs v2 uncached | vs v2 winner |
+| --- | --- | --- | --- |
+| v2 rung 2a, no cache | 229 504 | 1.000x | 1.634x |
+| v2 winner, 16 cache units | 140 480 | 0.612x | 1.000x |
+| **v3 R0, W = 0** | 326 x 448 + 224 x 16 = **149 632** | 0.652x | **1.065x** |
+
+So v3 R0 does **more** modelled resolver work than v2's cached winner and is still
+10.8 % faster. **The measured win is therefore not producer multiply count.** What it is,
+in decreasing order of confidence:
+
+- **17x fewer load instructions per (record, row).** v2's block issues 8 warps x
+  (2 `H` + 32 coset-dot taps) = 272 load instructions per record per 32 rows = 8.5 per
+  (record, row); v3's issues 8 warps x 1 = 8 per record per 16 rows = **0.5**. One
+  coalesced group load per reference serves all 16 coset cells *and* the `H` cell, so
+  the second load and its address chain disappear together. This is what the ladder's
+  op model never counted.
+- **Registers 66 -> 40**, so blocks/SM 3 -> 6 and occupancy 50 % -> 100 %, on a kernel
+  that is throughput-bound rather than latency-bound.
+- **Static code 13 568 -> 3216 instructions**, with `sm__icc_requests` 76.6 % -> 63.8 %.
+
 ### What R0 does and does not establish
 
 Established: the LSB lane-striped architecture with **no scheduler at all** beats v2's
-best scheduled arm under both term orders, at 1.000x the DRAM floor, 1.000x the
-compulsory load-sector count, zero spills and 100 % occupancy. The spec's §8 R0 stop
-condition ("if W = 0 cannot beat v2 … stop before any scheduler work") is **not**
-triggered — scheduler work is authorized on the evidence.
+best scheduled arm under both term orders, at 1.000x the DRAM floor (a distinct-bytes
+measure), perfectly coalesced loads (1.000x the sector minimum for the requests it
+issues — the W = 0 stream itself re-reads the backing 3.54x, absorbed by L1/L2), zero
+spills and 100 % occupancy. The R0 stop condition ("if W = 0 cannot beat v2 … stop
+before any scheduler work") is **not** triggered — scheduler work is authorized on the
+evidence.
 
 Not established, and deliberately out of scope at this rung: the fold, multi-round
 telescoping, the low-bit binding-order differential oracle, the window/residence
-realizations (A vs B), the lane-map A/B, and the real-circuit census. The landing zone
-the spec projected for W = 0 was 18.6 ms against a 16–19 ms first zone; 20.6 ms is
-outside it on the high side while still clearing the gate, so the projection's intercept
-was optimistic — which the spec said it would be.
+realizations (A vs B), the lane-map A/B, and the real-circuit census.
+
+**Why the projection missed.** The design's landing zone for W = 0 was 18.6 ms against a
+16–19 ms first zone; 20.6 ms is outside it on the high side while still clearing the
+gate. The **dominant** term is the executed-vs-algebraic gap of the previous subsection —
+the projection priced 50 multiplies per 16 outputs (3.1 per element) and the lane = tap
+map issues 112 (7 per element), so `326 x 50 = 16 300` becomes `326 x 112 = 36 512` lane
+multiplies per row, 2.24x the priced figure. Against v2's 83 456 that is a **2.29x**
+arithmetic reduction, not the ladder table's 5.1x. The fitted intercept being an artifact
+of the v2 kernel is a real second-order effect, and the design flagged it, but it is not
+what carries the miss.
 
 Standing levers, from this profile, in the order the evidence supports them:
 
-1. **Mul-pipe work is the whole wall** (`fmaheavy` = SM SOL = 81.5 %). The 7 generic
-   multiplies per component pass are already the radix-2 minimum; the next reduction is
-   the window (R2/R3), which removes whole productions rather than multiplies inside one.
+1. **Mul-pipe work is the whole wall** (`fmaheavy` = SM SOL = 81.5 %), and it has two
+   independent reductions left, neither closed. (a) **The unity multiplies.** 7 per lane
+   is the minimum for **radix-2 under lane = tap**, not for the transform: 62 of the 112
+   issued multiplies per group are unity and survive only because lane = tap makes them
+   lane-divergent. A map that moves a stage's axis *inside* the lane makes its unity-ness
+   a compile-time slot property under unroll — that is exactly what blocked radix-4 buys,
+   and the gate record above sizes it at ~38 of 112. (b) **The window** (R2/R3), which
+   removes whole productions rather than multiplies inside one.
 2. **`sm__inst_executed_pipe_adu` at 58 %** says address arithmetic is the second-busiest
    pipe. v2's F9 finding (ptxas does not strength-reduce the per-tap address chain)
    applies here with only one load per reference instead of 16, so the absolute cost is

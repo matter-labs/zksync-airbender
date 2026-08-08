@@ -195,6 +195,17 @@ pub const fn cell_for_coset_row(coset_row: usize) -> usize {
     UNISKIP_TAPS + coset_row
 }
 
+/// Inverse of [`cell_for_tap`]; `None` for the coset cells. The LSB ordering stores
+/// taps and nothing else, so its accessor must map cell -> tap through this rather
+/// than lean on the two numbering happening to coincide today.
+pub const fn tap_for_cell(cell: usize) -> Option<usize> {
+    if cell < UNISKIP_TAPS {
+        Some(cell)
+    } else {
+        None
+    }
+}
+
 /// Inverse of [`cell_for_coset_row`]; `None` for the tap cells.
 pub const fn coset_row_for_cell(cell: usize) -> Option<usize> {
     if cell >= UNISKIP_TAPS {
@@ -342,12 +353,22 @@ mod cpu_tests {
             assert_eq!(cell_for_tap(t), t);
             assert_eq!(cell_buffer(cell_for_tap(t)), CellBuffer::Tap);
             assert_eq!(coset_row_for_cell(cell_for_tap(t)), None);
+            // The tie a cell/tap renumbering must break loudly on.
+            assert_eq!(tap_for_cell(cell_for_tap(t)), Some(t));
         }
         for c in 0..UNISKIP_TAPS {
             let cell = cell_for_coset_row(c);
             assert_eq!(cell, UNISKIP_TAPS + c);
             assert_eq!(cell_buffer(cell), CellBuffer::Coset);
             assert_eq!(coset_row_for_cell(cell), Some(c));
+            assert_eq!(tap_for_cell(cell), None);
+        }
+        // Exactly one of the two inverses answers for every cell.
+        for cell in 0..UNISKIP_CELLS {
+            assert_eq!(
+                tap_for_cell(cell).is_some(),
+                coset_row_for_cell(cell).is_none()
+            );
         }
         // The two families tile 0..UNISKIP_CELLS exactly once.
         let mut seen = [false; UNISKIP_CELLS];

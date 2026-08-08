@@ -33,9 +33,12 @@ EXTERN __device__ __constant__ bf ab_gkr_uniskip_ntt_twiddles[airbender::gkr_uni
 
 namespace airbender::gkr_uniskip_bench {
 
-// SOURCE-RESOLUTION SELECTOR, the fourth empty derived class of `uniskip_vm_desc`:
-// same members, same 2512-byte `__grid_constant__` parameter, shared host wire. It
-// reads `tap_bases` only - the LSB ordering materializes no coset at all.
+// KERNEL-ENTRY TYPE TAG, the fourth empty derived class of `uniskip_vm_desc`: same
+// members, same 2512-byte `__grid_constant__` parameter, shared host wire. Unlike the
+// v1/v2 selectors it re-binds no overload - every helper below takes
+// `uniskip_vm_desc &` - it only names the LSB ordering at the entry point and carries
+// the layout `static_assert`s. The mode reads `tap_bases` alone; there is no coset
+// allocation to point at.
 struct uniskip_lsb_desc : uniskip_vm_desc {};
 static_assert(sizeof(uniskip_lsb_desc) == sizeof(uniskip_vm_desc));
 static_assert(alignof(uniskip_lsb_desc) == alignof(uniskip_vm_desc));

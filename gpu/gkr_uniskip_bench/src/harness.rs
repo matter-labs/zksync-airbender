@@ -97,13 +97,14 @@ impl Layout {
         match self.source_layout {
             SourceLayout::PlaneMajor => source_offset(rec, cell, row, self.log_rows),
             SourceLayout::LsbGroup => {
-                assert!(
-                    coset_row_for_cell(cell).is_none(),
-                    "the LSB ordering has no coset allocation; cell {cell} is produced, not stored"
-                );
+                let tap = tap_for_cell(cell).unwrap_or_else(|| {
+                    panic!(
+                        "the LSB ordering has no coset allocation; cell {cell} is produced, not stored"
+                    )
+                });
                 (
                     CellBuffer::Tap,
-                    lsb_source_offset(rec, cell, row, self.log_rows),
+                    lsb_source_offset(rec, tap, row, self.log_rows),
                 )
             }
         }

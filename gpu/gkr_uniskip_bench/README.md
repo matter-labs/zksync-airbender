@@ -88,8 +88,9 @@ cached mode over that cliff, which `iteration_times.md` measures.
     --log-trace 24 --warmup 10 --iterations 100 --mode lsb-recompute --term-order locality
 ```
 
-`--mode lsb-recompute` implements the R0 rung of the v3 design
-(`.agents/specs/2026-08-08-gkr-uniskip-v3-lsb-lane-design.md`). It shares the program,
+`--mode lsb-recompute` implements the R0 rung of the v3 LSB lane-striped design (spec
+dated 2026-08-08, not committed — `iteration_times.md` restates every number this mode
+is measured against). It shares the program,
 the census, the coefficient bank, the `eq` tables and the `finalize` kernel with the
 modes above and changes everything else:
 
@@ -117,19 +118,35 @@ modes above and changes everything else:
 - **W = 0.** Nothing is retained across references — the whole point of the rung is to
   measure the architecture with no scheduler at all. The one exception is a repeated
   operand *inside* one term (`x * x`), which is produced once.
+
+  The default census emits **no** self-product, so that rule is unreachable on a bare
+  run; `--self-products <N>` rewrites `N` same-class binary products into `x * x` for
+  exactly this purpose and is wired into `--validate`. It is a **validation** knob, not
+  a census knob: it moves per-source reference counts (one reference migrates from
+  `source_b` to `source_a`) and therefore the printed cache plan, so a timing taken
+  under it is not comparable with the recorded arms. It also makes the v2/v3 A/B
+  **non-work-matched** — `uniskip_eval_body` resolves both operands unconditionally, so
+  on a self-product census v2 does two resolutions where this mode does one. That does
+  not touch the recorded R0 comparison, which runs the default census at
+  `--self-products 0`.
 - **Reduction.** Within a half-warp the lanes hold different cells, so a half-warp tree
   would mix them. One `shfl_xor(16)` merges the warp's two groups per cell-slot, then
   eight warps meet in a 4 KB shared plane and write v2's unchanged
   `partials[block][32]` layout.
 - **No fold.** The pass is one kernel plus `finalize`. The fold kernels address
-  plane-major taps and a low-bit fold is a separate design (spec R4), so `fold` reports
+  plane-major taps and a low-bit fold is a separate design (the v3 design's R4 rung —
+  it reads 16 adjacent inputs and writes one, so it must not fold in place across
+  blocks), so `fold` reports
   `0.000` and `fold validate` reports `n/a` — and the mode allocates no fold output
   buffer.
 
 `iteration_times.md` carries the R0 gate record: at `--log-trace 24` it is
 **20.713 ms** (`census`) and **20.596 ms** (`locality`) on `eval + finalize` against
-v2's matched 23.272 / 23.078, at 1.000× the DRAM floor, 1.000× the compulsory
-load-sector count, 40 registers, zero spills and 100 % theoretical occupancy.
+v2's matched 23.272 / 23.078, at 1.000× the DRAM floor (a distinct-bytes measure), with
+loads perfectly coalesced — 1.000× the sector *minimum for the requests it issues*,
+which is a coalescing ratio and not a traffic one; the W = 0 stream itself re-reads the
+backing 3.54×, absorbed by L1/L2 — on 40 registers, zero spills and 100 % theoretical
+occupancy.
 
 ### Geometry
 
@@ -314,6 +331,11 @@ the `q` oracle, which addresses all 32 cells through `Layout::source_offset`, is
 pins the recomputed, the cached and the shuffle-NTT-produced ones. `lsb-recompute`
 additionally reports `fold validate: n/a`, since it runs no fold stage.
 
+`--self-products <N>` applies to every mode and is validation-only: it rewrites `N`
+same-class binary products into `x * x`, which is the only way to reach the LSB mode's
+W = 0 duplicate rule (see [The LSB mode](#the-lsb-mode-v3-r0)). It changes `q` and the
+cache plan, so never take a recorded timing under it.
+
 `--validate` runs three bit-exact checks against a host oracle that regenerates the
 operand data from the init formula rather than reading it back: **LDE** (first and
 last used column of every window, taps and all 16 coset cells), **q** (all 32 cells,
@@ -404,15 +426,18 @@ stand. `iteration_times.md` carries the numbers behind every claim here.
   SM, so the limit is the shared budget and not the plan — and the `H` cells are still
   direct tap loads. The remaining operand reuse (~3.8 references per source) is left to
   L1/L2.
-- **No NTT-form producer — DISCHARGED, in a different architecture.** *(the v2 gate
-  below still stands as a statement about v2)* `--mode lsb-recompute` ships one: a
-  radix-2 shuffle-NTT across a 16-lane group, ~7 generic multiplies per component pass
-  against the 16-tap dot's 16 `mad_wide` + 4 `red_wide` per cell. What made it worth
-  building was **not** a better producer inside v2's shape — the gate below is still
-  correct there, because v2's matrix apply serves one cell per call and a factorized
-  transform cannot beat that — but the LSB layout, which gives one transform all 16
-  cells at once. The v2 rung-3 record is kept verbatim so the two decisions stay
-  distinguishable:
+- **No NTT-form producer — DISCHARGED, in a different architecture, and not because the
+  transform is cheaper.** *(the v2 gate below still stands as a statement about v2)*
+  `--mode lsb-recompute` ships one: a radix-2 shuffle-NTT across a 16-lane group. Stated
+  **per output cell**, which is the only honest comparison: v2's dot costs 16 `mad_wide`
+  + 4 `red_wide` = 28 mul-pipe ops for **one** cell; the shuffle-NTT costs 7 `bf::mul`
+  per lane = 28 mul-pipe ops for **one** cell (112 per 16-cell group, of which only 50
+  are non-unity — the rest are lane-divergent under lane = tap and still issue). **The
+  multiply work is a wash.** What the LSB layout actually buys is the load side: one
+  coalesced group load per reference serves all 16 coset cells *and* the `H` cell, where
+  v2 reloads 16 taps per coset cell — 17× fewer load instructions per (record, row), and
+  their address chains with them. The v2 rung-3 record is kept verbatim so the two
+  decisions stay distinguishable:
 
   > Rung 3 of the v2 ladder was to produce the coset cells with a length-16
   > transform instead of the 16×16 matrix apply. It was gated on materiality and the
