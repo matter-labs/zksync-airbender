@@ -64,8 +64,8 @@ running at its own bandwidth floor.
 | `--mode unfused --lde-shape cell` | ditto, v1 grid (16× tap re-read) | 11.50 GiB | 90.462 ms | the v1 control, kept unaltered; same live LDE validation leg |
 
 **Within the v1/v2 ladder the recommendation is `fused-cached` + `interleave` +
-`locality`.** (The crate's fastest arm overall is v3's `--mode lsb-pair`; every v3 arm
-beats this one — see [The pair mode](#the-pair-mode-v3-r2--the-recommended-v3-arm).) It is
+`locality`.** (The crate's fastest arm overall is v3's `--mode lsb-pair`; the v3 R0 and
+R2 arms beat this one — see [The pair mode](#the-pair-mode-v3-r2--the-recommended-v3-arm).) It is
 the fastest of the twelve arms below (3.92× the v1 pass on `pass − fold`, 3.42× on the full pass, 1.22× the
 best unfused arm), on the smallest device footprint (half the backing, because no coset
 is materialized), with issued DRAM traffic at 1.008× the compulsory floor — and within

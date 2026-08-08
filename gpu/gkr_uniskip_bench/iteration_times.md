@@ -1935,9 +1935,11 @@ stage tables), lane-divergent at pack-2 and deliberately left issued.
 
 ### Timings
 
-**All four rows below are one session, one build**, and the table is emitted from the run
-log by `tools/timing_table.py` rather than transcribed — the R1 record lost two review
-rounds to hand-assembled tables, so the capture and the emit are now separate steps:
+**All four rows below are one session, one build**, and every number in the table is
+emitted from the run log by `tools/timing_table.py` rather than transcribed (the bold
+emphasis and the U+2212 minus signs are hand-applied on top of the emitter's output) —
+the R1 record lost two review rounds to hand-assembled tables, so the capture and the
+emit are now separate steps:
 
 ```bash
 .agents/bin/with_gpu_lock.sh bash -c '
