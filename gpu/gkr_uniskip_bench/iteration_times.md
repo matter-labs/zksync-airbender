@@ -1103,3 +1103,204 @@ The other modes keep their reasons to exist:
 Scope, unchanged by any of this: the program, the `eq` tables and the operand-reuse
 pattern are synthetic (see the README's limitations), so "fastest arm" is a statement
 about these kernels on this census — not a production estimate.
+
+## v3 R0 — LSB lane-striped uniskip, W = 0 (`--mode lsb-recompute`)
+
+The first rung of the v3 design
+(`.agents/specs/2026-08-08-gkr-uniskip-v3-lsb-lane-design.md`), built to its §8 R0
+scope: **2-group lane = tap, W = 0** (recompute every reference, no window, no cache),
+full eval + finalize. No fold, no multi-round, no binding-order oracle — those are R4.
+Every v1/v2 kernel is untouched; the mode is a new `.cu`
+(`native/uniskip_lsb.{cu,cuh}`) and a fourth empty derived descriptor class.
+
+What changes against v2, in one paragraph: a column's element offset becomes
+`(logical_row << 4) | tap`, so the 16 taps of one logical row are 16 **adjacent**
+elements — a *group*. A 16-lane half-warp owns one group with **lane = tap**, so a warp
+owns two groups and a block covers 16 rows (grid `rows / 16`, 65536 blocks at
+`--log-trace 24`). Lane `t` owns **two** cells: `H` cell `t` — the tap it loaded, free —
+and coset cell `16 + t`, produced by a **shuffle-NTT** across the half-warp
+(iDIF with `omega^-1` → folded normalize+twist → DIT with `omega`; 8 `shfl_xor` stages
+and 7 generic multiplies per component pass, the two distance-1 stages being unity).
+`e4` sources run the identical path limb-sequentially off one `v4.u32` load. Both
+accumulators are `e4`; `eq` is applied per group at the epilogue, one `shfl_xor(16)`
+merges the warp's two groups per cell-slot, and eight warps meet in a 4 KB shared plane
+that writes v2's unchanged `partials[block][32]`, so `finalize` is untouched.
+
+### Commands
+
+```bash
+cargo build --release -p gpu_gkr_uniskip_bench
+
+# validation (both eq modes x both term orders; all four report q 32/32)
+.agents/bin/with_gpu_lock.sh target/release/gpu_gkr_uniskip_bench --log-trace 10 \
+    --mode lsb-recompute --term-order {census,locality} {--validate,--validate-flat-eq}
+
+# the locked R0 measurement
+.agents/bin/with_gpu_lock.sh target/release/gpu_gkr_uniskip_bench \
+    --log-trace 24 --warmup 10 --iterations 100 \
+    --mode lsb-recompute --term-order {census,locality}
+```
+
+### The R0 gate — PASS on both matched comparisons
+
+Same device (**NVIDIA RTX PRO 6000 Blackwell Server Edition**, sm_120), same default
+census, `--log-trace 24`, medians over `--warmup 10 --iterations 100`. The v2 arms were
+**re-measured in the same session** rather than quoted, and they reproduce their recorded
+values to 0.06 %, so the comparison is not a cross-session one.
+
+| `--term-order` | v3 R0 `eval` | `finalize` | **eval + finalize** | v2 `fused-cached --cell-map interleave` (this session) | recorded v2 bar | verdict |
+| --- | --- | --- | --- | --- | --- | --- |
+| `census` | 20.652 | 0.061 | **20.713** | 23.252 + 0.033 = 23.285 | 23.272 | **PASS, −11.0 %** |
+| `locality` | **20.535** | 0.061 | **20.596** | 23.056 + 0.034 = 23.090 | 23.078 | **PASS, −10.8 %** |
+
+`fold` is excluded on both sides, as everywhere in this file — and in this mode it is
+excluded because it does not exist: the LSB fold is R4 work (§7 pins it as a
+separate-buffer write, since a low-bit fold reads 16 adjacent inputs and writes one).
+The mode therefore also drops v2's ~0.92 GiB fold-output buffer; resident backings are
+5.75 GiB, the same 1x as the fused modes.
+
+`--term-order locality` is again a small, real win (−0.6 %, spans 20.32–20.62 against
+20.36–20.73). It is the same sub-percent size as under v2's interleave map.
+
+Per sumcheck variable against the external windowed reference point (4.67 ms/variable,
+all the caveats in *Per-variable* above still apply): 20.596 / 4 = **5.15 ms/variable**,
+**1.10x** the reference, down from v2's 5.77 / 1.24x.
+
+### Hard gates
+
+- **Bit-exact `q`.** 32/32 for all four cells of {`census`, `locality`} x
+  {`--validate`, `--validate-flat-eq`} at `--log-trace 10`. The oracle addresses the taps
+  through the new LSB host mirror (`abi::lsb_source_offset` via `Layout::source_offset`)
+  and re-extends them with the dense `domain::lde_matrix()`, so the device's factorized
+  producer is checked against the matrix on real data, not against itself. `LDE validate`
+  and `fold validate` report `n/a` (no coset buffer, no fold stage).
+- **ptxas stack/spill 0 on all four architectures**, and **zero `LDL`/`STL` in SASS**.
+
+| kernel | sm_120 | sm_80 | sm_89 | sm_90 | stack / spill st / spill ld |
+| --- | --- | --- | --- | --- | --- |
+| `ab_gkr_uniskip_eval_lsb_w0_kernel` | **40** | 96 | 96 | 56 | 0 / 0 / 0 (4096 B smem) |
+
+  In the same diagnostic build every v1/v2 kernel is at its recorded count
+  (`eval` 54, `eval_fused` 64, `eval_fused_interleave` 125, both cached kernels 66 on
+  sm_120), which is the evidence that this rung left them alone.
+
+  `cuobjdump -sass` on `uniskip_lsb.cu.o` (sm_120): **3216 instructions** in the kernel
+  body, **0 `LDL`, 0 `STL`**, 184 `SHFL` (5.72 % static). For scale, v2's cached
+  interleave kernel is 13 568 instructions — the LSB body is 4.2x smaller because the
+  16-tap dot is gone and the term loop is not unrolled over four cells.
+
+- **Occupancy.** 40 registers puts the register block limit at **6 blocks/SM** against
+  v2's 3, and 4096 + 1024 B of shared memory at 12 — so registers still bind, but now at
+  the warp ceiling: `ncu` reports **theoretical occupancy 100 %, achieved 99.28 %**
+  (v2's winner: 50 % / 49.89 %).
+
+### Profile of the winning order
+
+```bash
+mkdir -p target/profiling/ncu
+.agents/bin/with_gpu_lock.sh ncu --set full \
+    --metrics dram__bytes.sum,l1tex__t_sectors_pipe_lsu_mem_global_op_ld.sum,smsp__inst_executed.sum \
+    --kernel-name-base demangled --kernel-name 'regex:ab_gkr_uniskip_eval_lsb_w0_kernel' \
+    --launch-count 1 --target-processes all -o target/profiling/ncu/v3r0_lsb_locality_full \
+    target/release/gpu_gkr_uniskip_bench --log-trace 24 --warmup 1 --iterations 1 \
+    --mode lsb-recompute --term-order locality
+```
+
+| metric | v2 `fused-cached` interleave/locality | **v3 R0 `lsb-recompute` locality** |
+| --- | --- | --- |
+| duration under the profiler | 23.79 ms | **21.14 ms** |
+| `dram__bytes.sum` | 6.24 GB | **6.21 GB** |
+| against the mode's compulsory floor | 1.008x (6.19 GB) | **1.000x (6.208 GB)** |
+| Compute (SM) throughput | 74.92 % | **81.43 %** |
+| `sm__pipe_fmaheavy_cycles_active` | 75.26 % | **81.51 %** |
+| DRAM / L2 / L1TEX throughput | 16.43 / 14.62 / 27.53 % | 18.42 / 8.07 / 32.20 % |
+| L1 / L2 hit rate | 88.69 % / 78.47 % | 35.81 % / 55.89 % |
+| registers, blocks/SM | 66, 3 | **40, 6** |
+| theoretical / achieved occupancy | 50 % / 49.89 % | **100 % / 99.28 %** |
+| executed instructions | — | 24 388 763 648 |
+
+**DRAM floor arithmetic for this mode.** The eval kernel must touch the tap backing once
+and write the block partials: `48 bf columns x 16 planes x 2^20 rows x 4 B`
+= 3 221 225 472 B, plus `11 e4 columns x 16 x 2^20 x 16 B` = 2 952 790 016 B, giving the
+5.75 GiB backing = 6 174 015 488 B; partials are `32 cells x 65 536 blocks x 16 B`
+= 33 554 432 B. Floor = **6 207 569 920 B = 6.208 GB**, measured 6.21 GB, **1.000x**. (The
+binary's printed whole-pass compulsory traffic, 6 241 124 864 B, additionally counts
+`finalize` re-reading the partials and writing `q`.)
+
+**Issued source-load sectors: 1.000x compulsory, exactly.** `ncu` reports
+117 964 800 global load *requests* and 684 195 840 *sectors*. Both are exact:
+524 288 warps x 225 requests (190 `bf` references + 34 `e4` references + 1 `eq_low`) and
+524 288 x 1305 sectors (`190 x 4 + 34 x 16 + 1`). A warp's two `bf` groups are 128 B
+contiguous = 4 sectors and its two `e4` groups 512 B = 16 sectors, which are the *minima*
+for those byte counts — so the LSB layout costs **zero** coalescing overhead and the R0
+requirement (≤ 1.05x) passes at 1.000x. Against a distinct-bytes-once floor the W = 0
+recompute re-reads the backing 3.54x (`190/48` on `bf`, `34/11` on `e4`); L1 and L2
+absorb all of it, which is why DRAM lands on the floor.
+
+**Pipes and stalls.**
+
+| pipe | % of peak sustained active | | stall reason (`selected` excluded) | share |
+| --- | --- | --- | --- | --- |
+| `sm__pipe_fmaheavy_cycles_active` | **81.51** ← equals the 81.43 % SM SOL | | `math_pipe_throttle` | **28.4 %** |
+| `sm__inst_executed_pipe_adu` | 57.95 | | `not_selected` | 27.1 % |
+| `sm__inst_executed_pipe_alu` | 35.00 | | `wait` | 15.3 % |
+| `sm__inst_executed_pipe_lsu` | 32.20 | | `short_scoreboard` | 9.9 % |
+| `sm__inst_executed_pipe_fma` | 17.32 | | `long_scoreboard` | 9.1 % |
+| `sm__inst_executed_pipe_xu` / `cbu` | 0 / 0.006 | | `dispatch_stall` | 7.5 % |
+| | | | `no_instruction` / `barrier` / `mio_throttle` | 1.1 / 0.9 / **0.6 %** |
+
+What this settles:
+
+- **The rung is still mul-pipe bound, and now harder.** `fmaheavy` 81.51 % *is* the
+  81.43 % SM SOL, up from v2's 75.26 %, and `math_pipe_throttle` is the single largest
+  stall at 28.4 %. The architecture change bought its 11 % by doing **less** mul-pipe work
+  per cell, not by moving the bottleneck: the 16-tap-dot-per-(reference, cell) producer is
+  replaced by one shuffle-NTT per (reference, group) that serves all 16 coset cells, and
+  the `H` cell falls out of the same load instead of costing a second one.
+- **Shuffles are ~5.6 % of the instruction stream, not the 1–2 % the spec predicted —
+  and they are still not the constraint.** The op-level shuffle counter is `n/a` on this
+  chip, so the dynamic count is derived from the program structure and cross-checked
+  against static SASS: 8 exchange stages per component pass gives
+  `190 x 8 + 34 x 32 + 8 = 2616` `SHFL` per warp-program-pass, against
+  `24 388 763 648 / 524 288 = 46 516` executed instructions per warp — **5.62 %**, in line
+  with the 5.72 % static share. The spec's 1–2 % prediction was computed for the
+  perfect-window case (92 component passes); at W = 0 there are 326. **The blocked
+  radix-4 escalation (§5) is nonetheless NOT triggered**: its gate also requires material
+  MIO stalls, and `mio_throttle` is **0.6 %** of stalls. Recorded for R1 to decide by time.
+- **Constant-load serialization was designed out, and the profile does not contradict
+  it.** The twiddle tables are lane-indexed, so a hot-path `__constant__` read would be a
+  16-way divergent access on every stage of every reference; the kernel instead hoists all
+  seven into per-lane registers once at entry (7 of its 40 registers). The remaining
+  constant traffic is 57 `LDC`/`LDCU` in a 3216-instruction body, and `no_instruction` is
+  1.1 % of stalls with `sm__icc_requests` at 63.8 % of peak — below v2's 76.6 %.
+- **`not_selected` at 27.1 % is the new shape of the profile**, and it is the direct
+  consequence of running 48 warps per SM instead of 24 on a saturated pipe. It is not a
+  defect: it is what 100 % occupancy on a throughput-bound kernel looks like.
+
+### What R0 does and does not establish
+
+Established: the LSB lane-striped architecture with **no scheduler at all** beats v2's
+best scheduled arm under both term orders, at 1.000x the DRAM floor, 1.000x the
+compulsory load-sector count, zero spills and 100 % occupancy. The spec's §8 R0 stop
+condition ("if W = 0 cannot beat v2 … stop before any scheduler work") is **not**
+triggered — scheduler work is authorized on the evidence.
+
+Not established, and deliberately out of scope at this rung: the fold, multi-round
+telescoping, the low-bit binding-order differential oracle, the window/residence
+realizations (A vs B), the lane-map A/B, and the real-circuit census. The landing zone
+the spec projected for W = 0 was 18.6 ms against a 16–19 ms first zone; 20.6 ms is
+outside it on the high side while still clearing the gate, so the projection's intercept
+was optimistic — which the spec said it would be.
+
+Standing levers, from this profile, in the order the evidence supports them:
+
+1. **Mul-pipe work is the whole wall** (`fmaheavy` = SM SOL = 81.5 %). The 7 generic
+   multiplies per component pass are already the radix-2 minimum; the next reduction is
+   the window (R2/R3), which removes whole productions rather than multiplies inside one.
+2. **`sm__inst_executed_pipe_adu` at 58 %** says address arithmetic is the second-busiest
+   pipe. v2's F9 finding (ptxas does not strength-reduce the per-tap address chain)
+   applies here with only one load per reference instead of 16, so the absolute cost is
+   far lower — but it is now a larger *share*.
+3. **The block covers 16 rows, not 32**, so the per-record VM decode is amortized over
+   half as many rows as v2's. Two groups per lane (a 32-row tile at 4 `e4` accumulators)
+   is the obvious cheap experiment and belongs to R1's lane/layout A/B.

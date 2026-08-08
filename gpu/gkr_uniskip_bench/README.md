@@ -29,6 +29,12 @@ outright: the eval accessor extends the taps on read, so the pass is one kernel 
 sources' coset cells are produced once per row tile instead of once per reference.
 All three modes produce the same `q`.
 
+`lsb-recompute` is the **v3 R0** arm and is a different architecture, not a fourth
+point on that ladder — see [The LSB mode](#the-lsb-mode-v3-r0) below. Its `q` is
+deliberately *not* the same as the other three modes': the same init generator over a
+different element ordering gives different operand data, so it carries its own oracle
+leg rather than a shared expected value.
+
 `--term-order` reorders the record stream — `census` (the default) is emission order,
 `locality` is the permutation that clusters records reading the same sources. It is a
 program property, legal in every mode, and it changes only which order operands are
@@ -75,6 +81,56 @@ The one reason to prefer `fused-recompute` is shared memory: the cached kernels 
 drop that to two. A heavier census or a part with a smaller shared budget can put the
 cached mode over that cliff, which `iteration_times.md` measures.
 
+### The LSB mode (v3 R0)
+
+```bash
+.agents/bin/with_gpu_lock.sh target/release/gpu_gkr_uniskip_bench \
+    --log-trace 24 --warmup 10 --iterations 100 --mode lsb-recompute --term-order locality
+```
+
+`--mode lsb-recompute` implements the R0 rung of the v3 design
+(`.agents/specs/2026-08-08-gkr-uniskip-v3-lsb-lane-design.md`). It shares the program,
+the census, the coefficient bank, the `eq` tables and the `finalize` kernel with the
+modes above and changes everything else:
+
+- **Layout.** A column's element offset is `(logical_row << 4) | tap` instead of
+  `row + (tap << log_rows)`, so the 16 taps of one logical row are 16 *adjacent*
+  elements — a **group**. Window packing, backing sizes and the addressing bound are
+  unchanged; only the within-column ordering differs. There is no coset backing.
+  `abi::lsb_source_offset` is the host mirror, reached through
+  `Layout::source_offset`, and asking it for a coset cell is a panic, not a fallback.
+- **Lane map.** 256 threads = 8 warps; a **16-lane half-warp is one group** with
+  **lane = tap**, so a warp owns two groups and a block covers 16 logical rows (grid
+  `rows / 16`, twice the other modes'). Lane `t` owns two cells: `H` cell `t`, which is
+  the tap it already loaded, and coset cell `16 + t`, which it produces. Two `e4`
+  accumulators per lane against the other modes' four. The map is fixed at this rung,
+  so `--cell-map` is rejected — as is `--lde-shape`, since there is no LDE stage.
+- **Producer.** Every reference loads its group (one coalesced 64 B half-warp run for
+  `bf`, one `v4.u32` per lane = 256 B for `e4`) and runs a **shuffle-NTT** across the
+  half-warp: iDIF with `omega^-1` → folded normalize+twist → DIT with `omega`, 8
+  `shfl_xor` exchange stages and 7 generic multiplies per component pass. `e4` sources
+  run the identical code path limb-sequentially. The 7 lane-indexed twiddle tables live
+  in `__constant__` but are hoisted into per-lane registers once at kernel entry, so no
+  hot-path read is a divergent constant access. Host mirror and derivation:
+  `domain::ntt_twiddles` / `domain::coset_from_taps`, pinned bit-for-bit against the
+  dense `domain::lde_matrix()` apply by `cpu_factorized_coset_matches_matrix`.
+- **W = 0.** Nothing is retained across references — the whole point of the rung is to
+  measure the architecture with no scheduler at all. The one exception is a repeated
+  operand *inside* one term (`x * x`), which is produced once.
+- **Reduction.** Within a half-warp the lanes hold different cells, so a half-warp tree
+  would mix them. One `shfl_xor(16)` merges the warp's two groups per cell-slot, then
+  eight warps meet in a 4 KB shared plane and write v2's unchanged
+  `partials[block][32]` layout.
+- **No fold.** The pass is one kernel plus `finalize`. The fold kernels address
+  plane-major taps and a low-bit fold is a separate design (spec R4), so `fold` reports
+  `0.000` and `fold validate` reports `n/a` — and the mode allocates no fold output
+  buffer.
+
+`iteration_times.md` carries the R0 gate record: at `--log-trace 24` it is
+**20.713 ms** (`census`) and **20.596 ms** (`locality`) on `eval + finalize` against
+v2's matched 23.272 / 23.078, at 1.000× the DRAM floor, 1.000× the compulsory
+load-sector count, 40 registers, zero spills and 100 % theoretical occupancy.
+
 ### Geometry
 
 - 16 taps of a logical row live on the multiplicative subgroup `H` of order 16;
@@ -90,6 +146,9 @@ cached mode over that cliff, which `iteration_times.md` measures.
   (column, row, limb) for `e4`, since the extension is `bf`-linear per limb — which
   reads each tap once and emits all 16 cells, keeping the reuse in registers. Both are
   measured in `iteration_times.md`.
+- `--mode lsb-recompute` uses none of the geometry in the rest of this section: its
+  group is a 16-lane half-warp, its block covers 16 logical rows, and it has no LDE
+  stage, no cell map and no fold. See [The LSB mode](#the-lsb-mode-v3-r0).
 - The eval kernel is **cell-slab**: 256 threads = 8 warps, lane = row inside a
   32-row tile, warp `w` owns cells `4w..4w+3`. Warps 0–3 take the tap cells and
   warps 4–7 the coset cells, so the `H`-vs-coset choice is warp-uniform. The four
@@ -139,6 +198,10 @@ cached mode over that cliff, which `iteration_times.md` measures.
 
 - **Plane-order layout.** Tap `t` of logical row `r` sits at element offset
   `r + (t << log_rows)` inside its column; a column is `16 << log_rows` elements.
+  `--mode lsb-recompute` replaces this ordering with `(r << 4) | t` and nothing else —
+  see [The LSB mode](#the-lsb-mode-v3-r0). `abi::SourceLayout` names the two and
+  `Layout::source_offset` dispatches, so the oracle and the accessor cannot disagree
+  about which one a run is using.
 - **One backing per field class.** All `bf` windows share one tap allocation and
   one identically shaped coset allocation, packed in window order; the `e4`
   windows likewise. Windows are field-homogeneous by construction — one typed base
@@ -155,6 +218,11 @@ through one function, `uniskip_source_value<T>(desc, source_id, cell, row)` in
 `native/uniskip_abi.cuh`. It resolves the source record, picks the tap or coset base
 from the cell, and issues one typed load. **v2 (LDE-on-read, published sources) only
 swaps this body** — the term execution above it does not change.
+
+`--mode lsb-recompute` does not go through this seam at all: its lane map, its
+accumulator count and its element ordering all differ, so it carries its own accessor
+(`uniskip_lsb_resolve` in `native/uniskip_lsb.cuh`) and its own term walk. The seam
+below describes the v1/v2 kernels, which that mode leaves byte-for-byte alone.
 
 That swap is an **overload**, selected by the descriptor type. `uniskip_fused_desc`
 is an empty class derived from `uniskip_vm_desc` — same members, same size, same
@@ -219,10 +287,11 @@ target/release/gpu_gkr_uniskip_bench --help
 Building and `--help` do not need the lock; every execution does.
 
 **The shape flags are an explicit matrix, not free-floating knobs:** `--lde-shape`
-is rejected in a fused mode (there is no LDE stage to shape) and `--cell-map` is
-rejected in an unfused one (which keeps the v1 block map). The inapplicable knob
-prints as `n/a` in the config block and the summary line, so a recorded measurement
-can never name a shape the run did not use. `--term-order` is not in the matrix: it
+applies to the unfused mode only (no other mode has an LDE stage to shape) and
+`--cell-map` to the two fused modes only — `unfused` keeps the v1 block map and
+`lsb-recompute` fixes the lane map at lane = tap, two groups per warp. The
+inapplicable knob prints as `n/a` in the config block and the summary line, so a
+recorded measurement can never name a shape the run did not use. `--term-order` is not in the matrix: it
 reorders records, which every mode executes.
 
 The cache plan — `C`, `Ru`, the mul-pipe op split and the slot assignment — prints at
@@ -238,10 +307,12 @@ with every `cache_slot` at the uncached sentinel.
 ```
 
 Both apply to every mode; add `--mode {fused-recompute,fused-cached} --cell-map
-{block,interleave}` and `--term-order {census,locality}` to validate the fused arms.
-There the LDE check reports `n/a` — a fused mode has no coset buffer to compare — and
-the `q` oracle, which addresses all 32 cells through `abi::source_offset`, is what
-pins the recomputed and the cached ones.
+{block,interleave}` and `--term-order {census,locality}` to validate the fused arms,
+or `--mode lsb-recompute --term-order {census,locality}` for the v3 R0 arm. There the
+LDE check reports `n/a` — no mode but `unfused` has a coset buffer to compare — and
+the `q` oracle, which addresses all 32 cells through `Layout::source_offset`, is what
+pins the recomputed, the cached and the shuffle-NTT-produced ones. `lsb-recompute`
+additionally reports `fold validate: n/a`, since it runs no fold stage.
 
 `--validate` runs three bit-exact checks against a host oracle that regenerates the
 operand data from the init formula rather than reading it back: **LDE** (first and
@@ -333,13 +404,23 @@ stand. `iteration_times.md` carries the numbers behind every claim here.
   SM, so the limit is the shared budget and not the plan — and the `H` cells are still
   direct tap loads. The remaining operand reuse (~3.8 references per source) is left to
   L1/L2.
-- **No NTT-form producer.** *(stands — skipped against a measured gate, not overlooked)*
-  Rung 3 of the v2 ladder was to produce the coset cells with a length-16 transform
-  instead of the 16×16 matrix apply. It was gated on materiality and the gate failed:
-  only the *cached* share of resolution is eligible, that share is 16 of 205 dot units
-  (7.8 %), and the resulting whole-stage bound is 0.30–0.65 ms of 23.078 ms against a
-  bar of ≥ 5 % **and** ≥ 1 ms. Even an infinitely fast fill saves ≈ 0.55 ms. The gate
-  record in `iteration_times.md` has the formula and the re-run recipe.
+- **No NTT-form producer — DISCHARGED, in a different architecture.** *(the v2 gate
+  below still stands as a statement about v2)* `--mode lsb-recompute` ships one: a
+  radix-2 shuffle-NTT across a 16-lane group, ~7 generic multiplies per component pass
+  against the 16-tap dot's 16 `mad_wide` + 4 `red_wide` per cell. What made it worth
+  building was **not** a better producer inside v2's shape — the gate below is still
+  correct there, because v2's matrix apply serves one cell per call and a factorized
+  transform cannot beat that — but the LSB layout, which gives one transform all 16
+  cells at once. The v2 rung-3 record is kept verbatim so the two decisions stay
+  distinguishable:
+
+  > Rung 3 of the v2 ladder was to produce the coset cells with a length-16
+  > transform instead of the 16×16 matrix apply. It was gated on materiality and the
+  > gate failed: only the *cached* share of resolution is eligible, that share is 16
+  > of 205 dot units (7.8 %), and the resulting whole-stage bound is 0.30–0.65 ms of
+  > 23.078 ms against a bar of ≥ 5 % **and** ≥ 1 ms. Even an infinitely fast fill
+  > saves ≈ 0.55 ms. The gate record in `iteration_times.md` has the formula and the
+  > re-run recipe.
 - **No tensor cores.** *(stands)* The tap→coset extension is a 16×16 matrix apply per
   column and is an obvious MMA candidate; both the unfused and the fused modes do it
   with scalar FMAs. What is measured: the recommended mode is mul-pipe bound
