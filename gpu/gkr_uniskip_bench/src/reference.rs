@@ -7,7 +7,7 @@
 use field::{Field, FieldExtension};
 
 use crate::abi::*;
-use crate::domain::{fold_weights, lde_matrix, E4, F};
+use crate::domain::{fold_weights, lde_matrix, ntt_twiddles, E4, F};
 use crate::geometry::{Geometry, UNISKIP_MAX_LOG_ROWS};
 use crate::harness::{class_index, Layout, CLASS_BF, CLASS_E4, CLASS_WORDS};
 use crate::synth::SynthProgram;
@@ -59,6 +59,14 @@ pub fn flat_lde_matrix(
     matrix: &[[F; UNISKIP_TAPS]; UNISKIP_TAPS],
 ) -> [u32; UNISKIP_TAPS * UNISKIP_TAPS] {
     core::array::from_fn(|i| matrix[i / UNISKIP_TAPS][i % UNISKIP_TAPS].raw_u32_value())
+}
+
+/// The LSB producer's lane-indexed twiddles, flattened `[table * UNISKIP_TAPS + lane]`
+/// — the order the device hoists into its per-lane register file. See
+/// [`crate::domain::ntt_twiddles`] for the stage order.
+pub fn ntt_twiddle_words() -> [u32; UNISKIP_NTT_TABLES * UNISKIP_TAPS] {
+    let tables = ntt_twiddles();
+    core::array::from_fn(|i| tables[i / UNISKIP_TAPS][i % UNISKIP_TAPS].raw_u32_value())
 }
 
 /// Entry `index` of the eq high symbol: `[0, UNISKIP_EQ_HIGH)` is table 0, the
@@ -173,7 +181,7 @@ impl Cell for E4 {
 }
 
 /// Taps of one column, indexed `tap * rows + row`, addressed through
-/// [`source_offset`] — the host mirror of the device accessor — so a disagreement
+/// [`Layout::source_offset`] — the host mirror of the device accessor — so a disagreement
 /// between the accessor and the LDE kernel's own address arithmetic shows up here.
 fn column_taps<T: Cell>(
     layout: &Layout,
@@ -185,7 +193,7 @@ fn column_taps<T: Cell>(
     let mut out = Vec::with_capacity(layout.column_elements() as usize);
     for tap in 0..UNISKIP_TAPS {
         for row in 0..layout.rows {
-            let (buffer, offset) = source_offset(rec, cell_for_tap(tap), row, layout.log_rows);
+            let (buffer, offset) = layout.source_offset(rec, cell_for_tap(tap), row);
             assert_eq!(buffer, CellBuffer::Tap);
             out.push(T::init(seed, base + offset));
         }
@@ -203,7 +211,7 @@ fn block_words<T: Cell>(layout: &Layout, values: &[T], positions: &[u64]) -> Vec
 }
 
 /// Positions of a column's cells inside its downloaded block, taken from
-/// [`source_offset`] rather than assumed: `cells` are device cell ids in the same
+/// [`Layout::source_offset`] rather than assumed: `cells` are device cell ids in the same
 /// order the values were built.
 fn block_positions(
     layout: &Layout,
@@ -215,7 +223,7 @@ fn block_positions(
     let mut out = Vec::with_capacity(layout.column_elements() as usize);
     for cell in cells {
         for row in 0..layout.rows {
-            let (got, offset) = source_offset(rec, cell, row, layout.log_rows);
+            let (got, offset) = layout.source_offset(rec, cell, row);
             assert_eq!(got, buffer);
             out.push(offset - column_start);
         }
@@ -317,7 +325,7 @@ fn source_cells<T: Cell>(
 ) {
     let base = layout.windows[window].offset;
     for tap in 0..UNISKIP_TAPS {
-        let (buffer, offset) = source_offset(rec, cell_for_tap(tap), row, layout.log_rows);
+        let (buffer, offset) = layout.source_offset(rec, cell_for_tap(tap), row);
         debug_assert_eq!(buffer, CellBuffer::Tap);
         out[cell_for_tap(tap)] = T::init(seed, base + offset);
     }
@@ -458,8 +466,9 @@ pub fn eval_q(
     geometry: &Geometry,
     seed: u32,
     flat_eq: bool,
+    source_layout: SourceLayout,
 ) -> [E4; UNISKIP_CELLS] {
-    let layout = Layout::new(program, geometry);
+    let layout = Layout::new(program, geometry, source_layout);
     let matrix = lde_matrix();
     let coeffs = coeff_bank(seed);
     let immediates = program.immediates_canonical.map(F::new);
@@ -504,7 +513,7 @@ pub fn check_q(expected: &[E4; UNISKIP_CELLS], actual: &[u32]) -> Result<(), Str
 
 /// One source's folded value at one row: the same weighted sum of the 16 taps on
 /// `H` the fold kernel runs, over data regenerated from the init formula and
-/// addressed through [`source_offset`].
+/// addressed through [`Layout::source_offset`].
 fn folded_row<T: Cell>(
     layout: &Layout,
     seed: u32,
@@ -515,7 +524,7 @@ fn folded_row<T: Cell>(
     let base = layout.windows[addr_window(rec.addr)].offset;
     let mut acc = E4::ZERO;
     for (tap, weight) in weights.iter().enumerate() {
-        let (buffer, offset) = source_offset(rec, cell_for_tap(tap), row, layout.log_rows);
+        let (buffer, offset) = layout.source_offset(rec, cell_for_tap(tap), row);
         assert_eq!(buffer, CellBuffer::Tap);
         T::init(seed, base + offset).add_to_e4(*weight, &mut acc);
     }
@@ -612,7 +621,7 @@ mod cpu_tests {
     fn cpu_tap_block_is_the_contiguous_init_sequence() {
         let geometry = Geometry::new(10).unwrap();
         let program = generate(5, Census::default()).unwrap();
-        let layout = Layout::new(&program, &geometry);
+        let layout = Layout::new(&program, &geometry, SourceLayout::PlaneMajor);
         let seed = 5;
 
         for window in [0usize, SYNTH_E4_WINDOW] {
@@ -652,13 +661,13 @@ mod cpu_tests {
     fn cpu_eval_q_uses_every_immediate() {
         let geometry = Geometry::new(9).unwrap();
         let program = generate(5, Census::default()).unwrap();
-        let baseline = eval_q(&program, &geometry, 5, false);
+        let baseline = eval_q(&program, &geometry, 5, false, SourceLayout::PlaneMajor);
         for slot in 0..UNISKIP_MAX_IMMEDIATES {
             let mut perturbed = program.clone();
             let value = &mut perturbed.immediates_canonical[slot];
             *value = if *value == 1 { 2 } else { *value - 1 };
             assert_ne!(
-                eval_q(&perturbed, &geometry, 5, false),
+                eval_q(&perturbed, &geometry, 5, false, SourceLayout::PlaneMajor),
                 baseline,
                 "immediate slot {slot} does not reach q"
             );
@@ -678,7 +687,7 @@ mod cpu_tests {
 
         let geometry = Geometry::new(10).unwrap();
         let program = generate(5, Census::default()).unwrap();
-        let layout = Layout::new(&program, &geometry);
+        let layout = Layout::new(&program, &geometry, SourceLayout::PlaneMajor);
         let seed = 5;
         let weights = fold_weights(fold_challenge(seed));
         let rows = [0u64, 1, layout.rows / 2, layout.rows - 1];
@@ -717,7 +726,7 @@ mod cpu_tests {
     fn cpu_coset_block_extends_the_taps() {
         let geometry = Geometry::new(10).unwrap();
         let program = generate(5, Census::default()).unwrap();
-        let layout = Layout::new(&program, &geometry);
+        let layout = Layout::new(&program, &geometry, SourceLayout::PlaneMajor);
         let matrix = lde_matrix();
         let rec = program.sources[0];
         let (_, coset) = expected_column_words(&layout, 5, 0, rec);

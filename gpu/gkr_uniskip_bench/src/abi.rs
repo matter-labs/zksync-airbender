@@ -16,6 +16,18 @@ pub const UNISKIP_CELLS_PER_WARP: usize = 4;
 /// Rows a block covers: one lane per row, `UNISKIP_THREADS_PER_BLOCK / UNISKIP_WARPS_PER_BLOCK`.
 pub const UNISKIP_ROWS_PER_BLOCK: usize = UNISKIP_THREADS_PER_BLOCK / UNISKIP_WARPS_PER_BLOCK;
 
+/// v3 LSB launch geometry: a warp owns two GROUPS, one per half-warp, and lane `t` of
+/// a half-warp owns tap `t` of its group — so the group is a 16-lane segment and a
+/// block covers `UNISKIP_WARPS_PER_BLOCK * 2` logical rows, not 32.
+pub const UNISKIP_LSB_GROUPS_PER_WARP: usize = 32 / UNISKIP_TAPS;
+pub const UNISKIP_LSB_ROWS_PER_BLOCK: usize = UNISKIP_WARPS_PER_BLOCK * UNISKIP_LSB_GROUPS_PER_WARP;
+
+/// Lane-indexed twiddle tables of the factorized coset transform — see
+/// [`crate::domain::ntt_twiddles`] for the stage order. The two distance-1 butterfly
+/// stages carry only unity and are elided, so the chain's 8 exchange stages need 7
+/// multiplier tables.
+pub const UNISKIP_NTT_TABLES: usize = 7;
+
 pub const UNISKIP_WINDOWS: usize = 6;
 pub const UNISKIP_SOURCE_CAPACITY: usize = 64;
 pub const UNISKIP_PROGRAM_CAPACITY: usize = 256;
@@ -199,6 +211,33 @@ pub const fn cell_buffer(cell: usize) -> CellBuffer {
     }
 }
 
+/// Element ordering inside a column's backing. Both orderings pack windows into one
+/// allocation per field class the same way and give a column the same
+/// `UNISKIP_TAPS << log_rows` elements; they differ only in where a `(row, tap)` pair
+/// sits inside that block.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum SourceLayout {
+    /// v1/v2, plane-major (MSB): tap `t` of row `r` is at `r + (t << log_rows)`, so a
+    /// tap is a plane and a warp of consecutive rows is contiguous.
+    #[default]
+    PlaneMajor,
+    /// v3, LSB lane-striped: tap `t` of row `r` is at `(r << 4) | t`, so the 16 taps
+    /// of one row are 16 ADJACENT elements — one group, one coalesced half-warp load.
+    /// There is no coset allocation in this ordering.
+    LsbGroup,
+}
+
+/// Host mirror of the LSB accessor's address arithmetic: the element offset of one
+/// tap of `(source, row)` inside its window, `column * (16 << log_rows) + (row << 4) + tap`.
+/// The addressing bound is unchanged — the largest index is still
+/// `2^(UNISKIP_LOG_ADDRESSABLE_PLANES + log_rows) - 1`, just reached by a different
+/// decomposition.
+pub fn lsb_source_offset(rec: UniskipSourceRecord, tap: usize, row: u64, log_rows: u32) -> u64 {
+    assert!(tap < UNISKIP_TAPS, "tap {tap} out of range");
+    let group = ((addr_column(rec.addr) as u64) << log_rows) + row;
+    (group << UNISKIP_LOG_TAPS) + tap as u64
+}
+
 /// Host mirror of `uniskip_source_value`'s address arithmetic: the allocation a
 /// `(source, cell)` pair reads and the element offset of `row` inside it.
 pub fn source_offset(
@@ -250,6 +289,10 @@ mod cpu_tests {
         // Launch geometry, mirrored from the header's constants of the same name:
         // one warp-wide row tile per block, so `lane == row - blockIdx * 32`.
         assert_eq!(UNISKIP_ROWS_PER_BLOCK, 32);
+        // v3 LSB geometry: a 16-lane half-warp is one group, so a block is 16 rows.
+        assert_eq!(UNISKIP_LSB_GROUPS_PER_WARP, 2);
+        assert_eq!(UNISKIP_LSB_ROWS_PER_BLOCK, 16);
+        assert_eq!(UNISKIP_NTT_TABLES, 7);
 
         // Addressing bound, mirrored from the header's constants of the same name.
         assert_eq!(UNISKIP_LOG_TAPS, 4);
@@ -315,6 +358,58 @@ mod cpu_tests {
             seen[cell_for_coset_row(c)] = true;
         }
         assert!(seen.iter().all(|&s| s));
+    }
+
+    #[test]
+    fn cpu_lsb_addressing_bijection() {
+        let log_trace = 10u32;
+        let log_rows = log_trace - 4;
+        let rows = 1u64 << log_rows;
+        let columns = 5usize;
+
+        let mut seen = std::collections::HashSet::new();
+        for column in 0..columns {
+            let rec = UniskipSourceRecord {
+                addr: source_addr(0, column),
+                source_class: UNISKIP_SRC_BF_GLOBAL,
+                cache_slot: UNISKIP_CACHE_SLOT_NONE,
+            };
+            for row in 0..rows {
+                for tap in 0..UNISKIP_TAPS {
+                    let offset = lsb_source_offset(rec, tap, row, log_rows);
+                    // A group is 16 ADJACENT elements, one logical row of one column.
+                    assert_eq!(
+                        offset,
+                        column as u64 * ((UNISKIP_TAPS as u64) << log_rows)
+                            + (row << UNISKIP_LOG_TAPS)
+                            + tap as u64
+                    );
+                    assert_eq!(offset >> UNISKIP_LOG_TAPS, offset / UNISKIP_TAPS as u64);
+                    assert!(seen.insert(offset));
+                }
+            }
+        }
+        // Tiles the same column block the plane-major ordering does, no gaps.
+        assert_eq!(
+            seen.len() as u64,
+            columns as u64 * UNISKIP_TAPS as u64 * rows
+        );
+        assert_eq!(
+            seen.iter().copied().max().unwrap() + 1,
+            columns as u64 * UNISKIP_TAPS as u64 * rows
+        );
+
+        // Addressing bound: the widest legal geometry still fits the device load()'s
+        // 32-bit element offset, exactly as the plane-major ordering does.
+        let widest = crate::geometry::UNISKIP_MAX_LOG_ROWS;
+        let last = UniskipSourceRecord {
+            addr: source_addr(0, UNISKIP_MAX_WINDOW_COLUMNS - 1),
+            source_class: UNISKIP_SRC_BF_GLOBAL,
+            cache_slot: UNISKIP_CACHE_SLOT_NONE,
+        };
+        let max = lsb_source_offset(last, UNISKIP_TAPS - 1, (1 << widest) - 1, widest);
+        assert_eq!(max, (1u64 << (UNISKIP_LOG_ADDRESSABLE_PLANES + widest)) - 1);
+        assert!(max <= u64::from(u32::MAX));
     }
 
     #[test]

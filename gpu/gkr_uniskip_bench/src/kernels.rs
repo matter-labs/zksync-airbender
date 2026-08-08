@@ -15,7 +15,7 @@ use era_cudart_sys::{cudaMemcpyToSymbol, cuda_struct_and_stub, CudaMemoryCopyKin
 
 use crate::abi::{
     UniskipVmDesc, UNISKIP_CACHE_UNITS, UNISKIP_CELLS, UNISKIP_COEFF_BANK, UNISKIP_EQ_HIGH,
-    UNISKIP_TAPS, UNISKIP_THREADS_PER_BLOCK,
+    UNISKIP_NTT_TABLES, UNISKIP_TAPS, UNISKIP_THREADS_PER_BLOCK,
 };
 
 cuda_struct_and_stub! { static ab_gkr_uniskip_coeff_bank: [[u32; 4]; UNISKIP_COEFF_BANK]; }
@@ -23,6 +23,7 @@ cuda_struct_and_stub! { static ab_gkr_uniskip_eq_high: [[u32; 4]; 2 * UNISKIP_EQ
 cuda_struct_and_stub! { static ab_gkr_uniskip_lde_matrix: [u32; UNISKIP_TAPS * UNISKIP_TAPS]; }
 cuda_struct_and_stub! { static ab_gkr_uniskip_fold_weights: [[u32; 4]; UNISKIP_TAPS]; }
 cuda_struct_and_stub! { static ab_gkr_uniskip_cache_fill: [u16; UNISKIP_CACHE_UNITS]; }
+cuda_struct_and_stub! { static ab_gkr_uniskip_ntt_twiddles: [u32; UNISKIP_NTT_TABLES * UNISKIP_TAPS]; }
 
 /// Blocks a grid-stride launch may use. The kernels loop, so this only bounds the
 /// launch; every configuration above it is covered by the stride.
@@ -90,6 +91,12 @@ cuda_kernel!(
     EvalFusedCachedInterleave,
     ab_gkr_uniskip_eval_fused_cached_interleave_kernel(desc: UniskipVmDesc)
 );
+// The v3 R0 kernel takes `uniskip_lsb_desc`, a fourth empty derived class of
+// `uniskip_vm_desc` — same wire struct, LSB-ordered taps, no coset base read.
+cuda_kernel!(
+    EvalLsbW0,
+    ab_gkr_uniskip_eval_lsb_w0_kernel(desc: UniskipVmDesc)
+);
 cuda_kernel!(
     Finalize,
     ab_gkr_uniskip_finalize_kernel(partials: *const u32, blocks: u32, q: *mut u32)
@@ -150,6 +157,14 @@ pub fn upload_fold_weights(weights: &[[u32; 4]; UNISKIP_TAPS]) -> CudaResult<()>
 /// never inherits another plan's units; the non-cached kernels never read it.
 pub fn upload_cache_fill(fill: &[u16; UNISKIP_CACHE_UNITS]) -> CudaResult<()> {
     unsafe { memcpy_to_symbol(&ab_gkr_uniskip_cache_fill, fill) }
+}
+
+/// Upload the LSB producer's lane-indexed twiddles — [`crate::domain::ntt_twiddles`]
+/// flattened `[table * UNISKIP_TAPS + lane]`. Uploaded in every mode (they are domain
+/// constants, not program state); only the LSB kernel reads them, once per thread into
+/// registers, so no hot-path access is a divergent `__constant__` read.
+pub fn upload_ntt_twiddles(twiddles: &[u32; UNISKIP_NTT_TABLES * UNISKIP_TAPS]) -> CudaResult<()> {
+    unsafe { memcpy_to_symbol(&ab_gkr_uniskip_ntt_twiddles, twiddles) }
 }
 
 /// Fill a `bf` backing with the deterministic init generator; `dst` is one word
@@ -323,6 +338,16 @@ pub fn eval_fused_cached_interleave(
     let args = EvalFusedCachedInterleaveArguments::new(*desc);
     let config = CudaLaunchConfig::basic(blocks, UNISKIP_THREADS_PER_BLOCK as u32, stream);
     EvalFusedCachedInterleaveFunction::default().launch(&config, &args)
+}
+
+/// The v3 R0 arm: LSB-ordered taps, one half-warp per group with lane = tap, all 16
+/// coset cells produced by a shuffle-NTT per reference (W = 0). `blocks` is
+/// `rows / UNISKIP_LSB_ROWS_PER_BLOCK`, not the warp-wide tile the other modes use, and
+/// it writes the same `partials[block][UNISKIP_CELLS]` layout so `finalize` is unchanged.
+pub fn eval_lsb_w0(desc: &UniskipVmDesc, blocks: u32, stream: &CudaStream) -> CudaResult<()> {
+    let args = EvalLsbW0Arguments::new(*desc);
+    let config = CudaLaunchConfig::basic(blocks, UNISKIP_THREADS_PER_BLOCK as u32, stream);
+    EvalLsbW0Function::default().launch(&config, &args)
 }
 
 /// Reduce the `blocks * UNISKIP_CELLS` partials into the `UNISKIP_CELLS` cells of `q`.

@@ -1076,12 +1076,14 @@ mod cpu_tests {
         let census = generate(7, Census::default()).unwrap();
         let mut local = census.clone();
         local.apply_term_order(TermOrder::Locality);
-        for flat_eq in [false, true] {
-            assert_eq!(
-                eval_q(&local, &geometry, 7, flat_eq),
-                eval_q(&census, &geometry, 7, flat_eq),
-                "term order changed q (flat_eq {flat_eq})"
-            );
+        for source_layout in [SourceLayout::PlaneMajor, SourceLayout::LsbGroup] {
+            for flat_eq in [false, true] {
+                assert_eq!(
+                    eval_q(&local, &geometry, 7, flat_eq, source_layout),
+                    eval_q(&census, &geometry, 7, flat_eq, source_layout),
+                    "term order changed q ({source_layout:?}, flat_eq {flat_eq})"
+                );
+            }
         }
     }
 

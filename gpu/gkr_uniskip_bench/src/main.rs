@@ -49,7 +49,9 @@ struct Cli {
 
     /// Source resolution: `unfused` materializes the coset in its own LDE stage,
     /// `fused-recompute` extends the taps on read (no LDE launch, no coset backing),
-    /// `fused-cached` adds the fixed shared-memory slab assignment on top.
+    /// `fused-cached` adds the fixed shared-memory slab assignment on top,
+    /// `lsb-recompute` is the v3 R0 arm — LSB group layout, lane = tap, one
+    /// shuffle-NTT per reference, no window and no fold stage.
     #[arg(long, value_enum, default_value_t = EvalMode::Unfused)]
     mode: EvalMode,
 
@@ -133,18 +135,24 @@ fn gb_per_s(bytes: u64, median_ms: f64) -> f64 {
 /// grid. Rejecting the combination is deliberate — silently ignoring it would let a
 /// recorded measurement name a shape the run never used.
 fn pass_config(cli: &Cli) -> PassConfig {
-    let fused = !cli.mode.materializes_coset();
-    if fused && cli.lde_shape.is_some() {
+    if !cli.mode.uses_lde_shape() && cli.lde_shape.is_some() {
         fail(format!(
             "--lde-shape applies to unfused modes only; --mode {} runs no LDE stage",
             cli.mode.as_str()
         ));
     }
-    if !fused && cli.cell_map.is_some() {
-        fail(format!(
-            "--cell-map applies to fused modes only; --mode {} keeps the v1 block map",
-            cli.mode.as_str()
-        ));
+    if !cli.mode.uses_cell_map() && cli.cell_map.is_some() {
+        fail(match cli.mode {
+            EvalMode::Unfused => format!(
+                "--cell-map applies to fused modes only; --mode {} keeps the v1 block map",
+                cli.mode.as_str()
+            ),
+            _ => format!(
+                "--cell-map applies to fused modes only; --mode {} fixes the lane map at \
+                 lane = tap, two groups per warp",
+                cli.mode.as_str()
+            ),
+        });
     }
     PassConfig {
         mode: cli.mode,
@@ -158,10 +166,15 @@ fn main() {
     let config = pass_config(&cli);
     // The knob the mode does not run reads `n/a`, so a recorded line never names a
     // shape that run never used.
-    let (lde_shape_label, cell_map_label) = if config.mode.materializes_coset() {
-        (config.lde_shape.as_str(), "n/a")
+    let lde_shape_label = if config.mode.uses_lde_shape() {
+        config.lde_shape.as_str()
     } else {
-        ("n/a", config.cell_map.as_str())
+        "n/a"
+    };
+    let cell_map_label = if config.mode.uses_cell_map() {
+        config.cell_map.as_str()
+    } else {
+        "n/a"
     };
 
     let geometry = Geometry::new(cli.log_trace).unwrap_or_else(|e| fail(e));
@@ -192,12 +205,19 @@ fn main() {
     println!("geometry");
     println!("  log_rows            {}", geometry.log_rows);
     println!("  logical rows        {}", geometry.logical_rows);
-    println!("  blocks              {}", geometry.blocks);
+    println!(
+        "  blocks              {} ({} rows per block)",
+        geometry.eval_blocks(config.mode.rows_per_block()),
+        config.mode.rows_per_block()
+    );
     println!(
         "  eq sizes            high {} / {} low {}",
         geometry.eq_sizes.0, geometry.eq_sizes.1, geometry.eq_sizes.2
     );
-    println!("  partials            {} e4", geometry.partials);
+    println!(
+        "  partials            {} e4",
+        geometry.eval_partials(config.mode.rows_per_block())
+    );
     println!("census");
     println!("{}", program.census);
     println!(
@@ -357,15 +377,19 @@ fn main() {
                 failed = true;
             }
         }
-        match harness
-            .validate_fold()
-            .unwrap_or_else(|e| fail(format!("validation download failed: {e}")))
-        {
-            Ok(()) => println!("fold validate: OK"),
-            Err(mismatch) => {
-                eprintln!("fold validate: FAILED — {mismatch}");
-                failed = true;
+        if config.mode.runs_fold() {
+            match harness
+                .validate_fold()
+                .unwrap_or_else(|e| fail(format!("validation download failed: {e}")))
+            {
+                Ok(()) => println!("fold validate: OK"),
+                Err(mismatch) => {
+                    eprintln!("fold validate: FAILED — {mismatch}");
+                    failed = true;
+                }
             }
+        } else {
+            println!("fold validate: n/a (no fold stage in this mode)");
         }
         if failed {
             std::process::exit(1);

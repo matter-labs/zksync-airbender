@@ -1,7 +1,7 @@
 //! Host-side domain math for the uniskip pass: the size-16 subgroup `H`, its odd
 //! coset `gamma * H`, the coset LDE matrix and the Lagrange fold weights.
 
-use crate::abi::UNISKIP_TAPS;
+use crate::abi::{UNISKIP_LOG_TAPS, UNISKIP_NTT_TABLES, UNISKIP_TAPS};
 use field::baby_bear::base::BabyBearField;
 use field::baby_bear::ext4::BabyBearExt4;
 use field::{Field, FieldExtension};
@@ -61,6 +61,100 @@ pub fn lde_matrix() -> [[F; UNISKIP_TAPS]; UNISKIP_TAPS] {
             mul(mul(scale, wt), (x - wt).inverse().unwrap())
         })
     })
+}
+
+/// `bitrev` of a `UNISKIP_LOG_TAPS`-bit index.
+pub const fn bitrev_tap(i: usize) -> usize {
+    let mut out = 0;
+    let mut b = 0;
+    while b < UNISKIP_LOG_TAPS as usize {
+        out |= ((i >> b) & 1) << (UNISKIP_LOG_TAPS as usize - 1 - b);
+        b += 1;
+    }
+    out
+}
+
+/// Lane-indexed twiddles of the FACTORIZED coset transform — the host mirror of the
+/// device shuffle-NTT's `__constant__` tables, in stage order:
+///
+/// | table | stage | multiplier at lane `l` |
+/// | --- | --- | --- |
+/// | 0..2 | iDIF, butterfly distance 8 / 4 / 2 | `omega^-((l & (d-1)) * 16/(2d))` on the lower lanes, `1` on the upper |
+/// | 3 | normalize + twist, folded | `inv16 * gamma^bitrev(l)` |
+/// | 4..6 | DIT, butterfly distance 2 / 4 / 8 | `omega^((l & (d-1)) * 16/(2d))` on the lower lanes, `1` on the upper |
+///
+/// The two distance-1 stages carry only unity (their exponent is `0 * 8`) and are
+/// elided on both sides, which is why there are 7 tables and not 9.
+pub fn ntt_twiddles() -> [[F; UNISKIP_TAPS]; UNISKIP_NTT_TABLES] {
+    let omega = omega16();
+    let omega_inv = omega.inverse().unwrap();
+    let inv16 = F::new(UNISKIP_TAPS as u32).inverse().unwrap();
+    let mut tables = [[F::ONE; UNISKIP_TAPS]; UNISKIP_NTT_TABLES];
+    let mut stage = |table: usize, d: usize, root: F| {
+        for lane in 0..UNISKIP_TAPS {
+            if lane & d != 0 {
+                let exponent = (lane & (d - 1)) * (UNISKIP_TAPS / (2 * d));
+                tables[table][lane] = root.pow(exponent as u32);
+            }
+        }
+    };
+    for (table, d) in [8usize, 4, 2].into_iter().enumerate() {
+        stage(table, d, omega_inv);
+    }
+    for (table, d) in [2usize, 4, 8].into_iter().enumerate() {
+        stage(UNISKIP_NTT_TABLES - 3 + table, d, omega);
+    }
+    let gamma = gamma();
+    for lane in 0..UNISKIP_TAPS {
+        tables[3][lane] = mul(inv16, gamma.pow(bitrev_tap(lane) as u32));
+    }
+    tables
+}
+
+/// One radix-2 butterfly layer at distance `d`: the upper lane of a pair keeps
+/// `u + v`, the lower `u - v`. Identical for iDIF and DIT — only where the stage's
+/// twiddle is applied differs (iDIF after, DIT before).
+fn butterfly(x: &mut [F; UNISKIP_TAPS], d: usize) {
+    for lane in 0..UNISKIP_TAPS {
+        if lane & d == 0 {
+            let u = x[lane];
+            let v = x[lane | d];
+            let mut sum = u;
+            sum.add_assign(&v);
+            let mut diff = u;
+            diff.sub_assign(&v);
+            x[lane] = sum;
+            x[lane | d] = diff;
+        }
+    }
+}
+
+/// The FACTORIZED coset transform, exactly as the device shuffle-NTT sequences it:
+/// natural-order taps on `H` -> iDIF with `omega^-1` (distances 8, 4, 2, 1) ->
+/// folded normalize+twist -> DIT with `omega` (distances 1, 2, 4, 8) -> the 16 cells
+/// of `gamma * H` in natural order, so entry `c` is `P(gamma * omega^c)` = row `c` of
+/// [`lde_matrix`]. `cpu_factorized_coset_matches_matrix` pins the equality.
+pub fn coset_from_taps(taps: &[F; UNISKIP_TAPS]) -> [F; UNISKIP_TAPS] {
+    let tw = ntt_twiddles();
+    let mut x = *taps;
+    for (table, d) in [8usize, 4, 2].into_iter().enumerate() {
+        butterfly(&mut x, d);
+        for lane in 0..UNISKIP_TAPS {
+            x[lane] = mul(x[lane], tw[table][lane]);
+        }
+    }
+    butterfly(&mut x, 1);
+    for lane in 0..UNISKIP_TAPS {
+        x[lane] = mul(x[lane], tw[3][lane]);
+    }
+    butterfly(&mut x, 1);
+    for (table, d) in [2usize, 4, 8].into_iter().enumerate() {
+        for lane in 0..UNISKIP_TAPS {
+            x[lane] = mul(x[lane], tw[UNISKIP_NTT_TABLES - 3 + table][lane]);
+        }
+        butterfly(&mut x, d);
+    }
+    x
 }
 
 /// `[L_t(r)]_t`: the weights that fold the taps on `H` into the evaluation at `r`.
@@ -128,6 +222,134 @@ mod cpu_tests {
             }
             assert_eq!(got, horner_bf(&coeffs, x), "coset cell {c}");
         }
+    }
+
+    /// Adversarial tap sets: the canonical extremes and near-`p` values, where a
+    /// missing conditional subtract in the lazy chain would show up first.
+    fn adversarial_taps() -> Vec<[F; UNISKIP_TAPS]> {
+        let edge = [
+            0u32,
+            1,
+            2,
+            F::ORDER - 1,
+            F::ORDER - 2,
+            F::ORDER / 2,
+            F::ORDER / 2 + 1,
+            1 << 30,
+        ];
+        let mut sets = vec![
+            [F::new(F::ORDER - 1); UNISKIP_TAPS],
+            [F::ZERO; UNISKIP_TAPS],
+            core::array::from_fn(|t| F::new(edge[t % edge.len()])),
+            core::array::from_fn(|t| {
+                if t % 2 == 0 {
+                    F::new(F::ORDER - 1)
+                } else {
+                    F::ONE
+                }
+            }),
+        ];
+        // Every single-tap impulse: the chain's column `t` against the matrix's.
+        for t in 0..UNISKIP_TAPS {
+            let mut taps = [F::ZERO; UNISKIP_TAPS];
+            taps[t] = F::new(F::ORDER - 1);
+            sets.push(taps);
+        }
+        sets
+    }
+
+    /// Flat `bf` limb `i` of an `E4`, in the order `reference::e4_words` uploads.
+    fn e4_limb(x: E4, i: usize) -> F {
+        [x.c0.c0, x.c0.c1, x.c1.c0, x.c1.c1][i]
+    }
+
+    fn pseudorandom_taps(seed: u32) -> [F; UNISKIP_TAPS] {
+        core::array::from_fn(|t| {
+            let x = seed
+                .wrapping_mul(0x9e37_79b9)
+                .wrapping_add((t as u32).wrapping_mul(0x85eb_ca6b));
+            F::new(x % F::ORDER)
+        })
+    }
+
+    /// G0's arithmetic core: the factorized iDIF -> twist -> DIT chain the device
+    /// shuffle-NTT runs must agree with the dense 16x16 apply for EVERY input, or the
+    /// LSB producer is wrong in a way no timing can reveal.
+    #[test]
+    fn cpu_factorized_coset_matches_matrix() {
+        let matrix = lde_matrix();
+        let dense = |taps: &[F; UNISKIP_TAPS]| -> [F; UNISKIP_TAPS] {
+            core::array::from_fn(|c| {
+                let mut acc = F::ZERO;
+                for t in 0..UNISKIP_TAPS {
+                    acc.add_assign_product(&matrix[c][t], &taps[t]);
+                }
+                acc
+            })
+        };
+        let mut cases = adversarial_taps();
+        cases.extend((0..64u32).map(pseudorandom_taps));
+        for (i, taps) in cases.iter().enumerate() {
+            assert_eq!(coset_from_taps(taps), dense(taps), "tap set {i}");
+        }
+    }
+
+    /// The transform is `bf`-linear per limb, which is what lets an `e4` source run
+    /// the identical device code path limb-sequentially. Pinned against the dense
+    /// apply on the `e4` itself, for every limb position.
+    #[test]
+    fn cpu_factorized_coset_e4_limbs() {
+        let matrix = lde_matrix();
+        for seed in [1u32, 7, 0x1234_5678, 0xdead_beef] {
+            let taps: [E4; UNISKIP_TAPS] = core::array::from_fn(|t| {
+                E4::from_array_of_base(core::array::from_fn(|l| {
+                    pseudorandom_taps(seed.wrapping_add(l as u32 * 0x1000_0001))[t]
+                }))
+            });
+            let dense: [E4; UNISKIP_TAPS] = core::array::from_fn(|c| {
+                let mut acc = E4::ZERO;
+                for t in 0..UNISKIP_TAPS {
+                    <E4 as FieldExtension<F>>::add_assign_product_with_base(
+                        &mut acc,
+                        &taps[t],
+                        &matrix[c][t],
+                    );
+                }
+                acc
+            });
+            for limb in 0..4 {
+                let limb_taps: [F; UNISKIP_TAPS] = core::array::from_fn(|t| e4_limb(taps[t], limb));
+                let got = coset_from_taps(&limb_taps);
+                for c in 0..UNISKIP_TAPS {
+                    assert_eq!(
+                        got[c],
+                        e4_limb(dense[c], limb),
+                        "seed {seed} limb {limb} cell {c}"
+                    );
+                }
+            }
+        }
+    }
+
+    /// The static counts the design is priced on: 8 exchange stages per component
+    /// pass and 50 non-unity multiplies over the whole chain (17 + 16 + 17).
+    #[test]
+    fn cpu_ntt_twiddle_census() {
+        let tables = ntt_twiddles();
+        let generic = |table: usize| tables[table].iter().filter(|&&x| x != F::ONE).count();
+        assert_eq!([generic(0), generic(1), generic(2)], [7, 6, 4]); // iDIF, 17
+        assert_eq!(generic(3), UNISKIP_TAPS); // twist, 16 (inv16 at lane 0)
+        assert_eq!([generic(4), generic(5), generic(6)], [4, 6, 7]); // DIT, 17
+        let total: usize = (0..UNISKIP_NTT_TABLES).map(generic).sum();
+        assert_eq!(total, 50);
+
+        // bitrev is an involution and a permutation.
+        let mut seen = [false; UNISKIP_TAPS];
+        for i in 0..UNISKIP_TAPS {
+            assert_eq!(bitrev_tap(bitrev_tap(i)), i);
+            seen[bitrev_tap(i)] = true;
+        }
+        assert!(seen.iter().all(|&s| s));
     }
 
     #[test]

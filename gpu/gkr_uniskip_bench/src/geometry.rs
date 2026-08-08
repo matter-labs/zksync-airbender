@@ -93,6 +93,23 @@ impl Geometry {
         })
     }
 
+    /// Eval blocks at a row tile of `rows_per_block`. `blocks`/`partials` above are
+    /// this at [`UNISKIP_ROWS_PER_BLOCK`]; the LSB mode's tile is half that, so it runs
+    /// twice the blocks and writes twice the partials.
+    pub fn eval_blocks(&self, rows_per_block: u32) -> u32 {
+        assert!(
+            rows_per_block > 0 && self.logical_rows % u64::from(rows_per_block) == 0,
+            "{rows_per_block} rows per block does not tile {} rows",
+            self.logical_rows
+        );
+        (self.logical_rows / u64::from(rows_per_block)) as u32
+    }
+
+    /// `e4` slots the eval kernel writes at that tile size: `UNISKIP_CELLS` per block.
+    pub fn eval_partials(&self, rows_per_block: u32) -> u64 {
+        UNISKIP_CELLS as u64 * u64::from(self.eval_blocks(rows_per_block))
+    }
+
     /// Entries of eq high table `table` (0 or 1).
     pub fn eq_high_len(&self, table: usize) -> usize {
         let bits = match table {
@@ -193,6 +210,14 @@ mod cpu_tests {
                 g.logical_rows
             );
             assert_eq!(g.partials, UNISKIP_CELLS as u64 * g.blocks as u64);
+            // The LSB tile is half a warp-wide tile, so it tiles every legal geometry
+            // too and doubles both the grid and the partials.
+            assert_eq!(g.eval_blocks(UNISKIP_ROWS_PER_BLOCK as u32), g.blocks);
+            assert_eq!(g.eval_partials(UNISKIP_ROWS_PER_BLOCK as u32), g.partials);
+            assert_eq!(
+                g.eval_blocks(crate::abi::UNISKIP_LSB_ROWS_PER_BLOCK as u32),
+                2 * g.blocks
+            );
 
             // Every row splits into in-range table indices and recomposes exactly.
             let rows = [

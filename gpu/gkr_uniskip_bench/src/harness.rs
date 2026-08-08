@@ -51,10 +51,13 @@ pub struct Layout {
     pub windows: [WindowPlacement; UNISKIP_WINDOWS],
     /// Field elements in each class's tap (and coset) backing.
     pub class_elements: [u64; CLASSES],
+    /// Element ordering inside a column block. The backing sizes and the window
+    /// packing are identical either way — only [`Layout::source_offset`] changes.
+    pub source_layout: SourceLayout,
 }
 
 impl Layout {
-    pub fn new(program: &SynthProgram, geometry: &Geometry) -> Self {
+    pub fn new(program: &SynthProgram, geometry: &Geometry, source_layout: SourceLayout) -> Self {
         let mut class_elements = [0u64; CLASSES];
         let mut windows = [WindowPlacement {
             class: CLASS_BF,
@@ -77,6 +80,32 @@ impl Layout {
             rows: geometry.logical_rows,
             windows,
             class_elements,
+            source_layout,
+        }
+    }
+
+    /// The active ordering's host mirror of the device accessor: the allocation a
+    /// `(source, cell)` pair reads and the element offset of `row` inside its window.
+    /// [`SourceLayout::LsbGroup`] has no coset allocation at all, so asking it for a
+    /// coset cell is a bug, not a fallback.
+    pub fn source_offset(
+        &self,
+        rec: UniskipSourceRecord,
+        cell: usize,
+        row: u64,
+    ) -> (CellBuffer, u64) {
+        match self.source_layout {
+            SourceLayout::PlaneMajor => source_offset(rec, cell, row, self.log_rows),
+            SourceLayout::LsbGroup => {
+                assert!(
+                    coset_row_for_cell(cell).is_none(),
+                    "the LSB ordering has no coset allocation; cell {cell} is produced, not stored"
+                );
+                (
+                    CellBuffer::Tap,
+                    lsb_source_offset(rec, cell, row, self.log_rows),
+                )
+            }
         }
     }
 
@@ -140,12 +169,17 @@ impl LdeShape {
 /// 16 taps on read. `FusedCached` adds a fixed shared-memory assignment on top of it,
 /// so the planned sources' coset slabs are produced once per 32-row tile instead of
 /// once per reference. All three produce the same `q`.
+/// `LsbRecompute` is the v3 R0 arm and shares none of that machinery: it re-lays the
+/// taps LSB-first (a group is 16 adjacent elements), runs one half-warp per group with
+/// lane = tap, and produces all 16 coset cells with a shuffle-NTT per reference. W = 0
+/// by construction — no window, no cache, no fold stage.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, clap::ValueEnum)]
 pub enum EvalMode {
     #[default]
     Unfused,
     FusedRecompute,
     FusedCached,
+    LsbRecompute,
 }
 
 impl EvalMode {
@@ -154,6 +188,7 @@ impl EvalMode {
             Self::Unfused => "unfused",
             Self::FusedRecompute => "fused-recompute",
             Self::FusedCached => "fused-cached",
+            Self::LsbRecompute => "lsb-recompute",
         }
     }
 
@@ -165,6 +200,41 @@ impl EvalMode {
     /// Whether the pass reads the shared-memory cache plan.
     pub fn uses_cache(self) -> bool {
         self == Self::FusedCached
+    }
+
+    /// Element ordering of the tap backing this mode's accessor expects.
+    pub fn source_layout(self) -> SourceLayout {
+        match self {
+            Self::LsbRecompute => SourceLayout::LsbGroup,
+            _ => SourceLayout::PlaneMajor,
+        }
+    }
+
+    /// Logical rows one eval block covers — 32 for the lane = row modes, 16 for the
+    /// LSB mode, where a 16-lane half-warp is one group.
+    pub fn rows_per_block(self) -> u32 {
+        match self {
+            Self::LsbRecompute => UNISKIP_LSB_ROWS_PER_BLOCK as u32,
+            _ => UNISKIP_ROWS_PER_BLOCK as u32,
+        }
+    }
+
+    /// Whether the pass runs the fold stage. The v3 R0 rung is descoped to one kernel
+    /// plus `finalize`: the fold kernels address plane-major taps, and no fold has been
+    /// written for the LSB ordering (spec R4).
+    pub fn runs_fold(self) -> bool {
+        self != Self::LsbRecompute
+    }
+
+    /// Whether `--lde-shape` names a grid this mode runs.
+    pub fn uses_lde_shape(self) -> bool {
+        self == Self::Unfused
+    }
+
+    /// Whether `--cell-map` names a warp map this mode runs. The LSB mode's lane map is
+    /// fixed at this rung (lane = tap, two groups per warp), so the knob is rejected.
+    pub fn uses_cell_map(self) -> bool {
+        matches!(self, Self::FusedRecompute | Self::FusedCached)
     }
 }
 
@@ -226,6 +296,10 @@ pub struct Harness {
     pub layout: Layout,
     pub desc: UniskipVmDesc,
     geometry: Geometry,
+    /// Eval grid and its partials count at this mode's row tile — NOT
+    /// `geometry.blocks`, which is the warp-wide tile the v1/v2 modes use.
+    eval_blocks: u32,
+    eval_partials: u64,
     seed: u32,
     flat_eq: bool,
     config: PassConfig,
@@ -262,7 +336,9 @@ impl Harness {
         config: PassConfig,
         plan: &CachePlan,
     ) -> CudaResult<Self> {
-        let layout = Layout::new(program, geometry);
+        let layout = Layout::new(program, geometry, config.mode.source_layout());
+        let eval_blocks = geometry.eval_blocks(config.mode.rows_per_block());
+        let eval_partials = geometry.eval_partials(config.mode.rows_per_block());
         let stream = CudaStream::create()?;
 
         // `alloc(0)` has no valid device pointer; a class with no columns still gets
@@ -315,11 +391,15 @@ impl Harness {
         let mut eq_low = DeviceAllocation::<u32>::alloc(eq_low_words)?;
 
         let mut partials =
-            DeviceAllocation::<u32>::alloc(geometry.partials as usize * CLASS_WORDS[CLASS_E4])?;
+            DeviceAllocation::<u32>::alloc(eval_partials as usize * CLASS_WORDS[CLASS_E4])?;
         let q = DeviceAllocation::<u32>::alloc(UNISKIP_CELLS * CLASS_WORDS[CLASS_E4])?;
-        let folded = DeviceAllocation::<u32>::alloc(
-            program.sources.len() * geometry.logical_rows as usize * CLASS_WORDS[CLASS_E4],
-        )?;
+        // A mode that runs no fold stage allocates no fold output: at the benchmark
+        // geometry that buffer is ~1 GiB of device memory nothing would ever read.
+        let folded = DeviceAllocation::<u32>::alloc(if config.mode.runs_fold() {
+            program.sources.len() * geometry.logical_rows as usize * CLASS_WORDS[CLASS_E4]
+        } else {
+            1
+        })?;
 
         let mut desc = UniskipVmDesc {
             record_count: program.program.len() as u32,
@@ -371,6 +451,7 @@ impl Harness {
         }
 
         kernels::upload_lde_matrix(&reference::flat_lde_matrix(&lde_matrix()))?;
+        kernels::upload_ntt_twiddles(&reference::ntt_twiddle_words())?;
         kernels::upload_eq_high(&reference::eq_high_words(seed, flat_eq))?;
         kernels::upload_coeff_bank(&reference::coeff_bank_words(seed))?;
         kernels::upload_fold_weights(&reference::fold_weight_words(seed))?;
@@ -406,7 +487,7 @@ impl Harness {
                     kernels::lde_e4_row as LdeLaunch,
                 ],
             }),
-            EvalMode::FusedRecompute | EvalMode::FusedCached => None,
+            EvalMode::FusedRecompute | EvalMode::FusedCached | EvalMode::LsbRecompute => None,
         };
         let eval: EvalLaunch = match (config.mode, config.cell_map) {
             (EvalMode::Unfused, _) => kernels::eval,
@@ -414,12 +495,15 @@ impl Harness {
             (EvalMode::FusedRecompute, CellMap::Interleave) => kernels::eval_fused_interleave,
             (EvalMode::FusedCached, CellMap::Block) => kernels::eval_fused_cached,
             (EvalMode::FusedCached, CellMap::Interleave) => kernels::eval_fused_cached_interleave,
+            (EvalMode::LsbRecompute, _) => kernels::eval_lsb_w0,
         };
 
         Ok(Self {
             layout,
             desc,
             geometry: *geometry,
+            eval_blocks,
+            eval_partials,
             seed,
             flat_eq,
             config,
@@ -459,8 +543,11 @@ impl Harness {
     }
 
     /// One fold pass over both field classes, at the round challenge the fold
-    /// weights were uploaded for.
+    /// weights were uploaded for — nothing at all in a mode that does not run it.
     pub fn run_fold(&mut self) -> CudaResult<()> {
+        if !self.config.mode.runs_fold() {
+            return Ok(());
+        }
         kernels::fold_bf(
             &self.desc,
             &self.jobs[CLASS_BF],
@@ -485,14 +572,9 @@ impl Harness {
         self.events[0].record(&self.stream)?;
         self.run_lde()?;
         self.events[1].record(&self.stream)?;
-        (self.eval)(&self.desc, self.geometry.blocks, &self.stream)?;
+        (self.eval)(&self.desc, self.eval_blocks, &self.stream)?;
         self.events[2].record(&self.stream)?;
-        kernels::finalize(
-            &self.partials,
-            self.geometry.blocks,
-            &mut self.q,
-            &self.stream,
-        )?;
+        kernels::finalize(&self.partials, self.eval_blocks, &mut self.q, &self.stream)?;
         self.events[3].record(&self.stream)?;
         self.run_fold()?;
         self.events[4].record(&self.stream)
@@ -504,6 +586,11 @@ impl Harness {
 
     pub fn config(&self) -> PassConfig {
         self.config
+    }
+
+    /// Eval grid at this mode's row tile — the number `finalize` reduces over.
+    pub fn eval_blocks(&self) -> u32 {
+        self.eval_blocks
     }
 
     /// Device bytes the pass holds in its tap and coset backings.
@@ -531,14 +618,15 @@ impl Harness {
     pub fn pass_bytes(&self) -> PassBytes {
         let e4_bytes = CLASS_WORDS[CLASS_E4] as u64 * size_of::<u32>() as u64;
         let backing = self.layout.backing_bytes();
-        let partials = self.geometry.partials * e4_bytes;
+        let partials = self.eval_partials * e4_bytes;
         let folded = u64::from(self.desc.num_sources) * self.layout.rows * e4_bytes;
         let coset = u64::from(self.config.mode.materializes_coset()) * backing;
+        let fold = u64::from(self.config.mode.runs_fold()) * (backing + folded);
         let stage = [
             2 * coset,
             backing + coset + partials,
             partials + UNISKIP_CELLS as u64 * e4_bytes,
-            backing + folded,
+            fold,
         ];
         PassBytes {
             stage,
@@ -556,7 +644,13 @@ impl Harness {
     /// Compare all 32 cells against the full CPU oracle, bit-exact.
     pub fn validate_q(&self, program: &SynthProgram) -> CudaResult<Result<(), String>> {
         let actual = self.download_q()?;
-        let expected = reference::eval_q(program, &self.geometry, self.seed, self.flat_eq);
+        let expected = reference::eval_q(
+            program,
+            &self.geometry,
+            self.seed,
+            self.flat_eq,
+            self.layout.source_layout,
+        );
         Ok(reference::check_q(&expected, &actual))
     }
 
@@ -651,6 +745,10 @@ impl Harness {
     /// than exhaustive: the fold output is one `e4` per (source, row), so a full
     /// download is the size of the whole tap backing.
     pub fn validate_fold(&self) -> CudaResult<Result<(), String>> {
+        assert!(
+            self.config.mode.runs_fold(),
+            "validate_fold needs a mode that runs the fold stage"
+        );
         let words = CLASS_WORDS[CLASS_E4];
         let rows = self.sample_rows();
         for class in 0..CLASSES {
@@ -688,7 +786,7 @@ mod cpu_tests {
     fn cpu_layout_tiles_backings() {
         let geometry = Geometry::new(10).unwrap();
         let program = generate(5, Census::default()).unwrap();
-        let layout = Layout::new(&program, &geometry);
+        let layout = Layout::new(&program, &geometry, SourceLayout::PlaneMajor);
 
         let mut expected = [0u64; CLASSES];
         for window in 0..UNISKIP_WINDOWS {
