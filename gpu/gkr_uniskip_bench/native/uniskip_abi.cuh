@@ -6,6 +6,7 @@
 
 using namespace ::airbender::primitives::field;
 using namespace ::airbender::primitives::memory;
+using namespace ::airbender::primitives::ptx;
 
 namespace airbender::gkr_uniskip_bench {
 
@@ -171,14 +172,36 @@ static_assert(alignof(uniskip_fused_desc) == alignof(uniskip_vm_desc));
 static_assert(offsetof(uniskip_fused_desc, program) == 0);
 static_assert(offsetof(uniskip_fused_desc, eq_sizes) == 2492);
 
+// The `bf` limbs of a source value, flat. The coset dot is `bf`-linear per limb, so
+// it treats a `bf` source as one limb and an `e4` source as four.
+template <typename T> struct uniskip_flat_limbs;
+template <> struct uniskip_flat_limbs<bf> {
+  static constexpr u32 COUNT = 1;
+  static DEVICE_FORCEINLINE u32 raw(const bf &v, const u32) { return bf::into_raw_u32(v); }
+  static DEVICE_FORCEINLINE bf pack(const bf limbs[COUNT]) { return limbs[0]; }
+};
+template <> struct uniskip_flat_limbs<e4> {
+  static constexpr u32 COUNT = 4;
+  static DEVICE_FORCEINLINE u32 raw(const e4 &v, const u32 i) { return bf::into_raw_u32(v.base_coefficient_from_flat_idx(i)); }
+  static DEVICE_FORCEINLINE e4 pack(const bf limbs[COUNT]) { return e4(limbs); }
+};
+
+// Taps per wide chunk. Montgomery reduction is linear mod p, so
+// `red(sum a_i b_i) == sum red(a_i b_i)` and the chunked dot is bit-identical to a
+// per-tap `fma` chain — it just pays one reduction per chunk instead of per tap.
+// The bound is `bf::red_wide`'s ~4p^2 input range: 4*(p-1)^2 = 1.62e19 < 2^64.
+constexpr u32 UNISKIP_DOT_CHUNK = 4;
+static_assert(UNISKIP_TAPS % UNISKIP_DOT_CHUNK == 0);
+
 // LDE-ON-READ. Same (source, cell, row) contract as the accessor above, with the
 // coset materialization absorbed: `desc.coset_bases` is never read and need not
 // exist. An H cell is the direct tap load; coset cell `UNISKIP_TAPS + c` is the dot
-// of the source's 16 taps with row `c` of the coset LDE matrix. `T::fma` resolves to
-// `bf::fma(bf, bf, bf)` for a `bf` source and to `e4::fma(e4, bf, e4)` for an `e4`
-// one — the latter IS the four per-limb dots, since the extension is `bf`-linear per
-// limb. The matrix entry is warp-uniform, so `__constant__` broadcasts it.
+// of the source's 16 taps with row `c` of the coset LDE matrix, accumulated wide in
+// `UNISKIP_DOT_CHUNK`-tap chunks. The matrix entry is warp-uniform, so `__constant__`
+// broadcasts it.
 template <typename T> DEVICE_FORCEINLINE T uniskip_source_value(const uniskip_fused_desc &desc, const u16 source_id, const u32 cell, const u32 row) {
+  using limbs_of = uniskip_flat_limbs<T>;
+  constexpr u32 LIMBS = limbs_of::COUNT;
   const uniskip_source_record rec = desc.source[source_id];
   const u32 window = rec.addr >> 7;
   const size_t column = rec.addr & 0x7f;                                    // widen BEFORE the shift
@@ -187,11 +210,30 @@ template <typename T> DEVICE_FORCEINLINE T uniskip_source_value(const uniskip_fu
   if (cell < UNISKIP_TAPS)
     return load<T, ld_modifier::ca>(base, ((plane + cell) << desc.log_rows) + row);
   const bf *weights = &ab_gkr_uniskip_lde_matrix[(cell - UNISKIP_TAPS) * UNISKIP_TAPS];
-  T acc = T::ZERO();
+  bf acc[LIMBS];
 #pragma unroll
-  for (u32 t = 0; t < UNISKIP_TAPS; ++t)
-    acc = T::fma(load<T, ld_modifier::ca>(base, ((plane + t) << desc.log_rows) + row), weights[t], acc);
-  return acc;
+  for (u32 l = 0; l < LIMBS; ++l)
+    acc[l] = bf::ZERO();
+#pragma unroll
+  for (u32 chunk = 0; chunk < UNISKIP_TAPS; chunk += UNISKIP_DOT_CHUNK) {
+    u64 wide[LIMBS];
+#pragma unroll
+    for (u32 l = 0; l < LIMBS; ++l)
+      wide[l] = 0;
+#pragma unroll
+    for (u32 j = 0; j < UNISKIP_DOT_CHUNK; ++j) {
+      const u32 t = chunk + j;
+      const T tap = load<T, ld_modifier::ca>(base, ((plane + t) << desc.log_rows) + row);
+      const u32 weight = bf::into_raw_u32(weights[t]);
+#pragma unroll
+      for (u32 l = 0; l < LIMBS; ++l)
+        wide[l] = mad_wide(limbs_of::raw(tap, l), weight, wide[l]);
+    }
+#pragma unroll
+    for (u32 l = 0; l < LIMBS; ++l)
+      acc[l] = bf::add(acc[l], bf::red_wide(wide[l]));
+  }
+  return limbs_of::pack(acc);
 }
 
 // CELL MAP. Which of the 32 cells warp `w` owns. `block` (INTERLEAVE = false) is the

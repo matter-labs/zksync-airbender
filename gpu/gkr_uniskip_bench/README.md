@@ -110,8 +110,10 @@ resolution differs. The term loop is `uniskip_eval_body<Desc, INTERLEAVE>`; each
 inside it are spelled identically for every mode and neither arm pays for the
 other's code. The fused overload reads no coset base at all: an `H` cell is the
 direct tap load, and coset cell `UNISKIP_TAPS + c` is the 16-tap dot with row `c` of
-the coset LDE matrix (`e4` scaled by the `bf` entry, which is the four per-limb
-dots).
+the coset LDE matrix, per `bf` limb. The dot accumulates **four taps wide before one
+Montgomery reduction** (`UNISKIP_DOT_CHUNK`): `bf::red_wide` takes inputs to ~4p² and
+reduction is linear mod p, so this is bit-identical to a per-tap `fma` chain at a
+quarter of the reductions.
 
 The LDE and fold kernels deliberately do *not* go through it: they are bulk
 per-column plane sweeps that inline their own tap addressing
@@ -239,9 +241,10 @@ None of these is an oversight; each is a scoping decision to be revisited.
   it is the baseline that v2's LDE-on-read accessor has to beat. (The 16× tap
   re-read that made `lde` dominate the v1 pass is a separate defect, fixed by
   `--lde-shape row`; the materialization itself remains.) It is still the default:
-  `--mode fused-recompute` halves the resident backings but is measured at 1.87× the
-  unfused pass's time, because a per-cell accessor cannot amortize the 16-tap dot
-  across the four cells a warp owns — see `iteration_times.md`.
+  `--mode fused-recompute --cell-map interleave` halves the resident backings at the
+  same measured time (a tie inside run spread), so which one is right depends on
+  whether the memory or the ~72 %-of-peak multiply pipe is the scarcer resource —
+  see `iteration_times.md`.
 - **No shared-memory operand cache.** Operand reuse (~3.8 references per source)
   is left to L1/L2.
 - **No tensor cores.** The tap→coset extension is a 16×16 matrix apply per column

@@ -33,8 +33,8 @@ fallback (4 × 256 × 16 B) was not needed and no `__maxnreg__` was added.
 | kernel | sm_120 (local) | sm_80 | sm_89 | sm_90 | stack / spill st / spill ld |
 | --- | --- | --- | --- | --- | --- |
 | `ab_gkr_uniskip_eval_kernel` | 54 | 55 | 48 | 48 | 0 / 0 / 0 |
-| `ab_gkr_uniskip_eval_fused_kernel` | 61 | 60 | 60 | 57 | 0 / 0 / 0 |
-| `ab_gkr_uniskip_eval_fused_interleave_kernel` | 168 | 184 | 168 | 168 | 0 / 0 / 0 |
+| `ab_gkr_uniskip_eval_fused_kernel` | 64 | 68 | 64 | 64 | 0 / 0 / 0 |
+| `ab_gkr_uniskip_eval_fused_interleave_kernel` | 125 | 202 | 134 | 134 | 0 / 0 / 0 |
 | `ab_gkr_uniskip_fold_e4_kernel` | 89 | 40 | 44 | 87 | 0 / 0 / 0 |
 | `ab_gkr_uniskip_fold_bf_kernel` | 36 | 30 | 30 | 30 | 0 / 0 / 0 |
 | `ab_gkr_uniskip_finalize_kernel` | 32 | 29 | 28 | 32 | 0 / 0 / 0 (128 B smem) |
@@ -60,8 +60,8 @@ matters is there.
 | kernel | sm_80 | sm_89 | sm_90 | sm_120 |
 | --- | --- | --- | --- | --- |
 | `eval` | 4 blk, ~50% | 5 blk, ~83% | 5 blk, ~62.5% | 4 blk, ~67% |
-| `eval_fused` | 4 blk, ~50% | 4 blk, ~67% | 4 blk, ~50% | 4 blk, ~67% |
-| `eval_fused_interleave` | **1 blk, ~12.5%** | **1 blk, ~17%** | **1 blk, ~12.5%** | **1 blk, ~17%** |
+| `eval_fused` | 3 blk, ~37.5% | 4 blk, ~67% | 4 blk, ~50% | 4 blk, ~67% |
+| `eval_fused_interleave` | **1 blk, ~12.5%** | **1 blk, ~17%** | **1 blk, ~12.5%** | **2 blk, ~33%** |
 | `fold_e4` | 6 blk, ~75% | 5 blk, ~83% | **2 blk, ~25%** | **2 blk, ~33%** |
 | `fold_bf` | ~100% | ~100% | ~100% | ~100% |
 | `lde_e4_row` | 8 blk, ~100% | 6 blk, ~100% | 6 blk, ~75% | 6 blk, ~100% |
@@ -82,25 +82,28 @@ The eval kernel's descriptor is a `__grid_constant__` by-value parameter:
 per-launch prefix), 16 B cmem[2]. The fused kernels take `uniskip_fused_desc`,
 which is that same struct (an empty derived class), so their cmem is unchanged.
 
-`eval_fused_interleave` is the second outlier. Under the block map the four cells a
-warp owns are `4w..4w+3`, so `cell >= UNISKIP_TAPS` reduces to `w >= 4` for all four
-and ptxas emits ONE recompute region; under the interleaved map the cells are
-`w, w+8, w+16, w+24` and `w < 8` is not provable from `threadIdx.x`, so each of the
-four unrolled slots gets its own test and its own 16-tap load block. That is the
-codegen difference; the 168-vs-61 register count and the times below are the
-measurement, and no separate experiment isolates the two causes from each other.
+`eval_fused_interleave` is the second outlier, at 2 blocks/SM against the block
+map's 4. Under the block map the four cells a warp owns are `4w..4w+3`, so
+`cell >= UNISKIP_TAPS` reduces to `w >= 4` for all four and ptxas emits ONE recompute
+region; under the interleaved map the cells are `w, w+8, w+16, w+24` and `w < 8` is
+not provable from `threadIdx.x`, so each of the four unrolled slots gets its own test
+and its own 16-tap load block. That is the codegen difference; the register counts
+are the measurement, and no separate experiment isolates the two causes from each
+other. It is nonetheless the **faster** arm — see the rung-2a timings.
 
 **`__launch_bounds__` was tried on the fused pair and rejected** — it is the obvious
-way to make the cell-map A/B occupancy-neutral, and it cannot be had spill-free:
+way to make the cell-map A/B occupancy-neutral, and it cannot be had spill-free.
+Measured on the FIRST dot form (16 × `T::fma`, before the chunking below), sm_120:
 
-| `__launch_bounds__(256, N)` | `eval_fused` sm_120 | `eval_fused_interleave` sm_120 |
+| `__launch_bounds__(256, N)` | `eval_fused` | `eval_fused_interleave` |
 | --- | --- | --- |
-| none (shipped) | 61 regs, 0 spill | 168 regs, 0 spill |
+| none | 61 regs, 0 spill | 168 regs, 0 spill |
 | N = 4 | 64 regs, 0 spill | 64 regs, **664 B stack / 1336 B spill st / 1356 B spill ld** |
 | N = 2 | 94 regs, 0 spill | 128 regs, **168 B stack / 168 B spill st / 168 B spill ld** |
 
-The zero-spill gate wins, so both fused kernels ship unconstrained and the cell-map
-comparison below is read WITH its occupancy confound stated, not removed.
+The zero-spill gate wins, so both fused kernels ship unconstrained. The chunked dot
+later brought the interleaved kernel to 125 registers on its own; the cap was not
+re-tried against it.
 
 ## Baseline (Task 5)
 
@@ -330,76 +333,137 @@ the (empty) interval between two events and the resident backings drop from
 `n/a` because there is no coset buffer to compare — the `q` oracle addresses all 32
 cells and covers the recomputed ones).
 
-Control arm, same build (`--mode unfused --lde-shape row`): `lde` 8.640,
-`eval` 19.415, `finalize` 0.033, `fold` 4.743, total 32.833 ms.
-
 | stage | block: median | mean | min | max | interleave: median | mean | min | max |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| lde | 0.000 | 0.001 | 0.000 | 0.003 | 0.000 | 0.001 | 0.000 | 0.003 |
-| eval | **52.403** | 52.407 | 52.181 | 52.613 | **62.016** | 62.016 | 61.993 | 62.044 |
-| finalize | 0.033 | 0.033 | 0.032 | 0.035 | 0.033 | 0.033 | 0.033 | 0.035 |
-| fold | 4.742 | 4.742 | 4.738 | 4.746 | 4.741 | 4.742 | 4.739 | 4.747 |
-| **total** | **57.179** | 57.183 | 56.958 | 57.388 | **66.792** | 66.792 | 66.770 | 66.823 |
+| lde | 0.000 | 0.001 | 0.000 | 0.002 | 0.000 | 0.001 | 0.000 | 0.002 |
+| eval | **34.414** | 34.415 | 34.333 | 34.488 | **28.068** | 28.069 | 28.055 | 28.085 |
+| finalize | 0.033 | 0.033 | 0.033 | 0.035 | 0.033 | 0.033 | 0.032 | 0.035 |
+| fold | 4.743 | 4.742 | 4.739 | 4.747 | 4.743 | 4.743 | 4.737 | 4.749 |
+| **total** | **39.190** | 39.191 | 39.114 | 39.266 | **32.845** | 32.845 | 32.828 | 32.862 |
 
-**The primary bar is missed.** It is the unfused sum this replaces —
-`lde + eval + finalize` = 8.640 + 19.415 + 0.033 = **28.088 ms**. The fused pass
-costs `eval + finalize` = **52.436 ms** (block) and **62.049 ms** (interleave),
-i.e. **1.87×** and **2.21×** the bar. The `fold` stage is untouched by the mode and
-is excluded from both sides.
+Control arm, same build and session (`--mode unfused --lde-shape row`): `lde` 8.643,
+`eval` 19.412, `finalize` 0.033, `fold` 4.743, total 32.830 ms.
 
-`--cell-map interleave` is 9.6 ms slower than `block` and does NOT settle the
-warp-balance question: it is register-limited to 1 block/SM against `block`'s 4 (see
-the register gate above), and the `__launch_bounds__` that would remove that
-confound makes it spill. Read the row as "the interleaved map as it compiles today",
-not as "spreading the recompute does not help".
+**The comparison that matters is what the mode replaces**, `lde + eval + finalize`;
+`fold` is identical work in both arms and is excluded from both sides.
 
-### Profile of the fused block kernel
+| arm | replaces-the-LDE sum | vs the unfused 28.088 ms | resident backings |
+| --- | --- | --- | --- |
+| unfused, `--lde-shape row` | 8.643 + 19.412 + 0.033 = **28.088** | — | 11.50 GiB |
+| fused, `--cell-map block` | 34.414 + 0.033 = **34.447** | +22.6 % | 5.75 GiB |
+| fused, `--cell-map interleave` | 28.068 + 0.033 = **28.101** | **+0.05 %** | 5.75 GiB |
+
+`interleave` is a **tie**, not a win: +0.013 ms of median is far inside the arms'
+spreads (the unfused sum spans 28.044–28.139 over its 100 iterations, the fused one
+28.087–28.120), so the two are indistinguishable at this geometry. What is not
+inside the noise is the memory — the fused arm reaches the same time on **half the
+backing**.
+
+### Chunked wide accumulation in the coset dot (the change that moved these)
+
+The first shipped form of the fused accessor ran the 16-tap dot as 16 `T::fma`
+calls, i.e. **16 Montgomery reductions where 4 suffice**. `bf::red_wide` is
+documented for inputs up to ~4p², and `4·(p−1)² = 1.62e19 < 2^64`, so four taps can
+be accumulated in one `u64` with `ptx::mad_wide` before a single reduction.
+Montgomery reduction is linear mod p — `red(Σ aᵢbᵢ) = Σ red(aᵢbᵢ)` — so the chunked
+form is **bit-identical**, which the unchanged `q` oracle (32/32, both maps, both eq
+modes) confirms rather than assumes. `e4` sources chunk the same way per limb.
+
+Two builds, otherwise identical; only the dot form changes.
+
+| dot form | `eval` block | `eval` interleave | fused regs sm_120 (block / interleave) |
+| --- | --- | --- | --- |
+| 16 × `T::fma` (first form) | 52.403 | 62.016 | 61 / 168 |
+| 4 chunks of 4 + `red_wide` (shipped) | **34.414** | **28.068** | 64 / 125 |
+
+−34.3 % and −54.7 % on the stage. The **static SASS of the two builds isolates the
+mechanism** (`cuobjdump -sass` on `uniskip.cu.o`, sm_120; counts are instructions
+inside each kernel's body):
+
+| kernel | instructions | `IMAD` (mul pipe) | all-register `IMAD.WIDE` (the wide multiplies) | `LDG` |
+| --- | --- | --- | --- | --- |
+| `eval_fused` before | 19872 | 5928 | 1836 | 681 |
+| `eval_fused` after | 11816 | **3626 (−38.8 %)** | **1836 (unchanged)** | 681 (unchanged) |
+| `eval_fused_interleave` before | 18512 | 5596 | — | 517 |
+| `eval_fused_interleave` after | 10760 | **3496 (−37.5 %)** | — | 517 (unchanged) |
+| `eval_kernel` (unfused) | 2861 | 903 | — | 41 |
+
+The unfused kernel's SASS is **byte-identical** across the two builds, so the change
+is confined to the fused accessor. The wide-multiply count is unchanged and the load
+count is unchanged: the −38 % is the reduction chain and nothing else, which is what
+"chunking removes reductions, not multiplies" predicts.
+
+**F9, checked while in the SASS: ptxas does NOT strength-reduce the per-tap address
+chain.** Each tap load still recomputes `((plane + t) << log_rows) + row` in full —
+`IADD` (plane+t), `SHF.L` (<< log_rows), `IADD` (+row), `IMAD.WIDE.U32` (×4, + base)
+— instead of hoisting a base and stepping by the runtime stride `1 << log_rows`.
+Measured in the shipped `eval_fused` body: 712 address-scaling `IMAD.WIDE` (one per
+`LDG`) and 695 `SHF.L`, against 3626 total `IMAD`. So **~20 % of the remaining
+mul-pipe instructions in the fused kernel are address arithmetic**, not field
+arithmetic. Recorded, not acted on.
+
+### Profile of the fused kernels
 
 ```
-.agents/bin/with_gpu_lock.sh ncu --set basic --metrics dram__bytes.sum \
+.agents/bin/with_gpu_lock.sh ncu --set full --metrics dram__bytes.sum \
     --kernel-name-base demangled --kernel-name 'regex:ab_gkr_uniskip_eval_fused_kernel' \
-    --launch-count 1 --target-processes all -o target/profiling/ncu/<ts>_fused_block \
+    --launch-count 1 --target-processes all -o target/profiling/ncu/<ts>_fused_block_full \
     target/release/gpu_gkr_uniskip_bench --log-trace 24 --warmup 1 --iterations 1 \
     --mode fused-recompute --cell-map block
+
+.agents/bin/with_gpu_lock.sh ncu --set basic \
+    --metrics dram__bytes.sum,sm__pipe_fmaheavy_cycles_active.avg.pct_of_peak_sustained_active \
+    --kernel-name-base demangled \
+    --kernel-name 'regex:ab_gkr_uniskip_eval_fused_interleave_kernel' \
+    --launch-count 1 --target-processes all -o target/profiling/ncu/<ts>_fused_interleave \
+    target/release/gpu_gkr_uniskip_bench --log-trace 24 --warmup 1 --iterations 1 \
+    --mode fused-recompute --cell-map interleave
 ```
 
-Report under `target/profiling/ncu/` (gitignored). Kernel duration under the
-profiler 53.45 ms (52.40 ms un-profiled), 32768 blocks × 256 threads.
+Reports under `target/profiling/ncu/` (gitignored). The interleave arm gets the
+cheaper pass so the winning arm's headlines are on record too; the pipe breakdown
+below is from the `--set full` pass on the block arm. Both at 32768 blocks × 256
+threads.
 
-| metric | value |
+| metric | fused block | fused interleave |
+| --- | --- | --- |
+| duration under the profiler | 34.97 ms | 28.92 ms |
+| `dram__bytes.sum` | **13.26 GB** | **6.20 GB** |
+| against the 6.19 GB floor (tap backing 5.75 GiB + partials) | **2.14×** | **1.00×** |
+| Compute (SM) throughput | **68.79 %** | **72.05 %** |
+| `sm__issue_active` | **50.85 %** | **51.51 %** |
+| DRAM / L2 / L1TEX throughput | 23.75 / 34.47 / 26.36 % | 13.43 / 8.17 / 18.53 % |
+| registers, blocks/SM | 64, 4 | 125, 2 |
+| theoretical / achieved occupancy | 66.67 % / 56.58 % | 33.3 % / 33.23 % |
+
+**Pipe breakdown** (block arm, `--set full`). The SM throughput figure is one pipe:
+
+| pipe | % of peak sustained active |
 | --- | --- |
-| `dram__bytes.sum` | **15.99 GB** |
-| DRAM floor for this kernel (tap backing 5.75 GiB + partials) | 6.19 GB |
-| ratio | **2.58×** |
-| Compute (SM) throughput | **72.28 %** |
-| `sm__issue_active.avg.pct_of_peak_sustained_elapsed` | **49.76 %** |
-| DRAM throughput | 18.74 % |
-| L2 throughput | 32.21 % |
-| L1/TEX throughput | 17.14 % |
-| registers / thread | 61 (occupancy limit 4 blocks/SM) |
-| theoretical / achieved occupancy | 66.67 % / 58.72 % |
+| `sm__pipe_fmaheavy_cycles_active` | **69.01** ← equals the 68.79 % SM SOL |
+| `sm__inst_executed_pipe_lsu` | 26.36 |
+| `sm__inst_executed_pipe_alu` | 25.65 |
+| `sm__inst_executed_pipe_adu` | 25.35 |
+| `sm__inst_executed_pipe_fma` | 13.79 |
 
-Three things this measurement settles, and one it does not.
+What this settles:
 
-- **The kernel is not DRAM-bound.** DRAM sits at 18.7 % of peak while the SM
-  throughput counter is at 72.3 %; `ncu`'s own bottleneck rule reads
-  "compute is more heavily utilized than memory". Whichever pipe the 72.3 % is, it is
-  not the memory system, so the 2.58× DRAM overshoot is a symptom rather than the
-  binding constraint at this shape.
-- **Recompute-on-read does not pay for itself in DRAM at this shape.** 15.99 GB is
-  *more* than the 12.35 GB the unfused eval must read (both backings), and the taps
-  are only 6.17 GB, so the recompute re-reads them ~2.6× out of DRAM. The whole pass
-  still moves less: unfused `lde` + `eval` have a 24.7 GB floor against the fused
-  15.99 GB measured, ≈ 35 % fewer bytes for 1.87× the time.
-- **The arithmetic is where the time went, as the brief's accounting predicted.**
-  Per row the coset resolution costs 83,456 `bf` MACs (16 coset cells ×
-  (190 `bf` refs × 16 + 34 `e4` refs × 4 limbs × 16)) ⇒ ~87.5 G `bf` MACs per pass at
-  2^20 rows, each a BabyBear Montgomery multiply plus reduce. That the SM throughput
-  counter is the high one is consistent with that; **which pipe** dominates is not
-  measured here (`--set basic` carries no pipe breakdown) and is left open.
-- **What it does NOT settle: the redundancy inside a warp.** Under the block map a
-  coset warp calls the accessor four times per operand reference — once per cell it
-  owns — and all four calls load *the same 16 taps* of the same source at the same
-  row. The 61-register count says ptxas is not commoning them. Removing that 4× is
-  exactly a cached fill (Task 2) and cannot be done behind a per-cell accessor, which
-  is why this rung's number is a Task 2 input rather than a defect to fix here.
+- **The fused kernel is mul-pipe bound — not load-bound and not DRAM-bound.** The
+  fma-heavy (32-bit integer multiply) pipe accounts for the whole SM SOL at 69 %,
+  against LSU 26 %, L1TEX 26 % and DRAM 24 %. The interleave arm reads the same way
+  (fma-heavy 72.26 % against its 72.05 % SM SOL).
+- **The within-warp tap reload is a load redundancy only, and loads are the pipe
+  with headroom.** Under the block map a coset warp calls the accessor once per cell
+  it owns and the four calls reload the same 16 taps — but the four cells are four
+  distinct matrix rows, so **no MAC is duplicated**. Direct evidence that this is not
+  what costs the time: `LDG` is unchanged by the chunking (681 static, both builds)
+  while the stage fell 34 %.
+- **The interleaved map reaches the compulsory DRAM floor exactly** (6.20 GB
+  measured against a 6.19 GB floor, 1.00×) where the block map is at 2.14×. It runs
+  at half the block map's occupancy and is still faster, which is consistent with a
+  mul-pipe-bound kernel. Nothing here isolates *why* its DRAM lands on the floor, so
+  that stays an observation.
+- **Instruction-cache pressure is the highest counter in the whole `--set full`
+  sweep**: `gcc__cache_requests_type_instruction` 84.45 % and `sm__icc_requests`
+  76.63 %, both above the fma-heavy pipe. Noted, not attributed — no experiment here
+  varies code footprint.
