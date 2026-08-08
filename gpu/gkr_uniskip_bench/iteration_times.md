@@ -1501,7 +1501,7 @@ lane can own any element, and a **static schedule packs only the 50 real multipl
 
 **The mechanism works exactly as designed and the pass is slower anyway.** The
 multiply cut is real, proven in SASS and visible in the profile (`fmaheavy` 81.5 % ->
-68.8 %); it buys nothing because the staging that enables it moves the work onto a
+68.7 %); it buys nothing because the staging that enables it moves the work onto a
 **narrower pipe**. That is the finding.
 
 ### What was built
@@ -1651,13 +1651,13 @@ scale the control-drift note below is about.
 **Which denominator, and the drift.** The percentages above are given against **both** the
 recorded R0 bars (20.713 / 20.596) and the R0 control re-measured in this session
 (20.896 / 20.775). The control runs **+0.88 %** above its own recorded figure — roughly
-**50x** the ~0.02 % reproducibility the R0 record demonstrated across rebuilds, so it is
+**44x** the ~0.02 % reproducibility the R0 record demonstrated across rebuilds, so it is
 worth accounting for rather than passing over. It is **not codegen**: this rung adds a
 translation unit and a ~5 KB `__constant__` to the same device link
 (`CUDA_SEPARABLE_COMPILATION`), which could plausibly perturb existing kernels, so the
 `lsb-recompute` kernel's sm_120 SASS was recounted in this build — **3216 instructions,
 identical to the R1 commit's and to the R0 record's**. The drift is therefore session /
-measurement, not code. The miss stands on either denominator: **+13.8 % to +15.6 %**.
+measurement, not code. The miss stands on either denominator: **+14.1 % to +15.1 %**.
 
 **Modes unperturbed, this build.** R0's record set the precedent of showing the v1/v2
 kernels at their recorded register counts in the same diagnostic build. Repeated here:
@@ -1776,8 +1776,8 @@ Read together:
 - **The compaction did what it promised.** `fmaheavy` fell 12.7 points and
   `math_pipe_throttle` fell from the largest stall (28.4 %) to 8.6 %. The multiply pipe is
   no longer the constraint.
-- **It moved the work onto a narrower pipe.** `lsu` went 32.2 % -> 87.19 % and is now the
-  whole SM speed-of-light. Total executed instructions barely changed (+4.3 %) — this is
+- **It moved the work onto a narrower pipe.** `lsu` went 32.2 % -> 86.85 % and is now the
+  whole SM speed-of-light. Total executed instructions barely changed (+4.5 %) — this is
   not "more work", it is **the same amount of work on a pipe with less throughput**.
   `short_scoreboard` (the shared-memory dependency stall) tripled to 33.9 % and is the
   largest stall.
@@ -1812,7 +1812,7 @@ cost was never the packing, it was the medium.
 (28.6 % of the 112 issued, per the gate record above) while *keeping* the shuffle binding,
 so it pays no staging cost at all — which is now the interesting property, not the 28.6 %.
 But R1 has measured the prize: the whole 62 (compaction's 43–50 % per-row cut, a superset
-of radix-4's) bought −12.7 points of `fmaheavy` and **still lost 15 %** once the enabling
+of radix-4's) bought −12.7 points of `fmaheavy` and **still lost 14–15 %** once the enabling
 mechanism was priced. Radix-4 would capture roughly half that arithmetic for a different
 cost — two cross-lane transposes, a 4x register map on a kernel already at 3 blocks/SM,
 and an `e4` axis transpose. The micro-A/B it owes is now a *smaller* prize against

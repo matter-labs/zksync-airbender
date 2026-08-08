@@ -160,10 +160,11 @@ no fold — is R0's.
 
 It is **measured and kept as a control arm, not a recommendation**: the multiply cut is
 real (chain multiplies per row −43 % at `groups = 4`, −50 % at 8; `fmaheavy` 81.5 % →
-68.8 %) and the pass is **14.6 % slower** than `lsb-recompute`, because the staging moves
+68.7 %) and the pass is **14–15 % slower** than `lsb-recompute`, because the staging moves
 the work onto the narrower LSU pipe, which becomes the whole SM speed-of-light at 87 %.
 `iteration_times.md`'s *v3 R1* section carries the full record, including the
-bank-conflict fix that removed 78 % of the conflicts and moved the wall 0.8 % — the
+single-variable bank-permutation A/B that removed 69 % of the conflicts and moved the
+wall +0.08 % — the
 measurement that identifies the bound as LSU *instruction* issue rather than wavefronts.
 Its `q` is bit-exact equal to `lsb-recompute`'s, checked device-to-device with `--dump-q`.
 
