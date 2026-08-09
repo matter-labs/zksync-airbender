@@ -10,7 +10,8 @@ use crate::abi::*;
 use crate::cache::CachePlan;
 use crate::compact::{self, BankPerm};
 use crate::coset_cache::{
-    self, CacheArm, CacheArmState, CacheLane, CacheMutation, PrologueOrder, CACHE_FACTORIAL,
+    self, CacheArm, CacheArmState, CacheLane, CacheMutation, LaneKernel, PrologueOrder,
+    CACHE_FACTORIAL,
 };
 use crate::domain::lde_matrix;
 use crate::geometry::Geometry;
@@ -461,6 +462,11 @@ pub struct PreparedLane {
     desc: UniskipVmDesc,
     plan: UniskipCacheDesc,
     launch: LaneLaunch,
+    /// The lane's own plan facts, so the log states what each lane IS rather than only
+    /// what it is called — two lanes with identical admitted sets are one experiment under
+    /// two labels, which is how R3's aliasing bug read as a zero effect.
+    pub counts: coset_cache::CacheCounts,
+    pub admitted: Vec<u16>,
     /// This lane's grid. The 128 lanes cover 16 rows per block, the 256 lanes 32, so the
     /// 128 grid is twice the 256 one over the same trace.
     pub blocks: u32,
@@ -826,6 +832,8 @@ impl Harness {
                 .map(|&lane| {
                     let mut lane_desc = desc;
                     let mut plan = UniskipCacheDesc::default();
+                    let mut counts = coset_cache::CacheCounts::default();
+                    let mut admitted: Vec<u16> = Vec::new();
                     if lane.arm.uses_cache() {
                         let state = cache_arms
                             .iter()
@@ -839,38 +847,50 @@ impl Harness {
                             });
                         lane_desc.source[..state.sources.len()].copy_from_slice(&state.sources);
                         plan = state.descriptor(PrologueOrder::E4First);
+                        counts = state.counts;
+                        admitted = state.admitted.iter().map(|e| e.source).collect();
                     }
-                    let launch = match (
-                        lane.block_threads as usize,
-                        lane.arm.uses_cache(),
-                        lane.launch_bounds,
-                    ) {
-                        (UNISKIP_PAIR_THREADS_128, true, true) => {
+                    // ONE source of truth for which kernel: the lane picks a `LaneKernel`
+                    // and both the launcher and the printed name come from it.
+                    let launch = match lane.kernel() {
+                        LaneKernel::Cached128Lb => {
                             LaneLaunch::Cached(kernels::eval_lsb_pair_cached_128_lb)
                         }
-                        (UNISKIP_PAIR_THREADS_128, true, false) => {
+                        LaneKernel::Cached128 => {
                             LaneLaunch::Cached(kernels::eval_lsb_pair_cached_128)
                         }
-                        (UNISKIP_PAIR_THREADS_128, false, true) => {
-                            LaneLaunch::Plain(kernels::eval_lsb_pair_128_lb)
-                        }
-                        (UNISKIP_PAIR_THREADS_128, false, false) => {
-                            LaneLaunch::Plain(kernels::eval_lsb_pair_128)
-                        }
-                        (_, true, _) => LaneLaunch::Cached(kernels::eval_lsb_pair_cached),
-                        (_, false, _) => LaneLaunch::Plain(kernels::eval_lsb_pair),
+                        LaneKernel::Cached => LaneLaunch::Cached(kernels::eval_lsb_pair_cached),
+                        LaneKernel::Pair128Lb => LaneLaunch::Plain(kernels::eval_lsb_pair_128_lb),
+                        LaneKernel::Pair128 => LaneLaunch::Plain(kernels::eval_lsb_pair_128),
+                        LaneKernel::Pair => LaneLaunch::Plain(kernels::eval_lsb_pair),
                     };
+                    // The harness is built at the 128 tile (`pass_config` forces it for the
+                    // factorial), so `eval_blocks` is the 16-row grid and the 256 lanes take
+                    // half of it.
                     let blocks = if lane.block_threads as usize == UNISKIP_PAIR_THREADS_128 {
                         eval_blocks
                     } else {
                         eval_blocks / 2
                     };
+                    // FULL-TRACE INVARIANT. The row map is fixed, not grid-stride, so a
+                    // short grid evaluates a PREFIX of the trace and finalize reduces the
+                    // same prefix — silently. Every lane must cover every logical row.
+                    assert_eq!(
+                        u64::from(blocks) * u64::from(lane.rows_per_block()),
+                        geometry.logical_rows,
+                        "lane {} covers {} of {} logical rows",
+                        lane.label,
+                        u64::from(blocks) * u64::from(lane.rows_per_block()),
+                        geometry.logical_rows
+                    );
                     PreparedLane {
                         lane,
                         desc: lane_desc,
                         plan,
                         launch,
                         blocks,
+                        counts,
+                        admitted,
                     }
                 })
                 .collect()

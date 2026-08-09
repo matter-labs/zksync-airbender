@@ -1244,18 +1244,163 @@ pub const CACHE_FACTORIAL: [CacheLane; 11] = [
 impl CacheLane {
     /// The kernel this lane launches, by name — the same strings `Harness::eval_kernel`
     /// reports, so a log line and a single-arm config block are comparable.
-    pub fn kernel(self) -> &'static str {
+    pub fn kernel(self) -> LaneKernel {
         match (
             self.block_threads,
             self.arm.uses_cache(),
             self.launch_bounds,
         ) {
-            (128, true, true) => "eval_lsb_pair_cached_128_lb",
-            (128, true, false) => "eval_lsb_pair_cached_128",
-            (128, false, true) => "eval_lsb_pair_128_lb",
-            (128, false, false) => "eval_lsb_pair_128",
-            (_, true, _) => "eval_lsb_pair_cached",
-            (_, false, _) => "eval_lsb_pair",
+            (128, true, true) => LaneKernel::Cached128Lb,
+            (128, true, false) => LaneKernel::Cached128,
+            (128, false, true) => LaneKernel::Pair128Lb,
+            (128, false, false) => LaneKernel::Pair128,
+            (_, true, _) => LaneKernel::Cached,
+            (_, false, _) => LaneKernel::Pair,
+        }
+    }
+
+    /// Logical rows one block of this lane covers.
+    pub fn rows_per_block(self) -> u32 {
+        if self.block_threads == 128 {
+            UNISKIP_PAIR_ROWS_PER_BLOCK_128 as u32
+        } else {
+            UNISKIP_PAIR_ROWS_PER_BLOCK as u32
+        }
+    }
+}
+
+/// The kernel a lane runs. SINGLE SOURCE OF TRUTH: the name the log prints and the function
+/// the GPU launches both derive from this one value, so they cannot drift apart — two
+/// parallel matches is exactly how a log can describe a kernel the run did not use.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LaneKernel {
+    Pair,
+    Pair128,
+    Pair128Lb,
+    Cached,
+    Cached128,
+    Cached128Lb,
+}
+
+impl LaneKernel {
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Pair => "eval_lsb_pair",
+            Self::Pair128 => "eval_lsb_pair_128",
+            Self::Pair128Lb => "eval_lsb_pair_128_lb",
+            Self::Cached => "eval_lsb_pair_cached",
+            Self::Cached128 => "eval_lsb_pair_cached_128",
+            Self::Cached128Lb => "eval_lsb_pair_cached_128_lb",
+        }
+    }
+
+    pub fn is_cached(self) -> bool {
+        matches!(self, Self::Cached | Self::Cached128 | Self::Cached128Lb)
+    }
+}
+
+#[cfg(test)]
+mod lane_tests {
+    use super::*;
+
+    /// The primary rotation's shape, pinned. A dropped lane or a stray diagnostic arm would
+    /// otherwise only show up as a changed round count in a timed log.
+    #[test]
+    fn cpu_cache_factorial_lane_set() {
+        assert_eq!(CACHE_FACTORIAL.len(), 11);
+        let labels: Vec<&str> = CACHE_FACTORIAL.iter().map(|l| l.label).collect();
+        let mut sorted = labels.clone();
+        sorted.sort_unstable();
+        sorted.dedup();
+        assert_eq!(sorted.len(), labels.len(), "lane labels must be unique");
+        assert_eq!(
+            labels,
+            vec![
+                "control@256",
+                "cache0@256",
+                "hot4@256",
+                "hot16@256",
+                "allrepeat@256",
+                "control@128",
+                "control_lb@128",
+                "cache0@128",
+                "hot4@128",
+                "hot16@128",
+                "allrepeat@128",
+            ]
+        );
+        for lane in CACHE_FACTORIAL {
+            assert!(
+                !matches!(
+                    lane.arm,
+                    CacheArm::All59 | CacheArm::E4Rich | CacheArm::E4Top2
+                ),
+                "{} is a 3B diagnostic and cannot be a primary lane",
+                lane.label
+            );
+        }
+    }
+
+    /// The occupancy gate, encoded: every cached lane at 128 must be the BOUNDED body, or
+    /// its contrast against the control carries a block-count step.
+    #[test]
+    fn cpu_cache_factorial_128_cached_lanes_are_bounded() {
+        for lane in CACHE_FACTORIAL {
+            if lane.block_threads == 128 && lane.arm.uses_cache() {
+                assert!(lane.launch_bounds, "{} must be bounded", lane.label);
+                assert_eq!(lane.kernel(), LaneKernel::Cached128Lb, "{}", lane.label);
+                assert_eq!(lane.blocks_per_sm, 7, "{}", lane.label);
+            }
+        }
+        let kernels: Vec<LaneKernel> = CACHE_FACTORIAL.iter().map(|l| l.kernel()).collect();
+        assert!(kernels.contains(&LaneKernel::Pair128));
+        assert!(kernels.contains(&LaneKernel::Pair128Lb));
+    }
+
+    #[test]
+    fn cpu_cache_factorial_kernels_and_tiles() {
+        for lane in CACHE_FACTORIAL {
+            assert_eq!(
+                lane.kernel().is_cached(),
+                lane.arm.uses_cache(),
+                "{}",
+                lane.label
+            );
+            let expect = if lane.block_threads == 128 { 16 } else { 32 };
+            assert_eq!(lane.rows_per_block(), expect, "{}", lane.label);
+            assert!(
+                lane.kernel().name().starts_with("eval_lsb_pair"),
+                "{}",
+                lane.label
+            );
+        }
+    }
+
+    /// Admitted sets must be distinct across the lanes of one block size, or two lanes are
+    /// the same experiment under two labels — R3's aliasing failure shape.
+    #[test]
+    fn cpu_cache_factorial_admitted_sets_are_distinct() {
+        let mut p = crate::synth::generate(0, crate::synth::Census::default()).unwrap();
+        p.apply_term_order(crate::synth::TermOrder::Locality);
+        for size in [256u32, 128] {
+            let mut seen: Vec<(Vec<u16>, &str)> = Vec::new();
+            // `control` and `cache0` both admit nothing BY DESIGN — cache0 is the
+            // machinery arm. Distinctness is a claim about the arms that admit something.
+            for lane in CACHE_FACTORIAL.iter().filter(|l| {
+                l.block_threads == size && l.arm != CacheArm::Control && l.arm != CacheArm::Cache0
+            }) {
+                let ids: Vec<u16> = admitted_for(&p, lane.arm)
+                    .iter()
+                    .map(|e| e.source)
+                    .collect();
+                if let Some((_, other)) = seen.iter().find(|(s, _)| *s == ids) {
+                    panic!(
+                        "lanes {} and {} admit the same set at {size}",
+                        lane.label, other
+                    );
+                }
+                seen.push((ids, lane.label));
+            }
         }
     }
 }

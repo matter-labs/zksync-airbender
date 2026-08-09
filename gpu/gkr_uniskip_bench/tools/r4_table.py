@@ -19,7 +19,9 @@ Every contrast NAMES its baseline. At 128 the cache-vs-control baseline is `cont
 the bounded no-cache body, because the cached 128 lanes are bounded too — comparing them to
 the unbounded `control@128` would put the launch bound's own cost inside the cache result.
 
-Removals per arm come from the oracle file, not from this script's arithmetic.
+Removals per lane ride the log's `ARM` line, which Rust fills from the arm's own planned
+`CacheCounts` — this script holds no oracle constant, so a census change cannot silently
+invalidate a slope (and the runner rejects the census knobs anyway).
 
 Usage:
     python3 gpu/gkr_uniskip_bench/tools/r4_table.py /tmp/cache.log [--order locality]
@@ -32,14 +34,16 @@ from collections import defaultdict
 from statistics import median
 
 SAMPLE = re.compile(r"^SAMPLE (\S+) (\d+) (\S+) ([\d.]+) ([\d.]+) (\S+)$")
-ARM = re.compile(r"^ARM (\S+) (\d+) (\d+) (\d+) (\d+) (\S+)$")
+ARM = re.compile(r"^ARM (\S+) (\d+) (\d+) (\d+) (\d+) (\S+) (\d+) (\d+) (\d+)$")
 SCHED = re.compile(r"^CACHE-FACTORIAL schedule order=(\S+) lanes=(\d+) rounds=(\d+) warmup=(\d+)$")
 DONE = re.compile(r"^CACHE-FACTORIAL done order=(\S+) warmup=(\d+) rounds=(\d+) lanes=(\d+)$")
 
-# Productions the arm removes per warp-program walk, from
-# .agents/sdd/2026-08-09-v3-r4/expected-counts.md. Keyed by ARM, not by lane, since the
-# figure is a property of the admitted set and not of the block size.
-REMOVALS = {"control": 0, "cache0": 0, "hot4": 47, "hot16": 145, "allrepeat": 234}
+# The eleven lanes the primary rotation must carry. A log with a different set is a
+# different experiment and is rejected rather than partially summarized.
+EXPECTED_LANES = {
+    "control@256", "cache0@256", "hot4@256", "hot16@256", "allrepeat@256",
+    "control@128", "control_lb@128", "cache0@128", "hot4@128", "hot16@128", "allrepeat@128",
+}
 
 
 def parse(path):
@@ -64,6 +68,7 @@ def parse(path):
             arms[section][m.group(1)] = {
                 "regs": int(m.group(2)), "blocks_sm": int(m.group(3)),
                 "threads": int(m.group(4)), "grid": int(m.group(5)), "kernel": m.group(6),
+                "c": int(m.group(7)), "removals": int(m.group(8)), "admitted": int(m.group(9)),
             }
             continue
         m = SAMPLE.match(line)
@@ -103,6 +108,11 @@ def emit(order, rounds, arms, trailer, sched):
         sys.exit(f"{order}: no `CACHE-FACTORIAL done order={order} …` trailer — the run did "
                  f"not finish, or the log is truncated")
     lanes = list(arms)
+    if set(lanes) != EXPECTED_LANES:
+        missing = sorted(EXPECTED_LANES - set(lanes))
+        extra = sorted(set(lanes) - EXPECTED_LANES)
+        sys.exit(f"{order}: lane set is not the primary rotation — missing {missing}, "
+                 f"unexpected {extra}")
     if len(lanes) != trailer[2] or len(lanes) != sched[0]:
         sys.exit(f"{order}: {len(lanes)} ARM lines but the trailer declares {trailer[2]} "
                  f"lanes — the log is truncated or mixes builds")
@@ -110,11 +120,33 @@ def emit(order, rounds, arms, trailer, sched):
         if set(rounds[r]) != set(lanes):
             sys.exit(f"{order}: round {r} carries {sorted(rounds[r])}, expected {lanes} — "
                      f"incomplete rounds are not droppable, the contrasts are paired")
+        for lane, (_, _, kernel) in rounds[r].items():
+            if kernel != arms[lane]["kernel"]:
+                sys.exit(f"{order}: round {r} lane {lane} ran `{kernel}` but its ARM line "
+                         f"declares `{arms[lane]['kernel']}` — the log describes a kernel "
+                         f"the run did not use")
+    if len(rounds) % len(lanes) != 0:
+        sys.exit(f"{order}: {len(rounds)} rounds over {len(lanes)} lanes is not balanced — "
+                 f"every lane must start equally often")
     if len(rounds) != trailer[1]:
         sys.exit(f"{order}: {len(rounds)} rounds in the log, trailer claims rounds="
                  f"{trailer[1]} — truncated log")
     keys = sorted(rounds)
     EV, FIN = 0, 1
+
+    # ALIASING GUARD. Two lanes that declare different plans (C, removals, admitted) cannot
+    # produce bit-identical per-round samples — that is one lane's data under two labels,
+    # and it reads as a clean +0.000 rather than as a bug. R3 lost a round to exactly this.
+    for i, a in enumerate(lanes):
+        for b in lanes[i + 1:]:
+            if (arms[a]["c"], arms[a]["removals"], arms[a]["admitted"]) == \
+               (arms[b]["c"], arms[b]["removals"], arms[b]["admitted"]) and \
+               arms[a]["threads"] == arms[b]["threads"] and arms[a]["removals"]:
+                sys.exit(f"{order}: lanes {a} and {b} declare the SAME plan at the same "
+                         f"block size — one experiment under two labels")
+            if all(rounds[r][a][:2] == rounds[r][b][:2] for r in keys):
+                sys.exit(f"{order}: lanes {a} and {b} carry BIT-IDENTICAL samples in every "
+                         f"round — the log aliases one lane's data onto another")
 
     print(f"#### `--term-order {order}` — {len(keys)} paired rounds, {len(lanes)} lanes\n")
     print("| lane | kernel | regs | blocks/SM | threads | grid | median `eval` | median `finalize` | eval min | eval max |")
@@ -142,7 +174,8 @@ def emit(order, rounds, arms, trailer, sched):
         for arm in ("hot4", "hot16", "allrepeat"):
             lane = f"{arm}@{size}"
             if lane in arms:
-                rows.append((lane, cache0, f"removals alone at {size} ({REMOVALS[arm]} productions)"))
+                rows.append((lane, cache0,
+                             f"removals alone at {size} ({arms[lane]['removals']} productions)"))
                 why = ("net at 128, vs the BOUND-MATCHED control"
                        if size == "128" else "net at 256 (no bound on either side)")
                 rows.append((lane, ctl_bound, why))
@@ -172,10 +205,30 @@ def emit(order, rounds, arms, trailer, sched):
             lane = f"{arm}@{size}"
             if lane not in arms or base not in arms:
                 continue
-            rm = REMOVALS[arm]
+            rm = arms[lane]["removals"]
             net = 1000.0 * contrast(rounds, keys, lane, base, EV)[0] / rm
             mach = 1000.0 * contrast(rounds, keys, lane, f"cache0@{size}", EV)[0] / rm
             print(f"| `{lane}` | {rm} | {net:+.2f} | {mach:+.2f} |")
+
+    # The decision contrast on eval+finalize. finalize is exactly what differs across the
+    # sizes (the 128 grid doubles the partial count), so the cross-size decision cannot be
+    # taken on `eval` alone.
+    print("\n**Decision contrast on `eval + finalize`** — the cross-size row where finalize "
+          "is load-bearing:\n")
+    print("| contrast | baseline | median eval+fin (ms) | IQR | % of baseline | on-sign |")
+    print("| --- | --- | --- | --- | --- | --- |")
+    for arm in ("hot4", "hot16", "allrepeat"):
+        a, b = f"{arm}@128", "control@256"
+        if a not in arms or b not in arms:
+            continue
+        d = [(rounds[r][a][EV] + rounds[r][a][FIN]) - (rounds[r][b][EV] + rounds[r][b][FIN])
+             for r in keys]
+        m = median(d)
+        lo, hi = iqr(d)
+        sign = sum(1 for x in d if (x > 0) == (m > 0) and x != 0)
+        base = med[b][0] + med[b][1]
+        print(f"| `{a}` − `{b}` | `{b}` | **{m:+.3f}** | {lo:+.3f} … {hi:+.3f} | "
+              f"{100.0 * m / base:+.2f} % | {sign}/{len(d)} |")
 
     if all(k in arms for k in ("allrepeat@128", "allrepeat@256", "control@256", "control_lb@128")):
         inter = [

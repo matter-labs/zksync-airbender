@@ -448,6 +448,41 @@ fn pass_config(cli: &Cli, geometry: &Geometry) -> PassConfig {
                     .into(),
             );
         }
+        // The removals the emitter divides by are the DEFAULT census's. Any census knob
+        // silently invalidates them, and a slope is worse than useless when its denominator
+        // is wrong.
+        let default = Census::default();
+        for (flag, differs) in [
+            ("--sources", cli.sources != default.sources),
+            (
+                "--semantic-terms",
+                cli.semantic_terms != default.semantic_terms,
+            ),
+            ("--groups", cli.groups != default.groups),
+            (
+                "--grouped-atoms",
+                cli.grouped_atoms != default.grouped_atoms,
+            ),
+            ("--self-products", cli.self_products != 0),
+        ] {
+            if differs {
+                fail(format!(
+                    "--cache-factorial prices removals against the DEFAULT census; {flag} \
+                     changes the program and invalidates every slope"
+                ));
+            }
+        }
+        // Balance is a GATE, not a note: an unbalanced rotation gives some lanes more
+        // first-position rounds than others, and first position is the one that pays for
+        // whatever the previous round left in cache.
+        let lane_count = gpu_gkr_uniskip_bench::coset_cache::CACHE_FACTORIAL.len() as u32;
+        if !cli.iterations.is_multiple_of(lane_count) {
+            fail(format!(
+                "--cache-factorial needs --iterations a multiple of {lane_count} so every \
+                 lane starts equally often; got {}",
+                cli.iterations
+            ));
+        }
         if cli.profile {
             fail(
                 "--cache-factorial rotates lanes, so --profile would wrap whichever lane \
@@ -516,6 +551,16 @@ fn pass_config(cli: &Cli, geometry: &Geometry) -> PassConfig {
             "--compact-groups {compact_groups} is not one of 4, 8"
         ));
     }
+    // C1: the factorial spans BOTH block sizes, so the harness must be built at the FINER
+    // tile — `eval_blocks` is then the 16-row grid that covers the whole trace, and the
+    // 256 lanes take half of it. Left at 256 every lane would launch a grid for half the
+    // rows, and the row map is fixed rather than grid-stride, so the upper half would
+    // simply never be evaluated.
+    let block_threads = if cli.cache_factorial {
+        UNISKIP_PAIR_THREADS_128 as u32
+    } else {
+        block_threads
+    };
     let config = PassConfig {
         mode: cli.mode,
         lde_shape: cli.lde_shape.unwrap_or_default(),
@@ -562,7 +607,7 @@ fn run_cache_factorial(harness: &mut Harness, cli: &Cli) {
     let lanes: Vec<_> = harness
         .cache_lanes()
         .iter()
-        .map(|p| (p.lane, p.blocks))
+        .map(|p| (p.lane, p.blocks, p.counts, p.admitted.clone()))
         .collect();
     if lanes.is_empty() {
         fail("the harness prepared no factorial lanes".into());
@@ -576,21 +621,41 @@ fn run_cache_factorial(harness: &mut Harness, cli: &Cli) {
         cli.iterations,
         cli.warmup
     );
-    for (lane, blocks) in &lanes {
+    // Lane FACTS, not just labels: C, removals and the admitted-set size travel with the
+    // occupancy so the emitter carries no constant and an aliased lane is visible.
+    let mut seen: Vec<(Vec<u16>, &str, u32)> = Vec::new();
+    for (lane, blocks, counts, admitted) in &lanes {
+        if lane.arm.uses_cache() && lane.arm != CacheArm::Cache0 {
+            if counts.removals == 0 {
+                fail(format!(
+                    "lane {} is a cached arm that removes nothing — it is cache0 under \
+                     another name, and the contrast would read as a zero effect",
+                    lane.label
+                ));
+            }
+            if let Some((_, other, _)) = seen
+                .iter()
+                .find(|(set, _, size)| set == admitted && *size == lane.block_threads)
+            {
+                fail(format!(
+                    "lanes {} and {other} admit the SAME set — one experiment under two \
+                     labels, which reads as +0.000 rather than as a bug",
+                    lane.label
+                ));
+            }
+            seen.push((admitted.clone(), lane.label, lane.block_threads));
+        }
         println!(
-            "ARM {} {} {} {} {} {}",
+            "ARM {} {} {} {} {} {} {} {} {}",
             lane.label,
             lane.regs,
             lane.blocks_per_sm,
             lane.block_threads,
             blocks,
-            lane.kernel()
-        );
-    }
-    if !cli.iterations.is_multiple_of(n as u32) {
-        println!(
-            "note: {} rounds over {n} lanes is not balanced; use a multiple of {n}",
-            cli.iterations
+            lane.kernel().name(),
+            counts.c,
+            counts.removals,
+            admitted.len()
         );
     }
     let round = |harness: &mut Harness, index: u32, timed: bool| {
@@ -616,7 +681,7 @@ fn run_cache_factorial(harness: &mut Harness, cli: &Cli) {
                 lanes[slot].0.label,
                 t.stage_ms[1],
                 t.stage_ms[2],
-                lanes[slot].0.kernel()
+                lanes[slot].0.kernel().name()
             );
         }
     };
@@ -703,10 +768,12 @@ fn main() {
     } else {
         "n/a"
     };
-    let block_threads_label = if config.mode.uses_pair_arm() {
-        config.block_threads.to_string()
-    } else {
+    let block_threads_label = if !config.mode.uses_pair_arm() {
         "n/a".to_string()
+    } else if cli.cache_factorial {
+        "256 + 128 (both, per lane)".to_string()
+    } else {
+        config.block_threads.to_string()
     };
     let prologue_order_label = if config.mode.uses_pair_arm() && config.cache_arm.uses_cache() {
         config.prologue_order.as_str()
@@ -715,10 +782,15 @@ fn main() {
     };
     // The kernel a timed run actually launches, printed so a recorded number is
     // attributable to one body — an unwired selector is otherwise invisible.
-    let cache_arm_label = if config.mode.uses_pair_arm() {
-        config.cache_arm.as_str()
-    } else {
+    // A factorial run has no single arm or block size — printing one would name a
+    // configuration the run never uses, which is how C1's half-trace grid hid behind a
+    // "block_threads 256" line that was load-bearing and wrong.
+    let cache_arm_label = if !config.mode.uses_pair_arm() {
         "n/a"
+    } else if cli.cache_factorial {
+        "factorial (11 lanes)"
+    } else {
+        config.cache_arm.as_str()
     };
     let (compact_groups_label, bank_perm_label) = if config.mode.uses_compact_groups() {
         (config.compact_groups.to_string(), config.bank_perm.as_str())
