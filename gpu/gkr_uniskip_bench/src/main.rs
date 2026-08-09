@@ -780,11 +780,6 @@ fn main() {
     )
     .unwrap_or_else(|e| fail(format!("device setup failed: {e}")));
 
-    // Printed AFTER construction and read straight off the harness, so a recorded number
-    // is attributable to the kernel that actually ran.
-    let eval_kernel_label = harness.eval_kernel();
-    println!("  eval kernel         {eval_kernel_label}");
-
     let bytes = harness.pass_bytes();
     let columns: u32 = program.windows.iter().map(|w| w.columns).sum();
     let sources = program.sources.len();
@@ -794,7 +789,10 @@ fn main() {
         .filter(|r| r.source_class == UNISKIP_SRC_E4_GLOBAL)
         .count();
     let device = device_name();
+    // Read straight off the harness, so a recorded number is attributable to the kernel
+    // that actually ran; it sits here because the harness does not exist any earlier.
     println!("work");
+    println!("  eval kernel         {}", harness.eval_kernel());
     println!("  device              {device}");
     println!(
         "  sources             {sources} ({} bf / {e4_sources} e4)",
@@ -1012,12 +1010,13 @@ fn main() {
         "summary: log_trace {} | mode {} | lde_shape {lde_shape_label} | cell_map {cell_map_label} | \
          compact_groups {compact_groups_label} | bank_perm {bank_perm_label} | pair_arm {pair_arm_label} | \
          cache_arm {cache_arm_label} | block_threads {block_threads_label} | \
-         kernel {eval_kernel_label} | term_order {} | \
+         kernel {} | term_order {} | \
          C {} Ru {} | {sources} sources / \
          {columns} columns / {} B ({:.2} GiB) per pass | total median {total_median:.3} ms over \
          {} iterations | {device}",
         cli.log_trace,
         config.mode.as_str(),
+        harness.eval_kernel(),
         cli.term_order.as_str(),
         plan.cached_width,
         plan.uncached_refs,

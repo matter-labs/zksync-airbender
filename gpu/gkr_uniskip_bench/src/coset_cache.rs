@@ -1031,4 +1031,50 @@ mod mixed_operand_probe {
             );
         }
     }
+
+    /// The self-product cell CANNOT be observed on the default census — it emits none, so
+    /// the probe above always reports an empty list and asserting on it would be vacuous.
+    /// `force_self_products` is the only way to reach it, and the admitted set has to
+    /// actually COVER the rewritten sources or the cell is still not exercised: `hot4`
+    /// caches ids 0-3 only, so this checks per arm rather than assuming.
+    #[test]
+    fn cpu_cache_cached_self_products_are_reachable() {
+        let mut p = generate(0, Census::default()).unwrap();
+        p.apply_term_order(TermOrder::Locality);
+        assert_eq!(p.force_self_products(12), 12);
+        let mut covered = 0;
+        for arm in [
+            CacheArm::Hot4,
+            CacheArm::Hot16,
+            CacheArm::E4Top2,
+            CacheArm::E4Rich,
+            CacheArm::AllRepeat,
+        ] {
+            let state = plan_arm(&p, arm).unwrap();
+            let cached = |id: u16| state.sources[id as usize].cache_slot != UNISKIP_CACHE_SLOT_NONE;
+            let mut selfp = vec![];
+            for (pc, t) in p.program.iter().enumerate() {
+                let is_product = matches!(
+                    t.term_class,
+                    UNISKIP_CLASS_PRODUCT_BF_BF
+                        | UNISKIP_CLASS_PRODUCT_BF_E4
+                        | UNISKIP_CLASS_PRODUCT_E4_E4
+                );
+                if is_product && t.source_a == t.source_b && cached(t.source_a) {
+                    selfp.push((pc, t.source_a));
+                }
+            }
+            println!(
+                "arm {} under force_self_products(12): cached self-products {:?}",
+                arm.as_str(),
+                &selfp[..selfp.len().min(6)]
+            );
+            covered += usize::from(!selfp.is_empty());
+        }
+        assert!(
+            covered > 0,
+            "no arm reaches a CACHED self-product even under force_self_products — the \
+             resolve_second short-circuit is untested on the cache path"
+        );
+    }
 }

@@ -294,7 +294,20 @@ discriminate slot identity and retention). The define is passed as an explicit `
 rather than only when set, because a CMake cache that keeps the last value will otherwise
 leave the counter atomic compiled into a build you believe is shipped.
 
-`tools/r3_gates.sh {matrix|diag|all}` runs the gates rather than describing them — `matrix`
+`tools/r4_gates.sh {matrix|counts|diag|all}` is the R4 wall: `matrix` is 112 `q`-parity
+cells (7 cached arms x 2 block sizes x 2 term orders x 2 `eq` forms x 2 censuses) plus both
+128 launch-bounds sibling pairs and a CPU-oracle cell per arm per size; `counts` re-derives
+the spec's local-traffic table with ncu — instruction counts, sector minima and prologue H
+bytes, with the metric list in the script; `diag` needs the diagnostic build and runs the
+exact chain-count gate plus the mutations. Cell counts are asserted, so a dropped loop
+dimension fails instead of passing quietly.
+
+`--cache-mutate retarget` points a cached reference at a different LIVE same-width slot and
+uploads it UNCHECKED — the always-on validator would reject it, which is the point: `q` must
+change. `--window-poison` now corrupts the R4 coset frame as well as R3's register slots, so
+a cached arm that does not diverge under it is not reading the frame it filled.
+
+`tools/r3_gates.sh {matrix|blocks|diag|all}` runs the R3 gates rather than describing them — `matrix`
 is the 40-cell `q`-parity sweep and runs on either build; `diag` and `all` need the
 diagnostic build. Its exit status is the verdict, and it rejects the empty digest, because
 an empty `--dump-q` hashes identically on both sides and would pass every parity cell
