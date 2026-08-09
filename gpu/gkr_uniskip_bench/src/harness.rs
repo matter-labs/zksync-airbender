@@ -840,8 +840,12 @@ impl Harness {
                             .find(|(a, _)| *a == lane.arm)
                             .and_then(|(_, s)| s.as_ref().ok())
                             .unwrap_or_else(|| {
+                                // UNREACHABLE by construction: `main` plans every lane and
+                                // exits cleanly before building the harness, so reaching
+                                // here means that check was removed.
                                 panic!(
-                                    "factorial lane {} is unplannable at this census",
+                                    "factorial lane {} is unplannable and main did not \
+                                     reject it — the pre-flight check is missing",
                                     lane.label
                                 )
                             });

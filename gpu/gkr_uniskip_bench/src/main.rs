@@ -910,6 +910,15 @@ fn main() {
             window.reuses, window.passes_without, window.passes_with
         );
     }
+    if cli.cache_factorial {
+        // PRE-FLIGHT: every lane must be plannable before the harness exists, so an
+        // unplannable one exits cleanly here instead of panicking inside device setup.
+        for lane in coset_cache::CACHE_FACTORIAL {
+            if let Err(e) = coset_cache::plan_arm(&program, lane.arm) {
+                fail(format!("factorial lane {}: {e}", lane.label));
+            }
+        }
+    }
     if config.mode.uses_pair_arm() {
         // Recomputed from the live resolver stream, so unlike the shared-memory cache
         // plan below it is never stale under --self-products.
@@ -1001,7 +1010,13 @@ fn main() {
     // Read straight off the harness, so a recorded number is attributable to the kernel
     // that actually ran; it sits here because the harness does not exist any earlier.
     println!("work");
-    println!("  eval kernel         {}", harness.eval_kernel());
+    // A factorial has no single kernel — naming one lane's body as THE kernel is the same
+    // class of mistake as printing one block size for a two-size rotation.
+    if cli.cache_factorial {
+        println!("  eval kernel         per lane (see the ARM lines)");
+    } else {
+        println!("  eval kernel         {}", harness.eval_kernel());
+    }
     println!("  device              {device}");
     println!(
         "  sources             {sources} ({} bf / {e4_sources} e4)",
@@ -1230,7 +1245,7 @@ fn main() {
          {} iterations | {device}",
         cli.log_trace,
         config.mode.as_str(),
-        harness.eval_kernel(),
+        if cli.cache_factorial { "per-lane" } else { harness.eval_kernel() },
         cli.term_order.as_str(),
         plan.cached_width,
         plan.uncached_refs,
