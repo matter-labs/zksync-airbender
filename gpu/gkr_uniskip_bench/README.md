@@ -118,8 +118,11 @@ modes above and changes everything else:
   half-warp: iDIF with `omega^-1` → folded normalize+twist → DIT with `omega`, 8
   `shfl_xor` exchange stages and 7 generic multiplies per component pass. `e4` sources
   run the identical code path limb-sequentially. The 7 lane-indexed twiddle tables live
-  in `__constant__` but are hoisted into per-lane registers once at kernel entry, so no
-  hot-path read is a divergent constant access. Host mirror and derivation:
+  in `__constant__` and are preloaded into per-lane registers at kernel entry in
+  source; ptxas rematerializes some of the lane-indexed loads inside the record loop
+  under register pressure, so divergent constant reads are reduced, not eliminated
+  (this is the ADU signal in the profiles — see `iteration_times.md`, 2026-08-09 audit
+  round). Host mirror and derivation:
   `domain::ntt_twiddles` / `domain::coset_from_taps`, pinned bit-for-bit against the
   dense `domain::lde_matrix()` apply by `cpu_factorized_coset_matches_matrix`.
 - **W = 0.** Nothing is retained across references — the whole point of the rung is to

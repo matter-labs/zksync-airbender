@@ -1412,12 +1412,16 @@ What this settles:
   proved insufficient, for its own unpriced costs. The micro-A/B is still owed and the
   gate still does not advance; it is now a smaller prize against measured evidence that
   this class of trade does not clear on this part.
-- **Constant-load serialization was designed out, and the profile does not contradict
-  it.** The twiddle tables are lane-indexed, so a hot-path `__constant__` read would be a
-  16-way divergent access on every stage of every reference; the kernel instead hoists all
-  seven into per-lane registers once at entry (7 of its 40 registers). The remaining
-  constant traffic is 57 `LDC`/`LDCU` in a 3216-instruction body, and `no_instruction` is
-  1.1 % of stalls with `sm__icc_requests` at 63.8 % of peak — below v2's 76.6 %.
+- **Constant-load serialization was designed out in source — but not in the emitted
+  SASS** *(corrected 2026-08-09; this bullet originally claimed the profile did not
+  contradict the design)*. The twiddle tables are lane-indexed, so a hot-path
+  `__constant__` read is a 16-way divergent access; the source hoists all seven into
+  per-lane registers once at entry, but ptxas rematerializes the lane-indexed `LDC`s
+  inside the record loop under register pressure (1.79 `LDC`/record here), and that
+  remat is exactly the ADU-pipe signal (57.95 %) the table above left unexplained —
+  see the 2026-08-09 audit round at the end of this file. Static constant traffic is
+  57 `LDC`/`LDCU` in a 3216-instruction body, and `no_instruction` is 1.1 % of stalls
+  with `sm__icc_requests` at 63.8 % of peak — below v2's 76.6 %. Not binding in any arm.
 - **`not_selected` at 27.1 % is the new shape of the profile**, and it is the direct
   consequence of running 48 warps per SM instead of 24 on a saturated pipe. It is not a
   defect: it is what 100 % occupancy on a throughput-bound kernel looks like.
@@ -1955,6 +1959,16 @@ stage tables), lane-divergent at pack-2 and deliberately left issued.
   184; the extra 32 and 8 are the epilogue reductions — two masks x four `e4`
   accumulators, and one mask x two.)
 
+  **Correction (2026-08-09 audit round): the "of which chain" column is wrong in
+  absolute terms.** Line-info attribution measures chain static `IMAD.WIDE` at **339
+  (R2) / 316 (R0)** — ~15.4/14.4 per inlined site, because a `bf::mul` context costs
+  ~2 WIDE (mul_wide + a red_wide-form reduction on some paths) and interleaved
+  next-reference addressing lands inside the chain slice. The non-chain remainders are
+  316/107, and the separability-by-scaling argument above fails (2.95x for 2x
+  elements). The conclusions survive and strengthen as direct measurements: producer
+  `bf::mul` per row 1141 → 652 (−43 %, exactly the recorded ratio), chain instructions
+  per row −29 %, whole stream −22.3 %.
+
 ### Timings
 
 **All four rows below are one session, one build**, and every number in the table is
@@ -2064,3 +2078,100 @@ exponent-zero pairs, and R1 measured what removing *all* 62 of R0's unity multip
 worth once a medium is priced. There is no longer a hypothesis under which radix-4 wins
 that pair-residency has not already collected more cheaply; the gate does not advance and
 the arm should not be built without a new argument.
+
+## 2026-08-09 — v3 audit round: two independent audits + production pricing
+
+Four reports, all under `.agents/audits/` (gitignored; referenced by name):
+`2026-08-09-gkr-uniskip-v3-pair-perf-audit.md` and `…-pair-perf-audit-codex.md` (two
+audits from the same brief, run blind to each other), `…-uniskip-window-pricing-from-
+blue-nsys.md` (production timings), and `…-windowed-vm-learnings-for-uniskip.md`
+(red-worktree lesson mining). Fresh **doc-conformant** Full Picture captures (13–16 MB
+vs the deviating recipe's 250–360 MB): `target/profiling/ncu/`
+`20260809_114230_full_v3r2_pair_locality.ncu-rep` (+ R0 `_114251_`, R1 `_114317_`, and
+codex's independent `_113848_`/`_113909_` pair). Every counter re-measured under the
+conformant recipe reproduces the committed `--set full` values (executed instructions
+to the last digit, pipe percentages within 0.05 pt) — the capture deviation recorded
+at the R0 block was cost-only, as claimed. Capture gotcha for future runs: the crate's
+NVTX range is push/pop, so ncu needs `--nvtx-include "gkr_uniskip_pass0/"` (trailing
+slash) or it profiles nothing.
+
+### Verdicts — both audits, independent agreement
+
+- **The pair kernel is bound by the width of the fmaheavy pipe.**
+  `sm__pipe_fmaheavy_cycles_active` 81.9 % = SM SOL 81.6 %, while the *instruction*
+  rate is only 65.5 %: `IMAD.WIDE` (every `mul_wide`) double-pumps the pipe ~2 cycles.
+  Memory is nowhere (DRAM at **1.0024×** the compulsory floor — the recorded `1.000×`
+  was a fair rounding, not an exact ratio), LSU 18 %, issue slots 64 %. Occupancy
+  49.7 %, reg-limited, and **not binding** — R0 is the control: 100 % occupancy, the
+  same 82 % pipe ceiling, loses by 21 %. Same-session A/B reproduces the record:
+  16.281 vs 20.587 ms = −20.9 % (absolute drift vs the recorded bars +1.4–1.7 % across
+  arms today; ratios stable — the same-session rule holds).
+- **Producer = 78.7 % of executed instructions / 78.5 % of warp time** (the
+  shuffle-NTT chain alone 65.1 % / 58.6 %); consumer ~20 %, epilogue ~1 %. 234 of the
+  326 producer passes per warp are repeat productions.
+- **The window is the only lever of size, and it is bigger than the parity gap.**
+  Perfect-window ceiling −50…−54 % of executed instructions (wall floor ≈ 7.5–9 ms);
+  parity needs only **~19 % capture of the removable productions** (~44 of 234 per
+  warp ≈ 1.3–1.5 ms). A schedule-free fixed **top-4-BF register window** costs exactly
+  the 8 spare registers to the 80-reg/3-block cliff and models **−8…−10 %** (hot-8 =
+  39.7 % of refs ≈ −12…−13 % but crosses 80 regs → needs the 2-block study). E4
+  sources are the best per-register retention: 42 % of producer passes come from the
+  15 % of references that are E4. Landing the top-4 window models ≈ 14.3 ms ≈ 7.6
+  ms/unit = 0.95× the windowed reference.
+- **Second lever: twiddle-remat fix**, −1.5…−3.5 %, trivial A/B
+  (`__launch_bounds__(256, 3)` so ptxas sees the true 80-reg budget, or a 448 B smem
+  stage per block, which is remat-proof). Competes with the window for the same 8
+  spare registers — decide jointly; the window subsumes part of it.
+- **Closed**: 4-block/64-reg occupancy (control above; −8 regs would spill); the 14
+  residual exponent-zero pairs — **confirmed closed with a sharper argument**: at warp
+  granularity they are lane slots inside the 8 mul warp-instructions each pass must
+  issue anyway, there is no instruction to delete; lazy add/sub canonicalization
+  (≲ 2 %, on alu — not the binding pipe); epilogue smem conflicts (0.8 % of stream);
+  load path (sectors byte-identical across arms, already minimal). Pure tuning without
+  work removal is capped at −10…−18 %.
+- **ADU resolved, quantitatively, blind-agreed by both audits**: divergent
+  lane-indexed `LDC` replays from the twiddle loads that **ptxas rematerializes inside
+  the record loop** — source-level "hoisted once at entry" does not survive
+  compilation (R2: 8 entry loads + 6 remat sites, 5.03 `LDC`/record). Predicted vs
+  measured pipe %: R0 56.7 / 57.95, R2 50.0 / 50.25, R1 (smem-staged, no indexed
+  stream) 8.2 / 9.06 — the swing is fully explained; the R1 record's "adu OPEN" is
+  closed. Not binding: 31.6 pt below the fmaheavy pipe, IDC hit ≥ 99.8 %.
+
+### Parity re-anchored against shipping production
+
+From the one existing production profile (`green/target/profiling/nsys/
+20260807_095813_add_sub.nsys-rep`, `av_gkr_compiler` prover, add_sub, 2^24 trace =
+this bench's size, same GPU): shipping layer-0 sumcheck is **not windowed** — one
+kernel per round (`bwd_seg_r0` BF + `bwd_seg_cont` E4) — and rounds 0–3 cost
+**24.11 ms** (5.522 + 8.039 + 6.541 + 4.010 + 0.355 aux; r1 > r0 because the BF→E4
+lift beats the halving). **The 16.283 ms pass beats shipping today: −32.5 %**, and
+still −12.8 % under the most conservative accounting that charges the bench's separate
+4.743 ms fold to the pass. Per halving-adjusted unit: production 12.86, `lsb-pair`
+8.68, windowed bench 7.79 ms/unit. The 15.0 ms bar is therefore *demoted, not wrong*:
+it prices parity vs the windowed **candidate** (red worktree, unmerged), whose actual
+endpoint is 13.637 ms → tightened bar **14.61 ms**. The remaining window-lever prize
+stays bench-derived — 0.89 ms/unit ≈ **1.67 ms/pass** — consistent with the audits'
+~19 %-capture arithmetic. Caveats in the pricing report: single-sample profile,
+2-day-old green tip, synthetic census mix, fold-boundary accounting.
+
+### Corrections applied to this record (2026-08-09)
+
+1. **R2 §SASS mechanism**: the "of which chain 22 × 8 = 176 / 22 × 7 = 154"
+   `IMAD.WIDE` split understated the chain ~2× — measured 339/316, remainders
+   316/107, separability-by-scaling fails. Corrected in place at the table; the −43 %
+   conclusion survives as a direct measurement.
+2. **R0 "constant-load serialization designed out / profile does not contradict it"**:
+   contradicted — the remat is the ADU signal. Corrected in place; README and the
+   pair-kernel comment carried the same claim and were corrected with it.
+3. Minor: `compact_g8` is **130 regs** in the shipped native-only build vs the
+   recorded 128 (four-arch diagnostic build); R2/R0/R1-g4 match exactly (72/40/67).
+
+### Imported lessons (red worktree, `rr/gpu_windowed_gkr`)
+
+Compact pointer — full mapping with evidence in the learnings report. Stackable
+micro-levers for after the window rung: unfuse the E4-by-BF fold (~1 %), lazy
+wide-product accumulation on the term side (~1–2 %), invariant-first `e4::mul` operand
+order in the eq epilogue (two-token edit), host-resolved per-source pointers (priced
+3.28 % on windowed's identical addressing shape). Inherited negatives: never outline;
+SMEM staging loses in this family (now a two-kernel law with R1); forced
+`__launch_bounds__` down-regs = spills; at math-SOL, occupancy pushes regress.

@@ -95,8 +95,9 @@ DEVICE_FORCEINLINE void uniskip_pair_chain(uniskip_pair_regs &x, const u32 lane,
   uniskip_pair_dit(x, tw[7]); // bit 3
 }
 
-// Everything a lane needs. The eight twiddles are read from `__constant__` ONCE at entry
-// into registers - a hot-path lane-indexed constant read serializes.
+// Everything a lane needs. The eight twiddles are read from `__constant__` into
+// registers at entry (a hot-path lane-indexed constant read serializes); ptxas
+// rematerializes some of these loads inside the record loop under register pressure.
 struct uniskip_pair_lane {
   u32 lane;  // 0..7 inside the group
   u32 group; // 0..3 inside the warp
