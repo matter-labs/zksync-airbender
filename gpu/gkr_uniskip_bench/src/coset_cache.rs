@@ -29,11 +29,19 @@ pub const UNISKIP_COSET_E4_ALIGN: usize = 16;
 /// per arm would confound codegen with footprint. A program needing more is a plan-time
 /// rejection, not a silent truncation.
 pub const UNISKIP_COSET_FRAME_UNITS: u32 = 92;
+// `cache_slot` encodes the BASE alone, so bases stay representable for any frame up to
+// 256 units; only `0xff` itself collides with the uncached sentinel (checked per base).
+const _: () = assert!(UNISKIP_COSET_FRAME_UNITS <= 256);
 
 /// The R4 arms. `Control` runs the uncached body; every other arm runs the cached body
 /// and differs only in uploaded state — `Cache0` with an empty admitted set, which prices
 /// the fixed lookup/frame/branch machinery the way R3's `wnone` priced the window's.
+///
+/// `rename_all = "lower"` is load-bearing: clap's default is kebab-case, which would make
+/// `allrepeat` and `e4rich` — the spellings [`CacheArm::as_str`] emits and the R4 runner
+/// will consume — unparseable.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, clap::ValueEnum)]
+#[clap(rename_all = "lower")]
 pub enum CacheArm {
     #[default]
     Control,
@@ -193,12 +201,14 @@ pub fn canonical_admission(program: &SynthProgram) -> Vec<AdmissionEntry> {
         .collect()
 }
 
-/// Smallest prefix of the canonical list containing every admitted E4 source.
-pub fn e4_rich_len(canonical: &[AdmissionEntry]) -> usize {
-    canonical
-        .iter()
-        .rposition(|e| e.is_e4())
-        .map_or(0, |i| i + 1)
+/// The E4-only admitted set: exactly the admitted E4 sources, no BF.
+///
+/// RR ruling 2026-08-09, superseding the earlier "smallest prefix containing every
+/// admitted E4 source": at the default census that prefix was 52 of 55 entries — 96 % of
+/// all-repeat's footprint — so the stop-signal's E4 leg could not be told apart from
+/// capacity. The E4-only set is C = 44 against all-repeat's 88.
+pub fn e4_rich(canonical: &[AdmissionEntry]) -> Vec<AdmissionEntry> {
+    canonical.iter().copied().filter(|e| e.is_e4()).collect()
 }
 
 /// The admitted set of one arm. `All59` is ALL live sources including refs = 1 — the
@@ -208,13 +218,17 @@ pub fn admitted_for(program: &SynthProgram, arm: CacheArm) -> Vec<AdmissionEntry
         return ranked_live(program);
     }
     let canonical = canonical_admission(program);
+    // `E4Rich` is a FILTER of the canonical list, not a prefix of it — the only arm that
+    // is. Everything downstream takes a source list, so the selection is the whole change.
+    if arm == CacheArm::E4Rich {
+        return e4_rich(&canonical);
+    }
     let take = match arm {
         CacheArm::Control | CacheArm::Cache0 => 0,
         CacheArm::Hot4 => 4,
         CacheArm::Hot16 => 16,
         CacheArm::AllRepeat => canonical.len(),
-        CacheArm::E4Rich => e4_rich_len(&canonical),
-        CacheArm::All59 => unreachable!("handled above"),
+        CacheArm::All59 | CacheArm::E4Rich => unreachable!("handled above"),
     };
     canonical.into_iter().take(take).collect()
 }
@@ -223,10 +237,13 @@ pub fn admitted_for(program: &SynthProgram, arm: CacheArm) -> Vec<AdmissionEntry
 ///
 /// SLOT ASSIGNMENT, decoupled from admission: all E4 spans first (4 units each, so every
 /// base is a multiple of 4 units = 32 B and both 16 B halves are aligned), then one unit
-/// per BF source. `cache_slot` encodes the base unit; `0xff` is the uncached sentinel, so
-/// the LAST representable base is 254 and a span must end at or before it. At the default
-/// census C = 92, far inside that bound; the validator is what enforces it.
-pub fn plan_arm(program: &SynthProgram, arm: CacheArm) -> CacheArmState {
+/// per BF source. ENCODE-SITE BOUND: `cache_slot` encodes the base unit ALONE, so the only
+/// unrepresentable base is `0xff` (the uncached sentinel) — a span may legitimately run
+/// THROUGH unit 255 (an e4 base at 252 spans 252..256). What bounds the layout is the
+/// frame: bases stay representable for any frame up to 256 units, and
+/// [`UNISKIP_COSET_FRAME_UNITS`] is statically held under that. At the default census
+/// C = 92, far inside. The validator enforces both.
+pub fn plan_arm(program: &SynthProgram, arm: CacheArm) -> Result<CacheArmState, String> {
     let admitted = admitted_for(program, arm);
     let mut sources = program.sources.clone();
     for rec in sources.iter_mut() {
@@ -265,18 +282,19 @@ pub fn plan_arm(program: &SynthProgram, arm: CacheArm) -> CacheArmState {
         counts,
     };
     // ALWAYS-ON, not a debug_assert: an invalid plan is a wrong measurement, and R3's
-    // lesson is that the host is where that must be caught.
-    if let Err(e) = validate(program, &state) {
-        panic!("coset-cache plan for arm {} is invalid: {e}", arm.as_str());
-    }
-    state
+    // lesson is that the host is where that must be caught. FALLIBLE, not a panic: a
+    // census can push an arm past the frame (`--sources 60` already does), and an arm
+    // nobody selected must not kill a run — least of all a control or R3 run.
+    validate(program, &state).map_err(|e| format!("arm {} is not plannable: {e}", arm.as_str()))?;
+    Ok(state)
 }
 
-/// All arms' state at once. Nothing is uploaded or re-planned inside a timed rotation.
-pub fn plan_all(program: &SynthProgram) -> Vec<CacheArmState> {
+/// Every arm's state, each independently fallible. Nothing is uploaded or re-planned
+/// inside a timed rotation, and one unplannable arm does not take the others with it.
+pub fn plan_all(program: &SynthProgram) -> Vec<(CacheArm, Result<CacheArmState, String>)> {
     CacheArm::ALL
         .iter()
-        .map(|&arm| plan_arm(program, arm))
+        .map(|&arm| (arm, plan_arm(program, arm)))
         .collect()
 }
 
@@ -297,10 +315,15 @@ pub fn count(program: &SynthProgram, admitted: &[AdmissionEntry]) -> CacheCounts
     }
     c.c = c.b + UNISKIP_COSET_E4_UNITS * c.e;
     c.rc = c.r_b + UNISKIP_COSET_E4_UNITS * c.r_e;
-    c.chains = c.c + (c.passes_without - c.rc);
+    c.chains = c.c
+        + c.passes_without
+            .checked_sub(c.rc)
+            .expect("cached references exceed the program's production slots");
     c.store_instrs = c.b + 2 * c.e;
     c.load_instrs = c.r_b + 2 * c.r_e;
-    c.removals = c.rc - c.c;
+    c.removals =
+        c.rc.checked_sub(c.c)
+            .expect("footprint exceeds the cached references it serves");
     c.bytes = UNISKIP_COSET_UNIT_BYTES as u32 * c.c;
     c
 }
@@ -349,13 +372,6 @@ pub fn validate(program: &SynthProgram, state: &CacheArmState) -> Result<(), Str
         if base + width > UNISKIP_COSET_FRAME_UNITS {
             return Err(format!(
                 "source {id}: span {base}..{} exceeds the {UNISKIP_COSET_FRAME_UNITS}-unit frame",
-                base + width
-            ));
-        }
-        // `0xff` is the sentinel, so no unit of a span may land on it.
-        if base + width - 1 >= UNISKIP_CACHE_SLOT_NONE as u32 {
-            return Err(format!(
-                "source {id}: span {base}..{} is not representable in cache_slot",
                 base + width
             ));
         }
@@ -435,7 +451,7 @@ mod cpu_tests {
         ),
         (
             CacheArm::E4Rich,
-            [41, 11, 180, 34, 85, 316, 95, 63, 248, 231, 680],
+            [0, 11, 0, 34, 44, 136, 234, 22, 68, 92, 352],
         ),
     ];
 
@@ -471,7 +487,9 @@ mod cpu_tests {
             let ce4 = canonical.iter().filter(|e| e.is_e4()).count();
             assert_eq!((cbf, ce4), (44, 11), "reused sources, {order:?}");
             assert_eq!(canonical.len(), 55, "{order:?}");
-            assert_eq!(e4_rich_len(&canonical), 52, "e4-rich prefix, {order:?}");
+            let e4_only = e4_rich(&canonical);
+            assert_eq!(e4_only.len(), 11, "e4-rich set, {order:?}");
+            assert!(e4_only.iter().all(|e| e.is_e4()), "{order:?}");
         }
     }
 
@@ -514,7 +532,7 @@ mod cpu_tests {
         for order in [TermOrder::Census, TermOrder::Locality] {
             let p = program(order);
             for (arm, want) in EXPECTED {
-                let state = plan_arm(&p, arm);
+                let state = plan_arm(&p, arm).unwrap();
                 assert_eq!(
                     actual(state.counts),
                     want,
@@ -529,7 +547,7 @@ mod cpu_tests {
     #[test]
     fn cpu_cache_hot4_mirrors_the_r3_window() {
         let p = program(TermOrder::Locality);
-        let state = plan_arm(&p, CacheArm::Hot4);
+        let state = plan_arm(&p, CacheArm::Hot4).unwrap();
         let sources: Vec<u16> = state.admitted.iter().map(|e| e.source).collect();
         let refs: Vec<u32> = state.admitted.iter().map(|e| e.refs).collect();
         assert_eq!(sources, vec![0, 1, 2, 3]);
@@ -542,8 +560,8 @@ mod cpu_tests {
     #[test]
     fn cpu_cache_all59_is_pure_waste_over_all_repeat() {
         let p = program(TermOrder::Locality);
-        let repeat = plan_arm(&p, CacheArm::AllRepeat).counts;
-        let all = plan_arm(&p, CacheArm::All59).counts;
+        let repeat = plan_arm(&p, CacheArm::AllRepeat).unwrap().counts;
+        let all = plan_arm(&p, CacheArm::All59).unwrap().counts;
         assert_eq!(all.removals, repeat.removals);
         assert_eq!(all.chains, repeat.chains);
         assert_eq!(all.store_instrs - repeat.store_instrs, 4);
@@ -556,7 +574,7 @@ mod cpu_tests {
     fn cpu_cache_frame_is_sized_by_all59() {
         let p = program(TermOrder::Locality);
         assert_eq!(
-            plan_arm(&p, CacheArm::All59).counts.c,
+            plan_arm(&p, CacheArm::All59).unwrap().counts.c,
             UNISKIP_COSET_FRAME_UNITS
         );
         assert_eq!(
@@ -569,7 +587,7 @@ mod cpu_tests {
     fn cpu_cache_control_and_cache0_admit_nothing() {
         let p = program(TermOrder::Locality);
         for arm in [CacheArm::Control, CacheArm::Cache0] {
-            let state = plan_arm(&p, arm);
+            let state = plan_arm(&p, arm).unwrap();
             assert!(state.admitted.is_empty());
             assert_eq!(state.counts.c, 0);
             assert_eq!(state.counts.removals, 0);
@@ -586,7 +604,7 @@ mod cpu_tests {
     #[test]
     fn cpu_cache_slots_are_e4_first_and_aligned() {
         let p = program(TermOrder::Locality);
-        let state = plan_arm(&p, CacheArm::AllRepeat);
+        let state = plan_arm(&p, CacheArm::AllRepeat).unwrap();
         assert_eq!(state.prologue_e4.len(), 11);
         assert_eq!(state.prologue_bf.len(), 44);
         for (i, row) in state.prologue_e4.iter().enumerate() {
@@ -620,16 +638,18 @@ mod cpu_tests {
         assert_eq!(all.len(), CacheArm::ALL.len());
         let cached: Vec<usize> = all
             .iter()
-            .map(|s| {
-                s.sources
+            .map(|(_, s)| {
+                s.as_ref()
+                    .unwrap()
+                    .sources
                     .iter()
                     .filter(|r| r.cache_slot != UNISKIP_CACHE_SLOT_NONE)
                     .count()
             })
             .collect();
-        assert_eq!(cached, vec![0, 0, 4, 16, 55, 59, 52]);
-        for state in &all {
-            validate(&p, state).unwrap();
+        assert_eq!(cached, vec![0, 0, 4, 16, 55, 59, 11]);
+        for (_, state) in &all {
+            validate(&p, state.as_ref().unwrap()).unwrap();
         }
     }
 
@@ -638,10 +658,10 @@ mod cpu_tests {
     #[test]
     fn cpu_cache_self_products_recompute_refs() {
         let mut p = program(TermOrder::Locality);
-        let before = plan_arm(&p, CacheArm::AllRepeat).counts;
+        let before = plan_arm(&p, CacheArm::AllRepeat).unwrap().counts;
         let rewritten = p.force_self_products(12);
         assert_eq!(rewritten, 12);
-        let after = plan_arm(&p, CacheArm::AllRepeat).counts;
+        let after = plan_arm(&p, CacheArm::AllRepeat).unwrap().counts;
         assert_ne!(
             before, after,
             "admission ignored the rewritten resolver stream"
@@ -652,7 +672,39 @@ mod cpu_tests {
         for e in &live {
             assert_eq!(e.refs, p.resolver_refs()[e.source as usize]);
         }
-        validate(&p, &plan_arm(&p, CacheArm::AllRepeat)).unwrap();
+        validate(&p, &plan_arm(&p, CacheArm::AllRepeat).unwrap()).unwrap();
+    }
+
+    /// A census can push an arm past the frame. That must fail THAT ARM and nothing
+    /// else: control and every R3 lane share this program and never touch the cache.
+    #[test]
+    fn cpu_cache_over_frame_census_fails_only_the_offending_arms() {
+        let census = Census {
+            sources: 60,
+            ..Census::default()
+        };
+        let mut p = generate(0, census).unwrap();
+        p.apply_term_order(TermOrder::Locality);
+        let planned = plan_all(&p);
+        let by_arm = |arm: CacheArm| {
+            planned
+                .iter()
+                .find(|(a, _)| *a == arm)
+                .map(|(_, s)| s)
+                .unwrap()
+        };
+        assert!(
+            plan_arm(&p, CacheArm::All59).unwrap_err().contains("frame"),
+            "all59 must be rejected past the frame at --sources 60"
+        );
+        // The arms a control or R3 run relies on are unaffected.
+        for arm in [CacheArm::Control, CacheArm::Cache0, CacheArm::Hot4] {
+            by_arm(arm)
+                .as_ref()
+                .unwrap_or_else(|e| panic!("{} must stay plannable: {e}", arm.as_str()));
+        }
+        // And the R3 window path over the same program is untouched.
+        crate::window::validate(&p, &crate::window::plan(&p)).unwrap();
     }
 
     #[test]
@@ -667,7 +719,7 @@ mod cpu_tests {
         p.apply_term_order(TermOrder::Locality);
         let live = ranked_live(&p);
         for arm in CacheArm::ALL {
-            let state = plan_arm(&p, arm);
+            let state = plan_arm(&p, arm).unwrap();
             validate(&p, &state).unwrap();
             assert!(state.admitted.len() <= live.len());
             // The identity the counts must satisfy at any admitted set.
@@ -678,7 +730,7 @@ mod cpu_tests {
     }
 
     fn corrupt(p: &SynthProgram, arm: CacheArm) -> CacheArmState {
-        plan_arm(p, arm)
+        plan_arm(p, arm).unwrap()
     }
 
     #[test]

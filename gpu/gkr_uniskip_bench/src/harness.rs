@@ -437,7 +437,12 @@ pub struct Harness {
     /// so nothing re-plans or re-uploads inside a timed rotation. Task 1B consumes them;
     /// today they exist so the planner and its always-on validator run on every
     /// `lsb-pair` run, control included.
-    cache_arms: Vec<CacheArmState>,
+    ///
+    /// Each arm is INDEPENDENTLY fallible: a census can push an arm past the cache frame
+    /// (`--sources 60` already does), and an arm this run never selects must not take the
+    /// run down with it. Only the selected arm's failure is fatal, and `main` is where
+    /// that is decided.
+    cache_arms: Vec<(CacheArm, Result<CacheArmState, String>)>,
     /// Both window descriptors, resident together so the in-process factorial can switch
     /// arms per round without reallocating or re-uploading anything.
     window_tagged: UniskipWindowDesc,
@@ -797,9 +802,22 @@ impl Harness {
         self.events[4].record(&self.stream)
     }
 
-    /// One coset-cache arm's planned state, or `None` outside `lsb-pair`.
+    /// One coset-cache arm's planned state — `None` outside `lsb-pair` or when this
+    /// census puts the arm past the frame.
     pub fn cache_arm_state(&self, arm: CacheArm) -> Option<&CacheArmState> {
-        self.cache_arms.iter().find(|s| s.arm == arm)
+        self.cache_arms
+            .iter()
+            .find(|(a, _)| *a == arm)
+            .and_then(|(_, s)| s.as_ref().ok())
+    }
+
+    /// Why an arm is unavailable at this census, if it is.
+    pub fn cache_arm_error(&self, arm: CacheArm) -> Option<&str> {
+        self.cache_arms
+            .iter()
+            .find(|(a, _)| *a == arm)
+            .and_then(|(_, s)| s.as_ref().err())
+            .map(String::as_str)
     }
 
     pub fn synchronize(&self) -> CudaResult<()> {

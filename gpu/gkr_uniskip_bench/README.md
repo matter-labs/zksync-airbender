@@ -306,6 +306,45 @@ vacuously.
 > to the frozen control before taking a timing. Every R3 timing in `iteration_times.md` ran
 > that ritual first.
 
+### The coset cache (v3 R4) — host machinery only today
+
+`--cache-arm control|cache0|hot4|hot16|allrepeat|all59|e4rich` selects an R4 arm of
+`--mode lsb-pair`. The design caches **cosets only** — `h` is still loaded at every
+reference — produced once per thread by a prologue into a per-thread local frame, with the
+disposition riding the source record's existing `cache_slot` byte. Because admission is
+**source-global**, a `PRODUCT`'s two operands each carry their own disposition on their own
+record, so R3's two-operand tag problem cannot recur.
+
+Admission is one canonical list: references descending, cut at **refs >= 2** (a once-used
+source would cost a store and a load to save nothing), ties **E4 before BF** then lower
+source id. `hot4` / `hot16` / `allrepeat` are prefixes of it; `e4rich` is the E4-only
+subset; `all59` is every live source including refs = 1 — a capacity-stress diagnostic that
+buys **zero** extra removals over `allrepeat` and is never a candidate. Slot assignment is
+decoupled from admission: all E4 spans first (4 units, 16-byte aligned, c-object-major),
+then one 8-byte unit per BF source.
+
+At the default census, per warp-program walk:
+
+| arm | admitted | C (units / B) | chains | stores | loads | removals |
+| --- | --- | --- | --- | --- | --- | --- |
+| `control` / `cache0` | 0 | 0 / 0 | 326 | 0 | 0 | 0 |
+| `hot4` | 4 bf | 4 / 32 | 279 | 4 | 51 | 47 |
+| `hot16` | 12 bf + 4 e4 | 28 / 224 | 181 | 20 | 133 | 145 |
+| `e4rich` | 11 e4 | 44 / 352 | 234 | 22 | 68 | 92 |
+| `allrepeat` | 44 bf + 11 e4 | 88 / 704 | 92 | 66 | 254 | 234 |
+| `all59` | 48 bf + 11 e4 | 92 / 736 | 92 | 70 | 258 | 234 |
+
+`hot4` is R3's register window with a different carrier — same four sources, same
+13/13/13/12 references, same 47 removals — which is what makes the two rungs directly
+comparable.
+
+**Today this is host machinery only**: the cached kernels land in R4 Task 1B, so a
+non-control `--cache-arm` is rejected at launch. Every `--mode lsb-pair` run still builds
+and validates the plan for all seven arms, and prints a `coset cache (v3 R4)` block; arms a
+census pushes past the frame are reported `unavailable` rather than failing runs that never
+select them. Admission is recomputed from the live resolver stream, so unlike the
+shared-memory cache plan it does **not** go stale under `--self-products`.
+
 ### Geometry
 
 - 16 taps of a logical row live on the multiplicative subgroup `H` of order 16;
@@ -466,9 +505,10 @@ applies to the unfused mode only (no other mode has an LDE stage to shape) and
 `--cell-map` to the two fused modes only — `unfused` keeps the v1 block map and
 each LSB mode fixes its own (`lsb-recompute` lane = tap at two groups per warp,
 `lsb-pair` pair-resident at eight lanes per group and four groups per warp). `--compact-groups`
-and `--bank-perm` apply to `lsb-compact` alone, `--pair-arm` and `--factorial` to
-`lsb-pair` alone (see [The window arms](#the-window-arms-v3-r3--diagnostic-not-candidates)),
-and `--compact-groups 8` additionally
+and `--bank-perm` apply to `lsb-compact` alone, `--pair-arm`, `--factorial` and
+`--cache-arm` to `lsb-pair` alone (see [The window arms](#the-window-arms-v3-r3--diagnostic-not-candidates)
+and [The coset cache](#the-coset-cache-v3-r4--host-machinery-only-today)), and
+`--compact-groups 8` additionally
 needs `--log-trace >= 10` (a compact block is 8 warps × `groups` rows and must tile the
 trace — rejected with a message, not an assert). The inapplicable knob prints as `n/a` in
 the config block and the summary line, so a recorded measurement can never name a shape

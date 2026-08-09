@@ -98,8 +98,9 @@ struct Cli {
 
     /// v3 R4 coset-cache arm of `--mode lsb-pair`: `control` (no cache — today's
     /// behavior), `cache0` (cached body, empty admitted set — the fixed-machinery
-    /// diagnostic), or a prefix of the canonical admission list: `hot4`, `hot16`,
-    /// `allrepeat`, `e4rich`, plus the `all59` capacity-stress diagnostic. Mutually
+    /// diagnostic), a prefix of the canonical admission list (`hot4`, `hot16`,
+    /// `allrepeat`), the E4-only set `e4rich`, or the `all59` capacity-stress
+    /// diagnostic (every live source, refs = 1 included). Mutually
     /// exclusive with `--pair-arm`. The cached kernels land in R4 Task 1B; until then a
     /// non-control arm is rejected at launch, while the host plan is built and validated
     /// on every `lsb-pair` run.
@@ -282,7 +283,7 @@ fn pass_config(cli: &Cli, geometry: &Geometry) -> PassConfig {
             cli.mode.as_str()
         ));
     }
-    if let Some(arm) = cli.cache_arm {
+    if cli.cache_arm.is_some() {
         if !cli.mode.uses_pair_arm() {
             fail(format!(
                 "--cache-arm applies to --mode lsb-pair only; --mode {} has no R4 arms",
@@ -295,14 +296,6 @@ fn pass_config(cli: &Cli, geometry: &Geometry) -> PassConfig {
                  kernel family; pick one"
                     .into(),
             );
-        }
-        if arm.uses_cache() {
-            fail(format!(
-                "--cache-arm {} is not yet implemented: the R4 cached kernels land in \
-                 Task 1B. The host plan for every arm is built and validated on any \
-                 --mode lsb-pair run.",
-                arm.as_str()
-            ));
         }
     }
     if !cli.mode.uses_compact_groups() && cli.bank_perm.is_some() {
@@ -420,6 +413,11 @@ fn main() {
     } else {
         "n/a"
     };
+    let cache_arm_label = if config.mode.uses_pair_arm() {
+        config.cache_arm.as_str()
+    } else {
+        "n/a"
+    };
     let (compact_groups_label, bank_perm_label) = if config.mode.uses_compact_groups() {
         (config.compact_groups.to_string(), config.bank_perm.as_str())
     } else {
@@ -491,6 +489,7 @@ fn main() {
     println!("  compact_groups      {compact_groups_label}");
     println!("  bank_perm           {bank_perm_label}");
     println!("  pair_arm            {pair_arm_label}");
+    println!("  cache_arm           {cache_arm_label}");
     println!("  term_order          {}", cli.term_order.as_str());
     println!("  self_products       {self_products}");
     if self_products > 0 {
@@ -539,15 +538,40 @@ fn main() {
         // Recomputed from the live resolver stream, so unlike the shared-memory cache
         // plan below it is never stale under --self-products.
         let canonical = coset_cache::canonical_admission(&program);
-        let state = coset_cache::plan_arm(&program, config.cache_arm);
-        let c = state.counts;
+        let planned = coset_cache::plan_all(&program);
         println!("coset cache (v3 R4)");
         println!(
-            "  admission           {} of {} live sources reused (refs >= 2); e4-rich prefix {}",
+            "  admission           {} of {} live sources reused (refs >= 2); {} of them e4",
             canonical.len(),
             coset_cache::ranked_live(&program).len(),
-            coset_cache::e4_rich_len(&canonical)
+            coset_cache::e4_rich(&canonical).len()
         );
+        // A census can push an arm past the frame. Say which, rather than failing a run
+        // that never selects it.
+        let unavailable: Vec<&str> = planned
+            .iter()
+            .filter(|(_, s)| s.is_err())
+            .map(|(a, _)| a.as_str())
+            .collect();
+        if !unavailable.is_empty() {
+            println!(
+                "  unavailable         {} (past the {}-unit frame at this census)",
+                unavailable.join(", "),
+                coset_cache::UNISKIP_COSET_FRAME_UNITS
+            );
+        }
+        // The SELECTED arm must be plannable — that failure is fatal, and it is a
+        // different failure from "not implemented yet".
+        let state = planned
+            .iter()
+            .find(|(a, _)| *a == config.cache_arm)
+            .map(|(_, s)| s)
+            .expect("every arm is planned");
+        let state = match state {
+            Ok(state) => state,
+            Err(e) => fail(format!("--cache-arm {}: {e}", config.cache_arm.as_str())),
+        };
+        let c = state.counts;
         println!(
             "  arm {:<16}admitted {} ({} bf / {} e4), C = {} units / {} B per thread",
             state.arm.as_str(),
@@ -561,6 +585,16 @@ fn main() {
             "  per walk            {} chains ({} without), {} removals, {} stores, {} loads",
             c.chains, c.passes_without, c.removals, c.store_instrs, c.load_instrs
         );
+        // Checked here, not in `pass_config`: an arm must be constructible at this census
+        // before its implementation status is worth reporting.
+        if config.cache_arm.uses_cache() {
+            fail(format!(
+                "--cache-arm {} is not yet implemented: the R4 cached kernels land in \
+                 Task 1B. The host plan for every arm is built and validated on any \
+                 --mode lsb-pair run.",
+                config.cache_arm.as_str()
+            ));
+        }
     }
     println!(
         "cache plan{}{}",
@@ -807,7 +841,8 @@ fn main() {
 
     println!(
         "summary: log_trace {} | mode {} | lde_shape {lde_shape_label} | cell_map {cell_map_label} | \
-         compact_groups {compact_groups_label} | bank_perm {bank_perm_label} | term_order {} | C {} Ru {} | {sources} sources / \
+         compact_groups {compact_groups_label} | bank_perm {bank_perm_label} | pair_arm {pair_arm_label} | \
+         cache_arm {cache_arm_label} | term_order {} | C {} Ru {} | {sources} sources / \
          {columns} columns / {} B ({:.2} GiB) per pass | total median {total_median:.3} ms over \
          {} iterations | {device}",
         cli.log_trace,
