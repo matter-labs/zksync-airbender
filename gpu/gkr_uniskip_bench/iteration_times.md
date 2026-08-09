@@ -1264,6 +1264,13 @@ mkdir -p target/profiling/ncu
     --mode lsb-recompute --term-order locality
 ```
 
+The `-o` above omitted the profiling doc's `$(date +%Y%m%d_%H%M%S)_` prefix; the report
+was renamed post-capture to
+`target/profiling/ncu/20260808_153705_v3r0_lsb_locality_full.ncu-rep` (prefix = its
+session creation time; the report's internal command line still shows the original
+`-o`). Future captures should use the prefixed form — the commands carry `-f`, so a
+stable name silently overwrites the report a recorded table cites.
+
 | metric | v2 `fused-cached` interleave/locality | **v3 R0 `lsb-recompute` locality** |
 | --- | --- | --- |
 | duration under the profiler | 23.79 ms | **21.14 ms** |
@@ -1758,7 +1765,8 @@ is the one that suffers most without it — but no G = 8 layout comes within 35 
 ### ncu — G = 4 locality against R0
 
 `ncu --set full`, same recipe and location as R0's
-(`target/profiling/ncu/v3r1_compact_g4_locality_full.ncu-rep`). **Re-profiled on the
+(`target/profiling/ncu/20260808_181923_v3r1_compact_g4_locality_full.ncu-rep`, date
+prefix added post-capture as for R0's report). **Re-profiled on the
 current build** (`--bank-perm linear`, the shipped default) so every figure here comes
 from one report; the R1 commit's version of this table mixed the pre-permutation build's
 rows with the A/B's and is replaced.
@@ -1985,6 +1993,9 @@ this command line internally:
     target/release/gpu_gkr_uniskip_bench --log-trace 24 --warmup 1 --iterations 1 \
     --mode lsb-pair --term-order locality
 ```
+
+As with R0, the `-o` omitted the doc's date prefix; the report was renamed post-capture
+to `target/profiling/ncu/20260808_190552_v3r2_pair_locality_full.ncu-rep`.
 
 | metric | R0 `lsb-recompute` | R1 `lsb-compact` G = 4 | **R2 `lsb-pair`** |
 | --- | --- | --- | --- |
