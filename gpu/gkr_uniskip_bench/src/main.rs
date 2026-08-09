@@ -8,6 +8,7 @@ use gpu_gkr_uniskip_bench::abi::{
 };
 use gpu_gkr_uniskip_bench::cache;
 use gpu_gkr_uniskip_bench::compact::BankPerm;
+use gpu_gkr_uniskip_bench::coset_cache::{self, CacheArm};
 use gpu_gkr_uniskip_bench::geometry::Geometry;
 use gpu_gkr_uniskip_bench::harness::PairArm;
 use gpu_gkr_uniskip_bench::harness::{
@@ -94,6 +95,16 @@ struct Cli {
     /// `wt - t` into machinery and removal). `lsb-pair` mode only.
     #[arg(long, value_enum)]
     pair_arm: Option<PairArm>,
+
+    /// v3 R4 coset-cache arm of `--mode lsb-pair`: `control` (no cache — today's
+    /// behavior), `cache0` (cached body, empty admitted set — the fixed-machinery
+    /// diagnostic), or a prefix of the canonical admission list: `hot4`, `hot16`,
+    /// `allrepeat`, `e4rich`, plus the `all59` capacity-stress diagnostic. Mutually
+    /// exclusive with `--pair-arm`. The cached kernels land in R4 Task 1B; until then a
+    /// non-control arm is rejected at launch, while the host plan is built and validated
+    /// on every `lsb-pair` run.
+    #[arg(long, value_enum)]
+    cache_arm: Option<CacheArm>,
 
     /// Staging tap permutation in `--mode lsb-compact`: `linear` (the shipped,
     /// bank-conflict-free layout) or `identity` (the pre-fix layout, kept so the
@@ -271,6 +282,29 @@ fn pass_config(cli: &Cli, geometry: &Geometry) -> PassConfig {
             cli.mode.as_str()
         ));
     }
+    if let Some(arm) = cli.cache_arm {
+        if !cli.mode.uses_pair_arm() {
+            fail(format!(
+                "--cache-arm applies to --mode lsb-pair only; --mode {} has no R4 arms",
+                cli.mode.as_str()
+            ));
+        }
+        if cli.pair_arm.is_some() {
+            fail(
+                "--cache-arm and --pair-arm select different rungs' arms of the same \
+                 kernel family; pick one"
+                    .into(),
+            );
+        }
+        if arm.uses_cache() {
+            fail(format!(
+                "--cache-arm {} is not yet implemented: the R4 cached kernels land in \
+                 Task 1B. The host plan for every arm is built and validated on any \
+                 --mode lsb-pair run.",
+                arm.as_str()
+            ));
+        }
+    }
     if !cli.mode.uses_compact_groups() && cli.bank_perm.is_some() {
         fail(format!(
             "--bank-perm applies to --mode lsb-compact only; --mode {} has no compaction \
@@ -293,6 +327,7 @@ fn pass_config(cli: &Cli, geometry: &Geometry) -> PassConfig {
         compact_groups,
         bank_perm: cli.bank_perm.unwrap_or_default(),
         pair_arm: cli.pair_arm.unwrap_or_default(),
+        cache_arm: cli.cache_arm.unwrap_or_default(),
     };
     // The eval grid must tile the trace: a compact block is 8 warps x `groups` rows, so a
     // small --log-trace can leave fewer rows than one block covers. Rejected here rather
@@ -498,6 +533,33 @@ fn main() {
         println!(
             "  window reuses       {} ({} -> {} component passes per walk)",
             window.reuses, window.passes_without, window.passes_with
+        );
+    }
+    if config.mode.uses_pair_arm() {
+        // Recomputed from the live resolver stream, so unlike the shared-memory cache
+        // plan below it is never stale under --self-products.
+        let canonical = coset_cache::canonical_admission(&program);
+        let state = coset_cache::plan_arm(&program, config.cache_arm);
+        let c = state.counts;
+        println!("coset cache (v3 R4)");
+        println!(
+            "  admission           {} of {} live sources reused (refs >= 2); e4-rich prefix {}",
+            canonical.len(),
+            coset_cache::ranked_live(&program).len(),
+            coset_cache::e4_rich_len(&canonical)
+        );
+        println!(
+            "  arm {:<16}admitted {} ({} bf / {} e4), C = {} units / {} B per thread",
+            state.arm.as_str(),
+            state.admitted.len(),
+            c.b,
+            c.e,
+            c.c,
+            c.bytes
+        );
+        println!(
+            "  per walk            {} chains ({} without), {} removals, {} stores, {} loads",
+            c.chains, c.passes_without, c.removals, c.store_instrs, c.load_instrs
         );
     }
     println!(

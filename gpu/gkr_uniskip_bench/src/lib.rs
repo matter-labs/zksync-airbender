@@ -7,6 +7,7 @@
 pub mod abi;
 pub mod cache;
 pub mod compact;
+pub mod coset_cache;
 pub mod domain;
 pub mod geometry;
 pub mod harness;

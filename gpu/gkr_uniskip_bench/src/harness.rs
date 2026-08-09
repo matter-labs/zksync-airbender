@@ -9,6 +9,7 @@ use era_cudart::stream::CudaStream;
 use crate::abi::*;
 use crate::cache::CachePlan;
 use crate::compact::{self, BankPerm};
+use crate::coset_cache::{self, CacheArm, CacheArmState};
 use crate::domain::lde_matrix;
 use crate::geometry::Geometry;
 use crate::kernels;
@@ -384,6 +385,9 @@ pub struct PassConfig {
     pub bank_perm: BankPerm,
     /// v3 R3 arm of [`EvalMode::LsbPair`]; ignored elsewhere. `Control` is R2 exactly.
     pub pair_arm: PairArm,
+    /// v3 R4 coset-cache arm of [`EvalMode::LsbPair`]; ignored elsewhere. `Control` is
+    /// the uncached body. The cached kernels land in R4 Task 1B.
+    pub cache_arm: CacheArm,
 }
 
 /// The timed stages of one pass, in execution order.
@@ -429,6 +433,11 @@ pub struct Harness {
     /// Set only on a window arm; when set it replaces `eval` and carries the side
     /// descriptor. The control path never touches either field.
     eval_window: Option<(WindowLaunch, UniskipWindowDesc)>,
+    /// v3 R4: every coset-cache arm's CLONED state, planned once and resident together
+    /// so nothing re-plans or re-uploads inside a timed rotation. Task 1B consumes them;
+    /// today they exist so the planner and its always-on validator run on every
+    /// `lsb-pair` run, control included.
+    cache_arms: Vec<CacheArmState>,
     /// Both window descriptors, resident together so the in-process factorial can switch
     /// arms per round without reallocating or re-uploading anything.
     window_tagged: UniskipWindowDesc,
@@ -667,6 +676,11 @@ impl Harness {
             _ => None,
         };
 
+        let cache_arms = match config.mode {
+            EvalMode::LsbPair => coset_cache::plan_all(program),
+            _ => Vec::new(),
+        };
+
         Ok(Self {
             layout,
             desc,
@@ -679,6 +693,7 @@ impl Harness {
             lde,
             eval,
             eval_window,
+            cache_arms,
             window_tagged: window,
             window_none: none,
             taps,
@@ -780,6 +795,11 @@ impl Harness {
         kernels::finalize(&self.partials, self.eval_blocks, &mut self.q, &self.stream)?;
         self.events[3].record(&self.stream)?;
         self.events[4].record(&self.stream)
+    }
+
+    /// One coset-cache arm's planned state, or `None` outside `lsb-pair`.
+    pub fn cache_arm_state(&self, arm: CacheArm) -> Option<&CacheArmState> {
+        self.cache_arms.iter().find(|s| s.arm == arm)
     }
 
     pub fn synchronize(&self) -> CudaResult<()> {
