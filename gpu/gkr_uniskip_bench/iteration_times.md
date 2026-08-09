@@ -2175,3 +2175,42 @@ order in the eq epilogue (two-token edit), host-resolved per-source pointers (pr
 3.28 % on windowed's identical addressing shape). Inherited negatives: never outline;
 SMEM staging loses in this family (now a two-kernel law with R1); forced
 `__launch_bounds__` down-regs = spills; at math-SOL, occupancy pushes regress.
+
+### Ratification pass (resident codex reviewer, same day)
+
+The long-lived codex reviewer read all five reports plus this section and **ratifies
+the pipe-width verdict, the IMAD.WIDE model, the window as the only gap-sized lever,
+and the two-rung ladder** — with three refinements, each verified before adoption:
+
+1. **The ~19 % parity-capture figure is stale against the tightened bar** (it was
+   computed vs 15.0). Vs 14.61 ms: 16.283 → 14.61 = 1.673 ms at the measured
+   29.6 µs/pass slope ⇒ **~56–57 of 234 removable ≈ 24 % capture**. Top-4-BF alone
+   saves 51 refs − 4 fills = 47 productions = 20.1 % ⇒ ≈ 14.9 ms — **borderline, not
+   a 14.3 ms landing**; clearing 14.61 likely takes top-4 + the twiddle win together
+   (or a fifth retained source).
+2. **The 8-register top-4 figure is a coset-only window** — verified against
+   `uniskip_pair_resolve(…, bf h[2], bf c[2])`: a fully retained BF source is 4 regs
+   (h + c), so top-4 full retention = 16 regs; 8 regs retains `c[2]` only and reloads
+   `h[2]`, skipping the chain but not the resolve loads. The −50…−54 % perfect ceiling
+   and the top-4 model are therefore *different realizations*; don't mix their
+   arithmetic.
+3. **E4 is not the best per-register retention on this census**: width cancels —
+   saved component passes per register = (refs − 1)/2 for BF and E4 alike — so the
+   hot BF sources (12–13 refs) beat the hot E4 sources (7 refs) per register. E4's
+   42 %-of-passes share is a *coverage* argument for larger W, not a marginal one.
+
+Further qualifications adopted: realization D **reframes rather than dissolves**
+A-vs-B (global scratch, publish traffic, residency uncertainty, extra consumer loads
+are new costs); keep D bounded by admitted W — never publish all 59 sources — publish
+coset values only at first, and keep the pair kernel's row ownership (each warp
+produces admitted sources for its own 4 rows; seg's lane=row striping does not
+transplant). The `.cs` hint on H prologue loads is wrong while H is still reread from
+its original backing — stays `.ca` unless H is also published. Rung-1 design: a
+four-arm same-session factorial (R2 control / twiddle-fix only / coset-only top-4
+only / both), gated on SASS facts (production count 326 → 279, zero spills, dynamic
+remat-LDC count, exact regs + blocks/SM) and using a real warp-uniform source→slot
+selector — hardcoded source IDs would dodge the production addressability cost.
+Rung-2: W ∈ {0, 4, 16-BF-equivalent} with publish/read DRAM directions counted
+separately and `q` parity pinned across W. The shipping-production −32.5 % margin is
+directional comfort, **not** a reason to relax the 14.61 ms target (census and fold
+boundaries are not yet production-equivalent).
