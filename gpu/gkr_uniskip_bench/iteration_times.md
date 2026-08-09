@@ -1952,6 +1952,13 @@ stage tables), lane-divergent at pack-2 and deliberately left issued.
 | R0 `lsb-recompute` | 423 | 22 x 7 = 154 | 269 | 1 | 2 | **77.0** | 112 |
 | **R2 `lsb-pair`** | 655 | 22 x 8 = 176 | **479** | 2 | 4 | **44.0** | **64** |
 
+  **Erratum (2026-08-09, found in v3 R4 Task 1B): 655 pools two different mnemonics.**
+  It was a naive substring count, so it included 9 `UIMAD.WIDE.U32` on the UNIFORM
+  datapath. Mnemonic-anchored — the convention this record uses from here, with `U`-forms
+  counted separately — the R2 control is **646** `IMAD.WIDE.U32` + 9 `UIMAD.WIDE.U32`, and
+  R4's cached body is 701 + 6. The 1.4 % shift changes no conclusion here; the note exists
+  so a cross-rung subtraction does not silently mix the two conventions.
+
   The remainder is 479 against 269 for twice the elements per lane — 1.78x, the same
   near-linear scaling R1's table showed at 1.96x/3.89x for 2 and 4 — so the chain slice is
   not absorbing it. Shuffles: **6 per chain x 22 = 132 static = 33.0/row** against R0's
