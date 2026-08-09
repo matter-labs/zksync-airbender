@@ -647,6 +647,18 @@ mod cpu_tests {
         }
     }
 
+    /// The `none` arms (`wnone`, `wtnone`) ship `UniskipWindowDesc::default()` rather than
+    /// an explicitly built empty schedule, so the two must be the same bytes. A
+    /// `debug_assert` would not survive the release build the arms are timed with.
+    #[test]
+    fn cpu_window_empty_descriptor_is_all_zero() {
+        let p = program(TermOrder::Census);
+        assert_eq!(
+            WindowSchedule::empty(&p).descriptor(),
+            UniskipWindowDesc::default()
+        );
+    }
+
     /// The nibble encoding round-trips and reserves `0` for `None`.
     #[test]
     fn cpu_window_tag_encoding() {

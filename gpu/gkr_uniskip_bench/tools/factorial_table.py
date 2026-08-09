@@ -67,6 +67,12 @@ def iqr(xs):
 
 
 def emit(order, rounds, trailer, occ):
+    if not occ:
+        sys.exit(
+            "no ARM lines in the log: this is an old-format run. Re-run with a build that "
+            "emits `ARM <name> <regs> <blocks>`, or the table would be written with no "
+            "occupancy labels."
+        )
     arms = [a for a in ["control", "t", "w", "wt", "wnone", "wtnone"] if a in occ]
     # SAME-SESSION GUARD: every round must carry every arm, or the pairing is a fiction.
     complete = {r: v for r, v in rounds.items() if all(a in v for a in arms)}
@@ -104,8 +110,9 @@ def emit(order, rounds, trailer, occ):
         "w": ("`w` − `control`", "**2 v 3 — NOT occupancy-neutral**"),
         "wt": ("`wt` − `control`", "3 v 3 — occupancy-neutral"),
         "wnone": ("`wnone` − `control`", "**2 v 3 — NOT occupancy-neutral**"),
+        "wtnone": ("`wtnone` − `control`", "3 v 3 — occupancy-neutral"),
     }
-    for a in ["t", "w", "wt", "wnone"]:
+    for a in [a for a in ["t", "w", "wt", "wnone", "wtnone"] if a in med]:
         d = [complete[r][a] - complete[r]["control"] for r in sorted(complete)]
         m = median(d)
         lo, hi = iqr(d)
@@ -162,13 +169,24 @@ def emit(order, rounds, trailer, occ):
     net = [(complete[r]["control"] - complete[r]["w"]) / REMOVED for r in sorted(complete)]
     gross = [(complete[r]["wnone"] - complete[r]["w"]) / REMOVED for r in sorted(complete)]
     print(
-        f"\n**Slopes over {REMOVED} removed productions** (rung-2 calibration; neither is "
-        f"\"the\" production cost):\n"
+        f"\n**Slopes over {REMOVED} removed productions** (rung-2 calibration; none of these "
+        f"is \"the\" production cost):\n"
         f"- net W=4 slope `(control − w)/{REMOVED}` = **{1000 * median(net):+.2f} µs/production** "
         f"— carries the 3→2 block change with it\n"
-        f"- gross removal slope `(wnone − w)/{REMOVED}` = **{1000 * median(gross):+.2f} µs/production** "
-        f"— same kernel and occupancy on both sides, so this is the removal alone\n"
+        f"- gross removal slope at 2 blocks `(wnone − w)/{REMOVED}` = "
+        f"**{1000 * median(gross):+.2f} µs/production** — same kernel and occupancy on both "
+        f"sides, so this is the removal alone, but in a carrier that costs a block\n"
     )
+    if "wtnone" in med:
+        three = [
+            (complete[r]["wtnone"] - complete[r]["wt"]) / REMOVED for r in sorted(complete)
+        ]
+        print(
+            f"- **removal slope at 3 blocks** `(wtnone − wt)/{REMOVED}` = "
+            f"**{1000 * median(three):+.2f} µs/production** — the same removal in a carrier "
+            f"that keeps the control's occupancy. This is the shippable figure; the 2-block "
+            f"slope above overstates it.\n"
+        )
 
 
 def main():

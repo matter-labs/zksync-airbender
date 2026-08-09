@@ -564,11 +564,6 @@ fn main() {
             window.passes_without,
             window.passes_with
         );
-        debug_assert_eq!(
-            window::WindowSchedule::empty(&program).descriptor(),
-            gpu_gkr_uniskip_bench::abi::UniskipWindowDesc::default(),
-            "the `none` arms rely on a zeroed descriptor being the empty schedule"
-        );
         assert!(
             window.reuses > 0,
             "the factorial needs a planned schedule; an empty one makes w indistinguishable from wnone"
