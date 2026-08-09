@@ -571,4 +571,18 @@ EXTERN __global__ __launch_bounds__(UNISKIP_PAIR_WARPS_128 * 32,
   uniskip_eval_pair_cached<UNISKIP_PAIR_WARPS_128>(desc, plan, plane);
 }
 
+// The BOUNDED no-cache baseline at 128. R3's `t` arm is the precedent that forces this to
+// exist: pricing a launch bound on the cached side alone would assume the bound's cost is
+// additive across bodies, and `t` measured +3.43 % on a body whose registers the bound did
+// not even change. So the 128 axis carries both baselines, and the cached-vs-control
+// contrast can be taken bound-to-bound. control128's own text is untouched.
+EXTERN __global__ __launch_bounds__(UNISKIP_PAIR_WARPS_128 * 32,
+                                    7) void ab_gkr_uniskip_eval_lsb_pair_128_lb_kernel(const __grid_constant__ uniskip_pair_desc desc) {
+  __shared__ e4 plane[UNISKIP_PAIR_WARPS_128 * UNISKIP_CELLS];
+  const uniskip_pair_lane lane = uniskip_pair_lane_of<UNISKIP_PAIR_WARPS_128>(threadIdx.x);
+  e4 acc_h[2], acc_c[2];
+  uniskip_eval_pair_body(desc, lane, acc_h, acc_c);
+  uniskip_pair_epilogue<UNISKIP_PAIR_WARPS_128>(desc, lane, acc_h, acc_c, plane);
+}
+
 } // namespace airbender::gkr_uniskip_bench

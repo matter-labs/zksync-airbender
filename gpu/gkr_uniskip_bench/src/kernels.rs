@@ -139,10 +139,15 @@ cuda_kernel!(
     EvalLsbPairCached128Lb,
     ab_gkr_uniskip_eval_lsb_pair_cached_128_lb_kernel(desc: UniskipVmDesc, plan: UniskipCacheDesc)
 );
-// The v3 R4 128-thread no-cache baseline: same wire, same signature, 4 warps.
+// The v3 R4 128-thread no-cache baselines: same wire, same signature, 4 warps. The `_lb`
+// sibling is the bounded baseline, so the 128 cache contrast can be taken bound-to-bound.
 cuda_kernel!(
     EvalLsbPair128,
     ab_gkr_uniskip_eval_lsb_pair_128_kernel(desc: UniskipVmDesc)
+);
+cuda_kernel!(
+    EvalLsbPair128Lb,
+    ab_gkr_uniskip_eval_lsb_pair_128_lb_kernel(desc: UniskipVmDesc)
 );
 // v3 R3 arms. `pair_lb` is the control body under `__launch_bounds__`; the two window
 // entry points take the side descriptor as a SECOND by-value parameter, so the control's
@@ -504,6 +509,18 @@ pub fn eval_lsb_pair_128(desc: &UniskipVmDesc, blocks: u32, stream: &CudaStream)
     let args = EvalLsbPair128Arguments::new(*desc);
     let config = CudaLaunchConfig::basic(blocks, UNISKIP_PAIR_THREADS_128 as u32, stream);
     EvalLsbPair128Function::default().launch(&config, &args)
+}
+
+/// The v3 R4 128-thread no-cache baseline under `__launch_bounds__(128, 7)` — the bounded
+/// control, so the 128 cache contrast is not forced to assume cross-body bound additivity.
+pub fn eval_lsb_pair_128_lb(
+    desc: &UniskipVmDesc,
+    blocks: u32,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    let args = EvalLsbPair128LbArguments::new(*desc);
+    let config = CudaLaunchConfig::basic(blocks, UNISKIP_PAIR_THREADS_128 as u32, stream);
+    EvalLsbPair128LbFunction::default().launch(&config, &args)
 }
 
 /// The v3 R4 cached kernel at 256 threads.

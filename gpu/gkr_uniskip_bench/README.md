@@ -329,7 +329,7 @@ granularity is worth resident warps:
 
 ### The coset cache (v3 R4) — host machinery only today
 
-`--cache-arm control|cache0|hot4|hot16|allrepeat|all59|e4rich` selects an R4 arm of
+`--cache-arm control|cache0|hot4|hot16|allrepeat|all59|e4rich|e4top2` selects an R4 arm of
 `--mode lsb-pair`. The design caches **cosets only** — `h` is still loaded at every
 reference — produced once per thread by a prologue into a per-thread local frame, with the
 disposition riding the source record's existing `cache_slot` byte. Because admission is
@@ -338,8 +338,9 @@ record, so R3's two-operand tag problem cannot recur.
 
 Admission is one canonical list: references descending, cut at **refs >= 2** (a once-used
 source would cost a store and a load to save nothing), ties **E4 before BF** then lower
-source id. `hot4` / `hot16` / `allrepeat` are prefixes of it; `e4rich` is the E4-only
-subset; `all59` is every live source including refs = 1 — a capacity-stress diagnostic that
+source id. `hot4` / `hot16` / `allrepeat` are prefixes of it; `e4top2` is the two highest-ref E4
+sources (the family-stop lane, small enough to separate E4 value from capacity) and
+`e4rich` the full E4-only coverage set; `all59` is every live source including refs = 1 — a capacity-stress diagnostic that
 buys **zero** extra removals over `allrepeat` and is never a candidate. Slot assignment is
 decoupled from admission: all E4 spans first (4 units, 16-byte aligned, c-object-major),
 then one 8-byte unit per BF source.
@@ -351,6 +352,7 @@ At the default census, per warp-program walk:
 | `control` / `cache0` | 0 | 0 / 0 | 326 | 0 | 0 | 0 |
 | `hot4` | 4 bf | 4 / 32 | 279 | 4 | 51 | 47 |
 | `hot16` | 12 bf + 4 e4 | 28 / 224 | 181 | 20 | 133 | 145 |
+| `e4top2` | 2 e4 | 8 / 64 | 278 | 4 | 28 | 48 |
 | `e4rich` | 11 e4 | 44 / 352 | 234 | 22 | 68 | 92 |
 | `allrepeat` | 44 bf + 11 e4 | 88 / 704 | 92 | 66 | 254 | 234 |
 | `all59` | 48 bf + 11 e4 | 92 / 736 | 92 | 70 | 258 | 234 |
@@ -359,12 +361,21 @@ At the default census, per warp-program walk:
 13/13/13/12 references, same 47 removals — which is what makes the two rungs directly
 comparable.
 
-**Today this is host machinery only**: the cached kernels land in R4 Task 1B, so a
-non-control `--cache-arm` is rejected at launch. Every `--mode lsb-pair` run still builds
-and validates the plan for all seven arms, and prints a `coset cache (v3 R4)` block; arms a
-census pushes past the frame are reported `unavailable` rather than failing runs that never
-select them. Admission is recomputed from the live resolver stream, so unlike the
-shared-memory cache plan it does **not** go stale under `--self-products`.
+A cached arm runs a prologue that produces every admitted source once into a **736 B
+per-thread local frame**, sized at `C_max` for every arm so all arms share one kernel body
+and differ only in uploaded state. Consume-side access is `LDL.64` for BF and two `LDL.128`
+over the 16-byte-aligned E4 span. At 128 threads the cached body needs
+`__launch_bounds__(128, 7)` to hold control128's 7 blocks/SM (unbounded it is 75 registers
+= 6); `--no-cache-launch-bounds` runs the stepped variant so the bound can be priced, and
+`--control-launch-bounds` gives the matching bounded NO-CACHE baseline so the contrast can
+be taken bound-to-bound. `--prologue-order bffirst` reorders the uploaded table on the
+capacity arms — a different upload, not a different kernel.
+
+Every `--mode lsb-pair` run builds and validates the plan for all eight arms and prints a
+`coset cache (v3 R4)` block plus the exact `eval kernel` it will launch; arms a census
+pushes past the frame are reported `unavailable` rather than failing runs that never select
+them. Admission is recomputed from the live resolver stream, so unlike the shared-memory
+cache plan it does **not** go stale under `--self-products`.
 
 ### Geometry
 

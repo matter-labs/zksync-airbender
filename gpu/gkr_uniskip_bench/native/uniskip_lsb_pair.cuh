@@ -297,6 +297,11 @@ DEVICE_FORCEINLINE void uniskip_coset_prologue(const uniskip_vm_desc &desc, cons
 template <typename T>
 DEVICE_FORCEINLINE void uniskip_pair_resolve_cached(const uniskip_vm_desc &desc, const uniskip_pair_lane &lane, const u16 source_id,
                                                     const uniskip_coset_cache &cache, T h[2], T c[2]) {
+  // WATCH ITEM (no change needed today): the uncached leg re-fetches `desc.source[id]`
+  // inside `uniskip_pair_resolve`, so an uncached reference reads the record TWICE. ptxas
+  // is free to CSE it and the record is a constant-bank read either way, but `cache0` -
+  // whose every reference takes this leg - is the arm that would show it if ptxas does not.
+  // Read cache0's LDC delta against control before attributing its cost to the frame.
   const u32 base = desc.source[source_id].cache_slot;
   if (base == UNISKIP_CACHE_SLOT_NONE) {
     uniskip_pair_resolve(desc, lane, source_id, h, c);

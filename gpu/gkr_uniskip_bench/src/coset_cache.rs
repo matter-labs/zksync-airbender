@@ -64,10 +64,11 @@ pub enum CacheArm {
     AllRepeat,
     All59,
     E4Rich,
+    E4Top2,
 }
 
 impl CacheArm {
-    pub const ALL: [Self; 7] = [
+    pub const ALL: [Self; 8] = [
         Self::Control,
         Self::Cache0,
         Self::Hot4,
@@ -75,6 +76,7 @@ impl CacheArm {
         Self::AllRepeat,
         Self::All59,
         Self::E4Rich,
+        Self::E4Top2,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -86,6 +88,7 @@ impl CacheArm {
             Self::AllRepeat => "allrepeat",
             Self::All59 => "all59",
             Self::E4Rich => "e4rich",
+            Self::E4Top2 => "e4top2",
         }
     }
 
@@ -258,6 +261,13 @@ pub fn e4_rich(canonical: &[AdmissionEntry]) -> Vec<AdmissionEntry> {
     canonical.iter().copied().filter(|e| e.is_e4()).collect()
 }
 
+/// The family-stop lane (RR ruling 2026-08-09): the two highest-ref admitted E4 sources in
+/// canonical order. `e4rich` stays as the coverage diagnostic; this is the arm that can
+/// separate E4 VALUE from capacity, because at 8 units it is nowhere near the frame.
+pub fn e4_top2(canonical: &[AdmissionEntry]) -> Vec<AdmissionEntry> {
+    e4_rich(canonical).into_iter().take(2).collect()
+}
+
 /// The admitted set of one arm. `All59` is ALL live sources including refs = 1 — the
 /// zero-removal waste diagnostic — and is deliberately NOT a prefix of the cutoff list.
 pub fn admitted_for(program: &SynthProgram, arm: CacheArm) -> Vec<AdmissionEntry> {
@@ -270,12 +280,15 @@ pub fn admitted_for(program: &SynthProgram, arm: CacheArm) -> Vec<AdmissionEntry
     if arm == CacheArm::E4Rich {
         return e4_rich(&canonical);
     }
+    if arm == CacheArm::E4Top2 {
+        return e4_top2(&canonical);
+    }
     let take = match arm {
         CacheArm::Control | CacheArm::Cache0 => 0,
         CacheArm::Hot4 => 4,
         CacheArm::Hot16 => 16,
         CacheArm::AllRepeat => canonical.len(),
-        CacheArm::All59 | CacheArm::E4Rich => unreachable!("handled above"),
+        CacheArm::All59 | CacheArm::E4Rich | CacheArm::E4Top2 => unreachable!("handled above"),
     };
     canonical.into_iter().take(take).collect()
 }
@@ -482,7 +495,7 @@ mod cpu_tests {
     /// The literals of `.agents/sdd/2026-08-09-v3-r4/expected-counts.md`, which the
     /// controller derived independently of this module. Fields: B, E, R_B, R_E, C, Rc,
     /// chains, stores, loads, removals, bytes.
-    const EXPECTED: [(CacheArm, [u32; 11]); 5] = [
+    const EXPECTED: [(CacheArm, [u32; 11]); 6] = [
         (CacheArm::Hot4, [4, 0, 51, 0, 4, 51, 279, 4, 51, 47, 32]),
         (
             CacheArm::Hot16,
@@ -500,6 +513,7 @@ mod cpu_tests {
             CacheArm::E4Rich,
             [0, 11, 0, 34, 44, 136, 234, 22, 68, 92, 352],
         ),
+        (CacheArm::E4Top2, [0, 2, 0, 14, 8, 56, 278, 4, 28, 48, 64]),
     ];
 
     fn actual(c: CacheCounts) -> [u32; 11] {
@@ -537,6 +551,12 @@ mod cpu_tests {
             let e4_only = e4_rich(&canonical);
             assert_eq!(e4_only.len(), 11, "e4-rich set, {order:?}");
             assert!(e4_only.iter().all(|e| e.is_e4()), "{order:?}");
+            let top2 = e4_top2(&canonical);
+            assert_eq!(
+                top2.iter().map(|e| (e.source, e.refs)).collect::<Vec<_>>(),
+                vec![(48, 7), (49, 7)],
+                "e4-top2 family-stop lane, {order:?}"
+            );
         }
     }
 
@@ -653,8 +673,9 @@ mod cpu_tests {
         assert_eq!((e4.count, e4.e4_count, e4.bf_count), (55, 11, 44));
         assert_eq!((bf.count, bf.e4_count, bf.bf_count), (55, 11, 44));
 
-        // Only the ROW ORDER moves; slot assignment is identical, which is the whole of
-        // the production-order knob.
+        // REFACTOR GUARD, not evidence of a live invariant: `PrologueOrder` never reaches
+        // `plan_arm`, so slot assignment cannot depend on it today. This fails if someone
+        // later threads the order into planning, which is exactly the mistake to catch.
         let base_of = |d: &UniskipCacheDesc| {
             let mut v: Vec<(u16, u8)> = d.entry[..d.count as usize]
                 .iter()
@@ -741,7 +762,7 @@ mod cpu_tests {
                     .count()
             })
             .collect();
-        assert_eq!(cached, vec![0, 0, 4, 16, 55, 59, 11]);
+        assert_eq!(cached, vec![0, 0, 4, 16, 55, 59, 11, 2]);
         for (_, state) in &all {
             validate(&p, state.as_ref().unwrap()).unwrap();
         }

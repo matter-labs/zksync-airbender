@@ -101,11 +101,18 @@ struct Cli {
     /// diagnostic), a prefix of the canonical admission list (`hot4`, `hot16`,
     /// `allrepeat`), the E4-only set `e4rich`, or the `all59` capacity-stress
     /// diagnostic (every live source, refs = 1 included). Mutually
-    /// exclusive with `--pair-arm`. The cached kernels land in R4 Task 1B; until then a
-    /// non-control arm is rejected at launch, while the host plan is built and validated
-    /// on every `lsb-pair` run.
+    /// exclusive with `--pair-arm` and with `--factorial`. The host plan for every arm is
+    /// built and validated on any `lsb-pair` run, whichever arm is selected.
     #[arg(long, value_enum)]
     cache_arm: Option<CacheArm>,
+
+    /// Run the 128-thread NO-CACHE baseline under `__launch_bounds__(128, 7)` — the
+    /// bounded control, so the 128 cache contrast can be taken bound-to-bound instead of
+    /// assuming a launch bound costs the same on two different bodies (R3's `t` measured
+    /// +3.43 % on a body whose registers the bound did not change). The default is the
+    /// FROZEN control128. 128 threads, `--cache-arm control` only.
+    #[arg(long)]
+    control_launch_bounds: bool,
 
     /// Run the 128-thread cached arm WITHOUT `__launch_bounds__(128, 7)`. Unbounded it
     /// takes 75 registers = 6 blocks/SM against control128's 7, so the cache-vs-control
@@ -272,6 +279,16 @@ fn pass_config(cli: &Cli, geometry: &Geometry) -> PassConfig {
         if cli.pair_arm.is_some() {
             fail("--factorial runs every arm; it is mutually exclusive with --pair-arm".into());
         }
+        // The factorial rotates the R3 arms, which read the CONTROL descriptor. A cached
+        // arm rewrites `desc.source`, so this would silently time R3 bodies against a
+        // cache-cloned wire.
+        if cli.cache_arm.is_some_and(|a| a.uses_cache()) {
+            fail(
+                "--factorial rotates the R3 --pair-arm bodies; a cached --cache-arm would \
+                 change the uploaded source records under them"
+                    .into(),
+            );
+        }
         // The factorial returns before the validation block, so accepting these would
         // print `validate true` and check nothing.
         if cli.window_count || cli.window_poison {
@@ -344,9 +361,25 @@ fn pass_config(cli: &Cli, geometry: &Geometry) -> PassConfig {
         }
     }
     if let Some(order) = cli.prologue_order {
+        // Mode first: a wrong mode is the coarser error and must not be masked by the
+        // arm-scope ones below.
+        if !cli.mode.uses_pair_arm() {
+            fail(format!(
+                "--prologue-order applies to --mode lsb-pair only; --mode {} has no \
+                 coset-cache prologue",
+                cli.mode.as_str()
+            ));
+        }
+        let arm = cli.cache_arm.unwrap_or_default();
+        if !arm.uses_cache() {
+            fail(format!(
+                "--prologue-order {} is inert without a cached --cache-arm: there is no \
+                 prologue to order",
+                order.as_str()
+            ));
+        }
         // Spec 3.3: the alternate class order is a capacity-arm diagnostic, not a design
         // fork — it says nothing on an arm whose footprint fits comfortably.
-        let arm = cli.cache_arm.unwrap_or_default();
         if order != PrologueOrder::E4First && !matches!(arm, CacheArm::AllRepeat | CacheArm::All59)
         {
             fail(format!(
@@ -356,13 +389,16 @@ fn pass_config(cli: &Cli, geometry: &Geometry) -> PassConfig {
                 arm.as_str()
             ));
         }
-        if !cli.mode.uses_pair_arm() {
-            fail(format!(
-                "--prologue-order applies to --mode lsb-pair only; --mode {} has no \
-                 coset-cache prologue",
-                cli.mode.as_str()
-            ));
-        }
+    }
+    if cli.control_launch_bounds
+        && !(block_threads as usize == UNISKIP_PAIR_THREADS_128
+            && !cli.cache_arm.is_some_and(|a| a.uses_cache()))
+    {
+        fail(
+            "--control-launch-bounds is the bounded 128-thread NO-CACHE baseline; it needs \
+             --block-threads 128 and no cached --cache-arm"
+                .into(),
+        );
     }
     if cli.no_cache_launch_bounds
         && !(block_threads as usize == UNISKIP_PAIR_THREADS_128
@@ -414,6 +450,7 @@ fn pass_config(cli: &Cli, geometry: &Geometry) -> PassConfig {
         cache_arm: cli.cache_arm.unwrap_or_default(),
         prologue_order: cli.prologue_order.unwrap_or_default(),
         cache_launch_bounds: !cli.no_cache_launch_bounds,
+        control_launch_bounds: cli.control_launch_bounds,
         block_threads,
     };
     // The eval grid must tile the trace: a compact block is 8 warps x `groups` rows, so a
@@ -486,6 +523,29 @@ fn run_factorial(harness: &mut Harness, cli: &Cli) {
     );
 }
 
+/// The eval kernel this configuration launches, by name. Mirrors `Harness::new`'s dispatch
+/// and exists so the config block can state it; a selector that never reaches a call site
+/// is invisible without this.
+fn eval_kernel_name(config: &PassConfig) -> &'static str {
+    use gpu_gkr_uniskip_bench::abi::UNISKIP_PAIR_THREADS_128;
+    if !config.mode.uses_pair_arm() {
+        return "n/a";
+    }
+    let at_128 = config.block_threads as usize == UNISKIP_PAIR_THREADS_128;
+    match (config.cache_arm.uses_cache(), at_128) {
+        (true, true) if config.cache_launch_bounds => "eval_lsb_pair_cached_128_lb",
+        (true, true) => "eval_lsb_pair_cached_128",
+        (true, false) => "eval_lsb_pair_cached",
+        (false, true) if config.control_launch_bounds => "eval_lsb_pair_128_lb",
+        (false, true) => "eval_lsb_pair_128",
+        (false, false) => match config.pair_arm {
+            PairArm::T => "eval_lsb_pair_lb",
+            PairArm::Control => "eval_lsb_pair",
+            _ => "eval_lsb_pair_win*",
+        },
+    }
+}
+
 fn main() {
     let cli = Cli::parse();
     let geometry = Geometry::new(cli.log_trace).unwrap_or_else(|e| fail(e));
@@ -512,6 +572,14 @@ fn main() {
     } else {
         "n/a".to_string()
     };
+    let prologue_order_label = if config.mode.uses_pair_arm() && config.cache_arm.uses_cache() {
+        config.prologue_order.as_str()
+    } else {
+        "n/a"
+    };
+    // The kernel a timed run actually launches, printed so a recorded number is
+    // attributable to one body — an unwired selector is otherwise invisible.
+    let eval_kernel_label = eval_kernel_name(&config);
     let cache_arm_label = if config.mode.uses_pair_arm() {
         config.cache_arm.as_str()
     } else {
@@ -590,6 +658,8 @@ fn main() {
     println!("  pair_arm            {pair_arm_label}");
     println!("  cache_arm           {cache_arm_label}");
     println!("  block_threads       {block_threads_label}");
+    println!("  prologue_order      {prologue_order_label}");
+    println!("  eval kernel         {eval_kernel_label}");
     println!("  term_order          {}", cli.term_order.as_str());
     println!("  self_products       {self_products}");
     if self_products > 0 {
@@ -932,7 +1002,8 @@ fn main() {
     println!(
         "summary: log_trace {} | mode {} | lde_shape {lde_shape_label} | cell_map {cell_map_label} | \
          compact_groups {compact_groups_label} | bank_perm {bank_perm_label} | pair_arm {pair_arm_label} | \
-         cache_arm {cache_arm_label} | block_threads {block_threads_label} | term_order {} | \
+         cache_arm {cache_arm_label} | block_threads {block_threads_label} | \
+         kernel {eval_kernel_label} | term_order {} | \
          C {} Ru {} | {sources} sources / \
          {columns} columns / {} B ({:.2} GiB) per pass | total median {total_median:.3} ms over \
          {} iterations | {device}",

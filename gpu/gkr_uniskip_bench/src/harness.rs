@@ -393,6 +393,10 @@ pub struct PassConfig {
     /// Class the v3 R4 prologue produces first. A table-emission order only — the kernel
     /// walks what the host uploaded, so this costs no SASS.
     pub prologue_order: PrologueOrder,
+    /// Whether the 128-thread NO-CACHE baseline runs the `__launch_bounds__(128, 7)`
+    /// sibling. FALSE is the default and is the frozen control128; TRUE selects the bounded
+    /// baseline, which is what makes the 128 cache contrast bound-to-bound.
+    pub control_launch_bounds: bool,
     /// Whether the 128-thread cached arm runs the `__launch_bounds__(128, 7)` sibling.
     /// TRUE is the measurement arm: unbounded it takes 75 registers = 6 blocks/SM against
     /// control128's 7, and the contrast would carry an occupancy step. Ignored at 256,
@@ -456,7 +460,9 @@ pub struct Harness {
     lde: Option<[LdeLaunch; CLASSES]>,
     eval: EvalLaunch,
     /// Set only on a cached arm; when set it replaces `eval` and carries the prologue
-    /// table. Its descriptor is the arm's own CLONED source array, uploaded at build.
+    /// table. Its descriptor is the arm's own CLONED source array, uploaded at build, and
+    /// the launch it holds already encodes the block size AND the launch-bounds choice —
+    /// a timed run is attributable to exactly one kernel through this field.
     eval_cached: Option<(CachedLaunch, UniskipCacheDesc)>,
     /// Set only on a window arm; when set it replaces `eval` and carries the side
     /// descriptor. The control path never touches either field.
@@ -690,6 +696,9 @@ impl Harness {
             (EvalMode::FusedCached, CellMap::Interleave) => kernels::eval_fused_cached_interleave,
             (EvalMode::LsbRecompute, _) => kernels::eval_lsb_w0,
             (EvalMode::LsbPair, _) => match config.block_threads as usize {
+                UNISKIP_PAIR_THREADS_128 if config.control_launch_bounds => {
+                    kernels::eval_lsb_pair_128_lb
+                }
                 UNISKIP_PAIR_THREADS_128 => kernels::eval_lsb_pair_128,
                 UNISKIP_THREADS_PER_BLOCK => match config.pair_arm {
                     PairArm::T => kernels::eval_lsb_pair_lb,
@@ -716,11 +725,15 @@ impl Harness {
                     .find(|(a, _)| *a == config.cache_arm)
                     .and_then(|(_, s)| s.as_ref().ok())
                     .expect("main rejects an unplannable selected arm before device setup");
+                // The BOUNDED 128 kernel is the default: unbounded it takes 75 registers
+                // = 6 blocks/SM against control128's 7, which the occupancy gate forbids
+                // accepting silently. `cache_launch_bounds = false` selects the stepped one
+                // deliberately, to price what the bound costs.
                 let launch: CachedLaunch =
-                    if config.block_threads as usize == UNISKIP_PAIR_THREADS_128 {
-                        kernels::eval_lsb_pair_cached_128
-                    } else {
-                        kernels::eval_lsb_pair_cached
+                    match (config.block_threads as usize, config.cache_launch_bounds) {
+                        (UNISKIP_PAIR_THREADS_128, true) => kernels::eval_lsb_pair_cached_128_lb,
+                        (UNISKIP_PAIR_THREADS_128, false) => kernels::eval_lsb_pair_cached_128,
+                        _ => kernels::eval_lsb_pair_cached,
                     };
                 Some((launch, state.descriptor(config.prologue_order)))
             }
