@@ -1974,7 +1974,17 @@ windowed reference — the parity bar for a k = 4 pass is 15.0 ms, now **8.6 %**
 
 ### ncu — `lsb-pair` locality against R0
 
-`ncu --set full`, `target/profiling/ncu/v3r2_pair_locality_full.ncu-rep`.
+R0's recipe with the kernel regex and mode swapped; the report's session page carries
+this command line internally:
+
+```bash
+.agents/bin/with_gpu_lock.sh ncu --set full \
+    --metrics dram__bytes.sum,l1tex__t_sectors_pipe_lsu_mem_global_op_ld.sum,smsp__inst_executed.sum \
+    --kernel-name-base demangled --kernel-name 'regex:ab_gkr_uniskip_eval_lsb_pair_kernel' \
+    --launch-count 1 --target-processes all -o target/profiling/ncu/v3r2_pair_locality_full \
+    target/release/gpu_gkr_uniskip_bench --log-trace 24 --warmup 1 --iterations 1 \
+    --mode lsb-pair --term-order locality
+```
 
 | metric | R0 `lsb-recompute` | R1 `lsb-compact` G = 4 | **R2 `lsb-pair`** |
 | --- | --- | --- | --- |
