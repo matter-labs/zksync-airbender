@@ -376,6 +376,8 @@ pub struct PassBytes {
 /// A class-pair LDE launch (`bf`, `e4`), or `None` in a mode with no LDE stage.
 type LdeLaunch = fn(&UniskipVmDesc, &DeviceSlice<u16>, usize, &CudaStream) -> CudaResult<()>;
 type EvalLaunch = fn(&UniskipVmDesc, u32, &CudaStream) -> CudaResult<()>;
+/// A window arm's launch: the control descriptor plus the side descriptor.
+type WindowLaunch = fn(&UniskipVmDesc, &UniskipWindowDesc, u32, &CudaStream) -> CudaResult<()>;
 
 pub struct Harness {
     pub layout: Layout,
@@ -390,6 +392,9 @@ pub struct Harness {
     config: PassConfig,
     lde: Option<[LdeLaunch; CLASSES]>,
     eval: EvalLaunch,
+    /// Set only on a window arm; when set it replaces `eval` and carries the side
+    /// descriptor. The control path never touches either field.
+    eval_window: Option<(WindowLaunch, UniskipWindowDesc)>,
     taps: [DeviceAllocation<u32>; CLASSES],
     /// One unused word per class in a fused mode — see [`EvalMode::materializes_coset`].
     cosets: [DeviceAllocation<u32>; CLASSES],
@@ -420,6 +425,7 @@ impl Harness {
         flat_eq: bool,
         config: PassConfig,
         plan: &CachePlan,
+        window: UniskipWindowDesc,
     ) -> CudaResult<Self> {
         let layout = Layout::new(program, geometry, config.mode.source_layout());
         // A mode that runs no compaction still uploads a well-formed schedule, so the
@@ -599,12 +605,25 @@ impl Harness {
             (EvalMode::FusedCached, CellMap::Block) => kernels::eval_fused_cached,
             (EvalMode::FusedCached, CellMap::Interleave) => kernels::eval_fused_cached_interleave,
             (EvalMode::LsbRecompute, _) => kernels::eval_lsb_w0,
-            (EvalMode::LsbPair, _) => kernels::eval_lsb_pair,
+            (EvalMode::LsbPair, _) => match config.pair_arm {
+                PairArm::T => kernels::eval_lsb_pair_lb,
+                _ => kernels::eval_lsb_pair,
+            },
             (EvalMode::LsbCompact, _) => match compact_groups {
                 4 => kernels::eval_lsb_compact_g4,
                 8 => kernels::eval_lsb_compact_g8,
                 other => panic!("--compact-groups {other} has no kernel"),
             },
+        };
+
+        let eval_window = match (config.mode, config.pair_arm) {
+            (EvalMode::LsbPair, PairArm::W | PairArm::Wnone) => {
+                Some((kernels::eval_lsb_pair_win as WindowLaunch, window))
+            }
+            (EvalMode::LsbPair, PairArm::Wt) => {
+                Some((kernels::eval_lsb_pair_win_lb as WindowLaunch, window))
+            }
+            _ => None,
         };
 
         Ok(Self {
@@ -618,6 +637,7 @@ impl Harness {
             config,
             lde,
             eval,
+            eval_window,
             taps,
             cosets,
             eq_low,
@@ -681,7 +701,10 @@ impl Harness {
         self.events[0].record(&self.stream)?;
         self.run_lde()?;
         self.events[1].record(&self.stream)?;
-        (self.eval)(&self.desc, self.eval_blocks, &self.stream)?;
+        match &self.eval_window {
+            Some((launch, win)) => launch(&self.desc, win, self.eval_blocks, &self.stream)?,
+            None => (self.eval)(&self.desc, self.eval_blocks, &self.stream)?,
+        }
         self.events[2].record(&self.stream)?;
         kernels::finalize(&self.partials, self.eval_blocks, &mut self.q, &self.stream)?;
         self.events[3].record(&self.stream)?;

@@ -165,6 +165,29 @@ static_assert((UNISKIP_CACHE_UNITS * UNISKIP_ROWS_PER_BLOCK) % UNISKIP_THREADS_P
 // the only shared allocation the eval kernel makes (the cell reduction is `shfl`-only).
 static_assert(UNISKIP_CACHE_POOL_WORDS * sizeof(u32) <= 48 * 1024);
 
+// v3 R3 WINDOW SIDE DESCRIPTOR — the device twin of `abi::UniskipWindowDesc`. It is a
+// SEPARATE parameter from `uniskip_vm_desc`: the control wire format is untouched, so an
+// arm without a window is byte-for-byte the R2 kernel. One tag byte per record position,
+// operand A in the low nibble and operand B in the high; within a nibble `0` is none,
+// `1 + slot` is fill and `1 + UNISKIP_WINDOW_SLOTS + slot` is reuse (see
+// `src/window.rs::WindowTag::encode`). The kernel reads `tags` only — `slot_source` and
+// `slot_count` are carried for wire symmetry with the host validator, which checks
+// against them, and cost 16 B of cmem.
+constexpr u32 UNISKIP_WINDOW_SLOTS = 4;
+struct alignas(16) uniskip_window_desc {
+  u8 tags[UNISKIP_PROGRAM_CAPACITY];
+  u16 slot_source[UNISKIP_WINDOW_SLOTS];
+  u32 slot_count;
+};
+static_assert(sizeof(uniskip_window_desc) == 272);
+static_assert(alignof(uniskip_window_desc) == 16);
+static_assert(offsetof(uniskip_window_desc, tags) == 0);
+static_assert(offsetof(uniskip_window_desc, slot_source) == 256);
+static_assert(offsetof(uniskip_window_desc, slot_count) == 264);
+static_assert(sizeof(uniskip_window_desc) + sizeof(uniskip_vm_desc) <= 32764, "both descriptors are by-value kernel parameters");
+// A slot index and both tag kinds must fit one nibble.
+static_assert(1 + 2 * UNISKIP_WINDOW_SLOTS <= 16);
+
 } // namespace airbender::gkr_uniskip_bench
 
 EXTERN __device__ __constant__ e4 ab_gkr_uniskip_coeff_bank[airbender::gkr_uniskip_bench::UNISKIP_COEFF_BANK];

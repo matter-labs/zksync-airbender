@@ -14,9 +14,9 @@ use era_cudart::stream::CudaStream;
 use era_cudart_sys::{cudaMemcpyToSymbol, cuda_struct_and_stub, CudaMemoryCopyKind};
 
 use crate::abi::{
-    UniskipCompactSlot, UniskipVmDesc, UNISKIP_CACHE_UNITS, UNISKIP_CELLS, UNISKIP_COEFF_BANK,
-    UNISKIP_COMPACT_MAX_ROUNDS, UNISKIP_EQ_HIGH, UNISKIP_NTT_TABLES, UNISKIP_TAPS,
-    UNISKIP_THREADS_PER_BLOCK,
+    UniskipCompactSlot, UniskipVmDesc, UniskipWindowDesc, UNISKIP_CACHE_UNITS, UNISKIP_CELLS,
+    UNISKIP_COEFF_BANK, UNISKIP_COMPACT_MAX_ROUNDS, UNISKIP_EQ_HIGH, UNISKIP_NTT_TABLES,
+    UNISKIP_TAPS, UNISKIP_THREADS_PER_BLOCK,
 };
 
 cuda_struct_and_stub! { static ab_gkr_uniskip_coeff_bank: [[u32; 4]; UNISKIP_COEFF_BANK]; }
@@ -115,6 +115,21 @@ cuda_kernel!(
 cuda_kernel!(
     EvalLsbPair,
     ab_gkr_uniskip_eval_lsb_pair_kernel(desc: UniskipVmDesc)
+);
+// v3 R3 arms. `pair_lb` is the control body under `__launch_bounds__`; the two window
+// entry points take the side descriptor as a SECOND by-value parameter, so the control's
+// launch signature is untouched.
+cuda_kernel!(
+    EvalLsbPairLb,
+    ab_gkr_uniskip_eval_lsb_pair_lb_kernel(desc: UniskipVmDesc)
+);
+cuda_kernel!(
+    EvalLsbPairWin,
+    ab_gkr_uniskip_eval_lsb_pair_win_kernel(desc: UniskipVmDesc, win: UniskipWindowDesc)
+);
+cuda_kernel!(
+    EvalLsbPairWinLb,
+    ab_gkr_uniskip_eval_lsb_pair_win_lb_kernel(desc: UniskipVmDesc, win: UniskipWindowDesc)
 );
 cuda_kernel!(
     Finalize,
@@ -412,6 +427,37 @@ pub fn eval_lsb_pair(desc: &UniskipVmDesc, blocks: u32, stream: &CudaStream) -> 
     let args = EvalLsbPairArguments::new(*desc);
     let config = CudaLaunchConfig::basic(blocks, UNISKIP_THREADS_PER_BLOCK as u32, stream);
     EvalLsbPairFunction::default().launch(&config, &args)
+}
+
+/// The v3 R3 `t` arm: the control body under `__launch_bounds__(256, 3)`.
+pub fn eval_lsb_pair_lb(desc: &UniskipVmDesc, blocks: u32, stream: &CudaStream) -> CudaResult<()> {
+    let args = EvalLsbPairLbArguments::new(*desc);
+    let config = CudaLaunchConfig::basic(blocks, UNISKIP_THREADS_PER_BLOCK as u32, stream);
+    EvalLsbPairLbFunction::default().launch(&config, &args)
+}
+
+/// The v3 R3 `w` arm — and `wnone`, which is this kernel with an all-`none` tag stream.
+pub fn eval_lsb_pair_win(
+    desc: &UniskipVmDesc,
+    win: &UniskipWindowDesc,
+    blocks: u32,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    let args = EvalLsbPairWinArguments::new(*desc, *win);
+    let config = CudaLaunchConfig::basic(blocks, UNISKIP_THREADS_PER_BLOCK as u32, stream);
+    EvalLsbPairWinFunction::default().launch(&config, &args)
+}
+
+/// The v3 R3 `wt` arm: window plus the launch-bounds twiddle trade.
+pub fn eval_lsb_pair_win_lb(
+    desc: &UniskipVmDesc,
+    win: &UniskipWindowDesc,
+    blocks: u32,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    let args = EvalLsbPairWinLbArguments::new(*desc, *win);
+    let config = CudaLaunchConfig::basic(blocks, UNISKIP_THREADS_PER_BLOCK as u32, stream);
+    EvalLsbPairWinLbFunction::default().launch(&config, &args)
 }
 
 /// Reduce the `blocks * UNISKIP_CELLS` partials into the `UNISKIP_CELLS` cells of `q`.

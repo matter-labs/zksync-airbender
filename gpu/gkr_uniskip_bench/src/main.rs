@@ -374,14 +374,6 @@ fn main() {
     );
     println!("{plan}");
 
-    if !config.pair_arm.implemented() {
-        fail(format!(
-            "--pair-arm {} is not yet implemented (v3 R3 task 0 lands the host schedule \
-             only; the kernels are a later task)",
-            config.pair_arm.as_str()
-        ));
-    }
-
     let validate = cli.validate || cli.validate_flat_eq;
     let mut harness = Harness::new(
         &program,
@@ -390,6 +382,7 @@ fn main() {
         cli.validate_flat_eq,
         config,
         &plan,
+        window.descriptor(),
     )
     .unwrap_or_else(|e| fail(format!("device setup failed: {e}")));
 

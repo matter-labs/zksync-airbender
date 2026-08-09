@@ -165,6 +165,111 @@ DEVICE_FORCEINLINE void uniskip_pair_resolve(const uniskip_vm_desc &desc, const 
   c[1] = e4(limbs[1]);
 }
 
+// ---------------------------------------------------------------------------------------
+// v3 R3 WINDOW. Coset-only: a slot retains one BF source's produced `c[2]` (2 regs/lane);
+// `h[2]` is still loaded on reuse. A reuse therefore skips exactly the shuffle-NTT chain
+// and its twist for that operand resolution, which is the whole saving.
+// ---------------------------------------------------------------------------------------
+
+// Tag nibble decode. Encoding is `src/window.rs::WindowTag::encode`: 0 = none,
+// 1 + slot = fill, 1 + SLOTS + slot = reuse. With SLOTS a power of two the slot number is
+// `(n - 1) & (SLOTS - 1)` for both kinds.
+DEVICE_FORCEINLINE u32 uniskip_win_tag_a(const u8 byte) { return byte & 0xf; }
+DEVICE_FORCEINLINE u32 uniskip_win_tag_b(const u8 byte) { return byte >> 4; }
+DEVICE_FORCEINLINE bool uniskip_win_is_fill(const u32 tag) { return tag != 0 && tag <= UNISKIP_WINDOW_SLOTS; }
+DEVICE_FORCEINLINE bool uniskip_win_is_reuse(const u32 tag) { return tag > UNISKIP_WINDOW_SLOTS; }
+DEVICE_FORCEINLINE u32 uniskip_win_slot(const u32 tag) { return (tag - 1) & (UNISKIP_WINDOW_SLOTS - 1); }
+
+// NAMED SLOT REGISTERS. Eight `bf` members, never an indexable array: a register array
+// under a runtime index becomes local memory. The slot number is warp-uniform (it comes
+// from a record's tag and `pc` is warp-uniform), so the switch is uniform control flow and
+// each case is a literal member reference.
+struct uniskip_win_slots {
+  bf lo0, hi0, lo1, hi1, lo2, hi2, lo3, hi3;
+};
+
+DEVICE_FORCEINLINE void uniskip_win_store(uniskip_win_slots &s, const u32 slot, const bf lo, const bf hi) {
+  switch (slot) {
+  case 0:
+    s.lo0 = lo;
+    s.hi0 = hi;
+    break;
+  case 1:
+    s.lo1 = lo;
+    s.hi1 = hi;
+    break;
+  case 2:
+    s.lo2 = lo;
+    s.hi2 = hi;
+    break;
+  default:
+    s.lo3 = lo;
+    s.hi3 = hi;
+    break;
+  }
+}
+
+DEVICE_FORCEINLINE void uniskip_win_load(const uniskip_win_slots &s, const u32 slot, bf &lo, bf &hi) {
+  switch (slot) {
+  case 0:
+    lo = s.lo0;
+    hi = s.hi0;
+    break;
+  case 1:
+    lo = s.lo1;
+    hi = s.hi1;
+    break;
+  case 2:
+    lo = s.lo2;
+    hi = s.hi2;
+    break;
+  default:
+    lo = s.lo3;
+    hi = s.hi3;
+    break;
+  }
+}
+
+// The windowed `bf` resolve. `h` is always loaded. On reuse the chain is skipped entirely
+// and `c` comes from the slot; otherwise the chain runs ONCE — before the store switch, so
+// no slot case carries a copy of it — and a fill hands `c` to the slot.
+//
+// The fill store happens HERE, inside the resolve, which is what keeps it correct for
+// group members: a grouped `PRODUCT_BF_BF` multiplies `ac[k]` in place after both operands
+// resolve, so a slot captured any later would retain the product instead of the operand.
+DEVICE_FORCEINLINE void uniskip_pair_resolve_win(const uniskip_vm_desc &desc, const uniskip_pair_lane &lane, const u16 source_id, const u32 tag,
+                                                 uniskip_win_slots &slots, bf h[2], bf c[2]) {
+  const uniskip_source_record rec = desc.source[source_id];
+  const bf *base = reinterpret_cast<const bf *>(desc.tap_bases[rec.addr >> 7].base);
+  h[0] = load<bf, ld_modifier::ca>(base, uniskip_pair_offset(desc, rec, lane, 0));
+  h[1] = load<bf, ld_modifier::ca>(base, uniskip_pair_offset(desc, rec, lane, 1));
+  if (uniskip_win_is_reuse(tag)) {
+    uniskip_win_load(slots, uniskip_win_slot(tag), c[0], c[1]);
+    return;
+  }
+  uniskip_pair_regs x{h[0], h[1]};
+  uniskip_pair_chain(x, lane.lane, lane.tw);
+  c[0] = x.lo;
+  c[1] = x.hi;
+  if (uniskip_win_is_fill(tag))
+    uniskip_win_store(slots, uniskip_win_slot(tag), c[0], c[1]);
+}
+
+// Operand B under the window. A self-product performs no second access, so Task 0 leaves
+// its B tag `none` and this never runs for one.
+DEVICE_FORCEINLINE void uniskip_pair_resolve_second_win(const uniskip_vm_desc &desc, const uniskip_pair_lane &lane, const uniskip_term term, const u32 tag,
+                                                        uniskip_win_slots &slots, const bf ah[2], const bf ac[2], bf bh[2], bf bc[2]) {
+  if (term.source_b == term.source_a) {
+#pragma unroll
+    for (u32 k = 0; k < 2; ++k) {
+      bh[k] = ah[k];
+      bc[k] = ac[k];
+    }
+    return;
+  }
+  uniskip_pair_resolve_win(desc, lane, term.source_b, tag, slots, bh, bc);
+}
+
 // W = 0 duplicate rule, unchanged: a repeated operand inside one term is produced once.
 template <typename T>
 DEVICE_FORCEINLINE void uniskip_pair_resolve_second(const uniskip_vm_desc &desc, const uniskip_pair_lane &lane, const uniskip_term term, const T ah[2],
