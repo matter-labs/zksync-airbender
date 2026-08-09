@@ -23,26 +23,41 @@ from statistics import median
 
 SAMPLE = re.compile(r"^SAMPLE (\S+) (\d+) (\S+) ([\d.]+) ([\d.]+)$")
 DONE = re.compile(r"^FACTORIAL done order=(\S+) warmup=(\d+) rounds=(\d+) arms=(\d+)$")
+ARM = re.compile(r"^ARM (\S+) (\d+) (\d+)$")
 
-# Compiled registers / blocks per SM on sm_120, from the Task 1 gate (8-register
-# allocation granularity). w and wnone are over the 80-register cliff.
-OCC = {"control": (72, 3), "t": (79, 3), "w": (82, 2), "wt": (80, 3), "wnone": (82, 2)}
 REMOVED = 47  # productions the top-4 window skips per warp-program walk
 
 
 def parse(path):
-    """{order: {round: {arm: eval+finalize ms}}}, plus the trailer per order."""
-    runs, done = defaultdict(lambda: defaultdict(dict)), {}
-    for line in open(path):
+    """{order: {round: {arm: ms}}}, the trailer per order, and the arm occupancy facts.
+
+    Duplicate (order, round, arm) samples are a HARD ERROR: two runs concatenated into one
+    log would otherwise overwrite each other silently and still report a full set of paired
+    rounds, with medians drawn from two different sessions.
+    """
+    runs, done, occ = defaultdict(lambda: defaultdict(dict)), {}, {}
+    for n, line in enumerate(open(path), 1):
         m = SAMPLE.match(line.strip())
         if m:
             order, rnd, arm, ev, fin = m.groups()
-            runs[order][int(rnd)][arm] = float(ev) + float(fin)
+            bucket = runs[order][int(rnd)]
+            if arm in bucket:
+                sys.exit(
+                    f"{path}:{n}: duplicate sample for order={order} round={rnd} arm={arm} "
+                    f"— the log mixes runs; emit one session at a time"
+                )
+            bucket[arm] = float(ev) + float(fin)
+            continue
+        m = ARM.match(line.strip())
+        if m:
+            occ[m.group(1)] = (int(m.group(2)), int(m.group(3)))
             continue
         m = DONE.match(line.strip())
         if m:
+            if m.group(1) in done:
+                sys.exit(f"{path}:{n}: order={m.group(1)} completes twice — mixed log")
             done[m.group(1)] = (int(m.group(2)), int(m.group(3)), int(m.group(4)))
-    return runs, done
+    return runs, done, occ
 
 
 def iqr(xs):
@@ -51,8 +66,8 @@ def iqr(xs):
     return s[n // 4], s[(3 * n) // 4]
 
 
-def emit(order, rounds, trailer):
-    arms = ["control", "t", "w", "wt", "wnone"]
+def emit(order, rounds, trailer, occ):
+    arms = [a for a in ["control", "t", "w", "wt", "wnone", "wtnone"] if a in occ]
     # SAME-SESSION GUARD: every round must carry every arm, or the pairing is a fiction.
     complete = {r: v for r, v in rounds.items() if all(a in v for a in arms)}
     dropped = len(rounds) - len(complete)
@@ -66,18 +81,24 @@ def emit(order, rounds, trailer):
     if dropped:
         print(f"note: {order}: dropped {dropped} incomplete rounds", file=sys.stderr)
 
-    print(f"#### `--term-order {order}` — {len(complete)} paired rounds, 5 arms per round\n")
+    print(f"#### `--term-order {order}` — {len(complete)} paired rounds, {len(arms)} arms per round\n")
     print("| arm | regs | blocks/SM | median `eval + finalize` (ms) | min | max |")
     print("| --- | --- | --- | --- | --- | --- |")
     med = {}
     for a in arms:
         xs = [complete[r][a] for r in sorted(complete)]
         med[a] = median(xs)
-        regs, blocks = OCC[a]
+        regs, blocks = occ[a]
         print(f"| `{a}` | {regs} | {blocks} | **{med[a]:.3f}** | {min(xs):.3f} | {max(xs):.3f} |")
 
-    print("\n| paired contrast | median (ms) | IQR (ms) | median (%) | rounds with this sign | occupancy |")
-    print("| --- | --- | --- | --- | --- | --- |")
+    print(
+        "\n**Percentages are of the contrast's OWN baseline** — the second term of the "
+        "subtraction, named in each row — not of `control`. `w` − `wnone` at −5.3 % is "
+        "−5.3 % of `wnone`; against `control` the same millisecond figure is a larger "
+        "fraction.\n"
+    )
+    print("| paired contrast | median (ms) | IQR (ms) | median (% of baseline) | baseline | rounds with this sign | occupancy |")
+    print("| --- | --- | --- | --- | --- | --- | --- |")
     labels = {
         "t": ("`t` − `control`", "3 v 3 — occupancy-neutral"),
         "w": ("`w` − `control`", "**2 v 3 — NOT occupancy-neutral**"),
@@ -89,23 +110,41 @@ def emit(order, rounds, trailer):
         m = median(d)
         lo, hi = iqr(d)
         same = sum(1 for x in d if (x < 0) == (m < 0))
-        name, occ = labels[a]
+        name, label = labels[a]
         print(
             f"| {name} | **{m:+.3f}** | {lo:+.3f} … {hi:+.3f} | {100 * m / med['control']:+.2f} % "
-            f"| {same}/{len(d)} | {occ} |"
+            f"| `control` | {same}/{len(d)} | {label} |"
         )
     # The two clean window contrasts the Task 1 review pinned.
-    for name, a, b, occ in [
-        ("`wt` − `t`", "wt", "t", "3 v 3 — the window at fixed occupancy"),
+    clean = [
+        ("`wt` − `t`", "wt", "t", "3 v 3 — machinery + removal together"),
         ("`w` − `wnone`", "w", "wnone", "2 v 2 — the SCHEDULE alone, identical kernel"),
-    ]:
+    ]
+    if "wtnone" in med:
+        clean += [
+            ("`wtnone` − `t`", "wtnone", "t", "3 v 3 — the MACHINERY alone"),
+            ("`wt` − `wtnone`", "wt", "wtnone", "3 v 3 — the REMOVAL alone, at 3 blocks"),
+        ]
+    for name, a, b, label in clean:
         d = [complete[r][a] - complete[r][b] for r in sorted(complete)]
         m = median(d)
         lo, hi = iqr(d)
         same = sum(1 for x in d if (x < 0) == (m < 0))
         print(
             f"| {name} | **{m:+.3f}** | {lo:+.3f} … {hi:+.3f} | {100 * m / med[b]:+.2f} % "
-            f"| {same}/{len(d)} | {occ} |"
+            f"| `{b}` | {same}/{len(d)} | {label} |"
+        )
+
+    if "wtnone" in med:
+        # The decomposition must close: machinery + removal = the pair it was split from.
+        mach = median([complete[r]["wtnone"] - complete[r]["t"] for r in sorted(complete)])
+        rem = median([complete[r]["wt"] - complete[r]["wtnone"] for r in sorted(complete)])
+        both = median([complete[r]["wt"] - complete[r]["t"] for r in sorted(complete)])
+        print(
+            f"\n**Decomposition check** (`wtnone` − `t`) + (`wt` − `wtnone`) = "
+            f"{mach:+.3f} {rem:+.3f} = **{mach + rem:+.3f}** against `wt` − `t` = "
+            f"**{both:+.3f}** — medians are not exactly additive, so a small residual is "
+            f"expected; the per-round identity is exact by construction."
         )
 
     inter = [
@@ -137,13 +176,13 @@ def main():
     ap.add_argument("log")
     ap.add_argument("--order", help="emit only this term order")
     args = ap.parse_args()
-    runs, done = parse(args.log)
+    runs, done, occ = parse(args.log)
     if not runs:
         sys.exit(f"{args.log}: no SAMPLE lines")
     for order in sorted(runs, key=lambda o: (o != "locality", o)):
         if args.order and order != args.order:
             continue
-        emit(order, runs[order], done.get(order))
+        emit(order, runs[order], done.get(order), occ)
 
 
 if __name__ == "__main__":

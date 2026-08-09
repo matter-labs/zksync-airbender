@@ -300,11 +300,21 @@ pub enum PairArm {
     W,
     Wt,
     Wnone,
+    /// The 3-block WØ: the `wt` kernel with an all-`none` stream. With `t` it splits
+    /// `wt - t` into machinery alone and removal alone, both at 3 blocks.
+    Wtnone,
 }
 
 impl PairArm {
     /// The factorial's arms in rotation order.
-    pub const FACTORIAL: [Self; 5] = [Self::Control, Self::T, Self::W, Self::Wt, Self::Wnone];
+    pub const FACTORIAL: [Self; 6] = [
+        Self::Control,
+        Self::T,
+        Self::W,
+        Self::Wt,
+        Self::Wnone,
+        Self::Wtnone,
+    ];
 
     /// Compiled registers and the resulting blocks/SM on sm_120 (8-register allocation
     /// granularity). `w`/`wnone` are 2-block arms: they are over the 80-register cliff, so
@@ -314,7 +324,7 @@ impl PairArm {
             Self::Control => (72, 3),
             Self::T => (79, 3),
             Self::W | Self::Wnone => (82, 2),
-            Self::Wt => (80, 3),
+            Self::Wt | Self::Wtnone => (80, 3),
         }
     }
 
@@ -325,18 +335,30 @@ impl PairArm {
             Self::W => "w",
             Self::Wt => "wt",
             Self::Wnone => "wnone",
+            Self::Wtnone => "wtnone",
         }
     }
 
     /// Whether the arm ships a window side descriptor at all.
     pub fn uses_window(self) -> bool {
-        matches!(self, Self::W | Self::Wt | Self::Wnone)
+        matches!(self, Self::W | Self::Wt | Self::Wnone | Self::Wtnone)
     }
 
     /// Whether the descriptor carries a planned schedule rather than the all-`none`
     /// stream. `Wnone` is the difference between the two.
     pub fn uses_schedule(self) -> bool {
         matches!(self, Self::W | Self::Wt)
+    }
+
+    /// The window kernel an arm launches, or `None` for the arms that take no side
+    /// descriptor. Single-arm and factorial paths both go through this, so an arm cannot
+    /// be wired two different ways.
+    pub fn kernel_for(self) -> Option<WindowLaunch> {
+        match self {
+            Self::Control | Self::T => None,
+            Self::W | Self::Wnone => Some(kernels::eval_lsb_pair_win),
+            Self::Wt | Self::Wtnone => Some(kernels::eval_lsb_pair_win_lb),
+        }
     }
 
     /// Task 0 lands the host machinery only; the kernels are Task 1+.
@@ -635,13 +657,16 @@ impl Harness {
             },
         };
 
-        let eval_window = match (config.mode, config.pair_arm) {
-            (EvalMode::LsbPair, PairArm::W | PairArm::Wnone) => {
-                Some((kernels::eval_lsb_pair_win as WindowLaunch, window))
-            }
-            (EvalMode::LsbPair, PairArm::Wt) => {
-                Some((kernels::eval_lsb_pair_win_lb as WindowLaunch, window))
-            }
+        let none = UniskipWindowDesc::default();
+        let eval_window = match config.mode {
+            EvalMode::LsbPair => config.pair_arm.kernel_for().map(|launch| {
+                let desc = if config.pair_arm.uses_schedule() {
+                    window
+                } else {
+                    none
+                };
+                (launch, desc)
+            }),
             _ => None,
         };
 
@@ -658,7 +683,7 @@ impl Harness {
             eval,
             eval_window,
             window_tagged: window,
-            window_none: UniskipWindowDesc::default(),
+            window_none: none,
             taps,
             cosets,
             eq_low,
@@ -740,27 +765,19 @@ impl Harness {
     pub fn run_pass_arm(&mut self, arm: PairArm) -> CudaResult<()> {
         self.events[0].record(&self.stream)?;
         self.events[1].record(&self.stream)?;
-        match arm {
-            PairArm::Control => kernels::eval_lsb_pair(&self.desc, self.eval_blocks, &self.stream)?,
-            PairArm::T => kernels::eval_lsb_pair_lb(&self.desc, self.eval_blocks, &self.stream)?,
-            PairArm::W => kernels::eval_lsb_pair_win(
-                &self.desc,
-                &self.window_tagged,
-                self.eval_blocks,
-                &self.stream,
-            )?,
-            PairArm::Wt => kernels::eval_lsb_pair_win_lb(
-                &self.desc,
-                &self.window_tagged,
-                self.eval_blocks,
-                &self.stream,
-            )?,
-            PairArm::Wnone => kernels::eval_lsb_pair_win(
-                &self.desc,
-                &self.window_none,
-                self.eval_blocks,
-                &self.stream,
-            )?,
+        match arm.kernel_for() {
+            None if arm == PairArm::T => {
+                kernels::eval_lsb_pair_lb(&self.desc, self.eval_blocks, &self.stream)?
+            }
+            None => kernels::eval_lsb_pair(&self.desc, self.eval_blocks, &self.stream)?,
+            Some(launch) => {
+                let win = if arm.uses_schedule() {
+                    &self.window_tagged
+                } else {
+                    &self.window_none
+                };
+                launch(&self.desc, win, self.eval_blocks, &self.stream)?
+            }
         }
         self.events[2].record(&self.stream)?;
         kernels::finalize(&self.partials, self.eval_blocks, &mut self.q, &self.stream)?;

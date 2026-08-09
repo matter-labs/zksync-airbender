@@ -235,6 +235,15 @@ fn pass_config(cli: &Cli, geometry: &Geometry) -> PassConfig {
         if cli.pair_arm.is_some() {
             fail("--factorial runs every arm; it is mutually exclusive with --pair-arm".into());
         }
+        // The factorial returns before the validation block, so accepting these would
+        // print `validate true` and check nothing.
+        if cli.validate || cli.validate_flat_eq || cli.dump_q {
+            fail(
+                "--factorial is a timing run; use --pair-arm or tools/r3_gates.sh for \
+                 --validate / --dump-q"
+                    .into(),
+            );
+        }
     }
     if !cli.mode.uses_pair_arm() && cli.pair_arm.is_some() {
         fail(format!(
@@ -287,8 +296,14 @@ fn pass_config(cli: &Cli, geometry: &Geometry) -> PassConfig {
 /// descriptors resident; each round runs every arm once in a CYCLIC ROTATION of the arm
 /// list, so no arm ever holds a fixed position and any per-round drift is shared. Warmup
 /// rounds rotate identically. Every sample is emitted; nothing is summarized here.
-fn run_factorial(harness: &mut Harness, cli: &Cli, config: PassConfig) {
+fn run_factorial(harness: &mut Harness, cli: &Cli) {
     let arms = PairArm::FACTORIAL;
+    // The emitter reads its occupancy labels from here, so the register/block facts live
+    // in exactly one place.
+    for arm in arms {
+        let (regs, blocks) = arm.occupancy();
+        println!("ARM {} {regs} {blocks}", arm.as_str());
+    }
     let mut round = |harness: &mut Harness, index: u32, timed: bool| {
         for offset in 0..arms.len() {
             let arm = arms[(index as usize + offset) % arms.len()];
@@ -327,7 +342,6 @@ fn run_factorial(harness: &mut Harness, cli: &Cli, config: PassConfig) {
         cli.iterations,
         arms.len()
     );
-    let _ = config;
 }
 
 fn main() {
@@ -550,11 +564,16 @@ fn main() {
             window.passes_without,
             window.passes_with
         );
+        debug_assert_eq!(
+            window::WindowSchedule::empty(&program).descriptor(),
+            gpu_gkr_uniskip_bench::abi::UniskipWindowDesc::default(),
+            "the `none` arms rely on a zeroed descriptor being the empty schedule"
+        );
         assert!(
             window.reuses > 0,
             "the factorial needs a planned schedule; an empty one makes w indistinguishable from wnone"
         );
-        run_factorial(&mut harness, &cli, config);
+        run_factorial(&mut harness, &cli);
         return;
     }
 
