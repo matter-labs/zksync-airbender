@@ -121,6 +121,14 @@ struct Cli {
     #[arg(long)]
     no_cache_launch_bounds: bool,
 
+    /// Run the v3 R4 primary factorial: 11 lanes (5 arms at 256, 6 at 128 including both
+    /// no-cache baselines) in ONE process against shared allocations, in a generated cyclic
+    /// rotation. Use `--iterations` a multiple of 11 (the record uses 99 per term order).
+    /// The factorial owns both block sizes internally, so it takes neither --block-threads
+    /// nor a single --cache-arm.
+    #[arg(long)]
+    cache_factorial: bool,
+
     /// TEST-ONLY. Corrupt the selected cached arm's records and upload them UNCHECKED —
     /// the always-on validator would reject them, which is the point. `retarget` points a
     /// cached reference at a different LIVE same-width slot, so `q` must change.
@@ -408,6 +416,53 @@ fn pass_config(cli: &Cli, geometry: &Geometry) -> PassConfig {
             ));
         }
     }
+    if cli.cache_factorial {
+        // Everything the rotation must own itself, or that would contaminate it.
+        if !cli.mode.uses_pair_arm() {
+            fail(format!(
+                "--cache-factorial applies to --mode lsb-pair only; --mode {} has no R4 arms",
+                cli.mode.as_str()
+            ));
+        }
+        for (flag, set) in [
+            ("--pair-arm", cli.pair_arm.is_some()),
+            ("--cache-arm", cli.cache_arm.is_some()),
+            ("--block-threads", cli.block_threads.is_some()),
+            ("--prologue-order", cli.prologue_order.is_some()),
+            ("--cache-mutate", cli.cache_mutate.is_some()),
+            ("--factorial", cli.factorial),
+            ("--control-launch-bounds", cli.control_launch_bounds),
+            ("--no-cache-launch-bounds", cli.no_cache_launch_bounds),
+        ] {
+            if set {
+                fail(format!(
+                    "--cache-factorial owns the arm set and both block sizes; {flag} would \
+                     change what the rotation runs"
+                ));
+            }
+        }
+        if cli.window_count || cli.window_poison || cli.window_mutate.is_some() {
+            fail(
+                "--cache-factorial is a timing run; the diagnostic probes would contaminate \
+                  it — use tools/r4_gates.sh"
+                    .into(),
+            );
+        }
+        if cli.profile {
+            fail(
+                "--cache-factorial rotates lanes, so --profile would wrap whichever lane \
+                  the rotation put first; profile one arm with --cache-arm"
+                    .into(),
+            );
+        }
+        if cli.validate || cli.validate_flat_eq || cli.dump_q {
+            fail(
+                "--cache-factorial is a timing run; use --cache-arm or tools/r4_gates.sh \
+                  for --validate / --dump-q"
+                    .into(),
+            );
+        }
+    }
     if cli.cache_mutate.is_some() && !cli.cache_arm.is_some_and(|a| a.uses_cache()) {
         fail("--cache-mutate needs a cached --cache-arm to corrupt".into());
     }
@@ -473,6 +528,7 @@ fn pass_config(cli: &Cli, geometry: &Geometry) -> PassConfig {
         cache_launch_bounds: !cli.no_cache_launch_bounds,
         control_launch_bounds: cli.control_launch_bounds,
         cache_mutate: cli.cache_mutate,
+        cache_factorial: cli.cache_factorial,
         block_threads,
     };
     // The eval grid must tile the trace: a compact block is 8 warps x `groups` rows, so a
@@ -497,6 +553,87 @@ fn pass_config(cli: &Cli, geometry: &Geometry) -> PassConfig {
 /// descriptors resident; each round runs every arm once in a CYCLIC ROTATION of the arm
 /// list, so no arm ever holds a fixed position and any per-round drift is shared. Warmup
 /// rounds rotate identically. Every sample is emitted; nothing is summarized here.
+/// The v3 R4 primary factorial. Same shape as R3's: one process, shared allocations, a
+/// generated cyclic rotation over warmup and timed rounds so no lane keeps a position.
+/// Differences: eleven lanes spanning BOTH block sizes, and `eval`/`finalize` are logged as
+/// separate raw fields because the 128 grid doubles the partial count and finalize is not
+/// the same work on the two sides.
+fn run_cache_factorial(harness: &mut Harness, cli: &Cli) {
+    let lanes: Vec<_> = harness
+        .cache_lanes()
+        .iter()
+        .map(|p| (p.lane, p.blocks))
+        .collect();
+    if lanes.is_empty() {
+        fail("the harness prepared no factorial lanes".into());
+    }
+    let n = lanes.len();
+    // Occupancy, kernel and geometry facts come from Rust so the emitter carries no
+    // constants of its own — it reads the arm schema off these lines.
+    println!(
+        "CACHE-FACTORIAL schedule order={} lanes={n} rounds={} warmup={}",
+        cli.term_order.as_str(),
+        cli.iterations,
+        cli.warmup
+    );
+    for (lane, blocks) in &lanes {
+        println!(
+            "ARM {} {} {} {} {} {}",
+            lane.label,
+            lane.regs,
+            lane.blocks_per_sm,
+            lane.block_threads,
+            blocks,
+            lane.kernel()
+        );
+    }
+    if !cli.iterations.is_multiple_of(n as u32) {
+        println!(
+            "note: {} rounds over {n} lanes is not balanced; use a multiple of {n}",
+            cli.iterations
+        );
+    }
+    let round = |harness: &mut Harness, index: u32, timed: bool| {
+        for offset in 0..n {
+            let slot = (index as usize + offset) % n;
+            harness
+                .run_cache_lane(slot)
+                .unwrap_or_else(|e| fail(format!("{} launch failed: {e}", lanes[slot].0.label)));
+            harness
+                .synchronize()
+                .unwrap_or_else(|e| fail(format!("{} failed: {e}", lanes[slot].0.label)));
+            if !timed {
+                continue;
+            }
+            let t = harness
+                .stage_times()
+                .unwrap_or_else(|e| fail(format!("stage timing failed: {e}")));
+            // eval and finalize RAW and separate: summing them would hide the block-size
+            // effect on finalize, which is a different grid on the two sides.
+            println!(
+                "SAMPLE {} {index} {} {:.6} {:.6} {}",
+                cli.term_order.as_str(),
+                lanes[slot].0.label,
+                t.stage_ms[1],
+                t.stage_ms[2],
+                lanes[slot].0.kernel()
+            );
+        }
+    };
+    for w in 0..cli.warmup {
+        round(harness, w, false);
+    }
+    for i in 0..cli.iterations {
+        round(harness, cli.warmup + i, true);
+    }
+    println!(
+        "CACHE-FACTORIAL done order={} warmup={} rounds={} lanes={n}",
+        cli.term_order.as_str(),
+        cli.warmup,
+        cli.iterations
+    );
+}
+
 fn run_factorial(harness: &mut Harness, cli: &Cli) {
     let arms = PairArm::FACTORIAL;
     // The emitter reads its occupancy labels from here, so the register/block facts live
@@ -849,6 +986,11 @@ fn main() {
             "the factorial needs a planned schedule; an empty one makes w indistinguishable from wnone"
         );
         run_factorial(&mut harness, &cli);
+        return;
+    }
+
+    if cli.cache_factorial {
+        run_cache_factorial(&mut harness, &cli);
         return;
     }
 

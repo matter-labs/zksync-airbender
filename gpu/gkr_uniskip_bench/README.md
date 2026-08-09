@@ -294,6 +294,23 @@ discriminate slot identity and retention). The define is passed as an explicit `
 rather than only when set, because a CMake cache that keeps the last value will otherwise
 leave the counter atomic compiled into a build you believe is shipped.
 
+`--cache-factorial` runs the R4 primary rotation: **eleven lanes** in one process — at 256
+`control`, `cache0`, `hot4`, `hot16`, `allrepeat`; at 128 the same five plus `control128_lb`,
+the bounded no-cache baseline that makes the cache contrast bound-to-bound. Use
+`--iterations` a multiple of 11 (the record uses 99 per term order). It owns both block
+sizes internally and rejects anything that would change what the rotation runs —
+`--cache-arm`, `--block-threads`, `--prologue-order`, the launch-bounds flags, the diag
+probes, `--profile` and the validation flags. `all59`, `e4rich`, `e4top2`, the BF-first
+prologue order and the unbounded cached-128 body are excluded by construction and run as
+separate single-arm diagnostics.
+
+`tools/r4_table.py` emits the table from that log. The arm schema is data-driven from the
+log's `ARM` lines, which the runner writes from Rust, so the emitter carries no arm list, no
+occupancy fact and no kernel name of its own. `eval` and `finalize` are summarized
+separately (the 128 lanes run twice the grid, so finalize is not the same work), every
+contrast names its baseline, and the guards — duplicate sample, missing or duplicate
+trailer, `ARM` before a schedule line, wrong arm set, lane-count mismatch — are hard errors.
+
 `tools/r4_gates.sh {matrix|counts|diag|all}` is the R4 wall: `matrix` is 112 `q`-parity
 cells (7 cached arms x 2 block sizes x 2 term orders x 2 `eq` forms x 2 censuses) plus both
 128 launch-bounds sibling pairs and a CPU-oracle cell per arm per size; `counts` re-derives

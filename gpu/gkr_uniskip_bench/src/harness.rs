@@ -9,7 +9,9 @@ use era_cudart::stream::CudaStream;
 use crate::abi::*;
 use crate::cache::CachePlan;
 use crate::compact::{self, BankPerm};
-use crate::coset_cache::{self, CacheArm, CacheArmState, CacheMutation, PrologueOrder};
+use crate::coset_cache::{
+    self, CacheArm, CacheArmState, CacheLane, CacheMutation, PrologueOrder, CACHE_FACTORIAL,
+};
 use crate::domain::lde_matrix;
 use crate::geometry::Geometry;
 use crate::kernels;
@@ -395,6 +397,9 @@ pub struct PassConfig {
     pub prologue_order: PrologueOrder,
     /// TEST-ONLY: corrupt the selected cached arm's records and upload them UNCHECKED.
     pub cache_mutate: Option<CacheMutation>,
+    /// Run the 11-lane R4 primary factorial. The harness then prepares every lane instead
+    /// of one arm, and owns BOTH block sizes internally.
+    pub cache_factorial: bool,
     /// Whether the 128-thread NO-CACHE baseline runs the `__launch_bounds__(128, 7)`
     /// sibling. FALSE is the default and is the frozen control128; TRUE selects the bounded
     /// baseline, which is what makes the 128 cache contrast bound-to-bound.
@@ -448,6 +453,24 @@ type EvalLaunch = fn(&UniskipVmDesc, u32, &CudaStream) -> CudaResult<()>;
 type WindowLaunch = fn(&UniskipVmDesc, &UniskipWindowDesc, u32, &CudaStream) -> CudaResult<()>;
 type CachedLaunch = fn(&UniskipVmDesc, &UniskipCacheDesc, u32, &CudaStream) -> CudaResult<()>;
 
+/// One prepared factorial lane. The descriptors are kernel PARAMETERS (by value,
+/// `__grid_constant__`), so every lane's own source array and prologue table are resident
+/// at once with no device upload — nothing re-uploads inside a timed rotation.
+pub struct PreparedLane {
+    pub lane: CacheLane,
+    desc: UniskipVmDesc,
+    plan: UniskipCacheDesc,
+    launch: LaneLaunch,
+    /// This lane's grid. The 128 lanes cover 16 rows per block, the 256 lanes 32, so the
+    /// 128 grid is twice the 256 one over the same trace.
+    pub blocks: u32,
+}
+
+enum LaneLaunch {
+    Plain(EvalLaunch),
+    Cached(CachedLaunch),
+}
+
 pub struct Harness {
     pub layout: Layout,
     pub desc: UniskipVmDesc,
@@ -474,6 +497,9 @@ pub struct Harness {
     /// Set only on a window arm; when set it replaces `eval` and carries the side
     /// descriptor. The control path never touches either field.
     eval_window: Option<(WindowLaunch, UniskipWindowDesc)>,
+    /// v3 R4 factorial lanes, prepared once and resident together; empty unless the run
+    /// is a `--cache-factorial`.
+    cache_lanes: Vec<PreparedLane>,
     /// v3 R4: every coset-cache arm's CLONED state, planned once and resident together
     /// so nothing re-plans or re-uploads inside a timed rotation. The selected arm's copy
     /// is what reaches `desc.source`; the rest exist so the planner and its always-on
@@ -791,6 +817,67 @@ impl Harness {
             desc.source[..state.sources.len()].copy_from_slice(&state.sources);
         }
 
+        // FACTORIAL LANES. Built at the 128 row tile (see `rows_per_block`), so `partials`
+        // is allocated for the larger grid and the 256 lanes use half of it. Each lane
+        // carries its own by-value descriptors; no lane re-uploads anything.
+        let cache_lanes = if config.cache_factorial && config.mode == EvalMode::LsbPair {
+            CACHE_FACTORIAL
+                .iter()
+                .map(|&lane| {
+                    let mut lane_desc = desc;
+                    let mut plan = UniskipCacheDesc::default();
+                    if lane.arm.uses_cache() {
+                        let state = cache_arms
+                            .iter()
+                            .find(|(a, _)| *a == lane.arm)
+                            .and_then(|(_, s)| s.as_ref().ok())
+                            .unwrap_or_else(|| {
+                                panic!(
+                                    "factorial lane {} is unplannable at this census",
+                                    lane.label
+                                )
+                            });
+                        lane_desc.source[..state.sources.len()].copy_from_slice(&state.sources);
+                        plan = state.descriptor(PrologueOrder::E4First);
+                    }
+                    let launch = match (
+                        lane.block_threads as usize,
+                        lane.arm.uses_cache(),
+                        lane.launch_bounds,
+                    ) {
+                        (UNISKIP_PAIR_THREADS_128, true, true) => {
+                            LaneLaunch::Cached(kernels::eval_lsb_pair_cached_128_lb)
+                        }
+                        (UNISKIP_PAIR_THREADS_128, true, false) => {
+                            LaneLaunch::Cached(kernels::eval_lsb_pair_cached_128)
+                        }
+                        (UNISKIP_PAIR_THREADS_128, false, true) => {
+                            LaneLaunch::Plain(kernels::eval_lsb_pair_128_lb)
+                        }
+                        (UNISKIP_PAIR_THREADS_128, false, false) => {
+                            LaneLaunch::Plain(kernels::eval_lsb_pair_128)
+                        }
+                        (_, true, _) => LaneLaunch::Cached(kernels::eval_lsb_pair_cached),
+                        (_, false, _) => LaneLaunch::Plain(kernels::eval_lsb_pair),
+                    };
+                    let blocks = if lane.block_threads as usize == UNISKIP_PAIR_THREADS_128 {
+                        eval_blocks
+                    } else {
+                        eval_blocks / 2
+                    };
+                    PreparedLane {
+                        lane,
+                        desc: lane_desc,
+                        plan,
+                        launch,
+                        blocks,
+                    }
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
+
         let none = UniskipWindowDesc::default();
         let eval_window = match config.mode {
             EvalMode::LsbPair => config.pair_arm.kernel_for().map(|launch| {
@@ -816,6 +903,7 @@ impl Harness {
             lde,
             eval,
             eval_kernel,
+            cache_lanes,
             eval_window,
             eval_cached,
             cache_arms,
@@ -930,6 +1018,31 @@ impl Harness {
             .iter()
             .find(|(a, _)| *a == arm)
             .and_then(|(_, s)| s.as_ref().ok())
+    }
+
+    /// The prepared factorial lanes, in rotation order.
+    pub fn cache_lanes(&self) -> &[PreparedLane] {
+        &self.cache_lanes
+    }
+
+    /// One pass on one factorial lane. Every lane shares this harness's backings and its
+    /// partials buffer; a round differs only in which descriptor pair and kernel run, and
+    /// in the grid the lane's block size implies. `lde` and `fold` are absent, so the
+    /// recorded stages are `eval` and `finalize`.
+    pub fn run_cache_lane(&mut self, index: usize) -> CudaResult<()> {
+        let lane = &self.cache_lanes[index];
+        self.events[0].record(&self.stream)?;
+        self.events[1].record(&self.stream)?;
+        match lane.launch {
+            LaneLaunch::Cached(launch) => {
+                launch(&lane.desc, &lane.plan, lane.blocks, &self.stream)?
+            }
+            LaneLaunch::Plain(launch) => launch(&lane.desc, lane.blocks, &self.stream)?,
+        }
+        self.events[2].record(&self.stream)?;
+        kernels::finalize(&self.partials, lane.blocks, &mut self.q, &self.stream)?;
+        self.events[3].record(&self.stream)?;
+        self.events[4].record(&self.stream)
     }
 
     /// The eval kernel this harness launches, by name — bound to the dispatch, not

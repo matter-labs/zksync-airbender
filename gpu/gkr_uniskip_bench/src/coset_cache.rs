@@ -1127,3 +1127,135 @@ mod mixed_operand_probe {
         );
     }
 }
+
+/// One lane of the v3 R4 primary factorial: a (block size, arm, launch-bounds) triple that
+/// names exactly one kernel. Eleven of them, and the exclusions are enforced by
+/// construction rather than by convention — `all59`, `e4rich`, `e4top2`, the BF-first
+/// prologue order and the unbounded cached-128 body are 3B diagnostics that run as separate
+/// same-session single-arm runs, never inside the rotation.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct CacheLane {
+    pub label: &'static str,
+    pub block_threads: u32,
+    pub arm: CacheArm,
+    /// Bounded body. At 256 there is no sibling and this is always false; at 128 the
+    /// cached arms are bounded (the occupancy gate) and `control128_lb` is the bounded
+    /// no-cache baseline that makes the contrast bound-to-bound.
+    pub launch_bounds: bool,
+    /// Compiled registers and blocks/SM, MEASURED (Task 1A/1B freeze artifacts). They live
+    /// here so the emitter reads occupancy off the log instead of carrying constants.
+    pub regs: u32,
+    pub blocks_per_sm: u32,
+}
+
+/// The primary rotation, in a fixed order. 11 arms, so a round count must be a multiple of
+/// 11 for every arm to start equally often.
+pub const CACHE_FACTORIAL: [CacheLane; 11] = [
+    CacheLane {
+        label: "control@256",
+        block_threads: 256,
+        arm: CacheArm::Control,
+        launch_bounds: false,
+        regs: 72,
+        blocks_per_sm: 3,
+    },
+    CacheLane {
+        label: "cache0@256",
+        block_threads: 256,
+        arm: CacheArm::Cache0,
+        launch_bounds: false,
+        regs: 75,
+        blocks_per_sm: 3,
+    },
+    CacheLane {
+        label: "hot4@256",
+        block_threads: 256,
+        arm: CacheArm::Hot4,
+        launch_bounds: false,
+        regs: 75,
+        blocks_per_sm: 3,
+    },
+    CacheLane {
+        label: "hot16@256",
+        block_threads: 256,
+        arm: CacheArm::Hot16,
+        launch_bounds: false,
+        regs: 75,
+        blocks_per_sm: 3,
+    },
+    CacheLane {
+        label: "allrepeat@256",
+        block_threads: 256,
+        arm: CacheArm::AllRepeat,
+        launch_bounds: false,
+        regs: 75,
+        blocks_per_sm: 3,
+    },
+    CacheLane {
+        label: "control@128",
+        block_threads: 128,
+        arm: CacheArm::Control,
+        launch_bounds: false,
+        regs: 72,
+        blocks_per_sm: 7,
+    },
+    CacheLane {
+        label: "control_lb@128",
+        block_threads: 128,
+        arm: CacheArm::Control,
+        launch_bounds: true,
+        regs: 72,
+        blocks_per_sm: 7,
+    },
+    CacheLane {
+        label: "cache0@128",
+        block_threads: 128,
+        arm: CacheArm::Cache0,
+        launch_bounds: true,
+        regs: 72,
+        blocks_per_sm: 7,
+    },
+    CacheLane {
+        label: "hot4@128",
+        block_threads: 128,
+        arm: CacheArm::Hot4,
+        launch_bounds: true,
+        regs: 72,
+        blocks_per_sm: 7,
+    },
+    CacheLane {
+        label: "hot16@128",
+        block_threads: 128,
+        arm: CacheArm::Hot16,
+        launch_bounds: true,
+        regs: 72,
+        blocks_per_sm: 7,
+    },
+    CacheLane {
+        label: "allrepeat@128",
+        block_threads: 128,
+        arm: CacheArm::AllRepeat,
+        launch_bounds: true,
+        regs: 72,
+        blocks_per_sm: 7,
+    },
+];
+
+impl CacheLane {
+    /// The kernel this lane launches, by name — the same strings `Harness::eval_kernel`
+    /// reports, so a log line and a single-arm config block are comparable.
+    pub fn kernel(self) -> &'static str {
+        match (
+            self.block_threads,
+            self.arm.uses_cache(),
+            self.launch_bounds,
+        ) {
+            (128, true, true) => "eval_lsb_pair_cached_128_lb",
+            (128, true, false) => "eval_lsb_pair_cached_128",
+            (128, false, true) => "eval_lsb_pair_128_lb",
+            (128, false, false) => "eval_lsb_pair_128",
+            (_, true, _) => "eval_lsb_pair_cached",
+            (_, false, _) => "eval_lsb_pair",
+        }
+    }
+}
